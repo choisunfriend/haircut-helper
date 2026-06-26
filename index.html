@@ -4,257 +4,182 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>결 GYEOL — 스타일 프리뷰</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
-  :root{
-    --bg:#1B1816;
-    --surface:#242019;
-    --surface-2:#2D2820;
-    --line:#3A332B;
-    --accent:#C98A4B;
-    --accent-soft:#E8C39E;
-    --text:#F3ECE2;
-    --text-muted:#9C9183;
-    --ok:#8FA888;
-    --warn:#C2685A;
-  }
-  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
-  html,body{height:100%;}
-  body{
-    margin:0; background:var(--bg); color:var(--text);
-    font-family:'Inter',sans-serif;
-    overflow:hidden; height:100vh; height:100dvh; width:100vw;
-    -webkit-user-select:none; user-select:none;
-  }
-  .mono{font-family:'JetBrains Mono',monospace;}
-  .display{font-family:'Fraunces',serif;}
+:root{
+  --bg:#1B1816; --surface:#242019; --surface-2:#2D2820; --line:#3A332B;
+  --accent:#C98A4B; --accent-soft:#E8C39E; --text:#F3ECE2; --text-muted:#9C9183;
+  --ok:#8FA888; --warn:#C2685A;
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+html,body{height:100%;margin:0;}
+body{
+  background:var(--bg);color:var(--text);font-family:'Inter',sans-serif;
+  overflow:hidden;height:100vh;height:100dvh;width:100vw;
+  -webkit-user-select:none;user-select:none;
+}
+#app{display:flex;flex-direction:column;height:100vh;height:100dvh;}
+header{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:14px 24px;border-bottom:1px solid var(--line);
+  background:linear-gradient(180deg,var(--surface),var(--bg));flex-shrink:0;
+}
+.brand .mark{font-family:'Fraunces',serif;font-size:22px;font-weight:600;color:var(--accent-soft);}
+.brand .sub{font-size:11px;color:var(--text-muted);letter-spacing:1.5px;text-transform:uppercase;margin-left:8px;}
+.stage-label{font-size:11px;color:var(--text-muted);letter-spacing:1px;text-transform:uppercase;}
+.stage-label b{color:var(--accent-soft);font-weight:600;}
 
-  /* App shell */
-  #app{display:flex; flex-direction:column; height:100vh; height:100dvh;}
-  header{
-    display:flex; align-items:center; justify-content:space-between;
-    padding:18px 28px; border-bottom:1px solid var(--line);
-    background:linear-gradient(180deg, var(--surface), var(--bg));
-    flex-shrink:0;
-  }
-  .brand{display:flex; align-items:baseline; gap:10px;}
-  .brand .mark{font-family:'Fraunces',serif; font-size:24px; font-weight:600; letter-spacing:0.5px; color:var(--accent-soft);}
-  .brand .sub{font-size:11px; color:var(--text-muted); letter-spacing:1.5px; text-transform:uppercase;}
-  .stage-label{font-size:12px; color:var(--text-muted); letter-spacing:1px; text-transform:uppercase;}
-  .stage-label b{color:var(--accent-soft); font-weight:600;}
+main{flex:1;position:relative;overflow:hidden;}
+.screen{position:absolute;inset:0;display:none;padding:18px 24px 20px;flex-direction:column;}
+.screen.active{display:flex;}
 
-  main{flex:1; position:relative; overflow:hidden;}
-  .screen{
-    position:absolute; inset:0; display:none;
-    padding:24px 28px 28px;
-    flex-direction:column;
-  }
-  .screen.active{display:flex;}
+/* Buttons */
+.btn{border:none;cursor:pointer;font-family:'Inter',sans-serif;font-weight:600;
+  border-radius:12px;padding:13px 20px;font-size:14px;
+  display:inline-flex;align-items:center;justify-content:center;gap:8px;
+  transition:transform .1s,opacity .15s;}
+.btn:active{transform:scale(0.97);}
+.btn-primary{background:var(--accent);color:#1B1816;}
+.btn-primary:disabled{background:var(--surface-2);color:var(--text-muted);cursor:not-allowed;}
+.btn-ghost{background:transparent;color:var(--text-muted);border:1px solid var(--line);}
+.btn-sm{padding:9px 14px;font-size:12px;border-radius:9px;}
+.btn-block{width:100%;}
+.footer-bar{display:flex;gap:10px;justify-content:flex-end;padding-top:14px;flex-shrink:0;}
 
-  /* Angle dial - signature element */
-  .dial{
-    position:relative; width:64px; height:64px; flex-shrink:0;
-  }
-  .dial svg{width:100%; height:100%;}
-  .dial .seg{fill:none; stroke:var(--line); stroke-width:6;}
-  .dial .seg.done{stroke:var(--ok);}
-  .dial .seg.active{stroke:var(--accent);}
-  .dial-center{
-    position:absolute; inset:0; display:flex; align-items:center; justify-content:center;
-    font-family:'JetBrains Mono',monospace; font-size:11px; color:var(--text-muted);
-  }
+/* ---- CAPTURE ---- */
+#screen-capture{align-items:stretch;}
+.capture-layout{display:flex;gap:18px;flex:1;min-height:0;}
+.capture-stage{
+  flex:1;background:var(--surface);border-radius:18px;border:1px solid var(--line);
+  position:relative;overflow:hidden;display:flex;align-items:center;justify-content:center;
+}
+.capture-stage video,.capture-stage img.preview-shot{width:100%;height:100%;object-fit:cover;display:block;}
+.capture-overlay-ring{position:absolute;inset:0;pointer-events:none;display:flex;align-items:center;justify-content:center;}
+.capture-overlay-ring svg{width:62%;height:90%;}
+.capture-hint{position:absolute;bottom:14px;left:0;right:0;text-align:center;font-size:13px;color:var(--accent-soft);}
+.cam-off-msg{color:var(--text-muted);font-size:13px;text-align:center;padding:0 24px;line-height:1.7;}
+.capture-side{width:220px;flex-shrink:0;display:flex;flex-direction:column;gap:12px;}
+.angle-card{
+  background:var(--surface);border:1px solid var(--line);border-radius:12px;
+  padding:10px 12px;display:flex;align-items:center;gap:10px;cursor:pointer;transition:border-color .15s;
+}
+.angle-card.current{border-color:var(--accent);}
+.angle-card .thumb{width:40px;height:40px;border-radius:8px;background:var(--surface-2);display:flex;align-items:center;justify-content:center;overflow:hidden;flex-shrink:0;}
+.angle-card .thumb img{width:100%;height:100%;object-fit:cover;}
+.angle-card .meta .name{font-size:13px;font-weight:600;}
+.angle-card .meta .state{font-size:11px;color:var(--text-muted);margin-top:2px;}
+.angle-card .check{font-size:14px;color:var(--ok);opacity:0;transition:opacity .15s;margin-left:auto;}
+.angle-card.captured .check{opacity:1;}
+.dial{position:relative;width:72px;height:72px;flex-shrink:0;align-self:center;}
+.dial svg{width:100%;height:100%;}
+.dial .seg{fill:none;stroke:var(--line);stroke-width:6;}
+.dial .seg.done{stroke:var(--ok);}
+.dial .seg.active{stroke:var(--accent);}
+.dial-center{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--text-muted);}
 
-  /* ---- Capture screen ---- */
-  #screen-capture{align-items:stretch;}
-  .capture-layout{display:flex; gap:24px; flex:1; min-height:0;}
-  .capture-stage{
-    flex:1; background:var(--surface); border-radius:18px; border:1px solid var(--line);
-    position:relative; overflow:hidden; display:flex; align-items:center; justify-content:center;
-  }
-  .capture-stage video, .capture-stage img.preview-shot{
-    width:100%; height:100%; object-fit:cover; display:block;
-  }
-  .capture-overlay-ring{
-    position:absolute; inset:0; pointer-events:none;
-    display:flex; align-items:center; justify-content:center;
-  }
-  .capture-overlay-ring svg{width:62%; height:90%;}
-  .capture-hint{
-    position:absolute; bottom:18px; left:0; right:0; text-align:center;
-    font-size:13px; color:var(--accent-soft); letter-spacing:0.5px;
-  }
-  .cam-off-msg{
-    color:var(--text-muted); font-size:13px; text-align:center; padding:0 30px; line-height:1.7;
-  }
-  .capture-side{
-    width:240px; flex-shrink:0; display:flex; flex-direction:column; gap:14px;
-  }
-  .angle-card{
-    background:var(--surface); border:1px solid var(--line); border-radius:14px;
-    padding:12px 14px; display:flex; align-items:center; gap:12px; cursor:pointer;
-    transition:border-color .15s;
-  }
-  .angle-card.current{border-color:var(--accent);}
-  .angle-card .thumb{
-    width:46px; height:46px; border-radius:10px; background:var(--surface-2);
-    display:flex; align-items:center; justify-content:center; overflow:hidden; flex-shrink:0;
-  }
-  .angle-card .thumb img{width:100%; height:100%; object-fit:cover;}
-  .angle-card .meta{flex:1; min-width:0;}
-  .angle-card .meta .name{font-size:13px; font-weight:600;}
-  .angle-card .meta .state{font-size:11px; color:var(--text-muted); margin-top:2px;}
-  .angle-card .check{font-size:14px; color:var(--ok); opacity:0; transition:opacity .15s;}
-  .angle-card.captured .check{opacity:1;}
+/* ---- STYLE SELECT ---- */
+.style-grid{flex:1;display:grid;grid-template-columns:repeat(4,1fr);gap:14px;overflow-y:auto;padding-bottom:8px;align-content:start;}
+.style-card{
+  background:var(--surface);border:1px solid var(--line);border-radius:14px;
+  padding:14px;cursor:pointer;transition:border-color .15s,transform .1s;
+  display:flex;flex-direction:column;gap:8px;
+}
+.style-card:active{transform:scale(0.98);}
+.style-card.selected{border-color:var(--accent);background:var(--surface-2);}
+.style-card.ai-recommended{border-color:var(--ok);}
+.style-card .icon-box{height:100px;border-radius:10px;background:var(--bg);display:flex;align-items:center;justify-content:center;}
+.style-card .name{font-size:13px;font-weight:600;}
+.style-card .tags{font-size:10px;color:var(--text-muted);font-family:'JetBrains Mono',monospace;}
+.style-card .ai-rec{font-size:10px;color:var(--ok);font-family:'JetBrains Mono',monospace;display:none;}
+.style-card.ai-recommended .ai-rec{display:block;}
 
-  /* Buttons */
-  .btn{
-    border:none; cursor:pointer; font-family:'Inter',sans-serif; font-weight:600;
-    border-radius:12px; padding:14px 22px; font-size:14px; letter-spacing:0.2px;
-    display:inline-flex; align-items:center; justify-content:center; gap:8px;
-    transition:transform .1s, opacity .15s;
-  }
-  .btn:active{transform:scale(0.97);}
-  .btn-primary{background:var(--accent); color:#1B1816;}
-  .btn-primary:disabled{background:var(--surface-2); color:var(--text-muted); cursor:not-allowed;}
-  .btn-ghost{background:transparent; color:var(--text-muted); border:1px solid var(--line);}
-  .btn-ghost:hover{color:var(--text);}
-  .btn-block{width:100%;}
-  .btn-sm{padding:9px 14px; font-size:12px; border-radius:9px;}
+/* ---- ADJUST ---- */
+.adjust-layout{display:flex;gap:18px;flex:1;min-height:0;}
+.preview-pane{
+  flex:1.3;background:var(--surface);border:1px solid var(--line);border-radius:18px;
+  position:relative;overflow:hidden;display:flex;align-items:center;justify-content:center;
+}
+.preview-pane canvas{width:100%;height:100%;display:block;}
+.preview-tag{
+  position:absolute;top:12px;left:12px;background:rgba(27,24,22,0.75);
+  backdrop-filter:blur(4px);padding:5px 11px;border-radius:8px;font-size:11px;color:var(--accent-soft);
+}
+.seg-status{
+  position:absolute;bottom:12px;left:0;right:0;text-align:center;font-size:11px;color:var(--text-muted);
+}
+.control-pane{width:300px;flex-shrink:0;display:flex;flex-direction:column;gap:14px;overflow-y:auto;}
+.slider-block{display:flex;flex-direction:column;gap:7px;}
+.slider-block .row{display:flex;justify-content:space-between;align-items:baseline;}
+.slider-block .label{font-size:13px;font-weight:600;}
+.slider-block .val{font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--accent-soft);}
+input[type=range]{-webkit-appearance:none;width:100%;height:4px;border-radius:2px;background:var(--line);outline:none;}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:20px;height:20px;border-radius:50%;background:var(--accent);cursor:pointer;border:3px solid var(--bg);}
+.angle-switch{display:flex;gap:6px;background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:5px;}
+.angle-switch button{flex:1;background:transparent;border:none;color:var(--text-muted);padding:8px 0;font-size:11px;border-radius:8px;cursor:pointer;font-family:'JetBrains Mono',monospace;}
+.angle-switch button.on{background:var(--accent);color:#1B1816;font-weight:600;}
 
-  .footer-bar{
-    display:flex; gap:12px; justify-content:flex-end; padding-top:18px; flex-shrink:0;
-  }
+/* Voice */
+.voice-box{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:12px;display:flex;flex-direction:column;gap:8px;}
+.voice-btn{display:flex;align-items:center;gap:10px;cursor:pointer;padding:9px 11px;border-radius:9px;background:var(--surface-2);transition:background .15s;}
+.voice-btn.listening{background:var(--warn);}
+.voice-dot{width:9px;height:9px;border-radius:50%;background:var(--text-muted);flex-shrink:0;}
+.voice-btn.listening .voice-dot{background:#fff;animation:pulse 1s infinite;}
+@keyframes pulse{0%,100%{opacity:1;}50%{opacity:0.3;}}
+.voice-transcript{font-size:11px;color:var(--text-muted);min-height:15px;line-height:1.5;}
+.voice-transcript b{color:var(--accent-soft);font-weight:600;}
+.voice-hints{font-size:10px;color:var(--text-muted);line-height:1.8;font-family:'JetBrains Mono',monospace;}
 
-  /* ---- Style select screen ---- */
-  .style-grid{
-    flex:1; display:grid; grid-template-columns:repeat(4, 1fr); gap:16px;
-    overflow-y:auto; padding-bottom:10px; align-content:start;
-  }
-  .style-card{
-    background:var(--surface); border:1px solid var(--line); border-radius:16px;
-    padding:16px; cursor:pointer; transition:border-color .15s, transform .1s;
-    display:flex; flex-direction:column; gap:10px;
-  }
-  .style-card:active{transform:scale(0.98);}
-  .style-card.selected{border-color:var(--accent); background:var(--surface-2);}
-  .style-card .icon-box{
-    height:110px; border-radius:10px; background:var(--bg); display:flex; align-items:center; justify-content:center;
-  }
-  .style-card .name{font-size:14px; font-weight:600;}
-  .style-card .tags{font-size:11px; color:var(--text-muted); font-family:'JetBrains Mono',monospace;}
+/* AI card */
+.ai-card{background:var(--surface);border:1px solid var(--accent);border-radius:12px;padding:12px 14px;display:flex;flex-direction:column;gap:8px;}
+.ai-card-header{display:flex;align-items:center;gap:7px;font-size:11px;font-weight:700;color:var(--accent-soft);letter-spacing:1px;text-transform:uppercase;}
+.ai-dot{width:6px;height:6px;border-radius:50%;background:var(--accent);flex-shrink:0;}
+.ai-card-body{font-size:11px;color:var(--text-muted);line-height:1.7;}
+.ai-tags{display:flex;flex-wrap:wrap;gap:5px;}
+.ai-tag{font-size:10px;font-family:'JetBrains Mono',monospace;padding:3px 8px;border-radius:20px;background:var(--surface-2);border:1px solid var(--line);color:var(--accent-soft);}
 
-  /* ---- Adjust screen ---- */
-  .adjust-layout{display:flex; gap:24px; flex:1; min-height:0;}
-  .preview-pane{
-    flex:1.3; background:var(--surface); border:1px solid var(--line); border-radius:18px;
-    position:relative; overflow:hidden; display:flex; align-items:center; justify-content:center;
-  }
-  .preview-pane canvas{width:100%; height:100%; display:block;}
-  .preview-tag{
-    position:absolute; top:14px; left:14px; background:rgba(27,24,22,0.7);
-    backdrop-filter:blur(4px); padding:6px 12px; border-radius:8px; font-size:11px;
-    color:var(--accent-soft); letter-spacing:0.5px;
-  }
-  .anchor-hint{
-    position:absolute; bottom:14px; left:0; right:0; text-align:center; font-size:11px; color:var(--text-muted);
-  }
-  .control-pane{
-    width:320px; flex-shrink:0; display:flex; flex-direction:column; gap:18px; overflow-y:auto;
-  }
-  .slider-block{display:flex; flex-direction:column; gap:8px;}
-  .slider-block .row{display:flex; justify-content:space-between; align-items:baseline;}
-  .slider-block .label{font-size:13px; font-weight:600;}
-  .slider-block .val{font-family:'JetBrains Mono',monospace; font-size:12px; color:var(--accent-soft);}
-  input[type=range]{
-    -webkit-appearance:none; width:100%; height:4px; border-radius:2px;
-    background:var(--line); outline:none;
-  }
-  input[type=range]::-webkit-slider-thumb{
-    -webkit-appearance:none; width:20px; height:20px; border-radius:50%;
-    background:var(--accent); cursor:pointer; border:3px solid var(--bg);
-  }
-  .angle-switch{
-    display:flex; gap:8px; background:var(--surface); border:1px solid var(--line);
-    border-radius:12px; padding:6px;
-  }
-  .angle-switch button{
-    flex:1; background:transparent; border:none; color:var(--text-muted); padding:9px 0;
-    font-size:12px; border-radius:8px; cursor:pointer; font-family:'JetBrains Mono',monospace;
-  }
-  .angle-switch button.on{background:var(--accent); color:#1B1816; font-weight:600;}
+/* ---- COMPARE ---- */
+.compare-pane{
+  flex:1;background:var(--surface);border:1px solid var(--line);border-radius:18px;
+  position:relative;overflow:hidden;display:flex;align-items:center;justify-content:center;
+}
+.compare-pane canvas{width:100%;height:100%;display:block;}
+.compare-clip{position:absolute;top:0;bottom:0;left:0;overflow:hidden;width:50%;}
+.compare-clip canvas{position:absolute;top:0;left:0;width:100%;height:100%;}
+.compare-divider{position:absolute;top:0;bottom:0;width:3px;background:var(--accent);left:50%;transform:translateX(-50%);cursor:ew-resize;}
+.compare-divider::after{content:'◂▸';position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);background:var(--accent);color:#1B1816;font-size:10px;padding:5px 8px;border-radius:20px;letter-spacing:2px;}
+.compare-label{position:absolute;top:12px;font-size:10px;letter-spacing:1px;padding:4px 9px;background:rgba(27,24,22,0.7);border-radius:7px;color:var(--text-muted);}
+.compare-label.before{left:12px;}
+.compare-label.after{right:12px;color:var(--accent-soft);}
 
-  .voice-box{
-    background:var(--surface); border:1px solid var(--line); border-radius:14px; padding:14px;
-    display:flex; flex-direction:column; gap:10px;
-  }
-  .voice-btn{
-    display:flex; align-items:center; gap:10px; cursor:pointer; padding:10px 12px;
-    border-radius:10px; background:var(--surface-2); transition:background .15s;
-  }
-  .voice-btn.listening{background:var(--warn); }
-  .voice-dot{width:10px; height:10px; border-radius:50%; background:var(--text-muted); flex-shrink:0;}
-  .voice-btn.listening .voice-dot{background:#fff; animation:pulse 1s infinite;}
-  @keyframes pulse{0%,100%{opacity:1;} 50%{opacity:0.3;}}
-  .voice-transcript{font-size:12px; color:var(--text-muted); min-height:16px; line-height:1.5;}
-  .voice-transcript b{color:var(--accent-soft); font-weight:600;}
-  .voice-hints{font-size:10.5px; color:var(--text-muted); line-height:1.8; font-family:'JetBrains Mono',monospace;}
+/* Overlays */
+.toast{position:fixed;bottom:22px;left:50%;transform:translateX(-50%) translateY(20px);background:var(--surface-2);border:1px solid var(--line);padding:11px 18px;border-radius:12px;font-size:13px;opacity:0;pointer-events:none;transition:all .25s;z-index:50;}
+.toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
+.ai-overlay{position:fixed;inset:0;background:rgba(27,24,22,0.9);z-index:100;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;backdrop-filter:blur(6px);}
+.ai-overlay.hidden{display:none;}
+.ai-spinner{width:44px;height:44px;border:3px solid var(--line);border-top-color:var(--accent);border-radius:50%;animation:spin 0.9s linear infinite;}
+@keyframes spin{to{transform:rotate(360deg);}}
+.ai-overlay-text{font-size:14px;color:var(--accent-soft);}
+.ai-overlay-sub{font-size:12px;color:var(--text-muted);}
 
-  /* ---- Compare screen ---- */
-  .compare-pane{
-    flex:1; background:var(--surface); border:1px solid var(--line); border-radius:18px;
-    position:relative; overflow:hidden; display:flex; align-items:center; justify-content:center;
-  }
-  .compare-pane canvas{width:100%; height:100%; display:block;}
-  .compare-clip{
-    position:absolute; top:0; bottom:0; left:0; overflow:hidden; width:50%;
-  }
-  .compare-clip canvas{position:absolute; top:0; left:0; height:100%;}
-  .compare-divider{
-    position:absolute; top:0; bottom:0; width:3px; background:var(--accent); left:50%;
-    transform:translateX(-50%); cursor:ew-resize;
-  }
-  .compare-divider::after{
-    content:'◂▸'; position:absolute; top:50%; left:50%; transform:translate(-50%,-50%);
-    background:var(--accent); color:#1B1816; font-size:11px; padding:6px 9px; border-radius:20px; letter-spacing:2px;
-  }
-  .compare-label{
-    position:absolute; top:14px; font-size:11px; letter-spacing:1px; padding:5px 10px;
-    background:rgba(27,24,22,0.7); border-radius:7px; color:var(--text-muted);
-  }
-  .compare-label.before{left:14px;}
-  .compare-label.after{right:14px; color:var(--accent-soft);}
-
-  .toast{
-    position:fixed; bottom:24px; left:50%; transform:translateX(-50%) translateY(20px);
-    background:var(--surface-2); border:1px solid var(--line); padding:12px 20px; border-radius:12px;
-    font-size:13px; opacity:0; pointer-events:none; transition:all .25s; z-index:50;
-  }
-  .toast.show{opacity:1; transform:translateX(-50%) translateY(0);}
-
-  ::-webkit-scrollbar{width:6px; height:6px;}
-  ::-webkit-scrollbar-thumb{background:var(--line); border-radius:3px;}
+::-webkit-scrollbar{width:5px;}
+::-webkit-scrollbar-thumb{background:var(--line);border-radius:3px;}
 </style>
 </head>
 <body>
 <div id="app">
   <header>
     <div class="brand">
-      <span class="mark">결</span>
-      <span class="sub">GYEOL — Style Preview</span>
+      <span class="mark">결</span><span class="sub">GYEOL — Style Preview</span>
     </div>
-    <div class="stage-label" id="stageLabel">단계 <b>1 / 4</b> · 촬영</div>
+    <div class="stage-label" id="stageLabel">단계 <b>1 / 4 · 촬영</b></div>
   </header>
-
   <main>
+
     <!-- SCREEN 1: CAPTURE -->
     <section class="screen active" id="screen-capture">
       <div class="capture-layout">
         <div class="capture-stage" id="captureStage">
-          <div class="cam-off-msg" id="camOffMsg">
-            카메라를 불러오는 중입니다…<br>
-            <span style="font-size:11px;">(태블릿에서 카메라 권한을 허용해주세요. file://로 열었거나 권한이 없다면 오른쪽에서 사진을 업로드할 수 있어요.)</span>
-          </div>
+          <div class="cam-off-msg" id="camOffMsg">카메라를 불러오는 중…<br><span style="font-size:11px;">권한을 허용하거나 오른쪽 업로드를 이용해주세요.</span></div>
           <video id="video" autoplay playsinline muted style="display:none;"></video>
           <img id="shotPreview" class="preview-shot" style="display:none;">
           <div class="capture-overlay-ring">
@@ -263,7 +188,7 @@
           <div class="capture-hint" id="captureHint">정면을 가이드 안에 맞춰주세요</div>
         </div>
         <div class="capture-side">
-          <div class="dial" style="align-self:center; width:84px; height:84px;">
+          <div class="dial">
             <svg viewBox="0 0 100 100">
               <circle class="seg" id="seg0" cx="50" cy="50" r="42" stroke-dasharray="65 197" transform="rotate(-90 50 50)"/>
               <circle class="seg" id="seg1" cx="50" cy="50" r="42" stroke-dasharray="65 197" stroke-dashoffset="-65" transform="rotate(-90 50 50)"/>
@@ -317,36 +242,42 @@
       <div class="adjust-layout">
         <div class="preview-pane">
           <div class="preview-tag" id="adjustStyleTag">스타일 미선택</div>
-          <canvas id="adjustCanvas" width="640" height="800"></canvas>
-          <div class="anchor-hint">사진을 탭하면 정수리 기준점을 다시 잡을 수 있어요</div>
+          <canvas id="adjustCanvas"></canvas>
+          <div class="seg-status" id="segStatus"></div>
         </div>
         <div class="control-pane">
           <div class="angle-switch" id="angleSwitch"></div>
 
+          <div class="ai-card" id="aiAnalysisCard" style="display:none;">
+            <div class="ai-card-header"><div class="ai-dot"></div>AI 분석</div>
+            <div class="ai-card-body" id="aiAnalysisText"></div>
+            <div class="ai-tags" id="aiAnalysisTags"></div>
+          </div>
+
           <div class="slider-block">
-            <div class="row"><span class="label">길이</span><span class="val mono" id="val-length">50</span></div>
-            <input type="range" id="slider-length" min="0" max="100" value="50" oninput="onSlider('length', this.value)">
+            <div class="row"><span class="label">길이</span><span class="val" id="val-length">50</span></div>
+            <input type="range" id="slider-length" min="0" max="100" value="50" oninput="onSlider('length',this.value)">
           </div>
           <div class="slider-block">
-            <div class="row"><span class="label">컬 / 웨이브</span><span class="val mono" id="val-curl">30</span></div>
-            <input type="range" id="slider-curl" min="0" max="100" value="30" oninput="onSlider('curl', this.value)">
+            <div class="row"><span class="label">컬 / 웨이브</span><span class="val" id="val-curl">30</span></div>
+            <input type="range" id="slider-curl" min="0" max="100" value="30" oninput="onSlider('curl',this.value)">
           </div>
           <div class="slider-block">
-            <div class="row"><span class="label">볼륨</span><span class="val mono" id="val-volume">50</span></div>
-            <input type="range" id="slider-volume" min="0" max="100" value="50" oninput="onSlider('volume', this.value)">
+            <div class="row"><span class="label">볼륨</span><span class="val" id="val-volume">50</span></div>
+            <input type="range" id="slider-volume" min="0" max="100" value="50" oninput="onSlider('volume',this.value)">
           </div>
           <div class="slider-block">
-            <div class="row"><span class="label">숱 보정 <span style="color:var(--text-muted); font-weight:400;">(수동)</span></span><span class="val mono" id="val-thickness">50</span></div>
-            <input type="range" id="slider-thickness" min="0" max="100" value="50" oninput="onSlider('thickness', this.value)">
+            <div class="row"><span class="label">숱 보정</span><span class="val" id="val-thickness">50</span></div>
+            <input type="range" id="slider-thickness" min="0" max="100" value="50" oninput="onSlider('thickness',this.value)">
           </div>
 
           <div class="voice-box">
             <div class="voice-btn" id="voiceBtn" onclick="toggleVoice()">
               <div class="voice-dot"></div>
-              <span id="voiceBtnLabel" style="font-size:13px; font-weight:600;">음성으로 조정하기</span>
+              <span id="voiceBtnLabel" style="font-size:13px;font-weight:600;">음성으로 조정하기</span>
             </div>
-            <div class="voice-transcript" id="voiceTranscript">예: "길이 늘려줘", "웨이브 추가해줘", "볼륨 줄여줘", "다음 각도"</div>
-            <div class="voice-hints">길게·늘려줘·짧게·줄여줘 / 컬추가·펴줘·스트레이트 / 볼륨추가·볼륨줄여 / 숱많게·숱적게 / 다음각도·이전각도 / 비교·완료 / 초기화·리셋</div>
+            <div class="voice-transcript" id="voiceTranscript">예: "길이 늘려줘", "웨이브 추가", "볼륨 줄여줘"</div>
+            <div class="voice-hints">길게·늘려줘·짧게 / 컬추가·펴줘 / 볼륨추가·볼륨줄여 / 숱많게·숱적게 / 다음각도 / 비교·초기화</div>
           </div>
 
           <button class="btn btn-ghost btn-sm" onclick="resetSliders()">슬라이더 초기화</button>
@@ -360,76 +291,412 @@
 
     <!-- SCREEN 4: COMPARE -->
     <section class="screen" id="screen-compare">
-      <div class="compare-pane" id="comparePane">
-        <canvas id="compareBaseCanvas" width="640" height="800"></canvas>
+      <div class="compare-pane" id="comparePane" style="flex:1;">
+        <canvas id="compareBaseCanvas"></canvas>
         <div class="compare-clip" id="compareClip">
-          <canvas id="compareTopCanvas" width="640" height="800"></canvas>
+          <canvas id="compareTopCanvas"></canvas>
         </div>
         <div class="compare-divider" id="compareDivider"></div>
         <div class="compare-label before">BEFORE</div>
         <div class="compare-label after">AFTER</div>
       </div>
-      <div class="angle-switch" id="angleSwitchCompare" style="margin-top:16px; width:320px; align-self:center;"></div>
+      <div class="angle-switch" id="angleSwitchCompare" style="margin-top:14px;width:300px;align-self:center;"></div>
       <div class="footer-bar">
         <button class="btn btn-ghost" onclick="goToScreen('adjust')">← 조정으로</button>
-        <button class="btn btn-primary" onclick="goToScreen('capture')">새 고객 시작</button>
+        <button class="btn btn-primary" onclick="startNewCustomer()">새 고객 시작</button>
       </div>
     </section>
+
   </main>
 </div>
 
 <div class="toast" id="toast"></div>
+<div class="ai-overlay hidden" id="aiOverlay">
+  <div class="ai-spinner"></div>
+  <div class="ai-overlay-text" id="aiOverlayText">사진 분석 중…</div>
+  <div class="ai-overlay-sub" id="aiOverlaySub">머리카락 영역 감지 · AI 분석</div>
+</div>
+
+<!-- MediaPipe -->
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/selfie_segmentation/selfie_segmentation.js" crossorigin="anonymous"></script>
 
 <script>
-/* ---------------- STATE ---------------- */
+/* ============================================================
+   STATE
+   ============================================================ */
 const ANGLES = ['front','left','right','back'];
-const ANGLE_LABELS = {front:'정면', left:'좌측면', right:'우측면', back:'후면'};
+const ANGLE_LABELS = {front:'정면', left:'좌측', right:'우측', back:'후면'};
+
 const state = {
   shots: {front:null, left:null, right:null, back:null},
+  // 원본 머리카락 마스크 (각도별, ImageData)
+  hairMasks: {front:null, left:null, right:null, back:null},
+  // 원본 머리카락 픽셀만 추출한 오프스크린 캔버스
+  hairCanvases: {front:null, left:null, right:null, back:null},
   currentCaptureIndex: 0,
   selectedStyle: null,
   currentViewAngle: 'front',
   sliders: {length:50, curl:30, volume:50, thickness:50},
-  anchors: {front:null, left:null, right:null, back:null}, // {x,y} ratio 0-1
 };
 
 const STYLES = [
-  {id:'bob', name:'클래식 보브', tags:'SHORT · STRAIGHT', length:25, curl:5, volume:45, color:'#2A1B12'},
-  {id:'long-wave', name:'롱 웨이브', tags:'LONG · WAVE', length:85, curl:55, volume:60, color:'#3B2415'},
-  {id:'pixie', name:'픽시 컷', tags:'SHORT · TEXTURED', length:12, curl:15, volume:35, color:'#1F1610'},
-  {id:'layered-mid', name:'레이어드 미디엄', tags:'MID · LAYERED', length:55, curl:25, volume:55, color:'#33210F'},
-  {id:'curly-afro', name:'볼륨 컬', tags:'MID · CURL', length:45, curl:90, volume:90, color:'#241712'},
-  {id:'sleek-long', name:'슬릭 스트레이트', tags:'LONG · STRAIGHT', length:90, curl:5, volume:30, color:'#150F0B'},
-  {id:'shag', name:'샤기 컷', tags:'MID · TEXTURED', length:50, curl:40, volume:65, color:'#2E1E12'},
-  {id:'lob', name:'로브', tags:'MID-SHORT · WAVE', length:38, curl:35, volume:50, color:'#27190F'},
+  {id:'bob',       name:'클래식 보브',     tags:'SHORT · STRAIGHT', length:25, curl:5,  volume:45, colorHex:'#2A1B12'},
+  {id:'long-wave', name:'롱 웨이브',       tags:'LONG · WAVE',      length:85, curl:55, volume:60, colorHex:'#3B2415'},
+  {id:'pixie',     name:'픽시 컷',         tags:'SHORT · TEXTURED', length:12, curl:15, volume:35, colorHex:'#1F1610'},
+  {id:'layered',   name:'레이어드 미디엄', tags:'MID · LAYERED',    length:55, curl:25, volume:55, colorHex:'#33210F'},
+  {id:'curly',     name:'볼륨 컬',         tags:'MID · CURL',       length:45, curl:90, volume:90, colorHex:'#241712'},
+  {id:'sleek',     name:'슬릭 스트레이트', tags:'LONG · STRAIGHT',  length:90, curl:5,  volume:30, colorHex:'#150F0B'},
+  {id:'shag',      name:'샤기 컷',         tags:'MID · TEXTURED',   length:50, curl:40, volume:65, colorHex:'#2E1E12'},
+  {id:'lob',       name:'로브',            tags:'MID-SHORT · WAVE', length:38, curl:35, volume:50, colorHex:'#27190F'},
 ];
 
+let aiAnalysis = null;
 let recognition = null;
 let listening = false;
+let segmenter = null; // MediaPipe
 
-/* ---------------- NAV ---------------- */
-const STAGE_NAMES = {capture:'1 / 4 · 촬영', style:'2 / 4 · 스타일 선택', adjust:'3 / 4 · 조정 & 음성', compare:'4 / 4 · 비교'};
-function goToScreen(name){
+/* ============================================================
+   MEDIAPIPE INIT
+   ============================================================ */
+async function initSegmenter(){
+  try{
+    segmenter = new SelfieSegmentation({locateFile: f=>`https://cdn.jsdelivr.net/npm/@mediapipe/selfie_segmentation/${f}`});
+    segmenter.setOptions({modelSelection:1}); // 1 = landscape (더 정확)
+    await segmenter.initialize();
+    console.log('MediaPipe 준비 완료');
+  } catch(e){
+    console.warn('MediaPipe 로드 실패:', e);
+    segmenter = null;
+  }
+}
+initSegmenter();
+
+/* ============================================================
+   HAIR SEGMENTATION
+   사진에서 머리카락+머리 영역을 추출해서 오프스크린 캔버스에 저장
+   ============================================================ */
+async function extractHairMask(angle){
+  const dataUrl = state.shots[angle];
+  if(!dataUrl || !segmenter) return false;
+
+  return new Promise(resolve=>{
+    const img = new Image();
+    img.onload = async ()=>{
+      // 오프스크린 캔버스에 원본 그리기
+      const src = document.createElement('canvas');
+      src.width = img.width; src.height = img.height;
+      src.getContext('2d').drawImage(img, 0, 0);
+
+      // MediaPipe 세그멘테이션 결과 받기
+      segmenter.onResults(results=>{
+        const mask = results.segmentationMask; // ImageBitmap (흰=사람, 검=배경)
+
+        // 마스크 캔버스
+        const maskC = document.createElement('canvas');
+        maskC.width = img.width; maskC.height = img.height;
+        const maskCtx = maskC.getContext('2d');
+        maskCtx.drawImage(mask, 0, 0, img.width, img.height);
+        const maskData = maskCtx.getImageData(0, 0, img.width, img.height);
+
+        // 머리카락 영역만 남긴 오프스크린 캔버스 생성
+        const hairC = document.createElement('canvas');
+        hairC.width = img.width; hairC.height = img.height;
+        const hairCtx = hairC.getContext('2d');
+        hairCtx.drawImage(img, 0, 0);
+        const imgData = hairCtx.getImageData(0, 0, img.width, img.height);
+
+        // 상단 50%만 머리카락으로 간주 (몸통 제외)
+        // 마스크 값이 낮은 픽셀(배경) 또는 하단(몸통)은 투명 처리
+        const halfH = img.height * 0.55;
+        for(let i=0; i<maskData.data.length; i+=4){
+          const pixelIndex = i/4;
+          const py = Math.floor(pixelIndex / img.width);
+          const maskVal = maskData.data[i]; // R채널 = 세그멘테이션 값 (0~255)
+          if(maskVal < 128 || py > halfH){
+            imgData.data[i+3] = 0; // 투명
+          }
+        }
+        hairCtx.putImageData(imgData, 0, 0);
+
+        state.hairCanvases[angle] = hairC;
+        state.hairMasks[angle] = maskData;
+        resolve(true);
+      });
+
+      await segmenter.send({image: src});
+    };
+    img.src = dataUrl;
+  });
+}
+
+/* ============================================================
+   RENDER — 머리카락 마스크를 슬라이더 값에 따라 변형해서 합성
+   ============================================================ */
+function syncCanvasSize(canvas){
+  const rect = canvas.getBoundingClientRect();
+  if(rect.width>0 && rect.height>0){
+    canvas.width = rect.width; canvas.height = rect.height;
+  }
+}
+
+function renderAdjustFrame(canvas, angle){
+  syncCanvasSize(canvas);
+  const ctx = canvas.getContext('2d');
+  const w = canvas.width, h = canvas.height;
+  ctx.clearRect(0,0,w,h);
+
+  const shotUrl = state.shots[angle];
+  const hairC = state.hairCanvases[angle];
+
+  const drawHair = ()=>{
+    if(!hairC) return;
+    const {length, curl, volume, thickness} = state.sliders;
+
+    // 원본 머리카락 위치 (상단)
+    const srcH = hairC.height * 0.55; // 머리 영역 높이
+    const srcW = hairC.width;
+
+    // 슬라이더에 따른 변형 파라미터
+    const scaleY = 0.7 + (length/100) * 1.3;   // 길이: 세로 스케일
+    const scaleX = 0.85 + (volume/100) * 0.5;  // 볼륨: 가로 스케일
+    const curlAmt = (curl/100) * 18;            // 컬: 가로 왜곡
+    const opacity = 0.55 + (thickness/100)*0.45; // 숱: 투명도
+
+    ctx.save();
+    ctx.globalAlpha = opacity;
+
+    // 머리카락 영역을 세그먼트별로 그려서 컬 효과 적용
+    const segments = 20;
+    for(let s=0; s<segments; s++){
+      const p = s/segments;
+      const nextP = (s+1)/segments;
+      const srcY = p * srcH;
+      const srcNextY = nextP * srcH;
+      const segH = (srcNextY - srcY);
+
+      // 컬: 아래로 갈수록 좌우로 흔들림
+      const waveX = Math.sin(p * Math.PI * 2.5) * curlAmt * p;
+      // 길이: 세로로 늘어남
+      const dstY = p * srcH * scaleY;
+      const dstNextY = nextP * srcH * scaleY;
+      // 볼륨: 가로로 넓어짐 (중앙 기준)
+      const centerX = w/2;
+      const dstW = srcW * scaleX;
+      const dstX = centerX - dstW/2 + waveX;
+
+      ctx.drawImage(hairC,
+        0, srcY, srcW, segH,           // src
+        dstX, dstY, dstW, dstNextY - dstY  // dst
+      );
+    }
+    ctx.restore();
+
+    // 컬러 오버레이 (선택한 스타일 색조)
+    if(state.selectedStyle){
+      ctx.save();
+      ctx.globalCompositeOperation = 'multiply';
+      ctx.globalAlpha = 0.3;
+      const hairRegionH = srcH * scaleY;
+      ctx.fillStyle = state.selectedStyle.colorHex;
+      ctx.fillRect(0, 0, w, hairRegionH);
+      ctx.restore();
+    }
+  };
+
+  if(shotUrl){
+    const img = new Image();
+    img.onload = ()=>{
+      // 원본 사진 먼저
+      const ir = img.width/img.height, cr = w/h;
+      let dw,dh,dx,dy;
+      if(ir>cr){dh=h;dw=h*ir;dx=(w-dw)/2;dy=0;}else{dw=w;dh=w/ir;dx=0;dy=(h-dh)/2;}
+      ctx.drawImage(img,dx,dy,dw,dh);
+      // 머리카락 합성
+      drawHair();
+    };
+    img.src = shotUrl;
+  } else {
+    ctx.fillStyle='#211D19'; ctx.fillRect(0,0,w,h);
+    ctx.fillStyle='#52483D'; ctx.font='13px Inter'; ctx.textAlign='center';
+    ctx.fillText('이 각도의 사진이 없습니다', w/2, h/2);
+    drawHair();
+  }
+}
+
+function drawAdjustPreview(){
+  renderAdjustFrame(document.getElementById('adjustCanvas'), state.currentViewAngle);
+}
+
+/* ============================================================
+   COMPARE
+   ============================================================ */
+function drawCompare(){
+  const angle = state.currentViewAngle;
+  const baseC = document.getElementById('compareBaseCanvas');
+  const topC = document.getElementById('compareTopCanvas');
+  syncCanvasSize(baseC); syncCanvasSize(topC);
+
+  // BEFORE: 원본만
+  const ctxB = baseC.getContext('2d');
+  ctxB.clearRect(0,0,baseC.width,baseC.height);
+  const shotUrl = state.shots[angle];
+  if(shotUrl){
+    const img = new Image();
+    img.onload = ()=>{
+      const w=baseC.width,h=baseC.height;
+      const ir=img.width/img.height,cr=w/h;
+      let dw,dh,dx,dy;
+      if(ir>cr){dh=h;dw=h*ir;dx=(w-dw)/2;dy=0;}else{dw=w;dh=w/ir;dx=0;dy=(h-dh)/2;}
+      ctxB.drawImage(img,dx,dy,dw,dh);
+    };
+    img.src = shotUrl;
+  }
+
+  // AFTER: 조정 결과
+  renderAdjustFrame(topC, angle);
+  positionCompareTop();
+}
+
+function positionCompareTop(){
+  const base = document.getElementById('compareBaseCanvas');
+  const top = document.getElementById('compareTopCanvas');
+  const rect = base.getBoundingClientRect();
+  top.style.width = rect.width+'px';
+  top.style.height = rect.height+'px';
+}
+
+const divider = document.getElementById('compareDivider');
+const clip = document.getElementById('compareClip');
+let dragging = false;
+divider.addEventListener('pointerdown',()=>{dragging=true;});
+window.addEventListener('pointerup',()=>{dragging=false;});
+window.addEventListener('pointermove',e=>{
+  if(!dragging) return;
+  const pane = document.getElementById('comparePane');
+  const rect = pane.getBoundingClientRect();
+  let pct = ((e.clientX-rect.left)/rect.width)*100;
+  pct = Math.max(4,Math.min(96,pct));
+  divider.style.left = pct+'%';
+  clip.style.width = pct+'%';
+});
+window.addEventListener('resize', positionCompareTop);
+
+/* ============================================================
+   AI ANALYSIS (Anthropic API)
+   ============================================================ */
+async function analyzeWithClaude(){
+  const frontImg = state.shots['front'];
+  if(!frontImg) return;
+  document.getElementById('aiOverlayText').textContent = 'AI가 얼굴을 분석하고 있어요…';
+  document.getElementById('aiOverlaySub').textContent = '얼굴형 · 머리색 · 스타일 추천';
+  document.getElementById('aiOverlay').classList.remove('hidden');
+
+  const base64 = frontImg.split(',')[1];
+  const mediaType = frontImg.startsWith('data:image/png') ? 'image/png' : 'image/jpeg';
+  const prompt = `미용실 고객 정면 사진입니다. 아래 JSON만 응답하세요. 다른 텍스트 없이.
+{
+  "hairColor": "black|brown|blonde|red|grey|colored",
+  "faceShape": "oval|round|square|heart|long",
+  "currentLength": "short|medium|long",
+  "recommendedStyles": ["id1","id2"],
+  "advice": "한국어 2문장 이내 스타일 조언"
+}
+스타일 id 목록: bob, long-wave, pixie, layered, curly, sleek, shag, lob`;
+
+  try{
+    const res = await fetch('https://api.anthropic.com/v1/messages',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({
+        model:'claude-sonnet-4-6', max_tokens:500,
+        messages:[{role:'user',content:[
+          {type:'image',source:{type:'base64',media_type:mediaType,data:base64}},
+          {type:'text',text:prompt}
+        ]}]
+      })
+    });
+    const data = await res.json();
+    const raw = data.content.map(b=>b.text||'').join('').replace(/```json|```/g,'').trim();
+    aiAnalysis = JSON.parse(raw);
+
+    // 추천 스타일 배지
+    document.querySelectorAll('.style-card').forEach(c=>c.classList.remove('ai-recommended'));
+    (aiAnalysis.recommendedStyles||[]).forEach(id=>{
+      const el = document.getElementById('style-'+id);
+      if(el) el.classList.add('ai-recommended');
+    });
+
+    // 조정 화면 AI 카드
+    const faceMap={oval:'계란형',round:'둥근형',square:'각진형',heart:'하트형',long:'긴형'};
+    const colorMap={black:'블랙',brown:'브라운',blonde:'블론드',red:'레드',grey:'그레이',colored:'컬러'};
+    const lenMap={short:'숏',medium:'미디엄',long:'롱'};
+    document.getElementById('aiAnalysisText').textContent = aiAnalysis.advice||'';
+    const tags=[faceMap[aiAnalysis.faceShape]||'', colorMap[aiAnalysis.hairColor]||'', lenMap[aiAnalysis.currentLength]||''];
+    document.getElementById('aiAnalysisTags').innerHTML = tags.filter(Boolean).map(t=>`<span class="ai-tag">${t}</span>`).join('');
+    document.getElementById('aiAnalysisCard').style.display='flex';
+  } catch(e){
+    console.warn('AI 분석 실패:', e);
+    showToast('AI 분석 실패. 수동으로 조정해주세요.');
+  }
+  document.getElementById('aiOverlay').classList.add('hidden');
+}
+
+/* ============================================================
+   NAV
+   ============================================================ */
+const STAGE_NAMES={capture:'1/4 · 촬영',style:'2/4 · 스타일',adjust:'3/4 · 조정',compare:'4/4 · 비교'};
+
+async function goToScreen(name){
   document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
   document.getElementById('screen-'+name).classList.add('active');
-  document.getElementById('stageLabel').innerHTML = '단계 <b>'+STAGE_NAMES[name]+'</b>';
+  document.getElementById('stageLabel').innerHTML='단계 <b>'+STAGE_NAMES[name]+'</b>';
+
+  if(name==='style' && !aiAnalysis){
+    // 1) 먼저 머리카락 세그멘테이션
+    if(segmenter){
+      document.getElementById('aiOverlay').classList.remove('hidden');
+      document.getElementById('aiOverlayText').textContent='머리카락 영역 추출 중…';
+      document.getElementById('aiOverlaySub').textContent='MediaPipe 세그멘테이션';
+      for(const angle of ANGLES){
+        if(state.shots[angle]) await extractHairMask(angle);
+      }
+      document.getElementById('aiOverlay').classList.add('hidden');
+    }
+    // 2) Claude AI 분석
+    await analyzeWithClaude();
+  }
+
   if(name==='adjust'){ renderAngleSwitch('angleSwitch'); drawAdjustPreview(); }
   if(name==='compare'){ renderAngleSwitch('angleSwitchCompare'); drawCompare(); }
   if(name==='capture'){ stopVoice(); }
 }
 
-/* ---------------- CAPTURE ---------------- */
+function startNewCustomer(){
+  aiAnalysis = null;
+  ANGLES.forEach(a=>{ state.shots[a]=null; state.hairCanvases[a]=null; state.hairMasks[a]=null; });
+  state.selectedStyle = null;
+  state.currentCaptureIndex = 0;
+  document.getElementById('aiAnalysisCard').style.display='none';
+  document.querySelectorAll('.style-card').forEach(c=>c.classList.remove('ai-recommended','selected'));
+  document.getElementById('toAdjustBtn').disabled=true;
+  updateAngleUI();
+  goToScreen('capture');
+}
+
+/* ============================================================
+   CAPTURE
+   ============================================================ */
 const video = document.getElementById('video');
 const camOffMsg = document.getElementById('camOffMsg');
 
 async function initCamera(){
   try{
-    const stream = await navigator.mediaDevices.getUserMedia({video:{facingMode:'user'}, audio:false});
+    const stream = await navigator.mediaDevices.getUserMedia({video:{facingMode:'user'},audio:false});
     video.srcObject = stream;
-    video.style.display = 'block';
-    camOffMsg.style.display = 'none';
-  }catch(e){
-    camOffMsg.innerHTML = '카메라에 접근할 수 없습니다.<br><span style="font-size:11px;">권한이 거부되었거나 HTTPS/localhost 환경이 아닙니다. 오른쪽 "사진 업로드로 대체" 버튼을 이용해주세요.</span>';
+    video.style.display='block';
+    camOffMsg.style.display='none';
+  } catch(e){
+    camOffMsg.innerHTML='카메라에 접근할 수 없습니다.<br><span style="font-size:11px;">오른쪽 "사진 업로드로 대체" 버튼을 이용해주세요.</span>';
   }
 }
 initCamera();
@@ -441,394 +708,189 @@ function updateAngleUI(){
     card.classList.toggle('current', i===state.currentCaptureIndex);
     if(state.shots[a]){
       card.classList.add('captured');
-      card.querySelector('.state').textContent = '촬영 완료';
-      document.getElementById('thumb-'+a).innerHTML = '<img src="'+state.shots[a]+'">';
+      card.querySelector('.state').textContent='촬영 완료';
+      document.getElementById('thumb-'+a).innerHTML='<img src="'+state.shots[a]+'">';
       seg.classList.add('done');
     } else {
       card.classList.remove('captured');
-      card.querySelector('.state').textContent = '대기 중';
+      card.querySelector('.state').textContent='대기 중';
+      document.getElementById('thumb-'+a).innerHTML='';
       seg.classList.remove('done');
     }
     seg.classList.toggle('active', i===state.currentCaptureIndex && !state.shots[a]);
   });
   const doneCount = ANGLES.filter(a=>state.shots[a]).length;
-  document.getElementById('dialCenter').textContent = doneCount+'/4';
-  document.getElementById('captureHint').textContent = ANGLE_LABELS[ANGLES[state.currentCaptureIndex]] + '을 가이드 안에 맞춰주세요';
+  document.getElementById('dialCenter').textContent=doneCount+'/4';
+  document.getElementById('captureHint').textContent=ANGLE_LABELS[ANGLES[state.currentCaptureIndex]]+'을(를) 가이드 안에 맞춰주세요';
   document.getElementById('toStyleBtn').disabled = doneCount < 4;
-
   const shot = state.shots[ANGLES[state.currentCaptureIndex]];
-  const shotPreview = document.getElementById('shotPreview');
-  if(shot){
-    shotPreview.src = shot; shotPreview.style.display='block'; video.style.display='none';
-    document.getElementById('captureBtn').textContent = '재촬영';
-  } else {
-    shotPreview.style.display='none';
-    if(video.srcObject) video.style.display='block';
-    document.getElementById('captureBtn').textContent = '촬영';
-  }
+  const sp = document.getElementById('shotPreview');
+  if(shot){ sp.src=shot; sp.style.display='block'; video.style.display='none'; document.getElementById('captureBtn').textContent='재촬영'; }
+  else { sp.style.display='none'; if(video.srcObject) video.style.display='block'; document.getElementById('captureBtn').textContent='촬영'; }
 }
 updateAngleUI();
 
-function jumpToAngle(i){ state.currentCaptureIndex = i; updateAngleUI(); }
+function jumpToAngle(i){ state.currentCaptureIndex=i; updateAngleUI(); }
 
 function captureCurrentAngle(){
   const angle = ANGLES[state.currentCaptureIndex];
   if(video.style.display==='block' && video.videoWidth){
     const c = document.createElement('canvas');
-    c.width = video.videoWidth; c.height = video.videoHeight;
-    const ctx2d = c.getContext('2d');
-    ctx2d.drawImage(video,0,0);
-    state.shots[angle] = c.toDataURL('image/jpeg', 0.85);
+    c.width=video.videoWidth; c.height=video.videoHeight;
+    c.getContext('2d').drawImage(video,0,0);
+    state.shots[angle] = c.toDataURL('image/jpeg',0.85);
     advanceCapture();
-  } else {
-    showToast('카메라가 준비되지 않았어요. 사진 업로드를 이용해주세요.');
-  }
+  } else { showToast('카메라가 준비되지 않았어요.'); }
 }
 function retakeCurrent(){
   const angle = ANGLES[state.currentCaptureIndex];
-  state.shots[angle] = null;
+  state.shots[angle]=null; state.hairCanvases[angle]=null; state.hairMasks[angle]=null;
   updateAngleUI();
 }
 function advanceCapture(){
   updateAngleUI();
-  if(state.currentCaptureIndex < 3){
-    state.currentCaptureIndex++;
-    updateAngleUI();
-  }
+  if(state.currentCaptureIndex<3){ state.currentCaptureIndex++; updateAngleUI(); }
 }
 function handleFileUpload(e){
-  const file = e.target.files[0];
-  if(!file) return;
-  const reader = new FileReader();
-  reader.onload = function(ev){
-    state.shots[ANGLES[state.currentCaptureIndex]] = ev.target.result;
-    advanceCapture();
-  };
+  const file=e.target.files[0]; if(!file) return;
+  const reader=new FileReader();
+  reader.onload=ev=>{ state.shots[ANGLES[state.currentCaptureIndex]]=ev.target.result; advanceCapture(); };
   reader.readAsDataURL(file);
-  e.target.value = '';
+  e.target.value='';
 }
 
-/* ---------------- STYLE SELECT ---------------- */
+/* ============================================================
+   STYLE SELECT
+   ============================================================ */
 function buildStyleGrid(){
-  const grid = document.getElementById('styleGrid');
-  grid.innerHTML = '';
+  const grid=document.getElementById('styleGrid');
+  grid.innerHTML='';
   STYLES.forEach(st=>{
-    const card = document.createElement('div');
-    card.className = 'style-card';
-    card.id = 'style-'+st.id;
-    card.onclick = ()=>selectStyle(st.id);
-    card.innerHTML = `
+    const card=document.createElement('div');
+    card.className='style-card'; card.id='style-'+st.id;
+    card.onclick=()=>selectStyle(st.id);
+    card.innerHTML=`
       <div class="icon-box">${styleIconSVG(st)}</div>
       <div class="name">${st.name}</div>
       <div class="tags">${st.tags}</div>
-    `;
+      <div class="ai-rec">★ AI 추천</div>`;
     grid.appendChild(card);
   });
 }
 function styleIconSVG(st){
-  // tiny generative preview icon using same procedural strand logic, simplified
-  let strands = '';
-  const n = 14;
+  let s=''; const n=14;
   for(let i=0;i<n;i++){
-    const t = i/(n-1);
-    const x = 20 + t*60;
-    const amp = (st.curl/100)*14;
-    const len = 20 + (st.length/100)*55;
-    const midx = x + Math.sin(t*6)*amp;
-    const endx = x + Math.sin(t*6+1)*amp*1.3;
-    strands += `<path d="M ${x} 18 Q ${midx} ${18+len*0.5} ${endx} ${18+len}" stroke="${st.color}" stroke-width="2" fill="none" stroke-linecap="round" opacity="0.85"/>`;
+    const t=i/(n-1), x=20+t*60;
+    const amp=(st.curl/100)*14, len=20+(st.length/100)*55;
+    const mx=x+Math.sin(t*6)*amp, ex=x+Math.sin(t*6+1)*amp*1.3;
+    s+=`<path d="M ${x} 18 Q ${mx} ${18+len*0.5} ${ex} ${18+len}" stroke="${st.colorHex}" stroke-width="2" fill="none" stroke-linecap="round" opacity="0.85"/>`;
   }
-  return `<svg viewBox="0 0 100 100" width="100%" height="100%">
-    <circle cx="50" cy="14" r="10" fill="#3A332B"/>
-    ${strands}
-  </svg>`;
+  return `<svg viewBox="0 0 100 100" width="100%" height="100%"><circle cx="50" cy="14" r="10" fill="#3A332B"/>${s}</svg>`;
 }
 function selectStyle(id){
   state.selectedStyle = STYLES.find(s=>s.id===id);
   document.querySelectorAll('.style-card').forEach(c=>c.classList.remove('selected'));
   document.getElementById('style-'+id).classList.add('selected');
-  document.getElementById('toAdjustBtn').disabled = false;
-  state.sliders = {length:state.selectedStyle.length, curl:state.selectedStyle.curl, volume:state.selectedStyle.volume, thickness:50};
+  document.getElementById('toAdjustBtn').disabled=false;
+  state.sliders={length:state.selectedStyle.length, curl:state.selectedStyle.curl, volume:state.selectedStyle.volume, thickness:50};
   syncSliderUI();
 }
 buildStyleGrid();
 
-/* ---------------- ADJUST / RENDER ---------------- */
-function renderAngleSwitch(targetId){
-  const el = document.getElementById(targetId);
-  el.innerHTML = '';
-  ANGLES.forEach(a=>{
-    const btn = document.createElement('button');
-    btn.textContent = ANGLE_LABELS[a];
-    btn.className = state.currentViewAngle===a ? 'on':'';
-    btn.onclick = ()=>{ state.currentViewAngle = a; renderAngleSwitch(targetId); drawAdjustPreview(); drawCompare(); };
-    el.appendChild(btn);
-  });
-}
+/* ============================================================
+   SLIDERS
+   ============================================================ */
 function syncSliderUI(){
   ['length','curl','volume','thickness'].forEach(k=>{
-    document.getElementById('slider-'+k).value = state.sliders[k];
-    document.getElementById('val-'+k).textContent = Math.round(state.sliders[k]);
+    document.getElementById('slider-'+k).value=state.sliders[k];
+    document.getElementById('val-'+k).textContent=Math.round(state.sliders[k]);
   });
-  document.getElementById('adjustStyleTag').textContent = state.selectedStyle ? state.selectedStyle.name : '스타일 미선택';
+  document.getElementById('adjustStyleTag').textContent=state.selectedStyle?state.selectedStyle.name:'스타일 미선택';
   drawAdjustPreview();
-  drawCompare();
 }
-function onSlider(key, val){
-  state.sliders[key] = parseInt(val);
-  document.getElementById('val-'+key).textContent = val;
+function onSlider(key,val){
+  state.sliders[key]=parseInt(val);
+  document.getElementById('val-'+key).textContent=val;
   drawAdjustPreview();
-  drawCompare();
 }
 function resetSliders(){
   if(!state.selectedStyle) return;
-  state.sliders = {length:state.selectedStyle.length, curl:state.selectedStyle.curl, volume:state.selectedStyle.volume, thickness:50};
+  state.sliders={length:state.selectedStyle.length, curl:state.selectedStyle.curl, volume:state.selectedStyle.volume, thickness:50};
   syncSliderUI();
 }
 
-function getAnchor(angle, w, h){
-  const a = state.anchors[angle];
-  if(a) return {x:a.x*w, y:a.y*h};
-  return {x:w*0.5, y:h*0.24};
+/* ============================================================
+   ANGLE SWITCH
+   ============================================================ */
+function renderAngleSwitch(targetId){
+  const el=document.getElementById(targetId); el.innerHTML='';
+  ANGLES.forEach(a=>{
+    const btn=document.createElement('button');
+    btn.textContent=ANGLE_LABELS[a];
+    btn.className=state.currentViewAngle===a?'on':'';
+    btn.onclick=()=>{ state.currentViewAngle=a; renderAngleSwitch(targetId); drawAdjustPreview(); drawCompare(); };
+    el.appendChild(btn);
+  });
 }
 
-function drawHairStrands(ctx, anchor, params){
-  const {length, curl, volume, thickness, color} = params;
-  const numStrands = Math.round(16 + (thickness/100)*70);
-  const lengthPx = 40 + (length/100)*260;
-  const spreadWidth = 70 + (volume/100)*230;
-  const waveAmp = (curl/100)*28;
-  const waveFreq = 2.5 + (curl/100)*4.5;
-
-  ctx.save();
-  ctx.lineCap = 'round';
-  for(let i=0;i<numStrands;i++){
-    const t = i/(numStrands-1);
-    const jitter = (Math.sin(i*12.9898)*43758.5453) % 1;
-    const startX = anchor.x + (t-0.5)*spreadWidth;
-    const startY = anchor.y + Math.abs(t-0.5)*10;
-    const strandLen = lengthPx * (0.82 + Math.abs(jitter)*0.36);
-    const segs = 22;
-    ctx.beginPath();
-    ctx.moveTo(startX, startY);
-    for(let s=1;s<=segs;s++){
-      const p = s/segs;
-      const y = startY + p*strandLen;
-      const wave = Math.sin(p*Math.PI*waveFreq + i*0.37) * waveAmp * p;
-      const x = startX + wave + (t-0.5)*p*26;
-      ctx.lineTo(x,y);
-    }
-    ctx.globalAlpha = 0.55 + Math.abs(jitter)*0.3;
-    ctx.lineWidth = 1.2 + Math.abs(jitter)*1.6;
-    ctx.strokeStyle = color;
-    ctx.stroke();
-  }
-  ctx.restore();
-}
-
-function syncCanvasSize(canvas){
-  const rect = canvas.getBoundingClientRect();
-  if(rect.width > 0 && rect.height > 0){
-    canvas.width = rect.width;
-    canvas.height = rect.height;
-  }
-}
-
-function renderStyledFrame(canvas, angle){
-  const ctx = canvas.getContext('2d');
-  const w = canvas.width, h = canvas.height;
-  ctx.clearRect(0,0,w,h);
-  const img = state.shots[angle];
-  const drawBase = ()=>{
-    if(state.selectedStyle){
-      drawHairStrands(ctx, getAnchor(angle,w,h), {...state.sliders, color: state.selectedStyle.color});
-    }
-  };
-  if(img){
-    const image = new Image();
-    image.onload = ()=>{
-      const ir = image.width/image.height, cr = w/h;
-      let dw,dh,dx,dy;
-      if(ir>cr){ dh=h; dw=h*ir; dx=(w-dw)/2; dy=0; } else { dw=w; dh=w/ir; dx=0; dy=(h-dh)/2; }
-      ctx.drawImage(image, dx, dy, dw, dh);
-      drawBase();
-    };
-    image.src = img;
-  } else {
-    ctx.fillStyle = '#211D19';
-    ctx.fillRect(0,0,w,h);
-    ctx.fillStyle = '#52483D';
-    ctx.font = '13px Inter';
-    ctx.textAlign = 'center';
-    ctx.fillText('이 각도의 사진이 없습니다', w/2, h/2);
-    drawBase();
-  }
-}
-
-function drawAdjustPreview(){
-  const canvas = document.getElementById('adjustCanvas');
-  syncCanvasSize(canvas);
-  renderStyledFrame(canvas, state.currentViewAngle);
-}
-
-let draggingAnchor = false;
-document.getElementById('adjustCanvas').addEventListener('click', function(e){
-  const rect = this.getBoundingClientRect();
-  const x = (e.clientX-rect.left)/rect.width;
-  const y = (e.clientY-rect.top)/rect.height;
-  state.anchors[state.currentViewAngle] = {x,y};
-  drawAdjustPreview();
-  showToast('정수리 기준점을 다시 설정했어요');
-});
-
-/* ---------------- COMPARE ---------------- */
-function drawCompare(){
-  const angle = state.currentViewAngle;
-  const baseC = document.getElementById('compareBaseCanvas');
-  const topC = document.getElementById('compareTopCanvas');
-  syncCanvasSize(baseC);
-  syncCanvasSize(topC);
-  // base = original only
-  const ctxB = baseC.getContext('2d');
-  ctxB.clearRect(0,0,baseC.width, baseC.height);
-  const img = state.shots[angle];
-  if(img){
-    const image = new Image();
-    image.onload = ()=>{
-      const w=baseC.width, h=baseC.height;
-      const ir = image.width/image.height, cr=w/h;
-      let dw,dh,dx,dy;
-      if(ir>cr){ dh=h; dw=h*ir; dx=(w-dw)/2; dy=0;} else {dw=w; dh=w/ir; dx=0; dy=(h-dh)/2;}
-      ctxB.drawImage(image,dx,dy,dw,dh);
-    };
-    image.src = img;
-  } else {
-    ctxB.fillStyle = '#211D19'; ctxB.fillRect(0,0,baseC.width, baseC.height);
-  }
-  renderStyledFrame(topC, angle);
-  // sync top canvas pixel size to clip container actual width via CSS already; just keep canvas full width
-  positionCompareTop();
-}
-function positionCompareTop(){
-  const pane = document.getElementById('comparePane');
-  const base = document.getElementById('compareBaseCanvas');
-  const top = document.getElementById('compareTopCanvas');
-  const rect = base.getBoundingClientRect();
-  top.style.width = rect.width+'px';
-  top.style.height = rect.height+'px';
-}
-const divider = document.getElementById('compareDivider');
-const clip = document.getElementById('compareClip');
-let dragging = false;
-divider.addEventListener('pointerdown', ()=>{dragging=true;});
-window.addEventListener('pointerup', ()=>{dragging=false;});
-window.addEventListener('pointermove', (e)=>{
-  if(!dragging) return;
-  const pane = document.getElementById('comparePane');
-  const rect = pane.getBoundingClientRect();
-  let pct = ((e.clientX-rect.left)/rect.width)*100;
-  pct = Math.max(4, Math.min(96, pct));
-  divider.style.left = pct+'%';
-  clip.style.width = pct+'%';
-});
-window.addEventListener('resize', positionCompareTop);
-
-/* ---------------- VOICE ---------------- */
+/* ============================================================
+   VOICE
+   ============================================================ */
 function toggleVoice(){
-  if(listening){ stopVoice(); return; }
-  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-  if(!SR){
-    showToast('음성 인식은 Chrome 브라우저에서만 작동해요. Chrome으로 열어주세요!');
-    return;
-  }
-  recognition = new SR();
-  recognition.lang = 'ko-KR';
-  recognition.continuous = true;
-  recognition.interimResults = false;
-  recognition.onresult = (e)=>{
-    const text = e.results[e.results.length-1][0].transcript.trim();
-    handleVoiceCommand(text);
-  };
-  recognition.onerror = ()=>{ stopVoice(); };
-  recognition.onend = ()=>{ if(listening){ try{recognition.start();}catch(e){} } };
-  recognition.start();
-  listening = true;
+  if(listening){stopVoice();return;}
+  const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
+  if(!SR){showToast('음성인식은 Chrome에서만 작동해요.');return;}
+  recognition=new SR();
+  recognition.lang='ko-KR'; recognition.continuous=true; recognition.interimResults=false;
+  recognition.onresult=e=>{ const t=e.results[e.results.length-1][0].transcript.trim(); handleVoiceCommand(t); };
+  recognition.onerror=()=>stopVoice();
+  recognition.onend=()=>{ if(listening){try{recognition.start();}catch(e){}} };
+  recognition.start(); listening=true;
   document.getElementById('voiceBtn').classList.add('listening');
-  document.getElementById('voiceBtnLabel').textContent = '듣는 중… (탭하여 종료)';
+  document.getElementById('voiceBtnLabel').textContent='듣는 중… (탭하여 종료)';
 }
 function stopVoice(){
-  listening = false;
-  if(recognition){ try{recognition.stop();}catch(e){} }
+  listening=false;
+  if(recognition){try{recognition.stop();}catch(e){}}
   document.getElementById('voiceBtn').classList.remove('listening');
-  document.getElementById('voiceBtnLabel').textContent = '음성으로 조정하기';
+  document.getElementById('voiceBtnLabel').textContent='음성으로 조정하기';
 }
 function handleVoiceCommand(text){
-  document.getElementById('voiceTranscript').innerHTML = '인식됨: <b>"'+text+'"</b>';
-  const t = text.replace(/\s/g,'');
-  const STEP = 15;
-  let matched = false;
-  const adj = (key, delta)=>{
-    state.sliders[key] = Math.max(0, Math.min(100, state.sliders[key]+delta));
-    syncSliderUIQuiet();
-    matched = true;
-  };
-
-  // 길이
-  const lenUp = ['길게','길어','늘려','늘어','길이늘','길이키','길이올','길이증','길이더','더길','더길','길이를늘','길이를키','머리길게','길이업'];
-  const lenDn = ['짧게','짧아','줄여','짧아','길이줄','길이내','길이낮','길이감','더짧','짧게해','짧아지','머리짧게','길이다운'];
-  // 컬
-  const curlUp = ['컬추가','컬올','컬더','컬증','웨이브추가','웨이브올','웨이브더','웨이브증','곱슬추가','곱슬올','더컬','더웨이브','컬강하게','웨이브강'];
-  const curlDn = ['펴줘','컬줄','컬내','컬빼','컬감','웨이브줄','웨이브내','웨이브빼','웨이브감','스트레이트','직모','곱슬줄','곱슬내','컬없애','컬약하게'];
-  // 볼륨
-  const volUp = ['볼륨추가','볼륨올','볼륨더','볼륨증','볼륨키','볼륨높','더볼륨','볼륨강','풍성하게','풍성올','볼륨업'];
-  const volDn = ['볼륨줄','볼륨내','볼륨낮','볼륨감','볼륨빼','볼륨없','볼륨다운','볼륨약','납작하게','볼륨떨어'];
-  // 숱
-  const thkUp = ['숱많게','숱추가','숱올','숱더','숱증','숱키','더숱','숱강','밀도높','밀도올','숱업'];
-  const thkDn = ['숱적게','숱줄','숱내','숱낮','숱감','숱빼','숱없','숱다운','숱약','밀도낮','밀도줄','숱떨어'];
-
-  const has = (arr) => arr.some(kw => t.includes(kw));
-
-  if(has(lenUp)) adj('length', STEP);
-  else if(has(lenDn)) adj('length', -STEP);
-  else if(has(curlUp)) adj('curl', STEP);
-  else if(has(curlDn)) adj('curl', -STEP);
-  else if(has(volUp)) adj('volume', STEP);
-  else if(has(volDn)) adj('volume', -STEP);
-  else if(has(thkUp)) adj('thickness', STEP);
-  else if(has(thkDn)) adj('thickness', -STEP);
-  else if(t.includes('다음각도')||t.includes('다음앵글')||t.includes('다음방향')){ cycleAngle(1); matched=true; }
-  else if(t.includes('이전각도')||t.includes('이전앵글')||t.includes('이전방향')||t.includes('뒤로각도')){ cycleAngle(-1); matched=true; }
-  else if(t.includes('비교')||t.includes('결과보기')||t.includes('완료')){ goToScreen('compare'); matched=true; }
-  else if(t.includes('초기화')||t.includes('리셋')||t.includes('원래대로')||t.includes('처음으로')){ resetSliders(); matched=true; }
-
+  document.getElementById('voiceTranscript').innerHTML='인식됨: <b>"'+text+'"</b>';
+  const t=text.replace(/\s/g,'');
+  const STEP=15; let matched=false;
+  const adj=(key,delta)=>{ state.sliders[key]=Math.max(0,Math.min(100,state.sliders[key]+delta)); syncSliderUI(); matched=true; };
+  const has=arr=>arr.some(kw=>t.includes(kw));
+  if(has(['길게','늘려','길이늘','길이키','더길','길이를늘'])) adj('length',STEP);
+  else if(has(['짧게','줄여','길이줄','길이내','더짧'])) adj('length',-STEP);
+  else if(has(['컬추가','웨이브추가','컬올','웨이브올','곱슬추가','더컬'])) adj('curl',STEP);
+  else if(has(['펴줘','컬줄','웨이브줄','스트레이트','직모'])) adj('curl',-STEP);
+  else if(has(['볼륨추가','볼륨올','볼륨더','풍성','볼륨업'])) adj('volume',STEP);
+  else if(has(['볼륨줄','볼륨내','볼륨낮','납작'])) adj('volume',-STEP);
+  else if(has(['숱많','숱추가','숱올'])) adj('thickness',STEP);
+  else if(has(['숱적','숱줄','숱내'])) adj('thickness',-STEP);
+  else if(t.includes('다음각도')||t.includes('다음앵글')){ cycleAngle(1); matched=true; }
+  else if(t.includes('이전각도')||t.includes('이전앵글')){ cycleAngle(-1); matched=true; }
+  else if(t.includes('비교')||t.includes('완료')){ goToScreen('compare'); matched=true; }
+  else if(t.includes('초기화')||t.includes('리셋')){ resetSliders(); matched=true; }
   if(!matched) showToast('명령을 이해하지 못했어요: "'+text+'"');
 }
-function syncSliderUIQuiet(){
-  ['length','curl','volume','thickness'].forEach(k=>{
-    document.getElementById('slider-'+k).value = state.sliders[k];
-    document.getElementById('val-'+k).textContent = Math.round(state.sliders[k]);
-  });
-  drawAdjustPreview();
-  drawCompare();
-}
 function cycleAngle(dir){
-  let idx = ANGLES.indexOf(state.currentViewAngle);
-  idx = (idx+dir+4)%4;
-  state.currentViewAngle = ANGLES[idx];
-  renderAngleSwitch('angleSwitch');
-  renderAngleSwitch('angleSwitchCompare');
-  drawAdjustPreview();
-  drawCompare();
+  let idx=ANGLES.indexOf(state.currentViewAngle);
+  idx=(idx+dir+4)%4; state.currentViewAngle=ANGLES[idx];
+  renderAngleSwitch('angleSwitch'); renderAngleSwitch('angleSwitchCompare');
+  drawAdjustPreview(); drawCompare();
 }
 
-/* ---------------- TOAST ---------------- */
+/* ============================================================
+   TOAST
+   ============================================================ */
 let toastTimer;
 function showToast(msg){
-  const el = document.getElementById('toast');
-  el.textContent = msg;
-  el.classList.add('show');
+  const el=document.getElementById('toast');
+  el.textContent=msg; el.classList.add('show');
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(()=>el.classList.remove('show'), 2600);
+  toastTimer=setTimeout(()=>el.classList.remove('show'),2600);
 }
 </script>
 </body>
