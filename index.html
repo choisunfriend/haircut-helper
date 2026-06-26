@@ -476,7 +476,8 @@ function captureCurrentAngle(){
   if(video.style.display==='block' && video.videoWidth){
     const c = document.createElement('canvas');
     c.width = video.videoWidth; c.height = video.videoHeight;
-    c.getContext('2d').drawImage(video,0,0);
+    const ctx2d = c.getContext('2d');
+    ctx2d.drawImage(video,0,0);
     state.shots[angle] = c.toDataURL('image/jpeg', 0.85);
     advanceCapture();
   } else {
@@ -637,6 +638,7 @@ function renderStyledFrame(canvas, angle){
   };
   if(img){
     const image = new Image();
+    image.crossOrigin = 'anonymous';
     image.onload = ()=>{
       const ir = image.width/image.height, cr = w/h;
       let dw,dh,dx,dy;
@@ -681,6 +683,7 @@ function drawCompare(){
   const img = state.shots[angle];
   if(img){
     const image = new Image();
+    image.crossOrigin = 'anonymous';
     image.onload = ()=>{
       const w=baseC.width, h=baseC.height;
       const ir = image.width/image.height, cr=w/h;
@@ -725,7 +728,7 @@ function toggleVoice(){
   if(listening){ stopVoice(); return; }
   const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
   if(!SR){
-    showToast('이 브라우저는 음성 인식을 지원하지 않아요 (Chrome 권장)');
+    showToast('음성 인식은 Chrome 브라우저에서만 작동해요. Chrome으로 열어주세요!');
     return;
   }
   recognition = new SR();
