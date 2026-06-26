@@ -24,14 +24,14 @@
   body{
     margin:0; background:var(--bg); color:var(--text);
     font-family:'Inter',sans-serif;
-    overflow:hidden; height:100vh; width:100vw;
+    overflow:hidden; height:100vh; height:100dvh; width:100vw;
     -webkit-user-select:none; user-select:none;
   }
   .mono{font-family:'JetBrains Mono',monospace;}
   .display{font-family:'Fraunces',serif;}
 
   /* App shell */
-  #app{display:flex; flex-direction:column; height:100%;}
+  #app{display:flex; flex-direction:column; height:100vh; height:100dvh;}
   header{
     display:flex; align-items:center; justify-content:space-between;
     padding:18px 28px; border-bottom:1px solid var(--line);
@@ -150,7 +150,7 @@
     flex:1.3; background:var(--surface); border:1px solid var(--line); border-radius:18px;
     position:relative; overflow:hidden; display:flex; align-items:center; justify-content:center;
   }
-  .preview-pane canvas{max-width:100%; max-height:100%;}
+  .preview-pane canvas{width:100%; height:100%; display:block;}
   .preview-tag{
     position:absolute; top:14px; left:14px; background:rgba(27,24,22,0.7);
     backdrop-filter:blur(4px); padding:6px 12px; border-radius:8px; font-size:11px;
@@ -205,7 +205,7 @@
     flex:1; background:var(--surface); border:1px solid var(--line); border-radius:18px;
     position:relative; overflow:hidden; display:flex; align-items:center; justify-content:center;
   }
-  .compare-pane canvas{max-width:100%; max-height:100%; display:block;}
+  .compare-pane canvas{width:100%; height:100%; display:block;}
   .compare-clip{
     position:absolute; top:0; bottom:0; left:0; overflow:hidden; width:50%;
   }
@@ -345,8 +345,8 @@
               <div class="voice-dot"></div>
               <span id="voiceBtnLabel" style="font-size:13px; font-weight:600;">음성으로 조정하기</span>
             </div>
-            <div class="voice-transcript" id="voiceTranscript">예: "조금 더 짧게", "웨이브 추가해줘", "볼륨 줄여줘", "다음 각도"</div>
-            <div class="voice-hints">길게·짧게 / 컬추가·펴줘 / 볼륨추가·볼륨줄여 / 숱많게·숱적게 / 다음각도·이전각도 / 비교 / 초기화</div>
+            <div class="voice-transcript" id="voiceTranscript">예: "길이 늘려줘", "웨이브 추가해줘", "볼륨 줄여줘", "다음 각도"</div>
+            <div class="voice-hints">길게·늘려줘·짧게·줄여줘 / 컬추가·펴줘·스트레이트 / 볼륨추가·볼륨줄여 / 숱많게·숱적게 / 다음각도·이전각도 / 비교·완료 / 초기화·리셋</div>
           </div>
 
           <button class="btn btn-ghost btn-sm" onclick="resetSliders()">슬라이더 초기화</button>
@@ -626,6 +626,14 @@ function drawHairStrands(ctx, anchor, params){
   ctx.restore();
 }
 
+function syncCanvasSize(canvas){
+  const rect = canvas.getBoundingClientRect();
+  if(rect.width > 0 && rect.height > 0){
+    canvas.width = rect.width;
+    canvas.height = rect.height;
+  }
+}
+
 function renderStyledFrame(canvas, angle){
   const ctx = canvas.getContext('2d');
   const w = canvas.width, h = canvas.height;
@@ -638,7 +646,6 @@ function renderStyledFrame(canvas, angle){
   };
   if(img){
     const image = new Image();
-    image.crossOrigin = 'anonymous';
     image.onload = ()=>{
       const ir = image.width/image.height, cr = w/h;
       let dw,dh,dx,dy;
@@ -659,7 +666,9 @@ function renderStyledFrame(canvas, angle){
 }
 
 function drawAdjustPreview(){
-  renderStyledFrame(document.getElementById('adjustCanvas'), state.currentViewAngle);
+  const canvas = document.getElementById('adjustCanvas');
+  syncCanvasSize(canvas);
+  renderStyledFrame(canvas, state.currentViewAngle);
 }
 
 let draggingAnchor = false;
@@ -677,13 +686,14 @@ function drawCompare(){
   const angle = state.currentViewAngle;
   const baseC = document.getElementById('compareBaseCanvas');
   const topC = document.getElementById('compareTopCanvas');
+  syncCanvasSize(baseC);
+  syncCanvasSize(topC);
   // base = original only
   const ctxB = baseC.getContext('2d');
   ctxB.clearRect(0,0,baseC.width, baseC.height);
   const img = state.shots[angle];
   if(img){
     const image = new Image();
-    image.crossOrigin = 'anonymous';
     image.onload = ()=>{
       const w=baseC.width, h=baseC.height;
       const ir = image.width/image.height, cr=w/h;
@@ -762,18 +772,34 @@ function handleVoiceCommand(text){
     syncSliderUIQuiet();
     matched = true;
   };
-  if(t.includes('짧게')) adj('length', -STEP);
-  else if(t.includes('길게')) adj('length', STEP);
-  else if(t.includes('컬추가')||t.includes('웨이브추가')||t.includes('웨이브')) adj('curl', STEP);
-  else if(t.includes('펴줘')||t.includes('컬줄')||t.includes('스트레이트')) adj('curl', -STEP);
-  else if(t.includes('볼륨추가')||t.includes('볼륨더')) adj('volume', STEP);
-  else if(t.includes('볼륨줄')) adj('volume', -STEP);
-  else if(t.includes('숱많게')||t.includes('숱추가')) adj('thickness', STEP);
-  else if(t.includes('숱적게')||t.includes('숱줄')) adj('thickness', -STEP);
-  else if(t.includes('다음각도')){ cycleAngle(1); matched=true; }
-  else if(t.includes('이전각도')){ cycleAngle(-1); matched=true; }
-  else if(t.includes('비교')){ goToScreen('compare'); matched=true; }
-  else if(t.includes('초기화')){ resetSliders(); matched=true; }
+
+  // 길이
+  const lenUp = ['길게','길어','늘려','늘어','길이늘','길이키','길이올','길이증','길이더','더길','더길','길이를늘','길이를키','머리길게','길이업'];
+  const lenDn = ['짧게','짧아','줄여','짧아','길이줄','길이내','길이낮','길이감','더짧','짧게해','짧아지','머리짧게','길이다운'];
+  // 컬
+  const curlUp = ['컬추가','컬올','컬더','컬증','웨이브추가','웨이브올','웨이브더','웨이브증','곱슬추가','곱슬올','더컬','더웨이브','컬강하게','웨이브강'];
+  const curlDn = ['펴줘','컬줄','컬내','컬빼','컬감','웨이브줄','웨이브내','웨이브빼','웨이브감','스트레이트','직모','곱슬줄','곱슬내','컬없애','컬약하게'];
+  // 볼륨
+  const volUp = ['볼륨추가','볼륨올','볼륨더','볼륨증','볼륨키','볼륨높','더볼륨','볼륨강','풍성하게','풍성올','볼륨업'];
+  const volDn = ['볼륨줄','볼륨내','볼륨낮','볼륨감','볼륨빼','볼륨없','볼륨다운','볼륨약','납작하게','볼륨떨어'];
+  // 숱
+  const thkUp = ['숱많게','숱추가','숱올','숱더','숱증','숱키','더숱','숱강','밀도높','밀도올','숱업'];
+  const thkDn = ['숱적게','숱줄','숱내','숱낮','숱감','숱빼','숱없','숱다운','숱약','밀도낮','밀도줄','숱떨어'];
+
+  const has = (arr) => arr.some(kw => t.includes(kw));
+
+  if(has(lenUp)) adj('length', STEP);
+  else if(has(lenDn)) adj('length', -STEP);
+  else if(has(curlUp)) adj('curl', STEP);
+  else if(has(curlDn)) adj('curl', -STEP);
+  else if(has(volUp)) adj('volume', STEP);
+  else if(has(volDn)) adj('volume', -STEP);
+  else if(has(thkUp)) adj('thickness', STEP);
+  else if(has(thkDn)) adj('thickness', -STEP);
+  else if(t.includes('다음각도')||t.includes('다음앵글')||t.includes('다음방향')){ cycleAngle(1); matched=true; }
+  else if(t.includes('이전각도')||t.includes('이전앵글')||t.includes('이전방향')||t.includes('뒤로각도')){ cycleAngle(-1); matched=true; }
+  else if(t.includes('비교')||t.includes('결과보기')||t.includes('완료')){ goToScreen('compare'); matched=true; }
+  else if(t.includes('초기화')||t.includes('리셋')||t.includes('원래대로')||t.includes('처음으로')){ resetSliders(); matched=true; }
 
   if(!matched) showToast('명령을 이해하지 못했어요: "'+text+'"');
 }
