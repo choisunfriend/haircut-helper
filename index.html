@@ -753,65 +753,150 @@ function renderAngleSwitch(targetId){
 
 /* ════════════════════════════════════════
    RENDER / CANVAS
+   - 이미지 캐시로 매번 new Image() 방지
+   - hairCanvas 없으면 SVG 선 오버레이로 폴백
 ════════════════════════════════════════ */
+const imgCache = {}; // angle → HTMLImageElement (loaded)
+
+function getCachedImg(angle, cb){
+  const url = state.shots[angle];
+  if(!url){ cb(null); return; }
+  if(imgCache[angle] && imgCache[angle].src.endsWith(url.slice(-20))){
+    cb(imgCache[angle]); return;
+  }
+  const img = new Image();
+  img.onload = ()=>{ imgCache[angle]=img; cb(img); };
+  img.onerror = ()=>cb(null);
+  img.src = url;
+}
+
+function drawImgOnCanvas(ctx, img, w, h){
+  const ir=img.width/img.height, cr=w/h;
+  let dw,dh,dx,dy;
+  if(ir>cr){dh=h;dw=h*ir;dx=(w-dw)/2;dy=0;}
+  else{dw=w;dh=w/ir;dx=0;dy=(h-dh)/2;}
+  ctx.drawImage(img,dx,dy,dw,dh);
+  return {dw,dh,dx,dy};
+}
+
 function syncCanvasSize(canvas){
   const rect=canvas.getBoundingClientRect();
   if(rect.width>0&&rect.height>0){canvas.width=rect.width;canvas.height=rect.height;}
 }
 
-function renderAdjustFrame(canvas,angle){
-  syncCanvasSize(canvas);
-  const ctx=canvas.getContext('2d');
-  const w=canvas.width,h=canvas.height;
-  ctx.clearRect(0,0,w,h);
-  const shotUrl=state.shots[angle];
-  const hairC=state.hairCanvases[angle];
-  const drawHair=()=>{
-    if(!hairC) return;
-    const {length,curl,volume,thickness}=state.sliders;
-    const srcH=hairC.height*0.55, srcW=hairC.width;
-    const scaleY=0.7+(length/100)*1.3;
-    const scaleX=0.85+(volume/100)*0.5;
-    const curlAmt=(curl/100)*18;
-    const opacity=0.55+(thickness/100)*0.45;
-    ctx.save(); ctx.globalAlpha=opacity;
-    const segs=20;
-    for(let s=0;s<segs;s++){
-      const p=s/segs, np=(s+1)/segs;
-      const srcY=p*srcH, srcNY=np*srcH, segH=srcNY-srcY;
-      const waveX=Math.sin(p*Math.PI*2.5)*curlAmt*p;
-      const dstY=p*srcH*scaleY, dstNY=np*srcH*scaleY;
-      const dstW=srcW*scaleX, dstX=w/2-dstW/2+waveX;
-      ctx.drawImage(hairC,0,srcY,srcW,segH,dstX,dstY,dstW,dstNY-dstY);
-    }
-    ctx.restore();
-    if(state.selectedStyle){
-      ctx.save(); ctx.globalCompositeOperation='multiply'; ctx.globalAlpha=0.3;
-      ctx.fillStyle=state.selectedStyle.colorHex;
-      ctx.fillRect(0,0,w,srcH*scaleY);
-      ctx.restore();
-    }
-  };
-  if(shotUrl){
-    const img=new Image();
-    img.onload=()=>{
-      const ir=img.width/img.height,cr=w/h;
-      let dw,dh,dx,dy;
-      if(ir>cr){dh=h;dw=h*ir;dx=(w-dw)/2;dy=0;}else{dw=w;dh=w/ir;dx=0;dy=(h-dh)/2;}
-      ctx.drawImage(img,dx,dy,dw,dh);
-      drawHair();
-    };
-    img.src=shotUrl;
-  } else {
-    ctx.fillStyle='#211D19';ctx.fillRect(0,0,w,h);
-    ctx.fillStyle='#52483D';ctx.font='13px Inter';ctx.textAlign='center';
-    ctx.fillText('이 각도의 사진이 없습니다',w/2,h/2);
-    drawHair();
+// SVG 폴백: hairCanvas 없을 때 선으로 헤어 표현
+function drawHairSVGFallback(ctx, w, h, fit){
+  if(!state.selectedStyle) return;
+  const {length,curl,volume,thickness} = state.sliders;
+  const {dw,dh,dx,dy} = fit;
+
+  // 머리 중심 추정 (사진 상단 1/3 중앙)
+  const headCX = dx + dw/2;
+  const headTopY = dy;
+  const headR = dw * 0.18; // 얼굴 반경 추정
+
+  const numStrands = Math.round(8 + (volume/100)*16);
+  const hairLen = h * (0.12 + (length/100)*0.45);
+  const curlAmt = (curl/100)*40;
+  const alpha = 0.35 + (thickness/100)*0.45;
+  const color = state.selectedStyle.colorHex;
+
+  ctx.save();
+  ctx.globalAlpha = alpha;
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 1.8;
+  ctx.lineCap = 'round';
+
+  for(let i=0;i<numStrands;i++){
+    const t = i/(numStrands-1); // 0~1
+    const angle_rad = (t - 0.5) * Math.PI * 1.1; // 머리 둘레
+    const startX = headCX + Math.sin(angle_rad) * headR;
+    const startY = headTopY + headR * 0.6 - Math.cos(angle_rad) * headR * 0.5;
+
+    const sideOffset = (t-0.5)*2; // -1~1
+    const endX = startX + sideOffset*curlAmt + Math.sin(t*Math.PI*3)*curlAmt*0.4;
+    const endY = startY + hairLen;
+    const cp1x = startX + sideOffset*curlAmt*0.3;
+    const cp1y = startY + hairLen*0.4;
+    const cp2x = endX + Math.sin(t*Math.PI*2)*curlAmt*0.5;
+    const cp2y = startY + hairLen*0.75;
+
+    ctx.beginPath();
+    ctx.moveTo(startX, startY);
+    ctx.bezierCurveTo(cp1x,cp1y,cp2x,cp2y,endX,endY);
+    ctx.stroke();
   }
+  ctx.restore();
 }
 
+// 핵심 렌더 함수 — 동기적으로 실행, 이미지는 캐시에서
+function renderFrame(canvas, angle){
+  syncCanvasSize(canvas);
+  const ctx = canvas.getContext('2d');
+  const w = canvas.width, h = canvas.height;
+
+  getCachedImg(angle, (img)=>{
+    ctx.clearRect(0,0,w,h);
+
+    let fit = {dw:w,dh:h,dx:0,dy:0};
+    if(img){
+      fit = drawImgOnCanvas(ctx, img, w, h);
+    } else {
+      ctx.fillStyle='#211D19'; ctx.fillRect(0,0,w,h);
+      ctx.fillStyle='#52483D'; ctx.font='13px Inter'; ctx.textAlign='center';
+      ctx.fillText('이 각도의 사진이 없습니다', w/2, h/2);
+    }
+
+    const hairC = state.hairCanvases[angle];
+    if(hairC){
+      // ── 세그멘테이션 있음: 실제 머리카락 변형 합성 ──
+      const {length,curl,volume,thickness} = state.sliders;
+      const srcH = hairC.height * 0.52;
+      const srcW = hairC.width;
+      const scaleY = 0.6 + (length/100)*1.4;
+      const scaleX = 0.8  + (volume/100)*0.55;
+      const curlAmt = (curl/100)*22;
+      const opacity = 0.5 + (thickness/100)*0.5;
+
+      ctx.save();
+      ctx.globalAlpha = opacity;
+      const segs = 24;
+      for(let s=0;s<segs;s++){
+        const p=s/segs, np=(s+1)/segs;
+        const srcY=p*srcH, srcNY=np*srcH, segH=Math.max(1,srcNY-srcY);
+        const waveX = Math.sin(p*Math.PI*3)*curlAmt*p;
+        const dstY = fit.dy + p*srcH*scaleY;
+        const dstNY= fit.dy + np*srcH*scaleY;
+        const dstW = srcW * scaleX * (fit.dw/hairC.width);
+        const dstX = fit.dx + fit.dw/2 - dstW/2 + waveX;
+        ctx.drawImage(hairC, 0,srcY,srcW,segH, dstX,dstY,dstW,Math.max(1,dstNY-dstY));
+      }
+      ctx.restore();
+
+      // 컬러 오버레이
+      if(state.selectedStyle){
+        ctx.save();
+        ctx.globalCompositeOperation='multiply';
+        ctx.globalAlpha=0.25;
+        ctx.fillStyle=state.selectedStyle.colorHex;
+        ctx.fillRect(fit.dx, fit.dy, fit.dw, srcH*scaleY);
+        ctx.restore();
+      }
+    } else if(img && state.selectedStyle){
+      // ── 세그멘테이션 없음: SVG 선 오버레이 폴백 ──
+      drawHairSVGFallback(ctx, w, h, fit);
+    }
+  });
+}
+
+let rafId = null;
 function drawAdjustPreview(){
-  if(currentScreen==='adjust') renderAdjustFrame(document.getElementById('adjustCanvas'),state.currentViewAngle);
+  if(currentScreen!=='adjust') return;
+  if(rafId) cancelAnimationFrame(rafId);
+  rafId = requestAnimationFrame(()=>{
+    renderFrame(document.getElementById('adjustCanvas'), state.currentViewAngle);
+    rafId = null;
+  });
 }
 
 /* ════════════════════════════════════════
@@ -819,25 +904,20 @@ function drawAdjustPreview(){
 ════════════════════════════════════════ */
 function drawCompare(){
   if(currentScreen!=='compare') return;
-  const angle=state.currentViewAngle;
-  const baseC=document.getElementById('compareBaseCanvas');
-  const topC=document.getElementById('compareTopCanvas');
+  const angle = state.currentViewAngle;
+  const baseC = document.getElementById('compareBaseCanvas');
+  const topC  = document.getElementById('compareTopCanvas');
   syncCanvasSize(baseC); syncCanvasSize(topC);
-  const ctxB=baseC.getContext('2d');
-  ctxB.clearRect(0,0,baseC.width,baseC.height);
-  const shotUrl=state.shots[angle];
-  if(shotUrl){
-    const img=new Image();
-    img.onload=()=>{
-      const w=baseC.width,h=baseC.height;
-      const ir=img.width/img.height,cr=w/h;
-      let dw,dh,dx,dy;
-      if(ir>cr){dh=h;dw=h*ir;dx=(w-dw)/2;dy=0;}else{dw=w;dh=w/ir;dx=0;dy=(h-dh)/2;}
-      ctxB.drawImage(img,dx,dy,dw,dh);
-    };
-    img.src=shotUrl;
-  }
-  renderAdjustFrame(topC,angle);
+
+  // BEFORE: 원본만
+  getCachedImg(angle,(img)=>{
+    const ctx = baseC.getContext('2d');
+    ctx.clearRect(0,0,baseC.width,baseC.height);
+    if(img) drawImgOnCanvas(ctx,img,baseC.width,baseC.height);
+  });
+
+  // AFTER: 헤어 오버레이 합성
+  renderFrame(topC, angle);
   positionCompareTop();
 }
 
