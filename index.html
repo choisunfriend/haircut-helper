@@ -11,263 +11,327 @@
   --accent:#C98A4B; --accent-soft:#E8C39E; --text:#F3ECE2; --text-muted:#9C9183;
   --ok:#8FA888; --warn:#C2685A;
 }
-*{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
-html,body{height:100%;margin:0;}
-body{
-  background:var(--bg);color:var(--text);font-family:'Inter',sans-serif;
-  overflow:hidden;height:100vh;height:100dvh;width:100vw;
-  -webkit-user-select:none;user-select:none;
-}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent;margin:0;padding:0;}
+html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);font-family:'Inter',sans-serif;}
 #app{display:flex;flex-direction:column;height:100vh;height:100dvh;}
+
+/* ── HEADER ── */
 header{
   display:flex;align-items:center;justify-content:space-between;
-  padding:14px 24px;border-bottom:1px solid var(--line);
-  background:linear-gradient(180deg,var(--surface),var(--bg));flex-shrink:0;
+  padding:env(safe-area-inset-top,14px) 20px 12px;
+  padding-top:max(env(safe-area-inset-top),14px);
+  background:var(--surface);border-bottom:1px solid var(--line);flex-shrink:0;
+  min-height:54px;
 }
-.brand .mark{font-family:'Fraunces',serif;font-size:22px;font-weight:600;color:var(--accent-soft);}
-.brand .sub{font-size:11px;color:var(--text-muted);letter-spacing:1.5px;text-transform:uppercase;margin-left:8px;}
-.stage-label{font-size:11px;color:var(--text-muted);letter-spacing:1px;text-transform:uppercase;}
-.stage-label b{color:var(--accent-soft);font-weight:600;}
+.brand-mark{font-family:'Fraunces',serif;font-size:20px;font-weight:600;color:var(--accent-soft);}
+.stage-pill{
+  font-size:11px;letter-spacing:1px;text-transform:uppercase;
+  background:var(--surface-2);border:1px solid var(--line);
+  padding:4px 10px;border-radius:20px;color:var(--text-muted);
+}
+.stage-pill b{color:var(--accent-soft);font-weight:600;}
 
 main{flex:1;position:relative;overflow:hidden;}
-.screen{position:absolute;inset:0;display:none;padding:18px 24px 20px;flex-direction:column;}
+.screen{position:absolute;inset:0;display:none;flex-direction:column;}
 .screen.active{display:flex;}
 
-/* Buttons */
-.btn{border:none;cursor:pointer;font-family:'Inter',sans-serif;font-weight:600;
+/* ── BOTTOM NAV ── */
+.bottom-nav{
+  display:flex;background:var(--surface);border-top:1px solid var(--line);
+  padding-bottom:env(safe-area-inset-bottom,0);flex-shrink:0;
+}
+.nav-tab{
+  flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;
+  padding:10px 4px;cursor:pointer;border:none;background:none;
+  color:var(--text-muted);font-size:10px;letter-spacing:0.5px;
+  transition:color .15s;
+}
+.nav-tab .icon{font-size:18px;}
+.nav-tab.active{color:var(--accent-soft);}
+.nav-tab:disabled{opacity:0.35;cursor:not-allowed;}
+
+/* ── BUTTONS ── */
+.btn{
+  border:none;cursor:pointer;font-family:'Inter',sans-serif;font-weight:600;
   border-radius:12px;padding:13px 20px;font-size:14px;
   display:inline-flex;align-items:center;justify-content:center;gap:8px;
-  transition:transform .1s,opacity .15s;}
+  transition:transform .1s,opacity .15s;
+}
 .btn:active{transform:scale(0.97);}
 .btn-primary{background:var(--accent);color:#1B1816;}
 .btn-primary:disabled{background:var(--surface-2);color:var(--text-muted);cursor:not-allowed;}
 .btn-ghost{background:transparent;color:var(--text-muted);border:1px solid var(--line);}
-.btn-sm{padding:9px 14px;font-size:12px;border-radius:9px;}
 .btn-block{width:100%;}
-.footer-bar{display:flex;gap:10px;justify-content:flex-end;padding-top:14px;flex-shrink:0;}
 
-/* ---- CAPTURE ---- */
-#screen-capture{align-items:stretch;}
-.capture-layout{display:flex;gap:18px;flex:1;min-height:0;}
-.capture-stage{
-  flex:1;background:var(--surface);border-radius:18px;border:1px solid var(--line);
-  position:relative;overflow:hidden;display:flex;align-items:center;justify-content:center;
+/* ── SCREEN 1: CAPTURE ── */
+#screen-capture{background:var(--bg);}
+.capture-video-wrap{
+  flex:1;position:relative;overflow:hidden;
+  display:flex;align-items:center;justify-content:center;
+  background:#0a0907;
 }
-.capture-stage video,.capture-stage img.preview-shot{width:100%;height:100%;object-fit:cover;display:block;}
-.capture-overlay-ring{position:absolute;inset:0;pointer-events:none;display:flex;align-items:center;justify-content:center;}
-.capture-overlay-ring svg{width:62%;height:90%;}
-.capture-hint{position:absolute;bottom:14px;left:0;right:0;text-align:center;font-size:13px;color:var(--accent-soft);}
-.cam-off-msg{color:var(--text-muted);font-size:13px;text-align:center;padding:0 24px;line-height:1.7;}
-.capture-side{width:220px;flex-shrink:0;display:flex;flex-direction:column;gap:12px;}
-.angle-card{
-  background:var(--surface);border:1px solid var(--line);border-radius:12px;
-  padding:10px 12px;display:flex;align-items:center;gap:10px;cursor:pointer;transition:border-color .15s;
+#video{width:100%;height:100%;object-fit:cover;display:block;}
+.cam-off-msg{color:var(--text-muted);font-size:13px;text-align:center;padding:0 32px;line-height:1.8;position:absolute;}
+#shotPreview{width:100%;height:100%;object-fit:cover;display:none;position:absolute;inset:0;}
+.face-guide-svg{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;}
+.cap-hint{
+  position:absolute;bottom:14px;left:0;right:0;text-align:center;
+  font-size:13px;color:var(--accent-soft);
+  background:rgba(27,24,22,0.6);padding:6px;
 }
-.angle-card.current{border-color:var(--accent);}
-.angle-card .thumb{width:40px;height:40px;border-radius:8px;background:var(--surface-2);display:flex;align-items:center;justify-content:center;overflow:hidden;flex-shrink:0;}
-.angle-card .thumb img{width:100%;height:100%;object-fit:cover;}
-.angle-card .meta .name{font-size:13px;font-weight:600;}
-.angle-card .meta .state{font-size:11px;color:var(--text-muted);margin-top:2px;}
-.angle-card .check{font-size:14px;color:var(--ok);opacity:0;transition:opacity .15s;margin-left:auto;}
-.angle-card.captured .check{opacity:1;}
-.dial{position:relative;width:72px;height:72px;flex-shrink:0;align-self:center;}
-.dial svg{width:100%;height:100%;}
-.dial .seg{fill:none;stroke:var(--line);stroke-width:6;}
-.dial .seg.done{stroke:var(--ok);}
-.dial .seg.active{stroke:var(--accent);}
-.dial-center{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--text-muted);}
 
-/* ---- STYLE SELECT ---- */
-.style-grid{flex:1;display:grid;grid-template-columns:repeat(4,1fr);gap:14px;overflow-y:auto;padding-bottom:8px;align-content:start;}
+/* angle strip */
+.angle-strip{
+  display:flex;gap:0;background:var(--surface);border-top:1px solid var(--line);
+  flex-shrink:0;
+}
+.angle-item{
+  flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;
+  padding:8px 4px;cursor:pointer;position:relative;border-right:1px solid var(--line);
+}
+.angle-item:last-child{border-right:none;}
+.angle-item.current::after{
+  content:'';position:absolute;top:0;left:0;right:0;height:2px;background:var(--accent);
+}
+.angle-thumb{
+  width:36px;height:36px;border-radius:6px;
+  background:var(--surface-2);overflow:hidden;display:flex;align-items:center;justify-content:center;
+}
+.angle-thumb img{width:100%;height:100%;object-fit:cover;}
+.angle-name{font-size:10px;color:var(--text-muted);letter-spacing:0.5px;}
+.angle-check{font-size:11px;color:var(--ok);}
+
+.capture-actions{
+  display:flex;gap:10px;padding:12px 16px;
+  background:var(--surface);flex-shrink:0;
+}
+.shutter-btn{
+  width:60px;height:60px;border-radius:50%;
+  background:var(--accent);border:4px solid rgba(201,138,75,0.3);
+  flex-shrink:0;cursor:pointer;display:flex;align-items:center;justify-content:center;
+  font-size:20px;transition:transform .1s;align-self:center;
+}
+.shutter-btn:active{transform:scale(0.92);}
+.cap-right{flex:1;display:flex;flex-direction:column;gap:8px;}
+.dial-row{display:flex;align-items:center;gap:10px;}
+.dial-mini{position:relative;width:44px;height:44px;flex-shrink:0;}
+.dial-mini svg{width:100%;height:100%;}
+.dial-mini-center{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--text-muted);}
+.cap-hint-small{font-size:12px;color:var(--accent-soft);flex:1;}
+.cap-btns{display:flex;gap:8px;}
+
+/* ── SCREEN 2: STYLE ── */
+#screen-style{overflow:hidden;}
+.style-scroll{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:12px 12px 4px;}
+.style-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;}
 .style-card{
-  background:var(--surface);border:1px solid var(--line);border-radius:14px;
-  padding:14px;cursor:pointer;transition:border-color .15s,transform .1s;
-  display:flex;flex-direction:column;gap:8px;
+  background:var(--surface);border:1.5px solid var(--line);border-radius:14px;
+  padding:12px;cursor:pointer;transition:border-color .15s,transform .1s;
+  display:flex;flex-direction:column;gap:7px;
 }
 .style-card:active{transform:scale(0.98);}
-.style-card.selected{border-color:var(--accent);background:var(--surface-2);}
+.style-card.selected{border-color:var(--accent);}
 .style-card.ai-recommended{border-color:var(--ok);}
-.style-card .icon-box{height:100px;border-radius:10px;background:var(--bg);display:flex;align-items:center;justify-content:center;}
+.style-icon-box{height:80px;border-radius:10px;background:var(--bg);display:flex;align-items:center;justify-content:center;overflow:hidden;}
 .style-card .name{font-size:13px;font-weight:600;}
 .style-card .tags{font-size:10px;color:var(--text-muted);font-family:'JetBrains Mono',monospace;}
-.style-card .ai-rec{font-size:10px;color:var(--ok);font-family:'JetBrains Mono',monospace;display:none;}
+.style-card .ai-rec{font-size:10px;color:var(--ok);display:none;}
 .style-card.ai-recommended .ai-rec{display:block;}
+.style-footer{display:flex;padding:10px 14px 14px;gap:8px;flex-shrink:0;}
 
-/* ---- ADJUST ---- */
-.adjust-layout{display:flex;gap:18px;flex:1;min-height:0;}
-.preview-pane{
-  flex:1.3;background:var(--surface);border:1px solid var(--line);border-radius:18px;
-  position:relative;overflow:hidden;display:flex;align-items:center;justify-content:center;
+/* ── SCREEN 3: ADJUST ── */
+#screen-adjust{overflow:hidden;}
+.adjust-preview{
+  height:45vh;position:relative;overflow:hidden;flex-shrink:0;
+  background:var(--surface);
 }
-.preview-pane canvas{width:100%;height:100%;display:block;}
+.adjust-preview canvas{width:100%;height:100%;display:block;}
 .preview-tag{
-  position:absolute;top:12px;left:12px;background:rgba(27,24,22,0.75);
-  backdrop-filter:blur(4px);padding:5px 11px;border-radius:8px;font-size:11px;color:var(--accent-soft);
+  position:absolute;top:10px;left:10px;
+  background:rgba(27,24,22,0.75);backdrop-filter:blur(4px);
+  padding:4px 10px;border-radius:8px;font-size:11px;color:var(--accent-soft);
 }
-.seg-status{
-  position:absolute;bottom:12px;left:0;right:0;text-align:center;font-size:11px;color:var(--text-muted);
-}
-.control-pane{width:300px;flex-shrink:0;display:flex;flex-direction:column;gap:14px;overflow-y:auto;}
-.slider-block{display:flex;flex-direction:column;gap:7px;}
-.slider-block .row{display:flex;justify-content:space-between;align-items:baseline;}
-.slider-block .label{font-size:13px;font-weight:600;}
-.slider-block .val{font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--accent-soft);}
-input[type=range]{-webkit-appearance:none;width:100%;height:4px;border-radius:2px;background:var(--line);outline:none;}
-input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:20px;height:20px;border-radius:50%;background:var(--accent);cursor:pointer;border:3px solid var(--bg);}
-.angle-switch{display:flex;gap:6px;background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:5px;}
-.angle-switch button{flex:1;background:transparent;border:none;color:var(--text-muted);padding:8px 0;font-size:11px;border-radius:8px;cursor:pointer;font-family:'JetBrains Mono',monospace;}
+.seg-status{position:absolute;bottom:8px;left:0;right:0;text-align:center;font-size:11px;color:var(--text-muted);}
+
+.adjust-scroll{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:14px 16px 20px;}
+.adjust-controls{display:flex;flex-direction:column;gap:14px;}
+
+.angle-switch{display:flex;gap:5px;background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:4px;}
+.angle-switch button{flex:1;background:transparent;border:none;color:var(--text-muted);padding:7px 0;font-size:11px;border-radius:7px;cursor:pointer;font-family:'JetBrains Mono',monospace;}
 .angle-switch button.on{background:var(--accent);color:#1B1816;font-weight:600;}
 
-/* Voice */
-.voice-box{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:12px;display:flex;flex-direction:column;gap:8px;}
-.voice-btn{display:flex;align-items:center;gap:10px;cursor:pointer;padding:9px 11px;border-radius:9px;background:var(--surface-2);transition:background .15s;}
-.voice-btn.listening{background:var(--warn);}
-.voice-dot{width:9px;height:9px;border-radius:50%;background:var(--text-muted);flex-shrink:0;}
-.voice-btn.listening .voice-dot{background:#fff;animation:pulse 1s infinite;}
-@keyframes pulse{0%,100%{opacity:1;}50%{opacity:0.3;}}
-.voice-transcript{font-size:11px;color:var(--text-muted);min-height:15px;line-height:1.5;}
-.voice-transcript b{color:var(--accent-soft);font-weight:600;}
-.voice-hints{font-size:10px;color:var(--text-muted);line-height:1.8;font-family:'JetBrains Mono',monospace;}
-
-/* AI card */
-.ai-card{background:var(--surface);border:1px solid var(--accent);border-radius:12px;padding:12px 14px;display:flex;flex-direction:column;gap:8px;}
-.ai-card-header{display:flex;align-items:center;gap:7px;font-size:11px;font-weight:700;color:var(--accent-soft);letter-spacing:1px;text-transform:uppercase;}
+.ai-card{background:var(--surface);border:1px solid var(--accent);border-radius:12px;padding:12px 14px;}
+.ai-card-hdr{display:flex;align-items:center;gap:7px;font-size:11px;font-weight:700;color:var(--accent-soft);letter-spacing:1px;text-transform:uppercase;margin-bottom:8px;}
 .ai-dot{width:6px;height:6px;border-radius:50%;background:var(--accent);flex-shrink:0;}
-.ai-card-body{font-size:11px;color:var(--text-muted);line-height:1.7;}
+.ai-card-body{font-size:12px;color:var(--text-muted);line-height:1.7;margin-bottom:8px;}
 .ai-tags{display:flex;flex-wrap:wrap;gap:5px;}
 .ai-tag{font-size:10px;font-family:'JetBrains Mono',monospace;padding:3px 8px;border-radius:20px;background:var(--surface-2);border:1px solid var(--line);color:var(--accent-soft);}
 
-/* ---- COMPARE ---- */
-.compare-pane{
-  flex:1;background:var(--surface);border:1px solid var(--line);border-radius:18px;
-  position:relative;overflow:hidden;display:flex;align-items:center;justify-content:center;
-}
-.compare-pane canvas{width:100%;height:100%;display:block;}
+.slider-block{display:flex;flex-direction:column;gap:7px;}
+.slider-row{display:flex;justify-content:space-between;align-items:baseline;}
+.slider-label{font-size:13px;font-weight:600;}
+.slider-val{font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--accent-soft);}
+input[type=range]{-webkit-appearance:none;width:100%;height:4px;border-radius:2px;background:var(--line);outline:none;}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:22px;height:22px;border-radius:50%;background:var(--accent);cursor:pointer;border:3px solid var(--bg);}
+
+.voice-box{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:12px;display:flex;flex-direction:column;gap:8px;}
+.voice-btn{display:flex;align-items:center;gap:10px;cursor:pointer;padding:10px 12px;border-radius:9px;background:var(--surface-2);transition:background .15s;}
+.voice-btn.listening{background:var(--warn);}
+.voice-dot{width:9px;height:9px;border-radius:50%;background:var(--text-muted);flex-shrink:0;}
+.voice-btn.listening .voice-dot{background:#fff;animation:pulse 1s infinite;}
+@keyframes pulse{0%,100%{opacity:1;}50%{opacity:.3;}}
+.voice-transcript{font-size:11px;color:var(--text-muted);line-height:1.5;}
+.voice-transcript b{color:var(--accent-soft);font-weight:600;}
+.voice-hints{font-size:10px;color:var(--text-muted);line-height:1.8;font-family:'JetBrains Mono',monospace;}
+
+/* ── SCREEN 4: COMPARE ── */
+#screen-compare{overflow:hidden;}
+.compare-wrap{flex:1;position:relative;overflow:hidden;}
+.compare-base{width:100%;height:100%;display:block;}
 .compare-clip{position:absolute;top:0;bottom:0;left:0;overflow:hidden;width:50%;}
 .compare-clip canvas{position:absolute;top:0;left:0;width:100%;height:100%;}
-.compare-divider{position:absolute;top:0;bottom:0;width:3px;background:var(--accent);left:50%;transform:translateX(-50%);cursor:ew-resize;}
-.compare-divider::after{content:'◂▸';position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);background:var(--accent);color:#1B1816;font-size:10px;padding:5px 8px;border-radius:20px;letter-spacing:2px;}
-.compare-label{position:absolute;top:12px;font-size:10px;letter-spacing:1px;padding:4px 9px;background:rgba(27,24,22,0.7);border-radius:7px;color:var(--text-muted);}
-.compare-label.before{left:12px;}
-.compare-label.after{right:12px;color:var(--accent-soft);}
+.compare-divider{position:absolute;top:0;bottom:0;width:3px;background:var(--accent);left:50%;transform:translateX(-50%);cursor:ew-resize;touch-action:none;}
+.compare-divider::after{content:'◂▸';position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);background:var(--accent);color:#1B1816;font-size:10px;padding:5px 6px;border-radius:20px;letter-spacing:2px;}
+.compare-label{position:absolute;top:10px;font-size:10px;letter-spacing:1px;padding:4px 9px;background:rgba(27,24,22,0.7);border-radius:7px;color:var(--text-muted);}
+.compare-label.before{left:10px;}
+.compare-label.after{right:10px;color:var(--accent-soft);}
+.compare-bottom{padding:10px 14px 14px;display:flex;flex-direction:column;gap:8px;flex-shrink:0;}
 
-/* Overlays */
-.toast{position:fixed;bottom:22px;left:50%;transform:translateX(-50%) translateY(20px);background:var(--surface-2);border:1px solid var(--line);padding:11px 18px;border-radius:12px;font-size:13px;opacity:0;pointer-events:none;transition:all .25s;z-index:50;}
+/* ── OVERLAYS ── */
+.toast{
+  position:fixed;bottom:80px;left:50%;transform:translateX(-50%) translateY(20px);
+  background:var(--surface-2);border:1px solid var(--line);
+  padding:10px 18px;border-radius:12px;font-size:13px;
+  opacity:0;pointer-events:none;transition:all .25s;z-index:50;
+  white-space:nowrap;max-width:90vw;white-space:normal;text-align:center;
+}
 .toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
-.ai-overlay{position:fixed;inset:0;background:rgba(27,24,22,0.9);z-index:100;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;backdrop-filter:blur(6px);}
+.ai-overlay{
+  position:fixed;inset:0;background:rgba(27,24,22,0.92);z-index:100;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;
+  backdrop-filter:blur(6px);
+}
 .ai-overlay.hidden{display:none;}
-.ai-spinner{width:44px;height:44px;border:3px solid var(--line);border-top-color:var(--accent);border-radius:50%;animation:spin 0.9s linear infinite;}
+.ai-spinner{width:40px;height:40px;border:3px solid var(--line);border-top-color:var(--accent);border-radius:50%;animation:spin .9s linear infinite;}
 @keyframes spin{to{transform:rotate(360deg);}}
 .ai-overlay-text{font-size:14px;color:var(--accent-soft);}
 .ai-overlay-sub{font-size:12px;color:var(--text-muted);}
 
-::-webkit-scrollbar{width:5px;}
-::-webkit-scrollbar-thumb{background:var(--line);border-radius:3px;}
+::-webkit-scrollbar{width:4px;}
+::-webkit-scrollbar-thumb{background:var(--line);border-radius:2px;}
 </style>
 </head>
 <body>
 <div id="app">
   <header>
-    <div class="brand">
-      <span class="mark">결</span><span class="sub">GYEOL — Style Preview</span>
-    </div>
-    <div class="stage-label" id="stageLabel">단계 <b>1 / 4 · 촬영</b></div>
+    <div class="brand-mark">결</div>
+    <div class="stage-pill" id="stageLabel">단계 <b>1/4 · 촬영</b></div>
   </header>
   <main>
 
-    <!-- SCREEN 1: CAPTURE -->
+    <!-- ══ SCREEN 1: CAPTURE ══ -->
     <section class="screen active" id="screen-capture">
-      <div class="capture-layout">
-        <div class="capture-stage" id="captureStage">
-          <div class="cam-off-msg" id="camOffMsg">카메라를 불러오는 중…<br><span style="font-size:11px;">권한을 허용하거나 오른쪽 업로드를 이용해주세요.</span></div>
-          <video id="video" autoplay playsinline muted style="display:none;"></video>
-          <img id="shotPreview" class="preview-shot" style="display:none;">
-          <div class="capture-overlay-ring">
-            <svg viewBox="0 0 200 260"><ellipse cx="100" cy="120" rx="78" ry="105" fill="none" stroke="rgba(232,195,158,0.35)" stroke-width="2" stroke-dasharray="6 6"/></svg>
-          </div>
-          <div class="capture-hint" id="captureHint">정면을 가이드 안에 맞춰주세요</div>
+      <div class="capture-video-wrap">
+        <div class="cam-off-msg" id="camOffMsg">카메라를 불러오는 중…<br><span style="font-size:11px;">아래 업로드 버튼도 이용 가능해요</span></div>
+        <video id="video" autoplay playsinline muted></video>
+        <img id="shotPreview">
+        <svg class="face-guide-svg" viewBox="0 0 100 100" preserveAspectRatio="xMidYMid meet">
+          <ellipse cx="50" cy="44" rx="28" ry="38" fill="none" stroke="rgba(232,195,158,0.4)" stroke-width="0.6" stroke-dasharray="3 3"/>
+        </svg>
+        <div class="cap-hint" id="captureHint">정면을 가이드 안에 맞춰주세요</div>
+      </div>
+
+      <!-- angle strip -->
+      <div class="angle-strip" id="angleStrip">
+        <div class="angle-item current" id="card-front" onclick="jumpToAngle(0)">
+          <div class="angle-thumb" id="thumb-front"></div>
+          <div class="angle-name">정면</div>
+          <div class="angle-check" id="chk-front"></div>
         </div>
-        <div class="capture-side">
-          <div class="dial">
-            <svg viewBox="0 0 100 100">
-              <circle class="seg" id="seg0" cx="50" cy="50" r="42" stroke-dasharray="65 197" transform="rotate(-90 50 50)"/>
-              <circle class="seg" id="seg1" cx="50" cy="50" r="42" stroke-dasharray="65 197" stroke-dashoffset="-65" transform="rotate(-90 50 50)"/>
-              <circle class="seg" id="seg2" cx="50" cy="50" r="42" stroke-dasharray="65 197" stroke-dashoffset="-130" transform="rotate(-90 50 50)"/>
-              <circle class="seg" id="seg3" cx="50" cy="50" r="42" stroke-dasharray="65 197" stroke-dashoffset="-195" transform="rotate(-90 50 50)"/>
-            </svg>
-            <div class="dial-center" id="dialCenter">0/4</div>
-          </div>
-          <div class="angle-card current" id="card-front" onclick="jumpToAngle(0)">
-            <div class="thumb" id="thumb-front"></div>
-            <div class="meta"><div class="name">정면</div><div class="state">대기 중</div></div>
-            <div class="check">✓</div>
-          </div>
-          <div class="angle-card" id="card-left" onclick="jumpToAngle(1)">
-            <div class="thumb" id="thumb-left"></div>
-            <div class="meta"><div class="name">좌측면</div><div class="state">대기 중</div></div>
-            <div class="check">✓</div>
-          </div>
-          <div class="angle-card" id="card-right" onclick="jumpToAngle(2)">
-            <div class="thumb" id="thumb-right"></div>
-            <div class="meta"><div class="name">우측면</div><div class="state">대기 중</div></div>
-            <div class="check">✓</div>
-          </div>
-          <div class="angle-card" id="card-back" onclick="jumpToAngle(3)">
-            <div class="thumb" id="thumb-back"></div>
-            <div class="meta"><div class="name">후면</div><div class="state">대기 중</div></div>
-            <div class="check">✓</div>
-          </div>
-          <button class="btn btn-ghost btn-sm" onclick="document.getElementById('fileInput').click()">사진 업로드로 대체</button>
-          <input type="file" id="fileInput" accept="image/*" style="display:none;" onchange="handleFileUpload(event)">
+        <div class="angle-item" id="card-left" onclick="jumpToAngle(1)">
+          <div class="angle-thumb" id="thumb-left"></div>
+          <div class="angle-name">좌측</div>
+          <div class="angle-check" id="chk-left"></div>
+        </div>
+        <div class="angle-item" id="card-right" onclick="jumpToAngle(2)">
+          <div class="angle-thumb" id="thumb-right"></div>
+          <div class="angle-name">우측</div>
+          <div class="angle-check" id="chk-right"></div>
+        </div>
+        <div class="angle-item" id="card-back" onclick="jumpToAngle(3)">
+          <div class="angle-thumb" id="thumb-back"></div>
+          <div class="angle-name">후면</div>
+          <div class="angle-check" id="chk-back"></div>
         </div>
       </div>
-      <div class="footer-bar">
-        <button class="btn btn-ghost" onclick="retakeCurrent()">다시 촬영</button>
-        <button class="btn btn-primary" id="captureBtn" onclick="captureCurrentAngle()">촬영</button>
-        <button class="btn btn-primary" id="toStyleBtn" onclick="goToScreen('style')" disabled>다음: 스타일 선택 →</button>
+
+      <div class="capture-actions">
+        <button class="shutter-btn" onclick="captureCurrentAngle()">📷</button>
+        <div class="cap-right">
+          <div class="dial-row">
+            <div class="dial-mini">
+              <svg viewBox="0 0 100 100">
+                <circle class="seg" id="seg0" cx="50" cy="50" r="42" fill="none" stroke="#3A332B" stroke-width="6" stroke-dasharray="65 197" transform="rotate(-90 50 50)"/>
+                <circle class="seg" id="seg1" cx="50" cy="50" r="42" fill="none" stroke="#3A332B" stroke-width="6" stroke-dasharray="65 197" stroke-dashoffset="-65" transform="rotate(-90 50 50)"/>
+                <circle class="seg" id="seg2" cx="50" cy="50" r="42" fill="none" stroke="#3A332B" stroke-width="6" stroke-dasharray="65 197" stroke-dashoffset="-130" transform="rotate(-90 50 50)"/>
+                <circle class="seg" id="seg3" cx="50" cy="50" r="42" fill="none" stroke="#3A332B" stroke-width="6" stroke-dasharray="65 197" stroke-dashoffset="-195" transform="rotate(-90 50 50)"/>
+              </svg>
+              <div class="dial-mini-center" id="dialCenter">0/4</div>
+            </div>
+            <div class="cap-hint-small" id="capHintSmall">촬영 버튼을 눌러주세요</div>
+          </div>
+          <div class="cap-btns">
+            <button class="btn btn-ghost" style="flex:1;font-size:12px;padding:9px 8px;" onclick="retakeCurrent()">재촬영</button>
+            <button class="btn btn-ghost" style="flex:1;font-size:12px;padding:9px 8px;" onclick="document.getElementById('fileInput').click()">업로드</button>
+            <button class="btn btn-primary" id="toStyleBtn" style="flex:1;font-size:12px;padding:9px 8px;" onclick="navTo('style')" disabled>다음→</button>
+          </div>
+        </div>
       </div>
+      <input type="file" id="fileInput" accept="image/*" style="display:none;" onchange="handleFileUpload(event)">
     </section>
 
-    <!-- SCREEN 2: STYLE SELECT -->
+    <!-- ══ SCREEN 2: STYLE ══ -->
     <section class="screen" id="screen-style">
-      <div class="style-grid" id="styleGrid"></div>
-      <div class="footer-bar">
-        <button class="btn btn-ghost" onclick="goToScreen('capture')">← 촬영으로</button>
-        <button class="btn btn-primary" id="toAdjustBtn" onclick="goToScreen('adjust')" disabled>다음: 조정 →</button>
+      <div class="style-scroll">
+        <div class="style-grid" id="styleGrid"></div>
+      </div>
+      <div class="style-footer">
+        <button class="btn btn-ghost" style="flex:1;" onclick="navTo('capture')">← 촬영</button>
+        <button class="btn btn-primary" id="toAdjustBtn" style="flex:2;" onclick="navTo('adjust')" disabled>조정하기 →</button>
       </div>
     </section>
 
-    <!-- SCREEN 3: ADJUST -->
+    <!-- ══ SCREEN 3: ADJUST ══ -->
     <section class="screen" id="screen-adjust">
-      <div class="adjust-layout">
-        <div class="preview-pane">
-          <div class="preview-tag" id="adjustStyleTag">스타일 미선택</div>
-          <canvas id="adjustCanvas"></canvas>
-          <div class="seg-status" id="segStatus"></div>
-        </div>
-        <div class="control-pane">
+      <div class="adjust-preview">
+        <canvas id="adjustCanvas"></canvas>
+        <div class="preview-tag" id="adjustStyleTag">스타일 미선택</div>
+        <div class="seg-status" id="segStatus"></div>
+      </div>
+      <div class="adjust-scroll">
+        <div class="adjust-controls">
           <div class="angle-switch" id="angleSwitch"></div>
 
           <div class="ai-card" id="aiAnalysisCard" style="display:none;">
-            <div class="ai-card-header"><div class="ai-dot"></div>AI 분석</div>
+            <div class="ai-card-hdr"><div class="ai-dot"></div>AI 분석</div>
             <div class="ai-card-body" id="aiAnalysisText"></div>
             <div class="ai-tags" id="aiAnalysisTags"></div>
           </div>
 
           <div class="slider-block">
-            <div class="row"><span class="label">길이</span><span class="val" id="val-length">50</span></div>
+            <div class="slider-row"><span class="slider-label">길이</span><span class="slider-val" id="val-length">50</span></div>
             <input type="range" id="slider-length" min="0" max="100" value="50" oninput="onSlider('length',this.value)">
           </div>
           <div class="slider-block">
-            <div class="row"><span class="label">컬 / 웨이브</span><span class="val" id="val-curl">30</span></div>
+            <div class="slider-row"><span class="slider-label">컬 / 웨이브</span><span class="slider-val" id="val-curl">30</span></div>
             <input type="range" id="slider-curl" min="0" max="100" value="30" oninput="onSlider('curl',this.value)">
           </div>
           <div class="slider-block">
-            <div class="row"><span class="label">볼륨</span><span class="val" id="val-volume">50</span></div>
+            <div class="slider-row"><span class="slider-label">볼륨</span><span class="slider-val" id="val-volume">50</span></div>
             <input type="range" id="slider-volume" min="0" max="100" value="50" oninput="onSlider('volume',this.value)">
           </div>
           <div class="slider-block">
-            <div class="row"><span class="label">숱 보정</span><span class="val" id="val-thickness">50</span></div>
+            <div class="slider-row"><span class="slider-label">숱 보정</span><span class="slider-val" id="val-thickness">50</span></div>
             <input type="range" id="slider-thickness" min="0" max="100" value="50" oninput="onSlider('thickness',this.value)">
           </div>
 
@@ -277,22 +341,23 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:20px;heigh
               <span id="voiceBtnLabel" style="font-size:13px;font-weight:600;">음성으로 조정하기</span>
             </div>
             <div class="voice-transcript" id="voiceTranscript">예: "길이 늘려줘", "웨이브 추가", "볼륨 줄여줘"</div>
-            <div class="voice-hints">길게·늘려줘·짧게 / 컬추가·펴줘 / 볼륨추가·볼륨줄여 / 숱많게·숱적게 / 다음각도 / 비교·초기화</div>
+            <div class="voice-hints">길게·짧게 / 컬추가·펴줘 / 볼륨추가·볼륨줄여 / 숱많게·숱적게 / 다음각도 / 비교·초기화</div>
           </div>
 
-          <button class="btn btn-ghost btn-sm" onclick="resetSliders()">슬라이더 초기화</button>
+          <button class="btn btn-ghost" style="font-size:12px;padding:10px;" onclick="resetSliders()">슬라이더 초기화</button>
+          <div style="height:4px;"></div>
         </div>
       </div>
-      <div class="footer-bar">
-        <button class="btn btn-ghost" onclick="goToScreen('style')">← 스타일 변경</button>
-        <button class="btn btn-primary" onclick="goToScreen('compare')">비교 보기 →</button>
+      <div style="display:flex;gap:8px;padding:10px 14px 14px;flex-shrink:0;">
+        <button class="btn btn-ghost" style="flex:1;font-size:13px;" onclick="navTo('style')">← 스타일</button>
+        <button class="btn btn-primary" style="flex:2;font-size:13px;" onclick="navTo('compare')">비교 보기 →</button>
       </div>
     </section>
 
-    <!-- SCREEN 4: COMPARE -->
+    <!-- ══ SCREEN 4: COMPARE ══ -->
     <section class="screen" id="screen-compare">
-      <div class="compare-pane" id="comparePane" style="flex:1;">
-        <canvas id="compareBaseCanvas"></canvas>
+      <div class="compare-wrap" id="comparePane">
+        <canvas id="compareBaseCanvas" class="compare-base"></canvas>
         <div class="compare-clip" id="compareClip">
           <canvas id="compareTopCanvas"></canvas>
         </div>
@@ -300,43 +365,53 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:20px;heigh
         <div class="compare-label before">BEFORE</div>
         <div class="compare-label after">AFTER</div>
       </div>
-      <div class="angle-switch" id="angleSwitchCompare" style="margin-top:14px;width:300px;align-self:center;"></div>
-      <div class="footer-bar">
-        <button class="btn btn-ghost" onclick="goToScreen('adjust')">← 조정으로</button>
-        <button class="btn btn-primary" onclick="startNewCustomer()">새 고객 시작</button>
+      <div class="compare-bottom">
+        <div class="angle-switch" id="angleSwitchCompare"></div>
+        <div style="display:flex;gap:8px;">
+          <button class="btn btn-ghost" style="flex:1;font-size:13px;" onclick="navTo('adjust')">← 조정</button>
+          <button class="btn btn-primary" style="flex:1;font-size:13px;" onclick="startNewCustomer()">새로 시작</button>
+        </div>
       </div>
     </section>
 
   </main>
+
+  <!-- bottom nav -->
+  <nav class="bottom-nav">
+    <button class="nav-tab active" id="nav-capture" onclick="navTo('capture')"><span class="icon">📷</span>촬영</button>
+    <button class="nav-tab" id="nav-style" onclick="navTo('style')" disabled><span class="icon">✂️</span>스타일</button>
+    <button class="nav-tab" id="nav-adjust" onclick="navTo('adjust')" disabled><span class="icon">🎚️</span>조정</button>
+    <button class="nav-tab" id="nav-compare" onclick="navTo('compare')" disabled><span class="icon">◧</span>비교</button>
+  </nav>
 </div>
 
 <div class="toast" id="toast"></div>
 <div class="ai-overlay hidden" id="aiOverlay">
   <div class="ai-spinner"></div>
-  <div class="ai-overlay-text" id="aiOverlayText">사진 분석 중…</div>
-  <div class="ai-overlay-sub" id="aiOverlaySub">머리카락 영역 감지 · AI 분석</div>
+  <div class="ai-overlay-text" id="aiOverlayText">분석 중…</div>
+  <div class="ai-overlay-sub" id="aiOverlaySub">잠시만 기다려주세요</div>
 </div>
 
-<!-- MediaPipe -->
-<script src="https://cdn.jsdelivr.net/npm/@mediapipe/selfie_segmentation/selfie_segmentation.js" crossorigin="anonymous"></script>
-
+<!-- TensorFlow.js + Body Segmentation (Hair 모델) -->
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-core@4.17.0/dist/tf-core.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-backend-webgl@4.17.0/dist/tf-backend-webgl.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/body-segmentation@1.0.1/dist/body-segmentation.min.js"></script>
 <script>
-/* ============================================================
+/* ════════════════════════════════════════
    STATE
-   ============================================================ */
+════════════════════════════════════════ */
 const ANGLES = ['front','left','right','back'];
 const ANGLE_LABELS = {front:'정면', left:'좌측', right:'우측', back:'후면'};
+const HINTS = {front:'정면을 맞춰주세요', left:'좌측면을 맞춰주세요', right:'우측면을 맞춰주세요', back:'후면(뒷머리)을 맞춰주세요'};
 
 const state = {
-  shots: {front:null, left:null, right:null, back:null},
-  // 원본 머리카락 마스크 (각도별, ImageData)
-  hairMasks: {front:null, left:null, right:null, back:null},
-  // 원본 머리카락 픽셀만 추출한 오프스크린 캔버스
-  hairCanvases: {front:null, left:null, right:null, back:null},
+  shots: {front:null,left:null,right:null,back:null},
+  hairMasks: {front:null,left:null,right:null,back:null},
+  hairCanvases: {front:null,left:null,right:null,back:null},
   currentCaptureIndex: 0,
   selectedStyle: null,
   currentViewAngle: 'front',
-  sliders: {length:50, curl:30, volume:50, thickness:50},
+  sliders: {length:50,curl:30,volume:50,thickness:50},
 };
 
 const STYLES = [
@@ -353,415 +428,254 @@ const STYLES = [
 let aiAnalysis = null;
 let recognition = null;
 let listening = false;
-let segmenter = null; // MediaPipe
+let segmenter = null;
+let currentScreen = 'capture';
 
-/* ============================================================
-   MEDIAPIPE INIT
-   ============================================================ */
+/* ════════════════════════════════════════
+   HAIR SEGMENTATION (TF.js body-segmentation)
+════════════════════════════════════════ */
+let segmenterReady = false;
+let segmenterError = false;
+
+// 앱 시작하자마자 백그라운드에서 모델 로드
 async function initSegmenter(){
   try{
-    segmenter = new SelfieSegmentation({locateFile: f=>`https://cdn.jsdelivr.net/npm/@mediapipe/selfie_segmentation/${f}`});
-    segmenter.setOptions({modelSelection:1}); // 1 = landscape (더 정확)
-    await segmenter.initialize();
-    console.log('MediaPipe 준비 완료');
+    await tf.ready();
+    // WebGL 백엔드 (안드로이드 Chrome 안정적)
+    await tf.setBackend('webgl');
+
+    segmenter = await bodySegmentation.createSegmenter(
+      bodySegmentation.SupportedModels.MediaPipeSelfieSegmentation,
+      {
+        runtime: 'mediapipe',
+        solutionPath: 'https://cdn.jsdelivr.net/npm/@mediapipe/selfie_segmentation',
+        modelType: 'general', // 'general' | 'landscape'
+      }
+    );
+    segmenterReady = true;
+    console.log('Hair segmenter 준비 완료');
   } catch(e){
-    console.warn('MediaPipe 로드 실패:', e);
+    console.warn('Segmenter 로드 실패, 폴백 없이 진행:', e);
     segmenter = null;
+    segmenterError = true;
   }
 }
-initSegmenter();
+initSegmenter(); // 백그라운드 로딩 시작
 
-/* ============================================================
-   HAIR SEGMENTATION
-   사진에서 머리카락+머리 영역을 추출해서 오프스크린 캔버스에 저장
-   ============================================================ */
 async function extractHairMask(angle){
   const dataUrl = state.shots[angle];
   if(!dataUrl || !segmenter) return false;
 
   return new Promise(resolve=>{
     const img = new Image();
-    img.onload = async ()=>{
-      // 오프스크린 캔버스에 원본 그리기
-      const src = document.createElement('canvas');
-      src.width = img.width; src.height = img.height;
-      src.getContext('2d').drawImage(img, 0, 0);
+    img.onload = async()=>{
+      try{
+        // 처리용 캔버스 (해상도 줄여서 속도 개선: 긴 쪽 640px)
+        const maxDim = 640;
+        const scale = Math.min(1, maxDim / Math.max(img.width, img.height));
+        const w = Math.round(img.width * scale);
+        const h = Math.round(img.height * scale);
 
-      // MediaPipe 세그멘테이션 결과 받기
-      segmenter.onResults(results=>{
-        const mask = results.segmentationMask; // ImageBitmap (흰=사람, 검=배경)
+        const srcC = document.createElement('canvas');
+        srcC.width=w; srcC.height=h;
+        srcC.getContext('2d').drawImage(img,0,0,w,h);
 
-        // 마스크 캔버스
-        const maskC = document.createElement('canvas');
-        maskC.width = img.width; maskC.height = img.height;
-        const maskCtx = maskC.getContext('2d');
-        maskCtx.drawImage(mask, 0, 0, img.width, img.height);
-        const maskData = maskCtx.getImageData(0, 0, img.width, img.height);
+        // TF.js body-segmentation 실행
+        // segmentPeople → [Segmentation] → mask
+        const segmentations = await segmenter.segmentPeople(srcC, {
+          multiSegmentation: false,
+          segmentBodyParts: false, // 전신 파트 분리 끄기 (속도↑)
+        });
 
-        // 머리카락 영역만 남긴 오프스크린 캔버스 생성
-        const hairC = document.createElement('canvas');
-        hairC.width = img.width; hairC.height = img.height;
-        const hairCtx = hairC.getContext('2d');
-        hairCtx.drawImage(img, 0, 0);
-        const imgData = hairCtx.getImageData(0, 0, img.width, img.height);
-
-        // 상단 50%만 머리카락으로 간주 (몸통 제외)
-        // 마스크 값이 낮은 픽셀(배경) 또는 하단(몸통)은 투명 처리
-        const halfH = img.height * 0.55;
-        for(let i=0; i<maskData.data.length; i+=4){
-          const pixelIndex = i/4;
-          const py = Math.floor(pixelIndex / img.width);
-          const maskVal = maskData.data[i]; // R채널 = 세그멘테이션 값 (0~255)
-          if(maskVal < 128 || py > halfH){
-            imgData.data[i+3] = 0; // 투명
-          }
+        if(!segmentations || segmentations.length === 0){
+          resolve(false); return;
         }
-        hairCtx.putImageData(imgData, 0, 0);
+
+        // mask를 ImageData로 변환
+        const maskData = await bodySegmentation.toBinaryMask(
+          segmentations,
+          {r:255,g:255,b:255,a:255}, // 사람: 흰색
+          {r:0,g:0,b:0,a:0},         // 배경: 투명
+          false, // drawContour
+          0.5    // threshold
+        );
+
+        // 결과 캔버스 (원본 해상도)
+        const hairC = document.createElement('canvas');
+        hairC.width=img.width; hairC.height=img.height;
+        const hCtx = hairC.getContext('2d');
+        hCtx.drawImage(img,0,0);
+
+        // 마스크를 원본 해상도로 스케일업
+        const maskC = document.createElement('canvas');
+        maskC.width=w; maskC.height=h;
+        maskC.getContext('2d').putImageData(maskData,0,0);
+
+        // destination-in으로 사람 영역만 남기기
+        hCtx.save();
+        hCtx.globalCompositeOperation = 'destination-in';
+        hCtx.drawImage(maskC, 0, 0, img.width, img.height);
+        hCtx.restore();
+
+        // 추가로 하단 60% 제거 (몸통 영역 제거, 머리만 남기기)
+        const iData = hCtx.getImageData(0,0,img.width,img.height);
+        const cutY = img.height * 0.52;
+        for(let i=0;i<iData.data.length;i+=4){
+          const py = Math.floor((i/4)/img.width);
+          if(py > cutY) iData.data[i+3]=0;
+        }
+        hCtx.putImageData(iData,0,0);
 
         state.hairCanvases[angle] = hairC;
-        state.hairMasks[angle] = maskData;
+        state.hairMasks[angle] = iData;
         resolve(true);
-      });
-
-      await segmenter.send({image: src});
+      }catch(e){
+        console.warn('extractHairMask 실패:', angle, e);
+        resolve(false);
+      }
     };
     img.src = dataUrl;
   });
 }
 
-/* ============================================================
-   RENDER — 머리카락 마스크를 슬라이더 값에 따라 변형해서 합성
-   ============================================================ */
-function syncCanvasSize(canvas){
-  const rect = canvas.getBoundingClientRect();
-  if(rect.width>0 && rect.height>0){
-    canvas.width = rect.width; canvas.height = rect.height;
-  }
-}
-
-function renderAdjustFrame(canvas, angle){
-  syncCanvasSize(canvas);
-  const ctx = canvas.getContext('2d');
-  const w = canvas.width, h = canvas.height;
-  ctx.clearRect(0,0,w,h);
-
-  const shotUrl = state.shots[angle];
-  const hairC = state.hairCanvases[angle];
-
-  const drawHair = ()=>{
-    if(!hairC) return;
-    const {length, curl, volume, thickness} = state.sliders;
-
-    // 원본 머리카락 위치 (상단)
-    const srcH = hairC.height * 0.55; // 머리 영역 높이
-    const srcW = hairC.width;
-
-    // 슬라이더에 따른 변형 파라미터
-    const scaleY = 0.7 + (length/100) * 1.3;   // 길이: 세로 스케일
-    const scaleX = 0.85 + (volume/100) * 0.5;  // 볼륨: 가로 스케일
-    const curlAmt = (curl/100) * 18;            // 컬: 가로 왜곡
-    const opacity = 0.55 + (thickness/100)*0.45; // 숱: 투명도
-
-    ctx.save();
-    ctx.globalAlpha = opacity;
-
-    // 머리카락 영역을 세그먼트별로 그려서 컬 효과 적용
-    const segments = 20;
-    for(let s=0; s<segments; s++){
-      const p = s/segments;
-      const nextP = (s+1)/segments;
-      const srcY = p * srcH;
-      const srcNextY = nextP * srcH;
-      const segH = (srcNextY - srcY);
-
-      // 컬: 아래로 갈수록 좌우로 흔들림
-      const waveX = Math.sin(p * Math.PI * 2.5) * curlAmt * p;
-      // 길이: 세로로 늘어남
-      const dstY = p * srcH * scaleY;
-      const dstNextY = nextP * srcH * scaleY;
-      // 볼륨: 가로로 넓어짐 (중앙 기준)
-      const centerX = w/2;
-      const dstW = srcW * scaleX;
-      const dstX = centerX - dstW/2 + waveX;
-
-      ctx.drawImage(hairC,
-        0, srcY, srcW, segH,           // src
-        dstX, dstY, dstW, dstNextY - dstY  // dst
-      );
-    }
-    ctx.restore();
-
-    // 컬러 오버레이 (선택한 스타일 색조)
-    if(state.selectedStyle){
-      ctx.save();
-      ctx.globalCompositeOperation = 'multiply';
-      ctx.globalAlpha = 0.3;
-      const hairRegionH = srcH * scaleY;
-      ctx.fillStyle = state.selectedStyle.colorHex;
-      ctx.fillRect(0, 0, w, hairRegionH);
-      ctx.restore();
-    }
-  };
-
-  if(shotUrl){
-    const img = new Image();
-    img.onload = ()=>{
-      // 원본 사진 먼저
-      const ir = img.width/img.height, cr = w/h;
-      let dw,dh,dx,dy;
-      if(ir>cr){dh=h;dw=h*ir;dx=(w-dw)/2;dy=0;}else{dw=w;dh=w/ir;dx=0;dy=(h-dh)/2;}
-      ctx.drawImage(img,dx,dy,dw,dh);
-      // 머리카락 합성
-      drawHair();
-    };
-    img.src = shotUrl;
-  } else {
-    ctx.fillStyle='#211D19'; ctx.fillRect(0,0,w,h);
-    ctx.fillStyle='#52483D'; ctx.font='13px Inter'; ctx.textAlign='center';
-    ctx.fillText('이 각도의 사진이 없습니다', w/2, h/2);
-    drawHair();
-  }
-}
-
-function drawAdjustPreview(){
-  renderAdjustFrame(document.getElementById('adjustCanvas'), state.currentViewAngle);
-}
-
-/* ============================================================
-   COMPARE
-   ============================================================ */
-function drawCompare(){
-  const angle = state.currentViewAngle;
-  const baseC = document.getElementById('compareBaseCanvas');
-  const topC = document.getElementById('compareTopCanvas');
-  syncCanvasSize(baseC); syncCanvasSize(topC);
-
-  // BEFORE: 원본만
-  const ctxB = baseC.getContext('2d');
-  ctxB.clearRect(0,0,baseC.width,baseC.height);
-  const shotUrl = state.shots[angle];
-  if(shotUrl){
-    const img = new Image();
-    img.onload = ()=>{
-      const w=baseC.width,h=baseC.height;
-      const ir=img.width/img.height,cr=w/h;
-      let dw,dh,dx,dy;
-      if(ir>cr){dh=h;dw=h*ir;dx=(w-dw)/2;dy=0;}else{dw=w;dh=w/ir;dx=0;dy=(h-dh)/2;}
-      ctxB.drawImage(img,dx,dy,dw,dh);
-    };
-    img.src = shotUrl;
-  }
-
-  // AFTER: 조정 결과
-  renderAdjustFrame(topC, angle);
-  positionCompareTop();
-}
-
-function positionCompareTop(){
-  const base = document.getElementById('compareBaseCanvas');
-  const top = document.getElementById('compareTopCanvas');
-  const rect = base.getBoundingClientRect();
-  top.style.width = rect.width+'px';
-  top.style.height = rect.height+'px';
-}
-
-const divider = document.getElementById('compareDivider');
-const clip = document.getElementById('compareClip');
-let dragging = false;
-divider.addEventListener('pointerdown',()=>{dragging=true;});
-window.addEventListener('pointerup',()=>{dragging=false;});
-window.addEventListener('pointermove',e=>{
-  if(!dragging) return;
-  const pane = document.getElementById('comparePane');
-  const rect = pane.getBoundingClientRect();
-  let pct = ((e.clientX-rect.left)/rect.width)*100;
-  pct = Math.max(4,Math.min(96,pct));
-  divider.style.left = pct+'%';
-  clip.style.width = pct+'%';
-});
-window.addEventListener('resize', positionCompareTop);
-
-/* ============================================================
-   AI ANALYSIS (Anthropic API)
-   ============================================================ */
-async function analyzeWithClaude(){
-  const frontImg = state.shots['front'];
-  if(!frontImg) return;
-  document.getElementById('aiOverlayText').textContent = 'AI가 얼굴을 분석하고 있어요…';
-  document.getElementById('aiOverlaySub').textContent = '얼굴형 · 머리색 · 스타일 추천';
-  document.getElementById('aiOverlay').classList.remove('hidden');
-
-  const base64 = frontImg.split(',')[1];
-  const mediaType = frontImg.startsWith('data:image/png') ? 'image/png' : 'image/jpeg';
-  const prompt = `미용실 고객 정면 사진입니다. 아래 JSON만 응답하세요. 다른 텍스트 없이.
-{
-  "hairColor": "black|brown|blonde|red|grey|colored",
-  "faceShape": "oval|round|square|heart|long",
-  "currentLength": "short|medium|long",
-  "recommendedStyles": ["id1","id2"],
-  "advice": "한국어 2문장 이내 스타일 조언"
-}
-스타일 id 목록: bob, long-wave, pixie, layered, curly, sleek, shag, lob`;
-
-  try{
-    const res = await fetch('https://api.anthropic.com/v1/messages',{
-      method:'POST',
-      headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({
-        model:'claude-sonnet-4-6', max_tokens:500,
-        messages:[{role:'user',content:[
-          {type:'image',source:{type:'base64',media_type:mediaType,data:base64}},
-          {type:'text',text:prompt}
-        ]}]
-      })
-    });
-    const data = await res.json();
-    const raw = data.content.map(b=>b.text||'').join('').replace(/```json|```/g,'').trim();
-    aiAnalysis = JSON.parse(raw);
-
-    // 추천 스타일 배지
-    document.querySelectorAll('.style-card').forEach(c=>c.classList.remove('ai-recommended'));
-    (aiAnalysis.recommendedStyles||[]).forEach(id=>{
-      const el = document.getElementById('style-'+id);
-      if(el) el.classList.add('ai-recommended');
-    });
-
-    // 조정 화면 AI 카드
-    const faceMap={oval:'계란형',round:'둥근형',square:'각진형',heart:'하트형',long:'긴형'};
-    const colorMap={black:'블랙',brown:'브라운',blonde:'블론드',red:'레드',grey:'그레이',colored:'컬러'};
-    const lenMap={short:'숏',medium:'미디엄',long:'롱'};
-    document.getElementById('aiAnalysisText').textContent = aiAnalysis.advice||'';
-    const tags=[faceMap[aiAnalysis.faceShape]||'', colorMap[aiAnalysis.hairColor]||'', lenMap[aiAnalysis.currentLength]||''];
-    document.getElementById('aiAnalysisTags').innerHTML = tags.filter(Boolean).map(t=>`<span class="ai-tag">${t}</span>`).join('');
-    document.getElementById('aiAnalysisCard').style.display='flex';
-  } catch(e){
-    console.warn('AI 분석 실패:', e);
-    showToast('AI 분석 실패. 수동으로 조정해주세요.');
-  }
-  document.getElementById('aiOverlay').classList.add('hidden');
-}
-
-/* ============================================================
-   NAV
-   ============================================================ */
+/* ════════════════════════════════════════
+   NAVIGATION
+════════════════════════════════════════ */
 const STAGE_NAMES={capture:'1/4 · 촬영',style:'2/4 · 스타일',adjust:'3/4 · 조정',compare:'4/4 · 비교'};
 
-async function goToScreen(name){
+async function navTo(name){
+  // unlock tabs as user progresses
+  const unlock = (id)=>{ const t=document.getElementById('nav-'+id); if(t) t.disabled=false; };
+
+  if(name==='style'){
+    unlock('style');
+    if(!aiAnalysis){
+      // segmenter가 아직 로딩 중이면 잠깐 대기 (최대 6초)
+      if(!segmenterReady && !segmenterError){
+        showAI('모델 로딩 중…', 'Hair Segmentation 준비 중');
+        let waited = 0;
+        while(!segmenterReady && !segmenterError && waited < 6000){
+          await new Promise(r=>setTimeout(r,300)); waited+=300;
+        }
+      }
+      if(segmenter){
+        const validAngles = ANGLES.filter(a=>state.shots[a]);
+        let done = 0;
+        for(const a of validAngles){
+          showAI(
+            `머리카락 추출 중… ${done+1}/${validAngles.length}`,
+            `${ANGLE_LABELS[a]} 처리 중`
+          );
+          await extractHairMask(a);
+          done++;
+        }
+        hideAI();
+      }
+      await analyzeWithClaude();
+    }
+  }
+  if(name==='adjust'){ unlock('adjust'); renderAngleSwitch('angleSwitch'); drawAdjustPreview(); }
+  if(name==='compare'){ unlock('compare'); renderAngleSwitch('angleSwitchCompare'); drawCompare(); }
+  if(name==='capture'){ stopVoice(); }
+
   document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
   document.getElementById('screen-'+name).classList.add('active');
+  document.querySelectorAll('.nav-tab').forEach(t=>t.classList.remove('active'));
+  const tab = document.getElementById('nav-'+name);
+  if(tab) tab.classList.add('active');
   document.getElementById('stageLabel').innerHTML='단계 <b>'+STAGE_NAMES[name]+'</b>';
-
-  if(name==='style' && !aiAnalysis){
-    // 1) 먼저 머리카락 세그멘테이션
-    if(segmenter){
-      document.getElementById('aiOverlay').classList.remove('hidden');
-      document.getElementById('aiOverlayText').textContent='머리카락 영역 추출 중…';
-      document.getElementById('aiOverlaySub').textContent='MediaPipe 세그멘테이션';
-      for(const angle of ANGLES){
-        if(state.shots[angle]) await extractHairMask(angle);
-      }
-      document.getElementById('aiOverlay').classList.add('hidden');
-    }
-    // 2) Claude AI 분석
-    await analyzeWithClaude();
-  }
-
-  if(name==='adjust'){ renderAngleSwitch('angleSwitch'); drawAdjustPreview(); }
-  if(name==='compare'){ renderAngleSwitch('angleSwitchCompare'); drawCompare(); }
-  if(name==='capture'){ stopVoice(); }
+  currentScreen = name;
 }
 
-function startNewCustomer(){
-  aiAnalysis = null;
-  ANGLES.forEach(a=>{ state.shots[a]=null; state.hairCanvases[a]=null; state.hairMasks[a]=null; });
-  state.selectedStyle = null;
-  state.currentCaptureIndex = 0;
-  document.getElementById('aiAnalysisCard').style.display='none';
-  document.querySelectorAll('.style-card').forEach(c=>c.classList.remove('ai-recommended','selected'));
-  document.getElementById('toAdjustBtn').disabled=true;
-  updateAngleUI();
-  goToScreen('capture');
-}
-
-/* ============================================================
+/* ════════════════════════════════════════
    CAPTURE
-   ============================================================ */
+════════════════════════════════════════ */
 const video = document.getElementById('video');
 const camOffMsg = document.getElementById('camOffMsg');
+let cameraStream = null;
 
 async function initCamera(){
   try{
-    const stream = await navigator.mediaDevices.getUserMedia({video:{facingMode:'user'},audio:false});
-    video.srcObject = stream;
+    cameraStream = await navigator.mediaDevices.getUserMedia({video:{facingMode:'user',width:{ideal:1280},height:{ideal:1920}},audio:false});
+    video.srcObject=cameraStream;
     video.style.display='block';
     camOffMsg.style.display='none';
-  } catch(e){
-    camOffMsg.innerHTML='카메라에 접근할 수 없습니다.<br><span style="font-size:11px;">오른쪽 "사진 업로드로 대체" 버튼을 이용해주세요.</span>';
+  }catch(e){
+    camOffMsg.innerHTML='카메라에 접근할 수 없습니다.<br><span style="font-size:11px;">아래 "업로드" 버튼을 이용해주세요.</span>';
+    camOffMsg.style.display='';
   }
 }
 initCamera();
 
 function updateAngleUI(){
   ANGLES.forEach((a,i)=>{
-    const card = document.getElementById('card-'+a);
-    const seg = document.getElementById('seg'+i);
-    card.classList.toggle('current', i===state.currentCaptureIndex);
-    if(state.shots[a]){
-      card.classList.add('captured');
-      card.querySelector('.state').textContent='촬영 완료';
-      document.getElementById('thumb-'+a).innerHTML='<img src="'+state.shots[a]+'">';
-      seg.classList.add('done');
-    } else {
-      card.classList.remove('captured');
-      card.querySelector('.state').textContent='대기 중';
-      document.getElementById('thumb-'+a).innerHTML='';
-      seg.classList.remove('done');
-    }
-    seg.classList.toggle('active', i===state.currentCaptureIndex && !state.shots[a]);
+    const card=document.getElementById('card-'+a);
+    const seg=document.getElementById('seg'+i);
+    const thumb=document.getElementById('thumb-'+a);
+    const chk=document.getElementById('chk-'+a);
+    const isCurrent = i===state.currentCaptureIndex;
+    const hasShot = !!state.shots[a];
+    card.className='angle-item'+(isCurrent?' current':'');
+    chk.textContent = hasShot?'✓':'';
+    thumb.innerHTML = hasShot?`<img src="${state.shots[a]}">`:'';
+    // dial
+    const okColor='#8FA888', activeColor='#C98A4B', lineColor='#3A332B';
+    seg.style.stroke = hasShot?okColor:(isCurrent?activeColor:lineColor);
   });
-  const doneCount = ANGLES.filter(a=>state.shots[a]).length;
+  const doneCount=ANGLES.filter(a=>state.shots[a]).length;
   document.getElementById('dialCenter').textContent=doneCount+'/4';
-  document.getElementById('captureHint').textContent=ANGLE_LABELS[ANGLES[state.currentCaptureIndex]]+'을(를) 가이드 안에 맞춰주세요';
-  document.getElementById('toStyleBtn').disabled = doneCount < 4;
-  const shot = state.shots[ANGLES[state.currentCaptureIndex]];
-  const sp = document.getElementById('shotPreview');
-  if(shot){ sp.src=shot; sp.style.display='block'; video.style.display='none'; document.getElementById('captureBtn').textContent='재촬영'; }
-  else { sp.style.display='none'; if(video.srcObject) video.style.display='block'; document.getElementById('captureBtn').textContent='촬영'; }
+  const curAngle=ANGLES[state.currentCaptureIndex];
+  document.getElementById('captureHint').textContent=HINTS[curAngle];
+  document.getElementById('capHintSmall').textContent=ANGLE_LABELS[curAngle]+ ' 촬영';
+  document.getElementById('toStyleBtn').disabled=doneCount<1;
+  // show/hide preview
+  const shot=state.shots[curAngle];
+  const sp=document.getElementById('shotPreview');
+  if(shot){sp.src=shot;sp.style.display='block';video.style.display='none';}
+  else{sp.style.display='none';if(cameraStream)video.style.display='block';}
 }
 updateAngleUI();
 
 function jumpToAngle(i){ state.currentCaptureIndex=i; updateAngleUI(); }
 
 function captureCurrentAngle(){
-  const angle = ANGLES[state.currentCaptureIndex];
-  if(video.style.display==='block' && video.videoWidth){
-    const c = document.createElement('canvas');
+  const angle=ANGLES[state.currentCaptureIndex];
+  if(state.shots[angle]){ retakeCurrent(); return; }
+  if(video.style.display!=='none' && video.videoWidth){
+    const c=document.createElement('canvas');
     c.width=video.videoWidth; c.height=video.videoHeight;
-    c.getContext('2d').drawImage(video,0,0);
-    state.shots[angle] = c.toDataURL('image/jpeg',0.85);
-    advanceCapture();
+    const ctx=c.getContext('2d');
+    ctx.translate(c.width,0); ctx.scale(-1,1); // mirror
+    ctx.drawImage(video,0,0);
+    state.shots[angle]=c.toDataURL('image/jpeg',0.85);
+    // auto advance
+    if(state.currentCaptureIndex<3) state.currentCaptureIndex++;
+    updateAngleUI();
   } else { showToast('카메라가 준비되지 않았어요.'); }
 }
+
 function retakeCurrent(){
-  const angle = ANGLES[state.currentCaptureIndex];
+  const angle=ANGLES[state.currentCaptureIndex];
   state.shots[angle]=null; state.hairCanvases[angle]=null; state.hairMasks[angle]=null;
+  aiAnalysis=null;
   updateAngleUI();
 }
-function advanceCapture(){
-  updateAngleUI();
-  if(state.currentCaptureIndex<3){ state.currentCaptureIndex++; updateAngleUI(); }
-}
+
 function handleFileUpload(e){
   const file=e.target.files[0]; if(!file) return;
   const reader=new FileReader();
-  reader.onload=ev=>{ state.shots[ANGLES[state.currentCaptureIndex]]=ev.target.result; advanceCapture(); };
+  reader.onload=ev=>{
+    state.shots[ANGLES[state.currentCaptureIndex]]=ev.target.result;
+    if(state.currentCaptureIndex<3) state.currentCaptureIndex++;
+    updateAngleUI();
+  };
   reader.readAsDataURL(file);
   e.target.value='';
 }
 
-/* ============================================================
+/* ════════════════════════════════════════
    STYLE SELECT
-   ============================================================ */
+════════════════════════════════════════ */
 function buildStyleGrid(){
   const grid=document.getElementById('styleGrid');
   grid.innerHTML='';
@@ -770,7 +684,7 @@ function buildStyleGrid(){
     card.className='style-card'; card.id='style-'+st.id;
     card.onclick=()=>selectStyle(st.id);
     card.innerHTML=`
-      <div class="icon-box">${styleIconSVG(st)}</div>
+      <div class="style-icon-box">${styleIconSVG(st)}</div>
       <div class="name">${st.name}</div>
       <div class="tags">${st.tags}</div>
       <div class="ai-rec">★ AI 추천</div>`;
@@ -781,25 +695,25 @@ function styleIconSVG(st){
   let s=''; const n=14;
   for(let i=0;i<n;i++){
     const t=i/(n-1), x=20+t*60;
-    const amp=(st.curl/100)*14, len=20+(st.length/100)*55;
+    const amp=(st.curl/100)*14, len=16+(st.length/100)*50;
     const mx=x+Math.sin(t*6)*amp, ex=x+Math.sin(t*6+1)*amp*1.3;
-    s+=`<path d="M ${x} 18 Q ${mx} ${18+len*0.5} ${ex} ${18+len}" stroke="${st.colorHex}" stroke-width="2" fill="none" stroke-linecap="round" opacity="0.85"/>`;
+    s+=`<path d="M ${x} 16 Q ${mx} ${16+len*0.5} ${ex} ${16+len}" stroke="${st.colorHex}" stroke-width="2.5" fill="none" stroke-linecap="round" opacity="0.9"/>`;
   }
-  return `<svg viewBox="0 0 100 100" width="100%" height="100%"><circle cx="50" cy="14" r="10" fill="#3A332B"/>${s}</svg>`;
+  return `<svg viewBox="0 0 100 90" width="100%" height="100%"><circle cx="50" cy="12" r="9" fill="#3A332B"/>${s}</svg>`;
 }
 function selectStyle(id){
-  state.selectedStyle = STYLES.find(s=>s.id===id);
+  state.selectedStyle=STYLES.find(s=>s.id===id);
   document.querySelectorAll('.style-card').forEach(c=>c.classList.remove('selected'));
   document.getElementById('style-'+id).classList.add('selected');
   document.getElementById('toAdjustBtn').disabled=false;
-  state.sliders={length:state.selectedStyle.length, curl:state.selectedStyle.curl, volume:state.selectedStyle.volume, thickness:50};
+  state.sliders={length:state.selectedStyle.length,curl:state.selectedStyle.curl,volume:state.selectedStyle.volume,thickness:50};
   syncSliderUI();
 }
 buildStyleGrid();
 
-/* ============================================================
+/* ════════════════════════════════════════
    SLIDERS
-   ============================================================ */
+════════════════════════════════════════ */
 function syncSliderUI(){
   ['length','curl','volume','thickness'].forEach(k=>{
     document.getElementById('slider-'+k).value=state.sliders[k];
@@ -815,36 +729,199 @@ function onSlider(key,val){
 }
 function resetSliders(){
   if(!state.selectedStyle) return;
-  state.sliders={length:state.selectedStyle.length, curl:state.selectedStyle.curl, volume:state.selectedStyle.volume, thickness:50};
+  state.sliders={length:state.selectedStyle.length,curl:state.selectedStyle.curl,volume:state.selectedStyle.volume,thickness:50};
   syncSliderUI();
 }
 
-/* ============================================================
+/* ════════════════════════════════════════
    ANGLE SWITCH
-   ============================================================ */
+════════════════════════════════════════ */
 function renderAngleSwitch(targetId){
-  const el=document.getElementById(targetId); el.innerHTML='';
+  const el=document.getElementById(targetId); if(!el) return; el.innerHTML='';
   ANGLES.forEach(a=>{
     const btn=document.createElement('button');
     btn.textContent=ANGLE_LABELS[a];
     btn.className=state.currentViewAngle===a?'on':'';
-    btn.onclick=()=>{ state.currentViewAngle=a; renderAngleSwitch(targetId); drawAdjustPreview(); drawCompare(); };
+    btn.onclick=()=>{
+      state.currentViewAngle=a;
+      renderAngleSwitch('angleSwitch'); renderAngleSwitch('angleSwitchCompare');
+      drawAdjustPreview(); drawCompare();
+    };
     el.appendChild(btn);
   });
 }
 
-/* ============================================================
+/* ════════════════════════════════════════
+   RENDER / CANVAS
+════════════════════════════════════════ */
+function syncCanvasSize(canvas){
+  const rect=canvas.getBoundingClientRect();
+  if(rect.width>0&&rect.height>0){canvas.width=rect.width;canvas.height=rect.height;}
+}
+
+function renderAdjustFrame(canvas,angle){
+  syncCanvasSize(canvas);
+  const ctx=canvas.getContext('2d');
+  const w=canvas.width,h=canvas.height;
+  ctx.clearRect(0,0,w,h);
+  const shotUrl=state.shots[angle];
+  const hairC=state.hairCanvases[angle];
+  const drawHair=()=>{
+    if(!hairC) return;
+    const {length,curl,volume,thickness}=state.sliders;
+    const srcH=hairC.height*0.55, srcW=hairC.width;
+    const scaleY=0.7+(length/100)*1.3;
+    const scaleX=0.85+(volume/100)*0.5;
+    const curlAmt=(curl/100)*18;
+    const opacity=0.55+(thickness/100)*0.45;
+    ctx.save(); ctx.globalAlpha=opacity;
+    const segs=20;
+    for(let s=0;s<segs;s++){
+      const p=s/segs, np=(s+1)/segs;
+      const srcY=p*srcH, srcNY=np*srcH, segH=srcNY-srcY;
+      const waveX=Math.sin(p*Math.PI*2.5)*curlAmt*p;
+      const dstY=p*srcH*scaleY, dstNY=np*srcH*scaleY;
+      const dstW=srcW*scaleX, dstX=w/2-dstW/2+waveX;
+      ctx.drawImage(hairC,0,srcY,srcW,segH,dstX,dstY,dstW,dstNY-dstY);
+    }
+    ctx.restore();
+    if(state.selectedStyle){
+      ctx.save(); ctx.globalCompositeOperation='multiply'; ctx.globalAlpha=0.3;
+      ctx.fillStyle=state.selectedStyle.colorHex;
+      ctx.fillRect(0,0,w,srcH*scaleY);
+      ctx.restore();
+    }
+  };
+  if(shotUrl){
+    const img=new Image();
+    img.onload=()=>{
+      const ir=img.width/img.height,cr=w/h;
+      let dw,dh,dx,dy;
+      if(ir>cr){dh=h;dw=h*ir;dx=(w-dw)/2;dy=0;}else{dw=w;dh=w/ir;dx=0;dy=(h-dh)/2;}
+      ctx.drawImage(img,dx,dy,dw,dh);
+      drawHair();
+    };
+    img.src=shotUrl;
+  } else {
+    ctx.fillStyle='#211D19';ctx.fillRect(0,0,w,h);
+    ctx.fillStyle='#52483D';ctx.font='13px Inter';ctx.textAlign='center';
+    ctx.fillText('이 각도의 사진이 없습니다',w/2,h/2);
+    drawHair();
+  }
+}
+
+function drawAdjustPreview(){
+  if(currentScreen==='adjust') renderAdjustFrame(document.getElementById('adjustCanvas'),state.currentViewAngle);
+}
+
+/* ════════════════════════════════════════
+   COMPARE
+════════════════════════════════════════ */
+function drawCompare(){
+  if(currentScreen!=='compare') return;
+  const angle=state.currentViewAngle;
+  const baseC=document.getElementById('compareBaseCanvas');
+  const topC=document.getElementById('compareTopCanvas');
+  syncCanvasSize(baseC); syncCanvasSize(topC);
+  const ctxB=baseC.getContext('2d');
+  ctxB.clearRect(0,0,baseC.width,baseC.height);
+  const shotUrl=state.shots[angle];
+  if(shotUrl){
+    const img=new Image();
+    img.onload=()=>{
+      const w=baseC.width,h=baseC.height;
+      const ir=img.width/img.height,cr=w/h;
+      let dw,dh,dx,dy;
+      if(ir>cr){dh=h;dw=h*ir;dx=(w-dw)/2;dy=0;}else{dw=w;dh=w/ir;dx=0;dy=(h-dh)/2;}
+      ctxB.drawImage(img,dx,dy,dw,dh);
+    };
+    img.src=shotUrl;
+  }
+  renderAdjustFrame(topC,angle);
+  positionCompareTop();
+}
+
+function positionCompareTop(){
+  const base=document.getElementById('compareBaseCanvas');
+  const top=document.getElementById('compareTopCanvas');
+  const rect=base.getBoundingClientRect();
+  top.style.width=rect.width+'px'; top.style.height=rect.height+'px';
+}
+
+// divider drag
+const divider=document.getElementById('compareDivider');
+const clip=document.getElementById('compareClip');
+let dragging=false;
+divider.addEventListener('pointerdown',e=>{dragging=true;e.preventDefault();});
+window.addEventListener('pointerup',()=>{dragging=false;});
+window.addEventListener('pointermove',e=>{
+  if(!dragging) return;
+  const pane=document.getElementById('comparePane');
+  const rect=pane.getBoundingClientRect();
+  let pct=((e.clientX-rect.left)/rect.width)*100;
+  pct=Math.max(4,Math.min(96,pct));
+  divider.style.left=pct+'%'; clip.style.width=pct+'%';
+});
+window.addEventListener('resize',positionCompareTop);
+
+/* ════════════════════════════════════════
+   AI ANALYSIS
+════════════════════════════════════════ */
+async function analyzeWithClaude(){
+  const frontImg=state.shots['front']; if(!frontImg) return;
+  showAI('AI가 얼굴을 분석하고 있어요…','얼굴형 · 머리색 · 스타일 추천');
+  const base64=frontImg.split(',')[1];
+  const mediaType=frontImg.startsWith('data:image/png')?'image/png':'image/jpeg';
+  const prompt=`미용실 고객 정면 사진입니다. 아래 JSON만 응답하세요. 다른 텍스트 없이.
+{
+  "hairColor": "black|brown|blonde|red|grey|colored",
+  "faceShape": "oval|round|square|heart|long",
+  "currentLength": "short|medium|long",
+  "recommendedStyles": ["id1","id2"],
+  "advice": "한국어 2문장 이내 스타일 조언"
+}
+스타일 id 목록: bob, long-wave, pixie, layered, curly, sleek, shag, lob`;
+  try{
+    const res=await fetch('https://api.anthropic.com/v1/messages',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({model:'claude-sonnet-4-6',max_tokens:500,messages:[{role:'user',content:[
+        {type:'image',source:{type:'base64',media_type:mediaType,data:base64}},
+        {type:'text',text:prompt}
+      ]}]})
+    });
+    const data=await res.json();
+    const raw=data.content.map(b=>b.text||'').join('').replace(/```json|```/g,'').trim();
+    aiAnalysis=JSON.parse(raw);
+    document.querySelectorAll('.style-card').forEach(c=>c.classList.remove('ai-recommended'));
+    (aiAnalysis.recommendedStyles||[]).forEach(id=>{
+      const el=document.getElementById('style-'+id); if(el) el.classList.add('ai-recommended');
+    });
+    const faceMap={oval:'계란형',round:'둥근형',square:'각진형',heart:'하트형',long:'긴형'};
+    const colorMap={black:'블랙',brown:'브라운',blonde:'블론드',red:'레드',grey:'그레이',colored:'컬러'};
+    const lenMap={short:'숏',medium:'미디엄',long:'롱'};
+    document.getElementById('aiAnalysisText').textContent=aiAnalysis.advice||'';
+    const tags=[faceMap[aiAnalysis.faceShape]||'',colorMap[aiAnalysis.hairColor]||'',lenMap[aiAnalysis.currentLength]||''];
+    document.getElementById('aiAnalysisTags').innerHTML=tags.filter(Boolean).map(t=>`<span class="ai-tag">${t}</span>`).join('');
+    document.getElementById('aiAnalysisCard').style.display='flex';
+  }catch(e){
+    showToast('AI 분석 실패. 수동으로 조정해주세요.');
+  }
+  hideAI();
+}
+
+/* ════════════════════════════════════════
    VOICE
-   ============================================================ */
+════════════════════════════════════════ */
 function toggleVoice(){
   if(listening){stopVoice();return;}
   const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
   if(!SR){showToast('음성인식은 Chrome에서만 작동해요.');return;}
   recognition=new SR();
-  recognition.lang='ko-KR'; recognition.continuous=true; recognition.interimResults=false;
-  recognition.onresult=e=>{ const t=e.results[e.results.length-1][0].transcript.trim(); handleVoiceCommand(t); };
+  recognition.lang='ko-KR';recognition.continuous=true;recognition.interimResults=false;
+  recognition.onresult=e=>{ const t=e.results[e.results.length-1][0].transcript.trim(); handleVoiceCmd(t); };
   recognition.onerror=()=>stopVoice();
-  recognition.onend=()=>{ if(listening){try{recognition.start();}catch(e){}} };
+  recognition.onend=()=>{if(listening){try{recognition.start();}catch(e){}}};
   recognition.start(); listening=true;
   document.getElementById('voiceBtn').classList.add('listening');
   document.getElementById('voiceBtnLabel').textContent='듣는 중… (탭하여 종료)';
@@ -855,15 +932,15 @@ function stopVoice(){
   document.getElementById('voiceBtn').classList.remove('listening');
   document.getElementById('voiceBtnLabel').textContent='음성으로 조정하기';
 }
-function handleVoiceCommand(text){
+function handleVoiceCmd(text){
   document.getElementById('voiceTranscript').innerHTML='인식됨: <b>"'+text+'"</b>';
   const t=text.replace(/\s/g,'');
   const STEP=15; let matched=false;
-  const adj=(key,delta)=>{ state.sliders[key]=Math.max(0,Math.min(100,state.sliders[key]+delta)); syncSliderUI(); matched=true; };
+  const adj=(key,delta)=>{state.sliders[key]=Math.max(0,Math.min(100,state.sliders[key]+delta));syncSliderUI();matched=true;};
   const has=arr=>arr.some(kw=>t.includes(kw));
-  if(has(['길게','늘려','길이늘','길이키','더길','길이를늘'])) adj('length',STEP);
+  if(has(['길게','늘려','길이늘','길이키','더길'])) adj('length',STEP);
   else if(has(['짧게','줄여','길이줄','길이내','더짧'])) adj('length',-STEP);
-  else if(has(['컬추가','웨이브추가','컬올','웨이브올','곱슬추가','더컬'])) adj('curl',STEP);
+  else if(has(['컬추가','웨이브추가','컬올','웨이브올','더컬'])) adj('curl',STEP);
   else if(has(['펴줘','컬줄','웨이브줄','스트레이트','직모'])) adj('curl',-STEP);
   else if(has(['볼륨추가','볼륨올','볼륨더','풍성','볼륨업'])) adj('volume',STEP);
   else if(has(['볼륨줄','볼륨내','볼륨낮','납작'])) adj('volume',-STEP);
@@ -871,7 +948,7 @@ function handleVoiceCommand(text){
   else if(has(['숱적','숱줄','숱내'])) adj('thickness',-STEP);
   else if(t.includes('다음각도')||t.includes('다음앵글')){ cycleAngle(1); matched=true; }
   else if(t.includes('이전각도')||t.includes('이전앵글')){ cycleAngle(-1); matched=true; }
-  else if(t.includes('비교')||t.includes('완료')){ goToScreen('compare'); matched=true; }
+  else if(t.includes('비교')||t.includes('완료')){ navTo('compare'); matched=true; }
   else if(t.includes('초기화')||t.includes('리셋')){ resetSliders(); matched=true; }
   if(!matched) showToast('명령을 이해하지 못했어요: "'+text+'"');
 }
@@ -882,15 +959,34 @@ function cycleAngle(dir){
   drawAdjustPreview(); drawCompare();
 }
 
-/* ============================================================
-   TOAST
-   ============================================================ */
+/* ════════════════════════════════════════
+   HELPERS
+════════════════════════════════════════ */
+function showAI(text,sub){
+  document.getElementById('aiOverlayText').textContent=text;
+  document.getElementById('aiOverlaySub').textContent=sub;
+  document.getElementById('aiOverlay').classList.remove('hidden');
+}
+function hideAI(){ document.getElementById('aiOverlay').classList.add('hidden'); }
+
 let toastTimer;
 function showToast(msg){
   const el=document.getElementById('toast');
   el.textContent=msg; el.classList.add('show');
   clearTimeout(toastTimer);
-  toastTimer=setTimeout(()=>el.classList.remove('show'),2600);
+  toastTimer=setTimeout(()=>el.classList.remove('show'),2800);
+}
+
+function startNewCustomer(){
+  aiAnalysis=null;
+  ANGLES.forEach(a=>{state.shots[a]=null;state.hairCanvases[a]=null;state.hairMasks[a]=null;});
+  state.selectedStyle=null; state.currentCaptureIndex=0;
+  document.getElementById('aiAnalysisCard').style.display='none';
+  document.querySelectorAll('.style-card').forEach(c=>c.classList.remove('ai-recommended','selected'));
+  document.getElementById('toAdjustBtn').disabled=true;
+  ['style','adjust','compare'].forEach(id=>{ const t=document.getElementById('nav-'+id); if(t) t.disabled=true; });
+  updateAngleUI();
+  navTo('capture');
 }
 </script>
 </body>
