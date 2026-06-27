@@ -409,6 +409,7 @@ const state = {
   shots: {front:null,left:null,right:null,back:null},
   hairMasks: {front:null,left:null,right:null,back:null},
   hairCanvases: {front:null,left:null,right:null,back:null},
+  baseCanvases: {front:null,left:null,right:null,back:null},
   currentCaptureIndex: 0,
   selectedStyle: null,
   currentViewAngle: 'front',
@@ -448,7 +449,8 @@ async function initSegmenter(){
     segmenter = await bodySegmentation.createSegmenter(
       bodySegmentation.SupportedModels.MediaPipeSelfieSegmentation,
       {
-        runtime: 'tfjs',  // mediapipe 런타임은 CORS 문제로 GitHub Pages에서 wasm 로드 실패
+        runtime: 'mediapipe',
+        solutionPath: '/haircut-helper/mediapipe/selfie_segmentation',
         modelType: 'general',
       }
     );
@@ -500,33 +502,53 @@ async function extractHairMask(angle){
           0.5    // threshold
         );
 
-        // 결과 캔버스 (원본 해상도)
-        const hairC = document.createElement('canvas');
-        hairC.width=img.width; hairC.height=img.height;
-        const hCtx = hairC.getContext('2d');
-        hCtx.drawImage(img,0,0);
-
         // 마스크를 원본 해상도로 스케일업
         const maskC = document.createElement('canvas');
         maskC.width=w; maskC.height=h;
         maskC.getContext('2d').putImageData(maskData,0,0);
 
-        // destination-in으로 사람 영역만 남기기
+        const fullMaskC = document.createElement('canvas');
+        fullMaskC.width=img.width; fullMaskC.height=img.height;
+        fullMaskC.getContext('2d').drawImage(maskC,0,0,img.width,img.height);
+
+        // ── 머리 영역만 추출 (상단 + 마스크 교집합) ──
+        const hairC = document.createElement('canvas');
+        hairC.width=img.width; hairC.height=img.height;
+        const hCtx = hairC.getContext('2d');
+        hCtx.drawImage(img,0,0);
+
+        // destination-in으로 세그멘트 영역만 남기기
         hCtx.save();
         hCtx.globalCompositeOperation = 'destination-in';
-        hCtx.drawImage(maskC, 0, 0, img.width, img.height);
+        hCtx.drawImage(fullMaskC, 0, 0);
         hCtx.restore();
 
-        // 추가로 하단 60% 제거 (몸통 영역 제거, 머리만 남기기)
+        // 하단 제거 + 얼굴 중심부 추가 제거 (얼굴 영역 최소화)
         const iData = hCtx.getImageData(0,0,img.width,img.height);
-        const cutY = img.height * 0.52;
-        for(let i=0;i<iData.data.length;i+=4){
+        const cutY = img.height * 0.48;
+        const d = iData.data;
+        for(let i=0;i<d.length;i+=4){
+          const px = (i/4) % img.width;
           const py = Math.floor((i/4)/img.width);
-          if(py > cutY) iData.data[i+3]=0;
+          if(py > cutY){ d[i+3]=0; continue; }
+          // 가로 중심 25~75% 구간은 더 일찍 잘라냄 (이마 아래 얼굴 제거)
+          const cx = px/img.width;
+          if(cx>0.25 && cx<0.75 && py > cutY*0.72){ d[i+3]=0; }
         }
         hCtx.putImageData(iData,0,0);
 
-        state.hairCanvases[angle] = hairC;
+        // ── 원본에서 머리 영역 제거한 베이스 캔버스 ──
+        const baseC = document.createElement('canvas');
+        baseC.width=img.width; baseC.height=img.height;
+        const bCtx = baseC.getContext('2d');
+        bCtx.drawImage(img,0,0);
+        bCtx.save();
+        bCtx.globalCompositeOperation = 'destination-out';
+        bCtx.drawImage(hairC,0,0);
+        bCtx.restore();
+
+        state.hairCanvases[angle] = hairC;   // 머리카락 레이어
+        state.baseCanvases[angle] = baseC;   // 머리 없는 원본
         state.hairMasks[angle] = iData;
         resolve(true);
       }catch(e){
@@ -656,7 +678,7 @@ function captureCurrentAngle(){
 
 function retakeCurrent(){
   const angle=ANGLES[state.currentCaptureIndex];
-  state.shots[angle]=null; state.hairCanvases[angle]=null; state.hairMasks[angle]=null;
+  state.shots[angle]=null; state.hairCanvases[angle]=null; state.hairMasks[angle]=null; state.baseCanvases[angle]=null;
   aiAnalysis=null;
   updateAngleUI();
 }
@@ -829,46 +851,44 @@ function drawHairSVGFallback(ctx, w, h, fit){
   ctx.restore();
 }
 
-// 핵심 렌더 함수 — 동기적으로 실행, 이미지는 캐시에서
+// 핵심 렌더 함수
 function renderFrame(canvas, angle){
   syncCanvasSize(canvas);
   const ctx = canvas.getContext('2d');
   const w = canvas.width, h = canvas.height;
+  if(w===0||h===0){ setTimeout(()=>renderFrame(canvas,angle),50); return; } // 3) 블랭크 수정
 
   getCachedImg(angle, (img)=>{
     ctx.clearRect(0,0,w,h);
 
-    let fit = {dw:w,dh:h,dx:0,dy:0};
-    if(img){
-      fit = drawImgOnCanvas(ctx, img, w, h);
-    } else {
-      ctx.fillStyle='#211D19'; ctx.fillRect(0,0,w,h);
-      ctx.fillStyle='#52483D'; ctx.font='13px Inter'; ctx.textAlign='center';
-      ctx.fillText('이 각도의 사진이 없습니다', w/2, h/2);
-    }
-
     const hairC = state.hairCanvases[angle];
-    if(hairC){
-      // ── 세그멘테이션 있음: 실제 머리카락 변형 합성 ──
-      const {length,curl,volume,thickness} = state.sliders;
-      const srcH = hairC.height * 0.52;
-      const srcW = hairC.width;
-      const scaleY = 0.6 + (length/100)*1.4;
-      const scaleX = 0.8  + (volume/100)*0.55;
-      const curlAmt = (curl/100)*22;
-      const opacity = 0.5 + (thickness/100)*0.5;
+    const baseC = state.baseCanvases[angle];
 
+    if(hairC && baseC){
+      // ── 세그멘테이션 성공: 베이스(머리 없는 원본) 먼저 그리기 ──
+      const fit = drawImgOnCanvas(ctx, baseC, w, h);
+
+      // 슬라이더 값 적용
+      const {length,curl,volume,thickness} = state.sliders;
+      const srcH = hairC.height; // 전체 높이 사용 (이미 상단만 남김)
+      const srcW = hairC.width;
+      const scaleY = 0.7 + (length/100)*1.2;
+      const scaleX = 0.85 + (volume/100)*0.4;
+      const curlAmt = (curl/100)*18;
+      const opacity = 0.55 + (thickness/100)*0.45;
+
+      // 헤어 레이어 합성 (세그멘트된 머리카락을 변형해서 올리기)
       ctx.save();
       ctx.globalAlpha = opacity;
-      const segs = 24;
+      const segs = 28;
       for(let s=0;s<segs;s++){
         const p=s/segs, np=(s+1)/segs;
         const srcY=p*srcH, srcNY=np*srcH, segH=Math.max(1,srcNY-srcY);
-        const waveX = Math.sin(p*Math.PI*3)*curlAmt*p;
-        const dstY = fit.dy + p*srcH*scaleY;
-        const dstNY= fit.dy + np*srcH*scaleY;
+        const waveX = Math.sin(p*Math.PI*2.5)*curlAmt*p;
         const dstW = srcW * scaleX * (fit.dw/hairC.width);
         const dstX = fit.dx + fit.dw/2 - dstW/2 + waveX;
+        const dstY = fit.dy + p*srcH*scaleY*(fit.dh/hairC.height);
+        const dstNY= fit.dy + np*srcH*scaleY*(fit.dh/hairC.height);
         ctx.drawImage(hairC, 0,srcY,srcW,segH, dstX,dstY,dstW,Math.max(1,dstNY-dstY));
       }
       ctx.restore();
@@ -877,14 +897,19 @@ function renderFrame(canvas, angle){
       if(state.selectedStyle){
         ctx.save();
         ctx.globalCompositeOperation='multiply';
-        ctx.globalAlpha=0.25;
+        ctx.globalAlpha=0.2;
         ctx.fillStyle=state.selectedStyle.colorHex;
-        ctx.fillRect(fit.dx, fit.dy, fit.dw, srcH*scaleY);
+        ctx.fillRect(fit.dx, fit.dy, fit.dw, srcH*scaleY*(fit.dh/hairC.height));
         ctx.restore();
       }
-    } else if(img && state.selectedStyle){
-      // ── 세그멘테이션 없음: SVG 선 오버레이 폴백 ──
-      drawHairSVGFallback(ctx, w, h, fit);
+    } else if(img){
+      // ── 세그멘테이션 없음: 원본 그대로 표시 ──
+      const fit = drawImgOnCanvas(ctx, img, w, h);
+      if(state.selectedStyle) drawHairSVGFallback(ctx, w, h, fit);
+    } else {
+      ctx.fillStyle='#211D19'; ctx.fillRect(0,0,w,h);
+      ctx.fillStyle='#52483D'; ctx.font='13px Inter'; ctx.textAlign='center';
+      ctx.fillText('이 각도의 사진이 없습니다', w/2, h/2);
     }
   });
 }
@@ -1059,7 +1084,7 @@ function showToast(msg){
 
 function startNewCustomer(){
   aiAnalysis=null;
-  ANGLES.forEach(a=>{state.shots[a]=null;state.hairCanvases[a]=null;state.hairMasks[a]=null;});
+  ANGLES.forEach(a=>{state.shots[a]=null;state.hairCanvases[a]=null;state.hairMasks[a]=null;state.baseCanvases[a]=null;});
   state.selectedStyle=null; state.currentCaptureIndex=0;
   document.getElementById('aiAnalysisCard').style.display='none';
   document.querySelectorAll('.style-card').forEach(c=>c.classList.remove('ai-recommended','selected'));
