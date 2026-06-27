@@ -395,6 +395,7 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:22px;heigh
 <!-- TensorFlow.js + Body Segmentation (Hair 모델) -->
 <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-core@4.17.0/dist/tf-core.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-backend-webgl@4.17.0/dist/tf-backend-webgl.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-converter@4.17.0/dist/tf-converter.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/body-segmentation@1.0.1/dist/body-segmentation.min.js"></script>
 <script>
 /* ════════════════════════════════════════
@@ -447,9 +448,8 @@ async function initSegmenter(){
     segmenter = await bodySegmentation.createSegmenter(
       bodySegmentation.SupportedModels.MediaPipeSelfieSegmentation,
       {
-        runtime: 'mediapipe',
-        solutionPath: 'https://cdn.jsdelivr.net/npm/@mediapipe/selfie_segmentation',
-        modelType: 'general', // 'general' | 'landscape'
+        runtime: 'tfjs',  // mediapipe 런타임은 CORS 문제로 GitHub Pages에서 wasm 로드 실패
+        modelType: 'general',
       }
     );
     segmenterReady = true;
