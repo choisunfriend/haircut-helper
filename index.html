@@ -2492,15 +2492,30 @@ function drawHairStrands(ctx, fit, scalpY, hairEndY, maskW, maskH, hairCanvas, o
           dir = baseDir + delta * w;
         } else {
           // 결방향을 못 믿는 구간(coherence 낮음 — 대부분 마스크 밖 ext 구간에서 발생).
-          // 이전 방향을 그대로 얼리면(freeze) 마스크 경계 근처의 미세한 오차가
-          // 되돌아오는 힘 없이 그대로 유지되어, delta가 클수록 옆으로 길게 새어나간다.
-          // → 얼리지 않고 매 스텝 자연스러운 아래쪽(PI/2)으로 서서히 복원시킨다.
+          // "중력"으로 명명: 실제 머리카락도 뿌리 쪽은 결방향(웨이브·컬)을 유지하지만
+          // 끝으로 갈수록 자체 무게 때문에 점점 아래로 처짐. 그래서 이 복원력을
+          // 상수로 고정하지 않고 진행할수록(s/steps↑) 커지게 해서, 마스크를 막
+          // 벗어난 시점의 baseDir이 대각선이어도 끝에 가서는 결국 아래쪽으로
+          // 붙잡히도록 함. (예전엔 0.15 고정이라 대각선 방향을 거의 그대로
+          // 유지한 채 곧게 뻗어나가 눈썹을 가로지르는 등의 문제가 있었음)
           let restore = Math.PI/2 - baseDir;
           while(restore > Math.PI) restore -= Math.PI*2;
           while(restore < -Math.PI) restore += Math.PI*2;
-          dir = baseDir + restore * 0.15;
+          const gravityPull = 0.15 + (s/steps) * 0.35; // 시작 0.15 → 끝 0.5
+          dir = baseDir + restore * gravityPull;
         }
       }
+
+      // 방향 상한(clamp): 결방향 오판·중력 부족 등 어떤 이유로든 진행 방향이
+      // 아래(PI/2) 기준 좌우 60도를 넘어서지 못하게 강제. 눈썹을 가로지르거나
+      // 배경으로 옆·위로 새는 걸 구조적으로 막는 안전장치.
+      const MAX_DIR_DEVIATION = Math.PI/3; // 60도
+      let devFromDown = dir - Math.PI/2;
+      while(devFromDown > Math.PI) devFromDown -= Math.PI*2;
+      while(devFromDown < -Math.PI) devFromDown += Math.PI*2;
+      if(devFromDown > MAX_DIR_DEVIATION) dir = Math.PI/2 + MAX_DIR_DEVIATION;
+      else if(devFromDown < -MAX_DIR_DEVIATION) dir = Math.PI/2 - MAX_DIR_DEVIATION;
+
       baseDir = dir; // 다음 스텝 기준은 curl 적용 전 방향으로 저장 (누적 방지)
 
       // curl 슬라이더 + 자연스러운 미세 흔들림 추가 (완전 직선 방지)
