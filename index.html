@@ -884,7 +884,7 @@ initSegmenter();
 // 실제 MediaPipe hair_segmenter 마스크 특성에 맞춰 검증된 적이 없음.
 // MediaPipe가 정상 동작하는 지금, 일단 다 끄고 순수 MediaPipe 마스크 + 최소 노이즈 정리만
 // 확인한 뒤, 실제로 필요한 것만 골라 다시 켠다.
-const ENABLE_LANDMARK_POSTPROCESS = false;
+const ENABLE_LANDMARK_POSTPROCESS = true;
 
 async function extractHairMask(angle){
   const dataUrl = state.shots[angle];
@@ -1116,6 +1116,9 @@ async function extractHairMask(angle){
         // 사이드 하단 인식 문제는 결방향 인식(structure tensor) 작업 이후 별도로 재검토
         hairMaskBuf = fillColumnGaps(hairMaskBuf, w, h, 6);
         hairMaskBuf = morphClose(hairMaskBuf, w, h, 3);
+        // 본체 머리카락과 이어지지 않은 고립된 작은 오탐 덩어리(안경테, 눈썹, 옷깃 등)
+        // 제거 — 가장 큰 덩어리 면적의 3% 미만인 컴포넌트는 버림
+        hairMaskBuf = keepLargestComponents(hairMaskBuf, w, h, 0.03);
 
         const pixelCount = hairMaskBuf.filter(v=>v>0).length;
         const lmDiagPart = lmEstimated ? `추정${window.__lmDiag ? '('+window.__lmDiag+')' : ''}` : '실측';
@@ -1409,6 +1412,56 @@ function fillColumnGaps(buf, w, h, maxGap){
         lastOn=y;
       }
     }
+  }
+  return out;
+}
+
+// keepLargestComponents: 마스크를 8방향 연결 요소로 분리하고, 가장 큰 덩어리(주로
+// "실제 머리") 대비 일정 비율보다 작은 고립된 섬은 지워버린다.
+// 배경/옷깃/안경테 등을 얇게 오탐한 작은 덩어리가 본체 머리카락과 이어지지 않은 채
+// 따로 떠 있는 경우, scalpY는 "마스크만 있으면 유효 컬럼"으로 인정하기 때문에
+// 그 위에도 정상적으로 가닥이 심어져 "머리에서 떨어진 덩어리"로 보이는 문제가 있었음.
+// minRatio: 최대 덩어리 면적 대비 이 비율보다 작은 컴포넌트는 제거 (기본 3%)
+function keepLargestComponents(buf, w, h, minRatio){
+  const n = w*h;
+  const labels = new Int32Array(n).fill(-1);
+  const areas = [];
+  const stack = new Int32Array(n); // BFS/DFS용 스택 (최악의 경우 전체 픽셀)
+  let nextLabel = 0;
+  for(let start=0; start<n; start++){
+    if(buf[start]===0 || labels[start]>=0) continue;
+    let sp = 0;
+    stack[sp++] = start;
+    labels[start] = nextLabel;
+    let area = 0;
+    while(sp>0){
+      const p = stack[--sp];
+      area++;
+      const px = p % w, py = (p - px) / w;
+      // 8방향 이웃
+      for(let dy=-1; dy<=1; dy++){
+        for(let dx=-1; dx<=1; dx++){
+          if(dx===0 && dy===0) continue;
+          const nx = px+dx, ny = py+dy;
+          if(nx<0||nx>=w||ny<0||ny>=h) continue;
+          const np = ny*w+nx;
+          if(buf[np]>0 && labels[np]<0){
+            labels[np] = nextLabel;
+            stack[sp++] = np;
+          }
+        }
+      }
+    }
+    areas.push(area);
+    nextLabel++;
+  }
+  if(areas.length <= 1) return buf; // 덩어리가 하나뿐이면(또는 없으면) 그대로
+  const maxArea = Math.max(...areas);
+  const threshold = maxArea * minRatio;
+  const out = new Uint8Array(n);
+  for(let i=0;i<n;i++){
+    const lbl = labels[i];
+    if(lbl>=0 && areas[lbl] >= threshold) out[i] = buf[i];
   }
   return out;
 }
