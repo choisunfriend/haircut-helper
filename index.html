@@ -2495,25 +2495,11 @@ function drawHairStrands(ctx, fit, scalpY, hairEndY, maskW, maskH, hairCanvas, o
           // 이전 방향을 그대로 얼리면(freeze) 마스크 경계 근처의 미세한 오차가
           // 되돌아오는 힘 없이 그대로 유지되어, delta가 클수록 옆으로 길게 새어나간다.
           // → 얼리지 않고 매 스텝 자연스러운 아래쪽(PI/2)으로 서서히 복원시킨다.
-          // gravityPull: 실제 머리카락도 뿌리 쪽은 결방향(웨이브·컬)을 유지하지만
-          // 끝으로 갈수록 자체 무게 때문에 아래로 처지는 것을 흉내낸 것.
-          // 시작(s=0)엔 0.15로 약하게, 끝(s=steps)엔 0.5까지 세지게 당김.
-          const gravityPull = 0.15 + (s/steps) * 0.35;
           let restore = Math.PI/2 - baseDir;
           while(restore > Math.PI) restore -= Math.PI*2;
           while(restore < -Math.PI) restore += Math.PI*2;
-          dir = baseDir + restore * gravityPull;
+          dir = baseDir + restore * 0.15;
         }
-      }
-      // 방향 상한(clamp): 결방향/웨이브가 아무리 튀어도 아래(PI/2) 기준 좌우 60도를
-      // 절대 못 벗어나게 안전장치. 눈썹을 가로지르거나 배경으로 새는 것을 방지.
-      {
-        const maxDev = Math.PI/3; // 60도
-        let dev = dir - Math.PI/2;
-        while(dev > Math.PI) dev -= Math.PI*2;
-        while(dev < -Math.PI) dev += Math.PI*2;
-        if(dev > maxDev) dir = Math.PI/2 + maxDev;
-        else if(dev < -maxDev) dir = Math.PI/2 - maxDev;
       }
       baseDir = dir; // 다음 스텝 기준은 curl 적용 전 방향으로 저장 (누적 방지)
 
