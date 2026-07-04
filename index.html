@@ -1029,19 +1029,19 @@ async function extractHairMask(angle){
         if(ENABLE_LANDMARK_POSTPROCESS){
         {
           const yTop    = Math.max(0, lm.foreheadY * 0.95);
-          const yBottom = Math.min(1, lm.chinY * 0.92);
+          const yBottom = Math.min(1, lm.chinY * 1.05); // 턱 끝을 넘어서까지 (기존 0.92는 턱 라인이 박스 밖에 남는 문제)
           const earSpan = Math.abs(lm.rEarX - lm.lEarX);
           let xLeft, xRight;
           if(earSpan > 0.08){
             // 양쪽 귀가 충분히 떨어져 보이는 경우 (정면~약한 측면): 귀 안쪽만 지움
-            xLeft  = Math.min(lm.lEarX, lm.rEarX) + earSpan*0.12;
-            xRight = Math.max(lm.lEarX, lm.rEarX) - earSpan*0.12;
+            xLeft  = Math.min(lm.lEarX, lm.rEarX) + earSpan*0.18; // 옆(턱 모서리·관자놀이) 여유 확대 (기존 0.12)
+            xRight = Math.max(lm.lEarX, lm.rEarX) - earSpan*0.18;
           } else {
             // 거의 완전 측면(반대쪽 귀가 가려져 earSpan이 비정상적으로 작음):
             // 화면 폭 35%의 좁은 범위만 안전하게 제거 (얼굴 중심부 추정, 옆머리는 보존)
             const cx = (lm.lEarX + lm.rEarX) / 2;
-            xLeft  = cx - 0.175;
-            xRight = cx + 0.175;
+            xLeft  = cx - 0.20; // 측면 턱 라인까지 포함하도록 확대 (기존 0.175)
+            xRight = cx + 0.20;
           }
           const yS = Math.round(yTop*h), yE = Math.round(yBottom*h);
           const xS = Math.round(Math.max(0,xLeft)*w), xE = Math.round(Math.min(1,xRight)*w);
