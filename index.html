@@ -924,7 +924,7 @@ async function extractHairMask(angle){
           // 더 살리기 위해, index 1(hair) 확률맵을 직접 임계값 비교로 판정한다.
           // 기준치를 낮출수록 더 많이 잡히지만 배경 오탐도 늘어날 수 있음 — 실측
           // 데이터 보면서 조정할 예정.
-          const HAIR_CONFIDENCE_THRESHOLD = 0.3;
+          const HAIR_CONFIDENCE_THRESHOLD = 0.5; // 원상복구: 관대했던 0.3 → categoryMask argmax와 동등한 0.5로 되돌림
           const result = mpImageSegmenter.segment(srcC);
           const hairConf = result.confidenceMasks[1]; // 0=background, 1=hair
           const confArr = hairConf.getAsFloat32Array();
@@ -1074,7 +1074,7 @@ async function extractHairMask(angle){
         // (이전: 밴드가 너무 좁아 실제 촬영 조건에서 충분히 안 잡힘 → 범위 확대)
         {
           const earXs = [lm.lEarX, lm.rEarX].filter(v=>typeof v==='number');
-          const bandHalfW = 0.20; // 귀 좌우로 화면폭 20%씩 (기존 14%→확대)
+          const bandHalfW = 0.14; // 원상복구: 관대했던 20% → 원래 14%로 되돌림
           const yTopBand = Math.max(0, lm.eyeY - 0.10) * h;  // 관자놀이 위쪽까지 포함
           const yBotBand = Math.min(1, lm.earY * 1.55) * h;  // 구레나룻 아래까지 포함
           for(const ex of earXs){
