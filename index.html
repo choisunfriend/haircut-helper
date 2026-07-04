@@ -2559,7 +2559,10 @@ function drawHairStrands(ctx, fit, scalpY, hairEndY, maskW, maskH, hairCanvas, o
           let restore = Math.PI/2 - baseDir;
           while(restore > Math.PI) restore -= Math.PI*2;
           while(restore < -Math.PI) restore += Math.PI*2;
-          const gravityPull = 0.15 + (s/steps) * 0.35; // 시작 0.15 → 끝 0.5
+          // TEST: 얼굴박스 사각 블록 원인 검증용 임시 스위치. true면 중력 복원력을 0으로 만들어
+          // ext 구간이 baseDir(결방향)을 그대로 유지하게 함. 블록이 옅어지면 중력이 증폭 원인 확정.
+          const DEBUG_DISABLE_GRAVITY = true;
+          const gravityPull = DEBUG_DISABLE_GRAVITY ? 0 : (0.15 + (s/steps) * 0.35); // 시작 0.15 → 끝 0.5
           dir = baseDir + restore * gravityPull;
         }
       }
