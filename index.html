@@ -1129,23 +1129,32 @@ async function extractHairMask(angle){
           // ── 프론트(앞머리) 라인 보강: 이마 경계 쪽 잔머리도 같은 방식으로 ──
           // 여기도 동일하게, 귀 밴드 보강까지 끝난 시점의 마스크를 기준으로
           // "기존 머리카락과 인접한 곳만" 성장 허용 (고립된 이마 피부 오탐 방지)
+          // 실측 결과 귀 밴드 쪽 텍스처 제외는 거의 작동하지 않았고(8px),
+          // 실제 눈썹~안경 위쪽 렌즈 영역이 덮이는 문제는 이 프론트 밴드 범위와 겹쳤음.
+          // 눈썹도 안경 상단 프레임과 마찬가지로 이 밴드 y범위(foreheadY*0.85~eyeY*0.92)에
+          // 걸리므로, 같은 텍스처 조건을 여기에도 동일하게 적용한다.
           const growAllowFront = dilate(hairMaskBuf, w, h, 4);
           const fxS = Math.round(Math.max(0, Math.min(lm.lEarX, lm.rEarX) + Math.abs(lm.rEarX-lm.lEarX)*0.15) * w);
           const fxE = Math.round(Math.min(1, Math.max(lm.lEarX, lm.rEarX) - Math.abs(lm.rEarX-lm.lEarX)*0.15) * w);
           const fyTop = Math.max(0, lm.foreheadY * 0.85) * h;
           const fyBot = Math.min(1, lm.eyeY * 0.92) * h;
           const frontBandMask = new Uint8Array(w*h);
+          let frontBandTextureRejected = 0;
           for(let y=Math.round(fyTop); y<Math.round(fyBot); y++){
             for(let x=fxS; x<fxE; x++){
               if(x<0||x>=w||y<0||y>=h) continue;
               const i = y*w+x;
               if(hairMaskBuf[i]===0 && !faceExcludeMask[i] && growAllowFront[i]){
                 const r=srcPixels[i*4], g=srcPixels[i*4+1], b=srcPixels[i*4+2];
-                if(isHairColorRelaxed(r,g,b)) hairMaskBuf[i]=255;
+                if(isHairColorRelaxed(r,g,b)){
+                  if(hasHairTexture(grayForTexture, w, h, x, y, 2)) hairMaskBuf[i]=255;
+                  else frontBandTextureRejected++;
+                }
               }
               frontBandMask[i] = faceExcludeMask[i] ? 0 : hairMaskBuf[i];
             }
           }
+          window.__frontBandTextureDiag = frontBandTextureRejected;
           const frontClosed = morphClose(dilate(frontBandMask, w, h, 2), w, h, 2);
           for(let i=0;i<w*h;i++){ if(frontClosed[i]>0 && !faceExcludeMask[i]) hairMaskBuf[i]=255; }
         }
@@ -1165,8 +1174,9 @@ async function extractHairMask(angle){
         const segFailPart = (state.segmenterType !== 'MediaPipe' && window.__segDiag) ? ` | MP실패:${window.__segDiag}` : '';
         const maskValPart = (state.segmenterType === 'MediaPipe' && window.__maskValueDiag) ? ` | 마스크값:${window.__maskValueDiag}` : '';
         const bgGuardPart = window.__bgGuardDiag ? ` | 배경가드:${window.__bgGuardDiag}` : '';
-        const texRejPart = window.__earBandTextureDiag ? ` | 안경질감제외:${window.__earBandTextureDiag}px` : '';
-        state._diagLog = `세그멘터:${state.segmenterType||'?'} | 마스크픽셀:${pixelCount}px | 랜드마크:${lmDiagPart}${segFailPart}${maskValPart}${bgGuardPart}${texRejPart}`;
+        const texRejPart = window.__earBandTextureDiag ? ` | 귀밴드질감제외:${window.__earBandTextureDiag}px` : '';
+        const frontTexRejPart = window.__frontBandTextureDiag ? ` | 프론트밴드질감제외:${window.__frontBandTextureDiag}px` : '';
+        state._diagLog = `세그멘터:${state.segmenterType||'?'} | 마스크픽셀:${pixelCount}px | 랜드마크:${lmDiagPart}${segFailPart}${maskValPart}${bgGuardPart}${texRejPart}${frontTexRejPart}`;
 
         // ── 결방향 인식 (Structure Tensor) ──
         // 축소 해상도(w,h)에서 계산 → 컬럼별 샘플로 다운샘플해 저장
@@ -2613,7 +2623,8 @@ function drawHairStrands(ctx, fit, scalpY, hairEndY, maskW, maskH, hairCanvas, o
           while(restore < -Math.PI) restore += Math.PI*2;
           // TEST: 얼굴박스 사각 블록 원인 검증용 임시 스위치. true면 중력 복원력을 0으로 만들어
           // ext 구간이 baseDir(결방향)을 그대로 유지하게 함. 블록이 옅어지면 중력이 증폭 원인 확정.
-          const DEBUG_DISABLE_GRAVITY = true;
+          // → 검증 완료, 원인 아니었음. clamp만으로는 대각선 처짐을 못 막아 중력 복원.
+          const DEBUG_DISABLE_GRAVITY = false;
           const gravityPull = DEBUG_DISABLE_GRAVITY ? 0 : (0.15 + (s/steps) * 0.35); // 시작 0.15 → 끝 0.5
           dir = baseDir + restore * gravityPull;
         }
