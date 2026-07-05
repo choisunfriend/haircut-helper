@@ -1071,12 +1071,14 @@ async function extractHairMask(angle){
         // 걸려 누락되는 경우가 있음. 화면 전체가 아니라 "귀 주변 영역"에서만
         // 완화된 기준을 추가 적용해서, 과확장(옷/목까지 번지는 문제) 재발 없이
         // 옆머리(관자놀이~귀 주변) 빈 구간만 보강한다.
-        // (이전: 밴드가 너무 좁아 실제 촬영 조건에서 충분히 안 잡힘 → 범위 확대)
+        // (이전: 밴드가 너무 넓어서(가로 14%, 아래로 귀높이*1.55) 뺨·턱선 피부가
+        // isHairColorRelaxed에 걸려 같이 채워지는 문제가 실사진에서 계속 발생.
+        // 밴드를 귀 바로 옆·바로 아래로만 좁혀서 보수적으로 만듦)
         {
           const earXs = [lm.lEarX, lm.rEarX].filter(v=>typeof v==='number');
-          const bandHalfW = 0.14; // 원상복구: 관대했던 20% → 원래 14%로 되돌림
-          const yTopBand = Math.max(0, lm.eyeY - 0.10) * h;  // 관자놀이 위쪽까지 포함
-          const yBotBand = Math.min(1, lm.earY * 1.55) * h;  // 구레나룻 아래까지 포함
+          const bandHalfW = 0.09; // 14% → 9%: 뺨 쪽으로 번지지 않는 귀 바로 옆 폭만
+          const yTopBand = Math.max(0, lm.eyeY - 0.08) * h;  // 관자놀이 위쪽까지 포함
+          const yBotBand = Math.min(1, lm.earY * 1.22) * h;  // 1.55 → 1.22: 턱선까지 안 내려가게 귀 바로 아래까지만
           for(const ex of earXs){
             const xS = Math.round(Math.max(0, ex - bandHalfW) * w);
             const xE = Math.round(Math.min(1, ex + bandHalfW) * w);
@@ -1103,7 +1105,7 @@ async function extractHairMask(angle){
               }
             }
           }
-          const bandClosed = morphClose(dilate(bandMask, w, h, 2), w, h, 2);
+          const bandClosed = morphClose(dilate(bandMask, w, h, 1), w, h, 1); // 2 → 1: 좁은 밴드 밖(뺨)으로 번지는 것 방지
           for(let i=0;i<w*h;i++){ if(bandClosed[i]>0 && !faceExcludeMask[i]) hairMaskBuf[i]=255; }
 
           // ── 프론트(앞머리) 라인 보강: 이마 경계 쪽 잔머리도 같은 방식으로 ──
