@@ -1075,6 +1075,20 @@ async function extractHairMask(angle){
         // isHairColorRelaxed에 걸려 같이 채워지는 문제가 실사진에서 계속 발생.
         // 밴드를 귀 바로 옆·바로 아래로만 좁혀서 보수적으로 만듦)
         {
+          // 연결성 제약: 색만 머리카락과 비슷한 "고립된" 뺨/턱 피부(그늘 등)가
+          // 기존에 검출된 머리카락과 붙어있지 않은데도 그냥 채워지는 문제가
+          // 실사진(측면)에서 계속 발생함 — 턱선까지 갈색으로 이어짐.
+          // 보강 시작 전 시점의 마스크를 넉넉히 dilate해서 "실제 머리카락과
+          // 인접한 범위"만 성장 허용 영역으로 만들고, 이 영역 밖은 색이 맞아도
+          // 채우지 않는다. (진짜 잔머리는 기존 머리카락 경계에 붙어있으므로 안전)
+          const growAllowEar = dilate(hairMaskBuf, w, h, 4);
+          // 안경다리가 지나가는 바로 이 귀 밴드 영역에서, 색 조건(isHairColorRelaxed)만으로
+          // 채우면 안경테의 저채도·중간밝기가 잔머리 색과 같은 조건을 통과해버리는 문제가
+          // 있었음(가능성2). 색이 맞아도 국소 밝기 분산(hasHairTexture)이 낮으면 —
+          // 즉 안경처럼 매끈한 재질이면 — 채우지 않도록 텍스처 조건을 추가로 요구한다.
+          const grayForTexture = toGrayscale(srcPixels, w, h);
+          let earBandTextureRejected = 0;
+
           const earXs = [lm.lEarX, lm.rEarX].filter(v=>typeof v==='number');
           const bandHalfW = 0.09; // 14% → 9%: 뺨 쪽으로 번지지 않는 귀 바로 옆 폭만
           const yTopBand = Math.max(0, lm.eyeY - 0.08) * h;  // 관자놀이 위쪽까지 포함
@@ -1088,11 +1102,15 @@ async function extractHairMask(angle){
                 const i = y*w+x;
                 if(hairMaskBuf[i]>0) continue; // 이미 잡힌 픽셀은 스킵
                 if(faceExcludeMask[i]) continue; // 얼굴로 판정해 지운 픽셀은 재채움 금지
+                if(!growAllowEar[i]) continue; // 기존 머리카락과 붙어있지 않은 고립 영역은 스킵
                 const r=srcPixels[i*4], g=srcPixels[i*4+1], b=srcPixels[i*4+2];
-                if(isHairColorRelaxed(r,g,b)) hairMaskBuf[i]=255;
+                if(!isHairColorRelaxed(r,g,b)) continue;
+                if(!hasHairTexture(grayForTexture, w, h, x, y, 2)){ earBandTextureRejected++; continue; }
+                hairMaskBuf[i]=255;
               }
             }
           }
+          window.__earBandTextureDiag = earBandTextureRejected;
           // 귀 밴드 안에서만 국소 dilate+closing으로 드문드문 잡힌 픽셀을 면으로 연결
           // (화면 전체에 적용하면 과확장 재발 위험 → 밴드 영역에만 한정)
           const bandMask = new Uint8Array(w*h);
@@ -1109,6 +1127,9 @@ async function extractHairMask(angle){
           for(let i=0;i<w*h;i++){ if(bandClosed[i]>0 && !faceExcludeMask[i]) hairMaskBuf[i]=255; }
 
           // ── 프론트(앞머리) 라인 보강: 이마 경계 쪽 잔머리도 같은 방식으로 ──
+          // 여기도 동일하게, 귀 밴드 보강까지 끝난 시점의 마스크를 기준으로
+          // "기존 머리카락과 인접한 곳만" 성장 허용 (고립된 이마 피부 오탐 방지)
+          const growAllowFront = dilate(hairMaskBuf, w, h, 4);
           const fxS = Math.round(Math.max(0, Math.min(lm.lEarX, lm.rEarX) + Math.abs(lm.rEarX-lm.lEarX)*0.15) * w);
           const fxE = Math.round(Math.min(1, Math.max(lm.lEarX, lm.rEarX) - Math.abs(lm.rEarX-lm.lEarX)*0.15) * w);
           const fyTop = Math.max(0, lm.foreheadY * 0.85) * h;
@@ -1118,7 +1139,7 @@ async function extractHairMask(angle){
             for(let x=fxS; x<fxE; x++){
               if(x<0||x>=w||y<0||y>=h) continue;
               const i = y*w+x;
-              if(hairMaskBuf[i]===0 && !faceExcludeMask[i]){
+              if(hairMaskBuf[i]===0 && !faceExcludeMask[i] && growAllowFront[i]){
                 const r=srcPixels[i*4], g=srcPixels[i*4+1], b=srcPixels[i*4+2];
                 if(isHairColorRelaxed(r,g,b)) hairMaskBuf[i]=255;
               }
@@ -1144,7 +1165,8 @@ async function extractHairMask(angle){
         const segFailPart = (state.segmenterType !== 'MediaPipe' && window.__segDiag) ? ` | MP실패:${window.__segDiag}` : '';
         const maskValPart = (state.segmenterType === 'MediaPipe' && window.__maskValueDiag) ? ` | 마스크값:${window.__maskValueDiag}` : '';
         const bgGuardPart = window.__bgGuardDiag ? ` | 배경가드:${window.__bgGuardDiag}` : '';
-        state._diagLog = `세그멘터:${state.segmenterType||'?'} | 마스크픽셀:${pixelCount}px | 랜드마크:${lmDiagPart}${segFailPart}${maskValPart}${bgGuardPart}`;
+        const texRejPart = window.__earBandTextureDiag ? ` | 안경질감제외:${window.__earBandTextureDiag}px` : '';
+        state._diagLog = `세그멘터:${state.segmenterType||'?'} | 마스크픽셀:${pixelCount}px | 랜드마크:${lmDiagPart}${segFailPart}${maskValPart}${bgGuardPart}${texRejPart}`;
 
         // ── 결방향 인식 (Structure Tensor) ──
         // 축소 해상도(w,h)에서 계산 → 컬럼별 샘플로 다운샘플해 저장
@@ -1338,6 +1360,34 @@ function isHairColorRelaxed(r,g,b){
   }
 
   return false;
+}
+
+// hasHairTexture: 국소(5x5 기본) 밝기 분산으로 "결이 있는 재질(머리카락)" vs
+// "매끈한 재질(안경테 등)"을 구분한다.
+// 안경다리/렌즈테는 통짜 플라스틱·금속이라 작은 창 안에서 밝기가 거의 균일(분산 낮음).
+// 반대로 실제 머리카락은 가는 결 하나하나가 서로 다른 밝기를 가져 국소 분산이 큼
+// (흑발이든 백발이든 색과 무관하게 성립하는 재질 특성).
+// isHairColorRelaxed는 색만 보므로, 색이 맞아도 이 텍스처 조건을 통과 못하면
+// 안경/매끈한 표면으로 간주해 제외한다.
+// TEXTURE_VAR_THRESHOLD는 실측 없이 잡은 초기값 — 조명이 아주 평평한 사진에서
+// 진짜 머리카락까지 걸러질 위험이 있어 추후 실측 데이터로 재조정 필요.
+const TEXTURE_VAR_THRESHOLD = 30; // 밝기(0~255) 분산 기준, 표준편차로는 약 5.5
+function hasHairTexture(gray, w, h, x, y, radius){
+  radius = radius || 2; // 기본 5x5 윈도우
+  const xs=Math.max(0,x-radius), xe=Math.min(w-1,x+radius);
+  const ys=Math.max(0,y-radius), ye=Math.min(h-1,y+radius);
+  let sum=0, sumSq=0, count=0;
+  for(let ny=ys; ny<=ye; ny++){
+    const row=ny*w;
+    for(let nx=xs; nx<=xe; nx++){
+      const v=gray[row+nx];
+      sum+=v; sumSq+=v*v; count++;
+    }
+  }
+  if(count===0) return true; // 창을 못 만들면(경계) 보수적으로 통과시킴
+  const mean = sum/count;
+  const variance = sumSq/count - mean*mean;
+  return variance >= TEXTURE_VAR_THRESHOLD;
 }
 
 /* ────────────────────────────────────────
