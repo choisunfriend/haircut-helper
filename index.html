@@ -1124,20 +1124,32 @@ async function extractHairMask(angle){
             }
           }
           const bandClosed = morphClose(dilate(bandMask, w, h, 1), w, h, 1); // 2 → 1: 좁은 밴드 밖(뺨)으로 번지는 것 방지
-          for(let i=0;i<w*h;i++){ if(bandClosed[i]>0 && !faceExcludeMask[i]) hairMaskBuf[i]=255; }
+          // 프론트와 동일한 이유로, closing이 새로 채운 픽셀만 텍스처 재검증
+          // (안경다리처럼 매끈한 재질이 인접 잔머리에 붙어 다시 이어지는 것 방지)
+          let bandClosedTextureRejected = 0;
+          for(let i=0;i<w*h;i++){
+            if(bandClosed[i]>0 && !faceExcludeMask[i]){
+              if(bandMask[i]>0){ hairMaskBuf[i]=255; continue; }
+              const x = i % w, y = (i / w) | 0;
+              if(hasHairTexture(grayForTexture, w, h, x, y, 2)) hairMaskBuf[i]=255;
+              else bandClosedTextureRejected++;
+            }
+          }
+          window.__bandClosedTextureDiag = bandClosedTextureRejected;
 
           // ── 프론트(앞머리) 라인 보강: 이마 경계 쪽 잔머리도 같은 방식으로 ──
           // 여기도 동일하게, 귀 밴드 보강까지 끝난 시점의 마스크를 기준으로
           // "기존 머리카락과 인접한 곳만" 성장 허용 (고립된 이마 피부 오탐 방지)
           // 실측 결과 귀 밴드 쪽 텍스처 제외는 거의 작동하지 않았고(8px),
           // 실제 눈썹~안경 위쪽 렌즈 영역이 덮이는 문제는 이 프론트 밴드 범위와 겹쳤음.
-          // 눈썹도 안경 상단 프레임과 마찬가지로 이 밴드 y범위(foreheadY*0.85~eyeY*0.92)에
-          // 걸리므로, 같은 텍스처 조건을 여기에도 동일하게 적용한다.
+          // 눈썹도 안경 상단 프레임과 마찬가지로 이 밴드 y범위에 걸리므로, 같은 텍스처
+          // 조건을 여기에도 동일하게 적용한다. 하단 경계는 눈썹 자리를 확실히 피하도록
+          // eyeY*0.85로 당김(기존 0.92는 눈썹 높이까지 거의 닿아있었음).
           const growAllowFront = dilate(hairMaskBuf, w, h, 4);
           const fxS = Math.round(Math.max(0, Math.min(lm.lEarX, lm.rEarX) + Math.abs(lm.rEarX-lm.lEarX)*0.15) * w);
           const fxE = Math.round(Math.min(1, Math.max(lm.lEarX, lm.rEarX) - Math.abs(lm.rEarX-lm.lEarX)*0.15) * w);
           const fyTop = Math.max(0, lm.foreheadY * 0.85) * h;
-          const fyBot = Math.min(1, lm.eyeY * 0.92) * h;
+          const fyBot = Math.min(1, lm.eyeY * 0.85) * h; // 0.92 → 0.85: 눈썹 자리를 확실히 피하도록 상향
           const frontBandMask = new Uint8Array(w*h);
           let frontBandTextureRejected = 0;
           for(let y=Math.round(fyTop); y<Math.round(fyBot); y++){
@@ -1156,7 +1168,20 @@ async function extractHairMask(angle){
           }
           window.__frontBandTextureDiag = frontBandTextureRejected;
           const frontClosed = morphClose(dilate(frontBandMask, w, h, 2), w, h, 2);
-          for(let i=0;i<w*h;i++){ if(frontClosed[i]>0 && !faceExcludeMask[i]) hairMaskBuf[i]=255; }
+          // closing(dilate+erode)은 순수 형태 연산이라 텍스처 검사를 다시 하지 않음 —
+          // 그래서 눈썹(정당하게 통과)과 붙어있던 안경테 픽셀(텍스처로 걸러졌던 것)이
+          // 틈 메우기 과정에서 다시 이어붙는 문제가 있었음. closing이 "새로 추가한" 픽셀만
+          // (원래 frontBandMask에는 없던 픽셀) 텍스처를 한 번 더 검증해서 재유입을 막는다.
+          let frontClosedTextureRejected = 0;
+          for(let i=0;i<w*h;i++){
+            if(frontClosed[i]>0 && !faceExcludeMask[i]){
+              if(frontBandMask[i]>0){ hairMaskBuf[i]=255; continue; } // 이미 검증된 픽셀
+              const x = i % w, y = (i / w) | 0;
+              if(hasHairTexture(grayForTexture, w, h, x, y, 2)) hairMaskBuf[i]=255;
+              else frontClosedTextureRejected++;
+            }
+          }
+          window.__frontClosedTextureDiag = frontClosedTextureRejected;
         }
         } // ENABLE_LANDMARK_POSTPROCESS
 
@@ -1176,7 +1201,9 @@ async function extractHairMask(angle){
         const bgGuardPart = window.__bgGuardDiag ? ` | 배경가드:${window.__bgGuardDiag}` : '';
         const texRejPart = window.__earBandTextureDiag ? ` | 귀밴드질감제외:${window.__earBandTextureDiag}px` : '';
         const frontTexRejPart = window.__frontBandTextureDiag ? ` | 프론트밴드질감제외:${window.__frontBandTextureDiag}px` : '';
-        state._diagLog = `세그멘터:${state.segmenterType||'?'} | 마스크픽셀:${pixelCount}px | 랜드마크:${lmDiagPart}${segFailPart}${maskValPart}${bgGuardPart}${texRejPart}${frontTexRejPart}`;
+        const frontClosedTexRejPart = window.__frontClosedTextureDiag ? ` | 프론트닫기질감제외:${window.__frontClosedTextureDiag}px` : '';
+        const bandClosedTexRejPart = window.__bandClosedTextureDiag ? ` | 귀닫기질감제외:${window.__bandClosedTextureDiag}px` : '';
+        state._diagLog = `세그멘터:${state.segmenterType||'?'} | 마스크픽셀:${pixelCount}px | 랜드마크:${lmDiagPart}${segFailPart}${maskValPart}${bgGuardPart}${texRejPart}${frontTexRejPart}${frontClosedTexRejPart}${bandClosedTexRejPart}`;
 
         // ── 결방향 인식 (Structure Tensor) ──
         // 축소 해상도(w,h)에서 계산 → 컬럼별 샘플로 다운샘플해 저장
