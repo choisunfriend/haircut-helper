@@ -516,12 +516,34 @@ async function detectFaceLandmarks(angle){
         const rEye     = lm[263];
         const chin     = lm[152];
         const forehead = lm[10];
+        // 이미 468개 얼굴 랜드마크를 다 찍고 있으므로, 눈썹뿐 아니라 눈·입도
+        // "박스 경계선 안쪽인지" 같은 간접 추정이 아니라 실제 그 부위 점들로
+        // 직접 bounding box를 구해서, 머리카락이 절대 덮으면 안 되는 자리로
+        // 얼굴제거박스와 별개로 정확히 등록해둔다. (박스 밖 관자놀이 쪽으로
+        // 삐져나온 눈썹 꼬리 같은 경우를 좌표 기반으로 잡기 위함)
+        const bboxOf = (idxs)=>{
+          const xs = idxs.map(i=>lm[i].x), ys = idxs.map(i=>lm[i].y);
+          return { minX:Math.min(...xs), maxX:Math.max(...xs), minY:Math.min(...ys), maxY:Math.max(...ys) };
+        };
+        const LEFT_BROW_IDX  = [70,63,105,66,107,55,65,52,53,46];
+        const RIGHT_BROW_IDX = [300,293,334,296,336,285,295,282,283,276];
+        const LEFT_EYE_IDX   = [33,246,161,160,159,158,157,173,133,155,154,153,145,144,163,7];
+        const RIGHT_EYE_IDX  = [263,466,388,387,386,385,384,398,362,382,381,380,374,373,390,249];
+        const MOUTH_IDX      = [61,185,40,39,37,0,267,269,270,409,291,375,321,405,314,17,84,181,91,146];
+        const features = {
+          leftBrow:  bboxOf(LEFT_BROW_IDX),
+          rightBrow: bboxOf(RIGHT_BROW_IDX),
+          leftEye:   bboxOf(LEFT_EYE_IDX),
+          rightEye:  bboxOf(RIGHT_EYE_IDX),
+          mouth:     bboxOf(MOUTH_IDX),
+        };
+        const browTopY = Math.min(features.leftBrow.minY, features.rightBrow.minY); // 눈썹 중 가장 위쪽 y
         const earCX    = (lEar.x + rEar.x) / 2;
         const earSpan  = Math.abs(rEar.x - lEar.x);
         const yaw      = earSpan > 0.01 ? (nose.x - earCX) / (earSpan * 0.5) : 0;
         const eyeY     = (lEye.y + rEye.y) / 2;
         const earY     = (lEar.y + rEar.y) / 2;
-        const info = { yaw, foreheadY:forehead.y, eyeY, earY, chinY:chin.y,
+        const info = { yaw, foreheadY:forehead.y, eyeY, earY, chinY:chin.y, browTopY, features,
                        lEarX:lEar.x, rEarX:rEar.x };
         state.landmarks = state.landmarks || {};
         state.landmarks[angle] = info;
@@ -548,6 +570,7 @@ function getEstimatedLandmarks(angle){
     yaw: 0,
     foreheadY: 0.14,
     eyeY: 0.34,
+    browTopY: 0.28, // 실측 실패 시의 대략적 추정치(eyeY보다 위, foreheadY보다 아래)
     earY: 0.40,
     chinY: 0.60,
     // 측면 사진은 얼굴이 한쪽으로 치우쳐 보이므로 귀 x좌표 범위를 좁혀
@@ -1056,6 +1079,29 @@ async function extractHairMask(angle){
             foreheadY: lm.foreheadY, chinY: lm.chinY, lEarX: lm.lEarX, rEarX: lm.rEarX, earSpan
           };
         }
+        // ── 얼굴 부위별 정밀 가드: 눈썹·눈·입은 위치를 직접 알고 있으므로,
+        // 위 얼굴제거박스의 x범위(관자놀이 쪽 여유 때문에 좁게 잡힘) 밖으로
+        // 삐져나온 부위(특히 측면 사진에서 관자놀이 쪽 눈썹 꼬리)도 좌표 기반으로
+        // 별도 제외한다. "이 사람은 앞머리가 짧다/길다" 같은 헤어스타일 가정과
+        // 무관하게, 실제 그 부위 랜드마크만 갖고 판단하므로 모든 헤어스타일에 동일 적용됨.
+        // 랜드마크 추정 폴백(getEstimatedLandmarks)에는 features가 없으므로 자동 스킵됨
+        // — 대략적 비율 추정치로 눈썹 위치까지 지어내는 건 오히려 부정확할 수 있어서.
+        if(lm.features){
+          for(const key of Object.keys(lm.features)){
+            const f = lm.features[key];
+            const fw = f.maxX - f.minX, fh = f.maxY - f.minY;
+            const mx = fw * 0.35 + 0.006, my = fh * 0.5 + 0.006; // 랜드마크가 실제 부위보다 살짝 안쪽으로 잡히는 오차 보정 여유
+            const xS = Math.round(Math.max(0, f.minX - mx) * w);
+            const xE = Math.round(Math.min(1, f.maxX + mx) * w);
+            const yS = Math.round(Math.max(0, f.minY - my) * h);
+            const yE = Math.round(Math.min(1, f.maxY + my) * h);
+            for(let y=yS; y<yE; y++){
+              for(let x=xS; x<xE; x++){
+                if(x>=0&&x<w&&y>=0&&y<h){ hairMaskBuf[y*w+x]=0; faceExcludeMask[y*w+x]=1; }
+              }
+            }
+          }
+        }
         // 목·어깨 제거 — 랜드마크(chinY) 기반 동적 컷오프
         // 기존 고정 70% 라인은 턱이 그보다 위/아래로 짧게 잡히는 얼굴에서
         // 어깨선(옷)이 70% 안쪽에 들어와 회색 티셔츠 그림자가 머리카락으로 오인됨.
@@ -1143,13 +1189,16 @@ async function extractHairMask(angle){
           // 실측 결과 귀 밴드 쪽 텍스처 제외는 거의 작동하지 않았고(8px),
           // 실제 눈썹~안경 위쪽 렌즈 영역이 덮이는 문제는 이 프론트 밴드 범위와 겹쳤음.
           // 눈썹도 안경 상단 프레임과 마찬가지로 이 밴드 y범위에 걸리므로, 같은 텍스처
-          // 조건을 여기에도 동일하게 적용한다. 하단 경계는 눈썹 자리를 확실히 피하도록
-          // eyeY*0.85로 당김(기존 0.92는 눈썹 높이까지 거의 닿아있었음).
+          // 조건을 여기에도 동일하게 적용한다. 하단 경계는 "눈 위 몇 %" 식 고정 비율이
+          // 아니라 실제 눈썹 랜드마크(browTopY) 바로 위에서 멈추게 한다 — 앞머리가 짧아서
+          // 눈썹 위에서 끝나는 사람을 기준으로 고정 비율을 잡으면, 앞머리가 길어 눈썹을
+          // 덮는 사람은 그 아래 실제 머리카락 보강까지 막히게 됨. 눈썹 좌표를 직접 쓰면
+          // 헤어스타일에 대한 가정 없이 눈썹만 정확히 피해간다.
           const growAllowFront = dilate(hairMaskBuf, w, h, 4);
           const fxS = Math.round(Math.max(0, Math.min(lm.lEarX, lm.rEarX) + Math.abs(lm.rEarX-lm.lEarX)*0.15) * w);
           const fxE = Math.round(Math.min(1, Math.max(lm.lEarX, lm.rEarX) - Math.abs(lm.rEarX-lm.lEarX)*0.15) * w);
           const fyTop = Math.max(0, lm.foreheadY * 0.85) * h;
-          const fyBot = Math.min(1, lm.eyeY * 0.85) * h; // 0.92 → 0.85: 눈썹 자리를 확실히 피하도록 상향
+          const fyBot = Math.min(1, lm.browTopY != null ? lm.browTopY : lm.eyeY * 0.92) * h;
           const frontBandMask = new Uint8Array(w*h);
           let frontBandTextureRejected = 0;
           for(let y=Math.round(fyTop); y<Math.round(fyBot); y++){
