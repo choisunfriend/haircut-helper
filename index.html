@@ -940,6 +940,9 @@ async function extractHairMask(angle){
 
         // 마스크 버퍼 (0=background, 255=hair) — 축소 해상도에서 작업
         let hairMaskBuf = new Uint8Array(w * h);
+        // 디버그용 "왜 이렇게 됐는지" 코드 — 0:미해당, 1:최종 머리카락, 2:얼굴박스로 제외,
+        // 3:눈썹/눈/입 가드로 제외. "마스크 보기"에서 색을 다르게 표시하기 위함.
+        const reasonMask = new Uint8Array(w * h);
 
         if(mpImageSegmenter){
           // ── MediaPipe hair_segmenter path (confidenceMask 기반) ──
@@ -1070,7 +1073,11 @@ async function extractHairMask(angle){
           const xS = Math.round(Math.max(0,xLeft)*w), xE = Math.round(Math.min(1,xRight)*w);
           for(let y=yS; y<yE; y++){
             for(let x=xS; x<xE; x++){
-              if(x>=0&&x<w&&y>=0&&y<h){ hairMaskBuf[y*w+x]=0; faceExcludeMask[y*w+x]=1; }
+              if(x>=0&&x<w&&y>=0&&y<h){
+                const idx=y*w+x;
+                if(hairMaskBuf[idx]===255) reasonMask[idx]=2;
+                hairMaskBuf[idx]=0; faceExcludeMask[idx]=1;
+              }
             }
           }
           faceBoxDiag = {
@@ -1105,7 +1112,11 @@ async function extractHairMask(angle){
               for(let x=xS; x<xE; x++){
                 const nx = (x-cx)/rx;
                 if(nx*nx + ny*ny > 1) continue; // 타원 밖은 건드리지 않음
-                if(x>=0&&x<w&&y>=0&&y<h){ hairMaskBuf[y*w+x]=0; faceExcludeMask[y*w+x]=1; }
+                if(x>=0&&x<w&&y>=0&&y<h){
+                  const idx=y*w+x;
+                  if(hairMaskBuf[idx]===255) reasonMask[idx]=3;
+                  hairMaskBuf[idx]=0; faceExcludeMask[idx]=1;
+                }
               }
             }
           }
@@ -1347,6 +1358,23 @@ async function extractHairMask(angle){
         }
         mCtx.putImageData(mImg,0,0);
 
+        // ── 진단용 색상코드 마스크 캔버스 (reasonMask → RGBA) ──
+        // 1:최종 머리카락(빨강) 2:얼굴박스로 제외(회색) 3:눈썹/눈/입 가드로 제외(파랑) 0:투명
+        const reasonC = document.createElement('canvas');
+        reasonC.width=w; reasonC.height=h;
+        const rCtx = reasonC.getContext('2d');
+        const rImg = rCtx.createImageData(w,h);
+        const REASON_COLORS = { 1:[255,45,85], 2:[136,136,136], 3:[51,136,255] };
+        for(let i=0;i<w*h;i++){
+          const code = reasonMask[i];
+          const col = REASON_COLORS[code];
+          if(col){
+            rImg.data[i*4]=col[0]; rImg.data[i*4+1]=col[1]; rImg.data[i*4+2]=col[2];
+            rImg.data[i*4+3]=255;
+          } // code 0이면 알파 0으로 남음(투명, 초기값 그대로)
+        }
+        rCtx.putImageData(rImg,0,0);
+
         const fullMaskC = document.createElement('canvas');
         fullMaskC.width=img.width; fullMaskC.height=img.height;
         fullMaskC.getContext('2d').drawImage(maskC,0,0,img.width,img.height);
@@ -1383,6 +1411,10 @@ async function extractHairMask(angle){
           ? `rgb(${Math.round(rSum/cnt)},${Math.round(gSum/cnt)},${Math.round(bSum/cnt)})`
           : '#2A1B12';
 
+        // 최종 확정: 지금 시점에 hairMaskBuf===255인 픽셀은 전부 "최종 머리카락"(1)으로
+        // 표시 — 귀/프론트 밴드 보강으로 나중에 다시 채워진 픽셀도 여기서 포함됨.
+        for(let i=0;i<w*h;i++){ if(hairMaskBuf[i]===255) reasonMask[i]=1; }
+
         state.hairCanvases[angle] = hairC;
         state.baseCanvases[angle] = baseC;
         state.hairMasks[angle]    = {
@@ -1390,6 +1422,8 @@ async function extractHairMask(angle){
           // 결방향 필드는 축소 해상도(maskW,maskH) 좌표계로 저장됨 — 사용 시 비율 변환 필요
           orientation: orientationColSamples,
           maskW: w, maskH: h,
+          reasonMask, // [진단용] 0:미해당 1:최종 머리카락 2:얼굴박스로 제외 3:눈썹/눈/입 가드로 제외
+          reasonCanvas: reasonC, // [진단용] 위 코드를 색으로 미리 구운 작은 캔버스(w×h, 축소 해상도)
           faceBoxDiag // [진단용] 얼굴제거박스 좌표/사용 랜드마크 — "얼굴박스 보기" 토글에서 사용
         };
         console.log('[진단] extractHairMask 완료', angle, 'faceBoxDiag=', faceBoxDiag);
@@ -2408,23 +2442,27 @@ function renderFrame(canvas, angle){
 
     if(state.debugShowMask && hairC && maskInf){
       // ── 마스크 디버그 뷰 ──
-      // 가닥 렌더링을 완전히 건너뛰고, 원본 사진 위에 hairMaskBuf 실루엣을
-      // 단색(반투명 빨강)으로 그대로 얹어서 세그멘테이션이 실제로 어디를
-      // "머리카락"으로 잡았는지(과잉 포함/누락) 눈으로 바로 확인하기 위한 뷰.
+      // 가닥 렌더링을 완전히 건너뛰고, 원본 사진 위에 최종 결과만 단색으로 보여주는 대신,
+      // "왜 이렇게 됐는지"를 색으로 구분해서 보여준다: 빨강=최종 머리카락,
+      // 회색=얼굴박스라서 제외, 파랑=눈썹/눈/입 가드라서 제외.
       const fit = computeFit(img.width, img.height, w, h);
       ctx.drawImage(img, fit.dx, fit.dy, fit.dw, fit.dh); // 원본 사진 그대로
 
-      const maskOverlay = document.createElement('canvas');
-      maskOverlay.width = hairC.width; maskOverlay.height = hairC.height;
-      const mCtx = maskOverlay.getContext('2d');
-      mCtx.drawImage(hairC, 0, 0);          // alpha = hairMaskBuf 실루엣
-      mCtx.globalCompositeOperation = 'source-in';
-      mCtx.fillStyle = '#ff2d55';           // 마스크 영역을 눈에 띄는 단색으로 채움
-      mCtx.fillRect(0, 0, maskOverlay.width, maskOverlay.height);
-
       ctx.save();
       ctx.globalAlpha = 0.6;
-      ctx.drawImage(maskOverlay, fit.dx, fit.dy, fit.dw, fit.dh);
+      if(maskInf.reasonCanvas){
+        ctx.drawImage(maskInf.reasonCanvas, fit.dx, fit.dy, fit.dw, fit.dh);
+      } else {
+        // reasonCanvas가 없는 예전 캐시 데이터 대비 폴백: 기존 단색 방식
+        const maskOverlay = document.createElement('canvas');
+        maskOverlay.width = hairC.width; maskOverlay.height = hairC.height;
+        const mCtx = maskOverlay.getContext('2d');
+        mCtx.drawImage(hairC, 0, 0);
+        mCtx.globalCompositeOperation = 'source-in';
+        mCtx.fillStyle = '#ff2d55';
+        mCtx.fillRect(0, 0, maskOverlay.width, maskOverlay.height);
+        ctx.drawImage(maskOverlay, fit.dx, fit.dy, fit.dw, fit.dh);
+      }
       ctx.restore();
       if(state.debugShowFaceBox) drawFaceBoxDebugOverlay(ctx, fit, maskInf);
       return;
