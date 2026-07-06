@@ -962,33 +962,6 @@ async function extractHairMask(angle){
             hairMaskBuf[i] = isHair ? 255 : 0;
           }
           window.__maskValueDiag = `avg:${(confSum/confArr.length).toFixed(3)},max:${confMax.toFixed(3)},≥${HAIR_CONFIDENCE_THRESHOLD}:${aboveCount}`;
-          // ── 히스테리시스 확장 ──
-          // 0.5를 전체적으로 낮추면(과거 0.3 시도) 배경 오탐이 늘어 되돌렸던 이력이 있음.
-          // 대신 Canny 에지 검출과 같은 방식으로: 0.5 이상(확실한 코어)에 8방향으로
-          // "붙어있는" 픽셀만 더 낮은 기준(0.25)으로 추가 인정한다. 완전히 고립된
-          // 저확신도 영역(배경 오탐)은 코어에 안 붙어있으므로 여전히 걸러지고,
-          // 정수리 위로 삐져나온 가는 잔머리처럼 실제 머리와 이어진 픽셀만 복원됨.
-          const HYSTERESIS_LOW = 0.25;
-          const queue = [];
-          for(let i=0;i<confArr.length;i++){ if(hairMaskBuf[i]===255) queue.push(i); }
-          let qi = 0;
-          while(qi < queue.length){
-            const idx = queue[qi++];
-            const x = idx % w, y = (idx / w) | 0;
-            for(let dy=-1; dy<=1; dy++){
-              for(let dx=-1; dx<=1; dx++){
-                if(dx===0 && dy===0) continue;
-                const nx = x+dx, ny = y+dy;
-                if(nx<0||nx>=w||ny<0||ny>=h) continue;
-                const nIdx = ny*w+nx;
-                if(hairMaskBuf[nIdx]===0 && confArr[nIdx] >= HYSTERESIS_LOW){
-                  hairMaskBuf[nIdx] = 255;
-                  queue.push(nIdx);
-                }
-              }
-            }
-          }
-          window.__hysteresisDiag = queue.length - aboveCount;
           hairConf.close();
         } else {
           // ── TF.js SelfieSegmentation 폴백 ──
@@ -1287,8 +1260,7 @@ async function extractHairMask(angle){
         const frontTexRejPart = window.__frontBandTextureDiag ? ` | 프론트밴드질감제외:${window.__frontBandTextureDiag}px` : '';
         const frontClosedTexRejPart = window.__frontClosedTextureDiag ? ` | 프론트닫기질감제외:${window.__frontClosedTextureDiag}px` : '';
         const bandClosedTexRejPart = window.__bandClosedTextureDiag ? ` | 귀닫기질감제외:${window.__bandClosedTextureDiag}px` : '';
-        const hystPart = window.__hysteresisDiag ? ` | 히스테리시스복원:${window.__hysteresisDiag}px` : '';
-        state._diagLog = `세그멘터:${state.segmenterType||'?'} | 마스크픽셀:${pixelCount}px | 랜드마크:${lmDiagPart}${segFailPart}${maskValPart}${hystPart}${bgGuardPart}${texRejPart}${frontTexRejPart}${frontClosedTexRejPart}${bandClosedTexRejPart}`;
+        state._diagLog = `세그멘터:${state.segmenterType||'?'} | 마스크픽셀:${pixelCount}px | 랜드마크:${lmDiagPart}${segFailPart}${maskValPart}${bgGuardPart}${texRejPart}${frontTexRejPart}${frontClosedTexRejPart}${bandClosedTexRejPart}`;
 
         // ── 결방향 인식 (Structure Tensor) ──
         // 축소 해상도(w,h)에서 계산 → 컬럼별 샘플로 다운샘플해 저장
