@@ -61,7 +61,6 @@ main{flex:1;position:relative;overflow:hidden;}
 .btn-primary{background:var(--accent);color:#1B1816;}
 .btn-primary:disabled{background:var(--surface-2);color:var(--text-muted);cursor:not-allowed;}
 .btn-ghost{background:transparent;color:var(--text-muted);border:1px solid var(--line);}
-.btn-block{width:100%;}
 
 /* ── SCREEN 1: CAPTURE ── */
 #screen-capture{background:var(--bg);}
@@ -152,26 +151,17 @@ main{flex:1;position:relative;overflow:hidden;}
   padding:4px 10px;border-radius:8px;font-size:11px;color:var(--accent-soft);
 }
 .seg-status{position:absolute;bottom:8px;left:0;right:0;text-align:center;font-size:11px;color:var(--text-muted);}
-.mask-debug-btn{
-  position:absolute;top:10px;right:10px;
+.debug-btn{
+  position:absolute;right:10px;
   background:rgba(27,24,22,0.75);backdrop-filter:blur(4px);
   padding:4px 10px;border-radius:8px;font-size:11px;color:var(--accent-soft);
   border:1px solid var(--line);cursor:pointer;font-family:'JetBrains Mono',monospace;
 }
+.mask-debug-btn{top:10px;}
 .mask-debug-btn.on{background:var(--accent);color:#1B1816;border-color:var(--accent);font-weight:600;}
-.raw-debug-btn{
-  position:absolute;top:46px;right:10px;
-  background:rgba(27,24,22,0.75);backdrop-filter:blur(4px);
-  padding:4px 10px;border-radius:8px;font-size:11px;color:var(--accent-soft);
-  border:1px solid var(--line);cursor:pointer;font-family:'JetBrains Mono',monospace;
-}
+.raw-debug-btn{top:46px;}
 .raw-debug-btn.on{background:var(--accent);color:#1B1816;border-color:var(--accent);font-weight:600;}
-.facebox-debug-btn{
-  position:absolute;top:82px;right:10px;
-  background:rgba(27,24,22,0.75);backdrop-filter:blur(4px);
-  padding:4px 10px;border-radius:8px;font-size:11px;color:var(--accent-soft);
-  border:1px solid var(--line);cursor:pointer;font-family:'JetBrains Mono',monospace;
-}
+.facebox-debug-btn{top:82px;}
 .facebox-debug-btn.on{background:#00e5ff;color:#0A2A2E;border-color:#00e5ff;font-weight:600;}
 
 .adjust-scroll{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:14px 16px 20px;}
@@ -357,9 +347,9 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:22px;heigh
       <div class="adjust-preview">
         <canvas id="adjustCanvas"></canvas>
         <div class="preview-tag" id="adjustStyleTag">스타일 미선택</div>
-        <button class="mask-debug-btn" id="maskDebugToggle" onclick="toggleMaskDebug()">마스크 보기</button>
-        <button class="raw-debug-btn" id="rawDebugToggle" onclick="toggleRawDebug()">원본 결 보기</button>
-        <button class="facebox-debug-btn" id="faceBoxDebugToggle" onclick="toggleFaceBoxDebug()">얼굴박스 보기</button>
+        <button class="debug-btn mask-debug-btn" id="maskDebugToggle" onclick="toggleMaskDebug()">마스크 보기</button>
+        <button class="debug-btn raw-debug-btn" id="rawDebugToggle" onclick="toggleRawDebug()">원본 결 보기</button>
+        <button class="debug-btn facebox-debug-btn" id="faceBoxDebugToggle" onclick="toggleFaceBoxDebug()">얼굴박스 보기</button>
         <div class="seg-status" id="segStatus"></div>
       </div>
       <div class="adjust-scroll">
@@ -733,14 +723,6 @@ const SECTIONS = {
   },
 };
 
-// 뷰별로 어떤 섹션이 렌더링에 참여하는가
-const VIEW_SECTIONS = {
-  front: ['crown','front','temple','nape'],
-  left:  ['crown','temple','side','occipital','nape'],
-  right: ['crown','temple','side','occipital','nape'],
-  back:  ['crown','occipital','nape'],
-};
-
 // 섹션 커트 순서 (미용사 작업 순서)
 const SECTION_ORDER = ['crown','front','temple','side','occipital','nape'];
 
@@ -795,6 +777,13 @@ const state = {
     const sec = state.sections;
     // 각 뷰 렌더에 필요한 통합 파라미터 계산
     const blend = (a,b,t)=> a*(1-t)+b*t;
+    // left/right는 좌우 대칭이라 항상 동일한 값 — 한 번만 계산해서 공유
+    const sideView = {
+      length: blend(sec.side.length, sec.occipital.length, 0.5),
+      curl:   state._globalCurl || 30,
+      volume: blend(sec.crown.volume, sec.occipital.volume, 0.5),
+      thickness: 50,
+    };
     return {
       front: {
         length: blend(sec.crown.length, sec.front.length, 0.6),
@@ -802,18 +791,8 @@ const state = {
         volume: sec.crown.volume,
         thickness: 50,
       },
-      left: {
-        length: blend(sec.side.length, sec.occipital.length, 0.5),
-        curl:   state._globalCurl || 30,
-        volume: blend(sec.crown.volume, sec.occipital.volume, 0.5),
-        thickness: 50,
-      },
-      right: {
-        length: blend(sec.side.length, sec.occipital.length, 0.5),
-        curl:   state._globalCurl || 30,
-        volume: blend(sec.crown.volume, sec.occipital.volume, 0.5),
-        thickness: 50,
-      },
+      left: sideView,
+      right: sideView,
       back: {
         length: blend(sec.occipital.length, sec.nape.length, 0.5),
         curl:   state._globalCurl || 30,
@@ -1287,13 +1266,7 @@ async function extractHairMask(angle){
           // 2스텝 건너뛰는 것으로는 못 막았던, 경로 중간에 재발하는 동일한 문제.
           // → 경계에서 안쪽으로 살짝 침식(erode)한 마스크로만 결방향을 계산해서
           //   경계 픽셀 자체가 결방향 계산에 아예 들어가지 않게 함.
-          // 박스블러(반경3) + 소벨(반경1) 때문에 경계에서 최소 4px 안쪽까지 배경 정보가
-          // 섞일 수 있음. 기존 erode 반경(3px, w*0.004)은 이 오염범위와 거의 같거나
-          // 모자라서 경계 바로 안쪽 샘플이 깨끗하지 않았음 — 그래서 traceStrand가
-          // "처음 2스텝은 결방향 무시"라는 임시방편을 따로 둬야 했음(두피 바로 위,
-          // 실제 파팅이 보이는 구간의 결방향 정보가 그 임시방편 때문에 통째로 버려짐).
-          // 오염범위보다 확실히 큰 여유(6px)를 둬서 샘플 자체를 깨끗하게 만든다.
-          const orientErodeR = Math.max(6, Math.round(w*0.008));
+          const orientErodeR = Math.max(3, Math.round(w*0.004));
           const orientMaskBuf = erode(hairMaskBuf, w, h, orientErodeR);
           const {angle: angleField, coherence: coherenceField} = computeHairOrientationField(srcPixels, orientMaskBuf, w, h);
           orientationColSamples = buildColumnOrientationSamples(angleField, coherenceField, orientMaskBuf, w, h, 12);
@@ -1446,6 +1419,14 @@ async function extractHairMask(angle){
 /* ────────────────────────────────────────
    유틸: HSV hair 색상 판별 (어두운 갈색~흑색 계열)
 ──────────────────────────────────────── */
+// hueDegrees: RGB에서 hue(0~360)만 계산하는 공용 헬퍼.
+// isHairColor / isHairColorRelaxed 양쪽에서 동일하게 쓰던 공식을 하나로 통합.
+function hueDegrees(r,g,b,maxC,minC){
+  const hRaw=maxC>0?( maxC===r?((g-b)/(maxC-minC+0.001))%6
+                    : maxC===g?((b-r)/(maxC-minC+0.001))+2
+                    :           ((r-g)/(maxC-minC+0.001))+4 )*60 : 0;
+  return (hRaw+360)%360;
+}
 function isHairColor(r,g,b){
   // 흑발·갈색·금발·회색·백발(새치) 모두 인식
   const maxC=Math.max(r,g,b), minC=Math.min(r,g,b);
@@ -1457,10 +1438,7 @@ function isHairColor(r,g,b){
 
   // 2) 채도 있는 갈색/적갈색/금발 (hue 0~50 또는 300~360)
   if(s>0.15 && v<0.80){
-    const hRaw=maxC>0?( maxC===r?((g-b)/(maxC-minC+0.001))%6
-                      : maxC===g?((b-r)/(maxC-minC+0.001))+2
-                      :           ((r-g)/(maxC-minC+0.001))+4 )*60 : 0;
-    const hh=(hRaw+360)%360;
+    const hh=hueDegrees(r,g,b,maxC,minC);
     if(hh<50||hh>300) return true;
   }
 
@@ -1486,10 +1464,7 @@ function isHairColorRelaxed(r,g,b){
 
   // 채도 있는 갈색/적갈색 계열, 밝기 상한 확장
   if(s>0.12 && v<0.88){
-    const hRaw=maxC>0?( maxC===r?((g-b)/(maxC-minC+0.001))%6
-                      : maxC===g?((b-r)/(maxC-minC+0.001))+2
-                      :           ((r-g)/(maxC-minC+0.001))+4 )*60 : 0;
-    const hh=(hRaw+360)%360;
+    const hh=hueDegrees(r,g,b,maxC,minC);
     if(hh<55||hh>295) return true;
   }
 
@@ -1527,75 +1502,53 @@ function hasHairTexture(gray, w, h, x, y, radius){
 /* ────────────────────────────────────────
    유틸: 모폴로지 연산 (마스크 품질 향상)
 ──────────────────────────────────────── */
-function erodeOnce(buf, w, h){
+// separable 모폴로지 연산 공용 헬퍼 (dilate/erode가 공유)
+// 저사양 기기 성능을 위해 brute-force 대신 가로→세로 1차원 패스로 처리
+// 연산량 O(w*h*r^2) → O(w*h*r) 로 대폭 감소
+// dilating=true: 팽창(경계 밖은 클램프, 하나라도 켜지면 255)
+// dilating=false: 침식(경계 밖은 배경으로 취급, 하나라도 꺼지면 0)
+function morphSeparable(buf, w, h, radius, dilating){
+  if(radius<=0) return new Uint8Array(buf);
+  const tmp = new Uint8Array(w*h);
+  for(let y=0;y<h;y++){
+    const row=y*w;
+    for(let x=0;x<w;x++){
+      let v = dilating?0:255;
+      if(dilating){
+        const xs=Math.max(0,x-radius), xe=Math.min(w-1,x+radius);
+        for(let nx=xs;nx<=xe;nx++){ if(buf[row+nx]>0){ v=255; break; } }
+      } else {
+        const xs=x-radius, xe=x+radius;
+        for(let nx=xs;nx<=xe;nx++){ if(nx<0||nx>=w||buf[row+nx]===0){ v=0; break; } }
+      }
+      tmp[row+x]=v;
+    }
+  }
   const out = new Uint8Array(w*h);
-  for(let y=1;y<h-1;y++) for(let x=1;x<w-1;x++){
-    const i=y*w+x;
-    if(buf[i]>0 && buf[i-1]>0 && buf[i+1]>0 && buf[(y-1)*w+x]>0 && buf[(y+1)*w+x]>0)
-      out[i]=255;
+  for(let x=0;x<w;x++){
+    for(let y=0;y<h;y++){
+      let v = dilating?0:255;
+      if(dilating){
+        const ys=Math.max(0,y-radius), ye=Math.min(h-1,y+radius);
+        for(let ny=ys;ny<=ye;ny++){ if(tmp[ny*w+x]>0){ v=255; break; } }
+      } else {
+        const ys=y-radius, ye=y+radius;
+        for(let ny=ys;ny<=ye;ny++){ if(ny<0||ny>=h||tmp[ny*w+x]===0){ v=0; break; } }
+      }
+      out[y*w+x]=v;
+    }
   }
   return out;
 }
 
 // dilate: 마스크를 radius 픽셀만큼 팽창 (사이드 하단 경계 확장)
-// separable(가로→세로 1차원 패스) 방식: 저사양 기기 성능을 위해 brute-force 대신 사용
-// 연산량 O(w*h*r^2) → O(w*h*r) 로 대폭 감소
 function dilate(buf, w, h, radius){
-  if(radius<=0) return new Uint8Array(buf);
-  const tmp = new Uint8Array(w*h);
-  // 가로 방향 1차원 dilate
-  for(let y=0;y<h;y++){
-    const row=y*w;
-    for(let x=0;x<w;x++){
-      let v=0;
-      const xs=Math.max(0,x-radius), xe=Math.min(w-1,x+radius);
-      for(let nx=xs;nx<=xe;nx++){ if(buf[row+nx]>0){ v=255; break; } }
-      tmp[row+x]=v;
-    }
-  }
-  // 세로 방향 1차원 dilate
-  const out = new Uint8Array(w*h);
-  for(let x=0;x<w;x++){
-    for(let y=0;y<h;y++){
-      let v=0;
-      const ys=Math.max(0,y-radius), ye=Math.min(h-1,y+radius);
-      for(let ny=ys;ny<=ye;ny++){ if(tmp[ny*w+x]>0){ v=255; break; } }
-      out[y*w+x]=v;
-    }
-  }
-  return out;
+  return morphSeparable(buf, w, h, radius, true);
 }
 
 // erode: 마스크를 radius 픽셀만큼 침식 (노이즈 제거)
-// separable 방식으로 동일하게 최적화
 function erode(buf, w, h, radius){
-  if(radius<=0) return new Uint8Array(buf);
-  const tmp = new Uint8Array(w*h);
-  // 가로 방향 1차원 erode
-  for(let y=0;y<h;y++){
-    const row=y*w;
-    for(let x=0;x<w;x++){
-      let v=255;
-      const xs=x-radius, xe=x+radius;
-      for(let nx=xs;nx<=xe;nx++){
-        if(nx<0||nx>=w||buf[row+nx]===0){ v=0; break; }
-      }
-      tmp[row+x]=v;
-    }
-  }
-  // 세로 방향 1차원 erode
-  const out = new Uint8Array(w*h);
-  for(let x=0;x<w;x++){
-    for(let y=0;y<h;y++){
-      let v=255;
-      const ys=y-radius, ye=y+radius;
-      for(let ny=ys;ny<=ye;ny++){
-        if(ny<0||ny>=h||tmp[ny*w+x]===0){ v=0; break; }
-      }
-      out[y*w+x]=v;
-    }
-  }
-  return out;
+  return morphSeparable(buf, w, h, radius, false);
 }
 
 // closing = dilate → erode: 구멍 채우기 (사이드 하단 단절 구간 연결)
@@ -2097,10 +2050,6 @@ buildStyleGrid();
 const PARAM_LABELS = {
   length:'길이', volume:'볼륨', line:'라인', blend:'연결감', layer:'레이어',
 };
-const LINE_HINTS = {
-  front:   {0:'라운드', 50:'스트레이트', 100:'위로올림'},
-  nape:    {0:'스퀘어',  50:'라운드',     100:'테이퍼'},
-};
 
 function buildSectionTabs(){
   const container = document.getElementById('sectionTabs');
@@ -2241,17 +2190,6 @@ function syncSliderUI(){
   drawAdjustPreview();
 }
 
-// 구형 onSlider 호환 (음성 명령 등에서 사용)
-function onSlider(key, val){
-  // crown 섹션 기본값으로 라우팅
-  if(key==='length')   { state.sections.crown.length=parseInt(val); state.sections.front.length=parseInt(val); }
-  if(key==='volume')   { state.sections.crown.volume=parseInt(val); }
-  if(key==='curl')     { state._globalCurl=parseInt(val); }
-  buildSectionTabs();
-  drawAdjustPreview();
-}
-function resetSliders(){ resetSections(); }
-
 /* ════════════════════════════════════════
    ANGLE SWITCH
 ════════════════════════════════════════ */
@@ -2309,62 +2247,21 @@ function syncCanvasSize(canvas){
   if(rect.width>0&&rect.height>0){canvas.width=rect.width;canvas.height=rect.height;}
 }
 
-// SVG 폴백: hairCanvas 없을 때 선으로 헤어 표현
-function drawHairSVGFallback(ctx, w, h, fit){
-  if(!state.selectedStyle) return;
-  const {length,curl,volume,thickness} = state.sliders;
-  const {dw,dh,dx,dy} = fit;
-
-  // 머리 중심 추정 (사진 상단 1/3 중앙)
-  const headCX = dx + dw/2;
-  const headTopY = dy;
-  const headR = dw * 0.18; // 얼굴 반경 추정
-
-  const numStrands = Math.round(8 + (volume/100)*16);
-  const hairLen = h * (0.12 + (length/100)*0.45);
-  const curlAmt = (curl/100)*40;
-  const alpha = 0.35 + (thickness/100)*0.45;
-  const color = state.selectedStyle.colorHex;
-
-  ctx.save();
-  ctx.globalAlpha = alpha;
-  ctx.strokeStyle = color;
-  ctx.lineWidth = 1.8;
-  ctx.lineCap = 'round';
-
-  for(let i=0;i<numStrands;i++){
-    const t = i/(numStrands-1); // 0~1
-    const angle_rad = (t - 0.5) * Math.PI * 1.1; // 머리 둘레
-    const startX = headCX + Math.sin(angle_rad) * headR;
-    const startY = headTopY + headR * 0.6 - Math.cos(angle_rad) * headR * 0.5;
-
-    const sideOffset = (t-0.5)*2; // -1~1
-    const endX = startX + sideOffset*curlAmt + Math.sin(t*Math.PI*3)*curlAmt*0.4;
-    const endY = startY + hairLen;
-    const cp1x = startX + sideOffset*curlAmt*0.3;
-    const cp1y = startY + hairLen*0.4;
-    const cp2x = endX + Math.sin(t*Math.PI*2)*curlAmt*0.5;
-    const cp2y = startY + hairLen*0.75;
-
-    ctx.beginPath();
-    ctx.moveTo(startX, startY);
-    ctx.bezierCurveTo(cp1x,cp1y,cp2x,cp2y,endX,endY);
-    ctx.stroke();
-  }
-  ctx.restore();
-}
-
 // 핵심 렌더 함수
-// 마스크 디버그 토글: hairMaskBuf 실루엣을 색으로 채워서 그대로 보여줌(가닥 렌더링 대신)
-// — 세그멘테이션이 실제로 어디를 "머리카락"으로 잡았는지(과잉/누락) 눈으로 바로 확인하기 위함
-function toggleMaskDebug(){
-  state.debugShowMask = !state.debugShowMask;
-  if(state.debugShowMask) state.debugShowRaw = false; // 두 디버그 뷰는 동시에 켤 수 없음
+// 마스크 디버그 버튼 상태 동기화 (toggleMaskDebug/toggleRawDebug 양쪽에서 공용으로 사용)
+function syncMaskDebugBtn(){
   const btn = document.getElementById('maskDebugToggle');
   if(btn){
     btn.classList.toggle('on', state.debugShowMask);
     btn.textContent = state.debugShowMask ? '가닥 보기' : '마스크 보기';
   }
+}
+// 마스크 디버그 토글: hairMaskBuf 실루엣을 색으로 채워서 그대로 보여줌(가닥 렌더링 대신)
+// — 세그멘테이션이 실제로 어디를 "머리카락"으로 잡았는지(과잉/누락) 눈으로 바로 확인하기 위함
+function toggleMaskDebug(){
+  state.debugShowMask = !state.debugShowMask;
+  if(state.debugShowMask) state.debugShowRaw = false; // 두 디버그 뷰는 동시에 켤 수 없음
+  syncMaskDebugBtn();
   const rawBtn = document.getElementById('rawDebugToggle');
   if(rawBtn) rawBtn.classList.toggle('on', state.debugShowRaw);
   renderFrame(document.getElementById('adjustCanvas'), state.currentViewAngle);
@@ -2382,11 +2279,7 @@ function toggleRawDebug(){
     btn.classList.toggle('on', state.debugShowRaw);
     btn.textContent = state.debugShowRaw ? '스타일 보기' : '원본 결 보기';
   }
-  const maskBtn = document.getElementById('maskDebugToggle');
-  if(maskBtn){
-    maskBtn.classList.toggle('on', state.debugShowMask);
-    maskBtn.textContent = state.debugShowMask ? '가닥 보기' : '마스크 보기';
-  }
+  syncMaskDebugBtn();
   const tag = document.getElementById('adjustStyleTag');
   if(tag){
     tag.textContent = state.debugShowRaw
@@ -2605,25 +2498,6 @@ function drawHairStrands(ctx, fit, scalpY, hairEndY, maskW, maskH, hairCanvas, o
 
   // curl 방향 기준: 마스크 실제 수평 중심
   const maskCX = validCols.reduce((a,b)=>a+b,0) / validCols.length;
-
-  // ── 컬럼별 길이 배율: 그 컬럼이 위치한 섹션(크라운/프론트/템플/사이드 등)의
-  // length 파라미터를 사용 — 이전엔 머리 전체에 하나의 평균값만 적용해서
-  // 섹션별 길이 슬라이더가 실제로는 공간적으로 반영되지 않았음.
-  const lenMultCache = new Float32Array(maskW).fill(-1);
-  function lengthMultFor(ix){
-    const cx = Math.min(maskW-1, Math.max(0, Math.round(ix)));
-    if(lenMultCache[cx] >= 0) return lenMultCache[cx];
-    const ny = iScalpY[cx] >= 0 ? iScalpY[cx]/maskH : 0.15;
-    const nx = cx/maskW;
-    const secId = (sections && angle) ? resolveSectionId(angle, nx, ny) : 'crown';
-    const lenParam = (sections && sections[secId] && typeof sections[secId].length==='number')
-      ? sections[secId].length : 50;
-    const mult = 0.4 + (lenParam/100) * 3.0;
-    lenMultCache[cx] = mult;
-    return mult;
-  }
-  // NOTE: 배율(곱셈) 방식이라 원본이 긴 부위일수록 슬라이더 1칸의 변화량이
-  // 커지는 문제가 있어 지금은 사용하지 않음. 나중에 다시 필요해지면 재사용.
 
   // ── 컬럼별 길이 변화량(절대값, px): 슬라이더 50 = 원본 길이 그대로.
   // 슬라이더 1칸당 변화량이 원본 길이(origLen)와 무관하게 항상 동일하도록
