@@ -1,86 +1,49 @@
 /* ════════════════════════════════════════
-   CAPTURE
+   COMPARE
 ════════════════════════════════════════ */
-const video = document.getElementById('video');
-const camOffMsg = document.getElementById('camOffMsg');
-let cameraStream = null;
+function drawCompare(){
+  if(currentScreen!=='compare') return;
+  const angle = state.currentViewAngle;
+  const pane  = document.getElementById('comparePane');
+  const baseC = document.getElementById('compareBaseCanvas');
+  const topC  = document.getElementById('compareTopCanvas');
+  const clip  = document.getElementById('compareClip');
 
-async function initCamera(){
-  try{
-    cameraStream = await navigator.mediaDevices.getUserMedia({video:{facingMode:'user',width:{ideal:1280},height:{ideal:1920}},audio:false});
-    video.srcObject=cameraStream;
-    video.style.display='block';
-    camOffMsg.style.display='none';
-  }catch(e){
-    camOffMsg.innerHTML='카메라에 접근할 수 없습니다.<br><span style="font-size:11px;">아래 "업로드" 버튼을 이용해주세요.</span>';
-    camOffMsg.style.display='';
-  }
-}
-initCamera();
+  const pw = pane.clientWidth, ph = pane.clientHeight;
+  if(pw===0||ph===0){ setTimeout(()=>drawCompare(),80); return; }
+  baseC.width=pw; baseC.height=ph;
+  topC.width=pw;  topC.height=ph;
+  topC.style.width=pw+'px'; topC.style.height=ph+'px';
 
-function updateAngleUI(){
-  ANGLES.forEach((a,i)=>{
-    const card=document.getElementById('card-'+a);
-    const seg=document.getElementById('seg'+i);
-    const thumb=document.getElementById('thumb-'+a);
-    const chk=document.getElementById('chk-'+a);
-    const isCurrent = i===state.currentCaptureIndex;
-    const hasShot = !!state.shots[a];
-    card.className='angle-item'+(isCurrent?' current':'');
-    chk.textContent = hasShot?'✓':'';
-    thumb.innerHTML = hasShot?`<img src="${state.shots[a]}">`:'';
-    // dial
-    const okColor='#8FA888', activeColor='#C98A4B', lineColor='#3A332B';
-    seg.style.stroke = hasShot?okColor:(isCurrent?activeColor:lineColor);
+  const div = document.getElementById('compareDivider');
+  if(!div.style.left||div.style.left==='0px') div.style.left='50%';
+  const pct = parseFloat(div.style.left)||50;
+  clip.style.width = pct+'%';
+
+  getCachedImg(angle,(img)=>{
+    const ctx = baseC.getContext('2d');
+    ctx.clearRect(0,0,pw,ph);
+    if(img) drawImgOnCanvas(ctx,img,pw,ph);
   });
-  const doneCount=ANGLES.filter(a=>state.shots[a]).length;
-  document.getElementById('dialCenter').textContent=doneCount+'/4';
-  const curAngle=ANGLES[state.currentCaptureIndex];
-  document.getElementById('captureHint').textContent=HINTS[curAngle];
-  document.getElementById('capHintSmall').textContent=ANGLE_LABELS[curAngle]+ ' 촬영';
-  document.getElementById('toStyleBtn').disabled=doneCount<1;
-  // show/hide preview
-  const shot=state.shots[curAngle];
-  const sp=document.getElementById('shotPreview');
-  if(shot){sp.src=shot;sp.style.display='block';video.style.display='none';}
-  else{sp.style.display='none';if(cameraStream)video.style.display='block';}
-}
-updateAngleUI();
 
-function jumpToAngle(i){ state.currentCaptureIndex=i; updateAngleUI(); }
-
-function captureCurrentAngle(){
-  const angle=ANGLES[state.currentCaptureIndex];
-  if(state.shots[angle]){ retakeCurrent(); return; }
-  if(video.style.display!=='none' && video.videoWidth){
-    const c=document.createElement('canvas');
-    c.width=video.videoWidth; c.height=video.videoHeight;
-    const ctx=c.getContext('2d');
-    ctx.translate(c.width,0); ctx.scale(-1,1); // mirror
-    ctx.drawImage(video,0,0);
-    state.shots[angle]=c.toDataURL('image/jpeg',0.85);
-    // auto advance
-    if(state.currentCaptureIndex<3) state.currentCaptureIndex++;
-    updateAngleUI();
-  } else { showToast('카메라가 준비되지 않았어요.'); }
+  renderFrame(topC, angle);
 }
 
-function retakeCurrent(){
-  const angle=ANGLES[state.currentCaptureIndex];
-  state.shots[angle]=null; state.hairCanvases[angle]=null; state.hairMasks[angle]=null; state.baseCanvases[angle]=null;
-  aiAnalysis=null;
-  updateAngleUI();
-}
+function positionCompareTop(){ drawCompare(); }
 
-function handleFileUpload(e){
-  const file=e.target.files[0]; if(!file) return;
-  const reader=new FileReader();
-  reader.onload=ev=>{
-    state.shots[ANGLES[state.currentCaptureIndex]]=ev.target.result;
-    if(state.currentCaptureIndex<3) state.currentCaptureIndex++;
-    updateAngleUI();
-  };
-  reader.readAsDataURL(file);
-  e.target.value='';
-}
+// divider drag
+const divider=document.getElementById('compareDivider');
+const clip=document.getElementById('compareClip');
+let dragging=false;
+divider.addEventListener('pointerdown',e=>{dragging=true;e.preventDefault();});
+window.addEventListener('pointerup',()=>{dragging=false;});
+window.addEventListener('pointermove',e=>{
+  if(!dragging) return;
+  const pane=document.getElementById('comparePane');
+  const rect=pane.getBoundingClientRect();
+  let pct=((e.clientX-rect.left)/rect.width)*100;
+  pct=Math.max(4,Math.min(96,pct));
+  divider.style.left=pct+'%'; clip.style.width=pct+'%';
+});
+window.addEventListener('resize',positionCompareTop);
 

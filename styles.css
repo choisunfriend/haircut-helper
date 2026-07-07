@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>결 GYEOL — 스타일 프리뷰</title>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+<div id="app">
+  <header>
+    <div class="brand-mark">결</div>
+    <div class="stage-pill" id="stageLabel">단계 <b>1/4 · 촬영</b></div>
+  </header>
+  <main>
+
+    <!-- ══ SCREEN 1: CAPTURE ══ -->
+    <section class="screen active" id="screen-capture">
+      <div class="capture-video-wrap">
+        <div class="cam-off-msg" id="camOffMsg">카메라를 불러오는 중…<br><span style="font-size:11px;">아래 업로드 버튼도 이용 가능해요</span></div>
+        <video id="video" autoplay playsinline muted></video>
+        <img id="shotPreview">
+        <svg class="face-guide-svg" viewBox="0 0 100 100" preserveAspectRatio="xMidYMid meet">
+          <ellipse cx="50" cy="38" rx="34" ry="46" fill="none" stroke="rgba(232,195,158,0.55)" stroke-width="0.7" stroke-dasharray="3 3"/>
+        </svg>
+        <div class="cap-hint" id="captureHint">정면을 가이드 안에 맞춰주세요</div>
+      </div>
+
+      <!-- angle strip -->
+      <div class="angle-strip" id="angleStrip">
+        <div class="angle-item current" id="card-front" onclick="jumpToAngle(0)">
+          <div class="angle-thumb" id="thumb-front"></div>
+          <div class="angle-name">정면</div>
+          <div class="angle-check" id="chk-front"></div>
+        </div>
+        <div class="angle-item" id="card-left" onclick="jumpToAngle(1)">
+          <div class="angle-thumb" id="thumb-left"></div>
+          <div class="angle-name">좌측</div>
+          <div class="angle-check" id="chk-left"></div>
+        </div>
+        <div class="angle-item" id="card-right" onclick="jumpToAngle(2)">
+          <div class="angle-thumb" id="thumb-right"></div>
+          <div class="angle-name">우측</div>
+          <div class="angle-check" id="chk-right"></div>
+        </div>
+        <div class="angle-item" id="card-back" onclick="jumpToAngle(3)">
+          <div class="angle-thumb" id="thumb-back"></div>
+          <div class="angle-name">후면</div>
+          <div class="angle-check" id="chk-back"></div>
+        </div>
+      </div>
+
+      <div class="capture-actions">
+        <button class="shutter-btn" onclick="captureCurrentAngle()">📷</button>
+        <div class="cap-right">
+          <div class="dial-row">
+            <div class="dial-mini">
+              <svg viewBox="0 0 100 100">
+                <circle class="seg" id="seg0" cx="50" cy="50" r="42" fill="none" stroke="#3A332B" stroke-width="6" stroke-dasharray="65 197" transform="rotate(-90 50 50)"/>
+                <circle class="seg" id="seg1" cx="50" cy="50" r="42" fill="none" stroke="#3A332B" stroke-width="6" stroke-dasharray="65 197" stroke-dashoffset="-65" transform="rotate(-90 50 50)"/>
+                <circle class="seg" id="seg2" cx="50" cy="50" r="42" fill="none" stroke="#3A332B" stroke-width="6" stroke-dasharray="65 197" stroke-dashoffset="-130" transform="rotate(-90 50 50)"/>
+                <circle class="seg" id="seg3" cx="50" cy="50" r="42" fill="none" stroke="#3A332B" stroke-width="6" stroke-dasharray="65 197" stroke-dashoffset="-195" transform="rotate(-90 50 50)"/>
+              </svg>
+              <div class="dial-mini-center" id="dialCenter">0/4</div>
+            </div>
+            <div class="cap-hint-small" id="capHintSmall">촬영 버튼을 눌러주세요</div>
+          </div>
+          <div class="cap-btns">
+            <button class="btn btn-ghost" style="flex:1;font-size:12px;padding:9px 8px;" onclick="retakeCurrent()">재촬영</button>
+            <button class="btn btn-ghost" style="flex:1;font-size:12px;padding:9px 8px;" onclick="document.getElementById('fileInput').click()">업로드</button>
+            <button class="btn btn-primary" id="toStyleBtn" style="flex:1;font-size:12px;padding:9px 8px;" onclick="navTo('style')" disabled>다음→</button>
+          </div>
+        </div>
+      </div>
+      <input type="file" id="fileInput" accept="image/*" style="display:none;" onchange="handleFileUpload(event)">
+    </section>
+
+    <!-- ══ SCREEN 2: STYLE ══ -->
+    <section class="screen" id="screen-style">
+      <div class="style-scroll">
+        <div class="style-grid" id="styleGrid"></div>
+      </div>
+      <div class="style-footer">
+        <button class="btn btn-ghost" style="flex:1;" onclick="navTo('capture')">← 촬영</button>
+        <button class="btn btn-primary" id="toAdjustBtn" style="flex:2;" onclick="navTo('adjust')" disabled>조정하기 →</button>
+      </div>
+    </section>
+
+    <!-- ══ SCREEN 3: ADJUST ══ -->
+    <section class="screen" id="screen-adjust">
+      <div class="adjust-preview">
+        <canvas id="adjustCanvas"></canvas>
+        <div class="preview-tag" id="adjustStyleTag">스타일 미선택</div>
+        <button class="debug-btn mask-debug-btn" id="maskDebugToggle" onclick="toggleMaskDebug()">마스크 보기</button>
+        <button class="debug-btn raw-debug-btn" id="rawDebugToggle" onclick="toggleRawDebug()">원본 결 보기</button>
+        <button class="debug-btn facebox-debug-btn" id="faceBoxDebugToggle" onclick="toggleFaceBoxDebug()">얼굴박스 보기</button>
+        <div class="seg-status" id="segStatus"></div>
+      </div>
+      <div class="adjust-scroll">
+        <div class="adjust-controls">
+
+          <!-- 뷰 전환 (정면/좌/우/후) -->
+          <div class="angle-switch" id="angleSwitch"></div>
+
+          <!-- AI 분석 카드 -->
+          <div class="ai-card" id="aiAnalysisCard" style="display:none;">
+            <div class="ai-card-hdr"><div class="ai-dot"></div>AI 분석</div>
+            <div class="ai-card-body" id="aiAnalysisText"></div>
+            <div class="ai-tags" id="aiAnalysisTags"></div>
+          </div>
+
+          <!-- 섹션 탭 (미용사 커트 순서) -->
+          <div id="sectionTabs" style="display:flex;flex-direction:column;gap:10px;"></div>
+
+          <!-- 컬/웨이브: 전체 공통 -->
+          <div class="slider-block" style="border-top:1px solid var(--line);padding-top:12px;">
+            <div class="slider-row">
+              <span class="slider-label" style="color:var(--text-muted);font-size:12px;">컬 / 웨이브 (전체)</span>
+              <span class="slider-val" id="val-globalCurl">30</span>
+            </div>
+            <input type="range" id="slider-globalCurl" min="0" max="100" value="30"
+              oninput="onGlobalCurl(this.value)">
+          </div>
+
+          <div class="voice-box">
+            <div class="voice-btn" id="voiceBtn" onclick="toggleVoice()">
+              <div class="voice-dot"></div>
+              <span id="voiceBtnLabel" style="font-size:13px;font-weight:600;">음성으로 조정하기</span>
+            </div>
+            <div class="voice-transcript" id="voiceTranscript">예: "크라운 길게", "네이프 짧게", "볼륨 추가"</div>
+            <div class="voice-hints">크라운·프론트·템플·사이드·후두부·네이프 + 길게·짧게·볼륨·컬</div>
+          </div>
+
+          <button class="btn btn-ghost" style="font-size:12px;padding:10px;" onclick="resetSections()">초기화</button>
+          <div style="height:4px;"></div>
+        </div>
+      </div>
+      <div style="display:flex;gap:8px;padding:10px 14px 14px;flex-shrink:0;">
+        <button class="btn btn-ghost" style="flex:1;font-size:13px;" onclick="navTo('style')">← 스타일</button>
+        <button class="btn btn-primary" style="flex:2;font-size:13px;" onclick="navTo('compare')">비교 보기 →</button>
+      </div>
+    </section>
+
+    <!-- ══ SCREEN 4: COMPARE ══ -->
+    <section class="screen" id="screen-compare">
+      <div class="compare-wrap" id="comparePane">
+        <canvas id="compareBaseCanvas" class="compare-base"></canvas>
+        <div class="compare-clip" id="compareClip">
+          <canvas id="compareTopCanvas"></canvas>
+        </div>
+        <div class="compare-divider" id="compareDivider"></div>
+        <div class="compare-label before">BEFORE</div>
+        <div class="compare-label after">AFTER</div>
+      </div>
+      <div class="compare-bottom">
+        <div class="angle-switch" id="angleSwitchCompare"></div>
+        <div style="display:flex;gap:8px;">
+          <button class="btn btn-ghost" style="flex:1;font-size:13px;" onclick="navTo('adjust')">← 조정</button>
+          <button class="btn btn-primary" style="flex:1;font-size:13px;" onclick="startNewCustomer()">새로 시작</button>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- bottom nav -->
+  <nav class="bottom-nav">
+    <button class="nav-tab active" id="nav-capture" onclick="navTo('capture')"><span class="icon">📷</span>촬영</button>
+    <button class="nav-tab" id="nav-style" onclick="navTo('style')" disabled><span class="icon">✂️</span>스타일</button>
+    <button class="nav-tab" id="nav-adjust" onclick="navTo('adjust')" disabled><span class="icon">🎚️</span>조정</button>
+    <button class="nav-tab" id="nav-compare" onclick="navTo('compare')" disabled><span class="icon">◧</span>비교</button>
+  </nav>
+</div>
+
+<div class="toast" id="toast"></div>
+<div class="ai-overlay hidden" id="aiOverlay">
+  <div class="ai-spinner"></div>
+  <div class="ai-overlay-text" id="aiOverlayText">분석 중…</div>
+  <div class="ai-overlay-sub" id="aiOverlaySub">잠시만 기다려주세요</div>
+</div>
+
+<!-- TensorFlow.js + Body Segmentation -->
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-core@4.17.0/dist/tf-core.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-backend-webgl@4.17.0/dist/tf-backend-webgl.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-converter@4.17.0/dist/tf-converter.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/body-segmentation@1.0.1/dist/body-segmentation.min.js"></script>
+<!-- MediaPipe Tasks Vision (Hair Landmarker) -->
+<!-- MediaPipe Tasks Vision: ES 모듈로만 배포되므로 classic <script src> 태그로는
+     window.FilesetResolver 등 전역이 전혀 생성되지 않는다 (실제 원인이었던 버그).
+     아래 loadVisionModule()에서 동적 import()로 직접 불러온다. -->
+<script src="js/vision-loader.js"></script>
+<script src="js/vision-face.js"></script>
+<script src="js/state.js"></script>
+<script src="js/vision-segmentation.js"></script>
+<script src="js/vision-orientation.js"></script>
+<script src="js/navigation.js"></script>
+<script src="js/capture.js"></script>
+<script src="js/style-select.js"></script>
+<script src="js/section-ui.js"></script>
+<script src="js/angle-switch.js"></script>
+<script src="js/render.js"></script>
+<script src="js/compare.js"></script>
+<script src="js/ai-analysis.js"></script>
+<script src="js/voice.js"></script>
+<script src="js/helpers.js"></script>
+</body>
+</html>
