@@ -1438,10 +1438,31 @@ async function extractHairMask(angle){
 
         const {hairC, baseC, reasonC, avgHairColor} = buildOutputCanvases();
 
+        // ── 두피/피부색 샘플링 ──
+        // 얼굴제거박스·눈썹가드로 "피부"라고 판정해서 머리카락에서 제외한 픽셀들의
+        // 평균 색상 = 이 사람의 실제 피부/두피에 가까운 색. 가르마나 정수리가
+        // 벗어진 부분처럼 마스크 실루엣 안인데 실제 머리카락은 아닌 곳을
+        // (기존처럼) 진한 평균 헤어컬러 단색으로 덮어버리면 밋밋한 덩어리로
+        // 보이는데, 대신 이 두피색을 써서 "머리카락 사이로 두피가 비치는"
+        // 자연스러운 느낌을 내기 위함.
+        let scalpColor = null;
+        {
+          let srSum=0, sgSum=0, sbSum=0, scnt=0;
+          for(let i=0;i<w*h;i++){
+            if(faceExcludeMask[i]===1){
+              srSum+=srcPixels[i*4]; sgSum+=srcPixels[i*4+1]; sbSum+=srcPixels[i*4+2]; scnt++;
+            }
+          }
+          if(scnt>0){
+            scalpColor = `rgb(${Math.round(srSum/scnt)},${Math.round(sgSum/scnt)},${Math.round(sbSum/scnt)})`;
+          }
+        }
+
         state.hairCanvases[angle] = hairC;
         state.baseCanvases[angle] = baseC;
         state.hairMasks[angle]    = {
           scalpY, hairEndY, w:img.width, h:img.height, avgColor:avgHairColor,
+          scalpColor, // 얼굴 피부에서 샘플링한 두피/피부 톤 — 가닥 사이 언더코트에 사용
           // 결방향 필드는 축소 해상도(maskW,maskH) 좌표계로 저장됨 — 사용 시 비율 변환 필요
           orientation: orientationColSamples,
           maskW: w, maskH: h,
@@ -2427,20 +2448,23 @@ function renderFrame(canvas, angle){
       // → baseC 자체를 베이스로 바로 그려서 머리카락 영역을 실제로 비운다.
       ctx.drawImage(baseC, fit.dx, fit.dy, fit.dw, fit.dh);
 
-      // 헤어컬러 언더코트: hairC(원본 머리카락 픽셀, 마스크 실루엣 alpha)를
-      // source-in으로 평균 헤어컬러 단색 채움 → 새 가닥이 성기게 그려진 틈새로
-      // "원본 사진의 실제 머리카락"이 아니라 밋밋한 단색이 비치게 해서,
-      // 새로 생성된 가닥의 실제 커버리지를 눈으로 정확히 판단할 수 있게 함
-      const avgColor = maskInf.avgColor;
+      // 언더코트: hairC(원본 머리카락 픽셀, 마스크 실루엣 alpha)를 source-in으로
+      // 채워서 마스크 실루엣 모양만 가져온 뒤, 그 안을 "두피/피부색"으로 채움.
+      // (이전엔 평균 헤어컬러의 진한 단색으로 채웠는데, 그러면 가닥 사이 빈틈이
+      // 그냥 진한 색 덩어리로 보여서 "머리카락"이 아니라 밋밋한 실루엣처럼 보였음.
+      // 실제 얼굴 피부에서 샘플링한 톤으로 바꾸면, 가닥 사이로 두피가 비치는
+      // 자연스러운 느낌이 나고, 어두운 가닥과 밝은 두피색 사이 명암 대비가 생겨서
+      // 결(가닥의 흐름)도 훨씬 잘 보임.)
+      const scalpColor = maskInf.scalpColor || maskInf.avgColor;
       const undercoat = document.createElement('canvas');
       undercoat.width = hairC.width; undercoat.height = hairC.height;
       const uCtx = undercoat.getContext('2d');
       uCtx.drawImage(hairC, 0, 0);
       uCtx.globalCompositeOperation = 'source-in';
-      uCtx.fillStyle = avgColor;
+      uCtx.fillStyle = scalpColor;
       uCtx.fillRect(0, 0, undercoat.width, undercoat.height);
       ctx.save();
-      ctx.globalAlpha = 0.5;
+      ctx.globalAlpha = 0.8;
       ctx.drawImage(undercoat, fit.dx, fit.dy, fit.dw, fit.dh);
       ctx.restore();
 
