@@ -895,7 +895,10 @@ initSegmenter();
 // 실제 MediaPipe hair_segmenter 마스크 특성에 맞춰 검증된 적이 없음.
 // MediaPipe가 정상 동작하는 지금, 일단 다 끄고 순수 MediaPipe 마스크 + 최소 노이즈 정리만
 // 확인한 뒤, 실제로 필요한 것만 골라 다시 켠다.
-const ENABLE_LANDMARK_POSTPROCESS = true;
+// (실제로 꺼서 테스트: MediaPipe가 정상 동작한 이후로 "결이 살아있는" 모양이 한 번도
+// 안 나왔다는 제보 — 이 패치들이 TF.js 마스크 기준으로 튜닝돼서 MediaPipe의 더 정교한
+// 마스크와 안 맞을 가능성이 높음. false로 끄고 순수 MediaPipe 마스크만 확인.)
+const ENABLE_LANDMARK_POSTPROCESS = false;
 
 async function extractHairMask(angle){
   const dataUrl = state.shots[angle];
@@ -1452,6 +1455,25 @@ async function extractHairMask(angle){
             if(faceExcludeMask[i]===1){
               srSum+=srcPixels[i*4]; sgSum+=srcPixels[i*4+1]; sbSum+=srcPixels[i*4+2]; scnt++;
             }
+          }
+          if(scnt>0){
+            scalpColor = `rgb(${Math.round(srSum/scnt)},${Math.round(sgSum/scnt)},${Math.round(sbSum/scnt)})`;
+          }
+        }
+        // 폴백: ENABLE_LANDMARK_POSTPROCESS가 꺼져있으면 faceExcludeMask가 항상
+        // 텅 비어있어서(랜드마크 기반 제외 자체를 안 하니) 위 샘플링이 0건이 됨.
+        // 이 경우 랜드마크와 무관하게, 각 컬럼의 "머리카락 시작 지점 바로 위" 픽셀
+        // (머리카락으로 판정 안 된 곳 = 대체로 이마 피부)을 대신 샘플링한다.
+        if(!scalpColor){
+          let srSum=0, sgSum=0, sbSum=0, scnt=0;
+          for(let x=0;x<w;x++){
+            let topY=-1;
+            for(let y=0;y<h;y++){ if(hairMaskBuf[y*w+x]>0){ topY=y; break; } }
+            if(topY<=0) continue;
+            const sampleY = Math.max(0, topY-3);
+            if(hairMaskBuf[sampleY*w+x]>0) continue; // 혹시 그 지점도 머리카락이면 스킵
+            const i = sampleY*w+x;
+            srSum+=srcPixels[i*4]; sgSum+=srcPixels[i*4+1]; sbSum+=srcPixels[i*4+2]; scnt++;
           }
           if(scnt>0){
             scalpColor = `rgb(${Math.round(srSum/scnt)},${Math.round(sgSum/scnt)},${Math.round(sbSum/scnt)})`;
@@ -2808,8 +2830,10 @@ function drawHairStrands(ctx, fit, scalpY, hairEndY, maskW, maskH, hairCanvas, o
     }
   }
 
-  // ── 레이어 1: 굵은 섹션 (40~80개) ──
-  const numSections = Math.round(40 + (volume/100) * 20);
+  // ── 레이어 1: 굵은 섹션 (30~48개) ──
+  // 밀도 하향: 기존 40~80개는 폭이 좁은 사진에서 컬럼당 겹침이 심해서
+  // 가닥 사이 두피색이 거의 안 보이고 하나의 덩어리로 뭉쳐 보이는 원인이었음.
+  const numSections = Math.round(30 + (volume/100) * 18);
   drawStrandLayer({
     count: numSections,
     alphaMul: 0.55,
@@ -2819,36 +2843,38 @@ function drawHairStrands(ctx, fit, scalpY, hairEndY, maskW, maskH, hairCanvas, o
     lenScale: (origLen, delta)=> Math.max(origLen + delta, maskH*0.02),
     startXJitter: ()=> (Math.random()-0.5)*(maskW/numSections)*1.5,
     jitterSeedFn: (i)=> i,
-    tintRange: [0.70, 0.35],
+    tintRange: [0.70, 0.55],
   });
 
-  // ── 레이어 2: 중간 가닥 (200~450개) ──
-  const numMid = Math.round(200 + (volume/100) * 250);
+  // ── 레이어 2: 중간 가닥 (130~270개, 기존 200~450개에서 하향) ──
+  const numMid = Math.round(130 + (volume/100) * 140);
   drawStrandLayer({
     count: numMid,
     alphaMul: 0.55,
-    lineWidth: 1.5 + (thickness/100) * 1.5,
+    lineWidth: 1.7 + (thickness/100) * 1.6,
     pickCol: ()=> validCols[Math.floor(Math.random()*validCols.length)],
     endYFallbackRatio: 0.38,
     lenScale: (origLen, delta)=> Math.max(origLen + delta, maskH*0.02) * (0.85+Math.random()*0.3),
     startXJitter: ()=> (Math.random()-0.5)*maskW*0.008,
     jitterSeedFn: (i)=> i*0.618,
-    tintRange: [0.72, 0.45],
+    tintRange: [0.72, 0.60],
   });
 
-  // ── 레이어 3: 잔 가닥 (200~400개) ──
-  const numFine = Math.round(200 + (volume/100) * 200);
+  // ── 레이어 3: 잔 가닥 (130~260개, 기존 200~400개에서 하향) ──
+  // 이 레이어가 가장 밝은 하이라이트(tintRange 상단)를 담당 — 두피색 배경 위에서
+  // 밝은 잔가닥이 또렷하게 도드라져야 "결이 살아있는" 느낌이 남.
+  const numFine = Math.round(130 + (volume/100) * 130);
   drawStrandLayer({
     count: numFine,
-    alphaMul: 0.35,
-    lineWidth: 0.4 + (thickness/100) * 0.6,
+    alphaMul: 0.4,
+    lineWidth: 0.5 + (thickness/100) * 0.7,
     pickCol: ()=> validCols[Math.floor(Math.random()*validCols.length)],
     endYFallbackRatio: 0.35,
     lenScale: (origLen, delta)=> Math.max(origLen + delta, maskH*0.02) * (0.7+Math.random()*0.5),
     startXJitter: ()=> (Math.random()-0.5)*maskW*0.012,
     startYJitter: ()=> (Math.random()-0.5)*maskH*0.01,
     jitterSeedFn: (i)=> i*0.382,
-    tintRange: [0.65, 0.55],
+    tintRange: [0.65, 0.75],
   });
 
   // ── 2단계 합성 ──
@@ -2884,7 +2910,18 @@ function tintColor(hex, bright){
     const m=hex.match(/\d+/g);
     if(m&&m.length>=3){r=+m[0];g=+m[1];b=+m[2];}
   }
-  return `rgb(${Math.min(255,Math.round(r*bright))},${Math.min(255,Math.round(g*bright))},${Math.min(255,Math.round(b*bright))})`;
+  // 버그 수정: 기존엔 r*bright 처럼 순수 곱셈으로 밝기를 조정했는데, 이러면
+  // 검정/짙은 갈색처럼 원래 값이 0에 가까운 색은 bright를 0.65~1.2로 바꿔도
+  // 결과가 거의 그대로라 가닥끼리 색 차이가 안 생기고 다 뭉쳐 보였음
+  // (예: 30*0.65=19.5, 30*1.2=36 — 육안으로 거의 차이 없음).
+  // → 밝게 할 땐(bright>1) 흰색 쪽으로 섞어서(additive) 어두운 색에서도
+  //   확실한 하이라이트가 생기게 하고, 어둡게 할 땐(bright<1) 기존처럼 곱셈 유지.
+  const delta = bright - 1; // 대략 -0.35 ~ +0.2
+  function mix(c){
+    if(delta >= 0) return c + (255-c) * Math.min(1, delta*1.8);
+    return c * bright;
+  }
+  return `rgb(${Math.min(255,Math.round(mix(r)))},${Math.min(255,Math.round(mix(g)))},${Math.min(255,Math.round(mix(b)))})`;
 }
 
 let rafId = null;
