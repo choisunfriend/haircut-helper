@@ -905,6 +905,15 @@ initSegmenter();
 // → MediaPipe가 정상 동작 중일 때는 이 후처리를 끄고, TF.js 폴백으로 떨어졌을 때만 켠다.
 const ENABLE_LANDMARK_POSTPROCESS = true;
 
+// 픽셀 RGB 합계(sumR/sumG/sumB)와 샘플 개수(cnt)로부터 평균 rgb() 문자열을 만든다.
+// 두피/피부색 샘플링 3곳(이마 밴드 직접 샘플, reason=2 기반, 헤어라인 위 컬럼 샘플)에서
+// "합산 후 rgb(...) 문자열로 변환" 로직이 그대로 반복되던 것을 하나로 합침.
+// minCount 이하 샘플이면(신뢰할 수 없는 소수 샘플) null 반환 — 호출부는 그대로 폴백으로 넘어감.
+function avgRGBString(sumR, sumG, sumB, cnt, minCount){
+  if(cnt <= (minCount||0)) return null;
+  return `rgb(${Math.round(sumR/cnt)},${Math.round(sumG/cnt)},${Math.round(sumB/cnt)})`;
+}
+
 async function extractHairMask(angle){
   const dataUrl = state.shots[angle];
   if(!dataUrl || !segmenter) return false;
@@ -1431,9 +1440,7 @@ async function extractHairMask(angle){
               rSum+=hairPixelData[i*4]; gSum+=hairPixelData[i*4+1]; bSum+=hairPixelData[i*4+2]; cnt++;
             }
           }
-          const avgHairColor = cnt>0
-            ? `rgb(${Math.round(rSum/cnt)},${Math.round(gSum/cnt)},${Math.round(bSum/cnt)})`
-            : '#2A1B12';
+          const avgHairColor = avgRGBString(rSum, gSum, bSum, cnt, 0) || '#2A1B12';
 
           return {hairC, baseC, reasonC, avgHairColor};
         }
@@ -1456,7 +1463,35 @@ async function extractHairMask(angle){
         // 보이는데, 대신 이 두피색을 써서 "머리카락 사이로 두피가 비치는"
         // 자연스러운 느낌을 내기 위함.
         let scalpColor = null;
+        // 최우선: 이마 중앙 밴드 직접 샘플링 — 마스크 분류 결과와 무관하게 "여기는
+        // 무조건 피부"라고 확신할 수 있는 좁은 영역(눈썹 위, 헤어라인 아래, 관자놀이
+        // 피해서 중앙 40%만)을 그냥 원본에서 바로 평균낸다. 아래 두 폴백(reason=2 기반,
+        // 헤어라인 바로 위 컬럼 샘플)은 마스크 경계 픽셀 몇 개에 의존해서 안티앨리어싱·
+        // 그림자가 섞이기 쉬운데, 이 방식은 그런 잡음 없이 실제 보이는 얼굴색과 가장
+        // 가깝게 나옴 — "바탕이 얼굴색과 비슷해야 한다"는 요건에 직접 대응.
         {
+          const bandYTop = Math.max(0, lm.foreheadY * 0.92);
+          const bandYBot = Math.min(1, lm.browTopY != null ? lm.browTopY * 0.96 : lm.eyeY * 0.85);
+          const earSpan  = Math.abs(lm.rEarX - lm.lEarX);
+          const cx = (lm.lEarX + lm.rEarX) / 2;
+          const halfW = Math.max(earSpan * 0.16, 0.05); // 눈썹 꼬리·관자놀이 잔머리 피해서 중앙만
+          const xS = Math.round(Math.max(0, cx - halfW) * w);
+          const xE = Math.round(Math.min(1, cx + halfW) * w);
+          const yS = Math.round(bandYTop * h);
+          const yE = Math.round(bandYBot * h);
+          let srSum=0, sgSum=0, sbSum=0, scnt=0;
+          for(let y=yS; y<yE; y++){
+            for(let x=xS; x<xE; x++){
+              if(x<0||x>=w||y<0||y>=h) continue;
+              const i = y*w+x;
+              srSum+=srcPixels[i*4]; sgSum+=srcPixels[i*4+1]; sbSum+=srcPixels[i*4+2]; scnt++;
+            }
+          }
+          if(scnt>20){
+            scalpColor = avgRGBString(srSum, sgSum, sbSum, scnt, 20);
+          }
+        }
+        if(!scalpColor){
           // 버그 수정: faceExcludeMask===1은 얼굴박스(reason=2, 순수 피부) 뿐 아니라
           // 눈썹/눈/입 가드(reason=3)까지 같은 값으로 묶여있어서, 어둡고 채도 높은
           // 눈썹·눈동자·입술 픽셀이 피부색 평균에 섞여 들어가 전체가 어둡게 계산되던 문제.
@@ -1467,9 +1502,7 @@ async function extractHairMask(angle){
               srSum+=srcPixels[i*4]; sgSum+=srcPixels[i*4+1]; sbSum+=srcPixels[i*4+2]; scnt++;
             }
           }
-          if(scnt>0){
-            scalpColor = `rgb(${Math.round(srSum/scnt)},${Math.round(sgSum/scnt)},${Math.round(sbSum/scnt)})`;
-          }
+          scalpColor = avgRGBString(srSum, sgSum, sbSum, scnt, 0);
         }
         // 폴백: ENABLE_LANDMARK_POSTPROCESS가 꺼져있으면 faceExcludeMask가 항상
         // 텅 비어있어서(랜드마크 기반 제외 자체를 안 하니) 위 샘플링이 0건이 됨.
@@ -1488,9 +1521,7 @@ async function extractHairMask(angle){
             const i = si;
             srSum+=srcPixels[i*4]; sgSum+=srcPixels[i*4+1]; sbSum+=srcPixels[i*4+2]; scnt++;
           }
-          if(scnt>0){
-            scalpColor = `rgb(${Math.round(srSum/scnt)},${Math.round(sgSum/scnt)},${Math.round(sbSum/scnt)})`;
-          }
+          scalpColor = avgRGBString(srSum, sgSum, sbSum, scnt, 0);
         }
 
         state.hairCanvases[angle] = hairC;
@@ -2208,8 +2239,7 @@ function selectSection(id){
   const visIn = SECTIONS[id].visibleIn;
   if(!visIn.includes(state.currentViewAngle)){
     state.currentViewAngle = visIn[0];
-    renderAngleSwitch('angleSwitch');
-    renderAngleSwitch('angleSwitchCompare');
+    renderAngleSwitches();
     drawAdjustPreview();
   }
 }
@@ -2305,11 +2335,17 @@ function renderAngleSwitch(targetId){
     btn.className=state.currentViewAngle===a?'on':'';
     btn.onclick=()=>{
       state.currentViewAngle=a;
-      renderAngleSwitch('angleSwitch'); renderAngleSwitch('angleSwitchCompare');
+      renderAngleSwitches();
       syncSliderUI(); drawAdjustPreview(); drawCompare();
     };
     el.appendChild(btn);
   });
+}
+// 조정/비교 화면 두 각도 스위치를 함께 다시 그리는 헬퍼 — 이 둘을 나란히 호출하는
+// 코드가 여러 곳에 그대로 반복되던 것을 하나로 합침
+function renderAngleSwitches(){
+  renderAngleSwitch('angleSwitch');
+  renderAngleSwitch('angleSwitchCompare');
 }
 
 /* ════════════════════════════════════════
@@ -2368,7 +2404,7 @@ function toggleMaskDebug(){
   syncMaskDebugBtn();
   const rawBtn = document.getElementById('rawDebugToggle');
   if(rawBtn) rawBtn.classList.toggle('on', state.debugShowRaw);
-  renderFrame(document.getElementById('adjustCanvas'), state.currentViewAngle);
+  renderAdjustFrame();
 }
 
 // 원본 결 보기 토글: 스타일/슬라이더 값을 무시하고 전 섹션을 중립값
@@ -2390,7 +2426,7 @@ function toggleRawDebug(){
       ? '원본 결 (스타일 미적용)'
       : (state.selectedStyle ? state.selectedStyle.name : '스타일 미선택');
   }
-  renderFrame(document.getElementById('adjustCanvas'), state.currentViewAngle);
+  renderAdjustFrame();
 }
 
 // 얼굴제거박스 진단 토글: 랜드마크 기반으로 계산된 "얼굴 영역 제거 박스"의
@@ -2407,7 +2443,7 @@ function toggleFaceBoxDebug(){
   } else if(state.debugShowFaceBox){
     console.log('[진단] 얼굴제거박스 없음(이 각도엔 박스가 적용되지 않음)', state.currentViewAngle);
   }
-  renderFrame(document.getElementById('adjustCanvas'), state.currentViewAngle);
+  renderAdjustFrame();
 }
 
 // 얼굴제거박스 테두리를 실제 화면 좌표로 변환해서 그림 (0~1 비율 → fit 기준 픽셀)
@@ -2542,20 +2578,7 @@ function renderFrame(canvas, angle){
           orientMaskH: maskInf.maskH,              // 결방향 필드가 계산된 축소 해상도 높이
         });
 
-        // 컬러 오버레이 (원본 결 보기 모드에서는 스킵 — 스타일 미적용 상태를 그대로 보여줘야 함)
-        // 테스트: 가닥이 뿌옇게/반투명하게 보이는 문제 원인 확인을 위해 일단 꺼둠 (원래 아래 블록 활성)
-        if(false && state.selectedStyle && !rawMode){
-          ctx.save();
-          ctx.globalCompositeOperation='multiply';
-          ctx.globalAlpha=0.15;
-          ctx.fillStyle=state.selectedStyle.colorHex;
-          const minScalpY = Math.min(...Array.from(scalpY).filter(y=>y>=0));
-          const maxHairY  = Math.max(...Array.from(hairEndY).filter(y=>y>=0));
-          const top    = fit.dy + (minScalpY/maskH)*fit.dh;
-          const bottom = fit.dy + (maxHairY/maskH)*fit.dh * (0.6 + (state.sections.crown.length/100)*1.0);
-          ctx.fillRect(fit.dx, top, fit.dw, bottom - top);
-          ctx.restore();
-        }
+        // 컬러 오버레이는 현재 사용하지 않음(가닥 자체 색상으로 스타일 컬러를 표현) — 관련 죽은 코드 제거됨
       }
       if(state.debugShowFaceBox) drawFaceBoxDebugOverlay(ctx, fit, maskInf);
 
@@ -2570,6 +2593,13 @@ function renderFrame(canvas, angle){
   });
 }
 
+// 조정 화면(#screen-adjust)의 캔버스를 현재 각도로 다시 그리는 짧은 헬퍼 —
+// 디버그 토글 3곳에서 renderFrame(document.getElementById('adjustCanvas'), state.currentViewAngle)
+// 호출이 그대로 반복되던 것을 하나로 합침 (drawAdjustPreview는 rAF로 감싸서 별도 유지)
+function renderAdjustFrame(){
+  renderFrame(document.getElementById('adjustCanvas'), state.currentViewAngle);
+}
+
 /* ────────────────────────────────────────
    가닥 렌더링
    - 2단계 clip: 원본 인식 길이(origLen) 이내는 hairCanvas(마스크)로 clip해서
@@ -2580,9 +2610,9 @@ function renderFrame(canvas, angle){
 function drawHairStrands(ctx, fit, scalpY, hairEndY, maskW, maskH, hairCanvas, opts){
   const {curl, volume, thickness, color, orientation, orientMaskW, orientMaskH, angle, sections} = opts;
 
-  const curlAmt     = (curl/100) * fit.dw * 0.07;
-  const alpha       = 0.85 + (thickness/100) * 0.15; // 가닥은 불투명하게 — 반투명이 살색
-                                                      // 언더코트와 섞여 회색빛으로 보이는 문제 방지
+  const alpha       = 1; // 가닥은 완전 불투명 — 굵기 효과는 lineWidth로만 반영하고
+                         // 투명도로는 절대 조절하지 않음 (반투명이면 살색 언더코트와
+                         // 섞여 회색빛으로 보임)
 
   // 길이 슬라이더가 높을 때(특히 정면 프론트) 가닥이 이마 라인을 넘어
   // 눈·안경·턱까지 뚫고 내려가는 과확장을 막기 위한 상한.
@@ -2613,8 +2643,7 @@ function drawHairStrands(ctx, fit, scalpY, hairEndY, maskW, maskH, hairCanvas, o
     if(iHairEndY[x]>=0) fE=iHairEndY[x]; else if(fE>=0) iHairEndY[x]=fE;
   }
 
-  // curl 방향 기준: 마스크 실제 수평 중심
-  const maskCX = validCols.reduce((a,b)=>a+b,0) / validCols.length;
+  // curl 방향 기준으로 쓰이던 마스크 수평 중심(maskCX) 계산은 더 이상 사용되지 않아 제거됨
 
   // ── 컬럼별 길이 변화량(절대값, px): 슬라이더 50 = 원본 길이 그대로.
   // 슬라이더 1칸당 변화량이 원본 길이(origLen)와 무관하게 항상 동일하도록
@@ -2876,7 +2905,7 @@ function drawHairStrands(ctx, fit, scalpY, hairEndY, maskW, maskH, hairCanvas, o
   const numMid = Math.round(160 + (volume/100) * 170);
   drawStrandLayer({
     count: numMid,
-    alphaMul: 0.95,
+    alphaMul: 1.0,
     lineWidth: 1.7 + (thickness/100) * 1.6,
     pickCol: ()=> validCols[Math.floor(Math.random()*validCols.length)],
     endYFallbackRatio: 0.38,
@@ -2887,13 +2916,12 @@ function drawHairStrands(ctx, fit, scalpY, hairEndY, maskW, maskH, hairCanvas, o
   });
 
   // ── 레이어 3: 잔 가닥 (160~320개) ──
-  // 이 레이어가 가장 밝은 하이라이트(tintRange 상단)를 담당 — 이제 언더코트가
-  // 불투명해졌으니 잔가닥도 거의 불투명하게(alphaMul 0.9) 그려야 하이라이트가
-  // 살색에 묻히지 않고 또렷하게 도드라짐.
+  // 이 레이어가 가장 밝은 하이라이트(tintRange 상단)를 담당 — 완전 불투명(alphaMul 1.0)으로
+  // 그려서 하이라이트가 살색에 묻히지 않고 또렷하게 도드라짐.
   const numFine = Math.round(160 + (volume/100) * 160);
   drawStrandLayer({
     count: numFine,
-    alphaMul: 0.9,
+    alphaMul: 1.0,
     lineWidth: 0.5 + (thickness/100) * 0.7,
     pickCol: ()=> validCols[Math.floor(Math.random()*validCols.length)],
     endYFallbackRatio: 0.35,
@@ -2956,7 +2984,7 @@ function drawAdjustPreview(){
   if(currentScreen!=='adjust') return;
   if(rafId) cancelAnimationFrame(rafId);
   rafId = requestAnimationFrame(()=>{
-    renderFrame(document.getElementById('adjustCanvas'), state.currentViewAngle);
+    renderAdjustFrame();
     rafId = null;
   });
 }
@@ -3121,7 +3149,7 @@ function handleVoiceCmd(text){
 function cycleAngle(dir){
   let idx=ANGLES.indexOf(state.currentViewAngle);
   idx=(idx+dir+4)%4; state.currentViewAngle=ANGLES[idx];
-  renderAngleSwitch('angleSwitch'); renderAngleSwitch('angleSwitchCompare');
+  renderAngleSwitches();
   drawAdjustPreview(); drawCompare();
 }
 
