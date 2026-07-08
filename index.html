@@ -2496,7 +2496,12 @@ function renderFrame(canvas, angle){
       // 결(가닥의 흐름)도 훨씬 잘 보임.)
       // 테스트: 언더코트가 배경이 아니라 새로 그려지는 머리카락 가닥 위를 덮어서
       // 가닥이 실제 머리카락처럼 안 보이는 문제 — 일단 알파 0으로 꺼서 확인.
-      const scalpColor = maskInf.scalpColor || maskInf.avgColor;
+      // 버그 수정: scalpColor 계산이 실패하면(드물게 reason=2 샘플이 0건인 각도/사진)
+      // avgColor(머리카락 평균색)로 폴백했었는데, raw 모드에서는 가닥 색도 똑같이
+      // avgColor를 쓰기 때문에 언더코트=가닥 색이 겹쳐서 대비가 사라지고 가닥이
+      // 안 보이는 문제가 있었음. → 원래 계획대로 "얼굴 피부색의 중간톤" 고정값으로 폴백.
+      const FALLBACK_SKIN_TONE = 'rgb(224,178,148)';
+      const scalpColor = maskInf.scalpColor || FALLBACK_SKIN_TONE;
       const undercoat = document.createElement('canvas');
       undercoat.width = hairC.width; undercoat.height = hairC.height;
       const uCtx = undercoat.getContext('2d');
