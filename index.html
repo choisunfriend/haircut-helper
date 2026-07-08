@@ -754,6 +754,10 @@ function resolveSectionId(angle, nx, ny){
 }
 
 const state = {
+  // ROADMAP(voice): 향후 음성입력 연동 시, 인식 실패/수정 이벤트를 여기 state에
+  // 사용자별로 누적 기록하는 필드 추가 예정 (예: state.voiceCorrections[]).
+  // 서버측 범용 모델 개선이 아니라 클라이언트 로컬 개인화 목적 — 정정 이벤트 자체가
+  // 학습 신호. UI 연동 지점은 섹션/슬라이더 명령 파싱하는 곳(추후 신설).
   shots: {front:null,left:null,right:null,back:null},
   hairMasks: {front:null,left:null,right:null,back:null},
   hairCanvases: {front:null,left:null,right:null,back:null},
@@ -804,6 +808,9 @@ const state = {
   _globalCurl: 30,
 };
 
+// ROADMAP(fashion): 스타일 확정 후 얼굴형+선택 스타일 조합 → 패션 추천으로 확장 예정.
+// 각 STYLES 항목에 훗날 recommendTags(실루엣/톤 등) 필드 추가해서 매칭에 쓸 것.
+// 제휴사 카탈로그 연동은 별도 API 모듈로 분리, 이 배열은 매칭 키만 제공.
 const STYLES = [
   {id:'bob',       name:'클래식 보브',     tags:'SHORT · STRAIGHT', length:25, curl:5,  volume:45, colorHex:'#2A1B12'},
   {id:'long-wave', name:'롱 웨이브',       tags:'LONG · WAVE',      length:85, curl:55, volume:60, colorHex:'#3B2415'},
@@ -1450,9 +1457,13 @@ async function extractHairMask(angle){
         // 자연스러운 느낌을 내기 위함.
         let scalpColor = null;
         {
+          // 버그 수정: faceExcludeMask===1은 얼굴박스(reason=2, 순수 피부) 뿐 아니라
+          // 눈썹/눈/입 가드(reason=3)까지 같은 값으로 묶여있어서, 어둡고 채도 높은
+          // 눈썹·눈동자·입술 픽셀이 피부색 평균에 섞여 들어가 전체가 어둡게 계산되던 문제.
+          // → reasonMask===2(순수 얼굴박스 피부)만 샘플링하도록 좁힘.
           let srSum=0, sgSum=0, sbSum=0, scnt=0;
           for(let i=0;i<w*h;i++){
-            if(faceExcludeMask[i]===1){
+            if(reasonMask[i]===2){
               srSum+=srcPixels[i*4]; sgSum+=srcPixels[i*4+1]; sbSum+=srcPixels[i*4+2]; scnt++;
             }
           }
@@ -1471,8 +1482,10 @@ async function extractHairMask(angle){
             for(let y=0;y<h;y++){ if(hairMaskBuf[y*w+x]>0){ topY=y; break; } }
             if(topY<=0) continue;
             const sampleY = Math.max(0, topY-3);
-            if(hairMaskBuf[sampleY*w+x]>0) continue; // 혹시 그 지점도 머리카락이면 스킵
-            const i = sampleY*w+x;
+            const si = sampleY*w+x;
+            if(hairMaskBuf[si]>0) continue; // 혹시 그 지점도 머리카락이면 스킵
+            if(reasonMask[si]===3) continue; // 눈썹/눈/입 가드 픽셀이면 스킵 (어두운 색 오염 방지)
+            const i = si;
             srSum+=srcPixels[i*4]; sgSum+=srcPixels[i*4+1]; sbSum+=srcPixels[i*4+2]; scnt++;
           }
           if(scnt>0){
@@ -2108,6 +2121,10 @@ function styleIconSVG(st){
   return `<svg viewBox="0 0 100 90" width="100%" height="100%"><circle cx="50" cy="12" r="9" fill="#3A332B"/>${s}</svg>`;
 }
 function selectStyle(id){
+  // ROADMAP(raw-edit): 스타일 적용 직후 각 섹션 length/volume을 50으로 리셋해서
+  // 올림/내림 조정이 대칭이 되게 할 예정 (지금은 st.length/volume 그대로 대입).
+  // 동시에 debugShowRaw를 진단토글이 아니라 "스타일 미적용 직접편집" 정식 모드로
+  // 승격 — 진입 버튼/UI 문구만 바꾸면 로직은 재사용 가능.
   state.selectedStyle=STYLES.find(s=>s.id===id);
   document.querySelectorAll('.style-card').forEach(c=>c.classList.remove('selected'));
   document.getElementById('style-'+id).classList.add('selected');
@@ -2488,7 +2505,7 @@ function renderFrame(canvas, angle){
       uCtx.fillStyle = scalpColor;
       uCtx.fillRect(0, 0, undercoat.width, undercoat.height);
       ctx.save();
-      ctx.globalAlpha = 0; // TEST: 언더코트 투명화 (원래 0.8)
+      ctx.globalAlpha = 0.8; // 계획대로 복원 (scalpColor 버그 수정 후)
       ctx.drawImage(undercoat, fit.dx, fit.dy, fit.dw, fit.dh);
       ctx.restore();
 
