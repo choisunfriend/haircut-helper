@@ -923,7 +923,14 @@ async function extractHairMask(angle){
     img.crossOrigin = 'anonymous';
     img.onload = async()=>{
       try{
-        const maxDim = 512;
+        // 512 → 640: 이 값이 세그멘터(MediaPipe)의 실제 입력 해상도이자 scalpY/hairEndY를
+        // 뽑아내는 원본 해상도(w,h)를 결정한다. 512였을 때는 (특히 세로로 긴 사진에서)
+        // 축소된 w가 200~300대 컬럼밖에 안 나와서, 이후 전체화면 폭(750px 등)으로
+        // "업샘플"할 때 여러 화면 컬럼이 같은 소스 값을 그대로 복사해 쓰는 계단식 확대가
+        // 되고, 이게 두피선의 실제 데이터 포인트가 적어 보이는(성긴) 원인이었음.
+        // 640으로 올리면 같은 업샘플 구조에서도 소스 컬럼 수 자체가 늘어 두피선이
+        // 더 촘촘하고 매끄러워짐. 처리 시간은 면적 기준 약 1.56배 증가(성능 여유 보며 재조정 가능).
+        const maxDim = 640;
         const scale = Math.min(1, maxDim / Math.max(img.width, img.height));
         const w = Math.round(img.width * scale);
         const h = Math.round(img.height * scale);
@@ -2874,20 +2881,58 @@ function drawHairStrands(ctx, fit, scalpY, hairEndY, maskW, maskH, hairCanvas, o
     }
   }
 
+  // ── 실제 인식된 머리카락 마스크 안인지 검사 ──
+  // 루트 확산 레이어(아래 "레이어 0")에서 두피 최상단선(scalpY)보다 더 깊은 지점에
+  // 가닥 뿌리를 심을 때, 그 지점이 허공이나 피부 위가 아니라 실제 세그멘테이션이
+  // 인식한 머리카락 픽셀 안인지 확인하기 위함 — 아니면 가닥이 이마 중간 등에서
+  // 갑자기 시작되는 오류가 생길 수 있음.
+  // 매 프레임 최초 호출 시 hairCanvas를 축소 해상도(orientMaskW/H, 이미 결방향
+  // 계산용으로 만들어둔 것과 동일 크기)로 1회만 샘플링해서 캐시 — 매 가닥마다
+  // 원본 해상도 getImageData를 부르지 않도록 함.
+  let _hairSampleData = null, _hairSampleW = 0, _hairSampleH = 0, _hairSampleFailed = false;
+  function isRealHairAt(x_img, y_img){
+    if(_hairSampleData === null && !_hairSampleFailed){
+      _hairSampleW = orientMaskW || Math.max(1, Math.round(maskW*0.5));
+      _hairSampleH = orientMaskH || Math.max(1, Math.round(maskH*0.5));
+      try{
+        const sc = document.createElement('canvas');
+        sc.width = _hairSampleW; sc.height = _hairSampleH;
+        const sctx = sc.getContext('2d');
+        sctx.drawImage(hairCanvas, 0, 0, _hairSampleW, _hairSampleH);
+        _hairSampleData = sctx.getImageData(0,0,_hairSampleW,_hairSampleH).data;
+      }catch(e){ _hairSampleFailed = true; }
+    }
+    if(!_hairSampleData) return true; // 샘플링 실패 시 항상 허용(안전 폴백 — 검증 없이 기존처럼 동작)
+    const sx = Math.round((x_img/maskW) * _hairSampleW);
+    const sy = Math.round((y_img/maskH) * _hairSampleH);
+    if(sx<0||sx>=_hairSampleW||sy<0||sy>=_hairSampleH) return false;
+    return _hairSampleData[(sy*_hairSampleW+sx)*4+3] > 40;
+  }
+
   // 가닥 레이어 하나를 그리는 공용 헬퍼 — "굵은 섹션/중간 가닥/잔 가닥" 3개 레이어가
   // 개수·굵기·지터 폭만 다르고 구조는 동일해서(컬럼 선택 → 원본길이 계산 → 늘린 길이
   // 계산 → drawStrand 호출) 반복문 자체를 파라미터화해서 하나로 합침.
+  // rootDepthFrac(옵션): 지정하면 두피 최상단선(scalpY) 대신 그보다 (hairEndY 방향으로)
+  // 더 깊은 지점에서 가닥을 출발시킴 — 실제 머리처럼 여러 깊이에 뿌리를 둔 느낌을 내기
+  // 위함(루트 확산 레이어 전용). 미지정 시 기존 3개 레이어와 완전히 동일하게 동작.
   function drawStrandLayer(cfg){
     const {
       count, alphaMul, lineWidth, pickCol, endYFallbackRatio,
-      lenScale, startXJitter, startYJitter, jitterSeedFn, tintRange
+      lenScale, startXJitter, startYJitter, jitterSeedFn, tintRange, rootDepthFrac
     } = cfg;
     setStyle('globalAlpha', alpha * alphaMul);
     setStyle('lineWidth', lineWidth);
     for(let i=0; i<count; i++){
       const ix = pickCol(i);
-      const sy_img = iScalpY[ix]; if(sy_img < 0) continue;
-      const ey_img = iHairEndY[ix] >= 0 ? iHairEndY[ix] : sy_img + maskH*endYFallbackRatio;
+      const sy_top = iScalpY[ix]; if(sy_top < 0) continue;
+      const ey_img = iHairEndY[ix] >= 0 ? iHairEndY[ix] : sy_top + maskH*endYFallbackRatio;
+      let sy_img = sy_top;
+      if(rootDepthFrac){
+        const frac = Math.max(0, Math.min(0.9, rootDepthFrac()));
+        const candidateY = sy_top + (ey_img - sy_top) * frac;
+        // 후보 지점이 실제 마스크 안일 때만 채택, 아니면 원래 두피선으로 안전하게 폴백
+        if(frac > 0 && isRealHairAt(ix, candidateY)) sy_img = candidateY;
+      }
       const origLen = Math.max(ey_img - sy_img, maskH*0.05);
       const delta = lengthDeltaFor(ix);
       const scaledLen = Math.min(lenScale(origLen, delta), maxStrandLen);
@@ -2898,6 +2943,30 @@ function drawHairStrands(ctx, fit, scalpY, hairEndY, maskW, maskH, hairCanvas, o
       drawStrand(startX, startY, scaledLen, origLen, delta, jitterSeed, tintColor(color, tMin+Math.random()*tRange));
     }
   }
+
+  // ── 레이어 0: 루트 확산 레이어 (110~190개) ──
+  // 기존 3개 레이어는 전부 두피 최상단선(scalpY) "한 줄"에서만 출발해서, 그 줄
+  // 아래로 인식된 머리 영역(hairEndY까지)이 짧은 컬럼(옆머리 아래쪽, 프로필 하단
+  // 등)에서는 가닥이 금방 끝나버려 비어 보이는 문제가 있었음. 실제 머리는 두피
+  // 전체에 뿌리가 흩어져 있어서 시작 높이 자체가 제각각인데, 지금까지는 "출발선"이
+  // 하나뿐이라 그 아래를 다른 가닥으로 못 채우고 있었던 것.
+  // → rootDepthFrac으로 두피선~모발끝 사이 임의 깊이(주로 얕은 쪽에 몰리도록
+  //   제곱근 분포)에서 추가로 뿌리를 심어, 옆/하단처럼 원래 짧게 끊기던 구간을
+  //   다른 깊이의 가닥들이 겹쳐서 메우도록 함. 다른 레이어보다 먼저 그려서
+  //   그 위에 레이어 1~3이 덮이게 하고, 두께는 잔가닥과 비슷하게 얇게 유지.
+  const numRootScatter = Math.round(110 + (volume/100) * 80);
+  drawStrandLayer({
+    count: numRootScatter,
+    alphaMul: 1.0,
+    lineWidth: 0.6 + (thickness/100) * 0.8,
+    pickCol: ()=> validCols[Math.floor(Math.random()*validCols.length)],
+    endYFallbackRatio: 0.35,
+    rootDepthFrac: ()=> Math.sqrt(Math.random()) * 0.55, // 0~0.55, 얕은 깊이에 더 몰리게
+    lenScale: (origLen, delta)=> Math.max(origLen + delta, maskH*0.02) * (0.6+Math.random()*0.4),
+    startXJitter: ()=> (Math.random()-0.5)*maskW*0.01,
+    jitterSeedFn: (i)=> i*0.271,
+    tintRange: [0.68, 0.55],
+  });
 
   // ── 레이어 1: 굵은 섹션 (38~60개) ──
   // 가닥을 불투명하게 바꾸면서 밀도를 다시 소폭 상향 (30~48 → 38~60).
