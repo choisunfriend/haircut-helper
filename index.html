@@ -2510,7 +2510,8 @@ function renderFrame(canvas, angle){
       uCtx.fillStyle = scalpColor;
       uCtx.fillRect(0, 0, undercoat.width, undercoat.height);
       ctx.save();
-      ctx.globalAlpha = 0.8; // 계획대로 복원 (scalpColor 버그 수정 후)
+      ctx.globalAlpha = 1; // 실제 두피는 반투명하지 않음 — 언더코트는 불투명하게 깔고,
+                           // 그 위 가닥도 불투명하게 그려서 살색이 과하게 비치지 않도록 함
       ctx.drawImage(undercoat, fit.dx, fit.dy, fit.dw, fit.dh);
       ctx.restore();
 
@@ -2580,7 +2581,8 @@ function drawHairStrands(ctx, fit, scalpY, hairEndY, maskW, maskH, hairCanvas, o
   const {curl, volume, thickness, color, orientation, orientMaskW, orientMaskH, angle, sections} = opts;
 
   const curlAmt     = (curl/100) * fit.dw * 0.07;
-  const alpha       = 0.45 + (thickness/100) * 0.40;
+  const alpha       = 0.85 + (thickness/100) * 0.15; // 가닥은 불투명하게 — 반투명이 살색
+                                                      // 언더코트와 섞여 회색빛으로 보이는 문제 방지
 
   // 길이 슬라이더가 높을 때(특히 정면 프론트) 가닥이 이마 라인을 넘어
   // 눈·안경·턱까지 뚫고 내려가는 과확장을 막기 위한 상한.
@@ -2855,13 +2857,12 @@ function drawHairStrands(ctx, fit, scalpY, hairEndY, maskW, maskH, hairCanvas, o
     }
   }
 
-  // ── 레이어 1: 굵은 섹션 (30~48개) ──
-  // 밀도 하향: 기존 40~80개는 폭이 좁은 사진에서 컬럼당 겹침이 심해서
-  // 가닥 사이 두피색이 거의 안 보이고 하나의 덩어리로 뭉쳐 보이는 원인이었음.
-  const numSections = Math.round(30 + (volume/100) * 18);
+  // ── 레이어 1: 굵은 섹션 (38~60개) ──
+  // 가닥을 불투명하게 바꾸면서 밀도를 다시 소폭 상향 (30~48 → 38~60).
+  const numSections = Math.round(38 + (volume/100) * 22);
   drawStrandLayer({
     count: numSections,
-    alphaMul: 0.55,
+    alphaMul: 1.0, // 형태를 잡는 가장 굵은 레이어 — 완전 불투명하게 해서 밑의 살색이 안 비치게
     lineWidth: 3 + (volume/100) * 3,
     pickCol: (i)=> validCols[Math.floor((i/numSections)*validCols.length)],
     endYFallbackRatio: 0.40,
@@ -2871,11 +2872,11 @@ function drawHairStrands(ctx, fit, scalpY, hairEndY, maskW, maskH, hairCanvas, o
     tintRange: [0.70, 0.55],
   });
 
-  // ── 레이어 2: 중간 가닥 (130~270개, 기존 200~450개에서 하향) ──
-  const numMid = Math.round(130 + (volume/100) * 140);
+  // ── 레이어 2: 중간 가닥 (160~330개) ──
+  const numMid = Math.round(160 + (volume/100) * 170);
   drawStrandLayer({
     count: numMid,
-    alphaMul: 0.55,
+    alphaMul: 0.95,
     lineWidth: 1.7 + (thickness/100) * 1.6,
     pickCol: ()=> validCols[Math.floor(Math.random()*validCols.length)],
     endYFallbackRatio: 0.38,
@@ -2885,13 +2886,14 @@ function drawHairStrands(ctx, fit, scalpY, hairEndY, maskW, maskH, hairCanvas, o
     tintRange: [0.72, 0.60],
   });
 
-  // ── 레이어 3: 잔 가닥 (130~260개, 기존 200~400개에서 하향) ──
-  // 이 레이어가 가장 밝은 하이라이트(tintRange 상단)를 담당 — 두피색 배경 위에서
-  // 밝은 잔가닥이 또렷하게 도드라져야 "결이 살아있는" 느낌이 남.
-  const numFine = Math.round(130 + (volume/100) * 130);
+  // ── 레이어 3: 잔 가닥 (160~320개) ──
+  // 이 레이어가 가장 밝은 하이라이트(tintRange 상단)를 담당 — 이제 언더코트가
+  // 불투명해졌으니 잔가닥도 거의 불투명하게(alphaMul 0.9) 그려야 하이라이트가
+  // 살색에 묻히지 않고 또렷하게 도드라짐.
+  const numFine = Math.round(160 + (volume/100) * 160);
   drawStrandLayer({
     count: numFine,
-    alphaMul: 0.4,
+    alphaMul: 0.9,
     lineWidth: 0.5 + (thickness/100) * 0.7,
     pickCol: ()=> validCols[Math.floor(Math.random()*validCols.length)],
     endYFallbackRatio: 0.35,
