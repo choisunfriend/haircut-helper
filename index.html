@@ -347,7 +347,7 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:22px;heigh
       <div class="adjust-preview">
         <canvas id="adjustCanvas"></canvas>
         <div class="preview-tag" id="adjustStyleTag">스타일 미선택</div>
-        <button class="debug-btn mask-debug-btn" id="maskDebugToggle" onclick="toggleMaskDebug()">마스크 보기</button>
+        <button class="debug-btn mask-debug-btn" id="maskDebugToggle" onclick="toggleMaskDebug()">가닥 보기</button>
         <button class="debug-btn raw-debug-btn" id="rawDebugToggle" onclick="toggleRawDebug()">원본 결 보기</button>
         <button class="debug-btn facebox-debug-btn" id="faceBoxDebugToggle" onclick="toggleFaceBoxDebug()">얼굴박스 보기</button>
         <div class="seg-status" id="segStatus"></div>
@@ -893,12 +893,10 @@ initSegmenter();
 // ── 개발 스위치: 랜드마크 기반 후처리(얼굴제거박스/어깨컷오프/귀·프론트 보강) ──
 // MediaPipe가 window.FilesetResolver 버그로 계속 TF.js로 폴백되던 동안 쌓인 패치들이라,
 // 실제 MediaPipe hair_segmenter 마스크 특성에 맞춰 검증된 적이 없음.
-// MediaPipe가 정상 동작하는 지금, 일단 다 끄고 순수 MediaPipe 마스크 + 최소 노이즈 정리만
-// 확인한 뒤, 실제로 필요한 것만 골라 다시 켠다.
-// (실제로 꺼서 테스트: MediaPipe가 정상 동작한 이후로 "결이 살아있는" 모양이 한 번도
-// 안 나왔다는 제보 — 이 패치들이 TF.js 마스크 기준으로 튜닝돼서 MediaPipe의 더 정교한
-// 마스크와 안 맞을 가능성이 높음. false로 끄고 순수 MediaPipe 마스크만 확인.)
-const ENABLE_LANDMARK_POSTPROCESS = false;
+// 테스트 결과: MediaPipe 마스크에서 결이 살아있는 것을 확인 — 이 패치들은 TF.js 마스크
+// 기준으로 튜닝된 것이라 MediaPipe에는 불필요/역효과였음.
+// → MediaPipe가 정상 동작 중일 때는 이 후처리를 끄고, TF.js 폴백으로 떨어졌을 때만 켠다.
+const ENABLE_LANDMARK_POSTPROCESS = true;
 
 async function extractHairMask(angle){
   const dataUrl = state.shots[angle];
@@ -1248,7 +1246,9 @@ async function extractHairMask(angle){
         } // reinforceEarAndFrontBands
 
         // ── STEP 3~6 실행: 랜드마크 기반 후처리 (플래그로 일괄 on/off) ──
-        if(ENABLE_LANDMARK_POSTPROCESS){
+        // MediaPipe가 정상 동작 중일 때는 이 보강 로직을 끄고(마스크 자체가 이미 정교함),
+        // TF.js 폴백으로 떨어졌을 때만 켠다 (TF.js 마스크 기준으로 튜닝된 패치들이라서).
+        if(ENABLE_LANDMARK_POSTPROCESS && state.segmenterType !== 'MediaPipe'){
           applyFaceBoxRemoval();
           applyFeatureGuard();
           applyShoulderCutoff();
@@ -1957,7 +1957,7 @@ async function navTo(name){
     const maskBtn = document.getElementById('maskDebugToggle');
     if(maskBtn){
       maskBtn.classList.toggle('on', state.debugShowMask);
-      maskBtn.textContent = state.debugShowMask ? '가닥 보기' : '마스크 보기';
+      maskBtn.textContent = state.debugShowMask ? '마스크 보기' : '가닥 보기';
     }
     const rawBtn = document.getElementById('rawDebugToggle');
     if(rawBtn){
@@ -2340,7 +2340,7 @@ function syncMaskDebugBtn(){
   const btn = document.getElementById('maskDebugToggle');
   if(btn){
     btn.classList.toggle('on', state.debugShowMask);
-    btn.textContent = state.debugShowMask ? '가닥 보기' : '마스크 보기';
+    btn.textContent = state.debugShowMask ? '마스크 보기' : '가닥 보기';
   }
 }
 // 마스크 디버그 토글: hairMaskBuf 실루엣을 색으로 채워서 그대로 보여줌(가닥 렌더링 대신)
@@ -2477,6 +2477,8 @@ function renderFrame(canvas, angle){
       // 실제 얼굴 피부에서 샘플링한 톤으로 바꾸면, 가닥 사이로 두피가 비치는
       // 자연스러운 느낌이 나고, 어두운 가닥과 밝은 두피색 사이 명암 대비가 생겨서
       // 결(가닥의 흐름)도 훨씬 잘 보임.)
+      // 테스트: 언더코트가 배경이 아니라 새로 그려지는 머리카락 가닥 위를 덮어서
+      // 가닥이 실제 머리카락처럼 안 보이는 문제 — 일단 알파 0으로 꺼서 확인.
       const scalpColor = maskInf.scalpColor || maskInf.avgColor;
       const undercoat = document.createElement('canvas');
       undercoat.width = hairC.width; undercoat.height = hairC.height;
@@ -2486,7 +2488,7 @@ function renderFrame(canvas, angle){
       uCtx.fillStyle = scalpColor;
       uCtx.fillRect(0, 0, undercoat.width, undercoat.height);
       ctx.save();
-      ctx.globalAlpha = 0.8;
+      ctx.globalAlpha = 0; // TEST: 언더코트 투명화 (원래 0.8)
       ctx.drawImage(undercoat, fit.dx, fit.dy, fit.dw, fit.dh);
       ctx.restore();
 
@@ -2518,7 +2520,8 @@ function renderFrame(canvas, angle){
         });
 
         // 컬러 오버레이 (원본 결 보기 모드에서는 스킵 — 스타일 미적용 상태를 그대로 보여줘야 함)
-        if(state.selectedStyle && !rawMode){
+        // 테스트: 가닥이 뿌옇게/반투명하게 보이는 문제 원인 확인을 위해 일단 꺼둠 (원래 아래 블록 활성)
+        if(false && state.selectedStyle && !rawMode){
           ctx.save();
           ctx.globalCompositeOperation='multiply';
           ctx.globalAlpha=0.15;
