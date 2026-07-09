@@ -2640,9 +2640,24 @@ function drawHairStrands(ctx, fit, scalpY, hairEndY, maskW, maskH, hairCanvas, o
   // 늘어나는 극단적인 경우를 방지하면서도 "길게" 설정한 효과는 유지.
   const maxStrandLen = maskH * 1.15;
 
+  // 버그 수정: validCols(가닥 뿌리를 심을 수 있는 후보 컬럼)가 "보간 전" 원본 scalpY만
+  // 기준으로 만들어져 있었음. 세그멘테이션이 국소적으로 실패한 좁은 구간(예: 이마 중앙에
+  // 생기는 V자 notch, 안경다리에 가려진 관자놀이 등)은 scalpY[x]=-1이라 애초에 후보에서
+  // 빠져서 어떤 레이어도 거기 뿌리를 못 심었음 — "가닥이 부족한 게 아니라 아예 심을
+  // 자리 자체가 없었던" 문제. → 양옆 유효 컬럼 사이 간격이 좁으면(=국소적 인식 실패로
+  // 판단) 보간값으로 메워서 후보에 포함시킴. 단, 진짜로 머리가 없는 넓은 영역(배경,
+  // 얼굴 등)까지 메워버리면 안 되므로 간격 상한(MAX_GAP_PX)을 둬서, 그보다 넓은 gap은
+  // 기존처럼 그대로 배제.
+  const leftValidX = new Int32Array(maskW).fill(-1);
+  const rightValidX = new Int32Array(maskW).fill(-1);
+  { let lv=-1; for(let x=0;x<maskW;x++){ if(scalpY[x]>=0) lv=x; leftValidX[x]=lv; } }
+  { let rv=-1; for(let x=maskW-1;x>=0;x--){ if(scalpY[x]>=0) rv=x; rightValidX[x]=rv; } }
+  const MAX_GAP_PX = maskW * 0.08; // 마스크 폭의 8% 이내 gap만 "국소 인식 실패"로 보고 메움
   const validCols = [];
   for(let x=0; x<maskW; x++){
-    if(scalpY[x] >= 0) validCols.push(x);
+    if(scalpY[x] >= 0){ validCols.push(x); continue; }
+    const lx = leftValidX[x], rx = rightValidX[x];
+    if(lx>=0 && rx>=0 && (rx-lx) <= MAX_GAP_PX) validCols.push(x);
   }
   if(validCols.length === 0) return;
 
@@ -3051,7 +3066,23 @@ function drawHairStrands(ctx, fit, scalpY, hairEndY, maskW, maskH, hairCanvas, o
   function compositeLayers(){
     const maskAlpha = document.createElement('canvas');
     maskAlpha.width = cw; maskAlpha.height = ch;
-    maskAlpha.getContext('2d').drawImage(hairCanvas, fit.dx, fit.dy, fit.dw, fit.dh);
+    const mCtx = maskAlpha.getContext('2d');
+    // 버그 수정: hairCanvas(destination-in 클리핑 마스크)가 scalpY와 동일한 원본 마스크에서
+    // 나와서, 이마 중앙 notch 같은 국소 인식 실패 구간은 마스크 알파도 0이라 validCols를
+    // 고쳐서 그 컬럼에 뿌리를 심어도 여기서 다시 지워지는 문제가 있었음. → 클리핑용
+    // 마스크에 작은 블러를 걸어 알파를 살짝 번지게(dilate)한 뒤 임계치로 다시 불투명
+    // 처리해서, 좁은 gap(노치)만 부드럽게 메워지고 배경처럼 넓은 미인식 영역은 여전히
+    // 클리핑되도록 함. (블러만 걸면 전체가 반투명해져 머리카락이 옅게 비쳐 보이므로
+    // 임계치로 다시 하드 마스크화)
+    const blurPx = Math.max(3, fit.dw * 0.015);
+    mCtx.filter = `blur(${blurPx}px)`;
+    mCtx.drawImage(hairCanvas, fit.dx, fit.dy, fit.dw, fit.dh);
+    mCtx.filter = 'none';
+    const mImg = mCtx.getImageData(0,0,cw,ch);
+    for(let i=3;i<mImg.data.length;i+=4){
+      mImg.data[i] = mImg.data[i] > 25 ? 255 : 0;
+    }
+    mCtx.putImageData(mImg,0,0);
 
     baseCtx.save();
     baseCtx.globalCompositeOperation = 'destination-in';
