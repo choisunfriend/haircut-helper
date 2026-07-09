@@ -2927,14 +2927,27 @@ function drawHairStrands(ctx, fit, scalpY, hairEndY, maskW, maskH, hairCanvas, o
       const sy_top = iScalpY[ix]; if(sy_top < 0) continue;
       const ey_img = iHairEndY[ix] >= 0 ? iHairEndY[ix] : sy_top + maskH*endYFallbackRatio;
       let sy_img = sy_top;
+      // depthScale: 이 가닥의 시작점이 두피선(frac=0)에서 얼마나 깊이(ey_img 방향으로)
+      // 파고들었는지에 따라 길이 슬라이더 delta를 비례 축소하는 계수. 기본 1(=두피선 레이어와
+      // 동일하게 delta 전량 반영).
+      let depthScale = 1;
       if(rootDepthFrac){
         const frac = Math.max(0, Math.min(0.9, rootDepthFrac()));
         const candidateY = sy_top + (ey_img - sy_top) * frac;
         // 후보 지점이 실제 마스크 안일 때만 채택, 아니면 원래 두피선으로 안전하게 폴백
-        if(frac > 0 && isRealHairAt(ix, candidateY)) sy_img = candidateY;
+        if(frac > 0 && isRealHairAt(ix, candidateY)){
+          sy_img = candidateY;
+          // 버그 수정(어제 진단): 루트 확산 레이어가 두피선보다 훨씬 깊은 지점에서
+          // 출발해 origLen(남은 길이) 자체가 짧은데도, 길이 슬라이더가 만든 delta(절대 px)를
+          // 두피선 레이어와 "통으로" 똑같이 받고 있었음. origLen이 작을수록 delta 비중이
+          // 상대적으로 커져서 ext(클리핑 없는 연장) 구간만 과도하게 늘어나고 maxStrandLen에
+          // clamp되는 가닥이 많아져, 개수를 늘려도 깊이감·산개감이 죽어 오히려 밀도가
+          // 줄어든 것처럼 보였음. → frac(깊이)이 클수록 delta도 비례해서 줄임(1-frac).
+          depthScale = 1 - frac;
+        }
       }
       const origLen = Math.max(ey_img - sy_img, maskH*0.05);
-      const delta = lengthDeltaFor(ix);
+      const delta = lengthDeltaFor(ix) * depthScale;
       const scaledLen = Math.min(lenScale(origLen, delta), maxStrandLen);
       const startX = ix + startXJitter();
       const startY = startYJitter ? sy_img + startYJitter() : sy_img;
