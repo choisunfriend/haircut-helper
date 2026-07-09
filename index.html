@@ -2665,24 +2665,30 @@ function drawHairStrands(ctx, fit, scalpY, hairEndY, maskW, maskH, hairCanvas, o
 
   // curl 방향 기준으로 쓰이던 마스크 수평 중심(maskCX) 계산은 더 이상 사용되지 않아 제거됨
 
-  // ── 컬럼별 길이 변화량(절대값, px): 슬라이더 50 = 원본 길이 그대로.
-  // 슬라이더 1칸당 변화량이 원본 길이(origLen)와 무관하게 항상 동일하도록
-  // "배율" 대신 "덧셈"으로 계산 — 크라운(긴 부위)이든 사이드(짧은 부위)든
-  // 슬라이더를 같은 칸수만큼 움직이면 같은 만큼만 길이가 변함.
-  const lenDeltaCache = new Float32Array(maskW).fill(NaN);
-  // 슬라이더 1칸(0~100)당 변화량 = 이미지 높이(maskH)의 0.6% — 튜닝 필요시 이 상수만 조정
-  const LENGTH_STEP_PER_UNIT = maskH * 0.006;
-  function lengthDeltaFor(ix){
+  // ── 컬럼별 길이 배율: 슬라이더 50 = 원본 길이(origLen) 그대로(ratio=1).
+  // 기존엔 "덧셈"(절대 px, origLen과 무관하게 항상 같은 양만큼 변화)이었으나,
+  // 이 방식은 origLen이 작은 부위(사이드/네이프처럼 세그멘테이션이 짧게 잡힌 곳)에서
+  // 같은 절대값이 상대적으로 훨씬 크게 작용해 그 부위만 원래 세그멘테이션 형태를
+  // 벗어나 툭 튀어나오는 문제가 있었음. → "배율"로 바꿔서 origLen에 비례하게 늘리고
+  // 줄여, 세그멘테이션이 잡은 원래 형태(비율)를 그대로 유지한 채 커지고 작아지게 함.
+  // (짧은 부위는 짧은 만큼, 긴 부위는 긴 만큼 — 같은 비율로 변화)
+  // TODO: 배율 방식으로 모양을 먼저 잡은 뒤, 조정 단계에서 슬라이더 감도(RATIO_PER_UNIT)를
+  // 다시 튜닝할 예정 — 지금은 형태 검증이 우선.
+  const lenRatioCache = new Float32Array(maskW).fill(NaN);
+  // 슬라이더 1칸(0~100)당 배율 변화 — 50에서 ±1칸당 얼마나 배율이 움직이는지.
+  // 0~100 전체 범위에서 0배(완전히 짧게)~3배까지 변화하도록 설정.
+  const RATIO_PER_UNIT = 0.04;
+  function lengthRatioFor(ix){
     const cx = Math.min(maskW-1, Math.max(0, Math.round(ix)));
-    if(!Number.isNaN(lenDeltaCache[cx])) return lenDeltaCache[cx];
+    if(!Number.isNaN(lenRatioCache[cx])) return lenRatioCache[cx];
     const ny = iScalpY[cx] >= 0 ? iScalpY[cx]/maskH : 0.15;
     const nx = cx/maskW;
     const secId = (sections && angle) ? resolveSectionId(angle, nx, ny) : 'crown';
     const lenParam = (sections && sections[secId] && typeof sections[secId].length==='number')
       ? sections[secId].length : 50;
-    const delta = (lenParam - 50) * LENGTH_STEP_PER_UNIT;
-    lenDeltaCache[cx] = delta;
-    return delta;
+    const ratio = Math.max(0, 1 + (lenParam - 50) * RATIO_PER_UNIT);
+    lenRatioCache[cx] = ratio;
+    return ratio;
   }
 
   const toCanvasX = (ix) => fit.dx + (ix / maskW) * fit.dw;
@@ -2856,24 +2862,25 @@ function drawHairStrands(ctx, fit, scalpY, hairEndY, maskW, maskH, hairCanvas, o
     targetCtx.stroke();
   }
 
-  // delta(슬라이더로 실제 늘린 양)와 고정 보폭(STRAND_STEP_LEN)을 기준으로 base/ext 분할
-  // 지점을 계산. delta<=0(늘리지 않았거나 줄인 경우)이면 무조건 전체 clip(base) — origLen
-  // (원본)보다 짧은 최소 길이 하한선(maskH*0.02) 보정 때문에 scaledLen이 origLen보다 커지는
-  // 경우가 있어도, 그건 "슬라이더로 늘린 것"이 아니므로 clip 밖으로 나가면 안 됨.
-  // (원본 결 보기처럼 delta가 항상 0인 상태에서는 이 덕분에 예외 없이 전부 마스크 안에 있음)
+  // extAmount(= scaledLen - origLen, ratio 적용 후 실제 늘어난/줄어든 양)와 고정 보폭
+  // (STRAND_STEP_LEN)을 기준으로 base/ext 분할 지점을 계산. extAmount<=0(늘리지 않았거나
+  // 줄인 경우)이면 무조건 전체 clip(base) — origLen(원본)보다 짧은 최소 길이 하한선
+  // (maskH*0.02) 보정 때문에 scaledLen이 origLen보다 커지는 경우가 있어도, 그건
+  // "슬라이더로 늘린 것"이 아니므로 clip 밖으로 나가면 안 됨.
+  // (원본 결 보기처럼 ratio가 항상 1인 상태에서는 이 덕분에 예외 없이 전부 마스크 안에 있음)
   // totalSteps는 실제로 traceStrand가 생성한 점 개수-1(가변) — 이걸 넘겨받아 clamp한다.
-  function splitIndexFor(delta, origLen, totalSteps){
-    if(delta <= 0) return totalSteps;
+  function splitIndexFor(extAmount, origLen, totalSteps){
+    if(extAmount <= 0) return totalSteps;
     return Math.min(Math.round(origLen / STRAND_STEP_LEN), totalSteps);
   }
 
   // 가닥 하나를 그림: origLen까지는 base(clip 대상), 그 이후 연장분은 ext(clip 없음)로 나눠서 그림.
-  // 보폭이 고정(STRAND_STEP_LEN)이므로, origLen까지의 경로는 delta 값과 무관하게
+  // 보폭이 고정(STRAND_STEP_LEN)이므로, origLen까지의 경로는 ratio 값과 무관하게
   // 원본 결 보기 때와 항상 동일하다 — split은 그 경로를 어디서 자를지만 정한다.
-  function drawStrand(ix, sy_img, scaledLen, origLen, delta, jitterSeed, strokeStyleVal){
+  function drawStrand(ix, sy_img, scaledLen, origLen, extAmount, jitterSeed, strokeStyleVal){
     const pts = traceStrand(ix, sy_img, scaledLen, jitterSeed);
     const cPts = toCanvasPts(pts);
-    const splitIdx = splitIndexFor(delta, origLen, pts.length - 1);
+    const splitIdx = splitIndexFor(extAmount, origLen, pts.length - 1);
     setStyle('strokeStyle', strokeStyleVal);
     strokePolyline(baseCtx, cPts.slice(0, splitIdx+1));
     if(splitIdx < cPts.length-1){
@@ -2928,8 +2935,8 @@ function drawHairStrands(ctx, fit, scalpY, hairEndY, maskW, maskH, hairCanvas, o
       const ey_img = iHairEndY[ix] >= 0 ? iHairEndY[ix] : sy_top + maskH*endYFallbackRatio;
       let sy_img = sy_top;
       // depthScale: 이 가닥의 시작점이 두피선(frac=0)에서 얼마나 깊이(ey_img 방향으로)
-      // 파고들었는지에 따라 길이 슬라이더 delta를 비례 축소하는 계수. 기본 1(=두피선 레이어와
-      // 동일하게 delta 전량 반영).
+      // 파고들었는지에 따라 길이 배율(ratio)의 "1에서 벗어난 정도"를 비례 축소하는 계수.
+      // 기본 1(=두피선 레이어와 동일하게 ratio 변화량 전량 반영).
       let depthScale = 1;
       if(rootDepthFrac){
         const frac = Math.max(0, Math.min(0.9, rootDepthFrac()));
@@ -2937,23 +2944,27 @@ function drawHairStrands(ctx, fit, scalpY, hairEndY, maskW, maskH, hairCanvas, o
         // 후보 지점이 실제 마스크 안일 때만 채택, 아니면 원래 두피선으로 안전하게 폴백
         if(frac > 0 && isRealHairAt(ix, candidateY)){
           sy_img = candidateY;
-          // 버그 수정(어제 진단): 루트 확산 레이어가 두피선보다 훨씬 깊은 지점에서
-          // 출발해 origLen(남은 길이) 자체가 짧은데도, 길이 슬라이더가 만든 delta(절대 px)를
-          // 두피선 레이어와 "통으로" 똑같이 받고 있었음. origLen이 작을수록 delta 비중이
-          // 상대적으로 커져서 ext(클리핑 없는 연장) 구간만 과도하게 늘어나고 maxStrandLen에
-          // clamp되는 가닥이 많아져, 개수를 늘려도 깊이감·산개감이 죽어 오히려 밀도가
-          // 줄어든 것처럼 보였음. → frac(깊이)이 클수록 delta도 비례해서 줄임(1-frac).
+          // 루트 확산 레이어가 두피선보다 훨씬 깊은 지점에서 출발해 origLen(남은 길이)
+          // 자체가 짧은데, ratio 기반으로 바뀐 지금은 origLen에 비례하므로 예전(delta
+          // 절대값 방식)만큼 극단적이진 않지만, 그래도 깊이가 깊을수록 배율 변화를
+          // 줄여서 두피선 근처 대비 과도하게 요동치지 않도록 유지.
           depthScale = 1 - frac;
         }
       }
       const origLen = Math.max(ey_img - sy_img, maskH*0.05);
-      const delta = lengthDeltaFor(ix) * depthScale;
-      const scaledLen = Math.min(lenScale(origLen, delta), maxStrandLen);
+      // ratio(배율)의 "1에서 벗어난 만큼"만 depthScale로 축소 — ratio 자체를 곱하면
+      // depthScale=0.5여도 여전히 큰 배율이 걸려버려서(예: ratio=2.6 → 1.8배 축소해도
+      // 여전히 1.8배) 깊이 축소 의도가 죽는다. 1 기준 편차만 줄여야 "원래 길이 근처로
+      // 되돌아가는" 축소가 됨.
+      const rawRatio = lengthRatioFor(ix);
+      const ratio = 1 + (rawRatio - 1) * depthScale;
+      const scaledLen = Math.min(lenScale(origLen, ratio), maxStrandLen);
+      const extAmount = scaledLen - origLen; // base/ext 분할 판단용(양수=연장, 음수 이하=전체 clip)
       const startX = ix + startXJitter();
       const startY = startYJitter ? sy_img + startYJitter() : sy_img;
       const jitterSeed = jitterSeedFn(i);
       const [tMin, tRange] = tintRange;
-      drawStrand(startX, startY, scaledLen, origLen, delta, jitterSeed, tintColor(color, tMin+Math.random()*tRange));
+      drawStrand(startX, startY, scaledLen, origLen, extAmount, jitterSeed, tintColor(color, tMin+Math.random()*tRange));
     }
   }
 
@@ -2963,10 +2974,15 @@ function drawHairStrands(ctx, fit, scalpY, hairEndY, maskW, maskH, hairCanvas, o
   // 등)에서는 가닥이 금방 끝나버려 비어 보이는 문제가 있었음. 실제 머리는 두피
   // 전체에 뿌리가 흩어져 있어서 시작 높이 자체가 제각각인데, 지금까지는 "출발선"이
   // 하나뿐이라 그 아래를 다른 가닥으로 못 채우고 있었던 것.
-  // → rootDepthFrac으로 두피선~모발끝 사이 임의 깊이(주로 얕은 쪽에 몰리도록
-  //   제곱근 분포)에서 추가로 뿌리를 심어, 옆/하단처럼 원래 짧게 끊기던 구간을
-  //   다른 깊이의 가닥들이 겹쳐서 메우도록 함. 다른 레이어보다 먼저 그려서
-  //   그 위에 레이어 1~3이 덮이게 하고, 두께는 잔가닥과 비슷하게 얇게 유지.
+  // → rootDepthFrac으로 두피선~모발끝 사이 임의 깊이에서 추가로 뿌리를 심어, 옆/하단처럼
+  //   원래 짧게 끊기던 구간을 다른 깊이의 가닥들이 겹쳐서 메우도록 함. 다른 레이어보다
+  //   먼저 그려서 그 위에 레이어 1~3이 덮이게 하고, 두께는 잔가닥과 비슷하게 얇게 유지.
+  // 버그 수정: 기존 Math.sqrt(Math.random())*0.55는 주석에 "얕은 쪽에 몰리게"라 적혀
+  // 있었지만 실제로는 sqrt(균등분포)라 반대로 "깊은 쪽(0.55에 가까운 값)"에 밀도가 더
+  // 쏠리는 공식이었음 + 최대 깊이도 0.55로 막혀 있어 두피선~모발끝의 아래쪽 45%는
+  // 애초에 뿌리를 못 심었음. 정수리(얕은 지점)만 계속 밀집되고 중간·아래는 비어
+  // 보이는 원인 중 하나 → 특정 깊이에 쏠리지 않는 균등분포로 바꾸고, 최대 깊이를
+  // 0.55→0.8로 넓혀서 중간·아래쪽까지 뿌리가 실제로 닿도록 함.
   const numRootScatter = Math.round(220 + (volume/100) * 160); // 요청으로 기존(110~190) 대비 2배
   drawStrandLayer({
     count: numRootScatter,
@@ -2974,8 +2990,8 @@ function drawHairStrands(ctx, fit, scalpY, hairEndY, maskW, maskH, hairCanvas, o
     lineWidth: 0.6 + (thickness/100) * 0.8,
     pickCol: ()=> validCols[Math.floor(Math.random()*validCols.length)],
     endYFallbackRatio: 0.35,
-    rootDepthFrac: ()=> Math.sqrt(Math.random()) * 0.55, // 0~0.55, 얕은 깊이에 더 몰리게
-    lenScale: (origLen, delta)=> Math.max(origLen + delta, maskH*0.02) * (0.6+Math.random()*0.4),
+    rootDepthFrac: ()=> Math.random() * 0.8, // 0~0.8 균등분포 — 특정 깊이 쏠림 없이 중간·아래까지 고르게
+    lenScale: (origLen, ratio)=> Math.max(origLen * ratio, maskH*0.02) * (0.6+Math.random()*0.4),
     startXJitter: ()=> (Math.random()-0.5)*maskW*0.01,
     jitterSeedFn: (i)=> i*0.271,
     tintRange: [0.68, 0.55],
@@ -2990,7 +3006,7 @@ function drawHairStrands(ctx, fit, scalpY, hairEndY, maskW, maskH, hairCanvas, o
     lineWidth: 3 + (volume/100) * 3,
     pickCol: (i)=> validCols[Math.floor((i/numSections)*validCols.length)],
     endYFallbackRatio: 0.40,
-    lenScale: (origLen, delta)=> Math.max(origLen + delta, maskH*0.02),
+    lenScale: (origLen, ratio)=> Math.max(origLen * ratio, maskH*0.02),
     startXJitter: ()=> (Math.random()-0.5)*(maskW/numSections)*1.5,
     jitterSeedFn: (i)=> i,
     tintRange: [0.70, 0.55],
@@ -3004,7 +3020,7 @@ function drawHairStrands(ctx, fit, scalpY, hairEndY, maskW, maskH, hairCanvas, o
     lineWidth: 1.7 + (thickness/100) * 1.6,
     pickCol: ()=> validCols[Math.floor(Math.random()*validCols.length)],
     endYFallbackRatio: 0.38,
-    lenScale: (origLen, delta)=> Math.max(origLen + delta, maskH*0.02) * (0.85+Math.random()*0.3),
+    lenScale: (origLen, ratio)=> Math.max(origLen * ratio, maskH*0.02) * (0.85+Math.random()*0.3),
     startXJitter: ()=> (Math.random()-0.5)*maskW*0.008,
     jitterSeedFn: (i)=> i*0.618,
     tintRange: [0.72, 0.60],
@@ -3020,7 +3036,7 @@ function drawHairStrands(ctx, fit, scalpY, hairEndY, maskW, maskH, hairCanvas, o
     lineWidth: 0.5 + (thickness/100) * 0.7,
     pickCol: ()=> validCols[Math.floor(Math.random()*validCols.length)],
     endYFallbackRatio: 0.35,
-    lenScale: (origLen, delta)=> Math.max(origLen + delta, maskH*0.02) * (0.7+Math.random()*0.5),
+    lenScale: (origLen, ratio)=> Math.max(origLen * ratio, maskH*0.02) * (0.7+Math.random()*0.5),
     startXJitter: ()=> (Math.random()-0.5)*maskW*0.012,
     startYJitter: ()=> (Math.random()-0.5)*maskH*0.01,
     jitterSeedFn: (i)=> i*0.382,
