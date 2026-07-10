@@ -161,9 +161,7 @@ main{flex:1;position:relative;overflow:hidden;}
 .mask-debug-btn.on{background:var(--accent);color:#1B1816;border-color:var(--accent);font-weight:600;}
 .raw-debug-btn{top:46px;}
 .raw-debug-btn.on{background:var(--accent);color:#1B1816;border-color:var(--accent);font-weight:600;}
-.facebox-debug-btn{top:82px;}
-.facebox-debug-btn.on{background:#00e5ff;color:#0A2A2E;border-color:#00e5ff;font-weight:600;}
-.field-debug-btn{top:118px;}
+.field-debug-btn{top:82px;}
 .field-debug-btn.on{background:#c04af0;color:#F3ECE2;border-color:#c04af0;font-weight:600;}
 
 .adjust-scroll{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:14px 16px 20px;}
@@ -351,7 +349,6 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:22px;heigh
         <div class="preview-tag" id="adjustStyleTag">스타일 미선택</div>
         <button class="debug-btn mask-debug-btn" id="maskDebugToggle" onclick="toggleMaskDebug()">가닥 보기</button>
         <button class="debug-btn raw-debug-btn" id="rawDebugToggle" onclick="toggleRawDebug()">원본 결 보기</button>
-        <button class="debug-btn facebox-debug-btn" id="faceBoxDebugToggle" onclick="toggleFaceBoxDebug()">얼굴박스 보기</button>
         <button class="debug-btn field-debug-btn" id="fieldDebugToggle" onclick="toggleFieldDebug()">결필드 원본</button>
         <div class="seg-status" id="segStatus"></div>
       </div>
@@ -823,7 +820,6 @@ const state = {
   baseCanvases: {front:null,left:null,right:null,back:null},
   debugShowMask: false, // true면 조정화면에서 가닥 대신 hairMaskBuf 실루엣을 그대로 표시(진단용)
   debugShowRaw: false,  // true면 스타일/슬라이더 값 무시하고 전 섹션 중립값(길이·볼륨 50, 컬 0)으로 렌더링(진단용)
-  debugShowFaceBox: false, // true면 랜드마크 기반 얼굴제거박스 경계를 화면에 테두리로 표시(진단용)
   debugShowField: false, // true면 strand 시뮬레이션(뿌리/중력/clamp) 전부 건너뛰고 orientation 컬럼 샘플을 가공 없이 그대로 표시(진단용)
   currentCaptureIndex: 0,
   selectedStyle: null,
@@ -2080,19 +2076,19 @@ function setupAdjustScreen(){
   if(styleTag && state.debugShowRaw){
     styleTag.textContent = '원본 결 (스타일 미적용)';
   }
+  // 상태텍스트: 현재 진단 중인 항목(각도 탭 vs 실측 3D 포즈)만 남김.
+  // 마스크픽셀/랜드마크진단/배경가드 등 세그멘테이션 관련 긴 로그(state._diagLog)는
+  // 지금 확인 대상이 아니라서 제거 — 필요해지면 그때 다시 노출.
   const angle = state.currentViewAngle;
   const el = document.getElementById('segStatus');
   if(el){
-    if(state.hairMasks[angle] && state.hairMasks[angle].scalpY){
-      const validCols = Array.from(state.hairMasks[angle].scalpY).filter(y=>y>=0).length;
-      const lm = state.landmarks && state.landmarks[angle];
-      const poseStr = (lm && typeof lm.poseYawDeg === 'number') ? ` poseYaw:${lm.poseYawDeg.toFixed(0)}°` : '';
-      const yawStr = lm ? ` | yaw:${lm.yaw.toFixed(2)}${poseStr}` : '';
-      el.textContent = `✓ 머리카락 인식됨 (${validCols}px 폭) | ${state._diagLog||''}${yawStr}`;
-    } else if(state.hairCanvases[angle]){
-      el.textContent = `△ 색상 기반 추출 | ${state._diagLog||''}`;
+    const lm = state.landmarks && state.landmarks[angle];
+    if(lm && typeof lm.poseYawDeg === 'number'){
+      el.textContent = `[${ANGLE_LABELS[angle]}] poseYaw:${lm.poseYawDeg.toFixed(1)}° pitch:${(lm.posePitchDeg??0).toFixed(1)}° roll:${(lm.poseRollDeg??0).toFixed(1)}° (근사yaw:${lm.yaw.toFixed(2)})`;
+    } else if(lm){
+      el.textContent = `[${ANGLE_LABELS[angle]}] 포즈행렬 없음 — 근사yaw:${lm.yaw.toFixed(2)}만 사용`;
     } else {
-      el.textContent = `가이드 오버레이 모드 | 세그멘터:${state.segmenterType||'로딩중'}`;
+      el.textContent = `[${ANGLE_LABELS[angle]}] 랜드마크 없음`;
     }
   }
   buildSectionTabs();
@@ -2530,43 +2526,6 @@ function toggleFieldDebug(){
   renderAdjustFrame();
 }
 
-// 얼굴제거박스 진단 토글: 랜드마크 기반으로 계산된 "얼굴 영역 제거 박스"의
-// 실제 경계(사각형 테두리)를 화면에 얹어서, 사진마다 각지게 나타나는 블록
-// 아티팩트가 이 박스와 위치·모양이 일치하는지 눈으로 바로 확인하기 위함.
-// 다른 디버그 뷰(마스크 보기/원본 결 보기)와 동시에 켤 수 있음 — 순수 오버레이라서 충돌 없음.
-function toggleFaceBoxDebug(){
-  state.debugShowFaceBox = !state.debugShowFaceBox;
-  const btn = document.getElementById('faceBoxDebugToggle');
-  if(btn) btn.classList.toggle('on', state.debugShowFaceBox);
-  const maskInf = state.hairMasks[state.currentViewAngle];
-  if(state.debugShowFaceBox && maskInf && maskInf.faceBoxDiag){
-    console.log('[진단] 얼굴제거박스', state.currentViewAngle, maskInf.faceBoxDiag);
-  } else if(state.debugShowFaceBox){
-    console.log('[진단] 얼굴제거박스 없음(이 각도엔 박스가 적용되지 않음)', state.currentViewAngle);
-  }
-  renderAdjustFrame();
-}
-
-// 얼굴제거박스 테두리를 실제 화면 좌표로 변환해서 그림 (0~1 비율 → fit 기준 픽셀)
-function drawFaceBoxDebugOverlay(ctx, fit, maskInf){
-  if(!maskInf || !maskInf.faceBoxDiag) return;
-  const b = maskInf.faceBoxDiag;
-  const rx = fit.dx + b.xLeft * fit.dw;
-  const ry = fit.dy + b.yTop  * fit.dh;
-  const rw = (b.xRight - b.xLeft) * fit.dw;
-  const rh = (b.yBottom - b.yTop) * fit.dh;
-  ctx.save();
-  ctx.strokeStyle = '#00e5ff';
-  ctx.lineWidth = 3;
-  ctx.setLineDash([8,6]);
-  ctx.strokeRect(rx, ry, rw, rh);
-  ctx.setLineDash([]);
-  ctx.fillStyle = '#00e5ff';
-  ctx.font = '11px JetBrains Mono, monospace';
-  ctx.fillText(b.lmEstimated ? '얼굴박스(추정 랜드마크)' : '얼굴박스(실측 랜드마크)', rx, Math.max(12, ry - 4));
-  ctx.restore();
-}
-
 // 결필드 원본을 가공 없이 그리는 디버그 오버레이.
 // maskInf.orientation은 buildColumnOrientationSamples가 만든 컬럼별 샘플
 // (컬럼당 최대 12개, 마스크가 있는 y구간에 걸쳐 분포)이며 좌표계는
@@ -2659,7 +2618,6 @@ function renderFrame(canvas, angle){
         ctx.drawImage(maskOverlay, fit.dx, fit.dy, fit.dw, fit.dh);
       }
       ctx.restore();
-      if(state.debugShowFaceBox) drawFaceBoxDebugOverlay(ctx, fit, maskInf);
       return;
     }
 
@@ -2736,7 +2694,6 @@ function renderFrame(canvas, angle){
 
         // 컬러 오버레이는 현재 사용하지 않음(가닥 자체 색상으로 스타일 컬러를 표현) — 관련 죽은 코드 제거됨
       }
-      if(state.debugShowFaceBox) drawFaceBoxDebugOverlay(ctx, fit, maskInf);
 
     } else if(img){
       // ── 세그멘테이션 없음: 원본만 표시 (SVG 폴백 제거) ──
