@@ -163,6 +163,8 @@ main{flex:1;position:relative;overflow:hidden;}
 .raw-debug-btn.on{background:var(--accent);color:#1B1816;border-color:var(--accent);font-weight:600;}
 .facebox-debug-btn{top:82px;}
 .facebox-debug-btn.on{background:#00e5ff;color:#0A2A2E;border-color:#00e5ff;font-weight:600;}
+.field-debug-btn{top:118px;}
+.field-debug-btn.on{background:#c04af0;color:#F3ECE2;border-color:#c04af0;font-weight:600;}
 
 .adjust-scroll{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:14px 16px 20px;}
 .adjust-controls{display:flex;flex-direction:column;gap:14px;}
@@ -350,6 +352,7 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:22px;heigh
         <button class="debug-btn mask-debug-btn" id="maskDebugToggle" onclick="toggleMaskDebug()">가닥 보기</button>
         <button class="debug-btn raw-debug-btn" id="rawDebugToggle" onclick="toggleRawDebug()">원본 결 보기</button>
         <button class="debug-btn facebox-debug-btn" id="faceBoxDebugToggle" onclick="toggleFaceBoxDebug()">얼굴박스 보기</button>
+        <button class="debug-btn field-debug-btn" id="fieldDebugToggle" onclick="toggleFieldDebug()">결필드 원본</button>
         <div class="seg-status" id="segStatus"></div>
       </div>
       <div class="adjust-scroll">
@@ -765,6 +768,7 @@ const state = {
   debugShowMask: false, // true면 조정화면에서 가닥 대신 hairMaskBuf 실루엣을 그대로 표시(진단용)
   debugShowRaw: false,  // true면 스타일/슬라이더 값 무시하고 전 섹션 중립값(길이·볼륨 50, 컬 0)으로 렌더링(진단용)
   debugShowFaceBox: false, // true면 랜드마크 기반 얼굴제거박스 경계를 화면에 테두리로 표시(진단용)
+  debugShowField: false, // true면 strand 시뮬레이션(뿌리/중력/clamp) 전부 건너뛰고 orientation 컬럼 샘플을 가공 없이 그대로 표시(진단용)
   currentCaptureIndex: 0,
   selectedStyle: null,
   currentViewAngle: 'front',
@@ -2420,10 +2424,12 @@ function syncMaskDebugBtn(){
 // — 세그멘테이션이 실제로 어디를 "머리카락"으로 잡았는지(과잉/누락) 눈으로 바로 확인하기 위함
 function toggleMaskDebug(){
   state.debugShowMask = !state.debugShowMask;
-  if(state.debugShowMask) state.debugShowRaw = false; // 두 디버그 뷰는 동시에 켤 수 없음
+  if(state.debugShowMask){ state.debugShowRaw = false; state.debugShowField = false; } // 세 디버그 뷰는 동시에 켤 수 없음
   syncMaskDebugBtn();
   const rawBtn = document.getElementById('rawDebugToggle');
   if(rawBtn) rawBtn.classList.toggle('on', state.debugShowRaw);
+  const fieldBtn = document.getElementById('fieldDebugToggle');
+  if(fieldBtn) fieldBtn.classList.toggle('on', state.debugShowField);
   renderAdjustFrame();
 }
 
@@ -2433,19 +2439,37 @@ function toggleMaskDebug(){
 // 실제 state.sections/selectedStyle은 건드리지 않고 화면 표시만 임시로 바꿈.
 function toggleRawDebug(){
   state.debugShowRaw = !state.debugShowRaw;
-  if(state.debugShowRaw) state.debugShowMask = false; // 두 디버그 뷰는 동시에 켤 수 없음
+  if(state.debugShowRaw){ state.debugShowMask = false; state.debugShowField = false; } // 세 디버그 뷰는 동시에 켤 수 없음
   const btn = document.getElementById('rawDebugToggle');
   if(btn){
     btn.classList.toggle('on', state.debugShowRaw);
     btn.textContent = state.debugShowRaw ? '스타일 보기' : '원본 결 보기';
   }
   syncMaskDebugBtn();
+  const fieldBtn = document.getElementById('fieldDebugToggle');
+  if(fieldBtn) fieldBtn.classList.toggle('on', state.debugShowField);
   const tag = document.getElementById('adjustStyleTag');
   if(tag){
     tag.textContent = state.debugShowRaw
       ? '원본 결 (스타일 미적용)'
       : (state.selectedStyle ? state.selectedStyle.name : '스타일 미선택');
   }
+  renderAdjustFrame();
+}
+
+// 결필드 원본 디버그 토글: strand 시뮬레이션(뿌리 위치·중력·clamp 등) 전혀 거치지 않고
+// computeHairOrientationField가 실제로 뽑아낸 angle/coherence 컬럼 샘플을 가공 없이
+// 그대로 화면에 짧은 선분으로 표시 — 결이 마스크 중간·아래쪽에서 실제로 얼마나
+// 촘촘하고 신뢰할 만한지(coherence), 낮은 coherence 구간은 실제로 어떻게 나오는지를
+// strand 렌더링 로직(scalpY 시작 제약, 중력 대체 등)과 분리해서 눈으로 검증하기 위함.
+function toggleFieldDebug(){
+  state.debugShowField = !state.debugShowField;
+  if(state.debugShowField){ state.debugShowMask = false; state.debugShowRaw = false; } // 세 디버그 뷰는 동시에 켤 수 없음
+  const btn = document.getElementById('fieldDebugToggle');
+  if(btn) btn.classList.toggle('on', state.debugShowField);
+  syncMaskDebugBtn();
+  const rawBtn = document.getElementById('rawDebugToggle');
+  if(rawBtn) rawBtn.classList.toggle('on', state.debugShowRaw);
   renderAdjustFrame();
 }
 
@@ -2486,6 +2510,49 @@ function drawFaceBoxDebugOverlay(ctx, fit, maskInf){
   ctx.restore();
 }
 
+// 결필드 원본을 가공 없이 그리는 디버그 오버레이.
+// maskInf.orientation은 buildColumnOrientationSamples가 만든 컬럼별 샘플
+// (컬럼당 최대 12개, 마스크가 있는 y구간에 걸쳐 분포)이며 좌표계는
+// maskInf.maskW × maskInf.maskH (결방향 계산 당시의 축소 해상도) 기준.
+// coherence를 색상으로 매핑(빨강=낮음/신뢰 안 됨 → 초록=높음/뚜렷함)해서
+// strand 시뮬레이션이 어떤 원본 데이터를 근거로 방향을 정하는지,
+// 특히 낮은 coherence 구간이 실제로 어떻게 나오는지를 그대로 보여준다.
+function drawOrientationFieldDebug(ctx, fit, maskInf){
+  const colSamples = maskInf.orientation;
+  if(!colSamples) return;
+  const fw = maskInf.maskW, fh = maskInf.maskH;
+  if(!fw || !fh) return;
+  const toX = ix => fit.dx + (ix/fw) * fit.dw;
+  const toY = iy => fit.dy + (iy/fh) * fit.dh;
+  // 선분 길이: 컬럼 간격(스킵 간격 포함) 대비 살짝 겹치는 정도로 — 너무 길면
+  // 이웃 컬럼끼리 뭉개지고, 너무 짧으면 방향이 안 보임.
+  const colSkip = 2; // 컬럼 2개당 1개씩만 그려서 과밀 방지
+  const halfLen = Math.max(2, (fit.dw / fw) * colSkip * 1.1);
+  ctx.save();
+  ctx.lineCap = 'round';
+  ctx.lineWidth = Math.max(1, (fit.dw / fw) * 0.9);
+  for(let x=0; x<fw; x += colSkip){
+    const col = colSamples[x];
+    if(!col || col.length===0) continue;
+    for(const s of col){
+      const cx = toX(x), cy = toY(s.y);
+      const dx = Math.cos(s.angle) * halfLen;
+      const dy = Math.sin(s.angle) * halfLen;
+      const coh = Math.max(0, Math.min(1, s.coherence));
+      // coherence 낮음(0)=빨강 ~ 높음(1)=초록. 숨기지 않고 그대로 다 그림 — 낮은
+      // coherence 구간이 어떻게 생겼는지 확인하는 게 이 디버그 뷰의 목적이므로
+      // 알파를 coherence에 비례시켜 흐릿하게 만들지 않는다.
+      ctx.strokeStyle = `hsl(${coh*120}, 90%, 55%)`;
+      ctx.globalAlpha = 0.85;
+      ctx.beginPath();
+      ctx.moveTo(cx-dx, cy-dy);
+      ctx.lineTo(cx+dx, cy+dy);
+      ctx.stroke();
+    }
+  }
+  ctx.restore();
+}
+
 function renderFrame(canvas, angle){
   syncCanvasSize(canvas);
   const ctx = canvas.getContext('2d');
@@ -2498,6 +2565,18 @@ function renderFrame(canvas, angle){
     const hairC   = state.hairCanvases[angle];
     const baseC   = state.baseCanvases[angle];
     const maskInf = state.hairMasks[angle];
+
+    if(state.debugShowField && maskInf && maskInf.orientation){
+      // ── 결필드 원본 디버그 뷰 ──
+      // strand 시뮬레이션(뿌리 위치 제약·중력·clamp)을 전혀 거치지 않고
+      // computeHairOrientationField가 뽑아낸 값을 그대로 표시. 원본 사진 위에
+      // 얹어서, 저장된 결방향 데이터가 마스크 전체에 걸쳐 실제로 얼마나
+      // 촘촘·신뢰할 만한지(coherence 색상)를 strand 렌더링과 분리해서 확인한다.
+      const fit = computeFit(img.width, img.height, w, h);
+      ctx.drawImage(img, fit.dx, fit.dy, fit.dw, fit.dh);
+      drawOrientationFieldDebug(ctx, fit, maskInf);
+      return;
+    }
 
     if(state.debugShowMask && hairC && maskInf){
       // ── 마스크 디버그 뷰 ──
