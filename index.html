@@ -2857,7 +2857,12 @@ function drawHairStrands(ctx, fit, scalpY, hairEndY, maskW, maskH, hairCanvas, o
       //   결방향을 신뢰하고 따라가도록 함.
       if(hasOrientation && s >= 2){
         const sample = sampleOrientation(orientation, cur.x*ox, orientMaskW, cur.y*oy);
-        if(sample.coherence > 0.12){
+        // 임계값을 0.12→0.05로 낮춤 — 기존엔 애매하게 낮은 coherence도 전부
+        // "못 믿는다"고 보고 중력으로 덮어버려서, 결이 약하게라도 있는 구간까지
+        // 필드 정보를 버리고 있었음. 결필드 원본 디버그로 실측한 결과 낮은
+        // coherence 지점도 완전 노이즈가 아니라 약하게나마 방향성이 있는
+        // 경우가 많았으므로, 진짜 노이즈(0.05 미만)만 중력으로 넘김.
+        if(sample.coherence > 0.05){
           // sample.angle은 atan2 좌표계(0=+x축/가로, ±PI/2=+y축 방향/세로)로 계산된
           // "결의 방향" 그 자체이며, cos/sin을 취하면 바로 진행 단위벡터가 된다.
           // 단, 결방향은 선분이라 180도 모호성이 있음(angle과 angle+PI가 동일한 결)
@@ -2898,15 +2903,13 @@ function drawHairStrands(ctx, fit, scalpY, hairEndY, maskW, maskH, hairCanvas, o
         }
       }
 
-      // 방향 상한(clamp): 결방향 오판·중력 부족 등 어떤 이유로든 진행 방향이
-      // 아래(PI/2) 기준 좌우 60도를 넘어서지 못하게 강제. 눈썹을 가로지르거나
-      // 배경으로 옆·위로 새는 걸 구조적으로 막는 안전장치.
-      const MAX_DIR_DEVIATION = Math.PI/3; // 60도
-      let devFromDown = dir - Math.PI/2;
-      while(devFromDown > Math.PI) devFromDown -= Math.PI*2;
-      while(devFromDown < -Math.PI) devFromDown += Math.PI*2;
-      if(devFromDown > MAX_DIR_DEVIATION) dir = Math.PI/2 + MAX_DIR_DEVIATION;
-      else if(devFromDown < -MAX_DIR_DEVIATION) dir = Math.PI/2 - MAX_DIR_DEVIATION;
+      // 방향 상한(clamp) 제거됨 — 기존엔 진행 방향이 아래(PI/2) 기준 ±60도를
+      // 못 넘게 강제해서, coherence가 높아 결방향이 뚜렷한 구간에서도 결이
+      // 실제로 옆으로 흐르거나 위로 말리면 그 형태를 못 그리고 억지로
+      // 아래쪽으로 눌러버리는 제한이었음. "결필드를 그대로 재현한다"는
+      // 방향과 정면으로 충돌하는 규칙이라 제거. base(마스크 안) 구간은
+      // destination-in clip이 최종적으로 실제 머리 모양 밖을 걸러주므로
+      // 안전장치 역할은 clip이 대신한다.
 
       baseDir = dir; // 다음 스텝 기준은 curl 적용 전 방향으로 저장 (누적 방지)
 
@@ -3100,6 +3103,9 @@ function drawHairStrands(ctx, fit, scalpY, hairEndY, maskW, maskH, hairCanvas, o
     lineWidth: 3 + (volume/100) * 3,
     pickCol: (i)=> validCols[Math.floor((i/numSections)*validCols.length)],
     endYFallbackRatio: 0.40,
+    // 한 줄(scalpY) 제한 해제: 다른 레이어처럼 두피선~모발끝 사이에 깊이를 분산시켜서,
+    // 이 레이어 전체가 정수리 한 줄에 몰려 밀도가 뭉치는 걸 방지.
+    rootDepthFrac: ()=> Math.random() * 0.6,
     lenScale: (origLen, ratio)=> Math.max(origLen * ratio, maskH*0.02),
     startXJitter: ()=> (Math.random()-0.5)*(maskW/numSections)*1.5,
     jitterSeedFn: (i)=> i,
@@ -3114,6 +3120,7 @@ function drawHairStrands(ctx, fit, scalpY, hairEndY, maskW, maskH, hairCanvas, o
     lineWidth: 1.7 + (thickness/100) * 1.6,
     pickCol: ()=> validCols[Math.floor(Math.random()*validCols.length)],
     endYFallbackRatio: 0.38,
+    rootDepthFrac: ()=> Math.random() * 0.7, // 한 줄 제한 해제
     lenScale: (origLen, ratio)=> Math.max(origLen * ratio, maskH*0.02) * (0.85+Math.random()*0.3),
     startXJitter: ()=> (Math.random()-0.5)*maskW*0.008,
     jitterSeedFn: (i)=> i*0.618,
@@ -3130,6 +3137,7 @@ function drawHairStrands(ctx, fit, scalpY, hairEndY, maskW, maskH, hairCanvas, o
     lineWidth: 0.5 + (thickness/100) * 0.7,
     pickCol: ()=> validCols[Math.floor(Math.random()*validCols.length)],
     endYFallbackRatio: 0.35,
+    rootDepthFrac: ()=> Math.random() * 0.85, // 한 줄 제한 해제 — 잔가닥은 가장 넓게 분산
     lenScale: (origLen, ratio)=> Math.max(origLen * ratio, maskH*0.02) * (0.7+Math.random()*0.5),
     startXJitter: ()=> (Math.random()-0.5)*maskW*0.012,
     startYJitter: ()=> (Math.random()-0.5)*maskH*0.01,
