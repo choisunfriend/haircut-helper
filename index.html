@@ -2058,6 +2058,28 @@ function activateScreen(name){
   currentScreen = name; // 먼저 업데이트
 }
 
+// 상태텍스트: 현재 진단 중인 항목(각도 탭 vs 실측 3D 포즈)만 남김.
+// 마스크픽셀/랜드마크진단/배경가드 등 세그멘테이션 관련 긴 로그(state._diagLog)는
+// 지금 확인 대상이 아니라서 제거 — 필요해지면 그때 다시 노출.
+// 버그 수정: 예전엔 이 로직이 setupAdjustScreen() 안에 인라인으로 있어서 조정 화면
+// "최초 진입" 시점에만 계산됐음 — 각도 탭(정면/좌측/우측/후면) 전환 핸들러는 이 함수를
+// 다시 호출하지 않아서, 탭을 바꿔도 화면엔 항상 최초 진입 당시의 각도(front) 값이
+// 그대로 남아있었음(실제 계산은 각도별로 맞게 되고 있었는데 "표시"만 고정된 버그).
+// → 독립 함수로 분리해서 화면 진입 시점과 탭 전환 시점 둘 다에서 호출되게 함.
+function updateSegStatus(){
+  const angle = state.currentViewAngle;
+  const el = document.getElementById('segStatus');
+  if(!el) return;
+  const lm = state.landmarks && state.landmarks[angle];
+  if(lm && typeof lm.poseYawDeg === 'number'){
+    el.textContent = `[${ANGLE_LABELS[angle]}] poseYaw:${lm.poseYawDeg.toFixed(1)}° pitch:${(lm.posePitchDeg??0).toFixed(1)}° roll:${(lm.poseRollDeg??0).toFixed(1)}° (근사yaw:${lm.yaw.toFixed(2)})`;
+  } else if(lm){
+    el.textContent = `[${ANGLE_LABELS[angle]}] 포즈행렬 없음 — 근사yaw:${lm.yaw.toFixed(2)}만 사용`;
+  } else {
+    el.textContent = `[${ANGLE_LABELS[angle]}] 랜드마크 없음`;
+  }
+}
+
 // 'adjust' 화면 진입 시 셋업: 디버그 토글 상태 동기화, 세그멘테이션 상태 표시,
 // 섹션 탭 구성, globalCurl 슬라이더 동기화, 프리뷰 렌더
 function setupAdjustScreen(){
@@ -2076,21 +2098,7 @@ function setupAdjustScreen(){
   if(styleTag && state.debugShowRaw){
     styleTag.textContent = '원본 결 (스타일 미적용)';
   }
-  // 상태텍스트: 현재 진단 중인 항목(각도 탭 vs 실측 3D 포즈)만 남김.
-  // 마스크픽셀/랜드마크진단/배경가드 등 세그멘테이션 관련 긴 로그(state._diagLog)는
-  // 지금 확인 대상이 아니라서 제거 — 필요해지면 그때 다시 노출.
-  const angle = state.currentViewAngle;
-  const el = document.getElementById('segStatus');
-  if(el){
-    const lm = state.landmarks && state.landmarks[angle];
-    if(lm && typeof lm.poseYawDeg === 'number'){
-      el.textContent = `[${ANGLE_LABELS[angle]}] poseYaw:${lm.poseYawDeg.toFixed(1)}° pitch:${(lm.posePitchDeg??0).toFixed(1)}° roll:${(lm.poseRollDeg??0).toFixed(1)}° (근사yaw:${lm.yaw.toFixed(2)})`;
-    } else if(lm){
-      el.textContent = `[${ANGLE_LABELS[angle]}] 포즈행렬 없음 — 근사yaw:${lm.yaw.toFixed(2)}만 사용`;
-    } else {
-      el.textContent = `[${ANGLE_LABELS[angle]}] 랜드마크 없음`;
-    }
-  }
+  updateSegStatus();
   buildSectionTabs();
   // globalCurl 슬라이더 동기화
   const gcSlider = document.getElementById('slider-globalCurl');
@@ -2413,6 +2421,7 @@ function renderAngleSwitch(targetId){
     btn.onclick=()=>{
       state.currentViewAngle=a;
       renderAngleSwitches();
+      updateSegStatus();
       syncSliderUI(); drawAdjustPreview(); drawCompare();
     };
     el.appendChild(btn);
