@@ -3144,7 +3144,11 @@ function drawHairStrands(ctx, fit, scalpY, hairEndY, maskW, maskH, hairCanvas, o
     lineWidth: 0.6 + (thickness/100) * 0.8,
     pickCol: ()=> validCols[Math.floor(Math.random()*validCols.length)],
     endYFallbackRatio: 0.35,
-    rootDepthFrac: ()=> Math.random() * 0.8, // 0~0.8 균등분포 — 특정 깊이 쏠림 없이 중간·아래까지 고르게
+    // 균등분포 → 제곱분포로 변경: 두피선(frac=0) 근처에 확률이 더 실리고 꼬리가 길게
+    // 빠지는 형태(Math.pow(Math.random(),2))라, 실제 헤어라인 밀도는 유지하면서
+    // 중간·아래쪽까지 여전히 뿌리가 퍼짐. 균등분포일 때 두피선 근처 밀도가 과소해져
+    // "정수리가 빈다"는 오버코렉션이 발생했던 것에 대한 수정.
+    rootDepthFrac: ()=> Math.pow(Math.random(), 2) * 0.8,
     lenScale: (origLen, ratio)=> Math.max(origLen * ratio, maskH*0.02) * (0.6+Math.random()*0.4),
     startXJitter: ()=> (Math.random()-0.5)*maskW*0.01,
     jitterSeedFn: (i)=> i*0.271,
@@ -3162,7 +3166,7 @@ function drawHairStrands(ctx, fit, scalpY, hairEndY, maskW, maskH, hairCanvas, o
     endYFallbackRatio: 0.40,
     // 한 줄(scalpY) 제한 해제: 다른 레이어처럼 두피선~모발끝 사이에 깊이를 분산시켜서,
     // 이 레이어 전체가 정수리 한 줄에 몰려 밀도가 뭉치는 걸 방지.
-    rootDepthFrac: ()=> Math.random() * 0.6,
+    rootDepthFrac: ()=> Math.pow(Math.random(), 2) * 0.6,
     lenScale: (origLen, ratio)=> Math.max(origLen * ratio, maskH*0.02),
     startXJitter: ()=> (Math.random()-0.5)*(maskW/numSections)*1.5,
     jitterSeedFn: (i)=> i,
@@ -3177,7 +3181,7 @@ function drawHairStrands(ctx, fit, scalpY, hairEndY, maskW, maskH, hairCanvas, o
     lineWidth: 1.7 + (thickness/100) * 1.6,
     pickCol: ()=> validCols[Math.floor(Math.random()*validCols.length)],
     endYFallbackRatio: 0.38,
-    rootDepthFrac: ()=> Math.random() * 0.7, // 한 줄 제한 해제
+    rootDepthFrac: ()=> Math.pow(Math.random(), 2) * 0.7, // 한 줄 제한 해제 + 두피선 쪽 가중
     lenScale: (origLen, ratio)=> Math.max(origLen * ratio, maskH*0.02) * (0.85+Math.random()*0.3),
     startXJitter: ()=> (Math.random()-0.5)*maskW*0.008,
     jitterSeedFn: (i)=> i*0.618,
@@ -3194,7 +3198,7 @@ function drawHairStrands(ctx, fit, scalpY, hairEndY, maskW, maskH, hairCanvas, o
     lineWidth: 0.5 + (thickness/100) * 0.7,
     pickCol: ()=> validCols[Math.floor(Math.random()*validCols.length)],
     endYFallbackRatio: 0.35,
-    rootDepthFrac: ()=> Math.random() * 0.85, // 한 줄 제한 해제 — 잔가닥은 가장 넓게 분산
+    rootDepthFrac: ()=> Math.pow(Math.random(), 2) * 0.85, // 한 줄 제한 해제 — 잔가닥은 가장 넓게 분산 + 두피선 쪽 가중
     lenScale: (origLen, ratio)=> Math.max(origLen * ratio, maskH*0.02) * (0.7+Math.random()*0.5),
     startXJitter: ()=> (Math.random()-0.5)*maskW*0.012,
     startYJitter: ()=> (Math.random()-0.5)*maskH*0.01,
