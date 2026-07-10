@@ -477,6 +477,12 @@ async function initFaceLandmarker(){
         delegate:'GPU'
       },
       runningMode:'IMAGE', numFaces:1,
+      // outputFacialTransformationMatrixes: MediaPipe가 내부적으로 캐노니컬(표준) 3D
+      // 얼굴 모델을 감지된 얼굴에 맞추는 변환(회전+이동) 행렬을 계산해서 넘겨줌 —
+      // 이게 사실상 우리가 직접 구현하려던 PnP(Perspective-n-Point) 포즈 추정을
+      // MediaPipe가 이미 해주는 것. 이 행렬에서 yaw/pitch/roll을 뽑아 4장 사진의
+      // 실측 촬영 각도를 공통 좌표계(0도=정면 기준) 위에 놓는 데 사용한다.
+      outputFacialTransformationMatrixes: true,
     });
     faceLandmarkerReady = true;
     console.log('Face Landmarker 준비 완료');
@@ -536,8 +542,22 @@ async function detectFaceLandmarks(angle){
         const yaw      = earSpan > 0.01 ? (nose.x - earCX) / (earSpan * 0.5) : 0;
         const eyeY     = (lEye.y + rEye.y) / 2;
         const earY     = (lEar.y + rEar.y) / 2;
+        // ── 실측 3D 포즈(PnP 결과) ──
+        // outputFacialTransformationMatrixes로 받은 4x4 변환행렬에서 회전만
+        // 뽑아 yaw/pitch/roll을 "도" 단위로 계산. earSpan 비율로 어림하던
+        // 기존 yaw(-1~1)보다 훨씬 정확하고, 4장 사진을 하나의 공통 각도
+        // 좌표계(0도=정면 기준) 위에 놓을 수 있게 해준다.
+        let poseYawDeg = null, posePitchDeg = null, poseRollDeg = null;
+        if(result.facialTransformationMatrixes && result.facialTransformationMatrixes.length){
+          try{
+            const pose = decomposePoseMatrix(result.facialTransformationMatrixes[0].data);
+            poseYawDeg   = pose.yawRad   * 180/Math.PI;
+            posePitchDeg = pose.pitchRad * 180/Math.PI;
+            poseRollDeg  = pose.rollRad  * 180/Math.PI;
+          }catch(e){ console.warn('포즈 행렬 분해 실패:', e); }
+        }
         const info = { yaw, foreheadY:forehead.y, eyeY, earY, chinY:chin.y, browTopY, features,
-                       lEarX:lEar.x, rEarX:rEar.x };
+                       lEarX:lEar.x, rEarX:rEar.x, poseYawDeg, posePitchDeg, poseRollDeg };
         state.landmarks = state.landmarks || {};
         state.landmarks[angle] = info;
         resolve(info);
@@ -550,6 +570,30 @@ async function detectFaceLandmarks(angle){
     img.onerror = ()=>resolve(null);
     img.src = dataUrl;
   });
+}
+
+// facialTransformationMatrixes[0].data: 16개 값의 column-major 4x4 변환행렬
+// (MediaPipe 캐노니컬 얼굴 모델 → 감지된 얼굴로의 변환, 사실상 PnP 결과).
+// column-major이므로 data[col*4+row]가 수학적 행렬 표기 M[row][col]에 해당.
+// 회전 성분(3x3)만 뽑아 표준 Tait-Bryan(Y-X-Z) 순서로 yaw/pitch/roll(라디안)을
+// 분해한다. yaw = Y축 회전(고개를 좌우로 돌리는 것 = 우리가 4장 정렬에 쓸 값).
+function decomposePoseMatrix(data){
+  const m = (r,c)=> data[c*4+r];
+  const r00=m(0,0), r10=m(1,0), r20=m(2,0);
+  const r11=m(1,1), r12=m(1,2), r21=m(2,1), r22=m(2,2);
+  const sy = Math.sqrt(r00*r00 + r10*r10);
+  const singular = sy < 1e-6; // 짐벌락(거의 완전 위/아래를 보는 극단적 경우) 방지
+  let yaw, pitch, roll;
+  if(!singular){
+    yaw   = Math.atan2(-r20, sy);
+    pitch = Math.atan2(r21, r22);
+    roll  = Math.atan2(r10, r00);
+  } else {
+    yaw   = Math.atan2(-r20, sy);
+    pitch = Math.atan2(-r12, r11);
+    roll  = 0;
+  }
+  return { yawRad: yaw, pitchRad: pitch, rollRad: roll };
 }
 
 // ── 랜드마크 실패 시 비율 기반 폴백 ──
@@ -595,50 +639,62 @@ function refineSectionBoundaries(angle){
    4장 사진 랜드마크 매핑 테이블
    공통 기준점(귀/코/눈/턱)으로 뷰 간 섹션 연동 가중치 자동 산출
 ──────────────────────────────────────── */
+// 뷰(angle)의 실측 좌우 회전각(도)을 반환. 우선순위:
+// 1) MediaPipe 포즈 행렬(outputFacialTransformationMatrixes)에서 뽑은 실측값 — 가장 정확
+// 2) 랜드마크는 있지만 포즈 행렬이 없는 경우(구버전 API 등) — 귀 간격 비율 기반 근사(yaw*90)
+// 3) 랜드마크 자체가 없는 뷰(주로 얼굴이 안 보이는 후면) — 촬영 슬롯 자체의 기준각으로 가정
+function getViewYawDeg(angle){
+  const lm = state.landmarks && state.landmarks[angle];
+  if(lm && typeof lm.poseYawDeg === 'number' && !Number.isNaN(lm.poseYawDeg)) return lm.poseYawDeg;
+  if(lm && typeof lm.yaw === 'number') return lm.yaw * 90;
+  const ASSUMED_YAW_DEG = { front:0, left:-90, right:90, back:180 };
+  return ASSUMED_YAW_DEG[angle] ?? 0;
+}
+
+// 실측 각도(viewYawDeg)가 어떤 섹션의 기준 각도(canonicalDeg, 0=정면·±90=측면·180=후면)에서
+// 얼마나 벗어났는지에 따라 0~1 가중치를 코사인 감쇠로 산출. falloffDeg만큼 벌어지면 0.
+// (기존엔 "측면 0.85, 후면 0.15"처럼 뷰 슬롯 이름에 고정된 숫자를 박아놨었는데,
+// 이제 그 자리를 실제 촬영 각도와 섹션 기준각 사이의 기하학적 거리로 대체함)
+function angularWeight(viewYawDeg, canonicalDeg, falloffDeg){
+  let diff = Math.abs(viewYawDeg - canonicalDeg);
+  diff = Math.min(diff, 360 - diff); // 각도 순환(-180~180) 보정
+  if(diff >= falloffDeg) return 0;
+  return 0.5 * (1 + Math.cos(Math.PI * diff / falloffDeg));
+}
+
 function buildViewMapping(){
   const lms = state.landmarks; // {front, left, right, back}
   if(!lms) return;
 
-  // 각 섹션별 뷰 가중치 산출
-  // 기준: 해당 뷰의 랜드마크에서 그 섹션이 이미지 어느 비율에 있는지
-  // → 랜드마크가 있는 뷰는 실제 계산, 없는 뷰는 해부학 기본값 사용
+  const ANGLES = ['front','left','right','back'];
+  const yawOf = {}; ANGLES.forEach(a=> yawOf[a] = getViewYawDeg(a));
+
+  // canonicalDegFor: 섹션의 "정면에서 봤을 때 가장 잘 보이는 기준각"을 정의.
+  // 함수로 받는 경우(temple/side/occipital)는 뷰의 실측 yaw 부호(좌/우 중 어느 쪽에
+  // 더 가까운지)에 맞춰 좌우 기준각 중 하나를 선택 — 실제 사진이 좌측 얼굴을
+  // 찍었으면 좌측 기준각과 비교하는 식.
+  function weightsFor(canonicalDegOrFn, falloffDeg){
+    const w = {};
+    ANGLES.forEach(a=>{
+      const yaw = yawOf[a];
+      const cd = (typeof canonicalDegOrFn === 'function') ? canonicalDegOrFn(yaw) : canonicalDegOrFn;
+      w[a] = angularWeight(yaw, cd, falloffDeg);
+    });
+    return w;
+  }
+
   const mapping = {};
-
-  // CROWN: 이마 위 → 4뷰 모두 100% (정수리는 어느 방향에서나 동일)
-  mapping.crown = { front:1.0, left:1.0, right:1.0, back:1.0 };
-
-  // FRONT: 앞머리 → 정면100%, 측면은 yaw 기반 연결감
-  const frontYaw_l = lms.left  ? Math.abs(lms.left.yaw)  : 0.7;
-  const frontYaw_r = lms.right ? Math.abs(lms.right.yaw) : 0.7;
-  mapping.front = {
-    front: 1.0,
-    left:  Math.max(0, 1.0 - frontYaw_l * 1.2),  // 측면일수록 프론트 영향 감소
-    right: Math.max(0, 1.0 - frontYaw_r * 1.2),
-    back:  0.0
-  };
-
-  // TEMPLE: 측면-정면 연결부
-  mapping.temple = {
-    front: lms.front ? Math.min(1.0, (1.0 - Math.abs(lms.front.yaw||0)) * 0.9 + 0.2) : 0.7,
-    left:  0.85,
-    right: 0.85,
-    back:  0.15
-  };
-
-  // SIDE: 귀 옆 → 측면 100%, 정면/후면은 귀 위치 기반
-  const sideW_front = lms.front
-    ? Math.max(0, Math.min(0.5, (lms.front.rEarX - lms.front.lEarX) * 0.6))
-    : 0.3;
-  mapping.side = { front: sideW_front, left: 1.0, right: 1.0, back: 0.45 };
-
-  // OCCIPITAL: 후두부 → 후면100%, 측면 높음
-  mapping.occipital = { front: 0.0, left: 0.75, right: 0.75, back: 1.0 };
-
-  // NAPE: 목선 → 후면100%, 측면 일부
-  mapping.nape = { front: 0.05, left: 0.55, right: 0.55, back: 1.0 };
+  // CROWN: 정수리는 어느 각도에서 찍어도 다 보이는 부위라 각도 가중치 자체가 의미 없음 → 전부 1.0 유지
+  mapping.crown     = { front:1.0, left:1.0, right:1.0, back:1.0 };
+  mapping.front     = weightsFor(0, 110);
+  mapping.temple    = weightsFor(yaw => (yaw >= 0 ? 45  : -45),  100);
+  mapping.side      = weightsFor(yaw => (yaw >= 0 ? 90  : -90),  120);
+  mapping.occipital = weightsFor(yaw => (yaw >= 0 ? 135 : -135), 120);
+  mapping.nape      = weightsFor(180, 150);
 
   state.viewMapping = mapping;
-  console.log('[매핑] 뷰 간 섹션 가중치 산출 완료', mapping);
+  console.log('[매핑] 실측 포즈(yaw) 기반 뷰 간 섹션 가중치 산출 완료',
+    Object.fromEntries(ANGLES.map(a=>[a, yawOf[a].toFixed(1)+'°'])), mapping);
 }
 
 // 슬라이더 값 변경 시 인접 뷰에 가중치 반영
@@ -2030,7 +2086,8 @@ function setupAdjustScreen(){
     if(state.hairMasks[angle] && state.hairMasks[angle].scalpY){
       const validCols = Array.from(state.hairMasks[angle].scalpY).filter(y=>y>=0).length;
       const lm = state.landmarks && state.landmarks[angle];
-      const yawStr = lm ? ` | yaw:${lm.yaw.toFixed(2)}` : '';
+      const poseStr = (lm && typeof lm.poseYawDeg === 'number') ? ` poseYaw:${lm.poseYawDeg.toFixed(0)}°` : '';
+      const yawStr = lm ? ` | yaw:${lm.yaw.toFixed(2)}${poseStr}` : '';
       el.textContent = `✓ 머리카락 인식됨 (${validCols}px 폭) | ${state._diagLog||''}${yawStr}`;
     } else if(state.hairCanvases[angle]){
       el.textContent = `△ 색상 기반 추출 | ${state._diagLog||''}`;
