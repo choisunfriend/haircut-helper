@@ -1475,42 +1475,32 @@ async function extractHairMask(angle){
           fullMaskC.width=img.width; fullMaskC.height=img.height;
           fullMaskC.getContext('2d').drawImage(maskC,0,0,img.width,img.height);
 
-          // ── 슈퍼샘플링 배율 ──
-          // hairC/baseC를 촬영 원본(img.width, 예: 705px) 그대로 만들면, 화면에 그릴 때
-          // (renderFrame의 fit.dw/dh, 대부분 705px보다 큰 화면 표시폭)로 다시 확대하는데
-          // 이때 이미 705px에서 한 번 래스터화된(계단진) 마스크 alpha 경계를 그대로 더
-          // 확대하는 셈이라 흐림/계단현상이 두드러진다. img/마스크를 HAIR_SS배 해상도로
-          // 한 번 더 그려두면(드로잉 과정에서 브라우저가 alpha를 부드럽게 보간) 나중에
-          // 화면 크기로 그릴 때 필요한 확대율이 줄고 경계도 이미 매끈해진 상태라 전체적
-          // 으로 또렷하게 보인다. 촬영 원본 자체의 디테일이 늘어나는 건 아니지만(사진
-          // 픽셀은 그대로), 마스크 경계 anti-aliasing 품질은 확실히 개선됨.
-          const HAIR_SS = 2;
-          const hairW = img.width * HAIR_SS, hairH = img.height * HAIR_SS;
-
-          // ── hairCanvas: 원본에서 hair 마스크 영역만 (HAIR_SS배 슈퍼샘플) ──
+          // ── hairCanvas: 원본에서 hair 마스크 영역만 ──
+          // (2배 슈퍼샘플링을 시도했었지만 실제 "굵기" 문제의 원인이 아니었고 — 원인은
+          // drawHairStrands의 lineWidth 스케일 계산 쪽이었음 — 속도만 느려져서 원복함)
           const hairC = document.createElement('canvas');
-          hairC.width=hairW; hairC.height=hairH;
+          hairC.width=img.width; hairC.height=img.height;
           const hCtx = hairC.getContext('2d');
-          hCtx.drawImage(img,0,0,hairW,hairH);
+          hCtx.drawImage(img,0,0);
           hCtx.save();
           hCtx.globalCompositeOperation='destination-in';
-          hCtx.drawImage(fullMaskC,0,0,hairW,hairH);
+          hCtx.drawImage(fullMaskC,0,0);
           hCtx.restore();
 
-          // ── baseCanvas: 원본에서 hair 영역 제거 (hairC와 동일 해상도로 맞춰 경계 정합) ──
+          // ── baseCanvas: 원본에서 hair 영역 제거 ──
           const baseC = document.createElement('canvas');
-          baseC.width=hairW; baseC.height=hairH;
+          baseC.width=img.width; baseC.height=img.height;
           const bCtx = baseC.getContext('2d');
-          bCtx.drawImage(img,0,0,hairW,hairH);
+          bCtx.drawImage(img,0,0);
           bCtx.save();
           bCtx.globalCompositeOperation='destination-out';
-          bCtx.drawImage(fullMaskC,0,0,hairW,hairH);
+          bCtx.drawImage(fullMaskC,0,0);
           bCtx.restore();
 
-          // ── 헤어 색상 샘플링 ── (hairC가 이제 hairW×hairH이므로 그 크기로 읽어야 함)
-          const hairPixelData = hCtx.getImageData(0,0,hairW,hairH).data;
+          // ── 헤어 색상 샘플링 ──
+          const hairPixelData = hCtx.getImageData(0,0,img.width,img.height).data;
           let rSum=0,gSum=0,bSum=0,cnt=0;
-          for(let i=0;i<hairW*hairH;i++){
+          for(let i=0;i<img.width*img.height;i++){
             if(hairPixelData[i*4+3]>128){
               rSum+=hairPixelData[i*4]; gSum+=hairPixelData[i*4+1]; bSum+=hairPixelData[i*4+2]; cnt++;
             }
@@ -2748,13 +2738,19 @@ function drawHairStrands(ctx, fit, scalpY, hairEndY, maskW, maskH, hairCanvas, o
                          // 투명도로는 절대 조절하지 않음 (반투명이면 살색 언더코트와
                          // 섞여 회색빛으로 보임)
 
-  // 해상도 비례 스케일: 아래 각 레이어의 lineWidth 기본값들은 705px 폭 사진을 기준으로
-  // 튜닝됐음(카메라 705px 캡처로 실측 확인). 촬영 해상도는 기기·브라우저마다 달라질 수
-  // 있어서(getUserMedia의 ideal은 강제값이 아님), 고정 픽셀값을 계속 수동으로 재조정하는
-  // 대신 실제 촬영 해상도(maskW) 대비 비율로 자동 스케일되게 함 — 어떤 해상도로 찍든
-  // 머리 크기 대비 상대적 굵기가 항상 비슷하게 유지됨.
+  // 해상도 비례 스케일: 아래 각 레이어의 lineWidth 기본값들은 "실제 렌더링되는 캔버스가
+  // 705px 폭일 때" 눈으로 보고 튜닝됐음. ctx.lineWidth는 캔버스 픽셀 공간(=fit.dw 기준)
+  // 에서 적용되는 값인데, 가닥 좌표 자체는 toCanvasX/Y가 (fit.dw/maskW) 비율로 이미
+  // maskW(세그멘테이션 처리 해상도, 최대 768) → fit.dw(실제 화면 표시 폭, 폰 CSS 폭
+  // 기준이라 보통 380~430px 수준)로 압축해서 그린다.
+  // 버그 수정: 예전엔 resScale을 maskW/705로 계산했는데, 이건 "촬영 해상도"만 반영하고
+  // "실제로 화면에 얼마나 작게 그려지는지"(fit.dw)는 전혀 반영을 안 함 — 그 결과 fit.dw가
+  // maskW보다 훨씬 작은 실기기(예: fit.dw≈400, maskW≈768)에서는 좌표는 절반 이하로
+  // 압축되는데 선 굵기는 거의 그대로(resScale≈768/705≈1.09)라 상대적으로 훨씬 굵어
+  // 보였음(스크린샷에서 보인 마커펜 같은 뭉툭한 가닥의 직접 원인). → 실제 캔버스 렌더
+  // 폭(fit.dw) 기준으로 스케일해야 좌표 압축 비율과 굵기가 항상 같이 움직인다.
   const RES_BASE = 705;
-  const resScale = maskW / RES_BASE;
+  const resScale = fit.dw / RES_BASE;
   // sub-pixel 방지용 최소굵기(0.9px)는 해상도와 무관한 캔버스 렌더링 자체의 물리적
   // 제약(1px 미만이면 브라우저가 알파를 낮춰 흐리게 그림)이라 resScale로 같이 줄어들면
   // 안 됨 — 스케일 적용 "후"에 하한선으로 별도 고정.
