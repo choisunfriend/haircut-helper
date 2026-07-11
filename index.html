@@ -1475,30 +1475,42 @@ async function extractHairMask(angle){
           fullMaskC.width=img.width; fullMaskC.height=img.height;
           fullMaskC.getContext('2d').drawImage(maskC,0,0,img.width,img.height);
 
-          // ── hairCanvas: 원본에서 hair 마스크 영역만 ──
+          // ── 슈퍼샘플링 배율 ──
+          // hairC/baseC를 촬영 원본(img.width, 예: 705px) 그대로 만들면, 화면에 그릴 때
+          // (renderFrame의 fit.dw/dh, 대부분 705px보다 큰 화면 표시폭)로 다시 확대하는데
+          // 이때 이미 705px에서 한 번 래스터화된(계단진) 마스크 alpha 경계를 그대로 더
+          // 확대하는 셈이라 흐림/계단현상이 두드러진다. img/마스크를 HAIR_SS배 해상도로
+          // 한 번 더 그려두면(드로잉 과정에서 브라우저가 alpha를 부드럽게 보간) 나중에
+          // 화면 크기로 그릴 때 필요한 확대율이 줄고 경계도 이미 매끈해진 상태라 전체적
+          // 으로 또렷하게 보인다. 촬영 원본 자체의 디테일이 늘어나는 건 아니지만(사진
+          // 픽셀은 그대로), 마스크 경계 anti-aliasing 품질은 확실히 개선됨.
+          const HAIR_SS = 2;
+          const hairW = img.width * HAIR_SS, hairH = img.height * HAIR_SS;
+
+          // ── hairCanvas: 원본에서 hair 마스크 영역만 (HAIR_SS배 슈퍼샘플) ──
           const hairC = document.createElement('canvas');
-          hairC.width=img.width; hairC.height=img.height;
+          hairC.width=hairW; hairC.height=hairH;
           const hCtx = hairC.getContext('2d');
-          hCtx.drawImage(img,0,0);
+          hCtx.drawImage(img,0,0,hairW,hairH);
           hCtx.save();
           hCtx.globalCompositeOperation='destination-in';
-          hCtx.drawImage(fullMaskC,0,0);
+          hCtx.drawImage(fullMaskC,0,0,hairW,hairH);
           hCtx.restore();
 
-          // ── baseCanvas: 원본에서 hair 영역 제거 ──
+          // ── baseCanvas: 원본에서 hair 영역 제거 (hairC와 동일 해상도로 맞춰 경계 정합) ──
           const baseC = document.createElement('canvas');
-          baseC.width=img.width; baseC.height=img.height;
+          baseC.width=hairW; baseC.height=hairH;
           const bCtx = baseC.getContext('2d');
-          bCtx.drawImage(img,0,0);
+          bCtx.drawImage(img,0,0,hairW,hairH);
           bCtx.save();
           bCtx.globalCompositeOperation='destination-out';
-          bCtx.drawImage(fullMaskC,0,0);
+          bCtx.drawImage(fullMaskC,0,0,hairW,hairH);
           bCtx.restore();
 
-          // ── 헤어 색상 샘플링 ──
-          const hairPixelData = hCtx.getImageData(0,0,img.width,img.height).data;
+          // ── 헤어 색상 샘플링 ── (hairC가 이제 hairW×hairH이므로 그 크기로 읽어야 함)
+          const hairPixelData = hCtx.getImageData(0,0,hairW,hairH).data;
           let rSum=0,gSum=0,bSum=0,cnt=0;
-          for(let i=0;i<img.width*img.height;i++){
+          for(let i=0;i<hairW*hairH;i++){
             if(hairPixelData[i*4+3]>128){
               rSum+=hairPixelData[i*4]; gSum+=hairPixelData[i*4+1]; bSum+=hairPixelData[i*4+2]; cnt++;
             }
