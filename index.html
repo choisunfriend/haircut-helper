@@ -2131,7 +2131,7 @@ let cameraStream = null;
 
 async function initCamera(){
   try{
-    cameraStream = await navigator.mediaDevices.getUserMedia({video:{facingMode:'user',width:{ideal:1280},height:{ideal:1920}},audio:false});
+    cameraStream = await navigator.mediaDevices.getUserMedia({video:{facingMode:'user',width:{ideal:1920},height:{ideal:2560}},audio:false});
     video.srcObject=cameraStream;
     video.style.display='block';
     camOffMsg.style.display='none';
