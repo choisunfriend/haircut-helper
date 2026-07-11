@@ -3103,7 +3103,10 @@ function drawHairStrands(ctx, fit, scalpY, hairEndY, maskW, maskH, hairCanvas, o
   // 애초에 뿌리를 못 심었음. 정수리(얕은 지점)만 계속 밀집되고 중간·아래는 비어
   // 보이는 원인 중 하나 → 특정 깊이에 쏠리지 않는 균등분포로 바꾸고, 최대 깊이를
   // 0.55→0.8로 넓혀서 중간·아래쪽까지 뿌리가 실제로 닿도록 함.
-  const numRootScatter = Math.round(220 + (volume/100) * 160); // 요청으로 기존(110~190) 대비 2배
+  // 개수 1.6배 상향: 굵기를 0.367배로 줄인 만큼(테스트 결과 "듬성듬성해짐" 확인됨)
+  // 가닥 사이 빈틈을 메우기 위한 보정. 완전 보정(1/0.367≈2.7배)까지는 안 가고
+  // 우선 중간 지점(1.6배)부터 테스트.
+  const numRootScatter = Math.round(352 + (volume/100) * 256);
   drawStrandLayer({
     count: numRootScatter,
     alphaMul: 1.0,
@@ -3125,7 +3128,8 @@ function drawHairStrands(ctx, fit, scalpY, hairEndY, maskW, maskH, hairCanvas, o
 
   // ── 레이어 1: 굵은 섹션 (38~60개) ──
   // 가닥을 불투명하게 바꾸면서 밀도를 다시 소폭 상향 (30~48 → 38~60).
-  const numSections = Math.round(38 + (volume/100) * 22);
+  // 개수 1.6배 상향 — 위 레이어0과 동일한 이유
+  const numSections = Math.round(61 + (volume/100) * 35);
   drawStrandLayer({
     count: numSections,
     alphaMul: 1.0, // 형태를 잡는 가장 굵은 레이어 — 완전 불투명하게 해서 밑의 살색이 안 비치게
@@ -3143,7 +3147,8 @@ function drawHairStrands(ctx, fit, scalpY, hairEndY, maskW, maskH, hairCanvas, o
   });
 
   // ── 레이어 2: 중간 가닥 (160~330개) ──
-  const numMid = Math.round(160 + (volume/100) * 170);
+  // 개수 1.6배 상향 — 위와 동일한 이유
+  const numMid = Math.round(256 + (volume/100) * 272);
   drawStrandLayer({
     count: numMid,
     alphaMul: 1.0,
@@ -3161,7 +3166,8 @@ function drawHairStrands(ctx, fit, scalpY, hairEndY, maskW, maskH, hairCanvas, o
   // ── 레이어 3: 잔 가닥 (160~320개) ──
   // 이 레이어가 가장 밝은 하이라이트(tintRange 상단)를 담당 — 완전 불투명(alphaMul 1.0)으로
   // 그려서 하이라이트가 살색에 묻히지 않고 또렷하게 도드라짐.
-  const numFine = Math.round(160 + (volume/100) * 160);
+  // 개수 1.6배 상향 — 위와 동일한 이유
+  const numFine = Math.round(256 + (volume/100) * 256);
   drawStrandLayer({
     count: numFine,
     alphaMul: 1.0,
