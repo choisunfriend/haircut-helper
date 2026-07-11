@@ -2736,6 +2736,18 @@ function drawHairStrands(ctx, fit, scalpY, hairEndY, maskW, maskH, hairCanvas, o
                          // 투명도로는 절대 조절하지 않음 (반투명이면 살색 언더코트와
                          // 섞여 회색빛으로 보임)
 
+  // 해상도 비례 스케일: 아래 각 레이어의 lineWidth 기본값들은 705px 폭 사진을 기준으로
+  // 튜닝됐음(카메라 705px 캡처로 실측 확인). 촬영 해상도는 기기·브라우저마다 달라질 수
+  // 있어서(getUserMedia의 ideal은 강제값이 아님), 고정 픽셀값을 계속 수동으로 재조정하는
+  // 대신 실제 촬영 해상도(maskW) 대비 비율로 자동 스케일되게 함 — 어떤 해상도로 찍든
+  // 머리 크기 대비 상대적 굵기가 항상 비슷하게 유지됨.
+  const RES_BASE = 705;
+  const resScale = maskW / RES_BASE;
+  // sub-pixel 방지용 최소굵기(0.9px)는 해상도와 무관한 캔버스 렌더링 자체의 물리적
+  // 제약(1px 미만이면 브라우저가 알파를 낮춰 흐리게 그림)이라 resScale로 같이 줄어들면
+  // 안 됨 — 스케일 적용 "후"에 하한선으로 별도 고정.
+  const MIN_SAFE_WIDTH = 0.9;
+
   // 길이 슬라이더가 높을 때(특히 정면 프론트) 가닥이 이마 라인을 넘어
   // 눈·안경·턱까지 뚫고 내려가는 과확장을 막기 위한 상한.
   // maskH(축소 해상도 이미지 전체 높이)의 1.15배까지만 허용 — 화면 밖까지
@@ -3106,13 +3118,15 @@ function drawHairStrands(ctx, fit, scalpY, hairEndY, maskW, maskH, hairCanvas, o
   // 개수 1.6배 상향: 굵기를 0.367배로 줄인 만큼(테스트 결과 "듬성듬성해짐" 확인됨)
   // 가닥 사이 빈틈을 메우기 위한 보정. 완전 보정(1/0.367≈2.7배)까지는 안 가고
   // 우선 중간 지점(1.6배)부터 테스트.
-  const numRootScatter = Math.round(352 + (volume/100) * 256);
+  // sub-pixel 렌더링 문제 수정: 0.22~0.51px는 1px 미만이라 브라우저가 "더 얇게"가
+  // 아니라 알파를 낮춰 흐릿하게 그려버림(캔버스가 sub-pixel 굵기를 실제로 표현 못 함).
+  // 1px 근처로 최소굵기를 올려서 흐려지는 걸 막고, 대신 개수를 더 늘려 밀도로 보완.
+  const numRootScatter = Math.round(460 + (volume/100) * 330);
   drawStrandLayer({
     count: numRootScatter,
     alphaMul: 1.0,
-    // 검증용 임시 축소: 705px(이번 촬영 해상도)/1920px(TF.js 폴백 참고사진 해상도) ≈ 0.367배.
-    // 고정 픽셀값이 저해상도 사진에서 상대적으로 굵어 보인다는 가설을 확인하기 위한 테스트값.
-    lineWidth: 0.22 + (thickness/100) * 0.29,
+    // 705px 기준 튜닝값 → 실제 해상도(resScale)에 비례 스케일 + sub-pixel 방지 하한
+    lineWidth: Math.max(MIN_SAFE_WIDTH, (0.9 + (thickness/100) * 0.5) * resScale),
     pickCol: ()=> validCols[Math.floor(Math.random()*validCols.length)],
     endYFallbackRatio: 0.35,
     // 균등분포 → 제곱분포로 변경: 두피선(frac=0) 근처에 확률이 더 실리고 꼬리가 길게
@@ -3133,8 +3147,8 @@ function drawHairStrands(ctx, fit, scalpY, hairEndY, maskW, maskH, hairCanvas, o
   drawStrandLayer({
     count: numSections,
     alphaMul: 1.0, // 형태를 잡는 가장 굵은 레이어 — 완전 불투명하게 해서 밑의 살색이 안 비치게
-    // 검증용 임시 축소(0.367배) — 위 레이어0과 동일한 이유
-    lineWidth: 1.10 + (volume/100) * 1.10,
+    // 705px 기준 튜닝값 → 해상도 비례 스케일
+    lineWidth: Math.max(MIN_SAFE_WIDTH, (1.10 + (volume/100) * 1.10) * resScale),
     pickCol: (i)=> validCols[Math.floor((i/numSections)*validCols.length)],
     endYFallbackRatio: 0.40,
     // 한 줄(scalpY) 제한 해제: 다른 레이어처럼 두피선~모발끝 사이에 깊이를 분산시켜서,
@@ -3152,8 +3166,8 @@ function drawHairStrands(ctx, fit, scalpY, hairEndY, maskW, maskH, hairCanvas, o
   drawStrandLayer({
     count: numMid,
     alphaMul: 1.0,
-    // 검증용 임시 축소(0.367배) — 위와 동일한 이유
-    lineWidth: 0.62 + (thickness/100) * 0.59,
+    // 705px 기준 튜닝값 → 해상도 비례 스케일 + sub-pixel 방지 하한
+    lineWidth: Math.max(MIN_SAFE_WIDTH, (0.85 + (thickness/100) * 0.6) * resScale),
     pickCol: ()=> validCols[Math.floor(Math.random()*validCols.length)],
     endYFallbackRatio: 0.38,
     rootDepthFrac: ()=> Math.pow(Math.random(), 2) * 0.7, // 한 줄 제한 해제 + 두피선 쪽 가중
@@ -3167,12 +3181,15 @@ function drawHairStrands(ctx, fit, scalpY, hairEndY, maskW, maskH, hairCanvas, o
   // 이 레이어가 가장 밝은 하이라이트(tintRange 상단)를 담당 — 완전 불투명(alphaMul 1.0)으로
   // 그려서 하이라이트가 살색에 묻히지 않고 또렷하게 도드라짐.
   // 개수 1.6배 상향 — 위와 동일한 이유
-  const numFine = Math.round(256 + (volume/100) * 256);
+  // sub-pixel 문제 수정 + 개수 추가 상향 — 위 레이어0과 동일한 이유.
+  // 이 레이어는 하이라이트(밝은 톤) 담당이라 흐려지면 머리 전체 광택감이 죽는
+  // 영향이 가장 커서 우선적으로 손봄.
+  const numFine = Math.round(330 + (volume/100) * 330);
   drawStrandLayer({
     count: numFine,
     alphaMul: 1.0,
-    // 검증용 임시 축소(0.367배) — 위와 동일한 이유
-    lineWidth: 0.18 + (thickness/100) * 0.26,
+    // 705px 기준 튜닝값 → 해상도 비례 스케일 + sub-pixel 방지 하한
+    lineWidth: Math.max(MIN_SAFE_WIDTH, (0.9 + (thickness/100) * 0.5) * resScale),
     pickCol: ()=> validCols[Math.floor(Math.random()*validCols.length)],
     endYFallbackRatio: 0.35,
     rootDepthFrac: ()=> Math.pow(Math.random(), 2) * 0.85, // 한 줄 제한 해제 — 잔가닥은 가장 넓게 분산 + 두피선 쪽 가중
