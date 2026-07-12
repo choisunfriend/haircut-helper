@@ -274,6 +274,104 @@
   검증: Node로 makeFaceProjector~buildHairStrands 전체를 실제 THREE mock 위에서
   실행(6섹션×파라미터 3종, mesh 720개) — 에러 0건. front 뷰 투영점이 좌표계
   중앙 근처로 나오는지, left/right가 실제로 좌우 대칭으로 나오는지 별도 확인.
+
+  ── 중복 로직 통합(2026-07-12, 계속) ──
+  요청: "중복된 함수와 로직을 찾아 하나로 합쳐, 동작은 동일하게 유지." 전체
+  함수/변수/import/CSS 클래스 미사용 검사(별도 요청)에선 죽은 코드가 안
+  나왔지만, 이번엔 "같은 계산이 여러 곳에 따로 있는" 걸 찾음:
+  - 뷰 가중치 계산식(state.viewMapping[sectionId][angle] × getViewPoseConfidence
+    (angle))이 computeSectionRealExtent()와 pickBestRealView()에 완전히 동일하게
+    중복 → getViewWeight(sectionId, angle)로 통합.
+  - 섹션 x범위(SECTIONS[id].xRange)→픽셀 컬럼 변환 계산이 computeSectionRealExtent()
+    와 buildRealColumnSamples()에 동일하게 중복 → getSectionColumnRange(sec, w)로 통합.
+  검증: 리팩터 전/후 계산식을 나란히 두고 동일 입력(여러 섹션×여러 뷰×여러
+  이미지 폭 조합)으로 직접 숫자 대조 — 전부 완전 일치 확인 후 반영. 이후
+  buildHairStrands 전체 실행 회귀테스트도 재통과.
+
+  ── 긴 함수 역할별 분리(2026-07-12, 계속) ──
+  요청: "너무 길어서 다루기 힘든 함수는 역할별로 분리, 외부 API·동작은
+  변경하지 마." 중괄호 깊이로 실제 함수 길이 정확히 재측정(단순 "다음 함수
+  선언까지 거리"로는 중간에 낀 top-level 상수 때문에 부정확했음, 재측정 후
+  순위 확정):
+    642줄 extractHairMask, 516줄 drawHairStrands, 136줄 renderFrame,
+    108줄 buildStrandsForSection, 100줄 buildProceduralHead,
+    81줄 buildFacePhotoDecal, 77줄 detectFaceLandmarks.
+  상위 5개(extractHairMask/drawHairStrands/renderFrame/buildFacePhotoDecal/
+  detectFaceLandmarks)는 Canvas 2D·MediaPipe·Image 로딩을 직접 다뤄서 Node
+  샌드박스에서 실행 검증이 불가능함 — "동작 변경 금지"를 지키려면 결과를
+  실제로 대조할 수 있어야 하는데 그게 안 되므로, 이 5개는 구조를 안 건드리고
+  "목차" 주석만 추가(extractHairMask·drawHairStrands 상단에 내부 단계별
+  위치·역할 요약). 나머지 둘은 실행 검증 가능해서 실제로 분리:
+  - buildProceduralHead(100줄) → buildHeadMesh/buildNeckMesh/buildEarMeshes/
+    buildFaceDetailGroup 4개로 분리. 검증: THREE mock으로 실제 실행해서 두상/
+    귀 위치·스케일·이목구비 좌표(6개) 전부 확인.
+  - buildStrandsForSection(108줄) → buildStrandCurveFromProjection(실측
+    투영 경로)/buildStrandCurveFallback(합성 폴백 경로) 2개로 분리. 검증:
+    분리 전 로직을 그대로 재구성한 버전과 동일 시드로 나란히 돌려서 가닥
+    720개(4개 테스트 케이스 × 60가닥 × root/mid/tip 3점) 좌표를 전부
+    부동소수점 단위(1e-12)까지 대조 — 처음엔 테스트 코드 자체의 버그(구버전
+    재구성에서 튜브 반지름 난수 소비 누락으로 두 번째 가닥부터 난수 스트림이
+    밀림)로 대량 불일치가 떴는데, 원인이 실제 파일이 아니라 테스트 쪽임을
+    확인하고 테스트를 고쳐서 재검증 → 완전 일치.
+
+  ── 하이라이트(날아간 부분) 세그멘테이션 개선(2026-07-12, 계속) ──
+  실기기 피드백: 후면 미촬영 + 정수리 조명이 강해 하얗게 날아간 부분을
+  세그멘테이션이 못 잡음. 후면 미촬영은 기존 폴백 체인(뷰 매칭 약함→AI
+  추정)으로 이미 처리되는 부분이라 넘어가고, 하이라이트 문제만 다룸.
+  전제: RGB≈(255,255,255)로 완전히 날아간 픽셀은 원래 색 정보 자체가
+  사라져서, 색 기반 필터(isHairColor 등) 임계값을 아무리 조정해도 "머리
+  카락이었는지 흰 벽/흰 옷이었는지" 원리적으로 구분 불가 — 임계값을 올리면
+  오탐만 늘어남. 그래서 색을 아예 안 보는 접근으로 전환:
+  - fillEnclosedHighlightHoles(buf,w,h,boundBox,maxHoleAreaFrac): keepLargestComponents
+    (기존 함수)와 반대 방향으로, 배경(0)쪽 연결요소를 찾아 (a) 이미지 테두리와
+    안 이어짐(=진짜 배경이면 항상 테두리와 연결돼 있으므로 이 조건으로 구분)
+    (b) boundBox 면적 대비 충분히 작음(=국소 하이라이트 패치, 크기 상한
+    0.06으로 얼굴 같은 큰 미분류 영역과 구분) 두 조건 다 만족하는 것만 채움.
+    색을 안 보므로 흰 벽/흰 옷 오탐 위험이 구조적으로 없음.
+  - extractHairMask에 STEP 2.5로 삽입(배경가드 직후, 얼굴제거박스 전) —
+    이 시점엔 얼굴 영역도 아직 배경(0)이라 자칫 "구멍"으로 오인될 수 있는데,
+    얼굴+목 면적이 boundBox 대비 하이라이트 패치보다 훨씬 커서 크기 상한에서
+    자동 제외됨.
+  검증: fillEnclosedHighlightHoles는 순수 배열 연산이라(Canvas 의존 없음)
+  Node에서 직접 실행 검증 — ①도넛 모양(작은 중앙 구멍) 채워짐 확인 ②큰
+  중앙 구멍(얼굴 시뮬레이션, boundBox의 17%) 상한(6%) 초과로 안 채워짐
+  확인 ③이미지 테두리에 닿은 진짜 배경은 크기와 무관하게 항상 안 채워짐
+  확인. extractHairMask 자체(642줄)는 여전히 Canvas 의존이라 실사진 기준
+  최종 확인은 실기기에서 필요 — maxHoleAreaFrac(0.06)은 실측 없이 잡은
+  초기값이라 실제 하이라이트 패치 크기 보고 재조정 필요할 수 있음.
+
+  ── 3단계 착수: 헤어스타일 기반 의상 추천 + 부착 데모(2026-07-12, 계속) ──
+  큰 그림 재확인: 이 3D 파이프라인의 목적은 두상/헤어 자체가 아니라 최종적으로
+  ①두상+헤어 3D ②그에 맞는 의상 AI 추천 ③제휴사/외부 제공 DB의 몸통+의상
+  3D 에셋을 neckAttachPoint에 붙여 완성된 전신 이미지 ④수익화(제휴 마케팅)
+  까지 이어지는 퍼널. 오늘은 이 중 "③은 아직 DB가 없으니, ②AI 추천 뼈대를
+  만들고 데모용으로 뭔가 실제로 붙는 것까지" 착수.
+  - OUTFIT_CATALOG: STYLES와 동일 패턴의 목업 카탈로그(6개, id/name/category/
+    colorHex/tags/affiliateUrl). affiliateUrl은 전부 null — 나중에 진짜
+    제휴 DB/API 응답으로 이 배열 자체를 교체하면 되도록 필드를 실제 상품
+    데이터 형태로 미리 맞춰둠.
+  - recommendOutfitWithAI(): analyzeWithClaude()/estimateHairVolumeWithAI()와
+    동일한 호출 패턴. 확정 헤어스타일(이름·태그·색상)+정면 사진을 보내서
+    OUTFIT_CATALOG 중 하나를 고르게 함. 세션당 1회 캐싱(state.
+    aiOutfitRecommendation), startNewCustomer()에서 초기화.
+  - neckAttachPoint 연결 규격 문서화(buildOutfitPlaceholderMesh 위 주석) —
+    좌표계(headGroup과 동일, Y-up·Z-forward)·목 원통 실제 치수(y=-0.85,
+    height=0.6, radiusTop 0.42*wf~radiusBottom 0.5*wf)·외부 에셋도
+    widthFactor/heightFactor로 스케일하면 두상과 비례가 맞는다는 것까지
+    명시 — 나중에 진짜 제휴사 에셋 붙일 때 참고할 계약(contract).
+  - buildOutfitPlaceholderMesh(item, widthFactor): 어깨~가슴을 대충 근사하는
+    원뿔대 하나, 추천 항목의 colorHex로 색칠. 진짜 의상이 아니라 "여기 붙는다"
+    보여주는 자리표시자. Node로 실행 검증: 목 원통 하단(y=-1.15, 반지름
+    0.5*wf)과 플레이스홀더 상단이 좌표·반지름 모두 정확히 일치(이음매 확인).
+  - loadOutfitMesh(): HEAD_MESH_SOURCE와 동일한 type='procedural'|'gltf'
+    스위치 패턴(OUTFIT_MESH_SOURCE) — 나중에 진짜 제휴사 .glb 생기면 그
+    분기만 채우면 됨, 호출부(setupModel3DScreen)는 그대로 재사용.
+  - setupModel3DScreen에 연결: 헤어 렌더 후 확정 스타일 있으면 의상 추천
+    호출 → 플레이스홀더 부착 → frameCameraToHead()는 의상까지 다 붙은
+    다음에 호출되도록 순서 확인(카메라 프레이밍이 늘어난 전신 범위를
+    반영해야 하므로).
+  다음 손볼 곳: 2D 4방향 이미지 대안은 지금 보류 상태(3D를 최대한 밀어붙이는
+  방향으로 확정) — 나중에 3D 정밀도 한계가 명확해지면 재검토 예정.
 -->
 <!DOCTYPE html>
 <html lang="ko">
@@ -1171,6 +1269,29 @@ const STYLES = [
   {id:'lob',       name:'로브',            tags:'MID-SHORT · WAVE', length:38, curl:35, volume:50, colorHex:'#27190F'},
 ];
 
+/* ── 의상 목업 카탈로그(OUTFIT_CATALOG) ──
+   3단계(비즈니스 로드맵 — 파일 상단 주석 참고) 착수용. 아직 제휴사 상품 DB가
+   없어서, "AI가 추천 → 붙여넣는" 파이프라인 전체가 실제로 동작하는 걸 보여줄
+   데모용 목업 카탈로그. 나중에 진짜 DB/API가 생기면 이 배열을 그 응답으로
+   교체하기만 하면 되도록, 실제 상품 데이터가 가질 법한 필드(id/name/category/
+   colorHex/tags/affiliateUrl)로 미리 맞춰둠 — affiliateUrl은 지금 전부 null
+   (실제 제휴 링크 연결 전까지).
+   tags는 recommendOutfitWithAI()가 헤어스타일과 매칭할 때 참고하는 느슨한
+   스타일 태그(카테고리 아님, 자유 텍스트 매칭용). */
+const OUTFIT_CATALOG = [
+  {id:'ot-formal-navy',   name:'네이비 테일러드 재킷', category:'포멀',   colorHex:'#1F2A3D', tags:['클래식','단정','오피스'], affiliateUrl:null},
+  {id:'ot-casual-beige',  name:'베이지 니트 가디건',   category:'캐주얼', colorHex:'#C9B79C', tags:['편안함','데일리','뉴트럴'], affiliateUrl:null},
+  {id:'ot-street-black',  name:'블랙 오버사이즈 후디', category:'스트릿', colorHex:'#161616', tags:['스트릿','볼륨','캐주얼'], affiliateUrl:null},
+  {id:'ot-minimal-white', name:'화이트 셔츠',          category:'미니멀', colorHex:'#EDEDE8', tags:['깔끔함','베이직','오피스'], affiliateUrl:null},
+  {id:'ot-vivid-red',     name:'레드 니트 풀오버',     category:'포인트', colorHex:'#8C2F2F', tags:['포인트컬러','개성','데일리'], affiliateUrl:null},
+  {id:'ot-denim-blue',    name:'데님 재킷',            category:'캐주얼', colorHex:'#3A5C7A', tags:['캐주얼','활동적','데일리'], affiliateUrl:null},
+];
+
+// 두상/헤어와 마찬가지로 실제 3D 에셋(제휴사 제공)이 생기면 여기 url만 넣으면
+// 되도록 HEAD_MESH_SOURCE와 동일한 스위치 패턴 사용. 지금은 procedural만 동작.
+const OUTFIT_MESH_SOURCE = { type: 'procedural', url: null };
+
+
 let aiAnalysis = null;
 let recognition = null;
 let listening = false;
@@ -1263,6 +1384,22 @@ function avgRGBString(sumR, sumG, sumB, cnt, minCount){
   return `rgb(${Math.round(sumR/cnt)},${Math.round(sumG/cnt)},${Math.round(sumB/cnt)})`;
 }
 
+/* ════════════════════════════════════════════════════════════════
+   extractHairMask(angle) — 목차 (642줄, Canvas/픽셀 API 직접 사용이라
+   Node 샌드박스에서 실행 검증이 안 돼서 구조는 안 건드리고 목차만 추가함.
+   내부에 이미 STEP별 중첩 함수로 나뉘어 있음 — 아래 줄번호는 대략적 위치.)
+   STEP 1  (~1313) 세그멘테이션 — MediaPipe 우선, 실패 시 TF.js 폴백
+   STEP 2  (~1374) 배경 오탐 제거 — 사람 머리 영역 바깥 무조건 제외
+   STEP 3  (~1428) 얼굴 영역 제거 — 랜드마크 기반 동적 박스
+   STEP 4  (~1463) 얼굴 부위별 정밀 가드(눈썹·눈·입)
+   STEP 5  (~1501) 목·어깨 제거 — chinY 기반 동적 컷오프
+   STEP 6  (~1513) 옆머리·앞머리 빈 부분 보강(귀/프론트 밴드 완화 색상 필터)
+   STEP 7  (~1644) 마스크 후처리 — 컬럼 내 작은 구멍만 채움
+   STEP 8  (~1656) 진단 로그 문자열 조립
+   STEP 9  (~1671) 결방향 인식(Structure Tensor)
+   STEP 10 (~1697) 두피(scalpY)·모발끝(hairEndY) 라인 추출 + 원본 해상도 스케일업
+   STEP 11 (~1752) 결과 캔버스 합성(마스크/진단/hair/base + 평균 헤어컬러)
+════════════════════════════════════════════════════════════════ */
 async function extractHairMask(angle){
   const dataUrl = state.shots[angle];
   if(!dataUrl || !segmenter) return false;
@@ -1408,6 +1545,32 @@ async function extractHairMask(angle){
         // 얼굴제거박스가 실제로 지운 픽셀을 별도 기록 — 아래 귀/프론트 보강 단계에서
         // "원래부터 머리카락이 아니었던 곳"과 절대 혼동하지 않고 재채움을 막기 위함
         const faceExcludeMask = new Uint8Array(w*h);
+
+        // ── STEP 2.5: 하이라이트로 날아간 부분 보강(색과 무관한 구멍 채우기) ──
+        // applyBackgroundGuard 직후, 얼굴 제거박스(STEP 3~4, TF.js 경로에서만
+        // 실행됨)가 아직 안 지워진 시점에 실행 — 얼굴 영역도 지금은 배경(0)으로
+        // 잡혀있어서 자칫 "둘러싸인 구멍"으로 오인될 수 있지만, 얼굴+목 영역은
+        // boundBox 대비 면적이 하이라이트 패치보다 훨씬 커서 maxHoleAreaFrac
+        // 상한에 걸려 자동으로 제외됨(실측 없이 잡은 값이라 필요시 재조정).
+        function reinforceHighlightHoles(){
+          const lmH = state.landmarks && state.landmarks[angle];
+          if(!lmH) return;
+          const earSpanH = Math.abs(lmH.rEarX - lmH.lEarX);
+          const cxH = (lmH.lEarX + lmH.rEarX) / 2;
+          const marginXH = Math.max(earSpanH * 2.2, 0.28);
+          const boundBox = {
+            xS: Math.round(Math.max(0, cxH - marginXH) * w),
+            xE: Math.round(Math.min(1, cxH + marginXH) * w),
+            yS: Math.round(Math.max(0, lmH.foreheadY - 0.25) * h),
+            yE: Math.round(Math.min(1, lmH.chinY + 0.55) * h),
+          };
+          const before = hairMaskBuf.reduce((a,v)=>a+(v>0?1:0),0);
+          hairMaskBuf = fillEnclosedHighlightHoles(hairMaskBuf, w, h, boundBox, 0.06);
+          const after = hairMaskBuf.reduce((a,v)=>a+(v>0?1:0),0);
+          window.__highlightHoleDiag = `${before}→${after}(+${after-before})`;
+        } // reinforceHighlightHoles
+        reinforceHighlightHoles();
+
         // [진단용] 얼굴제거박스의 실제 좌표(0~1 비율)와 사용된 랜드마크 값을 기록.
         // 화면의 각진 블록 아티팩트가 이 박스와 일치하는지 "얼굴박스 보기" 토글로 확인하기 위함.
         let faceBoxDiag = null;
@@ -2060,6 +2223,62 @@ function fillColumnGaps(buf, w, h, maxGap){
         lastOn=y;
       }
     }
+  }
+  return out;
+}
+
+// ── 하이라이트로 날아간 부분 보강: 색과 무관한 "둘러싸인 구멍" 채우기 ──
+// 완전히 하얗게 날아간(RGB≈255,255,255) 픽셀은 원래 색 정보 자체가 사라져서,
+// 색 기반 필터(isHairColor 등)로는 원리적으로 "머리카락이었는지 벽/옷이었는지"
+// 구분이 불가능함 — 밝기 임계값을 억지로 올리면 흰 벽·흰 옷깃까지 오탐할
+// 위험이 커짐(실측 확인 필요 없이 원리적으로 그럼).
+// 그래서 색을 전혀 안 보고 keepLargestComponents()와 반대 방향으로 접근한다:
+// 배경(0)쪽 연결요소를 찾아서, (a) 이미지 테두리와 안 이어져 있고(=진짜 배경이
+// 아니라 머리카락에 둘러싸인 구멍) (b) boundBox 면적 대비 충분히 작은(=벽처럼
+// 큰 영역이 아니라 국소 하이라이트로 보이는) 것만 채운다. 진짜 배경은 항상
+// 이미지 테두리와 연결돼 있어 (a)에서 걸러지고, 얼굴 같은 큰 미분류 영역은
+// (b) 크기 상한에서 걸러지므로 색 기반 방식과 달리 오탐 위험이 구조적으로 낮음.
+// maxHoleAreaFrac은 실측 없이 잡은 초기값 — 하이라이트 패치가 이보다 크면
+// 여전히 안 채워질 수 있음, 실사진으로 재조정 필요.
+function fillEnclosedHighlightHoles(buf, w, h, boundBox, maxHoleAreaFrac){
+  const n = w*h;
+  const labels = new Int32Array(n).fill(-1);
+  const areas = [];
+  const touchesBorder = [];
+  const stack = new Int32Array(n);
+  let nextLabel = 0;
+  for(let start=0; start<n; start++){
+    if(buf[start]>0 || labels[start]>=0) continue; // 배경(0) 픽셀만 대상
+    let sp=0; stack[sp++]=start; labels[start]=nextLabel;
+    let area=0, border=false;
+    while(sp>0){
+      const p = stack[--sp];
+      area++;
+      const px = p % w, py = (p - px) / w;
+      if(px===0 || px===w-1 || py===0 || py===h-1) border = true;
+      for(let dy=-1; dy<=1; dy++){
+        for(let dx=-1; dx<=1; dx++){
+          if(dx===0 && dy===0) continue;
+          const nx=px+dx, ny=py+dy;
+          if(nx<0||nx>=w||ny<0||ny>=h) continue;
+          const np = ny*w+nx;
+          if(buf[np]===0 && labels[np]<0){ labels[np]=nextLabel; stack[sp++]=np; }
+        }
+      }
+    }
+    areas.push(area); touchesBorder.push(border);
+    nextLabel++;
+  }
+  const boundArea = Math.max(1, (boundBox.xE-boundBox.xS) * (boundBox.yE-boundBox.yS));
+  const maxHoleArea = boundArea * maxHoleAreaFrac;
+  const out = new Uint8Array(buf);
+  for(let i=0;i<n;i++){
+    if(buf[i]>0) continue;
+    const lbl = labels[i];
+    if(lbl<0) continue;
+    const px = i % w, py = (i - px) / w;
+    if(px<boundBox.xS || px>=boundBox.xE || py<boundBox.yS || py>=boundBox.yE) continue; // boundBox 밖은 안전하게 스킵
+    if(!touchesBorder[lbl] && areas[lbl] <= maxHoleArea) out[i] = 255;
   }
   return out;
 }
@@ -3026,6 +3245,20 @@ function renderAdjustFrame(){
    - 두피 라인(scalpY)에서 출발, 길이·컬·볼륨 슬라이더 반영
    - 미용 "섹션" 개념: 굵은 면 레이어 + 가는 가닥 레이어 혼합
 ──────────────────────────────────────── */
+/* ════════════════════════════════════════════════════════════════
+   drawHairStrands(...) — 목차 (516줄, Canvas 2D 렌더링 직접 수행이라
+   Node 샌드박스에서 실행 검증이 안 돼서 구조는 안 건드리고 목차만 추가함.)
+   준비 단계 (~3060~3191)  해상도 스케일·validCols(유효 뿌리 컬럼)·
+                           scalpY/hairEndY 보간
+   setStyle       (~3192) 캔버스 스타일(색/굵기) 설정
+   traceStrand    (~3201) 결방향 필드를 따라 가닥 경로 한 가닥 생성
+   toCanvasPts    (~3310) 마스크 좌표 → 캔버스 좌표 변환
+   strokePolyline (~3315) 좌표 배열을 실제 선으로 그리기
+   splitIndexFor  (~3336) base/ext 구간 분할 지점 계산
+   drawStrand     (~3344) 가닥 하나 생성+분할+그리기 통합
+   drawStrandLayer(~3389) 레이어 하나(굵은/중간/잔가닥 등) 전체 순회
+   레이어 실행 단계 (~3389 이후) 루트확산·굵은섹션·중간가닥·잔가닥 4개 레이어 순차 호출
+════════════════════════════════════════════════════════════════ */
 function drawHairStrands(ctx, fit, scalpY, hairEndY, maskW, maskH, hairCanvas, opts){
   const {curl, volume, thickness, color, orientation, orientMaskW, orientMaskH, angle, sections} = opts;
 
@@ -3821,50 +4054,54 @@ function makeFaceProjector(lm, widthFactor, heightFactor){
 // 종횡비/좌표 변환(projector)과 실제 두피색(skinColorCss)을 반영해서 "이
 // 사람 사진에서 뽑을 수 있는 정보는 최대한 쓴" 근사치로 만든다. 여전히
 // 진짜 3D 스캔은 아니고 절차적 근사(placeholder)라는 성격 자체는 그대로.
-function buildProceduralHead(faceMetrics, skinColorCss){
-  const group = new THREE.Group();
-  const { lm, widthFactor, heightFactor, projector } = faceMetrics;
-
-  const skinColor = new THREE.Color(skinColorCss || '#E8C39E');
-
-  // 두상 본체 (실측 종횡비 반영한 타원)
+// 두상 본체(실측 종횡비 반영한 타원). buildProceduralHead()에서 분리됨(로직 동일).
+function buildHeadMesh(widthFactor, heightFactor, headMat){
   const headGeo = new THREE.SphereGeometry(1, 32, 32);
   headGeo.scale(0.78*widthFactor, 1*heightFactor, 0.85*widthFactor);
-  const headMat = new THREE.MeshStandardMaterial({ color: skinColor, roughness: 0.85, metalness: 0 });
   const headMesh = new THREE.Mesh(headGeo, headMat);
   headMesh.position.y = 0.15;
-  group.add(headMesh);
+  return headMesh;
+}
 
-  // 목 (스타일 확정 후 3단계에서 의상 3D를 붙일 연결점 — 지금은 단순 원통)
+// 목(스타일 확정 후 3단계에서 의상 3D를 붙일 연결점 — 지금은 단순 원통).
+// buildProceduralHead()에서 분리됨(로직 동일).
+function buildNeckMesh(widthFactor, skinColor){
   const neckColor = skinColor.clone().multiplyScalar(0.94); // 살짝 어둡게(그림자 자리표시)
   const neckGeo = new THREE.CylinderGeometry(0.42*widthFactor, 0.5*widthFactor, 0.6, 24);
   const neckMat = new THREE.MeshStandardMaterial({ color: neckColor, roughness: 0.85 });
   const neckMesh = new THREE.Mesh(neckGeo, neckMat);
   neckMesh.position.y = -0.85;
   neckMesh.name = 'neckAttachPoint'; // 3단계에서 의상 메시 정렬 기준점으로 재사용 예정
-  group.add(neckMesh);
+  return neckMesh;
+}
 
-  // 귀 — 이전엔 아예 없었음. 실측 귀 x좌표(lEarX/rEarX)·귀 높이(earY)로 배치.
-  // 주의: projector.EAR_MESH_X는 "사진 좌표 보정용 기준점"이라 두상 적도
-  // 반경보다 일부러 안쪽 값 — 그걸 귀 자체의 위치로 그대로 쓰면 귀가 두상
-  // 구체 표면보다 안쪽에 파묻혀 렌더링에서 아예 안 보이는 버그가 남(실측
-  // 확인함). 귀는 그 높이(y)에서의 실제 두상 표면 반경을 구해서 그 바로
-  // 바깥쪽에 반쯤 걸치도록 따로 계산.
+// 귀 — 실측 귀 x좌표(lEarX/rEarX)·귀 높이(earY)로 배치.
+// 주의: projector.EAR_MESH_X는 "사진 좌표 보정용 기준점"이라 두상 적도 반경보다
+// 일부러 안쪽 값 — 그걸 귀 자체의 위치로 그대로 쓰면 귀가 두상 구체 표면보다
+// 안쪽에 파묻혀 렌더링에서 아예 안 보이는 버그가 남(실측 확인함). 귀는 그
+// 높이(y)에서의 실제 두상 표면 반경을 구해서 그 바로 바깥쪽에 반쯤 걸치도록
+// 따로 계산. buildProceduralHead()에서 분리됨(로직 동일).
+function buildEarMeshes(widthFactor, heightFactor, projector, lm, headMat){
   const earGeo = new THREE.SphereGeometry(0.09*widthFactor, 10, 10);
   earGeo.scale(0.55, 1, 0.75);
   const earHalfW = 0.09*widthFactor*0.55;
   const earY = projector.toMeshY(lm.earY);
   const earLocalY0 = (earY - 0.15) / heightFactor; // headMesh.position.y·y스케일 역산
   const earSurfaceX = 0.78*widthFactor * Math.sqrt(Math.max(0.05, 1 - earLocalY0*earLocalY0));
+  const ears = [];
   [-1, 1].forEach(side=>{
     const ear = new THREE.Mesh(earGeo, headMat);
     ear.position.set(side*(earSurfaceX + earHalfW*0.55), earY, 0.02);
-    group.add(ear);
+    ears.push(ear);
   });
+  return ears;
+}
 
-  // 이목구비 — 사진 데칼(buildFacePhotoDecal)이 나중에 붙으면 이 그룹은
-  // 숨겨짐(이중 렌더 방지). 데칼이 없거나 아직 로드 전이면 이게 유일한
-  // 얼굴 표현이므로 항상 먼저 그려서 화면이 비지 않게 함.
+// 이목구비(눈/눈썹/입/코) — 사진 데칼(buildFacePhotoDecal)이 나중에 붙으면 이
+// 그룹은 숨겨짐(이중 렌더 방지). 데칼이 없거나 아직 로드 전이면 이게 유일한
+// 얼굴 표현이므로 항상 먼저 그려서 화면이 비지 않게 함.
+// buildProceduralHead()에서 분리됨(로직 동일).
+function buildFaceDetailGroup(widthFactor, projector, lm, headMat){
   const faceDetailGroup = new THREE.Group();
   faceDetailGroup.name = 'proceduralFaceDetail';
   const eyeZ = 0.72*widthFactor, browZ = 0.75*widthFactor, mouthZ = 0.70*widthFactor, noseZ = 0.80*widthFactor;
@@ -3917,6 +4154,30 @@ function buildProceduralHead(faceMetrics, skinColorCss){
       faceDetailGroup.add(eye);
     });
   }
+  return faceDetailGroup;
+}
+
+// 절차적 두상: 타원(스케일된 구)으로 두상 근사. getFaceMetrics()가 뽑아낸 실측
+// 종횡비/좌표 변환(projector)과 실제 두피색(skinColorCss)을 반영해서 "이 사람
+// 사진에서 뽑을 수 있는 정보는 최대한 쓴" 근사치로 만든다. 여전히 진짜 3D
+// 스캔은 아니고 절차적 근사(placeholder)라는 성격 자체는 그대로.
+// (2026-07-12: 너무 길어서 다루기 힘들다는 지적으로 두상/목/귀/이목구비 4개
+// 함수로 분리 — 각 부위 로직 자체는 한 글자도 안 바꾸고 그대로 옮김.)
+function buildProceduralHead(faceMetrics, skinColorCss){
+  const group = new THREE.Group();
+  const { lm, widthFactor, heightFactor, projector } = faceMetrics;
+  const skinColor = new THREE.Color(skinColorCss || '#E8C39E');
+  const headMat = new THREE.MeshStandardMaterial({ color: skinColor, roughness: 0.85, metalness: 0 });
+
+  const headMesh = buildHeadMesh(widthFactor, heightFactor, headMat);
+  group.add(headMesh);
+
+  const neckMesh = buildNeckMesh(widthFactor, skinColor);
+  group.add(neckMesh);
+
+  buildEarMeshes(widthFactor, heightFactor, projector, lm, headMat).forEach(ear=>group.add(ear));
+
+  const faceDetailGroup = buildFaceDetailGroup(widthFactor, projector, lm, headMat);
   group.add(faceDetailGroup);
 
   return { group, headMesh, faceDetailGroup };
@@ -4103,6 +4364,26 @@ function getViewPoseConfidence(angle){
   return 0.25; // 랜드마크 감지 자체 실패("[우측] 랜드마크 없음" 같은 경우) → 촬영 슬롯 기본 각도로 폴백
 }
 
+// 섹션 하나에 대해 특정 뷰(angle)가 얼마나 신뢰할 만한 실측 데이터를 주는지.
+// = state.viewMapping[sectionId][angle](실측 yaw 기반 각도 근접도, 2D 섹션
+// 블렌딩과 동일 로직) × getViewPoseConfidence(angle)(그 뷰 포즈 자체의 신뢰도).
+// computeSectionRealExtent()·pickBestRealView() 둘 다 이 식을 따로 갖고
+// 있었던 걸 여기로 합침(동작 동일, 계산식만 한 곳으로).
+function getViewWeight(sectionId, angle){
+  const mapping = (state.viewMapping && state.viewMapping[sectionId]) || {};
+  return (mapping[angle] ?? 0) * getViewPoseConfidence(angle);
+}
+
+// 섹션의 실측 x범위(SECTIONS[id].xRange, 0~1 정규화)를 특정 이미지 폭(w) 기준
+// 픽셀 컬럼 구간으로 변환. computeSectionRealExtent()·buildRealColumnSamples()
+// 둘 다 이 계산을 따로 갖고 있었던 걸 여기로 합침(동작 동일).
+function getSectionColumnRange(sec, w){
+  return {
+    xS: Math.round(Math.max(0, sec.xRange[0]) * w),
+    xE: Math.round(Math.min(1, sec.xRange[1]) * w),
+  };
+}
+
 // 섹션 하나(예: 'side')의 실측 형태 보정 배율을 계산.
 // - sec.visibleIn에 속한 뷰들 중 실제로 사진·마스크가 있는 뷰만 사용
 // - 뷰별 가중치 = state.viewMapping[sectionId][angle](실측 yaw 기반 각도 근접도, 2D
@@ -4113,20 +4394,17 @@ function getViewPoseConfidence(angle){
 //   섹션) 부족분만큼 aiEstimate(있다면)로 블렌딩
 function computeSectionRealExtent(sectionId, aiEstimate){
   const sec = SECTIONS[sectionId];
-  const mapping = (state.viewMapping && state.viewMapping[sectionId]) || {};
   const BASELINE_EXTENT_FRAC = 0.30; // 컬럼당 헤어 실루엣이 이미지 높이의 30% 정도면 "평균 볼륨"으로 가정(경험적 근사치, 튜닝 대상)
 
   let weightedSum = 0, weightTotal = 0;
   sec.visibleIn.forEach(angle=>{
     const maskInf = state.hairMasks && state.hairMasks[angle];
     if(!maskInf) return; // 이 뷰는 아직 촬영/마스크 추출이 안 됨
-    const mapWeight = mapping[angle] ?? 0;
-    const weight = mapWeight * getViewPoseConfidence(angle);
+    const weight = getViewWeight(sectionId, angle);
     if(weight < 0.03) return; // 영향 무시할 수준
 
     const w = maskInf.w, h = maskInf.h;
-    const xS = Math.round(Math.max(0, sec.xRange[0]) * w);
-    const xE = Math.round(Math.min(1, sec.xRange[1]) * w);
+    const { xS, xE } = getSectionColumnRange(sec, w);
     let sum = 0, cnt = 0;
     for(let x = xS; x < xE; x += 2){ // 2px 간격 샘플링(속도, 컬럼당 정밀도는 불필요)
       const sY = maskInf.scalpY[x], eY = maskInf.hairEndY[x];
@@ -4202,7 +4480,139 @@ async function estimateHairVolumeWithAI(){
   }
 }
 
+/* ── (3단계) 헤어스타일 기반 의상 추천 AI ──
+   비즈니스 로드맵 3번(파일 상단 주석) 착수. 확정된 헤어스타일(색상·길이·
+   볼륨 느낌)과 정면 사진을 함께 보내서, OUTFIT_CATALOG(지금은 목업, 나중에
+   진짜 제휴 상품 DB로 교체될 자리) 중 가장 잘 어울리는 항목을 고르게 한다.
+   analyzeWithClaude()/estimateHairVolumeWithAI()와 동일한 호출 패턴 재사용.
+   세션당 1회만 호출(캐싱), 새 고객 시작 시 초기화(startNewCustomer 참고). */
+async function recommendOutfitWithAI(){
+  if(state.aiOutfitRecommendation) return state.aiOutfitRecommendation;
+  const frontImg = state.shots.front;
+  const style = state.selectedStyle;
+  if(!frontImg || !style) return null;
+
+  const catalogList = OUTFIT_CATALOG.map(o=>`- ${o.id}: ${o.name} (${o.category}, 태그: ${o.tags.join('/')})`).join('\n');
+  const base64 = frontImg.split(',')[1];
+  const mediaType = frontImg.startsWith('data:image/png') ? 'image/png' : 'image/jpeg';
+  const prompt = `미용실 고객 정면 사진과 확정된 헤어스타일 정보입니다.
+헤어스타일: ${style.name} (${style.tags}), 헤어컬러: ${style.colorHex}
+아래 의상 목록 중 이 헤어스타일·이미지와 가장 잘 어울리는 것 하나를 고르세요.
+{"outfitId":"목록의 id 중 하나","reason":"한국어 1문장 추천 이유"}
+JSON만 응답하세요, 다른 텍스트 없이.
+의상 목록:
+${catalogList}`;
+
+  try{
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method:'POST',
+      headers:{'Content-Type':'application/json','anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
+      body: JSON.stringify({ model:'claude-sonnet-4-6', max_tokens:200, messages:[{ role:'user', content:[
+        { type:'image', source:{ type:'base64', media_type:mediaType, data:base64 } },
+        { type:'text', text:prompt }
+      ]}]})
+    });
+    const data = await res.json();
+    const raw = data.content.map(b=>b.text||'').join('').replace(/```json|```/g,'').trim();
+    const parsed = JSON.parse(raw);
+    const item = OUTFIT_CATALOG.find(o=>o.id===parsed.outfitId) || OUTFIT_CATALOG[0];
+    const result = { item, reason: parsed.reason || '' };
+    state.aiOutfitRecommendation = result;
+    return result;
+  }catch(e){
+    console.warn('의상 추천 AI 실패(기본 항목으로 대체):', e);
+    const result = { item: OUTFIT_CATALOG[0], reason: '' };
+    state.aiOutfitRecommendation = result;
+    return result;
+  }
+}
+
+/* ── 의상 3D 부착 — 지금은 절차적 플레이스홀더, 나중에 제휴사 3D 에셋으로 교체 ──
+   ※ neckAttachPoint 연결 규격(외부 에셋 제작/연동 시 이 기준을 따르면 됨):
+   - 좌표계: 두상과 동일한 로컬 원점(headGroup 기준), Y-up · Z-forward(+Z가
+     캐릭터 정면) · X-right. 두상 자체와 완전히 같은 좌표계라 별도 변환 불필요.
+   - 목 원통(neckAttachPoint) 실제 치수: position.y=-0.85, height=0.6,
+     radiusTop=0.42*widthFactor(위쪽, y=-0.55) → radiusBottom=0.5*widthFactor
+     (아래쪽, y=-1.15). 외부 의상 에셋은 목선(collar) 반지름이 y=-0.55에서
+     약 0.42*widthFactor와 맞아떨어지도록 정렬하면 이음매가 자연스러움.
+   - 스케일: widthFactor/heightFactor(getFaceMetrics() 참고)는 그 사람 실측
+     비율이라, 외부 에셋도 이 값을 곱해서 스케일하면 두상 크기와 비례가 맞음
+     (buildOutfitPlaceholderMesh가 실제로 이렇게 함 — 참고용 구현 예시).
+   - 원점 기준 y=-1.15 아래로 어깨/몸통이 이어진다고 가정.
+   지금은 OUTFIT_MESH_SOURCE.type이 'gltf'인 경우를 대비한 분기만 준비해두고
+   실제 로더는 미구현(HEAD_MESH_SOURCE와 동일한 진행 방식) — 진짜 파일 생기면
+   loadHeadMeshFromGLTF()를 참고해서 채우면 됨. */
+function buildOutfitPlaceholderMesh(item, widthFactor){
+  const group = new THREE.Group();
+  group.name = 'outfitPlaceholder';
+  const color = new THREE.Color(item.colorHex || '#888888');
+
+  // 어깨~가슴 상단부를 대충 근사하는 원뿔대(목에서 어깨로 벌어지는 형태).
+  // 실제 의상 3D가 아니라 "여기에 붙는다"는 걸 보여주는 자리표시자.
+  const torsoGeo = new THREE.CylinderGeometry(0.50*widthFactor, 0.92*widthFactor, 1.15, 24);
+  const torsoMat = new THREE.MeshStandardMaterial({ color, roughness: 0.75 });
+  const torso = new THREE.Mesh(torsoGeo, torsoMat);
+  torso.position.y = -1.15 - 1.15/2; // neckAttachPoint 하단(y=-1.15)에서 바로 이어짐
+  torso.name = 'outfitTorsoPlaceholder';
+  group.add(torso);
+
+  return group;
+}
+
+// HEAD_MESH_SOURCE와 동일한 스위치 패턴 — 나중에 실제 제휴사 3D 파일(.glb)이
+// 생기면 OUTFIT_MESH_SOURCE.type='gltf'+url만 넣으면 이 함수 안 분기만 타고
+// 호출부(setupModel3DScreen)는 그대로 재사용됨.
+async function loadOutfitMesh(item, widthFactor){
+  if(OUTFIT_MESH_SOURCE.type === 'gltf' && OUTFIT_MESH_SOURCE.url){
+    // TODO: 실제 제휴사 에셋 생기면 loadHeadMeshFromGLTF() 참고해서 구현.
+    console.warn('OUTFIT_MESH_SOURCE.type=gltf 이지만 로더 미구현 — 절차적 플레이스홀더로 폴백');
+  }
+  return buildOutfitPlaceholderMesh(item, widthFactor);
+}
+
 function randRange(a,b){ return a + Math.random()*(b-a); }
+
+// 진짜 2D→3D 투영 경로: 시작점(root3D)·끝점(tip3D)을 실측 사진에서 그대로
+// 가져와서 쓴다. "길이를 따로 재서 곱하는" 게 아니라, 두 점의 실제 방향
+// (growDir)을 그대로 성장 방향으로 삼고 슬라이더 길이만큼 뻗음.
+// buildStrandsForSection()에서 분리됨(로직 동일, randRange 호출 순서도 동일).
+function buildStrandCurveFromProjection(col, actualLen, puffOut, swayAmt){
+  const root = col.root3D.clone();
+  const rawDir = col.tip3D.clone().sub(col.root3D);
+  const growDir = rawDir.length() > 0.001 ? rawDir.normalize() : new THREE.Vector3(0,-1,0);
+  const outward = root.clone().normalize();
+  let perp = new THREE.Vector3().crossVectors(growDir, outward);
+  if(perp.length() < 0.001) perp = new THREE.Vector3().crossVectors(growDir, new THREE.Vector3(0,1,0));
+  perp.normalize();
+
+  const mid = root.clone()
+    .add(growDir.clone().multiplyScalar(actualLen*0.45))
+    .add(outward.clone().multiplyScalar(puffOut*0.6))
+    .add(perp.clone().multiplyScalar(randRange(-swayAmt, swayAmt)));
+  const tip = root.clone()
+    .add(growDir.clone().multiplyScalar(actualLen))
+    .add(outward.clone().multiplyScalar(puffOut*0.25))
+    .add(perp.clone().multiplyScalar(randRange(-swayAmt, swayAmt) * 1.3));
+  return { root, mid, tip };
+}
+
+// 합성 폴백: 실측 투영이 없는 컬럼/섹션(예: 그 섹션을 잘 보여주는 사진이
+// 없거나 포즈 인식이 실패한 경우)은 기존처럼 두피 좌표(phi,theta) 범위 안에서
+// 무작위로 채움. buildStrandsForSection()에서 분리됨(로직 동일).
+function buildStrandCurveFallback(zone, strandIndex, actualLen, puffOut, swayAmt, approxHeadRadius, maxPhi){
+  const phi0 = randRange(zone.phiRange[0], zone.phiRange[1]);
+  const theta0 = zone.thetas === 'full'
+    ? randRange(0, Math.PI*2)
+    : zone.thetas[strandIndex % zone.thetas.length] + randRange(-zone.thetaSpread, zone.thetaSpread);
+  let dPhi = Math.max(actualLen / approxHeadRadius, 0.02);
+  const phiMid = Math.min(phi0 + dPhi*0.45, maxPhi);
+  const phiTip = Math.min(phi0 + dPhi, maxPhi);
+  const waveTheta = ()=> randRange(-swayAmt, swayAmt);
+  const root = scalpPointToWorld(phi0, theta0, 1.01);
+  const mid  = scalpPointToWorld(phiMid, theta0 + waveTheta(), 1.01 + puffOut*0.55);
+  const tip  = scalpPointToWorld(phiTip, theta0 + waveTheta(), 1.01 + puffOut*0.20);
+  return { root, mid, tip };
+}
 
 // 섹션 하나(예: 'side')에 해당하는 가닥 묶음을 만든다.
 // params는 state.sections[sectionId] 그대로 — 섹션마다 파라미터 이름이
@@ -4210,6 +4620,9 @@ function randRange(a,b){ return a + Math.random()*(b-a); }
 // 체인으로 흡수한다. shapeSignal({factor,confidence})은 computeSectionRealExtent()가
 // 뽑은 "실제 사진에서 이 섹션이 얼마나 뻗어나와 보였는지" 배율 — 슬라이더 값에
 // 곱해서 실측 사진 정보가 3D에도 반영되게 한다.
+// (2026-07-12: 너무 길어서 다루기 힘들다는 지적으로 실측/폴백 두 경로를
+// buildStrandCurveFromProjection()/buildStrandCurveFallback()으로 분리 —
+// 로직 자체와 randRange() 호출 순서는 한 글자도 안 바꾸고 그대로 옮김.)
 function buildStrandsForSection(sectionId, params, colorHex, globalCurl, shapeSignal, realCols){
   const zone = SCALP_ZONES[sectionId];
   const group = new THREE.Group();
@@ -4270,44 +4683,9 @@ function buildStrandsForSection(sectionId, params, colorHex, globalCurl, shapeSi
       ? curlAmt + Math.abs(Math.cos(col.orientAngle)) * REAL_ORIENT_STRENGTH * 0.5
       : curlAmt;
 
-    let root, mid, tip;
-
-    if(col && col.root3D && col.tip3D){
-      // ── 진짜 2D→3D 투영 경로: 시작점(root3D)·끝점(tip3D)을 실측 사진에서
-      // 그대로 가져와서 쓴다. "길이를 따로 재서 곱하는" 게 아니라, 두 점의
-      // 실제 방향(growDir)을 그대로 성장 방향으로 삼고 슬라이더 길이만큼 뻗음.
-      root = col.root3D.clone();
-      const rawDir = col.tip3D.clone().sub(col.root3D);
-      const growDir = rawDir.length() > 0.001 ? rawDir.normalize() : new THREE.Vector3(0,-1,0);
-      const outward = root.clone().normalize();
-      let perp = new THREE.Vector3().crossVectors(growDir, outward);
-      if(perp.length() < 0.001) perp = new THREE.Vector3().crossVectors(growDir, new THREE.Vector3(0,1,0));
-      perp.normalize();
-
-      mid = root.clone()
-        .add(growDir.clone().multiplyScalar(actualLen*0.45))
-        .add(outward.clone().multiplyScalar(puffOut*0.6))
-        .add(perp.clone().multiplyScalar(randRange(-swayAmt, swayAmt)));
-      tip = root.clone()
-        .add(growDir.clone().multiplyScalar(actualLen))
-        .add(outward.clone().multiplyScalar(puffOut*0.25))
-        .add(perp.clone().multiplyScalar(randRange(-swayAmt, swayAmt) * 1.3));
-    } else {
-      // ── 합성 폴백: 실측 투영이 없는 컬럼/섹션(예: 그 섹션을 잘 보여주는
-      // 사진이 없거나 포즈 인식이 실패한 경우)은 기존처럼 두피 좌표(phi,theta)
-      // 범위 안에서 무작위로 채움.
-      const phi0 = randRange(zone.phiRange[0], zone.phiRange[1]);
-      const theta0 = zone.thetas === 'full'
-        ? randRange(0, Math.PI*2)
-        : zone.thetas[i % zone.thetas.length] + randRange(-zone.thetaSpread, zone.thetaSpread);
-      let dPhi = Math.max(actualLen / APPROX_HEAD_RADIUS, 0.02);
-      const phiMid = Math.min(phi0 + dPhi*0.45, MAX_PHI);
-      const phiTip = Math.min(phi0 + dPhi, MAX_PHI);
-      const waveTheta = ()=> randRange(-swayAmt, swayAmt);
-      root = scalpPointToWorld(phi0, theta0, 1.01);
-      mid  = scalpPointToWorld(phiMid, theta0 + waveTheta(), 1.01 + puffOut*0.55);
-      tip  = scalpPointToWorld(phiTip, theta0 + waveTheta(), 1.01 + puffOut*0.20);
-    }
+    const { root, mid, tip } = (col && col.root3D && col.tip3D)
+      ? buildStrandCurveFromProjection(col, actualLen, puffOut, swayAmt)
+      : buildStrandCurveFallback(zone, i, actualLen, puffOut, swayAmt, APPROX_HEAD_RADIUS, MAX_PHI);
 
     const curve = new THREE.CatmullRomCurve3([root, mid, tip]);
     // 세그먼트를 낮게 잡아 저사양 기기 대비(가닥당 폴리곤 최소화)
@@ -4412,11 +4790,10 @@ function projectImagePointToHead(angle, nx, ny, widthFactor, heightFactor){
 // 보이거나 포즈 인식 자체가 실패) null 반환하고 호출 쪽에서 기존 랜덤 배치로 폴백.
 function pickBestRealView(sectionId){
   const sec = SECTIONS[sectionId];
-  const mapping = (state.viewMapping && state.viewMapping[sectionId]) || {};
   let best = null, bestW = 0;
   sec.visibleIn.forEach(angle=>{
     if(!state.hairMasks || !state.hairMasks[angle]) return;
-    const w = (mapping[angle] ?? 0) * getViewPoseConfidence(angle);
+    const w = getViewWeight(sectionId, angle);
     if(w > bestW){ bestW = w; best = angle; }
   });
   return bestW >= 0.15 ? best : null;
@@ -4432,8 +4809,7 @@ function buildRealColumnSamples(sectionId, angle, widthFactor, heightFactor){
   const maskInf = state.hairMasks && state.hairMasks[angle];
   if(!maskInf) return [];
   const w = maskInf.w, h = maskInf.h; // scalpY/hairEndY는 원본(풀) 해상도 좌표계
-  const xS = Math.round(Math.max(0, sec.xRange[0]) * w);
-  const xE = Math.round(Math.min(1, sec.xRange[1]) * w);
+  const { xS, xE } = getSectionColumnRange(sec, w);
   const hasOrient = Array.isArray(maskInf.orientation) && maskInf.maskW && maskInf.maskH;
 
   const cols = [];
@@ -4683,6 +5059,20 @@ async function setupModel3DScreen(){
   const hairStrands = buildHairStrands(styleParams);
   model3D.headGroup.add(hairStrands);
 
+  // (3단계) 헤어스타일 기반 의상 추천 + 플레이스홀더 부착.
+  // 확정 스타일이 있어야 추천할 수 있으므로(색상·태그 정보 필요) 없으면 스킵.
+  let outfitTag = '';
+  if(state.selectedStyle){
+    showAI('AI가 어울리는 의상을 고르고 있어요…','헤어스타일 기반 추천 (데모)');
+    const outfitRec = await recommendOutfitWithAI();
+    hideAI();
+    if(outfitRec && myGen === model3DGeneration){
+      const outfitMesh = await loadOutfitMesh(outfitRec.item, faceMetrics.widthFactor);
+      model3D.headGroup.add(outfitMesh);
+      outfitTag = ` · 의상 추천: ${outfitRec.item.name}(${outfitRec.item.category}, 데모)`;
+    }
+  }
+
   frameCameraToHead(); // 버그 수정: 모델 크기 기준으로 카메라 거리 자동 계산 (이전엔 눈대중 고정값이라 심하게 줌인됐었음)
 
   // 실측 정면 사진 데칼은 비동기(이미지 로드)라 두상·헤어부터 먼저 그려서
@@ -4697,7 +5087,7 @@ async function setupModel3DScreen(){
   const tag = document.getElementById('model3dTag');
   if(tag){
     const name = state.selectedStyle ? state.selectedStyle.name : '커스텀 스타일';
-    tag.textContent = `범용 3D 두상 · ${name} 적용 (프로토타입)`;
+    tag.textContent = `범용 3D 두상 · ${name} 적용 (프로토타입)${outfitTag}`;
   }
 }
 
@@ -4722,6 +5112,7 @@ function showToast(msg){
 function startNewCustomer(){
   aiAnalysis=null;
   state.aiSectionEstimate=null; state.viewMapping=null; // (a) 실측 사진 기반 3D 보정 캐시도 새 고객마다 초기화
+  state.aiOutfitRecommendation=null; // (3단계) 의상 추천 캐시도 초기화
   ANGLES.forEach(a=>{state.shots[a]=null;state.hairCanvases[a]=null;state.hairMasks[a]=null;state.baseCanvases[a]=null;});
   state.landmarks = {};
   state.selectedStyle=null; state.currentCaptureIndex=0; state.currentSection='crown';
