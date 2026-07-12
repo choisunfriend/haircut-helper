@@ -372,6 +372,107 @@
     반영해야 하므로).
   다음 손볼 곳: 2D 4방향 이미지 대안은 지금 보류 상태(3D를 최대한 밀어붙이는
   방향으로 확정) — 나중에 3D 정밀도 한계가 명확해지면 재검토 예정.
+
+  ── 의상 플레이스홀더 디테일 보강(2026-07-12, 계속) ──
+  "원뿔 하나뿐이면 옷처럼 안 보인다, 진짜 3D 에셋 없이도 좀 더 옷 같게
+  만들 수 있냐"는 질문 — 실제 3D 에셋/사진 없이는 원단 질감까지는 무리지만,
+  두상 이목구비 때처럼 순수 도형으로 실루엣만이라도 개선. buildOutfitPlaceholderMesh
+  확장: 몸통(기존) + 옷깃(TorusGeometry, 목 밑동 y=-1.15에 정확히 맞춤,
+  몸통보다 어둡게 해서 목선 구분) + 소매 2개(어깨점에서 아래·바깥 60°
+  대각선으로 뻗는 원기둥) + 포멀 카테고리 한정 라펠 2개(V자 판, 재킷 앞트임
+  느낌). Node로 실행 검증: 카테고리별(캐주얼 4개/포멀 6개 자식) 좌표 전부
+  NaN 없이 정상 확인, 좌우 대칭·목선 이음매 정확히 확인.
+
+  ── 상반신 → 전신으로 확장(2026-07-12, 계속) ──
+  실기기 확인: "일단 상체를 만들었네, 근데 목표는 완전히 의상을 갖춘 사람의
+  전신상이야" — 정확한 지적. buildOutfitPlaceholderMesh를 골반·다리·발까지
+  확장:
+  - 골반(hip): 몸통 하단(torsoBotY)에서 다리로 이어지는 완충 원뿔대, 하의
+    톤(상의보다 어두운 pantsColor)으로 상/하의 구분.
+  - 다리 2개: 골반 하단에서 시작, 위→아래 살짝 가늘어지는 원기둥.
+  - 발 2개: 다리 하단에 납작한 박스, +Z(앞쪽)로 살짝 내밀어 발끝처럼 보이게.
+    신발처럼 보이도록 색은 옷 색과 무관하게 어두운 톤 고정.
+  - 팔(기존 "소매"에서 개명): 길이를 0.85→2.6으로 늘리고, 각도도 60°
+    옆으로 뻗던 것에서 거의 수직으로 내려오되 살짝 벌어지는 자연스러운
+    직립 자세 방향으로 변경(회전각은 목표 방향벡터에서 역산).
+  검증: Node로 실행해서 파츠 9개(몸통/옷깃/골반/다리2/발2/팔2) 전부 좌표
+  정상, 목→몸통→골반→다리→발 순서로 y좌표가 단조감소하는지, 그리고 각
+  이음매(몸통-골반, 골반-다리, 다리-발)의 상단/하단 좌표가 변수 공유로
+  구조적으로 정확히 일치하는지(직접 계산해서) 확인.
+
+  ── 실제 OBJ+MTL 에셋 로더 추가(2026-07-12, 계속) ──
+  Sketchfab 가입이 막혀서 quaternius.com(회원가입 불필요, CC0)에서 남자
+  캐릭터 zip을 받았는데 라이선스+preview만 들어있던 문제 — poly.pizza(로그인
+  없이 Quaternius 모델 1,411개 FBX/OBJ/GLTF 다운로드 가능)로 안내. 사용자가
+  .obj 형식으로 받을 예정이라, OUTFIT_MESH_SOURCE의 'gltf'처럼 스텁만 두지
+  않고 'obj' 타입을 실제로 구현:
+  - three@0.128.0용 MTLLoader.js/OBJLoader.js CDN 스크립트 추가(three.min.js
+    바로 다음). r128엔 아직 examples/js/(비-모듈 UMD) 디렉토리가 남아있는
+    버전이라 이 경로가 유효함(검색으로 확인 — 나중 버전에서 제거됨)을 확인
+    하고 추가.
+  - loadOutfitMeshFromOBJ(objUrl, mtlUrl, widthFactor): MTLLoader로 재질
+    로드(있으면) → materials.preload() → OBJLoader.setMaterials() → obj
+    로드. 에셋마다 원래 스케일/피벗이 제각각이라 Box3로 바운딩박스를 재서
+    자동으로 (a) 전신 높이를 절차적 플레이스홀더 기준(TARGET_HEIGHT=4.0)에
+    맞춰 스케일 (b) 상단이 neckAttachPoint 하단(y=-1.15)에 맞닿도록 위치
+    정렬. OUTFIT_MESH_SOURCE.scaleOverride/offsetY로 수동 보정 가능하게 열어둠.
+  - loadOutfitMesh()에 'obj' 분기 추가, 로드 실패 시 절차적 플레이스홀더로
+    자동 폴백.
+  ※ 이 함수 자체(OBJLoader/Box3 등 브라우저 전용 API 사용)는 extractHairMask
+  류와 마찬가지로 Node 샌드박스에서 실행 검증 불가 — 문법 검사만 통과,
+  실제 파일 받으면 실기기에서 최종 확인 필요.
+
+  ── 실제 에셋(Male_Casual.obj) 연동(2026-07-12, 계속) ──
+  poly.pizza에서 받은 Male_Casual.obj/.mtl 실제로 연결. 파일 분석(Python으로
+  버텍스/재질별 y범위 직접 계산):
+  - 텍스처 이미지 불필요(재질이 전부 단색 Kd, map_Kd 없음) — Skin/Eyes/Hair/
+    Shirt/Pants/Socks 6개 재질, 941 버텍스, 1058 페이스. 가벼움.
+  - Y-up, 발~정수리 y=[-0.003, 4.824](전신 통짜 하나의 오브젝트) — 즉 이
+    에셋 자체에 머리도 포함돼 있어서, 그대로 붙이면 우리 두상(실측 얼굴+헤어)
+    이랑 겹침. 재질별 y범위(Shirt 최고점 y≈4.043)로 옷깃/목 높이를 역산해서
+    neckCutFrac=0.84(전체 높이 대비 목 밑동 비율) 산출.
+  대응:
+  - loadOutfitMeshFromOBJ 수정: 스케일 계산을 "발~정수리 전체 높이" 대신
+    "발~목(neckCutFrac 지점)까지만"으로 바꿔서, 잘려나갈 머리 부분이 스케일
+    산정에 안 끼어들게 함.
+  - 에셋 자체 "Hair" 재질은 mesh.visible=false로 완전히 숨김(재질 이름으로
+    매칭 — OBJLoader가 usemtl 이름을 material.name으로 그대로 넣어줌).
+  - 나머지 재질에는 월드 좌표 y=-1.15(neckAttachPoint 하단) 기준 클리핑
+    플레인(THREE.Plane) 적용 — renderer.localClippingEnabled=true 필요해서
+    initModel3DRenderer에 추가. 정렬 계산이 살짝 어긋나도 그 위쪽(에셋 자체
+    머리/목)은 렌더 단계에서 강제로 안 보이게 되는 이중 안전장치.
+  - OUTFIT_MESH_SOURCE 기본값을 type:'obj'로 전환, objUrl/mtlUrl을
+    './assets/Male_Casual.obj'·'.mtl'로 설정(사용자가 저장소에 assets/
+    폴더 만들어서 넣어야 함 — outputs에도 같은 구조로 같이 전달).
+  검증: Python으로 실측값 그대로 넣어 스케일/위치 계산 수기 검산 — 목 밑동이
+  정확히 목표(-1.15)에 오는지, 발 위치가 기존 절차적 플레이스홀더(-5.18)와
+  비슷한 범위인지(-5.15로 근접) 확인. 실제 OBJLoader 로딩·렌더링 자체는
+  브라우저 전용이라 Node 검증 불가 — 실기기 확인 필요.
+
+  ── 4종 실제 에셋 매핑 + 감마 보정(2026-07-12, 계속) ──
+  poly.pizza에서 Male_Casual/LongSleeve/Shirt/Suit(+각 Smooth 버전) 받음.
+  분석 결과: 전부 같은 베이스 바디(동일 캐릭터 라인), Y-up, 재질 6~9개
+  (Skin/Eyes/Hair/Shirt/Pants/Socks 등), 텍스처 이미지 불필요(전부 단색
+  Kd). 기본 버전(정점~1000/면~1100)과 Smooth 버전(정점~4000/면~4000, 4배)
+  중 저사양 기기 방침 유지를 위해 기본 버전만 채택.
+  - OUTFIT_CATALOG를 색상만 지어낸 목업에서 실제 에셋 매핑으로 전면 교체.
+    각 에셋의 Shirt/Details/TieTexture 재질 Kd를 Python으로 직접 읽어서
+    감마 보정(linear→sRGB) 계산 → 카탈로그 colorHex를 "실제 렌더링될 색"
+    으로 갱신, 이름도 그에 맞게(네이비 재킷→차콜 슈트, 화이트 셔츠→버건디
+    셔츠 등) 정정 — 라벨과 실제 색이 다르면 안 되므로.
+  - OUTFIT_CATALOG[i].asset={objUrl,mtlUrl,neckCutFrac}로 항목별 실제
+    파일 경로 지정(4종 각각 재질별 y범위로 옷깃 위치 직접 계산해서
+    neckCutFrac 값도 에셋마다 다르게: 0.826~0.845).
+  - loadOutfitMeshFromOBJ(objUrl,mtlUrl,widthFactor,neckCutFrac)로 시그니처
+    변경(전역 OUTFIT_MESH_SOURCE.neckCutFrac 대신 호출자가 넘겨줌).
+  - 감마 보정 추가: material.color.convertLinearToSRGB()(실제 Three.js
+    API, 검색으로 존재 확인) 적용 — Blender OBJ 익스포터가 Kd를 리니어
+    색공간으로 쓰는 경우가 흔해서 보정 없이 그대로 쓰면 실제보다 어둡게
+    나올 수 있음. ⚠ 다만 이 보정이 맞는 방향인지 실제 렌더링으로 확인은
+    못 했음(Kd가 애초에 sRGB 의도였을 수도 있음) — 실기기에서 색이
+    이상하면 이 한 줄이 원인일 수 있으니 바로 제거/조정 가능하게 격리해둠.
+  - OUTFIT_MESH_SOURCE는 전역 수동보정 전용(scaleOverride/offsetY)으로
+    단순화, per-item 정보는 전부 OUTFIT_CATALOG로 이동.
 -->
 <!DOCTYPE html>
 <html lang="ko">
@@ -831,6 +932,11 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:22px;heigh
 <!-- Three.js (2단계: 범용 3D 두상 렌더용. r128 UMD 빌드 — 나머지 앱 코드가 전부
      클래식 스크립트 + 전역함수(onclick=) 방식이라 모듈 방식 대신 UMD로 맞춤) -->
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js"></script>
+<!-- OBJLoader/MTLLoader: Quaternius 등에서 받은 .obj+.mtl 의상/전신 에셋을 로드하기
+     위해 추가(2026-07-12, 3단계 착수). GLTFLoader와 달리 이건 실제로 사용 중 —
+     loadOutfitMeshFromOBJ() 참고. -->
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/MTLLoader.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/OBJLoader.js"></script>
 <!-- MediaPipe Tasks Vision (Hair Landmarker) -->
 <!-- MediaPipe Tasks Vision: ES 모듈로만 배포되므로 classic <script src> 태그로는
      window.FilesetResolver 등 전역이 전혀 생성되지 않는다 (실제 원인이었던 버그).
@@ -1269,27 +1375,37 @@ const STYLES = [
   {id:'lob',       name:'로브',            tags:'MID-SHORT · WAVE', length:38, curl:35, volume:50, colorHex:'#27190F'},
 ];
 
-/* ── 의상 목업 카탈로그(OUTFIT_CATALOG) ──
+/* ── 의상 카탈로그(OUTFIT_CATALOG) ──
    3단계(비즈니스 로드맵 — 파일 상단 주석 참고) 착수용. 아직 제휴사 상품 DB가
    없어서, "AI가 추천 → 붙여넣는" 파이프라인 전체가 실제로 동작하는 걸 보여줄
-   데모용 목업 카탈로그. 나중에 진짜 DB/API가 생기면 이 배열을 그 응답으로
-   교체하기만 하면 되도록, 실제 상품 데이터가 가질 법한 필드(id/name/category/
-   colorHex/tags/affiliateUrl)로 미리 맞춰둠 — affiliateUrl은 지금 전부 null
-   (실제 제휴 링크 연결 전까지).
-   tags는 recommendOutfitWithAI()가 헤어스타일과 매칭할 때 참고하는 느슨한
-   스타일 태그(카테고리 아님, 자유 텍스트 매칭용). */
+   데모용 카탈로그 — 다만 이제 색상만 지어낸 목업이 아니라 poly.pizza에서
+   받은 실제 Quaternius 에셋(Male_Casual/LongSleeve/Shirt/Suit, CC0)을 매핑.
+   colorHex는 각 에셋의 실제 재질(Kd)을 감마 보정(linear→sRGB, 2.2 감마)해서
+   계산한 진짜 렌더링 색 — OBJ가 Blender에서 export되면서 Kd가 리니어
+   색공간이라, 감마 보정 없이 그대로 쓰면 실제보다 어둡게 나옴(예: Male_Shirt의
+   Shirt 재질 Kd(0.106,0.010,0.030)를 그대로 읽으면 거의 검정으로 보이지만,
+   감마 보정하면 실제로는 버건디(#5C1F34)). 로더(loadOutfitMeshFromOBJ)에서도
+   동일하게 감마 보정을 적용해서 카탈로그에 적어둔 색과 실제 렌더링이 일치하게 함.
+   asset.neckCutFrac은 각 에셋 재질별 y범위를 직접 계산해서 뽑은 실측값(옷깃
+   최고점 기준) — 전부 같은 베이스 바디라 0.83~0.85로 서로 비슷하지만, 정확도를
+   위해 에셋별로 따로 둠. 4종 다 저사양 기기 고려해서 Smooth(고폴리, 정점 4배)
+   버전 대신 기본(저폴리, 정점 약 1000개) 버전으로 매핑.
+   나중에 진짜 제휴 상품 DB/API가 생기면 이 배열 자체를 그 응답으로 교체. */
 const OUTFIT_CATALOG = [
-  {id:'ot-formal-navy',   name:'네이비 테일러드 재킷', category:'포멀',   colorHex:'#1F2A3D', tags:['클래식','단정','오피스'], affiliateUrl:null},
-  {id:'ot-casual-beige',  name:'베이지 니트 가디건',   category:'캐주얼', colorHex:'#C9B79C', tags:['편안함','데일리','뉴트럴'], affiliateUrl:null},
-  {id:'ot-street-black',  name:'블랙 오버사이즈 후디', category:'스트릿', colorHex:'#161616', tags:['스트릿','볼륨','캐주얼'], affiliateUrl:null},
-  {id:'ot-minimal-white', name:'화이트 셔츠',          category:'미니멀', colorHex:'#EDEDE8', tags:['깔끔함','베이직','오피스'], affiliateUrl:null},
-  {id:'ot-vivid-red',     name:'레드 니트 풀오버',     category:'포인트', colorHex:'#8C2F2F', tags:['포인트컬러','개성','데일리'], affiliateUrl:null},
-  {id:'ot-denim-blue',    name:'데님 재킷',            category:'캐주얼', colorHex:'#3A5C7A', tags:['캐주얼','활동적','데일리'], affiliateUrl:null},
+  {id:'ot-charcoal-suit',   name:'차콜 슈트',        category:'포멀',   colorHex:'#2A262A', tags:['클래식','단정','오피스'],
+    asset:{ objUrl:'./assets/Male_Suit.obj',       mtlUrl:'./assets/Male_Suit.mtl',       neckCutFrac:0.8369 }, affiliateUrl:null},
+  {id:'ot-slate-casual',    name:'슬레이트 캐주얼 셔츠', category:'캐주얼', colorHex:'#657277', tags:['편안함','데일리','뉴트럴'],
+    asset:{ objUrl:'./assets/Male_Casual.obj',     mtlUrl:'./assets/Male_Casual.mtl',     neckCutFrac:0.8382 }, affiliateUrl:null},
+  {id:'ot-olive-longsleeve',name:'올리브 롱슬리브',   category:'캐주얼', colorHex:'#606B55', tags:['캐주얼','차분함','데일리'],
+    asset:{ objUrl:'./assets/Male_LongSleeve.obj', mtlUrl:'./assets/Male_LongSleeve.mtl', neckCutFrac:0.8448 }, affiliateUrl:null},
+  {id:'ot-burgundy-shirt',  name:'버건디 셔츠',       category:'포인트', colorHex:'#5C1F34', tags:['포인트컬러','개성','데일리'],
+    asset:{ objUrl:'./assets/Male_Shirt.obj',      mtlUrl:'./assets/Male_Shirt.mtl',      neckCutFrac:0.8258 }, affiliateUrl:null},
 ];
 
-// 두상/헤어와 마찬가지로 실제 3D 에셋(제휴사 제공)이 생기면 여기 url만 넣으면
-// 되도록 HEAD_MESH_SOURCE와 동일한 스위치 패턴 사용. 지금은 procedural만 동작.
-const OUTFIT_MESH_SOURCE = { type: 'procedural', url: null };
+// 전역 수동 보정 전용(에셋별 세팅은 이제 OUTFIT_CATALOG[i].asset에 있음).
+// 자동 정렬(bounding box 기준)이 특정 에셋에서 어색할 때만 값 채워서 씀 —
+// scaleOverride: null이면 자동계산, offsetY: 자동 정렬 위치에 추가로 더할 y값.
+const OUTFIT_MESH_SOURCE = { scaleOverride: null, offsetY: 0 };
 
 
 let aiAnalysis = null;
@@ -4544,28 +4660,207 @@ ${catalogList}`;
    loadHeadMeshFromGLTF()를 참고해서 채우면 됨. */
 function buildOutfitPlaceholderMesh(item, widthFactor){
   const group = new THREE.Group();
-  group.name = 'outfitPlaceholder';
+  group.name = 'outfitPlaceholder'; // 이름은 유지하지만 이제 상반신뿐 아니라 전신(골반·다리·발)까지 포함
   const color = new THREE.Color(item.colorHex || '#888888');
+  const mat = new THREE.MeshStandardMaterial({ color, roughness: 0.75 });
+  const pantsColor = color.clone().multiplyScalar(0.55); // 상의보다 어두운 톤 = 하의(바지) 자리표시자
+  const pantsMat = new THREE.MeshStandardMaterial({ color: pantsColor, roughness: 0.75 });
+  const shoeMat = new THREE.MeshStandardMaterial({ color: new THREE.Color('#241E1A'), roughness: 0.6 }); // 신발은 색과 무관하게 어두운 톤 고정
 
   // 어깨~가슴 상단부를 대충 근사하는 원뿔대(목에서 어깨로 벌어지는 형태).
-  // 실제 의상 3D가 아니라 "여기에 붙는다"는 걸 보여주는 자리표시자.
-  const torsoGeo = new THREE.CylinderGeometry(0.50*widthFactor, 0.92*widthFactor, 1.15, 24);
-  const torsoMat = new THREE.MeshStandardMaterial({ color, roughness: 0.75 });
-  const torso = new THREE.Mesh(torsoGeo, torsoMat);
-  torso.position.y = -1.15 - 1.15/2; // neckAttachPoint 하단(y=-1.15)에서 바로 이어짐
+  const torsoTopR = 0.50*widthFactor, torsoBotR = 0.92*widthFactor, torsoH = 1.15;
+  const torsoGeo = new THREE.CylinderGeometry(torsoTopR, torsoBotR, torsoH, 24);
+  const torso = new THREE.Mesh(torsoGeo, mat);
+  const torsoTopY = -1.15, torsoBotY = torsoTopY - torsoH; // -2.30
+  torso.position.y = (torsoTopY + torsoBotY) / 2;
   torso.name = 'outfitTorsoPlaceholder';
   group.add(torso);
+
+  // 옷깃: 목 밑동(y=-1.15)에 딱 맞는 얇은 링. 몸통보다 살짝 어둡게 해서
+  // "여기가 목선이다"를 시각적으로 구분해줌 — 원뿔 하나뿐이던 것보다 훨씬
+  // 옷처럼 보이게 하는 최소한의 디테일.
+  const collarMat = new THREE.MeshStandardMaterial({ color: color.clone().multiplyScalar(0.75), roughness: 0.8 });
+  const collarGeo = new THREE.TorusGeometry(torsoTopR*1.03, 0.035*widthFactor, 8, 20);
+  const collar = new THREE.Mesh(collarGeo, collarMat);
+  collar.position.y = torsoTopY;
+  collar.rotation.x = Math.PI/2; // 눕혀서 목 둘레를 감싸는 링 형태로
+  collar.name = 'outfitCollarPlaceholder';
+  group.add(collar);
+
+  // ── 골반: 몸통 하단에서 허벅지로 이어지는 완충 구간 ──
+  const hipTopR = torsoBotR, hipBotR = 0.72*widthFactor, hipH = 0.45;
+  const hipGeo = new THREE.CylinderGeometry(hipTopR, hipBotR, hipH, 20);
+  const hip = new THREE.Mesh(hipGeo, pantsMat);
+  const hipTopY = torsoBotY, hipBotY = hipTopY - hipH; // 골반 하단 = 다리 시작점
+  hip.position.y = (hipTopY + hipBotY) / 2;
+  hip.name = 'outfitHipPlaceholder';
+  group.add(hip);
+
+  // ── 다리 2개: 골반 하단에서 발까지 ──
+  const legTopR = 0.30*widthFactor, legBotR = 0.19*widthFactor, legH = 2.35;
+  const legGeo = new THREE.CylinderGeometry(legTopR, legBotR, legH, 16);
+  const legXOffset = 0.32*widthFactor;
+  const legBotY = hipBotY - legH;
+  [-1, 1].forEach(side=>{
+    const leg = new THREE.Mesh(legGeo, pantsMat);
+    leg.position.set(side*legXOffset, (hipBotY + legBotY)/2, 0);
+    leg.name = 'outfitLegPlaceholder';
+    group.add(leg);
+  });
+
+  // ── 발 2개: 다리 하단에서 앞(+Z)으로 살짝 뻗은 형태 ──
+  const footW = 0.24*widthFactor, footH = 0.16, footD = 0.46*widthFactor;
+  const footGeo = new THREE.BoxGeometry(footW, footH, footD);
+  [-1, 1].forEach(side=>{
+    const foot = new THREE.Mesh(footGeo, shoeMat);
+    foot.position.set(side*legXOffset, legBotY - footH/2, footD*0.28); // 발끝이 앞으로 나오도록 z 오프셋
+    foot.name = 'outfitFootPlaceholder';
+    group.add(foot);
+  });
+
+  // ── 팔 2개: 어깨에서 대략 허벅지 중간 높이까지(안정된 직립 자세 근사) ──
+  // 이전엔 짧은 소매(0.85)로 상반신에서 끝났음 — 전신상 요청으로 실제
+  // 팔 길이만큼 늘리고, 각도도 옆으로 60° 벌어진 소매가 아니라 몸통을 따라
+  // 거의 수직으로 내려오되 살짝 바깥으로 벌어지는(자연스러운 직립 자세)
+  // 방향으로 변경.
+  const shoulderY = -1.35; // 목 밑동보다 살짝 아래(어깨선 근사)
+  const shoulderFrac = (shoulderY - torsoTopY) / (-torsoH); // 원뿔대 상단 기준 진행률(0=상단, 1=하단)
+  const shoulderR = torsoTopR + shoulderFrac * (torsoBotR - torsoTopR);
+  const armLen = 2.6, armTopR = 0.15*widthFactor, armBotR = 0.10*widthFactor;
+  const armGeo = new THREE.CylinderGeometry(armTopR, armBotR, armLen, 12);
+  [-1, 1].forEach(side=>{
+    const arm = new THREE.Mesh(armGeo, mat);
+    // 거의 수직 아래(-Y)로 내려오되 살짝 바깥으로 벌어지는 방향 —
+    // Rz(dirAngle)·(0,1,0) = (-sin(dirAngle), cos(dirAngle), 0)이 되도록
+    // 목표 방향(옆으로 살짝, 대부분 아래)에 맞는 각도를 역산해서 사용.
+    const dirAngle = -side * 2.900; // 라디안 — 목표 방향 벡터(±0.24, -0.97, 0)에 대응
+    const dir = new THREE.Vector3(-Math.sin(dirAngle), Math.cos(dirAngle), 0);
+    const shoulderPos = new THREE.Vector3(side*shoulderR*0.92, shoulderY, 0.02);
+    arm.position.set(
+      shoulderPos.x + dir.x*armLen*0.5,
+      shoulderPos.y + dir.y*armLen*0.5,
+      shoulderPos.z + dir.z*armLen*0.5,
+    );
+    arm.rotation.z = dirAngle;
+    arm.name = 'outfitArmPlaceholder';
+    group.add(arm);
+  });
+
+  // 포멀 카테고리는 옷깃 아래로 앞트임(라펠) 느낌의 판 2개를 V자로 추가 —
+  // 재킷 실루엣을 아주 단순하게나마 구분되게(캐주얼/스트릿과 같은 원뿔로
+  // 뭉뚱그려지지 않도록).
+  if(item.category === '포멀'){
+    const lapelMat = new THREE.MeshStandardMaterial({ color: color.clone().multiplyScalar(0.85), roughness: 0.7 });
+    const lapelGeo = new THREE.BoxGeometry(0.16*widthFactor, 0.55, 0.02);
+    [-1, 1].forEach(side=>{
+      const lapel = new THREE.Mesh(lapelGeo, lapelMat);
+      lapel.position.set(side*0.14*widthFactor, -1.45, torsoTopR*0.85);
+      lapel.rotation.z = -side*0.28;
+      lapel.name = 'outfitLapelPlaceholder';
+      group.add(lapel);
+    });
+  }
 
   return group;
 }
 
-// HEAD_MESH_SOURCE와 동일한 스위치 패턴 — 나중에 실제 제휴사 3D 파일(.glb)이
-// 생기면 OUTFIT_MESH_SOURCE.type='gltf'+url만 넣으면 이 함수 안 분기만 타고
-// 호출부(setupModel3DScreen)는 그대로 재사용됨.
+// 실제 .obj(+.mtl) 의상/전신 에셋 로더. Quaternius 등에서 받은 파일을
+// OUTFIT_MESH_SOURCE.objUrl(+mtlUrl)에 넣으면 절차적 플레이스홀더 대신
+// 진짜 3D가 붙는다. 에셋마다 원래 스케일·피벗이 제각각이라, bounding box를
+// 재서 자동으로 (a) neckAttachPoint 하단(y=-1.15)에 상단이 맞닿도록,
+// (b) 전신 높이가 지금 절차적 플레이스홀더와 비슷한 범위(약 4유닛)가
+// 되도록 스케일·위치를 맞춘다 — 에셋마다 정확도가 다를 수 있어
+// OUTFIT_MESH_SOURCE.offsetY/scaleOverride로 수동 보정 가능하게 열어둠.
+// neckCutFrac은 호출 쪽(OUTFIT_CATALOG[i].asset.neckCutFrac)에서 에셋별
+// 실측값을 넘겨받음 — 전부 같은 베이스 바디라 비슷하지만 에셋마다 다름.
+// ※ THREE.OBJLoader/Box3는 브라우저 전용 API라 Canvas류와 마찬가지로 이
+// 함수 자체는 Node 샌드박스에서 실행 검증 불가 — 문법 검사만 통과.
+function loadOutfitMeshFromOBJ(objUrl, mtlUrl, widthFactor, neckCutFrac){
+  return new Promise((resolve, reject)=>{
+    if(typeof THREE.OBJLoader !== 'function'){
+      reject(new Error('OBJLoader 스크립트가 로드되지 않았습니다'));
+      return;
+    }
+    function loadObj(materials){
+      const objLoader = new THREE.OBJLoader();
+      if(materials) objLoader.setMaterials(materials);
+      objLoader.load(objUrl, (obj)=>{
+        try{
+          const box = new THREE.Box3().setFromObject(obj);
+          const size = new THREE.Vector3(); box.getSize(size);
+
+          // 에셋 자체 높이(발~정수리) 대비 "목 밑동" 위치 비율로, 그 위쪽(에셋 자체
+          // 머리/목/헤어)은 스케일 계산에서도 제외하고 나중에 클리핑으로도 잘라냄 —
+          // 우리 두상(실측 사진 기반 얼굴+헤어)만 보이게 하기 위함.
+          const cutFrac = (typeof neckCutFrac === 'number') ? neckCutFrac : 0.84;
+          const neckCutYRaw = box.min.y + cutFrac * size.y;
+          const bodyHeightRaw = neckCutYRaw - box.min.y; // 발~목까지만(머리 제외) 실측 높이
+
+          const TARGET_HEIGHT = 4.0; // 목 밑동~발끝까지 대략 이 정도(절차적 플레이스홀더 기준)
+          const scale = OUTFIT_MESH_SOURCE.scaleOverride || (TARGET_HEIGHT / (bodyHeightRaw || 1)) * widthFactor;
+          obj.scale.setScalar(scale);
+
+          // 스케일 적용 후 좌표 기준으로 재계산해서 위치 정렬(중심을 x/z=0으로,
+          // 목 밑동 지점이 neckAttachPoint 하단 y=-1.15에 오도록)
+          const box2 = new THREE.Box3().setFromObject(obj);
+          const center2 = new THREE.Vector3(); box2.getCenter(center2);
+          const neckCutYScaled = neckCutYRaw * scale;
+          const offsetY = OUTFIT_MESH_SOURCE.offsetY || 0;
+          obj.position.x += -center2.x;
+          obj.position.z += -center2.z;
+          obj.position.y += (-1.15 - neckCutYScaled) + offsetY;
+          obj.name = 'outfitLoadedOBJ';
+
+          // 에셋 자체 "Hair" 재질은 완전히 숨김(우리 자체 헤어 시스템을 쓰므로).
+          // 나머지 재질(Skin/Eyes/Shirt/Pants/Socks 등)에는 위치 정렬 후의
+          // 월드 좌표 기준 y=-1.15 클리핑 플레인을 적용해서, 정렬이 살짝 어긋나도
+          // 그 위쪽(에셋 자체 머리/목)은 어차피 안 보이게 하는 안전장치로 사용.
+          // + 감마 보정: Blender OBJ export는 Kd를 리니어 색공간으로 쓰는데
+          // 렌더러가 그대로 표시하면 실제보다 어둡게 나옴(카탈로그 colorHex는
+          // 이미 보정된 "진짜 보일 색"으로 계산해둠) — 여기서 실제 로드된
+          // material.color에도 동일한 보정을 적용해야 카탈로그 색상과 실제
+          // 렌더링이 일치함. THREE.Color.convertLinearToSRGB()가 정확히 이 변환.
+          const HIDE_MATERIAL_NAMES = ['hair'];
+          const neckClipPlane = new THREE.Plane(new THREE.Vector3(0,-1,0), -1.15);
+          obj.traverse(child=>{
+            if(!child.isMesh) return;
+            const matName = (child.material && child.material.name || '').toLowerCase();
+            if(HIDE_MATERIAL_NAMES.includes(matName)){ child.visible = false; return; }
+            const mats = Array.isArray(child.material) ? child.material : [child.material];
+            mats.forEach(m=>{
+              if(!m) return;
+              m.clippingPlanes = [neckClipPlane];
+              m.clipShadows = true;
+              if(m.color && typeof m.color.convertLinearToSRGB === 'function') m.color.convertLinearToSRGB();
+            });
+          });
+
+          resolve(obj);
+        }catch(e){ reject(e); }
+      }, undefined, (err)=>reject(err));
+    }
+    if(mtlUrl && typeof THREE.MTLLoader === 'function'){
+      const mtlLoader = new THREE.MTLLoader();
+      mtlLoader.load(mtlUrl, (materials)=>{
+        materials.preload();
+        loadObj(materials);
+      }, undefined, ()=>loadObj(null)); // mtl 로드 실패해도 obj는 시도(무채색으로)
+    } else {
+      loadObj(null);
+    }
+  });
+}
+
+// 이제 실제 에셋 정보는 OUTFIT_CATALOG[i].asset(id별로 다른 obj/mtl/neckCutFrac)에
+// 있음 — item에 asset이 있으면 그걸로 로드, 없으면(아직 실제 에셋 없는 카탈로그
+// 항목) 절차적 플레이스홀더로 폴백. 로드 실패(파일 404 등)해도 동일하게 폴백.
 async function loadOutfitMesh(item, widthFactor){
-  if(OUTFIT_MESH_SOURCE.type === 'gltf' && OUTFIT_MESH_SOURCE.url){
-    // TODO: 실제 제휴사 에셋 생기면 loadHeadMeshFromGLTF() 참고해서 구현.
-    console.warn('OUTFIT_MESH_SOURCE.type=gltf 이지만 로더 미구현 — 절차적 플레이스홀더로 폴백');
+  if(item.asset && item.asset.objUrl){
+    try{
+      return await loadOutfitMeshFromOBJ(item.asset.objUrl, item.asset.mtlUrl, widthFactor, item.asset.neckCutFrac);
+    }catch(e){
+      console.warn('OBJ 의상 에셋 로드 실패, 절차적 플레이스홀더로 폴백:', e);
+    }
   }
   return buildOutfitPlaceholderMesh(item, widthFactor);
 }
@@ -4921,6 +5216,7 @@ function initModel3DRenderer(container){
   const renderer = new THREE.WebGLRenderer({ antialias:true, alpha:true });
   renderer.setPixelRatio(Math.min(window.devicePixelRatio||1, 2));
   renderer.setSize(container.clientWidth, container.clientHeight);
+  renderer.localClippingEnabled = true; // 실제 전신 OBJ 에셋의 머리/목 부분을 잘라내는 클리핑 플레인 사용(loadOutfitMeshFromOBJ 참고)
   container.innerHTML='';
   container.appendChild(renderer.domElement);
 
