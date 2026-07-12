@@ -63,6 +63,30 @@
   계산. 모델 재구성 시(setupModel3DScreen)와 리사이즈 시 둘 다 호출됨.
   이제 나중에 진짜 두상 3D 파일(다른 크기·비율)로 바꿔도 다시 손으로
   튜닝할 필요 없음.
+
+  ── 진짜 헤어카드/스트랜드 시스템 착수(2026-07-12) ──
+  buildHairCap()(돔 하나로 뭉뚱그린 자리표시자)를 buildHairStrands()로 교체.
+  방향: state.sections(6개 섹션: crown/front/temple/side/occipital/nape)를
+  2D 조정화면과 동일하게 3D에서도 "그대로" 소스로 사용 — 섹션별 파라미터
+  반영(원래 다음 단계 후보였던 항목)이 스트랜드 시스템에 자연히 포함됨,
+  별도 매핑 단계 불필요.
+  - SCALP_ZONES: 6개 섹션이 두상 구면 좌표(phi=정수리 기준 극각, theta=정면
+    기준 방위각) 상 대략 어디 위치하는지 근사한 배치표. 실측 사진 기반이
+    아니라 자리표시자 배치 — 진짜 헤어라인 데이터 연동 시 교체 예정.
+  - buildStrandsForSection(): 섹션별 length→가닥 길이, volume/blend/layer
+    (섹션마다 이름이 다름, 폴백 체인으로 흡수)→뿌리에서 바깥으로 밀리는
+    정도, state._globalCurl→웨이브 진폭. front.line/nape.line은 존재할
+    때만 사용(뱅 방향/네이프 테이퍼).
+  - 가닥 하나 = CatmullRomCurve3(뿌리·중간·끝 3점) + TubeGeometry(낮은
+    세그먼트: tubular 6 / radial 4)로 표현 — 텍스처 없이 순수 지오메트리로
+    "가닥처럼 보이는" 최소 단위. 섹션 합계 약 120개 가닥(성능 여유 보고
+    조정 예정, 아래 참고).
+  - setupModel3DScreen()의 headGroup 초기화 루프에 disposeObject3D() 추가
+    — 스트랜드 개수가 늘면서(수십→백여 개) 재구성 시 geometry/material
+    누수 방지가 이전(돔 하나)보다 중요해짐.
+  다음 손볼 곳: 저사양 기기에서 가닥 개수·드로우콜 실측 확인, 느리면
+  섹션별 지오메트리를 BufferGeometryUtils.mergeGeometries 한 번으로
+  합치는 최적화 고려(현재는 r128 CDN에 미포함이라 별도 스크립트 추가 필요).
 -->
 <!DOCTYPE html>
 <html lang="ko">
@@ -3579,27 +3603,129 @@ function buildProceduralHead(){
   return { group, headMesh };
 }
 
-// 헤어 "캡": 진짜 헤어카드/스트랜드 시스템 전 단계의 자리표시자.
-// 확정된 스타일 파라미터(색상/길이/볼륨)를 반영해 두피를 덮는 돔 형태를 만든다.
-// length가 클수록 더 아래까지 덮고, volume이 클수록 두상 표면에서 더 띄워서
-// 부풀린 느낌을 낸다 — 실제 가닥 표현이 아니라 "스타일 파라미터가 3D에도
-// 반영된다"는 것을 보여주기 위한 근사치.
-function buildHairCap(styleParams){
-  const { colorHex, length, volume } = styleParams;
-  // length(0~100) → 두피 커버리지(라디안, 정수리에서 얼마나 아래까지 덮을지)
-  const coverage = 0.55 + (length/100) * 0.55; // 대략 반구~그보다 더 덮는 범위
-  const puff = 1.02 + (volume/100) * 0.18;      // 볼륨이 클수록 두상보다 살짝 크게
+/* ── 스캘프(두피) 좌표계 ──
+   phi: 정수리(top)=0에서 목쪽으로 갈수록 커지는 극각(라디안). 대략 0~1.35 사용.
+   theta: 정면(+Z 방향)=0 기준 방위각. +/- 로 좌우 대칭.
+   실측 헤어라인 데이터가 아니라 "6개 섹션이 두상 어디쯤 위치하는지"를
+   대략적으로 근사한 배치표 — 진짜 헤어라인 인식 데이터가 3D에도 연동되면
+   교체될 자리표시자. count는 섹션당 가닥 개수(성능 여유 보고 조정 예정). */
+const SCALP_ZONES = {
+  crown:     { phiRange:[0.05, 0.55], thetas:'full',         thetaSpread:0,    count:32 },
+  front:     { phiRange:[0.42, 0.80], thetas:[0],             thetaSpread:0.55, count:16 },
+  temple:    { phiRange:[0.45, 0.78], thetas:[0.62,-0.62],    thetaSpread:0.20, count:12 },
+  side:      { phiRange:[0.55, 1.05], thetas:[1.05,-1.05],    thetaSpread:0.30, count:22 },
+  occipital: { phiRange:[0.55, 1.00], thetas:[Math.PI],       thetaSpread:0.55, count:20 },
+  nape:      { phiRange:[0.95, 1.35], thetas:[Math.PI],       thetaSpread:0.95, count:18 },
+};
 
-  const geo = new THREE.SphereGeometry(1.03, 32, 24, 0, Math.PI*2, 0, coverage);
-  geo.scale(0.80*puff, 1*puff, 0.87*puff);
+// 두피 위 한 점(phi,theta)을 headMesh 로컬 좌표로 변환.
+// headMesh가 SphereGeometry(1).scale(0.78,1,0.85) + position.y=0.15 이므로
+// 그 스케일/오프셋을 그대로 따라간다. liftOut은 두상 표면보다 살짝 띄우는
+// 배율(뿌리가 표면에 파묻혀 z-fighting 나지 않도록).
+function scalpPointToWorld(phi, theta, liftOut){
+  const r = liftOut ?? 1.01;
+  const x = Math.sin(phi) * Math.sin(theta) * 0.78 * r;
+  const y = Math.cos(phi) * r + 0.15;
+  const z = Math.sin(phi) * Math.cos(theta) * 0.85 * r;
+  return new THREE.Vector3(x, y, z);
+}
+
+function randRange(a,b){ return a + Math.random()*(b-a); }
+
+// 섹션 하나(예: 'side')에 해당하는 가닥 묶음을 만든다.
+// params는 state.sections[sectionId] 그대로 — 섹션마다 파라미터 이름이
+// 달라서(length는 공통, 그 외는 volume/blend/layer/line 등 제각각) 폴백
+// 체인으로 흡수한다.
+function buildStrandsForSection(sectionId, params, colorHex, globalCurl){
+  const zone = SCALP_ZONES[sectionId];
+  const group = new THREE.Group();
+  if(!zone) return group;
+
+  const length   = params.length ?? 50;
+  // volume류 파라미터가 섹션마다 다른 이름이라 있는 것부터 순서대로 사용
+  const volume   = params.volume ?? params.blend ?? params.layer ?? 50;
+  const lineVal  = params.line;   // front/nape에만 존재
+  const layerVal = params.layer;  // side에만 존재
+
+  const strandLen    = 0.16 + (length/100) * 0.95;
+  const puffOut       = 0.05 + (volume/100) * 0.22;
+  const curlAmt        = ((globalCurl ?? 30)/100) * 0.18;
+  const lengthJitter  = layerVal!=null ? (layerVal/100)*0.35 : 0.12; // 레이어감 있는 섹션일수록 가닥 길이 편차 커짐
+
   const mat = new THREE.MeshStandardMaterial({
     color: new THREE.Color(colorHex || '#2A1B12'),
-    roughness: 0.65, metalness: 0.05,
+    roughness: 0.55, metalness: 0.05,
   });
-  const mesh = new THREE.Mesh(geo, mat);
-  mesh.position.y = 0.15;
-  mesh.name = 'hairCapPlaceholder';
-  return mesh;
+
+  for(let i=0;i<zone.count;i++){
+    const phi = randRange(zone.phiRange[0], zone.phiRange[1]);
+    const theta = zone.thetas === 'full'
+      ? randRange(0, Math.PI*2)
+      : zone.thetas[i % zone.thetas.length] + randRange(-zone.thetaSpread, zone.thetaSpread);
+
+    const root = scalpPointToWorld(phi, theta, 1.01);
+    const outward = root.clone().normalize();
+    const myLen = strandLen * (1 + randRange(-lengthJitter, lengthJitter));
+
+    // front.line: 0=아래로 라운드, 50=스트레이트로 떨어짐, 100=위로 넘김(뱅 방향)
+    // nape.line: 값이 클수록(테이퍼) 가닥 끝이 더 안쪽으로 모여서 짧게 마무리
+    let dropDir = new THREE.Vector3(0, -1, 0);
+    let tipBend = 1;
+    if(sectionId === 'front' && lineVal != null){
+      const upness = (lineVal - 50) / 50; // -1(아래) ~ +1(위로 넘김)
+      dropDir = new THREE.Vector3(outward.x*0.3, -1 + upness*0.9, outward.z*0.3).normalize();
+    }
+    if(sectionId === 'nape' && lineVal != null){
+      tipBend = 0.6 + (lineVal/100) * 0.6;
+    }
+
+    const mid = root.clone()
+      .add(outward.clone().multiplyScalar(puffOut))
+      .add(dropDir.clone().multiplyScalar(myLen*0.45))
+      .add(new THREE.Vector3(randRange(-curlAmt,curlAmt), 0, randRange(-curlAmt,curlAmt)));
+
+    const tip = root.clone()
+      .add(outward.clone().multiplyScalar(puffOut*0.3*tipBend))
+      .add(dropDir.clone().multiplyScalar(myLen*tipBend));
+
+    const curve = new THREE.CatmullRomCurve3([root, mid, tip]);
+    // 세그먼트를 낮게 잡아 저사양 기기 대비(가닥당 폴리곤 최소화)
+    const tubeGeo = new THREE.TubeGeometry(curve, 6, 0.010 + Math.random()*0.006, 4, false);
+    const strand = new THREE.Mesh(tubeGeo, mat);
+    group.add(strand);
+  }
+
+  return group;
+}
+
+// 진짜 헤어카드/스트랜드 시스템: buildHairCap()의 "돔 하나로 뭉뚱그린
+// 자리표시자"를 대체. 6개 섹션(state.sections) 각각을 서로 다른 두피
+// 위치·개수·길이로 심어서, 2D 조정화면에서 섹션별로 만진 값이 3D에도
+// 바로 반영되게 한다(별도 매핑 단계 없이 같은 state.sections를 그대로 소스로 사용).
+function buildHairStrands(styleParams){
+  const { colorHex, sections, globalCurl } = styleParams;
+  const group = new THREE.Group();
+  group.name = 'hairStrands';
+  SECTION_ORDER.forEach(id=>{
+    const params = sections[id] || SECTIONS[id].defaults;
+    const sectionGroup = buildStrandsForSection(id, params, colorHex, globalCurl);
+    sectionGroup.name = 'strands-'+id;
+    group.add(sectionGroup);
+  });
+  return group;
+}
+
+// headGroup 재구성 시(스타일이 바뀌어 이전 가닥/두상을 지울 때) geometry/material을
+// 같이 dispose. 자리표시자 돔 1개일 땐 신경 안 써도 됐지만, 가닥이 수십~백여
+// 개로 늘면서 재구성마다 누적되는 GPU 메모리가 무시할 수준이 아니게 됨.
+function disposeObject3D(obj){
+  obj.traverse(node=>{
+    if(node.geometry) node.geometry.dispose();
+    if(node.material){
+      if(Array.isArray(node.material)) node.material.forEach(m=>m.dispose());
+      else node.material.dispose();
+    }
+  });
 }
 
 // 나중에 진짜 두상 파일(.glb)이 생기면 이 분기가 실행됨.
@@ -3625,16 +3751,15 @@ async function loadHeadMesh(){
 }
 
 // 현재 확정 상태(state.selectedStyle / state.sections / state.hairMasks)에서
-// 3D에 반영할 대표 파라미터만 추출. 섹션별 세부 차이는 아직 3D에 반영 안 하고
-// (헤어카드 시스템 붙을 때 확장) 크라운 기준 대표값만 우선 사용.
+// 3D에 반영할 파라미터를 추출. buildHairStrands()가 6개 섹션을 각각 따로
+// 읽으므로 여기서는 크라운 대표값으로 뭉뚱그리지 않고 state.sections
+// 전체를 그대로 넘긴다(2D 조정화면과 동일 소스).
 function extractStyleParamsFor3D(){
-  const sec = state.sections || {};
-  const crown = sec.crown || { length:50, volume:50 };
   const colorHex =
     (state.selectedStyle && state.selectedStyle.colorHex) ||
     (state.hairMasks && state.hairMasks.front && state.hairMasks.front.avgColor) ||
     '#2A1B12';
-  return { colorHex, length: crown.length ?? 50, volume: crown.volume ?? 50 };
+  return { colorHex, sections: state.sections || {}, globalCurl: state._globalCurl };
 }
 
 function initModel3DRenderer(container){
@@ -3739,9 +3864,13 @@ async function setupModel3DScreen(){
     resizeModel3D();
   }
 
-  // 이전에 그려둔 두상/헤어 제거 후 새로 구성 (스타일이 바뀌었을 수 있으므로)
+  // 이전에 그려둔 두상/헤어 제거 후 새로 구성 (스타일이 바뀌었을 수 있으므로).
+  // 가닥이 수십~백여 개로 늘면서 dispose 없이 remove만 하면 GPU 메모리가
+  // 재구성마다 누적되므로 disposeObject3D()로 geometry/material까지 정리.
   while(model3D.headGroup.children.length){
-    model3D.headGroup.remove(model3D.headGroup.children[0]);
+    const obj = model3D.headGroup.children[0];
+    disposeObject3D(obj);
+    model3D.headGroup.remove(obj);
   }
   model3D.headGroup.rotation.y = 0; // 프레이밍 계산이 항상 같은 기준(정면)에서 이뤄지도록 리셋
 
@@ -3749,8 +3878,8 @@ async function setupModel3DScreen(){
   model3D.headGroup.add(group);
 
   const styleParams = extractStyleParamsFor3D();
-  const hairCap = buildHairCap(styleParams);
-  model3D.headGroup.add(hairCap);
+  const hairStrands = buildHairStrands(styleParams);
+  model3D.headGroup.add(hairStrands);
 
   frameCameraToHead(); // 버그 수정: 모델 크기 기준으로 카메라 거리 자동 계산 (이전엔 눈대중 고정값이라 심하게 줌인됐었음)
 
