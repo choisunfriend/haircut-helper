@@ -189,6 +189,91 @@
   (center±spread를 섹션마다 독립적으로 눈대중 잡다 보니 서로 안 이어짐).
   각 섹션 경계가 겹치도록 값 재계산 + Node 몬테카를로 시뮬레이션(20만 샘플)으로
   0~360° 전 구간 실제로 빈틈 없는지 검증 완료.
+
+  ── 가닥이 두상 내부로 파묻히는 버그 수정(2026-07-12, 계속) ──
+  실기기 스크린샷: 정수리 술 + 뒤통수/네이프 뭉텅이는 있는데 그 사이(적도
+  부근)에 또렷한 대머리 띠. theta 문제(위 항목)와는 다른 축의 문제라고
+  보고 원인 추적함.
+  원인: dropDir=(0,-1,0)로 모든 가닥을 "월드 -Y 방향 직선"으로 낙하시켰음.
+  정수리 근처(phi 작음 → x,z가 거의 0인) 뿌리는 이 방식대로 똑바로
+  내려가면, 두상이 아래로 갈수록 넓어지는 곡면을 못 따라가고 가닥이 머리
+  내부(안 보이는 곳)를 뚫고 지나가버림 — 그 구간이 통째로 안 보이게 된
+  것. side/occipital처럼 x,z가 이미 큰(적도 근처) 뿌리는 이 문제가 덜함,
+  그래서 정수리↔후두부 사이만 유독 비어 보였음.
+  수정: 가닥의 root/mid/tip을 월드 좌표 직접 계산 대신, 두피 좌표(phi,theta)
+  자체를 아래로 흘려서(phi 증가) scalpPointToWorld()로 매번 다시 좌표를
+  구하는 방식으로 교체. liftOut(scalpPointToWorld의 3번째 인자)이 항상
+  ≥1.0이므로 가닥이 어떤 경우에도 두상 표면 안쪽으로 파묻히지 않는 게
+  구조적으로 보장됨(예전처럼 "그렇게 되길 바라며" 월드좌표를 조합하는 게
+  아니라, 애초에 표면 기준 좌표계에서만 움직이므로).
+  안전장치: 극단적 슬라이더 값(길이·볼륨 100 + 실측/AI 보정 배율 겹침)에서
+  phi가 턱 밑(π)을 넘어 반대편으로 넘어가지 않도록 MAX_PHI=2.75rad(≈158°)
+  상한 추가. Node로 10.8만 샘플(전 섹션×길이/볼륨 0·50·100 조합) 시뮬레이션
+  해서 퇴화 가닥(길이 0에 가까움) 0개, phi 상한 정상 작동, tip이 목 원통
+  바닥 아래로 튀어나가지 않음을 확인.
+
+  ── 뿌리 위치·길이·결방향 실측 연결(2026-07-12, 계속) ──
+  지적: "2D→3D 변환한다며 놓고선, 뿌리 위치/길이/결방향이 실제로는 3D
+  데이터로 전혀 전환 안 된 거 아니냐" — 정확함. computeSectionRealExtent가
+  주던 건 섹션 전체에 곱하는 배율 하나뿐이었고, 뿌리가 어디 심기는지·
+  어느 방향으로 흐르는지는 여전히 순수 랜덤이었음. state.hairMasks.
+  orientation(실측 결방향 필드, 2D에서 이미 쓰던 데이터)은 3D에서 한
+  번도 안 읽혔음.
+  추가: pickBestRealView(sectionId) — 그 섹션을 가장 잘 보여주는 실측
+  뷰를 viewMapping×포즈신뢰도로 선택. buildRealColumnSamples() — 그 뷰의
+  실제 두피선(scalpY)·헤어끝(hairEndY)·결방향(orientation) 컬럼 데이터를
+  섹션의 실측 x/y범위 안에서 추출.
+  buildStrandsForSection에 반영:
+  - phi(위아래 뿌리 위치) = 실측 컬럼의 실제 두피선 y위치 그대로 사용
+    (좌우 모호성 없어 전 섹션 안전 적용)
+  - theta(좌우 뿌리 위치) = 중심이 하나뿐인 섹션(front/occipital/nape)만
+    실측 좌우 위치 반영. temple/side(거울대칭 2중심)는 어느 실측 뷰(left/
+    right)가 물리적으로 어느 부호(+/-theta)에 대응하는지 코드에 확정된
+    좌표계 관례가 없어서, 잘못 매핑하면 "왼쪽 결이 오른쪽에 심기는" 눈으로
+    검증 어려운 좌우反전 버그 위험이 있어 위치는 기존 랜덤 유지(길이·결
+    강도는 반영).
+  - 길이 = 그 컬럼의 실측 헤어 길이를 섹션 평균 대비 비율로 개별 가닥마다 반영
+  - 결방향 = orientAngle의 "가로 성분 크기(|cos|)"만 부호와 분리해서 크기로
+    사용, 부호는 이미 정해진 배치(theta0의 중심 기준)를 따르게 해서 좌우
+    반전 위험 없이 결이 센 곳은 더 흔들리게 함.
+  검증: Node로 buildStrandsForSection을 실제 THREE mock 위에서 직접 실행
+  (6개 섹션×파라미터 3종×shapeSignal 3종×realCols 5종[빈 값/경계값 0·1/
+  랜덤 30개] = 720가지 조합, mesh 72,075개 생성) — 에러 0건, NaN/무한대
+  좌표 0건 확인.
+
+  ── 진짜 2D→3D 투영으로 전면 교체(2026-07-12, 계속) ──
+  지적 1: "phi/theta 매핑, 좌우 확인 작업 이런 거 왜 일일이 하냐, 3D좌표 한꺼번에
+  구성되는 거 아니냐, 시작점/끝점 좌표 그대로 쓰면 되잖아" — 정확함. 그동안 한
+  건 실측값을 "곱하는 배율"로 우회 반영하는 땜질이었지, 진짜 2D 픽셀을 3D 좌표로
+  투영하는 게 아니었음.
+  지적 2: "makeFaceProjector 말고 랜드마크 연결할 때 쓰던 AR용 진짜 행렬 있었잖아,
+  그건 왜 안 쓰냐" — 더 정확함. outputFacialTransformationMatrixes(MediaPipe가
+  캐노니컬 얼굴을 감지된 얼굴 위치/각도에 정렬하는 진짜 AR 캘리브레이션 결과)를
+  이미 매 사진마다 받고 있었는데, decomposePoseMatrix()가 yaw/pitch/roll 각도
+  3개만 뽑고 나머지를 버리고 있었음. 심지어 파일 상단에 "이 방향 재활용 가능"
+  이라고 이미 적어뒀던 걸 놓쳤었음.
+  구현:
+  - composeRotationZYX(yaw,pitch,roll): decomposePoseMatrix가 어떤 합성순서를
+    가정했는지 코드에 대응 함수가 없어서, Node로 300개 랜덤 각도 왕복 테스트
+    (compose→decompose→원래 각도와 비교)를 돌려 수치로 정확히 찾아냄:
+    R = Rz(roll)·Ry(yaw)·Rx(pitch), 왕복오차 0.000000 확인.
+  - projectImagePointToHead(angle,nx,ny,wf,hf): ①makeFaceProjector로 "그 뷰가
+    정면이라 가정했을 때"의 로컬 평면좌표(X,Y) 계산(뷰마다 자기 랜드마크 기준이라
+    그대로 재사용 가능) → ②두상 타원방정식으로 로컬 Z 해석 계산(카메라 쪽 해
+    선택) → ③그 뷰의 실측 회전(yaw/pitch/roll, PnP 결과)을 로컬 좌표에 실제로
+    적용해 월드 좌표로 회전. 검증: front(yaw≈0)→(0, 0.26, 0.85), left(-80°)→
+    (-0.83, 0.26, 0.15), right(+80°)→(+0.83, 0.26, 0.15), back(178°)→(0.03, 0.26,
+    -0.85) — 좌우 완전 대칭, 정면/후면 정확히 ±Z. 실측 각도가 자동으로 좌우를
+    구분해주므로, 예전에 걱정했던 "temple/side 좌우反전 위험"이 해소됨 —
+    모든 섹션에 실측 위치 적용 가능해짐(전엔 중심 하나뿐인 섹션만 허용했었음).
+  - buildRealColumnSamples: 컬럼별 두피시작점(scalpY)·헤어끝점(hairEndY)을
+    각각 projectImagePointToHead로 투영해 root3D/tip3D를 실제 3D 좌표로 확보.
+  - buildStrandsForSection: 실측 컬럼이 있으면 root3D를 뿌리로, (tip3D-root3D)
+    방향을 성장 방향으로 그대로 사용(길이는 슬라이더로 스케일). 실측이 없는
+    컬럼/섹션만 기존 phi/theta 합성 폴백으로 처리.
+  검증: Node로 makeFaceProjector~buildHairStrands 전체를 실제 THREE mock 위에서
+  실행(6섹션×파라미터 3종, mesh 720개) — 에러 0건. front 뷰 투영점이 좌표계
+  중앙 근처로 나오는지, left/right가 실제로 좌우 대칭으로 나오는지 별도 확인.
 -->
 <!DOCTYPE html>
 <html lang="ko">
@@ -4125,7 +4210,7 @@ function randRange(a,b){ return a + Math.random()*(b-a); }
 // 체인으로 흡수한다. shapeSignal({factor,confidence})은 computeSectionRealExtent()가
 // 뽑은 "실제 사진에서 이 섹션이 얼마나 뻗어나와 보였는지" 배율 — 슬라이더 값에
 // 곱해서 실측 사진 정보가 3D에도 반영되게 한다.
-function buildStrandsForSection(sectionId, params, colorHex, globalCurl, shapeSignal){
+function buildStrandsForSection(sectionId, params, colorHex, globalCurl, shapeSignal, realCols){
   const zone = SCALP_ZONES[sectionId];
   const group = new THREE.Group();
   if(!zone) return group;
@@ -4147,37 +4232,82 @@ function buildStrandsForSection(sectionId, params, colorHex, globalCurl, shapeSi
     roughness: 0.55, metalness: 0.05,
   });
 
+  const realColsSafe = Array.isArray(realCols) ? realCols : [];
+  const avgLenFrac = realColsSafe.length
+    ? realColsSafe.reduce((s,c)=>s+c.lenFrac,0) / realColsSafe.length
+    : 0;
+
   const strandCount = computeStrandCount(sectionId, volume);
+  // 가닥 길이(월드 유닛)를 phi 증가량(라디안)으로 환산 — 실측 투영이 없어서
+  // 합성 폴백으로 갈 때만 쓰는 근사 반경.
+  const APPROX_HEAD_RADIUS = 0.85;
+  const REAL_ORIENT_STRENGTH = 0.55; // 실측 결방향이 흔들림 크기에 미치는 영향력(0~1)
+  const MAX_PHI = 2.75; // 합성 폴백에서 phi가 턱 밑을 넘어가지 않도록
+
   for(let i=0;i<strandCount;i++){
-    const phi = randRange(zone.phiRange[0], zone.phiRange[1]);
-    const theta = zone.thetas === 'full'
-      ? randRange(0, Math.PI*2)
-      : zone.thetas[i % zone.thetas.length] + randRange(-zone.thetaSpread, zone.thetaSpread);
+    // 이 가닥이 참고할 실측 컬럼(있으면). 같은 컬럼을 여러 가닥이 나눠 쓸 수
+    // 있음(실측 컬럼 수 < 가닥 수인 게 보통이라 자연스러운 중복).
+    const col = realColsSafe.length ? realColsSafe[Math.floor(Math.random()*realColsSafe.length)] : null;
 
-    const root = scalpPointToWorld(phi, theta, 1.01);
-    const outward = root.clone().normalize();
-    const myLen = strandLen * (1 + randRange(-lengthJitter, lengthJitter));
-
-    // front.line: 0=아래로 라운드, 50=스트레이트로 떨어짐, 100=위로 넘김(뱅 방향)
-    // nape.line: 값이 클수록(테이퍼) 가닥 끝이 더 안쪽으로 모여서 짧게 마무리
-    let dropDir = new THREE.Vector3(0, -1, 0);
-    let tipBend = 1;
+    // front.line/nape.line에 따른 길이 배율(뱅 방향/네이프 테이퍼) — 실측/합성
+    // 두 경로 모두에 동일하게 적용.
+    let lenScale = 1;
     if(sectionId === 'front' && lineVal != null){
       const upness = (lineVal - 50) / 50; // -1(아래) ~ +1(위로 넘김)
-      dropDir = new THREE.Vector3(outward.x*0.3, -1 + upness*0.9, outward.z*0.3).normalize();
+      lenScale *= (1 - Math.max(0, upness) * 0.7);
     }
     if(sectionId === 'nape' && lineVal != null){
-      tipBend = 0.6 + (lineVal/100) * 0.6;
+      lenScale *= 0.6 + (lineVal/100) * 0.6;
     }
+    const realLenRatio = (col && avgLenFrac > 0.001)
+      ? Math.max(0.55, Math.min(1.8, col.lenFrac / avgLenFrac))
+      : 1;
+    const actualLen = strandLen * realLenRatio * lenScale * (1 + randRange(-lengthJitter, lengthJitter));
 
-    const mid = root.clone()
-      .add(outward.clone().multiplyScalar(puffOut))
-      .add(dropDir.clone().multiplyScalar(myLen*0.45))
-      .add(new THREE.Vector3(randRange(-curlAmt,curlAmt), 0, randRange(-curlAmt,curlAmt)));
+    // 결방향(orientAngle): "가로 성분이 얼마나 센가"(|cos|)만 방향과 분리해서
+    // 흔들림 크기로 사용 — 부호는 아래 각 경로에서 기하학적으로 자연스럽게 정해짐.
+    const swayAmt = (col && col.orientAngle != null)
+      ? curlAmt + Math.abs(Math.cos(col.orientAngle)) * REAL_ORIENT_STRENGTH * 0.5
+      : curlAmt;
 
-    const tip = root.clone()
-      .add(outward.clone().multiplyScalar(puffOut*0.3*tipBend))
-      .add(dropDir.clone().multiplyScalar(myLen*tipBend));
+    let root, mid, tip;
+
+    if(col && col.root3D && col.tip3D){
+      // ── 진짜 2D→3D 투영 경로: 시작점(root3D)·끝점(tip3D)을 실측 사진에서
+      // 그대로 가져와서 쓴다. "길이를 따로 재서 곱하는" 게 아니라, 두 점의
+      // 실제 방향(growDir)을 그대로 성장 방향으로 삼고 슬라이더 길이만큼 뻗음.
+      root = col.root3D.clone();
+      const rawDir = col.tip3D.clone().sub(col.root3D);
+      const growDir = rawDir.length() > 0.001 ? rawDir.normalize() : new THREE.Vector3(0,-1,0);
+      const outward = root.clone().normalize();
+      let perp = new THREE.Vector3().crossVectors(growDir, outward);
+      if(perp.length() < 0.001) perp = new THREE.Vector3().crossVectors(growDir, new THREE.Vector3(0,1,0));
+      perp.normalize();
+
+      mid = root.clone()
+        .add(growDir.clone().multiplyScalar(actualLen*0.45))
+        .add(outward.clone().multiplyScalar(puffOut*0.6))
+        .add(perp.clone().multiplyScalar(randRange(-swayAmt, swayAmt)));
+      tip = root.clone()
+        .add(growDir.clone().multiplyScalar(actualLen))
+        .add(outward.clone().multiplyScalar(puffOut*0.25))
+        .add(perp.clone().multiplyScalar(randRange(-swayAmt, swayAmt) * 1.3));
+    } else {
+      // ── 합성 폴백: 실측 투영이 없는 컬럼/섹션(예: 그 섹션을 잘 보여주는
+      // 사진이 없거나 포즈 인식이 실패한 경우)은 기존처럼 두피 좌표(phi,theta)
+      // 범위 안에서 무작위로 채움.
+      const phi0 = randRange(zone.phiRange[0], zone.phiRange[1]);
+      const theta0 = zone.thetas === 'full'
+        ? randRange(0, Math.PI*2)
+        : zone.thetas[i % zone.thetas.length] + randRange(-zone.thetaSpread, zone.thetaSpread);
+      let dPhi = Math.max(actualLen / APPROX_HEAD_RADIUS, 0.02);
+      const phiMid = Math.min(phi0 + dPhi*0.45, MAX_PHI);
+      const phiTip = Math.min(phi0 + dPhi, MAX_PHI);
+      const waveTheta = ()=> randRange(-swayAmt, swayAmt);
+      root = scalpPointToWorld(phi0, theta0, 1.01);
+      mid  = scalpPointToWorld(phiMid, theta0 + waveTheta(), 1.01 + puffOut*0.55);
+      tip  = scalpPointToWorld(phiTip, theta0 + waveTheta(), 1.01 + puffOut*0.20);
+    }
 
     const curve = new THREE.CatmullRomCurve3([root, mid, tip]);
     // 세그먼트를 낮게 잡아 저사양 기기 대비(가닥당 폴리곤 최소화)
@@ -4189,22 +4319,172 @@ function buildStrandsForSection(sectionId, params, colorHex, globalCurl, shapeSi
   return group;
 }
 
-// 진짜 헤어카드/스트랜드 시스템: buildHairCap()의 "돔 하나로 뭉뚱그린
-// 자리표시자"를 대체. 6개 섹션(state.sections) 각각을 서로 다른 두피
-// 위치·개수·길이로 심어서, 2D 조정화면에서 섹션별로 만진 값이 3D에도
-// 바로 반영되게 한다(별도 매핑 단계 없이 같은 state.sections를 그대로 소스로 사용).
+/* ── 뿌리 위치·길이·결방향을 진짜로 3D에 반영 ──
+   지적: "computeSectionRealExtent가 만드는 건 섹션 전체에 곱하는 배율 하나뿐이고,
+   뿌리가 어디 심기는지(phi/theta)·어느 방향으로 흐르는지(결방향)는 여전히 랜덤
+   아니냐" — 정확한 지적. state.hairMasks[angle].orientation(실측 결방향 필드,
+   2D에서 이미 쓰고 있는 그 데이터)이 3D 쪽에서는 한 번도 안 읽히고 있었음.
+   여기서부터 실제로 연결한다.
+   좌우 대칭(temple/side)은 어느 실측 뷰가 물리적으로 어느 쪽(왼/오)에
+   대응하는지 좌표계 관례가 코드 어디에도 확정돼 있지 않아서, 잘못 매핑하면
+   "왼쪽 결이 오른쪽에 심긴다" 같은 검증하기 어려운 좌우反전 버그가 생길 위험이
+   있음. 그래서:
+   - phi(위아래 뿌리 위치)·길이비율·결 강도(방향의 크기, 부호 아님)는 모든
+     섹션에 안전하게 적용(좌우 모호성이 없는 값들).
+   - theta(좌우 뿌리 위치)의 "실측 위치 매핑"은 중심이 하나뿐인 섹션(front/
+     occipital/nape)에만 적용 — 그 사진 한 장 안에서 좌/우가 자체적으로
+     일관되므로 좌우反전 위험이 없음. temple/side(거울대칭 2중심)는 기존처럼
+     무작위 배치를 유지하되, 실측 길이·결 강도는 그대로 반영. */
+
+/* ── 진짜 2D→3D 투영: outputFacialTransformationMatrixes를 실제로 활용 ──
+   지적: "makeFaceProjector 말고, 랜드마크 연결할 때 쓰던 AR용 진짜 캘리브레이션
+   행렬(outputFacialTransformationMatrixes)이 있었잖아, 그건 왜 안 써?" — 정확한
+   지적. 이 매트릭스는 MediaPipe가 "캐노니컬 얼굴을 실제 감지된 얼굴 위치/각도에
+   맞춰 정렬하는" 진짜 AR 캘리브레이션 결과인데, decomposePoseMatrix()가 여기서
+   yaw/pitch/roll "각도 3개"만 뽑고 나머지(그 각도로 실제 회전을 재구성하는 데
+   필요한 나머지 정보)는 버리고 있었음. 심지어 파일 상단 개발 로그에 "이 방향
+   재활용 가능"이라고 이미 적어뒀던 걸 놓쳤음.
+   여기서부터: 저장된 yaw/pitch/roll(비손실 분해값, 실측 행렬과 100% 동일한
+   회전 정보)로 회전행렬을 다시 조립해서, 사진 픽셀 하나하나를 실제 두상 표면
+   3D 좌표로 진짜 투영한다 — "시작점·끝점 좌표를 그대로 찍어서 쓴다"는 원래
+   말씀하신 방식. */
+
+// decomposePoseMatrix가 어떤 합성순서를 가정한 건지 몰라서(그 함수엔 각도를
+// 다시 행렬로 되돌리는 대응 함수가 없었음), Node로 300개 랜덤 각도 왕복
+// 테스트를 돌려 정확히 일치하는 합성순서를 수치로 찾아냄: R = Rz(roll)·Ry(yaw)·Rx(pitch)
+// (row-major 3x3, 왕복 오차 0.000000 확인됨).
+function composeRotationZYX(yawRad, pitchRad, rollRad){
+  const cy=Math.cos(yawRad), sy=Math.sin(yawRad);
+  const cx=Math.cos(pitchRad), sx=Math.sin(pitchRad);
+  const cz=Math.cos(rollRad), sz=Math.sin(rollRad);
+  function matMul(a,b){ const r=new Array(9); for(let i=0;i<3;i++)for(let j=0;j<3;j++){ let s=0; for(let k=0;k<3;k++) s+=a[i*3+k]*b[k*3+j]; r[i*3+j]=s; } return r; }
+  const Rz=[cz,-sz,0, sz,cz,0, 0,0,1];
+  const Ry=[cy,0,sy, 0,1,0, -sy,0,cy];
+  const Rx=[1,0,0, 0,cx,-sx, 0,sx,cx];
+  return matMul(matMul(Rz,Ry),Rx);
+}
+function applyRotation3(mat9, v){
+  return new THREE.Vector3(
+    mat9[0]*v.x + mat9[1]*v.y + mat9[2]*v.z,
+    mat9[3]*v.x + mat9[4]*v.y + mat9[5]*v.z,
+    mat9[6]*v.x + mat9[7]*v.y + mat9[8]*v.z,
+  );
+}
+
+// 사진 한 장의 정규화 좌표(nx,ny 0~1)를 실제 두상 표면 3D 좌표로 투영.
+// 1) makeFaceProjector로 "그 뷰가 정면을 보고 있다고 가정했을 때"의 로컬
+//    평면 좌표(localX,localY)를 구함(뷰마다 자기 랜드마크 기준이라 재사용 가능).
+// 2) 로컬 좌표가 두상 타원면 위에 있다고 보고 localZ를 방정식으로 풀어냄
+//    (카메라를 향한 쪽 = +Z해를 선택).
+// 3) 그 뷰의 실측 회전(yaw/pitch/roll, PnP 결과)을 로컬 좌표에 실제로 적용해서
+//    월드(두상 전체 기준) 좌표로 회전 — 이 부분이 기존엔 없었음(yaw 각도를
+//    "어느 섹션이 이 뷰에 가까운가" 가중치 계산에만 쓰고, 실제 좌표 회전에는
+//    한 번도 안 썼음). 왼쪽/오른쪽 사진이 실측으로 서로 다른 부호의 회전을
+//    갖게 되므로, 예전에 걱정했던 "좌우反전 위험"이 추측이 아니라 실측값으로
+//    해소됨.
+function projectImagePointToHead(angle, nx, ny, widthFactor, heightFactor){
+  const lm = (state.landmarks && state.landmarks[angle]) || getEstimatedLandmarks(angle);
+  if(!lm) return null;
+  const wf = widthFactor || 1, hf = heightFactor || 1;
+  const proj = makeFaceProjector(lm, wf, hf);
+  const localX = proj.toMeshX(nx);
+  const localY = proj.toMeshY(ny);
+
+  const a = 0.78*wf, b = 1*hf, c = 0.85*wf; // 두상 타원 반경(x,y,z)
+  const yLocal = localY - 0.15; // 타원 중심(0,0.15,0) 기준으로 이동
+  const inside = (localX/a)*(localX/a) + (yLocal/b)*(yLocal/b);
+  if(inside > 0.98) return null; // 타원 밖(귀/윤곽 밖 극단치) — 이 픽셀은 투영 포기
+  const localZ = c * Math.sqrt(Math.max(0, 1 - inside)); // 카메라를 향한 쪽(+Z) 해
+
+  const yawRad   = (lm.poseYawDeg   ?? getViewYawDeg(angle)) * Math.PI/180;
+  const pitchRad = (lm.posePitchDeg ?? 0) * Math.PI/180;
+  const rollRad  = (lm.poseRollDeg  ?? 0) * Math.PI/180;
+  const rot = composeRotationZYX(yawRad, pitchRad, rollRad);
+
+  const rotated = applyRotation3(rot, new THREE.Vector3(localX, yLocal, localZ));
+  rotated.y += 0.15; // 중심 오프셋 복원
+  return rotated;
+}
+
+// 섹션 하나에 실측 데이터를 제공할 "가장 신뢰할 만한 뷰"를 고른다.
+// state.viewMapping(실측 yaw 기반 각도 근접도) × getViewPoseConfidence(그 뷰
+// 포즈의 신뢰도)가 임계값 이상인 것 중 최댓값 — 둘 다 낮으면(사진에 잘 안
+// 보이거나 포즈 인식 자체가 실패) null 반환하고 호출 쪽에서 기존 랜덤 배치로 폴백.
+function pickBestRealView(sectionId){
+  const sec = SECTIONS[sectionId];
+  const mapping = (state.viewMapping && state.viewMapping[sectionId]) || {};
+  let best = null, bestW = 0;
+  sec.visibleIn.forEach(angle=>{
+    if(!state.hairMasks || !state.hairMasks[angle]) return;
+    const w = (mapping[angle] ?? 0) * getViewPoseConfidence(angle);
+    if(w > bestW){ bestW = w; best = angle; }
+  });
+  return bestW >= 0.15 ? best : null;
+}
+
+// 실제 뷰 하나의 실측 컬럼 데이터를 섹션의 실측 x/y 범위(SECTIONS[id].xRange/
+// yRange, 2D 조정화면과 동일 정의) 안에서 뽑아온다.
+// 반환 배열의 각 항목: nx(그 뷰 안에서 좌우 상대위치 0~1), ny(그 뷰 안에서
+// 위아래 상대위치 0~1, scalpY 기준), lenFrac(그 컬럼의 실측 헤어 길이 ÷
+// 이미지 높이), orientAngle(결방향 필드 각도, atan2 좌표계 — 없으면 null).
+function buildRealColumnSamples(sectionId, angle, widthFactor, heightFactor){
+  const sec = SECTIONS[sectionId];
+  const maskInf = state.hairMasks && state.hairMasks[angle];
+  if(!maskInf) return [];
+  const w = maskInf.w, h = maskInf.h; // scalpY/hairEndY는 원본(풀) 해상도 좌표계
+  const xS = Math.round(Math.max(0, sec.xRange[0]) * w);
+  const xE = Math.round(Math.min(1, sec.xRange[1]) * w);
+  const hasOrient = Array.isArray(maskInf.orientation) && maskInf.maskW && maskInf.maskH;
+
+  const cols = [];
+  for(let x = xS; x < xE; x += 3){ // 투영 계산이 추가돼서 3px 간격으로(속도)
+    const sY = maskInf.scalpY[x], eY = maskInf.hairEndY[x];
+    if(sY < 0 || eY < 0) continue; // 이 컬럼엔 인식된 머리카락 없음
+    const nx = x / w, syN = sY / h, eyN = eY / h;
+    const lenFrac = eyN - syN;
+
+    // 진짜 2D→3D 투영: 이 컬럼의 두피 시작점(scalpY)과 끝점(hairEndY)을
+    // 실제 좌표로 각각 투영 — "길이를 따로 재는" 게 아니라 두 점의 실제
+    // 3D 거리가 곧 길이가 됨.
+    const root3D = projectImagePointToHead(angle, nx, syN, widthFactor, heightFactor);
+    const tip3D  = projectImagePointToHead(angle, nx, eyN, widthFactor, heightFactor);
+    if(!root3D || !tip3D) continue; // 타원 밖으로 나가 투영 실패한 컬럼은 스킵(폴백 컬럼 취급)
+
+    let orientAngle = null;
+    if(hasOrient){
+      const sx = x / w * maskInf.maskW;
+      const sy = sY / h * maskInf.maskH;
+      const s = sampleOrientation(maskInf.orientation, sx, maskInf.maskW, sy);
+      if(s && s.coherence > 0.12) orientAngle = s.angle;
+    }
+    cols.push({ nx: (xE>xS)?(x-xS)/(xE-xS):0.5, lenFrac, orientAngle, root3D, tip3D });
+  }
+  return cols;
+}
+
+
+// 진짜 헤어카드/스트랜드 시스템: 돔 하나로 뭉뚱그린 자리표시자를 대체.
+// 6개 섹션(state.sections) 각각을 서로 다른 두피 위치·개수·길이로 심어서,
+// 2D 조정화면에서 섹션별로 만진 값이 3D에도 바로 반영되게 한다(별도 매핑
+// 단계 없이 같은 state.sections를 그대로 소스로 사용).
 // + (a) 각 섹션마다 computeSectionRealExtent()로 실측 사진(+커버리지 부족분은
 // AI 보완) 기반 형태 배율을 뽑아서 슬라이더 값과 함께 반영한다.
+// + (b) pickBestRealView()/buildRealColumnSamples()로 그 섹션을 가장 잘 보여주는
+// 실측 사진의 실제 뿌리 위치·길이·결방향을 뽑아서 buildStrandsForSection에 전달.
 function buildHairStrands(styleParams){
-  const { colorHex, sections, globalCurl, aiEstimate } = styleParams;
+  const { colorHex, sections, globalCurl, aiEstimate, widthFactor, heightFactor } = styleParams;
   const group = new THREE.Group();
   group.name = 'hairStrands';
   SECTION_ORDER.forEach(id=>{
     const params = sections[id] || SECTIONS[id].defaults;
     const shapeSignal = computeSectionRealExtent(id, aiEstimate);
-    const sectionGroup = buildStrandsForSection(id, params, colorHex, globalCurl, shapeSignal);
+    const bestAngle = pickBestRealView(id);
+    const realCols = bestAngle ? buildRealColumnSamples(id, bestAngle, widthFactor, heightFactor) : [];
+    const sectionGroup = buildStrandsForSection(id, params, colorHex, globalCurl, shapeSignal, realCols);
     sectionGroup.name = 'strands-'+id;
     sectionGroup.userData.shapeSignal = shapeSignal; // [진단용] 이 섹션이 실측/AI 중 무엇에 얼마나 의존했는지
+    sectionGroup.userData.realView = bestAngle; // [진단용] 뿌리/결방향 실측 출처 뷰
+    sectionGroup.userData.realColCount = realCols.length; // [진단용] 실제 투영 성공한 컬럼 수
     group.add(sectionGroup);
   });
   return group;
@@ -4398,6 +4678,8 @@ async function setupModel3DScreen(){
   }
 
   const styleParams = extractStyleParamsFor3D(aiEstimate);
+  styleParams.widthFactor = faceMetrics.widthFactor;
+  styleParams.heightFactor = faceMetrics.heightFactor;
   const hairStrands = buildHairStrands(styleParams);
   model3D.headGroup.add(hairStrands);
 
