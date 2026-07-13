@@ -887,6 +887,36 @@
   buildFacePhotoDecal에 이미 있던 의도된 안전장치(이마~헤어라인은 앞머리가
   걸칠 확률이 높아 일부러 눈썹선까지만 자름)가 그대로 재사용된 것 — 정상
   동작.
+
+  ── ★★ 치명적 성능 버그 발견/수정: 색상 샘플링이 원본 전체 해상도를 훑고
+  있었음(2026-07-13, 계속) ──
+  실기기 피드백: "원본 사진만 뜨고 가닥보기/원본결보기 다 안 먹힘". renderFrame
+  에는 원래부터 `if(hairC&&baseC&&maskInf&&maskInf.scalpY){...} else if(img){
+  드로임IgOnCanvas(원본만 표시)}` 라는 의도된 폴백이 있음 — 즉 이건 렌더링
+  크래시가 아니라 "이 각도의 세그멘테이션(extractHairMask) 자체가 실패/
+  미완료"라는 뜻. 사용자가 "폴백이 왜 원본만 보여주냐"고 재차 확인 요청 →
+  "예전엔 잘 됐던 거니 최근 내가 추가한 코드가 원인 아니냐"는 지적으로 이어져
+  실제 코드 추적.
+  원인 발견: 저번(섹션별 헤어 색상) 세션에서 추가한 색상 샘플링 코드가
+  img.width×img.height(원본 사진 전체 해상도 — 요즘 폰 사진은 1200만 픽셀
+  이상)로 새 캔버스(erodedMC 확대본, colorSampleC)를 만들고, 그 전체를
+  resolveSectionId 호출까지 포함해서 픽셀 단위로 훑고 있었음. 저사양 기기
+  에서 이게 너무 오래 걸리거나 멈춰서 extractHairMask 전체가 완료를 못
+  하고, 그 결과 이 각도의 세그멘테이션 자체가 실패한 것처럼 보였을
+  가능성이 높음(그 각도 사진을 못 알아본 게 아니라, 계산이 안 끝난 것).
+  수정: 파이프라인 앞쪽에서 이미 계산해둔 축소 해상도(w,h) 픽셀 버퍼
+  srcPixels를 재사용하도록 교체 — 새 전체해상도 캔버스 생성·getImageData·
+  픽셀루프를 전부 제거하고, erodedMaskBuf(이미 w,h 해상도)와 srcPixels만
+  으로 직접 샘플링. 정확도 손실 없음(세그멘테이션 자체가 이미 이 해상도
+  에서 이뤄짐).
+  검증: Node로 실제 로직 실행 — 합성 이미지(위/아래 다른 색)에서 크라운/
+  네이프 색이 여전히 정확히 분리되는지(정확도 유지) 확인, 테스트 해상도
+  (192×256=49152픽셀) 기준 실제 폰 사진(1200만 픽셀 가정) 대비 약 248배
+  적은 픽셀 수로 처리됨을 수치로 확인.
+  ⚠ 미해결로 남긴 것: 3D 얼굴 메쉬(buildRealFaceMesh)가 실기기에서 두상
+  (달걀형)으로부터 한참 동떨어져 붕 뜬 채로 나오는 문제 — 사용자가 "평면
+  데칼로 롤백하지 말고 이 입체 메쉬의 위치를 조정하는 방식으로 가자"고
+  명확히 지시해서 롤백 안 하고 다음 턴에 위치 보정 작업 예정.
 -->
 <!DOCTYPE html>
 <html lang="ko">
@@ -2646,59 +2676,39 @@ async function extractHairMask(angle){
 
           // ── 색상 샘플링 전용 침식 마스크 ──
           // 사용자 지적: "렌더링된 헤어가 원본보다 하얗다" — 원인은 마스크
-          // 경계(피부/배경과 애매하게 겹치는 픽셀, 특히 작은 해상도(w,h)
-          // 마스크를 img.width×img.height로 확대할 때 생기는 안티에일리어싱
-          // 경계 픽셀)가 avgHairColor 평균에 섞여 들어가서 밝은 쪽으로
-          // 끌어올리는 것. 색상 샘플링에만 쓸 별도의 침식된(안쪽으로 몇
-          // 픽셀 줄인) 마스크를 만들어서, 경계 오염 없이 확실히 "머리카락
-          // 안쪽"인 픽셀만 평균 낸다. hairC(실제 렌더링/isRealHairAt 판정에
-          // 쓰이는 원본 실루엣)는 그대로 두고 안 건드림 — 색상 계산에만 영향.
+          // 경계(피부/배경과 애매하게 겹치는 픽셀)가 avgHairColor 평균에
+          // 섞여 들어가서 밝은 쪽으로 끌어올리는 것. 색상 샘플링에만 쓸
+          // 별도의 침식된(안쪽으로 몇 픽셀 줄인) 마스크로, 경계 오염 없이
+          // 확실히 "머리카락 안쪽"인 픽셀만 평균 낸다.
+          // ── 성능 버그 수정(2026-07-13) ──
+          // 처음 만들 때 img.width×img.height(원본 사진 전체 해상도 — 요즘
+          // 폰 사진은 1200만 픽셀 이상)로 새 캔버스를 만들고 그 전체를
+          // 픽셀 단위로(resolveSectionId 호출까지 포함해서) 훑고 있었음.
+          // 저사양 기기에서 이게 너무 오래 걸리거나 멈춰서 extractHairMask
+          // 전체가 완료를 못 하고, 그 결과 이 각도의 세그멘테이션 자체가
+          // 실패한 것처럼 보이는(renderFrame이 "세그멘테이션 없음: 원본만
+          // 표시" 폴백으로 빠지는) 문제로 이어졌을 가능성이 높음(실기기
+          // 피드백: "원본 사진만 뜨고 가닥보기/원본결보기 다 안 먹힘").
+          // → 이미 파이프라인 앞쪽에서 계산해둔 축소 해상도(w,h) 픽셀 버퍼
+          // srcPixels를 그대로 재사용 — 원본 해상도 대비 보통 수십 배 더
+          // 작아서 새 캔버스 생성도, getImageData도, 픽셀 루프도 전부 그만큼
+          // 가벼워짐. 정확도는 이미 이 해상도에서 세그멘테이션 자체가
+          // 이뤄지고 있어서 손실 없음.
           const erodedMaskBuf = erode(hairMaskBuf, w, h, 2);
-          const erodedMC = document.createElement('canvas');
-          erodedMC.width=w; erodedMC.height=h;
-          const erodedMCtx = erodedMC.getContext('2d');
-          const erodedMImg = erodedMCtx.createImageData(w,h);
-          for(let i=0;i<w*h;i++){
-            erodedMImg.data[i*4]=erodedMImg.data[i*4+1]=erodedMImg.data[i*4+2]=255;
-            erodedMImg.data[i*4+3]=erodedMaskBuf[i];
-          }
-          erodedMCtx.putImageData(erodedMImg,0,0);
-          const fullErodedMaskC = document.createElement('canvas');
-          fullErodedMaskC.width=img.width; fullErodedMaskC.height=img.height;
-          fullErodedMaskC.getContext('2d').drawImage(erodedMC,0,0,img.width,img.height);
 
-          const colorSampleC = document.createElement('canvas');
-          colorSampleC.width=img.width; colorSampleC.height=img.height;
-          const csCtx = colorSampleC.getContext('2d');
-          csCtx.drawImage(img,0,0);
-          csCtx.save();
-          csCtx.globalCompositeOperation='destination-in';
-          csCtx.drawImage(fullErodedMaskC,0,0);
-          csCtx.restore();
-
-          // ── 헤어 색상 샘플링(침식된 마스크 기준) — 전역 평균 + 섹션별 평균 동시 계산 ──
-          // 사용자 질문: "꼭 평균값 하나만 써야 되냐, 부위별로 인식되는 컬러
-          // 쓰는 건 힘드냐" — 기존엔 사진 전체를 하나의 색(avgHairColor)으로
-          // 뭉뚱그려서 크라운이든 네이프든 똑같은 색을 썼는데, 부위마다 실제로
-          // 다르게 보일 수 있어서(흰머리 분포 차이, 조명/뿌리-끝 색 차이 등)
-          // resolveSectionId(이미 두정선 기준 경계를 갖고 있음)로 픽셀마다
-          // 섹션을 매겨 섹션별로 따로 평균 낸다. refineSectionBoundaries가 이
-          // angle에 대해 파이프라인에서 아직 안 돌았을 수 있어(호출 순서
-          // 의존 방지) 여기서 한 번 더 안전하게 호출.
-          if(typeof faceLandmarkerReady !== 'undefined' && faceLandmarkerReady && state.landmarks && state.landmarks[angle]){
-            refineSectionBoundaries(angle);
-          }
           const sectionSums = {};
           SECTION_ORDER.forEach(id=>{ sectionSums[id] = {r:0,g:0,b:0,cnt:0}; });
           let rSum=0,gSum=0,bSum=0,cnt=0;
-          const iw = img.width, ih = img.height;
-          for(let y=0; y<ih; y++){
-            for(let x=0; x<iw; x++){
-              const i = y*iw+x;
-              if(colorPixelData[i*4+3] <= 128) continue;
-              const r=colorPixelData[i*4], g=colorPixelData[i*4+1], b=colorPixelData[i*4+2];
+          if(typeof faceLandmarkerReady !== 'undefined' && faceLandmarkerReady && state.landmarks && state.landmarks[angle]){
+            refineSectionBoundaries(angle);
+          }
+          for(let y=0; y<h; y++){
+            for(let x=0; x<w; x++){
+              const i = y*w+x;
+              if(erodedMaskBuf[i] <= 128) continue;
+              const r=srcPixels[i*4], g=srcPixels[i*4+1], b=srcPixels[i*4+2];
               rSum+=r; gSum+=g; bSum+=b; cnt++;
-              const secId = resolveSectionId(angle, x/iw, y/ih);
+              const secId = resolveSectionId(angle, x/w, y/h);
               const s = sectionSums[secId];
               if(s){ s.r+=r; s.g+=g; s.b+=b; s.cnt++; }
             }
@@ -2707,16 +2717,15 @@ async function extractHairMask(angle){
           // 안전하게 원본(비침식) 마스크로 폴백 — "색이 아예 안 뽑힘"보다는
           // 예전 방식(약간 밝게 나올 수 있음)이 낫다.
           if(cnt < 50){
-            const hairPixelDataFallback = hCtx.getImageData(0,0,iw,ih).data;
             rSum=0; gSum=0; bSum=0; cnt=0;
             SECTION_ORDER.forEach(id=>{ sectionSums[id] = {r:0,g:0,b:0,cnt:0}; });
-            for(let y=0; y<ih; y++){
-              for(let x=0; x<iw; x++){
-                const i = y*iw+x;
-                if(hairPixelDataFallback[i*4+3] <= 128) continue;
-                const r=hairPixelDataFallback[i*4], g=hairPixelDataFallback[i*4+1], b=hairPixelDataFallback[i*4+2];
+            for(let y=0; y<h; y++){
+              for(let x=0; x<w; x++){
+                const i = y*w+x;
+                if(hairMaskBuf[i] <= 128) continue;
+                const r=srcPixels[i*4], g=srcPixels[i*4+1], b=srcPixels[i*4+2];
                 rSum+=r; gSum+=g; bSum+=b; cnt++;
-                const secId = resolveSectionId(angle, x/iw, y/ih);
+                const secId = resolveSectionId(angle, x/w, y/h);
                 const s = sectionSums[secId];
                 if(s){ s.r+=r; s.g+=g; s.b+=b; s.cnt++; }
               }
