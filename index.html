@@ -670,6 +670,61 @@
   올라갈수록 자연스럽게 정상길이(1.0)로 복귀 확인. 가드0(스킨)→0.000,
   가드8(정상길이 근접)→1.000 극단값도 정확히 일치. 가드(0~8)×높이(0~100%)×
   ny(0~1) 전 조합 스캔에서 음수/NaN 0건 확인.
+
+  ── ②텍스처링 ③웨이브폭+섹션별 컬 신설(2026-07-13, 계속) ──
+  "한꺼번에 하자"는 요청으로 나머지 2개 이어서 구현.
+  ② 텍스처링(포인트컷/슬라이드컷/레이저컷/틴닝 통합, 전역 슬라이더):
+  drawStrand에서 scaledLen을 texturing 강도에 비례해 무작위로 최대 35%까지
+  줄임(끝단이 들쭉날쭉해지는 텍스처 효과). texturing=0이면 Math.random()
+  호출 자체를 안 해서 기존 동작과 완전히 동일(회귀 없음 보장).
+  ③ 웨이브 폭(로드 사이즈, 전역) + 섹션별 컬 배율(crown/side/occipital,
+  curl 파라미터 신설, 기본 100%=전역과 동일):
+  - CURL_WAVELENGTH_STEPS(예전엔 6으로 고정)를 state.waveWidth(0~100)에서
+    3~18로 매핑 — 로드 사이즈가 진폭이 아니라 파장(몇 스텝마다 반복되는지)을
+    결정한다는 실제 기법 그대로 반영.
+  - crown/side/occipital SECTIONS에 curl 파라미터 추가(paramMeta 0~200%,
+    기본 100%) — 부분펌(스택펌, 크라운만 다른 로드) 표현용. curlMultFor(ix)
+    캐시 함수로 뿌리 컬럼의 섹션을 조회해서 배율 적용, front/temple/nape는
+    curl 파라미터가 없어 항상 100%(전역 그대로).
+  - selectStyle() 프리셋 적용 시 crown/side/occipital.curl을 100%로 명시
+    초기화(안 하면 이전 커스텀 조정값이 새 프리셋에 남아있는 오염 문제 발생).
+  검증: 순수 수치로 3가지 다 확인 — waveWidth 0/50/100 → 3/10.5/18 스텝
+  정확히 선형 매핑, curlMult 0~200% → curlComponent가 정확히 비례해서
+  0~2배로 스케일, texturing 0/50/100 → effectiveLen이 100(무변화)에서
+  점점 더 큰 폭으로 무작위 축소되는 것 확인.
+
+  ── ★★★ 치명적 버그 발견/수정: 정면 뷰에서 존재하지도 않는 'side' 섹션으로
+  폴백(2026-07-13, 계속) ──
+  "1번 수정한 index로 해봤는데 길이 변화가 아까랑 똑같고, 3D도 안 보인다"는
+  실기기 재현 안 되는 보고 — Node로 setupModel3DScreen()을 광범위하게
+  모킹해서 실제로 호출해보니 크래시 없이 성공(headGroup children:3). 즉
+  "에러 없음 = 제대로 작동함"이 아니었음 — 사용자가 정확히 지적("에러가 안
+  나서 수정한 게 없다는 뜻이냐")한 대로, 조용히 틀린 값을 계산하고 있었음.
+  대응: PC 콘솔 접근이 번거로운 모바일 사용자를 위해 조정화면에 "진단정보"
+  토글 버튼 신설(toggleDiagInfo) — 폰 스크린샷 하나로 현재 뷰/랜드마크
+  존재여부/SECTIONS 실시간 경계/resolveSectionId 테스트 4곳 결과를 텍스트로
+  바로 보여줌. 이 진단 로직을 Node로 먼저 실행해보다가 실제 버그 발견:
+  정면 뷰에서 이마 중앙(0.5, 0.30)을 테스트했더니 'side'가 나옴 — 근데
+  SECTIONS.side.visibleIn=['left','right']뿐이라 'side'는 애초에 정면
+  뷰에서는 존재할 수조차 없는 값. 원인: resolveSectionId의 front 브랜치
+  마지막 폴백이 `return 'side'`였음(지난 턴에 두정선 로직 넣으면서 즉흥적으로
+  붙인 값, 검증 없이 넘어감) — front/temple/nape 어디에도 안 걸리는 지점
+  (프론트 밴드는 지났지만 템플의 "중심축 바깥쪽" x조건도 안 맞는, 이마 중앙
+  바로 아래~두정선 사이 영역)이 전부 실제로 존재하지도 않는 'side'로
+  잘못 분류되고 있었음 — 정면 뷰 볼 때 크라운/템플 슬라이더가 안 먹히고
+  이상한 데가 바뀌는 것처럼 느껴진 진짜 원인.
+  수정: 그 폴백을 'crown'으로 교체(어차피 crown.visibleIn엔 'front' 포함,
+  의미상으로도 "두정선 위 Interior와 이어지는 나머지 두상 영역"이라 크라운이
+  맞음).
+  검증: 4개 뷰 × 50×50 격자(총 1만 개 좌표)를 전수 스캔해서, 각 뷰에서
+  resolveSectionId가 반환하는 섹션이 실제로 그 뷰의 SECTIONS[id].visibleIn에
+  포함되는지 전부 대조 — 수정 전엔 위반 발견(정면에서 side 나옴), 수정 후
+  10000개 전부 위반 0건 확인. 같은 종류의 버그가 다른 뷰(left/right/back)에도
+  없는지까지 이 전수검사로 같이 확인됨.
+  교훈: "실행 중 에러가 안 남"과 "로직이 맞음"은 다른 것 — 이번처럼 조용히
+  틀린 값을 반환하는 버그는 실제 입력값으로 결과를 하나하나 대조해야만
+  잡힘. 이후로는 새 분기/폴백을 추가할 때마다 이런 전수 일관성 검사를
+  루틴으로 돌리는 게 안전할 것 같음.
 -->
 <!DOCTYPE html>
 <html lang="ko">
@@ -1025,6 +1080,8 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:22px;heigh
         <button class="debug-btn mask-debug-btn" id="maskDebugToggle" onclick="toggleMaskDebug()">가닥 보기</button>
         <button class="debug-btn raw-debug-btn" id="rawDebugToggle" onclick="toggleRawDebug()">원본 결 보기</button>
         <button class="debug-btn field-debug-btn" id="fieldDebugToggle" onclick="toggleFieldDebug()">결필드 원본</button>
+        <button class="debug-btn" id="diagToggle" onclick="toggleDiagInfo()" style="right:auto;left:8px;bottom:8px;">진단정보</button>
+        <div id="diagInfoBox" style="display:none;position:absolute;left:8px;bottom:44px;right:8px;background:rgba(0,0,0,0.85);color:#0f0;font-family:monospace;font-size:10px;padding:8px;border-radius:6px;white-space:pre-wrap;z-index:50;max-height:200px;overflow:auto;"></div>
         <div class="seg-status" id="segStatus"></div>
       </div>
       <div class="adjust-scroll">
@@ -1088,6 +1145,28 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:22px;heigh
             </div>
             <input type="range" id="slider-globalCurl" min="0" max="100" value="30"
               oninput="onGlobalCurl(this.value)">
+          </div>
+
+          <!-- 웨이브 폭(펌 로드 사이즈) — 컬의 세기(진폭)와는 별개, 촘촘함(파장) 조절 -->
+          <div class="slider-block">
+            <div class="slider-row">
+              <span class="slider-label" style="color:var(--text-muted);font-size:12px;">웨이브 폭 (로드 사이즈)</span>
+              <span class="slider-val" id="val-waveWidth">50</span>
+            </div>
+            <input type="range" id="slider-waveWidth" min="0" max="100" value="50"
+              oninput="onWaveWidth(this.value)">
+            <div class="section-affects">0=작은 로드(촘촘한 스파이럴) · 100=큰 로드(느슨한 웨이브)</div>
+          </div>
+
+          <!-- 텍스처링(포인트컷/슬라이드컷/레이저컷/틴닝 통합) — 끝단 정리 -->
+          <div class="slider-block">
+            <div class="slider-row">
+              <span class="slider-label" style="color:var(--text-muted);font-size:12px;">텍스처링 강도</span>
+              <span class="slider-val" id="val-texturing">0</span>
+            </div>
+            <input type="range" id="slider-texturing" min="0" max="100" value="0"
+              oninput="onTexturing(this.value)">
+            <div class="section-affects">포인트컷 · 슬라이드컷 · 레이저컷 · 틴닝 통합 — 끝단 숱/불규칙함</div>
           </div>
 
           <div class="voice-box">
@@ -1492,13 +1571,16 @@ const SECTIONS = {
     desc:'정수리 · 엘리베이션(시술각) 기준',
     yRange:[0, 0.28], xRange:[0.15, 0.85],
     visibleIn:['front','left','right','back'],
-    params:['length','elevation'],
+    params:['length','elevation','curl'],
     // 엘리베이션(시술각): 실제 미용 기법 그대로 — 두피에서 모발을 얼마나
     // 들어올려서 자르는지(0°~90°). 0°(무시술각)=원랭스, 무게감 유지, 볼륨 없음.
     // 90°(이상)=완전 레이어, 무게 제거, 볼륨↑. "볼륨"이 따로 있던 게 아니라
     // 전부 엘리베이션의 결과였음 — 그래서 volume 파라미터를 없애고 이걸로 통합.
-    paramMeta:{ elevation:{min:0, max:90, unit:'°'} },
-    defaults:{length:50, elevation:45},
+    // curl: 전역 컬(state._globalCurl)에 대한 이 섹션만의 배율(%). 100%=전역과
+    // 동일(기본값, 손 안 대면 변화 없음), 0%=이 섹션만 스트레이트, 200%=전역의
+    // 2배. 부분펌(스택펌 — 크라운만 다른 로드 쓰는 것)을 표현하기 위함.
+    paramMeta:{ elevation:{min:0, max:90, unit:'°'}, curl:{min:0, max:200, unit:'%'} },
+    defaults:{length:50, elevation:45, curl:100},
   },
   front: {
     id:'front', label:'프론트', labelEn:'FRONT',
@@ -1525,18 +1607,18 @@ const SECTIONS = {
     desc:'귀 앞·뒤 · 엘리베이션(시술각) 기준',
     yRange:[0.28, 0.72], xRange:[0, 1],
     visibleIn:['left','right'],
-    params:['length','elevation'],
-    paramMeta:{ elevation:{min:0, max:90, unit:'°'} },
-    defaults:{length:50, elevation:30},
+    params:['length','elevation','curl'],
+    paramMeta:{ elevation:{min:0, max:90, unit:'°'}, curl:{min:0, max:200, unit:'%'} },
+    defaults:{length:50, elevation:30, curl:100},
   },
   occipital: {
     id:'occipital', label:'후두부', labelEn:'OCCIPITAL',
     desc:'뒤통수 · 엘리베이션(시술각) 기준',
     yRange:[0.30, 0.68], xRange:[0.10, 0.90],
     visibleIn:['back','left','right'],
-    params:['length','elevation'],
-    paramMeta:{ elevation:{min:0, max:90, unit:'°'} },
-    defaults:{length:50, elevation:50},
+    params:['length','elevation','curl'],
+    paramMeta:{ elevation:{min:0, max:90, unit:'°'}, curl:{min:0, max:200, unit:'%'} },
+    defaults:{length:50, elevation:50, curl:100},
   },
   nape: {
     id:'nape', label:'네이프', labelEn:'NAPE',
@@ -1569,7 +1651,14 @@ function resolveSectionId(angle, nx, ny){
     // temple: front의 중심 밴드 바깥쪽(귀 쪽)이면서 두정선~귀 사이 높이
     if(inR(SECTIONS.temple.yRange, ny) && (nx<SECTIONS.front.xRange[0] || nx>SECTIONS.front.xRange[1])) return 'temple';
     if(ny <= SECTIONS.crown.yRange[1]) return 'crown'; // 두정선 위(Interior) = 크라운
-    return 'side'; // 두정선 아래인데 템플도 아니면 사이드(귀 옆/뒤로 늘어진 부분)
+    // ── 버그 수정(2026-07-13): 여기 도달하는 지점(예: 이마 중앙 바로 아래,
+    // 프론트 밴드는 지났지만 템플의 가운데-바깥쪽 x조건도 안 맞는 부분)에서
+    // 예전엔 'side'로 폴백했는데, side.visibleIn=['left','right']뿐이라
+    // 애초에 정면 뷰에서는 나올 수 없는 값이었음(실측: 이마중앙(0.5,0.30)
+    // 테스트에서 실제로 'side'가 나오는 걸 확인하고 발견). 정면 사진에서
+    // front/temple/nape 어디에도 안 걸리면 crown(두정선 위 Interior와 이어지는
+    // 나머지 두상 영역)으로 처리하는 게 맞음.
+    return 'crown';
   }
   if(angle==='left' || angle==='right'){
     if(ny <= SECTIONS.crown.yRange[1]) return 'crown'; // 두정선 위 = 크라운(예전엔 ny<0.35 임의 고정값이었음)
@@ -1623,6 +1712,14 @@ const state = {
     height: 35,       // 0~100, 그 섹션 안에서 페이드가 몇 %까지 올라가는지(로우/미드/하이 페이드)
     blendWidth: 40,   // 0~100, 가드 경계가 얼마나 부드럽게 섞이는지(테이퍼 레버 개념 — 낮으면 칼선, 높으면 부드러운 그라데이션)
   },
+  // 웨이브 폭(펌 로드 사이즈) — 컬 진폭(_globalCurl)과 별개로 파장(촘촘함)을
+  // 조절. 0=작은 로드(촘촘한 스파이럴), 100=큰 로드(느슨한 웨이브).
+  waveWidth: 50,
+  // 텍스처링 강도(포인트컷/슬라이드컷/레이저컷/틴닝 통합) — 끝단을 정리해서
+  // 자연스럽게 만드는 정도. 엘리베이션(길이 그라데이션의 근원)과 달리
+  // "끝만" 다듬는 마무리 기법이라 전역 하나로 둠(실제로도 대부분 전체
+  // 마무리 단계에서 한 번에 적용).
+  texturing: 0,
   // 하위 호환: sliders는 섹션 파라미터에서 파생 (renderFrame에서 사용)
   // length 필드는 더 이상 여기서 쓰이지 않음 — drawHairStrands가 컬럼별로
   // resolveSectionId()를 통해 해당 위치의 섹션 length를 직접 조회함
@@ -3207,14 +3304,17 @@ function selectStyle(id){
     const elevFromVolume = Math.round((st.volume/100) * 90);
     state.sections.crown.length     = st.length;
     state.sections.crown.elevation  = elevFromVolume;
+    state.sections.crown.curl       = 100; // 프리셋은 부분펌 없음 — 전역 컬과 동일(100%)로 초기화
     state.sections.front.length     = Math.round(st.length * 0.85); // 앞머리는 약간 짧게
     state.sections.front.line       = 50;
     state.sections.temple.length    = Math.round(st.length * 0.80);
     state.sections.temple.overdirection = 50;
     state.sections.side.length      = Math.round(st.length * 0.90);
     state.sections.side.elevation   = st.curl > 40 ? 35 : 18; // 컬 강한 스타일일수록 사이드도 시술각↑(레이어감)
+    state.sections.side.curl        = 100;
     state.sections.occipital.length = st.length;
     state.sections.occipital.elevation = elevFromVolume;
+    state.sections.occipital.curl   = 100;
     state.sections.nape.length      = Math.round(st.length * 0.60);
     state.sections.nape.line        = 50;
     state._globalCurl = st.curl;
@@ -3333,6 +3433,16 @@ function onSectionSlider(secId, param, val){
 function onGlobalCurl(val){
   state._globalCurl = parseInt(val);
   document.getElementById('val-globalCurl').textContent = val;
+  drawAdjustPreview();
+}
+function onWaveWidth(val){
+  state.waveWidth = parseInt(val);
+  document.getElementById('val-waveWidth').textContent = val;
+  drawAdjustPreview();
+}
+function onTexturing(val){
+  state.texturing = parseInt(val);
+  document.getElementById('val-texturing').textContent = val;
   drawAdjustPreview();
 }
 
@@ -3597,6 +3707,49 @@ function toggleFieldDebug(){
   const rawBtn = document.getElementById('rawDebugToggle');
   if(rawBtn) rawBtn.classList.toggle('on', state.debugShowRaw);
   renderAdjustFrame();
+
+// 진단정보: PC 콘솔(F12) 없이도 폰 화면 스크린샷 하나로 원인 파악할 수 있게
+// 핵심 상태값을 화면에 텍스트로 그대로 찍어줌. 여기서 확인할 것:
+// (1) faceLandmarkerReady가 false면 refineSectionBoundaries가 아예 안 돌고
+//     있다는 뜻(정적 기본 경계만 씀) — 그게 "왜 안 바뀌나"의 원인일 수 있음.
+// (2) 뷰 바꿔가며 눌러보면 currentViewAngle과 crown.yRange[1](두정선 y)이
+//     실제로 그 뷰마다 다른 값으로 바뀌는지 바로 보임 — 안 바뀌면 그게 버그.
+// (3) 이마 중앙(0.5, 0.30)과 귀 옆(0.1, 0.45) 두 지점을 resolveSectionId로
+//     테스트해서 각각 다른 섹션으로 나오는지 확인.
+}
+function toggleDiagInfo(){
+  const box = document.getElementById('diagInfoBox');
+  if(!box) return;
+  const show = box.style.display === 'none';
+  box.style.display = show ? 'block' : 'none';
+  if(!show) return;
+  const angle = state.currentViewAngle;
+  const lm = state.landmarks && state.landmarks[angle];
+  // renderFrame과 동일하게 지금 보고 있는 뷰 기준으로 다시 계산 — 이 진단창에
+  // 보이는 값이 실제 렌더링에 쓰이는 값과 항상 일치하게 함(스테일 값 방지).
+  if(typeof faceLandmarkerReady !== 'undefined' && faceLandmarkerReady && lm){
+    refineSectionBoundaries(angle);
+  }
+  let lines = [];
+  lines.push('angle: ' + angle);
+  lines.push('faceLandmarkerReady: ' + (typeof faceLandmarkerReady!=='undefined' ? faceLandmarkerReady : '(변수없음)'));
+  lines.push('landmarks[' + angle + '] 존재: ' + (!!lm));
+  if(lm){
+    lines.push('  earY=' + lm.earY + ' foreheadY=' + lm.foreheadY + ' chinY=' + lm.chinY);
+  }
+  lines.push('');
+  lines.push('SECTIONS 현재 경계(angle=' + angle + ' 기준):');
+  SECTION_ORDER.forEach(id=>{
+    const s = SECTIONS[id];
+    lines.push('  ' + id + ': y[' + s.yRange.map(v=>v.toFixed(3)).join(',') + '] x[' + s.xRange.map(v=>v.toFixed(3)).join(',') + ']');
+  });
+  lines.push('');
+  lines.push('resolveSectionId 테스트:');
+  lines.push('  이마중앙(0.50,0.30) -> ' + resolveSectionId(angle, 0.50, 0.30));
+  lines.push('  귀옆(0.10,0.45) -> ' + resolveSectionId(angle, 0.10, 0.45));
+  lines.push('  정수리(0.50,0.10) -> ' + resolveSectionId(angle, 0.50, 0.10));
+  lines.push('  목선(0.50,0.90) -> ' + resolveSectionId(angle, 0.50, 0.90));
+  box.textContent = lines.join('\n');
 }
 
 // 결필드 원본을 가공 없이 그리는 디버그 오버레이.
@@ -3982,7 +4135,24 @@ function drawHairStrands(ctx, fit, scalpY, hairEndY, maskW, maskH, hairCanvas, o
     return ratio;
   }
 
-  // ── ①front.line(라운드/스트레이트/위로 넘김): 가닥 시작 방향 바이어스 ──
+  // ── 섹션별 컬 배율(crown/side/occipital의 curl 파라미터) ──
+  // 부분펌(스택펌 — 크라운만 다른 로드 쓰는 것) 표현용. 기본 100%면 전역과
+  // 동일(무변화) — 해당 섹션이 curl 파라미터 자체가 없으면(front/temple/nape)
+  // 무조건 100%(전역 그대로).
+  const curlMultCache = new Float32Array(maskW).fill(NaN);
+  function curlMultFor(ix){
+    const cx = Math.min(maskW-1, Math.max(0, Math.round(ix)));
+    if(!Number.isNaN(curlMultCache[cx])) return curlMultCache[cx];
+    const ny = iScalpY[cx] >= 0 ? iScalpY[cx]/maskH : 0.15;
+    const nx = cx/maskW;
+    const secId = (sections && angle) ? resolveSectionId(angle, nx, ny) : 'crown';
+    const mult = (sections && sections[secId] && typeof sections[secId].curl === 'number')
+      ? sections[secId].curl / 100 : 1.0;
+    curlMultCache[cx] = mult;
+    return mult;
+  }
+
+
   // 뿌리가 심긴 컬럼(strand의 시작 ix)이 front 섹션이면, line 슬라이더 값에 따라
   // 진행방향(travelDir)에 지속적인 각도 바이어스를 더한다(curlComponent/wiggle과
   // 동일한 additive 방식 — traceStrand의 결방향 추종/중력 로직은 그대로 두고
@@ -4059,6 +4229,7 @@ function drawHairStrands(ctx, fit, scalpY, hairEndY, maskW, maskH, hairCanvas, o
     // 뿌리(시작 컬럼) 기준으로 딱 한 번만 조회 — 가닥이 진행하며 컬럼이 옆으로
     // 흘러가도 "이 가닥이 어디서 자라났는지"는 뿌리 위치로 고정하는 게 맞음.
     const frontBias = frontDirBiasFor(ix);
+    const curlMult = curlMultFor(ix); // 섹션별 컬 배율(부분펌) — 기본 1.0(전역과 동일)
     // baseDir: curl/wiggle을 얹기 전, "결방향만" 반영한 순수 진행방향.
     // 다음 스텝의 orientation 블렌딩 기준(연속성 유지)으로 이것만 이어받는다.
     // → curl 보정을 여기 포함시켜 이어받으면 매 스텝 같은 방향으로 계속
@@ -4149,9 +4320,13 @@ function drawHairStrands(ctx, fit, scalpY, hairEndY, maskW, maskH, hairCanvas, o
       // curl: 기존엔 가닥 전체에 걸쳐 한 번만 크게 휘는 반원(sin 반 주기) 형태라, 결방향(orientation)과
       // 충돌하면 갑자기 옆으로 삐져나가는 모양이 생겼음. 파마머리/라면 면발처럼 일정한 파장으로
       // 완만하게 반복되는 웨이브로 변경 — curl 슬라이더는 진폭(구불거림 정도)만 조절.
-      const CURL_WAVELENGTH_STEPS = 6; // 몇 스텝마다 한 번 파동이 반복되는지 — 값을 낮추면 더 자잘하게, 높이면 더 완만하게
+      // 웨이브 폭(펌 로드 사이즈, state.waveWidth 0~100): 로드가 작을수록(값↓)
+      // 파장이 짧아져 촘촘한 스파이럴, 클수록(값↑) 파장이 길어져 느슨한 웨이브.
+      // 실제 기법 그대로 — 로드 사이즈가 진폭이 아니라 "몇 번 감기느냐(파장)"를 결정.
+      const waveWidthT = (typeof state.waveWidth === 'number' ? state.waveWidth : 50) / 100;
+      const CURL_WAVELENGTH_STEPS = 3 + waveWidthT * 15; // 3(촘촘)~18(느슨)
       const curlPhase = (s / CURL_WAVELENGTH_STEPS) * Math.PI * 2;
-      const curlComponent = Math.sin(curlPhase + jitterSeed) * (curl/100) * 0.07;
+      const curlComponent = Math.sin(curlPhase + jitterSeed) * (curl/100) * curlMult * 0.07;
       // front.line 바이어스: 뿌리 근처(s=0)에서 가장 강하고 끝으로 갈수록 약해짐
       // (실제로도 앞머리 스타일링은 뿌리 쪽 방향이 인상을 좌우하고, 끝쪽은 결방향·
       // 중력에 자연스럽게 맡기는 게 더 사실적) — frontBias가 0(front 섹션 아님/
@@ -4204,7 +4379,17 @@ function drawHairStrands(ctx, fit, scalpY, hairEndY, maskW, maskH, hairCanvas, o
   // 보폭이 고정(STRAND_STEP_LEN)이므로, origLen까지의 경로는 ratio 값과 무관하게
   // 원본 결 보기 때와 항상 동일하다 — split은 그 경로를 어디서 자를지만 정한다.
   function drawStrand(ix, sy_img, scaledLen, origLen, extAmount, jitterSeed, strokeStyleVal){
-    const pts = traceStrand(ix, sy_img, scaledLen, jitterSeed);
+    // 텍스처링(포인트컷/슬라이드컷/레이저컷/틴닝 통합): 끝단을 불규칙하게
+    // 다듬어서 자연스러운 텍스처를 냄 — 강도가 셀수록 가닥마다 끝 길이를
+    // 더 크게, 더 무작위로 줄임(뭉툭한 블런트 라인 대신 삐죽삐죽한 텍스처).
+    // texturing=0이면 Math.random() 호출 자체를 안 해서 기존 동작과 완전히 동일.
+    let effectiveLen = scaledLen;
+    if(state.texturing > 0){
+      const texT = state.texturing / 100;
+      const trim = Math.random() * texT * 0.35; // 최대 35%까지 무작위로 짧게
+      effectiveLen = scaledLen * (1 - trim);
+    }
+    const pts = traceStrand(ix, sy_img, effectiveLen, jitterSeed);
     const cPts = toCanvasPts(pts);
     const splitIdx = splitIndexFor(extAmount, origLen, pts.length - 1);
     setStyle('strokeStyle', strokeStyleVal);
