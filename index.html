@@ -917,6 +917,65 @@
   (달걀형)으로부터 한참 동떨어져 붕 뜬 채로 나오는 문제 — 사용자가 "평면
   데칼로 롤백하지 말고 이 입체 메쉬의 위치를 조정하는 방식으로 가자"고
   명확히 지시해서 롤백 안 하고 다음 턴에 위치 보정 작업 예정.
+
+  ── 얼굴 메쉬를 두상 표면에 실제로 접합(2026-07-13, 계속) ──
+  사용자가 "왜 자꾸 추정을 하냐, 두상 좌표값을 직접 비교해서 위치를 잡아야지"
+  라고 명확히 지적. 확인해보니 buildHeadMesh는 단위구를 (0.78·wf, 1·hf,
+  0.85·wf)로 스케일하고 y로 0.15 이동한 타원체라는 정확한 수식이 이미
+  있었고, buildEarMeshes가 귀를 배치할 때 이미 "그 높이(Y)에서 두상 표면이
+  실제로 어디 있는지"를 역산해서 쓰는 걸 확인(1차원 버전) — 얼굴 메쉬도
+  같은 원리(2차원 완전판: X·Y 둘 다 고려)로 재작업해야 한다는 걸 깨달음.
+  거기에 더해 사용자가 "얼굴메쉬와 헤어입체이미지도 결국 조합할 거니,
+  지금의 타원형 두상 한 덩어리처럼 취급되게 하라"고 방향 확정 — 얼굴을
+  두상 위에 별도로 얹는 게 아니라 경계에서 두상 표면에 정확히 붙고 중심
+  으로 갈수록 실측 굴곡이 살아나게 이어붙이는 방식으로 합의.
+  구현:
+  - headSurfaceZ(worldX, worldY): buildHeadMesh와 정확히 같은 타원체 수식을
+    역산해서, 임의의 (x,y) 위치에서 두상 표면이 실제로 어디 있는지 계산.
+  - 경계 필터링에 이미 쓰던 타원(중심~경계 거리)의 distSq(0=중심,1=경계)를
+    그대로 재사용해서 블렌드 가중치(1-distSq, 0 밑으로는 클램프) 산출 —
+    새 파라미터 추가 안 함, 필터링 경계와 블렌드 경계가 자동으로 일치.
+  - 최종 Z = headSurfaceZ(그 점에서의 실제 두상 표면) + blendWeight(중심=1
+    ~경계=0) × reliefZ(랜드마크 실측 깊이) — 경계에서 정확히 0이 되어
+    두상 표면값과 매끄럽게 이어짐.
+  검증: Node로 수치 계산 — 두상 표면 Z가 정중앙에서 정확히 HEAD_SZ(최대
+  돌출), 옆으로 갈수록 감소하는지 확인. 블렌드 가중치가 중심에서 1, 경계
+  에서 정확히 0인지 확인. 가장 중요한 것: **경계 지점에서 최종 Z가 실제로
+  두상 표면값과 소수점까지 정확히 일치**(0.8292=0.8292)하는지, 중심에서는
+  표면값+실측굴곡 전부가 반영되는지(0.7142=0.7142) 확인 — 이음새 없이
+  붙는 구조가 수학적으로 보장됨.
+  ⚠ 남는 한계: reliefZ 자체의 부호/배율은 여전히 MediaPipe 공식 문서 기준
+  추정이라 실기기 최종 확인 필요(이번 수정은 "어디에 붙는지"를 고쳤을 뿐,
+  "굴곡이 진짜 맞는 방향인지"는 별개 검증 대상).
+
+  ── 헤어 부풀기(puffOut) 실측 — Shape-from-Silhouette lite(2026-07-14) ──
+  "헤어도 얼굴처럼 3D좌표 인식 방법을 찾아라, 4장 사진 겹치는 부위로 3D를
+  만들자" — 조사 결과 MediaPipe의 z값은 대량 3D 얼굴 스캔으로 학습된
+  신경망의 추정치라(학습 데이터: synthetic rendered 3D face data + transfer
+  learning) 헤어에 그대로는 적용 불가(그런 학습 모델이 없음). 대신 학습
+  모델이 필요 없는 고전 기법(여러 각도 실루엣을 겹쳐 형태를 역산,
+  Shape-from-Silhouette) 채택 — 예전에 "4장으로는 진짜 SfM 포토그래메트리
+  (특징점 대응)는 성립 안 함"이라고 판단했던 것과는 다른 기법이라 시도해볼
+  가치 있음.
+  기존 상태 확인: computeSectionRealExtent는 "길이"(컬럼별 세로 길이)만
+  실측 반영하고 있었고, 부풀기(puffOut)는 그 길이용 배율을 그대로
+  재사용하는 임시방편이었음(길이와 부풀기는 다른 물리량이라 부적절).
+  신설: computeSectionPuffFactor(sectionId) — 각 뷰의 reasonMask(이미
+  저장돼 있던 축소해상도 마스크 버퍼)에서, 그 섹션의 세로범위(yRange) 안
+  가로줄(row)마다 실제 헤어 폭을 재고, 그 사람의 실측 기준단위(귀 간격)
+  대비 비율로 환산. 여러 뷰를 computeSectionRealExtent와 동일한 가중치
+  (뷰 각도 근접도×포즈 신뢰도)로 블렌딩 — 정면은 좌우 폭, 좌/우측은 앞뒤
+  폭을 각각 실측해서 종합.
+  buildHairStrands에서 계산해서 shapeSignal.puffFactor로 병합, buildStrandsFor
+  Section의 puffOut 계산을 길이용 realFactor 대신 이 새 puffFactor로 교체.
+  검증: Node로 실제 로직 실행 — 좁은 헤어(귀 간격의 1.0배 폭) puffFactor
+  0.865 vs 넓은 헤어(1.6배 폭) puffFactor 1.391로, 실측 폭 차이가 정확히
+  배율에 반영됨을 확인. buildStrandsForSection에 새 필드 있음/없음(구버전
+  호환)/shapeSignal 자체가 null인 극단 케이스 3개 전부 에러 없이 통과 확인.
+  ⚠ 정직한 한계: 카메라가 정밀 보정된 게 아니라 "귀 간격 대비 몇 배 넓은가"
+  라는 상대 비율 근사치임 — 진짜 3D 스캔 수준의 정밀도는 아니고, 기존의
+  균일한 puffOut 하나보다 실측에 더 가까워진 정도. BASELINE_PUFF_RATIO(1.15)
+  도 경험적 추정치라 실기기 확인 후 튜닝 필요할 수 있음.
 -->
 <!DOCTYPE html>
 <html lang="ko">
@@ -5337,7 +5396,7 @@ function loadImageAsync(src){
 // 정렬됨. 알려진 한계: 평면이라 옆모습으로 회전하면 거의 안 보임(정면
 // 전용 효과) — 나중에 진짜 두상 3D 스캔(.glb)으로 바뀌면 이 로직 자체가
 // 통째로 필요 없어짐.
-/* ── 진짜 3D 얼굴 메쉬(2026-07-13 착수) ──
+/* ── 진짜 3D 얼굴 메쉬(2026-07-13 착수, 같은 날 재작업) ──
    지적: "얼굴이 중요하지" — 지금까지 buildFacePhotoDecal()은 평면 사진 한
    장을 두상 표면에 살짝 띄운 것(그래서 옆에서 보면 거의 안 보임). 실제로는
    MediaPipe가 468개 랜드마크 전부에 x,y,z(깊이)를 주는데 그중 10여 개
@@ -5347,14 +5406,30 @@ function loadImageAsync(src){
    입체 형태를 반영한 진짜 3D 메쉬를 만든다.
    UV(텍스처 좌표)는 FACE_MESH_UV(캐노니컬 모델 자체의 uv — 표준 "얼굴 펼침"
    참조 텍스처용, 우리처럼 그 사람 실제 사진을 그대로 씌우는 경우엔 안 맞음)
-   대신, 각 랜드마크 "자기 자신의 이미지 좌표"를 그대로 UV로 씀 — 그 점이
-   사진에서 실제로 찍힌 위치가 곧 텍스처 좌표라 직관적으로 맞고 원본 UV
-   데이터가 따로 필요 없음(FACE_MESH_UV/TRI_VT는 나중에 표준 텍스처 아틀라스
-   방식이 필요해지면 쓸 수 있게 남겨두지만 지금은 미사용).
-   ※ 깊이(z) 부호/배율은 브라우저에서 실제로 렌더링해서 눈으로 확인할 방법이
-   없어 확신은 못 함 — 공식 문서 기준("z 작을수록 카메라에 가까움")으로
-   부호를 정했지만, 실기기에서 코가 움푹 들어가 보이면(반대로 나오면) 아래
-   Z_SIGN을 뒤집으면 됨. */
+   대신, 각 랜드마크 "자기 자신의 이미지 좌표"를 그대로 UV로 씀.
+
+   ── 재작업(같은 날, 실기기 확인 후) ──
+   1차 버전은 깊이(z)를 "고정 상수(Z_BASE) + 실측 굴곡"으로만 계산했는데,
+   실기기에서 얼굴 전체가 두상(타원체)에서 한참 동떨어져 붕 뜬 채로 나옴
+   — 미세 보정 문제가 아니라 애초에 "두상이 실제로 어디 있는지"와 무관한
+   임의의 상수를 썼던 게 근본 원인("추정하지 말고 두상 좌표값을 직접
+   비교해서 위치를 잡아라"는 지적).
+   해결: buildHeadMesh가 두상을 만드는 실제 수식 — 단위구를
+   (0.78·wf, 1·hf, 0.85·wf)로 스케일한 타원체, y로 0.15 이동 — 을 그대로
+   가져와서, 각 랜드마크의 실측 (x,y) 위치에서 "그 타원체 표면이 실제로
+   어디 있는지"(surfaceZ)를 역산(귀 배치 buildEarMeshes가 이미 같은
+   방식으로 표면 반경을 역산하던 것과 동일한 원리, 다만 여기선 X,Y 둘 다
+   고려한 완전한 버전). 그 다음 "얼굴을 두상 위에 별도로 얹는" 대신,
+   "경계(귀·이마 언저리)에서는 두상 표면에 정확히 붙고, 중심(코 등)으로
+   갈수록 실측 굴곡이 살아나게 이어붙이는" 방식으로 재설계 — 사용자 지시:
+   "얼굴메쉬와 헤어입체이미지도 결국 조합할 거니, 지금의 타원형 두상
+   한 덩어리처럼 취급되게 하라". 경계 필터링에 이미 쓰던 타원(0=중심,
+   1=경계)의 거리 제곱을 그대로 블렌드 가중치로 재사용(경계에서 정확히
+   0이 되어 두상 표면값과 매끄럽게 이어짐, 새 파라미터 추가 없음):
+     surfaceZ(그 점의 실제 두상 표면 위치) + blendWeight(중심=1~경계=0) × reliefZ(실측 굴곡)
+   ※ 그래도 남는 한계: reliefZ 자체의 부호/배율(Z_SIGN/Z_DEPTH_SCALE)은
+   MediaPipe 공식 문서 기준으로 정한 것이라 브라우저에서 실제로 렌더링해
+   봐야 최종 확인 가능. */
 async function buildRealFaceMesh(faceMetrics){
   const lm = faceMetrics.lm;
   const src = state.shots && state.shots.front;
@@ -5368,36 +5443,28 @@ async function buildRealFaceMesh(faceMetrics){
 
   const raw = lm.rawLandmarks;
   const projector = faceMetrics.projector;
+  const widthFactor = faceMetrics.widthFactor, heightFactor = faceMetrics.heightFactor;
 
-  // 깊이(z) 축척/부호: MediaPipe 공식 문서 기준 "z가 작을수록(더 음수)
-  // 카메라에 가까움", "z는 x와 같은 스케일". 우리 좌표계는 +Z가 보는 사람
-  // 쪽(buildFacePhotoDecal이 z=0.92*widthFactor로 "두상 표면보다 앞"에
-  // 두던 방향과 일치)이라 부호를 뒤집음.
-  const Z_SIGN = -1;
-  const Z_DEPTH_SCALE = 1.0; // 굴곡이 너무 약하거나 세면 조정
-  const Z_BASE = 0.90 * faceMetrics.widthFactor; // 예전 평면 데칼이 있던 자리 근처를 깊이 중심으로
-
-  const vertCount = 468;
-  const positions = new Float32Array(vertCount*3);
-  const uvs = new Float32Array(vertCount*2);
-  for(let i=0;i<vertCount;i++){
-    const p = raw[i];
-    positions[i*3+0] = projector.toMeshX(p.x);
-    positions[i*3+1] = projector.toMeshY(p.y);
-    positions[i*3+2] = Z_BASE + Z_SIGN * p.z * projector.bX * Z_DEPTH_SCALE;
-    uvs[i*2+0] = p.x;
-    uvs[i*2+1] = 1 - p.y; // 이미지 y(아래로 증가) → UV v(위로 증가) 반전
+  // ── 두상 실제 수식(buildHeadMesh와 정확히 동일) ──
+  // 단위구를 (0.78·wf, 1·hf, 0.85·wf)로 스케일, y로 0.15 이동한 타원체.
+  // (worldX, worldY)가 주어졌을 때 그 타원체 "앞면(+Z, 카메라 쪽)" 표면이
+  // 실제로 어디 있는지 역산 — buildEarMeshes가 귀 배치할 때 쓰던 것과
+  // 완전히 같은 원리(거기선 X만, 여기선 X·Y 둘 다 고려).
+  const HEAD_SX = 0.78*widthFactor, HEAD_SY = heightFactor, HEAD_SZ = 0.85*widthFactor, HEAD_Y0 = 0.15;
+  function headSurfaceZ(worldX, worldY){
+    const nx = worldX/HEAD_SX, ny = (worldY-HEAD_Y0)/HEAD_SY;
+    const nz2 = Math.max(0.02, 1 - nx*nx - ny*ny); // 완전히 벗어난 점도 살짝의 표면값은 갖게(0 방지)
+    return Math.sqrt(nz2) * HEAD_SZ;
   }
 
-  // ── 경계 필터링: 귀/관자놀이 근처 삼각형 제외 ──
-  // 정면 사진은 얼굴 정중앙은 잘 찍히지만, 귀·관자놀이처럼 옆으로 많이
-  // 꺾인 부분은 원근 때문에 아주 좁은 픽셀 폭에 눌려 찍힘 — 그 부분까지
-  // 468개 점을 다 살려서 텍스처를 입히면 그 좁은 픽셀 띠가 넓게 늘어나며
-  // 심하게 찌그러져 보임. buildFacePhotoDecal()이 이미 쓰던 것과 똑같은
-  // 타원(눈썹선~턱 기준 세로, 귀 간격 기준 가로) 안에 세 정점이 전부 들어가는
-  // 삼각형만 남기고 나머지는 버려서, 잘 찍힌 얼굴 중심부만 메쉬로 만든다.
-  // 완전히 잘라내면 경계가 딱딱해 보일 수 있어, 실제 타원보다 약간(1.08배)
-  // 넉넉하게 잡아서 이마/턱선이 부자연스럽게 일찍 잘리지 않게 함.
+  // 깊이(z) 굴곡: MediaPipe 공식 문서 기준 "z가 작을수록(더 음수) 카메라에
+  // 가까움" — 우리 좌표계는 +Z가 보는 사람 쪽이라 부호를 뒤집음.
+  const Z_SIGN = -1;
+  const Z_DEPTH_SCALE = 1.0; // 굴곡이 너무 약하거나 세면 조정
+
+  // ── 경계 타원(얼굴 중심~바깥) — 필터링과 블렌드 가중치 둘 다에 재사용 ──
+  // 귀·관자놀이처럼 정면 사진에서 옆으로 많이 꺾인 부분은 원근 때문에 아주
+  // 좁은 픽셀 폭에 눌려 찍히므로, 잘 찍힌 얼굴 중심부만 메쉬로 살린다.
   const eyeCX = ((lm.features?.leftEye ? (lm.features.leftEye.minX+lm.features.leftEye.maxX)/2 : 0.5)
                + (lm.features?.rightEye ? (lm.features.rightEye.minX+lm.features.rightEye.maxX)/2 : 0.5)) / 2;
   const boundCX = lm.features ? eyeCX : 0.5;
@@ -5406,10 +5473,31 @@ async function buildRealFaceMesh(faceMetrics){
   const boundCY = (boundTopY + boundBotY) / 2;
   const boundRY = Math.max(0.05, (boundBotY - boundTopY) / 2 * 1.08);
   const boundRX = Math.max(0.05, Math.abs((lm.rEarX ?? 0.78) - (lm.lEarX ?? 0.22)) * 0.56 * 1.08);
-  function inFaceBound(idx){
+  function distSqFromBound(idx){
     const p = raw[idx];
     const dx = (p.x - boundCX) / boundRX, dy = (p.y - boundCY) / boundRY;
-    return (dx*dx + dy*dy) <= 1;
+    return dx*dx + dy*dy; // 0=정중앙, 1=경계선 위, 1보다 크면 경계 밖
+  }
+  function inFaceBound(idx){ return distSqFromBound(idx) <= 1; }
+
+  const vertCount = 468;
+  const positions = new Float32Array(vertCount*3);
+  const uvs = new Float32Array(vertCount*2);
+  for(let i=0;i<vertCount;i++){
+    const p = raw[i];
+    const worldX = projector.toMeshX(p.x);
+    const worldY = projector.toMeshY(p.y);
+    const surfaceZ = headSurfaceZ(worldX, worldY);
+    const reliefZ = Z_SIGN * p.z * projector.bX * Z_DEPTH_SCALE;
+    // 블렌드: 경계(distSq=1)에서 0(=두상 표면값 그대로, 이음새 없이 밀착),
+    // 중심(distSq=0)에서 1(=실측 굴곡 전부 반영). 필터링에 쓰는 것과 같은
+    // 타원이라 딱 경계선에서 자연스럽게 표면값과 일치함.
+    const blendWeight = Math.max(0, 1 - distSqFromBound(i));
+    positions[i*3+0] = worldX;
+    positions[i*3+1] = worldY;
+    positions[i*3+2] = surfaceZ + blendWeight * reliefZ;
+    uvs[i*2+0] = p.x;
+    uvs[i*2+1] = 1 - p.y; // 이미지 y(아래로 증가) → UV v(위로 증가) 반전
   }
   const filteredTriV = [];
   for(let t=0; t<FACE_MESH_TRI_V.length; t+=3){
@@ -5680,6 +5768,76 @@ function computeSectionRealExtent(sectionId, aiEstimate){
     factor = factor * confidence + aiFactor * (1 - confidence);
   }
 
+  return { factor, confidence };
+}
+
+// ── computeSectionPuffFactor(sectionId): 여러 뷰의 실루엣 "폭"을 비교해서
+// 실측 부풀기(puff) 배율 산출 — Shape-from-Silhouette lite ──
+// 사용자 요청: "헤어도 얼굴처럼 3D좌표 인식 방법을 찾아라, 4장 사진에서
+// 겹치는 헤어 부위를 활용해서 3D를 만들어내자". 조사 결과 MediaPipe의
+// z값은 대량의 3D 얼굴 스캔으로 학습된 신경망의 추정치라 헤어에 그대로
+// 적용은 불가능(학습된 모델이 없음) — 대신 학습 모델 없이도 되는 고전적
+// 기법(여러 각도 실루엣을 겹쳐 형태를 역산)을 채택.
+// 기존 computeSectionRealExtent는 "길이"(컬럼별 세로 길이)만 실측 반영하고,
+// "부풀기"(puffOut)는 그 길이 배율을 그대로 재사용하는 임시방편이었음 —
+// 길이와 부풀기는 다른 물리량이라 부적절.
+// 원리: 정면 사진은 헤어가 좌우로 얼마나 퍼졌는지, 좌/우 사진은 앞뒤로
+// 얼마나 튀어나왔는지를 보여줌 — 각 뷰에서 그 섹션의 세로 범위(yRange) 안,
+// 가로줄(row)마다 "실제로 마스크가 몇 픽셀 폭인지"를 재서, 그 사람의 실측
+// 기준 단위(귀 간격, lEarX~rEarX)와 비교한 비율을 뽑는다. 여러 뷰를
+// computeSectionRealExtent와 동일한 가중치(뷰 각도 근접도 × 포즈 신뢰도)로
+// 블렌딩.
+// ※ 정밀 카메라 보정이 있는 게 아니라 "귀 간격 대비 몇 배 넓은가"라는
+// 상대 비율이라, 진짜 스캔 수준은 아니고 지금의 균일한 puffOut 하나보다
+// 실측에 더 가까운 근사치 — 사용자에게도 이렇게 정직하게 안내함.
+function computeSectionPuffFactor(sectionId){
+  const sec = SECTIONS[sectionId];
+  const BASELINE_PUFF_RATIO = 1.15; // 경험적 기준치: 헤어 실루엣 폭이 귀 간격의 1.15배 정도면 "평균 볼륨"(튜닝 대상)
+
+  let weightedSum = 0, weightTotal = 0;
+  sec.visibleIn.forEach(angle=>{
+    const maskInf = state.hairMasks && state.hairMasks[angle];
+    const lm = state.landmarks && state.landmarks[angle];
+    if(!maskInf || !maskInf.reasonMask || !lm) return; // 마스크·랜드마크 둘 다 있어야 폭/기준단위 계산 가능
+    const earSpanNorm = Math.abs((lm.rEarX ?? 0.78) - (lm.lEarX ?? 0.22));
+    if(earSpanNorm < 0.02) return; // 귀 간격이 비정상적으로 좁으면(랜드마크 실패 등) 스킵
+
+    const weight = getViewWeight(sectionId, angle);
+    if(weight < 0.03) return;
+
+    // renderFrame과 동일하게, 이 뷰 기준으로 경계를 다시 계산해서 yRange를 신뢰할 수 있게 함
+    if(typeof faceLandmarkerReady !== 'undefined' && faceLandmarkerReady){
+      refineSectionBoundaries(angle);
+    }
+    const w = maskInf.maskW, h = maskInf.maskH;
+    const yr = SECTIONS[sectionId].yRange;
+    const yS = Math.max(0, Math.round(yr[0]*h)), yE = Math.min(h, Math.round(yr[1]*h));
+    if(yE <= yS) return;
+
+    let sum = 0, cnt = 0;
+    for(let y=yS; y<yE; y+=2){ // 2px 간격(속도)
+      let minX=-1, maxX=-1;
+      const rowBase = y*w;
+      for(let x=0; x<w; x++){
+        if(maskInf.reasonMask[rowBase+x] === 1){ if(minX<0) minX=x; maxX=x; }
+      }
+      if(minX < 0) continue; // 이 줄엔 헤어 없음
+      sum += (maxX-minX)/w; // 그 줄의 헤어 폭(정규화)
+      cnt++;
+    }
+    if(cnt < 3) return; // 유효한 줄이 너무 적으면 이 뷰 스킵
+
+    const avgWidthNorm = sum/cnt;
+    const ratio = avgWidthNorm / earSpanNorm; // 귀 간격 대비 몇 배 넓은지
+    weightedSum += ratio * weight;
+    weightTotal += weight;
+  });
+
+  const confidence = Math.min(1, weightTotal);
+  let factor = 1.0;
+  if(weightTotal > 0){
+    factor = clamp((weightedSum/weightTotal) / BASELINE_PUFF_RATIO, 0.5, 2.0);
+  }
   return { factor, confidence };
 }
 
@@ -6081,10 +6239,14 @@ function buildStrandsForSection(sectionId, params, colorHex, globalCurl, shapeSi
   const elevationDeg = params.elevation;
   const volume = (typeof elevationDeg === 'number') ? Math.max(0, Math.min(100, (elevationDeg/90)*100)) : 50;
   const lineVal  = params.line;   // front/nape에만 존재
-  const realFactor = (shapeSignal && shapeSignal.factor) || 1.0; // 실측 사진(+AI 보완) 기반 보정 배율
+  const realFactor = (shapeSignal && shapeSignal.factor) || 1.0; // 실측 사진(+AI 보완) 기반 길이 보정 배율
+  // 부풀기(puffOut)는 길이와 다른 물리량이라 realFactor(길이용)를 재사용하던
+  // 예전 방식 대신, 여러 뷰 실루엣 폭 비교(computeSectionPuffFactor, 귀 간격
+  // 대비 몇 배 넓은지)로 따로 실측한 배율을 씀 — 없으면(신구 데이터 호환) 1.0.
+  const puffRealFactor = (shapeSignal && typeof shapeSignal.puffFactor === 'number') ? shapeSignal.puffFactor : 1.0;
 
   const strandLen    = (0.16 + (length/100) * 0.95) * realFactor;
-  const puffOut       = (0.05 + (volume/100) * 0.22) * realFactor;
+  const puffOut       = (0.05 + (volume/100) * 0.22) * puffRealFactor;
   const curlAmt        = ((globalCurl ?? 30)/100) * 0.18;
   // 엘리베이션이 있는 섹션(크라운/사이드/후두부)일수록 시술각이 높을수록(레이어
   // 강하게) 가닥 길이 편차가 커짐 — 예전엔 side.layer 하나에만 있던 효과를
@@ -6356,6 +6518,11 @@ function buildHairStrands(styleParams){
   SECTION_ORDER.forEach(id=>{
     const params = sections[id] || SECTIONS[id].defaults;
     const shapeSignal = computeSectionRealExtent(id, aiEstimate);
+    // 부풀기(puffOut)는 길이와 다른 물리량이라, 길이용 factor를 재사용하던
+    // 예전 방식 대신 여러 뷰 실루엣 폭 비교로 따로 실측(computeSectionPuffFactor).
+    const puffSignal = computeSectionPuffFactor(id);
+    shapeSignal.puffFactor = puffSignal.factor;
+    shapeSignal.puffConfidence = puffSignal.confidence;
     const bestAngle = pickBestRealView(id);
     const realCols = bestAngle ? buildRealColumnSamples(id, bestAngle, widthFactor, heightFactor) : [];
     const sectionGroup = buildStrandsForSection(id, params, colorHex, globalCurl, shapeSignal, realCols);
