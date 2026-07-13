@@ -529,6 +529,147 @@
   실제로 1.0 근처로 균일하게 당기는지, 테이퍼/레이어가 파라미터 커질수록
   편차가 커지는지 수치로 확인. 다만 drawHairStrands 자체는 Canvas API라
   실제 렌더링 결과는 Node에서 검증 불가 — 실기기 최종 확인 필요.
+
+  ── ★★ 치명적 버그 발견/수정: SECTIONS 전역 공유로 인한 뷰 간 경계 뒤섞임(2026-07-13) ──
+  실기기에서 방대한 증상 보고: 크라운 길이를 만지면 프론트/사이드가 늘어나고,
+  템플/사이드/후두부/네이프는 슬라이더를 움직여도 거의 반응이 없고, 이게
+  4개 뷰(정면/좌/우/후면) 전부에서 제각각 다른 양상으로 나타남. "파라미터가
+  뭘 하는지 설명해달라"는 요청으로 시작했지만, 설명 문제가 아니라 섹션
+  경계 인식 자체가 깨져있는 게 근본 원인이었음.
+  원인: refineSectionBoundaries(angle)가 촬영 직후 파이프라인에서 4개 뷰를
+  순서대로 딱 한 번씩만 호출됨(runStyleAnalysisPipeline 내 반복문). 근데
+  SECTIONS는 뷰별로 안 나뉘고 전역에서 하나만 공유되는 객체라서, 이 함수가
+  뷰마다 SECTIONS.crown/front/temple/...의 xRange/yRange를 그 뷰의 실측
+  랜드마크로 "덮어쓰는" 구조 — 즉 반복문이 끝나면 SECTIONS는 "마지막으로
+  처리된 뷰 하나" 기준 경계에 영구히 고정된 채, 이후 사용자가 조정화면에서
+  어느 탭(뷰)을 보든 다시 안 바뀌었음. resolveSectionId(angle, nx, ny)는
+  매번 angle 인자를 받지만, 실제로 참조하는 SECTIONS[id].xRange/yRange
+  자체가 그 angle과 무관하게 고정돼 있었으니 완전히 엇나간 값을 돌려주고
+  있었던 것.
+  왜 증상이 뷰마다·섹션마다 제각각으로 보였는지: 어느 뷰가 "마지막으로
+  이겼는지"에 따라, 그 뷰 자신은 상대적으로 덜 틀리고(자기 경계랑 우연히
+  맞음) 나머지 3개 뷰는 완전히 엇나간 경계를 쓰게 됨. crown이 자기
+  xRange/yRange를 실제로는 안 쓰고(resolveSectionId 안에서 front/temple/
+  nape 셋 다 아니면 무조건 crown으로 떨어지는 순수 fallback 구조) "나머지
+  전부"를 흡수하는 설계라, 경계가 어긋나 front/temple/side/occipital의
+  실제 매칭 컬럼 수가 0에 가까워지면 그 사라진 영역이 전부 crown으로
+  흡수됨 — "크라운 하나만 모든 걸 좌우하고 나머지는 반응 없다"는 정확히
+  이 경로로 설명됨.
+  수정: renderFrame(canvas, angle) 최상단에서 매 렌더마다 refineSectionBoundaries
+  (angle)를 다시 호출 — 지금 실제로 보여줄 뷰 기준으로 매번 새로 계산해서
+  SECTIONS를 갱신한 뒤에 그 뷰를 그림. renderAdjustFrame()·비교화면 양쪽
+  호출부(line 4190)가 전부 renderFrame을 거치므로 한 곳만 고치면 됨(DRY).
+  landmarks[angle]가 없는 뷰는 refineSectionBoundaries 자체가 안전하게
+  no-op이라 새 실패 모드 추가 아님. 파이프라인의 기존 1회성 호출은 남겨둠
+  (초기값 세팅용으로 무해, 어차피 렌더 시점에 다시 갱신되므로 제거 불필요).
+  알려진 한계(이번엔 안 건드림): resolveSectionId의 crown이 위 설명대로
+  "나머지 전부 흡수" fallback 구조라, 경계가 올바르게 고쳐진 뒤에도
+  front/temple 사이 등 경계가 살짝 좁으면 그 틈새가 여전히 crown으로
+  샐 수 있음 — 이번 수정으로 증상 대부분 해소될 것으로 예상되지만, 실기기
+  확인 후 남는 문제가 있으면 이 fallback 설계 자체를 손볼 필요 있음.
+  temple.blend도 "직접 만지면 무반응, 크라운 길이 변경 시에만 간접 반영"
+  이라는 설계 자체는 버그가 아니라 의도된 동작이라고 사용자에게 설명함.
+
+  ── ★ 실제 미용 기준(두정선) 도입(2026-07-13, 계속) ──
+  "이 섹션 구분이 실제 미용사가 쓰는 기준·용어냐"는 질문 — 검색해서
+  Milady's Cosmetology/CHI Education 등 실제 미용 교재와 대조함. 결론:
+  crown/temple/occipital/nape는 진짜 용어 맞음. 근데 가장 중요한 걸
+  빠뜨렸었음 — **두정선(Parietal Ridge / Crest Area)**: "귀 위 손가락 3개
+  너비 지점에서 시작, 템플~크라운 하단까지 이어지는 머리에서 가장 넓은
+  둘레선". 실제 미용사가 크라운(Interior, 머리카락이 눕는 쪽)과 템플/
+  사이드/후두부(Exterior, 늘어지는 쪽)를 나누는 진짜 물리적 기준이 이건데,
+  이 개념 자체가 코드에 없어서 크라운 경계를 엉뚱하게(이마 높이 기준)
+  잡고 있었음.
+  - refineSectionBoundaries: parietalRidgeY = earY - (earY-foreheadY)*0.40
+    로 두정선 위치 근사 추가(실측 3D 스캔이 없어 "3 손가락 너비"를 비율로
+    환산한 경험적 근사치 — 실사진 검증 후 재조정 필요할 수 있음, 주석에
+    명시). crown.yRange를 이 두정선까지로, temple/side.yRange도 두정선을
+    기준점으로 재계산.
+  - resolveSectionId: crown이 자기 경계(이번에 만든 두정선 기준)를 실제로
+    검사하도록 수정 — 예전엔 "front도 temple도 nape도 아니면 무조건
+    crown"인 순수 fallback이라 refineSectionBoundaries가 아무리 정확한
+    경계를 계산해도 무시되고 있었음(지난 턴에 고친 "뷰 간 경계 뒤섞임"
+    버그와는 별개의 문제).
+  - 검증 중 추가 발견: occipital.yRange 상단(earY*1.10)과 nape.yRange
+    하단(chinY*0.78)이 겹치는데, nape를 먼저 체크하는 순서라 그 겹치는
+    구간을 nape가 다 먹어서 occipital이 세로로 몇 % 안 남는 문제가 있었음
+    ("후두부 아무 변화 없다" 증상의 원인 중 하나로 추정) — occipital을
+    nape보다 먼저 체크하도록 순서 변경.
+  검증: 실제 파일에서 resolveSectionId/refineSectionBoundaries 함수를 그대로
+  추출해 Node로 실행 — 모의 랜드마크로 격자(nx,ny) 전체를 스캔해서 ASCII
+  지도로 각 뷰의 섹션 분할 형태를 직접 확인. 순서 수정 전: occipital이 좌/우
+  뷰에서 전체 픽셀의 1% 미만(사실상 안 보임) → 수정 후: 좌/우 4.5%, 후면
+  23.3%로 실질적인 영역 확보 확인. crown/front/temple/side/nape도 각 뷰에서
+  위→아래 순서(정수리→이마/관자놀이→귀 옆→목선)로 상식적인 형태로 나뉘는 것
+  육안(ASCII map) 확인.
+  알려진 한계: parietalRidgeY 근사 계수(0.40)는 실측 검증 안 된 값이라
+  실사진 기준 재조정 필요할 수 있음. "Fringe"(뱅)와 "Front"(귀-귀 파팅
+  전체)를 아직 구분 안 하고 front 하나로 뭉뚱그림 — 필요시 추가 세분화 고려.
+  "Side"는 정식 미용 용어가 아니라 편의상 이름(실제로는 두정선 아래
+  Exterior 영역을 뜻함)이라는 것도 주석에 명시해둠.
+
+  ── ★ 파라미터를 실제 미용 기법으로 전면 교체(2026-07-13, 계속) ──
+  "길이/볼륨 같은 추상적 슬라이더 말고, 실제 미용사가 쓰는 시술법 자체를
+  파라미터로 넣어달라"는 요청. B2B(미용사 대상) 제품이라 전문 용어를
+  그대로 쓰기로 확정(사용자 명시).
+  핵심 통찰: "볼륨"과 "레이어"가 서로 다른 개념이 아니라, 둘 다 **엘리베이션
+  (Elevation, 시술각 — 두피에서 모발을 얼마나 들어올려 자르는지)**이라는
+  하나의 실제 기법에서 나오는 결과물이었음. 0°(무시술각)=원랭스/무게감
+  유지/볼륨 없음, 90°(이상)=무게 제거/레이어/볼륨↑. 그래서 crown/side/
+  occipital의 volume·layer 파라미터를 전부 elevation(0~90°) 하나로 통합.
+  temple의 "blend"(모호한 이름)는 실제로 **오버다이렉션(Overdirection —
+  자연스러운 낙하 방향이 아니라 다른 가이드라인 쪽으로 당겨 자르는 기법)**
+  이었던 걸 정확한 이름으로 교체(로직은 유지, 이름·설명만 정정).
+  front/nape의 "커팅라인"(0=라운드/스퀘어, 50=스트레이트/라운드, 100=위로/
+  테이퍼)은 이미 실제 기법과 맞았어서 유지.
+  구현:
+  - SECTIONS에 paramMeta(min/max/unit) 추가 — elevation은 0~90°로 실제
+    각도 그대로 슬라이더/표시(예전엔 전부 0~100 무의미한 스케일이었음).
+  - get sliders() getter: crown/occipital.volume 참조가 깨지므로
+    elevToVol(deg)=deg/90*100 변환 헬퍼로 elevation을 기존 볼륨류 공식
+    (numRootScatter 등)이 기대하는 0~100 입력으로 환산.
+  - 2D lengthRatioFor: 기존 side.layer 전용이던 "컬럼별 길이 편차" 로직을
+    crown/side/occipital 공통 elevation 기반으로 확장(전엔 크라운·후두부는
+    이 효과 자체가 없었음).
+  - 3D buildStrandsForSection: volume/blend/layer 폴백체인을 elevation
+    기반으로 교체, lengthJitter도 동일 원리로 전 섹션 확장.
+  - selectStyle() 프리셋 파생 로직·registerCurrentAsStyle()의 대표값 계산도
+    전부 elevation/overdirection 기준으로 갱신.
+  - propagateSectionChange(temple.blend→overdirection 이름만 교체, 로직 동일).
+  - PARAM_LABELS에 새 이름 추가, 기존 volume/blend/layer 라벨은 구버전
+    localStorage 커스텀 스타일 호환용으로 유지(화면에 노출될 일은 거의 없음).
+  검증: 파일에서 buildStrandsForSection 등을 그대로 추출해 Node로 실행 —
+  elevation 0/45/90° 전부, 6개 섹션 전부 에러 없이 720개 가닥 생성 확인.
+  2D 변조 공식도 순수 수치로 검증: 0°는 완전 균일(원랭스 의미와 일치),
+  각도 오를수록 편차 커짐(레이어 의미와 일치), 0~90 전 구간 음수/NaN 없음.
+  전수 grep으로 params.volume/blend/layer, sections.*.volume/blend/layer
+  잔여 참조 0건 확인(registerCurrentAsStyle에서 누락된 것 하나 발견해서 수정).
+
+  ── ★ 페이드/테이퍼(클리퍼 기법) 신설(2026-07-13, 계속) ──
+  "구레나룻을 기계(클리퍼)로 밀어올리는 경우도 표현되냐"는 질문에서 시작.
+  검색해서 확인: 클리퍼 가드 번호(0~8, 업계 표준, 1단위=1/8인치)로 피부까지
+  점점 짧아지게 만드는 완전히 다른 기법 — 엘리베이션(각도)과는 무관하게
+  **길이 자체**가 위치별로 그라데이션되는 것. 처음엔 "그라데이션 존"이라는
+  이름을 잘못 붙였다가(실제 미용 용어 "그라데이션"은 엘리베이션 0~90° 사이,
+  즉 각도 기반 개념이라 이름이 겹쳐서 혼란 유발) 사용자가 지적해서 "페이드"로
+  정정. 별도 신설(기존 파라미터로 흡수 불가 — 완전히 다른 렌더링 모델: 섹션
+  내 위치에 따른 연속적 길이 그라데이션).
+  구현:
+  - state.fade = {enabled, guard(0~8), height(0~100%), blendWidth(0~100%)}
+    — 섹션별이 아니라 전역 하나(실제로도 템플~사이드~후두부~네이프를 하나의
+    연속된 "말굽" 곡선으로 취급하는 기법이라 전역 설정이 더 실제와 가까움).
+  - 조정화면에 별도 카드(섹션 탭들과 분리) — 사용 토글 + 가드번호/페이드높이/
+    블렌딩폭 3개 슬라이더.
+  - lengthRatioFor에 로직 추가: 해당 컬럼(섹션 root)이 temple/side/occipital/
+    nape 중 하나이고 fade.enabled면, 그 섹션 세로범위 내에서 "하단(구레나룻·
+    목선 쪽)에 얼마나 가까운지" 진행률을 계산해서, 페이드 존 안이면 길이
+    배율을 가드번호 기준 길이 쪽으로 끌어당김(가드/8 = 0~1 배율). front/
+    crown은 실제로도 클리퍼 페이드 대상이 아니라 적용 안 함.
+  검증: 순수 수치로 네이프 예시(가드1, 높이35%, 블렌딩40%) 스캔 — 목선 바로
+  아래(ny=1.0)에서 정확히 1/8(=0.125, 가드1과 일치)로 떨어지고, 위로
+  올라갈수록 자연스럽게 정상길이(1.0)로 복귀 확인. 가드0(스킨)→0.000,
+  가드8(정상길이 근접)→1.000 극단값도 정확히 일치. 가드(0~8)×높이(0~100%)×
+  ny(0~1) 전 조합 스캔에서 음수/NaN 0건 확인.
 -->
 <!DOCTYPE html>
 <html lang="ko">
@@ -902,6 +1043,43 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:22px;heigh
           <!-- 섹션 탭 (미용사 커트 순서) -->
           <div id="sectionTabs" style="display:flex;flex-direction:column;gap:10px;"></div>
 
+          <!-- 페이드/테이퍼 (클리퍼 기법 — 엘리베이션과 별개, 길이 기준 그라데이션) -->
+          <div class="section-tab" style="border-top:1px solid var(--line);padding-top:12px;">
+            <div class="section-tab-header" style="cursor:default;">
+              <div class="section-tab-left">
+                <span class="section-tab-name">페이드 / 테이퍼</span>
+                <span class="section-tab-desc">(클리퍼 — 템플·사이드·후두부·네이프 하단)</span>
+              </div>
+              <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text-muted);">
+                <input type="checkbox" id="fadeEnabledToggle" onchange="onFadeToggle(this.checked)"> 사용
+              </label>
+            </div>
+            <div id="fadeControls" style="display:none;flex-direction:column;gap:10px;padding-top:10px;">
+              <div class="slider-block">
+                <div class="param-label-row">
+                  <span class="param-label">가드 번호 (0=스킨 · 8=1인치)</span>
+                  <span class="param-val" id="fadeval-guard">1</span>
+                </div>
+                <input type="range" id="fadeslider-guard" min="0" max="8" value="1" oninput="onFadeSlider('guard', this.value)">
+              </div>
+              <div class="slider-block">
+                <div class="param-label-row">
+                  <span class="param-label">페이드 높이 (로우~하이)</span>
+                  <span class="param-val" id="fadeval-height">35%</span>
+                </div>
+                <input type="range" id="fadeslider-height" min="0" max="100" value="35" oninput="onFadeSlider('height', this.value)">
+              </div>
+              <div class="slider-block">
+                <div class="param-label-row">
+                  <span class="param-label">블렌딩 폭 (테이퍼 레버)</span>
+                  <span class="param-val" id="fadeval-blendWidth">40%</span>
+                </div>
+                <input type="range" id="fadeslider-blendWidth" min="0" max="100" value="40" oninput="onFadeSlider('blendWidth', this.value)">
+              </div>
+              <div class="section-affects">영향: 템플 · 사이드 · 후두부 · 네이프(각 섹션 하단부)</div>
+            </div>
+          </div>
+
           <!-- 컬/웨이브: 전체 공통 -->
           <div class="slider-block" style="border-top:1px solid var(--line);padding-top:12px;">
             <div class="slider-row">
@@ -1173,19 +1351,43 @@ function getEstimatedLandmarks(angle){
 
 function refineSectionBoundaries(angle){
   const lm = state.landmarks && state.landmarks[angle]; if(!lm) return;
+
+  // ── 두정선(Parietal Ridge / Crest Area) — 진짜 미용 기준선 도입 ──
+  // 미용 교재(Milady's Cosmetology 등) 정의: "귀 위쪽 손가락 3개 너비 지점에서
+  // 시작해 템플~크라운 하단까지 이어지는, 머리에서 가장 넓은 둘레선". 이 선을
+  // 기준으로 위(Interior, 머리카락이 "눕는" 쪽)는 크라운/프론트, 아래(Exterior,
+  // "늘어지는" 쪽)는 템플/사이드/후두부로 나뉨 — 실제 미용사가 두상을 나눌 때
+  // 쓰는 물리적 기준이 이거임. 예전엔 이 개념 자체가 코드에 없어서 크라운 경계를
+  // 엉뚱하게(이마 높이 기준) 잡고 있었음.
+  // 실제 3D 스캔이 없어 정확한 cm 측정은 불가능 — 귀(earY)~이마 랜드마크
+  // (foreheadY, MediaPipe 인덱스10=헤어라인 부근) 사이를 귀 쪽에서 40% 지점으로
+  // 근사(경험적 근사치, "3 손가락 너비"를 비율로 환산한 것 — 실사진 검증 후
+  // 재조정 필요할 수 있음).
+  const parietalRidgeY = lm.earY - (lm.earY - lm.foreheadY) * 0.40;
+
   // Y 경계: 랜드마크 기반 실제 해부학적 위치로 보정
-  SECTIONS.crown.yRange     = [0,                    lm.foreheadY * 0.95];
-  SECTIONS.front.yRange     = [lm.foreheadY * 0.85,  lm.eyeY * 1.05];
-  SECTIONS.temple.yRange    = [lm.eyeY * 0.9,        lm.earY * 1.05];
-  SECTIONS.side.yRange      = [lm.earY * 0.85,       lm.earY * 1.40];
-  SECTIONS.occipital.yRange = [lm.earY * 1.10,       lm.chinY * 0.90];
-  SECTIONS.nape.yRange      = [lm.chinY * 0.78,      1.0];
+  // crown(정수리): Apex~두정선 사이(Interior 전체) — 예전엔 이마 높이 기준으로
+  // 잘못 잡아서 실제 크라운 영역 대부분(두정선까지)이 빠져 있었음.
+  SECTIONS.crown.yRange     = [0,                     parietalRidgeY];
+  // front(프론트): 이마 헤어라인~눈썹 사이의 좁은 밴드 — 미용 용어로는 정확히
+  // "Fringe(뱅)"에 더 가까움. crown과는 별개로, 그 안쪽의 더 좁은 중심 밴드.
+  SECTIONS.front.yRange     = [lm.foreheadY * 0.85,   lm.browTopY * 1.05];
+  // temple(템플): 두정선 바로 아래(귀 위/앞)의 좁은 영역 — 두정선을 상단 기준으로 씀
+  SECTIONS.temple.yRange    = [parietalRidgeY * 0.97,  lm.earY * 1.05];
+  // side("사이드", 정식 미용 용어는 아니고 편의상 이름 — 실제로는 두정선 아래
+  // Exterior 영역 전체를 뜻함): 두정선부터 시작해야 크라운과 안 겹치고 이어짐.
+  SECTIONS.side.yRange      = [parietalRidgeY,         lm.earY * 1.40];
+  // occipital(후두부): 귀~후두골(정확한 랜드마크가 없어 chinY 기반 근사 유지)까지
+  SECTIONS.occipital.yRange = [lm.earY * 1.10,         lm.chinY * 0.90];
+  // nape(네이프): 후두골 아래~목선
+  SECTIONS.nape.yRange      = [lm.chinY * 0.78,        1.0];
+
   const lx = Math.min(lm.lEarX, lm.rEarX);
   const rx = Math.max(lm.lEarX, lm.rEarX);
   SECTIONS.crown.xRange  = [lx * 0.3,  rx + (1-rx)*0.7];
   SECTIONS.front.xRange  = [lx * 0.55, rx + (1-rx)*0.45];
   SECTIONS.side.xRange   = [lx * 0.1,  rx + (1-rx)*0.9]; // 사이드는 넓게
-  console.log('[' + angle + '] yaw=' + lm.yaw.toFixed(2) + ' 섹션 경계 보정됨');
+  console.log('[' + angle + '] yaw=' + lm.yaw.toFixed(2) + ' 섹션 경계 보정됨(두정선 y=' + parietalRidgeY.toFixed(3) + ')');
 }
 
 /* ────────────────────────────────────────
@@ -1287,15 +1489,20 @@ const HINTS = {front:'정면을 맞춰주세요', left:'좌측면을 맞춰주�
 const SECTIONS = {
   crown: {
     id:'crown', label:'크라운', labelEn:'CROWN',
-    desc:'정수리 · 전체 길이 기준',
+    desc:'정수리 · 엘리베이션(시술각) 기준',
     yRange:[0, 0.28], xRange:[0.15, 0.85],
     visibleIn:['front','left','right','back'],
-    params:['length','volume'],
-    defaults:{length:50, volume:50},
+    params:['length','elevation'],
+    // 엘리베이션(시술각): 실제 미용 기법 그대로 — 두피에서 모발을 얼마나
+    // 들어올려서 자르는지(0°~90°). 0°(무시술각)=원랭스, 무게감 유지, 볼륨 없음.
+    // 90°(이상)=완전 레이어, 무게 제거, 볼륨↑. "볼륨"이 따로 있던 게 아니라
+    // 전부 엘리베이션의 결과였음 — 그래서 volume 파라미터를 없애고 이걸로 통합.
+    paramMeta:{ elevation:{min:0, max:90, unit:'°'} },
+    defaults:{length:50, elevation:45},
   },
   front: {
     id:'front', label:'프론트', labelEn:'FRONT',
-    desc:'앞머리 · 이마 라인',
+    desc:'앞머리 · 커팅라인(실제로는 Fringe 개념)',
     yRange:[0.20, 0.45], xRange:[0.30, 0.70],
     visibleIn:['front'],
     params:['length','line'],
@@ -1303,31 +1510,37 @@ const SECTIONS = {
   },
   temple: {
     id:'temple', label:'템플', labelEn:'TEMPLE',
-    desc:'관자놀이 · 사이드와 연결',
+    desc:'관자놀이 · 오버다이렉션(가이드라인 연동)',
     yRange:[0.20, 0.50], xRange:[0, 1],   // xRange는 좌우 양쪽 (렌더 시 분기)
     visibleIn:['front','left','right'],
-    params:['length','blend'],
-    defaults:{length:45, blend:50},  // blend: 크라운↔사이드 연결감
+    params:['length','overdirection'],
+    // 오버다이렉션: 실제 미용 기법 — 이 섹션의 모발을 자연스럽게 떨어지는
+    // 방향이 아니라 다른 기준선(가이드라인, 여기선 크라운)으로 당겨서 자르는
+    // 정도. "블렌드"라는 모호한 이름 대신 실제 기법 이름으로 교체.
+    paramMeta:{ overdirection:{min:0, max:100, unit:'%'} },
+    defaults:{length:45, overdirection:50},
   },
   side: {
     id:'side', label:'사이드', labelEn:'SIDE',
-    desc:'귀 앞·뒤 · 레이어 여부',
+    desc:'귀 앞·뒤 · 엘리베이션(시술각) 기준',
     yRange:[0.28, 0.72], xRange:[0, 1],
     visibleIn:['left','right'],
-    params:['length','layer'],
-    defaults:{length:50, layer:30},  // layer: 0=원랭스 100=강한레이어
+    params:['length','elevation'],
+    paramMeta:{ elevation:{min:0, max:90, unit:'°'} },
+    defaults:{length:50, elevation:30},
   },
   occipital: {
     id:'occipital', label:'후두부', labelEn:'OCCIPITAL',
-    desc:'뒤통수 볼륨 · 형태',
+    desc:'뒤통수 · 엘리베이션(시술각) 기준',
     yRange:[0.30, 0.68], xRange:[0.10, 0.90],
     visibleIn:['back','left','right'],
-    params:['length','volume'],
-    defaults:{length:50, volume:55},
+    params:['length','elevation'],
+    paramMeta:{ elevation:{min:0, max:90, unit:'°'} },
+    defaults:{length:50, elevation:50},
   },
   nape: {
     id:'nape', label:'네이프', labelEn:'NAPE',
-    desc:'목선 마무리 · 언더컷',
+    desc:'목선 마무리 · 커팅라인',
     yRange:[0.68, 1.0], xRange:[0, 1],
     visibleIn:['back','front','left','right'],
     params:['length','line'],
@@ -1342,25 +1555,39 @@ const SECTION_ORDER = ['crown','front','temple','side','occipital','nape'];
 // SECTIONS의 yRange/xRange는 "이 섹션이 대략 이 범위에 있다"는 참고값이라
 // 뷰별로 겹치는 구간이 있음(예: front와 crown이 이마 위쪽에서 겹침).
 // 뷰마다 "더 구체적인 섹션을 먼저 확인"하는 우선순위로 겹침을 해소한다.
+// ※ 버그 수정(2026-07-13): 예전엔 crown이 자기 yRange/xRange를 실제로 안 쓰고
+// "front도 temple도 nape도 아니면 무조건 crown"인 순수 fallback이었음 —
+// refineSectionBoundaries가 아무리 정확한 두정선 경계를 계산해도 crown이
+// 그걸 무시하고 나머지 전부를 흡수해버리는 구조라 의미가 없었음. 이제
+// crown.yRange[1](=두정선 y좌표)을 명시적으로 검사해서, 실제로 두정선
+// 위쪽(Interior)인 곳만 crown이 되도록 고침.
 function resolveSectionId(angle, nx, ny){
   const inR = (range, v) => v>=range[0] && v<=range[1];
   if(angle==='front'){
-    if(inR(SECTIONS.front.yRange, ny) && inR(SECTIONS.front.xRange, nx)) return 'front';
-    if(inR(SECTIONS.temple.yRange, ny) && (nx<0.30 || nx>0.70)) return 'temple';
     if(ny > SECTIONS.nape.yRange[0]) return 'nape';
-    return 'crown';
+    if(inR(SECTIONS.front.yRange, ny) && inR(SECTIONS.front.xRange, nx)) return 'front';
+    // temple: front의 중심 밴드 바깥쪽(귀 쪽)이면서 두정선~귀 사이 높이
+    if(inR(SECTIONS.temple.yRange, ny) && (nx<SECTIONS.front.xRange[0] || nx>SECTIONS.front.xRange[1])) return 'temple';
+    if(ny <= SECTIONS.crown.yRange[1]) return 'crown'; // 두정선 위(Interior) = 크라운
+    return 'side'; // 두정선 아래인데 템플도 아니면 사이드(귀 옆/뒤로 늘어진 부분)
   }
   if(angle==='left' || angle==='right'){
-    if(ny > SECTIONS.nape.yRange[0]) return 'nape';
-    if(inR(SECTIONS.temple.yRange, ny) && ny < 0.35) return 'temple';
+    if(ny <= SECTIONS.crown.yRange[1]) return 'crown'; // 두정선 위 = 크라운(예전엔 ny<0.35 임의 고정값이었음)
+    if(inR(SECTIONS.temple.yRange, ny) && nx < 0.35) return 'temple';
+    // occipital을 nape보다 먼저 체크 — occipital.yRange 상단(earY*1.10)과 nape.yRange
+    // 하단(chinY*0.78)이 겹치는 구간이 있는데, nape를 먼저 체크하면 그 겹치는 구간을
+    // 전부 nape가 먹어버려서 occipital 범위가 세로로 몇 % 안 남는 문제가 있었음
+    // (실기기 피드백 "후두부 길이·볼륨 아무 변화 없다"의 원인 중 하나로 추정).
     if(inR(SECTIONS.occipital.yRange, ny) && nx > 0.55) return 'occipital';
-    if(inR(SECTIONS.side.yRange, ny)) return 'side';
-    return 'crown';
+    if(ny > SECTIONS.nape.yRange[0]) return 'nape';
+    return 'side';
   }
   if(angle==='back'){
-    if(ny > SECTIONS.nape.yRange[0]) return 'nape';
+    if(ny <= SECTIONS.crown.yRange[1]) return 'crown'; // 두정선 위 = 크라운(예전엔 crown.yRange를 아예 안 썼음)
+    // 여기서도 occipital을 nape보다 먼저 체크(위 left/right와 동일한 이유)
     if(inR(SECTIONS.occipital.yRange, ny)) return 'occipital';
-    return 'crown';
+    if(ny > SECTIONS.nape.yRange[0]) return 'nape';
+    return 'occipital'; // 두정선 아래인데 위 둘 다 아니면 후두부(후면 뷰엔 템플/사이드가 안 보이므로)
   }
   return 'crown';
 }
@@ -1385,6 +1612,17 @@ const state = {
   sections: Object.fromEntries(
     Object.entries(SECTIONS).map(([id,s])=>[id, {...s.defaults}])
   ),
+  // ── 페이드/테이퍼(클리퍼 기법) — 길이 기준, 엘리베이션(각도)과는 완전히 별개 ──
+  // 템플/사이드/후두부/네이프 하단(구레나룻·목선 쪽)에 적용되는 클리퍼 가드
+  // 그라데이션. 실제 기법 그대로: guard 0=스킨(가드 없음, 맨살까지), 8=1인치
+  // (가드 번호당 1/8인치 — 업계 표준). enabled가 false면 완전히 무시되고
+  // 기존 elevation/length 렌더링만 적용(하위 호환).
+  fade: {
+    enabled: false,
+    guard: 1,        // 0~8, 페이드 최하단(구레나룻/목선 끝) 길이
+    height: 35,       // 0~100, 그 섹션 안에서 페이드가 몇 %까지 올라가는지(로우/미드/하이 페이드)
+    blendWidth: 40,   // 0~100, 가드 경계가 얼마나 부드럽게 섞이는지(테이퍼 레버 개념 — 낮으면 칼선, 높으면 부드러운 그라데이션)
+  },
   // 하위 호환: sliders는 섹션 파라미터에서 파생 (renderFrame에서 사용)
   // length 필드는 더 이상 여기서 쓰이지 않음 — drawHairStrands가 컬럼별로
   // resolveSectionId()를 통해 해당 위치의 섹션 length를 직접 조회함
@@ -1393,18 +1631,22 @@ const state = {
     const sec = state.sections;
     // 각 뷰 렌더에 필요한 통합 파라미터 계산
     const blend = (a,b,t)=> a*(1-t)+b*t;
+    // 엘리베이션(0~90°)을 기존 볼륨류 공식(numRootScatter 등)이 기대하는
+    // 0~100 스케일로 환산. 실제 기법 파라미터로 바뀌었어도 렌더링 쪽 공식은
+    // 그대로 재사용(입력만 바뀜) — elevation 90°=완전 레이어=볼륨 100.
+    const elevToVol = (deg)=> Math.max(0, Math.min(100, ((deg ?? 45)/90) * 100));
     // left/right는 좌우 대칭이라 항상 동일한 값 — 한 번만 계산해서 공유
     const sideView = {
       length: blend(sec.side.length, sec.occipital.length, 0.5),
       curl:   state._globalCurl || 30,
-      volume: blend(sec.crown.volume, sec.occipital.volume, 0.5),
+      volume: blend(elevToVol(sec.crown.elevation), elevToVol(sec.occipital.elevation), 0.5),
       thickness: 50,
     };
     return {
       front: {
         length: blend(sec.crown.length, sec.front.length, 0.6),
         curl:   state._globalCurl || 30,
-        volume: sec.crown.volume,
+        volume: elevToVol(sec.crown.elevation),
         thickness: 50,
       },
       left: sideView,
@@ -1412,7 +1654,7 @@ const state = {
       back: {
         length: blend(sec.occipital.length, sec.nape.length, 0.5),
         curl:   state._globalCurl || 30,
-        volume: sec.occipital.volume,
+        volume: elevToVol(sec.occipital.elevation),
         thickness: 50,
       },
     };
@@ -2961,20 +3203,20 @@ function selectStyle(id){
     state._globalCurl = (typeof st.globalCurl === 'number') ? st.globalCurl : 30;
   } else {
     // ── 기본 프리셋: length/curl/volume 대표값에서 섹션별 값 파생 ──
-    // ROADMAP(raw-edit): 스타일 적용 직후 각 섹션 length/volume을 50으로 리셋해서
-    // 올림/내림 조정이 대칭이 되게 할 예정 (지금은 st.length/volume 그대로 대입).
-    state.sections.crown.length    = st.length;
-    state.sections.crown.volume    = st.volume;
-    state.sections.front.length    = Math.round(st.length * 0.85); // 앞머리는 약간 짧게
-    state.sections.front.line      = 50;
-    state.sections.temple.length   = Math.round(st.length * 0.80);
-    state.sections.temple.blend    = 50;
-    state.sections.side.length     = Math.round(st.length * 0.90);
-    state.sections.side.layer      = st.curl > 40 ? 40 : 20;
-    state.sections.occipital.length= st.length;
-    state.sections.occipital.volume= st.volume;
-    state.sections.nape.length     = Math.round(st.length * 0.60);
-    state.sections.nape.line       = 50;
+    // volume(0~100, STYLES 프리셋 정의값) → elevation(0~90°) 환산해서 사용.
+    const elevFromVolume = Math.round((st.volume/100) * 90);
+    state.sections.crown.length     = st.length;
+    state.sections.crown.elevation  = elevFromVolume;
+    state.sections.front.length     = Math.round(st.length * 0.85); // 앞머리는 약간 짧게
+    state.sections.front.line       = 50;
+    state.sections.temple.length    = Math.round(st.length * 0.80);
+    state.sections.temple.overdirection = 50;
+    state.sections.side.length      = Math.round(st.length * 0.90);
+    state.sections.side.elevation   = st.curl > 40 ? 35 : 18; // 컬 강한 스타일일수록 사이드도 시술각↑(레이어감)
+    state.sections.occipital.length = st.length;
+    state.sections.occipital.elevation = elevFromVolume;
+    state.sections.nape.length      = Math.round(st.length * 0.60);
+    state.sections.nape.line        = 50;
     state._globalCurl = st.curl;
   }
   syncSliderUI();
@@ -3006,7 +3248,11 @@ buildStyleGrid();
    SECTION UI
 ════════════════════════════════════════ */
 const PARAM_LABELS = {
-  length:'길이', volume:'볼륨', line:'라인', blend:'연결감', layer:'레이어',
+  length:'길이', line:'커팅라인', elevation:'엘리베이션(시술각)', overdirection:'오버다이렉션',
+  // 아래 3개는 새 파라미터로 교체되기 전 이름 — 예전에 저장된 커스텀 스타일
+  // (localStorage)이 혹시 이 이름으로 된 섹션 데이터를 갖고 있어도 라벨이
+  // 깨지지 않도록 유지(하위 호환, 화면에 나올 일은 거의 없음).
+  volume:'볼륨', blend:'연결감', layer:'레이어',
 };
 
 function buildSectionTabs(){
@@ -3034,17 +3280,19 @@ function buildSectionTabs(){
         <div class="section-tab-summary" id="sectab-summary-${id}"></div>
       </div>
       <div class="section-tab-body" id="sectab-body-${id}">
-        ${sec.params.map(p=>`
+        ${sec.params.map(p=>{
+          const meta = (sec.paramMeta && sec.paramMeta[p]) || {min:0, max:100, unit:''};
+          return `
           <div class="slider-block">
             <div class="param-label-row">
               <span class="param-label">${PARAM_LABELS[p]||p}</span>
-              <span class="param-val" id="secval-${id}-${p}">${state.sections[id][p]}</span>
+              <span class="param-val" id="secval-${id}-${p}">${state.sections[id][p]}${meta.unit}</span>
             </div>
-            <input type="range" id="secslider-${id}-${p}" min="0" max="100"
+            <input type="range" id="secslider-${id}-${p}" min="${meta.min}" max="${meta.max}"
               value="${state.sections[id][p]}"
               oninput="onSectionSlider('${id}','${p}',this.value)">
-          </div>
-        `).join('')}
+          </div>`;
+        }).join('')}
         <div class="section-affects">영향: ${sec.visibleIn.map(v=>ANGLE_LABELS[v]).join(' · ')}</div>
       </div>`;
     container.appendChild(div);
@@ -3071,7 +3319,8 @@ function onSectionSlider(secId, param, val){
   const intVal = parseInt(val);
   // 현재 뷰에 직접 적용
   state.sections[secId][param] = intVal;
-  document.getElementById(`secval-${secId}-${param}`).textContent = val;
+  const meta = (SECTIONS[secId].paramMeta && SECTIONS[secId].paramMeta[param]) || {unit:''};
+  document.getElementById(`secval-${secId}-${param}`).textContent = val + meta.unit;
   updateSectionSummary(secId);
   // 섹션 간 연동 (같은 뷰 안에서)
   propagateSectionChange(secId, param);
@@ -3087,12 +3336,29 @@ function onGlobalCurl(val){
   drawAdjustPreview();
 }
 
+// ── 페이드/테이퍼 핸들러 — 엘리베이션(각도)과 완전히 별개, 클리퍼 가드
+// 번호(길이) 기준 그라데이션. onSectionSlider와 동일한 패턴(값 갱신→표시→재렌더).
+function onFadeToggle(checked){
+  state.fade.enabled = checked;
+  document.getElementById('fadeControls').style.display = checked ? 'flex' : 'none';
+  drawAdjustPreview();
+}
+function onFadeSlider(param, val){
+  const intVal = parseInt(val);
+  state.fade[param] = intVal;
+  const unit = (param==='guard') ? '' : '%';
+  document.getElementById('fadeval-'+param).textContent = val + unit;
+  drawAdjustPreview();
+}
+
 function propagateSectionChange(secId, param){
-  // crown 길이 → temple 길이에 50% 반영 (연결감 유지)
+  // crown 길이 → temple 길이에 반영(오버다이렉션 강도만큼) — 실제 기법: 템플을
+  // 크라운 가이드라인 쪽으로 얼마나 당겨서(오버다이렉션) 자르는지에 따라,
+  // 크라운 길이가 바뀌면 템플도 그 가이드를 따라 같이 움직임.
   if(secId==='crown' && param==='length'){
     const crownLen = state.sections.crown.length;
-    const templeBlend = state.sections.temple.blend / 100;
-    const newTemple = Math.round(crownLen * (1 - templeBlend*0.4));
+    const overdirection = state.sections.temple.overdirection / 100;
+    const newTemple = Math.round(crownLen * (1 - overdirection*0.4));
     state.sections.temple.length = Math.max(0, Math.min(100, newTemple));
     const tSlider = document.getElementById('secslider-temple-length');
     if(tSlider) tSlider.value = state.sections.temple.length;
@@ -3117,7 +3383,10 @@ function updateSectionSummary(id){
   if(!el) return;
   const vals = state.sections[id];
   const sec = SECTIONS[id];
-  el.textContent = sec.params.map(p=>`${PARAM_LABELS[p]||p} ${vals[p]}`).join(' · ');
+  el.textContent = sec.params.map(p=>{
+    const unit = (sec.paramMeta && sec.paramMeta[p] && sec.paramMeta[p].unit) || '';
+    return `${PARAM_LABELS[p]||p} ${vals[p]}${unit}`;
+  }).join(' · ');
 }
 
 function resetSections(){
@@ -3127,8 +3396,9 @@ function resetSections(){
     sec.params.forEach(p=>{
       const s = document.getElementById(`secslider-${id}-${p}`);
       const v = document.getElementById(`secval-${id}-${p}`);
+      const unit = (sec.paramMeta && sec.paramMeta[p] && sec.paramMeta[p].unit) || '';
       if(s) s.value = sec.defaults[p];
-      if(v) v.textContent = sec.defaults[p];
+      if(v) v.textContent = sec.defaults[p] + unit;
     });
     updateSectionSummary(id);
   });
@@ -3159,10 +3429,11 @@ function registerCurrentAsStyle(){
     sections: JSON.parse(JSON.stringify(state.sections)), // 섹션별 값 전체 깊은 복사
     globalCurl: state._globalCurl,
     // 아래 3개는 스타일 카드 아이콘(styleIconSVG)이 참조하는 대표값 —
-    // 실제 렌더링은 sections를 그대로 쓰지만, 그리드에서의 미리보기 아이콘용으로 채워둠
+    // 실제 렌더링은 sections를 그대로 쓰지만, 그리드에서의 미리보기 아이콘용으로 채워둠.
+    // volume은 이제 elevation(0~90°) 기반이라 0~100 스케일로 환산해서 채움.
     length: state.sections.crown.length,
     curl: state._globalCurl,
-    volume: state.sections.crown.volume,
+    volume: Math.round(((state.sections.crown.elevation ?? 45) / 90) * 100),
     colorHex: (state.selectedStyle && state.selectedStyle.colorHex)
       || (state.hairMasks.front && state.hairMasks.front.avgColor)
       || '#2A1B12',
@@ -3372,6 +3643,19 @@ function drawOrientationFieldDebug(ctx, fit, maskInf){
 }
 
 function renderFrame(canvas, angle){
+  // ── 버그 수정(2026-07-13): SECTIONS 경계 미스매치 ──
+  // refineSectionBoundaries(angle)는 원래 촬영 직후 파이프라인에서 4개 뷰를
+  // 순서대로 한 번씩만 돌렸는데, SECTIONS가 뷰별로 안 나뉘고 전역 공유
+  //객체라서 나중 뷰가 이전 뷰의 경계값을 덮어씀 — 그 뒤로 어느 뷰 탭을
+  // 보든 "마지막으로 처리된 뷰 하나" 기준 경계에 고정된 채 안 바뀌고
+  // 있었음(실기기 피드백: "크라운을 만졌는데 프론트/사이드가 늘어난다" 등
+  // 전 섹션·전 뷰에 걸친 증상 전부 이걸로 설명됨). 렌더할 때마다 지금
+  // 보고 있는 뷰(angle) 기준으로 매번 다시 계산해서 항상 일치하게 함.
+  // (landmarks[angle]이 없으면 refineSectionBoundaries 자체가 안전하게
+  // no-op — 새 실패 모드 추가 아님)
+  if(typeof faceLandmarkerReady !== 'undefined' && faceLandmarkerReady){
+    refineSectionBoundaries(angle);
+  }
   syncCanvasSize(canvas);
   const ctx = canvas.getContext('2d');
   const w = canvas.width, h = canvas.height;
@@ -3657,15 +3941,39 @@ function drawHairStrands(ctx, fit, scalpY, hairEndY, maskW, maskH, hairCanvas, o
       }
     }
 
-    // ── ③side.layer(원랭스/레이어): 컬럼별 길이 배율에 편차 추가 ──
-    // 레이어가 강할수록(100에 가까울수록) 인접 컬럼끼리 길이 편차가 커져서
-    // "짧은 가닥·긴 가닥이 섞인" 레이어드 텍스처가 남. 0(원랭스)이면 무변화.
-    if(secId === 'side' && sections.side && typeof sections.side.layer === 'number'){
-      const layerT = sections.side.layer / 100; // 0~1
-      if(layerT > 0){
-        const jitterRange = layerT * 0.55;
-        const pr = pseudoRandForCol(cx, 78.233);
+    // ── ③엘리베이션(시술각, 크라운/사이드/후두부 공통): 컬럼별 길이 배율에 편차 추가 ──
+    // 실제 기법: 시술각이 높을수록(90°에 가까울수록=레이어 강하게) 그라데이션이
+    // 강해져서 인접 컬럼끼리 길이 편차가 커짐("짧은 가닥·긴 가닥이 섞인" 레이어드
+    // 텍스처). 0°(원랭스)면 무변화 — 예전엔 이 효과가 side.layer 하나에만 있었는데,
+    // 엘리베이션은 크라운/사이드/후두부 셋 다에 있는 파라미터라 셋 다 반영.
+    const ELEV_SEED = { crown:31.719, side:78.233, occipital:55.123 };
+    if(ELEV_SEED[secId] && sections[secId] && typeof sections[secId].elevation === 'number'){
+      const elevT = Math.max(0, Math.min(1, sections[secId].elevation / 90)); // 0~1
+      if(elevT > 0){
+        const jitterRange = elevT * 0.55;
+        const pr = pseudoRandForCol(cx, ELEV_SEED[secId]);
         ratio *= (1 - jitterRange*0.5 + pr*jitterRange);
+      }
+    }
+
+    // ── 페이드/테이퍼(클리퍼, 길이 기준 — 엘리베이션과 완전히 별개) ──
+    // 실제 기법: 가드 번호(0~8, 1단위=1/8인치)로 구레나룻/목선 쪽부터 점점
+    // 짧아지게 블렌딩. 섹션의 세로 범위 안에서 "하단(구레나룻/목선 쪽)에
+    // 얼마나 가까운가"를 진행률로 보고, 페이드 존 안이면 목표 비율을 가드
+    // 길이 쪽으로 끌어당김. front/crown은 실제로도 클리퍼 페이드 대상이
+    // 아니라서 적용 안 함(FADE_SECTIONS에 없는 섹션은 무조건 통과).
+    const FADE_SECTIONS = { temple:1, side:1, occipital:1, nape:1 };
+    if(state.fade && state.fade.enabled && FADE_SECTIONS[secId] && SECTIONS[secId]){
+      const yr = SECTIONS[secId].yRange;
+      const span = (yr[1]-yr[0]) || 0.001;
+      // progressFromBottom: 0=섹션 맨 아래(구레나룻/목선에 가장 가까움), 1=섹션 맨 위
+      const progressFromBottom = 1 - (ny - yr[0]) / span;
+      const fadeHeightT = state.fade.height / 100;
+      if(progressFromBottom < fadeHeightT){
+        const guardRatio = state.fade.guard / 8; // 0(스킨)~1(가드8=거의 정상길이)
+        const blendZone = Math.max(0.02, (state.fade.blendWidth/100) * fadeHeightT);
+        const localT = Math.min(1, Math.max(0, progressFromBottom / blendZone)); // 0=완전 가드길이, 1=정상 복귀
+        ratio = ratio*localT + guardRatio*(1-localT);
       }
     }
 
@@ -5158,16 +5466,21 @@ function buildStrandsForSection(sectionId, params, colorHex, globalCurl, shapeSi
   if(!zone) return group;
 
   const length   = params.length ?? 50;
-  // volume류 파라미터가 섹션마다 다른 이름이라 있는 것부터 순서대로 사용
-  const volume   = params.volume ?? params.blend ?? params.layer ?? 50;
+  // elevation(시술각, 0~90°)을 기존 볼륨류 공식(strandLen/puffOut 계산)이 기대하는
+  // 0~100 스케일로 환산. crown/side/occipital만 elevation을 가지고 있고,
+  // temple(overdirection)/front,nape(line)는 볼륨 개념이 아니라 기본값 50 사용.
+  const elevationDeg = params.elevation;
+  const volume = (typeof elevationDeg === 'number') ? Math.max(0, Math.min(100, (elevationDeg/90)*100)) : 50;
   const lineVal  = params.line;   // front/nape에만 존재
-  const layerVal = params.layer;  // side에만 존재
   const realFactor = (shapeSignal && shapeSignal.factor) || 1.0; // 실측 사진(+AI 보완) 기반 보정 배율
 
   const strandLen    = (0.16 + (length/100) * 0.95) * realFactor;
   const puffOut       = (0.05 + (volume/100) * 0.22) * realFactor;
   const curlAmt        = ((globalCurl ?? 30)/100) * 0.18;
-  const lengthJitter  = layerVal!=null ? (layerVal/100)*0.35 : 0.12; // 레이어감 있는 섹션일수록 가닥 길이 편차 커짐
+  // 엘리베이션이 있는 섹션(크라운/사이드/후두부)일수록 시술각이 높을수록(레이어
+  // 강하게) 가닥 길이 편차가 커짐 — 예전엔 side.layer 하나에만 있던 효과를
+  // 엘리베이션 있는 섹션 전체로 확장(2D lengthRatioFor와 동일한 원리).
+  const lengthJitter  = (typeof elevationDeg === 'number') ? (elevationDeg/90)*0.35 : 0.12;
 
   const mat = new THREE.MeshStandardMaterial({
     color: new THREE.Color(colorHex || '#2A1B12'),
