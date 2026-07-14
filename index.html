@@ -1123,6 +1123,37 @@
   보다 실제로 눈에 보이는 결과를 우선해서 Z_SIGN을 1로 반전.
   ⚠ 정직한 한계: 여전히 실기기 확인 필요 — 이번에도 눈으로 직접 못
   보고 반전한 것이라, 반대로 튀어나와 보이면 다시 -1로 되돌리면 됨.
+
+  ── 두상 실측 단면의 "타원체 값 폴백" 제거(2026-07-14, 계속) ──
+  "사진에서 못 잰 높이는 예전 타원체 값으로 안전하게 대체" 부분을 설명
+  하니 "이거 필요없다고" — 타원체는 이미 완전히 없앴는데, 실측 안 된
+  곳만 그 옛 값을 몰래 다시 쓰는 게 "실측 아닌 임의값은 안 쓴다"는 원칙에
+  어긋난다는 지적.
+  수정: DEFAULT_HALF_WIDTH/DEFAULT_HALF_DEPTH(0.78·0.85*widthFactor, 옛
+  타원체 수식) 완전히 제거. 실측 없는 밴드는 phi가 가장 가까운 "실측
+  있는 밴드"의 값을 그대로 이어받도록(최근접 이웃) 변경 — 임의 상수가
+  아니라 그 사람에게서 실제로 잰 값 중 가장 가까운 것을 씀. 모든 뷰에서
+  실측이 아예 없는 극단적 경우(예: 사진을 전혀 못 찍은 경우)만을 위한
+  최후 안전장치(0.7/0.6, NaN으로 지오메트리가 깨지는 것만 방지)는 남겨둠
+  — 이것도 타원체 수식이 아니라 그냥 "NaN 방지용 최소 숫자"라 성격이 다름.
+  검증: 후면 랜드마크가 아예 없는 상태(감지 실패 재현)로 Node 재실행 —
+  NaN 없이 전 밴드가 정면/좌/우측 실측값(가장 가까운 밴드)으로 채워지고,
+  옛 타원체 값(0.78/0.85 근방 고정값)이 전혀 안 나오는 것 확인.
+
+  ── TODO(나중에): 사진 부족하면 3D 자체를 안 만들게 게이팅 ──
+  "1장 있는데 3D를 왜 만들어?" — 정확한 지적. 지금 3D 탭 진입에 엄격한
+  조건이 없음(촬영화면 "다음" 버튼은 사진 최소 1장만 있으면 활성화되고,
+  3D 탭 자체도 unlockTab이 navTo('model3d') 안에서 스스로 호출돼서 딱히
+  "4개 뷰 다 찍었는지" 체크가 없음) — 그래서 사진 1장(예: 정면)만으로도
+  3D 화면 진입 자체는 가능한 상태.
+  사용자 방향: "1장만 있으면 거기에 맞게 2D로 처리해줘도 된다, 결과적으로
+  3D는 필요없다" — 즉 실측 데이터(폭+깊이 둘 다)가 부족하면 3D 생성을
+  시도하지 말고, 2D 조정 화면만으로 충분히 처리되게 해야 한다는 것.
+  나중에 처리하기로 결정(지금 당장 구현 안 함) — 3D 진입 전에 "두상을
+  만들 만큼 충분한 뷰(예: 정면+측면 최소 하나)가 있는지" 체크해서, 부족
+  하면 3D 시도 자체를 안 하고 안내 메시지로 대체하는 방향. 이게 구현되면
+  computeHeadCrossSections의 최후 안전장치(0.7/0.6)도 도달할 일이 없어져서
+  자연히 죽은 코드가 되므로, 그때 같이 정리.
 -->
 <!DOCTYPE html>
 <html lang="ko">
@@ -5955,13 +5986,42 @@ function computeHeadCrossSections(){
   accumulate('left', false);
   accumulate('right', false);
 
-  // 실측이 부족한 밴드는 기존 타원체 고정값으로 안전 폴백(신규 실패 모드 아님)
-  const DEFAULT_HALF_WIDTH = 0.78 * metrics.widthFactor;
-  const DEFAULT_HALF_DEPTH = 0.85 * metrics.widthFactor;
-  bands.forEach(band=>{
-    band.halfWidth = band.halfWidthWeight > 0.1 ? (band.halfWidthSum/band.halfWidthWeight) : DEFAULT_HALF_WIDTH;
-    band.halfDepth = band.halfDepthWeight > 0.1 ? (band.halfDepthSum/band.halfDepthWeight) : DEFAULT_HALF_DEPTH;
+  // 버그 수정(2026-07-14): "실측 안 된 높이는 예전 타원체 고정값으로
+  // 대체" 방식 제거 — 사용자 지적: "이거 필요없다고, 이거 할 필요가 없는데
+  // 지금 나타나는 거야". 타원체는 이미 완전히 없앴는데 그 값을 폴백으로만
+  // 남겨두는 것 자체가 "실측 아닌 임의값" 원칙에 어긋남. 대신 그 높이에
+  // 실측이 없으면, phi가 가장 가까운 "실측 있는 밴드"의 값을 그대로
+  // 이어받는다(최근접 이웃 방식) — 완전히 지어낸 상수가 아니라 실제로 그
+  // 사람에게서 잰 값 중 가장 가까운 것을 쓰는 것.
+  bands.forEach((band, i)=>{
+    const hasWidth = band.halfWidthWeight > 0.1;
+    const hasDepth = band.halfDepthWeight > 0.1;
+    if(hasWidth){ band.halfWidth = band.halfWidthSum/band.halfWidthWeight; }
+    if(hasDepth){ band.halfDepth = band.halfDepthSum/band.halfDepthWeight; }
+    if(!hasWidth || !hasDepth){
+      // 실측 있는 밴드 중 phi가 가장 가까운 것을 찾아서 그 값을 이어받음
+      let nearest = null, nearestDist = Infinity;
+      bands.forEach((other, j)=>{
+        if(i===j) return;
+        const otherHasWidth = other.halfWidthWeight > 0.1;
+        const otherHasDepth = other.halfDepthWeight > 0.1;
+        if((!hasWidth && !otherHasWidth) && (!hasDepth && !otherHasDepth)) return; // 그 밴드도 둘 다 없으면 후보 제외
+        const dist = Math.abs(other.phi - band.phi);
+        if(dist < nearestDist){ nearestDist = dist; nearest = other; }
+      });
+      if(nearest){
+        if(!hasWidth && nearest.halfWidthWeight > 0.1) band.halfWidth = nearest.halfWidthSum/nearest.halfWidthWeight;
+        if(!hasDepth && nearest.halfDepthWeight > 0.1) band.halfDepth = nearest.halfDepthSum/nearest.halfDepthWeight;
+      }
+    }
   });
+  // 그래도 못 채운 밴드(모든 뷰에서 실측이 전혀 없는 극단적 경우)만 최후
+  // 안전장치로 직전 밴드 값을 이어받음(NaN으로 지오메트리가 깨지는 것 방지) —
+  // 이것도 임의 상수가 아니라 그 사람 데이터의 연장선.
+  for(let i=0;i<bands.length;i++){
+    if(typeof bands[i].halfWidth !== 'number') bands[i].halfWidth = (i>0 ? bands[i-1].halfWidth : 0.7);
+    if(typeof bands[i].halfDepth !== 'number') bands[i].halfDepth = (i>0 ? bands[i-1].halfDepth : 0.6);
+  }
 
   _headCrossSectionCache = bands;
   return bands;
