@@ -17,6 +17,44 @@
   임의 상수가 아니라 근거(공식 문서, 이미 검증된 다른 로직의 기준값 등)를 남긴다.
   ══════════════════════════════════════════════════════════════
 
+  ── 파일 구조 목차 (2026-07-14 추가, 단일 파일 유지 결정에 따라 물리적으로
+  파일을 나누는 대신 스크립트 안의 책임 구역을 명확히 하기 위해 작성) ──
+  이 파일은 index.html 하나로 GitHub Pages에 그대로 서빙되는 구조를 유지하기로
+  결정했음(사용자 선택: "단일 파일 유지, 섹션만 정리"). 실제 <script> 본문은
+  아래 순서로 "/* ═══ 이름 ═══ */" 배너 주석 구역들이 이어짐 — grep "/\* ═"
+  하면 각 구역 시작 지점을 바로 찾을 수 있음(구역 순서가 곧 화면 흐름과도
+  대략 일치: 촬영→스타일 선택→조정→렌더→3D):
+    FACE LANDMARKER   — MediaPipe 얼굴 랜드마크 감지, yaw/pitch/roll 포즈 계산,
+                        헤어 섹션 경계를 실측 랜드마크로 보정
+    STATE             — 앱 전역 상태 객체(state)와 SECTIONS 등 헤어 섹션 정의
+    HAIR SEGMENTATION — 세그멘테이션 진입점/공용 유틸
+    extractHairMask(angle) — 세그멘테이션 파이프라인 본체. 내부에 STEP 1~11
+                        하위 배너가 있음(TF.js/MediaPipe 세그멘테이션 →
+                        배경/얼굴/눈썹·눈·입 제외 → 목·어깨 컷오프 → 옆머리·
+                        앞머리 보강 → 결과 캔버스 합성)
+    STRUCTURE TENSOR  — 머리카락 결방향(orientation field) 인식 알고리즘
+    NAVIGATION        — 화면 전환 네비게이션 UI
+    CAPTURE           — 사진 촬영/업로드 처리
+    STYLE SELECT      — 헤어스타일 선택 화면
+    SECTION UI        — 조정 화면(섹션별 길이/컬/시술각 슬라이더 등) UI
+    ANGLE SWITCH      — 정면/좌/우/후면 각도 전환 UI
+    RENDER / CANVAS   — 2D 캔버스 렌더링(renderFrame 등)과 drawHairStrands
+                        (가닥 렌더링 — 컬럼별 스타일 파라미터 계산은
+                        createColumnStyleResolvers, 가닥 경로 생성은
+                        traceStrandPath로 분리돼 이 구역 바로 앞에 있음)
+    COMPARE           — 원본/결과 비교 화면
+    AI ANALYSIS       — AI 헤어 분석 관련
+    VOICE             — 음성 명령 처리
+    3D 두상            — Three.js 기반 3D 두상·목·헤어스트랜드·의상 메시 렌더링
+                        (실측 단면 기반 buildHeadMesh/buildRealNeckMesh,
+                        buildStrandsForSection 등)
+    HELPERS           — 여러 구역에서 공용으로 쓰는 유틸리티 함수
+  ⚠ 정직한 한계: 이 목차는 줄번호를 적지 않음(파일이 계속 바뀌는데 줄번호를
+  적으면 금방 틀어져서 오히려 오해를 유발함 — 실제로 drawHairStrands 관련
+  옛 목차 주석의 줄번호가 이미 그렇게 틀어져 있었음). 구역을 찾을 땐 위 이름
+  그대로 grep하는 걸 권장.
+  ══════════════════════════════════════════════════════════════
+
   ── 결(GYEOL) 핵심 튜닝 상태 요약 (최신) ──
   세그멘테이션 입력 해상도(maxDim): 1024 (512→640→768→1024 순으로 상향.
     저사양 기기 실측 기준 768 대비 체감 지연 크지 않았고, 구레나룻처럼
@@ -1553,6 +1591,281 @@
   "오탐이 있어도 원반처럼 튀지는 않는다"는 안전성만 추가로 확보한 것이고,
   실측이 실제로 자연스러운 목 형태를 내는지는 다음 실기기 테스트로 확인
   필요.
+
+[2026-07-14 계속] 실기기 스크린샷 7장 비교 — 우측 랜드마크 실패 발견 + 3D가
+섹션별 curl 조정을 반영 안 하던 버그 수정
+  사용자가 원본 사진 3장(정면/좌측/우측 진단화면)과 3D 결과 4장을 올리고
+  "원본사진이랑 3D이미지다 한번 비교해봐"라고 요청. 진단정보 오버레이를
+  읽어보니 "[우측] 랜드마크 없음"이 그대로 찍혀 있었음(좌측은
+  poseYaw:43.7°, 정면은 poseYaw:-1.4°로 정상 실측). 즉 이번 촬영 세트는
+  우측 사진에서 MediaPipe 얼굴 랜드마크 인식 자체가 실패해서, 우측 뷰가
+  필요한 모든 실측(헤어 섹션 실측·목/어깨 실측·직전에 만든 좌우 안면
+  깊이 보정 등)이 전부 폴백/좌측단독으로 대체됐을 것 — 이건 코드 버그가
+  아니라 그 촬영 세트 자체의 데이터 결손이라, 재촬영이 먼저 필요하다고
+  안내.
+
+  이어서 3D 결과의 정수리가 고깔처럼 뾰족하고 머리카락이 헝클어져
+  보이는 것에 대해 "스타일 미선택 = 새 스타일 프리뷰라 원본과 달라도
+  정상"이라고 답했다가, 사용자가 정정: "스타일 미선택은 원본결
+  세그멘테이션 자체다. 조정 슬라이더 기본값은 다른 세션의 니가 만들어
+  놓은 거고, 조정이 끝난 헤어모양대로 3D가 나와야 하는 게 당연하다.
+  코드 확인해서 그렇게 안 나오면 고쳐라."
+
+  코드 확인(selectNoStyle(), 4311줄) 결과: "스타일 미선택"은 실제로
+  전역 컬(state._globalCurl)을 0으로 강제 리셋해서 "촬영된 결방향만
+  따르는" 상태를 의도하고 있었음(주석: "원본 결 취지에 맞게 컬은
+  0으로 재조정") — 사용자 말대로 이건 "새 스타일"이 아니라 원본을
+  최대한 그대로 보여주려는 의도가 코드에 이미 있었음. 그런데 이 과정에서
+  섹션별(crown/side/occipital) curl 파라미터가 3D에는 전혀 반영되지
+  않고 있다는 것을 발견 — 2D 조정화면(curlMultFor, 5162줄)은
+  "전역 curl% × 섹션 curl%"를 정확히 곱해서 쓰는데(5342줄
+  curlComponent 식), 3D의 buildStrandsForSection(7513줄)은
+  `curlAmt = (globalCurl/100) * 0.18`처럼 전역 curl만 쓰고 섹션별
+  curl(params.curl)은 아예 안 읽고 있었음. 즉 조정화면에서 특정 섹션만
+  펌을 강하게/약하게 조절해도 2D 미리보기엔 반영되는데 3D에는 그
+  차이가 통째로 사라지는, "조정 끝난 모양대로 3D가 안 나오는" 버그가
+  실제로 있었음.
+
+  수정: buildStrandsForSection에 curlMult = params.curl이 숫자면
+  params.curl/100, 아니면 1.0(curl 파라미터 자체가 없는 front/temple/nape는
+  기존처럼 전역 그대로) — 을 추가해 curlAmt 계산에 곱함. 2D curlMultFor와
+  정확히 동일한 공식.
+
+  검증: 실제 파일에 반영된 두 줄을 그대로 가져와 여러 조합으로 계산 —
+  (a) global=100%·section=100%(디폴트)는 수정 전과 정확히 같은 값(0.18),
+  즉 기존 동작 전혀 안 깨짐, (b) global=0%(스타일 미선택 상태)는
+  섹션 curl과 무관하게 항상 0 — 그래서 이번 스크린샷의 "정수리가
+  헝클어진" 원인은 이 버그가 아니었다는 것도 같이 확인됨(전역이 0이면
+  섹션 배율을 곱해도 여전히 0이라, curl 관련 요인으로는 설명 안 됨 —
+  그 헝클어짐은 위에서 발견한 우측 랜드마크 실패로 인한 폴백 가닥 생성
+  쪽이 더 유력한 원인으로 남음), (c) section=150%/50%로 조정 시 각각
+  1.5배/0.5배로 정확히 비례해서 반영됨, (d) curl 파라미터가 없는 섹션은
+  이전처럼 전역 값 그대로(1.0배) 유지됨.
+  ⚠ 정직한 한계: 이번 수정은 "조정 화면에서 만진 섹션별 curl 값이 3D
+  출력에 반영되긴 하는가"라는, 명확히 코드로 확인 가능한 범위의 버그를
+  고친 것. 사용자가 원래 지적했던 "정수리가 고깔처럼 뾰족한 모양" 자체는
+  이 수정과 무관하며(스타일 미선택 상태에선 전역 curl=0이라 이 버그의
+  영향 밖), 우측 랜드마크 재촬영 후 실측 데이터가 온전해지면 그 문제가
+  해소되는지 별도로 다시 봐야 함.
+
+[2026-07-14 계속] 데드 코드 정리 (동작 변경 없음)
+  사용자 요청: "사용하지 않는 함수, 변수, import, dead code만 제거해.
+  동작은 절대 바꾸지 마." 이 파일은 그동안 "고칠 때 지우지 말고 주석으로
+  남기라"는 원칙으로 작업해왔던 터라, 실제로 안 쓰이는데 남아있는 코드가
+  있는지 기계적으로 전수 검사.
+
+  방법: 두 <script> 블록(순정 코드) 전체에서 최상위/중첩 function 선언과
+  const/let/var 선언을 전부 추출한 뒤, JS 주석(//, /* */)만 제거한
+  코드에서 "자기 선언 자체"를 뺀 실제 참조 횟수를 셈. 0회로 나온 함수는
+  다시 HTML 전체(주석 제외, onclick/onchange/oninput 속성 포함)에서
+  한 번 더 교차 검증 — toggleVoice 같은 함수들이 처음엔 "미사용"으로
+  나왔다가, 실제로는 HTML 인라인 이벤트 핸들러(onclick="toggleVoice()")로
+  쓰이고 있어서 오탐이었음을 이렇게 걸러냄(15개).
+
+  실제로 제거한 것(전부 어디서도 호출/참조되지 않음을 코드로 확인):
+  - buildNeckMesh(widthFactor, skinColor) — 고정 반지름 원통 목(구버전).
+    실측 단면 기반 buildRealNeckMesh로 교체된 뒤 호출부가 이미 주석 처리돼
+    있었음(그 주석은 역사 기록으로 남겨둠, 함수 본체만 제거).
+  - buildEarMeshes(widthFactor, heightFactor, projector, lm, headMat) —
+    실측 기반이 아닌 임의 위치 귀 메쉬. "얼굴이랑 뒤통수 사이에 살구색
+    덩어리" 버그의 정체였던 그 함수로, 이미 호출부가 주석 처리(사용자
+    승인)된 상태였고 함수 정의만 남아있었음.
+  - const FACE_MESH_UV — MediaPipe 캐노니컬 얼굴 UV 좌표 468쌍 배열.
+    "나중에 텍스처 아틀라스용으로 쓸 수도" 하고 같이 가져왔던 3종
+    데이터(FACE_MESH_TRI_V/TRI_VT/UV) 중 실제로 쓰인 건 TRI_V(삼각형
+    연결정보)뿐이었음.
+  - const FACE_MESH_TRI_VT — 위와 같은 묶음의 나머지 하나(텍스처 좌표용
+    삼각형 인덱스). 역시 선언만 있고 아무 데서도 참조 안 됨.
+  (실제 쓰이는 FACE_MESH_TRI_V는 buildRealFaceMesh 삼각형 순회에 그대로
+  살아있음 — 이름이 비슷해서 혼동하지 않도록 grep으로 재확인.)
+
+  검증: (1) node --check로 전체 스크립트 문법 재확인, (2) 제거 전/후 파일
+  diff가 위 4개 블록의 순수 삭제 라인만 있고 다른 줄은 한 글자도 안
+  바뀌었는지 확인, (3) 같은 미사용 탐지 스크립트를 제거 후 파일에 다시
+  돌려서 함수·변수 모두 0건으로 수렴하는지 확인.
+  CDN <script src> 6개(tfjs 3종, body-segmentation, three.min.js,
+  OBJLoader/MTLLoader)와 동적 import(tasks-vision)도 전부 실제 사용
+  코드가 있는지 확인 — GLTFLoader만 "나중에 .glb 헤드 메쉬 생기면 쓸
+  예정"이라는 이유로 애초에 CDN 스크립트 자체를 안 불러오고 있었고(의도적
+  미완성 기능, 죽은 코드 아님), 나머지는 전부 실사용 확인돼서 제거 대상 없음.
+  destructuring(`const {a,b,c} = ...`) 바인딩도 전부 확인 — 미사용 없음.
+  ⚠ 정직한 한계: 자동화된 텍스트 스캔이라 완벽한 정적 분석은 아님(예:
+  `window[name]()` 같은 완전히 동적인 문자열 호출이 있었다면 놓쳤을 수
+  있음) — 다만 이 파일 전체를 훑어본 결과 그런 동적 디스패치 패턴은
+  안 쓰고 있음을 확인했음.
+
+[2026-07-14 계속] 중복 함수/로직 통합 (동작 변경 없음)
+  사용자 요청: "중복된 함수와 로직을 찾아 하나로 합쳐. 동작은 동일하게
+  유지해." 방법: 주석 제거한 전체 코드에 6줄 슬라이딩 윈도우 해시 매칭을
+  돌려 리터럴 중복 블록을 탐지 → 후보를 직접 읽어 진짜 "같은 로직"인지
+  확인(변수명만 다르고 구조가 같은 경우도 포함) → 4곳 확정.
+
+  1) interpolateHeadCrossSection(phi)(오름차순 phi 보간)과
+  interpolateNeckCrossSection(meshY)(내림차순 meshY 보간) — 순회 방향만
+  반대일 뿐 "구간을 찾아 t로 선형보간"하는 핵심 로직이 동일. 공용
+  interpolateBands(bands, posKey, pos)로 통합(첫/끝 원소 비교로 오름/내림차순
+  자동 판별, t=(pos-a)/(b-a) 단일 공식으로 두 원래 공식과 수학적으로 동치임을
+  손으로 검산). 두 함수는 이제 이 공용 함수를 posKey만 다르게 호출.
+
+  2) computeHeadCrossSections/computeNeckCrossSections 안의 "밴드 평균 계산 +
+  실측 없는 밴드는 최근접 이웃 값 승계" 블록 — 필드명(halfWidth vs
+  widthRatio 등)만 다르고 로직이 완전히 동일. 공용
+  fillBandsWithNearestNeighbor(bands, distKey, wKeys, dKeys)로 통합. 원본의
+  미묘한 특성(폭·깊이 중 하나만 없을 때, 최근접 후보 탐색 시 "그 후보가
+  필요한 데이터를 가졌는지" 필터링이 사실상 무력화되어 모든 다른 밴드가
+  후보로 고려되는 부분 — 다만 최종 승계는 여전히 nearest[weight]>0.1로
+  게이트됨)를 그대로 보존.
+
+  3) buildHeadMesh/buildRealNeckMesh 안의 링-스택 삼각형 인덱스 생성
+  이중 for문 — 변수명(pi/ri)만 다르고 완전히 동일한 인덱싱 수식.
+  buildRingGridIndices(rowSteps, thetaSteps)로 통합.
+
+  4) buildOutputCanvases 안의 "마스크 조건으로 픽셀 걸러 RGB 합·구역별
+  합 누적" 이중 for문이 침식 마스크(1차)와 원본 마스크(cnt<50 폴백)에
+  대해 완전히 동일하게 반복되고 있던 것 — 중첩 함수 sumMaskColors(maskBuf)로
+  묶고, refineSectionBoundaries 호출은 원본처럼 1차 시도 "전에만" 한 번
+  실행되도록 순서 유지.
+
+  검증: 4곳 전부 실제 파일에서 추출한 새 코드 그대로를, 손으로 재구성한
+  리팩토링 전 원본 로직과 Node.js에서 수치 비교.
+  - interpolateBands: 결정론적 edge case 19건 + 무작위(오름/내림차순,
+    범위 밖 포함) 2000건 = 총 2031건, 실패 0.
+  - fillBandsWithNearestNeighbor: 결정론적 edge case(완전 실측/완전
+    미실측/폭만/깊이만 등) 3건 + 무작위(가중치·위치·동률 케이스 포함)
+    3000건 = 총 3003건, 실패 0.
+  - buildRingGridIndices: 고정 조합(0, 1, 소수, 비대칭 등) 13건 + 무작위
+    200건 = 총 213건, 실패 0.
+  - sumMaskColors: 합성 마스크/픽셀로 무작위 3000건(폭·높이·앵글 무작위,
+    40%는 두 마스크 모두 희박하게 만들어 cnt<50 폴백 분기가 실제로
+    타는 케이스도 강제 포함, 미매칭 섹션 id 케이스도 포함) — 실패 0.
+  이후 전체 파일에서 node --check 문법 재확인(SYNTAX_OK), 4개 헬퍼
+  함수명이 각각 정확히 한 번씩만 정의되고 옛 인라인 코드가 남아있지
+  않은지 grep으로 재확인.
+  ⚠ 정직한 한계: 리터럴 중복 탐지는 6줄 윈도우 해시 기반이라, 구조는
+  같지만 코드가 6줄 미만으로 아주 짧거나 표현식 순서가 달라 해시가
+  안 맞는 은닉 중복은 놓쳤을 수 있음 — 다만 이번에 찾은 4곳은 전부
+  직접 눈으로 다시 읽어 "완전히 같은 로직"임을 확인했고, 그 외 후보는
+  수동 검토 결과 이름만 비슷할 뿐 로직이 다른 오탐이었음(제외).
+
+[2026-07-14 계속] 긴/복잡한 함수 분리 + 파일 책임 구획 정리 (동작 변경 없음)
+  사용자 요청: "너무 길거나 복잡해서 문제가 되는 함수가 있으면 역할별로
+  사용하기 좋게 분리하고, 파일책임을 명확하게 나눠. 외부API와 동작은
+  변경하지 마." 이어서 두 가지를 확인: (1) 파일을 실제 여러 .js로 쪼갤지 →
+  "단일 파일 유지, 섹션만 정리"로 결정(GitHub Pages 서빙 구조를 안 바꾸는
+  게 가장 안전). (2) 함수 분리 범위 → "신중하게 살펴봐서 필요한 것만"으로
+  결정.
+
+  1) 함수 길이/분기수 측정: 주석 제거한 전체 코드에서 모든 top-level/중첩
+  function 선언을 브레이스 매칭으로 잘라내 줄 수와 if/for/while/switch/
+  catch/삼항 개수(복잡도 근사치)를 측정해 정렬. 결과: drawHairStrands가
+  663줄·분기~73개로 2위(renderFrame, 159줄)와 4배 이상 차이 나는 압도적인
+  이상치였고, 나머지는 전부 160줄 이하였음 — "필요한 것만"의 기준을
+  이 함수 하나로 좁힘.
+
+  2) drawHairStrands 내부 구조 확인 결과, 예전 세션에 이미 "Canvas 2D API를
+  직접 호출하는 함수라 Node 샌드박스에서 실행 검증이 안 되니 구조는 안
+  건드리고 목차만 추가한다"는 결론이 남아있었음(그 목차 주석 자체가 파일에
+  있었음). 이번엔 그 함수 내부를 더 세밀히 나눠서, ctx.stroke()/
+  getImageData() 등 실제 Canvas API를 호출하는 부분과, 숫자만 받아 숫자/
+  좌표배열만 반환하는 순수 계산 부분을 구분함:
+    - lengthRatioFor/colorForSection/curlMultFor/frontDirBiasFor(컬럼별
+      길이배율·색상·컬배율·프론트 방향바이어스 계산, 총 149줄) — Canvas
+      API 전혀 안 씀 → createColumnStyleResolvers(...) 팩토리로 분리
+    - traceStrand(결방향 필드를 따라 가닥 좌표 배열 생성, 118줄, 이 함수
+      혼자 분기~12개로 가장 복잡) — 역시 Canvas API 전혀 안 씀(좌표 배열만
+      반환) → traceStrandPath(...)로 분리
+    - setStyle/toCanvasPts/strokePolyline/splitIndexFor/drawStrand/
+      drawStrandLayer/isRealHairAt/compositeLayers 및 4개 레이어 실행
+      단계는 ctx.stroke()·document.createElement('canvas')·getImageData
+      등을 직접 호출해서 Node로 동작 보존을 확신 있게 검증할 방법이 없어
+      — "동작은 절대 바꾸지 마"를 지키기 위해 일부러 손대지 않고 원래
+      위치(drawHairStrands 안)에 그대로 둠.
+  분리 결과 drawHairStrands 자체 몸통은 663줄 → 약 396줄로 줄었고, 분리된
+  두 함수는 각각 독립적으로 이름·역할이 분명해짐. 원래 있던 4개 함수의
+  캐시(Float32Array 등)·주석·버그수정 이력은 전부 그대로 새 함수 안으로
+  옮겼을 뿐 한 글자도 안 바꿈 — 호출부(drawStrand의 traceStrand(...) 호출
+  등)도 얇은 래퍼(traceStrand가 traceStrandPath를 env와 함께 호출)로
+  감싸서 기존 호출 코드 자체는 무수정.
+
+  검증: (1) 원본 파일에서 해당 149줄/118줄을 Python 브레이스 매칭으로
+  그대로 잘라내(손 재입력 없음) 원래 구조를 감싸는 old* 버전을 만들고,
+  리팩토링된 파일에서도 동일한 방식으로 새 함수를 그대로 추출해 new*
+  버전을 만듦 — 둘 다 "같은 원본 텍스트를 감싸는 경계만 다르게" 만든
+  것이므로 이 둘이 계속 같은 출력을 내면 분리 자체가 로직에 영향을
+  안 줬다는 뜻. (2) createColumnStyleResolvers 4개 함수: maskW/maskH/
+  섹션 유무/앵글/컬러/페이드 설정 등을 무작위로 섞은 4000개 시나리오 ×
+  컬럼 15개(범위 밖 포함) = 6만 건 비교, 실패 0. (3) traceStrandPath:
+  Math.random()을 시드 고정 PRNG로 바꿔치고 old/new 호출 직전에 매번
+  동일 시드로 리셋(완전히 같은 난수 시퀀스를 소비하도록 강제)해서 800개
+  무작위 시나리오(orientation 유무·웨이브폭·컬 등)의 좌표 배열을 좌표
+  단위로 비교, 실패 0. (4) 전체 파일 node --check 문법 재확인(SYNTAX_OK),
+  변경 범위 바깥(파일 앞부분·뒷부분) 전체를 diff로 재확인해 의도한 구간
+  외에는 단 한 줄도 안 바뀌었음을 확인.
+
+  3) 파일 책임 구획: 이미 파일 전체에 "/* ═══ 이름 ═══ */" 형태의 배너
+  주석이 17곳(FACE LANDMARKER/STATE/HAIR SEGMENTATION/STRUCTURE TENSOR/
+  NAVIGATION/CAPTURE/STYLE SELECT/SECTION UI/ANGLE SWITCH/RENDER·CANVAS/
+  COMPARE/AI ANALYSIS/VOICE/3D 두상/HELPERS 등) 있었지만, 그걸 한눈에
+  모아 보여주는 전체 목차는 없었음. 파일을 실제로 여러 개로 쪼개지 않기로
+  했으니(사용자 선택) 이 배너들을 모아 "파일 구조 목차"를 최상단 코멘트에
+  추가 — 각 구역의 역할을 한 줄로 요약하고, grep으로 바로 찾을 수 있게
+  구역 이름을 명시. 줄번호는 일부러 안 적음(과거 drawHairStrands 목차의
+  줄번호가 파일이 자라면서 이미 틀어져 있던 것을 이번에 직접 봤기 때문 —
+  줄번호 대신 이름으로 grep하는 쪽이 더 오래 정확함).
+  ⚠ 정직한 한계: drawHairStrands 안의 canvas-API 결합 부분(레이어 그리기·
+  합성 등, 여전히 약 400줄)은 이번에 의도적으로 분리하지 않음 — Node에
+  실제 Canvas 구현체가 없어 그 부분을 옮기고도 "동작 100% 보존"을 확신
+  있게 검증할 방법이 없었고, 사용자가 "동작은 절대 바꾸지 마"를 명시했기
+  때문에 검증 안 되는 변경보다는 현행 유지를 택함. 실기기 테스트(스타일
+  적용/원본결 보기 등 여러 조합)에서 가닥 렌더링이 리팩토링 전과 시각적
+  으로 동일하게 나오는지 최종 확인이 필요함 — 로직상 계산 결과가 정확히
+  같음을 검증했지만, 실제 화면 렌더링까지 눈으로 재확인한 것은 아님.
+
+[2026-07-14 계속] drawHairStrands 리팩토링 — 실제 Chromium 픽셀 비교 검증 추가
+  사용자 요청: "리팩터링 후 이전과 동일한 기능이 유지되는지 확인해." 바로
+  위 항목의 "정직한 한계"(Node엔 진짜 Canvas가 없어 화면 렌더링까지는
+  확인 못 함)를 메우기 위해, 이 샌드박스에 미리 설치된 실제 Chromium을
+  Playwright로 띄워 리팩토링 전/후 drawHairStrands를 "같은 입력 + 같은
+  Math.random 시드"로 각각 실행하고 결과 canvas의 getImageData 픽셀을
+  바이트 단위로 비교함(로직 비교가 아니라 진짜 브라우저 Canvas 2D 렌더링
+  결과 자체를 비교 — 이번 작업에서 가능한 가장 강한 검증).
+
+  방법: 리팩토링 전 파일(분리 작업 시작 직전 스냅샷)에서 원본
+  drawHairStrands(663줄, 중첩 함수 그대로)를, 현재 배포본에서
+  drawHairStrands+createColumnStyleResolvers+traceStrandPath를 각각
+  브레이스 매칭으로 그대로 추출(손 재입력 없음) → 같이 로드하는 테스트
+  페이지에서 이름만 oldDrawHairStrands/newDrawHairStrands로 구분.
+  resolveSectionId/SECTIONS/sampleOrientation/tintColor도 실제 파일에서
+  그대로 추출해 동일 인스턴스를 old/new 둘 다 참조하게 함(목 아님, 진짜
+  프로덕션 코드). scalpY/hairEndY/orientation 필드/헤어 마스크 캔버스는
+  합성 데이터로 구성하되, 국소 인식 실패 구간(-1)도 일부러 섞어 validCols
+  보간 경로까지 거치게 함.
+
+  6개 시나리오(기본 스타일, 원본결 보기(avgColorsBySection 사용),
+  orientation 필드 있음, 컬·볼륨·굵기 전부 최대+orientation, 페이드/클리퍼
+  활성화, 텍스처링 활성화 — traceStrand의 orientation 분기와 중력 분기,
+  lengthRatioFor의 fade 분기, drawStrand의 texturing 분기를 각각
+  최소 한 번씩 태우도록 구성)마다: Math.random을 시드 고정 PRNG로
+  바꿔치기 → old 실행 → 시드 리셋 → new 실행(완전히 같은 난수 시퀀스
+  소비) → 두 결과 canvas의 400×400 RGBA(64만 바이트) getImageData를
+  전부 바이트 단위로 비교.
+
+  결과: 6개 시나리오 전부 diffCount=0, maxDiff=0 — 픽셀 완전 일치.
+  각 시나리오에서 실제로 71,300~96,723개의 불투명(알파>0) 픽셀이
+  그려졌음을 같이 확인해서, "우연히 둘 다 빈 캔버스라 일치"가 아니라
+  실제로 가닥이 그려진 상태에서 완전히 겹쳤음을 확인함.
+
+  이걸로 앞서 남겨뒀던 "정직한 한계"가 상당 부분 해소됨: 순수 로직
+  비교(Node)에 이어 실제 Canvas 2D 렌더링 결과까지 픽셀 단위로 old/new가
+  같음을 확인했음.
+  ⚠ 그래도 남는 한계: (1) 합성 시나리오 6개는 실제 사진에서 나오는
+  scalpY/hairEndY/orientation 분포의 다양성을 전부 대표하진 못함(예:
+  텍스처링+페이드+orientation이 동시에 전부 켜진 조합, 극단적으로 좁은
+  validCols 등은 안 돌려봄). (2) 이 페이지는 사진 촬영·세그멘테이션
+  없이 drawHairStrands 함수 자체만 격리해서 돌린 것이라, 그 앞단
+  파이프라인(extractHairMask 등, 이번에 손대지 않음)까지 포함한 전체
+  흐름은 이 테스트 범위 밖. 그래도 실기기에서 최종 눈으로 한 번
+  확인해주시면 가장 확실함.
 -->
 
 <!DOCTYPE html>
@@ -3413,40 +3726,38 @@ async function extractHairMask(angle){
           // 이뤄지고 있어서 손실 없음.
           const erodedMaskBuf = erode(hairMaskBuf, w, h, 2);
 
-          const sectionSums = {};
-          SECTION_ORDER.forEach(id=>{ sectionSums[id] = {r:0,g:0,b:0,cnt:0}; });
-          let rSum=0,gSum=0,bSum=0,cnt=0;
+          // 2026-07-14 정리: "마스크 조건으로 픽셀을 걸러 RGB 합·구역별 합을
+          // 누적한다"는 완전히 같은 이중 루프를, 침식 마스크(1차 시도)와
+          // 원본 마스크(cnt<50일 때 폴백)에 대해 그대로 반복하고 있었음 —
+          // 어느 마스크 버퍼를 보는지만 다르고 나머지는 한 글자도 안 달라서
+          // 함수로 뽑음(순회 순서·조건 그대로).
+          function sumMaskColors(maskBuf){
+            const sums = {};
+            SECTION_ORDER.forEach(id=>{ sums[id] = {r:0,g:0,b:0,cnt:0}; });
+            let rS=0,gS=0,bS=0,c=0;
+            for(let y=0; y<h; y++){
+              for(let x=0; x<w; x++){
+                const i = y*w+x;
+                if(maskBuf[i] <= 128) continue;
+                const r=srcPixels[i*4], g=srcPixels[i*4+1], b=srcPixels[i*4+2];
+                rS+=r; gS+=g; bS+=b; c++;
+                const secId = resolveSectionId(angle, x/w, y/h);
+                const s = sums[secId];
+                if(s){ s.r+=r; s.g+=g; s.b+=b; s.cnt++; }
+              }
+            }
+            return { sectionSums: sums, rSum: rS, gSum: gS, bSum: bS, cnt: c };
+          }
+
           if(typeof faceLandmarkerReady !== 'undefined' && faceLandmarkerReady && state.landmarks && state.landmarks[angle]){
             refineSectionBoundaries(angle);
           }
-          for(let y=0; y<h; y++){
-            for(let x=0; x<w; x++){
-              const i = y*w+x;
-              if(erodedMaskBuf[i] <= 128) continue;
-              const r=srcPixels[i*4], g=srcPixels[i*4+1], b=srcPixels[i*4+2];
-              rSum+=r; gSum+=g; bSum+=b; cnt++;
-              const secId = resolveSectionId(angle, x/w, y/h);
-              const s = sectionSums[secId];
-              if(s){ s.r+=r; s.g+=g; s.b+=b; s.cnt++; }
-            }
-          }
+          let { sectionSums, rSum, gSum, bSum, cnt } = sumMaskColors(erodedMaskBuf);
           // 침식 후 남는 픽셀이 너무 적으면(가는 앞머리 등 마스크 자체가 얇은 경우)
           // 안전하게 원본(비침식) 마스크로 폴백 — "색이 아예 안 뽑힘"보다는
           // 예전 방식(약간 밝게 나올 수 있음)이 낫다.
           if(cnt < 50){
-            rSum=0; gSum=0; bSum=0; cnt=0;
-            SECTION_ORDER.forEach(id=>{ sectionSums[id] = {r:0,g:0,b:0,cnt:0}; });
-            for(let y=0; y<h; y++){
-              for(let x=0; x<w; x++){
-                const i = y*w+x;
-                if(hairMaskBuf[i] <= 128) continue;
-                const r=srcPixels[i*4], g=srcPixels[i*4+1], b=srcPixels[i*4+2];
-                rSum+=r; gSum+=g; bSum+=b; cnt++;
-                const secId = resolveSectionId(angle, x/w, y/h);
-                const s = sectionSums[secId];
-                if(s){ s.r+=r; s.g+=g; s.b+=b; s.cnt++; }
-              }
-            }
+            ({ sectionSums, rSum, gSum, bSum, cnt } = sumMaskColors(hairMaskBuf));
           }
           const avgHairColor = avgRGBString(rSum, gSum, bSum, cnt, 0) || '#2A1B12';
           // 섹션별 색상 — 그 섹션 샘플이 너무 적으면(이 뷰에서 잘 안 보이는
@@ -4955,90 +5266,30 @@ function renderAdjustFrame(){
    - 미용 "섹션" 개념: 굵은 면 레이어 + 가는 가닥 레이어 혼합
 ──────────────────────────────────────── */
 /* ════════════════════════════════════════════════════════════════
-   drawHairStrands(...) — 목차 (516줄, Canvas 2D 렌더링 직접 수행이라
-   Node 샌드박스에서 실행 검증이 안 돼서 구조는 안 건드리고 목차만 추가함.)
-   준비 단계 (~3060~3191)  해상도 스케일·validCols(유효 뿌리 컬럼)·
-                           scalpY/hairEndY 보간
-   setStyle       (~3192) 캔버스 스타일(색/굵기) 설정
-   traceStrand    (~3201) 결방향 필드를 따라 가닥 경로 한 가닥 생성
-   toCanvasPts    (~3310) 마스크 좌표 → 캔버스 좌표 변환
-   strokePolyline (~3315) 좌표 배열을 실제 선으로 그리기
-   splitIndexFor  (~3336) base/ext 구간 분할 지점 계산
-   drawStrand     (~3344) 가닥 하나 생성+분할+그리기 통합
-   drawStrandLayer(~3389) 레이어 하나(굵은/중간/잔가닥 등) 전체 순회
-   레이어 실행 단계 (~3389 이후) 루트확산·굵은섹션·중간가닥·잔가닥 4개 레이어 순차 호출
+   drawHairStrands(...) 리팩토링(2026-07-14) — 역할별 분리
+   원래 663줄짜리 함수 하나 안에 전부 중첩 정의돼 있었음. 이 함수는
+   Canvas 2D API(ctx.stroke 등)를 직접 호출하는 부분이 대부분이라,
+   Node 샌드박스엔 진짜 Canvas 구현체가 없어서 그 부분을 옮기면
+   "동작 100% 보존"을 확신 있게 검증할 방법이 없음(과거 세션에서 이미
+   이 이유로 "목차만 추가, 구조는 안 건드림"으로 결론 낸 적 있음).
+   → 이번엔 그 중 "Canvas API를 전혀 안 쓰는 순수 계산" 부분만
+   골라서 분리(=Node에서 무작위 입력으로 독립 검증 가능한 부분만):
+     createColumnStyleResolvers(...) — 컬럼(ix)별 길이배율/색상/컬배율/
+       프론트 방향바이어스 4종 계산(원래 lengthRatioFor 등 4개 중첩 함수)
+     traceStrandPath(...)            — 결방향 필드를 따라 가닥 경로
+       (좌표 배열)를 만드는 순수 함수(원래 traceStrand 중첩 함수)
+   실제로 ctx.stroke()/getImageData() 등을 호출하는 setStyle/traceStrand
+   (얇은 래퍼로 남음)/toCanvasPts/strokePolyline/splitIndexFor/drawStrand/
+   drawStrandLayer/isRealHairAt/compositeLayers/레이어 실행 4단계는
+   검증 불가능한 변경을 피하기 위해 원래처럼 drawHairStrands 안에
+   그대로 남겨둠(⚠ 정직한 한계: 이 부분은 이번 리팩토링 대상에서
+   의도적으로 제외 — 아래 dev-log 참고).
 ════════════════════════════════════════════════════════════════ */
-function drawHairStrands(ctx, fit, scalpY, hairEndY, maskW, maskH, hairCanvas, opts){
-  const {curl, volume, thickness, color, avgColorsBySection, orientation, orientMaskW, orientMaskH, angle, sections} = opts;
-
-  const alpha       = 1; // 가닥은 완전 불투명 — 굵기 효과는 lineWidth로만 반영하고
-                         // 투명도로는 절대 조절하지 않음 (반투명이면 살색 언더코트와
-                         // 섞여 회색빛으로 보임)
-
-  // 해상도 비례 스케일: 아래 각 레이어의 lineWidth 기본값들은 "실제 렌더링되는 캔버스가
-  // 705px 폭일 때" 눈으로 보고 튜닝됐음. ctx.lineWidth는 캔버스 픽셀 공간(=fit.dw 기준)
-  // 에서 적용되는 값인데, 가닥 좌표 자체는 toCanvasX/Y가 (fit.dw/maskW) 비율로 이미
-  // maskW(세그멘테이션 처리 해상도, 최대 768) → fit.dw(실제 화면 표시 폭, 폰 CSS 폭
-  // 기준이라 보통 380~430px 수준)로 압축해서 그린다.
-  // 버그 수정: 예전엔 resScale을 maskW/705로 계산했는데, 이건 "촬영 해상도"만 반영하고
-  // "실제로 화면에 얼마나 작게 그려지는지"(fit.dw)는 전혀 반영을 안 함 — 그 결과 fit.dw가
-  // maskW보다 훨씬 작은 실기기(예: fit.dw≈400, maskW≈768)에서는 좌표는 절반 이하로
-  // 압축되는데 선 굵기는 거의 그대로(resScale≈768/705≈1.09)라 상대적으로 훨씬 굵어
-  // 보였음(스크린샷에서 보인 마커펜 같은 뭉툭한 가닥의 직접 원인). → 실제 캔버스 렌더
-  // 폭(fit.dw) 기준으로 스케일해야 좌표 압축 비율과 굵기가 항상 같이 움직인다.
-  const RES_BASE = 705;
-  const resScale = fit.dw / RES_BASE;
-  // sub-pixel 방지용 최소굵기(0.9px)는 해상도와 무관한 캔버스 렌더링 자체의 물리적
-  // 제약(1px 미만이면 브라우저가 알파를 낮춰 흐리게 그림)이라 resScale로 같이 줄어들면
-  // 안 됨 — 스케일 적용 "후"에 하한선으로 별도 고정.
-  const MIN_SAFE_WIDTH = 0.9;
-
-  // 길이 슬라이더가 높을 때(특히 정면 프론트) 가닥이 이마 라인을 넘어
-  // 눈·안경·턱까지 뚫고 내려가는 과확장을 막기 위한 상한.
-  // maskH(축소 해상도 이미지 전체 높이)의 1.15배까지만 허용 — 화면 밖까지
-  // 늘어나는 극단적인 경우를 방지하면서도 "길게" 설정한 효과는 유지.
-  const maxStrandLen = maskH * 1.15;
-
-  // 버그 수정: validCols(가닥 뿌리를 심을 수 있는 후보 컬럼)가 "보간 전" 원본 scalpY만
-  // 기준으로 만들어져 있었음. 세그멘테이션이 국소적으로 실패한 좁은 구간(예: 이마 중앙에
-  // 생기는 V자 notch, 안경다리에 가려진 관자놀이 등)은 scalpY[x]=-1이라 애초에 후보에서
-  // 빠져서 어떤 레이어도 거기 뿌리를 못 심었음 — "가닥이 부족한 게 아니라 아예 심을
-  // 자리 자체가 없었던" 문제. → 양옆 유효 컬럼 사이 간격이 좁으면(=국소적 인식 실패로
-  // 판단) 보간값으로 메워서 후보에 포함시킴. 단, 진짜로 머리가 없는 넓은 영역(배경,
-  // 얼굴 등)까지 메워버리면 안 되므로 간격 상한(MAX_GAP_PX)을 둬서, 그보다 넓은 gap은
-  // 기존처럼 그대로 배제.
-  const leftValidX = new Int32Array(maskW).fill(-1);
-  const rightValidX = new Int32Array(maskW).fill(-1);
-  { let lv=-1; for(let x=0;x<maskW;x++){ if(scalpY[x]>=0) lv=x; leftValidX[x]=lv; } }
-  { let rv=-1; for(let x=maskW-1;x>=0;x--){ if(scalpY[x]>=0) rv=x; rightValidX[x]=rv; } }
-  const MAX_GAP_PX = maskW * 0.08; // 마스크 폭의 8% 이내 gap만 "국소 인식 실패"로 보고 메움
-  const validCols = [];
-  for(let x=0; x<maskW; x++){
-    if(scalpY[x] >= 0){ validCols.push(x); continue; }
-    const lx = leftValidX[x], rx = rightValidX[x];
-    if(lx>=0 && rx>=0 && (rx-lx) <= MAX_GAP_PX) validCols.push(x);
-  }
-  if(validCols.length === 0) return;
-
-  // ── 보간: validCols 안에서 hairEndY/scalpY -1인 열을 인접 유효값으로 채움 ──
-  const iScalpY   = new Float32Array(maskW).fill(-1);
-  const iHairEndY = new Float32Array(maskW).fill(-1);
-  for(let x=0;x<maskW;x++){ iScalpY[x]=scalpY[x]; iHairEndY[x]=hairEndY[x]; }
-  // forward pass
-  let lS=-1, lE=-1;
-  for(let x=0;x<maskW;x++){
-    if(iScalpY[x]>=0)   lS=iScalpY[x];   else if(lS>=0) iScalpY[x]=lS;
-    if(iHairEndY[x]>=0) lE=iHairEndY[x]; else if(lE>=0) iHairEndY[x]=lE;
-  }
-  // backward pass
-  let fS=-1, fE=-1;
-  for(let x=maskW-1;x>=0;x--){
-    if(iScalpY[x]>=0)   fS=iScalpY[x];   else if(fS>=0) iScalpY[x]=fS;
-    if(iHairEndY[x]>=0) fE=iHairEndY[x]; else if(fE>=0) iHairEndY[x]=fE;
-  }
-
-  // curl 방향 기준으로 쓰이던 마스크 수평 중심(maskCX) 계산은 더 이상 사용되지 않아 제거됨
-
+// 컬럼별(ix 기준) 스타일 파라미터 계산 4종을 묶어서 만들어주는 팩토리.
+// 4개 함수(lengthRatioFor/colorForSection/curlMultFor/frontDirBiasFor)
+// 전부 원래 drawHairStrands 안의 중첩 함수였던 것을 그대로 옮긴 것 —
+// 로직·주석·캐시 방식 전부 변경 없음, 감싸는 함수 경계만 바뀜.
+function createColumnStyleResolvers({ maskW, maskH, iScalpY, sections, angle, color, avgColorsBySection }){
   // ── 컬럼별 길이 배율: 슬라이더 50 = 원본 길이(origLen) 그대로(ratio=1).
   // 기존엔 "덧셈"(절대 px, origLen과 무관하게 항상 같은 양만큼 변화)이었으나,
   // 이 방식은 origLen이 작은 부위(사이드/네이프처럼 세그멘테이션이 짧게 잡힌 곳)에서
@@ -5189,44 +5440,8 @@ function drawHairStrands(ctx, fit, scalpY, hairEndY, maskW, maskH, hairCanvas, o
     return bias;
   }
 
-  const toCanvasX = (ix) => fit.dx + (ix / maskW) * fit.dw;
-  const toCanvasY = (iy) => fit.dy + (iy / maskH) * fit.dh;
-
-  // scalpY 좌표계(maskW,maskH) → orientation 필드 좌표계(orientMaskW,orientMaskH) 변환 비율
-  const hasOrientation = !!(orientation && orientMaskW && orientMaskH);
-  const ox = hasOrientation ? orientMaskW / maskW : 1;
-  const oy = hasOrientation ? orientMaskH / maskH : 1;
-
-  const cw = ctx.canvas.width, ch = ctx.canvas.height;
-
-  // ── 2단계 clip 구조 ──
-  // baseOffscreen: 원본 인식 길이(origLen) 구간 → 나중에 hairCanvas(실제 세그멘테이션
-  //   마스크)로 destination-in clip을 걸어서, 실제 인식된 머리카락 영역 밖(얼굴·안경·배경
-  //   등)으로는 절대 못 나가게 함. "지금 이 사람의 실제 머리 모양"을 그대로 보여주는 단계.
-  // extOffscreen: 슬라이더로 origLen을 넘겨서 늘어난 구간(연장분)만 → clip 없이 자유롭게
-  //   그림. "스타일링 시뮬레이션으로 늘려본" 부분이라 원본 마스크 밖으로 나가는 게 정상.
-  // 보폭(한 스텝의 물리적 이동 거리)을 고정값으로 둔다 — 더 이상 목표 길이(targetLen)에
-  // 비례해서 커지지 않는다. 이렇게 해야 origLen까지 가는 구간이 delta(슬라이더로 늘린 양)와
-  // 무관하게 항상 "같은 지점에서, 같은 보폭으로, 같은 물리적 위치의 결방향을 샘플링"하게 되어
-  // 원본 결 보기 때와 스타일 적용 때의 base 구간 경로가 완전히 일치한다.
-  // (기존엔 STEPS=14로 고정하고 stepLen=targetLen/14로 역산해서, delta가 커질수록 보폭 자체가
-  //  커져 origLen 구간마저 원본과 다른 경로로 재계산되는 문제가 있었음)
-  const STRAND_STEP_LEN = maskH * 0.025;
-
-  const baseOffscreen = document.createElement('canvas');
-  baseOffscreen.width = cw; baseOffscreen.height = ch;
-  const baseCtx = baseOffscreen.getContext('2d');
-  baseCtx.lineCap  = 'round';
-  baseCtx.lineJoin = 'round';
-
-  const extOffscreen = document.createElement('canvas');
-  extOffscreen.width = cw; extOffscreen.height = ch;
-  const extCtx = extOffscreen.getContext('2d');
-  extCtx.lineCap  = 'round';
-  extCtx.lineJoin = 'round';
-
-  // base/ext 두 컨텍스트에 동일한 스타일(굵기·투명도·색상)을 한 번에 적용하기 위한 헬퍼
-  function setStyle(prop, val){ baseCtx[prop] = val; extCtx[prop] = val; }
+  return { lengthRatioFor, colorForSection, curlMultFor, frontDirBiasFor };
+}
 
   /**
    * traceStrand: 시작점(ix,sy_img)에서 목표 길이(targetLen)만큼
@@ -5234,8 +5449,12 @@ function drawHairStrands(ctx, fit, scalpY, hairEndY, maskW, maskH, hairCanvas, o
    * 결방향 데이터가 없거나 coherence가 낮은 구간에서는 자연스러운
    * 약한 흔들림(curlAmt 기반)으로 보강하여 완전히 끊기지 않게 한다.
    * @returns canvas 좌표계 점 배열 [{x,y}, ...] (길이 steps+1, steps는 목표 길이에 따라 가변)
+   * Canvas API를 쓰지 않고 좌표 배열만 반환하는 순수 함수라(ctx 인자가
+   * 아예 없음) drawHairStrands에서 분리해도 Node에서 독립 검증 가능함 —
+   * env는 호출부(drawHairStrands)가 한 번만 만들어 넘겨주는 고정값 묶음.
    */
-  function traceStrand(ix, sy_img, targetLen_img, jitterSeed){
+function traceStrandPath(ix, sy_img, targetLen_img, jitterSeed, env){
+  const { hasOrientation, orientation, orientMaskW, ox, oy, STRAND_STEP_LEN, curl, frontDirBiasFor, curlMultFor } = env;
     const stepLen = STRAND_STEP_LEN; // 고정 보폭 — targetLen_img에서 역산하지 않음
     const steps = Math.max(2, Math.round(targetLen_img / stepLen));
     const pts = [{x:ix, y:sy_img}]; // 마스크 좌표계(maskW,maskH 기준)로 누적
@@ -5354,6 +5573,133 @@ function drawHairStrands(ctx, fit, scalpY, hairEndY, maskW, maskH, hairCanvas, o
     }
 
     return pts;
+}
+
+function drawHairStrands(ctx, fit, scalpY, hairEndY, maskW, maskH, hairCanvas, opts){
+  const {curl, volume, thickness, color, avgColorsBySection, orientation, orientMaskW, orientMaskH, angle, sections} = opts;
+
+  const alpha       = 1; // 가닥은 완전 불투명 — 굵기 효과는 lineWidth로만 반영하고
+                         // 투명도로는 절대 조절하지 않음 (반투명이면 살색 언더코트와
+                         // 섞여 회색빛으로 보임)
+
+  // 해상도 비례 스케일: 아래 각 레이어의 lineWidth 기본값들은 "실제 렌더링되는 캔버스가
+  // 705px 폭일 때" 눈으로 보고 튜닝됐음. ctx.lineWidth는 캔버스 픽셀 공간(=fit.dw 기준)
+  // 에서 적용되는 값인데, 가닥 좌표 자체는 toCanvasX/Y가 (fit.dw/maskW) 비율로 이미
+  // maskW(세그멘테이션 처리 해상도, 최대 768) → fit.dw(실제 화면 표시 폭, 폰 CSS 폭
+  // 기준이라 보통 380~430px 수준)로 압축해서 그린다.
+  // 버그 수정: 예전엔 resScale을 maskW/705로 계산했는데, 이건 "촬영 해상도"만 반영하고
+  // "실제로 화면에 얼마나 작게 그려지는지"(fit.dw)는 전혀 반영을 안 함 — 그 결과 fit.dw가
+  // maskW보다 훨씬 작은 실기기(예: fit.dw≈400, maskW≈768)에서는 좌표는 절반 이하로
+  // 압축되는데 선 굵기는 거의 그대로(resScale≈768/705≈1.09)라 상대적으로 훨씬 굵어
+  // 보였음(스크린샷에서 보인 마커펜 같은 뭉툭한 가닥의 직접 원인). → 실제 캔버스 렌더
+  // 폭(fit.dw) 기준으로 스케일해야 좌표 압축 비율과 굵기가 항상 같이 움직인다.
+  const RES_BASE = 705;
+  const resScale = fit.dw / RES_BASE;
+  // sub-pixel 방지용 최소굵기(0.9px)는 해상도와 무관한 캔버스 렌더링 자체의 물리적
+  // 제약(1px 미만이면 브라우저가 알파를 낮춰 흐리게 그림)이라 resScale로 같이 줄어들면
+  // 안 됨 — 스케일 적용 "후"에 하한선으로 별도 고정.
+  const MIN_SAFE_WIDTH = 0.9;
+
+  // 길이 슬라이더가 높을 때(특히 정면 프론트) 가닥이 이마 라인을 넘어
+  // 눈·안경·턱까지 뚫고 내려가는 과확장을 막기 위한 상한.
+  // maskH(축소 해상도 이미지 전체 높이)의 1.15배까지만 허용 — 화면 밖까지
+  // 늘어나는 극단적인 경우를 방지하면서도 "길게" 설정한 효과는 유지.
+  const maxStrandLen = maskH * 1.15;
+
+  // 버그 수정: validCols(가닥 뿌리를 심을 수 있는 후보 컬럼)가 "보간 전" 원본 scalpY만
+  // 기준으로 만들어져 있었음. 세그멘테이션이 국소적으로 실패한 좁은 구간(예: 이마 중앙에
+  // 생기는 V자 notch, 안경다리에 가려진 관자놀이 등)은 scalpY[x]=-1이라 애초에 후보에서
+  // 빠져서 어떤 레이어도 거기 뿌리를 못 심었음 — "가닥이 부족한 게 아니라 아예 심을
+  // 자리 자체가 없었던" 문제. → 양옆 유효 컬럼 사이 간격이 좁으면(=국소적 인식 실패로
+  // 판단) 보간값으로 메워서 후보에 포함시킴. 단, 진짜로 머리가 없는 넓은 영역(배경,
+  // 얼굴 등)까지 메워버리면 안 되므로 간격 상한(MAX_GAP_PX)을 둬서, 그보다 넓은 gap은
+  // 기존처럼 그대로 배제.
+  const leftValidX = new Int32Array(maskW).fill(-1);
+  const rightValidX = new Int32Array(maskW).fill(-1);
+  { let lv=-1; for(let x=0;x<maskW;x++){ if(scalpY[x]>=0) lv=x; leftValidX[x]=lv; } }
+  { let rv=-1; for(let x=maskW-1;x>=0;x--){ if(scalpY[x]>=0) rv=x; rightValidX[x]=rv; } }
+  const MAX_GAP_PX = maskW * 0.08; // 마스크 폭의 8% 이내 gap만 "국소 인식 실패"로 보고 메움
+  const validCols = [];
+  for(let x=0; x<maskW; x++){
+    if(scalpY[x] >= 0){ validCols.push(x); continue; }
+    const lx = leftValidX[x], rx = rightValidX[x];
+    if(lx>=0 && rx>=0 && (rx-lx) <= MAX_GAP_PX) validCols.push(x);
+  }
+  if(validCols.length === 0) return;
+
+  // ── 보간: validCols 안에서 hairEndY/scalpY -1인 열을 인접 유효값으로 채움 ──
+  const iScalpY   = new Float32Array(maskW).fill(-1);
+  const iHairEndY = new Float32Array(maskW).fill(-1);
+  for(let x=0;x<maskW;x++){ iScalpY[x]=scalpY[x]; iHairEndY[x]=hairEndY[x]; }
+  // forward pass
+  let lS=-1, lE=-1;
+  for(let x=0;x<maskW;x++){
+    if(iScalpY[x]>=0)   lS=iScalpY[x];   else if(lS>=0) iScalpY[x]=lS;
+    if(iHairEndY[x]>=0) lE=iHairEndY[x]; else if(lE>=0) iHairEndY[x]=lE;
+  }
+  // backward pass
+  let fS=-1, fE=-1;
+  for(let x=maskW-1;x>=0;x--){
+    if(iScalpY[x]>=0)   fS=iScalpY[x];   else if(fS>=0) iScalpY[x]=fS;
+    if(iHairEndY[x]>=0) fE=iHairEndY[x]; else if(fE>=0) iHairEndY[x]=fE;
+  }
+
+  // curl 방향 기준으로 쓰이던 마스크 수평 중심(maskCX) 계산은 더 이상 사용되지 않아 제거됨
+
+  // ── 컬럼별 스타일 파라미터 계산(길이 배율/색상/컬 배율/프론트 방향 바이어스) ──
+  // 예전엔 이 4개 함수(lengthRatioFor/colorForSection/curlMultFor/frontDirBiasFor)가
+  // 전부 이 안에 중첩 정의돼 있었음. Canvas API를 안 쓰는 순수 계산이라
+  // createColumnStyleResolvers(위에서 정의)로 옮겨도 동작이 완전히 같음을 Node에서
+  // 검증했음 — 세부 로직/버그수정 이력 주석은 그 함수 정의부에 그대로 남아있음.
+  const { lengthRatioFor, colorForSection, curlMultFor, frontDirBiasFor } = createColumnStyleResolvers({
+    maskW, maskH, iScalpY, sections, angle, color, avgColorsBySection
+  });
+
+  const toCanvasX = (ix) => fit.dx + (ix / maskW) * fit.dw;
+  const toCanvasY = (iy) => fit.dy + (iy / maskH) * fit.dh;
+
+  // scalpY 좌표계(maskW,maskH) → orientation 필드 좌표계(orientMaskW,orientMaskH) 변환 비율
+  const hasOrientation = !!(orientation && orientMaskW && orientMaskH);
+  const ox = hasOrientation ? orientMaskW / maskW : 1;
+  const oy = hasOrientation ? orientMaskH / maskH : 1;
+
+  const cw = ctx.canvas.width, ch = ctx.canvas.height;
+
+  // ── 2단계 clip 구조 ──
+  // baseOffscreen: 원본 인식 길이(origLen) 구간 → 나중에 hairCanvas(실제 세그멘테이션
+  //   마스크)로 destination-in clip을 걸어서, 실제 인식된 머리카락 영역 밖(얼굴·안경·배경
+  //   등)으로는 절대 못 나가게 함. "지금 이 사람의 실제 머리 모양"을 그대로 보여주는 단계.
+  // extOffscreen: 슬라이더로 origLen을 넘겨서 늘어난 구간(연장분)만 → clip 없이 자유롭게
+  //   그림. "스타일링 시뮬레이션으로 늘려본" 부분이라 원본 마스크 밖으로 나가는 게 정상.
+  // 보폭(한 스텝의 물리적 이동 거리)을 고정값으로 둔다 — 더 이상 목표 길이(targetLen)에
+  // 비례해서 커지지 않는다. 이렇게 해야 origLen까지 가는 구간이 delta(슬라이더로 늘린 양)와
+  // 무관하게 항상 "같은 지점에서, 같은 보폭으로, 같은 물리적 위치의 결방향을 샘플링"하게 되어
+  // 원본 결 보기 때와 스타일 적용 때의 base 구간 경로가 완전히 일치한다.
+  // (기존엔 STEPS=14로 고정하고 stepLen=targetLen/14로 역산해서, delta가 커질수록 보폭 자체가
+  //  커져 origLen 구간마저 원본과 다른 경로로 재계산되는 문제가 있었음)
+  const STRAND_STEP_LEN = maskH * 0.025;
+
+  const baseOffscreen = document.createElement('canvas');
+  baseOffscreen.width = cw; baseOffscreen.height = ch;
+  const baseCtx = baseOffscreen.getContext('2d');
+  baseCtx.lineCap  = 'round';
+  baseCtx.lineJoin = 'round';
+
+  const extOffscreen = document.createElement('canvas');
+  extOffscreen.width = cw; extOffscreen.height = ch;
+  const extCtx = extOffscreen.getContext('2d');
+  extCtx.lineCap  = 'round';
+  extCtx.lineJoin = 'round';
+
+  // base/ext 두 컨텍스트에 동일한 스타일(굵기·투명도·색상)을 한 번에 적용하기 위한 헬퍼
+  function setStyle(prop, val){ baseCtx[prop] = val; extCtx[prop] = val; }
+
+  // traceStrand: 결방향 필드를 따라 가닥 경로 한 가닥을 생성 — 실제 로직은
+  // Canvas API를 안 쓰는 순수 함수 traceStrandPath(위에서 정의)로 옮겼고,
+  // 여기서는 호출 시점에 고정되는 값들(env)만 한 번 묶어서 넘겨준다.
+  const strandEnv = { hasOrientation, orientation, orientMaskW, ox, oy, STRAND_STEP_LEN, curl, frontDirBiasFor, curlMultFor };
+  function traceStrand(ix, sy_img, targetLen_img, jitterSeed){
+    return traceStrandPath(ix, sy_img, targetLen_img, jitterSeed, strandEnv);
   }
 
   // 마스크 좌표(이미지 픽셀 기준) 점 배열 → 캔버스 좌표로 변환
@@ -5921,6 +6267,24 @@ function makeFaceProjector(lm, widthFactor, heightFactor){
 // 불일치 없음) 여기선 직접 안 씀 — 시그니처만 호환성 위해 유지.
 // PHI_MAX는 HEAD_PHI_BANDS(실측 데이터가 있는 범위, 네이프 부근)까지만 —
 // 그 아래(목)는 이번엔 안 채움(사용자: "중간이 허공이어도 상관없다").
+// 2026-07-14 정리: buildHeadMesh(phi 링)와 buildRealNeckMesh(높이 링)가
+// "row(위상/높이) × theta 격자를 사각형당 삼각형 2개로 잇는" 완전히 같은
+// 인덱스 수식(권취 방향 포함)을 각자 만들고 있었음 — 정점 좌표 계산과는
+// 무관한 순수 정수 인덱스 공식이라 동작 차이 없이 하나로 합침.
+function buildRingGridIndices(rowSteps, thetaSteps){
+  const indices = [];
+  for(let ri=0; ri<rowSteps; ri++){
+    for(let ti=0; ti<thetaSteps; ti++){
+      const a = ri*(thetaSteps+1)+ti;
+      const b = a + (thetaSteps+1);
+      const c = a+1;
+      const d = b+1;
+      indices.push(a,b,c, b,d,c);
+    }
+  }
+  return indices;
+}
+
 function buildHeadMesh(widthFactor, heightFactor, headMat){
   const PHI_STEPS = 24, THETA_STEPS = 32;
   const PHI_MAX = HEAD_PHI_BANDS[HEAD_PHI_BANDS.length-1];
@@ -5933,33 +6297,12 @@ function buildHeadMesh(widthFactor, heightFactor, headMat){
       positions.push(p.x, p.y, p.z);
     }
   }
-  const indices = [];
-  for(let pi=0; pi<PHI_STEPS; pi++){
-    for(let ti=0; ti<THETA_STEPS; ti++){
-      const a = pi*(THETA_STEPS+1)+ti;
-      const b = a + (THETA_STEPS+1);
-      const c = a+1;
-      const d = b+1;
-      indices.push(a,b,c, b,d,c);
-    }
-  }
+  const indices = buildRingGridIndices(PHI_STEPS, THETA_STEPS);
   const headGeo = new THREE.BufferGeometry();
   headGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(positions), 3));
   headGeo.setIndex(indices);
   headGeo.computeVertexNormals();
   return new THREE.Mesh(headGeo, headMat);
-}
-
-// 목(스타일 확정 후 3단계에서 의상 3D를 붙일 연결점 — 지금은 단순 원통).
-// buildProceduralHead()에서 분리됨(로직 동일).
-function buildNeckMesh(widthFactor, skinColor){
-  const neckColor = skinColor.clone().multiplyScalar(0.94); // 살짝 어둡게(그림자 자리표시)
-  const neckGeo = new THREE.CylinderGeometry(0.42*widthFactor, 0.5*widthFactor, 0.6, 24);
-  const neckMat = new THREE.MeshStandardMaterial({ color: neckColor, roughness: 0.85 });
-  const neckMesh = new THREE.Mesh(neckGeo, neckMat);
-  neckMesh.position.y = -0.85;
-  neckMesh.name = 'neckAttachPoint'; // 3단계에서 의상 메시 정렬 기준점으로 재사용 예정
-  return neckMesh;
 }
 
 // ── 실측 단면 기반 목 메쉬(2026-07-14 추가) ──
@@ -5996,16 +6339,7 @@ function buildRealNeckMesh(widthFactor, skinColor){
       positions.push(x, y, z);
     }
   }
-  const indices = [];
-  for(let ri=0; ri<RING_STEPS; ri++){
-    for(let ti=0; ti<THETA_STEPS; ti++){
-      const a = ri*(THETA_STEPS+1)+ti;
-      const b = a + (THETA_STEPS+1);
-      const c = a+1;
-      const d = b+1;
-      indices.push(a,b,c, b,d,c); // buildHeadMesh와 동일한 인덱스 패턴(권취 방향도 동일)
-    }
-  }
+  const indices = buildRingGridIndices(RING_STEPS, THETA_STEPS); // buildHeadMesh와 동일한 인덱스 패턴(권취 방향도 동일) — 공용 함수로 정리
   // 바닥 캡: 두상 쪽(윗단)은 buildHeadMesh 최하단 링과 y가 같아 맞물리므로
   // 캡 불필요. 아랫단(어깨쪽, neckAttachPoint)은 지금 화면(두상+목 단독
   // 테스트 — 아직 의상이 안 붙음)에서 뻥 뚫린 구멍으로 보이는 것을 막기
@@ -6025,33 +6359,6 @@ function buildRealNeckMesh(widthFactor, skinColor){
   const neckMesh = new THREE.Mesh(neckGeo, neckMat);
   neckMesh.name = 'neckAttachPoint'; // 3단계에서 의상 메시 정렬 기준점 — buildNeckMesh와 동일한 이름 유지
   return neckMesh;
-}
-
-// 귀 — 실측 귀 x좌표(lEarX/rEarX)·귀 높이(earY)로 배치.
-// 주의: projector.EAR_MESH_X는 "사진 좌표 보정용 기준점"이라 두상 적도 반경보다
-// 일부러 안쪽 값 — 그걸 귀 자체의 위치로 그대로 쓰면 귀가 두상 구체 표면보다
-// 안쪽에 파묻혀 렌더링에서 아예 안 보이는 버그가 남(실측 확인함). 귀는 그
-// 높이(y)에서의 실제 두상 표면 반경을 구해서 그 바로 바깥쪽에 반쯤 걸치도록
-// 따로 계산. buildProceduralHead()에서 분리됨(로직 동일).
-function buildEarMeshes(widthFactor, heightFactor, projector, lm, headMat){
-  const earGeo = new THREE.SphereGeometry(0.09*widthFactor, 10, 10);
-  earGeo.scale(0.55, 1, 0.75);
-  const earHalfW = 0.09*widthFactor*0.55;
-  const earY = projector.toMeshY(lm.earY);
-  // ── 버그 수정(2026-07-14): 옛 타원체 고정 수식(0.78*widthFactor) 대신
-  // 실측 두상 단면(scalpPointToWorld와 동일 데이터·동일 Y공식)으로 교체.
-  // 타원체를 완전히 지웠는데 귀는 여전히 그 옛 수식을 참조하고 있었음.
-  const cosPhi = Math.max(-1, Math.min(1, (earY-0.15)/1.01));
-  const phi = Math.acos(cosPhi);
-  const { halfWidth } = interpolateHeadCrossSection(phi);
-  const earSurfaceX = halfWidth * Math.sin(phi);
-  const ears = [];
-  [-1, 1].forEach(side=>{
-    const ear = new THREE.Mesh(earGeo, headMat);
-    ear.position.set(side*(earSurfaceX + earHalfW*0.55), earY, 0.02);
-    ears.push(ear);
-  });
-  return ears;
 }
 
 // 이목구비(눈/눈썹/입/코) — 사진 데칼(buildFacePhotoDecal)이 나중에 붙으면 이
@@ -6599,9 +6906,7 @@ async function buildFacePhotoDecal(faceMetrics){
    연결정보(v/vt 인덱스 쌍, 898*3=2694개)뿐. 실제 정점 위치는 그 사람
    본인의 랜드마크 감지 결과(state.landmarks.front.rawLandmarks)로 매 실행
    시 새로 채움 — buildRealFaceMesh() 참고. */
-const FACE_MESH_UV = [0.4279,0.3047,0.5269,0.2954,0.4448,0.2692,0.6076,0.3223,0.377,0.6772,0.473,0.3047,0.5269,0.2821,0.4471,0.2842,0.5993,0.3189,0.4147,0.6648,0.4731,0.2954,0.5277,0.2638,0.448,0.2954,0.5932,0.3143,0.4673,0.4701,0.4731,0.2821,0.5341,0.2209,0.4487,0.3047,0.5699,0.233,0.4371,0.4411,0.4723,0.2638,0.5246,0.3076,0.1142,0.385,0.5552,0.2692,0.4555,0.4514,0.4658,0.2208,0.5478,0.3076,0.3754,0.0758,0.5529,0.2842,0.4299,0.5335,0.4754,0.3076,0.5688,0.3076,0.4999,0.091,0.552,0.2954,0.3368,0.3553,0.4522,0.3076,0.54,0.4429,0.4556,0.5482,0.5513,0.3047,0.1338,0.3173,0.4312,0.3076,0.5964,0.306,0.4088,0.6261,0.8858,0.385,0.2798,0.2853,0.46,0.4429,0.597,0.2935,0.1283,0.2081,0.6246,0.0758,0.1891,0.3537,0.4036,0.306,0.6119,0.306,0.4405,0.0976,0.5443,0.5484,0.3245,0.296,0.403,0.2935,0.5547,0.4199,0.3353,0.1472,0.5912,0.6261,0.3541,0.1874,0.3881,0.306,0.5772,0.3261,0.2887,0.1801,0.8717,0.2081,0.4453,0.4199,0.5532,0.3315,0.4999,0.6485,0.5591,0.0974,0.4228,0.3261,0.5271,0.3338,0.4658,0.3794,0.6646,0.1471,0.4468,0.3315,0.8267,0.7212,0.4457,0.4339,0.7112,0.18,0.4729,0.3338,0.7704,0.7004,0.4158,0.3758,0.5342,0.3794,0.1733,0.7213,0.6355,0.8108,0.5,0.3816,0.5543,0.4339,0.2296,0.7005,0.7701,0.768,0.3014,0.6126,0.5842,0.3759,0.3645,0.8109,0.6685,0.8801,0.0581,0.6809,0.6986,0.6126,0.2299,0.768,0.6169,0.7441,0.3014,0.6368,0.9419,0.6809,0.3314,0.8803,0.6141,0.7186,0.3188,0.6417,0.6986,0.6368,0.3831,0.7442,0.5774,0.4368,0.3434,0.6446,0.6812,0.6417,0.3859,0.7186,0.7229,0.728,0.366,0.644,0.6566,0.6446,0.4226,0.4368,0.6076,0.3058,0.3887,0.6377,0.634,0.644,0.2771,0.7281,0.618,0.3053,0.195,0.6579,0.6113,0.6377,0.3924,0.3058,0.5429,0.4152,0.4104,0.6089,0.805,0.6579,0.382,0.3053,0.5573,0.4272,0.3932,0.6045,0.5897,0.6089,0.4571,0.4152,0.9327,0.2699,0.3662,0.6012,0.6068,0.6045,0.4427,0.4272,0.6454,0.3033,0.5,0.0455,0.6338,0.6012,0.0673,0.2699,0.6076,0.6461,0.5,0.8094,0.7338,0.1303,0.3545,0.3032,0.5524,0.6974,0.2662,0.1303,0.681,0.1017,0.3924,0.6461,0.8307,0.8062,0.319,0.1017,0.568,0.0554,0.4476,0.6974,0.7036,0.7067,0.431,0.0559,0.8121,0.4115,0.1693,0.8062,0.6628,0.7171,0.1879,0.4115,0.6039,0.2898,0.2964,0.7068,0.5164,0.5004,0.3961,0.2898,0.6566,0.5994,0.3372,0.7171,0.7233,0.6366,0.7231,0.4679,0.3434,0.5994,0.6812,0.6038,0.4834,0.5004,0.7103,0.6317,0.5786,0.4664,0.3188,0.6038,0.8256,0.6023,0.2769,0.4679,0.5498,0.6002,0.5703,0.4514,0.1744,0.6023,0.6179,0.4917,0.4214,0.4663,0.5607,0.6047,0.5986,0.545,0.3824,0.4914,0.509,0.4206,0.4298,0.4514,0.5736,0.6102,0.7422,0.6855,0.491,0.4206,0.6141,0.1168,0.4012,0.5448,0.5175,0.4221,0.5151,0.4727,0.3858,0.1168,0.8656,0.6663,0.2578,0.6855,0.5163,0.4369,0.5131,0.4527,0.1344,0.6663,0.8164,0.2597,0.4853,0.4726,0.566,0.4177,0.6249,0.2719,0.1836,0.2597,0.8924,0.4592,0.4867,0.4524,0.5315,0.4449,0.5712,0.3173,0.1076,0.4592,0.8018,0.1681,0.375,0.2722,0.5239,0.4362,0.5496,0.3191,0.1982,0.1681,0.761,0.2202,0.4288,0.3173,0.5266,0.4539,0.5854,0.3335,0.239,0.2203,0.5377,0.4946,0.4504,0.3191,0.5414,0.5211,0.5602,0.3428,0.4628,0.4943,0.581,0.6128,0.4146,0.3335,0.5672,0.4306,0.5259,0.3198,0.4191,0.6128,0.9677,0.3556,0.4398,0.3428,0.9924,0.5192,0.5282,0.3496,0.0323,0.3556,0.5606,0.481,0.4742,0.3198,0.5797,0.5901,0.644,0.4655,0.4391,0.481,0.7335,0.623,0.4718,0.3496,0.6039,0.5834,0.7901,0.6086,0.2665,0.623,0.603,0.4513,0.3558,0.4656,0.6335,0.5739,0.8937,0.6,0.397,0.4512,0.5735,0.58,0.2099,0.6086,0.6665,0.5661,0.7199,0.6244,0.4262,0.5796,0.9805,0.5984,0.1063,0.6,0.7021,0.5668,0.6029,0.1571,0.0195,0.5984,0.5953,0.515,0.2801,0.6244,0.7324,0.5755,0.7522,0.5892,0.4047,0.5149,0.5091,0.4373,0.3969,0.1572,0.897,0.5312,0.7021,0.6464,0.4907,0.4376,0.771,0.651,0.2478,0.5892,0.7588,0.6172,0.6807,0.6527,0.229,0.651,0.8107,0.4761,0.2979,0.6464,0.7165,0.6668,0.6299,0.6539,0.1892,0.4761,0.5235,0.5944,0.3193,0.6527,0.6871,0.6777,0.6548,0.656,0.4764,0.5942,0.6009,0.5675,0.3701,0.6539,0.6559,0.6798,0.6066,0.5963,0.399,0.5673,0.6311,0.5528,0.3452,0.656,0.623,0.6772,0.7253,0.6109,0.3688,0.5528,0.6671,0.5393,0.3934,0.5963,0.5853,0.6648,0.6889,0.5905,0.3328,0.5393,0.7138,0.5324,0.2747,0.6109,0.532,0.4699,0.6612,0.587,0.2863,0.5323,0.7527,0.5428,0.3111,0.5905,0.5628,0.4412,0.6341,0.5904,0.2473,0.5428,0.8214,0.5424,0.314,0.2247,0.3388,0.587,0.5446,0.4516,0.8951,0.7459,0.1786,0.5424,0.5519,0.4634,0.411,0.4913,0.3659,0.5904,0.5701,0.5337,0.5262,0.4261,0.4483,0.4631,0.5722,0.5623,0.4477,0.1375,0.1049,0.7459,0.6632,0.3554,0.7103,0.6192,0.4277,0.562,0.7429,0.6446,0.2953,0.3784,0.4738,0.4261,0.8662,0.3173,0.5179,0.5281,0.2571,0.6446,0.5872,0.6011,0.3572,0.3957,0.4998,0.437,0.7201,0.2853,0.2767,0.6366,0.4128,0.601,0.7811,0.5646,0.3197,0.4293,0.5,0.2186,0.8109,0.3537,0.2897,0.6317,0.2189,0.5646,0.711,0.601,0.3743,0.2198,0.5,0.263,0.6753,0.296,0.4501,0.5996,0.289,0.601,0.5882,0.891,0.3789,0.426,0.5,0.2806,0.6457,0.1874,0.439,0.6035,0.4122,0.8911,0.5703,0.8121,0.3445,0.2546,0.5,0.2941,0.6859,0.2246,0.4264,0.6102,0.4298,0.8122,0.5583,0.7383,0.4565,0.1808,0.5,0.3047,0.5891,0.4914,0.4825,0.4222,0.4417,0.7383,0.6004,0.251,0.4999,0.1783,0.5,0.3077,0.552,0.1374,0.4835,0.437,0.3995,0.2511,0.6727,0.7434,0.4999,0.1331,0.5,0.3208,0.7047,0.3785,0.434,0.4176,0.3273,0.7435,0.7093,0.7985,0.4321,0.5064,0.5,0.3338,0.6428,0.3957,0.4685,0.4449,0.2908,0.7986,0.7578,0.8523,0.5,0.5604,0.5,0.893,0.6802,0.4293,0.4761,0.4362,0.2422,0.8523,0.5884,0.4531,0.4792,0.5573,0.5,0.7301,0.6256,0.2197,0.4735,0.4543,0.4117,0.453,0.6656,0.504,0.5,0.5302,0.5,0.6876,0.621,0.426,0.4586,0.5209,0.3346,0.5039,0.6275,0.5266,0.4114,0.1957,0.2897,0.6192,0.6553,0.2545,0.4329,0.4305,0.3721,0.5266,0.5369,0.4062,0.4683,0.6473,0.4995,0.5989,0.5433,0.1807,0.0076,0.5192,0.4631,0.4062,0.5773,0.4141,0.228,0.3164,0.4999,0.5017,0.568,0.5065,0.4201,0.5898,0.4227,0.414,0.5319,0.3985,0.4134,0.3076,0.5002,0.4728,0.5208,0.5574,0.396,0.5833,0.4681,0.3985,0.5904,0.2982,0.4162,0.6313,0.4821,0.528,0.5884,0.1956,0.3664,0.5739,0.4096,0.2982,0.5868,0.3046,0.4364,0.6401,0.5,0.3976,0.5316,0.6475,0.3334,0.5661,0.4132,0.3046,0.986,0.44,0.4528,0.5792,0.5,0.4525,0.7719,0.3164,0.2979,0.5668,0.4999,0.4199,0.6099,0.3601,0.2479,0.3987,0.5,0.3475,0.5866,0.3076,0.2676,0.5754,0.014,0.44,0.5817,0.2799,0.3679,0.3361,0.5838,0.6313,0.103,0.5312,0.3901,0.3604,0.5768,0.2882,0.3924,0.3223,0.5635,0.6402,0.2412,0.6172,0.4183,0.2799,0.5735,0.2965,0.4007,0.3189,0.5472,0.5796,0.2835,0.6668,0.4232,0.2882,0.5721,0.3047,0.4068,0.3143,0.752,0.3987,0.3129,0.6777,0.4265,0.2965,0.527,0.3047,0.43,0.2332,0.6319,0.3365,0.3441,0.6798];
 const FACE_MESH_TRI_V = [173,155,133,246,33,7,382,398,362,263,466,249,308,415,324,78,95,191,356,389,264,127,34,162,368,264,389,139,162,34,267,0,302,37,72,0,11,302,0,11,0,72,349,451,350,120,121,231,452,350,451,232,231,121,267,302,269,37,39,72,303,269,302,73,72,39,357,343,350,128,121,114,277,350,343,47,114,121,350,452,357,121,128,232,453,357,452,233,232,128,299,333,297,69,67,104,332,297,333,103,104,67,175,152,396,175,171,152,377,396,152,148,152,171,381,384,382,154,155,157,398,382,384,173,157,155,280,347,330,50,101,118,348,330,347,119,118,101,269,303,270,39,40,73,304,270,303,74,73,40,9,336,151,9,151,107,337,151,336,108,107,151,344,278,360,115,131,48,279,360,278,49,48,131,262,431,418,32,194,211,424,418,431,204,211,194,304,408,270,74,40,184,409,270,408,185,184,40,272,310,407,42,183,80,415,407,310,191,80,183,322,270,410,92,186,40,409,410,270,185,40,186,347,449,348,118,119,229,450,348,449,230,229,119,434,432,430,214,210,212,422,430,432,202,212,210,313,314,18,83,18,84,17,18,314,17,84,18,307,375,306,77,76,146,291,306,375,61,146,76,259,387,260,29,30,160,388,260,387,161,160,30,286,414,384,56,157,190,398,384,414,173,190,157,418,424,406,194,182,204,335,406,424,106,204,182,367,416,364,138,135,192,434,364,416,214,192,135,391,423,327,165,98,203,358,327,423,129,203,98,298,301,284,68,54,71,251,284,301,21,71,54,4,275,5,4,5,45,281,5,275,51,45,5,254,373,253,24,23,144,374,253,373,145,144,23,320,321,307,90,77,91,375,307,321,146,91,77,280,425,411,50,187,205,427,411,425,207,205,187,421,313,200,201,200,83,18,200,313,18,83,200,335,321,406,106,182,91,405,406,321,181,91,182,405,321,404,181,180,91,320,404,321,90,91,180,17,314,16,17,16,84,315,16,314,85,84,16,425,266,426,205,206,36,423,426,266,203,36,206,369,396,400,140,176,171,377,400,396,148,171,176,391,269,322,165,92,39,270,322,269,40,39,92,417,465,413,193,189,245,464,413,465,244,245,189,257,258,386,27,159,28,385,386,258,158,28,159,260,388,467,30,247,161,466,467,388,246,161,247,248,456,419,3,196,236,399,419,456,174,236,196,333,298,332,104,103,68,284,332,298,54,68,103,285,8,417,55,193,8,168,417,8,168,8,193,340,261,346,111,117,31,448,346,261,228,31,117,285,417,441,55,221,193,413,441,417,189,193,221,327,460,326,98,97,240,328,326,460,99,240,97,277,355,329,47,100,126,371,329,355,142,126,100,309,392,438,79,218,166,439,438,392,219,166,218,381,382,256,154,26,155,341,256,382,112,155,26,360,279,420,131,198,49,429,420,279,209,49,198,365,364,379,136,150,135,394,379,364,169,135,150,355,277,437,126,217,47,343,437,277,114,47,217,443,444,282,223,52,224,283,282,444,53,224,52,281,275,363,51,134,45,440,363,275,220,45,134,431,262,395,211,170,32,369,395,262,140,32,170,337,299,338,108,109,69,297,338,299,67,69,109,335,273,321,106,91,43,375,321,273,146,43,91,348,450,349,119,120,230,451,349,450,231,230,120,467,359,342,247,113,130,446,342,359,226,130,113,282,283,334,52,105,53,293,334,283,63,53,105,250,458,462,20,242,238,461,462,458,241,238,242,276,353,300,46,70,124,383,300,353,156,124,70,325,292,324,96,95,62,308,324,292,78,62,95,283,276,293,53,63,46,300,293,276,70,46,63,447,264,345,227,116,34,372,345,264,143,34,116,352,345,346,123,117,116,340,346,345,111,116,117,1,19,274,1,44,19,354,274,19,125,19,44,248,281,456,3,236,51,363,456,281,134,51,236,425,426,427,205,207,206,436,427,426,216,206,207,380,381,252,153,22,154,256,252,381,26,154,22,391,393,269,165,39,167,267,269,393,37,167,39,199,428,200,199,200,208,421,200,428,201,208,200,330,329,266,101,36,100,371,266,329,142,100,36,422,432,273,202,43,212,287,273,432,57,212,43,290,250,328,60,99,20,462,328,250,242,20,99,258,286,385,28,158,56,384,385,286,157,56,158,342,446,353,113,124,226,265,353,446,35,226,124,257,386,259,27,29,159,387,259,386,160,159,29,430,422,431,210,211,202,424,431,422,204,202,211,445,342,276,225,46,113,353,276,342,124,113,46,424,422,335,204,106,202,273,335,422,43,202,106,306,292,307,76,77,62,325,307,292,96,62,77,366,447,352,137,123,227,345,352,447,116,227,123,302,268,303,72,73,38,271,303,268,41,38,73,371,358,266,142,36,129,423,266,358,203,129,36,327,294,460,98,240,64,455,460,294,235,64,240,294,331,278,64,48,102,279,278,331,49,102,48,303,271,304,73,74,41,272,304,271,42,41,74,427,436,434,207,214,216,432,434,436,212,216,214,304,272,408,74,184,42,407,408,272,183,42,184,394,430,395,169,170,210,431,395,430,211,210,170,395,369,378,170,149,140,400,378,369,176,140,149,296,334,299,66,69,105,333,299,334,104,105,69,417,168,351,193,122,168,6,351,168,6,168,122,280,411,352,50,123,187,376,352,411,147,187,123,319,320,325,89,96,90,307,325,320,77,90,96,285,295,336,55,107,65,296,336,295,66,65,107,404,320,403,180,179,90,319,403,320,89,90,179,330,348,329,101,100,119,349,329,348,120,119,100,334,293,333,105,104,63,298,333,293,68,63,104,323,454,366,93,137,234,447,366,454,227,234,137,16,315,15,16,15,85,316,15,315,86,85,15,429,279,358,209,129,49,331,358,279,102,49,129,15,316,14,15,14,86,317,14,316,87,86,14,8,285,9,8,9,55,336,9,285,107,55,9,329,349,277,100,47,120,350,277,349,121,120,47,252,253,380,22,153,23,374,380,253,145,23,153,402,403,318,178,88,179,319,318,403,89,179,88,351,6,419,122,196,6,197,419,6,197,6,196,324,318,325,95,96,88,319,325,318,89,88,96,397,367,365,172,136,138,364,365,367,135,138,136,288,435,397,58,172,215,367,397,435,138,215,172,438,439,344,218,115,219,278,344,439,48,219,115,271,311,272,41,42,81,310,272,311,80,81,42,5,281,195,5,195,51,248,195,281,3,51,195,273,287,375,43,146,57,291,375,287,61,57,146,396,428,175,171,175,208,199,175,428,199,208,175,268,312,271,38,41,82,311,271,312,81,82,41,444,445,283,224,53,225,276,283,445,46,225,53,254,339,373,24,144,110,390,373,339,163,110,144,295,282,296,65,66,52,334,296,282,105,52,66,346,448,347,117,118,228,449,347,448,229,228,118,454,356,447,234,227,127,264,447,356,34,127,227,336,296,337,107,108,66,299,337,296,69,66,108,151,337,10,151,10,108,338,10,337,109,108,10,278,439,294,48,64,219,455,294,439,235,219,64,407,415,292,183,62,191,308,292,415,78,191,62,358,371,429,129,209,142,355,429,371,126,142,209,345,372,340,116,111,143,265,340,372,35,143,111,388,390,466,161,246,163,249,466,390,7,163,246,352,346,280,123,50,117,347,280,346,118,117,50,295,442,282,65,52,222,443,282,442,223,222,52,19,94,354,19,125,94,370,354,94,141,94,125,295,285,442,65,222,55,441,442,285,221,55,222,419,197,248,196,3,197,195,248,197,195,197,3,359,263,255,130,25,33,249,255,263,7,33,25,275,274,440,45,220,44,457,440,274,237,44,220,300,383,301,70,71,156,368,301,383,139,156,71,417,351,465,193,245,122,412,465,351,188,122,245,466,263,467,246,247,33,359,467,263,130,33,247,389,251,368,162,139,21,301,368,251,71,21,139,374,386,380,145,153,159,385,380,386,158,159,153,379,394,378,150,149,169,395,378,394,170,169,149,351,419,412,122,188,196,399,412,419,174,196,188,426,322,436,206,216,92,410,436,322,186,92,216,387,373,388,160,161,144,390,388,373,163,144,161,393,326,164,167,164,97,2,164,326,2,97,164,354,370,461,125,241,141,462,461,370,242,141,241,0,267,164,0,164,37,393,164,267,167,37,164,11,12,302,11,72,12,268,302,12,38,12,72,386,374,387,159,160,145,373,387,374,144,145,160,12,13,268,12,38,13,312,268,13,82,13,38,293,300,298,63,68,70,301,298,300,71,70,68,340,265,261,111,31,35,446,261,265,226,35,31,380,385,381,153,154,158,384,381,385,157,158,154,280,330,425,50,205,101,266,425,330,36,101,205,423,391,426,203,206,165,322,426,391,92,165,206,429,355,420,209,198,126,437,420,355,217,126,198,391,327,393,165,167,98,326,393,327,97,98,167,457,438,440,237,220,218,344,440,438,115,218,220,382,362,341,155,112,133,463,341,362,243,133,112,457,461,459,237,239,241,458,459,461,238,241,239,434,430,364,214,135,210,394,364,430,169,210,135,414,463,398,190,173,243,362,398,463,133,243,173,262,428,369,32,140,208,396,369,428,171,208,140,457,274,461,237,241,44,354,461,274,125,44,241,316,403,317,86,87,179,402,317,403,178,179,87,315,404,316,85,86,180,403,316,404,179,180,86,314,405,315,84,85,181,404,315,405,180,181,85,313,406,314,83,84,182,405,314,406,181,182,84,418,406,421,194,201,182,313,421,406,83,182,201,366,401,323,137,93,177,361,323,401,132,177,93,408,407,306,184,76,183,292,306,407,62,183,76,408,306,409,184,185,76,291,409,306,61,76,185,410,409,287,186,57,185,291,287,409,61,185,57,436,410,432,216,212,186,287,432,410,57,186,212,434,416,427,214,207,192,411,427,416,187,192,207,264,368,372,34,143,139,383,372,368,156,139,143,457,459,438,237,218,239,309,438,459,79,239,218,352,376,366,123,137,147,401,366,376,177,147,137,4,1,275,4,45,1,274,275,1,44,1,45,428,262,421,208,201,32,418,421,262,194,32,201,327,358,294,98,64,129,331,294,358,102,129,64,367,435,416,138,192,215,433,416,435,213,215,192,455,439,289,235,59,219,392,289,439,166,219,59,328,462,326,99,97,242,370,326,462,141,242,97,326,370,2,97,2,141,94,2,370,94,141,2,460,455,305,240,75,235,289,305,455,59,235,75,448,339,449,228,229,110,254,449,339,24,110,229,261,446,255,31,25,226,359,255,446,130,226,25,449,254,450,229,230,24,253,450,254,23,24,230,450,253,451,230,231,23,252,451,253,22,23,231,451,252,452,231,232,22,256,452,252,26,22,232,256,341,452,26,232,112,453,452,341,233,112,232,413,464,414,189,190,244,463,414,464,243,244,190,441,413,286,221,56,189,414,286,413,190,189,56,441,286,442,221,222,56,258,442,286,28,56,222,442,258,443,222,223,28,257,443,258,27,28,223,444,443,259,224,29,223,257,259,443,27,223,29,259,260,444,29,224,30,445,444,260,225,30,224,260,467,445,30,225,247,342,445,467,113,247,225,250,309,458,20,238,79,459,458,309,239,79,238,290,305,392,60,166,75,289,392,305,59,75,166,460,305,328,240,99,75,290,328,305,60,75,99,376,433,401,147,177,213,435,401,433,215,213,177,250,290,309,20,79,60,392,309,290,166,60,79,411,416,376,187,147,192,433,376,416,213,192,147,341,463,453,112,233,243,464,453,463,244,243,233,453,464,357,233,128,244,465,357,464,245,244,128,412,343,465,188,245,114,357,465,343,128,114,245,437,343,399,217,174,114,412,399,343,188,114,174,363,440,360,134,131,220,344,360,440,115,220,131,456,420,399,236,174,198,437,399,420,217,198,174,456,363,420,236,198,134,360,420,363,131,134,198,361,401,288,132,58,177,435,288,401,215,177,58,353,265,383,124,156,35,372,383,265,143,35,156,255,249,339,25,110,7,390,339,249,163,7,110,261,255,448,31,228,25,339,448,255,110,25,228,14,317,13,14,13,87,312,13,317,82,87,13,317,402,312,87,82,178,311,312,402,81,178,82,402,318,311,178,81,88,310,311,318,80,88,81,318,324,310,88,80,95,415,310,324,191,95,80];
-const FACE_MESH_TRI_VT = [42,118,219,334,251,398,123,58,215,243,162,316,41,441,426,50,431,415,245,95,238,249,246,90,185,238,95,189,90,246,223,440,69,231,76,440,374,69,440,374,440,76,280,237,275,284,279,424,232,275,237,418,424,279,223,69,213,231,221,76,65,213,69,72,76,221,240,312,275,244,279,317,173,275,312,181,317,279,275,232,240,279,244,418,227,240,232,412,418,244,81,372,89,88,96,377,378,89,372,383,377,96,32,130,67,32,52,130,143,67,130,146,130,52,127,115,123,122,118,110,58,123,115,42,110,118,158,290,390,166,395,294,285,390,290,289,294,395,213,65,208,221,216,72,61,208,65,68,72,216,386,354,134,386,134,359,348,134,354,353,359,134,306,168,225,311,229,176,163,225,168,171,176,229,248,345,423,256,397,59,387,423,345,337,59,397,61,8,208,68,216,455,3,208,8,450,455,216,198,31,13,206,460,40,441,13,31,415,40,460,438,208,466,448,445,216,3,466,208,450,216,445,290,247,285,294,289,436,242,285,247,430,436,289,327,339,351,44,301,54,399,351,339,349,54,301,16,11,332,25,332,20,338,332,11,338,20,332,46,151,51,55,60,154,113,51,151,120,154,60,263,103,258,271,266,98,99,258,103,94,98,266,133,446,115,140,110,421,58,115,446,42,421,110,423,387,18,397,465,337,360,18,387,365,337,465,190,435,205,194,209,409,327,205,435,44,409,209,87,393,408,78,413,343,235,408,393,239,343,413,85,73,141,92,148,80,304,141,73,314,80,148,416,183,410,416,410,191,153,410,183,161,191,410,288,160,293,296,302,164,155,293,160,159,164,302,449,444,46,458,55,453,151,46,444,154,453,55,158,381,461,166,439,331,369,461,381,319,331,439,405,16,361,355,361,25,332,361,16,332,25,361,360,444,18,365,465,453,23,18,444,2,453,465,23,444,28,2,7,453,449,28,444,458,453,7,338,11,344,338,344,20,6,344,11,15,20,344,381,228,375,331,325,236,393,375,228,343,236,325,180,67,48,184,27,52,143,48,67,146,52,27,87,213,438,78,448,221,208,438,213,216,221,448,429,167,451,403,427,340,172,451,167,346,340,427,273,268,107,281,102,276,111,107,268,106,276,102,258,99,157,266,328,94,162,157,99,334,94,328,322,212,417,422,385,394,53,417,212,37,394,385,372,85,378,377,383,92,141,378,85,148,92,383,137,392,429,144,403,392,66,429,392,66,392,403,330,253,295,335,299,261,252,295,253,442,261,299,137,429,287,144,9,403,451,287,429,427,403,9,408,192,414,413,419,370,402,414,192,407,370,419,173,250,396,181,401,254,170,396,250,174,254,401,36,83,303,45,24,74,297,303,83,19,74,24,127,123,278,122,286,118,324,278,123,329,118,286,225,163,411,229,373,171,357,411,163,307,171,373,200,205,135,204,138,209,75,135,205,62,209,138,250,173,309,254,29,181,312,309,173,317,181,29,277,272,149,467,156,462,145,149,272,152,462,156,153,183,210,161,214,191,292,210,183,14,191,214,345,248,71,59,57,256,180,71,248,184,256,57,348,81,342,353,347,88,89,342,81,96,88,347,360,193,444,365,453,201,151,444,193,154,201,453,285,242,280,289,284,430,237,280,242,424,430,284,157,230,318,328,323,234,262,318,230,452,234,323,149,145,366,156,371,152,105,366,145,112,152,371,310,202,182,320,358,382,187,182,202,364,382,358,178,260,77,186,84,264,119,77,260,114,264,84,420,109,426,425,431,116,41,426,109,50,116,431,145,178,105,152,112,186,77,105,178,84,186,112,257,238,300,447,305,246,165,300,238,169,246,305,265,300,295,269,299,305,330,295,300,335,305,299,434,326,188,434,196,326,255,188,326,259,326,196,322,153,212,422,394,161,210,212,153,214,161,394,381,375,369,331,319,325,315,369,375,34,325,319,131,127,298,126,308,122,278,298,127,286,122,308,87,79,213,78,221,70,223,213,79,231,70,221,367,363,361,367,361,313,405,361,363,355,313,361,390,396,228,395,236,401,170,228,396,174,401,236,399,339,193,349,201,54,129,193,339,136,54,201,117,310,402,124,407,320,182,402,310,358,320,407,268,133,111,276,106,140,115,111,133,110,140,106,318,262,260,323,264,452,233,260,262,241,452,264,273,107,263,281,271,102,103,263,107,98,102,271,351,399,345,301,59,349,387,345,399,337,349,59,267,318,178,457,186,323,260,178,318,264,323,186,387,399,360,337,365,349,193,360,399,201,349,365,51,109,46,60,55,116,420,46,109,425,116,55,195,257,265,199,269,447,300,265,257,305,447,269,69,218,65,76,72,226,203,65,218,211,226,72,170,235,228,174,236,239,393,228,235,343,239,236,408,101,192,413,370,108,217,192,101,400,108,370,101,384,168,108,176,389,163,168,384,171,389,176,65,203,61,72,68,211,198,61,203,206,211,68,369,315,327,319,44,34,339,327,315,54,34,44,61,198,8,68,455,206,13,8,198,460,206,455,75,351,71,62,57,301,345,71,351,59,301,57,71,180,139,57,142,184,48,139,180,27,184,142,93,366,81,100,88,371,372,81,366,377,371,88,429,66,270,403,274,66,404,270,66,404,66,274,158,461,265,166,269,439,147,265,461,150,439,269,454,449,420,463,425,458,46,420,449,55,458,425,137,97,354,144,359,104,93,354,97,100,104,359,28,449,33,7,12,458,454,33,449,463,458,12,390,285,396,395,401,289,280,396,285,284,289,401,366,105,372,371,377,112,85,372,105,92,112,377,432,222,195,443,199,406,257,195,222,447,406,199,344,6,350,344,350,15,1,350,6,10,15,350,357,163,235,307,239,171,384,235,163,389,171,239,350,1,356,350,356,10,464,356,1,5,10,356,392,137,386,392,386,144,354,386,137,359,144,386,396,280,173,401,181,284,275,173,280,279,284,181,298,293,131,308,126,302,155,131,293,159,302,126,38,33,459,17,0,12,454,459,33,463,12,0,270,404,417,274,385,404,379,417,404,379,404,385,426,459,420,431,425,0,454,420,459,463,0,425,63,190,200,47,204,194,205,200,190,209,194,204,125,321,63,132,47,39,190,63,321,194,39,47,303,297,306,24,311,19,168,306,297,176,19,311,203,26,198,211,206,35,31,198,26,40,35,206,410,153,391,410,391,161,322,391,153,422,161,391,193,129,151,201,154,136,113,151,129,120,136,154,67,363,32,52,32,313,367,32,363,367,313,32,218,21,203,226,211,30,26,203,21,35,30,211,272,267,145,462,152,457,178,145,267,186,457,152,288,336,160,296,164,341,91,160,336,86,341,164,97,149,93,104,100,156,366,93,149,371,156,100,295,252,290,299,294,442,247,290,252,436,442,294,222,245,257,406,447,249,238,257,245,246,249,447,354,93,348,359,353,100,81,348,93,88,100,353,134,348,380,134,380,353,342,380,348,347,353,380,168,297,101,176,108,19,217,101,297,400,19,108,13,441,109,460,116,415,41,109,441,50,415,116,235,170,357,239,307,174,250,357,170,254,174,307,300,165,330,305,335,169,233,330,165,241,169,335,99,91,162,94,334,86,316,162,91,398,86,334,265,295,158,269,166,299,290,158,295,294,299,166,97,282,149,104,156,4,277,149,282,467,4,156,326,437,255,326,259,437,175,255,437,179,437,259,97,137,282,104,4,144,287,282,137,9,144,4,417,379,322,385,422,379,391,322,379,391,379,422,230,243,283,234,291,251,316,283,243,398,251,291,183,188,292,191,14,196,207,292,188,388,196,14,77,119,73,84,80,114,185,73,119,189,114,80,429,270,167,403,340,274,456,167,270,433,274,340,162,243,157,334,328,251,230,157,243,234,251,328,95,304,185,90,189,314,73,185,304,80,314,189,155,107,131,159,126,102,111,131,107,106,102,126,135,75,139,138,142,62,71,139,75,57,62,142,270,417,456,274,433,385,53,456,417,37,385,433,375,438,315,325,34,448,466,315,438,445,448,34,103,160,99,98,94,164,91,99,160,86,164,94,79,414,82,70,82,419,428,82,414,428,419,82,255,175,187,259,364,179,182,187,175,358,179,364,440,223,82,440,82,231,79,82,223,70,231,82,374,368,69,374,76,368,218,69,368,226,368,76,107,155,103,102,98,159,160,103,155,164,159,98,368,362,218,368,226,362,21,218,362,30,362,226,105,77,85,112,92,84,73,85,77,80,84,92,330,233,253,335,261,241,262,253,233,452,241,261,131,111,127,126,122,106,115,127,111,110,106,122,158,390,381,166,331,395,228,381,390,236,395,331,393,87,375,343,325,78,438,375,87,448,78,325,357,250,411,307,373,254,309,411,250,29,254,373,87,408,79,78,70,413,414,79,408,419,413,70,207,303,292,388,14,24,306,292,303,311,24,14,123,215,324,118,329,219,177,324,215,352,219,329,207,187,197,388,376,364,202,197,187,382,364,376,327,351,205,44,209,301,75,205,351,62,301,209,446,177,58,421,42,352,215,58,177,219,352,42,248,363,180,256,184,313,67,180,363,52,313,184,207,188,187,388,364,196,255,187,188,259,196,364,1,33,464,10,5,12,38,464,33,17,12,5,6,28,1,15,10,7,33,1,28,12,7,10,11,23,6,20,15,2,28,6,23,7,2,15,16,18,11,25,20,465,23,11,18,2,465,20,423,18,405,397,355,465,16,405,18,25,465,355,195,43,432,199,443,22,220,432,43,224,22,443,8,13,51,455,60,460,109,51,13,116,460,60,8,51,3,455,450,60,113,3,51,120,60,450,466,3,129,445,136,450,113,129,3,120,450,136,315,466,339,34,54,445,129,339,466,136,445,54,327,435,369,44,319,409,461,369,435,439,409,319,238,185,165,246,169,189,119,165,185,114,189,169,207,197,303,388,24,376,36,303,197,45,376,24,265,147,195,269,199,150,43,195,147,22,150,199,416,434,183,416,191,434,188,183,434,196,434,191,363,248,405,313,355,256,423,405,248,397,256,355,408,235,101,413,108,239,384,101,235,389,239,108,190,321,435,194,409,39,333,435,321,49,39,409,217,297,121,400,128,19,83,121,297,74,19,128,402,182,414,407,419,358,175,414,182,179,358,419,414,175,428,419,428,179,437,428,175,437,179,428,192,217,56,370,64,400,121,56,217,128,400,64,252,336,247,442,436,341,288,247,336,296,341,436,253,262,283,261,291,452,230,283,262,234,452,291,247,288,242,436,430,296,293,242,288,302,296,430,242,293,237,430,424,302,298,237,293,308,302,424,237,298,232,424,418,308,278,232,298,286,308,418,278,324,232,286,418,329,227,232,324,412,329,418,451,172,446,427,421,346,177,446,172,352,346,421,287,451,133,9,140,427,446,133,451,421,427,140,287,133,282,9,4,140,268,282,133,276,140,4,282,268,277,4,467,276,273,277,268,281,276,467,272,277,263,462,271,467,273,263,277,281,467,271,263,258,272,271,462,266,267,272,258,457,266,462,258,157,267,266,457,328,318,267,157,323,328,457,310,36,202,320,382,45,197,202,36,376,45,382,117,56,83,124,74,64,121,83,56,128,64,74,192,56,402,370,407,64,117,402,56,124,64,407,147,333,43,150,22,49,321,43,333,39,49,22,310,117,36,320,45,124,83,36,117,74,124,45,461,435,147,439,150,409,333,147,435,49,409,150,324,177,227,329,412,352,172,227,177,346,352,412,227,172,240,412,244,346,167,240,172,340,346,244,456,312,167,433,340,317,240,167,312,244,317,340,309,312,53,29,37,317,456,53,312,433,317,37,210,292,225,214,229,14,306,225,292,311,14,229,212,411,53,394,37,373,309,53,411,29,373,37,212,210,411,394,373,214,225,411,210,229,214,373,220,43,125,224,132,22,321,125,43,39,22,132,260,233,119,264,114,241,165,119,233,169,241,114,283,316,336,291,341,398,91,336,316,86,398,341,253,283,252,261,442,291,336,252,283,341,291,442,356,464,362,356,362,5,21,362,464,30,5,362,464,38,21,5,30,17,26,21,38,35,17,30,38,459,26,17,35,0,31,26,459,40,0,35,459,426,31,0,40,431,441,31,426,415,431,40];
 const SCALP_ZONES = {
   // 버그 수정(2026-07-14): 정수리(phi=0, 진짜 극점) 근처에 살구색(피부색)
   // 뾰족한 부분이 그대로 노출되어 보인다는 실기기 피드백 — "저 위쪽에 있는것도
@@ -6680,6 +6985,36 @@ function measureRowHalfWidth(reasonMask, w, h, row){
 }
 
 let _headCrossSectionCache = null;
+// 2026-07-14 정리: computeHeadCrossSections/computeNeckCrossSections가
+// "밴드별 가중합/가중치로 평균 내고, 못 채운 밴드는 distKey 기준 가장
+// 가까운 실측 있는 밴드 값을 승계한다"는 동일한 블록을 필드 이름만
+// 다르게(halfWidth류 vs widthRatio류) 반복하고 있었음 — 조건문 구조·순회
+// 순서·"band도 other도 둘 다 없으면 후보 제외"라는 세부 분기까지 원본
+// 그대로, 필드 이름만 인자로 받도록 합침(로직 자체는 한 글자도 안 바꿈).
+function fillBandsWithNearestNeighbor(bands, distKey, wKeys, dKeys){
+  bands.forEach((band, i)=>{
+    const hasWidth = band[wKeys.weight] > 0.1;
+    const hasDepth = band[dKeys.weight] > 0.1;
+    if(hasWidth){ band[wKeys.out] = band[wKeys.sum]/band[wKeys.weight]; }
+    if(hasDepth){ band[dKeys.out] = band[dKeys.sum]/band[dKeys.weight]; }
+    if(!hasWidth || !hasDepth){
+      let nearest = null, nearestDist = Infinity;
+      bands.forEach((other, j)=>{
+        if(i===j) return;
+        const otherHasWidth = other[wKeys.weight] > 0.1;
+        const otherHasDepth = other[dKeys.weight] > 0.1;
+        if((!hasWidth && !otherHasWidth) && (!hasDepth && !otherHasDepth)) return;
+        const dist = Math.abs(other[distKey] - band[distKey]);
+        if(dist < nearestDist){ nearestDist = dist; nearest = other; }
+      });
+      if(nearest){
+        if(!hasWidth && nearest[wKeys.weight] > 0.1) band[wKeys.out] = nearest[wKeys.sum]/nearest[wKeys.weight];
+        if(!hasDepth && nearest[dKeys.weight] > 0.1) band[dKeys.out] = nearest[dKeys.sum]/nearest[dKeys.weight];
+      }
+    }
+  });
+}
+
 function computeHeadCrossSections(){
   if(_headCrossSectionCache) return _headCrossSectionCache;
   const metrics = getFaceMetrics();
@@ -6726,28 +7061,9 @@ function computeHeadCrossSections(){
   // 실측이 없으면, phi가 가장 가까운 "실측 있는 밴드"의 값을 그대로
   // 이어받는다(최근접 이웃 방식) — 완전히 지어낸 상수가 아니라 실제로 그
   // 사람에게서 잰 값 중 가장 가까운 것을 쓰는 것.
-  bands.forEach((band, i)=>{
-    const hasWidth = band.halfWidthWeight > 0.1;
-    const hasDepth = band.halfDepthWeight > 0.1;
-    if(hasWidth){ band.halfWidth = band.halfWidthSum/band.halfWidthWeight; }
-    if(hasDepth){ band.halfDepth = band.halfDepthSum/band.halfDepthWeight; }
-    if(!hasWidth || !hasDepth){
-      // 실측 있는 밴드 중 phi가 가장 가까운 것을 찾아서 그 값을 이어받음
-      let nearest = null, nearestDist = Infinity;
-      bands.forEach((other, j)=>{
-        if(i===j) return;
-        const otherHasWidth = other.halfWidthWeight > 0.1;
-        const otherHasDepth = other.halfDepthWeight > 0.1;
-        if((!hasWidth && !otherHasWidth) && (!hasDepth && !otherHasDepth)) return; // 그 밴드도 둘 다 없으면 후보 제외
-        const dist = Math.abs(other.phi - band.phi);
-        if(dist < nearestDist){ nearestDist = dist; nearest = other; }
-      });
-      if(nearest){
-        if(!hasWidth && nearest.halfWidthWeight > 0.1) band.halfWidth = nearest.halfWidthSum/nearest.halfWidthWeight;
-        if(!hasDepth && nearest.halfDepthWeight > 0.1) band.halfDepth = nearest.halfDepthSum/nearest.halfDepthWeight;
-      }
-    }
-  });
+  fillBandsWithNearestNeighbor(bands, 'phi',
+    {sum:'halfWidthSum', weight:'halfWidthWeight', out:'halfWidth'},
+    {sum:'halfDepthSum', weight:'halfDepthWeight', out:'halfDepth'});
   // 그래도 못 채운 밴드(모든 뷰에서 실측이 전혀 없는 극단적 경우)만 최후
   // 안전장치로 직전 밴드 값을 이어받음(NaN으로 지오메트리가 깨지는 것 방지) —
   // 이것도 임의 상수가 아니라 그 사람 데이터의 연장선.
@@ -6760,15 +7076,23 @@ function computeHeadCrossSections(){
   return bands;
 }
 
-// phi가 측정 밴드 사이 값이면 인접 밴드끼리 선형보간
-function interpolateHeadCrossSection(phi){
-  const bands = computeHeadCrossSections();
-  if(phi <= bands[0].phi) return bands[0];
-  const last = bands[bands.length-1];
-  if(phi >= last.phi) return last;
+// 2026-07-14 정리: interpolateHeadCrossSection(phi, 오름차순)과
+// interpolateNeckCrossSection(meshY, 내림차순)이 "밴드 배열에서 pos가
+// 속하는 인접 두 밴드를 찾아 halfWidth/halfDepth를 선형보간, 범위 밖이면
+// 양 끝단 clamp"라는 완전히 같은 로직을 정렬 방향만 다르게 반복하고
+// 있었음. t=(pos-a)/(b-a) 공식은 a,b의 대소관계와 무관하게(오름차순이든
+// 내림차순이든) 항상 올바른 보간 비율을 주므로 — 예전 목 버전의
+// t=(yHi-meshY)/(yHi-yLo)와 대수적으로 동일(분자분모에 -1을 곱한 것과
+// 같음, 손으로 검산 후 Node로도 재검증) — 방향 분기 없이 하나로 합침.
+function interpolateBands(bands, posKey, pos){
+  const first = bands[0], last = bands[bands.length-1];
+  const ascending = first[posKey] <= last[posKey];
+  if(ascending ? (pos <= first[posKey]) : (pos >= first[posKey])) return first;
+  if(ascending ? (pos >= last[posKey]) : (pos <= last[posKey])) return last;
   for(let i=0; i<bands.length-1; i++){
-    if(phi >= bands[i].phi && phi <= bands[i+1].phi){
-      const t = (phi-bands[i].phi) / (bands[i+1].phi-bands[i].phi);
+    const a = bands[i][posKey], b = bands[i+1][posKey];
+    if((pos - a) * (pos - b) <= 0){
+      const t = (pos - a) / ((b - a) || 0.0001);
       return {
         halfWidth: bands[i].halfWidth*(1-t) + bands[i+1].halfWidth*t,
         halfDepth: bands[i].halfDepth*(1-t) + bands[i+1].halfDepth*t,
@@ -6776,6 +7100,11 @@ function interpolateHeadCrossSection(phi){
     }
   }
   return last;
+}
+
+// phi가 측정 밴드 사이 값이면 인접 밴드끼리 선형보간
+function interpolateHeadCrossSection(phi){
+  return interpolateBands(computeHeadCrossSections(), 'phi', phi);
 }
 
 /* ── 목 실측 단면(2026-07-14 추가, 같은 날 스케일 버그로 재작업) ──
@@ -6866,27 +7195,10 @@ function computeNeckCrossSections(){
   accumulate('right', false);
 
   // 실측 있는 밴드는 평균, 없는 밴드는 가장 가까운 실측 밴드값을 승계(최근접
-  // 이웃) — computeHeadCrossSections와 동일 원칙.
-  bands.forEach((band, i)=>{
-    const hasWidth = band.widthRatioWeight > 0.1;
-    const hasDepth = band.depthRatioWeight > 0.1;
-    if(hasWidth) band.widthRatio = band.widthRatioSum/band.widthRatioWeight;
-    if(hasDepth) band.depthRatio = band.depthRatioSum/band.depthRatioWeight;
-    if(!hasWidth || !hasDepth){
-      let nearest = null, nearestDist = Infinity;
-      bands.forEach((other, j)=>{
-        if(i===j) return;
-        const oW = other.widthRatioWeight > 0.1, oD = other.depthRatioWeight > 0.1;
-        if((!hasWidth && !oW) && (!hasDepth && !oD)) return;
-        const dist = Math.abs(other.frac - band.frac);
-        if(dist < nearestDist){ nearestDist = dist; nearest = other; }
-      });
-      if(nearest){
-        if(!hasWidth && nearest.widthRatioWeight > 0.1) band.widthRatio = nearest.widthRatioSum/nearest.widthRatioWeight;
-        if(!hasDepth && nearest.depthRatioWeight > 0.1) band.depthRatio = nearest.depthRatioSum/nearest.depthRatioWeight;
-      }
-    }
-  });
+  // 이웃) — computeHeadCrossSections와 동일 원칙(fillBandsWithNearestNeighbor로 공용화).
+  fillBandsWithNearestNeighbor(bands, 'frac',
+    {sum:'widthRatioSum', weight:'widthRatioWeight', out:'widthRatio'},
+    {sum:'depthRatioSum', weight:'depthRatioWeight', out:'depthRatio'});
 
   // 정직한 최후 폴백: 모든 뷰·모든 밴드에서 실측이 전부 실패하면(바디
   // 세그멘터 로드 실패 등) 비율=1.0(두상과 같은 폭) — "정보가 없으니 커지지도
@@ -6932,21 +7244,7 @@ function computeNeckCrossSections(){
 // 1(아래, meshY 작음) 순서라 phi 기준 오름차순이던 interpolateHeadCrossSection과
 // 달리 meshY 기준 내림차순으로 순회.
 function interpolateNeckCrossSection(meshY){
-  const bands = computeNeckCrossSections();
-  if(meshY >= bands[0].meshY) return bands[0];
-  const last = bands[bands.length-1];
-  if(meshY <= last.meshY) return last;
-  for(let i=0; i<bands.length-1; i++){
-    const yHi = bands[i].meshY, yLo = bands[i+1].meshY;
-    if(meshY <= yHi && meshY >= yLo){
-      const t = (yHi - meshY) / ((yHi - yLo) || 0.0001);
-      return {
-        halfWidth: bands[i].halfWidth*(1-t) + bands[i+1].halfWidth*t,
-        halfDepth: bands[i].halfDepth*(1-t) + bands[i+1].halfDepth*t,
-      };
-    }
-  }
-  return last;
+  return interpolateBands(computeNeckCrossSections(), 'meshY', meshY);
 }
 
 function scalpPointToWorld(phi, theta, liftOut){
@@ -7530,7 +7828,13 @@ function buildStrandsForSection(sectionId, params, colorHex, globalCurl, shapeSi
 
   const strandLen    = (0.16 + (length/100) * 0.95) * realFactor;
   const puffOut       = (0.05 + (volume/100) * 0.22) * puffRealFactor;
-  const curlAmt        = ((globalCurl ?? 30)/100) * 0.18;
+  // 2026-07-14 추가: 섹션별 curl 파라미터(부분펌, crown/side/occipital에만 존재,
+  // 기본 100%=전역과 동일)가 지금까지 3D에는 전혀 반영되지 않고 있었음 —
+  // 2D 조정화면(curlMultFor, 5162줄)은 이미 "전역 curl% × 섹션 curl%"로 계산하는데
+  // 여기 3D는 globalCurl만 쓰고 params.curl을 아예 안 읽었던 게 원인. 2D와 정확히
+  // 같은 공식(섹션에 curl 파라미터가 없으면 1.0=무변화)으로 맞춤.
+  const curlMult = (typeof params.curl === 'number') ? params.curl/100 : 1.0;
+  const curlAmt        = ((globalCurl ?? 30)/100) * curlMult * 0.18;
   // 엘리베이션이 있는 섹션(크라운/사이드/후두부)일수록 시술각이 높을수록(레이어
   // 강하게) 가닥 길이 편차가 커짐 — 예전엔 side.layer 하나에만 있던 효과를
   // 엘리베이션 있는 섹션 전체로 확장(2D lengthRatioFor와 동일한 원리).
