@@ -1086,6 +1086,32 @@
   이번 사례가 "검증을 실제로 돌려봐야 내 수정 자체의 버그도 잡힌다"는
   걸 다시 보여줌 — 교차검증(다른 두 함수가 같은 값을 내야 하는지 대조)이
   단순 NaN/범위 체크보다 이런 종류의 오류를 더 잘 잡아냄.
+
+  ── 귀 메쉬(buildEarMeshes) 제거(2026-07-14, 계속) ──
+  실기기 피드백: "얼굴이랑 뒤통수 사이에 살구색 덩어리가 붙어있고, 그
+  안에 귀 모양 원이 양쪽에 있다 — 이건 오늘/어제 작업(실측 두상, 얼굴
+  랜드마크 메쉬)이랑 무관하게 훨씬 전(3D 처음 만들 때)부터 있던 거다".
+  실제로 확인: buildEarMeshes는 오래된 코드가 맞고, 원인은 귀의 Z좌표가
+  코드에 고정값 0.02로 박혀있던 것 — 얼굴(보통 Z=0.4~0.7 근방, 카메라
+  쪽으로 튀어나옴)도 아니고 뒤통수(Z가 0 근방이거나 음수)도 아닌, 앞뒤로
+  거의 정중앙에 위치해서 "얼굴과 뒤통수 사이"로 보였던 것.
+  사용자 판단: "이 귀는 실측 데이터도 아니고 랜드마크 계산과도 무관한
+  임의의 덩어리(대충 뭉갠 작은 구 두 개일 뿐)니까, 위치를 고치느니 그냥
+  제거해도 된다" — buildProceduralHead에서 buildEarMeshes 호출을 주석
+  처리(함수 자체는 나중 참고용으로 남겨둠, 삭제 안 함).
+
+  ── 절차적 이목구비(buildFaceDetailGroup) 제거(2026-07-14, 계속) ──
+  "이거 니가 만든 거야?" 확인 요청 — 아니었음. 개발 로그 추적 결과 2026-07-12
+  (오늘/어제보다 훨씬 전) 세션에서 "너무 길어서 다루기 힘들다"는 지적으로
+  buildProceduralHead(100줄)를 4개 함수로 분리할 때 함께 옮겨진 것 — 그때도
+  "로직 자체는 한 글자도 안 바꾸고 그대로 옮김"이라 명시돼 있어서, 실제
+  원본은 그보다도 더 예전 코드. 귀와 같은 성격(실측 기반 아닌 예전
+  placeholder, 오늘/어제 작업과 무관).
+  사용자 결정: "얼굴 메쉬 안 만들어지면 투명이어도 되니까, 일단 지워봐" —
+  buildProceduralHead에서 group.add(faceDetailGroup) 호출을 주석 처리.
+  faceDetailGroup 객체 자체는 계속 생성해서 반환(setupModel3DScreen의
+  visible=false 토글 코드가 참조하므로 안전하게 유지, 그룹에 안 넣을
+  뿐이라 신규 실패 모드 아님). 함수 정의 자체도 삭제 안 하고 남겨둠.
 -->
 <!DOCTYPE html>
 <html lang="ko">
@@ -5516,10 +5542,23 @@ function buildProceduralHead(faceMetrics, skinColorCss){
   const neckMesh = buildNeckMesh(widthFactor, skinColor);
   group.add(neckMesh);
 
-  buildEarMeshes(widthFactor, heightFactor, projector, lm, headMat).forEach(ear=>group.add(ear));
+  // 버그 수정(2026-07-14): 귀 메쉬 제거 — "얼굴이랑 뒤통수 사이에 살구색
+  // 덩어리가 붙어있다"는 실기기 피드백의 정체가 이거였음. buildEarMeshes는
+  // 오늘/어제 작업(실측 두상 단면, 얼굴 랜드마크 메쉬)과 무관하게 훨씬 예전
+  // (3D 처음 만들 때)부터 있던 코드로, 실측 귀 형태가 아니라 임의로 뭉갠
+  // 작은 구 두 개일 뿐이고 Z좌표도 고정값(0.02, 앞뒤 거의 정중앙)이라
+  // 위치도 부정확했음. 실측 기반이 아닌 임의 덩어리라 위치를 고치는 대신
+  // 제거하는 쪽으로 결정(사용자 승인).
+  // buildEarMeshes(widthFactor, heightFactor, projector, lm, headMat).forEach(ear=>group.add(ear));
 
   const faceDetailGroup = buildFaceDetailGroup(widthFactor, projector, lm, headMat);
-  group.add(faceDetailGroup);
+  // 버그 수정(2026-07-14): 절차적 이목구비(눈/코/입)도 그룹에 안 넣도록 제거 —
+  // 귀와 같은 이유(실측 기반 아닌 예전 placeholder, 오늘/어제 작업과 무관).
+  // "얼굴 메쉬가 안 만들어지면 그냥 투명해도 된다"는 사용자 결정 —
+  // 실패 시 예전처럼 이 폴백으로 채우는 대신 그냥 빈 상태로 둠.
+  // 반환값(faceDetailGroup)은 호출부(setupModel3DScreen)의 visible=false
+  // 토글 코드가 참조하므로 객체 자체는 계속 생성해서 반환만 함(안전).
+  // group.add(faceDetailGroup);
 
   return { group, headMesh, faceDetailGroup };
 }
