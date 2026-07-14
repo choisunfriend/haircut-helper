@@ -1959,6 +1959,79 @@
   ⚠ 정직한 한계: 이 작업은 문제를 "보이게" 만든 것이지 아직 고친 게 아님.
   토글을 켠 실기기 스크린샷을 보고 나서 타원체 모델을 고칠지, 투영 계산을
   고칠지 결정하는 게 다음 단계.
+
+[2026-07-14 계속] 후면도 촬영 직후 랜드마크 감지 대상에 포함
+  실기기 확인 결과: 촬영 직후 랜드마크 감지 안내가 잘 동작했고, 덕분에
+  이번 촬영 세트는 우측도 poseYaw:-41.6°로 정상 감지됨(두 세트 연속
+  실패하던 그 우측). 사용자 지시: "후면도 그냥 랜드마크 감지 넣어줘.
+  폴백 쓰면 3D이미지 찌그러져."
+
+  맞는 지적이라 그대로 반영: 원래 후면은 "얼굴이 안 보이는 게 정상"이라
+  검사에서 뺐었는데, 랜드마크가 없는 뷰는 getEstimatedLandmarks()의 고정
+  추정치로 폴백되고 그 뷰의 좌표 변환(makeFaceProjector)·포즈 회전이 전부
+  추정치 기준이 되어 실측된 다른 뷰들과 어긋남 — 3D 왜곡 원인 중 하나.
+  후면도 뒤통수를 살짝 돌려 귀·턱 라인이 걸리면 감지되는 경우가 있으므로
+  검사해서 알려주는 게 사용자에게 더 유용함.
+
+  변경: checkCaptureLandmarks의 back 건너뛰기 제거(전 각도 동일 검사),
+  updateAngleUI의 back 특별취급 제거(후면도 ⚠/✓ 표시), 후면 실패
+  토스트만 전용 문구("이 상태로도 진행은 되지만(추정치 폴백) 뒤통수를
+  살짝 돌려 귀·턱 라인이 걸리면 3D가 더 정확해져요") — 후면 실패는
+  흔한 정상 상황이라 "무조건 다시 찍어라"가 아니라 폴백 사실을 알리는
+  톤으로. 진행 차단은 여전히 없음.
+
+  검증: 실제 파일에서 재추출한 checkCaptureLandmarks로 상태머신 21케이스
+  (기존 19 + back 실패→fail·전용 문구 / back 성공→ok) 전부 통과.
+  전체 파일 node --check SYNTAX_OK.
+
+  참고(같은 실기기 세트에서 확인된 것): "기준면 보기" 토글이 안 보인다는
+  피드백이 있었는데, 파일 확인 결과 토글은 정상 포함돼 있었고(HTML 2452줄
+  버튼 + toggleStrandDebug/buildStrandProjectionEllipsoidDebug 정의 모두
+  존재) 증상 조합(촬영 감지는 동작 + 토글만 없음)이 직전 배포본과 정확히
+  일치 — 직전 파일이 업로드된 것으로 판단됨. 이번 버전을 다시 업로드하면
+  3D 화면 우상단에 토글이 표시될 것.
+  ⚠ 위 판단은 틀렸음 — 바로 아래 항목 참고(다음 대화에서 사용자가 실제
+  배포 파일을 올려 검증해줬는데, 그 파일엔 토글이 들어 있었음. 캐시/구버전
+  추측이 아니라 코드 버그가 진짜 원인이었음). 틀린 기록도 지우지 않고
+  남겨둠(이 파일의 관례 + 같은 실수 반복 방지).
+
+[2026-07-14 계속] 3D 뷰포트 오버레이 전멸 버그 수정 (토글 안 보임의 진짜 원인)
+  사용자 피드백: "난 랜드마크 감지 넣은 다음 찍은 게 한 번밖에 없기 때문에
+  github 캐시 문제 아니야. 저 이미지 화면에 봐봐 토글이 있나. 뭐가
+  문제였는지 다시 확인해서 이번 것도 점검해봐" — 사용자가 실제 배포 중인
+  index.html을 직접 올려서 검증 가능하게 해줬고, md5 대조 결과 그 파일은
+  "기준면 보기" 토글이 포함된 버전이었음. 즉 파일은 맞는데 화면에 안
+  나온 것 → 코드 버그 확정.
+
+  단서: 실기기 3D 스크린샷을 다시 보면 토글만 없는 게 아니라 좌상단
+  "범용 3D 두상 …" 태그(#model3dTag), 하단 "드래그해서 회전" 힌트까지
+  뷰포트 안 오버레이가 전부 안 보임 — 모든 세션·모든 버전에서 일관되게.
+
+  원인(코드로 확정): initModel3DRenderer()가 WebGL 캔버스를 붙이기 전에
+  container.innerHTML='' 로 뷰포트를 통째로 비움 — 3D 화면 최초 진입
+  시점에 태그·힌트·토글 DOM이 전부 삭제됨. setupModel3DScreen()의
+  태그 갱신 코드가 if(tag) 가드라 null이어도 조용히 스킵되어서 에러
+  한 줄 없이 계속 숨어 있었음(3D 화면 처음 만들 때부터 있던 버그로,
+  이번에 토글을 "뷰포트 안에" 추가하면서 비로소 드러남).
+
+  수정: innerHTML='' → container.querySelectorAll('canvas').forEach(c=>
+  c.remove()) — 이전 렌더러 캔버스만 골라 제거하고 오버레이는 보존.
+  오버레이는 전부 position:absolute고 캔버스는 static이라 페인트 순서상
+  항상 오버레이가 위에 그려짐.
+
+  검증(실제 Chromium + 실제 three.js r128 로컬 사본으로 실행):
+  - 수정본: init 후 태그/토글/힌트 전부 생존, 캔버스 정확히 1개, 방어적
+    재호출 후에도 오버레이 생존+캔버스 여전히 1개(중복 없음),
+    elementFromPoint로 토글이 실제로 캔버스 위에 페인트되는 것까지 확인.
+  - 구버전(innerHTML='')으로 같은 하니스 실행: 태그/토글/힌트 전부
+    false — 사용자 스크린샷과 정확히 같은 증상 재현. 원인 확정.
+  전체 파일 node --check SYNTAX_OK.
+  ⚠ 정직한 반성: 직전 항목에서 "직전 파일이 업로드된 듯" → 이후 대화에서
+  "캐시 문제인 듯"으로 두 번이나 데이터 없이 추측으로 답했음. 사용자가
+  실제 파일을 올려주고 나서야 코드를 의심함 — "정확히 판단할 수 있을
+  때까지 확인"이 이 프로젝트의 원칙인데 그걸 어겼음. 화면에 요소가 안
+  보이면 그 요소의 생성~표시 전체 경로(DOM 생존 포함)를 먼저 코드로
+  확인할 것.
 -->
 
 <!DOCTYPE html>
@@ -4576,10 +4649,11 @@ function updateAngleUI(){
     // 필요한 실측(헤어 섹션·목·안면 깊이 등)이 전부 폴백으로 대체되는데,
     // 지금까지는 조정 화면의 진단정보에서야 알 수 있었음 → 촬영 화면에서
     // 바로 ✓/…/⚠로 보여줘서 그 자리에서 재촬영하도록 유도.
-    // 후면(back)은 얼굴이 안 보이는 게 정상이라 검사하지 않고 기존 ✓ 유지.
+    // (수정) 후면도 사용자 지시로 동일하게 검사·표시: "폴백 쓰면 3D이미지
+    // 찌그러져" — 후면 ⚠는 "진행 불가"가 아니라 "폴백으로 동작 중" 표시.
     const lmStatus = (state.captureLmStatus || {})[a];
     if(!hasShot){ chk.textContent=''; }
-    else if(a === 'back' || !lmStatus || lmStatus === 'na'){ chk.textContent='✓'; chk.style.color='var(--ok)'; }
+    else if(!lmStatus || lmStatus === 'na'){ chk.textContent='✓'; chk.style.color='var(--ok)'; }
     else if(lmStatus === 'checking'){ chk.textContent='…'; chk.style.color='var(--text-muted)'; }
     else if(lmStatus === 'fail'){ chk.textContent='⚠'; chk.style.color='var(--warn)'; }
     else { chk.textContent='✓'; chk.style.color='var(--ok)'; }
@@ -4587,7 +4661,7 @@ function updateAngleUI(){
     // dial
     const okColor='#8FA888', activeColor='#C98A4B', lineColor='#3A332B', warnColor='#C2685A';
     seg.style.stroke = hasShot
-      ? ((lmStatus === 'fail' && a !== 'back') ? warnColor : okColor)
+      ? (lmStatus === 'fail' ? warnColor : okColor)
       : (isCurrent?activeColor:lineColor);
   });
   const doneCount=ANGLES.filter(a=>state.shots[a]).length;
@@ -4656,11 +4730,16 @@ function handleFileUpload(e){
 // 진입 시 파이프라인이 모든 각도의 랜드마크를 다시 감지하므로(성공 시
 // state.landmarks에 같은 결과가 다시 저장됨) 여기서 미리 감지해도 중복
 // 부작용은 없음 — 목적은 오직 "그 자리에서 재촬영 유도".
-// 후면(back)은 얼굴이 안 보이는 게 정상이라 검사 자체를 건너뜀(⚠로
-// 겁주지 않기 위함 — 실제로 후면 랜드마크는 어떤 실측에도 안 쓰임).
+// (수정 2026-07-14 계속) 처음엔 후면(back)을 "얼굴이 안 보이는 게 정상"
+// 이라 검사에서 뺐는데, 실기기 확인 후 사용자 지시로 후면도 동일하게
+// 검사하도록 변경: "후면도 그냥 랜드마크 감지 넣어줘. 폴백 쓰면 3D이미지
+// 찌그러져" — 맞는 지적. 랜드마크가 없는 뷰는 getEstimatedLandmarks()의
+// 고정 추정치로 폴백되는데, 그 뷰의 makeFaceProjector 좌표 변환·포즈
+// 회전이 전부 그 추정치 기준이 되어 실측 뷰들과 어긋남(3D 왜곡의 원인 중
+// 하나). 후면도 뒤통수를 살짝 돌려 귀·턱 라인이 걸리면 감지되는 경우가
+// 있으므로, 검사해서 알려주고 사용자가 각도를 조절할 수 있게 함.
 async function checkCaptureLandmarks(angle){
   if(!state.captureLmStatus) state.captureLmStatus = {};
-  if(angle === 'back'){ state.captureLmStatus[angle]='na'; updateAngleUI(); return; }
   const shotAtStart = state.shots[angle];
   if(!shotAtStart) return;
   // 이전 사진의 랜드마크가 남아있으면 먼저 비움 — 새 사진 감지가 실패해도
@@ -4687,7 +4766,11 @@ async function checkCaptureLandmarks(angle){
     showToast(`${ANGLE_LABELS[angle]} 얼굴 랜드마크 감지 ✓${yawTxt}`);
   } else {
     state.captureLmStatus[angle]='fail';
-    showToast(`⚠ ${ANGLE_LABELS[angle]} 랜드마크 감지 실패 — 눈·코 라인이 살짝 보이는 각도로 다시 촬영하면 3D 정확도가 올라가요`);
+    // 후면은 원래 얼굴이 안 잡히는 경우가 많아 안내 문구를 다르게 —
+    // "실패했으니 무조건 다시"가 아니라 "가능하면 귀·턱 라인이 걸리게".
+    showToast(angle === 'back'
+      ? `⚠ 후면 랜드마크 감지 실패 — 이 상태로도 진행은 되지만(추정치 폴백) 뒤통수를 살짝 돌려 귀·턱 라인이 걸리면 3D가 더 정확해져요`
+      : `⚠ ${ANGLE_LABELS[angle]} 랜드마크 감지 실패 — 눈·코 라인이 살짝 보이는 각도로 다시 촬영하면 3D 정확도가 올라가요`);
   }
   updateAngleUI();
 }
@@ -8401,7 +8484,16 @@ function initModel3DRenderer(container){
   renderer.setPixelRatio(Math.min(window.devicePixelRatio||1, 2));
   renderer.setSize(container.clientWidth, container.clientHeight);
   renderer.localClippingEnabled = true; // 실제 전신 OBJ 에셋의 머리/목 부분을 잘라내는 클리핑 플레인 사용(loadOutfitMeshFromOBJ 참고)
-  container.innerHTML='';
+  // 버그 수정(2026-07-14): 기존 container.innerHTML='' 가 WebGL 캔버스만이
+  // 아니라 뷰포트 안의 오버레이 UI(#model3dTag "범용 3D 두상" 태그,
+  // "드래그해서 회전" 힌트, #strandDebugToggle "기준면 보기" 버튼)까지
+  // 통째로 삭제하고 있었음 — 그래서 3D 화면에서 이 오버레이들이 어떤
+  // 버전에서도 전혀 안 보였던 것(사용자 스크린샷으로 확인, "토글이 없다"의
+  // 진짜 원인. setupModel3DScreen의 model3dTag 갱신 코드도 if(tag) 가드
+  // 때문에 조용히 스킵되고 있어서 지금까지 아무 에러 없이 숨어 있었음).
+  // → 이전 렌더러 캔버스만 골라서 제거하고 오버레이 요소들은 보존.
+  // 오버레이는 전부 position:absolute라 static인 캔버스 위에 그려짐.
+  container.querySelectorAll('canvas').forEach(c=>c.remove());
   container.appendChild(renderer.domElement);
 
   const scene = new THREE.Scene();
