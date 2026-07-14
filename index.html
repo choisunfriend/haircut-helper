@@ -1063,6 +1063,29 @@
   4608개(24×32×6) 정확히 일치, NaN 0건, Y범위 -0.553(네이프 부근)~1.150
   (정수리) 확인, 정수리(phi=0) 극점 33개 정점이 전부 x=0.000으로 한 점에
   모이는 것(UV구의 극점과 같은 정상적인 수렴 거동) 확인.
+
+  ── 얼굴메쉬/귀가 여전히 옛 타원체를 참조하던 문제 수정(2026-07-14, 계속) ──
+  실기기 스크린샷: 두상 형태 자체는 실측 기반으로 잘 나왔는데("중심을
+  기준으로 두상 형태로 모였다"), 얼굴 메쉬가 그 두상과 안 맞고 옆으로
+  삐져나와 보임. 원인: buildRealFaceMesh의 headSurfaceZ()(얼굴 메쉬 경계를
+  두상 표면에 접합시키는 함수)와 buildEarMeshes의 귀 위치 계산이 둘 다
+  타원체를 지우기 전 옛 고정 수식(HEAD_SX=0.78*widthFactor 등)을 여전히
+  참조하고 있었음 — 실제 두상(scalpPointToWorld, 실측 단면)은 이미 바뀌었는데
+  이 두 곳만 안 바뀌어서 "얼굴/귀가 참조하는 두상"과 "실제 두상"이 서로
+  다른 형태가 된 것.
+  수정: 둘 다 scalpPointToWorld와 동일한 Y공식(cos(phi)*1.01+0.15)을 역산해서
+  phi를 구하고, interpolateHeadCrossSection으로 그 높이의 실측 반너비/반깊이를
+  가져오도록 교체.
+  검증 중 추가 발견(제 수정 자체의 버그): headSurfaceZ 최초 버전이
+  scalpPointToWorld의 z=sin(phi)*cos(theta)*halfDepth 공식에서 sin(phi) 배율을
+  빠뜨려서, 같은 (x,y)에 대해 scalpPointToWorld가 주는 실제 z(0.486)와
+  headSurfaceZ가 주는 값(0.676)이 안 맞았음(교차검증으로 발견) — nx 정규화
+  분모에도 sin(phi)를 곱하고 최종 반환값에도 sin(phi)를 곱하도록 수정 후
+  재검증, 차이 0.003(반올림 오차 수준)으로 일치 확인. 귀 쪽(earSurfaceX=
+  halfWidth*sin(phi))은 애초에 sin(phi)를 포함해서 짰던 거라 문제 없었음.
+  이번 사례가 "검증을 실제로 돌려봐야 내 수정 자체의 버그도 잡힌다"는
+  걸 다시 보여줌 — 교차검증(다른 두 함수가 같은 값을 내야 하는지 대조)이
+  단순 NaN/범위 체크보다 이런 종류의 오류를 더 잘 잡아냄.
 -->
 <!DOCTYPE html>
 <html lang="ko">
@@ -5399,8 +5422,13 @@ function buildEarMeshes(widthFactor, heightFactor, projector, lm, headMat){
   earGeo.scale(0.55, 1, 0.75);
   const earHalfW = 0.09*widthFactor*0.55;
   const earY = projector.toMeshY(lm.earY);
-  const earLocalY0 = (earY - 0.15) / heightFactor; // headMesh.position.y·y스케일 역산
-  const earSurfaceX = 0.78*widthFactor * Math.sqrt(Math.max(0.05, 1 - earLocalY0*earLocalY0));
+  // ── 버그 수정(2026-07-14): 옛 타원체 고정 수식(0.78*widthFactor) 대신
+  // 실측 두상 단면(scalpPointToWorld와 동일 데이터·동일 Y공식)으로 교체.
+  // 타원체를 완전히 지웠는데 귀는 여전히 그 옛 수식을 참조하고 있었음.
+  const cosPhi = Math.max(-1, Math.min(1, (earY-0.15)/1.01));
+  const phi = Math.acos(cosPhi);
+  const { halfWidth } = interpolateHeadCrossSection(phi);
+  const earSurfaceX = halfWidth * Math.sin(phi);
   const ears = [];
   [-1, 1].forEach(side=>{
     const ear = new THREE.Mesh(earGeo, headMat);
@@ -5563,16 +5591,27 @@ async function buildRealFaceMesh(faceMetrics){
   const projector = faceMetrics.projector;
   const widthFactor = faceMetrics.widthFactor, heightFactor = faceMetrics.heightFactor;
 
-  // ── 두상 실제 수식(buildHeadMesh와 정확히 동일) ──
-  // 단위구를 (0.78·wf, 1·hf, 0.85·wf)로 스케일, y로 0.15 이동한 타원체.
-  // (worldX, worldY)가 주어졌을 때 그 타원체 "앞면(+Z, 카메라 쪽)" 표면이
-  // 실제로 어디 있는지 역산 — buildEarMeshes가 귀 배치할 때 쓰던 것과
-  // 완전히 같은 원리(거기선 X만, 여기선 X·Y 둘 다 고려).
-  const HEAD_SX = 0.78*widthFactor, HEAD_SY = heightFactor, HEAD_SZ = 0.85*widthFactor, HEAD_Y0 = 0.15;
+  // ── 두상 실제 표면(실측 단면 기반, buildHeadMesh/scalpPointToWorld와 동일 데이터) ──
+  // 버그 수정(2026-07-14): 타원체를 완전히 지우고 실측 단면(computeHeadCrossSections)
+  // 으로 교체했는데, 여기(얼굴 메쉬 경계 접합)는 옛 타원체 고정 수식(HEAD_SX/SY/SZ)을
+  // 계속 참조하고 있었음 — 그 결과 실제 두상 형태와 안 맞아서 얼굴이 두상에서
+  // 동떨어져 보이는 문제로 이어짐("타원체 속에 얼굴메쉬가 묻혔다"던 것과는 반대
+  // 방향의 불일치지만 원인은 같음: 얼굴 메쉬가 참조하는 "두상"과 실제 두상이 다름).
+  // (worldX, worldY)에서 실제 두상 표면이 어디 있는지 scalpPointToWorld와 동일한
+  // 원리로 역산 — worldY→phi 역변환 후 interpolateHeadCrossSection으로 그 높이의
+  // 실측 반너비/반깊이를 가져옴.
   function headSurfaceZ(worldX, worldY){
-    const nx = worldX/HEAD_SX, ny = (worldY-HEAD_Y0)/HEAD_SY;
-    const nz2 = Math.max(0.02, 1 - nx*nx - ny*ny); // 완전히 벗어난 점도 살짝의 표면값은 갖게(0 방지)
-    return Math.sqrt(nz2) * HEAD_SZ;
+    const cosPhi = Math.max(-1, Math.min(1, (worldY-0.15)/1.01));
+    const phi = Math.acos(cosPhi);
+    const sinPhi = Math.sin(phi);
+    const { halfWidth, halfDepth } = interpolateHeadCrossSection(phi);
+    // scalpPointToWorld는 x=sin(phi)*sin(theta)*halfWidth, z=sin(phi)*cos(theta)*halfDepth
+    // 라서(X·Z 둘 다 sin(phi)로 스케일) 이 sin(phi)를 빠뜨리면 z가 실제보다 훨씬 크게
+    // 나옴(검증 중 발견: phi=0.8에서 실제 0.486인데 처음 버전은 0.676이 나왔음).
+    const maxX = Math.max(0.001, sinPhi * halfWidth);
+    const nx = Math.max(-1, Math.min(1, worldX / maxX));
+    const nz2 = Math.max(0.02, 1 - nx*nx); // 완전히 벗어난 점도 살짝의 표면값은 갖게(0 방지)
+    return sinPhi * Math.sqrt(nz2) * halfDepth;
   }
 
   // 깊이(z) 굴곡: MediaPipe 공식 문서 기준 "z가 작을수록(더 음수) 카메라에
