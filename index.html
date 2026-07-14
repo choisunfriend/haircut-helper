@@ -976,6 +976,54 @@
   라는 상대 비율 근사치임 — 진짜 3D 스캔 수준의 정밀도는 아니고, 기존의
   균일한 puffOut 하나보다 실측에 더 가까워진 정도. BASELINE_PUFF_RATIO(1.15)
   도 경험적 추정치라 실기기 확인 후 튜닝 필요할 수 있음.
+
+  ── 두상 실측 단면으로 scalpPointToWorld 교체(2026-07-14) ──
+  긴 논의 끝에 방향 확정: "두상"이라는 별도 완성 객체를 먼저 만들고 그 위에
+  얼굴/헤어를 얹는 게 아니라, 얼굴 메쉬처럼 각 조각(얼굴/헤어뿌리/향후
+  두피조각)이 "같은 원점(기존 타원체 headMesh 중심, 0/0.15/0)을 공유하는
+  실측 좌표"에서 독립적으로 나오게 하는 방식으로 재구성. 이번 턴은 그중
+  헤어 가닥 뿌리 위치(scalpPointToWorld) 부분만 처리 — 두피(피부) 조각
+  자체를 실측 메쉬로 만드는 건 범위 밖(다음 단계).
+  scalpPointToWorld 전체 코드베이스에서 딱 한 곳(buildStrandCurveFallback,
+  실측 컬럼 데이터 없을 때의 폴백 경로)에서만 쓰이는 걸 확인 — 예상보다
+  영향 범위가 작아서 리스크 낮음.
+  구현: computeHeadCrossSections() — 정면/후면 뷰의 헤어 실루엣 "가로 폭"
+  (=좌우 폭)과 좌/우측 뷰의 "가로 폭"(프로필 사진이라 실제로는 앞뒤 깊이에
+  해당)을 여러 높이(phi, 정수리~네이프 8단계)에서 측정해서 그 높이의
+  실측 단면(반너비X, 반깊이Z) 생성. phi→해당 뷰의 이미지 row 변환은
+  scalpPointToWorld 자신의 Y공식(cos(phi)*1.01+0.15)과 makeFaceProjector의
+  역변환을 조합. 모든 뷰에 공통으로 쓸 폭↔메쉬단위 배율은 정면 기준
+  하나로 통일(좌/우측 프로필 사진은 귀 간격 개념이 불안정해서 뷰마다 따로
+  뽑으면 오히려 불안정해짐). 실측 부족한 밴드는 기존 타원체 고정값(0.78/
+  0.85*widthFactor)으로 안전 폴백. interpolateHeadCrossSection으로 밴드
+  사이 phi는 선형보간. scalpPointToWorld는 시그니처 그대로 유지, 내부만
+  교체 — 호출부(buildStrandCurveFallback) 수정 없음.
+  새 고객 시작 시(startNewCustomer) 캐시(_headCrossSectionCache) 초기화 추가.
+  검증: Node로 합성 원뿔형 마스크(정수리 넓고 네이프로 갈수록 좁아짐)
+  실행 — 정수리 반너비가 네이프보다 실제로 큼 확인, scalpPointToWorld
+  좌표 전 구간 NaN 없음 확인. 중간에 두 밴드(phi=0.1, 0.4)가 동일값이
+  나와서 버그로 의심했으나, 재확인 결과 그 두 밴드가 실제로 사진 프레임
+  범위 밖(row<0)으로 매핑돼서 정상적으로 기본값 폴백된 것— 처음 의심할 때
+  썼던 수동 검산 자체가 heightFactor를 잘못 대입한 계산 실수였음(실제
+  getFaceMetrics 결과로 재확인 후 로직 정상 확인).
+  ⚠ 정직한 한계: 카메라 보정이 없어 상대 비율 근사치 수준. 이번 건 "헤어
+  뿌리 위치"만 다뤘고, 두상의 "보이는 피부 표면"(이마·목 등 헤어 사이
+  빈 공간) 자체는 여전히 옛 타원체(headMat)가 그리고 있음 — 그걸 얼굴
+  메쉬처럼 독립 조각으로 교체하는 건 다음 단계.
+
+  ── HEAD_PHI_BANDS 추측값 → 실제 데이터 기반으로 교체(2026-07-14) ──
+  "데이터가 있는 경우에도 자꾸 추측하냐"는 지적 — 정확함. HEAD_PHI_BANDS를
+  [0.1,0.4,0.7,1.0,1.3,1.6,1.9,2.2]로 "적당히 8단계"라고 그냥 지어냈는데,
+  SCALP_ZONES에 크라운/프론트/템플/사이드/후두부/네이프 각 구역의 실제
+  phiRange 경계값이 이미 데이터로 있었음 — 그걸 안 쓰고 새 숫자를 만든 것.
+  수정: SCALP_ZONES의 모든 phiRange 값을 모아서 중복 제거·정렬한 배열로
+  교체(Object.values(SCALP_ZONES).flatMap(z=>z.phiRange)) — 임의 추측 대신
+  실제 구역 경계 10개(0.05/0.55/0.6/0.7/0.95/1.05/1.55/1.65/1.75/2.35)를
+  그대로 사용.
+  검증: 동일한 합성 원뿔형 마스크로 전체 파이프라인 재실행 — 정수리가
+  네이프보다 넓은 것 여전히 확인, NaN 없음 확인. interpolateHeadCrossSection
+  이 밴드 배열 길이에 안 묶여있어서(범용 로직) 8개→10개로 바뀌어도 코드
+  수정 없이 그대로 동작함.
 -->
 <!DOCTYPE html>
 <html lang="ko">
@@ -5674,11 +5722,111 @@ function computeStrandCount(sectionId, volumeParam){
 // headMesh가 SphereGeometry(1).scale(0.78,1,0.85) + position.y=0.15 이므로
 // 그 스케일/오프셋을 그대로 따라간다. liftOut은 두상 표면보다 살짝 띄우는
 // 배율(뿌리가 표면에 파묻혀 z-fighting 나지 않도록).
+// ── 두상 실측 단면(Cross-Section) — Shape-from-Silhouette lite ──
+// 사용자 지시: "두상을 임의 수식(타원체)이 아니라 실측 데이터로 만들어라,
+// 얼굴메쉬처럼 헤어가닥 뿌리점도 독립 조각으로 다루되 같은 좌표(타원체
+// 중심점=원점)를 공유하게 하라". 정면/후면 뷰의 헤어 실루엣 "가로 폭"과
+// 좌/우측 뷰의 "가로 폭"(이건 프로필 사진이라 실제로는 앞뒤 깊이에 해당)을
+// 여러 높이(phi, 정수리~네이프)에서 재서, 그 높이의 실측 단면(반너비X,
+// 반깊이Z)을 만든다. scalpPointToWorld()가 이 데이터를 쓰도록 교체 — 호출부
+// (buildStrandCurveFallback)는 시그니처가 같아서 안 바뀜.
+// 원점: 기존 타원체 headMesh의 중심(0, 0.15, 0)을 그대로 유지 — "새 좌표계를
+// 만드는 게 아니라 같은 원점을 공유하면서 표면 값만 실측으로 바꾼다"는 방향.
+// 임의로 8단계를 지어낸 게 아니라, SCALP_ZONES에 이미 있는 실제 구역 경계
+// (크라운/프론트/템플/사이드/후두부/네이프의 phiRange)에서 그대로 뽑음 —
+// "데이터가 있는데 추측하지 말라"는 지적 반영.
+const HEAD_PHI_BANDS = [...new Set(
+  Object.values(SCALP_ZONES).flatMap(z => z.phiRange)
+)].sort((a,b)=>a-b);
+
+// 마스크의 한 가로줄(row)에서 헤어 실루엣의 절반 폭(정규화, 0~0.5)을 잰다.
+function measureRowHalfWidth(reasonMask, w, h, row){
+  if(row < 0 || row >= h) return null;
+  let minX=-1, maxX=-1;
+  const base = row*w;
+  for(let x=0; x<w; x++){
+    if(reasonMask[base+x] === 1){ if(minX<0) minX=x; maxX=x; }
+  }
+  if(minX < 0) return null;
+  return (maxX-minX) / 2 / w;
+}
+
+let _headCrossSectionCache = null;
+function computeHeadCrossSections(){
+  if(_headCrossSectionCache) return _headCrossSectionCache;
+  const metrics = getFaceMetrics();
+  // 모든 뷰에 공통으로 쓸 "정규화폭→메쉬단위" 배율 — 정면 기준 하나로 통일.
+  // (좌/우측 프로필 사진은 귀 간격 개념 자체가 불안정해서, 뷰마다 따로
+  // 배율을 뽑으면 오히려 불안정해짐 — 정면 배율을 공통으로 재사용)
+  const globalScaleX = metrics.projector.bX;
+
+  const bands = HEAD_PHI_BANDS.map(phi=>({ phi, halfWidthSum:0, halfWidthWeight:0, halfDepthSum:0, halfDepthWeight:0 }));
+
+  function accumulate(angle, isWidthMeasurement){
+    const maskInf = state.hairMasks && state.hairMasks[angle];
+    const lm = state.landmarks && state.landmarks[angle];
+    if(!maskInf || !maskInf.reasonMask || !lm) return;
+    const confidence = getViewPoseConfidence(angle);
+    if(confidence < 0.1) return;
+    const projector = makeFaceProjector(lm, metrics.widthFactor, metrics.heightFactor);
+    const w = maskInf.maskW, h = maskInf.maskH;
+    const aY = projector.toMeshY(0); // toMeshY(v)=aY-bY*v 이므로 v=0일 때 aY
+
+    bands.forEach(band=>{
+      // phi(두상 로컬 극각) → 메쉬 Y(scalpPointToWorld와 동일 공식, liftOut=1.01
+      // 기준) → 이 뷰의 정규화 이미지 행(row)으로 역변환
+      const meshY = Math.cos(band.phi)*1.01 + 0.15;
+      const normY = (aY - meshY) / projector.bY;
+      const row = Math.round(normY * h);
+      const halfWNorm = measureRowHalfWidth(maskInf.reasonMask, w, h, row);
+      if(halfWNorm == null) return;
+      const halfWMesh = halfWNorm * globalScaleX;
+      if(isWidthMeasurement){ band.halfWidthSum += halfWMesh*confidence; band.halfWidthWeight += confidence; }
+      else { band.halfDepthSum += halfWMesh*confidence; band.halfDepthWeight += confidence; }
+    });
+  }
+
+  accumulate('front', true);
+  accumulate('back', true);
+  accumulate('left', false);
+  accumulate('right', false);
+
+  // 실측이 부족한 밴드는 기존 타원체 고정값으로 안전 폴백(신규 실패 모드 아님)
+  const DEFAULT_HALF_WIDTH = 0.78 * metrics.widthFactor;
+  const DEFAULT_HALF_DEPTH = 0.85 * metrics.widthFactor;
+  bands.forEach(band=>{
+    band.halfWidth = band.halfWidthWeight > 0.1 ? (band.halfWidthSum/band.halfWidthWeight) : DEFAULT_HALF_WIDTH;
+    band.halfDepth = band.halfDepthWeight > 0.1 ? (band.halfDepthSum/band.halfDepthWeight) : DEFAULT_HALF_DEPTH;
+  });
+
+  _headCrossSectionCache = bands;
+  return bands;
+}
+
+// phi가 측정 밴드 사이 값이면 인접 밴드끼리 선형보간
+function interpolateHeadCrossSection(phi){
+  const bands = computeHeadCrossSections();
+  if(phi <= bands[0].phi) return bands[0];
+  const last = bands[bands.length-1];
+  if(phi >= last.phi) return last;
+  for(let i=0; i<bands.length-1; i++){
+    if(phi >= bands[i].phi && phi <= bands[i+1].phi){
+      const t = (phi-bands[i].phi) / (bands[i+1].phi-bands[i].phi);
+      return {
+        halfWidth: bands[i].halfWidth*(1-t) + bands[i+1].halfWidth*t,
+        halfDepth: bands[i].halfDepth*(1-t) + bands[i+1].halfDepth*t,
+      };
+    }
+  }
+  return last;
+}
+
 function scalpPointToWorld(phi, theta, liftOut){
   const r = liftOut ?? 1.01;
-  const x = Math.sin(phi) * Math.sin(theta) * 0.78 * r;
+  const { halfWidth, halfDepth } = interpolateHeadCrossSection(phi);
+  const x = Math.sin(phi) * Math.sin(theta) * halfWidth * r;
   const y = Math.cos(phi) * r + 0.15;
-  const z = Math.sin(phi) * Math.cos(theta) * 0.85 * r;
+  const z = Math.sin(phi) * Math.cos(theta) * halfDepth * r;
   return new THREE.Vector3(x, y, z);
 }
 
@@ -6799,6 +6947,7 @@ function startNewCustomer(){
   aiAnalysis=null;
   state.aiSectionEstimate=null; state.viewMapping=null; // (a) 실측 사진 기반 3D 보정 캐시도 새 고객마다 초기화
   state.aiOutfitRecommendation=null; // (3단계) 의상 추천 캐시도 초기화
+  _headCrossSectionCache = null; // 두상 실측 단면(Shape-from-Silhouette) 캐시도 새 고객마다 초기화
   ANGLES.forEach(a=>{state.shots[a]=null;state.hairCanvases[a]=null;state.hairMasks[a]=null;state.baseCanvases[a]=null;});
   state.landmarks = {};
   state.selectedStyle=null; state.currentCaptureIndex=0; state.currentSection='crown';
