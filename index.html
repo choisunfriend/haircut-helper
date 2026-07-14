@@ -1443,6 +1443,66 @@
   수정으로 "정확도가 낮아도 최소한 원반처럼 터지진 않는다"는 안전성은
   확보했지만, 실측이 실제로 자연스러운 목 형태로 나오는지는 다음 실기기
   테스트에서 봐야 함.
+
+[2026-07-14 계속] 좌/우 측면 사진 실측 Z로 안면(코/턱/이마) 깊이 개인화
+  사용자 요청: "이번엔 아까 얘기했던 안면 개인화작업. 측면 사진의 z값등의
+  정보를 이용해서 안면세부조정하는 기능을 추가해봐" — 세션 초반 "좌/우
+  사진으로 깊이 실측 보정(추천)"으로 골라뒀다가 목/정수리 버그가 우선이라
+  미뤄뒀던 작업.
+
+  배경: buildRealFaceMesh의 reliefZLocal(=Z_SIGN*p.z*...)은 front 사진 한
+  장에서 MediaPipe가 추정한 z값(모노큘러/단안 추정치)을 씀 — 2D 이미지
+  한 장만으로 깊이(카메라 쪽으로 얼마나 튀어나왔는지)를 재는 건 원리상
+  모호해서, 코 같은 돌출부의 정확한 양은 특히 부정확하기 쉬움. 반면 좌/우
+  측면 사진에서는 얼굴의 앞뒤 깊이가 "이미지 속 좌우 위치"로 직접 나타남
+  (정면에서는 안 보이던 정보가 옆에서는 보임) — 이 원리는 이미
+  projectImagePointToHead(헤어 가닥 뿌리를 좌/우 실측 회전으로 투영하는
+  함수, composeRotationZYX 회전은 이전 세션에 라운드트립 검증됨)가 쓰고
+  있는 것과 동일해서, 새 메커니즘을 만들지 않고 그대로 재사용.
+
+  구현: buildRealFaceMesh 안에 코끝(lm[1])·턱끝(lm[152])·이마(lm[10]) —
+  이 파일이 detectFaceLandmarks에서 이미 nose/chin/forehead로 쓰는, 새로
+  추측하지 않은 인덱스 — 세 "앵커" 지점에 대해:
+  1) 좌/우 사진 속 그 지점의 실제 위치를 projectImagePointToHead로 월드
+     좌표까지 투영해 "실측 Z"를 얻음(포즈 신뢰도 0.5 미만이거나 타원 밖으로
+     나가 투영 실패하면 그 뷰는 스킵).
+  2) 정면 사진만으로 그 지점에 원래 매겨졌을 Z(기존 공식 그대로)와
+     비교해서 deltaZ(차이)를 구함.
+  3) 이 deltaZ를 해당 지점 주변에만(가우시안 감쇠, sigma=0.18) 국소적으로
+     더함 — 코 하나만 실측이 어긋나도 얼굴 전체가 아니라 코 주변만 밀리게.
+  ⚠ ±0.6*ELL_C로 clamp(위 목 버그와 같은 이유 — 측면 랜드마크 오탐이
+  스파이크를 만들지 않도록).
+
+  검증 중 발견한 것(실제로 중요): Node로 좌/우가 서로 다른 부호의 결과를
+  낼 수 있는 인위적 테스트 케이스를 만들어봤더니, 실측치가 완전히 상쇄되는
+  경우가 있었음 — 좌/우 각각의 yaw(±90도 등)가 반영된 회전 특성상, 두
+  뷰가 서로 모순되는 좌표를 줄 수 있는 구조 자체는 실재함(진짜 촬영
+  데이터에서 이런 모순이 실제로 얼마나 자주 나올지는 알 수 없음 — 정상
+  촬영이면 두 뷰가 대체로 일치해야 함). 그래서 "좌/우 평균을 무조건 신뢰"
+  하는 대신, 방어 로직을 추가: 좌/우 둘 다 있는데 부호가 다르고 둘 다
+  유의미한 크기면(서로 모순되는 신호), 평균 내지 않고 그 앵커는 보정 없이
+  기존(정면 전용) 방식으로 건너뜀 — "잘못 합친 값을 믿는 것"보다 "둘 다
+  안 믿는 것"이 안전하다는 판단.
+
+  검증: 손으로 베낀 목업이 아니라 실제 파일에서 buildRealFaceMesh를 통째로
+  추출해(Python) 최소 THREE.js/document 스텁 위에서 실행
+  (/tmp/facemesh_test/run_facedepth_harness.js) —
+  (a) 좌/우 없음 → 보정 0, 기존 방식과 완전히 동일(NaN 없음),
+  (b) 좌/우 있고 부호 일치 → 두 값 평균이 실제로 반영됨(직접 계산값과
+      일치 확인),
+  (c) 좌/우 부호 불일치(모순) → 새로 추가한 방어 로직이 정확히 작동해
+      보정을 건너뜀(폴백과 동일값),
+  (d) 인위적으로 큰 deltaZ를 유발해도 clamp가 정확히 상한에서 값을 자름
+      (예측값과 소수점 단위까지 일치),
+  (e) 코 보정이 먼 정점(idx=234)에는 코 자체 보정 대비 13% 수준만
+      새어나감(국소 감쇠 정상).
+  모두 실제 파일 코드로 확인됨.
+  ⚠ 정직한 한계: (1) 실측 Z 자체의 절대적 정확도(좌/우 사진이 실제로 얼마나
+  정확한 프로필 각도로 찍혔는지, MediaPipe가 측면에서도 코/턱/이마 랜드마크를
+  정확히 잡는지)는 실기기 재확인 전 — 이건 코드 시뮬레이션으로는 확인할
+  수 없는 부분. (2) 좌/우 부호 불일치 방어 로직의 임계값(1.2*ELL_C,
+  0.15*ELL_C)은 "명백히 모순인 경우만 거른다"는 취지의 보수적 값이라, 실기기
+  데이터를 보면서 조정이 필요할 수 있음.
 -->
 
 <!DOCTYPE html>
@@ -6240,6 +6300,86 @@ async function buildRealFaceMesh(faceMetrics){
   }
   function inFaceBound(idx){ return distSqFromBound(idx) <= 1; }
 
+  // ── 좌/우 측면 사진 기반 코/턱/이마 깊이(Z) 실측 보정(2026-07-14 추가) ──
+  // 사용자 요청: "측면 사진의 z값등의 정보를 이용해서 안면세부조정하는 기능을
+  // 추가해봐" — 이전 세션에 "좌/우 사진으로 깊이 실측 보정(추천)"으로 골라
+  // 뒀다가 목/정수리 버그가 우선순위에서 앞서 미뤄뒀던 바로 그 작업.
+  // 배경: 위 reliefZLocal(=Z_SIGN*p.z*...)은 front 사진 한 장에서 MediaPipe가
+  // 추정한 z값을 쓰는데, 이건 모노큘러(단안) 추정치라 "코가 실제로 얼마나
+  // 튀어나왔는지" 같은 절대 돌출량은 원래 부정확하기로 알려져 있음(2D 이미지
+  // 한 장만으로는 깊이가 근본적으로 모호함 — 이게 정면 얼굴 사진만으로 깊이를
+  // 재는 것의 이론적 한계).
+  // 반면 좌/우 측면 사진에서는 다름 — 카메라를 옆에서 보고 있으니 얼굴의
+  // 앞뒤 깊이(코가 얼마나 앞으로 나왔는지)가 이미지의 좌우 위치로 "직접"
+  // 나타남(정면에서는 안 보이던 정보가 옆에서는 보임). 이 원리는 이미
+  // projectImagePointToHead(헤어 가닥 뿌리를 좌/우 실측 회전으로 투영하는,
+  // 이미 실기기로 확인된 함수)가 쓰고 있는 것과 동일 — 그 함수를 그대로
+  // 재사용해서 "코끝·턱끝·이마" 세 지점(이 파일이 이미 detectFaceLandmarks
+  // 에서 nose/chin/forehead로 쓰는 바로 그 랜드마크 인덱스 1/152/10 — 새
+  // 인덱스를 추측하지 않고 이미 검증된 것만 사용)의 좌/우 사진 속 실제
+  // 위치를 실측 회전으로 월드 좌표까지 투영해서 "실측 Z"를 얻는다.
+  // 이 실측 Z와, 지금 이 함수가 정면 사진만으로 그 같은 지점에 매기고 있는
+  // Z(=ellipsoidZ+reliefZLocal) 사이의 차이(deltaZ)를 계산해서, 그 지점
+  // 주변에만(가우시안 감쇠) 국소적으로 더해준다 — 코 하나만 실측이 어긋나도
+  // 얼굴 전체가 아니라 코 주변만 밀리게.
+  // ⚠ 정직한 한계: (1) 좌/우 사진 둘 다 없거나 포즈 신뢰도가 낮으면(옆모습이
+  // 잘 안 찍혔거나 랜드마크 감지 실패) 그 지점은 조용히 보정을 건너뛰고
+  // 기존 방식 그대로 씀 — 실패해도 깨지지 않음. (2) 그림자·안경·헤어 등으로
+  // 측면 랜드마크 자체가 부정확할 수 있어, 위 목(neck) 버그 때와 같은
+  // 이유로 deltaZ를 ±0.6*ELL_C로 clamp해서 오탐이 코를 스파이크처럼
+  // 튀어나오게 만드는 것을 막음. (3) 아직 실기기 재확인 전.
+  const PROFILE_DEPTH_ANCHORS = [
+    { idx: 1,   label: '코끝' },   // detectFaceLandmarks의 nose=lm[1]과 동일 인덱스
+    { idx: 152, label: '턱끝' },   // 〃 chin=lm[152]
+    { idx: 10,  label: '이마' },   // 〃 forehead=lm[10]
+  ];
+  const PROFILE_DEPTH_FALLOFF_SIGMA = 0.18; // 보정 영향 반경(메쉬 로컬 단위) — ELL_A(대략 0.3~0.4)의 절반 수준
+  function computeProfileDepthCorrections(){
+    const out = [];
+    PROFILE_DEPTH_ANCHORS.forEach(anchor=>{
+      const p = raw[anchor.idx];
+      const localX = projector.toMeshX(p.x);
+      const yLocal = projector.toMeshY(p.y) - 0.15;
+      // 이 지점에 대해 "정면 사진만으로" 원래 매겼을 Z(위 메인 루프와 동일 공식) — 비교 기준.
+      const dx = (p.x - boundCX) / boundRX, dy = (p.y - boundCY) / boundRY;
+      const frontBlend = Math.max(0, 1 - (dx*dx+dy*dy));
+      const frontEstimatedZ = ellipsoidZ(localX, yLocal) + frontBlend * (Z_SIGN * p.z * projector.bX * Z_DEPTH_SCALE);
+
+      // 좌/우 각각의 실측치를 먼저 따로 구해둠(바로 합치지 않음) — 아래 "둘이
+      // 서로 크게 어긋나면 신뢰 안 함" 검사를 위해.
+      const perView = [];
+      ['left','right'].forEach(angle=>{
+        const lmSide = state.landmarks && state.landmarks[angle];
+        if(!lmSide || !lmSide.rawLandmarks || lmSide.rawLandmarks.length < 468) return;
+        const confidence = getViewPoseConfidence(angle);
+        if(confidence < 0.5) return; // 실측 PnP 포즈가 확실한 뷰만(어림 각도로는 이 보정에 부적합)
+        const sidePt = lmSide.rawLandmarks[anchor.idx];
+        const world = projectImagePointToHead(angle, sidePt.x, sidePt.y, widthFactor, heightFactor);
+        if(!world) return;
+        perView.push({ angle, z: world.z, confidence });
+      });
+      if(!perView.length) return; // 좌/우 둘 다 없거나 신뢰도 낮음/타원 밖 — 이 지점은 보정 없이 기존 방식 유지
+
+      // 좌/우 둘 다 있는데 서로 부호가 다르거나 크게 어긋나면(한쪽 랜드마크
+      // 오탐 등으로 둘이 모순되는 경우) 평균을 내는 게 오히려 둘 다 못 믿는
+      // 값을 만들 수 있음 — 이럴 땐 "둘 다 안 믿는다"가 "잘못 합친 값을
+      // 믿는다"보다 안전하므로 보정을 건너뛴다(기존 방식 유지).
+      if(perView.length === 2){
+        const [a,b] = perView;
+        const disagree = Math.abs(a.z - b.z) > 1.2*ELL_C || (a.z*b.z < 0 && Math.abs(a.z)>0.15*ELL_C && Math.abs(b.z)>0.15*ELL_C);
+        if(disagree) return;
+      }
+
+      const wSum = perView.reduce((s,v)=>s+v.confidence, 0);
+      const zSum = perView.reduce((s,v)=>s+v.z*v.confidence, 0);
+      const realProfileZ = zSum / wSum;
+      const deltaZ = clamp(realProfileZ - frontEstimatedZ, -0.6*ELL_C, 0.6*ELL_C);
+      out.push({ idx: anchor.idx, localX, yLocal, deltaZ });
+    });
+    return out;
+  }
+  const profileDepthCorrections = computeProfileDepthCorrections();
+
   const vertCount = 468;
   const positions = new Float32Array(vertCount*3);
   const uvs = new Float32Array(vertCount*2);
@@ -6255,7 +6395,16 @@ async function buildRealFaceMesh(faceMetrics){
     // 중심(distSq=0)에서 1(=실측 굴곡 전부 반영). 필터링에 쓰는 것과 같은
     // 타원이라 딱 경계선에서 자연스럽게 표면값과 일치함.
     const blendWeight = Math.max(0, 1 - distSqFromBound(i));
-    const localZ = surfaceZLocal + blendWeight * reliefZLocal;
+    // 좌/우 측면 실측 보정: 코/턱/이마 근처일수록(가우시안 거리 가중) 위에서
+    // 계산해둔 deltaZ가 더해짐 — 앵커에서 멀수록(뺨·관자놀이 등) 기여 거의 0.
+    let profileCorrectionZ = 0;
+    for(let k=0;k<profileDepthCorrections.length;k++){
+      const c = profileDepthCorrections[k];
+      const ddx = localX - c.localX, ddy = yLocal - c.yLocal;
+      const w = Math.exp(-(ddx*ddx+ddy*ddy) / (2*PROFILE_DEPTH_FALLOFF_SIGMA*PROFILE_DEPTH_FALLOFF_SIGMA));
+      profileCorrectionZ += w * c.deltaZ;
+    }
+    const localZ = surfaceZLocal + blendWeight * reliefZLocal + profileCorrectionZ;
     // front는 회전 없이 그대로 월드 좌표로 씀 — 위 되돌림 항목 참고(회전을
     // 걸면 코처럼 튀어나온 점이 지렛대처럼 크게 밀려서 "막대기에 매달린"
     // 모양이 됨. 나머지 두상 시스템도 front 자신의 실측 회전은 쓰지 않음).
