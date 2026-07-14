@@ -1326,6 +1326,78 @@
   실측 보간 자체(눈높이 등 기준 데이터)는 그대로라 값 왜곡은 없을 것으로
   판단되지만, 아직 실기기 재확인 전. 목/정수리 두 수정 모두 다음 실기기
   테스트에서 확인 필요.
+
+[2026-07-14 계속] 목을 실측 단면 기반으로 재추가
+  대화 흐름: "정수리는 두피라고 치고 중간에 막대기는 뭐야?" → 위에서 뺐던
+  목 원통(buildNeckMesh)이 정체였다고 답변 → "혹시 함수가 남아있으면
+  헤어렌더링을 할 때 그 부분을 침범 못하는 거 아냐?"(호출 안 된 함수가
+  다른 로직에 영향 주는지 질문, grep으로 무관함 확인해 답변) → "지금 안면부
+  메쉬와 헤어를 잘 해서 연결했을 때, 사진에서의 목과 턱과 두상 연결부위등이
+  있는데, 그걸 활용해서 3D렌더링에 활용할 수 있나?"(개념 질문) → 답변:
+  MediaPipe 468랜드마크엔 목이 아예 없고, 헤어 마스크 추출 과정에서 목/어깨
+  영역은 오히려 노이즈로 취급돼 제외되고 있어 실측 데이터가 없는 상태였음 →
+  "헤어추출과정에서 잠시 제외했다가 추출끝나면 포함시키면 되겠네" → 지적:
+  같은 마스크를 껐다 켜는 게 아니라, "머리카락이냐"를 재는 헤어 마스크와는
+  완전히 별개로 "사람(피부/옷 포함)이냐"를 재는 마스크를 하나 더 만들면
+  된다고 답변 → "지금 그 작업해줘. 목과 잠깐 배제해놓은 안면부위들
+  3D에 적용해줘" — 실제 구현 착수.
+
+  진단: 헤어 세그멘테이션의 `segmenter` 전역변수는 MediaPipe hair_segmenter
+  (성공 시, background/hair 2클래스뿐 — 피부 여부는 알 수 없음) 아니면
+  TF.js MediaPipeSelfieSegmentation(실패 폴백 시에만) 둘 중 하나만 담고
+  있어서, 실제로는 대부분의 경우(=MediaPipe 성공 시) "사람 전체 실루엣"
+  마스크 자체가 파이프라인 어디에도 없었음. tf.js/body-segmentation
+  라이브러리는 <head>에서 이미 항상(조건 없이) 로드되고 있어서 새 외부
+  의존성 없이 모델 인스턴스만 하나 더 만들면 됨을 확인.
+
+  구현:
+  1) extractHairMask에 STEP 1.5 추가 — bodySegmenter(신규 전역, 항상 로드
+     시도, 헤어 폴백이 이미 같은 모델을 로드했으면 재사용해 중복 로드 방지)
+     로 TF.js MediaPipeSelfieSegmentation을 돌려 "사람 전체 실루엣"
+     personMask(0=배경,1=사람, maskW×maskH)를 얻어 state.hairMasks[angle]에
+     저장. 헤어 마스크(hairMaskBuf/reasonMask)와는 완전히 독립적인 별도
+     데이터라 서로 간섭 없음 — 실패해도(personMask=null) 헤어/얼굴 등
+     나머지 파이프라인엔 영향 없음.
+  2) computeNeckCrossSections()/interpolateNeckCrossSection() 추가 —
+     computeHeadCrossSections()와 완전히 동일한 패턴(여러 각도 사진의
+     실루엣 반폭을 실측, front/back=폭, left/right=깊이, getViewPoseConfidence
+     로 가중 평균, 실측 없는 밴드는 최근접 이웃 승계)이되, 소스 마스크만
+     reasonMask(헤어) 대신 personMask(사람)로 교체. 두상처럼 SCALP_ZONES
+     구역 경계가 없어 목 높이는 0~1 균등 5분할(NECK_HEIGHT_FRACS)을 측정
+     지점으로 씀 — 값 자체는 항상 실측 또는 실측의 최근접 이웃, 완전
+     실측 실패시에만 예전 고정 반지름(0.42~0.5*widthFactor)으로 안전 폴백.
+  3) buildRealNeckMesh() 추가 — buildHeadMesh와 동일한 방식(여러 높이의
+     타원형 링을 쌓아 BufferGeometry 인덱스로 연결)으로 목을 지음.
+     CylinderGeometry(원형 고정)를 버리고 halfWidth≠halfDepth(좌우 폭과
+     앞뒤 깊이가 다른, 실측 기반 비원형) 단면을 씀. 윗단(y≈-0.56)은
+     buildHeadMesh 최하단 링과 정확히 같은 공식(cos(PHI_MAX)*1.01+0.15)이라
+     이음매 없이 맞물리고, 아랫단(y=-1.15, neckAttachPoint)은 3단계 의상
+     정렬 불변식을 그대로 유지. 아랫단엔 부채꼴 바닥 캡을 추가해 지금
+     화면(아직 의상 없음)에서 뻥 뚫려 보이지 않게 함.
+  4) buildProceduralHead에서 buildRealNeckMesh를 다시 group에 추가(이전에
+     뺐던 buildNeckMesh 대신) — 이번엔 "아무 근거 없이 뜬 막대"가 아니라
+     그 사람 실측 데이터 기반이라 다시 붙여도 된다는 판단.
+  5) buildOutfitPlaceholderMesh 위 neckAttachPoint 연결 규격 문서(3단계
+     외부 에셋 제작자 참고용)도 "고정 원통" 서술에서 "실측 비원형 단면"
+     서술로 갱신.
+  옛 buildNeckMesh()는 이 파일의 기존 관례대로 삭제하지 않고 남겨둠(최후
+  폴백 상수의 출처이자 참고용).
+
+  검증: Canvas/세그멘테이션 API를 쓰는 부분(STEP 1.5, personMask 추출)은
+  이 파일 전체가 그렇듯 Node 샌드박스에서 실행 검증이 안 됨 — 대신
+  computeNeckCrossSections/interpolateNeckCrossSection/buildRealNeckMesh의
+  순수 계산 부분만 그대로 옮겨 Node로 시뮬레이션(/tmp/facemesh_test/
+  verify_neck.js): (a) neckTopY가 buildHeadMesh 최하단 링과 부동소수점
+  단위까지 정확히 일치(이음매 확인), (b) 실측 있음/완전 실패 두 케이스
+  모두 밴드·보간 결과에 NaN 없음, (c) 삼각형 권취 방향(법선 바깥 방향 여부)
+  을 buildHeadMesh의 동일 인덱스 패턴과 대조 검증 — 옆면·바닥캡 모두 정상.
+  ⚠ 정직한 한계: 이 시뮬레이션은 "지오메트리 수식이 깨지지 않는지"만
+  확인한 것이고, personMask 실측 자체(바디 세그멘터가 실제 사진에서 목
+  실루엣을 정확히 잡는지)는 실기기에서 실제 사진으로 확인해야 함 — 특히
+  1) 얼굴 랜드마크 감지처럼 이 세그멘터도 로딩에 시간이 걸려서 첫 촬영
+  시점엔 아직 준비 안 됐을 수 있음(그 경우 그 각도만 조용히 실측 제외되고
+  나머지 각도/최후 폴백으로 자동 커버되므로 깨지진 않지만 정확도는 떨어짐),
+  2) 배경이 복잡하거나 조명이 어두우면 사람 실루엣 경계가 부정확할 수 있음.
 -->
 
 <!DOCTYPE html>
@@ -2490,7 +2562,51 @@ async function initSegmenter(){
     state.segmenterType = '실패';
   }
 }
-initSegmenter();
+const _segmenterInitPromise = initSegmenter();
+
+// ── 목/어깨 실루엣 실측용 바디 세그멘터(2026-07-14 추가) ──
+// 사용자 요청: "헤어추출과정에서 잠시 제외했다가 추출끝나면 포함시키면
+// 되겠네" — 목·어깨 영역이 헤어 마스크에서는 계속 제외돼야 맞지만(피부/옷이
+// 머리카락 색상 판정을 오염시키므로), 그 사람의 실제 목 폭·두께를 재려면
+// 완전히 별개의 "사람 실루엣"마스크가 하나 더 필요함. 위 `segmenter`
+// 전역변수는 MediaPipe hair_segmenter(성공 시, background/hair 2클래스뿐 —
+// 피부 여부는 알 수 없음) 아니면 TF.js MediaPipeSelfieSegmentation(실패
+// 폴백 시에만) 둘 중 하나만 들어있어서, 대부분의 경우(=MediaPipe 성공 시)엔
+// "사람 전체 실루엣" 마스크 자체가 아예 안 만들어짐. 그래서 `segmenter`와는
+// 별개로 `bodySegmenter`를 만들어 항상(성공/실패 경로와 무관하게) 사람
+// 전체 실루엣을 얻는다 — 라이브러리(tf.js, body-segmentation)는 이미
+// <head>에서 조건 없이 항상 로드되고 있으므로(위 STEP1 주석 참고) 새 외부
+// 의존성 추가는 아님, 모델 인스턴스만 하나 더 만드는 것.
+// 예외: 헤어 폴백 경로가 이미 같은 모델(MediaPipeSelfieSegmentation)을
+// `segmenter`로 로드해뒀다면 중복 로드하지 않고 그대로 재사용한다.
+let bodySegmenter = null;
+let bodySegmenterReady = false;
+async function initBodySegmenter(){
+  await _segmenterInitPromise; // state.segmenterType이 확정될 때까지 대기
+  if(state.segmenterType === 'TF.js' && segmenter){
+    bodySegmenter = segmenter; // 이미 로드된 같은 모델 재사용
+    bodySegmenterReady = true;
+    console.log('목 실측용 바디 세그멘터: 헤어 폴백 모델 재사용');
+    return;
+  }
+  try{
+    await tf.ready();
+    await tf.setBackend('webgl');
+    bodySegmenter = await bodySegmentation.createSegmenter(
+      bodySegmentation.SupportedModels.MediaPipeSelfieSegmentation,
+      { runtime:'tfjs', modelType:'general' }
+    );
+    bodySegmenterReady = true;
+    console.log('목 실측용 바디 세그멘터 준비 완료');
+  } catch(e){
+    // ⚠ 정직한 한계: 이게 실패하면(구형 브라우저·메모리 부족 등) 목은 실측이
+    // 아니라 예전 고정 반지름(0.42~0.5*widthFactor)으로 자동 폴백됨
+    // (computeNeckCrossSections 참고) — 헤어/얼굴 등 나머지 기능엔 영향 없음.
+    console.warn('목 실측용 바디 세그멘터 로드 실패(목은 기존 고정값으로 폴백):', e);
+    bodySegmenter = null;
+  }
+}
+initBodySegmenter();
 
 /* ────────────────────────────────────────
    헤어 마스크 추출
@@ -2519,6 +2635,9 @@ function avgRGBString(sumR, sumG, sumB, cnt, minCount){
    Node 샌드박스에서 실행 검증이 안 돼서 구조는 안 건드리고 목차만 추가함.
    내부에 이미 STEP별 중첩 함수로 나뉘어 있음 — 아래 줄번호는 대략적 위치.)
    STEP 1  (~1313) 세그멘테이션 — MediaPipe 우선, 실패 시 TF.js 폴백
+   STEP 1.5(~1345, 2026-07-14 추가) 목/어깨 실루엣용 사람 전체 마스크 —
+            헤어 마스크와 별개 목적(피부 포함 여부), bodySegmenter 사용,
+            실패해도 헤어/얼굴 파이프라인엔 영향 없음
    STEP 2  (~1374) 배경 오탐 제거 — 사람 머리 영역 바깥 무조건 제외
    STEP 3  (~1428) 얼굴 영역 제거 — 랜드마크 기반 동적 박스
    STEP 4  (~1463) 얼굴 부위별 정밀 가드(눈썹·눈·입)
@@ -2557,6 +2676,39 @@ async function extractHairMask(angle){
         const srcCtx = srcC.getContext('2d');
         srcCtx.drawImage(img, 0, 0, w, h);
         const srcPixels = srcCtx.getImageData(0,0,w,h).data;
+
+        // ── STEP 1.5: 목/어깨 실루엣용 사람 전체 마스크(2026-07-14 추가) ──
+        // 헤어 마스크(아래 hairMaskBuf)와 완전히 별개의 목적 — "이 픽셀이
+        // 머리카락이냐"가 아니라 "이 픽셀이 배경이 아니라 사람(피부/옷
+        // 포함)이냐"를 재서, 나중에 3D 목(buildRealNeckMesh)이 이 사람의
+        // 실제 목·어깨 폭을 반영하게 하기 위함. 실패해도(bodySegmenter
+        // 로드 실패 등) personMask=null로 남고, 헤어 추출/얼굴 메쉬 등
+        // 나머지 파이프라인은 전혀 영향받지 않음(완전히 곁가지 데이터).
+        let personMask = null;
+        if(bodySegmenter){
+          try{
+            const bodySegs = await bodySegmenter.segmentPeople(srcC, {
+              multiSegmentation: false,
+              segmentBodyParts: false,
+            });
+            if(bodySegs && bodySegs.length>0){
+              const binaryMask = await bodySegmentation.toBinaryMask(
+                bodySegs,
+                {r:255,g:255,b:255,a:255},
+                {r:0,g:0,b:0,a:0},
+                false, 0.5
+              );
+              // TF.js 헤어 폴백 경로(위 STEP1)가 personMaskData를 쓰는 것과
+              // 동일한 인덱싱 관례(alpha>128=사람) — srcC를 그대로 세그멘터에
+              // 넘겼으므로 binaryMask도 이미 w×h와 같은 해상도.
+              personMask = new Uint8Array(w * h);
+              for(let i=0;i<w*h;i++){ personMask[i] = (binaryMask.data[i*4+3] > 128) ? 1 : 0; }
+            }
+          }catch(e){
+            console.warn('목 실루엣용 바디 세그멘테이션 실패(헤어 추출과 무관, 목은 기존 고정값으로 폴백):', e);
+            personMask = null;
+          }
+        }
 
         // 마스크 버퍼 (0=background, 255=hair) — 축소 해상도에서 작업
         let hairMaskBuf = new Uint8Array(w * h);
@@ -3243,7 +3395,10 @@ async function extractHairMask(angle){
           maskW: w, maskH: h,
           reasonMask, // [진단용] 0:미해당 1:최종 머리카락 2:얼굴박스로 제외 3:눈썹/눈/입 가드로 제외
           reasonCanvas: reasonC, // [진단용] 위 코드를 색으로 미리 구운 작은 캔버스(w×h, 축소 해상도)
-          faceBoxDiag // [진단용] 얼굴제거박스 좌표/사용 랜드마크 — "얼굴박스 보기" 토글에서 사용
+          faceBoxDiag, // [진단용] 얼굴제거박스 좌표/사용 랜드마크 — "얼굴박스 보기" 토글에서 사용
+          personMask // (2026-07-14 추가) 0:배경 1:사람(피부/옷 포함) — maskW×maskH 해상도,
+                     // 목 실루엣 실측(computeNeckCrossSections)용. bodySegmenter 로드
+                     // 실패 시 null일 수 있음 — 그 경우 목은 고정값으로 폴백.
         };
         console.log('[진단] extractHairMask 완료', angle, 'faceBoxDiag=', faceBoxDiag);
         resolve(true);
@@ -5652,6 +5807,71 @@ function buildNeckMesh(widthFactor, skinColor){
   return neckMesh;
 }
 
+// ── 실측 단면 기반 목 메쉬(2026-07-14 추가) ──
+// 위 buildNeckMesh()는 고정 반지름(0.42~0.5*widthFactor) 원형 원뿔대라
+// "그 사람 목"이 아니라 아무 사람에게나 씌운 임의 형태였음. 사용자 요청:
+// "목과 잠깐 배제해놓은 안면부위들 3D에 적용해줘" — extractHairMask STEP 1.5의
+// personMask(사람 전체 실루엣) + computeNeckCrossSections(위)로 뽑은 그 사람
+// 실측 목 단면(높이별 halfWidth/halfDepth)을 써서, buildHeadMesh와 완전히
+// 같은 방식(여러 높이 링을 쌓아 BufferGeometry로 연결)으로 짓는다.
+// CylinderGeometry는 원형(가로=세로)만 가능해서 폐기 — 목은 보통 좌우 폭과
+// 앞뒤 깊이가 다른데(원형이 아님) 이게 바로 실측으로 얻을 수 있는 정보라
+// 커스텀 지오메트리로 바꿈. buildNeckMesh()는 실측 실패 시 폴백 경로용
+// 상수의 출처로만 남겨두고(computeNeckCrossSections 최후 폴백 참고), 함수
+// 자체는 나중 참고용으로 삭제하지 않음(이 파일의 기존 관례).
+function buildRealNeckMesh(widthFactor, skinColor){
+  const neckColor = skinColor.clone().multiplyScalar(0.94); // 살짝 어둡게(그림자 자리표시) — buildNeckMesh와 동일
+  const neckMat = new THREE.MeshStandardMaterial({ color: neckColor, roughness: 0.85 });
+
+  const RING_STEPS = 8, THETA_STEPS = 24; // THETA_STEPS=24는 예전 CylinderGeometry 세그먼트 수와 동일하게 유지
+  const PHI_MAX = HEAD_PHI_BANDS[HEAD_PHI_BANDS.length-1];
+  const neckTopY = Math.cos(PHI_MAX) * 1.01 + 0.15; // buildHeadMesh 최하단 링과 같은 공식 → 이음매 없음
+  const neckBotY = -1.15; // neckAttachPoint 하단(3단계 의상 정렬 불변식)
+
+  const positions = [];
+  for(let ri=0; ri<=RING_STEPS; ri++){
+    const t = ri/RING_STEPS;
+    const y = neckTopY + t*(neckBotY-neckTopY);
+    const { halfWidth, halfDepth } = interpolateNeckCrossSection(y);
+    for(let ti=0; ti<=THETA_STEPS; ti++){
+      const theta = -Math.PI + (2*Math.PI)*(ti/THETA_STEPS);
+      // scalpPointToWorld와 동일한 관례: theta=0에서 z(깊이) 최대, theta=π/2에서 x(폭) 최대
+      const x = Math.sin(theta) * halfWidth;
+      const z = Math.cos(theta) * halfDepth;
+      positions.push(x, y, z);
+    }
+  }
+  const indices = [];
+  for(let ri=0; ri<RING_STEPS; ri++){
+    for(let ti=0; ti<THETA_STEPS; ti++){
+      const a = ri*(THETA_STEPS+1)+ti;
+      const b = a + (THETA_STEPS+1);
+      const c = a+1;
+      const d = b+1;
+      indices.push(a,b,c, b,d,c); // buildHeadMesh와 동일한 인덱스 패턴(권취 방향도 동일)
+    }
+  }
+  // 바닥 캡: 두상 쪽(윗단)은 buildHeadMesh 최하단 링과 y가 같아 맞물리므로
+  // 캡 불필요. 아랫단(어깨쪽, neckAttachPoint)은 지금 화면(두상+목 단독
+  // 테스트 — 아직 의상이 안 붙음)에서 뻥 뚫린 구멍으로 보이는 것을 막기
+  // 위해 중심점 하나를 추가해 부채꼴로 막는다. 3단계에서 의상이 이 위에
+  // 씌워지면 이 캡은 안 보이게 됨(문제 없음).
+  const bottomCenterIdx = positions.length/3;
+  positions.push(0, neckBotY, 0);
+  const bottomRingStart = RING_STEPS*(THETA_STEPS+1);
+  for(let ti=0; ti<THETA_STEPS; ti++){
+    indices.push(bottomRingStart+ti, bottomCenterIdx, bottomRingStart+ti+1);
+  }
+
+  const neckGeo = new THREE.BufferGeometry();
+  neckGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(positions), 3));
+  neckGeo.setIndex(indices);
+  neckGeo.computeVertexNormals();
+  const neckMesh = new THREE.Mesh(neckGeo, neckMat);
+  neckMesh.name = 'neckAttachPoint'; // 3단계에서 의상 메시 정렬 기준점 — buildNeckMesh와 동일한 이름 유지
+  return neckMesh;
+}
+
 // 귀 — 실측 귀 x좌표(lEarX/rEarX)·귀 높이(earY)로 배치.
 // 주의: projector.EAR_MESH_X는 "사진 좌표 보정용 기준점"이라 두상 적도 반경보다
 // 일부러 안쪽 값 — 그걸 귀 자체의 위치로 그대로 쓰면 귀가 두상 구체 표면보다
@@ -5754,19 +5974,26 @@ function buildProceduralHead(faceMetrics, skinColorCss){
   const headMesh = buildHeadMesh(widthFactor, heightFactor, headMat);
   group.add(headMesh);
 
-  // 버그 수정(2026-07-14, 계속): 목 원통 제거 — 실기기 피드백: "목이랑 그
-  // 위쪽으로 연결된 부위(=두상 정수리 끝의 살구색 뾰족한 부분, 아래 크라운
-  // 구역 수정 참고)가 중간에 버티고 있어서 걸린다, 저기에 의지하고 있는
-  // 게 없다". 확인해보니 맞는 지적 — neckAttachPoint는 3단계(의상 부착)를
-  // 위한 정렬 기준점으로 설계된 것인데, 지금 이 두상 단독 화면에는 거기
-  // 붙는 의상이 없어서(의상은 setupModel3DScreen이 별도로 loadOutfitMesh를
-  // 붙일 때만 존재) 목 원통이 허공에 홀로 떠서 아무것도 안 받치는 상태로만
-  // 보임. 귀/절차적 이목구비와 같은 방식(함수는 남기고 group에 안 넣기)으로
-  // 처리 — buildOutfitPlaceholderMesh 등 나머지 코드는 neckMesh 객체를 직접
-  // 참조하지 않고 고정 좌표(y=-1.15)만 쓰므로 제거해도 3단계 의상 부착
-  // 로직엔 영향 없음(코드 전수 확인).
-  // const neckMesh = buildNeckMesh(widthFactor, skinColor);
-  // group.add(neckMesh);
+  // 버그 수정(2026-07-14, 계속) → 재추가(같은 날, 실측 목 메쉬로 교체):
+  // 실기기 피드백 "목이랑 그 위쪽으로 연결된 부위가 중간에 버티고 있어서
+  // 걸린다, 저기에 의지하고 있는 게 없다"를 받고 한 번은 완전히 뺐었음
+  // (buildNeckMesh가 고정 반지름 원통이라 "아무 근거 없이 뜬 막대"처럼
+  // 보였던 게 진짜 원인 — neckAttachPoint 자체가 문제가 아니라 실측 없는
+  // 임의 형태였던 게 문제). 이후 사용자 요청: "목과 잠깐 배제해놓은
+  // 안면부위들 3D에 적용해줘" — extractHairMask STEP 1.5(personMask)로
+  // 그 사람 실제 목/어깨 실루엣을 재서 buildRealNeckMesh(위, 실측 단면
+  // 기반)로 교체 재추가. 이제는 "아무 근거 없이 뜬 막대"가 아니라 그 사람
+  // 사진에서 실측한 폭/깊이를 반영한 형태라 다시 붙여도 된다는 판단.
+  // buildOutfitPlaceholderMesh 등 나머지 코드는 neckMesh 객체를 직접
+  // 참조하지 않고 고정 좌표(y=-1.15)만 쓰므로(코드 전수 확인 완료) 이
+  // 교체는 3단계 의상 부착 로직에 영향 없음.
+  // ⚠ 정직한 한계: 아직 실기기 재확인 전. personMask 실측이 실패한
+  // 경우(bodySegmenter 로드 실패 등) computeNeckCrossSections의 최후
+  // 폴백(예전 고정 반지름)으로 자동 전환되므로 최악의 경우에도 예전
+  // 수준으로만 돌아갈 뿐 깨지지는 않지만, 실측이 잘 됐을 때와 폴백일 때
+  // 시각적 차이가 있는지는 실기기에서 확인 필요.
+  const neckMesh = buildRealNeckMesh(widthFactor, skinColor);
+  group.add(neckMesh);
 
   // 버그 수정(2026-07-14): 귀 메쉬 제거 — "얼굴이랑 뒤통수 사이에 살구색
   // 덩어리가 붙어있다"는 실기기 피드백의 정체가 이거였음. buildEarMeshes는
@@ -6307,6 +6534,125 @@ function interpolateHeadCrossSection(phi){
   return last;
 }
 
+/* ── 목 실측 단면(2026-07-14 추가) ──
+   사용자 지시: "목과 잠깐 배제해놓은 안면부위들 3D에 적용해줘" — 위
+   extractHairMask STEP 1.5에서 헤어 마스크와 별개로 뽑아둔 personMask
+   (사람 전체 실루엣)를 써서, computeHeadCrossSections와 완전히 같은 패턴
+   (여러 각도 사진의 실루엣 반폭을 실측해서 높이별 단면을 뽑고, front/back은
+   폭, left/right는 깊이로 누적)으로 목의 실측 단면을 만든다.
+   두상은 SCALP_ZONES라는 기존 구역 경계가 있어서 그 phiRange 값을 그대로
+   밴드로 재사용했지만, 목에는 그런 기존 구역이 없어서 0~1 균등 5분할을
+   기본 선택으로 씀(임의 상수라기보단 "측정 지점을 어디로 할지"의 선택이고,
+   실제 halfWidth/halfDepth 값 자체는 항상 실측 또는 실측의 최근접 이웃). */
+const NECK_HEIGHT_FRACS = [0, 0.25, 0.5, 0.75, 1.0]; // 0=두상 최하단(이음매), 1=neckAttachPoint 하단(어깨선)
+
+let _neckCrossSectionCache = null;
+function computeNeckCrossSections(){
+  if(_neckCrossSectionCache) return _neckCrossSectionCache;
+  const metrics = getFaceMetrics();
+  const globalScaleX = metrics.projector.bX; // computeHeadCrossSections와 동일 — 정면 배율을 공통 재사용
+  const PHI_MAX = HEAD_PHI_BANDS[HEAD_PHI_BANDS.length-1];
+  const neckTopY = Math.cos(PHI_MAX) * 1.01 + 0.15; // buildHeadMesh 최하단 링과 정확히 같은 공식 → 이음매 없이 맞물림
+  const neckBotY = -1.15; // neckAttachPoint 하단 — 3단계 의상 정렬 불변식(outfitTorsoPlaceholder 상단과 동일)
+
+  const bands = NECK_HEIGHT_FRACS.map(frac=>({
+    frac,
+    meshY: neckTopY + frac*(neckBotY-neckTopY),
+    halfWidthSum:0, halfWidthWeight:0, halfDepthSum:0, halfDepthWeight:0
+  }));
+
+  function accumulate(angle, isWidthMeasurement){
+    const maskInf = state.hairMasks && state.hairMasks[angle];
+    const lm = state.landmarks && state.landmarks[angle];
+    if(!maskInf || !maskInf.personMask || !lm) return; // 바디 세그멘터 실패 등으로 personMask 없으면 이 뷰는 스킵
+    const confidence = getViewPoseConfidence(angle);
+    if(confidence < 0.1) return;
+    const projector = makeFaceProjector(lm, metrics.widthFactor, metrics.heightFactor);
+    const w = maskInf.maskW, h = maskInf.maskH;
+    const aY = projector.toMeshY(0);
+
+    bands.forEach(band=>{
+      const normY = (aY - band.meshY) / projector.bY;
+      const row = Math.round(normY * h);
+      // measureRowHalfWidth는 "값이 1인 픽셀의 좌우 폭"을 재는 범용 함수 —
+      // computeHeadCrossSections에선 reasonMask(1=머리카락)에, 여기선
+      // personMask(1=사람)에 그대로 재사용(같은 관례: 매칭값=1).
+      const halfWNorm = measureRowHalfWidth(maskInf.personMask, w, h, row);
+      if(halfWNorm == null) return;
+      const halfWMesh = halfWNorm * globalScaleX;
+      if(isWidthMeasurement){ band.halfWidthSum += halfWMesh*confidence; band.halfWidthWeight += confidence; }
+      else { band.halfDepthSum += halfWMesh*confidence; band.halfDepthWeight += confidence; }
+    });
+  }
+
+  accumulate('front', true);
+  accumulate('back', true);
+  accumulate('left', false);
+  accumulate('right', false);
+
+  // 실측 있는 밴드는 평균, 없는 밴드는 가장 가까운 실측 밴드값을 승계(최근접
+  // 이웃) — computeHeadCrossSections와 동일 원칙: 임의 상수가 아니라 그
+  // 사람에게서 잰 값 중 가장 가까운 것을 쓴다.
+  bands.forEach((band, i)=>{
+    const hasWidth = band.halfWidthWeight > 0.1;
+    const hasDepth = band.halfDepthWeight > 0.1;
+    if(hasWidth) band.halfWidth = band.halfWidthSum/band.halfWidthWeight;
+    if(hasDepth) band.halfDepth = band.halfDepthSum/band.halfDepthWeight;
+    if(!hasWidth || !hasDepth){
+      let nearest = null, nearestDist = Infinity;
+      bands.forEach((other, j)=>{
+        if(i===j) return;
+        const oW = other.halfWidthWeight > 0.1, oD = other.halfDepthWeight > 0.1;
+        if((!hasWidth && !oW) && (!hasDepth && !oD)) return;
+        const dist = Math.abs(other.frac - band.frac);
+        if(dist < nearestDist){ nearestDist = dist; nearest = other; }
+      });
+      if(nearest){
+        if(!hasWidth && nearest.halfWidthWeight > 0.1) band.halfWidth = nearest.halfWidthSum/nearest.halfWidthWeight;
+        if(!hasDepth && nearest.halfDepthWeight > 0.1) band.halfDepth = nearest.halfDepthSum/nearest.halfDepthWeight;
+      }
+    }
+  });
+
+  // ⚠ 정직한 최후 폴백: 바디 세그멘터가 아예 없었거나(로드 실패) 모든 뷰·모든
+  // 밴드에서 실측이 전부 실패하면, 예전 고정 목 원통 반지름(0.42~0.5*widthFactor,
+  // 위쪽→아래쪽 선형보간)을 안전장치로 사용 — "그 사람 실측"은 아니지만,
+  // NaN으로 지오메트리가 깨지는 것보다는 예전과 동일한 수준의 근사치가 낫다는
+  // 판단. halfDepth는 원래 CylinderGeometry가 원형이었던 것과 동급으로
+  // halfWidth와 같게 둠(깊이 실측도 실패했다는 뜻이라 폭=깊이 원형 근사가
+  // 가장 정직한 기본값).
+  bands.forEach((band)=>{
+    if(typeof band.halfWidth !== 'number'){
+      band.halfWidth = (0.42*(1-band.frac) + 0.5*band.frac) * metrics.widthFactor;
+    }
+    if(typeof band.halfDepth !== 'number') band.halfDepth = band.halfWidth;
+  });
+
+  _neckCrossSectionCache = bands;
+  return bands;
+}
+
+// meshY(월드 Y좌표) → 인접 밴드끼리 선형보간. bands는 frac 0(위, meshY 큼)→
+// 1(아래, meshY 작음) 순서라 phi 기준 오름차순이던 interpolateHeadCrossSection과
+// 달리 meshY 기준 내림차순으로 순회.
+function interpolateNeckCrossSection(meshY){
+  const bands = computeNeckCrossSections();
+  if(meshY >= bands[0].meshY) return bands[0];
+  const last = bands[bands.length-1];
+  if(meshY <= last.meshY) return last;
+  for(let i=0; i<bands.length-1; i++){
+    const yHi = bands[i].meshY, yLo = bands[i+1].meshY;
+    if(meshY <= yHi && meshY >= yLo){
+      const t = (yHi - meshY) / ((yHi - yLo) || 0.0001);
+      return {
+        halfWidth: bands[i].halfWidth*(1-t) + bands[i+1].halfWidth*t,
+        halfDepth: bands[i].halfDepth*(1-t) + bands[i+1].halfDepth*t,
+      };
+    }
+  }
+  return last;
+}
+
 function scalpPointToWorld(phi, theta, liftOut){
   const r = liftOut ?? 1.01;
   const { halfWidth, halfDepth } = interpolateHeadCrossSection(phi);
@@ -6590,10 +6936,17 @@ ${catalogList}`;
    ※ neckAttachPoint 연결 규격(외부 에셋 제작/연동 시 이 기준을 따르면 됨):
    - 좌표계: 두상과 동일한 로컬 원점(headGroup 기준), Y-up · Z-forward(+Z가
      캐릭터 정면) · X-right. 두상 자체와 완전히 같은 좌표계라 별도 변환 불필요.
-   - 목 원통(neckAttachPoint) 실제 치수: position.y=-0.85, height=0.6,
-     radiusTop=0.42*widthFactor(위쪽, y=-0.55) → radiusBottom=0.5*widthFactor
-     (아래쪽, y=-1.15). 외부 의상 에셋은 목선(collar) 반지름이 y=-0.55에서
-     약 0.42*widthFactor와 맞아떨어지도록 정렬하면 이음매가 자연스러움.
+   - 목(neckAttachPoint) 치수(2026-07-14, buildRealNeckMesh로 교체 — 예전엔
+     고정 반지름 원통이었으나 이제 그 사람 실측 단면 기반 비원형 형태):
+     y범위는 그대로 위쪽=두상 최하단(HEAD_PHI_BANDS 최댓값의 cos, 대략
+     y≈-0.55) → 아래쪽 y=-1.15(고정, 불변식) 이지만, 각 높이의 반지름이
+     원형이 아니라 halfWidth(X, 좌우폭)≠halfDepth(Z, 앞뒤깊이)인 타원형
+     단면이고 그 값 자체가 사람마다 다름(computeNeckCrossSections 참고,
+     실측 실패 시 예전 0.42~0.5*widthFactor 원형으로 폴백). 외부 의상
+     에셋을 딱 맞춰 정렬하려면 고정 상수 대신 이 함수를 호출해서 실측값을
+     읽어야 함 — 대략적 정렬만 필요하면 예전처럼 y=-0.55에서
+     0.42*widthFactor 근방으로 잡아도 크게 어긋나진 않음(실측값이 이 근방
+     상수를 기준으로 그 사람 비율만큼 조정된 값이라서).
    - 스케일: widthFactor/heightFactor(getFaceMetrics() 참고)는 그 사람 실측
      비율이라, 외부 에셋도 이 값을 곱해서 스케일하면 두상 크기와 비례가 맞음
      (buildOutfitPlaceholderMesh가 실제로 이렇게 함 — 참고용 구현 예시).
