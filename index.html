@@ -2496,6 +2496,25 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:22px;heigh
             <div class="ai-tags" id="aiAnalysisTags"></div>
           </div>
 
+          <!-- 시술 설계: 기법은 렌더링 명령이 아니라 결과 특성 데이터다. -->
+          <div class="section-tab" style="border-top:1px solid var(--line);padding-top:12px;">
+            <div class="section-tab-header" style="cursor:default;">
+              <div class="section-tab-left">
+                <span class="section-tab-name">시술 설계</span>
+                <span class="section-tab-desc">Guide → Technique → Parameters</span>
+              </div>
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;padding-top:10px;">
+              <label class="param-label">가이드
+                <select id="guideSelect" onchange="onGuideChange(this.value)" style="width:100%;margin-top:5px;"></select>
+              </label>
+              <label class="param-label">커트 기법
+                <select id="techniqueSelect" onchange="onTechniqueChange(this.value)" style="width:100%;margin-top:5px;"></select>
+              </label>
+            </div>
+            <div class="section-affects" id="techniqueSummary"></div>
+          </div>
+
           <!-- 섹션 탭 (미용사 커트 순서) -->
           <div id="sectionTabs" style="display:flex;flex-direction:column;gap:10px;"></div>
 
@@ -3048,6 +3067,87 @@ const SECTIONS = {
 // 섹션 커트 순서 (미용사 작업 순서)
 const SECTION_ORDER = ['crown','front','temple','side','occipital','nape'];
 
+/* ── 시술 지식 모델 ──
+   Technique는 그림을 그리는 규칙이 아니라, 시술 결과를 설명하는 데이터다.
+   Generator는 아래 함수가 반환한 Hair Result만 읽으며 technique id를 분기하지 않는다. */
+const GUIDES = {
+  stationary: {label:'고정 가이드', flowBias:0.18, overdirection:20},
+  moving:     {label:'이동 가이드', flowBias:0.50, overdirection:50},
+  design:     {label:'디자인 가이드', flowBias:0.76, overdirection:72},
+};
+
+// 0~1 결과 특성 + 0~100 물리 시술 파라미터. 새 기법은 이 객체만 추가한다.
+const TECHNIQUES = {
+  custom: {
+    label:'직접 조정',
+    characteristics:{weight:0.50, volume:0.50, outline:'natural', movement:0.50, layerDepth:0.50},
+    parameterSet:{elevation:50, projection:50, overdirection:50, tension:50, cuttingLine:50, texture:50, length:70},
+  },
+  layer45: {
+    label:'45° 레이어',
+    characteristics:{weight:0.55, volume:0.62, outline:'round', movement:0.55, layerDepth:0.45},
+    parameterSet:{elevation:45, projection:50, overdirection:38, tension:58, cuttingLine:35, texture:55, length:72},
+  },
+  layer90: {
+    label:'90° 레이어',
+    characteristics:{weight:0.32, volume:0.88, outline:'square', movement:0.86, layerDepth:0.82},
+    parameterSet:{elevation:90, projection:85, overdirection:62, tension:70, cuttingLine:58, texture:78, length:62},
+  },
+  graduation: {
+    label:'그래쥬에이션',
+    characteristics:{weight:0.84, volume:0.52, outline:'stacked', movement:0.28, layerDepth:0.25},
+    parameterSet:{elevation:45, projection:32, overdirection:26, tension:68, cuttingLine:44, texture:25, length:67},
+  },
+  oneLength: {
+    label:'원랭스',
+    characteristics:{weight:0.94, volume:0.25, outline:'solid', movement:0.15, layerDepth:0.06},
+    parameterSet:{elevation:0, projection:10, overdirection:8, tension:82, cuttingLine:50, texture:10, length:82},
+  },
+};
+
+function clampHairParam(value, min=0, max=100){ return Math.max(min, Math.min(max, value)); }
+function blendHairParam(base, target, amount){ return base + (target - base) * amount; }
+
+// Technique → Parameter Set → Hair Shape → Hair Flow → Hair Result.
+// 결과에는 기법 이름/id가 없으므로 렌더러는 시술 종류를 알 필요가 없다.
+function buildHairResultParameters(sourceState){
+  const technique = TECHNIQUES[sourceState.techniqueId] || TECHNIQUES.custom;
+  const guide = GUIDES[sourceState.guideId] || GUIDES.moving;
+  const resultShape = technique.characteristics;
+  const treatment = technique.parameterSet;
+  const result = {};
+  for(const [sectionId, manual] of Object.entries(sourceState.sections)){
+    const sectionLengthOffset = (SECTIONS[sectionId].defaults.length || 80) - 80;
+    const shape = {
+      weight: resultShape.weight,
+      volume: resultShape.volume,
+      outline: resultShape.outline,
+      layerDepth: resultShape.layerDepth,
+    };
+    const flow = {
+      movement: resultShape.movement,
+      projection: treatment.projection,
+      tension: treatment.tension,
+      overdirection: blendHairParam(treatment.overdirection, guide.overdirection, 0.35),
+    };
+    result[sectionId] = {
+      ...manual,
+      ...shape,
+      volumeProfile: shape.volume,
+      ...flow,
+      elevation: clampHairParam(manual.elevation == null ? treatment.elevation : manual.elevation),
+      length: clampHairParam(manual.length == null ? treatment.length + sectionLengthOffset : manual.length),
+      line: clampHairParam(manual.line == null ? treatment.cuttingLine : manual.line),
+      cuttingLine: treatment.cuttingLine,
+      texture: treatment.texture,
+      // 기존 2D/3D strand 렌더러가 읽는 표현 파라미터로 변환한다.
+      curl: clampHairParam((manual.curl == null ? 100 : manual.curl) * (0.78 + flow.movement * 0.22) + (50 - flow.tension) * 0.16, 0, 200),
+      flowBias: clampHairParam(guide.flowBias * 100 + (flow.projection - 50) * 0.18) / 100,
+    };
+  }
+  return result;
+}
+
 // ── 공간 좌표(nx,ny: 0~1) → 섹션 ID 판정 ──
 // SECTIONS의 yRange/xRange는 "이 섹션이 대략 이 범위에 있다"는 참고값이라
 // 뷰별로 겹치는 구간이 있음(예: front와 crown이 이마 위쪽에서 겹침).
@@ -3110,6 +3210,9 @@ const state = {
   debugShowField: false, // true면 strand 시뮬레이션(뿌리/중력/clamp) 전부 건너뛰고 orientation 컬럼 샘플을 가공 없이 그대로 표시(진단용)
   currentCaptureIndex: 0,
   selectedStyle: null,
+  // 시술 설계 상태. sections는 기법 적용 후 사용자가 보정하는 Parameter Set이다.
+  guideId: 'moving',
+  techniqueId: 'custom',
   currentViewAngle: 'front',
   currentSection: 'crown',   // 현재 편집 중인 섹션
   // 섹션별 파라미터 저장
@@ -4681,6 +4784,7 @@ function setupAdjustScreen(){
     styleTag.textContent = '원본 결 (스타일 미적용)';
   }
   updateSegStatus();
+  buildTechniqueControls();
   buildSectionTabs();
   // globalCurl 슬라이더 동기화
   const gcSlider = document.getElementById('slider-globalCurl');
@@ -4982,6 +5086,61 @@ const PARAM_LABELS = {
   // 깨지지 않도록 유지(하위 호환, 화면에 나올 일은 거의 없음).
   volume:'볼륨', blend:'연결감', layer:'레이어',
 };
+
+function buildTechniqueControls(){
+  const guideSelect = document.getElementById('guideSelect');
+  const techniqueSelect = document.getElementById('techniqueSelect');
+  if(!guideSelect || !techniqueSelect) return;
+  guideSelect.innerHTML = Object.entries(GUIDES)
+    .map(([id, guide])=>`<option value="${id}">${guide.label}</option>`).join('');
+  techniqueSelect.innerHTML = Object.entries(TECHNIQUES)
+    .map(([id, technique])=>`<option value="${id}">${technique.label}</option>`).join('');
+  guideSelect.value = state.guideId;
+  techniqueSelect.value = state.techniqueId;
+  updateTechniqueSummary();
+}
+
+function updateTechniqueSummary(){
+  const el = document.getElementById('techniqueSummary');
+  if(!el) return;
+  const technique = TECHNIQUES[state.techniqueId] || TECHNIQUES.custom;
+  const c = technique.characteristics;
+  const p = technique.parameterSet;
+  el.textContent = `결과 특성 · 무게 ${Math.round(c.weight*100)}% · 볼륨 ${Math.round(c.volume*100)}% · ${c.outline} 아웃라인 · 움직임 ${Math.round(c.movement*100)}% · 레이어 ${Math.round(c.layerDepth*100)}% / 시술값 · 엘리베이션 ${p.elevation}° · 프로젝션 ${p.projection}% · 텐션 ${p.tension}%`;
+}
+
+function onGuideChange(id){
+  state.guideId = GUIDES[id] ? id : 'moving';
+  updateTechniqueSummary();
+  drawAdjustPreview();
+}
+
+function onTechniqueChange(id){
+  const validId = TECHNIQUES[id] ? id : 'custom';
+  const technique = TECHNIQUES[validId];
+  state.techniqueId = validId;
+  // Technique의 Parameter Set을 섹션별 기본값으로 해석한다. Generator는
+  // 여기서 저장된 숫자와 buildHairResultParameters의 결과만 소비한다.
+  for(const [sectionId, section] of Object.entries(state.sections)){
+    const parameterBindings = {
+      elevation: technique.parameterSet.elevation,
+      overdirection: technique.parameterSet.overdirection,
+      line: technique.parameterSet.cuttingLine,
+      curl: 100 + (technique.characteristics.movement - 0.5) * 30 + (50 - technique.parameterSet.tension) * 0.15,
+      length: technique.parameterSet.length,
+    };
+    for(const [param, presetValue] of Object.entries(parameterBindings)){
+      if(section[param] === undefined) continue;
+      const isLength = param === 'length';
+      const sectionOffset = isLength ? (SECTIONS[sectionId].defaults.length - 80) : 0;
+      const max = (SECTIONS[sectionId].paramMeta && SECTIONS[sectionId].paramMeta[param] && SECTIONS[sectionId].paramMeta[param].max) || 100;
+      section[param] = Math.round(clampHairParam(presetValue + sectionOffset, 0, max));
+    }
+  }
+  updateTechniqueSummary();
+  buildSectionTabs();
+  drawAdjustPreview();
+}
 
 function buildSectionTabs(){
   const container = document.getElementById('sectionTabs');
@@ -5547,7 +5706,9 @@ function renderFrame(canvas, angle){
         // 무력화가 목적)에 새어 들어가지 않도록. blend는 렌더링에 직접 관여하지
         // 않는 파라미터(propagateSectionChange 전용)라 안 건드려도 무방.
         ? Object.fromEntries(Object.entries(state.sections).map(([id,s])=>[id, {...s, length:50, line:50, layer:0}]))
-        : state.sections;
+        // Generator에는 Technique가 아니라 이미 해석된 Hair Result만 전달한다.
+        // 따라서 drawHairStrands 내부는 45°/90°/Graduation을 알 필요가 없다.
+        : buildHairResultParameters(state);
       const maskW = maskInf.w, maskH = maskInf.h;
       const scalpY   = maskInf.scalpY;
       const hairEndY = maskInf.hairEndY;
@@ -5765,7 +5926,10 @@ function createColumnStyleResolvers({ maskW, maskH, iScalpY, sections, angle, co
     const ny = iScalpY[cx] >= 0 ? iScalpY[cx]/maskH : 0.15;
     const nx = cx/maskW;
     const secId = (sections && angle) ? resolveSectionId(angle, nx, ny) : 'crown';
-    let bias = 0;
+    // Guide가 만들어 낸 flowBias도 같은 숫자 파라미터로 해석한다.
+    // 여기에는 guide/technique 이름에 따른 분기가 없다.
+    let bias = (sections && sections[secId] && typeof sections[secId].flowBias === 'number')
+      ? (sections[secId].flowBias - 0.5) * 0.14 : 0;
     if(secId === 'front' && sections.front && typeof sections.front.line === 'number'){
       const upness = (sections.front.line - 50) / 50; // -1(라운드) ~ 0(스트레이트) ~ +1(위로)
       bias = -upness * 0.55; // atan2 좌표계: 각도가 작아질수록(음수 방향) 위쪽(-y)에 가까워짐
@@ -8573,9 +8737,8 @@ function buildRealColumnSamples(sectionId, angle, widthFactor, heightFactor){
 
 
 // 진짜 헤어카드/스트랜드 시스템: 돔 하나로 뭉뚱그린 자리표시자를 대체.
-// 6개 섹션(state.sections) 각각을 서로 다른 두피 위치·개수·길이로 심어서,
-// 2D 조정화면에서 섹션별로 만진 값이 3D에도 바로 반영되게 한다(별도 매핑
-// 단계 없이 같은 state.sections를 그대로 소스로 사용).
+// 6개 섹션의 확정 Hair Result를 서로 다른 두피 위치·개수·길이로 심는다.
+// 3D는 별도 시술 규칙을 갖지 않으며 2D Generator와 동일한 결과 데이터를 받는다.
 // + (a) 각 섹션마다 computeSectionRealExtent()로 실측 사진(+커버리지 부족분은
 // AI 보완) 기반 형태 배율을 뽑아서 슬라이더 값과 함께 반영한다.
 // + (b) pickBestRealView()/buildRealColumnSamples()로 그 섹션을 가장 잘 보여주는
@@ -8642,17 +8805,19 @@ async function loadHeadMesh(faceMetrics, skinColorCss){
   return buildProceduralHead(faceMetrics, skinColorCss);
 }
 
-// 현재 확정 상태(state.selectedStyle / state.sections / state.hairMasks)에서
-// 3D에 반영할 파라미터를 추출. buildHairStrands()가 6개 섹션을 각각 따로
-// 읽으므로 여기서는 크라운 대표값으로 뭉뚱그리지 않고 state.sections
-// 전체를 그대로 넘긴다(2D 조정화면과 동일 소스). aiEstimate는 setupModel3DScreen이
-// 필요시 미리 estimateHairVolumeWithAI()로 받아온 결과를 그대로 전달.
+// 3D는 2D와 동일한 Hair Result를 입체화한다. Technique를 다시 해석하거나
+// 개별 기법별 분기를 두지 않는다. aiEstimate는 실측이 부족할 때만 보완한다.
 function extractStyleParamsFor3D(aiEstimate){
   const colorHex =
     (state.selectedStyle && state.selectedStyle.colorHex) ||
     (state.hairMasks && state.hairMasks.front && state.hairMasks.front.avgColor) ||
     '#2A1B12';
-  return { colorHex, sections: state.sections || {}, globalCurl: state._globalCurl, aiEstimate };
+  return {
+    colorHex,
+    sections: buildHairResultParameters(state),
+    globalCurl: state._globalCurl,
+    aiEstimate,
+  };
 }
 
 function initModel3DRenderer(container){
