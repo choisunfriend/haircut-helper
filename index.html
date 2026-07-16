@@ -2347,6 +2347,49 @@
   합치면 상호 보완되지만 단일 뷰 기준으론 평면적. (2) 오프스크린 캡처는
   3D 진입 시점 슬라이더 값 기준(이후 조정하면 renderFrame이 다시 덮어씀).
   (3) 실기기 미검증 — 1200 고정이 저사양에서 무거우면 800 폴백 적용할 것.
+
+[2026-07-16 계속] 가닥 전역 40% 더 가늘게 + 3D를 "순수 그대로 옮기기"로 재작성
+  실기기 확인 결과(사용자): "해상도가 확실히 올라가서 헤어는 변했어. 그런데
+  비교보기에서 보면 알겠지만 좀 더 가늘어져야 돼. 그리고 3D는 효과가 없어.
+  그냥 전체를 3D좌표로 옮겨. 함수랑 섞으면 더 복잡해."
+
+  (A) 굵기: drawHairStrands에 STRAND_THIN=0.6 전역 계수 신설 — 4개 레이어의
+  lineWidth만 resScale→widthScale(=resScale×0.6)로 교체(좌표·밀도·하한
+  MIN_SAFE_WIDTH 0.9는 불변). 1200 캔버스에서 원본 모발과 나란히 비교하면
+  여전히 굵다는 피드백에 대한 대응 — 더 조정하려면 이 값 하나만 만지면 됨.
+
+  (B) 3D 재작성 — 직전 세션의 hangZ 보강으로도 실기기에서 여전히 원반/우산
+  모양(효과 없음). 원인 판정: 옮기기 자체가 아니라 그 밑의 사진별 추론
+  함수들(makeFaceProjector 랜드마크 스케일, 실측 포즈 회전, 실루엣 앵커)이
+  점을 잘못 놓고 있었던 것 — 어떤 함수가 얼마나 틀렸는지 층층이 얽혀
+  분리가 안 됨. 사용자 결정대로 전부 걷어내고 결정적 직접 매핑으로 교체:
+  - buildHairStrandsFromPaths 전면 재작성(인자 없음): 뷰별 캡처 경로를
+    scalpY 데이터에서 직접 읽은 2D 앵커 2개(두피선 최고점↔두상 꼭대기,
+    두피선 가로 반폭↔그 뷰의 두상 가로 반지름)로 등방 배율 매핑. 깊이는
+    두피 타원 안=두피면 z, 밖=마지막 두피 깊이 유지(늘어짐), 시작부터
+    밖=림 z0. 배치는 뷰별 고정 yaw(0/-90/+90/180)만 — 사진별 포즈 미사용.
+    측면 뷰는 가로축이 두상 깊이이므로 aH/aD를 (cD,a)로 스왑. 두상 치수
+    (a,b,cD)는 두상 메쉬와 같은 실측 단면 출처라 정렬이 정의상 보장.
+  - setupModel3DScreen에서 함수 기반 헤어 경로 전부 제거: 절차 생성 폴백
+    (buildHairStrands 호출), AI 볼륨 보완(estimateHairVolumeWithAI),
+    styleParams/viewMapping 생성 블록 삭제 — 경로가 정말 하나도 없으면
+    두상만 표시(함수 생성 헤어를 섞지 않음). 함수들 자체는 파일에 남아
+    있으나 3D 화면에서 호출되지 않음.
+  - projectImagePointToHead의 opts(hangZ 등)는 하위호환용으로 남김 —
+    3D 헤어 경로에서는 더 이상 사용 안 함(buildRealColumnSamples 등
+    다른 호출부는 기존 그대로).
+
+  검증: node --check SYNTAX_OK. Node 단위 검증(THREE 목킹, 합성 scalpY+
+  경로): ① 크라운 뿌리가 정확히 두상 꼭대기(0, CY+b, 0)에 정렬(꼭대기는
+  극점이라 z=0이 기하학적으로 맞음), ② 정면 뷰 가장자리 뿌리 x≈±aH,
+  ③ 두피면을 벗어난 늘어짐 구간의 z가 이탈 지점 깊이로 일정 유지,
+  ④ 회전 방향: 정면 항등, 후면 (x,z)→(-x,-z)(이미지 좌우 반전+뒤 반구),
+  좌(-90°)는 +x(인물 왼쪽) 반구·우(+90°)는 -x 반구 — 정면 사진의
+  "이미지 오른쪽=인물 왼쪽=+x" 규약과 네 뷰 전부 일관 — 통과.
+  ⚠ 정직한 한계: (1) 사진별 실제 포즈를 안 쓰므로 촬영이 많이 기울었으면
+  그 기울기가 3D에 그대로 실림(대신 어긋난 함수 추론으로 인한 파탄은 없음).
+  (2) 네 뷰가 겹치는 영역은 이중으로 그려짐(솎아내기 STRAND_SAMPLE_3D로
+  완화). (3) 실기기 미검증.
 -->
 
 <!DOCTYPE html>
@@ -6221,6 +6264,11 @@ function drawHairStrands(ctx, fit, scalpY, hairEndY, maskW, maskH, hairCanvas, o
   // 제약(1px 미만이면 브라우저가 알파를 낮춰 흐리게 그림)이라 resScale로 같이 줄어들면
   // 안 됨 — 스케일 적용 "후"에 하한선으로 별도 고정.
   const MIN_SAFE_WIDTH = 0.9;
+  // (2026-07-16) 사용자 피드백 "비교 보기에서 보면 좀 더 가늘어져야 돼" —
+  // 1200 고해상도에서 원본 머리카락과 나란히 놓고 보니 가닥이 여전히 굵음.
+  // 좌표·밀도는 그대로 두고 선굵기만 전역 40% 하향(더 조정하려면 이 값 하나만).
+  const STRAND_THIN = 0.6;
+  const widthScale = resScale * STRAND_THIN;
 
   // 길이 슬라이더가 높을 때(특히 정면 프론트) 가닥이 이마 라인을 넘어
   // 눈·안경·턱까지 뚫고 내려가는 과확장을 막기 위한 상한.
@@ -6495,7 +6543,7 @@ function drawHairStrands(ctx, fit, scalpY, hairEndY, maskW, maskH, hairCanvas, o
     count: numRootScatter,
     alphaMul: 1.0,
     // 705px 기준 튜닝값 → 실제 해상도(resScale)에 비례 스케일 + sub-pixel 방지 하한
-    lineWidth: Math.max(MIN_SAFE_WIDTH, (0.5 + (thickness/100) * 0.28) * resScale), // 2026-07-14 굵기 하향(원본 대비 마커펜처럼 굵다는 피드백, 0.9+0.5→0.5+0.28)
+    lineWidth: Math.max(MIN_SAFE_WIDTH, (0.5 + (thickness/100) * 0.28) * widthScale), // 2026-07-14 굵기 하향 → 2026-07-16 전역 STRAND_THIN 추가 하향
     pickCol: ()=> validCols[Math.floor(Math.random()*validCols.length)],
     endYFallbackRatio: 0.35,
     // 균등분포 → 제곱분포로 변경: 두피선(frac=0) 근처에 확률이 더 실리고 꼬리가 길게
@@ -6517,7 +6565,7 @@ function drawHairStrands(ctx, fit, scalpY, hairEndY, maskW, maskH, hairCanvas, o
     count: numSections,
     alphaMul: 1.0, // 형태를 잡는 가장 굵은 레이어 — 완전 불투명하게 해서 밑의 살색이 안 비치게
     // 705px 기준 튜닝값 → 해상도 비례 스케일
-    lineWidth: Math.max(MIN_SAFE_WIDTH, (0.65 + (volume/100) * 0.6) * resScale), // 2026-07-14 굵기 하향(1.10+1.10→0.65+0.6)
+    lineWidth: Math.max(MIN_SAFE_WIDTH, (0.65 + (volume/100) * 0.6) * widthScale), // 2026-07-14 굵기 하향 → 2026-07-16 전역 STRAND_THIN 추가 하향
     pickCol: (i)=> validCols[Math.floor((i/numSections)*validCols.length)],
     endYFallbackRatio: 0.40,
     // 한 줄(scalpY) 제한 해제: 다른 레이어처럼 두피선~모발끝 사이에 깊이를 분산시켜서,
@@ -6536,7 +6584,7 @@ function drawHairStrands(ctx, fit, scalpY, hairEndY, maskW, maskH, hairCanvas, o
     count: numMid,
     alphaMul: 1.0,
     // 705px 기준 튜닝값 → 해상도 비례 스케일 + sub-pixel 방지 하한
-    lineWidth: Math.max(MIN_SAFE_WIDTH, (0.48 + (thickness/100) * 0.33) * resScale), // 2026-07-14 굵기 하향(0.85+0.6→0.48+0.33)
+    lineWidth: Math.max(MIN_SAFE_WIDTH, (0.48 + (thickness/100) * 0.33) * widthScale), // 2026-07-14 굵기 하향 → 2026-07-16 전역 STRAND_THIN 추가 하향
     pickCol: ()=> validCols[Math.floor(Math.random()*validCols.length)],
     endYFallbackRatio: 0.38,
     rootDepthFrac: ()=> Math.pow(Math.random(), 2) * 0.7, // 한 줄 제한 해제 + 두피선 쪽 가중
@@ -6558,7 +6606,7 @@ function drawHairStrands(ctx, fit, scalpY, hairEndY, maskW, maskH, hairCanvas, o
     count: numFine,
     alphaMul: 1.0,
     // 705px 기준 튜닝값 → 해상도 비례 스케일 + sub-pixel 방지 하한
-    lineWidth: Math.max(MIN_SAFE_WIDTH, (0.5 + (thickness/100) * 0.28) * resScale), // 2026-07-14 굵기 하향(원본 대비 마커펜처럼 굵다는 피드백, 0.9+0.5→0.5+0.28)
+    lineWidth: Math.max(MIN_SAFE_WIDTH, (0.5 + (thickness/100) * 0.28) * widthScale), // 2026-07-14 굵기 하향 → 2026-07-16 전역 STRAND_THIN 추가 하향
     pickCol: ()=> validCols[Math.floor(Math.random()*validCols.length)],
     endYFallbackRatio: 0.35,
     rootDepthFrac: ()=> Math.pow(Math.random(), 2) * 0.85, // 한 줄 제한 해제 — 잔가닥은 가장 넓게 분산 + 두피선 쪽 가중
@@ -9069,47 +9117,88 @@ function captureStrandPathsFor(angle){
   });
 }
 
-function buildHairStrandsFromPaths(widthFactor, heightFactor){
+// (2026-07-16 재작성) 순수 "그대로 옮기기" — 사용자 지시: "그냥 전체를 3D좌표로
+// 옮겨. 함수랑 섞으면 더 복잡해." 랜드마크 프로젝터·실측 포즈·실루엣 앵커 등
+// 사진별 추론 함수를 전부 제거하고, 2D 캡처 데이터만으로 결정적으로 옮긴다:
+//   앵커(뷰당 2개, 전부 scalpY 데이터에서 직접 읽음 — 추론 없음):
+//     · 두피선 최고점(crownY)  ↔ 두상 꼭대기(y = CY + b)
+//     · 두피선 가로 반폭(halfPx) ↔ 그 뷰에서 보이는 두상 가로 반지름
+//       (정면/후면 = a(폭), 좌/우 = cD(깊이) — 옆에서 보면 가로축이 두상 깊이)
+//   좌표: 픽셀 → 모델 등방 배율 s = 가로반지름/halfPx (2D 종횡비 그대로 보존)
+//   깊이: 두피 타원 안 점 = 그 점의 두피면 z (두피 3D 좌표),
+//         타원 밖(늘어진 구간) = 마지막 두피 깊이 유지 (2D 모양 그대로 하강)
+//   배치: 뷰별 고정 yaw(정면0/좌-90/우+90/후면180)로만 회전 — 사진별 포즈 미사용.
+// 두상 치수(a,b,cD)는 두상 메쉬(buildHeadMesh)와 같은 실측 데이터 출처라
+// 헤어와 두상의 정렬이 정의상 보장됨.
+function buildHairStrandsFromPaths(){
   if(!state.strandPaths) return null;
+  const equatorXS = interpolateHeadCrossSection(Math.PI/2);
+  const a  = Math.max(0.2,  equatorXS.halfWidth);   // 두상 가로 반지름(폭)
+  const b  = computeHeadVerticalRadius();            // 두상 세로 반지름
+  const cD = Math.max(0.15, equatorXS.halfDepth);    // 두상 앞뒤 반지름(깊이)
+  const CY = 0.15;                                   // 두상 중심 y (두상 메쉬와 동일)
+  const FIXED_YAW = { front:0, left:-90, right:90, back:180 };
   const group = new THREE.Group();
   group.name = 'hairStrands';
-  // 가닥 솎아내기 손잡이: 1=전부, 2=절반… (저사양 대응 시 올리면 됨.
-  // 4뷰×~2,800가닥 전부는 세그먼트 ~20만 개라 우선 절반으로 시작 —
-  // 그래도 기존 절차 생성(~1,200가닥)보다 밀도 높음.)
+  // 가닥 솎아내기 손잡이: 1=전부, 2=절반… (저사양 대응 시 올리면 됨)
   const STRAND_SAMPLE_3D = 2;
   let total = 0;
   ['front','left','right','back'].forEach(angle=>{
     const rec = state.strandPaths[angle];
     if(!rec || !rec.strands || !rec.strands.length) return;
-    // 투영 앵커: 실측 랜드마크 또는 실루엣 앵커(귀+정수리) — 둘 다 없으면
-    // 지어낸 고정값밖에 없으므로 이 뷰는 제외(왜곡된 배치를 넣지 않음).
-    const hasAnchor = (state.landmarks && state.landmarks[angle]) || computeSilhouetteAnchors(angle);
-    if(!hasAnchor) return;
+    const maskInf = state.hairMasks && state.hairMasks[angle];
+    if(!maskInf || !maskInf.scalpY) return;
+
+    // ── 2D 앵커: 두피선(scalpY)에서 직접 읽음 ──
+    let xMin = Infinity, xMax = -Infinity, crownY = Infinity;
+    for(let x=0; x<maskInf.w; x++){
+      const sy = maskInf.scalpY[x];
+      if(sy >= 0){
+        if(x < xMin) xMin = x;
+        if(x > xMax) xMax = x;
+        if(sy < crownY) crownY = sy;
+      }
+    }
+    if(!(xMax > xMin) || !isFinite(crownY)) return;
+    const cx = (xMin + xMax) / 2;      // 두피선 가로 중심(픽셀)
+    const halfPx = (xMax - xMin) / 2;  // 두피선 가로 반폭(픽셀)
+    if(halfPx < 4) return;
+
+    // 이 뷰의 카메라 공간에서 보이는 두상 반지름: 가로(aH)와 깊이(aD)
+    const side = (angle === 'left' || angle === 'right');
+    const aH = side ? cD : a;
+    const aD = side ? a  : cD;
+    const s = aH / halfPx; // 픽셀 → 모델 등방 배율
+
+    const yawRad = FIXED_YAW[angle] * Math.PI / 180;
+    const rot = composeRotationZYX(yawRad, 0, 0); // yaw만 — 사진별 포즈 함수 미사용
+
     const positions = [];
     const colors = [];
     const c = new THREE.Color();
     for(let si=0; si<rec.strands.length; si+=STRAND_SAMPLE_3D){
-      const s = rec.strands[si];
-      c.set(s.color);
+      const st = rec.strands[si];
+      c.set(st.color);
       let prev = null;
-      // (2026-07-16) "2D 헤어·두피의 3D 좌표를 산출해서 그대로 옮기기":
-      // 가닥 경로를 따라가며, 두피 타원 안에 있는 점은 두피면(그 점의 두피
-      // 3D 좌표)에 놓고, 타원을 벗어나는 순간부터는 마지막 두피 깊이(lastZ)를
-      // 유지한 채 이미지의 x/y 그대로 내려놓음 — 늘어진 머리가 잘리거나
-      // 타원면을 따라 감기지 않고 2D에서 보이는 모양 그대로 3D에 옮겨짐.
-      let lastZ = null;
-      for(let i=0;i<s.pts.length;i++){
-        const p = s.pts[i];
-        const lift = { clampRim: i===0 }; // 뿌리(첫 점)만 림 클램프 허용 — 실루엣 가장자리 컬럼의 뿌리 보존
-        if(lastZ !== null) lift.hangZ = lastZ;
-        const world = projectImagePointToHead(angle, p.x/rec.maskW, p.y/rec.maskH, widthFactor, heightFactor, lift);
-        if(!world){ prev = null; continue; } // 투영 포기 픽셀 — 선분만 끊고 계속
-        lastZ = lift.usedZ;
+      let lastZ = null; // 이 가닥에서 마지막으로 두피면 위에 있었던 점의 깊이
+      for(let i=0;i<st.pts.length;i++){
+        const p = st.pts[i];
+        // 픽셀 → 카메라 공간(모델 스케일): 크라운을 두상 꼭대기에 정렬
+        const mx = (p.x - cx) * s;
+        const yl = b - (p.y - crownY) * s;        // 두상 중심(CY) 기준 세로
+        const inside = (mx/aH)*(mx/aH) + (yl/b)*(yl/b);
+        let mz;
+        if(inside <= 1)          mz = aD * Math.sqrt(1 - inside); // 두피면 위: 두피 3D 깊이
+        else if(lastZ !== null)  mz = lastZ;                      // 늘어진 구간: 깊이 유지
+        else                     mz = 0;                          // 실루엣 가장자리 뿌리: 림 평면
+        lastZ = mz;
+        const v = applyRotationTranspose3(rot, new THREE.Vector3(mx, yl, mz));
+        v.y += CY;
         if(prev){
-          positions.push(prev.x, prev.y, prev.z, world.x, world.y, world.z);
+          positions.push(prev.x, prev.y, prev.z, v.x, v.y, v.z);
           colors.push(c.r, c.g, c.b, c.r, c.g, c.b);
         }
-        prev = world;
+        prev = v;
       }
       total++;
     }
@@ -9123,7 +9212,7 @@ function buildHairStrandsFromPaths(widthFactor, heightFactor){
     lines.userData.fromPaths = true; // [진단용]
     group.add(lines);
   });
-  console.log('[3D] 2D 경로 리프트:', total, '가닥 (뷰별 캡처:',
+  console.log('[3D] 2D→3D 직접 옮기기:', total, '가닥 (뷰별 캡처:',
     Object.keys(state.strandPaths||{}).filter(a=>state.strandPaths[a]&&state.strandPaths[a].strands.length).join(','), ')');
   return total > 0 ? group : null;
 }
@@ -9337,37 +9426,24 @@ async function setupModel3DScreen(){
   const { group, faceDetailGroup } = await loadHeadMesh(faceMetrics, skinColorCss);
   model3D.headGroup.add(group);
 
-  // (a) 실측 사진 기반 형태 보정: 섹션별 가중치(state.viewMapping)가 아직 없으면
-  // (예: 랜드마크 파이프라인이 어떤 이유로 buildViewMapping을 못 거친 경우) 방어적으로 생성.
-  if(!state.viewMapping) buildViewMapping();
-  // 6개 섹션 중 사진 커버리지가 부족한 게 하나라도 있으면(사진에 잘 안 보이거나
-  // 그 뷰 포즈 인식이 실패한 섹션) AI로 보완 추정 — 세션당 1회만(캐싱됨).
-  let aiEstimate = state.aiSectionEstimate || null;
-  if(!aiEstimate && anySectionNeedsAIFallback()){
-    showAI('AI가 사진에 잘 안 보이는 부분을 추정하고 있어요…','전체 스타일 흐름 기반 보완');
-    aiEstimate = await estimateHairVolumeWithAI();
-    hideAI();
-  }
-
-  const styleParams = extractStyleParamsFor3D(aiEstimate);
-  styleParams.widthFactor = faceMetrics.widthFactor;
-  styleParams.heightFactor = faceMetrics.heightFactor;
-  // (2026-07-16) 옮기기 방식 확정: 아직 캡처 안 된 뷰는 오프스크린 렌더로
-  // 경로를 먼저 확보 — 네 뷰 전부 "2D 가닥·두피 좌표 그대로 옮기기"로 렌더.
+  // (2026-07-16 재작성) 3D 헤어 = "2D 전체를 3D 좌표로 그대로 옮기기" 단일 경로.
+  // 사용자 지시: "그냥 전체를 3D좌표로 옮겨. 함수랑 섞으면 더 복잡해" —
+  // 절차 생성(buildHairStrands)·AI 볼륨 보완·styleParams·viewMapping 등
+  // 함수 기반 3D 헤어 경로를 이 화면에서 전부 제거. 아직 캡처 안 된 뷰는
+  // 오프스크린 렌더로 경로를 먼저 확보해서 네 뷰 전부 옮기기로만 렌더.
   for(const a of ANGLES){
     const has = state.strandPaths && state.strandPaths[a] && state.strandPaths[a].strands && state.strandPaths[a].strands.length;
     if(!has && state.shots[a]) await captureStrandPathsFor(a);
   }
   if(myGen !== model3DGeneration) return; // 캡처 대기 중 화면 재구성됨 — 오래된 진행 중단
 
-  // (2026-07-14, 옮기기 전환) 캡처된 2D 가닥 경로가 있으면 그걸 3D로 들어올려
-  // 사용(2D와 정의상 일치) — 캡처가 하나도 없을 때만 기존 절차 생성 폴백.
-  const liftedStrands = buildHairStrandsFromPaths(faceMetrics.widthFactor, faceMetrics.heightFactor);
+  const liftedStrands = buildHairStrandsFromPaths();
   if(liftedStrands){
     model3D.headGroup.add(liftedStrands);
   } else {
-    const hairStrands = buildHairStrands(styleParams);
-    model3D.headGroup.add(hairStrands);
+    // 사진/마스크가 하나도 없어 캡처 자체가 불가능한 경우 — 두상만 표시.
+    // (절차 생성 폴백은 사용자 결정으로 제거 — 함수 생성 헤어를 섞지 않음)
+    console.warn('[3D] 옮길 2D 가닥 경로가 없음 — 헤어 없이 두상만 표시');
   }
 
   // [진단용] 가닥 뿌리 기준면(가상 타원체) — "기준면 보기" 토글로 표시.
