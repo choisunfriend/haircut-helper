@@ -2300,6 +2300,53 @@
   앵커는 personMask 품질에 의존 — bodySegmenter 실패 시 그 뷰는 기존처럼
   제외됨. (4) 3D 조명이 LineBasicMaterial(무조명)이라 절차 튜브 대비 음영이
   평평함 — 실기기 확인 후 필요하면 개선. (5) 실기기 미검증(폰 수리 대기).
+
+[2026-07-16] 입력·그리기 해상도 1200 고정 통일 + 3D "그대로 옮기기" 완성
+  사용자 지시: "입력해상도랑 그리기 해상도 다 1200으로 해줘 헤어렌더링.
+  2D헤어랑 두피에서 3D 렌더링하는 거, 그냥 2D의 헤어랑 두피의 3D좌표
+  산출해서 그대로 옮기는 방식으로 해줘."
+
+  (A) 해상도 1200 고정:
+  - 분석 입력(extractHairMask maxDim)은 이미 1200이었음(07-14 상향) — 유지.
+  - 그리기 쪽이 문제였음: rect.width×dpr(상한 3)이라 폰(dpr3)에서만 ~1200,
+    데스크톱(dpr1)에선 CSS 폭 그대로 — 기기마다 그리기 해상도가 달랐음.
+  - 수정: DRAW_RES=1200 상수 신설, syncCanvasSize가 백킹스토어 가로를
+    무조건 1200(세로는 표시 종횡비)으로 고정. 비교 화면(drawCompare)도 동일
+    적용. "사진 없음" 안내 문구 폰트는 dpr 대신 (백킹폭÷CSS폭) 배율로 유지.
+  - getCanvasDPR는 레거시로 남김(2D 크기 계산에서 미사용). 오프스크린
+    가닥 캡처 캔버스(아래 신설)도 동일하게 DRAW_RES 사용 — 읽기·그리기·
+    캡처 해상도가 어떤 기기에서든 전부 1200으로 일치.
+  - 폴백(무거울 때): DRAW_RES와 maxDim을 800으로 함께 내림.
+
+  (B) 3D = 2D 헤어·두피 좌표 그대로 옮기기(이번에 방식 확정):
+  - 기존 한계 두 가지가 실기기 "버섯/우산" 모양의 원인: ① 두피 타원 밖
+    점(inside>0.98)은 무조건 null → 실루엣 아래로 늘어진 구간이 통째로
+    잘리고 경로가 끊김. ② 타원 안 점은 전부 타원면에 감기므로 긴 머리도
+    두상을 따라 말려 올라감. ③ 조정 화면에서 안 열어본 뷰는 경로 캡처가
+    없어 절차 생성 폴백과 섞였음.
+  - 수정 1: projectImagePointToHead에 opts 추가(하위호환 — opts 없으면
+    기존과 동일). hangZ(타원 밖 점을 넘겨준 카메라공간 깊이로 배치),
+    clampRim(가장자리 뿌리를 z=0 림 평면에 클램프, inside≤1.2까지),
+    usedZ(실제 사용된 z 출력).
+  - 수정 2: buildHairStrandsFromPaths가 가닥 경로를 따라가며 lastZ(마지막
+    두피면 깊이)를 유지 — 두피 안 점은 그 점의 두피 3D 좌표에, 두피를
+    벗어난 점부터는 lastZ 깊이를 유지한 채 이미지 x/y 그대로 배치. 결과:
+    2D에서 보이는 가닥 모양(늘어짐 포함)이 그대로 3D로 옮겨짐.
+  - 수정 3: captureStrandPathsFor(angle) 신설 — setupModel3DScreen 진입 시
+    캡처 안 된 뷰를 오프스크린(DRAW_RES 캔버스)에서 renderFrame과 동일
+    옵션으로 렌더해 경로 확보. 네 뷰 전부 옮기기 방식으로 렌더되고, 절차
+    생성(buildHairStrands)은 사진/마스크가 아예 없을 때만 폴백으로 남음.
+    캡처 대기(await) 중 화면이 재구성되면 myGen 비교로 오래된 진행 중단.
+
+  검증: node --check SYNTAX_OK. 로직 단위 검증(Node, THREE 목킹): ① opts
+  없는 호출은 기존과 비트 동일 결과, ② 타원 밖 점이 hangZ로 살아나고
+  usedZ 전달 체인이 lastZ로 이어짐, ③ 늘어진 구간의 z가 이탈 지점 깊이로
+  일정하게 유지됨, ④ clampRim이 inside 0.98~1.2 뿌리만 살림 — 통과.
+  ⚠ 정직한 한계: (1) 늘어진 구간의 깊이는 "이탈 지점 깊이 고정"이라 뒤로
+  넘어가는 머리(포니테일 등)의 실제 깊이 변화는 표현 못 함 — 뷰 4장을
+  합치면 상호 보완되지만 단일 뷰 기준으론 평면적. (2) 오프스크린 캡처는
+  3D 진입 시점 슬라이더 값 기준(이후 조정하면 renderFrame이 다시 덮어씀).
+  (3) 실기기 미검증 — 1200 고정이 저사양에서 무거우면 800 폴백 적용할 것.
 -->
 
 <!DOCTYPE html>
@@ -3573,8 +3620,8 @@ async function extractHairMask(angle){
         // (2026-07-14 사용자 합의) 그리기 캔버스를 폰 물리 해상도 1:1(~1200px)로
         // 올리면서 "읽는 해상도하고 그리는 해상도 둘 다 맞춰서 1200 가보고,
         // 무거우면 둘 다 800으로 줄이면 되지" — 분석(읽기) 해상도도 1200으로
-        // 동반 상향. 실기기에서 무거우면 이 값을 800으로, getCanvasDPR 상한을
-        // 2로 함께 내리는 것이 합의된 폴백.
+        // 동반 상향. (2026-07-16) 그리기 쪽도 DRAW_RES=1200 고정으로 통일됨 —
+        // 실기기에서 무거우면 이 값과 DRAW_RES를 800으로 함께 내리는 것이 폴백.
         const maxDim = 1200;
         const scale = Math.min(1, maxDim / Math.max(img.width, img.height));
         const w = Math.round(img.width * scale);
@@ -5486,27 +5533,25 @@ function computeFit(imgW, imgH, w, h){
 }
 
 // 2D 렌더 캔버스의 devicePixelRatio 배율(2026-07-14 추가).
-// 사용자 최종 합의(2026-07-14): "최고로 가. 읽는 해상도하고 그리는 해상도
-// 둘 다 맞춰서 1200 가보고, 무거우면 둘 다 800으로 줄이면 되지" — 상한 3
-// (폰 물리 픽셀과 1:1, CSS 폭 ~400px 기준 캔버스 ~1200px). 분석 해상도
-// (extractHairMask maxDim)도 1200으로 동반 상향됨. 실기기에서 무거우면
-// 여기 상한을 2로, maxDim을 800으로 함께 내리는 것이 합의된 폴백.
-// 선굵기 하한(0.9캔버스px)은 상한 3에서 화면상 0.3CSS px(물리 0.9px) —
-// 이 기기에서 물리적으로 가능한 가장 가는 선.
-function getCanvasDPR(){ return Math.min(window.devicePixelRatio || 1, 3); }
+// (2026-07-16 변경) 그리기 해상도를 기기 dpr에 따라 흔들리게 두지 않고
+// 가로 1200px 고정으로 통일 — 사용자 결정: "입력 해상도랑 그리기 해상도
+// 다 1200으로". 분석 입력 해상도(extractHairMask maxDim=1200)와 동일 값이라
+// 읽기·그리기 해상도가 어떤 기기에서든 항상 1:1로 일치함.
+// (이전엔 rect.width×dpr(상한 3)이라 데스크톱(dpr1)에선 CSS 폭 그대로,
+// 폰(dpr3)에서만 ~1200이 되는 기기 의존 동작이었음.)
+// 실기기에서 무거우면 DRAW_RES와 maxDim을 800으로 함께 내리는 것이 폴백.
+const DRAW_RES = 1200; // 2D 렌더 캔버스 목표 가로 해상도(px) — 분석 maxDim과 반드시 함께 움직일 것
+function getCanvasDPR(){ return Math.min(window.devicePixelRatio || 1, 3); } // (레거시) 2D 캔버스 크기 계산에는 더 이상 사용 안 함
 
 function syncCanvasSize(canvas){
   const rect=canvas.getBoundingClientRect();
-  // 버그 수정(2026-07-14): 백킹스토어를 CSS 픽셀 크기로만 잡고 있었음
-  // (canvas.width=rect.width) — 폰(dpr≈3)에선 캔버스 1px = 화면 물리 3px라
-  // 선굵기 하한 MIN_SAFE_WIDTH(0.9캔버스px)가 화면에선 ~2.7물리px가 되어
-  // "폰에서도 결이 굵다"의 실제 원인이었음(폰에선 모든 레이어가 이 하한에
-  // 클램프되어 있어 기준값을 낮춰도 효과가 없었음). dpr 배율로 백킹스토어를
-  // 키우면(표시 크기는 CSS가 고정) 좌표·fit·resScale이 전부 canvas.width
-  // 기준이라 자동으로 따라오고, 클램프 안 걸리는 선의 화면상 굵기는 이전과
-  // 동일하게 유지되며, 하한만 화면상 1/dpr로 줄어 가는 결 표현이 가능해짐.
-  const dpr = getCanvasDPR();
-  if(rect.width>0&&rect.height>0){canvas.width=Math.round(rect.width*dpr);canvas.height=Math.round(rect.height*dpr);}
+  // 백킹스토어를 CSS 크기와 무관하게 가로 DRAW_RES(1200px) 고정, 세로는
+  // 표시 종횡비 유지. 좌표·fit·resScale이 전부 canvas.width 기준이라
+  // 자동으로 따라오고, 표시 크기는 CSS가 고정하므로 레이아웃 불변.
+  if(rect.width>0&&rect.height>0){
+    canvas.width=DRAW_RES;
+    canvas.height=Math.round(rect.height*(DRAW_RES/rect.width));
+  }
 }
 
 // 핵심 렌더 함수
@@ -5813,7 +5858,8 @@ function renderFrame(canvas, angle){
       drawImgOnCanvas(ctx, img, w, h);
     } else {
       ctx.fillStyle='#211D19'; ctx.fillRect(0,0,w,h);
-      ctx.fillStyle='#52483D'; ctx.font=`${Math.round(13*getCanvasDPR())}px Inter`; ctx.textAlign='center'; // dpr 배율 캔버스에서도 표시 크기 유지
+      const cssW = canvas.getBoundingClientRect().width || w; // 고정 1200 백킹스토어에서도 화면 표시 크기 유지
+      ctx.fillStyle='#52483D'; ctx.font=`${Math.round(13*(w/Math.max(1,cssW)))}px Inter`; ctx.textAlign='center';
       ctx.fillText('이 각도의 사진이 없습니다', w/2, h/2);
     }
   });
@@ -6616,13 +6662,13 @@ function drawCompare(){
 
   const pw = pane.clientWidth, ph = pane.clientHeight;
   if(pw===0||ph===0){ setTimeout(()=>drawCompare(),80); return; }
-  // (2026-07-14) 비교 화면도 dpr 배율 백킹스토어 적용 — syncCanvasSize와 동일한
-  // 이유(결 굵기 하한이 화면상 1/dpr로 줄어듦 + BEFORE 사진도 선명해짐).
+  // (2026-07-16) 비교 화면도 syncCanvasSize와 동일하게 가로 1200px 고정
+  // 백킹스토어 — 조정 화면과 비교 화면의 그리기 해상도가 항상 같아짐.
   // 표시 크기는 style로 CSS 픽셀에 고정.
-  const cdpr = getCanvasDPR();
-  baseC.width=Math.round(pw*cdpr); baseC.height=Math.round(ph*cdpr);
+  const cscale = DRAW_RES/pw;
+  baseC.width=DRAW_RES; baseC.height=Math.round(ph*cscale);
   baseC.style.width=pw+'px'; baseC.style.height=ph+'px';
-  topC.width=Math.round(pw*cdpr);  topC.height=Math.round(ph*cdpr);
+  topC.width=DRAW_RES;  topC.height=Math.round(ph*cscale);
   topC.style.width=pw+'px'; topC.style.height=ph+'px';
 
   const div = document.getElementById('compareDivider');
@@ -8784,7 +8830,20 @@ function computeSilhouetteAnchors(angle){
 //    한 번도 안 썼음). 왼쪽/오른쪽 사진이 실측으로 서로 다른 부호의 회전을
 //    갖게 되므로, 예전에 걱정했던 "좌우反전 위험"이 추측이 아니라 실측값으로
 //    해소됨.
-function projectImagePointToHead(angle, nx, ny, widthFactor, heightFactor){
+// (2026-07-16) opts 추가 — "2D 헤어·두피 좌표 그대로 옮기기"용:
+//   opts.hangZ    : 점이 두피 타원 밖(머리 실루엣 아래로 늘어진 구간)이어도
+//                   버리지 않고, 넘겨준 카메라공간 깊이(z)로 그대로 배치.
+//                   호출부(buildHairStrandsFromPaths)가 "이 가닥에서 마지막으로
+//                   두피면 위에 있었던 점의 깊이"를 넘겨서, 늘어진 머리가
+//                   두피에서 떨어지는 지점의 깊이를 유지한 채 이미지 그대로의
+//                   모양으로 내려가게 함(예전엔 이 구간이 전부 null로 잘려서
+//                   경로가 끊기고, 나머지는 타원면을 따라 감겨 우산/버섯 모양이 됐음).
+//   opts.clampRim : 타원 살짝 밖(실루엣 가장자리 컬럼의 뿌리)을 z=0(림 평면)에
+//                   붙임 — 가장자리 뿌리가 통째로 버려지지 않게.
+//   opts.usedZ    : (출력) 이번 점에 실제 사용된 카메라공간 z — 호출부가
+//                   다음 점의 hangZ로 이어받음.
+// opts 없이 부르면 기존 동작과 완전히 동일(다른 호출부 영향 없음).
+function projectImagePointToHead(angle, nx, ny, widthFactor, heightFactor, opts){
   // (2026-07-14, 후면 실루엣 앵커) 실측 랜드마크가 없으면 지어낸 고정값
   // (getEstimatedLandmarks) 전에 실루엣 실측 앵커(귀+정수리, 아래 함수)를
   // 먼저 시도 — 사용자 설계: "후면 사진 앵커 귀와 정수리 등으로 잡아".
@@ -8816,8 +8875,17 @@ function projectImagePointToHead(angle, nx, ny, widthFactor, heightFactor){
   const a = Math.max(0.2, equatorXS.halfWidth), b = computeHeadVerticalRadius(), c = Math.max(0.15, equatorXS.halfDepth); // 두상 타원 반경(x,y,z)
   const yLocal = localY - 0.15; // 타원 중심(0,0.15,0) 기준으로 이동
   const inside = (localX/a)*(localX/a) + (yLocal/b)*(yLocal/b);
-  if(inside > 0.98) return null; // 타원 밖(귀/윤곽 밖 극단치) — 이 픽셀은 투영 포기
-  const localZ = c * Math.sqrt(Math.max(0, 1 - inside)); // 카메라를 향한 쪽(+Z) 해
+  let localZ;
+  if(inside <= 0.98){
+    localZ = c * Math.sqrt(Math.max(0, 1 - inside)); // 두피면 위: 카메라를 향한 쪽(+Z) 해 — 이 점의 "두피 3D 좌표"
+  } else if(opts && typeof opts.hangZ === 'number'){
+    localZ = opts.hangZ; // 두피면 밖(늘어진 구간): 마지막 두피 깊이를 유지한 채 이미지 좌표 그대로 배치
+  } else if(opts && opts.clampRim && inside <= 1.2){
+    localZ = 0; // 실루엣 가장자리 뿌리: 림 평면에 붙임
+  } else {
+    return null; // 타원 밖(귀/윤곽 밖 극단치) — 이 픽셀은 투영 포기 (기존 동작)
+  }
+  if(opts) opts.usedZ = localZ;
 
   const yawRad   = (lm.poseYawDeg   ?? getViewYawDeg(angle)) * Math.PI/180;
   const pitchRad = (lm.posePitchDeg ?? 0) * Math.PI/180;
@@ -8962,6 +9030,45 @@ function buildRealColumnSamples(sectionId, angle, widthFactor, heightFactor){
 // 점들을 projectImagePointToHead로 각각 3D화해서 가는 선(LineSegments)으로
 // 그림. 모양·길이·색(실측 팔레트)·컬이 2D와 정의상 일치. 경로 캡처가 없으면
 // null을 반환하고 호출부가 기존 절차 생성으로 폴백(동작 보존).
+// (2026-07-16) 3D 진입 시, 아직 캡처 안 된 뷰의 2D 가닥 경로를 오프스크린
+// 렌더로 확보 — "2D 헤어·두피의 3D 좌표를 산출해서 그대로 옮긴다"가 네 뷰
+// 전부에서 성립하도록. (기존엔 사용자가 조정 화면에서 실제로 열어본 뷰만
+// 캡처돼 있어서, 안 열어본 뷰는 절차 생성 폴백과 섞였음.) 렌더 조건·옵션은
+// renderFrame의 가닥 호출과 동일하게 맞춤(rawMode 아님) — 화면에 그려질
+// 그 가닥과 같은 것이 캡처됨. 캔버스 크기도 DRAW_RES(1200) 동일.
+function captureStrandPathsFor(angle){
+  return new Promise(resolve=>{
+    const maskInf = state.hairMasks && state.hairMasks[angle];
+    const hairC = state.hairCanvases && state.hairCanvases[angle];
+    if(!maskInf || !maskInf.scalpY || !hairC){ resolve(false); return; }
+    getCachedImg(angle, (img)=>{
+      if(!img){ resolve(false); return; }
+      try{
+        const validCount = Array.from(maskInf.scalpY).filter(y=>y>=0).length;
+        if(validCount <= maskInf.w * 0.05){ resolve(false); return; }
+        const canvas = document.createElement('canvas');
+        canvas.width = DRAW_RES;
+        canvas.height = Math.round(DRAW_RES * img.height / img.width);
+        const ctx = canvas.getContext('2d');
+        const fit = computeFit(img.width, img.height, canvas.width, canvas.height);
+        const {curl, volume, thickness} = state.sliders[angle];
+        drawHairStrands(ctx, fit, maskInf.scalpY, maskInf.hairEndY, maskInf.w, maskInf.h, hairC, {
+          curl, volume, thickness,
+          angle, sections: state.sections,
+          color: (state.selectedStyle ? state.selectedStyle.colorHex : null) || maskInf.avgColor,
+          avgColorsBySection: (!state.selectedStyle) ? maskInf.avgColorsBySection : null,
+          colorPalette: (!state.selectedStyle) ? maskInf.colorPalette : null,
+          orientation: maskInf.orientation,
+          orientMaskW: maskInf.maskW,
+          orientMaskH: maskInf.maskH,
+          capturePaths: true,
+        });
+        resolve(!!(state.strandPaths && state.strandPaths[angle] && state.strandPaths[angle].strands.length));
+      }catch(e){ console.warn('오프스크린 가닥 캡처 실패('+angle+'):', e); resolve(false); }
+    });
+  });
+}
+
 function buildHairStrandsFromPaths(widthFactor, heightFactor){
   if(!state.strandPaths) return null;
   const group = new THREE.Group();
@@ -8985,10 +9092,19 @@ function buildHairStrandsFromPaths(widthFactor, heightFactor){
       const s = rec.strands[si];
       c.set(s.color);
       let prev = null;
+      // (2026-07-16) "2D 헤어·두피의 3D 좌표를 산출해서 그대로 옮기기":
+      // 가닥 경로를 따라가며, 두피 타원 안에 있는 점은 두피면(그 점의 두피
+      // 3D 좌표)에 놓고, 타원을 벗어나는 순간부터는 마지막 두피 깊이(lastZ)를
+      // 유지한 채 이미지의 x/y 그대로 내려놓음 — 늘어진 머리가 잘리거나
+      // 타원면을 따라 감기지 않고 2D에서 보이는 모양 그대로 3D에 옮겨짐.
+      let lastZ = null;
       for(let i=0;i<s.pts.length;i++){
         const p = s.pts[i];
-        const world = projectImagePointToHead(angle, p.x/rec.maskW, p.y/rec.maskH, widthFactor, heightFactor);
-        if(!world){ prev = null; continue; } // 타원 밖(투영 포기 픽셀) — 선분만 끊고 계속
+        const lift = { clampRim: i===0 }; // 뿌리(첫 점)만 림 클램프 허용 — 실루엣 가장자리 컬럼의 뿌리 보존
+        if(lastZ !== null) lift.hangZ = lastZ;
+        const world = projectImagePointToHead(angle, p.x/rec.maskW, p.y/rec.maskH, widthFactor, heightFactor, lift);
+        if(!world){ prev = null; continue; } // 투영 포기 픽셀 — 선분만 끊고 계속
+        lastZ = lift.usedZ;
         if(prev){
           positions.push(prev.x, prev.y, prev.z, world.x, world.y, world.z);
           colors.push(c.r, c.g, c.b, c.r, c.g, c.b);
@@ -9236,8 +9352,16 @@ async function setupModel3DScreen(){
   const styleParams = extractStyleParamsFor3D(aiEstimate);
   styleParams.widthFactor = faceMetrics.widthFactor;
   styleParams.heightFactor = faceMetrics.heightFactor;
-  // (2026-07-14, 옮기기 전환) 조정 화면에서 캡처된 2D 가닥 경로가 있으면
-  // 그걸 3D로 들어올려 사용(2D와 정의상 일치) — 없으면 기존 절차 생성 폴백.
+  // (2026-07-16) 옮기기 방식 확정: 아직 캡처 안 된 뷰는 오프스크린 렌더로
+  // 경로를 먼저 확보 — 네 뷰 전부 "2D 가닥·두피 좌표 그대로 옮기기"로 렌더.
+  for(const a of ANGLES){
+    const has = state.strandPaths && state.strandPaths[a] && state.strandPaths[a].strands && state.strandPaths[a].strands.length;
+    if(!has && state.shots[a]) await captureStrandPathsFor(a);
+  }
+  if(myGen !== model3DGeneration) return; // 캡처 대기 중 화면 재구성됨 — 오래된 진행 중단
+
+  // (2026-07-14, 옮기기 전환) 캡처된 2D 가닥 경로가 있으면 그걸 3D로 들어올려
+  // 사용(2D와 정의상 일치) — 캡처가 하나도 없을 때만 기존 절차 생성 폴백.
   const liftedStrands = buildHairStrandsFromPaths(faceMetrics.widthFactor, faceMetrics.heightFactor);
   if(liftedStrands){
     model3D.headGroup.add(liftedStrands);
