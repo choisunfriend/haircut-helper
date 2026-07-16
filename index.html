@@ -5665,8 +5665,9 @@ function renderFrame(canvas, angle){
       // → baseC 자체를 베이스로 바로 그려서 머리카락 영역을 실제로 비운다.
       ctx.drawImage(baseC, fit.dx, fit.dy, fit.dw, fit.dh);
 
-      // 언더코트: hairC(원본 머리카락 픽셀, 마스크 실루엣 alpha)를 source-in으로
-      // 채워서 마스크 실루엣 모양만 가져온 뒤, 그 안을 "두피/피부색"으로 채움.
+      // 언더코트: 평균색이나 피부색으로 다시 칠하지 않고, 마스크 안에 남아 있는
+      // 원본 헤어 픽셀을 사용한다. 이 레이어가 실제 염색 톤·하이라이트·그림자를
+      // 보존하고, 새 가닥은 그 위에서 결만 보강한다.
       // (이전엔 평균 헤어컬러의 진한 단색으로 채웠는데, 그러면 가닥 사이 빈틈이
       // 그냥 진한 색 덩어리로 보여서 "머리카락"이 아니라 밋밋한 실루엣처럼 보였음.
       // 실제 얼굴 피부에서 샘플링한 톤으로 바꾸면, 가닥 사이로 두피가 비치는
@@ -5678,19 +5679,9 @@ function renderFrame(canvas, angle){
       // avgColor(머리카락 평균색)로 폴백했었는데, raw 모드에서는 가닥 색도 똑같이
       // avgColor를 쓰기 때문에 언더코트=가닥 색이 겹쳐서 대비가 사라지고 가닥이
       // 안 보이는 문제가 있었음. → 원래 계획대로 "얼굴 피부색의 중간톤" 고정값으로 폴백.
-      const FALLBACK_SKIN_TONE = 'rgb(224,178,148)';
-      const scalpColor = maskInf.scalpColor || FALLBACK_SKIN_TONE;
-      const undercoat = document.createElement('canvas');
-      undercoat.width = hairC.width; undercoat.height = hairC.height;
-      const uCtx = undercoat.getContext('2d');
-      uCtx.drawImage(hairC, 0, 0);
-      uCtx.globalCompositeOperation = 'source-in';
-      uCtx.fillStyle = scalpColor;
-      uCtx.fillRect(0, 0, undercoat.width, undercoat.height);
       ctx.save();
-      ctx.globalAlpha = 1; // 실제 두피는 반투명하지 않음 — 언더코트는 불투명하게 깔고,
-                           // 그 위 가닥도 불투명하게 그려서 살색이 과하게 비치지 않도록 함
-      ctx.drawImage(undercoat, fit.dx, fit.dy, fit.dw, fit.dh);
+      ctx.globalAlpha = 0.92;
+      ctx.drawImage(hairC, fit.dx, fit.dy, fit.dw, fit.dh);
       ctx.restore();
 
       // 원본 결 보기(debugShowRaw): 실제 state.sections/selectedStyle은 그대로 두고,
@@ -5726,7 +5717,9 @@ function renderFrame(canvas, angle){
           // 스타일 미적용(프리셋 없이 실측 그대로)일 때만 부위별로 실제
           // 인식된 색을 각각 사용(사용자 요청: "부위별로 인식되는 컬러 쓰는
           // 거 가능하냐").
-          avgColorsBySection: (!state.selectedStyle) ? maskInf.avgColorsBySection : null,
+          // source color sampler가 가닥 시작점의 실제 픽셀 색을 우선 사용한다.
+          // avgColorsBySection은 마스크의 해당 위치를 샘플링할 수 없을 때만 폴백이다.
+          avgColorsBySection: maskInf.avgColorsBySection,
           orientation: maskInf.orientation,       // 결방향 컬럼 샘플 (축소해상도 좌표)
           orientMaskW: maskInf.maskW,              // 결방향 필드가 계산된 축소 해상도 폭
           orientMaskH: maskInf.maskH,              // 결방향 필드가 계산된 축소 해상도 높이
@@ -6045,8 +6038,10 @@ function traceStrandPath(ix, sy_img, targetLen_img, jitterSeed, env){
       // 가닥 사이 간격이 벌어지고 "세로줄"처럼 분리되어 보이는 문제가 있었음. 시작 지점 근처는
       // 기존과 거의 동일하게 촘촘히 유지하고, 끝으로 갈수록 좌우로 더 크게 흔들리게 해서
       // 인접 가닥끼리 자연스럽게 겹치도록(overlap) 만들어 그 틈을 시각적으로 메운다.
-      const wiggleGrowth = 1 + (s/steps) * 1.8;
-      const wiggle = (Math.sin((s+jitterSeed)*0.9) * 0.12 + (Math.random()-0.5)*0.10) * wiggleGrowth;
+      // 원본 결필드가 있는 구간에서는 임의 흔들림이 결을 덮어쓰지 않게 최소화한다.
+      // 생성된 연장부에서만 아주 약한 불규칙성이 남아 플라스틱 같은 직선을 피한다.
+      const wiggleGrowth = 1 + (s/steps) * 0.55;
+      const wiggle = (Math.sin((s+jitterSeed)*0.9) * 0.035 + (Math.random()-0.5)*0.025) * wiggleGrowth;
       // curl: 기존엔 가닥 전체에 걸쳐 한 번만 크게 휘는 반원(sin 반 주기) 형태라, 결방향(orientation)과
       // 충돌하면 갑자기 옆으로 삐져나가는 모양이 생겼음. 파마머리/라면 면발처럼 일정한 파장으로
       // 완만하게 반복되는 웨이브로 변경 — curl 슬라이더는 진폭(구불거림 정도)만 조절.
@@ -6097,6 +6092,37 @@ function drawHairStrands(ctx, fit, scalpY, hairEndY, maskW, maskH, hairCanvas, o
   // 제약(1px 미만이면 브라우저가 알파를 낮춰 흐리게 그림)이라 resScale로 같이 줄어들면
   // 안 됨 — 스케일 적용 "후"에 하한선으로 별도 고정.
   const MIN_SAFE_WIDTH = 0.9;
+
+  // 평균색을 가닥 전체에 반복하면 조명 하이라이트와 염색의 미세한 톤 차이가
+  // 사라진다. 원본 헤어 캔버스를 마스크 좌표계로 한 번만 축소해 두고, 각 가닥의
+  // 시작점 주변에서 불투명한 실제 헤어 픽셀만 골라 색을 반환한다.
+  let sourcePixels = null;
+  try{
+    const sourceCanvas = document.createElement('canvas');
+    sourceCanvas.width = maskW; sourceCanvas.height = maskH;
+    const sourceCtx = sourceCanvas.getContext('2d', {willReadFrequently:true});
+    sourceCtx.drawImage(hairCanvas, 0, 0, maskW, maskH);
+    sourcePixels = sourceCtx.getImageData(0, 0, maskW, maskH).data;
+  }catch(e){
+    // 보안 컨텍스트 등에서 픽셀 읽기가 막히면 기존 섹션 평균색으로 안전하게 폴백.
+    sourcePixels = null;
+  }
+  function sourceColorAt(x, y){
+    if(!sourcePixels) return null;
+    const cx = Math.max(0, Math.min(maskW-1, Math.round(x)));
+    const cy = Math.max(0, Math.min(maskH-1, Math.round(y)));
+    let r=0,g=0,b=0,count=0;
+    // 3×3 이웃으로 샘플링해 단일 픽셀의 압축 노이즈만 완화한다. 평균 헤어색으로
+    // 환원하지 않기 때문에 위치별 컬러·명암은 그대로 유지된다.
+    for(let yy=Math.max(0,cy-1); yy<=Math.min(maskH-1,cy+1); yy++){
+      for(let xx=Math.max(0,cx-1); xx<=Math.min(maskW-1,cx+1); xx++){
+        const i=(yy*maskW+xx)*4;
+        if(sourcePixels[i+3] < 96) continue;
+        r+=sourcePixels[i]; g+=sourcePixels[i+1]; b+=sourcePixels[i+2]; count++;
+      }
+    }
+    return count ? `rgb(${Math.round(r/count)},${Math.round(g/count)},${Math.round(b/count)})` : null;
+  }
 
   // 길이 슬라이더가 높을 때(특히 정면 프론트) 가닥이 이마 라인을 넘어
   // 눈·안경·턱까지 뚫고 내려가는 과확장을 막기 위한 상한.
@@ -6332,7 +6358,8 @@ function drawHairStrands(ctx, fit, scalpY, hairEndY, maskW, maskH, hairCanvas, o
       const startY = startYJitter ? sy_img + startYJitter() : sy_img;
       const jitterSeed = jitterSeedFn(i);
       const [tMin, tRange] = tintRange;
-      drawStrand(startX, startY, scaledLen, origLen, extAmount, jitterSeed, tintColor(colorForSection(ix), tMin+Math.random()*tRange));
+      const actualColor = sourceColorAt(startX, startY) || colorForSection(ix);
+      drawStrand(startX, startY, scaledLen, origLen, extAmount, jitterSeed, tintColor(actualColor, tMin+Math.random()*tRange));
     }
   }
 
@@ -6357,7 +6384,7 @@ function drawHairStrands(ctx, fit, scalpY, hairEndY, maskW, maskH, hairCanvas, o
   // sub-pixel 렌더링 문제 수정: 0.22~0.51px는 1px 미만이라 브라우저가 "더 얇게"가
   // 아니라 알파를 낮춰 흐릿하게 그려버림(캔버스가 sub-pixel 굵기를 실제로 표현 못 함).
   // 1px 근처로 최소굵기를 올려서 흐려지는 걸 막고, 대신 개수를 더 늘려 밀도로 보완.
-  const numRootScatter = Math.round(460 + (volume/100) * 330);
+  const numRootScatter = Math.round(220 + (volume/100) * 160);
   drawStrandLayer({
     count: numRootScatter,
     alphaMul: 1.0,
@@ -6373,13 +6400,13 @@ function drawHairStrands(ctx, fit, scalpY, hairEndY, maskW, maskH, hairCanvas, o
     lenScale: (origLen, ratio)=> Math.max(origLen * ratio, maskH*0.02) * (0.6+Math.random()*0.4),
     startXJitter: ()=> (Math.random()-0.5)*maskW*0.01,
     jitterSeedFn: (i)=> i*0.271,
-    tintRange: [0.68, 0.55],
+    tintRange: [0.80, 0.26],
   });
 
   // ── 레이어 1: 굵은 섹션 (38~60개) ──
   // 가닥을 불투명하게 바꾸면서 밀도를 다시 소폭 상향 (30~48 → 38~60).
   // 개수 1.6배 상향 — 위 레이어0과 동일한 이유
-  const numSections = Math.round(61 + (volume/100) * 35);
+  const numSections = Math.round(42 + (volume/100) * 20);
   drawStrandLayer({
     count: numSections,
     alphaMul: 1.0, // 형태를 잡는 가장 굵은 레이어 — 완전 불투명하게 해서 밑의 살색이 안 비치게
@@ -6393,12 +6420,12 @@ function drawHairStrands(ctx, fit, scalpY, hairEndY, maskW, maskH, hairCanvas, o
     lenScale: (origLen, ratio)=> Math.max(origLen * ratio, maskH*0.02),
     startXJitter: ()=> (Math.random()-0.5)*(maskW/numSections)*1.5,
     jitterSeedFn: (i)=> i,
-    tintRange: [0.70, 0.55],
+    tintRange: [0.82, 0.24],
   });
 
   // ── 레이어 2: 중간 가닥 (160~330개) ──
   // 개수 1.6배 상향 — 위와 동일한 이유
-  const numMid = Math.round(256 + (volume/100) * 272);
+  const numMid = Math.round(130 + (volume/100) * 140);
   drawStrandLayer({
     count: numMid,
     alphaMul: 1.0,
@@ -6410,7 +6437,7 @@ function drawHairStrands(ctx, fit, scalpY, hairEndY, maskW, maskH, hairCanvas, o
     lenScale: (origLen, ratio)=> Math.max(origLen * ratio, maskH*0.02) * (0.85+Math.random()*0.3),
     startXJitter: ()=> (Math.random()-0.5)*maskW*0.008,
     jitterSeedFn: (i)=> i*0.618,
-    tintRange: [0.72, 0.60],
+    tintRange: [0.84, 0.24],
   });
 
   // ── 레이어 3: 잔 가닥 (160~320개) ──
@@ -6420,7 +6447,7 @@ function drawHairStrands(ctx, fit, scalpY, hairEndY, maskW, maskH, hairCanvas, o
   // sub-pixel 문제 수정 + 개수 추가 상향 — 위 레이어0과 동일한 이유.
   // 이 레이어는 하이라이트(밝은 톤) 담당이라 흐려지면 머리 전체 광택감이 죽는
   // 영향이 가장 커서 우선적으로 손봄.
-  const numFine = Math.round(330 + (volume/100) * 330);
+  const numFine = Math.round(170 + (volume/100) * 160);
   drawStrandLayer({
     count: numFine,
     alphaMul: 1.0,
@@ -6433,7 +6460,7 @@ function drawHairStrands(ctx, fit, scalpY, hairEndY, maskW, maskH, hairCanvas, o
     startXJitter: ()=> (Math.random()-0.5)*maskW*0.012,
     startYJitter: ()=> (Math.random()-0.5)*maskH*0.01,
     jitterSeedFn: (i)=> i*0.382,
-    tintRange: [0.65, 0.75],
+    tintRange: [0.88, 0.22],
   });
 
   // ── 2단계 합성 ──
