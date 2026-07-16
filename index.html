@@ -2390,6 +2390,64 @@
   그 기울기가 3D에 그대로 실림(대신 어긋난 함수 추론으로 인한 파탄은 없음).
   (2) 네 뷰가 겹치는 영역은 이중으로 그려짐(솎아내기 STRAND_SAMPLE_3D로
   완화). (3) 실기기 미검증.
+
+[2026-07-17] 협의 후 진행: 검정 머리 스위치 + 3D 헤어를 "4장 실루엣으로 깎기"(헐)
+  협의 요약(이번 라운드는 사용자 지시로 구현 전 협의를 거침):
+  - 실기기 결과: 굵기 0.6 하향이 체감 안 됨 → 진단: 계수가 레이어들을
+    MIN_SAFE_WIDTH(0.9px) 밑으로 밀어 하한이 도로 끌어올림(하향 전
+    1.1~1.56px → 후 0.9~0.94px, 사실상 전부 바닥). 가닥=원본 몇 가닥
+    묶음이라는 사용자 기억도 맞음(방식 불변).
+  - "곡률이 없어 보인다" → 사용자가 원리를 직접 짚음: "두상이 실측 입체로
+    나온다면 헤어 점들도 다 3D좌표에 찍힐 수 있을 것" → "사진 4장 실루엣로
+    폭·깊이 재는 과정을 헤어도 거쳐야지". 베레모=두상 메쉬(헤어 포함
+    실루엣으로 깎여 위가 퍼짐+어두운 두피색 샘플), 원뿔=실측 목 메쉬로
+    진단(안 부르는 함수 영향 아님) — 목은 다음 라운드로 보류.
+  - 결정: 해상도 인상은 하지 않음(사용자: "해상도는 높이지마"). 대신
+    ① 머리카락 전부 검정으로(느낌 확인용), ② 헤어 헐 4단계 전부 실행.
+
+  구현:
+  (A) drawHairStrands에 FORCE_BLACK_HAIR=true 임시 스위치 — 실측 색(평균/
+  섹션/팔레트)을 #141414 단색으로 덮음. 언더코트(두피색)는 유지. 캡처 색도
+  같이 덮이므로 3D도 검정. 원복은 상수 하나.
+  (B) buildHairStrandsFromPaths v3 — 4단계:
+    1) 헐 깎기: 높이 64버킷, 각 뷰의 scalpY~hairEndY 컬럼 스팬이 지나가는
+       버킷마다 좌우 극값 → 정면/후면=반폭 W(y), 좌/우=반깊이 D(y). 결측은
+       한 축 있으면 두상 비율(a:cD) 이식, 둘 다 없으면 두피면+2%. 헐은
+       항상 두피면 바깥(max), 이동평균 2회로 마스크 노이즈 완화.
+    2) 깊이 소스 교체: 전역 타원체 → 그 높이의 헐 단면 타원(W,D — 측면
+       뷰는 스왑). 단면 밖(늘어짐)은 기존대로 마지막 깊이 유지.
+    3) 두께: 가닥별 결정적 난수 t∈[0.35,1]로 두피면 z와 헐 z 사이에 배치 —
+       실측 헤어 두께 간격 안에서만 층을 흩뿌림(지어낸 상수 아님).
+    4) 깊이 음영: 정점색 = 원색×(0.55+0.45t) + 가산 rim(0.05t+0.11t·facing,
+       facing=카메라를 향한 곡면 정도) — 무조명 LineBasicMaterial에서도,
+       그리고 검정 머리에서도 층·곡률이 보이도록 가산 성분 포함.
+  매핑 앵커·고정 yaw는 v2 그대로(사진별 포즈/랜드마크 함수 계속 미사용).
+
+  검증: node --check SYNTAX_OK. Node 단위(THREE 목킹, 합성 2뷰 마스크):
+  크라운 뿌리가 두피선 최고점 대비 정확한 높이에, 중앙 가닥 전 점의 z가
+  두피면 이상(58점 전수), 가장자리 뿌리 림 z=0, 검정 원색(0.08)이 음영
+  가산으로 0.209까지 상승, 측면 뷰 회전 반구 정상 — 통과.
+  ⚠ 정직한 한계: (1) 헐의 세로 앵커가 "두피선 최고점=두상 꼭대기"라 크라운
+  위로 솟은 헤어 볼륨은 세로로 눌리고 두께(t 층)로만 표현됨. (2) 컬럼 스팬
+  기반 실루엣은 행 단위 구멍(가르마 등)을 못 봄 — 외곽만 필요하므로 실용상
+  무방. (4) 실기기 미검증.
+
+[2026-07-17 계속] 베레모(두상)·원뿔(목)도 이번 라운드에서 수정 (사용자: "이번에 만지기로 했잖아")
+  (C) 두상 "검은 베레모" 수정 — 원인 2개를 각각:
+  - 모양: buildHeadMesh(실루엣 실측 단면 스택)는 상부 단면에 머리카락
+    실루엣이 섞여 윗부분이 헤어 폭만큼 퍼짐. 두개골 표시를 헤어 가닥·헐이
+    기준으로 쓰는 것과 동일한 실측 타원체(a,b,cD, 중심 y=0.15) 메쉬로 교체
+    ('skullEllipsoid') — 헤어 헐이 정의상 이 면 바깥이라 두개골이 헤어
+    밖으로 삐져나올 수 없음. buildHeadMesh는 관례대로 참고용으로만 남김
+    (전수 grep으로 호출부 0건 확인).
+  - 색: 샘플링된 두피색 평균 밝기가 0.30 미만이면(머리카락 픽셀 오염 샘플)
+    살구톤 '#E0B294' 폴백 — 두상이 검게 칠해지는 것 방지.
+  (D) 목 "원뿔(전등갓)" 수정 — personMask 실측에 어깨/턱이 섞여 아래로
+  갈수록 부풀던 것. buildRealNeckMesh 링 생성 시 실측 단면을 두상 대비
+  해부학 범위로 클램프: 폭 22~55%×두상 반폭, 깊이 22~70%×두상 반깊이.
+  실측값은 그 범위 안에서 계속 반영됨(고정 원통으로의 회귀 아님).
+  검증: node --check SYNTAX_OK. 실기기 미검증 — 두상·목·헐 헤어가 한
+  화면에서 어떻게 맞물리는지는 다음 실기기 테스트에서 확인.
 -->
 
 <!DOCTYPE html>
@@ -6233,6 +6291,14 @@ function traceStrandPath(ix, sy_img, targetLen_img, jitterSeed, env){
 }
 
 function drawHairStrands(ctx, fit, scalpY, hairEndY, maskW, maskH, hairCanvas, opts){
+  // (2026-07-17 임시 스위치) 사용자 요청: "머리카락 색깔을 다 검은색으로 일단
+  // 바꿔줘봐, 내가 느낌을 좀 보게" — 실측 색(평균색/섹션색/팔레트)을 전부
+  // 무시하고 검정 단색으로 렌더. 언더코트(두피색)는 그대로. 원복하려면
+  // 아래 상수만 false로. 캡처되는 가닥 색도 여기서 덮이므로 3D도 함께 검정.
+  const FORCE_BLACK_HAIR = true;
+  if(FORCE_BLACK_HAIR && opts){
+    opts = Object.assign({}, opts, { color:'#141414', avgColorsBySection:null, colorPalette:null });
+  }
   const {curl, volume, thickness, color, avgColorsBySection, colorPalette, orientation, orientMaskW, orientMaskH, angle, sections, capturePaths} = opts;
   // (2026-07-14, 옮기기 전환 1단계) 이 렌더에서 그린 가닥 경로(마스크 좌표계
   // 점들 + 최종 색)를 저장할 배열 — 3D가 "함수로 새로 만드는" 대신 이 완성된
@@ -7019,10 +7085,19 @@ function buildRealNeckMesh(widthFactor, skinColor){
   const neckBotY = -1.15; // neckAttachPoint 하단(3단계 의상 정렬 불변식)
 
   const positions = [];
+  // (2026-07-17) "원뿔(전등갓) 목" 수정 — personMask 실측에 어깨/턱이 섞이면
+  // 목 단면이 아래로 갈수록 어깨 폭까지 부풀어 원뿔이 됐음. 실측값을 쓰되
+  // 두상 대비 해부학적 상한/하한으로 클램프: 폭은 두상 반폭의 22~55%,
+  // 깊이는 두상 반깊이의 22~70% 범위 안에서만 허용.
+  const eqXS2 = interpolateHeadCrossSection(Math.PI/2);
+  const headA = Math.max(0.2, eqXS2.halfWidth), headC = Math.max(0.15, eqXS2.halfDepth);
+  const clamp = (v,lo,hi)=>Math.min(hi, Math.max(lo, v));
   for(let ri=0; ri<=RING_STEPS; ri++){
     const t = ri/RING_STEPS;
     const y = neckTopY + t*(neckBotY-neckTopY);
-    const { halfWidth, halfDepth } = interpolateNeckCrossSection(y);
+    let { halfWidth, halfDepth } = interpolateNeckCrossSection(y);
+    halfWidth = clamp(halfWidth, 0.22*headA, 0.55*headA);
+    halfDepth = clamp(halfDepth, 0.22*headC, 0.70*headC);
     for(let ti=0; ti<=THETA_STEPS; ti++){
       const theta = -Math.PI + (2*Math.PI)*(ti/THETA_STEPS);
       // scalpPointToWorld와 동일한 관례: theta=0에서 z(깊이) 최대, theta=π/2에서 x(폭) 최대
@@ -7122,10 +7197,26 @@ function buildFaceDetailGroup(widthFactor, projector, lm, headMat){
 function buildProceduralHead(faceMetrics, skinColorCss){
   const group = new THREE.Group();
   const { lm, widthFactor, heightFactor, projector } = faceMetrics;
-  const skinColor = new THREE.Color(skinColorCss || '#E8C39E');
+  let skinColor = new THREE.Color(skinColorCss || '#E8C39E');
+  // (2026-07-17) "검은 베레모"의 어두운 색 원인 방지: 샘플링된 두피색이
+  // 지나치게 어두우면(머리카락 픽셀이 섞여 샘플된 경우) 살구톤으로 폴백 —
+  // 두상이 헤어처럼 검게 칠해지는 것을 막음.
+  if((skinColor.r + skinColor.g + skinColor.b) / 3 < 0.30) skinColor = new THREE.Color('#E0B294');
   const headMat = new THREE.MeshStandardMaterial({ color: skinColor, roughness: 0.85, metalness: 0 });
 
-  const headMesh = buildHeadMesh(widthFactor, heightFactor, headMat);
+  // (2026-07-17) "검은 베레모" 수정 — 기존 buildHeadMesh(실루엣 실측 단면
+  // 스택)는 상부 단면 실측에 머리카락 실루엣이 섞여 두상 윗부분이 헤어
+  // 폭만큼 옆으로 퍼졌음(베레모 모양의 진짜 원인). 두개골 표시는 헤어
+  // 가닥·헐이 기준으로 쓰는 것과 동일한 실측 타원체(적도 반폭 a, 세로 b,
+  // 반깊이 cD, 중심 y=0.15)로 교체 — 헤어 헐이 정의상 이 면 바깥에 있으므로
+  // 두개골이 헤어 밖으로 삐져나올 수 없음. buildHeadMesh 함수 자체는
+  // 이 파일 관례대로 참고용으로 남김(호출만 제거).
+  const eqXS = interpolateHeadCrossSection(Math.PI/2);
+  const skullA = Math.max(0.2, eqXS.halfWidth), skullB = computeHeadVerticalRadius(), skullC = Math.max(0.15, eqXS.halfDepth);
+  const headMesh = new THREE.Mesh(new THREE.SphereGeometry(1, 32, 24), headMat);
+  headMesh.scale.set(skullA, skullB, skullC);
+  headMesh.position.set(0, 0.15, 0);
+  headMesh.name = 'skullEllipsoid';
   group.add(headMesh);
 
   // 버그 수정(2026-07-14, 계속) → 재추가(같은 날, 실측 목 메쉬로 교체):
@@ -9117,19 +9208,24 @@ function captureStrandPathsFor(angle){
   });
 }
 
-// (2026-07-16 재작성) 순수 "그대로 옮기기" — 사용자 지시: "그냥 전체를 3D좌표로
-// 옮겨. 함수랑 섞으면 더 복잡해." 랜드마크 프로젝터·실측 포즈·실루엣 앵커 등
-// 사진별 추론 함수를 전부 제거하고, 2D 캡처 데이터만으로 결정적으로 옮긴다:
-//   앵커(뷰당 2개, 전부 scalpY 데이터에서 직접 읽음 — 추론 없음):
-//     · 두피선 최고점(crownY)  ↔ 두상 꼭대기(y = CY + b)
-//     · 두피선 가로 반폭(halfPx) ↔ 그 뷰에서 보이는 두상 가로 반지름
-//       (정면/후면 = a(폭), 좌/우 = cD(깊이) — 옆에서 보면 가로축이 두상 깊이)
-//   좌표: 픽셀 → 모델 등방 배율 s = 가로반지름/halfPx (2D 종횡비 그대로 보존)
-//   깊이: 두피 타원 안 점 = 그 점의 두피면 z (두피 3D 좌표),
-//         타원 밖(늘어진 구간) = 마지막 두피 깊이 유지 (2D 모양 그대로 하강)
-//   배치: 뷰별 고정 yaw(정면0/좌-90/우+90/후면180)로만 회전 — 사진별 포즈 미사용.
-// 두상 치수(a,b,cD)는 두상 메쉬(buildHeadMesh)와 같은 실측 데이터 출처라
-// 헤어와 두상의 정렬이 정의상 보장됨.
+// (2026-07-17 재작성 v3) "헤어도 두상처럼 4장 실루엣으로 깎는다" — 사용자
+// 지적: "두상이 실측해서 입체로 나온다면, 그 위에 얹혀지는 헤어가닥의 점들도
+// 다 3D좌표(입체)에 찍힐 수 있을 거 아니야?" / "사진 4장의 실루엣으로 폭·깊이
+// 재는 과정을 헤어도 거쳐야지." 합의된 4단계:
+//   1단계 — 헤어 외곽 헐(hull) 깎기: 높이별로 정면/후면 마스크에서 헤어
+//     반폭(W), 좌/우측 마스크에서 헤어 반깊이(D)를 실측(소스는 이미 저장된
+//     scalpY~hairEndY 컬럼 스팬 — 새 세그멘테이션 없음). 두상 단면 깎기와
+//     동일 발상, 소스만 두상 실루엣 → 헤어 마스크.
+//   2단계 — 가닥 점의 깊이(z)를 전역 타원체 대신 그 높이의 실측 헐 단면
+//     타원(W(y), D(y))에서 읽음. 단면 밖(늘어짐)은 마지막 깊이 유지(기존).
+//   3단계 — 두께(부피): 같은 높이의 두피면(두상 타원)과 헐 사이 간격이 곧
+//     실측 헤어 두께 — 가닥마다 결정적 난수 t∈[0.35,1]로 그 간격 안에 배치
+//     (0=두피, 1=헐 바깥면). 지어낸 상수가 아니라 실측 간격 안에서만 흩뿌림.
+//   4단계 — 깊이 음영: 안쪽 층(t 작음)은 어둡게, 바깥층·카메라를 향한
+//     곡면일수록 밝게(가산 성분 포함 — 검은 머리에서도 곡률이 보이도록).
+//     LineBasicMaterial이 무조명이라 정점 색으로 직접 음영을 구움.
+// 매핑 앵커는 v2와 동일(두피선 최고점↔두상 꼭대기, 두피선 반폭↔두상 반지름,
+// 뷰별 고정 yaw만) — 사진별 포즈/랜드마크/프로젝터 함수는 계속 미사용.
 function buildHairStrandsFromPaths(){
   if(!state.strandPaths) return null;
   const equatorXS = interpolateHeadCrossSection(Math.PI/2);
@@ -9138,18 +9234,19 @@ function buildHairStrandsFromPaths(){
   const cD = Math.max(0.15, equatorXS.halfDepth);    // 두상 앞뒤 반지름(깊이)
   const CY = 0.15;                                   // 두상 중심 y (두상 메쉬와 동일)
   const FIXED_YAW = { front:0, left:-90, right:90, back:180 };
-  const group = new THREE.Group();
-  group.name = 'hairStrands';
-  // 가닥 솎아내기 손잡이: 1=전부, 2=절반… (저사양 대응 시 올리면 됨)
-  const STRAND_SAMPLE_3D = 2;
-  let total = 0;
+  const SIDE = ang => (ang === 'left' || ang === 'right');
+  // 두피면(두상 타원)의 높이별 반폭/반깊이 — 헐의 안쪽 경계이자 결측 폴백
+  const headHalf = (y, axis) => {
+    const yl = (y - CY) / b, q = 1 - yl*yl;
+    return q <= 0 ? 0 : (axis === 'w' ? a : cD) * Math.sqrt(q);
+  };
+
+  // ── 뷰별 2D→모델 매핑 파라미터 (v2와 동일 앵커) ──
+  const views = {};
   ['front','left','right','back'].forEach(angle=>{
     const rec = state.strandPaths[angle];
-    if(!rec || !rec.strands || !rec.strands.length) return;
     const maskInf = state.hairMasks && state.hairMasks[angle];
-    if(!maskInf || !maskInf.scalpY) return;
-
-    // ── 2D 앵커: 두피선(scalpY)에서 직접 읽음 ──
+    if(!rec || !rec.strands || !rec.strands.length || !maskInf || !maskInf.scalpY) return;
     let xMin = Infinity, xMax = -Infinity, crownY = Infinity;
     for(let x=0; x<maskInf.w; x++){
       const sy = maskInf.scalpY[x];
@@ -9160,45 +9257,131 @@ function buildHairStrandsFromPaths(){
       }
     }
     if(!(xMax > xMin) || !isFinite(crownY)) return;
-    const cx = (xMin + xMax) / 2;      // 두피선 가로 중심(픽셀)
-    const halfPx = (xMax - xMin) / 2;  // 두피선 가로 반폭(픽셀)
+    const halfPx = (xMax - xMin) / 2;
     if(halfPx < 4) return;
+    const aH_head = SIDE(angle) ? cD : a; // 이 뷰 카메라 공간의 두상 가로 반지름
+    views[angle] = { rec, maskInf, cx:(xMin+xMax)/2, crownY, s: aH_head/halfPx };
+  });
+  const names = Object.keys(views);
+  if(!names.length) return null;
 
-    // 이 뷰의 카메라 공간에서 보이는 두상 반지름: 가로(aH)와 깊이(aD)
-    const side = (angle === 'left' || angle === 'right');
-    const aH = side ? cD : a;
-    const aD = side ? a  : cD;
-    const s = aH / halfPx; // 픽셀 → 모델 등방 배율
+  // ── 1단계: 헤어 외곽 헐 실측 ──
+  const NY = 64;                 // 높이 버킷 수
+  const yTop = CY + b;           // 크라운(두피선 최고점) ↔ 두상 꼭대기
+  let yBot = CY - b;             // 최저점: 각 뷰 hairEndY 최댓값의 모델 y 중 최솟값
+  names.forEach(n=>{
+    const v = views[n];
+    let maxEnd = -1;
+    for(let x=0; x<v.maskInf.w; x++){
+      if(v.maskInf.scalpY[x] >= 0 && v.maskInf.hairEndY[x] > maxEnd) maxEnd = v.maskInf.hairEndY[x];
+    }
+    if(maxEnd >= 0){
+      const y = yTop - (maxEnd - v.crownY) * v.s;
+      if(y < yBot) yBot = y;
+    }
+  });
+  const yStep = (yTop - yBot) / (NY - 1);
+  const bucketOfY = y => Math.min(NY-1, Math.max(0, Math.round((yTop - y) / yStep)));
+  const wSum = new Float32Array(NY), wCnt = new Float32Array(NY);
+  const dSum = new Float32Array(NY), dCnt = new Float32Array(NY);
+  names.forEach(n=>{
+    const v = views[n];
+    const minX = new Float32Array(NY).fill(Infinity);
+    const maxX = new Float32Array(NY).fill(-Infinity);
+    // 컬럼 스팬(scalpY~hairEndY)이 지나가는 높이 버킷마다 좌우 극값 갱신
+    for(let x=0; x<v.maskInf.w; x++){
+      const sY = v.maskInf.scalpY[x], eY = v.maskInf.hairEndY[x];
+      if(sY < 0 || eY < 0) continue;
+      const b0 = bucketOfY(yTop - (sY - v.crownY) * v.s);
+      const b1 = bucketOfY(yTop - (eY - v.crownY) * v.s);
+      for(let bi=Math.min(b0,b1); bi<=Math.max(b0,b1); bi++){
+        if(x < minX[bi]) minX[bi] = x;
+        if(x > maxX[bi]) maxX[bi] = x;
+      }
+    }
+    for(let bi=0; bi<NY; bi++){
+      if(maxX[bi] < minX[bi]) continue;
+      const half = (maxX[bi] - minX[bi]) / 2 * v.s;
+      if(SIDE(n)){ dSum[bi] += half; dCnt[bi]++; }
+      else       { wSum[bi] += half; wCnt[bi]++; }
+    }
+  });
+  const hullW = new Float32Array(NY), hullD = new Float32Array(NY);
+  for(let bi=0; bi<NY; bi++){
+    const y = yTop - bi*yStep;
+    let W = wCnt[bi] ? wSum[bi]/wCnt[bi] : NaN;
+    let D = dCnt[bi] ? dSum[bi]/dCnt[bi] : NaN;
+    // 결측 보완: 한 축만 있으면 두상 비율(a:cD)로 이식, 둘 다 없으면 두피면+2%
+    if(isNaN(W) && !isNaN(D)) W = D * (a/cD);
+    if(isNaN(D) && !isNaN(W)) D = W * (cD/a);
+    if(isNaN(W)){ W = headHalf(y,'w') * 1.02; D = headHalf(y,'d') * 1.02; }
+    hullW[bi] = Math.max(W, headHalf(y,'w')); // 헐은 항상 두피면 바깥
+    hullD[bi] = Math.max(D, headHalf(y,'d'));
+  }
+  for(let pass=0; pass<2; pass++){ // 마스크 노이즈 완화(이동평균 2회)
+    for(let bi=1; bi<NY-1; bi++){
+      hullW[bi] = (hullW[bi-1] + 2*hullW[bi] + hullW[bi+1]) / 4;
+      hullD[bi] = (hullD[bi-1] + 2*hullD[bi] + hullD[bi+1]) / 4;
+    }
+  }
 
+  // ── 2~4단계: 헐 깊이 + 두께 채움 + 깊이 음영 ──
+  const group = new THREE.Group();
+  group.name = 'hairStrands';
+  const STRAND_SAMPLE_3D = 2; // 가닥 솎아내기 손잡이(저사양 대응 시 올림)
+  let seed = 20260717;        // 결정적 난수 — 재구성해도 같은 배치(디버그 재현성)
+  const rand = ()=>{ seed = (seed * 1103515245 + 12345) & 0x7fffffff; return seed / 0x7fffffff; };
+  let total = 0;
+  names.forEach(angle=>{
+    const v = views[angle];
     const yawRad = FIXED_YAW[angle] * Math.PI / 180;
-    const rot = composeRotationZYX(yawRad, 0, 0); // yaw만 — 사진별 포즈 함수 미사용
-
+    const rot = composeRotationZYX(yawRad, 0, 0); // yaw만 — 사진별 포즈 미사용
     const positions = [];
     const colors = [];
     const c = new THREE.Color();
-    for(let si=0; si<rec.strands.length; si+=STRAND_SAMPLE_3D){
-      const st = rec.strands[si];
+    for(let si=0; si<v.rec.strands.length; si+=STRAND_SAMPLE_3D){
+      const st = v.rec.strands[si];
       c.set(st.color);
-      let prev = null;
-      let lastZ = null; // 이 가닥에서 마지막으로 두피면 위에 있었던 점의 깊이
+      const t = 0.35 + 0.65 * rand(); // 이 가닥의 깊이층: 0=두피면, 1=헐 바깥면
+      let prev = null, prevR=0, prevG=0, prevB=0;
+      let lastZ = null;
       for(let i=0;i<st.pts.length;i++){
         const p = st.pts[i];
-        // 픽셀 → 카메라 공간(모델 스케일): 크라운을 두상 꼭대기에 정렬
-        const mx = (p.x - cx) * s;
-        const yl = b - (p.y - crownY) * s;        // 두상 중심(CY) 기준 세로
-        const inside = (mx/aH)*(mx/aH) + (yl/b)*(yl/b);
-        let mz;
-        if(inside <= 1)          mz = aD * Math.sqrt(1 - inside); // 두피면 위: 두피 3D 깊이
-        else if(lastZ !== null)  mz = lastZ;                      // 늘어진 구간: 깊이 유지
-        else                     mz = 0;                          // 실루엣 가장자리 뿌리: 림 평면
-        lastZ = mz;
-        const v = applyRotationTranspose3(rot, new THREE.Vector3(mx, yl, mz));
-        v.y += CY;
-        if(prev){
-          positions.push(prev.x, prev.y, prev.z, v.x, v.y, v.z);
-          colors.push(c.r, c.g, c.b, c.r, c.g, c.b);
+        const mx = (p.x - v.cx) * v.s;
+        const my = yTop - (p.y - v.crownY) * v.s;
+        const bi = bucketOfY(my);
+        // 이 뷰 카메라 공간에서의 헐/두피 단면 반경(측면 뷰는 폭↔깊이 스왑)
+        const aH  = SIDE(angle) ? hullD[bi] : hullW[bi];
+        const aD  = SIDE(angle) ? hullW[bi] : hullD[bi];
+        const aHh = SIDE(angle) ? headHalf(my,'d') : headHalf(my,'w');
+        const aDh = SIDE(angle) ? headHalf(my,'w') : headHalf(my,'d');
+        let mz, facing = 0;
+        const u = aH > 1e-4 ? (mx/aH)*(mx/aH) : 2;
+        if(u <= 1){
+          const hullZ  = aD * Math.sqrt(1 - u);                    // 헐 바깥면 깊이
+          const uh     = aHh > 1e-4 ? (mx/aHh)*(mx/aHh) : 2;
+          const scalpZ = uh <= 1 ? aDh * Math.sqrt(1 - uh) : 0;    // 두피면 깊이
+          mz = scalpZ + (hullZ - scalpZ) * t;                      // 실측 두께 안에 층 배치
+          facing = Math.sqrt(1 - u);                               // 카메라를 향한 정도(곡률 음영용)
+        } else if(lastZ !== null){
+          mz = lastZ;    // 헐 단면 밖(늘어짐): 마지막 깊이 유지
+        } else {
+          mz = 0;        // 시작부터 밖(가장자리 뿌리): 림 평면
         }
-        prev = v;
+        lastZ = mz;
+        const w3 = applyRotationTranspose3(rot, new THREE.Vector3(mx, my - CY, mz));
+        w3.y += CY;
+        // 4단계 음영: 곱(층 깊이) + 가산(바깥층·정면 곡면 하이라이트, 검은 머리 대응)
+        const k = 0.55 + 0.45 * t;
+        const rim = 0.05 * t + 0.11 * t * facing;
+        const r = Math.min(1, c.r * k + rim);
+        const g = Math.min(1, c.g * k + rim);
+        const bl = Math.min(1, c.b * k + rim);
+        if(prev){
+          positions.push(prev.x, prev.y, prev.z, w3.x, w3.y, w3.z);
+          colors.push(prevR, prevG, prevB, r, g, bl);
+        }
+        prev = w3; prevR = r; prevG = g; prevB = bl;
       }
       total++;
     }
@@ -9212,8 +9395,8 @@ function buildHairStrandsFromPaths(){
     lines.userData.fromPaths = true; // [진단용]
     group.add(lines);
   });
-  console.log('[3D] 2D→3D 직접 옮기기:', total, '가닥 (뷰별 캡처:',
-    Object.keys(state.strandPaths||{}).filter(a=>state.strandPaths[a]&&state.strandPaths[a].strands.length).join(','), ')');
+  console.log('[3D] 헐 기반 옮기기:', total, '가닥 (뷰별 캡처:',
+    Object.keys(state.strandPaths||{}).filter(a2=>state.strandPaths[a2]&&state.strandPaths[a2].strands.length).join(','), ')');
   return total > 0 ? group : null;
 }
 
