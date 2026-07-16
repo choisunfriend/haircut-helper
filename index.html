@@ -2123,6 +2123,45 @@
   수학적으로 "일관된 거울상 세계"가 되어 문제없음을 손으로 검산했지만
   실기기 확인이 최종. (3) 실기기에서 우산 모양이 실제로 접히는지 확인
   필요 — 접히면 이 원인 확정, 남은 어긋남은 (1)의 앵커 한계로 넘어감.
+
+[2026-07-14 계속] 3D 가닥 길이 실측화 (헤어가 눈까지 내려오는 문제)
+  실기기 확인(회전 수정 후): 우산은 접혔고 헤어가 두상에 모였지만, 가닥이
+  여전히 얼굴/눈까지 흘러내림. 사용자 질문 2건에 대한 코드 확인 결과:
+  (1) "후면 랜드마크 없음이 뒷머리에 영향 주나?" — 맞음. 두상 폭 실측
+  (computeHeadCrossSections)과 헤어 실측 투영 모두 랜드마크 있는 뷰만
+  쓰므로 후면 사진은 실루엣이 있어도 배제되거나 고정 추정 앵커
+  (getEstimatedLandmarks)의 지어낸 축척으로 왜곡됨 → 뒷머리는 폴백
+  위주가 되어 커버리지가 빈약. (후면 실루엣 기반 전용 앵커가 다음 개선
+  후보 — 이번엔 미착수.)
+  (2) "눈높이 기준점이 헤어를 눈에 붙게 하나?" — 아님. 눈높이(y=0.15)를
+  기준으로 헤어를 끌어당기는 코드 경로는 없음(계산 기준일 뿐). 진짜
+  원인: 실측 투영으로 뿌리(scalpY)·끝(hairEndY)을 둘 다 3D로 재놓고도
+  그 실측 거리를 "방향"으로만 쓰고, 절대 길이는 슬라이더 공식
+  (0.16+(길이/100)×0.95)×realFactor로 만들고 있었음 — 기본 길이 80이면
+  0.92(두상 반지름 크기)라 실측 끝을 한참 지나 눈·얼굴까지 연장됨.
+
+  수정(길이 실측화): 실측 컬럼이 있는 가닥은 |tip3D-root3D| 실측 거리를
+  기본 길이로 사용하고, 슬라이더는 2D lengthRatioFor와 동일 공식
+  (50=원본 1.0배, ±1당 RATIO_PER_UNIT=0.012)의 배율로만 작용. 실측
+  컬럼이 없는 가닥은 섹션 실측 평균(avgRealLen3D), 섹션 전체에 실측이
+  없으면 기존 슬라이더 공식×realFactor 폴백(동작 보존 — realFactor는
+  이 폴백에서만 유지해 이중 적용 방지). 예전 realLenRatio(평균 대비
+  상대 배율)는 실측 거리를 직접 쓰면서 무의미해져 제거(avgLenFrac도
+  유일한 사용처가 사라져 제거). front/nape의 line 배율(lenScale)과
+  엘리베이션 지터는 그대로 유지.
+
+  검증(실제 파일에서 추출한 buildStrandsForSection을 THREE 스텁+기록기로
+  실행, 8케이스 전부 통과): 슬라이더 50에서 actualLen이 실측 거리와
+  정확히 일치, 80에서 정확히 ×1.36(2D와 동일), 엘리베이션 지터 범위
+  유지, 실측 전무 시 기존 공식 폴백 값 그대로, nape line 배율 유지,
+  컬럼별로 서로 다른 실측 길이가 각자 그대로 반영. 전체 파일
+  node --check SYNTAX_OK.
+  ⚠ 정직한 한계: (1) 실측 거리 |tip3D-root3D|는 투영 정확도(앵커 한계,
+  위 항목)에 의존 — 투영이 부정확한 뷰에선 길이도 같이 어긋남.
+  (2) 후면(랜드마크 없는 뷰) 커버리지 문제는 이번 수정 범위 밖 — 후면
+  실루엣 앵커가 별도 과제로 남음. (3) 기본 슬라이더가 80이라 "스타일
+  미선택"에서도 실측×1.36으로 표시됨 — 2D도 동일한 배율이라 일관되지만,
+  "미선택=정확히 원본"을 원하면 기본값을 50으로 바꾸는 논의가 남아 있음.
 -->
 
 <!DOCTYPE html>
@@ -8216,7 +8255,19 @@ function buildStrandsForSection(sectionId, params, colorHex, globalCurl, shapeSi
   // 대비 몇 배 넓은지)로 따로 실측한 배율을 씀 — 없으면(신구 데이터 호환) 1.0.
   const puffRealFactor = (shapeSignal && typeof shapeSignal.puffFactor === 'number') ? shapeSignal.puffFactor : 1.0;
 
-  const strandLen    = (0.16 + (length/100) * 0.95) * realFactor;
+  // ── 길이 실측화(2026-07-14) ──
+  // 사용자 지적: "머리카락이 자꾸 눈에 가서 붙어" — 원인 확인 결과 눈높이
+  // 기준점이 끌어당기는 게 아니라(그런 코드 경로 없음), 실측 투영으로 뿌리
+  // (scalpY)·끝(hairEndY)을 둘 다 3D로 재놓고도 그 실측 거리를 "방향"으로만
+  // 쓰고 절대 길이는 슬라이더 공식 (0.16+(길이/100)×0.95)에서 만들고 있었기
+  // 때문(기본 80이면 0.92 ≈ 두상 반지름 크기 — 실측 끝을 훨씬 지나 눈·얼굴
+  // 까지 연장됨). 수정: 실측 컬럼이 있는 가닥은 |tip3D-root3D| 실측 거리를
+  // 기본 길이로 쓰고, 슬라이더는 2D lengthRatioFor와 동일 공식(50=원본,
+  // ±1당 RATIO_PER_UNIT=1.2%)의 배율로만 작용 — 2D "원본 결"과 같은 철학.
+  // 실측 컬럼이 하나도 없는 섹션만 기존 슬라이더 공식으로 폴백(동작 보존).
+  const RATIO_PER_UNIT_3D = 0.012; // 2D drawHairStrands의 RATIO_PER_UNIT과 동일값(이미 실기기 검증된 감도)
+  const sliderLenRatio = Math.max(0, 1 + (length - 50) * RATIO_PER_UNIT_3D);
+  const strandLen    = (0.16 + (length/100) * 0.95) * realFactor; // 실측 없는 폴백 전용(기존 공식 그대로)
   const puffOut       = (0.05 + (volume/100) * 0.22) * puffRealFactor;
   // 2026-07-14 추가: 섹션별 curl 파라미터(부분펌, crown/side/occipital에만 존재,
   // 기본 100%=전역과 동일)가 지금까지 3D에는 전혀 반영되지 않고 있었음 —
@@ -8236,8 +8287,12 @@ function buildStrandsForSection(sectionId, params, colorHex, globalCurl, shapeSi
   });
 
   const realColsSafe = Array.isArray(realCols) ? realCols : [];
-  const avgLenFrac = realColsSafe.length
-    ? realColsSafe.reduce((s,c)=>s+c.lenFrac,0) / realColsSafe.length
+  // (avgLenFrac 제거됨 — realLenRatio가 길이 실측화로 불필요해지면서 유일한
+  // 사용처가 사라짐. lenFrac 필드 자체는 buildRealColumnSamples가 계속 제공.)
+  // 실측 3D 평균 길이(|tip3D-root3D|) — 실측 컬럼이 있으면 그 섹션의 절대
+  // 길이 기준으로 사용(길이 실측화). 하나도 없으면 0 → 기존 슬라이더 공식 폴백.
+  const avgRealLen3D = realColsSafe.length
+    ? realColsSafe.reduce((s,c)=>s + c.tip3D.clone().sub(c.root3D).length(), 0) / realColsSafe.length
     : 0;
 
   const strandCount = computeStrandCount(sectionId, volume);
@@ -8263,10 +8318,20 @@ function buildStrandsForSection(sectionId, params, colorHex, globalCurl, shapeSi
     if(sectionId === 'nape' && lineVal != null){
       lenScale *= 0.6 + (lineVal/100) * 0.6;
     }
-    const realLenRatio = (col && avgLenFrac > 0.001)
-      ? Math.max(0.55, Math.min(1.8, col.lenFrac / avgLenFrac))
-      : 1;
-    const actualLen = strandLen * realLenRatio * lenScale * (1 + randRange(-lengthJitter, lengthJitter));
+    // ── 길이 실측화(2026-07-14): 절대 길이의 출처를 슬라이더 공식 → 실측으로 ──
+    // (1) 이 가닥이 참조하는 실측 컬럼이 있으면: 그 컬럼의 실제 3D 거리
+    //     |tip3D-root3D|를 기본 길이로 사용(사진에서 잰 그 자리 헤어 길이 그대로).
+    // (2) 실측 컬럼은 없지만 섹션에 실측이 있으면: 섹션 실측 평균(avgRealLen3D).
+    // (3) 섹션 전체에 실측이 전혀 없으면: 기존 슬라이더 공식(strandLen) 폴백 —
+    //     이때만 realFactor(사진 실루엣 배율)도 기존처럼 유지(이중 적용 방지).
+    // 슬라이더는 (1)(2)에서 sliderLenRatio(50=원본 1.0배)로만 작용 — 2D와 동일 철학.
+    // 예전의 realLenRatio(평균 대비 상대 배율)는 (1)에서 실측 거리를 직접 쓰면서
+    // 불필요해져 제거(상대 편차가 실측 거리 자체에 이미 들어 있음).
+    const measuredLen = (col && col.root3D && col.tip3D)
+      ? col.tip3D.clone().sub(col.root3D).length()
+      : avgRealLen3D;
+    const baseLen = measuredLen > 0.001 ? measuredLen * sliderLenRatio : strandLen;
+    const actualLen = baseLen * lenScale * (1 + randRange(-lengthJitter, lengthJitter));
 
     // 결방향(orientAngle): "가로 성분이 얼마나 센가"(|cos|)만 방향과 분리해서
     // 흔들림 크기로 사용 — 부호는 아래 각 경로에서 기하학적으로 자연스럽게 정해짐.
