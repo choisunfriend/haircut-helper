@@ -2532,6 +2532,44 @@
   ⚠ 남은 것(다음 후보): 두상 자체(computeHeadCrossSections)가 원반으로
   나오는 문제 — 이번 정리는 헤어 축 통합이고 두상 단면 실측은 별도 진단
   필요. 얼굴 곡면 강도(Z_DEPTH_SCALE) 실기기 튜닝도 미착수.
+
+[2026-07-17 계속] 뷰 품질 게이트 — 불량 캡처가 거울 폴백을 막던 문제
+  실기기 피드백: "후면은 사진이 제대로 된 게 없었고, 폴백이 작동 안 했네."
+  구조적 원인: captureStrandPathsFor는 사진이 존재하면(유효 컬럼 5% 이상)
+  가닥 캡처를 만들어 strandPaths[angle]을 채움 → buildHairStrandsFromPaths의
+  거울 폴백은 "뷰가 있다"고 보고 양보 → 불량 캡처가 자리만 차지하고
+  뒤통수가 빈 채 렌더됨(스크린샷 확인).
+  수정: 뷰 등록부에 품질 게이트 추가 — 가닥 12개 미만 또는 유효 컬럼이
+  마스크 폭의 8% 미만이면 실측 부적격으로 제외(헐 관측에서도 빠지고,
+  자리가 비므로 거울 채움이 진입). 제외 시 콘솔에 사유(가닥 수/컬럼 수)
+  로그 — 다음 실기기 확인 때 어느 뷰가 왜 걸러졌는지 바로 보이게.
+  12/8%는 실측 아닌 최소 게이트 상수(정상 촬영이 걸러지면 낮출 것).
+  함수 상단 문서의 낡은 "고정 yaw만, 포즈 미사용" 서술도 좌표 축 통합에
+  맞게 갱신.
+  검증: node --check SYNTAX_OK. 하네스: front 정상 + back 불량(가닥 5개·
+  컬럼 6%) 시나리오 — back 게이트 제외 + back-mirror 진입 확인, PASS.
+
+[2026-07-17 계속] 헤어 세로 앵커를 얼굴과 동일한 눈/턱 프로젝터로 통일
+  사용자: "지금 계속 눈을 하나의 기준으로 잡아놔서 헤어가닥이 계속 눈에서
+  출발해." 진단: 얼굴 메쉬는 makeFaceProjector(눈높이→두상 적도 y=0.15,
+  턱→그 아래, 2점 캘리브레이션)로 서는데, 헤어 리프트만 "크라운 픽셀→두상
+  꼭대기 + x유래 스케일(v.s)"이라는 별개 세로 앵커를 씀. 두상 폭 실측이
+  부풀면(현재 원반 두상) v.s가 커져 헤어가 세로로 과신장 → 뿌리선이
+  얼굴이 고정된 눈높이 기준선까지 내려와 "가닥이 눈에서 출발"하는 그림.
+  수정: 뷰에 실측 랜드마크(eyeY/chinY)가 있으면 헤어 y를 얼굴과 같은
+  프로젝터로 매핑(mapY — 가닥/마스크 y를 maskInf.h로 정규화해 toMeshY,
+  마스크가 사진 전체 프레임 해상도라는 전제). 헤어라인이 사진에서 눈과
+  떨어진 만큼 정확히 그 위치에 서고, 두상 폭 실측 오차와도 분리됨.
+  랜드마크 없는 뷰(후면 등)는 기존 크라운 앵커 폴백. yTop/yBot·헐 버킷·
+  리프트의 세로 매핑 전부 mapY로 일원화. x 매핑은 기존 유지(두상 투영
+  반폭 앵커 — 폭 실측이 고쳐지면 같이 좋아지는 구조).
+  검증: node --check SYNTAX_OK. 하네스(원반 시나리오: 폭 과대실측 a=1.7,
+  눈 0.34/턱 0.60/헤어라인 0.22): 렌더된 y범위 [-0.030, 0.475]가 프로젝터
+  수식 예측과 양끝 모두 정확히 일치(±0.000), 뿌리선 전부 눈높이(0.15) 위
+  0.30~0.475에 위치. pitch 실측 회전 적용 시 z·sin(pitch)만큼 y가 도는
+  것은 얼굴 경로와 동일한 의도된 동작임도 확인(테스트 격리 과정에서 검증).
+  ※ 이로써 3D의 세로 기준은 전 요소(얼굴·두상·목·헤어)가 눈/턱 랜드마크
+  하나로 통일 — "랜드마크 = 4장 연결의 기준점" 설계의 잔여 미적용 지점 해소.
 -->
 
 <!DOCTYPE html>
@@ -8780,8 +8818,11 @@ function captureStrandPathsFor(angle){
 //   4단계 — 깊이 음영: 안쪽 층(t 작음)은 어둡게, 바깥층·카메라를 향한
 //     곡면일수록 밝게(가산 성분 포함 — 검은 머리에서도 곡률이 보이도록).
 //     LineBasicMaterial이 무조명이라 정점 색으로 직접 음영을 구움.
-// 매핑 앵커는 v2와 동일(두피선 최고점↔두상 꼭대기, 두피선 반폭↔두상 반지름,
-// 뷰별 고정 yaw만) — 사진별 포즈/랜드마크/프로젝터 함수는 계속 미사용.
+// 매핑 앵커는 v2와 동일(두피선 최고점↔두상 꼭대기, 두피선 반폭↔두상 반지름).
+// (2026-07-17 좌표 축 통합으로 갱신) "뷰별 고정 yaw만, 포즈 미사용"이던
+// 서술은 폐기 — 이제 뷰별 실측 포즈(getViewYawDeg 폴백 체인 + pitch/roll)를
+// 쓰고, 헐 실측도 관측(E,θ) 역투영으로 일반화됨. 상세는 함수 본문 주석과
+// 파일 상단 개발로그 "좌표 축 통합" 항목 참고.
 function buildHairStrandsFromPaths(){
   if(!state.strandPaths) return null;
   const equatorXS = interpolateHeadCrossSection(Math.PI/2);
@@ -8810,15 +8851,19 @@ function buildHairStrandsFromPaths(){
   };
 
   // ── 뷰별 2D→모델 매핑 파라미터 (앵커는 v2와 동일, 스케일만 실측 yaw 반영) ──
+  // 세로 앵커용 얼굴 종횡 계수(얼굴 메쉬와 동일 출처) — 실패 시 1로 폴백
+  let fmW = 1, fmH = 1;
+  try{ const fm = getFaceMetrics(); if(fm){ fmW = fm.widthFactor || 1; fmH = fm.heightFactor || 1; } }catch(e){}
   const views = {};
   ['front','left','right','back'].forEach(angle=>{
     const rec = state.strandPaths[angle];
     const maskInf = state.hairMasks && state.hairMasks[angle];
     if(!rec || !rec.strands || !rec.strands.length || !maskInf || !maskInf.scalpY) return;
-    let xMin = Infinity, xMax = -Infinity, crownY = Infinity;
+    let xMin = Infinity, xMax = -Infinity, crownY = Infinity, validCols = 0;
     for(let x=0; x<maskInf.w; x++){
       const sy = maskInf.scalpY[x];
       if(sy >= 0){
+        validCols++;
         if(x < xMin) xMin = x;
         if(x > xMax) xMax = x;
         if(sy < crownY) crownY = sy;
@@ -8827,29 +8872,68 @@ function buildHairStrandsFromPaths(){
     if(!(xMax > xMin) || !isFinite(crownY)) return;
     const halfPx = (xMax - xMin) / 2;
     if(halfPx < 4) return;
+    // (2026-07-17) 뷰 품질 게이트 — 실기기 피드백: "후면은 사진이 제대로 된
+    // 게 없었고, 폴백이 작동 안 했네." 원인: captureStrandPathsFor는 사진이
+    // 존재하기만 하면(유효 컬럼 5% 이상) 캡처를 만들어 strandPaths[angle]을
+    // 채우는데, 그 캡처가 불량이어도 이 함수의 거울 폴백은 "뷰가 있다"고
+    // 보고 양보해버림 → 불량 캡처가 자리만 차지하고 뒤통수가 비는 결과.
+    // 게이트: 가닥 12개 미만 또는 유효 컬럼이 마스크 폭의 8% 미만이면 실측
+    // 부적격으로 제외 — 헐 관측에도 안 들어가고, 자리가 비므로 아래 거울
+    // 채움이 대신 들어옴. (12/8%는 실측이 아니라 "이보다 아래면 실루엣
+    // 실측이라 부를 수 없다" 수준의 최소 게이트 상수 — 실기기에서 정상
+    // 촬영이 걸러지면 낮출 것.)
+    if(rec.strands.length < 12 || validCols < maskInf.w * 0.08){
+      console.log('[3D] 뷰 품질 게이트: ' + angle + ' 실측 부적격(가닥 ' + rec.strands.length +
+        '개, 유효 컬럼 ' + validCols + '/' + maskInf.w + ') — 거울 채움으로 대체');
+      return;
+    }
     const pose = poseOf(angle);
     const cos2 = Math.cos(pose.yaw)**2, sin2 = Math.sin(pose.yaw)**2;
     // 이 뷰 카메라에서 본 두상 투영 반폭: 타원(a,cD)을 방위각 θ에서 보면
     // E = sqrt(a²cos²θ + cD²sin²θ) — 예전 SIDE?cD:a 이분법의 연속 일반화
     // (θ=0이면 a, θ=90°면 cD로 기존과 동일하게 환원됨).
     const aH_head = Math.sqrt(a*a*cos2 + cD*cD*sin2);
-    views[angle] = { rec, maskInf, cx:(xMin+xMax)/2, crownY, s: aH_head/halfPx, pose, cos2, sin2 };
+    // (2026-07-17) 세로 앵커 통일 — 사용자: "눈을 하나의 기준으로 잡아놔서
+    // 헤어가닥이 계속 눈에서 출발해". 얼굴 메쉬는 makeFaceProjector(눈높이→
+    // 두상 적도 y=0.15, 턱→그 아래 2점 캘리브레이션)로 서는데, 헤어만
+    // "크라운 픽셀→두상 꼭대기 + x유래 스케일(v.s)"이라는 별개 세로 앵커를
+    // 써서 두 체계가 어긋남 — 두상 폭 실측이 부풀면(원반 두상) v.s가 커져
+    // 헤어가 세로로 과신장되고, 뿌리가 얼굴이 고정된 눈높이 기준선까지
+    // 내려옴. 이 뷰에 실측 랜드마크(eyeY/chinY)가 있으면 얼굴과 같은
+    // 프로젝터로 세로를 매핑 — 헤어라인이 사진에서 눈과 떨어진 만큼 정확히
+    // 그 위치에 서고, 두상 폭 실측 오차와도 분리됨. 가닥/마스크 y는 사진
+    // 전체 프레임 해상도(maskInf.h) 기준이라 /maskInf.h로 정규화해 넘김
+    // (랜드마크 eyeY/chinY와 동일 좌표계). 랜드마크 없는 뷰(후면 등)만
+    // 기존 크라운 앵커 폴백.
+    let toY = null;
+    const lmV = state.landmarks && state.landmarks[angle];
+    if(lmV && typeof lmV.eyeY === 'number' && typeof lmV.chinY === 'number'){
+      const proj = makeFaceProjector(lmV, fmW, fmH);
+      const mh = maskInf.h;
+      toY = py => proj.toMeshY(py / mh);
+    }
+    views[angle] = { rec, maskInf, cx:(xMin+xMax)/2, crownY, s: aH_head/halfPx, pose, cos2, sin2, toY };
   });
   const names = Object.keys(views);
   if(!names.length) return null;
 
   // ── 1단계: 헤어 외곽 헐 실측 ──
   const NY = 64;                 // 높이 버킷 수
-  const yTop = CY + b;           // 크라운(두피선 최고점) ↔ 두상 꼭대기
-  let yBot = CY - b;             // 최저점: 각 뷰 hairEndY 최댓값의 모델 y 중 최솟값
+  const yAnchorTop = CY + b;     // 크라운 앵커 폴백: 두피선 최고점 ↔ 두상 꼭대기
+  const mapY = (v, py) => v.toY ? v.toY(py) : (yAnchorTop - (py - v.crownY) * v.s);
+  // 실효 상/하한: 매핑된 데이터가 실제로 차지하는 범위로 계산 — 프로젝터
+  // 매핑에선 크라운이 두상 꼭대기와 정확히 일치한다는 보장이 없으므로(그게
+  // 이 매핑의 존재 이유) 상한도 관측에서 직접 구함.
+  let yTop = yAnchorTop, yBot = CY - b;
   names.forEach(n=>{
     const v = views[n];
+    yTop = Math.max(yTop, mapY(v, v.crownY));
     let maxEnd = -1;
     for(let x=0; x<v.maskInf.w; x++){
       if(v.maskInf.scalpY[x] >= 0 && v.maskInf.hairEndY[x] > maxEnd) maxEnd = v.maskInf.hairEndY[x];
     }
     if(maxEnd >= 0){
-      const y = yTop - (maxEnd - v.crownY) * v.s;
+      const y = mapY(v, maxEnd);
       if(y < yBot) yBot = y;
     }
   });
@@ -8867,8 +8951,8 @@ function buildHairStrandsFromPaths(){
     for(let x=0; x<v.maskInf.w; x++){
       const sY = v.maskInf.scalpY[x], eY = v.maskInf.hairEndY[x];
       if(sY < 0 || eY < 0) continue;
-      const b0 = bucketOfY(yTop - (sY - v.crownY) * v.s);
-      const b1 = bucketOfY(yTop - (eY - v.crownY) * v.s);
+      const b0 = bucketOfY(mapY(v, sY));
+      const b1 = bucketOfY(mapY(v, eY));
       for(let bi=Math.min(b0,b1); bi<=Math.max(b0,b1); bi++){
         if(x < minX[bi]) minX[bi] = x;
         if(x > maxX[bi]) maxX[bi] = x;
@@ -8964,7 +9048,7 @@ function buildHairStrandsFromPaths(){
         const p = st.pts[i];
         const mxRaw = (p.x - v.cx) * v.s;
         const mx = job.mirrored ? -mxRaw : mxRaw; // 거울 뷰는 x반전(그 방향에서 본 좌우가 맞도록)
-        const my = yTop - (p.y - v.crownY) * v.s;
+        const my = mapY(v, p.y);
         const bi = bucketOfY(my);
         // 이 잡 카메라에서 본 헐/두피 단면 반경 — 예전 SIDE 이분법(폭↔깊이
         // 스왑)의 연속 일반화: 방위각 θ에서 본 타원(W,D)의 투영 반폭은
