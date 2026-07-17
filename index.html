@@ -2448,6 +2448,21 @@
   실측값은 그 범위 안에서 계속 반영됨(고정 원통으로의 회귀 아님).
   검증: node --check SYNTAX_OK. 실기기 미검증 — 두상·목·헐 헤어가 한
   화면에서 어떻게 맞물리는지는 다음 실기기 테스트에서 확인.
+
+[2026-07-17 계속] 머리색 검정 통일 — 지역 스위치를 전역 상수로 승격
+  사용자 요청: "머리를 검정색으로 바꿔". 기존 FORCE_BLACK_HAIR(drawHairStrands
+  지역 스위치)는 2D 가닥 + 캡처 경로 경유 3D만 덮었고, 나머지 두 경로는
+  여전히 스타일색/실측색을 쓰고 있었음:
+  - 절차 생성 3D: extractStyleParamsFor3D → buildStrandsForSection의
+    colorHex(선택 스타일 → front.avgColor → '#2A1B12' 폴백 체인)
+  - AI 의상 추천: recommendOutfitWithAI 프롬프트에 넣는 헤어컬러
+  → 전역 상수 FORCED_HAIR_COLOR('#141414', STYLES 배열 바로 위 선언) 하나로
+  세 경로 전부 통일. 값은 기존 임시 스위치와 동일한 #141414 유지(순수 #000은
+  가닥 간 음영 대비가 죽어서 디테일이 뭉개짐). 언더코트(두피색)·두상
+  피부색은 영향 없음. 원복은 상수를 null로 — 그러면 세 경로 모두 원래
+  로직(스타일색 → 실측색)으로 돌아감. AI 프롬프트까지 맞춘 이유: 화면은
+  검정인데 추천 근거는 실측 갈색이면 의상 색 조합 추천이 어긋나기 때문.
+  검증: node --check SYNTAX_OK, FORCE_BLACK_HAIR 잔존 참조 0건 확인.
 -->
 
 <!DOCTYPE html>
@@ -3502,6 +3517,16 @@ const state = {
 // ROADMAP(fashion): 스타일 확정 후 얼굴형+선택 스타일 조합 → 패션 추천으로 확장 예정.
 // 각 STYLES 항목에 훗날 recommendTags(실루엣/톤 등) 필드 추가해서 매칭에 쓸 것.
 // 제휴사 카탈로그 연동은 별도 API 모듈로 분리, 이 배열은 매칭 키만 제공.
+// ── 머리색 강제 오버라이드(2026-07-17, 사용자 요청: "머리를 검정색으로 바꿔") ──
+// 이전엔 drawHairStrands 내부의 FORCE_BLACK_HAIR 지역 스위치가 2D 가닥(+캡처
+// 경로 경유 3D)만 덮고, 절차 생성 3D(extractStyleParamsFor3D→buildStrandsForSection)와
+// AI 의상 추천 프롬프트의 헤어컬러는 여전히 스타일색/실측색을 쓰고 있었음.
+// → 전역 상수 하나로 승격해 세 경로 전부 여기서 통일. null이면 원래 로직
+// (선택 스타일 colorHex → 실측 avgColor)으로 원복됨.
+// 순수 #000000이 아니라 #141414인 이유: 가닥 간 음영·겹침 대비가 남아야
+// 머리카락처럼 보임(완전 검정은 디테일이 뭉개짐). 기존 임시 스위치와 동일 값.
+const FORCED_HAIR_COLOR = '#141414';
+
 const STYLES = [
   {id:'bob',       name:'클래식 보브',     tags:'SHORT · STRAIGHT', length:25, curl:5,  volume:45, colorHex:'#2A1B12'},
   {id:'long-wave', name:'롱 웨이브',       tags:'LONG · WAVE',      length:85, curl:55, volume:60, colorHex:'#3B2415'},
@@ -6291,13 +6316,13 @@ function traceStrandPath(ix, sy_img, targetLen_img, jitterSeed, env){
 }
 
 function drawHairStrands(ctx, fit, scalpY, hairEndY, maskW, maskH, hairCanvas, opts){
-  // (2026-07-17 임시 스위치) 사용자 요청: "머리카락 색깔을 다 검은색으로 일단
-  // 바꿔줘봐, 내가 느낌을 좀 보게" — 실측 색(평균색/섹션색/팔레트)을 전부
-  // 무시하고 검정 단색으로 렌더. 언더코트(두피색)는 그대로. 원복하려면
-  // 아래 상수만 false로. 캡처되는 가닥 색도 여기서 덮이므로 3D도 함께 검정.
-  const FORCE_BLACK_HAIR = true;
-  if(FORCE_BLACK_HAIR && opts){
-    opts = Object.assign({}, opts, { color:'#141414', avgColorsBySection:null, colorPalette:null });
+  // 머리색 오버라이드 — 전역 FORCED_HAIR_COLOR(파일 상단, STYLES 위 선언)로
+  // 통일됨(기존 지역 스위치 FORCE_BLACK_HAIR를 승격). 실측 색(평균색/섹션색/
+  // 팔레트)을 전부 무시하고 단색으로 렌더. 언더코트(두피색)는 그대로.
+  // 캡처되는 가닥 색도 여기서 덮이므로 캡처 경로 기반 3D도 같은 색.
+  // 원복하려면 전역 상수만 null로.
+  if(FORCED_HAIR_COLOR && opts){
+    opts = Object.assign({}, opts, { color:FORCED_HAIR_COLOR, avgColorsBySection:null, colorPalette:null });
   }
   const {curl, volume, thickness, color, avgColorsBySection, colorPalette, orientation, orientMaskW, orientMaskH, angle, sections, capturePaths} = opts;
   // (2026-07-14, 옮기기 전환 1단계) 이 렌더에서 그린 가닥 경로(마스크 좌표계
@@ -8329,6 +8354,10 @@ async function recommendOutfitWithAI(){
     styleDesc = `직접 조정한 스타일(크라운 길이 ${crown.length}, 엘리베이션 ${crown.elevation}°)`;
     colorHex = (state.hairMasks.front && state.hairMasks.front.avgColor) || '#2A1B12';
   }
+  // 렌더가 FORCED_HAIR_COLOR로 강제되는 동안엔 추천 프롬프트에 보내는
+  // 헤어컬러도 같은 값이어야 함 — 안 그러면 화면은 검정인데 AI는 실측
+  // 갈색 기준으로 의상을 골라 색 조합 추천이 어긋남.
+  if(FORCED_HAIR_COLOR) colorHex = FORCED_HAIR_COLOR;
 
   const catalogList = OUTFIT_CATALOG.map(o=>`- ${o.id}: ${o.name} (${o.category}, 태그: ${o.tags.join('/')})`).join('\n');
   const base64 = frontImg.split(',')[1];
@@ -9468,7 +9497,11 @@ async function loadHeadMesh(faceMetrics, skinColorCss){
 // 전체를 그대로 넘긴다(2D 조정화면과 동일 소스). aiEstimate는 setupModel3DScreen이
 // 필요시 미리 estimateHairVolumeWithAI()로 받아온 결과를 그대로 전달.
 function extractStyleParamsFor3D(aiEstimate){
+  // FORCED_HAIR_COLOR가 켜져 있으면 3D도 2D 가닥과 같은 검정으로 통일 —
+  // 이 경로(절차 생성 buildStrandsForSection)는 drawHairStrands를 거치지
+  // 않아서 지역 스위치 시절엔 여기만 스타일색/실측색이 남아 있었음.
   const colorHex =
+    FORCED_HAIR_COLOR ||
     (state.selectedStyle && state.selectedStyle.colorHex) ||
     (state.hairMasks && state.hairMasks.front && state.hairMasks.front.avgColor) ||
     '#2A1B12';
