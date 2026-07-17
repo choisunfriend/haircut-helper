@@ -2463,6 +2463,32 @@
   로직(스타일색 → 실측색)으로 돌아감. AI 프롬프트까지 맞춘 이유: 화면은
   검정인데 추천 근거는 실측 갈색이면 의상 색 조합 추천이 어긋나기 때문.
   검증: node --check SYNTAX_OK, FORCE_BLACK_HAIR 잔존 참조 0건 확인.
+
+[2026-07-17 계속] 검정인데 흰 가닥 섞임 + 3D 납작 머리 수정 (실기기 스크린샷 피드백)
+  사용자: "머리가 검정색 안나왔어. 비교보기에서 나오는 색과 결이 다 오른쪽의
+  원본 이미지와 차이가 나. 그리고 3D에서 머리가 납작하게 나왔는데,
+  머리모양처럼 타원처럼 나오게 만들어봐."
+  (1) 흰 가닥 원인: tintColor의 흰색 가산 하이라이트(bright>1이면 delta×1.8
+  만큼 흰색 혼합 — "검은 머리는 곱셈으론 차이가 안 난다"며 이전에 넣은 것)와
+  FORCED_HAIR_COLOR가 충돌. 밝은 층 tintRange 상한 1.4 → #141414에 델타 0.4
+  가산 → 회백색 가닥 다수. 수정: 강제색 활성 시 bright를 1.06으로 클램프
+  (drawStrandLayer의 strokeCol 계산 한 곳 — 가닥 tintColor 호출 유일 지점).
+  미세 윤기만 남고 검정 유지. 원래 색 로직으로 원복 시(상수 null) 클램프도
+  자동 해제.
+  (2) 3D 납작 원인 2개(Node 목 하네스로 z분포 측정해 확인, test 시나리오:
+  front만 캡처):
+  - 앞반구 한정: 캡처된 뷰의 가닥만 옮기므로 front만 찍으면 전 가닥 z≥0 —
+    옆에서 보면 반쪽 껍질(z 0~+cD)이 종잇장처럼 보이고, 뒤에서 보면 앞
+    껍질 안쪽이 비쳐 보임. 수정: 미촬영 뷰를 맞은편 캡처(front↔back,
+    left↔right)의 x반전+해당 yaw로 채움(jobs 목록, mirrored 플래그·
+    '-mirror' 이름으로 표시. 실측 아닌 자리표시자 — 해당 각도 실제 촬영
+    시 실측이 우선). 하네스 결과 z −0.75~+0.75로 타원 전후면 커버.
+  - 단면 밖(u>1) 평면 눌림: lastZ 유지/림 z=0이라 가장자리 가닥이 납작한
+    커튼. 수정: 두상 높이 범위 안(headHalf>0)이면 반폭 초과분을 호길이로
+    환산해 타원 둘레를 따라 θ≤0.85π까지 감아 배치(림에서 기존 분기와
+    이음새 연속). 두상 아래(늘어짐)는 기존 lastZ 유지 — 목을 감지 않게.
+  검증: node --check SYNTAX_OK. 하네스: NaN/Inf 0건, |x|≤헐 반폭,
+  front+left 캡처 시 back/right 거울 채움 정상. 실기기 재확인 필요.
 -->
 
 <!DOCTYPE html>
@@ -6601,9 +6627,17 @@ function drawHairStrands(ctx, fit, scalpY, hairEndY, maskW, maskH, hairCanvas, o
       // 가닥 색: 실측 팔레트가 있으면(원본 모드) 실제 픽셀 색에서 하나를 뽑아
       // 미세 틴트(±6%)만 — 원본의 "어두운 다수+밝은 새치 소수" 분포 그대로.
       // 팔레트가 없으면(염색 스타일 등) 기존처럼 섹션 평균색×층별 틴트.
+      // (2026-07-17) FORCED_HAIR_COLOR 활성 시 틴트 상한을 1.06으로 클램프 —
+      // tintColor는 bright>1일 때 흰색을 가산 혼합하는데(검은 머리에서도
+      // 하이라이트가 보이게 하려던 이전 수정), tintRange 상한(최대 1.4)이
+      // #141414에 얹히면 델타 0.4×1.8 가산으로 가닥이 회백색이 돼버림
+      // (실기기 스크린샷: "머리가 검정색 안나왔어" — 검정 사이 흰 가닥 다수).
+      // 1.06이면 미세한 윤기만 남고 검정 유지. 어두운 쪽(tMin~1)은 그대로.
+      const brightRaw = usePalette ? (0.94 + Math.random()*0.12) : (tMin + Math.random()*tRange);
+      const bright = FORCED_HAIR_COLOR ? Math.min(1.06, brightRaw) : brightRaw;
       const strokeCol = usePalette
-        ? tintColor(colorPalette[Math.floor(Math.random()*colorPalette.length)], 0.94 + Math.random()*0.12)
-        : tintColor(colorForSection(ix), tMin+Math.random()*tRange);
+        ? tintColor(colorPalette[Math.floor(Math.random()*colorPalette.length)], bright)
+        : tintColor(colorForSection(ix), bright);
       drawStrand(startX, startY, scaledLen, origLen, extAmount, jitterSeed, strokeCol);
     }
   }
@@ -9357,12 +9391,27 @@ function buildHairStrandsFromPaths(){
   // ── 2~4단계: 헐 깊이 + 두께 채움 + 깊이 음영 ──
   const group = new THREE.Group();
   group.name = 'hairStrands';
+  // (2026-07-17) 반대편 미촬영 뷰 거울 채움 — front만 캡처된 상태에선 모든
+  // 가닥의 z≥0(앞반구)이라 옆에서 보면 반쪽 껍질이 종잇장처럼 납작하게 보임
+  // (실기기 스크린샷 + Node 하네스로 z분포 0~+cD 확인. 사용자: "머리가
+  // 납작하게 나왔는데, 머리모양처럼 타원처럼 나오게"). 실측이 없는 뷰는
+  // 맞은편 캡처(front↔back, left↔right)를 x반전·해당 yaw로 재사용해 타원
+  // 전체를 덮는다 — 실측 아님(자리표시자)이라 mirrored 플래그로 표시.
+  // 해당 각도 사진을 실제로 찍으면 실측이 우선되고 거울 채움은 사라짐.
+  const MIRROR_SRC = { front:'back', back:'front', left:'right', right:'left' };
+  const jobs = names.map(n2 => ({ angle:n2, v:views[n2], mirrored:false }));
+  Object.keys(MIRROR_SRC).forEach(missing=>{
+    if(views[missing]) return;
+    const srcV = views[MIRROR_SRC[missing]];
+    if(srcV) jobs.push({ angle:missing, v:srcV, mirrored:true });
+  });
   const STRAND_SAMPLE_3D = 2; // 가닥 솎아내기 손잡이(저사양 대응 시 올림)
   let seed = 20260717;        // 결정적 난수 — 재구성해도 같은 배치(디버그 재현성)
   const rand = ()=>{ seed = (seed * 1103515245 + 12345) & 0x7fffffff; return seed / 0x7fffffff; };
   let total = 0;
-  names.forEach(angle=>{
-    const v = views[angle];
+  jobs.forEach(job=>{
+    const angle = job.angle;
+    const v = job.v;
     const yawRad = FIXED_YAW[angle] * Math.PI / 180;
     const rot = composeRotationZYX(yawRad, 0, 0); // yaw만 — 사진별 포즈 미사용
     const positions = [];
@@ -9376,7 +9425,8 @@ function buildHairStrandsFromPaths(){
       let lastZ = null;
       for(let i=0;i<st.pts.length;i++){
         const p = st.pts[i];
-        const mx = (p.x - v.cx) * v.s;
+        const mxRaw = (p.x - v.cx) * v.s;
+        const mx = job.mirrored ? -mxRaw : mxRaw; // 거울 뷰는 x반전(그 방향에서 본 좌우가 맞도록)
         const my = yTop - (p.y - v.crownY) * v.s;
         const bi = bucketOfY(my);
         // 이 뷰 카메라 공간에서의 헐/두피 단면 반경(측면 뷰는 폭↔깊이 스왑)
@@ -9384,7 +9434,7 @@ function buildHairStrandsFromPaths(){
         const aD  = SIDE(angle) ? hullW[bi] : hullD[bi];
         const aHh = SIDE(angle) ? headHalf(my,'d') : headHalf(my,'w');
         const aDh = SIDE(angle) ? headHalf(my,'w') : headHalf(my,'d');
-        let mz, facing = 0;
+        let px = mx, mz, facing = 0;
         const u = aH > 1e-4 ? (mx/aH)*(mx/aH) : 2;
         if(u <= 1){
           const hullZ  = aD * Math.sqrt(1 - u);                    // 헐 바깥면 깊이
@@ -9392,13 +9442,25 @@ function buildHairStrandsFromPaths(){
           const scalpZ = uh <= 1 ? aDh * Math.sqrt(1 - uh) : 0;    // 두피면 깊이
           mz = scalpZ + (hullZ - scalpZ) * t;                      // 실측 두께 안에 층 배치
           facing = Math.sqrt(1 - u);                               // 카메라를 향한 정도(곡률 음영용)
+        } else if(headHalf(my,'w') > 1e-3){
+          // (2026-07-17) 단면 밖(u>1)이지만 아직 두상 높이 범위 안: 예전엔
+          // lastZ 유지/림 평면(z=0)이라 가장자리 가닥이 납작한 커튼으로
+          // 눌렸음. 반폭 초과분을 호길이로 환산해 타원 둘레를 따라 뒤쪽으로
+          // 감아 배치("타원처럼"). 림(θ=π/2)에서 x=aH, z=0이라 위 분기와
+          // 이음새 연속(림에선 scalpZ=hullZ=0이라 t와 무관하게 mz=0).
+          // θ 상한 0.85π — 반대편 뒤통수 중심을 뚫고 지나가는 것 방지.
+          const sgn = mx >= 0 ? 1 : -1;
+          const rEdge = Math.max(1e-3, (aH + aD) / 2);            // 근사 둘레 반경
+          const theta = Math.min(Math.PI * 0.85, Math.PI/2 + (Math.abs(mx) - aH) / rEdge);
+          px = sgn * aH * Math.sin(theta);
+          mz = aD * Math.cos(theta);
         } else if(lastZ !== null){
-          mz = lastZ;    // 헐 단면 밖(늘어짐): 마지막 깊이 유지
+          mz = lastZ;    // 두상 아래(늘어짐): 마지막 깊이 유지 — 목을 감지 않게
         } else {
-          mz = 0;        // 시작부터 밖(가장자리 뿌리): 림 평면
+          mz = 0;        // 시작부터 두상 밖(가장자리 뿌리): 림 평면
         }
         lastZ = mz;
-        const w3 = applyRotationTranspose3(rot, new THREE.Vector3(mx, my - CY, mz));
+        const w3 = applyRotationTranspose3(rot, new THREE.Vector3(px, my - CY, mz));
         w3.y += CY;
         // 4단계 음영: 곱(층 깊이) + 가산(바깥층·정면 곡면 하이라이트, 검은 머리 대응)
         const k = 0.55 + 0.45 * t;
@@ -9420,12 +9482,13 @@ function buildHairStrandsFromPaths(){
     geo.setAttribute('color', new THREE.BufferAttribute(new Float32Array(colors), 3));
     const mat = new THREE.LineBasicMaterial({ vertexColors: true });
     const lines = new THREE.LineSegments(geo, mat);
-    lines.name = 'strandLines-'+angle;
+    lines.name = 'strandLines-' + angle + (job.mirrored ? '-mirror' : '');
     lines.userData.fromPaths = true; // [진단용]
+    lines.userData.mirrored = job.mirrored; // [진단용] 실측 아님(맞은편 뷰 거울 채움)
     group.add(lines);
   });
-  console.log('[3D] 헐 기반 옮기기:', total, '가닥 (뷰별 캡처:',
-    Object.keys(state.strandPaths||{}).filter(a2=>state.strandPaths[a2]&&state.strandPaths[a2].strands.length).join(','), ')');
+  console.log('[3D] 헐 기반 옮기기:', total, '가닥 (실측 뷰:', names.join(','),
+    '/ 거울 채움:', jobs.filter(j=>j.mirrored).map(j=>j.angle).join(',') || '없음', ')');
   return total > 0 ? group : null;
 }
 
