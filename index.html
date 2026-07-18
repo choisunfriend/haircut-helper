@@ -1879,19 +1879,12 @@ async function extractHairMask(angle){
             }
           }
 
-          // ── hairEndY_small: 양끝 -1 열을 인접 유효값으로 보간 채우기 ──
-          // (forward pass)
-          let lastValidEnd = -1;
-          for(let x=0;x<w;x++){
-            if(hairEndY_small[x]>=0) lastValidEnd=hairEndY_small[x];
-            else if(lastValidEnd>=0) hairEndY_small[x]=lastValidEnd;
-          }
-          // (backward pass — 앞쪽 -1 채우기)
-          let firstValidEnd = -1;
-          for(let x=w-1;x>=0;x--){
-            if(hairEndY_small[x]>=0) firstValidEnd=hairEndY_small[x];
-            else if(firstValidEnd>=0) hairEndY_small[x]=firstValidEnd;
-          }
+          // ── hairEndY_small 정돈(정돈층 §6): 빈곳 보간 + 이상치 클램프 + 스무딩 ──
+          // 예전엔 forward/backward 보간만 수동으로 했고, 그 코드가 아래 가닥뿌리
+          // 보간과 복제돼 있었음 → cleanupLine1D 단일 출처로 흡수. 추가로 클램프/
+          // 스무딩이 모발끝선의 스파이크·톱니를 정돈해 "튀는 가닥/지저분한 끝선"을
+          // 줄인다(보간만 하던 부분은 값이 완전히 동일함을 Node 교차검증으로 확인).
+          cleanupLine1D(hairEndY_small);
           // scalpY_small은 보간하지 않음 — 두피 "시작점"은 실제 세그멘테이션 마스크가
           // 있는 컬럼에서만 나와야 함(옆 컬럼 값을 복사해 배경/천장 컬럼까지 가짜
           // 시작점을 만들면 그 자리에 가닥이 심어지는 문제가 있었음). hairEndY만
@@ -3982,6 +3975,108 @@ function traceStrandPath(ix, sy_img, targetLen_img, jitterSeed, env){
     return pts;
 }
 
+/* ════════════════════════════════════════
+   LINE CLEANUP (정돈층) — 1D 라인 정돈 단일 출처 (설계문서 §6)
+   대상: hairEndY/scalpY 처럼 "컬럼(x)별 y픽셀"인 1D 라인(-1 = 결측).
+   기존에 STEP10(computeScalpAndEndLines)과 가닥뿌리 보간 두 곳에 forward/
+   backward 보간이 복제돼 있던 것을 여기로 흡수(단일 출처, 복제 금지).
+   ⚠ 좌표계 경계: 이 헬퍼는 1D 라인 전용이다. 목/두상 밴드(phi·frac별 반경
+     배열: fillBandsWithNearestNeighbor / NECK_STEP_MAX)와 두상 세로반경
+     5퍼센타일 픽은 좌표계·자료구조·목적이 달라 여기로 묶지 않는다. 겉보기만
+     "라인 정돈"이라고 억지로 합치는 것은 colorForSection 통합 실수의 재현이다
+     (2단계 클램프는 NECK_STEP_MAX의 "개념"만 계승하고 코드는 공유 안 함).
+   4단계(설계문서): ①빈곳 보간 ②이상치 클램프 ③스무딩 ④(약)대칭.
+════════════════════════════════════════ */
+// ① 빈 곳 보간: -1 열을 인접 유효값으로 forward/backward 채움.
+//    (기존 두 곳의 보간 loop과 값이 완전히 동일함을 Node 교차검증으로 확인.)
+function fillLine1D(arr){
+  const n = arr.length;
+  let last = -1;
+  for(let i=0;i<n;i++){ if(arr[i]>=0) last=arr[i]; else if(last>=0) arr[i]=last; }
+  let first = -1;
+  for(let i=n-1;i>=0;i--){ if(arr[i]>=0) first=arr[i]; else if(first>=0) arr[i]=first; }
+  return arr;
+}
+// ② 이상치 클램프: 좌우 window 이웃 median 대비 maxDev 이상 튀면 눌러줌.
+//    median 기반이라 스파이크 하나에 안 휩쓸림. maxDev는 유효값 (p90-p10)*k로
+//    자동 스케일(해상도별 하드코딩 픽셀값 회피). 유효값<5면 손대지 않음(보수적).
+function clampLineOutliers1D(arr, opts){
+  const win = (opts&&opts.window)||3;
+  const k   = (opts&&opts.k)||0.35;
+  const n = arr.length;
+  const valid = [];
+  for(let i=0;i<n;i++) if(arr[i]>=0) valid.push(arr[i]);
+  if(valid.length < 5) return arr;
+  const sorted = valid.slice().sort((a,b)=>a-b);
+  const p10 = sorted[Math.floor(sorted.length*0.10)];
+  const p90 = sorted[Math.floor(sorted.length*0.90)];
+  const maxDev = Math.max(1e-6, (p90 - p10) * k);
+  const out = arr.slice();
+  const w = [];
+  for(let i=0;i<n;i++){
+    if(arr[i]<0) continue;
+    w.length=0;
+    for(let j=Math.max(0,i-win); j<=Math.min(n-1,i+win); j++){
+      if(j!==i && arr[j]>=0) w.push(arr[j]);
+    }
+    if(w.length<2) continue;
+    w.sort((a,b)=>a-b);
+    const med = w[Math.floor(w.length/2)];
+    const dev = arr[i]-med;
+    if(dev >  maxDev) out[i] = med + maxDev;
+    else if(dev < -maxDev) out[i] = med - maxDev;
+  }
+  for(let i=0;i<n;i++) arr[i]=out[i];
+  return arr;
+}
+// ③ 스무딩: 유효값 구간 가우시안 가중 이동평균(결측 -1은 제외해 경계로 안 끌어들임).
+//    선형 구간은 편향 없이 보존됨(Node 검증).
+function smoothLine1D(arr, opts){
+  const radius = (opts&&opts.radius)||2;
+  const n = arr.length;
+  const sigma = Math.max(0.5, radius/2);
+  const wts = [];
+  for(let d=-radius; d<=radius; d++) wts.push(Math.exp(-(d*d)/(2*sigma*sigma)));
+  const out = arr.slice();
+  for(let i=0;i<n;i++){
+    if(arr[i]<0) continue;
+    let acc=0, wsum=0;
+    for(let d=-radius; d<=radius; d++){
+      const j=i+d; if(j<0||j>=n) continue;
+      if(arr[j]<0) continue;
+      const wt=wts[d+radius]; acc+=arr[j]*wt; wsum+=wt;
+    }
+    if(wsum>0) out[i]=acc/wsum;
+  }
+  for(let i=0;i<n;i++) arr[i]=out[i];
+  return arr;
+}
+// ④ 좌우 대칭 보정(약): 대칭 뷰에서 한쪽만 튀면 반대쪽 미러값과 약하게 평균.
+//    개성 뭉갤 위험 커서 기본 비활성(blend=0). MVP 단계 호출부에선 켜지 않는다.
+function symmetrize1D(arr, opts){
+  const blend = (opts&&opts.blend)||0;
+  if(blend<=0) return arr;
+  const n=arr.length;
+  const out=arr.slice();
+  for(let i=0;i<n;i++){
+    const m=n-1-i;
+    if(arr[i]>=0 && arr[m]>=0) out[i]=arr[i]*(1-blend)+arr[m]*blend;
+  }
+  for(let i=0;i<n;i++) arr[i]=out[i];
+  return arr;
+}
+// 편의 래퍼: 4단계 파이프라인. opts로 단계 on/off(기본 fill+clamp+smooth, 대칭 off).
+//   예) cleanupLine1D(arr)                       → 보간+클램프+스무딩
+//       cleanupLine1D(arr,{clamp:false,smooth:false}) → 보간만(기존 동작과 동일)
+function cleanupLine1D(arr, opts){
+  opts = opts || {};
+  if(opts.fill  !== false) fillLine1D(arr);
+  if(opts.clamp !== false) clampLineOutliers1D(arr, opts.clampOpts);
+  if(opts.smooth!== false) smoothLine1D(arr, opts.smoothOpts);
+  if(opts.symmetryBlend) symmetrize1D(arr, {blend:opts.symmetryBlend});
+  return arr;
+}
+
 function drawHairStrands(ctx, fit, scalpY, hairEndY, maskW, maskH, hairCanvas, opts){
   // 머리색 오버라이드 — 전역 FORCED_HAIR_COLOR(파일 상단, STYLES 위 선언)로
   // 통일됨(기존 지역 스위치 FORCE_BLACK_HAIR를 승격). 실측 색(평균색/섹션색/
@@ -4055,22 +4150,17 @@ function drawHairStrands(ctx, fit, scalpY, hairEndY, maskW, maskH, hairCanvas, o
   }
   if(validCols.length === 0) return;
 
-  // ── 보간: validCols 안에서 hairEndY/scalpY -1인 열을 인접 유효값으로 채움 ──
+  // ── 보간+정돈(정돈층 §6): 위 STEP10과 복제였던 forward/backward 보간을
+  //   cleanupLine1D 단일 출처로 통합.
+  //   · iScalpY  = 보간만(clamp/smooth 끔). 가닥 뿌리를 심는 라인이라 위치를
+  //     흔들면 안 됨 → 기존 동작을 그대로 보존(Node 교차검증으로 값 동일 확인).
+  //   · iHairEndY = 4단계(보간+클램프+스무딩). 모발끝선은 정돈해도 뿌리에 영향
+  //     없고, 튀는 끝가닥/톱니를 줄여준다.
   const iScalpY   = new Float32Array(maskW).fill(-1);
   const iHairEndY = new Float32Array(maskW).fill(-1);
   for(let x=0;x<maskW;x++){ iScalpY[x]=scalpY[x]; iHairEndY[x]=hairEndY[x]; }
-  // forward pass
-  let lS=-1, lE=-1;
-  for(let x=0;x<maskW;x++){
-    if(iScalpY[x]>=0)   lS=iScalpY[x];   else if(lS>=0) iScalpY[x]=lS;
-    if(iHairEndY[x]>=0) lE=iHairEndY[x]; else if(lE>=0) iHairEndY[x]=lE;
-  }
-  // backward pass
-  let fS=-1, fE=-1;
-  for(let x=maskW-1;x>=0;x--){
-    if(iScalpY[x]>=0)   fS=iScalpY[x];   else if(fS>=0) iScalpY[x]=fS;
-    if(iHairEndY[x]>=0) fE=iHairEndY[x]; else if(fE>=0) iHairEndY[x]=fE;
-  }
+  cleanupLine1D(iScalpY, {clamp:false, smooth:false}); // 보간만 = 기존과 동일
+  cleanupLine1D(iHairEndY);                            // 보간+클램프+스무딩
 
   // curl 방향 기준으로 쓰이던 마스크 수평 중심(maskCX) 계산은 더 이상 사용되지 않아 제거됨
 
