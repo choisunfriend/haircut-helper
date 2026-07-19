@@ -210,6 +210,29 @@
   다음 목표(사용자 기록): 목 길이 조정, 얼굴 2D 사진 대조로 실물 근접도 향상.
   검은얼룩 원인이 법선 튐으로 확정되면 측면보정 스무딩(인접 정점 z 평활)이
   검은얼룩+결 산만함을 동시에 완화할 후보.
+
+  ── 2026-07-19 (계속) 얼굴 얼룩 원인 확정 + 2쌍 대조 깊이 보정 ──
+  실기기 [얼굴 법선] 로그: 삼각형 882개 중 뒤집힘 19개(2%) · 변z차 최대 0.354 ·
+  큰단차(>0.15) 147개(17%). → 얼룩은 "면 뒤집힘(2%, 부차적)"이 아니라 "얼굴
+  표면 우글거림(z 급단차 17%)"이 주범으로 확정. 굴곡면이 조명 각도에 따라
+  검게/희게(지난번 검정→이번 하양은 조명 세기 차이) 반응.
+  근본 원인: 측면 깊이 보정(v10 전체정점)에서 편측(한 측면만 잡힌) 정점이
+  좌우 대조 없이 그대로 적용돼 인접 정점끼리 z가 튐.
+  수정 방식(사용자 설계 "3개를 한꺼번에 맞추지 말고 2개씩 2번"):
+  정면 추정 z를 공통 기준으로 (정면+좌), (정면+우) 두 쌍의 깊이 보정량을
+  각각 내고 대조 —
+    · 양쪽 다 있고 |차| ≤ 0.5*ELL_C → 신뢰(가중평균, 강하게)
+    · 양쪽 있는데 불일치 → 한쪽 오탐 → 기각(정면 유지, 안 튐)
+    · 편측(1장만) → 대조 상대 없음 → 절반만 적용(오탐 피해 최소화)
+  스무딩으로 뭉개는 대신 실측끼리 교차검증 — 사용자 판단이 정확했음.
+  진단에 양쪽일치/편측/기각 카운트 추가([얼굴 측면보정] 로그 + 화면 진단수치).
+  하네스 검증: 정상→반영, 편측→절반, 오탐(좌우 불일치)→기각 정상 작동.
+  ⚠ 실기기 재확인 필요 — 기각/편측 비율이 화면 진단수치에 뜨므로, 얼룩이
+  줄었는지 + 큰단차 삼각형 수가 감소했는지 [얼굴 법선] 재확인.
+
+  ── 화면 진단수치 (2026-07-19) ──
+  3D 화면 좌상단 "진단수치" 버튼 → 두상 비율·뷰기여·얼굴깊이·얼굴법선·
+  측면보정·가닥수를 화면에 표시(폰에서 F12 없이 확인). _diag3D에 수집.
 -->
 
 <!DOCTYPE html>
@@ -701,6 +724,8 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:22px;heigh
         <div class="preview-tag" id="model3dTag">범용 3D 두상 · 확정 스타일 적용</div>
         <!-- [진단용] 가닥 뿌리 기준면(가상 타원체) 토글 (2026-07-14 추가) — 헤어 위치 문제 원인 분리용 -->
         <button class="debug-btn mask-debug-btn" id="strandDebugToggle" onclick="toggleStrandDebug()">기준면 보기</button>
+        <button class="debug-btn" id="diag3dToggle" onclick="toggleDiag3D()" style="right:auto;left:8px;top:8px;">진단수치</button>
+        <div id="diag3dBox" style="display:none;position:absolute;left:8px;top:40px;right:8px;background:rgba(0,0,0,0.85);color:#0f0;font-family:monospace;font-size:11px;padding:8px;border-radius:6px;white-space:pre-wrap;z-index:50;max-height:240px;overflow:auto;"></div>
         <div class="model3d-hint" style="position:absolute;bottom:10px;left:50%;transform:translateX(-50%);font-size:11px;color:var(--text-muted);background:rgba(0,0,0,0.4);padding:4px 10px;border-radius:10px;">드래그해서 회전</div>
       </div>
       <div style="display:flex;gap:8px;padding:10px 14px 14px;flex-shrink:0;">
@@ -4837,6 +4862,25 @@ const HEAD_MESH_SOURCE = {
 };
 
 let model3D = null; // { renderer, scene, camera, headGroup, hairMesh, animId, initialized, container }
+// [진단용] 3D 생성 중 수집되는 수치들 — 화면 진단수치 박스(폰에서 F12 없이 확인)
+let _diag3D = {};
+function toggleDiag3D(){
+  const box = document.getElementById('diag3dBox');
+  if(!box) return;
+  const show = box.style.display === 'none';
+  box.style.display = show ? 'block' : 'none';
+  if(!show) return;
+  const d = _diag3D;
+  const lines = [];
+  if(d.ellipsoid) lines.push('[두상] ' + d.ellipsoid);
+  if(d.bands) lines.push('[밴드] ' + d.bands);
+  if(d.viewContrib) lines.push('[뷰기여] ' + d.viewContrib);
+  if(d.faceDepth) lines.push('[얼굴깊이] ' + d.faceDepth);
+  if(d.faceNormal) lines.push('[얼굴법선] ' + d.faceNormal);
+  if(d.profileHit) lines.push('[측면보정] ' + d.profileHit);
+  if(d.viewStrands) lines.push('[가닥수] ' + d.viewStrands);
+  box.textContent = lines.length ? lines.join('\n\n') : '(아직 3D 생성 전 — 3D 화면 진입 후 다시 열기)';
+}
 // setupModel3DScreen()이 호출될 때마다 +1. 사진 데칼은 비동기로 로드되므로,
 // 로드 도중 화면을 벗어났다 다시 들어와 headGroup이 통째로 재구성된 경우
 // 오래된 데칼 Promise가 새 headGroup에 잘못 붙는 걸 이 번호로 막는다.
@@ -5215,6 +5259,7 @@ async function buildRealFaceMesh(faceMetrics){
   // 반환: 정점 idx → deltaZ 맵(Float32Array, NaN=측면 실측 없음→front 유지).
   const USE_FULL_PROFILE_DEPTH = true; // 문제 생기면 false로 → 기존 3앵커 방식
   let _fullProfileHitCount = 0; // [진단용] 측면 실측이 실제 적용된 정점 수
+  let _profileBoth = 0, _profileSingle = 0, _profileRejected = 0; // [진단용] 양쪽일치/편측/기각
   function computeFullProfileDepthMap(){
     const map = new Float32Array(vertCount).fill(NaN);
     const sides = ['left','right'].map(angle=>{
@@ -5234,24 +5279,40 @@ async function buildRealFaceMesh(faceMetrics){
       const frontBlend = Math.max(0, 1 - (dx*dx+dy*dy));
       const frontEstimatedZ = ellipsoidZ(localX, yLocal) + frontBlend * (Z_SIGN * p.z * projector.bX * Z_DEPTH_SCALE);
 
-      const perView = [];
+      // ── (2026-07-19) 2쌍 대조 방식 — 사용자 설계: "3개를 한꺼번에 맞추지 말고
+      //    2개씩 2번 돌려라". 정면 추정 z를 공통 기준축으로, 좌·우 측면이 각각
+      //    정면과 짝을 이뤄 깊이 보정량(deltaZ)을 낸다. 두 쌍(정면+좌, 정면+우)의
+      //    결과를 대조:
+      //    · 양쪽 다 있고 일치 → 신뢰(평균, 강하게 적용)
+      //    · 양쪽 다 있는데 불일치 → 한쪽 측면 오탐 → 기각(정면 유지)
+      //    · 한쪽만(편측) → 대조 상대 없음 → 약하게만 적용(0.5배)
+      //   편측 오탐이 검증 없이 튀어 얼굴이 우글거리던 문제(변z차 큰단차 17%)의
+      //   근본 수정 — 스무딩으로 뭉개는 대신 실측끼리 교차검증.
+      const pairDeltas = []; // 각 측면이 정면 대비 제안하는 깊이 보정량
       for(const s of sides){
         const sidePt = s.raw[i];
         if(!sidePt) continue;
         const world = projectImagePointToHead(s.angle, sidePt.x, sidePt.y, widthFactor, heightFactor);
-        if(!world) continue; // 타원 밖 → 이 정점은 이 뷰서 실측 불가
-        perView.push({ z: world.z, confidence: s.confidence });
+        if(!world) continue; // 타원 밖 → 이 뷰선 실측 불가
+        pairDeltas.push({ angle:s.angle, delta: world.z - frontEstimatedZ, confidence: s.confidence });
       }
-      if(!perView.length) continue; // 측면 실측 없음 → front 유지(NaN)
+      if(!pairDeltas.length) continue; // 측면 실측 없음 → front 유지(NaN)
 
-      if(perView.length === 2){
-        const [a,b] = perView;
-        const disagree = Math.abs(a.z - b.z) > 1.2*ELL_C || (a.z*b.z < 0 && Math.abs(a.z)>0.15*ELL_C && Math.abs(b.z)>0.15*ELL_C);
-        if(disagree) continue; // 좌/우 모순 → 안 믿음
+      let appliedDelta;
+      if(pairDeltas.length === 2){
+        const [a, b] = pairDeltas;
+        // 두 쌍이 크게 어긋나면(한쪽 오탐) 기각 — 정면 추정 유지
+        if(Math.abs(a.delta - b.delta) > 0.5*ELL_C){ _profileRejected++; continue; }
+        // 일치 → 신뢰도 가중 평균(강하게)
+        const wS = a.confidence + b.confidence;
+        appliedDelta = (a.delta*a.confidence + b.delta*b.confidence) / wS;
+        _profileBoth++;
+      } else {
+        // 편측(1장만) → 대조 상대 없음 → 절반만 적용(오탐 시 피해 최소화)
+        appliedDelta = pairDeltas[0].delta * 0.5;
+        _profileSingle++;
       }
-      const wSum = perView.reduce((s,v)=>s+v.confidence, 0);
-      const zSum = perView.reduce((s,v)=>s+v.z*v.confidence, 0);
-      map[i] = clamp(zSum/wSum - frontEstimatedZ, -0.6*ELL_C, 0.6*ELL_C);
+      map[i] = clamp(appliedDelta, -0.6*ELL_C, 0.6*ELL_C);
       _fullProfileHitCount++;
     }
     return map;
@@ -5360,8 +5421,10 @@ async function buildRealFaceMesh(faceMetrics){
       if(z<zMin) zMin=z; if(z>zMax) zMax=z;
     }
     const zAt = idx => positions[idx*3+2].toFixed(3);
+    _diag3D.faceDepth = `z범위=${(zMax-zMin).toFixed(3)} 코끝${zAt(1)} 턱${zAt(152)} 이마${zAt(10)}`;
     console.log(`[얼굴 입체감] z범위=${(zMax-zMin).toFixed(3)} (min${zMin.toFixed(3)}~max${zMax.toFixed(3)}) | 코끝=${zAt(1)} 턱=${zAt(152)} 이마=${zAt(10)}`);
-    console.log(`[얼굴 측면보정] 전체정점 실측=${USE_FULL_PROFILE_DEPTH ? '켜짐' : '꺼짐(3앵커만)'} | 측면 실측 기여 정점=${_fullProfileHitCount||0}개`);
+    _diag3D.profileHit = `기여${_fullProfileHitCount||0}개 (양쪽일치${_profileBoth} 편측${_profileSingle} 기각${_profileRejected})`;
+    console.log(`[얼굴 측면보정] 기여 ${_fullProfileHitCount||0}개 | 양쪽일치 ${_profileBoth} · 편측 ${_profileSingle} · 기각 ${_profileRejected}`);
   }
 
   const geo = new THREE.BufferGeometry();
@@ -5390,6 +5453,7 @@ async function buildRealFaceMesh(faceMetrics){
       if(e>maxEdgeDz) maxEdgeDz=e;
       if(e>0.15) bigEdges++;
     }
+    _diag3D.faceNormal = `삼각형${tri}개 뒤집힘${flipped}(${(100*flipped/tri).toFixed(0)}%) 변z차최대${maxEdgeDz.toFixed(2)} 큰단차${bigEdges}개`;
     console.log(`[얼굴 법선] 삼각형 ${tri}개 중 뒤집힘 ${flipped}개(${(100*flipped/tri).toFixed(0)}%) | 변z차 최대=${maxEdgeDz.toFixed(3)} 큰단차(>0.15) ${bigEdges}개`);
     console.log(`  → 뒤집힘 많으면(>5%) 검은얼룩은 법선 문제(측면보정 z튐). 0에 가까우면 텍스처/조명 문제.`);
   }
@@ -5680,15 +5744,18 @@ function getHeadEllipsoid(){
     _headEllipsoidLogged = true;
     const ratio = ell.c / ell.a;
     const verdict = ratio >= 1.05 ? '정상(깊이>폭)' : ratio >= 0.9 ? '약간 넙적' : '원반(넙적)';
+    _diag3D.ellipsoid = `폭${ell.a.toFixed(2)} 세로${ell.b.toFixed(2)} 깊이${ell.c.toFixed(2)} | 깊이/폭=${ratio.toFixed(2)} ${verdict}`;
     console.log(`[두상 기준면] 폭(a)=${ell.a.toFixed(3)} 세로(b)=${ell.b.toFixed(3)} 깊이(c)=${ell.c.toFixed(3)} | 깊이/폭=${ratio.toFixed(2)} → ${verdict}`);
     const bands = computeHeadCrossSections();
     const src = bands.map(b2 => `phi${b2.phi.toFixed(2)}:W${(b2.halfWidth||0).toFixed(2)}/D${(b2.halfDepth||0).toFixed(2)}`).join(' ');
+    _diag3D.bands = src;
     console.log(`[두상 밴드별 실측] ${src}`);
     // 어느 뷰가 실측에 기여했는지(각도 역투영이 측면을 제대로 잡았는지 확인)
     const contrib = ['front','left','right','back'].map(a=>{
       const c2 = getViewPoseConfidence(a), y = getViewYawDeg(a);
       return `${a}(yaw${y.toFixed(0)}°,신뢰${c2})`;
     }).join(' ');
+    _diag3D.viewContrib = contrib;
     console.log(`[뷰 기여] ${contrib}`);
   }
   return ell;
@@ -6944,6 +7011,7 @@ function buildHairStrandsFromPaths(){
   });
   console.log('[3D] 헐 기반 옮기기:', total, '가닥 (실측 뷰:', names.join(','),
     '/ 거울 채움:', jobs.filter(j=>j.mirrored).map(j=>j.angle).join(',') || '없음', ')');
+  _diag3D.viewStrands = JSON.stringify(perViewCount);
   console.log('[3D 뷰별 가닥수]', JSON.stringify(perViewCount), '— 후면이 다른 뷰보다 훨씬 많으면 과밀(숱 과함)');
   return total > 0 ? group : null;
 }
@@ -7091,6 +7159,7 @@ function frameCameraToHead(){
 async function setupModel3DScreen(){
   const container = document.getElementById('model3dViewport');
   if(!container) return;
+  _diag3D = {}; // [진단용] 이번 3D 생성의 수치 새로 수집
 
   if(!model3D || !model3D.initialized){
     initModel3DRenderer(container);
