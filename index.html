@@ -191,6 +191,25 @@
   비율에 거의 영향 없음(후면은 폭 관측만 추가). 따라서 3D가 넙적해 보이면
   후면 탓이 아니라 측면 마스크 노이즈이거나, 후면 부재로 3D 뒤통수가 얇아
   넙적해 "보이는" 것 — 실제 콘솔 로그로 판별 필요.
+
+  ── 2026-07-19 (계속) 후면 촬영 결과 관찰 + 진단 로그 추가 ──
+  후면까지 4장 촬영 성공. 관찰된 문제(우선순위순):
+  (1) 얼굴에 검은 얼룩 — 정면/측면 3D에서 얼굴 일부가 까맣게 렌더됨.
+      가설: 텍스처엔 검은색을 넣는 코드가 없음(정면 사진 그대로 CanvasTexture).
+      조명도 정상(key0.9+fill0.35+ambient0.55). → 측면 깊이 보정(v10 전체정점
+      확장)으로 인접 정점 z가 들쭉날쭉해지면 삼각형 면이 접혀 법선이 뒤집히고,
+      뒤집힌 면이 광원을 등져 검게 렌더되는 것으로 의심.
+  (2) 후면 결방향 산만 + 숱 과함 + 듬성듬성 빈 곳(흰 바탕 비침).
+  진단 로그 추가(확인 먼저, 수정은 다음):
+  · [얼굴 법선] buildRealFaceMesh에서 삼각형 기하 법선 z<0(뒤집힘) 비율 +
+    인접 정점 변 z차 최대·큰단차(>0.15) 삼각형 수. 뒤집힘>5%면 검은얼룩=
+    법선 문제(측면보정 z튐)로 확정, 0에 가까우면 텍스처/조명 문제.
+  · [3D 뷰별 가닥수] buildHairStrandsFromPaths에서 뷰별 3D 가닥 수 —
+    후면이 유독 많으면 과밀(숱 과함) 확인.
+  하네스로 진단 로직 검증: z튐 삼각형에서 큰단차 정상 검출.
+  다음 목표(사용자 기록): 목 길이 조정, 얼굴 2D 사진 대조로 실물 근접도 향상.
+  검은얼룩 원인이 법선 튐으로 확정되면 측면보정 스무딩(인접 정점 z 평활)이
+  검은얼룩+결 산만함을 동시에 완화할 후보.
 -->
 
 <!DOCTYPE html>
@@ -5351,6 +5370,30 @@ async function buildRealFaceMesh(faceMetrics){
   geo.setIndex(new THREE.BufferAttribute(new Uint32Array(filteredTriV), 1));
   geo.computeVertexNormals();
 
+  // [진단용] 얼굴 검은 얼룩 원인 판별 — 삼각형 법선 뒤집힘 + 인접 z 튐.
+  // 카메라는 +z에서 보므로 얼굴 앞면 삼각형의 기하 법선 z는 양수여야 정상.
+  // 음수(뒤집힘)면 그 면이 광원을 등져 검게 렌더됨. 측면 깊이 보정으로
+  // 인접 정점 z가 들쭉날쭉하면 면이 접혀 뒤집힘 → 검은 얼룩.
+  {
+    let flipped=0, tri=0, maxEdgeDz=0, bigEdges=0;
+    for(let t=0;t<filteredTriV.length;t+=3){
+      const a=filteredTriV[t], b=filteredTriV[t+1], c=filteredTriV[t+2];
+      const ax=positions[a*3],ay=positions[a*3+1],az=positions[a*3+2];
+      const bx=positions[b*3],by=positions[b*3+1],bz=positions[b*3+2];
+      const cx=positions[c*3],cy=positions[c*3+1],cz=positions[c*3+2];
+      // 면 법선 z = (b-a)×(c-a) 의 z성분
+      const nz=(bx-ax)*(cy-ay)-(by-ay)*(cx-ax);
+      tri++;
+      if(nz < 0) flipped++;
+      // 삼각형 세 변의 z차 최대값(급격한 깊이 단차 = 접힘 유발)
+      const e=Math.max(Math.abs(az-bz),Math.abs(bz-cz),Math.abs(cz-az));
+      if(e>maxEdgeDz) maxEdgeDz=e;
+      if(e>0.15) bigEdges++;
+    }
+    console.log(`[얼굴 법선] 삼각형 ${tri}개 중 뒤집힘 ${flipped}개(${(100*flipped/tri).toFixed(0)}%) | 변z차 최대=${maxEdgeDz.toFixed(3)} 큰단차(>0.15) ${bigEdges}개`);
+    console.log(`  → 뒤집힘 많으면(>5%) 검은얼룩은 법선 문제(측면보정 z튐). 0에 가까우면 텍스처/조명 문제.`);
+  }
+
   const MAX_DIM = 1024;
   let dw=img.width, dh=img.height;
   if(Math.max(dw,dh) > MAX_DIM){ const s=MAX_DIM/Math.max(dw,dh); dw=Math.round(dw*s); dh=Math.round(dh*s); }
@@ -6807,9 +6850,11 @@ function buildHairStrandsFromPaths(){
   let seed = 20260717;        // 결정적 난수 — 재구성해도 같은 배치(디버그 재현성)
   const rand = ()=>{ seed = (seed * 1103515245 + 12345) & 0x7fffffff; return seed / 0x7fffffff; };
   let total = 0;
+  const perViewCount = {}; // [진단용] 뷰별 3D 가닥 수 — 후면 과밀 여부 확인
   jobs.forEach(job=>{
     const angle = job.angle;
     const v = job.v;
+    let viewStrands = 0;
     // 실측 포즈 회전 — projectImagePointToHead와 동일한 관례(카메라 공간
     // 좌표에 역회전 R^T 적용, "우산 헤어" 버그 수정 때 수치 검증된 방향).
     const rot = composeRotationZYX(job.yaw, job.pitch, job.roll);
@@ -6883,7 +6928,9 @@ function buildHairStrandsFromPaths(){
         prev = w3; prevR = r; prevG = g; prevB = bl;
       }
       total++;
+      viewStrands++;
     }
+    perViewCount[angle + (job.mirrored ? '(거울)' : '')] = viewStrands;
     if(!positions.length) return;
     const geo = new THREE.BufferGeometry();
     geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(positions), 3));
@@ -6897,6 +6944,7 @@ function buildHairStrandsFromPaths(){
   });
   console.log('[3D] 헐 기반 옮기기:', total, '가닥 (실측 뷰:', names.join(','),
     '/ 거울 채움:', jobs.filter(j=>j.mirrored).map(j=>j.angle).join(',') || '없음', ')');
+  console.log('[3D 뷰별 가닥수]', JSON.stringify(perViewCount), '— 후면이 다른 뷰보다 훨씬 많으면 과밀(숱 과함)');
   return total > 0 ? group : null;
 }
 
