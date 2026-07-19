@@ -175,6 +175,22 @@
   ⚠ 이 수정은 세그멘테이션(extractHairMask)을 전혀 안 건드림 — 정면
   세그멘테이션 이상(v10 관찰)과는 독립. rHead=0.82는 성인 두상 깊이/폭
   근사 초기가정(1차 W 폴백용)이라 실측이 있으면 안 쓰임. 실기기 재확인 필요.
+
+  ── 2026-07-19 (계속) 실기기 검증 + 진단 로그 추가 ──
+  실기기 결과: (1) 정면 세그멘테이션 정상 복구 — 지난 이상은 고시원 조명/각도
+  탓(코드 무관, MediaPipe 오분류)으로 확정. (2) 얼굴이 "완전 평평하진 않은 듯"
+  (측면 깊이 통합 효과 있는 것으로 보이나 눈짐작). (3) 후면 미촬영으로 3D
+  불완전.
+  수치 확인용 콘솔 진단 3종 추가(모두 [진단용], 1회 출력):
+  · [두상 기준면] getHeadEllipsoid에서 폭a/세로b/깊이c + 깊이/폭 비율 + 판정
+    (≥1.05 정상 / 0.9~ 약간넙적 / <0.9 원반). 밴드별 W/D, 뷰별 기여(yaw·신뢰도)도.
+  · [얼굴 입체감] buildRealFaceMesh에서 경계 안 정점 z범위 + 코끝/턱/이마 개별 z
+    + 측면 실측 기여 정점 수(_fullProfileHitCount).
+  하네스 확인: 후면 없이 3장(정면+좌31+우-25)만으로도 두상 깊이/폭 복원
+  1.24(4장 1.25, 정답 1.25) — 깊이는 측면이 결정하므로 후면 부재는 깊이/폭
+  비율에 거의 영향 없음(후면은 폭 관측만 추가). 따라서 3D가 넙적해 보이면
+  후면 탓이 아니라 측면 마스크 노이즈이거나, 후면 부재로 3D 뒤통수가 얇아
+  넙적해 "보이는" 것 — 실제 콘솔 로그로 판별 필요.
 -->
 
 <!DOCTYPE html>
@@ -5179,6 +5195,7 @@ async function buildRealFaceMesh(faceMetrics){
   // 정점은 그 값을 직접 쓰고 없는 정점만 front로 폴백 — 확산 겹침이 없다.
   // 반환: 정점 idx → deltaZ 맵(Float32Array, NaN=측면 실측 없음→front 유지).
   const USE_FULL_PROFILE_DEPTH = true; // 문제 생기면 false로 → 기존 3앵커 방식
+  let _fullProfileHitCount = 0; // [진단용] 측면 실측이 실제 적용된 정점 수
   function computeFullProfileDepthMap(){
     const map = new Float32Array(vertCount).fill(NaN);
     const sides = ['left','right'].map(angle=>{
@@ -5216,6 +5233,7 @@ async function buildRealFaceMesh(faceMetrics){
       const wSum = perView.reduce((s,v)=>s+v.confidence, 0);
       const zSum = perView.reduce((s,v)=>s+v.z*v.confidence, 0);
       map[i] = clamp(zSum/wSum - frontEstimatedZ, -0.6*ELL_C, 0.6*ELL_C);
+      _fullProfileHitCount++;
     }
     return map;
   }
@@ -5311,6 +5329,20 @@ async function buildRealFaceMesh(faceMetrics){
     if(inFaceBound(a) && inFaceBound(b) && inFaceBound(c)){
       filteredTriV.push(a,b,c);
     }
+  }
+
+  // [진단용] 얼굴 입체감 수치 — 경계 안(inFaceBound) 정점들의 z 범위.
+  // 평평하면 zRange가 작고, 입체적이면 큼. 코끝(1)·턱(152)·이마(10) 개별 z도.
+  {
+    let zMin=Infinity, zMax=-Infinity;
+    for(let i=0;i<vertCount;i++){
+      if(!inFaceBound(i)) continue;
+      const z = positions[i*3+2];
+      if(z<zMin) zMin=z; if(z>zMax) zMax=z;
+    }
+    const zAt = idx => positions[idx*3+2].toFixed(3);
+    console.log(`[얼굴 입체감] z범위=${(zMax-zMin).toFixed(3)} (min${zMin.toFixed(3)}~max${zMax.toFixed(3)}) | 코끝=${zAt(1)} 턱=${zAt(152)} 이마=${zAt(10)}`);
+    console.log(`[얼굴 측면보정] 전체정점 실측=${USE_FULL_PROFILE_DEPTH ? '켜짐' : '꺼짐(3앵커만)'} | 측면 실측 기여 정점=${_fullProfileHitCount||0}개`);
   }
 
   const geo = new THREE.BufferGeometry();
@@ -5595,9 +5627,28 @@ function computeHeadVerticalRadius(){
 //   ※ 주석에 "projectImagePointToHead와 동일식"이라 적어두고 손으로 맞추던
 //     상태였음 — 한 곳만 바뀌면 헤어/얼굴/두상이 서로 다른 두상을 기준으로
 //     서게 되는 구조라 통합.
+let _headEllipsoidLogged = false;
 function getHeadEllipsoid(){
   const eq = interpolateHeadCrossSection(Math.PI/2);
-  return { a: Math.max(0.2, eq.halfWidth), b: computeHeadVerticalRadius(), c: Math.max(0.15, eq.halfDepth) };
+  const ell = { a: Math.max(0.2, eq.halfWidth), b: computeHeadVerticalRadius(), c: Math.max(0.15, eq.halfDepth) };
+  // [진단용] 두상 넙적도 수치 — 깊이/폭 비율이 핵심. 사람 머리통은 대략
+  // 1.1~1.3(깊이가 폭보다 큼). 1.0 미만이면 원반(넙적). 1회만 출력.
+  if(!_headEllipsoidLogged){
+    _headEllipsoidLogged = true;
+    const ratio = ell.c / ell.a;
+    const verdict = ratio >= 1.05 ? '정상(깊이>폭)' : ratio >= 0.9 ? '약간 넙적' : '원반(넙적)';
+    console.log(`[두상 기준면] 폭(a)=${ell.a.toFixed(3)} 세로(b)=${ell.b.toFixed(3)} 깊이(c)=${ell.c.toFixed(3)} | 깊이/폭=${ratio.toFixed(2)} → ${verdict}`);
+    const bands = computeHeadCrossSections();
+    const src = bands.map(b2 => `phi${b2.phi.toFixed(2)}:W${(b2.halfWidth||0).toFixed(2)}/D${(b2.halfDepth||0).toFixed(2)}`).join(' ');
+    console.log(`[두상 밴드별 실측] ${src}`);
+    // 어느 뷰가 실측에 기여했는지(각도 역투영이 측면을 제대로 잡았는지 확인)
+    const contrib = ['front','left','right','back'].map(a=>{
+      const c2 = getViewPoseConfidence(a), y = getViewYawDeg(a);
+      return `${a}(yaw${y.toFixed(0)}°,신뢰${c2})`;
+    }).join(' ');
+    console.log(`[뷰 기여] ${contrib}`);
+  }
+  return ell;
 }
 
 // headPhiToMeshY(): phi(두상 로컬 극각) → 메쉬 Y. 두상 돔 표면의 Y공식으로,
@@ -7117,6 +7168,7 @@ function startNewCustomer(){
   state.aiOutfitRecommendation=null; // (3단계) 의상 추천 캐시도 초기화
   _headCrossSectionCache = null; // 두상 실측 단면(Shape-from-Silhouette) 캐시도 새 고객마다 초기화
   _headVerticalRadiusCache = null; // 두상 세로 반지름 실측 캐시도 새 고객마다 초기화
+  _headEllipsoidLogged = false; // [진단용] 두상 넙적도 로그도 새 고객마다 다시 1회 출력
   ANGLES.forEach(a=>{state.shots[a]=null;state.hairCanvases[a]=null;state.hairMasks[a]=null;state.baseCanvases[a]=null;});
   state.landmarks = {};
   state.captureLmStatus = {}; // 촬영 직후 랜드마크 감지 배지 상태도 초기화
