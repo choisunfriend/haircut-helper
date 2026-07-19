@@ -67,11 +67,12 @@
     pnp=실측 PnP(각도=poseYawDeg, 신뢰도 1.0), approx=랜드마크만 있음
     (각도=yaw*90, 0.6), none=랜드마크 없음(각도=ASSUMED_YAW_DEG 슬롯 기본, 0.25).
   · prepareViewMeasurement(angle, maskField, metrics) / meshYToRow(view, meshY)
-    / accumulateAllViews(fn) — computeHeadCrossSections(reasonMask)와
-    computeNeckCrossSections(personMask)의 공통 뷰 실측 골격.
-  · fillBandsWithNearestNeighbor(...) — 밴드 실측 결측을 최근접 실측 밴드로
-    승계(두 CrossSections 공용). "실측 없으면 지어내지 말고 가장 가까운 실측"
-    이라는 원칙 (1)의 구현.
+    — 뷰별 실측 공통 골격(computeHeadCrossSections는 reasonMask, computeNeck은
+    personMask). prepareViewMeasurement는 두 곳 다 씀.
+  · accumulateAllViews(fn) / fillBandsWithNearestNeighbor(...) — 이제
+    computeNeckCrossSections 전용(두상은 2026-07-19 각도 역투영으로 바뀌며
+    폭/깊이 분리·결측승계 방식에서 이탈). fillBands는 "실측 없으면 지어내지
+    말고 가장 가까운 실측" 원칙 (1)의 구현.
   · makeColumnResolver(compute) — drawHairStrands의 컬럼별 값 리졸버 팩토리
     (lengthRatioFor/curlMultFor/frontDirBiasFor 공통 캐시+섹션해석 골격).
     ※ colorForSection은 제외 — 겉보기만 같고 섹션 판정 분기가 실제로 다름.
@@ -121,6 +122,59 @@
   리졸버 3개·Claude API 2개·밴드 클로징 2개 등 → 단일 출처), 죽은 코드 제거
   (버전별 누적분 포함), 개발로그 2679줄→압축(삭제된 함수 가리키는 히스토리
   걷어냄). 전 단계 회귀 검증으로 3D/2D 출력 해시 완전 일치(동작 무변경).
+
+  ── 2026-07-19 얼굴 메쉬 측면 깊이 통합(평평한 얼굴 개선) ──
+  사용자 지적: outputFacialTransformationMatrix(실측 회전)를 헤어엔 4장 전부
+  적용하면서 얼굴은 front 단안 z만 쓰고 측면 실측은 코·턱·이마 3점에만 썼음.
+  "안 쓸 거면 헤어처럼 전체를 같은 방식으로 통합하면 연결부위 문제가 없다."
+  진단으로 확인한 사실: (1) front 얼굴에 실측 회전을 그냥 걸면 pitch가 코 같은
+  돌출부를 지렛대처럼 밀어 "막대기 버그"가 재발함(역회전이어도 front는 yaw가
+  작아 정회전과 이동량 동일 — 회전 방향이 아니라 "front=월드기준" 규약이 핵심).
+  (2) 얼굴 깊이가 computeHeadCrossSections와 이어지는 유일한 끈은 ELL_C(두상
+  깊이 반경)이고, 측면 실측 보정이 그 얕은 ELL_C를 교정하는 유일한 통로였는데
+  3앵커에만 적용돼 있었음.
+  적용: front엔 회전을 걸지 않되(막대기 방지), 깊이(z)만 465개 나머지 정점도
+  좌/우 측면 실측(projectImagePointToHead — 헤어와 동일 경로)으로 받아온다.
+  computeFullProfileDepthMap 신설: 정점별로 좌/우 측면에 투영해 실측 z를 직접
+  얻고, front 추정 z와의 차이(deltaZ)를 정점에 직접 적용. 안전장치는 3앵커
+  버전과 동일(신뢰도<0.5 스킵, 타원 밖 스킵, 좌우 모순 스킵, ±0.6*ELL_C clamp,
+  실측 없는 정점은 front 폴백). 3앵커 가우시안 확산은 전체맵에 실측 없는
+  정점의 폴백으로 유지. 스위치 USE_FULL_PROFILE_DEPTH=true(문제 시 false).
+  검증: node --check OK. 하네스(원반 두상 ELL_C=0.55): 얼굴 깊이 범위
+  0.070→0.121(+73%, 더 입체적) 확인.
+  ⚠ 한계: 여전히 ELL_C에 얹히는 상대 보정이라 근본인 원반 두상(작은 ELL_C)이
+  고쳐지지 않으면 clamp 폭도 작아 개선폭에 한계. 하지만 얼굴이 두상과 같은
+  좌표계(측면 실측)로 통합돼 연결부위 불일치는 해소. 실기기 재확인 필요 —
+  특히 측면 랜드마크 오탐이 많은 정점을 밀지 않는지(clamp·좌우모순 검사가
+  전 정점에 걸리므로 안전할 것으로 예상하나 미검증).
+
+  ── 2026-07-19 넙적한 원반 두상 수정(computeHeadCrossSections 각도 역투영) ──
+  사용자 관찰(실기기): "기준면 자체가 넙적한 타원체라서 그 모양대로 나왔다"
+  (정면↔후면 두상 연결은 잘 됨). 실측값 분석으로 근본 원인 확정:
+  computeHeadCrossSections가 좌/우측 헤어 실루엣 반폭을 halfDepth로 "그대로"
+  기록했는데, 측면 사진이 완전 옆모습(90°)이 아니라 실측 25~31°(이 앱은 90°면
+  랜드마크 인식 실패라 경사 촬영이 정상 — 교훈 E). 이 각도에선 실루엣 반폭 E에
+  깊이(D)보다 폭(W) 성분이 더 많이 섞여(E²=W²cos²θ+D²sin²θ, 25°면 cos²≈0.82),
+  E를 순수 깊이로 쓰면 실제 깊이가 15~17% 얕게 나옴 → 폭 정상·깊이 과소 =
+  넙적한 원반. (헤어 헐 buildHairStrandsFromPaths는 이미 이 역투영을 쓰는데
+  두상 단면만 그 수정을 못 받았던 것.)
+  수정: accumulate가 폭/깊이를 각도로 분리하지 않고 각 밴드에 관측
+  (E, cos²θ, sin²θ, confidence)만 모은 뒤 역투영으로 W·D 복원.
+  · W(폭): 정면성 높은 관측(cos²>0.9=front/back)은 E≈W이므로 직접 평균.
+    측면까지 넣어 rHead 가정으로 W를 추정하면 그 가정이 W를 오염시키고 D
+    역산까지 전파됨(1차 검증에서 실패 확인 → 이 분리로 교정).
+  · D(깊이): 그 정확한 W로 sin²θ>0.06 관측에서 D²=(E²−W²cos²θ)/sin²θ 역산,
+    [0.5W,1.5W] 클램프.
+  · 폴백: 정면 관측 없으면 rHead(0.82)로 W 추정, 측면 관측 없으면 D=W×rHead.
+  fillBandsWithNearestNeighbor는 이제 두상엔 안 쓰지만 목 단면(computeNeck)에서
+  계속 씀 — 유지.
+  검증(합성, 정답 아는 두상을 실측 각도로 촬영→복원) 5/5 통과:
+  스크린샷 각도(정면0.2/좌31/우-25)에서 W·D 오차 0%(정답 W0.72/D0.90 정확
+  복원), 큰 측면각(55°)도 0%, 얕은 측면각(15°) 깊이 -7%(클램프 내 안전),
+  측면 없음은 rHead 폴백(-34%, 데이터 없으니 불가피·안 깨짐).
+  ⚠ 이 수정은 세그멘테이션(extractHairMask)을 전혀 안 건드림 — 정면
+  세그멘테이션 이상(v10 관찰)과는 독립. rHead=0.82는 성인 두상 깊이/폭
+  근사 초기가정(1차 W 폴백용)이라 실측이 있으면 안 쓰임. 실기기 재확인 필요.
 -->
 
 <!DOCTYPE html>
@@ -1879,19 +1933,12 @@ async function extractHairMask(angle){
             }
           }
 
-          // ── hairEndY_small: 양끝 -1 열을 인접 유효값으로 보간 채우기 ──
-          // (forward pass)
-          let lastValidEnd = -1;
-          for(let x=0;x<w;x++){
-            if(hairEndY_small[x]>=0) lastValidEnd=hairEndY_small[x];
-            else if(lastValidEnd>=0) hairEndY_small[x]=lastValidEnd;
-          }
-          // (backward pass — 앞쪽 -1 채우기)
-          let firstValidEnd = -1;
-          for(let x=w-1;x>=0;x--){
-            if(hairEndY_small[x]>=0) firstValidEnd=hairEndY_small[x];
-            else if(firstValidEnd>=0) hairEndY_small[x]=firstValidEnd;
-          }
+          // ── hairEndY_small 정돈(정돈층 §6): 빈곳 보간 + 이상치 클램프 + 스무딩 ──
+          // 예전엔 forward/backward 보간만 수동으로 했고, 그 코드가 아래 가닥뿌리
+          // 보간과 복제돼 있었음 → cleanupLine1D 단일 출처로 흡수. 추가로 클램프/
+          // 스무딩이 모발끝선의 스파이크·톱니를 정돈해 "튀는 가닥/지저분한 끝선"을
+          // 줄인다(보간만 하던 부분은 값이 완전히 동일함을 Node 교차검증으로 확인).
+          cleanupLine1D(hairEndY_small);
           // scalpY_small은 보간하지 않음 — 두피 "시작점"은 실제 세그멘테이션 마스크가
           // 있는 컬럼에서만 나와야 함(옆 컬럼 값을 복사해 배경/천장 컬럼까지 가짜
           // 시작점을 만들면 그 자리에 가닥이 심어지는 문제가 있었음). hairEndY만
@@ -3982,6 +4029,108 @@ function traceStrandPath(ix, sy_img, targetLen_img, jitterSeed, env){
     return pts;
 }
 
+/* ════════════════════════════════════════
+   LINE CLEANUP (정돈층) — 1D 라인 정돈 단일 출처 (설계문서 §6)
+   대상: hairEndY/scalpY 처럼 "컬럼(x)별 y픽셀"인 1D 라인(-1 = 결측).
+   기존에 STEP10(computeScalpAndEndLines)과 가닥뿌리 보간 두 곳에 forward/
+   backward 보간이 복제돼 있던 것을 여기로 흡수(단일 출처, 복제 금지).
+   ⚠ 좌표계 경계: 이 헬퍼는 1D 라인 전용이다. 목/두상 밴드(phi·frac별 반경
+     배열: fillBandsWithNearestNeighbor / NECK_STEP_MAX)와 두상 세로반경
+     5퍼센타일 픽은 좌표계·자료구조·목적이 달라 여기로 묶지 않는다. 겉보기만
+     "라인 정돈"이라고 억지로 합치는 것은 colorForSection 통합 실수의 재현이다
+     (2단계 클램프는 NECK_STEP_MAX의 "개념"만 계승하고 코드는 공유 안 함).
+   4단계(설계문서): ①빈곳 보간 ②이상치 클램프 ③스무딩 ④(약)대칭.
+════════════════════════════════════════ */
+// ① 빈 곳 보간: -1 열을 인접 유효값으로 forward/backward 채움.
+//    (기존 두 곳의 보간 loop과 값이 완전히 동일함을 Node 교차검증으로 확인.)
+function fillLine1D(arr){
+  const n = arr.length;
+  let last = -1;
+  for(let i=0;i<n;i++){ if(arr[i]>=0) last=arr[i]; else if(last>=0) arr[i]=last; }
+  let first = -1;
+  for(let i=n-1;i>=0;i--){ if(arr[i]>=0) first=arr[i]; else if(first>=0) arr[i]=first; }
+  return arr;
+}
+// ② 이상치 클램프: 좌우 window 이웃 median 대비 maxDev 이상 튀면 눌러줌.
+//    median 기반이라 스파이크 하나에 안 휩쓸림. maxDev는 유효값 (p90-p10)*k로
+//    자동 스케일(해상도별 하드코딩 픽셀값 회피). 유효값<5면 손대지 않음(보수적).
+function clampLineOutliers1D(arr, opts){
+  const win = (opts&&opts.window)||3;
+  const k   = (opts&&opts.k)||0.35;
+  const n = arr.length;
+  const valid = [];
+  for(let i=0;i<n;i++) if(arr[i]>=0) valid.push(arr[i]);
+  if(valid.length < 5) return arr;
+  const sorted = valid.slice().sort((a,b)=>a-b);
+  const p10 = sorted[Math.floor(sorted.length*0.10)];
+  const p90 = sorted[Math.floor(sorted.length*0.90)];
+  const maxDev = Math.max(1e-6, (p90 - p10) * k);
+  const out = arr.slice();
+  const w = [];
+  for(let i=0;i<n;i++){
+    if(arr[i]<0) continue;
+    w.length=0;
+    for(let j=Math.max(0,i-win); j<=Math.min(n-1,i+win); j++){
+      if(j!==i && arr[j]>=0) w.push(arr[j]);
+    }
+    if(w.length<2) continue;
+    w.sort((a,b)=>a-b);
+    const med = w[Math.floor(w.length/2)];
+    const dev = arr[i]-med;
+    if(dev >  maxDev) out[i] = med + maxDev;
+    else if(dev < -maxDev) out[i] = med - maxDev;
+  }
+  for(let i=0;i<n;i++) arr[i]=out[i];
+  return arr;
+}
+// ③ 스무딩: 유효값 구간 가우시안 가중 이동평균(결측 -1은 제외해 경계로 안 끌어들임).
+//    선형 구간은 편향 없이 보존됨(Node 검증).
+function smoothLine1D(arr, opts){
+  const radius = (opts&&opts.radius)||2;
+  const n = arr.length;
+  const sigma = Math.max(0.5, radius/2);
+  const wts = [];
+  for(let d=-radius; d<=radius; d++) wts.push(Math.exp(-(d*d)/(2*sigma*sigma)));
+  const out = arr.slice();
+  for(let i=0;i<n;i++){
+    if(arr[i]<0) continue;
+    let acc=0, wsum=0;
+    for(let d=-radius; d<=radius; d++){
+      const j=i+d; if(j<0||j>=n) continue;
+      if(arr[j]<0) continue;
+      const wt=wts[d+radius]; acc+=arr[j]*wt; wsum+=wt;
+    }
+    if(wsum>0) out[i]=acc/wsum;
+  }
+  for(let i=0;i<n;i++) arr[i]=out[i];
+  return arr;
+}
+// ④ 좌우 대칭 보정(약): 대칭 뷰에서 한쪽만 튀면 반대쪽 미러값과 약하게 평균.
+//    개성 뭉갤 위험 커서 기본 비활성(blend=0). MVP 단계 호출부에선 켜지 않는다.
+function symmetrize1D(arr, opts){
+  const blend = (opts&&opts.blend)||0;
+  if(blend<=0) return arr;
+  const n=arr.length;
+  const out=arr.slice();
+  for(let i=0;i<n;i++){
+    const m=n-1-i;
+    if(arr[i]>=0 && arr[m]>=0) out[i]=arr[i]*(1-blend)+arr[m]*blend;
+  }
+  for(let i=0;i<n;i++) arr[i]=out[i];
+  return arr;
+}
+// 편의 래퍼: 4단계 파이프라인. opts로 단계 on/off(기본 fill+clamp+smooth, 대칭 off).
+//   예) cleanupLine1D(arr)                       → 보간+클램프+스무딩
+//       cleanupLine1D(arr,{clamp:false,smooth:false}) → 보간만(기존 동작과 동일)
+function cleanupLine1D(arr, opts){
+  opts = opts || {};
+  if(opts.fill  !== false) fillLine1D(arr);
+  if(opts.clamp !== false) clampLineOutliers1D(arr, opts.clampOpts);
+  if(opts.smooth!== false) smoothLine1D(arr, opts.smoothOpts);
+  if(opts.symmetryBlend) symmetrize1D(arr, {blend:opts.symmetryBlend});
+  return arr;
+}
+
 function drawHairStrands(ctx, fit, scalpY, hairEndY, maskW, maskH, hairCanvas, opts){
   // 머리색 오버라이드 — 전역 FORCED_HAIR_COLOR(파일 상단, STYLES 위 선언)로
   // 통일됨(기존 지역 스위치 FORCE_BLACK_HAIR를 승격). 실측 색(평균색/섹션색/
@@ -4055,22 +4204,17 @@ function drawHairStrands(ctx, fit, scalpY, hairEndY, maskW, maskH, hairCanvas, o
   }
   if(validCols.length === 0) return;
 
-  // ── 보간: validCols 안에서 hairEndY/scalpY -1인 열을 인접 유효값으로 채움 ──
+  // ── 보간+정돈(정돈층 §6): 위 STEP10과 복제였던 forward/backward 보간을
+  //   cleanupLine1D 단일 출처로 통합.
+  //   · iScalpY  = 보간만(clamp/smooth 끔). 가닥 뿌리를 심는 라인이라 위치를
+  //     흔들면 안 됨 → 기존 동작을 그대로 보존(Node 교차검증으로 값 동일 확인).
+  //   · iHairEndY = 4단계(보간+클램프+스무딩). 모발끝선은 정돈해도 뿌리에 영향
+  //     없고, 튀는 끝가닥/톱니를 줄여준다.
   const iScalpY   = new Float32Array(maskW).fill(-1);
   const iHairEndY = new Float32Array(maskW).fill(-1);
   for(let x=0;x<maskW;x++){ iScalpY[x]=scalpY[x]; iHairEndY[x]=hairEndY[x]; }
-  // forward pass
-  let lS=-1, lE=-1;
-  for(let x=0;x<maskW;x++){
-    if(iScalpY[x]>=0)   lS=iScalpY[x];   else if(lS>=0) iScalpY[x]=lS;
-    if(iHairEndY[x]>=0) lE=iHairEndY[x]; else if(lE>=0) iHairEndY[x]=lE;
-  }
-  // backward pass
-  let fS=-1, fE=-1;
-  for(let x=maskW-1;x>=0;x--){
-    if(iScalpY[x]>=0)   fS=iScalpY[x];   else if(fS>=0) iScalpY[x]=fS;
-    if(iHairEndY[x]>=0) fE=iHairEndY[x]; else if(fE>=0) iHairEndY[x]=fE;
-  }
+  cleanupLine1D(iScalpY, {clamp:false, smooth:false}); // 보간만 = 기존과 동일
+  cleanupLine1D(iHairEndY);                            // 보간+클램프+스무딩
 
   // curl 방향 기준으로 쓰이던 마스크 수평 중심(maskCX) 계산은 더 이상 사용되지 않아 제거됨
 
@@ -4939,6 +5083,7 @@ async function buildRealFaceMesh(faceMetrics){
   catch(e){ console.warn('실제 얼굴 메쉬용 이미지 로드 실패:', e); return null; }
 
   const raw = lm.rawLandmarks;
+  const vertCount = 468;
   const projector = faceMetrics.projector;
   const widthFactor = faceMetrics.widthFactor, heightFactor = faceMetrics.heightFactor;
 
@@ -5016,6 +5161,64 @@ async function buildRealFaceMesh(faceMetrics){
     { idx: 10,  label: '이마' },   // 〃 forehead=lm[10]
   ];
   const PROFILE_DEPTH_FALLOFF_SIGMA = 0.18; // 보정 영향 반경(메쉬 로컬 단위) — ELL_A(대략 0.3~0.4)의 절반 수준
+
+  // ── (2026-07-19) 측면 실측 깊이를 얼굴 "전체 정점"으로 확장 ──
+  // 사용자 지적: outputFacialTransformationMatrix(실측 회전)를 헤어에는 4장
+  // 전부 적용하면서 얼굴은 front 단안 z만 쓰고 측면 실측은 코·턱·이마 3점에만
+  // 쓰고 있었음 — "안 쓸 거면 헤어처럼 전체를 같은 방식으로 통합하면 연결부위
+  // 문제가 없다". 그 통합의 올바른 형태: front 자체엔 회전을 걸지 않되(막대기
+  // 버그 방지 — front는 월드 기준 유지), 깊이(z)만은 465개 나머지 정점도
+  // 좌/우 측면 실측(projectImagePointToHead, 헤어와 동일 경로)으로 받아온다.
+  // 안전장치는 3앵커 버전과 동일하게 전 정점에 적용:
+  //   · 측면 신뢰도<0.5(어림 각도)면 그 뷰 스킵
+  //   · 측면 투영이 타원 밖(귀 너머 등)이면 그 정점 스킵(null 반환)
+  //   · 좌/우가 크게 어긋나면(오탐) 그 정점 스킵
+  //   · deltaZ는 ±0.6*ELL_C로 clamp(스파이크 방지)
+  //   · 측면 실측이 없는 정점은 조용히 front 방식 유지(실패해도 안 깨짐)
+  // 3앵커 방식(가우시안 확산)과 달리 정점별 직접 실측이라, 실측이 있는
+  // 정점은 그 값을 직접 쓰고 없는 정점만 front로 폴백 — 확산 겹침이 없다.
+  // 반환: 정점 idx → deltaZ 맵(Float32Array, NaN=측면 실측 없음→front 유지).
+  const USE_FULL_PROFILE_DEPTH = true; // 문제 생기면 false로 → 기존 3앵커 방식
+  function computeFullProfileDepthMap(){
+    const map = new Float32Array(vertCount).fill(NaN);
+    const sides = ['left','right'].map(angle=>{
+      const lmSide = state.landmarks && state.landmarks[angle];
+      if(!lmSide || !lmSide.rawLandmarks || lmSide.rawLandmarks.length < 468) return null;
+      if(getViewPoseConfidence(angle) < 0.5) return null;
+      return { angle, raw: lmSide.rawLandmarks, confidence: getViewPoseConfidence(angle) };
+    }).filter(Boolean);
+    if(!sides.length) return map; // 쓸 만한 측면 없음 → 전부 front 폴백
+
+    for(let i=0;i<vertCount;i++){
+      const p = raw[i];
+      if(distSqFromBound(i) > 1) continue; // 얼굴 경계 밖(뺨 끝·귀)은 front 유지(측면서도 원근으로 뭉개짐)
+      const localX = projector.toMeshX(p.x);
+      const yLocal = projector.toMeshY(p.y) - 0.15;
+      const dx = (p.x - boundCX) / boundRX, dy = (p.y - boundCY) / boundRY;
+      const frontBlend = Math.max(0, 1 - (dx*dx+dy*dy));
+      const frontEstimatedZ = ellipsoidZ(localX, yLocal) + frontBlend * (Z_SIGN * p.z * projector.bX * Z_DEPTH_SCALE);
+
+      const perView = [];
+      for(const s of sides){
+        const sidePt = s.raw[i];
+        if(!sidePt) continue;
+        const world = projectImagePointToHead(s.angle, sidePt.x, sidePt.y, widthFactor, heightFactor);
+        if(!world) continue; // 타원 밖 → 이 정점은 이 뷰서 실측 불가
+        perView.push({ z: world.z, confidence: s.confidence });
+      }
+      if(!perView.length) continue; // 측면 실측 없음 → front 유지(NaN)
+
+      if(perView.length === 2){
+        const [a,b] = perView;
+        const disagree = Math.abs(a.z - b.z) > 1.2*ELL_C || (a.z*b.z < 0 && Math.abs(a.z)>0.15*ELL_C && Math.abs(b.z)>0.15*ELL_C);
+        if(disagree) continue; // 좌/우 모순 → 안 믿음
+      }
+      const wSum = perView.reduce((s,v)=>s+v.confidence, 0);
+      const zSum = perView.reduce((s,v)=>s+v.z*v.confidence, 0);
+      map[i] = clamp(zSum/wSum - frontEstimatedZ, -0.6*ELL_C, 0.6*ELL_C);
+    }
+    return map;
+  }
   function computeProfileDepthCorrections(){
     const out = [];
     PROFILE_DEPTH_ANCHORS.forEach(anchor=>{
@@ -5061,8 +5264,8 @@ async function buildRealFaceMesh(faceMetrics){
     return out;
   }
   const profileDepthCorrections = computeProfileDepthCorrections();
+  const fullProfileDepthMap = USE_FULL_PROFILE_DEPTH ? computeFullProfileDepthMap() : null;
 
-  const vertCount = 468;
   const positions = new Float32Array(vertCount*3);
   const uvs = new Float32Array(vertCount*2);
   for(let i=0;i<vertCount;i++){
@@ -5077,14 +5280,20 @@ async function buildRealFaceMesh(faceMetrics){
     // 중심(distSq=0)에서 1(=실측 굴곡 전부 반영). 필터링에 쓰는 것과 같은
     // 타원이라 딱 경계선에서 자연스럽게 표면값과 일치함.
     const blendWeight = Math.max(0, 1 - distSqFromBound(i));
-    // 좌/우 측면 실측 보정: 코/턱/이마 근처일수록(가우시안 거리 가중) 위에서
-    // 계산해둔 deltaZ가 더해짐 — 앵커에서 멀수록(뺨·관자놀이 등) 기여 거의 0.
+    // 좌/우 측면 실측 보정. 전체맵(USE_FULL_PROFILE_DEPTH)에 이 정점의 직접
+    // 실측이 있으면 그 값을 그대로 쓰고(정점별 실측 우선), 없으면 기존 3앵커
+    // 가우시안 확산으로 폴백 — 확산은 실측이 아예 없던 정점을 코/턱/이마
+    // 실측의 "번짐"으로 근사하던 것이므로, 직접 실측이 있으면 확산보다 정확.
     let profileCorrectionZ = 0;
-    for(let k=0;k<profileDepthCorrections.length;k++){
-      const c = profileDepthCorrections[k];
-      const ddx = localX - c.localX, ddy = yLocal - c.yLocal;
-      const w = Math.exp(-(ddx*ddx+ddy*ddy) / (2*PROFILE_DEPTH_FALLOFF_SIGMA*PROFILE_DEPTH_FALLOFF_SIGMA));
-      profileCorrectionZ += w * c.deltaZ;
+    if(fullProfileDepthMap && !Number.isNaN(fullProfileDepthMap[i])){
+      profileCorrectionZ = fullProfileDepthMap[i];
+    } else {
+      for(let k=0;k<profileDepthCorrections.length;k++){
+        const c = profileDepthCorrections[k];
+        const ddx = localX - c.localX, ddy = yLocal - c.yLocal;
+        const w = Math.exp(-(ddx*ddx+ddy*ddy) / (2*PROFILE_DEPTH_FALLOFF_SIGMA*PROFILE_DEPTH_FALLOFF_SIGMA));
+        profileCorrectionZ += w * c.deltaZ;
+      }
     }
     const localZ = surfaceZLocal + blendWeight * reliefZLocal + profileCorrectionZ;
     // front는 회전 없이 그대로 월드 좌표로 씀 — 위 되돌림 항목 참고(회전을
@@ -5442,42 +5651,90 @@ function computeHeadCrossSections(){
   // 배율을 뽑으면 오히려 불안정해짐 — 정면 배율을 공통으로 재사용)
   const globalScaleX = metrics.projector.bX;
 
-  const bands = HEAD_PHI_BANDS.map(phi=>({ phi, halfWidthSum:0, halfWidthWeight:0, halfDepthSum:0, halfDepthWeight:0 }));
+  // (2026-07-19) 각도 역투영으로 교체 — 넙적한 원반 두상의 근본 수정.
+  // 기존: 정면/후면 실루엣 반폭을 halfWidth로, 좌/우 실루엣 반폭을 halfDepth로
+  // "그대로" 기록했음. 그런데 측면 사진은 완전 옆모습(90°)이 아니라 실측
+  // 25~31°(이 앱은 90°면 랜드마크 인식이 실패해 경사 촬영이 정상 — 교훈 E).
+  // 이 각도에선 실루엣 반폭 E에 깊이(D)보다 폭(W) 성분이 더 많이 섞여 보여
+  // (E²=W²cos²θ+D²sin²θ, 25°면 cos²≈0.82), E를 순수 깊이로 쓰면 실제 깊이가
+  // 15~17% 얕게 나옴 → 폭은 정상·깊이만 과소 = 넙적한 원반.
+  // 수정: 헤어 헐(buildHairStrandsFromPaths)이 이미 검증한 역투영을 그대로
+  // 이식 — 각 밴드에서 관측(E, cos²θ, sin²θ)들을 모아 E²=W²cos²θ+D²sin²θ를
+  // 풀어 실제 W·D를 복원한다. front(θ≈0)는 W를, 측면(θ≈25~31°)은 그 관측이
+  // W·D 복원에 함께 기여.
+  const bands = HEAD_PHI_BANDS.map(phi=>({ phi, obs:[] }));
+  const rHead = metrics.projector ? 0.82 : 0.82; // 깊이/폭 비율 초기 가정(성인 두상 근사) — 1차 W 추정용
 
-  function accumulate(angle, isWidthMeasurement){
+  function accumulate(angle){
     const view = prepareViewMeasurement(angle, 'reasonMask', metrics);
     if(!view) return;
-
+    const yaw = getViewYawDeg(angle) * Math.PI/180;
+    const cos2 = Math.cos(yaw)**2, sin2 = Math.sin(yaw)**2;
     bands.forEach(band=>{
-      // phi(두상 로컬 극각) → 메쉬 Y(공용 headPhiToMeshY, liftOut=1.01 기준)
-      // → 이 뷰의 이미지 행(row)으로 역변환(공용 meshYToRow)
       const row = meshYToRow(view, headPhiToMeshY(band.phi));
       const halfWNorm = measureRowHalfWidth(view.mask, view.w, view.h, row);
       if(halfWNorm == null) return;
-      const halfWMesh = halfWNorm * globalScaleX;
-      if(isWidthMeasurement){ band.halfWidthSum += halfWMesh*view.confidence; band.halfWidthWeight += view.confidence; }
-      else { band.halfDepthSum += halfWMesh*view.confidence; band.halfDepthWeight += view.confidence; }
+      band.obs.push({ E: halfWNorm * globalScaleX, cos2, sin2, confidence: view.confidence });
     });
   }
+  // 4개 뷰 전부 같은 방식으로 관측만 모음(폭/깊이 분리 안 함 — 각도가 결정)
+  ['front','back','left','right'].forEach(a=>accumulate(a));
 
-  accumulateAllViews(accumulate);
+  // 관측(E,θ) → 단면(W,D) 역투영:
+  //   W(폭)  — 정면성 높은 관측(cos²>0.9, front/back)은 E≈W이므로 직접 평균.
+  //            (측면 관측까지 넣어 rHead 가정으로 W를 추정하면 그 가정 오차가
+  //             W를 오염시키고, 그게 다시 D 역산에 전파됨 — 검증에서 확인.)
+  //   D(깊이) — 그 정확한 W로 측면성 충분한 관측(sin²θ>0.06)에서
+  //            D²=(E²−W²cos²θ)/sin²θ 역산. [0.5W,1.5W] 클램프(사람 두상 깊이가
+  //            폭의 절반 밑/1.5배 위로는 잘 안 감 + 작은 sinθ 노이즈 억제).
+  //   정면 관측이 없으면(측면만) rHead 가정으로 W 추정 폴백.
+  //   측면 관측이 없으면 D=W×rHead 폴백.
+  // 검증(합성, 정답 W0.72/D0.90을 front0.2°+좌31°+우-25°로 촬영→복원):
+  //   복원 W0.720 D0.900 비율1.25 = 정답 정확히 일치.
+  bands.forEach(band=>{
+    if(!band.obs.length) return;
+    const frontObs = band.obs.filter(o=>o.cos2 > 0.9);
+    let W;
+    if(frontObs.length){
+      let wa=0, ww=0; frontObs.forEach(o=>{ wa+=o.E*o.confidence; ww+=o.confidence; });
+      W = wa/ww;
+    } else {
+      let wa=0, ww=0; band.obs.forEach(o=>{ wa+=(o.E/Math.sqrt(o.cos2+rHead*rHead*o.sin2))*o.confidence; ww+=o.confidence; });
+      W = wa/ww;
+    }
+    let dAcc=0, dW=0;
+    band.obs.forEach(o=>{
+      if(o.sin2 <= 0.06) return;
+      const d2 = (o.E*o.E - W*W*o.cos2) / o.sin2;
+      if(d2 > 0){ dAcc += Math.sqrt(d2)*o.confidence; dW += o.confidence; }
+    });
+    band.halfWidth = W;
+    band.halfDepth = dW ? Math.max(0.5*W, Math.min(1.5*W, dAcc/dW)) : W * rHead;
+  });
 
-  // 버그 수정(2026-07-14): "실측 안 된 높이는 예전 타원체 고정값으로
-  // 대체" 방식 제거 — 사용자 지적: "이거 필요없다고, 이거 할 필요가 없는데
-  // 지금 나타나는 거야". 타원체는 이미 완전히 없앴는데 그 값을 폴백으로만
-  // 남겨두는 것 자체가 "실측 아닌 임의값" 원칙에 어긋남. 대신 그 높이에
-  // 실측이 없으면, phi가 가장 가까운 "실측 있는 밴드"의 값을 그대로
-  // 이어받는다(최근접 이웃 방식) — 완전히 지어낸 상수가 아니라 실제로 그
-  // 사람에게서 잰 값 중 가장 가까운 것을 쓰는 것.
-  fillBandsWithNearestNeighbor(bands, 'phi',
-    {sum:'halfWidthSum', weight:'halfWidthWeight', out:'halfWidth'},
-    {sum:'halfDepthSum', weight:'halfDepthWeight', out:'halfDepth'});
-  // 그래도 못 채운 밴드(모든 뷰에서 실측이 전혀 없는 극단적 경우)만 최후
-  // 안전장치로 직전 밴드 값을 이어받음(NaN으로 지오메트리가 깨지는 것 방지) —
-  // 이것도 임의 상수가 아니라 그 사람 데이터의 연장선.
+  // 실측 없는 밴드는 phi 최근접 실측 밴드에서 승계(기존 정책 유지 —
+  // 임의 상수가 아니라 그 사람에게서 잰 가장 가까운 값).
+  for(let i=0;i<bands.length;i++){
+    if(typeof bands[i].halfWidth === 'number') continue;
+    let nearest = null, nd = Infinity;
+    for(let j=0;j<bands.length;j++){
+      if(typeof bands[j].halfWidth !== 'number') continue;
+      const d = Math.abs(bands[j].phi - bands[i].phi);
+      if(d < nd){ nd = d; nearest = bands[j]; }
+    }
+    if(nearest){ bands[i].halfWidth = nearest.halfWidth; bands[i].halfDepth = nearest.halfDepth; }
+  }
+  // 그래도 못 채운 밴드(실측 전무)만 최후 안전장치로 직전 밴드 이어받음.
   for(let i=0;i<bands.length;i++){
     if(typeof bands[i].halfWidth !== 'number') bands[i].halfWidth = (i>0 ? bands[i-1].halfWidth : 0.7);
     if(typeof bands[i].halfDepth !== 'number') bands[i].halfDepth = (i>0 ? bands[i-1].halfDepth : 0.6);
+  }
+  // 밴드 간 이동평균 2회(마스크 노이즈 완화 — 헤어 헐과 동일)
+  for(let pass=0; pass<2; pass++){
+    for(let i=1;i<bands.length-1;i++){
+      bands[i].halfWidth = (bands[i-1].halfWidth + 2*bands[i].halfWidth + bands[i+1].halfWidth)/4;
+      bands[i].halfDepth = (bands[i-1].halfDepth + 2*bands[i].halfDepth + bands[i+1].halfDepth)/4;
+    }
   }
 
   _headCrossSectionCache = bands;
