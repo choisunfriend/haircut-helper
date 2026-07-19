@@ -409,7 +409,17 @@ function getScalpAndEndLines(g){
   const elev = cleanupLine(elevOf, {wrap:false, smoothR:2});
 
   const cols=[];
-  for(let i=0;i<N;i++) cols.push({rootX:rootX[i], rootY:rootY[i], endLen:endLen[i], sec:secOf[i], elevation:elev[i]});
+  for(let i=0;i<N;i++){
+    const t = i/(N-1);
+    const deg = -90 + t*180;
+    const rootT = 1 - Math.abs(deg)/90;
+    cols.push({
+      rootX:rootX[i], rootY:rootY[i], endLen:endLen[i], sec:secOf[i], elevation:elev[i],
+      rootT,                       // 이 컬럼의 두상 높이(0=옆아래,1=정수리)
+      guides:guideCache[secOf[i]], // 그 섹션의 겹 배열(무게선 그리기용)
+      baseLen:(state.sections[secOf[i]].length/100)*H*0.46, // 겹 lenScale 적용 전 기준 길이
+    });
+  }
   return cols;
 }
 
@@ -435,50 +445,63 @@ function draw(){
   ctx.beginPath();
   for(let i=0;i<N;i++){
     const c=cols[i];
-    const x=c.rootX, y=c.rootY;
-    if(i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
+    if(i===0) ctx.moveTo(c.rootX,c.rootY); else ctx.lineTo(c.rootX,c.rootY);
   }
   for(let i=N-1;i>=0;i--){
     const c=cols[i];
-    const p=state.sections[c.sec];
     const side = c.rootX<g.cx?-1:1;
-    // 끝점: 뿌리에서 아래로 endLen, 겹 시술각만큼 바깥으로
     const flare = (c.elevation/90)*c.endLen*0.28;
-    const ex = c.rootX + side*flare;
-    const ey = c.rootY + c.endLen;
-    ctx.lineTo(ex,ey);
+    ctx.lineTo(c.rootX + side*flare, c.rootY + c.endLen);
   }
   ctx.closePath();
-  ctx.fillStyle = state.globalColor;
-  ctx.globalAlpha = 0.9;
+  ctx.fillStyle = shade(state.globalColor,-18);
+  ctx.globalAlpha = 0.55;
   ctx.fill();
   ctx.restore();
 
-  // (2) 가닥 디테일 — 컬/질감이 형태로 읽히게
+  // (2) ★ 겹(슬라이스) 가닥 다발 — 기법이 층으로 보이게
+  // 각 겹마다 그 겹의 lenScale·시술각으로 가닥을 그려 층 경계가 드러남
   ctx.save();
-  ctx.globalAlpha = 0.35;
-  ctx.lineWidth = 1;
-  for(let i=0;i<N;i+=1){
-    const c=cols[i];
-    const p=state.sections[c.sec];
-    const col = p.color || state.globalColor;
-    const side = c.rootX<g.cx?-1:1;
-    const curl=p.curl/100, wave=0.6+p.wave/100, tex=p.texture/100;
-    const flare = (c.elevation/90)*c.endLen*0.28;
+  for(let gi=0; gi<SLICES; gi++){
+    const layerT = gi/(SLICES-1);            // 이 겹이 담당하는 두상 높이대
+    for(let i=0;i<N;i+=2){                    // 컬럼 간격 2 (다발 느낌)
+      const c=cols[i];
+      // 이 컬럼이 이 겹 높이대에 걸치는 것만 그림(겹이 두상 높이별로 분포)
+      if(Math.abs(c.rootT - layerT) > 0.22) continue;
+      const p=state.sections[c.sec];
+      const gd=c.guides[gi];
+      const col = p.color || state.globalColor;
+      const side = c.rootX<g.cx?-1:1;
+      const curl=p.curl/100, wave=0.6+p.wave/100, tex=p.texture/100;
 
-    ctx.strokeStyle = shade(col, i%2? -12:8);
-    ctx.beginPath();
-    ctx.moveTo(c.rootX, c.rootY);
-    const steps=20;
-    for(let s=1;s<=steps;s++){
-      const f=s/steps;
-      let x = c.rootX + side*flare*f;
-      let y = c.rootY + c.endLen*f;
-      if(curl>0) x += Math.sin(f*Math.PI*(2+wave*2)) * curl*16 * f;   // 펌 웨이브
-      x += (hash(i*7+s)-0.5) * tex*4 * f;                            // 텍스처
-      ctx.lineTo(x,y);
+      // 이 겹의 길이·시술각
+      const len = c.baseLen * gd.lenScale;
+      const flare = (gd.elevation/90)*len*0.30;
+
+      // 겹마다 살짝 다른 명도 → 층이 눈에 보임
+      ctx.strokeStyle = shade(col, (gi-SLICES/2)*7);
+      ctx.globalAlpha = 0.5;
+      ctx.lineWidth = 1.1;
+      ctx.beginPath();
+      ctx.moveTo(c.rootX, c.rootY);
+      const steps=18;
+      for(let s=1;s<=steps;s++){
+        const f=s/steps;
+        let x = c.rootX + side*flare*f;
+        let y = c.rootY + len*f;
+        if(curl>0) x += Math.sin(f*Math.PI*(2+wave*2)) * curl*15 * f;
+        x += (hash(i*7+s+gi*31)-0.5) * tex*4 * f;
+        ctx.lineTo(x,y);
+      }
+      ctx.stroke();
+
+      // ★ 무게선(겹 끝): 층 경계를 진하게 점으로 찍어 슬라이스가 보이게
+      const ex = c.rootX + side*flare;
+      const ey = c.rootY + len;
+      ctx.globalAlpha = 0.5;
+      ctx.fillStyle = shade(col, -30);
+      ctx.beginPath(); ctx.arc(ex,ey,1.3,0,Math.PI*2); ctx.fill();
     }
-    ctx.stroke();
   }
   ctx.restore();
   ctx.globalAlpha=1;
