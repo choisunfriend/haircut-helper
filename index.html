@@ -181,14 +181,73 @@
    각 섹션 파라미터를 커트/펌/컬러 공정으로 태그.
    ============================================================ */
 const SECTIONS = {
-  crown:     { label:'크라운', en:'CROWN',     defaults:{length:80, elevation:45, texture:20, curl:0, wave:50, color:null} },
-  front:     { label:'프론트', en:'FRONT',     defaults:{length:70, elevation:20, texture:15, curl:0, wave:50, color:null} },
-  temple:    { label:'템플',   en:'TEMPLE',    defaults:{length:80, elevation:30, texture:20, curl:0, wave:50, color:null} },
-  side:      { label:'사이드', en:'SIDE',      defaults:{length:85, elevation:50, texture:25, curl:0, wave:50, color:null} },
-  occipital: { label:'후두부', en:'OCCIPITAL', defaults:{length:82, elevation:50, texture:25, curl:0, wave:50, color:null} },
-  nape:      { label:'네이프', en:'NAPE',      defaults:{length:45, elevation:0,  texture:30, curl:0, wave:50, color:null} },
+  crown:     { label:'크라운', en:'CROWN',     defaults:{technique:'uniform',   length:80, elevation:45, texture:20, curl:0, wave:50, color:null} },
+  front:     { label:'프론트', en:'FRONT',     defaults:{technique:'onelength', length:70, elevation:20, texture:15, curl:0, wave:50, color:null} },
+  temple:    { label:'템플',   en:'TEMPLE',    defaults:{technique:'graduation',length:80, elevation:30, texture:20, curl:0, wave:50, color:null} },
+  side:      { label:'사이드', en:'SIDE',      defaults:{technique:'graduation',length:85, elevation:50, texture:25, curl:0, wave:50, color:null} },
+  occipital: { label:'후두부', en:'OCCIPITAL', defaults:{technique:'uniform',   length:82, elevation:50, texture:25, curl:0, wave:50, color:null} },
+  nape:      { label:'네이프', en:'NAPE',      defaults:{technique:'onelength', length:45, elevation:0,  texture:30, curl:0, wave:50, color:null} },
 };
 const SECTION_ORDER = ['crown','front','temple','side','occipital','nape'];
+
+/* ============================================================
+   1-B. 커트 기법 → 겹(슬라이스) 생성 규칙
+   ★ 미용사는 기법 + 상위값만 조작. 이 함수가 겹 배열을 자동 생성.
+   나중에 세부 조작(3번)이 필요해지면 이 배열을 UI로 열기만 하면 됨.
+   각 겹: { pos(0=하단~1=상단), elevation, lenScale(하단 길이 대비 배율) }
+   ============================================================ */
+const TECHNIQUES = {
+  onelength:  { label:'원랭스',        hint:'한 라인 · 무게감 하단' },
+  graduation: { label:'그라데이션',    hint:'사선 · 무게 쌓임' },
+  uniform:    { label:'유니폼 레이어', hint:'균일 층 · 가벼움' },
+  increase:   { label:'인크리스 레이어', hint:'위로 갈수록 길게' },
+};
+const SLICES = 6; // 섹션당 겹 수 (내부 고정)
+
+function buildGuides(p){
+  const guides = [];
+  for(let s=0;s<SLICES;s++){
+    const pos = s/(SLICES-1);        // 0=하단(목쪽), 1=상단(정수리쪽)
+    let elevation, lenScale;
+    switch(p.technique){
+      case 'onelength':   // 모든 겹 0°, 같은 지점에서 자름 → 길이 동일
+        elevation = 0;
+        lenScale  = 1;
+        break;
+      case 'graduation':  // 낮은 각도, 위로 갈수록 살짝 짧게(무게 하단)
+        elevation = p.elevation * (0.3 + pos*0.5);
+        lenScale  = 1 - pos*0.28;
+        break;
+      case 'uniform':     // 90°로 들어 두상 따라 균일 길이
+        elevation = 90;
+        lenScale  = 1;
+        break;
+      case 'increase':    // 위로 갈수록 길게(가이드 이동)
+        elevation = 90;
+        lenScale  = 1 + pos*0.6;
+        break;
+      default:
+        elevation = p.elevation; lenScale = 1;
+    }
+    // 상위 '시술각 세기'(elevation 슬라이더)로 전체 각도 스케일 보정
+    elevation *= (p.elevation/45); // 45를 기준값으로
+    elevation = Math.max(0, Math.min(90, elevation));
+    guides.push({ pos, elevation, lenScale });
+  }
+  return guides;
+}
+
+/* 특정 컬럼 높이(rootT: 0=하단~1=상단)에서 겹들을 보간해 실제 시술값 산출 */
+function sampleGuides(guides, rootT){
+  // rootT에 가장 가까운 두 겹을 선형 보간
+  const x = rootT*(guides.length-1);
+  const i0 = Math.floor(x), i1 = Math.min(guides.length-1, i0+1), f = x-i0;
+  const a = guides[i0], b = guides[i1];
+  return {
+    elevation: a.elevation + (b.elevation-a.elevation)*f,
+    lenScale:  a.lenScale  + (b.lenScale -a.lenScale )*f,
+  };
+}
 
 /* 공정 그룹 정의 — 섹션 탭 내부를 커트→펌→컬러로 정리 */
 const GROUPS = [
@@ -308,6 +367,12 @@ function getScalpAndEndLines(g){
   const N = 140;
   const rootXraw=new Array(N), rootYraw=new Array(N), endRaw=new Array(N), secOf=new Array(N);
 
+  // 섹션별 겹 배열을 미리 생성(섹션당 1회) — 상위값→겹 자동 변환
+  const guideCache = {};
+  for(const id of SECTION_ORDER) guideCache[id] = buildGuides(state.sections[id]);
+
+  const elevOf = new Array(N); // 컬럼별 시술각(겹 보간 결과) — 렌더에서 사용
+
   for(let i=0;i<N;i++){
     const t = i/(N-1);
     const deg = -90 + t*180;            // 두상 상단 반원
@@ -320,9 +385,14 @@ function getScalpAndEndLines(g){
     rootXraw[i] = g.cx + Math.sin(rad)*g.faceW*1.06;
     rootYraw[i] = g.crownY + (1-Math.cos(rad))*g.faceH*0.62;
 
-    // 모발끝 길이: 섹션 길이값 기반. 시술각(elevation)이 높을수록
-    // 표면 가까이 짧게 떨어지는 게 아니라 뿌리가 서서 전체 실루엣이 둥글어짐.
-    let len = (p.length/100) * H*0.46;
+    // 이 컬럼이 두상에서 얼마나 위쪽인지(rootT: 0=옆/아래, 1=정수리)
+    const rootT = 1 - Math.abs(deg)/90;
+    // ★ 겹 배열을 보간해 이 높이의 실제 시술값(길이배율·시술각) 산출
+    const gsample = sampleGuides(guideCache[sec], rootT);
+
+    // 길이: 섹션 기본 길이 × 겹의 lenScale (기법이 여기서 형태를 만듦)
+    let len = (p.length/100) * H*0.46 * gsample.lenScale;
+    elevOf[i] = gsample.elevation;
 
     // 세그 노이즈 흉내(훅 단계에서 정돈층 검증용): 드물게 결측/스파이크
     if(Math.random()<0.05) len = (Math.random()<0.5)? -1 : len*1.8;
@@ -334,9 +404,11 @@ function getScalpAndEndLines(g){
   const endLen= cleanupLine(endRaw,   {wrap:false, missing:-1, outlierK:2.2, smoothR:3, maxStep:H*0.05});
   // rootX는 대칭축이라 스무딩만 가볍게
   const rootX = cleanupLine(rootXraw, {wrap:false, smoothR:1});
+  // 시술각도 겹 경계에서 안 튀게 가볍게 스무딩
+  const elev = cleanupLine(elevOf, {wrap:false, smoothR:2});
 
   const cols=[];
-  for(let i=0;i<N;i++) cols.push({rootX:rootX[i], rootY:rootY[i], endLen:endLen[i], sec:secOf[i]});
+  for(let i=0;i<N;i++) cols.push({rootX:rootX[i], rootY:rootY[i], endLen:endLen[i], sec:secOf[i], elevation:elev[i]});
   return cols;
 }
 
@@ -369,8 +441,8 @@ function draw(){
     const c=cols[i];
     const p=state.sections[c.sec];
     const side = c.rootX<g.cx?-1:1;
-    // 끝점: 뿌리에서 아래로 endLen, 시술각만큼 바깥으로
-    const flare = (p.elevation/90)*c.endLen*0.28;
+    // 끝점: 뿌리에서 아래로 endLen, 겹 시술각만큼 바깥으로
+    const flare = (c.elevation/90)*c.endLen*0.28;
     const ex = c.rootX + side*flare;
     const ey = c.rootY + c.endLen;
     ctx.lineTo(ex,ey);
@@ -391,7 +463,7 @@ function draw(){
     const col = p.color || state.globalColor;
     const side = c.rootX<g.cx?-1:1;
     const curl=p.curl/100, wave=0.6+p.wave/100, tex=p.texture/100;
-    const flare = (p.elevation/90)*c.endLen*0.28;
+    const flare = (c.elevation/90)*c.endLen*0.28;
 
     ctx.strokeStyle = shade(col, i%2? -12:8);
     ctx.beginPath();
@@ -488,10 +560,27 @@ function buildControls(){
         body.appendChild(sw);
       }
     } else {
+      // 커트 그룹: 맨 위에 기법(커트 방식) 선택 — 미용사의 상위 결정
+      if(grp.id==='cut'){
+        const tw = document.createElement('div'); tw.className='ctrl';
+        let opts='';
+        Object.keys(TECHNIQUES).forEach(k=>{
+          opts += `<option value="${k}" ${sec.technique===k?'selected':''}>${TECHNIQUES[k].label}</option>`;
+        });
+        tw.innerHTML = `<div class="ctrl-top">
+            <span><span class="ctrl-label">커트 방식</span><span class="ctrl-hint">${TECHNIQUES[sec.technique].hint}</span></span>
+          </div>
+          <select class="tech-sel" style="width:100%;background:var(--panel-2);color:var(--ink);
+            border:1px solid var(--line);border-radius:8px;padding:8px;font-family:inherit;font-size:12.5px">${opts}</select>`;
+        const sel = tw.querySelector('select');
+        sel.onchange = ()=>{ sec.technique=sel.value; buildControls(); draw(); };
+        body.appendChild(tw);
+      }
       grp.params.forEach(pm=>{
         const c = document.createElement('div'); c.className='ctrl';
+        const hint = (grp.id==='cut'&&pm.key==='elevation')? '시술각 세기(겹 전체 스케일)' : pm.hint;
         c.innerHTML = `<div class="ctrl-top">
-            <span><span class="ctrl-label">${pm.label}</span><span class="ctrl-hint">${pm.hint}</span></span>
+            <span><span class="ctrl-label">${pm.label}</span><span class="ctrl-hint">${hint}</span></span>
             <span class="ctrl-val">${sec[pm.key]}${pm.unit}</span>
           </div>
           <input type="range" min="${pm.min}" max="${pm.max}" value="${sec[pm.key]}">`;
