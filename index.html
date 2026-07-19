@@ -205,11 +205,12 @@ const TECHNIQUES = {
 const SLICES = 6; // 섹션당 겹 수 (내부 고정)
 
 function buildGuides(p){
+  const tech = (p.technique && ['onelength','graduation','uniform','increase'].includes(p.technique)) ? p.technique : 'uniform';
   const guides = [];
   for(let s=0;s<SLICES;s++){
     const pos = s/(SLICES-1);        // 0=하단(목쪽), 1=상단(정수리쪽)
     let elevation, lenScale;
-    switch(p.technique){
+    switch(tech){
       case 'onelength':   // 모든 겹 0°, 같은 지점에서 자름 → 길이 동일
         elevation = 0;
         lenScale  = 1;
@@ -562,6 +563,7 @@ function buildControls(){
     } else {
       // 커트 그룹: 맨 위에 기법(커트 방식) 선택 — 미용사의 상위 결정
       if(grp.id==='cut'){
+        if(!sec.technique || !TECHNIQUES[sec.technique]) sec.technique='uniform'; // 방어
         const tw = document.createElement('div'); tw.className='ctrl';
         let opts='';
         Object.keys(TECHNIQUES).forEach(k=>{
@@ -663,6 +665,11 @@ document.getElementById('styleSelect').onchange = e=>{
   const name=e.target.value; if(!name) return;
   const st=loadStyles()[name]; if(!st) return;
   state.sections = JSON.parse(JSON.stringify(st.sections));
+  // 옛 스타일에 technique가 없으면 기본값 채움(마이그레이션)
+  for(const id of SECTION_ORDER){
+    if(state.sections[id] && !state.sections[id].technique)
+      state.sections[id].technique = SECTIONS[id].defaults.technique;
+  }
   state.globalColor = st.globalColor||state.globalColor;
   buildControls(); draw();
 };
