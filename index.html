@@ -233,6 +233,47 @@
   ── 화면 진단수치 (2026-07-19) ──
   3D 화면 좌상단 "진단수치" 버튼 → 두상 비율·뷰기여·얼굴깊이·얼굴법선·
   측면보정·가닥수를 화면에 표시(폰에서 F12 없이 확인). _diag3D에 수집.
+
+  ── 2026-07-19 (계속) 얼굴이 두상보다 넓던 문제 + 실기기 로그 확정 ──
+  실기기 로그(v14)로 여러 값 확정:
+  · [두상 기준면] 폭a=0.531 세로b=0.658 깊이c=0.548 깊이/폭=1.03 "약간 넙적"
+    → 각도 역투영(2쌍 아님, 두상 단면) 효과 확인: 원반(1.0 미만) 탈출, 깊이가
+    폭보다 커짐. 넙적 문제 상당히 개선.
+  · [뷰 기여] front(-2°,1) left(32°,1) right(-30°,1) back(180°,0.25)
+    → 측면 실측 정상, 후면은 신뢰0.25(제외 대상) 확인.
+  · [얼굴 법선] 뒤집힘 0% · 큰단차(>0.15) 173개 · 변z차 최대 0.413
+    → 얼룩은 법선 아닌 표면 우글거림 재확정(v14는 2쌍 대조 전이라 미개선).
+  · [가닥수] front1417 left1440 right1440 back1464 (총 5761)
+    → 후면만 과밀 아님, 전체적으로 많음(실제 모발보다 숱 많게 느껴지는 원인).
+  얼굴>두상 폭 문제 원인 확정: 얼굴 귀 기준 EAR_MESH_X가 고정 0.78×0.82=0.64
+  인데 실측 두상 폭 a=0.531 → 얼굴이 두상보다 20% 넓어 튀어나옴(스크린샷).
+  수정: makeFaceProjector에 alignToHeadWidth 옵션 추가 — 켜면 EAR_MESH_X를
+  실측 두상폭(getHeadEllipsoid().a × 0.82)에 맞춤. buildRealFaceMesh의 얼굴
+  렌더 전용 projector에서만 켜서, 두상/헤어 실측이 공유하는 faceMetrics.projector
+  (고정 폭)는 안 건드림 → "폭 재려고 폭 쓰는" 순환 회피.
+  검증: 얼굴 귀폭 0.640→0.435(두상폭 0.531의 82%, 안쪽) — 얼굴이 두상 안으로.
+  이번 버전에 v15의 2쌍 대조 깊이보정 + 진단수치 버튼 위치수정(안 보이던 것)도
+  함께 반영. 남은 것: 표면 우글거림(2쌍 대조 실기기 확인), 숱 과다, 목 길이.
+
+  ── 2026-07-19 (계속) 양쪽일치=0 버그 수정 + 3쌍 대조 ──
+  v16 실기기 진단수치: [측면보정] 양쪽일치0 편측315 기각0. → 2쌍 대조가
+  구조적으로 헛돌고 있었음(좌우 동시 관측이 0이라 대조 자체가 성립 안 함).
+  사용자 지적: "눈은 좌우 둘 다 보이는데 양쪽일치가 0인 건 이상하다".
+  원인(버그): computeFullProfileDepthMap이 projectImagePointToHead를 opts
+  없이 호출 → inside(타원 정규화 거리)>1.2면 무조건 null 반환. 측면 사진에서
+  눈·코가 정면기준 타원의 옆으로 조금만 나가도 탈락 → 좌우 동시 관측 0.
+  수정: clampRim:true로 호출(림 평면 z=0 허용) → inside≤1.2 구간의 중앙부
+  정점이 양쪽 측면에서 살아남음.
+  동시에 사용자 설계대로 3쌍 대조로 확장("2개씩 3번, 좌우 직접까지"):
+  정점을 정면추정·좌측·우측 3소스로 보고 —
+  · 좌우 둘 다 관측 → |좌z-우z| 작으면 신뢰(가중평균), 크면 기각(오탐).
+    좌우 직접대조가 가장 강한 검증(정면 추정 오차와 무관).
+  · 편측(한쪽만) → 정면추정과 비교: 부합하면 채택, 크게 어긋나면 정면쪽으로
+    0.3배만 끌어당김(오탐 억제 — 이게 우글거림 튀는 정점을 완화).
+  하네스 검증: 눈·코(좌우일치)→양쪽일치 채택, 좌우모순→기각, 편측 정면부합
+  →채택, 편측 정면어긋남→0.3배. 5/5 정상.
+  ⚠ 실기기 재확인: 진단수치 [측면보정]에서 양쪽일치가 이제 0이 아닌지(버그
+  수정 확인), [얼굴법선] 큰단차가 140개보다 줄었는지(우글거림 개선).
 -->
 
 <!DOCTYPE html>
@@ -724,7 +765,7 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:22px;heigh
         <div class="preview-tag" id="model3dTag">범용 3D 두상 · 확정 스타일 적용</div>
         <!-- [진단용] 가닥 뿌리 기준면(가상 타원체) 토글 (2026-07-14 추가) — 헤어 위치 문제 원인 분리용 -->
         <button class="debug-btn mask-debug-btn" id="strandDebugToggle" onclick="toggleStrandDebug()">기준면 보기</button>
-        <button class="debug-btn" id="diag3dToggle" onclick="toggleDiag3D()" style="right:auto;left:8px;top:8px;">진단수치</button>
+        <button class="debug-btn" id="diag3dToggle" onclick="toggleDiag3D()" style="right:auto !important;left:10px;top:10px;">진단수치</button>
         <div id="diag3dBox" style="display:none;position:absolute;left:8px;top:40px;right:8px;background:rgba(0,0,0,0.85);color:#0f0;font-family:monospace;font-size:11px;padding:8px;border-radius:6px;white-space:pre-wrap;z-index:50;max-height:240px;overflow:auto;"></div>
         <div class="model3d-hint" style="position:absolute;bottom:10px;left:50%;transform:translateX(-50%);font-size:11px;color:var(--text-muted);background:rgba(0,0,0,0.4);padding:4px 10px;border-radius:10px;">드래그해서 회전</div>
       </div>
@@ -4920,7 +4961,7 @@ function getFaceMetrics(){
 // placeholder)이라 과설계하지 않음. widthFactor/heightFactor는
 // getFaceMetrics()가 이미 반영한 두상 스케일과 같은 값을 받아 기준점 자체가
 // 두상 크기에 맞춰 같이 움직이게 한다.
-function makeFaceProjector(lm, widthFactor, heightFactor){
+function makeFaceProjector(lm, widthFactor, heightFactor, alignToHeadWidth){
   const EYE_MESH_Y = 0.15; // headMesh.position.y와 동일(구 적도 = 이 높이)
   const CHIN_MESH_Y = 0.15 - 0.70*heightFactor;
   const denomY = (lm.chinY - lm.eyeY) || 0.001;
@@ -4928,7 +4969,18 @@ function makeFaceProjector(lm, widthFactor, heightFactor){
   const aY = EYE_MESH_Y + bY * lm.eyeY;
   const toMeshY = (v)=> aY - bY * v;
 
-  const EAR_MESH_X = 0.78 * widthFactor * 0.82; // 적도 반경보다 살짝 안쪽(귀는 옆으로 살짝 들어간 위치)
+  // 귀 기준 가로 반경. 기본은 고정 0.78×0.82(옛 타원 반경 기준) — 두상/헤어
+  // 실측 경로(computeHeadCrossSections 등)는 이 값으로 폭을 재므로, 여기서
+  // 실측 폭을 참조하면 "폭 재려고 폭 쓰는" 순환이 생김 → 기본은 고정 유지.
+  // (2026-07-19) alignToHeadWidth=true면 얼굴 메쉬 렌더 전용으로 실측 두상
+  // 폭(getHeadEllipsoid().a)에 맞춤 — 얼굴이 실측 두상보다 넓게 튀어나오던
+  // 문제 수정(로그: 두상 폭 a=0.531인데 얼굴 귀기준 0.64라 얼굴이 20% 넓었음).
+  // 얼굴 렌더에서만 켜므로 실측 순환은 안 건드림.
+  let EAR_MESH_X = 0.78 * widthFactor * 0.82; // 적도 반경보다 살짝 안쪽(귀는 옆으로 살짝 들어간 위치)
+  if(alignToHeadWidth){
+    const headA = getHeadEllipsoid().a; // 실측 두상 가로 반경
+    EAR_MESH_X = headA * 0.82;          // 귀는 적도보다 살짝 안쪽(0.82) — 실측 폭 기준
+  }
   const lx = Math.min(lm.lEarX, lm.rEarX), rx = Math.max(lm.lEarX, lm.rEarX);
   const denomX = (rx - lx) || 0.001;
   const bX = (2*EAR_MESH_X) / denomX;
@@ -5163,7 +5215,11 @@ async function buildRealFaceMesh(faceMetrics){
 
   const raw = lm.rawLandmarks;
   const vertCount = 468;
-  const projector = faceMetrics.projector;
+  // (2026-07-19) 얼굴 렌더 전용 projector — 가로를 실측 두상 폭에 맞춤
+  // (alignToHeadWidth). faceMetrics.projector(고정 폭)는 두상/헤어 실측이
+  // 공유하므로 안 건드리고, 얼굴 메쉬만 이 전용 projector로 그려 얼굴이
+  // 실측 두상보다 넓게 튀어나오던 문제 수정. bY/toMeshY는 동일(세로 불변).
+  const projector = makeFaceProjector(lm, faceMetrics.widthFactor, faceMetrics.heightFactor, true);
   const widthFactor = faceMetrics.widthFactor, heightFactor = faceMetrics.heightFactor;
 
   // 얼굴 메쉬 Z(깊이)는 두상 타원 방정식 ellipsoidZ로 구한다 — getHeadEllipsoid의
@@ -5288,31 +5344,49 @@ async function buildRealFaceMesh(faceMetrics){
       //    · 한쪽만(편측) → 대조 상대 없음 → 약하게만 적용(0.5배)
       //   편측 오탐이 검증 없이 튀어 얼굴이 우글거리던 문제(변z차 큰단차 17%)의
       //   근본 수정 — 스무딩으로 뭉개는 대신 실측끼리 교차검증.
-      const pairDeltas = []; // 각 측면이 정면 대비 제안하는 깊이 보정량
+      // ── (2026-07-19) 3쌍 대조 — 사용자 설계: "2개씩 3번, 좌우 직접까지".
+      //   얼굴 정점을 정면추정 + 좌측실측 + 우측실측 3개 소스로 보고, 가능한
+      //   쌍끼리 대조: (정면,좌) (정면,우) (좌,우). 좌우 둘 다 잡히는 정점(눈·
+      //   코·이마 중앙부)은 (좌,우) 직접 대조가 가장 강한 검증이 됨.
+      //   ※ 직전 2쌍 버전에서 양쪽일치=0이 나온 건 버그였음 — 측면 투영
+      //   (projectImagePointToHead)을 opts 없이 불러 inside>1.2면 무조건 null
+      //   반환, 측면에서 눈이 살짝만 옆으로 가도 탈락 → 좌우 동시 관측이 0.
+      //   clampRim:true(림 평면 z=0 허용)로 여유를 줘서 중앙부 정점이 양쪽에서
+      //   살아남게 함. 대조 판정:
+      //   · 좌우 둘 다 → |좌z-우z| 작으면 신뢰(평균), 크면 기각(오탐)
+      //   · 한쪽만 → 정면추정과 비교, 크게 벗어나면 절반만(약하게), 가까우면 채택
+      const sideZ = {};
       for(const s of sides){
         const sidePt = s.raw[i];
         if(!sidePt) continue;
-        const world = projectImagePointToHead(s.angle, sidePt.x, sidePt.y, widthFactor, heightFactor);
-        if(!world) continue; // 타원 밖 → 이 뷰선 실측 불가
-        pairDeltas.push({ angle:s.angle, delta: world.z - frontEstimatedZ, confidence: s.confidence });
+        const world = projectImagePointToHead(s.angle, sidePt.x, sidePt.y, widthFactor, heightFactor, { clampRim:true });
+        if(!world) continue;
+        sideZ[s.angle] = { z: world.z, confidence: s.confidence };
       }
-      if(!pairDeltas.length) continue; // 측면 실측 없음 → front 유지(NaN)
+      const hasL = sideZ.left !== undefined, hasR = sideZ.right !== undefined;
+      if(!hasL && !hasR) continue; // 측면 실측 없음 → front 유지(NaN)
 
-      let appliedDelta;
-      if(pairDeltas.length === 2){
-        const [a, b] = pairDeltas;
-        // 두 쌍이 크게 어긋나면(한쪽 오탐) 기각 — 정면 추정 유지
-        if(Math.abs(a.delta - b.delta) > 0.5*ELL_C){ _profileRejected++; continue; }
-        // 일치 → 신뢰도 가중 평균(강하게)
-        const wS = a.confidence + b.confidence;
-        appliedDelta = (a.delta*a.confidence + b.delta*b.confidence) / wS;
+      let appliedZ;
+      if(hasL && hasR){
+        // 좌우 직접 대조 (가장 강한 검증)
+        if(Math.abs(sideZ.left.z - sideZ.right.z) > 0.5*ELL_C){ _profileRejected++; continue; } // 오탐 기각
+        const wS = sideZ.left.confidence + sideZ.right.confidence;
+        appliedZ = (sideZ.left.z*sideZ.left.confidence + sideZ.right.z*sideZ.right.confidence) / wS;
         _profileBoth++;
       } else {
-        // 편측(1장만) → 대조 상대 없음 → 절반만 적용(오탐 시 피해 최소화)
-        appliedDelta = pairDeltas[0].delta * 0.5;
-        _profileSingle++;
+        // 편측 — 정면추정과 대조해서 검증
+        const one = hasL ? sideZ.left : sideZ.right;
+        if(Math.abs(one.z - frontEstimatedZ) > 0.5*ELL_C){
+          // 정면과 크게 어긋남 → 오탐 의심 → 정면쪽으로 절반만 끌어당김(약하게)
+          appliedZ = frontEstimatedZ + (one.z - frontEstimatedZ) * 0.3;
+          _profileSingle++;
+        } else {
+          // 정면과 부합 → 채택
+          appliedZ = one.z;
+          _profileSingle++;
+        }
       }
-      map[i] = clamp(appliedDelta, -0.6*ELL_C, 0.6*ELL_C);
+      map[i] = clamp(appliedZ - frontEstimatedZ, -0.6*ELL_C, 0.6*ELL_C);
       _fullProfileHitCount++;
     }
     return map;
@@ -5744,7 +5818,7 @@ function getHeadEllipsoid(){
     _headEllipsoidLogged = true;
     const ratio = ell.c / ell.a;
     const verdict = ratio >= 1.05 ? '정상(깊이>폭)' : ratio >= 0.9 ? '약간 넙적' : '원반(넙적)';
-    _diag3D.ellipsoid = `폭${ell.a.toFixed(2)} 세로${ell.b.toFixed(2)} 깊이${ell.c.toFixed(2)} | 깊이/폭=${ratio.toFixed(2)} ${verdict}`;
+    _diag3D.ellipsoid = `폭${ell.a.toFixed(2)} 세로${ell.b.toFixed(2)} 깊이${ell.c.toFixed(2)} | 깊이/폭=${ratio.toFixed(2)} ${verdict} (얼굴폭=두상폭${(ell.a*0.82).toFixed(2)} 정렬됨)`;
     console.log(`[두상 기준면] 폭(a)=${ell.a.toFixed(3)} 세로(b)=${ell.b.toFixed(3)} 깊이(c)=${ell.c.toFixed(3)} | 깊이/폭=${ratio.toFixed(2)} → ${verdict}`);
     const bands = computeHeadCrossSections();
     const src = bands.map(b2 => `phi${b2.phi.toFixed(2)}:W${(b2.halfWidth||0).toFixed(2)}/D${(b2.halfDepth||0).toFixed(2)}`).join(' ');
