@@ -121,6 +121,31 @@
   리졸버 3개·Claude API 2개·밴드 클로징 2개 등 → 단일 출처), 죽은 코드 제거
   (버전별 누적분 포함), 개발로그 2679줄→압축(삭제된 함수 가리키는 히스토리
   걷어냄). 전 단계 회귀 검증으로 3D/2D 출력 해시 완전 일치(동작 무변경).
+
+  ── 2026-07-19 얼굴 메쉬 측면 깊이 통합(평평한 얼굴 개선) ──
+  사용자 지적: outputFacialTransformationMatrix(실측 회전)를 헤어엔 4장 전부
+  적용하면서 얼굴은 front 단안 z만 쓰고 측면 실측은 코·턱·이마 3점에만 썼음.
+  "안 쓸 거면 헤어처럼 전체를 같은 방식으로 통합하면 연결부위 문제가 없다."
+  진단으로 확인한 사실: (1) front 얼굴에 실측 회전을 그냥 걸면 pitch가 코 같은
+  돌출부를 지렛대처럼 밀어 "막대기 버그"가 재발함(역회전이어도 front는 yaw가
+  작아 정회전과 이동량 동일 — 회전 방향이 아니라 "front=월드기준" 규약이 핵심).
+  (2) 얼굴 깊이가 computeHeadCrossSections와 이어지는 유일한 끈은 ELL_C(두상
+  깊이 반경)이고, 측면 실측 보정이 그 얕은 ELL_C를 교정하는 유일한 통로였는데
+  3앵커에만 적용돼 있었음.
+  적용: front엔 회전을 걸지 않되(막대기 방지), 깊이(z)만 465개 나머지 정점도
+  좌/우 측면 실측(projectImagePointToHead — 헤어와 동일 경로)으로 받아온다.
+  computeFullProfileDepthMap 신설: 정점별로 좌/우 측면에 투영해 실측 z를 직접
+  얻고, front 추정 z와의 차이(deltaZ)를 정점에 직접 적용. 안전장치는 3앵커
+  버전과 동일(신뢰도<0.5 스킵, 타원 밖 스킵, 좌우 모순 스킵, ±0.6*ELL_C clamp,
+  실측 없는 정점은 front 폴백). 3앵커 가우시안 확산은 전체맵에 실측 없는
+  정점의 폴백으로 유지. 스위치 USE_FULL_PROFILE_DEPTH=true(문제 시 false).
+  검증: node --check OK. 하네스(원반 두상 ELL_C=0.55): 얼굴 깊이 범위
+  0.070→0.121(+73%, 더 입체적) 확인.
+  ⚠ 한계: 여전히 ELL_C에 얹히는 상대 보정이라 근본인 원반 두상(작은 ELL_C)이
+  고쳐지지 않으면 clamp 폭도 작아 개선폭에 한계. 하지만 얼굴이 두상과 같은
+  좌표계(측면 실측)로 통합돼 연결부위 불일치는 해소. 실기기 재확인 필요 —
+  특히 측면 랜드마크 오탐이 많은 정점을 밀지 않는지(clamp·좌우모순 검사가
+  전 정점에 걸리므로 안전할 것으로 예상하나 미검증).
 -->
 
 <!DOCTYPE html>
@@ -5029,6 +5054,7 @@ async function buildRealFaceMesh(faceMetrics){
   catch(e){ console.warn('실제 얼굴 메쉬용 이미지 로드 실패:', e); return null; }
 
   const raw = lm.rawLandmarks;
+  const vertCount = 468;
   const projector = faceMetrics.projector;
   const widthFactor = faceMetrics.widthFactor, heightFactor = faceMetrics.heightFactor;
 
@@ -5106,6 +5132,64 @@ async function buildRealFaceMesh(faceMetrics){
     { idx: 10,  label: '이마' },   // 〃 forehead=lm[10]
   ];
   const PROFILE_DEPTH_FALLOFF_SIGMA = 0.18; // 보정 영향 반경(메쉬 로컬 단위) — ELL_A(대략 0.3~0.4)의 절반 수준
+
+  // ── (2026-07-19) 측면 실측 깊이를 얼굴 "전체 정점"으로 확장 ──
+  // 사용자 지적: outputFacialTransformationMatrix(실측 회전)를 헤어에는 4장
+  // 전부 적용하면서 얼굴은 front 단안 z만 쓰고 측면 실측은 코·턱·이마 3점에만
+  // 쓰고 있었음 — "안 쓸 거면 헤어처럼 전체를 같은 방식으로 통합하면 연결부위
+  // 문제가 없다". 그 통합의 올바른 형태: front 자체엔 회전을 걸지 않되(막대기
+  // 버그 방지 — front는 월드 기준 유지), 깊이(z)만은 465개 나머지 정점도
+  // 좌/우 측면 실측(projectImagePointToHead, 헤어와 동일 경로)으로 받아온다.
+  // 안전장치는 3앵커 버전과 동일하게 전 정점에 적용:
+  //   · 측면 신뢰도<0.5(어림 각도)면 그 뷰 스킵
+  //   · 측면 투영이 타원 밖(귀 너머 등)이면 그 정점 스킵(null 반환)
+  //   · 좌/우가 크게 어긋나면(오탐) 그 정점 스킵
+  //   · deltaZ는 ±0.6*ELL_C로 clamp(스파이크 방지)
+  //   · 측면 실측이 없는 정점은 조용히 front 방식 유지(실패해도 안 깨짐)
+  // 3앵커 방식(가우시안 확산)과 달리 정점별 직접 실측이라, 실측이 있는
+  // 정점은 그 값을 직접 쓰고 없는 정점만 front로 폴백 — 확산 겹침이 없다.
+  // 반환: 정점 idx → deltaZ 맵(Float32Array, NaN=측면 실측 없음→front 유지).
+  const USE_FULL_PROFILE_DEPTH = true; // 문제 생기면 false로 → 기존 3앵커 방식
+  function computeFullProfileDepthMap(){
+    const map = new Float32Array(vertCount).fill(NaN);
+    const sides = ['left','right'].map(angle=>{
+      const lmSide = state.landmarks && state.landmarks[angle];
+      if(!lmSide || !lmSide.rawLandmarks || lmSide.rawLandmarks.length < 468) return null;
+      if(getViewPoseConfidence(angle) < 0.5) return null;
+      return { angle, raw: lmSide.rawLandmarks, confidence: getViewPoseConfidence(angle) };
+    }).filter(Boolean);
+    if(!sides.length) return map; // 쓸 만한 측면 없음 → 전부 front 폴백
+
+    for(let i=0;i<vertCount;i++){
+      const p = raw[i];
+      if(distSqFromBound(i) > 1) continue; // 얼굴 경계 밖(뺨 끝·귀)은 front 유지(측면서도 원근으로 뭉개짐)
+      const localX = projector.toMeshX(p.x);
+      const yLocal = projector.toMeshY(p.y) - 0.15;
+      const dx = (p.x - boundCX) / boundRX, dy = (p.y - boundCY) / boundRY;
+      const frontBlend = Math.max(0, 1 - (dx*dx+dy*dy));
+      const frontEstimatedZ = ellipsoidZ(localX, yLocal) + frontBlend * (Z_SIGN * p.z * projector.bX * Z_DEPTH_SCALE);
+
+      const perView = [];
+      for(const s of sides){
+        const sidePt = s.raw[i];
+        if(!sidePt) continue;
+        const world = projectImagePointToHead(s.angle, sidePt.x, sidePt.y, widthFactor, heightFactor);
+        if(!world) continue; // 타원 밖 → 이 정점은 이 뷰서 실측 불가
+        perView.push({ z: world.z, confidence: s.confidence });
+      }
+      if(!perView.length) continue; // 측면 실측 없음 → front 유지(NaN)
+
+      if(perView.length === 2){
+        const [a,b] = perView;
+        const disagree = Math.abs(a.z - b.z) > 1.2*ELL_C || (a.z*b.z < 0 && Math.abs(a.z)>0.15*ELL_C && Math.abs(b.z)>0.15*ELL_C);
+        if(disagree) continue; // 좌/우 모순 → 안 믿음
+      }
+      const wSum = perView.reduce((s,v)=>s+v.confidence, 0);
+      const zSum = perView.reduce((s,v)=>s+v.z*v.confidence, 0);
+      map[i] = clamp(zSum/wSum - frontEstimatedZ, -0.6*ELL_C, 0.6*ELL_C);
+    }
+    return map;
+  }
   function computeProfileDepthCorrections(){
     const out = [];
     PROFILE_DEPTH_ANCHORS.forEach(anchor=>{
@@ -5151,8 +5235,8 @@ async function buildRealFaceMesh(faceMetrics){
     return out;
   }
   const profileDepthCorrections = computeProfileDepthCorrections();
+  const fullProfileDepthMap = USE_FULL_PROFILE_DEPTH ? computeFullProfileDepthMap() : null;
 
-  const vertCount = 468;
   const positions = new Float32Array(vertCount*3);
   const uvs = new Float32Array(vertCount*2);
   for(let i=0;i<vertCount;i++){
@@ -5167,14 +5251,20 @@ async function buildRealFaceMesh(faceMetrics){
     // 중심(distSq=0)에서 1(=실측 굴곡 전부 반영). 필터링에 쓰는 것과 같은
     // 타원이라 딱 경계선에서 자연스럽게 표면값과 일치함.
     const blendWeight = Math.max(0, 1 - distSqFromBound(i));
-    // 좌/우 측면 실측 보정: 코/턱/이마 근처일수록(가우시안 거리 가중) 위에서
-    // 계산해둔 deltaZ가 더해짐 — 앵커에서 멀수록(뺨·관자놀이 등) 기여 거의 0.
+    // 좌/우 측면 실측 보정. 전체맵(USE_FULL_PROFILE_DEPTH)에 이 정점의 직접
+    // 실측이 있으면 그 값을 그대로 쓰고(정점별 실측 우선), 없으면 기존 3앵커
+    // 가우시안 확산으로 폴백 — 확산은 실측이 아예 없던 정점을 코/턱/이마
+    // 실측의 "번짐"으로 근사하던 것이므로, 직접 실측이 있으면 확산보다 정확.
     let profileCorrectionZ = 0;
-    for(let k=0;k<profileDepthCorrections.length;k++){
-      const c = profileDepthCorrections[k];
-      const ddx = localX - c.localX, ddy = yLocal - c.yLocal;
-      const w = Math.exp(-(ddx*ddx+ddy*ddy) / (2*PROFILE_DEPTH_FALLOFF_SIGMA*PROFILE_DEPTH_FALLOFF_SIGMA));
-      profileCorrectionZ += w * c.deltaZ;
+    if(fullProfileDepthMap && !Number.isNaN(fullProfileDepthMap[i])){
+      profileCorrectionZ = fullProfileDepthMap[i];
+    } else {
+      for(let k=0;k<profileDepthCorrections.length;k++){
+        const c = profileDepthCorrections[k];
+        const ddx = localX - c.localX, ddy = yLocal - c.yLocal;
+        const w = Math.exp(-(ddx*ddx+ddy*ddy) / (2*PROFILE_DEPTH_FALLOFF_SIGMA*PROFILE_DEPTH_FALLOFF_SIGMA));
+        profileCorrectionZ += w * c.deltaZ;
+      }
     }
     const localZ = surfaceZLocal + blendWeight * reliefZLocal + profileCorrectionZ;
     // front는 회전 없이 그대로 월드 좌표로 씀 — 위 되돌림 항목 참고(회전을
