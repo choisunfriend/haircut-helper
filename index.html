@@ -377,10 +377,6 @@ main{flex:1;position:relative;overflow:hidden;}
 .ai-tags{display:flex;flex-wrap:wrap;gap:5px;}
 .ai-tag{font-size:10px;font-family:'JetBrains Mono',monospace;padding:3px 8px;border-radius:20px;background:var(--surface-2);border:1px solid var(--line);color:var(--accent-soft);}
 
-.slider-block{display:flex;flex-direction:column;gap:7px;}
-.slider-row{display:flex;justify-content:space-between;align-items:baseline;}
-.slider-label{font-size:13px;font-weight:600;}
-.slider-val{font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--accent-soft);}
 input[type=range]{-webkit-appearance:none;width:100%;height:4px;border-radius:2px;background:var(--line);outline:none;}
 input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:22px;height:22px;border-radius:50%;background:var(--accent);cursor:pointer;border:3px solid var(--bg);}
 
@@ -430,34 +426,6 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:22px;heigh
 ::-webkit-scrollbar{width:4px;}
 ::-webkit-scrollbar-thumb{background:var(--line);border-radius:2px;}
 
-/* ── SECTION TABS ── */
-.section-tab{
-  background:var(--surface);border:1.5px solid var(--line);border-radius:12px;
-  overflow:hidden;transition:border-color .15s;
-}
-.section-tab.active{border-color:var(--accent);}
-.section-tab-header{
-  display:flex;align-items:center;justify-content:space-between;
-  padding:10px 14px;cursor:pointer;
-}
-.section-tab-left{display:flex;align-items:center;gap:10px;}
-.section-badge{
-  font-size:9px;letter-spacing:1px;font-family:'JetBrains Mono',monospace;
-  padding:3px 7px;border-radius:6px;
-  background:var(--surface-2);color:var(--text-muted);border:1px solid var(--line);
-}
-.section-tab.active .section-badge{background:var(--accent);color:#1B1816;border-color:var(--accent);}
-.section-tab-name{font-size:13px;font-weight:600;color:var(--text);}
-.section-tab-desc{font-size:10px;color:var(--text-muted);}
-.section-tab-summary{font-size:10px;font-family:'JetBrains Mono',monospace;color:var(--accent-soft);}
-.section-tab-body{
-  padding:0 14px 14px;display:none;flex-direction:column;gap:12px;
-  border-top:1px solid var(--line);padding-top:12px;
-}
-.section-tab.active .section-tab-body{display:flex;}
-.param-label-row{display:flex;justify-content:space-between;align-items:baseline;}
-.param-label{font-size:12px;color:var(--text-muted);}
-.param-val{font-size:12px;font-family:'JetBrains Mono',monospace;color:var(--accent-soft);}
 .section-affects{font-size:10px;color:var(--text-muted);font-family:'JetBrains Mono',monospace;margin-top:2px;}
 
 /* ════════════════════════════════════════════════════════════════
@@ -1156,6 +1124,9 @@ const GYEOL_STYLING_PARAMS = [
   {key:'part',   label:'가르마',     min:-100, max:100, left:'좌',       right:'우'},
   {key:'finish', label:'마무리 질감', min:0,    max:100, left:'매트',     right:'윤기'},
 ];
+// 중립(무변화) 스타일링 값 — 매번 새 객체를 반환(state.styling은 변경되므로 공유 금지).
+// state 초기화 / 리셋 / 원본결 렌더 / 폴백 등 여러 곳에서 동일 리터럴로 반복되던 것을 통합.
+function neutralStyling(){ return { sweep:0, volume:50, flow:0, part:0, finish:50 }; }
 
 // ── 공간 좌표(nx,ny: 0~1) → 섹션 ID 판정 ──
 // SECTIONS의 yRange/xRange는 "이 섹션이 대략 이 범위에 있다"는 참고값이라
@@ -1247,7 +1218,7 @@ const state = {
   texturing: 0,
   // ── gyeol 스타일링(마무리) — 커트/펌/컬러 위에 얹는 머리 전체 연출(전역) ──
   // 전부 중립(sweep0/volume50/flow0/part0/finish50)이면 렌더는 기존과 동일.
-  styling: { sweep:0, volume:50, flow:0, part:0, finish:50 },
+  styling: neutralStyling(),
   // 섹션별 컬러 토글 시 기본 선택될 색(발레아쥬 첫 스와치)
   globalColor: '#6B4A2E',
   // gyeol 조정 패널: 현재 활성 섹션('styling'이면 마무리 탭), 그룹 접힘 상태
@@ -3085,7 +3056,7 @@ function selectStyle(id){
         state.sections[sid] = { ...SECTIONS[sid].defaults, ...st.sections[sid] };
       }
     });
-    if(st.styling) state.styling = { sweep:0, volume:50, flow:0, part:0, finish:50, ...st.styling };
+    if(st.styling) state.styling = { ...neutralStyling(), ...st.styling };
     state._globalCurl = (typeof st.globalCurl === 'number') ? st.globalCurl : 30;
   } else {
     // ── 기본 프리셋: length/curl/volume 대표값에서 섹션별 값 파생 ──
@@ -3145,108 +3116,6 @@ const PARAM_LABELS = {
   volume:'볼륨', blend:'연결감', layer:'레이어',
 };
 
-function buildSectionTabs(){
-  const container = document.getElementById('sectionTabs');
-  container.innerHTML = '';
-  SECTION_ORDER.forEach(id=>{
-    const sec = SECTIONS[id];
-    const div = document.createElement('div');
-    div.className = 'section-tab' + (state.currentSection===id?' active':'');
-    div.id = 'sectab-'+id;
-
-    // 이 섹션이 현재 뷰에 보이는지 표시
-    const visHere = sec.visibleIn.includes(state.currentViewAngle);
-    const viewNote = visHere ? '' : `<span style="color:var(--warn);font-size:10px;">현재 뷰에서 안 보임</span>`;
-
-    div.innerHTML = `
-      <div class="section-tab-header" onclick="selectSection('${id}')">
-        <div class="section-tab-left">
-          <span class="section-badge">${sec.labelEn}</span>
-          <div>
-            <div class="section-tab-name">${sec.label} ${viewNote}</div>
-            <div class="section-tab-desc">${sec.desc}</div>
-          </div>
-        </div>
-        <div class="section-tab-summary" id="sectab-summary-${id}"></div>
-      </div>
-      <div class="section-tab-body" id="sectab-body-${id}">
-        ${sec.params.map(p=>{
-          const meta = (sec.paramMeta && sec.paramMeta[p]) || {min:0, max:100, unit:''};
-          return `
-          <div class="slider-block">
-            <div class="param-label-row">
-              <span class="param-label">${PARAM_LABELS[p]||p}</span>
-              <span class="param-val" id="secval-${id}-${p}">${state.sections[id][p]}${meta.unit}</span>
-            </div>
-            <input type="range" id="secslider-${id}-${p}" min="${meta.min}" max="${meta.max}"
-              value="${state.sections[id][p]}"
-              oninput="onSectionSlider('${id}','${p}',this.value)">
-          </div>`;
-        }).join('')}
-        <div class="section-affects">영향: ${sec.visibleIn.map(v=>ANGLE_LABELS[v]).join(' · ')}</div>
-      </div>`;
-    container.appendChild(div);
-    updateSectionSummary(id);
-  });
-}
-
-function selectSection(id){
-  state.currentSection = id;
-  // 탭 active 토글
-  SECTION_ORDER.forEach(sid=>{
-    document.getElementById('sectab-'+sid)?.classList.toggle('active', sid===id);
-  });
-  // 해당 섹션이 보이는 뷰로 자동 전환
-  const visIn = SECTIONS[id].visibleIn;
-  if(!visIn.includes(state.currentViewAngle)){
-    state.currentViewAngle = visIn[0];
-    renderAngleSwitches();
-    drawAdjustPreview();
-  }
-}
-
-function onSectionSlider(secId, param, val){
-  const intVal = parseInt(val);
-  // 현재 뷰에 직접 적용
-  state.sections[secId][param] = intVal;
-  const meta = (SECTIONS[secId].paramMeta && SECTIONS[secId].paramMeta[param]) || {unit:''};
-  document.getElementById(`secval-${secId}-${param}`).textContent = val + meta.unit;
-  updateSectionSummary(secId);
-  // 섹션 간 연동 (같은 뷰 안에서)
-  propagateSectionChange(secId, param);
-  // 뷰 간 연동 (랜드마크 매핑 기반으로 인접 뷰에 반영)
-  const curAngle = state._adjustAngle || 'front';
-  propagateSectionToViews(curAngle, secId, param, intVal);
-  drawAdjustPreview();
-}
-
-// 조정 화면 슬라이더 3종(컬·웨이브폭·질감)의 공통 핸들러 — onGlobalCurl/
-// onWaveWidth/onTexturing이 상태 키와 표시 id만 다르고 나머지가 글자 그대로
-// 같아 하나로 합침(2026-07-18). 호출은 HTML oninput에서
-// onAdjustSlider('globalCurl'|'waveWidth'|'texturing', this.value).
-// state 키가 UI 이름과 다른 경우만 아래 표로 예외 처리(_globalCurl은 내부 접두사 관례).
-const ADJUST_SLIDER_STATE_KEY = { globalCurl: '_globalCurl' };
-function onAdjustSlider(name, val){
-  state[ADJUST_SLIDER_STATE_KEY[name] || name] = parseInt(val);
-  document.getElementById('val-' + name).textContent = val;
-  drawAdjustPreview();
-}
-
-// ── 페이드/테이퍼 핸들러 — 엘리베이션(각도)과 완전히 별개, 클리퍼 가드
-// 번호(길이) 기준 그라데이션. onSectionSlider와 동일한 패턴(값 갱신→표시→재렌더).
-function onFadeToggle(checked){
-  state.fade.enabled = checked;
-  document.getElementById('fadeControls').style.display = checked ? 'flex' : 'none';
-  drawAdjustPreview();
-}
-function onFadeSlider(param, val){
-  const intVal = parseInt(val);
-  state.fade[param] = intVal;
-  const unit = (param==='guard') ? '' : '%';
-  document.getElementById('fadeval-'+param).textContent = val + unit;
-  drawAdjustPreview();
-}
-
 function propagateSectionChange(secId, param){
   // 크라운 연동비율(0%=독립적, 100%=크라운과 거의 동일)만큼 크라운 길이
   // 변화를 템플에 반영. currentTemple(연동 전 템플 자체 길이)과 crownLen을
@@ -3289,7 +3158,7 @@ function updateSectionSummary(id){
 
 function resetSections(){
   SECTION_ORDER.forEach(id=>{ state.sections[id] = {...SECTIONS[id].defaults}; });
-  state.styling = { sweep:0, volume:50, flow:0, part:0, finish:50 };
+  state.styling = neutralStyling();
   state._globalCurl = 30;
   buildGyPanel();
   drawAdjustPreview();
@@ -3414,6 +3283,144 @@ function onGyStyling(key, val){
   drawAdjustPreview();
 }
 
+// ── gyeol 컨트롤 하위 빌더들 ──
+// buildGyControls가 너무 길어(스타일링탭+커트/펌/컬러 그룹+페이드+안내를 한 함수에서 다 처리)
+// 재사용/가독성이 나빠, 각 조각을 "요소를 반환하는" 순수 빌더로 분리. 반환 요소를
+// buildGyControls가 같은 순서로 append하므로 생성되는 DOM은 이전과 완전히 동일하다.
+
+// 단일 슬라이더 컨트롤(.gy-ctrl) — 커트/펌 파라미터 공용.
+function gyBuildRangeCtrl(secId, pm, hint){
+  const sec = state.sections[secId];
+  const cur = (typeof sec[pm.key] === 'number') ? sec[pm.key] : 0;
+  const c = document.createElement('div'); c.className = 'gy-ctrl';
+  c.innerHTML = `<div class="gy-ctrl-top">
+            <span><span class="gy-ctrl-label">${pm.label}</span><span class="gy-ctrl-hint">${hint}</span></span>
+            <span class="gy-ctrl-val" id="gyval-${secId}-${pm.key}">${cur}${pm.unit}</span>
+          </div>
+          <input type="range" min="${pm.min}" max="${pm.max}" value="${cur}"
+            oninput="onGySlider('${secId}','${pm.key}',this.value)">`;
+  return c;
+}
+
+// 커트 방식(기법) 선택 드롭다운 — 커트 그룹 맨 위.
+function gyBuildTechniqueSelect(secId, sec){
+  if(!sec.technique || !TECHNIQUES[sec.technique]) sec.technique = 'uniform';
+  const tw = document.createElement('div'); tw.className = 'gy-ctrl';
+  let opts = '';
+  Object.keys(TECHNIQUES).forEach(k=>{
+    opts += `<option value="${k}" ${sec.technique===k?'selected':''}>${TECHNIQUES[k].label}</option>`;
+  });
+  tw.innerHTML = `<div class="gy-ctrl-top">
+            <span><span class="gy-ctrl-label">커트 방식</span><span class="gy-ctrl-hint">${TECHNIQUES[sec.technique].hint}</span></span>
+          </div>
+          <select class="gy-select">${opts}</select>`;
+  const selEl = tw.querySelector('select');
+  selEl.onchange = ()=> onGyTechnique(secId, selEl.value);
+  return tw;
+}
+
+// 컬러 그룹 본문(발레아쥬 토글 + 스와치)을 body에 채운다.
+function gyBuildColorBody(body, secId, sec){
+  const on = sec.color !== null && sec.color !== undefined;
+  const t = document.createElement('div'); t.className = 'gy-toggle-row';
+  t.innerHTML = `<div class="gy-toggle ${on?'on':''}"></div>
+        <span class="gy-ctrl-hint">이 섹션만 다른 색 적용 (발레아쥬 등)</span>`;
+  t.querySelector('.gy-toggle').onclick = ()=> onGyColorToggle(secId);
+  body.appendChild(t);
+  if(on){
+    const sw = document.createElement('div'); sw.className = 'gy-swatches';
+    GYEOL_COLORS.forEach(c=>{
+      const s = document.createElement('div');
+      s.className = 'gy-sw' + (sec.color===c ? ' active' : '');
+      s.style.background = c;
+      s.onclick = ()=> onGyColorPick(secId, c);
+      sw.appendChild(s);
+    });
+    body.appendChild(sw);
+  }
+}
+
+// 공정 그룹(커트/펌/컬러) 하나를 통째로 만든다(헤드 + 본문).
+function gyBuildProcessGroup(grp, secId, sec){
+  const collapsed = !!state.panelCollapsed[grp.id];
+  const g = document.createElement('div');
+  g.className = 'gy-group' + (grp.optional ? ' optional' : '') + (collapsed ? ' collapsed' : '');
+
+  const head = document.createElement('div');
+  head.className = 'gy-group-head';
+  head.innerHTML = `<span class="gy-dot" style="background:${grp.color}"></span>
+      <span class="gy-group-title" style="color:${grp.color}">${grp.title}</span>
+      <span class="gy-group-sub">${grp.sub}</span>
+      <span class="gy-chevron">▼</span>`;
+  head.onclick = ()=> toggleGyGroup(grp.id);
+  g.appendChild(head);
+
+  const body = document.createElement('div');
+  body.className = 'gy-group-body';
+
+  if(grp.id === 'color'){
+    gyBuildColorBody(body, secId, sec);
+  } else {
+    if(grp.id === 'cut') body.appendChild(gyBuildTechniqueSelect(secId, sec));
+    grp.params.forEach(pm=>{
+      const hint = (grp.id==='cut' && pm.key==='elevation') ? '시술각(기법 강도 스케일)' : pm.hint;
+      body.appendChild(gyBuildRangeCtrl(secId, pm, hint));
+    });
+  }
+  g.appendChild(body);
+  return g;
+}
+
+// 페이드/테이퍼(클리퍼) 그룹 — 커트 계열 섹션에서만 호출. 전역 state.fade 조작.
+function gyBuildFadeGroup(secId){
+  const on = !!state.fade.enabled;
+  const fg = document.createElement('div');
+  fg.className = 'gy-group optional';
+  const fh = document.createElement('div');
+  fh.className = 'gy-group-head static';
+  fh.innerHTML = `<span class="gy-dot" style="background:var(--gy-cut)"></span>
+      <span class="gy-group-title" style="color:var(--gy-cut)">페이드</span>
+      <span class="gy-group-sub">클리퍼 · 하단 그라데이션</span>`;
+  fg.appendChild(fh);
+  const fb = document.createElement('div');
+  fb.className = 'gy-group-body';
+  const tr = document.createElement('div'); tr.className = 'gy-toggle-row';
+  tr.innerHTML = `<div class="gy-toggle ${on?'on':''}"></div>
+      <span class="gy-ctrl-hint">템플·사이드·후두부·네이프 하단(구레나룻·목선)에 적용</span>`;
+  tr.querySelector('.gy-toggle').onclick = onGyFadeToggle;
+  fb.appendChild(tr);
+  if(on){
+    const fadeParams = [
+      {key:'guard', label:'가드 번호', hint:'0=스킨 · 8=1인치', min:0, max:8},
+      {key:'height', label:'페이드 높이', hint:'로우~하이', min:0, max:100},
+      {key:'blendWidth', label:'블렌딩 폭', hint:'테이퍼 레버', min:0, max:100},
+    ];
+    fadeParams.forEach(fp=>{
+      const cur = state.fade[fp.key];
+      const unit = fp.key==='guard' ? '' : '%';
+      const c = document.createElement('div'); c.className = 'gy-ctrl';
+      c.innerHTML = `<div class="gy-ctrl-top">
+            <span><span class="gy-ctrl-label">${fp.label}</span><span class="gy-ctrl-hint">${fp.hint}</span></span>
+            <span class="gy-ctrl-val" id="gyfade-${fp.key}">${cur}${unit}</span>
+          </div>
+          <input type="range" min="${fp.min}" max="${fp.max}" value="${cur}"
+            oninput="onGyFadeSlider('${fp.key}',this.value)">`;
+      fb.appendChild(c);
+    });
+  }
+  fg.appendChild(fb);
+  return fg;
+}
+
+// 이 섹션이 영향을 주는 뷰 안내.
+function gyBuildAffectsNote(secId){
+  const note = document.createElement('div');
+  note.className = 'section-affects';
+  note.style.paddingTop = '10px';
+  note.textContent = '영향: ' + SECTIONS[secId].visibleIn.map(v=>ANGLE_LABELS[v]).join(' · ');
+  return note;
+}
+
 function buildGyControls(){
   const wrap = document.getElementById('gyControls');
   if(!wrap) return;
@@ -3428,123 +3435,9 @@ function buildGyControls(){
   const secId = state.activePanelSection;
   const sec = state.sections[secId];
 
-  GYEOL_GROUPS.forEach(grp=>{
-    const collapsed = !!state.panelCollapsed[grp.id];
-    const g = document.createElement('div');
-    g.className = 'gy-group' + (grp.optional ? ' optional' : '') + (collapsed ? ' collapsed' : '');
-
-    const head = document.createElement('div');
-    head.className = 'gy-group-head';
-    head.innerHTML = `<span class="gy-dot" style="background:${grp.color}"></span>
-      <span class="gy-group-title" style="color:${grp.color}">${grp.title}</span>
-      <span class="gy-group-sub">${grp.sub}</span>
-      <span class="gy-chevron">▼</span>`;
-    head.onclick = ()=> toggleGyGroup(grp.id);
-    g.appendChild(head);
-
-    const body = document.createElement('div');
-    body.className = 'gy-group-body';
-
-    if(grp.id === 'color'){
-      // 컬러: 이 섹션만 다른 색(발레아쥬) 토글 + 스와치
-      const on = sec.color !== null && sec.color !== undefined;
-      const t = document.createElement('div'); t.className = 'gy-toggle-row';
-      t.innerHTML = `<div class="gy-toggle ${on?'on':''}"></div>
-        <span class="gy-ctrl-hint">이 섹션만 다른 색 적용 (발레아쥬 등)</span>`;
-      t.querySelector('.gy-toggle').onclick = ()=> onGyColorToggle(secId);
-      body.appendChild(t);
-      if(on){
-        const sw = document.createElement('div'); sw.className = 'gy-swatches';
-        GYEOL_COLORS.forEach(c=>{
-          const s = document.createElement('div');
-          s.className = 'gy-sw' + (sec.color===c ? ' active' : '');
-          s.style.background = c;
-          s.onclick = ()=> onGyColorPick(secId, c);
-          sw.appendChild(s);
-        });
-        body.appendChild(sw);
-      }
-    } else {
-      // 커트 그룹 맨 위: 커트기법 선택(미용사의 상위 결정)
-      if(grp.id === 'cut'){
-        if(!sec.technique || !TECHNIQUES[sec.technique]) sec.technique = 'uniform';
-        const tw = document.createElement('div'); tw.className = 'gy-ctrl';
-        let opts = '';
-        Object.keys(TECHNIQUES).forEach(k=>{
-          opts += `<option value="${k}" ${sec.technique===k?'selected':''}>${TECHNIQUES[k].label}</option>`;
-        });
-        tw.innerHTML = `<div class="gy-ctrl-top">
-            <span><span class="gy-ctrl-label">커트 방식</span><span class="gy-ctrl-hint">${TECHNIQUES[sec.technique].hint}</span></span>
-          </div>
-          <select class="gy-select">${opts}</select>`;
-        const selEl = tw.querySelector('select');
-        selEl.onchange = ()=> onGyTechnique(secId, selEl.value);
-        body.appendChild(tw);
-      }
-      grp.params.forEach(pm=>{
-        const c = document.createElement('div'); c.className = 'gy-ctrl';
-        const hint = (grp.id==='cut' && pm.key==='elevation') ? '시술각(기법 강도 스케일)' : pm.hint;
-        const cur = (typeof sec[pm.key] === 'number') ? sec[pm.key] : 0;
-        c.innerHTML = `<div class="gy-ctrl-top">
-            <span><span class="gy-ctrl-label">${pm.label}</span><span class="gy-ctrl-hint">${hint}</span></span>
-            <span class="gy-ctrl-val" id="gyval-${secId}-${pm.key}">${cur}${pm.unit}</span>
-          </div>
-          <input type="range" min="${pm.min}" max="${pm.max}" value="${cur}"
-            oninput="onGySlider('${secId}','${pm.key}',this.value)">`;
-        body.appendChild(c);
-      });
-    }
-    g.appendChild(body);
-    wrap.appendChild(g);
-  });
-
-  // ── 페이드/테이퍼(클리퍼) — 커트 계열 섹션에서만 노출(전역 state.fade) ──
-  if(GY_FADE_SECTIONS[secId]){
-    const on = !!state.fade.enabled;
-    const fg = document.createElement('div');
-    fg.className = 'gy-group optional';
-    const fh = document.createElement('div');
-    fh.className = 'gy-group-head static';
-    fh.innerHTML = `<span class="gy-dot" style="background:var(--gy-cut)"></span>
-      <span class="gy-group-title" style="color:var(--gy-cut)">페이드</span>
-      <span class="gy-group-sub">클리퍼 · 하단 그라데이션</span>`;
-    fg.appendChild(fh);
-    const fb = document.createElement('div');
-    fb.className = 'gy-group-body';
-    const tr = document.createElement('div'); tr.className = 'gy-toggle-row';
-    tr.innerHTML = `<div class="gy-toggle ${on?'on':''}"></div>
-      <span class="gy-ctrl-hint">템플·사이드·후두부·네이프 하단(구레나룻·목선)에 적용</span>`;
-    tr.querySelector('.gy-toggle').onclick = onGyFadeToggle;
-    fb.appendChild(tr);
-    if(on){
-      const fadeParams = [
-        {key:'guard', label:'가드 번호', hint:'0=스킨 · 8=1인치', min:0, max:8},
-        {key:'height', label:'페이드 높이', hint:'로우~하이', min:0, max:100},
-        {key:'blendWidth', label:'블렌딩 폭', hint:'테이퍼 레버', min:0, max:100},
-      ];
-      fadeParams.forEach(fp=>{
-        const cur = state.fade[fp.key];
-        const unit = fp.key==='guard' ? '' : '%';
-        const c = document.createElement('div'); c.className = 'gy-ctrl';
-        c.innerHTML = `<div class="gy-ctrl-top">
-            <span><span class="gy-ctrl-label">${fp.label}</span><span class="gy-ctrl-hint">${fp.hint}</span></span>
-            <span class="gy-ctrl-val" id="gyfade-${fp.key}">${cur}${unit}</span>
-          </div>
-          <input type="range" min="${fp.min}" max="${fp.max}" value="${cur}"
-            oninput="onGyFadeSlider('${fp.key}',this.value)">`;
-        fb.appendChild(c);
-      });
-    }
-    fg.appendChild(fb);
-    wrap.appendChild(fg);
-  }
-
-  // 이 섹션이 영향을 주는 뷰 안내
-  const note = document.createElement('div');
-  note.className = 'section-affects';
-  note.style.paddingTop = '10px';
-  note.textContent = '영향: ' + SECTIONS[secId].visibleIn.map(v=>ANGLE_LABELS[v]).join(' · ');
-  wrap.appendChild(note);
+  GYEOL_GROUPS.forEach(grp => wrap.appendChild(gyBuildProcessGroup(grp, secId, sec)));
+  if(GY_FADE_SECTIONS[secId]) wrap.appendChild(gyBuildFadeGroup(secId));
+  wrap.appendChild(gyBuildAffectsNote(secId));
 }
 
 function buildGyStylingControls(wrap){
@@ -3864,6 +3757,49 @@ function drawOrientationFieldDebug(ctx, fit, maskInf){
   ctx.restore();
 }
 
+// 가닥 렌더 유효 컬럼 수(두피선이 잡힌 컬럼 개수) — 세그멘테이션 성공 여부 판정용.
+// renderFrame과 captureStrandPathsFor 두 곳에서 동일하게 쓰이던 계산을 통합.
+function countValidCols(scalpY){
+  let n = 0;
+  for(let i=0;i<scalpY.length;i++){ if(scalpY[i] >= 0) n++; }
+  return n;
+}
+
+// drawHairStrands에 넘길 opts 객체 생성 — renderFrame(화면)과 captureStrandPathsFor(3D 캡처)
+// 두 곳에서 색상/섹션/결방향/캡처 옵션 구성이 글자 그대로 중복돼 있던 것을 하나로 통합.
+// rawMode(원본 결 보기)일 때만 컬·섹션·스타일링·색을 중립화. 비-raw면 두 호출부가 완전히
+// 동일한 opts를 만든다(예전엔 capture가 styling을 생략하고 drawHairStrands 폴백에 의존했는데,
+// 그 폴백값이 state.styling이라 결과가 같음 → 여기서 명시적으로 넘겨도 동작 동일).
+function buildStrandOpts(maskInf, angle, rawMode){
+  const { curl, volume, thickness } = rawMode
+    ? { curl:0, volume:50, thickness:50 }
+    : state.sliders[angle];
+  const sections = rawMode
+    // length뿐 아니라 line/layer도 중립값으로 덮어씀 — front.line/nape.line/side.layer 효과가
+    // "원본 결 보기"(모든 스타일링 무력화가 목적)에 새어 들어가지 않도록. blend는 렌더링에
+    // 직접 관여하지 않는 파라미터(propagateSectionChange 전용)라 안 건드려도 무방.
+    // gyeol 신규 파라미터도 중립화: technique=uniform(층 분포 없음), curl0(스트레이트),
+    // texture0(끝단 트림 없음). color는 raw 모드에서 무시(avgColor 사용)되도록 null.
+    ? Object.fromEntries(Object.entries(state.sections).map(([id,s])=>[id, {...s, length:50, line:50, layer:0, technique:'uniform', curl:0, texture:0, color:null}]))
+    : state.sections;
+  return {
+    curl, volume, thickness,
+    // gyeol 스타일링(전역 마무리) — 원본 결 보기에서는 중립으로 넘김.
+    styling: rawMode ? neutralStyling() : state.styling,
+    angle, sections, // 컬럼별로 섹션을 판정해 길이를 다르게 적용하기 위함
+    color: rawMode ? maskInf.avgColor : ((state.selectedStyle ? state.selectedStyle.colorHex : null) || maskInf.avgColor),
+    // 섹션별 색상: 염색 스타일(state.selectedStyle)이 선택돼 있으면 그 염색 색을 두상 전체에
+    // 균일하게 써야 하므로 섹션별 변화를 끔 — 스타일 미적용(프리셋 없이 실측 그대로)일 때만
+    // 부위별로 실제 인식된 색을 각각 사용.
+    avgColorsBySection: (!state.selectedStyle) ? maskInf.avgColorsBySection : null,
+    colorPalette: (!state.selectedStyle) ? maskInf.colorPalette : null, // 원본 모드에서만 실측 색 분포 사용
+    orientation: maskInf.orientation,       // 결방향 컬럼 샘플 (축소해상도 좌표)
+    orientMaskW: maskInf.maskW,              // 결방향 필드가 계산된 축소 해상도 폭
+    orientMaskH: maskInf.maskH,              // 결방향 필드가 계산된 축소 해상도 높이
+    capturePaths: true, // 완성된 가닥 경로를 저장 → 3D가 이 경로를 그대로 들어올림
+  };
+}
+
 function renderFrame(canvas, angle){
   // ── 버그 수정(2026-07-13): SECTIONS 경계 미스매치 ──
   // refineSectionBoundaries(angle)는 원래 촬영 직후 파이프라인에서 4개 뷰를
@@ -3977,44 +3913,15 @@ function renderFrame(canvas, angle){
       // 화면에 넘기는 값만 중립값으로 덮어씀 — 길이 50(=원본 인식 길이 그대로),
       // 볼륨 50, 컬 0(순수 결방향만 따라감), 색상은 스타일 틴트 대신 실제 인식된 평균 헤어컬러.
       const rawMode = state.debugShowRaw;
-      const {curl,volume,thickness} = rawMode
-        ? {curl:0, volume:50, thickness:50}
-        : state.sliders[angle];
-      const sectionsForRender = rawMode
-        // length뿐 아니라 line/layer도 중립값으로 덮어씀 — 이번에 추가한
-        // front.line/nape.line/side.layer 효과가 "원본 결 보기"(모든 스타일링
-        // 무력화가 목적)에 새어 들어가지 않도록. blend는 렌더링에 직접 관여하지
-        // 않는 파라미터(propagateSectionChange 전용)라 안 건드려도 무방.
-        // gyeol 신규 파라미터도 중립화: technique=uniform(층 분포 없음), curl0(스트레이트),
-        // texture0(끝단 트림 없음). color는 raw 모드에서 무시(avgColor 사용)되도록 null.
-        ? Object.fromEntries(Object.entries(state.sections).map(([id,s])=>[id, {...s, length:50, line:50, layer:0, technique:'uniform', curl:0, texture:0, color:null}]))
-        : state.sections;
       const maskW = maskInf.w, maskH = maskInf.h;
       const scalpY   = maskInf.scalpY;
       const hairEndY = maskInf.hairEndY;
 
-      const validCount = Array.from(scalpY).filter(y=>y>=0).length;
+      const validCount = countValidCols(scalpY);
 
       if(validCount > maskW * 0.05){
         // 가닥 오버레이 — origLen 이내는 hairCanvas 마스크로 clip, 연장분은 clip 없음(drawHairStrands 내부에서 처리)
-        drawHairStrands(ctx, fit, scalpY, hairEndY, maskW, maskH, hairC, {
-          curl, volume, thickness,
-          // gyeol 스타일링(전역 마무리) — 원본 결 보기에서는 중립으로 넘김.
-          styling: rawMode ? {sweep:0,volume:50,flow:0,part:0,finish:50} : state.styling,
-          angle, sections: sectionsForRender, // 컬럼별로 섹션을 판정해 길이를 다르게 적용하기 위함
-          color: rawMode ? maskInf.avgColor : ((state.selectedStyle ? state.selectedStyle.colorHex : null) || maskInf.avgColor),
-          // 섹션별 색상: 염색 스타일(state.selectedStyle)이 선택돼 있으면 그
-          // 염색 색을 두상 전체에 균일하게 써야 하므로 섹션별 변화를 끔 —
-          // 스타일 미적용(프리셋 없이 실측 그대로)일 때만 부위별로 실제
-          // 인식된 색을 각각 사용(사용자 요청: "부위별로 인식되는 컬러 쓰는
-          // 거 가능하냐").
-          avgColorsBySection: (!state.selectedStyle) ? maskInf.avgColorsBySection : null,
-          colorPalette: (!state.selectedStyle) ? maskInf.colorPalette : null, // 원본 모드에서만 실측 색 분포 사용(염색 스타일은 균일색 유지)
-          orientation: maskInf.orientation,       // 결방향 컬럼 샘플 (축소해상도 좌표)
-          orientMaskW: maskInf.maskW,              // 결방향 필드가 계산된 축소 해상도 폭
-          orientMaskH: maskInf.maskH,              // 결방향 필드가 계산된 축소 해상도 높이
-          capturePaths: true, // (2026-07-14, 옮기기 전환 1단계) 완성된 가닥 경로를 버리지 않고 저장 → 3D가 이 경로를 그대로 들어올림
-        });
+        drawHairStrands(ctx, fit, scalpY, hairEndY, maskW, maskH, hairC, buildStrandOpts(maskInf, angle, rawMode));
 
         // 컬러 오버레이는 현재 사용하지 않음(가닥 자체 색상으로 스타일 컬러를 표현) — 관련 죽은 코드 제거됨
       }
@@ -4078,6 +3985,30 @@ function gyShade(hex, amt){
   let r=(n>>16)+amt, g=((n>>8)&255)+amt, b=(n&255)+amt;
   r=Math.max(0,Math.min(255,r)); g=Math.max(0,Math.min(255,g)); b=Math.max(0,Math.min(255,b));
   return '#'+((r<<16)|(g<<8)|b).toString(16).padStart(6,'0');
+}
+
+// 커트 겹 강도(끝점 수렴/확산 최대치를 rootSpan의 몇 배로 볼지) — 튜닝 지점.
+const CUT_LAYER_GAIN = 0.5;
+// 기법 → 커트 축(0=원랭스 … 1=유니폼 … 2=인크리스). 시술각(elevation)이 ±로 미세 조정.
+const CUT_TECH_AXIS = { onelength:0, graduation:0.5, uniform:1, increase:1.6 };
+// 뿌리 위치 → 겹 길이 델타(px). createColumnStyleResolvers의 cutLayerDeltaFor에서 쓰던
+// 순수 계산을 분리 — 시술각/기법이 만드는 레이어(끝점 재분포)를 rootSpan 물리 스케일로 계산.
+//   sec: 해당 섹션 파라미터(technique/elevation), rootY: 이 컬럼 뿌리의 세로 위치(px),
+//   rootSpan: 뷰 전체 뿌리 세로 범위, maxRootY: 가장 낮은(아웃라인) 뿌리의 y.
+// 반환: 양수=수렴(원랭스/무게선), 0=유니폼(무변화), 음수=확산(인크리스/롱레이어).
+function computeCutLayerDelta(sec, rootY, rootSpan, maxRootY){
+  if(!sec) return 0;
+  const tech = sec.technique || 'uniform';
+  const elev = (typeof sec.elevation === 'number') ? sec.elevation : 45;
+  const techBase = (CUT_TECH_AXIS[tech] !== undefined) ? CUT_TECH_AXIS[tech] : 1;
+  // 시술각 45°=중립. 높을수록 축을 유니폼/인크리스 쪽(레이어↑), 낮을수록 원랭스 쪽(무게↑).
+  const axis = Math.max(0, Math.min(2, techBase + ((elev - 45) / 90) * 0.6));
+  const w = 1 - axis; // +1(수렴/원랭스) … 0(유니폼) … -1(확산/인크리스)
+  if(w === 0) return 0;
+  // rootT: 뿌리 높이(1=정수리쪽 높은 뿌리, 0=아웃라인 낮은 뿌리).
+  const rootT = Math.max(0, Math.min(1, (maxRootY - rootY) / rootSpan));
+  // 원랭스(w>0): 높은 뿌리(rootT↑)를 더 길게 → 끝 수렴. 인크리스(w<0): 높은 뿌리를 짧게.
+  return rootSpan * rootT * w * CUT_LAYER_GAIN;
 }
 
 function createColumnStyleResolvers({ maskW, maskH, iScalpY, sections, angle, color, avgColorsBySection, styling }){
@@ -4213,27 +4144,11 @@ function createColumnStyleResolvers({ maskW, maskH, iScalpY, sections, angle, co
     if(y >= 0){ if(y < _minRootY) _minRootY = y; if(y > _maxRootY) _maxRootY = y; }
   }
   const rootSpan = Math.max(1, _maxRootY - _minRootY);
-  const CUT_GAIN = 0.5; // 겹 강도(끝점 수렴/확산 최대치를 rootSpan의 몇 배로 볼지) — 튜닝 지점
-  // 기법 → 커트 축(0=원랭스 … 1=유니폼 … 2=인크리스). 시술각(elevation)이 ±로 미세 조정.
-  const TECH_AXIS = { onelength:0, graduation:0.5, uniform:1, increase:1.6 };
   // 컬럼별 겹 길이 델타(px) — scaledLen에 더한다. 양수=수렴(끝을 아래로 늘려 무게선),
-  // 음수=확산(끝을 위로 당겨 롱레이어). depthScale은 호출부에서 곱한다.
-  const cutLayerDeltaFor = makeColumnResolver((secId, cx, nx, ny)=>{
-    const sec = sections && sections[secId];
-    if(!sec) return 0;
-    const tech = sec.technique || 'uniform';
-    const elev = (typeof sec.elevation === 'number') ? sec.elevation : 45;
-    const techBase = (TECH_AXIS[tech] !== undefined) ? TECH_AXIS[tech] : 1;
-    // 시술각 45°=중립. 높을수록 축을 유니폼/인크리스 쪽(레이어↑), 낮을수록 원랭스 쪽(무게↑).
-    const axis = Math.max(0, Math.min(2, techBase + ((elev - 45) / 90) * 0.6));
-    const w = 1 - axis; // +1(수렴/원랭스) … 0(유니폼) … -1(확산/인크리스)
-    if(w === 0) return 0;
-    // rootT: 뿌리 높이(1=정수리쪽 높은 뿌리, 0=아웃라인 낮은 뿌리). ny=iScalpY/maskH.
-    const rootY = ny * maskH;
-    const rootT = Math.max(0, Math.min(1, (_maxRootY - rootY) / rootSpan));
-    // 원랭스(w>0): 높은 뿌리(rootT↑)를 더 길게 → 끝 수렴. 인크리스(w<0): 높은 뿌리를 짧게.
-    return rootSpan * rootT * w * CUT_GAIN;
-  });
+  // 음수=확산(끝을 위로 당겨 롱레이어). 실제 계산은 순수 함수 computeCutLayerDelta로
+  // 분리(독립 테스트·재사용 가능). depthScale은 호출부(drawStrandLayer)에서 곱한다.
+  const cutLayerDeltaFor = makeColumnResolver((secId, cx, nx, ny)=>
+    computeCutLayerDelta(sections && sections[secId], ny * maskH, rootSpan, _maxRootY));
 
   // ── 섹션별 헤어 색상(avgColorsBySection) ──
   // 사용자 요청: "부위별로 인식되는 컬러 쓰는 거 가능하냐" — avgColorsBySection이
@@ -4565,7 +4480,7 @@ function drawHairStrands(ctx, fit, scalpY, hairEndY, maskW, maskH, hairCanvas, o
   }
   const {curl, volume, thickness, color, avgColorsBySection, colorPalette, orientation, orientMaskW, orientMaskH, angle, sections, capturePaths} = opts;
   // gyeol 스타일링(전역 마무리) — 원본 결 보기 등에서 중립으로 넘기기 위해 opts로 받음.
-  const stylingForRender = opts.styling || (state.styling || {sweep:0,volume:50,flow:0,part:0,finish:50});
+  const stylingForRender = opts.styling || state.styling || neutralStyling();
   // (2026-07-14, 옮기기 전환 1단계) 이 렌더에서 그린 가닥 경로(마스크 좌표계
   // 점들 + 최종 색)를 저장할 배열 — 3D가 "함수로 새로 만드는" 대신 이 완성된
   // 경로를 그대로 3D 좌표로 들어올리기 위함(사용자 설계: "2D 렌더링 완료되고
@@ -6980,25 +6895,15 @@ function captureStrandPathsFor(angle){
     getCachedImg(angle, (img)=>{
       if(!img){ resolve(false); return; }
       try{
-        const validCount = Array.from(maskInf.scalpY).filter(y=>y>=0).length;
+        const validCount = countValidCols(maskInf.scalpY);
         if(validCount <= maskInf.w * 0.05){ resolve(false); return; }
         const canvas = document.createElement('canvas');
         canvas.width = DRAW_RES;
         canvas.height = Math.round(DRAW_RES * img.height / img.width);
         const ctx = canvas.getContext('2d');
         const fit = computeFit(img.width, img.height, canvas.width, canvas.height);
-        const {curl, volume, thickness} = state.sliders[angle];
-        drawHairStrands(ctx, fit, maskInf.scalpY, maskInf.hairEndY, maskInf.w, maskInf.h, hairC, {
-          curl, volume, thickness,
-          angle, sections: state.sections,
-          color: (state.selectedStyle ? state.selectedStyle.colorHex : null) || maskInf.avgColor,
-          avgColorsBySection: (!state.selectedStyle) ? maskInf.avgColorsBySection : null,
-          colorPalette: (!state.selectedStyle) ? maskInf.colorPalette : null,
-          orientation: maskInf.orientation,
-          orientMaskW: maskInf.maskW,
-          orientMaskH: maskInf.maskH,
-          capturePaths: true,
-        });
+        drawHairStrands(ctx, fit, maskInf.scalpY, maskInf.hairEndY, maskInf.w, maskInf.h, hairC,
+          buildStrandOpts(maskInf, angle, false));
         resolve(!!(state.strandPaths && state.strandPaths[angle] && state.strandPaths[angle].strands.length));
       }catch(e){ console.warn('오프스크린 가닥 캡처 실패('+angle+'):', e); resolve(false); }
     });
