@@ -416,6 +416,24 @@
   2단계(다음): 정규 모델을 "중립 캡처"에서 1회 생성 + 조정 연산자(길이=호 트림/
     연장, 컬=두상 곡면 helix, 섹션=3D 태그 선택)를 3D에서 수행 → 2D는 순수 투영.
     그러면 컬의 2D 한계가 사라짐.
+
+  ── 2026-07-22 (10차 보강) 개발용 3D 검증 미니뷰 ──
+  사용자 지적: "UX상 3D는 숨기지만, 개발 중엔 3D가 제대로 조정되는지 봐야 한다.
+  미니뷰가 확대 가능하게." → 조정 화면에 경량·독립 3D 뷰 추가(#devMini3D):
+  · 메인 3D 화면(model3D 싱글턴)과 별개의 THREE 렌더러 — 정규 모델
+    (state.hair3D) LineSegments + 두상 와이어 구(방향감). 드래그 회전(x/y)·자동회전.
+  · 3D 조정 엔진 β ON일 때만 표시(showDevMini3D). 우하단 150×190 미니 →
+    ⛶ 버튼으로 4% 여백 전체화면 확대(toggle .expanded + 렌더러 리사이즈).
+  · 조정 시 실시간 갱신: renderAdjustFrame이 use3DAdjust면 scheduleHair3DRefresh
+    (180ms 디바운스)로 현재 2D 캡처를 리프트→정규 모델 재생성→미니뷰 갱신.
+    즉 슬라이더를 만지면 2D와 3D 미니뷰가 함께 변함 → "조정이 3D에서 맞게
+    일어나는지" 눈으로 검증. 출시 땐 이 패널만 숨기면 됨.
+  · 1단계 방침 조정: renderFrame의 2D→투영 스왑은 state.projectTo2D(기본 off,
+    2단계용)로 분리. 1단계에선 2D를 정상 렌더(슬라이더 동작·경로 캡처 유지)하고
+    3D 검증은 미니뷰로 — 투영이 2D를 대체하면 조정 연산자 이관 전이라 슬라이더가
+    죽은 것처럼 보였을 것(투영 수학 자체는 Node 왕복 49/49로 이미 검증).
+  · ensureHair3DModel: 토글 ON 시 현재 뷰 캡처 없으면 captureStrandPathsFor로
+    확보 후 리프트. 리프트 실패/THREE 부재는 조용히 폴백.
 -->
 
 <!DOCTYPE html>
@@ -569,6 +587,18 @@ main{flex:1;position:relative;overflow:hidden;}
   background:var(--surface);
 }
 .adjust-preview canvas{width:100%;height:100%;display:block;}
+/* (10차) 개발용 3D 검증 미니뷰 */
+#devMini3D{position:absolute;right:8px;bottom:8px;width:150px;height:190px;z-index:60;
+  background:rgba(20,17,14,0.9);border:1px solid var(--line);border-radius:10px;
+  display:flex;flex-direction:column;overflow:hidden;box-shadow:0 4px 16px rgba(0,0,0,0.4);}
+#devMini3D.expanded{right:4%;left:4%;top:4%;bottom:4%;width:auto;height:auto;}
+#devMini3DHeader{display:flex;align-items:center;justify-content:space-between;
+  padding:4px 8px;font-size:11px;font-weight:600;color:var(--accent-soft);
+  background:rgba(0,0,0,0.35);flex-shrink:0;}
+#devMini3DExpand{background:none;border:none;color:var(--accent-soft);font-size:14px;cursor:pointer;padding:0 2px;}
+#devMini3DCanvasWrap{flex:1;position:relative;min-height:0;}
+#devMini3DCanvasWrap canvas{width:100%;height:100%;display:block;touch-action:none;}
+#devMini3DHint{font-size:9px;color:var(--text-muted);text-align:center;padding:2px;flex-shrink:0;}
 .preview-tag{
   position:absolute;top:10px;left:10px;
   background:rgba(27,24,22,0.75);backdrop-filter:blur(4px);
@@ -790,6 +820,17 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:22px;heigh
         <button class="debug-btn" id="diagToggle" onclick="toggleDiagInfo()" style="right:auto;left:8px;bottom:8px;">진단정보</button>
         <div id="diagInfoBox" style="display:none;position:absolute;left:8px;bottom:44px;right:8px;background:rgba(0,0,0,0.85);color:#0f0;font-family:monospace;font-size:10px;padding:8px;border-radius:6px;white-space:pre-wrap;z-index:50;max-height:200px;overflow:auto;"></div>
         <div class="seg-status" id="segStatus"></div>
+        <!-- (10차) 개발용 3D 검증 미니뷰 — 3D 조정 엔진 β ON일 때만 표시.
+             정규 3D 모델(state.hair3D)을 직접 렌더(드래그 회전). 탭(확대 버튼)으로
+             전체화면 확대. 출시 땐 이 패널만 숨기면 됨. -->
+        <div id="devMini3D" style="display:none;">
+          <div id="devMini3DHeader">
+            <span>3D 검증</span>
+            <button id="devMini3DExpand" onclick="toggleDevMini3DExpand()" title="확대/축소">⛶</button>
+          </div>
+          <div id="devMini3DCanvasWrap"></div>
+          <div id="devMini3DHint">드래그 회전 · ⛶ 확대</div>
+        </div>
       </div>
       <div class="adjust-scroll">
         <div class="adjust-controls">
@@ -3528,15 +3569,33 @@ function toggle3DAdjust(){
   state.use3DAdjust = !state.use3DAdjust;
   const btn = document.getElementById('btn3dEngine');
   if(btn) btn.textContent = '3D 조정 엔진 β: ' + (state.use3DAdjust ? 'ON' : 'OFF');
-  if(state.use3DAdjust && !state.hair3D){
-    try {
-      if(typeof THREE !== 'undefined') buildHairStrandsFromPaths(); // state.hair3D 채움
-    } catch(e){ console.warn('3D 모델 생성 실패:', e); }
-    if(!state.hair3D){
-      console.warn('[3D조정] 정규 모델 없음 — 2D 폴백 유지(캡처 가닥이 아직 없을 수 있음)');
-    }
+  if(state.use3DAdjust){
+    // 현재 뷰라도 캡처가 있어야 리프트 가능 — 없으면 오프스크린 캡처 후 모델 생성
+    ensureHair3DModel(()=>{
+      showDevMini3D(true);   // 개발용 3D 검증 미니뷰 표시
+      drawAdjustPreview();
+    });
+  } else {
+    showDevMini3D(false);
+    drawAdjustPreview();
   }
-  drawAdjustPreview();
+}
+
+// 정규 3D 모델을 보장(없으면 현재 뷰 캡처→리프트). 콜백은 모델 준비 후 호출.
+function ensureHair3DModel(cb){
+  if(state.hair3D){ cb && cb(); return; }
+  const angle = state.currentViewAngle;
+  const has = state.strandPaths && state.strandPaths[angle] && state.strandPaths[angle].strands && state.strandPaths[angle].strands.length;
+  const build = ()=>{
+    try { if(typeof THREE !== 'undefined') buildHairStrandsFromPaths(); }
+    catch(e){ console.warn('3D 모델 생성 실패:', e); }
+    if(!state.hair3D) console.warn('[3D조정] 정규 모델 없음 — 2D 폴백 유지');
+    cb && cb();
+  };
+  if(has){ build(); }
+  else if(typeof captureStrandPathsFor === 'function' && state.shots && state.shots[angle]){
+    captureStrandPathsFor(angle).then(build);
+  } else { build(); }
 }
 
 /* ════════════════════════════════════════════════════════════════
@@ -4292,9 +4351,10 @@ function renderFrame(canvas, angle){
       const validCount = countValidCols(scalpY);
 
       if(validCount > maskW * 0.05){
-        // (10차) 3D 조정 엔진 토글: ON이고 정규 3D 모델이 있으면 그걸 현재 뷰로
-        // 되쏘아 표시(3D=원본, 2D=투영). 아니면 기존 2D 직접 렌더(폴백).
-        if(state.use3DAdjust && state.hair3D && state.hair3D.viewCal && state.hair3D.viewCal[angle]){
+        // (10차) state.projectTo2D(2단계 전용, 기본 off)면 정규 3D 모델을 현재
+        // 뷰로 되쏘아 표시(3D=원본, 2D=투영). 1단계에선 2D를 정상 렌더해서
+        // 슬라이더가 동작하고 경로 캡처가 유지되게 하고, 3D 검증은 미니뷰로 한다.
+        if(state.projectTo2D && state.hair3D && state.hair3D.viewCal && state.hair3D.viewCal[angle]){
           projectHair3DToView(ctx, fit, angle, maskInf);
         } else {
           // 가닥 오버레이 — origLen 이내는 hairCanvas 마스크로 clip, 연장분은 clip 없음(drawHairStrands 내부에서 처리)
@@ -4329,6 +4389,23 @@ function renderAdjustFrame(){
     +' rawMode='+state.debugShowRaw);
   renderFrame(document.getElementById('adjustCanvas'), state.currentViewAngle);
   logSectionColumnCounts(state.currentViewAngle);
+  // (10차) 3D 조정 엔진 ON이면 조정 결과를 3D 미니뷰에 실시간 반영(디바운스).
+  // 현재 2D 렌더가 경로를 캡처(capturePaths:true)하므로, 그걸 리프트해 정규 모델을
+  // 갱신하면 미니뷰가 "지금 조정 상태의 3D"를 보여준다. 리빌드가 무거워 디바운스.
+  if(state.use3DAdjust) scheduleHair3DRefresh();
+}
+let _hair3DRefreshTimer = null;
+function scheduleHair3DRefresh(){
+  if(_hair3DRefreshTimer) return;
+  _hair3DRefreshTimer = setTimeout(()=>{
+    _hair3DRefreshTimer = null;
+    try {
+      if(typeof THREE !== 'undefined' && typeof buildHairStrandsFromPaths === 'function'){
+        buildHairStrandsFromPaths();  // state.hair3D 재생성(현재 캡처 반영)
+        refreshDevMini3D();
+      }
+    } catch(e){ console.warn('3D 미니뷰 갱신 실패:', e); }
+  }, 180);
 }
 
 // [진단용] 현재 뷰에서 각 섹션에 실제로 몇 개의 머리카락 컬럼이 배정되는지 집계.
@@ -8001,6 +8078,114 @@ function projectHair3DToView(ctx, fit, angle, maskInf){
   }
   ctx.restore();
   return true;
+}
+
+// ── (10차) 개발용 3D 검증 미니뷰 ──
+// 최종 UX에선 조정 화면에서 3D를 숨기지만, 개발 중엔 "조정이 3D에서 제대로
+// 일어나는지" 눈으로 봐야 함(사용자 지적). 정규 3D 모델(state.hair3D)을 직접
+// 렌더하는 경량·독립 THREE 뷰 — 메인 3D 화면(model3D 싱글턴)과 충돌 안 함.
+// 드래그 회전 + 탭 확대. 조정 시 refreshDevMini3D로 실시간 갱신.
+let devMini3D = null;
+function initDevMini3D(){
+  if(devMini3D || typeof THREE === 'undefined') return devMini3D;
+  const wrap = document.getElementById('devMini3DCanvasWrap');
+  if(!wrap) return null;
+  const renderer = new THREE.WebGLRenderer({ antialias:true, alpha:true });
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio||1, 2));
+  const w = wrap.clientWidth||150, h = wrap.clientHeight||150;
+  renderer.setSize(w, h);
+  wrap.appendChild(renderer.domElement);
+  const scene = new THREE.Scene();
+  const camera = new THREE.PerspectiveCamera(32, w/h, 0.01, 100);
+  camera.position.set(0, 0.15, 3);
+  scene.add(new THREE.AmbientLight(0xffffff, 0.9));
+  const group = new THREE.Group();
+  scene.add(group);
+  // 두상 기준 와이어(방향 감 잡기용) — 반투명 구
+  let headWire = null;
+  try {
+    const he = getHeadEllipsoid();
+    const g = new THREE.SphereGeometry(1, 16, 12);
+    const m = new THREE.MeshBasicMaterial({ color:0x554b3f, wireframe:true, transparent:true, opacity:0.25 });
+    headWire = new THREE.Mesh(g, m);
+    headWire.scale.set(he.a, he.b, he.c);
+    headWire.position.y = 0.15;
+    group.add(headWire);
+  } catch(e){}
+  let dragging=false, lastX=0, lastY=0, autoRot=true;
+  const dom = renderer.domElement;
+  dom.addEventListener('pointerdown', e=>{ dragging=true; autoRot=false; lastX=e.clientX; lastY=e.clientY; e.preventDefault(); });
+  window.addEventListener('pointerup', ()=>{ dragging=false; });
+  window.addEventListener('pointermove', e=>{
+    if(!dragging || !devMini3D) return;
+    group.rotation.y += (e.clientX-lastX)*0.01;
+    group.rotation.x += (e.clientY-lastY)*0.01;
+    lastX=e.clientX; lastY=e.clientY;
+  });
+  devMini3D = { renderer, scene, camera, group, headWire, strandObj:null, raf:null, autoRot:()=>autoRot };
+  function animate(){
+    if(autoRot) group.rotation.y += 0.005;
+    renderer.render(scene, camera);
+    devMini3D.raf = requestAnimationFrame(animate);
+  }
+  animate();
+  return devMini3D;
+}
+
+// 정규 모델(state.hair3D) → LineSegments로 재구성. 조정으로 모델이 바뀌면 재호출.
+function refreshDevMini3D(){
+  if(!devMini3D || !state.hair3D || !state.hair3D.strands) return;
+  const { group } = devMini3D;
+  if(devMini3D.strandObj){
+    group.remove(devMini3D.strandObj);
+    if(devMini3D.strandObj.geometry) devMini3D.strandObj.geometry.dispose();
+    if(devMini3D.strandObj.material) devMini3D.strandObj.material.dispose();
+    devMini3D.strandObj = null;
+  }
+  const positions=[], colors=[]; const c=new THREE.Color();
+  for(const st of state.hair3D.strands){
+    const pts=st.pts;
+    c.set(st.color || '#141414');
+    for(let i=0;i<pts.length-1;i++){
+      positions.push(pts[i].x,pts[i].y,pts[i].z, pts[i+1].x,pts[i+1].y,pts[i+1].z);
+      colors.push(c.r,c.g,c.b, c.r,c.g,c.b);
+    }
+  }
+  if(!positions.length) return;
+  const geo=new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(positions),3));
+  geo.setAttribute('color', new THREE.BufferAttribute(new Float32Array(colors),3));
+  const obj=new THREE.LineSegments(geo, new THREE.LineBasicMaterial({ vertexColors:true }));
+  group.add(obj);
+  devMini3D.strandObj = obj;
+}
+
+function resizeDevMini3D(){
+  if(!devMini3D) return;
+  const wrap = document.getElementById('devMini3DCanvasWrap');
+  if(!wrap) return;
+  const w=wrap.clientWidth, h=wrap.clientHeight;
+  if(w<=0||h<=0) return;
+  devMini3D.renderer.setSize(w,h);
+  devMini3D.camera.aspect=w/h; devMini3D.camera.updateProjectionMatrix();
+}
+
+// 3D 조정 엔진 토글과 연동: ON이면 패널 표시+모델 반영, OFF면 숨김.
+function showDevMini3D(on){
+  const panel = document.getElementById('devMini3D');
+  if(!panel) return;
+  panel.style.display = on ? 'flex' : 'none';
+  if(on){
+    if(!devMini3D) initDevMini3D();
+    setTimeout(()=>{ resizeDevMini3D(); refreshDevMini3D(); }, 30);
+  }
+}
+
+function toggleDevMini3DExpand(){
+  const panel = document.getElementById('devMini3D');
+  if(!panel) return;
+  panel.classList.toggle('expanded');
+  setTimeout(resizeDevMini3D, 30); // 크기 전환 후 렌더러 리사이즈
 }
 
 // headGroup 재구성 시(스타일이 바뀌어 이전 가닥/두상을 지울 때) geometry/material을
