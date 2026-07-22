@@ -337,6 +337,24 @@
   성능 메모: 가닥당 추적 스텝 증가(최대 maskH*1.15까지 프로브) + 언더코트 패스
   추가로 렌더 비용 상승 — 느리면 STRAND_SAMPLE/개수 상수 또는 stopAtExit 폭 조정.
   검증: node --check + 순수 함수 하네스(마스크 이탈 실측 정확도). 실기기 재확인 필요.
+
+  ── 2026-07-22 (7차) 결 불연속 종결 — 관통 가닥 문제의 실측 해법 ──
+  6차 실기기: "레이어가 겹치고 각 레이어가 변하긴 하는데 변하는 양이 적다."
+  원인: 사용자가 미리 질문했던 바로 그 케이스("마스크 경계까지 한 가닥으로 되면?")
+  — 결 필드가 연속이면 꼭대기 뿌리 가닥이 마스크 끝까지 한 가닥으로 실측돼(관통),
+  crown 53%가 귀 구역까지 덮음. 사이드 가닥(15%)이 움직여도 위를 덮은 관통
+  가닥은 안 움직여 변화가 희석됨.
+  수정: 추적 중 "결 불연속"을 실측 종결 조건으로 추가(FLOW_DISC 튜닝 상수).
+  · 증거 2종: 방향 급변(|delta|>0.7rad & 신뢰도>0.2 — 웨이브의 완만한 회전은
+    미달), 신뢰도 급락(EMA 대비 45% 미만 or 강한 결(EMA>0.3)이 갑자기 소멸).
+  · 증거를 점수로 누적, 가닥별 임계(1.0~1.8 랜덤 스태거)를 넘는 지점 =
+    실측 "겹 끝"(flowEndIdx). 실측 끝 = min(마스크 이탈, 겹 끝).
+  · 겹층 커트: 위 겹이 아래 겹의 실측 헴에서 끊겨 아래 겹이 화면을 소유 →
+    섹션 조정 가시성↑. 긴 생머리: 결 연속 → 점수 안 쌓임 → 무영향(의도).
+  · clip 분할은 여전히 마스크 이탈 기준(겹 끝 이후 연장도 마스크 안이면 base).
+  · [진단·결단] 로그 추가(10% 버킷 변화 시만): 겹층 커트면 두 자릿수 %가 정상.
+  ⚠ FLOW_DISC는 실사진 결 필드 특성에 민감 — 실기기에서 %가 0이면 임계 완화
+  (thrMin↓/dirJump↓), 과도하면(가닥이 죄다 짧아짐) 반대로. 실기기 재확인 필요.
 -->
 
 <!DOCTYPE html>
@@ -4581,6 +4599,20 @@ function createColumnStyleResolvers({ maskW, maskH, iScalpY, sections, angle, co
    * 아예 없음) drawHairStrands에서 분리해도 Node에서 독립 검증 가능함 —
    * env는 호출부(drawHairStrands)가 한 번만 만들어 넘겨주는 고정값 묶음.
    */
+// ── (7차) 결 불연속 종결 튜닝 상수 ──
+// 겹층 커트에서 "위 겹이 끝나는 선(헴)"은 사진의 결 필드에 방향 급변/신뢰도
+// 급락으로 남는다. 추적 중 그 증거를 점수로 누적해 임계(가닥별 랜덤 스태거)를
+// 넘으면 실측 겹 끝으로 종결 — 관통 가닥(꼭대기 뿌리→마스크 끝 한 가닥) 문제의
+// 실측 기반 해법. 긴 생머리는 결이 연속이라 점수가 안 쌓여 안 끊김.
+const FLOW_DISC = {
+  dirJump: 0.7,   // 방향 급변 판정(rad, ≈40°) — 웨이브의 완만한 회전은 미달
+  dipRatio: 0.45, // 신뢰도 급락 판정: 현재 신뢰도 < EMA×이 비율
+  dipMin: 0.2,    // EMA가 이보다 강했을 때만 "급락"으로 침(원래 약한 결은 무시)
+  // 하네스 튜닝(겹 헴 폭이 2~3스텝으로 짧은 케이스): 급락 2회면 대부분 임계 도달,
+  // 1회 단독(고립 노이즈)으론 미달하도록 — wDip×2 > thrMin+thrSpan, wDip < thrMin.
+  wDir: 0.6, wDip: 0.65, // 이벤트당 점수
+  thrMin: 0.75, thrSpan: 0.55, // 가닥별 임계 = thrMin + rand×thrSpan (끝선 스태거)
+};
 function traceStrandPath(ix, sy_img, targetLen_img, jitterSeed, env, rootSec, stopAtExit){
   const { hasOrientation, orientation, orientMaskW, ox, oy, STRAND_STEP_LEN, frontDirBiasFor, curlAmtFor, waveWidthFor, styling, maskW, maskAt } = env;
     const stepLen = STRAND_STEP_LEN; // 고정 보폭 — targetLen_img에서 역산하지 않음
@@ -4592,6 +4624,10 @@ function traceStrandPath(ix, sy_img, targetLen_img, jitterSeed, env, rootSec, st
     // pts.maskExitIdx = "사진이 말하는 이 가닥의 실측 끝" 인덱스. stopAtExit이면
     // 이탈 확정 즉시 추적 중단(줄이는 조정에선 그 뒤가 필요 없음 — 성능).
     let _offRun = 0, _exitIdx = null;
+    // (7차) 결 불연속 점수 — pts.flowEndIdx = 실측 "겹 끝"(없으면 null)
+    let _cohEma = null, _discScore = 0, _flowEndIdx = null;
+    const _rr = Math.sin((jitterSeed + ix) * 12.9898) * 43758.5453;
+    const _discThr = FLOW_DISC.thrMin + (_rr - Math.floor(_rr)) * FLOW_DISC.thrSpan;
     // 뿌리(시작 컬럼) 기준으로 딱 한 번만 조회 — 가닥이 진행하며 컬럼이 옆으로
     // 흘러가도 "이 가닥이 어디서 자라났는지"는 뿌리 위치로 고정하는 게 맞음.
     // (2026-07-22) rootSec: 호출부(drawStrand)가 뿌리 실좌표로 판정한 섹션 —
@@ -4654,6 +4690,13 @@ function traceStrandPath(ix, sy_img, targetLen_img, jitterSeed, env, rootSec, st
           while(delta > Math.PI) delta -= Math.PI*2;
           while(delta < -Math.PI) delta += Math.PI*2;
           dir = baseDir + delta * w;
+          // (7차) 결 불연속 점수 — 마스크 안(_exitIdx 미확정)에서만, 초반 4스텝 제외
+          if(_flowEndIdx === null && _exitIdx === null && s >= 4){
+            if(Math.abs(delta) > FLOW_DISC.dirJump && sample.coherence > 0.2) _discScore += FLOW_DISC.wDir;
+            if(_cohEma !== null && _cohEma > FLOW_DISC.dipMin && sample.coherence < _cohEma * FLOW_DISC.dipRatio) _discScore += FLOW_DISC.wDip;
+            if(_discScore >= _discThr) _flowEndIdx = pts.length - 1;
+          }
+          _cohEma = (_cohEma === null) ? sample.coherence : _cohEma * 0.7 + sample.coherence * 0.3;
         } else {
           // 결방향을 못 믿는 구간(coherence 낮음 — 대부분 마스크 밖 ext 구간에서 발생).
           // "중력"으로 명명: 실제 머리카락도 뿌리 쪽은 결방향(웨이브·컬)을 유지하지만
@@ -4671,6 +4714,12 @@ function traceStrandPath(ix, sy_img, targetLen_img, jitterSeed, env, rootSec, st
           const DEBUG_DISABLE_GRAVITY = false;
           const gravityPull = DEBUG_DISABLE_GRAVITY ? 0 : (0.15 + (s/steps) * 0.35); // 시작 0.15 → 끝 0.5
           dir = baseDir + restore * gravityPull;
+          // (7차) 강한 결이 갑자기 사라짐(신뢰도 붕괴)도 겹 끝 증거 — 마스크 안에서만
+          if(_flowEndIdx === null && _exitIdx === null && s >= 4 && _cohEma !== null && _cohEma > 0.3){
+            _discScore += FLOW_DISC.wDip;
+            if(_discScore >= _discThr) _flowEndIdx = pts.length - 1;
+          }
+          if(_cohEma !== null) _cohEma *= 0.7; // 저신뢰 표본 → EMA 감쇠
         }
       }
 
@@ -4743,9 +4792,12 @@ function traceStrandPath(ix, sy_img, targetLen_img, jitterSeed, env, rootSec, st
           }
         }
       }
+      // (7차) 줄이는 조정에선 결 불연속(겹 끝) 확정 시에도 추적 조기 중단
+      if(stopAtExit && _flowEndIdx !== null) break;
     }
 
     pts.maskExitIdx = (_exitIdx !== null) ? Math.max(1, _exitIdx) : (pts.length - 1);
+    pts.flowEndIdx = (_flowEndIdx !== null) ? Math.max(1, _flowEndIdx) : null;
     return pts;
 }
 
@@ -5034,6 +5086,7 @@ function drawHairStrands(ctx, fit, scalpY, hairEndY, maskW, maskH, hairCanvas, o
   // 제거(gySectionHemCapNy는 3D 헴라인 단계 재사용 위해 보존).
   // 즉시 그리지 않고 op로 기록 → 섹션 스택 순서로 일괄 스트로크(아래 참조).
   const drawOps = []; // {sec, cPts, splitIdx, color, width, alpha}
+  let _flowCutN = 0, _strandN = 0; // [진단용] 결 불연속으로 종결된 가닥 수
   function drawStrand(startX, startY, ix, rootSec, rootNy, depthScale, strandMult, jitterSeed, strokeStyleVal){
     // 조정 배율(섹션 길이 슬라이더 — 기본값=원본이라 기본 상태선 ratio=1)
     const rawRatio = lengthRatioFor(ix, rootSec, rootNy);
@@ -5041,10 +5094,17 @@ function drawHairStrands(ctx, fit, scalpY, hairEndY, maskW, maskH, hairCanvas, o
     const layerDelta = cutLayerDeltaFor(ix, rootSec, rootNy) * depthScale;
     // 목표가 실측보다 짧은 게 확실하면(줄이는 조정) 마스크 이탈 즉시 추적 중단(성능)
     const stopAtExit = (strandMult * ratio <= 1.0 && layerDelta <= 0);
-    // ① 실측: 결 필드를 따라 추적, 마스크 이탈점 기록
+    // ① 실측: 결 필드를 따라 추적, 마스크 이탈점 + 결 불연속(겹 끝) 기록
     const probe = traceStrand(startX, startY, maxStrandLen, jitterSeed, rootSec, stopAtExit);
     const exitIdx = (typeof probe.maskExitIdx === 'number') ? probe.maskExitIdx : probe.length - 1;
-    const measuredLen = Math.max(maskH * 0.03, exitIdx * STRAND_STEP_LEN); // 실측 호장(결 따라간 실제 길이)
+    // (7차) 실측 끝 = 마스크 이탈점과 결 불연속(겹 끝) 중 먼저 오는 쪽 —
+    // 관통 가닥(꼭대기 뿌리→마스크 끝 한 가닥으로 이어져 아래 겹을 통째로 덮던
+    // 문제)이 겹층 커트에선 실측 헴에서 끊긴다. 긴 생머리는 결 연속 → 무영향.
+    const flowIdx = (typeof probe.flowEndIdx === 'number') ? probe.flowEndIdx : null;
+    const endIdx = Math.max(1, (flowIdx !== null) ? Math.min(exitIdx, flowIdx) : exitIdx);
+    if(flowIdx !== null && flowIdx < exitIdx) _flowCutN++;
+    _strandN++;
+    const measuredLen = Math.max(maskH * 0.03, endIdx * STRAND_STEP_LEN); // 실측 호장(결 따라간 실제 길이)
     // ② 목표 길이 = 실측 × 레이어 배율(끝단 층 변화) × 조정 배율 + 커트 겹 델타 (+텍스처 트림)
     let targetLen = measuredLen * strandMult * ratio + layerDelta;
     const texAmt = textureFor(ix, rootSec);
@@ -5283,6 +5343,18 @@ function drawHairStrands(ctx, fit, scalpY, hairEndY, maskW, maskH, hairCanvas, o
   const scalpUnderCol = opts.scalpColor || 'rgb(224,178,148)';
   drawOps.forEach(op => strokeOp(op, scalpUnderCol, 2.2)); // 언더코트 패스(가닥 추종 바탕)
   drawOps.forEach(op => strokeOp(op, op.color, 1));        // 실제 가닥 패스(섹션 스택 순서)
+
+  // [진단용] 결 불연속 종결 비율 — 겹층 커트면 두 자릿수 %가 정상, 긴 생머리면 낮아야 함.
+  // 매 렌더 랜덤으로 숫자가 흔들리므로 10% 버킷이 바뀔 때만 출력(스팸 방지).
+  if(angle && _strandN > 0){
+    const pct = Math.round(_flowCutN / _strandN * 100);
+    window._lastDiscLog = window._lastDiscLog || {};
+    const bucket = Math.round(pct / 10);
+    if(window._lastDiscLog[angle] !== bucket || window.DIAG_VERBOSE){
+      window._lastDiscLog[angle] = bucket;
+      console.log('[진단·결단] '+angle+' 가닥 '+_strandN+'개 중 결불연속(겹 끝) 종결 '+_flowCutN+'개('+pct+'%)');
+    }
+  }
 
   // ── 2단계 합성 ──
   // [1] base: 실측 이탈점 이내 구간 → hairCanvas(실제 세그멘테이션 마스크)로 destination-in
