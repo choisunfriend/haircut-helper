@@ -5349,7 +5349,9 @@ function drawHairStrands(ctx, fit, scalpY, hairEndY, maskW, maskH, hairCanvas, o
   if(angle && _strandN > 0){
     const pct = Math.round(_flowCutN / _strandN * 100);
     window._lastDiscLog = window._lastDiscLog || {};
-    const bucket = Math.round(pct / 10);
+    // 버킷을 내림(floor)으로 — 반올림(round)이면 경계값(예: 24↔26%)에서 버킷이
+    // 계속 튀어 같은 로그가 렌더마다 반복 출력됐음(실기기에서 17회 연속 확인).
+    const bucket = Math.floor(pct / 10);
     if(window._lastDiscLog[angle] !== bucket || window.DIAG_VERBOSE){
       window._lastDiscLog[angle] = bucket;
       console.log('[진단·결단] '+angle+' 가닥 '+_strandN+'개 중 결불연속(겹 끝) 종결 '+_flowCutN+'개('+pct+'%)');
