@@ -228,6 +228,32 @@
   검증: node --check OK + Node 하네스(모의 랜드마크·4뷰×격자 좌표)로
   섹션 분포/경계 단조성/우측 뷰 템플·후두부 방향/네이프 도달성/델타 연동
   수렴치 확인. 실기기 재확인 필요.
+
+  ── 2026-07-22 (2차) 실기기 검증 실패 → 경계를 "머리 실측 스팬" 기준으로 재계산 ──
+  실기기 결과: 좌/우측 뷰 [진단·섹션분포] crown=100% — 1차 수정의 랜드마크
+  절대비율 경계가 실패. 원인(로그로 확정): 두정선(earY-이마 40%)=0.503과
+  네이프선(chinY×0.78)≈0.50이 겹쳐 Exterior 밴드(템플/사이드/후두부)가 폭 0으로
+  붕괴. 얼굴이 프레임 어디에/어떤 크기로 찍히느냐에 따라 절대비율 공식이
+  무너지는 구조적 문제(정면 temple=0%도 동일 — 프론트 밴드 x공식 lx*0.55이
+  프레임 폭 기준이라 머리 전체를 삼킴). 이 뷰들의 실측 yaw도 21°/-31°로 거의
+  정면에 가까워 "측면"이라는 가정 자체가 약했음.
+  수정(sectionBandsFor 재작성):
+  · 경계를 헤어 마스크 실측 스팬(apex=머리 꼭대기, 모발 최하단, 좌우 폭)과
+    랜드마크의 조합으로 "머리 기준 상대좌표"화 — 프레임 무관.
+    두정선 = apex + (귀선-apex)×0.45 (튜닝 지점, 크라운 편중 크면 계수↓)
+    네이프선 = 귀선 + (턱선-귀선)×0.25, 두정선+0.04 하한(붕괴 원천 차단)
+    프론트 밴드 x = 귀 사이 폭의 안쪽 60%(귀 간격 좁으면 헤어 폭 기준 폴백)
+  · 측면 앞/뒤 분할도 귀 x 절대좌표 폐기 → 헤어 좌우 스팬 상대좌표(fw):
+    앞 30%=템플, 뒤 32%=후두부, 가운데=사이드. 얼굴 방향은 실측 yaw 부호.
+  · 후면 사진 유무는 섹션 판정과 무관(뷰별 독립) — 실기기 질문에 대한 답.
+  콘솔 로그 정리: [진단·조정]/[진단·조정렌더]/경계보정 로그는 슬라이더 틱마다
+  찍혀 콘솔이 넘침 → 기본 꺼짐, window.DIAG_VERBOSE=true로만 출력.
+  [진단·섹션분포]는 분포가 바뀔 때만 1회 출력(검증 정보 유지+스팸 제거).
+  검증: 실기기 로그의 랜드마크/마스크 기하를 그대로 재현한 Node 하네스에서
+  1차 수정이 crown=100%로 무너지던 케이스가 crown 60%/temple 12%/side 15%/
+  occipital 13%로 분리됨(짧은 머리라 네이프 모발 없음=0%는 물리적으로 맞음).
+  ※ 3D 조정 엔진(내부 3D 계산+2D 표시) 전환용 기반(state.use3DAdjust,
+  LENGTH_RATIO_PER_UNIT 단일출처)은 넣어두고 토글 UI는 엔진 구현과 함께 붙임.
 -->
 
 <!DOCTYPE html>
@@ -632,6 +658,9 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:22px;heigh
           </div>
 
           <button class="btn btn-ghost" style="font-size:12px;padding:10px;" onclick="resetSections()">초기화</button>
+          <!-- (예정) 3D 조정 엔진 토글 자리 — 조정 계산을 3D(리프트→커트/펌→역투영)로
+               바꾸고 표시만 2D로 유지하는 전환용. state.use3DAdjust 준비돼 있음.
+               2D 섹션 안정화가 우선이라 토글 UI는 엔진 구현과 함께 붙일 것. -->
           <button class="btn btn-primary" style="font-size:12px;padding:10px;" onclick="registerCurrentAsStyle()">★ 현재 모델을 스타일로 등록하기</button>
           <div style="height:4px;"></div>
         </div>
@@ -926,7 +955,8 @@ function refineSectionBoundaries(angle){
   SECTIONS.crown.xRange  = [lx * 0.3,  rx + (1-rx)*0.7];
   SECTIONS.front.xRange  = [lx * 0.55, rx + (1-rx)*0.45];
   SECTIONS.side.xRange   = [lx * 0.1,  rx + (1-rx)*0.9]; // 사이드는 넓게
-  console.log('[' + angle + '] yaw=' + lm.yaw.toFixed(2) + ' 섹션 경계 보정됨(두정선 y=' + parietalRidgeY.toFixed(3) + ')');
+  // 렌더마다 호출되므로 기본은 조용히 — 상세 모드에서만 출력(2026-07-22 로그 정리)
+  if(window.DIAG_VERBOSE) console.log('[' + angle + '] yaw=' + lm.yaw.toFixed(2) + ' 섹션 경계 보정됨(두정선 y=' + parietalRidgeY.toFixed(3) + ')');
 }
 
 /* ────────────────────────────────────────
@@ -1175,39 +1205,86 @@ function neutralStyling(){ return { sweep:0, volume:50, flow:0, part:0, finish:5
 // 그걸 무시하고 나머지 전부를 흡수해버리는 구조라 의미가 없었음. 이제
 // crown.yRange[1](=두정선 y좌표)을 명시적으로 검사해서, 실제로 두정선
 // 위쪽(Interior)인 곳만 crown이 되도록 고침.
-// ── 뷰별 섹션 경계 밴드(랜드마크 실측 기반) — 2026-07-22 재작성 ──
-// refineSectionBoundaries가 전역 SECTIONS를 덮어쓰는 방식(마지막에 처리된 뷰가
-// 다른 뷰의 경계를 오염시키는 구조적 문제 있음)과 달리, 각 뷰의 랜드마크
-// (state.landmarks[angle], 없으면 getEstimatedLandmarks 폴백)에서 그 뷰 전용
-// 경계를 직접 계산한다 — 초반에 잡아둔 두정선/네이프선 공식을 그대로 사용.
-// 결과는 랜드마크 객체 identity 기준으로 메모이즈(재촬영하면 자동 갱신).
+// ── 뷰별 섹션 경계 밴드 — 2026-07-22 재작성 → 같은 날 2차 수정(실기기) ──
+// 1차(랜드마크 절대비율)의 실기기 실패: 두정선(earY-40%)과 네이프선(chinY×0.78)이
+// "이미지 전체에 대한 절대 비율" 공식이라, 얼굴이 프레임 어디에 있느냐에 따라
+// 두 선이 겹치거나 역전됨 — 실기기 로그에서 좌측 뷰 두정선 0.503 vs 네이프선
+// ≈0.50으로 Exterior 밴드(템플/사이드/후두부)가 폭 0으로 붕괴, crown=100% 확인.
+// 정면 temple=0%도 동일 원인(프론트 밴드 x공식 lx*0.55이 프레임 폭 기준이라
+// 넓은 사진에선 머리 전체를 삼킴).
+// → 2차: 경계를 "헤어 마스크의 실측 스팬"(머리 꼭대기 apex~모발 끝, 좌우 폭)과
+// 랜드마크의 조합으로 머리 기준 상대좌표로 계산. 프레임 안 어디에 어떤 크기로
+// 찍혀도 비율이 유지된다. 마스크가 아직 없으면(처리 초기) 랜드마크 폴백.
+// 메모이즈: 랜드마크·마스크 객체 identity 기준(재촬영/재처리 시 자동 갱신).
+// ── 진단 로그 상세 모드(2026-07-22) ──
+// 실기기 피드백: "콘솔로그에 진단내용이 뭐 이렇게 많지?" — [진단·조정]/
+// [진단·조정렌더]/[진단·섹션분포]/경계보정 로그가 슬라이더 input 이벤트마다
+// (드래그 한 번에 수십 번) 찍히고 있었음. 기본은 끄고, 문제 추적할 때만
+// 콘솔에서 window.DIAG_VERBOSE = true 로 켜서 보게 함.
+// [진단·섹션분포]는 값이 "바뀔 때만" 1회 출력(검증에 필요한 최소한만 유지).
+window.DIAG_VERBOSE = false;
 const _secBandsCache = {};
 function sectionBandsFor(angle){
   const lm = (state.landmarks && state.landmarks[angle]) || null;
+  const mi = (state.hairMasks && state.hairMasks[angle]) || null;
   const c = _secBandsCache[angle];
-  if(c && c.src === lm) return c.bands;
+  if(c && c.srcLm === lm && c.srcMi === mi) return c.bands;
   const L = lm || getEstimatedLandmarks(angle);
-  // 두정선(Parietal Ridge) — refineSectionBoundaries와 동일 근사(귀~이마의 40% 지점)
-  const parietalY = L.earY - (L.earY - L.foreheadY) * 0.40;
-  const browY = (typeof L.browTopY === 'number') ? L.browTopY : L.earY * 0.70;
-  const lx = Math.min(L.lEarX, L.rEarX);
-  const rx = Math.max(L.lEarX, L.rEarX);
+  // ── 머리 실측 스팬(헤어 마스크): apex(머리 꼭대기)·모발 최하단·좌우 폭 ──
+  let headTopY = null, hairBotY = null, nxMin = 0.2, nxMax = 0.8;
+  if(mi && mi.scalpY){
+    let minS = Infinity, maxE = -Infinity, x0 = Infinity, x1 = -Infinity;
+    for(let x = 0; x < mi.w; x++){
+      const s = mi.scalpY[x]; if(s < 0) continue;
+      if(s < minS) minS = s;
+      const e = (mi.hairEndY && mi.hairEndY[x] >= 0) ? mi.hairEndY[x] : s;
+      if(e > maxE) maxE = e;
+      if(x < x0) x0 = x; if(x > x1) x1 = x;
+    }
+    if(isFinite(minS) && x1 > x0){
+      headTopY = minS / mi.h; hairBotY = maxE / mi.h;
+      nxMin = x0 / mi.w; nxMax = x1 / mi.w;
+    }
+  }
+  if(headTopY === null){ // 마스크 미가용 폴백(랜드마크 기반 근사)
+    headTopY = Math.max(0, L.foreheadY - 0.10);
+    hairBotY = Math.min(1, L.chinY + 0.10);
+  }
+  const earLineY  = (typeof L.earY  === 'number') ? L.earY  : headTopY + (hairBotY - headTopY) * 0.60;
+  const chinLineY = (typeof L.chinY === 'number') ? L.chinY : headTopY + (hairBotY - headTopY) * 0.95;
+  // 두정선: apex(실측 머리 꼭대기)~귀 사이 45% 지점 — "귀 위 손가락 3개" 근사를
+  // 이마 랜드마크가 아니라 실제 머리 꼭대기 기준으로 계산(프레임 무관).
+  // 45%는 해부학 근사(약 절반)와 조정 UX(Exterior 밴드에 충분한 지분) 사이 절충 —
+  // 실기기에서 크라운 편중이 여전히 크면 이 계수 하나만 내리면 됨(튜닝 지점).
+  const parietalY = headTopY + Math.max(0.02, earLineY - headTopY) * 0.45;
+  // 네이프선: 귀~턱 사이 25% 지점(귀 바로 아래 목덜미 시작) — chinY 절대비율 폐기.
+  // 두정선보다 항상 아래에 있도록 하한 보장(Exterior 밴드 붕괴 방지).
+  const napeTopY  = Math.max(parietalY + 0.04, earLineY + (chinLineY - earLineY) * 0.25);
+  // 프론트(프린지) 중앙 밴드: 귀 사이 폭 기준 상대좌표. 귀 간격이 좁으면
+  // (측면 사진 등) 헤어 폭 기준 폴백.
+  const lx = Math.min(L.lEarX, L.rEarX), rx = Math.max(L.lEarX, L.rEarX);
+  const earSpan = rx - lx;
+  let frontX0, frontX1;
+  if(earSpan > 0.06){
+    frontX0 = lx + earSpan * 0.20; frontX1 = rx - earSpan * 0.20;
+  } else {
+    const hs = Math.max(0.02, nxMax - nxMin);
+    frontX0 = nxMin + hs * 0.25; frontX1 = nxMax - hs * 0.25;
+  }
+  const browY = (typeof L.browTopY === 'number') ? L.browTopY : (headTopY + (earLineY - headTopY) * 0.80);
   const bands = {
-    parietalY,                          // 이 위(Interior) = 크라운
-    napeTopY: L.chinY * 0.78,           // 이 아래 = 네이프(refine과 동일 공식)
-    frontY0: L.foreheadY * 0.85,        // 프론트(프린지) 밴드 상단
-    frontY1: browY * 1.05,              // 프론트 밴드 하단(눈썹 위)
-    frontX0: lx * 0.55,                 // 프론트 중앙 밴드 좌우(refine과 동일 공식)
-    frontX1: rx + (1 - rx) * 0.45,
-    earX: (L.lEarX + L.rEarX) / 2,      // 측면 뷰: 귀 x — 템플/사이드/후두부 분할 기준
+    headTopY, hairBotY, parietalY, napeTopY,
+    nxMin, nxMax,
+    frontY0: Math.min(parietalY, L.foreheadY * 0.85 + 0), // 프린지 밴드 상단(헤어라인 부근)
+    frontY1: browY * 1.05,                                 // 프린지 밴드 하단(눈썹 위)
+    frontX0, frontX1,
     // 얼굴이 이미지에서 어느 쪽을 보는가(+1=오른쪽, -1=왼쪽). 랜드마크 yaw
-    // (코가 귀 중심보다 어느 쪽인지)가 있으면 실측, 없으면 촬영 슬롯 가정
-    // (ASSUMED_YAW_DEG와 동일한 부호 규약: left=-90 → 코가 왼쪽).
+    // (코가 귀 중심보다 어느 쪽인지)가 있으면 실측, 없으면 촬영 슬롯 가정.
     faceDir: (lm && typeof lm.yaw === 'number' && Math.abs(lm.yaw) > 0.05)
       ? (lm.yaw >= 0 ? 1 : -1)
       : (angle === 'right' ? 1 : -1),
   };
-  _secBandsCache[angle] = { src: lm, bands };
+  _secBandsCache[angle] = { srcLm: lm, srcMi: mi, bands };
   return bands;
 }
 
@@ -1226,7 +1303,7 @@ function resolveSectionId(angle, nx, ny){
   const b = sectionBandsFor(angle);
   if(angle==='front'){
     if(ny >= b.napeTopY) return 'nape';
-    // 이마 중앙 밴드(헤어라인~눈썹) = 프론트(앞머리/프린지)
+    // 이마 중앙 밴드(헤어라인~눈썹, 귀 사이 상대좌표) = 프론트(앞머리/프린지)
     const inFrontX = nx >= b.frontX0 && nx <= b.frontX1;
     if(inFrontX && ny >= b.frontY0 && ny <= b.frontY1) return 'front';
     if(ny <= b.parietalY) return 'crown';       // 두정선 위 = 크라운
@@ -1236,11 +1313,14 @@ function resolveSectionId(angle, nx, ny){
   if(angle==='left' || angle==='right'){
     if(ny >= b.napeTopY) return 'nape';          // 목선 쪽 뿌리 = 네이프
     if(ny <= b.parietalY) return 'crown';        // 두정선 위(Interior) = 크라운
-    // 두정선~네이프선 사이(Exterior): 귀 기준 앞=템플, 귀 주변=사이드, 뒤=후두부
-    const fwd = (nx - b.earX) * b.faceDir;       // +값 = 얼굴(앞) 방향
-    if(fwd > 0.06) return 'temple';
-    if(fwd < -0.08) return 'occipital';
-    return 'side';
+    // 두정선~네이프선 사이(Exterior): 헤어 좌우 스팬 기준 상대좌표로 앞/뒤 분할
+    // (2차 수정: 귀 x 절대좌표 ± 고정폭 → 실기기 프레임에 따라 깨져서 폐기).
+    // fw: 0=머리 뒤쪽 끝 ~ 1=머리 앞쪽 끝(얼굴 방향은 실측 yaw 부호로 결정).
+    const span = Math.max(0.02, b.nxMax - b.nxMin);
+    const fw = b.faceDir > 0 ? (nx - b.nxMin) / span : (b.nxMax - nx) / span;
+    if(fw > 0.70) return 'temple';               // 앞 30%(귀 앞·관자놀이)
+    if(fw < 0.32) return 'occipital';            // 뒤 32%(뒤통수)
+    return 'side';                               // 가운데(귀 주변)
   }
   if(angle==='back'){
     if(ny >= b.napeTopY) return 'nape';
@@ -1262,6 +1342,11 @@ const state = {
   debugShowMask: false, // true면 조정화면에서 가닥 대신 hairMaskBuf 실루엣을 그대로 표시(진단용)
   debugShowRaw: false,  // true면 스타일/슬라이더 값 무시하고 전 섹션 중립값(길이·볼륨 50, 컬 0)으로 렌더링(진단용)
   debugShowField: false, // true면 strand 시뮬레이션(뿌리/중력/clamp) 전부 건너뛰고 orientation 컬럼 샘플을 가공 없이 그대로 표시(진단용)
+  // ── 3D 조정 엔진(베타, 2026-07-22) ──
+  // true면 조정 화면의 계산이 "중립 가닥 캡처 → 3D 리프트 → 3D에서 커트/펌 →
+  // 같은 뷰로 역투영(깊이 정렬)" 경로로 바뀌고, 표시만 2D로 유지된다(사용자 설계:
+  // "내부 로직은 3D로 조정을 계산하고 표현은 2D로"). false면 기존 2D 직접 렌더.
+  use3DAdjust: false,
   currentCaptureIndex: 0,
   selectedStyle: null,
   currentViewAngle: 'front',
@@ -3318,7 +3403,8 @@ function onGySlider(secId, key, val){
   }
   // [진단용] 조정이 실제로 상태에 기록되고 렌더가 재요청되는지 추적. rawMode가 true면
   // 모든 섹션 값이 중립화돼 조정이 화면에 안 나타남 → 이 로그로 즉시 판별.
-  console.log('[진단·조정] '+secId+'.'+key+'='+num+' | 저장확인='+state.sections[secId][key]+' | rawMode='+state.debugShowRaw+' | 현재화면='+currentScreen);
+  // (2026-07-22) 슬라이더 틱마다 찍혀 콘솔이 넘치던 것 → 상세 모드에서만 출력.
+  if(window.DIAG_VERBOSE) console.log('[진단·조정] '+secId+'.'+key+'='+num+' | 저장확인='+state.sections[secId][key]+' | rawMode='+state.debugShowRaw+' | 현재화면='+currentScreen);
   drawAdjustPreview();
 }
 const GY_UNIT = { length:'%', elevation:'°', texture:'%', curl:'%', wave:'%' };
@@ -4042,7 +4128,8 @@ function renderAdjustFrame(){
   // [진단용] 조정 렌더가 실제로 실행되는지 + 어떤 섹션 길이값으로 그리는지 추적.
   // onGySlider 로그의 값과 여기 값이 같으면 상태→렌더는 정상(문제는 길이→픽셀 매핑),
   // 여기 로그가 안 찍히면 렌더 자체가 재실행 안 됨(currentScreen/rAF 문제).
-  console.log('[진단·조정렌더] view='+state.currentViewAngle
+  // (2026-07-22) 슬라이더 틱마다 찍혀 콘솔이 넘치던 것 → 상세 모드에서만 출력.
+  if(window.DIAG_VERBOSE) console.log('[진단·조정렌더] view='+state.currentViewAngle
     +' 활성섹션='+state.activePanelSection
     +' crown.len='+(state.sections.crown&&state.sections.crown.length)
     +' front.len='+(state.sections.front&&state.sections.front.length)
@@ -4077,8 +4164,15 @@ function logSectionColumnCounts(angle){
       if(counts[sec] !== undefined) counts[sec]++;
     });
   }
-  console.log('[진단·섹션분포] '+angle+' 뿌리후보(깊이5지점×컬럼)='+valid+' | '
-    + Object.entries(counts).map(([k,v])=>k+'='+v+'('+(valid?Math.round(v/valid*100):0)+'%)').join(' '));
+  const line = '[진단·섹션분포] '+angle+' 뿌리후보(깊이5지점×컬럼)='+valid+' | '
+    + Object.entries(counts).map(([k,v])=>k+'='+v+'('+(valid?Math.round(v/valid*100):0)+'%)').join(' ');
+  // (2026-07-22) 렌더마다 같은 내용이 반복 출력되던 것 → 분포가 "바뀔 때만" 1회 출력
+  // (섹션 경계 검증에 필요한 정보는 유지하면서 콘솔 스팸 제거).
+  window._lastSecDistLog = window._lastSecDistLog || {};
+  if(window._lastSecDistLog[angle] !== line || window.DIAG_VERBOSE){
+    window._lastSecDistLog[angle] = line;
+    console.log(line);
+  }
 }
 
 /* ────────────────────────────────────────
@@ -4125,6 +4219,10 @@ function gyShade(hex, amt){
 
 // 커트 겹 강도(끝점 수렴/확산 최대치를 rootSpan의 몇 배로 볼지) — 튜닝 지점.
 const CUT_LAYER_GAIN = 0.5;
+// 길이 슬라이더 1칸당 길이 배율 변화 — 2D 렌더(createColumnStyleResolvers)와
+// 3D 조정 엔진(gy3d*)이 반드시 같은 감도를 써야 두 경로의 결과가 일치하므로
+// 전역 단일 출처로 승격(2026-07-22). 값·의미는 기존 RATIO_PER_UNIT 그대로.
+const LENGTH_RATIO_PER_UNIT = 0.012;
 // 기법 → 커트 축(0=원랭스 … 1=유니폼 … 2=인크리스). 시술각(elevation)이 ±로 미세 조정.
 const CUT_TECH_AXIS = { onelength:0, graduation:0.5, uniform:1, increase:1.6 };
 // 뿌리 위치 → 겹 길이 델타(px). createColumnStyleResolvers의 cutLayerDeltaFor에서 쓰던
@@ -4197,7 +4295,7 @@ function createColumnStyleResolvers({ maskW, maskH, iScalpY, sections, angle, co
   // 뭉개지고, 반대쪽은 최대 3배까지 튀는 극단적인 감도였음(실기기 피드백:
   // "크라운 길이가 너무 훅훅 바뀐다"). 0~100 전체 범위가 고르게 반응하고
   // 극단값도 다루기 쉬운 폭(0.4배~1.6배)이 되도록 계수를 낮춤 — 죽은구간 없음.
-  const RATIO_PER_UNIT = 0.012;
+  const RATIO_PER_UNIT = LENGTH_RATIO_PER_UNIT; // 전역 단일 출처(3D 엔진과 감도 공유)
   // 컬럼 위치(cx) 기반 결정적 의사난수 — Math.random() 대신 써서 매 프레임(재렌더) 마다
   // 같은 컬럼이 다른 값을 받아 화면이 깜빡이는(shimmer) 것을 방지. seed로 서로 다른
   // 패턴(네이프용/사이드용)을 만들어 두 효과가 같은 자리에서 안 겹치게 함.
