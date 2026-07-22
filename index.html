@@ -3954,6 +3954,28 @@ function renderAdjustFrame(){
     +' front.len='+(state.sections.front&&state.sections.front.length)
     +' rawMode='+state.debugShowRaw);
   renderFrame(document.getElementById('adjustCanvas'), state.currentViewAngle);
+  logSectionColumnCounts(state.currentViewAngle);
+}
+
+// [진단용] 현재 뷰에서 각 섹션에 실제로 몇 개의 머리카락 컬럼이 배정되는지 집계.
+// "크라운만 전체를 바꾸고 나머지는 안 먹힌다"의 원인 확인용 — 정면 뷰에서 대부분
+// 컬럼이 crown으로 판정되면 crown 조정만 크게 보이고 나머지 섹션은 빈 영역이라
+// 조정해도 화면에 나타날 컬럼이 없다. renderFrame이 refineSectionBoundaries로 경계를
+// 갱신한 뒤 호출되므로 여기서 세면 현재 뷰 기준 정확.
+function logSectionColumnCounts(angle){
+  const mi = state.hairMasks && state.hairMasks[angle];
+  if(!mi || !mi.scalpY) return;
+  const counts = { crown:0, front:0, temple:0, side:0, occipital:0, nape:0 };
+  const W = mi.w, H = mi.h;
+  let valid = 0;
+  for(let x=0; x<W; x++){
+    const sy = mi.scalpY[x]; if(sy < 0) continue;
+    valid++;
+    const sec = resolveSectionId(angle, x/W, sy/H);
+    if(counts[sec] !== undefined) counts[sec]++;
+  }
+  console.log('[진단·섹션분포] '+angle+' 유효컬럼='+valid+' | '
+    + Object.entries(counts).map(([k,v])=>k+'='+v+'('+(valid?Math.round(v/valid*100):0)+'%)').join(' '));
 }
 
 /* ────────────────────────────────────────
@@ -4675,7 +4697,13 @@ function drawHairStrands(ctx, fit, scalpY, hairEndY, maskW, maskH, hairCanvas, o
     const pts = traceStrand(ix, sy_img, effectiveLen, jitterSeed);
     // (옮기기 1단계) 완성된 경로를 마스크 좌표계 그대로 저장 — 색 포함.
     // 화면에 그린 것과 동일한 점들이므로 3D는 이걸 들어올리면 2D와 정의상 일치.
-    if(capturedStrands) capturedStrands.push({ pts, color: strokeStyleVal });
+    if(capturedStrands){
+      // 각 가닥에 섹션 ID를 함께 저장 → 3D에서도 섹션별 구분/색분리/선택이 가능하게.
+      // (예전엔 pts+color만 저장해 3D엔 조정된 "모양"만 넘어가고 섹션 라벨은 사라졌음.)
+      const _ny = (iScalpY[ix] >= 0 ? iScalpY[ix]/maskH : 0.15);
+      const _sec = angle ? resolveSectionId(angle, ix/maskW, _ny) : 'crown';
+      capturedStrands.push({ pts, color: strokeStyleVal, sec: _sec });
+    }
     const cPts = toCanvasPts(pts);
     const splitIdx = splitIndexFor(extAmount, origLen, pts.length - 1);
     setStyle('strokeStyle', strokeStyleVal);
@@ -5457,8 +5485,14 @@ async function buildRealFaceMesh(faceMetrics){
   //   두상 시스템 전체가 front를 곧 월드 기준으로 취급하므로, 여기에 회전을
   //   또 걸면 이중 적용이 돼 "코가 목 위 막대기 끝에 매달린" 회귀가 났었다.
     const { a: ELL_A, b: ELL_B, c: ELL_C } = getHeadEllipsoid();
+  // 얼굴 전용 타원 폭: 전역 ELL_A는 두상 적도(이 사람은 턱 높이라 좁게 잡힘)에서
+  // 나오는데, 얼굴 메쉬는 관자놀이까지 그보다 넓게 퍼진다. ELL_A가 얼굴보다 좁으면
+  // 얼굴 바깥 정점이 ellipsoidZ의 "타원 밖(inside>1)" 분기로 빠져 z≈0(평평한 옆벽)이
+  // 돼 옆으로 펼쳐진다(실기기 증상). → 얼굴의 실제 최대 폭(아래 pre-pass에서 측정)까지
+  // 폭을 넓혀 얼굴이 곡면을 타고 감기게 한다. 전역 두상/스컬/헤어 투영은 그대로 유지.
+  let ellAForFace = ELL_A;
   function ellipsoidZ(localX, yLocal){
-    const inside = (localX/ELL_A)*(localX/ELL_A) + (yLocal/ELL_B)*(yLocal/ELL_B);
+    const inside = (localX/ellAForFace)*(localX/ellAForFace) + (yLocal/ELL_B)*(yLocal/ELL_B);
     return ELL_C * Math.sqrt(Math.max(0.02, 1 - Math.min(1, inside))); // 완전히 벗어난 점도 살짝의 표면값은 갖게(0 방지)
   }
 
@@ -5488,6 +5522,29 @@ async function buildRealFaceMesh(faceMetrics){
     return dx*dx + dy*dy; // 0=정중앙, 1=경계선 위, 1보다 크면 경계 밖
   }
   function inFaceBound(idx){ return distSqFromBound(idx) <= 1; }
+
+  // ── 얼굴 전용 타원 폭 확정 (splay 방지) ──
+  // 실제 메쉬에 들어가는(경계 안) 정점들의 localX 최대치를 재서, ELL_A가 그보다
+  // 좁으면 얼굴 폭(+3% 여유)까지 넓힌다. 이러면 모든 얼굴 정점이 타원 안(inside≤1)에
+  // 들어와 곡면을 타고 감긴다. yLocal도 세로로 벗어나면 같은 옆벽이 생기므로 함께 반영.
+  {
+    let faceMaxX = 0, faceMaxY = 0;
+    for(let i=0;i<vertCount;i++){
+      if(!inFaceBound(i)) continue;
+      const p = raw[i];
+      const lx = Math.abs(projector.toMeshX(p.x));
+      const ly = Math.abs(projector.toMeshY(p.y) - 0.15);
+      if(lx > faceMaxX) faceMaxX = lx;
+      if(ly > faceMaxY) faceMaxY = ly;
+    }
+    const widened = Math.max(ELL_A, faceMaxX * 1.03);
+    console.log('[진단·얼굴폭] ELL_A(두상 적도폭)='+ELL_A.toFixed(3)
+      +' | 얼굴 실제 최대폭='+faceMaxX.toFixed(3)
+      +' → 얼굴 타원폭='+widened.toFixed(3)
+      +(widened>ELL_A+1e-4 ? ' (넓혀서 splay 방지)' : ' (변화 없음)')
+      +' | 얼굴 최대세로='+faceMaxY.toFixed(3)+' vs ELL_B='+ELL_B.toFixed(3));
+    ellAForFace = widened;
+  }
 
   // ── 좌/우 측면 사진 기반 코/턱/이마 깊이(Z) 실측 보정(2026-07-14 추가) ──
   // 사용자 요청: "측면 사진의 z값등의 정보를 이용해서 안면세부조정하는 기능을
