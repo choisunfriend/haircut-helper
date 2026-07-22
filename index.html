@@ -1140,38 +1140,37 @@ function neutralStyling(){ return { sweep:0, volume:50, flow:0, part:0, finish:5
 // 위쪽(Interior)인 곳만 crown이 되도록 고침.
 function resolveSectionId(angle, nx, ny){
   const inR = (range, v) => v>=range[0] && v<=range[1];
+  const napeTop = SECTIONS.nape.yRange[0];
+  // ── 섹션 배분 재설계(2026, 편중 정리) ──
+  // 문제였던 점: 측면/후면에서 맨 처음 `ny <= 두정선 → crown`을 검사해 두정선 아래로
+  // 안 내려간 컬럼(=대부분)이 전부 크라운으로 먹혔음(측면 91%·후면 86% 크라운).
+  // 원인: scalpY(머리카락 맨 위)는 측면/후면에서 어디든 높아서 세로(ny)만으론
+  //   크라운/사이드/후두부를 못 가름. → 앞뒤/좌우 위치(nx)를 주축으로 바꾸고,
+  //   각 섹션이 "주력 뷰"(크라운=정면·후면, 사이드=측면, 후두부=측면·후면,
+  //   네이프=측면·후면)에서 확실한 비중을 갖게 함. 컬럼당 섹션은 flat(state.sections[secId])
+  //   으로 판정되어 그대로 3D 가닥(sec)까지 이어지므로, 2D에서 나누면 3D에 바로 반영됨.
   if(angle==='front'){
-    if(ny > SECTIONS.nape.yRange[0]) return 'nape';
+    if(ny > napeTop) return 'nape';
+    // 이마 중앙 밴드에 머리카락이 있으면 프론트(앞머리/프린지)
     if(inR(SECTIONS.front.yRange, ny) && inR(SECTIONS.front.xRange, nx)) return 'front';
-    // temple: front의 중심 밴드 바깥쪽(귀 쪽)이면서 두정선~귀 사이 높이
-    if(inR(SECTIONS.temple.yRange, ny) && (nx<SECTIONS.front.xRange[0] || nx>SECTIONS.front.xRange[1])) return 'temple';
-    if(ny <= SECTIONS.crown.yRange[1]) return 'crown'; // 두정선 위(Interior) = 크라운
-    // ── 버그 수정(2026-07-13): 여기 도달하는 지점(예: 이마 중앙 바로 아래,
-    // 프론트 밴드는 지났지만 템플의 가운데-바깥쪽 x조건도 안 맞는 부분)에서
-    // 예전엔 'side'로 폴백했는데, side.visibleIn=['left','right']뿐이라
-    // 애초에 정면 뷰에서는 나올 수 없는 값이었음(실측: 이마중앙(0.5,0.30)
-    // 테스트에서 실제로 'side'가 나오는 걸 확인하고 발견). 정면 사진에서
-    // front/temple/nape 어디에도 안 걸리면 crown(두정선 위 Interior와 이어지는
-    // 나머지 두상 영역)으로 처리하는 게 맞음.
+    // 중앙 밴드 바깥(귀 쪽) = 템플
+    if(nx < SECTIONS.front.xRange[0] || nx > SECTIONS.front.xRange[1]) return 'temple';
+    // 중앙 위쪽 = 크라운(정면 주력)
     return 'crown';
   }
   if(angle==='left' || angle==='right'){
-    if(ny <= SECTIONS.crown.yRange[1]) return 'crown'; // 두정선 위 = 크라운(예전엔 ny<0.35 임의 고정값이었음)
-    if(inR(SECTIONS.temple.yRange, ny) && nx < 0.35) return 'temple';
-    // occipital을 nape보다 먼저 체크 — occipital.yRange 상단(earY*1.10)과 nape.yRange
-    // 하단(chinY*0.78)이 겹치는 구간이 있는데, nape를 먼저 체크하면 그 겹치는 구간을
-    // 전부 nape가 먹어버려서 occipital 범위가 세로로 몇 % 안 남는 문제가 있었음
-    // (실기기 피드백 "후두부 길이·볼륨 아무 변화 없다"의 원인 중 하나로 추정).
-    if(inR(SECTIONS.occipital.yRange, ny) && nx > 0.55) return 'occipital';
-    if(ny > SECTIONS.nape.yRange[0]) return 'nape';
+    // nx(앞뒤): 앞(작은 nx)=템플, 뒤(큰 nx)=후두부, 가운데=사이드(측면 본체), 아래=네이프.
+    // 크라운은 측면에선 얇은 꼭대기라 사이드에 흡수 — 크라운 조정은 정면/후면 뷰에서.
+    if(ny > napeTop) return 'nape';
+    if(nx < 0.32) return 'temple';
+    if(nx > 0.64) return 'occipital';
     return 'side';
   }
   if(angle==='back'){
-    if(ny <= SECTIONS.crown.yRange[1]) return 'crown'; // 두정선 위 = 크라운(예전엔 crown.yRange를 아예 안 썼음)
-    // 여기서도 occipital을 nape보다 먼저 체크(위 left/right와 동일한 이유)
-    if(inR(SECTIONS.occipital.yRange, ny)) return 'occipital';
-    if(ny > SECTIONS.nape.yRange[0]) return 'nape';
-    return 'occipital'; // 두정선 아래인데 위 둘 다 아니면 후두부(후면 뷰엔 템플/사이드가 안 보이므로)
+    if(ny > napeTop) return 'nape';
+    // 중앙 = 크라운(후면 주력), 양옆 = 후두부
+    if(nx >= 0.38 && nx <= 0.62) return 'crown';
+    return 'occipital';
   }
   return 'crown';
 }
@@ -3220,9 +3219,11 @@ function onGySlider(secId, key, val){
     valEl.textContent = num + unit;
   }
   if(key === 'length'){
-    propagateSectionChange(secId, 'length');
-    const curAngle = state._adjustAngle || state.currentViewAngle || 'front';
-    propagateSectionToViews(curAngle, secId, 'length', num);
+    propagateSectionChange(secId, 'length'); // 크라운→템플 등 flat 연동(렌더가 읽음) — 유지
+    // propagateSectionToViews(뷰별 값 블렌딩) 제거: state.sections[angle][sectionId](뷰별
+    // 중첩)에 쓰던 값을 렌더러는 안 읽어(flat state.sections[secId]만 읽음) 사실상 죽은
+    // 계산이었고, 섹션 값이 flat 하나라 모든 뷰의 해당 섹션 가닥에 자동 적용된다(=뷰 간
+    // 일관성은 flat 모델이 이미 보장). 뒷단계 3D 조정도 "섹션 하나=값 하나"라 불필요.
   }
   // [진단용] 조정이 실제로 상태에 기록되고 렌더가 재요청되는지 추적. rawMode가 true면
   // 모든 섹션 값이 중립화돼 조정이 화면에 안 나타남 → 이 로그로 즉시 판별.
