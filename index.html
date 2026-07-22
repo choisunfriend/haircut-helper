@@ -415,7 +415,12 @@ const state = {
   currentCaptureIndex: 0,
   selectedStyle: null,
   currentViewAngle: 'front',
-  sliders: {length:50,curl:30,volume:50,thickness:50},
+  sliders: {
+    front:  {length:50,curl:30,volume:50,thickness:50},
+    left:   {length:50,curl:30,volume:50,thickness:50},
+    right:  {length:50,curl:30,volume:50,thickness:50},
+    back:   {length:50,curl:30,volume:50,thickness:50},
+  },
 };
 
 const STYLES = [
@@ -461,6 +466,7 @@ async function initSegmenter(){
     });
     segmenter = mpImageSegmenter;
     segmenterReady = true;
+    state.segmenterType = 'MediaPipe';
     console.log('MediaPipe Hair Segmenter 준비 완료');
     return;
   } catch(e){
@@ -476,11 +482,13 @@ async function initSegmenter(){
       { runtime:'tfjs', modelType:'general' }
     );
     segmenterReady = true;
+    state.segmenterType = 'TF.js';
     console.log('TF.js SelfieSegmentation 폴백 준비 완료');
   } catch(e){
     console.warn('모든 Segmenter 로드 실패:', e);
     segmenter = null;
     segmenterError = true;
+    state.segmenterType = '실패';
   }
 }
 initSegmenter();
@@ -528,40 +536,49 @@ async function extractHairMask(angle){
             multiSegmentation: false,
             segmentBodyParts: false,
           });
-          if(!segs || segs.length===0){ resolve(false); return; }
+          // TF.js 사람 마스크 + HSV hair 색상 필터 (마스크 실패시 상단 영역 HSV만 사용)
+          let personMaskData = null;
+          if(segs && segs.length>0){
+            try{
+              const binaryMask = await bodySegmentation.toBinaryMask(
+                segs,
+                {r:255,g:255,b:255,a:255},
+                {r:0,g:0,b:0,a:0},
+                false, 0.5
+              );
+              personMaskData = binaryMask.data;
+            } catch(e){ personMaskData = null; }
+          }
 
-          const binaryMask = await bodySegmentation.toBinaryMask(
-            segs,
-            {r:255,g:255,b:255,a:255},
-            {r:0,g:0,b:0,a:0},
-            false, 0.5
-          );
-
-          // 사람 마스크 내에서 HSV hair 색상 필터
+          // 사람 마스크가 있으면 마스크 내에서, 없으면 상단 60% 전체에서 HSV 필터
+          const topLimit = Math.round(h * 0.60);
           for(let i=0;i<w*h;i++){
-            if(binaryMask.data[i*4+3] > 128){
+            const iy = Math.floor(i/w);
+            const inRegion = personMaskData
+              ? personMaskData[i*4+3] > 128
+              : iy < topLimit;
+            if(inRegion){
               const r=srcPixels[i*4], g=srcPixels[i*4+1], b=srcPixels[i*4+2];
               if(isHairColor(r,g,b)) hairMaskBuf[i]=255;
             }
           }
 
-          // ── 얼굴 중심 제거: 상단 15~55% Y 범위의 가로 30~70% 구간 ──
-          // (안경·눈썹·수염 등 얼굴 중앙 어두운 픽셀 제거)
-          for(let y=Math.round(h*0.12); y<Math.round(h*0.60); y++){
-            for(let x=Math.round(w*0.28); x<Math.round(w*0.72); x++){
+          // ── 얼굴 중심 제거: Y 22~62% 범위의 가로 25~75% 구간 ──
+          // (안경·눈썹·수염 등 얼굴 중앙 어두운 픽셀 제거; 상단 22%는 머리카락 영역이므로 보존)
+          for(let y=Math.round(h*0.22); y<Math.round(h*0.70); y++){
+            for(let x=Math.round(w*0.25); x<Math.round(w*0.75); x++){
               hairMaskBuf[y*w+x]=0;
             }
           }
-          // 목·어깨 제거 (하단 40%)
-          for(let y=Math.round(h*0.60); y<h; y++){
+          // 목·어깨 제거 (하단 30%)
+          for(let y=Math.round(h*0.70); y<h; y++){
             for(let x=0;x<w;x++) hairMaskBuf[y*w+x]=0;
           }
         }
 
-        // ── 마스크 후처리: erosion 3회 (노이즈·잔상 제거) ──
-        hairMaskBuf = erodeOnce(hairMaskBuf, w, h);
-        hairMaskBuf = erodeOnce(hairMaskBuf, w, h);
-        hairMaskBuf = erodeOnce(hairMaskBuf, w, h);
+        // ── erosion 제거: sparse한 회색/새치 픽셀 보존 ──
+        const pixelCount = hairMaskBuf.filter(v=>v>0).length;
+        state._diagLog = `세그멘터:${state.segmenterType||'?'} | 마스크픽셀:${pixelCount}px`;
 
         // ── 축소 해상도에서 두피 라인(scalpY) 추출 ──
         // (blur 없는 clean mask에서 column별 최상단 픽셀)
@@ -652,19 +669,27 @@ async function extractHairMask(angle){
    유틸: HSV hair 색상 판별 (어두운 갈색~흑색 계열)
 ──────────────────────────────────────── */
 function isHairColor(r,g,b){
-  // 밝기가 매우 낮거나 (어두운 색), 채도 있는 갈색 계열
+  // 흑발·갈색·금발·회색·백발(새치) 모두 인식
   const maxC=Math.max(r,g,b), minC=Math.min(r,g,b);
   const v=maxC/255;
   const s=maxC>0?(maxC-minC)/maxC:0;
-  // 어둡거나(v<0.5), 채도 있는 갈색/적갈색(hue ~0-40)
-  if(v<0.45) return true;
-  if(s>0.2 && v<0.65){
-    const h=maxC>0?( maxC===r?((g-b)/(maxC-minC+0.001))%6
-                   : maxC===g?((b-r)/(maxC-minC+0.001))+2
-                   :           ((r-g)/(maxC-minC+0.001))+4 )*60 : 0;
-    const hh=(h+360)%360;
-    if(hh<45||hh>300) return true; // 붉은/갈색 계열
+
+  // 1) 흑발·어두운 색
+  if(v<0.55) return true;
+
+  // 2) 채도 있는 갈색/적갈색/금발 (hue 0~50 또는 300~360)
+  if(s>0.15 && v<0.80){
+    const hRaw=maxC>0?( maxC===r?((g-b)/(maxC-minC+0.001))%6
+                      : maxC===g?((b-r)/(maxC-minC+0.001))+2
+                      :           ((r-g)/(maxC-minC+0.001))+4 )*60 : 0;
+    const hh=(hRaw+360)%360;
+    if(hh<50||hh>300) return true;
   }
+
+  // 3) 회색·새치·백발: 저채도이면서 밝기 0.55~0.90 구간
+  //    (순수 흰색 v>0.90 및 밝은 피부색 제외)
+  if(s<0.18 && v>=0.55 && v<0.90) return true;
+
   return false;
 }
 
@@ -736,11 +761,11 @@ async function navTo(name){
     if(el){
       if(state.hairMasks[angle] && state.hairMasks[angle].scalpY){
         const validCols = Array.from(state.hairMasks[angle].scalpY).filter(y=>y>=0).length;
-        el.textContent = `✓ 머리카락 인식됨 (${validCols}px 폭)`;
+        el.textContent = `✓ 머리카락 인식됨 (${validCols}px 폭) | ${state._diagLog||''}`;
       } else if(state.hairCanvases[angle]){
-        el.textContent = '△ 색상 기반 추출 적용됨';
+        el.textContent = `△ 색상 기반 추출 | ${state._diagLog||''}`;
       } else {
-        el.textContent = '가이드 오버레이 모드';
+        el.textContent = `가이드 오버레이 모드 | 세그멘터:${state.segmenterType||'로딩중'}`;
       }
     }
     setTimeout(()=>drawAdjustPreview(),80);
@@ -867,7 +892,9 @@ function selectStyle(id){
   document.querySelectorAll('.style-card').forEach(c=>c.classList.remove('selected'));
   document.getElementById('style-'+id).classList.add('selected');
   document.getElementById('toAdjustBtn').disabled=false;
-  state.sliders={length:state.selectedStyle.length,curl:state.selectedStyle.curl,volume:state.selectedStyle.volume,thickness:50};
+  ANGLES.forEach(a=>{
+    state.sliders[a]={length:state.selectedStyle.length,curl:state.selectedStyle.curl,volume:state.selectedStyle.volume,thickness:50};
+  });
   syncSliderUI();
 }
 buildStyleGrid();
@@ -876,21 +903,22 @@ buildStyleGrid();
    SLIDERS
 ════════════════════════════════════════ */
 function syncSliderUI(){
+  const s = state.sliders[state.currentViewAngle];
   ['length','curl','volume','thickness'].forEach(k=>{
-    document.getElementById('slider-'+k).value=state.sliders[k];
-    document.getElementById('val-'+k).textContent=Math.round(state.sliders[k]);
+    document.getElementById('slider-'+k).value=s[k];
+    document.getElementById('val-'+k).textContent=Math.round(s[k]);
   });
   document.getElementById('adjustStyleTag').textContent=state.selectedStyle?state.selectedStyle.name:'스타일 미선택';
   drawAdjustPreview();
 }
 function onSlider(key,val){
-  state.sliders[key]=parseInt(val);
+  state.sliders[state.currentViewAngle][key]=parseInt(val);
   document.getElementById('val-'+key).textContent=val;
   drawAdjustPreview();
 }
 function resetSliders(){
   if(!state.selectedStyle) return;
-  state.sliders={length:state.selectedStyle.length,curl:state.selectedStyle.curl,volume:state.selectedStyle.volume,thickness:50};
+  state.sliders[state.currentViewAngle]={length:state.selectedStyle.length,curl:state.selectedStyle.curl,volume:state.selectedStyle.volume,thickness:50};
   syncSliderUI();
 }
 
@@ -906,7 +934,7 @@ function renderAngleSwitch(targetId){
     btn.onclick=()=>{
       state.currentViewAngle=a;
       renderAngleSwitch('angleSwitch'); renderAngleSwitch('angleSwitchCompare');
-      drawAdjustPreview(); drawCompare();
+      syncSliderUI(); drawAdjustPreview(); drawCompare();
     };
     el.appendChild(btn);
   });
@@ -1030,7 +1058,7 @@ function renderFrame(canvas, angle){
       // 이 시점에서 compose = 원본에서 머리카락 자리만 구멍(투명)
       // 3단계에서 drawHairStrands가 구멍 위에 새 가닥을 source-over로 채움
 
-      const {length,curl,volume,thickness} = state.sliders;
+      const {length,curl,volume,thickness} = state.sliders[angle];
       const maskW = maskInf.w, maskH = maskInf.h;
       const scalpY   = maskInf.scalpY;
       const hairEndY = maskInf.hairEndY;
@@ -1081,7 +1109,7 @@ function renderFrame(canvas, angle){
 function drawHairStrands(ctx, fit, scalpY, hairEndY, maskW, maskH, hairCanvas, opts){
   const {length, curl, volume, thickness, color} = opts;
 
-  const hairLenMult = 0.6 + (length/100) * 1.6;
+  const hairLenMult = 0.4 + (length/100) * 3.0;
   const curlAmt     = (curl/100) * fit.dw * 0.07;
   const alpha       = 0.45 + (thickness/100) * 0.40;
 
@@ -1108,9 +1136,9 @@ function drawHairStrands(ctx, fit, scalpY, hairEndY, maskW, maskH, hairCanvas, o
   oCtx.lineJoin = 'round';
 
   // ── 레이어 1: 굵은 섹션 (40~80개) ──
-  const numSections = Math.round(40 + (volume/100) * 40);
+  const numSections = Math.round(40 + (volume/100) * 20);
   oCtx.globalAlpha = alpha * 0.55;
-  oCtx.lineWidth   = 4 + (volume/100) * 6;
+  oCtx.lineWidth   = 3 + (volume/100) * 3;
   for(let i=0; i<numSections; i++){
     const ix = validCols[Math.floor((i/numSections)*validCols.length)];
     const sy_img = scalpY[ix]; if(sy_img < 0) continue;
@@ -1176,11 +1204,9 @@ function drawHairStrands(ctx, fit, scalpY, hairEndY, maskW, maskH, hairCanvas, o
     oCtx.stroke();
   }
 
-  // ── hair 마스크 clip (미리 변환한 maskCanvas 사용) ──
-  oCtx.globalAlpha = 1;
-  oCtx.globalCompositeOperation = 'destination-in';
-  oCtx.drawImage(maskCanvas, 0, 0);
-
+  // ── hair 마스크 clip: 시작점은 scalpY로 이미 필터됨
+  // destination-in 제거 → 가닥이 마스크 경계 밖(아래)으로 자유롭게 뻗을 수 있음
+  // (길이 슬라이더가 마스크 clip에 막히지 않도록)
   ctx.save();
   ctx.globalAlpha = 1;
   ctx.drawImage(offscreen, 0, 0);
@@ -1326,7 +1352,7 @@ function handleVoiceCmd(text){
   document.getElementById('voiceTranscript').innerHTML='인식됨: <b>"'+text+'"</b>';
   const t=text.replace(/\s/g,'');
   const STEP=15; let matched=false;
-  const adj=(key,delta)=>{state.sliders[key]=Math.max(0,Math.min(100,state.sliders[key]+delta));syncSliderUI();matched=true;};
+  const adj=(key,delta)=>{const s=state.sliders[state.currentViewAngle];s[key]=Math.max(0,Math.min(100,s[key]+delta));syncSliderUI();matched=true;};
   const has=arr=>arr.some(kw=>t.includes(kw));
   if(has(['길게','늘려','길이늘','길이키','더길'])) adj('length',STEP);
   else if(has(['짧게','줄여','길이줄','길이내','더짧'])) adj('length',-STEP);
@@ -1371,6 +1397,7 @@ function startNewCustomer(){
   aiAnalysis=null;
   ANGLES.forEach(a=>{state.shots[a]=null;state.hairCanvases[a]=null;state.hairMasks[a]=null;state.baseCanvases[a]=null;});
   state.selectedStyle=null; state.currentCaptureIndex=0;
+  ANGLES.forEach(a=>{ state.sliders[a]={length:50,curl:30,volume:50,thickness:50}; });
   document.getElementById('aiAnalysisCard').style.display='none';
   document.querySelectorAll('.style-card').forEach(c=>c.classList.remove('ai-recommended','selected'));
   document.getElementById('toAdjustBtn').disabled=true;
