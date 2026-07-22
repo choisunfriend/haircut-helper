@@ -191,6 +191,43 @@
   비율에 거의 영향 없음(후면은 폭 관측만 추가). 따라서 3D가 넙적해 보이면
   후면 탓이 아니라 측면 마스크 노이즈이거나, 후면 부재로 3D 뒤통수가 얇아
   넙적해 "보이는" 것 — 실제 콘솔 로그로 판별 필요.
+
+  ── 2026-07-22 2D 섹션 조정 무반응/전체이동 수정(뿌리 실좌표 판정) ──
+  실기기 증상: "길이·펌을 조정해도 안 먹히고, 사이드만 조정하면 전체가 움직인다."
+  원인 3개 확정:
+  (1) resolveSectionId에 들어가던 ny가 "컬럼 실루엣 맨 꼭대기"(iScalpY)뿐이라
+      세로 정보가 죽어 있었음 → 측면 뷰는 nx 하드코딩(0.32/0.64)만으로 나뉘어
+      중앙 컬럼 전부(=보이는 머리 대부분)가 side로 판정. 네이프는 어떤 뷰에서도
+      조건 성립 불가(꼭대기 y가 네이프선 아래일 수 없음) → 조정 무반응.
+      left/right 모두 "nx 작으면 템플" 고정이라 우측 뷰에선 템플/후두부 반전.
+  (2) propagateSectionChange가 절대값 가중평균을 input 이벤트마다 반복 적용 —
+      드래그 한 번에 수십 번 중첩돼 후두부가 사이드 값에, 템플이 크라운 값에
+      수렴(래칫). 사이드 조정 시 뒤쪽까지 같이 움직인 두 번째 원인.
+  (3) 컬 진폭 계수 0.07(컬 100%=±4°, 횡편차 2px)이라 펌이 화면에서 식별 불가.
+  수정:
+  · sectionBandsFor(angle) 신설 — 초반에 잡아둔 랜드마크 경계(두정선=귀~이마
+    40% 지점, 네이프선=chinY×0.78, 프론트 밴드, 귀 x)를 뷰별로 직접 계산
+    (전역 SECTIONS 공유·오염 없이, 랜드마크 identity로 메모이즈).
+  · resolveSectionId 재작성 — 크라운=두정선 위(Interior), 네이프=네이프선 아래,
+    측면의 템플/사이드/후두부는 "귀 x + 얼굴 방향(faceDir, 실측 yaw 부호)"으로
+    앞/주변/뒤 분할. 우측 뷰 반전 자동 해소.
+  · 뿌리 실좌표 전달 — drawStrandLayer가 rootDepthFrac 깊이 반영된 실제 뿌리
+    (sy_img)로 섹션을 1회 판정(rootSec)하고 길이/겹/컬/웨이브/텍스처/색/캡처
+    라벨 전부에 전달. makeColumnResolver 캐시를 컬럼×섹션×깊이(1% 양자화)로
+    확장, 미전달 호출부는 기존 최상단선 판정 폴백(동작 하위호환).
+  · propagateSectionChange 델타 기반으로 변경(이벤트 분할 횟수와 무관하게
+    총변화량×연동비율만 반영). gyrange- id 부여 + syncGyParamUI로 연동 섹션
+    슬라이더 UI까지 동기화. 음성 조정(adj)도 동일 규약.
+  · 컬: 계수 0.07→0.45, 위상을 뿌리 컬럼(ix×0.05) 기준 정렬(이웃 가닥 파형이
+    나란해야 펌으로 보임 — 실제 로드 감김과 동일 원리).
+  · 3D 대비: capturedStrands의 sec 라벨이 "렌더에 실제 쓰인" rootSec을 그대로
+    저장 → 2D 섹션 조정과 3D 가닥 라벨이 정의상 일치. 다음 단계(3D상 섹션
+    조정)는 이 라벨 기준으로 그대로 진행하면 됨.
+  · 진단([진단·섹션분포])도 깊이 5지점 샘플링으로 갱신 — 실기기에서 측면 뷰
+    분포가 crown/temple/side/occipital/nape로 고르게 나오는지 확인할 것.
+  검증: node --check OK + Node 하네스(모의 랜드마크·4뷰×격자 좌표)로
+  섹션 분포/경계 단조성/우측 뷰 템플·후두부 방향/네이프 도달성/델타 연동
+  수렴치 확인. 실기기 재확인 필요.
 -->
 
 <!DOCTYPE html>
@@ -1138,39 +1175,77 @@ function neutralStyling(){ return { sweep:0, volume:50, flow:0, part:0, finish:5
 // 그걸 무시하고 나머지 전부를 흡수해버리는 구조라 의미가 없었음. 이제
 // crown.yRange[1](=두정선 y좌표)을 명시적으로 검사해서, 실제로 두정선
 // 위쪽(Interior)인 곳만 crown이 되도록 고침.
+// ── 뷰별 섹션 경계 밴드(랜드마크 실측 기반) — 2026-07-22 재작성 ──
+// refineSectionBoundaries가 전역 SECTIONS를 덮어쓰는 방식(마지막에 처리된 뷰가
+// 다른 뷰의 경계를 오염시키는 구조적 문제 있음)과 달리, 각 뷰의 랜드마크
+// (state.landmarks[angle], 없으면 getEstimatedLandmarks 폴백)에서 그 뷰 전용
+// 경계를 직접 계산한다 — 초반에 잡아둔 두정선/네이프선 공식을 그대로 사용.
+// 결과는 랜드마크 객체 identity 기준으로 메모이즈(재촬영하면 자동 갱신).
+const _secBandsCache = {};
+function sectionBandsFor(angle){
+  const lm = (state.landmarks && state.landmarks[angle]) || null;
+  const c = _secBandsCache[angle];
+  if(c && c.src === lm) return c.bands;
+  const L = lm || getEstimatedLandmarks(angle);
+  // 두정선(Parietal Ridge) — refineSectionBoundaries와 동일 근사(귀~이마의 40% 지점)
+  const parietalY = L.earY - (L.earY - L.foreheadY) * 0.40;
+  const browY = (typeof L.browTopY === 'number') ? L.browTopY : L.earY * 0.70;
+  const lx = Math.min(L.lEarX, L.rEarX);
+  const rx = Math.max(L.lEarX, L.rEarX);
+  const bands = {
+    parietalY,                          // 이 위(Interior) = 크라운
+    napeTopY: L.chinY * 0.78,           // 이 아래 = 네이프(refine과 동일 공식)
+    frontY0: L.foreheadY * 0.85,        // 프론트(프린지) 밴드 상단
+    frontY1: browY * 1.05,              // 프론트 밴드 하단(눈썹 위)
+    frontX0: lx * 0.55,                 // 프론트 중앙 밴드 좌우(refine과 동일 공식)
+    frontX1: rx + (1 - rx) * 0.45,
+    earX: (L.lEarX + L.rEarX) / 2,      // 측면 뷰: 귀 x — 템플/사이드/후두부 분할 기준
+    // 얼굴이 이미지에서 어느 쪽을 보는가(+1=오른쪽, -1=왼쪽). 랜드마크 yaw
+    // (코가 귀 중심보다 어느 쪽인지)가 있으면 실측, 없으면 촬영 슬롯 가정
+    // (ASSUMED_YAW_DEG와 동일한 부호 규약: left=-90 → 코가 왼쪽).
+    faceDir: (lm && typeof lm.yaw === 'number' && Math.abs(lm.yaw) > 0.05)
+      ? (lm.yaw >= 0 ? 1 : -1)
+      : (angle === 'right' ? 1 : -1),
+  };
+  _secBandsCache[angle] = { src: lm, bands };
+  return bands;
+}
+
 function resolveSectionId(angle, nx, ny){
-  const inR = (range, v) => v>=range[0] && v<=range[1];
-  const napeTop = SECTIONS.nape.yRange[0];
-  // ── 섹션 배분 재설계(2026, 편중 정리) ──
-  // 문제였던 점: 측면/후면에서 맨 처음 `ny <= 두정선 → crown`을 검사해 두정선 아래로
-  // 안 내려간 컬럼(=대부분)이 전부 크라운으로 먹혔음(측면 91%·후면 86% 크라운).
-  // 원인: scalpY(머리카락 맨 위)는 측면/후면에서 어디든 높아서 세로(ny)만으론
-  //   크라운/사이드/후두부를 못 가름. → 앞뒤/좌우 위치(nx)를 주축으로 바꾸고,
-  //   각 섹션이 "주력 뷰"(크라운=정면·후면, 사이드=측면, 후두부=측면·후면,
-  //   네이프=측면·후면)에서 확실한 비중을 갖게 함. 컬럼당 섹션은 flat(state.sections[secId])
-  //   으로 판정되어 그대로 3D 가닥(sec)까지 이어지므로, 2D에서 나누면 3D에 바로 반영됨.
+  // ── 섹션 배분 재재설계(2026-07-22, 뿌리 실좌표 기반) ──
+  // 이전 재설계(nx 하드코딩 0.32/0.64 분할)의 문제:
+  //  · ny로 들어오던 값이 "컬럼의 실루엣 맨 꼭대기"라 세로 정보가 죽어 있었고,
+  //    그 보상으로 좌우(nx)만으로 나누다 보니 측면 뷰에서 중앙 컬럼 전부(사실상
+  //    보이는 머리 전체)가 side로 먹혔음 — "사이드만 조정하면 전체가 움직인다"의 원인.
+  //  · 네이프는 어떤 뷰에서도 조건(ny>네이프선)을 만족할 수 없어 조정이 무반응.
+  //  · left/right 모두 "nx 작으면 템플" 고정이라 우측 뷰에선 템플/후두부가 뒤바뀜.
+  // 이제 호출부(drawStrandLayer)가 가닥의 "실제 뿌리 좌표"(루트 확산 레이어의
+  // 깊이 포함)를 넘기므로 세로(ny)가 다시 의미를 갖는다 → 초반에 잡아둔 미용
+  // 기준선(두정선 위=Interior=크라운, 아래=Exterior, 네이프선 아래=네이프)을
+  // 그대로 적용하고, 측면의 앞/뒤(템플/후두부)는 귀 실측 x와 얼굴 방향으로 나눈다.
+  const b = sectionBandsFor(angle);
   if(angle==='front'){
-    if(ny > napeTop) return 'nape';
-    // 이마 중앙 밴드에 머리카락이 있으면 프론트(앞머리/프린지)
-    if(inR(SECTIONS.front.yRange, ny) && inR(SECTIONS.front.xRange, nx)) return 'front';
-    // 중앙 밴드 바깥(귀 쪽) = 템플
-    if(nx < SECTIONS.front.xRange[0] || nx > SECTIONS.front.xRange[1]) return 'temple';
-    // 중앙 위쪽 = 크라운(정면 주력)
-    return 'crown';
+    if(ny >= b.napeTopY) return 'nape';
+    // 이마 중앙 밴드(헤어라인~눈썹) = 프론트(앞머리/프린지)
+    const inFrontX = nx >= b.frontX0 && nx <= b.frontX1;
+    if(inFrontX && ny >= b.frontY0 && ny <= b.frontY1) return 'front';
+    if(ny <= b.parietalY) return 'crown';       // 두정선 위 = 크라운
+    if(!inFrontX) return 'temple';               // 두정선 아래 좌우(귀 쪽) = 템플
+    return 'front';                              // 중앙에서 눈썹 아래로 내려온 긴 프린지
   }
   if(angle==='left' || angle==='right'){
-    // nx(앞뒤): 앞(작은 nx)=템플, 뒤(큰 nx)=후두부, 가운데=사이드(측면 본체), 아래=네이프.
-    // 크라운은 측면에선 얇은 꼭대기라 사이드에 흡수 — 크라운 조정은 정면/후면 뷰에서.
-    if(ny > napeTop) return 'nape';
-    if(nx < 0.32) return 'temple';
-    if(nx > 0.64) return 'occipital';
+    if(ny >= b.napeTopY) return 'nape';          // 목선 쪽 뿌리 = 네이프
+    if(ny <= b.parietalY) return 'crown';        // 두정선 위(Interior) = 크라운
+    // 두정선~네이프선 사이(Exterior): 귀 기준 앞=템플, 귀 주변=사이드, 뒤=후두부
+    const fwd = (nx - b.earX) * b.faceDir;       // +값 = 얼굴(앞) 방향
+    if(fwd > 0.06) return 'temple';
+    if(fwd < -0.08) return 'occipital';
     return 'side';
   }
   if(angle==='back'){
-    if(ny > napeTop) return 'nape';
-    // 중앙 = 크라운(후면 주력), 양옆 = 후두부
-    if(nx >= 0.38 && nx <= 0.62) return 'crown';
-    return 'occipital';
+    if(ny >= b.napeTopY) return 'nape';
+    if(ny <= b.parietalY) return 'crown';        // 두정선 위 = 크라운
+    return 'occipital';                          // 그 사이 = 후두부
   }
   return 'crown';
 }
@@ -3115,31 +3190,43 @@ const PARAM_LABELS = {
   volume:'볼륨', blend:'연결감', layer:'레이어',
 };
 
-function propagateSectionChange(secId, param){
-  // 크라운 연동비율(0%=독립적, 100%=크라운과 거의 동일)만큼 크라운 길이
-  // 변화를 템플에 반영. currentTemple(연동 전 템플 자체 길이)과 crownLen을
-  // 연동비율로 가중평균 — 0%면 currentTemple 그대로(무변화), 100%면
-  // crownLen과 동일해짐. 실제 기법명은 Overdirection(영문판 표기용).
+// gyeol 패널의 특정 섹션 파라미터 UI(값 라벨 + 슬라이더 위치)를 state와 동기화.
+// 연동(propagateSectionChange)으로 "지금 안 만지고 있는" 섹션 값이 바뀌었을 때 사용.
+function syncGyParamUI(secId, key){
+  const v = state.sections[secId][key];
+  const unit = GY_UNIT[key] || '';
+  const valEl = document.getElementById(`gyval-${secId}-${key}`);
+  if(valEl) valEl.textContent = Math.round(v) + unit;
+  const rangeEl = document.getElementById(`gyrange-${secId}-${key}`);
+  if(rangeEl) rangeEl.value = v;
+}
+
+function propagateSectionChange(secId, param, delta){
+  // ── 래칫(누적 수렴) 버그 수정(2026-07-22) ──
+  // 예전엔 "절대값 가중평균"(temple = temple×(1-r) + crown×r)을 슬라이더 input
+  // 이벤트마다 반복 적용했음. 드래그 한 번에 이벤트가 수십 번 발생하므로 매
+  // 틱마다 블렌딩이 중첩돼, 드래그가 끝나면 연동 섹션이 원래 값과 무관하게
+  // 크라운/사이드 값에 거의 수렴해버림 — "사이드만 조정했는데 뒤(후두부)까지
+  // 전부 움직인다"의 두 번째 원인. → "변화량(delta)×연동비율"만 더하는 방식으로
+  // 변경: 이벤트가 몇 번 쪼개져 오든 합산 결과는 (총 변화량×비율)로 동일해서
+  // 드래그 속도/횟수에 영향을 받지 않는다. 값은 반올림 없이 실수로 누적하고
+  // 표시할 때만 반올림(1틱 delta=1처럼 작은 변화가 반올림에 먹히지 않도록).
+  if(typeof delta !== 'number' || delta === 0) return;
   if(secId==='crown' && param==='length'){
-    const crownLen = state.sections.crown.length;
+    // 크라운 연동비율(Overdirection): 0%=독립적 ~ 100%=크라운 변화를 그대로 따라감
     const linkRatio = state.sections.temple.overdirection / 100; // 0~1
-    const currentTemple = state.sections.temple.length;
-    const newTemple = Math.round(currentTemple * (1-linkRatio) + crownLen * linkRatio);
-    state.sections.temple.length = Math.max(0, Math.min(100, newTemple));
-    const tSlider = document.getElementById('secslider-temple-length');
-    if(tSlider) tSlider.value = state.sections.temple.length;
-    const _tv = document.getElementById('secval-temple-length'); if(_tv) _tv.textContent = state.sections.temple.length;
-    updateSectionSummary('temple');
+    if(linkRatio > 0){
+      state.sections.temple.length = Math.round(Math.max(0, Math.min(100,
+        state.sections.temple.length + delta * linkRatio)) * 1000) / 1000; // FP 잔재만 제거(0.001 스냅)
+      syncGyParamUI('temple', 'length');
+      updateSectionSummary('temple');
+    }
   }
-  // side 길이 변경 시 occipital에 30% 반영
+  // side 길이 변경 시 occipital에 변화량의 30% 반영(측면↔후면 연결 자연스럽게)
   if(secId==='side' && param==='length'){
-    const blend = 0.3;
-    state.sections.occipital.length = Math.round(
-      state.sections.occipital.length * (1-blend) + state.sections.side.length * blend
-    );
-    const oSlider = document.getElementById('secslider-occipital-length');
-    if(oSlider) oSlider.value = state.sections.occipital.length;
-    const _ov = document.getElementById('secval-occipital-length'); if(_ov) _ov.textContent = state.sections.occipital.length;
+    state.sections.occipital.length = Math.round(Math.max(0, Math.min(100,
+      state.sections.occipital.length + delta * 0.3)) * 1000) / 1000; // FP 잔재만 제거(0.001 스냅)
+    syncGyParamUI('occipital', 'length');
     updateSectionSummary('occipital');
   }
 }
@@ -3151,7 +3238,9 @@ function updateSectionSummary(id){
   const sec = SECTIONS[id];
   el.textContent = sec.params.map(p=>{
     const unit = (sec.paramMeta && sec.paramMeta[p] && sec.paramMeta[p].unit) || '';
-    return `${PARAM_LABELS[p]||p} ${vals[p]}${unit}`;
+    // 연동값은 실수로 누적되므로 표시할 때만 반올림
+    const v = (typeof vals[p]==='number') ? Math.round(vals[p]) : vals[p];
+    return `${PARAM_LABELS[p]||p} ${v}${unit}`;
   }).join(' · ');
 }
 
@@ -3212,6 +3301,8 @@ function selectGySection(id){
 // 섹션 슬라이더 공통 핸들러 — length는 섹션/뷰 연동(propagate)까지 수행.
 function onGySlider(secId, key, val){
   const num = parseInt(val, 10);
+  // 연동(propagate)이 "변화량" 기반이 되도록 이전 값을 먼저 확보(래칫 버그 수정)
+  const prev = (typeof state.sections[secId][key] === 'number') ? state.sections[secId][key] : num;
   state.sections[secId][key] = num;
   const valEl = document.getElementById(`gyval-${secId}-${key}`);
   if(valEl){
@@ -3219,7 +3310,7 @@ function onGySlider(secId, key, val){
     valEl.textContent = num + unit;
   }
   if(key === 'length'){
-    propagateSectionChange(secId, 'length'); // 크라운→템플 등 flat 연동(렌더가 읽음) — 유지
+    propagateSectionChange(secId, 'length', num - prev); // 크라운→템플 등 flat 연동(렌더가 읽음) — 델타 기반
     // propagateSectionToViews(뷰별 값 블렌딩) 제거: state.sections[angle][sectionId](뷰별
     // 중첩)에 쓰던 값을 렌더러는 안 읽어(flat state.sections[secId]만 읽음) 사실상 죽은
     // 계산이었고, 섹션 값이 flat 하나라 모든 뷰의 해당 섹션 가닥에 자동 적용된다(=뷰 간
@@ -3297,11 +3388,13 @@ function gyBuildRangeCtrl(secId, pm, hint){
   const sec = state.sections[secId];
   const cur = (typeof sec[pm.key] === 'number') ? sec[pm.key] : 0;
   const c = document.createElement('div'); c.className = 'gy-ctrl';
+  // input에 id 부여(gyrange-…): 연동(propagateSectionChange)이 다른 섹션 값을
+  // 바꿨을 때 syncGyParamUI가 슬라이더 위치까지 동기화할 수 있게 함.
   c.innerHTML = `<div class="gy-ctrl-top">
             <span><span class="gy-ctrl-label">${pm.label}</span><span class="gy-ctrl-hint">${hint}</span></span>
-            <span class="gy-ctrl-val" id="gyval-${secId}-${pm.key}">${cur}${pm.unit}</span>
+            <span class="gy-ctrl-val" id="gyval-${secId}-${pm.key}">${Math.round(cur)}${pm.unit}</span>
           </div>
-          <input type="range" min="${pm.min}" max="${pm.max}" value="${cur}"
+          <input type="range" min="${pm.min}" max="${pm.max}" value="${cur}" id="gyrange-${secId}-${pm.key}"
             oninput="onGySlider('${secId}','${pm.key}',this.value)">`;
   return c;
 }
@@ -3969,13 +4062,22 @@ function logSectionColumnCounts(angle){
   const counts = { crown:0, front:0, temple:0, side:0, occipital:0, nape:0 };
   const W = mi.w, H = mi.h;
   let valid = 0;
+  // (2026-07-22) 뿌리 실좌표 판정에 맞춰 진단도 갱신: 실제 렌더는 두피선~모발끝
+  // 사이 여러 깊이(rootDepthFrac 0~0.85)에 뿌리를 심으므로, 최상단선 한 줄만
+  // 세면 분포가 왜곡됨(측면에서 crown만 잔뜩 나옴). 컬럼마다 깊이 5지점을
+  // 샘플링해서 "뿌리가 심길 수 있는 자리"의 섹션 분포를 집계한다.
+  const DEPTHS = [0, 0.2, 0.4, 0.6, 0.8];
   for(let x=0; x<W; x++){
     const sy = mi.scalpY[x]; if(sy < 0) continue;
-    valid++;
-    const sec = resolveSectionId(angle, x/W, sy/H);
-    if(counts[sec] !== undefined) counts[sec]++;
+    const ey = (mi.hairEndY && mi.hairEndY[x] >= 0) ? mi.hairEndY[x] : sy;
+    DEPTHS.forEach(f=>{
+      const y = sy + (ey - sy) * f;
+      valid++;
+      const sec = resolveSectionId(angle, x/W, y/H);
+      if(counts[sec] !== undefined) counts[sec]++;
+    });
   }
-  console.log('[진단·섹션분포] '+angle+' 유효컬럼='+valid+' | '
+  console.log('[진단·섹션분포] '+angle+' 뿌리후보(깊이5지점×컬럼)='+valid+' | '
     + Object.entries(counts).map(([k,v])=>k+'='+v+'('+(valid?Math.round(v/valid*100):0)+'%)').join(' '));
 }
 
@@ -4065,15 +4167,27 @@ function createColumnStyleResolvers({ maskW, maskH, iScalpY, sections, angle, co
   //   섹션 해석 자체를 건너뛰고, 섹션 판정 조건도 (sections && angle)이 아니라
   //   (angle)이라 로직이 실제로 다름.
   function makeColumnResolver(compute){
-    const cache = new Float32Array(maskW).fill(NaN);
-    return function(ix){
+    // ── 뿌리 실좌표 기반 판정(2026-07-22) ──
+    // 예전엔 캐시가 "컬럼당 1값"(Float32Array)이었고 섹션 판정도 컬럼의 두피
+    // 최상단선(iScalpY)만 사용 — 루트 확산 레이어가 귀 옆/목덜미 깊이에 심은
+    // 뿌리조차 전부 "실루엣 꼭대기 기준 섹션"으로 먹혀서, 측면 뷰에서 사실상
+    // 모든 가닥이 side 하나로 뭉쳤음("사이드만 조정하면 전체가 움직인다"의 원인).
+    // 이제 호출부(drawStrandLayer)가 실제 뿌리 좌표로 판정한 secId/rootNy를
+    // 넘겨주면 그대로 쓰고(캐시 키를 컬럼×섹션×뿌리깊이 1% 양자화로 확장),
+    // 안 넘기는 기존 호출부는 예전과 동일하게 최상단선 판정으로 폴백한다.
+    const cache = {};
+    return function(ix, secIdOpt, rootNyOpt){
       const cx = Math.min(maskW-1, Math.max(0, Math.round(ix)));
-      if(!Number.isNaN(cache[cx])) return cache[cx];
-      const ny = iScalpY[cx] >= 0 ? iScalpY[cx]/maskH : 0.15;
       const nx = cx/maskW;
-      const secId = (sections && angle) ? resolveSectionId(angle, nx, ny) : 'crown';
+      const ny = (typeof rootNyOpt === 'number')
+        ? rootNyOpt
+        : (iScalpY[cx] >= 0 ? iScalpY[cx]/maskH : 0.15);
+      const secId = secIdOpt || ((sections && angle) ? resolveSectionId(angle, nx, ny) : 'crown');
+      const key = secId + ':' + cx + ':' + ((ny*100)|0); // 깊이 의존 값(페이드/겹 델타) 때문에 ny도 키에 포함
+      const hit = cache[key];
+      if(hit !== undefined) return hit;
       const v = compute(secId, cx, nx, ny);
-      cache[cx] = v;
+      cache[key] = v;
       return v;
     };
   }
@@ -4195,13 +4309,16 @@ function createColumnStyleResolvers({ maskW, maskH, iScalpY, sections, angle, co
     return Math.round(((f-50)/50) * 22); // ±22
   })();
   const colorForSectionCache = {};
-  function colorForSection(ix){
+  function colorForSection(ix, secIdOpt){
+    // (2026-07-22) 뿌리 기반 섹션 판정 연동: 호출부가 실제 뿌리로 판정한 secId를
+    // 넘기면 그걸 쓰고(캐시 키에 섹션 포함), 안 넘기면 기존 최상단선 판정 유지.
     const cx = Math.min(maskW-1, Math.max(0, Math.round(ix)));
-    if(colorForSectionCache[cx] !== undefined) return colorForSectionCache[cx];
-    let result = color;
     const ny = iScalpY[cx] >= 0 ? iScalpY[cx]/maskH : 0.15;
     const nx = cx/maskW;
-    const secId = (angle) ? resolveSectionId(angle, nx, ny) : 'crown';
+    const secId = secIdOpt || ((angle) ? resolveSectionId(angle, nx, ny) : 'crown');
+    const cKey = secId + ':' + cx;
+    if(colorForSectionCache[cKey] !== undefined) return colorForSectionCache[cKey];
+    let result = color;
     // ★ gyeol 섹션별 컬러(발레아쥬 등) — 섹션에 color가 지정돼 있으면 최우선.
     //   염색 스타일(selectedStyle) 미선택일 때만 avgColorsBySection가 오므로,
     //   섹션 컬러는 그와 무관하게 항상 우선 적용(미용사가 명시적으로 지정한 값).
@@ -4211,7 +4328,7 @@ function createColumnStyleResolvers({ maskW, maskH, iScalpY, sections, angle, co
       result = avgColorsBySection[secId] || color;
     }
     if(_glossAmt !== 0) result = gyShade(result, _glossAmt);
-    colorForSectionCache[cx] = result;
+    colorForSectionCache[cKey] = result;
     return result;
   }
 
@@ -4265,16 +4382,18 @@ function createColumnStyleResolvers({ maskW, maskH, iScalpY, sections, angle, co
    * 아예 없음) drawHairStrands에서 분리해도 Node에서 독립 검증 가능함 —
    * env는 호출부(drawHairStrands)가 한 번만 만들어 넘겨주는 고정값 묶음.
    */
-function traceStrandPath(ix, sy_img, targetLen_img, jitterSeed, env){
+function traceStrandPath(ix, sy_img, targetLen_img, jitterSeed, env, rootSec){
   const { hasOrientation, orientation, orientMaskW, ox, oy, STRAND_STEP_LEN, frontDirBiasFor, curlAmtFor, waveWidthFor, styling, maskW } = env;
     const stepLen = STRAND_STEP_LEN; // 고정 보폭 — targetLen_img에서 역산하지 않음
     const steps = Math.max(2, Math.round(targetLen_img / stepLen));
     const pts = [{x:ix, y:sy_img}]; // 마스크 좌표계(maskW,maskH 기준)로 누적
     // 뿌리(시작 컬럼) 기준으로 딱 한 번만 조회 — 가닥이 진행하며 컬럼이 옆으로
     // 흘러가도 "이 가닥이 어디서 자라났는지"는 뿌리 위치로 고정하는 게 맞음.
-    const frontBias = frontDirBiasFor(ix);
-    const curlAmt = curlAmtFor(ix);                 // gyeol 섹션별 컬 세기(절대 0~100)
-    const waveT   = (waveWidthFor(ix)) / 100;        // gyeol 섹션별 웨이브 폭(0~1)
+    // (2026-07-22) rootSec: 호출부(drawStrand)가 뿌리 실좌표로 판정한 섹션 —
+    // 컬/웨이브/프론트 바이어스가 전부 "그 가닥이 심긴 섹션"의 값을 쓴다.
+    const frontBias = frontDirBiasFor(ix, rootSec);
+    const curlAmt = curlAmtFor(ix, rootSec);         // gyeol 섹션별 컬 세기(절대 0~100)
+    const waveT   = (waveWidthFor(ix, rootSec)) / 100; // gyeol 섹션별 웨이브 폭(0~1)
     // ── gyeol 스타일링(전역 마무리) 값 — 뿌리 컬럼 좌우 판정 포함 ──
     const side = (typeof maskW==='number' && ix < maskW/2) ? -1 : 1;
     const st = styling || {};
@@ -4377,7 +4496,17 @@ function traceStrandPath(ix, sy_img, targetLen_img, jitterSeed, env){
       // 실제 기법 그대로 — 로드 사이즈가 진폭이 아니라 "몇 번 감기느냐(파장)"를 결정.
       const CURL_WAVELENGTH_STEPS = 3 + waveT * 15; // 3(촘촘)~18(느슨) — gyeol 섹션별 웨이브 폭
       const curlPhase = (s / CURL_WAVELENGTH_STEPS) * Math.PI * 2;
-      const curlComponent = Math.sin(curlPhase + jitterSeed) * (curlAmt/100) * 0.07;
+      // ── 펌 진폭/위상 보정(2026-07-22) — "펌 조정이 안 먹힌다" 수정 ──
+      // ① 진폭 계수 0.07→0.45: 예전 값은 컬 100%여도 방향 흔들림이 최대 ±4°
+      //    (횡편차로 환산하면 마스크폭 768px 기준 약 2px)라 화면에서 식별 자체가
+      //    불가능했음. 0.45면 컬 100%에서 ±26° 스윙(횡편차 약 12px) — 확실히
+      //    보이면서 기본값 30%에선 ±7.7°로 여전히 은은함.
+      // ② 위상을 뿌리 컬럼(ix) 기준으로 정렬: 예전엔 jitterSeed(가닥 인덱스 기반,
+      //    사실상 무작위)만 써서 이웃 가닥끼리 파형이 전부 어긋나 서로 상쇄돼
+      //    보였음. 실제 펌은 이웃 모발이 같은 로드에 감겨 파형이 나란함 —
+      //    인접 컬럼(Δix≈3)이면 위상차 0.15rad 수준으로 결이 맞고, jitterSeed는
+      //    약하게만 섞어 완전히 기계적인 줄무늬는 피함.
+      const curlComponent = Math.sin(curlPhase + ix*0.05 + jitterSeed*0.15) * (curlAmt/100) * 0.45;
       // front.line 바이어스: 뿌리 근처(s=0)에서 가장 강하고 끝으로 갈수록 약해짐
       // (실제로도 앞머리 스타일링은 뿌리 쪽 방향이 인상을 좌우하고, 끝쪽은 결방향·
       // 중력에 자연스럽게 맡기는 게 더 사실적) — frontBias가 0(front 섹션 아님/
@@ -4644,8 +4773,8 @@ function drawHairStrands(ctx, fit, scalpY, hairEndY, maskW, maskH, hairCanvas, o
   // Canvas API를 안 쓰는 순수 함수 traceStrandPath(위에서 정의)로 옮겼고,
   // 여기서는 호출 시점에 고정되는 값들(env)만 한 번 묶어서 넘겨준다.
   const strandEnv = { hasOrientation, orientation, orientMaskW, ox, oy, STRAND_STEP_LEN, frontDirBiasFor, curlAmtFor, waveWidthFor, maskW, styling: stylingForRender };
-  function traceStrand(ix, sy_img, targetLen_img, jitterSeed){
-    return traceStrandPath(ix, sy_img, targetLen_img, jitterSeed, strandEnv);
+  function traceStrand(ix, sy_img, targetLen_img, jitterSeed, rootSec){
+    return traceStrandPath(ix, sy_img, targetLen_img, jitterSeed, strandEnv, rootSec);
   }
 
   // 마스크 좌표(이미지 픽셀 기준) 점 배열 → 캔버스 좌표로 변환
@@ -4683,26 +4812,33 @@ function drawHairStrands(ctx, fit, scalpY, hairEndY, maskW, maskH, hairCanvas, o
   // 가닥 하나를 그림: origLen까지는 base(clip 대상), 그 이후 연장분은 ext(clip 없음)로 나눠서 그림.
   // 보폭이 고정(STRAND_STEP_LEN)이므로, origLen까지의 경로는 ratio 값과 무관하게
   // 원본 결 보기 때와 항상 동일하다 — split은 그 경로를 어디서 자를지만 정한다.
-  function drawStrand(ix, sy_img, scaledLen, origLen, extAmount, jitterSeed, strokeStyleVal){
+  function drawStrand(ix, sy_img, scaledLen, origLen, extAmount, jitterSeed, strokeStyleVal, rootSec){
     // 텍스처링(포인트컷/슬라이드컷/레이저컷/틴닝 통합): 끝단을 불규칙하게
     // 다듬어서 자연스러운 텍스처를 냄 — 강도가 셀수록 가닥마다 끝 길이를
     // 더 크게, 더 무작위로 줄임(뭉툭한 블런트 라인 대신 삐죽삐죽한 텍스처).
     // texturing=0이면 Math.random() 호출 자체를 안 해서 기존 동작과 완전히 동일.
     let effectiveLen = scaledLen;
-    const texAmt = textureFor(ix); // gyeol 섹션별 텍스처(전역 texturing과 max)
+    const texAmt = textureFor(ix, rootSec); // gyeol 섹션별 텍스처(전역 texturing과 max)
     if(texAmt > 0){
       const texT = texAmt / 100;
       const trim = Math.random() * texT * 0.35; // 최대 35%까지 무작위로 짧게
       effectiveLen = scaledLen * (1 - trim);
     }
-    const pts = traceStrand(ix, sy_img, effectiveLen, jitterSeed);
+    const pts = traceStrand(ix, sy_img, effectiveLen, jitterSeed, rootSec);
     // (옮기기 1단계) 완성된 경로를 마스크 좌표계 그대로 저장 — 색 포함.
     // 화면에 그린 것과 동일한 점들이므로 3D는 이걸 들어올리면 2D와 정의상 일치.
     if(capturedStrands){
       // 각 가닥에 섹션 ID를 함께 저장 → 3D에서도 섹션별 구분/색분리/선택이 가능하게.
-      // (예전엔 pts+color만 저장해 3D엔 조정된 "모양"만 넘어가고 섹션 라벨은 사라졌음.)
-      const _ny = (iScalpY[ix] >= 0 ? iScalpY[ix]/maskH : 0.15);
-      const _sec = angle ? resolveSectionId(angle, ix/maskW, _ny) : 'crown';
+      // (2026-07-22) 렌더에 실제 쓰인 뿌리 기반 섹션(rootSec)을 그대로 저장 —
+      // 예전엔 여기서 최상단선 기준으로 "다시" 판정해서, 깊은 뿌리 가닥은 화면
+      // 렌더에 적용된 섹션과 3D 라벨이 어긋날 수 있었음. 이제 2D 조정 결과와
+      // 3D 가닥의 섹션 라벨이 정의상 일치 → 다음 단계(3D에서 섹션 조정)의 기반.
+      let _sec = rootSec;
+      if(!_sec){
+        const _cx = Math.min(maskW-1, Math.max(0, Math.round(ix)));
+        const _ny = (iScalpY[_cx] >= 0 ? iScalpY[_cx]/maskH : 0.15);
+        _sec = angle ? resolveSectionId(angle, _cx/maskW, _ny) : 'crown';
+      }
       capturedStrands.push({ pts, color: strokeStyleVal, sec: _sec });
     }
     const cPts = toCanvasPts(pts);
@@ -4778,17 +4914,25 @@ function drawHairStrands(ctx, fit, scalpY, hairEndY, maskW, maskH, hairCanvas, o
         }
       }
       const origLen = Math.max(ey_img - sy_img, maskH*0.05);
+      // ── 뿌리 실좌표 기반 섹션 판정(2026-07-22) ──
+      // 이 가닥이 "실제로 심긴 자리"(rootDepthFrac 깊이 반영된 sy_img)로 섹션을
+      // 정한다. 예전엔 컬럼의 실루엣 최상단만 보고 판정해서 측면 뷰의 깊은 뿌리
+      // (귀 옆·목덜미)까지 전부 꼭대기 섹션으로 먹혔음 — 이 한 줄이 섹션별
+      // 조정이 "그 부위"에만 걸리게 만드는 핵심. 아래 모든 리졸버와 3D 캡처
+      // 라벨(sec)에 동일하게 전달된다.
+      const rootNy = sy_img / maskH;
+      const rootSec = (sections && angle) ? resolveSectionId(angle, ix/maskW, rootNy) : 'crown';
       // ratio(배율)의 "1에서 벗어난 만큼"만 depthScale로 축소 — ratio 자체를 곱하면
       // depthScale=0.5여도 여전히 큰 배율이 걸려버려서(예: ratio=2.6 → 1.8배 축소해도
       // 여전히 1.8배) 깊이 축소 의도가 죽는다. 1 기준 편차만 줄여야 "원래 길이 근처로
       // 되돌아가는" 축소가 됨.
-      const rawRatio = lengthRatioFor(ix);
+      const rawRatio = lengthRatioFor(ix, rootSec, rootNy);
       const ratio = 1 + (rawRatio - 1) * depthScale;
       let scaledLen = lenScale(origLen, ratio);
       // ── 커트 겹 지오메트리: 뿌리높이 기반 끝점 재분포(px)를 더한다 ──
       // 시술각/기법이 만드는 레이어. depthScale로 깊은 뿌리 레이어는 변화량 축소.
       // 유니폼/기본값이면 델타 0이라 기존 렌더와 동일.
-      scaledLen += cutLayerDeltaFor(ix) * depthScale;
+      scaledLen += cutLayerDeltaFor(ix, rootSec, rootNy) * depthScale;
       scaledLen = Math.max(maskH*0.02, Math.min(scaledLen, maxStrandLen));
       const extAmount = scaledLen - origLen; // base/ext 분할 판단용(양수=연장, 음수 이하=전체 clip)
       const startX = ix + startXJitter();
@@ -4808,8 +4952,8 @@ function drawHairStrands(ctx, fit, scalpY, hairEndY, maskW, maskH, hairCanvas, o
       const bright = FORCED_HAIR_COLOR ? Math.min(1.06, brightRaw) : brightRaw;
       const strokeCol = usePalette
         ? tintColor(colorPalette[Math.floor(Math.random()*colorPalette.length)], bright)
-        : tintColor(colorForSection(ix), bright);
-      drawStrand(startX, startY, scaledLen, origLen, extAmount, jitterSeed, strokeCol);
+        : tintColor(colorForSection(ix, rootSec), bright);
+      drawStrand(startX, startY, scaledLen, origLen, extAmount, jitterSeed, strokeCol, rootSec);
     }
   }
 
@@ -5148,8 +5292,10 @@ function handleVoiceCmd(text){
   const adj=(param,delta,min=0,max=100)=>{
     const s=state.sections[targetSection];
     if(typeof s[param]!=='number') return;
+    const prev=s[param];
     s[param]=Math.max(min,Math.min(max,s[param]+delta));
-    if(param==='length') propagateSectionChange(targetSection,'length');
+    // 델타 기반 연동(래칫 버그 수정과 동일 규약) — 클램프 후 실제 변화량을 전달
+    if(param==='length') propagateSectionChange(targetSection,'length',s[param]-prev);
     matched=true;
   };
   // 전 섹션 컬 일괄 조정(펌은 per-section이지만 음성은 전체 조정으로 취급)
