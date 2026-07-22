@@ -355,6 +355,31 @@
   · [진단·결단] 로그 추가(10% 버킷 변화 시만): 겹층 커트면 두 자릿수 %가 정상.
   ⚠ FLOW_DISC는 실사진 결 필드 특성에 민감 — 실기기에서 %가 0이면 임계 완화
   (thrMin↓/dirJump↓), 과도하면(가닥이 죄다 짧아짐) 반대로. 실기기 재확인 필요.
+
+  ── 2026-07-22 (8차) 슬라이스 단위 커트 + 연장 균일성장 + 언더코트 base 한정 ──
+  사용자 설계: "실제 커트처럼 손에 몇 가닥씩 잡아 슬라이스 단위로 자르듯,
+  가닥 몇 개씩 모아 슬라이스 너비로." + 실기기 관찰 3건("결이 뚝뚝 끊겨 보임 /
+  층 겹침감 약함 / 길게 늘리면 뻗침") + "가닥 더 가늘게".
+  구현:
+  · 슬라이스 커트 — drawStrand는 1패스에서 실측만 수집(pendingStrands),
+    finalizeStrandsWithSlices가 뿌리 구역을 슬라이스(섹션×가로 3%폭×깊이 10%밴드)
+    로 묶어 헴(끝선)을 슬라이스 실측의 중앙값으로 합의. 구성 가닥은 자기 결
+    경로를 그대로 따르되 끝만 헴±8% 결정적 스태거로 정렬. 가닥별 랜덤 배율은
+    슬라이스가 주도권 가지므로 60% 축소(질감만). 고립 노이즈(조기 종결)가
+    중앙값에 안 휩쓸림 → "결 뚝뚝 끊김"·"층 약함" 동시 해소.
+  · 연장 균일 성장 — ratio≥1(늘림)이면 슬라이스 전체가 같은 절대량
+    (hemLen×(ratio-1))만큼 자람. 예전 곱셈(mult×jit×ratio)은 배율 큰 소수
+    가닥만 유독 길어져 "낙수/뻗침"이 됐음(하네스로 편차 대조 확인).
+  · 연장 방향 수렴 — 마스크 이탈(_exitIdx) 후엔 매 스텝 중력(아래)으로 0.45
+    수렴 → 정수리 위 스파이크·관자놀이 낙수 완화.
+  · 언더코트 base 한정 — 가닥 추종 두피색 획을 마스크 안(base)만 칠함
+    (연장 구간까지 칠하면 얼굴/배경에 살구톤 밑줄이 비침 — 실기기 스크린샷).
+  · 가닥 굵기 STRAND_THIN 0.6→0.48(더 가늘게, 슬라이스와 함께 부드럽게).
+  · [진단·결단] 로그 각도당 최초 1회만(버킷 방식은 난수 진동으로 계속 뚫려
+    실기기에서 40회 반복 — 값은 렌더 간 거의 불변이라 1회면 충분).
+  검증: node --check + 슬라이스 하네스(중앙값 합의로 노이즈 2/20 무시,
+  연장 시 끝 편차 불변=균일 성장, 곱셈 대조군 대비 편차 감소, 슬라이스 키
+  섹션/가로/깊이 분리). 실기기 재확인 필요 — 특히 층 겹침감·늘렸을 때 뻗침.
 -->
 
 <!DOCTYPE html>
@@ -4731,6 +4756,18 @@ function traceStrandPath(ix, sy_img, targetLen_img, jitterSeed, env, rootSec, st
       // destination-in clip이 최종적으로 실제 머리 모양 밖을 걸러주므로
       // 안전장치 역할은 clip이 대신한다.
 
+      // ── (8차) 연장(마스크 이탈 후) 구간 방향 수렴 ──
+      // 마스크 밖은 실측 결 데이터가 없는 구간 — 길이를 늘렸을 때 위/옆으로
+      // 이탈한 가닥이 그 방향 그대로 뻗쳐 실루엣 밖 "삐죽 가닥"이 되던 문제
+      // (실기기 스크린샷: 정수리 위 스파이크·관자놀이 낙수). 이탈 확정 후엔
+      // 매 스텝 아래(중력) 방향으로 강하게 수렴시켜 자연스럽게 늘어지게 함.
+      if(_exitIdx !== null){
+        let _rest = Math.PI/2 - dir;
+        while(_rest > Math.PI) _rest -= Math.PI*2;
+        while(_rest < -Math.PI) _rest += Math.PI*2;
+        dir += _rest * 0.45;
+      }
+
       baseDir = dir; // 다음 스텝 기준은 curl 적용 전 방향으로 저장 (누적 방지)
 
       // curl 슬라이더 + 자연스러운 미세 흔들림 추가 (완전 직선 방지)
@@ -4948,7 +4985,7 @@ function drawHairStrands(ctx, fit, scalpY, hairEndY, maskW, maskH, hairCanvas, o
   // (2026-07-16) 사용자 피드백 "비교 보기에서 보면 좀 더 가늘어져야 돼" —
   // 1200 고해상도에서 원본 머리카락과 나란히 놓고 보니 가닥이 여전히 굵음.
   // 좌표·밀도는 그대로 두고 선굵기만 전역 40% 하향(더 조정하려면 이 값 하나만).
-  const STRAND_THIN = 0.6;
+  const STRAND_THIN = 0.48; // (8차) 사용자: "가닥을 조금 더 가늘게 하면서 슬라이스로 가면 부드러워질 것" — 0.6→0.48
   const widthScale = resScale * STRAND_THIN;
 
   // 길이 슬라이더가 높을 때(특히 정면 프론트) 가닥이 이마 라인을 넘어
@@ -5087,6 +5124,14 @@ function drawHairStrands(ctx, fit, scalpY, hairEndY, maskW, maskH, hairCanvas, o
   // 즉시 그리지 않고 op로 기록 → 섹션 스택 순서로 일괄 스트로크(아래 참조).
   const drawOps = []; // {sec, cPts, splitIdx, color, width, alpha}
   let _flowCutN = 0, _strandN = 0; // [진단용] 결 불연속으로 종결된 가닥 수
+  // ── (8차) 슬라이스 단위 커트 — 1패스는 실측만 수집, 확정은 슬라이스 합의 후 ──
+  // 사용자 설계: "실제 커트할 때 손에 몇 가닥씩 잡아 슬라이스 단위로 자르듯,
+  // 가닥 몇 개씩 모아 슬라이스 너비로." 가닥별 독립 실측(7차)은 이웃 끝이 제각각
+  // 흩어져 "결이 뚝뚝 끊겨 보이고 층 느낌이 약한" 문제가 있었음 → 같은 뿌리
+  // 구역(섹션×가로 슬라이스 폭×깊이 밴드)의 가닥들을 한 슬라이스로 묶고,
+  // 헴(끝선)을 슬라이스 실측의 중앙값으로 합의. 구성 가닥은 자기 결 경로를
+  // 그대로 따르되 끝만 헴±소폭 스태거로 정렬 — 실제 커트의 패널과 동일.
+  const pendingStrands = []; // 1패스 수집: 슬라이스 합의 후 확정(아래 finalize)
   function drawStrand(startX, startY, ix, rootSec, rootNy, depthScale, strandMult, jitterSeed, strokeStyleVal){
     // 조정 배율(섹션 길이 슬라이더 — 기본값=원본이라 기본 상태선 ratio=1)
     const rawRatio = lengthRatioFor(ix, rootSec, rootNy);
@@ -5097,32 +5142,64 @@ function drawHairStrands(ctx, fit, scalpY, hairEndY, maskW, maskH, hairCanvas, o
     // ① 실측: 결 필드를 따라 추적, 마스크 이탈점 + 결 불연속(겹 끝) 기록
     const probe = traceStrand(startX, startY, maxStrandLen, jitterSeed, rootSec, stopAtExit);
     const exitIdx = (typeof probe.maskExitIdx === 'number') ? probe.maskExitIdx : probe.length - 1;
-    // (7차) 실측 끝 = 마스크 이탈점과 결 불연속(겹 끝) 중 먼저 오는 쪽 —
-    // 관통 가닥(꼭대기 뿌리→마스크 끝 한 가닥으로 이어져 아래 겹을 통째로 덮던
-    // 문제)이 겹층 커트에선 실측 헴에서 끊긴다. 긴 생머리는 결 연속 → 무영향.
+    // (7차) 실측 끝 = 마스크 이탈점과 결 불연속(겹 끝) 중 먼저 오는 쪽.
     const flowIdx = (typeof probe.flowEndIdx === 'number') ? probe.flowEndIdx : null;
-    const endIdx = Math.max(1, (flowIdx !== null) ? Math.min(exitIdx, flowIdx) : exitIdx);
+    const hemIdx = Math.max(1, (flowIdx !== null) ? Math.min(exitIdx, flowIdx) : exitIdx);
     if(flowIdx !== null && flowIdx < exitIdx) _flowCutN++;
     _strandN++;
-    const measuredLen = Math.max(maskH * 0.03, endIdx * STRAND_STEP_LEN); // 실측 호장(결 따라간 실제 길이)
-    // ② 목표 길이 = 실측 × 레이어 배율(끝단 층 변화) × 조정 배율 + 커트 겹 델타 (+텍스처 트림)
-    let targetLen = measuredLen * strandMult * ratio + layerDelta;
-    const texAmt = textureFor(ix, rootSec);
-    if(texAmt > 0){
-      targetLen *= (1 - Math.random() * (texAmt / 100) * 0.35); // 끝단 무작위 트림(기존과 동일)
-    }
-    targetLen = Math.max(maskH * 0.02, Math.min(targetLen, maxStrandLen));
-    const nPts = Math.max(2, Math.min(probe.length, Math.round(targetLen / STRAND_STEP_LEN) + 1));
-    const pts = probe.slice(0, nPts);
-    // (옮기기 1단계) 완성된 경로를 마스크 좌표계 그대로 저장 — 색·뿌리 기반 섹션 포함.
-    // 화면에 그린 것과 동일한 점들이므로 3D는 이걸 들어올리면 2D와 정의상 일치.
-    if(capturedStrands){
-      capturedStrands.push({ pts, color: strokeStyleVal, sec: rootSec || 'crown' });
-    }
-    // ③ clip 분할: 실측 이탈점까지=base(마스크 clip), 그 너머(연장분)=ext(자유)
-    const splitIdx = Math.min(exitIdx, pts.length - 1);
-    drawOps.push({ sec: rootSec || 'crown', cPts: toCanvasPts(pts), splitIdx,
-                   color: strokeStyleVal, width: curStyle.width, alpha: curStyle.alpha });
+    pendingStrands.push({ probe, exitIdx, hemIdx, ix, rootSec: rootSec || 'crown', rootX: startX, rootNy,
+                          ratio, layerDelta, strandMult, strokeStyleVal,
+                          width: curStyle.width, alpha: curStyle.alpha });
+  }
+
+  // 슬라이스 합의 + 가닥 확정(목표 길이 계산 → 캡처/op 생성) — 레이어 4개가 모두
+  // pendingStrands를 채운 뒤 1회 실행. 슬라이스 폭은 실제 커트 감각(1~2cm)의 근사.
+  function finalizeStrandsWithSlices(){
+    const SLICE_W = Math.max(4, maskW * 0.03);      // 가로 슬라이스 폭(마스크 폭의 3%)
+    const sliceMap = {};
+    pendingStrands.forEach(p=>{
+      // 슬라이스 = 섹션 × 가로 폭 × 뿌리 깊이 밴드(10%) — 같은 패널에서 난 가닥들
+      const key = p.rootSec + '|' + Math.floor(p.rootX / SLICE_W) + '|' + Math.floor(p.rootNy * 10);
+      (sliceMap[key] = sliceMap[key] || []).push(p);
+    });
+    Object.values(sliceMap).forEach(members=>{
+      // 헴 합의: 실측(마스크 이탈/결 불연속)의 중앙값 — 고립된 조기 종결(노이즈)이
+      // 슬라이스 전체를 흔들지 않고, 진짜 겹 끝이면 다수가 동의해 헴이 됨.
+      const hems = members.map(m=>m.hemIdx).sort((a,b)=>a-b);
+      const hemMed = hems[Math.floor(hems.length / 2)];
+      members.forEach(m=>{ m.sliceHemIdx = hemMed; });
+    });
+    pendingStrands.forEach(p=>{
+      const hemLen = Math.max(maskH * 0.03, p.sliceHemIdx * STRAND_STEP_LEN);
+      // 슬라이스가 길이의 주도권을 가지므로 가닥별 랜덤 배율은 60% 축소(질감만 남김)
+      const multEff = 1 + (p.strandMult - 1) * 0.4;
+      // 헴 주변 ±8% 스태거(결정적 의사난수 — 프레임 간 흔들림 방지)
+      const jr = Math.sin(p.rootX * 17.23 + p.rootNy * 91.7) * 43758.5453;
+      const sliceJit = 0.92 + (jr - Math.floor(jr)) * 0.16;
+      let targetLen;
+      if(p.ratio >= 1){
+        // 연장: 패널 균일 성장 — 슬라이스 전체가 같은 양(hemLen×(ratio-1))만큼 자람.
+        // 예전(개별 배율×ratio 곱)은 배율 큰 소수 가닥만 유독 길어져 "낙수 가닥"이 됐음.
+        targetLen = hemLen * multEff * sliceJit + hemLen * (p.ratio - 1) + p.layerDelta;
+      } else {
+        targetLen = hemLen * multEff * sliceJit * p.ratio + p.layerDelta;
+      }
+      const texAmt = textureFor(p.ix, p.rootSec);
+      if(texAmt > 0){
+        targetLen *= (1 - Math.random() * (texAmt / 100) * 0.35); // 끝단 무작위 트림
+      }
+      targetLen = Math.max(maskH * 0.02, Math.min(targetLen, maxStrandLen));
+      const nPts = Math.max(2, Math.min(p.probe.length, Math.round(targetLen / STRAND_STEP_LEN) + 1));
+      const pts = p.probe.slice(0, nPts);
+      // 완성 경로 캡처(3D 리프트 소스) — 색·뿌리 기반 섹션 포함, 2D와 정의상 일치.
+      if(capturedStrands){
+        capturedStrands.push({ pts, color: p.strokeStyleVal, sec: p.rootSec });
+      }
+      // clip 분할: 실측 마스크 이탈점까지=base(마스크 clip), 그 너머(연장분)=ext(자유)
+      const splitIdx = Math.min(p.exitIdx, pts.length - 1);
+      drawOps.push({ sec: p.rootSec, cPts: toCanvasPts(pts), splitIdx,
+                     color: p.strokeStyleVal, width: p.width, alpha: p.alpha });
+    });
   }
 
   // ── 실제 인식된 머리카락 마스크 안인지 검사 ──
@@ -5329,31 +5406,35 @@ function drawHairStrands(ctx, fit, scalpY, hairEndY, maskW, maskH, hairCanvas, o
   // ② 가닥 스트로크를 섹션 스택 순서(네이프→후두부→템플→사이드→프론트→크라운)로
   //    일괄 실행 — 아래 겹 위에 위 겹이 쌓이는 실제 구조. 같은 섹션 안에서는
   //    생성 순서(레이어 0→3)가 유지된다(Array.sort는 안정 정렬).
+  finalizeStrandsWithSlices(); // (8차) 슬라이스 합의 → drawOps/캡처 확정
+
   const SECTION_STACK = { nape:0, occipital:1, temple:2, side:3, front:4, crown:5 };
   drawOps.sort((a,b)=> (SECTION_STACK[a.sec] ?? 2) - (SECTION_STACK[b.sec] ?? 2));
-  function strokeOp(op, color, widthMul){
+  function strokeOp(op, color, widthMul, baseOnly){
     const bPts = op.cPts.slice(0, op.splitIdx + 1);
     baseCtx.strokeStyle = color; baseCtx.lineWidth = op.width * widthMul; baseCtx.globalAlpha = op.alpha;
     strokePolyline(baseCtx, bPts);
-    if(op.splitIdx < op.cPts.length - 1){
+    if(!baseOnly && op.splitIdx < op.cPts.length - 1){
       extCtx.strokeStyle = color; extCtx.lineWidth = op.width * widthMul; extCtx.globalAlpha = op.alpha;
       strokePolyline(extCtx, op.cPts.slice(op.splitIdx)); // 분할점 공유로 선이 안 끊기게
     }
   }
   const scalpUnderCol = opts.scalpColor || 'rgb(224,178,148)';
-  drawOps.forEach(op => strokeOp(op, scalpUnderCol, 2.2)); // 언더코트 패스(가닥 추종 바탕)
-  drawOps.forEach(op => strokeOp(op, op.color, 1));        // 실제 가닥 패스(섹션 스택 순서)
+  // 언더코트는 base(마스크 안)만 — 연장 구간까지 두피색 굵은 획을 깔면
+  // 얼굴/배경 위에 살구톤 밑줄이 비쳐 보임(8차, 실기기 스크린샷 대응).
+  drawOps.forEach(op => strokeOp(op, scalpUnderCol, 2.2, true)); // 언더코트 패스(가닥 추종 바탕)
+  drawOps.forEach(op => strokeOp(op, op.color, 1, false));       // 실제 가닥 패스(섹션 스택 순서)
 
   // [진단용] 결 불연속 종결 비율 — 겹층 커트면 두 자릿수 %가 정상, 긴 생머리면 낮아야 함.
   // 매 렌더 랜덤으로 숫자가 흔들리므로 10% 버킷이 바뀔 때만 출력(스팸 방지).
   if(angle && _strandN > 0){
     const pct = Math.round(_flowCutN / _strandN * 100);
     window._lastDiscLog = window._lastDiscLog || {};
-    // 버킷을 내림(floor)으로 — 반올림(round)이면 경계값(예: 24↔26%)에서 버킷이
-    // 계속 튀어 같은 로그가 렌더마다 반복 출력됐음(실기기에서 17회 연속 확인).
-    const bucket = Math.floor(pct / 10);
-    if(window._lastDiscLog[angle] !== bucket || window.DIAG_VERBOSE){
-      window._lastDiscLog[angle] = bucket;
+    // (8차) 각도당 최초 1회만 출력 — 버킷 방식(round→floor)은 어떤 경계값이든
+    // 렌더마다 난수로 값이 튀면 뚫림(실기기에서 19↔20% 진동으로 40회 반복 확인).
+    // 비율은 렌더 간 거의 안 변하므로 1회면 충분, 추가 확인은 DIAG_VERBOSE로.
+    if(!(angle in window._lastDiscLog) || window.DIAG_VERBOSE){
+      window._lastDiscLog[angle] = true;
       console.log('[진단·결단] '+angle+' 가닥 '+_strandN+'개 중 결불연속(겹 끝) 종결 '+_flowCutN+'개('+pct+'%)');
     }
   }
