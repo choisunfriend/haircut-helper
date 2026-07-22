@@ -3224,6 +3224,9 @@ function onGySlider(secId, key, val){
     const curAngle = state._adjustAngle || state.currentViewAngle || 'front';
     propagateSectionToViews(curAngle, secId, 'length', num);
   }
+  // [진단용] 조정이 실제로 상태에 기록되고 렌더가 재요청되는지 추적. rawMode가 true면
+  // 모든 섹션 값이 중립화돼 조정이 화면에 안 나타남 → 이 로그로 즉시 판별.
+  console.log('[진단·조정] '+secId+'.'+key+'='+num+' | 저장확인='+state.sections[secId][key]+' | rawMode='+state.debugShowRaw+' | 현재화면='+currentScreen);
   drawAdjustPreview();
 }
 const GY_UNIT = { length:'%', elevation:'°', texture:'%', curl:'%', wave:'%' };
@@ -3942,6 +3945,14 @@ function renderFrame(canvas, angle){
 // 디버그 토글 3곳에서 renderFrame(document.getElementById('adjustCanvas'), state.currentViewAngle)
 // 호출이 그대로 반복되던 것을 하나로 합침 (drawAdjustPreview는 rAF로 감싸서 별도 유지)
 function renderAdjustFrame(){
+  // [진단용] 조정 렌더가 실제로 실행되는지 + 어떤 섹션 길이값으로 그리는지 추적.
+  // onGySlider 로그의 값과 여기 값이 같으면 상태→렌더는 정상(문제는 길이→픽셀 매핑),
+  // 여기 로그가 안 찍히면 렌더 자체가 재실행 안 됨(currentScreen/rAF 문제).
+  console.log('[진단·조정렌더] view='+state.currentViewAngle
+    +' 활성섹션='+state.activePanelSection
+    +' crown.len='+(state.sections.crown&&state.sections.crown.length)
+    +' front.len='+(state.sections.front&&state.sections.front.length)
+    +' rawMode='+state.debugShowRaw);
   renderFrame(document.getElementById('adjustCanvas'), state.currentViewAngle);
 }
 
@@ -7220,6 +7231,36 @@ function buildHairStrandsFromPaths(){
     lines.userData.mirrored = job.mirrored; // [진단용] 실측 아님(맞은편 뷰 거울 채움)
     group.add(lines);
   });
+  // [진단용] '겹'(커트 레이어) 확인 — 실측 뷰 하나에서 뿌리 높이(pts[0].y)별로
+  // 가닥의 세로 길이를 상/중/하 3구간 평균 내어 비교한다. 커트기법이 유니폼(기본)이면
+  // 층이 거의 없어 상≈하, 원랭스면 높은 뿌리가 더 길고(끝 수렴), 인크리스면 더 짧다(확산).
+  // 값은 마스크 y좌표계 기준 상대 비교용. (동작 무변경 — 읽기·로그만)
+  try {
+    const rj = jobs.find(j=>!j.mirrored) || jobs[0];
+    const strands = rj && rj.v && rj.v.rec && rj.v.rec.strands;
+    if(strands && strands.length){
+      let minY=Infinity, maxY=-Infinity;
+      strands.forEach(s=>{ if(s.pts && s.pts.length){ const y=s.pts[0].y; if(y<minY)minY=y; if(y>maxY)maxY=y; } });
+      const span=Math.max(1e-6, maxY-minY);
+      const bins=[[0,0],[0,0],[0,0]]; // [길이합, 개수] 상/중/하 뿌리
+      strands.forEach(s=>{
+        if(!s.pts || s.pts.length<2) return;
+        const t=(s.pts[0].y - minY)/span;                       // 0=최상단 뿌리, 1=최하단
+        const len=Math.abs(s.pts[s.pts.length-1].y - s.pts[0].y); // 가닥 세로 길이
+        const bi = t<0.34?0 : t<0.67?1 : 2;
+        bins[bi][0]+=len; bins[bi][1]++;
+      });
+      const mean=b=> b[1]? b[0]/b[1] : 0;
+      const top=mean(bins[0]), mid=mean(bins[1]), bot=mean(bins[2]);
+      const rel = bot>1e-6 ? (top-bot)/bot : 0;
+      const verdict = Math.abs(rel)<0.06 ? '층 거의 없음(유니폼/기본값)'
+                    : rel>0 ? '높은뿌리가 더 긺 → 수렴(원랭스/그라데이션 층 형성됨)'
+                    : '높은뿌리가 더 짧음 → 확산(인크리스 롱레이어 형성됨)';
+      console.log('[진단·겹] '+rj.angle+' 뿌리높이별 평균 가닥길이 상='+top.toFixed(3)
+        +' 중='+mid.toFixed(3)+' 하='+bot.toFixed(3)+' (상/하차 '+(rel*100).toFixed(0)+'%) → '+verdict);
+    }
+  } catch(e){ /* 진단 실패는 무시 */ }
+
   console.log('[3D] 헐 기반 옮기기:', total, '가닥 (실측 뷰:', names.join(','),
     '/ 거울 채움:', jobs.filter(j=>j.mirrored).map(j=>j.angle).join(',') || '없음', ')');
   return total > 0 ? group : null;
