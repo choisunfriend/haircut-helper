@@ -483,6 +483,24 @@
     먼저 검증되면, 이후 메인 렌더를 3D 투영으로 전환(3단계).
   검증: node --check + 연산자 하네스(컬 진폭 스케일·뿌리 고정·코어 수직·길이
   트림/연장 비율 7/7) + 종합 회귀(13/13) 통과. 미니뷰 시각 확인은 실기기.
+
+  ── 2026-07-23 (11차 3단계) 조정창 = 3D 투영(비교 화면 제거 준비) ──
+  사용자: "비교하기 화면은 장기적으로 뺄 거고, 조정창에서 바로 투영되면 안 되나?"
+  → 조정창 메인 렌더를 3D 모델의 투영으로 전환(3D 엔진 β ON일 때). "3D로 조정,
+  2D로 표현"의 완성이자 비교 화면 제거의 토대.
+  · computeAdjustedHair3DStrands(srcAngleFilter): 중립 모델 + 조정 연산자(길이·컬)를
+    적용한 "조정된 월드 가닥" 단일 출처. 미니뷰(3D)와 조정창 투영(2D)이 공유.
+    srcAngle 필터로 그 뷰 캡처 가닥만 → 교차뷰 잡음 없이 "그 뷰 머리=3D조정 투영".
+  · projectHair3DToView 재작성: 소스를 state.hair3D→hair3Dneutral+연산자, 최소
+    파리티(두피색 언더코트 굵게→머리색 가닥 가늘게, painter's 깊이정렬) 추가.
+  · renderFrame: use3DAdjust ON + 중립모델 준비 + 투영 성공 시 투영, 아니면 기존
+    2D drawHairStrands 폴백(엔진 OFF=기본은 완전 무변경). 컬은 curl3D 진폭 0.11.
+  · 컬 진폭 0.05→0.11(실기기 "컬 약함"). CURL3D_AMP 상수로 튜닝.
+  · 미니뷰: "3D 검증"→"3D 미리보기"(제품 기능화), 확대는 fixed 전체창(세로 확보),
+    기본 크기↑. 슬라이더·패널·미니뷰 밝기 상향.
+  검증: node --check + 조정연산자 하네스(컬 진폭·직선유지·길이배율·srcAngle 필터
+  6/6). 투영 시각 품질(파리티·가림)은 실기기 확인 — 거칠면 언더코트/굵기/클립 보강.
+  다음: 확인되면 비교 화면 제거 + 4뷰 통합 모델(현재는 뷰별 자기 캡처 투영).
 -->
 
 <!DOCTYPE html>
@@ -637,10 +655,12 @@ main{flex:1;position:relative;overflow:hidden;}
 }
 .adjust-preview canvas{width:100%;height:100%;display:block;}
 /* (10차) 개발용 3D 검증 미니뷰 */
-#devMini3D{position:absolute;right:8px;bottom:8px;width:150px;height:190px;z-index:60;
+#devMini3D{position:absolute;right:8px;bottom:8px;width:172px;height:222px;z-index:60;
   background:rgba(74,70,62,0.95);border:1px solid #6b6252;border-radius:10px;
   display:flex;flex-direction:column;overflow:hidden;box-shadow:0 4px 16px rgba(0,0,0,0.4);}
-#devMini3D.expanded{right:4%;left:4%;top:4%;bottom:4%;width:auto;height:auto;}
+/* (11차) 확대 = 뷰포트 기준 별도 창(fixed) — 미리보기 영역 안에 갇혀 세로가
+   좁던 문제 해결. 화면 거의 전체를 덮어 두상이 크게 보임. */
+#devMini3D.expanded{position:fixed;left:3vw;right:3vw;top:3vh;bottom:3vh;width:auto;height:auto;z-index:300;}
 #devMini3DHeader{display:flex;align-items:center;justify-content:space-between;
   padding:4px 8px;font-size:11px;font-weight:600;color:var(--accent-soft);
   background:rgba(0,0,0,0.35);flex-shrink:0;}
@@ -877,7 +897,7 @@ input[type=range]::-moz-range-thumb{width:20px;height:20px;border-radius:50%;bac
              전체화면 확대. 출시 땐 이 패널만 숨기면 됨. -->
         <div id="devMini3D" style="display:none;">
           <div id="devMini3DHeader">
-            <span>3D 검증</span>
+            <span>3D 미리보기</span>
             <button id="devMini3DExpand" onclick="toggleDevMini3DExpand()" title="확대/축소">⛶</button>
           </div>
           <div id="devMini3DCanvasWrap"></div>
@@ -3544,11 +3564,12 @@ function toggle3DAdjust(){
   if(btn) btn.textContent = '3D 조정 엔진 β: ' + (state.use3DAdjust ? 'ON' : 'OFF');
   if(state.use3DAdjust){
     showDevMini3D(true);              // 미니뷰 패널 표시(초기화)
-    // 중립 3D 모델 생성(1회) → 연산자 적용해 미니뷰 갱신. 이미 있으면 재사용.
-    if(state.hair3Dneutral){ refreshDevMini3D(); }
-    else buildNeutralHair3D(()=>{ refreshDevMini3D(); });
+    // 중립 3D 모델 생성(1회) → 미니뷰 + 조정창 메인(투영) 갱신. 이미 있으면 재사용.
+    if(state.hair3Dneutral){ refreshDevMini3D(); drawAdjustPreview(); }
+    else buildNeutralHair3D(()=>{ refreshDevMini3D(); drawAdjustPreview(); }); // 준비되면 메인도 투영 전환
   } else {
     showDevMini3D(false);
+    drawAdjustPreview();             // 2D 직접 렌더로 복귀
   }
 }
 
@@ -4305,12 +4326,13 @@ function renderFrame(canvas, angle){
       const validCount = countValidCols(scalpY);
 
       if(validCount > maskW * 0.05){
-        // (10차) state.projectTo2D(2단계 전용, 기본 off)면 정규 3D 모델을 현재
-        // 뷰로 되쏘아 표시(3D=원본, 2D=투영). 1단계에선 2D를 정상 렌더해서
-        // 슬라이더가 동작하고 경로 캡처가 유지되게 하고, 3D 검증은 미니뷰로 한다.
-        if(state.projectTo2D && state.hair3D && state.hair3D.viewCal && state.hair3D.viewCal[angle]){
-          projectHair3DToView(ctx, fit, angle, maskInf);
-        } else {
+        // (11차 3단계) 3D 조정 엔진 ON + 중립 모델 준비됨 → 조정창을 3D 모델의
+        // 투영으로 그림(3D=원본, 2D=투영). "3D로 조정, 2D로 표현"의 완성 —
+        // 장기적으로 비교 화면 제거하고 조정창이 곧 결과 화면. 실패/미준비 시
+        // 기존 2D 직접 렌더로 폴백(안전).
+        const canProject = state.use3DAdjust && !rawMode && state.hair3Dneutral
+          && state.hair3Dneutral.viewCal && state.hair3Dneutral.viewCal[angle];
+        if(!(canProject && projectHair3DToView(ctx, fit, angle, maskInf))){
           // 가닥 오버레이 — origLen 이내는 hairCanvas 마스크로 clip, 연장분은 clip 없음(drawHairStrands 내부에서 처리)
           drawHairStrands(ctx, fit, scalpY, hairEndY, maskW, maskH, hairC, buildStrandOpts(maskInf, angle, rawMode));
         }
@@ -7993,6 +8015,9 @@ function _v3len(a){ return Math.sqrt(a.x*a.x+a.y*a.y+a.z*a.z); }
 function _v3norm(a){ const l=_v3len(a)||1e-9; return {x:a.x/l, y:a.y/l, z:a.z/l}; }
 function _v3cross(a,b){ return {x:a.y*b.z-a.z*b.y, y:a.z*b.x-a.x*b.z, z:a.x*b.y-a.y*b.x}; }
 
+// (11차) 3D 컬 진폭 계수 — 실기기 "컬 약함"에 0.05→0.11 상향(웨이브 강도 변화폭↑).
+// 두상 가로반경(a≈0.29) 대비 컬100%에서 ≈38% 스윙. 더 세거나 약하면 이 값만 조정.
+const CURL3D_AMP = 0.11;
 // 3D 컬: 가닥 코어축(뿌리→끝) 둘레로 나선 변위. curlAmt(0~100) 진폭, waveT(0~1) 파장.
 // 뿌리(i=0)는 고정(두피 부착), 끝으로 갈수록 진폭 포화. 코어에 수직인 두 축(u,v)으로
 // (cos,sin) 회전 → 원기둥 나선. curlAmt=0이면 원본 그대로 반환(무변경).
@@ -8005,7 +8030,7 @@ function curlStrand3D(pts, curlAmt, waveT){
   if(Math.abs(core.y) > 0.94) up = {x:1,y:0,z:0};
   const u = _v3norm(_v3cross(core, up));
   const v = _v3norm(_v3cross(core, u));
-  const A = (curlAmt/100) * 0.05;          // 진폭(모델 단위) — 두상 반경 대비 적정
+  const A = (curlAmt/100) * CURL3D_AMP;    // 진폭(모델 단위) — 두상 반경 대비
   const wl = 3 + waveT * 15;               // 파장(스텝 수) — 2D CURL_WAVELENGTH_STEPS와 동일 개념
   const out = [pts[0]];
   for(let i=1;i<pts.length;i++){
@@ -8064,39 +8089,39 @@ function project3DPointToView(world, cal, yTop, CY){
   };
 }
 
-// 정규 3D 모델을 현재 뷰로 되쏘아 2D 캔버스에 그린다(baseC 위). painter's로 깊이
-// 정렬해 겉겹이 속겹을 덮는 가림이 3D 실제 z로 정확해짐(2D 근사와 다른 지점).
-// 소스 뷰(srcAngle)가 대상 뷰(angle)와 다른 가닥은 다른 각도에서 실측된 머리라,
-// 이 뷰에선 깊이가 뒤(음영↓)로 가서 자연스럽게 묻힘 — 뷰 간 일관성이 공짜로 생김.
+// (11차 3단계) 조정된 3D 모델을 현재 뷰로 되쏘아 조정창 2D 캔버스에 그린다(baseC 위).
+// 소스는 중립 모델(viewCal)+조정 연산자(computeAdjustedHair3DStrands). 대상 뷰 캡처
+// 가닥만(srcAngle 필터) 투영해 교차뷰 잡음 없이 "그 뷰의 머리 = 3D 조정 결과의 투영".
+// painter's 깊이 정렬로 겉겹이 속겹을 덮는 가림이 3D 실제 z 기준으로 정확해짐.
 function projectHair3DToView(ctx, fit, angle, maskInf){
-  const model = state.hair3D;
+  const model = state.hair3Dneutral;
   if(!model || !model.viewCal || !model.viewCal[angle]) return false;
+  const adj = computeAdjustedHair3DStrands(angle);         // 이 뷰 캡처 가닥만
+  if(!adj || !adj.length) return false;
   const cal = model.viewCal[angle];
-  const maskW = maskInf.w, maskH = maskInf.h;
-  const { toX: toCX, toY: toCY } = makeImgToCanvas(fit, maskW, maskH); // 공용 좌표 매핑(중복 통합)
-  // 각 가닥을 투영, 평균 깊이로 정렬
+  const { toX: toCX, toY: toCY } = makeImgToCanvas(fit, maskInf.w, maskInf.h);
   const projected = [];
-  for(const st of model.strands){
-    const pts = st.pts;
-    let dsum = 0; const cpts = [];
+  for(const st of adj){
+    const pts = st.pts; let dsum=0; const cpts=[];
     for(let i=0;i<pts.length;i++){
       const pr = project3DPointToView(pts[i], cal, model.yTop, model.CY);
       cpts.push({ x: toCX(pr.ix), y: toCY(pr.iy) });
       dsum += pr.depth;
     }
-    projected.push({ cpts, depth: dsum / pts.length, color: st.color });
+    projected.push({ cpts, depth: dsum / pts.length });
   }
-  // painter's: 깊이 작은(뒤) 것부터 → 큰(앞) 것이 위에 덮임. 부호는 실기기 확인용 상수.
-  const DEPTH_SIGN = 1;
-  projected.sort((a,b)=> DEPTH_SIGN*(a.depth - b.depth));
+  projected.sort((a,b)=> a.depth - b.depth); // 뒤(작은 depth)부터 → 앞이 위에 덮임
+  // ── 최소 파리티: 두피색 언더코트(굵게) → 머리색 가닥(가늘게) ──
+  // 2D drawHairStrands의 통짜 실루엣 대신 "가닥 경로 추종" 방식과 동일 취지.
+  const hairCol  = (typeof FORCED_HAIR_COLOR!=='undefined' && FORCED_HAIR_COLOR) || '#1a1a1a';
+  const scalpCol = (maskInf.scalpColor) || 'rgb(224,178,148)';
+  const resScale = fit.dw / 705;
   ctx.save();
-  ctx.lineCap = 'round'; ctx.lineJoin = 'round';
-  ctx.lineWidth = Math.max(0.8, fit.dw / 705 * 0.55);
-  ctx.globalAlpha = 1;
-  for(const p of projected){
-    ctx.strokeStyle = p.color;
-    strokeSmoothPolyline(ctx, p.cpts); // 공용 폴리라인(중복 통합)
-  }
+  ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.globalAlpha = 1;
+  ctx.strokeStyle = scalpCol; ctx.lineWidth = Math.max(1.3, resScale * 1.5);
+  for(const p of projected) strokeSmoothPolyline(ctx, p.cpts);   // 언더코트 패스
+  ctx.strokeStyle = hairCol;  ctx.lineWidth = Math.max(0.7, resScale * 0.6);
+  for(const p of projected) strokeSmoothPolyline(ctx, p.cpts);   // 가닥 패스
   ctx.restore();
   return true;
 }
@@ -8174,14 +8199,31 @@ function initDevMini3D(){
   return devMini3D;
 }
 
-// 정규 모델(state.hair3D) → LineSegments로 재구성. 조정으로 모델이 바뀌면 재호출.
-// (11차) 중립 3D 모델에 섹션별 조정 연산자(길이·컬)를 적용해 미니뷰 갱신.
-// 소스는 state.hair3Dneutral(중립 캡처 리프트 — 조정 무관 고정). 슬라이더가 바뀌면
+// (11차) 중립 3D 모델에 섹션별 조정 연산자(길이·컬)를 적용해 "조정된 월드 가닥"을
+// 반환. 미니뷰(3D)와 조정창 투영(2D)이 같은 소스를 쓰게 하는 단일 출처.
+// srcAngleFilter를 주면 그 뷰 캡처 가닥만(뷰별 투영 시 교차뷰 잡음 방지).
+function computeAdjustedHair3DStrands(srcAngleFilter){
+  const model = state.hair3Dneutral;
+  if(!model || !model.strands) return null;
+  const out = [];
+  for(const st of model.strands){
+    if(srcAngleFilter && st.srcAngle !== srcAngleFilter) continue;
+    const sec = (state.sections && state.sections[st.sec]) || {};
+    const baseLen = (SECTIONS[st.sec] && SECTIONS[st.sec].defaults && typeof SECTIONS[st.sec].defaults.length==='number') ? SECTIONS[st.sec].defaults.length : 50;
+    const ratio = Math.max(0, 1 + (((typeof sec.length==='number')?sec.length:baseLen) - baseLen) * LENGTH_RATIO_PER_UNIT);
+    let pts = lengthStrand3D(st.pts, ratio);                       // 3D 길이
+    pts = curlStrand3D(pts, (typeof sec.curl==='number')?sec.curl:0, ((typeof sec.wave==='number')?sec.wave:50)/100); // 3D 컬(나선)
+    out.push({ pts, color: st.color, sec: st.sec, srcAngle: st.srcAngle });
+  }
+  return out;
+}
+
+// 중립 모델 + 조정 연산자 → 미니뷰 LineSegments 재구성. 슬라이더가 바뀌면
 // 재캡처·재리프트 없이 이 함수만 다시 불러 연산자를 재적용한다(효율+이중적용 방지).
 function refreshDevMini3D(){
   if(!devMini3D) return;
-  const model = state.hair3Dneutral;
-  if(!model || !model.strands) return;
+  const adj = computeAdjustedHair3DStrands();
+  if(!adj) return;
   const { group } = devMini3D;
   if(devMini3D.strandObj){
     group.remove(devMini3D.strandObj);
@@ -8190,15 +8232,9 @@ function refreshDevMini3D(){
     devMini3D.strandObj = null;
   }
   const positions=[], colors=[]; const c=new THREE.Color();
-  for(const st of model.strands){
-    const sec = (state.sections && state.sections[st.sec]) || {};
-    const baseLen = (SECTIONS[st.sec] && SECTIONS[st.sec].defaults && typeof SECTIONS[st.sec].defaults.length==='number') ? SECTIONS[st.sec].defaults.length : 50;
-    const ratio = Math.max(0, 1 + (((typeof sec.length==='number')?sec.length:baseLen) - baseLen) * LENGTH_RATIO_PER_UNIT);
-    let pts = lengthStrand3D(st.pts, ratio);                       // 3D 길이
-    pts = curlStrand3D(pts, (typeof sec.curl==='number')?sec.curl:0, ((typeof sec.wave==='number')?sec.wave:50)/100); // 3D 컬(나선)
-    // (11차) 미니뷰 가닥색 밝게 — 실제 머리색(#141414 near-black)은 어두운 3D
-    // 배경에서 안 보임. LineBasicMaterial은 조명 무시(정점색만)라, 개발 검증용으로
-    // 밝은 쪽으로 리프트(형태 확인이 목적이라 색 정확도는 불필요).
+  for(const st of adj){
+    const pts = st.pts;
+    // 미니뷰 가닥색 밝게 — 실제 머리색(near-black)은 어두운 3D 배경에서 안 보임.
     c.set(st.color || '#141414');
     c.r = 0.45 + c.r*0.55; c.g = 0.42 + c.g*0.55; c.b = 0.36 + c.b*0.55;
     for(let i=0;i<pts.length-1;i++){
