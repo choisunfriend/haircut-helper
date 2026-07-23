@@ -434,6 +434,55 @@
     죽은 것처럼 보였을 것(투영 수학 자체는 Node 왕복 49/49로 이미 검증).
   · ensureHair3DModel: 토글 ON 시 현재 뷰 캡처 없으면 captureStrandPathsFor로
     확보 후 리프트. 리프트 실패/THREE 부재는 조용히 폴백.
+
+  ── 2026-07-22 (정리) 죽은 코드 제거 — 동작 불변 확인 ──
+  "작업 많이 했으니 정리하고 가자. 동작 확실히 안 변하게, 안 쓰는 코드/함수 삭제."
+  전수 분석(주석/문자열 제외 참조 집계 + 함수별 원문 grep 교차검증)으로 참조 0건만 제거:
+  · angularWeight/buildViewMapping/propagateSectionToViews(+state.viewMapping) —
+    flat 섹션 모델(state.sections[secId] 하나로 전 뷰 자동 적용) 도입 후 유일
+    소비자가 사라진 뷰 간 가중치 매핑. buildViewMapping 호출·[매핑] 로그도 제거.
+  · gySectionHemCapNy/HEM_OVERLAP — 4차 헴 캡, 6차 실측 길이 렌더로 대체돼 미호출.
+  · splitIndexFor 스테일 주석 정정(함수는 6차에 이미 소멸).
+  검증: node --check OK + 회귀 하네스(섹션 판정 3종·투영 왕복 3종 6/6) 통과 —
+  제거가 동작에 영향 없음 확인. 순 약 -80줄. getViewYawDeg/getViewPoseSource 등
+  3D 리프트가 쓰는 헬퍼는 보존. symmetrize1D는 cleanupLine1D의 문서화된 선택
+  단계로 연결돼 있어(런타임 미발동이나 orphan 아님) 유지.
+
+  ── 2026-07-22 (중복 통합) 반복 로직 4종을 공용 유틸로 ──
+  "중복된 함수와 로직을 찾아 하나로 합쳐. 동작 동일 유지." grep으로 실제 중복만:
+  · hashFract(x) — 결정적 의사난수 fract(sin(x)·43758.5453). pseudoRandForCol·
+    결불연속 임계(_discThr)·슬라이스 스태거(sliceJit) 3곳이 각자 인라인하던 것 통합.
+  · strokeSmoothPolyline(ctx, pts) — quadratic 중간점 곡선 스트로크.
+    drawHairStrands의 strokePolyline(별칭으로 유지)과 projectHair3DToView의
+    인라인 루프가 글자 그대로 같던 것 통합.
+  · makeImgToCanvas(fit,maskW,maskH) — 이미지→캔버스 좌표 매핑. drawHairStrands
+    (toCanvasX/Y)와 projectHair3DToView(toCX/toCY) 통합(구조분해로 지역명 유지).
+  · clampCol(ix) — 컬럼 인덱스 [0,maskW-1] 클램프. makeColumnResolver·
+    colorForSection 2곳 통합(createColumnStyleResolvers 지역 헬퍼).
+  인자를 그대로 넘겨 산술 결과 완전 동일. 검증: node --check + 회귀 하네스
+  (hashFract·makeImgToCanvas 동일성 + 섹션 판정·투영 왕복 8/8) 통과.
+  ※ 서로 다른 스코프의 사소한 1줄식(예: Math.max 길이 하한)은 함수화가 오히려
+    간접참조만 늘려 통합 안 함 — 진짜 반복 블록만 대상.
+
+  ── 2026-07-22 (11차) 3D 조정 2단계 착수 — 순수 3D 연산자 + 미니뷰 배선 ──
+  "3D 조정으로 간다"에 이어 조정 연산자를 3D로 이관 시작(개발용 미니뷰에서 먼저).
+  · 순수 벡터 유틸(_v3sub/add/scale/len/norm/cross) + 3D 연산자 2종:
+    - curlStrand3D(pts, curlAmt, waveT): 가닥 코어축 둘레로 나선(helix) 변위.
+      뿌리 고정, 끝으로 갈수록 진폭 포화. 2D의 "직모 위 잔물결" 한계 없이 두상
+      곡면 위에서 진짜로 감김. curlAmt=0이면 무변경.
+    - lengthStrand3D(pts, ratio): 호길이 기준 트림(ratio<1)/연장(ratio>1),
+      연장은 마지막 방향 유지. 뿌리 고정.
+  · 중립 모델 파이프라인: buildNeutralHair3D가 촬영 뷰를 rawMode(길이 기본·컬0)로
+    캡처→리프트해 state.hair3Dneutral 생성(조정 무관 고정, 3D 화면 캡처는
+    swap-restore로 보존). refreshDevMini3D가 이 중립 모델에 섹션별 길이·컬
+    연산자를 적용해 미니뷰 LineSegments 재구성 — 슬라이더는 재캡처 없이 연산자만
+    재적용(가벼움+이중적용 방지). captureStrandPathsFor에 rawMode 인자 추가.
+  · 배선: 토글 ON→중립모델 1회 생성→연산자 적용. 슬라이더→scheduleHair3DRefresh
+    (120ms)로 연산자 재적용. 새 고객 시 hair3D/hair3Dneutral 무효화.
+  · 2D 메인 렌더는 그대로(projectTo2D off) — 미니뷰가 "3D 조정 미리보기"로
+    먼저 검증되면, 이후 메인 렌더를 3D 투영으로 전환(3단계).
+  검증: node --check + 연산자 하네스(컬 진폭 스케일·뿌리 고정·코어 수직·길이
+  트림/연장 비율 7/7) + 종합 회귀(13/13) 통과. 미니뷰 시각 확인은 실기기.
 -->
 
 <!DOCTYPE html>
@@ -1189,72 +1238,9 @@ function getViewYawDeg(angle){
   return ASSUMED_YAW_DEG[angle] ?? 0;
 }
 
-// 실측 각도(viewYawDeg)가 어떤 섹션의 기준 각도(canonicalDeg, 0=정면·±90=측면·180=후면)에서
-// 얼마나 벗어났는지에 따라 0~1 가중치를 코사인 감쇠로 산출. falloffDeg만큼 벌어지면 0.
-// (기존엔 "측면 0.85, 후면 0.15"처럼 뷰 슬롯 이름에 고정된 숫자를 박아놨었는데,
-// 이제 그 자리를 실제 촬영 각도와 섹션 기준각 사이의 기하학적 거리로 대체함)
-function angularWeight(viewYawDeg, canonicalDeg, falloffDeg){
-  let diff = Math.abs(viewYawDeg - canonicalDeg);
-  diff = Math.min(diff, 360 - diff); // 각도 순환(-180~180) 보정
-  if(diff >= falloffDeg) return 0;
-  return 0.5 * (1 + Math.cos(Math.PI * diff / falloffDeg));
-}
-
-function buildViewMapping(){
-  const lms = state.landmarks; // {front, left, right, back}
-  if(!lms) return;
-
-  const ANGLES = ['front','left','right','back'];
-  const yawOf = {}; ANGLES.forEach(a=> yawOf[a] = getViewYawDeg(a));
-
-  // canonicalDegFor: 섹션의 "정면에서 봤을 때 가장 잘 보이는 기준각"을 정의.
-  // 함수로 받는 경우(temple/side/occipital)는 뷰의 실측 yaw 부호(좌/우 중 어느 쪽에
-  // 더 가까운지)에 맞춰 좌우 기준각 중 하나를 선택 — 실제 사진이 좌측 얼굴을
-  // 찍었으면 좌측 기준각과 비교하는 식.
-  function weightsFor(canonicalDegOrFn, falloffDeg){
-    const w = {};
-    ANGLES.forEach(a=>{
-      const yaw = yawOf[a];
-      const cd = (typeof canonicalDegOrFn === 'function') ? canonicalDegOrFn(yaw) : canonicalDegOrFn;
-      w[a] = angularWeight(yaw, cd, falloffDeg);
-    });
-    return w;
-  }
-
-  const mapping = {};
-  // CROWN: 정수리는 어느 각도에서 찍어도 다 보이는 부위라 각도 가중치 자체가 의미 없음 → 전부 1.0 유지
-  mapping.crown     = { front:1.0, left:1.0, right:1.0, back:1.0 };
-  mapping.front     = weightsFor(0, 110);
-  mapping.temple    = weightsFor(yaw => (yaw >= 0 ? 45  : -45),  100);
-  mapping.side      = weightsFor(yaw => (yaw >= 0 ? 90  : -90),  120);
-  mapping.occipital = weightsFor(yaw => (yaw >= 0 ? 135 : -135), 120);
-  mapping.nape      = weightsFor(180, 150);
-
-  state.viewMapping = mapping;
-  console.log('[매핑] 실측 포즈(yaw) 기반 뷰 간 섹션 가중치 산출 완료',
-    Object.fromEntries(ANGLES.map(a=>[a, yawOf[a].toFixed(1)+'°'])), mapping);
-}
-
-// 슬라이더 값 변경 시 인접 뷰에 가중치 반영
-function propagateSectionToViews(changedAngle, sectionId, paramKey, value){
-  const mapping = state.viewMapping;
-  if(!mapping || !mapping[sectionId]) return;
-
-  const w = mapping[sectionId];
-  const angles = ['front','left','right','back'];
-  angles.forEach(angle=>{
-    if(angle === changedAngle) return; // 변경한 뷰는 스킵
-    const weight = w[angle] || 0;
-    if(weight < 0.05) return; // 영향 없음
-
-    if(!state.sections[angle]) state.sections[angle]={};
-    if(!state.sections[angle][sectionId]) state.sections[angle][sectionId]={};
-
-    // 기존값과 가중치 블렌딩 (급격한 변화 방지)
-    const prev = state.sections[angle][sectionId][paramKey] ?? value;
-    state.sections[angle][sectionId][paramKey] = Math.round(prev + (value - prev) * weight);
-  });
-}
+// (2026-07-22 정리) 뷰 간 섹션 가중치 매핑(angularWeight/buildViewMapping/
+// propagateSectionToViews)은 flat 섹션 모델 도입 후 유일 소비자가 사라져
+// 죽은 코드가 됨(섹션 값은 state.sections[secId] 하나라 뷰마다 자동 적용) — 제거.
 
 /* ════════════════════════════════════════
    STATE
@@ -1537,23 +1523,9 @@ function resolveSectionId(angle, nx, ny){
   return 'crown';
 }
 
-// ── 겹 스택 헴 캡(2026-07-22 4차): 섹션별 "중립 모발 끝" 하한선 ──
-// 미용 이론대로 섹션=뿌리 기준을 유지하면서 겹(층)이 실제로 쌓이게 하는 장치.
-// 각 섹션 뿌리에서 난 가닥의 "중립 길이"(조정 전)는 자기 섹션 밴드 하단
-// + 겹침 여유(HEM_OVERLAP)까지만 내려간다: 크라운 겹은 두정선 부근에서 끝나고
-// 그 아래(귀 옆)는 사이드 뿌리의 아래 겹이 이어받음 — 예전처럼 꼭대기 뿌리
-// 가닥이 컬럼 끝까지 통째로 내려가 화면 전체를 크라운 겹이 덮는 문제를 차단.
-// 반환: 캡 y(0~1 정규화) 또는 null(네이프=맨 아래 겹, 캡 없음).
-// 길이 슬라이더로 늘리는 건 캡과 무관(캡은 "중립"에만 적용 — 늘리면 캡 너머로 자람).
-const HEM_OVERLAP = 0.12; // 겹침 여유(이미지 높이 비율) — 위 겹이 아래 겹 위로 살짝 겹치는 전이 구간
-function gySectionHemCapNy(angle, secId){
-  const b = sectionBandsFor(angle);
-  if(secId === 'crown')  return Math.min(1, b.parietalY + HEM_OVERLAP);
-  if(secId === 'front')  return Math.min(1, b.frontY1 + HEM_OVERLAP);
-  if(secId === 'temple' || secId === 'side' || secId === 'occipital')
-    return Math.min(1, b.napeTopY + HEM_OVERLAP);
-  return null; // nape: 맨 아래 겹 — 마스크 모발 끝까지
-}
+// (2026-07-22 정리) 겹 스택 헴 캡(gySectionHemCapNy/HEM_OVERLAP)은 4차에 도입했으나
+// 6차 실측 길이 렌더(마스크 이탈·결 불연속 실측)로 대체되며 호출부가 사라짐 — 제거.
+// 3D 헴라인은 2단계에서 실측 기반으로 새로 구현.
 
 const state = {
   // ROADMAP(voice): 향후 음성입력 연동 시, 인식 실패/수정 이벤트를 여기 state에
@@ -3137,8 +3109,6 @@ async function runStyleAnalysisPipeline(){
       done++;
     }
     hideAI();
-    // 모든 뷰 랜드마크 추출 완료 → 매핑 테이블 생성
-    buildViewMapping();
   }
   await analyzeWithClaude();
 }
@@ -3570,32 +3540,13 @@ function toggle3DAdjust(){
   const btn = document.getElementById('btn3dEngine');
   if(btn) btn.textContent = '3D 조정 엔진 β: ' + (state.use3DAdjust ? 'ON' : 'OFF');
   if(state.use3DAdjust){
-    // 현재 뷰라도 캡처가 있어야 리프트 가능 — 없으면 오프스크린 캡처 후 모델 생성
-    ensureHair3DModel(()=>{
-      showDevMini3D(true);   // 개발용 3D 검증 미니뷰 표시
-      drawAdjustPreview();
-    });
+    showDevMini3D(true);              // 미니뷰 패널 표시(초기화)
+    // 중립 3D 모델 생성(1회) → 연산자 적용해 미니뷰 갱신. 이미 있으면 재사용.
+    if(state.hair3Dneutral){ refreshDevMini3D(); }
+    else buildNeutralHair3D(()=>{ refreshDevMini3D(); });
   } else {
     showDevMini3D(false);
-    drawAdjustPreview();
   }
-}
-
-// 정규 3D 모델을 보장(없으면 현재 뷰 캡처→리프트). 콜백은 모델 준비 후 호출.
-function ensureHair3DModel(cb){
-  if(state.hair3D){ cb && cb(); return; }
-  const angle = state.currentViewAngle;
-  const has = state.strandPaths && state.strandPaths[angle] && state.strandPaths[angle].strands && state.strandPaths[angle].strands.length;
-  const build = ()=>{
-    try { if(typeof THREE !== 'undefined') buildHairStrandsFromPaths(); }
-    catch(e){ console.warn('3D 모델 생성 실패:', e); }
-    if(!state.hair3D) console.warn('[3D조정] 정규 모델 없음 — 2D 폴백 유지');
-    cb && cb();
-  };
-  if(has){ build(); }
-  else if(typeof captureStrandPathsFor === 'function' && state.shots && state.shots[angle]){
-    captureStrandPathsFor(angle).then(build);
-  } else { build(); }
 }
 
 /* ════════════════════════════════════════════════════════════════
@@ -4389,9 +4340,9 @@ function renderAdjustFrame(){
     +' rawMode='+state.debugShowRaw);
   renderFrame(document.getElementById('adjustCanvas'), state.currentViewAngle);
   logSectionColumnCounts(state.currentViewAngle);
-  // (10차) 3D 조정 엔진 ON이면 조정 결과를 3D 미니뷰에 실시간 반영(디바운스).
-  // 현재 2D 렌더가 경로를 캡처(capturePaths:true)하므로, 그걸 리프트해 정규 모델을
-  // 갱신하면 미니뷰가 "지금 조정 상태의 3D"를 보여준다. 리빌드가 무거워 디바운스.
+  // (11차) 3D 조정 엔진 ON이면 미니뷰에 3D 조정 연산자 재적용(디바운스).
+  // 중립 모델은 고정이라 재캡처·재리프트 불필요 — refreshDevMini3D가 연산자만
+  // 다시 적용(가벼움). 중립 모델이 아직 없으면 1회 생성.
   if(state.use3DAdjust) scheduleHair3DRefresh();
 }
 let _hair3DRefreshTimer = null;
@@ -4400,12 +4351,10 @@ function scheduleHair3DRefresh(){
   _hair3DRefreshTimer = setTimeout(()=>{
     _hair3DRefreshTimer = null;
     try {
-      if(typeof THREE !== 'undefined' && typeof buildHairStrandsFromPaths === 'function'){
-        buildHairStrandsFromPaths();  // state.hair3D 재생성(현재 캡처 반영)
-        refreshDevMini3D();
-      }
+      if(!state.hair3Dneutral) buildNeutralHair3D(()=>refreshDevMini3D());
+      else refreshDevMini3D();
     } catch(e){ console.warn('3D 미니뷰 갱신 실패:', e); }
-  }, 180);
+  }, 120);
 }
 
 // [진단용] 현재 뷰에서 각 섹션에 실제로 몇 개의 머리카락 컬럼이 배정되는지 집계.
@@ -4465,7 +4414,7 @@ function logSectionColumnCounts(angle){
      traceStrandPath(...)            — 결방향 필드를 따라 가닥 경로
        (좌표 배열)를 만드는 순수 함수(원래 traceStrand 중첩 함수)
    실제로 ctx.stroke()/getImageData() 등을 호출하는 setStyle/traceStrand
-   (얇은 래퍼로 남음)/toCanvasPts/strokePolyline/splitIndexFor/drawStrand/
+   (얇은 래퍼로 남음)/toCanvasPts/strokePolyline/drawStrand/
    drawStrandLayer/isRealHairAt/compositeLayers/레이어 실행 4단계는
    검증 불가능한 변경을 피하기 위해 원래처럼 drawHairStrands 안에
    그대로 남겨둠(⚠ 정직한 한계: 이 부분은 이번 리팩토링 대상에서
@@ -4475,6 +4424,36 @@ function logSectionColumnCounts(angle){
 // 4개 함수(lengthRatioFor/colorForSection/curlMultFor/frontDirBiasFor)
 // 전부 원래 drawHairStrands 안의 중첩 함수였던 것을 그대로 옮긴 것 —
 // 로직·주석·캐시 방식 전부 변경 없음, 감싸는 함수 경계만 바뀜.
+// ── 공용 유틸(2026-07-22 중복 통합) ──
+// 결정적 의사난수 fract(sin(x)·43758.5453) — 프레임마다 같은 값이 나와 화면
+// 깜빡임(shimmer) 방지. pseudoRandForCol/결불연속 임계/슬라이스 스태거가 각자
+// 인라인하던 동일 해시를 하나로. 인자를 그대로 넘기므로 산술 결과 완전 동일.
+function hashFract(x){ const v = Math.sin(x) * 43758.5453; return v - Math.floor(v); }
+// 마스크(이미지) 좌표 → 캔버스 좌표 매핑 팩토리 — drawHairStrands(toCanvasX/Y)와
+// projectHair3DToView(toCX/toCY)가 글자 그대로 같던 두 클로저를 통합.
+function makeImgToCanvas(fit, maskW, maskH){
+  return {
+    toX: (ix) => fit.dx + (ix / maskW) * fit.dw,
+    toY: (iy) => fit.dy + (iy / maskH) * fit.dh,
+  };
+}
+// 점 배열({x,y})을 quadratic 중간점 보간으로 부드럽게 스트로크(현재 ctx 스타일 사용).
+// drawHairStrands의 strokePolyline과 projectHair3DToView의 인라인 루프가 글자
+// 그대로 같던 것을 통합 — beginPath→moveTo→중간점 곡선→마지막 lineTo→stroke.
+function strokeSmoothPolyline(ctx, pts){
+  if(pts.length < 2) return;
+  ctx.beginPath();
+  ctx.moveTo(pts[0].x, pts[0].y);
+  for(let i=1;i<pts.length-1;i++){
+    const mx = (pts[i].x + pts[i+1].x)/2;
+    const my = (pts[i].y + pts[i+1].y)/2;
+    ctx.quadraticCurveTo(pts[i].x, pts[i].y, mx, my);
+  }
+  const last = pts[pts.length-1];
+  ctx.lineTo(last.x, last.y);
+  ctx.stroke();
+}
+
 // gyeol 색 밝기 조정 유틸(hex 전용) — 섹션별 컬러/스타일링 광택(finish)에 사용.
 // hex가 아니면(rgb() 실측색 등) 원본을 그대로 돌려줌.
 function gyShade(hex, amt){
@@ -4515,6 +4494,9 @@ function computeCutLayerDelta(sec, rootY, rootSpan, maxRootY){
 }
 
 function createColumnStyleResolvers({ maskW, maskH, iScalpY, sections, angle, color, avgColorsBySection, styling }){
+  // 컬럼 인덱스 클램프 [0, maskW-1] — makeColumnResolver/colorForSection이 각자
+  // 인라인하던 동일 식을 통합(중복 제거, 동작 동일).
+  const clampCol = (ix) => Math.min(maskW-1, Math.max(0, Math.round(ix)));
   // ── 컬럼별 길이 배율: 슬라이더 50 = 원본 길이(origLen) 그대로(ratio=1).
   // 기존엔 "덧셈"(절대 px, origLen과 무관하게 항상 같은 양만큼 변화)이었으나,
   // 이 방식은 origLen이 작은 부위(사이드/네이프처럼 세그멘테이션이 짧게 잡힌 곳)에서
@@ -4544,7 +4526,7 @@ function createColumnStyleResolvers({ maskW, maskH, iScalpY, sections, angle, co
     // 안 넘기는 기존 호출부는 예전과 동일하게 최상단선 판정으로 폴백한다.
     const cache = {};
     return function(ix, secIdOpt, rootNyOpt){
-      const cx = Math.min(maskW-1, Math.max(0, Math.round(ix)));
+      const cx = clampCol(ix);
       const nx = cx/maskW;
       const ny = (typeof rootNyOpt === 'number')
         ? rootNyOpt
@@ -4568,10 +4550,7 @@ function createColumnStyleResolvers({ maskW, maskH, iScalpY, sections, angle, co
   // 컬럼 위치(cx) 기반 결정적 의사난수 — Math.random() 대신 써서 매 프레임(재렌더) 마다
   // 같은 컬럼이 다른 값을 받아 화면이 깜빡이는(shimmer) 것을 방지. seed로 서로 다른
   // 패턴(네이프용/사이드용)을 만들어 두 효과가 같은 자리에서 안 겹치게 함.
-  function pseudoRandForCol(cx, seed){
-    const v = Math.sin(cx*seed) * 43758.5453;
-    return v - Math.floor(v);
-  }
+  function pseudoRandForCol(cx, seed){ return hashFract(cx*seed); }
   const lengthRatioFor = makeColumnResolver((secId, cx, nx, ny)=>{
     const lenParam = (sections && sections[secId] && typeof sections[secId].length==='number')
       ? sections[secId].length : 50;
@@ -4689,7 +4668,7 @@ function createColumnStyleResolvers({ maskW, maskH, iScalpY, sections, angle, co
   function colorForSection(ix, secIdOpt){
     // (2026-07-22) 뿌리 기반 섹션 판정 연동: 호출부가 실제 뿌리로 판정한 secId를
     // 넘기면 그걸 쓰고(캐시 키에 섹션 포함), 안 넘기면 기존 최상단선 판정 유지.
-    const cx = Math.min(maskW-1, Math.max(0, Math.round(ix)));
+    const cx = clampCol(ix);
     const ny = iScalpY[cx] >= 0 ? iScalpY[cx]/maskH : 0.15;
     const nx = cx/maskW;
     const secId = secIdOpt || ((angle) ? resolveSectionId(angle, nx, ny) : 'crown');
@@ -4786,8 +4765,7 @@ function traceStrandPath(ix, sy_img, targetLen_img, jitterSeed, env, rootSec, st
     let _offRun = 0, _exitIdx = null;
     // (7차) 결 불연속 점수 — pts.flowEndIdx = 실측 "겹 끝"(없으면 null)
     let _cohEma = null, _discScore = 0, _flowEndIdx = null;
-    const _rr = Math.sin((jitterSeed + ix) * 12.9898) * 43758.5453;
-    const _discThr = FLOW_DISC.thrMin + (_rr - Math.floor(_rr)) * FLOW_DISC.thrSpan;
+    const _discThr = FLOW_DISC.thrMin + hashFract((jitterSeed + ix) * 12.9898) * FLOW_DISC.thrSpan;
     // 뿌리(시작 컬럼) 기준으로 딱 한 번만 조회 — 가닥이 진행하며 컬럼이 옆으로
     // 흘러가도 "이 가닥이 어디서 자라났는지"는 뿌리 위치로 고정하는 게 맞음.
     // (2026-07-22) rootSec: 호출부(drawStrand)가 뿌리 실좌표로 판정한 섹션 —
@@ -5179,8 +5157,7 @@ function drawHairStrands(ctx, fit, scalpY, hairEndY, maskW, maskH, hairCanvas, o
     maskW, maskH, iScalpY, sections, angle, color, avgColorsBySection, styling: stylingForRender
   });
 
-  const toCanvasX = (ix) => fit.dx + (ix / maskW) * fit.dw;
-  const toCanvasY = (iy) => fit.dy + (iy / maskH) * fit.dh;
+  const { toX: toCanvasX, toY: toCanvasY } = makeImgToCanvas(fit, maskW, maskH); // 공용 좌표 매핑(중복 통합)
 
   // scalpY 좌표계(maskW,maskH) → orientation 필드 좌표계(orientMaskW,orientMaskH) 변환 비율
   const hasOrientation = !!(orientation && orientMaskW && orientMaskH);
@@ -5239,20 +5216,8 @@ function drawHairStrands(ctx, fit, scalpY, hairEndY, maskW, maskH, hairCanvas, o
     return pts.map(p => ({ x: toCanvasX(p.x), y: toCanvasY(p.y) }));
   }
 
-  // 점 배열을 부드러운 곡선으로 그림 (quadratic 중간점 보간) — 대상 컨텍스트를 인자로 받음
-  function strokePolyline(targetCtx, cPts){
-    if(cPts.length < 2) return;
-    targetCtx.beginPath();
-    targetCtx.moveTo(cPts[0].x, cPts[0].y);
-    for(let i=1;i<cPts.length-1;i++){
-      const mx = (cPts[i].x + cPts[i+1].x)/2;
-      const my = (cPts[i].y + cPts[i+1].y)/2;
-      targetCtx.quadraticCurveTo(cPts[i].x, cPts[i].y, mx, my);
-    }
-    const last = cPts[cPts.length-1];
-    targetCtx.lineTo(last.x, last.y);
-    targetCtx.stroke();
-  }
+  // 부드러운 폴리라인은 공용 strokeSmoothPolyline(top-level)로 통합 — 여기선 별칭.
+  const strokePolyline = strokeSmoothPolyline;
 
   // ── (6차) 실측 길이 드로잉 — "실제 헤어 길이와 결을 확인하면서 그리기" ──
   // 예전 drawStrand는 "컬럼의 실루엣 세로 높이(origLen)"를 목표 길이로 썼음 —
@@ -5315,8 +5280,7 @@ function drawHairStrands(ctx, fit, scalpY, hairEndY, maskW, maskH, hairCanvas, o
       // 슬라이스가 길이의 주도권을 가지므로 가닥별 랜덤 배율은 60% 축소(질감만 남김)
       const multEff = 1 + (p.strandMult - 1) * 0.4;
       // 헴 주변 ±8% 스태거(결정적 의사난수 — 프레임 간 흔들림 방지)
-      const jr = Math.sin(p.rootX * 17.23 + p.rootNy * 91.7) * 43758.5453;
-      const sliceJit = 0.92 + (jr - Math.floor(jr)) * 0.16;
+      const sliceJit = 0.92 + hashFract(p.rootX * 17.23 + p.rootNy * 91.7) * 0.16;
       let targetLen;
       if(p.ratio >= 1){
         // 연장: 패널 균일 성장 — 슬라이스 전체가 같은 양(hemLen×(ratio-1))만큼 자람.
@@ -7627,7 +7591,7 @@ function toggleStrandDebug(){
 // 캡처돼 있어서, 안 열어본 뷰는 절차 생성 폴백과 섞였음.) 렌더 조건·옵션은
 // renderFrame의 가닥 호출과 동일하게 맞춤(rawMode 아님) — 화면에 그려질
 // 그 가닥과 같은 것이 캡처됨. 캔버스 크기도 DRAW_RES(1200) 동일.
-function captureStrandPathsFor(angle){
+function captureStrandPathsFor(angle, rawMode){
   return new Promise(resolve=>{
     const maskInf = state.hairMasks && state.hairMasks[angle];
     const hairC = state.hairCanvases && state.hairCanvases[angle];
@@ -7642,8 +7606,9 @@ function captureStrandPathsFor(angle){
         canvas.height = Math.round(DRAW_RES * img.height / img.width);
         const ctx = canvas.getContext('2d');
         const fit = computeFit(img.width, img.height, canvas.width, canvas.height);
+        // (11차) rawMode=true면 중립(길이 기본·컬0) 캡처 — 3D 조정 연산자의 소스.
         drawHairStrands(ctx, fit, maskInf.scalpY, maskInf.hairEndY, maskInf.w, maskInf.h, hairC,
-          buildStrandOpts(maskInf, angle, false));
+          buildStrandOpts(maskInf, angle, !!rawMode));
         resolve(!!(state.strandPaths && state.strandPaths[angle] && state.strandPaths[angle].strands.length));
       }catch(e){ console.warn('오프스크린 가닥 캡처 실패('+angle+'):', e); resolve(false); }
     });
@@ -8014,6 +7979,69 @@ function buildHairStrandsFromPaths(){
   return total > 0 ? group : null;
 }
 
+// ── (11차) 3D 조정 연산자 — 순수 기하(Node 검증 가능) ──
+// 3D=원본 구조에서 조정을 "월드 가닥 폴리라인"에 직접 가한다. 2D의 한계(직모
+// 결과 충돌)가 없어 컬은 두상 곡면 위 나선으로 진짜로 감긴다.
+// 벡터 유틸(THREE 없이 순수) — Node 하네스에서 그대로 검증.
+function _v3sub(a,b){ return {x:a.x-b.x, y:a.y-b.y, z:a.z-b.z}; }
+function _v3add(a,b){ return {x:a.x+b.x, y:a.y+b.y, z:a.z+b.z}; }
+function _v3scale(a,s){ return {x:a.x*s, y:a.y*s, z:a.z*s}; }
+function _v3len(a){ return Math.sqrt(a.x*a.x+a.y*a.y+a.z*a.z); }
+function _v3norm(a){ const l=_v3len(a)||1e-9; return {x:a.x/l, y:a.y/l, z:a.z/l}; }
+function _v3cross(a,b){ return {x:a.y*b.z-a.z*b.y, y:a.z*b.x-a.x*b.z, z:a.x*b.y-a.y*b.x}; }
+
+// 3D 컬: 가닥 코어축(뿌리→끝) 둘레로 나선 변위. curlAmt(0~100) 진폭, waveT(0~1) 파장.
+// 뿌리(i=0)는 고정(두피 부착), 끝으로 갈수록 진폭 포화. 코어에 수직인 두 축(u,v)으로
+// (cos,sin) 회전 → 원기둥 나선. curlAmt=0이면 원본 그대로 반환(무변경).
+function curlStrand3D(pts, curlAmt, waveT){
+  if(!pts || pts.length < 3 || !(curlAmt > 0)) return pts;
+  const root = pts[0], tip = pts[pts.length-1];
+  const core = _v3norm(_v3sub(tip, root));
+  // 코어에 수직인 기준축 u — up(0,1,0)과의 외적, 평행하면 x축으로 폴백
+  let up = {x:0,y:1,z:0};
+  if(Math.abs(core.y) > 0.94) up = {x:1,y:0,z:0};
+  const u = _v3norm(_v3cross(core, up));
+  const v = _v3norm(_v3cross(core, u));
+  const A = (curlAmt/100) * 0.05;          // 진폭(모델 단위) — 두상 반경 대비 적정
+  const wl = 3 + waveT * 15;               // 파장(스텝 수) — 2D CURL_WAVELENGTH_STEPS와 동일 개념
+  const out = [pts[0]];
+  for(let i=1;i<pts.length;i++){
+    const phase = (i / wl) * Math.PI * 2;
+    const env = Math.min(1, i / 2);        // 뿌리 근처 테이퍼(부착 유지)
+    const off = _v3add(_v3scale(u, Math.cos(phase)*A*env), _v3scale(v, Math.sin(phase)*A*env));
+    out.push(_v3add(pts[i], off));
+  }
+  return out;
+}
+
+// 3D 길이: 호길이 기준 트림(ratio<1)/연장(ratio>1). 연장은 마지막 진행방향 유지.
+// ratio=1이면 원본 그대로. 뿌리 고정, 끝만 이동.
+function lengthStrand3D(pts, ratio){
+  if(!pts || pts.length < 2 || !(ratio > 0) || Math.abs(ratio-1) < 1e-6) return pts;
+  // 누적 호길이
+  const seg = [], cum = [0];
+  for(let i=1;i<pts.length;i++){ const d=_v3len(_v3sub(pts[i],pts[i-1])); seg.push(d); cum.push(cum[i-1]+d); }
+  const total = cum[cum.length-1]; if(total < 1e-9) return pts;
+  const target = total * ratio;
+  if(ratio < 1){
+    // 트림: target 호길이 지점까지 포인트 취하고 마지막은 보간
+    const out = [pts[0]];
+    for(let i=1;i<pts.length;i++){
+      if(cum[i] <= target){ out.push(pts[i]); }
+      else { const t=(target-cum[i-1])/(seg[i-1]||1e-9); out.push(_v3add(pts[i-1], _v3scale(_v3sub(pts[i],pts[i-1]), t))); break; }
+    }
+    return out.length>=2 ? out : pts;
+  } else {
+    // 연장: 원본 전체 + 마지막 방향으로 (target-total) 만큼 추가 스텝
+    const out = pts.slice();
+    const dir = _v3norm(_v3sub(pts[pts.length-1], pts[pts.length-2]));
+    const step = total / (pts.length-1);
+    let added = 0; const extra = target - total; let cur = pts[pts.length-1];
+    while(added < extra){ const d=Math.min(step, extra-added); cur=_v3add(cur,_v3scale(dir,d)); out.push(cur); added+=d; }
+    return out;
+  }
+}
+
 // ── (10차) 3D 조정 전환 — 3D→2D 되쏘기(투영) ──
 // 월드 3D 점 → 특정 뷰 카메라의 이미지(mask) 좌표 + 깊이. buildHairStrandsFromPaths
 // 리프트(w3 = R^T·(px,my-CY,mz)+CY)의 정확한 역: local = R·(world-CY),
@@ -8042,8 +8070,7 @@ function projectHair3DToView(ctx, fit, angle, maskInf){
   if(!model || !model.viewCal || !model.viewCal[angle]) return false;
   const cal = model.viewCal[angle];
   const maskW = maskInf.w, maskH = maskInf.h;
-  const toCX = ix => fit.dx + (ix / maskW) * fit.dw;
-  const toCY = iy => fit.dy + (iy / maskH) * fit.dh;
+  const { toX: toCX, toY: toCY } = makeImgToCanvas(fit, maskW, maskH); // 공용 좌표 매핑(중복 통합)
   // 각 가닥을 투영, 평균 깊이로 정렬
   const projected = [];
   for(const st of model.strands){
@@ -8064,17 +8091,8 @@ function projectHair3DToView(ctx, fit, angle, maskInf){
   ctx.lineWidth = Math.max(0.8, fit.dw / 705 * 0.55);
   ctx.globalAlpha = 1;
   for(const p of projected){
-    if(p.cpts.length < 2) continue;
     ctx.strokeStyle = p.color;
-    ctx.beginPath();
-    ctx.moveTo(p.cpts[0].x, p.cpts[0].y);
-    for(let i=1;i<p.cpts.length-1;i++){
-      const mx=(p.cpts[i].x+p.cpts[i+1].x)/2, my=(p.cpts[i].y+p.cpts[i+1].y)/2;
-      ctx.quadraticCurveTo(p.cpts[i].x, p.cpts[i].y, mx, my);
-    }
-    const last=p.cpts[p.cpts.length-1];
-    ctx.lineTo(last.x, last.y);
-    ctx.stroke();
+    strokeSmoothPolyline(ctx, p.cpts); // 공용 폴리라인(중복 통합)
   }
   ctx.restore();
   return true;
@@ -8111,6 +8129,27 @@ function initDevMini3D(){
     headWire.scale.set(he.a, he.b, he.c);
     headWire.position.y = 0.15;
     group.add(headWire);
+    // (10차 보강) 앞면(코) 마커 — 처음 봤을 때 어디가 앞인지 모르겠다는 피드백.
+    // 얼굴 정면(+Z)에 액센트색 원뿔을 코처럼 붙임(그룹에 추가돼 함께 회전).
+    // 코가 보이면 앞, 안 보이면 뒤 → 방향이 직관적으로 잡힘.
+    const noseG = new THREE.ConeGeometry(he.a*0.18, he.c*0.5, 12);
+    const noseM = new THREE.MeshBasicMaterial({ color:0xC98A4B });
+    const nose = new THREE.Mesh(noseG, noseM);
+    nose.rotation.x = Math.PI/2;            // 원뿔 축 +Y → +Z(정면)로
+    nose.position.set(0, 0.06, he.c*0.98);  // 얼굴 높이·앞면 표면
+    group.add(nose);
+    // 앞면 라벨 대용 작은 텍스트 스프라이트("앞") — 코 위에 살짝
+    try {
+      const lc = document.createElement('canvas'); lc.width=64; lc.height=32;
+      const lx = lc.getContext('2d');
+      lx.fillStyle='#C98A4B'; lx.font='bold 22px sans-serif'; lx.textAlign='center'; lx.textBaseline='middle';
+      lx.fillText('앞', 32, 16);
+      const tex = new THREE.CanvasTexture(lc);
+      const spr = new THREE.Sprite(new THREE.SpriteMaterial({ map:tex, transparent:true }));
+      spr.scale.set(0.22, 0.11, 1);
+      spr.position.set(0, 0.22, he.c*1.05);
+      group.add(spr);
+    } catch(e){}
   } catch(e){}
   let dragging=false, lastX=0, lastY=0, autoRot=true;
   const dom = renderer.domElement;
@@ -8133,8 +8172,13 @@ function initDevMini3D(){
 }
 
 // 정규 모델(state.hair3D) → LineSegments로 재구성. 조정으로 모델이 바뀌면 재호출.
+// (11차) 중립 3D 모델에 섹션별 조정 연산자(길이·컬)를 적용해 미니뷰 갱신.
+// 소스는 state.hair3Dneutral(중립 캡처 리프트 — 조정 무관 고정). 슬라이더가 바뀌면
+// 재캡처·재리프트 없이 이 함수만 다시 불러 연산자를 재적용한다(효율+이중적용 방지).
 function refreshDevMini3D(){
-  if(!devMini3D || !state.hair3D || !state.hair3D.strands) return;
+  if(!devMini3D) return;
+  const model = state.hair3Dneutral;
+  if(!model || !model.strands) return;
   const { group } = devMini3D;
   if(devMini3D.strandObj){
     group.remove(devMini3D.strandObj);
@@ -8143,8 +8187,12 @@ function refreshDevMini3D(){
     devMini3D.strandObj = null;
   }
   const positions=[], colors=[]; const c=new THREE.Color();
-  for(const st of state.hair3D.strands){
-    const pts=st.pts;
+  for(const st of model.strands){
+    const sec = (state.sections && state.sections[st.sec]) || {};
+    const baseLen = (SECTIONS[st.sec] && SECTIONS[st.sec].defaults && typeof SECTIONS[st.sec].defaults.length==='number') ? SECTIONS[st.sec].defaults.length : 50;
+    const ratio = Math.max(0, 1 + (((typeof sec.length==='number')?sec.length:baseLen) - baseLen) * LENGTH_RATIO_PER_UNIT);
+    let pts = lengthStrand3D(st.pts, ratio);                       // 3D 길이
+    pts = curlStrand3D(pts, (typeof sec.curl==='number')?sec.curl:0, ((typeof sec.wave==='number')?sec.wave:50)/100); // 3D 컬(나선)
     c.set(st.color || '#141414');
     for(let i=0;i<pts.length-1;i++){
       positions.push(pts[i].x,pts[i].y,pts[i].z, pts[i+1].x,pts[i+1].y,pts[i+1].z);
@@ -8158,6 +8206,26 @@ function refreshDevMini3D(){
   const obj=new THREE.LineSegments(geo, new THREE.LineBasicMaterial({ vertexColors:true }));
   group.add(obj);
   devMini3D.strandObj = obj;
+}
+
+// (11차) 중립 3D 모델 생성 — 촬영된 뷰들을 중립(rawMode)으로 캡처 → 리프트.
+// 조정과 무관하게 한 번만 만들면 되고(슬라이더는 연산자 재적용만), 3D 화면의
+// 비중립 캡처(state.strandPaths)는 swap-restore로 보존한다.
+function buildNeutralHair3D(cb){
+  if(typeof THREE === 'undefined'){ cb && cb(); return; }
+  const angles = ANGLES.filter(a => state.shots && state.shots[a]);
+  if(!angles.length){ cb && cb(); return; }
+  const savedPaths = state.strandPaths, savedModel = state.hair3D;
+  state.strandPaths = {}; // 중립 캡처 임시 저장소
+  let idx = 0;
+  const done = ()=>{
+    try { buildHairStrandsFromPaths(); } catch(e){ console.warn('중립 3D 리프트 실패:', e); }
+    state.hair3Dneutral = state.hair3D || null;
+    state.strandPaths = savedPaths; state.hair3D = savedModel; // 복원(3D 화면 캡처 보존)
+    cb && cb();
+  };
+  const next = ()=>{ if(idx >= angles.length){ done(); return; } captureStrandPathsFor(angles[idx++], true).then(next); };
+  next();
 }
 
 function resizeDevMini3D(){
@@ -8452,7 +8520,8 @@ function showToast(msg){
 
 function startNewCustomer(){
   aiAnalysis=null;
-  state.aiSectionEstimate=null; state.viewMapping=null; // (a) 실측 사진 기반 3D 보정 캐시도 새 고객마다 초기화
+  state.aiSectionEstimate=null; // (a) 실측 사진 기반 3D 보정 캐시도 새 고객마다 초기화
+  state.hair3D=null; state.hair3Dneutral=null; // (11차) 3D 모델 캐시도 새 고객마다 무효화
   state.aiOutfitRecommendation=null; // (3단계) 의상 추천 캐시도 초기화
   _headCrossSectionCache = null; // 두상 실측 단면(Shape-from-Silhouette) 캐시도 새 고객마다 초기화
   _headVerticalRadiusCache = null; // 두상 세로 반지름 실측 캐시도 새 고객마다 초기화
