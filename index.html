@@ -501,6 +501,17 @@
   검증: node --check + 조정연산자 하네스(컬 진폭·직선유지·길이배율·srcAngle 필터
   6/6). 투영 시각 품질(파리티·가림)은 실기기 확인 — 거칠면 언더코트/굵기/클립 보강.
   다음: 확인되면 비교 화면 제거 + 4뷰 통합 모델(현재는 뷰별 자기 캡처 투영).
+
+  ── 2026-07-23 (11차 컬 물리 교정) 로드 고정 — 길이 비례 폐기 ──
+  실기기 3D: 컬이 톱니처럼 튀고 짧은 가닥은 폭발. 1차 수정(호길이 비례 진폭)도
+  틀림 — 사용자 교정: "한 사람 머리 안에서 길고 짧은 데가 있어도 미용사는 같은
+  웨이브 폭(로드)으로 컬을 넣는다." 즉 루프 지름은 로드 크기로 정해지고 머리
+  전체 동일, 길이 비례가 아님. 긴 머리는 같은 로드에 더 여러 바퀴 감길 뿐.
+  재작성: 웨이브폭 → 로드 반경 R(CURL3D_R_MIN 0.02 ~ R_MAX 0.07, 머리 전체 고정),
+  컬세기 → R에 감긴 정도(진폭=curl×R), 한 바퀴 arc=로드 둘레(2πR)/stepLen →
+  긴 가닥 자동으로 더 여러 바퀴. 최소 4스텝/바퀴로 톱니 방지.
+  검증: node --check + 하네스 6/6(길이 달라도 진폭=R 동일, 웨이브폭이 루프 크기,
+  긴 가닥 더 여러 바퀴, 컬0 무변경). R_MIN/MAX가 세기 튜닝 지점.
 -->
 
 <!DOCTYPE html>
@@ -8015,27 +8026,32 @@ function _v3len(a){ return Math.sqrt(a.x*a.x+a.y*a.y+a.z*a.z); }
 function _v3norm(a){ const l=_v3len(a)||1e-9; return {x:a.x/l, y:a.y/l, z:a.z/l}; }
 function _v3cross(a,b){ return {x:a.y*b.z-a.z*b.y, y:a.z*b.x-a.x*b.z, z:a.x*b.y-a.y*b.x}; }
 
-// (11차) 3D 컬 진폭 계수 — 실기기 "컬 약함"에 0.05→0.11 상향(웨이브 강도 변화폭↑).
-// 두상 가로반경(a≈0.29) 대비 컬100%에서 ≈38% 스윙. 더 세거나 약하면 이 값만 조정.
-const CURL3D_AMP = 0.11;
-// 3D 컬: 가닥 코어축(뿌리→끝) 둘레로 나선 변위. curlAmt(0~100) 진폭, waveT(0~1) 파장.
-// 뿌리(i=0)는 고정(두피 부착), 끝으로 갈수록 진폭 포화. 코어에 수직인 두 축(u,v)으로
-// (cos,sin) 회전 → 원기둥 나선. curlAmt=0이면 원본 그대로 반환(무변경).
+// (11차 3D컬 재재작성, 사용자 교정) 실제 펌 물리: 로드(rod) 크기 = 웨이브 폭이
+// "루프 지름"을 정하고, 그건 머리 전체에서 동일하다. 긴 머리는 같은 로드에 더
+// 여러 바퀴 감길 뿐 루프 크기는 같다 → 길이 비례가 아니라 로드(웨이브폭) 고정.
+// 웨이브 폭 → 루프 반경 R(모델 단위, 두상 가로반경 a≈0.29 기준). 머리 전체 공통.
+const CURL3D_R_MIN = 0.020; // 작은 로드(웨이브폭 0%) — 촘촘한 작은 스파이럴
+const CURL3D_R_MAX = 0.070; // 큰 로드(웨이브폭 100%) — 느슨한 큰 웨이브
+// 3D 컬: 가닥을 로드 반경 R의 나선으로 감는다. curlAmt(컬 세기, 0~100)=로드에
+// 얼마나 감기는지(진폭 비율), waveT(웨이브 폭)=로드 크기(R+한 바퀴 arc). 뿌리 고정.
+// 한 바퀴 arc = 로드 둘레(2πR) → 긴 가닥은 같은 R로 자동으로 더 여러 바퀴 감긴다.
 function curlStrand3D(pts, curlAmt, waveT){
   if(!pts || pts.length < 3 || !(curlAmt > 0)) return pts;
   const root = pts[0], tip = pts[pts.length-1];
   const core = _v3norm(_v3sub(tip, root));
-  // 코어에 수직인 기준축 u — up(0,1,0)과의 외적, 평행하면 x축으로 폴백
+  let arc = 0; for(let i=1;i<pts.length;i++) arc += _v3len(_v3sub(pts[i], pts[i-1]));
+  const stepLen = arc / (pts.length - 1) || 1e-4;
   let up = {x:0,y:1,z:0};
   if(Math.abs(core.y) > 0.94) up = {x:1,y:0,z:0};
   const u = _v3norm(_v3cross(core, up));
   const v = _v3norm(_v3cross(core, u));
-  const A = (curlAmt/100) * CURL3D_AMP;    // 진폭(모델 단위) — 두상 반경 대비
-  const wl = 3 + waveT * 15;               // 파장(스텝 수) — 2D CURL_WAVELENGTH_STEPS와 동일 개념
+  const R = CURL3D_R_MIN + waveT * (CURL3D_R_MAX - CURL3D_R_MIN); // 로드 반경(머리 전체 고정)
+  const A = (curlAmt/100) * R;                                    // 컬 세기 = 로드에 감긴 정도
+  const stepsPerTurn = Math.max(4, (2*Math.PI*R) / stepLen);      // 한 바퀴 = 로드 둘레
   const out = [pts[0]];
   for(let i=1;i<pts.length;i++){
-    const phase = (i / wl) * Math.PI * 2;
-    const env = Math.min(1, i / 2);        // 뿌리 근처 테이퍼(부착 유지)
+    const phase = (i / stepsPerTurn) * Math.PI * 2;
+    const env = Math.min(1, i / 3);        // 뿌리 근처 테이퍼(부착 유지)
     const off = _v3add(_v3scale(u, Math.cos(phase)*A*env), _v3scale(v, Math.sin(phase)*A*env));
     out.push(_v3add(pts[i], off));
   }
