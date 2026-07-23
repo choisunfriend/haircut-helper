@@ -638,7 +638,7 @@ main{flex:1;position:relative;overflow:hidden;}
 .adjust-preview canvas{width:100%;height:100%;display:block;}
 /* (10차) 개발용 3D 검증 미니뷰 */
 #devMini3D{position:absolute;right:8px;bottom:8px;width:150px;height:190px;z-index:60;
-  background:rgba(20,17,14,0.9);border:1px solid var(--line);border-radius:10px;
+  background:rgba(74,70,62,0.95);border:1px solid #6b6252;border-radius:10px;
   display:flex;flex-direction:column;overflow:hidden;box-shadow:0 4px 16px rgba(0,0,0,0.4);}
 #devMini3D.expanded{right:4%;left:4%;top:4%;bottom:4%;width:auto;height:auto;}
 #devMini3DHeader{display:flex;align-items:center;justify-content:space-between;
@@ -667,7 +667,7 @@ main{flex:1;position:relative;overflow:hidden;}
 .field-debug-btn{top:82px;}
 .field-debug-btn.on{background:#c04af0;color:#F3ECE2;border-color:#c04af0;font-weight:600;}
 
-.adjust-scroll{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:14px 16px 20px;}
+.adjust-scroll{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:14px 16px 20px;background:var(--surface);}
 .adjust-controls{display:flex;flex-direction:column;gap:14px;}
 
 .angle-switch{display:flex;gap:5px;background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:4px;}
@@ -681,8 +681,11 @@ main{flex:1;position:relative;overflow:hidden;}
 .ai-tags{display:flex;flex-wrap:wrap;gap:5px;}
 .ai-tag{font-size:10px;font-family:'JetBrains Mono',monospace;padding:3px 8px;border-radius:20px;background:var(--surface-2);border:1px solid var(--line);color:var(--accent-soft);}
 
-input[type=range]{-webkit-appearance:none;width:100%;height:4px;border-radius:2px;background:var(--line);outline:none;}
-input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:22px;height:22px;border-radius:50%;background:var(--accent);cursor:pointer;border:3px solid var(--bg);}
+/* (11차) 슬라이더 가시성↑ — 어두운 트랙이 어두운 배경에 묻혀 안 보이던 것 밝게. */
+input[type=range]{-webkit-appearance:none;width:100%;height:6px;border-radius:3px;background:#7A6E5C;outline:none;}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:22px;height:22px;border-radius:50%;background:var(--accent);cursor:pointer;border:3px solid #F3ECE2;box-shadow:0 1px 5px rgba(0,0,0,.45);}
+input[type=range]::-moz-range-track{height:6px;border-radius:3px;background:#7A6E5C;}
+input[type=range]::-moz-range-thumb{width:20px;height:20px;border-radius:50%;background:var(--accent);border:3px solid #F3ECE2;cursor:pointer;}
 
 .voice-box{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:12px;display:flex;flex-direction:column;gap:8px;}
 .voice-btn{display:flex;align-items:center;gap:10px;cursor:pointer;padding:10px 12px;border-radius:9px;background:var(--surface-2);transition:background .15s;}
@@ -8124,7 +8127,7 @@ function initDevMini3D(){
   try {
     const he = getHeadEllipsoid();
     const g = new THREE.SphereGeometry(1, 16, 12);
-    const m = new THREE.MeshBasicMaterial({ color:0x554b3f, wireframe:true, transparent:true, opacity:0.25 });
+    const m = new THREE.MeshBasicMaterial({ color:0x2a2620, wireframe:true, transparent:true, opacity:0.4 }); // 밝은 미니뷰 배경 대비용 어두운 와이어
     headWire = new THREE.Mesh(g, m);
     headWire.scale.set(he.a, he.b, he.c);
     headWire.position.y = 0.15;
@@ -8193,7 +8196,11 @@ function refreshDevMini3D(){
     const ratio = Math.max(0, 1 + (((typeof sec.length==='number')?sec.length:baseLen) - baseLen) * LENGTH_RATIO_PER_UNIT);
     let pts = lengthStrand3D(st.pts, ratio);                       // 3D 길이
     pts = curlStrand3D(pts, (typeof sec.curl==='number')?sec.curl:0, ((typeof sec.wave==='number')?sec.wave:50)/100); // 3D 컬(나선)
+    // (11차) 미니뷰 가닥색 밝게 — 실제 머리색(#141414 near-black)은 어두운 3D
+    // 배경에서 안 보임. LineBasicMaterial은 조명 무시(정점색만)라, 개발 검증용으로
+    // 밝은 쪽으로 리프트(형태 확인이 목적이라 색 정확도는 불필요).
     c.set(st.color || '#141414');
+    c.r = 0.45 + c.r*0.55; c.g = 0.42 + c.g*0.55; c.b = 0.36 + c.b*0.55;
     for(let i=0;i<pts.length-1;i++){
       positions.push(pts[i].x,pts[i].y,pts[i].z, pts[i+1].x,pts[i+1].y,pts[i+1].z);
       colors.push(c.r,c.g,c.b, c.r,c.g,c.b);
