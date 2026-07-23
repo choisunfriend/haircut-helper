@@ -512,6 +512,30 @@
   긴 가닥 자동으로 더 여러 바퀴. 최소 4스텝/바퀴로 톱니 방지.
   검증: node --check + 하네스 6/6(길이 달라도 진폭=R 동일, 웨이브폭이 루프 크기,
   긴 가닥 더 여러 바퀴, 컬0 무변경). R_MIN/MAX가 세기 튜닝 지점.
+
+  ── 2026-07-23 (11차 중력 처짐) 로드로 감은 뒤 중력 — 3D 경로에 복원 ──
+  사용자: "그렇게 된 다음에 적절한 중력이 작용. 이전에 얹었었는데 없어졌어."
+  확인: 2D(traceStrandPath)의 중력(gravityPull·이탈후 아래수렴)은 그대로 있으나,
+  새 3D 컬 연산자(curlStrand3D)엔 중력이 없어 균일 나선(뻣뻣한 스프링)이었음.
+  추가: gravityDroop3D — 컬 나선 위에 얹는 마지막 단계. 뿌리 고정, 끝으로 갈수록
+  가속 처짐(t²), 컬 강할수록 탱탱하게 덜 처짐(hold=1-0.6×curl). computeAdjusted…
+  에서 길이→컬→중력 순 적용(curl>0일 때만). GRAV3D_STRENGTH가 처짐 세기 튜닝.
+  검증: 하네스 6/6(뿌리 고정, 끝 아래 처짐, t² 가속, 강한컬 덜 처짐, x·z 불변).
+
+  ── 2026-07-23 (12차) 섹션 재분배 — 프론트 무반응·사이드 과소 수정 + 섹션 색 ──
+  실기기: "프론트 만질 때 하나도 안 먹고 크라운만 먹힌다. 사이드도 작다."
+  원인: 프론트가 "헤어라인~눈썹 얇은 띠 × 귀 사이 좁은 폭(7%)"만 소유해 그 위
+  중앙이 전부 크라운으로 먹혔고, 측면은 크라운(위 35%)이 사이드를 눌렀음.
+  수정:
+  · 프론트 = 중앙 컬럼 전체(꼭대기~눈썹). 세로 하한(frontY0) 제거.
+  · 프론트 x밴드 = 머리 실측 좌우 폭의 중앙 50%(귀 폭이 더 넓으면 채택) —
+    귀가 좁게 잡혀도 밴드가 안 쪼그라들게. 하네스: 정면 front 14→48%.
+  · 측면 parietalFrac 0.35→0.25(크라운 축소), 사이드 fw 밴드 25→22%(사이드 확대).
+    하네스: 좌측 side 13→32%, crown 55→40%.
+  · 미니뷰를 섹션별 색(SECTION_COLORS: 크라운=호박/프론트=파랑/템플=핑크/
+    사이드=초록/후두부=보라/네이프=주황)으로 칠해 부위-섹션 대응을 눈으로 확인.
+  검증: node --check + 섹션 재분배 하네스 5/5(정면 프론트 주도·크라운<45,
+  좌측 사이드>=28·크라운<42). 실기기 색 확인으로 추가 튜닝.
 -->
 
 <!DOCTYPE html>
@@ -1480,22 +1504,19 @@ function sectionBandsFor(angle){
   // (4차, 사용자 교정 "측면에서 뿌리 기준이어도 크라운이 75%면 안 된다") 뷰별 분리:
   // 측면/후면에선 옆통수 두피면 전체가 보이므로 크라운(Interior)은 위쪽 ~35%만 —
   // 정면은 두정선 아래가 화면에 거의 안 보여 52% 유지. 편중 시 이 계수만 조정(튜닝 지점).
-  const parietalFrac = (angle === 'front') ? 0.52 : 0.35;
+  const parietalFrac = (angle === 'front') ? 0.52 : 0.25; // (12차) 측면 크라운 축소 0.35→0.25(사이드 확대)
   const parietalY = headTopY + Math.max(0.02, earLineY - headTopY) * parietalFrac;
   // 네이프선: 귀~턱 사이 25% 지점(귀 바로 아래 목덜미 시작) — chinY 절대비율 폐기.
   // 두정선보다 항상 아래에 있도록 하한 보장(Exterior 밴드 붕괴 방지).
   const napeTopY  = Math.max(parietalY + 0.04, earLineY + (chinLineY - earLineY) * 0.25);
-  // 프론트(프린지) 중앙 밴드: 귀 사이 폭 기준 상대좌표. 귀 간격이 좁으면
-  // (측면 사진 등) 헤어 폭 기준 폴백.
+  // (12차) 프론트 중앙 밴드 = "머리 실측 좌우 폭의 중앙 50%". 예전엔 귀 간격 기준
+  // 이었는데 정면 사진에서 귀가 좁게 잡히면(earSpan 작음) 밴드가 7%로 쪼그라들어
+  // 프론트가 거의 안 잡혔음 → 프레임 무관한 헤어 폭 기준으로 통일(귀 폭이 더
+  // 넓으면 그쪽을 존중). 앞머리 덩어리는 대략 앞 중앙 절반이라 50%가 적정.
   const lx = Math.min(L.lEarX, L.rEarX), rx = Math.max(L.lEarX, L.rEarX);
-  const earSpan = rx - lx;
-  let frontX0, frontX1;
-  if(earSpan > 0.06){
-    frontX0 = lx + earSpan * 0.20; frontX1 = rx - earSpan * 0.20;
-  } else {
-    const hs = Math.max(0.02, nxMax - nxMin);
-    frontX0 = nxMin + hs * 0.25; frontX1 = nxMax - hs * 0.25;
-  }
+  const hs = Math.max(0.02, nxMax - nxMin);
+  let frontX0 = nxMin + hs * 0.25, frontX1 = nxMax - hs * 0.25; // 헤어 폭 중앙 50%
+  if((rx - lx) > (frontX1 - frontX0)){ frontX0 = lx; frontX1 = rx; } // 귀 폭이 더 넓으면 채택
   const browY = (typeof L.browTopY === 'number') ? L.browTopY : (headTopY + (earLineY - headTopY) * 0.80);
   const bands = {
     headTopY, hairBotY, parietalY, napeTopY,
@@ -1528,12 +1549,15 @@ function resolveSectionId(angle, nx, ny){
   const b = sectionBandsFor(angle);
   if(angle==='front'){
     if(ny >= b.napeTopY) return 'nape';
-    // 이마 중앙 밴드(헤어라인~눈썹, 귀 사이 상대좌표) = 프론트(앞머리/프린지)
+    // (12차) 프론트 = 중앙 컬럼 전체(꼭대기~눈썹). 예전엔 "헤어라인~눈썹" 얇은 띠만
+    // 프론트라 그 위 중앙이 전부 크라운으로 먹혀, 프론트 조정이 거의 무반응이었음
+    // (실기기: "프론트 만질 때 하나도 안 먹고 크라운만 먹힌다"). 정면 뷰에서 보이는
+    // 앞머리 덩어리 전체가 프론트가 되도록 세로 하한(frontY0) 제거.
     const inFrontX = nx >= b.frontX0 && nx <= b.frontX1;
-    if(inFrontX && ny >= b.frontY0 && ny <= b.frontY1) return 'front';
-    if(ny <= b.parietalY) return 'crown';       // 두정선 위 = 크라운
+    if(inFrontX && ny <= b.frontY1) return 'front'; // 중앙 컬럼 눈썹 위까지 = 프론트
+    if(ny <= b.parietalY) return 'crown';        // 중앙 밖 위쪽(정수리 양옆) = 크라운
     if(!inFrontX) return 'temple';               // 두정선 아래 좌우(귀 쪽) = 템플
-    return 'front';                              // 중앙에서 눈썹 아래로 내려온 긴 프린지
+    return 'front';
   }
   if(angle==='left' || angle==='right'){
     if(ny >= b.napeTopY) return 'nape';          // 목선 쪽 뿌리 = 네이프
@@ -1543,11 +1567,12 @@ function resolveSectionId(angle, nx, ny){
     // fw: 0=머리 뒤쪽 끝 ~ 1=머리 앞쪽 끝(얼굴 방향은 실측 yaw 부호로 결정).
     const span = Math.max(0.02, b.nxMax - b.nxMin);
     const fw = b.faceDir > 0 ? (nx - b.nxMin) / span : (b.nxMax - nx) / span;
-    // (5차) 사이드 폭 확대: 실기기 분포에서 side=8%로 너무 얇았음(temple/occ 18%씩).
-    // 측면 뷰의 주인공은 사이드(귀 주변)이므로 가운데 50%를 사이드에 배정.
-    if(fw > 0.75) return 'temple';               // 앞 25%(귀 앞·관자놀이)
-    if(fw < 0.25) return 'occipital';            // 뒤 25%(뒤통수)
-    return 'side';                               // 가운데 50%(귀 주변)
+    // (12차) 사이드 확대: 측면 뷰 주인공은 사이드인데 크라운(위 35%)+템플/후두부에
+    // 밀려 작았음. 앞/뒤 밴드를 22%로 좁혀 사이드를 가운데 56%로. (크라운 축소는
+    // sectionBandsFor의 측면 parietalFrac 0.35→0.25로 별도 처리.)
+    if(fw > 0.78) return 'temple';               // 앞 22%(귀 앞·관자놀이)
+    if(fw < 0.22) return 'occipital';            // 뒤 22%(뒤통수)
+    return 'side';                               // 가운데 56%(귀 주변)
   }
   if(angle==='back'){
     if(ny >= b.napeTopY) return 'nape';
@@ -8058,6 +8083,25 @@ function curlStrand3D(pts, curlAmt, waveT){
   return out;
 }
 
+// (11차) 중력 처짐 — 실제 펌: 로드로 감은 뒤 풀면 자체 무게로 끝이 아래로 늘어짐.
+// 사용자: "그렇게 된 다음에 적절한 중력이 작용." 컬 나선 위에 얹는 마지막 단계.
+// 뿌리 고정, 끝으로 갈수록 가속 처짐(t²). 컬 강할수록 탱탱하게 덜 처짐(hold).
+const GRAV3D_STRENGTH = 0.35; // 중력 처짐 세기(튜닝 지점) — 호길이 대비 최대 처짐 비율
+function gravityDroop3D(pts, curlAmt){
+  if(!pts || pts.length < 3) return pts;
+  let arc = 0; for(let i=1;i<pts.length;i++) arc += _v3len(_v3sub(pts[i], pts[i-1]));
+  if(arc < 1e-5) return pts;
+  const hold = 1 - 0.6 * (Math.max(0, Math.min(100, curlAmt))/100); // 강한 컬=덜 처짐(0.4~1)
+  const n = pts.length - 1;
+  const out = [pts[0]];
+  for(let i=1;i<pts.length;i++){
+    const t = i / n;
+    const sag = GRAV3D_STRENGTH * arc * t * t * hold; // 끝으로 갈수록 가속(t²) 아래로
+    out.push({ x: pts[i].x, y: pts[i].y - sag, z: pts[i].z });
+  }
+  return out;
+}
+
 // 3D 길이: 호길이 기준 트림(ratio<1)/연장(ratio>1). 연장은 마지막 진행방향 유지.
 // ratio=1이면 원본 그대로. 뿌리 고정, 끝만 이동.
 function lengthStrand3D(pts, ratio){
@@ -8147,6 +8191,12 @@ function projectHair3DToView(ctx, fit, angle, maskInf){
 // 일어나는지" 눈으로 봐야 함(사용자 지적). 정규 3D 모델(state.hair3D)을 직접
 // 렌더하는 경량·독립 THREE 뷰 — 메인 3D 화면(model3D 싱글턴)과 충돌 안 함.
 // 드래그 회전 + 탭 확대. 조정 시 refreshDevMini3D로 실시간 갱신.
+// (12차) 미니뷰 섹션 구분색 — 크라운=호박, 프론트=파랑, 템플=핑크, 사이드=초록,
+// 후두부=보라, 네이프=주황. 어느 부위가 어느 섹션인지 3D에서 즉시 확인.
+const SECTION_COLORS = {
+  crown:'#e6b93c', front:'#3ca6e6', temple:'#e64c8c',
+  side:'#3ce67a', occipital:'#a860e6', nape:'#e67a3c'
+};
 let devMini3D = null;
 function initDevMini3D(){
   if(devMini3D || typeof THREE === 'undefined') return devMini3D;
@@ -8227,8 +8277,10 @@ function computeAdjustedHair3DStrands(srcAngleFilter){
     const sec = (state.sections && state.sections[st.sec]) || {};
     const baseLen = (SECTIONS[st.sec] && SECTIONS[st.sec].defaults && typeof SECTIONS[st.sec].defaults.length==='number') ? SECTIONS[st.sec].defaults.length : 50;
     const ratio = Math.max(0, 1 + (((typeof sec.length==='number')?sec.length:baseLen) - baseLen) * LENGTH_RATIO_PER_UNIT);
-    let pts = lengthStrand3D(st.pts, ratio);                       // 3D 길이
-    pts = curlStrand3D(pts, (typeof sec.curl==='number')?sec.curl:0, ((typeof sec.wave==='number')?sec.wave:50)/100); // 3D 컬(나선)
+    const curlAmt = (typeof sec.curl==='number')?sec.curl:0;
+    let pts = lengthStrand3D(st.pts, ratio);                       // ① 3D 길이
+    pts = curlStrand3D(pts, curlAmt, ((typeof sec.wave==='number')?sec.wave:50)/100); // ② 3D 컬(로드 나선)
+    if(curlAmt > 0) pts = gravityDroop3D(pts, curlAmt);           // ③ 감은 뒤 중력 처짐
     out.push({ pts, color: st.color, sec: st.sec, srcAngle: st.srcAngle });
   }
   return out;
@@ -8250,9 +8302,9 @@ function refreshDevMini3D(){
   const positions=[], colors=[]; const c=new THREE.Color();
   for(const st of adj){
     const pts = st.pts;
-    // 미니뷰 가닥색 밝게 — 실제 머리색(near-black)은 어두운 3D 배경에서 안 보임.
-    c.set(st.color || '#141414');
-    c.r = 0.45 + c.r*0.55; c.g = 0.42 + c.g*0.55; c.b = 0.36 + c.b*0.55;
+    // (12차) 미니뷰를 섹션별 색으로 — 어느 부위가 어느 섹션인지 눈으로 확인
+    // (실기기 섹션 분포 튜닝용). SECTION_COLORS는 미니뷰 전용(실제 머리색 아님).
+    c.set(SECTION_COLORS[st.sec] || '#cccccc');
     for(let i=0;i<pts.length-1;i++){
       positions.push(pts[i].x,pts[i].y,pts[i].z, pts[i+1].x,pts[i+1].y,pts[i+1].z);
       colors.push(c.r,c.g,c.b, c.r,c.g,c.b);
