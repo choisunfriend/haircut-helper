@@ -62,10 +62,12 @@
 
   ── 핵심 공용 함수(단일 출처, 복제 금지) ──
   · getHeadEllipsoid() / headPhiToMeshY() — 위 좌표 규약 참고.
-  · getViewPoseSource(angle) → {tier:'pnp'|'approx'|'none', lm}. getViewYawDeg
+  · getViewPoseSource(angle) → {tier:'pnp'|'approx'|'live'|'none', lm}. getViewYawDeg
     (각도)와 getViewPoseConfidence(신뢰도)가 이 판정 하나를 공유한다.
     pnp=실측 PnP(각도=poseYawDeg, 신뢰도 1.0), approx=랜드마크만 있음
-    (각도=yaw*90, 0.6), none=랜드마크 없음(각도=ASSUMED_YAW_DEG 슬롯 기본, 0.25).
+    (각도=yaw*90, 0.6), live=사진 감지는 실패했으나 촬영 순간 실시간 가이드가
+    잰 각도가 남아 있음(각도=state.captureYawDeg, 0.45), none=근거 없음
+    (각도=ASSUMED_YAW_DEG 슬롯 기본, 0.25).
   · prepareViewMeasurement(angle, maskField, metrics) / meshYToRow(view, meshY)
     — 뷰별 실측 공통 골격(computeHeadCrossSections는 reasonMask, computeNeck은
     personMask). prepareViewMeasurement는 두 곳 다 씀.
@@ -536,6 +538,32 @@
     사이드=초록/후두부=보라/네이프=주황)으로 칠해 부위-섹션 대응을 눈으로 확인.
   검증: node --check + 섹션 재분배 하네스 5/5(정면 프론트 주도·크라운<45,
   좌측 사이드>=28·크라운<42). 실기기 색 확인으로 추가 튜닝.
+
+  ── 2026-07-25 (촬영 안내 강화) 실시간 가이드라인 색 + 후면 귀 기준 + yaw 보존 ──
+  사용자: "처음 4장 찍을 때 랜드마크 안내를 줄 것. 40~55° 안에 들어오면 초록색
+  라인으로 바뀌면서 '지금 찍으세요'. 후면은 귀 2개가 보이면 되겠지? 그리고 지금까지
+  랜드마크 감지 실패하면 yaw를 버렸다는데 그냥 살려둬."
+  1) 스위트스팟 38~52° → 40~55°(SIDE_YAW_MIN/HIGH). 문구뿐 아니라 얼굴 가이드
+     타원(#faceGuideEllipse) 자체가 색으로 반응 — 범위 안=초록 실선(굵게),
+     범위 밖/미감지=주황 점선, 대기=기본 베이지. 시선이 화면 아래 문구가 아니라
+     가이드 라인에 머무르므로 "라인이 초록이면 찍는다" 한 가지 규칙으로 단순화.
+  2) 후면도 실시간 안내 대상에 포함(기존엔 제외). 판정 기준은 사용자 지적대로
+     "귀 2개" — 다만 MediaPipe Face Landmarker는 뒤통수에서 귀를 직접 못 준다.
+     그래서 물리적으로 동치인 신호를 씀: 얼굴이 잡히면 아직 덜 돌아간 것(한쪽
+     귀만 보이는 상태) → 주황 "더 돌리세요", 얼굴이 완전히 사라지면 뒤통수가
+     정면으로 온 것 → 초록 "양쪽 귀가 대칭으로 보이면 지금 찍으세요".
+     이에 맞춰 후면의 랜드마크 미검출은 더 이상 ⚠(실패)가 아니라 정상(✓)으로
+     표시 — 얼굴이 잡히는 후면이야말로 덜 돌아간 사진이라 ↻로 안내한다.
+  3) yaw 보존: 실시간 가이드가 매 프레임 계산해 놓고 버리던 각도를
+     state.liveYawDeg[angle]에 남기고, 셔터를 누른 순간의 값을
+     state.captureYawDeg[angle]로 스냅샷(캡처는 좌우 반전 저장이므로 부호 반전).
+     정지 사진 감지가 실패해도 이 각도는 지우지 않고 살려서, 포즈 출처에
+     새 등급 'live'(신뢰도 0.45)로 편입 — 예전엔 감지 실패 = ASSUMED_YAW_DEG
+     (측면 ±90°, 후면 180°)라는 "찍었을 리 없는 각도"로 폴백해 3D가 뒤틀렸다.
+     감지 성공 시에도 poseYawDeg를 captureYawDeg에 기록해 재촬영 전까지 보존.
+     (업로드 사진은 실시간 프레임이 없으므로 스냅샷 없음 — 기존 폴백 유지.)
+  검증: node --check + 하네스(포즈 등급 4종 pnp/approx/live/none, 라이브 등급의
+  각도·신뢰도 일치, 40/55 경계 판정, 후면 얼굴검출→↻ 분기) 통과.
 -->
 
 <!DOCTYPE html>
@@ -615,6 +643,9 @@ main{flex:1;position:relative;overflow:hidden;}
 .cam-off-msg{color:var(--text-muted);font-size:13px;text-align:center;padding:0 32px;line-height:1.8;position:absolute;}
 #shotPreview{width:100%;height:100%;object-fit:cover;display:none;position:absolute;inset:0;}
 .face-guide-svg{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;}
+/* 가이드 타원은 실시간 각도 판정에 따라 색이 바뀜(updateLiveAngleGuide) —
+   초록 실선=지금 찍어도 되는 각도, 주황 점선=조정 필요, 기본=대기. */
+#faceGuideEllipse{transition:stroke .18s linear, stroke-width .18s linear;}
 .cap-hint{
   position:absolute;bottom:14px;left:0;right:0;text-align:center;
   font-size:13px;color:var(--accent-soft);
@@ -851,7 +882,7 @@ input[type=range]::-moz-range-thumb{width:20px;height:20px;border-radius:50%;bac
         <video id="video" autoplay playsinline muted></video>
         <img id="shotPreview">
         <svg class="face-guide-svg" viewBox="0 0 100 100" preserveAspectRatio="xMidYMid meet">
-          <ellipse cx="50" cy="38" rx="34" ry="46" fill="none" stroke="rgba(232,195,158,0.55)" stroke-width="0.7" stroke-dasharray="3 3"/>
+          <ellipse id="faceGuideEllipse" cx="50" cy="38" rx="34" ry="46" fill="none" stroke="rgba(232,195,158,0.55)" stroke-width="0.7" stroke-dasharray="3 3"/>
         </svg>
         <div class="cap-hint" id="captureHint">정면을 가이드 안에 맞춰주세요</div>
       </div>
@@ -1279,20 +1310,29 @@ function refineSectionBoundaries(angle){
 // 구조적으로 불가능해짐. 등급:
 // 1) 'pnp'    — MediaPipe 포즈 행렬(outputFacialTransformationMatrixes) 실측. 가장 정확
 // 2) 'approx' — 랜드마크는 있으나 포즈 행렬 없음(구버전 API 등) → 귀 간격 비율 근사(yaw*90)
-// 3) 'none'   — 랜드마크 자체가 없는 뷰(주로 얼굴이 안 보이는 후면) → 촬영 슬롯 기준각 가정
+// 3) 'live'   — (2026-07-25 신설) 정지 사진 감지는 실패했지만, 셔터를 누르던 순간
+//               실시간 프리뷰 가이드가 측정해 둔 실측 yaw가 남아 있는 경우.
+//               예전엔 이 값을 그냥 버리고 4)로 떨어졌는데, 슬롯 기준각(측면 ±90°,
+//               후면 180°)은 "실제로 그렇게 찍었을 리 없는 각도"라 3D가 뒤틀렸다.
+//               라이브 프레임과 정지 사진은 같은 순간의 같은 머리이므로, 감지 실패의
+//               원인(모션블러·노출)과 무관하게 각도 자체는 유효하다.
+// 4) 'none'   — 각도 근거가 아무것도 없는 뷰(업로드 사진 등) → 촬영 슬롯 기준각 가정
 const ASSUMED_YAW_DEG = { front:0, left:-90, right:90, back:180 };
 function getViewPoseSource(angle){
   const lm = state.landmarks && state.landmarks[angle];
   if(lm && typeof lm.poseYawDeg === 'number' && !Number.isNaN(lm.poseYawDeg)) return { tier:'pnp', lm };
   if(lm && typeof lm.yaw === 'number') return { tier:'approx', lm };
+  const liveYaw = state.captureYawDeg && state.captureYawDeg[angle];
+  if(typeof liveYaw === 'number' && !Number.isNaN(liveYaw)) return { tier:'live', lm, liveYaw };
   return { tier:'none', lm };
 }
 
 // 뷰(angle)의 실측 좌우 회전각(도).
 function getViewYawDeg(angle){
-  const { tier, lm } = getViewPoseSource(angle);
+  const { tier, lm, liveYaw } = getViewPoseSource(angle);
   if(tier === 'pnp') return lm.poseYawDeg;
   if(tier === 'approx') return lm.yaw * 90;
+  if(tier === 'live') return liveYaw;
   return ASSUMED_YAW_DEG[angle] ?? 0;
 }
 
@@ -1305,18 +1345,21 @@ function getViewYawDeg(angle){
 ════════════════════════════════════════ */
 const ANGLES = ['front','left','right','back'];
 const ANGLE_LABELS = {front:'정면', left:'좌측', right:'우측', back:'후면'};
-const HINTS = {front:'정면을 맞춰주세요', left:'좌측면 — 45° 정도 돌려주세요 (완전 옆모습 말고 눈·코가 살짝 보이게)', right:'우측면 — 45° 정도 돌려주세요 (완전 옆모습 말고 눈·코가 살짝 보이게)', back:'후면(뒷머리)을 맞춰주세요'};
+const HINTS = {front:'정면을 맞춰주세요', left:'좌측면 — 40~55°로 돌려주세요 (완전 옆모습 말고 눈·코가 살짝 보이게)', right:'우측면 — 40~55°로 돌려주세요 (완전 옆모습 말고 눈·코가 살짝 보이게)', back:'후면 — 양쪽 귀가 다 보이게 뒤통수를 맞춰주세요'};
 // (2026-07-25) 측면 실측 yaw 기준. 깊이 복원 E²=W²cos²θ+D²sin²θ에서 깊이(D)는
 // sin²θ만큼만 신호에 실린다 → 30°는 깊이가 신호의 25%뿐(오차 폭발), 40°는 41%,
 // 45°는 50%로 이상적. 반면 MediaPipe는 45°까지 신뢰, 그 이상은 근측 랜드마크·포즈가
-// 흔들림(60°쯤 감지 실패). 스위트스팟 = 40~45°.
-//   MIN(38°) 미만 → ↻ "더 돌려요"(진행은 가능하나 깊이 부정확)
-//   MIN~HIGH → ✓ (40°+면 이상적)
-//   HIGH(52°) 초과 → 감지는 됐어도 근측 랜드마크가 부정확해질 수 있어 살짝 덜 돌리도록 안내
+// 흔들림(60°쯤 감지 실패). 스위트스팟 = 40~55°(사용자 지정 합격 범위).
+//   MIN(40°) 미만 → ↻ "더 돌려요"(진행은 가능하나 깊이 부정확)
+//   MIN~HIGH(40~55°) → ✓ 합격 — 실시간 가이드에서 가이드 라인이 초록으로 바뀌고
+//                      "지금 찍으세요"가 뜨는 구간
+//   HIGH(55°) 초과 → 감지는 됐어도 근측 랜드마크가 부정확해질 수 있어 살짝 덜 돌리도록 안내
 // 반대편이 가려져도 MediaPipe가 필수 랜드마크(근측 눈·코)만 잡으면 감지되므로 고개를
 // 확 돌릴 수 있음 — 감지가 아예 실패(null)하는 지점이 자연 상한.
-const SIDE_YAW_MIN = 38;
-const SIDE_YAW_HIGH = 52;
+const SIDE_YAW_MIN = 40;
+const SIDE_YAW_HIGH = 55;
+// 정면 합격 범위(±FRONT_YAW_MAX). 측면과 같은 규칙(라인 초록=지금 찍기)을 정면에도 적용.
+const FRONT_YAW_MAX = 15;
 
 /* ── 섹션 정의 ──
    각 섹션: 미용사가 실제로 커트하는 구역
@@ -1603,6 +1646,13 @@ const state = {
   // 서버측 범용 모델 개선이 아니라 클라이언트 로컬 개인화 목적 — 정정 이벤트 자체가
   // 학습 신호. UI 연동 지점은 섹션/슬라이더 명령 파싱하는 곳(추후 신설).
   shots: {front:null,left:null,right:null,back:null},
+  // ── 실시간 가이드가 측정한 yaw(도, 부호 있음) ── (2026-07-25)
+  // liveYawDeg: 프리뷰 프레임에서 방금 측정된 값(계속 갱신, 안내용).
+  // captureYawDeg: 셔터를 누른 그 순간의 스냅샷(사진에 귀속, 재촬영 전까지 유지).
+  //   정지 사진 랜드마크 감지가 실패해도 이 값은 지우지 않는다 —
+  //   getViewPoseSource의 'live' 등급이 이걸 실측 각도로 쓴다.
+  liveYawDeg: {front:null,left:null,right:null,back:null},
+  captureYawDeg: {front:null,left:null,right:null,back:null},
   hairMasks: {front:null,left:null,right:null,back:null},
   hairCanvases: {front:null,left:null,right:null,back:null},
   baseCanvases: {front:null,left:null,right:null,back:null},
@@ -3297,6 +3347,8 @@ function updateAngleUI(){
     else if(lmStatus === 'checking'){ chk.textContent='…'; chk.style.color='var(--text-muted)'; }
     else if(lmStatus === 'fail'){ chk.textContent='⚠'; chk.style.color='var(--warn)'; }
     else if(lmStatus === 'shallow'){ chk.textContent='↻'; chk.style.color='var(--accent)'; } // 각도 얕음 — 더 돌려요
+    // 후면 정상(얼굴이 안 보이는 게 합격) — 측면·정면의 '감지 성공 ✓'와 구분해 표시
+    else if(lmStatus === 'backok'){ chk.textContent='✓'; chk.style.color='var(--ok)'; }
     else { chk.textContent='✓'; chk.style.color='var(--ok)'; }
     thumb.innerHTML = hasShot?`<img src="${state.shots[a]}">`:'';
     // dial
@@ -3332,6 +3384,13 @@ function captureCurrentAngle(){
     ctx.translate(c.width,0); ctx.scale(-1,1); // mirror
     ctx.drawImage(video,0,0);
     state.shots[angle]=c.toDataURL('image/jpeg',0.85);
+    // ── 촬영 순간의 실측 yaw 스냅샷 (2026-07-25) ──
+    // 실시간 가이드가 방금 프레임에서 계산해 둔 각도를 이 사진에 귀속시킨다.
+    // 사진은 위에서 좌우 반전(scale(-1,1))해 저장하므로, 저장된 이미지 기준의
+    // yaw는 프리뷰 기준과 부호가 반대 — 그래서 -1을 곱해 둔다(사진 감지가
+    // 성공했을 때의 poseYawDeg와 같은 좌표계로 맞추기 위함).
+    const lv = state.liveYawDeg && state.liveYawDeg[angle];
+    state.captureYawDeg[angle] = (typeof lv === 'number' && !Number.isNaN(lv)) ? -lv : null;
     // auto advance
     if(state.currentCaptureIndex<3) state.currentCaptureIndex++;
     updateAngleUI();
@@ -3349,6 +3408,9 @@ function retakeCurrent(){
   // 좌표로) 재사용될 수 있음 (detectFaceLandmarks는 실패 시 기존 값을 안 지움).
   if(state.landmarks) state.landmarks[angle]=null;
   if(state.captureLmStatus) state.captureLmStatus[angle]=null;
+  // 촬영 순간 스냅샷한 yaw도 함께 무효화 — 이건 "그 사진"의 각도라서, 사진이
+  // 사라지면 같이 사라져야 한다(살려두는 건 '감지 실패'일 때지 '재촬영'이 아님).
+  if(state.captureYawDeg) state.captureYawDeg[angle]=null;
   aiAnalysis=null;
   updateAngleUI();
 }
@@ -3359,6 +3421,9 @@ function handleFileUpload(e){
   reader.onload=ev=>{
     const angle=ANGLES[state.currentCaptureIndex]; // 인덱스 증가 전에 확정
     state.shots[angle]=ev.target.result;
+    // 업로드 사진은 실시간 프레임이 없으므로 각도 스냅샷 없음(이전 촬영분이
+    // 남아 엉뚱한 각도로 재사용되지 않도록 비움).
+    if(state.captureYawDeg) state.captureYawDeg[angle]=null;
     if(state.currentCaptureIndex<3) state.currentCaptureIndex++;
     updateAngleUI();
     checkCaptureLandmarks(angle); // 업로드 직후에도 동일하게 랜드마크 감지 안내
@@ -3405,12 +3470,21 @@ async function checkCaptureLandmarks(angle){
   const info = await detectFaceLandmarks(angle);
   if(state.shots[angle] !== shotAtStart) return; // 감지 도중 재촬영된 경우도 무효
   const isSide = (angle === 'left' || angle === 'right');
+  const isBack = (angle === 'back');
   if(info){
     const yawAbs = (typeof info.poseYawDeg === 'number') ? Math.abs(info.poseYawDeg) : null;
-    if(isSide && yawAbs !== null && yawAbs < SIDE_YAW_MIN){
+    // 감지 성공 시에도 실측 각도를 사진에 귀속 기록 — 이후 파이프라인이 랜드마크를
+    // 다시 감지하다가 실패해도(조명·리사이즈 차이로 종종 있음) 각도는 남는다.
+    if(typeof info.poseYawDeg === 'number') state.captureYawDeg[angle] = info.poseYawDeg;
+    if(isBack){
+      // 후면에서 얼굴이 잡혔다 = 아직 덜 돌아서 한쪽 귀만 보이는 상태.
+      // (기준은 "양쪽 귀가 보이게" = 뒤통수가 카메라 정면 = 얼굴 미검출)
+      state.captureLmStatus[angle]='shallow';
+      showToast(`↻ 후면에 얼굴이 아직 보여요${yawAbs!==null?` (yaw ${yawAbs.toFixed(0)}°)`:''} — 양쪽 귀가 대칭으로 보이도록 뒤통수를 카메라 정면으로 더 돌려주세요`);
+    } else if(isSide && yawAbs !== null && yawAbs < SIDE_YAW_MIN){
       // 감지는 됐지만 각도가 얕음 — 진행은 가능하되 깊이 실측이 부정확. 더 돌리도록 유도.
       state.captureLmStatus[angle]='shallow';
-      showToast(`↻ ${ANGLE_LABELS[angle]} 각도가 얕아요 (yaw ${yawAbs.toFixed(0)}°) — 완전 옆모습 말고 45° 정도로 더 돌려주세요. 깊이(z) 실측이 정확해져요`);
+      showToast(`↻ ${ANGLE_LABELS[angle]} 각도가 얕아요 (yaw ${yawAbs.toFixed(0)}°) — 40~55° 범위로 더 돌려주세요. 깊이(z) 실측이 정확해져요`);
     } else {
       state.captureLmStatus[angle]='ok';
       const yawTxt = (typeof info.poseYawDeg === 'number') ? ` (yaw ${info.poseYawDeg.toFixed(0)}°)` : '';
@@ -3418,16 +3492,23 @@ async function checkCaptureLandmarks(angle){
       const enough = (isSide && yawAbs !== null && yawAbs > SIDE_YAW_HIGH) ? ' — 충분히 돌아갔어요, 더 안 돌려도 돼요' : '';
       showToast(`${ANGLE_LABELS[angle]} 얼굴 랜드마크 감지 ✓${yawTxt}${enough}`);
     }
+  } else if(isBack){
+    // ── 후면 미검출 = 정상 ── (2026-07-25 기준 변경)
+    // 후면의 합격 조건은 "얼굴이 안 보이고 양쪽 귀가 대칭으로 보이는 것"이므로,
+    // 얼굴 랜드마크가 안 잡히는 게 오히려 제대로 찍힌 상태다. 예전엔 여기서
+    // ⚠를 띄웠지만(폴백 경고), 실제로는 재촬영시켜도 나아질 수 없는 경고였음.
+    state.captureLmStatus[angle]='backok';
+    showToast('후면 ✓ — 얼굴이 안 보이는 상태(양쪽 귀 대칭)로 잘 찍혔어요');
   } else {
     state.captureLmStatus[angle]='fail';
-    // 후면은 원래 얼굴이 안 잡히는 경우가 많아 안내 문구를 다르게 —
-    // "실패했으니 무조건 다시"가 아니라 "가능하면 귀·턱 라인이 걸리게".
+    // 실패해도 촬영 순간의 실측 yaw(state.captureYawDeg)는 그대로 살려둔다 —
+    // 지우지 않는 것 자체가 이 분기의 핵심(getViewPoseSource의 'live' 등급).
+    const kept = (typeof state.captureYawDeg[angle] === 'number')
+      ? ` (촬영 각도 ${Math.abs(state.captureYawDeg[angle]).toFixed(0)}°는 살려뒀어요)` : '';
     // 측면 실패는 대개 완전 옆모습(90°)까지 돌려 얼굴이 안 잡힌 것 → 되돌리도록.
-    showToast(angle === 'back'
-      ? `⚠ 후면 랜드마크 감지 실패 — 이 상태로도 진행은 되지만(추정치 폴백) 뒤통수를 살짝 돌려 귀·턱 라인이 걸리면 3D가 더 정확해져요`
-      : isSide
-      ? `⚠ ${ANGLE_LABELS[angle]} 얼굴이 안 잡혀요 — 완전 옆모습(90°)은 인식이 안 돼요. 눈·코가 살짝 보이는 45° 정도로 조금 되돌려 주세요`
-      : `⚠ ${ANGLE_LABELS[angle]} 랜드마크 감지 실패 — 눈·코 라인이 살짝 보이는 각도로 다시 촬영하면 3D 정확도가 올라가요`);
+    showToast(isSide
+      ? `⚠ ${ANGLE_LABELS[angle]} 얼굴이 안 잡혀요${kept} — 완전 옆모습(90°)은 인식이 안 돼요. 눈·코가 살짝 보이는 40~55°로 조금 되돌려 주세요`
+      : `⚠ ${ANGLE_LABELS[angle]} 랜드마크 감지 실패${kept} — 눈·코 라인이 보이는 각도로 다시 촬영하면 3D 정확도가 올라가요`);
   }
   updateAngleUI();
 }
@@ -3449,43 +3530,85 @@ function startLiveAngleGuide(){
   };
   _liveGuideRaf = requestAnimationFrame(loop);
 }
+// (2026-07-25 갱신) 안내는 두 곳에 동시에 나간다:
+//  · 하단 문구(captureHint) — 무엇을 어떻게 고칠지
+//  · 얼굴 가이드 타원(#faceGuideEllipse) — 지금 찍어도 되는지 한 눈에
+//    (초록 실선=합격 40~55°, 주황 점선=조정 필요, 기본 베이지=대기)
+// 사용자는 프리뷰를 보고 있지 문구를 읽고 있지 않으므로, "라인이 초록이면 찍는다"가
+// 실제로 지켜지는 유일한 규칙이다.
+const GUIDE_READY_STROKE = '#8FA888', GUIDE_WARN_STROKE = '#C98A4B',
+      GUIDE_IDLE_STROKE = 'rgba(232,195,158,0.55)';
+function setCaptureGuideMode(mode){
+  const el = document.getElementById('faceGuideEllipse');
+  if(!el) return;
+  if(mode==='ready'){
+    el.setAttribute('stroke', GUIDE_READY_STROKE);
+    el.setAttribute('stroke-width', '1.6');
+    el.removeAttribute('stroke-dasharray');       // 합격 = 실선
+  } else if(mode==='warn'){
+    el.setAttribute('stroke', GUIDE_WARN_STROKE);
+    el.setAttribute('stroke-width', '1.0');
+    el.setAttribute('stroke-dasharray', '3 3');
+  } else {
+    el.setAttribute('stroke', GUIDE_IDLE_STROKE);
+    el.setAttribute('stroke-width', '0.7');
+    el.setAttribute('stroke-dasharray', '3 3');
+  }
+}
 function updateLiveAngleGuide(){
   const screen = document.getElementById('screen-capture');
   const hint = document.getElementById('captureHint');
   if(!hint) return;
   const setHint = (txt, mode)=>{
     hint.textContent = txt;
-    hint.style.background = mode==='ready' ? 'rgba(110,170,110,0.92)'
+    hint.style.background = mode==='ready' ? 'rgba(143,168,136,0.92)'
                           : mode==='warn' ? 'rgba(201,138,75,0.92)' : '';
     hint.style.color = (mode==='ready'||mode==='warn') ? '#fff' : '';
+    setCaptureGuideMode(mode);   // 가이드 라인 색도 항상 같은 판정으로 함께 갱신
   };
-  // 촬영 화면이 아니거나, 이미 찍은 각도(프리뷰)거나, 후면이면 실시간 안내 안 함
+  // 촬영 화면이 아니거나, 이미 찍은 각도(프리뷰 표시 중)면 실시간 안내 안 함
   if(!screen || !screen.classList.contains('active')){ return; }
   const angle = ANGLES[state.currentCaptureIndex];
-  if(state.shots[angle] || angle==='back'){ setHint(HINTS[angle], ''); return; }
+  if(state.shots[angle]){ setHint(HINTS[angle], ''); return; }
   if(!faceLandmarkerReady || !faceLandmarker) return;
   const video = document.getElementById('video');
   if(!video || video.style.display==='none' || !video.videoWidth) return;
   let result; try { result = faceLandmarker.detect(video); } catch(e){ return; }
   const hasFace = result && result.faceLandmarks && result.faceLandmarks.length;
   const isSide = (angle==='left' || angle==='right');
+  const isBack = (angle==='back');
+  // 실측 yaw(부호 포함) — 이 값을 버리지 않고 state에 남긴다(촬영 시 스냅샷됨).
+  let yawSigned = null;
+  if(hasFace && result.facialTransformationMatrixes && result.facialTransformationMatrixes.length){
+    try { yawSigned = decomposePoseMatrix(result.facialTransformationMatrixes[0].data).yawRad*180/Math.PI; }catch(e){}
+  }
+  if(state.liveYawDeg) state.liveYawDeg[angle] = yawSigned;
+  const yawAbs = (yawSigned==null) ? null : Math.abs(yawSigned);
+
+  // ── 후면: 기준은 "귀 2개가 다 보이는가" ──
+  // Face Landmarker는 뒤통수에서 귀를 직접 주지 못한다. 대신 동치인 신호를 쓴다 —
+  // 한쪽 귀만 보이는 각도에서는 얼굴이 아직 잡히고, 뒤통수가 카메라 정면(양쪽 귀
+  // 대칭)이 되면 얼굴이 완전히 사라진다. 즉 "얼굴 미검출 = 귀 2개".
+  if(isBack){
+    if(!hasFace) setHint('👍 지금 찍으세요! (양쪽 귀가 대칭으로 보이는 상태)', 'ready');
+    else if(yawAbs!=null) setHint(`↻ 아직 얼굴이 보여요 (지금 ${yawAbs.toFixed(0)}°) — 뒤통수가 카메라 정면으로 오게 더 돌리세요`, 'warn');
+    else setHint('↻ 아직 얼굴이 보여요 — 양쪽 귀가 다 보이도록 더 돌리세요', 'warn');
+    return;
+  }
+
   if(!hasFace){
     setHint(isSide ? '얼굴이 안 보여요 — 완전 옆모습 말고 눈·코가 살짝 보이게' : '얼굴을 가이드 안에 맞춰주세요', isSide?'warn':'');
     return;
   }
-  let yawAbs = null;
-  if(result.facialTransformationMatrixes && result.facialTransformationMatrixes.length){
-    try { yawAbs = Math.abs(decomposePoseMatrix(result.facialTransformationMatrixes[0].data).yawRad*180/Math.PI); }catch(e){}
-  }
   if(!isSide){ // 정면
-    const ok = (yawAbs!=null && yawAbs<15);
-    setHint(ok ? '정면 좋아요 — 지금 찍으세요' : '정면을 가이드 안에 맞춰주세요', ok?'ready':'');
+    const ok = (yawAbs!=null && yawAbs<FRONT_YAW_MAX);
+    setHint(ok ? '👍 정면 좋아요 — 지금 찍으세요' : '정면을 가이드 안에 맞춰주세요', ok?'ready':'');
     return;
   }
   if(yawAbs==null){ setHint('각도 감지 중…',''); return; }
   const d = yawAbs.toFixed(0);
-  if(yawAbs < SIDE_YAW_MIN)       setHint(`↻ 더 돌리세요 (지금 ${d}°, 목표 40~45°)`, 'warn');
-  else if(yawAbs > SIDE_YAW_HIGH) setHint(`조금 덜 돌리세요 (지금 ${d}°)`, 'warn');
+  if(yawAbs < SIDE_YAW_MIN)       setHint(`↻ 더 돌리세요 (지금 ${d}°, 목표 ${SIDE_YAW_MIN}~${SIDE_YAW_HIGH}°)`, 'warn');
+  else if(yawAbs > SIDE_YAW_HIGH) setHint(`조금 덜 돌리세요 (지금 ${d}°, 목표 ${SIDE_YAW_MIN}~${SIDE_YAW_HIGH}°)`, 'warn');
   else                            setHint(`👍 지금 찍으세요! (${d}°)`, 'ready');
 }
 
@@ -7226,7 +7349,12 @@ function getViewPoseConfidence(angle){
   const { tier } = getViewPoseSource(angle);
   if(tier === 'pnp') return 1.0;      // 실측 PnP 포즈(가장 정확)
   if(tier === 'approx') return 0.6;   // 포즈 행렬 분해 실패 → 귀 간격 비율 근사
-  return 0.25;                        // 랜드마크 감지 자체 실패 → 촬영 슬롯 기본 각도로 폴백
+  // 라이브 가이드가 촬영 순간 측정한 실측 PnP yaw(사진 감지는 실패). 각도 자체는
+  // 실측이지만 그 뷰의 랜드마크 좌표가 없어(투영·섹션 보정 불가) 0.5 미만으로 둠 —
+  // 랜드마크를 요구하는 소비자(0.5 게이트)는 지금처럼 건너뛰고, 각도만 쓰는
+  // 소비자(헐 역투영·포즈 회전)는 슬롯 기본값 대신 이 실측을 쓰게 된다.
+  if(tier === 'live') return 0.45;
+  return 0.25;                        // 근거 없음 → 촬영 슬롯 기본 각도로 폴백
 }
 
 /* ── (3단계) 헤어스타일 기반 의상 추천 AI ──
