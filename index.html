@@ -3318,6 +3318,7 @@ function updateAngleUI(){
   else{sp.style.display='none';if(cameraStream)video.style.display='block';}
 }
 updateAngleUI();
+startLiveAngleGuide(); // 촬영 전 실시간 각도 안내 시작(준비 안 됐으면 프레임마다 조용히 대기)
 
 function jumpToAngle(i){ state.currentCaptureIndex=i; updateAngleUI(); }
 
@@ -3429,6 +3430,63 @@ async function checkCaptureLandmarks(angle){
       : `⚠ ${ANGLE_LABELS[angle]} 랜드마크 감지 실패 — 눈·코 라인이 살짝 보이는 각도로 다시 촬영하면 3D 정확도가 올라가요`);
   }
   updateAngleUI();
+}
+
+// ── (2026-07-25) 촬영 전 실시간 각도 안내 ──
+// 사용자 요청: 찍은 뒤에 "얕았다/과했다"가 아니라, 미리보기에서 실시간으로 각도를
+// 감지해 "지금 찍으세요"를 띄워 바로 찍게. IMAGE 모드 FaceLandmarker에 비디오
+// 프레임을 주기적으로(약 6fps) 넣어 yaw를 계산하고 captureHint를 갱신한다.
+// (실기기 로그: 왼쪽 40°는 잘 나왔으나 오른쪽이 90°로 과회전→감지 실패. 실시간
+// 안내로 양쪽 다 40~45°에서 바로 찍게 하는 게 목적.)
+let _liveGuideRaf = null, _liveGuideLast = 0;
+function startLiveAngleGuide(){
+  if(_liveGuideRaf) return;
+  const loop = (ts)=>{
+    _liveGuideRaf = requestAnimationFrame(loop);
+    if(ts - _liveGuideLast < 160) return; // ~6fps 스로틀(GPU 부담·발열 방지)
+    _liveGuideLast = ts;
+    try { updateLiveAngleGuide(); } catch(e){}
+  };
+  _liveGuideRaf = requestAnimationFrame(loop);
+}
+function updateLiveAngleGuide(){
+  const screen = document.getElementById('screen-capture');
+  const hint = document.getElementById('captureHint');
+  if(!hint) return;
+  const setHint = (txt, mode)=>{
+    hint.textContent = txt;
+    hint.style.background = mode==='ready' ? 'rgba(110,170,110,0.92)'
+                          : mode==='warn' ? 'rgba(201,138,75,0.92)' : '';
+    hint.style.color = (mode==='ready'||mode==='warn') ? '#fff' : '';
+  };
+  // 촬영 화면이 아니거나, 이미 찍은 각도(프리뷰)거나, 후면이면 실시간 안내 안 함
+  if(!screen || !screen.classList.contains('active')){ return; }
+  const angle = ANGLES[state.currentCaptureIndex];
+  if(state.shots[angle] || angle==='back'){ setHint(HINTS[angle], ''); return; }
+  if(!faceLandmarkerReady || !faceLandmarker) return;
+  const video = document.getElementById('video');
+  if(!video || video.style.display==='none' || !video.videoWidth) return;
+  let result; try { result = faceLandmarker.detect(video); } catch(e){ return; }
+  const hasFace = result && result.faceLandmarks && result.faceLandmarks.length;
+  const isSide = (angle==='left' || angle==='right');
+  if(!hasFace){
+    setHint(isSide ? '얼굴이 안 보여요 — 완전 옆모습 말고 눈·코가 살짝 보이게' : '얼굴을 가이드 안에 맞춰주세요', isSide?'warn':'');
+    return;
+  }
+  let yawAbs = null;
+  if(result.facialTransformationMatrixes && result.facialTransformationMatrixes.length){
+    try { yawAbs = Math.abs(decomposePoseMatrix(result.facialTransformationMatrixes[0].data).yawRad*180/Math.PI); }catch(e){}
+  }
+  if(!isSide){ // 정면
+    const ok = (yawAbs!=null && yawAbs<15);
+    setHint(ok ? '정면 좋아요 — 지금 찍으세요' : '정면을 가이드 안에 맞춰주세요', ok?'ready':'');
+    return;
+  }
+  if(yawAbs==null){ setHint('각도 감지 중…',''); return; }
+  const d = yawAbs.toFixed(0);
+  if(yawAbs < SIDE_YAW_MIN)       setHint(`↻ 더 돌리세요 (지금 ${d}°, 목표 40~45°)`, 'warn');
+  else if(yawAbs > SIDE_YAW_HIGH) setHint(`조금 덜 돌리세요 (지금 ${d}°)`, 'warn');
+  else                            setHint(`👍 지금 찍으세요! (${d}°)`, 'ready');
 }
 
 /* ════════════════════════════════════════
