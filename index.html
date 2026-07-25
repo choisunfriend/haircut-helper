@@ -1280,19 +1280,32 @@ function refineSectionBoundaries(angle){
 // 1) 'pnp'    — MediaPipe 포즈 행렬(outputFacialTransformationMatrixes) 실측. 가장 정확
 // 2) 'approx' — 랜드마크는 있으나 포즈 행렬 없음(구버전 API 등) → 귀 간격 비율 근사(yaw*90)
 // 3) 'none'   — 랜드마크 자체가 없는 뷰(주로 얼굴이 안 보이는 후면) → 촬영 슬롯 기준각 가정
-const ASSUMED_YAW_DEG = { front:0, left:-90, right:90, back:180 };
+// ⚠ 부호 규약 정정 (2026-07-25). 실측 로그가 left=+39°, right=-45°(둘 다 tier=pnp,
+// 신뢰 1.0)를 내는데 이 표는 left:-90, right:+90으로 **부호가 반대**였다. 저장되는
+// 사진이 captureCurrentAngle에서 좌우 반전되기 때문에 생긴 어긋남이다.
+// 영향: computeHeadCrossSections는 cos²/sin²만 써서 부호에 둔감하지만,
+// projectImagePointToHead는 이 각도로 좌표를 실제 회전시키므로, 랜드마크가 없는
+// 뷰(우측·후면)의 헤어가 반대쪽으로 돌아가 3D가 망가진다. 실측 규약에 맞춘다.
+const ASSUMED_YAW_DEG = { front:0, left:90, right:-90, back:180 };
 function getViewPoseSource(angle){
   const lm = state.landmarks && state.landmarks[angle];
   if(lm && typeof lm.poseYawDeg === 'number' && !Number.isNaN(lm.poseYawDeg)) return { tier:'pnp', lm };
   if(lm && typeof lm.yaw === 'number') return { tier:'approx', lm };
+  // 사후 감지는 실패했지만 촬영 직전 라이브 가이드가 실측해둔 PnP yaw가 있는 경우.
+  // 지어낸 슬롯 기본값(ASSUMED_YAW_DEG)보다 훨씬 낫다 — 셔터와 시차(≤1.5초)만 있을 뿐
+  // 그 사람에게서 실제로 측정한 각도다.
+  const live = state.liveYaw && state.liveYaw[angle];
+  if(typeof live === 'number' && !Number.isNaN(live)) return { tier:'live', lm, liveYaw: live };
   return { tier:'none', lm };
 }
 
 // 뷰(angle)의 실측 좌우 회전각(도).
 function getViewYawDeg(angle){
-  const { tier, lm } = getViewPoseSource(angle);
+  const src = getViewPoseSource(angle);
+  const { tier, lm } = src;
   if(tier === 'pnp') return lm.poseYawDeg;
   if(tier === 'approx') return lm.yaw * 90;
+  if(tier === 'live') return src.liveYaw;
   return ASSUMED_YAW_DEG[angle] ?? 0;
 }
 
@@ -1315,8 +1328,17 @@ const HINTS = {front:'정면을 맞춰주세요', left:'좌측면 — 45° 정�
 //   HIGH(52°) 초과 → 감지는 됐어도 근측 랜드마크가 부정확해질 수 있어 살짝 덜 돌리도록 안내
 // 반대편이 가려져도 MediaPipe가 필수 랜드마크(근측 눈·코)만 잡으면 감지되므로 고개를
 // 확 돌릴 수 있음 — 감지가 아예 실패(null)하는 지점이 자연 상한.
-const SIDE_YAW_MIN = 38;
-const SIDE_YAW_HIGH = 52;
+// (2026-07-25 재조정) 실기기 피드백: "초록 구간이 너무 좁아서 금방 흔들린다".
+// 기존 38~52(폭 14°)는 셔터 반응시간 안에 벗어나기 쉬웠음(초록 보고 눌렀는데
+// 감지 실패하는 사례 발생). 하한을 30°로 낮춰 폭을 22°로 넓히고, 상한 52°는
+// 그대로 둔다(그 위는 근측 랜드마크가 흔들리고 60°쯤 감지 자체가 실패하므로
+// 넓히면 안 되는 쪽). 30~38°는 깊이 신호가 25~38%로 약해 정확도가 떨어지지만
+// "촬영 실패"보다는 낫고, 아래 SIDE_YAW_IDEAL로 더 돌리도록 부드럽게 유도한다.
+// ※ 이 완화가 가능해진 전제: 감지가 실패해도 촬영 직전 라이브 yaw를 저장하게
+//   되어(state.liveYaw) 각도 정보를 통째로 잃지 않는다.
+const SIDE_YAW_MIN = 30;   // 이 미만 → ↻ "더 돌리세요"
+const SIDE_YAW_IDEAL = 38; // 이 이상이면 깊이 실측이 확실히 좋아지는 구간
+const SIDE_YAW_HIGH = 52;  // 초과 → "조금 덜 돌리세요"(감지 실패 위험 구간 진입)
 
 /* ── 섹션 정의 ──
    각 섹션: 미용사가 실제로 커트하는 구역
@@ -1606,6 +1628,9 @@ const state = {
   hairMasks: {front:null,left:null,right:null,back:null},
   hairCanvases: {front:null,left:null,right:null,back:null},
   baseCanvases: {front:null,left:null,right:null,back:null},
+  // 촬영 직전 라이브 각도 가이드가 실측한 yaw(도, 파이프라인 부호 규약).
+  // 사후 랜드마크 감지가 실패한 뷰에서 ASSUMED_YAW_DEG 대신 쓰인다.
+  liveYaw: {front:null,left:null,right:null,back:null},
   debugShowMask: false, // true면 조정화면에서 가닥 대신 hairMaskBuf 실루엣을 그대로 표시(진단용)
   debugShowRaw: false,  // true면 스타일/슬라이더 값 무시하고 전 섹션 중립값(길이·볼륨 50, 컬 0)으로 렌더링(진단용)
   debugShowField: false, // true면 strand 시뮬레이션(뿌리/중력/clamp) 전부 건너뛰고 orientation 컬럼 샘플을 가공 없이 그대로 표시(진단용)
@@ -3342,6 +3367,13 @@ function captureCurrentAngle(){
     ctx.translate(c.width,0); ctx.scale(-1,1); // mirror
     ctx.drawImage(video,0,0);
     state.shots[angle]=c.toDataURL('image/jpeg',0.85);
+    // ── 촬영 직전 라이브 실측 yaw 확정 (2026-07-25) ──
+    // 사후 감지가 실패해도 ASSUMED_YAW_DEG(지어낸 슬롯 기본값) 대신 이 실측값을
+    // 쓴다. 오래된 값(1.5초 초과)이나 다른 각도 슬롯의 값은 쓰지 않는다.
+    if(!state.liveYaw) state.liveYaw = {};
+    const nowTs = (typeof performance!=='undefined' ? performance.now() : 0);
+    state.liveYaw[angle] = (_lastLiveYaw && _lastLiveYaw.angle===angle && (nowTs-_lastLiveYaw.ts) < 1500)
+      ? _lastLiveYaw.yawDeg : null;
     // auto advance
     if(state.currentCaptureIndex<3) state.currentCaptureIndex++;
     updateAngleUI();
@@ -3359,6 +3391,7 @@ function retakeCurrent(){
   // 좌표로) 재사용될 수 있음 (detectFaceLandmarks는 실패 시 기존 값을 안 지움).
   if(state.landmarks) state.landmarks[angle]=null;
   if(state.captureLmStatus) state.captureLmStatus[angle]=null;
+  if(state.liveYaw) state.liveYaw[angle]=null; // 이전 사진의 촬영각이 새 사진에 남지 않게
   aiAnalysis=null;
   updateAngleUI();
 }
@@ -3449,6 +3482,9 @@ async function checkCaptureLandmarks(angle){
 // (실기기 로그: 왼쪽 40°는 잘 나왔으나 오른쪽이 90°로 과회전→감지 실패. 실시간
 // 안내로 양쪽 다 40~45°에서 바로 찍게 하는 게 목적.)
 let _liveGuideRaf = null, _liveGuideLast = 0;
+// 라이브 가이드가 마지막으로 성공한 실측 포즈 {angle, yawDeg, ts} — 촬영 순간
+// state.liveYaw[angle]로 확정된다(아래 captureCurrentAngle 참고).
+let _lastLiveYaw = null;
 function startLiveAngleGuide(){
   if(_liveGuideRaf) return;
   const loop = (ts)=>{
@@ -3481,16 +3517,34 @@ function updateLiveAngleGuide(){
   if(!faceLandmarkerReady || !faceLandmarker){ setHint('얼굴 인식 준비 중…',''); return; }
   const video = document.getElementById('video');
   if(!video || video.style.display==='none' || !video.videoWidth){ setHint('카메라 준비 중…',''); return; }
-  let result; try { result = faceLandmarker.detect(video); } catch(e){ return; }
+  // detect() 예외 시 그냥 return하면 직전 힌트(초록 "지금 찍으세요")가 그대로
+  // 얼어붙어, 실제로는 감지가 안 되는데 초록만 보고 셔터를 누르게 된다
+  // (실기기 증상: "초록 보고 찍었는데 랜드마크 실패"). 중립으로 되돌린다.
+  let result;
+  try { result = faceLandmarker.detect(video); }
+  catch(e){ setHint('각도 감지 중…',''); return; }
   const hasFace = result && result.faceLandmarks && result.faceLandmarks.length;
   const isSide = (angle==='left' || angle==='right');
   if(!hasFace){
     setHint(isSide ? '얼굴이 안 보여요 — 완전 옆모습 말고 눈·코가 살짝 보이게' : '얼굴을 가이드 안에 맞춰주세요', isSide?'warn':'');
     return;
   }
-  let yawAbs = null;
+  let yawAbs = null, yawSigned = null;
   if(result.facialTransformationMatrixes && result.facialTransformationMatrixes.length){
-    try { yawAbs = Math.abs(decomposePoseMatrix(result.facialTransformationMatrixes[0].data).yawRad*180/Math.PI); }catch(e){}
+    try {
+      yawSigned = decomposePoseMatrix(result.facialTransformationMatrixes[0].data).yawRad*180/Math.PI;
+      yawAbs = Math.abs(yawSigned);
+    }catch(e){}
+  }
+  // ── 촬영 직전 실측 yaw 보관 (2026-07-25) ──
+  // 셔터를 누른 뒤 사후 감지가 실패해도(고개가 더 돌아간 경우) 각도 정보를
+  // 통째로 잃지 않도록, 마지막으로 성공한 라이브 포즈를 각도·시각과 함께 남긴다.
+  // ⚠ 부호 규약: 라이브는 원본(비반전) 비디오 프레임을 보지만, 저장되는 사진은
+  //   captureCurrentAngle에서 좌우 반전되고 파이프라인의 poseYawDeg는 그 반전된
+  //   이미지에서 나온다 → 두 값은 부호가 반대다. 파이프라인 규약에 맞추기 위해
+  //   부호를 뒤집어 보관한다(이 가정은 아래 [진단·yaw부호]가 자가검증한다).
+  if(yawSigned != null){
+    _lastLiveYaw = { angle, yawDeg: -yawSigned, ts: (typeof performance!=='undefined' ? performance.now() : 0) };
   }
   if(!isSide){ // 정면
     const ok = (yawAbs!=null && yawAbs<15);
@@ -3501,6 +3555,8 @@ function updateLiveAngleGuide(){
   const d = yawAbs.toFixed(0);
   if(yawAbs < SIDE_YAW_MIN)       setHint(`↻ 더 돌리세요 (지금 ${d}°, 목표 40~45°)`, 'warn');
   else if(yawAbs > SIDE_YAW_HIGH) setHint(`조금 덜 돌리세요 (지금 ${d}°)`, 'warn');
+  // 초록 안에서도 30~38°는 깊이 신호가 약한 구간 — 찍어도 되지만 더 돌리면 좋아진다고 알려줌
+  else if(yawAbs < SIDE_YAW_IDEAL) setHint(`👍 찍어도 돼요 (${d}°) — 조금 더 돌리면 더 정확`, 'ready');
   else                            setHint(`👍 지금 찍으세요! (${d}°)`, 'ready');
 }
 // 라이브 각도 안내 시작. 반드시 위 `let _liveGuideRaf` 선언 "뒤"에서 호출할 것
@@ -6116,12 +6172,23 @@ function buildRealNeckMesh(skinColor){
   const headEll = getHeadEllipsoid();
   const headA = headEll.a, headC = headEll.c;
   const clamp = (v,lo,hi)=>Math.min(hi, Math.max(lo, v));
+  // ── 이음매 보존 (2026-07-25) ──
+  // 상한 0.55*headA / 0.70*headC는 personMask 오탐으로 목이 "챙"처럼 부푸는 걸
+  // 막는 장치인데(교훈 D), 목 최상단 링은 정의상 두상 최하단 밴드와 같은 값이라
+  // 여기에 상한이 걸리면 이음매가 통째로 잘려 단차가 생긴다.
+  // 두상 폭 실측을 personMask로 바로잡으면서 최하단 밴드가 커졌고, 검증 하네스에서
+  // 이 단차가 4% → 25%로 악화되는 게 확인됐다(같은 수정이 만든 회귀).
+  // → 상한을 "두상 이음매 값보다는 아래로 내려가지 않게" 올린다. 오탐 방지라는
+  //   원래 목적(아래쪽 링들이 제멋대로 부푸는 것)은 그대로 유지된다.
+  const seam = interpolateHeadCrossSection(PHI_MAX);
+  const hiW = Math.max(0.55*headA, seam.halfWidth);
+  const hiD = Math.max(0.70*headC, seam.halfDepth);
   for(let ri=0; ri<=RING_STEPS; ri++){
     const t = ri/RING_STEPS;
     const y = neckTopY + t*(neckBotY-neckTopY);
     let { halfWidth, halfDepth } = interpolateNeckCrossSection(y);
-    halfWidth = clamp(halfWidth, 0.22*headA, 0.55*headA);
-    halfDepth = clamp(halfDepth, 0.22*headC, 0.70*headC);
+    halfWidth = clamp(halfWidth, 0.22*headA, hiW);
+    halfDepth = clamp(halfDepth, 0.22*headC, hiD);
     for(let ti=0; ti<=THETA_STEPS; ti++){
       const theta = -Math.PI + (2*Math.PI)*(ti/THETA_STEPS);
       // scalpPointToWorld와 동일한 관례: theta=0에서 z(깊이) 최대, theta=π/2에서 x(폭) 최대
@@ -6913,15 +6980,52 @@ function getHeadEllipsoid(){
     const ratio = ell.c / ell.a;
     const verdict = ratio >= 1.05 ? '정상(깊이>폭)' : ratio >= 0.9 ? '약간 넙적' : '원반(넙적)';
     console.log(`[두상 기준면] 폭(a)=${ell.a.toFixed(3)} 세로(b)=${ell.b.toFixed(3)} 깊이(c)=${ell.c.toFixed(3)} | 깊이/폭=${ratio.toFixed(2)} → ${verdict}`);
+    // 폭이 그럴듯한지 즉시 대조할 기준선 — makeFaceProjector가 귀를 ±EAR_MESH_X에
+    // 놓고 그 자리가 "적도 반경보다 0.82배 안쪽"이라는 규약을 쓰므로, 적도 반경
+    // 기대치는 EAR_MESH_X/0.82다. 이 값과 a가 크게 어긋나면 폭 실측이 틀린 것.
+    {
+      const expectA = getFaceMetrics().projector.EAR_MESH_X / 0.82;
+      const off = ell.a / expectA;
+      console.log(`[두상 폭 대조] a=${ell.a.toFixed(3)} vs 랜드마크 기대치=${expectA.toFixed(3)}`
+        + ` → 비율 ${off.toFixed(2)}배 ${(off>0.75&&off<1.35)?'✓ 타당':'⚠ 어긋남(폭 실측 의심)'}`);
+    }
     const bands = computeHeadCrossSections();
-    const src = bands.map(b2 => `phi${b2.phi.toFixed(2)}:W${(b2.halfWidth||0).toFixed(2)}/D${(b2.halfDepth||0).toFixed(2)}`).join(' ');
+    // 밴드별 값 + 깊이 클램프가 발동했는지(*표시). 클램프가 광범위하게 걸려 있으면
+    // 깊이는 실측이 아니라 1.3×폭이라는 뜻 — 폭이 아직 틀렸다는 신호다.
+    let clampHit = 0;
+    const src = bands.map(b2 => {
+      const W = b2.halfWidth||0, D = b2.halfDepth||0;
+      const hit = (b2._rawD != null) && (b2._rawD > 1.3*W + 1e-6 || b2._rawD < 0.95*W - 1e-6);
+      if(hit) clampHit++;
+      return `phi${b2.phi.toFixed(2)}:W${W.toFixed(2)}/D${D.toFixed(2)}${hit?'*':''}`;
+    }).join(' ');
     console.log(`[두상 밴드별 실측] ${src}`);
-    // 어느 뷰가 실측에 기여했는지(각도 역투영이 측면을 제대로 잡았는지 확인)
+    if(clampHit){
+      console.warn(`[두상 깊이 클램프] ${clampHit}/${bands.length} 밴드에서 발동(* 표시)`
+        + ` — 이 밴드들의 깊이는 실측이 아니라 폭×1.3 천장값입니다. 폭 실측을 의심하세요.`);
+    }
+    // 어느 뷰가 실측에 기여했는지 + 어떤 마스크로 쟀는지(제외된 뷰도 표시)
     const contrib = ['front','left','right','back'].map(a=>{
-      const c2 = getViewPoseConfidence(a), y = getViewYawDeg(a);
-      return `${a}(yaw${y.toFixed(0)}°,신뢰${c2})`;
+      const c2 = getViewPoseConfidence(a), y = getViewYawDeg(a), t = getViewPoseSource(a).tier;
+      return `${a}(yaw${y.toFixed(0)}°,${t},신뢰${c2})`;
     }).join(' ');
     console.log(`[뷰 기여] ${contrib}`);
+    if(bands._diag){
+      console.log(`[뷰별 관측] ${bands._diag.viewDiag.join(' | ')}`);
+      if(bands._diag.stepClamped) console.warn(`[두상 밴드 스파이크] 적도 아래 ${bands._diag.stepClamped}건 제한됨(personMask에 어깨/팔 혼입 의심)`);
+    }
+    // ── yaw 부호 규약 자가검증 ──
+    // 라이브 가이드는 원본(비반전) 프레임을, 파이프라인은 반전 저장 이미지를 본다.
+    // 그래서 라이브 yaw는 부호를 뒤집어 저장하는데(_lastLiveYaw), 그 가정이 맞는지
+    // 둘 다 있는 뷰에서 직접 확인한다. 어긋나면 여기서 바로 드러난다.
+    ['front','left','right','back'].forEach(a=>{
+      const lmA = state.landmarks && state.landmarks[a];
+      const lv = state.liveYaw && state.liveYaw[a];
+      if(lmA && typeof lmA.poseYawDeg === 'number' && typeof lv === 'number' && Math.abs(lv) > 8 && Math.abs(lmA.poseYawDeg) > 8){
+        const agree = (lv * lmA.poseYawDeg) > 0;
+        console.log(`[진단·yaw부호] ${a}: 라이브(보정후)=${lv.toFixed(0)}° vs 실측=${lmA.poseYawDeg.toFixed(0)}° → ${agree?'부호 일치 ✓':'부호 불일치 ⚠ (라이브 저장 시 부호 반전 규약이 틀림)'}`);
+      }
+    });
   }
   return ell;
 }
@@ -6942,7 +7046,15 @@ function headPhiToMeshY(phi, liftOut){
 // 반환 null = 이 뷰는 스킵. maskField로 어느 실측 마스크를 쓸지만 구분.
 function prepareViewMeasurement(angle, maskField, metrics){
   const maskInf = state.hairMasks && state.hairMasks[angle];
-  const lm = state.landmarks && state.landmarks[angle];
+  // (2026-07-25) 랜드마크 없는 뷰를 통째로 버리지 않는다.
+  // 실기기 로그: 우측(완전 옆모습)·후면은 얼굴이 안 잡히는 게 정상인데, 여기서
+  // lm이 null이라 return null → 두 뷰가 두상 실측에서 제외되고 폭은 front 하나,
+  // 깊이는 left 하나로만 만들어지고 있었다. projectImagePointToHead는 이미
+  // computeSilhouetteAnchors(그 사진에서 정수리·귀높이 폭을 직접 실측)로 같은
+  // 상황을 처리하고 있었으므로, 같은 폴백을 여기에도 연결해 비대칭을 없앤다.
+  // ※ getEstimatedLandmarks는 쓰지 않는다 — 사진과 무관한 고정 상수라 모든 사람이
+  //   같은 두상이 되고, 파일 상단 anti-fabrication 원칙에 정면으로 어긋난다.
+  const lm = (state.landmarks && state.landmarks[angle]) || computeSilhouetteAnchors(angle);
   if(!maskInf || !maskInf[maskField] || !lm) return null;
   const confidence = getViewPoseConfidence(angle);
   if(confidence < 0.1) return null;
@@ -6995,17 +7107,36 @@ function computeHeadCrossSections(){
   //   폭의 82%로 줄여 원반(넙덕한 안면부)이 됐음. 두형지수 82의 역수 1.22로 정정.
   const rHead = 1.22;
 
+  // ── (2026-07-25) 측정 소스 교체: 헤어 실루엣 → 사람 실루엣 ──
+  // 근본 원인이었던 부분. reasonMask는 "머리카락"이라 헤어라인 아래에서는 잴 게
+  // 없고(extractHairMask가 얼굴 영역을 의도적으로 지우기까지 한다), 그 결과
+  // 적도(눈높이) 밴드가 0에 수렴해 두상이 허리에서 잘록해졌다. 실기기 로그:
+  // 적도 폭 0.305 vs 랜드마크로 잰 실제 얼굴 폭 0.768 — 2.5배 어긋남.
+  // personMask(사람 전체 실루엣)는 눈높이에서 귀를 포함한 진짜 머리 폭을,
+  // 측면에서는 뒤통수~코끝의 진짜 앞뒤 깊이를 준다.
+  // ⚠ 정직한 한계: 귀·코가 실루엣에 포함돼 5~10% 부풀 수 있고, 긴 머리는
+  //   여전히 과대측정된다(personMask는 머리카락도 "사람"으로 잡으므로).
+  //   personMask가 없는 뷰(바디 세그멘터 실패)는 기존 reasonMask로 폴백한다.
+  const viewDiag = [];
   function accumulate(angle){
-    const view = prepareViewMeasurement(angle, 'reasonMask', metrics);
-    if(!view) return;
+    let view = prepareViewMeasurement(angle, 'personMask', metrics);
+    let src = 'person';
+    if(!view){ view = prepareViewMeasurement(angle, 'reasonMask', metrics); src = 'hair(폴백)'; }
+    if(!view){ viewDiag.push(`${angle}:제외`); return; }
     const yaw = getViewYawDeg(angle) * Math.PI/180;
     const cos2 = Math.cos(yaw)**2, sin2 = Math.sin(yaw)**2;
+    let n = 0, eqE = null;
     bands.forEach(band=>{
       const row = meshYToRow(view, headPhiToMeshY(band.phi));
       const halfWNorm = measureRowHalfWidth(view.mask, view.w, view.h, row);
       if(halfWNorm == null) return;
-      band.obs.push({ E: halfWNorm * globalScaleX, cos2, sin2, confidence: view.confidence });
+      const E = halfWNorm * globalScaleX;
+      band.obs.push({ E, cos2, sin2, confidence: view.confidence, angle });
+      n++;
+      if(Math.abs(band.phi - Math.PI/2) < 0.12) eqE = E; // 적도 근처 관측(진단용)
     });
+    viewDiag.push(`${angle}[${src}] yaw${(getViewYawDeg(angle)).toFixed(0)}° cos²${cos2.toFixed(2)}`
+      + ` 신뢰${view.confidence} 밴드${n}개` + (eqE!=null?` 적도E=${eqE.toFixed(2)}`:''));
   }
   // 4개 뷰 전부 같은 방식으로 관측만 모음(폭/깊이 분리 안 함 — 각도가 결정)
   ['front','back','left','right'].forEach(a=>accumulate(a));
@@ -7039,6 +7170,11 @@ function computeHeadCrossSections(){
       if(d2 > 0){ dAcc += Math.sqrt(d2)*o.confidence; dW += o.confidence; }
     });
     band.halfWidth = W;
+    // [진단용] 깊이 클램프가 실제로 발동했는지. 실기기 로그에서 거의 전 밴드가
+    // D/W=1.30(천장)에 붙어 있었는데, 그건 "깊이가 실측됐다"가 아니라 "폭이 틀려서
+    // 역산이 폭발했고 클램프가 눌렀다"는 뜻이었다. 그걸 모르면 로그의
+    // "정상(깊이>폭)" 판정에 계속 속는다.
+    band._rawD = dW ? dAcc/dW : null;
     // 깊이 클램프: 얕은 측면 각도(이 앱은 25°가 정상)에서 D²=(E²−W²cos²)/sin²의
     // sin²로 나누는 항이 깊이를 폭발시킨다(실측 D가 폭의 1.5배까지 튐). 사람 두상
     // 깊이/폭은 두형지수상 대략 1.0~1.3 → 이 범위로 좁혀 얕은 각도발 과대평가를 억제.
@@ -7070,6 +7206,26 @@ function computeHeadCrossSections(){
     }
   }
 
+  // ── 적도 아래 스파이크 방지 (2026-07-25, 교훈 D 재발 방지) ──
+  // personMask는 사람 전체 실루엣이라 아래쪽 밴드에서 어깨·팔·옷이 섞여 들어오면
+  // 폭이 갑자기 튄다. 목에서 이미 같은 함정을 밟아 "좁은 목 위 넓은 챙" 원반이
+  // 나왔고(NECK_STEP_MAX로 대응), 두상엔 그 보호가 없었다.
+  // 해부학적 근거: 머리 최대 폭은 귀 높이(적도) 근처이고 그 아래(턱·네이프)로는
+  // 좁아진다 → 적도 아래 밴드는 바로 위 밴드보다 넓어질 수 없다. 귀가 살짝
+  // 튀어나온 것만 허용하도록 5% 여유를 준다.
+  // ※ 적도 위(정수리 쪽)에는 적용하지 않는다 — 극점에서 적도로 갈수록 폭이
+  //   빠르게 커지는 게 정상이라, 같은 제한을 걸면 진짜 실측을 눌러버린다.
+  const HEAD_STEP_DOWN_MAX = 1.05;
+  let stepClamped = 0;
+  for(let i=1;i<bands.length;i++){
+    if(bands[i].phi <= Math.PI/2) continue; // 적도 위는 그대로
+    const capW = bands[i-1].halfWidth * HEAD_STEP_DOWN_MAX;
+    const capD = bands[i-1].halfDepth * HEAD_STEP_DOWN_MAX;
+    if(bands[i].halfWidth > capW){ bands[i].halfWidth = capW; stepClamped++; }
+    if(bands[i].halfDepth > capD){ bands[i].halfDepth = capD; stepClamped++; }
+  }
+
+  bands._diag = { viewDiag, stepClamped };
   _headCrossSectionCache = bands;
   return bands;
 }
@@ -7254,6 +7410,7 @@ function getViewPoseConfidence(angle){
   const { tier } = getViewPoseSource(angle);
   if(tier === 'pnp') return 1.0;      // 실측 PnP 포즈(가장 정확)
   if(tier === 'approx') return 0.6;   // 포즈 행렬 분해 실패 → 귀 간격 비율 근사
+  if(tier === 'live') return 0.5;     // 촬영 직전 라이브 실측 PnP(각도는 실측, 셔터와 시차만 있음)
   return 0.25;                        // 랜드마크 감지 자체 실패 → 촬영 슬롯 기본 각도로 폴백
 }
 
@@ -8842,6 +8999,8 @@ function startNewCustomer(){
   ANGLES.forEach(a=>{state.shots[a]=null;state.hairCanvases[a]=null;state.hairMasks[a]=null;state.baseCanvases[a]=null;});
   state.landmarks = {};
   state.captureLmStatus = {}; // 촬영 직후 랜드마크 감지 배지 상태도 초기화
+  state.liveYaw = {};         // 촬영 직전 라이브 실측 yaw도 초기화
+  _lastLiveYaw = null;
   state.strandPaths = {}; // 캡처된 2D 가닥 경로(3D 리프트 소스)도 초기화
   _silhouetteAnchorCache = {}; // 실루엣 앵커 캐시도 새 고객마다 초기화
   state.selectedStyle=null; state.currentCaptureIndex=0; state.currentSection='crown';
