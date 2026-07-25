@@ -3312,7 +3312,9 @@ function updateAngleUI(){
   const doneCount=ANGLES.filter(a=>state.shots[a]).length;
   document.getElementById('dialCenter').textContent=doneCount+'/4';
   const curAngle=ANGLES[state.currentCaptureIndex];
-  document.getElementById('captureHint').textContent=HINTS[curAngle];
+  const capHintEl=document.getElementById('captureHint');
+  capHintEl.textContent=HINTS[curAngle];
+  capHintEl.style.background=''; capHintEl.style.color=''; // 라이브 안내가 칠해둔 초록/주황 잔상 제거
   document.getElementById('capHintSmall').textContent=ANGLE_LABELS[curAngle]+ ' 촬영';
   document.getElementById('toStyleBtn').disabled=doneCount<1;
   // show/hide preview
@@ -3322,7 +3324,11 @@ function updateAngleUI(){
   else{sp.style.display='none';if(cameraStream)video.style.display='block';}
 }
 updateAngleUI();
-startLiveAngleGuide(); // 촬영 전 실시간 각도 안내 시작(준비 안 됐으면 프레임마다 조용히 대기)
+// ※ startLiveAngleGuide()는 여기서 부르면 안 된다 — 아래 updateLiveAngleGuide()
+//   정의부의 `let _liveGuideRaf`보다 위라서 TDZ(일시적 사각지대)에 걸려
+//   ReferenceError가 나고, 그 순간 이 <script> 블록의 남은 최상위 코드가 전부
+//   중단된다(buildStyleGrid·toastTimer·imgCache 등 = 앱 전체 사망).
+//   실제 호출은 updateLiveAngleGuide() 정의 바로 뒤로 옮겼다. (2026-07-25 수정)
 
 function jumpToAngle(i){ state.currentCaptureIndex=i; updateAngleUI(); }
 
@@ -3470,9 +3476,11 @@ function updateLiveAngleGuide(){
   if(!screen || !screen.classList.contains('active')){ return; }
   const angle = ANGLES[state.currentCaptureIndex];
   if(state.shots[angle] || angle==='back'){ setHint(HINTS[angle], ''); return; }
-  if(!faceLandmarkerReady || !faceLandmarker) return;
+  // 모델 로딩 중에도 "왜 아무 말이 없나" 싶지 않게 상태를 보여준다 —
+  // 예전엔 조용히 return이라 초기 정적 문구가 그대로 남아 멈춘 것처럼 보였음.
+  if(!faceLandmarkerReady || !faceLandmarker){ setHint('얼굴 인식 준비 중…',''); return; }
   const video = document.getElementById('video');
-  if(!video || video.style.display==='none' || !video.videoWidth) return;
+  if(!video || video.style.display==='none' || !video.videoWidth){ setHint('카메라 준비 중…',''); return; }
   let result; try { result = faceLandmarker.detect(video); } catch(e){ return; }
   const hasFace = result && result.faceLandmarks && result.faceLandmarks.length;
   const isSide = (angle==='left' || angle==='right');
@@ -3495,6 +3503,9 @@ function updateLiveAngleGuide(){
   else if(yawAbs > SIDE_YAW_HIGH) setHint(`조금 덜 돌리세요 (지금 ${d}°)`, 'warn');
   else                            setHint(`👍 지금 찍으세요! (${d}°)`, 'ready');
 }
+// 라이브 각도 안내 시작. 반드시 위 `let _liveGuideRaf` 선언 "뒤"에서 호출할 것
+// (앞에서 부르면 TDZ ReferenceError로 이 스크립트의 남은 최상위 코드가 전부 죽는다).
+startLiveAngleGuide();
 
 /* ════════════════════════════════════════
    STYLE SELECT
