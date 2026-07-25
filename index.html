@@ -3240,6 +3240,10 @@ function setupAdjustScreen(){
 }
 
 async function navTo(name){
+  // (2026-07-25) 라이브 각도 안내는 촬영 화면에서만. navTo('style')은 화면 전환 전에
+  // 파이프라인을 await하므로, 여기서 먼저 멈추지 않으면 그 사이 촬영 화면이 계속 active라
+  // 라이브 루프가 공유 faceLandmarker를 6fps로 물어 파이프라인과 충돌(감지 실패·멈춤)한다.
+  if(name==='capture'){ startLiveAngleGuide(); } else { stopLiveAngleGuide(); }
   if(name==='style'){
     unlockTab('style');
     if(!aiAnalysis){ await runStyleAnalysisPipeline(); }
@@ -3448,6 +3452,9 @@ function startLiveAngleGuide(){
     try { updateLiveAngleGuide(); } catch(e){}
   };
   _liveGuideRaf = requestAnimationFrame(loop);
+}
+function stopLiveAngleGuide(){
+  if(_liveGuideRaf){ cancelAnimationFrame(_liveGuideRaf); _liveGuideRaf = null; }
 }
 function updateLiveAngleGuide(){
   const screen = document.getElementById('screen-capture');
@@ -5835,17 +5842,27 @@ window.addEventListener('resize',positionCompareTop);
 // 실패 시 예외를 그대로 던져서, 각 호출부가 이미 갖고 있는 catch가 자기
 // 폴백(토스트 / 기본 의상)을 그대로 수행하게 함 — 동작 무변경.
 async function callClaudeJSON({ base64, mediaType, prompt, maxTokens }){
-  const res = await fetch('https://api.anthropic.com/v1/messages', {
-    method:'POST',
-    headers:{'Content-Type':'application/json','anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
-    body: JSON.stringify({ model:'claude-sonnet-4-6', max_tokens:maxTokens, messages:[{ role:'user', content:[
-      { type:'image', source:{ type:'base64', media_type:mediaType, data:base64 } },
-      { type:'text', text:prompt }
-    ]}]})
-  });
-  const data = await res.json();
-  const raw = data.content.map(b=>b.text||'').join('').replace(/```json|```/g,'').trim();
-  return JSON.parse(raw);
+  // (2026-07-25) 타임아웃 추가 — github.io에서 api.anthropic.com 직접 호출은 CORS/인증에
+  // 막혀 fetch가 응답 없이 멈출 수 있고, 그러면 이 함수를 await하던 3D 화면 셋업이
+  // 영영 대기했다("추천 AI에서 안 넘어감"). 8초 후 abort → 호출부 catch로 폴백 진행.
+  const ctrl = new AbortController();
+  const timer = setTimeout(()=>ctrl.abort(), 8000);
+  try {
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method:'POST',
+      headers:{'Content-Type':'application/json','anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
+      body: JSON.stringify({ model:'claude-sonnet-4-6', max_tokens:maxTokens, messages:[{ role:'user', content:[
+        { type:'image', source:{ type:'base64', media_type:mediaType, data:base64 } },
+        { type:'text', text:prompt }
+      ]}]}),
+      signal: ctrl.signal
+    });
+    const data = await res.json();
+    const raw = data.content.map(b=>b.text||'').join('').replace(/```json|```/g,'').trim();
+    return JSON.parse(raw);
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 async function analyzeWithClaude(){
