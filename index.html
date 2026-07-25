@@ -6041,6 +6041,56 @@ function buildRealNeckMesh(skinColor){
   return neckMesh;
 }
 
+// ── (2026-07-25) 밴드 실측 기반 두상 껍데기 ──
+// 사용자 지시: 기준 타원(getHeadEllipsoid)은 헤어·얼굴을 앉힐 "중심 앵커"로만 두고,
+// 실제 보이는 두상은 사진에서 실측한 표면을 쓴다. computeHeadCrossSections가 이미
+// 높이(phi)별 실측 폭/깊이(넓은 두개골→좁은 턱)를 갖고 있는데, 지금까진 이를 적도
+// 한 줄로 뭉쳐 타원 세 숫자(a·b·c)로만 쓰고 정작 그 실루엣으론 안 그렸음 → 그래서
+// 좁고 긴 "타조알"이 됐다. 여기서 그 밴드를 높이별 링으로 쌓아 진짜 두상 실루엣을
+// 짓는다. 목(buildRealNeckMesh)과 같은 theta 관례(x=sin·폭, z=cos·깊이, front=+Z)와
+// 같은 headPhiToMeshY를 써서 최하단 링이 목 최상단(PHI_MAX)과 이음매 없이 맞물린다.
+// 위쪽 밴드 폭은 헤어 실루엣이 섞여 넓게 나오지만 그 구역은 어차피 머리카락이 덮으므로
+// 문제 없고, 노출되는 아래쪽(턱·목덜미)은 실측대로 좁게 좁혀진다.
+function buildBandHeadMesh(headMat){
+  const bands = computeHeadCrossSections();
+  if(!bands || bands.length < 2 || typeof THREE === 'undefined') return null;
+  const shellMat = headMat.clone(); shellMat.side = THREE.DoubleSide; // 권취 방향과 무관하게 보이도록
+  const PHI_TOP = HEAD_PHI_BANDS[0];
+  const PHI_MAX = HEAD_PHI_BANDS[HEAD_PHI_BANDS.length-1]; // 목 최상단과 동일 phi
+  const ell = getHeadEllipsoid(); // 베레모 방지용 상한(헤어는 정의상 이 면 바깥) 기준
+  const ROWS = 48, THETA_STEPS = 32;
+  const positions = [];
+  for(let ri=0; ri<=ROWS; ri++){
+    const phi = PHI_TOP + (PHI_MAX - PHI_TOP) * (ri/ROWS);
+    const cs = interpolateHeadCrossSection(phi); // {halfWidth, halfDepth} 실측(각도 역투영 복원)
+    // 베레모 방지: 이 높이의 기준 타원 반경(a·sinφ, c·sinφ)을 상한으로. 상부(머리카락
+    // 폭이 섞여 넓게 나오는 밴드)는 타원 안쪽으로 눌러 헤어 밖으로 못 나가게 하고,
+    // 하부(턱·목덜미, 머리카락 거의 없어 실측이 깨끗)는 실측대로 좁게 좁아지게 둔다.
+    const s = Math.sin(phi);
+    const capW = Math.max(0.02, ell.a * s * 1.05);
+    const capD = Math.max(0.02, ell.c * s * 1.05);
+    const halfWidth = Math.min(Math.max(0.01, cs.halfWidth), capW);
+    const halfDepth = Math.min(Math.max(0.01, cs.halfDepth), capD);
+    const y = headPhiToMeshY(phi); // 목과 동일 공식 → 이음매 없음
+    for(let ti=0; ti<=THETA_STEPS; ti++){
+      const theta = -Math.PI + (2*Math.PI)*(ti/THETA_STEPS);
+      positions.push(Math.sin(theta)*halfWidth, y, Math.cos(theta)*halfDepth);
+    }
+  }
+  const indices = buildRingGridIndices(ROWS, THETA_STEPS);
+  // 정수리 캡: 최상단 링(ri=0) 위에 apex 한 점(phi=0)으로 부채꼴 마감
+  const apexIdx = positions.length/3;
+  positions.push(0, headPhiToMeshY(0), 0);
+  for(let ti=0; ti<THETA_STEPS; ti++){ indices.push(apexIdx, ti, ti+1); }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(positions), 3));
+  geo.setIndex(indices);
+  geo.computeVertexNormals();
+  const mesh = new THREE.Mesh(geo, shellMat);
+  mesh.name = 'skullEllipsoid'; // 반환 headMesh 이름 유지(호출부 호환)
+  return mesh;
+}
+
 // 절차적 두상: 타원(스케일된 구)으로 두상 근사. getFaceMetrics()가 뽑아낸 실측
 // 종횡비/좌표 변환(projector)과 실제 두피색(skinColorCss)을 반영해서 "이 사람
 // 사진에서 뽑을 수 있는 정보는 최대한 쓴" 근사치로 만든다. 여전히 진짜 3D
@@ -6063,11 +6113,18 @@ function buildProceduralHead(faceMetrics, skinColorCss){
   // 반깊이 cD, 중심 y=0.15)로 교체 — 헤어 헐이 정의상 이 면 바깥에 있으므로
   // 두개골이 헤어 밖으로 삐져나올 수 없음. buildHeadMesh 함수 자체는
   // 이 파일 관례대로 참고용으로 남김(호출만 제거).
-  const skull = getHeadEllipsoid();
-  const headMesh = new THREE.Mesh(new THREE.SphereGeometry(1, 32, 24), headMat);
-  headMesh.scale.set(skull.a, skull.b, skull.c);
-  headMesh.position.set(0, 0.15, 0);
-  headMesh.name = 'skullEllipsoid';
+  // (2026-07-25) 보이는 두상 = 밴드 실측 실루엣(buildBandHeadMesh). 기준 타원은
+  // 헤어·얼굴 앵커로만 남기고, 실제 살 껍데기는 높이별 실측 폭/깊이로 짓는다 →
+  // 좁고 긴 "타조알"(대칭 타원의 하부 주둥이) 제거, 목과 이음매 없이 연결.
+  // 실측 밴드가 없으면(옛 세션 등) 예전 타원 껍데기로 안전 폴백.
+  let headMesh = buildBandHeadMesh(headMat);
+  if(!headMesh){
+    const skull = getHeadEllipsoid();
+    headMesh = new THREE.Mesh(new THREE.SphereGeometry(1, 32, 24), headMat);
+    headMesh.scale.set(skull.a, skull.b, skull.c);
+    headMesh.position.set(0, 0.15, 0);
+    headMesh.name = 'skullEllipsoid';
+  }
   group.add(headMesh);
 
   // 버그 수정(2026-07-14, 계속) → 재추가(같은 날, 실측 목 메쉬로 교체):
