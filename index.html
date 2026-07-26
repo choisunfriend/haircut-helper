@@ -4999,6 +4999,53 @@ function computeFit(imgW, imgH, w, h){
   return {dw,dh,dx,dy};
 }
 
+/* ── 조정 화면 머리 확대 (2026-07-26) ─────────────────────────────────
+   사용자 상황: "노트북으로 작업하고 있어서 어쩔 수 없어. 정수리까지 나오려면."
+   맞다 — 노트북 웹캠으로 정수리까지 담으려면 뒤로 물러날 수밖에 없고, 그러면
+   머리가 프레임의 20%밖에 안 된다. 진단 로그 기준 <b>머리 전체가 화면에서 142px</b>.
+   여기에 결을 그리는 건 우표 크기에 머리카락을 그리는 것과 같아서, 렌더를
+   아무리 손봐도 한계가 있다(다발 5개 × 0.7px + 틈 0.9px = 다발 하나가 화면
+   4.5px — 머리가 142px이면 다발 30개면 머리가 꽉 찬다).
+   촬영은 못 바꾸니 <b>보는 쪽</b>을 바꾼다: 조정 화면만 머리에 맞춰 확대한다.
+   가닥은 벡터로 다시 그려지니 확대해도 선명하고, 배경 사진만 부드러워진다
+   (baseC는 어차피 머리카락이 지워진 얼굴·배경이라 손해가 작다).
+   ※ fit이 "배율 + 평행이동"이라 확대는 dw/dh/dx/dy만 바꾸면 된다 —
+     makeImgToCanvas·가닥 투영·마스크 clip이 전부 fit을 통하므로 자동으로 따라온다.
+   ※ 재구성(3D)에는 전혀 관여하지 않는다. 순수하게 표시 배율만. */
+const ADJUST_ZOOM = { on: true, pad: 0.28, max: 3.5 };
+// 헤어 마스크가 차지하는 정규화 박스(0~1). 확대 기준.
+function hairBoxOf(maskInf){
+  const mw = maskInf.w, mh = maskInf.h;
+  const scalpY = maskInf.scalpY, hairEndY = maskInf.hairEndY;
+  if(!scalpY || !mw || !mh) return null;
+  let x0=mw, x1=-1, y0=mh, y1=-1;
+  for(let x=0;x<mw;x++){
+    const sy = scalpY[x];
+    if(!(sy >= 0)) continue;
+    if(x<x0) x0=x; if(x>x1) x1=x;
+    if(sy<y0) y0=sy;
+    const ey = (hairEndY && hairEndY[x] >= 0) ? hairEndY[x] : sy;
+    if(ey>y1) y1=ey;
+  }
+  if(x1 < 0 || y1 < 0) return null;
+  return { x0:x0/mw, x1:(x1+1)/mw, y0:y0/mh, y1:(y1+1)/mh };
+}
+// fit을 머리 중심으로 확대한 새 fit. 확대할 이유가 없으면 원본을 그대로 돌려준다.
+function zoomFitToHair(fit, maskInf, w, h){
+  if(!ADJUST_ZOOM.on) return fit;
+  const box = hairBoxOf(maskInf);
+  if(!box) return fit;
+  const bw = (box.x1 - box.x0) * (1 + ADJUST_ZOOM.pad);
+  const bh = (box.y1 - box.y0) * (1 + ADJUST_ZOOM.pad);
+  if(!(bw > 0) || !(bh > 0)) return fit;
+  // 확대해도 머리가 캔버스 밖으로 안 나가는 최대 배율
+  const k = Math.min(w / (bw * fit.dw), h / (bh * fit.dh), ADJUST_ZOOM.max);
+  if(!(k > 1.02)) return fit;                    // 이미 꽉 차 있으면 그대로
+  const cx = (box.x0 + box.x1) / 2, cy = (box.y0 + box.y1) / 2;
+  return { dw: fit.dw * k, dh: fit.dh * k,
+           dx: w/2 - (cx * fit.dw * k), dy: h/2 - (cy * fit.dh * k), _zoom: k };
+}
+
 // 2D 렌더 캔버스의 devicePixelRatio 배율(2026-07-14 추가).
 // (2026-07-16 변경) 그리기 해상도를 기기 dpr에 따라 흔들리게 두지 않고
 // 가로 1200px 고정으로 통일 — 사용자 결정: "입력 해상도랑 그리기 해상도
@@ -5291,7 +5338,8 @@ function renderFrame(canvas, angle){
       // [3] 새 가닥 (scalpY 기반, 자유롭게 아래로 뻗음)
       // [4] 컬러 오버레이
 
-      const fit = computeFit(img.width, img.height, w, h);
+      // 머리 중심 확대(조정 화면 전용 — 재구성엔 영향 없음)
+      const fit = zoomFitToHair(computeFit(img.width, img.height, w, h), maskInf, w, h);
 
       // 이전 버그: 원본 img를 먼저 통째로 그린 뒤 baseC(머리 부분 투명)를
       // source-over로 덮었는데, 투명 픽셀은 source-over에서 아무 효과가 없어서
