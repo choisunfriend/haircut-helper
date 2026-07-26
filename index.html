@@ -3470,6 +3470,8 @@ function updateAngleUI(){
     else if(!lmStatus || lmStatus === 'na'){ chk.textContent='✓'; chk.style.color='var(--ok)'; }
     else if(lmStatus === 'checking'){ chk.textContent='…'; chk.style.color='var(--text-muted)'; }
     else if(lmStatus === 'fail'){ chk.textContent='⚠'; chk.style.color='var(--warn)'; }
+    // 'wrongslot' = 감지는 됐는데 그 슬롯에 맞지 않는 사진(예: 후면 슬롯에 얼굴)
+    else if(lmStatus === 'wrongslot'){ chk.textContent='⚠'; chk.style.color='var(--warn)'; }
     else { chk.textContent='✓'; chk.style.color='var(--ok)'; }
     thumb.innerHTML = hasShot?`<img src="${state.shots[a]}">`:'';
     // dial
@@ -3522,18 +3524,37 @@ function captureCurrentAngle(){
     const ctx=c.getContext('2d');
     ctx.translate(c.width,0); ctx.scale(-1,1); // mirror
     ctx.drawImage(video,0,0);
+    // ── 셔터 지연 보정 ──────────────────────────────────────────────
+    // 1) 지금 이 프레임(=저장될 사진)에서 곧바로 감지·포즈 측정을 시도한다.
+    //    성공하면 그게 최선 — 포즈도 "저장 사진 실측"이라 폴백이 아니다.
+    // 2) 실패하면(초록불을 본 뒤 고개가 움직였거나 반응시간만큼 늦게 눌렀거나),
+    //    직전에 감지 확인까지 끝난 검증 프레임으로 대체 저장한다. 사용자가
+    //    "초록불을 보고 눌렀다"는 의도와 실제 저장본을 일치시키는 쪽이 맞다.
+    let pose = detectPoseOnCanvas(c), poseSrc = 'shutter', usedVerified = false;
+    if(!pose && angle !== 'back' && _liveVerifiedCanvas && _liveVerifiedAngle === angle
+       && (performance.now() - _liveVerifiedAt) <= VERIFIED_SHOT_MAX_AGE){
+      ctx.setTransform(1,0,0,1,0,0);          // 미러는 검증 캔버스에 이미 적용됨
+      ctx.drawImage(_liveVerifiedCanvas,0,0); // 프레임 자체를 교체
+      pose = _liveVerifiedPose; poseSrc = 'verified'; usedVerified = true;
+    }
     state.shots[angle]=c.toDataURL('image/jpeg',0.85);
-    // ── 셔터 순간의 라이브 실측 포즈를 저장 ──
-    // 저장 사진에서 랜드마크가 안 잡혀도 이 각도는 버리지 않는다(getViewYawDeg의
-    // 'live' 등급). 같은 faceLandmarker·같은 PnP로 방금 잰 값이라 슬롯 기본
-    // 가정치(±90°)보다 비교할 수 없이 정확하다.
+    // ── 촬영 시점 포즈 저장 ──
+    // 저장 사진에서 나중에 랜드마크가 안 잡혀도 이 각도는 버리지 않는다
+    // (getViewYawDeg의 'live' 등급). 우선순위: 저장본 실측 > 검증 프레임 실측 >
+    // 라이브 프레임 실측. 셋 다 없으면 null(슬롯 기본 각도로 폴백).
     if(!state.capturePose) state.capturePose = {};
-    state.capturePose[angle] =
-      (_liveLastPose && _liveLastPose.angle === angle &&
-       (performance.now() - _liveLastPose.ts) <= CAPTURE_POSE_MAX_AGE)
-        ? { yawDeg:_liveLastPose.yawDeg, pitchDeg:_liveLastPose.pitchDeg,
-            rollDeg:_liveLastPose.rollDeg, src:'live' }
-        : null;   // 오래됐거나 다른 슬롯 값이면 안 씀(엉뚱한 각도 오염 방지)
+    state.capturePose[angle] = pose
+      ? { yawDeg:pose.yawDeg, pitchDeg:pose.pitchDeg, rollDeg:pose.rollDeg, src:poseSrc }
+      : ((_liveLastPose && _liveLastPose.angle === angle &&
+          (performance.now() - _liveLastPose.ts) <= CAPTURE_POSE_MAX_AGE)
+          ? { yawDeg:_liveLastPose.yawDeg, pitchDeg:_liveLastPose.pitchDeg,
+              rollDeg:_liveLastPose.rollDeg, src:'live' }
+          : null);   // 오래됐거나 다른 슬롯 값이면 안 씀(엉뚱한 각도 오염 방지)
+    if(usedVerified){
+      const lagMs = Math.round(performance.now() - _liveVerifiedAt);
+      console.log(`[${angle}] 셔터 시점 프레임 감지 실패 → ${lagMs}ms 전 검증 프레임으로 저장`);
+      showToast(`셔터가 ${(lagMs/1000).toFixed(1)}초 늦어 인식이 끊겼어요 — 초록불이던 순간의 프레임으로 저장했어요`);
+    }
     // auto advance
     if(state.currentCaptureIndex<3) state.currentCaptureIndex++;
     updateAngleUI();
@@ -3610,9 +3631,30 @@ async function checkCaptureLandmarks(angle){
   const info = await detectFaceLandmarks(angle);
   if(state.shots[angle] !== shotAtStart) return; // 감지 도중 재촬영된 경우도 무효
   if(info){
-    state.captureLmStatus[angle]='ok';
-    const yawTxt = (typeof info.poseYawDeg === 'number') ? ` (yaw ${info.poseYawDeg.toFixed(0)}°)` : '';
-    showToast(`${ANGLE_LABELS[angle]} 얼굴 랜드마크 감지 ✓${yawTxt}`);
+    const yawDeg = (typeof info.poseYawDeg === 'number') ? info.poseYawDeg : null;
+    const yawTxt = (yawDeg !== null) ? ` (yaw ${yawDeg.toFixed(0)}°)` : '';
+    // ── 슬롯-사진 불일치 검사 (2026-07-26 추가) ──
+    // 실기기 로그에서 back 뷰가 우측과 같은 -28°로 잡힌 적이 있다. 후면 슬롯에
+    // 정면·측면 얼굴이 찍힌 것으로, 4장 중 2장이 사실상 같은 각도가 되어
+    // 후면 정보가 통째로 비고 두상 복원이 무너진다(실제로 3D가 뭉개짐).
+    // 각도가 명백히 슬롯과 어긋나면 ✓ 대신 ⚠로 알려준다.
+    let mismatch = null;
+    if(angle === 'back' && yawDeg !== null && Math.abs(yawDeg) < 70){
+      mismatch = `후면 슬롯인데 얼굴이 ${Math.abs(yawDeg).toFixed(0)}°로 잡혔어요 — 뒷머리 사진이 맞나요?`;
+    } else if((angle === 'left' || angle === 'right') && yawDeg !== null){
+      const tt = LIVE_YAW_TARGET[angle];
+      if((yawDeg >= 0) !== (tt.max > 0) && Math.abs(yawDeg) > 10)
+        mismatch = `${ANGLE_LABELS[angle]} 슬롯인데 반대쪽 옆얼굴이에요(yaw ${yawDeg.toFixed(0)}°)`;
+      else if(Math.abs(yawDeg) < 20)
+        mismatch = `${ANGLE_LABELS[angle]} 슬롯인데 거의 정면이에요(yaw ${yawDeg.toFixed(0)}°) — 옆머리 정보가 부족해요`;
+    }
+    if(mismatch){
+      state.captureLmStatus[angle]='wrongslot';
+      showToast('⚠ ' + mismatch + ' 다시 촬영을 권해요');
+    } else {
+      state.captureLmStatus[angle]='ok';
+      showToast(`${ANGLE_LABELS[angle]} 얼굴 랜드마크 감지 ✓${yawTxt}`);
+    }
   } else {
     state.captureLmStatus[angle]='fail';
     // (2026-07-26) 감지가 실패해도 셔터 직전 라이브 실측 각도가 남아 있으면
@@ -3703,9 +3745,12 @@ const LIVE_YAW_TARGET = {
 };
 const LIVE_MIRROR_SIGN = -1;      // 라이브 yaw → 저장 사진 yaw 변환 계수(미러 촬영이라 -1)
 const LIVE_DETECT_INTERVAL = 120; // ms. 프레임마다 돌리면 과함 — 약 8fps면 안내용으로 충분
-const LIVE_LOST_GRACE = 700;      // ms. 한두 프레임 놓쳐도 바로 빨간불로 안 떨어지게
-const LIVE_STILL_INTERVAL = 300;  // ms. "저장본 감지" 확인 주기(매 틱마다 두 번 돌리면 과함)
-const LIVE_STILL_GRACE = 900;     // ms. 저장본 감지도 한두 번 놓친 걸로 초록이 깜빡이지 않게
+// (2026-07-26 3차) 유예를 줄였다 — 유예가 길수록 "초록불이 켜진 상태"가 과거의
+// 상태라는 뜻이고, 그 차이가 곧 사용자가 체감한 셔터 지연이다. 아래 검증 프레임
+// 보관(_liveVerifiedCanvas)이 있어 유예를 짧게 잡아도 초록이 심하게 깜빡이지 않는다.
+const LIVE_LOST_GRACE = 450;      // ms. 한두 프레임 놓쳐도 바로 빨간불로 안 떨어지게
+const LIVE_STILL_INTERVAL = 250;  // ms. "저장본 감지" 확인 주기(매 틱마다 두 번 돌리면 과함)
+const LIVE_STILL_GRACE = 600;     // ms. 저장본 감지도 한두 번 놓친 걸로 초록이 깜빡이지 않게
 const BACK_EAR_VIS = 0.5;         // 후면 귀 판정 visibility 임계
 const BACK_EAR_MIN_SPAN = 0.045;  // 정규화 x 기준 두 귀 최소 간격(완전 옆모습이면 붙어버림)
 
@@ -3729,13 +3774,42 @@ var _liveStillCanvas = null;  // 촬영과 같은 미러 캔버스(재사용)
 var _liveStillOkAt   = 0;     // 마지막으로 저장본 감지에 성공한 시각
 var _liveStillCheckAt= 0;     // 마지막으로 확인을 시도한 시각(주기 제한용)
 var _liveStillLastOk = false;
+/* ── (2026-07-26 3차) 셔터 지연 보정: "검증된 프레임"을 따로 보관 ──────────
+   사용자 보고: "파란불(초록) 들어왔을 때 찍었는데 결과가 이상해. 셔터 지연이
+   좀 되나봐?" — 맞다. 초록불은 (a) 최대 LIVE_STILL_INTERVAL(확인 주기) +
+   (b) 유예시간 + (c) 사람 반응시간(0.2~0.5s)만큼 과거의 상태다. 그 사이 고개가
+   움직이면 "검증되지 않은 프레임"이 저장된다.
+   → 확인에 성공한 그 프레임 자체를 캔버스로 복사해두고(픽셀 복사는 저렴),
+     셔터를 눌렀을 때 현재 프레임이 감지에 실패하면 이 검증된 프레임을 대신
+     저장한다. 사용자가 초록불을 보고 누른 의도와 실제 저장본이 일치하게 됨.
+   덤: 이 캔버스는 곧 저장될 이미지 그 자체라, 여기서 뽑은 포즈는 미러 보정이
+     필요 없는 "저장 사진 기준" 실측 포즈다(라이브 값보다 정확). */
+var _liveVerifiedCanvas = null; // 감지 성공이 확인된 프레임(미러 완료)
+var _liveVerifiedAt     = 0;
+var _liveVerifiedAngle  = null;
+var _liveVerifiedPose   = null; // {yawDeg,pitchDeg,rollDeg} — 저장 사진 기준
+const VERIFIED_SHOT_MAX_AGE = 1200; // ms. 이보다 오래된 검증 프레임은 안 씀
+
+// 캔버스(=저장될 이미지)에서 직접 포즈를 뽑는다. 미러가 이미 적용된 캔버스이므로
+// LIVE_MIRROR_SIGN 보정이 필요 없다. 감지 실패면 null.
+function detectPoseOnCanvas(cv){
+  if(!faceLandmarkerReady || !faceLandmarker) return null;
+  let r = null;
+  try{ r = faceLandmarker.detect(cv); }catch(e){ return null; }
+  if(!r || !r.faceLandmarks || !r.faceLandmarks.length) return null;
+  if(!r.facialTransformationMatrixes || !r.facialTransformationMatrixes.length) return null;
+  try{
+    const p = decomposePoseMatrix(r.facialTransformationMatrixes[0].data);
+    return { yawDeg:p.yawRad*180/Math.PI, pitchDeg:p.pitchRad*180/Math.PI, rollDeg:p.rollRad*180/Math.PI };
+  }catch(e){ return null; }
+}
 
 // 지금 이 비디오 프레임을 촬영과 완전히 동일하게(미러 캔버스) 떠서, 그 이미지에서
 // faceLandmarker가 얼굴을 잡는지 확인한다. 촬영 경로(captureCurrentAngle)와 같은
 // 캔버스·같은 미러 변환을 쓰므로 "가이드는 통과했는데 저장 사진은 감지 실패"가
 // 생기지 않는다. detect()는 HTMLCanvasElement도 그대로 받으므로 dataURL 왕복 없이
 // 동기로 끝난다(비용: 프레임당 detect 1회 추가, LIVE_STILL_INTERVAL로 제한).
-function liveStillLandmarkOk(now){
+function liveStillLandmarkOk(now, angle){
   if(now - _liveStillCheckAt < LIVE_STILL_INTERVAL) return _liveStillLastOk;
   _liveStillCheckAt = now;
   if(!faceLandmarkerReady || !faceLandmarker || !video.videoWidth) return _liveStillLastOk;
@@ -3748,13 +3822,20 @@ function liveStillLandmarkOk(now){
   cx.setTransform(1,0,0,1,0,0);
   cx.translate(c.width,0); cx.scale(-1,1);   // 촬영과 동일한 미러
   cx.drawImage(video,0,0);
-  let ok = false;
-  try{
-    const r = faceLandmarker.detect(c);
-    ok = !!(r && r.faceLandmarks && r.faceLandmarks.length);
-  }catch(e){ ok = false; }
+  const pose = detectPoseOnCanvas(c);
+  const ok = !!pose;
   _liveStillLastOk = ok;
-  if(ok) _liveStillOkAt = now;
+  if(ok){
+    _liveStillOkAt = now;
+    // 이 프레임을 통째로 보관 — 셔터가 늦게 눌려도 이 프레임으로 저장할 수 있게.
+    if(!_liveVerifiedCanvas) _liveVerifiedCanvas = document.createElement('canvas');
+    const v = _liveVerifiedCanvas;
+    if(v.width !== c.width || v.height !== c.height){ v.width = c.width; v.height = c.height; }
+    const vx = v.getContext('2d');
+    vx.setTransform(1,0,0,1,0,0);
+    vx.drawImage(c,0,0);          // 픽셀 복사(미러는 이미 적용됨)
+    _liveVerifiedAt = now; _liveVerifiedAngle = angle; _liveVerifiedPose = pose;
+  }
   return ok;
 }
 
@@ -3879,7 +3960,7 @@ function liveEvaluateFrame(angle){
     // 46°처럼 범위 안이어도 감지가 안 되는 각도/조명이 실기기에서 나왔고, 감지가
     // 안 되면 그 뷰의 좌표 변환이 통째로 추정치로 떨어져 3D가 망가진다.
     const now = performance.now();
-    const stillOk = liveStillLandmarkOk(now) || (now - _liveStillOkAt < LIVE_STILL_GRACE);
+    const stillOk = liveStillLandmarkOk(now, angle) || (now - _liveStillOkAt < LIVE_STILL_GRACE);
     if(stillOk) return { ready:true, chip:chip + ' · 랜드마크 ✓', hint:'셔터 버튼을 눌러주세요' };
     return { ready:false, chip:chip + ' · 랜드마크 ✗',
              hint:'각도는 맞는데 얼굴 인식이 안 돼요 — 조금 덜 돌리거나, 얼굴 쪽을 밝게 해주세요' };
@@ -3935,6 +4016,7 @@ function stopLiveGuide(){
   // 저장본 감지 상태도 초기화 — 슬롯/화면이 바뀌면 이전 각도의 성공이 남아
   // 다음 슬롯에서 근거 없이 초록불이 켜질 수 있음
   _liveStillOkAt = 0; _liveStillCheckAt = 0; _liveStillLastOk = false;
+  _liveVerifiedAt = 0; _liveVerifiedAngle = null; _liveVerifiedPose = null;
   _liveLastMsg = ''; // 다음에 같은 문구가 다시 필요할 때 중복제거에 걸려 안 뜨는 것 방지
 }
 
@@ -7287,6 +7369,13 @@ function getHeadEllipsoid(){
       return `${a}(yaw${y.toFixed(0)}°,${tr},신뢰${c2})`;
     }).join(' ');
     console.log(`[뷰 기여] ${contrib}`);
+    // 두 뷰의 각도가 거의 같으면 그 둘은 사실상 같은 사진 — 복원이 퇴화한다(두상이
+    // 뭉개지는 대표 원인). 실기기에서 back이 right와 같은 -28°로 잡힌 사례가 있어 추가.
+    const AL = ['front','left','right','back'];
+    for(let i2=0;i2<AL.length;i2++) for(let j2=i2+1;j2<AL.length;j2++){
+      const d2 = Math.abs(getViewYawDeg(AL[i2]) - getViewYawDeg(AL[j2]));
+      if(d2 < 10) console.warn(`[뷰 퇴화 경고] ${AL[i2]}와 ${AL[j2]}의 각도 차이가 ${d2.toFixed(1)}°뿐 — 두 사진이 사실상 같은 방향이라 3D 복원이 부정확해집니다(해당 슬롯 재촬영 권장)`);
+    }
   }
   return ell;
 }
