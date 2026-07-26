@@ -1237,6 +1237,41 @@ async function initFaceLandmarker(){
 }
 initFaceLandmarker();
 
+/* ── 후면 귀 앵커 (2026-07-26, PoseLandmarker 연결) ────────────────────
+   문제: 후면은 FaceLandmarker가 원리적으로 실패한다(검출기가 얼굴 박스를 못 찾으면
+        468점 회귀가 아예 안 돌고, 234/454는 얼굴 메쉬가 통째로 맞아야 나오는
+        윤곽점이라 "귀만" 뽑을 수 없다). 실기기 로그로도 원본·확대·크롭 3회가
+        매번 전부 실패 — 반면 좌/우는 크롭 재시도로 살아났다(얼굴이 일부라도
+        보이면 크롭이 구제, 전혀 안 보이면 어떤 크롭도 못 구제).
+   결과: 후면만 다른 자를 쓰고 있었다. 정면·좌·우는 귀 랜드마크(234/454)를
+        기준점으로 쓰는데 후면은 "어깨 직전 가장 넓은 가로선"을 귀로 간주.
+   해법: PoseLandmarker(검출기가 얼굴이 아니라 '사람'을 찾으므로 뒤에서도 동작)의
+        귀 7·8번을 후면 사진에도 돌려서 실측 귀 좌표를 얻는다. 이러면 네 장이
+        모두 "귀"라는 같은 해부학적 기준점을 공유한다.
+        ※ 후면 슬롯에선 이미 라이브 가이드용으로 로드돼 있어 추가 다운로드 0.
+        ※ 가려진 귀라 위치는 추정값이다 — 정면 윤곽점만큼 정밀하진 않지만
+          간접 추정(최대폭 행)보다는 낫고, 무엇보다 기준이 같아진다. */
+async function detectBackEarsByPose(angle){
+  try{
+    const dataUrl = state.shots[angle]; if(!dataUrl) return null;
+    await ensurePoseLandmarker();
+    if(poseLandmarkerState !== 'ready' || !posePoseLandmarker) return null;
+    const img = await new Promise((res)=>{ const im=new Image(); im.onload=()=>res(im); im.onerror=()=>res(null); im.src=dataUrl; });
+    if(!img) return null;
+    let r = null;
+    try{ r = posePoseLandmarker.detect(img); }catch(e){ return null; }
+    const pts = r && r.landmarks && r.landmarks[0];
+    if(!pts || pts.length < 13) return null;
+    const lE = pts[7], rE = pts[8];
+    if(!lE || !rE) return null;
+    const span = Math.abs(rE.x - lE.x);
+    if(!(span > 0.02)) return null;              // 완전 옆모습 등 — 못 씀
+    return { lEarX: Math.min(lE.x, rE.x), rEarX: Math.max(lE.x, rE.x),
+             earY: (lE.y + rE.y) / 2, span,
+             shoulderY: (pts[11] && pts[12]) ? (pts[11].y + pts[12].y)/2 : null };
+  }catch(e){ console.warn('후면 귀 앵커 실패:', e); return null; }
+}
+
 async function detectFaceLandmarks(angle){
   if(!faceLandmarkerReady || !faceLandmarker) return null;
   const dataUrl = state.shots[angle]; if(!dataUrl) return null;
@@ -1489,6 +1524,10 @@ function getViewPoseSource(angle){
   if(lm && typeof lm.yaw === 'number') return { tier:'approx', lm };
   const cap = getCapturePose(angle);
   if(cap) return { tier:'live', lm, cap };
+  // 후면처럼 얼굴이 원리적으로 안 잡히는 뷰라도, PoseLandmarker 귀 앵커가 있으면
+  // 다른 뷰와 같은 기준점(귀)을 공유한다 — 각도는 슬롯 기본값이지만 위치 실측은
+  // 있으므로 신뢰도를 'none'보다 높게 준다(2026-07-26).
+  if(state.poseEars && state.poseEars[angle]) return { tier:'poseEar', lm };
   return { tier:'none', lm };
 }
 
@@ -1498,6 +1537,7 @@ function getViewYawDeg(angle){
   if(tier === 'pnp') return lm.poseYawDeg;
   if(tier === 'approx') return lm.yaw * 90;
   if(tier === 'live') return cap.yawDeg;
+  // 'poseEar'는 위치 실측일 뿐 각도 실측이 아니다 — 각도는 슬롯 기본값 유지(아래 폴백).
   return ASSUMED_YAW_DEG[angle] ?? 0;
 }
 
@@ -1930,16 +1970,12 @@ const state = {
 // 경로가 죽은 코드(호출 0건)로 확인되어 함수째 삭제됨.
 const FORCED_HAIR_COLOR = '#141414';
 
-const STYLES = [
-  {id:'bob',       name:'클래식 보브',     tags:'SHORT · STRAIGHT', length:25, curl:5,  volume:45, colorHex:'#2A1B12'},
-  {id:'long-wave', name:'롱 웨이브',       tags:'LONG · WAVE',      length:85, curl:55, volume:60, colorHex:'#3B2415'},
-  {id:'pixie',     name:'픽시 컷',         tags:'SHORT · TEXTURED', length:12, curl:15, volume:35, colorHex:'#1F1610'},
-  {id:'layered',   name:'레이어드 미디엄', tags:'MID · LAYERED',    length:55, curl:25, volume:55, colorHex:'#33210F'},
-  {id:'curly',     name:'볼륨 컬',         tags:'MID · CURL',       length:45, curl:90, volume:90, colorHex:'#241712'},
-  {id:'sleek',     name:'슬릭 스트레이트', tags:'LONG · STRAIGHT',  length:90, curl:5,  volume:30, colorHex:'#150F0B'},
-  {id:'shag',      name:'샤기 컷',         tags:'MID · TEXTURED',   length:50, curl:40, volume:65, colorHex:'#2E1E12'},
-  {id:'lob',       name:'로브',            tags:'MID-SHORT · WAVE', length:38, curl:35, volume:50, colorHex:'#27190F'},
-];
+/* (2026-07-26) 내장 프리셋 전부 제거 — 사용자 요청 "스타일 미적용 빼고 다 지워줘".
+   프리셋은 length/curl/volume 대표값 하나로 6개 섹션을 뭉뚱그리는 구형 모델이라,
+   섹션별 커트/펌/스타일링으로 옮겨간 지금 구조와 맞지 않는다. 배열만 비우면
+   "스타일 미적용" 카드(별도 생성)와 사용자가 직접 등록한 커스텀 스타일
+   (registerCurrentAsStyle → STYLES.push)은 그대로 동작한다. */
+const STYLES = [];
 
 /* ── 의상 카탈로그(OUTFIT_CATALOG) ──
    3단계(비즈니스 로드맵 — 파일 상단 주석 참고) 착수용. 아직 제휴사 상품 DB가
@@ -3642,6 +3678,7 @@ function retakeCurrent(){
   if(state.landmarks) state.landmarks[angle]=null;
   if(state.captureLmStatus) state.captureLmStatus[angle]=null;
   if(state.capturePose) state.capturePose[angle]=null; // 라이브 포즈 폴백도 사진과 함께 무효화
+  if(state.poseEars) state.poseEars[angle]=null;       // 포즈 귀 앵커도 무효화
   if(_lastShotCanvas && _lastShotCanvas.angle===angle) _lastShotCanvas=null; // 보관 캔버스도 무효화
   aiAnalysis=null;
   updateAngleUI();
@@ -3757,6 +3794,17 @@ async function checkCaptureLandmarks(angle){
     state.captureLmStatus[angle]='fail';
     // (2026-07-26) 감지가 실패해도 셔터 직전 라이브 실측 각도가 남아 있으면
     // 그 값이 그대로 쓰인다는 걸 알려준다 — "실패=각도 버림"이 아님.
+    // 후면은 얼굴이 원리적으로 안 잡힌다 — PoseLandmarker로 귀 앵커를 대신 확보해서
+    // 네 장이 같은 기준점(귀)을 공유하게 한다. 성공하면 신뢰도도 0.25 → 0.5로 올라간다.
+    if(angle === 'back'){
+      const ears = await detectBackEarsByPose(angle);
+      if(state.shots[angle] !== shotAtStart) return;
+      if(!state.poseEars) state.poseEars = {};
+      state.poseEars[angle] = ears;
+      _silhouetteAnchorCache = {};   // 앵커 재계산 필요
+      console.log(ears ? `[${angle}] 포즈 귀 앵커 확보 — 간격 ${(ears.span*100).toFixed(1)}% (얼굴 대신 이 기준점 사용)`
+                       : `[${angle}] 포즈 귀 앵커도 실패 — 실루엣 최대폭 추정으로 폴백`);
+    }
     const cap = getCapturePose(angle);
     if(cap){
       // 각도는 살렸지만 랜드마크(귀·눈·턱 좌표)가 없으면 그 뷰의 2D→3D 매핑이
@@ -3904,7 +3952,25 @@ function frameCutCheck(pts, crownFactor){
   if(maxX > 1-EDGE_MARGIN) return { cut:true, where:'오른쪽' };
   return { cut:false };
 }
-const BACK_EAR_VIS = 0.5;         // 후면 귀 판정 visibility 임계
+/* ── 후면 판정 기준 (2026-07-26 재작성) ────────────────────────────────
+   예전엔 "양쪽 귀가 다 보이는가"(visibility ≥ 0.5)로 판정했는데, 뒤돌아 서면
+   두 귀가 모두 머리에 가려져 visibility가 둘 다 낮게 나온다. 그러면
+   `visL < visR ? '왼쪽' : '오른쪽'` 이 늘 같은 쪽만 골라서, 사용자가 아무리
+   돌려도 "오른쪽 귀가 가려졌어요"만 반복됐다(실기기 보고 — 결국 수동 촬영).
+   게다가 후면 복원(computeSilhouetteAnchors)이 실제로 쓰는 건 귀가 아니라
+   "정수리 + 어깨 직전 최대폭"이다. 즉 귀 가시성은 필요한 조건이 아니었다.
+   → 뒤에서도 안정적으로 잡히는 신호로 교체:
+       ① 얼굴(코·눈)이 안 보일 것        = 정말 뒤를 보고 있다
+       ② 어깨가 둘 다 잡히고 수평일 것   = 상체가 화면에 있고 기울지 않았다
+       ③ 머리가 어깨 중앙 위에 있을 것   = 고개를 돌려 뒤돌아보고 있지 않다
+       ④ 정수리가 안 잘릴 것             = 복원 기준점이 살아 있다
+   좌/우 방향 안내는 쓰지 않는다 — 뒤돌아선 사람에게 "왼쪽"은 중의적이라
+   음성으로 들으면 오히려 헷갈린다. */
+const BACK_FACE_MAX_VIS = 0.90;   // 코·눈이 이보다 잘 보이면 카메라를 보고 있는 것
+const BACK_SHOULDER_MIN_VIS = 0.5;// 어깨 최소 신뢰도
+const BACK_SHOULDER_MIN_W = 0.10; // 어깨 너비(정규 x) 하한 — 옆으로 서면 좁아진다
+const BACK_CENTER_TOL = 0.16;     // 머리 중심이 어깨 중심에서 벗어난 허용치(어깨폭 대비)
+const BACK_TILT_TOL = 0.22;       // 어깨 기울기 허용치(어깨폭 대비 y차)
 const BACK_EAR_MIN_SPAN = 0.045;  // 정규화 x 기준 두 귀 최소 간격(완전 옆모습이면 붙어버림)
 
 // ⚠ 아래 상태 변수들은 반드시 var — let/const가 아님.
@@ -4087,32 +4153,46 @@ function liveEvaluateFrame(angle){
     let res = null;
     try{ res = posePoseLandmarker.detect(video); }catch(e){ return { ready:false, chip:null, hint:'후면(뒷머리)을 맞춰주세요' }; }
     const pts = res && res.landmarks && res.landmarks[0];
-    if(!pts || pts.length < 9) return { ready:false, chip:'사람이 안 잡혀요', hint:'뒷머리 전체가 화면에 들어오게 서주세요' };
-    const lEar = pts[7], rEar = pts[8];
-    const visL = (lEar.visibility ?? 0), visR = (rEar.visibility ?? 0);
-    const span = Math.abs(rEar.x - lEar.x);
-    if(visL < BACK_EAR_VIS || visR < BACK_EAR_VIS){
-      const which = visL < visR ? '왼쪽' : '오른쪽';
-      return { ready:false, chip:`귀 감지 ${visL>=BACK_EAR_VIS?'✓':'✗'}/${visR>=BACK_EAR_VIS?'✓':'✗'}`,
-               hint:`${which} 귀가 가려졌어요 — 뒷머리를 정면으로 맞춰주세요` };
-    }
-    if(span < BACK_EAR_MIN_SPAN){
-      return { ready:false, chip:'너무 옆으로 돌아갔어요', hint:'뒷머리를 정면으로 맞춰주세요(귀 2개가 다 보이게)' };
-    }
-    if(Math.abs(visL - visR) > 0.35){
-      return { ready:false, chip:'좌우 균형 필요', hint:'좌우 대칭이 되게 살짝 돌려주세요' };
-    }
-    // 정수리 잘림 — 후면 복원의 기준점이 정수리라 여기서 잘리면 아무 소용이 없다.
-    // 포즈 랜드마크에는 얼굴 높이가 없어 귀 간격을 자로 쓴다(머리 높이 ≈ 귀간격×1.1).
+    if(!pts || pts.length < 13) return { ready:false, chip:'사람이 안 잡혀요', hint:'뒷머리와 어깨가 화면에 들어오게 서주세요' };
+    const vis = p => (p && typeof p.visibility === 'number') ? p.visibility : 0;
+
+    // ① 얼굴이 보이면 아직 뒤를 안 본 것
+    const faceVis = Math.max(vis(pts[0]), vis(pts[2]), vis(pts[5]));
+    if(faceVis > BACK_FACE_MAX_VIS)
+      return { ready:false, chip:'얼굴이 보여요', hint:'고개를 앞으로 돌려 뒷머리만 보이게 해주세요' };
+
+    // ② 어깨
+    const lS = pts[11], rS = pts[12];
+    if(Math.min(vis(lS), vis(rS)) < BACK_SHOULDER_MIN_VIS)
+      return { ready:false, chip:'어깨가 안 잡혀요', hint:'상체가 화면에 들어오게 서주세요' };
+    const shoW = Math.abs(lS.x - rS.x);
+    if(shoW < BACK_SHOULDER_MIN_W)
+      return { ready:false, chip:'몸이 옆으로 돌아갔어요', hint:'어깨가 화면과 나란해지게 서주세요' };
+    const tilt = Math.abs(lS.y - rS.y) / shoW;
+    if(tilt > BACK_TILT_TOL)
+      return { ready:false, chip:`어깨 기울기 ${(tilt*100).toFixed(0)}%`, hint:'어깨를 수평으로 맞춰주세요' };
+
+    // ③ 머리가 어깨 중앙 위에 있는가(고개를 돌려 뒤돌아보면 크게 벗어난다)
+    const earMid = (pts[7].x + pts[8].x) / 2, shoMid = (lS.x + rS.x) / 2;
+    const off = Math.abs(earMid - shoMid) / shoW;
+    if(off > BACK_CENTER_TOL)
+      return { ready:false, chip:`머리 치우침 ${(off*100).toFixed(0)}%`, hint:'고개를 어깨와 나란히 정면으로 돌려주세요' };
+    const span = Math.abs(pts[8].x - pts[7].x);
+    if(span < BACK_EAR_MIN_SPAN)
+      return { ready:false, chip:'너무 옆으로 돌아갔어요', hint:'뒷머리가 정면으로 오게 서주세요' };
+
+    /* ④ 정수리 잘림 — 후면 복원의 기준점이라 여기서 잘리면 아무 소용이 없다.
+       ※ visibility로 필터하면 안 된다: 뒤에서는 머리 랜드마크의 visibility가
+         전부 낮아서, 정작 재야 할 머리 점들이 걸러지고 어깨만 남아 검사가
+         무력화된다(테스트로 확인). 위치는 가려져도 추정되므로 귀 y를 직접 쓴다.
+       귀선 위 머리 높이 ≈ 귀 간격의 0.9배(또는 어깨폭의 0.25배)로 근사. */
     {
-      const vis = pts.filter(p=>(p.visibility ?? 0) > 0.5);
-      if(vis.length){
-        let minY=1; for(const p of vis) if(p.y<minY) minY=p.y;
-        if(minY - span*1.1 < EDGE_MARGIN)
-          return { ready:false, chip:'정수리가 잘려요', hint:'머리 위가 화면 밖이에요 — 조금 물러나 주세요' };
-      }
+      const earTopY = Math.min(pts[7].y, pts[8].y);
+      const headAbove = Math.max(span * 0.9, shoW * 0.25);
+      if(earTopY - headAbove < EDGE_MARGIN)
+        return { ready:false, chip:'정수리가 잘려요', hint:'머리 위가 화면 밖이에요 — 조금 물러나 주세요' };
     }
-    return { ready:true, chip:`귀 2개 감지 ✓ (${(visL*100).toFixed(0)}/${(visR*100).toFixed(0)}%)`,
+    return { ready:true, chip:`후면 정렬 ✓ (치우침 ${(off*100).toFixed(0)}% · 기울기 ${(tilt*100).toFixed(0)}%)`,
              hint: BACK_AUTO_SHOOT ? '그대로 계세요 — 자동으로 찍습니다' : '셔터 버튼을 눌러주세요' };
   }
 
@@ -7758,6 +7838,13 @@ function getHeadEllipsoid(){
       return `${a}(yaw${y.toFixed(0)}°,${tr},신뢰${c2})`;
     }).join(' ');
     console.log(`[뷰 기여] ${contrib}`);
+    // 얼굴이 없는 뷰가 어떤 기준점으로 붙었는지 — 'pose'면 귀 실측, 'silhouette'면 최대폭 추정
+    ['front','left','right','back'].forEach(a2=>{
+      if(state.landmarks && state.landmarks[a2]) return;      // 얼굴 실측이 있으면 해당 없음
+      const an = computeSilhouetteAnchors(a2);
+      if(an) console.log(`[앵커] ${a2}: ${an._anchorSrc==='pose' ? '포즈 귀 실측(다른 뷰와 같은 기준점)' : '실루엣 최대폭 추정'}`
+        + ` — 귀 x ${an.lEarX.toFixed(3)}~${an.rEarX.toFixed(3)}, 귀높이 y ${an.earY.toFixed(3)}`);
+    });
     // 두 뷰의 각도가 거의 같으면 그 둘은 사실상 같은 사진 — 복원이 퇴화한다(두상이
     // 뭉개지는 대표 원인). 실기기에서 back이 right와 같은 -28°로 잡힌 사례가 있어 추가.
     const AL = ['front','left','right','back'];
@@ -8092,6 +8179,8 @@ function getViewPoseConfidence(angle){
   if(tier === 'approx') return 0.6;   // 포즈 행렬 분해 실패 → 귀 간격 비율 근사
   if(tier === 'live') return 0.5;     // 저장 사진 감지 실패, 셔터 직전 라이브 PnP 실측 사용
                                       // (측정 자체는 PnP지만 셔터와 최대 1.5s 시차 → 1.0은 아님)
+  if(tier === 'poseEar') return 0.5;  // 얼굴은 없지만 귀 앵커는 실측 — 두상 세로/폭 계산에 참여시킨다
+                                      // (0.5 미만이면 computeHeadVerticalRadius가 아예 제외한다)
   return 0.25;                        // 실측도 라이브도 없음 → 촬영 슬롯 기본 각도로 폴백
 }
 
@@ -8508,19 +8597,30 @@ function computeSilhouetteAnchors(angle){
       const topF = topOf(frontInf.personMask, fw, fh);
       const earB = topB >= 0 ? earRowOf(maskInf.personMask, mw, mh, topB) : null;
       const earF = topF >= 0 ? earRowOf(frontInf.personMask, fw, fh, topF) : null;
-      if(earB && earF && earB.span > 4 && earF.span > 4){
-        // 정면 실측 비율(마스크 픽셀 단위 — 프레이밍 무관): 정수리→눈/턱 거리 ÷ 귀높이 폭
-        const rEye  = (frontLm.eyeY*fh  - topF) / earF.span;
-        const rChin = (frontLm.chinY*fh - topF) / earF.span;
-        const eyeY  = (topB + rEye  * earB.span) / mh;
-        const chinY = (topB + rChin * earB.span) / mh;
+      /* 귀 앵커 선택 — PoseLandmarker 실측이 있으면 그걸 쓴다(2026-07-26).
+         정면·좌·우가 쓰는 기준점(귀)과 같아져서 네 장이 한 자로 연결된다.
+         없으면 기존 방식(어깨 직전 최대폭 행)으로 폴백. */
+      const pe = state.poseEars && state.poseEars[angle];
+      const earPx = pe
+        ? { l: pe.lEarX*mw, r: pe.rEarX*mw, row: pe.earY*mh, span: (pe.rEarX-pe.lEarX)*mw, src:'pose' }
+        : (earB ? { l: earB.earL, r: earB.earR, row: earB.earRow, span: earB.span, src:'silhouette' } : null);
+      // 정면 쪽 자: 귀 앵커를 쓸 땐 정면도 귀 랜드마크 간격으로 재야 기준이 맞는다.
+      const frontSpan = pe
+        ? Math.abs(frontLm.rEarX - frontLm.lEarX) * fw
+        : (earF ? earF.span : 0);
+      if(earPx && earPx.span > 4 && frontSpan > 4 && topB >= 0 && topF >= 0){
+        // 정면 실측 비율(프레이밍 무관): 정수리→눈/턱 거리 ÷ 귀 간격
+        const rEye  = (frontLm.eyeY*fh  - topF) / frontSpan;
+        const rChin = (frontLm.chinY*fh - topF) / frontSpan;
+        const eyeY  = (topB + rEye  * earPx.span) / mh;
+        const chinY = (topB + rChin * earPx.span) / mh;
         result = {
           eyeY, chinY,
           browTopY: Math.max(0, eyeY - (frontLm.eyeY - frontLm.browTopY)), // 정면 실측 간격 재사용
-          earY: earB.earRow / mh,
+          earY: earPx.row / mh,
           foreheadY: Math.max(0, eyeY - (frontLm.eyeY - frontLm.foreheadY)),
-          lEarX: earB.earL / mw, rEarX: earB.earR / mw,
-          _silhouette: true, // [진단용] 실루엣 앵커로 만들어진 것 표시
+          lEarX: earPx.l / mw, rEarX: earPx.r / mw,
+          _silhouette: true, _anchorSrc: earPx.src, // [진단용]
         };
       }
     }
@@ -9798,6 +9898,7 @@ function startNewCustomer(){
   state.landmarks = {};
   state.captureLmStatus = {}; // 촬영 직후 랜드마크 감지 배지 상태도 초기화
   state.capturePose = {};     // 셔터 시점 라이브 포즈(감지 실패 폴백)도 초기화
+  state.poseEars = {};        // 후면 포즈 귀 앵커도 초기화
   _lastShotCanvas = null;     // 고품질 재인코딩용 보관 캔버스도 해제(메모리)
   state.strandPaths = {}; // 캡처된 2D 가닥 경로(3D 리프트 소스)도 초기화
   _silhouetteAnchorCache = {}; // 실루엣 앵커 캐시도 새 고객마다 초기화
