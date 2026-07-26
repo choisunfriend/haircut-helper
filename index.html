@@ -8836,7 +8836,9 @@ function gravityDroop3D(pts, curlAmt){
 const PART3D = {
   AMP:   0.13, // 두상 반경 대비 최대 이동량(튜닝 지점)
   SIGMA: 1.1,  // 분할선에서의 각 감쇠 폭(rad, ≈63°) — 좁으면 선 주변만 갈라져 약해 보임
-  DECAY: 1.5,  // 가닥 진행에 따른 감쇠(1/DECAY 지점에서 0)
+  RAMP:  0.35, // 뿌리에서 이 비율까지 꺾이며 벌어짐(결이 꺾이는 구간)
+  TAIL:  0.6,  // 램프 이후에도 계속 벌어지는 정도 — 0이면 평행 이동만 되어
+               // "밀렸을 뿐 안 갈라진" 느낌이 남는다(결이 갈라져 보이는 핵심)
   MAXPHI: 60,  // 슬라이더 ±100 → ∓60°
 };
 // 뿌리 좌표(두상 공간) → 가르마가 만드는 이동 벡터(두상 공간). 없으면 null.
@@ -8863,11 +8865,20 @@ function partingPushHead(root, partVal, curlAmt){
   const amp = PART3D.AMP * near * topness * (1 - 0.5*Math.max(0,Math.min(100,curlAmt||0))/100);
   return { x:(dx0 - dot*nx)*amp, y:(-dot*ny)*amp, z:(dz0 - dot*nz)*amp };
 }
-// 가닥 진행에 따른 가중치 — 뿌리는 심겨 있으니 0에서 시작해 2스텝 안에 차오르고,
-// 끝으로 갈수록 사라진다(가르마는 뿌리 방향을 정하고 끝은 중력에 맡긴다).
+/* 가닥 진행에 따른 가중치.
+   ── (2026-07-26 수정) 감쇠 → 유지 ──
+   처음엔 "가르마는 뿌리 근처 효과"라고 보고 올라갔다가 0으로 내려오는 프로파일
+   (min(1,i/2)×max(0,1-t·1.5))을 썼다. 실기기 결과: 가르마 선은 보이는데 결이
+   안 갈라짐(사용자 보고). 당연한 결과였다 — 나갔다가 제자리로 돌아오니 끝점
+   변위가 0이라, 뿌리 근처만 벌어진 "혹"이 생길 뿐 가닥 방향은 그대로였다.
+   실제 빗질은 뿌리에서 방향이 정해지면 그 아래 전체가 그 방향을 물려받는다.
+   → 뿌리에서 RAMP 구간까지 꺾이며 벌어지고(결의 꺾임), 그 아래로도 TAIL 비율로
+     계속 벌어진다. 유지만 하면(TAIL=0) 가닥들이 나란히 평행 이동할 뿐이라
+     "밀렸을 뿐 안 갈라진" 모양이 된다 — 갈라져 보이려면 계속 벌어져야 한다. */
 function partWeightAt(i, n){
-  if(i <= 0 || n <= 1) return 0;
-  return Math.min(1, i/2) * Math.max(0, 1 - (i/n)*PART3D.DECAY);
+  if(i <= 0 || n <= 0) return 0;
+  const t = i/n;
+  return Math.min(1, t/PART3D.RAMP) + Math.max(0, t - PART3D.RAMP) * PART3D.TAIL;
 }
 // 3D 경로용 — 가닥 전체에 가르마 이동을 얹는다. 뿌리(pts[0])는 고정.
 function partStrand3D(pts, partVal, curlAmt){
