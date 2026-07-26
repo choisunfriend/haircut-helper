@@ -621,6 +621,57 @@ main{flex:1;position:relative;overflow:hidden;}
   background:rgba(27,24,22,0.6);padding:6px;
 }
 
+/* ── 실시간 각도 가이드 (2026-07-26) ──────────────────────────────
+   촬영 "전"에 라이브 영상으로 각도를 재서, 목표 범위(측면 40~55°)에
+   들어오면 가이드 타원이 초록으로 바뀌고 "지금 찍으세요" 배지가 뜬다.
+   셔터는 사용자가 직접 누름(자동촬영 아님) — 사용자 지시.
+   상태는 .capture-video-wrap의 클래스 하나(.live-ready)로만 구동해서
+   기존 DOM 구조/스크립트에 부작용이 없게 함. */
+.face-guide-svg ellipse{ transition:stroke .18s ease, stroke-width .18s ease, opacity .18s ease; }
+.capture-video-wrap.live-ready .face-guide-svg ellipse{
+  stroke:#5BD97A; stroke-width:1.5; stroke-dasharray:none;
+  filter:drop-shadow(0 0 2px rgba(91,217,122,0.9));
+}
+/* 초록 프레임(네 모서리) — 범위 안일 때만 표시 */
+.live-frame{position:absolute;inset:0;pointer-events:none;opacity:0;transition:opacity .18s ease;}
+.capture-video-wrap.live-ready .live-frame{opacity:1;}
+.live-frame i{position:absolute;width:34px;height:34px;border:2.5px solid #5BD97A;
+  filter:drop-shadow(0 0 4px rgba(91,217,122,0.55));}
+.live-frame i:nth-child(1){top:14px;left:14px;border-right:none;border-bottom:none;border-radius:8px 0 0 0;}
+.live-frame i:nth-child(2){top:14px;right:14px;border-left:none;border-bottom:none;border-radius:0 8px 0 0;}
+.live-frame i:nth-child(3){bottom:14px;left:14px;border-right:none;border-top:none;border-radius:0 0 0 8px;}
+.live-frame i:nth-child(4){bottom:14px;right:14px;border-left:none;border-top:none;border-radius:0 0 8px 0;}
+
+/* "지금 찍으세요" 배지 */
+/* 얼굴을 가리지 않도록 화면 중앙이 아니라 하단(가이드 타원 아래)에 띄운다 */
+.shoot-now{
+  position:absolute;bottom:52px;left:50%;transform:translate(-50%,0) scale(0.92);
+  background:rgba(43,140,66,0.94);color:#F2FFF5;font-size:17px;font-weight:700;
+  letter-spacing:1px;padding:11px 22px;border-radius:26px;pointer-events:none;
+  border:1.5px solid rgba(150,255,175,0.85);
+  box-shadow:0 0 22px rgba(91,217,122,0.45);
+  opacity:0;transition:opacity .18s ease, transform .18s ease;
+  white-space:nowrap;
+}
+.capture-video-wrap.live-ready .shoot-now{opacity:1;transform:translate(-50%,0) scale(1);
+  animation:shootPulse 1.05s ease-in-out infinite;}
+@keyframes shootPulse{0%,100%{box-shadow:0 0 18px rgba(91,217,122,0.35);}50%{box-shadow:0 0 30px rgba(91,217,122,0.7);}}
+
+/* 실시간 각도 수치 칩 */
+.live-angle{
+  position:absolute;top:12px;left:50%;transform:translateX(-50%);
+  background:rgba(27,24,22,0.72);border:1px solid var(--line);
+  color:var(--text-muted);font-family:'JetBrains Mono',monospace;font-size:11px;
+  padding:4px 10px;border-radius:12px;pointer-events:none;white-space:nowrap;
+  transition:color .18s ease,border-color .18s ease;
+}
+.live-angle.ok{color:#8CE8A2;border-color:rgba(91,217,122,0.6);}
+.live-angle.hide{display:none;}
+/* 셔터 버튼 강조 */
+.shutter-btn.live-ready{
+  box-shadow:0 0 0 3px rgba(91,217,122,0.85), 0 0 18px rgba(91,217,122,0.55);
+}
+
 /* angle strip */
 .angle-strip{
   display:flex;gap:0;background:var(--surface);border-top:1px solid var(--line);
@@ -853,6 +904,10 @@ input[type=range]::-moz-range-thumb{width:20px;height:20px;border-radius:50%;bac
         <svg class="face-guide-svg" viewBox="0 0 100 100" preserveAspectRatio="xMidYMid meet">
           <ellipse cx="50" cy="38" rx="34" ry="46" fill="none" stroke="rgba(232,195,158,0.55)" stroke-width="0.7" stroke-dasharray="3 3"/>
         </svg>
+        <!-- 실시간 각도 가이드 오버레이 (2026-07-26) — .capture-video-wrap.live-ready일 때만 보임 -->
+        <div class="live-frame" id="liveFrame"><i></i><i></i><i></i><i></i></div>
+        <div class="shoot-now" id="shootNowBadge">지금 찍으세요</div>
+        <div class="live-angle hide" id="liveAngleChip">각도 측정 준비 중…</div>
         <div class="cap-hint" id="captureHint">정면을 가이드 안에 맞춰주세요</div>
       </div>
 
@@ -881,7 +936,7 @@ input[type=range]::-moz-range-thumb{width:20px;height:20px;border-radius:50%;bac
       </div>
 
       <div class="capture-actions">
-        <button class="shutter-btn" onclick="captureCurrentAngle()">📷</button>
+        <button class="shutter-btn" id="shutterBtn" onclick="captureCurrentAngle()">📷</button>
         <div class="cap-right">
           <div class="dial-row">
             <div class="dial-mini">
@@ -3181,6 +3236,9 @@ function activateScreen(name){
   if(tab) tab.classList.add('active');
   document.getElementById('stageLabel').innerHTML='단계 <b>'+STAGE_NAMES[name]+'</b>';
   currentScreen = name; // 먼저 업데이트
+  // 촬영 화면을 벗어나면 실시간 각도 가이드 루프를 멈춰야 함(카메라 프레임을
+  // 계속 detect하면 다른 화면의 3D 렌더링과 CPU를 다툼).
+  if(typeof syncLiveGuide === 'function') syncLiveGuide();
 }
 
 // 상태텍스트: 현재 진단 중인 항목(각도 탭 vs 실측 3D 포즈)만 남김.
@@ -3256,6 +3314,9 @@ async function initCamera(){
     video.srcObject=cameraStream;
     video.style.display='block';
     camOffMsg.style.display='none';
+    // 카메라가 붙은 뒤에야 실시간 각도 가이드를 돌릴 수 있음
+    video.addEventListener('loadeddata', ()=>{ if(typeof syncLiveGuide==='function') syncLiveGuide(); }, { once:true });
+    if(typeof syncLiveGuide==='function') syncLiveGuide();
   }catch(e){
     camOffMsg.innerHTML='카메라에 접근할 수 없습니다.<br><span style="font-size:11px;">아래 "업로드" 버튼을 이용해주세요.</span>';
     camOffMsg.style.display='';
@@ -3304,6 +3365,8 @@ function updateAngleUI(){
   const sp=document.getElementById('shotPreview');
   if(shot){sp.src=shot;sp.style.display='block';video.style.display='none';}
   else{sp.style.display='none';if(cameraStream)video.style.display='block';}
+  // 슬롯이 바뀌면 목표 각도도 바뀌므로 실시간 가이드를 재동기화
+  if(typeof syncLiveGuide === 'function') syncLiveGuide();
 }
 updateAngleUI();
 
@@ -3312,6 +3375,15 @@ function jumpToAngle(i){ state.currentCaptureIndex=i; updateAngleUI(); }
 function captureCurrentAngle(){
   const angle=ANGLES[state.currentCaptureIndex];
   if(state.shots[angle]){ retakeCurrent(); return; }
+  // 실시간 가이드가 "아직 범위 밖"이라고 보고 있어도 촬영은 막지 않는다 —
+  // 사용자 지시: "안내만, 셔터는 직접". 대신 그 사실을 토스트로 알려서
+  // 그 자리에서 재촬영할지 판단할 수 있게 함.
+  if(typeof _liveReadyState !== 'undefined' && !_liveReadyState && liveGuideShouldRun()){
+    const t = LIVE_YAW_TARGET[angle];
+    showToast(angle==='back'
+      ? '⚠ 귀 2개가 다 보이는 상태는 아니에요 — 그대로 저장했어요'
+      : `⚠ 목표 각도(${t.min}~${t.max}°) 밖이에요 — 그대로 저장했어요`);
+  }
   if(video.style.display!=='none' && video.videoWidth){
     const c=document.createElement('canvas');
     c.width=video.videoWidth; c.height=video.videoHeight;
@@ -3404,6 +3476,220 @@ async function checkCaptureLandmarks(angle){
       : `⚠ ${ANGLE_LABELS[angle]} 랜드마크 감지 실패 — 눈·코 라인이 살짝 보이는 각도로 다시 촬영하면 3D 정확도가 올라가요`);
   }
   updateAngleUI();
+}
+
+/* ════════════════════════════════════════
+   실시간 촬영 각도 가이드 (2026-07-26 추가)
+   ────────────────────────────────────────
+   사용자 요청: "처음 사진 4장 찍을 때, 찍기 전에 실시간 감지로 각도를 확인해서
+   40~55 범위 안에 들어올 때 초록색 라인과 함께 '지금 찍으세요' 안내를 줘서
+   찍게 만들어줘." + "좌/우 측면만 40~55를 쓰고, 후면은 귀 2개가 다 보이면"
+   + "각도 감지 엔진을 따로 추가하는 게 아니라, 사진 찍고 나면 검증하는 그
+   MediaPipe를 처음 시작할 때 로드해서 쓰면 될 것 같은데".
+
+   ── 설계 ──
+   · 엔진을 새로 만들지 않는다. 앱 시작 시 initFaceLandmarker()가 이미 로드해둔
+     그 faceLandmarker 인스턴스를 그대로 재사용하고, 입력만 <img> 대신 <video>
+     엘리먼트를 넘긴다. MediaPipe의 detect()는 ImageSource(HTMLVideoElement 포함)를
+     받으므로 runningMode:'IMAGE' 그대로 라이브 프레임 판정이 가능하다.
+     → 추가 모델 다운로드 0개. 촬영 후 검증과 완전히 같은 포즈 계산(PnP)을 쓰므로
+       "가이드는 초록이었는데 찍고 나니 실패" 같은 불일치가 원리적으로 없다.
+   · 단, 후면(back)은 얼굴이 안 보여 FaceLandmarker로 귀를 잡을 수 없다. 사용자가
+     요청한 "귀 2개" 판정을 위해 PoseLandmarker를 쓰는데, 같은 @mediapipe/tasks-vision
+     모듈(이미 import됨)에서 만들되 사용자가 실제로 후면 슬롯에 도착했을 때만
+     지연 로드한다 — 앞 3장 찍는 동안은 추가 네트워크 비용이 전혀 없다.
+
+   ── 미러(거울) 부호 주의 ──
+   captureCurrentAngle()은 캔버스에 scale(-1,1)로 좌우를 뒤집어 저장한다(셀피 미러).
+   따라서 "저장된 사진의 yaw" = -(라이브 영상의 yaw). 앱의 다른 모든 코드
+   (ASSUMED_YAW_DEG = {front:0,left:-90,right:90}, getViewYawDeg 등)는 저장된 사진
+   기준이므로, 판정도 저장 기준으로 통일하고 라이브 값에 MIRROR_SIGN을 곱해서 맞춘다.
+   혹시 실기기에서 좌/우가 뒤바뀌어 보이면 LIVE_MIRROR_SIGN 한 줄만 뒤집으면 된다.
+════════════════════════════════════════ */
+
+// 저장 사진 기준 목표 각도(도). 측면은 사용자 지정 40~55.
+const LIVE_YAW_TARGET = {
+  front: { min:-12, max: 12, label:'정면' },
+  left:  { min:-55, max:-40, label:'좌측' },   // 저장 기준 음수 = ASSUMED_YAW_DEG.left와 같은 부호
+  right: { min: 40, max: 55, label:'우측' },
+};
+const LIVE_MIRROR_SIGN = -1;      // 라이브 yaw → 저장 사진 yaw 변환 계수(미러 촬영이라 -1)
+const LIVE_DETECT_INTERVAL = 120; // ms. 프레임마다 돌리면 과함 — 약 8fps면 안내용으로 충분
+const LIVE_LOST_GRACE = 700;      // ms. 한두 프레임 놓쳐도 바로 빨간불로 안 떨어지게
+const BACK_EAR_VIS = 0.5;         // 후면 귀 판정 visibility 임계
+const BACK_EAR_MIN_SPAN = 0.045;  // 정규화 x 기준 두 귀 최소 간격(완전 옆모습이면 붙어버림)
+
+// ⚠ 아래 상태 변수들은 반드시 var — let/const가 아님.
+// updateAngleUI()가 정의 직후 로드 시점에 한 번 호출되는데(파일 위쪽), 그 안에서
+// syncLiveGuide() → stopLiveGuide()가 이 변수들을 건드린다. 이 블록은 그보다
+// 아래에 있으므로 let이면 TDZ("Cannot access '_liveRAF' before initialization")로
+// 앱 초기화가 통째로 죽는다(실제로 겪음). var는 호이스팅되어 undefined로 안전.
+var _liveRAF = null;
+var _liveLastDetect = 0;
+var _liveReadyState = false;
+var _liveLastGood = 0;      // 마지막으로 "범위 안"이었던 시각
+var _liveLastMsg = '';
+var __lmDetectBusy = false; // faceLandmarker 재진입 방지(촬영 직후 검증과 공유하는 인스턴스라)
+
+// ── 후면용 PoseLandmarker: 후면 슬롯에 도착했을 때만 지연 로드 ──
+var posePoseLandmarker = null;
+var poseLandmarkerState = 'idle'; // idle | loading | ready | fail
+async function ensurePoseLandmarker(){
+  if(poseLandmarkerState === 'ready' || poseLandmarkerState === 'loading' || poseLandmarkerState === 'fail') return;
+  poseLandmarkerState = 'loading';
+  try{
+    const vision = await loadVisionModule();
+    const PL = vision.PoseLandmarker, FR = vision.FilesetResolver;
+    if(!PL || !FR) throw new Error('PoseLandmarker API 없음');
+    const fs = await FR.forVisionTasks('https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.9/wasm');
+    posePoseLandmarker = await PL.createFromOptions(fs, {
+      baseOptions:{
+        modelAssetPath:'https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task',
+        delegate:'GPU'
+      },
+      runningMode:'IMAGE', numPoses:1,
+      minPoseDetectionConfidence:0.4, minPosePresenceConfidence:0.4, minTrackingConfidence:0.4,
+    });
+    poseLandmarkerState = 'ready';
+    console.log('Pose Landmarker(후면 귀 판정) 준비 완료');
+  }catch(e){
+    poseLandmarkerState = 'fail';
+    window.__poseDiag = (e && e.message) ? e.message : String(e);
+    console.warn('Pose Landmarker 로드 실패 — 후면은 가이드 없이 진행:', e);
+  }
+}
+
+// 현재 촬영 슬롯에서 실시간 가이드를 돌려야 하는 상황인지
+function liveGuideShouldRun(){
+  if(typeof currentScreen !== 'undefined' && currentScreen !== 'capture') return false;
+  if(!cameraStream) return false;
+  const angle = ANGLES[state.currentCaptureIndex];
+  if(state.shots[angle]) return false;              // 이미 찍은 슬롯(미리보기 중)이면 불필요
+  if(video.style.display === 'none') return false;
+  return true;
+}
+
+function setLiveUI(ready, chipText, chipOk, hintText){
+  const wrap = document.querySelector('.capture-video-wrap');
+  const chip = document.getElementById('liveAngleChip');
+  const btn  = document.getElementById('shutterBtn');
+  const hint = document.getElementById('captureHint');
+  if(wrap) wrap.classList.toggle('live-ready', !!ready);
+  if(btn)  btn.classList.toggle('live-ready', !!ready);
+  if(chip){
+    if(chipText === null){ chip.classList.add('hide'); }
+    else { chip.classList.remove('hide'); chip.textContent = chipText; chip.classList.toggle('ok', !!chipOk); }
+  }
+  if(hint && hintText != null && hintText !== _liveLastMsg){ hint.textContent = hintText; _liveLastMsg = hintText; }
+  _liveReadyState = !!ready;
+}
+
+// 판정 1회. 반환: {ready, chip, hint}
+function liveEvaluateFrame(angle){
+  // ── 후면: 얼굴 대신 양쪽 귀가 다 보이는지(PoseLandmarker) ──
+  if(angle === 'back'){
+    if(poseLandmarkerState === 'loading') return { ready:false, chip:'후면 감지 준비 중…', hint:'후면(뒷머리)을 맞춰주세요' };
+    if(poseLandmarkerState !== 'ready')  return { ready:false, chip:null, hint:'후면(뒷머리)을 맞춰주세요' };
+    let res = null;
+    try{ res = posePoseLandmarker.detect(video); }catch(e){ return { ready:false, chip:null, hint:'후면(뒷머리)을 맞춰주세요' }; }
+    const pts = res && res.landmarks && res.landmarks[0];
+    if(!pts || pts.length < 9) return { ready:false, chip:'사람이 안 잡혀요', hint:'뒷머리 전체가 화면에 들어오게 서주세요' };
+    const lEar = pts[7], rEar = pts[8];
+    const visL = (lEar.visibility ?? 0), visR = (rEar.visibility ?? 0);
+    const span = Math.abs(rEar.x - lEar.x);
+    if(visL < BACK_EAR_VIS || visR < BACK_EAR_VIS){
+      const which = visL < visR ? '왼쪽' : '오른쪽';
+      return { ready:false, chip:`귀 감지 ${visL>=BACK_EAR_VIS?'✓':'✗'}/${visR>=BACK_EAR_VIS?'✓':'✗'}`,
+               hint:`${which} 귀가 가려졌어요 — 뒷머리를 정면으로 맞춰주세요` };
+    }
+    if(span < BACK_EAR_MIN_SPAN){
+      return { ready:false, chip:'너무 옆으로 돌아갔어요', hint:'뒷머리를 정면으로 맞춰주세요(귀 2개가 다 보이게)' };
+    }
+    if(Math.abs(visL - visR) > 0.35){
+      return { ready:false, chip:'좌우 균형 필요', hint:'좌우 대칭이 되게 살짝 돌려주세요' };
+    }
+    return { ready:true, chip:`귀 2개 감지 ✓ (${(visL*100).toFixed(0)}/${(visR*100).toFixed(0)}%)`, hint:'셔터 버튼을 눌러주세요' };
+  }
+
+  // ── 정면/좌/우: 기존 faceLandmarker를 그대로 재사용 ──
+  if(!faceLandmarkerReady || !faceLandmarker) return { ready:false, chip:'각도 감지 준비 중…', hint:HINTS[angle] };
+  let res = null;
+  try{ res = faceLandmarker.detect(video); }catch(e){ return { ready:false, chip:null, hint:HINTS[angle] }; }
+  if(!res || !res.faceLandmarks || !res.faceLandmarks.length){
+    return { ready:false, chip:'얼굴이 안 잡혀요', hint:'눈·코 라인이 살짝 보이는 각도로 맞춰주세요' };
+  }
+  let liveYaw = null;
+  if(res.facialTransformationMatrixes && res.facialTransformationMatrixes.length){
+    try{ liveYaw = decomposePoseMatrix(res.facialTransformationMatrixes[0].data).yawRad * 180/Math.PI; }
+    catch(e){ liveYaw = null; }
+  }
+  if(liveYaw === null || Number.isNaN(liveYaw)){
+    return { ready:false, chip:'각도 계산 실패', hint:HINTS[angle] };
+  }
+  // 라이브 → 저장 사진 기준으로 변환(미러 보정)
+  const yaw = liveYaw * LIVE_MIRROR_SIGN;
+  const t = LIVE_YAW_TARGET[angle];
+  const inRange = yaw >= t.min && yaw <= t.max;
+  // 화면 표시는 사용자의 머릿속 기준(측면 "40~55")에 맞춰 절대값으로 — 내부 판정만
+  // 부호 있는 저장기준 yaw를 쓴다. 정면은 어느 쪽으로 틀어졌는지가 정보라 부호 유지.
+  const chip = (angle === 'front')
+    ? `정면 ${yaw>=0?'+':''}${yaw.toFixed(0)}° / 목표 ±12°`
+    : `${t.label} ${Math.abs(yaw).toFixed(0)}° / 목표 40~55°`;
+  if(inRange) return { ready:true, chip, hint:'셔터 버튼을 눌러주세요' };
+
+  // 어느 쪽으로 얼마나 돌려야 하는지 안내
+  let hint;
+  if(angle === 'front'){
+    hint = (yaw > t.max) ? '조금 왼쪽으로 돌려주세요' : '조금 오른쪽으로 돌려주세요';
+  } else {
+    const mag = Math.abs(yaw), lo = Math.min(Math.abs(t.min), Math.abs(t.max)), hi = Math.max(Math.abs(t.min), Math.abs(t.max));
+    const sameSide = (yaw >= 0) === (t.max > 0);
+    if(!sameSide)      hint = `반대 방향이에요 — ${t.label}으로 돌려주세요`;
+    else if(mag < lo)  hint = `${(lo-mag).toFixed(0)}° 더 돌려주세요`;
+    else               hint = `${(mag-hi).toFixed(0)}° 덜 돌려주세요(너무 옆모습)`;
+  }
+  return { ready:false, chip, hint };
+}
+
+function liveGuideTick(){
+  _liveRAF = requestAnimationFrame(liveGuideTick);
+  if(!liveGuideShouldRun()){ stopLiveGuide(); return; }
+  const now = performance.now();
+  if(now - _liveLastDetect < LIVE_DETECT_INTERVAL) return;
+  _liveLastDetect = now;
+  if(__lmDetectBusy) return;                                   // 촬영 직후 검증과 인스턴스 공유 — 겹치지 않게
+  if(!(video.readyState >= 2 && video.videoWidth)) return;     // 첫 프레임 전
+
+  const angle = ANGLES[state.currentCaptureIndex];
+  let r;
+  __lmDetectBusy = true;
+  try{ r = liveEvaluateFrame(angle); }
+  finally{ __lmDetectBusy = false; }
+
+  if(r.ready){ _liveLastGood = now; }
+  // 한두 프레임 놓쳐서 초록이 깜빡이는 걸 막는 유예
+  const ready = r.ready || (now - _liveLastGood < LIVE_LOST_GRACE && _liveReadyState);
+  setLiveUI(ready, r.chip, r.ready, ready && !r.ready ? null : r.hint);
+}
+
+function startLiveGuide(){
+  if(_liveRAF !== null) return;
+  _liveLastGood = 0; _liveLastDetect = 0;
+  _liveRAF = requestAnimationFrame(liveGuideTick);
+}
+function stopLiveGuide(){
+  if(_liveRAF !== null){ cancelAnimationFrame(_liveRAF); _liveRAF = null; }
+  setLiveUI(false, null, false, null);
+  _liveLastGood = 0;
+  _liveLastMsg = ''; // 다음에 같은 문구가 다시 필요할 때 중복제거에 걸려 안 뜨는 것 방지
+}
+
+// 화면/슬롯이 바뀔 때마다 호출 — 돌려야 하면 켜고, 아니면 끈다.
+function syncLiveGuide(){
+  if(!liveGuideShouldRun()){ stopLiveGuide(); return; }
+  // 후면 슬롯에 처음 도착한 순간에만 Pose 모델을 받는다(앞 3장은 추가 다운로드 0).
+  if(ANGLES[state.currentCaptureIndex] === 'back') ensurePoseLandmarker();
+  startLiveGuide();
 }
 
 /* ════════════════════════════════════════
