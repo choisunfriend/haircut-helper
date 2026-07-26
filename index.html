@@ -558,10 +558,28 @@
     "왼쪽 옆머리가 보이게 — 고개를 오른쪽으로 돌려주세요" 식으로 둘 다 명시.
   검증: node --check(본문 스크립트) + 부호 표 수기 대조(실측 좌31/우-25가
   새 목표 범위 부호와 일치).
-  주의(미수정, 별건): 라이브 프리뷰(#video)에는 미러가 안 걸려 있는데 저장은
-  미러라, 찍기 전 화면과 찍힌 사진의 좌우가 서로 다르다. 프리뷰도 거울처럼
-  보이게 하려면 #video에 transform:scaleX(-1) 한 줄이면 되지만, 그러면 위
-  정면 안내(왼쪽/오른쪽) 체감이 바뀌므로 실기기 확인 후 판단할 것.
+  ── 2026-07-26 (2) 프리뷰 미러 일치 + 라이브 yaw를 폴백으로 보존 ──
+  (1) 프리뷰 미러: #video에 transform:scaleX(-1). 저장은 원래 미러였는데 프리뷰만
+      원본이라 "찍기 전 화면"과 "찍힌 사진"의 좌우가 서로 달랐음. CSS 표시만
+      뒤집는 것이라 MediaPipe가 읽는 프레임은 원본 그대로 — LIVE_MIRROR_SIGN 무관.
+  (2) 랜드마크 감지 실패 시 각도를 버리지 않음(실기기: 얼굴/두상이 계속 찌그러짐).
+      원인: 정지 사진 감지가 실패하면 getViewYawDeg가 ASSUMED_YAW_DEG로 떨어져
+      측면을 ±90°로 간주했음. 실제 촬영각은 21~31°인데 90°로 보면
+      E²=W²cos²θ+D²sin²θ 역투영에서 실루엣 반폭이 통째로 "깊이"로 해석돼
+      두상 깊이/폭이 무너진다 — 스크린샷의 뭉개진 얼굴·두상이 이 경로.
+      수정: 셔터 직전 라이브 가이드가 이미 같은 faceLandmarker로 PnP yaw를 재고
+      있으므로, 그 값을 state.liveYawAtCapture[angle]에 저장(2.5초 이내 측정만
+      유효, 저장 사진 기준 부호)하고 getViewPoseSource에 'live' 티어를 신설:
+        pnp(1.0) > live(0.85) > approx(0.6) > 슬롯 기본값(0.25)
+      live가 approx보다 위인 이유 — approx(lm.yaw*90)는 귀 간격 비율의 선형
+      매핑이라 얕은 각도에서 크게 부풀려짐. live는 같은 엔진의 실측 PnP.
+      sectionBandsFor의 faceDir 폴백도 슬롯 이름 하드코딩 대신 getViewYawDeg
+      부호를 보도록 교체 → 감지 실패한 측면에서도 템플/후두부가 안 뒤집힘.
+      후면은 얼굴 yaw 자체가 없으므로 종전대로 180° 가정(라이브 값 명시적 폐기).
+      업로드 사진·재촬영·새 고객 시작 시 liveYawAtCapture 초기화.
+      진단: 조정화면 segStatus에 "랜드마크 없음 — 촬영 직전 라이브 yaw:31.2° 사용"
+      으로 출처가 보이고, 촬영 직후 토스트에도 각도 유지 사실을 표시.
+  검증: node --check(본문 스크립트).
 -->
 
 <!DOCTYPE html>
@@ -637,7 +655,13 @@ main{flex:1;position:relative;overflow:hidden;}
   display:flex;align-items:center;justify-content:center;
   background:#0a0907;
 }
-#video{width:100%;height:100%;object-fit:cover;display:block;}
+/* (2026-07-26) 프리뷰도 거울로 — captureCurrentAngle()이 scale(-1,1)로 뒤집어
+   저장하므로, 프리뷰가 미러가 아니면 "찍기 전 화면"과 "찍힌 사진"의 좌우가 서로
+   달라 보인다(실기기: 좌우가 헷갈리는 원인 중 하나). 이 transform은 CSS 표시에만
+   걸리고 MediaPipe가 읽는 video 프레임 자체는 원본 그대로라, 라이브 판정의
+   LIVE_MIRROR_SIGN(-1)에는 아무 영향이 없다. #shotPreview는 이미 미러로 저장된
+   이미지를 그대로 보여주는 것이므로 뒤집지 않는다. */
+#video{width:100%;height:100%;object-fit:cover;display:block;transform:scaleX(-1);}
 .cam-off-msg{color:var(--text-muted);font-size:13px;text-align:center;padding:0 32px;line-height:1.8;position:absolute;}
 #shotPreview{width:100%;height:100%;object-fit:cover;display:none;position:absolute;inset:0;}
 .face-guide-svg{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;}
@@ -1370,14 +1394,22 @@ const ASSUMED_YAW_DEG = { front:0, left:90, right:-90, back:180 };
 function getViewPoseSource(angle){
   const lm = state.landmarks && state.landmarks[angle];
   if(lm && typeof lm.poseYawDeg === 'number' && !Number.isNaN(lm.poseYawDeg)) return { tier:'pnp', lm };
+  // (2026-07-26) 'live' 티어 신설 — 정지 사진 감지가 실패해도 셔터 직전 라이브
+  // 프레임에서 잰 PnP yaw가 있으면 그걸 쓴다. 같은 faceLandmarker·같은 자세라
+  // 정지 사진 PnP와 사실상 같은 값이고, 슬롯 기본값(±90°)보다 비교할 수 없이 정확.
+  // 랜드마크 근사(lm.yaw*90)보다도 위 — 근사는 귀 간격 비율의 선형 매핑이라
+  // 얕은 각도에서 크게 부풀려진다(실측 30°가 50°대로 나오는 식).
+  const live = state.liveYawAtCapture && state.liveYawAtCapture[angle];
+  if(typeof live === 'number' && !Number.isNaN(live)) return { tier:'live', lm, liveYawDeg: live };
   if(lm && typeof lm.yaw === 'number') return { tier:'approx', lm };
   return { tier:'none', lm };
 }
 
 // 뷰(angle)의 실측 좌우 회전각(도).
 function getViewYawDeg(angle){
-  const { tier, lm } = getViewPoseSource(angle);
+  const { tier, lm, liveYawDeg } = getViewPoseSource(angle);
   if(tier === 'pnp') return lm.poseYawDeg;
+  if(tier === 'live') return liveYawDeg;   // 셔터 직전 라이브 PnP 실측(폴백 아님)
   if(tier === 'approx') return lm.yaw * 90;
   return ASSUMED_YAW_DEG[angle] ?? 0;
 }
@@ -1616,9 +1648,10 @@ function sectionBandsFor(angle){
     // (코가 귀 중심보다 어느 쪽인지)가 있으면 실측, 없으면 촬영 슬롯 가정.
     faceDir: (lm && typeof lm.yaw === 'number' && Math.abs(lm.yaw) > 0.05)
       ? (lm.yaw >= 0 ? 1 : -1)
-      // (2026-07-26) 폴백도 ASSUMED_YAW_DEG와 같은 부호 착오가 있었음:
-      // 미러 저장이라 좌측 뷰가 양수(얼굴이 오른쪽을 봄)다 → left가 +1.
-      : (angle === 'left' ? 1 : -1),
+      // (2026-07-26) 폴백을 슬롯 이름 하드코딩(angle==='right'?1:-1 — 부호가
+      // 반대였음)에서 getViewYawDeg 체인으로 교체. 이러면 정지 사진 감지가
+      // 실패해도 라이브 실측 yaw의 부호로 앞/뒤(템플↔후두부)를 제대로 가른다.
+      : (getViewYawDeg(angle) >= 0 ? 1 : -1),
   };
   _secBandsCache[angle] = { srcLm: lm, srcMi: mi, bands };
   return bands;
@@ -1685,6 +1718,10 @@ const state = {
   hairMasks: {front:null,left:null,right:null,back:null},
   hairCanvases: {front:null,left:null,right:null,back:null},
   baseCanvases: {front:null,left:null,right:null,back:null},
+  // (2026-07-26) 셔터 직전 라이브 PnP로 잰 yaw(저장 사진 기준, 도). 정지 사진
+  // 랜드마크 감지가 실패해도 각도를 버리지 않기 위한 실측 보관함 —
+  // getViewPoseSource의 'live' 티어가 여기를 본다. 업로드/재촬영 시 초기화.
+  liveYawAtCapture: {front:null,left:null,right:null,back:null},
   debugShowMask: false, // true면 조정화면에서 가닥 대신 hairMaskBuf 실루엣을 그대로 표시(진단용)
   debugShowRaw: false,  // true면 스타일/슬라이더 값 무시하고 전 섹션 중립값(길이·볼륨 50, 컬 0)으로 렌더링(진단용)
   debugShowField: false, // true면 strand 시뮬레이션(뿌리/중력/clamp) 전부 건너뛰고 orientation 컬럼 샘플을 가공 없이 그대로 표시(진단용)
@@ -3294,7 +3331,12 @@ function updateSegStatus(){
   } else if(lm){
     el.textContent = `[${ANGLE_LABELS[angle]}] 포즈행렬 없음 — 근사yaw:${lm.yaw.toFixed(2)}만 사용`;
   } else {
-    el.textContent = `[${ANGLE_LABELS[angle]}] 랜드마크 없음`;
+    // (2026-07-26) 랜드마크가 없어도 라이브 실측 yaw를 쓰고 있으면 그걸 표시 —
+    // "각도 없음"과 "각도는 살아있음"을 진단에서 구분할 수 있어야 함.
+    const src = getViewPoseSource(angle);
+    el.textContent = (src.tier === 'live')
+      ? `[${ANGLE_LABELS[angle]}] 랜드마크 없음 — 촬영 직전 라이브 yaw:${src.liveYawDeg.toFixed(1)}° 사용(신뢰도 0.85)`
+      : `[${ANGLE_LABELS[angle]}] 랜드마크 없음 — 슬롯 기본각 ${getViewYawDeg(angle).toFixed(0)}° 폴백`;
   }
 }
 
@@ -3429,6 +3471,12 @@ function captureCurrentAngle(){
     ctx.translate(c.width,0); ctx.scale(-1,1); // mirror
     ctx.drawImage(video,0,0);
     state.shots[angle]=c.toDataURL('image/jpeg',0.85);
+    // (2026-07-26) 셔터 직전 라이브 PnP로 잰 각도를 이 슬롯에 남겨둔다 —
+    // 정지 사진 랜드마크 감지가 실패해도 각도를 버리지 않기 위한 폴백.
+    state.liveYawAtCapture = state.liveYawAtCapture || {};
+    state.liveYawAtCapture[angle] =
+      (_liveYawSaved !== null && (performance.now() - _liveYawSavedAt) < LIVE_YAW_STALE_MS)
+        ? _liveYawSaved : null;
     // auto advance
     if(state.currentCaptureIndex<3) state.currentCaptureIndex++;
     updateAngleUI();
@@ -3446,6 +3494,7 @@ function retakeCurrent(){
   // 좌표로) 재사용될 수 있음 (detectFaceLandmarks는 실패 시 기존 값을 안 지움).
   if(state.landmarks) state.landmarks[angle]=null;
   if(state.captureLmStatus) state.captureLmStatus[angle]=null;
+  if(state.liveYawAtCapture) state.liveYawAtCapture[angle]=null; // 이전 촬영의 라이브 각도도 폐기
   aiAnalysis=null;
   updateAngleUI();
 }
@@ -3456,6 +3505,8 @@ function handleFileUpload(e){
   reader.onload=ev=>{
     const angle=ANGLES[state.currentCaptureIndex]; // 인덱스 증가 전에 확정
     state.shots[angle]=ev.target.result;
+    // 업로드 사진은 라이브 측정과 무관 — 남아 있던 라이브 각도를 반드시 버린다
+    if(state.liveYawAtCapture) state.liveYawAtCapture[angle]=null;
     if(state.currentCaptureIndex<3) state.currentCaptureIndex++;
     updateAngleUI();
     checkCaptureLandmarks(angle); // 업로드 직후에도 동일하게 랜드마크 감지 안내
@@ -3507,11 +3558,17 @@ async function checkCaptureLandmarks(angle){
     showToast(`${ANGLE_LABELS[angle]} 얼굴 랜드마크 감지 ✓${yawTxt}`);
   } else {
     state.captureLmStatus[angle]='fail';
+    // (2026-07-26) 감지가 실패해도 셔터 직전 라이브 yaw가 살아 있으면 각도는
+    // 실측값으로 계속 간다 — 사용자가 "다시 찍어야 하나?"로 오해하지 않게 명시.
+    const liveYaw = state.liveYawAtCapture && state.liveYawAtCapture[angle];
+    const keepTxt = (typeof liveYaw === 'number')
+      ? ` — 각도는 촬영 직전 실측값(${Math.abs(liveYaw).toFixed(0)}°)을 그대로 사용해요`
+      : '';
     // 후면은 원래 얼굴이 안 잡히는 경우가 많아 안내 문구를 다르게 —
     // "실패했으니 무조건 다시"가 아니라 "가능하면 귀·턱 라인이 걸리게".
     showToast(angle === 'back'
-      ? `⚠ 후면 랜드마크 감지 실패 — 이 상태로도 진행은 되지만(추정치 폴백) 뒤통수를 살짝 돌려 귀·턱 라인이 걸리면 3D가 더 정확해져요`
-      : `⚠ ${ANGLE_LABELS[angle]} 랜드마크 감지 실패 — 눈·코 라인이 살짝 보이는 각도로 다시 촬영하면 3D 정확도가 올라가요`);
+      ? `⚠ 후면 랜드마크 감지 실패${keepTxt || ' — 이 상태로도 진행은 되지만(추정치 폴백)'} 뒤통수를 살짝 돌려 귀·턱 라인이 걸리면 3D가 더 정확해져요`
+      : `⚠ ${ANGLE_LABELS[angle]} 랜드마크 감지 실패${keepTxt} — 눈·코 라인이 살짝 보이는 각도로 다시 촬영하면 3D 정확도가 올라가요`);
   }
   updateAngleUI();
 }
@@ -3587,6 +3644,16 @@ var _liveReadyState = false;
 var _liveLastGood = 0;      // 마지막으로 "범위 안"이었던 시각
 var _liveLastMsg = '';
 var __lmDetectBusy = false; // faceLandmarker 재진입 방지(촬영 직후 검증과 공유하는 인스턴스라)
+// ── (2026-07-26) 라이브에서 잰 yaw를 버리지 않고 보관 ──
+// 촬영 직후 정지 사진에서 랜드마크 감지가 실패하면(측면·모션블러·JPEG 압축 등)
+// 지금까진 각도를 통째로 포기하고 ASSUMED_YAW_DEG(측면 ±90°)로 폴백했다. 실기기
+// 실측은 21~31°인데 90°로 가정하면 E²=W²cos²θ+D²sin²θ 역투영에서 실루엣 반폭이
+// 전부 "깊이"로 해석돼 두상/얼굴이 무너진다(스크린샷의 찌그러진 두상 원인).
+// 셔터 직전 프레임의 PnP yaw는 같은 엔진·같은 얼굴이라 사실상 같은 값 —
+// 그걸 저장해뒀다가 폴백 대신 쓴다. (저장 사진 기준 부호로 보관)
+var _liveYawSaved = null;   // 마지막으로 성공한 라이브 PnP yaw(저장 사진 기준, 도)
+var _liveYawSavedAt = 0;    // 그 측정 시각(performance.now)
+const LIVE_YAW_STALE_MS = 2500; // 이보다 오래된 측정치는 셔터 시점과 자세가 다를 수 있어 폐기
 
 // ── 후면용 PoseLandmarker: 후면 슬롯에 도착했을 때만 지연 로드 ──
 var posePoseLandmarker = null;
@@ -3645,6 +3712,9 @@ function setLiveUI(ready, chipText, chipOk, hintText){
 function liveEvaluateFrame(angle){
   // ── 후면: 얼굴 대신 양쪽 귀가 다 보이는지(PoseLandmarker) ──
   if(angle === 'back'){
+    // 후면엔 얼굴 yaw가 없다 — 앞 슬롯에서 잰 값이 남아 후면 촬영에 잘못
+    // 붙지 않도록 즉시 폐기(시간 만료에만 기대지 않고 명시적으로).
+    _liveYawSaved = null;
     if(poseLandmarkerState === 'loading') return { ready:false, chip:'후면 감지 준비 중…', hint:'후면(뒷머리)을 맞춰주세요' };
     if(poseLandmarkerState !== 'ready')  return { ready:false, chip:null, hint:'후면(뒷머리)을 맞춰주세요' };
     let res = null;
@@ -3685,6 +3755,8 @@ function liveEvaluateFrame(angle){
   }
   // 라이브 → 저장 사진 기준으로 변환(미러 보정)
   const yaw = liveYaw * LIVE_MIRROR_SIGN;
+  // 셔터 직후 정지 사진 감지가 실패할 때 쓸 폴백 각도로 보관(위 _liveYawSaved 주석)
+  _liveYawSaved = yaw; _liveYawSavedAt = performance.now();
   const t = LIVE_YAW_TARGET[angle];
   const inRange = yaw >= t.min && yaw <= t.max;
   // 화면 표시는 사용자의 머릿속 기준(측면 "40~55")에 맞춰 절대값으로 — 내부 판정만
@@ -3735,6 +3807,7 @@ function liveGuideTick(){
 function startLiveGuide(){
   if(_liveRAF !== null) return;
   _liveLastGood = 0; _liveLastDetect = 0;
+  _liveYawSaved = null; _liveYawSavedAt = 0; // 슬롯이 바뀌면 직전 슬롯 각도는 무효
   _liveRAF = requestAnimationFrame(liveGuideTick);
 }
 function stopLiveGuide(){
@@ -7417,6 +7490,7 @@ function interpolateNeckCrossSection(meshY){
 function getViewPoseConfidence(angle){
   const { tier } = getViewPoseSource(angle);
   if(tier === 'pnp') return 1.0;      // 실측 PnP 포즈(가장 정확)
+  if(tier === 'live') return 0.85;    // 셔터 직전 라이브 PnP — 같은 엔진, 프레임만 몇십 ms 이전
   if(tier === 'approx') return 0.6;   // 포즈 행렬 분해 실패 → 귀 간격 비율 근사
   return 0.25;                        // 랜드마크 감지 자체 실패 → 촬영 슬롯 기본 각도로 폴백
 }
@@ -9004,6 +9078,7 @@ function startNewCustomer(){
   ANGLES.forEach(a=>{state.shots[a]=null;state.hairCanvases[a]=null;state.hairMasks[a]=null;state.baseCanvases[a]=null;});
   state.landmarks = {};
   state.captureLmStatus = {}; // 촬영 직후 랜드마크 감지 배지 상태도 초기화
+  state.liveYawAtCapture = {}; // 촬영 직전 라이브 실측 yaw도 새 고객마다 초기화
   state.strandPaths = {}; // 캡처된 2D 가닥 경로(3D 리프트 소스)도 초기화
   _silhouetteAnchorCache = {}; // 실루엣 앵커 캐시도 새 고객마다 초기화
   state.selectedStyle=null; state.currentCaptureIndex=0; state.currentSection='crown';
