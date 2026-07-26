@@ -688,7 +688,17 @@ main{flex:1;position:relative;overflow:hidden;}
   position:absolute;bottom:14px;left:0;right:0;text-align:center;
   font-size:13px;color:var(--accent-soft);
   background:rgba(27,24,22,0.6);padding:6px;
+  transition:background .18s ease, color .18s ease, box-shadow .18s ease;
 }
+/* 혼자 촬영할 때 화면 중앙을 못 보므로, 준비되면 안내 줄 전체가 초록 띠가 된다
+   (사용자 요청: "안내문구 나오는 가로줄 전체도 초록색으로"). 주변시로도 잡힘. */
+.capture-video-wrap.live-ready .cap-hint{
+  background:rgba(91,217,122,0.92); color:#0d2a14; font-weight:800; letter-spacing:.2px;
+  box-shadow:0 0 22px rgba(91,217,122,0.55);
+  animation:hintPulse 1.05s ease-in-out infinite;
+}
+@keyframes hintPulse{0%,100%{box-shadow:0 0 16px rgba(91,217,122,0.45);}
+                     50%{box-shadow:0 0 34px rgba(91,217,122,0.85);}}
 
 /* ── 실시간 각도 가이드 (2026-07-26) ──────────────────────────────
    촬영 "전"에 라이브 영상으로 각도를 재서, 목표 범위(측면 40~55°)에
@@ -3590,7 +3600,13 @@ function captureCurrentAngle(){
       ctx.drawImage(_liveVerifiedCanvas,0,0); // 프레임 자체를 교체
       pose = _liveVerifiedPose; poseSrc = 'verified'; usedVerified = true;
     }
-    state.shots[angle]=c.toDataURL('image/jpeg',0.85);
+    /* (2026-07-26 4차) 품질 0.85 → 0.94.
+       초록불은 "캔버스"에서 감지해서 켜지는데, 나중에 랜드마크를 다시 재는 건
+       JPEG로 압축했다 디코딩한 이미지다. 경계선 각도에서는 이 압축 손실만으로
+       감지가 갈린다(사용자: "초록색일 때 찍어도 랜드마크 감지 안 된 경우 많았어").
+       또 실패 시 무손실에 가깝게 다시 인코딩해 재시도할 수 있도록 캔버스를 보관한다. */
+    state.shots[angle]=c.toDataURL('image/jpeg',0.94);
+    _lastShotCanvas = { angle, canvas:c };
     // ── 촬영 시점 포즈 저장 ──
     // 저장 사진에서 나중에 랜드마크가 안 잡혀도 이 각도는 버리지 않는다
     // (getViewYawDeg의 'live' 등급). 우선순위: 저장본 실측 > 검증 프레임 실측 >
@@ -3626,6 +3642,7 @@ function retakeCurrent(){
   if(state.landmarks) state.landmarks[angle]=null;
   if(state.captureLmStatus) state.captureLmStatus[angle]=null;
   if(state.capturePose) state.capturePose[angle]=null; // 라이브 포즈 폴백도 사진과 함께 무효화
+  if(_lastShotCanvas && _lastShotCanvas.angle===angle) _lastShotCanvas=null; // 보관 캔버스도 무효화
   aiAnalysis=null;
   updateAngleUI();
 }
@@ -3681,8 +3698,36 @@ async function checkCaptureLandmarks(angle){
   if(!faceLandmarkerReady){
     state.captureLmStatus[angle]=null; updateAngleUI(); return;
   }
-  const info = await detectFaceLandmarks(angle);
+  let info = await detectFaceLandmarks(angle);
   if(state.shots[angle] !== shotAtStart) return; // 감지 도중 재촬영된 경우도 무효
+  /* ── 압축 손실 자가 복구 (2026-07-26 4차) ──────────────────────────
+     초록불(캔버스 감지 성공)로 찍었는데 저장 JPEG에서 감지가 실패하면, 원인은
+     대개 압축 손실이다. 셔터 시점 캔버스를 아직 들고 있으면 거의 무손실로 다시
+     인코딩해 한 번만 재시도한다. 성공하면 그 이미지로 교체 — 이후 파이프라인
+     전체가 감지되는 사진을 쓰게 된다. */
+  if(!info && _lastShotCanvas && _lastShotCanvas.angle === angle && _lastShotCanvas.canvas){
+    try{
+      const hq = _lastShotCanvas.canvas.toDataURL('image/jpeg', 0.99);
+      if(hq && hq !== state.shots[angle]){
+        state.shots[angle] = hq;
+        const retry = await detectFaceLandmarks(angle);
+        if(state.shots[angle] !== hq) return;      // 그새 재촬영됨
+        if(retry){
+          info = retry;
+          console.log(`[${angle}] 저장 JPEG 감지 실패 → 고품질 재인코딩(0.99)으로 성공 — 압축 손실이 원인이었음`);
+        } else {
+          state.shots[angle] = shotAtStart;        // 소득 없으면 원래 이미지로 되돌림
+        }
+      }
+    }catch(e){ console.warn('고품질 재인코딩 실패:', e); }
+  }
+  // [진단] 셔터 시점 캔버스 감지 vs 저장 이미지 감지 — 초록불과 실제 결과의 간극 추적
+  {
+    const cap = state.capturePose && state.capturePose[angle];
+    const canvasOk = cap ? (cap.src === 'shutter' ? '성공' : cap.src === 'verified' ? '검증프레임으로 대체' : '라이브값만') : '실패';
+    console.log(`[${angle}] 셔터 캔버스 감지=${canvasOk} / 저장 이미지 감지=${info ? '성공' : '실패'}`
+      + (info && typeof info.poseYawDeg === 'number' ? ` (yaw ${info.poseYawDeg.toFixed(0)}°)` : ''));
+  }
   if(info){
     const yawDeg = (typeof info.poseYawDeg === 'number') ? info.poseYawDeg : null;
     const yawTxt = (yawDeg !== null) ? ` (yaw ${yawDeg.toFixed(0)}°)` : '';
@@ -3793,8 +3838,11 @@ async function checkCaptureLandmarks(angle){
 //         왼쪽 옆머리를 카메라에 보이려면 고개는 오른쪽으로 돌려야 함)
 const LIVE_YAW_TARGET = {
   front: { min:-12, max: 12, label:'정면', turn:null },
-  left:  { min: 35, max: 65, label:'좌측', turn:'오른쪽' }, // 왼쪽 옆머리 = 고개는 오른쪽으로
-  right: { min:-65, max:-35, label:'우측', turn:'왼쪽'  }, // 오른쪽 옆머리 = 고개는 왼쪽으로
+  // (2026-07-26 3차) 하한 35 → 40. 실기기 경험("각도를 많이 돌리고 나서 잘 나왔다")과
+  // 깊이 복원의 조건수 계산이 같은 숫자를 가리킨다 — d²=(E²−W²cos²θ)/sin²θ 는 40°
+  // 아래에서 오차 증폭이 2배를 넘어 z를 못 믿게 된다(15°:±0.18, 25°:±0.07, 40°:±0.035).
+  left:  { min: 40, max: 65, label:'좌측', turn:'오른쪽' }, // 왼쪽 옆머리 = 고개는 오른쪽으로
+  right: { min:-65, max:-40, label:'우측', turn:'왼쪽'  }, // 오른쪽 옆머리 = 고개는 왼쪽으로
 };
 const LIVE_MIRROR_SIGN = -1;      // 라이브 yaw → 저장 사진 yaw 변환 계수(미러 촬영이라 -1)
 const LIVE_DETECT_INTERVAL = 120; // ms. 프레임마다 돌리면 과함 — 약 8fps면 안내용으로 충분
@@ -3804,6 +3852,9 @@ const LIVE_DETECT_INTERVAL = 120; // ms. 프레임마다 돌리면 과함 — �
 const LIVE_LOST_GRACE = 450;      // ms. 한두 프레임 놓쳐도 바로 빨간불로 안 떨어지게
 const LIVE_STILL_INTERVAL = 250;  // ms. "저장본 감지" 확인 주기(매 틱마다 두 번 돌리면 과함)
 const LIVE_STILL_GRACE = 600;     // ms. 저장본 감지도 한두 번 놓친 걸로 초록이 깜빡이지 않게
+// 고개 숙임/듦 경고 임계(도). 이 이상이면 칩에 표시하고, 감지 실패 시 원인으로 안내.
+// 판정 자체엔 안 넣는다 — 숙여도 랜드마크만 잡히면 촬영은 유효하다.
+const LIVE_PITCH_WARN = 18;
 const BACK_EAR_VIS = 0.5;         // 후면 귀 판정 visibility 임계
 const BACK_EAR_MIN_SPAN = 0.045;  // 정규화 x 기준 두 귀 최소 간격(완전 옆모습이면 붙어버림)
 
@@ -3841,21 +3892,54 @@ var _liveVerifiedCanvas = null; // 감지 성공이 확인된 프레임(미러 �
 var _liveVerifiedAt     = 0;
 var _liveVerifiedAngle  = null;
 var _liveVerifiedPose   = null; // {yawDeg,pitchDeg,rollDeg} — 저장 사진 기준
-const VERIFIED_SHOT_MAX_AGE = 1200; // ms. 이보다 오래된 검증 프레임은 안 씀
+const VERIFIED_SHOT_MAX_AGE = 2000; // ms. 이보다 오래된 검증 프레임은 안 씀
+// (4차 상향 1200→2000) 초록 유지 유예(600)+빨간불 유예(450)+사람 반응(~300)이
+// 겹치면 셔터가 1.2초를 넘길 수 있고, 그러면 폴백이 없어 감지 안 되는 프레임이
+// 그대로 저장됐다. 초록인 동안은 자세를 유지하므로 2초 전 검증 프레임도 거의 같다.
+var _lastShotCanvas = null; // {angle, canvas} — 저장 JPEG 감지 실패 시 재인코딩용
 
 // 캔버스(=저장될 이미지)에서 직접 포즈를 뽑는다. 미러가 이미 적용된 캔버스이므로
 // LIVE_MIRROR_SIGN 보정이 필요 없다. 감지 실패면 null.
 function detectPoseOnCanvas(cv){
   if(!faceLandmarkerReady || !faceLandmarker) return null;
-  let r = null;
-  try{ r = faceLandmarker.detect(cv); }catch(e){ return null; }
-  if(!r || !r.faceLandmarks || !r.faceLandmarks.length) return null;
-  if(!r.facialTransformationMatrixes || !r.facialTransformationMatrixes.length) return null;
+  const poseOf = (src)=>{
+    let r = null;
+    try{ r = faceLandmarker.detect(src); }catch(e){ return null; }
+    if(!r || !r.faceLandmarks || !r.faceLandmarks.length) return null;
+    if(!r.facialTransformationMatrixes || !r.facialTransformationMatrixes.length) return null;
+    try{
+      const p = decomposePoseMatrix(r.facialTransformationMatrixes[0].data);
+      return { yawDeg:p.yawRad*180/Math.PI, pitchDeg:p.pitchRad*180/Math.PI, rollDeg:p.rollRad*180/Math.PI };
+    }catch(e){ return null; }
+  };
+  const direct = poseOf(cv);
+  if(direct) return direct;
+  /* ── 중앙크롭 확대 재시도 (2026-07-26 3차) ──────────────────────────
+     detectFaceLandmarks(저장 사진)에는 원본→2배확대→중앙크롭확대 3단 사다리가
+     있는데 라이브 가이드에는 없어서, 가이드가 촬영보다 더 엄격했다. 실기기 로그에
+     "[right] 원본 실패 → '중앙크롭확대' 재시도로 성공"이 그대로 찍혔다 — 저장은
+     되는데 초록불은 안 켜지던 상태(사용자: "파란불이 잘 안 켜져").
+     비용을 감안해 라이브에선 가장 잘 듣는 한 단계(중앙크롭 확대)만 쓴다.
+     포즈(회전)만 쓰므로 크롭으로 인한 주점 이동은 무시 가능. */
   try{
-    const p = decomposePoseMatrix(r.facialTransformationMatrixes[0].data);
-    return { yawDeg:p.yawRad*180/Math.PI, pitchDeg:p.pitchRad*180/Math.PI, rollDeg:p.rollRad*180/Math.PI };
-  }catch(e){ return null; }
+    const W = cv.width, H = cv.height;
+    if(W > 40 && H > 40){
+      const sx = W*0.15, sy = H*0.08, sw = W*0.70, sh = H*0.84;
+      const sc = Math.max(1, Math.min(2, 1800/sw, 1800/sh));
+      if(!_liveCropCanvas) _liveCropCanvas = document.createElement('canvas');
+      const cc = _liveCropCanvas;
+      const cw2 = Math.round(sw*sc), ch2 = Math.round(sh*sc);
+      if(cc.width !== cw2 || cc.height !== ch2){ cc.width = cw2; cc.height = ch2; }
+      const cx = cc.getContext('2d');
+      cx.setTransform(1,0,0,1,0,0);
+      cx.imageSmoothingEnabled = true; cx.imageSmoothingQuality = 'high';
+      cx.drawImage(cv, sx, sy, sw, sh, 0, 0, cw2, ch2);
+      return poseOf(cc);
+    }
+  }catch(e){}
+  return null;
 }
+var _liveCropCanvas = null;   // 라이브 재시도용 크롭 캔버스(재사용)
 
 // 지금 이 비디오 프레임을 촬영과 완전히 동일하게(미러 캔버스) 떠서, 그 이미지에서
 // faceLandmarker가 얼굴을 잡는지 확인한다. 촬영 경로(captureCurrentAngle)와 같은
@@ -4005,9 +4089,13 @@ function liveEvaluateFrame(angle){
   // 저장기준 yaw를 쓴다. 정면은 어느 쪽으로 틀어졌는지가 정보라 부호 유지.
   const tLo = Math.min(Math.abs(t.min), Math.abs(t.max));
   const tHi = Math.max(Math.abs(t.min), Math.abs(t.max));
+  // 고개 숙임(pitch)도 같이 보여준다 — 사용자: "고개를 숙여서 그런가".
+  // 판정에는 안 넣는다(숙여도 랜드마크가 잡히면 촬영은 유효). 다만 크게 숙이면
+  // 감지가 잘 안 되므로 아래 안내에서 그 사실을 짚어준다.
+  const pitchTxt = (Math.abs(livePitch) >= LIVE_PITCH_WARN) ? ` · 고개 ${livePitch>0?'듦':'숙임'} ${Math.abs(livePitch).toFixed(0)}°` : '';
   const chip = (angle === 'front')
-    ? `정면 ${yaw>=0?'+':''}${yaw.toFixed(0)}° / 목표 ±${t.max}°`
-    : `${t.label} ${Math.abs(yaw).toFixed(0)}° / 목표 ${tLo}~${tHi}°`;
+    ? `정면 ${yaw>=0?'+':''}${yaw.toFixed(0)}° / 목표 ±${t.max}°${pitchTxt}`
+    : `${t.label} ${Math.abs(yaw).toFixed(0)}° / 목표 ${tLo}~${tHi}°${pitchTxt}`;
   if(inRange){
     // ── 각도만으로는 부족 ── 실제로 저장될 이미지에서 랜드마크가 잡히는지 확인.
     // 46°처럼 범위 안이어도 감지가 안 되는 각도/조명이 실기기에서 나왔고, 감지가
@@ -4016,7 +4104,9 @@ function liveEvaluateFrame(angle){
     const stillOk = liveStillLandmarkOk(now, angle) || (now - _liveStillOkAt < LIVE_STILL_GRACE);
     if(stillOk) return { ready:true, chip:chip + ' · 랜드마크 ✓', hint:'셔터 버튼을 눌러주세요' };
     return { ready:false, chip:chip + ' · 랜드마크 ✗',
-             hint:'각도는 맞는데 얼굴 인식이 안 돼요 — 조금 덜 돌리거나, 얼굴 쪽을 밝게 해주세요' };
+             hint: (Math.abs(livePitch) >= LIVE_PITCH_WARN)
+               ? `고개를 ${livePitch>0?'너무 들었어요':'너무 숙였어요'} — 턱을 수평으로 두고 다시 맞춰주세요`
+               : '각도는 맞는데 얼굴 인식이 안 돼요 — 조금 덜 돌리거나, 얼굴 쪽을 밝게 해주세요' };
   }
 
   // 어느 쪽으로 얼마나 돌려야 하는지 안내
@@ -7476,9 +7566,37 @@ function computeHeadVerticalRadius(){
 //     상태였음 — 한 곳만 바뀌면 헤어/얼굴/두상이 서로 다른 두상을 기준으로
 //     서게 되는 구조라 통합.
 let _headEllipsoidLogged = false;
+/* ── (2026-07-26) 두상 폭을 밴드 하나가 아니라 최대 단면으로 ──────────
+   증상: 어떤 촬영에서는 두상이 정상인데, 어떤 촬영에서는 폭이 반토막 나서
+        얼굴이 두상 밖으로 튀어나온 납작한 형태가 됐다(사용자 스크린샷).
+   원인: 폭을 적도 밴드(phi=π/2, 귀 높이) 딱 하나에서 읽고 있었다. 그런데 밴드는
+        머리카락 실루엣 실측이라, 귀 높이까지 머리가 안 내려오는 헤어(짧은 옆머리·
+        페이드·넘긴 머리)나 그 높이 마스크가 얇게 잡힌 촬영에서는 그 한 밴드만
+        무너진다. 실기기 두 로그 비교:
+          정상  phi0.95:0.71  1.05:0.76  [1.55:0.58]  1.65:0.29 → a=0.52
+          깨짐  phi0.95:0.71  1.05:0.56  [1.55:0.28]  1.65:0.14 → a=0.26
+        최대폭은 0.76 vs 0.71로 거의 같은데 적도 한 곳만 반토막이었다.
+   수정: 사람 머리통의 "폭"은 정의상 최대 단면이다. 목 아래를 제외한 밴드
+        (phi ≤ NECK_PHI)에서 최대 반폭/반깊이를 취한다. 한 밴드가 무너져도
+        나머지가 받쳐주므로 촬영마다 흔들리지 않는다.
+        깊이/폭 비는 사람 머리 범위(1.0~1.35)로 클램프 — 실루엣엔 머리카락
+        두께가 섞여 있어 그대로 두면 원반/막대가 될 수 있다. */
+const HEAD_WIDTH_MAX_PHI = 1.62;  // 이보다 아래(목·어깨)는 두상 폭이 아님
 function getHeadEllipsoid(){
   const eq = interpolateHeadCrossSection(Math.PI/2);
-  const ell = { a: Math.max(0.2, eq.halfWidth), b: computeHeadVerticalRadius(), c: Math.max(0.15, eq.halfDepth) };
+  let maxW = 0, maxD = 0;
+  try{
+    computeHeadCrossSections().forEach(bd=>{
+      if(bd.phi > HEAD_WIDTH_MAX_PHI) return;
+      if(typeof bd.halfWidth === 'number' && bd.halfWidth > maxW) maxW = bd.halfWidth;
+      if(typeof bd.halfDepth === 'number' && bd.halfDepth > maxD) maxD = bd.halfDepth;
+    });
+  }catch(e){}
+  const aRaw = Math.max(0.2, maxW || 0, eq.halfWidth || 0);
+  const dRaw = Math.max(0.15, maxD || 0, eq.halfDepth || 0);
+  const ell = { a: aRaw,
+                b: computeHeadVerticalRadius(),
+                c: clamp(dRaw, aRaw * 1.0, aRaw * 1.35) };
   // [진단용] 두상 넙적도 수치 — 깊이/폭 비율이 핵심. 사람 머리통은 대략
   // 1.1~1.3(깊이가 폭보다 큼). 1.0 미만이면 원반(넙적). 1회만 출력.
   if(!_headEllipsoidLogged){
@@ -7486,6 +7604,16 @@ function getHeadEllipsoid(){
     const ratio = ell.c / ell.a;
     const verdict = ratio >= 1.05 ? '정상(깊이>폭)' : ratio >= 0.9 ? '약간 넙적' : '원반(넙적)';
     console.log(`[두상 기준면] 폭(a)=${ell.a.toFixed(3)} 세로(b)=${ell.b.toFixed(3)} 깊이(c)=${ell.c.toFixed(3)} | 깊이/폭=${ratio.toFixed(2)} → ${verdict}`);
+    // 두상 폭 vs 얼굴 폭 — 이 둘이 어긋나면 얼굴이 두상 밖으로 튀어나온다(팬케이크).
+    // 옛 방식(적도 밴드 1개)과 새 방식(최대 단면)을 같이 찍어 어느 쪽이 흔들렸는지 남긴다.
+    try{
+      const fm = getFaceMetrics();
+      const faceA = 0.78 * (fm.widthFactor || 1);
+      const eqA = (eq && typeof eq.halfWidth==='number') ? eq.halfWidth : NaN;
+      const okMark = (ell.a >= faceA*0.85 && ell.a <= faceA*1.25) ? '일치' : '⚠ 어긋남';
+      console.log(`[두상↔얼굴 폭] 두상 a=${ell.a.toFixed(3)} / 얼굴 기준 ${faceA.toFixed(3)} → ${okMark}`
+        + ` | 적도밴드만 봤다면 ${Number.isFinite(eqA)?eqA.toFixed(3):'-'} (최대단면 채택 전 값)`);
+    }catch(e){}
     const bands = computeHeadCrossSections();
     const src = bands.map(b2 => `phi${b2.phi.toFixed(2)}:W${(b2.halfWidth||0).toFixed(2)}/D${(b2.halfDepth||0).toFixed(2)}`).join(' ');
     console.log(`[두상 밴드별 실측] ${src}`);
@@ -9535,6 +9663,7 @@ function startNewCustomer(){
   state.landmarks = {};
   state.captureLmStatus = {}; // 촬영 직후 랜드마크 감지 배지 상태도 초기화
   state.capturePose = {};     // 셔터 시점 라이브 포즈(감지 실패 폴백)도 초기화
+  _lastShotCanvas = null;     // 고품질 재인코딩용 보관 캔버스도 해제(메모리)
   state.strandPaths = {}; // 캡처된 2D 가닥 경로(3D 리프트 소스)도 초기화
   _silhouetteAnchorCache = {}; // 실루엣 앵커 캐시도 새 고객마다 초기화
   state.selectedStyle=null; state.currentCaptureIndex=0; state.currentSection='crown';
