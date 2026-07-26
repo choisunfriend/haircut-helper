@@ -6775,7 +6775,20 @@ function makeFaceProjector(lm, widthFactor, heightFactor){
   const aY = EYE_MESH_Y + bY * lm.eyeY;
   const toMeshY = (v)=> aY - bY * v;
 
-  const EAR_MESH_X = 0.78 * widthFactor * 0.82; // 적도 반경보다 살짝 안쪽(귀는 옆으로 살짝 들어간 위치)
+  /* ── 가로·세로 스케일 일치 (2026-07-26 4차, 실기기 비례 오류 수정) ──────
+     증상: 두상이 사람 비례가 아니다. 세로/폭 = 1.04인데 사람은 1.48
+          (얼굴이 넙대대하고 머리가 앞뒤로만 긴 형태).
+     원인: 이 투영기가 세로와 가로를 서로 다른 기준으로 정규화하고 있었다.
+          세로 — 눈→턱(실제 ≈11.5cm)을 0.70 단위로  → 0.0609 단위/cm
+          가로 — 귀 반간격(실제 ≈7.0cm)을 0.6396 단위로 → 0.0914 단위/cm
+          같은 1cm가 가로에서 1.50배 크게 잡힌다. 그래서 가로로 재는 모든 값
+          (얼굴 폭·두상 폭·헤어 헐 폭)이 함께 부풀었다.
+     검증: 사람 세로/폭 1.48 ÷ 스케일오차 1.44 = 1.03 ≈ 실측 1.04 — 정확히 일치.
+     수정: 가로 기준을 세로 기준에서 유도한다. 눈→턱이 0.70단위면 귀 반간격은
+          0.70 × (7.0/11.5) = 0.426단위여야 한다. 이제 두 축이 같은 자를 쓴다.
+     ※ 되돌리려면 EAR_MESH_X를 예전 식(0.78×wf×0.82)으로 바꾸면 된다. */
+  const EYE_TO_CHIN_CM = 11.5, EAR_HALF_CM = 7.0;   // 성인 평균(실측 기준자)
+  const EAR_MESH_X = (EYE_MESH_Y - CHIN_MESH_Y) * (EAR_HALF_CM / EYE_TO_CHIN_CM) * (widthFactor / heightFactor);
   const lx = Math.min(lm.lEarX, lm.rEarX), rx = Math.max(lm.lEarX, lm.rEarX);
   const denomX = (rx - lx) || 0.001;
   const bX = (2*EAR_MESH_X) / denomX;
@@ -7582,6 +7595,20 @@ let _headEllipsoidLogged = false;
         깊이/폭 비는 사람 머리 범위(1.0~1.35)로 클램프 — 실루엣엔 머리카락
         두께가 섞여 있어 그대로 두면 원반/막대가 될 수 있다. */
 const HEAD_WIDTH_MAX_PHI = 1.62;  // 이보다 아래(목·어깨)는 두상 폭이 아님
+// 정면 랜드마크가 말하는 얼굴 최대 반폭(메쉬 좌표). 두상 폭이 얼굴을 감싸는지
+// 검사하는 기준값 — 추정치(0.78×widthFactor)가 아니라 실측이라야 오경보가 없다.
+// 진단 로그용으로 1회만 쓰이므로 캐시 없이 그때 계산한다.
+function getFaceHalfWidthMesh(){
+  try{
+    const lm = state.landmarks && state.landmarks.front;
+    if(!lm || !lm.rawLandmarks || lm.rawLandmarks.length < 468) return 0;
+    const fm = getFaceMetrics();
+    const proj = makeFaceProjector(lm, fm.widthFactor, fm.heightFactor);
+    let m = 0;
+    for(const p of lm.rawLandmarks){ const x = Math.abs(proj.toMeshX(p.x)); if(x > m) m = x; }
+    return m;
+  }catch(e){ return 0; }
+}
 function getHeadEllipsoid(){
   const eq = interpolateHeadCrossSection(Math.PI/2);
   let maxW = 0, maxD = 0;
@@ -7594,9 +7621,15 @@ function getHeadEllipsoid(){
   }catch(e){}
   const aRaw = Math.max(0.2, maxW || 0, eq.halfWidth || 0);
   const dRaw = Math.max(0.15, maxD || 0, eq.halfDepth || 0);
-  const ell = { a: aRaw,
-                b: computeHeadVerticalRadius(),
-                c: clamp(dRaw, aRaw * 1.0, aRaw * 1.35) };
+  const bRaw = computeHeadVerticalRadius();
+  /* ── 비례 가드는 넣지 않는다 (2026-07-26 4차, 실기기 확인) ────────────
+     "깊이가 세로보다 크면 비인체적"이라 보고 b ≥ a×1.15 / c ≤ b×1.05 가드를
+     넣으려 했으나, 실기기에서 처음으로 잘 나온 케이스가 정확히
+     폭0.745 / 세로0.775 / 깊이1.006 (= 가드에 걸리는 조합)이었다.
+     세 반경은 서로 다른 기준으로 정규화돼 있어 "사람 머리 비례"를 그대로
+     대입하면 안 된다는 뜻 — 추론으로 만든 가드가 실측을 이길 뻔했다.
+     실측을 그대로 쓰고, 이상 여부는 아래 로그로만 관찰한다. */
+  const ell = { a: aRaw, b: computeHeadVerticalRadius(), c: clamp(dRaw, aRaw * 1.0, aRaw * 1.30) };
   // [진단용] 두상 넙적도 수치 — 깊이/폭 비율이 핵심. 사람 머리통은 대략
   // 1.1~1.3(깊이가 폭보다 큼). 1.0 미만이면 원반(넙적). 1회만 출력.
   if(!_headEllipsoidLogged){
@@ -7604,15 +7637,22 @@ function getHeadEllipsoid(){
     const ratio = ell.c / ell.a;
     const verdict = ratio >= 1.05 ? '정상(깊이>폭)' : ratio >= 0.9 ? '약간 넙적' : '원반(넙적)';
     console.log(`[두상 기준면] 폭(a)=${ell.a.toFixed(3)} 세로(b)=${ell.b.toFixed(3)} 깊이(c)=${ell.c.toFixed(3)} | 깊이/폭=${ratio.toFixed(2)} → ${verdict}`);
+    // 사람 비례 대조 — 세로/폭 1.48, 깊이/폭 1.26이 성인 평균. 크게 벗어나면
+    // 투영기의 가로·세로 스케일이 어긋난 것이다(2026-07-26에 그 버그를 잡았음).
+    console.log(`[두상 비례] 세로/폭=${(ell.b/ell.a).toFixed(2)} (사람 1.48) · 깊이/폭=${ratio.toFixed(2)} (사람 1.26)`);
     // 두상 폭 vs 얼굴 폭 — 이 둘이 어긋나면 얼굴이 두상 밖으로 튀어나온다(팬케이크).
     // 옛 방식(적도 밴드 1개)과 새 방식(최대 단면)을 같이 찍어 어느 쪽이 흔들렸는지 남긴다.
     try{
-      const fm = getFaceMetrics();
-      const faceA = 0.78 * (fm.widthFactor || 1);
+      // 비교 기준은 "실측 얼굴 최대폭"이다. 예전엔 0.78×widthFactor(추정치)와 비교해
+      // 실제로는 맞는데도 ⚠가 뜨는 오경보가 있었다(실기기: 두상0.745 vs 실측얼굴0.765
+      // 인데 추정치 0.919 기준으로 어긋남 판정).
+      const faceA = getFaceHalfWidthMesh();
       const eqA = (eq && typeof eq.halfWidth==='number') ? eq.halfWidth : NaN;
-      const okMark = (ell.a >= faceA*0.85 && ell.a <= faceA*1.25) ? '일치' : '⚠ 어긋남';
-      console.log(`[두상↔얼굴 폭] 두상 a=${ell.a.toFixed(3)} / 얼굴 기준 ${faceA.toFixed(3)} → ${okMark}`
-        + ` | 적도밴드만 봤다면 ${Number.isFinite(eqA)?eqA.toFixed(3):'-'} (최대단면 채택 전 값)`);
+      const cmp = faceA > 0
+        ? `얼굴 실측 ${faceA.toFixed(3)} → ${(ell.a >= faceA*0.85 && ell.a <= faceA*1.3) ? '일치' : '⚠ 어긋남'}`
+        : '얼굴 실측 없음';
+      console.log(`[두상↔얼굴 폭] 두상 a=${ell.a.toFixed(3)} / ${cmp}`
+        + ` | 적도밴드만 봤다면 ${Number.isFinite(eqA)?eqA.toFixed(3):'-'}`);
     }catch(e){}
     const bands = computeHeadCrossSections();
     const src = bands.map(b2 => `phi${b2.phi.toFixed(2)}:W${(b2.halfWidth||0).toFixed(2)}/D${(b2.halfDepth||0).toFixed(2)}`).join(' ');
