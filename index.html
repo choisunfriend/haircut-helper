@@ -536,6 +536,32 @@
     사이드=초록/후두부=보라/네이프=주황)으로 칠해 부위-섹션 대응을 눈으로 확인.
   검증: node --check + 섹션 재분배 하네스 5/5(정면 프론트 주도·크라운<45,
   좌측 사이드>=28·크라운<42). 실기기 색 확인으로 추가 튜닝.
+
+  ── 2026-07-26 촬영 전 실시간 가이드 좌/우 반전 수정 ──
+  실기기: "4장 찍을 때 찍기 전 안내가 좌우 반대다."
+  원인: 이 파일의 yaw 부호 규약은 "양수 = 사진 속 얼굴이 오른쪽을 봄"인데
+  (detectFaceLandmarks의 yaw = (nose.x-earCX)/…, faceDir 주석 "+1=오른쪽"),
+  저장 사진이 미러(scale(-1,1))라서 "왼쪽 옆머리를 보여주는 좌측 뷰"가 양수로
+  찍힌다. 위 실측 기록이 그대로 증명 — 정면0.2/좌31/우-25, 그리고 21°/-31°.
+  그런데 LIVE_YAW_TARGET은 left를 음수(-55~-40), right를 양수(40~55)로 잡아
+  정확히 반대쪽을 요구하고 있었음(왼쪽 옆머리를 보여주면 "반대 방향이에요").
+  수정:
+  · LIVE_YAW_TARGET left↔right 범위 교환(left +40~+55, right -55~-40).
+    LIVE_MIRROR_SIGN(-1)은 실측과 맞으므로 유지 — 이걸 뒤집으면 원래 맞던
+    정면 안내(왼쪽/오른쪽 돌려주세요)까지 같이 뒤집힘.
+  · 같은 착오였던 ASSUMED_YAW_DEG(left -90→+90, right 90→-90)와
+    sectionBandsFor의 faceDir 폴백(right?1:-1 → left?1:-1)도 함께 정정.
+    실측 랜드마크가 잡히면 안 쓰이는 폴백이지만, 감지 실패한 측면에서
+    템플↔후두부를 뒤집던 값.
+  · 안내 문구의 중의성 제거: "좌측면을 맞춰주세요"가 "왼쪽 옆머리를 보여라"인지
+    "고개를 왼쪽으로 돌려라"인지 헷갈렸음 → HINTS와 범위 밖 안내를 모두
+    "왼쪽 옆머리가 보이게 — 고개를 오른쪽으로 돌려주세요" 식으로 둘 다 명시.
+  검증: node --check(본문 스크립트) + 부호 표 수기 대조(실측 좌31/우-25가
+  새 목표 범위 부호와 일치).
+  주의(미수정, 별건): 라이브 프리뷰(#video)에는 미러가 안 걸려 있는데 저장은
+  미러라, 찍기 전 화면과 찍힌 사진의 좌우가 서로 다르다. 프리뷰도 거울처럼
+  보이게 하려면 #video에 transform:scaleX(-1) 한 줄이면 되지만, 그러면 위
+  정면 안내(왼쪽/오른쪽) 체감이 바뀌므로 실기기 확인 후 판단할 것.
 -->
 
 <!DOCTYPE html>
@@ -1335,7 +1361,12 @@ function refineSectionBoundaries(angle){
 // 1) 'pnp'    — MediaPipe 포즈 행렬(outputFacialTransformationMatrixes) 실측. 가장 정확
 // 2) 'approx' — 랜드마크는 있으나 포즈 행렬 없음(구버전 API 등) → 귀 간격 비율 근사(yaw*90)
 // 3) 'none'   — 랜드마크 자체가 없는 뷰(주로 얼굴이 안 보이는 후면) → 촬영 슬롯 기준각 가정
-const ASSUMED_YAW_DEG = { front:0, left:-90, right:90, back:180 };
+// (2026-07-26 부호 수정) left/right가 서로 반대로 들어가 있었음. 이 파일의 규약은
+// "yaw 양수 = 사진 속 얼굴이 오른쪽을 봄"이고, 저장 사진은 미러라 좌측면 촬영이
+// 양수로 나온다 — 실기기 실측 로그가 그대로 증명(정면0.2/좌31/우-25, 21°/-31°).
+// 랜드마크가 잡히면 실측(poseYawDeg)이 우선이라 평소엔 안 쓰이지만, 감지 실패 시
+// 폴백으로 쓰여 측면 앞/뒤(템플↔후두부)를 뒤집던 값.
+const ASSUMED_YAW_DEG = { front:0, left:90, right:-90, back:180 };
 function getViewPoseSource(angle){
   const lm = state.landmarks && state.landmarks[angle];
   if(lm && typeof lm.poseYawDeg === 'number' && !Number.isNaN(lm.poseYawDeg)) return { tier:'pnp', lm };
@@ -1360,7 +1391,9 @@ function getViewYawDeg(angle){
 ════════════════════════════════════════ */
 const ANGLES = ['front','left','right','back'];
 const ANGLE_LABELS = {front:'정면', left:'좌측', right:'우측', back:'후면'};
-const HINTS = {front:'정면을 맞춰주세요', left:'좌측면을 맞춰주세요', right:'우측면을 맞춰주세요', back:'후면(뒷머리)을 맞춰주세요'};
+// (2026-07-26) 좌/우 안내가 "어느 쪽 옆머리를 보여줄지"인지 "고개를 어느 쪽으로
+// 돌릴지"인지 헷갈려 반대로 찍히는 문제가 있어, 두 가지를 한 문장에 명시.
+const HINTS = {front:'정면을 맞춰주세요', left:'왼쪽 옆머리가 보이게 — 고개를 오른쪽으로 돌려주세요', right:'오른쪽 옆머리가 보이게 — 고개를 왼쪽으로 돌려주세요', back:'후면(뒷머리)을 맞춰주세요'};
 
 /* ── 섹션 정의 ──
    각 섹션: 미용사가 실제로 커트하는 구역
@@ -1583,7 +1616,9 @@ function sectionBandsFor(angle){
     // (코가 귀 중심보다 어느 쪽인지)가 있으면 실측, 없으면 촬영 슬롯 가정.
     faceDir: (lm && typeof lm.yaw === 'number' && Math.abs(lm.yaw) > 0.05)
       ? (lm.yaw >= 0 ? 1 : -1)
-      : (angle === 'right' ? 1 : -1),
+      // (2026-07-26) 폴백도 ASSUMED_YAW_DEG와 같은 부호 착오가 있었음:
+      // 미러 저장이라 좌측 뷰가 양수(얼굴이 오른쪽을 봄)다 → left가 +1.
+      : (angle === 'left' ? 1 : -1),
   };
   _secBandsCache[angle] = { srcLm: lm, srcMi: mi, bands };
   return bands;
@@ -3380,9 +3415,12 @@ function captureCurrentAngle(){
   // 그 자리에서 재촬영할지 판단할 수 있게 함.
   if(typeof _liveReadyState !== 'undefined' && !_liveReadyState && liveGuideShouldRun()){
     const t = LIVE_YAW_TARGET[angle];
+    // 목표 범위는 내부적으로 부호가 있지만(미러 기준), 사용자에겐 절대값으로 보여줌
+    const tTxt = t ? (angle==='front' ? '±12°'
+      : `${Math.min(Math.abs(t.min),Math.abs(t.max))}~${Math.max(Math.abs(t.min),Math.abs(t.max))}°`) : '';
     showToast(angle==='back'
       ? '⚠ 귀 2개가 다 보이는 상태는 아니에요 — 그대로 저장했어요'
-      : `⚠ 목표 각도(${t.min}~${t.max}°) 밖이에요 — 그대로 저장했어요`);
+      : `⚠ 목표 각도(${tTxt}) 밖이에요 — 그대로 저장했어요`);
   }
   if(video.style.display!=='none' && video.videoWidth){
     const c=document.createElement('canvas');
@@ -3501,17 +3539,36 @@ async function checkCaptureLandmarks(angle){
 
    ── 미러(거울) 부호 주의 ──
    captureCurrentAngle()은 캔버스에 scale(-1,1)로 좌우를 뒤집어 저장한다(셀피 미러).
-   따라서 "저장된 사진의 yaw" = -(라이브 영상의 yaw). 앱의 다른 모든 코드
-   (ASSUMED_YAW_DEG = {front:0,left:-90,right:90}, getViewYawDeg 등)는 저장된 사진
-   기준이므로, 판정도 저장 기준으로 통일하고 라이브 값에 MIRROR_SIGN을 곱해서 맞춘다.
-   혹시 실기기에서 좌/우가 뒤바뀌어 보이면 LIVE_MIRROR_SIGN 한 줄만 뒤집으면 된다.
+   따라서 "저장된 사진의 yaw" = -(라이브 영상의 yaw). 판정은 저장 사진 기준으로
+   통일하고 라이브 값에 LIVE_MIRROR_SIGN을 곱해서 맞춘다.
+
+   ── (2026-07-26 수정) 좌/우 목표 각도가 뒤바뀌어 있던 버그 ──
+   증상: "좌측면을 맞춰주세요" 안내에 맞춰 왼쪽 옆머리를 보여주면 가이드가
+        "반대 방향이에요"라고 함 = 안내가 좌우 반대.
+   원인: 이 파일의 yaw 부호 규약은 "양수 = 사진 속에서 얼굴이 오른쪽을 봄"이다
+        (detectFaceLandmarks의 yaw = (nose.x - earCX)/…, sectionBandsFor의
+        faceDir 주석 "+1=오른쪽"). 저장 사진은 미러라, 왼쪽 옆머리를 보여주려고
+        고개를 오른쪽으로 돌리면 저장 사진의 yaw는 "양수"가 된다.
+        실기기 로그가 이걸 그대로 증명함 — 헤더 기록의 실측값
+        "정면0.2 / 좌31 / 우-25", "이 뷰들의 실측 yaw도 21°/-31°"
+        → 좌측 뷰 = 양수, 우측 뷰 = 음수.
+        그런데 LIVE_YAW_TARGET은 left를 음수(-55~-40), right를 양수로 잡고
+        있어서 정확히 반대로 요구하고 있었다. (ASSUMED_YAW_DEG의 left:-90/
+        right:90도 같은 착오라 아래에서 함께 바로잡음.)
+   수정: left = +40~+55, right = -55~-40 으로 교환. 부호 규약 자체(그리고
+        LIVE_MIRROR_SIGN = -1)는 실측과 맞으므로 건드리지 않는다.
+        ⚠ 여기서 LIVE_MIRROR_SIGN을 뒤집어 "고치면" 정면 안내(왼쪽/오른쪽
+        돌려주세요)까지 같이 뒤집혀 버린다 — 정면 안내는 원래 맞았음.
 ════════════════════════════════════════ */
 
 // 저장 사진 기준 목표 각도(도). 측면은 사용자 지정 40~55.
+// turn = 그 각도를 만들려면 사용자가 고개를 실제로 어느 쪽으로 돌려야 하는지.
+//        (미러 저장이라 "보여줄 옆머리 쪽"과 "돌리는 방향"이 서로 반대다:
+//         왼쪽 옆머리를 카메라에 보이려면 고개는 오른쪽으로 돌려야 함)
 const LIVE_YAW_TARGET = {
-  front: { min:-12, max: 12, label:'정면' },
-  left:  { min:-55, max:-40, label:'좌측' },   // 저장 기준 음수 = ASSUMED_YAW_DEG.left와 같은 부호
-  right: { min: 40, max: 55, label:'우측' },
+  front: { min:-12, max: 12, label:'정면', turn:null },
+  left:  { min: 40, max: 55, label:'좌측', turn:'오른쪽' }, // 왼쪽 옆머리 = 고개는 오른쪽으로
+  right: { min:-55, max:-40, label:'우측', turn:'왼쪽'  }, // 오른쪽 옆머리 = 고개는 왼쪽으로
 };
 const LIVE_MIRROR_SIGN = -1;      // 라이브 yaw → 저장 사진 yaw 변환 계수(미러 촬영이라 -1)
 const LIVE_DETECT_INTERVAL = 120; // ms. 프레임마다 돌리면 과함 — 약 8fps면 안내용으로 충분
@@ -3640,12 +3697,15 @@ function liveEvaluateFrame(angle){
   // 어느 쪽으로 얼마나 돌려야 하는지 안내
   let hint;
   if(angle === 'front'){
+    // (검증됨, 건드리지 말 것) yaw는 미러 저장 기준이라 양수 = 라이브에선 얼굴이
+    // 왼쪽을 봄 = 사용자가 고개를 자기 오른쪽으로 돌린 상태 → 되돌리려면 왼쪽.
     hint = (yaw > t.max) ? '조금 왼쪽으로 돌려주세요' : '조금 오른쪽으로 돌려주세요';
   } else {
     const mag = Math.abs(yaw), lo = Math.min(Math.abs(t.min), Math.abs(t.max)), hi = Math.max(Math.abs(t.min), Math.abs(t.max));
     const sameSide = (yaw >= 0) === (t.max > 0);
-    if(!sameSide)      hint = `반대 방향이에요 — ${t.label}으로 돌려주세요`;
-    else if(mag < lo)  hint = `${(lo-mag).toFixed(0)}° 더 돌려주세요`;
+    // "좌측으로 돌려주세요"는 중의적이라(보여줄 옆머리? 돌릴 방향?) 실제 동작으로 안내.
+    if(!sameSide)      hint = `반대 방향이에요 — 고개를 ${t.turn}으로 돌려 ${t.label} 옆머리를 보여주세요`;
+    else if(mag < lo)  hint = `${t.turn}으로 ${(lo-mag).toFixed(0)}° 더 돌려주세요`;
     else               hint = `${(mag-hi).toFixed(0)}° 덜 돌려주세요(너무 옆모습)`;
   }
   return { ready:false, chip, hint };
