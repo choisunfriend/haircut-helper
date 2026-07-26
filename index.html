@@ -62,6 +62,21 @@
 
   ── 핵심 공용 함수(단일 출처, 복제 금지) ──
   · getHeadEllipsoid() / headPhiToMeshY() — 위 좌표 규약 참고.
+  ── 2026-07-26 조정 경로 단일화 ──
+  조정은 항상 3D를 거친다: 중립 가닥 캡처 → 3D 리프트(state.hair3Dneutral) →
+  3D에서 길이·컬·중력·가르마 → 같은 뷰로 역투영(projectHair3DToView).
+  β 플래그(use3DAdjust)로 경로가 갈리던 구조를 없앴다 — 플래그가 있으면 같은
+  조정을 3D 기하 변형과 2D 재추적 두 원리로 각각 구현해야 하고, 실제로 가르마를
+  넣을 때 두 군데에 넣어야 했다. 이제 그 플래그는 미니 3D 패널 표시만 정한다.
+  drawHairStrands(2D 직접 렌더)는 조정 경로가 아니라 세 가지 용도로만 남는다:
+    ① 중립 가닥 캡처(3D로 올릴 소스)  ② 원본 결 보기  ③ 중립 모델 미준비/투영 실패 폴백
+  그래서 traceStrandPath에서 스타일링 입력(styling·가르마 투영기)을 걷어냈다.
+  ⚠ 그 결과 넘김·뿌리볼륨·결흐름은 현재 어느 경로에도 구현이 없다(=슬라이더 무반응).
+    가르마만 3D(partStrand3D)로 이식 완료. 나머지는 같은 방식으로 하나씩 옮길 자리.
+    마무리 질감(finish)은 색 보정이라 2D 색 계산에만 남아 있는데, 투영 경로는
+    중립 캡처 때 구운 색을 쓰므로 역시 무반응 — projectHair3DToView에서 밝기
+    계수로 얹으면 되는 자리(작은 작업).
+  섹션 커트/펌(길이·레이어·컬 배율)은 아직 2D 폴백에 남아 있다 — 별도 단계.
   · getViewPoseSource(angle) → {tier:'pnp'|'approx'|'live'|'none', lm, cap}.
     getViewYawDeg/getViewPitchDeg/getViewRollDeg(각도)와 getViewPoseConfidence
     (신뢰도)가 이 판정 하나를 공유한다.
@@ -1060,7 +1075,7 @@ input[type=range]::-moz-range-thumb{width:20px;height:20px;border-radius:50%;bac
           <button class="btn btn-ghost" style="font-size:12px;padding:10px;" onclick="resetSections()">초기화</button>
           <!-- (10차) 3D 조정 엔진 토글 — ON이면 3D 정규 모델을 현재 뷰로 투영해 표시
                (3D=원본, 2D=투영). 1단계는 표시 경로만; 조정 연산자 이관은 다음 단계. -->
-          <button class="btn btn-ghost" style="font-size:12px;padding:10px;" id="btn3dEngine" onclick="toggle3DAdjust()">3D 조정 엔진 β: OFF</button>
+          <button class="btn btn-ghost" style="font-size:12px;padding:10px;" id="btn3dEngine" onclick="toggle3DAdjust()">3D 미리보기: OFF</button>
           <button class="btn btn-primary" style="font-size:12px;padding:10px;" onclick="registerCurrentAsStyle()">★ 현재 모델을 스타일로 등록하기</button>
           <div style="height:4px;"></div>
         </div>
@@ -1325,50 +1340,6 @@ function decomposePoseMatrix(data){
     roll  = 0;
   }
   return { yawRad: yaw, pitchRad: pitch, rollRad: roll };
-}
-
-/* 2D 경로용 가르마 — 3D와 같은 partingPushHead를 쓰고, 결과 벡터만 이미지
-   평면으로 되돌린다(두 경로가 다른 가르마를 그리면 안 되므로 식은 하나).
-   ① 이미지 좌표(nx,ny) → 두상 좌표: projectImagePointToHead와 동일한 풀이
-   ② partingPushHead로 두상 공간 이동 벡터
-   ③ 그 벡터를 뷰 포즈로 정회전(두상→카메라) 후 x,y 성분만 취함
-   ④ 프로젝터 스케일(bX,bY)로 나눠 이미지 정규좌표 → 마스크 픽셀
-   뷰당 한 번만 만들고(프로젝터·회전행렬 재사용) 가닥마다 뿌리 1회 호출한다. */
-function makePartPushImg(angle, maskW, maskH, partVal){
-  if(!partVal) return null;
-  const lm = (state.landmarks && state.landmarks[angle]) || computeSilhouetteAnchors(angle) || getEstimatedLandmarks(angle);
-  if(!lm) return null;
-  let wf = 1, hf = 1;
-  try{ const fm = getFaceMetrics(); if(fm){ wf = fm.widthFactor || 1; hf = fm.heightFactor || 1; } }catch(e){}
-  const proj = makeFaceProjector(lm, wf, hf);
-  const E = getHeadEllipsoid();
-  const yawRad   = (lm.poseYawDeg   ?? getViewYawDeg(angle))   * Math.PI/180;
-  const pitchRad = (lm.posePitchDeg ?? getViewPitchDeg(angle)) * Math.PI/180;
-  const rollRad  = (lm.poseRollDeg  ?? getViewRollDeg(angle))  * Math.PI/180;
-  const rot = composeRotationZYX(yawRad, pitchRad, rollRad);
-  return function(ix, iy, curlAmt){
-    const nx = ix / maskW, ny = iy / maskH;
-    const localX = proj.toMeshX(nx), localY = proj.toMeshY(ny);
-    const yLocal = localY - 0.15;
-    const inside = (localX/E.a)*(localX/E.a) + (yLocal/E.b)*(yLocal/E.b);
-    if(inside > 1.2) return null;                     // 두상 밖(귀·윤곽 극단치)
-    const localZ = E.c * Math.sqrt(Math.max(0, 1 - Math.min(1, inside)));
-    // R^T·v (카메라 → 두상). applyRotationTranspose3와 같은 식이지만 THREE에
-    // 의존하지 않는다 — 이 경로는 2D 렌더라 3D 라이브러리가 아직 없을 수 있음
-    // (실제로 THREE 미로드 상태에서 터졌음). mat9는 행 우선 9개.
-    const w = {
-      x: rot[0]*localX + rot[3]*yLocal + rot[6]*localZ,
-      y: rot[1]*localX + rot[4]*yLocal + rot[7]*localZ + 0.15, // 중심 오프셋 복원
-      z: rot[2]*localX + rot[5]*yLocal + rot[8]*localZ,
-    };
-    const push = partingPushHead(w, partVal, curlAmt);
-    if(!push) return null;
-    // 두상 → 카메라(정회전). applyRotationTranspose3의 역이므로 행 우선 곱.
-    const cx = rot[0]*push.x + rot[1]*push.y + rot[2]*push.z;
-    const cy = rot[3]*push.x + rot[4]*push.y + rot[5]*push.z;
-    // 이미지 정규좌표 → 마스크 픽셀 (toMeshX/Y의 기울기 bX, -bY의 역)
-    return { dx: (cx / proj.bX) * maskW, dy: (-cy / proj.bY) * maskH };
-  };
 }
 
 // ── 랜드마크 실패 시 비율 기반 폴백 ──
@@ -1817,10 +1788,11 @@ const state = {
   debugShowMask: false, // true면 조정화면에서 가닥 대신 hairMaskBuf 실루엣을 그대로 표시(진단용)
   debugShowRaw: false,  // true면 스타일/슬라이더 값 무시하고 전 섹션 중립값(길이·볼륨 50, 컬 0)으로 렌더링(진단용)
   debugShowField: false, // true면 strand 시뮬레이션(뿌리/중력/clamp) 전부 건너뛰고 orientation 컬럼 샘플을 가공 없이 그대로 표시(진단용)
-  // ── 3D 조정 엔진(베타, 2026-07-22) ──
-  // true면 조정 화면의 계산이 "중립 가닥 캡처 → 3D 리프트 → 3D에서 커트/펌 →
-  // 같은 뷰로 역투영(깊이 정렬)" 경로로 바뀌고, 표시만 2D로 유지된다(사용자 설계:
-  // "내부 로직은 3D로 조정을 계산하고 표현은 2D로"). false면 기존 2D 직접 렌더.
+  // ── 3D 미리보기 패널 표시 여부 (이름은 옛 플래그명 유지) ──
+  // (2026-07-26) 예전엔 이 값이 조정 경로를 갈랐다(true=3D, false=2D 직접 렌더).
+  // 지금은 조정 경로가 3D 하나뿐이라 — "중립 가닥 캡처 → 3D 리프트 → 3D에서
+  // 커트/펌/스타일링 → 같은 뷰로 역투영" — 이 값은 우하단 미니 3D 패널을
+  // 띄울지만 정한다. 조정 결과는 이 값과 무관하게 항상 3D를 거쳐 나온다.
   use3DAdjust: false,
   currentCaptureIndex: 0,
   selectedStyle: null,
@@ -4257,21 +4229,22 @@ function resetSections(){
   drawAdjustPreview();
 }
 
-// (10차) 3D 조정 엔진 토글 — 3D=원본, 2D=투영 구조의 표시 경로 on/off.
-// ON 시 정규 3D 모델(state.hair3D)이 없으면 buildHairStrandsFromPaths로 1회 생성
-// (현재 캡처된 가닥을 리프트). 이후 renderFrame이 그 모델을 현재 뷰로 되쏜다.
+// 3D 미리보기 패널 토글.
+// (2026-07-26) 의미가 바뀌었다. 예전엔 이 버튼이 "조정을 3D로 할지 2D로 할지"를
+// 정하는 경로 스위치였는데, 이제 조정 경로는 3D 하나뿐이라(renderFrame의
+// canProject에서 플래그 게이트 제거) 이 버튼은 미니 3D 패널을 보여줄지만 정한다.
+// state.use3DAdjust는 그 패널 표시 상태를 뜻하는 이름으로 남아 있음.
 function toggle3DAdjust(){
   state.use3DAdjust = !state.use3DAdjust;
   const btn = document.getElementById('btn3dEngine');
-  if(btn) btn.textContent = '3D 조정 엔진 β: ' + (state.use3DAdjust ? 'ON' : 'OFF');
+  if(btn) btn.textContent = '3D 미리보기: ' + (state.use3DAdjust ? 'ON' : 'OFF');
   if(state.use3DAdjust){
     showDevMini3D(true);              // 미니뷰 패널 표시(초기화)
-    // 중립 3D 모델 생성(1회) → 미니뷰 + 조정창 메인(투영) 갱신. 이미 있으면 재사용.
+    // 중립 3D 모델은 조정 경로가 이미 쓰고 있어 대개 준비돼 있음. 없으면 1회 생성.
     if(state.hair3Dneutral){ refreshDevMini3D(); drawAdjustPreview(); }
-    else buildNeutralHair3D(()=>{ refreshDevMini3D(); drawAdjustPreview(); }); // 준비되면 메인도 투영 전환
+    else buildNeutralHair3D(()=>{ refreshDevMini3D(); drawAdjustPreview(); });
   } else {
-    showDevMini3D(false);
-    drawAdjustPreview();             // 2D 직접 렌더로 복귀
+    showDevMini3D(false);             // 패널만 닫음 — 조정 경로는 그대로 3D
   }
 }
 
@@ -5032,7 +5005,13 @@ function renderFrame(canvas, angle){
         // 투영으로 그림(3D=원본, 2D=투영). "3D로 조정, 2D로 표현"의 완성 —
         // 장기적으로 비교 화면 제거하고 조정창이 곧 결과 화면. 실패/미준비 시
         // 기존 2D 직접 렌더로 폴백(안전).
-        const canProject = state.use3DAdjust && !rawMode && state.hair3Dneutral
+        // (2026-07-26) β 플래그 게이트 제거 — 경로를 하나로.
+        // 사용자: "β 버튼 안 켜도 경로가 3D로 갈 수 있잖아. 경로는 동일하게 가면 되지."
+        // 맞는 지적. 플래그로 경로가 갈리면 같은 조정을 두 원리(3D 기하 변형 /
+        // 2D 재추적)로 구현해야 하고, 실제로 가르마도 두 군데에 넣어야 했다.
+        // 이제 조정은 항상 3D에서 하고 2D는 그 투영이다. 아래 drawHairStrands는
+        // 조정 경로가 아니라 폴백(중립 모델 미준비/투영 실패/원본 결 보기)이다.
+        const canProject = !rawMode && state.hair3Dneutral
           && state.hair3Dneutral.viewCal && state.hair3Dneutral.viewCal[angle];
         if(!(canProject && projectHair3DToView(ctx, fit, angle, maskInf))){
           // 가닥 오버레이 — origLen 이내는 hairCanvas 마스크로 clip, 연장분은 clip 없음(drawHairStrands 내부에서 처리)
@@ -5067,10 +5046,12 @@ function renderAdjustFrame(){
     +' rawMode='+state.debugShowRaw);
   renderFrame(document.getElementById('adjustCanvas'), state.currentViewAngle);
   logSectionColumnCounts(state.currentViewAngle);
-  // (11차) 3D 조정 엔진 ON이면 미니뷰에 3D 조정 연산자 재적용(디바운스).
-  // 중립 모델은 고정이라 재캡처·재리프트 불필요 — refreshDevMini3D가 연산자만
-  // 다시 적용(가벼움). 중립 모델이 아직 없으면 1회 생성.
-  if(state.use3DAdjust) scheduleHair3DRefresh();
+  // 중립 3D 모델 확보 + 미니뷰 갱신(디바운스). 중립 모델은 고정이라 재캡처·
+  // 재리프트가 필요 없고, refreshDevMini3D는 연산자만 다시 적용한다(가벼움).
+  // (2026-07-26) β 플래그 게이트 제거 — 조정 경로가 3D 하나로 통일됐으므로
+  // 중립 모델은 플래그와 무관하게 항상 준비돼 있어야 한다(없으면 위 renderFrame이
+  // 2D 폴백으로 떨어진다). 최초 진입 1회만 무겁고 이후엔 캐시.
+  scheduleHair3DRefresh();
 }
 let _hair3DRefreshTimer = null;
 function scheduleHair3DRefresh(){
@@ -5480,7 +5461,14 @@ const FLOW_DISC = {
   thrMin: 0.75, thrSpan: 0.55, // 가닥별 임계 = thrMin + rand×thrSpan (끝선 스태거)
 };
 function traceStrandPath(ix, sy_img, targetLen_img, jitterSeed, env, rootSec, stopAtExit){
-  const { hasOrientation, orientation, orientMaskW, ox, oy, STRAND_STEP_LEN, frontDirBiasFor, curlAmtFor, waveWidthFor, styling, maskW, maskAt, partPushImg } = env;
+  /* (2026-07-26 조정 경로 단일화) styling(넘김·볼륨·결흐름·가르마)은 더 이상
+     받지 않는다. 스타일링은 3D 연산자가 전담하고(computeAdjustedHair3DStrands),
+     이 함수는 "사진에 찍힌 결을 그대로 따라가는" 역할만 남는다:
+       ① 중립 가닥 캡처(3D로 올릴 소스)  ② 원본 결 보기  ③ 투영 실패 폴백
+     예전엔 여기서 이미지 평면 각도 바이어스로 스타일링을 흉내 냈는데, 그건
+     원리적으로 틀린 표현이었다(하네스 styling-test.html에서 확인 — 화면 가로
+     밀기로는 가르마가 갈라지지도, 넘김이 뒤로 가지도 않는다). */
+  const { hasOrientation, orientation, orientMaskW, ox, oy, STRAND_STEP_LEN, frontDirBiasFor, curlAmtFor, waveWidthFor, maskAt } = env;
     const stepLen = STRAND_STEP_LEN; // 고정 보폭 — targetLen_img에서 역산하지 않음
     const steps = Math.max(2, Math.round(targetLen_img / stepLen));
     const pts = [{x:ix, y:sy_img}]; // 마스크 좌표계(maskW,maskH 기준)로 누적
@@ -5501,18 +5489,6 @@ function traceStrandPath(ix, sy_img, targetLen_img, jitterSeed, env, rootSec, st
     const curlAmt = curlAmtFor(ix, rootSec);         // gyeol 섹션별 컬 세기(절대 0~100)
     const curlStrength = curlAmt / 100;              // 0~1 (9차: 결 추종 약화·진폭에 공용)
     const waveT   = (waveWidthFor(ix, rootSec)) / 100; // gyeol 섹션별 웨이브 폭(0~1)
-    // ── gyeol 스타일링(전역 마무리) 값 — 뿌리 컬럼 좌우 판정 포함 ──
-    const side = (typeof maskW==='number' && ix < maskW/2) ? -1 : 1;
-    const st = styling || {};
-    const stSweep = (st.sweep||0)/100;               // 넘김(전역 한 방향)
-    const stVol   = ((st.volume??50)-50)/50;         // 뿌리 볼륨(-1~1)
-    const stFlow  = (st.flow||0)/100;                // 결 흐름(끝 말림)
-    // ── 가르마 (2026-07-26 재작성) ──
-    // 예전: stPart를 화면 가로 각도 바이어스로 가산 → 머리 전체가 한쪽으로 쏠릴
-    // 뿐 갈라지지 않았음. 지금: 3D와 동일한 partingPushHead가 만든 두피 표면
-    // 이동 벡터를 이미지 평면으로 되돌려, 스텝마다 가중치 증분만큼 실제로 옮긴다.
-    // (증분 적용이라 가닥 전체 합이 3D 경로의 이동량과 정확히 같아진다)
-    const partPush = partPushImg ? partPushImg(ix, sy_img, curlAmt) : null;
     // baseDir: curl/wiggle을 얹기 전, "결방향만" 반영한 순수 진행방향.
     // 다음 스텝의 orientation 블렌딩 기준(연속성 유지)으로 이것만 이어받는다.
     // → curl 보정을 여기 포함시켜 이어받으면 매 스텝 같은 방향으로 계속
@@ -5654,24 +5630,12 @@ function traceStrandPath(ix, sy_img, targetLen_img, jitterSeed, env, rootSec, st
       // 중력에 자연스럽게 맡기는 게 더 사실적) — frontBias가 0(front 섹션 아님/
       // line=50)이면 곱해도 0이라 기존 동작과 완전히 동일.
       const frontBiasDecay = 1 - (s/steps) * 0.6;
-      // ── gyeol 스타일링(전역 마무리) 가산 바이어스 — 전부 중립(0)이면 무영향 ──
-      const prog = s/steps;
-      const sweepBias = stSweep * 0.45 * prog;                       // 넘김: 진행할수록 한 방향으로 눕힘
-      const flowBias  = side * stFlow * 0.55 * prog * prog;          // 결 흐름: 끝으로 갈수록 안/바깥 말림
-      const volBias   = (s < 4) ? side * stVol * 0.25 * (1 - s/4) : 0; // 뿌리 볼륨: 뿌리 근처 바깥으로 띄움
-      const travelDir = dir + curlComponent + wiggle + frontBias * frontBiasDecay
-                        + sweepBias + flowBias + volBias;
+      const travelDir = dir + curlComponent + wiggle + frontBias * frontBiasDecay;
 
       // 실제 전진: travelDir은 "이미지 평면에서의 각도"이며 y축 기준 아래가 양수
       const dx = Math.cos(travelDir) * stepLen;
       const dy = Math.sin(travelDir) * stepLen;
-      // 가르마 증분(이 스텝에서 늘어난 가중치만큼만) — 3D 경로와 같은 프로파일
-      let pdx = 0, pdy = 0;
-      if(partPush){
-        const dw = partWeightAt(s+1, steps) - partWeightAt(s, steps);
-        if(dw !== 0){ pdx = partPush.dx * dw; pdy = partPush.dy * dw; }
-      }
-      pts.push({x: cur.x + dx + pdx, y: cur.y + dy + pdy});
+      pts.push({x: cur.x + dx, y: cur.y + dy});
 
       // (6차) 마스크 이탈 실측 — 시작 2스텝은 경계 노이즈라 검사 생략(orientation과 동일)
       if(maskAt && _exitIdx === null && s >= 2){
@@ -5943,11 +5907,9 @@ function drawHairStrands(ctx, fit, scalpY, hairEndY, maskW, maskH, hairCanvas, o
   // 여기서는 호출 시점에 고정되는 값들(env)만 한 번 묶어서 넘겨준다.
   // (6차) maskAt 추가: 결을 따라가며 "사진의 헤어 마스크를 벗어나는 지점"을
   // 실측하기 위한 알파 샘플러(isRealHairAt — 함수 선언 호이스팅으로 참조 가능).
-  // 가르마: 3D와 같은 식(partingPushHead)을 쓰는 이미지 평면 변환기. 뷰당 1회 생성.
-  let partPushImg = null;
-  try{ partPushImg = makePartPushImg(angle, maskW, maskH, (stylingForRender && stylingForRender.part) || 0); }
-  catch(e){ console.warn('가르마 투영기 생성 실패(가르마만 비활성):', e); partPushImg = null; }
-  const strandEnv = { hasOrientation, orientation, orientMaskW, ox, oy, STRAND_STEP_LEN, frontDirBiasFor, curlAmtFor, waveWidthFor, maskW, styling: stylingForRender, maskAt: isRealHairAt, partPushImg };
+  // (2026-07-26) styling·가르마 투영기 제거 — 스타일링은 3D 연산자 전담.
+  // 이 경로는 "사진 결 그대로" 렌더만 한다(중립 캡처 / 원본 결 보기 / 폴백).
+  const strandEnv = { hasOrientation, orientation, orientMaskW, ox, oy, STRAND_STEP_LEN, frontDirBiasFor, curlAmtFor, waveWidthFor, maskAt: isRealHairAt };
   function traceStrand(ix, sy_img, targetLen_img, jitterSeed, rootSec, stopAtExit){
     return traceStrandPath(ix, sy_img, targetLen_img, jitterSeed, strandEnv, rootSec, stopAtExit);
   }
