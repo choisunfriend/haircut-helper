@@ -1266,8 +1266,23 @@ async function detectBackEarsByPose(angle){
     if(!lE || !rE) return null;
     const span = Math.abs(rE.x - lE.x);
     if(!(span > 0.02)) return null;              // 완전 옆모습 등 — 못 씀
+    /* 타당성 검사 (2026-07-26 추가)
+       뒤에서는 양쪽 귀가 모두 가려져 있어서, PoseLandmarker가 두 점을 뒤통수
+       한가운데로 붕괴시키는 경우가 있다(실측 로그: 간격 3.5% — 귀 위치가 아님).
+       그 값을 앵커로 쓰면 두상 폭이 통째로 줄어든다(0.504 → 0.470, 세로/폭 1.50→1.66).
+       같은 사진 안의 어깨 너비와 비율로 보면 촬영 거리·프레이밍이 상쇄된다.
+       사람의 귀 간격 ÷ 어깨 너비 ≈ 0.35~0.45 → 넉넉하게 0.20~0.80만 통과시킨다. */
+    const sL = pts[11], sR = pts[12];
+    const shoulderW = (sL && sR) ? Math.abs(sR.x - sL.x) : 0;
+    if(shoulderW > 0.05){
+      const rel = span / shoulderW;
+      if(rel < 0.20 || rel > 0.80){
+        console.log(`[${angle}] 포즈 귀 간격 비정상 — 어깨 대비 ${(rel*100).toFixed(0)}% (정상 20~80%). 앵커로 쓰지 않고 실루엣으로 폴백`);
+        return null;
+      }
+    }
     return { lEarX: Math.min(lE.x, rE.x), rEarX: Math.max(lE.x, rE.x),
-             earY: (lE.y + rE.y) / 2, span,
+             earY: (lE.y + rE.y) / 2, span, shoulderW,
              shoulderY: (pts[11] && pts[12]) ? (pts[11].y + pts[12].y)/2 : null };
   }catch(e){ console.warn('후면 귀 앵커 실패:', e); return null; }
 }
@@ -5467,15 +5482,33 @@ function makeImgToCanvas(fit, maskW, maskH){
 function strokeSmoothPolyline(ctx, pts){
   if(pts.length < 2) return;
   ctx.beginPath();
-  ctx.moveTo(pts[0].x, pts[0].y);
-  for(let i=1;i<pts.length-1;i++){
-    const mx = (pts[i].x + pts[i+1].x)/2;
-    const my = (pts[i].y + pts[i+1].y)/2;
-    ctx.quadraticCurveTo(pts[i].x, pts[i].y, mx, my);
-  }
-  const last = pts[pts.length-1];
-  ctx.lineTo(last.x, last.y);
+  traceSmoothPolyline(ctx, pts);
   ctx.stroke();
+}
+// 위와 같은 곡선을 "경로만" 쌓는다(beginPath/stroke 없음) — 여러 가닥을 한
+// beginPath에 몰아넣고 stroke를 1회로 줄이는 슬라이스 배치용(2026-07-26).
+// off를 주면 진행 방향의 수직으로 그만큼 밀어낸 사본을 그린다(다발 속 가닥 배치).
+function traceSmoothPolyline(ctx, pts, off){
+  if(!pts || pts.length < 2) return;
+  const P = off ? offsetPolyline(pts, off) : pts;
+  ctx.moveTo(P[0].x, P[0].y);
+  for(let i=1;i<P.length-1;i++){
+    const mx = (P[i].x + P[i+1].x)/2;
+    const my = (P[i].y + P[i+1].y)/2;
+    ctx.quadraticCurveTo(P[i].x, P[i].y, mx, my);
+  }
+  const last = P[P.length-1];
+  ctx.lineTo(last.x, last.y);
+}
+// 폴리라인을 진행 방향의 수직으로 off px 평행이동한 사본
+function offsetPolyline(pts, off){
+  const out = new Array(pts.length);
+  for(let i=0;i<pts.length;i++){
+    const a = pts[Math.max(0,i-1)], b = pts[Math.min(pts.length-1,i+1)];
+    const tx = b.x-a.x, ty = b.y-a.y, L = Math.hypot(tx,ty) || 1;
+    out[i] = { x: pts[i].x + (-ty/L)*off, y: pts[i].y + (tx/L)*off };
+  }
+  return out;
 }
 
 // gyeol 색 밝기 조정 유틸(hex 전용) — 섹션별 컬러/스타일링 광택(finish)에 사용.
@@ -8600,7 +8633,28 @@ function computeSilhouetteAnchors(angle){
       /* 귀 앵커 선택 — PoseLandmarker 실측이 있으면 그걸 쓴다(2026-07-26).
          정면·좌·우가 쓰는 기준점(귀)과 같아져서 네 장이 한 자로 연결된다.
          없으면 기존 방식(어깨 직전 최대폭 행)으로 폴백. */
-      const pe = state.poseEars && state.poseEars[angle];
+      let pe = state.poseEars && state.poseEars[angle];
+      /* 2차 타당성 검사(2026-07-26): 같은 사진의 실루엣 폭과 대조한다.
+         주의 — "귀 간격 ÷ 실루엣 폭"은 고정 상수로 두면 안 된다. 실루엣 폭에는
+         머리숱이 포함돼서, 숱이 많거나 부풀린 머리는 이 비율이 크게 낮아진다
+         (제대로 잡힌 귀를 오탐으로 버릴 수 있음).
+         그래서 그 사람 정면 사진에서 같은 비율을 실측해 기준으로 삼는다.
+         (정면: 귀 랜드마크 간격 ÷ 귀높이 실루엣 폭 — 같은 사람이라 숱이 반영됨)
+         정면 비율을 못 구할 때만 넉넉한 절대 범위(0.30~1.40)로 최소한만 거른다. */
+      if(pe && earB && earB.span > 4){
+        const rel = (pe.rEarX - pe.lEarX) * mw / earB.span;
+        const relF = (earF && earF.span > 4)
+          ? clamp(Math.abs(frontLm.rEarX - frontLm.lEarX) * fw / earF.span, 0.40, 1.05)
+          : 0;
+        const lo = relF ? relF * 0.50 : 0.30;
+        const hi = relF ? relF * 1.60 : 1.40;
+        if(rel < lo || rel > hi){
+          console.log(`[${angle}] 포즈 귀 = 실루엣 폭의 ${(rel*100).toFixed(0)}%`
+            + (relF ? ` (정면 실측 기준 ${(relF*100).toFixed(0)}%, 허용 ${(lo*100).toFixed(0)}~${(hi*100).toFixed(0)}%)` : ' (허용 30~140%)')
+            + ' — 비정상으로 보고 실루엣 앵커 사용');
+          pe = null;
+        }
+      }
       const earPx = pe
         ? { l: pe.lEarX*mw, r: pe.rEarX*mw, row: pe.earY*mh, span: (pe.rEarX-pe.lEarX)*mw, src:'pose' }
         : (earB ? { l: earB.earL, r: earB.earR, row: earB.earRow, span: earB.span, src:'silhouette' } : null);
@@ -9408,6 +9462,40 @@ function project3DPointToView(world, cal, yTop, CY){
 // 소스는 중립 모델(viewCal)+조정 연산자(computeAdjustedHair3DStrands). 대상 뷰 캡처
 // 가닥만(srcAngle 필터) 투영해 교차뷰 잡음 없이 "그 뷰의 머리 = 3D 조정 결과의 투영".
 // painter's 깊이 정렬로 겉겹이 속겹을 덮는 가림이 3D 실제 z 기준으로 정확해짐.
+/* ── 다발 렌더 상수 (2026-07-26, render-test.html 하네스에서 눈으로 맞춘 값) ──
+   왜 바꿨나: 이전 렌더는 "가닥마다 단색 불투명 0.7px 선 1회 + 두피색 언더코트"
+   였다. 실제 스케일로 따지면 1px ≈ 0.5mm라서
+     · 머리카락 한 올 0.07mm = 0.14px  → 애초에 그릴 수 없다(알파로만 존재)
+     · 사진에서 보이는 결 다발 1~3mm = 2~6px
+   즉 0.7px는 한 올의 5배이면서 다발의 1/3~1/8인 중간지대였고, 게다가 불투명
+   단색이라 "펜으로 그은 선"으로 보였다. 그리고 2D 캡처 때 가닥마다 실측한
+   색(st.color)을 여기서 통째로 버리고 있었다(단색 hairCol).
+
+   그래서 렌더 단위를 "다발"로 올린다:
+     · 다발 안에 가닥을 여러 개, 사이에 <틈>을 두고 배치 → 틈으로 뒤가 비쳐서
+       밝기가 만들어진다. alpha로 낮추면 머리색이 회색으로 떠버린다(사용자 확인).
+     · 가닥 색은 실측 팔레트 색 그대로(불투명), 다발 속에서만 미세 틴트로 분산.
+     · (슬라이스 × 양자화 색)으로 묶어 beginPath/stroke를 1회씩만 — 하네스 실측
+       stroke 2,800회 → 320회, 40회 평균 42.0ms → 36.6ms.
+   모든 치수는 "기존 가닥 굵기 W0" 대비 배율이라 해상도가 달라져도 비율 유지.
+   ※ 값 튜닝 손잡이는 전부 여기 한 곳. count(다발 수)는 stride로 조절한다. */
+const HAIR3D_RENDER = {
+  // 다발 폭 = 그 뷰의 헤어 실루엣 가로폭 × 이 값.
+  // 왜 절대 px가 아니라 실루엣 비율인가: 하네스는 340px 캔버스에서 눈으로 맞췄고
+  // 앱 조정창은 705px 안팎이라, 절대 px로 옮기면 다발이 절반 크기로 들어간다
+  // (실측: W0 기준으로 옮겼더니 5.2px — 하네스의 12px에 해당하는 자리였음).
+  // 투영 결과에서 실루엣 폭을 직접 재서 비율로 환산하면 촬영 거리·프레이밍·
+  // 캔버스 크기가 전부 상쇄된다. 0.0272 = 하네스 실측(다발 7.4px ÷ 실루엣 272px).
+  bundleSpan: 0.0272,
+  sub:    5,        // 다발 안 가닥 수
+  gap:    0.25,     // 틈 비율 — 가닥 폭 = 간격 × (1 - gap)
+  colVar: 0.45,     // 다발 속 색 분산(미세 틴트 폭)
+  stride: 1,        // 가닥 솎아내기 = 다발 수 손잡이(1=전부, 2=절반).
+                    // 늘리려면 STRAND_SAMPLE_3D를 2→1로(모델 재생성 필요, 약 2배).
+  undercoat: false, // 두피색 언더코트. 사용자 선택: 끔(다발을 투명하게 = 틈이 살아남)
+  minSubW: 0.35,    // 가닥 폭 하한(이 아래는 안티에일리어싱에 먹혀 의미 없음)
+  quant:  20,       // 배치용 색 양자화 간격(작을수록 색 충실, 클수록 stroke 감소)
+};
 function projectHair3DToView(ctx, fit, angle, maskInf){
   const model = state.hair3Dneutral;
   if(!model || !model.viewCal || !model.viewCal[angle]) return false;
@@ -9415,30 +9503,111 @@ function projectHair3DToView(ctx, fit, angle, maskInf){
   if(!adj || !adj.length) return false;
   const cal = model.viewCal[angle];
   const { toX: toCX, toY: toCY } = makeImgToCanvas(fit, maskInf.w, maskInf.h);
+  const R = HAIR3D_RENDER;
+
+  // ── 투영 + 슬라이스 키 ──
+  // 슬라이스 정의는 2D의 finalizeStrandsWithSlices와 같다(섹션 × 가로 3% × 깊이 10%).
+  // 같은 패널에서 난 가닥들이 한 묶음이 되므로, 묶어서 그려도 깊이 순서가 눈에
+  // 띄게 어긋나지 않는다(슬라이스끼리는 아래에서 평균 깊이로 정렬).
+  const SLICE_W = Math.max(4, maskInf.w * 0.03);
   const projected = [];
-  for(const st of adj){
+  for(let si=0; si<adj.length; si+=Math.max(1, R.stride)){
+    const st = adj[si];
     const pts = st.pts; let dsum=0; const cpts=[];
+    let rootIx = 0, rootIy = 0;
     for(let i=0;i<pts.length;i++){
       const pr = project3DPointToView(pts[i], cal, model.yTop, model.CY);
+      if(i===0){ rootIx = pr.ix; rootIy = pr.iy; }
       cpts.push({ x: toCX(pr.ix), y: toCY(pr.iy) });
       dsum += pr.depth;
     }
-    projected.push({ cpts, depth: dsum / pts.length });
+    projected.push({
+      cpts, depth: dsum / pts.length, color: st.color,
+      slice: (st.sec||'crown') + '|' + Math.floor(rootIx / SLICE_W)
+             + '|' + Math.floor((rootIy / Math.max(1, maskInf.h)) * 10),
+    });
   }
   projected.sort((a,b)=> a.depth - b.depth); // 뒤(작은 depth)부터 → 앞이 위에 덮임
-  // ── 최소 파리티: 두피색 언더코트(굵게) → 머리색 가닥(가늘게) ──
-  // 2D drawHairStrands의 통짜 실루엣 대신 "가닥 경로 추종" 방식과 동일 취지.
-  const hairCol  = (typeof FORCED_HAIR_COLOR!=='undefined' && FORCED_HAIR_COLOR) || '#1a1a1a';
-  const scalpCol = (maskInf.scalpColor) || 'rgb(224,178,148)';
+
+  // ── 다발 치수 ──
+  // 실루엣 가로폭을 투영 결과에서 직접 잰다(프레이밍 무관한 자).
+  let minX = Infinity, maxX = -Infinity;
+  for(const p of projected){ for(const q of p.cpts){ if(q.x<minX) minX=q.x; if(q.x>maxX) maxX=q.x; } }
+  const spanX    = (maxX > minX) ? (maxX - minX) : fit.dw;
   const resScale = fit.dw / 705;
+  const W0       = Math.max(0.7, resScale * 0.6);      // 예전 가닥 굵기(하한용)
+  const bundleW  = Math.max(W0 * 2, spanX * R.bundleSpan);
+  const SUB      = Math.max(1, R.sub|0);
+  const spacing  = SUB > 1 ? bundleW / (SUB - 1) : bundleW;
+  const subW     = Math.max(R.minSubW, spacing * (1 - R.gap));
+
+  // 다발 속 미세 틴트 — 가닥마다 다른 색을 주되 팔레트 색에서 벗어나진 않게.
+  // FORCED_HAIR_COLOR(검정 지정 등)일 땐 상한 1.06 — tintColor가 bright>1에서
+  // 흰색을 가산 혼합하므로 검은 머리에 회백색 가닥이 섞이는 것을 막는다(기존 규칙).
+  const forced = (typeof FORCED_HAIR_COLOR!=='undefined' && FORCED_HAIR_COLOR);
+  const TINT = [];
+  for(let k=0;k<SUB;k++){
+    const t = SUB===1 ? 0 : (k/(SUB-1) - 0.5) * 2;     // -1 … +1
+    const b = 1 + t * R.colVar * 0.35;
+    TINT.push(forced ? Math.min(1.06, b) : b);
+  }
+
   ctx.save();
   ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.globalAlpha = 1;
-  ctx.strokeStyle = scalpCol; ctx.lineWidth = Math.max(1.3, resScale * 1.5);
-  for(const p of projected) strokeSmoothPolyline(ctx, p.cpts);   // 언더코트 패스
-  ctx.strokeStyle = hairCol;  ctx.lineWidth = Math.max(0.7, resScale * 0.6);
-  for(const p of projected) strokeSmoothPolyline(ctx, p.cpts);   // 가닥 패스
+
+  // ── 언더코트(선택) — 켜면 다발 폭만큼 두피색을 깔아 틈을 메운다 ──
+  if(R.undercoat){
+    ctx.strokeStyle = (maskInf.scalpColor) || 'rgb(224,178,148)';
+    ctx.lineWidth = bundleW * 1.15;
+    const g = new Map();
+    for(const p of projected){ if(!g.has(p.slice)) g.set(p.slice, []); g.get(p.slice).push(p); }
+    for(const arr of g.values()){
+      ctx.beginPath();
+      for(const p of arr) traceSmoothPolyline(ctx, p.cpts);
+      ctx.stroke();
+    }
+  }
+
+  // ── 가닥 배치: (슬라이스 × 양자화 색) 한 묶음 = beginPath/stroke 1회 ──
+  // 색을 양자화하지 않으면 가닥마다 색이 미세하게 달라 배치가 전혀 안 된다.
+  const batch = new Map();   // key → { col, depth, n, items:[{cpts, off}] }
+  for(const p of projected){
+    for(let k=0;k<SUB;k++){
+      const off = SUB === 1 ? 0 : (k/(SUB-1) - 0.5) * bundleW;
+      const col = tintColor(p.color || '#1a1a1a', TINT[k]);
+      const q   = quantizeStrokeColor(col, R.quant);
+      const key = p.slice + '|' + q;
+      let e = batch.get(key);
+      if(!e){ e = { col: q, depth: 0, n: 0, items: [] }; batch.set(key, e); }
+      e.items.push({ cpts: p.cpts, off });
+      e.depth += p.depth; e.n++;
+    }
+  }
+  // 배치끼리도 평균 깊이 순으로 — 슬라이스 단위 painter's 정렬 유지
+  const keys = Array.from(batch.values()).sort((a,b)=> a.depth/a.n - b.depth/b.n);
+  ctx.lineWidth = subW;
+  for(const e of keys){
+    ctx.strokeStyle = e.col;
+    ctx.beginPath();
+    for(const it of e.items) traceSmoothPolyline(ctx, it.cpts, it.off);
+    ctx.stroke();
+  }
   ctx.restore();
   return true;
+}
+// 'rgb(r,g,b)' / '#rrggbb' → step 간격으로 반올림한 'rgb(r,g,b)'.
+// 배치 묶음 수를 유한하게 만들기 위한 색 양자화(가닥마다 다른 미세 틴트를 흡수).
+function quantizeStrokeColor(col, step){
+  let r=26,g=26,b=26;
+  if(col.charCodeAt(0) === 35){                 // '#'
+    const n = parseInt(col.slice(1), 16);
+    r=(n>>16)&255; g=(n>>8)&255; b=n&255;
+  } else {
+    const m = col.match(/\d+/g);
+    if(m && m.length>=3){ r=+m[0]; g=+m[1]; b=+m[2]; }
+  }
+  const q = v => Math.min(255, Math.round(v/step)*step);
+  return 'rgb(' + q(r) + ',' + q(g) + ',' + q(b) + ')';
 }
 
 // ── (10차) 개발용 3D 검증 미니뷰 ──
