@@ -1058,6 +1058,7 @@ input[type=range]::-moz-range-thumb{width:20px;height:20px;border-radius:50%;bac
         <button class="debug-btn mask-debug-btn" id="maskDebugToggle" onclick="toggleMaskDebug()">가닥 보기</button>
         <button class="debug-btn raw-debug-btn" id="rawDebugToggle" onclick="toggleRawDebug()">원본 결 보기</button>
         <button class="debug-btn field-debug-btn" id="fieldDebugToggle" onclick="toggleFieldDebug()">결필드 원본</button>
+        <button class="debug-btn quilt-debug-btn" id="quiltDebugToggle" onclick="toggleQuiltDebug()">픽셀 이식</button>
         <button class="debug-btn" onclick="toggleDiagInfo()" style="right:auto;left:8px;bottom:8px;">진단정보</button>
         <div id="diagInfoBox" style="display:none;position:absolute;left:8px;bottom:44px;right:8px;background:rgba(0,0,0,0.85);color:#0f0;font-family:monospace;font-size:10px;padding:8px;border-radius:6px;white-space:pre-wrap;z-index:50;max-height:200px;overflow:auto;"></div>
         <div class="seg-status" id="segStatus"></div>
@@ -1991,6 +1992,8 @@ const state = {
   baseFillCanvases: {front:null,left:null,right:null,back:null}, // 지워진 자리를 주변색으로 메운 배경
   debugShowMask: false, // true면 조정화면에서 가닥 대신 hairMaskBuf 실루엣을 그대로 표시(진단용)
   debugShowRaw: false,  // true면 스타일/슬라이더 값 무시하고 전 섹션 중립값(길이·볼륨 50, 컬 0)으로 렌더링(진단용)
+  // (2026-07-27) true면 가닥을 그리지 않고 원본 사진의 헤어 픽셀을 이식해 렌더(후보 경로)
+  hairQuilt: false,
   debugShowField: false, // true면 strand 시뮬레이션(뿌리/중력/clamp) 전부 건너뛰고 orientation 컬럼 샘플을 가공 없이 그대로 표시(진단용)
   // ── 3D 미리보기 패널 표시 여부 (이름은 옛 플래그명 유지) ──
   // (2026-07-26) 예전엔 이 값이 조정 경로를 갈랐다(true=3D, false=2D 직접 렌더).
@@ -5519,6 +5522,21 @@ function toggleRawDebug(){
   renderAdjustFrame();
 }
 
+/* 픽셀 이식 토글 (2026-07-27) — 가닥을 <b>그리는</b> 대신 원본 사진의 헤어
+   픽셀을 결 방향에 맞춰 회전시켜 <b>찍는다</b>. 다른 세 디버그 뷰와 달리
+   이건 진단이 아니라 <b>후보 렌더 경로</b>다 — 되면 이쪽이 본선이 된다.
+   첫 판정 방법: 조정을 하나도 안 한 중립 상태에서 켜고, 원본 사진과 비교한다.
+   원본을 재현 못 하면 새 커트는 당연히 못 한다. */
+function toggleQuiltDebug(){
+  state.hairQuilt = !state.hairQuilt;
+  const btn = document.getElementById('quiltDebugToggle');
+  if(btn){
+    btn.classList.toggle('on', state.hairQuilt);
+    btn.textContent = state.hairQuilt ? '가닥 렌더' : '픽셀 이식';
+  }
+  renderAdjustFrame();
+}
+
 // 결필드 원본 디버그 토글: strand 시뮬레이션(뿌리 위치·중력·clamp 등) 전혀 거치지 않고
 // computeHairOrientationField가 실제로 뽑아낸 angle/coherence 컬럼 샘플을 가공 없이
 // 그대로 화면에 짧은 선분으로 표시 — 결이 마스크 중간·아래쪽에서 실제로 얼마나
@@ -5610,6 +5628,13 @@ function toggleDiagInfo(){
     lines.push('  가닥 ' + bd.sub + '/' + bd.want + '개 × ' + bd.subCss + 'px(화면), 틈 ' + bd.gapCss + 'px(화면)');
     lines.push('  다발 수 ' + bd.drawn + '/' + bd.total + ' (솎기 ' + bd.stride + ')');
     if(bd.gapCss < 1.0) lines.push('  ← 틈이 화면 1px 미만: 빈칸이 아니라 옅은 경계로 보임(의도된 설정일 수 있음)');
+    if(bd.rootDev){
+      const d = bd.rootDev;
+      lines.push('  뿌리선 어긋남 중앙값 ' + d.med.toFixed(0) + 'px'
+        + ' (10~90% ' + d.p10.toFixed(0) + '~' + d.p90.toFixed(0) + ', 마스크 높이 ' + d.h + ')');
+      lines.push('  원본 두피선보다 위(바깥)에 찍힌 뿌리 ' + d.above + '/' + d.n + '개');
+      if(d.med < -3) lines.push('  ← 머리가 원본보다 위에서 시작하고 있음');
+    }
   }
   box.textContent = lines.join('\n');
 }
@@ -5827,7 +5852,9 @@ function renderFrame(canvas, angle){
         // 조정 경로가 아니라 폴백(중립 모델 미준비/투영 실패/원본 결 보기)이다.
         const canProject = !rawMode && state.hair3Dneutral
           && state.hair3Dneutral.viewCal && state.hair3Dneutral.viewCal[angle];
-        if(!(canProject && projectHair3DToView(ctx, fit, angle, maskInf))){
+        // (2026-07-27) 픽셀 이식 경로 — 켜져 있으면 먼저 시도하고, 실패하면 가닥 렌더로 폴백
+        const quilted = canProject && state.hairQuilt && projectHairQuiltToView(ctx, fit, angle, maskInf);
+        if(!quilted && !(canProject && projectHair3DToView(ctx, fit, angle, maskInf))){
           // 가닥 오버레이 — origLen 이내는 hairCanvas 마스크로 clip, 연장분은 clip 없음(drawHairStrands 내부에서 처리)
           drawHairStrands(ctx, fit, scalpY, hairEndY, maskW, maskH, hairC, buildStrandOpts(maskInf, angle, rawMode));
         }
@@ -9406,7 +9433,11 @@ function captureStrandPathsFor(angle, rawMode){
    뿌리는 두피 근처(LIFT)에서 나와 RAMP 구간 안에 자기 층(tLayer)으로 올라온다.
    LIFT를 0으로 두지 않는 이유는 정수리 꼭짓점이 한 점만 파이는 것을 막기 위함.
    상세한 배경은 아래 buildHairStrandsFromPaths 안의 주석 참조. */
-const HAIR_ROOT = { LIFT: 0.10, RAMP: 0.22 };
+/* LIFT 0.10 → 0 (2026-07-27 2차, 사용자: "뿌리 시작점 함수는 원본결이랑
+   똑같으면 될 거 같아"). 0이면 뿌리가 두피면 위에 정확히 놓인다 = 2D 원본 결
+   보기의 뿌리와 같은 자리. 정수리 꼭짓점이 모발 두께만큼 낮아지는 부작용은
+   감수한다 — 실기기에서 "머리가 바깥에서 시작한다"가 계속 더 큰 문제였다. */
+const HAIR_ROOT = { LIFT: 0, RAMP: 0.22 };
 function hairLayerAt(tLayer, i, n){
   const root = tLayer * HAIR_ROOT.LIFT;
   const f = Math.min(1, Math.max(0, (i / Math.max(1, n)) / HAIR_ROOT.RAMP));
@@ -10345,8 +10376,10 @@ const HAIR3D_RENDER = {
      0.2에서는 가닥 3개가 거의 붙어 하나의 획으로 보였다. 사용자: "가닥을 하나
      늘려서 폭을 늘림으로 비는 공간을 좀 더 메울 필요가 있겠어. 틈을 0.3px로 해서
      가는 가닥이 표시날 때까지 한번 올려보게." → 가닥 4개 · 틈 0.3px.
-     다발 폭은 (4-1)×(0.7+0.3) = 3.0px로 자동으로 따라 넓어진다. */
-  minGapCss: 0.3,
+     다발 폭은 (4-1)×(0.7+0.3) = 3.0px로 자동으로 따라 넓어진다.
+     (2026-07-27 2차) 0.3 → <b>0.5</b>(사용자 지정). 다발 폭도 3.0 → 3.6px로
+     따라 넓어진다 — 틈만 늘리는 게 아니라 빈 곳을 더 덮는 방향. */
+  minGapCss: 0.5,
   /* (2026-07-27 사용자 지정) 1.1 → 0.7 — 획을 더 가늘게.
      주의: 이 값이면 다발 전체가 1.8px라 안에 든 가닥 3개가 화면에서 분리되지
      않는다(= 가는 획 하나). 의도된 방향이다 — "이 헤어 방식이 좀 부드럽게
@@ -10370,6 +10403,311 @@ const HAIR3D_RENDER = {
      8이면 그 차이가 살아난다. 묶음 수는 조금 늘지만 슬라이스 배치가 흡수한다. */
   quant:  8,
 };
+/* ══════════════════════════════════════════════════════════════════
+   헤어 픽셀 이식 (2026-07-27, 사용자 제안)
+   ─────────────────────────────────────────────────────────────────
+   사용자: "같은 사람 얼굴 피부를 두상에 이식한 것처럼 동일인의 헤어도
+            픽셀 이식이 되겠냐고 작업해보자고 한 거지. 함수로 렌더하려니까
+            복잡하잖아."
+
+   구멍 메움(pickSkinPatch)이 통했던 이유가 그대로 적용된다 — <b>소스와 대상이
+   같은 사람·같은 조명·같은 카메라</b>라 색과 명암을 맞출 필요가 없다.
+   헤어는 조건이 오히려 더 좋다: ① 자기 유사성이 극단적으로 높고(같은 가닥
+   패턴이 머리 전체에 반복) ② 지배적 변수가 <b>방향</b> 하나인데 그 결필드를
+   이미 뽑아 두었고 ③ 머리가 두상을 감으면서 온갖 각도의 소스가 사진 안에 있다.
+
+   기법: 방향장 유도 텍스처 합성(이미지 퀼팅 계열). 학습 없이 함수로 된다.
+     ① 원본 사진의 헤어 영역에서 <b>또렷한(coherence 높은)</b> 정사각 패치를 뜬다.
+        각 패치에 그 자리의 결 각도를 기록한다.
+     ② 3D 모델을 되쏘아 가닥 경로를 얻고, 각 점에서 화면상 진행 방향을 구한다.
+     ③ 패치를 (목표각 − 패치각)만큼 <b>회전</b>시켜 그 자리에 찍는다.
+     ④ 가장자리를 페더링해 이음매를 지우고, 깊이로 어둡게 해 안쪽 겹을 만든다.
+
+   알려진 약점 두 가지(1차에서는 손대지 않는다):
+     · <b>모발 끝</b> — 자른 길이는 영역 경계로 표현되는데 소스에는 원본 길이의
+       끝밖에 없다. 중립 재현에서는 안 드러나고, 조정을 걸면 드러난다.
+     · <b>가려졌던 안쪽</b> — 넘기거나 갈라서 속이 드러나면 소스가 없다.
+       깊이 음영으로 근사할 뿐이다.
+══════════════════════════════════════════════════════════════════ */
+const HAIR_QUILT = {
+  unit: 'bundle',      // 'strand' | 'bundle' | 'slice' — 잘라 붙일 단위
+  /* 단위별 띠 폭(화면 CSS px). <b>다발 렌더 상수와 무관한 자기 숫자</b>다 —
+     이식에는 서브가닥이 없고, 원본 3.6px를 통째로 자르면 진짜 올들이 그 안에
+     이미 들어 있다. 3.6은 지금까지 눈으로 맞춰온 다발 폭을 이어받은 값. */
+  widthCss: { strand: 0.7, bundle: 3.6, slice: 14.4 },
+  widthMul: 1.0,       // 위 폭 대비 배율(미세 조정용)
+  strips:  28,         // 소스 띠 개수(많을수록 반복이 덜 보이고 준비가 느려짐)
+  stripStep: 3,        // 원본에서 결을 따라가는 보폭(원본 px)
+  stripMax: 90,        // 띠 한 장의 최대 단계 수
+  stripMin: 10,        // 이보다 짧게 끊기면 소스로 못 씀
+  minCoh:  0.18,       // 이만큼 또렷한 자리에서만 뜬다
+  /* 조각내기 — 곧은 구간은 한 번에 그린다. 고정 길이로 잘게 쪼갰더니 가닥 하나에
+     22조각이 나와 실기기 밀도(1,400줄)에서 3만 번을 그리게 됐다(합성 실측 209ms).
+     방향이 이만큼 꺾일 때만 새 조각을 시작하면 대부분의 가닥이 서너 조각이 된다. */
+  segTurn: 0.14,       // 조각을 나누는 방향 변화(rad, ≈8°)
+  segMaxPx: 46,        // 한 조각의 최대 길이(캔버스 px)
+  segMinPx: 6,         // 한 조각의 최소 길이
+  /* 띠 끝의 이 비율을 <b>모발 끝</b>으로 따로 쓴다(짧게 자를 때 가운데를 들어내고
+     끝은 원본의 끝을 가져다 붙임). 코드로는 아래 sy 계산의 삼항 하나뿐이다.
+     <b>0으로 두면 이 동작이 꺼지고</b> "그냥 그 길이만큼 잘라 씀"이 된다 —
+     끝 처리가 오히려 어색하면 0으로 내려서 판단할 것. */
+  tipFrac: 0.22,
+  shade:   4,          // 깊이 음영 단계
+  shadeMin: 0.60,      // 제일 안쪽 겹 밝기
+  edgeFeather: 0.14,   // 띠 양옆 페더(폭 대비) — 계단만 없앨 정도로 얇게.
+                       // 크게 하면 띠끼리 번져서 <b>틈이 사라진다</b>
+};
+
+/* ── 소스 띠 뜨기 ──────────────────────────────────────────────────
+   원본 사진의 뿌리에서 출발해 <b>결을 따라가며</b> 다발 폭만큼의 띠를 떠서
+   곧게 펴 저장한다(unwarp). 굽은 머리카락을 곧게 편 "재료"가 된다.
+
+       원본의 굽은 결 ──╮                    ┌──┐
+                        ╰──╮        →        │  │  ← 곧게 편 띠
+                           ╰──╮              │  │     폭 = 다발 폭
+                                             └──┘
+   마스크를 벗어나며 끝난 띠에는 <b>진짜 모발 끝</b>이 들어 있다(hasTip).
+   그래서 짧게 자를 때 끝을 지어낼 필요가 없다 — 원본의 끝을 가져다 붙인다.
+   폭은 그릴 때 결정되므로(다발 폭 ÷ 화면배율) 폭별로 캐시한다. */
+const _quiltPool = {};
+function buildHairStripPool(angle, maskInf, swSrc){
+  const hairC = state.hairCanvases && state.hairCanvases[angle];
+  if(!hairC || !maskInf || !maskInf.orientation || !maskInf.scalpY) return null;
+  const key = angle + '|' + swSrc;
+  const cached = _quiltPool[key];
+  if(cached && cached.src === hairC) return cached.pool;
+
+  const Q = HAIR_QUILT;
+  const W = hairC.width, H = hairC.height;
+  const hctx = hairC.getContext('2d', { willReadFrequently:true });
+  const alpha = hctx.getImageData(0, 0, W, H).data;         // 한 번만 읽는다
+  const opaque = (x, y)=>{
+    const xi = x|0, yi = y|0;
+    if(xi < 0 || yi < 0 || xi >= W || yi >= H) return false;
+    return alpha[(yi*W + xi)*4 + 3] > 128;
+  };
+  const ow = maskInf.maskW || W, oh = maskInf.maskH || H;
+  const sxr = ow / W, syr = oh / H;
+  const angAt = (x, y)=> sampleOrientation(maskInf.orientation, x*sxr, ow, y*syr);
+
+  // ── 출발점: 마스크가 있는 컬럼을 고르게 훑어 뿌리에서 시작 ──
+  const cols = [];
+  for(let x=0;x<W;x++) if(maskInf.scalpY[x] >= 0) cols.push(x);
+  if(cols.length < 4) return null;
+
+  const raw = [];
+  const tries = Math.min(cols.length, Q.strips * 4);
+  for(let t=0; t<tries; t++){
+    const x0 = cols[Math.floor(t * (cols.length - 1) / Math.max(1, tries - 1))];
+    let px = x0 + 0.5, py = maskInf.scalpY[x0] + 1.5;
+    const o0 = angAt(px, py);
+    if(!o0 || o0.coherence < Q.minCoh) continue;
+    let a = o0.angle;
+    if(Math.sin(a) < 0) a += Math.PI;                        // 뿌리에서 아래로 내려가는 쪽
+    const steps = [];
+    let cohSum = 0, left = false;
+    for(let i=0; i<Q.stripMax; i++){
+      if(!opaque(px, py)){ left = true; break; }              // 마스크를 벗어남 = 모발 끝
+      steps.push({ x:px, y:py, a });
+      const o = angAt(px, py);
+      if(o){
+        let na = o.angle;                                     // 결은 180° 주기 — 이어지는 쪽으로
+        while(na - a >  Math.PI/2) na -= Math.PI;
+        while(na - a < -Math.PI/2) na += Math.PI;
+        a = na; cohSum += o.coherence;
+      }
+      px += Math.cos(a) * Q.stripStep;
+      py += Math.sin(a) * Q.stripStep;
+    }
+    if(steps.length < Q.stripMin) continue;
+    raw.push({ steps, hasTip: left, coh: cohSum / steps.length });
+  }
+  if(!raw.length){ _quiltPool[key] = { src: hairC, pool: null }; return null; }
+  // 끝이 들어 있는 띠를 우선하고, 그 다음 또렷한 순
+  raw.sort((p, q)=> (q.hasTip - p.hasTip) || (q.coh - p.coh));
+
+  // ── 곧게 펴서 굽기 (폭 swSrc × 길이 steps×stripStep), 깊이 음영 단계별로 ──
+  const SW = Math.max(2, swSrc | 0);
+  const pool = [];
+  for(let k=0; k<Math.min(Q.strips, raw.length); k++){
+    const r = raw[k];
+    const SH = r.steps.length * Q.stripStep;
+    const flat = document.createElement('canvas'); flat.width = SW; flat.height = SH;
+    const fx = flat.getContext('2d');
+    for(let i=0; i<r.steps.length; i++){
+      const s = r.steps[i];
+      fx.save();
+      fx.beginPath(); fx.rect(0, i*Q.stripStep, SW, Q.stripStep); fx.clip();
+      // 원본의 (s.x,s.y)·방향 s.a 를 띠의 (SW/2, 이 행)·+y 로 보낸다
+      fx.translate(SW/2, i*Q.stripStep + Q.stripStep/2);
+      fx.rotate(Math.PI/2 - s.a);
+      fx.translate(-s.x, -s.y);
+      fx.drawImage(hairC, 0, 0);
+      fx.restore();
+    }
+    // 양옆만 살짝 페더 — 틈은 살려야 하므로 얇게
+    const fw = Math.max(0.5, SW * Q.edgeFeather);
+    const g = fx.createLinearGradient(0, 0, SW, 0);
+    g.addColorStop(0, 'rgba(0,0,0,0)');
+    g.addColorStop(Math.min(0.49, fw/SW), 'rgba(0,0,0,1)');
+    g.addColorStop(Math.max(0.51, 1 - fw/SW), 'rgba(0,0,0,1)');
+    g.addColorStop(1, 'rgba(0,0,0,0)');
+    fx.globalCompositeOperation = 'destination-in';
+    fx.fillStyle = g; fx.fillRect(0, 0, SW, SH);
+
+    const shades = [];
+    for(let s2=0; s2<Q.shade; s2++){
+      const bright = Q.shadeMin + (1 - Q.shadeMin) * (Q.shade===1 ? 1 : s2/(Q.shade-1));
+      if(bright >= 1){ shades.push(flat); continue; }
+      const cv = document.createElement('canvas'); cv.width = SW; cv.height = SH;
+      const cx2 = cv.getContext('2d');
+      cx2.drawImage(flat, 0, 0);
+      cx2.globalCompositeOperation = 'source-atop';
+      cx2.fillStyle = `rgba(0,0,0,${(1-bright).toFixed(3)})`;
+      cx2.fillRect(0, 0, SW, SH);
+      shades.push(cv);
+    }
+    pool.push({ shades, SW, SH, hasTip: r.hasTip });
+  }
+  _quiltPool[key] = { src: hairC, pool };
+  console.log(`[${angle}] 헤어 띠 — ${pool.length}장 채택(후보 ${raw.length}) · 폭 ${SW}원본px`
+    + ` · 길이 ${Math.round(pool.reduce((s,q)=>s+q.SH,0)/pool.length)}원본px`
+    + ` · 모발 끝 포함 ${pool.filter(q=>q.hasTip).length}장`);
+  return pool;
+}
+
+/* ── 붙이기 ────────────────────────────────────────────────────────
+   3D 가닥을 되쏘아 얻은 경로를 따라 띠를 <b>다시 휘어</b> 이어 붙인다.
+   조각마다 그 지점의 진행 방향으로 회전시키므로, 결국 "무늬가 있는 붓칠"이다.
+
+   길이를 줄이면 <b>가운데를 들어낸다</b> — 몸통은 띠의 앞에서, 끝은 띠의 끝에서
+   가져온다. 실제로 머리를 자르는 것과 같은 조작이고, 그래서 잘린 자리에
+   원본의 진짜 모발 끝이 온다(지어낸 페이드가 아니라).                     */
+function projectHairQuiltToView(ctx, fit, angle, maskInf){
+  const model = state.hair3Dneutral;
+  if(!model || !model.viewCal || !model.viewCal[angle]) return false;
+  const src = model.strands;
+  if(!src || !src.length) return false;
+  const Q = HAIR_QUILT, R = HAIR3D_RENDER;
+  const cal = model.viewCal[angle];
+  const { toX: toCX, toY: toCY } = makeImgToCanvas(fit, maskInf.w, maskInf.h);
+
+  /* ── 띠 폭 (2026-07-27 2차, 사용자 지적으로 분리) ──────────────────
+     처음엔 다발 렌더의 공식 `(가닥 수-1)×(가닥폭+틈)`으로 역산했다. 그런데
+     그 공식은 <b>선을 그을 때</b>의 것이다 — "0.7px 선 4개를 0.5px 틈으로
+     늘어놓으면 3.6px"이라는 뜻이니까.
+     이식에는 서브가닥 개념이 없다. 원본 머리카락 3.6px를 <b>통째로</b> 잘라
+     붙이면 그 안에 진짜 올들이 이미 들어 있다(사용자: "원본헤어를 3.6px를
+     통째로 잘라서 이어붙이면 되지 서브가닥 4개는 뭐야?"). 맞는 지적이라
+     폭을 자기 숫자로 독립시킨다 — 3.6은 지금까지 맞춰온 값이라 그대로
+     이어받되, 이제 다발 렌더 상수가 바뀌어도 따라 움직이지 않는다. */
+  const cssW = (ctx.canvas && ctx.canvas.getBoundingClientRect)
+    ? (ctx.canvas.getBoundingClientRect().width || ctx.canvas.width) : ctx.canvas.width;
+  const pxRatio = Math.max(1, (ctx.canvas.width || fit.dw) / Math.max(1, cssW)); // 백킹px / CSS px
+  const wCss = Q.widthCss[Q.unit];
+  const drawW = Math.max(1, (typeof wCss === 'number' ? wCss : Q.widthCss.bundle) * pxRatio * Q.widthMul);
+
+  const pxScale = Math.max(1e-6, fit.dw / Math.max(1, maskInf.w));  // 원본px → 캔버스px
+  const pool = buildHairStripPool(angle, maskInf, Math.round(drawW / pxScale));
+  if(!pool || !pool.length) return false;
+
+  const stride = Math.max(1, Math.round(src.length / Math.max(1, R.targetBundles)));
+  const adj = computeAdjustedHair3DStrands(null, stride);
+  if(!adj || !adj.length) return false;
+
+  // ── 투영 + 호길이 ──
+  const lanes = [];
+  let dMin = Infinity, dMax = -Infinity;
+  for(const st of adj){
+    const pts = st.pts, cp = []; let dsum = 0;
+    for(let i=0;i<pts.length;i++){
+      const pr = project3DPointToView(pts[i], cal, model.yTop, model.CY);
+      cp.push({ x: toCX(pr.ix), y: toCY(pr.iy) });
+      dsum += pr.depth;
+    }
+    const depth = dsum / pts.length;
+    if(depth < 0) continue;                                   // 카메라를 등진 가닥
+    const cum = [0];
+    for(let i=1;i<cp.length;i++) cum.push(cum[i-1] + Math.hypot(cp[i].x-cp[i-1].x, cp[i].y-cp[i-1].y));
+    const total = cum[cum.length-1];
+    if(total < Q.segPx) continue;
+    if(depth < dMin) dMin = depth; if(depth > dMax) dMax = depth;
+    lanes.push({ cp, cum, total, depth });
+  }
+  if(!lanes.length) return false;
+  lanes.sort((a,b)=> a.depth - b.depth);                       // 뒤부터 — 앞이 위에 덮임
+
+  /* 폴리라인을 <b>방향이 꺾이는 곳에서만</b> 자른다. 곧은 구간은 한 조각으로
+     그려서 draw 횟수를 크게 줄인다(고정 길이 분할 대비 5~6배). */
+  const cutSegments = (L)=>{
+    const cp = L.cp, cum = L.cum, out = [];
+    let i0 = 0;
+    let a0 = Math.atan2(cp[1].y-cp[0].y, cp[1].x-cp[0].x);
+    for(let i=1;i<cp.length;i++){
+      const a = Math.atan2(cp[i].y-cp[i-1].y, cp[i].x-cp[i-1].x);
+      const turned = Math.abs(Math.atan2(Math.sin(a-a0), Math.cos(a-a0)));
+      const run = cum[i] - cum[i0];
+      const last = (i === cp.length-1);
+      if(last || ((turned > Q.segTurn || run > Q.segMaxPx) && run > Q.segMinPx)){
+        out.push({ i0, i1:i, s0:cum[i0], len:cum[i]-cum[i0] });
+        i0 = i; a0 = a;
+      }
+    }
+    return out;
+  };
+
+  const span = (dMax > dMin) ? (dMax - dMin) : 1;
+  let seed = 20260727, segs = 0;
+  const rnd = ()=>{ seed = (seed * 1103515245 + 12345) & 0x7fffffff; return seed / 0x7fffffff; };
+
+  ctx.save();
+  ctx.imageSmoothingEnabled = true;
+  for(const L of lanes){
+    const p = pool[(rnd() * pool.length) | 0];
+    const lvl = Math.max(0, Math.min(Q.shade-1, Math.round((L.depth - dMin) / span * (Q.shade-1))));
+    const img = p.shades[lvl];
+    const tipSrc  = p.SH * Q.tipFrac;
+    const bodySrc = Math.max(1, p.SH - tipSrc);
+    const srcTotal = L.total / pxScale;                        // 목표 길이를 원본 단위로
+    const tipUse  = Math.min(tipSrc, srcTotal * 0.5);
+    const bodyUse = srcTotal - tipUse;                         // 여기까지는 몸통, 그 뒤는 끝
+    for(const g of cutSegments(L)){
+      const u = g.s0 / pxScale;                                // 원본 단위 진행량
+      // 가운데를 들어낸다: 몸통은 띠 앞에서(길면 되감기), 끝은 띠 끝에서
+      const sy = (u < bodyUse) ? (u % bodySrc) : (bodySrc + (u - bodyUse));
+      if(sy >= p.SH) break;
+      const h = Math.min(g.len / pxScale, p.SH - sy);
+      if(h <= 0) break;
+      const A = L.cp[g.i0], B = L.cp[g.i1];
+      ctx.save();
+      ctx.translate((A.x+B.x)/2, (A.y+B.y)/2);
+      ctx.rotate(Math.atan2(B.y-A.y, B.x-A.x) - Math.PI/2);    // 띠의 +y를 진행 방향으로
+      /* 그리는 길이는 <b>경로의 길이</b>여야 한다. 소스 길이(h)로 그렸더니
+         띠 끝에서 h가 잘릴 때 그만큼 경로에 <b>구멍</b>이 났다(합성 샘플에서 흰
+         네모로 보였음). 소스가 모자라면 조금 늘어나는 편이 낫다. */
+      const dh = g.len * 1.08;                                 // 조각끼리 살짝 겹쳐 이음매를 지운다
+      ctx.drawImage(img, 0, sy, p.SW, h, -drawW/2, -dh/2, drawW, dh);
+      ctx.restore();
+      segs++;
+    }
+  }
+  ctx.restore();
+  logQuiltRender(angle, { pool: pool.length, lanes: lanes.length, segs, drawW, unit: Q.unit,
+                          swSrc: pool[0].SW, tips: pool.filter(q=>q.hasTip).length });
+  return true;
+}
+let _quiltLogKey = '';
+function logQuiltRender(angle, m){
+  const key = angle + '|' + m.pool + '|' + m.unit + '|' + m.swSrc;
+  window._lastQuiltDiag = window._lastQuiltDiag || {};
+  window._lastQuiltDiag[angle] = { pool:m.pool, lanes:m.lanes, segs:m.segs,
+                                   drawW:+m.drawW.toFixed(2), unit:m.unit, swSrc:m.swSrc, tips:m.tips };
+  if(key === _quiltLogKey) return;
+  _quiltLogKey = key;
+  console.log(`[${angle}] 헤어 이식 — 띠 ${m.pool}장(끝 포함 ${m.tips}) · 단위 ${m.unit}`
+    + ` 폭 ${m.drawW.toFixed(1)}px(원본 ${m.swSrc}px) · ${m.lanes}줄 · 조각 ${m.segs}개`);
+}
+
 function projectHair3DToView(ctx, fit, angle, maskInf){
   const model = state.hair3Dneutral;
   if(!model || !model.viewCal || !model.viewCal[angle]) return false;
@@ -10485,6 +10823,11 @@ function projectHair3DToView(ctx, fit, angle, maskInf){
   const adj = computeAdjustedHair3DStrands(null, stride);
   if(!adj || !adj.length) return false;
   const projected = [];
+  /* [진단] 뿌리선 어긋남 — "머리가 원본보다 바깥에서 시작한다"를 <b>재는</b> 장치.
+     되쏜 가닥의 뿌리가 그 컬럼의 원본 두피선(scalpY)보다 위에 찍히면 음수다.
+     추측으로 계수를 흔들지 않기 위해 만든다(이 문제로 두 번 헛짚었다). */
+  const rootDev = [];
+  const projected0 = [];
   for(let si=0; si<adj.length; si++){
     const st = adj[si];
     const pts = st.pts; let dsum=0; const cpts=[];
@@ -10499,6 +10842,12 @@ function projectHair3DToView(ctx, fit, angle, maskInf){
     // 카메라를 등진 가닥(두상 뒤쪽)은 버린다 — 이 각도에서는 안 보여야 한다.
     // depth는 카메라 축 성분이라 클수록 카메라에 가깝다(정렬 규약과 동일).
     if(depth < 0) continue;
+    if(maskInf.scalpY){
+      const cx0 = Math.round(rootIx);
+      const sY = (cx0 >= 0 && cx0 < maskInf.w) ? maskInf.scalpY[cx0] : -1;
+      if(sY >= 0) rootDev.push(rootIy - sY);   // 음수 = 원본 두피선보다 위(바깥)
+      else projected0.push(1);                 // 원본에 머리가 없는 컬럼에 찍힘
+    }
     projected.push({
       cpts, depth, color: st.color,
       slice: (st.sec||'crown') + '|' + Math.floor(rootIx / SLICE_W)
@@ -10508,7 +10857,8 @@ function projectHair3DToView(ctx, fit, angle, maskInf){
   if(!projected.length) return false;
   projected.sort((a,b)=> a.depth - b.depth); // 뒤(작은 depth)부터 → 앞이 위에 덮임
   logBundleRender(angle, { spanX, unit, cssW, bundleW, bundleEff, SUB, spacing, subW,
-                           want: R.sub|0, capUse, stride, total: src.length, drawn: projected.length });
+                           want: R.sub|0, capUse, stride, total: src.length, drawn: projected.length,
+                           rootDev: summarizeRootDev(rootDev, projected0.length, maskInf) });
 
   // 다발 속 미세 틴트 — 가닥마다 다른 색을 주되 팔레트 색에서 벗어나진 않게.
   // FORCED_HAIR_COLOR(검정 지정 등)일 땐 상한 1.06 — tintColor가 bright>1에서
@@ -10593,6 +10943,16 @@ function projectHair3DToView(ctx, fit, angle, maskInf){
 /* 다발 렌더 진단 — 같은 값이면 다시 찍지 않는다(슬라이더 드래그마다 콘솔 도배 방지).
    "왜 서브라인이 안 보이지"를 실기기에서 바로 판정할 수 있는 숫자만 남긴다:
    틈이 CSS 픽셀로 몇 픽셀인지가 핵심(1 아래면 화면에서 사라진다). */
+/* 뿌리선 어긋남 요약 — 되쏜 뿌리가 원본 두피선보다 얼마나 위(바깥)에 찍히나.
+   중앙값을 쓴다(평균은 늘어진 몇 가닥에 끌려간다). 단위는 마스크 픽셀. */
+function summarizeRootDev(devs, offMask, maskInf){
+  if(!devs.length) return null;
+  const s = devs.slice().sort((a,b)=>a-b);
+  const q = f => s[Math.min(s.length-1, Math.floor(s.length*f))];
+  const above = devs.filter(v=>v < -2).length;
+  return { med:q(0.5), p10:q(0.10), p90:q(0.90), above, n:devs.length,
+           offMask, h: maskInf.h };
+}
 let _bundleLogKey = '';
 function logBundleRender(angle, m){
   const gapPx = m.spacing - m.subW;
@@ -10607,10 +10967,18 @@ function logBundleRender(angle, m){
     headCss: +css(m.spanX), bundle: +m.bundleEff.toFixed(1), prop: +m.bundleW.toFixed(1),
     sub: m.SUB, want: m.want, subCss: +css(m.subW), gapCss: +css(gapPx),
     unit: +m.unit.toFixed(2), drawn: m.drawn, total: m.total, stride: m.stride,
-    capUse: +m.capUse.toFixed(2),
+    capUse: +m.capUse.toFixed(2), rootDev: m.rootDev,
   };
   if(key === _bundleLogKey) return;
   _bundleLogKey = key;
+  if(m.rootDev){
+    const d = m.rootDev;
+    console.log(`[${angle}] 뿌리선 어긋남 — 중앙값 ${d.med.toFixed(0)}px`
+      + ` (10~90% ${d.p10.toFixed(0)}~${d.p90.toFixed(0)}px, 마스크 높이 ${d.h}px)`
+      + ` · 원본 두피선보다 <b>위</b>(바깥)에 찍힌 뿌리 ${d.above}/${d.n}개`
+      + (d.offMask ? ` · 원본에 머리가 없는 컬럼 ${d.offMask}개` : ``)
+      + ` ← 음수일수록 머리가 바깥에서 시작한다는 뜻`);
+  }
   console.log(
     `[${angle}] 다발 렌더 — 헤어폭 ${m.spanX.toFixed(0)}px(화면 ${css(m.spanX)}) · `
     + `다발 ${m.bundleEff.toFixed(1)}px(비례값 ${m.bundleW.toFixed(1)}) · `
