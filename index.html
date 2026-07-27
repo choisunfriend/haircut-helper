@@ -10096,13 +10096,15 @@ const HAIR3D_RENDER = {
      덩어리가 된다(실기기 스크린샷의 그 상태 — 틈은 계산상 있었지만 옆 다발이
      덮고 있었다). 늘리려면 STRAND_SAMPLE_3D를 2→1로(모델 재생성, 약 2배). */
   stride: null,
-  /* 자동 솎기의 목표치 = (다발 수 × 다발 폭) ÷ 실루엣 가로폭.
-     "가로로 몇 겹이나 겹쳐 있는가"를 뜻한다. 하네스에서 사용자가 좋다고 한
-     기본 구성(600다발 × 5.2px ÷ 272px)이 11.5였고, 실측 스윕에서는 8 부근부터
-     화면 질감이 뚜렷하게 살아났다(솎기1 질감 11.0 → 솎기8 20.9 → 솎기12 29.9,
-     그동안 커버리지는 32.5%→30.9%로 거의 안 줄었다 = 겹친 만큼은 그냥 낭비였다).
-     값을 올리면 촘촘·뭉침, 내리면 성기고 결이 또렷해진다. */
-  targetDensity: 8.0,
+  /* 자동 솎기 목표 = <b>뷰당 그릴 다발 수</b>.
+     처음엔 "가로 겹침(다발수×폭÷실루엣폭)"을 목표로 잡았다. 총 잉크를 보존하는
+     규칙이라 다발이 넓어지면 개수가 자동으로 줄었는데, 그게 틀렸다.
+     사용자: "다발 수는 줄어들면 안 돼. 폭을 넓히면서 비는 곳을 메우는 작업하는
+     거니까." 맞는 지적이다 — 폭을 넓히는 목적이 <b>빈 곳을 메우는 것</b>인데
+     개수를 같이 줄이면 메워지지 않고 제자리걸음이 된다.
+     그래서 개수를 고정하고 폭만 움직이게 한다. 이제 폭을 넓히면 덮는 면적이
+     그대로 늘어난다. (겹침이 과해지면 그때 이 수를 내리면 된다.) */
+  targetBundles: 1400,
   undercoat: false, // 두피색 언더코트. 사용자 선택: 끔(다발을 투명하게 = 틈이 살아남)
   // 하한은 백킹 픽셀이 아니라 "화면에 실제로 보이는 CSS 픽셀" 기준(아래 설명 참조)
   /* (2026-07-26 2차 상향) 0.7/0.9로는 부족했다. 캔버스 1200px를 화면 390px로
@@ -10166,19 +10168,36 @@ function projectHair3DToView(ctx, fit, angle, maskInf){
   // 길이를 크게 줄이면 실루엣이 조금 좁아지지만, spanX는 다발 굵기만 정하는
   // 값이라 그 정도 오차는 그림에 안 나타난다(대신 조정할 때마다 다발 굵기가
   // 들썩이지 않아 오히려 안정적이다).
-  const src = [];
-  for(const st of model.strands){ if(!angle || st.srcAngle === angle) src.push(st); }
-  if(!src.length) return false;
+  /* ── 왜 <b>모든 뷰</b>의 가닥을 쓰는가 (2026-07-27) ──
+     예전엔 `srcAngle === angle`로 그 뷰에서 캡처한 가닥만 그렸다("교차뷰 잡음
+     방지"). 그런데 3D 모델은 네 뷰에서 올린 11,332가닥인데 조정 화면은 그중
+     한 뷰치(2,833)만 쓰니, <b>3D 화면은 머리가 꽉 차는데 2D는 반만 차 보였다</b>
+     (사용자 지적: "2D화면은 반만 쓰던가? 3D이미지는 머리 다 채워졌던데").
+     옆통수·뒤통수를 덮는 가닥이 통째로 빠져 있었던 것이다.
+     이제 전 뷰를 후보로 쓰고, 대신 <b>카메라를 등진 가닥을 버린다</b>(depth 컬링).
+     "그 뷰에서 찍은 것만"이 아니라 "이 각도에서 보이는 것만"이 옳은 기준이다 —
+     뒤통수 가닥도 옆에서 보면 보여야 하고, 앞머리도 뒤에서 보면 안 보여야 한다. */
+  const src = model.strands;
+  if(!src || !src.length) return false;
   const PROBE_STEP = Math.max(1, Math.floor(src.length / 180)); // 표본 ~180가닥
-  let pMinX = Infinity, pMaxX = -Infinity;
+  let pMinX = Infinity, pMaxX = -Infinity, pN = 0, pFront = 0;
   for(let si=0; si<src.length; si+=PROBE_STEP){
     const pts = src[si].pts;
+    let dsum = 0;
     for(let i=0;i<pts.length;i++){
-      const x = toCX(project3DPointToView(pts[i], cal, model.yTop, model.CY).ix);
+      const pr = project3DPointToView(pts[i], cal, model.yTop, model.CY);
+      const x = toCX(pr.ix);
       if(x < pMinX) pMinX = x; if(x > pMaxX) pMaxX = x;
+      dsum += pr.depth;
     }
+    pN++; if(dsum > 0) pFront++;
   }
   const spanX = (pMaxX > pMinX) ? (pMaxX - pMinX) : fit.dw;
+  /* 이 각도에서 <b>앞을 향한</b> 가닥의 비율. 아래 컬링으로 버려질 양을 미리
+     알아야 목표 개수를 맞출 수 있다. 뷰가 두상을 정면으로 보면 절반쯤이지만,
+     모델이 한쪽에 몰려 있으면 1에 가까울 수도 있어 고정 계수로는 못 맞춘다
+     (실측: 2배로 가정했더니 전부 앞을 향한 모델에서 2배를 그려 84ms가 나왔다). */
+  const frontFrac = pN ? Math.max(0.05, pFront / pN) : 0.5;
 
   // ── 다발 치수 (spanX는 위 1패스에서 이미 쟀다) ──
   const resScale = fit.dw / 705;
@@ -10220,23 +10239,21 @@ function projectHair3DToView(ctx, fit, angle, maskInf){
     ? Math.min(maxSub, Math.max(minSub, Math.min(spacing * (1 - R.gap), spacing - minGap)))
     : Math.min(maxSub, Math.max(minSub, Math.max(R.minSubW, W0)));  // 한 개도 안 들어가면 예전 굵기
 
-  /* 다발 수 자동 조정.
-     다발이 넓어진 만큼 개수를 줄이지 않으면 옆 다발이 서로의 틈을 덮어버린다.
-     기준은 "가로 겹침 수" = 다발수 × 다발폭 ÷ 실루엣폭. 이 값이 targetDensity가
-     되도록 솎아낸다. 실측: 이 값을 낮춰도 커버리지는 거의 그대로였다 —
-     겹쳐서 안 보이던 다발이 사라질 뿐이라 성능만 벌고 그림은 오히려 또렷해진다. */
+  /* 다발 수 자동 조정 — 폭과 <b>무관하게</b> 목표 개수를 맞춘다.
+     (폭에 연동시키면 폭을 넓힐 때마다 개수가 줄어 빈 곳이 안 메워진다.) */
   /* (2026-07-27) 예전엔 "비례값 대비 몇 배 넓혔나"였는데 다발 폭을 실루엣에서
      유도하지 않게 되면서 기준값이 사라져 NaN이 찍혔다(실기기 로그 `확대 NaN배`).
      지금 의미 있는 건 "상한에 얼마나 가까운가"다 — 1에 가까우면 머리가 작게
      찍혀 다발이 상한에 걸리기 직전이라는 뜻. */
   const capUse  = bundleEff / Math.max(1e-6, capW);
-  const wantN   = Math.max(1, R.targetDensity * spanX / Math.max(1e-6, bundleEff));
+  // 뒤를 향한 가닥이 버려질 만큼 후보를 더 잡는다(비율은 위에서 실측).
+  const wantCand = Math.max(1, R.targetBundles / frontFrac);
   const stride  = (R.stride == null)
-    ? Math.max(1, Math.min(32, Math.round(src.length / wantN)))
+    ? Math.max(1, Math.min(32, Math.round(src.length / wantCand)))
     : Math.max(1, R.stride|0);
 
   // ── 2패스: 그릴 가닥만 조정 연산 + 투영 ──
-  const adj = computeAdjustedHair3DStrands(angle, stride);
+  const adj = computeAdjustedHair3DStrands(null, stride);
   if(!adj || !adj.length) return false;
   const projected = [];
   for(let si=0; si<adj.length; si++){
@@ -10249,15 +10266,20 @@ function projectHair3DToView(ctx, fit, angle, maskInf){
       cpts.push({ x: toCX(pr.ix), y: toCY(pr.iy) });
       dsum += pr.depth;
     }
+    const depth = dsum / pts.length;
+    // 카메라를 등진 가닥(두상 뒤쪽)은 버린다 — 이 각도에서는 안 보여야 한다.
+    // depth는 카메라 축 성분이라 클수록 카메라에 가깝다(정렬 규약과 동일).
+    if(depth < 0) continue;
     projected.push({
-      cpts, depth: dsum / pts.length, color: st.color,
+      cpts, depth, color: st.color,
       slice: (st.sec||'crown') + '|' + Math.floor(rootIx / SLICE_W)
              + '|' + Math.floor((rootIy / Math.max(1, maskInf.h)) * 10),
     });
   }
+  if(!projected.length) return false;
   projected.sort((a,b)=> a.depth - b.depth); // 뒤(작은 depth)부터 → 앞이 위에 덮임
   logBundleRender(angle, { spanX, unit, cssW, bundleW, bundleEff, SUB, spacing, subW,
-                           want: R.sub|0, capUse, stride, total: src.length });
+                           want: R.sub|0, capUse, stride, total: src.length, drawn: projected.length });
 
   // 다발 속 미세 틴트 — 가닥마다 다른 색을 주되 팔레트 색에서 벗어나진 않게.
   // FORCED_HAIR_COLOR(검정 지정 등)일 땐 상한 1.06 — tintColor가 bright>1에서
@@ -10343,14 +10365,14 @@ function projectHair3DToView(ctx, fit, angle, maskInf){
 let _bundleLogKey = '';
 function logBundleRender(angle, m){
   const gapPx = m.spacing - m.subW;
-  const key = angle + '|' + m.SUB + '|' + m.subW.toFixed(2) + '|' + gapPx.toFixed(2) + '|' + m.stride;
+  const key = angle + '|' + m.SUB + '|' + m.subW.toFixed(2) + '|' + gapPx.toFixed(2) + '|' + m.stride + '|' + m.drawn;
   const css = v => (v / m.unit).toFixed(2);
   // 화면 진단창에서 읽을 수 있게 항상 보관(콘솔을 못 보는 상황 대비)
   window._lastBundleDiag = window._lastBundleDiag || {};
   window._lastBundleDiag[angle] = {
     headCss: +css(m.spanX), bundle: +m.bundleEff.toFixed(1), prop: +m.bundleW.toFixed(1),
     sub: m.SUB, want: m.want, subCss: +css(m.subW), gapCss: +css(gapPx),
-    unit: +m.unit.toFixed(2), drawn: Math.ceil(m.total/m.stride), total: m.total, stride: m.stride,
+    unit: +m.unit.toFixed(2), drawn: m.drawn, total: m.total, stride: m.stride,
     capUse: +m.capUse.toFixed(2),
   };
   if(key === _bundleLogKey) return;
@@ -10360,7 +10382,7 @@ function logBundleRender(angle, m){
     + `다발 ${m.bundleEff.toFixed(1)}px(비례값 ${m.bundleW.toFixed(1)}) · `
     + `가닥 ${m.SUB}/${m.want}개 × ${m.subW.toFixed(2)}px(화면 ${css(m.subW)}) · `
     + `틈 ${gapPx.toFixed(2)}px(화면 ${css(gapPx)}) · 표시배율 1/${m.unit.toFixed(1)} · `
-    + `다발 ${Math.ceil(m.total/m.stride)}/${m.total}개(솎기 ${m.stride}, 상한 ${(m.capUse*100).toFixed(0)}%)`
+    + `다발 ${m.drawn}/${m.total}개(솎기 ${m.stride}, 앞면만, 상한 ${(m.capUse*100).toFixed(0)}%)`
     + (m.SUB < m.want ? ` ← 자리가 좁아 가닥 수를 줄임(화면에서 머리가 ${css(m.spanX)}px밖에 안 됨)` : ``)
   );
 }
