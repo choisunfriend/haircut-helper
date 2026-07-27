@@ -10524,18 +10524,24 @@ function buildHairStripPool(angle, maskInf, swSrc){
       const sp = rec.strands[Math.floor(t * (N - 1) / Math.max(1, tries - 1))];
       const pts = sp && sp.pts;
       if(!pts || pts.length < 3){ rej.short++; continue; }
-      const steps = []; let left = false, run = 0;
+      const steps = []; let left = false, run = 0, cohSum = 0, cohN = 0;
       for(let i=0; i<pts.length && steps.length < Q.stripMax; i++){
         const P = pts[i];
         if(!opaque(P.x, P.y)){ left = true; break; }       // 마스크를 벗어남 = 모발 끝
         const A = pts[Math.max(0, i-1)], B = pts[Math.min(pts.length-1, i+1)];
         steps.push({ x:P.x, y:P.y, a: Math.atan2(B.y-A.y, B.x-A.x) });
         if(i > 0) run += Math.hypot(P.x-pts[i-1].x, P.y-pts[i-1].y);
+        /* 방향은 경로가 주므로 coherence가 <b>필요하지는</b> 않다. 다만 어느 띠를
+           고를지의 <b>품질 점수</b>로는 여전히 쓴다 — coherence가 높다는 건 그
+           자리에서 올과 올이 실제로 구분돼 보인다는 뜻이라, 결이 든 소스다.
+           (사용자: "그 중에서 coherence가 뚜렷한 걸 가져온다는 거지?") */
+        if((i % 3) === 0){ const o = angAt(P.x, P.y); if(o){ cohSum += o.coherence; cohN++; } }
       }
       if(steps.length < Q.stripMin){ rej.short++; continue; }
       rej.ok++;
       // 행 높이는 실제 점 간격 — 띠의 길이 축척이 원본과 맞아야 한다
-      raw.push({ steps, hasTip: left, coh: 1, stepPx: Math.max(1, run / (steps.length - 1)) });
+      raw.push({ steps, hasTip: left, coh: cohN ? cohSum/cohN : 0, sec: sp.sec || 'crown',
+                 stepPx: Math.max(1, run / (steps.length - 1)) });
     }
   }
 
@@ -10571,7 +10577,7 @@ function buildHairStripPool(angle, maskInf, swSrc){
       }
       if(steps.length < Q.stripMin){ rej.short++; continue; }
       rej.ok++;
-      raw.push({ steps, hasTip: left, coh: cohSum / steps.length, stepPx: Q.stripStep });
+      raw.push({ steps, hasTip: left, coh: cohSum / steps.length, sec: 'crown', stepPx: Q.stripStep });
     }
   }
   if(!raw.length){
@@ -10580,14 +10586,28 @@ function buildHairStripPool(angle, maskInf, swSrc){
       + ` (소스: ${srcKind}, 문턱: 또렷함 ${Q.minCoh}, 최소 ${Q.stripMin}단계)`);
     _quiltPool[key] = { src: hairC, pool: null }; return null;
   }
-  // 끝이 들어 있는 띠를 우선하고, 그 다음 또렷한 순
-  raw.sort((p, q)=> (q.hasTip - p.hasTip) || (q.coh - p.coh));
+  /* ── 고르기: 또렷한 것 우선, 단 <b>섹션마다 골고루</b> ──────────────
+     coherence 순으로만 뽑으면 제일 또렷한 한 구역(대개 광이 도는 자리)에서
+     전부 나와서 머리 전체가 그 한 곳처럼 보인다. 실제로는 크라운과 네이프의
+     빛·색이 다르다. 그래서 섹션별로 나눠 각자 상위를 뽑고, 남는 자리만 전체
+     상위로 채운다. 그리고 붙일 때도 <b>같은 섹션 띠를 우선</b>해서 쓴다. */
+  const scoreOf = r => (r.hasTip ? 0.15 : 0) + r.coh;   // 끝이 든 띠에 약간 가산
+  raw.sort((p, q)=> scoreOf(q) - scoreOf(p));
+  const bySec = new Map();
+  for(const r of raw){ if(!bySec.has(r.sec)) bySec.set(r.sec, []); bySec.get(r.sec).push(r); }
+  const quota = Math.max(1, Math.ceil(Q.strips / Math.max(1, bySec.size)));
+  const picked = [], seen = new Set();
+  for(const arr of bySec.values())
+    for(let i=0;i<Math.min(quota, arr.length) && picked.length<Q.strips;i++){
+      picked.push(arr[i]); seen.add(arr[i]);
+    }
+  for(const r of raw){ if(picked.length>=Q.strips) break; if(!seen.has(r)) picked.push(r); }
 
-  // ── 곧게 펴서 굽기 (폭 swSrc × 길이 steps×stripStep), 깊이 음영 단계별로 ──
+  // ── 곧게 펴서 굽기 (폭 swSrc × 길이 steps×행높이), 깊이 음영 단계별로 ──
   const SW = Math.max(2, swSrc | 0);
   const pool = [];
-  for(let k=0; k<Math.min(Q.strips, raw.length); k++){
-    const r = raw[k];
+  for(let k=0; k<picked.length; k++){
+    const r = picked[k];
     const rowH = r.stepPx || Q.stripStep;                    // 소스마다 점 간격이 다르다
     const SH = Math.max(2, Math.round(r.steps.length * rowH));
     const flat = document.createElement('canvas'); flat.width = SW; flat.height = SH;
@@ -10625,13 +10645,16 @@ function buildHairStripPool(angle, maskInf, swSrc){
       cx2.fillRect(0, 0, SW, SH);
       shades.push(cv);
     }
-    pool.push({ shades, SW, SH, hasTip: r.hasTip });
+    pool.push({ shades, SW, SH, hasTip: r.hasTip, sec: r.sec, coh: r.coh });
   }
   _quiltPool[key] = { src: hairC, pool };
+  const cohs = pool.map(q=>q.coh);
   console.log(`[${angle}] 헤어 띠 — ${pool.length}장 채택(소스: ${srcKind}, 후보 ${raw.length}/${tries}시도,`
     + ` 탈락: 흐림 ${rej.coh}·투명 ${rej.dark}·짧음 ${rej.short}) · 폭 ${SW}원본px`
     + ` · 길이 ${Math.round(pool.reduce((s,q)=>s+q.SH,0)/pool.length)}원본px`
-    + ` · 모발 끝 포함 ${pool.filter(q=>q.hasTip).length}장`);
+    + ` · 모발 끝 포함 ${pool.filter(q=>q.hasTip).length}장`
+    + ` · 또렷함 ${Math.max(...cohs).toFixed(2)}~${Math.min(...cohs).toFixed(2)}`
+    + ` · 섹션 ${[...new Set(pool.map(q=>q.sec))].join(',')}`);
   return pool;
 }
 
@@ -10710,9 +10733,9 @@ function projectHairQuiltToView(ctx, fit, angle, maskInf){
     const cum = [0];
     for(let i=1;i<cp.length;i++) cum.push(cum[i-1] + Math.hypot(cp[i].x-cp[i-1].x, cp[i].y-cp[i-1].y));
     const total = cum[cum.length-1];
-    if(total < Q.segPx) continue;
+    if(total < Q.segMinPx) continue;
     if(depth < dMin) dMin = depth; if(depth > dMax) dMax = depth;
-    lanes.push({ cp, cum, total, depth });
+    lanes.push({ cp, cum, total, depth, sec: st.sec || 'crown' });
   }
   if(!lanes.length) return quiltFail(angle, '이 각도에서 앞을 향한 가닥이 없음');
   lanes.sort((a,b)=> a.depth - b.depth);                       // 뒤부터 — 앞이 위에 덮임
@@ -10736,14 +10759,22 @@ function projectHairQuiltToView(ctx, fit, angle, maskInf){
     return out;
   };
 
+  /* 붙일 때는 <b>같은 섹션에서 뜬 띠</b>를 쓴다 — 크라운과 네이프는 빛도 색도
+     다르다. 그 섹션 띠가 없으면 전체 풀에서 아무거나 쓴다(폴백). */
+  const poolBySec = new Map();
+  for(const q of pool){ if(!poolBySec.has(q.sec)) poolBySec.set(q.sec, []); poolBySec.get(q.sec).push(q); }
+
   const span = (dMax > dMin) ? (dMax - dMin) : 1;
-  let seed = 20260727, segs = 0;
+  let seed = 20260727, segs = 0, sameSec = 0;
   const rnd = ()=>{ seed = (seed * 1103515245 + 12345) & 0x7fffffff; return seed / 0x7fffffff; };
 
   ctx.save();
   ctx.imageSmoothingEnabled = true;
   for(const L of lanes){
-    const p = pool[(rnd() * pool.length) | 0];
+    const sub = poolBySec.get(L.sec);
+    if(sub && sub.length) sameSec++;
+    const from = (sub && sub.length) ? sub : pool;
+    const p = from[(rnd() * from.length) | 0];
     const lvl = Math.max(0, Math.min(Q.shade-1, Math.round((L.depth - dMin) / span * (Q.shade-1))));
     const img = p.shades[lvl];
     const tipSrc  = p.SH * Q.tipFrac;
@@ -10773,7 +10804,7 @@ function projectHairQuiltToView(ctx, fit, angle, maskInf){
   }
   ctx.restore();
   logQuiltRender(angle, { pool: pool.length, lanes: lanes.length, segs, drawW, unit: Q.unit,
-                          swSrc: pool[0].SW, tips: pool.filter(q=>q.hasTip).length });
+                          swSrc: pool[0].SW, tips: pool.filter(q=>q.hasTip).length, sameSec });
   setQuiltTag(`픽셀 이식 · 띠 ${pool.length}장(끝 ${pool.filter(q=>q.hasTip).length}) · 폭 ${drawW.toFixed(1)}px`);
   return true;
 }
@@ -10782,11 +10813,13 @@ function logQuiltRender(angle, m){
   const key = angle + '|' + m.pool + '|' + m.unit + '|' + m.swSrc;
   window._lastQuiltDiag = window._lastQuiltDiag || {};
   window._lastQuiltDiag[angle] = { pool:m.pool, lanes:m.lanes, segs:m.segs,
-                                   drawW:+m.drawW.toFixed(2), unit:m.unit, swSrc:m.swSrc, tips:m.tips };
+                                   drawW:+m.drawW.toFixed(2), unit:m.unit, swSrc:m.swSrc,
+                                   tips:m.tips, sameSec:m.sameSec };
   if(key === _quiltLogKey) return;
   _quiltLogKey = key;
   console.log(`[${angle}] 헤어 이식 — 띠 ${m.pool}장(끝 포함 ${m.tips}) · 단위 ${m.unit}`
-    + ` 폭 ${m.drawW.toFixed(1)}px(원본 ${m.swSrc}px) · ${m.lanes}줄 · 조각 ${m.segs}개`);
+    + ` 폭 ${m.drawW.toFixed(1)}px(원본 ${m.swSrc}px) · ${m.lanes}줄 · 조각 ${m.segs}개`
+    + ` · 같은 섹션 띠를 쓴 줄 ${m.sameSec}/${m.lanes}`);
 }
 
 function projectHair3DToView(ctx, fit, angle, maskInf){
