@@ -1810,7 +1810,20 @@ function sectionBandsFor(angle){
   let frontX0 = nxMin + hs * 0.25, frontX1 = nxMax - hs * 0.25; // 헤어 폭 중앙 50%
   if((rx - lx) > (frontX1 - frontX0)){ frontX0 = lx; frontX1 = rx; } // 귀 폭이 더 넓으면 채택
   const browY = (typeof L.browTopY === 'number') ? L.browTopY : (headTopY + (earLineY - headTopY) * 0.80);
+  /* (15차, 2026-07-27) 정면 크라운/프론트 경계 = <b>헤어라인</b>.
+     두정선(parietalY)은 귀 랜드마크에 매달려 있어 프레임에 따라 크게 흔들린다.
+     실기기에서 그게 깊게 잡혀 crown 80% / front 8%가 나왔다(사용자 보고).
+     그래서 정면만 얼굴 랜드마크(이마 위)를 1차 기준으로 쓰고, 그마저 튀는 경우를
+     대비해 <b>실측 모발 세로 범위의 24~34% 안</b>으로 가둔다 — 크라운이 정면을
+     통째로 먹는 일도, 아예 사라지는 일도 없게 하는 안전선.
+     상한을 34%로 좁게 잡은 이유: 뿌리 표본이 컬럼마다 0~0.8 깊이에 <b>사다리꼴로</b>
+     찍히기 때문에, 경계를 세로 범위의 45%에 두면 표본 기준으로는 크라운이 57%가
+     된다(범위 비율 ≠ 가닥 비율). 실제 분포로 재서 맞춘 값이다. */
+  const vExt = Math.max(0.02, hairBotY - headTopY);
+  const fringeTopY = Math.max(headTopY + vExt * 0.24,
+                       Math.min(headTopY + vExt * 0.34, L.foreheadY * 0.85));
   const bands = {
+    fringeTopY,
     headTopY, hairBotY, parietalY, napeTopY,
     earLineY, chinLineY,   // (2026-07-27) 두상 영역 판정에 사용 — 구멍 메움에서 참조
     nxMin, nxMax,
@@ -1854,9 +1867,19 @@ function resolveSectionId(angle, nx, ny){
          · 그 아래 중앙 컬럼 = 프론트(앞머리)
          · 그 아래 좌우 = 템플
          · 네이프는 정면에서 판정하지 않음(측면·후면 전용)
-       프론트는 여전히 "두정선~아래 중앙 컬럼"이라 조작 대상이 충분히 남는다. */
-    if(ny <= b.parietalY) return 'crown';
-    return (nx >= b.frontX0 && nx <= b.frontX1) ? 'front' : 'temple';
+       프론트는 여전히 "두정선~아래 중앙 컬럼"이라 조작 대상이 충분히 남는다.
+
+       ── (15차, 2026-07-27 사용자 지정) 순서를 뒤집는다 ──
+       "나머지 다 정하고 나머지를 크라운으로 간 다음에, 크라운이 겹으로 침범할 수
+        있도록 하면 길이를 줄이면 되니까."
+       13차처럼 크라운을 <b>먼저</b> 판정하면 경계선이 조금만 깊게 잡혀도 크라운이
+       다 먹는다(실기기 crown 80% / front 8% / temple 12% — 프론트가 오른쪽에만
+       조금 보였던 이유). 이제 프론트·템플이 <b>자기 밴드를 먼저</b> 가져가고
+       남는 위쪽 전부가 크라운이다.
+       겹침 걱정은 안 해도 된다 — 크라운 가닥은 길어서 어차피 앞머리 위로 덮여
+       내려온다. 크라운 길이를 줄이면 그 밑에 깔린 프론트가 드러난다. */
+    if(ny >= b.fringeTopY) return (nx >= b.frontX0 && nx <= b.frontX1) ? 'front' : 'temple';
+    return 'crown';                                // 남는 위쪽 전부
   }
   if(angle==='left' || angle==='right'){
     if(ny >= b.napeTopY) return 'nape';          // 목선 쪽 뿌리 = 네이프
@@ -9799,6 +9822,7 @@ const PART3D = {
   TAIL:  0.6,  // 램프 이후에도 계속 벌어지는 정도 — 0이면 평행 이동만 되어
                // "밀렸을 뿐 안 갈라진" 느낌이 남는다(결이 갈라져 보이는 핵심)
   MAXPHI: 60,  // 슬라이더 ±100 → ∓60°
+  TURN: 0.8,   // 최대 회전 비율(넘김은 1.0 — 가르마는 그만큼 완전히 돌지 않는다)
 };
 // 뿌리 좌표(두상 공간) → 가르마가 만드는 이동 벡터(두상 공간). 없으면 null.
 function partingPushHead(root, partVal, curlAmt){
@@ -9873,9 +9897,9 @@ function partWeightAt(i, n){ return combWeightAt(i, n, PART3D.RAMP, PART3D.TAIL)
    (같은 구조인 가르마도 함께 고쳤다. 볼륨은 법선 방향이라 해당 없고,
     결흐름은 끝단 회전이라 성격이 다르다 — 그 둘은 그대로 둔다.) */
 const SWEEP3D = {
-  AMP:  0.16, // 두상 반경 대비 최대 이동량(가르마보다 조금 큼 — 전체가 한 방향)
-  RAMP: 0.35, // 뿌리~이 비율까지 꺾이며 넘어감
-  TAIL: 0.6,  // 그 아래로도 계속 넘어감(유지만 하면 평행이동으로 보임)
+  TURN: 1.0,  // 100에서 결 방향을 빗질 방향으로 <b>완전히</b> 돌린다(뿌리부터 뒤를 봄)
+  RAMP: 0.22, // 뿌리~이 비율에서 방향 전환이 끝난다. 크면 "끝만 넘어간" 모양이 된다
+  TAIL: 0.6,  // 그 아래로도 계속(회전이라 이미 포화 — 램프 뒤 마무리 역할)
 };
 /* ══════════════════════════════════════════════════════════════════
    뿌리 볼륨(volume) — 3D 이식 (2026-07-27)
@@ -9964,24 +9988,48 @@ function scalpTangentAt(P, d, E){
   const dot = d.x*nx + d.y*ny + d.z*nz;
   return { x: d.x - dot*nx, y: d.y - dot*ny, z: d.z - dot*nz };
 }
-/* 가닥을 따라가며 <b>점마다</b> 방향을 다시 구해 미는 공통 적분기.
-   dirAt(P) = 그 위치에서 밀 방향(두상 공간, 길이가 세기). 뿌리는 고정.
-   가중치는 구간 <b>증가분</b>만 쓰므로, 방향이 도는 만큼 경로가 휜다. */
+/* ── 미는 게 아니라 <b>방향을 돌린다</b> (2026-07-27 2차 수정) ──────────────
+   사용자: "완전히 넘겼을 때는 끝이 올라가는 게 아니라, 일단 <b>뿌리쪽부터</b>
+   헤어가 뒤편을 바라볼 정도로 결방향이 바뀌어야 함."
+
+   1차 수정(변위 적분)은 원래 점 위에 이동량을 <b>더하는</b> 방식이었다. 그래서
+   슬라이더를 올리면 뿌리 근처는 거의 그대로인 채 끝으로 갈수록 변위가 쌓여
+   "끝이 들려 올라가는" 모양이 됐다. 게다가 원래 좌표에 벡터를 더하는 것이라
+   가닥 길이가 늘어난다(끝이 위로 튀어 오른 원인 중 하나).
+
+   지금 방식 — 구간 벡터를 빗질 방향으로 <b>회전</b>시킨다:
+     ① 각 구간의 원래 방향 v̂와 그 지점의 빗질 방향 ĝ를 k만큼 섞는다
+     ② 섞은 방향에 <b>원래 구간 길이</b>를 다시 입힌다 → 가닥 길이 보존
+     ③ 다음 점은 그 벡터를 이어 붙인 자리 → 방향이 돌면 경로가 저절로 휜다
+   k = min(1, 가중치 × dirAt 길이). 그래서 dirAt이 돌려주는 벡터의 <b>길이가
+   곧 "그 지점에서 얼마나 완전히 돌릴 것인가"(0~1)</b>라는 규약이다.
+   k=1이면 그 구간부터 결이 통째로 빗질 방향을 향한다 = 뿌리부터 뒤를 봄.
+   두피에 수직인 지점(뒤통수 정중앙)은 접선 성분이 0이라 k도 0 — 그대로다. */
 function combStrand3D(pts, dirAt, ramp, tail){
   if(!pts || pts.length < 2) return pts;
   const n = pts.length - 1;
   const out = [pts[0]];
-  let ax = 0, ay = 0, az = 0;             // 누적 이동
-  let wPrev = 0;
+  let cx = pts[0].x, cy = pts[0].y, cz = pts[0].z;
   for(let i=1;i<pts.length;i++){
-    const w = combWeightAt(i, n, ramp, tail);
-    const dw = w - wPrev; wPrev = w;
-    if(dw > 0){
-      const cur = { x: pts[i].x + ax, y: pts[i].y + ay, z: pts[i].z + az };
-      const t = dirAt(cur);
-      if(t){ ax += t.x*dw; ay += t.y*dw; az += t.z*dw; }
+    let vx = pts[i].x - pts[i-1].x, vy = pts[i].y - pts[i-1].y, vz = pts[i].z - pts[i-1].z;
+    const L = Math.hypot(vx, vy, vz);
+    if(L > 1e-9){
+      const d = dirAt({ x:cx, y:cy, z:cz });
+      const dl = d ? Math.hypot(d.x, d.y, d.z) : 0;
+      if(dl > 1e-9){
+        const k = Math.min(1, combWeightAt(i, n, ramp, tail) * dl);
+        if(k > 0){
+          const ux=vx/L, uy=vy/L, uz=vz/L;
+          const gx=d.x/dl, gy=d.y/dl, gz=d.z/dl;
+          let bx = ux*(1-k) + gx*k, by = uy*(1-k) + gy*k, bz = uz*(1-k) + gz*k;
+          let bl = Math.hypot(bx, by, bz);
+          if(bl < 1e-6){ bx=gx; by=gy; bz=gz; bl=1; }   // 정반대라 상쇄된 경우
+          vx = bx/bl*L; vy = by/bl*L; vz = bz/bl*L;
+        }
+      }
     }
-    out.push({ x: pts[i].x + ax, y: pts[i].y + ay, z: pts[i].z + az });
+    cx += vx; cy += vy; cz += vz;
+    out.push({ x:cx, y:cy, z:cz });
   }
   return out;
 }
@@ -9990,12 +10038,22 @@ function sweepStrand3D(pts, sweepVal, curlAmt){
   const s = Math.max(-100, Math.min(100, sweepVal)) / 100;   // +=뒤로, -=앞으로
   const E = getHeadEllipsoid();
   // 컬이 셀수록 빗질이 덜 먹는다(가르마와 동일 규칙)
-  const amp = SWEEP3D.AMP * (1 - 0.5*Math.max(0, Math.min(100, curlAmt||0))/100);
-  const back = { x:0, y:0, z:-s };                           // 머리 기준 "뒤로"
+  const turn = SWEEP3D.TURN * (1 - 0.5*Math.max(0, Math.min(100, curlAmt||0))/100);
+  const back = { x:0, y:0, z: s >= 0 ? -1 : 1 };             // 머리 기준 "뒤로"(부호만)
+  /* 세기는 <b>뿌리</b>가 정한다(가르마와 같은 규칙). 점마다 다시 재면, 가닥이
+     뒤통수 아래로 내려갈수록 두피가 휘어 -Z의 접선 성분이 <b>위쪽</b>으로 뒤집힌다
+     — 뒤통수 가닥이 넘김 슬라이더에 들려 올라가는 잘못된 동작이 된다.
+     어느 가닥이 얼마나 넘어가느냐는 그 가닥이 <b>어디서 자랐나</b>로 정해야 맞다.
+     점마다 다시 구하는 건 방향뿐이고, 그게 휨을 만든다. */
+  const t0 = scalpTangentAt(pts[0], back, E);
+  const reach0 = Math.min(1, Math.hypot(t0.x, t0.y, t0.z));  // 0=두피에 수직(못 쓸림)
+  const frac = Math.abs(s) * turn * reach0;                  // 0~1 = 얼마나 완전히 돌릴까
+  if(frac < 1e-4) return pts;
   const dirAt = (P)=>{
     const t = scalpTangentAt(P, back, E);
-    if(Math.hypot(t.x, t.y, t.z) < 1e-5) return null;        // 두피에 수직 = 못 쓸어감
-    return { x:t.x*amp, y:t.y*amp, z:t.z*amp };
+    const l = Math.hypot(t.x, t.y, t.z);
+    if(l < 1e-5) return null;                                // 두피에 수직 = 방향 없음
+    return { x:t.x/l*frac, y:t.y/l*frac, z:t.z/l*frac };     // 방향만 점마다, 세기는 뿌리
   };
   return combStrand3D(pts, dirAt, SWEEP3D.RAMP, SWEEP3D.TAIL);
 }
@@ -10011,11 +10069,16 @@ function partStrand3D(pts, partVal, curlAmt){
   if(mag < 1e-9) return pts;
   const E = getHeadEllipsoid();
   const dir = { x:seed.x/mag, y:seed.y/mag, z:seed.z/mag };   // 뿌리가 정한 갈라짐 방향
+  /* combStrand3D 규약: dirAt의 <b>길이</b>가 회전 비율(0~1)이다.
+     partingPushHead의 크기는 AMP×근접도×정수리성이므로 AMP로 나누면 0~1이 된다
+     (AMP는 이제 이동량이 아니라 정규화 상수 역할). TURN으로 최대 회전을 제한한다 —
+     가르마는 넘김만큼 결을 완전히 돌리지는 않는다. */
+  const frac = Math.min(1, mag / PART3D.AMP) * PART3D.TURN;
   const dirAt = (P)=>{
     const t = scalpTangentAt(P, dir, E);
     const l = Math.hypot(t.x, t.y, t.z);
     if(l < 1e-5) return null;
-    return { x:t.x*mag, y:t.y*mag, z:t.z*mag };               // 세기는 뿌리 기준 유지
+    return { x:t.x/l*frac, y:t.y/l*frac, z:t.z/l*frac };     // 방향만 점마다, 세기는 뿌리
   };
   return combStrand3D(pts, dirAt, PART3D.RAMP, PART3D.TAIL);
 }
@@ -10394,7 +10457,10 @@ function projectHair3DToView(ctx, fit, angle, maskInf){
 let _bundleLogKey = '';
 function logBundleRender(angle, m){
   const gapPx = m.spacing - m.subW;
-  const key = angle + '|' + m.SUB + '|' + m.subW.toFixed(2) + '|' + gapPx.toFixed(2) + '|' + m.stride + '|' + m.drawn;
+  /* 키에 m.drawn(그린 다발 수)을 넣었더니 슬라이더를 움직일 때마다 값이 흔들려
+     매 프레임 로그가 쏟아졌다. 렌더 <b>설정</b>이 바뀐 경우에만 찍는다 —
+     drawn/total은 진단창(_lastBundleDiag)에서 항상 최신값으로 볼 수 있다. */
+  const key = angle + '|' + m.SUB + '|' + m.subW.toFixed(2) + '|' + gapPx.toFixed(2) + '|' + m.stride;
   const css = v => (v / m.unit).toFixed(2);
   // 화면 진단창에서 읽을 수 있게 항상 보관(콘솔을 못 보는 상황 대비)
   window._lastBundleDiag = window._lastBundleDiag || {};
