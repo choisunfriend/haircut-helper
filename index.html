@@ -1835,16 +1835,20 @@ function resolveSectionId(angle, nx, ny){
   // 그대로 적용하고, 측면의 앞/뒤(템플/후두부)는 귀 실측 x와 얼굴 방향으로 나눈다.
   const b = sectionBandsFor(angle);
   if(angle==='front'){
-    if(ny >= b.napeTopY) return 'nape';
-    // (12차) 프론트 = 중앙 컬럼 전체(꼭대기~눈썹). 예전엔 "헤어라인~눈썹" 얇은 띠만
-    // 프론트라 그 위 중앙이 전부 크라운으로 먹혀, 프론트 조정이 거의 무반응이었음
-    // (실기기: "프론트 만질 때 하나도 안 먹고 크라운만 먹힌다"). 정면 뷰에서 보이는
-    // 앞머리 덩어리 전체가 프론트가 되도록 세로 하한(frontY0) 제거.
-    const inFrontX = nx >= b.frontX0 && nx <= b.frontX1;
-    if(inFrontX && ny <= b.frontY1) return 'front'; // 중앙 컬럼 눈썹 위까지 = 프론트
-    if(ny <= b.parietalY) return 'crown';        // 중앙 밖 위쪽(정수리 양옆) = 크라운
-    if(!inFrontX) return 'temple';               // 두정선 아래 좌우(귀 쪽) = 템플
-    return 'front';
+    /* ── (13차, 2026-07-27 사용자 지정) 정면 섹션 재정의 ──
+       실기기 실측: crown 9% / front 83% / temple 7% / nape 0%.
+       원인은 순서였다. 12차에서 "프론트 = 중앙 컬럼 꼭대기~눈썹"으로 넓히면서
+       프론트 판정을 크라운보다 먼저 놓아, 중앙 컬럼의 정수리까지 전부 프론트가
+       됐다(그때 고치려던 건 "프론트가 안 먹힌다"였는데 반대로 넘어간 것).
+       사용자 교정: "크라운을 정수리에서 중간 정도까지", "네이프는 일단 측면과
+       후면만". 그대로 반영 —
+         · 두정선(정수리~귀 사이 52%) 위 = 크라운   ← 중앙도 포함, 먼저 판정
+         · 그 아래 중앙 컬럼 = 프론트(앞머리)
+         · 그 아래 좌우 = 템플
+         · 네이프는 정면에서 판정하지 않음(측면·후면 전용)
+       프론트는 여전히 "두정선~아래 중앙 컬럼"이라 조작 대상이 충분히 남는다. */
+    if(ny <= b.parietalY) return 'crown';
+    return (nx >= b.frontX0 && nx <= b.frontX1) ? 'front' : 'temple';
   }
   if(angle==='left' || angle==='right'){
     if(ny >= b.napeTopY) return 'nape';          // 목선 쪽 뿌리 = 네이프
@@ -5169,6 +5173,42 @@ function toggleDiagInfo(){
   lines.push('  귀옆(0.10,0.45) -> ' + resolveSectionId(angle, 0.10, 0.45));
   lines.push('  정수리(0.50,0.10) -> ' + resolveSectionId(angle, 0.50, 0.10));
   lines.push('  목선(0.50,0.90) -> ' + resolveSectionId(angle, 0.50, 0.90));
+
+  /* ── 렌더/결 진단 (2026-07-26) ────────────────────────────────────
+     노트북 작업이라 콘솔을 열어 복사하기 번거롭다는 피드백. 원인 판정에 꼭
+     필요한 세 가지를 화면에 찍어 스크린샷 하나로 끝나게 한다:
+       ① 겹 끝(결불연속) 종결 비율 — 0%면 끝점을 하나도 못 잡고 있다는 뜻
+          (= 모든 가닥이 실루엣 바닥까지 관통 → 섹션이 안 나뉨)
+       ② 결 신뢰도(coherence) 분포 — 끝점 판정의 원재료가 쓸 만한지
+       ③ 다발 렌더 실측 — 화면상 머리 크기·틈·가닥 폭·솎기 */
+  const dc = window._lastDisc && window._lastDisc[angle];
+  lines.push('');
+  lines.push('겹 끝(결불연속) 종결: ' + (dc ? `${dc.cut}/${dc.n}개 (${dc.pct}%)` + (dc.pct < 5 ? '  ← 끝점 거의 못 잡음' : '') : '(아직 없음)'));
+
+  const mi = state.hairMasks && state.hairMasks[angle];
+  if(mi && mi.orientation){
+    let n=0, sum=0, hi=0, lo=0;
+    for(const col of mi.orientation){
+      if(!col) continue;
+      for(const sm of col){ n++; sum += sm.coherence;
+        if(sm.coherence > 0.3) hi++; if(sm.coherence < 0.1) lo++; }
+    }
+    lines.push('결 신뢰도: 표본 ' + n + '개, 평균 ' + (n?(sum/n).toFixed(3):'-')
+      + ' / 0.3초과 ' + (n?Math.round(hi/n*100):0) + '% / 0.1미만 ' + (n?Math.round(lo/n*100):0) + '%');
+  } else {
+    lines.push('결 신뢰도: 결필드 없음');
+  }
+
+  const bd = window._lastBundleDiag && window._lastBundleDiag[angle];
+  if(bd){
+    lines.push('');
+    lines.push('다발 렌더:');
+    lines.push('  화면상 머리폭 ' + bd.headCss + 'px (표시배율 1/' + bd.unit + ')');
+    lines.push('  다발 ' + bd.bundle + 'px (비례값 ' + bd.prop + ')');
+    lines.push('  가닥 ' + bd.sub + '/' + bd.want + '개 × ' + bd.subCss + 'px(화면), 틈 ' + bd.gapCss + 'px(화면)');
+    lines.push('  다발 수 ' + bd.drawn + '/' + bd.total + ' (솎기 ' + bd.stride + ')');
+    if(bd.gapCss < 1.2) lines.push('  ← 틈이 1.2px 미만이면 화면 축소에 뭉개짐');
+  }
   box.textContent = lines.join('\n');
 }
 
@@ -6693,6 +6733,11 @@ function drawHairStrands(ctx, fit, scalpY, hairEndY, maskW, maskH, hairCanvas, o
     if(!(angle in window._lastDiscLog) || window.DIAG_VERBOSE){
       window._lastDiscLog[angle] = true;
       console.log('[진단·결단] '+angle+' 가닥 '+_strandN+'개 중 결불연속(겹 끝) 종결 '+_flowCutN+'개('+pct+'%)');
+    }
+    // 콘솔 없이도 화면 진단창에서 볼 수 있게 보관
+    window._lastDisc = window._lastDisc || {};
+    window._lastDisc[angle] = { n:_strandN, cut:_flowCutN, pct };
+    if(false){
     }
   }
 
@@ -9434,10 +9479,64 @@ function partingPushHead(root, partVal, curlAmt){
    → 뿌리에서 RAMP 구간까지 꺾이며 벌어지고(결의 꺾임), 그 아래로도 TAIL 비율로
      계속 벌어진다. 유지만 하면(TAIL=0) 가닥들이 나란히 평행 이동할 뿐이라
      "밀렸을 뿐 안 갈라진" 모양이 된다 — 갈라져 보이려면 계속 벌어져야 한다. */
-function partWeightAt(i, n){
+function combWeightAt(i, n, ramp, tail){
   if(i <= 0 || n <= 0) return 0;
   const t = i/n;
-  return Math.min(1, t/PART3D.RAMP) + Math.max(0, t - PART3D.RAMP) * PART3D.TAIL;
+  return Math.min(1, t/ramp) + Math.max(0, t - ramp) * tail;
+}
+function partWeightAt(i, n){ return combWeightAt(i, n, PART3D.RAMP, PART3D.TAIL); }
+
+/* ══════════════════════════════════════════════════════════════════
+   넘김(sweep) — 3D 이식 (2026-07-27)
+   ─────────────────────────────────────────────────────────────────
+   그동안 넘김 슬라이더는 값만 저장하고 아무것도 안 하는 상태였다(2D 경로에서
+   걷어냈고 3D엔 아직 안 넣었음). 가르마와 같은 원리로 넣는다.
+
+   가르마와의 차이 하나뿐: 가르마는 분할선 기준으로 <b>좌우가 반대로</b> 갈라지고,
+   넘김은 머리 전체가 <b>한 방향</b>(뒤 또는 앞)으로 쓸린다. 그래서 ±부호 분기와
+   분할선 감쇠(SIGMA·near)가 없고, 방향이 머리 기준 ∓Z 하나로 고정된다.
+
+   두피 접선 투영은 그대로 쓴다 — 이게 "그 지점에서 그 방향으로 실제로 쓸려갈 수
+   있는 정도"를 자동으로 만들어준다:
+     · 정수리:   뒤(-Z)가 두피와 나란함 → 최대로 쓸림
+     · 뒤통수 정중앙: 뒤(-Z)가 두피에 수직 → 접선 성분 0 → 안 쓸림(맞는 동작)
+     · 이마:     뒤(-Z)가 두피를 따라 위로 넘어감 → 잘 쓸림
+   예전 2D 구현은 화면 기준 가로 밀기였고, 그래서 정면에서 "밖으로 벌렸다
+   오므렸다" 하는 변화로만 보였다(사용자 지적). 머리 기준 방향으로 바꾸면
+   좌·우 뷰에서도 같은 "뒤로 넘김"이 된다.
+══════════════════════════════════════════════════════════════════ */
+const SWEEP3D = {
+  AMP:  0.16, // 두상 반경 대비 최대 이동량(가르마보다 조금 큼 — 전체가 한 방향)
+  RAMP: 0.35, // 뿌리~이 비율까지 꺾이며 넘어감
+  TAIL: 0.6,  // 그 아래로도 계속 넘어감(유지만 하면 평행이동으로 보임)
+};
+// 뿌리 좌표(두상 공간) → 넘김이 만드는 이동 벡터(두상 공간). 없으면 null.
+function sweepPushHead(root, sweepVal, curlAmt){
+  if(!root || !sweepVal) return null;
+  const s = Math.max(-100, Math.min(100, sweepVal)) / 100;   // +=뒤로, -=앞으로
+  const x = root.x, y = root.y - 0.15, z = root.z;           // 두상 중심 기준
+  const E = getHeadEllipsoid();
+  let nx = x/(E.a*E.a), ny = y/(E.b*E.b), nz = z/(E.c*E.c);
+  const nl = Math.hypot(nx, ny, nz) || 1; nx/=nl; ny/=nl; nz/=nl;
+  const dz0 = -s;                                            // 머리 기준 "뒤로"
+  const dot = dz0 * nz;
+  const tx = -dot*nx, ty = -dot*ny, tz = dz0 - dot*nz;       // 두피 접선 성분만
+  if(Math.hypot(tx, ty, tz) < 1e-4) return null;             // 두피에 수직 = 못 쓸어감
+  // 컬이 셀수록 빗질이 덜 먹는다(가르마와 동일 규칙)
+  const amp = SWEEP3D.AMP * (1 - 0.5*Math.max(0, Math.min(100, curlAmt||0))/100);
+  return { x:tx*amp, y:ty*amp, z:tz*amp };
+}
+function sweepStrand3D(pts, sweepVal, curlAmt){
+  if(!pts || pts.length < 2 || !sweepVal) return pts;
+  const push = sweepPushHead(pts[0], sweepVal, curlAmt);
+  if(!push) return pts;
+  const n = pts.length - 1;
+  const out = [pts[0]];
+  for(let i=1;i<pts.length;i++){
+    const w = combWeightAt(i, n, SWEEP3D.RAMP, SWEEP3D.TAIL);
+    out.push({ x:pts[i].x + push.x*w, y:pts[i].y + push.y*w, z:pts[i].z + push.z*w });
+  }
+  return out;
 }
 // 3D 경로용 — 가닥 전체에 가르마 이동을 얹는다. 뿌리(pts[0])는 고정.
 function partStrand3D(pts, partVal, curlAmt){
@@ -9554,8 +9653,13 @@ const HAIR3D_RENDER = {
   targetDensity: 8.0,
   undercoat: false, // 두피색 언더코트. 사용자 선택: 끔(다발을 투명하게 = 틈이 살아남)
   // 하한은 백킹 픽셀이 아니라 "화면에 실제로 보이는 CSS 픽셀" 기준(아래 설명 참조)
-  minGapCss: 0.9,   // 가닥 사이 틈의 화면상 최소 크기
-  minSubCss: 0.7,   // 가닥 폭의 화면상 최소 크기
+  /* (2026-07-26 2차 상향) 0.7/0.9로는 부족했다. 캔버스 1200px를 화면 390px로
+     줄여 그리는 과정에서 상자필터로 평균이 나는데, 선과 틈이 각각 1 CSS px
+     안팎이면 그 평균에 뭉개져 회색 띠 하나가 된다(실기기: 서브가닥이 아니라
+     뭉텅이로 보임). 축소를 견디려면 선·틈 모두 1 CSS px를 넘겨야 한다.
+     사용자 요청("틈을 좀 늘려봐야 될 거 같애") 반영. */
+  minGapCss: 1.6,   // 가닥 사이 틈의 화면상 최소 크기
+  minSubCss: 1.1,   // 가닥 폭의 화면상 최소 크기
   // 자리가 모자라 서브라인이 다 안 들어갈 때 다발을 최대 몇 배까지 넓혀도 되는지.
   // 사용자: "다발묶음이 투명해져서 표현이 안 되면 다발을 더 굵게 해도 괜찮은데,
   //          다발만 표현되니까 두껍게 할 수도 없고" — 맞다. 그래서 굵히기는
@@ -9711,9 +9815,16 @@ let _bundleLogKey = '';
 function logBundleRender(angle, m){
   const gapPx = m.spacing - m.subW;
   const key = angle + '|' + m.SUB + '|' + m.subW.toFixed(2) + '|' + gapPx.toFixed(2) + '|' + m.stride;
+  const css = v => (v / m.unit).toFixed(2);
+  // 화면 진단창에서 읽을 수 있게 항상 보관(콘솔을 못 보는 상황 대비)
+  window._lastBundleDiag = window._lastBundleDiag || {};
+  window._lastBundleDiag[angle] = {
+    headCss: +css(m.spanX), bundle: +m.bundleEff.toFixed(1), prop: +m.bundleW.toFixed(1),
+    sub: m.SUB, want: m.want, subCss: +css(m.subW), gapCss: +css(gapPx),
+    unit: +m.unit.toFixed(2), drawn: Math.ceil(m.total/m.stride), total: m.total, stride: m.stride,
+  };
   if(key === _bundleLogKey) return;
   _bundleLogKey = key;
-  const css = v => (v / m.unit).toFixed(2);
   console.log(
     `[${angle}] 다발 렌더 — 헤어폭 ${m.spanX.toFixed(0)}px(화면 ${css(m.spanX)}) · `
     + `다발 ${m.bundleEff.toFixed(1)}px(비례값 ${m.bundleW.toFixed(1)}) · `
@@ -9835,6 +9946,8 @@ function computeAdjustedHair3DStrands(srcAngleFilter){
     // ④ 가르마 — 두피 표면 방향장(분할선 양쪽이 반대로 갈라짐). 스타일링은
     //    커트/펌 위에 얹는 연출이므로 마지막에 적용한다. part=0이면 무변경.
     pts = partStrand3D(pts, (state.styling && state.styling.part) || 0, curlAmt);
+    // ⑤ 넘김 — 머리 전체를 앞/뒤 한 방향으로. 실제 순서도 "가른 다음 넘긴다".
+    pts = sweepStrand3D(pts, (state.styling && state.styling.sweep) || 0, curlAmt);
     out.push({ pts, color: st.color, sec: st.sec, srcAngle: st.srcAngle });
   }
   return out;
