@@ -5534,6 +5534,11 @@ function toggleQuiltDebug(){
     btn.classList.toggle('on', state.hairQuilt);
     btn.textContent = state.hairQuilt ? '가닥 렌더' : '픽셀 이식';
   }
+  _quiltFailKey = ''; _quiltLogKey = '';        // 끌 때마다 사유를 다시 찍게
+  if(!state.hairQuilt){                          // 끄면 라벨 원복
+    const tag = document.getElementById('adjustStyleTag');
+    if(tag) tag.textContent = state.selectedStyle ? state.selectedStyle.name : '스타일 미선택';
+  }
   renderAdjustFrame();
 }
 
@@ -10439,8 +10444,8 @@ const HAIR_QUILT = {
   strips:  28,         // 소스 띠 개수(많을수록 반복이 덜 보이고 준비가 느려짐)
   stripStep: 3,        // 원본에서 결을 따라가는 보폭(원본 px)
   stripMax: 90,        // 띠 한 장의 최대 단계 수
-  stripMin: 10,        // 이보다 짧게 끊기면 소스로 못 씀
-  minCoh:  0.18,       // 이만큼 또렷한 자리에서만 뜬다
+  stripMin: 6,         // 이보다 짧게 끊기면 소스로 못 씀
+  minCoh:  0.10,       // 이만큼 또렷한 자리에서만 뜬다(실기기 평균 0.28, 40%가 0.1 미만)
   /* 조각내기 — 곧은 구간은 한 번에 그린다. 고정 길이로 잘게 쪼갰더니 가닥 하나에
      22조각이 나와 실기기 밀도(1,400줄)에서 3만 번을 그리게 됐다(합성 실측 209ms).
      방향이 이만큼 꺾일 때만 새 조각을 시작하면 대부분의 가닥이 서너 조각이 된다. */
@@ -10496,33 +10501,85 @@ function buildHairStripPool(angle, maskInf, swSrc){
   if(cols.length < 4) return null;
 
   const raw = [];
-  const tries = Math.min(cols.length, Q.strips * 4);
-  for(let t=0; t<tries; t++){
-    const x0 = cols[Math.floor(t * (cols.length - 1) / Math.max(1, tries - 1))];
-    let px = x0 + 0.5, py = maskInf.scalpY[x0] + 1.5;
-    const o0 = angAt(px, py);
-    if(!o0 || o0.coherence < Q.minCoh) continue;
-    let a = o0.angle;
-    if(Math.sin(a) < 0) a += Math.PI;                        // 뿌리에서 아래로 내려가는 쪽
-    const steps = [];
-    let cohSum = 0, left = false;
-    for(let i=0; i<Q.stripMax; i++){
-      if(!opaque(px, py)){ left = true; break; }              // 마스크를 벗어남 = 모발 끝
-      steps.push({ x:px, y:py, a });
-      const o = angAt(px, py);
-      if(o){
-        let na = o.angle;                                     // 결은 180° 주기 — 이어지는 쪽으로
-        while(na - a >  Math.PI/2) na -= Math.PI;
-        while(na - a < -Math.PI/2) na += Math.PI;
-        a = na; cohSum += o.coherence;
+  /* [진단] 왜 띠를 못 떴는지 알아야 한다. 실기기에서 "픽셀 이식을 켰는데 똑같다"가
+     나왔는데, 조용히 false를 돌려 기존 가닥 렌더로 폴백한 것이 원인이었다.
+     실패할 때 <b>이유와 숫자</b>를 남긴다 — 그래야 문턱을 짐작으로 안 흔든다. */
+  const rej = { coh:0, short:0, dark:0, ok:0 };
+  let tries = 0, srcKind = '결필드';
+
+  /* ── ① 이미 캡처해 둔 <b>2D 가닥 경로</b>를 그대로 소스로 쓴다 (2026-07-27 2차) ──
+     처음엔 결필드를 따라 직접 걸었는데, coherence가 낮으면 걷질 못해 띠가 안 떠졌다.
+     그런데 coherence는 "사진이 흐리다"가 아니라 <b>그 자리에 일관된 방향이 있나</b>이다
+     (구조텐서 고유값 비 (λ1-λ2)/(λ1+λ2), 대비와 무관한 정규화 값).
+     검은 머리가 평평하게 찍히면 방향 정보 자체가 없어서 낮게 나온다 — 사진 탓이 아니다.
+     그리고 우리는 이미 그 답을 갖고 있다: captureStrandPathsFor가 뽑아 둔 2,833개의
+     <b>가닥 경로</b>. 그게 곧 "이 앱이 이해한 머리카락이 지나가는 길"이다.
+     그 길을 따라 띠를 뜨면 걷기도, 방향 애매함도, 문턱도 필요 없다. */
+  const rec = state.strandPaths && state.strandPaths[angle];
+  if(rec && rec.strands && rec.strands.length){
+    srcKind = '캡처 가닥 경로';
+    const N = rec.strands.length;
+    tries = Math.min(N, Q.strips * 8);
+    for(let t=0; t<tries; t++){
+      const sp = rec.strands[Math.floor(t * (N - 1) / Math.max(1, tries - 1))];
+      const pts = sp && sp.pts;
+      if(!pts || pts.length < 3){ rej.short++; continue; }
+      const steps = []; let left = false, run = 0;
+      for(let i=0; i<pts.length && steps.length < Q.stripMax; i++){
+        const P = pts[i];
+        if(!opaque(P.x, P.y)){ left = true; break; }       // 마스크를 벗어남 = 모발 끝
+        const A = pts[Math.max(0, i-1)], B = pts[Math.min(pts.length-1, i+1)];
+        steps.push({ x:P.x, y:P.y, a: Math.atan2(B.y-A.y, B.x-A.x) });
+        if(i > 0) run += Math.hypot(P.x-pts[i-1].x, P.y-pts[i-1].y);
       }
-      px += Math.cos(a) * Q.stripStep;
-      py += Math.sin(a) * Q.stripStep;
+      if(steps.length < Q.stripMin){ rej.short++; continue; }
+      rej.ok++;
+      // 행 높이는 실제 점 간격 — 띠의 길이 축척이 원본과 맞아야 한다
+      raw.push({ steps, hasTip: left, coh: 1, stepPx: Math.max(1, run / (steps.length - 1)) });
     }
-    if(steps.length < Q.stripMin) continue;
-    raw.push({ steps, hasTip: left, coh: cohSum / steps.length });
   }
-  if(!raw.length){ _quiltPool[key] = { src: hairC, pool: null }; return null; }
+
+  /* ── ② 폴백: 캡처 경로가 없으면 결필드를 직접 걷는다 ── */
+  if(!raw.length){
+    srcKind = '결필드 직접 걷기';
+    tries = Math.min(cols.length, Q.strips * 8);
+    for(let t=0; t<tries; t++){
+      const x0 = cols[Math.floor(t * (cols.length - 1) / Math.max(1, tries - 1))];
+      // 두피선 바로 위는 마스크 가장자리라 반투명일 수 있다 — 불투명해질 때까지 조금 내려간다
+      let px = x0 + 0.5, py = maskInf.scalpY[x0] + 1.5;
+      let guard = 0;
+      while(!opaque(px, py) && guard++ < 12) py += 2;
+      if(!opaque(px, py)){ rej.dark++; continue; }
+      const o0 = angAt(px, py);
+      if(!o0 || o0.coherence < Q.minCoh){ rej.coh++; continue; }
+      let a = o0.angle;
+      if(Math.sin(a) < 0) a += Math.PI;                      // 뿌리에서 아래로 내려가는 쪽
+      const steps = [];
+      let cohSum = 0, left = false;
+      for(let i=0; i<Q.stripMax; i++){
+        if(!opaque(px, py)){ left = true; break; }
+        steps.push({ x:px, y:py, a });
+        const o = angAt(px, py);
+        if(o){
+          let na = o.angle;                                  // 결은 180° 주기 — 이어지는 쪽으로
+          while(na - a >  Math.PI/2) na -= Math.PI;
+          while(na - a < -Math.PI/2) na += Math.PI;
+          a = na; cohSum += o.coherence;
+        }
+        px += Math.cos(a) * Q.stripStep;
+        py += Math.sin(a) * Q.stripStep;
+      }
+      if(steps.length < Q.stripMin){ rej.short++; continue; }
+      rej.ok++;
+      raw.push({ steps, hasTip: left, coh: cohSum / steps.length, stepPx: Q.stripStep });
+    }
+  }
+  if(!raw.length){
+    console.warn(`[${angle}] 헤어 띠를 하나도 못 떴다 — 시도 ${tries}회 중`
+      + ` 결이 흐려서 ${rej.coh} · 시작점이 투명해서 ${rej.dark} · 너무 짧아서 ${rej.short}`
+      + ` (소스: ${srcKind}, 문턱: 또렷함 ${Q.minCoh}, 최소 ${Q.stripMin}단계)`);
+    _quiltPool[key] = { src: hairC, pool: null }; return null;
+  }
   // 끝이 들어 있는 띠를 우선하고, 그 다음 또렷한 순
   raw.sort((p, q)=> (q.hasTip - p.hasTip) || (q.coh - p.coh));
 
@@ -10531,15 +10588,16 @@ function buildHairStripPool(angle, maskInf, swSrc){
   const pool = [];
   for(let k=0; k<Math.min(Q.strips, raw.length); k++){
     const r = raw[k];
-    const SH = r.steps.length * Q.stripStep;
+    const rowH = r.stepPx || Q.stripStep;                    // 소스마다 점 간격이 다르다
+    const SH = Math.max(2, Math.round(r.steps.length * rowH));
     const flat = document.createElement('canvas'); flat.width = SW; flat.height = SH;
     const fx = flat.getContext('2d');
     for(let i=0; i<r.steps.length; i++){
       const s = r.steps[i];
       fx.save();
-      fx.beginPath(); fx.rect(0, i*Q.stripStep, SW, Q.stripStep); fx.clip();
+      fx.beginPath(); fx.rect(0, i*rowH, SW, rowH + 1); fx.clip();
       // 원본의 (s.x,s.y)·방향 s.a 를 띠의 (SW/2, 이 행)·+y 로 보낸다
-      fx.translate(SW/2, i*Q.stripStep + Q.stripStep/2);
+      fx.translate(SW/2, i*rowH + rowH/2);
       fx.rotate(Math.PI/2 - s.a);
       fx.translate(-s.x, -s.y);
       fx.drawImage(hairC, 0, 0);
@@ -10570,7 +10628,8 @@ function buildHairStripPool(angle, maskInf, swSrc){
     pool.push({ shades, SW, SH, hasTip: r.hasTip });
   }
   _quiltPool[key] = { src: hairC, pool };
-  console.log(`[${angle}] 헤어 띠 — ${pool.length}장 채택(후보 ${raw.length}) · 폭 ${SW}원본px`
+  console.log(`[${angle}] 헤어 띠 — ${pool.length}장 채택(소스: ${srcKind}, 후보 ${raw.length}/${tries}시도,`
+    + ` 탈락: 흐림 ${rej.coh}·투명 ${rej.dark}·짧음 ${rej.short}) · 폭 ${SW}원본px`
     + ` · 길이 ${Math.round(pool.reduce((s,q)=>s+q.SH,0)/pool.length)}원본px`
     + ` · 모발 끝 포함 ${pool.filter(q=>q.hasTip).length}장`);
   return pool;
@@ -10583,11 +10642,32 @@ function buildHairStripPool(angle, maskInf, swSrc){
    길이를 줄이면 <b>가운데를 들어낸다</b> — 몸통은 띠의 앞에서, 끝은 띠의 끝에서
    가져온다. 실제로 머리를 자르는 것과 같은 조작이고, 그래서 잘린 자리에
    원본의 진짜 모발 끝이 온다(지어낸 페이드가 아니라).                     */
+/* 폴백 사유를 <b>소리내어</b> 남긴다. 조용히 false를 돌리면 기존 가닥 렌더가
+   대신 그려서 화면이 <b>똑같아 보이고</b>, 켠 사람은 "안 바뀌는데?"만 알게 된다
+   (실기기에서 실제로 그랬다). 같은 사유는 한 번만 찍는다. */
+let _quiltFailKey = '';
+// 콘솔을 못 보는 상황(실기기)에서도 알 수 있게 화면 라벨에 상태를 띄운다
+function setQuiltTag(txt){
+  if(!state.hairQuilt) return;
+  const el = document.getElementById('adjustStyleTag');
+  if(el) el.textContent = txt;
+}
+function quiltFail(angle, why){
+  const k = angle + '|' + why;
+  if(k !== _quiltFailKey){ _quiltFailKey = k;
+    console.warn(`[${angle}] 픽셀 이식을 못 해서 <b>가닥 렌더로 폴백</b> — ${why}`); }
+  setQuiltTag('픽셀 이식 실패 → 가닥 렌더 (' + why + ')');
+  return false;
+}
 function projectHairQuiltToView(ctx, fit, angle, maskInf){
   const model = state.hair3Dneutral;
-  if(!model || !model.viewCal || !model.viewCal[angle]) return false;
+  if(!model || !model.viewCal || !model.viewCal[angle])
+    return quiltFail(angle, '이 뷰의 3D 캘리브레이션이 없음');
   const src = model.strands;
-  if(!src || !src.length) return false;
+  if(!src || !src.length) return quiltFail(angle, '3D 모델에 가닥이 없음');
+  if(!state.hairCanvases || !state.hairCanvases[angle])
+    return quiltFail(angle, '원본 헤어 이미지가 없음(소스를 못 뜸)');
+  if(!maskInf.orientation) return quiltFail(angle, '결필드가 없음');
   const Q = HAIR_QUILT, R = HAIR3D_RENDER;
   const cal = model.viewCal[angle];
   const { toX: toCX, toY: toCY } = makeImgToCanvas(fit, maskInf.w, maskInf.h);
@@ -10609,11 +10689,11 @@ function projectHairQuiltToView(ctx, fit, angle, maskInf){
 
   const pxScale = Math.max(1e-6, fit.dw / Math.max(1, maskInf.w));  // 원본px → 캔버스px
   const pool = buildHairStripPool(angle, maskInf, Math.round(drawW / pxScale));
-  if(!pool || !pool.length) return false;
+  if(!pool || !pool.length) return quiltFail(angle, '소스 띠를 하나도 못 뜸(위 경고 참조)');
 
   const stride = Math.max(1, Math.round(src.length / Math.max(1, R.targetBundles)));
   const adj = computeAdjustedHair3DStrands(null, stride);
-  if(!adj || !adj.length) return false;
+  if(!adj || !adj.length) return quiltFail(angle, '조정된 가닥이 비어 있음');
 
   // ── 투영 + 호길이 ──
   const lanes = [];
@@ -10634,7 +10714,7 @@ function projectHairQuiltToView(ctx, fit, angle, maskInf){
     if(depth < dMin) dMin = depth; if(depth > dMax) dMax = depth;
     lanes.push({ cp, cum, total, depth });
   }
-  if(!lanes.length) return false;
+  if(!lanes.length) return quiltFail(angle, '이 각도에서 앞을 향한 가닥이 없음');
   lanes.sort((a,b)=> a.depth - b.depth);                       // 뒤부터 — 앞이 위에 덮임
 
   /* 폴리라인을 <b>방향이 꺾이는 곳에서만</b> 자른다. 곧은 구간은 한 조각으로
@@ -10694,6 +10774,7 @@ function projectHairQuiltToView(ctx, fit, angle, maskInf){
   ctx.restore();
   logQuiltRender(angle, { pool: pool.length, lanes: lanes.length, segs, drawW, unit: Q.unit,
                           swSrc: pool[0].SW, tips: pool.filter(q=>q.hasTip).length });
+  setQuiltTag(`픽셀 이식 · 띠 ${pool.length}장(끝 ${pool.filter(q=>q.hasTip).length}) · 폭 ${drawW.toFixed(1)}px`);
   return true;
 }
 let _quiltLogKey = '';
