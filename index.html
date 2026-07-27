@@ -10086,7 +10086,7 @@ const HAIR3D_RENDER = {
   bundleSpanMax: 0.06,
   /* 다발 안 가닥 수. 사용자: "다발폭을 좀 넓게 가자면 한 3~4개짜리 폭으로 가서
      틈을 조금 줄여보는 게 시도해 볼만할 거 같고" — 3으로 두고 틈을 좁힌다. */
-  sub:    3,
+  sub:    4,
   gap:    0.25,     // 틈 비율 — 가닥 폭 = 간격 × (1 - gap)
   colVar: 0.45,     // 다발 속 색 분산(미세 틴트 폭)
   /* 다발 수 손잡이. null이면 자동(아래 설명), 숫자면 그 값으로 고정.
@@ -10111,10 +10111,11 @@ const HAIR3D_RENDER = {
      뭉텅이로 보임). 축소를 견디려면 선·틈 모두 1 CSS px를 넘겨야 한다.
      사용자 요청("틈을 좀 늘려봐야 될 거 같애") 반영. */
   /* 가닥 사이 틈(화면 기준). 1.6 → 1.2 → <b>0.2</b>(사용자 지정).
-     0.2는 서브픽셀이라 "빈칸"이 아니라 옅은 알파 경계로 나타난다 — 가닥 3개가
-     거의 붙어 하나의 부드러운 획처럼 보이고, 대신 다발이 2.6px로 얇아져서
-     같은 잉크량이면 다발 수가 크게 늘어난다(원본 결 보기 쪽에 더 가까워짐). */
-  minGapCss: 0.2,
+     0.2에서는 가닥 3개가 거의 붙어 하나의 획으로 보였다. 사용자: "가닥을 하나
+     늘려서 폭을 늘림으로 비는 공간을 좀 더 메울 필요가 있겠어. 틈을 0.3px로 해서
+     가는 가닥이 표시날 때까지 한번 올려보게." → 가닥 4개 · 틈 0.3px.
+     다발 폭은 (4-1)×(0.7+0.3) = 3.0px로 자동으로 따라 넓어진다. */
+  minGapCss: 0.3,
   /* (2026-07-27 사용자 지정) 1.1 → 0.7 — 획을 더 가늘게.
      주의: 이 값이면 다발 전체가 1.8px라 안에 든 가닥 3개가 화면에서 분리되지
      않는다(= 가는 획 하나). 의도된 방향이다 — "이 헤어 방식이 좀 부드럽게
@@ -10224,7 +10225,11 @@ function projectHair3DToView(ctx, fit, angle, maskInf){
      기준은 "가로 겹침 수" = 다발수 × 다발폭 ÷ 실루엣폭. 이 값이 targetDensity가
      되도록 솎아낸다. 실측: 이 값을 낮춰도 커버리지는 거의 그대로였다 —
      겹쳐서 안 보이던 다발이 사라질 뿐이라 성능만 벌고 그림은 오히려 또렷해진다. */
-  const inflate = bundleEff / Math.max(1e-6, spanX * R.bundleSpan);
+  /* (2026-07-27) 예전엔 "비례값 대비 몇 배 넓혔나"였는데 다발 폭을 실루엣에서
+     유도하지 않게 되면서 기준값이 사라져 NaN이 찍혔다(실기기 로그 `확대 NaN배`).
+     지금 의미 있는 건 "상한에 얼마나 가까운가"다 — 1에 가까우면 머리가 작게
+     찍혀 다발이 상한에 걸리기 직전이라는 뜻. */
+  const capUse  = bundleEff / Math.max(1e-6, capW);
   const wantN   = Math.max(1, R.targetDensity * spanX / Math.max(1e-6, bundleEff));
   const stride  = (R.stride == null)
     ? Math.max(1, Math.min(32, Math.round(src.length / wantN)))
@@ -10252,7 +10257,7 @@ function projectHair3DToView(ctx, fit, angle, maskInf){
   }
   projected.sort((a,b)=> a.depth - b.depth); // 뒤(작은 depth)부터 → 앞이 위에 덮임
   logBundleRender(angle, { spanX, unit, cssW, bundleW, bundleEff, SUB, spacing, subW,
-                           want: R.sub|0, inflate, stride, total: src.length });
+                           want: R.sub|0, capUse, stride, total: src.length });
 
   // 다발 속 미세 틴트 — 가닥마다 다른 색을 주되 팔레트 색에서 벗어나진 않게.
   // FORCED_HAIR_COLOR(검정 지정 등)일 땐 상한 1.06 — tintColor가 bright>1에서
@@ -10346,6 +10351,7 @@ function logBundleRender(angle, m){
     headCss: +css(m.spanX), bundle: +m.bundleEff.toFixed(1), prop: +m.bundleW.toFixed(1),
     sub: m.SUB, want: m.want, subCss: +css(m.subW), gapCss: +css(gapPx),
     unit: +m.unit.toFixed(2), drawn: Math.ceil(m.total/m.stride), total: m.total, stride: m.stride,
+    capUse: +m.capUse.toFixed(2),
   };
   if(key === _bundleLogKey) return;
   _bundleLogKey = key;
@@ -10354,7 +10360,7 @@ function logBundleRender(angle, m){
     + `다발 ${m.bundleEff.toFixed(1)}px(비례값 ${m.bundleW.toFixed(1)}) · `
     + `가닥 ${m.SUB}/${m.want}개 × ${m.subW.toFixed(2)}px(화면 ${css(m.subW)}) · `
     + `틈 ${gapPx.toFixed(2)}px(화면 ${css(gapPx)}) · 표시배율 1/${m.unit.toFixed(1)} · `
-    + `다발 ${Math.ceil(m.total/m.stride)}/${m.total}개(솎기 ${m.stride}, 확대 ${m.inflate.toFixed(1)}배)`
+    + `다발 ${Math.ceil(m.total/m.stride)}/${m.total}개(솎기 ${m.stride}, 상한 ${(m.capUse*100).toFixed(0)}%)`
     + (m.SUB < m.want ? ` ← 자리가 좁아 가닥 수를 줄임(화면에서 머리가 ${css(m.spanX)}px밖에 안 됨)` : ``)
   );
 }
