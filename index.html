@@ -5035,6 +5035,33 @@ function computeFit(imgW, imgH, w, h){
    채우고, 채워진 픽셀은 다음 회차에서 이웃 역할을 한다 — 경계에서 안쪽으로
    물이 스미듯 번진다. 구멍 반지름만큼 회차를 돌면 완전히 메워진다.
    (거리변환·인페인팅의 아주 단순한 형태. 바탕으로만 쓰므로 이 정도면 충분하다.) */
+/* 이 뷰의 사진이 그 슬롯에 맞는지 <b>알리기만</b> 한다(배제하지 않음).
+   얼굴 실측 각도로만 판정 — 얼굴이 안 잡힌 뷰는 근거가 없으니 조용히 넘어간다
+   (후면은 원래 안 잡히는 게 정상이다). */
+const SLOT_YAW_MIN_BACK = 120;  // 후면인데 이보다 정면에 가까우면 뒷머리 사진이 아님
+const SLOT_YAW_MIN_SIDE = 15;   // 측면인데 이보다 정면에 가까우면 옆머리 정보가 없음
+function warnViewSlotMismatch(angle){
+  const lm = state.landmarks && state.landmarks[angle];
+  const yaw = (lm && typeof lm.poseYawDeg === 'number') ? lm.poseYawDeg : null;
+  if(yaw === null) return;                           // 실측 없음 — 판정 불가
+  const a = Math.abs(yaw);
+  let bad = null;
+  if(angle === 'back'){
+    if(a < SLOT_YAW_MIN_BACK) bad = `얼굴이 ${a.toFixed(0)}°로 잡힘 — 뒷머리 사진이 아님`;
+  } else if(angle === 'left' || angle === 'right'){
+    const want = LIVE_YAW_TARGET[angle];
+    if(want && a > SLOT_YAW_MIN_SIDE && (yaw >= 0) !== (want.max > 0)) bad = `반대쪽 옆얼굴(yaw ${yaw.toFixed(0)}°)`;
+    else if(a <= SLOT_YAW_MIN_SIDE) bad = `거의 정면(yaw ${yaw.toFixed(0)}°)`;
+  } else if(angle === 'front'){
+    if(a > 45) bad = `정면 슬롯인데 yaw ${yaw.toFixed(0)}°`;
+  }
+  if(bad){
+    console.warn(`[슬롯 불일치] ${angle} — ${bad}.`
+      + ` 이 뷰의 가닥이 반대편(예: 후면 라벨이 앞머리 자리)에 얹혀 3D에서 섞여 보일 수 있습니다.`
+      + ` 배제하지 않고 그대로 씁니다 — 다시 촬영하면 정상화됩니다.`);
+  }
+}
+
 /* ══════════════════════════════════════════════════════════════════
    지워진 머리카락 자리 메우기 (2026-07-27 2차)
    ─────────────────────────────────────────────────────────────────
@@ -5451,7 +5478,7 @@ function toggleDiagInfo(){
     lines.push('  다발 ' + bd.bundle + 'px (비례값 ' + bd.prop + ')');
     lines.push('  가닥 ' + bd.sub + '/' + bd.want + '개 × ' + bd.subCss + 'px(화면), 틈 ' + bd.gapCss + 'px(화면)');
     lines.push('  다발 수 ' + bd.drawn + '/' + bd.total + ' (솎기 ' + bd.stride + ')');
-    if(bd.gapCss < 1.2) lines.push('  ← 틈이 1.2px 미만이면 화면 축소에 뭉개짐');
+    if(bd.gapCss < 1.0) lines.push('  ← 틈이 화면 1px 미만: 빈칸이 아니라 옅은 경계로 보임(의도된 설정일 수 있음)');
   }
   box.textContent = lines.join('\n');
 }
@@ -9265,6 +9292,19 @@ function buildHairStrandsFromPaths(){
     const rec = state.strandPaths[angle];
     const maskInf = state.hairMasks && state.hairMasks[angle];
     if(!rec || !rec.strands || !rec.strands.length || !maskInf || !maskInf.scalpY) return;
+    /* ── 슬롯-사진 불일치 뷰 배제 (2026-07-27) ────────────────────────
+       실기기: 후면 슬롯에 얼굴 사진이 들어갔다(로그 `[back] ... (yaw -4°)`).
+       뒷머리를 찍으면 얼굴 감지가 <b>실패</b>하는 게 정상인데 −4°로 잡혔다.
+       그러면 그 뷰의 가닥이 occipital·nape 라벨을 단 채 <b>머리 앞쪽</b>에 얹힌다.
+       실제 증상 세 가지가 전부 여기서 나왔다:
+         · 정면에 네이프가 섞여 보임
+         · 3D 미리보기에서 네이프가 앞으로 넘어옴
+         · 3D 얼굴에 잡티 — 앞으로 넘어온 가닥이 얼굴 위에 찍힌 것
+       ※ 처음엔 이런 뷰를 3D 복원에서 <b>배제</b>했는데 되돌렸다.
+         사용자: "아냐아냐 막지마. 내가 또 밖에서 작업하고 있어서 그런거야."
+         맞는 판단이다 — 밖에서 찍으면 후면이 어긋나는 일이 흔한데 그때마다
+         뷰가 통째로 빠지면 결과가 더 나빠진다. 경고만 또렷이 남기고 쓴다. */
+    warnViewSlotMismatch(angle);
     let xMin = Infinity, xMax = -Infinity, crownY = Infinity, validCols = 0;
     for(let x=0; x<maskInf.w; x++){
       const sy = maskInf.scalpY[x];
@@ -9580,6 +9620,48 @@ function buildHairStrandsFromPaths(){
   return total > 0 ? group : null;
 }
 
+/* ══════════════════════════════════════════════════════════════════
+   최종 3D 화면의 헤어 — 조정 결과를 반영 (2026-07-27)
+   ─────────────────────────────────────────────────────────────────
+   사용자: "스타일링까지 하고 나서 헤어가 들리는 건 (조정 화면에선) 입체로
+   표현이 되는데, 3D로 갔을 때는 변화가 없어."
+   맞다. 두 화면이 <b>다른 소스</b>를 보고 있었다:
+     · 조정 화면 = 중립 3D 모델 + 조정 연산자(computeAdjustedHair3DStrands)
+     · 3D 화면   = 2D 가닥을 <b>다시 캡처해서 다시 리프트</b>(buildHairStrandsFromPaths)
+   그런데 조정은 이제 전부 3D 연산자에 있다(길이·컬·중력·가르마·넘김·볼륨·결흐름).
+   2D 캡처 경로에서는 걷어냈으므로, 다시 캡처하면 <b>조정 이전</b>의 머리가 나온다.
+   → 3D 화면도 조정 화면과 같은 소스를 쓰게 한다. "3D가 원본, 2D는 그 투영"이라는
+     구조가 이제 최종 화면까지 한 줄로 이어진다.
+   ※ 중립 모델이 아직 없으면(촬영 직후 등) 기존 경로로 폴백한다.
+══════════════════════════════════════════════════════════════════ */
+function buildAdjustedHair3DObject(){
+  if(typeof THREE === 'undefined') return null;
+  const adj = computeAdjustedHair3DStrands();     // 전 뷰, 조정 반영
+  if(!adj || !adj.length) return null;
+  const positions = [], colors = [];
+  const c = new THREE.Color();
+  for(const st of adj){
+    const pts = st.pts;
+    if(!pts || pts.length < 2) continue;
+    c.set(st.color || '#1a1a1a');
+    for(let i=1;i<pts.length;i++){
+      const a = pts[i-1], b2 = pts[i];
+      if(!isFinite(a.x)||!isFinite(a.y)||!isFinite(a.z)) continue;
+      if(!isFinite(b2.x)||!isFinite(b2.y)||!isFinite(b2.z)) continue;
+      positions.push(a.x, a.y, a.z, b2.x, b2.y, b2.z);
+      colors.push(c.r, c.g, c.b, c.r, c.g, c.b);
+    }
+  }
+  if(!positions.length) return null;
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(positions), 3));
+  geo.setAttribute('color',    new THREE.BufferAttribute(new Float32Array(colors), 3));
+  const obj = new THREE.LineSegments(geo, new THREE.LineBasicMaterial({ vertexColors:true }));
+  obj.name = 'adjustedHair';
+  console.log(`[3D] 조정 반영 헤어: ${adj.length}가닥 (조정 화면과 같은 소스)`);
+  return obj;
+}
+
 // ── (11차) 3D 조정 연산자 — 순수 기하(Node 검증 가능) ──
 // 3D=원본 구조에서 조정을 "월드 가닥 폴리라인"에 직접 가한다. 2D의 한계(직모
 // 결과 충돌)가 없어 컬은 두상 곡면 위 나선으로 진짜로 감긴다.
@@ -9764,6 +9846,15 @@ function partWeightAt(i, n){ return combWeightAt(i, n, PART3D.RAMP, PART3D.TAIL)
    오므렸다" 하는 변화로만 보였다(사용자 지적). 머리 기준 방향으로 바꾸면
    좌·우 뷰에서도 같은 "뒤로 넘김"이 된다.
 ══════════════════════════════════════════════════════════════════ */
+/* ⚠ 미해결 (2026-07-27, 세부작업으로 미룸) — 넘김이 "일자로 들리는" 느낌인 이유.
+   사용자: "헤어를 그냥 들어 올리는 게 아니고, 뒤쪽으로 넘긴다 치면 뒤쪽으로
+   헤어가 들리는 동시에 <b>가볍게 휘어야</b> 돼. 그냥 일자 그대로 올라가는 게 아니고."
+   맞는 지적이고 원인도 분명하다 — 지금은 <b>뿌리 한 점</b>에서 접선 방향을 한 번만
+   구해서 가닥 전체에 같은 방향으로 밀고 있다(가중치만 진행에 따라 커짐).
+   그래서 방향이 끝까지 일정해 "통째로 기울어진 직선"이 된다.
+   고칠 방향: 밀기 방향을 <b>점마다</b> 다시 구한다. 가닥이 뒤로 가면 그 지점의
+   두피 법선이 바뀌므로 접선 방향도 따라 돌고, 그 누적이 곧 자연스러운 휨이 된다.
+   (가르마·볼륨·결흐름도 같은 구조라 한 번에 손보는 게 낫다.) */
 const SWEEP3D = {
   AMP:  0.16, // 두상 반경 대비 최대 이동량(가르마보다 조금 큼 — 전체가 한 방향)
   RAMP: 0.35, // 뿌리~이 비율까지 꺾이며 넘어감
@@ -9974,8 +10065,16 @@ const HAIR3D_RENDER = {
      맞다. 로그가 그대로 말해준다 — 비례값 7.4px인데 실제 10.8px로 그리고 있었다.
      아래 grow가 "가닥 5개를 다 넣으려면 자리가 필요하다"며 다발을 넓힌 결과다.
      넓은 다발에 이빨 5개가 벌어져 있으니 갈퀴다. 폭 자체를 줄이고, 넓히기도 끈다. */
-  bundleSpan: 0.014,
-  sub:    5,        // 다발 안 가닥 수
+  /* (2026-07-27 3차) 실루엣 비율은 이제 <b>상한</b>으로만 쓴다.
+     이전엔 다발 폭 = 실루엣 × 비율이었는데, 실루엣 폭이 뷰마다 달라(255~413px)
+     같은 사람인데도 좌측만 가닥 3개, 나머지는 2개가 됐다(사용자 지적).
+     다발 크기는 <b>화면에서 보이는 크기</b>로 정해야 뷰가 달라도 같은 결이 된다
+     → 아래 sub·minSubCss·minGapCss로 폭을 역산하고, 이 값은 "실루엣의 이만큼은
+     넘지 마라"는 안전선으로만 쓴다(아주 작게 찍힌 뷰에서 다발이 머리를 덮는 것 방지). */
+  bundleSpanMax: 0.06,
+  /* 다발 안 가닥 수. 사용자: "다발폭을 좀 넓게 가자면 한 3~4개짜리 폭으로 가서
+     틈을 조금 줄여보는 게 시도해 볼만할 거 같고" — 3으로 두고 틈을 좁힌다. */
+  sub:    3,
   gap:    0.25,     // 틈 비율 — 가닥 폭 = 간격 × (1 - gap)
   colVar: 0.45,     // 다발 속 색 분산(미세 틴트 폭)
   /* 다발 수 손잡이. null이면 자동(아래 설명), 숫자면 그 값으로 고정.
@@ -9999,20 +10098,27 @@ const HAIR3D_RENDER = {
      안팎이면 그 평균에 뭉개져 회색 띠 하나가 된다(실기기: 서브가닥이 아니라
      뭉텅이로 보임). 축소를 견디려면 선·틈 모두 1 CSS px를 넘겨야 한다.
      사용자 요청("틈을 좀 늘려봐야 될 거 같애") 반영. */
-  minGapCss: 1.6,   // 가닥 사이 틈의 화면상 최소 크기
-  minSubCss: 1.1,   // 가닥 폭의 화면상 최소 크기
+  /* 가닥 사이 틈(화면 기준). 1.6 → 1.2 → <b>0.2</b>(사용자 지정).
+     0.2는 서브픽셀이라 "빈칸"이 아니라 옅은 알파 경계로 나타난다 — 가닥 3개가
+     거의 붙어 하나의 부드러운 획처럼 보이고, 대신 다발이 2.6px로 얇아져서
+     같은 잉크량이면 다발 수가 크게 늘어난다(원본 결 보기 쪽에 더 가까워짐). */
+  minGapCss: 0.2,
+  /* (2026-07-27 사용자 지정) 1.1 → 0.7 — 획을 더 가늘게.
+     주의: 이 값이면 다발 전체가 1.8px라 안에 든 가닥 3개가 화면에서 분리되지
+     않는다(= 가는 획 하나). 의도된 방향이다 — "이 헤어 방식이 좀 부드럽게
+     나오면 폭을 조금씩 늘려보려고". 늘릴 때는 이 값과 minGapCss를 같이 올리면
+     다발 폭이 자동으로 따라 커진다(폭은 둘에서 역산됨). */
+  minSubCss: 0.7,   // 가닥 폭의 화면상 최소 크기
   /* 가닥 폭 상한 — 이게 없으면 다발이 넓어질 때 가닥까지 같이 굵어졌다.
      subW = min(간격×(1-gap), 간격-최소틈) 이라 간격이 넓으면 굵은 획이 된다.
      머리카락 다발 하나는 화면에서 1~1.5px면 충분하고, 그 이상은 붓자국이 된다. */
   maxSubCss: 1.3,
   // 자리가 모자라 서브라인이 다 안 들어갈 때 다발을 최대 몇 배까지 넓혀도 되는지.
   // 사용자: "다발묶음이 투명해져서 표현이 안 되면 다발을 더 굵게 해도 괜찮은데,
-  //          다발만 표현되니까 두껍게 할 수도 없고" — 맞다. 그래서 굵히기는
-  //          "서브라인이 한 개라도 더 들어갈 때만" 한다(그냥 굵은 덩어리 방지).
-  //          → (2026-07-27) 1.0으로 끔. 넓혀서 가닥을 더 넣는 것보다, 좁은 다발에
-  //          들어갈 만큼만 넣고 <b>다발 수를 늘리는</b> 쪽이 실물에 가깝다
-  //          (사용자: "원본 결 보기의 머리가 좀 더 현실감 있는 거 같아").
-  grow: 1.0,
+  //          다발만 표현되니까 두껍게 할 수도 없고"
+  //          → (2026-07-27 3차) grow 개념 자체를 없앴다. 다발 폭을 실루엣에서
+  //          유도하지 않고 sub·가닥폭·틈으로 <b>역산</b>하게 바꿔서, "넓힐지 말지"를
+  //          판단할 일이 아예 없어졌다(폭이 곧 원하는 결과의 정의가 됨).
   minSubW: 0.35,    // 가닥 폭 절대 하한
   /* 배치용 색 양자화 간격. 20은 검은 머리에서 너무 거칠었다 — 실측: 마무리 질감을
      매트↔윤기로 끝까지 움직여도 어두운 쪽 가닥들이 전부 같은 버킷(0,0,20)으로
@@ -10064,7 +10170,6 @@ function projectHair3DToView(ctx, fit, angle, maskInf){
   // ── 다발 치수 (spanX는 위 1패스에서 이미 쟀다) ──
   const resScale = fit.dw / 705;
   const W0       = Math.max(0.7, resScale * 0.6);      // 예전 가닥 굵기(하한용)
-  const bundleW  = Math.max(W0 * 2, spanX * R.bundleSpan);
 
   /* ── 화면에 실제로 보이는 크기로 환산 (2026-07-26, 실기기에서 발견) ──
      실기기 스크린샷에서 서브라인이 전혀 안 살고 통짜 덩어리로 보였다. 원인은
@@ -10081,13 +10186,20 @@ function projectHair3DToView(ctx, fit, angle, maskInf){
   const minGap = R.minGapCss * unit;
   const minSub = R.minSubCss * unit;
 
-  // 서브라인 하나가 차지하는 최소 자리(가닥 + 틈)
-  const slot = minSub + minGap;
-  // 다발을 넓히면 서브라인이 더 들어가는가? — 원하는 개수에 필요한 폭까지만,
-  // 그리고 grow 배수 안에서만 넓힌다. 넓혀도 개수가 안 늘면 그대로 둔다.
-  const needW = Math.max(1, (R.sub|0) - 1) * slot;
-  const bundleEff = Math.min(Math.max(bundleW, Math.min(needW, bundleW * R.grow)), needW);
-  const SUB     = Math.max(1, Math.min(R.sub|0, 1 + Math.floor(bundleEff / slot)));
+  /* 다발 폭을 화면 기준으로 <b>역산</b>한다 — 실루엣 폭에서 유도하지 않는다.
+     가닥 하나가 차지하는 자리(slot) = 가닥 폭 + 틈. 원하는 가닥 수를 넣으려면
+     (sub-1)×slot 만큼의 폭이 필요하고, 그게 다발 폭이다. 이러면 뷰마다 실루엣이
+     달라도 가닥 수·굵기·틈이 화면에서 동일하다(좌측만 3개였던 문제의 원인 제거). */
+  const slot   = minSub + minGap;
+  const capW   = spanX * R.bundleSpanMax;              // 아주 작게 찍힌 뷰 안전선
+  let   SUB    = Math.max(1, R.sub|0);
+  let   bundleEff = (SUB - 1) * slot;
+  if(bundleEff > capW){                                // 상한에 걸리면 가닥 수를 줄인다
+    SUB = Math.max(1, 1 + Math.floor(capW / slot));
+    bundleEff = (SUB - 1) * slot;
+  }
+  if(SUB <= 1) bundleEff = Math.max(W0 * 2, Math.min(capW, slot));
+  const bundleW = bundleEff;                           // [진단용] 이제 둘이 같다
   const spacing = SUB > 1 ? bundleEff / (SUB - 1) : bundleEff;
   // 틈 비율로 구한 폭과 "최소 틈을 남기는 폭" 중 좁은 쪽 — 틈이 항상 확보된다
   const maxSub  = R.maxSubCss * unit;
@@ -10649,7 +10761,9 @@ async function setupModel3DScreen(){
   }
   if(myGen !== model3DGeneration) return; // 캡처 대기 중 화면 재구성됨 — 오래된 진행 중단
 
-  const liftedStrands = buildHairStrandsFromPaths();
+  /* 조정 결과를 반영한 헤어를 우선 쓴다(조정 화면과 같은 소스).
+     중립 모델이 없으면 예전처럼 2D 캡처를 리프트하는 경로로 폴백. */
+  const liftedStrands = buildAdjustedHair3DObject() || buildHairStrandsFromPaths();
   if(liftedStrands){
     model3D.headGroup.add(liftedStrands);
   } else {
