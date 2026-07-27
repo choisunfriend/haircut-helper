@@ -10437,9 +10437,18 @@ const HAIR3D_RENDER = {
 const HAIR_QUILT = {
   unit: 'bundle',      // 'strand' | 'bundle' | 'slice' — 잘라 붙일 단위
   /* 단위별 띠 폭(화면 CSS px). <b>다발 렌더 상수와 무관한 자기 숫자</b>다 —
-     이식에는 서브가닥이 없고, 원본 3.6px를 통째로 자르면 진짜 올들이 그 안에
-     이미 들어 있다. 3.6은 지금까지 눈으로 맞춰온 다발 폭을 이어받은 값. */
-  widthCss: { strand: 0.7, bundle: 3.6, slice: 14.4 },
+     이식에는 서브가닥이 없고, 원본을 통째로 자르면 진짜 올들이 그 안에
+     이미 들어 있다.
+     (2026-07-27 3차, 사용자 지정) bundle 3.6 → <b>2.0</b>. 더 가는 머리카락
+     다발을 잘라 붙인다. 폭이 줄면 한 줄이 덮는 면적도 그만큼 줄므로,
+     아래 refWidthCss 보정이 <b>줄 수를 자동으로 늘려</b> 총 커버를 유지한다
+     (사용자: "비율에 맞는 보정으로 가닥수를 늘려서 채워줘"). */
+  widthCss: { strand: 0.7, bundle: 2.0, slice: 14.4 },
+  /* 위 폭이 <b>이 값</b>일 때 HAIR3D_RENDER.targetBundles(줄 수)가 맞춰져 있었다.
+     폭을 바꾸면 refWidthCss/실제폭 배수만큼 줄 수를 늘려 커버 면적을 보존한다.
+     ※ 이 값 자체는 튜닝 기준점이라 건드리지 말 것 — 바꾸고 싶은 건 widthCss다. */
+  refWidthCss: 3.6,
+  laneCompMax: 4,      // 줄 수 보정 상한(너무 얇게 잡았을 때 폭주 방지)
   widthMul: 1.0,       // 위 폭 대비 배율(미세 조정용)
   strips:  28,         // 소스 띠 개수(많을수록 반복이 덜 보이고 준비가 느려짐)
   stripStep: 3,        // 원본에서 결을 따라가는 보폭(원본 px)
@@ -10473,12 +10482,21 @@ const HAIR_QUILT = {
                                              └──┘
    마스크를 벗어나며 끝난 띠에는 <b>진짜 모발 끝</b>이 들어 있다(hasTip).
    그래서 짧게 자를 때 끝을 지어낼 필요가 없다 — 원본의 끝을 가져다 붙인다.
-   폭은 그릴 때 결정되므로(다발 폭 ÷ 화면배율) 폭별로 캐시한다. */
+   폭은 그릴 때 결정되므로(다발 폭 ÷ 화면배율) 폭별로 캐시한다.
+
+   ── 확대해서 굽는다(supersample, 2026-07-27 3차) ──────────────────
+   띠 폭을 2.0 CSS px로 내리자 원본 기준 폭이 <b>1~2px</b>밖에 안 됐다. 그러면
+   두 가지가 동시에 망가진다: ① SW의 하한 2px에 걸려 요청보다 넓은 소스를 떠서
+   폭 방향으로 눌린 그림이 되고 ② 양옆 페더 하한(0.5px)이 폭의 절반을 먹어
+   띠가 통째로 흐려진다(비율 0.14로 설계했는데 0.25가 됨).
+   그래서 요청 폭이 좁으면 그 배수만큼 <b>확대해서</b> 굽고(ss), 붙일 때 다시
+   줄여 그린다. 길이 축(rowH·SH)도 같은 배수로 늘려야 종횡비가 유지된다. */
 const _quiltPool = {};
+const QUILT_MIN_SW = 6;    // 구울 때 확보할 최소 띠 폭(띠 캔버스 px)
 function buildHairStripPool(angle, maskInf, swSrc){
   const hairC = state.hairCanvases && state.hairCanvases[angle];
   if(!hairC || !maskInf || !maskInf.orientation || !maskInf.scalpY) return null;
-  const key = angle + '|' + swSrc;
+  const key = angle + '|' + (+swSrc).toFixed(2);   // 폭이 소수라 캐시 키를 고정 자릿수로
   const cached = _quiltPool[key];
   if(cached && cached.src === hairC) return cached.pool;
 
@@ -10603,12 +10621,23 @@ function buildHairStripPool(angle, maskInf, swSrc){
     }
   for(const r of raw){ if(picked.length>=Q.strips) break; if(!seen.has(r)) picked.push(r); }
 
-  // ── 곧게 펴서 굽기 (폭 swSrc × 길이 steps×행높이), 깊이 음영 단계별로 ──
-  const SW = Math.max(2, swSrc | 0);
+  // ── 곧게 펴서 굽기 (폭 swSrc×ss × 길이 steps×행높이×ss), 깊이 음영 단계별로 ──
+  /* ss = 확대 배수. 요청 폭이 좁을수록 크게 잡아 띠 캔버스가 최소 폭을 넘게 한다.
+     띠 좌표 = 원본 좌표 × ss 이고, 붙일 때 p.ss로 되돌린다. */
+  const reqSW = Math.max(0.5, +swSrc || 0.5);
+  // 상한 8 — 띠 캔버스는 길이축도 같은 배수로 커진다(메모리 ∝ ss²). 실측 조합에선
+  // 대개 1~1.5고, 사진이 작게 들어온 경우에만 커진다.
+  const ssWant = Math.max(1, Math.min(8, QUILT_MIN_SW / reqSW));
+  const SW = Math.max(2, Math.round(reqSW * ssWant));
+  /* 배수를 <b>반올림된 폭에 맞춰 되맞춘다</b>. 캔버스 폭은 정수여야 하는데 ss를
+     그대로 두면 (SW/ss)가 요청 폭과 어긋나 그만큼 가로로 눌린다 — 하네스에서
+     폭 3.6·요청 6.65px일 때 5% 오차로 잡혔다(확대가 필요 없는 경우에도 나던
+     기존 오차다). 되맞추면 가로 축척 오차가 0이 되고 종횡비도 정확히 보존된다. */
+  const ss = SW / reqSW;
   const pool = [];
   for(let k=0; k<picked.length; k++){
     const r = picked[k];
-    const rowH = r.stepPx || Q.stripStep;                    // 소스마다 점 간격이 다르다
+    const rowH = (r.stepPx || Q.stripStep) * ss;             // 소스마다 점 간격이 다르다(띠 px)
     const SH = Math.max(2, Math.round(r.steps.length * rowH));
     const flat = document.createElement('canvas'); flat.width = SW; flat.height = SH;
     const fx = flat.getContext('2d');
@@ -10616,9 +10645,10 @@ function buildHairStripPool(angle, maskInf, swSrc){
       const s = r.steps[i];
       fx.save();
       fx.beginPath(); fx.rect(0, i*rowH, SW, rowH + 1); fx.clip();
-      // 원본의 (s.x,s.y)·방향 s.a 를 띠의 (SW/2, 이 행)·+y 로 보낸다
+      // 원본의 (s.x,s.y)·방향 s.a 를 띠의 (SW/2, 이 행)·+y 로 보낸다(ss배 확대)
       fx.translate(SW/2, i*rowH + rowH/2);
       fx.rotate(Math.PI/2 - s.a);
+      fx.scale(ss, ss);
       fx.translate(-s.x, -s.y);
       fx.drawImage(hairC, 0, 0);
       fx.restore();
@@ -10645,13 +10675,14 @@ function buildHairStripPool(angle, maskInf, swSrc){
       cx2.fillRect(0, 0, SW, SH);
       shades.push(cv);
     }
-    pool.push({ shades, SW, SH, hasTip: r.hasTip, sec: r.sec, coh: r.coh });
+    pool.push({ shades, SW, SH, ss, hasTip: r.hasTip, sec: r.sec, coh: r.coh });
   }
   _quiltPool[key] = { src: hairC, pool };
   const cohs = pool.map(q=>q.coh);
   console.log(`[${angle}] 헤어 띠 — ${pool.length}장 채택(소스: ${srcKind}, 후보 ${raw.length}/${tries}시도,`
-    + ` 탈락: 흐림 ${rej.coh}·투명 ${rej.dark}·짧음 ${rej.short}) · 폭 ${SW}원본px`
-    + ` · 길이 ${Math.round(pool.reduce((s,q)=>s+q.SH,0)/pool.length)}원본px`
+    + ` 탈락: 흐림 ${rej.coh}·투명 ${rej.dark}·짧음 ${rej.short})`
+    + ` · 폭 원본 ${reqSW.toFixed(2)}px → 띠 ${SW}px(확대 ×${ss.toFixed(2)})`
+    + ` · 길이 ${Math.round(pool.reduce((s,q)=>s+q.SH,0)/pool.length)}띠px`
     + ` · 모발 끝 포함 ${pool.filter(q=>q.hasTip).length}장`
     + ` · 또렷함 ${Math.max(...cohs).toFixed(2)}~${Math.min(...cohs).toFixed(2)}`
     + ` · 섹션 ${[...new Set(pool.map(q=>q.sec))].join(',')}`);
@@ -10699,22 +10730,39 @@ function projectHairQuiltToView(ctx, fit, angle, maskInf){
      처음엔 다발 렌더의 공식 `(가닥 수-1)×(가닥폭+틈)`으로 역산했다. 그런데
      그 공식은 <b>선을 그을 때</b>의 것이다 — "0.7px 선 4개를 0.5px 틈으로
      늘어놓으면 3.6px"이라는 뜻이니까.
-     이식에는 서브가닥 개념이 없다. 원본 머리카락 3.6px를 <b>통째로</b> 잘라
+     이식에는 서브가닥 개념이 없다. 원본 머리카락을 <b>통째로</b> 잘라
      붙이면 그 안에 진짜 올들이 이미 들어 있다(사용자: "원본헤어를 3.6px를
      통째로 잘라서 이어붙이면 되지 서브가닥 4개는 뭐야?"). 맞는 지적이라
-     폭을 자기 숫자로 독립시킨다 — 3.6은 지금까지 맞춰온 값이라 그대로
-     이어받되, 이제 다발 렌더 상수가 바뀌어도 따라 움직이지 않는다. */
+     폭을 자기 숫자로 독립시킨다 — 이제 다발 렌더 상수가 바뀌어도 따라
+     움직이지 않는다.
+     (2026-07-27 3차) 그 폭을 <b>2.0px</b>로 내렸다(사용자 지정). 폭이 줄면
+     한 줄이 덮는 면적도 줄어 성겨 보이므로 아래 laneComp가 줄 수를 그 비율만큼
+     늘린다. 원본에서 뜨는 폭도 1~2px로 작아지는데, 그 정도면 정수 반올림과
+     페더 하한이 그림을 눌러버려서 buildHairStripPool이 확대해 굽는다(ss). */
   const cssW = (ctx.canvas && ctx.canvas.getBoundingClientRect)
     ? (ctx.canvas.getBoundingClientRect().width || ctx.canvas.width) : ctx.canvas.width;
   const pxRatio = Math.max(1, (ctx.canvas.width || fit.dw) / Math.max(1, cssW)); // 백킹px / CSS px
   const wCss = Q.widthCss[Q.unit];
-  const drawW = Math.max(1, (typeof wCss === 'number' ? wCss : Q.widthCss.bundle) * pxRatio * Q.widthMul);
+  const effCss = (typeof wCss === 'number' ? wCss : Q.widthCss.bundle) * Q.widthMul;  // 화면 CSS px
+  const drawW = Math.max(1, effCss * pxRatio);
+
+  /* ── 폭을 줄였으면 <b>줄 수를 그 비율만큼 늘린다</b> (2026-07-27 3차) ────────
+     띠 하나가 덮는 면적 ∝ 폭 × 길이다. 폭을 3.6 → 2.0으로 내리면 같은 줄 수로는
+     커버가 55%로 떨어져 <b>사이가 비어 성겨 보인다</b>. targetBundles는 3.6px
+     기준으로 맞춰둔 수이므로, refWidthCss/실제폭 배수를 곱해 총 잉크량을 보존한다.
+     한쪽으로만 민다 — 폭을 <b>넓힐</b> 때는 줄이지 않는다(1로 클램프). 폭을 넓히는
+     목적이 빈 곳을 메우는 것인데 개수를 같이 줄이면 제자리걸음이기 때문
+     (HAIR3D_RENDER.targetBundles 주석의 그 교훈과 같은 이유). */
+  const laneComp = Math.max(1, Math.min(Q.laneCompMax, Q.refWidthCss / Math.max(0.1, effCss)));
 
   const pxScale = Math.max(1e-6, fit.dw / Math.max(1, maskInf.w));  // 원본px → 캔버스px
-  const pool = buildHairStripPool(angle, maskInf, Math.round(drawW / pxScale));
+  /* 요청 폭을 <b>반올림하지 않고</b> 넘긴다. 2.0px대에서는 원본 폭이 1~2px라
+     정수로 깎으면 요청과 실제가 최대 50% 어긋났다(굽는 쪽에서 확대해 처리한다). */
+  const pool = buildHairStripPool(angle, maskInf, drawW / pxScale);
   if(!pool || !pool.length) return quiltFail(angle, '소스 띠를 하나도 못 뜸(위 경고 참조)');
 
-  const stride = Math.max(1, Math.round(src.length / Math.max(1, R.targetBundles)));
+  const wantLanes = Math.max(1, Math.round(R.targetBundles * laneComp));
+  const stride = Math.max(1, Math.round(src.length / wantLanes));
   const adj = computeAdjustedHair3DStrands(null, stride);
   if(!adj || !adj.length) return quiltFail(angle, '조정된 가닥이 비어 있음');
 
@@ -10777,17 +10825,19 @@ function projectHairQuiltToView(ctx, fit, angle, maskInf){
     const p = from[(rnd() * from.length) | 0];
     const lvl = Math.max(0, Math.min(Q.shade-1, Math.round((L.depth - dMin) / span * (Q.shade-1))));
     const img = p.shades[lvl];
+    // 캔버스 px → <b>띠 px</b>. 띠는 원본을 p.ss배로 확대해 구웠으므로 그만큼 곱한다.
+    const toStrip = (p.ss || 1) / pxScale;
     const tipSrc  = p.SH * Q.tipFrac;
     const bodySrc = Math.max(1, p.SH - tipSrc);
-    const srcTotal = L.total / pxScale;                        // 목표 길이를 원본 단위로
+    const srcTotal = L.total * toStrip;                        // 목표 길이를 띠 단위로
     const tipUse  = Math.min(tipSrc, srcTotal * 0.5);
     const bodyUse = srcTotal - tipUse;                         // 여기까지는 몸통, 그 뒤는 끝
     for(const g of cutSegments(L)){
-      const u = g.s0 / pxScale;                                // 원본 단위 진행량
+      const u = g.s0 * toStrip;                                // 띠 단위 진행량
       // 가운데를 들어낸다: 몸통은 띠 앞에서(길면 되감기), 끝은 띠 끝에서
       const sy = (u < bodyUse) ? (u % bodySrc) : (bodySrc + (u - bodyUse));
       if(sy >= p.SH) break;
-      const h = Math.min(g.len / pxScale, p.SH - sy);
+      const h = Math.min(g.len * toStrip, p.SH - sy);
       if(h <= 0) break;
       const A = L.cp[g.i0], B = L.cp[g.i1];
       ctx.save();
@@ -10804,22 +10854,26 @@ function projectHairQuiltToView(ctx, fit, angle, maskInf){
   }
   ctx.restore();
   logQuiltRender(angle, { pool: pool.length, lanes: lanes.length, segs, drawW, unit: Q.unit,
-                          swSrc: pool[0].SW, tips: pool.filter(q=>q.hasTip).length, sameSec });
-  setQuiltTag(`픽셀 이식 · 띠 ${pool.length}장(끝 ${pool.filter(q=>q.hasTip).length}) · 폭 ${drawW.toFixed(1)}px`);
+                          swSrc: pool[0].SW, tips: pool.filter(q=>q.hasTip).length, sameSec,
+                          effCss, laneComp, wantLanes, cand: adj.length });
+  setQuiltTag(`픽셀 이식 · 띠 ${pool.length}장(끝 ${pool.filter(q=>q.hasTip).length})`
+    + ` · 폭 ${effCss.toFixed(1)}css(${drawW.toFixed(1)}px) · ${lanes.length}줄`);
   return true;
 }
 let _quiltLogKey = '';
 function logQuiltRender(angle, m){
-  const key = angle + '|' + m.pool + '|' + m.unit + '|' + m.swSrc;
+  const key = angle + '|' + m.pool + '|' + m.unit + '|' + m.swSrc + '|' + m.wantLanes;
   window._lastQuiltDiag = window._lastQuiltDiag || {};
   window._lastQuiltDiag[angle] = { pool:m.pool, lanes:m.lanes, segs:m.segs,
-                                   drawW:+m.drawW.toFixed(2), unit:m.unit, swSrc:m.swSrc,
-                                   tips:m.tips, sameSec:m.sameSec };
+                                   drawW:+m.drawW.toFixed(2), effCss:+m.effCss.toFixed(2),
+                                   unit:m.unit, swSrc:m.swSrc, tips:m.tips, sameSec:m.sameSec,
+                                   laneComp:+m.laneComp.toFixed(2), wantLanes:m.wantLanes, cand:m.cand };
   if(key === _quiltLogKey) return;
   _quiltLogKey = key;
   console.log(`[${angle}] 헤어 이식 — 띠 ${m.pool}장(끝 포함 ${m.tips}) · 단위 ${m.unit}`
-    + ` 폭 ${m.drawW.toFixed(1)}px(원본 ${m.swSrc}px) · ${m.lanes}줄 · 조각 ${m.segs}개`
-    + ` · 같은 섹션 띠를 쓴 줄 ${m.sameSec}/${m.lanes}`);
+    + ` 폭 ${m.effCss.toFixed(2)}css=${m.drawW.toFixed(1)}px(원본 ${m.swSrc}px)`
+    + ` · 줄 ${m.lanes}개(목표 ${m.wantLanes}, 후보 ${m.cand}, 폭보정 ×${m.laneComp.toFixed(2)})`
+    + ` · 조각 ${m.segs}개 · 같은 섹션 띠를 쓴 줄 ${m.sameSec}/${m.lanes}`);
 }
 
 function projectHair3DToView(ctx, fit, angle, maskInf){
