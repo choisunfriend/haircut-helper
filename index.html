@@ -1726,6 +1726,72 @@ const GYEOL_STYLING_PARAMS = [
 // 중립(무변화) 스타일링 값 — 매번 새 객체를 반환(state.styling은 변경되므로 공유 금지).
 // state 초기화 / 리셋 / 원본결 렌더 / 폴백 등 여러 곳에서 동일 리터럴로 반복되던 것을 통합.
 function neutralStyling(){ return { sweep:0, volume:50, flow:0, part:0, finish:50 }; }
+const STYLING_KEYS = GYEOL_STYLING_PARAMS.map(p=>p.key);
+
+/* ══════════════════════════════════════════════════════════════════
+   스타일링은 "지금 보고 있는 화면"의 것 (2026-07-27, 사용자 지정)
+   ─────────────────────────────────────────────────────────────────
+   사용자: "정면을 보면서 가르마와 넘김을 적용했는데 후면까지 적용됐어.
+            해당 화면만 스타일링하는 걸로."
+   예전엔 state.styling 하나를 전 가닥이 공유했다. 이제 뷰마다 한 벌씩 두고
+   (state.stylingByView), 가닥은 <b>자기 뿌리가 어느 쪽을 향하는가</b>에 따라
+   해당 뷰의 값을 받는다. 캡처된 뷰(srcAngle)가 아니라 실제 방향 기준이다 —
+   조정 화면은 전 뷰 가닥을 후보로 그리므로, 정면 화면에 보이는 가닥은
+   출처와 무관하게 전부 정면 값을 받아야 사용자 눈에 맞는다.
+
+   경계를 딱 자르면 45°에서 계단이 생기므로 cos²/sin²으로 섞는다.
+   이 네 개의 합은 어떤 각에서도 <b>정확히 1</b>이라(cos²φ+sin²φ=1) 네 뷰 값이
+   같으면 결과도 정확히 그 값이다 — 전역이던 예전 동작이 특수해로 보존된다.
+   두상 꼭대기(수평 반경 ≈ 0)는 방위각이 불안정하므로 네 뷰 균등으로 수렴시킨다.
+   좌표 규약 확인(probe-axis): front=+Z, right=+X, left=-X, back=-Z.
+══════════════════════════════════════════════════════════════════ */
+function neutralStylingByView(){
+  const o = {}; for(const a of ANGLES) o[a] = neutralStyling(); return o;
+}
+function viewWeightsForRoot(root){
+  const E = getHeadEllipsoid();
+  const x = root.x, z = root.z;
+  const horiz = Math.hypot(x, z);
+  const t = Math.max(0, Math.min(1, horiz / (0.35 * Math.max(E.a, E.c))));
+  const phi = Math.atan2(x, z);                 // 0=정면, +π/2=우측, ±π=후면
+  const c = Math.cos(phi), s = Math.sin(phi);
+  const f = Math.max(0, c), bk = Math.max(0, -c), r = Math.max(0, s), l = Math.max(0, -s);
+  const u = 0.25 * (1 - t);                     // 정수리로 갈수록 네 뷰 균등
+  return { front: u + t*f*f, back: u + t*bk*bk, right: u + t*r*r, left: u + t*l*l };
+}
+// 네 뷰 값이 모두 같으면 섞을 필요가 없다(대부분의 프레임이 이쪽이다).
+function uniformStyling(){
+  const bv = state.stylingByView;
+  if(!bv) return state.styling || neutralStyling();
+  const a0 = bv[ANGLES[0]] || {};
+  for(const a of ANGLES){
+    const s = bv[a] || {};
+    for(const k of STYLING_KEYS) if(s[k] !== a0[k]) return null;
+  }
+  return a0;
+}
+function stylingForRoot(root){
+  const bv = state.stylingByView;
+  if(!bv || !root) return state.styling || neutralStyling();
+  const w = viewWeightsForRoot(root);
+  const nt = neutralStyling(), out = {};
+  for(const k of STYLING_KEYS){
+    let v = 0;
+    for(const a of ANGLES){
+      const s = bv[a] || nt;
+      v += w[a] * ((typeof s[k] === 'number') ? s[k] : nt[k]);
+    }
+    out[k] = v;
+  }
+  return out;
+}
+/* state.styling은 접근자라 현재 뷰를 <b>자동으로</b> 따라간다(위 defineProperty).
+   이 함수는 그릇이 있는지만 보장한다 — 호출부는 "여기서 뷰가 바뀐다"는 표시로 남긴다. */
+function bindStylingToCurrentView(){
+  if(!state.stylingByView) state.stylingByView = neutralStylingByView();
+  const a = state.currentViewAngle;
+  if(!state.stylingByView[a]) state.stylingByView[a] = neutralStyling();
+}
 
 // ── 공간 좌표(nx,ny: 0~1) → 섹션 ID 판정 ──
 // SECTIONS의 yRange/xRange는 "이 섹션이 대략 이 범위에 있다"는 참고값이라
@@ -1960,9 +2026,13 @@ const state = {
   // 마무리 단계에서 한 번에 적용). ★ gyeol 이식 후엔 섹션별 texture가 주(主)이고
   // 이 전역값은 하위호환용 바닥값으로만 남음(둘 중 큰 값 적용).
   texturing: 0,
-  // ── gyeol 스타일링(마무리) — 커트/펌/컬러 위에 얹는 머리 전체 연출(전역) ──
-  // 전부 중립(sweep0/volume50/flow0/part0/finish50)이면 렌더는 기존과 동일.
-  styling: neutralStyling(),
+  /* ── gyeol 스타일링(마무리) — 커트/펌/컬러 위에 얹는 연출 ──
+     전부 중립(sweep0/volume50/flow0/part0/finish50)이면 렌더는 기존과 동일.
+     (2026-07-27) 뷰별로 한 벌씩 둔다. state.styling은 <b>지금 보고 있는 뷰</b>의
+     객체를 가리키는 별칭이라, 슬라이더 코드(state.styling[key]=…)는 그대로 두고
+     각도 탭을 바꿀 때 bindStylingToCurrentView()가 대상만 바꿔 끼운다. */
+  stylingByView: neutralStylingByView(),
+  styling: neutralStyling(),   // ← bindStylingToCurrentView가 현재 뷰 것으로 교체
   // 섹션별 컬러 토글 시 기본 선택될 색(발레아쥬 첫 스와치)
   globalColor: '#6B4A2E',
   // gyeol 조정 패널: 현재 활성 섹션('styling'이면 마무리 탭), 그룹 접힘 상태
@@ -2006,6 +2076,27 @@ const state = {
   },
   _globalCurl: 30,
 };
+
+/* state.styling을 <b>현재 뷰의 스타일링</b>에 대한 접근자로 바꾼다 (2026-07-27).
+   뷰별 스타일링으로 바꾸면서 "state.styling에 새 객체를 대입"하는 코드
+   (리셋·스타일 불러오기·검사 스크립트)가 별칭을 조용히 끊어버리는 문제가 있었다
+   — 그러면 슬라이더는 움직이는데 3D는 안 변한다. 접근자로 만들면 대입해도
+   현재 뷰 객체 <b>안으로</b> 값이 들어가므로 끊길 수가 없다.
+   읽기는 살아 있는 객체를 그대로 주므로 state.styling.sweep = 100 도 그대로 동작. */
+Object.defineProperty(state, 'styling', {
+  enumerable: true, configurable: true,
+  get(){
+    if(!this.stylingByView) this.stylingByView = neutralStylingByView();
+    const a = this.currentViewAngle;
+    if(!this.stylingByView[a]) this.stylingByView[a] = neutralStyling();
+    return this.stylingByView[a];
+  },
+  set(v){
+    const cur = this.styling;                       // getter가 보장해 준다
+    for(const k of STYLING_KEYS) delete cur[k];
+    Object.assign(cur, neutralStyling(), v || {});
+  },
+});
 
 // ROADMAP(fashion): 스타일 확정 후 얼굴형+선택 스타일 조합 → 패션 추천으로 확장 예정.
 // 각 STYLES 항목에 훗날 recommendTags(실루엣/톤 등) 필드 추가해서 매칭에 쓸 것.
@@ -4478,7 +4569,19 @@ function selectStyle(id){
         state.sections[sid] = { ...SECTIONS[sid].defaults, ...st.sections[sid] };
       }
     });
-    if(st.styling) state.styling = { ...neutralStyling(), ...st.styling };
+    /* (2026-07-27) 스타일링이 뷰별로 바뀌었다. 예전에 저장된 스타일은 전역
+       한 벌이므로 네 뷰에 <b>같은 값</b>을 채워 예전 모습 그대로 복원한다
+       (네 뷰가 같으면 섞기 가중치 합이 1이라 결과가 정확히 일치한다). */
+    if(st.stylingByView){
+      state.stylingByView = neutralStylingByView();
+      for(const a of ANGLES) if(st.stylingByView[a])
+        state.stylingByView[a] = { ...neutralStyling(), ...st.stylingByView[a] };
+      bindStylingToCurrentView();
+    } else if(st.styling){
+      const one = { ...neutralStyling(), ...st.styling };
+      state.stylingByView = {}; for(const a of ANGLES) state.stylingByView[a] = { ...one };
+      bindStylingToCurrentView();
+    }
     state._globalCurl = (typeof st.globalCurl === 'number') ? st.globalCurl : 30;
   } else {
     // ── 기본 프리셋: length/curl/volume 대표값에서 섹션별 값 파생 ──
@@ -4594,7 +4697,8 @@ function updateSectionSummary(id){
 
 function resetSections(){
   SECTION_ORDER.forEach(id=>{ state.sections[id] = {...SECTIONS[id].defaults}; });
-  state.styling = neutralStyling();
+  state.stylingByView = neutralStylingByView();
+  bindStylingToCurrentView();
   state._globalCurl = 30;
   buildGyPanel();
   drawAdjustPreview();
@@ -4625,7 +4729,9 @@ function toggle3DAdjust(){
    상태는 index의 state.sections / state.styling 을 직접 읽고 쓴다.
    변경 시 drawAdjustPreview()로 실측 세그 렌더를 즉시 갱신.
    ════════════════════════════════════════════════════════════════ */
-function buildGyPanel(){ buildGySectionBar(); buildGyControls(); }
+// 패널을 그릴 때마다 현재 뷰의 스타일링을 물린다(뷰별 스타일링 — 2026-07-27).
+// 각도 탭 전환 외에 화면 진입·리셋 경로에서도 어긋나지 않게 하는 단일 지점.
+function buildGyPanel(){ bindStylingToCurrentView(); buildGySectionBar(); buildGyControls(); }
 
 function buildGySectionBar(){
   const bar = document.getElementById('gySectionBar');
@@ -4947,7 +5053,8 @@ function registerCurrentAsStyle(){
     tags: '커스텀',
     isCustom: true,
     sections: JSON.parse(JSON.stringify(state.sections)), // 섹션별 값 전체 깊은 복사
-    styling: JSON.parse(JSON.stringify(state.styling)),    // gyeol 스타일링(마무리) 스냅샷
+    styling: JSON.parse(JSON.stringify(state.styling)),    // (하위호환) 현재 뷰 값
+    stylingByView: JSON.parse(JSON.stringify(state.stylingByView || {})), // 뷰별 스타일링 스냅샷
     globalCurl: state._globalCurl,
     // 아래 3개는 스타일 카드 아이콘(styleIconSVG)이 참조하는 대표값 —
     // 실제 렌더링은 sections를 그대로 쓰지만, 그리드에서의 미리보기 아이콘용으로 채워둠.
@@ -5005,6 +5112,7 @@ function renderAngleSwitch(targetId){
     btn.className=state.currentViewAngle===a?'on':'';
     btn.onclick=()=>{
       state.currentViewAngle=a;
+      bindStylingToCurrentView();   // 스타일링 슬라이더는 뷰마다 따로다
       renderAngleSwitches();
       updateSegStatus();
       syncSliderUI(); drawAdjustPreview(); drawCompare();
@@ -9294,6 +9402,17 @@ function captureStrandPathsFor(angle, rawMode){
 // 서술은 폐기 — 이제 뷰별 실측 포즈(getViewYawDeg 폴백 체인 + pitch/roll)를
 // 쓰고, 헐 실측도 관측(E,θ) 역투영으로 일반화됨. 상세는 함수 본문 주석과
 // 파일 상단 개발로그 "좌표 축 통합" 항목 참고.
+/* 모발 깊이층 — 0=두피면, 1=헐(모발 바깥면). 가닥을 따라 변한다.
+   뿌리는 두피 근처(LIFT)에서 나와 RAMP 구간 안에 자기 층(tLayer)으로 올라온다.
+   LIFT를 0으로 두지 않는 이유는 정수리 꼭짓점이 한 점만 파이는 것을 막기 위함.
+   상세한 배경은 아래 buildHairStrandsFromPaths 안의 주석 참조. */
+const HAIR_ROOT = { LIFT: 0.10, RAMP: 0.22 };
+function hairLayerAt(tLayer, i, n){
+  const root = tLayer * HAIR_ROOT.LIFT;
+  const f = Math.min(1, Math.max(0, (i / Math.max(1, n)) / HAIR_ROOT.RAMP));
+  return root + (tLayer - root) * f;
+}
+
 function buildHairStrandsFromPaths(){
   if(!state.strandPaths) return null;
   const headEll = getHeadEllipsoid();
@@ -9539,11 +9658,29 @@ function buildHairStrandsFromPaths(){
     for(let si=0; si<v.rec.strands.length; si+=STRAND_SAMPLE_3D){
       const st = v.rec.strands[si];
       c.set(st.color);
-      const t = 0.35 + 0.65 * rand(); // 이 가닥의 깊이층: 0=두피면, 1=헐 바깥면
+      /* ── 뿌리는 두피에서 나와야 한다 (2026-07-27, 사용자 지적) ──────────
+         사용자: "시작하는 뿌리 자체가 원래보다 바깥쪽에서 시작하는데."
+         정확한 지적이었다. 예전엔 `t = 0.35 + 0.65*rand()` 하나를 <b>가닥 전체</b>에
+         똑같이 썼다. t는 0=두피면 ~ 1=헐(머리카락 바깥면)이므로,
+           · 어떤 가닥도 두피에서 시작하지 않고(최소 35% 바깥)
+           · 평균 67.5% 지점에서 <b>뿌리부터</b> 떠 있었다
+         → 머리 전체가 모발 두께의 3분의 2만큼 부풀어 보인다. 시작부터 부푼 이유.
+
+         고침: t를 가닥을 따라 <b>변하게</b> 한다. 뿌리는 두피 근처에서 출발해
+         ROOT_RAMP 구간 안에 자기 층으로 올라온다. 실제 모발이 그렇다 —
+         겉면을 이루는 건 그 자리에서 솟은 모발이 아니라 위에서 내려온 모발이다.
+         층 자체도 전 두께를 고르게 쓴다(0.35 하한 제거) — 안쪽이 비어 있으면
+         겉껍질만 남아 역시 부풀어 보인다.
+         ROOT_LIFT를 0으로 두지 않은 이유: 정수리 꼭짓점은 그 자리 가닥밖에
+         없어서 완전히 붙이면 그 한 점만 민머리처럼 파인다. */
+      const tLayer = rand();          // 이 가닥이 눕는 층: 0=두피면, 1=헐 바깥면
+      let t = hairLayerAt(tLayer, 0, 1);  // 점마다 갱신(음영 k/rim도 이 값을 쓴다)
       let prev = null, prevR=0, prevG=0, prevB=0;
       let lastZ = null;
       const worldPts = []; // (10차) 정규 모델용 월드 폴리라인
+      const nSeg = Math.max(1, st.pts.length - 1);
       for(let i=0;i<st.pts.length;i++){
+        t = hairLayerAt(tLayer, i, nSeg);   // 뿌리는 두피 근처 → 자기 층으로
         const p = st.pts[i];
         const mxRaw = (p.x - v.cx) * v.s;
         const mx = job.mirrored ? -mxRaw : mxRaw; // 거울 뷰는 x반전(그 방향에서 본 좌우가 맞도록)
@@ -10382,7 +10519,9 @@ function projectHair3DToView(ctx, fit, angle, maskInf){
      윤기(>50) = 다발 안 가닥끼리 밝기 차가 커져 하이라이트 줄이 생김 + 전체 살짝 밝게.
      매트(<50) = 가닥끼리 밝기가 고르게 눌려 광택 줄이 사라짐.
      실제 왁스/에센스를 발랐을 때 보이는 차이가 딱 이 "가닥 간 명암 대비"다. */
-  const finRaw = (state.styling && typeof state.styling.finish === 'number') ? state.styling.finish : 50;
+  // (2026-07-27) 스타일링이 뷰별이 됐으므로 광택도 <b>그리는 뷰</b>의 값을 쓴다.
+  const finSty = (state.stylingByView && state.stylingByView[angle]) || state.styling;
+  const finRaw = (finSty && typeof finSty.finish === 'number') ? finSty.finish : 50;
   const fin = (Math.max(0, Math.min(100, finRaw)) - 50) / 50;   // -1(매트) ~ +1(윤기)
   /* 계수는 실측으로 정했다: 0.8/0.04로는 윤기 쪽이 중립과 구분이 안 됐다
      (검은 머리 + 색 양자화 20단계에 묻혀 같은 버킷으로 떨어짐). 매트 쪽만
@@ -10608,6 +10747,9 @@ function computeAdjustedHair3DStrands(srcAngleFilter, stride){
   const stp = Math.max(1, (stride|0) || 1);
   const out = [];
   let _i = 0;
+  /* 스타일링은 뷰별이다(2026-07-27). 네 뷰 값이 같으면(대부분의 프레임) 한 번만
+     읽고 끝내고, 다르면 가닥 뿌리 방향으로 섞는다. */
+  const uni = uniformStyling();
   for(const st of model.strands){
     if(srcAngleFilter && st.srcAngle !== srcAngleFilter) continue;
     if((_i++ % stp) !== 0) continue;
@@ -10619,9 +10761,10 @@ function computeAdjustedHair3DStrands(srcAngleFilter, stride){
     if(curlAmt > 0) pts = gravityDroop3D(pts, curlAmt);           // ③ 감은 뒤 중력 처짐
     // ④ 가르마 — 두피 표면 방향장(분할선 양쪽이 반대로 갈라짐). 스타일링은
     //    커트/펌 위에 얹는 연출이므로 마지막에 적용한다. part=0이면 무변경.
-    pts = partStrand3D(pts, (state.styling && state.styling.part) || 0, curlAmt);
+    //    ※ 세기는 <b>원래 뿌리</b> 방향으로 정한다(길이·컬로 이동한 뒤가 아니라).
+    const sty = uni || stylingForRoot(st.pts[0]);
+    pts = partStrand3D(pts, sty.part || 0, curlAmt);
     // ⑤ 넘김 — 머리 전체를 앞/뒤 한 방향으로. 실제 순서도 "가른 다음 넘긴다".
-    const sty = state.styling || neutralStyling();
     pts = sweepStrand3D(pts, sty.sweep || 0, curlAmt);
     // ⑥ 뿌리 볼륨 — 두피 법선으로 띄움(빗질과 달리 접선이 아니라 법선).
     pts = volumeStrand3D(pts, (typeof sty.volume === 'number') ? sty.volume : 50);
