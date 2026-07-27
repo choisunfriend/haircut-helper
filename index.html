@@ -1790,7 +1790,14 @@ function sectionBandsFor(angle){
   // 측면/후면에선 옆통수 두피면 전체가 보이므로 크라운(Interior)은 위쪽 ~35%만 —
   // 정면은 두정선 아래가 화면에 거의 안 보여 52% 유지. 편중 시 이 계수만 조정(튜닝 지점).
   const parietalFrac = (angle === 'front') ? 0.52 : 0.25; // (12차) 측면 크라운 축소 0.35→0.25(사이드 확대)
-  const parietalY = headTopY + Math.max(0.02, earLineY - headTopY) * parietalFrac;
+  /* (14차, 2026-07-27) 기준 길이를 "정수리~귀"와 "정수리~모발끝" 중 <b>짧은 쪽</b>으로.
+     13차에서 정면 크라운을 먼저 판정하게 고쳤더니 실기기에서 crown 89%가 나왔다.
+     짧은 머리(모발이 귀까지 안 내려옴)면 귀 기준 두정선이 모발 범위 <b>밖</b>에
+     찍혀서, 보이는 머리가 통째로 두정선 위가 돼버린다. 실제로 잴 수 있는 건
+     모발이 있는 구간뿐이므로 그 안에서 나눈다 — 긴 머리에선 귀 기준이 더 짧아
+     기존 동작 그대로다. */
+  const refSpan = Math.max(0.02, Math.min(earLineY - headTopY, (hairBotY - headTopY) * 0.92));
+  const parietalY = headTopY + refSpan * parietalFrac;
   // 네이프선: 귀~턱 사이 25% 지점(귀 바로 아래 목덜미 시작) — chinY 절대비율 폐기.
   // 두정선보다 항상 아래에 있도록 하한 보장(Exterior 밴드 붕괴 방지).
   const napeTopY  = Math.max(parietalY + 0.04, earLineY + (chinLineY - earLineY) * 0.25);
@@ -9175,7 +9182,15 @@ function buildHairStrandsFromPaths(){
       yaw:  fb ? srcV.pose.yaw + Math.PI : -srcV.pose.yaw,
       pitch: srcV.pose.pitch, roll: -srcV.pose.roll });
   });
-  const STRAND_SAMPLE_3D = 2; // 가닥 솎아내기 손잡이(저사양 대응 시 올림)
+  /* 가닥 솎아내기 (2026-07-27: 2 → 1)
+     이 값은 <b>정규 3D 모델</b>의 밀도를 정한다. 조정 화면 되쏘기와 최종 3D 화면이
+     둘 다 이 모델을 쓰므로, 여기서 버린 가닥은 어디서도 되살릴 수 없다.
+     2였을 때: 2D 원본 결 보기는 2,833가닥인데 3D는 1,417개 — 절반이었다.
+     사용자 우선순위: "3D 이미지가 제일 잘 나와야 돼. 최종적으로 손님한테
+     보여주고 여기에 옷을 입힐 거니까." → 밀도를 원본과 맞춘다.
+     ※ 저사양 기기에서 무거우면 이 값을 2로 되돌리는 게 첫 번째 폴백이다
+       (조정 화면 쪽은 HAIR3D_RENDER.stride가 따로 자동 솎기를 하므로 영향 적음). */
+  const STRAND_SAMPLE_3D = 1;
   let seed = 20260717;        // 결정적 난수 — 재구성해도 같은 배치(디버그 재현성)
   const rand = ()=>{ seed = (seed * 1103515245 + 12345) & 0x7fffffff; return seed / 0x7fffffff; };
   // ── (10차, 3D 조정 전환 1단계) 정규 3D 모델 채집 ──
@@ -9526,6 +9541,83 @@ function sweepPushHead(root, sweepVal, curlAmt){
   const amp = SWEEP3D.AMP * (1 - 0.5*Math.max(0, Math.min(100, curlAmt||0))/100);
   return { x:tx*amp, y:ty*amp, z:tz*amp };
 }
+/* ══════════════════════════════════════════════════════════════════
+   뿌리 볼륨(volume) — 3D 이식 (2026-07-27)
+   ─────────────────────────────────────────────────────────────────
+   넘김·가르마는 두피를 <b>따라</b> 쓸어가는 동작이라 접선 성분만 썼다.
+   볼륨은 정반대다 — 두피에서 모발을 <b>띄우는</b> 동작이라 <b>법선</b> 방향이다.
+   그래서 접선 투영을 하지 않고 법선을 그대로 쓴다.
+
+   가중치 프로파일도 다르다. 빗질(가르마·넘김)은 뿌리에서 정해진 방향을 끝까지
+   물려받으므로 계속 벌어지는 프로파일이었지만, 볼륨은 <b>뿌리 근처만 들뜨고</b>
+   끝은 원래 자리로 돌아온다(실제로 드라이로 뿌리만 세운 모양이 그렇다).
+   → 삼각형 프로파일: 0에서 시작해 RAMP에서 최대, 끝에서 다시 0.
+   ※ 슬라이더는 0~100이고 50이 중립이다(다른 스타일링 값과 규약이 다름 — 주의).
+══════════════════════════════════════════════════════════════════ */
+const VOLUME3D = {
+  AMP:  0.10, // 두상 반경 대비 최대 들림
+  RAMP: 0.30, // 이 지점에서 가장 많이 들림(뿌리~중간)
+};
+function volumeLiftHead(root, volumeVal){
+  const v = (Math.max(0, Math.min(100, volumeVal)) - 50) / 50;  // -1(눌림) ~ +1(세움)
+  if(!v) return null;
+  const x = root.x, y = root.y - 0.15, z = root.z;
+  const E = getHeadEllipsoid();
+  let nx = x/(E.a*E.a), ny = y/(E.b*E.b), nz = z/(E.c*E.c);
+  const nl = Math.hypot(nx, ny, nz) || 1; nx/=nl; ny/=nl; nz/=nl;
+  const amp = VOLUME3D.AMP * v;
+  return { x:nx*amp, y:ny*amp, z:nz*amp };
+}
+// 뿌리에서 0 → RAMP에서 1 → 끝에서 0 (들뜬 뒤 제자리로)
+function volumeWeightAt(i, n){
+  if(i <= 0 || n <= 0) return 0;
+  const t = i/n, R = VOLUME3D.RAMP;
+  return (t <= R) ? (t/R) : Math.max(0, 1 - (t-R)/(1-R));
+}
+function volumeStrand3D(pts, volumeVal){
+  if(!pts || pts.length < 2) return pts;
+  const lift = volumeLiftHead(pts[0], volumeVal);
+  if(!lift) return pts;
+  const n = pts.length - 1;
+  const out = [pts[0]];
+  for(let i=1;i<pts.length;i++){
+    const w = volumeWeightAt(i, n);
+    out.push({ x:pts[i].x + lift.x*w, y:pts[i].y + lift.y*w, z:pts[i].z + lift.z*w });
+  }
+  return out;
+}
+
+/* ══════════════════════════════════════════════════════════════════
+   결 흐름(flow) — 안말음 C / 바깥말음 — 3D 이식 (2026-07-27)
+   ─────────────────────────────────────────────────────────────────
+   이건 뿌리가 아니라 <b>끝</b>의 동작이다. 뿌리는 그대로 두고 모발 끝이 안쪽으로
+   말리거나(안말음 C) 바깥으로 뻗는다(바깥말음). 그래서:
+     · 방향 = 머리 세로축에서 바깥으로 향하는 반경 방향(±). 안말음이면 -, 바깥이면 +.
+     · 가중치 = t²  — 뿌리 쪽은 거의 안 움직이고 끝으로 갈수록 급격히 휜다.
+       (빗질의 선형 프로파일을 쓰면 통째로 밀린 모양이 되어 C가 안 나온다)
+   반경 방향이라 정수리처럼 축에 가까운 곳은 자연히 약해진다 — 실제로도
+   정수리 머리는 말 게 없다.
+══════════════════════════════════════════════════════════════════ */
+const FLOW3D = { AMP: 0.16 };
+function flowCurlStrand3D(pts, flowVal){
+  if(!pts || pts.length < 2 || !flowVal) return pts;
+  const f = Math.max(-100, Math.min(100, flowVal)) / 100;   // +=바깥말음, -=안말음
+  const root = pts[0];
+  const rx = root.x, rz = root.z;
+  const rl = Math.hypot(rx, rz);
+  if(rl < 1e-4) return pts;                                  // 세로축 위 — 말 방향이 없음
+  const E = getHeadEllipsoid();
+  const ux = rx/rl, uz = rz/rl;                              // 바깥 반경 방향(수평)
+  const amp = FLOW3D.AMP * f * Math.max(E.a, E.c);
+  const n = pts.length - 1;
+  const out = [pts[0]];
+  for(let i=1;i<pts.length;i++){
+    const t = i/n, w = t*t;                                  // 끝으로 갈수록 급격히
+    out.push({ x:pts[i].x + ux*amp*w, y:pts[i].y, z:pts[i].z + uz*amp*w });
+  }
+  return out;
+}
+
 function sweepStrand3D(pts, sweepVal, curlAmt){
   if(!pts || pts.length < 2 || !sweepVal) return pts;
   const push = sweepPushHead(pts[0], sweepVal, curlAmt);
@@ -9666,13 +9758,15 @@ const HAIR3D_RENDER = {
   //          "서브라인이 한 개라도 더 들어갈 때만" 한다(그냥 굵은 덩어리 방지).
   grow: 2.2,
   minSubW: 0.35,    // 가닥 폭 절대 하한
-  quant:  20,       // 배치용 색 양자화 간격(작을수록 색 충실, 클수록 stroke 감소)
+  /* 배치용 색 양자화 간격. 20은 검은 머리에서 너무 거칠었다 — 실측: 마무리 질감을
+     매트↔윤기로 끝까지 움직여도 어두운 쪽 가닥들이 전부 같은 버킷(0,0,20)으로
+     떨어져 화면이 한 픽셀도 안 바뀌었다(검은 머리는 밝기 차가 rgb 2~3 수준).
+     8이면 그 차이가 살아난다. 묶음 수는 조금 늘지만 슬라이스 배치가 흡수한다. */
+  quant:  8,
 };
 function projectHair3DToView(ctx, fit, angle, maskInf){
   const model = state.hair3Dneutral;
   if(!model || !model.viewCal || !model.viewCal[angle]) return false;
-  const adj = computeAdjustedHair3DStrands(angle);         // 이 뷰 캡처 가닥만
-  if(!adj || !adj.length) return false;
   const cal = model.viewCal[angle];
   const { toX: toCX, toY: toCY } = makeImgToCanvas(fit, maskInf.w, maskInf.h);
   const R = HAIR3D_RENDER;
@@ -9682,30 +9776,36 @@ function projectHair3DToView(ctx, fit, angle, maskInf){
   // 같은 패널에서 난 가닥들이 한 묶음이 되므로, 묶어서 그려도 깊이 순서가 눈에
   // 띄게 어긋나지 않는다(슬라이스끼리는 아래에서 평균 깊이로 정렬).
   const SLICE_W = Math.max(4, maskInf.w * 0.03);
-  const projected = [];
-  for(let si=0; si<adj.length; si++){
-    const st = adj[si];
-    const pts = st.pts; let dsum=0; const cpts=[];
-    let rootIx = 0, rootIy = 0;
-    for(let i=0;i<pts.length;i++){
-      const pr = project3DPointToView(pts[i], cal, model.yTop, model.CY);
-      if(i===0){ rootIx = pr.ix; rootIy = pr.iy; }
-      cpts.push({ x: toCX(pr.ix), y: toCY(pr.iy) });
-      dsum += pr.depth;
-    }
-    projected.push({
-      cpts, depth: dsum / pts.length, color: st.color,
-      slice: (st.sec||'crown') + '|' + Math.floor(rootIx / SLICE_W)
-             + '|' + Math.floor((rootIy / Math.max(1, maskInf.h)) * 10),
-    });
-  }
-  projected.sort((a,b)=> a.depth - b.depth); // 뒤(작은 depth)부터 → 앞이 위에 덮임
 
-  // ── 다발 치수 ──
-  // 실루엣 가로폭을 투영 결과에서 직접 잰다(프레이밍 무관한 자).
-  let minX = Infinity, maxX = -Infinity;
-  for(const p of projected){ for(const q of p.cpts){ if(q.x<minX) minX=q.x; if(q.x>maxX) maxX=q.x; } }
-  const spanX    = (maxX > minX) ? (maxX - minX) : fit.dw;
+  /* ── 2패스로 나눈 이유 (2026-07-27 성능 실측) ──
+     처음엔 전 가닥을 투영한 뒤 배치 단계에서만 솎았다. 그런데 실측해 보니
+     2,833가닥 중 <b>135개만 그리는데도</b> 97.6ms가 걸렸다 — 비용이 그리기가
+     아니라 <b>투영</b>에 있었고, 솎기가 그 비용을 하나도 못 줄이고 있었다.
+     (밀도를 2배로 올리면 시간도 정확히 2배 — 그린 다발 수는 그대로인데도.)
+     그래서 순서를 바꾼다:
+       1패스 — 성긴 표본(16개당 1개)으로 <b>실루엣 가로폭만</b> 잰다.
+                폭은 전체 윤곽이라 표본으로도 거의 같은 값이 나온다.
+       2패스 — 그 폭으로 다발 크기·솎기를 정하고, <b>실제로 그릴 가닥만</b> 투영한다.
+     이러면 비용이 "그리는 다발 수"에 비례하게 되어 밀도를 올려도 안 무거워진다. */
+  // 1패스는 <b>중립</b> 가닥으로 잰다 — 조정 연산을 돌리기 전이라 공짜에 가깝다.
+  // 길이를 크게 줄이면 실루엣이 조금 좁아지지만, spanX는 다발 굵기만 정하는
+  // 값이라 그 정도 오차는 그림에 안 나타난다(대신 조정할 때마다 다발 굵기가
+  // 들썩이지 않아 오히려 안정적이다).
+  const src = [];
+  for(const st of model.strands){ if(!angle || st.srcAngle === angle) src.push(st); }
+  if(!src.length) return false;
+  const PROBE_STEP = Math.max(1, Math.floor(src.length / 180)); // 표본 ~180가닥
+  let pMinX = Infinity, pMaxX = -Infinity;
+  for(let si=0; si<src.length; si+=PROBE_STEP){
+    const pts = src[si].pts;
+    for(let i=0;i<pts.length;i++){
+      const x = toCX(project3DPointToView(pts[i], cal, model.yTop, model.CY).ix);
+      if(x < pMinX) pMinX = x; if(x > pMaxX) pMaxX = x;
+    }
+  }
+  const spanX = (pMaxX > pMinX) ? (pMaxX - pMinX) : fit.dw;
+
+  // ── 다발 치수 (spanX는 위 1패스에서 이미 쟀다) ──
   const resScale = fit.dw / 705;
   const W0       = Math.max(0.7, resScale * 0.6);      // 예전 가닥 굵기(하한용)
   const bundleW  = Math.max(W0 * 2, spanX * R.bundleSpan);
@@ -9746,21 +9846,67 @@ function projectHair3DToView(ctx, fit, angle, maskInf){
   const inflate = bundleEff / Math.max(1e-6, spanX * R.bundleSpan);
   const wantN   = Math.max(1, R.targetDensity * spanX / Math.max(1e-6, bundleEff));
   const stride  = (R.stride == null)
-    ? Math.max(1, Math.min(32, Math.round(projected.length / wantN)))
+    ? Math.max(1, Math.min(32, Math.round(src.length / wantN)))
     : Math.max(1, R.stride|0);
+
+  // ── 2패스: 그릴 가닥만 조정 연산 + 투영 ──
+  const adj = computeAdjustedHair3DStrands(angle, stride);
+  if(!adj || !adj.length) return false;
+  const projected = [];
+  for(let si=0; si<adj.length; si++){
+    const st = adj[si];
+    const pts = st.pts; let dsum=0; const cpts=[];
+    let rootIx = 0, rootIy = 0;
+    for(let i=0;i<pts.length;i++){
+      const pr = project3DPointToView(pts[i], cal, model.yTop, model.CY);
+      if(i===0){ rootIx = pr.ix; rootIy = pr.iy; }
+      cpts.push({ x: toCX(pr.ix), y: toCY(pr.iy) });
+      dsum += pr.depth;
+    }
+    projected.push({
+      cpts, depth: dsum / pts.length, color: st.color,
+      slice: (st.sec||'crown') + '|' + Math.floor(rootIx / SLICE_W)
+             + '|' + Math.floor((rootIy / Math.max(1, maskInf.h)) * 10),
+    });
+  }
+  projected.sort((a,b)=> a.depth - b.depth); // 뒤(작은 depth)부터 → 앞이 위에 덮임
   logBundleRender(angle, { spanX, unit, cssW, bundleW, bundleEff, SUB, spacing, subW,
-                           want: R.sub|0, inflate, stride, total: projected.length });
+                           want: R.sub|0, inflate, stride, total: src.length });
 
   // 다발 속 미세 틴트 — 가닥마다 다른 색을 주되 팔레트 색에서 벗어나진 않게.
   // FORCED_HAIR_COLOR(검정 지정 등)일 땐 상한 1.06 — tintColor가 bright>1에서
   // 흰색을 가산 혼합하므로 검은 머리에 회백색 가닥이 섞이는 것을 막는다(기존 규칙).
   const forced = (typeof FORCED_HAIR_COLOR!=='undefined' && FORCED_HAIR_COLOR);
+  /* 마무리 질감(finish) — 3D 이식 (2026-07-27)
+     이건 형태가 아니라 <b>빛</b>이라 3D 연산자가 아니라 렌더에서 낸다.
+     윤기(>50) = 다발 안 가닥끼리 밝기 차가 커져 하이라이트 줄이 생김 + 전체 살짝 밝게.
+     매트(<50) = 가닥끼리 밝기가 고르게 눌려 광택 줄이 사라짐.
+     실제 왁스/에센스를 발랐을 때 보이는 차이가 딱 이 "가닥 간 명암 대비"다. */
+  const finRaw = (state.styling && typeof state.styling.finish === 'number') ? state.styling.finish : 50;
+  const fin = (Math.max(0, Math.min(100, finRaw)) - 50) / 50;   // -1(매트) ~ +1(윤기)
+  /* 계수는 실측으로 정했다: 0.8/0.04로는 윤기 쪽이 중립과 구분이 안 됐다
+     (검은 머리 + 색 양자화 20단계에 묻혀 같은 버킷으로 떨어짐). 매트 쪽만
+     반응하고 윤기 쪽은 무반응인 반쪽 손잡이였다. */
+  // 0 아래로 내려가면 명암 순서가 <b>뒤집힌다</b>(밝아야 할 가닥이 어두워짐).
+  // fin*1.6이라 fin<-0.63에서 음수가 됐다 — 매트를 끝까지 내리면 그렇게 됐다.
+  const varMul  = Math.max(0, 1 + fin * 1.6);                    // 가닥 간 명암 대비
+  const baseMul = 1 + fin * 0.10;                                // 전체 밝기
+  /* 왜 tintColor를 안 쓰고 여기서 따로 만드는가(2026-07-27 실측):
+     tintColor는 bright>1에서 <b>흰색을 가산 혼합</b>한다. 검은 머리(#111)에
+     1.3을 주면 rgb(140,140,148), 1.5면 거의 흰색이라 윤기가 아니라 "검정 사이
+     흰 가닥"이 된다(예전 실기기 지적). 그래서 상한을 걸었더니 이번엔 반대로
+     윤기 쪽이 <b>한 픽셀도 안 변했다</b> — 어두운 쪽으로 낼 수도 없었다.
+     #111에서 밝기를 0.84↔0.69로 흔들어봐야 rgb 14↔12, 눈에도 안 보이고
+     양자화 버킷도 같다. 즉 검은 머리는 <b>내릴 여지가 없다</b>.
+     → 자체 틴트로 교체. 어두운 쪽은 곱셈, 밝은 쪽은 <b>회색 쪽으로 완만히</b>
+       올린다(흰색이 아니라 게인 160). #111 기준 1.5배여도 rgb 99 정도라
+       "검은 머리에 윤기"로 보이지 흰 가닥이 되지 않는다. */
   const TINT = [];
   for(let k=0;k<SUB;k++){
     const t = SUB===1 ? 0 : (k/(SUB-1) - 0.5) * 2;     // -1 … +1
-    const b = 1 + t * R.colVar * 0.35;
-    TINT.push(forced ? Math.min(1.06, b) : b);
+    TINT.push(Math.max(0.45, Math.min(1.55, baseMul + t * R.colVar * 0.35 * varMul)));
   }
+  window._lastTint = { fin, varMul, baseMul, forced: !!forced, tint: TINT.slice() }; // [진단용]
 
   ctx.save();
   ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.globalAlpha = 1;
@@ -9770,9 +9916,7 @@ function projectHair3DToView(ctx, fit, angle, maskInf){
     ctx.strokeStyle = (maskInf.scalpColor) || 'rgb(224,178,148)';
     ctx.lineWidth = bundleEff * 1.15;
     const g = new Map();
-    for(let pi=0; pi<projected.length; pi+=stride){
-      const p = projected[pi];
-      if(!g.has(p.slice)) g.set(p.slice, []); g.get(p.slice).push(p); }
+    for(const p of projected){ if(!g.has(p.slice)) g.set(p.slice, []); g.get(p.slice).push(p); }
     for(const arr of g.values()){
       ctx.beginPath();
       for(const p of arr) traceSmoothPolyline(ctx, p.cpts);
@@ -9783,11 +9927,10 @@ function projectHair3DToView(ctx, fit, angle, maskInf){
   // ── 가닥 배치: (슬라이스 × 양자화 색) 한 묶음 = beginPath/stroke 1회 ──
   // 색을 양자화하지 않으면 가닥마다 색이 미세하게 달라 배치가 전혀 안 된다.
   const batch = new Map();   // key → { col, depth, n, items:[{cpts, off}] }
-  for(let pi=0; pi<projected.length; pi+=stride){
-    const p = projected[pi];
+  for(const p of projected){
     for(let k=0;k<SUB;k++){
       const off = SUB === 1 ? 0 : (k/(SUB-1) - 0.5) * bundleEff;
-      const col = tintColor(p.color || '#1a1a1a', TINT[k]);
+      const col = bundleTintColor(p.color || '#1a1a1a', TINT[k]);
       const q   = quantizeStrokeColor(col, R.quant);
       const key = p.slice + '|' + q;
       let e = batch.get(key);
@@ -9833,6 +9976,26 @@ function logBundleRender(angle, m){
     + `다발 ${Math.ceil(m.total/m.stride)}/${m.total}개(솎기 ${m.stride}, 확대 ${m.inflate.toFixed(1)}배)`
     + (m.SUB < m.want ? ` ← 자리가 좁아 가닥 수를 줄임(화면에서 머리가 ${css(m.spanX)}px밖에 안 됨)` : ``)
   );
+}
+/* 다발 렌더 전용 틴트 — 어두운 쪽은 곱셈, 밝은 쪽은 회색 쪽으로 완만히.
+   tintColor(전역)와 달리 흰색을 섞지 않아서 검은 머리에서도 색이 안 뜬다.
+   게인 160 = 밝기 1.5에서 +80 → #111이 rgb(97,97,97) 정도의 광택 회색. */
+const BUNDLE_SHEEN_GAIN = 160;
+function bundleTintColor(col, m){
+  let r=26, g=26, b=26;
+  if(col.charCodeAt(0) === 35){
+    const n = parseInt(col.slice(1), 16);
+    r=(n>>16)&255; g=(n>>8)&255; b=n&255;
+  } else {
+    const mm = col.match(/\d+/g);
+    if(mm && mm.length>=3){ r=+mm[0]; g=+mm[1]; b=+mm[2]; }
+  }
+  if(m <= 1){
+    return 'rgb(' + Math.round(r*m) + ',' + Math.round(g*m) + ',' + Math.round(b*m) + ')';
+  }
+  const lift = (m - 1) * BUNDLE_SHEEN_GAIN;
+  const c = v => Math.min(255, Math.round(v + lift));
+  return 'rgb(' + c(r) + ',' + c(g) + ',' + c(b) + ')';
 }
 // 'rgb(r,g,b)' / '#rrggbb' → step 간격으로 반올림한 'rgb(r,g,b)'.
 // 배치 묶음 수를 유한하게 만들기 위한 색 양자화(가닥마다 다른 미세 틴트를 흡수).
@@ -9931,12 +10094,19 @@ function initDevMini3D(){
 // (11차) 중립 3D 모델에 섹션별 조정 연산자(길이·컬)를 적용해 "조정된 월드 가닥"을
 // 반환. 미니뷰(3D)와 조정창 투영(2D)이 같은 소스를 쓰게 하는 단일 출처.
 // srcAngleFilter를 주면 그 뷰 캡처 가닥만(뷰별 투영 시 교차뷰 잡음 방지).
-function computeAdjustedHair3DStrands(srcAngleFilter){
+/* stride: 조정 연산을 적용할 가닥 간격(1=전부). 조정 화면은 어차피 일부만
+   그리는데 전 가닥에 길이·컬·중력·가르마·넘김·볼륨·결흐름을 다 돌리면
+   그 계산이 렌더 비용의 대부분이 된다(실측: 밀도 2배 → 시간 2배, 그린 다발
+   수는 그대로였음). 그릴 것만 계산하도록 호출부가 간격을 넘긴다. */
+function computeAdjustedHair3DStrands(srcAngleFilter, stride){
   const model = state.hair3Dneutral;
   if(!model || !model.strands) return null;
+  const stp = Math.max(1, (stride|0) || 1);
   const out = [];
+  let _i = 0;
   for(const st of model.strands){
     if(srcAngleFilter && st.srcAngle !== srcAngleFilter) continue;
+    if((_i++ % stp) !== 0) continue;
     const sec = (state.sections && state.sections[st.sec]) || {};
     const ratio = sectionLengthRatio(st.sec, sec.length);
     const curlAmt = (typeof sec.curl==='number')?sec.curl:0;
@@ -9947,7 +10117,12 @@ function computeAdjustedHair3DStrands(srcAngleFilter){
     //    커트/펌 위에 얹는 연출이므로 마지막에 적용한다. part=0이면 무변경.
     pts = partStrand3D(pts, (state.styling && state.styling.part) || 0, curlAmt);
     // ⑤ 넘김 — 머리 전체를 앞/뒤 한 방향으로. 실제 순서도 "가른 다음 넘긴다".
-    pts = sweepStrand3D(pts, (state.styling && state.styling.sweep) || 0, curlAmt);
+    const sty = state.styling || neutralStyling();
+    pts = sweepStrand3D(pts, sty.sweep || 0, curlAmt);
+    // ⑥ 뿌리 볼륨 — 두피 법선으로 띄움(빗질과 달리 접선이 아니라 법선).
+    pts = volumeStrand3D(pts, (typeof sty.volume === 'number') ? sty.volume : 50);
+    // ⑦ 결 흐름 — 끝단 안말음/바깥말음. 드라이 마무리라 제일 마지막.
+    pts = flowCurlStrand3D(pts, sty.flow || 0);
     out.push({ pts, color: st.color, sec: st.sec, srcAngle: st.srcAngle });
   }
   return out;
