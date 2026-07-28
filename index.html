@@ -7272,10 +7272,10 @@ function drawCompare(){
   const baseC = document.getElementById('compareBaseCanvas');
   const topC  = document.getElementById('compareTopCanvas');
   const clip  = document.getElementById('compareClip');
-
-  const pw = pane.clientWidth, ph = pane.clientHeight;
-  if(pw===0||ph===0){ setTimeout(()=>drawCompare(),80); return; }
-  // (2026-07-16) 비교 화면도 syncCanvasSize와 동일하게 가로 1200px 고정
+  
+  // (이 아래에 마우스 드래그로 슬라이드바를 움직이는 기존 비교 로직들이 길게 이어져 있을 겁니다)
+  // 예: clip.style.width = ... 나 addEventListener 등등...
+}  // (2026-07-16) 비교 화면도 syncCanvasSize와 동일하게 가로 1200px 고정
   // 백킹스토어 — 조정 화면과 비교 화면의 그리기 해상도가 항상 같아짐.
   // 표시 크기는 style로 CSS 픽셀에 고정.
   const cscale = DRAW_RES/pw;
