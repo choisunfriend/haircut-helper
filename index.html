@@ -1812,6 +1812,7 @@ function sectionBandsFor(angle){
   const browY = (typeof L.browTopY === 'number') ? L.browTopY : (headTopY + (earLineY - headTopY) * 0.80);
   const bands = {
     headTopY, hairBotY, parietalY, napeTopY,
+    earLineY, chinLineY,   // (2026-07-27) 두상 영역 판정에 사용 — 구멍 메움에서 참조
     nxMin, nxMax,
     frontY0: Math.min(parietalY, L.foreheadY * 0.85 + 0), // 프린지 밴드 상단(헤어라인 부근)
     frontY1: browY * 1.05,                                 // 프린지 밴드 하단(눈썹 위)
@@ -1898,6 +1899,7 @@ const state = {
   hairMasks: {front:null,left:null,right:null,back:null},
   hairCanvases: {front:null,left:null,right:null,back:null},
   baseCanvases: {front:null,left:null,right:null,back:null},
+  baseFillCanvases: {front:null,left:null,right:null,back:null}, // 지워진 자리를 주변색으로 메운 배경
   debugShowMask: false, // true면 조정화면에서 가닥 대신 hairMaskBuf 실루엣을 그대로 표시(진단용)
   debugShowRaw: false,  // true면 스타일/슬라이더 값 무시하고 전 섹션 중립값(길이·볼륨 50, 컬 0)으로 렌더링(진단용)
   debugShowField: false, // true면 strand 시뮬레이션(뿌리/중력/clamp) 전부 건너뛰고 orientation 컬럼 샘플을 가공 없이 그대로 표시(진단용)
@@ -2762,6 +2764,24 @@ async function extractHairMask(angle){
           bCtx.globalCompositeOperation='destination-out';
           bCtx.drawImage(fullMaskC,0,0);
           bCtx.restore();
+
+          /* ── 구멍 메움 배경(baseFillC) — 2026-07-27 ──
+             baseC는 원본에서 머리카락을 destination-out으로 <b>지운</b> 그림이다.
+             그래서 조정으로 가닥이 원래 자리를 비키면 그 자리가 투명 구멍이 되고,
+             캔버스 뒤 페이지 배경이 비쳐서 <b>검게</b> 보인다(사용자: "헤어가 들렸을
+             때 그 아래쪽 머리 부분이 검은색이야").
+             해법: 지워진 자리를 주변 색으로 메운 배경을 하나 만들어 baseC <b>밑에</b>
+             깔아둔다. 두피 근처는 살색이, 실루엣 바깥쪽은 배경색이 자연히 번져
+             들어온다 — 통짜 두피색으로 칠하는 것과 달리 어디가 머리고 어디가
+             배경인지 따로 판정할 필요가 없다.
+             ※ 저해상도(160px)에서 이웃 전파로 채우고 확대해서 쓴다. 어차피 가닥
+               사이로 살짝 보이는 바탕이라 정밀도보다 "검은 구멍이 없을 것"이 중요.
+             ※ 예전에 폐지한 "헤어컬러 통짜 언더코트"와는 다르다. 그건 머리색으로
+               실루엣을 칠해서 조정이 안 먹히는 것처럼 보이게 만들었고, 이건
+               <b>지워진 자리에만</b> 주변색을 번지게 하는 배경이다.
+             ※ 생성은 첫 렌더 때 지연 생성한다(getHoleFillCanvas). 두상 영역 판정에
+               sectionBandsFor가 필요한데, 그건 state.hairMasks[angle]가 채워진
+               뒤에야 제대로 계산된다 — 여기선 아직 대입 전이다. */
 
           // ── 색상 샘플링 전용 침식 마스크 ──
           // 사용자 지적: "렌더링된 헤어가 원본보다 하얗다" — 원인은 마스크
@@ -3695,7 +3715,7 @@ function captureCurrentAngle(){
 
 function retakeCurrent(){
   const angle=ANGLES[state.currentCaptureIndex];
-  state.shots[angle]=null; state.hairCanvases[angle]=null; state.hairMasks[angle]=null; state.baseCanvases[angle]=null;
+  state.shots[angle]=null; state.hairCanvases[angle]=null; state.hairMasks[angle]=null; state.baseCanvases[angle]=null; state.baseFillCanvases[angle]=null;
   if(state.strandPaths) state.strandPaths[angle]=null; // 캡처된 가닥 경로도 함께 무효화
   _silhouetteAnchorCache = {}; // 실루엣 앵커는 정면 비율도 참조하므로 어느 각도든 재촬영 시 전체 리셋
   // 랜드마크/감지상태도 함께 초기화 — 촬영 직후 감지가 생기면서, 지우지 않으면
@@ -5010,6 +5030,223 @@ function computeFit(imgW, imgH, w, h){
   return {dw,dh,dx,dy};
 }
 
+/* 투명 구멍을 주변 색으로 메운 사본을 만든다(작은 해상도).
+   알고리즘: 투명 픽셀 중 "불투명 이웃이 있는" 것부터 그 이웃들의 평균색으로
+   채우고, 채워진 픽셀은 다음 회차에서 이웃 역할을 한다 — 경계에서 안쪽으로
+   물이 스미듯 번진다. 구멍 반지름만큼 회차를 돌면 완전히 메워진다.
+   (거리변환·인페인팅의 아주 단순한 형태. 바탕으로만 쓰므로 이 정도면 충분하다.) */
+/* ══════════════════════════════════════════════════════════════════
+   지워진 머리카락 자리 메우기 (2026-07-27 2차)
+   ─────────────────────────────────────────────────────────────────
+   baseC는 원본에서 머리카락을 destination-out으로 지운 그림이라, 조정으로
+   가닥이 비켜난 자리는 투명 구멍이 되고 페이지 배경(검정)이 비친다.
+   그 구멍을 메운 배경을 만들어 baseC 밑에 깐다.
+
+   ── 사용자 설계(2026-07-27) ──
+   "피부색 경계는 세그멘테이션이 아니라 두상으로 우리가 잡는 영역으로 잡아야겠네.
+     그 외는 목은 신체부위로 잡힐 테니까."
+   맞다. 채울 자리는 헤어 세그멘테이션 안이지만, <b>피부로 다뤄야 하는 범위</b>는
+   두상이다. 긴 머리가 어깨까지 내려오면 그 구멍은 옷·배경이지 피부가 아니다.
+     · 두상 안  → 피부: 주변색 + <b>실제 피부 결</b>, 피부톤 편향 ON
+     · 두상 밖  → 주변색만(결 없음), 편향 OFF
+   ※ 사람/배경 구분(personMask)은 <b>쓰지 않는다</b> — 둘 다 "주변색만"으로
+     처리가 같아서 넣어도 그림이 안 바뀐다. 목에도 결을 넣고 싶어지면
+     그때 personMask를 조건에 더하면 된다(자리는 아래 headAt 한 곳).
+
+   ── 왜 두 해상도인가 ──
+   색·명암(저주파)은 번지는 계산이라 회차가 구멍 반지름만큼 필요하다 → 160px에서
+   싸게 만든다. 반면 피부 결(고주파)은 확대하면 뭉개지므로 <b>원본 해상도</b>에서
+   한 번 더한다. 결을 이어붙이는 게 아니라 "색은 주변에서, 결만 실제 피부에서"
+   가져오는 방식이라 아무리 넓은 면을 채워도 이음매가 안 생긴다.
+══════════════════════════════════════════════════════════════════ */
+const HOLE_FILL = {
+  lowW: 160,      // 저주파(색·명암) 계산 해상도
+  outW: 900,      // 최종 배경 해상도 상한(피부 결이 보이는 해상도)
+  patch: 72,      // 피부 표본 한 변(출력 해상도 기준)
+  texture: 1.0,   // 결 세기(1=패치 그대로)
+  skinBoost: 3,   // 피부색 이웃 가중(두상 안에서만)
+  skinTol: 110,
+  dirW: [0.4, 1.0, 2.6], // 위/가운데/아래 이웃 가중 — 살색이 두피로 타고 올라오게
+};
+
+// 뷰의 두상 영역(정규 좌표) — 정수리~턱을 감싸는 타원. 없으면 null.
+function headEllipseFor(angle){
+  const b = sectionBandsFor(angle);
+  if(!b) return null;
+  const top = b.headTopY;
+  const bot = (typeof b.chinLineY === 'number') ? b.chinLineY : b.napeTopY;
+  if(!(bot > top)) return null;
+  const cx = (b.nxMin + b.nxMax) / 2;
+  // 실루엣에는 머리숱이 포함돼 있어 두개골보다 넓다 — 조금 좁혀 잡는다.
+  const rx = Math.max(0.02, (b.nxMax - b.nxMin) / 2 * 0.92);
+  return { cx, cy: (top + bot) / 2, rx, ry: (bot - top) / 2 };
+}
+
+/* 얼굴에서 깨끗한 피부 표본을 찾는다(불투명 + 피부색에 가까운 정사각 영역).
+   볼 → 턱 → 이마 순으로 후보를 훑어 가장 "피부다운" 곳을 고른다. */
+function pickSkinPatch(ctx, W, H, ell, skinRGB, size){
+  if(!ell) return null;
+  const cands = [];
+  for(const [dx, dy] of [[-0.55,0.35],[0.55,0.35],[-0.5,0.6],[0.5,0.6],[0,0.7],[0,0.15],[-0.35,0.1],[0.35,0.1]]){
+    const px = Math.round((ell.cx + ell.rx*dx) * W - size/2);
+    const py = Math.round((ell.cy + ell.ry*dy) * H - size/2);
+    if(px < 0 || py < 0 || px+size > W || py+size > H) continue;
+    const d = ctx.getImageData(px, py, size, size).data;
+    let opaque=0, near=0;
+    for(let i=0;i<d.length;i+=4){
+      if(d[i+3] < 200) continue;
+      opaque++;
+      const dist = Math.abs(d[i]-skinRGB[0]) + Math.abs(d[i+1]-skinRGB[1]) + Math.abs(d[i+2]-skinRGB[2]);
+      if(dist < HOLE_FILL.skinTol) near++;
+    }
+    const total = size*size;
+    if(opaque < total*0.98) continue;            // 구멍이 섞이면 못 씀
+    cands.push({ px, py, score: near/total });
+  }
+  if(!cands.length) return null;
+  cands.sort((a,b)=> b.score - a.score);
+  return cands[0].score > 0.5 ? cands[0] : null; // 절반도 피부색이 아니면 포기
+}
+
+// 저해상도 이웃 전파 — 투명 픽셀을 주변 색으로 채운다(두상 안에서만 피부톤 편향).
+function fillHolesLowRes(srcCanvas, w, h, skinRGB, ell){
+  const c = document.createElement('canvas'); c.width = w; c.height = h;
+  const ctx = c.getContext('2d', { willReadFrequently:true });
+  ctx.drawImage(srcCanvas, 0, 0, w, h);
+  const img = ctx.getImageData(0, 0, w, h), d = img.data;
+  const OPAQUE = 200;
+  const inHead = (x, y)=>{
+    if(!ell) return false;
+    const nx = (x + 0.5)/w, ny = (y + 0.5)/h;
+    const u = (nx - ell.cx)/ell.rx, v = (ny - ell.cy)/ell.ry;
+    return u*u + v*v <= 1;
+  };
+  const MAX_PASS = Math.ceil(Math.hypot(w, h));
+  for(let pass=0; pass<MAX_PASS; pass++){
+    const fill = [];
+    for(let y=0; y<h; y++){
+      for(let x=0; x<w; x++){
+        const i = (y*w+x)*4;
+        if(d[i+3] >= OPAQUE) continue;
+        const head = skinRGB && inHead(x, y);
+        let r=0,g=0,b=0,n=0;
+        for(let dy=-1; dy<=1; dy++){
+          const yy = y+dy; if(yy<0||yy>=h) continue;
+          for(let dx=-1; dx<=1; dx++){
+            const xx = x+dx; if(xx<0||xx>=w||(dx===0&&dy===0)) continue;
+            const j = (yy*w+xx)*4;
+            if(d[j+3] < OPAQUE) continue;
+            let ww = HOLE_FILL.dirW[dy+1];
+            if(head){
+              const dist = Math.abs(d[j]-skinRGB[0]) + Math.abs(d[j+1]-skinRGB[1]) + Math.abs(d[j+2]-skinRGB[2]);
+              ww *= 1 + HOLE_FILL.skinBoost * Math.max(0, 1 - dist / HOLE_FILL.skinTol);
+            }
+            r+=d[j]*ww; g+=d[j+1]*ww; b+=d[j+2]*ww; n+=ww;
+          }
+        }
+        if(n) fill.push(i, r/n, g/n, b/n);
+      }
+    }
+    if(!fill.length) break;
+    for(let k=0; k<fill.length; k+=4){
+      const i = fill[k];
+      d[i]=fill[k+1]; d[i+1]=fill[k+2]; d[i+2]=fill[k+3]; d[i+3]=255;
+    }
+  }
+  ctx.putImageData(img, 0, 0);
+  return c;
+}
+
+/* 최종 배경 생성. skinColor가 없으면 결 없이 색만 채운다(안전 폴백). */
+function buildHoleFillCanvas(srcCanvas, skinColor, ell){
+  const sw = srcCanvas.width, sh = srcCanvas.height;
+  if(!sw || !sh) return null;
+  let skinRGB = null;
+  if(skinColor){
+    const m = String(skinColor).match(/\d+/g);
+    if(m && m.length>=3) skinRGB = [+m[0], +m[1], +m[2]];
+  }
+  const lw = Math.max(16, Math.min(HOLE_FILL.lowW, sw));
+  const lh = Math.max(16, Math.round(sh * (lw / sw)));
+  const low = fillHolesLowRes(srcCanvas, lw, lh, skinRGB, ell);
+
+  const ow = Math.max(32, Math.min(HOLE_FILL.outW, sw));
+  const oh = Math.max(32, Math.round(sh * (ow / sw)));
+  const out = document.createElement('canvas'); out.width = ow; out.height = oh;
+  const octx = out.getContext('2d', { willReadFrequently:true });
+  octx.imageSmoothingEnabled = true;
+  octx.drawImage(low, 0, 0, ow, oh);           // 저주파(색·명암)
+
+  if(!skinRGB || !ell) return out;             // 결 없이 색만 — 폴백
+
+  // 어디가 구멍인지(=원본이 투명했던 자리) 출력 해상도로 다시 읽는다
+  const hc = document.createElement('canvas'); hc.width = ow; hc.height = oh;
+  const hctx = hc.getContext('2d', { willReadFrequently:true });
+  hctx.drawImage(srcCanvas, 0, 0, ow, oh);
+  const holeA = hctx.getImageData(0, 0, ow, oh).data;
+
+  const size = Math.min(HOLE_FILL.patch, ow>>1, oh>>1);
+  const patch = pickSkinPatch(hctx, ow, oh, ell, skinRGB, size);
+  if(!patch) return out;                       // 깨끗한 피부 표본이 없으면 결 생략
+
+  /* 피부 결만 뽑아낸다: 패치 − 자기자신을 흐린 것.
+     색·밝기는 흐린 쪽에 다 들어있으므로 빼고 나면 결(모공·잔털·미세 명암)만 남는다.
+     그래서 이걸 어디에 얹어도 그 자리 색은 안 변하고 질감만 생긴다 = 이음매 없음. */
+  const pc = document.createElement('canvas'); pc.width = size; pc.height = size;
+  const pctx = pc.getContext('2d', { willReadFrequently:true });
+  pctx.drawImage(hc, patch.px, patch.py, size, size, 0, 0, size, size);
+  const sharp = pctx.getImageData(0, 0, size, size).data;
+  const bs = Math.max(2, size >> 3);
+  const bc = document.createElement('canvas'); bc.width = bs; bc.height = bs;
+  const bctx = bc.getContext('2d', { willReadFrequently:true });
+  bctx.imageSmoothingEnabled = true;
+  bctx.drawImage(pc, 0, 0, bs, bs);
+  pctx.clearRect(0, 0, size, size);
+  pctx.drawImage(bc, 0, 0, size, size);        // 흐린 판
+  const blur = pctx.getImageData(0, 0, size, size).data;
+  const hi = new Float32Array(size*size*3);
+  for(let i=0, k=0; i<sharp.length; i+=4, k+=3){
+    hi[k]   = sharp[i]   - blur[i];
+    hi[k+1] = sharp[i+1] - blur[i+1];
+    hi[k+2] = sharp[i+2] - blur[i+2];
+  }
+
+  // 거울 반복(ping-pong)으로 타일링 — 같은 무늬가 줄줄이 반복되는 티가 안 난다
+  const mirror = (v, n)=>{ const p = 2*n - 2; let m = ((v % p) + p) % p; return m < n ? m : p - m; };
+  const oimg = octx.getImageData(0, 0, ow, oh), od = oimg.data;
+  const T = HOLE_FILL.texture;
+  for(let y=0; y<oh; y++){
+    const ny = (y + 0.5)/oh, v = (ny - ell.cy)/ell.ry, v2 = v*v;
+    if(v2 > 1) continue;                       // 두상 밖 — 결 없음
+    const py = mirror(y, size);
+    for(let x=0; x<ow; x++){
+      const i = (y*ow+x)*4;
+      if(holeA[i+3] >= 200) continue;          // 원래 있던 픽셀 — 안 건드림
+      const nx = (x + 0.5)/ow, u = (nx - ell.cx)/ell.rx;
+      if(u*u + v2 > 1) continue;               // 두상 밖
+      const k = (mirror(x, size)*size + py) * 3;
+      od[i]   = Math.max(0, Math.min(255, od[i]   + hi[k]  *T));
+      od[i+1] = Math.max(0, Math.min(255, od[i+1] + hi[k+1]*T));
+      od[i+2] = Math.max(0, Math.min(255, od[i+2] + hi[k+2]*T));
+    }
+  }
+  octx.putImageData(oimg, 0, 0);
+  return out;
+}
+
+// 뷰별 1회 생성 후 캐시. 두상 판정에 sectionBandsFor가 필요해서 렌더 시점에 만든다.
+function getHoleFillCanvas(angle, baseC, maskInf){
+  if(!baseC) return null;
+  const cached = state.baseFillCanvases && state.baseFillCanvases[angle];
+  if(cached && cached._src === baseC) return cached;
+  let c = null;
+  try{
+    c = buildHoleFillCanvas(baseC, maskInf && maskInf.scalpColor, headEllipseFor(angle));
+  }catch(e){ console.warn('구멍 메움 배경 생성 실패:', angle, e); }
+  if(c){ c._src = baseC; if(state.baseFillCanvases) state.baseFillCanvases[angle] = c; }
+  return c;
+}
+
 /* ── 조정 화면 머리 확대 (2026-07-26) ─────────────────────────────────
    사용자 상황: "노트북으로 작업하고 있어서 어쩔 수 없어. 정수리까지 나오려면."
    맞다 — 노트북 웹캠으로 정수리까지 담으려면 뒤로 물러날 수밖에 없고, 그러면
@@ -5392,6 +5629,13 @@ function renderFrame(canvas, angle){
       // source-over로 덮었는데, 투명 픽셀은 source-over에서 아무 효과가 없어서
       // 원본 머리카락이 전혀 안 지워지고 그대로 남아있었음(가닥은 그 위에 얹히기만 함).
       // → baseC 자체를 베이스로 바로 그려서 머리카락 영역을 실제로 비운다.
+      // 지워진 머리카락 자리가 검게 뚫리지 않도록 메움 배경을 먼저 깐다.
+      const fillC = getHoleFillCanvas(angle, baseC, maskInf);
+      if(fillC){
+        ctx.save(); ctx.imageSmoothingEnabled = true;
+        ctx.drawImage(fillC, fit.dx, fit.dy, fit.dw, fit.dh);
+        ctx.restore();
+      }
       ctx.drawImage(baseC, fit.dx, fit.dy, fit.dw, fit.dh);
 
       // ── (6차) 통짜 언더코트 제거 ──
@@ -9725,7 +9969,12 @@ const HAIR3D_RENDER = {
   // (실측: W0 기준으로 옮겼더니 5.2px — 하네스의 12px에 해당하는 자리였음).
   // 투영 결과에서 실루엣 폭을 직접 재서 비율로 환산하면 촬영 거리·프레이밍·
   // 캔버스 크기가 전부 상쇄된다. 0.0272 = 하네스 실측(다발 7.4px ÷ 실루엣 272px).
-  bundleSpan: 0.0272,
+  /* (2026-07-27 실기기 교정) 0.0272 → 0.014.
+     사용자: "다발 폭이 안 줄어들었어. 꼭 갈퀴처럼 보여."
+     맞다. 로그가 그대로 말해준다 — 비례값 7.4px인데 실제 10.8px로 그리고 있었다.
+     아래 grow가 "가닥 5개를 다 넣으려면 자리가 필요하다"며 다발을 넓힌 결과다.
+     넓은 다발에 이빨 5개가 벌어져 있으니 갈퀴다. 폭 자체를 줄이고, 넓히기도 끈다. */
+  bundleSpan: 0.014,
   sub:    5,        // 다발 안 가닥 수
   gap:    0.25,     // 틈 비율 — 가닥 폭 = 간격 × (1 - gap)
   colVar: 0.45,     // 다발 속 색 분산(미세 틴트 폭)
@@ -9752,11 +10001,18 @@ const HAIR3D_RENDER = {
      사용자 요청("틈을 좀 늘려봐야 될 거 같애") 반영. */
   minGapCss: 1.6,   // 가닥 사이 틈의 화면상 최소 크기
   minSubCss: 1.1,   // 가닥 폭의 화면상 최소 크기
+  /* 가닥 폭 상한 — 이게 없으면 다발이 넓어질 때 가닥까지 같이 굵어졌다.
+     subW = min(간격×(1-gap), 간격-최소틈) 이라 간격이 넓으면 굵은 획이 된다.
+     머리카락 다발 하나는 화면에서 1~1.5px면 충분하고, 그 이상은 붓자국이 된다. */
+  maxSubCss: 1.3,
   // 자리가 모자라 서브라인이 다 안 들어갈 때 다발을 최대 몇 배까지 넓혀도 되는지.
   // 사용자: "다발묶음이 투명해져서 표현이 안 되면 다발을 더 굵게 해도 괜찮은데,
   //          다발만 표현되니까 두껍게 할 수도 없고" — 맞다. 그래서 굵히기는
   //          "서브라인이 한 개라도 더 들어갈 때만" 한다(그냥 굵은 덩어리 방지).
-  grow: 2.2,
+  //          → (2026-07-27) 1.0으로 끔. 넓혀서 가닥을 더 넣는 것보다, 좁은 다발에
+  //          들어갈 만큼만 넣고 <b>다발 수를 늘리는</b> 쪽이 실물에 가깝다
+  //          (사용자: "원본 결 보기의 머리가 좀 더 현실감 있는 거 같아").
+  grow: 1.0,
   minSubW: 0.35,    // 가닥 폭 절대 하한
   /* 배치용 색 양자화 간격. 20은 검은 머리에서 너무 거칠었다 — 실측: 마무리 질감을
      매트↔윤기로 끝까지 움직여도 어두운 쪽 가닥들이 전부 같은 버킷(0,0,20)으로
@@ -9834,9 +10090,10 @@ function projectHair3DToView(ctx, fit, angle, maskInf){
   const SUB     = Math.max(1, Math.min(R.sub|0, 1 + Math.floor(bundleEff / slot)));
   const spacing = SUB > 1 ? bundleEff / (SUB - 1) : bundleEff;
   // 틈 비율로 구한 폭과 "최소 틈을 남기는 폭" 중 좁은 쪽 — 틈이 항상 확보된다
+  const maxSub  = R.maxSubCss * unit;
   const subW    = SUB > 1
-    ? Math.max(minSub, Math.min(spacing * (1 - R.gap), spacing - minGap))
-    : Math.max(minSub, Math.max(R.minSubW, W0));  // 한 개도 안 들어가면 예전 굵기로 안전 복귀
+    ? Math.min(maxSub, Math.max(minSub, Math.min(spacing * (1 - R.gap), spacing - minGap)))
+    : Math.min(maxSub, Math.max(minSub, Math.max(R.minSubW, W0)));  // 한 개도 안 들어가면 예전 굵기
 
   /* 다발 수 자동 조정.
      다발이 넓어진 만큼 개수를 줄이지 않으면 옆 다발이 서로의 틈을 덮어버린다.
