@@ -878,6 +878,28 @@
     0으로 나눌 수 없어 <b>전 칸이 0</b>으로 찍혔다. "절반이 비었다"를 재려고 만든
     지도가 정확히 그 상황에서 눈이 머는 꼴. 90퍼센타일 기준으로 교체.
 
+  ── 2026-08-01 (9) 실루엣 비교의 한쪽 편향 제거 ──
+  사용자: "지금 비교를 원본사진이랑 하는 거 맞지? 원본사진이 번질리는 없잖아."
+  정확한 지적. 실루엣 비교에서 <b>렌더만</b> 블러로 번지게 하고 마스크는 그대로
+  썼다. 마스크는 이미 꽉 찬 영역이라 안 번지는데 한쪽만 부풀린 채로 비교한 셈이다.
+  그 편향이 그대로 숫자에 남아 있었다 — 하네스에서 렌더가 마스크와 <b>완전히
+  일치</b>할 때도 "밖으로 샘 3~5%"가 떴는데, 그게 바닥값이 아니라 블러가 바깥으로
+  밀어낸 양이었다. 게다가 채움%가 늘 100%로 포화됐다.
+
+  고침: 블러 한 번 → <b>닫기</b>(팽창→침식→원본 합집합). 가닥 사이 틈은 메워지고
+  바깥 경계는 제자리. 클립 마스크와 같은 연산이라 양쪽이 같은 자를 쓴다.
+  하네스 전후:
+    완전 일치      샘 3.1% → <b>0%</b>   · 채움 100%(포화) → <b>97.4%</b>(정직)
+    60%만 그림     채움 34.5% · 샘 0%   (못 채운 것을 여전히 안 가림)
+    140% 과다      샘 46.4%             (넘친 것은 그대로 잡음)
+    클립 ON        샘 47.5% → <b>2.5%</b>
+
+  ※ 무엇과 비교하는지 정리(질문의 나머지 절반):
+    · 결 일치  — 원본 <b>사진 픽셀</b>에서 뽑은 구조텐서(maskInf.orientation)와 비교. 사진 맞다.
+    · 실루엣   — 원본 사진의 <b>세그멘테이션 알파</b>와 비교(hairCanvases는 사진 픽셀을
+      마스크로 잘라낸 것이라 RGB는 사진, 알파는 마스크다. 지금은 알파만 쓴다).
+    사진 <b>픽셀</b>(색·명암·질감)과의 대조는 아직 안 한다 — 필요해지면 여기에 붙인다.
+
   아직 열려 있는 진짜 문제(별건, 사용자 확인 대기): getHeadEllipsoid는
   reasonMask===1 즉 <b>머리카락</b> 실루엣을 잰다(measureRowHalfWidth). 그런데
   코드는 이걸 두개골로 쓴다(8000번대에 const skull = getHeadEllipsoid()).
@@ -7859,14 +7881,30 @@ function measureRenderVsPhoto(layerCanvas, maskInf, fit, cw, ch, angle, clipGrow
     const hairC = state.hairCanvases && state.hairCanvases[angle];
     if(!hairC) return null;
     const M = grab(hairC, true);                                          // 원본 세그멘테이션
-    // 실루엣 비교용 — 가닥을 번지게 해서 "머리카락이 있는 구역"으로
+    /* 실루엣 비교용 — 가닥 사이 틈을 메워 "머리카락이 있는 구역"으로.
+       ※ 처음엔 <b>블러 한 번</b>이었는데 사용자 지적으로 고쳤다:
+         "비교를 원본사진이랑 하는 거 맞지? 원본사진이 번질리는 없잖아."
+         정확하다. 마스크는 이미 꽉 찬 영역이라 안 번지는데 렌더만 번지게 하면
+         <b>한쪽만 부푼 채로</b> 비교하는 셈이다. 그 편향이 그대로 숫자에 남았다 —
+         하네스에서 렌더가 마스크와 완전히 일치할 때도 "밖으로 샘 3~5%"가 떴는데,
+         그게 블러가 바깥으로 밀어낸 양이었다(바닥값이 아니라 편향이었다).
+       고침: 팽창 → 침식(닫기). 가닥 사이 틈은 메워지고 <b>바깥 경계는 제자리</b>다.
+       클립 마스크에서 쓴 것과 같은 연산이라 양쪽이 같은 자를 쓰게 된다. */
     const F = (()=>{
-      const c = document.createElement('canvas'); c.width=W; c.height=H;
-      const x = c.getContext('2d', { willReadFrequently:true });
-      x.filter = `blur(${Math.max(1.5, W*RENDER_MATCH.fillBlur)}px)`;
-      x.drawImage(layerCanvas, 0, 0, W, H);
-      x.filter = 'none';
-      return x.getImageData(0,0,W,H).data;
+      const r = Math.max(1.5, W*RENDER_MATCH.fillBlur);
+      const pass = (src, thr)=>{
+        const c = document.createElement('canvas'); c.width=W; c.height=H;
+        const x = c.getContext('2d', { willReadFrequently:true });
+        x.filter = `blur(${r}px)`; x.drawImage(src, 0, 0, W, H); x.filter='none';
+        const d = x.getImageData(0,0,W,H);
+        for(let i=3;i<d.data.length;i+=4) d.data[i] = d.data[i] > thr ? 255 : 0;
+        x.putImageData(d,0,0); return c;
+      };
+      const dil = pass(layerCanvas, RENDER_MATCH.fillThr);      // 팽창(틈 메움)
+      const closed = pass(dil, 255 - RENDER_MATCH.fillThr);      // 침식(경계 복귀)
+      // 닫기는 원본을 포함해야 한다 — 얇은 가닥이 침식에 지워지지 않게 합집합
+      closed.getContext('2d').drawImage(layerCanvas, 0, 0, W, H);
+      return closed.getContext('2d').getImageData(0,0,W,H).data;
     })();
 
     // ── ① 실루엣 IoU (메운 렌더 vs 마스크) ──
