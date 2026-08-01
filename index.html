@@ -680,9 +680,14 @@ main{flex:1;position:relative;overflow:hidden;}
   display:flex;align-items:center;justify-content:center;
   background:#0a0907;
 }
-#video{width:100%;height:100%;object-fit:cover;display:block;}
+/* (2026-08-01) cover → contain. cover는 촬영 영역 비율에 맞춰 <b>화면만</b>
+   잘라내던 값이다. 분석은 늘 원본 전체로 돌아가므로 데이터 손실은 없었지만,
+   가로로 긴 사진을 올리면 정수리가 화면 밖으로 밀려 "머리 위가 잘렸다"고
+   보였고, 가이드 타원에 맞춰 찍은 구도와 실제 저장본이 어긋났다.
+   contain이면 보이는 것 = 저장·분석되는 것이 된다(빈 자리는 배경색). */
+#video{width:100%;height:100%;object-fit:contain;display:block;}
 .cam-off-msg{color:var(--text-muted);font-size:13px;text-align:center;padding:0 32px;line-height:1.8;position:absolute;}
-#shotPreview{width:100%;height:100%;object-fit:cover;display:none;position:absolute;inset:0;}
+#shotPreview{width:100%;height:100%;object-fit:contain;display:none;position:absolute;inset:0;}
 .face-guide-svg{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;}
 .cap-hint{
   position:absolute;bottom:14px;left:0;right:0;text-align:center;
@@ -5159,11 +5164,19 @@ function drawImgOnCanvas(ctx, img, w, h){
 }
 
 // fit 계산만 하고 실제로 그리지는 않음 (베이스를 원본 대신 baseC로 바로 그릴 때 사용)
+/* (2026-08-01) cover → contain 으로 변경.
+   기존은 캔버스를 <b>가득 채우는</b> 배율(넘치는 쪽은 잘림)이었다. 오프스크린
+   경로(captureStrandPathsFor·buildOutputCanvases)는 캔버스 비율을 원본과 같게
+   잡으므로 두 방식의 결과가 동일하고, 실제로 달라지는 곳은 조정 화면 캔버스
+   하나뿐이다. 거기서 cover는 세로로 긴 사진의 정수리를 잘라냈고, 아래
+   zoomFitToHair는 <b>확대만</b> 하므로(k>1.02) 그 잘림을 되돌리지 못했다.
+   contain이면 원본이 항상 통째로 들어오고, 머리 확대는 zoomFitToHair가
+   캔버스를 넘지 않는 범위에서만 하므로 정수리가 잘릴 수 없다. */
 function computeFit(imgW, imgH, w, h){
   const ir=imgW/imgH, cr=w/h;
   let dw,dh,dx,dy;
-  if(ir>cr){dh=h;dw=h*ir;dx=(w-dw)/2;dy=0;}
-  else{dw=w;dh=w/ir;dx=0;dy=(h-dh)/2;}
+  if(ir>cr){dw=w;dh=w/ir;dx=0;dy=(h-dh)/2;}   // 원본이 더 납작 → 폭을 맞추고 위아래 여백
+  else{dh=h;dw=h*ir;dx=(w-dw)/2;dy=0;}        // 원본이 더 길쭉 → 높이를 맞추고 좌우 여백
   return {dw,dh,dx,dy};
 }
 
@@ -10426,23 +10439,79 @@ const HAIR3D_RENDER = {
        깊이 음영으로 근사할 뿐이다.
 ══════════════════════════════════════════════════════════════════ */
 const HAIR_QUILT = {
-  unit: 'bundle',      // 'strand' | 'bundle' | 'slice' — 잘라 붙일 단위
+  /* (2026-08-01) unit: 'bundle' → <b>'strip'</b>.
+     사용자: "'다발'bundle로 하지말고, 3.2px로 폭을 해서 잘라서, 그냥 이어붙이도록"
+     '다발'은 선을 여러 개 그어 만드는 <b>렌더 개념</b>이라 이식에는 애초에 없는
+     단위였는데 이름만 따라와 있었다. 이식이 하는 일은 "원본을 폭 3.2px로 잘라
+     그 조각을 경로에 맞대어 잇는 것" 뿐이므로 이름과 폭을 거기에 맞춘다. */
+  unit: 'strip',       // 'strand' | 'strip' | 'slice' — 잘라 붙일 단위
   /* 단위별 띠 폭(화면 CSS px). <b>다발 렌더 상수와 무관한 자기 숫자</b>다 —
-     이식에는 서브가닥이 없고, 원본 3.6px를 통째로 자르면 진짜 올들이 그 안에
-     이미 들어 있다. 3.6은 지금까지 눈으로 맞춰온 다발 폭을 이어받은 값. */
-  widthCss: { strand: 0.7, bundle: 3.6, slice: 14.4 },
+     이식에는 서브가닥이 없고, 원본을 통째로 자르면 진짜 올들이 그 안에 이미
+     들어 있다. 3.6(다발 폭에서 물려받은 값) → <b>3.2</b>(사용자 지정). */
+  widthCss: { strand: 0.7, strip: 3.2, bundle: 3.6, slice: 14.4 },
   widthMul: 1.0,       // 위 폭 대비 배율(미세 조정용)
-  strips:  28,         // 소스 띠 개수(많을수록 반복이 덜 보이고 준비가 느려짐)
+  strips:  36,         // 소스 띠 개수(많을수록 반복이 덜 보이고 준비가 느려짐)
+  candMul: 20,         // 후보 = strips × 이 값. 점수로 고르는 이상 후보가 많아야
+                       // 의미가 있다(28×8=224 → 36×20=720, 실기기 2,833가닥 중)
   stripStep: 3,        // 원본에서 결을 따라가는 보폭(원본 px)
   stripMax: 90,        // 띠 한 장의 최대 단계 수
   stripMin: 6,         // 이보다 짧게 끊기면 소스로 못 씀
   minCoh:  0.10,       // 이만큼 또렷한 자리에서만 뜬다(실기기 평균 0.28, 40%가 0.1 미만)
+
+  /* ── 결 선명도(grain) 채집 기준 (2026-08-01) ────────────────────────
+     사용자: "원본헤어결을 살릴 수 있는 곳을 채집하도록 바꿔줘"
+     지금까지 채집 기준은 coherence 하나였다. 그런데 coherence는 구조텐서 고유값
+     비 (λ1-λ2)/(λ1+λ2)라 <b>대비와 무관하게 정규화</b>된 값이다(이 파일 위쪽
+     주석에도 그렇게 적혀 있다). 즉 "방향이 일정한가"만 말할 뿐 <b>올이 눈에
+     보이는가</b>는 말하지 않는다. 그래서 매끈하게 뭉갠 검은 면(그늘진 옆머리,
+     역광에 날아간 정수리)도 방향만 일정하면 높은 점수로 뽑혀 왔고, 그 띠를
+     이어 붙이니 결이 없는 "칠한 머리"가 됐다.
+
+     진짜 헤어결이 보이는 자리는 이런 곳이다:
+       · 진행 방향에 <b>수직</b>으로 밝기가 촘촘히 출렁인다  ← 올과 올 사이 명암
+       · 진행 방향으로는 <b>매끈</b>하다                     ← 올이 길게 이어짐
+     그래서 두 방향의 <b>미세대비</b>(이웃 픽셀 밝기차의 평균 ÷ 평균 밝기)를 재고
+       결선명도 = perp × max(0, 2·perp/(perp+along) − 1)
+     로 쓴다. 앞항이 "얼마나 또렷한가"(절대 크기), 뒷항이 "얼마나 한 방향인가"다.
+       · 노이즈·잡티 → 두 방향이 같아 뒷항이 0 → 걸러짐
+       · 매끈한 그라데이션 → 뒷항은 1이지만 앞항이 0에 가까워 걸러짐
+       · 결과 직교하는 줄무늬 → perp가 0이라 걸러짐
+     ※ <b>비(perp/along)만 쓰면 안 된다</b> — 완만한 그라데이션도 along이 0이라
+       비가 크게 나온다(합성 테스트에서 확인). 절대 대비를 반드시 곱해야 한다.
+     (마스크 경계의 반투명 픽셀도 결처럼 출렁이므로 edgeMargin으로 따로 뺀다.) */
+  grainR:     4,       // 수직 표본 반경(원본 px) — 폭 3.2px 안팎의 올을 2~3개 담는 크기
+  grainStep:  4,       // 경로를 따라 몇 단계마다 결을 재는지
+  /* 문턱. 올려주신 스크린샷을 직접 재서 잡은 값이다(단위: 상대 미세대비).
+       원본 사진의 머릿결 있는 자리 …… 0.11 (10~90%: 0.00~0.29)
+       지금 합성된 헤어 ………………… 0.02 (10~90%: 0.00~0.09)  ← 원본의 1/5
+       피부 ……………………………… 0.001
+       배경 ……………………………… 0.000
+     즉 "느낌이 다르다"는 눈의 착각이 아니라 <b>미세대비가 실제로 1/5</b>이었다.
+     0.06은 원본의 결 있는 구간은 통과시키고 피부·배경·뭉갠 면은 떨어뜨리는 자리.
+     (0으로 두면 이 필터가 꺼지고 예전처럼 coherence만으로 고른다.) */
+  minGrain:   0.06,
+  edgeMargin: 3,       // 마스크 경계에서 이만큼 안쪽만 채집(반투명 테두리 배제, 원본 px)
+  /* 최종 점수 = wGrain×결선명도 + wCoh×coherence + (끝 포함 시 tipBonus).
+     결선명도는 0~0.3, coherence는 0~1 범위라 wGrain을 크게 잡아야 주항이 된다. */
+  wGrain:     4.0,
+  wCoh:       0.35,
+  tipBonus:   0.15,
+  /* 굽기 초과표본. 원본→곧게 편 띠(회전 리샘플 1회) → 캔버스(회전 리샘플 2회)로
+     두 번 흐려진다. 1차를 캔버스 해상도로 구워 두면 2차가 축소/등배가 되어
+     원본의 올이 훨씬 덜 뭉개진다. 1이면 예전 동작. */
+  bakeSS:  2,
   /* 조각내기 — 곧은 구간은 한 번에 그린다. 고정 길이로 잘게 쪼갰더니 가닥 하나에
      22조각이 나와 실기기 밀도(1,400줄)에서 3만 번을 그리게 됐다(합성 실측 209ms).
      방향이 이만큼 꺾일 때만 새 조각을 시작하면 대부분의 가닥이 서너 조각이 된다. */
   segTurn: 0.14,       // 조각을 나누는 방향 변화(rad, ≈8°)
   segMaxPx: 46,        // 한 조각의 최대 길이(캔버스 px)
   segMinPx: 6,         // 한 조각의 최소 길이
+  /* 조각을 그릴 때 경로 길이 대비 배율. 1.08이었다 — 조각끼리 8% 겹쳐 이음매를
+     지우려던 값인데, 겹친 만큼 <b>소스가 늘어나고 같은 무늬가 두 번 찍혔다</b>.
+     3.2px 폭에서 8%면 무늬 주기와 비슷해서 결이 뭉개지는 주범이었다.
+     사용자: "그냥 이어붙이도록" → <b>1.0 = 맞대기(butt join)</b>.
+     계단이 보이면 1.02 정도까지만 올릴 것(그 이상은 다시 겹친 무늬가 된다). */
+  segOverlap: 1.0,
   /* 띠 끝의 이 비율을 <b>모발 끝</b>으로 따로 쓴다(짧게 자를 때 가운데를 들어내고
      끝은 원본의 끝을 가져다 붙임). 코드로는 아래 sy 계산의 삼항 하나뿐이다.
      <b>0으로 두면 이 동작이 꺼지고</b> "그냥 그 길이만큼 잘라 씀"이 된다 —
@@ -10486,17 +10555,77 @@ function buildHairStripPool(angle, maskInf, swSrc){
   const sxr = ow / W, syr = oh / H;
   const angAt = (x, y)=> sampleOrientation(maskInf.orientation, x*sxr, ow, y*syr);
 
+  /* ── 결 선명도 측정 (2026-08-01) ───────────────────────────────────
+     "원본 헤어결이 살아 있는 자리"를 숫자로 정의한다. 밝기를 두 방향으로 훑어서
+       · 진행 방향 <b>수직</b>(perp): 올과 올 사이 명암이라 촘촘히 출렁여야 한다
+       · 진행 방향 <b>평행</b>(along): 한 올을 따라가는 거라 매끈해야 한다
+     각 방향의 <b>이웃 간 차이의 평균</b>을 밝기 평균으로 나눠(=상대 미세대비)
+     perp/along 비를 낸다. 두 방향이 같이 거친 곳(노이즈·경계·잡티)은 비가 1
+     근처가 되어 저절로 떨어지고, 결이 또렷한 곳만 1보다 크게 나온다.
+     ※ coherence를 대체하는 게 아니라 <b>보완</b>한다 — coherence는 방향이
+       일정한가, grain은 그 방향이 눈에 보이는가. 둘 다 필요하다. */
+  const lumAt = (x, y)=>{
+    const xi = x|0, yi = y|0;
+    if(xi < 0 || yi < 0 || xi >= W || yi >= H) return -1;
+    const i = (yi*W + xi)*4;
+    if(alpha[i+3] <= 200) return -1;                     // 반투명(경계)은 표본에서 뺀다
+    return 0.299*alpha[i] + 0.587*alpha[i+1] + 0.114*alpha[i+2];
+  };
+  // 마스크 안쪽 여유 — 경계의 반투명 띠는 결처럼 출렁여서 grain을 속인다
+  const inside = (x, y, m)=>{
+    if(!opaque(x, y)) return false;
+    for(let k=0;k<4;k++){
+      const a = k*Math.PI/2;
+      if(!opaque(x + Math.cos(a)*m, y + Math.sin(a)*m)) return false;
+    }
+    return true;
+  };
+  // 한 줄을 훑어 (이웃 간 평균 차이 ÷ 평균 밝기)를 낸다. 표본이 부실하면 null.
+  const ridgeOf = (px, py, dx, dy, R)=>{
+    const v = [];
+    for(let t=-R; t<=R; t++){
+      const L = lumAt(px + dx*t, py + dy*t);
+      if(L < 0) return null;                             // 마스크를 벗어남 = 이 자리는 못 씀
+      v.push(L);
+    }
+    let mean = 0; for(const L of v) mean += L; mean /= v.length;
+    if(mean < 6) return null;                            // 완전한 암부 — 결이 있어도 못 읽는다
+    let d = 0; for(let i=1;i<v.length;i++) d += Math.abs(v[i]-v[i-1]);
+    return (d / (v.length-1)) / mean;
+  };
+  const grainAt = (px, py, a)=>{
+    const R = Q.grainR, cs = Math.cos(a), sn = Math.sin(a);
+    const perp  = ridgeOf(px, py, -sn,  cs, R);          // 진행 방향에 수직
+    if(perp === null) return null;
+    const along = ridgeOf(px, py,  cs,  sn, R);          // 진행 방향에 평행
+    if(along === null) return null;
+    // 절대 대비 × 방향성. 둘 중 하나만 쓰면 각각 그라데이션/노이즈에 속는다.
+    const aniso = perp / (perp + along + 1e-6);
+    return perp * Math.max(0, 2*aniso - 1);
+  };
+
   // ── 출발점: 마스크가 있는 컬럼을 고르게 훑어 뿌리에서 시작 ──
   const cols = [];
   for(let x=0;x<W;x++) if(maskInf.scalpY[x] >= 0) cols.push(x);
   if(cols.length < 4) return null;
 
   const raw = [];
+  /* 결 문턱에 걸린 후보를 버리지 않고 모아 둔다 — 사진 전체가 평평하게 찍힌
+     경우(검은 머리 + 확산광)엔 문턱을 넘는 띠가 아예 없을 수 있다. 그때
+     "하나도 못 떴다"로 폴백해 버리면 화면이 예전과 <b>똑같아 보여서</b> 왜
+     안 바뀌는지 알 수가 없다(전에 실제로 그랬다). 모자라면 여기서 채운다. */
+  const weak = [];
   /* [진단] 왜 띠를 못 떴는지 알아야 한다. 실기기에서 "픽셀 이식을 켰는데 똑같다"가
      나왔는데, 조용히 false를 돌려 기존 가닥 렌더로 폴백한 것이 원인이었다.
      실패할 때 <b>이유와 숫자</b>를 남긴다 — 그래야 문턱을 짐작으로 안 흔든다. */
-  const rej = { coh:0, short:0, dark:0, ok:0 };
+  const rej = { coh:0, short:0, dark:0, flat:0, ok:0 };
   let tries = 0, srcKind = '결필드';
+  const seenGrain = [];   // [진단] 채택·탈락 무관하게 잰 결 선명도 — 문턱을 눈대중으로 못 흔들게
+  const medianOf = (arr)=>{
+    if(!arr.length) return 0;
+    const s = arr.slice().sort((a,b)=>a-b);
+    return s[s.length>>1];
+  };
 
   /* ── ① 이미 캡처해 둔 <b>2D 가닥 경로</b>를 그대로 소스로 쓴다 (2026-07-27 2차) ──
      처음엔 결필드를 따라 직접 걸었는데, coherence가 낮으면 걷질 못해 띠가 안 떠졌다.
@@ -10510,36 +10639,51 @@ function buildHairStripPool(angle, maskInf, swSrc){
   if(rec && rec.strands && rec.strands.length){
     srcKind = '캡처 가닥 경로';
     const N = rec.strands.length;
-    tries = Math.min(N, Q.strips * 8);
+    tries = Math.min(N, Q.strips * Q.candMul);
     for(let t=0; t<tries; t++){
       const sp = rec.strands[Math.floor(t * (N - 1) / Math.max(1, tries - 1))];
       const pts = sp && sp.pts;
       if(!pts || pts.length < 3){ rej.short++; continue; }
       const steps = []; let left = false, run = 0, cohSum = 0, cohN = 0;
+      const grains = [];
       for(let i=0; i<pts.length && steps.length < Q.stripMax; i++){
         const P = pts[i];
         if(!opaque(P.x, P.y)){ left = true; break; }       // 마스크를 벗어남 = 모발 끝
         const A = pts[Math.max(0, i-1)], B = pts[Math.min(pts.length-1, i+1)];
-        steps.push({ x:P.x, y:P.y, a: Math.atan2(B.y-A.y, B.x-A.x) });
+        const a = Math.atan2(B.y-A.y, B.x-A.x);
+        steps.push({ x:P.x, y:P.y, a });
         if(i > 0) run += Math.hypot(P.x-pts[i-1].x, P.y-pts[i-1].y);
         /* 방향은 경로가 주므로 coherence가 <b>필요하지는</b> 않다. 다만 어느 띠를
            고를지의 <b>품질 점수</b>로는 여전히 쓴다 — coherence가 높다는 건 그
            자리에서 올과 올이 실제로 구분돼 보인다는 뜻이라, 결이 든 소스다.
            (사용자: "그 중에서 coherence가 뚜렷한 걸 가져온다는 거지?") */
         if((i % 3) === 0){ const o = angAt(P.x, P.y); if(o){ cohSum += o.coherence; cohN++; } }
+        /* (2026-08-01) 여기서 <b>결이 실제로 보이는지</b>를 잰다. 경계 안쪽
+           edgeMargin 만큼 여유가 있는 자리에서만 — 반투명 테두리는 결처럼
+           출렁여서 점수를 부풀린다. */
+        if((i % Q.grainStep) === 0 && inside(P.x, P.y, Q.edgeMargin + Q.grainR)){
+          const g = grainAt(P.x, P.y, a);
+          if(g !== null) grains.push(g);
+        }
       }
       if(steps.length < Q.stripMin){ rej.short++; continue; }
+      /* 결이 안 보이는 자리는 <b>버린다</b>. 예전엔 이런 띠도 coherence만 높으면
+         뽑혀서, 이어 붙였을 때 "칠한 머리"가 됐다(사용자: "원본과 느낌이 많이 달라"). */
+      const grain = medianOf(grains);
+      if(grains.length) seenGrain.push(grain);
+      const cand = { steps, hasTip: left, coh: cohN ? cohSum/cohN : 0, grain, sec: sp.sec || 'crown',
+                     // 행 높이는 실제 점 간격 — 띠의 길이 축척이 원본과 맞아야 한다
+                     stepPx: Math.max(1, run / (steps.length - 1)) };
+      if(Q.minGrain > 0 && (grains.length < 2 || grain < Q.minGrain)){ rej.flat++; weak.push(cand); continue; }
       rej.ok++;
-      // 행 높이는 실제 점 간격 — 띠의 길이 축척이 원본과 맞아야 한다
-      raw.push({ steps, hasTip: left, coh: cohN ? cohSum/cohN : 0, sec: sp.sec || 'crown',
-                 stepPx: Math.max(1, run / (steps.length - 1)) });
+      raw.push(cand);
     }
   }
 
   /* ── ② 폴백: 캡처 경로가 없으면 결필드를 직접 걷는다 ── */
-  if(!raw.length){
+  if(!raw.length && !weak.length){
     srcKind = '결필드 직접 걷기';
-    tries = Math.min(cols.length, Q.strips * 8);
+    tries = Math.min(cols.length, Q.strips * Q.candMul);
     for(let t=0; t<tries; t++){
       const x0 = cols[Math.floor(t * (cols.length - 1) / Math.max(1, tries - 1))];
       // 두피선 바로 위는 마스크 가장자리라 반투명일 수 있다 — 불투명해질 때까지 조금 내려간다
@@ -10567,14 +10711,38 @@ function buildHairStripPool(angle, maskInf, swSrc){
         py += Math.sin(a) * Q.stripStep;
       }
       if(steps.length < Q.stripMin){ rej.short++; continue; }
+      // 폴백 경로도 같은 잣대로 잰다 — 여기만 예전 기준이면 뷰마다 결이 달라진다
+      const grains = [];
+      for(let i=0;i<steps.length;i+=Q.grainStep){
+        const s = steps[i];
+        if(!inside(s.x, s.y, Q.edgeMargin + Q.grainR)) continue;
+        const g = grainAt(s.x, s.y, s.a);
+        if(g !== null) grains.push(g);
+      }
+      const grain = medianOf(grains);
+      if(grains.length) seenGrain.push(grain);
+      const cand = { steps, hasTip: left, coh: cohSum / steps.length, grain, sec: 'crown', stepPx: Q.stripStep };
+      if(Q.minGrain > 0 && (grains.length < 2 || grain < Q.minGrain)){ rej.flat++; weak.push(cand); continue; }
       rej.ok++;
-      raw.push({ steps, hasTip: left, coh: cohSum / steps.length, sec: 'crown', stepPx: Q.stripStep });
+      raw.push(cand);
     }
+  }
+
+  /* ── 문턱을 넘은 띠가 모자라면 <b>결이 좋은 순서로</b> 채운다 ──────────
+     "결이 보이는 곳만 쓴다"는 원칙은 유지하되, 그것 때문에 이식 자체가 꺼지면
+     사용자에게는 아무 변화도 안 보인다. 부족분만 차선으로 메우고, 콘솔에
+     <b>몇 장이 차선인지</b> 남겨 문턱이 현실적인 값인지 판단할 수 있게 한다. */
+  let topUp = 0;
+  if(raw.length < Q.strips && weak.length){
+    weak.sort((p,q)=> q.grain - p.grain);
+    for(const c of weak){ if(raw.length >= Q.strips) break; raw.push(c); topUp++; }
   }
   if(!raw.length){
     console.warn(`[${angle}] 헤어 띠를 하나도 못 떴다 — 시도 ${tries}회 중`
       + ` 결이 흐려서 ${rej.coh} · 시작점이 투명해서 ${rej.dark} · 너무 짧아서 ${rej.short}`
-      + ` (소스: ${srcKind}, 문턱: 또렷함 ${Q.minCoh}, 최소 ${Q.stripMin}단계)`);
+      + ` · 결이 안 보여서 ${rej.flat}`
+      + ` (소스: ${srcKind}, 문턱: 또렷함 ${Q.minCoh}, 결선명도 ${Q.minGrain}, 최소 ${Q.stripMin}단계`
+      + `, 실측 결선명도 중앙값 ${medianOf(seenGrain).toFixed(2)})`);
     _quiltPool[key] = { src: hairC, pool: null }; return null;
   }
   /* ── 고르기: 또렷한 것 우선, 단 <b>섹션마다 골고루</b> ──────────────
@@ -10582,7 +10750,10 @@ function buildHairStripPool(angle, maskInf, swSrc){
      전부 나와서 머리 전체가 그 한 곳처럼 보인다. 실제로는 크라운과 네이프의
      빛·색이 다르다. 그래서 섹션별로 나눠 각자 상위를 뽑고, 남는 자리만 전체
      상위로 채운다. 그리고 붙일 때도 <b>같은 섹션 띠를 우선</b>해서 쓴다. */
-  const scoreOf = r => (r.hasTip ? 0.15 : 0) + r.coh;   // 끝이 든 띠에 약간 가산
+  /* (2026-08-01) 점수의 <b>주항이 결 선명도</b>가 됐다. coherence는 보조항으로
+     남긴다 — 방향이 흔들리는 자리에서 뜬 띠는 이어 붙일 때 무늬가 어긋난다.
+     끝 가산은 그대로(사용자: "그나마 헤어끝은 갈라진게 있어서 그런 느낌이 나는데"). */
+  const scoreOf = r => Q.wGrain * (r.grain || 0) + Q.wCoh * r.coh + (r.hasTip ? Q.tipBonus : 0);
   raw.sort((p, q)=> scoreOf(q) - scoreOf(p));
   const bySec = new Map();
   for(const r of raw){ if(!bySec.has(r.sec)) bySec.set(r.sec, []); bySec.get(r.sec).push(r); }
@@ -10594,28 +10765,42 @@ function buildHairStripPool(angle, maskInf, swSrc){
     }
   for(const r of raw){ if(picked.length>=Q.strips) break; if(!seen.has(r)) picked.push(r); }
 
-  // ── 곧게 펴서 굽기 (폭 swSrc × 길이 steps×행높이), 깊이 음영 단계별로 ──
-  const SW = Math.max(2, swSrc | 0);
+  /* ── 곧게 펴서 굽기 (폭 swSrc × 길이 steps×행높이), 깊이 음영 단계별로 ──
+     (2026-08-01) <b>초과표본(ss)</b>을 넣었다. 이식은 회전 리샘플을 두 번 거친다
+     — ①원본→곧게 편 띠, ②띠→캔버스(경로 방향으로 다시 회전). 띠를 원본 해상도
+     그대로 구우면 ①에서 이미 올이 뭉개진 뒤 ②에서 확대돼, 3.2px 안의 결이
+     "번진 회색 띠"가 된다. 띠를 ss배로 구워 두면 ①의 손실이 그만큼 줄고 ②가
+     축소 방향이 되어 원본의 올이 살아 남는다.
+     ※ 아래 좌표는 두 벌이다 — SW/SH는 <b>구운 캔버스</b> 크기, oSW/oSH는
+       <b>원본 px</b> 크기. 붙이는 쪽 길이 계산은 전부 원본 px(oSH)로 한다. */
+  const ss   = Math.max(1, Math.min(4, Math.round(Q.bakeSS || 1)));
+  const oSW  = Math.max(2, swSrc | 0);
+  const SW   = Math.max(2, Math.round(oSW * ss));
   const pool = [];
   for(let k=0; k<picked.length; k++){
     const r = picked[k];
     const rowH = r.stepPx || Q.stripStep;                    // 소스마다 점 간격이 다르다
-    const SH = Math.max(2, Math.round(r.steps.length * rowH));
+    const oSH  = Math.max(2, Math.round(r.steps.length * rowH));
+    const SH   = Math.max(2, Math.round(oSH * ss));
+    const rowHb = rowH * ss;
     const flat = document.createElement('canvas'); flat.width = SW; flat.height = SH;
     const fx = flat.getContext('2d');
+    fx.imageSmoothingEnabled = true;
+    if(fx.imageSmoothingQuality) fx.imageSmoothingQuality = 'high';
     for(let i=0; i<r.steps.length; i++){
       const s = r.steps[i];
       fx.save();
-      fx.beginPath(); fx.rect(0, i*rowH, SW, rowH + 1); fx.clip();
+      fx.beginPath(); fx.rect(0, i*rowHb, SW, rowHb + 1); fx.clip();
       // 원본의 (s.x,s.y)·방향 s.a 를 띠의 (SW/2, 이 행)·+y 로 보낸다
-      fx.translate(SW/2, i*rowH + rowH/2);
+      fx.translate(SW/2, i*rowHb + rowHb/2);
+      fx.scale(ss, ss);
       fx.rotate(Math.PI/2 - s.a);
       fx.translate(-s.x, -s.y);
       fx.drawImage(hairC, 0, 0);
       fx.restore();
     }
     // 양옆만 살짝 페더 — 틈은 살려야 하므로 얇게
-    const fw = Math.max(0.5, SW * Q.edgeFeather);
+    const fw = Math.max(0.5 * ss, SW * Q.edgeFeather);
     const g = fx.createLinearGradient(0, 0, SW, 0);
     g.addColorStop(0, 'rgba(0,0,0,0)');
     g.addColorStop(Math.min(0.49, fw/SW), 'rgba(0,0,0,1)');
@@ -10636,14 +10821,18 @@ function buildHairStripPool(angle, maskInf, swSrc){
       cx2.fillRect(0, 0, SW, SH);
       shades.push(cv);
     }
-    pool.push({ shades, SW, SH, hasTip: r.hasTip, sec: r.sec, coh: r.coh });
+    pool.push({ shades, SW, SH, ss, oSW, oSH,
+                hasTip: r.hasTip, sec: r.sec, coh: r.coh, grain: r.grain || 0 });
   }
   _quiltPool[key] = { src: hairC, pool };
-  const cohs = pool.map(q=>q.coh);
+  const cohs = pool.map(q=>q.coh), grs = pool.map(q=>q.grain);
   console.log(`[${angle}] 헤어 띠 — ${pool.length}장 채택(소스: ${srcKind}, 후보 ${raw.length}/${tries}시도,`
-    + ` 탈락: 흐림 ${rej.coh}·투명 ${rej.dark}·짧음 ${rej.short}) · 폭 ${SW}원본px`
-    + ` · 길이 ${Math.round(pool.reduce((s,q)=>s+q.SH,0)/pool.length)}원본px`
+    + ` 탈락: 흐림 ${rej.coh}·투명 ${rej.dark}·짧음 ${rej.short}·결없음 ${rej.flat}) · 폭 ${oSW}원본px×${ss}배 굽기`
+    + ` · 길이 ${Math.round(pool.reduce((s,q)=>s+q.oSH,0)/pool.length)}원본px`
     + ` · 모발 끝 포함 ${pool.filter(q=>q.hasTip).length}장`
+    + ` · 결선명도 ${Math.max(...grs).toFixed(2)}~${Math.min(...grs).toFixed(2)}`
+    + ` (문턱 ${Q.minGrain}, 전체 중앙값 ${medianOf(seenGrain).toFixed(2)}`
+    + (topUp ? `, 문턱 미달로 채운 것 ${topUp}장 ← 문턱이 이 사진엔 높다` : '') + ')'
     + ` · 또렷함 ${Math.max(...cohs).toFixed(2)}~${Math.min(...cohs).toFixed(2)}`
     + ` · 섹션 ${[...new Set(pool.map(q=>q.sec))].join(',')}`);
   return pool;
@@ -10704,7 +10893,7 @@ function projectHairQuiltToView(ctx, fit, angle, maskInf){
     ? (ctx.canvas.getBoundingClientRect().width || ctx.canvas.width) : ctx.canvas.width;
   const pxRatio = Math.max(1, (ctx.canvas.width || fit.dw) / Math.max(1, cssW)); // 백킹px / CSS px
   const wCss = Q.widthCss[Q.unit];
-  const drawW = Math.max(1, (typeof wCss === 'number' ? wCss : Q.widthCss.bundle) * pxRatio * Q.widthMul);
+  const drawW = Math.max(1, (typeof wCss === 'number' ? wCss : Q.widthCss.strip) * pxRatio * Q.widthMul);
 
   const pxScale = Math.max(1e-6, fit.dw / Math.max(1, maskInf.w));  // 원본px → 캔버스px
   const pool = buildHairStripPool(angle, maskInf, Math.round(drawW / pxScale));
@@ -10773,34 +10962,50 @@ function projectHairQuiltToView(ctx, fit, angle, maskInf){
     const p = from[(rnd() * from.length) | 0];
     const lvl = Math.max(0, Math.min(Q.shade-1, Math.round((L.depth - dMin) / span * (Q.shade-1))));
     const img = p.shades[lvl];
-    const tipSrc  = p.SH * Q.tipFrac;
-    const bodySrc = Math.max(1, p.SH - tipSrc);
+    const tipSrc  = p.oSH * Q.tipFrac;
+    const bodySrc = Math.max(1, p.oSH - tipSrc);
     const srcTotal = L.total / pxScale;                        // 목표 길이를 원본 단위로
     const tipUse  = Math.min(tipSrc, srcTotal * 0.5);
     const bodyUse = srcTotal - tipUse;                         // 여기까지는 몸통, 그 뒤는 끝
+    /* ── 맞대기 이음 (2026-08-01) ──────────────────────────────────
+       사용자: "3.2px로 폭을 해서 잘라서, <b>그냥 이어붙이도록</b>"
+       예전 코드가 그냥 잇지 않고 있었다. 두 군데가 원인이다.
+         ① dh = len × 1.08 — 조각을 8% 늘려 겹쳐 그렸다. 이음매는 지워지지만
+            겹친 구간에 같은 무늬가 두 번 찍히고 세로로 8% 늘어난다. 폭 3.2px에서
+            8%는 올 간격과 같은 크기라, 결이 <b>주기적으로 뭉개져</b> 원본과 다른
+            질감이 됐다.
+         ② h = min(need, SH-sy) 로 소스만 줄이고 dh는 그대로 뒀다 — 띠 끝에
+            가까운 조각은 짧은 소스를 긴 자리에 <b>늘여</b> 찍었다(같은 증상).
+       이제 소스 구간(need)과 그리는 길이(dh)의 비를 항상 pxScale로 고정한다.
+       = 원본에서 잘라낸 그대로의 축척. 늘리지도 겹치지도 않는다. */
     for(const g of cutSegments(L)){
       const u = g.s0 / pxScale;                                // 원본 단위 진행량
+      const need = Math.max(1, Math.min(g.len / pxScale, p.oSH));  // 이 조각이 먹을 소스 길이
       // 가운데를 들어낸다: 몸통은 띠 앞에서(길면 되감기), 끝은 띠 끝에서
-      const sy = (u < bodyUse) ? (u % bodySrc) : (bodySrc + (u - bodyUse));
-      if(sy >= p.SH) break;
-      const h = Math.min(g.len / pxScale, p.SH - sy);
-      if(h <= 0) break;
+      let sy = (u < bodyUse) ? (u % bodySrc) : (bodySrc + (u - bodyUse));
+      /* 되감기·끝 구간에서 소스가 모자라면 <b>시작 위치를 당긴다</b>(예전엔
+         잘라 쓰고 늘렸다). 조각 경계는 방향이 꺾이는 자리라 가장 안 보이는 곳이다. */
+      sy = Math.max(0, Math.min(p.oSH - need, sy));
       const A = L.cp[g.i0], B = L.cp[g.i1];
       ctx.save();
       ctx.translate((A.x+B.x)/2, (A.y+B.y)/2);
       ctx.rotate(Math.atan2(B.y-A.y, B.x-A.x) - Math.PI/2);    // 띠의 +y를 진행 방향으로
-      /* 그리는 길이는 <b>경로의 길이</b>여야 한다. 소스 길이(h)로 그렸더니
-         띠 끝에서 h가 잘릴 때 그만큼 경로에 <b>구멍</b>이 났다(합성 샘플에서 흰
-         네모로 보였음). 소스가 모자라면 조금 늘어나는 편이 낫다. */
-      const dh = g.len * 1.08;                                 // 조각끼리 살짝 겹쳐 이음매를 지운다
-      ctx.drawImage(img, 0, sy, p.SW, h, -drawW/2, -dh/2, drawW, dh);
+      const dh = g.len * Q.segOverlap;                         // 1.0 = 맞대기
+      /* 소스 좌표는 <b>구운 캔버스</b> 단위(원본 × ss)로 환산해서 넘긴다.
+         SH = round(oSH×ss)라 반올림으로 반 픽셀 넘칠 수 있는데, 소스 사각형이
+         이미지를 벗어나면 브라우저가 <b>목적지까지 같이 잘라</b> 조각이 짧아진다
+         (= 경로에 구멍). 그래서 굽기 좌표에서 한 번 더 잘라 준다. */
+      const needB = Math.min(need * p.ss, p.SH);
+      const syB   = Math.max(0, Math.min(p.SH - needB, sy * p.ss));
+      ctx.drawImage(img, 0, syB, p.SW, needB, -drawW/2, -dh/2, drawW, dh);
       ctx.restore();
       segs++;
     }
   }
   ctx.restore();
   logQuiltRender(angle, { pool: pool.length, lanes: lanes.length, segs, drawW, unit: Q.unit,
-                          swSrc: pool[0].SW, tips: pool.filter(q=>q.hasTip).length, sameSec });
+                          swSrc: pool[0].oSW, ss: pool[0].ss,
+                          tips: pool.filter(q=>q.hasTip).length, sameSec });
   setQuiltTag(`픽셀 이식 · 띠 ${pool.length}장(끝 ${pool.filter(q=>q.hasTip).length}) · 폭 ${drawW.toFixed(1)}px`);
   return true;
 }
@@ -10809,12 +11014,13 @@ function logQuiltRender(angle, m){
   const key = angle + '|' + m.pool + '|' + m.unit + '|' + m.swSrc;
   window._lastQuiltDiag = window._lastQuiltDiag || {};
   window._lastQuiltDiag[angle] = { pool:m.pool, lanes:m.lanes, segs:m.segs,
-                                   drawW:+m.drawW.toFixed(2), unit:m.unit, swSrc:m.swSrc,
+                                   drawW:+m.drawW.toFixed(2), unit:m.unit, swSrc:m.swSrc, ss:m.ss,
                                    tips:m.tips, sameSec:m.sameSec };
   if(key === _quiltLogKey) return;
   _quiltLogKey = key;
   console.log(`[${angle}] 헤어 이식 — 띠 ${m.pool}장(끝 포함 ${m.tips}) · 단위 ${m.unit}`
-    + ` 폭 ${m.drawW.toFixed(1)}px(원본 ${m.swSrc}px) · ${m.lanes}줄 · 조각 ${m.segs}개`
+    + ` 폭 ${m.drawW.toFixed(1)}px(원본 ${m.swSrc}px, ${m.ss}배 굽기) · ${m.lanes}줄 · 조각 ${m.segs}개`
+    + ` · 이음 ${HAIR_QUILT.segOverlap === 1 ? '맞대기' : '겹침 ×'+HAIR_QUILT.segOverlap}`
     + ` · 같은 섹션 띠를 쓴 줄 ${m.sameSec}/${m.lanes}`);
 }
 
