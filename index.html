@@ -775,6 +775,43 @@
   없다. 사용자 실기기에서도 "그대로"였다. 층 배치가 아니라 <b>두께</b>가 문제였다.
   (두피면 분리 후에는 t가 실제로 의미를 갖게 되므로 이 스위치도 그때 다시 볼 것.)
 
+  ── 2026-08-01 (6) 렌더 ↔ 원본 사진 비교자 ──
+  사용자: "세그멘테이션에서 제외하는 것과, 원본 결이 나오면 일단 원본사진헤어와
+  맞춰서 비교하는 게 나을까" → 비교가 먼저. 두 가지 이유:
+  ① 이번 세션 내내 <b>잰 것</b>은 전부 범인을 찍었고(팽창 23px, 두께 0~3mm,
+     법선 오차 34°) <b>짐작한 것</b>은 두 번 다 틀렸다(귀 랜드마크, 뿌리 램프).
+     그런데 정작 "렌더된 결이 사진의 결과 같은가"는 한 번도 안 쟀다.
+  ② 클립을 먼저 걸면 위험하다. 마스크 밖 잉크는 대부분 <b>연장층</b>이라
+     (front 767px 중 클립층 37px) 경로가 틀려서 나가는 것이다. 클립만 걸면
+     틀린 이유로 맞아 보이게 되고, 길이를 늘리는 순간 같은 틀림이 돌아온다.
+
+  구조 변경 — <b>헤어를 자기 레이어에 그린다</b>. 예전엔 세 경로(이식/가닥투영/
+  2D폴백)가 배경 사진 위에 직접 그려서 헤어 픽셀을 분리할 수 없었다. 레이어로 빼니
+  비교가 가능해지고, 다음 단계인 클립도 이 레이어에 destination-in <b>한 줄</b>이면
+  된다(경로 세 개를 각각 고칠 필요가 없다).
+  ※ 다발 폭 역산이 화면 표시 폭을 쓰는데 오프스크린은 0을 돌려준다 —
+    _sizeRef로 원본 캔버스를 물려서 렌더 결과가 레이어 도입 전과 동일하게 유지.
+
+  measureRenderVsPhoto — 뷰당 세 숫자, 콘솔 [비교] 2줄 + window._lastMatch:
+    ① 실루엣 IoU — 렌더를 번지게 해 "머리카락 있는 구역"으로 만든 뒤 마스크와 비교.
+       채움%(마스크를 얼마나 덮었나)와 샘%(밖으로 나갔나)를 함께.
+       ※ 처음엔 픽셀 IoU를 그냥 쟀다가 버렸다 — 헤어는 설계상 틈이 있는 가는 선이라
+         (다발 3.6px, 틈 0.5px) 실루엣이 아니라 <b>선 밀도</b>가 나온다.
+         하네스에서 렌더가 마스크를 정확히 덮었는데도 IoU 0.125였다.
+    ② 결 일치 — 렌더 결과에 <b>같은 구조텐서</b>(computeHairOrientationField)를
+       돌려 나온 각도를 사진의 결 필드와 비교, 양쪽 coherence 곱 가중 평균 각오차.
+       사진과 렌더에 같은 자를 대는 것이라 사과 대 사과.
+    ③ 밀도 3×3 — 마스크 바운딩박스를 9칸으로, 칸마다 잉크 채움률.
+
+  Chromium 하네스 검증(정답을 아는 합성 입력):
+    결 일치 — 렌더/사진 각도차 0·15·30·45·60·90°에 대해 89.9/77.9/63.0/45.0/27.0/0.1°
+              (정답 90/75/60/45/30/0 대비 최대 3° 오차, 래스터 양자화)
+    실루엣  — 완전 일치 IoU 0.969·채움100%·샘3.1% / 60%만 그림 IoU 0.380·채움38%
+              / 140% 과다 IoU 0.517·샘48.3%
+    밀도    — 도넛(가운데 빈) 렌더 → 3×3 가운데 칸 <b>0</b>, 링 35~50.
+              "중간이 휑하다"가 그대로 숫자로 나온다.
+  rebuildHair3D()가 로그 캐시를 비우므로 A/B마다 새 숫자가 찍힌다.
+
   아직 열려 있는 진짜 문제(별건, 사용자 확인 대기): getHeadEllipsoid는
   reasonMask===1 즉 <b>머리카락</b> 실루엣을 잰다(measureRowHalfWidth). 그런데
   코드는 이걸 두개골로 쓴다(8000번대에 const skull = getHeadEllipsoid()).
@@ -6058,12 +6095,27 @@ function renderFrame(canvas, angle){
         // 조정 경로가 아니라 폴백(중립 모델 미준비/투영 실패/원본 결 보기)이다.
         const canProject = !rawMode && state.hair3Dneutral
           && state.hair3Dneutral.viewCal && state.hair3Dneutral.viewCal[angle];
+        /* ── 헤어를 자기 <b>레이어</b>에 그린다 (2026-08-01) ────────────────
+           예전엔 세 경로(이식/가닥투영/2D폴백)가 전부 배경 사진 위에 직접 그렸다.
+           그러면 "그려진 헤어 픽셀"을 배경과 분리할 수 없어서 <b>잴 수가 없다</b>.
+           레이어로 빼면 두 가지가 한꺼번에 열린다:
+             · 비교 — 렌더 결과만 떼어 원본 사진/마스크와 대조(measureRenderVsPhoto)
+             · 클립 — 나중에 "세그멘테이션 밖에는 안 그린다"를 이 레이어에
+               destination-in <b>한 줄</b>로 걸 수 있다. 경로 세 개를 각각 고칠 필요가 없다.
+           _sizeRef: 다발 폭 역산이 화면 표시 폭을 쓰는데 오프스크린은 0을 돌려준다.
+           원본 캔버스를 물려서 렌더 결과가 레이어 도입 전과 동일하게 유지된다. */
+        const hairLayer = document.createElement('canvas');
+        hairLayer.width = ctx.canvas.width; hairLayer.height = ctx.canvas.height;
+        hairLayer._sizeRef = ctx.canvas;
+        const lctx = hairLayer.getContext('2d');
         // (2026-07-27) 픽셀 이식 경로 — 켜져 있으면 먼저 시도하고, 실패하면 가닥 렌더로 폴백
-        const quilted = canProject && state.hairQuilt && projectHairQuiltToView(ctx, fit, angle, maskInf);
-        if(!quilted && !(canProject && projectHair3DToView(ctx, fit, angle, maskInf))){
+        const quilted = canProject && state.hairQuilt && projectHairQuiltToView(lctx, fit, angle, maskInf);
+        if(!quilted && !(canProject && projectHair3DToView(lctx, fit, angle, maskInf))){
           // 가닥 오버레이 — origLen 이내는 hairCanvas 마스크로 clip, 연장분은 clip 없음(drawHairStrands 내부에서 처리)
-          drawHairStrands(ctx, fit, scalpY, hairEndY, maskW, maskH, hairC, buildStrandOpts(maskInf, angle, rawMode));
+          drawHairStrands(lctx, fit, scalpY, hairEndY, maskW, maskH, hairC, buildStrandOpts(maskInf, angle, rawMode));
         }
+        measureRenderVsPhoto(hairLayer, maskInf, fit, ctx.canvas.width, ctx.canvas.height, angle);
+        ctx.drawImage(hairLayer, 0, 0);
       }
 
     } else if(img){
@@ -7499,6 +7551,154 @@ function drawHairStrands(ctx, fit, scalpY, hairEndY, maskW, maskH, hairCanvas, o
      · base 누출 — 클립 마스크가 헐거움(닫기 연산 이전엔 여기가 컸다)
      · ext  누출 — 가닥 경로 자체가 마스크를 넘어감. 중립 상태에서 0이어야 정상이고,
        길이를 늘리면 당연히 올라간다(일부러 사진보다 길게 만드는 것이므로).      */
+/* 화면에 실제로 보이는 폭. 헤어를 오프스크린 <b>레이어</b>에 그리게 되면서
+   getBoundingClientRect()가 0을 돌려주는 경우가 생겼다(DOM에 없는 캔버스).
+   그대로 두면 다발 폭 역산의 pxRatio가 3 → 1로 바뀌어 렌더가 통째로 달라진다.
+   레이어에는 원본 캔버스를 _sizeRef로 물려서 같은 값을 보게 한다. */
+function displayWidthOf(canvas){
+  const ref = (canvas && canvas._sizeRef) || canvas;
+  try{ return ref.getBoundingClientRect().width || ref.width; }catch(e){ return canvas.width; }
+}
+
+/* ══════════════════════════════════════════════════════════════════
+   렌더 ↔ 원본 사진 비교자 (2026-08-01)
+   ─────────────────────────────────────────────────────────────────
+   사용자: "세그멘테이션에서 제외하는 것과, 원본 결이 나오면 일단 원본사진헤어와
+   맞춰서 비교하는 게 나을까"
+
+   비교가 먼저다. 이번 세션이 그걸 반복해서 증명했다 — <b>잰 것</b>은 전부 바로
+   범인을 찍었고(팽창 23px, 두께 0~3mm, 법선 오차 34°), <b>짐작한 것</b>은 두 번 다
+   틀렸다(귀 랜드마크, 뿌리 램프). 그런데 정작 제일 중요한 질문 "렌더된 결이
+   사진의 결과 같은가"는 한 번도 직접 안 쟀다. 3D 필드의 coherence(0.786)는
+   "네 뷰가 서로 동의하나"이지 "사진과 같나"가 아니다.
+
+   그리고 클립을 먼저 걸면 안 되는 이유가 있다. [진단·침범]이 말하는 마스크 밖
+   잉크는 대부분 <b>연장층</b>이다(front 767px 중 클립층 37px). 경로가 틀려서
+   나가는 것이지 그리기가 헐거워서가 아니다. 클립만 걸면 그 21%가 사라져서
+   <b>틀린 이유로 맞아 보이게</b> 되고, 스타일링으로 길이를 늘리는 순간 같은
+   틀림이 그대로 돌아온다(그때는 클립을 걸 수도 없다 — 길게 자른 머리는 원본
+   마스크 밖으로 나가는 게 맞으니까).
+
+   재는 것 세 가지(뷰당):
+     ① 실루엣 IoU — 그린 헤어 ∩ 마스크 / ∪. 밖으로 샌 것과 <b>안 그린 곳</b>
+        (정수리!)이 한 숫자에 같이 잡힌다.
+     ② 결 일치 — 렌더 결과에 <b>같은 구조텐서</b>를 돌려서 나온 각도를, 사진에서
+        뽑아 둔 결 필드와 비교. 양쪽 coherence를 곱해 가중 평균 각오차.
+        사진과 렌더에 완전히 같은 자를 대는 것이라 사과 대 사과다.
+     ③ 밀도 3×3 — 마스크 바운딩박스를 9칸으로 나눠 칸마다 채움률.
+        "중간이 휑하다"가 가운데 칸 숫자로 나온다.
+   전부 320px로 줄여서 잰다(비율이라 축소해도 값이 거의 같고, 렌더당 1회).
+══════════════════════════════════════════════════════════════════ */
+/* fillBlur/fillThr: 실루엣을 재려면 가닥을 <b>영역</b>으로 메워야 한다.
+   헤어는 설계상 틈이 있는 가는 선이라(다발 폭 3.6px, 틈 0.5px) 픽셀 IoU를 그대로
+   재면 실루엣 일치가 아니라 <b>선 밀도</b>가 나온다 — 하네스에서 렌더가 마스크를
+   정확히 덮었는데도 IoU 0.125가 나왔다. 알파를 살짝 번지게 한 뒤 문턱을 걸어
+   "머리카락이 있는 구역"으로 바꿔서 잰다. 밀도는 아래 3×3에서 따로 본다. */
+const RENDER_MATCH = { on: true, w: 320, inkAlpha: 24, minCoh: 0.05,
+                       fillBlur: 0.012, fillThr: 20 };
+let _matchLogged = {};
+function measureRenderVsPhoto(layerCanvas, maskInf, fit, cw, ch, angle){
+  if(!RENDER_MATCH.on || !angle || !maskInf) return null;
+  try{
+    const W = Math.min(RENDER_MATCH.w, cw), H = Math.max(1, Math.round(ch * W / cw));
+    const grab = (src, fitDraw)=>{
+      const c = document.createElement('canvas'); c.width=W; c.height=H;
+      const x = c.getContext('2d', { willReadFrequently:true });
+      if(fitDraw) x.drawImage(src, fit.dx*W/cw, fit.dy*H/ch, fit.dw*W/cw, fit.dh*H/ch);
+      else x.drawImage(src, 0, 0, W, H);
+      return x.getImageData(0,0,W,H).data;
+    };
+    const L = grab(layerCanvas, false);                                   // 렌더된 헤어(레이어)
+    const hairC = state.hairCanvases && state.hairCanvases[angle];
+    if(!hairC) return null;
+    const M = grab(hairC, true);                                          // 원본 세그멘테이션
+    // 실루엣 비교용 — 가닥을 번지게 해서 "머리카락이 있는 구역"으로
+    const F = (()=>{
+      const c = document.createElement('canvas'); c.width=W; c.height=H;
+      const x = c.getContext('2d', { willReadFrequently:true });
+      x.filter = `blur(${Math.max(1.5, W*RENDER_MATCH.fillBlur)}px)`;
+      x.drawImage(layerCanvas, 0, 0, W, H);
+      x.filter = 'none';
+      return x.getImageData(0,0,W,H).data;
+    })();
+
+    // ── ① 실루엣 IoU (메운 렌더 vs 마스크) ──
+    let inter=0, uni=0, inkIn=0, inkOut=0, maskOnly=0;
+    const ink = new Uint8Array(W*H), msk = new Uint8Array(W*H), fil = new Uint8Array(W*H);
+    for(let i=0;i<W*H;i++){
+      const a = L[i*4+3] > RENDER_MATCH.inkAlpha;
+      const f = F[i*4+3] > RENDER_MATCH.fillThr;
+      const m = M[i*4+3] > 40;
+      ink[i]=a?1:0; msk[i]=m?1:0; fil[i]=f?1:0;
+      if(f&&m){ inter++; inkIn++; } else if(f){ inkOut++; } else if(m){ maskOnly++; }
+      if(f||m) uni++;
+    }
+    const iou = uni ? inter/uni : 0;
+
+    // ── ② 결 일치 — 렌더에 같은 구조텐서를 돌린다 ──
+    // 알파를 밝기로 쓴다(가닥 패턴이 곧 알파). 투명 배경과의 경계 잡음을 피하려고
+    // 마스크는 잉크 자체로 준다.
+    const px = new Uint8ClampedArray(W*H*4);
+    for(let i=0;i<W*H;i++){ const a=L[i*4+3]; px[i*4]=px[i*4+1]=px[i*4+2]=a; px[i*4+3]=255; }
+    const mbuf = new Uint8Array(W*H);
+    for(let i=0;i<W*H;i++) mbuf[i] = ink[i] ? 255 : 0;
+    const R = computeHairOrientationField(px, mbuf, W, H);
+    // 사진 쪽은 이미 뽑아 둔 컬럼 샘플에서 읽는다(같은 필드, 같은 정의)
+    const ow = maskInf.maskW || maskInf.w, oh = maskInf.maskH || maskInf.h;
+    let wsum=0, esum=0, n=0;
+    for(let y=0;y<H;y++) for(let x=0;x<W;x++){
+      const i=y*W+x;
+      if(!ink[i] || !msk[i]) continue;                                    // 둘 다 있는 자리에서만
+      const cr = R.coherence[i]; if(!(cr >= RENDER_MATCH.minCoh)) continue;
+      // 레이어 픽셀 → 원본 이미지 좌표 → 결 필드 좌표
+      const ix = (x*cw/W - fit.dx) / fit.dw * maskInf.w;
+      const iy = (y*ch/H - fit.dy) / fit.dh * maskInf.h;
+      if(ix<0||iy<0||ix>=maskInf.w||iy>=maskInf.h) continue;
+      const o = sampleOrientation(maskInf.orientation, ix*(ow/maskInf.w), ow, iy*(oh/maskInf.h));
+      if(!o || !(o.coherence >= RENDER_MATCH.minCoh)) continue;
+      // 결은 180° 주기 — 각차를 [0, 90°]로 접는다
+      let d = Math.abs(R.angle[i] - o.angle) % Math.PI;
+      if(d > Math.PI/2) d = Math.PI - d;
+      const w = cr * o.coherence;
+      esum += d*w; wsum += w; n++;
+    }
+    const grainDeg = wsum ? (esum/wsum)*180/Math.PI : null;
+
+    // ── ③ 밀도 3×3 (마스크 바운딩박스 안) ──
+    let x0=W,x1=-1,y0=H,y1=-1;
+    for(let y=0;y<H;y++) for(let x=0;x<W;x++) if(msk[y*W+x]){
+      if(x<x0)x0=x; if(x>x1)x1=x; if(y<y0)y0=y; if(y>y1)y1=y; }
+    const grid = [];
+    if(x1>=x0 && y1>=y0){
+      const bw=(x1-x0+1)/3, bh=(y1-y0+1)/3;
+      for(let gy=0;gy<3;gy++){ const row=[];
+        for(let gx=0;gx<3;gx++){
+          let mc=0, ic=0;
+          for(let y=Math.floor(y0+gy*bh); y<Math.floor(y0+(gy+1)*bh); y++)
+            for(let x=Math.floor(x0+gx*bw); x<Math.floor(x0+(gx+1)*bw); x++){
+              const i=y*W+x; if(msk[i]){ mc++; if(ink[i]) ic++; } }
+          row.push(mc ? Math.round(ic/mc*100) : -1);
+        }
+        grid.push(row);
+      }
+    }
+    const res = { iou:+iou.toFixed(3), grainDeg: grainDeg!=null ? +grainDeg.toFixed(1) : null,
+                  grainPx:n, inkIn, inkOut, maskOnly, grid,
+                  fill: (inkIn+maskOnly) ? +(inkIn/(inkIn+maskOnly)*100).toFixed(1) : 0,
+                  leak: (inkIn+inkOut) ? +(inkOut/(inkIn+inkOut)*100).toFixed(1) : 0 };
+    window._lastMatch = window._lastMatch || {}; window._lastMatch[angle] = res;
+    if(!(angle in _matchLogged) || window.DIAG_VERBOSE){
+      _matchLogged[angle] = true;
+      console.log(`[비교] ${angle} 실루엣 IoU ${res.iou}`
+        + ` · 마스크 채움 ${res.fill}% · 밖으로 샘 ${res.leak}%`
+        + ` · 결 일치 ${res.grainDeg!=null ? res.grainDeg+'°' : '-'}(${n}px)`);
+      if(grid.length) console.log('        밀도 3×3(%) ' + grid.map(r=>r.map(v=>v<0?' -':String(v).padStart(2)).join(' ')).join('  /  '));
+    }
+    return res;
+  }catch(e){ console.warn('[비교] 실패', e); return null; }
+}
+function resetRenderMatchLog(){ _matchLogged = {}; }
+
 const MASK_LEAK_W = 320;
 let _leakLogged = {};
 function measureMaskLeak(baseOff, extOff, strictMask, cw, ch, angle){
@@ -9916,6 +10116,7 @@ function rebuildHair3D(){
   _headCrossSectionCache = null; _headVerticalRadiusCache = null;
   _headEllipsoidLogged = false; _scalpLogged = false;
   for(const k in _viewMaskCache) delete _viewMaskCache[k];
+  resetRenderMatchLog();   // A/B마다 비교 숫자를 새로 찍는다
   console.log('[재생성] 3D 캐시 비움 — 결정렬 ' + (HAIR_FIELD3D.on?'ON':'OFF')
     + ' · 세그다듬기 ' + (HAIR_OCC3D.on?'ON':'OFF')
     + ' · 층배치 ' + (HAIR_ROOT.legacy?('legacy(≥'+HAIR_ROOT.legacyMin+')'):'현행(뿌리램프)'));
@@ -11798,7 +11999,7 @@ function projectHairQuiltToView(ctx, fit, angle, maskInf){
      폭을 자기 숫자로 독립시킨다 — 3.6은 지금까지 맞춰온 값이라 그대로
      이어받되, 이제 다발 렌더 상수가 바뀌어도 따라 움직이지 않는다. */
   const cssW = (ctx.canvas && ctx.canvas.getBoundingClientRect)
-    ? (ctx.canvas.getBoundingClientRect().width || ctx.canvas.width) : ctx.canvas.width;
+    ? (displayWidthOf(ctx.canvas) || ctx.canvas.width) : ctx.canvas.width;
   const pxRatio = Math.max(1, (ctx.canvas.width || fit.dw) / Math.max(1, cssW)); // 백킹px / CSS px
   const wCss = Q.widthCss[Q.unit];
   const drawW = Math.max(1, (typeof wCss === 'number' ? wCss : Q.widthCss.bundle) * pxRatio * Q.widthMul);
@@ -11987,7 +12188,7 @@ function projectHair3DToView(ctx, fit, angle, maskInf){
      그리고 그 하한을 만족하는 개수만큼만 서브라인을 넣는다 — 자리가 없는데
      5개를 우겨넣으면 서로 붙어서 그냥 굵은 선 하나가 된다(스크린샷의 그 상태). */
   const cssW  = (ctx.canvas && ctx.canvas.getBoundingClientRect)
-    ? (ctx.canvas.getBoundingClientRect().width || ctx.canvas.width) : ctx.canvas.width;
+    ? (displayWidthOf(ctx.canvas) || ctx.canvas.width) : ctx.canvas.width;
   const unit  = Math.max(1, (ctx.canvas.width || fit.dw) / Math.max(1, cssW)); // 백킹px / CSS px
   const minGap = R.minGapCss * unit;
   const minSub = R.minSubCss * unit;
