@@ -737,6 +737,44 @@
   캐시를 전부 비우고 중립 모델을 다시 만든 뒤 미니뷰·조정창까지 갱신한다.
       rebuildHair3D() / HAIR_FIELD3D.on=false / HAIR_OCC3D.on=false / HAIR_ROOT.legacy=true
 
+  ── 2026-08-01 (5) 두피면 분리 — "입체 헤어가 애초에 안 되고 있었다" ──
+  사용자: "헐이 분리 되어 있지 않은데 어떻게 3D에서 입체헤어처리가 가능해?"
+  맞는 지적이었다. 실기기 밴드값으로 실제 층 두께(hull − scalp)를 계산해 보니
+    phi0.55 0.022 · 0.70 0.013 · 0.95 <b>0.000</b> · 1.05 0.001 · 1.55 <b>0.000</b>
+  = <b>0~3mm</b>. 옆머리 모발층은 실제 2~4cm다. t(0=두피면,1=헐)가 움직일 공간이
+  없으니 전 가닥이 한 껍질에 눌러앉는다. 세 증상이 전부 여기서 나온다:
+    · 속이 빈 껍데기(후면 중앙이 휑함)
+    · 껍질이 <b>머리카락 겉면</b>에 있음(부풀어 보임 · 미리보기 두상이 큼)
+    · 정수리에 얹힐 두께가 없음(늘 대머리)
+  원인: getHeadEllipsoid가 measureRowHalfWidth(reasonMask===1) 즉 <b>머리카락</b>
+  실루엣을 재는데 리프트가 그걸 두피면으로 쓴다. hullW=max(헤어폭, headHalf)의 두
+  항이 같은 것을 두 번 잰 값이라 차이가 모발 두께가 아니라 피팅 잔차가 된다.
+
+  고침: getScalpEllipsoid() 신설 — 두피면을 <b>축마다 있는 실측</b>에 앵커.
+    가로 a — getFaceHalfWidthMesh()(랜드마크 유래 뼈·피부 면, 머리카락 안 섞임)
+    세로 b — 투영기의 눈→턱 자 0.70×heightFactor(성인 눈→정수리 ≈ 눈→턱)
+    깊이 c — a_scalp × (c_hull/a_hull) 형상 승계(깊이 실측이 없음)
+  리프트의 headHalf가 이 타원을 쓴다. 새 상수를 만들지 않고 이미 재는 값만 조합.
+
+  ※ 균등 배율(k=0.714) 먼저 해보고 <b>버렸다</b>: 옆 두께는 2.8cm로 맞는데
+    세로도 같이 줄어 두피 꼭대기가 0.630→0.450(눈→정수리 8.7cm, 실제 11.5cm)로
+    내려앉아 상단 밴드 4개가 축 붕괴 — "정수리 대머리"를 오히려 키웠다.
+    모발은 옆이 두껍고 위가 얇은데 균등 배율은 반대로 만든다.
+
+  검증(Chromium, 실기기 값 주입):
+    두피면 a=0.503 b=0.595 c=0.601 → 두개골 가로 14.0cm · 눈→정수리 11.5cm · 깊이 16.8cm
+    모발 두께 <b>1.9~3.3cm</b> · 두께0 밴드 <b>0/7</b> · 축 붕괴 <b>0</b>
+    (균등 배율은 축 붕괴 4개였다)
+    방어: 얼굴 실측 실패/과소/과대/헐과 동일 4케이스 모두 헐 안쪽 유지(역전 없음)
+    HAIR_SCALP3D.on=false → 헐과 동일 = 예전 동작 복귀 확인
+  미니 3D 두상 와이어도 두피 크기로(applyToMiniHead) — "미리보기 두상이 커" 대응.
+  ※ 본 3D 화면의 두상 메쉬는 얼굴 메쉬가 ELL_A에 물려 있어 이번엔 안 건드렸다.
+
+  ── HAIR_ROOT.legacy는 효과 없음이 확인됨 ──
+  두께가 0~3mm였으므로 t 분포를 예전([0.35,1] 고정)으로 되돌려도 움직일 공간이
+  없다. 사용자 실기기에서도 "그대로"였다. 층 배치가 아니라 <b>두께</b>가 문제였다.
+  (두피면 분리 후에는 t가 실제로 의미를 갖게 되므로 이 스위치도 그때 다시 볼 것.)
+
   아직 열려 있는 진짜 문제(별건, 사용자 확인 대기): getHeadEllipsoid는
   reasonMask===1 즉 <b>머리카락</b> 실루엣을 잰다(measureRowHalfWidth). 그런데
   코드는 이걸 두개골로 쓴다(8000번대에 const skull = getHeadEllipsoid()).
@@ -8632,6 +8670,90 @@ function getFaceHalfWidthMesh(){
     return m;
   }catch(e){ return 0; }
 }
+/* ══════════════════════════════════════════════════════════════════
+   두피면(scalp) — 두상 타원에서 <b>모발 두께를 벗겨낸</b> 안쪽 면 (2026-08-01)
+   ─────────────────────────────────────────────────────────────────
+   사용자: "헐이 분리 되어 있지 않은데 어떻게 3D에서 입체헤어처리가 가능해?"
+   정확한 지적이고, 답은 <b>안 되고 있었다</b>이다.
+
+   getHeadEllipsoid()는 measureRowHalfWidth(reasonMask===1) 즉 <b>머리카락</b>
+   실루엣을 잰다. 그런데 리프트는 그걸 두피면으로 쓰고, 헐도 같은 헤어 실루엣에서
+   나온다. 그래서 hullW = max(헤어폭, headHalf)의 두 항이 <b>같은 것을 두 번 잰
+   값</b>이 되고, 그 차이는 모발 두께가 아니라 "밴드 실측이 피팅된 타원을 얼마나
+   초과하는가"라는 피팅 잔차가 된다.
+
+   실기기 로그의 밴드값으로 계산한 실제 층 두께(= hull − scalp):
+     phi0.55 0.022 · phi0.70 0.013 · phi0.95 <b>0.000</b> · phi1.05 0.001 · phi1.55 <b>0.000</b>
+   가로 13.94cm/단위이므로 <b>0~3mm</b>. 옆머리 모발층은 실제로 2~4cm다.
+   t(0=두피면, 1=헐)가 움직일 공간이 없으니 모든 가닥이 한 껍질에 눌러앉는다
+   → 속이 빈 껍데기(후면 중앙이 휑함) + 껍질이 머리카락 겉면에 있음(부풀어 보임)
+   + 정수리는 얹힐 두께가 없음(대머리).
+
+   그래서 두피면을 <b>실측 두개골</b>에 앵커한다. 지어낸 상수를 새로 만들지 않고,
+   이미 재고 있는 값 두 개의 비를 쓴다:
+     k = 얼굴 메쉬 반폭(getFaceHalfWidthMesh) / 두상 반폭 a
+   얼굴 메쉬는 랜드마크에서 나온 <b>뼈·피부</b> 면이라 머리카락이 안 섞인다.
+   실기기: 0.503 / 0.704 = 0.714 → 옆머리 두께 0.201단위 ≈ 2.8cm(이 손님 단발과 일치).
+
+   ※ 왜 오프셋(등간격)이 아니라 배율인가: 오프셋은 정수리에서 세로를 과하게
+     깎는다(머리 위 모발은 옆보다 얇다). 배율은 형상을 유지한 채 줄이므로
+     축마다 두께가 반경에 비례한다 — 실측 앵커가 가로 하나뿐인 지금은 이쪽이
+     덜 틀린다. 세로 두께를 따로 실측할 방법이 생기면 그때 오프셋으로 간다.
+══════════════════════════════════════════════════════════════════ */
+const HAIR_SCALP3D = {
+  on: true,        // false면 예전 동작(두피면 = 헤어 실루엣) — A/B용
+  minGap: 0.03,    // 두피면은 헐보다 최소 이만큼 안쪽(축 붕괴·역전 방어)
+  maxThick: 0.45,  // 모발 두께 상한(헐 반경 대비) — 얼굴 실측이 오염돼도 안 무너지게
+  fallbackK: 0.78, // 얼굴 실측을 못 얻었을 때만 쓰는 가로 배율
+  applyToMiniHead: true, // 미니 3D 두상 와이어를 두피 크기로("3D 미리보기 두상이 커")
+};
+let _scalpLogged = false;
+/* 두피면 타원 — 가닥의 뿌리가 놓이고, 헐과의 간격이 곧 모발 두께가 된다.
+
+   ── 축마다 앵커가 다른 이유 (2026-08-01, 수치로 확인) ──────────────────
+   처음엔 균등 배율 하나(k = 얼굴반폭/두상반폭 = 0.714)로 줄였다. 옆머리 두께는
+   2.8cm로 잘 나왔는데 <b>정수리가 더 나빠졌다</b>: 세로까지 0.714배로 줄면 두피
+   꼭대기가 0.630→0.450으로 내려앉아(눈→정수리 8.7cm, 실제 11.5cm) 상단 밴드
+   네 개가 전부 두피 반경 0 = 축 붕괴. 사용자가 말한 "정수리가 늘 대머리"를
+   오히려 키우는 방향이었다. 모발은 옆이 두껍고 위가 얇은데 균등 배율은 그 반대로
+   만든다(반경이 작은 축일수록 절대 두께가 커야 하는데 작아짐).
+
+   축마다 <b>있는 실측</b>을 각각 쓴다:
+     가로 a — getFaceHalfWidthMesh(). 얼굴 메쉬는 랜드마크에서 나온 뼈·피부 면이라
+              머리카락이 안 섞인다. 실기기 0.503.
+     세로 b — 투영기의 눈→턱 자(0.70×heightFactor). 성인은 눈→정수리 ≈ 눈→턱이라
+              같은 자를 그대로 쓴다. 새 상수를 만들지 않는다.
+     깊이 c — 두상(헤어)의 깊이/폭 형상비를 유지: a_scalp × (c_hull/a_hull).
+              깊이만 따로 잴 실측이 없어서 형상을 승계한다.
+   실기기 값 검증: 두개골 가로 14.0cm · 눈→정수리 11.5cm · 깊이 16.8cm,
+   모발 두께 밴드별 1.9~3.3cm(두께 0인 밴드 0개). 균등 배율은 축 붕괴 4개였다. */
+function getScalpEllipsoid(){
+  const e = getHeadEllipsoid();
+  if(!HAIR_SCALP3D.on) return { a:e.a, b:e.b, c:e.c, src:'off' };
+  const S = HAIR_SCALP3D;
+  let a = e.a * S.fallbackK, src = '폴백';
+  try{ const faceA = getFaceHalfWidthMesh(); if(faceA > 0){ a = faceA; src = '얼굴 실측'; } }catch(err){}
+  let b = e.b * S.fallbackK, srcB = '폴백';
+  try{ const fm = getFaceMetrics(); const eyeToChin = 0.70 * (fm.heightFactor || 1);
+       if(eyeToChin > 0){ b = eyeToChin; srcB = '눈→턱 자'; } }catch(err){}
+  // 두께 상·하한 — 헐을 뚫거나(역전) 너무 얇아지지 않게
+  const cl = (v, hull)=> clamp(v, hull*(1 - S.maxThick), hull - S.minGap);
+  a = cl(a, e.a); b = cl(b, e.b);
+  const c = cl(a * (e.c / Math.max(1e-6, e.a)), e.c);
+  if(!_scalpLogged){
+    _scalpLogged = true;
+    let cmX = NaN, cmY = NaN;
+    try{ const fm = getFaceMetrics();
+      cmY = FACE_RULER_CM.eyeToChin / (0.70 * (fm.heightFactor||1));
+      cmX = FACE_RULER_CM.earHalf / (0.70*(FACE_RULER_CM.earHalf/FACE_RULER_CM.eyeToChin)*(fm.widthFactor||1));
+    }catch(err){}
+    console.log(`[두피면] 가로 ${a.toFixed(3)}(${src}) 세로 ${b.toFixed(3)}(${srcB}) 깊이 ${c.toFixed(3)}(형상 승계)`
+      + (isFinite(cmX) ? ` → 두개골 가로 ${(2*a*cmX).toFixed(1)}cm · 눈→정수리 ${(b*cmY).toFixed(1)}cm · 깊이 ${(2*c*cmX).toFixed(1)}cm` : '')
+      + ` | 모발 두께 옆 ${((e.a-a)*(isFinite(cmX)?cmX:0)).toFixed(1)}cm · 위 ${((e.b-b)*(isFinite(cmY)?cmY:0)).toFixed(1)}cm`
+      + ` (두상=헤어 ${e.a.toFixed(3)}/${e.b.toFixed(3)}/${e.c.toFixed(3)})`);
+  }
+  return { a, b, c, src };
+}
 function getHeadEllipsoid(){
   const eq = interpolateHeadCrossSection(Math.PI/2);
   let maxW = 0, maxD = 0;
@@ -9792,7 +9914,7 @@ function rebuildHair3D(){
   state.hair3D = null; state.hair3Dneutral = null;
   state.hairField3D = null; state.hairOcc3D = null;
   _headCrossSectionCache = null; _headVerticalRadiusCache = null;
-  _headEllipsoidLogged = false;
+  _headEllipsoidLogged = false; _scalpLogged = false;
   for(const k in _viewMaskCache) delete _viewMaskCache[k];
   console.log('[재생성] 3D 캐시 비움 — 결정렬 ' + (HAIR_FIELD3D.on?'ON':'OFF')
     + ' · 세그다듬기 ' + (HAIR_OCC3D.on?'ON':'OFF')
@@ -10363,10 +10485,16 @@ function buildHairStrandsFromPaths(){
     pitch: getViewPitchDeg(angle) * Math.PI/180,
     roll:  getViewRollDeg(angle)  * Math.PI/180,
   });
-  // 두피면(두상 타원)의 높이별 반폭/반깊이 — 헐의 안쪽 경계이자 결측 폴백
+  /* 두피면의 높이별 반폭/반깊이 — 헐의 <b>안쪽 경계</b>이자 결측 폴백.
+     (2026-08-01) 여기가 헤어 실루엣이면 헐과 같아져서 모발 두께가 0이 된다.
+     두피면 타원(getScalpEllipsoid)으로 바꿔서 hull−scalp가 실제 두께가 되게 한다.
+     세로 반경도 scalp.b를 써야 한다 — b를 그대로 두면 정수리에서만 두께가 0으로
+     남아 "정수리 대머리"가 그대로 간다. */
+  const scalpEll = getScalpEllipsoid();
+  const sA = scalpEll.a, sB = scalpEll.b, sC = scalpEll.c;
   const headHalf = (y, axis) => {
-    const yl = (y - CY) / b, q = 1 - yl*yl;
-    return q <= 0 ? 0 : (axis === 'w' ? a : cD) * Math.sqrt(q);
+    const yl = (y - CY) / sB, q = 1 - yl*yl;
+    return q <= 0 ? 0 : (axis === 'w' ? sA : sC) * Math.sqrt(q);
   };
 
   // ── 뷰별 2D→모델 매핑 파라미터 (앵커는 v2와 동일, 스케일만 실측 yaw 반영) ──
@@ -12136,7 +12264,10 @@ function initDevMini3D(){
     const g = new THREE.SphereGeometry(1, 16, 12);
     const m = new THREE.MeshBasicMaterial({ color:0x2a2620, wireframe:true, transparent:true, opacity:0.4 }); // 밝은 미니뷰 배경 대비용 어두운 와이어
     headWire = new THREE.Mesh(g, m);
-    headWire.scale.set(he.a, he.b, he.c);
+    // (2026-08-01) 와이어는 <b>두피면</b> 크기로 — 예전엔 헤어 실루엣 크기라
+    // 미리보기 두상이 머리카락 겉면만큼 커 보였다(사용자: "3D미리보기는 두상이 커").
+    const hwE = HAIR_SCALP3D.applyToMiniHead ? getScalpEllipsoid() : he;
+    headWire.scale.set(hwE.a, hwE.b, hwE.c);
     headWire.position.y = 0.15;
     group.add(headWire);
     // (10차 보강) 앞면(코) 마커 — 처음 봤을 때 어디가 앞인지 모르겠다는 피드백.
