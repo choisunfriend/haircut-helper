@@ -2629,6 +2629,216 @@ function avgRGBString(sumR, sumG, sumB, cnt, minCount){
   return `rgb(${Math.round(sumR/cnt)},${Math.round(sumG/cnt)},${Math.round(sumB/cnt)})`;
 }
 
+/* ══════════════════════════════════════════════════════════════════
+   모발 프로필(hairIdentity) 실측 — 형태와 무관하게 남는 세 가지 (2026-08-01)
+   ─────────────────────────────────────────────────────────────────
+   사용자: "마네킹 머리처럼 아무런 스타일도 없는 통짜 머리에서 시술·조정하는 걸
+   하나 더 추가할 거라고. 그럼 무슨 정보가 중요하겠어. 색, 헤어질감, 그리고
+   뿌리정보(얼마나 촘촘한가, 성근가, 대머리인 부분이 있는가)이겠지. 사진의
+   헤어를 렌더링한 거에서 건드려도 마찬가지지 — 어차피 시술·조정에 들어가면
+   원래 헤어의 형태는 뭉개지기 때문에 저 3가지가 획득·유지되어야 한다고."
+
+   맞다. 그리고 지금 코드는 셋 중 <b>색만</b> 제대로 갖고 있었다:
+     · 색   — avgColor·avgColorsBySection·colorPalette(512)·scalpColor ✓
+     · 질감 — 방향(structure tensor)은 있는데 <b>재질이 없다</b>. 가닥 굵기는
+              전부 튜닝 상수(0.48/0.5/0.6)이고 곱슬기는 사용자 입력이다.
+     · 뿌리 — scalpY(뷰별 2D 컬럼선)뿐. 촘촘함·성근함·대머리는 아무도 안 잰다.
+
+   여기서 <b>원본 픽셀이 살아 있을 때</b>(extractHairMask 안) 나머지 둘을 잰다.
+   나가면 srcPixels가 사라져서 사진을 다시 읽어야 한다 — 그래서 여기다.
+
+   ── 뿌리 밀도를 재는 방법 ──────────────────────────────────────────
+   덮인 두피는 카메라가 못 본다. 직접 잴 수 있는 건 <b>가닥 사이로 비치는
+   두피</b>뿐이고, 그게 정확히 "성근가"의 정의다. 그래서:
+     머리 영역 안의 픽셀을 실측한 두 색(머리색·두피색) 중 <b>가까운 쪽</b>으로
+     나누고, 머리색 쪽 비율 = 밀도.
+   마스크 소속으로 안 세고 <b>색으로</b> 세는 이유: 앞단 cleanupMask가
+   fillColumnGaps(6)·morphClose(3)로 작은 구멍을 이미 메워버려서, 마스크만
+   보면 성근 자리가 빽빽해 보인다. 색은 그 처리에 안 지워진다.
+   "머리 영역"은 마스크를 닫고 <b>바깥으로 한 번 더 부풀린</b> 것이다 —
+   안 부풀리면 정수리 대머리가 아예 영역 밖이라 측정 자체가 안 된다(제일
+   중요한 걸 못 재게 된다). 대신 얼굴박스(reason 2)·눈썹눈입 가드(reason 3)·
+   배경(personMask 0)은 뺀다. personMask가 없으면 배경을 두피로 오인하므로
+   부풀리기를 포기한다(정직한 폴백 — 못 재는 것보다 낫지만 지어내진 않는다).
+══════════════════════════════════════════════════════════════════ */
+const HAIR_IDENTITY = {
+  on: true,
+  gridN: 48,           // 뿌리 밀도 격자 — 마스크 폭 방향 셀 수(세로는 종횡비로)
+  /* 닫기 반경 — <b>머리에 둘러싸인 대머리</b>를 영역 안으로 끌어들이는 값이다.
+     반경 r인 닫기는 폭 2r까지의 구멍을 메우므로, 0.06×1200px=72px → 지름
+     144px(사진 폭의 12%)까지의 정수리 숱빠짐이 측정 대상이 된다. 이 값이
+     작으면 제일 중요한 자리를 <b>영역 밖</b>이라 조용히 안 재고 넘어간다. */
+  closeFrac: 0.06,
+  growFrac: 0.02,      // 바깥 테두리로 부풀리는 반경(경계에 걸친 숱빠짐 포착)
+  minCellFrac: 0.25,   // 셀 넓이의 이 비율만큼 실제로 못 봤으면 "안 잼"(-1) — 지어내지
+                       // 않는다. 절대 픽셀수로 두면 해상도를 바꿀 때 조용히 의미가
+                       // 달라진다(1200px에선 헐겁고 작은 사진에선 전부 미측정).
+  pitchSamples: 500,   // 가닥 피치 실측 표본 수
+  pitchLen: 24,        // 결에 <b>수직</b>으로 훑는 프로파일 길이(px)
+  minCoherence: 0.15,  // 이보다 흐린 자리는 피치·곱슬 표본에서 제외
+  curlStep: 6,         // 곱슬 곡률 — 결 방향으로 이만큼 가서 각도가 얼마나 꺾이나(px)
+};
+
+function parseRGBTriple(css){
+  if(!css) return null;
+  let m = /rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/.exec(css);
+  if(m) return { r:+m[1], g:+m[2], b:+m[3] };
+  m = /^#([0-9a-fA-F]{6})$/.exec(String(css).trim());
+  if(m){ const v = parseInt(m[1],16); return { r:(v>>16)&255, g:(v>>8)&255, b:v&255 }; }
+  return null;
+}
+function lumaOf(r,g,b){ return 0.299*r + 0.587*g + 0.114*b; }
+
+/* 한 뷰의 모발 프로필 실측. 순수 계산(캔버스 API 안 씀)이라 Node로 검증 가능. */
+function measureViewHairIdentity(o){
+  const C = HAIR_IDENTITY;
+  const { srcPixels, maskBuf, w, h, reasonMask, personMask, orientation, colorPalette } = o;
+  const skin = parseRGBTriple(o.scalpColorCss);
+  const hair = parseRGBTriple(o.hairColorCss);
+  const out = { w, h, density:null, pitchPx:null, pitchN:0, curlDegPerPx:null, curlN:0,
+                glossHiLo:null, glossStd:null, hairlineTop:null, hairlineBot:null };
+  if(!C.on) return out;
+
+  // ── ① 뿌리 밀도 — 머리 영역 안에서 "머리색 쪽" 픽셀의 비율 ──
+  if(skin && hair){
+    const rC = Math.max(2, Math.round(w * C.closeFrac));
+    let region = morphClose(maskBuf, w, h, rC);
+    // 배경을 두피로 오인할 위험이 없을 때만 바깥으로 부풀린다(대머리 포착).
+    const grown = personMask ? dilate(region, w, h, Math.max(2, Math.round(w * C.growFrac))) : null;
+    if(grown) region = grown;
+    const GW = C.gridN, GH = Math.max(1, Math.round(C.gridN * h / w));
+    const hairN = new Float32Array(GW*GH), skinN = new Float32Array(GW*GH);
+    for(let y=0; y<h; y++){
+      const gy = Math.min(GH-1, (y / h * GH) | 0) * GW;
+      for(let x=0; x<w; x++){
+        const i = y*w + x;
+        if(!region[i]) continue;
+        if(reasonMask && (reasonMask[i] === 2 || reasonMask[i] === 3)) continue; // 얼굴·눈썹눈입
+        if(personMask && personMask[i] !== 1) continue;                          // 배경
+        const p = i*4, R = srcPixels[p], G = srcPixels[p+1], B = srcPixels[p+2];
+        const dS = (R-skin.r)*(R-skin.r) + (G-skin.g)*(G-skin.g) + (B-skin.b)*(B-skin.b);
+        const dH = (R-hair.r)*(R-hair.r) + (G-hair.g)*(G-hair.g) + (B-hair.b)*(B-hair.b);
+        const gi = gy + Math.min(GW-1, (x / w * GW) | 0);
+        if(dH <= dS) hairN[gi]++; else skinN[gi]++;
+      }
+    }
+    const val = new Float32Array(GW*GH), wgt = new Float32Array(GW*GH);
+    const minN = Math.max(8, (w/GW) * (h/GH) * C.minCellFrac);
+    let measured = 0;
+    for(let gi=0; gi<GW*GH; gi++){
+      const n = hairN[gi] + skinN[gi];
+      wgt[gi] = n;
+      if(n >= minN){ val[gi] = hairN[gi] / n; measured++; }
+      else val[gi] = -1;              // 표본 부족 = 안 잼(뒤에서 이웃으로 채움)
+    }
+    out.density = { GW, GH, val, wgt, measured, cells: GW*GH, grown: !!grown };
+  }
+
+  // ── ② 가닥 피치 + ③ 곱슬 곡률 — 결 <b>수직</b> 프로파일과 결 <b>방향</b> 각도차 ──
+  /* 피치를 "굵기"라고 부르지 않는 이유: 머리카락 한 올은 0.07mm라 1200px
+     사진에서 픽셀 아래다. 여기서 재는 건 눈에 보이는 <b>가닥 다발의 간격</b>이고,
+     렌더러가 실제로 필요로 하는 값도 그쪽이다(bundle 폭). */
+  if(orientation){
+    const pitches = [], curls = [];
+    const lumaAt = (x, y)=>{
+      if(x<0||y<0||x>=w||y>=h) return -1;
+      const p = ((y|0)*w + (x|0))*4;
+      return lumaOf(srcPixels[p], srcPixels[p+1], srcPixels[p+2]);
+    };
+    // 마스크 픽셀을 결정적 스트라이드로 뽑는다(재실행해도 같은 값 — 팔레트와 같은 원칙)
+    let total = 0;
+    for(let i=0;i<w*h;i++) if(maskBuf[i] > 128) total++;
+    const stride = Math.max(1, Math.floor(total / Math.max(1, C.pitchSamples)));
+    let seen = 0;
+    const half = C.pitchLen >> 1;
+    for(let i=0; i<w*h; i++){
+      if(maskBuf[i] <= 128) continue;
+      if((seen++ % stride) !== 0) continue;
+      const x = i % w, y = (i / w) | 0;
+      const s = sampleOrientation(orientation, x, w, y);
+      if(!s || s.coherence < C.minCoherence) continue;
+      const ca = Math.cos(s.angle), sa = Math.sin(s.angle);
+      // 피치 — 결에 수직(-sin, cos)으로 훑어 밝기 극대점 간격을 잰다
+      const prof = [];
+      for(let k=-half; k<=half; k++){
+        const v = lumaAt(Math.round(x - sa*k), Math.round(y + ca*k));
+        if(v < 0){ prof.length = 0; break; }
+        prof.push(v);
+      }
+      if(prof.length >= 7){
+        let mean = 0; for(const v of prof) mean += v; mean /= prof.length;
+        let sd = 0; for(const v of prof) sd += (v-mean)*(v-mean); sd = Math.sqrt(sd/prof.length);
+        if(sd > 2){                       // 완전히 평평한 곳(하이라이트 없음)은 제외
+          const peaks = [];
+          for(let k=1; k<prof.length-1; k++){
+            if(prof[k] >= prof[k-1] && prof[k] > prof[k+1] && prof[k] > mean + sd*0.3) peaks.push(k);
+          }
+          if(peaks.length >= 2){
+            let gap = 0; for(let k=1;k<peaks.length;k++) gap += peaks[k]-peaks[k-1];
+            pitches.push(gap / (peaks.length-1));
+          }
+        }
+      }
+      // 곱슬 — 결 방향으로 curlStep만큼 가서 각도가 얼마나 꺾이나(도/px)
+      const nx = x + ca*C.curlStep, ny = y + sa*C.curlStep;
+      if(nx>=0 && ny>=0 && nx<w && ny<h && maskBuf[((ny|0)*w + (nx|0))] > 128){
+        const s2 = sampleOrientation(orientation, nx, w, ny);
+        if(s2 && s2.coherence >= C.minCoherence){
+          let d = s2.angle - s.angle;                 // 결은 선분이라 180° 주기
+          while(d >  Math.PI/2) d -= Math.PI;
+          while(d < -Math.PI/2) d += Math.PI;
+          curls.push(Math.abs(d) * 180/Math.PI / C.curlStep);
+        }
+      }
+    }
+    const median = arr=>{ if(!arr.length) return null; const a = arr.slice().sort((p,q)=>p-q);
+                          return a[a.length>>1]; };
+    out.pitchPx = median(pitches); out.pitchN = pitches.length;
+    out.curlDegPerPx = median(curls); out.curlN = curls.length;
+  }
+
+  // ── ④ 광택 대비 — 실측 팔레트의 명도 분포(어두운 다수 / 밝은 소수) ──
+  if(colorPalette && colorPalette.length >= 16){
+    const L = [];
+    for(const css of colorPalette){ const c = parseRGBTriple(css); if(c) L.push(lumaOf(c.r,c.g,c.b)); }
+    if(L.length >= 16){
+      L.sort((a,b)=>a-b);
+      const p10 = L[Math.floor(L.length*0.10)], p90 = L[Math.floor(L.length*0.90)];
+      let m=0; for(const v of L) m+=v; m/=L.length;
+      let sd=0; for(const v of L) sd+=(v-m)*(v-m); sd=Math.sqrt(sd/L.length);
+      out.glossHiLo = (p90 + 1) / (p10 + 1);
+      out.glossStd  = sd;
+    }
+  }
+
+  // ── ⑤ 헤어라인 — 머리카락이 <b>피부와 맞닿은</b> 경계(배경과 닿은 데는 제외) ──
+  /* 마네킹에서 제일 먼저 티나는 자리이고, 사진에서 유일하게 직접 보이는
+     고신뢰 뿌리 정보다(덮여 있지 않으니까). 컬럼별 위/아래 접점 하나씩. */
+  {
+    const top = new Float32Array(w).fill(-1), bot = new Float32Array(w).fill(-1);
+    const isSkin = (i)=>{
+      if(maskBuf[i] > 128) return false;
+      if(reasonMask && reasonMask[i] === 2) return true;          // 얼굴박스 피부
+      if(personMask && personMask[i] !== 1) return false;         // 배경
+      if(!skin || !hair) return false;
+      const p = i*4, R = srcPixels[p], G = srcPixels[p+1], B = srcPixels[p+2];
+      const dS = (R-skin.r)*(R-skin.r) + (G-skin.g)*(G-skin.g) + (B-skin.b)*(B-skin.b);
+      const dH = (R-hair.r)*(R-hair.r) + (G-hair.g)*(G-hair.g) + (B-hair.b)*(B-hair.b);
+      return dS < dH;
+    };
+    const R = 3;
+    for(let x=0; x<w; x++){
+      let first=-1, last=-1;
+      for(let y=0;y<h;y++){ if(maskBuf[y*w+x] > 128){ if(first<0) first=y; last=y; } }
+      if(first < 0) continue;
+      for(let k=1;k<=R;k++){ const y=first-k; if(y>=0 && isSkin(y*w+x)){ top[x]=first; break; } }
+      for(let k=1;k<=R;k++){ const y=last+k;  if(y< h && isSkin(y*w+x)){ bot[x]=last;  break; } }
+    }
+    out.hairlineTop = top; out.hairlineBot = bot;
+  }
+  return out;
+}
+
 /* ════════════════════════════════════════════════════════════════
    extractHairMask(angle) — 목차 (642줄, Canvas/픽셀 API 직접 사용이라
    Node 샌드박스에서 실행 검증이 안 돼서 구조는 안 건드리고 목차만 추가함.
@@ -3412,9 +3622,33 @@ async function extractHairMask(angle){
           scalpColor = avgRGBString(srSum, sgSum, sbSum, scnt, 0);
         }
 
+        /* ── 모발 프로필 실측 (2026-08-01) ────────────────────────────────
+           <b>여기서</b> 재는 이유: srcPixels가 이 함수 밖으로 안 나간다. 나가는 건
+           알파(hairC)와 축소 마스크뿐이라, 나중에 재려면 사진을 다시 읽어야 한다.
+           실패해도 identity=null로 남고 나머지 파이프라인은 영향 없다(곁가지 데이터). */
+        let identity = null;
+        try{
+          identity = measureViewHairIdentity({
+            srcPixels, maskBuf: hairMaskBuf, w, h, reasonMask, personMask,
+            orientation: orientationColSamples, colorPalette,
+            scalpColorCss: scalpColor, hairColorCss: avgHairColor,
+          });
+          const d = identity.density;
+          console.log('[모발프로필] ' + angle
+            + ' · 뿌리밀도 ' + (d ? (d.measured + '/' + d.cells + '셀 실측'
+                + (d.grown ? '(영역 부풀림)' : '(부풀림 없음 — personMask 없음)')) : '실패')
+            + ' · 가닥피치 ' + (identity.pitchPx != null ? identity.pitchPx.toFixed(1)+'px(표본 '+identity.pitchN+')' : '못 잼')
+            + ' · 곱슬 ' + (identity.curlDegPerPx != null ? identity.curlDegPerPx.toFixed(2)+'°/px(표본 '+identity.curlN+')' : '못 잼')
+            + ' · 광택 ' + (identity.glossHiLo != null ? 'P90/P10 '+identity.glossHiLo.toFixed(2) : '못 잼')
+            + ' · 헤어라인 접점 상/하 '
+            + identity.hairlineTop.reduce((s,v)=>s+(v>=0?1:0),0) + '/'
+            + identity.hairlineBot.reduce((s,v)=>s+(v>=0?1:0),0) + '컬럼');
+        }catch(e){ console.warn('모발 프로필 실측 실패(무시):', angle, e); }
+
         state.hairCanvases[angle] = hairC;
         state.baseCanvases[angle] = baseC;
         state.hairMasks[angle]    = {
+          identity, // (2026-08-01) 형태와 무관한 모발 프로필 — 밀도격자·피치·곱슬·광택·헤어라인
           scalpY, hairEndY, w:img.width, h:img.height, avgColor:avgHairColor,
           avgColorsBySection, // 섹션별(크라운/프론트/템플/사이드/후두부/네이프) 평균 헤어 색상
           colorPalette, // 실측 색 팔레트(마스크 안 실제 픽셀 색 최대 512개) — 원본 모드 가닥 색 분포 재현용
@@ -10830,6 +11064,32 @@ const HAIR_OCC3D = {
   minPts:   3,     // 이보다 짧게 남으면 가닥을 통째로 버린다
   // 진단 격자(미니 3D 시각화 + 다음 턴 캐시용). 결 필드와 같은 파라미터화.
   NT: 64, NP: 32,
+
+  /* ── 조정 후 재클립 (2026-08-01) ─────────────────────────────────────
+     사용자: "클립으로 헤어세그멘테이션 넘어가는 부분을 잘 잡아놨는데,
+     3D 미리보기에서는 클립이 안 먹었어."
+     맞다. 위 다듬기는 <b>리프트할 때 한 번</b>만 돈다(buildHairStrandsFromPaths).
+     그런데 미니 3D와 최종 3D 화면이 그리는 것은 그 결과가 아니라
+     computeAdjustedHair3DStrands가 <b>연산자를 얹은 뒤</b>의 가닥이다:
+       길이 → 컬 → 중력 → 가르마 → 넘김 → 볼륨 → 결흐름
+     이 일곱 연산자가 전부 점을 <b>움직인다</b>. 다듬을 때 마스크 안이던 점이
+     움직여서 밖으로 나가면 아무도 안 잡는다. 2D는 그리고 나서 destination-in을
+     걸기 때문에 언제 움직였든 상관없이 잡혔고, 3D만 못 잡고 있었다.
+     → 연산자를 다 얹은 <b>다음에</b> 같은 프로브로 한 번 더 다듬는다.
+        판정 기준(occThr·offRun·minSeen)은 리프트 때와 <b>같은 자</b>를 쓴다.
+
+     두 가지가 리프트 때와 다르다:
+     ① 늘린 머리는 나가는 게 맞다 — 2D의 hairClipGrowPx와 같은 발상.
+        2D는 캔버스 높이 비례로 클립 마스크를 키우지만, 3D는 <b>그 가닥이
+        실제로 늘어난 호길이</b>만큼 여유를 준다((비율-1)×원래 호길이).
+        더 정확하고(가닥마다 다름) 자를 하나 덜 쓴다. 중립이면 여유 0.
+     ② 여기서는 가닥을 <b>버리지 않는다</b>(neverDrop). 뿌리에 머리가 없는
+        가닥은 리프트 때 이미 걸러졌다. 조정 후 뿌리가 마스크를 벗어났다면
+        그건 "머리가 없다"가 아니라 볼륨·가르마가 뿌리를 <b>들어올린</b>
+        것이므로, 통째로 지우면 볼륨 슬라이더가 머리를 삭제하게 된다.
+        2D도 이럴 때 밖으로 나간 부분만 지우지 가닥을 없애지 않는다. */
+  clipAdjusted: true,  // false면 예전 동작(조정 후 클립 없음) — A/B용
+  growPerRatio: 1.0,   // (길이비율-1) × 원래 호길이 × 이 값 = 마스크 밖 허용 길이
 };
 
 /* 뷰별 헤어 마스크 샘플러 — 축소 알파를 1회만 만들어 캐시.
@@ -10873,6 +11133,29 @@ function getViewMaskSampler(angle){
   return s;
 }
 
+/* 뷰별 <b>뿌리 밀도</b> 샘플러 — 위 마스크 샘플러의 짝. 마스크 샘플러가
+   "머리카락이 있나(0/1)"를 돌려주는 자리에서, 이건 "얼마나 촘촘한가(0~1)"를
+   돌려준다. 안 잰 셀은 -1 — 0(대머리)과 <b>구분</b>해야 한다. 0으로 뭉개면
+   못 본 자리를 전부 대머리로 만든다. (2026-08-01) */
+const _viewDensCache = {};
+function getViewDensitySampler(angle){
+  const mi = state.hairMasks && state.hairMasks[angle];
+  const d  = mi && mi.identity && mi.identity.density;
+  if(!d) return null;
+  const cached = _viewDensCache[angle];
+  if(cached && cached.mi === mi) return cached.s;
+  const iw = mi.w, ih = mi.h, GW = d.GW, GH = d.GH, val = d.val;
+  const s = {
+    at(ix, iy){
+      const x = (ix / iw * GW) | 0, y = (iy / ih * GH) | 0;
+      if(x < 0 || y < 0 || x >= GW || y >= GH) return -1;
+      return val[y*GW + x];
+    },
+  };
+  _viewDensCache[angle] = { mi, s };
+  return s;
+}
+
 /* 실측 뷰들로 "이 3D 점에 머리카락이 있나"를 판정하는 프로브.
    project3DPointToView와 <b>같은 식</b>을 쓰되 회전행렬을 뷰마다 한 번만 만든다
    (그 함수는 호출마다 composeRotationZYX를 새로 조립해서, 점 수십만 개에 쓰면
@@ -10886,12 +11169,34 @@ function makeHairOccupancyProbe(views, names, yTop, CY, headR){
     const smp = getViewMaskSampler(n);
     if(!v || !smp) return;
     cams.push({ angle:n, R: composeRotationZYX(v.pose.yaw, v.pose.pitch, v.pose.roll),
-                cx:v.cx, s:v.s, sy:v.sy, crownY:v.crownY, smp });
+                cx:v.cx, s:v.s, sy:v.sy, crownY:v.crownY, smp,
+                dsmp: getViewDensitySampler(n) });   // (2026-08-01) 뿌리 밀도용
   });
   if(!cams.length) return null;
   const invR = 1 / Math.max(1e-6, headR);
   return {
     cams, nCam: cams.length,
+    /* 같은 카메라·같은 식으로 <b>밀도</b>를 묻는다. 회전행렬을 공유하려고
+       별도 프로브를 만들지 않고 여기 얹었다. 안 잰 뷰(-1)는 투표에서 빠지고,
+       아무 뷰도 못 재면 seen=0 — 그 셀은 "모름"으로 남는다. */
+    densityAt(px, py, pz){
+      let wSum = 0, dSum = 0;
+      const wy = py - CY;
+      for(let i=0;i<cams.length;i++){
+        const c = cams[i]; if(!c.dsmp) continue;
+        const R = c.R;
+        const lz = R[6]*px + R[7]*wy + R[8]*pz;
+        if(lz <= 0) continue;
+        const w = Math.min(1, lz * invR);
+        if(w < O.minFacing) continue;
+        const lx = R[0]*px + R[1]*wy + R[2]*pz;
+        const ly = R[3]*px + R[4]*wy + R[5]*pz;
+        const d = c.dsmp.at(lx / c.s + c.cx, c.crownY + (yTop - (ly + CY)) / c.sy);
+        if(d < 0) continue;                 // 그 뷰에서는 안 잰 자리
+        wSum += w; dSum += w * d;
+      }
+      return wSum > 0 ? { density: dSum/wSum, seen: wSum } : { density: -1, seen: 0 };
+    },
     at(px, py, pz){
       let wSum = 0, hSum = 0;
       const wy = py - CY;
@@ -10917,9 +11222,11 @@ function makeHairOccupancyProbe(views, names, yTop, CY, headR){
    뿌리에서 걸어가다 "머리카락 없음"이 연속 offRun번 나오면 거기서 자른다.
    뿌리부터 없으면 null을 돌려 <b>가닥을 통째로 버리게</b> 한다 — 거울 채움이
    민머리·가르마 자리에 가닥을 심는 것이 이 경로로 걸러진다. */
-function trimStrandToOccupancy3D(pts, probe, acc){
+function trimStrandToOccupancy3D(pts, probe, acc, opts){
   const O = HAIR_OCC3D;
   if(!probe || !pts || pts.length < 3) return pts;
+  const growLen  = (opts && opts.growLen > 0) ? opts.growLen : 0;   // 마스크 밖 허용 호길이
+  const neverDrop = !!(opts && opts.neverDrop);
   let off = 0, cut = -1;
   for(let i=Math.min(O.skipRoot, pts.length-1); i<pts.length; i++){
     const p = pts[i];
@@ -10930,7 +11237,26 @@ function trimStrandToOccupancy3D(pts, probe, acc){
     if(off >= O.offRun){ cut = i - off + 1; break; }
   }
   if(cut < 0) return pts;
-  if(cut < O.minPts){ if(acc) acc.dropped++; return null; }
+  /* 늘린 만큼의 여유 — 경계에서 바로 자르지 않고 growLen 호길이만큼 더 간다.
+     2D에서 클립 마스크를 growPx만큼 부풀리는 것과 같은 뜻이다(밖으로 나가는
+     가닥에 대해서는 "마스크를 키운다" = "경계 통과 후 그만큼 더 그린다"). */
+  if(growLen > 0){
+    let extra = 0, j = Math.max(1, cut);
+    while(j < pts.length && extra < growLen){
+      const p0 = pts[j-1], p1 = pts[j];
+      extra += Math.hypot(p1.x-p0.x, p1.y-p0.y, p1.z-p0.z);
+      j++;
+    }
+    cut = j;
+    if(cut >= pts.length) return pts;   // 여유 안에서 다 소진 — 자를 것이 없다
+  }
+  if(cut < O.minPts){
+    // 뿌리부터 비었다. 리프트 때는 "실측상 없는 가닥"이라 버리지만, 조정 후
+    // 재클립에서는 볼륨·가르마가 뿌리를 들어올린 것이므로 뿌리 토막은 남긴다.
+    if(!neverDrop){ if(acc) acc.dropped++; return null; }
+    cut = Math.min(pts.length, O.minPts);
+    if(cut >= pts.length) return pts;
+  }
   if(acc){ acc.trimmed++; acc.removedPts += (pts.length - cut); }
   return pts.slice(0, cut);
 }
@@ -10958,6 +11284,150 @@ function buildOccupancyCellField(probe, hullW, hullD, bucketOfY, CY, b){
     }
   }
   return { NT, NP, occ, seen, CY, b, filled, hairCells, ok: filled > 0 };
+}
+
+/* ── 두상 표면 뿌리 밀도 격자 (2026-08-01) ──────────────────────────
+   buildOccupancyCellField와 <b>같은 격자·같은 순회</b>. 그쪽이 "여기 머리카락이
+   있나(실루엣)"를 굽는다면 이쪽은 "여기 뿌리가 얼마나 촘촘한가"를 굽는다.
+   결 필드까지 셋이 같은 파라미터화(θ 균등 × 극각 균등)라 서로 참조된다. */
+function buildRootDensityField(probe, hullW, hullD, bucketOfY, CY, b){
+  if(!probe || !probe.densityAt) return null;
+  const O = HAIR_OCC3D, NT = O.NT, NP = O.NP;
+  const den = new Float32Array(NT*NP), seen = new Float32Array(NT*NP);
+  const est = new Uint8Array(NT*NP);
+  let measured = 0;
+  for(let pi=0; pi<NP; pi++){
+    const ny = Math.cos((pi + 0.5) / NP * Math.PI);
+    const y  = CY + b * ny;
+    const bi = bucketOfY(y);
+    const Wb = hullW[bi], Db = hullD[bi];
+    for(let ti=0; ti<NT; ti++){
+      const th = (ti + 0.5) / NT * 2*Math.PI - Math.PI;
+      const r = probe.densityAt(Wb*Math.sin(th), y, Db*Math.cos(th));
+      const ci = pi*NT + ti;
+      den[ci] = r.density; seen[ci] = r.seen;
+      if(r.density >= 0) measured++;
+    }
+  }
+  const field = { NT, NP, den, seen, est, CY, b, measured, cells: NT*NP, ok: measured > 0 };
+  if(field.ok) fillUnseenRootCells(field);
+  return field;
+}
+
+/* 못 본 자리 채우기 — 사용자: "안 보이는데 머리가 빽빽한 자리는 근처 밀도로
+   추정해서 넣어야지?" 맞다. 덮인 두피는 원리상 못 보는데, 그 자리 대부분은
+   <b>덮여 있으니까 못 보는 것</b>(=머리가 있는 것)이다. 못 잰 셀을 0으로 두면
+   두상 안쪽이 통째로 대머리가 된다.
+   격자 위 BFS로 실측 셀에서 바깥으로 번져나가며 이웃 평균을 넣는다(θ는 원통이라
+   감고, φ는 극이라 안 감는다). 채운 셀은 est=1로 <b>표시해 둔다</b> — 실측과
+   추정이 섞이면 나중에 "정수리 숱 없음"을 지어내고도 알아채지 못한다. */
+function fillUnseenRootCells(f){
+  const NT = f.NT, NP = f.NP, den = f.den, est = f.est;
+  const N = NT*NP;
+  let frontier = [];
+  for(let ci=0; ci<N; ci++) if(den[ci] >= 0) frontier.push(ci);
+  if(!frontier.length || frontier.length === N) return;
+  let guard = 0;
+  while(frontier.length && guard++ < NP + NT){
+    const next = [], sum = new Float64Array(N), cnt = new Float64Array(N);
+    for(const ci of frontier){
+      const pi = (ci / NT) | 0, ti = ci % NT;
+      const nb = [
+        pi > 0    ? (pi-1)*NT + ti : -1,
+        pi < NP-1 ? (pi+1)*NT + ti : -1,
+        pi*NT + ((ti + 1) % NT),
+        pi*NT + ((ti - 1 + NT) % NT),
+      ];
+      for(const nj of nb){
+        if(nj < 0 || den[nj] >= 0) continue;
+        if(!cnt[nj]) next.push(nj);
+        sum[nj] += den[ci]; cnt[nj]++;
+      }
+    }
+    for(const nj of next){ den[nj] = sum[nj] / cnt[nj]; est[nj] = 1; }
+    frontier = next;
+  }
+  // 그래도 남은 자리(어느 실측과도 안 이어짐)는 전체 평균으로. 0은 안 쓴다.
+  let s = 0, n = 0;
+  for(let ci=0; ci<N; ci++) if(den[ci] >= 0){ s += den[ci]; n++; }
+  const mean = n ? s/n : 1;
+  for(let ci=0; ci<N; ci++) if(den[ci] < 0){ den[ci] = mean; est[ci] = 2; }
+}
+
+/* 뷰별 실측을 하나의 <b>뷰 독립 자산</b>으로 합친다.
+   색·질감은 뷰 신뢰도(getViewPoseConfidence)로 가중 평균, 뿌리는 위 격자.
+   마네킹 모드는 이것만 있으면 된다 — 사진도 형태도 필요 없다. */
+function buildHairIdentity(rootField, field3D){
+  const views = ANGLES.filter(a => state.hairMasks && state.hairMasks[a] && state.hairMasks[a].identity);
+  if(!views.length) return null;
+  const palette = [], bySection = {};
+  let pW=0, pS=0, cW=0, cS=0, gW=0, gS=0, scalpR=0, scalpG=0, scalpB=0, scalpN=0;
+  const secSum = {};
+  views.forEach(a=>{
+    const mi = state.hairMasks[a], id = mi.identity;
+    let conf = 1; try{ conf = getViewPoseConfidence(a) || 0.5; }catch(e){ conf = 0.5; }
+    if(mi.colorPalette) for(const c of mi.colorPalette) palette.push(c);
+    if(id.pitchPx != null && id.pitchN > 20){ pS += id.pitchPx * conf; pW += conf; }
+    if(id.curlDegPerPx != null && id.curlN > 20){ cS += id.curlDegPerPx * conf; cW += conf; }
+    if(id.glossHiLo != null){ gS += id.glossHiLo * conf; gW += conf; }
+    const sc = parseRGBTriple(mi.scalpColor);
+    if(sc){ scalpR += sc.r; scalpG += sc.g; scalpB += sc.b; scalpN++; }
+    if(mi.avgColorsBySection) for(const id2 in mi.avgColorsBySection){
+      const c = parseRGBTriple(mi.avgColorsBySection[id2]); if(!c) continue;
+      const t = secSum[id2] || (secSum[id2] = {r:0,g:0,b:0,w:0});
+      t.r += c.r*conf; t.g += c.g*conf; t.b += c.b*conf; t.w += conf;
+    }
+  });
+  for(const id2 in secSum){ const t = secSum[id2];
+    bySection[id2] = `rgb(${Math.round(t.r/t.w)},${Math.round(t.g/t.w)},${Math.round(t.b/t.w)})`; }
+  /* 피치 px → cm. 자는 <b>귀 간격</b>을 쓴다 — 랜드마크가 정규화 x로 직접 주는
+     값이고 FACE_RULER_CM.earHalf(7cm)가 그 절반이라, 두상 타원체를 거치지 않고
+     한 번에 환산된다. 지금 로그가 "가로·세로가 다른 자를 씀"이라고 경고하는
+     상황이라 자를 하나만, 그것도 제일 짧은 경로로 쓰는 편이 안전하다. */
+  const pitchPx = pW ? pS/pW : null;
+  let pitchCm = null, pitchRuler = null;
+  for(const a of (pitchPx ? views : [])){
+    const lm = state.landmarks && state.landmarks[a];
+    const mi = state.hairMasks[a];
+    if(!lm || lm.lEarX == null || lm.rEarX == null) continue;
+    const spanNx = Math.abs(lm.rEarX - lm.lEarX);
+    if(!(spanNx > 0.02)) continue;                       // 측면 뷰는 귀가 겹쳐 못 씀
+    // pitchPx는 분석 해상도(identity.w) 기준 — 같은 좌표계인 정규화 폭으로 환산
+    const pitchNx = pitchPx / mi.identity.w;
+    pitchCm = pitchNx / spanNx * (FACE_RULER_CM.earHalf * 2);
+    pitchRuler = a;
+    break;
+  }
+  const out = {
+    views,
+    color: {
+      palette, bySection,
+      scalpColor: scalpN ? `rgb(${Math.round(scalpR/scalpN)},${Math.round(scalpG/scalpN)},${Math.round(scalpB/scalpN)})` : null,
+      glossHiLo: gW ? gS/gW : null,
+    },
+    texture: {
+      pitchPx, pitchCm,
+      curlDegPerPx: cW ? cS/cW : null,
+      // 결 필드는 <b>인자로</b> 받는다 — state.hairField3D는 이 시점에 아직 이번
+      // 리프트 값이 아니라 지난 값이다(대입이 아래에서 일어난다).
+      field3D: field3D || null,
+    },
+    roots: {
+      cells: rootField || null,
+      hairline: views.reduce((o,a)=>{ const id = state.hairMasks[a].identity;
+        o[a] = { top:id.hairlineTop, bot:id.hairlineBot, w:id.w, h:id.h }; return o; }, {}),
+    },
+  };
+  const rf = rootField;
+  console.log('[모발프로필·통합] 뷰 ' + views.join(',')
+    + ' · 팔레트 ' + palette.length + '색'
+    + ' · 가닥피치 ' + (pitchPx != null ? pitchPx.toFixed(1)+'px' : '없음')
+    + (pitchCm != null ? '(≈'+pitchCm.toFixed(2)+'cm · '+pitchRuler+' 귀 자)' : '')
+    + ' · 곱슬 ' + (out.texture.curlDegPerPx != null ? out.texture.curlDegPerPx.toFixed(2)+'°/px' : '없음')
+    + ' · 광택 ' + (out.color.glossHiLo != null ? out.color.glossHiLo.toFixed(2) : '없음')
+    + (rf ? (' · 뿌리셀 ' + rf.measured + '/' + rf.cells + ' 실측(나머지 이웃추정)'
+             + ' · 평균밀도 ' + (rf.den.reduce((s,v)=>s+v,0)/rf.cells).toFixed(2)) : ' · 뿌리격자 없음'));
+  return out;
 }
 
 function buildHairStrandsFromPaths(){
@@ -11397,6 +11867,12 @@ function buildHairStrandsFromPaths(){
       + ' → 남은 가닥 ' + kept + '개 · 판정 ' + occAcc.n + '회'
       + (occField ? (' · 표면셀 머리있음 ' + occField.hairCells + '/' + occField.filled) : ''));
     state.hairOcc3D = { probe: occProbe, field: occField, yTop, CY };
+    /* (2026-08-01) 뿌리 밀도 격자 — 같은 프로브·같은 격자로 한 번 더 굽는다.
+       마네킹 모드가 볼 자산이고, 사진 렌더도 나중에 여기서 밀도를 가져갈 수 있다. */
+    try{
+      const rootField = buildRootDensityField(occProbe, hullW, hullD, bucketOfY, CY, b);
+      state.hairIdentity = buildHairIdentity(rootField, field3D || null);
+    }catch(e){ console.warn('모발 프로필 통합 실패(무시):', e); }
     window._lastOcc3D = { views: occProbe.cams.map(c=>c.angle), dropped: occAcc.dropped,
       trimmed: occAcc.trimmed, kept, of: total, probes: occAcc.n,
       hairCells: occField ? occField.hairCells : 0, seenCells: occField ? occField.filled : 0 };
@@ -12821,6 +13297,14 @@ function computeAdjustedHair3DStrands(srcAngleFilter, stride){
   /* 스타일링은 뷰별이다(2026-07-27). 네 뷰 값이 같으면(대부분의 프레임) 한 번만
      읽고 끝내고, 다르면 가닥 뿌리 방향으로 섞는다. */
   const uni = uniformStyling();
+  /* ── 조정 후 재클립 준비 (2026-08-01) ──────────────────────────────
+     연산자가 가닥을 움직인 <b>다음</b>에 세그멘테이션으로 한 번 더 다듬는다.
+     프로브는 리프트 때 만든 것을 그대로 재사용한다(뷰 마스크·포즈만 보므로
+     조정과 무관하게 유효하다). 없으면 조용히 예전 동작. */
+  const occ = HAIR_OCC3D.clipAdjusted
+    ? ((model.occ && model.occ.probe) || (state.hairOcc3D && state.hairOcc3D.probe) || null)
+    : null;
+  const occAcc = occ ? { n:0, dropped:0, trimmed:0, removedPts:0 } : null;
   for(const st of model.strands){
     if(srcAngleFilter && st.srcAngle !== srcAngleFilter) continue;
     if((_i++ % stp) !== 0) continue;
@@ -12841,9 +13325,33 @@ function computeAdjustedHair3DStrands(srcAngleFilter, stride){
     pts = volumeStrand3D(pts, (typeof sty.volume === 'number') ? sty.volume : 50);
     // ⑦ 결 흐름 — 끝단 안말음/바깥말음. 드라이 마무리라 제일 마지막.
     pts = flowCurlStrand3D(pts, sty.flow || 0);
+    /* ⑧ 세그멘테이션 재클립 — "세그멘테이션 밖에는 안 그린다"를 3D에도.
+       늘린 만큼(ratio>1)은 나가는 게 맞으므로 그 호길이만큼 여유를 준다. */
+    if(occ){
+      const grow = ratio > 1 ? (ratio - 1) * arcLength3D(st.pts) * HAIR_OCC3D.growPerRatio : 0;
+      const t = trimStrandToOccupancy3D(pts, occ, occAcc, { growLen: grow, neverDrop: true });
+      if(t && t.length >= 2) pts = t;
+    }
     out.push({ pts, color: st.color, sec: st.sec, srcAngle: st.srcAngle });
   }
+  if(occAcc) logAdjustedClip(occAcc, out.length);
   return out;
+}
+
+/* [진단] 조정 후 재클립이 실제로 먹었는지. 슬라이더 틱마다 찍히면 콘솔이
+   넘치므로 <b>숫자가 바뀔 때만</b>, 그리고 1초에 한 번까지만 찍는다.
+     · 자름 0 → 조정이 마스크 밖으로 안 밀어냈거나(중립) 프로브가 없다
+     · 자름이 과하게 큼 → occThr/offRun이 빡빡하거나 포즈·마스크가 어긋남 */
+let _adjClipSig = '', _adjClipAt = 0;
+function logAdjustedClip(acc, kept){
+  const sig = acc.trimmed + '/' + kept;
+  const now = Date.now();
+  if(sig === _adjClipSig || now - _adjClipAt < 1000) return;
+  _adjClipSig = sig; _adjClipAt = now;
+  console.log('[3D·클립] 조정 후 재클립 — 가닥 ' + kept + '개 중 자름 ' + acc.trimmed
+    + '개(평균 ' + (acc.trimmed ? (acc.removedPts/acc.trimmed).toFixed(1) : '0') + '점 제거)'
+    + ' · 판정 ' + acc.n + '회'
+    + (HAIR_OCC3D.clipAdjusted ? '' : ' · OFF'));
 }
 
 // 중립 모델 + 조정 연산자 → 미니뷰 LineSegments 재구성. 슬라이더가 바뀌면
@@ -13298,6 +13806,7 @@ function startNewCustomer(){
   state.hair3D=null; state.hair3Dneutral=null; // (11차) 3D 모델 캐시도 새 고객마다 무효화
   state.hairField3D=null; // (2026-08-01) 3D 결 필드도 사람이 바뀌면 통째로 무효
   state.hairOcc3D=null;   // (2026-08-01) 3D 점유 필드도 마찬가지
+  state.hairIdentity=null; // (2026-08-01) 모발 프로필 — 사람이 바뀌면 당연히 버린다
   for(const k in _viewMaskCache) delete _viewMaskCache[k]; // 뷰 마스크 샘플러 캐시
   state.aiOutfitRecommendation=null; // (3단계) 의상 추천 캐시도 초기화
   _headCrossSectionCache = null; // 두상 실측 단면(Shape-from-Silhouette) 캐시도 새 고객마다 초기화
