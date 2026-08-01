@@ -651,6 +651,66 @@
   깊이 컬링뿐이다(스크린샷에서 결이 얼굴 위로 넘어온 이유). 결 필드와 같은 방식으로
   두상 표면 <b>모발 점유(occupancy) 필드</b>를 네 뷰 마스크에서 세워 두고, 되쏠 때
   그 필드로 컬링·클립하는 것이 자연스러운 다음 단계.
+
+  ── 2026-08-01 (2) 세그멘테이션을 3D로 통합 (3D 모발 점유 필드) ──
+  실기기 로그로 결 통합 확인됨(관측 8,518개 → 셀 1,494/2,048, 또렷함 0.797,
+  정렬 적중 100%, 평균 꺾임 21.3°, 거울 채움 없음). 사용자: "결흐름 자체는 방향을
+  잡은 것 같아. 이제 세그멘테이션 통합 작업합시다."
+
+  문제: 3D 모델에는 "머리카락이 <b>없는</b> 자리"라는 정보가 없었다. 헐은 매끈한
+  타원이라 가르마·정수리 노출·민머리가 사라지고, 거울 채움은 반대쪽에 머리가
+  없어도 채우고, 되쏘기는 마스크 밖으로 나가도 깊이 컬링밖에 못 막는다.
+
+  넣은 것 (buildHairStrandsFromPaths 앞, 새 블록):
+  · makeHairOccupancyProbe — 실루엣 카빙의 표면판. 3D 점을 네 실측 뷰로 되쏘아
+    각 뷰 헤어 마스크를 찍고, 그 카메라 반대편(depth≤0) 뷰는 빼고, 나머지는
+    정면성 가중 투표. 엄격한 AND는 안 씀(뷰 4장·포즈 오차로 실제 머리까지 지움).
+    회전행렬은 뷰마다 1회만 조립 — project3DPointToView는 호출마다 조립해서
+    수십만 점에 쓰면 그 조립이 비용의 대부분이 된다.
+  · getViewMaskSampler — reasonMask(1=최종 머리카락)를 그대로 씀. 이미 축소
+    해상도로 메모리에 있어서 getImageData가 아예 필요 없다.
+  · trimStrandToOccupancy3D — 리프트에서 <b>결 정렬 다음에</b> 적용(정렬이 가닥을
+    움직이므로 움직인 뒤 좌표로 판정해야 한다). 빈 자리가 연속 3점 나오면 자르고,
+    뿌리부터 비면 가닥을 통째로 버린다.
+  · buildOccupancyCellField + window.__occ3DDebug — 미니 3D에 점유를 점으로 표시
+    (초록=있음/빨강=없음/회색=판단 보류). HAIR_OCC3D.on=false로 이전 동작 복귀.
+  · 콘솔 [3D·세그] 1줄 + window._lastOcc3D.
+
+  Chromium 하네스 검증(가상 두상 + 정답 분포: 정수리 원형 민머리 + 정면 세로 가르마.
+  네 뷰 마스크를 그 정답에서 렌더해 파이프라인과 같은 순서로 투입):
+  · 점유 판정 정확도 99.3% — 정수리 민머리 100% · 가르마 88.6% · 머리 있는 구역 99.4%
+    (가르마가 제일 약한 건 실루엣 카빙의 원리적 한계 — 좁고 오목한 구조)
+  · 가닥 다듬기 5종 전부 의도대로: 뒤통수 정상 20/20 유지 · 민머리 뿌리 <b>버림</b> ·
+    민머리로 올라가는 가닥 12에서 자름 · 가르마 가로지르기 17에서 자름 ·
+    가르마 <b>옆</b>을 따라가는 정상 가닥은 20/20 유지(오작동 없음)
+  · 20만 점 판정 22ms(가닥 34만 점 기준 ≈40ms, 모델 빌드 1회 비용)
+  ※ 하네스에서 배운 것: 처음엔 두상 <b>안쪽</b>(축 근처) 점으로 시험해서 ②③이
+    안 걸렸다. 축 근처는 네 뷰 모두 정면성이 0에 가까워 "판단 보류"가 되기 때문인데,
+    리프트가 만드는 실제 점은 두피~헐 사이 <b>표면</b>이라 해당 없다. 시험 데이터가
+    실제 데이터와 같은 자리에 있어야 한다는 걸 놓칠 뻔했다.
+
+  같이 고친 것(작음): 2D 클립 마스크가 <b>팽창(dilate)</b>이라 바깥 경계까지 밀려
+  있었다. Chromium 실측 1200px 캔버스에서 경계 599 → 622, 즉 마스크 밖 <b>23px</b>
+  까지 칠할 수 있었다("원본 결 보기에도 세그멘테이션 침범"의 원인 중 하나).
+  팽창 뒤 같은 반경 침식을 붙여 <b>닫기(close)</b>로 바꿈 — 노치·구멍은 그대로
+  메워지고 바깥 경계는 599로 복귀. HAIR_CLIP.close=false로 이전 동작.
+  measureMaskLeak 추가 — 마스크 밖 잉크 %를 콘솔 [진단·침범]과 window._lastMaskLeak에.
+  ※ 가닥 <b>길이</b>를 실측 이탈점으로 자르는 방식도 만들었다가 되돌렸다.
+    사용자 지시가 "세그멘테이션 영역 밖에서는 <b>렌더링이 안 되게</b>"이고,
+    3D 점유 필드와 하는 일이 겹친다.
+
+  다음 턴: 되쏘기 클립. projectHair3DToView / projectHairQuiltToView가 같은 프로브
+  (state.hairOcc3D.probe)로 화면에서 걸러내기 + 그 뷰 마스크로 클립.
+
+  ── 실기기 로그에서 발견한 별건 두 가지(미수정) ──
+  ① 두상 비례가 이상하다: [두상 비례] 세로/폭=0.90인데 사람은 1.48, 그리고
+     [두상↔얼굴 폭] a=0.704 vs 얼굴 실측 0.503 → ⚠. 두상이 너무 넓고 낮다.
+     헐·점유·되쏘기가 전부 이 타원체 위에 서 있어서 영향 범위가 넓다.
+  ② left/right의 이식 소스가 "결필드 직접 걷기"로 폴백하고 섹션이 crown 하나뿐이다
+     (front는 "캡처 가닥 경로" + crown,temple,front / 같은 섹션 띠 606/783 vs
+     left 325/745). buildHairStripPool이 state.strandPaths[angle]을 찾는데, 이식이
+     성공하면 drawHairStrands가 아예 안 불려서 그 뷰의 캡처가 채워지지 않는다.
+     좌/우 이식 품질이 정면보다 눈에 띄게 나쁜 이유가 이것으로 보인다.
 -->
 
 <!DOCTYPE html>
@@ -7215,8 +7275,6 @@ function drawHairStrands(ctx, fit, scalpY, hairEndY, maskW, maskH, hairCanvas, o
     // 콘솔 없이도 화면 진단창에서 볼 수 있게 보관
     window._lastDisc = window._lastDisc || {};
     window._lastDisc[angle] = { n:_strandN, cut:_flowCutN, pct };
-    if(false){
-    }
   }
 
   // ── 2단계 합성 ──
@@ -7224,26 +7282,52 @@ function drawHairStrands(ctx, fit, scalpY, hairEndY, maskW, maskH, hairCanvas, o
   //     clip을 걸어서, 인식된 머리카락 영역 밖(얼굴·안경·배경)으로는 절대 안 나가게 함.
   // [2] ext: 실측 이탈점을 넘겨 슬라이더로 늘어난 구간 → clip 없이 그대로.
   //     (짧게 줄인 경우엔 애초에 ext 구간 자체가 안 그려지므로 자연히 문제 없음)
+  /* ── 클립 마스크: 팽창(dilate) → <b>닫기(close)</b> (2026-08-01) ────────────
+     원래 의도: "이마 중앙 notch 같은 국소 인식 실패 구간"을 메우는 것. 방법은
+     블러 후 낮은 문턱으로 다시 하드 마스크화 — 이건 형태학의 <b>팽창</b>이고,
+     구멍만 메우는 게 아니라 <b>바깥 경계도 같이 밀어낸다</b>.
+
+     실측(Chromium, 1200px 캔버스, 현행 값 blur 18px·문턱 25):
+       경계 x=599 → <b>622</b>   ... 마스크 바깥 23px까지 머리카락을 칠할 수 있었다.
+     사용자 지적("원본 결 보기에서도 세그멘테이션을 침범한 가닥들이 있다")의
+     원인 중 하나가 정확히 이것이다. 세그멘테이션은 잘 잡혔는데 <b>클립이 헐거웠다</b>.
+
+     고침: 팽창 다음에 같은 반경으로 <b>침식</b>을 한 번 더 건다(= 닫기 연산).
+     구멍은 팽창 단계에서 이미 메워져 되돌아오지 않고, 바깥 경계만 제자리로 온다.
+       원본 599 → 닫기 후 <b>599</b> · 노치 메움 ✓ · 구멍 메움 ✓ · 바깥 615px 투명 ✓
+     비용은 블러+문턱 패스 한 번(렌더당 1회). */
+  const HAIR_CLIP = (window.HAIR_CLIP = window.HAIR_CLIP || {
+    close:   true,   // false면 예전 동작(팽창만) — A/B 확인용
+    gapFrac: 0.015,  // 메울 구멍의 크기(캔버스 폭 대비) — 예전 팽창 반경과 동일
+    loThr:   25,     // 팽창 문턱(낮을수록 크게 부풂)
+    hiThr:   230,    // 침식 문턱 — 255-loThr이면 팽창량과 정확히 상쇄(대칭 닫기)
+  });
+  function thresholdPass(srcCanvas, blurPx, thr, drawFit){
+    const c = document.createElement('canvas');
+    c.width = cw; c.height = ch;
+    const x = c.getContext('2d');
+    x.filter = `blur(${blurPx}px)`;
+    if(drawFit) x.drawImage(srcCanvas, fit.dx, fit.dy, fit.dw, fit.dh);
+    else x.drawImage(srcCanvas, 0, 0);
+    x.filter = 'none';
+    const d = x.getImageData(0,0,cw,ch);
+    for(let i=3;i<d.data.length;i+=4) d.data[i] = d.data[i] > thr ? 255 : 0;
+    x.putImageData(d,0,0);
+    return c;
+  }
+  let _strictMaskCache = null;
+  function strictMaskCanvas(){   // 팽창 없는 진짜 세그멘테이션(진단·비교용)
+    if(_strictMaskCache) return _strictMaskCache;
+    const c = document.createElement('canvas'); c.width = cw; c.height = ch;
+    c.getContext('2d').drawImage(hairCanvas, fit.dx, fit.dy, fit.dw, fit.dh);
+    return (_strictMaskCache = c);
+  }
   function compositeLayers(){
-    const maskAlpha = document.createElement('canvas');
-    maskAlpha.width = cw; maskAlpha.height = ch;
-    const mCtx = maskAlpha.getContext('2d');
-    // 버그 수정: hairCanvas(destination-in 클리핑 마스크)가 scalpY와 동일한 원본 마스크에서
-    // 나와서, 이마 중앙 notch 같은 국소 인식 실패 구간은 마스크 알파도 0이라 validCols를
-    // 고쳐서 그 컬럼에 뿌리를 심어도 여기서 다시 지워지는 문제가 있었음. → 클리핑용
-    // 마스크에 작은 블러를 걸어 알파를 살짝 번지게(dilate)한 뒤 임계치로 다시 불투명
-    // 처리해서, 좁은 gap(노치)만 부드럽게 메워지고 배경처럼 넓은 미인식 영역은 여전히
-    // 클리핑되도록 함. (블러만 걸면 전체가 반투명해져 머리카락이 옅게 비쳐 보이므로
-    // 임계치로 다시 하드 마스크화)
-    const blurPx = Math.max(3, fit.dw * 0.015);
-    mCtx.filter = `blur(${blurPx}px)`;
-    mCtx.drawImage(hairCanvas, fit.dx, fit.dy, fit.dw, fit.dh);
-    mCtx.filter = 'none';
-    const mImg = mCtx.getImageData(0,0,cw,ch);
-    for(let i=3;i<mImg.data.length;i+=4){
-      mImg.data[i] = mImg.data[i] > 25 ? 255 : 0;
-    }
-    mCtx.putImageData(mImg,0,0);
+    const blurPx = Math.max(3, fit.dw * HAIR_CLIP.gapFrac);
+    const dilated = thresholdPass(hairCanvas, blurPx, HAIR_CLIP.loThr, true);
+    const maskAlpha = HAIR_CLIP.close
+      ? thresholdPass(dilated, blurPx, HAIR_CLIP.hiThr, false)   // 닫기(팽창→침식)
+      : dilated;                                                 // 예전 동작(팽창만)
 
     baseCtx.save();
     baseCtx.globalCompositeOperation = 'destination-in';
@@ -7257,6 +7341,7 @@ function drawHairStrands(ctx, fit, scalpY, hairEndY, maskW, maskH, hairCanvas, o
     ctx.restore();
   }
   compositeLayers();
+  measureMaskLeak(baseOffscreen, extOffscreen, strictMaskCanvas(), cw, ch, angle);
 
   // (옮기기 1단계) 이 각도의 최신 완성 경로를 저장 — 슬라이더 조정 등으로
   // 다시 그릴 때마다 덮어써서 항상 "지금 화면에 보이는 그 가닥들"이 유지됨.
@@ -7264,6 +7349,52 @@ function drawHairStrands(ctx, fit, scalpY, hairEndY, maskW, maskH, hairCanvas, o
     state.strandPaths = state.strandPaths || {};
     state.strandPaths[angle] = { strands: capturedStrands, maskW, maskH };
   }
+}
+/* ── [진단] 마스크 밖으로 새어나간 잉크 측정 (2026-08-01) ─────────────────
+   "세그멘테이션을 침범했다"는 눈으로만 판단하던 것을 숫자로 바꾼다. 그리지 않으면
+   개선했는지 나빠졌는지 매번 실기기 스크린샷을 봐야 하고, 그러면 문턱을 짐작으로
+   흔들게 된다.
+
+   재는 방법: 완성된 두 레이어(base=클립됨, ext=자유)의 잉크 픽셀 중 <b>팽창 없는
+   진짜 세그멘테이션</b> 밖에 있는 비율. 전체 해상도로 재면 getImageData가 무거워서
+   가로 320px로 줄여서 잰다(비율이라 축소해도 값이 거의 같다).
+
+   해석:
+     · base 누출 — 클립 마스크가 헐거움(닫기 연산 이전엔 여기가 컸다)
+     · ext  누출 — 가닥 경로 자체가 마스크를 넘어감. 중립 상태에서 0이어야 정상이고,
+       길이를 늘리면 당연히 올라간다(일부러 사진보다 길게 만드는 것이므로).      */
+const MASK_LEAK_W = 320;
+let _leakLogged = {};
+function measureMaskLeak(baseOff, extOff, strictMask, cw, ch, angle){
+  if(!angle) return null;
+  try{
+    const w = Math.min(MASK_LEAK_W, cw), h = Math.max(1, Math.round(ch * w / cw));
+    const small = (src)=>{
+      const c = document.createElement('canvas'); c.width=w; c.height=h;
+      const x = c.getContext('2d', { willReadFrequently:true });
+      x.drawImage(src, 0, 0, w, h);
+      return x.getImageData(0,0,w,h).data;
+    };
+    const M = small(strictMask), B = small(baseOff), E = small(extOff);
+    let bIn=0, bOut=0, eIn=0, eOut=0;
+    for(let i=3;i<M.length;i+=4){
+      const inMask = M[i] > 40;
+      if(B[i] > 24){ inMask ? bIn++ : bOut++; }
+      if(E[i] > 24){ inMask ? eIn++ : eOut++; }
+    }
+    const tot = bIn+bOut+eIn+eOut;
+    const res = { base:{ inside:bIn, outside:bOut }, ext:{ inside:eIn, outside:eOut },
+                  leakPct: tot ? +((bOut+eOut)/tot*100).toFixed(2) : 0 };
+    window._lastMaskLeak = window._lastMaskLeak || {};
+    window._lastMaskLeak[angle] = res;
+    // 각도당 1회만(슬라이더 드래그 도배 방지). DIAG_VERBOSE면 매번.
+    if(!(angle in _leakLogged) || window.DIAG_VERBOSE){
+      _leakLogged[angle] = true;
+      console.log('[진단·침범] '+angle+' 마스크 밖 잉크 '+res.leakPct+'%'
+        + ' (클립층 '+bOut+'px, 연장층 '+eOut+'px / 마스크 안 '+(bIn+eIn)+'px)');
+    }
+    return res;
+  }catch(e){ return null; }
 }
 function tintColor(hex, bright){
   // hex 또는 rgb() 문자열을 받아 밝기 조정
@@ -9857,6 +9988,179 @@ function alignStrandPtsToField3D(pts, field, headA, acc){
   return out;
 }
 
+/* ══════════════════════════════════════════════════════════════════
+   3D 모발 점유(occupancy) 필드 — 헤어 세그멘테이션을 두상 좌표로 통합 (2026-08-01)
+   ─────────────────────────────────────────────────────────────────
+   결(orientation)에 이어 <b>세그멘테이션</b>을 3D로 올린다. 결 필드가 "이 자리
+   머리카락이 <b>어느 방향</b>으로 흐르나"였다면, 이건 "이 자리에 머리카락이
+   <b>있기는 한가</b>"이다.
+
+   왜 필요한가 — 지금 3D 모델은 세그멘테이션을 <b>모른다</b>:
+     · 리프트는 헐 단면으로 깊이를 지어 붙인다. 마스크에 구멍(가르마·정수리 노출·
+       민머리)이 있어도 헐은 그냥 매끈한 타원이라 그 구멍이 사라진다.
+     · 안 찍힌 뷰는 맞은편을 <b>거울</b>로 채운다. 반대쪽에 머리가 없어도 채운다.
+     · 되쏠 때는 네 뷰 가닥을 전부 겹쳐 그린다. 그 뷰 마스크 밖으로 나가도 막는 게
+       깊이 컬링뿐이다(스크린샷에서 결이 얼굴 위로 넘어온 이유).
+   즉 "머리카락이 없는 자리"라는 정보가 3D 어디에도 없었다.
+
+   방법 — 실루엣 카빙(shape-from-silhouette)의 표면판.
+   3D 점 P를 네 실측 뷰로 <b>되쏘아</b> 각 뷰의 헤어 마스크를 찍어 본다.
+     · 그 카메라 반대편(depth ≤ 0)인 뷰는 발언권 없음 — 그 뷰가 보는 건 앞쪽 머리다.
+     · 앞쪽인 뷰는 정면성(depth)에 비례한 <b>가중치</b>로 투표. 실루엣 근처에서
+       비스듬히 스치는 뷰는 약하게 센다(마스크 경계 오차가 그대로 들어오므로).
+     · 점유도 = Σ(가중치 × 마스크) / Σ(가중치).
+   엄격한 AND(한 뷰라도 배경이면 깎기)를 안 쓴 이유: 뷰가 4장뿐이고 포즈·마스크에
+   오차가 있어서 AND는 실제 있는 머리까지 지운다. 가중 투표는 "그 자리를 제일 잘
+   보는 뷰의 말"을 자연히 크게 듣는다 — 옆머리는 측면 뷰가, 뒤통수는 후면 뷰가.
+
+   쓰는 곳(이번 턴):
+     · 리프트에서 <b>가닥을 다듬는다</b>. 점유가 없는 구간으로 들어가면 거기서 자른다.
+       뿌리부터 없으면 가닥을 통째로 버린다(거울 채움이 민머리에 심는 것 차단).
+   다음 턴: 되쏘기(projectHair3DToView / projectHairQuiltToView)에서 같은 프로브로
+   화면 클립 — 사용자 지시 "세그멘테이션 영역 밖에서는 렌더링이 안 되게".
+══════════════════════════════════════════════════════════════════ */
+const HAIR_OCC3D = {
+  on:       true,  // 끄면 예전 동작(세그멘테이션 미반영)으로 즉시 복귀 — A/B 확인용
+  alphaThr: 40,    // 이 알파 이상이면 그 픽셀은 머리카락(2D isRealHairAt와 같은 기준)
+  minFacing: 0.12, // 정면성이 이 미만인 뷰는 투표에서 뺀다(실루엣 스치기)
+  occThr:   0.35,  // 점유도가 이 미만이면 "머리카락 없음"
+  minSeen:  0.15,  // 투표 가중치 합이 이 미만이면 판단 보류(아무도 제대로 못 봄 → 통과)
+  offRun:   3,     // 연속 이만큼 비어야 자른다(마스크 구멍·경계 노이즈 관용 —
+                   // 2D traceStrandPath의 _offRun과 같은 발상, 같은 값)
+  skipRoot: 2,     // 뿌리 쪽 이 개수는 검사 안 함(두피 경계는 항상 애매하다)
+  minPts:   3,     // 이보다 짧게 남으면 가닥을 통째로 버린다
+  // 진단 격자(미니 3D 시각화 + 다음 턴 캐시용). 결 필드와 같은 파라미터화.
+  NT: 64, NP: 32,
+};
+
+/* 뷰별 헤어 마스크 샘플러 — 축소 알파를 1회만 만들어 캐시.
+   reasonMask(1=최종 머리카락)가 있으면 그걸 쓴다 — 이미 축소 해상도로 메모리에
+   있어서 getImageData가 아예 필요 없다. 없으면 hairCanvas 알파를 축소해 샘플링. */
+const _viewMaskCache = {};
+function getViewMaskSampler(angle){
+  const mi = state.hairMasks && state.hairMasks[angle];
+  const hairC = state.hairCanvases && state.hairCanvases[angle];
+  if(!mi) return null;
+  const cached = _viewMaskCache[angle];
+  if(cached && cached.mi === mi) return cached.s;
+  const iw = mi.w, ih = mi.h;
+  let W, H, hit;
+  if(mi.reasonMask && mi.maskW && mi.maskH){
+    W = mi.maskW; H = mi.maskH;
+    const rm = mi.reasonMask;
+    hit = (x, y)=> rm[y*W + x] === 1 ? 1 : 0;
+  } else if(hairC){
+    W = Math.max(8, mi.maskW || Math.round(iw*0.5));
+    H = Math.max(8, mi.maskH || Math.round(ih*0.5));
+    let data;
+    try{
+      const sc = document.createElement('canvas'); sc.width=W; sc.height=H;
+      const sx = sc.getContext('2d', { willReadFrequently:true });
+      sx.drawImage(hairC, 0, 0, W, H);
+      data = sx.getImageData(0,0,W,H).data;
+    }catch(e){ return null; }
+    hit = (x, y)=> data[(y*W + x)*4 + 3] > HAIR_OCC3D.alphaThr ? 1 : 0;
+  } else return null;
+  const s = {
+    W, H,
+    // 마스크 원본(mi.w/h) 좌표 → 0(없음) / 1(머리카락)
+    at(ix, iy){
+      const x = (ix / iw * W) | 0, y = (iy / ih * H) | 0;
+      if(x < 0 || y < 0 || x >= W || y >= H) return 0;   // 화면 밖 = 머리카락 아님
+      return hit(x, y);
+    },
+  };
+  _viewMaskCache[angle] = { mi, s };
+  return s;
+}
+
+/* 실측 뷰들로 "이 3D 점에 머리카락이 있나"를 판정하는 프로브.
+   project3DPointToView와 <b>같은 식</b>을 쓰되 회전행렬을 뷰마다 한 번만 만든다
+   (그 함수는 호출마다 composeRotationZYX를 새로 조립해서, 점 수십만 개에 쓰면
+   그 조립이 비용의 대부분이 된다). */
+function makeHairOccupancyProbe(views, names, yTop, CY, headR){
+  if(!HAIR_OCC3D.on) return null;
+  const O = HAIR_OCC3D;
+  const cams = [];
+  names.forEach(n=>{
+    const v = views[n];
+    const smp = getViewMaskSampler(n);
+    if(!v || !smp) return;
+    cams.push({ angle:n, R: composeRotationZYX(v.pose.yaw, v.pose.pitch, v.pose.roll),
+                cx:v.cx, s:v.s, sy:v.sy, crownY:v.crownY, smp });
+  });
+  if(!cams.length) return null;
+  const invR = 1 / Math.max(1e-6, headR);
+  return {
+    cams, nCam: cams.length,
+    at(px, py, pz){
+      let wSum = 0, hSum = 0;
+      const wy = py - CY;
+      for(let i=0;i<cams.length;i++){
+        const c = cams[i], R = c.R;
+        const lz = R[6]*px + R[7]*wy + R[8]*pz;
+        if(lz <= 0) continue;                       // 이 카메라 반대편 — 발언권 없음
+        const w = Math.min(1, lz * invR);           // 정면일수록 크게
+        if(w < O.minFacing) continue;
+        const lx = R[0]*px + R[1]*wy + R[2]*pz;
+        const ly = R[3]*px + R[4]*wy + R[5]*pz;
+        const ix = lx / c.s + c.cx;
+        const iy = c.crownY + (yTop - (ly + CY)) / c.sy;
+        wSum += w; hSum += w * c.smp.at(ix, iy);
+      }
+      // 아무도 제대로 못 보면 판단 보류(occ=1) — 모르는 것을 지우지는 않는다
+      return wSum > O.minSeen ? { occ: hSum/wSum, seen: wSum } : { occ: 1, seen: wSum };
+    },
+  };
+}
+
+/* 가닥을 점유 필드로 다듬기.
+   뿌리에서 걸어가다 "머리카락 없음"이 연속 offRun번 나오면 거기서 자른다.
+   뿌리부터 없으면 null을 돌려 <b>가닥을 통째로 버리게</b> 한다 — 거울 채움이
+   민머리·가르마 자리에 가닥을 심는 것이 이 경로로 걸러진다. */
+function trimStrandToOccupancy3D(pts, probe, acc){
+  const O = HAIR_OCC3D;
+  if(!probe || !pts || pts.length < 3) return pts;
+  let off = 0, cut = -1;
+  for(let i=Math.min(O.skipRoot, pts.length-1); i<pts.length; i++){
+    const p = pts[i];
+    const r = probe.at(p.x, p.y, p.z);
+    if(acc) acc.n++;
+    if(r.occ >= O.occThr){ off = 0; continue; }
+    off++;
+    if(off >= O.offRun){ cut = i - off + 1; break; }
+  }
+  if(cut < 0) return pts;
+  if(cut < O.minPts){ if(acc) acc.dropped++; return null; }
+  if(acc){ acc.trimmed++; acc.removedPts += (pts.length - cut); }
+  return pts.slice(0, cut);
+}
+
+/* [진단·시각화] 점유를 셀 격자로 구워 둔다. 미니 3D에서 눈으로 보기 위한 것이고,
+   다음 턴의 되쏘기 클립에서 빠른 사전판정 캐시로도 쓸 수 있다.
+   셀 중심의 <b>헐 표면 점</b>을 프로브에 물어본다(결 필드와 같은 파라미터화:
+   θ 균등 × 극각 균등). */
+function buildOccupancyCellField(probe, hullW, hullD, bucketOfY, CY, b){
+  if(!probe) return null;
+  const O = HAIR_OCC3D, NT = O.NT, NP = O.NP;
+  const occ = new Float32Array(NT*NP), seen = new Float32Array(NT*NP);
+  let filled = 0, hairCells = 0;
+  for(let pi=0; pi<NP; pi++){
+    const ny = Math.cos((pi + 0.5) / NP * Math.PI);
+    const y  = CY + b * ny;
+    const bi = bucketOfY(y);
+    const Wb = hullW[bi], Db = hullD[bi];
+    for(let ti=0; ti<NT; ti++){
+      const th = (ti + 0.5) / NT * 2*Math.PI - Math.PI;
+      const r = probe.at(Wb*Math.sin(th), y, Db*Math.cos(th));
+      const ci = pi*NT + ti;
+      occ[ci] = r.occ; seen[ci] = r.seen;
+      if(r.seen > O.minSeen){ filled++; if(r.occ >= O.occThr) hairCells++; }
+    }
+  }
+  return { NT, NP, occ, seen, CY, b, filled, hairCells, ok: filled > 0 };
+}
+
 function buildHairStrandsFromPaths(){
   if(!state.strandPaths) return null;
   const headEll = getHeadEllipsoid();
@@ -10046,6 +10350,13 @@ function buildHairStrandsFromPaths(){
   const field3D = buildHairOrientationField3D({ views, names, hullW, hullD, bucketOfY, mapY, CY, b, NY, yStep });
   const fieldAcc = { n:0, hit:0, turn:0, turnN:0 };
 
+  /* ── 1.6단계(2026-08-01 신규): 세그멘테이션을 두상 좌표로 통합 ──
+     결 필드와 같은 자리에서 세운다. 헐이 있어야 표면 점을 찍을 수 있고, 가닥을
+     올리기 전이어야 올리는 즉시 다듬을 수 있다. headR은 투표 가중치(정면성)를
+     정규화하는 기준 반지름 — 두상 폭·깊이 중 큰 쪽. */
+  const occProbe = makeHairOccupancyProbe(views, names, yTop, CY, Math.max(a, cD));
+  const occAcc = { n:0, trimmed:0, dropped:0, removedPts:0 };
+
   // ── 2~4단계: 헐 깊이 + 두께 채움 + 깊이 음영 ──
   const group = new THREE.Group();
   group.name = 'hairStrands';
@@ -10190,9 +10501,18 @@ function buildHairStrandsFromPaths(){
       }
       if(worldPts.length >= 2){
         // ── 결 정렬 — 실측 결 필드 쪽으로 진행 방향을 되돌린다 ──
-        const aligned = field3D
+        let aligned = field3D
           ? alignStrandPtsToField3D(worldPts, field3D, a, fieldAcc)
           : worldPts;
+        /* ── 세그멘테이션 다듬기 — 머리카락이 없는 자리로 들어가면 거기서 끝 ──
+           정렬을 <b>먼저</b> 하고 다듬는 순서인 이유: 정렬이 가닥을 움직이므로,
+           움직이기 전 좌표로 판정하면 실제로 그려질 자리와 다른 곳을 검사하게 된다.
+           뿌리부터 비어 있으면 가닥을 통째로 버린다(아래 continue). */
+        if(occProbe){
+          const trimmed = trimStrandToOccupancy3D(aligned, occProbe, occAcc);
+          if(!trimmed){ total++; continue; }   // 이 가닥은 실측상 존재하지 않는다
+          aligned = trimmed;
+        }
         for(let i=1;i<aligned.length;i++){
           const p0 = aligned[i-1], p1 = aligned[i];
           positions.push(p0.x, p0.y, p0.z, p1.x, p1.y, p1.z);
@@ -10259,9 +10579,27 @@ function buildHairStrandsFromPaths(){
       meanCoh: +field3D.meanCoh.toFixed(3), steps: fieldAcc.n, hit: fieldAcc.hit,
       meanTurnDeg: fieldAcc.turnN ? +(fieldAcc.turn/fieldAcc.turnN*180/Math.PI).toFixed(2) : 0 };
   }
+  /* [진단] 세그멘테이션 다듬기가 실제로 먹었는지. 이 세 숫자로 문턱을 판단한다:
+       · 버림 0 · 자름 0  → 필드가 아무 일도 안 함(occThr가 너무 낮거나 프로브 실패)
+       · 버림이 과하게 큼 → 마스크·포즈가 어긋나 실제 있는 머리를 지우는 중.
+         그때는 occThr를 내리거나 offRun을 키울 것(둘 다 관대해지는 방향). */
+  if(occProbe){
+    const occField = buildOccupancyCellField(occProbe, hullW, hullD, bucketOfY, CY, b);
+    const kept = canonicalStrands.length;
+    console.log('[3D·세그] 세그멘테이션 다듬기 — 가닥 ' + total + '개 중 버림 ' + occAcc.dropped
+      + '개 · 중간에서 자름 ' + occAcc.trimmed + '개(평균 '
+      + (occAcc.trimmed ? (occAcc.removedPts/occAcc.trimmed).toFixed(1) : '0') + '점 제거)'
+      + ' → 남은 가닥 ' + kept + '개 · 판정 ' + occAcc.n + '회'
+      + (occField ? (' · 표면셀 머리있음 ' + occField.hairCells + '/' + occField.filled) : ''));
+    state.hairOcc3D = { probe: occProbe, field: occField, yTop, CY };
+    window._lastOcc3D = { views: occProbe.cams.map(c=>c.angle), dropped: occAcc.dropped,
+      trimmed: occAcc.trimmed, kept, of: total, probes: occAcc.n,
+      hairCells: occField ? occField.hairCells : 0, seenCells: occField ? occField.filled : 0 };
+  }
   // (10차) 정규 3D 모델 stash — 조정 화면 되쏘기(projectHair3DToView)의 소스.
   // (2026-08-01) field를 함께 stash — 되쏘기·이식 쪽에서 결을 다시 참조할 수 있게.
-  state.hair3D = { strands: canonicalStrands, viewCal, yTop, CY, field: field3D || null };
+  state.hair3D = { strands: canonicalStrands, viewCal, yTop, CY, field: field3D || null,
+                   occ: (state.hairOcc3D && state.hairOcc3D.probe) ? state.hairOcc3D : null };
   state.hairField3D = field3D || null;
   return total > 0 ? group : null;
 }
@@ -11649,7 +11987,7 @@ function initDevMini3D(){
     group.rotation.x += (e.clientY-lastY)*0.01;
     lastX=e.clientX; lastY=e.clientY;
   });
-  devMini3D = { renderer, scene, camera, group, headWire, strandObj:null, fieldObj:null, raf:null, autoRot:()=>autoRot };
+  devMini3D = { renderer, scene, camera, group, headWire, strandObj:null, fieldObj:null, occObj:null, raf:null, autoRot:()=>autoRot };
   function animate(){
     if(autoRot) group.rotation.y += 0.005;
     renderer.render(scene, camera);
@@ -11732,6 +12070,52 @@ function refreshDevMini3D(){
   group.add(obj);
   devMini3D.strandObj = obj;
   refreshField3DDebug();
+  refreshOcc3DDebug();
+}
+
+/* ── [진단용] 3D 점유 필드를 미니뷰에 그린다 (2026-08-01) ──────────────
+   window.__occ3DDebug = true; 로 켜면 두상 표면 셀마다 점을 찍는다.
+   초록 = 머리카락 있음 / 빨강 = 없음(민머리·가르마·마스크 구멍) / 회색 = 어느 뷰도
+   제대로 못 본 자리(판단 보류 — 여기는 아무것도 안 지운다).
+   "가르마가 3D에서 사라진다" 같은 증상을 이 그림 하나로 확인할 수 있다. */
+function refreshOcc3DDebug(){
+  if(!devMini3D) return;
+  const { group } = devMini3D;
+  if(devMini3D.occObj){
+    group.remove(devMini3D.occObj);
+    if(devMini3D.occObj.geometry) devMini3D.occObj.geometry.dispose();
+    if(devMini3D.occObj.material) devMini3D.occObj.material.dispose();
+    devMini3D.occObj = null;
+  }
+  if(!window.__occ3DDebug) return;
+  const store = state.hairOcc3D;
+  const f = store && store.field;
+  if(!f || !f.ok) return;
+  let he; try{ he = getHeadEllipsoid(); }catch(e){ return; }
+  const O = HAIR_OCC3D;
+  const pos=[], col=[];
+  for(let pi=0; pi<f.NP; pi++){
+    const ny = Math.cos((pi + 0.5) / f.NP * Math.PI);
+    const rq = Math.max(0, 1 - ny*ny);
+    if(rq <= 1e-4) continue;
+    const rr = Math.sqrt(rq);
+    for(let ti=0; ti<f.NT; ti++){
+      const ci = pi*f.NT + ti;
+      const th = (ti + 0.5) / f.NT * 2*Math.PI - Math.PI;
+      pos.push(he.a * rr * Math.sin(th) * 1.10, f.CY + f.b * ny, he.c * rr * Math.cos(th) * 1.10);
+      if(f.seen[ci] <= O.minSeen)      col.push(0.45, 0.45, 0.45);  // 판단 보류
+      else if(f.occ[ci] >= O.occThr)   col.push(0.15, 0.95, 0.35);  // 머리카락 있음
+      else                             col.push(0.95, 0.20, 0.20);  // 없음
+    }
+  }
+  if(!pos.length) return;
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(pos), 3));
+  geo.setAttribute('color', new THREE.BufferAttribute(new Float32Array(col), 3));
+  const o = new THREE.Points(geo, new THREE.PointsMaterial({ size: Math.max(0.012, he.a*0.035), vertexColors:true }));
+  o.name = 'occ3DDebug';
+  group.add(o);
+  devMini3D.occObj = o;
 }
 
 /* ── [진단용] 3D 결 필드를 미니뷰에 직접 그린다 (2026-08-01) ──────────
@@ -12102,6 +12486,8 @@ function startNewCustomer(){
   state.aiSectionEstimate=null; // (a) 실측 사진 기반 3D 보정 캐시도 새 고객마다 초기화
   state.hair3D=null; state.hair3Dneutral=null; // (11차) 3D 모델 캐시도 새 고객마다 무효화
   state.hairField3D=null; // (2026-08-01) 3D 결 필드도 사람이 바뀌면 통째로 무효
+  state.hairOcc3D=null;   // (2026-08-01) 3D 점유 필드도 마찬가지
+  for(const k in _viewMaskCache) delete _viewMaskCache[k]; // 뷰 마스크 샘플러 캐시
   state.aiOutfitRecommendation=null; // (3단계) 의상 추천 캐시도 초기화
   _headCrossSectionCache = null; // 두상 실측 단면(Shape-from-Silhouette) 캐시도 새 고객마다 초기화
   _headVerticalRadiusCache = null; // 두상 세로 반지름 실측 캐시도 새 고객마다 초기화
