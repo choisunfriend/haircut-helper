@@ -801,16 +801,82 @@
     ② 결 일치 — 렌더 결과에 <b>같은 구조텐서</b>(computeHairOrientationField)를
        돌려 나온 각도를 사진의 결 필드와 비교, 양쪽 coherence 곱 가중 평균 각오차.
        사진과 렌더에 같은 자를 대는 것이라 사과 대 사과.
-    ③ 밀도 3×3 — 마스크 바운딩박스를 9칸으로, 칸마다 잉크 채움률.
+    ③ 밀도 — 단계별 격자 지도(measureStageDensity)로 분리
 
   Chromium 하네스 검증(정답을 아는 합성 입력):
     결 일치 — 렌더/사진 각도차 0·15·30·45·60·90°에 대해 89.9/77.9/63.0/45.0/27.0/0.1°
               (정답 90/75/60/45/30/0 대비 최대 3° 오차, 래스터 양자화)
     실루엣  — 완전 일치 IoU 0.969·채움100%·샘3.1% / 60%만 그림 IoU 0.380·채움38%
               / 140% 과다 IoU 0.517·샘48.3%
-    밀도    — 도넛(가운데 빈) 렌더 → 3×3 가운데 칸 <b>0</b>, 링 35~50.
+    밀도    — 도넛(가운데 빈) 렌더 → 가운데 칸 <b>0</b>, 링 35~50.
               "중간이 휑하다"가 그대로 숫자로 나온다.
   rebuildHair3D()가 로그 캐시를 비우므로 A/B마다 새 숫자가 찍힌다.
+
+  ── 2026-08-01 (7) 헤어 레이어 클립 — "세그멘테이션 밖에는 안 그린다" ──
+  비교자(①)가 결정을 내려줬다. 실기기 네 뷰:
+    front IoU 0.548 채움 100%  샘 45.2% 결 19.8°
+    left  IoU 0.502 채움 98.8% 샘 49.5% 결 24.8°
+    right IoU 0.761 채움 98.4% 샘 22.9% 결 17.7°
+    back  IoU 0.903 채움 99.5% 샘  9.2% 결 14.1°
+  <b>채움이 98~100%</b>다 — 안 그려서 생긴 문제가 아니라 넘쳐서 생긴 문제다.
+  그러면 클립이 정답이다(채움이 낮았다면 클립은 안 그려진 곳을 더 지우는 독이었다.
+  ①을 먼저 한 이유가 이것이다).
+
+  사용자 질문 "destination in이 되어 있는 상태인가? 2D 3D 다?" — 아니었다.
+  2D는 base에만 걸려 있었고 <b>ext(연장층)는 클립 없음</b>, 3D 경로 둘(이식·가닥
+  투영)은 <b>아예 없음</b>. front 마스크 밖 잉크 819px 중 클립층이 38px뿐이었던 게
+  그 뜻이다.
+
+  고침: (6)에서 만든 헤어 레이어에 destination-in 한 번. 경로 세 개가 한꺼번에 덮인다.
+  · buildHairClipMask — 2D와 같은 닫기(팽창→침식→원본 합집합). 마스크 구멍은
+    메우고 바깥 경계는 제자리.
+  · hairClipGrowPx — <b>늘린 머리는 나가는 게 맞다</b>. 조정된 길이 비율만큼
+    클립을 키운다. 중립/원본결 보기는 여유 0 = 마스크 그대로.
+    이 구분을 안 하면 컬·길이가 다시 죽는다(예전에 겪었다).
+
+  Chromium 하네스 검증:
+    140% 과다 → 클립 OFF: IoU 0.505 샘 49.5% / 클립 ON: IoU <b>0.947</b> 샘 <b>5.3%</b>
+      (5.3%는 실루엣 측정이 가닥을 번지게 하면서 생기는 바닥값 — 완전 일치도 3~5%)
+    60%만 그림 → 채움 37.5% 그대로. 클립이 <b>못 채운 것을 가리지 않는다</b>(중요)
+    길이 최대 조정 → 여유 468px, 샘 49.5% 유지 = 늘린 머리는 나간다 ✓
+    원본결 보기(raw) → 여유 0px, 샘 5.3% = 클립됨 ✓
+    마스크 구멍(노치) 안 가닥 2400px → 2400px 유지 = 구멍이 가닥을 안 지운다 ✓
+  HAIR_LAYER_CLIP.on = false 로 이전 동작.
+
+  ── 비교자가 새로 잡아낸 것(미해결) ──
+  밀도 3×3에 <b>0인 칸</b>이 있다. left `100 70 0 / 85 82 0 / 89 100 -` — 오른쪽 열이
+  통째로 0. right도 `70 97 97 / - 90 98 / 23 87 89`로 왼쪽 아래가 23%.
+  마스크 바운딩박스의 1/3이 아예 안 그려진다는 뜻이고, 이건 <b>클립으로 안 고쳐진다</b>
+  (채움 98.8%는 "번지게 하면 덮인다"는 뜻이지 밀도가 고르다는 뜻이 아니다).
+  같은 뷰에서 이식 소스가 "결필드 직접 걷기"로 폴백하고 섹션이 crown 하나뿐인 것
+  (front는 "캡처 가닥 경로" + crown,temple,front)과 같은 뿌리로 보인다 —
+  buildHairStripPool이 state.strandPaths[angle]을 찾는데, 이식이 성공하면
+  drawHairStrands가 안 불려서 그 뷰의 캡처가 채워지지 않는다. 다음 후보.
+
+  ── 2026-08-01 (8) ① 완성 — 단계별 밀도 지도 ──
+  사용자: "지금 말한 지도 작업이 아까 했던 1번 내용이어야 하는데?" 맞다.
+  ①에 밀도 분포를 넣겠다고 해놓고 3×3 한 장을, 그것도 <b>마지막 단계에서만</b>,
+  채움%는 번진 값이라 100%로 포화되는 채로 냈다. 내 스펙 기준으로 미달이었다.
+
+  고친 것 둘:
+  · 실채움% 추가 — 예전 채움%는 <b>번지게 한</b> 렌더로 재서 얇게라도 닿으면 100%가
+    나온다(실기기 네 뷰 전부 98~100%였다. "정수리가 성기다"를 전혀 못 잡았다).
+    실루엣 판정은 번진 값이 맞지만 "안이 부실한가"는 원본 잉크로 재야 한다. 둘 다 찍는다.
+  · measureStageDensity — 같은 격자(G×G, 마스크 바운딩박스)로 파이프라인 <b>세 지점</b>:
+      ① 캡처 state.neutralStrandPaths (3D의 원료 = 원본 결 보기와 같은 계산)
+      ② 3D   state.hair3Dneutral을 이 뷰로 되쏜 것(깊이 컬링 포함)
+      ③ 화면 실제 잉크
+    ①이 비면 A(뿌리가 없음 → 심는 게 맞다), ①은 찼는데 ③이 비면 B(배선 → 채우면
+    안 된다). 사이에서 빠지면 리프트가 범인. 사용자 질문 "비는 곳을 알면 채우는
+    방식이냐"에 대한 답이 이 구조다 — 채우기 전에 <b>어느 단계</b>인지부터 가른다.
+  · 중립 캡처를 버리지 않고 state.neutralStrandPaths에 보관(예전엔 복원하며 버렸다).
+
+  Chromium 하네스 검증(정답을 심어 둔 합성 입력):
+    원료가 왼쪽 절반만 → 캡처 왼쪽 열 92,92,92,31,0 / 오른쪽 열 0,0,0,0,0  (A 검출 ✓)
+    원료 고른데 화면만 오른쪽 빔 → 캡처 77~100 / 화면 100,100,100,0,0      (B 검출 ✓)
+  ※ 정규화를 중앙값으로 짰다가 버렸다 — 빈 칸이 절반을 넘으면 중앙값이 0이 되고
+    0으로 나눌 수 없어 <b>전 칸이 0</b>으로 찍혔다. "절반이 비었다"를 재려고 만든
+    지도가 정확히 그 상황에서 눈이 머는 꼴. 90퍼센타일 기준으로 교체.
 
   아직 열려 있는 진짜 문제(별건, 사용자 확인 대기): getHeadEllipsoid는
   reasonMask===1 즉 <b>머리카락</b> 실루엣을 잰다(measureRowHalfWidth). 그런데
@@ -6114,7 +6180,8 @@ function renderFrame(canvas, angle){
           // 가닥 오버레이 — origLen 이내는 hairCanvas 마스크로 clip, 연장분은 clip 없음(drawHairStrands 내부에서 처리)
           drawHairStrands(lctx, fit, scalpY, hairEndY, maskW, maskH, hairC, buildStrandOpts(maskInf, angle, rawMode));
         }
-        measureRenderVsPhoto(hairLayer, maskInf, fit, ctx.canvas.width, ctx.canvas.height, angle);
+        const clipGrow = applyHairLayerClip(hairLayer, hairC, fit, ctx.canvas.width, ctx.canvas.height, rawMode);
+        measureRenderVsPhoto(hairLayer, maskInf, fit, ctx.canvas.width, ctx.canvas.height, angle, clipGrow);
         ctx.drawImage(hairLayer, 0, 0);
       }
 
@@ -7551,6 +7618,71 @@ function drawHairStrands(ctx, fit, scalpY, hairEndY, maskW, maskH, hairCanvas, o
      · base 누출 — 클립 마스크가 헐거움(닫기 연산 이전엔 여기가 컸다)
      · ext  누출 — 가닥 경로 자체가 마스크를 넘어감. 중립 상태에서 0이어야 정상이고,
        길이를 늘리면 당연히 올라간다(일부러 사진보다 길게 만드는 것이므로).      */
+/* ══════════════════════════════════════════════════════════════════
+   헤어 레이어 클립 — "세그멘테이션 밖에는 안 그린다" (2026-08-01)
+   ─────────────────────────────────────────────────────────────────
+   비교자(①)가 결정을 내려줬다. 네 뷰 전부 <b>마스크 채움 98~100%</b>인데
+   <b>밖으로 샘 9~49%</b>다. 즉 안 그려서 생긴 문제가 아니라 넘쳐서 생긴 문제고,
+   그러면 클립이 정답이다. (채움이 낮았다면 클립은 독이었다 — 안 그려진 곳을
+   더 지우는 꼴이니까. 그래서 ①을 먼저 한 것이다.)
+
+   레이어에 거는 이유: 예전엔 2D의 base에만 destination-in이 걸려 있었고
+   ext(연장층)와 3D 경로 둘(이식·가닥투영)은 클립이 아예 없었다. 세 경로를 각각
+   고치는 대신 헤어 레이어 하나에 걸면 전부 한 번에 덮인다.
+
+   ── 늘린 머리는 나가는 게 맞다 ──────────────────────────────────
+   길이를 키우면 원본 마스크 밖으로 나가는 게 <b>정상</b>이다. 그래서 조정된
+   길이 비율만큼 클립 마스크를 키운다. 중립(ratio=1)이면 여유 0 = 마스크 그대로.
+   이 구분을 안 하면 컬·길이가 다시 죽는다(예전에 한 번 겪었다).       */
+const HAIR_LAYER_CLIP = {
+  on: true,          // false면 예전 동작(3D 경로 클립 없음) — A/B용
+  gapFrac: 0.015,    // 구멍 메우기 반경(캔버스 폭 대비) — 2D 클립과 같은 값
+  loThr: 25, hiThr: 230,
+  growPerRatio: 0.5, // (길이비율-1) × 캔버스 높이 × 이 값 만큼 클립을 키운다
+};
+function buildHairClipMask(hairCanvas, fit, cw, ch, growPx){
+  const pass = (src, blurPx, thr, drawFit)=>{
+    const c = document.createElement('canvas'); c.width=cw; c.height=ch;
+    const x = c.getContext('2d', { willReadFrequently:true });
+    x.filter = `blur(${blurPx}px)`;
+    if(drawFit) x.drawImage(src, fit.dx, fit.dy, fit.dw, fit.dh); else x.drawImage(src, 0, 0);
+    x.filter = 'none';
+    const d = x.getImageData(0,0,cw,ch);
+    for(let i=3;i<d.data.length;i+=4) d.data[i] = d.data[i] > thr ? 255 : 0;
+    x.putImageData(d,0,0); return c;
+  };
+  const C = HAIR_LAYER_CLIP;
+  const r = Math.max(3, fit.dw * C.gapFrac);
+  const dil = pass(hairCanvas, r, C.loThr, true);
+  const closed = pass(dil, r, C.hiThr, false);
+  // 닫기는 정의상 원본을 포함해야 한다 — 근사 오차로 얇은 데가 깎이지 않게 합집합
+  closed.getContext('2d').drawImage(hairCanvas, fit.dx, fit.dy, fit.dw, fit.dh);
+  return growPx > 0.5 ? pass(closed, growPx, C.loThr, false) : closed;
+}
+/* 조정으로 <b>늘린</b> 만큼의 여유(px). 중립이면 0. */
+function hairClipGrowPx(fit, rawMode){
+  if(rawMode) return 0;
+  let maxRatio = 1;
+  try{
+    for(const id in (state.sections||{})){
+      const r = sectionLengthRatio(id, state.sections[id].length);
+      if(isFinite(r) && r > maxRatio) maxRatio = r;
+    }
+  }catch(e){}
+  return Math.max(0, (maxRatio - 1)) * fit.dh * HAIR_LAYER_CLIP.growPerRatio;
+}
+function applyHairLayerClip(layer, hairCanvas, fit, cw, ch, rawMode){
+  if(!HAIR_LAYER_CLIP.on || !hairCanvas) return 0;
+  const grow = hairClipGrowPx(fit, rawMode);
+  const mask = buildHairClipMask(hairCanvas, fit, cw, ch, grow);
+  const x = layer.getContext('2d');
+  x.save();
+  x.globalCompositeOperation = 'destination-in';
+  x.drawImage(mask, 0, 0);
+  x.restore();
+  return grow;
+}
+
 /* 화면에 실제로 보이는 폭. 헤어를 오프스크린 <b>레이어</b>에 그리게 되면서
    getBoundingClientRect()가 0을 돌려주는 경우가 생겼다(DOM에 없는 캔버스).
    그대로 두면 다발 폭 역산의 pxRatio가 3 → 1로 바뀌어 렌더가 통째로 달라진다.
@@ -7585,8 +7717,7 @@ function displayWidthOf(canvas){
      ② 결 일치 — 렌더 결과에 <b>같은 구조텐서</b>를 돌려서 나온 각도를, 사진에서
         뽑아 둔 결 필드와 비교. 양쪽 coherence를 곱해 가중 평균 각오차.
         사진과 렌더에 완전히 같은 자를 대는 것이라 사과 대 사과다.
-     ③ 밀도 3×3 — 마스크 바운딩박스를 9칸으로 나눠 칸마다 채움률.
-        "중간이 휑하다"가 가운데 칸 숫자로 나온다.
+     ③ 밀도 — 단계별 격자 지도(measureStageDensity)로 분리
    전부 320px로 줄여서 잰다(비율이라 축소해도 값이 거의 같고, 렌더당 1회).
 ══════════════════════════════════════════════════════════════════ */
 /* fillBlur/fillThr: 실루엣을 재려면 가닥을 <b>영역</b>으로 메워야 한다.
@@ -7594,10 +7725,126 @@ function displayWidthOf(canvas){
    재면 실루엣 일치가 아니라 <b>선 밀도</b>가 나온다 — 하네스에서 렌더가 마스크를
    정확히 덮었는데도 IoU 0.125가 나왔다. 알파를 살짝 번지게 한 뒤 문턱을 걸어
    "머리카락이 있는 구역"으로 바꿔서 잰다. 밀도는 아래 3×3에서 따로 본다. */
+/* ══════════════════════════════════════════════════════════════════
+   단계별 밀도 지도 — "어느 단계에서 사라지는가" (2026-08-01)
+   ─────────────────────────────────────────────────────────────────
+   사용자: "비는 곳을 알면 채우는 방식이라는 거지?" → 아니다. 채우면 증상만
+   사라진다(클립 팽창 23px이 정확히 그 실수였고, 몇 주를 먹었다).
+   지도의 목적은 <b>원인을 가르는 것</b>이고, 비는 데는 두 종류다:
+     A. 3D 모델에 가닥이 애초에 없다  → 뿌리를 심는 게 맞다(진짜 채우기)
+     B. 가닥은 있는데 화면까지 못 온다 → 채우면 안 된다. 배선(컬링·솎기·띠 폴백)을 고쳐야 한다
+   이걸 가르려면 <b>같은 격자</b>로 파이프라인 세 지점을 재야 한다:
+     ① 캡처   — state.neutralStrandPaths(3D의 원료. 원본 결 보기와 같은 계산)
+     ② 3D     — state.hair3Dneutral의 월드 가닥을 이 뷰로 되쏜 것
+     ③ 화면   — 실제로 그려진 잉크
+   ①이 비면 A, ①은 찼는데 ③이 비면 B. 사이(②)에서 빠지면 리프트가 범인이다.
+
+   값은 <b>90퍼센타일 기준 지수</b>다(제일 진한 축 = 100). 절대 개수는 단계마다 단위가
+   달라서(점 개수 vs 픽셀) 비교가 안 되지만, 지수로 만들면 <b>모양</b>이 비교된다.
+══════════════════════════════════════════════════════════════════ */
+const DENSITY_MAP = { on: true, G: 5 };   // G×G 격자(마스크 바운딩박스 기준)
+function _densGrid(G){ return { cnt:new Float64Array(G*G), area:new Float64Array(G*G) }; }
+/* 칸마다 (개수 ÷ 마스크 면적)을 구한 뒤 <b>90퍼센타일</b>을 100으로 잡아 지수화.
+   ※ 처음엔 중앙값 기준이었는데 하네스에서 무너졌다 — 빈 칸이 절반을 넘으면
+     중앙값이 0이 되고, 0으로 나눌 수 없으니 <b>전 칸이 0</b>으로 찍혔다.
+     "오른쪽 절반이 비었다"를 재려고 만든 지도가 정확히 그 상황에서 눈이 머는
+     꼴이었다. 90퍼센타일은 빈 칸이 많아도 안 무너지고, 이상치 한 칸에도
+     최댓값 기준만큼 휘둘리지 않는다. */
+function _densIndex(g, G){
+  const v = new Array(G*G).fill(-1), vals=[];
+  for(let i=0;i<G*G;i++){ if(g.area[i] > 0){ const d = g.cnt[i]/g.area[i]; v[i]=d; vals.push(d); } }
+  vals.sort((a,b)=>a-b);
+  const ref = vals.length ? vals[Math.min(vals.length-1, Math.floor(vals.length*0.9))] : 0;
+  return v.map(d => d < 0 ? null : (ref > 1e-12 ? Math.round(d/ref*100) : 0));
+}
+function _densRow(idx, G){
+  const rows=[];
+  for(let r=0;r<G;r++){
+    rows.push(Array.from({length:G}, (_,c)=>{
+      const v = idx[r*G+c];
+      return v===null ? '  ·' : String(Math.min(999,v)).padStart(3);
+    }).join(' '));
+  }
+  return rows.join(' | ');
+}
+/* 마스크 바운딩박스 + 칸별 마스크 면적(이미지 좌표 기준). 세 단계가 이걸 공유한다. */
+function _densFrame(maskInf, angle){
+  const mi = maskInf;
+  const rm = mi.reasonMask, MW = mi.maskW, MH = mi.maskH;
+  if(!rm || !MW || !MH) return null;
+  let x0=MW, x1=-1, y0=MH, y1=-1;
+  for(let y=0;y<MH;y++) for(let x=0;x<MW;x++) if(rm[y*MW+x]===1){
+    if(x<x0)x0=x; if(x>x1)x1=x; if(y<y0)y0=y; if(y>y1)y1=y; }
+  if(x1<x0||y1<y0) return null;
+  const G = DENSITY_MAP.G;
+  const bw=(x1-x0+1)/G, bh=(y1-y0+1)/G;
+  const area = new Float64Array(G*G);
+  for(let y=y0;y<=y1;y++) for(let x=x0;x<=x1;x++) if(rm[y*MW+x]===1){
+    const c=Math.min(G-1,Math.floor((x-x0)/bw)), r=Math.min(G-1,Math.floor((y-y0)/bh));
+    area[r*G+c]++;
+  }
+  // 이미지(mi.w/h) 좌표 → 칸 인덱스
+  const sx = MW/mi.w, sy = MH/mi.h;
+  const cellOf = (ix, iy)=>{
+    const mx = ix*sx, my = iy*sy;
+    if(mx<x0||mx>x1||my<y0||my>y1) return -1;
+    const c=Math.min(G-1,Math.floor((mx-x0)/bw)), r=Math.min(G-1,Math.floor((my-y0)/bh));
+    return r*G+c;
+  };
+  return { G, area, cellOf };
+}
+function measureStageDensity(angle, maskInf, inkCells){
+  if(!DENSITY_MAP.on || !angle) return null;
+  try{
+    const F = _densFrame(maskInf, angle);
+    if(!F) return null;
+    const G = F.G;
+    // ── ① 캡처(3D 원료) ──
+    const cap = _densGrid(G); cap.area = F.area;
+    const rec = (state.neutralStrandPaths && state.neutralStrandPaths[angle])
+             || (state.strandPaths && state.strandPaths[angle]);
+    if(rec && rec.strands) for(const st of rec.strands){
+      for(const p of st.pts){ const i=F.cellOf(p.x,p.y); if(i>=0) cap.cnt[i]++; }
+    }
+    // ── ② 3D 모델을 이 뷰로 되쏜 것 ──
+    const three = _densGrid(G); three.area = F.area;
+    const model = state.hair3Dneutral;
+    const cal = model && model.viewCal && model.viewCal[angle];
+    if(cal){
+      const R = composeRotationZYX(cal.yaw, cal.pitch, cal.roll);
+      const CY = model.CY, yTop = model.yTop;
+      for(const st of model.strands){
+        for(const p of st.pts){
+          const wy = p.y - CY;
+          const lz = R[6]*p.x + R[7]*wy + R[8]*p.z;
+          if(lz <= 0) continue;                     // 카메라를 등진 점(화면에 안 옴)
+          const lx = R[0]*p.x + R[1]*wy + R[2]*p.z;
+          const ly = R[3]*p.x + R[4]*wy + R[5]*p.z;
+          const i = F.cellOf(lx/cal.s + cal.cx, cal.crownY + (yTop - (ly + CY))/cal.sy);
+          if(i>=0) three.cnt[i]++;
+        }
+      }
+    }
+    // ── ③ 화면 잉크(호출부가 같은 격자로 세어 넘겨준다) ──
+    const scr = _densGrid(G); scr.area = F.area;
+    if(inkCells) for(let i=0;i<G*G;i++) scr.cnt[i] = inkCells[i];
+    const res = { G, capture:_densIndex(cap,G), model:_densIndex(three,G), screen:_densIndex(scr,G),
+                  capN: rec && rec.strands ? rec.strands.length : 0,
+                  srcNeutral: !!(state.neutralStrandPaths && state.neutralStrandPaths[angle]) };
+    window._lastDensity = window._lastDensity || {}; window._lastDensity[angle] = res;
+    console.log(`[밀도] ${angle} ${G}×${G} · 중앙값=100 · ·=마스크 없음`
+      + ` (원료 ${res.capN}가닥${res.srcNeutral?'':' ※중립캡처 없어 현재 캡처로 대체'})`);
+    console.log('        ① 캡처 ' + _densRow(res.capture, G));
+    console.log('        ② 3D   ' + _densRow(res.model, G));
+    console.log('        ③ 화면 ' + _densRow(res.screen, G));
+    return res;
+  }catch(e){ console.warn('[밀도] 실패', e); return null; }
+}
+
 const RENDER_MATCH = { on: true, w: 320, inkAlpha: 24, minCoh: 0.05,
                        fillBlur: 0.012, fillThr: 20 };
 let _matchLogged = {};
-function measureRenderVsPhoto(layerCanvas, maskInf, fit, cw, ch, angle){
+function measureRenderVsPhoto(layerCanvas, maskInf, fit, cw, ch, angle, clipGrow){
   if(!RENDER_MATCH.on || !angle || !maskInf) return null;
   try{
     const W = Math.min(RENDER_MATCH.w, cw), H = Math.max(1, Math.round(ch * W / cw));
@@ -7664,35 +7911,42 @@ function measureRenderVsPhoto(layerCanvas, maskInf, fit, cw, ch, angle){
     }
     const grainDeg = wsum ? (esum/wsum)*180/Math.PI : null;
 
-    // ── ③ 밀도 3×3 (마스크 바운딩박스 안) ──
-    let x0=W,x1=-1,y0=H,y1=-1;
-    for(let y=0;y<H;y++) for(let x=0;x<W;x++) if(msk[y*W+x]){
-      if(x<x0)x0=x; if(x>x1)x1=x; if(y<y0)y0=y; if(y>y1)y1=y; }
-    const grid = [];
-    if(x1>=x0 && y1>=y0){
-      const bw=(x1-x0+1)/3, bh=(y1-y0+1)/3;
-      for(let gy=0;gy<3;gy++){ const row=[];
-        for(let gx=0;gx<3;gx++){
-          let mc=0, ic=0;
-          for(let y=Math.floor(y0+gy*bh); y<Math.floor(y0+(gy+1)*bh); y++)
-            for(let x=Math.floor(x0+gx*bw); x<Math.floor(x0+(gx+1)*bw); x++){
-              const i=y*W+x; if(msk[i]){ mc++; if(ink[i]) ic++; } }
-          row.push(mc ? Math.round(ic/mc*100) : -1);
+    /* ── ③ 실채움 + 밀도 격자로 넘길 잉크 집계 ──
+       (2026-08-01 교정) 예전 '채움%'는 <b>번지게 한</b> 렌더로 쟀다. 그러면 얇게라도
+       닿기만 하면 100%가 나와서 "정수리가 성기다"를 전혀 못 잡는다(실기기 네 뷰가
+       전부 98~100%였다). 실루엣 판정은 번진 값이 맞지만, "안이 부실한가"는
+       <b>원본 잉크</b>로 재야 한다. 둘 다 찍는다. */
+    let rawIn=0;
+    for(let i=0;i<W*H;i++) if(msk[i] && ink[i]) rawIn++;
+    const maskPx = (()=>{ let c=0; for(let i=0;i<W*H;i++) if(msk[i]) c++; return c; })();
+    // 밀도 격자(단계별 비교용) — measureStageDensity와 <b>같은 격자</b>를 쓰려면
+    // 이미지 좌표로 되돌려 세야 한다.
+    let inkCells = null;
+    try{
+      const F = _densFrame(maskInf, angle);
+      if(F){
+        inkCells = new Float64Array(F.G*F.G);
+        for(let y=0;y<H;y++) for(let x=0;x<W;x++){
+          const i=y*W+x; if(!ink[i] || !msk[i]) continue;
+          const ix = (x*cw/W - fit.dx) / fit.dw * maskInf.w;
+          const iy = (y*ch/H - fit.dy) / fit.dh * maskInf.h;
+          const ci = F.cellOf(ix, iy); if(ci>=0) inkCells[ci]++;
         }
-        grid.push(row);
       }
-    }
+    }catch(e){}
     const res = { iou:+iou.toFixed(3), grainDeg: grainDeg!=null ? +grainDeg.toFixed(1) : null,
-                  grainPx:n, inkIn, inkOut, maskOnly, grid,
+                  grainPx:n, inkIn, inkOut, maskOnly, inkCells,
                   fill: (inkIn+maskOnly) ? +(inkIn/(inkIn+maskOnly)*100).toFixed(1) : 0,
+                  rawFill: maskPx ? +(rawIn/maskPx*100).toFixed(1) : 0,
                   leak: (inkIn+inkOut) ? +(inkOut/(inkIn+inkOut)*100).toFixed(1) : 0 };
     window._lastMatch = window._lastMatch || {}; window._lastMatch[angle] = res;
     if(!(angle in _matchLogged) || window.DIAG_VERBOSE){
       _matchLogged[angle] = true;
       console.log(`[비교] ${angle} 실루엣 IoU ${res.iou}`
-        + ` · 마스크 채움 ${res.fill}% · 밖으로 샘 ${res.leak}%`
-        + ` · 결 일치 ${res.grainDeg!=null ? res.grainDeg+'°' : '-'}(${n}px)`);
-      if(grid.length) console.log('        밀도 3×3(%) ' + grid.map(r=>r.map(v=>v<0?' -':String(v).padStart(2)).join(' ')).join('  /  '));
+        + ` · 덮음 ${res.fill}%(번짐) · <b>실채움 ${res.rawFill}%</b>(원본 잉크) · 밖으로 샘 ${res.leak}%`
+        + ` · 결 일치 ${res.grainDeg!=null ? res.grainDeg+'°' : '-'}(${n}px)`
+        + ` · 클립 ${HAIR_LAYER_CLIP.on ? (clipGrow > 0.5 ? '여유 '+Math.round(clipGrow)+'px(길이 늘림)' : 'ON') : 'OFF'}`);
+      measureStageDensity(angle, maskInf, res.inkCells);
     }
     return res;
   }catch(e){ console.warn('[비교] 실패', e); return null; }
@@ -12698,6 +12952,9 @@ function buildNeutralHair3D(cb){
   const done = ()=>{
     try { buildHairStrandsFromPaths(); } catch(e){ console.warn('중립 3D 리프트 실패:', e); }
     state.hair3Dneutral = state.hair3D || null;
+    // (2026-08-01) 중립 캡처 = <b>3D의 원료</b>. 예전엔 복원하면서 버렸는데, 단계별
+    // 밀도를 재려면 "원료가 이미 비어 있었나"를 봐야 해서 따로 보관한다.
+    state.neutralStrandPaths = state.strandPaths;
     state.strandPaths = savedPaths; state.hair3D = savedModel; // 복원(3D 화면 캡처 보존)
     cb && cb();
   };
