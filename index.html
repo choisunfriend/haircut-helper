@@ -4084,6 +4084,14 @@ function boxBlur(buf, w, h, radius){
 ══════════════════════════════════════════════════════════════════ */
 const HAIR_FLOW = {
   on: true,            // false면 예전 동작(연속성으로만 극성 결정) — A/B용
+  /* ── 2D 추적에는 안 건다 (2026-08-01, 사용자 확인) ────────────────────
+     사용자: "3D가 그렇다는 거야? 원본결은 거의 맞아."
+     맞다. 실기기 로그도 그렇게 말한다 — front 실루엣 IoU 0.968 · 실채움 98.9%
+     · 결 일치 16.7°. 2D 추적(traceStrandPath)은 잘 돌고 있다.
+     그러면 거기 손대는 건 <b>고칠 게 없는 곳을 흔드는 것</b>이다. 흐름장은
+     3D 필드에 극성을 싣는 용도로만 쓰고, 2D 부호 규칙은 예전 그대로 둔다.
+     (아래 코드는 남겨 둔다 — 2D가 틀어질 때 켜서 확인할 수 있게. 기본 꺼짐.) */
+  applyTo2D: false,
   chamferPasses: 2,    // 전/후방 체임퍼 반복 — 오목한 실루엣에서 거리가 돌아 들어가게
   smoothR: 2,          // 기울기 내기 전 거리장 평활 반경(체임퍼 계단 노이즈 제거)
   minConf: 0.30,       // 기울기 크기가 이 미만이면 극성 미확정 → 예전 규칙으로
@@ -7133,7 +7141,7 @@ function traceStrandPath(ix, sy_img, targetLen_img, jitterSeed, env, rootSec, st
        그 오염이 없다 — 경계에서 오히려 가장 또렷하다(씨앗이 거기다).
        그래서 모든 가닥이 아래로 출발하는 대신 <b>자기 뿌리에서 실제로 뻗는
        쪽</b>으로 출발한다. 옆머리·정수리에서 특히 다르다. */
-    if(HAIR_FLOW.on && hasOrientation){
+    if(HAIR_FLOW.on && HAIR_FLOW.applyTo2D && hasOrientation){
       const s0 = sampleOrientation(orientation, ix*ox, orientMaskW, sy_img*oy);
       if(s0 && s0.fc >= HAIR_FLOW.minConf) baseDir = Math.atan2(s0.fy, s0.fx);
     }
@@ -7174,7 +7182,7 @@ function traceStrandPath(ix, sy_img, targetLen_img, jitterSeed, env, rootSec, st
                    자리(거리장 능선, fc<minConf)에서만 예전 규칙으로 돌아간다.
              ※ 측정한 <b>각도</b>(sample.angle)는 손대지 않는다. 정하는 건
                부호 하나뿐이고, 그건 원래도 측정값이 아니라 추측이었다. */
-          const pol = flowPolarityFor(sample.angle, sample);
+          const pol = HAIR_FLOW.applyTo2D ? flowPolarityFor(sample.angle, sample) : 0;
           if(pol !== 0){
             if(pol < 0) targetDir += Math.PI;               // 측정된 뿌리→끝 흐름
           } else {
@@ -11224,6 +11232,19 @@ function alignStrandPtsToField3D(pts, field, headA, acc){
                  따른다. 모르는 자리에서만 예전처럼 진행 쪽에 맞춘다. */
         const trustPol = HAIR_FLOW.on && f.pol >= HAIR_FLOW.min3DPol;
         const agree = fx*dx + fy*dy + fz*dz;
+        /* [진단] 필드와 <b>올라온 가닥</b>이 얼마나 어긋나 있나 — 뒤집기 <b>전</b>에 잰다.
+           이 히스토그램 하나로 원인이 갈린다:
+             · 150~180°에 몰림  → 극성 문제(필드가 끝 방향을 반대로 앎)
+             · 0~60°에 한 봉우리 → 기하 문제(두 리프트가 체계적으로 어긋남).
+               평균 꺾임 24°는 정렬이 매 스텝 85%씩 그 차이를 따라간 결과일 뿐이다.
+           극성이 확정된 셀에서만 센다 — 아닌 셀은 부호가 애초에 임의값이라
+           각도를 재 봐야 동전 던지기 분포가 나온다(그걸 근거로 삼으면 안 된다). */
+        if(acc && trustPol){
+          const ang = Math.acos(Math.max(-1, Math.min(1, agree))) * 180/Math.PI;
+          acc.polHist = acc.polHist || new Array(6).fill(0);
+          acc.polHist[Math.min(5, (ang/30)|0)]++;
+          acc.polAngSum = (acc.polAngSum||0) + ang;
+        }
         let reversed = false;
         if(trustPol){ if(agree < 0) reversed = true; }        // 필드가 "반대로 가는 중"이라 함
         else if(agree < 0){ fx=-fx; fy=-fy; fz=-fz; }         // 결은 선분 — 진행 쪽으로
@@ -12158,6 +12179,19 @@ function buildHairStrandsFromPaths(){
       + ' · 평균 꺾임 ' + (fieldAcc.turnN ? (fieldAcc.turn/fieldAcc.turnN*180/Math.PI).toFixed(2) : '0.00') + '°'
       + ' · 표류 허용 ' + HAIR_FIELD3D.driftRate + '×호길이(바닥 ' + (HAIR_FIELD3D.driftMin*a).toFixed(3) + ')'
       + ' · 극성 신뢰 스텝 ' + (fieldAcc.polUsed||0) + '개, 그중 되돌림 ' + (fieldAcc.polFlip||0) + '개');
+    /* 원인 분리용 히스토그램 — 위 "평균 꺾임"은 정렬을 <b>하고 난 뒤</b> 값이라
+       원인을 못 가린다. 이건 정렬 <b>전</b>, 필드와 올라온 가닥의 각차 분포다. */
+    if(fieldAcc.polHist){
+      const H = fieldAcc.polHist, tot = H.reduce((s,v)=>s+v,0) || 1;
+      const tail = (H[4]+H[5]) / tot, head = (H[0]+H[1]) / tot;
+      console.log('[3D·결·원인] 정렬 전 필드↔가닥 각차 (극성 확정 셀 ' + tot + '스텝, 평균 '
+        + ((fieldAcc.polAngSum||0)/tot).toFixed(1) + '°)'
+        + '  0-30°:' + H[0] + ' 30-60°:' + H[1] + ' 60-90°:' + H[2]
+        + ' 90-120°:' + H[3] + ' 120-150°:' + H[4] + ' 150-180°:' + H[5]
+        + ' → ' + (tail > 0.25 ? '뒤쪽에 몰림 = <b>극성</b> 문제(필드가 끝 방향을 반대로 앎)'
+                 : head > 0.6  ? '앞쪽 한 봉우리 = <b>기하</b> 문제(두 리프트가 체계적으로 어긋남) — 극성 아님'
+                 : '분포가 퍼짐 = 필드 자체가 흐림(coherence·뷰 신뢰도 쪽을 볼 것)'));
+    }
     window._lastField3D = { cells: field3D.filled, obs: field3D.obs, perView: field3D.perView,
       meanCoh: +field3D.meanCoh.toFixed(3), steps: fieldAcc.n, hit: fieldAcc.hit,
       meanTurnDeg: fieldAcc.turnN ? +(fieldAcc.turn/fieldAcc.turnN*180/Math.PI).toFixed(2) : 0 };
