@@ -702,6 +702,49 @@
   다음 턴: 되쏘기 클립. projectHair3DToView / projectHairQuiltToView가 같은 프로브
   (state.hairOcc3D.probe)로 화면에서 걸러내기 + 그 뷰 마스크로 클립.
 
+  ── 2026-08-01 (4) 두상이 크다 / 머리가 부푼다 — 예전 파일과 정면 대조 ──
+  사용자가 "두상 비례가 이상해지기 전"이라며 예전 파일(10,330줄 · 지금 기준선인
+  index 9보다도 이전)을 줬다. 함수 단위로 전량 대조:
+  · 두상 기하는 <b>바이트 단위로 동일</b>(HEAD_PHI_BANDS~computeHeadCrossSections
+    블록 SHA b711f104b261 양쪽 일치). getHeadEllipsoid / computeHeadVerticalRadius /
+    getFaceMetrics / makeFaceProjector 전부 동일. → 같은 사진이면 같은 숫자가 나온다.
+  · 헐도 분리돼 있지 않았다(사용자 질문). hullW=max(헤어폭, headHalf),
+    mz=scalpZ+(hullZ−scalpZ)×t 가 양쪽 동일.
+  · 공통 함수 197개 중 다른 건 20개, 전부 헤어 렌더/3D 쪽. 두상 계산엔 하나도 안 닿음.
+  · initDevMini3D의 카메라·headWire도 동일(미리보기 배율 변경 아님).
+
+  실기기 cm 진단으로 확인된 것:
+    [두상 cm 환산] 가로 19.6 · 세로 24.4 · 깊이 23.5cm — <b>전부 사람 범위</b>
+    [자 일치] 가로 13.94 vs 세로 19.33 cm/단위 → 0.721배 어긋남 (wf 1.179 / hf 0.850,
+             <b>둘 다 클램프 한계</b> = getFaceMetrics의 BASELINE_ASPECT 1.55가 이 얼굴에 안 맞음)
+    [두상 비례·자 보정] 세로/폭 1.24 (사람 ≈1.30) — 자를 맞추면 비례는 정상
+    [가로 자 점검] 귀 반간격 0.502 vs 얼굴 반폭 0.503 = 1.00배 → 귀 랜드마크 정상
+  ※ "귀 랜드마크가 좁게 잡혀 가로가 부푼다"는 가설은 이 줄로 <b>기각</b>됐다.
+    [두상 비례] 세로/폭 0.90 vs 1.48은 서로 다른 자로 잰 값끼리의 비교라 오해를 부른다.
+
+  그럼 예전과 지금이 실제로 다른 지점은 어디인가 — diff가 딱 하나를 짚었다.
+  가닥의 <b>깊이층 배치</b>(2026-07-27 변경, 예전 파일 이후·이번 작업 이전):
+      예전: t = 0.35 + 0.65×rand()   가닥 전체에 같은 값, 범위 [0.35, 1]
+      지금: tLayer=rand() [0,1]을 뿌리에서 RAMP(0.22) 구간에 걸쳐 올림
+    평균 층 깊이 <b>0.674 → 0.439</b>(0=두피면, 1=헐 바깥면). 즉 지금은 머리카락이
+    두피 쪽으로 34% 더 붙는다. 당시 목적이 "뿌리부터 떠 있어 부풀어 보인다"의 교정이라
+    방향은 맞지만, 헐과 두피면의 실측 간격이 좁으면 거의 한 껍질로 모여서
+    <b>속이 빈 껍데기</b>가 된다(후면 중앙이 휑한 증상과 부합).
+  추론으로 되돌리지 않고 스위치를 남긴다: HAIR_ROOT.legacy = true (예전 식과 수식 동일).
+
+  같이 넣은 것: rebuildHair3D() — 콘솔 A/B용. 스위치만 바꾸면 state.hair3Dneutral
+  캐시가 남아 "바꿨는데 화면이 똑같다"가 되는데(이 코드베이스에서 반복된 실패 방식)
+  캐시를 전부 비우고 중립 모델을 다시 만든 뒤 미니뷰·조정창까지 갱신한다.
+      rebuildHair3D() / HAIR_FIELD3D.on=false / HAIR_OCC3D.on=false / HAIR_ROOT.legacy=true
+
+  아직 열려 있는 진짜 문제(별건, 사용자 확인 대기): getHeadEllipsoid는
+  reasonMask===1 즉 <b>머리카락</b> 실루엣을 잰다(measureRowHalfWidth). 그런데
+  코드는 이걸 두개골로 쓴다(8000번대에 const skull = getHeadEllipsoid()).
+  a=0.704 vs 얼굴 실측 0.503 = 1.40배 ≈ 한쪽당 2.8cm로 이 손님 단발 두께와 일치.
+  두피면이 머리카락 겉면 자리에 있으면 헐과의 간격이 0에 수렴해 위의 "한 껍질" 문제가
+  구조적으로 발생한다. 다만 getHeadEllipsoid 호출부가 20군데라 두개골/헐 판정을
+  하나씩 해야 해서 별도 턴에서 다룬다.
+
   ── 2026-08-01 (3) 클립 닫기 후속 — "크라운이 사라졌다" 추적 ──
   사용자: "원본 결 보기에서 두상부분이 다 없어지네?" 2D 경로에서 바뀐 건 클립
   하나뿐이라 거기부터 실측했다.
@@ -9718,11 +9761,44 @@ function captureStrandPathsFor(angle, rawMode){
    똑같으면 될 거 같아"). 0이면 뿌리가 두피면 위에 정확히 놓인다 = 2D 원본 결
    보기의 뿌리와 같은 자리. 정수리 꼭짓점이 모발 두께만큼 낮아지는 부작용은
    감수한다 — 실기기에서 "머리가 바깥에서 시작한다"가 계속 더 큰 문제였다. */
-const HAIR_ROOT = { LIFT: 0, RAMP: 0.22 };
+/* (2026-08-01) legacy 스위치 추가 — 사용자가 "제대로 나왔다"고 지목한 예전 파일과
+   <b>이 부분만</b> 다르다는 것이 diff로 확인됐다. 예전 파일(2026-07-27 이전):
+       const t = 0.35 + 0.65 * rand();   // 가닥 전체에 같은 값, 범위 [0.35, 1]
+   지금: tLayer = rand()(범위 [0,1])를 뿌리에서 RAMP 구간에 걸쳐 올려 씀.
+   바꾼 이유는 "뿌리가 두피에서 나와야 한다"(머리 전체가 모발 두께의 2/3만큼
+   부풀어 보였다)였는데, 그 교정이 과했을 가능성이 있다 — 예전은 두께의 바깥
+   65%에만 가닥이 있었고 지금은 뿌리 쪽이 두피면에 눌러앉는다. 헐과 두피면의
+   실측 간격이 좁으면(지금이 그렇다) 지금 방식은 거의 한 껍질로 모인다.
+   추론으로 정하지 말고 실기기에서 눈으로 비교하라고 스위치를 남긴다:
+       HAIR_ROOT.legacy = true; rebuildHair3D();
+   ※ legacy면 예전 식과 <b>수식까지 동일</b>하다(LIFT/RAMP 무시). */
+const HAIR_ROOT = { LIFT: 0, RAMP: 0.22, legacy: false, legacyMin: 0.35 };
 function hairLayerAt(tLayer, i, n){
+  if(HAIR_ROOT.legacy) return HAIR_ROOT.legacyMin + (1 - HAIR_ROOT.legacyMin) * tLayer;
   const root = tLayer * HAIR_ROOT.LIFT;
   const f = Math.min(1, Math.max(0, (i / Math.max(1, n)) / HAIR_ROOT.RAMP));
   return root + (tLayer - root) * f;
+}
+
+/* ── 콘솔용: 3D 모델을 <b>처음부터</b> 다시 만든다 (2026-08-01) ─────────────
+   A/B를 하려면 스위치를 바꾼 뒤 캐시를 전부 버려야 한다. 안 그러면 state.
+   hair3Dneutral이 그대로 남아 "바꿨는데 화면이 똑같다"가 된다(이 코드베이스에서
+   반복해서 겪은 실패 방식이라 아예 헬퍼로 만들어 둔다).
+     rebuildHair3D()                      — 현재 설정으로 재생성
+     HAIR_FIELD3D.on=false; rebuildHair3D()  — 결 정렬 빼고
+     HAIR_OCC3D.on=false;  rebuildHair3D()  — 세그멘테이션 다듬기 빼고
+     HAIR_ROOT.legacy=true; rebuildHair3D() — 예전 층 배치로            */
+function rebuildHair3D(){
+  state.hair3D = null; state.hair3Dneutral = null;
+  state.hairField3D = null; state.hairOcc3D = null;
+  _headCrossSectionCache = null; _headVerticalRadiusCache = null;
+  _headEllipsoidLogged = false;
+  for(const k in _viewMaskCache) delete _viewMaskCache[k];
+  console.log('[재생성] 3D 캐시 비움 — 결정렬 ' + (HAIR_FIELD3D.on?'ON':'OFF')
+    + ' · 세그다듬기 ' + (HAIR_OCC3D.on?'ON':'OFF')
+    + ' · 층배치 ' + (HAIR_ROOT.legacy?('legacy(≥'+HAIR_ROOT.legacyMin+')'):'현행(뿌리램프)'));
+  try{ buildNeutralHair3D(()=>{ refreshDevMini3D(); renderAdjustFrame(); }); }
+  catch(e){ console.warn('[재생성] 실패', e); }
 }
 
 /* ══════════════════════════════════════════════════════════════════
