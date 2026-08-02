@@ -1088,44 +1088,6 @@
   아직 안 본 것(다음 후보): scalpY(컬럼별 헤어 최상단)도 같은 가닥에 속는다 —
   computeHeadVerticalRadius가 5퍼센타일로 정수리 높이를 재므로 두상이 세로로
   길어질 수 있다. 같은 "폭 기준"으로 고칠 자리다.
-
-  ── 2026-08-02 (5) 두 손님 로그 비교 → <b>두상을 머리카락에서 재고 있었다</b> ──
-  사용자: "이 사람 후면도 머리는 성글어. 그리고 결과사진들이 두상이 제대로
-  잘려서 위치되지 않았어."
-  같은 코드에 손님이 둘 붙은 로그였다. 두 사람의 두상 밴드가 <b>정반대</b>로 나왔다:
-    손님1(긴 머리)  W 0.41 0.38 0.40 0.46 0.53 0.61 0.70 0.74 0.75 0.75  ↑
-    손님2(짧은 머리) W 0.25 0.27 0.31 0.40 0.46 0.36 0.17 0.08 0.04 <b>0.02</b>  ↓
-  measureRowHalfWidth가 보는 건 reasonMask===1, 즉 <b>머리카락</b>이다. 짧은 머리는
-  정수리에 캡처럼만 남으니 귀선 아래에 잴 것이 없다. 로그가 스스로 말한다 —
-  "적도밴드만 봤다면 0.154"(얼굴 실측 반폭 0.513), "가로 12.8cm ⚠ 벗어남".
-  두상이 전구 모양이 된 것이고, 사용자가 본 두 증상이 여기서 갈라진다:
-    ① [결과] back: 정수리~귀선 자가 어긋남(두상폭 0.41단위) — 실루엣 폭 기준으로 대체
-       → [결과·정렬] 1메쉬단위 front 156 / left 150 / right 155 / <b>back 94</b>
-       후면만 다른 자로 갈아타서 두상이 40% 작게 박힌다(스크린샷 4).
-    ② 두상 하단 반경이 0으로 수렴하면 <b>머리를 심을 표면이 없다</b> —
-       표면셀 머리있음 826/1828(45%), 손님1은 1631/2022(81%). 후면이 성글어진다.
-       (숱 자체도 적다: 뿌리밀도 50/1296셀 vs 손님1 217/1248셀. 절반은 진짜다.)
-
-  고침 A — 두상 단면의 소스를 <b>머리 실루엣</b>(사람 마스크 ∪ 헤어 마스크, 어깨 위)
-  으로 교체(getHeadSilhouetteMask). 모발 두께는 이미 두피면 배율이 따로 벗겨내니
-  이중계산이 아니다. 사람 마스크가 없으면 예전처럼 헤어만 쓴다(새 실패 모드 없음).
-  어깨 아래를 자르는 이유는 사람 마스크가 어깨에서 2.5배로 벌어지기 때문.
-  하네스(두개골은 같고 머리 길이만 다른 합성 두 사람):
-    예전: 귀선 밴드 0.086 vs 0.606 (<b>14%로 붕괴</b>) · 최대폭 -35%
-    지금: 귀선 밴드 0.547 vs 0.606 · 최대폭 <b>-9.0%</b>(=모발 두께분, 정상)
-          짧은머리↔삭발 차이 -1.0% · 어깨(2.5단위)를 두상으로 읽지 않음
-  A/B: HEAD_FROM_PERSON.on = false → 예전 동작.
-
-  고침 B — [자 일치] 어긋남 0.721배의 정체가 잡혔다. 0.721 = 1÷(wf/hf)이고,
-  makeFaceProjector가 EAR_MESH_X에만 ×(widthFactor/heightFactor)를 곱하고 있었다.
-  4차에서 "두 축이 같은 자를 쓴다"고 적어놓고 같은 줄 끝에서 다시 깨뜨린 것.
-  wf/hf는 두상 폭·깊이를 <b>이미 실측</b>하는 지금 이중 반영이라 뺐다. cm 환산값은
-  안 변하고(가로 자와 가로 값이 같이 움직여 상쇄) <b>3D 렌더 비례</b>가 정정된다
-  — 개발 로그에 오래 남아 있던 "두상이 넙적하다"(세로/폭 0.90 vs 사람 1.48)가 이것.
-
-  회귀: 정합 25/25 · 종단 11/11 · 짧은머리 8/8 · 기울기 민감도표 유지
-  (yaw 45°에서 두상 폭 오차 -3.3%). 두상 반폭 절대값이 0.72→0.54로 내려간 것은
-  고침 B로 가로 자가 정정된 결과이고 cm로는 같은 값이다.
 -->
 
 <!DOCTYPE html>
@@ -4762,7 +4724,6 @@ function retakeCurrent(){
   if(state.strandPaths) state.strandPaths[angle]=null; // 캡처된 가닥 경로도 함께 무효화
   _silhouetteAnchorCache = {}; // 실루엣 앵커는 정면 비율도 참조하므로 어느 각도든 재촬영 시 전체 리셋
   _fbFitCache = undefined;     // 전/후면 실루엣 정합도 사진이 바뀌면 무효(2026-08-02)
-  _headSilCache = {};          // 머리 실루엣(사람∪헤어) 캐시도 무효(2026-08-02)
   _torsoEraseCache = {};       // 결과 화면의 상반신 지움 레이어도 사진이 바뀌면 무효(같은 이유로 전체 리셋)
   // 랜드마크/감지상태도 함께 초기화 — 촬영 직후 감지가 생기면서, 지우지 않으면
   // "이전 사진의 랜드마크"가 남아 있다가 새 사진 감지 실패 시 그대로(엉뚱한
@@ -9514,21 +9475,8 @@ function makeFaceProjector(lm, widthFactor, heightFactor){
      수정: 가로 기준을 세로 기준에서 유도한다. 눈→턱이 0.70단위면 귀 반간격은
           0.70 × (7.0/11.5) = 0.426단위여야 한다. 이제 두 축이 같은 자를 쓴다.
      ※ 되돌리려면 EAR_MESH_X를 예전 식(0.78×wf×0.82)으로 바꾸면 된다. */
-  /* ── (2026-08-02 (5)) 가로·세로 자가 아직도 달랐다 ────────────────────
-     위 4차에서 "이제 두 축이 같은 자를 쓴다"고 적어놓고, 바로 그 줄 끝에
-     ×(widthFactor/heightFactor)를 곱해 다시 깨뜨리고 있었다. 실기기 진단이
-     매번 그걸 말하고 있었는데 별건으로 미뤄둔 것:
-       [자 일치] 가로 13.94cm/단위 vs 세로 19.33cm/단위 → 어긋남 0.721배
-     0.721 = 1÷(wf 1.179 / hf 0.850). 즉 어긋남의 정체가 이 곱 하나였다.
-     왜 빼도 되나: wf/hf는 "얼굴이 갸름한지"를 두상 모양에 반영하려던 보정인데,
-     두상 폭·깊이는 <b>이미 실루엣에서 실측</b>한다(computeHeadCrossSections).
-     같은 정보를 자에 한 번 더 곱하니 이중 반영이고, 그 대가로 축마다 1단위의
-     길이가 달라졌다. cm 환산값은 안 변한다(가로 자와 가로 값이 같이 움직여
-     상쇄) — 달라지는 건 <b>3D 렌더 비례</b>다:
-       손님1 세로/폭 0.90 → 1.24(자 보정값과 일치) · 손님2 1.41 → 1.95 방향으로 정정
-     ※ 되돌리려면 * (widthFactor / heightFactor)를 다시 붙이면 된다. */
   const EYE_TO_CHIN_CM = FACE_RULER_CM.eyeToChin, EAR_HALF_CM = FACE_RULER_CM.earHalf;
-  const EAR_MESH_X = (EYE_MESH_Y - CHIN_MESH_Y) * (EAR_HALF_CM / EYE_TO_CHIN_CM);
+  const EAR_MESH_X = (EYE_MESH_Y - CHIN_MESH_Y) * (EAR_HALF_CM / EYE_TO_CHIN_CM) * (widthFactor / heightFactor);
   const lx = Math.min(lm.lEarX, lm.rEarX), rx = Math.max(lm.lEarX, lm.rEarX);
   const denomX = (rx - lx) || 0.001;
   const bX = (2*EAR_MESH_X) / denomX;
@@ -10586,69 +10534,10 @@ function headPhiToMeshY(phi, liftOut){
   return Math.cos(phi) * computeHeadVerticalRadius() * (liftOut ?? 1.01) + 0.15;
 }
 
-/* ════════════════════════════════════════════════════════════════
-   머리 실루엣 마스크 (2026-08-02 (5), 실기기 두 손님 비교로 확정)
-   ────────────────────────────────────────────────────────────────
-   두상 단면을 지금까지 <b>머리카락</b> 실루엣(reasonMask)에서 쟀다. 그래서
-   머리 길이에 따라 "두상"이 달라졌다 — 같은 코드, 두 손님, 정반대 결과:
-     손님1(긴 머리)  W 0.41 → … → 0.75  (아래로 갈수록 넓어짐 = 머리카락)
-     손님2(짧은 머리) W 0.46 → 0.36 0.17 0.08 0.04 <b>0.02</b> (귀선 아래로 소멸)
-   짧은 머리는 정수리에 캡처럼만 남으니 귀선 아래엔 잴 머리카락이 없다. 로그가
-   스스로 말했다 — "적도밴드만 봤다면 0.154"(얼굴 실측 반폭은 0.513),
-   "가로 12.8cm ⚠ 벗어남". 두상이 전구 모양이 된다.
-   그 아래로 증상이 둘로 갈라진다:
-     ① 결과 화면이 후면만 다른 자로 갈아탄다([결과] 정수리~귀선 자가 어긋남
-        → 실루엣 폭 기준으로 대체 → 1메쉬단위 94px vs 정면 156px)
-     ② 두상 하단 반경이 0으로 수렴하니 <b>머리를 심을 표면이 없다</b>
-        (표면셀 머리있음 826/1828=45%, 손님1은 1631/2022=81%) → 후면이 성글다
-   고침: 두상은 "머리 실루엣"에서 잰다 = 사람 마스크 ∪ 헤어 마스크(어깨 위).
-   머리카락 두께는 이미 두피면 배율(getScalpEllipsoid)이 따로 벗겨내므로
-   이중계산이 아니다. 사람 마스크가 없으면(바디 세그멘터 실패) 예전처럼
-   헤어 마스크만 쓴다 — 새 실패 모드를 만들지 않는다.
-   ※ 어깨 아래를 잘라내는 이유: 사람 마스크는 어깨에서 2~3배로 벌어져서,
-     그대로 두면 아래쪽 밴드가 어깨 폭을 두상 폭으로 읽는다.
-   A/B: 콘솔에서 HEAD_FROM_PERSON.on = false → 예전(헤어만) 동작.
-   ════════════════════════════════════════════════════════════════ */
-const HEAD_FROM_PERSON = { on: true };
-let _headSilCache = {};
-function getHeadSilhouetteMask(angle){
-  if(_headSilCache[angle] !== undefined) return _headSilCache[angle];
-  let out = null;
-  try{
-    const inf = state.hairMasks && state.hairMasks[angle];
-    if(inf && inf.reasonMask){
-      const mw = inf.maskW, mh = inf.maskH;
-      if(!HEAD_FROM_PERSON.on || !inf.personMask){
-        out = { mask: inf.reasonMask, w: mw, h: mh, src: HEAD_FROM_PERSON.on ? '헤어만(사람 마스크 없음)' : '헤어만(A/B 끔)' };
-      } else {
-        const top  = silTopRow(inf.personMask, mw, mh);
-        const prof = top >= 0 ? silHeadProfile(inf.personMask, mw, mh, top) : null;
-        // 어깨 직전까지만. 판정이 이상하면(너무 얕게 끊기면) 자르지 않는다 —
-        // 잘못 자르는 것이 안 자르는 것보다 나쁘다(밴드가 통째로 비어버림).
-        const cut = (prof && prof.bottom > top + 20) ? prof.bottom : mh - 1;
-        const m = new Uint8Array(mw * mh);
-        let px = 0, hairPx = 0;
-        for(let y=0; y<=cut; y++){
-          const base = y*mw;
-          for(let x=0; x<mw; x++){
-            const hair = inf.reasonMask[base+x] === 1;
-            if(hair) hairPx++;
-            if(hair || inf.personMask[base+x]){ m[base+x] = 1; px++; }
-          }
-        }
-        out = { mask: m, w: mw, h: mh, src:'사람∪헤어(어깨 위)', cut, top, px, hairPx };
-      }
-    }
-  }catch(e){ console.warn('머리 실루엣 마스크 실패:', angle, e); }
-  _headSilCache[angle] = out;
-  return out;
-}
-
 // ── 뷰 실측 공통부(2026-07-18 통합) ──────────────────────────────────
 // computeHeadCrossSections(reasonMask)와 computeNeckCrossSections(personMask)의
 // accumulate()가 글자 그대로 같은 전처리를 각자 갖고 있던 것을 하나로 모음.
 // 스킵 조건(마스크/랜드마크 없음, 신뢰도 0.1 미만)까지 동일 — 동작 무변경.
-// (2026-08-02) maskField='headSil'이면 위 머리 실루엣(사람∪헤어)을 쓴다.
 // 반환 null = 이 뷰는 스킵. maskField로 어느 실측 마스크를 쓸지만 구분.
 function prepareViewMeasurement(angle, maskField, metrics){
   const maskInf = state.hairMasks && state.hairMasks[angle];
@@ -10664,16 +10553,7 @@ function prepareViewMeasurement(angle, maskField, metrics){
     const sil = computeSilhouetteAnchors(angle);
     if(sil && sil._silfit) lm = sil;
   }
-  if(!maskInf || !lm) return null;
-  let mask, mw, mh;
-  if(maskField === 'headSil'){
-    const hs = getHeadSilhouetteMask(angle);
-    if(!hs) return null;
-    mask = hs.mask; mw = hs.w; mh = hs.h;
-  } else {
-    if(!maskInf[maskField]) return null;
-    mask = maskInf[maskField]; mw = maskInf.maskW; mh = maskInf.maskH;
-  }
+  if(!maskInf || !maskInf[maskField] || !lm) return null;
   const confidence = getViewPoseConfidence(angle);
   if(confidence < 0.1) return null;
   const projector = makeFaceProjector(lm, metrics.widthFactor, metrics.heightFactor);
@@ -10684,8 +10564,8 @@ function prepareViewMeasurement(angle, maskField, metrics){
   const scaleXFactor = (lm._silfit && metrics.projector && metrics.projector.bX)
     ? projector.bX / metrics.projector.bX : 1;
   return {
-    mask, confidence, projector, scaleXFactor,
-    w: mw, h: mh,
+    mask: maskInf[maskField], confidence, projector, scaleXFactor,
+    w: maskInf.maskW, h: maskInf.maskH,
     aY: projector.toMeshY(0), // toMeshY(v)=aY-bY*v 이므로 v=0일 때 aY
   };
 }
@@ -10728,9 +10608,7 @@ function computeHeadCrossSections(){
   const rHead = metrics.projector ? 0.82 : 0.82; // 깊이/폭 비율 초기 가정(성인 두상 근사) — 1차 W 추정용
 
   function accumulate(angle){
-    // (2026-08-02) 'reasonMask'(머리카락) → 'headSil'(사람∪헤어, 어깨 위).
-    // 머리 길이에 따라 두상이 달라지던 근본 원인 — 위 getHeadSilhouetteMask 주석 참고.
-    const view = prepareViewMeasurement(angle, 'headSil', metrics);
+    const view = prepareViewMeasurement(angle, 'reasonMask', metrics);
     if(!view) return;
     const yaw = getViewYawDeg(angle) * Math.PI/180;
     const cos2 = Math.cos(yaw)**2, sin2 = Math.sin(yaw)**2;
@@ -11953,7 +11831,6 @@ function rebuildHair3D(){
   state.hair3D = null; state.hair3Dneutral = null;
   state.hairField3D = null; state.hairOcc3D = null;
   _headCrossSectionCache = null; _headVerticalRadiusCache = null;
-  _headSilCache = {};   // 머리 실루엣 마스크(A/B 토글 후 재생성용)
   _headEllipsoidLogged = false; _scalpLogged = false;
   for(const k in _viewMaskCache) delete _viewMaskCache[k];
   resetRenderMatchLog();   // A/B마다 비교 숫자를 새로 찍는다
@@ -15283,7 +15160,6 @@ function startNewCustomer(){
   state.strandPaths = {}; // 캡처된 2D 가닥 경로(3D 리프트 소스)도 초기화
   _silhouetteAnchorCache = {}; // 실루엣 앵커 캐시도 새 고객마다 초기화
   _fbFitCache = undefined;     // 전/후면 실루엣 정합 캐시도 새 고객마다 초기화(2026-08-02)
-  _headSilCache = {};          // 머리 실루엣 캐시도 새 고객마다 초기화(2026-08-02)
   state.selectedStyle=null; state.currentCaptureIndex=0; state.currentSection='crown';
   // 섹션 초기화
   SECTION_ORDER.forEach(id=>{
