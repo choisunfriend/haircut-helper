@@ -979,6 +979,24 @@
   의상은 AI 추천 1벌 카드(이름·카테고리·이유·색칩 + 쇼핑 링크 자리). 전환은
   setResultOutfit() 하나로 모아뒀고 카탈로그 칩 UI는 RESULT_OUTFIT_PICKER=false로
   꺼둔 상태 — 제휴 DB가 생기면 목록만 갈아끼우고 플래그를 켜면 된다.
+
+  ── 2026-08-02 (2) 실기기 1차: "그냥 조정 화면과 똑같이 나온다" ──
+  옷이 아예 안 보인다는 보고. 로그에 에러가 없어서 두 군데를 실측으로 갈랐다.
+  ① <b>프레이밍</b> — 진짜 원인. 사진을 조정 화면과 같은 <b>덮기</b>(cover)로 깔고
+     있었다. 가로가 긴 창에서 덮기는 세로를 크게 넘치게 만들고, 그 잘려나간 아래쪽이
+     정확히 <b>목·어깨</b>다. 즉 옷은 그려지고 있었는데 캔버스 밖이었다(재현 실측:
+     옷깃선 y=261px / 캔버스 283px — 22px만 남음). 결과 화면은 "사진을 어떻게
+     자를까"가 아니라 "무엇이 보여야 하나"로 프레임을 정하는 게 맞다 →
+     computeResultViewFit: 머리 꼭대기~옷깃 아래 가슴이 세로를 꽉 채우도록 배율·위치를
+     잡고, 랜드마크가 없으면 담기(contain)로 폴백.
+  ② <b>옷깃 높이</b> — 같이 드러난 별건. 3D 불변식 y=-1.15을 그대로 사진에 되쏘고
+     있었는데, 이 자로 재면 눈~(-1.15)이 25cm다. 사람은 눈~턱 11.5 + 턱~목밑동 8 =
+     약 20cm. -1.15는 3D 모델 안에서 목 기둥이 끝나는 자리라 사진의 옷깃선보다
+     5cm쯤 낮다 — 그대로 두면 옷깃이 가슴께에 걸린다. 사진 쪽 기준점을 실측 턱에서
+     CHIN_TO_NECK_BASE_CM(8cm) 내린 자리로 바꿨다. 메쉬 쪽은 여전히 -1.15가 옷깃선.
+  ※ 조용한 실패를 없앴다 — 옷깃선이 프레임 밖이면 경고를 찍고, 매 렌더마다
+    [결과·정렬] 한 줄(옷깃선/턱/1cm/1메쉬단위/목반폭/몸배율/지움 여부)을 남긴다.
+    다음에 어긋나면 어느 숫자가 틀렸는지 바로 짚을 수 있다.
 -->
 
 <!DOCTYPE html>
@@ -5931,11 +5949,25 @@ function drawImgOnCanvas(ctx, img, w, h){
 }
 
 // fit 계산만 하고 실제로 그리지는 않음 (베이스를 원본 대신 baseC로 바로 그릴 때 사용)
+// 이건 <b>덮기</b>(cover) — 캔버스를 꽉 채우고 넘치는 쪽은 잘라낸다.
 function computeFit(imgW, imgH, w, h){
   const ir=imgW/imgH, cr=w/h;
   let dw,dh,dx,dy;
   if(ir>cr){dh=h;dw=h*ir;dx=(w-dw)/2;dy=0;}
   else{dw=w;dh=w/ir;dx=0;dy=(h-dh)/2;}
+  return {dw,dh,dx,dy};
+}
+/* <b>담기</b>(contain) — 사진 전체가 캔버스 안에 들어오게. 결과 화면 전용.
+   (2026-08-02) 실기기(가로가 긴 데스크톱 창)에서 발견: 세로 사진을 cover로 깔면
+   가로를 채우느라 세로가 캔버스보다 훨씬 커져서 <b>목·어깨가 프레임 아래로
+   잘려나간다</b> — 조정 화면은 어차피 머리만 보면 되니 문제가 안 됐지만, 결과
+   화면은 목 아래 의상이 주인공이라 그 구간이 안 보이면 아무것도 안 한 것처럼
+   보인다(실제 증상: "조정 화면과 똑같이 나온다"). 결과 화면만 담기로 바꾼다. */
+function computeFitContain(imgW, imgH, w, h){
+  const ir=imgW/imgH, cr=w/h;
+  let dw,dh,dx,dy;
+  if(ir>cr){dw=w;dh=w/ir;dx=0;dy=(h-dh)/2;}
+  else{dh=h;dw=h*ir;dx=(w-dw)/2;dy=0;}
   return {dw,dh,dx,dy};
 }
 
@@ -6592,8 +6624,11 @@ function renderFrame(canvas, angle, opts){
       // [4] 컬러 오버레이
 
       // 머리 중심 확대(조정 화면 전용 — 재구성엔 영향 없음).
-      // 결과 화면(opts.noZoom)은 목 아래 의상 자리가 필요해서 확대를 끈다.
-      const baseFit = computeFit(img.width, img.height, w, h);
+      // 결과 화면(opts.noZoom)은 목 아래 의상 자리가 필요해서 확대를 끄고,
+      // 사진 전체가 프레임에 들어오도록 담기(contain)로 깐다.
+      const baseFit = (opts && opts.resultFit)
+        ? computeResultViewFit(img, maskInf, angle, w, h)
+        : computeFit(img.width, img.height, w, h);
       const fit = (opts && opts.noZoom) ? baseFit : zoomFitToHair(baseFit, maskInf, w, h);
 
       // 이전 버그: 원본 img를 먼저 통째로 그린 뒤 baseC(머리 부분 투명)를
@@ -6668,7 +6703,10 @@ function renderFrame(canvas, angle, opts){
 
     } else if(img){
       // ── 세그멘테이션 없음: 원본만 표시 (SVG 폴백 제거) ──
-      const fitPlain = drawImgOnCanvas(ctx, img, w, h);
+      const fitPlain = (opts && opts.resultFit)
+        ? computeResultViewFit(img, maskInf, angle, w, h)
+        : computeFit(img.width, img.height, w, h);
+      ctx.drawImage(img, fitPlain.dx, fitPlain.dy, fitPlain.dw, fitPlain.dh);
       done(fitPlain, null);
     } else {
       ctx.fillStyle='#211D19'; ctx.fillRect(0,0,w,h);
@@ -8770,7 +8808,58 @@ function getViewLandmarksFor(angle){
       || getEstimatedLandmarks(angle);
 }
 
-/* 사진 좌표계 ↔ 메쉬 좌표계 다리. 위 주석의 "정렬의 원리" 그대로. */
+/* 사진 좌표계 ↔ 메쉬 좌표계 다리. 위 주석의 "정렬의 원리" 그대로.
+
+   (2026-08-02 수정) 옷깃 높이를 <b>턱에서 실제 cm로</b> 잰다.
+   처음엔 3D 쪽 불변식 y=-1.15(neckAttachPoint 하단)를 그대로 사진에 되쏘았는데,
+   실기기에서 옷깃이 가슴께로 내려갔다. 이유가 분명하다 — 이 자로 재면 눈에서
+   -1.15까지가 1.30단위 = 25cm인데, 사람은 눈~턱 11.5cm + 턱~목밑동 8cm ≈ 20cm다.
+   -1.15는 <b>3D 두상 모델 안에서</b> 목 기둥이 끝나는 자리(그 아래는 어깨)라
+   사진의 옷깃선보다 5cm쯤 낮다. 그래서 사진 쪽 기준점은 실측 턱(lm.chinY)에서
+   CHIN_TO_NECK_BASE_CM만큼 내린 자리로 잡고, 메쉬 쪽은 그대로 -1.15를 옷깃선으로
+   쓴다(두 좌표계에서 각각 "옷깃이 놓일 자리"를 자기 기준으로 정의). */
+const CHIN_TO_NECK_BASE_CM = 8.0; // 턱끝 → 목 밑동(옷깃선). 성인 평균 근사, 실기기 튜닝 지점
+
+/* ── 결과 화면 프레이밍 ──────────────────────────────────────────────
+   (2026-08-02, 실기기 증상 "조정 화면과 똑같이 나온다"의 진짜 원인)
+   조정 화면은 사진을 덮기(cover)로 깐다 — 캔버스를 꽉 채우고 넘치는 쪽은 자른다.
+   가로가 긴 창에서 세로 사진을 그렇게 깔면 세로가 크게 넘쳐서 <b>목·어깨가 프레임
+   아래로 잘려나간다</b>. 머리만 보면 되는 조정 화면은 그래도 됐지만, 목 아래 의상이
+   주인공인 결과 화면에서는 옷이 화면 밖에 그려지고 아무것도 안 한 것처럼 보인다.
+   (실측 로그: 옷깃선 y=261px인데 캔버스가 283px — 22px만 남아 있었다.)
+
+   그래서 결과 화면은 "사진을 어떻게 자를까"가 아니라 <b>"무엇이 보여야 하나"</b>로
+   프레임을 정한다: 머리 꼭대기부터 옷깃 아래 가슴까지가 세로를 꽉 채우도록 배율과
+   위치를 잡는다. 이 구간이 결과 화면에서 볼 것의 전부다. 랜드마크가 없으면
+   담기(contain)로 안전하게 떨어진다. */
+function computeResultViewFit(img, maskInf, angle, w, h){
+  const contain = computeFitContain(img.width, img.height, w, h);
+  try{
+    const lm = getViewLandmarksFor(angle);
+    const eyeToChin = lm ? (lm.chinY - lm.eyeY) : 0;
+    if(!(eyeToChin > 0.01)) return contain;
+
+    const collarN = lm.chinY + (CHIN_TO_NECK_BASE_CM / FACE_RULER_CM.eyeToChin) * eyeToChin;
+    const box = maskInf ? hairBoxOf(maskInf) : null;
+    const topN    = Math.min(box ? box.y0 : 1, lm.eyeY - 1.6*eyeToChin); // 머리(헤어 포함) 꼭대기
+    const bottomN = collarN + 1.6*eyeToChin;                              // 옷깃 아래 가슴까지
+    const spanN   = (bottomN - topN) * 1.10;                              // 위아래 여백 10%
+    if(!(spanN > 0.05)) return contain;
+
+    const dh = h / spanN;
+    if(!(dh > contain.dh)) return contain;   // 담기보다 작게 줄이지는 않는다
+    const dw = dh * (img.width / img.height);
+    const centerN = (topN + bottomN) / 2;
+    const earU = (lm.lEarX + lm.rEarX) / 2;
+    // 사진 바깥의 빈 띠가 생기지 않도록 이동량을 프레임 안으로 클램프
+    const dy = (dh <= h) ? (h-dh)/2 : Math.max(Math.min(h/2 - centerN*dh, 0), h-dh);
+    const dx = (dw <= w) ? (w-dw)/2 : Math.max(Math.min(w/2 - earU*dw,  0), w-dw);
+    return { dw, dh, dx, dy };
+  }catch(e){
+    console.warn('[결과] 프레이밍 계산 실패 — 담기로 폴백:', e);
+    return contain;
+  }
+}
 function computeResultMapping(angle, fit){
   if(!fit) return null;
   const lm = getViewLandmarksFor(angle);
@@ -8778,16 +8867,16 @@ function computeResultMapping(angle, fit){
   const fm = getFaceMetrics();
   const proj = makeFaceProjector(lm, fm.widthFactor, fm.heightFactor);
   if(!(proj.bY > 0.0001) || !isFinite(proj.bY)) return null;
-  const aY = proj.toMeshY(0);                 // toMeshY(v) = aY - bY*v ⇒ v = (aY-m)/bY
-  const meshToV = (m)=> (aY - m) / proj.bY;
-  const pxPerMesh = fit.dh / proj.bY;
-  if(!(pxPerMesh > 0) || !isFinite(pxPerMesh)) return null;
-  const earU = (lm.lEarX + lm.rEarX) / 2;
+  const pxPerMesh = fit.dh / proj.bY;                       // 1 메쉬단위 = 몇 픽셀
+  const pxPerCm   = ((lm.chinY - lm.eyeY) * fit.dh) / FACE_RULER_CM.eyeToChin; // 1cm = 몇 픽셀
+  if(!(pxPerMesh > 0) || !isFinite(pxPerMesh) || !(pxPerCm > 0) || !isFinite(pxPerCm)) return null;
+  const earU = (lm.lEarX + lm.rEarX) / 2;   // 목은 귀 아래에 있다(네 뷰 공통으로 안정적인 가로 기준)
+  const chinPx = fit.dy + lm.chinY * fit.dh;
   return {
-    pxPerMesh, meshToV,
+    pxPerMesh, pxPerCm,
     widthFactor: fm.widthFactor,
-    neckPxX: fit.dx + (earU + (RESULT_BODY_FIT.offsetXMesh / (proj.bX || 1))) * fit.dw,
-    neckPxY: fit.dy + meshToV(RESULT_NECK_MESH_Y + RESULT_BODY_FIT.offsetYMesh) * fit.dh,
+    neckPxX: fit.dx + earU * fit.dw + RESULT_BODY_FIT.offsetXMesh * pxPerMesh,
+    neckPxY: chinPx + CHIN_TO_NECK_BASE_CM * pxPerCm - RESULT_BODY_FIT.offsetYMesh * pxPerMesh,
   };
 }
 
@@ -8804,7 +8893,12 @@ function renderBodySnapshot(snap, angle, map, canvasW, canvasH){
   // 캔버스 아래로 벗어나는 부분은 렌더하지 않는다(픽셀 낭비 방지) —
   // 화면 하단에 해당하는 메쉬 y까지만 프러스텀에 담는다.
   const maxDrawMeshH = (canvasH - map.neckPxY) / map.pxPerMesh;
-  const bottom = Math.max(snap.neck.minY, top - Math.max(0.2, maxDrawMeshH));
+  if(!(maxDrawMeshH > 0.05)){
+    // 옷깃선이 캔버스 밖(아래)이면 그려봐야 한 픽셀도 안 보인다 — 조용히 넘어가지 말 것.
+    console.warn(`[결과] ${angle}: 옷깃선이 프레임 아래(${Math.round(map.neckPxY)}px > ${canvasH}px) — 의상이 화면에 안 들어옴`);
+    return null;
+  }
+  const bottom = Math.max(snap.neck.minY, top - maxDrawMeshH);
   if(!(top > bottom)) return null;
 
   let W = Math.round((halfX*2) * map.pxPerMesh);
@@ -8931,12 +9025,14 @@ function drawResult(){
   const badge = document.getElementById('resultViewBadge');
   if(badge) badge.textContent = ANGLE_LABELS[angle] || '';
 
-  // [1] 조정 화면과 동일한 렌더 경로. 확대만 끄고, fit·헤어레이어를 돌려받는다.
-  renderFrame(canvas, angle, { noZoom:true, onDone: ({ fit, hairLayer })=>{
+  // [1] 조정 화면과 동일한 렌더 경로. 머리 확대 대신 결과용 프레이밍을 쓰고,
+  //     fit·헤어레이어를 돌려받는다.
+  renderFrame(canvas, angle, { noZoom:true, resultFit:true, onDone: ({ fit, hairLayer })=>{
     if(gen !== _resultGen || currentScreen !== 'result') return;
     const ctx = canvas.getContext('2d');
     const rec = state.aiOutfitRecommendation;
-    if(!fit || !rec){ return; }
+    if(!fit){ console.warn('[결과] fit 없음 — 의상 합성 생략:', angle); return; }
+    if(!rec){ return; }  // 추천 오기 전 첫 렌더 — 정상(도착하면 다시 그린다)
 
     const map = computeResultMapping(angle, fit);
     if(!map){
@@ -8959,13 +9055,21 @@ function drawResult(){
         if(eraseLayer) ctx.drawImage(eraseLayer, fit.dx, fit.dy, fit.dw, fit.dh);
 
         // [3] 추천 의상 3D 스냅샷
-        if(snap && snap.neck){
+        if(!snap || !snap.neck){
+          console.warn('[결과] 의상 메쉬 준비 실패 — 결과물만 표시:', angle);
+        } else {
           const shot = renderBodySnapshot(snap, angle, map, canvas.width, canvas.height);
           if(shot){
             ctx.save(); ctx.imageSmoothingEnabled = true;
             ctx.drawImage(shot.src, shot.x, shot.y, shot.w, shot.h);
             ctx.restore();
           }
+          // [진단] 정렬이 어긋나 보일 때 어느 숫자가 틀렸는지 바로 짚을 수 있게.
+          console.log(`[결과·정렬] ${angle} 옷깃선 y=${Math.round(map.neckPxY)}px / 캔버스 ${canvas.height}px`
+            + ` · 턱 y=${Math.round(fit.dy + getViewLandmarksFor(angle).chinY*fit.dh)}px`
+            + ` · 1cm=${map.pxPerCm.toFixed(1)}px · 1메쉬단위=${Math.round(map.pxPerMesh)}px`
+            + ` · 목반폭 ${neckHalfMesh.toFixed(2)}단위 · 몸 배율 ${snap.neck.scale.toFixed(2)}`
+            + ` · 상반신지움 ${eraseLayer ? 'O' : 'X'} · 의상 ${rec.item.name}`);
         }
         // [4] 헤어를 의상 위로 — 어깨에 내려온 머리가 옷 뒤로 숨지 않게
         if(hairLayer) ctx.drawImage(hairLayer, 0, 0);
