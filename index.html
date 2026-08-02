@@ -1221,6 +1221,37 @@
   돌려 — 높은 칼라에서 옷깃이 0.41→0.16으로 올라오고 두상 내림도 -0.29→-0.54로
   따라왔으며, 보통 옷·옷 없음에서는 8cm 기본이 그대로 유지됐고, 세 경우 모두
   자르는 선이 옷깃선 아래를 지켰다(뚫림 없음). 페이지 무오류 로드.
+
+  ── 2026-08-02 (11) 후면 두상 — <b>정면 실루엣과 대조</b>해서 자를 잡는다 ──
+  사용자: "후면은 랜드마크가 없어서 두상 형성에 기여를 안 하는 걸로 안다.
+  전면과 후면의 두상 실루엣이 거의 유사하니 그걸 비교해서 후면 위치를 잡자."
+  증상: 후면에서 남자는 두상이 <b>거대하게</b>, 여자는 <b>아주 작게</b> 나왔다.
+  원인 — 후면에서 쓰던 값이 둘 다 <b>추정치</b>였다:
+    · 세로 자 = (귀높이 − 정수리)/정수리~귀선. 그런데 후면의 귀높이는 실측이
+      아니라 "실루엣의 45% 지점"이라는 가정이라 자체가 흔들린다.
+      실제로 진단이 매번 "정수리~귀선 자가 어긋남(두상폭 0.41단위)"를 찍었다.
+    · 그때의 폴백 = "두상 폭 ≈ <b>1.45단위</b>"라는 고정 상수. 이 사람 실측
+      두상 폭은 0.92단위였으니 자가 1.58배 작게 잡히고, 두상은 정확히 그만큼
+      크게 그려진다. 남자 후면의 거대한 머리가 이 숫자 하나였다.
+  고침(사용자 제안 그대로):
+    · getPersonScaleRef가 정면 실루엣을 <b>메쉬 단위로</b> 재둔다.
+      재는 자리는 박스 전체 폭이 아니라 <b>정수리에서 0.5×(정수리~귀선) 내려온
+      윗머리 폭</b> — 긴 머리가 뒤에서 옆으로 퍼지면 박스 폭은 앞뒤가 크게
+      달라지지만(여자 후면이 작아진 원인), 두개골에 붙은 윗머리는 어느 각도에서
+      봐도 폭이 거의 같다.
+    · 얼굴 랜드마크가 없는 뷰는 그 뷰의 같은 자리 폭을 여기에 맞춰 자를 만든다.
+      폭을 잴 행이 자에 의존하므로 두 번 되풀이해 수렴시킨다.
+    · 세로 기준점은 귀(추정)가 아니라 <b>정수리</b>(실측)로 잡고, 이 사람의 자로
+      귀 높이를 역산한다. 가로는 실루엣 중앙 — 뒤통수는 좌우 대칭이라 그게 목 축이다.
+    · 랜드마크가 있는 뷰의 폴백에서도 고정 1.45를 폐기하고 정면 실측 폭을 쓴다.
+  ※ 가로 정규화 좌표는 세로와 자가 다르다(가로 imgW / 세로 imgH). 사진 종횡비를
+    곱해야 같은 자가 된다 — fit.dw/fit.dh와 같은 값이라 fit 없이도 계산된다.
+  검증: 합성 실루엣으로 "같은 사람을 후면에서 1.3배 크게 찍은" 상황을 만들어
+  — 퍼짐 없음 1.320배, 긴 머리가 1.9배로 퍼진 경우 1.347배(기대 1.300)로
+    나왔다. 즉 <b>퍼짐이 자를 2%밖에 흔들지 못한다</b>(박스 폭을 썼다면 그대로
+    1.9배 오차). 정수리 정렬 오차는 0px. 페이지 무오류 로드.
+  진단: [결과·정렬]의 1메쉬단위 옆에 자를 어디서 얻었는지(정수리~귀선 /
+  정면 윗머리 폭 대조 / 정면 박스 폭 대조 / 눈~턱)를 같이 찍는다.
 -->
 
 <!DOCTYPE html>
@@ -9111,8 +9142,48 @@ function getPersonScaleRef(){
     neckLenMesh,
     headDropMesh: (RESULT_NECK_MESH_Y + neckLenMesh) - CHIN,
   };
+  /* ── 정면 실루엣을 <b>메쉬 단위로</b> 재둔다 (2026-08-02 11차) ─────────────
+     사용자: "후면은 랜드마크가 없어서 두상 형성에 기여를 안 한다. 전면과 후면의
+     두상 실루엣이 거의 같으니 그걸 비교해서 후면 위치를 잡자."
+     맞는 접근이다. 뒤통수 폭은 앞에서 본 폭과 같고, 정수리 높이도 같다.
+     그래서 얼굴 랜드마크가 없는 뷰는 "정면에서 이 폭이 몇 단위였나"에 자를 맞춘다.
+     ※ 재는 자리는 <b>박스 전체 폭이 아니라 정수리에서 조금 내려온 윗머리</b>다.
+       박스 전체 폭은 긴 머리가 뒤에서 옆으로 퍼지면 앞뒤가 크게 달라진다
+       (실제로 여자 후면에서 두상이 작게 나온 원인). 윗머리는 머리가 두개골에
+       붙어 있어 어느 각도에서 봐도 폭이 거의 같다.
+     ※ 가로 정규화 좌표는 세로와 자가 다르다(가로는 imgW, 세로는 imgH 기준) —
+       사진 종횡비(w/h)를 곱해야 같은 자가 된다. fit이 비율을 유지하므로
+       fit.dw/fit.dh와 같은 값이고, 그래서 fit 없이도 계산할 수 있다. */
+  const aspect = (inf && inf.w > 0 && inf.h > 0) ? (inf.w / inf.h) : 1;
+  ref.meshPerNorm   = meshPerNorm;
+  ref.frontAspect   = aspect;
+  ref.upperDepthMesh = 0.5 * crownToEar;        // 정수리에서 이만큼 내려온 자리를 잰다
+  ref.hairWidthMesh  = box ? (box.x1 - box.x0) * aspect * meshPerNorm : null;  // 폴백(박스 전체)
+  ref.upperWidthMesh = null;
+  if(box && inf){
+    const rowNorm = box.y0 + (ref.upperDepthMesh / meshPerNorm);
+    const wNorm = hairWidthAtRowNorm(inf, rowNorm);
+    if(wNorm != null && wNorm > 0.02) ref.upperWidthMesh = wNorm * aspect * meshPerNorm;
+  }
   _personScaleRef = ref;
   return ref;
+}
+
+/* 헤어 실루엣의 <b>그 높이에서의</b> 정규화 가로폭. scalpY(위)와 hairEndY(아래)
+   사이에 그 행이 들어오는 컬럼들의 좌우 끝으로 잰다. 없으면 null. */
+function hairWidthAtRowNorm(maskInf, rowNorm){
+  const mw = maskInf.w, mh = maskInf.h;
+  const sY = maskInf.scalpY, eY = maskInf.hairEndY;
+  if(!sY || !(mw > 0) || !(mh > 0)) return null;
+  const row = rowNorm * mh;
+  let x0 = -1, x1 = -1;
+  for(let x=0; x<mw; x++){
+    const sy = sY[x];
+    if(!(sy >= 0)) continue;
+    const ey = (eY && eY[x] >= 0) ? eY[x] : sy;
+    if(row >= sy && row <= ey){ if(x0 < 0) x0 = x; x1 = x; }
+  }
+  return (x0 >= 0 && x1 >= x0) ? (x1 - x0 + 1) / mw : null;
 }
 
 /* 추천 의상 메쉬를 오프스크린 그룹에 올린다(의상·사람이 같으면 재사용).
@@ -9284,26 +9355,60 @@ function getViewHeadAnchor(angle, fit, maskInf){
   const box = maskInf ? hairBoxOf(maskInf) : null;
   const earN = (box && lm.earY > box.y0 + 0.01) ? lm.earY
              : (box ? box.y0 + (box.y1-box.y0)*0.45 : lm.earY);
-  let pxPerMesh = null, headHalfMesh = 0.75;
+  let pxPerMesh = null, headHalfMesh = 0.75, scaleSrc = '정수리~귀선';
 
-  if(box){
+  /* ── 얼굴 랜드마크가 없는 뷰(=후면)는 정면 실루엣과 맞춘다 (11차) ─────────
+     사용자: "후면은 랜드마크가 없어서 두상 형성에 기여를 안 한다. 전면과 후면의
+     두상 실루엣이 거의 유사하니 그걸 비교해서 후면 위치를 잡자."
+     여기서 쓰던 두 값이 모두 <b>추정치</b>였다:
+       · 세로 자 — earN이 실측 귀가 아니라 "실루엣의 45% 높이"라는 가정
+       · 폴백 폭 — "두상 폭 ≈ 1.45단위"라는 <b>고정 상수</b>. 이 사람 실측은
+                   0.92단위였으니 자가 1.58배 작게 잡히고, 그만큼 두상이
+                   크게 그려졌다(후면 스크린샷의 거대한 머리가 정확히 이것).
+     대신 정면에서 <b>메쉬 단위로 재둔 윗머리 폭</b>에 이 뷰의 같은 자리 폭을
+     맞춘다. 박스 전체 폭이 아니라 윗머리인 이유: 긴 머리가 뒤에서 옆으로
+     퍼지면 박스 폭은 앞뒤가 크게 달라지지만, 두개골에 붙은 윗머리는 어느
+     각도에서 봐도 폭이 거의 같다(여자 후면에서 두상이 작아진 원인이 이것).
+     세로는 <b>정수리</b>로 잡는다 — 정수리 높이는 앞뒤가 같고, 실측값이다. */
+  const hasFaceLm = !!(state.landmarks && state.landmarks[angle]);
+  if(box && !hasFaceLm && ref.upperWidthMesh > 0.05){
+    // 폭을 잴 행이 자에 의존하므로 두 번 되풀이해 수렴시킨다(첫 추정은 박스 폭).
+    pxPerMesh = ((box.x1 - box.x0) * fit.dw) / (ref.hairWidthMesh || 1.0);
+    for(let it=0; it<2; it++){
+      const rowNorm = box.y0 + (ref.upperDepthMesh * pxPerMesh) / fit.dh;
+      const wNorm = hairWidthAtRowNorm(maskInf, rowNorm);
+      if(!(wNorm > 0.02)) break;
+      pxPerMesh = (wNorm * fit.dw) / ref.upperWidthMesh;
+    }
+    scaleSrc = '정면 윗머리 폭 대조';
+  } else if(box){
     pxPerMesh = ((earN - box.y0) * fit.dh) / ref.crownToEarMesh;
     // 교차검증: 두상 실루엣 폭이 메쉬 단위로 0.6~2.6을 벗어나면 앵커가 튄 것으로 본다
     const widthMesh = ((box.x1 - box.x0) * fit.dw) / (pxPerMesh || 1);
     if(!(pxPerMesh > 1) || !isFinite(pxPerMesh) || widthMesh < 0.6 || widthMesh > 2.6){
       console.warn(`[결과] ${angle}: 정수리~귀선 자가 어긋남(두상폭 ${widthMesh.toFixed(2)}단위)`
-        + ' — 실루엣 폭 기준으로 대체');
-      pxPerMesh = ((box.x1 - box.x0) * fit.dw) / 1.45; // 두상 폭 ≈ 1.45단위로 가정
+        + ' — 정면 실루엣 폭으로 대체');
+      // 고정 1.45 상수 폐기 — 이 사람 정면에서 실제로 잰 폭에 맞춘다.
+      pxPerMesh = ((box.x1 - box.x0) * fit.dw) / (ref.hairWidthMesh || 1.45);
+      scaleSrc = '정면 박스 폭 대조';
     }
-    headHalfMesh = Math.max(0.5, ((box.x1 - box.x0) * fit.dw) / (pxPerMesh||1) / 2);
   } else if((lm.chinY - lm.eyeY) > 0.01){
     // 헤어 실루엣(scalpY)이 아직 없는 경우 — 눈~턱 자로 폴백(정면·측면에서만 유효)
     pxPerMesh = ((lm.chinY - lm.eyeY) * fit.dh) / (0.15 - ref.chinMeshY);
+    scaleSrc = '눈~턱';
   }
   if(!(pxPerMesh > 1) || !isFinite(pxPerMesh)) return null;
+  if(box) headHalfMesh = Math.max(0.5, ((box.x1 - box.x0) * fit.dw) / pxPerMesh / 2);
 
-  const earPxY = fit.dy + earN * fit.dh;
-  const earPxX = fit.dx + ((lm.lEarX + lm.rEarX)/2) * fit.dw;
+  /* 세로·가로 기준점. 얼굴 랜드마크가 없으면 귀 위치도 추정치이므로
+     <b>정수리</b>(실측)에서 이 사람의 자로 귀 높이를 역산하고, 가로는
+     실루엣 중앙을 쓴다(뒤통수는 좌우 대칭이라 중앙이 곧 목 축이다). */
+  const earPxY = (box && !hasFaceLm)
+    ? (fit.dy + box.y0 * fit.dh + (ref.crownMeshY - ref.earMeshY) * pxPerMesh)
+    : (fit.dy + earN * fit.dh);
+  const earPxX = (box && !hasFaceLm)
+    ? (fit.dx + ((box.x0 + box.x1) / 2) * fit.dw)
+    : (fit.dx + ((lm.lEarX + lm.rEarX)/2) * fit.dw);
   const meshToPx = (m)=> earPxY + (ref.earMeshY - m) * pxPerMesh;   // 이 뷰의 세로 자
   const chinPxY   = meshToPx(ref.chinMeshY);
   const collarPxY = meshToPx(ref.chinMeshY - ref.neckLenMesh);      // 옷깃선
@@ -9325,7 +9430,7 @@ function getViewHeadAnchor(angle, fit, maskInf){
   /* collarPxY·cutPxY·headDropMesh는 여기서 <b>기본값</b>만 잡는다. 사진 색으로
      "고객 옷이 어디서 시작하나"를 잰 뒤 fitCollarToGarment가 확정한다(10차). */
   return {
-    pxPerMesh, headHalfMesh, neck, alignX, alignSrc,
+    pxPerMesh, headHalfMesh, neck, alignX, alignSrc, scaleSrc,
     earPx: { x: earPxX, y: earPxY },
     chinPxY, collarPxY, cutPxY,
     neckLenMesh: ref.neckLenMesh, headDropMesh: ref.headDropMesh,
@@ -9671,7 +9776,7 @@ function drawResult(){
         _resultScene = { angle, ref, anchor, cutout, hairLayer, backdrop,
                          snap: snap || null, body: snap ? snap.body : null };
         composeResult();
-        console.log(`[결과·정렬] ${angle} 두상자 1메쉬단위=${Math.round(anchor.pxPerMesh)}px(원본)`
+        console.log(`[결과·정렬] ${angle} 두상자 1메쉬단위=${Math.round(anchor.pxPerMesh)}px(원본, ${anchor.scaleSrc})`
           + ` · 정수리~귀선 ${ref.crownToEarMesh.toFixed(2)}단위 · 두상높이 ${ref.headHeightMesh.toFixed(2)}단위`
           + ` · 전신 ${(ref.headHeightMesh*FIGURE_HEADS).toFixed(2)}단위`
           + (snap && snap.body ? ` · 몸 배율 ${snap.body.scale.toFixed(2)}` : ' · 의상 없음')
