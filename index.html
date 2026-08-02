@@ -1103,6 +1103,37 @@
   (픽셀 루프·구조텐서·색 실측·캔버스 전부 포함) 분리 전/후 결과 20개 항목
   — scalpY/hairEndY 배열, reasonMask, 팔레트, 결필드, 세 캔버스의 data URL,
   진단 로그까지 — 이 전부 바이트 단위로 같은 것을 확인했다.
+
+  ── 2026-08-02 (7) 가닥 성질 통일 — "원본 결 보기의 헤어가닥으로" ──
+  사용자: "원본 결 보기의 헤어가닥과 스타일 적용 후의 헤어가닥이 다른데, 그냥
+          원본 결 보기의 헤어가닥으로 통일해줘 — 레이어 개별 가닥 ~2000개, 그거."
+  같은 3D 가닥을 두 화면이 <b>다른 규칙으로</b> 그리고 있었다. 실측(스텁 모델
+  4,000가닥, 1200px 캔버스):
+    · 원본 결 보기 — 가닥 하나당 선 하나, 굵기 0.9px, 2,832개, 두피색 언더코트(×2.2)
+    · 스타일 적용 후 — 가닥 하나를 <b>다발</b>(0.7px 서브라인 4개를 3.6px에 펼침)로
+      1,334다발, 언더코트 없음 → 가닥 사이로 원본 사진의 머리가 그대로 비쳤다
+  고침(렌더러 구조는 그대로, <b>그리는 규칙</b>만):
+  · HAIR_STRAND_LOOK — 굵기(base/gain/슬라이더)·개수(c0/c1)·틴트를 <b>한 곳</b>에
+    모으고 drawHairStrands와 projectHair3DToView가 같이 읽는다. 값은 예전
+    drawHairStrands 안에 하드코딩돼 있던 것 그대로라 원본 결 보기는 무변경.
+  · projectHair3DToView — 다발 폐기. 가닥 하나당 선 하나, 굵기는 레이어 4종을
+    원본의 개수 비율대로 배정, 개수 목표는 원본 결 보기와 동일(≈2,830),
+    언더코트도 같은 배수(×2.2)로 켬.
+  · 배정 난수는 Math.random이 아니라 <b>가닥 인덱스 해시</b> — 같은 가닥이 매
+    프레임 다시 그려지는 경로라, 인덱스에 묶지 않으면 슬라이더를 잡고 흔들 때
+    굵기·밝기가 프레임마다 바뀌어 반짝인다(원본 결 보기는 매번 새로 심으므로
+    Math.random으로 충분했다 — 같은 값을 쓸 수 없는 이유가 이것).
+  · 마무리 질감(윤기↔매트)은 유지 — 예전엔 다발 안 서브라인 위치로 밝기를
+    갈랐는데, 이제 가닥별 밝기 지터로 낸다(진폭은 동일).
+  비용: 그리기 호출은 가닥당 4회 → 1회로 줄고(배치 후 stroke 185회/4,000가닥),
+  대신 투영할 가닥이 2배가 된다. 무거우면 HAIR3D_RENDER.targetStrands에 숫자를
+  넣어 밀도만 내리면 된다(가닥 성질은 그대로).
+  ※ 다발 전용 상수(bundleSpanMax·sub·gap·min/maxSubCss·targetBundles)는 픽셀
+    이식 경로(projectHairQuiltToView)가 아직 쓰므로 남겨 뒀다.
+  검증: 레이어 4종의 굵기·개수를 여러 해상도·슬라이더 조합에서 <b>바뀌기 전
+  공식과 수치 비교</b>(전부 일치), 실제 브라우저에서 projectHair3DToView를
+  스텁 모델로 끝까지 돌려 stroke 폭이 0.9(가닥)/1.98(언더코트=0.9×2.2)만
+  나오는 것과 페이지 무오류 로드를 확인.
 -->
 
 <!DOCTYPE html>
@@ -6531,15 +6562,16 @@ function toggleDiagInfo(){
     lines.push('결 신뢰도: 결필드 없음');
   }
 
-  const bd = window._lastBundleDiag && window._lastBundleDiag[angle];
+  const bd = window._lastStrandDiag && window._lastStrandDiag[angle];
   if(bd){
     lines.push('');
-    lines.push('다발 렌더:');
+    lines.push('가닥 렌더(원본 결 보기와 동일 규칙):');
     lines.push('  화면상 머리폭 ' + bd.headCss + 'px (표시배율 1/' + bd.unit + ')');
-    lines.push('  다발 ' + bd.bundle + 'px (비례값 ' + bd.prop + ')');
-    lines.push('  가닥 ' + bd.sub + '/' + bd.want + '개 × ' + bd.subCss + 'px(화면), 틈 ' + bd.gapCss + 'px(화면)');
-    lines.push('  다발 수 ' + bd.drawn + '/' + bd.total + ' (솎기 ' + bd.stride + ')');
-    if(bd.gapCss < 1.0) lines.push('  ← 틈이 화면 1px 미만: 빈칸이 아니라 옅은 경계로 보임(의도된 설정일 수 있음)');
+    (bd.roles||[]).forEach(r=>{
+      lines.push('  ' + r.id + ' 굵기 ' + r.w + 'px(화면 ' + r.wCss + ') · 비중 ' + r.n + '개');
+    });
+    lines.push('  가닥 ' + bd.drawn + '개 그림 / 목표 ' + bd.target + '개 (원본 결 보기 ' + bd.rawTotal + '개)');
+    lines.push('  모델 ' + bd.total + '개 중 솎기 ' + bd.stride);
     if(bd.rootDev){
       const d = bd.rootDev;
       lines.push('  뿌리선 어긋남 중앙값 ' + d.med.toFixed(0) + 'px'
@@ -7664,6 +7696,52 @@ function cleanupLine1D(arr, opts){
   return arr;
 }
 
+/* ══════════════════════════════════════════════════════════════════
+   가닥 성질 — <b>단일 출처</b> (2026-08-02)
+   ─────────────────────────────────────────────────────────────────
+   사용자: "원본 결 보기의 헤어가닥으로 통일해줘 — 레이어 개별 가닥 ~2000개,
+            그거 말하는 거야."
+   두 화면이 <b>같은 3D 가닥을 다른 규칙으로</b> 그리고 있었다:
+     · 원본 결 보기(drawHairStrands) — 굵기·개수·틴트가 다른 4레이어를 겹쳐
+       가닥 <b>하나당 선 하나</b>로 ~2,830개.
+     · 스타일 적용 후(projectHair3DToView) — 가닥 하나를 <b>다발</b>(서브라인 4개,
+       폭 고정 0.7 CSS px)로 그려 1,400다발. 기하는 같은데 그리는 규칙이 달라
+       가닥 성질(굵기·밀도·명암 분포)이 서로 달라 보였다.
+   고침: 가닥 성질을 여기 <b>한 곳</b>에 두고 두 경로가 같이 읽는다.
+   값은 지금까지 drawHairStrands 안에 하드코딩돼 있던 것 그대로다 — 원본 결
+   보기의 그림은 바뀌지 않고, 3D 투영 쪽이 이 규칙으로 끌려온다.
+
+   layers[] — 원본 결 보기의 레이어 0~3(루트확산·굵은섹션·중간·잔가닥)
+     base/gain/src : 굵기 = (base + (src슬라이더/100)×gain) × widthScale
+     c0/c1         : 개수 = c0 + (volume/100)×c1   (개수는 4레이어 모두 볼륨 연동)
+     tint          : [하한, 폭] — 가닥 밝기 = 하한 + rand×폭
+   ══════════════════════════════════════════════════════════════════ */
+const HAIR_STRAND_LOOK = {
+  resBase: 705,        // 굵기 튜닝 기준 캔버스 폭(fit.dw가 이보다 작으면 비례 축소)
+  minSafeWidth: 0.9,   // sub-pixel 방지 하한(해상도 무관 — 캔버스 렌더링의 물리 제약)
+  thin: 0.48,          // 전역 가닥 굵기 배율(가늘게/굵게는 이 값 하나로)
+  undercoatMul: 2.2,   // 가닥 경로를 따라 까는 두피색 바탕의 굵기 배수
+  layers: [
+    // id,          굵기 base/gain/슬라이더,      개수 c0/c1,   틴트[하한, 폭]
+    { id:'root',    base:0.5,  gain:0.28, src:'thickness', c0:830, c1:590, tint:[0.68,0.55] },
+    { id:'section', base:0.65, gain:0.6,  src:'volume',    c0:85,  c1:49,  tint:[0.70,0.55] },
+    { id:'mid',     base:0.48, gain:0.33, src:'thickness', c0:460, c1:490, tint:[0.72,0.60] },
+    { id:'fine',    base:0.5,  gain:0.28, src:'thickness', c0:595, c1:595, tint:[0.65,0.75] },
+  ],
+};
+/* 이 뷰에서 "원본 결 보기가 그리는 가닥 묶음"을 그대로 계산해 준다.
+   → 레이어별 굵기 w · 개수 n · 틴트 범위. 두 렌더러가 이 함수 하나만 본다. */
+function hairStrandRoles(fitDw, volume, thickness){
+  const L = HAIR_STRAND_LOOK;
+  const widthScale = (fitDw / L.resBase) * L.thin;
+  return L.layers.map(x=>({
+    id: x.id,
+    w: Math.max(L.minSafeWidth, (x.base + (((x.src==='volume') ? volume : thickness)/100) * x.gain) * widthScale),
+    n: x.c0 + (volume/100) * x.c1,
+    tint: x.tint,
+  }));
+}
+
 /* ════════════════════════════════════════════════════════════════
    HAIR RENDER — 4레이어 가닥 렌더 + 2단계 합성
    위 커트 연산(리졸버)과 가닥 추적(traceStrandPath)을 받아 실제 캔버스에 그린다.
@@ -7707,17 +7785,21 @@ function drawHairStrands(ctx, fit, scalpY, hairEndY, maskW, maskH, hairCanvas, o
   // 압축되는데 선 굵기는 거의 그대로(resScale≈768/705≈1.09)라 상대적으로 훨씬 굵어
   // 보였음(스크린샷에서 보인 마커펜 같은 뭉툭한 가닥의 직접 원인). → 실제 캔버스 렌더
   // 폭(fit.dw) 기준으로 스케일해야 좌표 압축 비율과 굵기가 항상 같이 움직인다.
-  const RES_BASE = 705;
+  const RES_BASE = HAIR_STRAND_LOOK.resBase; // (2026-08-02) 값은 그대로, 출처만 공용 상수로
   const resScale = fit.dw / RES_BASE;
   // sub-pixel 방지용 최소굵기(0.9px)는 해상도와 무관한 캔버스 렌더링 자체의 물리적
   // 제약(1px 미만이면 브라우저가 알파를 낮춰 흐리게 그림)이라 resScale로 같이 줄어들면
   // 안 됨 — 스케일 적용 "후"에 하한선으로 별도 고정.
-  const MIN_SAFE_WIDTH = 0.9;
+  const MIN_SAFE_WIDTH = HAIR_STRAND_LOOK.minSafeWidth;
   // (2026-07-16) 사용자 피드백 "비교 보기에서 보면 좀 더 가늘어져야 돼" —
   // 1200 고해상도에서 원본 머리카락과 나란히 놓고 보니 가닥이 여전히 굵음.
   // 좌표·밀도는 그대로 두고 선굵기만 전역 40% 하향(더 조정하려면 이 값 하나만).
-  const STRAND_THIN = 0.48; // (8차) 사용자: "가닥을 조금 더 가늘게 하면서 슬라이스로 가면 부드러워질 것" — 0.6→0.48
+  const STRAND_THIN = HAIR_STRAND_LOOK.thin; // (8차) "가닥을 조금 더 가늘게" 0.6→0.48 → (2026-08-02) 공용 상수로 이관
   const widthScale = resScale * STRAND_THIN;
+  // 레이어 0~3의 굵기·개수·틴트 — 3D 투영 렌더와 같은 출처(HAIR_STRAND_LOOK)에서 계산.
+  // 아래 drawStrandLayer 호출부가 이 값을 그대로 쓴다(예전 하드코딩 값과 동일).
+  const LOOK_ROLES = hairStrandRoles(fit.dw, volume, thickness);
+  const [L_ROOT, L_SECTION, L_MID, L_FINE] = LOOK_ROLES;
 
   // 길이 슬라이더가 높을 때(특히 정면 프론트) 가닥이 이마 라인을 넘어
   // 눈·안경·턱까지 뚫고 내려가는 과확장을 막기 위한 상한.
@@ -8046,12 +8128,12 @@ function drawHairStrands(ctx, fit, scalpY, hairEndY, maskW, maskH, hairCanvas, o
   // sub-pixel 렌더링 문제 수정: 0.22~0.51px는 1px 미만이라 브라우저가 "더 얇게"가
   // 아니라 알파를 낮춰 흐릿하게 그려버림(캔버스가 sub-pixel 굵기를 실제로 표현 못 함).
   // 1px 근처로 최소굵기를 올려서 흐려지는 걸 막고, 대신 개수를 더 늘려 밀도로 보완.
-  const numRootScatter = Math.round(830 + (volume/100) * 590); // 2026-07-14 증량(460+330→×1.8): 굵기 하향 커버리지 보상 — 사용자 합의
+  const numRootScatter = Math.round(L_ROOT.n); // 2026-07-14 증량(460+330→×1.8): 굵기 하향 커버리지 보상 — 사용자 합의
   drawStrandLayer({
     count: numRootScatter,
     alphaMul: 1.0,
     // 705px 기준 튜닝값 → 실제 해상도(resScale)에 비례 스케일 + sub-pixel 방지 하한
-    lineWidth: layerWidth(0.5, 0.28, thickness), // 2026-07-14 굵기 하향 → 2026-07-16 전역 STRAND_THIN 추가 하향
+    lineWidth: L_ROOT.w, // 2026-07-14 굵기 하향 → 2026-07-16 전역 STRAND_THIN 추가 하향
     pickCol: PICK_RANDOM_COL,
     endYFallbackRatio: 0.35,
     // 균등분포 → 제곱분포로 변경: 두피선(frac=0) 근처에 확률이 더 실리고 꼬리가 길게
@@ -8062,18 +8144,18 @@ function drawHairStrands(ctx, fit, scalpY, hairEndY, maskW, maskH, hairCanvas, o
     lenMult: ()=> 0.6+Math.random()*0.4, // 랜덤 배율 분리(중립 길이 계산과 공유 — 동작 동일)
     startXJitter: ()=> (Math.random()-0.5)*maskW*0.01,
     jitterSeedFn: (i)=> i*0.271,
-    tintRange: [0.68, 0.55],
+    tintRange: L_ROOT.tint,
   });
 
   // ── 레이어 1: 굵은 섹션 (38~60개) ──
   // 가닥을 불투명하게 바꾸면서 밀도를 다시 소폭 상향 (30~48 → 38~60).
   // 개수 1.6배 상향 — 위 레이어0과 동일한 이유
-  const numSections = Math.round(85 + (volume/100) * 49); // 2026-07-14 증량(61+35→×1.4): 굵은 레이어는 뭉침 방지 위해 소폭만
+  const numSections = Math.round(L_SECTION.n); // 2026-07-14 증량(61+35→×1.4): 굵은 레이어는 뭉침 방지 위해 소폭만
   drawStrandLayer({
     count: numSections,
     alphaMul: 1.0, // 형태를 잡는 가장 굵은 레이어 — 완전 불투명하게 해서 밑의 살색이 안 비치게
     // 705px 기준 튜닝값 → 해상도 비례 스케일
-    lineWidth: layerWidth(0.65, 0.6, volume), // 2026-07-14 굵기 하향 → 2026-07-16 전역 STRAND_THIN 추가 하향
+    lineWidth: L_SECTION.w, // 2026-07-14 굵기 하향 → 2026-07-16 전역 STRAND_THIN 추가 하향
     pickCol: (i)=> validCols[Math.floor((i/numSections)*validCols.length)],
     endYFallbackRatio: 0.40,
     // 한 줄(scalpY) 제한 해제: 다른 레이어처럼 두피선~모발끝 사이에 깊이를 분산시켜서,
@@ -8081,24 +8163,24 @@ function drawHairStrands(ctx, fit, scalpY, hairEndY, maskW, maskH, hairCanvas, o
     rootDepthFrac: ()=> Math.pow(Math.random(), 1.1) * 0.6, // (4차) 제곱편향→준균등(겹 스택 커버리지)
     startXJitter: ()=> (Math.random()-0.5)*(maskW/numSections)*1.5,
     jitterSeedFn: (i)=> i,
-    tintRange: [0.70, 0.55],
+    tintRange: L_SECTION.tint,
   });
 
   // ── 레이어 2: 중간 가닥 (160~330개) ──
   // 개수 1.6배 상향 — 위와 동일한 이유
-  const numMid = Math.round(460 + (volume/100) * 490); // 2026-07-14 증량(256+272→×1.8)
+  const numMid = Math.round(L_MID.n); // 2026-07-14 증량(256+272→×1.8)
   drawStrandLayer({
     count: numMid,
     alphaMul: 1.0,
     // 705px 기준 튜닝값 → 해상도 비례 스케일 + sub-pixel 방지 하한
-    lineWidth: layerWidth(0.48, 0.33, thickness), // 2026-07-14 굵기 하향 → 2026-07-16 전역 STRAND_THIN 추가 하향
+    lineWidth: L_MID.w, // 2026-07-14 굵기 하향 → 2026-07-16 전역 STRAND_THIN 추가 하향
     pickCol: PICK_RANDOM_COL,
     endYFallbackRatio: 0.38,
     rootDepthFrac: ()=> Math.pow(Math.random(), 1.1) * 0.7, // 한 줄 제한 해제, (4차) 준균등 — 겹 스택 커버리지
     lenMult: ()=> 0.85+Math.random()*0.3, // 랜덤 배율 분리(중립 길이 계산과 공유 — 동작 동일)
     startXJitter: ()=> (Math.random()-0.5)*maskW*0.008,
     jitterSeedFn: (i)=> i*0.618,
-    tintRange: [0.72, 0.60],
+    tintRange: L_MID.tint,
   });
 
   // ── 레이어 3: 잔 가닥 (160~320개) ──
@@ -8108,12 +8190,12 @@ function drawHairStrands(ctx, fit, scalpY, hairEndY, maskW, maskH, hairCanvas, o
   // sub-pixel 문제 수정 + 개수 추가 상향 — 위 레이어0과 동일한 이유.
   // 이 레이어는 하이라이트(밝은 톤) 담당이라 흐려지면 머리 전체 광택감이 죽는
   // 영향이 가장 커서 우선적으로 손봄.
-  const numFine = Math.round(595 + (volume/100) * 595); // 2026-07-14 증량(330+330→×1.8)
+  const numFine = Math.round(L_FINE.n); // 2026-07-14 증량(330+330→×1.8)
   drawStrandLayer({
     count: numFine,
     alphaMul: 1.0,
     // 705px 기준 튜닝값 → 해상도 비례 스케일 + sub-pixel 방지 하한
-    lineWidth: layerWidth(0.5, 0.28, thickness), // 2026-07-14 굵기 하향 → 2026-07-16 전역 STRAND_THIN 추가 하향
+    lineWidth: L_FINE.w, // 2026-07-14 굵기 하향 → 2026-07-16 전역 STRAND_THIN 추가 하향
     pickCol: PICK_RANDOM_COL,
     endYFallbackRatio: 0.35,
     rootDepthFrac: ()=> Math.pow(Math.random(), 1.1) * 0.85, // 한 줄 제한 해제 — 잔가닥은 가장 넓게 분산, (4차) 준균등
@@ -8121,7 +8203,7 @@ function drawHairStrands(ctx, fit, scalpY, hairEndY, maskW, maskH, hairCanvas, o
     startXJitter: ()=> (Math.random()-0.5)*maskW*0.012,
     startYJitter: ()=> (Math.random()-0.5)*maskH*0.01,
     jitterSeedFn: (i)=> i*0.382,
-    tintRange: [0.65, 0.75],
+    tintRange: L_FINE.tint,
   });
 
   // ── (6차) 섹션 스택 드로잉 — "세그멘테이션 통짜 페인팅" 폐지 ──
@@ -13603,6 +13685,17 @@ function project3DPointToView(world, cal, yTop, CY){
    모든 치수는 "기존 가닥 굵기 W0" 대비 배율이라 해상도가 달라져도 비율 유지.
    ※ 값 튜닝 손잡이는 전부 여기 한 곳. count(다발 수)는 stride로 조절한다. */
 const HAIR3D_RENDER = {
+  /* ── (2026-08-02) 가닥 렌더 전환 — 아래 "다발" 값들의 현재 위치 ──────────
+     projectHair3DToView(스타일 적용 후 조정 화면)는 이제 다발이 아니라 <b>가닥
+     하나당 선 하나</b>로 그린다. 굵기·개수·틴트 범위는 HAIR_STRAND_LOOK(원본 결
+     보기와 같은 출처)에서 온다. 그래서 아래 다발 전용 값들(bundleSpanMax, sub,
+     gap, minGapCss, minSubCss, maxSubCss, minSubW, targetBundles)은 <b>픽셀 이식
+     경로(projectHairQuiltToView)에서만</b> 쓰인다 — 지우지 않은 이유가 그것이다.
+     가닥 렌더에서 쓰는 건 targetStrands · colVar · quant · undercoat · stride뿐. */
+  /* 그릴 가닥 수. null = 원본 결 보기가 같은 뷰에 그리는 수와 <b>동일</b>(권장,
+     볼륨 50에서 ≈2,830). 숫자를 넣으면 그 값으로 고정한다(성능이 아쉬울 때 1,800
+     정도로 내리면 밀도만 옅어지고 가닥 성질은 그대로 유지된다). */
+  targetStrands: null,
   // 다발 폭 = 그 뷰의 헤어 실루엣 가로폭 × 이 값.
   // 왜 절대 px가 아니라 실루엣 비율인가: 하네스는 340px 캔버스에서 눈으로 맞췄고
   // 앱 조정창은 705px 안팎이라, 절대 px로 옮기면 다발이 절반 크기로 들어간다
@@ -13642,7 +13735,12 @@ const HAIR3D_RENDER = {
      그래서 개수를 고정하고 폭만 움직이게 한다. 이제 폭을 넓히면 덮는 면적이
      그대로 늘어난다. (겹침이 과해지면 그때 이 수를 내리면 된다.) */
   targetBundles: 1400,
-  undercoat: false, // 두피색 언더코트. 사용자 선택: 끔(다발을 투명하게 = 틈이 살아남)
+  /* 두피색 언더코트(가닥 경로를 따라 굵기 ×2.2로 먼저 깔아 가닥 사이 빈틈만 메움).
+     다발 렌더 시절엔 끔이 사용자 선택이었다(다발 사이로 뒤가 비쳐야 밝기가 났다).
+     (2026-08-02) 가닥 렌더로 오면서 원본 결 보기와 같은 규칙으로 <b>켠다</b> —
+     원본 결 보기가 바로 이 언더코트 위에 가닥을 얹은 그림이고, 끄면 가닥 사이로
+     <b>원본 사진의 머리</b>가 그대로 비쳐서 성질이 달라진다. 끄려면 false. */
+  undercoat: true,
   // 하한은 백킹 픽셀이 아니라 "화면에 실제로 보이는 CSS 픽셀" 기준(아래 설명 참조)
   /* (2026-07-26 2차 상향) 0.7/0.9로는 부족했다. 캔버스 1200px를 화면 390px로
      줄여 그리는 과정에서 상자필터로 평균이 나는데, 선과 틈이 각각 1 CSS px
@@ -14157,55 +14255,43 @@ function projectHair3DToView(ctx, fit, angle, maskInf){
      (실측: 2배로 가정했더니 전부 앞을 향한 모델에서 2배를 그려 84ms가 나왔다). */
   const frontFrac = pN ? Math.max(0.05, pFront / pN) : 0.5;
 
-  // ── 다발 치수 (spanX는 위 1패스에서 이미 쟀다) ──
-  const resScale = fit.dw / 705;
-  const W0       = Math.max(0.7, resScale * 0.6);      // 예전 가닥 굵기(하한용)
-
-  /* ── 화면에 실제로 보이는 크기로 환산 (2026-07-26, 실기기에서 발견) ──
-     실기기 스크린샷에서 서브라인이 전혀 안 살고 통짜 덩어리로 보였다. 원인은
-     렌더 로직이 아니라 <b>캔버스 백킹스토어와 화면 표시 크기의 배율 차이</b>다.
-       · 하네스: 340px 캔버스를 ~500 CSS px로 표시 → 1.5배 확대. 0.5px 틈도 보인다.
-       · 앱:    1200px 캔버스를 ~390 CSS px로 표시 → 3배 축소. 0.5px 틈은
-                0.16 CSS px가 되어 브라우저 다운샘플링에 완전히 먹힌다.
-     그래서 틈·가닥 폭의 하한을 백킹 픽셀이 아니라 <b>CSS 픽셀</b> 기준으로 잡는다.
-     그리고 그 하한을 만족하는 개수만큼만 서브라인을 넣는다 — 자리가 없는데
-     5개를 우겨넣으면 서로 붙어서 그냥 굵은 선 하나가 된다(스크린샷의 그 상태). */
+  /* ── 가닥 성질 = <b>원본 결 보기와 동일</b> (2026-08-02) ─────────────────
+     예전엔 여기서 <b>다발 치수</b>를 계산했다 — 가닥 하나를 서브라인 4개짜리
+     다발로 그리려니 폭·틈·개수를 화면 CSS 픽셀에서 역산해야 했고, 그래서 같은
+     3D 가닥인데도 원본 결 보기와 굵기·밀도·명암 분포가 서로 달랐다.
+     사용자: "원본 결 보기의 헤어가닥 — 레이어 개별 가닥 ~2000개, 그걸로 통일해줘."
+     그래서 다발을 버리고 <b>가닥 하나당 선 하나</b>로 돌아간다. 굵기·개수·틴트는
+     HAIR_STRAND_LOOK(원본 결 보기와 <b>같은 출처</b>)에서 그대로 가져온다.
+       · 굵기 — 레이어 4종(루트확산·굵은섹션·중간·잔가닥)의 굵기를 개수 비율대로
+                가닥에 배정. 굵은 획과 잔가닥이 섞여야 "결"로 보인다.
+       · 개수 — 원본 결 보기가 이 뷰에 그리는 수(볼륨 50에서 ≈2,830)를 목표로 솎기.
+       · 배정 — Math.random이 아니라 <b>가닥 인덱스 해시</b>(결정적). 슬라이더를
+                움직여도 같은 가닥은 같은 굵기·밝기를 유지한다(프레임 간 반짝임 방지).
+     비용: 서브라인이 사라져 draw 호출이 가닥당 4회 → 1회. 개수를 2배로 늘려도
+     그리기 비용은 예전보다 낮다(지배적인 비용은 아래 투영 쪽이다). */
+  const sld = (state.sliders && state.sliders[angle]) || {};
+  const volume    = (typeof sld.volume    === 'number') ? sld.volume    : 50;
+  const thickness = (typeof sld.thickness === 'number') ? sld.thickness : 50;
+  const roles    = hairStrandRoles(fit.dw, volume, thickness);
+  const rawTotal = roles.reduce((s,r)=> s + r.n, 0);   // 원본 결 보기가 이 뷰에 그리는 가닥 수
+  // 레이어 배정용 누적분포(원본의 레이어별 개수 비율 그대로)
+  const roleCum = [];
+  { let acc = 0; for(const r of roles){ acc += r.n / rawTotal; roleCum.push(acc); } }
+  const roleOf = (h)=>{
+    for(let k=0;k<roleCum.length;k++){ if(h < roleCum[k]) return k; }
+    return roles.length - 1;
+  };
+  /* 화면 표시 배율 — 굵기 하한은 원본 결 보기와 같이 <b>백킹 픽셀</b> 기준
+     (MIN_SAFE_WIDTH)이라 여기서는 진단 표시용으로만 쓴다. CSS 픽셀 하한을
+     따로 두면 그게 곧 원본 결 보기와의 차이가 되므로 두지 않는다. */
   const cssW  = (ctx.canvas && ctx.canvas.getBoundingClientRect)
     ? (displayWidthOf(ctx.canvas) || ctx.canvas.width) : ctx.canvas.width;
   const unit  = Math.max(1, (ctx.canvas.width || fit.dw) / Math.max(1, cssW)); // 백킹px / CSS px
-  const minGap = R.minGapCss * unit;
-  const minSub = R.minSubCss * unit;
 
-  /* 다발 폭을 화면 기준으로 <b>역산</b>한다 — 실루엣 폭에서 유도하지 않는다.
-     가닥 하나가 차지하는 자리(slot) = 가닥 폭 + 틈. 원하는 가닥 수를 넣으려면
-     (sub-1)×slot 만큼의 폭이 필요하고, 그게 다발 폭이다. 이러면 뷰마다 실루엣이
-     달라도 가닥 수·굵기·틈이 화면에서 동일하다(좌측만 3개였던 문제의 원인 제거). */
-  const slot   = minSub + minGap;
-  const capW   = spanX * R.bundleSpanMax;              // 아주 작게 찍힌 뷰 안전선
-  let   SUB    = Math.max(1, R.sub|0);
-  let   bundleEff = (SUB - 1) * slot;
-  if(bundleEff > capW){                                // 상한에 걸리면 가닥 수를 줄인다
-    SUB = Math.max(1, 1 + Math.floor(capW / slot));
-    bundleEff = (SUB - 1) * slot;
-  }
-  if(SUB <= 1) bundleEff = Math.max(W0 * 2, Math.min(capW, slot));
-  const bundleW = bundleEff;                           // [진단용] 이제 둘이 같다
-  const spacing = SUB > 1 ? bundleEff / (SUB - 1) : bundleEff;
-  // 틈 비율로 구한 폭과 "최소 틈을 남기는 폭" 중 좁은 쪽 — 틈이 항상 확보된다
-  const maxSub  = R.maxSubCss * unit;
-  const subW    = SUB > 1
-    ? Math.min(maxSub, Math.max(minSub, Math.min(spacing * (1 - R.gap), spacing - minGap)))
-    : Math.min(maxSub, Math.max(minSub, Math.max(R.minSubW, W0)));  // 한 개도 안 들어가면 예전 굵기
-
-  /* 다발 수 자동 조정 — 폭과 <b>무관하게</b> 목표 개수를 맞춘다.
-     (폭에 연동시키면 폭을 넓힐 때마다 개수가 줄어 빈 곳이 안 메워진다.) */
-  /* (2026-07-27) 예전엔 "비례값 대비 몇 배 넓혔나"였는데 다발 폭을 실루엣에서
-     유도하지 않게 되면서 기준값이 사라져 NaN이 찍혔다(실기기 로그 `확대 NaN배`).
-     지금 의미 있는 건 "상한에 얼마나 가까운가"다 — 1에 가까우면 머리가 작게
-     찍혀 다발이 상한에 걸리기 직전이라는 뜻. */
-  const capUse  = bundleEff / Math.max(1e-6, capW);
   // 뒤를 향한 가닥이 버려질 만큼 후보를 더 잡는다(비율은 위에서 실측).
-  const wantCand = Math.max(1, R.targetBundles / frontFrac);
+  // targetStrands가 null이면 "원본 결 보기와 같은 개수"(권장) — 숫자를 넣으면 그 값.
+  const targetStrands = (R.targetStrands == null) ? rawTotal : R.targetStrands;
+  const wantCand = Math.max(1, targetStrands / frontFrac);
   const stride  = (R.stride == null)
     ? Math.max(1, Math.min(32, Math.round(src.length / wantCand)))
     : Math.max(1, R.stride|0);
@@ -14239,16 +14325,28 @@ function projectHair3DToView(ctx, fit, angle, maskInf){
       if(sY >= 0) rootDev.push(rootIy - sY);   // 음수 = 원본 두피선보다 위(바깥)
       else projected0.push(1);                 // 원본에 머리가 없는 컬럼에 찍힘
     }
+    /* 레이어 배정·밝기 지터 — 가닥 인덱스에서 뽑는 결정적 난수(hashFract).
+       원본 결 보기는 Math.random을 쓰지만 거긴 매 프레임 가닥을 새로 심는다.
+       여기선 <b>같은 가닥</b>이 프레임마다 다시 그려지므로, 난수를 인덱스에
+       묶어야 슬라이더를 잡고 흔들 때 가닥이 반짝이지 않는다. */
+    const rid  = roleOf(hashFract(si * 0.7548776662 + 11.13));
     projected.push({
       cpts, depth, color: st.color,
+      w: roles[rid].w,                            // 레이어(굵기) 배정
+      /* 굵기가 같은 레이어끼리는 한 묶음으로 그린다(키를 굵기로 잡는 이유).
+         MIN_SAFE_WIDTH(0.9px) 하한에 걸리면 네 레이어가 같은 굵기가 되는데 —
+         원본 결 보기도 그 해상도에서는 정확히 그렇게 그려진다 — 그때 묶음이
+         넷으로 쪼개지면 stroke 횟수만 늘고 그림은 같다. */
+      wk: roles[rid].w.toFixed(2),
+      hb: hashFract(si * 0.3183098862 + 4.77),    // 밝기 지터(0~1)
       slice: (st.sec||'crown') + '|' + Math.floor(rootIx / SLICE_W)
              + '|' + Math.floor((rootIy / Math.max(1, maskInf.h)) * 10),
     });
   }
   if(!projected.length) return false;
   projected.sort((a,b)=> a.depth - b.depth); // 뒤(작은 depth)부터 → 앞이 위에 덮임
-  logBundleRender(angle, { spanX, unit, cssW, bundleW, bundleEff, SUB, spacing, subW,
-                           want: R.sub|0, capUse, stride, total: src.length, drawn: projected.length,
+  logStrandRender(angle, { spanX, unit, cssW, roles, rawTotal, targetStrands,
+                           stride, total: src.length, drawn: projected.length,
                            rootDev: summarizeRootDev(rootDev, projected0.length, maskInf) });
 
   // 다발 속 미세 틴트 — 가닥마다 다른 색을 주되 팔레트 색에서 벗어나진 않게.
@@ -14281,51 +14379,59 @@ function projectHair3DToView(ctx, fit, angle, maskInf){
      → 자체 틴트로 교체. 어두운 쪽은 곱셈, 밝은 쪽은 <b>회색 쪽으로 완만히</b>
        올린다(흰색이 아니라 게인 160). #111 기준 1.5배여도 rgb 99 정도라
        "검은 머리에 윤기"로 보이지 흰 가닥이 되지 않는다. */
-  const TINT = [];
-  for(let k=0;k<SUB;k++){
-    const t = SUB===1 ? 0 : (k/(SUB-1) - 0.5) * 2;     // -1 … +1
-    TINT.push(Math.max(0.45, Math.min(1.55, baseMul + t * R.colVar * 0.35 * varMul)));
-  }
-  window._lastTint = { fin, varMul, baseMul, forced: !!forced, tint: TINT.slice() }; // [진단용]
+  /* (2026-08-02) 예전엔 다발 안 <b>서브라인 위치</b>(k)로 밝기를 갈랐다 — 다발이
+     없어졌으니 이제 <b>가닥별</b> 밝기 지터로 낸다. 폭(colVar×0.35×varMul)은
+     그대로라 마무리 질감(윤기↔매트) 손잡이의 반응 크기도 예전과 같다.
+     가닥 고유 색(st.color)은 중립 캡처 때 원본 결 보기의 틴트가 이미 구워져
+     있으므로, 여기서 더하는 건 <b>마무리 질감</b> 몫뿐이다(이중 틴트 방지). */
+  const strandTint = (h)=> Math.max(0.45, Math.min(1.55,
+    baseMul + (h - 0.5) * 2 * R.colVar * 0.35 * varMul));
+  window._lastTint = { fin, varMul, baseMul, forced: !!forced,   // [진단용]
+    tint: [strandTint(0), strandTint(0.5), strandTint(1)] };
 
   ctx.save();
   ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.globalAlpha = 1;
 
-  // ── 언더코트(선택) — 켜면 다발 폭만큼 두피색을 깔아 틈을 메운다 ──
+  /* ── 언더코트 — 원본 결 보기와 같은 규칙 ────────────────────────────────
+     원본 결 보기는 "가닥 경로를 따라 두피색 굵은 획(굵기 ×2.2)을 먼저 깔아
+     가닥 사이 빈틈만 메운다". 다발 렌더에선 다발 폭 ×1.15였는데(그리고 기본
+     꺼짐이라 가닥 사이로 원본 사진의 머리가 비쳤다), 이제 원본 결 보기와
+     같은 배수를 쓴다. 끄려면 HAIR3D_RENDER.undercoat = false. */
   if(R.undercoat){
     ctx.strokeStyle = (maskInf.scalpColor) || 'rgb(224,178,148)';
-    ctx.lineWidth = bundleEff * 1.15;
-    const g = new Map();
-    for(const p of projected){ if(!g.has(p.slice)) g.set(p.slice, []); g.get(p.slice).push(p); }
-    for(const arr of g.values()){
+    const und = new Map();  // 굵기별로 묶어야 lineWidth를 한 번만 바꾼다
+    for(const p of projected){
+      if(!und.has(p.wk)) und.set(p.wk, []);
+      und.get(p.wk).push(p);
+    }
+    for(const arr of und.values()){
+      ctx.lineWidth = arr[0].w * HAIR_STRAND_LOOK.undercoatMul;
       ctx.beginPath();
       for(const p of arr) traceSmoothPolyline(ctx, p.cpts);
       ctx.stroke();
     }
   }
 
-  // ── 가닥 배치: (슬라이스 × 양자화 색) 한 묶음 = beginPath/stroke 1회 ──
+  // ── 가닥 배치: (슬라이스 × 양자화 색 × 굵기) 한 묶음 = beginPath/stroke 1회 ──
   // 색을 양자화하지 않으면 가닥마다 색이 미세하게 달라 배치가 전혀 안 된다.
-  const batch = new Map();   // key → { col, depth, n, items:[{cpts, off}] }
+  // 굵기를 키에 넣는 이유: 한 묶음 안에서 lineWidth는 하나뿐이라서.
+  const batch = new Map();   // key → { col, w, depth, n, items:[cpts] }
   for(const p of projected){
-    for(let k=0;k<SUB;k++){
-      const off = SUB === 1 ? 0 : (k/(SUB-1) - 0.5) * bundleEff;
-      const col = bundleTintColor(p.color || '#1a1a1a', TINT[k]);
-      const q   = quantizeStrokeColor(col, R.quant);
-      const key = p.slice + '|' + q;
-      let e = batch.get(key);
-      if(!e){ e = { col: q, depth: 0, n: 0, items: [] }; batch.set(key, e); }
-      e.items.push({ cpts: p.cpts, off });
-      e.depth += p.depth; e.n++;
-    }
+    const col = bundleTintColor(p.color || '#1a1a1a', strandTint(p.hb));
+    const q   = quantizeStrokeColor(col, R.quant);
+    const key = p.slice + '|' + q + '|' + p.wk;
+    let e = batch.get(key);
+    if(!e){ e = { col: q, w: p.w, depth: 0, n: 0, items: [] }; batch.set(key, e); }
+    e.items.push(p.cpts);
+    e.depth += p.depth; e.n++;
   }
   // 배치끼리도 평균 깊이 순으로 — 슬라이스 단위 painter's 정렬 유지
   const keys = Array.from(batch.values()).sort((a,b)=> a.depth/a.n - b.depth/b.n);
-  ctx.lineWidth = subW;
   for(const e of keys){
     ctx.strokeStyle = e.col;
+    ctx.lineWidth = e.w;
     ctx.beginPath();
-    for(const it of e.items) traceSmoothPolyline(ctx, it.cpts, it.off);
+    for(const cpts of e.items) traceSmoothPolyline(ctx, cpts);
     ctx.stroke();
   }
   ctx.restore();
@@ -14345,20 +14451,21 @@ function summarizeRootDev(devs, offMask, maskInf){
            offMask, h: maskInf.h };
 }
 let _bundleLogKey = '';
-function logBundleRender(angle, m){
-  const gapPx = m.spacing - m.subW;
-  /* 키에 m.drawn(그린 다발 수)을 넣었더니 슬라이더를 움직일 때마다 값이 흔들려
-     매 프레임 로그가 쏟아졌다. 렌더 <b>설정</b>이 바뀐 경우에만 찍는다 —
-     drawn/total은 진단창(_lastBundleDiag)에서 항상 최신값으로 볼 수 있다. */
-  const key = angle + '|' + m.SUB + '|' + m.subW.toFixed(2) + '|' + gapPx.toFixed(2) + '|' + m.stride;
+/* 가닥 렌더 진단 (2026-08-02, 다발 렌더 진단을 대체) — 같은 설정이면 다시 찍지
+   않는다(슬라이더 드래그마다 콘솔 도배 방지). 이제 볼 숫자는 "다발 폭·틈"이
+   아니라 <b>레이어별 굵기와 개수가 원본 결 보기와 같은가</b>이다. */
+function logStrandRender(angle, m){
   const css = v => (v / m.unit).toFixed(2);
+  const wList = m.roles.map(r=> r.id + ' ' + r.w.toFixed(2) + 'px(화면 ' + css(r.w) + ')').join(' · ');
+  const key = angle + '|' + wList + '|' + m.stride;
   // 화면 진단창에서 읽을 수 있게 항상 보관(콘솔을 못 보는 상황 대비)
-  window._lastBundleDiag = window._lastBundleDiag || {};
-  window._lastBundleDiag[angle] = {
-    headCss: +css(m.spanX), bundle: +m.bundleEff.toFixed(1), prop: +m.bundleW.toFixed(1),
-    sub: m.SUB, want: m.want, subCss: +css(m.subW), gapCss: +css(gapPx),
-    unit: +m.unit.toFixed(2), drawn: m.drawn, total: m.total, stride: m.stride,
-    capUse: +m.capUse.toFixed(2), rootDev: m.rootDev,
+  window._lastStrandDiag = window._lastStrandDiag || {};
+  window._lastStrandDiag[angle] = {
+    headCss: +css(m.spanX), unit: +m.unit.toFixed(2),
+    drawn: m.drawn, total: m.total, stride: m.stride,
+    rawTotal: Math.round(m.rawTotal), target: Math.round(m.targetStrands),
+    roles: m.roles.map(r=>({ id:r.id, w:+r.w.toFixed(2), wCss:+css(r.w), n:Math.round(r.n) })),
+    rootDev: m.rootDev,
   };
   if(key === _bundleLogKey) return;
   _bundleLogKey = key;
@@ -14371,12 +14478,10 @@ function logBundleRender(angle, m){
       + ` ← 음수일수록 머리가 바깥에서 시작한다는 뜻`);
   }
   console.log(
-    `[${angle}] 다발 렌더 — 헤어폭 ${m.spanX.toFixed(0)}px(화면 ${css(m.spanX)}) · `
-    + `다발 ${m.bundleEff.toFixed(1)}px(비례값 ${m.bundleW.toFixed(1)}) · `
-    + `가닥 ${m.SUB}/${m.want}개 × ${m.subW.toFixed(2)}px(화면 ${css(m.subW)}) · `
-    + `틈 ${gapPx.toFixed(2)}px(화면 ${css(gapPx)}) · 표시배율 1/${m.unit.toFixed(1)} · `
-    + `다발 ${m.drawn}/${m.total}개(솎기 ${m.stride}, 앞면만, 상한 ${(m.capUse*100).toFixed(0)}%)`
-    + (m.SUB < m.want ? ` ← 자리가 좁아 가닥 수를 줄임(화면에서 머리가 ${css(m.spanX)}px밖에 안 됨)` : ``)
+    `[${angle}] 가닥 렌더(원본 결 보기와 동일 규칙) — 헤어폭 ${m.spanX.toFixed(0)}px(화면 ${css(m.spanX)}) · `
+    + `표시배율 1/${m.unit.toFixed(1)} · 굵기 ${wList} · `
+    + `가닥 ${m.drawn}개 그림 / 목표 ${Math.round(m.targetStrands)}개`
+    + `(원본 결 보기 ${Math.round(m.rawTotal)}개, 모델 ${m.total}개 중 솎기 ${m.stride}, 앞면만)`
   );
 }
 /* 다발 렌더 전용 틴트 — 어두운 쪽은 곱셈, 밝은 쪽은 회색 쪽으로 완만히.
