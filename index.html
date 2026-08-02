@@ -50,7 +50,7 @@
           STRAND TRACING         — 결 필드 추종 가닥 경로(traceStrandPath)
           LINE CLEANUP           — 1D 라인 정돈 단일 출처
           HAIR RENDER            — 4레이어 가닥 렌더 + 2단계 합성
-  [부가]  COMPARE / AI ANALYSIS / VOICE
+  [부가]  RESULT(결과 화면 — 결과물+추천의상 합성) / AI ANALYSIS / VOICE
   [3D]    얼굴 계측 · 투영기      — getFaceMetrics / makeFaceProjector(기준점)
           두상·목·얼굴 메쉬 생성
           두상 실측 단면          — Shape-from-Silhouette, getHeadEllipsoid
@@ -940,6 +940,45 @@
      left 325/745). buildHairStripPool이 state.strandPaths[angle]을 찾는데, 이식이
      성공하면 drawHairStrands가 아예 안 불려서 그 뷰의 캡처가 채워지지 않는다.
      좌/우 이식 품질이 정면보다 눈에 띄게 나쁜 이유가 이것으로 보인다.
+
+  ── 2026-08-02 3단계 = 비교 화면 → <b>결과 화면</b> 교체 ──
+  사용자: "3번째 단계가 비교보기인데 그걸 뜯어고친다. 정면 화면에선 정면 결과물과
+  추천의상을 입은 정면 모습, 좌측에선 좌측 결과물과 좌측 모습을 나타내는 결과
+  화면으로." + "조정화면의 결과물에 3D 몸체 스냅샷 합성" + "비교 화면 없이 결과물
+  화면만" + 의상은 "AI 추천 1벌만, 나중에 외부 DB·쇼핑몰 링크로. 전환 가능성만 남겨".
+  예고돼 있던 일이다 — 11차 3단계 로그에 "비교 화면은 장기적으로 뺄 거고, 조정창이
+  곧 결과 화면"이라고 적어뒀다. 이번에 실제로 뺐다.
+
+  구조: 뷰 하나당 네 겹을 순서대로 쌓는다.
+    [1] renderFrame(canvas, angle, {noZoom, onDone}) — <b>조정 화면과 같은 렌더 경로</b>.
+        새 렌더러를 만들지 않았다. 확대(zoomFitToHair)만 끈다 — 목 아래에 옷이
+        들어올 자리가 필요하니까.
+    [2] 사진에 원래 찍혀 있던 상반신 지움 — 행마다 사람 실루엣 좌우 <b>바깥</b>
+        배경 픽셀 두 개를 읽어 그 구간을 가로 그라데이션으로 메운다. 새 인페인팅
+        라이브러리를 들이지 않은 이유: 배경은 행 단위로 대체로 균일하다.
+    [3] 의상 3D 메쉬를 그 뷰 각도(ASSUMED_YAW_DEG)로 오프스크린 <b>정사영</b> 렌더.
+        원근이 아니라 정사영인 건 "메쉬 단위 ↔ 픽셀"을 상수 배율로 묶기 위해서다.
+    [4] 헤어 레이어를 의상 <b>위</b>에 다시 얹는다. 8/1에 헤어를 자기 레이어로
+        분리해둔 것이 여기서 값을 했다 — 어깨로 내려온 머리가 옷 뒤로 숨지 않는다.
+
+  정렬은 이미 있는 두 가지를 잇기만 했다: makeFaceProjector(사진↔두상 좌표)와
+  "목 밑동 y=-1.15"(의상 부착 불변식). 1메쉬단위 = fit.dh/proj.bY 픽셀, 목 밑동의
+  픽셀 y = 그 자를 거꾸로 댄 값, 가로는 좌우 귀 중점(목은 귀 아래에 있다).
+  가로 자(proj.bX)를 안 쓴 이유: 측면 뷰는 두 귀가 겹쳐 bX가 폭발한다. 세로 자는
+  네 뷰 모두 안정적이다(랜드마크 → 실루엣 앵커 → 추정치 폴백이 이미 있다).
+
+  몸체 크기는 <b>목둘레</b>로 맞춘다. loadOutfitMesh는 에셋을 "목~발=4.0단위"로
+  정규화하는데, 우리 자(눈~턱 11.5cm=0.70단위)로는 목~바닥이 8~9단위여야 한다 —
+  즉 3D 화면의 몸은 두상 대비 절반 크기다(별건, 미수정. 3D 화면은 카메라가
+  headGroup 전체를 프레이밍해서 지금 바꾸면 두상이 작아진다). 결과 화면은 목·어깨·
+  가슴만 보이므로 메쉬의 목 밑동 반지름을 정점 실측해서 이 사람 실측 목 반폭
+  (interpolateNeckCrossSection)에 맞춘다. Box3를 안 쓴 건 OBJ 에셋의 머리 정점이
+  지오메트리에 <b>남아 있고</b> 클리핑 플레인으로 안 보이게만 하는 것이라, 그냥
+  재면 에셋 머리까지 들어와 전부 어긋나기 때문.
+
+  의상은 AI 추천 1벌 카드(이름·카테고리·이유·색칩 + 쇼핑 링크 자리). 전환은
+  setResultOutfit() 하나로 모아뒀고 카탈로그 칩 UI는 RESULT_OUTFIT_PICKER=false로
+  꺼둔 상태 — 제휴 DB가 생기면 목록만 갈아끼우고 플래그를 켜면 된다.
 -->
 
 <!DOCTYPE html>
@@ -1218,23 +1257,33 @@ input[type=range]::-moz-range-thumb{width:20px;height:20px;border-radius:50%;bac
 .voice-hints{font-size:10px;color:var(--text-muted);line-height:1.8;font-family:'JetBrains Mono',monospace;}
 
 /* ── SCREEN 4: RESULT (구 COMPARE) ──
-   (2026-08-01) BEFORE/AFTER 슬라이더 비교 화면을 걷어내고 "최종 결과물" 한 장을
-   보여주는 화면으로 교체. 한 뷰에 그 뷰의 결과물 하나만 — 정면 탭이면 정면
-   결과(조정 끝난 헤어) 머리에 추천 의상을 착장한 신체를 이어붙인 합성 이미지.
-   비교용 이중 캔버스·클립·디바이더 규칙은 전부 제거됨. */
+   BEFORE/AFTER 슬라이더를 걷어내고 "이 뷰의 결과물 = 조정된 헤어 + 추천 의상"
+   한 장을 보여주는 결과 화면. 각도 스위치로 정면/좌/우/후면을 전환한다. */
 #screen-result{overflow:hidden;}
-.result-wrap{flex:1;position:relative;overflow:hidden;background:var(--surface-2);}
+.result-stage{flex:1;position:relative;overflow:hidden;background:#141110;}
 .result-canvas{width:100%;height:100%;display:block;}
-.result-badge{position:absolute;top:10px;left:10px;font-size:10px;letter-spacing:1px;padding:4px 9px;background:rgba(27,24,22,0.7);border-radius:7px;color:var(--accent-soft);}
-.result-busy{position:absolute;inset:0;display:none;align-items:center;justify-content:center;flex-direction:column;gap:8px;background:rgba(15,13,11,0.55);font-size:12px;color:var(--text-muted);}
-.result-busy.on{display:flex;}
+.result-badge{position:absolute;top:10px;left:10px;font-size:10px;letter-spacing:1px;padding:4px 9px;
+  background:rgba(27,24,22,0.7);border-radius:7px;color:var(--accent-soft);}
+.result-note{position:absolute;top:10px;right:10px;font-size:10px;letter-spacing:.5px;padding:4px 9px;
+  background:rgba(27,24,22,0.7);border-radius:7px;color:var(--text-muted);}
 .result-bottom{padding:10px 14px 14px;display:flex;flex-direction:column;gap:8px;flex-shrink:0;}
-/* 추천 의상 카드 — 3D 화면에서만 보이던 추천 결과를 결과 화면에도 노출 */
-.outfit-card{display:flex;align-items:center;gap:10px;background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:10px 12px;}
-.outfit-swatch{width:26px;height:26px;border-radius:7px;border:1px solid var(--line);flex-shrink:0;}
+/* 추천 의상 카드 — 지금은 AI가 고른 1벌. 나중에 제휴 상품 DB/쇼핑몰 링크가
+   붙을 자리를 그대로 갖춰둔다(.outfit-shop). */
+.outfit-card{display:flex;align-items:center;gap:10px;background:var(--surface);border:1px solid var(--line);
+  border-radius:12px;padding:10px 12px;}
+.outfit-sw{width:34px;height:34px;border-radius:9px;flex:none;border:1px solid rgba(255,255,255,.12);}
 .outfit-meta{flex:1;min-width:0;}
-.outfit-name{font-size:12px;font-weight:600;color:var(--text);}
-.outfit-reason{font-size:11px;color:var(--text-muted);line-height:1.5;margin-top:2px;}
+.outfit-name{font-size:12.5px;font-weight:600;}
+.outfit-name span{font-size:10px;color:var(--text-muted);font-weight:400;margin-left:5px;}
+.outfit-reason{font-size:11px;color:var(--text-muted);line-height:1.5;margin-top:2px;
+  overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;}
+.outfit-shop{font-size:11px;padding:7px 10px;border-radius:9px;background:var(--surface-2);
+  border:1px solid var(--line);color:var(--accent-soft);text-decoration:none;white-space:nowrap;flex:none;}
+.outfit-shop.disabled{color:var(--text-muted);pointer-events:none;opacity:.65;}
+.outfit-picker{display:flex;gap:6px;flex-wrap:wrap;}
+.outfit-chip{font-size:11px;padding:6px 10px;border-radius:20px;background:var(--surface-2);
+  border:1px solid var(--line);color:var(--text-muted);cursor:pointer;}
+.outfit-chip.on{border-color:var(--accent);color:var(--accent-soft);}
 
 /* ── OVERLAYS ── */
 .toast{
@@ -1459,23 +1508,28 @@ input[type=range]::-moz-range-thumb{width:20px;height:20px;border-radius:50%;bac
     </section>
 
     <!-- ══ SCREEN 4: RESULT ══
-         뷰별 최종 결과물 한 장(머리=2D 조정 결과 오려내기, 몸=추천 의상 3D 스냅샷).
-         구 BEFORE/AFTER 비교 슬라이더는 제거됨(drawResultView 참고). -->
+         뷰마다 "그 각도의 결과물(조정된 헤어) + 추천 의상을 입은 모습" 한 장.
+         정면 탭이면 정면 결과물에 정면 몸체가, 좌측 탭이면 좌측 결과물에 좌측
+         몸체가 합성된다. 예전 BEFORE/AFTER 슬라이더는 제거됨. -->
     <section class="screen" id="screen-result">
-      <div class="result-wrap" id="resultPane">
+      <div class="result-stage" id="resultStage">
         <canvas id="resultCanvas" class="result-canvas"></canvas>
-        <div class="result-badge" id="resultBadge">정면 결과</div>
-        <div class="result-busy" id="resultBusy"><div class="ai-spinner"></div><span>결과 합성 중…</span></div>
+        <div class="result-badge" id="resultViewBadge">정면</div>
+        <div class="result-note" id="resultOutfitNote">의상 준비 중…</div>
       </div>
       <div class="result-bottom">
-        <div class="angle-switch" id="angleSwitchResult"></div>
-        <div class="outfit-card" id="resultOutfitCard" style="display:none;">
-          <div class="outfit-swatch" id="resultOutfitSwatch"></div>
+        <div class="outfit-card" id="outfitCard" style="display:none;">
+          <div class="outfit-sw" id="outfitSwatch"></div>
           <div class="outfit-meta">
-            <div class="outfit-name" id="resultOutfitName">—</div>
-            <div class="outfit-reason" id="resultOutfitReason"></div>
+            <div class="outfit-name" id="outfitName">—</div>
+            <div class="outfit-reason" id="outfitReason"></div>
           </div>
+          <a class="outfit-shop disabled" id="outfitShop" target="_blank" rel="noopener">제휴 준비중</a>
         </div>
+        <!-- 의상 전환 UI(카탈로그 칩). 지금은 AI 추천 1벌만 쓰므로 기본 숨김 —
+             RESULT_OUTFIT_PICKER=true로 켜면 바로 동작한다(전환 경로 자체는 항상 살아있음). -->
+        <div class="outfit-picker" id="outfitPicker" style="display:none;"></div>
+        <div class="angle-switch" id="angleSwitchResult"></div>
         <div style="display:flex;gap:8px;">
           <button class="btn btn-ghost" style="flex:1;font-size:13px;" onclick="navTo('adjust')">← 조정</button>
           <button class="btn btn-primary" style="flex:1;font-size:13px;" onclick="navTo('model3d')">3D로 보기 →</button>
@@ -1504,7 +1558,7 @@ input[type=range]::-moz-range-thumb{width:20px;height:20px;border-radius:50%;bac
     <button class="nav-tab active" id="nav-capture" onclick="navTo('capture')"><span class="icon">📷</span>촬영</button>
     <button class="nav-tab" id="nav-style" onclick="navTo('style')" disabled><span class="icon">✂️</span>스타일</button>
     <button class="nav-tab" id="nav-adjust" onclick="navTo('adjust')" disabled><span class="icon">🎚️</span>조정</button>
-    <button class="nav-tab" id="nav-result" onclick="navTo('result')" disabled><span class="icon">✦</span>결과</button>
+    <button class="nav-tab" id="nav-result" onclick="navTo('result')" disabled><span class="icon">🧥</span>결과</button>
     <button class="nav-tab" id="nav-model3d" onclick="navTo('model3d')" disabled><span class="icon">🧑</span>3D</button>
   </nav>
 </div>
@@ -4403,7 +4457,7 @@ async function navTo(name){
 
   // currentScreen 업데이트 후 렌더 (블랭크 수정)
   if(name==='adjust'){ setupAdjustScreen(); }
-  if(name==='result'){ unlockTab('result'); renderAngleSwitch('angleSwitchResult'); setTimeout(()=>drawResultView(),60); }
+  if(name==='result'){ setTimeout(()=>setupResultScreen(),80); }
   if(name==='model3d'){ unlockTab('model3d'); setTimeout(()=>setupModel3DScreen(),80); }
 }
 
@@ -4555,6 +4609,7 @@ function retakeCurrent(){
   state.shots[angle]=null; state.hairCanvases[angle]=null; state.hairMasks[angle]=null; state.baseCanvases[angle]=null; state.baseFillCanvases[angle]=null;
   if(state.strandPaths) state.strandPaths[angle]=null; // 캡처된 가닥 경로도 함께 무효화
   _silhouetteAnchorCache = {}; // 실루엣 앵커는 정면 비율도 참조하므로 어느 각도든 재촬영 시 전체 리셋
+  _torsoEraseCache = {};       // 결과 화면의 상반신 지움 레이어도 사진이 바뀌면 무효(같은 이유로 전체 리셋)
   // 랜드마크/감지상태도 함께 초기화 — 촬영 직후 감지가 생기면서, 지우지 않으면
   // "이전 사진의 랜드마크"가 남아 있다가 새 사진 감지 실패 시 그대로(엉뚱한
   // 좌표로) 재사용될 수 있음 (detectFaceLandmarks는 실패 시 기존 값을 안 지움).
@@ -5838,12 +5893,12 @@ function renderAngleSwitch(targetId){
       bindStylingToCurrentView();   // 스타일링 슬라이더는 뷰마다 따로다
       renderAngleSwitches();
       updateSegStatus();
-      syncSliderUI(); drawAdjustPreview(); drawResultView();
+      syncSliderUI(); drawAdjustPreview(); drawResult();
     };
     el.appendChild(btn);
   });
 }
-// 조정/비교 화면 두 각도 스위치를 함께 다시 그리는 헬퍼 — 이 둘을 나란히 호출하는
+// 조정/결과 화면 두 각도 스위치를 함께 다시 그리는 헬퍼 — 이 둘을 나란히 호출하는
 // 코드가 여러 곳에 그대로 반복되던 것을 하나로 합침
 function renderAngleSwitches(){
   renderAngleSwitch('angleSwitch');
@@ -6445,7 +6500,16 @@ function buildStrandOpts(maskInf, angle, rawMode){
   };
 }
 
-function renderFrame(canvas, angle){
+/* (2026-08-02) opts 추가 — 결과 화면(SCREEN 4)이 같은 렌더 경로를 그대로 쓰되
+   두 가지만 다르게 하기 위한 것. opts 없이 부르면 기존 동작과 완전히 동일하다.
+     opts.noZoom : 머리 중심 확대(zoomFitToHair)를 끈다. 조정 화면은 머리를 꽉
+                   채워야 슬라이더 결과가 잘 보이지만, 결과 화면은 목 아래에
+                   의상이 들어올 자리가 있어야 한다.
+     opts.onDone : 그리기가 끝난 뒤 { fit, hairLayer }를 넘겨준다. fit은 3D 몸체를
+                   같은 좌표계에 정렬하는 데, hairLayer(헤어만 있는 투명 레이어,
+                   2026-08-01 도입)는 의상 위에 헤어를 다시 얹는 데 쓴다 —
+                   어깨로 내려온 머리가 옷에 덮이지 않게. */
+function renderFrame(canvas, angle, opts){
   // ── 버그 수정(2026-07-13): SECTIONS 경계 미스매치 ──
   // refineSectionBoundaries(angle)는 원래 촬영 직후 파이프라인에서 4개 뷰를
   // 순서대로 한 번씩만 돌렸는데, SECTIONS가 뷰별로 안 나뉘고 전역 공유
@@ -6462,7 +6526,14 @@ function renderFrame(canvas, angle){
   syncCanvasSize(canvas);
   const ctx = canvas.getContext('2d');
   const w = canvas.width, h = canvas.height;
-  if(w===0||h===0){ setTimeout(()=>renderFrame(canvas,angle),50); return; }
+  if(w===0||h===0){ setTimeout(()=>renderFrame(canvas,angle,opts),50); return; }
+
+  // 그리기 완료 통보(opts.onDone). 어느 분기로 끝나든 정확히 한 번만 부른다.
+  let doneCalled = false;
+  const done = (fit, hairLayer)=>{
+    if(doneCalled) return; doneCalled = true;
+    if(opts && typeof opts.onDone === 'function') opts.onDone({ fit: fit || null, hairLayer: hairLayer || null });
+  };
 
   getCachedImg(angle, (img)=>{
     ctx.clearRect(0,0,w,h);
@@ -6480,6 +6551,7 @@ function renderFrame(canvas, angle){
       const fit = computeFit(img.width, img.height, w, h);
       ctx.drawImage(img, fit.dx, fit.dy, fit.dw, fit.dh);
       drawOrientationFieldDebug(ctx, fit, maskInf);
+      done(fit, null);
       return;
     }
 
@@ -6507,6 +6579,7 @@ function renderFrame(canvas, angle){
         ctx.drawImage(maskOverlay, fit.dx, fit.dy, fit.dw, fit.dh);
       }
       ctx.restore();
+      done(fit, null);
       return;
     }
 
@@ -6518,8 +6591,10 @@ function renderFrame(canvas, angle){
       // [3] 새 가닥 (scalpY 기반, 자유롭게 아래로 뻗음)
       // [4] 컬러 오버레이
 
-      // 머리 중심 확대(조정 화면 전용 — 재구성엔 영향 없음)
-      const fit = zoomFitToHair(computeFit(img.width, img.height, w, h), maskInf, w, h);
+      // 머리 중심 확대(조정 화면 전용 — 재구성엔 영향 없음).
+      // 결과 화면(opts.noZoom)은 목 아래 의상 자리가 필요해서 확대를 끈다.
+      const baseFit = computeFit(img.width, img.height, w, h);
+      const fit = (opts && opts.noZoom) ? baseFit : zoomFitToHair(baseFit, maskInf, w, h);
 
       // 이전 버그: 원본 img를 먼저 통째로 그린 뒤 baseC(머리 부분 투명)를
       // source-over로 덮었는데, 투명 픽셀은 source-over에서 아무 효과가 없어서
@@ -6587,16 +6662,20 @@ function renderFrame(canvas, angle){
         const clipGrow = applyHairLayerClip(hairLayer, hairC, fit, ctx.canvas.width, ctx.canvas.height, rawMode, angle);
         measureRenderVsPhoto(hairLayer, maskInf, fit, ctx.canvas.width, ctx.canvas.height, angle, clipGrow);
         ctx.drawImage(hairLayer, 0, 0);
+        done(fit, hairLayer); // 결과 화면이 이 레이어를 의상 위에 한 번 더 얹는다
       }
+      done(fit, null); // 가닥이 하나도 없는 경우(위 if 미진입)에도 fit은 넘겨준다
 
     } else if(img){
       // ── 세그멘테이션 없음: 원본만 표시 (SVG 폴백 제거) ──
-      drawImgOnCanvas(ctx, img, w, h);
+      const fitPlain = drawImgOnCanvas(ctx, img, w, h);
+      done(fitPlain, null);
     } else {
       ctx.fillStyle='#211D19'; ctx.fillRect(0,0,w,h);
       const cssW = canvas.getBoundingClientRect().width || w; // 고정 1200 백킹스토어에서도 화면 표시 크기 유지
       ctx.fillStyle='#52483D'; ctx.font=`${Math.round(13*(w/Math.max(1,cssW)))}px Inter`; ctx.textAlign='center';
       ctx.fillText('이 각도의 사진이 없습니다', w/2, h/2);
+      done(null, null);
     }
   });
 }
@@ -8500,532 +8579,484 @@ function drawAdjustPreview(){
   });
 }
 
-/* ════════════════════════════════════════════════════════════════
-   SCREEN 4: RESULT — 뷰별 "최종 결과물" 한 장
-   ────────────────────────────────────────────────────────────────
-   (2026-08-01) 구 비교 화면(BEFORE/AFTER 슬라이더)을 걷어내고 결과 화면으로
-   교체. 사용자 지시: "비교보기 할 거 아냐. 최종결과물만 보이면 돼. 정면은
-   정면결과물만" + "3D 의상 에셋을 활용해서 스냅샷을 쓰고, 결과물 비율을
-   조정해서 합성해줘".
+/* ════════════════════════════════════════
+   RESULT (SCREEN 4) — 구 COMPARE 전면 교체 (2026-08-02)
+   ────────────────────────────────────────
+   사용자 지시: "비교보기를 뜯어고친다. 정면 화면에선 정면 결과물과 추천의상을
+   입은 정면 모습, 좌측에선 좌측 결과물과 좌측 모습을 보여주는 결과 화면으로."
+   + "조정화면의 결과물에 3D 몸체 스냅샷을 합성" + "비교 화면 없이 결과물 화면만".
 
-   한 장이 만들어지는 순서(각 뷰마다 동일):
-     ① 머리  — 조정 화면과 <b>같은</b> renderFrame() 결과(사진 위에 조정된 헤어).
-              거기서 personMask ∪ 헤어마스크로 사람만 오려내고, 목선(랜드마크
-              chinY 기준) 아래는 잘라낸다 → 배경·어깨·원래 옷이 사라진 머리+목.
-     ② 몸    — 3D 의상 에셋(loadOutfitMesh, 5번 화면과 같은 것)을 두상 없이
-              의상만 담은 <b>오프스크린</b> 씬에 올려 그 뷰 각도로 회전시켜
-              투명 배경으로 렌더한 스냅샷.
-     ③ 합성  — ①의 목폭·목선과 ②의 목 절단면(y=-1.15 클리핑 평면) 폭·위치를
-              맞춰 배율을 계산해 이어붙인다. 비율의 기준은 <b>목</b> 하나뿐이라
-              머리 크기가 뷰마다 달라도 몸이 따라서 커지고 작아진다.
+   그래서 BEFORE/AFTER 슬라이더(compare-divider 드래그 포함)는 통째로 삭제하고,
+   뷰 하나당 <b>한 장</b>을 만든다:
 
-   왜 3D를 '배경'이 아니라 '스냅샷'으로 쓰나: 3D 두상/얼굴 완성도는 아직
-   결과물로 보여줄 수준이 아니다(사용자 지적). 그래서 얼굴·헤어는 실사 2D
-   결과를 그대로 쓰고, 3D는 <b>목 아래 신체</b>만 담당한다.
+     [1] 조정 화면과 <b>같은 렌더 경로</b>(renderFrame, opts.noZoom) — 사진 위에
+         조정된 헤어가 얹힌 그 결과물 그대로. 새 렌더러를 만들지 않는다.
+     [2] 사진에 원래 찍혀 있던 상반신(옷)은 지운다 — 행별로 사람 실루엣 좌우
+         바깥의 배경색을 읽어 그 구간을 메운다(eraseTorsoBelow).
+     [3] 추천 의상 3D 메쉬를 <b>그 뷰의 각도로</b> 오프스크린 정사영 렌더 →
+         스냅샷을 목 밑동에 정렬해 합성.
+     [4] 헤어 레이어를 의상 위에 한 번 더 얹는다 — 어깨로 내려온 머리가 옷
+         뒤로 숨지 않게(renderFrame이 opts.onDone으로 넘겨준 레이어 재사용).
 
-   좌표 규약 재확인(loadOutfitMeshFromOBJ / buildOutfitPlaceholderMesh 참고):
-   의상 메쉬는 y=-1.15 평면에서 잘려 있고(그 위는 클리핑) 그 절단면이 곧
-   목 밑동이다. 여기서는 그 평면 근처 정점들을 카메라로 직접 투영해서
-   스냅샷 안의 목 개구부 픽셀 좌표를 실측한다 — 상수에 의존하지 않으므로
-   OBJ 에셋이든 절차적 플레이스홀더든 같은 코드로 정렬된다.
-════════════════════════════════════════════════════════════════ */
+   ── 정렬의 원리 ──
+   이 앱은 이미 "사진 정규화좌표 ↔ 두상 로컬 좌표" 변환자(makeFaceProjector)를
+   갖고 있고, 3D 쪽엔 "목 밑동 y=-1.15"이라는 불변식이 있다(의상 부착 규격).
+   둘을 이으면 계산이 하나로 떨어진다:
+     · 세로 자 — proj.bY = 눈~턱(0.70 메쉬단위)이 이미지 세로 몇 %를 차지하나.
+                 ⇒ 1 메쉬단위 = fit.dh / bY 픽셀.
+     · 세로 위치 — 목 밑동(-1.15)을 그 자를 거꾸로 대서 픽셀 y로 환산.
+     · 가로 위치 — 목은 귀 아래에 있다 ⇒ 좌우 귀 중점(lm.lEarX/rEarX)의 x.
+   가로 배율을 따로 쓰지 않고 세로 자 하나로 통일하는 이유: 측면 뷰에서는 두 귀가
+   거의 겹쳐서 proj.bX(귀 간격 기반)가 폭발하기 때문. 세로 자는 네 뷰 모두
+   안정적이다(랜드마크 없으면 실루엣 앵커 → 추정치 순으로 폴백).
 
-// 합성 배치 상수 — 전부 결과 캔버스 높이(H) 기준 비율
-const RESULT_LAYOUT = {
-  topPad:      0.05,  // 캔버스 위쪽 여백(머리 꼭대기까지)
-  headHeight:  0.34,  // 머리 꼭대기 ~ 목선이 차지할 높이
-  maxHeadWidth:0.88,  // 머리 가로가 캔버스 폭의 이 비율을 넘지 않게 제한
-  neckFillDepth: 0.30,// 잘린 목선 아래로 이 정도(머리높이 비율)까지 목을 이어 그려 옷깃 안쪽을 메움
-  bgTop:'#332C26', bgBottom:'#14110E',
-};
-/* 사진을 자르는 높이 = 두상 좌표계의 이 y(목 중간).
-   의상 메쉬가 잘려 있는 목 밑동(-1.15)이 아니라 그보다 위에서 자르는 이유:
-   -1.15는 어깨선이라 그 위쪽 사진에 고객이 원래 입고 있던 옷·어깨가 그대로
-   남는다. 목 중간에서 자르면 목 아래는 전부 3D 의상이 담당하고, 잘린 목과
-   옷깃 사이의 빈 구간만 fillNeckGap()이 사진에서 뽑은 목 색으로 이어준다. */
-const NECK_CUT_MESH_Y = -0.90;
-// 의상 스냅샷 렌더 해상도(합성 때 확대되므로 넉넉히)
-const OUTFIT_SNAP = { W: 900, H: 1200 };
-// 뷰 → 의상 메쉬 Y회전(도). 메쉬는 +Z가 정면이고 카메라는 +Z에서 본다.
-// +90°면 캐릭터의 왼쪽면이 카메라를 향한다(좌측 뷰). 좌우가 반대로 느껴지면
-// left/right 값만 맞바꾸면 된다 — 다른 코드는 이 표만 참조한다.
-const OUTFIT_VIEW_YAW_DEG = { front:0, left:90, right:-90, back:180 };
+   ── 몸체 크기 ──
+   loadOutfitMesh는 에셋을 "목~발 = 4.0 메쉬단위"로 정규화한다. 그런데 우리
+   좌표계의 실제 자로는(FACE_RULER_CM: 눈~턱 11.5cm = 0.70단위) 목~바닥이
+   8~9단위여야 맞다 — 즉 3D 화면의 몸이 두상에 비해 작다. 결과 화면은 화면에
+   목·어깨·가슴만 나오므로 <b>목둘레</b>를 기준으로 맞추는 게 정확하다:
+   메쉬의 목 밑동 반지름을 실측(measureOutfitMeshNeck)해서, 이 사람의 실측 목
+   반폭(interpolateNeckCrossSection)과 같아지도록 배율을 잡는다. 목 밑동(-1.15)을
+   고정점으로 스케일하므로 옷깃 위치는 배율과 무관하게 붙어 있다.
+════════════════════════════════════════ */
 
-let outfit3D = null;        // 의상 전용 오프스크린 렌더러(3D 화면의 model3D와 별개)
-const _outfitSnapCache = {}; // 'itemId|angle|widthFactor' → { canvas, cx, cy, halfW }
-let _resultGen = 0;          // 각도 연타/조정 중 비동기 경쟁 방지
+/* 실기기에서 눈으로 보고 미세 조정할 여지(자동계산이 어색할 때만 쓴다).
+   scale: 자동 목둘레 정합 결과에 추가로 곱하는 배율.
+   offsetXMesh/offsetYMesh: 메쉬 단위(1단위 ≈ 16.4cm)로 더하는 평행이동. */
+/* neckOverlapMesh: 옷깃을 목 밑동보다 이만큼(메쉬 단위, 0.08 ≈ 1.3cm) 위로 겹쳐
+   그린다. 정렬은 실측 기반이지만 어깨선이 사람마다 조금씩 달라서, 겹치지 않으면
+   옷깃 바로 위에 원래 옷 자락이 실오라기처럼 남는 경우가 생긴다 — 그 이음매를
+   옷깃 밑으로 숨기는 값. 0으로 두면 정확히 목 밑동에 맞춘다. */
+const RESULT_BODY_FIT = { scale: 1.0, offsetXMesh: 0, offsetYMesh: 0, neckOverlapMesh: 0.08, maxSnapPx: 1600 };
+/* 의상 전환 UI(카탈로그 칩) 노출 여부. 지금은 AI 추천 1벌만 보여주기로 했지만
+   전환 경로 자체(setResultOutfit)는 항상 살아 있다 — 나중에 제휴 상품 DB/쇼핑몰
+   응답으로 OUTFIT_CATALOG 자리를 갈아끼우면 이 플래그만 켜면 된다. */
+const RESULT_OUTFIT_PICKER = false;
+const RESULT_NECK_MESH_Y = -1.15; // 의상 부착 불변식(neckAttachPoint 하단)과 동일 값
 
-function setResultBusy(on){
-  const el = document.getElementById('resultBusy');
-  if(el) el.classList.toggle('on', !!on);
+let _resultGen = 0;          // 비동기 렌더 세대(각도/의상이 바뀌면 오래된 진행 폐기)
+let _bodySnap = null;        // 오프스크린 3D 스냅샷 렌더러(1회 생성 후 재사용)
+let _torsoEraseCache = {};   // angle → 상반신 지움 레이어 캔버스
+
+function resetResultScreenCache(){
+  _torsoEraseCache = {};
+  if(_bodySnap){
+    while(_bodySnap.group.children.length){
+      const o = _bodySnap.group.children[0];
+      disposeObject3D(o); _bodySnap.group.remove(o);
+    }
+    _bodySnap.meshKey = null; _bodySnap.neck = null;
+  }
 }
 
-/* ── 의상 전용 오프스크린 3D 씬 ── */
-function ensureOutfit3D(){
-  if(outfit3D) return outfit3D;
+/* ── 오프스크린 3D 렌더러 ──
+   메인 3D 화면(initModel3DRenderer)과 별개의 작은 렌더러. 조명 구성은 같은 값을
+   써서 같은 의상이 두 화면에서 같은 색으로 보이게 한다. 카메라는 원근이 아니라
+   <b>정사영</b>(OrthographicCamera) — 그래야 "메쉬 단위 ↔ 화면 픽셀"이 상수
+   배율이 되어 위 정렬 계산이 그대로 성립한다(원근이면 깊이에 따라 배율이 달라짐). */
+function ensureBodySnapRenderer(){
+  if(_bodySnap) return _bodySnap;
   if(typeof THREE === 'undefined') return null;
-  const renderer = new THREE.WebGLRenderer({ alpha:true, antialias:true, preserveDrawingBuffer:true });
-  renderer.setPixelRatio(1);
-  renderer.setSize(OUTFIT_SNAP.W, OUTFIT_SNAP.H);
-  renderer.localClippingEnabled = true; // 목 위(에셋 자체 머리)를 자르는 클리핑 평면 사용
-  const scene = new THREE.Scene();
-  const camera = new THREE.PerspectiveCamera(30, OUTFIT_SNAP.W/OUTFIT_SNAP.H, 0.1, 100);
-  // 조명은 3D 화면과 동일하게 — 두 화면의 의상 색감이 달라 보이지 않도록
-  const key = new THREE.DirectionalLight(0xffffff, 0.9); key.position.set(1.5, 2, 2); scene.add(key);
-  const fill = new THREE.DirectionalLight(0xffffff, 0.35); fill.position.set(-2, 0.5, 1); scene.add(fill);
-  scene.add(new THREE.AmbientLight(0xffffff, 0.55));
-  const group = new THREE.Group(); scene.add(group);
-  outfit3D = { renderer, scene, camera, group, meshKey:null };
-  return outfit3D;
+  try{
+    const renderer = new THREE.WebGLRenderer({ antialias:true, alpha:true, preserveDrawingBuffer:true });
+    renderer.setPixelRatio(1);
+    renderer.setClearColor(0x000000, 0);
+    renderer.localClippingEnabled = true; // OBJ 에셋의 목 위(에셋 자체 머리) 잘라내기 — 로더가 건 클리핑 플레인 사용
+    const scene = new THREE.Scene();
+    const key = new THREE.DirectionalLight(0xffffff, 0.9);  key.position.set(1.5, 2, 2);   scene.add(key);
+    const fill = new THREE.DirectionalLight(0xffffff, 0.35); fill.position.set(-2, 0.5, 1); scene.add(fill);
+    scene.add(new THREE.AmbientLight(0xffffff, 0.55));
+    const group = new THREE.Group(); scene.add(group);
+    const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.01, 100);
+    camera.position.set(0, 0, 12);
+    camera.lookAt(0, 0, 0);
+    _bodySnap = { renderer, scene, camera, group, meshKey:null, neck:null };
+    return _bodySnap;
+  }catch(e){
+    console.warn('의상 스냅샷 렌더러 생성 실패(의상 합성 생략):', e);
+    return null;
+  }
 }
 
-/* 목 절단면(y≈-1.15)에서 아래로 BODY_SPAN만큼만 담기게 카메라 프레이밍.
-   전신을 다 담으면 목 개구부가 몇십 px밖에 안 돼서 합성 때 뭉개진다. */
-const OUTFIT_BODY_SPAN = 2.6;
-function frameOutfitCamera(o){
-  const box = new THREE.Box3().setFromObject(o.group);
-  if(box.isEmpty()) return;
-  const yTop = -1.15;
-  const yBot = Math.max(box.min.y, yTop - OUTFIT_BODY_SPAN);
-  const cy = (yTop + yBot) / 2;
-  const halfH = Math.max(0.1, (yTop - yBot) / 2);
-  const halfW = Math.max(0.1, Math.max(Math.abs(box.max.x), Math.abs(box.min.x)));
-  const vFov = o.camera.fov * Math.PI/180;
-  const dist = Math.max(halfH / Math.tan(vFov/2),
-                        halfW / (Math.tan(vFov/2) * o.camera.aspect)) * 1.08;
-  o.camera.position.set(0, cy, dist);
-  o.camera.lookAt(0, cy, 0);
-  o.camera.updateProjectionMatrix();
-  o.camera.updateMatrixWorld(true);
+/* 로드된 의상 메쉬를 정점 단위로 실측한다(스케일 1 기준, 목 밑동 아래만).
+     neckR  — 목 밑동 바로 아래 얇은 띠에서의 반지름(85퍼센타일) = 옷깃 반지름
+     maxAbsX/maxAbsZ — 화면 가로 폭 계산용(정면·후면은 X, 측면은 Z가 화면 가로)
+     minY   — 몸체 최하단
+   Box3를 안 쓰는 이유: OBJ 에셋의 머리/목 정점은 <b>지오메트리에 그대로 남아
+   있고</b> 렌더 시 클리핑 플레인으로 안 보이게만 하는 것이라, Box3를 그냥 쓰면
+   에셋의 머리까지 포함돼 크기·프레이밍이 전부 어긋난다. */
+function measureOutfitMeshNeck(obj){
+  const NY = RESULT_NECK_MESH_Y;
+  const band = 0.12;
+  const radii = [];
+  let maxAbsX = 0, maxAbsZ = 0, minY = Infinity, count = 0;
+  const v = new THREE.Vector3();
+  obj.updateMatrixWorld(true);
+  obj.traverse(child=>{
+    if(!child.isMesh || !child.geometry || !child.geometry.attributes || !child.geometry.attributes.position) return;
+    if(child.visible === false) return; // 에셋 자체 Hair 재질 등 숨긴 파트는 제외
+    const pos = child.geometry.attributes.position;
+    for(let i=0;i<pos.count;i++){
+      v.fromBufferAttribute(pos, i).applyMatrix4(child.matrixWorld);
+      if(v.y > NY) continue;                    // 목 위(잘려서 안 보이는 부분)는 무시
+      count++;
+      if(v.y < minY) minY = v.y;
+      const ax = Math.abs(v.x), az = Math.abs(v.z);
+      if(ax > maxAbsX) maxAbsX = ax;
+      if(az > maxAbsZ) maxAbsZ = az;
+      if(v.y > NY - band) radii.push(Math.hypot(v.x, v.z));
+    }
+  });
+  if(!count || !radii.length) return null;
+  radii.sort((a,b)=>a-b);
+  const neckR = radii[Math.floor(radii.length*0.85)] || radii[radii.length-1];
+  return { neckR, maxAbsX, maxAbsZ, minY };
 }
 
-/* 스냅샷 안의 기준점 두 개를 카메라로 직접 투영해서 얻는다:
-     · 앵커 (0,-1.15,0) — 목 밑동(의상 메쉬가 잘려 있는 클리핑 평면). 회전축
-       위의 점이라 뷰를 어떻게 돌려도 화면상 위치가 변하지 않는다.
-     · pxPerUnit  — 같은 깊이(z=0)에서 가로 1 메쉬단위가 몇 px인지.
-   합성 배율은 이 pxPerUnit 하나로 결정된다(아래 drawResultView 참고) —
-   목 폭 실측처럼 세그멘테이션 잡음에 흔들리는 값을 배율에 쓰지 않는다. */
-function measureOutfitRef(o){
-  const cam = o.camera;
-  const p0 = new THREE.Vector3(0, -1.15, 0).project(cam);
-  const p1 = new THREE.Vector3(1, -1.15, 0).project(cam);
-  const x0 = (p0.x*0.5+0.5)*OUTFIT_SNAP.W, x1 = (p1.x*0.5+0.5)*OUTFIT_SNAP.W;
+// 이 사람의 실측 목 반폭(메쉬 단위). 실측 파이프라인이 못 돌면 3D 쪽이 쓰는
+// 것과 같은 폴백(0.45×widthFactor 원형)으로 떨어진다.
+function personNeckHalfWidth(widthFactor){
+  try{
+    const band = interpolateNeckCrossSection(RESULT_NECK_MESH_Y);
+    if(band && band.halfWidth > 0.05) return band.halfWidth;
+  }catch(e){ /* 실측 데이터 없음 — 폴백 */ }
+  return 0.45 * (widthFactor || 1);
+}
+
+/* 추천 의상 메쉬를 오프스크린 그룹에 올린다(의상·두상비율이 같으면 재사용).
+   목 밑동(-1.15)을 고정점으로 스케일해서 옷깃이 항상 목에 붙어 있게 한다. */
+async function ensureResultBodyMesh(item, widthFactor){
+  const snap = ensureBodySnapRenderer();
+  if(!snap || !item) return null;
+  const key = item.id + '|' + (widthFactor||1).toFixed(3);
+  if(snap.meshKey === key && snap.neck) return snap;
+
+  while(snap.group.children.length){
+    const o = snap.group.children[0];
+    disposeObject3D(o); snap.group.remove(o);
+  }
+  snap.group.scale.setScalar(1); snap.group.position.set(0,0,0); snap.group.rotation.set(0,0,0);
+  snap.meshKey = null; snap.neck = null;
+
+  const mesh = await loadOutfitMesh(item, widthFactor || 1);
+  if(!mesh) return null;
+  snap.group.add(mesh);
+
+  const m = measureOutfitMeshNeck(snap.group);
+  if(!m || !(m.neckR > 0.001)){
+    console.warn('의상 메쉬 목 실측 실패 — 배율 보정 없이 그대로 사용');
+    snap.meshKey = key;
+    snap.neck = { scale:1, maxAbsX:1, maxAbsZ:1, minY: RESULT_NECK_MESH_Y - 4 };
+    return snap;
+  }
+  const s = (personNeckHalfWidth(widthFactor) / m.neckR) * (RESULT_BODY_FIT.scale || 1);
+  // 목 밑동을 고정점으로 하는 스케일: y' = -1.15 + (y+1.15)*s
+  snap.group.scale.setScalar(s);
+  snap.group.position.y = RESULT_NECK_MESH_Y * (1 - s);
+  snap.neck = {
+    scale: s,
+    maxAbsX: m.maxAbsX * s,
+    maxAbsZ: m.maxAbsZ * s,
+    minY: RESULT_NECK_MESH_Y + (m.minY - RESULT_NECK_MESH_Y) * s,
+  };
+  snap.meshKey = key;
+  return snap;
+}
+
+// 이 뷰의 랜드마크(실측 → 실루엣 앵커 → 추정치). projectImagePointToHead와 동일한 순서.
+function getViewLandmarksFor(angle){
+  return (state.landmarks && state.landmarks[angle])
+      || computeSilhouetteAnchors(angle)
+      || getEstimatedLandmarks(angle);
+}
+
+/* 사진 좌표계 ↔ 메쉬 좌표계 다리. 위 주석의 "정렬의 원리" 그대로. */
+function computeResultMapping(angle, fit){
+  if(!fit) return null;
+  const lm = getViewLandmarksFor(angle);
+  if(!lm) return null;
+  const fm = getFaceMetrics();
+  const proj = makeFaceProjector(lm, fm.widthFactor, fm.heightFactor);
+  if(!(proj.bY > 0.0001) || !isFinite(proj.bY)) return null;
+  const aY = proj.toMeshY(0);                 // toMeshY(v) = aY - bY*v ⇒ v = (aY-m)/bY
+  const meshToV = (m)=> (aY - m) / proj.bY;
+  const pxPerMesh = fit.dh / proj.bY;
+  if(!(pxPerMesh > 0) || !isFinite(pxPerMesh)) return null;
+  const earU = (lm.lEarX + lm.rEarX) / 2;
   return {
-    cx: x0,
-    cy: (-p0.y*0.5+0.5)*OUTFIT_SNAP.H,
-    pxPerUnit: Math.max(1, Math.abs(x1-x0)),
+    pxPerMesh, meshToV,
+    widthFactor: fm.widthFactor,
+    neckPxX: fit.dx + (earU + (RESULT_BODY_FIT.offsetXMesh / (proj.bX || 1))) * fit.dw,
+    neckPxY: fit.dy + meshToV(RESULT_NECK_MESH_Y + RESULT_BODY_FIT.offsetYMesh) * fit.dh,
   };
 }
 
-/* 뷰 각도별 의상 스냅샷(투명 배경 캔버스 + 목 앵커). 아이템·뷰·비율별로 캐시. */
-async function getOutfitSnapshot(angle, widthFactor, rec){
-  if(!rec || !rec.item) return null;
-  const o = ensureOutfit3D();
-  if(!o) return null;
-  const wfKey = (widthFactor || 1).toFixed(3);
-  const key = rec.item.id + '|' + angle + '|' + wfKey;
-  if(_outfitSnapCache[key]) return _outfitSnapCache[key];
+/* 이 뷰 각도로 몸체를 정사영 렌더해서 스냅샷 + 그릴 위치를 돌려준다.
+   yaw는 앱이 이미 쓰는 슬롯 기본각(ASSUMED_YAW_DEG)을 그대로 따른다. */
+function renderBodySnapshot(snap, angle, map, canvasW, canvasH){
+  const yawDeg = (typeof ASSUMED_YAW_DEG !== 'undefined' && ASSUMED_YAW_DEG[angle] != null) ? ASSUMED_YAW_DEG[angle] : 0;
+  snap.group.rotation.y = yawDeg * Math.PI / 180;
+  snap.group.updateMatrixWorld(true);
 
-  const meshKey = rec.item.id + '|' + wfKey;
-  if(o.meshKey !== meshKey){
-    while(o.group.children.length){
-      const c = o.group.children[0];
-      if(typeof disposeObject3D === 'function') disposeObject3D(c);
-      o.group.remove(c);
+  const sideView = (angle === 'left' || angle === 'right');
+  const halfX = Math.max(0.05, sideView ? snap.neck.maxAbsZ : snap.neck.maxAbsX) * 1.02;
+  const top = RESULT_NECK_MESH_Y;
+  // 캔버스 아래로 벗어나는 부분은 렌더하지 않는다(픽셀 낭비 방지) —
+  // 화면 하단에 해당하는 메쉬 y까지만 프러스텀에 담는다.
+  const maxDrawMeshH = (canvasH - map.neckPxY) / map.pxPerMesh;
+  const bottom = Math.max(snap.neck.minY, top - Math.max(0.2, maxDrawMeshH));
+  if(!(top > bottom)) return null;
+
+  let W = Math.round((halfX*2) * map.pxPerMesh);
+  let H = Math.round((top - bottom) * map.pxPerMesh);
+  if(W < 8 || H < 8) return null;
+  const cap = RESULT_BODY_FIT.maxSnapPx;
+  const k = Math.min(1, cap/Math.max(W,H));
+  const rw = Math.max(8, Math.round(W*k)), rh = Math.max(8, Math.round(H*k));
+
+  const cam = snap.camera;
+  cam.left = -halfX; cam.right = halfX; cam.top = top; cam.bottom = bottom;
+  cam.near = 0.01; cam.far = 100;
+  cam.position.set(0, 0, 12); cam.lookAt(0, 0, 0);
+  cam.updateProjectionMatrix();
+  snap.renderer.setSize(rw, rh, false);
+  snap.renderer.render(snap.scene, snap.camera);
+
+  return {
+    src: snap.renderer.domElement,
+    x: map.neckPxX - halfX*map.pxPerMesh,
+    y: map.neckPxY - (RESULT_BODY_FIT.neckOverlapMesh || 0) * map.pxPerMesh, // 이음매를 옷깃 밑으로
+    w: W, h: H,
+  };
+}
+
+/* 사진에 원래 찍혀 있던 상반신(고객이 입고 온 옷)을 지운다.
+   행마다 사람 실루엣의 좌우 끝을 찾아, 그 <b>바깥</b> 배경 픽셀을 읽어 구간을
+   가로 그라데이션으로 메운다. 배경이 행 단위로는 대체로 균일해서 이 정도로 충분히
+   자연스럽고, 인페인팅 라이브러리를 새로 들일 이유가 없다.
+   (헤어는 이 위에 다시 얹으므로 어깨로 내려온 머리가 같이 지워지지 않는다.)
+
+   두 가지가 핵심:
+   ① 목 밑동 행부터 자르면 <b>그보다 위로 솟은 어깨</b>가 원래 옷 그대로 남는다
+      (실측: 옷깃 위로 파란 띠가 남았다). 그래서 목선보다 위에서부터 훑되, 그
+      구간에서는 <b>목 기둥(중앙)만 남기고 바깥쪽만</b> 지운다. 어깨가 아직 안
+      나온 행은 바깥쪽 구간 자체가 비어 있어 아무 일도 일어나지 않는다 — 규칙
+      하나로 "어깨가 시작되는 높이"를 자동으로 찾는 셈.
+   ② 실루엣 경계는 저해상도 마스크라 원본 색이 1~2px 테두리로 남는다. 칠하는
+      구간만 바깥으로 2px 넓혀 그 테두리를 덮는다(색 표본은 더 바깥에서 읽는다). */
+function buildTorsoEraseLayer(angle, img, neckVNorm, neckCxU, neckHalfU){
+  const cacheKey = [angle, neckVNorm.toFixed(4), neckCxU.toFixed(4), neckHalfU.toFixed(4)].join('|');
+  if(_torsoEraseCache[cacheKey] !== undefined) return _torsoEraseCache[cacheKey];
+  let out = null;
+  try{
+    const maskInf = state.hairMasks && state.hairMasks[angle];
+    const pm = maskInf && maskInf.personMask;
+    const mw = maskInf && maskInf.maskW, mh = maskInf && maskInf.maskH;
+    if(pm && mw > 0 && mh > 0 && img){
+      const src = document.createElement('canvas'); src.width = mw; src.height = mh;
+      const sctx = src.getContext('2d');
+      sctx.drawImage(img, 0, 0, mw, mh);
+      const sd = sctx.getImageData(0, 0, mw, mh).data;
+
+      out = document.createElement('canvas'); out.width = mw; out.height = mh;
+      const octx = out.getContext('2d');
+      const od = octx.createImageData(mw, mh);
+
+      const neckRow  = Math.round(neckVNorm * mh);
+      const startRow = Math.max(0, Math.min(mh-1, neckRow - Math.round(mh*0.14)));
+      // 남겨둘 목 기둥(살짝 여유 1.15배) — 이 바깥만 지우는 구간에서 쓰인다
+      const keepL = Math.round((neckCxU - neckHalfU*1.15) * mw);
+      const keepR = Math.round((neckCxU + neckHalfU*1.15) * mw);
+      const px = (x,y,o)=> sd[(y*mw+x)*4+o];
+      // 실루엣 바깥으로 걸어나가며 진짜 배경 픽셀을 찾는다(경계 AA를 피해 3px부터)
+      const bgAt = (y, from, dir)=>{
+        for(let k=3;k<=14;k++){
+          const x = from + dir*k;
+          if(x<0 || x>=mw) break;
+          if(!pm[y*mw+x]) return [px(x,y,0), px(x,y,1), px(x,y,2)];
+        }
+        return null;
+      };
+      let paintedRows = 0;
+      for(let y=startRow; y<mh; y++){
+        let l=-1, r=-1;
+        for(let x=0;x<mw;x++){ if(pm[y*mw+x]){ l=x; break; } }
+        for(let x=mw-1;x>=0;x--){ if(pm[y*mw+x]){ r=x; break; } }
+        if(l<0 || r<l) continue;
+        let cl = bgAt(y, l, -1), cr = bgAt(y, r, +1);
+        if(!cl && !cr) continue;                  // 사람이 행을 가득 채움 — 읽을 배경이 없다
+        if(!cl) cl = cr; if(!cr) cr = cl;
+
+        const x0 = Math.max(0, l-2), x1 = Math.min(mw-1, r+2); // AA 테두리까지 덮기
+        const span = (x1-x0) || 1;
+        const belowNeck = (y >= neckRow);
+        let rowPainted = false;
+        for(let x=x0; x<=x1; x++){
+          // 목선 위 구간에서는 목 기둥을 건드리지 않는다(어깨만 지움)
+          if(!belowNeck && x >= keepL && x <= keepR) continue;
+          const t = (x-x0)/span, i = (y*mw+x)*4;
+          od.data[i]   = cl[0] + (cr[0]-cl[0])*t;
+          od.data[i+1] = cl[1] + (cr[1]-cl[1])*t;
+          od.data[i+2] = cl[2] + (cr[2]-cl[2])*t;
+          od.data[i+3] = 255;
+          rowPainted = true;
+        }
+        if(rowPainted) paintedRows++;
+      }
+      if(paintedRows < 3) out = null;  // 지울 게 사실상 없음(가슴 아래가 안 찍힌 사진 등)
+      else octx.putImageData(od, 0, 0);
     }
-    const mesh = await loadOutfitMesh(rec.item, widthFactor || 1);
-    o.group.add(mesh);
-    o.meshKey = meshKey;
+  }catch(e){
+    console.warn('상반신 지움 레이어 실패(원본 위에 의상만 얹음):', angle, e);
+    out = null;
   }
-
-  o.group.rotation.y = ((OUTFIT_VIEW_YAW_DEG[angle] || 0) * Math.PI) / 180;
-  o.group.updateMatrixWorld(true);
-  frameOutfitCamera(o);
-  o.renderer.render(o.scene, o.camera);
-
-  const snap = document.createElement('canvas');
-  snap.width = OUTFIT_SNAP.W; snap.height = OUTFIT_SNAP.H;
-  snap.getContext('2d').drawImage(o.renderer.domElement, 0, 0);
-
-  const ref = measureOutfitRef(o);
-  const out = { canvas:snap, cx:ref.cx, cy:ref.cy, pxPerUnit:ref.pxPerUnit };
-  _outfitSnapCache[key] = out;
+  _torsoEraseCache[cacheKey] = out;
   return out;
 }
 
-/* ── 2D 결과물(머리) 오려내기 ──
-   renderFrame을 오프스크린 캔버스에 그대로 돌린다(조정 화면과 같은 결과).
-   단 ADJUST_ZOOM(머리 중심 확대)은 잠시 꺼서 목·턱이 잘리지 않게 하고,
-   fit도 확대 없는 computeFit과 정확히 같은 값이 되게 한다. */
-function renderHeadPlate(angle, w, h){
-  const canvas = document.createElement('canvas');
-  canvas.width = w; canvas.height = h;   // DOM 밖이라 syncCanvasSize가 이 값을 유지함
-  const prevZoom = ADJUST_ZOOM.on;
-  ADJUST_ZOOM.on = false;
-  try { renderFrame(canvas, angle); }
-  finally { ADJUST_ZOOM.on = prevZoom; }
-  return canvas;
-}
-
-/* personMask 한 줄을 훑어 목의 중심·반폭(정규화 0~1)을 잰다.
-   faceCXNorm 근처의 연속 구간만 목으로 인정 — 배경 오탐이 섞여도 안 흔들리게. */
-function measureNeckSpan(maskInf, yNorm, faceCXNorm){
-  const pm = maskInf && maskInf.personMask;
-  const mw = maskInf && maskInf.maskW, mh = maskInf && maskInf.maskH;
-  if(!pm || !mw || !mh) return null;
-  const iy = Math.max(0, Math.min(mh-1, Math.round(yNorm * mh)));
-  const cx = Math.max(0, Math.min(mw-1, Math.round((faceCXNorm ?? 0.5) * mw)));
-  const row = iy * mw;
-  if(pm[row + cx] !== 1){
-    // 중심이 배경으로 잡혔으면 좌우로 가장 가까운 사람 픽셀을 찾아 그 구간을 쓴다
-    let found = -1;
-    for(let d=1; d<mw; d++){
-      if(cx-d >= 0 && pm[row+cx-d] === 1){ found = cx-d; break; }
-      if(cx+d < mw && pm[row+cx+d] === 1){ found = cx+d; break; }
-    }
-    if(found < 0) return null;
-    return spanAround(pm, row, mw, found);
-  }
-  return spanAround(pm, row, mw, cx);
-
-  function spanAround(pm, row, mw, seed){
-    let x0 = seed, x1 = seed;
-    while(x0-1 >= 0 && pm[row+x0-1] === 1) x0--;
-    while(x1+1 < mw && pm[row+x1+1] === 1) x1++;
-    return { cxNorm:((x0+x1+1)/2)/mw, halfWNorm:((x1-x0+1)/2)/mw };
-  }
-}
-
-/* 이 뷰의 이미지 y ↔ 두상 메쉬 y 변환기.
-   해당 뷰에 눈/턱 랜드마크가 있으면 그 뷰 것으로, 없으면(후면 등) 정면
-   기준(getFaceMetrics)으로 폴백. 얼굴 폭(귀)은 세로 변환에 안 쓰이므로
-   옆/뒤 뷰에서도 눈·턱만 있으면 충분하다. */
-function viewProjectorY(angle){
-  try{
-    const fm = getFaceMetrics();
-    const lm = state.landmarks && state.landmarks[angle];
-    if(lm && typeof lm.chinY === 'number' && typeof lm.eyeY === 'number'
-       && Math.abs(lm.chinY - lm.eyeY) > 0.01){
-      return makeFaceProjector(lm, fm.widthFactor, fm.heightFactor);
-    }
-    return fm.projector;
-  }catch(e){ return null; }
-}
-
-/* 머리 판(plate)에서 합성에 필요한 기준값을 캔버스 픽셀 단위로 뽑는다.
-   ※ 목선(neckY)의 정의: 두상 좌표계의 <b>목 밑동 y=-1.15</b>(의상 메쉬가 잘려
-     있는 바로 그 평면)을 투영기로 이미지 y에 되돌린 위치. 즉 사진을 자르는 선과
-     의상이 시작되는 선이 같은 해부학적 지점이 된다 — 이게 "비율을 맞춘 합성"의
-     핵심이고, 배율(meshHeadSpan)도 여기서 함께 나온다.
-     투영기가 없거나 값이 이상하면 예전 방식(턱 아래 = 귀~턱 거리의 45%)으로 폴백. */
-function measureHeadAnchors(angle, fit, w, h){
-  const maskInf = state.hairMasks && state.hairMasks[angle];
-  const lm = state.landmarks && state.landmarks[angle];
-  const box = maskInf ? hairBoxOf(maskInf) : null;
-  if(!box) return null;
-
-  const headTopY = fit.dy + box.y0 * fit.dh;
-  const headCXNorm = (box.x0 + box.x1) / 2;
-  const headWpx = (box.x1 - box.x0) * fit.dw;
-
-  // ── 목선 ──
-  const proj = viewProjectorY(angle);
-  const chinY = (lm && typeof lm.chinY === 'number') ? lm.chinY : null;
-  const earToChin = (chinY != null)
-    ? Math.max(0.02, chinY - ((lm && typeof lm.earY === 'number') ? lm.earY : chinY - 0.12))
-    : null;
-  let cutNorm = null;
-  if(proj && typeof proj.toMeshY === 'function'){
-    // toMeshY(v) = aY - bY·v 의 역 — bY는 (눈~턱)으로 정해진 실측 배율
-    const v0 = proj.toMeshY(0), v1 = proj.toMeshY(1);
-    const bY = v0 - v1;                       // 이미지 y 1당 메쉬 y 감소량
-    if(bY > 0.2) cutNorm = (v0 - NECK_CUT_MESH_Y) / bY;  // toMeshY(cut) = NECK_CUT_MESH_Y 인 지점
-  }
-  if(cutNorm == null || !isFinite(cutNorm)){
-    cutNorm = (chinY != null) ? chinY + 0.45*earToChin : box.y0 + (box.y1 - box.y0)*1.10;
-  }
-  // 턱을 잘라먹거나 사진 밖으로 나가지 않게 상식 범위로 제한
-  if(chinY != null) cutNorm = Math.max(chinY + 0.03, cutNorm);
-  cutNorm = Math.min(0.995, cutNorm);
-  const neckY = fit.dy + cutNorm * fit.dh;
-  if(!(neckY > headTopY + 4)) return null;
-
-  // ── 배율 기준: 머리 꼭대기~목선이 메쉬 단위로 몇인지 ──
-  let meshHeadSpan = null;
-  if(proj && typeof proj.toMeshY === 'function'){
-    const span = proj.toMeshY(box.y0) - proj.toMeshY(cutNorm);
-    if(span > 0.5 && span < 6) meshHeadSpan = span;
-  }
-
-  // ── 목 폭(합성 배율엔 안 쓰고, 목 이음매를 메우는 데만 씀) ──
-  const span = measureNeckSpan(maskInf, cutNorm, headCXNorm);
-  let neckCX, neckHalfW;
-  if(span){
-    neckCX = fit.dx + span.cxNorm * fit.dw;
-    neckHalfW = span.halfWNorm * fit.dw;
-  } else {
-    neckCX = fit.dx + headCXNorm * fit.dw;
-    neckHalfW = headWpx * 0.19;
-  }
-  neckHalfW = Math.max(headWpx * 0.13, Math.min(headWpx * 0.32, neckHalfW));
-
-  return { headTopY, neckY, neckCX, neckHalfW, headWpx, meshHeadSpan };
-}
-
-/* 알파를 상하좌우 e px씩 깎는다(교집합 4번 = 값싼 침식). */
-function erodeAlpha(canvas, e){
-  if(!(e > 0.5)) return canvas;
-  const c2 = document.createElement('canvas');
-  c2.width = canvas.width; c2.height = canvas.height;
-  const g = c2.getContext('2d');
-  g.drawImage(canvas, 0, 0);
-  g.globalCompositeOperation = 'destination-in';
-  g.drawImage(canvas, -e, 0); g.drawImage(canvas, e, 0);
-  g.drawImage(canvas, 0, -e); g.drawImage(canvas, 0, e);
-  return c2;
-}
-
-/* 머리 판에서 사람(머리+목)만 남기는 알파 마스크.
-   personMask(사람 실루엣) ∪ 헤어마스크(연장된 머리카락이 실루엣 밖으로 나갈 수 있음)
-   를 합친 뒤 목선 아래를 잘라낸다. personMask가 없으면 헤어마스크 + 얼굴 타원으로 대체. */
-function buildHeadCutout(angle, fit, w, h, neckY){
-  const maskInf = state.hairMasks && state.hairMasks[angle];
-  if(!maskInf) return null;
-  const mc = document.createElement('canvas');
-  mc.width = w; mc.height = h;
-  const mctx = mc.getContext('2d');
-
-  let havePerson = false;
-  if(maskInf.personMask && maskInf.maskW && maskInf.maskH){
-    const mw = maskInf.maskW, mh = maskInf.maskH;
-    const small = document.createElement('canvas');
-    small.width = mw; small.height = mh;
-    const sctx = small.getContext('2d');
-    const id = sctx.createImageData(mw, mh);
-    for(let i=0;i<mw*mh;i++){
-      const on = maskInf.personMask[i] === 1 ? 255 : 0;
-      id.data[i*4] = 255; id.data[i*4+1] = 255; id.data[i*4+2] = 255; id.data[i*4+3] = on;
-    }
-    sctx.putImageData(id, 0, 0);
-    // 사람 마스크는 실루엣보다 한 겹 넉넉하게 잡히는 편이라, 그대로 오리면
-    // 가장자리에 원래 사진의 배경색이 얇게 따라붙는다(후광). 한 번 깎아낸다.
-    const person = document.createElement('canvas');
-    person.width = w; person.height = h;
-    const pctx2 = person.getContext('2d');
-    pctx2.imageSmoothingEnabled = true; // 축소 해상도 → 표시 해상도 확대가 곧 가장자리 페더링
-    pctx2.drawImage(small, fit.dx, fit.dy, fit.dw, fit.dh);
-    mctx.drawImage(erodeAlpha(person, Math.max(1, fit.dw * 0.004)), 0, 0);
-    havePerson = true;
-  }
-
-  const hairC = state.hairCanvases && state.hairCanvases[angle];
-  if(hairC) mctx.drawImage(hairC, fit.dx, fit.dy, fit.dw, fit.dh); // 실루엣 밖 연장 머리카락 보존
-
-  if(!havePerson){
-    // 폴백: 사람 마스크가 없으면 얼굴/두상 자리를 타원 하나로 덮어준다
-    const box = hairBoxOf(maskInf);
-    if(box){
-      const cx = fit.dx + (box.x0+box.x1)/2 * fit.dw;
-      const cy = fit.dy + (box.y0 + (box.y1-box.y0)*0.62) * fit.dh;
-      const rx = (box.x1-box.x0) * fit.dw * 0.52;
-      const ry = (box.y1-box.y0) * fit.dh * 0.72;
-      mctx.fillStyle = '#fff';
-      mctx.beginPath(); mctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI*2); mctx.fill();
-      // 타원 아래~목선 사이를 목 굵기로 이어준다(안 그러면 머리와 몸이 끊겨 보인다)
-      const nw = rx * 0.34;
-      mctx.fillRect(cx - nw, cy, nw*2, Math.max(0, neckY - cy));
-    }
-  }
-
-  // 목선 아래는 통째로 제거 — 어깨·원래 입고 있던 옷이 결과에 남지 않게.
-  mctx.clearRect(0, Math.round(neckY), w, h - Math.round(neckY));
-  return mc;
-}
-
-/* ── 결과 화면 갱신 진입점 ──
-   각도 스위치·조정 반영·화면 진입 모두 여기로 들어온다. */
-async function drawResultView(){
+/* 결과 화면 한 장 그리기 — [1]결과물 → [2]상반신 지움 → [3]의상 → [4]헤어 재상단 */
+function drawResult(){
   if(currentScreen !== 'result') return;
-  const angle = state.currentViewAngle;
-  const pane = document.getElementById('resultPane');
   const canvas = document.getElementById('resultCanvas');
-  if(!pane || !canvas) return;
+  const stage  = document.getElementById('resultStage');
+  if(!canvas || !stage) return;
+  const pw = stage.clientWidth, ph = stage.clientHeight;
+  if(pw === 0 || ph === 0){ setTimeout(()=>drawResult(), 80); return; }
+  // 백킹스토어는 renderFrame 안의 syncCanvasSize가 조정 화면과 똑같이
+  // 가로 1200px 고정으로 맞춘다 — 두 화면의 그리기 해상도가 항상 일치.
 
-  const pw = pane.clientWidth, ph = pane.clientHeight;
-  if(pw === 0 || ph === 0){ setTimeout(()=>drawResultView(), 80); return; }
-  // 조정 화면과 같은 가로 1200px 고정 백킹스토어(표시 크기는 CSS가 고정)
-  const W = DRAW_RES, H = Math.max(2, Math.round(ph * (DRAW_RES/pw)));
-  canvas.width = W; canvas.height = H;
-  canvas.style.width = pw+'px'; canvas.style.height = ph+'px';
-
-  const badge = document.getElementById('resultBadge');
-  if(badge) badge.textContent = `${ANGLE_LABELS[angle]} 결과`;
-
-  const ctx = canvas.getContext('2d');
-  const bg = ctx.createLinearGradient(0, 0, 0, H);
-  bg.addColorStop(0, RESULT_LAYOUT.bgTop);
-  bg.addColorStop(1, RESULT_LAYOUT.bgBottom);
-  ctx.fillStyle = bg; ctx.fillRect(0, 0, W, H);
-
+  const angle = state.currentViewAngle;
   const gen = ++_resultGen;
 
-  if(!state.shots[angle]){
-    drawResultNotice(ctx, W, H, `${ANGLE_LABELS[angle]} 사진이 없습니다`);
+  const badge = document.getElementById('resultViewBadge');
+  if(badge) badge.textContent = ANGLE_LABELS[angle] || '';
+
+  // [1] 조정 화면과 동일한 렌더 경로. 확대만 끄고, fit·헤어레이어를 돌려받는다.
+  renderFrame(canvas, angle, { noZoom:true, onDone: ({ fit, hairLayer })=>{
+    if(gen !== _resultGen || currentScreen !== 'result') return;
+    const ctx = canvas.getContext('2d');
+    const rec = state.aiOutfitRecommendation;
+    if(!fit || !rec){ return; }
+
+    const map = computeResultMapping(angle, fit);
+    if(!map){
+      console.warn('[결과] 뷰 정렬 실패 — 의상 합성 생략:', angle);
+      return;
+    }
+
+    // [2] 원래 입고 온 옷 지우기 — 목 기둥은 남기고 어깨·가슴만.
+    //     (지울 범위를 정하려면 목 반폭이 필요해서 의상 메쉬를 먼저 준비한다)
+    ensureResultBodyMesh(rec.item, map.widthFactor).then(snap=>{
+      if(gen !== _resultGen || currentScreen !== 'result') return;
+      getCachedImg(angle, (img)=>{
+        if(gen !== _resultGen || currentScreen !== 'result') return;
+        const neckV = (map.neckPxY - fit.dy) / fit.dh;
+        const neckHalfMesh = personNeckHalfWidth(map.widthFactor);
+        const neckCxU  = (map.neckPxX - fit.dx) / fit.dw;
+        const neckHalfU = (neckHalfMesh * map.pxPerMesh) / fit.dw;
+        const eraseLayer = (neckV > 0 && neckV < 1)
+          ? buildTorsoEraseLayer(angle, img, neckV, neckCxU, neckHalfU) : null;
+        if(eraseLayer) ctx.drawImage(eraseLayer, fit.dx, fit.dy, fit.dw, fit.dh);
+
+        // [3] 추천 의상 3D 스냅샷
+        if(snap && snap.neck){
+          const shot = renderBodySnapshot(snap, angle, map, canvas.width, canvas.height);
+          if(shot){
+            ctx.save(); ctx.imageSmoothingEnabled = true;
+            ctx.drawImage(shot.src, shot.x, shot.y, shot.w, shot.h);
+            ctx.restore();
+          }
+        }
+        // [4] 헤어를 의상 위로 — 어깨에 내려온 머리가 옷 뒤로 숨지 않게
+        if(hairLayer) ctx.drawImage(hairLayer, 0, 0);
+      });
+    }).catch(e=>{
+      // 의상 쪽이 실패해도 결과물(사진+헤어)은 이미 그려져 있다 — 그대로 둔다.
+      console.warn('의상 합성 실패(결과물만 표시):', e);
+    });
+  }});
+}
+
+/* 추천 의상 카드 — 지금은 AI가 고른 1벌.
+   쇼핑 링크(affiliateUrl)는 제휴 DB가 붙으면 그대로 살아나는 자리다. */
+function renderOutfitCard(){
+  const card = document.getElementById('outfitCard');
+  const note = document.getElementById('resultOutfitNote');
+  const rec  = state.aiOutfitRecommendation;
+  if(!card) return;
+  if(!rec || !rec.item){
+    card.style.display = 'none';
+    if(note) note.textContent = '의상 추천 없음';
     return;
   }
-
-  // 사진을 먼저 캐시에 올려둔다 — 그래야 renderFrame 내부 getCachedImg가
-  // 동기로 끝나고, 아래 fit 계산과 실제 렌더가 같은 프레임에서 일치한다.
-  const img = await new Promise(res=>getCachedImg(angle, res));
-  if(gen !== _resultGen || currentScreen !== 'result') return;
-  if(!img){ drawResultNotice(ctx, W, H, '사진을 불러올 수 없습니다'); return; }
-
-  const plate = renderHeadPlate(angle, W, H);
-  const fit = computeFit(img.width, img.height, W, H);   // renderHeadPlate가 확대를 껐으므로 동일한 fit
-  const anchors = measureHeadAnchors(angle, fit, W, H);
-
-  if(!anchors){
-    // 세그멘테이션이 없는 뷰 — 결과물(원본+렌더)만이라도 보여준다
-    ctx.drawImage(plate, 0, 0);
-    return;
-  }
-
-  const cutout = buildHeadCutout(angle, fit, W, H, anchors.neckY);
-  if(cutout){
-    const pctx = plate.getContext('2d');
-    pctx.globalCompositeOperation = 'destination-in';
-    pctx.drawImage(cutout, 0, 0);
-    pctx.globalCompositeOperation = 'source-over';
-  }
-
-  // ── 배치: 머리 크기를 먼저 정하고, 몸은 <b>실측 투영기 배율</b>로 따라온다 ──
-  // 예전 안(목 폭끼리 맞추기)은 버렸다 — 3D 에셋의 목 굵기가 사람 목보다
-  // 굵으면 몸 전체가 그만큼 쪼그라든다(실제로 절차적 플레이스홀더에서
-  // 몸이 1/3 크기로 나왔다). 사람 머리 ↔ 두상 메쉬의 배율은 이미
-  // makeFaceProjector가 실측(눈~턱 11.5cm 기준자)으로 갖고 있으므로 그걸 쓴다.
-  const headH = Math.max(1, anchors.neckY - anchors.headTopY);
-  let s = (RESULT_LAYOUT.headHeight * H) / headH;
-  if(anchors.headWpx * s > RESULT_LAYOUT.maxHeadWidth * W){
-    s = (RESULT_LAYOUT.maxHeadWidth * W) / anchors.headWpx;
-  }
-  const destNeckX = W / 2;
-  const destNeckY = RESULT_LAYOUT.topPad * H + headH * s;
-
-  // 의상 추천(세션 1회 캐시) → 그 뷰 각도 스냅샷
-  let snap = null, rec = null;
-  try{
-    setResultBusy(true);
-    rec = await recommendOutfitWithAI();
-    if(gen !== _resultGen || currentScreen !== 'result'){ setResultBusy(false); return; }
-    const wf = (typeof getFaceMetrics === 'function' ? (getFaceMetrics().widthFactor || 1) : 1);
-    snap = await getOutfitSnapshot(angle, wf, rec);
-  }catch(e){
-    console.warn('의상 스냅샷 실패(머리 결과물만 표시):', e);
-  }finally{
-    setResultBusy(false);
-  }
-  if(gen !== _resultGen || currentScreen !== 'result') return;
-  updateOutfitCard(rec);
-
-  // 합성 1 메쉬단위 = 몇 px 인가. meshHeadSpan(머리꼭대기~목선의 메쉬 길이)이
-  // 실측 불가면 목 폭 맞추기로 폴백(예전 방식) — 그래도 화면은 나온다.
-  let so = null;
-  if(snap && snap.pxPerUnit > 0){
-    if(anchors.meshHeadSpan){
-      so = ((headH * s) / anchors.meshHeadSpan) / snap.pxPerUnit;
+  card.style.display = 'flex';
+  const it = rec.item;
+  document.getElementById('outfitSwatch').style.background = it.colorHex || '#888';
+  document.getElementById('outfitName').innerHTML = `${it.name}<span>${it.category}</span>`;
+  document.getElementById('outfitReason').textContent = rec.reason || `${(it.tags||[]).join(' · ')}`;
+  const shop = document.getElementById('outfitShop');
+  if(shop){
+    if(it.affiliateUrl){
+      shop.href = it.affiliateUrl; shop.textContent = '쇼핑몰에서 보기 →';
+      shop.classList.remove('disabled');
     } else {
-      // 폴백: 문서화된 목 반지름 0.42×widthFactor를 사람 목 폭에 맞춤
-      const wf = (typeof getFaceMetrics === 'function' ? (getFaceMetrics().widthFactor || 1) : 1);
-      so = (anchors.neckHalfW * s) / (0.42 * wf * snap.pxPerUnit);
+      shop.removeAttribute('href'); shop.textContent = '제휴 준비중';
+      shop.classList.add('disabled');
     }
   }
+  if(note) note.textContent = `추천 의상 · ${it.name}`;
+  renderOutfitPicker();
+}
 
-  // 그리는 순서: 머리 → 목 이음매 메움 → 의상.
-  ctx.save();
-  ctx.translate(destNeckX, destNeckY);
-  ctx.scale(s, s);
-  ctx.translate(-anchors.neckCX, -anchors.neckY);
-  ctx.drawImage(plate, 0, 0);
-  ctx.restore();
+/* 의상 전환 — 지금은 화면에 안 띄우지만(RESULT_OUTFIT_PICKER=false) 경로는 살아 있다.
+   나중에 제휴 상품 DB/쇼핑몰 응답이 생기면 그 목록으로 이 칩만 갈아끼우면 된다. */
+function renderOutfitPicker(){
+  const el = document.getElementById('outfitPicker');
+  if(!el) return;
+  if(!RESULT_OUTFIT_PICKER){ el.style.display='none'; return; }
+  el.style.display = 'flex'; el.innerHTML = '';
+  const curId = state.aiOutfitRecommendation && state.aiOutfitRecommendation.item && state.aiOutfitRecommendation.item.id;
+  OUTFIT_CATALOG.forEach(o=>{
+    const b = document.createElement('button');
+    b.className = 'outfit-chip' + (o.id===curId ? ' on' : '');
+    b.textContent = o.name;
+    b.onclick = ()=>setResultOutfit(o.id);
+    el.appendChild(b);
+  });
+}
 
-  if(so){
-    // 합성 1 메쉬단위 = k px. 의상의 목 밑동(-1.15)은 사진을 자른 목 중간보다
-    // 이만큼 아래에 놓여야 사람과 옷의 목 길이가 맞는다.
-    const k = anchors.meshHeadSpan ? (headH * s) / anchors.meshHeadSpan
-                                   : (anchors.neckHalfW * s) / 0.42;
-    const outfitY = destNeckY + (NECK_CUT_MESH_Y - (-1.15)) * k;
+// 외부(카탈로그 칩 / 제휴 DB / 쇼핑몰 딥링크)에서 의상을 갈아입히는 단일 진입점.
+function setResultOutfit(idOrItem){
+  const item = (typeof idOrItem === 'string')
+    ? OUTFIT_CATALOG.find(o=>o.id===idOrItem)
+    : idOrItem;
+  if(!item) return;
+  const prev = state.aiOutfitRecommendation;
+  state.aiOutfitRecommendation = { item, reason: (prev && prev.item && prev.item.id===item.id && prev.reason) || '직접 선택한 의상' };
+  renderOutfitCard();
+  drawResult();
+}
+window.setResultOutfit = setResultOutfit;
 
-    // 의상 메쉬는 -1.15에서 잘려 있어 옷깃 안쪽이 비어 있다(그대로 두면 배경이
-    // 비친다). 잘린 목을 옷깃 속으로 이어 그려서 그 구간을 메운다.
-    fillNeckGap(ctx, plate, anchors, s, destNeckX, destNeckY, headH, outfitY);
+/* 'result' 화면 진입 셋업. 의상 추천은 세션당 1회만 호출되고 캐시된다
+   (3D 화면도 같은 캐시를 재사용 — 두 번 묻지 않는다). */
+async function setupResultScreen(){
+  unlockTab('result');
+  renderAngleSwitch('angleSwitchResult');
+  drawResult(); // 의상이 오기 전에도 결과물부터 먼저 보여준다(화면 공백 방지)
 
-    ctx.save();
-    ctx.translate(destNeckX, outfitY);
-    ctx.scale(so, so);
-    ctx.drawImage(snap.canvas, -snap.cx, -snap.cy);
-    ctx.restore();
+  if(!state.aiOutfitRecommendation && state.shots && state.shots.front){
+    showAI('AI가 어울리는 의상을 고르고 있어요…','헤어스타일 기반 추천 (데모)');
+    try{ await recommendOutfitWithAI(); }
+    catch(e){ console.warn('의상 추천 실패:', e); }
+    hideAI();
   }
+  if(currentScreen !== 'result') return;
+  renderOutfitCard();
+  drawResult();
 }
 
-/* 목선 바로 위 띠에서 평균 피부색을 뽑아, 목선 아래로 벌어지는 사다리꼴을 채운다. */
-function fillNeckGap(ctx, plate, anchors, s, destNeckX, destNeckY, headH, outfitY){
-  let col = '#D9B694';
-  try{
-    const bandH = Math.max(2, Math.round(headH * 0.04));
-    const x0 = Math.round(anchors.neckCX - anchors.neckHalfW * 0.6);
-    const y0 = Math.max(0, Math.round(anchors.neckY - bandH));
-    const wpx = Math.max(2, Math.round(anchors.neckHalfW * 1.2));
-    const d = plate.getContext('2d').getImageData(x0, y0, wpx, bandH).data;
-    let r=0,g=0,b=0,n=0;
-    for(let i=0;i<d.length;i+=4){ if(d[i+3] > 80){ r+=d[i]; g+=d[i+1]; b+=d[i+2]; n++; } }
-    if(n > 0) col = `rgb(${Math.round(r/n)},${Math.round(g/n)},${Math.round(b/n)})`;
-  }catch(e){ /* 캔버스 오염 등 — 기본 살색으로 진행 */ }
-
-  const halfTop = anchors.neckHalfW * s;
-  const halfBot = halfTop * 1.9;
-  // 최소한 옷깃 위치까지는 내려가야 틈이 안 생긴다
-  const depth   = Math.max(headH * s * RESULT_LAYOUT.neckFillDepth,
-                           (outfitY - destNeckY) + headH * s * 0.10);
-  const g2 = ctx.createLinearGradient(0, destNeckY, 0, destNeckY + depth);
-  g2.addColorStop(0, col);
-  g2.addColorStop(1, 'rgba(0,0,0,0.35)'); // 옷 속으로 들어가며 어두워지는 음영
-  ctx.save();
-  ctx.fillStyle = col;
-  ctx.beginPath();
-  ctx.moveTo(destNeckX - halfTop, destNeckY - 2);
-  ctx.lineTo(destNeckX + halfTop, destNeckY - 2);
-  ctx.lineTo(destNeckX + halfBot, destNeckY + depth);
-  ctx.lineTo(destNeckX - halfBot, destNeckY + depth);
-  ctx.closePath();
-  ctx.fill();
-  ctx.fillStyle = g2;
-  ctx.fill();
-  ctx.restore();
-}
-
-function drawResultNotice(ctx, W, H, msg){
-  ctx.fillStyle = '#7A6E5C';
-  ctx.font = `${Math.round(W*0.028)}px Inter`;
-  ctx.textAlign = 'center';
-  ctx.fillText(msg, W/2, H/2);
-  ctx.textAlign = 'start';
-}
-
-/* 추천 의상 카드(이름·색·추천 이유) — 3D 화면 태그에만 있던 정보를 결과 화면에도 */
-function updateOutfitCard(rec){
-  const card = document.getElementById('resultOutfitCard');
-  if(!card) return;
-  if(!rec || !rec.item){ card.style.display = 'none'; return; }
-  card.style.display = '';
-  const sw = document.getElementById('resultOutfitSwatch');
-  const nm = document.getElementById('resultOutfitName');
-  const rs = document.getElementById('resultOutfitReason');
-  if(sw) sw.style.background = rec.item.colorHex || '#888';
-  if(nm) nm.textContent = `추천 의상 · ${rec.item.name} (${rec.item.category})`;
-  if(rs) rs.textContent = rec.reason || '헤어스타일과 톤이 맞는 조합입니다.';
-}
-
-window.addEventListener('resize', ()=>{ if(currentScreen === 'result') drawResultView(); });
+window.addEventListener('resize', ()=>{ if(currentScreen==='result') drawResult(); });
 
 /* ════════════════════════════════════════
    AI ANALYSIS
@@ -9156,7 +9187,7 @@ function cycleAngle(dir){
   let idx=ANGLES.indexOf(state.currentViewAngle);
   idx=(idx+dir+4)%4; state.currentViewAngle=ANGLES[idx];
   renderAngleSwitches();
-  drawAdjustPreview(); drawResultView();
+  drawAdjustPreview(); drawResult();
 }
 
 /* ════════════════════════════════════════
@@ -14636,8 +14667,7 @@ function startNewCustomer(){
   state.hairIdentity=null; // (2026-08-01) 모발 프로필 — 사람이 바뀌면 당연히 버린다
   for(const k in _viewMaskCache) delete _viewMaskCache[k]; // 뷰 마스크 샘플러 캐시
   state.aiOutfitRecommendation=null; // (3단계) 의상 추천 캐시도 초기화
-  for(const k in _outfitSnapCache) delete _outfitSnapCache[k]; // 결과 화면 의상 스냅샷 캐시
-  if(outfit3D) outfit3D.meshKey = null;                        // 다음 고객 땐 의상 메쉬부터 새로
+  resetResultScreenCache();   // 결과 화면의 의상 메쉬/스냅샷 캐시(사람·의상이 바뀌면 전부 무효)
   _headCrossSectionCache = null; // 두상 실측 단면(Shape-from-Silhouette) 캐시도 새 고객마다 초기화
   _headVerticalRadiusCache = null; // 두상 세로 반지름 실측 캐시도 새 고객마다 초기화
   _headEllipsoidLogged = false; // [진단용] 두상 넙적도 로그도 새 고객마다 다시 1회 출력
