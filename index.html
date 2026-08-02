@@ -1157,6 +1157,40 @@
   콘솔에서 state.hairQuilt = true 후 다시 그리면 예전 그림을 볼 수 있다.
   검증: 렌더 분기의 세 경로가 어느 플래그 조합에서 어디로 가는지 표로 확인
   (rawMode / hairQuilt / 3D 모델 유무 8가지), 페이지 무오류 로드 확인.
+
+  ── 2026-08-02 (9) 결과 화면 — <b>목을 실측</b>해서 오리고 붙인다 ──
+  사용자: "1,2번은 목 적당한 곳에서 떼어내 의상과 연결됐는데, 다른 인물인 3,4번은
+          목보다 어깨보다도 아래에서 잘렸고 위치도 안 맞아."
+  두 곳 다 <b>사람마다 다른 값을 상수·추정으로 때우고</b> 있었다.
+  ① 오려낼 목 기둥의 폭 — 턱 아래로는 실루엣을 목만 남기고 좁히는데, 그 반폭이
+     고정 <b>0.55단위</b>였다. 1단위가 ≈16cm이니 폭 18cm — 사람 목(≈12cm)보다
+     훨씬 넓다. 그 여유분에 어깨와 <b>고객이 입고 온 옷</b>이 통째로 딸려 와,
+     추천 의상의 옷깃 옆으로 원래 셔츠가 삐져나왔다(3,4번의 목 옆 밝은 조각).
+     긴 머리가 그 자리를 덮고 있던 1,2번에서는 가려져서 안 보였을 뿐이다.
+  ② 가로 기준점 — 몸에 붙일 때 <b>좌우 귀 중점</b>을 화면 중심에 맞추고 있었다.
+     정면은 대충 맞지만 옆모습에서 귀는 목보다 <b>앞에</b> 있다. 그만큼 머리가
+     몸보다 앞으로 밀린다(4번).
+  고침: 둘 다 사진에서 잰다. measureNeckColumn — 턱 아래로 1단위를 훑어 사람
+  실루엣이 <b>가장 좁아지는 행</b>(=목)의 폭·중심·어깨 시작 행을 뽑는다.
+  · 목 기둥 반폭 = 실측 반폭 × 1.10 (고정 0.55단위 폐기)
+  · 가로 기준점 = 실측 목 중심 (몸은 목이 화면 cx에 오도록 그려지므로 같은 곳)
+  · 자르는 선 = min(옷깃선+0.30단위, 어깨시작+0.10단위) — 어깨 아래까지 오려
+    오지 않는다. 단 <b>옷깃선 위로는 절대 안 자른다</b>(자르면 두상과 의상
+    사이가 배경으로 뚫린다) — max()로 바닥을 깐다.
+  · 머리카락은 빼고 잰다(reasonMask===1 제외). 긴 머리가 목·어깨를 덮으면
+    실루엣이 안 좁아져 "목 폭 = 머리 폭"이 나온다. 잘려나간 머리는 뒤에서
+    헤어 레이어를 합집합하며 그대로 되살아나므로 손해가 없다.
+  · 실측이 사람 범위(폭 0.35~1.15단위, 중심이 귀 중점에서 0.6단위 이내)를
+    벗어나면 null → 예전 상수 경로로 폴백하고 콘솔에 이유를 남긴다.
+  검증: 합성 실루엣(머리 타원+목 기둥+어깨)으로 끝까지 돌려
+  — 목 중심이 머리 중심에서 6px 어긋난 인물에서 가로 기준점이 정확히 그 6px를
+    따라갔고(귀 중점 100 → 목 94), 목 반폭은 24.5px(예전 상수 53.6px = 2.2배 과대),
+    자르는 선은 어깨시작+0.10단위에서 멈추면서도 옷깃선 아래를 유지,
+  — 긴 머리를 덮어씌운 인물에서 헤어 제외 O/X를 비교(28.5px vs 52.5px)해
+    reasonMask 제외가 실제로 필요한 것을 확인,
+  — 목이 비정상적으로 굵은 오탐 입력은 null(폴백) 확인. 페이지 무오류 로드.
+  진단: [결과·정렬] 로그 끝에 "목 실측 폭/중심/어깨시작/옷깃/자름/가로기준"을
+  붙였다 — 다음에 어긋나면 스크린샷 한 장으로 어느 숫자가 틀렸는지 짚힌다.
 -->
 
 <!DOCTYPE html>
@@ -9096,6 +9130,89 @@ function computeResultSourceFit(img, maskInf, angle, w, h){
   }
 }
 
+/* ── 목 실측: 사진 실루엣에서 직접 (2026-08-02 9차) ────────────────────────
+   턱 아래로 내려가면 사람 실루엣은 <b>좁아졌다가(목) 다시 넓어진다(어깨)</b>.
+   그 최소폭 행이 이 사람의 목이다. 여기서 나오는 두 값이 결과 화면의 정렬을
+   전부 결정한다:
+     · 폭   — 오려낼 목 기둥의 반폭. 예전엔 고정 0.55단위(≈18cm 폭)라 어깨와
+              고객이 입고 온 옷이 통째로 딸려 왔다.
+     · 중심 — 몸에 붙일 <b>가로 기준점</b>. 예전엔 좌우 귀 중점을 썼는데, 옆모습에서
+              귀는 목보다 앞에 있어 머리가 몸 앞으로 밀려났다.
+   반환값은 전부 <b>렌더 캔버스 픽셀</b>. 실측이 사람 범위를 벗어나면 null을
+   돌려주고 호출부는 예전 상수 경로로 폴백한다(조용히 틀리는 것보다 낫다). */
+function measureNeckColumn(angle, fit, pxPerMesh, chinPxY, headCxPx, headWidthPx){
+  const inf = state.hairMasks && state.hairMasks[angle];
+  const pmRaw = inf && inf.personMask;
+  const mw  = inf && inf.maskW, mh = inf && inf.maskH;
+  if(!pmRaw || !(mw > 4) || !(mh > 4) || !(pxPerMesh > 1)) return null;
+  /* 머리카락은 <b>빼고</b> 잰다. 긴 머리는 목·어깨를 덮어서 실루엣이 아예 안
+     좁아진다 — 그대로 재면 "목 폭 = 머리 폭"이 나와 실측이 무의미해진다.
+     reasonMask===1이 최종 머리카락 픽셀이라 같은 해상도에서 바로 뺄 수 있다.
+     잘려나간 머리는 뒤에서 헤어 레이어를 합집합하며 그대로 되살아난다. */
+  const rm = inf.reasonMask;
+  if(!inf._bodyNoHairMask && rm && rm.length === pmRaw.length){
+    const b = new Uint8Array(pmRaw.length);
+    for(let i=0;i<b.length;i++) b[i] = (pmRaw[i] && rm[i] !== 1) ? 1 : 0;
+    inf._bodyNoHairMask = b;   // 이 뷰에서 한 번만 만든다(마스크가 바뀌면 inf 자체가 새로 만들어짐)
+  }
+  const pm = inf._bodyNoHairMask || pmRaw;
+  const toRow   = (py)=> ((py - fit.dy) / fit.dh) * mh;
+  const toCol   = (px)=> ((px - fit.dx) / fit.dw) * mw;
+  const rowToPy = (r)=> fit.dy + (r / mh) * fit.dh;
+  const colToPx = (c)=> fit.dx + (c / mw) * fit.dw;
+
+  const r0 = Math.max(0, Math.round(toRow(chinPxY)));
+  // 턱에서 아래로 1.0단위(≈16cm)까지만 본다 — 목과 어깨 시작이 이 안에 들어온다.
+  const r1 = Math.min(mh - 1, Math.round(toRow(chinPxY + pxPerMesh)));
+  if(!(r1 > r0 + 2)) return null;
+  const searchCols = Math.max(2, ((headWidthPx / fit.dw) * mw) / 2);
+
+  /* 그 행에서 c를 품는 연속 구간. c가 실루엣 밖이면 좌우로 가장 가까운 구간을
+     잡는다(고개가 기울어 목이 옆으로 밀린 경우). */
+  const runAt = (y, c)=>{
+    const base = y * mw;
+    let x = Math.max(0, Math.min(mw - 1, Math.round(c)));
+    if(!pm[base + x]){
+      let found = -1;
+      for(let d = 1; d <= searchCols; d++){
+        if(x - d >= 0   && pm[base + x - d]){ found = x - d; break; }
+        if(x + d < mw   && pm[base + x + d]){ found = x + d; break; }
+      }
+      if(found < 0) return null;
+      x = found;
+    }
+    let l = x; while(l > 0      && pm[base + l - 1]) l--;
+    let r = x; while(r < mw - 1 && pm[base + r + 1]) r++;
+    return { w: r - l + 1, c: (l + r) / 2 };
+  };
+
+  let c = toCol(headCxPx);
+  let min = null; const rows = [];
+  for(let y = r0; y <= r1; y++){
+    const run = runAt(y, c);
+    if(!run) break;                      // 실루엣이 끊기면 거기까지
+    rows.push({ y, w: run.w, c: run.c });
+    c = run.c;                           // 다음 행은 이 행의 중심에서 이어 찾는다
+    if(!min || run.w < min.w) min = { y, w: run.w, c: run.c };
+  }
+  if(!min || rows.length < 3) return null;
+  // 어깨 시작 = 최소폭 행 아래에서 폭이 1.45배를 넘는 첫 행(없으면 탐색 끝)
+  let shoulderRow = rows[rows.length-1].y;
+  for(const rw of rows){ if(rw.y > min.y && rw.w > min.w * 1.45){ shoulderRow = rw.y; break; } }
+
+  const widthMesh = ((min.w / mw) * fit.dw) / pxPerMesh;
+  /* 정직성 점검 — 목 폭이 0.35~1.15단위(≈6~19cm)를 벗어나면 실루엣이 아니라
+     그림자·옷·팔을 잰 것으로 본다. 그때는 null(폴백)이 맞는 답이다. */
+  if(!(widthMesh > 0.35 && widthMesh < 1.15)) return null;
+  return {
+    cxPx: colToPx(min.c),
+    halfPx: ((min.w / 2 / mw) * fit.dw),
+    minPxY: rowToPy(min.y),
+    shoulderPxY: rowToPy(shoulderRow),
+    widthMesh,
+  };
+}
+
 /* 이 뷰에서 두상의 자·기준점. 정수리~귀선(네 뷰 공통으로 재지는 유일한 세로 구간)에
    이 사람의 자를 맞춘다. 결과가 두상 실루엣 폭과 크게 어긋나면 폭 기준으로 되돌린다. */
 function getViewHeadAnchor(angle, fit, maskInf){
@@ -9124,12 +9241,33 @@ function getViewHeadAnchor(angle, fit, maskInf){
   if(!(pxPerMesh > 1) || !isFinite(pxPerMesh)) return null;
 
   const earPxY = fit.dy + earN * fit.dh;
+  const earPxX = fit.dx + ((lm.lEarX + lm.rEarX)/2) * fit.dw;
+  const meshToPx = (m)=> earPxY + (ref.earMeshY - m) * pxPerMesh;   // 이 뷰의 세로 자
+  const chinPxY   = meshToPx(ref.chinMeshY);
+  const collarPxY = meshToPx(ref.chinMeshY - ref.neckLenMesh);      // 옷깃선
   // 자르는 선 = 옷깃선보다 0.30단위(≈5cm) 아래 — 그 구간은 옷이 덮으므로 안 보인다
-  const cutMeshY = ref.chinMeshY - ref.neckLenMesh - 0.30;
+  let cutPxY = collarPxY + 0.30 * pxPerMesh;
+
+  /* ── 목 실측 (2026-08-02 9차) ─────────────────────────────────────────
+     사용자: "목보다 어깨보다도 아래에서 잘렸고, 위치도 안 맞아."
+     아래 세 값이 전부 <b>이 사진에서</b> 나오도록 바꾼다(상수·추정 → 실측). */
+  const neck = measureNeckColumn(angle, fit, pxPerMesh, chinPxY, earPxX,
+                                 headHalfMesh * 2 * pxPerMesh);
+  let alignX = earPxX, alignSrc = '귀 중점';
+  if(neck){
+    // 귀 중점에서 0.6단위(≈10cm) 넘게 떨어지면 실측이 아니라 오탐으로 본다.
+    if(Math.abs(neck.cxPx - earPxX) <= 0.6 * pxPerMesh){ alignX = neck.cxPx; alignSrc = '목 실측'; }
+    else console.warn(`[결과] ${angle}: 목 중심 실측이 귀 중점에서 `
+      + `${((neck.cxPx-earPxX)/pxPerMesh).toFixed(2)}단위 떨어져 있어 무시 — 귀 중점 사용`);
+    /* 어깨 아래까지 오려 오지 않는다. 다만 <b>옷깃선 위</b>로는 절대 자르지 않는다 —
+       그 위로 자르면 오려낸 두상과 의상 사이가 배경으로 뻥 뚫린다. */
+    cutPxY = Math.max(collarPxY + 0.05 * pxPerMesh,
+                      Math.min(cutPxY, neck.shoulderPxY + 0.10 * pxPerMesh));
+  }
   return {
-    pxPerMesh, headHalfMesh,
-    earPx: { x: fit.dx + ((lm.lEarX + lm.rEarX)/2) * fit.dw, y: earPxY },
-    cutPxY: earPxY + (ref.earMeshY - cutMeshY) * pxPerMesh,
+    pxPerMesh, headHalfMesh, neck, alignX, alignSrc,
+    earPx: { x: earPxX, y: earPxY },
+    chinPxY, collarPxY, cutPxY,
   };
 }
 
@@ -9292,7 +9430,11 @@ function composeResult(){
                 headPxY: meshToPx(ref.earMeshY + ref.headDropMesh) };
 
   const k = ppm / sc.anchor.pxPerMesh;                       // 두상 오려낸 그림의 배율
-  const headX = cx - sc.anchor.earPx.x * k;
+  /* 가로 정렬은 <b>목 중심</b>에 맞춘다(2026-08-02 9차). 몸은 목이 화면 cx에
+     오도록 그려지므로(renderBodySnapshot: 메쉬 x=0 → cx), 사진 쪽도 목을 대야
+     둘이 이어진다. 예전 기준이던 좌우 귀 중점은 옆모습에서 목보다 앞에 있어
+     머리가 몸 앞으로 밀려났다(사용자: "위치도 안 맞아"). 실측 실패 시 귀 중점. */
+  const headX = cx - (sc.anchor.alignX != null ? sc.anchor.alignX : sc.anchor.earPx.x) * k;
   const headY = meshToPx(ref.earMeshY + ref.headDropMesh - (RESULT_BODY_FIT.offsetYMesh||0)) - sc.anchor.earPx.y * k;
   const drawHeadLike = (src)=>{
     ctx.drawImage(src, headX, headY, src.width * k, src.height * k);
@@ -9345,11 +9487,15 @@ function drawResult(){
     const src = document.createElement('canvas');
     src.width = canvas.width; src.height = canvas.height;
     src.getContext('2d').drawImage(canvas, 0, 0);
-    // 턱 높이와 목 기둥 폭(메쉬 0.55단위 ≈ 반지름 9cm)을 원본 픽셀로 환산해서 넘긴다
-    const chinPxY   = anchor.earPx.y + (ref.earMeshY - ref.chinMeshY) * anchor.pxPerMesh;
-    const neckHalfPx = 0.55 * anchor.pxPerMesh;
+    /* 턱 아래로 남길 <b>목 기둥</b>의 폭·중심. (2026-08-02 9차) 예전엔 고정
+       0.55단위(폭 ≈18cm)를 귀 중점에 걸었다 — 목보다 훨씬 넓어서 어깨와 고객이
+       입고 온 옷이 옷깃 옆으로 딸려 나왔다. 이제 실측 목 폭(여유 1.10배)을
+       실측 목 중심에 건다. 실측 실패 시에만 예전 상수로 폴백. */
+    const chinPxY    = anchor.chinPxY;
+    const neckHalfPx = anchor.neck ? anchor.neck.halfPx * 1.10 : 0.55 * anchor.pxPerMesh;
+    const neckCxPx   = anchor.neck ? anchor.neck.cxPx : anchor.earPx.x;
     const cutout = buildHeadCutout(src, angle, fit, hairLayer, anchor.cutPxY,
-                                   chinPxY, neckHalfPx, anchor.earPx.x);
+                                   chinPxY, neckHalfPx, neckCxPx);
 
     getCachedImg(angle, (img)=>{
       if(gen !== _resultGen || currentScreen !== 'result') return;
@@ -9364,7 +9510,17 @@ function drawResult(){
           + ` · 전신 ${(ref.headHeightMesh*FIGURE_HEADS).toFixed(2)}단위`
           + (snap && snap.body ? ` · 몸 배율 ${snap.body.scale.toFixed(2)}` : ' · 의상 없음')
           + ` · 화면배율 ${_resultScene.layout ? Math.round(_resultScene.layout.ppm) : '?'}px/단위`
-          + ` · 줌 ${Math.round(RESULT_VIEW.zoom*100)}%`);
+          + ` · 줌 ${Math.round(RESULT_VIEW.zoom*100)}%`
+          /* 목 실측 한 줄 — 어긋나면 어느 숫자가 틀렸는지 바로 짚히도록.
+             폭은 단위(1단위≈16cm), 나머지는 턱에서 아래로 몇 단위인지. */
+          + (anchor.neck
+              ? ` | 목 실측 폭 ${anchor.neck.widthMesh.toFixed(2)}단위`
+                + ` · 중심 ${((anchor.neck.cxPx - anchor.earPx.x)/anchor.pxPerMesh).toFixed(2)}단위(귀 중점 대비)`
+                + ` · 어깨시작 턱+${((anchor.neck.shoulderPxY - anchor.chinPxY)/anchor.pxPerMesh).toFixed(2)}`
+                + ` · 옷깃 턱+${((anchor.collarPxY - anchor.chinPxY)/anchor.pxPerMesh).toFixed(2)}`
+                + ` · 자름 턱+${((anchor.cutPxY - anchor.chinPxY)/anchor.pxPerMesh).toFixed(2)}`
+                + ` · 가로기준 ${anchor.alignSrc}`
+              : ' | 목 실측 실패 → 고정 0.55단위·귀 중점 폴백'));
       };
       if(!rec){ finish(null); return; }   // 추천 도착 전 첫 렌더 — 두상만 먼저 보여준다
       ensureResultBodyMesh(rec.item, getFaceMetrics().widthFactor)
