@@ -41,7 +41,10 @@
           gyeol 공정 정의         — 커트기법·색·공정그룹·스타일링 파라미터(데이터)
           STATE — 전역 상태 객체   — state 하나에 사진·마스크·랜드마크·3D 캐시
   [인식]  HAIR SEGMENTATION      — 세그멘테이션 진입점/공용 유틸
-          extractHairMask        — 세그 본체(STEP 1~11). 픽셀 루프라 가장 김
+          두피선·캔버스·색 실측   — extractHairMask에서 떼어낸 뒤쪽 세 단계
+                                   (extractScalpAndEndLines / buildHairViewCanvases /
+                                    measureHairColorsFromMask)
+          extractHairMask        — 세그 본체(STEP 1~9 + 위 세 단계 호출)
           STRUCTURE TENSOR       — 머리카락 결방향(orientation field) 인식
   [화면]  NAVIGATION / CAPTURE / 실시간 촬영 각도 가이드 / STYLE SELECT /
           SECTION UI / gyeol 패널 빌더 / ANGLE SWITCH / RENDER · CANVAS
@@ -950,7 +953,7 @@
   곧 결과 화면"이라고 적어뒀다. 이번에 실제로 뺐다.
 
   구조: 뷰 하나당 네 겹을 순서대로 쌓는다.
-    [1] renderFrame(canvas, angle, {noZoom, onDone}) — <b>조정 화면과 같은 렌더 경로</b>.
+    [1] renderFrame(canvas, angle, {resultFit, onDone}) — <b>조정 화면과 같은 렌더 경로</b>.
         새 렌더러를 만들지 않았다. 확대(zoomFitToHair)만 끈다 — 목 아래에 옷이
         들어올 자리가 필요하니까.
     [2] 사진에 원래 찍혀 있던 상반신 지움 — 행마다 사람 실루엣 좌우 <b>바깥</b>
@@ -1026,6 +1029,98 @@
     캐시(_resultScene)해서 줌/드래그 때 다시 하지 않는다. 휠·핀치는 커서를 기준으로,
     +/− 버튼은 <b>머리</b>를 기준으로 확대한다(미용 상담에서 당겨 보고 싶은 건
     화면 한가운데=허리가 아니라 머리다). 더블클릭/더블탭이면 원래대로.
+
+  ── 2026-08-02 (4) 죽은 코드 정리 (동작 무변경) ──
+  화면 교체를 세 번 하면서 생긴 잔해만 걷어냈다. 정적 분석 두 가지로 후보를 뽑고
+  (① 최상위 선언 참조수 ② 호출 그래프 도달성 — 루트는 HTML on* 속성·최상위 실행
+  코드·window 노출), 후보마다 원본을 눈으로 확인한 뒤 지웠다:
+    · drawImgOnCanvas — 마지막 호출부가 비교 화면이었다(그 화면과 함께 사라짐).
+    · partWeightAt — 호출부 없음(combWeightAt/PART3D는 다른 데서 쓰므로 유지).
+    · bodySegmenterReady — true로 두 번 쓰기만 하고 읽는 곳이 없었다.
+    · LAYER_LEN_SCALE + drawStrandLayer의 지역 lenScale — 어느 호출부도 cfg.lenScale을
+      넘기지 않아 짝이 통째로 죽어 있었다.
+    · getHeadEllipsoid의 bRaw — 선언 후 바로 아래에서 computeHeadVerticalRadius()를
+      다시 부르고 있었다(메모이즈라 값 동일, 호출 한 번 줄어드는 것 외 변화 없음).
+    · startNewCustomer의 state.aiSectionEstimate 초기화 — 그 필드를 읽는 코드가
+      더는 없다(초기화만 남은 유령).
+    · renderFrame의 opts.noZoom — 결과 화면이 resultFit으로 옮겨가며 넘기는 곳이
+      없어졌다. 주석의 옵션 설명도 실제와 맞췄다.
+  <b>남긴 것</b>(죽은 것처럼 보이지만 의도된 것): state._diagLog는 "필요해지면 다시
+  노출"이라고 적어둔 진단 문자열이고, state.hairIdentity는 8/1에 실측해 저장하기로
+  한 모발 프로필이다 — 둘 다 콘솔에서 들여다보는 값이라 지우지 않았다.
+  검증: 같은 입력으로 정리 전/후 결과 캔버스(네 뷰)와 조정 캔버스를 렌더해 픽셀
+  해시가 전부 일치하는 것을 확인했다.
+
+  ── 2026-08-02 (5) 중복 통합 (동작 무변경) ──
+  같은 일을 두 번 이상 적어둔 곳을 하나로 모았다. 탐지는 두 축으로 — 함수 쌍
+  토큰 유사도, 그리고 3줄 이상 반복 블록.
+    · isHairColor / isHairColorRelaxed → isHairColorBy + 임계값 표 두 개.
+      다른 건 값과 "어두우면 무조건" 규칙 유무뿐이었다. 세 규칙이 전부 OR이라
+      순서를 합쳐도 결과가 같다.
+    · fillEnclosedHighlightHoles / keepLargestComponents → labelComponents8.
+      8방향 스택 순회가 글자 그대로 두 벌이었고, 다른 건 "0을 묶나 >0을 묶나"와
+      테두리 접촉 기록 여부뿐. 안쪽 루프에서 조건을 함수로 부르면 픽셀당 8회
+      호출이라 느려지므로, 고를 픽셀을 sel 배열로 미리 한 번 훑는다.
+    · buildOccupancyCellField / buildRootDensityField → forEachHeadSurfaceCell.
+      주석에 이미 "같은 격자·같은 순회"라고 적혀 있던 그 이중 루프.
+    · makeHairOccupancyProbe의 at/densityAt/faceAt → projectToCam.
+      회전·뒤편 컷·정면도 가중치·이미지 좌표 환산 여섯 줄이 세 벌이었다.
+      수십만 번 불리므로 결과는 스크래치 객체 하나를 돌려 쓴다(할당 0).
+    · BufferGeometry(position+color) 다섯 곳 → makeVertexColorGeometry /
+      makeVertexColorLines.
+    · 디버그 토글 3종 → setDebugView. "하나 켜면 나머지 둘 끄기 + 버튼 3개 표시
+      맞추기"가 세 벌이었다. 다만 버튼 <b>글자</b>는 각 토글이 하던 그대로 뒀다 —
+      여기서 같이 맞추면 화면 표시가 달라진다(그건 개선이지 무변경이 아니다).
+    · gravityDroop3D / volumeStrand3D / flowCurlStrand3D → mapStrandFromRoot.
+      "뿌리는 고정, 나머지를 옮긴다"는 골격이 세 벌.
+  검증(픽셀 테스트가 안 닿는 순수 함수가 많아 등가성 테스트를 따로 씀):
+    · 색 판정 14만 색 전수, 랜덤 마스크 60장, 랜덤 3D 점 3천, 랜덤 가닥 400개를
+      통합 전/후 두 벌로 돌려 출력이 바이트 단위로 같은 것을 확인.
+    · 디버그 토글은 세 개를 세 번 누르는 27가지 순서 전부에서 state·버튼 class·
+      글자가 같은 것을 확인.
+    · 결과/조정 캔버스 픽셀 해시는 그대로 일치.
+
+  ── 2026-08-02 (6) 긴 함수 분리 (동작 무변경) ──
+  실측부터 했다. 함수 301개 중 100줄 넘는 건 9개인데, 그중 8개는 이미 내부가
+  STEP·단계별 <b>이름 붙은 중첩 함수</b>로 나뉘어 있었다(drawHairStrands 314줄,
+  buildHairStrandsFromPaths 308줄 등). 그래서 손댄 건 <b>하나</b>다.
+  extractHairMask(517줄, 중첩 깊이 10) — 사진 디코드부터 세그멘테이션, 마스크
+  후처리, 진단, 결방향, 두피선, 캔버스 합성, 색 실측, 상태 저장까지 아홉 역할을
+  한 함수가 지고 있었다. 그중 <b>사진 한 장에만 의존하는</b> 뒤쪽 세 단계를 뺐다:
+    · extractScalpAndEndLines(마스크, w, h, 원본폭, scale) — STEP 10
+    · buildHairViewCanvases(img, 마스크, reasonMask, w, h) — STEP 11 앞쪽(그리기)
+    · measureHairColorsFromMask(마스크, 픽셀, w, h, angle) — STEP 11 뒤쪽(재기)
+  STEP 11을 둘로 가른 이유: 캔버스는 <b>그리기용</b>이고 색은 <b>재기용</b>인데
+  한 함수가 둘 다 하고 있어서, 어느 쪽을 고치든 나머지 절반을 같이 읽어야 했다.
+  517 → 401줄. 나머지 STEP(1~9)은 마스크 버퍼를 제자리에서 고쳐 쓰는 단계라
+  밖으로 빼면 버퍼·해상도·랜드마크를 통째로 넘겨야 해서 그대로 뒀다 — 지금은
+  STEP 배너가 그 역할을 하고 있고, 억지로 빼면 읽기가 더 나빠진다.
+  <b>안 건드린 것</b>: drawHairStrands·buildHairStrandsFromPaths·buildRealFaceMesh.
+  셋 다 길지만 내부 중첩 함수들이 ctx·fit·파라미터 열몇 개를 공유하는 구조라,
+  분리하려면 그 문맥을 통째로 인자로 끌고 다녀야 한다. 길이만 보고 자르면
+  오히려 나빠지는 쪽이라 놔뒀다.
+  검증: 세그멘터를 TF.js 폴백 경로로 스텁해 extractHairMask를 <b>끝까지</b> 돌리고
+  (픽셀 루프·구조텐서·색 실측·캔버스 전부 포함) 분리 전/후 결과 20개 항목
+  — scalpY/hairEndY 배열, reasonMask, 팔레트, 결필드, 세 캔버스의 data URL,
+  진단 로그까지 — 이 전부 바이트 단위로 같은 것을 확인했다.
+
+  ── 2026-08-02 (7) 리팩터링 3회 통합 검증 ──
+  (4)(5)(6) 세 번의 리팩터링을 마치고, <b>시작 전 파일과 최종 파일</b>을 같은 입력으로
+  끝까지 돌려 비교했다. 그동안의 픽셀 테스트는 마스크를 미리 넣어줘서 가닥 렌더
+  경로가 통째로 빠져 있었는데(세그멘터가 없으면 renderFrame이 "원본만 표시"로
+  빠진다), 이번엔 세그멘터를 스텁해 실제 파이프라인을 태웠다:
+    합성 사진 4장 → extractHairMask ×4 → 조정 화면 렌더 ×4(가닥 렌더 실행)
+    → 결과 화면 렌더 ×4(두상 오려내기 + 3D 의상) → 3D 화면 구성.
+  난수는 시드 고정(Math.random 교체). 가닥 배치가 난수를 쓰기 때문인데, 덕분에
+  "난수를 부르는 순서"까지 같은지도 함께 검증된다.
+  결과: 마스크 4·조정 렌더 4·결과 렌더 4·3D 구성·추천 의상 = 14개 항목 전부 동일.
+  ※ 테스트를 짜다 얻은 교훈 하나: 처음엔 정면 결과 렌더만 달랐는데, <b>같은 파일을
+    두 번 돌려도</b> 달랐다 — 코드 차이가 아니라 결과 화면 셋업의 비동기 체인(의상
+    폴백 → 메쉬 로드 → 합성)이 아직 끝나기 전에 해시를 뜬 것이었다. 대기를 늘려
+    자체 재현성부터 확인한 뒤 비교하는 순서로 바로잡았다. 차이를 보면 코드부터
+    의심하기 쉬운데, 먼저 <b>테스트가 스스로 재현되는지</b>를 봐야 한다.
+  규모: 실행 코드 8217 → 8154줄(주석·개발 로그 제외). 줄 수가 크게 안 준 건
+  중복을 지우는 만큼 <b>왜 그렇게 했는지</b>를 남겼기 때문이다.
 -->
 
 <!DOCTYPE html>
@@ -2708,12 +2803,10 @@ const _segmenterInitPromise = initSegmenter();
 // 예외: 헤어 폴백 경로가 이미 같은 모델(MediaPipeSelfieSegmentation)을
 // `segmenter`로 로드해뒀다면 중복 로드하지 않고 그대로 재사용한다.
 let bodySegmenter = null;
-let bodySegmenterReady = false;
 async function initBodySegmenter(){
   await _segmenterInitPromise; // state.segmenterType이 확정될 때까지 대기
   if(state.segmenterType === 'TF.js' && segmenter){
     bodySegmenter = segmenter; // 이미 로드된 같은 모델 재사용
-    bodySegmenterReady = true;
     console.log('목 실측용 바디 세그멘터: 헤어 폴백 모델 재사용');
     return;
   }
@@ -2724,7 +2817,6 @@ async function initBodySegmenter(){
       bodySegmentation.SupportedModels.MediaPipeSelfieSegmentation,
       { runtime:'tfjs', modelType:'general' }
     );
-    bodySegmenterReady = true;
     console.log('목 실측용 바디 세그멘터 준비 완료');
   } catch(e){
     // ⚠ 정직한 한계: 이게 실패하면(구형 브라우저·메모리 부족 등) 목은 실측이
@@ -2969,9 +3061,11 @@ function measureViewHairIdentity(o){
 }
 
 /* ════════════════════════════════════════════════════════════════
-   extractHairMask(angle) — 목차 (642줄, Canvas/픽셀 API 직접 사용이라
-   Node 샌드박스에서 실행 검증이 안 돼서 구조는 안 건드리고 목차만 추가함.
-   내부에 이미 STEP별 중첩 함수로 나뉘어 있음 — 아래 줄번호는 대략적 위치.)
+   extractHairMask(angle) — 목차
+   내부는 STEP별 중첩 함수로 나뉘어 있고, 그중 <b>사진 한 장에만 의존하는</b>
+   뒤쪽 세 단계는 최상위 함수로 빼냈다(2026-08-02): 아래 STEP 10·11 참고.
+   나머지 STEP은 마스크 버퍼를 <b>제자리에서 고쳐 쓰는</b> 단계들이라, 클로저
+   밖으로 빼면 버퍼·해상도·랜드마크를 통째로 넘겨야 해서 그대로 뒀다.
    STEP 1  (~1313) 세그멘테이션 — MediaPipe 우선, 실패 시 TF.js 폴백
    STEP 1.5(~1345, 2026-07-14 추가) 목/어깨 실루엣용 사람 전체 마스크 —
             헤어 마스크와 별개 목적(피부 포함 여부), bodySegmenter 사용,
@@ -2984,9 +3078,241 @@ function measureViewHairIdentity(o){
    STEP 7  (~1644) 마스크 후처리 — 컬럼 내 작은 구멍만 채움
    STEP 8  (~1656) 진단 로그 문자열 조립
    STEP 9  (~1671) 결방향 인식(Structure Tensor)
-   STEP 10 (~1697) 두피(scalpY)·모발끝(hairEndY) 라인 추출 + 원본 해상도 스케일업
-   STEP 11 (~1752) 결과 캔버스 합성(마스크/진단/hair/base + 평균 헤어컬러)
+   STEP 10 두피(scalpY)·모발끝(hairEndY) 라인 추출 + 원본 해상도 스케일업
+           → 최상위 extractScalpAndEndLines()
+   STEP 11 결과물 — 역할이 둘이라 둘로 나눔:
+           → buildHairViewCanvases()      마스크/진단/hair/base 캔버스 (그리기용)
+           → measureHairColorsFromMask()  평균색·섹션별 색·실측 팔레트 (재기용)
 ════════════════════════════════════════════════════════════════ */
+/* ── 두피선·모발끝선 추출 (2026-08-02 분리) ───────────────────────
+   extractHairMask의 STEP 10을 그대로 떼어낸 것. 마스크 버퍼 하나를 받아
+   컬럼별 시작/끝 y를 뽑고 원본 해상도로 되돌린다 — 사진·세그멘터·상태를
+   전혀 안 보는 순수 계산이라, 큰 클로저 안에 있을 이유가 없었다. */
+function extractScalpAndEndLines(hairMaskBuf, w, h, fullWidth, scale){
+
+  // 축소 해상도에서 (blur 없는 clean mask에서 column별 최상단 픽셀)
+  const scalpY_small   = new Float32Array(w).fill(-1);
+  const hairEndY_small = new Float32Array(w).fill(-1);
+  for(let x=0;x<w;x++){
+    for(let y=0;y<h;y++){
+      if(hairMaskBuf[y*w+x] > 0){
+        if(scalpY_small[x]<0) scalpY_small[x]=y;
+        hairEndY_small[x]=y;
+      }
+    }
+  }
+
+  // ── hairEndY_small 정돈(정돈층 §6): 빈곳 보간 + 이상치 클램프 + 스무딩 ──
+  // 예전엔 forward/backward 보간만 수동으로 했고, 그 코드가 아래 가닥뿌리
+  // 보간과 복제돼 있었음 → cleanupLine1D 단일 출처로 흡수. 추가로 클램프/
+  // 스무딩이 모발끝선의 스파이크·톱니를 정돈해 "튀는 가닥/지저분한 끝선"을
+  // 줄인다(보간만 하던 부분은 값이 완전히 동일함을 Node 교차검증으로 확인).
+  cleanupLine1D(hairEndY_small);
+  // scalpY_small은 보간하지 않음 — 두피 "시작점"은 실제 세그멘테이션 마스크가
+  // 있는 컬럼에서만 나와야 함(옆 컬럼 값을 복사해 배경/천장 컬럼까지 가짜
+  // 시작점을 만들면 그 자리에 가닥이 심어지는 문제가 있었음). hairEndY만
+  // 보간(끝점은 추정용이라 허용)하고, scalpY는 마스크 없는 컬럼에서 -1 그대로 둔다.
+
+  // ── earY 기반 hairEndY 강제 연장 로직 제거 ──
+  // (실제 마스크에 없는 영역까지 끌어올려 옷/목까지 머리카락이 그려지는 원인이었음)
+  // 사이드 하단 인식 개선은 결방향 인식 도입 후 별도로 재검토
+
+  // 원본 해상도로 스케일업
+  const invScale = 1/scale;
+  const scalpY   = new Float32Array(fullWidth).fill(-1);
+  const hairEndY = new Float32Array(fullWidth).fill(-1);
+  for(let X=0;X<fullWidth;X++){
+    const xSmall = Math.min(w-1, Math.round(X*scale));
+    // scalpY와 hairEndY를 독립적으로 대입 — scalpY_small이 -1(마스크 없는 컬럼)이어도
+    // hairEndY_small은 보간되어 유효할 수 있으므로, 하나의 조건으로 묶지 않는다.
+    if(scalpY_small[xSmall]>=0){
+      scalpY[X] = scalpY_small[xSmall] * invScale;
+    }
+    if(hairEndY_small[xSmall]>=0){
+      hairEndY[X] = hairEndY_small[xSmall] * invScale;
+    }
+  }
+  return {scalpY, hairEndY};
+
+}
+
+/* ── 결과 캔버스 합성 (2026-08-02 분리) ─────────────────────────────
+   extractHairMask STEP 11의 앞쪽 절반. 마스크/진단/헤어/베이스 네 캔버스를
+   만든다. 뒤쪽 절반이던 "색 실측"은 역할이 달라 measureHairColorsFromMask로
+   따로 뺐다 — 캔버스는 그리기용이고 색은 재기용이라, 한 함수가 둘 다 하면
+   어느 쪽을 고치든 나머지를 같이 읽어야 했다. */
+function buildHairViewCanvases(img, hairMaskBuf, reasonMask, w, h){
+const maskC = document.createElement('canvas');
+maskC.width=w; maskC.height=h;
+const mCtx = maskC.getContext('2d');
+const mImg = mCtx.createImageData(w,h);
+for(let i=0;i<w*h;i++){
+  mImg.data[i*4]=mImg.data[i*4+1]=mImg.data[i*4+2]=255;
+  mImg.data[i*4+3]=hairMaskBuf[i];
+}
+mCtx.putImageData(mImg,0,0);
+
+// ── 진단용 색상코드 마스크 캔버스 (reasonMask → RGBA) ──
+// 1:최종 머리카락(빨강) 2:얼굴박스로 제외(회색) 3:눈썹/눈/입 가드로 제외(파랑) 0:투명
+const reasonC = document.createElement('canvas');
+reasonC.width=w; reasonC.height=h;
+const rCtx = reasonC.getContext('2d');
+const rImg = rCtx.createImageData(w,h);
+const REASON_COLORS = { 1:[255,45,85], 2:[136,136,136], 3:[51,136,255] };
+for(let i=0;i<w*h;i++){
+  const code = reasonMask[i];
+  const col = REASON_COLORS[code];
+  if(col){
+    rImg.data[i*4]=col[0]; rImg.data[i*4+1]=col[1]; rImg.data[i*4+2]=col[2];
+    rImg.data[i*4+3]=255;
+  } // code 0이면 알파 0으로 남음(투명, 초기값 그대로)
+}
+rCtx.putImageData(rImg,0,0);
+
+const fullMaskC = document.createElement('canvas');
+fullMaskC.width=img.width; fullMaskC.height=img.height;
+fullMaskC.getContext('2d').drawImage(maskC,0,0,img.width,img.height);
+
+// ── hairCanvas: 원본에서 hair 마스크 영역만 ──
+// (2배 슈퍼샘플링을 시도했었지만 실제 "굵기" 문제의 원인이 아니었고 — 원인은
+// drawHairStrands의 lineWidth 스케일 계산 쪽이었음 — 속도만 느려져서 원복함)
+const hairC = document.createElement('canvas');
+hairC.width=img.width; hairC.height=img.height;
+const hCtx = hairC.getContext('2d');
+hCtx.drawImage(img,0,0);
+hCtx.save();
+hCtx.globalCompositeOperation='destination-in';
+hCtx.drawImage(fullMaskC,0,0);
+hCtx.restore();
+
+// ── baseCanvas: 원본에서 hair 영역 제거 ──
+const baseC = document.createElement('canvas');
+baseC.width=img.width; baseC.height=img.height;
+const bCtx = baseC.getContext('2d');
+bCtx.drawImage(img,0,0);
+bCtx.save();
+bCtx.globalCompositeOperation='destination-out';
+bCtx.drawImage(fullMaskC,0,0);
+bCtx.restore();
+
+/* ── 구멍 메움 배경(baseFillC) — 2026-07-27 ──
+   baseC는 원본에서 머리카락을 destination-out으로 <b>지운</b> 그림이다.
+   그래서 조정으로 가닥이 원래 자리를 비키면 그 자리가 투명 구멍이 되고,
+   캔버스 뒤 페이지 배경이 비쳐서 <b>검게</b> 보인다(사용자: "헤어가 들렸을
+   때 그 아래쪽 머리 부분이 검은색이야").
+   해법: 지워진 자리를 주변 색으로 메운 배경을 하나 만들어 baseC <b>밑에</b>
+   깔아둔다. 두피 근처는 살색이, 실루엣 바깥쪽은 배경색이 자연히 번져
+   들어온다 — 통짜 두피색으로 칠하는 것과 달리 어디가 머리고 어디가
+   배경인지 따로 판정할 필요가 없다.
+   ※ 저해상도(160px)에서 이웃 전파로 채우고 확대해서 쓴다. 어차피 가닥
+     사이로 살짝 보이는 바탕이라 정밀도보다 "검은 구멍이 없을 것"이 중요.
+   ※ 예전에 폐지한 "헤어컬러 통짜 언더코트"와는 다르다. 그건 머리색으로
+     실루엣을 칠해서 조정이 안 먹히는 것처럼 보이게 만들었고, 이건
+     <b>지워진 자리에만</b> 주변색을 번지게 하는 배경이다.
+   ※ 생성은 첫 렌더 때 지연 생성한다(getHoleFillCanvas). 두상 영역 판정에
+     sectionBandsFor가 필요한데, 그건 state.hairMasks[angle]가 채워진
+     뒤에야 제대로 계산된다 — 여기선 아직 대입 전이다. */
+  return {hairC, baseC, reasonC};
+}
+
+/* ── 헤어 색 실측 (2026-08-02 분리) ────────────────────────────────
+   extractHairMask STEP 11의 뒤쪽 절반. 마스크 안 픽셀에서 평균색·섹션별 색·
+   실측 팔레트를 뽑는다. 캔버스를 만들지도, 상태를 건드리지도 않는다. */
+function measureHairColorsFromMask(hairMaskBuf, srcPixels, w, h, angle){
+// ── 색상 샘플링 전용 침식 마스크 ──
+// 사용자 지적: "렌더링된 헤어가 원본보다 하얗다" — 원인은 마스크
+// 경계(피부/배경과 애매하게 겹치는 픽셀)가 avgHairColor 평균에
+// 섞여 들어가서 밝은 쪽으로 끌어올리는 것. 색상 샘플링에만 쓸
+// 별도의 침식된(안쪽으로 몇 픽셀 줄인) 마스크로, 경계 오염 없이
+// 확실히 "머리카락 안쪽"인 픽셀만 평균 낸다.
+// ── 성능 버그 수정(2026-07-13) ──
+// 처음 만들 때 img.width×img.height(원본 사진 전체 해상도 — 요즘
+// 폰 사진은 1200만 픽셀 이상)로 새 캔버스를 만들고 그 전체를
+// 픽셀 단위로(resolveSectionId 호출까지 포함해서) 훑고 있었음.
+// 저사양 기기에서 이게 너무 오래 걸리거나 멈춰서 extractHairMask
+// 전체가 완료를 못 하고, 그 결과 이 각도의 세그멘테이션 자체가
+// 실패한 것처럼 보이는(renderFrame이 "세그멘테이션 없음: 원본만
+// 표시" 폴백으로 빠지는) 문제로 이어졌을 가능성이 높음(실기기
+// 피드백: "원본 사진만 뜨고 가닥보기/원본결보기 다 안 먹힘").
+// → 이미 파이프라인 앞쪽에서 계산해둔 축소 해상도(w,h) 픽셀 버퍼
+// srcPixels를 그대로 재사용 — 원본 해상도 대비 보통 수십 배 더
+// 작아서 새 캔버스 생성도, getImageData도, 픽셀 루프도 전부 그만큼
+// 가벼워짐. 정확도는 이미 이 해상도에서 세그멘테이션 자체가
+// 이뤄지고 있어서 손실 없음.
+const erodedMaskBuf = erode(hairMaskBuf, w, h, 2);
+
+// 2026-07-14 정리: "마스크 조건으로 픽셀을 걸러 RGB 합·구역별 합을
+// 누적한다"는 완전히 같은 이중 루프를, 침식 마스크(1차 시도)와
+// 원본 마스크(cnt<50일 때 폴백)에 대해 그대로 반복하고 있었음 —
+// 어느 마스크 버퍼를 보는지만 다르고 나머지는 한 글자도 안 달라서
+// 함수로 뽑음(순회 순서·조건 그대로).
+function sumMaskColors(maskBuf){
+  const sums = {};
+  SECTION_ORDER.forEach(id=>{ sums[id] = {r:0,g:0,b:0,cnt:0}; });
+  let rS=0,gS=0,bS=0,c=0;
+  for(let y=0; y<h; y++){
+    for(let x=0; x<w; x++){
+      const i = y*w+x;
+      if(maskBuf[i] <= 128) continue;
+      const r=srcPixels[i*4], g=srcPixels[i*4+1], b=srcPixels[i*4+2];
+      rS+=r; gS+=g; bS+=b; c++;
+      const secId = resolveSectionId(angle, x/w, y/h);
+      const s = sums[secId];
+      if(s){ s.r+=r; s.g+=g; s.b+=b; s.cnt++; }
+    }
+  }
+  return { sectionSums: sums, rSum: rS, gSum: gS, bSum: bS, cnt: c };
+}
+
+if(typeof faceLandmarkerReady !== 'undefined' && faceLandmarkerReady && state.landmarks && state.landmarks[angle]){
+  refineSectionBoundaries(angle);
+}
+let { sectionSums, rSum, gSum, bSum, cnt } = sumMaskColors(erodedMaskBuf);
+// 침식 후 남는 픽셀이 너무 적으면(가는 앞머리 등 마스크 자체가 얇은 경우)
+// 안전하게 원본(비침식) 마스크로 폴백 — "색이 아예 안 뽑힘"보다는
+// 예전 방식(약간 밝게 나올 수 있음)이 낫다.
+let usedMaskBuf = erodedMaskBuf; // 색상 실측에 최종 사용된 마스크(아래 팔레트 샘플링도 동일 마스크 사용)
+if(cnt < 50){
+  ({ sectionSums, rSum, gSum, bSum, cnt } = sumMaskColors(hairMaskBuf));
+  usedMaskBuf = hairMaskBuf;
+}
+const avgHairColor = avgRGBString(rSum, gSum, bSum, cnt, 0) || '#2A1B12';
+// 섹션별 색상 — 그 섹션 샘플이 너무 적으면(이 뷰에서 잘 안 보이는
+// 섹션 등) 전역 평균(avgHairColor)으로 안전하게 폴백.
+const avgColorsBySection = {};
+SECTION_ORDER.forEach(id=>{
+  const s = sectionSums[id];
+  avgColorsBySection[id] = (s.cnt >= 30) ? (avgRGBString(s.r, s.g, s.b, s.cnt, 0) || avgHairColor) : avgHairColor;
+});
+
+// ── 실측 색 팔레트(2026-07-14 추가) ──
+// 사용자 지적: "결 굵기와 컬러가 원본이랑 차이가 많이 난다" — 색이 뜨는
+// 원인: 지금까지 가닥 색 = "마스크 평균색 × 밝기 틴트(하이라이트는 흰색
+// 가산)"이었는데, 어두운 머리 + 새치가 섞인 머리는 평균을 내면 중간
+// 회색이 되고 거기에 흰색 가산 하이라이트까지 얹혀 전체가 원본보다
+// 밝은 회색으로 떠 보임. 실제 머리는 "대부분 어두운 가닥 + 드문 밝은
+// 새치"의 분포이지 평균색 덩어리가 아님. → 평균 대신 실제 마스크 안
+// 픽셀 색을 최대 512개 샘플링해 팔레트로 저장하고, 가닥마다 팔레트에서
+// 하나씩 뽑아 쓰면(스타일 미선택=원본 모드) 원본의 색 분포(어두운 다수
+// + 밝은 소수)가 그대로 재현됨 — 지어낸 틴트 상수가 아니라 그 사진의
+// 실측 분포. 결정적 스트라이드 샘플링(매 N번째 마스크 픽셀)이라 재렌더
+// 마다 팔레트가 바뀌지 않음.
+const colorPalette = [];
+if(cnt > 0){
+  const PALETTE_MAX = 512;
+  const stride = Math.max(1, Math.floor(cnt / PALETTE_MAX));
+  let seen = 0;
+  for(let i=0; i<w*h; i++){
+    if(usedMaskBuf[i] <= 128) continue;
+    if(seen % stride === 0 && colorPalette.length < PALETTE_MAX){
+      colorPalette.push(`rgb(${srcPixels[i*4]},${srcPixels[i*4+1]},${srcPixels[i*4+2]})`);
+    }
+    seen++;
+  }
+}
+  return {avgHairColor, avgColorsBySection, colorPalette};
+}
+
 async function extractHairMask(angle){
   const dataUrl = state.shots[angle];
   if(!dataUrl || !segmenter) return false;
@@ -3470,220 +3796,9 @@ async function extractHairMask(angle){
         computeOrientation();
 
         // ── STEP 10: 두피(scalpY)·모발끝(hairEndY) 라인 추출 후 원본 해상도로 스케일업 ──
-        function computeScalpAndEndLines(){
-          // 축소 해상도에서 (blur 없는 clean mask에서 column별 최상단 픽셀)
-          const scalpY_small   = new Float32Array(w).fill(-1);
-          const hairEndY_small = new Float32Array(w).fill(-1);
-          for(let x=0;x<w;x++){
-            for(let y=0;y<h;y++){
-              if(hairMaskBuf[y*w+x] > 0){
-                if(scalpY_small[x]<0) scalpY_small[x]=y;
-                hairEndY_small[x]=y;
-              }
-            }
-          }
-
-          // ── hairEndY_small 정돈(정돈층 §6): 빈곳 보간 + 이상치 클램프 + 스무딩 ──
-          // 예전엔 forward/backward 보간만 수동으로 했고, 그 코드가 아래 가닥뿌리
-          // 보간과 복제돼 있었음 → cleanupLine1D 단일 출처로 흡수. 추가로 클램프/
-          // 스무딩이 모발끝선의 스파이크·톱니를 정돈해 "튀는 가닥/지저분한 끝선"을
-          // 줄인다(보간만 하던 부분은 값이 완전히 동일함을 Node 교차검증으로 확인).
-          cleanupLine1D(hairEndY_small);
-          // scalpY_small은 보간하지 않음 — 두피 "시작점"은 실제 세그멘테이션 마스크가
-          // 있는 컬럼에서만 나와야 함(옆 컬럼 값을 복사해 배경/천장 컬럼까지 가짜
-          // 시작점을 만들면 그 자리에 가닥이 심어지는 문제가 있었음). hairEndY만
-          // 보간(끝점은 추정용이라 허용)하고, scalpY는 마스크 없는 컬럼에서 -1 그대로 둔다.
-
-          // ── earY 기반 hairEndY 강제 연장 로직 제거 ──
-          // (실제 마스크에 없는 영역까지 끌어올려 옷/목까지 머리카락이 그려지는 원인이었음)
-          // 사이드 하단 인식 개선은 결방향 인식 도입 후 별도로 재검토
-
-          // 원본 해상도로 스케일업
-          const invScale = 1/scale;
-          const scalpY   = new Float32Array(img.width).fill(-1);
-          const hairEndY = new Float32Array(img.width).fill(-1);
-          for(let X=0;X<img.width;X++){
-            const xSmall = Math.min(w-1, Math.round(X*scale));
-            // scalpY와 hairEndY를 독립적으로 대입 — scalpY_small이 -1(마스크 없는 컬럼)이어도
-            // hairEndY_small은 보간되어 유효할 수 있으므로, 하나의 조건으로 묶지 않는다.
-            if(scalpY_small[xSmall]>=0){
-              scalpY[X] = scalpY_small[xSmall] * invScale;
-            }
-            if(hairEndY_small[xSmall]>=0){
-              hairEndY[X] = hairEndY_small[xSmall] * invScale;
-            }
-          }
-          return {scalpY, hairEndY};
-        }
-        const {scalpY, hairEndY} = computeScalpAndEndLines();
+        const {scalpY, hairEndY} = extractScalpAndEndLines(hairMaskBuf, w, h, img.width, scale);
 
         // ── STEP 11: 결과 캔버스 합성 (마스크/진단/hair/base 캔버스 + 평균 헤어컬러) ──
-        function buildOutputCanvases(){
-          const maskC = document.createElement('canvas');
-          maskC.width=w; maskC.height=h;
-          const mCtx = maskC.getContext('2d');
-          const mImg = mCtx.createImageData(w,h);
-          for(let i=0;i<w*h;i++){
-            mImg.data[i*4]=mImg.data[i*4+1]=mImg.data[i*4+2]=255;
-            mImg.data[i*4+3]=hairMaskBuf[i];
-          }
-          mCtx.putImageData(mImg,0,0);
-
-          // ── 진단용 색상코드 마스크 캔버스 (reasonMask → RGBA) ──
-          // 1:최종 머리카락(빨강) 2:얼굴박스로 제외(회색) 3:눈썹/눈/입 가드로 제외(파랑) 0:투명
-          const reasonC = document.createElement('canvas');
-          reasonC.width=w; reasonC.height=h;
-          const rCtx = reasonC.getContext('2d');
-          const rImg = rCtx.createImageData(w,h);
-          const REASON_COLORS = { 1:[255,45,85], 2:[136,136,136], 3:[51,136,255] };
-          for(let i=0;i<w*h;i++){
-            const code = reasonMask[i];
-            const col = REASON_COLORS[code];
-            if(col){
-              rImg.data[i*4]=col[0]; rImg.data[i*4+1]=col[1]; rImg.data[i*4+2]=col[2];
-              rImg.data[i*4+3]=255;
-            } // code 0이면 알파 0으로 남음(투명, 초기값 그대로)
-          }
-          rCtx.putImageData(rImg,0,0);
-
-          const fullMaskC = document.createElement('canvas');
-          fullMaskC.width=img.width; fullMaskC.height=img.height;
-          fullMaskC.getContext('2d').drawImage(maskC,0,0,img.width,img.height);
-
-          // ── hairCanvas: 원본에서 hair 마스크 영역만 ──
-          // (2배 슈퍼샘플링을 시도했었지만 실제 "굵기" 문제의 원인이 아니었고 — 원인은
-          // drawHairStrands의 lineWidth 스케일 계산 쪽이었음 — 속도만 느려져서 원복함)
-          const hairC = document.createElement('canvas');
-          hairC.width=img.width; hairC.height=img.height;
-          const hCtx = hairC.getContext('2d');
-          hCtx.drawImage(img,0,0);
-          hCtx.save();
-          hCtx.globalCompositeOperation='destination-in';
-          hCtx.drawImage(fullMaskC,0,0);
-          hCtx.restore();
-
-          // ── baseCanvas: 원본에서 hair 영역 제거 ──
-          const baseC = document.createElement('canvas');
-          baseC.width=img.width; baseC.height=img.height;
-          const bCtx = baseC.getContext('2d');
-          bCtx.drawImage(img,0,0);
-          bCtx.save();
-          bCtx.globalCompositeOperation='destination-out';
-          bCtx.drawImage(fullMaskC,0,0);
-          bCtx.restore();
-
-          /* ── 구멍 메움 배경(baseFillC) — 2026-07-27 ──
-             baseC는 원본에서 머리카락을 destination-out으로 <b>지운</b> 그림이다.
-             그래서 조정으로 가닥이 원래 자리를 비키면 그 자리가 투명 구멍이 되고,
-             캔버스 뒤 페이지 배경이 비쳐서 <b>검게</b> 보인다(사용자: "헤어가 들렸을
-             때 그 아래쪽 머리 부분이 검은색이야").
-             해법: 지워진 자리를 주변 색으로 메운 배경을 하나 만들어 baseC <b>밑에</b>
-             깔아둔다. 두피 근처는 살색이, 실루엣 바깥쪽은 배경색이 자연히 번져
-             들어온다 — 통짜 두피색으로 칠하는 것과 달리 어디가 머리고 어디가
-             배경인지 따로 판정할 필요가 없다.
-             ※ 저해상도(160px)에서 이웃 전파로 채우고 확대해서 쓴다. 어차피 가닥
-               사이로 살짝 보이는 바탕이라 정밀도보다 "검은 구멍이 없을 것"이 중요.
-             ※ 예전에 폐지한 "헤어컬러 통짜 언더코트"와는 다르다. 그건 머리색으로
-               실루엣을 칠해서 조정이 안 먹히는 것처럼 보이게 만들었고, 이건
-               <b>지워진 자리에만</b> 주변색을 번지게 하는 배경이다.
-             ※ 생성은 첫 렌더 때 지연 생성한다(getHoleFillCanvas). 두상 영역 판정에
-               sectionBandsFor가 필요한데, 그건 state.hairMasks[angle]가 채워진
-               뒤에야 제대로 계산된다 — 여기선 아직 대입 전이다. */
-
-          // ── 색상 샘플링 전용 침식 마스크 ──
-          // 사용자 지적: "렌더링된 헤어가 원본보다 하얗다" — 원인은 마스크
-          // 경계(피부/배경과 애매하게 겹치는 픽셀)가 avgHairColor 평균에
-          // 섞여 들어가서 밝은 쪽으로 끌어올리는 것. 색상 샘플링에만 쓸
-          // 별도의 침식된(안쪽으로 몇 픽셀 줄인) 마스크로, 경계 오염 없이
-          // 확실히 "머리카락 안쪽"인 픽셀만 평균 낸다.
-          // ── 성능 버그 수정(2026-07-13) ──
-          // 처음 만들 때 img.width×img.height(원본 사진 전체 해상도 — 요즘
-          // 폰 사진은 1200만 픽셀 이상)로 새 캔버스를 만들고 그 전체를
-          // 픽셀 단위로(resolveSectionId 호출까지 포함해서) 훑고 있었음.
-          // 저사양 기기에서 이게 너무 오래 걸리거나 멈춰서 extractHairMask
-          // 전체가 완료를 못 하고, 그 결과 이 각도의 세그멘테이션 자체가
-          // 실패한 것처럼 보이는(renderFrame이 "세그멘테이션 없음: 원본만
-          // 표시" 폴백으로 빠지는) 문제로 이어졌을 가능성이 높음(실기기
-          // 피드백: "원본 사진만 뜨고 가닥보기/원본결보기 다 안 먹힘").
-          // → 이미 파이프라인 앞쪽에서 계산해둔 축소 해상도(w,h) 픽셀 버퍼
-          // srcPixels를 그대로 재사용 — 원본 해상도 대비 보통 수십 배 더
-          // 작아서 새 캔버스 생성도, getImageData도, 픽셀 루프도 전부 그만큼
-          // 가벼워짐. 정확도는 이미 이 해상도에서 세그멘테이션 자체가
-          // 이뤄지고 있어서 손실 없음.
-          const erodedMaskBuf = erode(hairMaskBuf, w, h, 2);
-
-          // 2026-07-14 정리: "마스크 조건으로 픽셀을 걸러 RGB 합·구역별 합을
-          // 누적한다"는 완전히 같은 이중 루프를, 침식 마스크(1차 시도)와
-          // 원본 마스크(cnt<50일 때 폴백)에 대해 그대로 반복하고 있었음 —
-          // 어느 마스크 버퍼를 보는지만 다르고 나머지는 한 글자도 안 달라서
-          // 함수로 뽑음(순회 순서·조건 그대로).
-          function sumMaskColors(maskBuf){
-            const sums = {};
-            SECTION_ORDER.forEach(id=>{ sums[id] = {r:0,g:0,b:0,cnt:0}; });
-            let rS=0,gS=0,bS=0,c=0;
-            for(let y=0; y<h; y++){
-              for(let x=0; x<w; x++){
-                const i = y*w+x;
-                if(maskBuf[i] <= 128) continue;
-                const r=srcPixels[i*4], g=srcPixels[i*4+1], b=srcPixels[i*4+2];
-                rS+=r; gS+=g; bS+=b; c++;
-                const secId = resolveSectionId(angle, x/w, y/h);
-                const s = sums[secId];
-                if(s){ s.r+=r; s.g+=g; s.b+=b; s.cnt++; }
-              }
-            }
-            return { sectionSums: sums, rSum: rS, gSum: gS, bSum: bS, cnt: c };
-          }
-
-          if(typeof faceLandmarkerReady !== 'undefined' && faceLandmarkerReady && state.landmarks && state.landmarks[angle]){
-            refineSectionBoundaries(angle);
-          }
-          let { sectionSums, rSum, gSum, bSum, cnt } = sumMaskColors(erodedMaskBuf);
-          // 침식 후 남는 픽셀이 너무 적으면(가는 앞머리 등 마스크 자체가 얇은 경우)
-          // 안전하게 원본(비침식) 마스크로 폴백 — "색이 아예 안 뽑힘"보다는
-          // 예전 방식(약간 밝게 나올 수 있음)이 낫다.
-          let usedMaskBuf = erodedMaskBuf; // 색상 실측에 최종 사용된 마스크(아래 팔레트 샘플링도 동일 마스크 사용)
-          if(cnt < 50){
-            ({ sectionSums, rSum, gSum, bSum, cnt } = sumMaskColors(hairMaskBuf));
-            usedMaskBuf = hairMaskBuf;
-          }
-          const avgHairColor = avgRGBString(rSum, gSum, bSum, cnt, 0) || '#2A1B12';
-          // 섹션별 색상 — 그 섹션 샘플이 너무 적으면(이 뷰에서 잘 안 보이는
-          // 섹션 등) 전역 평균(avgHairColor)으로 안전하게 폴백.
-          const avgColorsBySection = {};
-          SECTION_ORDER.forEach(id=>{
-            const s = sectionSums[id];
-            avgColorsBySection[id] = (s.cnt >= 30) ? (avgRGBString(s.r, s.g, s.b, s.cnt, 0) || avgHairColor) : avgHairColor;
-          });
-
-          // ── 실측 색 팔레트(2026-07-14 추가) ──
-          // 사용자 지적: "결 굵기와 컬러가 원본이랑 차이가 많이 난다" — 색이 뜨는
-          // 원인: 지금까지 가닥 색 = "마스크 평균색 × 밝기 틴트(하이라이트는 흰색
-          // 가산)"이었는데, 어두운 머리 + 새치가 섞인 머리는 평균을 내면 중간
-          // 회색이 되고 거기에 흰색 가산 하이라이트까지 얹혀 전체가 원본보다
-          // 밝은 회색으로 떠 보임. 실제 머리는 "대부분 어두운 가닥 + 드문 밝은
-          // 새치"의 분포이지 평균색 덩어리가 아님. → 평균 대신 실제 마스크 안
-          // 픽셀 색을 최대 512개 샘플링해 팔레트로 저장하고, 가닥마다 팔레트에서
-          // 하나씩 뽑아 쓰면(스타일 미선택=원본 모드) 원본의 색 분포(어두운 다수
-          // + 밝은 소수)가 그대로 재현됨 — 지어낸 틴트 상수가 아니라 그 사진의
-          // 실측 분포. 결정적 스트라이드 샘플링(매 N번째 마스크 픽셀)이라 재렌더
-          // 마다 팔레트가 바뀌지 않음.
-          const colorPalette = [];
-          if(cnt > 0){
-            const PALETTE_MAX = 512;
-            const stride = Math.max(1, Math.floor(cnt / PALETTE_MAX));
-            let seen = 0;
-            for(let i=0; i<w*h; i++){
-              if(usedMaskBuf[i] <= 128) continue;
-              if(seen % stride === 0 && colorPalette.length < PALETTE_MAX){
-                colorPalette.push(`rgb(${srcPixels[i*4]},${srcPixels[i*4+1]},${srcPixels[i*4+2]})`);
-              }
-              seen++;
-            }
-          }
-
-          return {hairC, baseC, reasonC, avgHairColor, avgColorsBySection, colorPalette};
-        }
 
         // 최종 확정: 지금 시점에 hairMaskBuf===255인 픽셀은 전부 "최종 머리카락"(1)으로
         // 표시 — 귀/프론트 밴드 보강으로 나중에 다시 채워진 픽셀도 여기서 포함됨.
@@ -3693,7 +3808,8 @@ async function extractHairMask(angle){
         // reasonC를 만들기 "전"에 최종 확정을 끝내야 마스크 보기에 빨강이 정상적으로 나옴.)
         for(let i=0;i<w*h;i++){ if(hairMaskBuf[i]===255) reasonMask[i]=1; }
 
-        const {hairC, baseC, reasonC, avgHairColor, avgColorsBySection, colorPalette} = buildOutputCanvases();
+        const {hairC, baseC, reasonC} = buildHairViewCanvases(img, hairMaskBuf, reasonMask, w, h);
+        const {avgHairColor, avgColorsBySection, colorPalette} = measureHairColorsFromMask(hairMaskBuf, srcPixels, w, h, angle);
 
         // ── 두피/피부색 샘플링 ──
         // 얼굴제거박스·눈썹가드로 "피부"라고 판정해서 머리카락에서 제외한 픽셀들의
@@ -3827,27 +3943,31 @@ function hueDegrees(r,g,b,maxC,minC){
                     :           ((r-g)/(maxC-minC+0.001))+4 )*60 : 0;
   return (hRaw+360)%360;
 }
-function isHairColor(r,g,b){
-  // 흑발·갈색·금발·회색·백발(새치) 모두 인식
+/* ── 헤어 색 판정 (2026-08-02 통합) ────────────────────────────────
+   isHairColor(엄격)와 isHairColorRelaxed(완화)가 HSV 계산 세 줄과 판정 규칙
+   골격을 각자 복제하고 있었다. 실제로 다른 건 <b>임계값</b>과 "어두운 색은
+   무조건 머리카락" 규칙의 유무뿐이라, 규칙은 한 곳에 두고 값만 표로 뺐다.
+   세 규칙은 전부 OR(하나라도 걸리면 true)이라 순서를 합쳐도 결과가 같다.
+     darkV   — 이보다 어두우면 무조건 머리카락(완화판은 null = 이 규칙 없음)
+     gray*   — 회색·새치·백발: 저채도이면서 밝기가 이 구간
+     warm*   — 채도 있는 갈색/적갈색/금발: hue가 hueLo 미만 또는 hueHi 초과 */
+const HAIR_COLOR_STRICT  = { darkV:0.55, grayS:0.18, grayVMin:0.55, grayVMax:0.90, warmS:0.15, warmV:0.80, hueLo:50, hueHi:300 };
+const HAIR_COLOR_RELAXED = { darkV:null, grayS:0.15, grayVMin:0.55, grayVMax:0.94, warmS:0.12, warmV:0.88, hueLo:55, hueHi:295 };
+function isHairColorBy(r,g,b,P){
   const maxC=Math.max(r,g,b), minC=Math.min(r,g,b);
   const v=maxC/255;
   const s=maxC>0?(maxC-minC)/maxC:0;
 
-  // 1) 흑발·어두운 색
-  if(v<0.55) return true;
-
-  // 2) 채도 있는 갈색/적갈색/금발 (hue 0~50 또는 300~360)
-  if(s>0.15 && v<0.80){
+  if(P.darkV !== null && v < P.darkV) return true;                    // 흑발·어두운 색
+  if(s < P.grayS && v >= P.grayVMin && v < P.grayVMax) return true;   // 회색·새치·백발
+  if(s > P.warmS && v < P.warmV){                                     // 갈색·적갈색·금발
     const hh=hueDegrees(r,g,b,maxC,minC);
-    if(hh<50||hh>300) return true;
+    if(hh < P.hueLo || hh > P.hueHi) return true;
   }
-
-  // 3) 회색·새치·백발: 저채도이면서 밝기 0.55~0.90 구간
-  //    (순수 흰색 v>0.90 및 밝은 피부색 제외)
-  if(s<0.18 && v>=0.55 && v<0.90) return true;
-
   return false;
 }
+// 흑발·갈색·금발·회색·백발(새치) 모두 인식
+function isHairColor(r,g,b){ return isHairColorBy(r,g,b,HAIR_COLOR_STRICT); }
 
 // 귀 밴드(좌/우 각각) 픽셀 순회 — 밴드 기하(중심 ex ± bandHalfW, yTop~yBot)를
 // 한 곳에서만 계산하도록 통합(2026-07-18). extractHairMask 안에서 같은 3중
@@ -3870,22 +3990,8 @@ function forEachEarBandPixel(earXs, bandHalfW, yTopBand, yBotBand, w, h, fn){
 // 밝은 조명을 받은 잔머리(하이라이트 진 가는 머리카락)는 채도가 낮으면서도
 // 밝기가 0.90 근처까지 올라가 기존 조건(v<0.90)에서 누락되는 경우가 많아
 // 밝기 상한을 완화하되, 순수 배경/피부와 헷갈리지 않도록 채도 조건은 더 좁게 유지.
-function isHairColorRelaxed(r,g,b){
-  const maxC=Math.max(r,g,b), minC=Math.min(r,g,b);
-  const v=maxC/255;
-  const s=maxC>0?(maxC-minC)/maxC:0;
-
-  // 저채도 밝은 잔머리 (기존보다 밝기 상한 확장, 흰 배경과 구분 위해 채도 하한 살짝 요구)
-  if(s<0.15 && v>=0.55 && v<0.94) return true;
-
-  // 채도 있는 갈색/적갈색 계열, 밝기 상한 확장
-  if(s>0.12 && v<0.88){
-    const hh=hueDegrees(r,g,b,maxC,minC);
-    if(hh<55||hh>295) return true;
-  }
-
-  return false;
-}
+// 완화판: 저채도 밝은 잔머리까지 인정하고(밝기 상한 확장), 어두운 색 무조건 규칙은 없다
+function isHairColorRelaxed(r,g,b){ return isHairColorBy(r,g,b,HAIR_COLOR_RELAXED); }
 
 // hasHairTexture: 국소(5x5 기본) 밝기 분산으로 "결이 있는 재질(머리카락)" vs
 // "매끈한 재질(안경테 등)"을 구분한다.
@@ -4003,15 +4109,25 @@ function fillColumnGaps(buf, w, h, maxGap){
 // (b) 크기 상한에서 걸러지므로 색 기반 방식과 달리 오탐 위험이 구조적으로 낮음.
 // maxHoleAreaFrac은 실측 없이 잡은 초기값 — 하이라이트 패치가 이보다 크면
 // 여전히 안 채워질 수 있음, 실사진으로 재조정 필요.
-function fillEnclosedHighlightHoles(buf, w, h, boundBox, maxHoleAreaFrac){
+/* ── 8방향 연결요소 라벨링 (2026-08-02 통합) ────────────────────────
+   fillEnclosedHighlightHoles(배경 0 픽셀을 묶음)와 keepLargestComponents(마스크
+   픽셀을 묶음)가 이 스택 기반 순회를 <b>글자 그대로</b> 복제하고 있었다. 다른 건
+   "어느 픽셀을 고르나"와 "테두리 접촉을 기록하나" 둘뿐이었는데, 후자는 기록해도
+   쓰지 않으면 그만이라 항상 기록한다.
+   고를 픽셀은 sel(0/1) 배열로 미리 한 번 훑어서 정한다 — 안쪽 루프에서 조건을
+   함수로 부르면 픽셀당 8번씩 호출돼 느려진다(마스크는 100만 픽셀 단위다).
+   반환: labels(-1=비대상) / areas[label] / touchesBorder[label]. */
+function labelComponents8(buf, w, h, wantPositive){
   const n = w*h;
+  const sel = new Uint8Array(n);
+  for(let i=0;i<n;i++) sel[i] = (wantPositive ? buf[i]>0 : buf[i]===0) ? 1 : 0;
   const labels = new Int32Array(n).fill(-1);
   const areas = [];
   const touchesBorder = [];
   const stack = new Int32Array(n);
   let nextLabel = 0;
   for(let start=0; start<n; start++){
-    if(buf[start]>0 || labels[start]>=0) continue; // 배경(0) 픽셀만 대상
+    if(!sel[start] || labels[start]>=0) continue;
     let sp=0; stack[sp++]=start; labels[start]=nextLabel;
     let area=0, border=false;
     while(sp>0){
@@ -4025,13 +4141,19 @@ function fillEnclosedHighlightHoles(buf, w, h, boundBox, maxHoleAreaFrac){
           const nx=px+dx, ny=py+dy;
           if(nx<0||nx>=w||ny<0||ny>=h) continue;
           const np = ny*w+nx;
-          if(buf[np]===0 && labels[np]<0){ labels[np]=nextLabel; stack[sp++]=np; }
+          if(sel[np] && labels[np]<0){ labels[np]=nextLabel; stack[sp++]=np; }
         }
       }
     }
     areas.push(area); touchesBorder.push(border);
     nextLabel++;
   }
+  return { labels, areas, touchesBorder };
+}
+
+function fillEnclosedHighlightHoles(buf, w, h, boundBox, maxHoleAreaFrac){
+  const n = w*h;
+  const { labels, areas, touchesBorder } = labelComponents8(buf, w, h, false); // 배경(0) 픽셀만 대상
   const boundArea = Math.max(1, (boundBox.xE-boundBox.xS) * (boundBox.yE-boundBox.yS));
   const maxHoleArea = boundArea * maxHoleAreaFrac;
   const out = new Uint8Array(buf);
@@ -4054,37 +4176,7 @@ function fillEnclosedHighlightHoles(buf, w, h, boundBox, maxHoleAreaFrac){
 // minRatio: 최대 덩어리 면적 대비 이 비율보다 작은 컴포넌트는 제거 (기본 3%)
 function keepLargestComponents(buf, w, h, minRatio){
   const n = w*h;
-  const labels = new Int32Array(n).fill(-1);
-  const areas = [];
-  const stack = new Int32Array(n); // BFS/DFS용 스택 (최악의 경우 전체 픽셀)
-  let nextLabel = 0;
-  for(let start=0; start<n; start++){
-    if(buf[start]===0 || labels[start]>=0) continue;
-    let sp = 0;
-    stack[sp++] = start;
-    labels[start] = nextLabel;
-    let area = 0;
-    while(sp>0){
-      const p = stack[--sp];
-      area++;
-      const px = p % w, py = (p - px) / w;
-      // 8방향 이웃
-      for(let dy=-1; dy<=1; dy++){
-        for(let dx=-1; dx<=1; dx++){
-          if(dx===0 && dy===0) continue;
-          const nx = px+dx, ny = py+dy;
-          if(nx<0||nx>=w||ny<0||ny>=h) continue;
-          const np = ny*w+nx;
-          if(buf[np]>0 && labels[np]<0){
-            labels[np] = nextLabel;
-            stack[sp++] = np;
-          }
-        }
-      }
-    }
-    areas.push(area);
-    nextLabel++;
-  }
+  const { labels, areas } = labelComponents8(buf, w, h, true); // 마스크(>0) 픽셀만 대상
   if(areas.length <= 1) return buf; // 덩어리가 하나뿐이면(또는 없으면) 그대로
   const maxArea = Math.max(...areas);
   const threshold = maxArea * minRatio;
@@ -5988,12 +6080,6 @@ function getCachedImg(angle, cb){
   img.src = url;
 }
 
-function drawImgOnCanvas(ctx, img, w, h){
-  const {dw,dh,dx,dy} = computeFit(img.width, img.height, w, h);
-  ctx.drawImage(img,dx,dy,dw,dh);
-  return {dw,dh,dx,dy};
-}
-
 // fit 계산만 하고 실제로 그리지는 않음 (베이스를 원본 대신 baseC로 바로 그릴 때 사용)
 // 이건 <b>덮기</b>(cover) — 캔버스를 꽉 채우고 넘치는 쪽은 잘라낸다.
 function computeFit(imgW, imgH, w, h){
@@ -6340,14 +6426,25 @@ function syncMaskDebugBtn(){
 }
 // 마스크 디버그 토글: hairMaskBuf 실루엣을 색으로 채워서 그대로 보여줌(가닥 렌더링 대신)
 // — 세그멘테이션이 실제로 어디를 "머리카락"으로 잡았는지(과잉/누락) 눈으로 바로 확인하기 위함
-function toggleMaskDebug(){
-  state.debugShowMask = !state.debugShowMask;
-  if(state.debugShowMask){ state.debugShowRaw = false; state.debugShowField = false; } // 세 디버그 뷰는 동시에 켤 수 없음
+/* ── 디버그 뷰 토글 3종 (2026-08-02 통합) ──────────────────────────
+   마스크/원본 결/결 필드 세 뷰는 서로 배타적이다. "하나 켜면 나머지 둘 끄기"와
+   "버튼 세 개의 on 표시 맞추기"를 토글 셋이 각자 적어두고 있었다 — 한 곳만
+   고치면 어긋나는 종류의 중복이라 규칙을 여기 한 곳에 둔다.
+   ※ 버튼 <b>글자</b>는 각 토글이 하던 그대로 남긴다. 예컨대 마스크를 켜서 원본
+     결이 꺼질 때 예전에도 그 버튼 글자는 안 바꿨는데, 여기서 같이 바꿔버리면
+     화면 표시가 달라진다(동작 무변경이 우선). */
+function setDebugView(which){   // 'mask' | 'raw' | 'field' | null(전부 끔)
+  state.debugShowMask  = (which === 'mask');
+  state.debugShowRaw   = (which === 'raw');
+  state.debugShowField = (which === 'field');
   syncMaskDebugBtn();
   const rawBtn = document.getElementById('rawDebugToggle');
   if(rawBtn) rawBtn.classList.toggle('on', state.debugShowRaw);
   const fieldBtn = document.getElementById('fieldDebugToggle');
   if(fieldBtn) fieldBtn.classList.toggle('on', state.debugShowField);
+}
+function toggleMaskDebug(){
+  setDebugView(state.debugShowMask ? null : 'mask');
   renderAdjustFrame();
 }
 
@@ -6356,16 +6453,9 @@ function toggleMaskDebug(){
 // "스타일 적용 전, 결방향 인식 자체가 얼마나 자연스러운지"만 순수하게 확인하기 위함.
 // 실제 state.sections/selectedStyle은 건드리지 않고 화면 표시만 임시로 바꿈.
 function toggleRawDebug(){
-  state.debugShowRaw = !state.debugShowRaw;
-  if(state.debugShowRaw){ state.debugShowMask = false; state.debugShowField = false; } // 세 디버그 뷰는 동시에 켤 수 없음
+  setDebugView(state.debugShowRaw ? null : 'raw');
   const btn = document.getElementById('rawDebugToggle');
-  if(btn){
-    btn.classList.toggle('on', state.debugShowRaw);
-    btn.textContent = state.debugShowRaw ? '스타일 보기' : '원본 결 보기';
-  }
-  syncMaskDebugBtn();
-  const fieldBtn = document.getElementById('fieldDebugToggle');
-  if(fieldBtn) fieldBtn.classList.toggle('on', state.debugShowField);
+  if(btn) btn.textContent = state.debugShowRaw ? '스타일 보기' : '원본 결 보기';
   const tag = document.getElementById('adjustStyleTag');
   if(tag){
     tag.textContent = state.debugShowRaw
@@ -6389,13 +6479,7 @@ function toggleRawDebug(){
 // 촘촘하고 신뢰할 만한지(coherence), 낮은 coherence 구간은 실제로 어떻게 나오는지를
 // strand 렌더링 로직(scalpY 시작 제약, 중력 대체 등)과 분리해서 눈으로 검증하기 위함.
 function toggleFieldDebug(){
-  state.debugShowField = !state.debugShowField;
-  if(state.debugShowField){ state.debugShowMask = false; state.debugShowRaw = false; } // 세 디버그 뷰는 동시에 켤 수 없음
-  const btn = document.getElementById('fieldDebugToggle');
-  if(btn) btn.classList.toggle('on', state.debugShowField);
-  syncMaskDebugBtn();
-  const rawBtn = document.getElementById('rawDebugToggle');
-  if(rawBtn) rawBtn.classList.toggle('on', state.debugShowRaw);
+  setDebugView(state.debugShowField ? null : 'field');
   renderAdjustFrame();
 
 // 진단정보: PC 콘솔(F12) 없이도 폰 화면 스크린샷 하나로 원인 파악할 수 있게
@@ -6580,13 +6664,13 @@ function buildStrandOpts(maskInf, angle, rawMode){
 
 /* (2026-08-02) opts 추가 — 결과 화면(SCREEN 4)이 같은 렌더 경로를 그대로 쓰되
    두 가지만 다르게 하기 위한 것. opts 없이 부르면 기존 동작과 완전히 동일하다.
-     opts.noZoom : 머리 중심 확대(zoomFitToHair)를 끈다. 조정 화면은 머리를 꽉
-                   채워야 슬라이더 결과가 잘 보이지만, 결과 화면은 목 아래에
-                   의상이 들어올 자리가 있어야 한다.
-     opts.onDone : 그리기가 끝난 뒤 { fit, hairLayer }를 넘겨준다. fit은 3D 몸체를
-                   같은 좌표계에 정렬하는 데, hairLayer(헤어만 있는 투명 레이어,
-                   2026-08-01 도입)는 의상 위에 헤어를 다시 얹는 데 쓴다 —
-                   어깨로 내려온 머리가 옷에 덮이지 않게. */
+     opts.resultFit : 머리 중심 확대(zoomFitToHair) 대신 결과 화면용 프레이밍을
+                   쓴다. 두상을 오려낼 것이라 머리·목이 프레임 안에 온전히
+                   들어와야 하는데, zoomFitToHair는 확대만 하고 축소는 안 한다.
+     opts.onDone : 그리기가 끝난 뒤 { fit, hairLayer }를 넘겨준다. fit은 오려낸
+                   두상을 3D 몸과 같은 자 위에 놓는 데, hairLayer(헤어만 있는
+                   투명 레이어, 2026-08-01 도입)는 의상 위에 헤어를 다시 얹는 데
+                   쓴다 — 어깨로 내려온 머리가 옷에 덮이지 않게. */
 function renderFrame(canvas, angle, opts){
   // ── 버그 수정(2026-07-13): SECTIONS 경계 미스매치 ──
   // refineSectionBoundaries(angle)는 원래 촬영 직후 파이프라인에서 4개 뷰를
@@ -6675,7 +6759,7 @@ function renderFrame(canvas, angle, opts){
       const baseFit = (opts && opts.resultFit)
         ? computeResultSourceFit(img, maskInf, angle, w, h)
         : computeFit(img.width, img.height, w, h);
-      const fit = (opts && (opts.resultFit || opts.noZoom)) ? baseFit : zoomFitToHair(baseFit, maskInf, w, h);
+      const fit = (opts && opts.resultFit) ? baseFit : zoomFitToHair(baseFit, maskInf, w, h);
 
       // 이전 버그: 원본 img를 먼저 통째로 그린 뒤 baseC(머리 부분 투명)를
       // source-over로 덮었는데, 투명 픽셀은 source-over에서 아무 효과가 없어서
@@ -7897,7 +7981,6 @@ function drawHairStrands(ctx, fit, scalpY, hairEndY, maskW, maskH, hairCanvas, o
   // ── 레이어 공통값(2026-07-26 중복 통합) ──
   // 4개 레이어가 글자 그대로 같은 lenScale/pickCol을 각자 적어두고 있었다.
   // 값이 같으므로 한 곳에서 정의하고 참조만 한다(동작 동일).
-  const LAYER_LEN_SCALE = (origLen, ratio)=> Math.max(origLen * ratio, maskH*0.02);
   const PICK_RANDOM_COL = ()=> validCols[Math.floor(Math.random()*validCols.length)];
   // 굵기 식도 4곳이 같은 형태(하한 + (파라미터/100)×증가폭) × 해상도 배율이었다.
   const layerWidth = (base, gain, val)=> Math.max(MIN_SAFE_WIDTH, (base + (val/100) * gain) * widthScale);
@@ -7906,7 +7989,6 @@ function drawHairStrands(ctx, fit, scalpY, hairEndY, maskW, maskH, hairCanvas, o
       count, alphaMul, lineWidth, pickCol, endYFallbackRatio,
       lenMult, startXJitter, startYJitter, jitterSeedFn, tintRange, rootDepthFrac
     } = cfg;
-    const lenScale = cfg.lenScale || LAYER_LEN_SCALE;   // 레이어별 지정이 없으면 공통값
     setStyle('globalAlpha', alpha * alphaMul);
     setStyle('lineWidth', lineWidth);
     for(let i=0; i<count; i++){
@@ -10503,7 +10585,6 @@ function getHeadEllipsoid(){
   }catch(e){}
   const aRaw = Math.max(0.2, maxW || 0, eq.halfWidth || 0);
   const dRaw = Math.max(0.15, maxD || 0, eq.halfDepth || 0);
-  const bRaw = computeHeadVerticalRadius();
   /* ── 비례 가드는 넣지 않는다 (2026-07-26 4차, 실기기 확인) ────────────
      "깊이가 세로보다 크면 비인체적"이라 보고 b ≥ a×1.15 / c ≤ b×1.05 가드를
      넣으려 했으나, 실기기에서 처음으로 잘 나온 케이스가 정확히
@@ -12291,6 +12372,26 @@ function makeHairOccupancyProbe(views, names, yTop, CY, headR){
   });
   if(!cams.length) return null;
   const invR = 1 / Math.max(1e-6, headR);
+  /* 두상 3D 점 → 그 카메라의 이미지 좌표 (2026-08-02 통합).
+     아래 세 프로브(at/densityAt/faceAt)가 이 여섯 줄을 글자 그대로 복제하고
+     있었다 — 회전 적용, 카메라 뒤편 컷, 정면도 가중치 w, 이미지 좌표 환산.
+     보이지 않으면(뒤편·너무 비스듬) null.
+     결과를 매번 새 객체로 담으면 셀×카메라 수만큼(수십만 회) 할당이 생기므로
+     호출 즉시 소비되는 스크래치 객체 하나를 돌려 쓴다. */
+  const _proj = { w:0, ix:0, iy:0 };
+  const projectToCam = (c, px, wy, pz)=>{
+    const R = c.R;
+    const lz = R[6]*px + R[7]*wy + R[8]*pz;
+    if(lz <= 0) return null;                       // 이 카메라 뒤편 — 발언권 없음
+    const w = Math.min(1, lz * invR);              // 정면일수록 크게
+    if(w < O.minFacing) return null;
+    const lx = R[0]*px + R[1]*wy + R[2]*pz;
+    const ly = R[3]*px + R[4]*wy + R[5]*pz;
+    _proj.w = w;
+    _proj.ix = lx / c.s + c.cx;
+    _proj.iy = c.crownY + (yTop - (ly + CY)) / c.sy;
+    return _proj;
+  };
   return {
     cams, nCam: cams.length,
     /* 같은 카메라·같은 식으로 <b>밀도</b>를 묻는다. 회전행렬을 공유하려고
@@ -12301,16 +12402,11 @@ function makeHairOccupancyProbe(views, names, yTop, CY, headR){
       const wy = py - CY;
       for(let i=0;i<cams.length;i++){
         const c = cams[i]; if(!c.dsmp) continue;
-        const R = c.R;
-        const lz = R[6]*px + R[7]*wy + R[8]*pz;
-        if(lz <= 0) continue;
-        const w = Math.min(1, lz * invR);
-        if(w < O.minFacing) continue;
-        const lx = R[0]*px + R[1]*wy + R[2]*pz;
-        const ly = R[3]*px + R[4]*wy + R[5]*pz;
-        const d = c.dsmp.at(lx / c.s + c.cx, c.crownY + (yTop - (ly + CY)) / c.sy);
+        const p = projectToCam(c, px, wy, pz);
+        if(!p) continue;
+        const d = c.dsmp.at(p.ix, p.iy);
         if(d < 0) continue;                 // 그 뷰에서는 안 잰 자리
-        wSum += w; dSum += w * d;
+        wSum += p.w; dSum += p.w * d;
       }
       return wSum > 0 ? { density: dSum/wSum, seen: wSum } : { density: -1, seen: 0 };
     },
@@ -12321,17 +12417,11 @@ function makeHairOccupancyProbe(views, names, yTop, CY, headR){
       const wy = py - CY;
       for(let i=0;i<cams.length;i++){
         const c = cams[i]; if(!c.fell || !c.iw) continue;
-        const R = c.R;
-        const lz = R[6]*px + R[7]*wy + R[8]*pz;
-        if(lz <= 0) continue;                       // 이 카메라 뒤편 — 가릴 얼굴이 없다
-        const w = Math.min(1, lz * invR);
-        if(w < O.minFacing) continue;
-        const lx = R[0]*px + R[1]*wy + R[2]*pz;
-        const ly = R[3]*px + R[4]*wy + R[5]*pz;
-        const nx = (lx / c.s + c.cx) / c.iw;
-        const ny = (c.crownY + (yTop - (ly + CY)) / c.sy) / c.ih;
+        const p = projectToCam(c, px, wy, pz);     // 뒤편이면 가릴 얼굴도 없다
+        if(!p) continue;
+        const nx = p.ix / c.iw, ny = p.iy / c.ih;
         const dx = (nx - c.fell.cx) / c.fell.rx, dy = (ny - c.fell.cy) / c.fell.ry;
-        wSum += w; if(dx*dx + dy*dy <= 1) fSum += w;
+        wSum += p.w; if(dx*dx + dy*dy <= 1) fSum += p.w;
       }
       return wSum > 0 ? fSum/wSum : 0;
     },
@@ -12339,16 +12429,9 @@ function makeHairOccupancyProbe(views, names, yTop, CY, headR){
       let wSum = 0, hSum = 0;
       const wy = py - CY;
       for(let i=0;i<cams.length;i++){
-        const c = cams[i], R = c.R;
-        const lz = R[6]*px + R[7]*wy + R[8]*pz;
-        if(lz <= 0) continue;                       // 이 카메라 반대편 — 발언권 없음
-        const w = Math.min(1, lz * invR);           // 정면일수록 크게
-        if(w < O.minFacing) continue;
-        const lx = R[0]*px + R[1]*wy + R[2]*pz;
-        const ly = R[3]*px + R[4]*wy + R[5]*pz;
-        const ix = lx / c.s + c.cx;
-        const iy = c.crownY + (yTop - (ly + CY)) / c.sy;
-        wSum += w; hSum += w * c.smp.at(ix, iy);
+        const p = projectToCam(cams[i], px, wy, pz);
+        if(!p) continue;
+        wSum += p.w; hSum += p.w * cams[i].smp.at(p.ix, p.iy);
       }
       // 아무도 제대로 못 보면 판단 보류(occ=1) — 모르는 것을 지우지는 않는다
       return wSum > O.minSeen ? { occ: hSum/wSum, seen: wSum } : { occ: 1, seen: wSum };
@@ -12407,11 +12490,12 @@ function trimStrandToOccupancy3D(pts, probe, acc, opts){
    다음 턴의 되쏘기 클립에서 빠른 사전판정 캐시로도 쓸 수 있다.
    셀 중심의 <b>헐 표면 점</b>을 프로브에 물어본다(결 필드와 같은 파라미터화:
    θ 균등 × 극각 균등). */
-function buildOccupancyCellField(probe, hullW, hullD, bucketOfY, CY, b){
-  if(!probe) return null;
+/* 두상 표면 격자 순회 (2026-08-02 통합) — buildOccupancyCellField와
+   buildRootDensityField가 이 이중 루프를 그대로 복제하고 있었다(아래 주석에도
+   "같은 격자·같은 순회"라고 적혀 있다). 셀 좌표 계산은 여기 한 곳에 두고,
+   각자는 "그 자리에서 무엇을 재는가"만 넘긴다. 순회 순서·좌표식 모두 동일. */
+function forEachHeadSurfaceCell(hullW, hullD, bucketOfY, CY, b, visit){
   const O = HAIR_OCC3D, NT = O.NT, NP = O.NP;
-  const occ = new Float32Array(NT*NP), seen = new Float32Array(NT*NP);
-  let filled = 0, hairCells = 0;
   for(let pi=0; pi<NP; pi++){
     const ny = Math.cos((pi + 0.5) / NP * Math.PI);
     const y  = CY + b * ny;
@@ -12419,12 +12503,21 @@ function buildOccupancyCellField(probe, hullW, hullD, bucketOfY, CY, b){
     const Wb = hullW[bi], Db = hullD[bi];
     for(let ti=0; ti<NT; ti++){
       const th = (ti + 0.5) / NT * 2*Math.PI - Math.PI;
-      const r = probe.at(Wb*Math.sin(th), y, Db*Math.cos(th));
-      const ci = pi*NT + ti;
-      occ[ci] = r.occ; seen[ci] = r.seen;
-      if(r.seen > O.minSeen){ filled++; if(r.occ >= O.occThr) hairCells++; }
+      visit(pi*NT + ti, Wb*Math.sin(th), y, Db*Math.cos(th));
     }
   }
+}
+
+function buildOccupancyCellField(probe, hullW, hullD, bucketOfY, CY, b){
+  if(!probe) return null;
+  const O = HAIR_OCC3D, NT = O.NT, NP = O.NP;
+  const occ = new Float32Array(NT*NP), seen = new Float32Array(NT*NP);
+  let filled = 0, hairCells = 0;
+  forEachHeadSurfaceCell(hullW, hullD, bucketOfY, CY, b, (ci, x, y, z)=>{
+    const r = probe.at(x, y, z);
+    occ[ci] = r.occ; seen[ci] = r.seen;
+    if(r.seen > O.minSeen){ filled++; if(r.occ >= O.occThr) hairCells++; }
+  });
   return { NT, NP, occ, seen, CY, b, filled, hairCells, ok: filled > 0 };
 }
 
@@ -12438,19 +12531,11 @@ function buildRootDensityField(probe, hullW, hullD, bucketOfY, CY, b){
   const den = new Float32Array(NT*NP), seen = new Float32Array(NT*NP);
   const est = new Uint8Array(NT*NP);
   let measured = 0;
-  for(let pi=0; pi<NP; pi++){
-    const ny = Math.cos((pi + 0.5) / NP * Math.PI);
-    const y  = CY + b * ny;
-    const bi = bucketOfY(y);
-    const Wb = hullW[bi], Db = hullD[bi];
-    for(let ti=0; ti<NT; ti++){
-      const th = (ti + 0.5) / NT * 2*Math.PI - Math.PI;
-      const r = probe.densityAt(Wb*Math.sin(th), y, Db*Math.cos(th));
-      const ci = pi*NT + ti;
-      den[ci] = r.density; seen[ci] = r.seen;
-      if(r.density >= 0) measured++;
-    }
-  }
+  forEachHeadSurfaceCell(hullW, hullD, bucketOfY, CY, b, (ci, x, y, z)=>{
+    const r = probe.densityAt(x, y, z);
+    den[ci] = r.density; seen[ci] = r.seen;
+    if(r.density >= 0) measured++;
+  });
   const field = { NT, NP, den, seen, est, CY, b, measured, cells: NT*NP, ok: measured > 0 };
   if(field.ok) fillUnseenRootCells(field);
   return field;
@@ -12941,11 +13026,7 @@ function buildHairStrandsFromPaths(){
       total++;
     }
     if(!positions.length) return;
-    const geo = new THREE.BufferGeometry();
-    geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(positions), 3));
-    geo.setAttribute('color', new THREE.BufferAttribute(new Float32Array(colors), 3));
-    const mat = new THREE.LineBasicMaterial({ vertexColors: true });
-    const lines = new THREE.LineSegments(geo, mat);
+    const lines = makeVertexColorLines(positions, colors);
     lines.name = 'strandLines-' + angle + (job.mirrored ? '-mirror' : '');
     lines.userData.fromPaths = true; // [진단용]
     lines.userData.mirrored = job.mirrored; // [진단용] 실측 아님(맞은편 뷰 거울 채움)
@@ -13074,10 +13155,7 @@ function buildAdjustedHair3DObject(){
     }
   }
   if(!positions.length) return null;
-  const geo = new THREE.BufferGeometry();
-  geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(positions), 3));
-  geo.setAttribute('color',    new THREE.BufferAttribute(new Float32Array(colors), 3));
-  const obj = new THREE.LineSegments(geo, new THREE.LineBasicMaterial({ vertexColors:true }));
+  const obj = makeVertexColorLines(positions, colors);
   obj.name = 'adjustedHair';
   console.log(`[3D] 조정 반영 헤어: ${adj.length}가닥 (조정 화면과 같은 소스)`);
   return obj;
@@ -13161,19 +13239,25 @@ function curlStrand3D(pts, curlAmt, waveT){
 // 사용자: "그렇게 된 다음에 적절한 중력이 작용." 컬 나선 위에 얹는 마지막 단계.
 // 뿌리 고정, 끝으로 갈수록 가속 처짐(t²). 컬 강할수록 탱탱하게 덜 처짐(hold).
 const GRAV3D_STRENGTH = 0.35; // 중력 처짐 세기(튜닝 지점) — 호길이 대비 최대 처짐 비율
+/* 뿌리 고정 변형 (2026-08-02 통합) — 중력 처짐·볼륨 리프트·결 흐름 세 연산자가
+   "0번 점(뿌리)은 그대로 두고 나머지를 옮긴다"는 같은 골격을 각자 적고 있었다.
+   at(점, t=i/n, i, n)이 그 자리의 새 점을 돌려준다. */
+function mapStrandFromRoot(pts, at){
+  const n = pts.length - 1;
+  const out = [pts[0]];
+  for(let i=1;i<pts.length;i++) out.push(at(pts[i], i/n, i, n));
+  return out;
+}
+
 function gravityDroop3D(pts, curlAmt){
   if(!pts || pts.length < 3) return pts;
   const arc = arcLength3D(pts);
   if(arc < 1e-5) return pts;
   const hold = 1 - 0.6 * (Math.max(0, Math.min(100, curlAmt))/100); // 강한 컬=덜 처짐(0.4~1)
-  const n = pts.length - 1;
-  const out = [pts[0]];
-  for(let i=1;i<pts.length;i++){
-    const t = i / n;
+  return mapStrandFromRoot(pts, (p, t)=>{
     const sag = GRAV3D_STRENGTH * arc * t * t * hold; // 끝으로 갈수록 가속(t²) 아래로
-    out.push({ x: pts[i].x, y: pts[i].y - sag, z: pts[i].z });
-  }
-  return out;
+    return { x: p.x, y: p.y - sag, z: p.z };
+  });
 }
 
 /* ──────────────────────────────────────────────────────────────────
@@ -13247,7 +13331,6 @@ function combWeightAt(i, n, ramp, tail){
   const t = i/n;
   return Math.min(1, t/ramp) + Math.max(0, t - ramp) * tail;
 }
-function partWeightAt(i, n){ return combWeightAt(i, n, PART3D.RAMP, PART3D.TAIL); }
 
 /* ══════════════════════════════════════════════════════════════════
    넘김(sweep) — 3D 이식 (2026-07-27)
@@ -13324,13 +13407,10 @@ function volumeStrand3D(pts, volumeVal){
   if(!pts || pts.length < 2) return pts;
   const lift = volumeLiftHead(pts[0], volumeVal);
   if(!lift) return pts;
-  const n = pts.length - 1;
-  const out = [pts[0]];
-  for(let i=1;i<pts.length;i++){
+  return mapStrandFromRoot(pts, (p, t, i, n)=>{
     const w = volumeWeightAt(i, n);
-    out.push({ x:pts[i].x + lift.x*w, y:pts[i].y + lift.y*w, z:pts[i].z + lift.z*w });
-  }
-  return out;
+    return { x:p.x + lift.x*w, y:p.y + lift.y*w, z:p.z + lift.z*w };
+  });
 }
 
 /* ══════════════════════════════════════════════════════════════════
@@ -13355,13 +13435,10 @@ function flowCurlStrand3D(pts, flowVal){
   const E = getHeadEllipsoid();
   const ux = rx/rl, uz = rz/rl;                              // 바깥 반경 방향(수평)
   const amp = FLOW3D.AMP * f * Math.max(E.a, E.c);
-  const n = pts.length - 1;
-  const out = [pts[0]];
-  for(let i=1;i<pts.length;i++){
-    const t = i/n, w = t*t;                                  // 끝으로 갈수록 급격히
-    out.push({ x:pts[i].x + ux*amp*w, y:pts[i].y, z:pts[i].z + uz*amp*w });
-  }
-  return out;
+  return mapStrandFromRoot(pts, (p, t)=>{
+    const w = t*t;                                           // 끝으로 갈수록 급격히
+    return { x:p.x + ux*amp*w, y:p.y, z:p.z + uz*amp*w };
+  });
 }
 
 /* 두상 공간의 한 점 P에서, 머리 기준 방향 d를 두피 접선으로 투영한 벡터.
@@ -14537,10 +14614,7 @@ function refreshDevMini3D(){
     }
   }
   if(!positions.length) return;
-  const geo=new THREE.BufferGeometry();
-  geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(positions),3));
-  geo.setAttribute('color', new THREE.BufferAttribute(new Float32Array(colors),3));
-  const obj=new THREE.LineSegments(geo, new THREE.LineBasicMaterial({ vertexColors:true }));
+  const obj = makeVertexColorLines(positions, colors);
   group.add(obj);
   devMini3D.strandObj = obj;
   refreshField3DDebug();
@@ -14583,10 +14657,8 @@ function refreshOcc3DDebug(){
     }
   }
   if(!pos.length) return;
-  const geo = new THREE.BufferGeometry();
-  geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(pos), 3));
-  geo.setAttribute('color', new THREE.BufferAttribute(new Float32Array(col), 3));
-  const o = new THREE.Points(geo, new THREE.PointsMaterial({ size: Math.max(0.012, he.a*0.035), vertexColors:true }));
+  const o = new THREE.Points(makeVertexColorGeometry(pos, col),
+                             new THREE.PointsMaterial({ size: Math.max(0.012, he.a*0.035), vertexColors:true }));
   o.name = 'occ3DDebug';
   group.add(o);
   devMini3D.occObj = o;
@@ -14634,10 +14706,7 @@ function refreshField3DDebug(){
     }
   }
   if(!pos.length) return;
-  const geo = new THREE.BufferGeometry();
-  geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(pos), 3));
-  geo.setAttribute('color', new THREE.BufferAttribute(new Float32Array(col), 3));
-  const o = new THREE.LineSegments(geo, new THREE.LineBasicMaterial({ vertexColors:true }));
+  const o = makeVertexColorLines(pos, col);
   o.name = 'field3DDebug';
   group.add(o);
   devMini3D.fieldObj = o;
@@ -14697,6 +14766,20 @@ function toggleDevMini3DExpand(){
 // headGroup 재구성 시(스타일이 바뀌어 이전 가닥/두상을 지울 때) geometry/material을
 // 같이 dispose. 자리표시자 돔 1개일 땐 신경 안 써도 됐지만, 가닥이 수십~백여
 // 개로 늘면서 재구성마다 누적되는 GPU 메모리가 무시할 수준이 아니게 됨.
+/* 정점 색 지오메트리·선분 (2026-08-02 통합) — 가닥 리프트, 조정 반영 헤어,
+   미니뷰 가닥, 점유 필드, 결 필드 다섯 곳이 같은 세 줄을 각자 적고 있었고
+   그중 넷은 뒤따르는 LineSegments 생성까지 똑같았다. */
+function makeVertexColorGeometry(positions, colors){
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(positions), 3));
+  geo.setAttribute('color',    new THREE.BufferAttribute(new Float32Array(colors), 3));
+  return geo;
+}
+function makeVertexColorLines(positions, colors){
+  return new THREE.LineSegments(makeVertexColorGeometry(positions, colors),
+                                new THREE.LineBasicMaterial({ vertexColors:true }));
+}
+
 function disposeObject3D(obj){
   obj.traverse(node=>{
     if(node.geometry) node.geometry.dispose();
@@ -14960,7 +15043,6 @@ function showToast(msg){
 
 function startNewCustomer(){
   aiAnalysis=null;
-  state.aiSectionEstimate=null; // (a) 실측 사진 기반 3D 보정 캐시도 새 고객마다 초기화
   state.hair3D=null; state.hair3Dneutral=null; // (11차) 3D 모델 캐시도 새 고객마다 무효화
   state.hairField3D=null; // (2026-08-01) 3D 결 필드도 사람이 바뀌면 통째로 무효
   state.hairOcc3D=null;   // (2026-08-01) 3D 점유 필드도 마찬가지
