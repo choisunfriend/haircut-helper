@@ -1134,6 +1134,29 @@
   공식과 수치 비교</b>(전부 일치), 실제 브라우저에서 projectHair3DToView를
   스텁 모델로 끝까지 돌려 stroke 폭이 0.9(가닥)/1.98(언더코트=0.9×2.2)만
   나오는 것과 페이지 무오류 로드를 확인.
+
+  ── 2026-08-02 (8) 위 (7)차가 <b>화면에 안 나온 이유</b> — 렌더 경로가 달랐다 ──
+  사용자: "스타일 적용시의 헤어도 원본 결 보기로 통일했다는데 여전히 다르게 나와."
+  (7)차에서 고친 것은 projectHair3DToView(가닥 렌더)인데, 조정/결과 화면은
+  그 함수까지 <b>가지 않았다</b>. renderFrame의 분기가 이렇게 돼 있다:
+      quilted = canProject && state.hairQuilt && projectHairQuiltToView(...)
+      if(!quilted && !(canProject && projectHair3DToView(...))) drawHairStrands(...)
+  state.hairQuilt가 8/1에 기본값 true로 승격돼 있어 스타일 적용 화면은 항상
+  <b>픽셀 이식</b>(원본 사진의 헤어 띠를 잘라 결 방향으로 붙이는 경로)에서
+  끝났다. 즉 (7)차 통일 코드는 한 번도 실행되지 않았다. 두 번째 스크린샷의
+  굵고 성긴 조각들이 가닥이 아니라 이식된 <b>띠</b>인 것이 그 증거다.
+  더 중요한 것은, 픽셀 이식은 원리상 가닥 렌더와 <b>같아질 수 없다</b>는 점이다.
+  가닥 렌더는 굵기·개수·틴트를 HAIR_STRAND_LOOK에서 읽어 선을 긋고, 이식은
+  사진에서 뜬 띠(HAIR_QUILT.widthCss ≈ 3.6 CSS px)를 회전·반복해 찍는다.
+  공유할 상수 자체가 없다 — 통일이 목적이면 경로를 하나로 두는 수밖에 없다.
+  고침: state.hairQuilt 기본값 true → <b>false</b>. 본선이 다시
+  projectHair3DToView가 되고, 이 경로는 (7)차에서 이미 원본 결 보기와 같은
+  HAIR_STRAND_LOOK을 읽으므로 두 화면의 가닥 성질이 실제로 같아진다.
+  (이식 실패 시 폴백 순서는 그대로라 안전망은 유지된다.)
+  이식 코드·상수·진단(quiltFail/logQuiltRender)은 지우지 않았다 —
+  콘솔에서 state.hairQuilt = true 후 다시 그리면 예전 그림을 볼 수 있다.
+  검증: 렌더 분기의 세 경로가 어느 플래그 조합에서 어디로 가는지 표로 확인
+  (rawMode / hairQuilt / 3D 모델 유무 8가지), 페이지 무오류 로드 확인.
 -->
 
 <!DOCTYPE html>
@@ -1613,7 +1636,9 @@ input[type=range]::-moz-range-thumb{width:20px;height:20px;border-radius:50%;bac
         <button class="debug-btn raw-debug-btn" id="rawDebugToggle" onclick="toggleRawDebug()">원본 결 보기</button>
         <button class="debug-btn field-debug-btn" id="fieldDebugToggle" onclick="toggleFieldDebug()">결필드 원본</button>
         <!-- (2026-08-01) '픽셀 이식' 디버그 버튼 제거 — 이 경로가 기본 렌더가 됐다.
-             state.hairQuilt 기본값이 true이고, 실패하면 기존 가닥 렌더로 자동 폴백한다. -->
+             (2026-08-02 8차) 기본 렌더는 다시 가닥 렌더다(state.hairQuilt=false).
+             원본 결 보기와 가닥 규칙을 공유하는 경로가 그쪽이라서. 이식을 보려면
+             콘솔에서 state.hairQuilt=true 후 다시 그린다. -->
         <button class="debug-btn" onclick="toggleDiagInfo()" style="right:auto;left:8px;bottom:8px;">진단정보</button>
         <div id="diagInfoBox" style="display:none;position:absolute;left:8px;bottom:44px;right:8px;background:rgba(0,0,0,0.85);color:#0f0;font-family:monospace;font-size:10px;padding:8px;border-radius:6px;white-space:pre-wrap;z-index:50;max-height:200px;overflow:auto;"></div>
         <div class="seg-status" id="segStatus"></div>
@@ -2568,7 +2593,15 @@ const state = {
   // (2026-07-27) true면 가닥을 그리지 않고 원본 사진의 헤어 픽셀을 이식해 렌더
   // (2026-08-01) 후보 경로 → <b>기본 경로</b>로 승격. 토글 버튼은 제거했고,
   // 이식이 불가능한 조건이면 projectHair3DToView / drawHairStrands로 조용히 폴백한다.
-  hairQuilt: true,
+  // (2026-08-02 8차) <b>다시 false</b>. 8/2 (7)차에서 "스타일 적용 후의 가닥을
+  // 원본 결 보기의 가닥으로 통일"한 대상은 projectHair3DToView인데, 이 플래그가
+  // true라 조정/결과 화면은 그보다 <b>앞에 있는</b> 픽셀 이식으로 갔다 —
+  // 통일한 코드가 아예 실행되지 않아 화면은 하나도 안 바뀌었다
+  // (사용자: "통일시켰다는데 여전히 저렇게 다르게 나와").
+  // 픽셀 이식은 원본 사진의 헤어 띠를 잘라 붙이는 <b>다른 그림 규칙</b>이라
+  // 정의상 가닥 렌더와 같아질 수 없다. 통일이 목적이면 이 경로를 꺼야 한다.
+  // 코드는 그대로 남겨 뒀으므로 콘솔에서 state.hairQuilt = true 로 되살릴 수 있다.
+  hairQuilt: false,
   debugShowField: false, // true면 strand 시뮬레이션(뿌리/중력/clamp) 전부 건너뛰고 orientation 컬럼 샘플을 가공 없이 그대로 표시(진단용)
   // ── 3D 미리보기 패널 표시 여부 (이름은 옛 플래그명 유지) ──
   // (2026-07-26) 예전엔 이 값이 조정 경로를 갈랐다(true=3D, false=2D 직접 렌더).
@@ -6484,7 +6517,12 @@ function toggleRawDebug(){
    state.hairQuilt = true를 기본값으로 승격했다. 이제 이 경로가 본선이며,
    실패 조건(캘리브레이션·결필드·원본 헤어 이미지 없음 등)에서는
    projectHair3DToView → drawHairStrands 순으로 자동 폴백한다. 사유는
-   quiltFail()이 콘솔에 남긴다. */
+   quiltFail()이 콘솔에 남긴다.
+   (2026-08-02 8차) <b>기본값을 false로 되돌렸다</b>. 본선은 다시 가닥 렌더
+   (projectHair3DToView)다 — 그쪽이 원본 결 보기와 같은 가닥 규칙
+   (HAIR_STRAND_LOOK)을 읽으므로, "두 화면의 가닥을 통일"이라는 요구를
+   만족하는 유일한 경로다. 이식 코드·상수는 그대로 두었으니 실험할 때는
+   콘솔에서 state.hairQuilt = true 후 화면을 다시 그리면 된다. */
 
 // 결필드 원본 디버그 토글: strand 시뮬레이션(뿌리 위치·중력·clamp 등) 전혀 거치지 않고
 // computeHairOrientationField가 실제로 뽑아낸 angle/coherence 컬럼 샘플을 가공 없이
