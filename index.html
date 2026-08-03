@@ -13293,7 +13293,19 @@ const HAIR_OVERLAP = {
   on: true,            // false면 예전 동작(전부 심기) — A/B용
   minKeep: 1,          // 실측 밀도가 있는 셀은 최소 이만큼 남긴다(솎다가 구멍 내지 않게)
   minDen: 0.05,        // 이보다 옅은 실측 밀도는 K 표본에서 뺀다(0 나눗셈·과대추정 방지)
-  calibMinCells: 8,    // 한 뷰가 혼자 심은 실측 셀이 이보다 적으면 그 뷰의 K_v는 안 쓴다
+  calibMinCells: 8,    // K 표본이 이보다 적으면 못 믿는다 → 정리 건너뜀
+  /* K를 <b>중앙값이 아니라 위쪽 백분위</b>로 낸다 (2026-08-03 3차, 아래 주석 참조).
+     rim 셀이 표본의 아래쪽을 채우기 때문에 중앙값은 늘 과소평가가 된다. */
+  calibPct: 0.75,
+  minSamplesPerCell: 1,  // 주력 뷰가 이만큼은 심은 셀만 K 표본으로(빈 셀이 기준을 끌어내리지 않게)
+  /* 헐 분리로 모발이 <b>두께</b>를 갖게 됐다(사용자 지적). 가닥은 두피면~헐 사이
+     껍질에 t로 흩어지므로, 같은 개수라도 한 겹은 성글어 보인다. 표면 셀 하나를
+     "가득 찬 것처럼" 보이게 하려면 껍질 몫만큼 더 있어야 한다. 1.0이면 예전 동작. */
+  shellFill: 1.6,
+  /* 안전 레일 — 이 비율 넘게 솎이면 그건 겹침이 아니라 <b>기준(K)이 틀린 것</b>이다.
+     3차에서 실제로 35%가 날아갔다(사용자: "3D로 전환된 이후부터 전반적으로 성글어졌어").
+     넘으면 K를 올려 다시 계산하고, 올렸다는 사실을 콘솔에 남긴다. */
+  maxDropFrac: 0.20,
   headroom: 1.15,      // 목표치 여유 — 격자·투영 오차만큼은 봐준다(빡빡하면 멀쩡한 것도 깎임)
   // ── 채우기(모자란 실측 셀) ──
   fill: true,          // false면 솎기만(1차 동작)
@@ -13348,43 +13360,75 @@ function pruneOverlappedRoots(strands, rootField, hullW, hullD, bucketOfY, CY, b
     vs.add(strands[i].srcAngle);
   }
 
-  /* ── ② K(밀도 1당 가닥 수) — <b>뷰마다</b> 내고 가장 큰 값을 쓴다 ──
-     한 뷰가 혼자 심은 실측 셀만 본다(겹친 셀은 겹침이 기준에 섞인다).
-     최댓값을 쓰는 이유는 위 주석 참조 — 중앙값을 쓰면 제일 성근 뷰(후면)가
-     기준이 되어 머리 전체를 거기까지 깎아내린다. */
-  const byView = new Map();
+  /* ── ② K(밀도 1당 가닥 수) — <b>모든 실측 셀</b>에서, 그 셀의 주력 뷰 몫으로 ──
+
+     ── 2차가 왜 35%를 날렸나 (2026-08-03 3차, 실기기 로그로 확정) ──────────
+     2차는 "한 뷰가 <b>혼자</b> 심은 셀"에서만 K를 냈다. 겹침이 안 섞이니 깨끗할
+     줄 알았는데, 그런 셀이 실기기에서 <b>front 16개 · left 26 · right 45</b>
+     (실측 셀 1,144개 중 1.4~4%)였다. 그리고 그 셀들이 어디냐면 — 다른 카메라는
+     못 보고 <b>한 대만 간신히 본 자리</b>, 즉 실루엣 rim이다. rim은 원래 뿌리가
+     제일 적게 떨어지는 자리라 K가 체계적으로 과소평가된다.
+     결과: K=9.4 → 목표 9.4×0.46×1.15 = <b>5.0가닥/셀</b>인데 자연 밀도는
+     11,220/826 = <b>13.6가닥/셀</b>. 자연의 37%를 겨눴고, 모델이
+     11,220 → 7,268 (−35%)로 깎였다. 사용자: "3D로 전환된 이후부터 전반적으로
+     성글어진 거 같아."
+
+     고침 셋:
+       ① 표본을 <b>모든 실측 셀</b>로. 겹친 셀도 쓰되, 그 셀에서 <b>제일 정면으로
+          본 뷰의 몫만</b> 센다(nTop). 겹침은 빠지고 표본은 1,144개가 된다.
+       ② 중앙값이 아니라 <b>위쪽 백분위</b>(calibPct). rim이 표본 아래쪽을 채우므로
+          중앙값은 여전히 낮게 끌린다.
+       ③ 목표치에 <b>껍질 몫</b>(shellFill)을 곱한다 — 헐 분리로 가닥이 두피면~헐
+          사이에 t로 흩어지므로 한 겹만 보면 성글다. 그리고 <b>주력 뷰가 그 셀에
+          실제로 심은 수(nTop) 아래로는 절대 안 깎는다</b> — 그게 겹침 없는 실측이다. */
+  const ratios = [], topOf = new Map();
   inCell.forEach((arr, ci)=>{
     if(est[ci] !== 0) return;                              // 추정 셀은 기준으로 안 쓴다
-    if(!(den[ci] >= O.minDen)) return;
-    const vs = viewsOf.get(ci);
-    if(!vs || vs.size !== 1) return;                       // 겹친 셀은 기준이 될 수 없다
-    const v = vs.values().next().value;
-    let a2 = byView.get(v); if(!a2){ a2 = []; byView.set(v, a2); }
-    a2.push(arr.length / den[ci]);
+    const cnt = {}, fac = {};
+    for(const i of arr){
+      const v = strands[i].srcAngle;
+      cnt[v] = (cnt[v]||0) + 1;
+      fac[v] = Math.max(fac[v]||0, strands[i].rootFacing||0);
+    }
+    let best = null;
+    for(const v in cnt) if(!best || fac[v] > fac[best]) best = v;   // 제일 정면으로 본 뷰
+    const nTop = cnt[best] || 0;
+    topOf.set(ci, nTop);
+    if(den[ci] >= O.minDen && nTop >= O.minSamplesPerCell) ratios.push(nTop / den[ci]);
   });
-  let K = 0, kSrc = null, cleanCells = 0;
-  const kPerView = {};
-  byView.forEach((rs, v)=>{
-    cleanCells += rs.length;
-    if(rs.length < O.calibMinCells) return;                // 표본이 적은 뷰의 K_v는 안 쓴다
-    rs.sort((p,q)=>p-q);
-    const kv = rs[rs.length >> 1];
-    kPerView[v] = { k:+kv.toFixed(1), cells:rs.length };
-    if(kv > K){ K = kv; kSrc = v; }
-  });
-  if(!K){
-    console.warn('[3D·겹침] 한 뷰가 혼자 심은 실측 셀이 어느 뷰에서도 '
-      + O.calibMinCells + '개에 못 미칩니다(합계 ' + cleanCells + '개) — 기준(K)을 못 믿어 정리를 건너뜁니다.');
-    return { skipped:true, cleanCells, dropped:0, added:0 };
+  if(ratios.length < O.calibMinCells){
+    console.warn('[3D·겹침] 기준을 낼 실측 셀이 ' + ratios.length + '개뿐 — 정리를 건너뜁니다.');
+    return { skipped:true, cleanCells:ratios.length, dropped:0, added:0 };
   }
+  ratios.sort((p,q)=>p-q);
+  const kBase = ratios[Math.min(ratios.length-1, Math.floor(ratios.length * O.calibPct))];
 
   // ── ③ 과밀한 실측 셀 솎기 — 그 자리를 제일 비스듬히 본 뷰부터 ──
+  /* 목표치 = max(주력 뷰가 실제로 심은 수, K×밀도×여유×껍질몫).
+     안전 레일: 솎을 양이 모델의 maxDropFrac을 넘으면 겹침이 아니라 K가 틀린 것이니
+     K를 올려 다시 잰다(로그에 남긴다). */
+  const cellTarget = (ci, k)=> Math.max(O.minKeep, topOf.get(ci) || 0,
+        Math.round(k * den[ci] * O.headroom * O.shellFill));
+  const dropsFor = (k)=>{
+    let d = 0;
+    inCell.forEach((arr, ci)=>{ if(est[ci] !== 0) return;
+      const t2 = cellTarget(ci, k); if(arr.length > t2) d += arr.length - t2; });
+    return d;
+  };
+  const cap = Math.round(strands.length * O.maxDropFrac);
+  let K = kBase, kRaised = 0;
+  while(dropsFor(K) > cap && kRaised < 12){ K *= 1.25; kRaised++; }
+  /* K를 아무리 올려도 목표치는 <b>topOf</b>(주력 뷰가 실제로 심은 수) 아래로 안 내려간다 —
+     그게 겹침 없는 실측이기 때문이다. 그 바닥에서도 상한을 넘으면 그건 기준 문제가
+     아니라 <b>진짜로 그만큼 겹쳐 있었다</b>는 뜻이라, 조용히 겹침을 남기지 않고 알린다. */
+  const railHeld = dropsFor(K) <= cap;
+
   let dropped = 0, thinnedCells = 0, keptEstCells = 0;
   const dropView = {};
   const shortCells = [];   // 모자란 실측 셀 — ④에서 채운다
   inCell.forEach((arr, ci)=>{
     if(est[ci] !== 0){ keptEstCells++; return; }           // 추정 셀 — 손대지 않는다
-    const target = Math.max(O.minKeep, Math.round(K * den[ci] * O.headroom));
+    const target = cellTarget(ci, K);
     if(arr.length < target){ shortCells.push([ci, target, arr]); return; }
     if(arr.length === target) return;
     arr.sort((p,q)=> (strands[p].rootFacing||0) - (strands[q].rootFacing||0));
@@ -13458,18 +13502,32 @@ function pruneOverlappedRoots(strands, rootField, hullW, hullD, bucketOfY, CY, b
   }
 
   const fmt = o => Object.keys(o).map(v=>v+':'+o[v]).join(' ') || '없음';
+  const before = strands.length - added, after = strands.filter(s=>!s._drop).length;
   console.log('[3D·겹침] 뿌리 밀도 정리 — 솎음 ' + dropped + '개(' + fmt(dropView) + ')'
     + ' · 채움 ' + added + '개(' + fmt(addView) + ')'
     + (clipDropped ? ' · 복제 중 세그멘테이션 밖이라 버림 ' + clipDropped + '개' : '')
-    + ' → 가닥 ' + strands.filter(s=>!s._drop).length + '개'
+    + ' → 가닥 ' + before + ' → <b>' + after + '</b>개 (' + (after >= before ? '+' : '')
+    + Math.round((after/before - 1)*100) + '%)'
     + ' | 과밀 셀 ' + thinnedCells + ' · 채운 셀 ' + filledCells
     + '(그중 원본 없어 이웃에서 빌림 ' + emptyCells + ')'
     + ' · 추정 셀 ' + keptEstCells + '개는 그대로');
-  console.log('[3D·겹침·기준] K=' + K.toFixed(1) + '가닥/밀도1 — 제일 촘촘한 뷰 <b>' + kSrc + '</b> 기준'
-    + ' | 뷰별 K_v ' + Object.keys(kPerView).map(v=>v+' '+kPerView[v].k+'('+kPerView[v].cells+'셀)').join(' · ')
-    + ' ← 값이 뷰마다 크게 다르면 그 뷰의 마스크 면적 대비 가닥 예산이 안 맞는 것(360촬영 TODO)');
+  /* 기준 한 줄 — 다음에 "성글다/빽빽하다"가 오면 이 세 숫자만 보면 된다:
+       자연 = 지금 모델이 실제로 갖고 있는 셀당 밀도
+       목표 = 우리가 겨눈 셀당 밀도(껍질 몫 포함)
+     목표가 자연보다 한참 낮으면 과하게 솎는 중, 한참 높으면 복제로 부풀리는 중. */
+  let cellsWithHair = 0, sumT = 0;
+  inCell.forEach((arr, ci)=>{ if(est[ci] === 0){ cellsWithHair++; sumT += cellTarget(ci, K); } });
+  console.log('[3D·겹침·기준] K=' + K.toFixed(1) + '가닥/밀도1'
+    + ' (실측 셀 ' + ratios.length + '개의 ' + Math.round(O.calibPct*100) + '백분위'
+    + (kRaised ? ', 안전레일로 ' + kRaised + '단계 상향 — 기준이 낮았다는 뜻' : '') + ')'
+    + (railHeld ? '' : ' ⚠ 상향해도 상한(' + Math.round(O.maxDropFrac*100) + '%) 초과 —'
+        + ' 목표가 이미 "주력 뷰 몫"까지 내려간 상태라 이건 기준 문제가 아니라 실제 겹침입니다')
+    + ' · 껍질 몫 ×' + O.shellFill + '(헐 분리로 모발이 두께를 가짐)'
+    + ' | 셀당 자연 ' + (before / Math.max(1, cellsWithHair)).toFixed(1)
+    + ' → 목표 ' + (sumT / Math.max(1, cellsWithHair)).toFixed(1) + '가닥'
+    + ' | 뷰별 마스크 대비 예산이 안 맞으면 여기가 뷰마다 흔들린다(360촬영 TODO)');
   return { dropped, added, thinnedCells, filledCells, emptyCells, clipDropped,
-           keptEstCells, K, kSrc, kPerView, cleanCells };
+           keptEstCells, K, kBase, kRaised, cellsWithHair, cleanCells:ratios.length };
 }
 
 /* 못 본 자리 채우기 — 사용자: "안 보이는데 머리가 빽빽한 자리는 근처 밀도로
