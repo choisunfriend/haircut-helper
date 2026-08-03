@@ -1650,6 +1650,11 @@ input[type=range]::-moz-range-thumb{width:20px;height:20px;border-radius:50%;bac
 .gy-toggle.on{background:var(--accent);}
 .gy-toggle::after{content:'';position:absolute;width:16px;height:16px;border-radius:50%;background:var(--text);top:2px;left:2px;transition:.2s;}
 .gy-toggle.on::after{left:18px;background:#1B1816;}
+/* 언어 토글 (2026-08-03) */
+.lang-toggle{background:var(--surface-2);color:var(--text);border:1px solid var(--line);
+  border-radius:999px;padding:4px 11px;font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:500;
+  letter-spacing:.04em;cursor:pointer;line-height:1.5;}
+.lang-toggle:hover{border-color:var(--accent);color:var(--accent-soft);}
 </style>
 </head>
 <body>
@@ -1657,6 +1662,8 @@ input[type=range]::-moz-range-thumb{width:20px;height:20px;border-radius:50%;bac
   <header>
     <div class="brand-mark">결</div>
     <div class="stage-pill" id="stageLabel">단계 <b>1/4 · 촬영</b></div>
+    <!-- 언어 토글 (2026-08-03) — 기본 영어. 첫 화면(촬영)에서 바로 잡히도록 헤더에 둔다. -->
+    <button class="lang-toggle" id="langToggle" onclick="toggleUiLang()" title="Language / 언어">EN</button>
   </header>
   <main>
 
@@ -15777,6 +15784,281 @@ function startNewCustomer(){
   updateAngleUI();
   navTo('capture');
 }
+
+/* ══════════════════════════════════════════════════════════════════
+   다국어 (2026-08-03) — 기본 <b>영어</b>
+   ─────────────────────────────────────────────────────────────────
+   사용자: "첫번째 화면에 언어토글 하나 만들어서 영어를 디폴트로 해줘"
+
+   ── 왜 t() 호출부를 안 고치는가 ─────────────────────────────────
+   이 파일의 한국어 문구는 정적 HTML 49곳 + JS가 만들어 넣는 수백 곳에
+   흩어져 있고, 그 대부분이 템플릿 문자열(`${ANGLE_LABELS[a]} 처리 중`)이다.
+   전부 t()로 감싸면 손댈 자리가 수백 곳이고, 앞으로 문구를 하나 추가할
+   때마다 또 감싸야 한다 — <b>기능 코드에 손을 안 대는 게 조건</b>이었다.
+   그래서 출구 하나에서 잡는다: <b>DOM 텍스트 노드</b>. 어떤 경로로 만들어진
+   문구든 화면에 보이려면 결국 텍스트 노드가 되고, MutationObserver가 그걸
+   전부 본다. 진단 로그(console)는 텍스트 노드가 아니라서 자동으로 제외된다
+   — 콘솔은 한국어로 남는 게 맞다(진단 문구는 개발자용).
+
+   ── 두 단계 번역 ───────────────────────────────────────────────
+     ① 정확 일치 — 사전에 통째로 있는 문구(대부분). 자연스러운 번역이 나온다.
+     ② 부분 치환 — `좌측 얼굴 랜드마크 감지 ✓`처럼 값이 끼어든 문구.
+        긴 열쇠부터 훑어 바꾼다. 어순이 완벽하진 않아도 읽힌다.
+   ①에서 끝나는 게 대부분이고, ②는 안전망이다. 둘 다 못 찾으면 한국어가
+   그대로 남는다 — <b>빈 화면이 되는 경우는 없다</b>.
+
+   ── 되돌리기 ───────────────────────────────────────────────────
+   번역하기 전 원문을 그 노드에 붙여 둔다(node.__ko). 한국어로 토글하면
+   그걸 되쓴다 — 재번역이 아니라 <b>원문 복원</b>이라 왕복해도 안 뭉개진다.
+══════════════════════════════════════════════════════════════════ */
+const I18N = {
+  // ── 헤더·단계 ──
+  '단계':'Step', '1/4 · 촬영':'1/4 · Capture',
+  '1/5 · 촬영':'1/5 · Capture', '2/5 · 스타일':'2/5 · Style', '3/5 · 조정':'3/5 · Adjust',
+  '4/5 · 결과':'4/5 · Result', '5/5 · 3D두상':'5/5 · 3D Head',
+  '촬영':'Capture', '스타일':'Style', '조정':'Adjust', '결과':'Result',
+  // ── 촬영 화면 ──
+  '카메라를 불러오는 중…':'Starting camera…',
+  '아래 업로드 버튼도 이용 가능해요':'You can also use the Upload button below',
+  '카메라가 준비되지 않았어요.':'The camera isn’t ready.',
+  '지금 찍으세요':'Shoot now',
+  '각도 측정 준비 중…':'Preparing angle detection…',
+  '각도 감지 준비 중…':'Preparing angle detection…',
+  '후면 감지 준비 중…':'Preparing back-view detection…',
+  '정면을 가이드 안에 맞춰주세요':'Line your face up inside the guide',
+  '정면을 맞춰주세요':'Face the camera straight on',
+  '좌측면을 맞춰주세요':'Turn to your left profile',
+  '왼쪽 옆머리가 보이게 — 고개를 오른쪽으로 돌려주세요':'Show your left side — turn your head to the right',
+  '오른쪽 옆머리가 보이게 — 고개를 왼쪽으로 돌려주세요':'Show your right side — turn your head to the left',
+  '후면(뒷머리)을 맞춰주세요':'Show the back of your head',
+  '촬영 버튼을 눌러주세요':'Press the shutter button',
+  '셔터 버튼을 눌러주세요':'Press the shutter button',
+  '그대로 계세요 — 자동으로 찍습니다':'Hold still — shooting automatically',
+  '정면':'Front', '좌측':'Left', '우측':'Right', '후면':'Back',
+  '재촬영':'Retake', '업로드':'Upload', '다음→':'Next →', '← 촬영':'← Capture',
+  '조정하기 →':'Adjust →', '← 스타일':'← Style', '결과 보기 →':'View result →',
+  '← 조정':'← Adjust', '3D로 보기 →':'View in 3D →', '← 결과':'← Result', '새로 시작':'Start over',
+  '찍었습니다':'Captured', '셋':'Three', '둘':'Two', '하나':'One',
+  // 라이브 가이드 판정
+  '사람이 안 잡혀요':'No person detected',
+  '뒷머리와 어깨가 화면에 들어오게 서주세요':'Stand so the back of your head and shoulders are in frame',
+  '얼굴이 보여요':'Your face is showing',
+  '고개를 앞으로 돌려 뒷머리만 보이게 해주세요':'Turn away so only the back of your head shows',
+  '어깨가 안 잡혀요':'Shoulders not detected',
+  '상체가 화면에 들어오게 서주세요':'Stand so your upper body is in frame',
+  '몸이 옆으로 돌아갔어요':'Your body is turned sideways',
+  '어깨가 화면과 나란해지게 서주세요':'Square your shoulders to the camera',
+  '어깨를 수평으로 맞춰주세요':'Level your shoulders',
+  '고개를 어깨와 나란히 정면으로 돌려주세요':'Center your head over your shoulders',
+  '너무 옆으로 돌아갔어요':'Turned too far to the side',
+  '뒷머리가 정면으로 오게 서주세요':'Point the back of your head at the camera',
+  '정수리가 잘려요':'Top of head is cut off',
+  '머리 위가 화면 밖이에요 — 조금 물러나 주세요':'The top of your head is out of frame — step back a little',
+  '얼굴이 안 잡혀요':'No face detected',
+  '눈·코 라인이 살짝 보이는 각도로 맞춰주세요':'Turn until your eye and nose line is just visible',
+  '각도 계산 실패':'Angle calculation failed',
+  '조금 왼쪽으로 돌려주세요':'Turn a little to the left',
+  '조금 오른쪽으로 돌려주세요':'Turn a little to the right',
+  '각도는 맞는데 얼굴 인식이 안 돼요 — 조금 덜 돌리거나, 얼굴 쪽을 밝게 해주세요':
+    'Angle is right but the face isn’t detected — turn back slightly, or add light on your face',
+  '다시 촬영을 권해요':'we recommend retaking it',
+  '이 각도의 사진이 없습니다':'No photo for this angle',
+  // ── 스타일 화면 ──
+  '스타일 미선택':'No style selected', '스타일 미적용':'No style applied',
+  '커스텀':'Custom',
+  '원랭스':'One length', '한 라인 · 무게감 하단':'Single line · weight at the bottom',
+  '그라데이션':'Graduation', '사선 · 무게 쌓임':'Diagonal · weight builds up',
+  '유니폼 레이어':'Uniform layer', '균일 층 · 가벼움':'Even layers · light',
+  '인크리스 레이어':'Increase layer', '위로 갈수록 길게':'Longer toward the top',
+  // ── 조정 화면 ──
+  '가닥 보기':'Strands', '원본 결 보기':'Original flow', '마스크 보기':'Mask',
+  '스타일 보기':'Style', '결필드 원본':'Raw flow field', '얼굴박스 보기':'Face box',
+  '원본 결 (스타일 미적용)':'Original flow (no style)',
+  '진단정보':'Diagnostics', '3D 미리보기':'3D preview',
+  '3D 미리보기: ':'3D preview: ', '3D 미리보기: OFF':'3D preview: OFF',
+  '드래그 회전 · ⛶ 확대':'Drag to rotate · ⛶ zoom',
+  '드래그해서 회전':'Drag to rotate', '기준면 보기':'Show reference surface',
+  'AI 분석':'AI analysis', '음성으로 조정하기':'Adjust by voice',
+  '예: "크라운 길게", "네이프 짧게", "볼륨 추가"':'e.g. "crown longer", "nape shorter", "add volume"',
+  '크라운·프론트·템플·사이드·후두부·네이프 + 길게·짧게·볼륨·컬':
+    'Crown · Front · Temple · Side · Occipital · Nape  +  longer · shorter · volume · curl',
+  '결원본 직접 조정':'Adjust the original flow directly',
+  '초기화':'Reset', '★ 현재 모델을 스타일로 등록하기':'★ Save current model as a style',
+  '이 스타일 이름을 입력하세요 (예: "오늘 손님 스타일")':'Name this style (e.g. "today’s client style")',
+  '분석 중…':'Analyzing…', '잠시만 기다려주세요':'One moment please',
+  '모델 로딩 중…':'Loading model…', '의상 준비 중…':'Preparing outfit…',
+  '제휴 준비중':'Partnership coming soon',
+  '범용 3D 두상 · 확정 스타일 적용':'Generic 3D head · final style applied',
+  '확대/축소':'Zoom', '원래대로':'Reset view',
+  // 섹션
+  '크라운':'Crown', '프론트':'Front', '템플':'Temple',
+  '사이드':'Side', '후두부':'Occipital', '네이프':'Nape', '스타일링':'Styling',
+  '정수리 · 엘리베이션(시술각) 기준':'Top · elevation-driven',
+  '앞머리 · 커팅라인(실제로는 Fringe 개념)':'Fringe · cutting line',
+  '관자놀이 · 크라운 연동비율(Overdirection)':'Temples · overdirection to crown',
+  '귀 앞·뒤 · 엘리베이션(시술각) 기준':'Around the ears · elevation-driven',
+  '뒤통수 · 엘리베이션(시술각) 기준':'Back of head · elevation-driven',
+  '목선 마무리 · 커팅라인':'Neckline finish · cutting line',
+  // 설계 패널
+  '커트':'Cut', '형태':'Shape', '펌':'Perm', '컬러':'Color', '선택':'optional',
+  '길이':'Length', '모발 길이':'Hair length',
+  '엘리베이션':'Elevation', '시술각':'lift angle',
+  '엘리베이션(시술각)':'Elevation (lift angle)',
+  '시술각(기법 강도 스케일)':'Lift angle (technique intensity)',
+  '텍스처라이징':'Texturizing', '끝단 숱·질감':'End thinning · texture',
+  '컬':'Curl', '컬 세기':'Curl strength', '0이면 펌 없음':'0 = no perm',
+  '웨이브 폭':'Wave width', '로드 굵기':'rod diameter',
+  '넘김':'Sweep', '앞으로':'forward', '뒤로':'back',
+  '뿌리 볼륨':'Root volume', '눌러줌':'flat', '세움':'lifted',
+  '결 흐름':'End flow', '안말음 C':'C-curl under', '바깥말음':'flick out',
+  '가르마':'Part', '좌':'L', '우':'R',
+  '마무리 질감':'Finish', '매트':'matte', '윤기':'shine',
+  '커팅라인':'Cutting line', '크라운 연동비율':'Crown overdirection',
+  '볼륨':'Volume', '연결감':'Connection', '레이어':'Layer',
+  '커트 방식':'Cut method', '가드 번호':'Guard number', '0=스킨 · 8=1인치':'0 = skin · 8 = 1 inch',
+  '페이드 높이':'Fade height', '로우~하이':'low → high',
+  '블렌딩 폭':'Blend width', '테이퍼 레버':'taper lever', '영향: ':'Affects: ',
+  // 의상
+  // ── 값이 끼어드는 문구의 조각(부분 치환용) ──
+  '얼굴 랜드마크 감지':'face landmarks detected', '랜드마크 감지 실패':'landmark detection failed',
+  '랜드마크 감지':'landmark detection', '처리 중':'processing', '분석 중':'analyzing',
+  '머리카락 추출 중…':'Extracting hair…', '얼굴 분석 중…':'Analyzing face…',
+  'Hair Segmentation 준비 중':'Preparing hair segmentation',
+  '슬롯인데 반대쪽 옆얼굴이에요':'slot, but this is the opposite profile',
+  '슬롯인데 거의 정면이에요':'slot, but this is almost head-on',
+  '옆머리 정보가 부족해요':'not enough side-hair information',
+  '그대로 저장했어요':'saved as is',
+  '⚠ 귀 2개가 다 보이는 상태는 아니에요 — 그대로 저장했어요':'⚠ Both ears aren’t visible — saved as is',
+  '⚠ 얼굴 랜드마크가 안 잡히는 상태예요 — 그대로 저장했지만 3D가 부정확할 수 있어요':
+    '⚠ No face landmarks detected — saved as is, but the 3D may be inaccurate',
+  '오른쪽 귀가 가려졌어요':'Your right ear is hidden',
+  '목표 각도':'target angle', '밖이에요':'is out of range',
+  '스타일로 등록했어요':'saved as a style',
+  '후면 정렬':'Back view aligned', '머리 치우침':'Head offset', '어깨 기울기':'Shoulder tilt',
+  '고개 듦':'chin up', '고개 숙임':'chin down', '목표':'target',
+  '더 돌려주세요':'turn further', '덜 돌려주세요':'turn back',
+  '너무 옆모습':'too much profile', '오른쪽':'right', '왼쪽':'left',
+  // ── 의상 ──
+  '차콜 슈트':'Charcoal suit', '포멀':'Formal', '클래식':'Classic', '단정':'Sharp', '오피스':'Office',
+  '슬레이트 캐주얼 셔츠':'Slate casual shirt', '캐주얼':'Casual', '편안함':'Relaxed',
+  '데일리':'Daily', '뉴트럴':'Neutral', '올리브 롱슬리브':'Olive long sleeve', '차분함':'Calm',
+  '버건디 셔츠':'Burgundy shirt', '포인트':'Accent', '포인트컬러':'Accent color', '개성':'Personality',
+};
+/* 부분 치환에 쓰면 오히려 망가지는 열쇠 — <b>한 글자</b>라 다른 낱말 안에
+   그냥 들어 있다('컬'은 '컬럼' 안에도 있다). 이것만 정확 일치로 제한한다.
+   나머지는 긴 열쇠부터 훑기 때문에 '재촬영'이 '촬영'보다 먼저 걸려 안전하다. */
+const I18N_EXACT_ONLY = new Set(['좌','우','컬']);
+/* 긴 열쇠부터 — '엘리베이션(시술각)'이 '엘리베이션'보다 먼저 걸려야 한다. */
+let _i18nSubKeys = null;
+function i18nSubKeys(){
+  if(!_i18nSubKeys){
+    _i18nSubKeys = Object.keys(I18N)
+      .filter(k => !I18N_EXACT_ONLY.has(k) && k.trim().length >= 2)
+      .sort((a,b)=> b.length - a.length);
+  }
+  return _i18nSubKeys;
+}
+const HANGUL = /[가-힣]/;
+function i18nTranslate(ko){
+  const t = ko.trim();
+  if(!t || !HANGUL.test(t)) return null;              // 숫자·기호만 — 건드릴 것 없음
+  const hit = I18N[t];
+  if(hit != null){                                    // ① 정확 일치 — 앞뒤 공백은 보존
+    const lead = ko.slice(0, ko.indexOf(t[0]));
+    const tail = ko.slice(lead.length + t.length);
+    return lead + hit + tail;
+  }
+  let out = ko, changed = false;                      // ② 부분 치환(값이 끼어든 문구)
+  for(const k of i18nSubKeys()){
+    if(out.indexOf(k) < 0) continue;
+    out = out.split(k).join(I18N[k]);
+    changed = true;
+  }
+  return changed ? out : null;                        // 못 찾으면 한국어 그대로 둔다
+}
+
+let uiLang = 'en';        // ← 기본값. 'ko'로 바꾸면 한국어로 시작한다.
+let _i18nMuted = false;   // 우리가 고친 노드를 옵저버가 다시 보지 않게
+const I18N_ATTRS = ['placeholder','title','aria-label'];
+
+/* 재진입 안전: 이미 그 언어로 되어 있으면 <b>쓰지 않는다</b>. 안 쓰면 새 변경도
+   안 생기니 옵저버가 되물려도 그 자리에서 멎는다(무한 루프 없음). */
+function i18nApplyTextNode(node){
+  if(uiLang === 'ko'){
+    if(node.__ko != null && node.nodeValue !== node.__ko) node.nodeValue = node.__ko; // 원문 복원
+    return;
+  }
+  if(node.__en != null && node.nodeValue === node.__en) return;   // 이미 번역됨
+  const ko = (node.__ko != null && node.nodeValue === node.__ko) ? node.__ko : node.nodeValue;
+  const en = i18nTranslate(ko);
+  node.__ko = ko;
+  if(en == null || en === ko){ node.__en = null; return; }
+  node.__en = en;
+  node.nodeValue = en;
+}
+function i18nApplyEl(el){
+  for(const a of I18N_ATTRS){
+    if(!el.hasAttribute || !el.hasAttribute(a)) continue;
+    const key = '__ko_' + a;
+    if(uiLang === 'ko'){ if(el[key] != null) el.setAttribute(a, el[key]); continue; }
+    const ko = (el[key] != null) ? el[key] : el.getAttribute(a);
+    const en = i18nTranslate(ko);
+    if(en == null || en === ko) continue;
+    el[key] = ko;
+    el.setAttribute(a, en);
+  }
+}
+function i18nWalk(root){
+  if(!root) return;
+  if(root.nodeType === 3){ i18nApplyTextNode(root); return; }
+  if(root.nodeType !== 1) return;
+  // <canvas>·<script>·<style> 안쪽은 볼 일이 없다
+  const SKIP = { SCRIPT:1, STYLE:1, CANVAS:1, VIDEO:1 };
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT | NodeFilter.SHOW_ELEMENT, {
+    acceptNode: (n)=> (n.nodeType === 1 && SKIP[n.tagName]) ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT
+  });
+  if(root.nodeType === 1) i18nApplyEl(root);
+  let n;
+  while((n = walker.nextNode())){
+    if(n.nodeType === 3) i18nApplyTextNode(n); else i18nApplyEl(n);
+  }
+}
+function applyUiLang(){
+  _i18nMuted = true;
+  try{ i18nWalk(document.getElementById('app') || document.body); }
+  finally{ _i18nMuted = false; }
+  const btn = document.getElementById('langToggle');
+  if(btn) btn.textContent = (uiLang === 'en') ? 'EN' : '한국어';
+  document.documentElement.lang = uiLang;
+}
+function setUiLang(lang){
+  uiLang = (lang === 'ko') ? 'ko' : 'en';
+  applyUiLang();
+}
+function toggleUiLang(){ setUiLang(uiLang === 'en' ? 'ko' : 'en'); }
+
+/* JS가 새로 넣는 문구(토스트·힌트·스타일 카드·진단 패널…)를 자동으로 잡는다.
+   호출부를 하나도 안 고쳐도 되는 이유가 이것이다. */
+function initI18nObserver(){
+  const root = document.getElementById('app') || document.body;
+  if(!root || typeof MutationObserver === 'undefined') return;
+  const obs = new MutationObserver((muts)=>{
+    if(_i18nMuted) return;
+    _i18nMuted = true;
+    try{
+      for(const m of muts){
+        if(m.type === 'characterData') i18nApplyTextNode(m.target);
+        else for(const n of m.addedNodes) i18nWalk(n);
+      }
+    } finally { _i18nMuted = false; }
+  });
+  obs.observe(root, { childList:true, subtree:true, characterData:true });
+}
+(function initI18n(){
+  const boot = ()=>{ applyUiLang(); initI18nObserver(); };
+  if(document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);
+  else boot();
+})();
 </script>
 </body>
 </html>
