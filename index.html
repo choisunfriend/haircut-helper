@@ -11032,9 +11032,47 @@ const SCALP_ZONES = {
 // (phi, 정수리~네이프)에서 재서 그 높이의 실측 단면(반너비X·반깊이Z)을 만든다.
 // HEAD_PHI_BANDS는 임의 단계가 아니라 SCALP_ZONES의 실제 구역 경계 phiRange에서
 // 뽑는다(원칙 (1): 데이터가 있으면 추측하지 않는다).
-const HEAD_PHI_BANDS = [...new Set(
-  Object.values(SCALP_ZONES).flatMap(z => z.phiRange)
-)].sort((a,b)=>a-b);
+/* ══════════════════════════════════════════════════════════════════
+   정수리 캡 — 표에 없던 밴드를 <b>이미 만든 두상</b>으로 채운다 (2026-08-03)
+   ─────────────────────────────────────────────────────────────────
+   사용자: "3D 두상의 정수리로 추정밴드를 만들면 안 되냐고."
+   된다. 그리고 그게 정확한 처방이다 — 지금 정수리는 <b>돔이 아니라 납작한
+   원기둥</b>으로 모델링돼 있다.
+
+   ── 무엇이 잘못돼 있었나 ────────────────────────────────────────
+   HEAD_PHI_BANDS는 SCALP_ZONES의 구역 경계에서 나온 표라 정수리 쪽이 이렇다:
+       phi 0.01 · 0.55 · 0.60 · 0.70 · 0.95 · 1.05 · 1.55 …
+   <b>0.01과 0.55 사이(0.6°~31°)에 표본이 하나도 없다.</b> 그 구간은 두 점을
+   직선으로 이을 뿐인데, 실기기 실측이
+       phi0.01: W <b>0.25</b>    phi0.55: W 0.27
+   였다. 즉 꼭짓점부터 31°까지 반폭이 0.25~0.27로 <b>거의 안 변한다</b> = 지름
+   14cm짜리 평평한 원반. 진짜 두상이면 꼭짓점에서 W→0으로 모여야 한다
+   (적도 0.46인 타원체면 31°에서 0.24, 꼭짓점에서 0.005).
+   왜 0.25가 나오나 — phi 0.01의 행을 <b>머리카락 실루엣</b>에서 재는데, 그
+   높이에서는 이미 머리가 옆으로 퍼져 있다. 두개골이 아니라 머리털을 잰 것이다.
+   그 납작한 원반 위에 뿌리를 심으니 정수리 가닥이 한 점으로 모이지 않고
+   원반 가장자리로 흩어진다 — "정수리가 늘 약했다"의 기하 쪽 원인이다.
+
+   ── 고침 ────────────────────────────────────────────────────────
+   ① 표에 없던 밴드(phis)를 끼워 넣어 표본을 만든다.
+   ② 그 구간의 W·D는 실루엣에서 재지 <b>않는다</b>(위에서 본 카메라가 없으니
+      실루엣은 머리털이다). 대신 <b>이미 실측한 적도 단면</b>을 반축으로 삼은
+      타원체의 캡, 즉 W(phi)=a·sin(phi)로 만든다.
+   ③ anchorPhi(0.55)의 <b>실측값에 정확히 맞도록</b> 배율을 잡아 이어붙인다 —
+      이음매가 생길 수 없다(그 자리에서 두 식이 같은 값).
+   ※ 이건 실측이 아니라 <b>형상 추정</b>이다. 다만 "머리털을 두개골로 잘못 잰
+     값"보다는 낫고, 45° 뷰나 360촬영이 들어오면 그때 실측으로 대체된다.
+══════════════════════════════════════════════════════════════════ */
+const HEAD_CROWN_CAP = {
+  on: true,                          // false면 예전 동작(납작한 원반) — A/B용
+  phis: [0.10, 0.20, 0.30, 0.42],    // 0.01~0.55 빈 구간에 끼울 밴드
+  anchorPhi: 0.55,                   // 이 밴드의 실측값에 맞춰 이어붙인다
+  minFrac: 0.04,                     // 꼭짓점이 정확히 0이 되지 않게(u=mx/aH 나눗셈 보호)
+};
+const HEAD_PHI_BANDS = [...new Set([
+  ...Object.values(SCALP_ZONES).flatMap(z => z.phiRange),
+  ...(HEAD_CROWN_CAP.on ? HEAD_CROWN_CAP.phis : []),
+])].sort((a,b)=>a-b);
 
 // 마스크의 한 가로줄(row)에서 헤어 실루엣의 절반 폭(정규화, 0~0.5)을 잰다.
 function measureRowHalfWidth(reasonMask, w, h, row){
@@ -11421,6 +11459,43 @@ function accumulateAllViews(accumulate){
   accumulate('right', false);
 }
 
+/* 정수리 캡 적용 — 위 HEAD_CROWN_CAP 주석 참조.
+   anchorPhi의 실측 W·D를 그대로 통과하도록 배율(sA/sC)을 잡으므로 이음매가 없다.
+   getHeadEllipsoid를 부르지 않는 이유: 그쪽이 computeHeadCrossSections를 부른다(순환).
+   같은 규칙(적도=최대 단면)을 여기서 직접 쓴다. */
+function applyCrownCap(bands){
+  const C = HEAD_CROWN_CAP;
+  if(!C.on) return null;
+  const anchor = bands.find(b2 => Math.abs(b2.phi - C.anchorPhi) < 1e-6);
+  if(!anchor || !(anchor.halfWidth > 0)) return null;
+  let aMax = 0, cMax = 0;
+  bands.forEach(b2=>{
+    if(b2.phi > HEAD_WIDTH_MAX_PHI) return;
+    if(b2.halfWidth > aMax){ aMax = b2.halfWidth; cMax = b2.halfDepth || 0; }
+  });
+  if(!(aMax > 0)) return null;
+  const sinA = Math.sin(C.anchorPhi);
+  const sA = anchor.halfWidth / Math.max(1e-6, aMax * sinA);
+  const sC = (cMax > 0) ? (anchor.halfDepth || 0) / Math.max(1e-6, cMax * sinA) : 1;
+  const was = [];
+  bands.forEach(b2=>{
+    if(b2.phi >= C.anchorPhi) return;
+    was.push('phi' + b2.phi.toFixed(2) + ':W' + (b2.halfWidth||0).toFixed(2));
+    b2.halfWidth = Math.max(aMax * C.minFrac, aMax * sA * Math.sin(b2.phi));
+    b2.halfDepth = Math.max(cMax * C.minFrac, cMax * sC * Math.sin(b2.phi));
+    b2.crownCap = true;   // [진단용] 이 밴드는 실측이 아니라 형상 추정
+  });
+  const now = bands.filter(b2=>b2.crownCap)
+    .map(b2=>'phi' + b2.phi.toFixed(2) + ':W' + b2.halfWidth.toFixed(2)).join(' ');
+  console.log('[두상·정수리캡] 표에 없던 정수리 밴드를 두상 타원체로 채움'
+    + ' — 적도 반축 a=' + aMax.toFixed(3) + ' c=' + cMax.toFixed(3)
+    + ' · phi' + C.anchorPhi + ' 실측(W' + anchor.halfWidth.toFixed(2) + ')에 맞춘 배율 ×' + sA.toFixed(2)
+    + '\n    이전(머리털 실루엣을 두개골로 잼): ' + (was.join(' ') || '없음')
+    + '\n    이후(타원체 캡):                 ' + now
+    + '\n    ※ 실측 아님 — 위에서 본 뷰가 생기면 대체됨');
+  return { aMax, cMax, sA, sC };
+}
+
 function computeHeadCrossSections(){
   if(_headCrossSectionCache) return _headCrossSectionCache;
   const metrics = getFaceMetrics();
@@ -11514,6 +11589,9 @@ function computeHeadCrossSections(){
       bands[i].halfDepth = (bands[i-1].halfDepth + 2*bands[i].halfDepth + bands[i+1].halfDepth)/4;
     }
   }
+  /* 정수리 캡 — <b>평활 뒤에</b> 얹는다. 평활보다 앞에 두면 방금 만든 돔이
+     아래 밴드와 섞여 다시 뭉툭해진다(캡의 존재 이유가 사라진다). */
+  applyCrownCap(bands);
 
   _headCrossSectionCache = bands;
   return bands;
