@@ -1650,11 +1650,6 @@ input[type=range]::-moz-range-thumb{width:20px;height:20px;border-radius:50%;bac
 .gy-toggle.on{background:var(--accent);}
 .gy-toggle::after{content:'';position:absolute;width:16px;height:16px;border-radius:50%;background:var(--text);top:2px;left:2px;transition:.2s;}
 .gy-toggle.on::after{left:18px;background:#1B1816;}
-/* 언어 토글 (2026-08-03) */
-.lang-toggle{background:var(--surface-2);color:var(--text);border:1px solid var(--line);
-  border-radius:999px;padding:4px 11px;font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:500;
-  letter-spacing:.04em;cursor:pointer;line-height:1.5;}
-.lang-toggle:hover{border-color:var(--accent);color:var(--accent-soft);}
 </style>
 </head>
 <body>
@@ -1662,8 +1657,6 @@ input[type=range]::-moz-range-thumb{width:20px;height:20px;border-radius:50%;bac
   <header>
     <div class="brand-mark">결</div>
     <div class="stage-pill" id="stageLabel">단계 <b>1/4 · 촬영</b></div>
-    <!-- 언어 토글 (2026-08-03) — 기본 영어. 첫 화면(촬영)에서 바로 잡히도록 헤더에 둔다. -->
-    <button class="lang-toggle" id="langToggle" onclick="toggleUiLang()" title="Language / 언어">EN</button>
   </header>
   <main>
 
@@ -1755,7 +1748,7 @@ input[type=range]::-moz-range-thumb{width:20px;height:20px;border-radius:50%;bac
              (2026-08-02 8차) 기본 렌더는 다시 가닥 렌더다(state.hairQuilt=false).
              원본 결 보기와 가닥 규칙을 공유하는 경로가 그쪽이라서. 이식을 보려면
              콘솔에서 state.hairQuilt=true 후 다시 그린다. -->
-        <button class="debug-btn" id="diagInfoToggle" onclick="toggleDiagInfo()" style="right:auto;left:8px;bottom:8px;">진단정보</button>
+        <button class="debug-btn" onclick="toggleDiagInfo()" style="right:auto;left:8px;bottom:8px;">진단정보</button>
         <div id="diagInfoBox" style="display:none;position:absolute;left:8px;bottom:44px;right:8px;background:rgba(0,0,0,0.85);color:#0f0;font-family:monospace;font-size:10px;padding:8px;border-radius:6px;white-space:pre-wrap;z-index:50;max-height:200px;overflow:auto;"></div>
         <div class="seg-status" id="segStatus"></div>
         <!-- (10차) 개발용 3D 검증 미니뷰 — 3D 조정 엔진 β ON일 때만 표시.
@@ -4926,10 +4919,6 @@ function retakeCurrent(){
   const angle=ANGLES[state.currentCaptureIndex];
   state.shots[angle]=null; state.hairCanvases[angle]=null; state.hairMasks[angle]=null; state.baseCanvases[angle]=null; state.baseFillCanvases[angle]=null;
   if(state.strandPaths) state.strandPaths[angle]=null; // 캡처된 가닥 경로도 함께 무효화
-  // 이 뷰에서 뜬 이마 표본이 보관 중이면 버린다(다른 뷰가 재사용 중일 수 있음).
-  // 사진이 바뀌면 표본도 다시 떠야 한다.
-  if(_skinGraft && _skinGraft.src === angle) resetSkinGraft();
-  delete _graftLogged[angle];
   _silhouetteAnchorCache = {}; // 실루엣 앵커는 정면 비율도 참조하므로 어느 각도든 재촬영 시 전체 리셋
   _resultScene = null; _personScaleRef = null; // 결과 화면의 두상 자·장면 재료도 사진이 바뀌면 무효
   // 랜드마크/감지상태도 함께 초기화 — 촬영 직후 감지가 생기면서, 지우지 않으면
@@ -6333,34 +6322,7 @@ const HOLE_FILL = {
   skinBoost: 3,   // 피부색 이웃 가중(두상 안에서만)
   skinTol: 110,
   dirW: [0.4, 1.0, 2.6], // 위/가운데/아래 이웃 가중 — 살색이 두피로 타고 올라오게
-  /* ── 두피 이식 (2026-08-03) ────────────────────────────────────────
-     사용자: "머리두피면을 보면 까맣게 보여. 저기 채워지지 않은 자리는 헤어
-     세그멘테이션 바깥쪽의 <b>이마 피부 픽셀</b>을 가져와서 옮겨심는 구조가
-     있을거야. 그걸 연결해줘."
-     맞다 — 구조는 이미 있었다(pickSkinPatch). 다만 <b>결(고주파)만</b> 얹고
-     있었다: 그 자리의 <b>색</b>은 여전히 이웃 전파(fillHolesLowRes)가 정했고,
-     정수리 근처는 이웃이 거의 전부 <b>배경(벽)</b>이라 흰 벽이, 뒤통수·목덜미
-     쪽은 지워진 머리 경계의 어두운 값이 번져 들어왔다. 결만 얹어봐야 그 위에
-     찍히는 미세 명암일 뿐이라 "두피면이 까맣다/허옇다"가 그대로 남는다.
-     고침: 두상 안 구멍은 <b>색까지 이마 표본에서 가져온다</b>. 번져 들어온
-     색은 색으로 안 쓰고 <b>밝기만</b>, 그것도 아래 범위로 <b>제한해서</b> 받는다
-     (그늘은 남기되 벽의 흰색·머리의 검정으로는 절대 못 가게).
-     ※ 소스와 대상이 같은 사람·같은 조명·같은 카메라라 색을 맞출 필요가 없다 —
-       이게 원래 구멍 메움이 통했던 이유고, 그대로 적용된다. */
-  graft: {
-    on: true,          // false면 예전 동작(결만 얹기) — A/B용
-    shadeMin: 0.72,    // 받아들일 밝기 배율 하한(제일 어두운 안쪽 겹)
-    shadeMax: 1.12,    // 〃 상한(정수리 하이라이트) — 벽의 흰색이 여기서 잘린다
-    edgeFeather: 0.14, // 두상 타원 가장자리 페더(반경 대비) — 이식이 뚝 끊기지 않게
-    flatMix: 0.85,     // 표본을 못 떴을 때 두피색 쪽으로 끌어당기는 비율
-  },
 };
-
-/* 이식용 피부 표본 — 뷰별로 뜨고, 못 뜨면 <b>다른 뷰에서 뜬 것</b>을 재사용한다.
-   후면처럼 얼굴이 아예 없는 뷰가 정확히 이 경우다(로그: "back 얼굴 감지 실패").
-   같은 사람·같은 조명·같은 카메라라 뷰가 달라도 색을 맞출 필요가 없다. */
-let _skinGraft = null;   // { rgb:Uint8ClampedArray(size*size*3), hi:Float32Array, size, lum, src }
-function resetSkinGraft(){ _skinGraft = null; }
 
 // 뷰의 두상 영역(정규 좌표) — 정수리~턱을 감싸는 타원. 없으면 null.
 function headEllipseFor(angle){
@@ -6376,27 +6338,11 @@ function headEllipseFor(angle){
 }
 
 /* 얼굴에서 깨끗한 피부 표본을 찾는다(불투명 + 피부색에 가까운 정사각 영역).
-
-   ── 후보 자리 (2026-08-03 수정) ────────────────────────────────────
-   주석은 예전부터 "볼 → 턱 → <b>이마</b>"라고 적혀 있었는데 후보 좌표에는
-   <b>이마가 아예 없었다</b> — dy가 전부 0 이상(=두상 중심보다 아래)이라
-   제일 위가 dy 0.10, 눈 언저리였다. 이식 대상이 <b>두피</b>인데 표본을 볼·턱에서
-   뜨면 그림자·수염·턱선 명암이 같이 따라온다. 두피 바로 옆에 붙어 있고 결이
-   가장 비슷한 <b>이마</b>(dy 음수 = 중심보다 위)를 후보에 넣고 우대한다.
-   ※ 이마 밴드는 앞머리가 걸치기 쉬운 자리라 구멍(투명)이 섞이면 아래
-     "불투명 98%" 조건에서 자동으로 탈락한다 — 우대해도 안전하다. */
-const SKIN_PATCH_CANDS = [
-  // [dx, dy, 우대점수] — 두상 타원 중심 기준(dy<0 = 위쪽 = 이마)
-  [ 0.00, -0.28, 0.25], [-0.28, -0.24, 0.22], [ 0.28, -0.24, 0.22],
-  [ 0.00, -0.16, 0.20], [-0.40, -0.10, 0.15], [ 0.40, -0.10, 0.15],
-  [ 0.00,  0.15, 0.05], [-0.35,  0.10, 0.05], [ 0.35,  0.10, 0.05],
-  [-0.55,  0.35, 0.00], [ 0.55,  0.35, 0.00], [-0.50, 0.60, 0.00],
-  [ 0.50,  0.60, 0.00], [ 0.00,  0.70, 0.00],
-];
+   볼 → 턱 → 이마 순으로 후보를 훑어 가장 "피부다운" 곳을 고른다. */
 function pickSkinPatch(ctx, W, H, ell, skinRGB, size){
   if(!ell) return null;
   const cands = [];
-  for(const [dx, dy, bonus] of SKIN_PATCH_CANDS){
+  for(const [dx, dy] of [[-0.55,0.35],[0.55,0.35],[-0.5,0.6],[0.5,0.6],[0,0.7],[0,0.15],[-0.35,0.1],[0.35,0.1]]){
     const px = Math.round((ell.cx + ell.rx*dx) * W - size/2);
     const py = Math.round((ell.cy + ell.ry*dy) * H - size/2);
     if(px < 0 || py < 0 || px+size > W || py+size > H) continue;
@@ -6410,47 +6356,11 @@ function pickSkinPatch(ctx, W, H, ell, skinRGB, size){
     }
     const total = size*size;
     if(opaque < total*0.98) continue;            // 구멍이 섞이면 못 씀
-    // score = 순수 "피부다움"(합격 판정용), rank = 거기에 이마 우대를 얹은 정렬 키.
-    // 우대점수로 <b>합격선을 넘기지는 않게</b> 둘을 분리한다(머리카락 패치 방지).
-    cands.push({ px, py, score: near/total, rank: near/total + bonus });
+    cands.push({ px, py, score: near/total });
   }
   if(!cands.length) return null;
-  cands.sort((a,b)=> b.rank - a.rank);
-  const best = cands.find(c => c.score > 0.5);   // 절반도 피부색이 아니면 못 씀
-  return best || null;
-}
-
-/* 이마 표본을 떠서 "이식 재료"로 만든다.
-     rgb — 패치 원본 픽셀(색 + 결). 이식은 이걸 통째로 옮겨 심는다.
-     hi  — 패치 − 흐린 패치 = 결만(예전 동작 A/B용으로 남겨둔다).
-     lum — 패치 평균 밝기. 대상 자리의 밝기를 이 값 대비 배율로 환산할 때 기준. */
-function buildSkinGraft(hctx, ow, oh, ell, skinRGB, size, angle){
-  const patch = pickSkinPatch(hctx, ow, oh, ell, skinRGB, size);
-  if(!patch) return null;
-  const pc = document.createElement('canvas'); pc.width = size; pc.height = size;
-  const pctx = pc.getContext('2d', { willReadFrequently:true });
-  pctx.drawImage(hctx.canvas, patch.px, patch.py, size, size, 0, 0, size, size);
-  const sharp = pctx.getImageData(0, 0, size, size).data;
-  /* 흐린 판 — 색·밝기는 여기 다 들어있으므로 빼고 나면 결(모공·잔털·미세 명암)만 남는다. */
-  const bs = Math.max(2, size >> 3);
-  const bc = document.createElement('canvas'); bc.width = bs; bc.height = bs;
-  const bctx = bc.getContext('2d', { willReadFrequently:true });
-  bctx.imageSmoothingEnabled = true;
-  bctx.drawImage(pc, 0, 0, bs, bs);
-  pctx.clearRect(0, 0, size, size);
-  pctx.drawImage(bc, 0, 0, size, size);
-  const blur = pctx.getImageData(0, 0, size, size).data;
-
-  const rgb = new Uint8ClampedArray(size*size*3);
-  const hi  = new Float32Array(size*size*3);
-  let lumSum = 0;
-  for(let i=0, k=0; i<sharp.length; i+=4, k+=3){
-    rgb[k]   = sharp[i];   hi[k]   = sharp[i]   - blur[i];
-    rgb[k+1] = sharp[i+1]; hi[k+1] = sharp[i+1] - blur[i+1];
-    rgb[k+2] = sharp[i+2]; hi[k+2] = sharp[i+2] - blur[i+2];
-    lumSum += 0.299*sharp[i] + 0.587*sharp[i+1] + 0.114*sharp[i+2];
-  }
-  return { rgb, hi, size, lum: lumSum / (size*size), src: angle || '?', at: patch };
+  cands.sort((a,b)=> b.score - a.score);
+  return cands[0].score > 0.5 ? cands[0] : null; // 절반도 피부색이 아니면 포기
 }
 
 // 저해상도 이웃 전파 — 투명 픽셀을 주변 색으로 채운다(두상 안에서만 피부톤 편향).
@@ -6503,7 +6413,7 @@ function fillHolesLowRes(srcCanvas, w, h, skinRGB, ell){
 }
 
 /* 최종 배경 생성. skinColor가 없으면 결 없이 색만 채운다(안전 폴백). */
-function buildHoleFillCanvas(srcCanvas, skinColor, ell, angle){
+function buildHoleFillCanvas(srcCanvas, skinColor, ell){
   const sw = srcCanvas.width, sh = srcCanvas.height;
   if(!sw || !sh) return null;
   let skinRGB = null;
@@ -6542,90 +6452,52 @@ function buildHoleFillCanvas(srcCanvas, skinColor, ell, angle){
   const holeA = hctx.getImageData(0, 0, ow, oh).data;
 
   const size = Math.min(HOLE_FILL.patch, ow>>1, oh>>1);
-  /* ── 이마 표본 확보 ─────────────────────────────────────────────
-     이 뷰에서 뜬다 → 못 뜨면 다른 뷰(대개 정면)에서 뜬 것을 쓴다.
-     정면 표본은 늘 최신으로 보관한다(얼굴이 가장 크게·정면으로 나오는 뷰). */
-  let graft = buildSkinGraft(hctx, ow, oh, ell, skinRGB, size, angle);
-  if(graft && (!_skinGraft || angle === 'front' || _skinGraft.src !== 'front')) _skinGraft = graft;
-  if(!graft) graft = _skinGraft;
+  const patch = pickSkinPatch(hctx, ow, oh, ell, skinRGB, size);
+  if(!patch) return out;                       // 깨끗한 피부 표본이 없으면 결 생략
 
-  const G = HOLE_FILL.graft;
+  /* 피부 결만 뽑아낸다: 패치 − 자기자신을 흐린 것.
+     색·밝기는 흐린 쪽에 다 들어있으므로 빼고 나면 결(모공·잔털·미세 명암)만 남는다.
+     그래서 이걸 어디에 얹어도 그 자리 색은 안 변하고 질감만 생긴다 = 이음매 없음. */
+  const pc = document.createElement('canvas'); pc.width = size; pc.height = size;
+  const pctx = pc.getContext('2d', { willReadFrequently:true });
+  pctx.drawImage(hc, patch.px, patch.py, size, size, 0, 0, size, size);
+  const sharp = pctx.getImageData(0, 0, size, size).data;
+  const bs = Math.max(2, size >> 3);
+  const bc = document.createElement('canvas'); bc.width = bs; bc.height = bs;
+  const bctx = bc.getContext('2d', { willReadFrequently:true });
+  bctx.imageSmoothingEnabled = true;
+  bctx.drawImage(pc, 0, 0, bs, bs);
+  pctx.clearRect(0, 0, size, size);
+  pctx.drawImage(bc, 0, 0, size, size);        // 흐린 판
+  const blur = pctx.getImageData(0, 0, size, size).data;
+  const hi = new Float32Array(size*size*3);
+  for(let i=0, k=0; i<sharp.length; i+=4, k+=3){
+    hi[k]   = sharp[i]   - blur[i];
+    hi[k+1] = sharp[i+1] - blur[i+1];
+    hi[k+2] = sharp[i+2] - blur[i+2];
+  }
+
   // 거울 반복(ping-pong)으로 타일링 — 같은 무늬가 줄줄이 반복되는 티가 안 난다
   const mirror = (v, n)=>{ const p = 2*n - 2; let m = ((v % p) + p) % p; return m < n ? m : p - m; };
   const oimg = octx.getImageData(0, 0, ow, oh), od = oimg.data;
   const T = HOLE_FILL.texture;
-  const gs = graft ? graft.size : 0;
-  let nGraft = 0, nFlat = 0;
   for(let y=0; y<oh; y++){
     const ny = (y + 0.5)/oh, v = (ny - ell.cy)/ell.ry, v2 = v*v;
-    if(v2 > 1) continue;                       // 두상 밖 — 손대지 않음(목·옷·배경)
-    const py = gs ? mirror(y, gs) : 0;
+    if(v2 > 1) continue;                       // 두상 밖 — 결 없음
+    const py = mirror(y, size);
     for(let x=0; x<ow; x++){
       const i = (y*ow+x)*4;
       if(holeA[i+3] >= 200) continue;          // 원래 있던 픽셀 — 안 건드림
       const nx = (x + 0.5)/ow, u = (nx - ell.cx)/ell.rx;
-      const r2 = u*u + v2;
-      if(r2 > 1) continue;                     // 두상 밖
-      /* 두상 경계 페더 — 이식이 타원 선에서 뚝 끊기면 그 자리에 테두리가 생긴다.
-         바깥 몇 %에서 원래(전파된) 색으로 서서히 넘긴다. */
-      let wgt = 1;
-      if(G.edgeFeather > 0){
-        const r = Math.sqrt(r2);
-        if(r > 1 - G.edgeFeather) wgt = Math.max(0, (1 - r) / G.edgeFeather);
-      }
-      if(!graft){
-        /* 표본을 아예 못 떴을 때 — 최소한 <b>두피색 쪽으로</b> 끌어당긴다.
-           벽의 흰색·머리의 검정이 그대로 남는 것보다 낫다(검정은 답이 아니다). */
-        const m = G.flatMix * wgt;
-        od[i]   = od[i]  *(1-m) + skinRGB[0]*m;
-        od[i+1] = od[i+1]*(1-m) + skinRGB[1]*m;
-        od[i+2] = od[i+2]*(1-m) + skinRGB[2]*m;
-        nFlat++;
-        continue;
-      }
-      const k = (mirror(x, gs)*gs + py) * 3;
-      if(!G.on){
-        // 예전 동작(A/B) — 결만 얹는다. 색은 이웃 전파가 정한 그대로.
-        od[i]   = Math.max(0, Math.min(255, od[i]   + graft.hi[k]  *T));
-        od[i+1] = Math.max(0, Math.min(255, od[i+1] + graft.hi[k+1]*T));
-        od[i+2] = Math.max(0, Math.min(255, od[i+2] + graft.hi[k+2]*T));
-        continue;
-      }
-      /* ── 이식 ──
-         이 자리에 번져 들어온 색(od)은 <b>색으로 안 쓴다</b>. 정수리 근처면
-         벽(흰색), 뒤통수·목덜미면 지워진 머리 경계(검정)라 둘 다 두피가 아니다.
-         쓰는 건 <b>밝기 하나</b>고, 그마저 shadeMin~shadeMax로 잘라서 받는다 —
-         그늘·하이라이트는 남되 흰 벽/검정으로는 못 간다.
-         색과 결은 전부 이마 표본에서 온다. */
-      const lum = 0.299*od[i] + 0.587*od[i+1] + 0.114*od[i+2];
-      let sh = graft.lum > 1 ? lum / graft.lum : 1;
-      sh = Math.max(G.shadeMin, Math.min(G.shadeMax, sh));
-      for(let ch = 0; ch < 3; ch++){
-        const skinPx = graft.rgb[k+ch] * sh;
-        od[i+ch] = Math.max(0, Math.min(255, od[i+ch]*(1-wgt) + skinPx*wgt));
-      }
-      nGraft++;
+      if(u*u + v2 > 1) continue;               // 두상 밖
+      const k = (mirror(x, size)*size + py) * 3;
+      od[i]   = Math.max(0, Math.min(255, od[i]   + hi[k]  *T));
+      od[i+1] = Math.max(0, Math.min(255, od[i+1] + hi[k+1]*T));
+      od[i+2] = Math.max(0, Math.min(255, od[i+2] + hi[k+2]*T));
     }
   }
   octx.putImageData(oimg, 0, 0);
-  logSkinGraftOnce(angle, graft, nGraft, nFlat, ow, oh);
   return out;
-}
-
-/* [진단] 두피 이식이 실제로 먹었는지 — 뷰당 1회. 까맣게 보인다는 신고가 오면
-   여기 숫자 하나로 "안 심었다 / 심었는데 다른 이유"가 갈린다. */
-const _graftLogged = {};
-function logSkinGraftOnce(angle, graft, nGraft, nFlat, ow, oh){
-  if(!angle || _graftLogged[angle]) return;
-  _graftLogged[angle] = true;
-  const px = ow*oh;
-  console.log(`[두피이식] ${angle}: `
-    + (graft
-        ? `이마 표본 ${graft.size}px(출처 ${graft.src}${graft.src!==angle?' — 다른 뷰 재사용':''},`
-          + ` 평균밝기 ${graft.lum.toFixed(0)})`
-        : `표본 없음 → 두피색 단색 ${Math.round(HOLE_FILL.graft.flatMix*100)}% 혼합`)
-    + ` · 이식 ${nGraft}px${nFlat?`(단색 ${nFlat}px)`:''}`
-    + ` = 두상 안 구멍 ${(100*(nGraft+nFlat)/px).toFixed(1)}% of ${ow}×${oh}`);
 }
 
 // 뷰별 1회 생성 후 캐시. 두상 판정에 sectionBandsFor가 필요해서 렌더 시점에 만든다.
@@ -6649,7 +6521,7 @@ function getHoleFillCanvas(angle, baseC, maskInf){
   if(cached && cached._src === baseC) return cached;
   let c = null;
   try{
-    c = buildHoleFillCanvas(baseC, maskInf && maskInf.scalpColor, headEllipseFor(angle), angle);
+    c = buildHoleFillCanvas(baseC, maskInf && maskInf.scalpColor, headEllipseFor(angle));
   }catch(e){ console.warn('구멍 메움 배경 생성 실패:', angle, e); }
   if(c){ c._src = baseC; if(state.baseFillCanvases) state.baseFillCanvases[angle] = c; }
   return c;
@@ -11032,47 +10904,9 @@ const SCALP_ZONES = {
 // (phi, 정수리~네이프)에서 재서 그 높이의 실측 단면(반너비X·반깊이Z)을 만든다.
 // HEAD_PHI_BANDS는 임의 단계가 아니라 SCALP_ZONES의 실제 구역 경계 phiRange에서
 // 뽑는다(원칙 (1): 데이터가 있으면 추측하지 않는다).
-/* ══════════════════════════════════════════════════════════════════
-   정수리 캡 — 표에 없던 밴드를 <b>이미 만든 두상</b>으로 채운다 (2026-08-03)
-   ─────────────────────────────────────────────────────────────────
-   사용자: "3D 두상의 정수리로 추정밴드를 만들면 안 되냐고."
-   된다. 그리고 그게 정확한 처방이다 — 지금 정수리는 <b>돔이 아니라 납작한
-   원기둥</b>으로 모델링돼 있다.
-
-   ── 무엇이 잘못돼 있었나 ────────────────────────────────────────
-   HEAD_PHI_BANDS는 SCALP_ZONES의 구역 경계에서 나온 표라 정수리 쪽이 이렇다:
-       phi 0.01 · 0.55 · 0.60 · 0.70 · 0.95 · 1.05 · 1.55 …
-   <b>0.01과 0.55 사이(0.6°~31°)에 표본이 하나도 없다.</b> 그 구간은 두 점을
-   직선으로 이을 뿐인데, 실기기 실측이
-       phi0.01: W <b>0.25</b>    phi0.55: W 0.27
-   였다. 즉 꼭짓점부터 31°까지 반폭이 0.25~0.27로 <b>거의 안 변한다</b> = 지름
-   14cm짜리 평평한 원반. 진짜 두상이면 꼭짓점에서 W→0으로 모여야 한다
-   (적도 0.46인 타원체면 31°에서 0.24, 꼭짓점에서 0.005).
-   왜 0.25가 나오나 — phi 0.01의 행을 <b>머리카락 실루엣</b>에서 재는데, 그
-   높이에서는 이미 머리가 옆으로 퍼져 있다. 두개골이 아니라 머리털을 잰 것이다.
-   그 납작한 원반 위에 뿌리를 심으니 정수리 가닥이 한 점으로 모이지 않고
-   원반 가장자리로 흩어진다 — "정수리가 늘 약했다"의 기하 쪽 원인이다.
-
-   ── 고침 ────────────────────────────────────────────────────────
-   ① 표에 없던 밴드(phis)를 끼워 넣어 표본을 만든다.
-   ② 그 구간의 W·D는 실루엣에서 재지 <b>않는다</b>(위에서 본 카메라가 없으니
-      실루엣은 머리털이다). 대신 <b>이미 실측한 적도 단면</b>을 반축으로 삼은
-      타원체의 캡, 즉 W(phi)=a·sin(phi)로 만든다.
-   ③ anchorPhi(0.55)의 <b>실측값에 정확히 맞도록</b> 배율을 잡아 이어붙인다 —
-      이음매가 생길 수 없다(그 자리에서 두 식이 같은 값).
-   ※ 이건 실측이 아니라 <b>형상 추정</b>이다. 다만 "머리털을 두개골로 잘못 잰
-     값"보다는 낫고, 45° 뷰나 360촬영이 들어오면 그때 실측으로 대체된다.
-══════════════════════════════════════════════════════════════════ */
-const HEAD_CROWN_CAP = {
-  on: true,                          // false면 예전 동작(납작한 원반) — A/B용
-  phis: [0.10, 0.20, 0.30, 0.42],    // 0.01~0.55 빈 구간에 끼울 밴드
-  anchorPhi: 0.55,                   // 이 밴드의 실측값에 맞춰 이어붙인다
-  minFrac: 0.04,                     // 꼭짓점이 정확히 0이 되지 않게(u=mx/aH 나눗셈 보호)
-};
-const HEAD_PHI_BANDS = [...new Set([
-  ...Object.values(SCALP_ZONES).flatMap(z => z.phiRange),
-  ...(HEAD_CROWN_CAP.on ? HEAD_CROWN_CAP.phis : []),
-])].sort((a,b)=>a-b);
+const HEAD_PHI_BANDS = [...new Set(
+  Object.values(SCALP_ZONES).flatMap(z => z.phiRange)
+)].sort((a,b)=>a-b);
 
 // 마스크의 한 가로줄(row)에서 헤어 실루엣의 절반 폭(정규화, 0~0.5)을 잰다.
 function measureRowHalfWidth(reasonMask, w, h, row){
@@ -11459,43 +11293,6 @@ function accumulateAllViews(accumulate){
   accumulate('right', false);
 }
 
-/* 정수리 캡 적용 — 위 HEAD_CROWN_CAP 주석 참조.
-   anchorPhi의 실측 W·D를 그대로 통과하도록 배율(sA/sC)을 잡으므로 이음매가 없다.
-   getHeadEllipsoid를 부르지 않는 이유: 그쪽이 computeHeadCrossSections를 부른다(순환).
-   같은 규칙(적도=최대 단면)을 여기서 직접 쓴다. */
-function applyCrownCap(bands){
-  const C = HEAD_CROWN_CAP;
-  if(!C.on) return null;
-  const anchor = bands.find(b2 => Math.abs(b2.phi - C.anchorPhi) < 1e-6);
-  if(!anchor || !(anchor.halfWidth > 0)) return null;
-  let aMax = 0, cMax = 0;
-  bands.forEach(b2=>{
-    if(b2.phi > HEAD_WIDTH_MAX_PHI) return;
-    if(b2.halfWidth > aMax){ aMax = b2.halfWidth; cMax = b2.halfDepth || 0; }
-  });
-  if(!(aMax > 0)) return null;
-  const sinA = Math.sin(C.anchorPhi);
-  const sA = anchor.halfWidth / Math.max(1e-6, aMax * sinA);
-  const sC = (cMax > 0) ? (anchor.halfDepth || 0) / Math.max(1e-6, cMax * sinA) : 1;
-  const was = [];
-  bands.forEach(b2=>{
-    if(b2.phi >= C.anchorPhi) return;
-    was.push('phi' + b2.phi.toFixed(2) + ':W' + (b2.halfWidth||0).toFixed(2));
-    b2.halfWidth = Math.max(aMax * C.minFrac, aMax * sA * Math.sin(b2.phi));
-    b2.halfDepth = Math.max(cMax * C.minFrac, cMax * sC * Math.sin(b2.phi));
-    b2.crownCap = true;   // [진단용] 이 밴드는 실측이 아니라 형상 추정
-  });
-  const now = bands.filter(b2=>b2.crownCap)
-    .map(b2=>'phi' + b2.phi.toFixed(2) + ':W' + b2.halfWidth.toFixed(2)).join(' ');
-  console.log('[두상·정수리캡] 표에 없던 정수리 밴드를 두상 타원체로 채움'
-    + ' — 적도 반축 a=' + aMax.toFixed(3) + ' c=' + cMax.toFixed(3)
-    + ' · phi' + C.anchorPhi + ' 실측(W' + anchor.halfWidth.toFixed(2) + ')에 맞춘 배율 ×' + sA.toFixed(2)
-    + '\n    이전(머리털 실루엣을 두개골로 잼): ' + (was.join(' ') || '없음')
-    + '\n    이후(타원체 캡):                 ' + now
-    + '\n    ※ 실측 아님 — 위에서 본 뷰가 생기면 대체됨');
-  return { aMax, cMax, sA, sC };
-}
-
 function computeHeadCrossSections(){
   if(_headCrossSectionCache) return _headCrossSectionCache;
   const metrics = getFaceMetrics();
@@ -11589,9 +11386,6 @@ function computeHeadCrossSections(){
       bands[i].halfDepth = (bands[i-1].halfDepth + 2*bands[i].halfDepth + bands[i+1].halfDepth)/4;
     }
   }
-  /* 정수리 캡 — <b>평활 뒤에</b> 얹는다. 평활보다 앞에 두면 방금 만든 돔이
-     아래 밴드와 섞여 다시 뭉툭해진다(캡의 존재 이유가 사라진다). */
-  applyCrownCap(bands);
 
   _headCrossSectionCache = bands;
   return bands;
@@ -13303,311 +13097,6 @@ function buildRootDensityField(probe, hullW, hullD, bucketOfY, CY, b){
   return field;
 }
 
-/* ══════════════════════════════════════════════════════════════════
-   겹침 정리 — 여러 뷰가 같은 두피에 겹쳐 심은 것을 실측 밀도로 되돌린다
-   (2026-08-03)
-   ─────────────────────────────────────────────────────────────────
-   리프트는 뷰마다 그 뷰의 2,833가닥을 <b>전부</b> 심는다. 두 뷰가 같은 두피
-   자리를 보면 둘 다 심는다 — 조율이 없다. 옆모습이 90°에서 벗어날수록 앞쪽이
-   여러 겹으로 쌓이고, 실측 yaw가 43°/-39°였던 이번 촬영에서는 앞 반구를
-   카메라 세 대가 겹쳐 봤다. 그게 "앞은 까맣고 뒤는 성근" 정체다.
-
-   ── 어느 가닥을 버리나 ──────────────────────────────────────────
-   <b>그 자리를 제일 비스듬히 본 뷰</b>의 가닥부터. 리프트가 뿌리마다 이미
-   facing(=sqrt(1-u), 카메라 축에서 1, 실루엣 가장자리에서 0)을 계산해 두므로
-   그대로 쓴다. 정면으로 본 뷰가 그 자리에 대해 제일 믿을 만한 관측이고,
-   비스듬히 본 뷰는 같은 픽셀 폭이 훨씬 넓은 두피를 덮어 뿌리 위치가 부정확하다.
-   즉 <b>버릴 것부터 버린다</b> — 무작위 솎기가 아니다.
-
-   ── 얼마나 남기나 (사용자 지시 그대로) ──────────────────────────
-   사용자: "실측된 구역은 채우기하고, 추정셀 놔두기까지 하고, 나머지 대머리
-   부분은 과제로 체크해둬."
-     · est=0 (실측 셀)  → 실측 밀도를 목표로 <b>과밀은 솎고 모자라면 채운다</b>
-     · est=1,2 (추정 셀) → <b>손대지 않는다</b>. 이웃/전체평균으로 채운 값이라
-       목표치로 쓰면 지어낸 숫자에 실측 가닥을 맞추게 된다.
-
-   ── 기준 K를 <b>제일 촘촘한 뷰</b>에서 뽑는 이유 (2026-08-03 2차) ──────
-   사용자: "back을 손 안댔어? 거기 머리가 적은데."
-   맞는 지적이고, 1차 구현은 그 상태로 두면 <b>더 나빠진다</b>. 원인이 로그에 있다:
-       front 마스크 18,411px · left 20,875 · right 23,170 · <b>back 47,519</b>
-   후면 마스크가 정면의 <b>2.6배</b>인데, 리프트는 뷰마다 똑같이 2,833가닥을
-   심는다(각 뷰의 2D 목표 개수가 고정이라서). 즉 후면은 면적당 가닥이 원래
-   2.6배 성글다 — 겹침과 무관한, <b>뷰당 고정 예산</b>이 만든 성김이다.
-   그런데 겹치지 않은 셀은 대부분 <b>후면</b>이다(앞은 세 뷰가 겹쳐 봤으므로).
-   그래서 K를 "한 뷰만 심은 셀 전체의 중앙값"으로 잡으면 K가 곧 <b>후면의 성긴
-   밀도</b>가 되고, 앞머리를 거기까지 깎아내려 머리 전체가 성글어진다.
-   고침: K를 <b>뷰마다 따로</b> 내고(K_v = 그 뷰만 심은 셀들의 중앙값)
-   <b>가장 큰 값</b>을 쓴다 = 제일 촘촘하게 관측된 뷰가 기준. 그러면
-     · 앞 — 겹친 만큼만 솎이고, 자기 밀도 아래로는 안 깎인다
-     · 뒤 — 기준에 못 미치는 만큼 <b>채워진다</b>(아래 ④)
-
-   ── 남은 구조적 한계: 4뷰 (2026-08-03, 사용자 정리) ──────────────
-   사용자: "이게 4뷰의 한계인 거 같아. MVP 기능을 다 하고 나면 360 촬영을 해서
-   12장을 30도 간격으로 빼내는 게 나을 거 같아." — 동의한다. 여기서 하는 건
-   <b>사후 보정</b>이다: 뷰가 넷뿐이라 앞은 세 겹으로 겹치고 뒤는 한 뷰가 2.6배
-   면적을 혼자 감당하는데, 그걸 밀도로 되돌려 놓는 것일 뿐 없던 관측이 생기진
-   않는다. 아래 ④의 채우기도 <b>이웃 가닥 복제</b>지 실측이 아니다.
-   <b>TODO(360촬영)</b>: 30° 간격 12장이 들어오면 이 함수의 존재 이유가 대부분
-   사라진다 — 뷰당 겹침이 균일해지고(어느 자리든 2~3뷰), 뷰당 마스크 면적도
-   고르게 나뉘어 고정 예산 2,833이 면적당 같은 밀도가 된다. 그때 볼 자리:
-     ① jobs 구성 — MIRROR_SRC(거울 채움) 자체가 필요 없어진다
-     ② 뷰당 가닥 예산을 <b>마스크 면적 비례</b>로 (지금은 뷰마다 고정)
-     ③ 이 함수는 est=0 셀의 미세 보정만 남기고 강도를 낮출 것
-
-   ── 남은 과제 (2026-08-03) ─────────────────────────────────────
-   <b>TODO(대머리)</b>: 닫기 반경(HAIR_IDENTITY.closeFrac=0.06 → 마스크 폭의
-   6%, 지름 약 12%)보다 <b>큰</b> 민머리는 measureViewHairIdentity의 region에
-   안 들어와 한 번도 안 세지고, fillUnseenRootCells의 BFS가 주변 머리 밀도로
-   채운다. 즉 <b>큰 대머리일수록 오히려 사라진다</b>. 여기서는 est>0 셀을
-   안 건드리므로 <b>없는 머리를 심지는 않는다</b>(오늘 기준 안전). 하지만
-   "정수리가 비었다"를 3D가 재현하지도 못한다. 고칠 자리는 둘:
-     ① measureViewHairIdentity — 두상 타원 안이면 마스크 밖도 실측 후보에 넣기
-        (지금은 morphClose로 끌어온 만큼만 본다)
-     ② fillUnseenRootCells — 실측 0 셀에 <b>둘러싸인</b> 미측정 셀은 평균이 아니라
-        0 쪽으로 수렴시키기(지금은 어느 쪽이든 이웃 평균)
-   그 전까지 이 함수는 대머리를 <b>모르는 채로</b> 동작한다 — 지어내지 않을 뿐이다.
-══════════════════════════════════════════════════════════════════ */
-const HAIR_OVERLAP = {
-  on: true,            // false면 예전 동작(전부 심기) — A/B용
-  minKeep: 1,          // 실측 밀도가 있는 셀은 최소 이만큼 남긴다(솎다가 구멍 내지 않게)
-  minDen: 0.05,        // 이보다 옅은 실측 밀도는 K 표본에서 뺀다(0 나눗셈·과대추정 방지)
-  calibMinCells: 8,    // K 표본이 이보다 적으면 못 믿는다 → 정리 건너뜀
-  /* K를 <b>중앙값이 아니라 위쪽 백분위</b>로 낸다 (2026-08-03 3차, 아래 주석 참조).
-     rim 셀이 표본의 아래쪽을 채우기 때문에 중앙값은 늘 과소평가가 된다. */
-  calibPct: 0.75,
-  minSamplesPerCell: 1,  // 주력 뷰가 이만큼은 심은 셀만 K 표본으로(빈 셀이 기준을 끌어내리지 않게)
-  /* 헐 분리로 모발이 <b>두께</b>를 갖게 됐다(사용자 지적). 가닥은 두피면~헐 사이
-     껍질에 t로 흩어지므로, 같은 개수라도 한 겹은 성글어 보인다. 표면 셀 하나를
-     "가득 찬 것처럼" 보이게 하려면 껍질 몫만큼 더 있어야 한다. 1.0이면 예전 동작. */
-  shellFill: 1.6,
-  /* 안전 레일 — 이 비율 넘게 솎이면 그건 겹침이 아니라 <b>기준(K)이 틀린 것</b>이다.
-     3차에서 실제로 35%가 날아갔다(사용자: "3D로 전환된 이후부터 전반적으로 성글어졌어").
-     넘으면 K를 올려 다시 계산하고, 올렸다는 사실을 콘솔에 남긴다. */
-  maxDropFrac: 0.20,
-  headroom: 1.15,      // 목표치 여유 — 격자·투영 오차만큼은 봐준다(빡빡하면 멀쩡한 것도 깎임)
-  // ── 채우기(모자란 실측 셀) ──
-  fill: true,          // false면 솎기만(1차 동작)
-  fillMaxMul: 3,       // 그 셀 원본 대비 이 배수까지만 복제 — 1개에서 20개를 만들지 않게
-  fillRing: 2,         // 셀에 원본이 하나도 없으면 이 반경까지 이웃에서 빌린다
-  fillJitter: 0.9,     // 셀 안에서 뿌리를 흔드는 폭(셀 크기 대비) — 1이면 셀 전체
-};
-
-/* 뿌리 3D 점 → 표면 셀 번호. forEachHeadSurfaceCell의 좌표식을 그대로 역산한다
-   (y=CY+b·cos(φ), x=W·sin(θ), z=D·cos(θ)) — 같은 격자에 담겨야 den/est와 맞는다. */
-function headSurfaceCellOf(x, y, z, hullW, hullD, bucketOfY, CY, b, NT, NP){
-  const ny = Math.max(-1, Math.min(1, b > 1e-6 ? (y - CY) / b : 0));
-  let pi = Math.floor(Math.acos(ny) / Math.PI * NP);
-  pi = Math.max(0, Math.min(NP-1, pi));
-  const bi = bucketOfY(y);
-  const Wb = Math.max(1e-6, hullW[bi]), Db = Math.max(1e-6, hullD[bi]);
-  const th = Math.atan2(x / Wb, z / Db);            // 타원 종횡비를 나눠야 셀이 안 쏠린다
-  let ti = Math.floor((th + Math.PI) / (2*Math.PI) * NT);
-  ti = ((ti % NT) + NT) % NT;
-  return pi*NT + ti;
-}
-
-/* 셀 안의 한 점을 헐 표면 좌표로. r1/r2는 0~1 흔들기(0.5,0.5면 셀 중심). */
-function headSurfaceCellPoint(ci, r1, r2, hullW, hullD, bucketOfY, CY, b, NT, NP){
-  const pi = (ci / NT) | 0, ti = ci % NT;
-  const ny = Math.cos((pi + r1) / NP * Math.PI);
-  const y  = CY + b * ny;
-  const bi = bucketOfY(y);
-  const th = (ti + r2) / NT * 2*Math.PI - Math.PI;
-  return { x: hullW[bi]*Math.sin(th), y, z: hullD[bi]*Math.cos(th) };
-}
-
-function pruneOverlappedRoots(strands, rootField, hullW, hullD, bucketOfY, CY, b, occProbe){
-  const O = HAIR_OVERLAP;
-  if(!O.on || !rootField || !rootField.ok || !strands.length) return null;
-  const NT = rootField.NT, NP = rootField.NP, den = rootField.den, est = rootField.est;
-  // 결정적 난수 — 재구성해도 같은 결과(리프트의 seed와 같은 원칙)
-  let seed = 20260803;
-  const rnd = ()=>{ seed = (seed * 1103515245 + 12345) & 0x7fffffff; return seed / 0x7fffffff; };
-
-  // ── ① 뿌리를 셀에 담는다 ──
-  const inCell = new Map();      // 셀 → 가닥 인덱스 배열
-  const viewsOf = new Map();     // 셀 → 그 셀에 심은 뷰 이름 Set
-  for(let i=0;i<strands.length;i++){
-    const p0 = strands[i].pts && strands[i].pts[0];
-    if(!p0) continue;
-    const ci = headSurfaceCellOf(p0.x, p0.y, p0.z, hullW, hullD, bucketOfY, CY, b, NT, NP);
-    strands[i]._cell = ci;
-    let arr = inCell.get(ci); if(!arr){ arr = []; inCell.set(ci, arr); }
-    arr.push(i);
-    let vs = viewsOf.get(ci); if(!vs){ vs = new Set(); viewsOf.set(ci, vs); }
-    vs.add(strands[i].srcAngle);
-  }
-
-  /* ── ② K(밀도 1당 가닥 수) — <b>모든 실측 셀</b>에서, 그 셀의 주력 뷰 몫으로 ──
-
-     ── 2차가 왜 35%를 날렸나 (2026-08-03 3차, 실기기 로그로 확정) ──────────
-     2차는 "한 뷰가 <b>혼자</b> 심은 셀"에서만 K를 냈다. 겹침이 안 섞이니 깨끗할
-     줄 알았는데, 그런 셀이 실기기에서 <b>front 16개 · left 26 · right 45</b>
-     (실측 셀 1,144개 중 1.4~4%)였다. 그리고 그 셀들이 어디냐면 — 다른 카메라는
-     못 보고 <b>한 대만 간신히 본 자리</b>, 즉 실루엣 rim이다. rim은 원래 뿌리가
-     제일 적게 떨어지는 자리라 K가 체계적으로 과소평가된다.
-     결과: K=9.4 → 목표 9.4×0.46×1.15 = <b>5.0가닥/셀</b>인데 자연 밀도는
-     11,220/826 = <b>13.6가닥/셀</b>. 자연의 37%를 겨눴고, 모델이
-     11,220 → 7,268 (−35%)로 깎였다. 사용자: "3D로 전환된 이후부터 전반적으로
-     성글어진 거 같아."
-
-     고침 셋:
-       ① 표본을 <b>모든 실측 셀</b>로. 겹친 셀도 쓰되, 그 셀에서 <b>제일 정면으로
-          본 뷰의 몫만</b> 센다(nTop). 겹침은 빠지고 표본은 1,144개가 된다.
-       ② 중앙값이 아니라 <b>위쪽 백분위</b>(calibPct). rim이 표본 아래쪽을 채우므로
-          중앙값은 여전히 낮게 끌린다.
-       ③ 목표치에 <b>껍질 몫</b>(shellFill)을 곱한다 — 헐 분리로 가닥이 두피면~헐
-          사이에 t로 흩어지므로 한 겹만 보면 성글다. 그리고 <b>주력 뷰가 그 셀에
-          실제로 심은 수(nTop) 아래로는 절대 안 깎는다</b> — 그게 겹침 없는 실측이다. */
-  const ratios = [], topOf = new Map();
-  inCell.forEach((arr, ci)=>{
-    if(est[ci] !== 0) return;                              // 추정 셀은 기준으로 안 쓴다
-    const cnt = {}, fac = {};
-    for(const i of arr){
-      const v = strands[i].srcAngle;
-      cnt[v] = (cnt[v]||0) + 1;
-      fac[v] = Math.max(fac[v]||0, strands[i].rootFacing||0);
-    }
-    let best = null;
-    for(const v in cnt) if(!best || fac[v] > fac[best]) best = v;   // 제일 정면으로 본 뷰
-    const nTop = cnt[best] || 0;
-    topOf.set(ci, nTop);
-    if(den[ci] >= O.minDen && nTop >= O.minSamplesPerCell) ratios.push(nTop / den[ci]);
-  });
-  if(ratios.length < O.calibMinCells){
-    console.warn('[3D·겹침] 기준을 낼 실측 셀이 ' + ratios.length + '개뿐 — 정리를 건너뜁니다.');
-    return { skipped:true, cleanCells:ratios.length, dropped:0, added:0 };
-  }
-  ratios.sort((p,q)=>p-q);
-  const kBase = ratios[Math.min(ratios.length-1, Math.floor(ratios.length * O.calibPct))];
-
-  // ── ③ 과밀한 실측 셀 솎기 — 그 자리를 제일 비스듬히 본 뷰부터 ──
-  /* 목표치 = max(주력 뷰가 실제로 심은 수, K×밀도×여유×껍질몫).
-     안전 레일: 솎을 양이 모델의 maxDropFrac을 넘으면 겹침이 아니라 K가 틀린 것이니
-     K를 올려 다시 잰다(로그에 남긴다). */
-  const cellTarget = (ci, k)=> Math.max(O.minKeep, topOf.get(ci) || 0,
-        Math.round(k * den[ci] * O.headroom * O.shellFill));
-  const dropsFor = (k)=>{
-    let d = 0;
-    inCell.forEach((arr, ci)=>{ if(est[ci] !== 0) return;
-      const t2 = cellTarget(ci, k); if(arr.length > t2) d += arr.length - t2; });
-    return d;
-  };
-  const cap = Math.round(strands.length * O.maxDropFrac);
-  let K = kBase, kRaised = 0;
-  while(dropsFor(K) > cap && kRaised < 12){ K *= 1.25; kRaised++; }
-  /* K를 아무리 올려도 목표치는 <b>topOf</b>(주력 뷰가 실제로 심은 수) 아래로 안 내려간다 —
-     그게 겹침 없는 실측이기 때문이다. 그 바닥에서도 상한을 넘으면 그건 기준 문제가
-     아니라 <b>진짜로 그만큼 겹쳐 있었다</b>는 뜻이라, 조용히 겹침을 남기지 않고 알린다. */
-  const railHeld = dropsFor(K) <= cap;
-
-  let dropped = 0, thinnedCells = 0, keptEstCells = 0;
-  const dropView = {};
-  const shortCells = [];   // 모자란 실측 셀 — ④에서 채운다
-  inCell.forEach((arr, ci)=>{
-    if(est[ci] !== 0){ keptEstCells++; return; }           // 추정 셀 — 손대지 않는다
-    const target = cellTarget(ci, K);
-    if(arr.length < target){ shortCells.push([ci, target, arr]); return; }
-    if(arr.length === target) return;
-    arr.sort((p,q)=> (strands[p].rootFacing||0) - (strands[q].rootFacing||0));
-    const nDrop = arr.length - target;
-    for(let k=0;k<nDrop;k++){
-      const si = arr[k];
-      strands[si]._drop = true;
-      dropView[strands[si].srcAngle] = (dropView[strands[si].srcAngle]||0) + 1;
-      dropped++;
-    }
-    thinnedCells++;
-  });
-
-  /* ── ④ 모자란 실측 셀 채우기 (사용자: "back을 손 안댔어? 거기 머리가 적은데") ──
-     그 셀(없으면 이웃 셀)의 가닥을 복제해 셀 안 다른 자리로 <b>평행이동</b>한다.
-     회전이나 재생성이 아니라 평행이동인 이유: 컬·결·길이가 그대로 보존돼야
-     "같은 사람의 같은 머리"로 보인다. 복제본은 세그멘테이션으로 다시 다듬어
-     머리 없는 자리로 삐져나온 것은 버린다.
-     ※ 이건 <b>실측이 아니라 보간</b>이다. 근본 해결은 위 TODO(360촬영). */
-  let added = 0, filledCells = 0, emptyCells = 0, clipDropped = 0;
-  const addView = {};
-  if(O.fill && shortCells.length){
-    const ringOf = (ci)=>{                                  // 이웃 셀에서 원본 빌리기
-      const pi = (ci/NT)|0, ti = ci%NT, out = [];
-      for(let dp=-O.fillRing; dp<=O.fillRing; dp++){
-        const p2 = pi+dp; if(p2<0||p2>=NP) continue;
-        for(let dt=-O.fillRing; dt<=O.fillRing; dt++){
-          if(!dp && !dt) continue;
-          out.push(p2*NT + (((ti+dt)%NT)+NT)%NT);
-        }
-      }
-      return out;
-    };
-    for(const [ci, target, arr] of shortCells){
-      let src = arr.filter(i=>!strands[i]._drop);
-      let borrowed = false;
-      if(!src.length){
-        emptyCells++;
-        for(const nb of ringOf(ci)){
-          const na = inCell.get(nb);
-          if(!na) continue;
-          const usable = na.filter(i=>!strands[i]._drop && est[strands[i]._cell] === 0);
-          if(usable.length){ src = usable; borrowed = true; break; }
-        }
-        if(!src.length) continue;                           // 빌릴 데가 없다 — 지어내지 않는다
-      }
-      const cap = borrowed ? target : Math.min(target, Math.round(src.length * O.fillMaxMul));
-      const want = cap - (borrowed ? 0 : src.length);
-      let made = 0;
-      for(let k=0; k<want; k++){
-        const s0 = strands[src[k % src.length]];
-        const j = O.fillJitter;
-        const tp = headSurfaceCellPoint(ci, 0.5 + (rnd()-0.5)*j, 0.5 + (rnd()-0.5)*j,
-                                        hullW, hullD, bucketOfY, CY, b, NT, NP);
-        const sp = headSurfaceCellPoint(s0._cell, 0.5, 0.5, hullW, hullD, bucketOfY, CY, b, NT, NP);
-        const dx = tp.x - sp.x, dy = tp.y - sp.y, dz = tp.z - sp.z;
-        let pts = s0.pts.map(p=>({ x:p.x+dx, y:p.y+dy, z:p.z+dz }));
-        if(occProbe){
-          const t2 = trimStrandToOccupancy3D(pts, occProbe, null);
-          if(!t2 || t2.length < 2){ clipDropped++; continue; }  // 머리 없는 자리 — 버린다
-          pts = t2;
-        }
-        strands.push({ pts, cols:s0.cols, sec:s0.sec, color:s0.color,
-                       srcAngle:s0.srcAngle, mirrored:s0.mirrored,
-                       rootFacing:s0.rootFacing, _cell:ci, _cloned:true });
-        addView[s0.srcAngle] = (addView[s0.srcAngle]||0) + 1;
-        added++; made++;
-      }
-      if(made) filledCells++;
-    }
-  }
-
-  const fmt = o => Object.keys(o).map(v=>v+':'+o[v]).join(' ') || '없음';
-  const before = strands.length - added, after = strands.filter(s=>!s._drop).length;
-  console.log('[3D·겹침] 뿌리 밀도 정리 — 솎음 ' + dropped + '개(' + fmt(dropView) + ')'
-    + ' · 채움 ' + added + '개(' + fmt(addView) + ')'
-    + (clipDropped ? ' · 복제 중 세그멘테이션 밖이라 버림 ' + clipDropped + '개' : '')
-    + ' → 가닥 ' + before + ' → <b>' + after + '</b>개 (' + (after >= before ? '+' : '')
-    + Math.round((after/before - 1)*100) + '%)'
-    + ' | 과밀 셀 ' + thinnedCells + ' · 채운 셀 ' + filledCells
-    + '(그중 원본 없어 이웃에서 빌림 ' + emptyCells + ')'
-    + ' · 추정 셀 ' + keptEstCells + '개는 그대로');
-  /* 기준 한 줄 — 다음에 "성글다/빽빽하다"가 오면 이 세 숫자만 보면 된다:
-       자연 = 지금 모델이 실제로 갖고 있는 셀당 밀도
-       목표 = 우리가 겨눈 셀당 밀도(껍질 몫 포함)
-     목표가 자연보다 한참 낮으면 과하게 솎는 중, 한참 높으면 복제로 부풀리는 중. */
-  let cellsWithHair = 0, sumT = 0;
-  inCell.forEach((arr, ci)=>{ if(est[ci] === 0){ cellsWithHair++; sumT += cellTarget(ci, K); } });
-  console.log('[3D·겹침·기준] K=' + K.toFixed(1) + '가닥/밀도1'
-    + ' (실측 셀 ' + ratios.length + '개의 ' + Math.round(O.calibPct*100) + '백분위'
-    + (kRaised ? ', 안전레일로 ' + kRaised + '단계 상향 — 기준이 낮았다는 뜻' : '') + ')'
-    + (railHeld ? '' : ' ⚠ 상향해도 상한(' + Math.round(O.maxDropFrac*100) + '%) 초과 —'
-        + ' 목표가 이미 "주력 뷰 몫"까지 내려간 상태라 이건 기준 문제가 아니라 실제 겹침입니다')
-    + ' · 껍질 몫 ×' + O.shellFill + '(헐 분리로 모발이 두께를 가짐)'
-    + ' | 셀당 자연 ' + (before / Math.max(1, cellsWithHair)).toFixed(1)
-    + ' → 목표 ' + (sumT / Math.max(1, cellsWithHair)).toFixed(1) + '가닥'
-    + ' | 뷰별 마스크 대비 예산이 안 맞으면 여기가 뷰마다 흔들린다(360촬영 TODO)');
-  return { dropped, added, thinnedCells, filledCells, emptyCells, clipDropped,
-           keptEstCells, K, kBase, kRaised, cellsWithHair, cleanCells:ratios.length };
-}
-
 /* 못 본 자리 채우기 — 사용자: "안 보이는데 머리가 빽빽한 자리는 근처 밀도로
    추정해서 넣어야지?" 맞다. 덮인 두피는 원리상 못 보는데, 그 자리 대부분은
    <b>덮여 있으니까 못 보는 것</b>(=머리가 있는 것)이다. 못 잰 셀을 0으로 두면
@@ -13925,13 +13414,6 @@ function buildHairStrandsFromPaths(){
      정규화하는 기준 반지름 — 두상 폭·깊이 중 큰 쪽. */
   const occProbe = makeHairOccupancyProbe(views, names, yTop, CY, Math.max(a, cD));
   const occAcc = { n:0, trimmed:0, dropped:0, removedPts:0 };
-  /* (2026-08-03) 뿌리 밀도 격자를 <b>여기서</b> 굽는다 — 예전엔 이 함수 맨 끝
-     (모발 프로필 통합)에서 구웠는데, 겹침 정리가 이 격자를 목표치로 쓰므로
-     가닥을 올리기 전에 있어야 한다. 프로브만 읽는 순수 계산이라 옮겨도
-     값이 같다(끝에서는 이걸 그대로 재사용한다 — 두 번 굽지 않는다). */
-  let rootField = null;
-  try{ rootField = buildRootDensityField(occProbe, hullW, hullD, bucketOfY, CY, b); }
-  catch(e){ console.warn('뿌리 밀도 격자 실패(겹침 정리 건너뜀):', e); }
 
   // ── 2~4단계: 헐 깊이 + 두께 채움 + 깊이 음영 ──
   const group = new THREE.Group();
@@ -13991,7 +13473,8 @@ function buildHairStrandsFromPaths(){
     const rot = composeRotationZYX(job.yaw, job.pitch, job.roll);
     // 이 잡의 카메라 방위 성분 — 단면 반경 일반화에 사용
     const jCos2 = Math.cos(job.yaw)**2, jSin2 = Math.sin(job.yaw)**2;
-    // (2026-08-03) 여기 있던 positions/colors 제거 — 선분은 겹침 정리 뒤에 한 번에 굽는다.
+    const positions = [];
+    const colors = [];
     const c = new THREE.Color();
     for(let si=0; si<v.rec.strands.length; si+=STRAND_SAMPLE_3D){
       const st = v.rec.strands[si];
@@ -14014,7 +13497,6 @@ function buildHairStrandsFromPaths(){
       const tLayer = rand();          // 이 가닥이 눕는 층: 0=두피면, 1=헐 바깥면
       let t = hairLayerAt(tLayer, 0, 1);  // 점마다 갱신(음영 k/rim도 이 값을 쓴다)
       let lastZ = null;
-      let rootFacing = 0;             // (2026-08-03) 뿌리를 이 카메라가 얼마나 정면으로 봤나
       const worldPts = []; // (10차) 정규 모델용 월드 폴리라인
       /* (2026-08-01) 점 색을 즉시 positions/colors로 밀어넣지 않고 <b>따로 모은다</b>.
          결 정렬(alignStrandPtsToField3D)은 가닥 전체를 보고 다시 걸어야 하는데,
@@ -14067,7 +13549,6 @@ function buildHairStrandsFromPaths(){
           mz = 0;        // 시작부터 두상 밖(가장자리 뿌리): 림 평면
         }
         lastZ = mz;
-        if(i === 0) rootFacing = facing;   // 겹침 정리에서 "누구 말을 믿을지" 고를 때 쓴다
         const w3 = applyRotationTranspose3(rot, new THREE.Vector3(px, my - CY, mz));
         w3.y += CY;
         worldPts.push({ x:w3.x, y:w3.y, z:w3.z }); // (10차) 정규 모델 채집
@@ -14090,60 +13571,21 @@ function buildHairStrandsFromPaths(){
           if(!trimmed){ total++; continue; }   // 이 가닥은 실측상 존재하지 않는다
           aligned = trimmed;
         }
-        /* (2026-08-03) 선분을 <b>여기서 굽지 않는다</b>. 겹침 정리가 가닥을 솎아낸
-           뒤에 구워야 화면과 모델이 같아진다 — 예전엔 여기서 바로 group에 넣어서,
-           canonicalStrands에서 뺀 가닥이 3D 화면에는 그대로 남았다.
-           worldCols(점당 색)를 같이 들고 간다 — 이게 있어야 나중에 구울 수 있다. */
-        canonicalStrands.push({ pts:aligned, cols:worldCols, sec: st.sec || 'crown',
-          color: st.color, srcAngle: angle, mirrored: job.mirrored, rootFacing });
+        for(let i=1;i<aligned.length;i++){
+          const p0 = aligned[i-1], p1 = aligned[i];
+          positions.push(p0.x, p0.y, p0.z, p1.x, p1.y, p1.z);
+          colors.push(worldCols[(i-1)*3], worldCols[(i-1)*3+1], worldCols[(i-1)*3+2],
+                      worldCols[i*3],     worldCols[i*3+1],     worldCols[i*3+2]);
+        }
+        canonicalStrands.push({ pts:aligned, sec: st.sec || 'crown', color: st.color, srcAngle: angle, mirrored: job.mirrored });
       }
       total++;
     }
-  });
-
-  /* ── 겹침 정리 (2026-08-03) ─────────────────────────────────────────
-     사용자: "3D 미리보기를 보면 전면부에 크라운·프론트·사이드가 겹겹이 있어.
-     그러니까 머리카락색깔이었어. 그런데 오히려 후면은 성글어."
-     맞는 지적이고, 로그가 그대로 말한다 — 이번 촬영의 실측 yaw는
-     front -1° / left 43° / right -39° / back 180°였다. 옆모습 두 장이 90°가
-     아니라 40°대라 <b>앞 반구를 카메라 세 대가 겹쳐</b> 봤고, 리프트는 각 뷰의
-     2,833가닥을 아무 조율 없이 전부 심는다. 결과가 관측 13,108개 → 채워진 셀
-     850개(셀당 15겹)인데 표면셀은 826/1828(45%)만 머리가 있는 상태다.
-     한쪽은 15겹, 절반은 빈 채로.
-     ※ 촬영을 90°에 가깝게 해도 앞뒤 경계는 반드시 겹친다 — 각도 문제가 아니라
-       <b>조율이 없는 것</b>이 원인이라 여기서 고친다.
-     아래 pruneOverlappedRoots가 뿌리를 표면 셀에 담고, 실측 밀도를 목표로
-     과밀한 셀만 솎는다. 자세한 규칙은 그 함수 주석에. */
-  const pruneStat = pruneOverlappedRoots(canonicalStrands, rootField,
-                                         hullW, hullD, bucketOfY, CY, b, occProbe);
-  if(pruneStat && pruneStat.dropped){
-    for(let i=canonicalStrands.length-1; i>=0; i--){
-      if(canonicalStrands[i]._drop) canonicalStrands.splice(i, 1);
-    }
-  }
-
-  // ── 선분 굽기 — 솎아낸 <b>뒤</b>에. 뷰별로 묶어 이름을 유지한다(진단용). ──
-  const byJob = new Map();
-  for(const s of canonicalStrands){
-    const key = s.srcAngle + (s.mirrored ? '-mirror' : '');
-    let e = byJob.get(key);
-    if(!e){ e = { positions:[], colors:[], mirrored:s.mirrored }; byJob.set(key, e); }
-    const pts = s.pts, cols = s.cols;
-    for(let i=1;i<pts.length;i++){
-      const p0 = pts[i-1], p1 = pts[i];
-      e.positions.push(p0.x, p0.y, p0.z, p1.x, p1.y, p1.z);
-      /* 정렬·다듬기로 점 수가 줄었을 수 있다 — cols가 모자라면 마지막 색을 쓴다.
-         (예전 코드는 같은 인덱스를 그냥 읽어서 undefined가 들어갈 수 있었다) */
-      const ci0 = Math.min((i-1)*3, cols.length-3), ci1 = Math.min(i*3, cols.length-3);
-      e.colors.push(cols[ci0], cols[ci0+1], cols[ci0+2], cols[ci1], cols[ci1+1], cols[ci1+2]);
-    }
-  }
-  byJob.forEach((e, key)=>{
-    if(!e.positions.length) return;
-    const lines = makeVertexColorLines(e.positions, e.colors);
-    lines.name = 'strandLines-' + key;
+    if(!positions.length) return;
+    const lines = makeVertexColorLines(positions, colors);
+    lines.name = 'strandLines-' + angle + (job.mirrored ? '-mirror' : '');
     lines.userData.fromPaths = true; // [진단용]
-    lines.userData.mirrored = e.mirrored; // [진단용] 실측 아님(맞은편 뷰 거울 채움)
+    lines.userData.mirrored = job.mirrored; // [진단용] 실측 아님(맞은편 뷰 거울 채움)
     group.add(lines);
   });
   // [진단용] '겹'(커트 레이어) 확인 — 실측 뷰 하나에서 뿌리 높이(pts[0].y)별로
@@ -14221,8 +13663,7 @@ function buildHairStrandsFromPaths(){
     /* (2026-08-01) 뿌리 밀도 격자 — 같은 프로브·같은 격자로 한 번 더 굽는다.
        마네킹 모드가 볼 자산이고, 사진 렌더도 나중에 여기서 밀도를 가져갈 수 있다. */
     try{
-      // (2026-08-03) 위에서 이미 구운 격자를 그대로 쓴다 — 겹침 정리가 먼저 써야 해서
-      // 앞으로 옮겼다. 두 번 굽지 않는다(같은 프로브·같은 격자라 값도 같다).
+      const rootField = buildRootDensityField(occProbe, hullW, hullD, bucketOfY, CY, b);
       state.hairIdentity = buildHairIdentity(rootField, field3D || null);
     }catch(e){ console.warn('모발 프로필 통합 실패(무시):', e); }
     window._lastOcc3D = { views: occProbe.cams.map(c=>c.angle), dropped: occAcc.dropped,
@@ -16191,10 +15632,7 @@ function startNewCustomer(){
   _headCrossSectionCache = null; // 두상 실측 단면(Shape-from-Silhouette) 캐시도 새 고객마다 초기화
   _headVerticalRadiusCache = null; // 두상 세로 반지름 실측 캐시도 새 고객마다 초기화
   _headEllipsoidLogged = false; // [진단용] 두상 넙적도 로그도 새 고객마다 다시 1회 출력
-  ANGLES.forEach(a=>{state.shots[a]=null;state.hairCanvases[a]=null;state.hairMasks[a]=null;state.baseCanvases[a]=null;state.baseFillCanvases[a]=null;});
-  // 새 고객 — 앞 사람의 이마 표본을 물려주면 안 된다(피부톤이 다른 사람에게 이식됨)
-  resetSkinGraft();
-  ANGLES.forEach(a=>{ delete _graftLogged[a]; });
+  ANGLES.forEach(a=>{state.shots[a]=null;state.hairCanvases[a]=null;state.hairMasks[a]=null;state.baseCanvases[a]=null;});
   state.landmarks = {};
   state.captureLmStatus = {}; // 촬영 직후 랜드마크 감지 배지 상태도 초기화
   state.capturePose = {};     // 셔터 시점 라이브 포즈(감지 실패 폴백)도 초기화
@@ -16215,338 +15653,6 @@ function startNewCustomer(){
   updateAngleUI();
   navTo('capture');
 }
-
-/* ══════════════════════════════════════════════════════════════════
-   개발용 / 소비자용 한 소스 (2026-08-03)
-   ─────────────────────────────────────────────────────────────────
-   사용자: "앞으로 파일 2개 만드는 거 가능해? 지금같은 index와, 측정용으로 만든
-   원본결보기·세그멘테이션 보기 등의 버튼과 측정치가 아래에 뜨는 걸 제거한
-   소비자용 index"
-
-   두 파일을 <b>따로 관리하지 않는다</b>. 갈라놓으면 이 다음에 고치는 것마다
-   양쪽에 손으로 옮겨야 하고, 한 번만 빠뜨려도 두 파일이 조용히 달라진다.
-   대신 아래 <b>한 줄</b>로 갈린다:
-
-       const DEV_UI = true;    ← 개발용(index.html)
-       const DEV_UI = false;   ← 소비자용(index-consumer.html)
-
-   그 줄만 바꾼 사본이 소비자용 파일이다. 기능 코드는 완전히 같으므로
-   "소비자용에서만 나는 버그"가 생길 자리가 없다.
-
-   ── 무엇이 사라지나 ──
-     · 가닥 보기 / 원본 결 보기 / 결필드 원본 — 렌더 경로 A/B 토글
-     · 진단정보 버튼과 그 패널 — 실측치가 화면 아래에 뜨던 것
-     · 세그멘테이션 상태 줄(캔버스 위 poseYaw·마스크픽셀 오버레이)
-     · 3D 미리보기 ON/OFF 버튼 — 소비자용에선 항상 켜둔다(버튼이 필요 없음)
-     · 기준면 보기(3D 화면의 가상 타원체 토글)
-   ※ 3D 미리보기 <b>패널 자체</b>는 남긴다 — 진단이 아니라 손님에게 보여주는
-     기능이다. console 로그도 그대로 둔다(화면에 안 보이고, 문제 생겼을 때
-     손님 기기에서 그대로 받아볼 수 있는 유일한 단서다).
-══════════════════════════════════════════════════════════════════ */
-const DEV_UI = false;
-const DEV_ONLY_IDS = [
-  'maskDebugToggle',    // 가닥 보기 / 마스크 보기
-  'rawDebugToggle',     // 원본 결 보기
-  'fieldDebugToggle',   // 결필드 원본
-  'diagInfoToggle',     // 진단정보 버튼
-  'diagInfoBox',        // 〃 패널(실측치)
-  'segStatus',          // 캔버스 위 세그멘테이션 상태 줄
-  'btn3dEngine',        // 3D 미리보기 ON/OFF
-  'strandDebugToggle',  // 기준면 보기(3D 화면)
-];
-function applyDevUiVisibility(){
-  if(DEV_UI) return;
-  for(const id of DEV_ONLY_IDS){
-    const el = document.getElementById(id);
-    if(el) el.style.display = 'none';
-  }
-  /* 3D 미리보기 패널은 원래 btn3dEngine으로만 켤 수 있었다. 버튼을 숨겼으니
-     소비자용에서는 조정 화면에 들어갈 때 <b>알아서 켠다</b> — 안 그러면 영영
-     안 뜬다. 이미 켜져 있으면 건드리지 않는다(끄는 일이 없어야 하므로).
-     조정 경로 자체는 이 값과 무관하게 항상 3D를 거치므로(use3DAdjust 주석 참조)
-     그림이 달라지지는 않는다. 패널이 뜨고 안 뜨고만 바뀐다. */
-  const origNavTo = window.navTo;
-  window.navTo = async function(name){
-    const r = await origNavTo.apply(this, arguments);
-    if(name === 'adjust' && !state.use3DAdjust) toggle3DAdjust();
-    return r;
-  };
-}
-
-/* ══════════════════════════════════════════════════════════════════
-   다국어 (2026-08-03) — 기본 <b>영어</b>
-   ─────────────────────────────────────────────────────────────────
-   사용자: "첫번째 화면에 언어토글 하나 만들어서 영어를 디폴트로 해줘"
-
-   ── 왜 t() 호출부를 안 고치는가 ─────────────────────────────────
-   이 파일의 한국어 문구는 정적 HTML 49곳 + JS가 만들어 넣는 수백 곳에
-   흩어져 있고, 그 대부분이 템플릿 문자열(`${ANGLE_LABELS[a]} 처리 중`)이다.
-   전부 t()로 감싸면 손댈 자리가 수백 곳이고, 앞으로 문구를 하나 추가할
-   때마다 또 감싸야 한다 — <b>기능 코드에 손을 안 대는 게 조건</b>이었다.
-   그래서 출구 하나에서 잡는다: <b>DOM 텍스트 노드</b>. 어떤 경로로 만들어진
-   문구든 화면에 보이려면 결국 텍스트 노드가 되고, MutationObserver가 그걸
-   전부 본다. 진단 로그(console)는 텍스트 노드가 아니라서 자동으로 제외된다
-   — 콘솔은 한국어로 남는 게 맞다(진단 문구는 개발자용).
-
-   ── 두 단계 번역 ───────────────────────────────────────────────
-     ① 정확 일치 — 사전에 통째로 있는 문구(대부분). 자연스러운 번역이 나온다.
-     ② 부분 치환 — `좌측 얼굴 랜드마크 감지 ✓`처럼 값이 끼어든 문구.
-        긴 열쇠부터 훑어 바꾼다. 어순이 완벽하진 않아도 읽힌다.
-   ①에서 끝나는 게 대부분이고, ②는 안전망이다. 둘 다 못 찾으면 한국어가
-   그대로 남는다 — <b>빈 화면이 되는 경우는 없다</b>.
-
-   ── 되돌리기 ───────────────────────────────────────────────────
-   번역하기 전 원문을 그 노드에 붙여 둔다(node.__ko). 한국어로 토글하면
-   그걸 되쓴다 — 재번역이 아니라 <b>원문 복원</b>이라 왕복해도 안 뭉개진다.
-══════════════════════════════════════════════════════════════════ */
-const I18N = {
-  // ── 헤더·단계 ──
-  '단계':'Step', '1/4 · 촬영':'1/4 · Capture',
-  '1/5 · 촬영':'1/5 · Capture', '2/5 · 스타일':'2/5 · Style', '3/5 · 조정':'3/5 · Adjust',
-  '4/5 · 결과':'4/5 · Result', '5/5 · 3D두상':'5/5 · 3D Head',
-  '촬영':'Capture', '스타일':'Style', '조정':'Adjust', '결과':'Result',
-  // ── 촬영 화면 ──
-  '카메라를 불러오는 중…':'Starting camera…',
-  '아래 업로드 버튼도 이용 가능해요':'You can also use the Upload button below',
-  '카메라가 준비되지 않았어요.':'The camera isn’t ready.',
-  '지금 찍으세요':'Shoot now',
-  '각도 측정 준비 중…':'Preparing angle detection…',
-  '각도 감지 준비 중…':'Preparing angle detection…',
-  '후면 감지 준비 중…':'Preparing back-view detection…',
-  '정면을 가이드 안에 맞춰주세요':'Line your face up inside the guide',
-  '정면을 맞춰주세요':'Face the camera straight on',
-  '좌측면을 맞춰주세요':'Turn to your left profile',
-  '왼쪽 옆머리가 보이게 — 고개를 오른쪽으로 돌려주세요':'Show your left side — turn your head to the right',
-  '오른쪽 옆머리가 보이게 — 고개를 왼쪽으로 돌려주세요':'Show your right side — turn your head to the left',
-  '후면(뒷머리)을 맞춰주세요':'Show the back of your head',
-  '촬영 버튼을 눌러주세요':'Press the shutter button',
-  '셔터 버튼을 눌러주세요':'Press the shutter button',
-  '그대로 계세요 — 자동으로 찍습니다':'Hold still — shooting automatically',
-  '정면':'Front', '좌측':'Left', '우측':'Right', '후면':'Back',
-  '재촬영':'Retake', '업로드':'Upload', '다음→':'Next →', '← 촬영':'← Capture',
-  '조정하기 →':'Adjust →', '← 스타일':'← Style', '결과 보기 →':'View result →',
-  '← 조정':'← Adjust', '3D로 보기 →':'View in 3D →', '← 결과':'← Result', '새로 시작':'Start over',
-  '찍었습니다':'Captured', '셋':'Three', '둘':'Two', '하나':'One',
-  // 라이브 가이드 판정
-  '사람이 안 잡혀요':'No person detected',
-  '뒷머리와 어깨가 화면에 들어오게 서주세요':'Stand so the back of your head and shoulders are in frame',
-  '얼굴이 보여요':'Your face is showing',
-  '고개를 앞으로 돌려 뒷머리만 보이게 해주세요':'Turn away so only the back of your head shows',
-  '어깨가 안 잡혀요':'Shoulders not detected',
-  '상체가 화면에 들어오게 서주세요':'Stand so your upper body is in frame',
-  '몸이 옆으로 돌아갔어요':'Your body is turned sideways',
-  '어깨가 화면과 나란해지게 서주세요':'Square your shoulders to the camera',
-  '어깨를 수평으로 맞춰주세요':'Level your shoulders',
-  '고개를 어깨와 나란히 정면으로 돌려주세요':'Center your head over your shoulders',
-  '너무 옆으로 돌아갔어요':'Turned too far to the side',
-  '뒷머리가 정면으로 오게 서주세요':'Point the back of your head at the camera',
-  '정수리가 잘려요':'Top of head is cut off',
-  '머리 위가 화면 밖이에요 — 조금 물러나 주세요':'The top of your head is out of frame — step back a little',
-  '얼굴이 안 잡혀요':'No face detected',
-  '눈·코 라인이 살짝 보이는 각도로 맞춰주세요':'Turn until your eye and nose line is just visible',
-  '각도 계산 실패':'Angle calculation failed',
-  '조금 왼쪽으로 돌려주세요':'Turn a little to the left',
-  '조금 오른쪽으로 돌려주세요':'Turn a little to the right',
-  '각도는 맞는데 얼굴 인식이 안 돼요 — 조금 덜 돌리거나, 얼굴 쪽을 밝게 해주세요':
-    'Angle is right but the face isn’t detected — turn back slightly, or add light on your face',
-  '다시 촬영을 권해요':'we recommend retaking it',
-  '이 각도의 사진이 없습니다':'No photo for this angle',
-  // ── 스타일 화면 ──
-  '스타일 미선택':'No style selected', '스타일 미적용':'No style applied',
-  '커스텀':'Custom',
-  '원랭스':'One length', '한 라인 · 무게감 하단':'Single line · weight at the bottom',
-  '그라데이션':'Graduation', '사선 · 무게 쌓임':'Diagonal · weight builds up',
-  '유니폼 레이어':'Uniform layer', '균일 층 · 가벼움':'Even layers · light',
-  '인크리스 레이어':'Increase layer', '위로 갈수록 길게':'Longer toward the top',
-  // ── 조정 화면 ──
-  '가닥 보기':'Strands', '원본 결 보기':'Original flow', '마스크 보기':'Mask',
-  '스타일 보기':'Style', '결필드 원본':'Raw flow field', '얼굴박스 보기':'Face box',
-  '원본 결 (스타일 미적용)':'Original flow (no style)',
-  '진단정보':'Diagnostics', '3D 미리보기':'3D preview',
-  '3D 미리보기: ':'3D preview: ', '3D 미리보기: OFF':'3D preview: OFF',
-  '드래그 회전 · ⛶ 확대':'Drag to rotate · ⛶ zoom',
-  '드래그해서 회전':'Drag to rotate', '기준면 보기':'Show reference surface',
-  'AI 분석':'AI analysis', '음성으로 조정하기':'Adjust by voice',
-  '예: "크라운 길게", "네이프 짧게", "볼륨 추가"':'e.g. "crown longer", "nape shorter", "add volume"',
-  '크라운·프론트·템플·사이드·후두부·네이프 + 길게·짧게·볼륨·컬':
-    'Crown · Front · Temple · Side · Occipital · Nape  +  longer · shorter · volume · curl',
-  '결원본 직접 조정':'Adjust the original flow directly',
-  '초기화':'Reset', '★ 현재 모델을 스타일로 등록하기':'★ Save current model as a style',
-  '이 스타일 이름을 입력하세요 (예: "오늘 손님 스타일")':'Name this style (e.g. "today’s client style")',
-  '분석 중…':'Analyzing…', '잠시만 기다려주세요':'One moment please',
-  '모델 로딩 중…':'Loading model…', '의상 준비 중…':'Preparing outfit…',
-  '제휴 준비중':'Partnership coming soon',
-  '범용 3D 두상 · 확정 스타일 적용':'Generic 3D head · final style applied',
-  '확대/축소':'Zoom', '원래대로':'Reset view',
-  // 섹션
-  '크라운':'Crown', '프론트':'Front', '템플':'Temple',
-  '사이드':'Side', '후두부':'Occipital', '네이프':'Nape', '스타일링':'Styling',
-  '정수리 · 엘리베이션(시술각) 기준':'Top · elevation-driven',
-  '앞머리 · 커팅라인(실제로는 Fringe 개념)':'Fringe · cutting line',
-  '관자놀이 · 크라운 연동비율(Overdirection)':'Temples · overdirection to crown',
-  '귀 앞·뒤 · 엘리베이션(시술각) 기준':'Around the ears · elevation-driven',
-  '뒤통수 · 엘리베이션(시술각) 기준':'Back of head · elevation-driven',
-  '목선 마무리 · 커팅라인':'Neckline finish · cutting line',
-  // 설계 패널
-  '커트':'Cut', '형태':'Shape', '펌':'Perm', '컬러':'Color', '선택':'optional',
-  '길이':'Length', '모발 길이':'Hair length',
-  '엘리베이션':'Elevation', '시술각':'lift angle',
-  '엘리베이션(시술각)':'Elevation (lift angle)',
-  '시술각(기법 강도 스케일)':'Lift angle (technique intensity)',
-  '텍스처라이징':'Texturizing', '끝단 숱·질감':'End thinning · texture',
-  '컬':'Curl', '컬 세기':'Curl strength', '0이면 펌 없음':'0 = no perm',
-  '웨이브 폭':'Wave width', '로드 굵기':'rod diameter',
-  '넘김':'Sweep', '앞으로':'forward', '뒤로':'back',
-  '뿌리 볼륨':'Root volume', '눌러줌':'flat', '세움':'lifted',
-  '결 흐름':'End flow', '안말음 C':'C-curl under', '바깥말음':'flick out',
-  '가르마':'Part', '좌':'L', '우':'R',
-  '마무리 질감':'Finish', '매트':'matte', '윤기':'shine',
-  '커팅라인':'Cutting line', '크라운 연동비율':'Crown overdirection',
-  '볼륨':'Volume', '연결감':'Connection', '레이어':'Layer',
-  '커트 방식':'Cut method', '가드 번호':'Guard number', '0=스킨 · 8=1인치':'0 = skin · 8 = 1 inch',
-  '페이드 높이':'Fade height', '로우~하이':'low → high',
-  '블렌딩 폭':'Blend width', '테이퍼 레버':'taper lever', '영향: ':'Affects: ',
-  // 의상
-  // ── 값이 끼어드는 문구의 조각(부분 치환용) ──
-  '얼굴 랜드마크 감지':'face landmarks detected', '랜드마크 감지 실패':'landmark detection failed',
-  '랜드마크 감지':'landmark detection', '처리 중':'processing', '분석 중':'analyzing',
-  '머리카락 추출 중…':'Extracting hair…', '얼굴 분석 중…':'Analyzing face…',
-  'Hair Segmentation 준비 중':'Preparing hair segmentation',
-  '슬롯인데 반대쪽 옆얼굴이에요':'slot, but this is the opposite profile',
-  '슬롯인데 거의 정면이에요':'slot, but this is almost head-on',
-  '옆머리 정보가 부족해요':'not enough side-hair information',
-  '그대로 저장했어요':'saved as is',
-  '⚠ 귀 2개가 다 보이는 상태는 아니에요 — 그대로 저장했어요':'⚠ Both ears aren’t visible — saved as is',
-  '⚠ 얼굴 랜드마크가 안 잡히는 상태예요 — 그대로 저장했지만 3D가 부정확할 수 있어요':
-    '⚠ No face landmarks detected — saved as is, but the 3D may be inaccurate',
-  '오른쪽 귀가 가려졌어요':'Your right ear is hidden',
-  '목표 각도':'target angle', '밖이에요':'is out of range',
-  '스타일로 등록했어요':'saved as a style',
-  '후면 정렬':'Back view aligned', '머리 치우침':'Head offset', '어깨 기울기':'Shoulder tilt',
-  '고개 듦':'chin up', '고개 숙임':'chin down', '목표':'target',
-  '더 돌려주세요':'turn further', '덜 돌려주세요':'turn back',
-  '너무 옆모습':'too much profile', '오른쪽':'right', '왼쪽':'left',
-  // ── 의상 ──
-  '차콜 슈트':'Charcoal suit', '포멀':'Formal', '클래식':'Classic', '단정':'Sharp', '오피스':'Office',
-  '슬레이트 캐주얼 셔츠':'Slate casual shirt', '캐주얼':'Casual', '편안함':'Relaxed',
-  '데일리':'Daily', '뉴트럴':'Neutral', '올리브 롱슬리브':'Olive long sleeve', '차분함':'Calm',
-  '버건디 셔츠':'Burgundy shirt', '포인트':'Accent', '포인트컬러':'Accent color', '개성':'Personality',
-};
-/* 부분 치환에 쓰면 오히려 망가지는 열쇠 — <b>한 글자</b>라 다른 낱말 안에
-   그냥 들어 있다('컬'은 '컬럼' 안에도 있다). 이것만 정확 일치로 제한한다.
-   나머지는 긴 열쇠부터 훑기 때문에 '재촬영'이 '촬영'보다 먼저 걸려 안전하다. */
-const I18N_EXACT_ONLY = new Set(['좌','우','컬']);
-/* 긴 열쇠부터 — '엘리베이션(시술각)'이 '엘리베이션'보다 먼저 걸려야 한다. */
-let _i18nSubKeys = null;
-function i18nSubKeys(){
-  if(!_i18nSubKeys){
-    _i18nSubKeys = Object.keys(I18N)
-      .filter(k => !I18N_EXACT_ONLY.has(k) && k.trim().length >= 2)
-      .sort((a,b)=> b.length - a.length);
-  }
-  return _i18nSubKeys;
-}
-const HANGUL = /[가-힣]/;
-function i18nTranslate(ko){
-  const t = ko.trim();
-  if(!t || !HANGUL.test(t)) return null;              // 숫자·기호만 — 건드릴 것 없음
-  const hit = I18N[t];
-  if(hit != null){                                    // ① 정확 일치 — 앞뒤 공백은 보존
-    const lead = ko.slice(0, ko.indexOf(t[0]));
-    const tail = ko.slice(lead.length + t.length);
-    return lead + hit + tail;
-  }
-  let out = ko, changed = false;                      // ② 부분 치환(값이 끼어든 문구)
-  for(const k of i18nSubKeys()){
-    if(out.indexOf(k) < 0) continue;
-    out = out.split(k).join(I18N[k]);
-    changed = true;
-  }
-  return changed ? out : null;                        // 못 찾으면 한국어 그대로 둔다
-}
-
-let uiLang = 'en';        // ← 기본값. 'ko'로 바꾸면 한국어로 시작한다.
-let _i18nMuted = false;   // 우리가 고친 노드를 옵저버가 다시 보지 않게
-const I18N_ATTRS = ['placeholder','title','aria-label'];
-
-/* 재진입 안전: 이미 그 언어로 되어 있으면 <b>쓰지 않는다</b>. 안 쓰면 새 변경도
-   안 생기니 옵저버가 되물려도 그 자리에서 멎는다(무한 루프 없음). */
-function i18nApplyTextNode(node){
-  if(uiLang === 'ko'){
-    if(node.__ko != null && node.nodeValue !== node.__ko) node.nodeValue = node.__ko; // 원문 복원
-    return;
-  }
-  if(node.__en != null && node.nodeValue === node.__en) return;   // 이미 번역됨
-  const ko = (node.__ko != null && node.nodeValue === node.__ko) ? node.__ko : node.nodeValue;
-  const en = i18nTranslate(ko);
-  node.__ko = ko;
-  if(en == null || en === ko){ node.__en = null; return; }
-  node.__en = en;
-  node.nodeValue = en;
-}
-function i18nApplyEl(el){
-  for(const a of I18N_ATTRS){
-    if(!el.hasAttribute || !el.hasAttribute(a)) continue;
-    const key = '__ko_' + a;
-    if(uiLang === 'ko'){ if(el[key] != null) el.setAttribute(a, el[key]); continue; }
-    const ko = (el[key] != null) ? el[key] : el.getAttribute(a);
-    const en = i18nTranslate(ko);
-    if(en == null || en === ko) continue;
-    el[key] = ko;
-    el.setAttribute(a, en);
-  }
-}
-function i18nWalk(root){
-  if(!root) return;
-  if(root.nodeType === 3){ i18nApplyTextNode(root); return; }
-  if(root.nodeType !== 1) return;
-  // <canvas>·<script>·<style> 안쪽은 볼 일이 없다
-  const SKIP = { SCRIPT:1, STYLE:1, CANVAS:1, VIDEO:1 };
-  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT | NodeFilter.SHOW_ELEMENT, {
-    acceptNode: (n)=> (n.nodeType === 1 && SKIP[n.tagName]) ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT
-  });
-  if(root.nodeType === 1) i18nApplyEl(root);
-  let n;
-  while((n = walker.nextNode())){
-    if(n.nodeType === 3) i18nApplyTextNode(n); else i18nApplyEl(n);
-  }
-}
-function applyUiLang(){
-  _i18nMuted = true;
-  try{ i18nWalk(document.getElementById('app') || document.body); }
-  finally{ _i18nMuted = false; }
-  const btn = document.getElementById('langToggle');
-  if(btn) btn.textContent = (uiLang === 'en') ? 'EN' : '한국어';
-  document.documentElement.lang = uiLang;
-}
-function setUiLang(lang){
-  uiLang = (lang === 'ko') ? 'ko' : 'en';
-  applyUiLang();
-}
-function toggleUiLang(){ setUiLang(uiLang === 'en' ? 'ko' : 'en'); }
-
-/* JS가 새로 넣는 문구(토스트·힌트·스타일 카드·진단 패널…)를 자동으로 잡는다.
-   호출부를 하나도 안 고쳐도 되는 이유가 이것이다. */
-function initI18nObserver(){
-  const root = document.getElementById('app') || document.body;
-  if(!root || typeof MutationObserver === 'undefined') return;
-  const obs = new MutationObserver((muts)=>{
-    if(_i18nMuted) return;
-    _i18nMuted = true;
-    try{
-      for(const m of muts){
-        if(m.type === 'characterData') i18nApplyTextNode(m.target);
-        else for(const n of m.addedNodes) i18nWalk(n);
-      }
-    } finally { _i18nMuted = false; }
-  });
-  obs.observe(root, { childList:true, subtree:true, characterData:true });
-}
-(function initI18n(){
-  const boot = ()=>{ applyDevUiVisibility(); applyUiLang(); initI18nObserver(); };
-  if(document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);
-  else boot();
-})();
 </script>
 </body>
 </html>
