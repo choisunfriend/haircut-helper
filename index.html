@@ -1305,18 +1305,14 @@ function getViewYawDeg(angle){
 ════════════════════════════════════════ */
 const ANGLES = ['front','left','right','back'];
 const ANGLE_LABELS = {front:'정면', left:'좌측', right:'우측', back:'후면'};
-const HINTS = {front:'정면을 맞춰주세요', left:'좌측면 — 45° 정도 돌려주세요 (완전 옆모습 말고 눈·코가 살짝 보이게)', right:'우측면 — 45° 정도 돌려주세요 (완전 옆모습 말고 눈·코가 살짝 보이게)', back:'후면(뒷머리)을 맞춰주세요'};
-// (2026-07-25) 측면 실측 yaw 기준. 깊이 복원 E²=W²cos²θ+D²sin²θ에서 깊이(D)는
-// sin²θ만큼만 신호에 실린다 → 30°는 깊이가 신호의 25%뿐(오차 폭발), 40°는 41%,
-// 45°는 50%로 이상적. 반면 MediaPipe는 45°까지 신뢰, 그 이상은 근측 랜드마크·포즈가
-// 흔들림(60°쯤 감지 실패). 스위트스팟 = 40~45°.
-//   MIN(38°) 미만 → ↻ "더 돌려요"(진행은 가능하나 깊이 부정확)
-//   MIN~HIGH → ✓ (40°+면 이상적)
-//   HIGH(52°) 초과 → 감지는 됐어도 근측 랜드마크가 부정확해질 수 있어 살짝 덜 돌리도록 안내
-// 반대편이 가려져도 MediaPipe가 필수 랜드마크(근측 눈·코)만 잡으면 감지되므로 고개를
+const HINTS = {front:'정면을 맞춰주세요', left:'좌측면 — 고개를 충분히 옆으로 돌려주세요', right:'우측면 — 고개를 충분히 옆으로 돌려주세요', back:'후면(뒷머리)을 맞춰주세요'};
+// (2026-07-25) 측면 최소 실측 yaw. 얕게 찍으면(이 앱은 25° 근처가 흔함) 깊이
+// 복원 D²=(E²−W²cos²)/sin²θ가 작은 sin²로 나뉘어 폭발해 두상 앞뒤가 부정확해진다.
+// 랜드마크만 잡히면 ✓ 주던 것을, 측면은 이 각도를 넘어야 ✓, 못 넘으면 "더 돌려요"
+// 안내로 바꾼다. 30°면 sin²≈0.25로 25°(0.18) 대비 깊이 감도가 넉넉해짐. 반대편이
+// 좀 가려져도 MediaPipe가 필수 랜드마크(근측 눈·코)를 잡으면 감지는 되므로 고개를
 // 확 돌릴 수 있음 — 감지가 아예 실패(null)하는 지점이 자연 상한.
-const SIDE_YAW_MIN = 38;
-const SIDE_YAW_HIGH = 52;
+const SIDE_YAW_MIN = 30;
 
 /* ── 섹션 정의 ──
    각 섹션: 미용사가 실제로 커트하는 구역
@@ -3409,23 +3405,21 @@ async function checkCaptureLandmarks(angle){
     if(isSide && yawAbs !== null && yawAbs < SIDE_YAW_MIN){
       // 감지는 됐지만 각도가 얕음 — 진행은 가능하되 깊이 실측이 부정확. 더 돌리도록 유도.
       state.captureLmStatus[angle]='shallow';
-      showToast(`↻ ${ANGLE_LABELS[angle]} 각도가 얕아요 (yaw ${yawAbs.toFixed(0)}°) — 완전 옆모습 말고 45° 정도로 더 돌려주세요. 깊이(z) 실측이 정확해져요`);
+      showToast(`↻ ${ANGLE_LABELS[angle]} 각도가 얕아요 (yaw ${yawAbs.toFixed(0)}°) — 고개를 더 옆으로 돌려 ${SIDE_YAW_MIN}° 이상으로 찍으면 3D 두상 깊이가 정확해져요`);
     } else {
       state.captureLmStatus[angle]='ok';
       const yawTxt = (typeof info.poseYawDeg === 'number') ? ` (yaw ${info.poseYawDeg.toFixed(0)}°)` : '';
-      // 상한 초과(감지는 되지만 근측 랜드마크가 흔들릴 수 있는 구간) — 안심시켜 과회전 방지.
-      const enough = (isSide && yawAbs !== null && yawAbs > SIDE_YAW_HIGH) ? ' — 충분히 돌아갔어요, 더 안 돌려도 돼요' : '';
-      showToast(`${ANGLE_LABELS[angle]} 얼굴 랜드마크 감지 ✓${yawTxt}${enough}`);
+      showToast(`${ANGLE_LABELS[angle]} 얼굴 랜드마크 감지 ✓${yawTxt}`);
     }
   } else {
     state.captureLmStatus[angle]='fail';
     // 후면은 원래 얼굴이 안 잡히는 경우가 많아 안내 문구를 다르게 —
     // "실패했으니 무조건 다시"가 아니라 "가능하면 귀·턱 라인이 걸리게".
-    // 측면 실패는 대개 완전 옆모습(90°)까지 돌려 얼굴이 안 잡힌 것 → 되돌리도록.
+    // 측면 실패는 대개 너무 많이 돌린 것(감지 상한 초과) → 살짝 덜 돌리도록.
     showToast(angle === 'back'
       ? `⚠ 후면 랜드마크 감지 실패 — 이 상태로도 진행은 되지만(추정치 폴백) 뒤통수를 살짝 돌려 귀·턱 라인이 걸리면 3D가 더 정확해져요`
       : isSide
-      ? `⚠ ${ANGLE_LABELS[angle]} 얼굴이 안 잡혀요 — 완전 옆모습(90°)은 인식이 안 돼요. 눈·코가 살짝 보이는 45° 정도로 조금 되돌려 주세요`
+      ? `⚠ ${ANGLE_LABELS[angle]} 랜드마크 감지 실패 — 너무 많이 돌리신 것 같아요. 눈·코가 살짝이라도 보이게 조금만 덜 돌려주세요`
       : `⚠ ${ANGLE_LABELS[angle]} 랜드마크 감지 실패 — 눈·코 라인이 살짝 보이는 각도로 다시 촬영하면 3D 정확도가 올라가요`);
   }
   updateAngleUI();
