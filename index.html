@@ -191,351 +191,6 @@
   비율에 거의 영향 없음(후면은 폭 관측만 추가). 따라서 3D가 넙적해 보이면
   후면 탓이 아니라 측면 마스크 노이즈이거나, 후면 부재로 3D 뒤통수가 얇아
   넙적해 "보이는" 것 — 실제 콘솔 로그로 판별 필요.
-
-  ── 2026-07-22 2D 섹션 조정 무반응/전체이동 수정(뿌리 실좌표 판정) ──
-  실기기 증상: "길이·펌을 조정해도 안 먹히고, 사이드만 조정하면 전체가 움직인다."
-  원인 3개 확정:
-  (1) resolveSectionId에 들어가던 ny가 "컬럼 실루엣 맨 꼭대기"(iScalpY)뿐이라
-      세로 정보가 죽어 있었음 → 측면 뷰는 nx 하드코딩(0.32/0.64)만으로 나뉘어
-      중앙 컬럼 전부(=보이는 머리 대부분)가 side로 판정. 네이프는 어떤 뷰에서도
-      조건 성립 불가(꼭대기 y가 네이프선 아래일 수 없음) → 조정 무반응.
-      left/right 모두 "nx 작으면 템플" 고정이라 우측 뷰에선 템플/후두부 반전.
-  (2) propagateSectionChange가 절대값 가중평균을 input 이벤트마다 반복 적용 —
-      드래그 한 번에 수십 번 중첩돼 후두부가 사이드 값에, 템플이 크라운 값에
-      수렴(래칫). 사이드 조정 시 뒤쪽까지 같이 움직인 두 번째 원인.
-  (3) 컬 진폭 계수 0.07(컬 100%=±4°, 횡편차 2px)이라 펌이 화면에서 식별 불가.
-  수정:
-  · sectionBandsFor(angle) 신설 — 초반에 잡아둔 랜드마크 경계(두정선=귀~이마
-    40% 지점, 네이프선=chinY×0.78, 프론트 밴드, 귀 x)를 뷰별로 직접 계산
-    (전역 SECTIONS 공유·오염 없이, 랜드마크 identity로 메모이즈).
-  · resolveSectionId 재작성 — 크라운=두정선 위(Interior), 네이프=네이프선 아래,
-    측면의 템플/사이드/후두부는 "귀 x + 얼굴 방향(faceDir, 실측 yaw 부호)"으로
-    앞/주변/뒤 분할. 우측 뷰 반전 자동 해소.
-  · 뿌리 실좌표 전달 — drawStrandLayer가 rootDepthFrac 깊이 반영된 실제 뿌리
-    (sy_img)로 섹션을 1회 판정(rootSec)하고 길이/겹/컬/웨이브/텍스처/색/캡처
-    라벨 전부에 전달. makeColumnResolver 캐시를 컬럼×섹션×깊이(1% 양자화)로
-    확장, 미전달 호출부는 기존 최상단선 판정 폴백(동작 하위호환).
-  · propagateSectionChange 델타 기반으로 변경(이벤트 분할 횟수와 무관하게
-    총변화량×연동비율만 반영). gyrange- id 부여 + syncGyParamUI로 연동 섹션
-    슬라이더 UI까지 동기화. 음성 조정(adj)도 동일 규약.
-  · 컬: 계수 0.07→0.45, 위상을 뿌리 컬럼(ix×0.05) 기준 정렬(이웃 가닥 파형이
-    나란해야 펌으로 보임 — 실제 로드 감김과 동일 원리).
-  · 3D 대비: capturedStrands의 sec 라벨이 "렌더에 실제 쓰인" rootSec을 그대로
-    저장 → 2D 섹션 조정과 3D 가닥 라벨이 정의상 일치. 다음 단계(3D상 섹션
-    조정)는 이 라벨 기준으로 그대로 진행하면 됨.
-  · 진단([진단·섹션분포])도 깊이 5지점 샘플링으로 갱신 — 실기기에서 측면 뷰
-    분포가 crown/temple/side/occipital/nape로 고르게 나오는지 확인할 것.
-  검증: node --check OK + Node 하네스(모의 랜드마크·4뷰×격자 좌표)로
-  섹션 분포/경계 단조성/우측 뷰 템플·후두부 방향/네이프 도달성/델타 연동
-  수렴치 확인. 실기기 재확인 필요.
-
-  ── 2026-07-22 (2차) 실기기 검증 실패 → 경계를 "머리 실측 스팬" 기준으로 재계산 ──
-  실기기 결과: 좌/우측 뷰 [진단·섹션분포] crown=100% — 1차 수정의 랜드마크
-  절대비율 경계가 실패. 원인(로그로 확정): 두정선(earY-이마 40%)=0.503과
-  네이프선(chinY×0.78)≈0.50이 겹쳐 Exterior 밴드(템플/사이드/후두부)가 폭 0으로
-  붕괴. 얼굴이 프레임 어디에/어떤 크기로 찍히느냐에 따라 절대비율 공식이
-  무너지는 구조적 문제(정면 temple=0%도 동일 — 프론트 밴드 x공식 lx*0.55이
-  프레임 폭 기준이라 머리 전체를 삼킴). 이 뷰들의 실측 yaw도 21°/-31°로 거의
-  정면에 가까워 "측면"이라는 가정 자체가 약했음.
-  수정(sectionBandsFor 재작성):
-  · 경계를 헤어 마스크 실측 스팬(apex=머리 꼭대기, 모발 최하단, 좌우 폭)과
-    랜드마크의 조합으로 "머리 기준 상대좌표"화 — 프레임 무관.
-    두정선 = apex + (귀선-apex)×0.45 (튜닝 지점, 크라운 편중 크면 계수↓)
-    네이프선 = 귀선 + (턱선-귀선)×0.25, 두정선+0.04 하한(붕괴 원천 차단)
-    프론트 밴드 x = 귀 사이 폭의 안쪽 60%(귀 간격 좁으면 헤어 폭 기준 폴백)
-  · 측면 앞/뒤 분할도 귀 x 절대좌표 폐기 → 헤어 좌우 스팬 상대좌표(fw):
-    앞 30%=템플, 뒤 32%=후두부, 가운데=사이드. 얼굴 방향은 실측 yaw 부호.
-  · 후면 사진 유무는 섹션 판정과 무관(뷰별 독립) — 실기기 질문에 대한 답.
-  콘솔 로그 정리: [진단·조정]/[진단·조정렌더]/경계보정 로그는 슬라이더 틱마다
-  찍혀 콘솔이 넘침 → 기본 꺼짐, window.DIAG_VERBOSE=true로만 출력.
-  [진단·섹션분포]는 분포가 바뀔 때만 1회 출력(검증 정보 유지+스팸 제거).
-  검증: 실기기 로그의 랜드마크/마스크 기하를 그대로 재현한 Node 하네스에서
-  1차 수정이 crown=100%로 무너지던 케이스가 crown 60%/temple 12%/side 15%/
-  occipital 13%로 분리됨(짧은 머리라 네이프 모발 없음=0%는 물리적으로 맞음).
-  ※ 3D 조정 엔진(내부 3D 계산+2D 표시) 전환용 기반(state.use3DAdjust,
-  LENGTH_RATIO_PER_UNIT 단일출처)은 넣어두고 토글 UI는 엔진 구현과 함께 붙임.
-
-  ── 2026-07-22 (3차) "크라운밖에 안 움직여" → 분류 기준을 '드리워진 구역'으로 ──
-  2차 후 실기기: 경계 붕괴는 해소(정면 front17%/temple18%)됐지만 측면은 여전히
-  crown 75%+, side=0%. 원인: 분류 기준이 "뿌리 위치"인데, 2D 모델의 가닥 뿌리는
-  대부분 실루엣 꼭대기(=크라운 밴드)에 심김 — 귀 옆까지 길게 드리워진 가닥도
-  뿌리가 꼭대기라 전부 crown. 뿌리 기준으로는 사진의 부위별 조정이 원리적으로 안 됨.
-  수정: 가닥의 "중립 스팬 중간점"(뿌리~자연 끝점의 중간)이 속한 구역으로 분류.
-  · 귀 옆에 드리워진 가닥=사이드, 정수리 캡의 짧은 가닥=크라운, 목덜미까지
-    내려온 가닥=네이프 — 미용사가 사진 부위를 가리키는 직관과 일치.
-  · 레이어별 랜덤 길이 배율을 lenScale 밖(lenMult)으로 분리해 중립 길이 계산과
-    조정 계산이 같은 배율을 공유(스칼라 곱 분해라 렌더 결과는 동작 동일).
-  · 겹(cutLayerDelta)의 rootT 물리는 계속 "뿌리 높이" 기준(rootNy) — 분류만 중간점.
-  · 두정선 계수 45%→52% 원복(중간점 모델이 분포를 반 스팬 내리므로 균형 회복).
-  · [진단·섹션분포]도 스팬 중간점 기준으로 갱신(라벨: 가닥스팬중간점).
-  검증: 실기기 기하(귀y .53, yaw .66)+현실적 돔 마스크(앞머리선/귀/목덜미 끝선)
-  하네스에서 crown 25% / temple 14% / side 30% / occipital 31%로 분리 확인.
-  nape 0%는 이 커트가 목선까지 안 내려와서 — 물리적으로 맞음(긴 머리에서 등장).
-  ⚠ 한계: 한 가닥은 통째로 한 섹션(중간점 소속)이라, 여러 구역을 관통하는 아주
-  긴 가닥은 구역 경계에서 정확히 잘리진 않음 — 이건 3D 엔진(구역별 헴라인)에서
-  해결할 몫. 실기기 재확인 필요.
-
-  ── 2026-07-22 (4차) 사용자 교정: "기준은 뿌리" → 뿌리 기준 복원 + 겹 스택 ──
-  사용자 교정 2건: ① 미용 이론대로 섹션 기준은 뿌리(모근 두피 구역)다 — 3차의
-  "드리워진 구역(스팬 중간점)" 분류는 과교정 → 폐기·원복. ② "측면에서 뿌리
-  기준이어도 크라운이 75%면 안 된다" — 옆모습에선 옆통수 두피면 전체가 보이므로.
-  2차에서 뿌리 기준이 실패한 진짜 원인 두 가지를 분리해서 각각 수정:
-  (a) 길이 모델: 꼭대기 뿌리 가닥이 컬럼 모발 끝(귀 옆)까지 통째로 내려가
-      화면 전체를 크라운 겹이 덮었음 → 겹 스택 헴 캡(gySectionHemCapNy):
-      가닥의 "중립 길이"는 자기 섹션 밴드 하단+겹침 여유(HEM_OVERLAP 0.12)까지만.
-      크라운 겹 아래 사이드 겹, 그 아래 네이프 겹이 실제로 쌓임 — "실제 머리처럼
-      층(겹)으로 쌓여야 조정이 실질적으로 된다"(어제 합의)의 구현. 사이드 조정=
-      귀 구역을 소유한 사이드 뿌리 겹이 움직이고, 크라운을 짧게 치면 아래 겹이
-      드러남. 길이 슬라이더로 늘리는 건 캡 무관(캡은 중립에만).
-  (b) 뿌리 분포: pow(u,2) 편향으로 뿌리 대부분이 실루엣 꼭대기에 몰림 →
-      pow(u,1.1) 준균등으로 평탄화(두피면 전체에 뿌리 — 아래 겹도 자기 뿌리로
-      커버). depthScale 감쇠 1-frac → 1-frac×0.3 (깊은 뿌리=아래 겹이 조정
-      주체가 됐으므로 강한 감쇠는 사이드/네이프 슬라이더를 죽임).
-  (c) 두정선 뷰별 분리: 측면/후면 parietalFrac 0.35(크라운=위 ~35%), 정면 0.52.
-  진단([진단·섹션분포])도 뿌리 기준으로 원복(라벨: 뿌리기준).
-  검증: Node 하네스 — 뿌리 기준 분포(실기기 기하)에서 crown≤절반·사이드/템플/
-  후두부 실재, 헴 캡 정상(크라운 캡=두정선+0.12, 네이프 무캡), 캡이 중립에만
-  적용되고 슬라이더 연장은 캡 통과. 실기기 재확인 필요.
-
-  ── 2026-07-22 (5차) 실기기: "여전히 크라운만 + 머리가 내려와 있음" ──
-  4차 실기기 분포는 개선(left crown 56/temple 18/side 8/occ 18)됐지만 증상 잔존.
-  원인 2개:
-  (a) "머리 내려옴" = 배율 기준점 불일치. 섹션 길이 기본값은 80("커트니 원본에
-      가깝게"라는 설계 의도)인데 배율 공식은 50=원본이라, 조정 화면 기본 상태부터
-      전 가닥이 1.36×로 늘어나 있었음(4차에서 깊은 뿌리 감쇠를 1-frac→1-frac×0.3
-      으로 완화하며 아래 겹까지 길어져 체감 확대). → 기준점을 각 섹션
-      defaults.length로 변경: 기본 위치=사진 그대로(ratio 1), 내리면 짧게.
-      크라운 겹도 기본 상태에서 헴 캡을 넘지 않게 됨(캡×1.36 초과 문제 해소).
-      rawMode(원본 결 보기)의 길이 중립값도 50→섹션 기본값으로 동기화.
-      ⚠ 프리셋 스타일의 length 절대값 해석이 바뀜(bob 25 등이 더 강한 커트로
-      보일 수 있음) — 프리셋 대표값 재튜닝은 별도 과제로 기록.
-  (b) "크라운만 움직임" = side 밴드가 8%로 얇음 → 측면 앞/뒤 분할을 25/50/25로
-      조정(temple fw>0.75, occipital fw<0.25) — 측면 뷰 주인공인 사이드에
-      가운데 절반 배정.
-  실기기 재확인 필요: [진단·섹션분포] left에서 side가 두 자릿수 %인지, 조정
-  화면 진입 직후(아무 슬라이더 안 만짐)에 머리가 사진과 같은 길이인지.
-
-  ── 2026-07-22 (6차) 사용자 방향 확정: "실제 헤어 길이·결을 확인하면서 그려라" ──
-  사용자 지적 2건: ① "세그멘테이션 전체를 처음에 그려버린다 — 실제랑 완전히
-  다르다"(마스크 실루엣 통짜 페인팅) ② "렌더링할 때 실제 헤어 길이와 결을
-  확인하면서 그려지는 게 아닌 것 같다". 코드 사실 확인: 결(orientation field)은
-  실측·추종하고 있었으나, 길이는 "컬럼의 실루엣 세로 높이"였고 가닥이 결을 따라
-  실제로 어디서 끝나는지는 확인하지 않았음. 수정:
-  · 실측 길이 도입 — 각 가닥을 결 필드를 따라 추적하며 헤어 마스크를 벗어나는
-    지점(maskExitIdx, 연속 3스텝 이탈=확정, 시작 2스텝 검사 생략)을 실측.
-    그 호장이 가닥의 "실측 중립 길이"이고 섹션 조정 배율은 여기에 곱해짐.
-    base/ext clip 분할점도 컬럼 높이 → 가닥별 실측 이탈점으로 교체(더 정확).
-    줄이는 조정이면 이탈 확정 즉시 추적 중단(stopAtExit — 성능).
-  · 4~5차의 섹션 헴 캡(가정값)은 실측과 상충 → 렌더에서 제거(함수는 3D 헴라인
-    단계 재사용 위해 보존). 겹의 진짜 해결은 3D로.
-  · 통짜 언더코트 폐지 — renderFrame의 마스크 실루엣 두피색 통칠 제거. 언더코트는
-    drawHairStrands 안에서 "실제 가닥 경로"를 따라 굵은 획으로 깔림 → 조정하면
-    바탕(실루엣)도 같이 움직임(통짜 잔상 = 조정 안 먹혀 보이던 직접 원인 제거).
-  · 섹션 스택 드로잉 — 가닥을 즉시 그리지 않고 op로 모아 네이프→후두부→템플→
-    사이드→프론트→크라운 순서로 일괄 스트로크(아래 겹 위에 위 겹, 안정 정렬로
-    같은 섹션 안 레이어 0→3 순서 유지).
-  성능 메모: 가닥당 추적 스텝 증가(최대 maskH*1.15까지 프로브) + 언더코트 패스
-  추가로 렌더 비용 상승 — 느리면 STRAND_SAMPLE/개수 상수 또는 stopAtExit 폭 조정.
-  검증: node --check + 순수 함수 하네스(마스크 이탈 실측 정확도). 실기기 재확인 필요.
-
-  ── 2026-07-22 (7차) 결 불연속 종결 — 관통 가닥 문제의 실측 해법 ──
-  6차 실기기: "레이어가 겹치고 각 레이어가 변하긴 하는데 변하는 양이 적다."
-  원인: 사용자가 미리 질문했던 바로 그 케이스("마스크 경계까지 한 가닥으로 되면?")
-  — 결 필드가 연속이면 꼭대기 뿌리 가닥이 마스크 끝까지 한 가닥으로 실측돼(관통),
-  crown 53%가 귀 구역까지 덮음. 사이드 가닥(15%)이 움직여도 위를 덮은 관통
-  가닥은 안 움직여 변화가 희석됨.
-  수정: 추적 중 "결 불연속"을 실측 종결 조건으로 추가(FLOW_DISC 튜닝 상수).
-  · 증거 2종: 방향 급변(|delta|>0.7rad & 신뢰도>0.2 — 웨이브의 완만한 회전은
-    미달), 신뢰도 급락(EMA 대비 45% 미만 or 강한 결(EMA>0.3)이 갑자기 소멸).
-  · 증거를 점수로 누적, 가닥별 임계(1.0~1.8 랜덤 스태거)를 넘는 지점 =
-    실측 "겹 끝"(flowEndIdx). 실측 끝 = min(마스크 이탈, 겹 끝).
-  · 겹층 커트: 위 겹이 아래 겹의 실측 헴에서 끊겨 아래 겹이 화면을 소유 →
-    섹션 조정 가시성↑. 긴 생머리: 결 연속 → 점수 안 쌓임 → 무영향(의도).
-  · clip 분할은 여전히 마스크 이탈 기준(겹 끝 이후 연장도 마스크 안이면 base).
-  · [진단·결단] 로그 추가(10% 버킷 변화 시만): 겹층 커트면 두 자릿수 %가 정상.
-  ⚠ FLOW_DISC는 실사진 결 필드 특성에 민감 — 실기기에서 %가 0이면 임계 완화
-  (thrMin↓/dirJump↓), 과도하면(가닥이 죄다 짧아짐) 반대로. 실기기 재확인 필요.
-
-  ── 2026-07-22 (8차) 슬라이스 단위 커트 + 연장 균일성장 + 언더코트 base 한정 ──
-  사용자 설계: "실제 커트처럼 손에 몇 가닥씩 잡아 슬라이스 단위로 자르듯,
-  가닥 몇 개씩 모아 슬라이스 너비로." + 실기기 관찰 3건("결이 뚝뚝 끊겨 보임 /
-  층 겹침감 약함 / 길게 늘리면 뻗침") + "가닥 더 가늘게".
-  구현:
-  · 슬라이스 커트 — drawStrand는 1패스에서 실측만 수집(pendingStrands),
-    finalizeStrandsWithSlices가 뿌리 구역을 슬라이스(섹션×가로 3%폭×깊이 10%밴드)
-    로 묶어 헴(끝선)을 슬라이스 실측의 중앙값으로 합의. 구성 가닥은 자기 결
-    경로를 그대로 따르되 끝만 헴±8% 결정적 스태거로 정렬. 가닥별 랜덤 배율은
-    슬라이스가 주도권 가지므로 60% 축소(질감만). 고립 노이즈(조기 종결)가
-    중앙값에 안 휩쓸림 → "결 뚝뚝 끊김"·"층 약함" 동시 해소.
-  · 연장 균일 성장 — ratio≥1(늘림)이면 슬라이스 전체가 같은 절대량
-    (hemLen×(ratio-1))만큼 자람. 예전 곱셈(mult×jit×ratio)은 배율 큰 소수
-    가닥만 유독 길어져 "낙수/뻗침"이 됐음(하네스로 편차 대조 확인).
-  · 연장 방향 수렴 — 마스크 이탈(_exitIdx) 후엔 매 스텝 중력(아래)으로 0.45
-    수렴 → 정수리 위 스파이크·관자놀이 낙수 완화.
-  · 언더코트 base 한정 — 가닥 추종 두피색 획을 마스크 안(base)만 칠함
-    (연장 구간까지 칠하면 얼굴/배경에 살구톤 밑줄이 비침 — 실기기 스크린샷).
-  · 가닥 굵기 STRAND_THIN 0.6→0.48(더 가늘게, 슬라이스와 함께 부드럽게).
-  · [진단·결단] 로그 각도당 최초 1회만(버킷 방식은 난수 진동으로 계속 뚫려
-    실기기에서 40회 반복 — 값은 렌더 간 거의 불변이라 1회면 충분).
-  검증: node --check + 슬라이스 하네스(중앙값 합의로 노이즈 2/20 무시,
-  연장 시 끝 편차 불변=균일 성장, 곱셈 대조군 대비 편차 감소, 슬라이스 키
-  섹션/가로/깊이 분리). 실기기 재확인 필요 — 특히 층 겹침감·늘렸을 때 뻗침.
-
-  ── 2026-07-22 (9차) 길이 변화폭↑ + 컬 가시성↑(2D 한계 내 스톱갭) ──
-  실기기: "섹션은 잡혔는데 길이 변화가 너무 조금, 컬도 잡혔으면. 3D가 나으면 3D로."
-  · 길이: LENGTH_RATIO_PER_UNIT 0.012→0.018(1칸당 +50%), 슬라이스 연장 이득
-    1.6배(늘리는 쪽 보강 — 균일 성장이라 뻗침 없이 슬라이스째 길어짐).
-  · 컬(2D 스톱갭): 컬이 셀수록 실측 직모 결 추종을 최대 65% 약화(w×(1-curl×0.65))
-    + 웨이브 진폭 0.45→0.85. 안 그러면 컬을 얹어도 직모 방향으로 되돌아가
-    "직모 위 잔물결"에 그침. 이제 컬 100%면 웨이브가 형태를 주도.
-  ★ 판단: 길이는 순수 2D knob이라 2D에서 완결. 컬은 2D에선 실측 결과 충돌하는
-    본질적 한계(직모 위에 억지 웨이브) — 제대로 된 컬은 3D에서 나선 재파라미터화
-    (두상 곡면 따라 helix)로 구현하는 게 맞음. 사용자 합의 시 3D 조정 단계로 전환.
-
-  ── 2026-07-22 (10차) 3D 조정 전환 1단계 — 정규 3D 모델 + 3D→2D 되쏘기 ──
-  사용자 확정: "3D 조정으로 간다. 합의한 대로 3D와 조정을 연결하되 3D 조정은
-  눈에 안 보이고, 조정 결과가 2D로 나오게." → 아키텍처 역전 시작:
-  기존은 "2D 렌더가 원본, 3D는 파생". 목표는 "3D 가닥 모델이 원본, 2D 조정 화면은
-  그 모델을 현재 뷰 카메라로 투영한 것". 큰 전환이라 토글 뒤에서 단계별로.
-  1단계(이번, 표시 경로만):
-  · buildHairStrandsFromPaths가 리프트하며 정규 모델 채집 — state.hair3D =
-    { strands:[{pts:월드폴리라인, sec, color, srcAngle}], viewCal:{뷰별
-    image↔model 캘리브레이션}, yTop, CY }. 기존 3D 화면 동작은 그대로.
-  · project3DPointToView — 리프트(w3=R^T·(px,my-CY,mz)+CY)의 정확한 역
-    (local=R·(world-CY), ix=px/s+cx, iy=crownY+(yTop-my)/sy). R·R^T=I라
-    같은 뷰 왕복은 수학적으로 정확(Node 하네스 49/49 통과).
-  · projectHair3DToView — 정규 모델을 현재 뷰로 되쏘아 baseC 위에 그림.
-    가닥 평균 깊이로 painter's 정렬(겉겹이 속겹 덮는 가림이 3D 실제 z 기준 —
-    2D 근사와 질적으로 다른 지점). DEPTH_SIGN은 실기기 확인용 상수.
-  · renderFrame: state.use3DAdjust ON + 정규 모델 있으면 투영 렌더, 아니면
-    기존 drawHairStrands 폴백. 토글 버튼(3D 조정 엔진 β) 재추가 —
-    ON 시 모델 없으면 buildHairStrandsFromPaths로 1회 생성.
-  ※ 1단계 검증 포인트(실기기): 토글 ON이 OFF와 대략 비슷하게 보이면 투영 경로
-    정상(현재 모델은 조정된 2D 캡처를 리프트한 것이라 되쏘면 ≈현재 2D).
-    어긋나면(상하/좌우 반전·깊이 뒤집힘) DEPTH_SIGN·좌표 부호 조정.
-  2단계(다음): 정규 모델을 "중립 캡처"에서 1회 생성 + 조정 연산자(길이=호 트림/
-    연장, 컬=두상 곡면 helix, 섹션=3D 태그 선택)를 3D에서 수행 → 2D는 순수 투영.
-    그러면 컬의 2D 한계가 사라짐.
-
-  ── 2026-07-22 (10차 보강) 개발용 3D 검증 미니뷰 ──
-  사용자 지적: "UX상 3D는 숨기지만, 개발 중엔 3D가 제대로 조정되는지 봐야 한다.
-  미니뷰가 확대 가능하게." → 조정 화면에 경량·독립 3D 뷰 추가(#devMini3D):
-  · 메인 3D 화면(model3D 싱글턴)과 별개의 THREE 렌더러 — 정규 모델
-    (state.hair3D) LineSegments + 두상 와이어 구(방향감). 드래그 회전(x/y)·자동회전.
-  · 3D 조정 엔진 β ON일 때만 표시(showDevMini3D). 우하단 150×190 미니 →
-    ⛶ 버튼으로 4% 여백 전체화면 확대(toggle .expanded + 렌더러 리사이즈).
-  · 조정 시 실시간 갱신: renderAdjustFrame이 use3DAdjust면 scheduleHair3DRefresh
-    (180ms 디바운스)로 현재 2D 캡처를 리프트→정규 모델 재생성→미니뷰 갱신.
-    즉 슬라이더를 만지면 2D와 3D 미니뷰가 함께 변함 → "조정이 3D에서 맞게
-    일어나는지" 눈으로 검증. 출시 땐 이 패널만 숨기면 됨.
-  · 1단계 방침 조정: renderFrame의 2D→투영 스왑은 state.projectTo2D(기본 off,
-    2단계용)로 분리. 1단계에선 2D를 정상 렌더(슬라이더 동작·경로 캡처 유지)하고
-    3D 검증은 미니뷰로 — 투영이 2D를 대체하면 조정 연산자 이관 전이라 슬라이더가
-    죽은 것처럼 보였을 것(투영 수학 자체는 Node 왕복 49/49로 이미 검증).
-  · ensureHair3DModel: 토글 ON 시 현재 뷰 캡처 없으면 captureStrandPathsFor로
-    확보 후 리프트. 리프트 실패/THREE 부재는 조용히 폴백.
-
-  ── 2026-07-22 (정리) 죽은 코드 제거 — 동작 불변 확인 ──
-  "작업 많이 했으니 정리하고 가자. 동작 확실히 안 변하게, 안 쓰는 코드/함수 삭제."
-  전수 분석(주석/문자열 제외 참조 집계 + 함수별 원문 grep 교차검증)으로 참조 0건만 제거:
-  · angularWeight/buildViewMapping/propagateSectionToViews(+state.viewMapping) —
-    flat 섹션 모델(state.sections[secId] 하나로 전 뷰 자동 적용) 도입 후 유일
-    소비자가 사라진 뷰 간 가중치 매핑. buildViewMapping 호출·[매핑] 로그도 제거.
-  · gySectionHemCapNy/HEM_OVERLAP — 4차 헴 캡, 6차 실측 길이 렌더로 대체돼 미호출.
-  · splitIndexFor 스테일 주석 정정(함수는 6차에 이미 소멸).
-  검증: node --check OK + 회귀 하네스(섹션 판정 3종·투영 왕복 3종 6/6) 통과 —
-  제거가 동작에 영향 없음 확인. 순 약 -80줄. getViewYawDeg/getViewPoseSource 등
-  3D 리프트가 쓰는 헬퍼는 보존. symmetrize1D는 cleanupLine1D의 문서화된 선택
-  단계로 연결돼 있어(런타임 미발동이나 orphan 아님) 유지.
-
-  ── 2026-07-22 (중복 통합) 반복 로직 4종을 공용 유틸로 ──
-  "중복된 함수와 로직을 찾아 하나로 합쳐. 동작 동일 유지." grep으로 실제 중복만:
-  · hashFract(x) — 결정적 의사난수 fract(sin(x)·43758.5453). pseudoRandForCol·
-    결불연속 임계(_discThr)·슬라이스 스태거(sliceJit) 3곳이 각자 인라인하던 것 통합.
-  · strokeSmoothPolyline(ctx, pts) — quadratic 중간점 곡선 스트로크.
-    drawHairStrands의 strokePolyline(별칭으로 유지)과 projectHair3DToView의
-    인라인 루프가 글자 그대로 같던 것 통합.
-  · makeImgToCanvas(fit,maskW,maskH) — 이미지→캔버스 좌표 매핑. drawHairStrands
-    (toCanvasX/Y)와 projectHair3DToView(toCX/toCY) 통합(구조분해로 지역명 유지).
-  · clampCol(ix) — 컬럼 인덱스 [0,maskW-1] 클램프. makeColumnResolver·
-    colorForSection 2곳 통합(createColumnStyleResolvers 지역 헬퍼).
-  인자를 그대로 넘겨 산술 결과 완전 동일. 검증: node --check + 회귀 하네스
-  (hashFract·makeImgToCanvas 동일성 + 섹션 판정·투영 왕복 8/8) 통과.
-  ※ 서로 다른 스코프의 사소한 1줄식(예: Math.max 길이 하한)은 함수화가 오히려
-    간접참조만 늘려 통합 안 함 — 진짜 반복 블록만 대상.
-
-  ── 2026-07-22 (11차) 3D 조정 2단계 착수 — 순수 3D 연산자 + 미니뷰 배선 ──
-  "3D 조정으로 간다"에 이어 조정 연산자를 3D로 이관 시작(개발용 미니뷰에서 먼저).
-  · 순수 벡터 유틸(_v3sub/add/scale/len/norm/cross) + 3D 연산자 2종:
-    - curlStrand3D(pts, curlAmt, waveT): 가닥 코어축 둘레로 나선(helix) 변위.
-      뿌리 고정, 끝으로 갈수록 진폭 포화. 2D의 "직모 위 잔물결" 한계 없이 두상
-      곡면 위에서 진짜로 감김. curlAmt=0이면 무변경.
-    - lengthStrand3D(pts, ratio): 호길이 기준 트림(ratio<1)/연장(ratio>1),
-      연장은 마지막 방향 유지. 뿌리 고정.
-  · 중립 모델 파이프라인: buildNeutralHair3D가 촬영 뷰를 rawMode(길이 기본·컬0)로
-    캡처→리프트해 state.hair3Dneutral 생성(조정 무관 고정, 3D 화면 캡처는
-    swap-restore로 보존). refreshDevMini3D가 이 중립 모델에 섹션별 길이·컬
-    연산자를 적용해 미니뷰 LineSegments 재구성 — 슬라이더는 재캡처 없이 연산자만
-    재적용(가벼움+이중적용 방지). captureStrandPathsFor에 rawMode 인자 추가.
-  · 배선: 토글 ON→중립모델 1회 생성→연산자 적용. 슬라이더→scheduleHair3DRefresh
-    (120ms)로 연산자 재적용. 새 고객 시 hair3D/hair3Dneutral 무효화.
-  · 2D 메인 렌더는 그대로(projectTo2D off) — 미니뷰가 "3D 조정 미리보기"로
-    먼저 검증되면, 이후 메인 렌더를 3D 투영으로 전환(3단계).
-  검증: node --check + 연산자 하네스(컬 진폭 스케일·뿌리 고정·코어 수직·길이
-  트림/연장 비율 7/7) + 종합 회귀(13/13) 통과. 미니뷰 시각 확인은 실기기.
-
-  ── 2026-07-23 (11차 3단계) 조정창 = 3D 투영(비교 화면 제거 준비) ──
-  사용자: "비교하기 화면은 장기적으로 뺄 거고, 조정창에서 바로 투영되면 안 되나?"
-  → 조정창 메인 렌더를 3D 모델의 투영으로 전환(3D 엔진 β ON일 때). "3D로 조정,
-  2D로 표현"의 완성이자 비교 화면 제거의 토대.
-  · computeAdjustedHair3DStrands(srcAngleFilter): 중립 모델 + 조정 연산자(길이·컬)를
-    적용한 "조정된 월드 가닥" 단일 출처. 미니뷰(3D)와 조정창 투영(2D)이 공유.
-    srcAngle 필터로 그 뷰 캡처 가닥만 → 교차뷰 잡음 없이 "그 뷰 머리=3D조정 투영".
-  · projectHair3DToView 재작성: 소스를 state.hair3D→hair3Dneutral+연산자, 최소
-    파리티(두피색 언더코트 굵게→머리색 가닥 가늘게, painter's 깊이정렬) 추가.
-  · renderFrame: use3DAdjust ON + 중립모델 준비 + 투영 성공 시 투영, 아니면 기존
-    2D drawHairStrands 폴백(엔진 OFF=기본은 완전 무변경). 컬은 curl3D 진폭 0.11.
-  · 컬 진폭 0.05→0.11(실기기 "컬 약함"). CURL3D_AMP 상수로 튜닝.
-  · 미니뷰: "3D 검증"→"3D 미리보기"(제품 기능화), 확대는 fixed 전체창(세로 확보),
-    기본 크기↑. 슬라이더·패널·미니뷰 밝기 상향.
-  검증: node --check + 조정연산자 하네스(컬 진폭·직선유지·길이배율·srcAngle 필터
-  6/6). 투영 시각 품질(파리티·가림)은 실기기 확인 — 거칠면 언더코트/굵기/클립 보강.
-  다음: 확인되면 비교 화면 제거 + 4뷰 통합 모델(현재는 뷰별 자기 캡처 투영).
-
-  ── 2026-07-23 (11차 컬 물리 교정) 로드 고정 — 길이 비례 폐기 ──
-  실기기 3D: 컬이 톱니처럼 튀고 짧은 가닥은 폭발. 1차 수정(호길이 비례 진폭)도
-  틀림 — 사용자 교정: "한 사람 머리 안에서 길고 짧은 데가 있어도 미용사는 같은
-  웨이브 폭(로드)으로 컬을 넣는다." 즉 루프 지름은 로드 크기로 정해지고 머리
-  전체 동일, 길이 비례가 아님. 긴 머리는 같은 로드에 더 여러 바퀴 감길 뿐.
-  재작성: 웨이브폭 → 로드 반경 R(CURL3D_R_MIN 0.02 ~ R_MAX 0.07, 머리 전체 고정),
-  컬세기 → R에 감긴 정도(진폭=curl×R), 한 바퀴 arc=로드 둘레(2πR)/stepLen →
-  긴 가닥 자동으로 더 여러 바퀴. 최소 4스텝/바퀴로 톱니 방지.
-  검증: node --check + 하네스 6/6(길이 달라도 진폭=R 동일, 웨이브폭이 루프 크기,
-  긴 가닥 더 여러 바퀴, 컬0 무변경). R_MIN/MAX가 세기 튜닝 지점.
-
-  ── 2026-07-23 (11차 중력 처짐) 로드로 감은 뒤 중력 — 3D 경로에 복원 ──
-  사용자: "그렇게 된 다음에 적절한 중력이 작용. 이전에 얹었었는데 없어졌어."
-  확인: 2D(traceStrandPath)의 중력(gravityPull·이탈후 아래수렴)은 그대로 있으나,
-  새 3D 컬 연산자(curlStrand3D)엔 중력이 없어 균일 나선(뻣뻣한 스프링)이었음.
-  추가: gravityDroop3D — 컬 나선 위에 얹는 마지막 단계. 뿌리 고정, 끝으로 갈수록
-  가속 처짐(t²), 컬 강할수록 탱탱하게 덜 처짐(hold=1-0.6×curl). computeAdjusted…
-  에서 길이→컬→중력 순 적용(curl>0일 때만). GRAV3D_STRENGTH가 처짐 세기 튜닝.
-  검증: 하네스 6/6(뿌리 고정, 끝 아래 처짐, t² 가속, 강한컬 덜 처짐, x·z 불변).
-
-  ── 2026-07-23 (12차) 섹션 재분배 — 프론트 무반응·사이드 과소 수정 + 섹션 색 ──
-  실기기: "프론트 만질 때 하나도 안 먹고 크라운만 먹힌다. 사이드도 작다."
-  원인: 프론트가 "헤어라인~눈썹 얇은 띠 × 귀 사이 좁은 폭(7%)"만 소유해 그 위
-  중앙이 전부 크라운으로 먹혔고, 측면은 크라운(위 35%)이 사이드를 눌렀음.
-  수정:
-  · 프론트 = 중앙 컬럼 전체(꼭대기~눈썹). 세로 하한(frontY0) 제거.
-  · 프론트 x밴드 = 머리 실측 좌우 폭의 중앙 50%(귀 폭이 더 넓으면 채택) —
-    귀가 좁게 잡혀도 밴드가 안 쪼그라들게. 하네스: 정면 front 14→48%.
-  · 측면 parietalFrac 0.35→0.25(크라운 축소), 사이드 fw 밴드 25→22%(사이드 확대).
-    하네스: 좌측 side 13→32%, crown 55→40%.
-  · 미니뷰를 섹션별 색(SECTION_COLORS: 크라운=호박/프론트=파랑/템플=핑크/
-    사이드=초록/후두부=보라/네이프=주황)으로 칠해 부위-섹션 대응을 눈으로 확인.
-  검증: node --check + 섹션 재분배 하네스 5/5(정면 프론트 주도·크라운<45,
-  좌측 사이드>=28·크라운<42). 실기기 색 확인으로 추가 튜닝.
 -->
 
 <!DOCTYPE html>
@@ -689,20 +344,6 @@ main{flex:1;position:relative;overflow:hidden;}
   background:var(--surface);
 }
 .adjust-preview canvas{width:100%;height:100%;display:block;}
-/* (10차) 개발용 3D 검증 미니뷰 */
-#devMini3D{position:absolute;right:8px;bottom:8px;width:172px;height:222px;z-index:60;
-  background:rgba(74,70,62,0.95);border:1px solid #6b6252;border-radius:10px;
-  display:flex;flex-direction:column;overflow:hidden;box-shadow:0 4px 16px rgba(0,0,0,0.4);}
-/* (11차) 확대 = 뷰포트 기준 별도 창(fixed) — 미리보기 영역 안에 갇혀 세로가
-   좁던 문제 해결. 화면 거의 전체를 덮어 두상이 크게 보임. */
-#devMini3D.expanded{position:fixed;left:3vw;right:3vw;top:3vh;bottom:3vh;width:auto;height:auto;z-index:300;}
-#devMini3DHeader{display:flex;align-items:center;justify-content:space-between;
-  padding:4px 8px;font-size:11px;font-weight:600;color:var(--accent-soft);
-  background:rgba(0,0,0,0.35);flex-shrink:0;}
-#devMini3DExpand{background:none;border:none;color:var(--accent-soft);font-size:14px;cursor:pointer;padding:0 2px;}
-#devMini3DCanvasWrap{flex:1;position:relative;min-height:0;}
-#devMini3DCanvasWrap canvas{width:100%;height:100%;display:block;touch-action:none;}
-#devMini3DHint{font-size:9px;color:var(--text-muted);text-align:center;padding:2px;flex-shrink:0;}
 .preview-tag{
   position:absolute;top:10px;left:10px;
   background:rgba(27,24,22,0.75);backdrop-filter:blur(4px);
@@ -722,7 +363,7 @@ main{flex:1;position:relative;overflow:hidden;}
 .field-debug-btn{top:82px;}
 .field-debug-btn.on{background:#c04af0;color:#F3ECE2;border-color:#c04af0;font-weight:600;}
 
-.adjust-scroll{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:14px 16px 20px;background:var(--surface);}
+.adjust-scroll{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:14px 16px 20px;}
 .adjust-controls{display:flex;flex-direction:column;gap:14px;}
 
 .angle-switch{display:flex;gap:5px;background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:4px;}
@@ -736,11 +377,8 @@ main{flex:1;position:relative;overflow:hidden;}
 .ai-tags{display:flex;flex-wrap:wrap;gap:5px;}
 .ai-tag{font-size:10px;font-family:'JetBrains Mono',monospace;padding:3px 8px;border-radius:20px;background:var(--surface-2);border:1px solid var(--line);color:var(--accent-soft);}
 
-/* (11차) 슬라이더 가시성↑ — 어두운 트랙이 어두운 배경에 묻혀 안 보이던 것 밝게. */
-input[type=range]{-webkit-appearance:none;width:100%;height:6px;border-radius:3px;background:#7A6E5C;outline:none;}
-input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:22px;height:22px;border-radius:50%;background:var(--accent);cursor:pointer;border:3px solid #F3ECE2;box-shadow:0 1px 5px rgba(0,0,0,.45);}
-input[type=range]::-moz-range-track{height:6px;border-radius:3px;background:#7A6E5C;}
-input[type=range]::-moz-range-thumb{width:20px;height:20px;border-radius:50%;background:var(--accent);border:3px solid #F3ECE2;cursor:pointer;}
+input[type=range]{-webkit-appearance:none;width:100%;height:4px;border-radius:2px;background:var(--line);outline:none;}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:22px;height:22px;border-radius:50%;background:var(--accent);cursor:pointer;border:3px solid var(--bg);}
 
 .voice-box{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:12px;display:flex;flex-direction:column;gap:8px;}
 .voice-btn{display:flex;align-items:center;gap:10px;cursor:pointer;padding:10px 12px;border-radius:9px;background:var(--surface-2);transition:background .15s;}
@@ -927,17 +565,6 @@ input[type=range]::-moz-range-thumb{width:20px;height:20px;border-radius:50%;bac
         <button class="debug-btn" id="diagToggle" onclick="toggleDiagInfo()" style="right:auto;left:8px;bottom:8px;">진단정보</button>
         <div id="diagInfoBox" style="display:none;position:absolute;left:8px;bottom:44px;right:8px;background:rgba(0,0,0,0.85);color:#0f0;font-family:monospace;font-size:10px;padding:8px;border-radius:6px;white-space:pre-wrap;z-index:50;max-height:200px;overflow:auto;"></div>
         <div class="seg-status" id="segStatus"></div>
-        <!-- (10차) 개발용 3D 검증 미니뷰 — 3D 조정 엔진 β ON일 때만 표시.
-             정규 3D 모델(state.hair3D)을 직접 렌더(드래그 회전). 탭(확대 버튼)으로
-             전체화면 확대. 출시 땐 이 패널만 숨기면 됨. -->
-        <div id="devMini3D" style="display:none;">
-          <div id="devMini3DHeader">
-            <span>3D 미리보기</span>
-            <button id="devMini3DExpand" onclick="toggleDevMini3DExpand()" title="확대/축소">⛶</button>
-          </div>
-          <div id="devMini3DCanvasWrap"></div>
-          <div id="devMini3DHint">드래그 회전 · ⛶ 확대</div>
-        </div>
       </div>
       <div class="adjust-scroll">
         <div class="adjust-controls">
@@ -968,9 +595,6 @@ input[type=range]::-moz-range-thumb{width:20px;height:20px;border-radius:50%;bac
           </div>
 
           <button class="btn btn-ghost" style="font-size:12px;padding:10px;" onclick="resetSections()">초기화</button>
-          <!-- (10차) 3D 조정 엔진 토글 — ON이면 3D 정규 모델을 현재 뷰로 투영해 표시
-               (3D=원본, 2D=투영). 1단계는 표시 경로만; 조정 연산자 이관은 다음 단계. -->
-          <button class="btn btn-ghost" style="font-size:12px;padding:10px;" id="btn3dEngine" onclick="toggle3DAdjust()">3D 조정 엔진 β: OFF</button>
           <button class="btn btn-primary" style="font-size:12px;padding:10px;" onclick="registerCurrentAsStyle()">★ 현재 모델을 스타일로 등록하기</button>
           <div style="height:4px;"></div>
         </div>
@@ -1265,8 +889,7 @@ function refineSectionBoundaries(angle){
   SECTIONS.crown.xRange  = [lx * 0.3,  rx + (1-rx)*0.7];
   SECTIONS.front.xRange  = [lx * 0.55, rx + (1-rx)*0.45];
   SECTIONS.side.xRange   = [lx * 0.1,  rx + (1-rx)*0.9]; // 사이드는 넓게
-  // 렌더마다 호출되므로 기본은 조용히 — 상세 모드에서만 출력(2026-07-22 로그 정리)
-  if(window.DIAG_VERBOSE) console.log('[' + angle + '] yaw=' + lm.yaw.toFixed(2) + ' 섹션 경계 보정됨(두정선 y=' + parietalRidgeY.toFixed(3) + ')');
+  console.log('[' + angle + '] yaw=' + lm.yaw.toFixed(2) + ' 섹션 경계 보정됨(두정선 y=' + parietalRidgeY.toFixed(3) + ')');
 }
 
 /* ────────────────────────────────────────
@@ -1296,23 +919,79 @@ function getViewYawDeg(angle){
   return ASSUMED_YAW_DEG[angle] ?? 0;
 }
 
-// (2026-07-22 정리) 뷰 간 섹션 가중치 매핑(angularWeight/buildViewMapping/
-// propagateSectionToViews)은 flat 섹션 모델 도입 후 유일 소비자가 사라져
-// 죽은 코드가 됨(섹션 값은 state.sections[secId] 하나라 뷰마다 자동 적용) — 제거.
+// 실측 각도(viewYawDeg)가 어떤 섹션의 기준 각도(canonicalDeg, 0=정면·±90=측면·180=후면)에서
+// 얼마나 벗어났는지에 따라 0~1 가중치를 코사인 감쇠로 산출. falloffDeg만큼 벌어지면 0.
+// (기존엔 "측면 0.85, 후면 0.15"처럼 뷰 슬롯 이름에 고정된 숫자를 박아놨었는데,
+// 이제 그 자리를 실제 촬영 각도와 섹션 기준각 사이의 기하학적 거리로 대체함)
+function angularWeight(viewYawDeg, canonicalDeg, falloffDeg){
+  let diff = Math.abs(viewYawDeg - canonicalDeg);
+  diff = Math.min(diff, 360 - diff); // 각도 순환(-180~180) 보정
+  if(diff >= falloffDeg) return 0;
+  return 0.5 * (1 + Math.cos(Math.PI * diff / falloffDeg));
+}
+
+function buildViewMapping(){
+  const lms = state.landmarks; // {front, left, right, back}
+  if(!lms) return;
+
+  const ANGLES = ['front','left','right','back'];
+  const yawOf = {}; ANGLES.forEach(a=> yawOf[a] = getViewYawDeg(a));
+
+  // canonicalDegFor: 섹션의 "정면에서 봤을 때 가장 잘 보이는 기준각"을 정의.
+  // 함수로 받는 경우(temple/side/occipital)는 뷰의 실측 yaw 부호(좌/우 중 어느 쪽에
+  // 더 가까운지)에 맞춰 좌우 기준각 중 하나를 선택 — 실제 사진이 좌측 얼굴을
+  // 찍었으면 좌측 기준각과 비교하는 식.
+  function weightsFor(canonicalDegOrFn, falloffDeg){
+    const w = {};
+    ANGLES.forEach(a=>{
+      const yaw = yawOf[a];
+      const cd = (typeof canonicalDegOrFn === 'function') ? canonicalDegOrFn(yaw) : canonicalDegOrFn;
+      w[a] = angularWeight(yaw, cd, falloffDeg);
+    });
+    return w;
+  }
+
+  const mapping = {};
+  // CROWN: 정수리는 어느 각도에서 찍어도 다 보이는 부위라 각도 가중치 자체가 의미 없음 → 전부 1.0 유지
+  mapping.crown     = { front:1.0, left:1.0, right:1.0, back:1.0 };
+  mapping.front     = weightsFor(0, 110);
+  mapping.temple    = weightsFor(yaw => (yaw >= 0 ? 45  : -45),  100);
+  mapping.side      = weightsFor(yaw => (yaw >= 0 ? 90  : -90),  120);
+  mapping.occipital = weightsFor(yaw => (yaw >= 0 ? 135 : -135), 120);
+  mapping.nape      = weightsFor(180, 150);
+
+  state.viewMapping = mapping;
+  console.log('[매핑] 실측 포즈(yaw) 기반 뷰 간 섹션 가중치 산출 완료',
+    Object.fromEntries(ANGLES.map(a=>[a, yawOf[a].toFixed(1)+'°'])), mapping);
+}
+
+// 슬라이더 값 변경 시 인접 뷰에 가중치 반영
+function propagateSectionToViews(changedAngle, sectionId, paramKey, value){
+  const mapping = state.viewMapping;
+  if(!mapping || !mapping[sectionId]) return;
+
+  const w = mapping[sectionId];
+  const angles = ['front','left','right','back'];
+  angles.forEach(angle=>{
+    if(angle === changedAngle) return; // 변경한 뷰는 스킵
+    const weight = w[angle] || 0;
+    if(weight < 0.05) return; // 영향 없음
+
+    if(!state.sections[angle]) state.sections[angle]={};
+    if(!state.sections[angle][sectionId]) state.sections[angle][sectionId]={};
+
+    // 기존값과 가중치 블렌딩 (급격한 변화 방지)
+    const prev = state.sections[angle][sectionId][paramKey] ?? value;
+    state.sections[angle][sectionId][paramKey] = Math.round(prev + (value - prev) * weight);
+  });
+}
 
 /* ════════════════════════════════════════
    STATE
 ════════════════════════════════════════ */
 const ANGLES = ['front','left','right','back'];
 const ANGLE_LABELS = {front:'정면', left:'좌측', right:'우측', back:'후면'};
-const HINTS = {front:'정면을 맞춰주세요', left:'좌측면 — 고개를 충분히 옆으로 돌려주세요', right:'우측면 — 고개를 충분히 옆으로 돌려주세요', back:'후면(뒷머리)을 맞춰주세요'};
-// (2026-07-25) 측면 최소 실측 yaw. 얕게 찍으면(이 앱은 25° 근처가 흔함) 깊이
-// 복원 D²=(E²−W²cos²)/sin²θ가 작은 sin²로 나뉘어 폭발해 두상 앞뒤가 부정확해진다.
-// 랜드마크만 잡히면 ✓ 주던 것을, 측면은 이 각도를 넘어야 ✓, 못 넘으면 "더 돌려요"
-// 안내로 바꾼다. 30°면 sin²≈0.25로 25°(0.18) 대비 깊이 감도가 넉넉해짐. 반대편이
-// 좀 가려져도 MediaPipe가 필수 랜드마크(근측 눈·코)를 잡으면 감지는 되므로 고개를
-// 확 돌릴 수 있음 — 감지가 아예 실패(null)하는 지점이 자연 상한.
-const SIDE_YAW_MIN = 30;
+const HINTS = {front:'정면을 맞춰주세요', left:'좌측면을 맞춰주세요', right:'우측면을 맞춰주세요', back:'후면(뒷머리)을 맞춰주세요'};
 
 /* ── 섹션 정의 ──
    각 섹션: 미용사가 실제로 커트하는 구역
@@ -1459,139 +1138,42 @@ function neutralStyling(){ return { sweep:0, volume:50, flow:0, part:0, finish:5
 // 그걸 무시하고 나머지 전부를 흡수해버리는 구조라 의미가 없었음. 이제
 // crown.yRange[1](=두정선 y좌표)을 명시적으로 검사해서, 실제로 두정선
 // 위쪽(Interior)인 곳만 crown이 되도록 고침.
-// ── 뷰별 섹션 경계 밴드 — 2026-07-22 재작성 → 같은 날 2차 수정(실기기) ──
-// 1차(랜드마크 절대비율)의 실기기 실패: 두정선(earY-40%)과 네이프선(chinY×0.78)이
-// "이미지 전체에 대한 절대 비율" 공식이라, 얼굴이 프레임 어디에 있느냐에 따라
-// 두 선이 겹치거나 역전됨 — 실기기 로그에서 좌측 뷰 두정선 0.503 vs 네이프선
-// ≈0.50으로 Exterior 밴드(템플/사이드/후두부)가 폭 0으로 붕괴, crown=100% 확인.
-// 정면 temple=0%도 동일 원인(프론트 밴드 x공식 lx*0.55이 프레임 폭 기준이라
-// 넓은 사진에선 머리 전체를 삼킴).
-// → 2차: 경계를 "헤어 마스크의 실측 스팬"(머리 꼭대기 apex~모발 끝, 좌우 폭)과
-// 랜드마크의 조합으로 머리 기준 상대좌표로 계산. 프레임 안 어디에 어떤 크기로
-// 찍혀도 비율이 유지된다. 마스크가 아직 없으면(처리 초기) 랜드마크 폴백.
-// 메모이즈: 랜드마크·마스크 객체 identity 기준(재촬영/재처리 시 자동 갱신).
-// ── 진단 로그 상세 모드(2026-07-22) ──
-// 실기기 피드백: "콘솔로그에 진단내용이 뭐 이렇게 많지?" — [진단·조정]/
-// [진단·조정렌더]/[진단·섹션분포]/경계보정 로그가 슬라이더 input 이벤트마다
-// (드래그 한 번에 수십 번) 찍히고 있었음. 기본은 끄고, 문제 추적할 때만
-// 콘솔에서 window.DIAG_VERBOSE = true 로 켜서 보게 함.
-// [진단·섹션분포]는 값이 "바뀔 때만" 1회 출력(검증에 필요한 최소한만 유지).
-window.DIAG_VERBOSE = false;
-const _secBandsCache = {};
-function sectionBandsFor(angle){
-  const lm = (state.landmarks && state.landmarks[angle]) || null;
-  const mi = (state.hairMasks && state.hairMasks[angle]) || null;
-  const c = _secBandsCache[angle];
-  if(c && c.srcLm === lm && c.srcMi === mi) return c.bands;
-  const L = lm || getEstimatedLandmarks(angle);
-  // ── 머리 실측 스팬(헤어 마스크): apex(머리 꼭대기)·모발 최하단·좌우 폭 ──
-  let headTopY = null, hairBotY = null, nxMin = 0.2, nxMax = 0.8;
-  if(mi && mi.scalpY){
-    let minS = Infinity, maxE = -Infinity, x0 = Infinity, x1 = -Infinity;
-    for(let x = 0; x < mi.w; x++){
-      const s = mi.scalpY[x]; if(s < 0) continue;
-      if(s < minS) minS = s;
-      const e = (mi.hairEndY && mi.hairEndY[x] >= 0) ? mi.hairEndY[x] : s;
-      if(e > maxE) maxE = e;
-      if(x < x0) x0 = x; if(x > x1) x1 = x;
-    }
-    if(isFinite(minS) && x1 > x0){
-      headTopY = minS / mi.h; hairBotY = maxE / mi.h;
-      nxMin = x0 / mi.w; nxMax = x1 / mi.w;
-    }
-  }
-  if(headTopY === null){ // 마스크 미가용 폴백(랜드마크 기반 근사)
-    headTopY = Math.max(0, L.foreheadY - 0.10);
-    hairBotY = Math.min(1, L.chinY + 0.10);
-  }
-  const earLineY  = (typeof L.earY  === 'number') ? L.earY  : headTopY + (hairBotY - headTopY) * 0.60;
-  const chinLineY = (typeof L.chinY === 'number') ? L.chinY : headTopY + (hairBotY - headTopY) * 0.95;
-  // 두정선: apex(실측 머리 꼭대기)~귀 사이 지점 — "귀 위 손가락 3개" 근사를
-  // 이마 랜드마크가 아니라 실제 머리 꼭대기 기준으로 계산(프레임 무관).
-  // (4차, 사용자 교정 "측면에서 뿌리 기준이어도 크라운이 75%면 안 된다") 뷰별 분리:
-  // 측면/후면에선 옆통수 두피면 전체가 보이므로 크라운(Interior)은 위쪽 ~35%만 —
-  // 정면은 두정선 아래가 화면에 거의 안 보여 52% 유지. 편중 시 이 계수만 조정(튜닝 지점).
-  const parietalFrac = (angle === 'front') ? 0.52 : 0.25; // (12차) 측면 크라운 축소 0.35→0.25(사이드 확대)
-  const parietalY = headTopY + Math.max(0.02, earLineY - headTopY) * parietalFrac;
-  // 네이프선: 귀~턱 사이 25% 지점(귀 바로 아래 목덜미 시작) — chinY 절대비율 폐기.
-  // 두정선보다 항상 아래에 있도록 하한 보장(Exterior 밴드 붕괴 방지).
-  const napeTopY  = Math.max(parietalY + 0.04, earLineY + (chinLineY - earLineY) * 0.25);
-  // (12차) 프론트 중앙 밴드 = "머리 실측 좌우 폭의 중앙 50%". 예전엔 귀 간격 기준
-  // 이었는데 정면 사진에서 귀가 좁게 잡히면(earSpan 작음) 밴드가 7%로 쪼그라들어
-  // 프론트가 거의 안 잡혔음 → 프레임 무관한 헤어 폭 기준으로 통일(귀 폭이 더
-  // 넓으면 그쪽을 존중). 앞머리 덩어리는 대략 앞 중앙 절반이라 50%가 적정.
-  const lx = Math.min(L.lEarX, L.rEarX), rx = Math.max(L.lEarX, L.rEarX);
-  const hs = Math.max(0.02, nxMax - nxMin);
-  let frontX0 = nxMin + hs * 0.25, frontX1 = nxMax - hs * 0.25; // 헤어 폭 중앙 50%
-  if((rx - lx) > (frontX1 - frontX0)){ frontX0 = lx; frontX1 = rx; } // 귀 폭이 더 넓으면 채택
-  const browY = (typeof L.browTopY === 'number') ? L.browTopY : (headTopY + (earLineY - headTopY) * 0.80);
-  const bands = {
-    headTopY, hairBotY, parietalY, napeTopY,
-    nxMin, nxMax,
-    frontY0: Math.min(parietalY, L.foreheadY * 0.85 + 0), // 프린지 밴드 상단(헤어라인 부근)
-    frontY1: browY * 1.05,                                 // 프린지 밴드 하단(눈썹 위)
-    frontX0, frontX1,
-    // 얼굴이 이미지에서 어느 쪽을 보는가(+1=오른쪽, -1=왼쪽). 랜드마크 yaw
-    // (코가 귀 중심보다 어느 쪽인지)가 있으면 실측, 없으면 촬영 슬롯 가정.
-    faceDir: (lm && typeof lm.yaw === 'number' && Math.abs(lm.yaw) > 0.05)
-      ? (lm.yaw >= 0 ? 1 : -1)
-      : (angle === 'right' ? 1 : -1),
-  };
-  _secBandsCache[angle] = { srcLm: lm, srcMi: mi, bands };
-  return bands;
-}
-
 function resolveSectionId(angle, nx, ny){
-  // ── 섹션 배분 재재설계(2026-07-22, 뿌리 실좌표 기반) ──
-  // 이전 재설계(nx 하드코딩 0.32/0.64 분할)의 문제:
-  //  · ny로 들어오던 값이 "컬럼의 실루엣 맨 꼭대기"라 세로 정보가 죽어 있었고,
-  //    그 보상으로 좌우(nx)만으로 나누다 보니 측면 뷰에서 중앙 컬럼 전부(사실상
-  //    보이는 머리 전체)가 side로 먹혔음 — "사이드만 조정하면 전체가 움직인다"의 원인.
-  //  · 네이프는 어떤 뷰에서도 조건(ny>네이프선)을 만족할 수 없어 조정이 무반응.
-  //  · left/right 모두 "nx 작으면 템플" 고정이라 우측 뷰에선 템플/후두부가 뒤바뀜.
-  // 이제 호출부(drawStrandLayer)가 가닥의 "실제 뿌리 좌표"(루트 확산 레이어의
-  // 깊이 포함)를 넘기므로 세로(ny)가 다시 의미를 갖는다 → 초반에 잡아둔 미용
-  // 기준선(두정선 위=Interior=크라운, 아래=Exterior, 네이프선 아래=네이프)을
-  // 그대로 적용하고, 측면의 앞/뒤(템플/후두부)는 귀 실측 x와 얼굴 방향으로 나눈다.
-  const b = sectionBandsFor(angle);
+  const inR = (range, v) => v>=range[0] && v<=range[1];
+  const napeTop = SECTIONS.nape.yRange[0];
+  // ── 섹션 배분 재설계(2026, 편중 정리) ──
+  // 문제였던 점: 측면/후면에서 맨 처음 `ny <= 두정선 → crown`을 검사해 두정선 아래로
+  // 안 내려간 컬럼(=대부분)이 전부 크라운으로 먹혔음(측면 91%·후면 86% 크라운).
+  // 원인: scalpY(머리카락 맨 위)는 측면/후면에서 어디든 높아서 세로(ny)만으론
+  //   크라운/사이드/후두부를 못 가름. → 앞뒤/좌우 위치(nx)를 주축으로 바꾸고,
+  //   각 섹션이 "주력 뷰"(크라운=정면·후면, 사이드=측면, 후두부=측면·후면,
+  //   네이프=측면·후면)에서 확실한 비중을 갖게 함. 컬럼당 섹션은 flat(state.sections[secId])
+  //   으로 판정되어 그대로 3D 가닥(sec)까지 이어지므로, 2D에서 나누면 3D에 바로 반영됨.
   if(angle==='front'){
-    if(ny >= b.napeTopY) return 'nape';
-    // (12차) 프론트 = 중앙 컬럼 전체(꼭대기~눈썹). 예전엔 "헤어라인~눈썹" 얇은 띠만
-    // 프론트라 그 위 중앙이 전부 크라운으로 먹혀, 프론트 조정이 거의 무반응이었음
-    // (실기기: "프론트 만질 때 하나도 안 먹고 크라운만 먹힌다"). 정면 뷰에서 보이는
-    // 앞머리 덩어리 전체가 프론트가 되도록 세로 하한(frontY0) 제거.
-    const inFrontX = nx >= b.frontX0 && nx <= b.frontX1;
-    if(inFrontX && ny <= b.frontY1) return 'front'; // 중앙 컬럼 눈썹 위까지 = 프론트
-    if(ny <= b.parietalY) return 'crown';        // 중앙 밖 위쪽(정수리 양옆) = 크라운
-    if(!inFrontX) return 'temple';               // 두정선 아래 좌우(귀 쪽) = 템플
-    return 'front';
+    if(ny > napeTop) return 'nape';
+    // 이마 중앙 밴드에 머리카락이 있으면 프론트(앞머리/프린지)
+    if(inR(SECTIONS.front.yRange, ny) && inR(SECTIONS.front.xRange, nx)) return 'front';
+    // 중앙 밴드 바깥(귀 쪽) = 템플
+    if(nx < SECTIONS.front.xRange[0] || nx > SECTIONS.front.xRange[1]) return 'temple';
+    // 중앙 위쪽 = 크라운(정면 주력)
+    return 'crown';
   }
   if(angle==='left' || angle==='right'){
-    if(ny >= b.napeTopY) return 'nape';          // 목선 쪽 뿌리 = 네이프
-    if(ny <= b.parietalY) return 'crown';        // 두정선 위(Interior) = 크라운
-    // 두정선~네이프선 사이(Exterior): 헤어 좌우 스팬 기준 상대좌표로 앞/뒤 분할
-    // (2차 수정: 귀 x 절대좌표 ± 고정폭 → 실기기 프레임에 따라 깨져서 폐기).
-    // fw: 0=머리 뒤쪽 끝 ~ 1=머리 앞쪽 끝(얼굴 방향은 실측 yaw 부호로 결정).
-    const span = Math.max(0.02, b.nxMax - b.nxMin);
-    const fw = b.faceDir > 0 ? (nx - b.nxMin) / span : (b.nxMax - nx) / span;
-    // (12차) 사이드 확대: 측면 뷰 주인공은 사이드인데 크라운(위 35%)+템플/후두부에
-    // 밀려 작았음. 앞/뒤 밴드를 22%로 좁혀 사이드를 가운데 56%로. (크라운 축소는
-    // sectionBandsFor의 측면 parietalFrac 0.35→0.25로 별도 처리.)
-    if(fw > 0.78) return 'temple';               // 앞 22%(귀 앞·관자놀이)
-    if(fw < 0.22) return 'occipital';            // 뒤 22%(뒤통수)
-    return 'side';                               // 가운데 56%(귀 주변)
+    // nx(앞뒤): 앞(작은 nx)=템플, 뒤(큰 nx)=후두부, 가운데=사이드(측면 본체), 아래=네이프.
+    // 크라운은 측면에선 얇은 꼭대기라 사이드에 흡수 — 크라운 조정은 정면/후면 뷰에서.
+    if(ny > napeTop) return 'nape';
+    if(nx < 0.32) return 'temple';
+    if(nx > 0.64) return 'occipital';
+    return 'side';
   }
   if(angle==='back'){
-    if(ny >= b.napeTopY) return 'nape';
-    if(ny <= b.parietalY) return 'crown';        // 두정선 위 = 크라운
-    return 'occipital';                          // 그 사이 = 후두부
+    if(ny > napeTop) return 'nape';
+    // 중앙 = 크라운(후면 주력), 양옆 = 후두부
+    if(nx >= 0.38 && nx <= 0.62) return 'crown';
+    return 'occipital';
   }
   return 'crown';
 }
-
-// (2026-07-22 정리) 겹 스택 헴 캡(gySectionHemCapNy/HEM_OVERLAP)은 4차에 도입했으나
-// 6차 실측 길이 렌더(마스크 이탈·결 불연속 실측)로 대체되며 호출부가 사라짐 — 제거.
-// 3D 헴라인은 2단계에서 실측 기반으로 새로 구현.
 
 const state = {
   // ROADMAP(voice): 향후 음성입력 연동 시, 인식 실패/수정 이벤트를 여기 state에
@@ -1605,11 +1187,6 @@ const state = {
   debugShowMask: false, // true면 조정화면에서 가닥 대신 hairMaskBuf 실루엣을 그대로 표시(진단용)
   debugShowRaw: false,  // true면 스타일/슬라이더 값 무시하고 전 섹션 중립값(길이·볼륨 50, 컬 0)으로 렌더링(진단용)
   debugShowField: false, // true면 strand 시뮬레이션(뿌리/중력/clamp) 전부 건너뛰고 orientation 컬럼 샘플을 가공 없이 그대로 표시(진단용)
-  // ── 3D 조정 엔진(베타, 2026-07-22) ──
-  // true면 조정 화면의 계산이 "중립 가닥 캡처 → 3D 리프트 → 3D에서 커트/펌 →
-  // 같은 뷰로 역투영(깊이 정렬)" 경로로 바뀌고, 표시만 2D로 유지된다(사용자 설계:
-  // "내부 로직은 3D로 조정을 계산하고 표현은 2D로"). false면 기존 2D 직접 렌더.
-  use3DAdjust: false,
   currentCaptureIndex: 0,
   selectedStyle: null,
   currentViewAngle: 'front',
@@ -3175,6 +2752,8 @@ async function runStyleAnalysisPipeline(){
       done++;
     }
     hideAI();
+    // 모든 뷰 랜드마크 추출 완료 → 매핑 테이블 생성
+    buildViewMapping();
   }
   await analyzeWithClaude();
 }
@@ -3292,13 +2871,12 @@ function updateAngleUI(){
     else if(!lmStatus || lmStatus === 'na'){ chk.textContent='✓'; chk.style.color='var(--ok)'; }
     else if(lmStatus === 'checking'){ chk.textContent='…'; chk.style.color='var(--text-muted)'; }
     else if(lmStatus === 'fail'){ chk.textContent='⚠'; chk.style.color='var(--warn)'; }
-    else if(lmStatus === 'shallow'){ chk.textContent='↻'; chk.style.color='var(--accent)'; } // 각도 얕음 — 더 돌려요
     else { chk.textContent='✓'; chk.style.color='var(--ok)'; }
     thumb.innerHTML = hasShot?`<img src="${state.shots[a]}">`:'';
     // dial
     const okColor='#8FA888', activeColor='#C98A4B', lineColor='#3A332B', warnColor='#C2685A';
     seg.style.stroke = hasShot
-      ? (lmStatus === 'fail' ? warnColor : (lmStatus === 'shallow' ? activeColor : okColor))
+      ? (lmStatus === 'fail' ? warnColor : okColor)
       : (isCurrent?activeColor:lineColor);
   });
   const doneCount=ANGLES.filter(a=>state.shots[a]).length;
@@ -3399,27 +2977,16 @@ async function checkCaptureLandmarks(angle){
   }
   const info = await detectFaceLandmarks(angle);
   if(state.shots[angle] !== shotAtStart) return; // 감지 도중 재촬영된 경우도 무효
-  const isSide = (angle === 'left' || angle === 'right');
   if(info){
-    const yawAbs = (typeof info.poseYawDeg === 'number') ? Math.abs(info.poseYawDeg) : null;
-    if(isSide && yawAbs !== null && yawAbs < SIDE_YAW_MIN){
-      // 감지는 됐지만 각도가 얕음 — 진행은 가능하되 깊이 실측이 부정확. 더 돌리도록 유도.
-      state.captureLmStatus[angle]='shallow';
-      showToast(`↻ ${ANGLE_LABELS[angle]} 각도가 얕아요 (yaw ${yawAbs.toFixed(0)}°) — 고개를 더 옆으로 돌려 ${SIDE_YAW_MIN}° 이상으로 찍으면 3D 두상 깊이가 정확해져요`);
-    } else {
-      state.captureLmStatus[angle]='ok';
-      const yawTxt = (typeof info.poseYawDeg === 'number') ? ` (yaw ${info.poseYawDeg.toFixed(0)}°)` : '';
-      showToast(`${ANGLE_LABELS[angle]} 얼굴 랜드마크 감지 ✓${yawTxt}`);
-    }
+    state.captureLmStatus[angle]='ok';
+    const yawTxt = (typeof info.poseYawDeg === 'number') ? ` (yaw ${info.poseYawDeg.toFixed(0)}°)` : '';
+    showToast(`${ANGLE_LABELS[angle]} 얼굴 랜드마크 감지 ✓${yawTxt}`);
   } else {
     state.captureLmStatus[angle]='fail';
     // 후면은 원래 얼굴이 안 잡히는 경우가 많아 안내 문구를 다르게 —
     // "실패했으니 무조건 다시"가 아니라 "가능하면 귀·턱 라인이 걸리게".
-    // 측면 실패는 대개 너무 많이 돌린 것(감지 상한 초과) → 살짝 덜 돌리도록.
     showToast(angle === 'back'
       ? `⚠ 후면 랜드마크 감지 실패 — 이 상태로도 진행은 되지만(추정치 폴백) 뒤통수를 살짝 돌려 귀·턱 라인이 걸리면 3D가 더 정확해져요`
-      : isSide
-      ? `⚠ ${ANGLE_LABELS[angle]} 랜드마크 감지 실패 — 너무 많이 돌리신 것 같아요. 눈·코가 살짝이라도 보이게 조금만 덜 돌려주세요`
       : `⚠ ${ANGLE_LABELS[angle]} 랜드마크 감지 실패 — 눈·코 라인이 살짝 보이는 각도로 다시 촬영하면 3D 정확도가 올라가요`);
   }
   updateAngleUI();
@@ -3548,43 +3115,31 @@ const PARAM_LABELS = {
   volume:'볼륨', blend:'연결감', layer:'레이어',
 };
 
-// gyeol 패널의 특정 섹션 파라미터 UI(값 라벨 + 슬라이더 위치)를 state와 동기화.
-// 연동(propagateSectionChange)으로 "지금 안 만지고 있는" 섹션 값이 바뀌었을 때 사용.
-function syncGyParamUI(secId, key){
-  const v = state.sections[secId][key];
-  const unit = GY_UNIT[key] || '';
-  const valEl = document.getElementById(`gyval-${secId}-${key}`);
-  if(valEl) valEl.textContent = Math.round(v) + unit;
-  const rangeEl = document.getElementById(`gyrange-${secId}-${key}`);
-  if(rangeEl) rangeEl.value = v;
-}
-
-function propagateSectionChange(secId, param, delta){
-  // ── 래칫(누적 수렴) 버그 수정(2026-07-22) ──
-  // 예전엔 "절대값 가중평균"(temple = temple×(1-r) + crown×r)을 슬라이더 input
-  // 이벤트마다 반복 적용했음. 드래그 한 번에 이벤트가 수십 번 발생하므로 매
-  // 틱마다 블렌딩이 중첩돼, 드래그가 끝나면 연동 섹션이 원래 값과 무관하게
-  // 크라운/사이드 값에 거의 수렴해버림 — "사이드만 조정했는데 뒤(후두부)까지
-  // 전부 움직인다"의 두 번째 원인. → "변화량(delta)×연동비율"만 더하는 방식으로
-  // 변경: 이벤트가 몇 번 쪼개져 오든 합산 결과는 (총 변화량×비율)로 동일해서
-  // 드래그 속도/횟수에 영향을 받지 않는다. 값은 반올림 없이 실수로 누적하고
-  // 표시할 때만 반올림(1틱 delta=1처럼 작은 변화가 반올림에 먹히지 않도록).
-  if(typeof delta !== 'number' || delta === 0) return;
+function propagateSectionChange(secId, param){
+  // 크라운 연동비율(0%=독립적, 100%=크라운과 거의 동일)만큼 크라운 길이
+  // 변화를 템플에 반영. currentTemple(연동 전 템플 자체 길이)과 crownLen을
+  // 연동비율로 가중평균 — 0%면 currentTemple 그대로(무변화), 100%면
+  // crownLen과 동일해짐. 실제 기법명은 Overdirection(영문판 표기용).
   if(secId==='crown' && param==='length'){
-    // 크라운 연동비율(Overdirection): 0%=독립적 ~ 100%=크라운 변화를 그대로 따라감
+    const crownLen = state.sections.crown.length;
     const linkRatio = state.sections.temple.overdirection / 100; // 0~1
-    if(linkRatio > 0){
-      state.sections.temple.length = Math.round(Math.max(0, Math.min(100,
-        state.sections.temple.length + delta * linkRatio)) * 1000) / 1000; // FP 잔재만 제거(0.001 스냅)
-      syncGyParamUI('temple', 'length');
-      updateSectionSummary('temple');
-    }
+    const currentTemple = state.sections.temple.length;
+    const newTemple = Math.round(currentTemple * (1-linkRatio) + crownLen * linkRatio);
+    state.sections.temple.length = Math.max(0, Math.min(100, newTemple));
+    const tSlider = document.getElementById('secslider-temple-length');
+    if(tSlider) tSlider.value = state.sections.temple.length;
+    const _tv = document.getElementById('secval-temple-length'); if(_tv) _tv.textContent = state.sections.temple.length;
+    updateSectionSummary('temple');
   }
-  // side 길이 변경 시 occipital에 변화량의 30% 반영(측면↔후면 연결 자연스럽게)
+  // side 길이 변경 시 occipital에 30% 반영
   if(secId==='side' && param==='length'){
-    state.sections.occipital.length = Math.round(Math.max(0, Math.min(100,
-      state.sections.occipital.length + delta * 0.3)) * 1000) / 1000; // FP 잔재만 제거(0.001 스냅)
-    syncGyParamUI('occipital', 'length');
+    const blend = 0.3;
+    state.sections.occipital.length = Math.round(
+      state.sections.occipital.length * (1-blend) + state.sections.side.length * blend
+    );
+    const oSlider = document.getElementById('secslider-occipital-length');
+    if(oSlider) oSlider.value = state.sections.occipital.length;
+    const _ov = document.getElementById('secval-occipital-length'); if(_ov) _ov.textContent = state.sections.occipital.length;
     updateSectionSummary('occipital');
   }
 }
@@ -3596,9 +3151,7 @@ function updateSectionSummary(id){
   const sec = SECTIONS[id];
   el.textContent = sec.params.map(p=>{
     const unit = (sec.paramMeta && sec.paramMeta[p] && sec.paramMeta[p].unit) || '';
-    // 연동값은 실수로 누적되므로 표시할 때만 반올림
-    const v = (typeof vals[p]==='number') ? Math.round(vals[p]) : vals[p];
-    return `${PARAM_LABELS[p]||p} ${v}${unit}`;
+    return `${PARAM_LABELS[p]||p} ${vals[p]}${unit}`;
   }).join(' · ');
 }
 
@@ -3608,24 +3161,6 @@ function resetSections(){
   state._globalCurl = 30;
   buildGyPanel();
   drawAdjustPreview();
-}
-
-// (10차) 3D 조정 엔진 토글 — 3D=원본, 2D=투영 구조의 표시 경로 on/off.
-// ON 시 정규 3D 모델(state.hair3D)이 없으면 buildHairStrandsFromPaths로 1회 생성
-// (현재 캡처된 가닥을 리프트). 이후 renderFrame이 그 모델을 현재 뷰로 되쏜다.
-function toggle3DAdjust(){
-  state.use3DAdjust = !state.use3DAdjust;
-  const btn = document.getElementById('btn3dEngine');
-  if(btn) btn.textContent = '3D 조정 엔진 β: ' + (state.use3DAdjust ? 'ON' : 'OFF');
-  if(state.use3DAdjust){
-    showDevMini3D(true);              // 미니뷰 패널 표시(초기화)
-    // 중립 3D 모델 생성(1회) → 미니뷰 + 조정창 메인(투영) 갱신. 이미 있으면 재사용.
-    if(state.hair3Dneutral){ refreshDevMini3D(); drawAdjustPreview(); }
-    else buildNeutralHair3D(()=>{ refreshDevMini3D(); drawAdjustPreview(); }); // 준비되면 메인도 투영 전환
-  } else {
-    showDevMini3D(false);
-    drawAdjustPreview();             // 2D 직접 렌더로 복귀
-  }
 }
 
 /* ════════════════════════════════════════════════════════════════
@@ -3677,8 +3212,6 @@ function selectGySection(id){
 // 섹션 슬라이더 공통 핸들러 — length는 섹션/뷰 연동(propagate)까지 수행.
 function onGySlider(secId, key, val){
   const num = parseInt(val, 10);
-  // 연동(propagate)이 "변화량" 기반이 되도록 이전 값을 먼저 확보(래칫 버그 수정)
-  const prev = (typeof state.sections[secId][key] === 'number') ? state.sections[secId][key] : num;
   state.sections[secId][key] = num;
   const valEl = document.getElementById(`gyval-${secId}-${key}`);
   if(valEl){
@@ -3686,7 +3219,7 @@ function onGySlider(secId, key, val){
     valEl.textContent = num + unit;
   }
   if(key === 'length'){
-    propagateSectionChange(secId, 'length', num - prev); // 크라운→템플 등 flat 연동(렌더가 읽음) — 델타 기반
+    propagateSectionChange(secId, 'length'); // 크라운→템플 등 flat 연동(렌더가 읽음) — 유지
     // propagateSectionToViews(뷰별 값 블렌딩) 제거: state.sections[angle][sectionId](뷰별
     // 중첩)에 쓰던 값을 렌더러는 안 읽어(flat state.sections[secId]만 읽음) 사실상 죽은
     // 계산이었고, 섹션 값이 flat 하나라 모든 뷰의 해당 섹션 가닥에 자동 적용된다(=뷰 간
@@ -3694,8 +3227,7 @@ function onGySlider(secId, key, val){
   }
   // [진단용] 조정이 실제로 상태에 기록되고 렌더가 재요청되는지 추적. rawMode가 true면
   // 모든 섹션 값이 중립화돼 조정이 화면에 안 나타남 → 이 로그로 즉시 판별.
-  // (2026-07-22) 슬라이더 틱마다 찍혀 콘솔이 넘치던 것 → 상세 모드에서만 출력.
-  if(window.DIAG_VERBOSE) console.log('[진단·조정] '+secId+'.'+key+'='+num+' | 저장확인='+state.sections[secId][key]+' | rawMode='+state.debugShowRaw+' | 현재화면='+currentScreen);
+  console.log('[진단·조정] '+secId+'.'+key+'='+num+' | 저장확인='+state.sections[secId][key]+' | rawMode='+state.debugShowRaw+' | 현재화면='+currentScreen);
   drawAdjustPreview();
 }
 const GY_UNIT = { length:'%', elevation:'°', texture:'%', curl:'%', wave:'%' };
@@ -3765,13 +3297,11 @@ function gyBuildRangeCtrl(secId, pm, hint){
   const sec = state.sections[secId];
   const cur = (typeof sec[pm.key] === 'number') ? sec[pm.key] : 0;
   const c = document.createElement('div'); c.className = 'gy-ctrl';
-  // input에 id 부여(gyrange-…): 연동(propagateSectionChange)이 다른 섹션 값을
-  // 바꿨을 때 syncGyParamUI가 슬라이더 위치까지 동기화할 수 있게 함.
   c.innerHTML = `<div class="gy-ctrl-top">
             <span><span class="gy-ctrl-label">${pm.label}</span><span class="gy-ctrl-hint">${hint}</span></span>
-            <span class="gy-ctrl-val" id="gyval-${secId}-${pm.key}">${Math.round(cur)}${pm.unit}</span>
+            <span class="gy-ctrl-val" id="gyval-${secId}-${pm.key}">${cur}${pm.unit}</span>
           </div>
-          <input type="range" min="${pm.min}" max="${pm.max}" value="${cur}" id="gyrange-${secId}-${pm.key}"
+          <input type="range" min="${pm.min}" max="${pm.max}" value="${cur}"
             oninput="onGySlider('${secId}','${pm.key}',this.value)">`;
   return c;
 }
@@ -4254,11 +3784,7 @@ function buildStrandOpts(maskInf, angle, rawMode){
     // 직접 관여하지 않는 파라미터(propagateSectionChange 전용)라 안 건드려도 무방.
     // gyeol 신규 파라미터도 중립화: technique=uniform(층 분포 없음), curl0(스트레이트),
     // texture0(끝단 트림 없음). color는 raw 모드에서 무시(avgColor 사용)되도록 null.
-    // (5차) 길이 중립값 변경: 배율 기준점이 "섹션 기본값=원본"으로 바뀌어서(lengthRatioFor
-    // 참고), 원본 결 보기의 중립 길이도 50 고정이 아니라 각 섹션의 기본값이어야 ratio=1.
-    ? Object.fromEntries(Object.entries(state.sections).map(([id,s])=>[id, {...s,
-        length: (SECTIONS[id] && SECTIONS[id].defaults && typeof SECTIONS[id].defaults.length==='number') ? SECTIONS[id].defaults.length : 50,
-        line:50, layer:0, technique:'uniform', curl:0, texture:0, color:null}]))
+    ? Object.fromEntries(Object.entries(state.sections).map(([id,s])=>[id, {...s, length:50, line:50, layer:0, technique:'uniform', curl:0, texture:0, color:null}]))
     : state.sections;
   return {
     curl, volume, thickness,
@@ -4271,9 +3797,6 @@ function buildStrandOpts(maskInf, angle, rawMode){
     // 부위별로 실제 인식된 색을 각각 사용.
     avgColorsBySection: (!state.selectedStyle) ? maskInf.avgColorsBySection : null,
     colorPalette: (!state.selectedStyle) ? maskInf.colorPalette : null, // 원본 모드에서만 실측 색 분포 사용
-    // (6차) 가닥 추종 언더코트용 두피색 — renderFrame의 통짜 실루엣 칠 제거 후
-    // drawHairStrands가 가닥 경로 밑바탕에 사용(실패 시 표준 피부톤 폴백은 수신측).
-    scalpColor: maskInf.scalpColor || null,
     orientation: maskInf.orientation,       // 결방향 컬럼 샘플 (축소해상도 좌표)
     orientMaskW: maskInf.maskW,              // 결방향 필드가 계산된 축소 해상도 폭
     orientMaskH: maskInf.maskH,              // 결방향 필드가 계산된 축소 해상도 높이
@@ -4362,13 +3885,33 @@ function renderFrame(canvas, angle){
       // → baseC 자체를 베이스로 바로 그려서 머리카락 영역을 실제로 비운다.
       ctx.drawImage(baseC, fit.dx, fit.dy, fit.dw, fit.dh);
 
-      // ── (6차) 통짜 언더코트 제거 ──
-      // 예전엔 여기서 hairC 마스크 실루엣 전체를 두피색으로 통째로 칠했음 —
-      // 사용자 지적("세그멘테이션 전체를 처음에 그려버리잖아") 그대로: 가닥을
-      // 아무리 짧게 조정해도 이 통짜 실루엣이 뒤에 남아 조정이 안 먹히는 것처럼
-      // 보이는 직접 원인이었다. 언더코트는 이제 drawHairStrands 내부에서
-      // "실제 가닥 경로를 따라" 굵은 두피색 획으로 깔린다(가닥 사이 빈틈 메움은
-      // 유지하면서, 조정된 헤어 모양을 바탕이 그대로 따라감).
+      // 언더코트: hairC(원본 머리카락 픽셀, 마스크 실루엣 alpha)를 source-in으로
+      // 채워서 마스크 실루엣 모양만 가져온 뒤, 그 안을 "두피/피부색"으로 채움.
+      // (이전엔 평균 헤어컬러의 진한 단색으로 채웠는데, 그러면 가닥 사이 빈틈이
+      // 그냥 진한 색 덩어리로 보여서 "머리카락"이 아니라 밋밋한 실루엣처럼 보였음.
+      // 실제 얼굴 피부에서 샘플링한 톤으로 바꾸면, 가닥 사이로 두피가 비치는
+      // 자연스러운 느낌이 나고, 어두운 가닥과 밝은 두피색 사이 명암 대비가 생겨서
+      // 결(가닥의 흐름)도 훨씬 잘 보임.)
+      // 테스트: 언더코트가 배경이 아니라 새로 그려지는 머리카락 가닥 위를 덮어서
+      // 가닥이 실제 머리카락처럼 안 보이는 문제 — 일단 알파 0으로 꺼서 확인.
+      // 버그 수정: scalpColor 계산이 실패하면(드물게 reason=2 샘플이 0건인 각도/사진)
+      // avgColor(머리카락 평균색)로 폴백했었는데, raw 모드에서는 가닥 색도 똑같이
+      // avgColor를 쓰기 때문에 언더코트=가닥 색이 겹쳐서 대비가 사라지고 가닥이
+      // 안 보이는 문제가 있었음. → 원래 계획대로 "얼굴 피부색의 중간톤" 고정값으로 폴백.
+      const FALLBACK_SKIN_TONE = 'rgb(224,178,148)';
+      const scalpColor = maskInf.scalpColor || FALLBACK_SKIN_TONE;
+      const undercoat = document.createElement('canvas');
+      undercoat.width = hairC.width; undercoat.height = hairC.height;
+      const uCtx = undercoat.getContext('2d');
+      uCtx.drawImage(hairC, 0, 0);
+      uCtx.globalCompositeOperation = 'source-in';
+      uCtx.fillStyle = scalpColor;
+      uCtx.fillRect(0, 0, undercoat.width, undercoat.height);
+      ctx.save();
+      ctx.globalAlpha = 1; // 실제 두피는 반투명하지 않음 — 언더코트는 불투명하게 깔고,
+                           // 그 위 가닥도 불투명하게 그려서 살색이 과하게 비치지 않도록 함
+      ctx.drawImage(undercoat, fit.dx, fit.dy, fit.dw, fit.dh);
+      ctx.restore();
 
       // 원본 결 보기(debugShowRaw): 실제 state.sections/selectedStyle은 그대로 두고,
       // 화면에 넘기는 값만 중립값으로 덮어씀 — 길이 50(=원본 인식 길이 그대로),
@@ -4381,16 +3924,10 @@ function renderFrame(canvas, angle){
       const validCount = countValidCols(scalpY);
 
       if(validCount > maskW * 0.05){
-        // (11차 3단계) 3D 조정 엔진 ON + 중립 모델 준비됨 → 조정창을 3D 모델의
-        // 투영으로 그림(3D=원본, 2D=투영). "3D로 조정, 2D로 표현"의 완성 —
-        // 장기적으로 비교 화면 제거하고 조정창이 곧 결과 화면. 실패/미준비 시
-        // 기존 2D 직접 렌더로 폴백(안전).
-        const canProject = state.use3DAdjust && !rawMode && state.hair3Dneutral
-          && state.hair3Dneutral.viewCal && state.hair3Dneutral.viewCal[angle];
-        if(!(canProject && projectHair3DToView(ctx, fit, angle, maskInf))){
-          // 가닥 오버레이 — origLen 이내는 hairCanvas 마스크로 clip, 연장분은 clip 없음(drawHairStrands 내부에서 처리)
-          drawHairStrands(ctx, fit, scalpY, hairEndY, maskW, maskH, hairC, buildStrandOpts(maskInf, angle, rawMode));
-        }
+        // 가닥 오버레이 — origLen 이내는 hairCanvas 마스크로 clip, 연장분은 clip 없음(drawHairStrands 내부에서 처리)
+        drawHairStrands(ctx, fit, scalpY, hairEndY, maskW, maskH, hairC, buildStrandOpts(maskInf, angle, rawMode));
+
+        // 컬러 오버레이는 현재 사용하지 않음(가닥 자체 색상으로 스타일 컬러를 표현) — 관련 죽은 코드 제거됨
       }
 
     } else if(img){
@@ -4412,29 +3949,13 @@ function renderAdjustFrame(){
   // [진단용] 조정 렌더가 실제로 실행되는지 + 어떤 섹션 길이값으로 그리는지 추적.
   // onGySlider 로그의 값과 여기 값이 같으면 상태→렌더는 정상(문제는 길이→픽셀 매핑),
   // 여기 로그가 안 찍히면 렌더 자체가 재실행 안 됨(currentScreen/rAF 문제).
-  // (2026-07-22) 슬라이더 틱마다 찍혀 콘솔이 넘치던 것 → 상세 모드에서만 출력.
-  if(window.DIAG_VERBOSE) console.log('[진단·조정렌더] view='+state.currentViewAngle
+  console.log('[진단·조정렌더] view='+state.currentViewAngle
     +' 활성섹션='+state.activePanelSection
     +' crown.len='+(state.sections.crown&&state.sections.crown.length)
     +' front.len='+(state.sections.front&&state.sections.front.length)
     +' rawMode='+state.debugShowRaw);
   renderFrame(document.getElementById('adjustCanvas'), state.currentViewAngle);
   logSectionColumnCounts(state.currentViewAngle);
-  // (11차) 3D 조정 엔진 ON이면 미니뷰에 3D 조정 연산자 재적용(디바운스).
-  // 중립 모델은 고정이라 재캡처·재리프트 불필요 — refreshDevMini3D가 연산자만
-  // 다시 적용(가벼움). 중립 모델이 아직 없으면 1회 생성.
-  if(state.use3DAdjust) scheduleHair3DRefresh();
-}
-let _hair3DRefreshTimer = null;
-function scheduleHair3DRefresh(){
-  if(_hair3DRefreshTimer) return;
-  _hair3DRefreshTimer = setTimeout(()=>{
-    _hair3DRefreshTimer = null;
-    try {
-      if(!state.hair3Dneutral) buildNeutralHair3D(()=>refreshDevMini3D());
-      else refreshDevMini3D();
-    } catch(e){ console.warn('3D 미니뷰 갱신 실패:', e); }
-  }, 120);
 }
 
 // [진단용] 현재 뷰에서 각 섹션에 실제로 몇 개의 머리카락 컬럼이 배정되는지 집계.
@@ -4448,29 +3969,14 @@ function logSectionColumnCounts(angle){
   const counts = { crown:0, front:0, temple:0, side:0, occipital:0, nape:0 };
   const W = mi.w, H = mi.h;
   let valid = 0;
-  // (2026-07-22, 4차) 미용 이론대로 "뿌리 위치" 기준으로 집계(사용자 교정: 기준은 뿌리).
-  // 렌더도 뿌리를 준균등 분포(pow 1.1)로 심으므로 깊이 5지점 균등 샘플이 실분포에 근사.
-  // 측면 crown 편중은 분류가 아니라 두정선 높이(뷰별 parietalFrac)+겹 스택 캡으로 해소.
-  const DEPTHS = [0, 0.2, 0.4, 0.6, 0.8];
   for(let x=0; x<W; x++){
     const sy = mi.scalpY[x]; if(sy < 0) continue;
-    const ey = (mi.hairEndY && mi.hairEndY[x] >= 0) ? mi.hairEndY[x] : sy;
-    DEPTHS.forEach(f=>{
-      const rootY = sy + (ey - sy) * f;
-      valid++;
-      const sec = resolveSectionId(angle, x/W, rootY/H);
-      if(counts[sec] !== undefined) counts[sec]++;
-    });
+    valid++;
+    const sec = resolveSectionId(angle, x/W, sy/H);
+    if(counts[sec] !== undefined) counts[sec]++;
   }
-  const line = '[진단·섹션분포] '+angle+' 뿌리기준(깊이5지점×컬럼)='+valid+' | '
-    + Object.entries(counts).map(([k,v])=>k+'='+v+'('+(valid?Math.round(v/valid*100):0)+'%)').join(' ');
-  // (2026-07-22) 렌더마다 같은 내용이 반복 출력되던 것 → 분포가 "바뀔 때만" 1회 출력
-  // (섹션 경계 검증에 필요한 정보는 유지하면서 콘솔 스팸 제거).
-  window._lastSecDistLog = window._lastSecDistLog || {};
-  if(window._lastSecDistLog[angle] !== line || window.DIAG_VERBOSE){
-    window._lastSecDistLog[angle] = line;
-    console.log(line);
-  }
+  console.log('[진단·섹션분포] '+angle+' 유효컬럼='+valid+' | '
+    + Object.entries(counts).map(([k,v])=>k+'='+v+'('+(valid?Math.round(v/valid*100):0)+'%)').join(' '));
 }
 
 /* ────────────────────────────────────────
@@ -4494,7 +4000,7 @@ function logSectionColumnCounts(angle){
      traceStrandPath(...)            — 결방향 필드를 따라 가닥 경로
        (좌표 배열)를 만드는 순수 함수(원래 traceStrand 중첩 함수)
    실제로 ctx.stroke()/getImageData() 등을 호출하는 setStyle/traceStrand
-   (얇은 래퍼로 남음)/toCanvasPts/strokePolyline/drawStrand/
+   (얇은 래퍼로 남음)/toCanvasPts/strokePolyline/splitIndexFor/drawStrand/
    drawStrandLayer/isRealHairAt/compositeLayers/레이어 실행 4단계는
    검증 불가능한 변경을 피하기 위해 원래처럼 drawHairStrands 안에
    그대로 남겨둠(⚠ 정직한 한계: 이 부분은 이번 리팩토링 대상에서
@@ -4504,36 +4010,6 @@ function logSectionColumnCounts(angle){
 // 4개 함수(lengthRatioFor/colorForSection/curlMultFor/frontDirBiasFor)
 // 전부 원래 drawHairStrands 안의 중첩 함수였던 것을 그대로 옮긴 것 —
 // 로직·주석·캐시 방식 전부 변경 없음, 감싸는 함수 경계만 바뀜.
-// ── 공용 유틸(2026-07-22 중복 통합) ──
-// 결정적 의사난수 fract(sin(x)·43758.5453) — 프레임마다 같은 값이 나와 화면
-// 깜빡임(shimmer) 방지. pseudoRandForCol/결불연속 임계/슬라이스 스태거가 각자
-// 인라인하던 동일 해시를 하나로. 인자를 그대로 넘기므로 산술 결과 완전 동일.
-function hashFract(x){ const v = Math.sin(x) * 43758.5453; return v - Math.floor(v); }
-// 마스크(이미지) 좌표 → 캔버스 좌표 매핑 팩토리 — drawHairStrands(toCanvasX/Y)와
-// projectHair3DToView(toCX/toCY)가 글자 그대로 같던 두 클로저를 통합.
-function makeImgToCanvas(fit, maskW, maskH){
-  return {
-    toX: (ix) => fit.dx + (ix / maskW) * fit.dw,
-    toY: (iy) => fit.dy + (iy / maskH) * fit.dh,
-  };
-}
-// 점 배열({x,y})을 quadratic 중간점 보간으로 부드럽게 스트로크(현재 ctx 스타일 사용).
-// drawHairStrands의 strokePolyline과 projectHair3DToView의 인라인 루프가 글자
-// 그대로 같던 것을 통합 — beginPath→moveTo→중간점 곡선→마지막 lineTo→stroke.
-function strokeSmoothPolyline(ctx, pts){
-  if(pts.length < 2) return;
-  ctx.beginPath();
-  ctx.moveTo(pts[0].x, pts[0].y);
-  for(let i=1;i<pts.length-1;i++){
-    const mx = (pts[i].x + pts[i+1].x)/2;
-    const my = (pts[i].y + pts[i+1].y)/2;
-    ctx.quadraticCurveTo(pts[i].x, pts[i].y, mx, my);
-  }
-  const last = pts[pts.length-1];
-  ctx.lineTo(last.x, last.y);
-  ctx.stroke();
-}
-
 // gyeol 색 밝기 조정 유틸(hex 전용) — 섹션별 컬러/스타일링 광택(finish)에 사용.
 // hex가 아니면(rgb() 실측색 등) 원본을 그대로 돌려줌.
 function gyShade(hex, amt){
@@ -4547,10 +4023,6 @@ function gyShade(hex, amt){
 
 // 커트 겹 강도(끝점 수렴/확산 최대치를 rootSpan의 몇 배로 볼지) — 튜닝 지점.
 const CUT_LAYER_GAIN = 0.5;
-// 길이 슬라이더 1칸당 길이 배율 변화 — 2D 렌더(createColumnStyleResolvers)와
-// 3D 조정 엔진(gy3d*)이 반드시 같은 감도를 써야 두 경로의 결과가 일치하므로
-// 전역 단일 출처로 승격(2026-07-22). 값·의미는 기존 RATIO_PER_UNIT 그대로.
-const LENGTH_RATIO_PER_UNIT = 0.018; // (9차) 0.012→0.018: 실기기 "길이 변화가 너무 조금" — 슬라이더 1칸당 변화 +50%
 // 기법 → 커트 축(0=원랭스 … 1=유니폼 … 2=인크리스). 시술각(elevation)이 ±로 미세 조정.
 const CUT_TECH_AXIS = { onelength:0, graduation:0.5, uniform:1, increase:1.6 };
 // 뿌리 위치 → 겹 길이 델타(px). createColumnStyleResolvers의 cutLayerDeltaFor에서 쓰던
@@ -4574,9 +4046,6 @@ function computeCutLayerDelta(sec, rootY, rootSpan, maxRootY){
 }
 
 function createColumnStyleResolvers({ maskW, maskH, iScalpY, sections, angle, color, avgColorsBySection, styling }){
-  // 컬럼 인덱스 클램프 [0, maskW-1] — makeColumnResolver/colorForSection이 각자
-  // 인라인하던 동일 식을 통합(중복 제거, 동작 동일).
-  const clampCol = (ix) => Math.min(maskW-1, Math.max(0, Math.round(ix)));
   // ── 컬럼별 길이 배율: 슬라이더 50 = 원본 길이(origLen) 그대로(ratio=1).
   // 기존엔 "덧셈"(절대 px, origLen과 무관하게 항상 같은 양만큼 변화)이었으나,
   // 이 방식은 origLen이 작은 부위(사이드/네이프처럼 세그멘테이션이 짧게 잡힌 곳)에서
@@ -4596,27 +4065,15 @@ function createColumnStyleResolvers({ maskW, maskH, iScalpY, sections, angle, co
   //   섹션 해석 자체를 건너뛰고, 섹션 판정 조건도 (sections && angle)이 아니라
   //   (angle)이라 로직이 실제로 다름.
   function makeColumnResolver(compute){
-    // ── 뿌리 실좌표 기반 판정(2026-07-22) ──
-    // 예전엔 캐시가 "컬럼당 1값"(Float32Array)이었고 섹션 판정도 컬럼의 두피
-    // 최상단선(iScalpY)만 사용 — 루트 확산 레이어가 귀 옆/목덜미 깊이에 심은
-    // 뿌리조차 전부 "실루엣 꼭대기 기준 섹션"으로 먹혀서, 측면 뷰에서 사실상
-    // 모든 가닥이 side 하나로 뭉쳤음("사이드만 조정하면 전체가 움직인다"의 원인).
-    // 이제 호출부(drawStrandLayer)가 실제 뿌리 좌표로 판정한 secId/rootNy를
-    // 넘겨주면 그대로 쓰고(캐시 키를 컬럼×섹션×뿌리깊이 1% 양자화로 확장),
-    // 안 넘기는 기존 호출부는 예전과 동일하게 최상단선 판정으로 폴백한다.
-    const cache = {};
-    return function(ix, secIdOpt, rootNyOpt){
-      const cx = clampCol(ix);
+    const cache = new Float32Array(maskW).fill(NaN);
+    return function(ix){
+      const cx = Math.min(maskW-1, Math.max(0, Math.round(ix)));
+      if(!Number.isNaN(cache[cx])) return cache[cx];
+      const ny = iScalpY[cx] >= 0 ? iScalpY[cx]/maskH : 0.15;
       const nx = cx/maskW;
-      const ny = (typeof rootNyOpt === 'number')
-        ? rootNyOpt
-        : (iScalpY[cx] >= 0 ? iScalpY[cx]/maskH : 0.15);
-      const secId = secIdOpt || ((sections && angle) ? resolveSectionId(angle, nx, ny) : 'crown');
-      const key = secId + ':' + cx + ':' + ((ny*100)|0); // 깊이 의존 값(페이드/겹 델타) 때문에 ny도 키에 포함
-      const hit = cache[key];
-      if(hit !== undefined) return hit;
+      const secId = (sections && angle) ? resolveSectionId(angle, nx, ny) : 'crown';
       const v = compute(secId, cx, nx, ny);
-      cache[key] = v;
+      cache[cx] = v;
       return v;
     };
   }
@@ -4626,25 +4083,18 @@ function createColumnStyleResolvers({ maskW, maskH, iScalpY, sections, angle, co
   // 뭉개지고, 반대쪽은 최대 3배까지 튀는 극단적인 감도였음(실기기 피드백:
   // "크라운 길이가 너무 훅훅 바뀐다"). 0~100 전체 범위가 고르게 반응하고
   // 극단값도 다루기 쉬운 폭(0.4배~1.6배)이 되도록 계수를 낮춤 — 죽은구간 없음.
-  const RATIO_PER_UNIT = LENGTH_RATIO_PER_UNIT; // 전역 단일 출처(3D 엔진과 감도 공유)
+  const RATIO_PER_UNIT = 0.012;
   // 컬럼 위치(cx) 기반 결정적 의사난수 — Math.random() 대신 써서 매 프레임(재렌더) 마다
   // 같은 컬럼이 다른 값을 받아 화면이 깜빡이는(shimmer) 것을 방지. seed로 서로 다른
   // 패턴(네이프용/사이드용)을 만들어 두 효과가 같은 자리에서 안 겹치게 함.
-  function pseudoRandForCol(cx, seed){ return hashFract(cx*seed); }
+  function pseudoRandForCol(cx, seed){
+    const v = Math.sin(cx*seed) * 43758.5453;
+    return v - Math.floor(v);
+  }
   const lengthRatioFor = makeColumnResolver((secId, cx, nx, ny)=>{
     const lenParam = (sections && sections[secId] && typeof sections[secId].length==='number')
       ? sections[secId].length : 50;
-    // ── 배율 기준점 수정(2026-07-22 5차): "기본값 = 원본 커트" ──
-    // 예전엔 50=원본(ratio 1) 고정이라, 섹션 기본값이 80(설계 의도: "커트지 새
-    // 스타일이 아니니 원본에 가깝게")인 상태에서 기본 렌더가 이미 1.36×로 늘어나
-    // 있었음 — 실기기 "머리가 내려와 있는 것 같다"의 원인. 기준점을 각 섹션의
-    // 기본값(defaults.length)으로 바꿔서, 슬라이더가 기본 위치면 사진 그대로
-    // (ratio=1), 내리면 원본보다 짧게, 올리면 길게 — 미용사 직관과 일치.
-    // (프리셋 스타일의 length 절대값 해석도 이 기준으로 바뀜 — 프리셋 강도는
-    // 추후 재튜닝 대상으로 기록)
-    const baseLen = (SECTIONS[secId] && SECTIONS[secId].defaults && typeof SECTIONS[secId].defaults.length==='number')
-      ? SECTIONS[secId].defaults.length : 50;
-    let ratio = Math.max(0, 1 + (lenParam - baseLen) * RATIO_PER_UNIT);
+    let ratio = Math.max(0, 1 + (lenParam - 50) * RATIO_PER_UNIT);
     // 커트기법(원랭스/그라데이션/유니폼/인크리스)에 의한 "뿌리높이별 겹" 분포는
     // 여기(길이 슬라이더 배율)가 아니라 cutLayerDeltaFor(아래)에서 px 단위로 더한다.
     // 겹은 root 위치에 따른 끝점 재분포이므로, 단순 길이배율과 분리해야 지오메트리가
@@ -4745,16 +4195,13 @@ function createColumnStyleResolvers({ maskW, maskH, iScalpY, sections, angle, co
     return Math.round(((f-50)/50) * 22); // ±22
   })();
   const colorForSectionCache = {};
-  function colorForSection(ix, secIdOpt){
-    // (2026-07-22) 뿌리 기반 섹션 판정 연동: 호출부가 실제 뿌리로 판정한 secId를
-    // 넘기면 그걸 쓰고(캐시 키에 섹션 포함), 안 넘기면 기존 최상단선 판정 유지.
-    const cx = clampCol(ix);
+  function colorForSection(ix){
+    const cx = Math.min(maskW-1, Math.max(0, Math.round(ix)));
+    if(colorForSectionCache[cx] !== undefined) return colorForSectionCache[cx];
+    let result = color;
     const ny = iScalpY[cx] >= 0 ? iScalpY[cx]/maskH : 0.15;
     const nx = cx/maskW;
-    const secId = secIdOpt || ((angle) ? resolveSectionId(angle, nx, ny) : 'crown');
-    const cKey = secId + ':' + cx;
-    if(colorForSectionCache[cKey] !== undefined) return colorForSectionCache[cKey];
-    let result = color;
+    const secId = (angle) ? resolveSectionId(angle, nx, ny) : 'crown';
     // ★ gyeol 섹션별 컬러(발레아쥬 등) — 섹션에 color가 지정돼 있으면 최우선.
     //   염색 스타일(selectedStyle) 미선택일 때만 avgColorsBySection가 오므로,
     //   섹션 컬러는 그와 무관하게 항상 우선 적용(미용사가 명시적으로 지정한 값).
@@ -4764,7 +4211,7 @@ function createColumnStyleResolvers({ maskW, maskH, iScalpY, sections, angle, co
       result = avgColorsBySection[secId] || color;
     }
     if(_glossAmt !== 0) result = gyShade(result, _glossAmt);
-    colorForSectionCache[cKey] = result;
+    colorForSectionCache[cx] = result;
     return result;
   }
 
@@ -4818,42 +4265,16 @@ function createColumnStyleResolvers({ maskW, maskH, iScalpY, sections, angle, co
    * 아예 없음) drawHairStrands에서 분리해도 Node에서 독립 검증 가능함 —
    * env는 호출부(drawHairStrands)가 한 번만 만들어 넘겨주는 고정값 묶음.
    */
-// ── (7차) 결 불연속 종결 튜닝 상수 ──
-// 겹층 커트에서 "위 겹이 끝나는 선(헴)"은 사진의 결 필드에 방향 급변/신뢰도
-// 급락으로 남는다. 추적 중 그 증거를 점수로 누적해 임계(가닥별 랜덤 스태거)를
-// 넘으면 실측 겹 끝으로 종결 — 관통 가닥(꼭대기 뿌리→마스크 끝 한 가닥) 문제의
-// 실측 기반 해법. 긴 생머리는 결이 연속이라 점수가 안 쌓여 안 끊김.
-const FLOW_DISC = {
-  dirJump: 0.7,   // 방향 급변 판정(rad, ≈40°) — 웨이브의 완만한 회전은 미달
-  dipRatio: 0.45, // 신뢰도 급락 판정: 현재 신뢰도 < EMA×이 비율
-  dipMin: 0.2,    // EMA가 이보다 강했을 때만 "급락"으로 침(원래 약한 결은 무시)
-  // 하네스 튜닝(겹 헴 폭이 2~3스텝으로 짧은 케이스): 급락 2회면 대부분 임계 도달,
-  // 1회 단독(고립 노이즈)으론 미달하도록 — wDip×2 > thrMin+thrSpan, wDip < thrMin.
-  wDir: 0.6, wDip: 0.65, // 이벤트당 점수
-  thrMin: 0.75, thrSpan: 0.55, // 가닥별 임계 = thrMin + rand×thrSpan (끝선 스태거)
-};
-function traceStrandPath(ix, sy_img, targetLen_img, jitterSeed, env, rootSec, stopAtExit){
-  const { hasOrientation, orientation, orientMaskW, ox, oy, STRAND_STEP_LEN, frontDirBiasFor, curlAmtFor, waveWidthFor, styling, maskW, maskAt } = env;
+function traceStrandPath(ix, sy_img, targetLen_img, jitterSeed, env){
+  const { hasOrientation, orientation, orientMaskW, ox, oy, STRAND_STEP_LEN, frontDirBiasFor, curlAmtFor, waveWidthFor, styling, maskW } = env;
     const stepLen = STRAND_STEP_LEN; // 고정 보폭 — targetLen_img에서 역산하지 않음
     const steps = Math.max(2, Math.round(targetLen_img / stepLen));
     const pts = [{x:ix, y:sy_img}]; // 마스크 좌표계(maskW,maskH 기준)로 누적
-    // ── (6차) 실측 길이: 마스크 이탈 지점 추적 ──
-    // env.maskAt(헤어 마스크 알파 샘플러)이 있으면, 경로가 실제 인식된 머리카락
-    // 영역을 벗어나는 지점(연속 3스텝 이탈 — 마스크 노이즈 관용)을 기록한다.
-    // pts.maskExitIdx = "사진이 말하는 이 가닥의 실측 끝" 인덱스. stopAtExit이면
-    // 이탈 확정 즉시 추적 중단(줄이는 조정에선 그 뒤가 필요 없음 — 성능).
-    let _offRun = 0, _exitIdx = null;
-    // (7차) 결 불연속 점수 — pts.flowEndIdx = 실측 "겹 끝"(없으면 null)
-    let _cohEma = null, _discScore = 0, _flowEndIdx = null;
-    const _discThr = FLOW_DISC.thrMin + hashFract((jitterSeed + ix) * 12.9898) * FLOW_DISC.thrSpan;
     // 뿌리(시작 컬럼) 기준으로 딱 한 번만 조회 — 가닥이 진행하며 컬럼이 옆으로
     // 흘러가도 "이 가닥이 어디서 자라났는지"는 뿌리 위치로 고정하는 게 맞음.
-    // (2026-07-22) rootSec: 호출부(drawStrand)가 뿌리 실좌표로 판정한 섹션 —
-    // 컬/웨이브/프론트 바이어스가 전부 "그 가닥이 심긴 섹션"의 값을 쓴다.
-    const frontBias = frontDirBiasFor(ix, rootSec);
-    const curlAmt = curlAmtFor(ix, rootSec);         // gyeol 섹션별 컬 세기(절대 0~100)
-    const curlStrength = curlAmt / 100;              // 0~1 (9차: 결 추종 약화·진폭에 공용)
-    const waveT   = (waveWidthFor(ix, rootSec)) / 100; // gyeol 섹션별 웨이브 폭(0~1)
+    const frontBias = frontDirBiasFor(ix);
+    const curlAmt = curlAmtFor(ix);                 // gyeol 섹션별 컬 세기(절대 0~100)
+    const waveT   = (waveWidthFor(ix)) / 100;        // gyeol 섹션별 웨이브 폭(0~1)
     // ── gyeol 스타일링(전역 마무리) 값 — 뿌리 컬럼 좌우 판정 포함 ──
     const side = (typeof maskW==='number' && ix < maskW/2) ? -1 : 1;
     const st = styling || {};
@@ -4903,22 +4324,12 @@ function traceStrandPath(ix, sy_img, targetLen_img, jitterSeed, env, rootSec, st
             targetDir += Math.PI;
           }
           // coherence가 높을수록 결방향을 강하게 따름, 낮으면 이전 방향 유지 비중↑
-          // (9차) 컬이 셀수록 실측 직모 결의 추종을 약화 — 안 그러면 컬을 얹어도
-          // 사진의 직모 방향으로 계속 되돌아가 "직모 위 잔물결"에 그침. 컬 100%면
-          // 결 추종을 최대 65%까지 낮춰 아래 curl 웨이브가 형태를 주도하게 함.
-          const w = Math.min(1, sample.coherence * 1.3) * (1 - curlStrength * 0.65);
+          const w = Math.min(1, sample.coherence * 1.3);
           // 각도를 보간 (최단 회전 방향으로)
           let delta = targetDir - baseDir;
           while(delta > Math.PI) delta -= Math.PI*2;
           while(delta < -Math.PI) delta += Math.PI*2;
           dir = baseDir + delta * w;
-          // (7차) 결 불연속 점수 — 마스크 안(_exitIdx 미확정)에서만, 초반 4스텝 제외
-          if(_flowEndIdx === null && _exitIdx === null && s >= 4){
-            if(Math.abs(delta) > FLOW_DISC.dirJump && sample.coherence > 0.2) _discScore += FLOW_DISC.wDir;
-            if(_cohEma !== null && _cohEma > FLOW_DISC.dipMin && sample.coherence < _cohEma * FLOW_DISC.dipRatio) _discScore += FLOW_DISC.wDip;
-            if(_discScore >= _discThr) _flowEndIdx = pts.length - 1;
-          }
-          _cohEma = (_cohEma === null) ? sample.coherence : _cohEma * 0.7 + sample.coherence * 0.3;
         } else {
           // 결방향을 못 믿는 구간(coherence 낮음 — 대부분 마스크 밖 ext 구간에서 발생).
           // "중력"으로 명명: 실제 머리카락도 뿌리 쪽은 결방향(웨이브·컬)을 유지하지만
@@ -4936,12 +4347,6 @@ function traceStrandPath(ix, sy_img, targetLen_img, jitterSeed, env, rootSec, st
           const DEBUG_DISABLE_GRAVITY = false;
           const gravityPull = DEBUG_DISABLE_GRAVITY ? 0 : (0.15 + (s/steps) * 0.35); // 시작 0.15 → 끝 0.5
           dir = baseDir + restore * gravityPull;
-          // (7차) 강한 결이 갑자기 사라짐(신뢰도 붕괴)도 겹 끝 증거 — 마스크 안에서만
-          if(_flowEndIdx === null && _exitIdx === null && s >= 4 && _cohEma !== null && _cohEma > 0.3){
-            _discScore += FLOW_DISC.wDip;
-            if(_discScore >= _discThr) _flowEndIdx = pts.length - 1;
-          }
-          if(_cohEma !== null) _cohEma *= 0.7; // 저신뢰 표본 → EMA 감쇠
         }
       }
 
@@ -4952,18 +4357,6 @@ function traceStrandPath(ix, sy_img, targetLen_img, jitterSeed, env, rootSec, st
       // 방향과 정면으로 충돌하는 규칙이라 제거. base(마스크 안) 구간은
       // destination-in clip이 최종적으로 실제 머리 모양 밖을 걸러주므로
       // 안전장치 역할은 clip이 대신한다.
-
-      // ── (8차) 연장(마스크 이탈 후) 구간 방향 수렴 ──
-      // 마스크 밖은 실측 결 데이터가 없는 구간 — 길이를 늘렸을 때 위/옆으로
-      // 이탈한 가닥이 그 방향 그대로 뻗쳐 실루엣 밖 "삐죽 가닥"이 되던 문제
-      // (실기기 스크린샷: 정수리 위 스파이크·관자놀이 낙수). 이탈 확정 후엔
-      // 매 스텝 아래(중력) 방향으로 강하게 수렴시켜 자연스럽게 늘어지게 함.
-      if(_exitIdx !== null){
-        let _rest = Math.PI/2 - dir;
-        while(_rest > Math.PI) _rest -= Math.PI*2;
-        while(_rest < -Math.PI) _rest += Math.PI*2;
-        dir += _rest * 0.45;
-      }
 
       baseDir = dir; // 다음 스텝 기준은 curl 적용 전 방향으로 저장 (누적 방지)
 
@@ -4984,19 +4377,7 @@ function traceStrandPath(ix, sy_img, targetLen_img, jitterSeed, env, rootSec, st
       // 실제 기법 그대로 — 로드 사이즈가 진폭이 아니라 "몇 번 감기느냐(파장)"를 결정.
       const CURL_WAVELENGTH_STEPS = 3 + waveT * 15; // 3(촘촘)~18(느슨) — gyeol 섹션별 웨이브 폭
       const curlPhase = (s / CURL_WAVELENGTH_STEPS) * Math.PI * 2;
-      // ── 펌 진폭/위상 보정(2026-07-22) — "펌 조정이 안 먹힌다" 수정 ──
-      // ① 진폭 계수 0.07→0.45: 예전 값은 컬 100%여도 방향 흔들림이 최대 ±4°
-      //    (횡편차로 환산하면 마스크폭 768px 기준 약 2px)라 화면에서 식별 자체가
-      //    불가능했음. 0.45면 컬 100%에서 ±26° 스윙(횡편차 약 12px) — 확실히
-      //    보이면서 기본값 30%에선 ±7.7°로 여전히 은은함.
-      // ② 위상을 뿌리 컬럼(ix) 기준으로 정렬: 예전엔 jitterSeed(가닥 인덱스 기반,
-      //    사실상 무작위)만 써서 이웃 가닥끼리 파형이 전부 어긋나 서로 상쇄돼
-      //    보였음. 실제 펌은 이웃 모발이 같은 로드에 감겨 파형이 나란함 —
-      //    인접 컬럼(Δix≈3)이면 위상차 0.15rad 수준으로 결이 맞고, jitterSeed는
-      //    약하게만 섞어 완전히 기계적인 줄무늬는 피함.
-      // (9차) 진폭 0.45→0.85: 실측 직모 추종을 위에서 약화한 만큼 웨이브가 실제
-      // 형태를 만들도록 진폭을 키움(컬 100%면 ±49° 스윙). 컬 30%(기본)에선 ±14°.
-      const curlComponent = Math.sin(curlPhase + ix*0.05 + jitterSeed*0.15) * curlStrength * 0.85;
+      const curlComponent = Math.sin(curlPhase + jitterSeed) * (curlAmt/100) * 0.07;
       // front.line 바이어스: 뿌리 근처(s=0)에서 가장 강하고 끝으로 갈수록 약해짐
       // (실제로도 앞머리 스타일링은 뿌리 쪽 방향이 인상을 좌우하고, 끝쪽은 결방향·
       // 중력에 자연스럽게 맡기는 게 더 사실적) — frontBias가 0(front 섹션 아님/
@@ -5015,25 +4396,8 @@ function traceStrandPath(ix, sy_img, targetLen_img, jitterSeed, env, rootSec, st
       const dx = Math.cos(travelDir) * stepLen;
       const dy = Math.sin(travelDir) * stepLen;
       pts.push({x: cur.x + dx, y: cur.y + dy});
-
-      // (6차) 마스크 이탈 실측 — 시작 2스텝은 경계 노이즈라 검사 생략(orientation과 동일)
-      if(maskAt && _exitIdx === null && s >= 2){
-        const np = pts[pts.length-1];
-        if(maskAt(np.x, np.y)){ _offRun = 0; }
-        else {
-          _offRun++;
-          if(_offRun >= 3){
-            _exitIdx = pts.length - 1 - _offRun; // 마지막으로 마스크 안이었던 점
-            if(stopAtExit) break;
-          }
-        }
-      }
-      // (7차) 줄이는 조정에선 결 불연속(겹 끝) 확정 시에도 추적 조기 중단
-      if(stopAtExit && _flowEndIdx !== null) break;
     }
 
-    pts.maskExitIdx = (_exitIdx !== null) ? Math.max(1, _exitIdx) : (pts.length - 1);
-    pts.flowEndIdx = (_flowEndIdx !== null) ? Math.max(1, _flowEndIdx) : null;
     return pts;
 }
 
@@ -5184,7 +4548,7 @@ function drawHairStrands(ctx, fit, scalpY, hairEndY, maskW, maskH, hairCanvas, o
   // (2026-07-16) 사용자 피드백 "비교 보기에서 보면 좀 더 가늘어져야 돼" —
   // 1200 고해상도에서 원본 머리카락과 나란히 놓고 보니 가닥이 여전히 굵음.
   // 좌표·밀도는 그대로 두고 선굵기만 전역 40% 하향(더 조정하려면 이 값 하나만).
-  const STRAND_THIN = 0.48; // (8차) 사용자: "가닥을 조금 더 가늘게 하면서 슬라이스로 가면 부드러워질 것" — 0.6→0.48
+  const STRAND_THIN = 0.6;
   const widthScale = resScale * STRAND_THIN;
 
   // 길이 슬라이더가 높을 때(특히 정면 프론트) 가닥이 이마 라인을 넘어
@@ -5237,7 +4601,8 @@ function drawHairStrands(ctx, fit, scalpY, hairEndY, maskW, maskH, hairCanvas, o
     maskW, maskH, iScalpY, sections, angle, color, avgColorsBySection, styling: stylingForRender
   });
 
-  const { toX: toCanvasX, toY: toCanvasY } = makeImgToCanvas(fit, maskW, maskH); // 공용 좌표 매핑(중복 통합)
+  const toCanvasX = (ix) => fit.dx + (ix / maskW) * fit.dw;
+  const toCanvasY = (iy) => fit.dy + (iy / maskH) * fit.dh;
 
   // scalpY 좌표계(maskW,maskH) → orientation 필드 좌표계(orientMaskW,orientMaskH) 변환 비율
   const hasOrientation = !!(orientation && orientMaskW && orientMaskH);
@@ -5272,23 +4637,15 @@ function drawHairStrands(ctx, fit, scalpY, hairEndY, maskW, maskH, hairCanvas, o
   extCtx.lineCap  = 'round';
   extCtx.lineJoin = 'round';
 
-  // (6차) 스타일 기록 헬퍼: 즉시 그리지 않고(섹션 스택 순서로 나중에 일괄 스트로크)
-  // 레이어가 설정하는 굵기/투명도를 op에 실어 보내기 위한 현재값 추적.
-  const curStyle = { width: 1, alpha: 1 };
-  function setStyle(prop, val){
-    if(prop === 'lineWidth') curStyle.width = val;
-    else if(prop === 'globalAlpha') curStyle.alpha = val;
-    else { baseCtx[prop] = val; extCtx[prop] = val; }
-  }
+  // base/ext 두 컨텍스트에 동일한 스타일(굵기·투명도·색상)을 한 번에 적용하기 위한 헬퍼
+  function setStyle(prop, val){ baseCtx[prop] = val; extCtx[prop] = val; }
 
   // traceStrand: 결방향 필드를 따라 가닥 경로 한 가닥을 생성 — 실제 로직은
   // Canvas API를 안 쓰는 순수 함수 traceStrandPath(위에서 정의)로 옮겼고,
   // 여기서는 호출 시점에 고정되는 값들(env)만 한 번 묶어서 넘겨준다.
-  // (6차) maskAt 추가: 결을 따라가며 "사진의 헤어 마스크를 벗어나는 지점"을
-  // 실측하기 위한 알파 샘플러(isRealHairAt — 함수 선언 호이스팅으로 참조 가능).
-  const strandEnv = { hasOrientation, orientation, orientMaskW, ox, oy, STRAND_STEP_LEN, frontDirBiasFor, curlAmtFor, waveWidthFor, maskW, styling: stylingForRender, maskAt: isRealHairAt };
-  function traceStrand(ix, sy_img, targetLen_img, jitterSeed, rootSec, stopAtExit){
-    return traceStrandPath(ix, sy_img, targetLen_img, jitterSeed, strandEnv, rootSec, stopAtExit);
+  const strandEnv = { hasOrientation, orientation, orientMaskW, ox, oy, STRAND_STEP_LEN, frontDirBiasFor, curlAmtFor, waveWidthFor, maskW, styling: stylingForRender };
+  function traceStrand(ix, sy_img, targetLen_img, jitterSeed){
+    return traceStrandPath(ix, sy_img, targetLen_img, jitterSeed, strandEnv);
   }
 
   // 마스크 좌표(이미지 픽셀 기준) 점 배열 → 캔버스 좌표로 변환
@@ -5296,97 +4653,65 @@ function drawHairStrands(ctx, fit, scalpY, hairEndY, maskW, maskH, hairCanvas, o
     return pts.map(p => ({ x: toCanvasX(p.x), y: toCanvasY(p.y) }));
   }
 
-  // 부드러운 폴리라인은 공용 strokeSmoothPolyline(top-level)로 통합 — 여기선 별칭.
-  const strokePolyline = strokeSmoothPolyline;
-
-  // ── (6차) 실측 길이 드로잉 — "실제 헤어 길이와 결을 확인하면서 그리기" ──
-  // 예전 drawStrand는 "컬럼의 실루엣 세로 높이(origLen)"를 목표 길이로 썼음 —
-  // 즉 실제 가닥이 결을 따라 어디서 끝나는지는 확인하지 않았다(사용자 지적).
-  // 이제 각 가닥은: ① 실측 결 필드를 따라 추적하며 사진의 헤어 마스크를 벗어나는
-  // 지점(maskExitIdx)을 실측 → 그 호장이 이 가닥의 "실측 중립 길이" ② 섹션 조정
-  // 배율은 그 실측 길이에 곱해짐 ③ base/ext clip 분할점도 컬럼 높이가 아니라
-  // 가닥별 실측 이탈점. 4~5차의 섹션 헴 캡(가정값)은 실측과 상충하므로 렌더에서
-  // 제거(gySectionHemCapNy는 3D 헴라인 단계 재사용 위해 보존).
-  // 즉시 그리지 않고 op로 기록 → 섹션 스택 순서로 일괄 스트로크(아래 참조).
-  const drawOps = []; // {sec, cPts, splitIdx, color, width, alpha}
-  let _flowCutN = 0, _strandN = 0; // [진단용] 결 불연속으로 종결된 가닥 수
-  // ── (8차) 슬라이스 단위 커트 — 1패스는 실측만 수집, 확정은 슬라이스 합의 후 ──
-  // 사용자 설계: "실제 커트할 때 손에 몇 가닥씩 잡아 슬라이스 단위로 자르듯,
-  // 가닥 몇 개씩 모아 슬라이스 너비로." 가닥별 독립 실측(7차)은 이웃 끝이 제각각
-  // 흩어져 "결이 뚝뚝 끊겨 보이고 층 느낌이 약한" 문제가 있었음 → 같은 뿌리
-  // 구역(섹션×가로 슬라이스 폭×깊이 밴드)의 가닥들을 한 슬라이스로 묶고,
-  // 헴(끝선)을 슬라이스 실측의 중앙값으로 합의. 구성 가닥은 자기 결 경로를
-  // 그대로 따르되 끝만 헴±소폭 스태거로 정렬 — 실제 커트의 패널과 동일.
-  const pendingStrands = []; // 1패스 수집: 슬라이스 합의 후 확정(아래 finalize)
-  function drawStrand(startX, startY, ix, rootSec, rootNy, depthScale, strandMult, jitterSeed, strokeStyleVal){
-    // 조정 배율(섹션 길이 슬라이더 — 기본값=원본이라 기본 상태선 ratio=1)
-    const rawRatio = lengthRatioFor(ix, rootSec, rootNy);
-    const ratio = 1 + (rawRatio - 1) * depthScale;
-    const layerDelta = cutLayerDeltaFor(ix, rootSec, rootNy) * depthScale;
-    // 목표가 실측보다 짧은 게 확실하면(줄이는 조정) 마스크 이탈 즉시 추적 중단(성능)
-    const stopAtExit = (strandMult * ratio <= 1.0 && layerDelta <= 0);
-    // ① 실측: 결 필드를 따라 추적, 마스크 이탈점 + 결 불연속(겹 끝) 기록
-    const probe = traceStrand(startX, startY, maxStrandLen, jitterSeed, rootSec, stopAtExit);
-    const exitIdx = (typeof probe.maskExitIdx === 'number') ? probe.maskExitIdx : probe.length - 1;
-    // (7차) 실측 끝 = 마스크 이탈점과 결 불연속(겹 끝) 중 먼저 오는 쪽.
-    const flowIdx = (typeof probe.flowEndIdx === 'number') ? probe.flowEndIdx : null;
-    const hemIdx = Math.max(1, (flowIdx !== null) ? Math.min(exitIdx, flowIdx) : exitIdx);
-    if(flowIdx !== null && flowIdx < exitIdx) _flowCutN++;
-    _strandN++;
-    pendingStrands.push({ probe, exitIdx, hemIdx, ix, rootSec: rootSec || 'crown', rootX: startX, rootNy,
-                          ratio, layerDelta, strandMult, strokeStyleVal,
-                          width: curStyle.width, alpha: curStyle.alpha });
+  // 점 배열을 부드러운 곡선으로 그림 (quadratic 중간점 보간) — 대상 컨텍스트를 인자로 받음
+  function strokePolyline(targetCtx, cPts){
+    if(cPts.length < 2) return;
+    targetCtx.beginPath();
+    targetCtx.moveTo(cPts[0].x, cPts[0].y);
+    for(let i=1;i<cPts.length-1;i++){
+      const mx = (cPts[i].x + cPts[i+1].x)/2;
+      const my = (cPts[i].y + cPts[i+1].y)/2;
+      targetCtx.quadraticCurveTo(cPts[i].x, cPts[i].y, mx, my);
+    }
+    const last = cPts[cPts.length-1];
+    targetCtx.lineTo(last.x, last.y);
+    targetCtx.stroke();
   }
 
-  // 슬라이스 합의 + 가닥 확정(목표 길이 계산 → 캡처/op 생성) — 레이어 4개가 모두
-  // pendingStrands를 채운 뒤 1회 실행. 슬라이스 폭은 실제 커트 감각(1~2cm)의 근사.
-  function finalizeStrandsWithSlices(){
-    const SLICE_W = Math.max(4, maskW * 0.03);      // 가로 슬라이스 폭(마스크 폭의 3%)
-    const sliceMap = {};
-    pendingStrands.forEach(p=>{
-      // 슬라이스 = 섹션 × 가로 폭 × 뿌리 깊이 밴드(10%) — 같은 패널에서 난 가닥들
-      const key = p.rootSec + '|' + Math.floor(p.rootX / SLICE_W) + '|' + Math.floor(p.rootNy * 10);
-      (sliceMap[key] = sliceMap[key] || []).push(p);
-    });
-    Object.values(sliceMap).forEach(members=>{
-      // 헴 합의: 실측(마스크 이탈/결 불연속)의 중앙값 — 고립된 조기 종결(노이즈)이
-      // 슬라이스 전체를 흔들지 않고, 진짜 겹 끝이면 다수가 동의해 헴이 됨.
-      const hems = members.map(m=>m.hemIdx).sort((a,b)=>a-b);
-      const hemMed = hems[Math.floor(hems.length / 2)];
-      members.forEach(m=>{ m.sliceHemIdx = hemMed; });
-    });
-    pendingStrands.forEach(p=>{
-      const hemLen = Math.max(maskH * 0.03, p.sliceHemIdx * STRAND_STEP_LEN);
-      // 슬라이스가 길이의 주도권을 가지므로 가닥별 랜덤 배율은 60% 축소(질감만 남김)
-      const multEff = 1 + (p.strandMult - 1) * 0.4;
-      // 헴 주변 ±8% 스태거(결정적 의사난수 — 프레임 간 흔들림 방지)
-      const sliceJit = 0.92 + hashFract(p.rootX * 17.23 + p.rootNy * 91.7) * 0.16;
-      let targetLen;
-      if(p.ratio >= 1){
-        // 연장: 패널 균일 성장 — 슬라이스 전체가 같은 양(hemLen×(ratio-1))만큼 자람.
-        // 예전(개별 배율×ratio 곱)은 배율 큰 소수 가닥만 유독 길어져 "낙수 가닥"이 됐음.
-        // (9차) 연장 이득 1.6배 — 늘리는 쪽 변화가 약하다는 실기기 피드백. 균일
-        // 성장이라 이득을 키워도 뻗침(편차 증가)이 아니라 슬라이스가 통째로 길어짐.
-        targetLen = hemLen * multEff * sliceJit + hemLen * (p.ratio - 1) * 1.6 + p.layerDelta;
-      } else {
-        targetLen = hemLen * multEff * sliceJit * p.ratio + p.layerDelta;
-      }
-      const texAmt = textureFor(p.ix, p.rootSec);
-      if(texAmt > 0){
-        targetLen *= (1 - Math.random() * (texAmt / 100) * 0.35); // 끝단 무작위 트림
-      }
-      targetLen = Math.max(maskH * 0.02, Math.min(targetLen, maxStrandLen));
-      const nPts = Math.max(2, Math.min(p.probe.length, Math.round(targetLen / STRAND_STEP_LEN) + 1));
-      const pts = p.probe.slice(0, nPts);
-      // 완성 경로 캡처(3D 리프트 소스) — 색·뿌리 기반 섹션 포함, 2D와 정의상 일치.
-      if(capturedStrands){
-        capturedStrands.push({ pts, color: p.strokeStyleVal, sec: p.rootSec });
-      }
-      // clip 분할: 실측 마스크 이탈점까지=base(마스크 clip), 그 너머(연장분)=ext(자유)
-      const splitIdx = Math.min(p.exitIdx, pts.length - 1);
-      drawOps.push({ sec: p.rootSec, cPts: toCanvasPts(pts), splitIdx,
-                     color: p.strokeStyleVal, width: p.width, alpha: p.alpha });
-    });
+  // extAmount(= scaledLen - origLen, ratio 적용 후 실제 늘어난/줄어든 양)와 고정 보폭
+  // (STRAND_STEP_LEN)을 기준으로 base/ext 분할 지점을 계산. extAmount<=0(늘리지 않았거나
+  // 줄인 경우)이면 무조건 전체 clip(base) — origLen(원본)보다 짧은 최소 길이 하한선
+  // (maskH*0.02) 보정 때문에 scaledLen이 origLen보다 커지는 경우가 있어도, 그건
+  // "슬라이더로 늘린 것"이 아니므로 clip 밖으로 나가면 안 됨.
+  // (원본 결 보기처럼 ratio가 항상 1인 상태에서는 이 덕분에 예외 없이 전부 마스크 안에 있음)
+  // totalSteps는 실제로 traceStrand가 생성한 점 개수-1(가변) — 이걸 넘겨받아 clamp한다.
+  function splitIndexFor(extAmount, origLen, totalSteps){
+    if(extAmount <= 0) return totalSteps;
+    return Math.min(Math.round(origLen / STRAND_STEP_LEN), totalSteps);
+  }
+
+  // 가닥 하나를 그림: origLen까지는 base(clip 대상), 그 이후 연장분은 ext(clip 없음)로 나눠서 그림.
+  // 보폭이 고정(STRAND_STEP_LEN)이므로, origLen까지의 경로는 ratio 값과 무관하게
+  // 원본 결 보기 때와 항상 동일하다 — split은 그 경로를 어디서 자를지만 정한다.
+  function drawStrand(ix, sy_img, scaledLen, origLen, extAmount, jitterSeed, strokeStyleVal){
+    // 텍스처링(포인트컷/슬라이드컷/레이저컷/틴닝 통합): 끝단을 불규칙하게
+    // 다듬어서 자연스러운 텍스처를 냄 — 강도가 셀수록 가닥마다 끝 길이를
+    // 더 크게, 더 무작위로 줄임(뭉툭한 블런트 라인 대신 삐죽삐죽한 텍스처).
+    // texturing=0이면 Math.random() 호출 자체를 안 해서 기존 동작과 완전히 동일.
+    let effectiveLen = scaledLen;
+    const texAmt = textureFor(ix); // gyeol 섹션별 텍스처(전역 texturing과 max)
+    if(texAmt > 0){
+      const texT = texAmt / 100;
+      const trim = Math.random() * texT * 0.35; // 최대 35%까지 무작위로 짧게
+      effectiveLen = scaledLen * (1 - trim);
+    }
+    const pts = traceStrand(ix, sy_img, effectiveLen, jitterSeed);
+    // (옮기기 1단계) 완성된 경로를 마스크 좌표계 그대로 저장 — 색 포함.
+    // 화면에 그린 것과 동일한 점들이므로 3D는 이걸 들어올리면 2D와 정의상 일치.
+    if(capturedStrands){
+      // 각 가닥에 섹션 ID를 함께 저장 → 3D에서도 섹션별 구분/색분리/선택이 가능하게.
+      // (예전엔 pts+color만 저장해 3D엔 조정된 "모양"만 넘어가고 섹션 라벨은 사라졌음.)
+      const _ny = (iScalpY[ix] >= 0 ? iScalpY[ix]/maskH : 0.15);
+      const _sec = angle ? resolveSectionId(angle, ix/maskW, _ny) : 'crown';
+      capturedStrands.push({ pts, color: strokeStyleVal, sec: _sec });
+    }
+    const cPts = toCanvasPts(pts);
+    const splitIdx = splitIndexFor(extAmount, origLen, pts.length - 1);
+    setStyle('strokeStyle', strokeStyleVal);
+    strokePolyline(baseCtx, cPts.slice(0, splitIdx+1));
+    if(splitIdx < cPts.length-1){
+      strokePolyline(extCtx, cPts.slice(splitIdx)); // splitIdx 지점을 공유해서 선이 끊기지 않게 이어줌
+    }
   }
 
   // ── 실제 인식된 머리카락 마스크 안인지 검사 ──
@@ -5426,7 +4751,7 @@ function drawHairStrands(ctx, fit, scalpY, hairEndY, maskW, maskH, hairCanvas, o
   function drawStrandLayer(cfg){
     const {
       count, alphaMul, lineWidth, pickCol, endYFallbackRatio,
-      lenScale, lenMult, startXJitter, startYJitter, jitterSeedFn, tintRange, rootDepthFrac
+      lenScale, startXJitter, startYJitter, jitterSeedFn, tintRange, rootDepthFrac
     } = cfg;
     setStyle('globalAlpha', alpha * alphaMul);
     setStyle('lineWidth', lineWidth);
@@ -5449,17 +4774,23 @@ function drawHairStrands(ctx, fit, scalpY, hairEndY, maskW, maskH, hairCanvas, o
           // 자체가 짧은데, ratio 기반으로 바뀐 지금은 origLen에 비례하므로 예전(delta
           // 절대값 방식)만큼 극단적이진 않지만, 그래도 깊이가 깊을수록 배율 변화를
           // 줄여서 두피선 근처 대비 과도하게 요동치지 않도록 유지.
-          depthScale = 1 - frac * 0.3; // (4차) 겹 스택에선 깊은 뿌리=아래 겹(사이드/네이프)이 조정 주체라 감쇠를 약하게
+          depthScale = 1 - frac;
         }
       }
-      // ── 섹션 판정: "기준은 뿌리"(4차, 사용자 교정 — 미용 이론 그대로) ──
-      // (6차) 길이는 여기서 계산하지 않는다: drawStrand가 결 필드를 따라 추적하며
-      // 마스크 이탈점을 "실측"하고, 그 실측 길이에 섹션 조정 배율을 곱한다.
-      // 4~5차의 origLen(컬럼 세로높이)/헴 캡 기반 길이 모델은 실측으로 대체·폐기.
-      const rootNy = sy_img / maskH;
-      const rootSec = (sections && angle) ? resolveSectionId(angle, ix/maskW, rootNy) : 'crown';
-      // 레이어별 길이 배율(끝단이 층층이 어긋나는 자연스러운 스태거) — 실측 길이에 곱해짐
-      const strandMult = lenMult ? lenMult() : 1;
+      const origLen = Math.max(ey_img - sy_img, maskH*0.05);
+      // ratio(배율)의 "1에서 벗어난 만큼"만 depthScale로 축소 — ratio 자체를 곱하면
+      // depthScale=0.5여도 여전히 큰 배율이 걸려버려서(예: ratio=2.6 → 1.8배 축소해도
+      // 여전히 1.8배) 깊이 축소 의도가 죽는다. 1 기준 편차만 줄여야 "원래 길이 근처로
+      // 되돌아가는" 축소가 됨.
+      const rawRatio = lengthRatioFor(ix);
+      const ratio = 1 + (rawRatio - 1) * depthScale;
+      let scaledLen = lenScale(origLen, ratio);
+      // ── 커트 겹 지오메트리: 뿌리높이 기반 끝점 재분포(px)를 더한다 ──
+      // 시술각/기법이 만드는 레이어. depthScale로 깊은 뿌리 레이어는 변화량 축소.
+      // 유니폼/기본값이면 델타 0이라 기존 렌더와 동일.
+      scaledLen += cutLayerDeltaFor(ix) * depthScale;
+      scaledLen = Math.max(maskH*0.02, Math.min(scaledLen, maxStrandLen));
+      const extAmount = scaledLen - origLen; // base/ext 분할 판단용(양수=연장, 음수 이하=전체 clip)
       const startX = ix + startXJitter();
       const startY = startYJitter ? sy_img + startYJitter() : sy_img;
       const jitterSeed = jitterSeedFn(i);
@@ -5477,8 +4808,8 @@ function drawHairStrands(ctx, fit, scalpY, hairEndY, maskW, maskH, hairCanvas, o
       const bright = FORCED_HAIR_COLOR ? Math.min(1.06, brightRaw) : brightRaw;
       const strokeCol = usePalette
         ? tintColor(colorPalette[Math.floor(Math.random()*colorPalette.length)], bright)
-        : tintColor(colorForSection(ix, rootSec), bright);
-      drawStrand(startX, startY, ix, rootSec, rootNy, depthScale, strandMult, jitterSeed, strokeCol);
+        : tintColor(colorForSection(ix), bright);
+      drawStrand(startX, startY, scaledLen, origLen, extAmount, jitterSeed, strokeCol);
     }
   }
 
@@ -5515,9 +4846,8 @@ function drawHairStrands(ctx, fit, scalpY, hairEndY, maskW, maskH, hairCanvas, o
     // 빠지는 형태(Math.pow(Math.random(),2))라, 실제 헤어라인 밀도는 유지하면서
     // 중간·아래쪽까지 여전히 뿌리가 퍼짐. 균등분포일 때 두피선 근처 밀도가 과소해져
     // "정수리가 빈다"는 오버코렉션이 발생했던 것에 대한 수정.
-    rootDepthFrac: ()=> Math.pow(Math.random(), 1.1) * 0.8, // (4차) 제곱편향→준균등: 겹 스택에선 아래 겹(사이드/네이프)도 자기 뿌리로 커버해야 함
-    lenScale: (origLen, ratio)=> Math.max(origLen * ratio, maskH*0.02),
-    lenMult: ()=> 0.6+Math.random()*0.4, // 랜덤 배율 분리(중립 길이 계산과 공유 — 동작 동일)
+    rootDepthFrac: ()=> Math.pow(Math.random(), 2) * 0.8,
+    lenScale: (origLen, ratio)=> Math.max(origLen * ratio, maskH*0.02) * (0.6+Math.random()*0.4),
     startXJitter: ()=> (Math.random()-0.5)*maskW*0.01,
     jitterSeedFn: (i)=> i*0.271,
     tintRange: [0.68, 0.55],
@@ -5536,7 +4866,7 @@ function drawHairStrands(ctx, fit, scalpY, hairEndY, maskW, maskH, hairCanvas, o
     endYFallbackRatio: 0.40,
     // 한 줄(scalpY) 제한 해제: 다른 레이어처럼 두피선~모발끝 사이에 깊이를 분산시켜서,
     // 이 레이어 전체가 정수리 한 줄에 몰려 밀도가 뭉치는 걸 방지.
-    rootDepthFrac: ()=> Math.pow(Math.random(), 1.1) * 0.6, // (4차) 제곱편향→준균등(겹 스택 커버리지)
+    rootDepthFrac: ()=> Math.pow(Math.random(), 2) * 0.6,
     lenScale: (origLen, ratio)=> Math.max(origLen * ratio, maskH*0.02),
     startXJitter: ()=> (Math.random()-0.5)*(maskW/numSections)*1.5,
     jitterSeedFn: (i)=> i,
@@ -5553,9 +4883,8 @@ function drawHairStrands(ctx, fit, scalpY, hairEndY, maskW, maskH, hairCanvas, o
     lineWidth: Math.max(MIN_SAFE_WIDTH, (0.48 + (thickness/100) * 0.33) * widthScale), // 2026-07-14 굵기 하향 → 2026-07-16 전역 STRAND_THIN 추가 하향
     pickCol: ()=> validCols[Math.floor(Math.random()*validCols.length)],
     endYFallbackRatio: 0.38,
-    rootDepthFrac: ()=> Math.pow(Math.random(), 1.1) * 0.7, // 한 줄 제한 해제, (4차) 준균등 — 겹 스택 커버리지
-    lenScale: (origLen, ratio)=> Math.max(origLen * ratio, maskH*0.02),
-    lenMult: ()=> 0.85+Math.random()*0.3, // 랜덤 배율 분리(중립 길이 계산과 공유 — 동작 동일)
+    rootDepthFrac: ()=> Math.pow(Math.random(), 2) * 0.7, // 한 줄 제한 해제 + 두피선 쪽 가중
+    lenScale: (origLen, ratio)=> Math.max(origLen * ratio, maskH*0.02) * (0.85+Math.random()*0.3),
     startXJitter: ()=> (Math.random()-0.5)*maskW*0.008,
     jitterSeedFn: (i)=> i*0.618,
     tintRange: [0.72, 0.60],
@@ -5576,60 +4905,18 @@ function drawHairStrands(ctx, fit, scalpY, hairEndY, maskW, maskH, hairCanvas, o
     lineWidth: Math.max(MIN_SAFE_WIDTH, (0.5 + (thickness/100) * 0.28) * widthScale), // 2026-07-14 굵기 하향 → 2026-07-16 전역 STRAND_THIN 추가 하향
     pickCol: ()=> validCols[Math.floor(Math.random()*validCols.length)],
     endYFallbackRatio: 0.35,
-    rootDepthFrac: ()=> Math.pow(Math.random(), 1.1) * 0.85, // 한 줄 제한 해제 — 잔가닥은 가장 넓게 분산, (4차) 준균등
-    lenScale: (origLen, ratio)=> Math.max(origLen * ratio, maskH*0.02),
-    lenMult: ()=> 0.7+Math.random()*0.5, // 랜덤 배율 분리(중립 길이 계산과 공유 — 동작 동일)
+    rootDepthFrac: ()=> Math.pow(Math.random(), 2) * 0.85, // 한 줄 제한 해제 — 잔가닥은 가장 넓게 분산 + 두피선 쪽 가중
+    lenScale: (origLen, ratio)=> Math.max(origLen * ratio, maskH*0.02) * (0.7+Math.random()*0.5),
     startXJitter: ()=> (Math.random()-0.5)*maskW*0.012,
     startYJitter: ()=> (Math.random()-0.5)*maskH*0.01,
     jitterSeedFn: (i)=> i*0.382,
     tintRange: [0.65, 0.75],
   });
 
-  // ── (6차) 섹션 스택 드로잉 — "세그멘테이션 통짜 페인팅" 폐지 ──
-  // 사용자 지적: "세그멘테이션 전체를 처음에 그려버리잖아 — 실제랑 완전히 다르다."
-  // ① 언더코트: 마스크 실루엣을 통째로 두피색으로 칠하던 것(renderFrame에서 제거)
-  //    대신, "실제 가닥 경로"를 두피색 굵은 획으로 먼저 깔아 가닥 사이 빈틈만 메움
-  //    — 조정으로 헤어 모양이 바뀌면 바탕도 그대로 따라간다(통짜 실루엣 잔상 없음).
-  // ② 가닥 스트로크를 섹션 스택 순서(네이프→후두부→템플→사이드→프론트→크라운)로
-  //    일괄 실행 — 아래 겹 위에 위 겹이 쌓이는 실제 구조. 같은 섹션 안에서는
-  //    생성 순서(레이어 0→3)가 유지된다(Array.sort는 안정 정렬).
-  finalizeStrandsWithSlices(); // (8차) 슬라이스 합의 → drawOps/캡처 확정
-
-  const SECTION_STACK = { nape:0, occipital:1, temple:2, side:3, front:4, crown:5 };
-  drawOps.sort((a,b)=> (SECTION_STACK[a.sec] ?? 2) - (SECTION_STACK[b.sec] ?? 2));
-  function strokeOp(op, color, widthMul, baseOnly){
-    const bPts = op.cPts.slice(0, op.splitIdx + 1);
-    baseCtx.strokeStyle = color; baseCtx.lineWidth = op.width * widthMul; baseCtx.globalAlpha = op.alpha;
-    strokePolyline(baseCtx, bPts);
-    if(!baseOnly && op.splitIdx < op.cPts.length - 1){
-      extCtx.strokeStyle = color; extCtx.lineWidth = op.width * widthMul; extCtx.globalAlpha = op.alpha;
-      strokePolyline(extCtx, op.cPts.slice(op.splitIdx)); // 분할점 공유로 선이 안 끊기게
-    }
-  }
-  const scalpUnderCol = opts.scalpColor || 'rgb(224,178,148)';
-  // 언더코트는 base(마스크 안)만 — 연장 구간까지 두피색 굵은 획을 깔면
-  // 얼굴/배경 위에 살구톤 밑줄이 비쳐 보임(8차, 실기기 스크린샷 대응).
-  drawOps.forEach(op => strokeOp(op, scalpUnderCol, 2.2, true)); // 언더코트 패스(가닥 추종 바탕)
-  drawOps.forEach(op => strokeOp(op, op.color, 1, false));       // 실제 가닥 패스(섹션 스택 순서)
-
-  // [진단용] 결 불연속 종결 비율 — 겹층 커트면 두 자릿수 %가 정상, 긴 생머리면 낮아야 함.
-  // 매 렌더 랜덤으로 숫자가 흔들리므로 10% 버킷이 바뀔 때만 출력(스팸 방지).
-  if(angle && _strandN > 0){
-    const pct = Math.round(_flowCutN / _strandN * 100);
-    window._lastDiscLog = window._lastDiscLog || {};
-    // (8차) 각도당 최초 1회만 출력 — 버킷 방식(round→floor)은 어떤 경계값이든
-    // 렌더마다 난수로 값이 튀면 뚫림(실기기에서 19↔20% 진동으로 40회 반복 확인).
-    // 비율은 렌더 간 거의 안 변하므로 1회면 충분, 추가 확인은 DIAG_VERBOSE로.
-    if(!(angle in window._lastDiscLog) || window.DIAG_VERBOSE){
-      window._lastDiscLog[angle] = true;
-      console.log('[진단·결단] '+angle+' 가닥 '+_strandN+'개 중 결불연속(겹 끝) 종결 '+_flowCutN+'개('+pct+'%)');
-    }
-  }
-
   // ── 2단계 합성 ──
-  // [1] base: 실측 이탈점 이내 구간 → hairCanvas(실제 세그멘테이션 마스크)로 destination-in
+  // [1] base: origLen 이내 구간 → hairCanvas(실제 세그멘테이션 마스크)로 destination-in
   //     clip을 걸어서, 인식된 머리카락 영역 밖(얼굴·안경·배경)으로는 절대 안 나가게 함.
-  // [2] ext: 실측 이탈점을 넘겨 슬라이더로 늘어난 구간 → clip 없이 그대로.
+  // [2] ext: origLen을 넘겨 슬라이더로 늘어난 구간 → clip 없이 그대로.
   //     (짧게 줄인 경우엔 애초에 ext 구간 자체가 안 그려지므로 자연히 문제 없음)
   function compositeLayers(){
     const maskAlpha = document.createElement('canvas');
@@ -5861,10 +5148,8 @@ function handleVoiceCmd(text){
   const adj=(param,delta,min=0,max=100)=>{
     const s=state.sections[targetSection];
     if(typeof s[param]!=='number') return;
-    const prev=s[param];
     s[param]=Math.max(min,Math.min(max,s[param]+delta));
-    // 델타 기반 연동(래칫 버그 수정과 동일 규약) — 클램프 후 실제 변화량을 전달
-    if(param==='length') propagateSectionChange(targetSection,'length',s[param]-prev);
+    if(param==='length') propagateSectionChange(targetSection,'length');
     matched=true;
   };
   // 전 섹션 컬 일괄 조정(펌은 per-section이지만 음성은 전체 조정으로 취급)
@@ -6060,56 +5345,6 @@ function buildRealNeckMesh(skinColor){
   return neckMesh;
 }
 
-// ── (2026-07-25) 밴드 실측 기반 두상 껍데기 ──
-// 사용자 지시: 기준 타원(getHeadEllipsoid)은 헤어·얼굴을 앉힐 "중심 앵커"로만 두고,
-// 실제 보이는 두상은 사진에서 실측한 표면을 쓴다. computeHeadCrossSections가 이미
-// 높이(phi)별 실측 폭/깊이(넓은 두개골→좁은 턱)를 갖고 있는데, 지금까진 이를 적도
-// 한 줄로 뭉쳐 타원 세 숫자(a·b·c)로만 쓰고 정작 그 실루엣으론 안 그렸음 → 그래서
-// 좁고 긴 "타조알"이 됐다. 여기서 그 밴드를 높이별 링으로 쌓아 진짜 두상 실루엣을
-// 짓는다. 목(buildRealNeckMesh)과 같은 theta 관례(x=sin·폭, z=cos·깊이, front=+Z)와
-// 같은 headPhiToMeshY를 써서 최하단 링이 목 최상단(PHI_MAX)과 이음매 없이 맞물린다.
-// 위쪽 밴드 폭은 헤어 실루엣이 섞여 넓게 나오지만 그 구역은 어차피 머리카락이 덮으므로
-// 문제 없고, 노출되는 아래쪽(턱·목덜미)은 실측대로 좁게 좁혀진다.
-function buildBandHeadMesh(headMat){
-  const bands = computeHeadCrossSections();
-  if(!bands || bands.length < 2 || typeof THREE === 'undefined') return null;
-  const shellMat = headMat.clone(); shellMat.side = THREE.DoubleSide; // 권취 방향과 무관하게 보이도록
-  const PHI_TOP = HEAD_PHI_BANDS[0];
-  const PHI_MAX = HEAD_PHI_BANDS[HEAD_PHI_BANDS.length-1]; // 목 최상단과 동일 phi
-  const ell = getHeadEllipsoid(); // 베레모 방지용 상한(헤어는 정의상 이 면 바깥) 기준
-  const ROWS = 48, THETA_STEPS = 32;
-  const positions = [];
-  for(let ri=0; ri<=ROWS; ri++){
-    const phi = PHI_TOP + (PHI_MAX - PHI_TOP) * (ri/ROWS);
-    const cs = interpolateHeadCrossSection(phi); // {halfWidth, halfDepth} 실측(각도 역투영 복원)
-    // 베레모 방지: 이 높이의 기준 타원 반경(a·sinφ, c·sinφ)을 상한으로. 상부(머리카락
-    // 폭이 섞여 넓게 나오는 밴드)는 타원 안쪽으로 눌러 헤어 밖으로 못 나가게 하고,
-    // 하부(턱·목덜미, 머리카락 거의 없어 실측이 깨끗)는 실측대로 좁게 좁아지게 둔다.
-    const s = Math.sin(phi);
-    const capW = Math.max(0.02, ell.a * s * 1.05);
-    const capD = Math.max(0.02, ell.c * s * 1.05);
-    const halfWidth = Math.min(Math.max(0.01, cs.halfWidth), capW);
-    const halfDepth = Math.min(Math.max(0.01, cs.halfDepth), capD);
-    const y = headPhiToMeshY(phi); // 목과 동일 공식 → 이음매 없음
-    for(let ti=0; ti<=THETA_STEPS; ti++){
-      const theta = -Math.PI + (2*Math.PI)*(ti/THETA_STEPS);
-      positions.push(Math.sin(theta)*halfWidth, y, Math.cos(theta)*halfDepth);
-    }
-  }
-  const indices = buildRingGridIndices(ROWS, THETA_STEPS);
-  // 정수리 캡: 최상단 링(ri=0) 위에 apex 한 점(phi=0)으로 부채꼴 마감
-  const apexIdx = positions.length/3;
-  positions.push(0, headPhiToMeshY(0), 0);
-  for(let ti=0; ti<THETA_STEPS; ti++){ indices.push(apexIdx, ti, ti+1); }
-  const geo = new THREE.BufferGeometry();
-  geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(positions), 3));
-  geo.setIndex(indices);
-  geo.computeVertexNormals();
-  const mesh = new THREE.Mesh(geo, shellMat);
-  mesh.name = 'skullEllipsoid'; // 반환 headMesh 이름 유지(호출부 호환)
-  return mesh;
-}
-
 // 절차적 두상: 타원(스케일된 구)으로 두상 근사. getFaceMetrics()가 뽑아낸 실측
 // 종횡비/좌표 변환(projector)과 실제 두피색(skinColorCss)을 반영해서 "이 사람
 // 사진에서 뽑을 수 있는 정보는 최대한 쓴" 근사치로 만든다. 여전히 진짜 3D
@@ -6132,18 +5367,11 @@ function buildProceduralHead(faceMetrics, skinColorCss){
   // 반깊이 cD, 중심 y=0.15)로 교체 — 헤어 헐이 정의상 이 면 바깥에 있으므로
   // 두개골이 헤어 밖으로 삐져나올 수 없음. buildHeadMesh 함수 자체는
   // 이 파일 관례대로 참고용으로 남김(호출만 제거).
-  // (2026-07-25) 보이는 두상 = 밴드 실측 실루엣(buildBandHeadMesh). 기준 타원은
-  // 헤어·얼굴 앵커로만 남기고, 실제 살 껍데기는 높이별 실측 폭/깊이로 짓는다 →
-  // 좁고 긴 "타조알"(대칭 타원의 하부 주둥이) 제거, 목과 이음매 없이 연결.
-  // 실측 밴드가 없으면(옛 세션 등) 예전 타원 껍데기로 안전 폴백.
-  let headMesh = buildBandHeadMesh(headMat);
-  if(!headMesh){
-    const skull = getHeadEllipsoid();
-    headMesh = new THREE.Mesh(new THREE.SphereGeometry(1, 32, 24), headMat);
-    headMesh.scale.set(skull.a, skull.b, skull.c);
-    headMesh.position.set(0, 0.15, 0);
-    headMesh.name = 'skullEllipsoid';
-  }
+  const skull = getHeadEllipsoid();
+  const headMesh = new THREE.Mesh(new THREE.SphereGeometry(1, 32, 24), headMat);
+  headMesh.scale.set(skull.a, skull.b, skull.c);
+  headMesh.position.set(0, 0.15, 0);
+  headMesh.name = 'skullEllipsoid';
   group.add(headMesh);
 
   // 버그 수정(2026-07-14, 계속) → 재추가(같은 날, 실측 목 메쉬로 교체):
@@ -6806,14 +6034,7 @@ function computeHeadVerticalRadius(){
 let _headEllipsoidLogged = false;
 function getHeadEllipsoid(){
   const eq = interpolateHeadCrossSection(Math.PI/2);
-  const a = Math.max(0.2, eq.halfWidth);
-  let c = Math.max(0.15, eq.halfDepth);
-  // 안전장치: 성인 두상은 앞뒤 깊이가 좌우 폭보다 항상 크다(두형지수 <100 → 깊이≥폭).
-  // 측면 실측이 얕거나 없어 깊이가 폭보다 작게(=물리적으로 불가능한 원반) 잡히면
-  // 자연스러운 두상 비율(깊이/폭≈1.12)로 복원해 넙덕한 안면부를 방지. 깊이가 이미
-  // 폭 이상이면(정상 실측) 손대지 않는다.
-  if(c < a){ c = a * 1.12; }
-  const ell = { a, b: computeHeadVerticalRadius(), c };
+  const ell = { a: Math.max(0.2, eq.halfWidth), b: computeHeadVerticalRadius(), c: Math.max(0.15, eq.halfDepth) };
   // [진단용] 두상 넙적도 수치 — 깊이/폭 비율이 핵심. 사람 머리통은 대략
   // 1.1~1.3(깊이가 폭보다 큼). 1.0 미만이면 원반(넙적). 1회만 출력.
   if(!_headEllipsoidLogged){
@@ -6897,11 +6118,7 @@ function computeHeadCrossSections(){
   // 풀어 실제 W·D를 복원한다. front(θ≈0)는 W를, 측면(θ≈25~31°)은 그 관측이
   // W·D 복원에 함께 기여.
   const bands = HEAD_PHI_BANDS.map(phi=>({ phi, obs:[] }));
-  // 깊이/폭 비율 초기 가정(성인 두상 근사) — 1차 W 추정 및 측면 실측 없는 밴드의 폴백.
-  // ※ 예전엔 0.82였는데 이는 두형지수(폭/깊이)를 깊이/폭 자리에 뒤집어 넣은 버그였다.
-  //   사람 머리는 앞뒤 깊이가 좌우 폭보다 크다(깊이/폭 ≈ 1.2~1.28) → 폴백이 깊이를
-  //   폭의 82%로 줄여 원반(넙덕한 안면부)이 됐음. 두형지수 82의 역수 1.22로 정정.
-  const rHead = 1.22;
+  const rHead = metrics.projector ? 0.82 : 0.82; // 깊이/폭 비율 초기 가정(성인 두상 근사) — 1차 W 추정용
 
   function accumulate(angle){
     const view = prepareViewMeasurement(angle, 'reasonMask', metrics);
@@ -6947,10 +6164,7 @@ function computeHeadCrossSections(){
       if(d2 > 0){ dAcc += Math.sqrt(d2)*o.confidence; dW += o.confidence; }
     });
     band.halfWidth = W;
-    // 깊이 클램프: 얕은 측면 각도(이 앱은 25°가 정상)에서 D²=(E²−W²cos²)/sin²의
-    // sin²로 나누는 항이 깊이를 폭발시킨다(실측 D가 폭의 1.5배까지 튐). 사람 두상
-    // 깊이/폭은 두형지수상 대략 1.0~1.3 → 이 범위로 좁혀 얕은 각도발 과대평가를 억제.
-    band.halfDepth = dW ? Math.max(0.95*W, Math.min(1.3*W, dAcc/dW)) : W * rHead;
+    band.halfDepth = dW ? Math.max(0.5*W, Math.min(1.5*W, dAcc/dW)) : W * rHead;
   });
 
   // 실측 없는 밴드는 phi 최근접 실측 밴드에서 승계(기존 정책 유지 —
@@ -7742,7 +6956,7 @@ function toggleStrandDebug(){
 // 캡처돼 있어서, 안 열어본 뷰는 절차 생성 폴백과 섞였음.) 렌더 조건·옵션은
 // renderFrame의 가닥 호출과 동일하게 맞춤(rawMode 아님) — 화면에 그려질
 // 그 가닥과 같은 것이 캡처됨. 캔버스 크기도 DRAW_RES(1200) 동일.
-function captureStrandPathsFor(angle, rawMode){
+function captureStrandPathsFor(angle){
   return new Promise(resolve=>{
     const maskInf = state.hairMasks && state.hairMasks[angle];
     const hairC = state.hairCanvases && state.hairCanvases[angle];
@@ -7757,9 +6971,8 @@ function captureStrandPathsFor(angle, rawMode){
         canvas.height = Math.round(DRAW_RES * img.height / img.width);
         const ctx = canvas.getContext('2d');
         const fit = computeFit(img.width, img.height, canvas.width, canvas.height);
-        // (11차) rawMode=true면 중립(길이 기본·컬0) 캡처 — 3D 조정 연산자의 소스.
         drawHairStrands(ctx, fit, maskInf.scalpY, maskInf.hairEndY, maskInf.w, maskInf.h, hairC,
-          buildStrandOpts(maskInf, angle, !!rawMode));
+          buildStrandOpts(maskInf, angle, false));
         resolve(!!(state.strandPaths && state.strandPaths[angle] && state.strandPaths[angle].strands.length));
       }catch(e){ console.warn('오프스크린 가닥 캡처 실패('+angle+'):', e); resolve(false); }
     });
@@ -7944,9 +7157,7 @@ function buildHairStrandsFromPaths(){
         const d2 = (o.E*o.E - W*W*o.cos2) / o.sin2;
         if(d2 > 0){ dAcc += Math.sqrt(d2); dCnt++; }
       });
-      // 헤어 헐 깊이도 두상 밴드와 같은 얕은-각도 폭발 문제 → 사람 두상 비율 범위로
-      // 좁혀(0.9~1.35×폭) 헤어가 앞뒤로 과하게 감겨 옆에서 휘어 보이던 것을 억제.
-      if(dCnt) D = Math.max(0.9*W, Math.min(1.35*W, dAcc/dCnt));
+      if(dCnt) D = Math.max(0.35*W, Math.min(1.5*W, dAcc/dCnt));
     }
     if(isNaN(D) && !isNaN(W)) D = W * rHead;
     if(isNaN(W)){ W = headHalf(y,'w') * 1.02; D = headHalf(y,'d') * 1.02; }
@@ -7989,18 +7200,6 @@ function buildHairStrandsFromPaths(){
   const STRAND_SAMPLE_3D = 2; // 가닥 솎아내기 손잡이(저사양 대응 시 올림)
   let seed = 20260717;        // 결정적 난수 — 재구성해도 같은 배치(디버그 재현성)
   const rand = ()=>{ seed = (seed * 1103515245 + 12345) & 0x7fffffff; return seed / 0x7fffffff; };
-  // ── (10차, 3D 조정 전환 1단계) 정규 3D 모델 채집 ──
-  // 이 리프트가 만드는 월드 3D 가닥을 재사용 가능한 형태로 stash — "3D가 원본,
-  // 2D는 그 투영"이라는 합의 구조의 토대. 조정 화면이 이 모델을 현재 뷰 카메라로
-  // 되쏘아(projectHair3DToView) 2D로 표시하게 된다. 여기선 모델 채집만; 조정
-  // 연산자(길이/컬/섹션)와 렌더 배선은 다음 단계.
-  const canonicalStrands = [];      // [{pts:[{x,y,z}], sec, color, srcAngle, mirrored}]
-  const viewCal = {};               // 뷰별 image↔model 캘리브레이션(되쏘기용)
-  names.forEach(n3=>{               // names = 실측(비거울) 뷰만
-    const vv = views[n3];
-    viewCal[n3] = { cx:vv.cx, s:vv.s, sy:vv.sy, crownY:vv.crownY,
-                    yaw:vv.pose.yaw, pitch:vv.pose.pitch, roll:vv.pose.roll };
-  });
   let total = 0;
   jobs.forEach(job=>{
     const angle = job.angle;
@@ -8019,7 +7218,6 @@ function buildHairStrandsFromPaths(){
       const t = 0.35 + 0.65 * rand(); // 이 가닥의 깊이층: 0=두피면, 1=헐 바깥면
       let prev = null, prevR=0, prevG=0, prevB=0;
       let lastZ = null;
-      const worldPts = []; // (10차) 정규 모델용 월드 폴리라인
       for(let i=0;i<st.pts.length;i++){
         const p = st.pts[i];
         const mxRaw = (p.x - v.cx) * v.s;
@@ -8066,7 +7264,6 @@ function buildHairStrandsFromPaths(){
         lastZ = mz;
         const w3 = applyRotationTranspose3(rot, new THREE.Vector3(px, my - CY, mz));
         w3.y += CY;
-        worldPts.push({ x:w3.x, y:w3.y, z:w3.z }); // (10차) 정규 모델 채집
         // 4단계 음영: 곱(층 깊이) + 가산(바깥층·정면 곡면 하이라이트, 검은 머리 대응)
         const k = 0.55 + 0.45 * t;
         const rim = 0.05 * t + 0.11 * t * facing;
@@ -8078,9 +7275,6 @@ function buildHairStrandsFromPaths(){
           colors.push(prevR, prevG, prevB, r, g, bl);
         }
         prev = w3; prevR = r; prevG = g; prevB = bl;
-      }
-      if(worldPts.length >= 2){
-        canonicalStrands.push({ pts:worldPts, sec: st.sec || 'crown', color: st.color, srcAngle: angle, mirrored: job.mirrored });
       }
       total++;
     }
@@ -8127,354 +7321,7 @@ function buildHairStrandsFromPaths(){
 
   console.log('[3D] 헐 기반 옮기기:', total, '가닥 (실측 뷰:', names.join(','),
     '/ 거울 채움:', jobs.filter(j=>j.mirrored).map(j=>j.angle).join(',') || '없음', ')');
-  // (10차) 정규 3D 모델 stash — 조정 화면 되쏘기(projectHair3DToView)의 소스.
-  state.hair3D = { strands: canonicalStrands, viewCal, yTop, CY };
   return total > 0 ? group : null;
-}
-
-// ── (11차) 3D 조정 연산자 — 순수 기하(Node 검증 가능) ──
-// 3D=원본 구조에서 조정을 "월드 가닥 폴리라인"에 직접 가한다. 2D의 한계(직모
-// 결과 충돌)가 없어 컬은 두상 곡면 위 나선으로 진짜로 감긴다.
-// 벡터 유틸(THREE 없이 순수) — Node 하네스에서 그대로 검증.
-function _v3sub(a,b){ return {x:a.x-b.x, y:a.y-b.y, z:a.z-b.z}; }
-function _v3add(a,b){ return {x:a.x+b.x, y:a.y+b.y, z:a.z+b.z}; }
-function _v3scale(a,s){ return {x:a.x*s, y:a.y*s, z:a.z*s}; }
-function _v3len(a){ return Math.sqrt(a.x*a.x+a.y*a.y+a.z*a.z); }
-function _v3norm(a){ const l=_v3len(a)||1e-9; return {x:a.x/l, y:a.y/l, z:a.z/l}; }
-function _v3cross(a,b){ return {x:a.y*b.z-a.z*b.y, y:a.z*b.x-a.x*b.z, z:a.x*b.y-a.y*b.x}; }
-
-// (11차 3D컬 재재작성, 사용자 교정) 실제 펌 물리: 로드(rod) 크기 = 웨이브 폭이
-// "루프 지름"을 정하고, 그건 머리 전체에서 동일하다. 긴 머리는 같은 로드에 더
-// 여러 바퀴 감길 뿐 루프 크기는 같다 → 길이 비례가 아니라 로드(웨이브폭) 고정.
-// 웨이브 폭 → 루프 반경 R(모델 단위, 두상 가로반경 a≈0.29 기준). 머리 전체 공통.
-const CURL3D_R_MIN = 0.020; // 작은 로드(웨이브폭 0%) — 촘촘한 작은 스파이럴
-const CURL3D_R_MAX = 0.070; // 큰 로드(웨이브폭 100%) — 느슨한 큰 웨이브
-// 3D 컬: 가닥을 로드 반경 R의 "스프링 나선"으로 감는다. 감기면 호길이가 축방향으로
-// 압축돼(피치<둘레) 끝이 위로 끌려 올라가는 진짜 링렛이 된다. curlAmt(컬 세기, 0~100)
-// =로드 밀착도(반경)+코일 촘촘함(피치), waveT(웨이브 폭)=로드 반경 R. 뿌리 고정.
-// 같은 로드에 긴 가닥은 자동으로 더 여러 바퀴. 감은 뒤 gravityDroop3D가 아래로 늘어뜨림.
-function curlStrand3D(pts, curlAmt, waveT){
-  if(!pts || pts.length < 3 || !(curlAmt > 0)) return pts;
-  const root = pts[0], tip = pts[pts.length-1];
-  const core = _v3norm(_v3sub(tip, root));
-  // 원본 호길이 = 이 가닥이 실제로 가진 머리 길이. 이 길이가 그대로 나선에 감긴다
-  // (긴 가닥은 같은 로드에 더 여러 바퀴). 나선은 스프링처럼 축길이를 줄여 끝을 끌어올림.
-  let arc = 0; for(let i=1;i<pts.length;i++) arc += _v3len(_v3sub(pts[i], pts[i-1]));
-  if(arc < 1e-5) return pts;
-  // 로드(웨이브폭) 반경 — 머리 전체 고정. 루프 지름을 정한다.
-  const R = CURL3D_R_MIN + waveT * (CURL3D_R_MAX - CURL3D_R_MIN);
-  const tight = Math.max(0, Math.min(100, curlAmt)) / 100; // 컬 세기 0~1
-  // 컬 세기 = ① 로드에 얼마나 밀착돼 감기는지(나선 반경 A) + ② 감긴 코일이 얼마나
-  // 촘촘히 유지되는지(피치 b, 라디안당 축방향 상승). 약한 컬=거의 안 감기고 늘어져
-  // (큰 피치→직모), 강한 컬=로드 반경까지 꽉 차고 촘촘한 스프링(작은 피치).
-  const A = tight * R;                       // 나선 반경(컬 셀수록 로드 반경 R에 근접)
-  const b = R * (2.6 - 2.28 * tight);        // 피치비 2.6R(느슨)→0.32R(탱탱)
-  const perRad = Math.sqrt(A*A + b*b) || 1e-4; // 라디안당 소비되는 호길이
-  const thetaMax = arc / perRad;               // 총 감김 각 — 긴 가닥일수록 여러 바퀴
-  // 코어축(뿌리→끝)에 수직인 로컬 프레임 u,v
-  let up = {x:0,y:1,z:0};
-  if(Math.abs(core.y) > 0.94) up = {x:1,y:0,z:0};
-  const u = _v3norm(_v3cross(core, up));
-  const v = _v3norm(_v3cross(core, u));
-  // 한 바퀴당 점 12개 이상 확보(이전 각짐/jagged 방지). 촘촘한 코일일수록 점을 늘림.
-  const turns = thetaMax / (2*Math.PI);
-  const M = Math.max(pts.length, Math.min(400, Math.ceil(turns * 12) + 2));
-  const out = [pts[0]];
-  for(let i=1;i<=M;i++){
-    const f = i / M;
-    const theta = thetaMax * f;
-    const env = Math.min(1, i / (M*0.12 + 1e-6)); // 뿌리 근처 테이퍼(부착 유지)
-    const axis = b * theta;                        // 압축된 등뼈(스프링 축길이<호길이)
-    const rad = A * env;
-    const base = _v3add(root, _v3scale(core, axis));
-    const off = _v3add(_v3scale(u, Math.cos(theta)*rad), _v3scale(v, Math.sin(theta)*rad));
-    out.push(_v3add(base, off));
-  }
-  return out;
-}
-
-// (11차) 중력 처짐 — 실제 펌: 로드로 감은 뒤 풀면 자체 무게로 끝이 아래로 늘어짐.
-// 사용자: "그렇게 된 다음에 적절한 중력이 작용." 컬 나선 위에 얹는 마지막 단계.
-// 뿌리 고정, 끝으로 갈수록 가속 처짐(t²). 컬 강할수록 탱탱하게 덜 처짐(hold).
-const GRAV3D_STRENGTH = 0.35; // 중력 처짐 세기(튜닝 지점) — 호길이 대비 최대 처짐 비율
-function gravityDroop3D(pts, curlAmt){
-  if(!pts || pts.length < 3) return pts;
-  let arc = 0; for(let i=1;i<pts.length;i++) arc += _v3len(_v3sub(pts[i], pts[i-1]));
-  if(arc < 1e-5) return pts;
-  const hold = 1 - 0.6 * (Math.max(0, Math.min(100, curlAmt))/100); // 강한 컬=덜 처짐(0.4~1)
-  const n = pts.length - 1;
-  const out = [pts[0]];
-  for(let i=1;i<pts.length;i++){
-    const t = i / n;
-    const sag = GRAV3D_STRENGTH * arc * t * t * hold; // 끝으로 갈수록 가속(t²) 아래로
-    out.push({ x: pts[i].x, y: pts[i].y - sag, z: pts[i].z });
-  }
-  return out;
-}
-
-// 3D 길이: 호길이 기준 트림(ratio<1)/연장(ratio>1). 연장은 마지막 진행방향 유지.
-// ratio=1이면 원본 그대로. 뿌리 고정, 끝만 이동.
-function lengthStrand3D(pts, ratio){
-  if(!pts || pts.length < 2 || !(ratio > 0) || Math.abs(ratio-1) < 1e-6) return pts;
-  // 누적 호길이
-  const seg = [], cum = [0];
-  for(let i=1;i<pts.length;i++){ const d=_v3len(_v3sub(pts[i],pts[i-1])); seg.push(d); cum.push(cum[i-1]+d); }
-  const total = cum[cum.length-1]; if(total < 1e-9) return pts;
-  const target = total * ratio;
-  if(ratio < 1){
-    // 트림: target 호길이 지점까지 포인트 취하고 마지막은 보간
-    const out = [pts[0]];
-    for(let i=1;i<pts.length;i++){
-      if(cum[i] <= target){ out.push(pts[i]); }
-      else { const t=(target-cum[i-1])/(seg[i-1]||1e-9); out.push(_v3add(pts[i-1], _v3scale(_v3sub(pts[i],pts[i-1]), t))); break; }
-    }
-    return out.length>=2 ? out : pts;
-  } else {
-    // 연장: 원본 전체 + 마지막 방향으로 (target-total) 만큼 추가 스텝
-    const out = pts.slice();
-    const dir = _v3norm(_v3sub(pts[pts.length-1], pts[pts.length-2]));
-    const step = total / (pts.length-1);
-    let added = 0; const extra = target - total; let cur = pts[pts.length-1];
-    while(added < extra){ const d=Math.min(step, extra-added); cur=_v3add(cur,_v3scale(dir,d)); out.push(cur); added+=d; }
-    return out;
-  }
-}
-
-// ── (10차) 3D 조정 전환 — 3D→2D 되쏘기(투영) ──
-// 월드 3D 점 → 특정 뷰 카메라의 이미지(mask) 좌표 + 깊이. buildHairStrandsFromPaths
-// 리프트(w3 = R^T·(px,my-CY,mz)+CY)의 정확한 역: local = R·(world-CY),
-// ix = px/s+cx, iy = crownY+(yTop-my)/sy. R·R^T=I라 같은 뷰 왕복은 수학적으로 정확
-// (Node 하네스로 검증). depth(mz)는 painter's 정렬용.
-function project3DPointToView(world, cal, yTop, CY){
-  const R = composeRotationZYX(cal.yaw, cal.pitch, cal.roll); // row-major 9 (forward)
-  const wy = world.y - CY;
-  const lx = R[0]*world.x + R[1]*wy + R[2]*world.z;
-  const ly = R[3]*world.x + R[4]*wy + R[5]*world.z;
-  const lz = R[6]*world.x + R[7]*wy + R[8]*world.z;
-  const my = ly + CY;
-  return {
-    ix: lx / cal.s + cal.cx,
-    iy: cal.crownY + (yTop - my) / cal.sy,
-    depth: lz, // 카메라 축 성분 — 정렬 부호는 렌더에서 실측 조정
-  };
-}
-
-// (11차 3단계) 조정된 3D 모델을 현재 뷰로 되쏘아 조정창 2D 캔버스에 그린다(baseC 위).
-// 소스는 중립 모델(viewCal)+조정 연산자(computeAdjustedHair3DStrands). 대상 뷰 캡처
-// 가닥만(srcAngle 필터) 투영해 교차뷰 잡음 없이 "그 뷰의 머리 = 3D 조정 결과의 투영".
-// painter's 깊이 정렬로 겉겹이 속겹을 덮는 가림이 3D 실제 z 기준으로 정확해짐.
-function projectHair3DToView(ctx, fit, angle, maskInf){
-  const model = state.hair3Dneutral;
-  if(!model || !model.viewCal || !model.viewCal[angle]) return false;
-  const adj = computeAdjustedHair3DStrands(angle);         // 이 뷰 캡처 가닥만
-  if(!adj || !adj.length) return false;
-  const cal = model.viewCal[angle];
-  const { toX: toCX, toY: toCY } = makeImgToCanvas(fit, maskInf.w, maskInf.h);
-  const projected = [];
-  for(const st of adj){
-    const pts = st.pts; let dsum=0; const cpts=[];
-    for(let i=0;i<pts.length;i++){
-      const pr = project3DPointToView(pts[i], cal, model.yTop, model.CY);
-      cpts.push({ x: toCX(pr.ix), y: toCY(pr.iy) });
-      dsum += pr.depth;
-    }
-    projected.push({ cpts, depth: dsum / pts.length });
-  }
-  projected.sort((a,b)=> a.depth - b.depth); // 뒤(작은 depth)부터 → 앞이 위에 덮임
-  // ── 최소 파리티: 두피색 언더코트(굵게) → 머리색 가닥(가늘게) ──
-  // 2D drawHairStrands의 통짜 실루엣 대신 "가닥 경로 추종" 방식과 동일 취지.
-  const hairCol  = (typeof FORCED_HAIR_COLOR!=='undefined' && FORCED_HAIR_COLOR) || '#1a1a1a';
-  const scalpCol = (maskInf.scalpColor) || 'rgb(224,178,148)';
-  const resScale = fit.dw / 705;
-  ctx.save();
-  ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.globalAlpha = 1;
-  ctx.strokeStyle = scalpCol; ctx.lineWidth = Math.max(1.3, resScale * 1.5);
-  for(const p of projected) strokeSmoothPolyline(ctx, p.cpts);   // 언더코트 패스
-  ctx.strokeStyle = hairCol;  ctx.lineWidth = Math.max(0.7, resScale * 0.6);
-  for(const p of projected) strokeSmoothPolyline(ctx, p.cpts);   // 가닥 패스
-  ctx.restore();
-  return true;
-}
-
-// ── (10차) 개발용 3D 검증 미니뷰 ──
-// 최종 UX에선 조정 화면에서 3D를 숨기지만, 개발 중엔 "조정이 3D에서 제대로
-// 일어나는지" 눈으로 봐야 함(사용자 지적). 정규 3D 모델(state.hair3D)을 직접
-// 렌더하는 경량·독립 THREE 뷰 — 메인 3D 화면(model3D 싱글턴)과 충돌 안 함.
-// 드래그 회전 + 탭 확대. 조정 시 refreshDevMini3D로 실시간 갱신.
-// (12차) 미니뷰 섹션 구분색 — 크라운=호박, 프론트=파랑, 템플=핑크, 사이드=초록,
-// 후두부=보라, 네이프=주황. 어느 부위가 어느 섹션인지 3D에서 즉시 확인.
-const SECTION_COLORS = {
-  crown:'#e6b93c', front:'#3ca6e6', temple:'#e64c8c',
-  side:'#3ce67a', occipital:'#a860e6', nape:'#e67a3c'
-};
-let devMini3D = null;
-function initDevMini3D(){
-  if(devMini3D || typeof THREE === 'undefined') return devMini3D;
-  const wrap = document.getElementById('devMini3DCanvasWrap');
-  if(!wrap) return null;
-  const renderer = new THREE.WebGLRenderer({ antialias:true, alpha:true });
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio||1, 2));
-  const w = wrap.clientWidth||150, h = wrap.clientHeight||150;
-  renderer.setSize(w, h);
-  wrap.appendChild(renderer.domElement);
-  const scene = new THREE.Scene();
-  const camera = new THREE.PerspectiveCamera(32, w/h, 0.01, 100);
-  camera.position.set(0, 0.15, 3);
-  scene.add(new THREE.AmbientLight(0xffffff, 0.9));
-  const group = new THREE.Group();
-  scene.add(group);
-  // 두상 기준 와이어(방향 감 잡기용) — 반투명 구
-  let headWire = null;
-  try {
-    const he = getHeadEllipsoid();
-    const g = new THREE.SphereGeometry(1, 16, 12);
-    const m = new THREE.MeshBasicMaterial({ color:0x2a2620, wireframe:true, transparent:true, opacity:0.4 }); // 밝은 미니뷰 배경 대비용 어두운 와이어
-    headWire = new THREE.Mesh(g, m);
-    headWire.scale.set(he.a, he.b, he.c);
-    headWire.position.y = 0.15;
-    group.add(headWire);
-    // (10차 보강) 앞면(코) 마커 — 처음 봤을 때 어디가 앞인지 모르겠다는 피드백.
-    // 얼굴 정면(+Z)에 액센트색 원뿔을 코처럼 붙임(그룹에 추가돼 함께 회전).
-    // 코가 보이면 앞, 안 보이면 뒤 → 방향이 직관적으로 잡힘.
-    const noseG = new THREE.ConeGeometry(he.a*0.18, he.c*0.5, 12);
-    const noseM = new THREE.MeshBasicMaterial({ color:0xC98A4B });
-    const nose = new THREE.Mesh(noseG, noseM);
-    nose.rotation.x = Math.PI/2;            // 원뿔 축 +Y → +Z(정면)로
-    nose.position.set(0, 0.06, he.c*0.98);  // 얼굴 높이·앞면 표면
-    group.add(nose);
-    // 앞면 라벨 대용 작은 텍스트 스프라이트("앞") — 코 위에 살짝
-    try {
-      const lc = document.createElement('canvas'); lc.width=64; lc.height=32;
-      const lx = lc.getContext('2d');
-      lx.fillStyle='#C98A4B'; lx.font='bold 22px sans-serif'; lx.textAlign='center'; lx.textBaseline='middle';
-      lx.fillText('앞', 32, 16);
-      const tex = new THREE.CanvasTexture(lc);
-      const spr = new THREE.Sprite(new THREE.SpriteMaterial({ map:tex, transparent:true }));
-      spr.scale.set(0.22, 0.11, 1);
-      spr.position.set(0, 0.22, he.c*1.05);
-      group.add(spr);
-    } catch(e){}
-  } catch(e){}
-  let dragging=false, lastX=0, lastY=0, autoRot=true;
-  const dom = renderer.domElement;
-  dom.addEventListener('pointerdown', e=>{ dragging=true; autoRot=false; lastX=e.clientX; lastY=e.clientY; e.preventDefault(); });
-  window.addEventListener('pointerup', ()=>{ dragging=false; });
-  window.addEventListener('pointermove', e=>{
-    if(!dragging || !devMini3D) return;
-    group.rotation.y += (e.clientX-lastX)*0.01;
-    group.rotation.x += (e.clientY-lastY)*0.01;
-    lastX=e.clientX; lastY=e.clientY;
-  });
-  devMini3D = { renderer, scene, camera, group, headWire, strandObj:null, raf:null, autoRot:()=>autoRot };
-  function animate(){
-    if(autoRot) group.rotation.y += 0.005;
-    renderer.render(scene, camera);
-    devMini3D.raf = requestAnimationFrame(animate);
-  }
-  animate();
-  return devMini3D;
-}
-
-// (11차) 중립 3D 모델에 섹션별 조정 연산자(길이·컬)를 적용해 "조정된 월드 가닥"을
-// 반환. 미니뷰(3D)와 조정창 투영(2D)이 같은 소스를 쓰게 하는 단일 출처.
-// srcAngleFilter를 주면 그 뷰 캡처 가닥만(뷰별 투영 시 교차뷰 잡음 방지).
-function computeAdjustedHair3DStrands(srcAngleFilter){
-  const model = state.hair3Dneutral;
-  if(!model || !model.strands) return null;
-  const out = [];
-  for(const st of model.strands){
-    if(srcAngleFilter && st.srcAngle !== srcAngleFilter) continue;
-    const sec = (state.sections && state.sections[st.sec]) || {};
-    const baseLen = (SECTIONS[st.sec] && SECTIONS[st.sec].defaults && typeof SECTIONS[st.sec].defaults.length==='number') ? SECTIONS[st.sec].defaults.length : 50;
-    const ratio = Math.max(0, 1 + (((typeof sec.length==='number')?sec.length:baseLen) - baseLen) * LENGTH_RATIO_PER_UNIT);
-    const curlAmt = (typeof sec.curl==='number')?sec.curl:0;
-    let pts = lengthStrand3D(st.pts, ratio);                       // ① 3D 길이
-    pts = curlStrand3D(pts, curlAmt, ((typeof sec.wave==='number')?sec.wave:50)/100); // ② 3D 컬(로드 나선)
-    if(curlAmt > 0) pts = gravityDroop3D(pts, curlAmt);           // ③ 감은 뒤 중력 처짐
-    out.push({ pts, color: st.color, sec: st.sec, srcAngle: st.srcAngle });
-  }
-  return out;
-}
-
-// 중립 모델 + 조정 연산자 → 미니뷰 LineSegments 재구성. 슬라이더가 바뀌면
-// 재캡처·재리프트 없이 이 함수만 다시 불러 연산자를 재적용한다(효율+이중적용 방지).
-function refreshDevMini3D(){
-  if(!devMini3D) return;
-  const adj = computeAdjustedHair3DStrands();
-  if(!adj) return;
-  const { group } = devMini3D;
-  if(devMini3D.strandObj){
-    group.remove(devMini3D.strandObj);
-    if(devMini3D.strandObj.geometry) devMini3D.strandObj.geometry.dispose();
-    if(devMini3D.strandObj.material) devMini3D.strandObj.material.dispose();
-    devMini3D.strandObj = null;
-  }
-  const positions=[], colors=[]; const c=new THREE.Color();
-  for(const st of adj){
-    const pts = st.pts;
-    // (12차) 미니뷰를 섹션별 색으로 — 어느 부위가 어느 섹션인지 눈으로 확인
-    // (실기기 섹션 분포 튜닝용). SECTION_COLORS는 미니뷰 전용(실제 머리색 아님).
-    c.set(SECTION_COLORS[st.sec] || '#cccccc');
-    for(let i=0;i<pts.length-1;i++){
-      positions.push(pts[i].x,pts[i].y,pts[i].z, pts[i+1].x,pts[i+1].y,pts[i+1].z);
-      colors.push(c.r,c.g,c.b, c.r,c.g,c.b);
-    }
-  }
-  if(!positions.length) return;
-  const geo=new THREE.BufferGeometry();
-  geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(positions),3));
-  geo.setAttribute('color', new THREE.BufferAttribute(new Float32Array(colors),3));
-  const obj=new THREE.LineSegments(geo, new THREE.LineBasicMaterial({ vertexColors:true }));
-  group.add(obj);
-  devMini3D.strandObj = obj;
-}
-
-// (11차) 중립 3D 모델 생성 — 촬영된 뷰들을 중립(rawMode)으로 캡처 → 리프트.
-// 조정과 무관하게 한 번만 만들면 되고(슬라이더는 연산자 재적용만), 3D 화면의
-// 비중립 캡처(state.strandPaths)는 swap-restore로 보존한다.
-function buildNeutralHair3D(cb){
-  if(typeof THREE === 'undefined'){ cb && cb(); return; }
-  const angles = ANGLES.filter(a => state.shots && state.shots[a]);
-  if(!angles.length){ cb && cb(); return; }
-  const savedPaths = state.strandPaths, savedModel = state.hair3D;
-  state.strandPaths = {}; // 중립 캡처 임시 저장소
-  let idx = 0;
-  const done = ()=>{
-    try { buildHairStrandsFromPaths(); } catch(e){ console.warn('중립 3D 리프트 실패:', e); }
-    state.hair3Dneutral = state.hair3D || null;
-    state.strandPaths = savedPaths; state.hair3D = savedModel; // 복원(3D 화면 캡처 보존)
-    cb && cb();
-  };
-  const next = ()=>{ if(idx >= angles.length){ done(); return; } captureStrandPathsFor(angles[idx++], true).then(next); };
-  next();
-}
-
-function resizeDevMini3D(){
-  if(!devMini3D) return;
-  const wrap = document.getElementById('devMini3DCanvasWrap');
-  if(!wrap) return;
-  const w=wrap.clientWidth, h=wrap.clientHeight;
-  if(w<=0||h<=0) return;
-  devMini3D.renderer.setSize(w,h);
-  devMini3D.camera.aspect=w/h; devMini3D.camera.updateProjectionMatrix();
-}
-
-// 3D 조정 엔진 토글과 연동: ON이면 패널 표시+모델 반영, OFF면 숨김.
-function showDevMini3D(on){
-  const panel = document.getElementById('devMini3D');
-  if(!panel) return;
-  panel.style.display = on ? 'flex' : 'none';
-  if(on){
-    if(!devMini3D) initDevMini3D();
-    setTimeout(()=>{ resizeDevMini3D(); refreshDevMini3D(); }, 30);
-  }
-}
-
-function toggleDevMini3DExpand(){
-  const panel = document.getElementById('devMini3D');
-  if(!panel) return;
-  panel.classList.toggle('expanded');
-  setTimeout(resizeDevMini3D, 30); // 크기 전환 후 렌더러 리사이즈
 }
 
 // headGroup 재구성 시(스타일이 바뀌어 이전 가닥/두상을 지울 때) geometry/material을
@@ -8741,8 +7588,7 @@ function showToast(msg){
 
 function startNewCustomer(){
   aiAnalysis=null;
-  state.aiSectionEstimate=null; // (a) 실측 사진 기반 3D 보정 캐시도 새 고객마다 초기화
-  state.hair3D=null; state.hair3Dneutral=null; // (11차) 3D 모델 캐시도 새 고객마다 무효화
+  state.aiSectionEstimate=null; state.viewMapping=null; // (a) 실측 사진 기반 3D 보정 캐시도 새 고객마다 초기화
   state.aiOutfitRecommendation=null; // (3단계) 의상 추천 캐시도 초기화
   _headCrossSectionCache = null; // 두상 실측 단면(Shape-from-Silhouette) 캐시도 새 고객마다 초기화
   _headVerticalRadiusCache = null; // 두상 세로 반지름 실측 캐시도 새 고객마다 초기화
