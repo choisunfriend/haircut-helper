@@ -13712,7 +13712,15 @@ const HAIR_OVERLAP = {
      예외는 하나만 남긴다: <b>실측으로</b> 밀도가 0에 가까운 셀(est=0 && den<baldDen).
      추정 셀은 예외가 아니다(=채운다). */
   uniform: true,       // false면 지난 회차 동작(밀도 비례 + 추정 셀 보존)
-  uniformPct: 0.75,    // 목표치 = 지금 셀당 가닥 수의 이 백분위 (× 껍질 몫)
+  uniformPct: 0.75,    // 목표치 = 지금 셀당 가닥 수의 이 백분위
+  /* ── #3 가닥 늘리기 (2026-08-08) — <b>이 파일에서 밀도 손잡이는 여기 하나</b> ──
+     사용자: "3D로 만들어 두께가 생기면서 성글어진 것들 채워야 돼."
+     헐이 분리되면서 가닥이 두피면~헐 사이 껍질에 t로 흩어진다. 같은 개수라도
+     한 겹은 성글어 보이므로 그만큼 더 있어야 한다. #2(고르게)와 분리해 둔 이유가
+     이것 — 백분위는 "지금 있는 수"라 여기에 곱해야 실제로 늘어난다.
+     화면 쪽 짝은 HAIR3D_RENDER.targetMul이다(모델을 늘려도 그리는 목표가
+     그대로면 화면은 안 변한다 — 둘이 같이 움직여야 한다). */
+  densityMul: 1.6,
   baldDen: 0.08,       // 실측 밀도가 이 미만인 셀만 "확실히 머리 없음" — 안 채운다
   fillRing: 2,         // 셀에 원본이 하나도 없으면 이 반경까지 이웃에서 빌린다
   fillJitter: 0.9,     // 셀 안에서 뿌리를 흔드는 폭(셀 크기 대비) — 1이면 셀 전체
@@ -13824,7 +13832,7 @@ function pruneOverlappedRoots(strands, rootField, hullW, hullD, bucketOfY, CY, b
        뛰고 모델이 두 배로 부푼다(하네스 실측). 고르게 만드는 게 #2고, 전체를 더
        빽빽하게 만드는 건 #3이다 — 두 손잡이를 섞지 않는다. */
     const base = cc[Math.min(cc.length-1, Math.floor(cc.length * O.uniformPct))];
-    uniformTarget = Math.max(O.minKeep, Math.round(base * O.headroom));
+    uniformTarget = Math.max(O.minKeep, Math.round(base * O.headroom * O.densityMul));
   }
   // 균일 모드에서 이 셀을 손대도 되나 — 실측으로 "머리 없음"이 확인된 곳만 예외
   const isBald = (ci)=> est[ci] === 0 && den[ci] < O.baldDen;
@@ -13948,7 +13956,8 @@ function pruneOverlappedRoots(strands, rootField, hullW, hullD, bucketOfY, CY, b
     + ' | 과밀 셀 ' + thinnedCells + ' · 채운 셀 ' + filledCells
     + '(그중 원본 없어 이웃에서 빌림 ' + emptyCells + ')'
     + (O.uniform
-        ? ' · <b>균일 목표 ' + uniformTarget + '가닥/셀</b>(전 두상 동일) · 대머리로 보고 안 채운 셀 ' + baldCells + '개'
+        ? ' · <b>균일 목표 ' + uniformTarget + '가닥/셀</b>(전 두상 동일, 밀도 손잡이 ×'
+          + O.densityMul + ') · 대머리로 보고 안 채운 셀 ' + baldCells + '개'
         : ' · 추정 셀 ' + keptEstCells + '개는 그대로'));
   /* 기준 한 줄 — 다음에 "성글다/빽빽하다"가 오면 이 세 숫자만 보면 된다:
        자연 = 지금 모델이 실제로 갖고 있는 셀당 밀도
@@ -15160,6 +15169,10 @@ const HAIR3D_RENDER = {
      (2026-08-02) 가닥 렌더로 오면서 원본 결 보기와 같은 규칙으로 <b>켠다</b> —
      원본 결 보기가 바로 이 언더코트 위에 가닥을 얹은 그림이고, 끄면 가닥 사이로
      <b>원본 사진의 머리</b>가 그대로 비쳐서 성질이 달라진다. 끄려면 false. */
+  /* (2026-08-08 #3) 화면에 그릴 목표를 원본 결 보기 대비 이 배수로. 1.0이면 예전 동작.
+     모델 쪽 짝은 HAIR_OVERLAP.densityMul — <b>둘 다 올려야</b> 실제로 빽빽해진다
+     (모델만 올리면 화면 목표에서 잘리고, 화면만 올리면 모델에 재료가 없다). */
+  targetMul: 1.5,
   undercoat: true,
   // 하한은 백킹 픽셀이 아니라 "화면에 실제로 보이는 CSS 픽셀" 기준(아래 설명 참조)
   /* (2026-07-26 2차 상향) 0.7/0.9로는 부족했다. 캔버스 1200px를 화면 390px로
@@ -15509,7 +15522,7 @@ function projectHairQuiltToView(ctx, fit, angle, maskInf){
   const pool = buildHairStripPool(angle, maskInf, Math.round(drawW / pxScale));
   if(!pool || !pool.length) return quiltFail(angle, '소스 띠를 하나도 못 뜸(위 경고 참조)');
 
-  const stride = Math.max(1, Math.round(src.length / Math.max(1, R.targetBundles)));
+  const stride = Math.max(1, src.length / Math.max(1, R.targetBundles));   // (#3) 실수 허용
   const adj = computeAdjustedHair3DStrands(null, stride);
   if(!adj || !adj.length) return quiltFail(angle, '조정된 가닥이 비어 있음');
 
@@ -15710,11 +15723,17 @@ function projectHair3DToView(ctx, fit, angle, maskInf){
 
   // 뒤를 향한 가닥이 버려질 만큼 후보를 더 잡는다(비율은 위에서 실측).
   // targetStrands가 null이면 "원본 결 보기와 같은 개수"(권장) — 숫자를 넣으면 그 값.
-  const targetStrands = (R.targetStrands == null) ? rawTotal : R.targetStrands;
+  /* (#3) 화면에 그릴 목표 개수. 예전엔 <b>원본 결 보기와 같은 수</b>(rawTotal)로 고정이라,
+     모델을 아무리 늘려도 화면은 그 수에서 멈췄다 — 모델 쪽 손잡이(HAIR_OVERLAP.densityMul)와
+     짝이 되는 화면 쪽 손잡이가 없었다. targetMul로 그 상한을 연다.
+     ※ 3D는 껍질에 흩어져 있어 같은 개수면 2D보다 성글어 보인다. 그 몫이 여기다. */
+  const targetStrands = (R.targetStrands == null)
+    ? rawTotal * (R.targetMul || 1)
+    : R.targetStrands;
   const wantCand = Math.max(1, targetStrands / frontFrac);
   const stride  = (R.stride == null)
-    ? Math.max(1, Math.min(32, Math.round(src.length / wantCand)))
-    : Math.max(1, R.stride|0);
+    ? Math.max(1, Math.min(32, src.length / wantCand))   // (#3) 반올림 제거 — 누산기가 받는다
+    : Math.max(1, +R.stride || 1);
 
   // ── 2패스: 그릴 가닥만 조정 연산 + 투영 ──
   const adj = computeAdjustedHair3DStrands(null, stride);
@@ -15901,7 +15920,8 @@ function logStrandRender(angle, m){
     `[${angle}] 가닥 렌더(원본 결 보기와 동일 규칙) — 헤어폭 ${m.spanX.toFixed(0)}px(화면 ${css(m.spanX)}) · `
     + `표시배율 1/${m.unit.toFixed(1)} · 굵기 ${wList} · `
     + `가닥 ${m.drawn}개 그림 / 목표 ${Math.round(m.targetStrands)}개`
-    + `(원본 결 보기 ${Math.round(m.rawTotal)}개, 모델 ${m.total}개 중 솎기 ${m.stride}, 앞면만)`
+    + `(원본 결 보기 ${Math.round(m.rawTotal)}개 ×${(m.targetStrands/Math.max(1,m.rawTotal)).toFixed(2)}, `
+    + `모델 ${m.total}개 중 솎기 ${(+m.stride).toFixed(2)}, 앞면만)`
   );
 }
 /* 다발 렌더 전용 틴트 — 어두운 쪽은 곱셈, 밝은 쪽은 회색 쪽으로 완만히.
@@ -16031,9 +16051,18 @@ function initDevMini3D(){
 function computeAdjustedHair3DStrands(srcAngleFilter, stride){
   const model = state.hair3Dneutral;
   if(!model || !model.strands) return null;
-  const stp = Math.max(1, (stride|0) || 1);
+  /* ── 솎기를 <b>누산기</b>로 (2026-08-08 #3) ────────────────────────────
+     예전엔 `_i++ % stp`라 stp가 <b>정수</b>여야 했고, 그리는 수 = 모델 ÷ 정수라
+     계단이 굵었다. 그래서 모델을 키우면 stride가 2→3으로 튀며 그리는 수가
+     <b>오히려 줄었다</b>:
+         모델 11,206 · 솎기 2 → left 3,003 그림
+         모델 16,523 · 솎기 3 → left 2,515 그림 (목표 2,880 대비 −13%)
+     모델을 47% 키웠는데 화면은 16% 줄었다 — #3(가닥 늘리기)이 화면에 안 나오던
+     직접 원인이다. 누산기로 바꾸면 stp가 2.7 같은 실수여도 되고, 뽑히는 수가
+     목표치에 정확히 붙는다(브레젠험과 같은 원리). */
+  const stp = Math.max(1, +stride || 1);
   const out = [];
-  let _i = 0;
+  let _acc = 0;
   /* 스타일링은 뷰별이다(2026-07-27). 네 뷰 값이 같으면(대부분의 프레임) 한 번만
      읽고 끝내고, 다르면 가닥 뿌리 방향으로 섞는다. */
   const uni = uniformStyling();
@@ -16047,7 +16076,9 @@ function computeAdjustedHair3DStrands(srcAngleFilter, stride){
   const occAcc = occ ? { n:0, dropped:0, trimmed:0, removedPts:0, faceBlocked:0 } : null;
   for(const st of model.strands){
     if(srcAngleFilter && st.srcAngle !== srcAngleFilter) continue;
-    if((_i++ % stp) !== 0) continue;
+    _acc += 1/stp;
+    if(_acc < 1) continue;                 // 아직 차례가 아니다
+    _acc -= 1;
     const sec = (state.sections && state.sections[st.sec]) || {};
     const ratio = sectionLengthRatio(st.sec, sec.length);
     const curlAmt = (typeof sec.curl==='number')?sec.curl:0;
