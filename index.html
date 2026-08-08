@@ -13713,6 +13713,15 @@ const HAIR_OVERLAP = {
      추정 셀은 예외가 아니다(=채운다). */
   uniform: true,       // false면 지난 회차 동작(밀도 비례 + 추정 셀 보존)
   uniformPct: 0.75,    // 목표치 = 지금 셀당 가닥 수의 이 백분위
+  /* (2026-08-08) 목표치를 <b>셀 면적에 비례</b>시킨다.
+     사용자: "두상면적을 기준으로 잡아야 될 것 같고."
+     맞다. 그리고 이걸 안 넣은 게 바로 앞 회차의 왜곡을 만들고 있었다 —
+     격자가 (극각 × 방위) 균등이라 정수리 셀은 적도 셀의 <b>1/20 면적</b>인데
+     "셀당 같은 수"를 주면 면적당으로는 20배를 몰아준 셈이 된다.
+     실측이 그대로 나왔다: crown 구역 면적 10% / 실측 뿌리 <b>29%</b>(2.9배 과대),
+     front 면적 7.4% / 뿌리 3%(0.4배 과소).
+     false면 예전(셀당 균등) 동작. */
+  areaWeighted: true,
   /* ── #3 가닥 늘리기 (2026-08-08) — <b>이 파일에서 밀도 손잡이는 여기 하나</b> ──
      사용자: "3D로 만들어 두께가 생기면서 성글어진 것들 채워야 돼."
      헐이 분리되면서 가닥이 두피면~헐 사이 껍질에 t로 흩어진다. 같은 개수라도
@@ -13829,6 +13838,32 @@ function headSurfaceCellPoint(ci, r1, r2, hullW, hullD, bucketOfY, CY, b, NT, NP
   return { x: hullW[bi]*Math.sin(th), y, z: hullD[bi]*Math.cos(th) };
 }
 
+/* 셀마다의 <b>실제 표면적</b>(평균 1로 정규화). 격자가 (극각 × 방위) 균등이라
+   면적은 sin(phi)에 비례해 <b>극에서 1/20</b>까지 작아진다 — 그걸 안 보면
+   "셀당 같은 수"가 곧 "정수리에 20배 몰기"가 된다(사용자 지적).
+   도함수를 풀지 않고 구석점 네 개로 두 삼각형 넓이를 더해 잰다 — 좌표식은
+   headSurfaceCellPoint 그대로라 격자가 어긋날 수 없다. */
+function headSurfaceCellAreas(hullW, hullD, bucketOfY, CY, b, NT, NP){
+  const A = new Float32Array(NT*NP);
+  const P = (pi, ti)=> headSurfaceCellPoint(pi*NT + (((ti % NT)+NT)%NT),
+      pi >= NP ? 1 : 0, 0, hullW, hullD, bucketOfY, CY, b, NT, NP);
+  const cross = (u, v)=> Math.hypot(u.y*v.z - u.z*v.y, u.z*v.x - u.x*v.z, u.x*v.y - u.y*v.x);
+  const sub = (p, q)=> ({ x:p.x-q.x, y:p.y-q.y, z:p.z-q.z });
+  let sum = 0;
+  for(let pi=0; pi<NP; pi++) for(let ti=0; ti<NT; ti++){
+    const ci = pi*NT + ti;
+    const p00 = headSurfaceCellPoint(ci, 0, 0, hullW, hullD, bucketOfY, CY, b, NT, NP);
+    const p10 = headSurfaceCellPoint(ci, 1, 0, hullW, hullD, bucketOfY, CY, b, NT, NP);
+    const p01 = headSurfaceCellPoint(ci, 0, 1, hullW, hullD, bucketOfY, CY, b, NT, NP);
+    const p11 = headSurfaceCellPoint(ci, 1, 1, hullW, hullD, bucketOfY, CY, b, NT, NP);
+    const a = 0.5*cross(sub(p10,p00), sub(p01,p00)) + 0.5*cross(sub(p10,p11), sub(p01,p11));
+    A[ci] = a; sum += a;
+  }
+  const mean = sum / (NT*NP) || 1;
+  for(let i=0;i<A.length;i++) A[i] /= mean;      // 평균 1
+  return A;
+}
+
 function pruneOverlappedRoots(strands, rootField, hullW, hullD, bucketOfY, CY, b, occProbe){
   const O = HAIR_OVERLAP;
   if(!O.on || !rootField || !rootField.ok || !strands.length) return null;
@@ -13872,7 +13907,7 @@ function pruneOverlappedRoots(strands, rootField, hullW, hullD, bucketOfY, CY, b
        ③ 목표치에 <b>껍질 몫</b>(shellFill)을 곱한다 — 헐 분리로 가닥이 두피면~헐
           사이에 t로 흩어지므로 한 겹만 보면 성글다. 그리고 <b>주력 뷰가 그 셀에
           실제로 심은 수(nTop) 아래로는 절대 안 깎는다</b> — 그게 겹침 없는 실측이다. */
-  const ratios = [], topOf = new Map(), cellCounts = [];
+  const ratios = [], topOf = new Map(), cellCounts = [], cellCellIds = [];
   inCell.forEach((arr, ci)=>{
     /* (2026-08-08 #2) topOf는 <b>모든 셀</b>에 대해 낸다 — 균일 모드에서는 추정 셀도
        대상이라 "주력 뷰가 실제로 심은 수"라는 바닥이 거기에도 필요하다.
@@ -13887,7 +13922,7 @@ function pruneOverlappedRoots(strands, rootField, hullW, hullD, bucketOfY, CY, b
     for(const v in cnt) if(!best || fac[v] > fac[best]) best = v;   // 제일 정면으로 본 뷰
     const nTop = cnt[best] || 0;
     topOf.set(ci, nTop);
-    cellCounts.push(arr.length);
+    cellCounts.push(arr.length); cellCellIds.push(ci);
     if(est[ci] === 0 && den[ci] >= O.minDen && nTop >= O.minSamplesPerCell) ratios.push(nTop / den[ci]);
   });
   if(ratios.length < O.calibMinCells){
@@ -13903,15 +13938,24 @@ function pruneOverlappedRoots(strands, rootField, hullW, hullD, bucketOfY, CY, b
      K를 올려 다시 잰다(로그에 남긴다). */
   /* (2026-08-08 #2) 균일 목표치 — 지금 셀당 가닥 수의 uniformPct 백분위 × 껍질 몫.
      상수를 지어내지 않고 <b>이 사람의 현재 분포</b>에서 뽑는다(사람마다 자동으로 맞음). */
+  const cellArea = O.areaWeighted
+    ? headSurfaceCellAreas(hullW, hullD, bucketOfY, CY, b, NT, NP) : null;
+  const areaOf = (ci)=> cellArea ? Math.max(0.05, cellArea[ci]) : 1;
   let uniformTarget = 0;
   if(O.uniform && cellCounts.length){
-    const cc = cellCounts.slice().sort((p,q)=>p-q);
     /* 껍질 몫(shellFill)은 <b>안 곱한다</b> — base가 이미 "지금 실제로 셀에 있는 수"라
        껍질에 흩어진 결과가 포함돼 있다. 곱하면 이중 계산이 되어 목표가 26가닥/셀까지
        뛰고 모델이 두 배로 부푼다(하네스 실측). 고르게 만드는 게 #2고, 전체를 더
        빽빽하게 만드는 건 #3이다 — 두 손잡이를 섞지 않는다. */
-    const base = cc[Math.min(cc.length-1, Math.floor(cc.length * O.uniformPct))];
-    uniformTarget = Math.max(O.minKeep, Math.round(base * O.headroom * O.densityMul));
+    /* base는 "면적 1짜리 셀의 목표"가 되도록 <b>면적으로 나눠</b> 뽑는다.
+       안 그러면 면적을 곱하는 순간 총량이 그만큼 부푼다(작은 셀 기준으로 잡힌 값에
+       큰 셀 면적을 곱하게 되므로). */
+    const cc2 = O.areaWeighted && cellArea
+      ? cellCounts.map((n, i)=> n / Math.max(0.05, cellArea[cellCellIds[i]]))
+      : cellCounts;
+    const ccs = cc2.slice().sort((p,q)=>p-q);
+    const base = ccs[Math.min(ccs.length-1, Math.floor(ccs.length * O.uniformPct))];
+    uniformTarget = Math.max(O.minKeep, base * O.headroom * O.densityMul);
   }
   // 균일 모드에서 이 셀을 손대도 되나 — 실측으로 "머리 없음"이 확인된 곳만 예외
   const isBald = (ci)=> est[ci] === 0 && den[ci] < O.baldDen;
@@ -13922,7 +13966,8 @@ function pruneOverlappedRoots(strands, rootField, hullW, hullD, bucketOfY, CY, b
          뒀는데, top은 "주력 뷰 몫"이라 겹쳐 심긴 셀에서는 현재 수보다 작다 → 대머리를
          오히려 <b>솎아냈다</b>(768→384). 안 채우는 것과 깎는 것은 다르다. */
       if(isBald(ci)) return Infinity;
-      return Math.max(O.minKeep, top, uniformTarget);
+      // 면적 비례 — 작은 셀(정수리)에 같은 수를 몰아주지 않는다
+      return Math.max(O.minKeep, top, Math.round(uniformTarget * areaOf(ci)));
     }
     if(est[ci] !== 0) return Infinity;                   // 예전 동작: 추정 셀은 손 안 댐
     return Math.max(O.minKeep, top, Math.round(k * den[ci] * O.headroom * O.shellFill));
@@ -14035,8 +14080,9 @@ function pruneOverlappedRoots(strands, rootField, hullW, hullD, bucketOfY, CY, b
     + ' | 과밀 셀 ' + thinnedCells + ' · 채운 셀 ' + filledCells
     + '(그중 원본 없어 이웃에서 빌림 ' + emptyCells + ')'
     + (O.uniform
-        ? ' · <b>균일 목표 ' + uniformTarget + '가닥/셀</b>(전 두상 동일, 밀도 손잡이 ×'
-          + O.densityMul + ') · 대머리로 보고 안 채운 셀 ' + baldCells + '개'
+        ? ' · <b>목표 ' + uniformTarget.toFixed(1) + '가닥/면적1셀</b>'
+          + (O.areaWeighted ? '(<b>면적 비례</b> — 정수리 셀은 1/20이라 그만큼 적게)' : '(셀당 균등)')
+          + ' · 밀도 손잡이 ×' + O.densityMul + ' · 대머리로 보고 안 채운 셀 ' + baldCells + '개'
         : ' · 추정 셀 ' + keptEstCells + '개는 그대로'));
   /* 기준 한 줄 — 다음에 "성글다/빽빽하다"가 오면 이 세 숫자만 보면 된다:
        자연 = 지금 모델이 실제로 갖고 있는 셀당 밀도
