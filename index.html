@@ -1660,14 +1660,13 @@ input[type=range]::-moz-range-thumb{width:20px;height:20px;border-radius:50%;bac
 .view-zoom span{font-family:'JetBrains Mono',monospace;font-size:10.5px;color:var(--text-muted);
   min-width:38px;text-align:center;}
 #adjustCanvas{touch-action:none;}
-/* 시술모드 바 (#5, 2026-08-08) — 미리보기 좌상단, 스타일 태그 아래 */
-.comb-bar{position:absolute;left:10px;top:40px;z-index:70;display:flex;align-items:center;gap:4px;}
-.comb-bar button{background:rgba(27,24,22,0.78);backdrop-filter:blur(4px);border:1px solid var(--line);
+/* 마네킹 초기화 바 (#5, 2026-08-08) — 미리보기 좌상단, 스타일 태그 아래 */
+.mode-bar{position:absolute;left:10px;top:40px;z-index:70;display:flex;align-items:center;gap:4px;}
+.mode-bar button{background:rgba(27,24,22,0.78);backdrop-filter:blur(4px);border:1px solid var(--line);
   color:var(--accent-soft);font-size:11px;line-height:1;padding:6px 10px;border-radius:8px;cursor:pointer;}
-.comb-bar button:hover{border-color:var(--accent);}
-.comb-bar button.on{background:var(--accent);color:#1B1816;border-color:var(--accent);font-weight:700;}
-.comb-bar button:disabled{opacity:.4;cursor:default;}
-.comb-bar .comb-sub{display:flex;gap:4px;}
+.mode-bar button:hover{border-color:var(--accent);}
+.mode-bar button.on{background:var(--accent);color:#1B1816;border-color:var(--accent);font-weight:700;}
+.mode-bar button:disabled{opacity:.4;cursor:default;}
 .lang-toggle{background:var(--surface-2);color:var(--text);border:1px solid var(--line);
   border-radius:999px;padding:4px 11px;font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:500;
   letter-spacing:.04em;cursor:pointer;line-height:1.5;}
@@ -1765,14 +1764,12 @@ input[type=range]::-moz-range-thumb{width:20px;height:20px;border-radius:50%;bac
       <div class="adjust-preview">
         <canvas id="adjustCanvas"></canvas>
         <div class="preview-tag" id="adjustStyleTag">스타일 미선택</div>
-        <!-- (#5, 2026-08-08) 시술모드 — 켜면 드래그가 빗질이 된다(화면 이동은 Shift+드래그).
-             빗질한 변위는 유지되고, 되돌리기는 드래그 한 번 단위. -->
-        <div class="comb-bar">
-          <button id="combModeBtn" onclick="toggleCombMode()" title="드래그로 빗질 · Shift+드래그는 화면 이동">시술모드</button>
-          <span class="comb-sub" id="combBar" style="display:none;">
-            <button id="combUndoBtn" onclick="combUndo()" disabled>빗질 되돌리기</button>
-            <button onclick="mannequinReset()">마네킹 리셋</button>
-          </span>
+        <!-- (#5, 2026-08-08) 마네킹 초기화 표시/전환.
+             '스타일 미선택'으로 들어오면 자동으로 켜진 상태다(selectNoStyle).
+             끄면 손님 원래 컬로 돌아간다. -->
+        <div class="mode-bar">
+          <button id="mannequinBtn" onclick="toggleMannequin()"
+                  title="컬·스타일링을 지운 마네킹 상태에서 시술을 시작합니다">마네킹 초기화 OFF</button>
         </div>
         <button class="debug-btn mask-debug-btn" id="maskDebugToggle" onclick="toggleMaskDebug()">가닥 보기</button>
         <button class="debug-btn raw-debug-btn" id="rawDebugToggle" onclick="toggleRawDebug()">원본 결 보기</button>
@@ -4787,6 +4784,7 @@ function updateSegStatus(){
 function setupAdjustScreen(){
   unlockTab('adjust'); renderAngleSwitch('angleSwitch');
   bindAdjustViewGestures(); syncAdjustZoomUI();   // (2026-08-08) 확대/이동 손잡이
+  syncMannequinBtn();                             // 마네킹 초기화 상태 표시(스타일 화면에서 정해져 들어온다)
   const maskBtn = document.getElementById('maskDebugToggle');
   if(maskBtn){
     maskBtn.classList.toggle('on', state.debugShowMask);
@@ -5754,21 +5752,38 @@ function selectStyle(id){
   syncSliderUI();
 }
 
-// "스타일 미적용" — 프리셋 없이 결원본을 바로 조정화면에서 직접 만짐.
-// 각 섹션을 자기 기본값(SECTIONS[id].defaults)으로, 전역 컬은 0으로
-// 초기화해서 실제 촬영된 결방향만 그대로 따라가는 상태에서 시작하게 함.
+/* "스타일 미선택" = <b>마네킹 초기화 상태</b> (2026-08-08, 사용자 정의)
+   ─────────────────────────────────────────────────────────────────
+   사용자: "내가 말하는 시술모드라는 거는 머리에 컬이랑 스타일링을 다 없애고
+   마네킹 초기화 상태로 만들어놓는 걸 말하는 거야. 처음에 스타일 선택안함을
+   누르고 들어가면 머리가 초기화상태가 되도록."
+   이유는 시술 순서다 — 커트 → 펌 → 염색 → 스타일링인데, 시작할 때 이미 컬과
+   스타일링이 들어가 있으면 그 위에 또 얹는 꼴이라 시술이 복잡해진다.
+
+   그래서 여기서 <b>세 가지</b>를 모두 0으로 만든다:
+     ① 섹션 파라미터 기본값 + 전 섹션 컬 0        (예전부터 하던 것)
+     ② 스타일링(넘김·볼륨·결흐름·가르마) 중립     (resetSections가 처리)
+     ③ 손님 머리에 <b>구워져 있는</b> 웨이브 펴기 (BASE_RESET.straighten)
+   ③이 빠져 있었다. ①②는 우리 슬라이더를 되돌리는 것뿐이고, 손님의 웨이브는
+   슬라이더가 아니라 캡처된 가닥 좌표 자체에 들어 있다(사진 결 필드를 따라
+   그린 경로를 3D로 올린 것이라 곱슬 1.08°/px 같은 실측 굴곡이 그대로 있다).
+   ③까지 해야 진짜 "마네킹 상태"가 된다. */
 function selectNoStyle(){
   state.selectedStyle = null;
   document.querySelectorAll('.style-card').forEach(c=>c.classList.remove('selected'));
   const noneCard = document.getElementById('style-none');
   if(noneCard) noneCard.classList.add('selected');
   document.getElementById('toAdjustBtn').disabled = false;
-  resetSections();       // 섹션별 기본값으로 리셋
+  resetSections();       // ① 섹션별 기본값 + ② 스타일링 중립
   state._globalCurl = 0; // 하위호환 플래그
   // "원본 결" 취지: 펌 없이 실측 결방향만 따라가도록 전 섹션 컬을 0으로.
   SECTION_ORDER.forEach(id=>{ state.sections[id].curl = 0; });
+  mannequinReset();      // ③ 손님 웨이브 펴기 + 빗질 삭제
   syncSliderUI();
 }
+/* 프리셋 스타일을 고르면 초기화 상태를 <b>풀지 않는다</b>. 시술 순서상
+   커트·펌은 편 머리 위에 얹는 게 맞고, 손님 원래 컬로 돌아가고 싶으면
+   조정 화면의 '손님 원래 컬' 버튼으로 되돌린다. */
 loadCustomStylesFromStorage(); // 이전 세션에 등록해둔 커스텀 스타일 복원 — 반드시 buildStyleGrid()보다 먼저 실행돼야 함
 buildStyleGrid();
 
@@ -8931,6 +8946,18 @@ function buildHairClipMask(hairCanvas, fit, cw, ch, growPx, angle){
   return grown;
 }
 /* 조정으로 <b>늘린</b> 만큼의 여유(px). 중립이면 0. */
+/* 빗질이 마스크 밖으로 밀어낸 최대 거리를 캔버스 px로. 변위장의 최대 크기를
+   그대로 쓰므로(COMB.maxDisp) "빗은 만큼"이 정확히 여유가 된다.
+   상한은 캔버스 폭의 25% — 실수로 화면 끝까지 끈 한 획이 클립을 통째로
+   무력화하지 않도록 하는 안전선(넘으면 그 이상은 클립이 잡는다). */
+function combClipGrowPx(fit, angle, rawMode){
+  if(rawMode || !COMB.maxDisp) return 0;
+  const m = state.hair3Dneutral, cal = m && m.viewCal && m.viewCal[angle];
+  const mi = state.hairMasks && state.hairMasks[angle];
+  if(!cal || !mi || !(cal.s > 0) || !(mi.w > 0)) return 0;
+  const px = (COMB.maxDisp / cal.s) * (fit.dw / mi.w);   // 모델 → 원본px → 캔버스px
+  return Math.max(0, Math.min(px, fit.dw * 0.25));
+}
 function hairClipGrowPx(fit, rawMode){
   if(rawMode) return 0;
   let maxRatio = 1;
@@ -8944,12 +8971,13 @@ function hairClipGrowPx(fit, rawMode){
 }
 function applyHairLayerClip(layer, hairCanvas, fit, cw, ch, rawMode, angle){
   if(!HAIR_LAYER_CLIP.on || !hairCanvas) return 0;
-  /* (#5) 시술모드에서 빗질한 게 있으면 이 클립을 건다. 이 클립은 "사진에
-     머리가 없는 자리에는 안 그린다"인데, 빗질은 <b>일부러</b> 그 자리로 옮기는
-     행위라 그대로 두면 빗은 만큼 그대로 지워진다(빗질이 화면에 안 나타남).
-     빗질을 지우면 다시 원래 클립으로 돌아간다. */
-  if(COMB.strokes.length) return 0;
-  const grow = hairClipGrowPx(fit, rawMode);
+  /* (#5 수정, 2026-08-08) 처음엔 빗질이 있으면 클립을 <b>통째로 껐다</b>.
+     그러면 빗질이 안 지워지긴 하는데, 클립이 하던 일 전부가 같이 사라져서
+     가닥이 얼굴 위로 마구 그려진다(사용자 실기기: 시술모드 켜고 클릭 한 번에
+     머리가 얼굴을 덮는 성긴 실타래가 됨). 클립은 "마스크 밖 금지" 하나가
+     아니라 렌더 모양을 잡아 주는 장치다 — 끄는 게 아니라 <b>빗질한 만큼만
+     넓힌다</b>. 길이를 늘렸을 때 growPerRatio로 여유를 주는 것과 같은 처리다. */
+  const grow = hairClipGrowPx(fit, rawMode) + combClipGrowPx(fit, angle, rawMode);
   const mask = buildHairClipMask(hairCanvas, fit, cw, ch, grow, rawMode ? null : angle);
   const x = layer.getContext('2d');
   x.save();
@@ -14994,6 +15022,63 @@ const CURL3D_R_MAX = 0.070; // 큰 로드(웨이브폭 100%) — 느슨한 큰 �
 // 압축돼(피치<둘레) 끝이 위로 끌려 올라가는 진짜 링렛이 된다. curlAmt(컬 세기, 0~100)
 // =로드 밀착도(반경)+코일 촘촘함(피치), waveT(웨이브 폭)=로드 반경 R. 뿌리 고정.
 // 같은 로드에 긴 가닥은 자동으로 더 여러 바퀴. 감은 뒤 gravityDroop3D가 아래로 늘어뜨림.
+/* ══════════════════════════════════════════════════════════════════
+   시술 전 초기화 — 손님 머리를 <b>생머리로 펴고</b> 시작한다 (2026-08-08)
+   ─────────────────────────────────────────────────────────────────
+   사용자 의도(#5 재확인): "커트 먼저, 컬 넣고, 염색하고, 그 다음 스타일링인데,
+   처음에 머리에 컬이 들어가 있거나 스타일링이 되어 있으면 시술하기가 더
+   복잡해지잖아. 그래서 렌더링된 머리를 초기화하고 시작하자."
+
+   앞서 만든 마네킹 리셋은 <b>우리 슬라이더</b>만 중립으로 돌린다. 그런데 손님
+   머리의 웨이브는 슬라이더가 아니라 <b>캡처된 가닥 자체</b>에 들어 있다 —
+   3D 가닥은 사진의 결 필드를 따라 그린 2D 경로를 올린 것이라, 곱슬 1.08°/px
+   같은 실측 굴곡이 폴리라인 좌표에 그대로 구워져 있다. 그 위에 펌을 걸면
+   "이미 말린 머리에 또 마는" 상태가 된다.
+
+   그래서 조정 파이프라인 <b>제일 앞(⓪)</b>에 편다:
+     · 라플라시안 평활 — 이웃 두 점의 중점 쪽으로 당긴다(굴곡만 깎이고 큰
+       흐름은 남는다). 지어낸 곡선으로 바꾸는 게 아니라 <b>있던 굴곡을 줄이는</b>
+       연산이라 강도 0이면 원본과 완전히 동일하다.
+     · 뿌리 고정 + 길이 보존 — 평활은 폴리라인을 줄이므로, 원래 마디 길이로
+       다시 걸어 총 길이를 지킨다. 편 머리는 그만큼 <b>아래로 더 내려간다</b>
+       (실제로도 그렇다 — 곱슬을 펴면 길어 보인다).
+══════════════════════════════════════════════════════════════════ */
+const BASE_RESET = { straighten: 0, passes: 8, lambda: 0.5 };
+function straightenStrand3D(pts, k){
+  if(!(k > 0) || !pts || pts.length < 3) return pts;
+  const n = pts.length;
+  const passes = Math.max(1, Math.round(BASE_RESET.passes * Math.min(1, k)));
+  const lam = BASE_RESET.lambda * Math.min(1, k);
+  let cur = new Array(n), nxt = new Array(n);
+  for(let i=0;i<n;i++) cur[i] = { x:pts[i].x, y:pts[i].y, z:pts[i].z };
+  for(let s=0;s<passes;s++){
+    nxt[0] = cur[0]; nxt[n-1] = cur[n-1];
+    for(let i=1;i<n-1;i++){
+      const a = cur[i-1], b = cur[i], c = cur[i+1];
+      nxt[i] = { x: b.x + lam*((a.x+c.x)/2 - b.x),
+                 y: b.y + lam*((a.y+c.y)/2 - b.y),
+                 z: b.z + lam*((a.z+c.z)/2 - b.z) };
+    }
+    const t = cur; cur = nxt; nxt = t;
+  }
+  /* 길이 복원은 <b>평활된 곡선의 접선</b>을 따라 걷는다.
+     처음엔 "다음 목표점(cur[i])을 향해 원래 마디 길이만큼" 걸었는데, 평활은
+     폴리라인을 <b>줄이므로</b> 전체 길이로 걷는 out이 cur보다 앞서 나가고,
+     그 다음 방향이 뒤로 꺾여 지그재그가 됐다 — 하네스에서 꺾임각이
+     28.3° → 40.5°로 <b>오히려 커졌다</b>(펴려고 만든 함수가 더 곱슬거림).
+     접선(cur[i]−cur[i−1])을 쓰면 모양은 평활된 곡선, 길이는 원본이 된다. */
+  const out = [ { x:pts[0].x, y:pts[0].y, z:pts[0].z } ];
+  for(let i=1;i<n;i++){
+    const L = Math.hypot(pts[i].x-pts[i-1].x, pts[i].y-pts[i-1].y, pts[i].z-pts[i-1].z);
+    const a = out[i-1];
+    let dx = cur[i].x-cur[i-1].x, dy = cur[i].y-cur[i-1].y, dz = cur[i].z-cur[i-1].z;
+    const d = Math.hypot(dx,dy,dz);
+    if(d < 1e-9){ out.push({ x:a.x, y:a.y - L, z:a.z }); continue; }  // 겹친 점 — 중력 방향으로
+    out.push({ x:a.x + dx/d*L, y:a.y + dy/d*L, z:a.z + dz/d*L });
+  }
+  return out;
+}
+
 function curlStrand3D(pts, curlAmt, waveT){
   if(!pts || pts.length < 3 || !(curlAmt > 0)) return pts;
   const root = pts[0], tip = pts[pts.length-1];
@@ -16385,6 +16470,7 @@ const COMB = {
   // 통째로 건너뛴다 — 이게 없으면 안 움직이는 가닥까지 8모서리 보간을 돈다
   // (실측: 16,000가닥 442ms → 이 컷으로 대부분 제거).
   bmin: null, bmax: null,
+  maxDisp: 0,        // 변위장의 최대 크기(모델 단위) — 클립 여유 계산에 쓴다
 };
 /* 격자 상자 — 중립 모델의 실제 점 범위에서 잡는다(지어낸 크기 아님). */
 function combEnsureBox(){
@@ -16454,6 +16540,9 @@ function combSplat(p, d, r){
         const w = Math.pow(1 - dist/r, COMB.falloff);
         const o = ((k*N + j)*N + i) * 3;
         g[o] += d.x*w; g[o+1] += d.y*w; g[o+2] += d.z*w;
+        // 클립 여유(combClipGrowPx)가 쓸 "빗질한 최대 거리" — 여기서 공짜로 잰다
+        const mag = Math.hypot(g[o], g[o+1], g[o+2]);
+        if(mag > COMB.maxDisp) COMB.maxDisp = mag;
       }
     }
   }
@@ -16475,7 +16564,7 @@ function combSampleInto(p, out){
   return out;
 }
 function combRebake(){
-  COMB.grid = null; COMB.bmin = COMB.bmax = null;
+  COMB.grid = null; COMB.bmin = COMB.bmax = null; COMB.maxDisp = 0;
   if(!COMB.strokes.length) return;
   combGrid();
   /* 재굽기는 원래 명령값(s.d)으로 다시 뿌려야 한다 — combSplat이 감쇠 보정을
@@ -16483,7 +16572,7 @@ function combRebake(){
      인자 d를 지역 변수로만 바꾸고 호출자의 객체는 안 건드린다). */
   for(const s of COMB.strokes) combSplat(s.p, s.d, s.r);
 }
-function combClear(){ COMB.strokes.length = 0; COMB.grid = null; COMB.bmin = COMB.bmax = null; }
+function combClear(){ COMB.strokes.length = 0; COMB.grid = null; COMB.bmin = COMB.bmax = null; COMB.maxDisp = 0; }
 function combUndo(){
   if(!COMB.strokes.length) return;
   // 한 번의 드래그는 여러 획으로 쌓이므로 <b>드래그 단위</b>로 되돌린다.
@@ -16518,12 +16607,14 @@ function combStrand3D(pts){
     moved[i] = { x:p.x + _combTmp.x*grip, y:p.y + _combTmp.y*grip, z:p.z + _combTmp.z*grip };
   }
   if(!any) return pts;
-  // 길이 보존 — 원래 마디 길이로 다시 걷는다(빗질해도 머리가 안 늘어난다)
+  /* 길이 보존 — 옮겨진 곡선의 <b>접선</b>을 따라 원래 마디 길이로 다시 걷는다.
+     (목표점을 향해 걷는 방식은 곡선이 줄어들면 앞질러 나가 지그재그가 된다 —
+      straightenStrand3D에서 실측으로 확인한 그 함정. 같은 형태를 쓴다.) */
   const out = [moved[0]];
   for(let i=1;i<pts.length;i++){
     const L = Math.hypot(pts[i].x-pts[i-1].x, pts[i].y-pts[i-1].y, pts[i].z-pts[i-1].z);
-    const a = out[i-1], m = moved[i];
-    let dx = m.x-a.x, dy = m.y-a.y, dz = m.z-a.z;
+    const a = out[i-1];
+    let dx = moved[i].x-moved[i-1].x, dy = moved[i].y-moved[i-1].y, dz = moved[i].z-moved[i-1].z;
     const d = Math.hypot(dx,dy,dz) || 1;
     out.push({ x:a.x + dx/d*L, y:a.y + dy/d*L, z:a.z + dz/d*L });
   }
@@ -16579,21 +16670,45 @@ function combStrokeFromDrag(anchor, dxPx, dyPx){
   combSplat(anchor, d, r);
   return d;
 }
+/* 빗질(COMB)은 <b>주차</b>다 (2026-08-08). 엔진(변위장·길이보존·되돌리기)은
+   검증까지 끝났지만, 사용자가 말한 시술모드는 "빗질할 수 있는 모드"가 아니라
+   <b>마네킹 초기화 상태</b>였다. UI를 붙이지 않으므로 COMB.on은 계속 false이고
+   빗질 경로는 한 번도 안 탄다(비용 0). 나중에 필요하면 버튼 하나만 다시 달면 된다. */
 function toggleCombMode(){
   COMB.on = !COMB.on;
-  const b = document.getElementById('combModeBtn');
-  if(b) b.classList.toggle('on', COMB.on);
-  const bar = document.getElementById('combBar');
-  if(bar) bar.style.display = COMB.on ? 'flex' : 'none';
   combRefresh();
 }
-/* 마네킹 리셋 — 갓 꽂은 마네킹처럼 스타일링을 전부 중립으로, 빗질도 지운다.
-   커트·펌·컬러는 <b>시술 결과</b>라 건드리지 않는다(연출만 되돌린다). */
+/* 마네킹 리셋 — 시술을 <b>깨끗한 바닥</b>에서 시작하기 위한 초기화.
+     · 스타일링(넘김·볼륨·결흐름·가르마) 전부 중립
+     · 빗질 삭제
+     · 손님 머리에 구워져 있는 웨이브를 편다(생머리)
+   커트·펌·컬러는 <b>시술 결과</b>라 건드리지 않는다 — 되돌리려면 '초기화'. */
 function mannequinReset(){
   state.stylingByView = neutralStylingByView();
   combClear();
+  BASE_RESET.straighten = 1;
+  syncMannequinBtn();
   if(typeof buildGyControls === 'function') buildGyControls();
   combRefresh();
+}
+function syncMannequinBtn(){
+  const b = document.getElementById('mannequinBtn');
+  if(!b) return;
+  const on = BASE_RESET.straighten > 0;
+  b.classList.toggle('on', on);
+  b.textContent = on ? '마네킹 초기화 ON' : '마네킹 초기화 OFF';
+}
+/* 켜면 <b>전체 초기화</b>(스타일링 중립 + 손님 웨이브 펴기), 끄면 손님 원래
+   컬로 되돌린다(스타일링은 그때까지 만진 값을 그대로 둔다 — 끄는 건
+   "되살리기"지 "리셋"이 아니다). */
+function toggleMannequin(){
+  if(BASE_RESET.straighten > 0){
+    BASE_RESET.straighten = 0;
+    syncMannequinBtn();
+    combRefresh();
+  } else {
+    mannequinReset();
+  }
 }
 
 // (11차) 중립 3D 모델에 섹션별 조정 연산자(길이·컬)를 적용해 "조정된 월드 가닥"을
@@ -16637,7 +16752,10 @@ function computeAdjustedHair3DStrands(srcAngleFilter, stride){
     const sec = (state.sections && state.sections[st.sec]) || {};
     const ratio = sectionLengthRatio(st.sec, sec.length);
     const curlAmt = (typeof sec.curl==='number')?sec.curl:0;
-    let pts = lengthStrand3D(st.pts, ratio);                       // ① 3D 길이
+    // ⓪ 시술 전 초기화 — 손님 머리에 구워져 있는 웨이브를 편다(위 주석 참조).
+    //    strighten=0이면 원본 그대로라 기존 동작이 특수해로 보존된다.
+    const base0 = BASE_RESET.straighten > 0 ? straightenStrand3D(st.pts, BASE_RESET.straighten) : st.pts;
+    let pts = lengthStrand3D(base0, ratio);                        // ① 3D 길이
     pts = curlStrand3D(pts, curlAmt, ((typeof sec.wave==='number')?sec.wave:50)/100); // ② 3D 컬(로드 나선)
     if(curlAmt > 0) pts = gravityDroop3D(pts, curlAmt);           // ③ 감은 뒤 중력 처짐
     // ④ 가르마 — 두피 표면 방향장(분할선 양쪽이 반대로 갈라짐). 스타일링은
@@ -17395,7 +17513,7 @@ const I18N = {
   '드래그해서 회전':'Drag to rotate', '기준면 보기':'Show reference surface',
   '드래그 회전 · Shift+드래그 이동 · 휠 확대':'Drag to rotate · Shift+drag to move · wheel to zoom',
   // ── 시술모드 (#5) ──
-  '시술모드':'Salon mode', '빗질 되돌리기':'Undo comb', '마네킹 리셋':'Mannequin reset',
+  '마네킹 초기화 ON':'Mannequin reset: ON', '마네킹 초기화 OFF':'Mannequin reset: OFF',
   'AI 분석':'AI analysis', '음성으로 조정하기':'Adjust by voice',
   '예: "크라운 길게", "네이프 짧게", "볼륨 추가"':'e.g. "crown longer", "nape shorter", "add volume"',
   '크라운·프론트·템플·사이드·후두부·네이프 + 길게·짧게·볼륨·컬':
