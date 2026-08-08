@@ -13253,6 +13253,10 @@ const HAIR_OCC3D = {
   minFacing: 0.12, // 정면성이 이 미만인 뷰는 투표에서 뺀다(실루엣 스치기)
   occThr:   0.35,  // 점유도가 이 미만이면 "머리카락 없음"
   minSeen:  0.15,  // 투표 가중치 합이 이 미만이면 판단 보류(아무도 제대로 못 봄 → 통과)
+  /* (2026-08-08) <b>제일 잘 본 뷰 하나</b>가 이 정면성을 넘어야 "머리 없음"으로 지울 수 있다.
+     스친 표는 여러 개 합쳐져도 지울 권한이 없다 — 정수리가 정확히 그 자리다(위 at() 주석).
+     0으로 두면 예전 동작(합만 보기). 값 감각: 적도 정면 w=1.0, 정수리 근처 w≈0.4. */
+  confidentFacing: 0.40,
   offRun:   3,     // 연속 이만큼 비어야 자른다(마스크 구멍·경계 노이즈 관용 —
                    // 2D traceStrandPath의 _offRun과 같은 발상, 같은 값)
   skipRoot: 2,     // 뿌리 쪽 이 개수는 검사 안 함(두피 경계는 항상 애매하다)
@@ -13394,6 +13398,7 @@ function getViewDensitySampler(angle){
    project3DPointToView와 <b>같은 식</b>을 쓰되 회전행렬을 뷰마다 한 번만 만든다
    (그 함수는 호출마다 composeRotationZYX를 새로 조립해서, 점 수십만 개에 쓰면
    그 조립이 비용의 대부분이 된다). */
+let _grazingAbstain = 0;   // [진단] 스친 표만 있어 판단 보류한 횟수(정수리 진단용)
 function makeHairOccupancyProbe(views, names, yTop, CY, headR){
   if(!HAIR_OCC3D.on) return null;
   const O = HAIR_OCC3D;
@@ -13464,16 +13469,33 @@ function makeHairOccupancyProbe(views, names, yTop, CY, headR){
       }
       return wSum > 0 ? fSum/wSum : 0;
     },
+    /* ── 스친 표만으로는 지우지 않는다 (2026-08-08) ────────────────────────
+       사용자: "후면 정수리는 여전히 좀 빈다."
+       원인이 여기였다. 정수리는 <b>네 카메라가 전부 스치듯</b> 본다 — 수평 카메라
+       넷의 축이 전부 정수리 접선 방향이라 어느 하나도 제대로 못 본다. 그런데
+       기존 판정은 <b>가중치 합</b>만 봤다: 스친 표 넷(각 w≈0.15)이 합쳐지면
+       0.6 > minSeen(0.15)이라 "충분히 봤다"가 되고, 그 표들로 occ를 낸다.
+       그 자리에서 각 뷰는 마스크 <b>맨 윗줄</b>을 찍는데 거기는 1~2px만 어긋나도
+       마스크 밖이라 "머리 없음"(0)이 나온다 → occ가 낮게 나옴 → 정수리를
+       지나는 가닥이 잘린다(실측: 자름 1,147개 · 평균 9.7점 제거).
+       고침: 합이 아니라 <b>제일 잘 본 뷰 하나</b>가 기준을 넘어야 지울 수 있다.
+       아무도 제대로 못 봤으면 판단 보류 — 이 함수가 원래 내세운 규칙
+       ("모르는 것을 지우지는 않는다")을 스친 표에도 적용하는 것뿐이다. */
     at(px, py, pz){
-      let wSum = 0, hSum = 0;
+      let wSum = 0, hSum = 0, wBest = 0;
       const wy = py - CY;
       for(let i=0;i<cams.length;i++){
         const p = projectToCam(cams[i], px, wy, pz);
         if(!p) continue;
+        if(p.w > wBest) wBest = p.w;
         wSum += p.w; hSum += p.w * cams[i].smp.at(p.ix, p.iy);
       }
-      // 아무도 제대로 못 보면 판단 보류(occ=1) — 모르는 것을 지우지는 않는다
-      return wSum > O.minSeen ? { occ: hSum/wSum, seen: wSum } : { occ: 1, seen: wSum };
+      if(wSum <= O.minSeen) return { occ: 1, seen: wSum, abstain: 1 };
+      if(O.confidentFacing > 0 && wBest < O.confidentFacing){
+        _grazingAbstain++;                       // [진단] 스친 표만 있어 보류한 횟수
+        return { occ: 1, seen: wSum, abstain: 2, wBest };
+      }
+      return { occ: hSum/wSum, seen: wSum, wBest };
     },
   };
 }
@@ -13551,13 +13573,15 @@ function buildOccupancyCellField(probe, hullW, hullD, bucketOfY, CY, b){
   if(!probe) return null;
   const O = HAIR_OCC3D, NT = O.NT, NP = O.NP;
   const occ = new Float32Array(NT*NP), seen = new Float32Array(NT*NP);
-  let filled = 0, hairCells = 0;
+  let filled = 0, hairCells = 0, grazing = 0;
   forEachHeadSurfaceCell(hullW, hullD, bucketOfY, CY, b, (ci, x, y, z)=>{
     const r = probe.at(x, y, z);
     occ[ci] = r.occ; seen[ci] = r.seen;
-    if(r.seen > O.minSeen){ filled++; if(r.occ >= O.occThr) hairCells++; }
+    // 보류(abstain)한 셀은 "봤다"로 안 센다 — occ=1로 통과시킨 것뿐이라 실측이 아니다
+    if(r.seen > O.minSeen && !r.abstain){ filled++; if(r.occ >= O.occThr) hairCells++; }
+    else if(r.abstain === 2) grazing++;
   });
-  return { NT, NP, occ, seen, CY, b, filled, hairCells, ok: filled > 0 };
+  return { NT, NP, occ, seen, CY, b, filled, hairCells, grazing, ok: filled > 0 };
 }
 
 /* ── 두상 표면 뿌리 밀도 격자 (2026-08-01) ──────────────────────────
@@ -14493,7 +14517,15 @@ function buildHairStrandsFromPaths(){
       + '개 · 중간에서 자름 ' + occAcc.trimmed + '개(평균 '
       + (occAcc.trimmed ? (occAcc.removedPts/occAcc.trimmed).toFixed(1) : '0') + '점 제거)'
       + ' → 남은 가닥 ' + kept + '개 · 판정 ' + occAcc.n + '회'
-      + (occField ? (' · 표면셀 머리있음 ' + occField.hairCells + '/' + occField.filled) : ''));
+      + (occField ? (' · 표면셀 머리있음 ' + occField.hairCells + '/' + occField.filled
+          + (occField.grazing ? ' · <b>스쳐만 봐서 보류 ' + occField.grazing + '셀</b>(대부분 정수리 — 지우지 않고 통과시킴)' : '')) : ''));
+    if(_grazingAbstain){
+      console.log('[3D·정수리 보류] 스친 표만 있어 "머리 없음" 판정을 보류한 프로브 ' + _grazingAbstain + '회'
+        + ' (기준: 제일 잘 본 뷰의 정면성 ≥ ' + HAIR_OCC3D.confidentFacing + ')'
+        + ' — 이 숫자가 0이면 정수리가 비는 원인은 다른 데 있습니다.'
+        + ' HAIR_OCC3D.confidentFacing=0 으로 두면 예전 동작.');
+      _grazingAbstain = 0;
+    }
     state.hairOcc3D = { probe: occProbe, field: occField, yTop, CY };
     /* (2026-08-01) 뿌리 밀도 격자 — 같은 프로브·같은 격자로 한 번 더 굽는다.
        마네킹 모드가 볼 자산이고, 사진 렌더도 나중에 여기서 밀도를 가져갈 수 있다. */
