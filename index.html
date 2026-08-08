@@ -11068,6 +11068,33 @@ const HEAD_CROWN_CAP = {
   phis: [0.10, 0.20, 0.30, 0.42],    // 0.01~0.55 빈 구간에 끼울 밴드
   anchorPhi: 0.55,                   // 이 밴드의 실측값에 맞춰 이어붙인다
   minFrac: 0.04,                     // 꼭짓점이 정확히 0이 되지 않게(u=mx/aH 나눗셈 보호)
+  /* ── 2차 (2026-08-08): 기준을 <b>두개골</b>로 ──────────────────────────
+     사용자: "일부러 부풀려도 두개골 형상은 어느 정도 알지 않아? 거의 타원이니까."
+     맞다. 그리고 두개골 반축은 이미 재놨다 — <b>얼굴 메쉬 반폭</b>
+     (getFaceHalfWidthMesh, 실기기 0.430)은 랜드마크에서 나온 뼈·피부 면이라
+     머리카락이 안 섞인다. 정수리를 아무리 부풀려도 이 값은 안 흔들린다.
+
+     1차는 캡의 형상을 <b>헤어 밴드</b>(aMax=0.460)에서 가져와 phi0.55 실측에
+     맞도록 ×1.12로 늘렸다. 숫자는 맞았지만 1.12가 <b>무엇인지</b> 알 수 없었다 —
+     옆머리 볼륨일 수도, 밴드 노이즈일 수도, 진짜 두정부 형태일 수도 있다.
+     2차는 같은 식을 이렇게 다시 쓴다:
+         W(phi) = (a_두개골 + t) · sin(phi),   t = 모발 두께(법선 방향)
+     그러면 1.12라는 배율 대신 <b>t = 1.2cm</b>라는 이름 붙은 양이 나오고,
+     그건 독립적으로 실측된 "모발 두께 위 1.0cm"와 대조할 수 있다.
+     즉 캡이 <b>반증 가능해진다</b>. 그리고 t 자체가 정보다 — 정수리를 부풀린
+     사람은 t가 크게 나온다.
+
+     ── 왜 t에 <b>상한을 안 거는가</b> (검증에서 잡음) ──────────────────
+     처음엔 t를 두개골 반폭의 45%로 잘랐다. 밴드 오측정 방어용이었는데, 하네스로
+     돌려 보니 자르는 순간 <b>이음매가 깨졌다</b> — 캡 끝(phi0.42)이 0.254인데
+     실측 밴드(phi0.55)가 0.36이면 그 사이에 0.11짜리 단이 생긴다. 뿌리가 그
+     단에서 튄다. 게다가 그 밴드는 phi 0.55 <b>아래 전체</b>가 이미 그대로 쓰는
+     값이라, 캡만 잘라봐야 두상이 서로 안 맞을 뿐 문제를 고치지도 못한다.
+     그래서 <b>기하는 안 건드리고 숫자만 알린다</b> — 이 파일의 규칙 그대로
+     (재고 알리되, 모르는 것을 지어내거나 조용히 주무르지 않는다).
+     t<0(헐이 두개골 안으로)만 물리적으로 불가능하므로 그건 막는다. */
+  useSkull: true,                    // false면 1차 동작(헤어 밴드 기준 배율)
+  thickWarnFrac: 0.45,               // t가 두개골 반폭의 이 비율을 넘으면 <b>경고만</b>(기하는 그대로)
 };
 const HEAD_PHI_BANDS = [...new Set([
   ...Object.values(SCALP_ZONES).flatMap(z => z.phiRange),
@@ -11475,25 +11502,69 @@ function applyCrownCap(bands){
   });
   if(!(aMax > 0)) return null;
   const sinA = Math.sin(C.anchorPhi);
-  const sA = anchor.halfWidth / Math.max(1e-6, aMax * sinA);
-  const sC = (cMax > 0) ? (anchor.halfDepth || 0) / Math.max(1e-6, cMax * sinA) : 1;
+
+  /* ── 두개골 반축 — 얼굴 랜드마크에서 <b>직접</b> ────────────────────────
+     getScalpEllipsoid()를 못 부른다: 그쪽이 getHeadEllipsoid → 이 함수를 부른다(순환).
+     대신 그쪽이 쓰는 것과 <b>같은 출처</b>를 여기서 직접 읽는다 —
+     가로는 얼굴 메쉬 반폭(머리카락 무관), 깊이는 형상 승계(같은 규칙). */
+  let aSkull = null, cSkull = null;
+  if(C.useSkull){
+    try{ const fa = getFaceHalfWidthMesh(); if(fa > 0 && fa < aMax) aSkull = fa; }catch(e){}
+    if(aSkull != null && cMax > 0) cSkull = aSkull * (cMax / aMax);
+  }
+
+  /* 모발 두께 t — 법선 방향 한 값. anchorPhi의 실측이 (a_두개골 + t)·sin(phi)를
+     지나도록 역산한다. 이게 1차의 배율 1.12를 대체하는 <b>이름 붙은 양</b>이다. */
+  let tW = 0, tD = 0, tWarn = false, tFloored = false, mode;
+  if(aSkull != null){
+    mode = '두개골+두께';
+    tW = anchor.halfWidth / Math.max(1e-6, sinA) - aSkull;
+    /* 상한은 안 건다 — 자르면 이음매에 단이 생기고 뿌리가 거기서 튄다(위 주석).
+       넘으면 알리기만 한다. 아래로만 막는다: 헐이 두개골 안으로 들어갈 순 없다. */
+    if(!(tW >= 0)){ tW = 0; tFloored = true; }
+    if(tW > aSkull * C.thickWarnFrac) tWarn = true;
+    if(cSkull != null){
+      tD = (anchor.halfDepth || 0) / Math.max(1e-6, sinA) - cSkull;
+      if(!(tD >= 0)) tD = 0;
+    }
+  } else {
+    mode = '헤어 밴드(폴백 — 얼굴 실측 없음)';               // 1차 동작
+    aSkull = aMax; cSkull = cMax;
+    tW = anchor.halfWidth / Math.max(1e-6, sinA) - aMax;
+    tD = (anchor.halfDepth || 0) / Math.max(1e-6, sinA) - cMax;
+  }
+  const capA = aSkull + tW, capC = (cSkull || 0) + tD;
+
   const was = [];
   bands.forEach(b2=>{
     if(b2.phi >= C.anchorPhi) return;
     was.push('phi' + b2.phi.toFixed(2) + ':W' + (b2.halfWidth||0).toFixed(2));
-    b2.halfWidth = Math.max(aMax * C.minFrac, aMax * sA * Math.sin(b2.phi));
-    b2.halfDepth = Math.max(cMax * C.minFrac, cMax * sC * Math.sin(b2.phi));
+    const s = Math.sin(b2.phi);
+    b2.halfWidth = Math.max(capA * C.minFrac, capA * s);
+    b2.halfDepth = Math.max(capC * C.minFrac, capC * s);
     b2.crownCap = true;   // [진단용] 이 밴드는 실측이 아니라 형상 추정
   });
+
+  // cm 환산은 로그 표시용(자가 없으면 단위 그대로 — 계산에는 안 쓴다)
+  let cmX = NaN;
+  try{ const fm = getFaceMetrics();
+    cmX = FACE_RULER_CM.earHalf / (0.70*(FACE_RULER_CM.earHalf/FACE_RULER_CM.eyeToChin)*(fm.widthFactor||1));
+  }catch(e){}
+  const cm = v => isFinite(cmX) ? (v*cmX).toFixed(2)+'cm' : v.toFixed(3);
   const now = bands.filter(b2=>b2.crownCap)
     .map(b2=>'phi' + b2.phi.toFixed(2) + ':W' + b2.halfWidth.toFixed(2)).join(' ');
-  console.log('[두상·정수리캡] 표에 없던 정수리 밴드를 두상 타원체로 채움'
-    + ' — 적도 반축 a=' + aMax.toFixed(3) + ' c=' + cMax.toFixed(3)
-    + ' · phi' + C.anchorPhi + ' 실측(W' + anchor.halfWidth.toFixed(2) + ')에 맞춘 배율 ×' + sA.toFixed(2)
+  console.log('[두상·정수리캡] 표에 없던 정수리 밴드를 채움 — 기준 <b>' + mode + '</b>'
+    + '\n    두개골 반축 a=' + aSkull.toFixed(3) + (isFinite(cmX)?'('+cm(aSkull*2)+' 폭)':'')
+    + ' · 모발 두께 t=' + cm(tW)
+    + (tFloored ? ' ⚠ 음수라 0으로(헐이 두개골 안쪽 — 얼굴 실측이나 밴드가 어긋남)' : '')
+    + (tWarn ? ' ⚠ 두개골 반폭의 ' + Math.round(C.thickWarnFrac*100) + '%를 넘음 —'
+             + ' 정수리 볼륨이 크거나 phi' + C.anchorPhi + ' 밴드가 튄 것. 기하는 그대로 둡니다' : '')
+    + ' → 캡 반축 ' + capA.toFixed(3)
     + '\n    이전(머리털 실루엣을 두개골로 잼): ' + (was.join(' ') || '없음')
-    + '\n    이후(타원체 캡):                 ' + now
-    + '\n    ※ 실측 아님 — 위에서 본 뷰가 생기면 대체됨');
-  return { aMax, cMax, sA, sC };
+    + '\n    이후(두개골 캡 + 두께):           ' + now
+    + '\n    ※ t는 <b>독립 실측</b>인 [두피면]의 "모발 두께 위"와 대조할 것 —'
+    + ' 크게 벌어지면 정수리 볼륨이거나 밴드 오측정입니다');
+  return { aSkull, cSkull, tW, tD, capA, capC, tWarn, tFloored, mode, aMax, cMax };
 }
 
 function computeHeadCrossSections(){
