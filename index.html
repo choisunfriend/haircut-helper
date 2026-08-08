@@ -13726,6 +13726,85 @@ const HAIR_OVERLAP = {
   fillJitter: 0.9,     // 셀 안에서 뿌리를 흔드는 폭(셀 크기 대비) — 1이면 셀 전체
 };
 
+/* ══════════════════════════════════════════════════════════════════
+   #4 섹션을 <b>3D 뿌리 위치</b>에서 정한다 (2026-08-08)
+   ─────────────────────────────────────────────────────────────────
+   사용자: "지금 구획이 어떻게 나눠지는지는 모르겠는데, 프론트가 아예 없는 경우도
+   많고 사이드는 완전 넘치고 막 이랴."
+   로그가 그대로 말한다 — 같은 두피인데 <b>뷰마다 딴 섹션</b>으로 센다:
+       front 뷰: crown26% front39% temple34% side<b>0%</b> occipital0% nape0%
+       left  뷰: crown32% front<b>0%</b>  temple15% side17% occipital7% nape<b>29%</b>
+       right 뷰: crown15% front<b>0%</b>  temple6%  side25% occipital7% nape<b>47%</b>
+   정면에서 옆통수가 0%일 리 없고(보인다), 51°에서 앞머리가 0%일 리 없고,
+   우측 뷰의 절반이 네이프(목선)일 리 없다.
+
+   원인은 resolveSectionId가 <b>뷰별 2D 밴드</b>로 판정하는 것이다. 뷰마다 밴드가
+   따로 있어서 한 뷰를 고치면 다른 뷰가 깨진다(코드에 12차·13차·15차 재설계 기록이
+   그대로 남아 있다 — 매번 한 뷰를 고치고 다른 뷰를 깨뜨렸다).
+
+   고침: 섹션은 <b>뷰의 성질이 아니라 두피의 성질</b>이다. 뿌리의 3D 위치
+   (phi=정수리각, theta=방위각)로 정하면 어느 뷰에서 캡처했든 같은 자리는 같은
+   섹션이 된다. 그리고 그 구역표는 <b>이미 있다</b> — SCALP_ZONES. 절차 생성 3D
+   경로가 삭제되면서 소비자가 HEAD_PHI_BANDS만 남았을 뿐이다. 되살려 쓴다.
+   ※ 지어낸 상수가 하나도 안 늘어난다. 판정 방식만 바꾼다.
+══════════════════════════════════════════════════════════════════ */
+const SECTION_3D = { on: true };   // false면 예전 동작(뷰별 2D 밴드 라벨을 그대로 승계)
+const _angDiff = (a, b2)=>{ let d = a - b2; while(d > Math.PI) d -= 2*Math.PI; while(d < -Math.PI) d += 2*Math.PI; return d; };
+/* 뿌리 3D 점 → 섹션 id. 구역이 phi에서 겹치므로 <b>점수</b>로 고른다:
+   밴드 한가운데일수록, 그 구역의 대표 방위에 가까울수록 높다. */
+function resolveSection3D(p, CY, b){
+  if(!p || !(b > 1e-6)) return null;
+  const ny = Math.max(-1, Math.min(1, (p.y - CY) / b));
+  const phi = Math.acos(ny);
+  const th  = Math.atan2(p.x, p.z);          // 0=정면(+Z) · ±pi=후면 — SCALP_ZONES와 같은 규약
+  let best = null, bestScore = -1;
+  for(const id in SCALP_ZONES){
+    const z = SCALP_ZONES[id];
+    const [p0, p1] = z.phiRange;
+    if(phi < p0 || phi > p1) continue;
+    const half = (p1 - p0) / 2 || 1;
+    const pc = 1 - Math.abs(phi - (p0 + p1) / 2) / half;      // phi 중심도 0~1
+    let score;
+    if(z.thetas === 'full'){
+      /* 크라운은 방위 무관(정수리는 사방이 크라운). 다만 다른 구역과 phi가 겹치는
+         구간에서는 <b>방위가 맞는 쪽</b>이 이기도록 조금 낮춰 잡는다 —
+         안 그러면 크라운이 앞머리·옆머리를 다 먹는다(13차에 실제로 그랬다). */
+      score = pc * 0.55;
+    } else {
+      let tBest = -1;
+      for(const t0 of z.thetas){
+        const d = Math.abs(_angDiff(th, t0)), sp = z.thetaSpread || 0.1;
+        if(d <= sp) tBest = Math.max(tBest, 1 - d / sp);
+      }
+      if(tBest < 0) continue;
+      score = pc * 0.4 + tBest * 0.6;                          // 방위 일치를 더 무겁게
+    }
+    if(score > bestScore){ bestScore = score; best = id; }
+  }
+  if(best) return best;
+  /* ── 구역 밖 — <b>최근접 구역</b>으로 (하네스에서 잡음) ────────────────────
+     SCALP_ZONES는 구를 빈틈없이 덮지 않는다. 균등 샘플 4,000점을 넣어보니
+     <b>30%가 어느 구역에도 안 들어갔다</b>(주로 phi0.6~0.95의 옆위 띠, 그리고
+     얼굴 쪽). 그대로 두면 그 가닥들이 예전 2D 라벨로 되돌아가 — 고치려던
+     "뷰마다 딴 섹션"이 그만큼 남는다.
+     구역표를 늘려 상수를 지어내는 대신, <b>제일 가까운 구역</b>에 붙인다.
+     거리는 (phi 밴드까지의 거리) + (대표 방위까지의 각거리)로 잰다. */
+  let nearest = null, nd = Infinity;
+  for(const id in SCALP_ZONES){
+    const z = SCALP_ZONES[id];
+    const [p0, p1] = z.phiRange;
+    const dPhi = phi < p0 ? (p0 - phi) : phi > p1 ? (phi - p1) : 0;
+    let dTh = 0;
+    if(z.thetas !== 'full'){
+      dTh = Infinity;
+      for(const t0 of z.thetas) dTh = Math.min(dTh, Math.max(0, Math.abs(_angDiff(th, t0)) - (z.thetaSpread||0)));
+    }
+    const d = dPhi + dTh;
+    if(d < nd){ nd = d; nearest = id; }
+  }
+  return nearest;
+}
+
 /* 뿌리 3D 점 → 표면 셀 번호. forEachHeadSurfaceCell의 좌표식을 그대로 역산한다
    (y=CY+b·cos(φ), x=W·sin(θ), z=D·cos(θ)) — 같은 격자에 담겨야 den/est와 맞는다. */
 function headSurfaceCellOf(x, y, z, hullW, hullD, bucketOfY, CY, b, NT, NP){
@@ -14346,6 +14425,7 @@ function buildHairStrandsFromPaths(){
   // 되쏘아(projectHair3DToView) 2D로 표시하게 된다. 여기선 모델 채집만; 조정
   // 연산자(길이/컬/섹션)와 렌더 배선은 다음 단계.
   const canonicalStrands = [];      // [{pts:[{x,y,z}], sec, color, srcAngle, mirrored}]
+  const _sec3DHist = {};            // [진단] #4 — 3D 뿌리 기준 섹션 분포
   const viewCal = {};               // 뷰별 image↔model 캘리브레이션(되쏘기용)
   names.forEach(n3=>{               // names = 실측(비거울) 뷰만
     const vv = views[n3];
@@ -14464,7 +14544,11 @@ function buildHairStrandsFromPaths(){
            뒤에 구워야 화면과 모델이 같아진다 — 예전엔 여기서 바로 group에 넣어서,
            canonicalStrands에서 뺀 가닥이 3D 화면에는 그대로 남았다.
            worldCols(점당 색)를 같이 들고 간다 — 이게 있어야 나중에 구울 수 있다. */
-        canonicalStrands.push({ pts:aligned, cols:worldCols, sec: st.sec || 'crown',
+        // (#4) 섹션은 뷰별 2D 라벨이 아니라 <b>3D 뿌리 위치</b>에서 — 위 주석 참조
+        const sec3D = SECTION_3D.on ? resolveSection3D(aligned[0], CY, sB) : null;
+        if(sec3D) _sec3DHist[sec3D] = (_sec3DHist[sec3D]||0) + 1;
+        else _sec3DHist._miss = (_sec3DHist._miss||0) + 1;
+        canonicalStrands.push({ pts:aligned, cols:worldCols, sec: sec3D || st.sec || 'crown',
           color: st.color, srcAngle: angle, mirrored: job.mirrored, rootFacing });
       }
       total++;
@@ -14546,6 +14630,18 @@ function buildHairStrandsFromPaths(){
     }
   } catch(e){ /* 진단 실패는 무시 */ }
 
+  /* [진단] #4 — 3D 뿌리 기준 섹션 분포. 뷰별 2D 분포([진단·섹션분포])와 달리
+     <b>하나</b>만 나온다(섹션이 두피의 성질이므로). 어느 섹션이 0%면 그건 진짜로
+     그 사람에게 없는 것이지, 뷰 때문에 안 잡힌 게 아니다. */
+  if(SECTION_3D.on){
+    const tot = Object.values(_sec3DHist).reduce((a,c)=>a+c,0) || 1;
+    const order = ['crown','front','temple','side','occipital','nape'];
+    console.log('[3D·섹션] 뿌리 3D 위치 기준 — '
+      + order.map(k=>k+'=' + (_sec3DHist[k]||0) + '(' + Math.round((_sec3DHist[k]||0)/tot*100) + '%)').join(' ')
+      + (_sec3DHist._miss ? ' · 구역 밖 ' + _sec3DHist._miss + '개(2D 라벨 승계)' : '')
+      + '\n    ↑ 뷰별 [진단·섹션분포]와 달리 <b>하나</b>만 나옵니다 — 섹션은 뷰가 아니라 두피의 성질입니다.'
+      + ' SECTION_3D.on=false 면 예전(뷰별 2D 라벨) 동작.');
+  }
   console.log('[3D] 헐 기반 옮기기:', total, '가닥 (실측 뷰:', names.join(','),
     '/ 거울 채움:', jobs.filter(j=>j.mirrored).map(j=>j.angle).join(',') || '없음', ')');
   /* [진단] 결 정렬이 <b>실제로</b> 먹었는지. 이 숫자가 0이면 필드는 만들어졌는데
