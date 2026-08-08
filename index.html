@@ -1660,6 +1660,14 @@ input[type=range]::-moz-range-thumb{width:20px;height:20px;border-radius:50%;bac
 .view-zoom span{font-family:'JetBrains Mono',monospace;font-size:10.5px;color:var(--text-muted);
   min-width:38px;text-align:center;}
 #adjustCanvas{touch-action:none;}
+/* 시술모드 바 (#5, 2026-08-08) — 미리보기 좌상단, 스타일 태그 아래 */
+.comb-bar{position:absolute;left:10px;top:40px;z-index:70;display:flex;align-items:center;gap:4px;}
+.comb-bar button{background:rgba(27,24,22,0.78);backdrop-filter:blur(4px);border:1px solid var(--line);
+  color:var(--accent-soft);font-size:11px;line-height:1;padding:6px 10px;border-radius:8px;cursor:pointer;}
+.comb-bar button:hover{border-color:var(--accent);}
+.comb-bar button.on{background:var(--accent);color:#1B1816;border-color:var(--accent);font-weight:700;}
+.comb-bar button:disabled{opacity:.4;cursor:default;}
+.comb-bar .comb-sub{display:flex;gap:4px;}
 .lang-toggle{background:var(--surface-2);color:var(--text);border:1px solid var(--line);
   border-radius:999px;padding:4px 11px;font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:500;
   letter-spacing:.04em;cursor:pointer;line-height:1.5;}
@@ -1757,6 +1765,15 @@ input[type=range]::-moz-range-thumb{width:20px;height:20px;border-radius:50%;bac
       <div class="adjust-preview">
         <canvas id="adjustCanvas"></canvas>
         <div class="preview-tag" id="adjustStyleTag">스타일 미선택</div>
+        <!-- (#5, 2026-08-08) 시술모드 — 켜면 드래그가 빗질이 된다(화면 이동은 Shift+드래그).
+             빗질한 변위는 유지되고, 되돌리기는 드래그 한 번 단위. -->
+        <div class="comb-bar">
+          <button id="combModeBtn" onclick="toggleCombMode()" title="드래그로 빗질 · Shift+드래그는 화면 이동">시술모드</button>
+          <span class="comb-sub" id="combBar" style="display:none;">
+            <button id="combUndoBtn" onclick="combUndo()" disabled>빗질 되돌리기</button>
+            <button onclick="mannequinReset()">마네킹 리셋</button>
+          </span>
+        </div>
         <button class="debug-btn mask-debug-btn" id="maskDebugToggle" onclick="toggleMaskDebug()">가닥 보기</button>
         <button class="debug-btn raw-debug-btn" id="rawDebugToggle" onclick="toggleRawDebug()">원본 결 보기</button>
         <button class="debug-btn field-debug-btn" id="fieldDebugToggle" onclick="toggleFieldDebug()">결필드 원본</button>
@@ -6783,13 +6800,25 @@ function bindAdjustViewGestures(){
     adjustViewZoomAt(ADJUST_VIEW.zoom * Math.exp(-e.deltaY * 0.0016), p.x, p.y, canvas.width, canvas.height);
     renderAdjustFrame();
   }, { passive:false });
-  let drag = null, pinch = null;
+  let drag = null, pinch = null, comb = null;
   const pts = new Map();
   canvas.addEventListener('pointerdown', (e)=>{
     canvas.setPointerCapture(e.pointerId);
     pts.set(e.pointerId, e);
-    if(pts.size === 1){ const p = toCanvas(e); drag = { x:p.x, y:p.y }; }
-    else if(pts.size === 2){ drag = null; pinch = pinchStateOf(pts, toCanvas); }
+    if(pts.size === 1){
+      const p = toCanvas(e);
+      /* (#5) 시술모드에서는 한 손가락 드래그가 <b>빗질</b>이다. 화면 이동은
+         Shift+드래그(또는 두 손가락)로 남긴다 — 확대해서 빗어야 하므로. */
+      if(COMB.on && !e.shiftKey){
+        const anc = combPickAnchor(p.x, p.y);
+        _combGroup++;
+        comb = anc ? { x:anc.x, y:anc.y, z:anc.z, px:p.x, py:p.y, gx:p.x, gy:p.y } : null;
+        drag = comb ? null : { x:p.x, y:p.y };
+      } else {
+        drag = { x:p.x, y:p.y };
+      }
+    }
+    else if(pts.size === 2){ drag = null; comb = null; pinch = pinchStateOf(pts, toCanvas); }
   });
   canvas.addEventListener('pointermove', (e)=>{
     if(!pts.has(e.pointerId)) return;
@@ -6803,13 +6832,33 @@ function bindAdjustViewGestures(){
       }
       pinch = now; return;
     }
+    if(comb){
+      const p = toCanvas(e);
+      const dx = p.x - comb.px, dy = p.y - comb.py;
+      if(Math.hypot(dx, dy) < COMB.minMovePx) return;
+      /* 잡은 자리는 <b>고정</b>이다. 변위장은 공간에 붙어 있으므로(오일러), 잡은
+         지점을 변위만큼 따라 옮기면 그 지점의 누적값이 커지질 않아 머리가
+         브러시 반경만큼밖에 안 따라온다(실측: 드래그 1.2 명령 → 실제 0.03).
+         고정해 두고 증분을 계속 더하면 잡은 자리 = 드래그 총량이 된다. */
+      combStrokeFromDrag(comb, dx, dy);
+      comb.px = p.x; comb.py = p.y;
+      /* 빗이 브러시 반경만큼 지나가면 <b>다시 잡는다</b> — 한 번의 긴 쓸어넘김이
+         경로를 따라 이어지도록. 안 그러면 처음 잡은 다발만 끌려온다. */
+      if(Math.hypot(p.x - comb.gx, p.y - comb.gy) > COMB.radiusPx){
+        const anc = combPickAnchor(p.x, p.y);
+        if(anc){ comb.x = anc.x; comb.y = anc.y; comb.z = anc.z; comb.gx = p.x; comb.gy = p.y; }
+      }
+      combRefresh();
+      return;
+    }
     if(!drag) return;
     const p = toCanvas(e);
     ADJUST_VIEW.panX += p.x - drag.x; ADJUST_VIEW.panY += p.y - drag.y;
     drag = { x:p.x, y:p.y };
     renderAdjustFrame();
   });
-  const up = (e)=>{ pts.delete(e.pointerId); if(pts.size < 2) pinch = null; if(!pts.size) drag = null; };
+  const up = (e)=>{ pts.delete(e.pointerId); if(pts.size < 2) pinch = null;
+                    if(!pts.size){ drag = null; comb = null; } };
   canvas.addEventListener('pointerup', up);
   canvas.addEventListener('pointercancel', up);
   canvas.addEventListener('dblclick', (e)=>{ e.preventDefault(); adjustViewReset(); });
@@ -8895,6 +8944,11 @@ function hairClipGrowPx(fit, rawMode){
 }
 function applyHairLayerClip(layer, hairCanvas, fit, cw, ch, rawMode, angle){
   if(!HAIR_LAYER_CLIP.on || !hairCanvas) return 0;
+  /* (#5) 시술모드에서 빗질한 게 있으면 이 클립을 건다. 이 클립은 "사진에
+     머리가 없는 자리에는 안 그린다"인데, 빗질은 <b>일부러</b> 그 자리로 옮기는
+     행위라 그대로 두면 빗은 만큼 그대로 지워진다(빗질이 화면에 안 나타남).
+     빗질을 지우면 다시 원래 클립으로 돌아간다. */
+  if(COMB.strokes.length) return 0;
   const grow = hairClipGrowPx(fit, rawMode);
   const mask = buildHairClipMask(hairCanvas, fit, cw, ch, grow, rawMode ? null : angle);
   const x = layer.getContext('2d');
@@ -13759,8 +13813,16 @@ const HAIR_OVERLAP = {
 ══════════════════════════════════════════════════════════════════ */
 const SECTION_3D = { on: true };   // false면 예전 동작(뷰별 2D 밴드 라벨을 그대로 승계)
 const _angDiff = (a, b2)=>{ let d = a - b2; while(d > Math.PI) d -= 2*Math.PI; while(d < -Math.PI) d += 2*Math.PI; return d; };
-/* 뿌리 3D 점 → 섹션 id. 구역이 phi에서 겹치므로 <b>점수</b>로 고른다:
-   밴드 한가운데일수록, 그 구역의 대표 방위에 가까울수록 높다. */
+/* ── 크라운은 <b>잔여</b>다 (사용자 정의, 2026-08-08 재확인) ──────────────────
+   "크라운을 빼고 나머지를 다 먼저 구분한 다음에 정수리 나머지 부분을 크라운으로."
+   이전 구현은 크라운도 같은 점수판에 올려놓고 0.55 가중치로 <b>경쟁</b>시켰다 —
+   가중치를 얼마로 잡느냐에 따라 크라운이 앞머리·옆머리를 먹는 양이 달라지는,
+   근거 없는 손잡이였다. 지금은 경쟁을 없앤다:
+     1) 크라운을 뺀 구역(front/temple/side/occipital/nape)만 점수로 판정
+     2) 아무 구역도 안 잡은 점 중 phi가 크라운 밴드 안이면 → 크라운
+     3) 그래도 남으면 최근접 구역
+   결과: 크라운은 정의상 다른 구역이 안 가져간 정수리 잔여만 갖는다. 가중치
+   상수 하나(0.55)가 사라지고, 겹침 구간(phi 0.55~0.60)은 방위가 맞는 front로 간다. */
 function resolveSection3D(p, CY, b){
   if(!p || !(b > 1e-6)) return null;
   const ny = Math.max(-1, Math.min(1, (p.y - CY) / b));
@@ -13769,28 +13831,28 @@ function resolveSection3D(p, CY, b){
   let best = null, bestScore = -1;
   for(const id in SCALP_ZONES){
     const z = SCALP_ZONES[id];
+    if(z.thetas === 'full') continue;                          // ① 크라운은 이 판에 안 올린다
     const [p0, p1] = z.phiRange;
     if(phi < p0 || phi > p1) continue;
     const half = (p1 - p0) / 2 || 1;
     const pc = 1 - Math.abs(phi - (p0 + p1) / 2) / half;      // phi 중심도 0~1
-    let score;
-    if(z.thetas === 'full'){
-      /* 크라운은 방위 무관(정수리는 사방이 크라운). 다만 다른 구역과 phi가 겹치는
-         구간에서는 <b>방위가 맞는 쪽</b>이 이기도록 조금 낮춰 잡는다 —
-         안 그러면 크라운이 앞머리·옆머리를 다 먹는다(13차에 실제로 그랬다). */
-      score = pc * 0.55;
-    } else {
-      let tBest = -1;
-      for(const t0 of z.thetas){
-        const d = Math.abs(_angDiff(th, t0)), sp = z.thetaSpread || 0.1;
-        if(d <= sp) tBest = Math.max(tBest, 1 - d / sp);
-      }
-      if(tBest < 0) continue;
-      score = pc * 0.4 + tBest * 0.6;                          // 방위 일치를 더 무겁게
+    let tBest = -1;
+    for(const t0 of z.thetas){
+      const d = Math.abs(_angDiff(th, t0)), sp = z.thetaSpread || 0.1;
+      if(d <= sp) tBest = Math.max(tBest, 1 - d / sp);
     }
+    if(tBest < 0) continue;
+    const score = pc * 0.4 + tBest * 0.6;                      // 방위 일치를 더 무겁게
     if(score > bestScore){ bestScore = score; best = id; }
   }
   if(best) return best;
+  /* ② 남은 점 중 크라운 밴드 안 → 크라운(정수리 잔여) */
+  for(const id in SCALP_ZONES){
+    const z = SCALP_ZONES[id];
+    if(z.thetas !== 'full') continue;
+    const [p0, p1] = z.phiRange;
+    if(phi >= p0 && phi <= p1) return id;
+  }
   /* ── 구역 밖 — <b>최근접 구역</b>으로 (하네스에서 잡음) ────────────────────
      SCALP_ZONES는 구를 빈틈없이 덮지 않는다. 균등 샘플 4,000점을 넣어보니
      <b>30%가 어느 구역에도 안 들어갔다</b>(주로 phi0.6~0.95의 옆위 띠, 그리고
@@ -13801,13 +13863,14 @@ function resolveSection3D(p, CY, b){
   let nearest = null, nd = Infinity;
   for(const id in SCALP_ZONES){
     const z = SCALP_ZONES[id];
+    /* 크라운은 ②에서 이미 자기 밴드 전체를 받았다. 여기서 또 후보로 두면 방위
+       거리가 항상 0이라 밴드 바로 아래 얇은 띠(phi 0.60~0.62)까지 크라운이
+       가져간다 — 잔여 정의에 어긋나므로 제외한다. */
+    if(z.thetas === 'full') continue;
     const [p0, p1] = z.phiRange;
     const dPhi = phi < p0 ? (p0 - phi) : phi > p1 ? (phi - p1) : 0;
-    let dTh = 0;
-    if(z.thetas !== 'full'){
-      dTh = Infinity;
-      for(const t0 of z.thetas) dTh = Math.min(dTh, Math.max(0, Math.abs(_angDiff(th, t0)) - (z.thetaSpread||0)));
-    }
+    let dTh = Infinity;
+    for(const t0 of z.thetas) dTh = Math.min(dTh, Math.max(0, Math.abs(_angDiff(th, t0)) - (z.thetaSpread||0)));
     const d = dPhi + dTh;
     if(d < nd){ nd = d; nearest = id; }
   }
@@ -14219,6 +14282,52 @@ function buildHairIdentity(rootField, field3D){
   return out;
 }
 
+/* ── 두피 돔 꼭대기 <b>위쪽</b> 모발 (2026-08-08) ─────────────────────────
+   사용자: "저 위에 머리 삐쳐나온 거 있잖아.. 저게 후두부 정수리 부분에 있는
+   머리를 저렇게 띄운 거 같은 느낌이 드네."
+   확인해보니 모델에 <b>그 자리가 아예 없었다</b>. mapY는 각 뷰의 두피선 최고점
+   (crownY)을 모델 yTop = CY+b(두피 돔 꼭대기)에 맞춘다. 그런데 마스크에는 그
+   두피선보다 <b>위</b>에 모발이 있다 — 정수리를 덮은 모발 두께 그 자체다.
+   그 점들은
+     · 높이 버킷 범위가 [yBot, yTop]이라 전부 버킷 0으로 클램프되고
+     · 두피 반폭 headHalf(y)는 y > CY+b에서 0이라 옆으로 감는 분기도 못 타고
+     · 결국 `mz = lastZ`(마지막 깊이 유지)로 떨어져 <b>깊이가 고정된 납작한
+       수직 삐침</b>이 된다.
+   화면에서 정수리 위로 삐쳐 나온 그 가닥이 이것이다. 특정 뷰의 문제가 아니라
+   네 뷰 모두에서 같은 일이 일어난다(아래 [진단·정수리캡] 로그로 뷰별 수치).
+   고침 세 줄:
+     ① 세로 범위를 모발 최상단까지 넓힌다(캡)
+     ② 헐 관측을 두피선이 아니라 <b>모발 상단</b>부터 잰다
+     ③ 옆감기 분기 게이트를 캡 구간에서는 두피 반폭 대신 <b>헐 반폭</b>으로
+   지어낸 상수 없음 — 마스크에서 이미 재던 값을 원래 있어야 할 범위까지 재는
+   것뿐이다. 캡 구간의 가로 단면은 두피가 아니라 <b>모발만</b> 자르므로
+   안쪽 경계 0 ~ 헐까지 꽉 찬 원반이 맞다(층 t가 그대로 그렇게 배치된다). */
+const HAIR_TOP_CAP = {
+  on: true,
+  pct: 0.02,      // 상단 백분위 — 먼지·삐침 픽셀 한둘로 범위가 튀지 않게
+  maxRise: 0.60,  // yTop 위로 허용하는 최대 상승(b 단위). 넘으면 클램프 + 경고
+  warnRise: 0.35, // 이보다 크면 crownY/마스크 상단을 의심하라는 경고
+};
+/* 컬럼별 모발 최상단 y(원본 해상도). reasonMask(1 = 최종 머리카락)에서 잰다. */
+function hairTopYOf(maskInf){
+  if(!maskInf) return null;
+  if(maskInf._hairTopY) return maskInf._hairTopY;
+  const rm = maskInf.reasonMask, mw = maskInf.maskW, mh = maskInf.maskH;
+  if(!rm || !mw || !mh || !maskInf.w) return null;
+  const small = new Float32Array(mw).fill(-1);
+  for(let x=0; x<mw; x++){
+    for(let y=0; y<mh; y++){ if(rm[y*mw+x] === 1){ small[x] = y; break; } }
+  }
+  const out = new Float32Array(maskInf.w).fill(-1);
+  const kx = mw / maskInf.w, ky = maskInf.h / mh;
+  for(let X=0; X<maskInf.w; X++){
+    const xs = Math.min(mw-1, Math.max(0, Math.round(X * kx)));
+    if(small[xs] >= 0) out[X] = small[xs] * ky;
+  }
+  maskInf._hairTopY = out;
+  return out;
+}
+
 function buildHairStrandsFromPaths(){
   if(!state.strandPaths) return null;
   const headEll = getHeadEllipsoid();
@@ -14346,8 +14455,30 @@ function buildHairStrandsFromPaths(){
       if(y < yBot) yBot = y;
     }
   });
-  const yStep = (yTop - yBot) / (NY - 1);
-  const bucketOfY = y => Math.min(NY-1, Math.max(0, Math.round((yTop - y) / yStep)));
+  /* ── 캡: 세로 범위를 모발 최상단까지 (HAIR_TOP_CAP 주석 참조) ────────────
+     yTop은 <b>두피</b> 돔 꼭대기다. 모발은 그 위로 자기 두께만큼 더 있다.
+     버킷 범위를 yTopH까지 넓혀야 그 구간에도 실측 헐 반폭이 생긴다. */
+  let yTopH = yTop, capRiseRaw = 0;
+  const capViewTop = {};
+  if(HAIR_TOP_CAP.on){
+    names.forEach(n=>{
+      const v = views[n];
+      const tY = hairTopYOf(v.maskInf);
+      if(!tY) return;
+      const vals = [];
+      for(let x=0; x<tY.length; x++) if(tY[x] >= 0 && v.maskInf.scalpY[x] >= 0) vals.push(tY[x]);
+      if(vals.length < 8) return;
+      vals.sort((p,q)=>p-q);                       // 이미지 y 오름차순 = 위→아래
+      const topPx = vals[Math.min(vals.length-1, Math.floor(vals.length * HAIR_TOP_CAP.pct))];
+      const y = mapY(v, topPx);
+      capViewTop[n] = (y - yTop) / b;
+      if(y > yTopH) yTopH = y;
+    });
+    capRiseRaw = (yTopH - yTop) / b;
+    if(capRiseRaw > HAIR_TOP_CAP.maxRise) yTopH = yTop + HAIR_TOP_CAP.maxRise * b;
+  }
+  const yStep = (yTopH - yBot) / (NY - 1);
+  const bucketOfY = y => Math.min(NY-1, Math.max(0, Math.round((yTopH - y) / yStep)));
   // 버킷별 관측 목록: 각 뷰에서 잰 반폭 E와 그 뷰의 cos²θ/sin²θ.
   // (예전엔 정면류→W합산, 측면류→D합산의 이분법이라 24° 사진이 "90° 옆모습"
   // 으로 취급돼 깊이 실측이 통째로 왜곡됐음 — 실기기의 납작 두상 헐 원인 중 하나)
@@ -14356,11 +14487,16 @@ function buildHairStrandsFromPaths(){
     const v = views[n];
     const minX = new Float32Array(NY).fill(Infinity);
     const maxX = new Float32Array(NY).fill(-Infinity);
-    // 컬럼 스팬(scalpY~hairEndY)이 지나가는 높이 버킷마다 좌우 극값 갱신
+    // 컬럼 스팬이 지나가는 높이 버킷마다 좌우 극값 갱신.
+    // (2026-08-08) 스팬 시작을 scalpY(두피선)가 아니라 <b>모발 상단</b>으로 —
+    // 헐은 정의상 모발 바깥면인데 두피선부터 재면 정수리를 덮은 모발이
+    // 관측에서 통째로 빠진다(그 구간 헐이 없어서 삐침이 생겼다).
+    const tYarr = HAIR_TOP_CAP.on ? hairTopYOf(v.maskInf) : null;
     for(let x=0; x<v.maskInf.w; x++){
       const sY = v.maskInf.scalpY[x], eY = v.maskInf.hairEndY[x];
       if(sY < 0 || eY < 0) continue;
-      const b0 = bucketOfY(mapY(v, sY));
+      const topPx = (tYarr && tYarr[x] >= 0) ? Math.min(tYarr[x], sY) : sY;
+      const b0 = bucketOfY(mapY(v, topPx));
       const b1 = bucketOfY(mapY(v, eY));
       for(let bi=Math.min(b0,b1); bi<=Math.max(b0,b1); bi++){
         if(x < minX[bi]) minX[bi] = x;
@@ -14380,7 +14516,7 @@ function buildHairStrandsFromPaths(){
   const hullW = new Float32Array(NY), hullD = new Float32Array(NY);
   const rHead = cD / a;
   for(let bi=0; bi<NY; bi++){
-    const y = yTop - bi*yStep;
+    const y = yTopH - bi*yStep;
     let W = NaN, D = NaN;
     if(obs[bi].length){
       let wAcc = 0;
@@ -14472,6 +14608,7 @@ function buildHairStrandsFromPaths(){
   // 연산자(길이/컬/섹션)와 렌더 배선은 다음 단계.
   const canonicalStrands = [];      // [{pts:[{x,y,z}], sec, color, srcAngle, mirrored}]
   const _sec3DHist = {};            // [진단] #4 — 3D 뿌리 기준 섹션 분포
+  const _capAll = {}, _capStat = {}; // [진단] 두피 돔 위로 나간 점(정수리 삐침 출처)
   const viewCal = {};               // 뷰별 image↔model 캘리브레이션(되쏘기용)
   names.forEach(n3=>{               // names = 실측(비거울) 뷰만
     const vv = views[n3];
@@ -14524,6 +14661,13 @@ function buildHairStrandsFromPaths(){
         const mxRaw = (p.x - v.cx) * v.s;
         const mx = job.mirrored ? -mxRaw : mxRaw; // 거울 뷰는 x반전(그 방향에서 본 좌우가 맞도록)
         const my = mapY(v, p.y);
+        // [진단] 두피 돔 꼭대기 위로 나간 점 — 삐침의 출처를 뷰별로 남긴다
+        _capAll[job.angle] = (_capAll[job.angle] || 0) + 1;
+        if(my > yTop){
+          const s = _capStat[job.angle] || (_capStat[job.angle] = { pts:0, root:0, maxRise:0 });
+          s.pts++; if(i === 0) s.root++;
+          const rr = (my - yTop) / b; if(rr > s.maxRise) s.maxRise = rr;
+        }
         const bi = bucketOfY(my);
         // 이 잡 카메라에서 본 헐/두피 단면 반경 — 예전 SIDE 이분법(폭↔깊이
         // 스왑)의 연속 일반화: 방위각 θ에서 본 타원(W,D)의 투영 반폭은
@@ -14545,7 +14689,11 @@ function buildHairStrandsFromPaths(){
           const scalpZ = uh <= 1 ? aDh * Math.sqrt(1 - uh) : 0;    // 두피면 깊이
           mz = scalpZ + (hullZ - scalpZ) * t;                      // 실측 두께 안에 층 배치
           facing = Math.sqrt(1 - u);                               // 카메라를 향한 정도(곡률 음영용)
-        } else if(headHalf(my,'w') > 1e-3){
+        } else if(headHalf(my,'w') > 1e-3 || (my > yTop && aH > 1e-3)){
+          /* (2026-08-08) 캡 구간(my > yTop)에서는 두피가 없어 headHalf가 0이라
+             이 분기를 못 타고 lastZ(납작한 수직 삐침)로 떨어졌다. 그 구간은
+             헐 반폭 aH로 게이트한다 — 두상 아래(긴 머리 늘어짐)의 lastZ 동작은
+             그대로 둔다(거긴 목을 감으면 안 되므로 기존 판단이 맞다). */
           // (2026-07-17) 단면 밖(u>1)이지만 아직 두상 높이 범위 안: 예전엔
           // lastZ 유지/림 평면(z=0)이라 가장자리 가닥이 납작한 커튼으로
           // 눌렸음. 반폭 초과분을 호길이로 환산해 타원 둘레를 따라 뒤쪽으로
@@ -14600,6 +14748,22 @@ function buildHairStrandsFromPaths(){
       total++;
     }
   });
+
+  /* [진단·정수리캡] 정수리 삐침의 출처 — 뷰별로 두피 돔 위에 몇 점이 있었나 */
+  {
+    const parts = Object.keys(_capAll).map(n=>{
+      const s = _capStat[n] || { pts:0, root:0, maxRise:0 };
+      const tot = _capAll[n] || 1;
+      return n + ' ' + s.pts + '/' + tot + '(' + (100*s.pts/tot).toFixed(1) + '%)'
+           + ' 뿌리' + s.root + ' 최대+' + s.maxRise.toFixed(3) + 'b';
+    });
+    console.log('[진단·정수리캡] 두피돔 위 점: ' + (parts.join(' | ') || '없음')
+      + ' · 캡 상승 ' + capRiseRaw.toFixed(3) + 'b'
+      + (capRiseRaw > HAIR_TOP_CAP.maxRise ? '(→클램프 ' + HAIR_TOP_CAP.maxRise + 'b)' : '')
+      + ' · 뷰별 상단 ' + (Object.keys(capViewTop).map(k=>k+' '+capViewTop[k].toFixed(2)+'b').join(' / ') || '없음'));
+    if(capRiseRaw > HAIR_TOP_CAP.warnRise)
+      console.warn('[진단·정수리캡] ⚠ 캡 상승 ' + capRiseRaw.toFixed(2) + 'b — 모발 두께치고 과하다. crownY(두피선 최고점) 또는 마스크 상단 의심.');
+  }
 
   /* ── 겹침 정리 (2026-08-03) ─────────────────────────────────────────
      사용자: "3D 미리보기를 보면 전면부에 크라운·프론트·사이드가 겹겹이 있어.
@@ -15777,6 +15941,11 @@ function projectHair3DToView(ctx, fit, angle, maskInf){
   if(!model || !model.viewCal || !model.viewCal[angle]) return false;
   const cal = model.viewCal[angle];
   const { toX: toCX, toY: toCY } = makeImgToCanvas(fit, maskInf.w, maskInf.h);
+  /* (#5) 시술모드 빗질이 화면 좌표 ↔ 3D를 왕복하려면 <b>지금 이 프레임의</b>
+     투영 문맥이 필요하다. 렌더가 이미 들고 있는 것을 그대로 남긴다 — 빗질이
+     자기 투영식을 따로 만들면 두 경로가 갈라진다(이 파일이 겪어온 그 패턴). */
+  COMB._proj = { angle, cal, yTop: model.yTop, CY: model.CY, toCX, toCY,
+                 pxScale: fit.dw / Math.max(1, maskInf.w) };
   const R = HAIR3D_RENDER;
 
   // ── 투영 + 슬라이스 키 ──
@@ -16183,6 +16352,250 @@ function initDevMini3D(){
   return devMini3D;
 }
 
+/* ══════════════════════════════════════════════════════════════════
+   #5 시술모드 — 빗질한 자리에 머리가 <b>남는다</b>
+   ─────────────────────────────────────────────────────────────────
+   사용자: "시술모드 — 마네킹처럼 리셋, 자유롭게 움직이는 머리(빗질·쓸어넘김이
+   유지됨)". 기존 스타일링(넘김/가르마/볼륨/결흐름)은 <b>머리 전체</b>에 한
+   방향으로 걸리는 슬라이더다. 실제 시술은 그렇지 않다 — 빗을 댄 자리만,
+   댄 방향으로 움직이고, 손을 떼면 거기 있다.
+
+   설계 — 스트로크 목록이 아니라 <b>변위장</b>:
+   빗질 한 획을 그대로 목록에 쌓고 가닥마다 전부 훑으면 비용이
+   (획 수 × 가닥 수 × 점 수)로 커진다(획 200개면 6천만 회). 대신 두상+모발을
+   감싸는 성긴 3D 격자(N³)에 변위를 <b>누적</b>해 두고, 가닥은 자기 점에서
+   삼선형 보간으로 한 번만 읽는다 — 획을 아무리 그어도 적용 비용이 일정하다.
+   획 목록(strokes)은 되돌리기·재굽기용으로만 남긴다.
+
+   두 가지 물리 규칙만 지킨다(나머지는 손대지 않는다):
+     · 뿌리는 두피에 박혀 있다 — 뿌리 쪽 gripFrom 구간은 거의 안 움직인다
+     · 머리카락 <b>길이는 변하지 않는다</b> — 변위 후 원래 마디 길이로 다시 걷는다
+       (안 하면 빗질할수록 머리가 늘어난다)
+══════════════════════════════════════════════════════════════════ */
+const COMB = {
+  on: false,          // 시술모드 ON/OFF
+  radiusPx: 64,       // 브러시 반경(캔버스 백킹 px) — 화면 확대에 따라 자동 환산
+  falloff: 1.6,       // 거리 감쇠 지수
+  gripFrom: 0.18,     // 이 비율까지의 뿌리 구간은 붙잡혀 있다
+  maxStrokes: 4000,
+  N: 32,              // 변위장 격자 한 변
+  minMovePx: 4,       // 이만큼 움직여야 한 획으로 친다
+  strokes: [], grid: null, box: null, _proj: null,
+  // 획들이 실제로 건드린 범위(AABB). 대부분의 가닥은 여기 밖이라 6번 비교로
+  // 통째로 건너뛴다 — 이게 없으면 안 움직이는 가닥까지 8모서리 보간을 돈다
+  // (실측: 16,000가닥 442ms → 이 컷으로 대부분 제거).
+  bmin: null, bmax: null,
+};
+/* 격자 상자 — 중립 모델의 실제 점 범위에서 잡는다(지어낸 크기 아님). */
+function combEnsureBox(){
+  if(COMB.box) return COMB.box;
+  const m = state.hair3Dneutral;
+  if(!m || !m.strands || !m.strands.length) return null;
+  let x0=Infinity,y0=Infinity,z0=Infinity,x1=-Infinity,y1=-Infinity,z1=-Infinity;
+  const step = Math.max(1, Math.floor(m.strands.length/400));
+  for(let i=0;i<m.strands.length;i+=step){
+    for(const p of m.strands[i].pts){
+      if(p.x<x0)x0=p.x; if(p.x>x1)x1=p.x;
+      if(p.y<y0)y0=p.y; if(p.y>y1)y1=p.y;
+      if(p.z<z0)z0=p.z; if(p.z>z1)z1=p.z;
+    }
+  }
+  if(!isFinite(x0)) return null;
+  const pad = 0.3 * Math.max(x1-x0, y1-y0, z1-z0);
+  COMB.box = { x0:x0-pad, y0:y0-pad, z0:z0-pad, x1:x1+pad, y1:y1+pad, z1:z1+pad };
+  return COMB.box;
+}
+function combGrid(){
+  if(COMB.grid) return COMB.grid;
+  if(!combEnsureBox()) return null;
+  COMB.grid = new Float32Array(COMB.N * COMB.N * COMB.N * 3);
+  return COMB.grid;
+}
+/* 획 하나를 격자에 뿌린다(누적). r은 모델 단위 반경. */
+function combSplat(p, d, r){
+  const g = combGrid(), B = COMB.box, N = COMB.N;
+  if(!g || !B || !(r > 0)) return;
+  const sx = (B.x1-B.x0)/(N-1), sy = (B.y1-B.y0)/(N-1), sz = (B.z1-B.z0)/(N-1);
+  /* 격자 재구성 감쇠 보정 — 획을 격자에 뿌린 뒤 <b>같은 자리</b>에서 읽으면
+     셀 평균이라 명령한 값이 그대로 안 나온다(실측 0.68배). 그러면 머리가
+     커서보다 30% 뒤처져 따라온다. 그 비율을 지금 여기서 계산해 나눠 준다 —
+     "몇 배" 상수를 지어내는 게 아니라 <b>바로 아래 splat과 combSampleInto의
+     역함수</b>다(하네스에서 왕복 오차 <1%로 확인). */
+  {
+    const fx = (p.x-B.x0)/sx, fy = (p.y-B.y0)/sy, fz = (p.z-B.z0)/sz;
+    const i = Math.min(N-2, Math.max(0, Math.floor(fx)));
+    const j = Math.min(N-2, Math.max(0, Math.floor(fy)));
+    const k = Math.min(N-2, Math.max(0, Math.floor(fz)));
+    const tx = fx-i, ty = fy-j, tz = fz-k;
+    let att = 0;
+    for(let dk=0; dk<2; dk++) for(let dj=0; dj<2; dj++) for(let di=0; di<2; di++){
+      const w = (di?tx:1-tx) * (dj?ty:1-ty) * (dk?tz:1-tz);
+      if(!w) continue;
+      const dist = Math.hypot(B.x0+(i+di)*sx-p.x, B.y0+(j+dj)*sy-p.y, B.z0+(k+dk)*sz-p.z);
+      if(dist < r) att += w * Math.pow(1 - dist/r, COMB.falloff);
+    }
+    if(att > 0.15) d = { x:d.x/att, y:d.y/att, z:d.z/att };
+  }
+  if(!COMB.bmin){ COMB.bmin = {x:Infinity,y:Infinity,z:Infinity}; COMB.bmax = {x:-Infinity,y:-Infinity,z:-Infinity}; }
+  COMB.bmin.x = Math.min(COMB.bmin.x, p.x-r); COMB.bmax.x = Math.max(COMB.bmax.x, p.x+r);
+  COMB.bmin.y = Math.min(COMB.bmin.y, p.y-r); COMB.bmax.y = Math.max(COMB.bmax.y, p.y+r);
+  COMB.bmin.z = Math.min(COMB.bmin.z, p.z-r); COMB.bmax.z = Math.max(COMB.bmax.z, p.z+r);
+  const i0 = Math.max(0, Math.floor((p.x-r-B.x0)/sx)), i1 = Math.min(N-1, Math.ceil((p.x+r-B.x0)/sx));
+  const j0 = Math.max(0, Math.floor((p.y-r-B.y0)/sy)), j1 = Math.min(N-1, Math.ceil((p.y+r-B.y0)/sy));
+  const k0 = Math.max(0, Math.floor((p.z-r-B.z0)/sz)), k1 = Math.min(N-1, Math.ceil((p.z+r-B.z0)/sz));
+  for(let i=i0;i<=i1;i++){
+    const gx = B.x0 + i*sx;
+    for(let j=j0;j<=j1;j++){
+      const gy = B.y0 + j*sy;
+      for(let k=k0;k<=k1;k++){
+        const gz = B.z0 + k*sz;
+        const dist = Math.hypot(gx-p.x, gy-p.y, gz-p.z);
+        if(dist > r) continue;
+        const w = Math.pow(1 - dist/r, COMB.falloff);
+        const o = ((k*N + j)*N + i) * 3;
+        g[o] += d.x*w; g[o+1] += d.y*w; g[o+2] += d.z*w;
+      }
+    }
+  }
+}
+function combSampleInto(p, out){
+  const g = COMB.grid, B = COMB.box, N = COMB.N;
+  out.x = out.y = out.z = 0;
+  if(!g || !B) return out;
+  const fx = (p.x-B.x0)/(B.x1-B.x0)*(N-1), fy = (p.y-B.y0)/(B.y1-B.y0)*(N-1), fz = (p.z-B.z0)/(B.z1-B.z0)*(N-1);
+  if(fx < 0 || fy < 0 || fz < 0 || fx > N-1 || fy > N-1 || fz > N-1) return out;
+  const i = Math.min(N-2, Math.floor(fx)), j = Math.min(N-2, Math.floor(fy)), k = Math.min(N-2, Math.floor(fz));
+  const tx = fx-i, ty = fy-j, tz = fz-k;
+  for(let dk=0; dk<2; dk++) for(let dj=0; dj<2; dj++) for(let di=0; di<2; di++){
+    const w = (di?tx:1-tx) * (dj?ty:1-ty) * (dk?tz:1-tz);
+    if(!w) continue;
+    const o = (((k+dk)*N + (j+dj))*N + (i+di)) * 3;
+    out.x += g[o]*w; out.y += g[o+1]*w; out.z += g[o+2]*w;
+  }
+  return out;
+}
+function combRebake(){
+  COMB.grid = null; COMB.bmin = COMB.bmax = null;
+  if(!COMB.strokes.length) return;
+  combGrid();
+  /* 재굽기는 원래 명령값(s.d)으로 다시 뿌려야 한다 — combSplat이 감쇠 보정을
+     또 걸므로, 저장은 <b>보정 전</b> 값이어야 왕복이 맞는다(그래서 splat은
+     인자 d를 지역 변수로만 바꾸고 호출자의 객체는 안 건드린다). */
+  for(const s of COMB.strokes) combSplat(s.p, s.d, s.r);
+}
+function combClear(){ COMB.strokes.length = 0; COMB.grid = null; COMB.bmin = COMB.bmax = null; }
+function combUndo(){
+  if(!COMB.strokes.length) return;
+  // 한 번의 드래그는 여러 획으로 쌓이므로 <b>드래그 단위</b>로 되돌린다.
+  const id = COMB.strokes[COMB.strokes.length-1].g;
+  while(COMB.strokes.length && COMB.strokes[COMB.strokes.length-1].g === id) COMB.strokes.pop();
+  combRebake();
+  combRefresh();
+}
+/* 변위장을 가닥에 적용 — 뿌리 고정 + 길이 보존 */
+const _combTmp = {x:0,y:0,z:0};
+function combStrand3D(pts){
+  if(!COMB.grid || !pts || pts.length < 2) return pts;
+  // 획이 닿은 범위 밖이면 통째로 건너뛴다(대부분의 가닥이 여기서 끝난다)
+  const lo = COMB.bmin, hi = COMB.bmax;
+  if(lo){
+    let hit = false;
+    for(let i=0;i<pts.length;i++){
+      const p = pts[i];
+      if(p.x>=lo.x && p.x<=hi.x && p.y>=lo.y && p.y<=hi.y && p.z>=lo.z && p.z<=hi.z){ hit = true; break; }
+    }
+    if(!hit) return pts;
+  }
+  const n = pts.length - 1;
+  const moved = new Array(pts.length);
+  let any = false;
+  for(let i=0;i<pts.length;i++){
+    const p = pts[i];
+    combSampleInto(p, _combTmp);
+    const t = i/n;
+    const grip = t <= COMB.gripFrom ? (t/COMB.gripFrom) : 1;
+    if(_combTmp.x || _combTmp.y || _combTmp.z) any = true;
+    moved[i] = { x:p.x + _combTmp.x*grip, y:p.y + _combTmp.y*grip, z:p.z + _combTmp.z*grip };
+  }
+  if(!any) return pts;
+  // 길이 보존 — 원래 마디 길이로 다시 걷는다(빗질해도 머리가 안 늘어난다)
+  const out = [moved[0]];
+  for(let i=1;i<pts.length;i++){
+    const L = Math.hypot(pts[i].x-pts[i-1].x, pts[i].y-pts[i-1].y, pts[i].z-pts[i-1].z);
+    const a = out[i-1], m = moved[i];
+    let dx = m.x-a.x, dy = m.y-a.y, dz = m.z-a.z;
+    const d = Math.hypot(dx,dy,dz) || 1;
+    out.push({ x:a.x + dx/d*L, y:a.y + dy/d*L, z:a.z + dz/d*L });
+  }
+  return out;
+}
+function combRefresh(){
+  if(typeof drawAdjustPreview === 'function') drawAdjustPreview();
+  if(typeof refreshDevMini3D === 'function') refreshDevMini3D();
+  const b = document.getElementById('combUndoBtn');
+  if(b) b.disabled = !COMB.strokes.length;
+}
+/* 화면 좌표 → 지금 보이는 가닥 중 가장 가까운 점(3D). 역투영을 새로 만들지
+   않고 <b>렌더가 쓰는 정투영</b>을 그대로 되돌려 쓴다 — 두 경로가 갈라지지 않게. */
+function combPickAnchor(px, py){
+  const P = COMB._proj, m = state.hair3Dneutral;
+  if(!P || !m || !m.strands || !m.strands.length) return null;
+  const adj = computeAdjustedHair3DStrands(null, Math.max(1, m.strands.length/900));
+  if(!adj || !adj.length) return null;
+  let best = null, bd = Infinity;
+  for(const st of adj){
+    for(const q of st.pts){
+      const pr = project3DPointToView(q, P.cal, P.yTop, P.CY);
+      if(pr.depth < 0) continue;                      // 카메라를 등진 가닥
+      const dx = P.toCX(pr.ix) - px, dy = P.toCY(pr.iy) - py;
+      const d2 = dx*dx + dy*dy;
+      if(d2 < bd){ bd = d2; best = q; }
+    }
+  }
+  return best ? { x:best.x, y:best.y, z:best.z, dist:Math.sqrt(bd) } : null;
+}
+/* 캔버스 이동량 → 월드 변위. 화면 드래그이므로 <b>카메라 상면</b>에 놓는다:
+   이미지 x는 모델 x(cal.s), 이미지 y는 모델 y(cal.sy, 부호 반대), 깊이 0.
+   그 다음 이 뷰의 실측 포즈로 되돌린다(리프트가 쓰는 것과 같은 R^T). */
+function combDeltaToWorld(dxPx, dyPx){
+  const P = COMB._proj;
+  if(!P) return null;
+  const dIx = dxPx / Math.max(1e-6, P.pxScale), dIy = dyPx / Math.max(1e-6, P.pxScale);
+  const rot = composeRotationZYX(P.cal.yaw, P.cal.pitch, P.cal.roll);
+  const v = applyRotationTranspose3(rot, new THREE.Vector3(dIx * P.cal.s, -dIy * P.cal.sy, 0));
+  return { x:v.x, y:v.y, z:v.z };
+}
+function combRadiusModel(){
+  const P = COMB._proj;
+  if(!P) return 0;
+  return (COMB.radiusPx / Math.max(1e-6, P.pxScale)) * P.cal.s;
+}
+let _combGroup = 0;
+function combStrokeFromDrag(anchor, dxPx, dyPx){
+  const d = combDeltaToWorld(dxPx, dyPx), r = combRadiusModel();
+  if(!d || !(r > 0)) return null;
+  COMB.strokes.push({ p:{x:anchor.x,y:anchor.y,z:anchor.z}, d, r, g:_combGroup });
+  if(COMB.strokes.length > COMB.maxStrokes) COMB.strokes.shift();
+  combSplat(anchor, d, r);
+  return d;
+}
+function toggleCombMode(){
+  COMB.on = !COMB.on;
+  const b = document.getElementById('combModeBtn');
+  if(b) b.classList.toggle('on', COMB.on);
+  const bar = document.getElementById('combBar');
+  if(bar) bar.style.display = COMB.on ? 'flex' : 'none';
+  combRefresh();
+}
+/* 마네킹 리셋 — 갓 꽂은 마네킹처럼 스타일링을 전부 중립으로, 빗질도 지운다.
+   커트·펌·컬러는 <b>시술 결과</b>라 건드리지 않는다(연출만 되돌린다). */
+function mannequinReset(){
+  state.stylingByView = neutralStylingByView();
+  combClear();
+  if(typeof buildGyControls === 'function') buildGyControls();
+  combRefresh();
+}
+
 // (11차) 중립 3D 모델에 섹션별 조정 연산자(길이·컬)를 적용해 "조정된 월드 가닥"을
 // 반환. 미니뷰(3D)와 조정창 투영(2D)이 같은 소스를 쓰게 하는 단일 출처.
 // srcAngleFilter를 주면 그 뷰 캡처 가닥만(뷰별 투영 시 교차뷰 잡음 방지).
@@ -16246,6 +16659,10 @@ function computeAdjustedHair3DStrands(srcAngleFilter, stride){
                   { growLen: grow, neverDrop: true, faceVeto: true });
       if(t && t.length >= 2) pts = t;
     }
+    /* ⑨ 빗질(시술모드) — 재클립 <b>뒤</b>다. 클립은 "사진에 머리가 없는 자리에는
+       안 그린다"는 규칙인데, 빗질은 일부러 그 자리로 옮기는 행위라 앞에 두면
+       빗는 족족 잘려나간다. 빗질 없으면(격자 없음) 비용 0. */
+    pts = combStrand3D(pts);
     out.push({ pts, color: st.color, sec: st.sec, srcAngle: st.srcAngle });
   }
   if(occAcc) logAdjustedClip(occAcc, out.length);
@@ -16405,6 +16822,7 @@ function buildNeutralHair3D(cb){
   const done = ()=>{
     try { buildHairStrandsFromPaths(); } catch(e){ console.warn('중립 3D 리프트 실패:', e); }
     state.hair3Dneutral = state.hair3D || null;
+    if(typeof COMB !== 'undefined'){ COMB.box = null; }  // (#5) 격자 상자는 모델에서 나온다 — 모델이 바뀌면 다시 잰다
     // (2026-08-01) 중립 캡처 = <b>3D의 원료</b>. 예전엔 복원하면서 버렸는데, 단계별
     // 밀도를 재려면 "원료가 이미 비어 있었나"를 봐야 해서 따로 보관한다.
     state.neutralStrandPaths = state.strandPaths;
@@ -16789,6 +17207,7 @@ function showToast(msg){
 function startNewCustomer(){
   aiAnalysis=null;
   state.hair3D=null; state.hair3Dneutral=null; // (11차) 3D 모델 캐시도 새 고객마다 무효화
+  if(typeof combClear === 'function') combClear();      // (#5) 빗질도 고객마다 초기화
   state.hairField3D=null; // (2026-08-01) 3D 결 필드도 사람이 바뀌면 통째로 무효
   state.hairOcc3D=null;   // (2026-08-01) 3D 점유 필드도 마찬가지
   state.hairIdentity=null; // (2026-08-01) 모발 프로필 — 사람이 바뀌면 당연히 버린다
@@ -16975,6 +17394,8 @@ const I18N = {
   '드래그 회전 · ⛶ 확대':'Drag to rotate · ⛶ zoom',
   '드래그해서 회전':'Drag to rotate', '기준면 보기':'Show reference surface',
   '드래그 회전 · Shift+드래그 이동 · 휠 확대':'Drag to rotate · Shift+drag to move · wheel to zoom',
+  // ── 시술모드 (#5) ──
+  '시술모드':'Salon mode', '빗질 되돌리기':'Undo comb', '마네킹 리셋':'Mannequin reset',
   'AI 분석':'AI analysis', '음성으로 조정하기':'Adjust by voice',
   '예: "크라운 길게", "네이프 짧게", "볼륨 추가"':'e.g. "crown longer", "nape shorter", "add volume"',
   '크라운·프론트·템플·사이드·후두부·네이프 + 길게·짧게·볼륨·컬':
