@@ -1651,6 +1651,15 @@ input[type=range]::-moz-range-thumb{width:20px;height:20px;border-radius:50%;bac
 .gy-toggle::after{content:'';position:absolute;width:16px;height:16px;border-radius:50%;background:var(--text);top:2px;left:2px;transition:.2s;}
 .gy-toggle.on::after{left:18px;background:#1B1816;}
 /* 언어 토글 (2026-08-03) */
+/* 조정·3D 화면 확대 손잡이 (2026-08-08) */
+.view-zoom{position:absolute;right:8px;bottom:8px;z-index:70;display:flex;align-items:center;gap:2px;
+  background:rgba(0,0,0,0.55);border:1px solid var(--line);border-radius:10px;padding:3px 5px;}
+.view-zoom button{background:none;border:none;color:var(--text);font-size:14px;line-height:1;
+  padding:4px 7px;cursor:pointer;border-radius:6px;}
+.view-zoom button:hover{background:var(--surface-2);color:var(--accent-soft);}
+.view-zoom span{font-family:'JetBrains Mono',monospace;font-size:10.5px;color:var(--text-muted);
+  min-width:38px;text-align:center;}
+#adjustCanvas{touch-action:none;}
 .lang-toggle{background:var(--surface-2);color:var(--text);border:1px solid var(--line);
   border-radius:999px;padding:4px 11px;font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:500;
   letter-spacing:.04em;cursor:pointer;line-height:1.5;}
@@ -1761,6 +1770,14 @@ input[type=range]::-moz-range-thumb{width:20px;height:20px;border-radius:50%;bac
         <!-- (10차) 개발용 3D 검증 미니뷰 — 3D 조정 엔진 β ON일 때만 표시.
              정규 3D 모델(state.hair3D)을 직접 렌더(드래그 회전). 탭(확대 버튼)으로
              전체화면 확대. 출시 땐 이 패널만 숨기면 됨. -->
+        <!-- 조정 화면 확대/이동 (2026-08-08) — 결과 화면과 같은 손잡이.
+             휠·드래그·핀치도 되지만, 터치 기기와 "지금 몇 %인지"를 위해 눈에 보이는 버튼을 둔다. -->
+        <div class="view-zoom" id="adjustZoomBar">
+          <button onclick="adjustViewStep(1/1.3)" title="축소">−</button>
+          <span id="adjustZoomPct">100%</span>
+          <button onclick="adjustViewStep(1.3)" title="확대">＋</button>
+          <button onclick="adjustViewReset()" title="원래대로">↺</button>
+        </div>
         <div id="devMini3D" style="display:none;">
           <div id="devMini3DHeader">
             <span>3D 미리보기</span>
@@ -1856,6 +1873,13 @@ input[type=range]::-moz-range-thumb{width:20px;height:20px;border-radius:50%;bac
         <div class="preview-tag" id="model3dTag">범용 3D 두상 · 확정 스타일 적용</div>
         <!-- [진단용] 가닥 뿌리 기준면(가상 타원체) 토글 (2026-07-14 추가) — 헤어 위치 문제 원인 분리용 -->
         <button class="debug-btn mask-debug-btn" id="strandDebugToggle" onclick="toggleStrandDebug()">기준면 보기</button>
+        <!-- 3D 화면 확대/이동 (2026-08-08) — 휠·핀치·Shift드래그도 됨 -->
+        <div class="view-zoom" id="model3dZoomBar">
+          <button onclick="model3dZoomStep(1/1.3)" title="축소">−</button>
+          <span id="model3dZoomPct">100%</span>
+          <button onclick="model3dZoomStep(1.3)" title="확대">＋</button>
+          <button onclick="model3dViewReset()" title="원래대로">↺</button>
+        </div>
         <div class="model3d-hint" style="position:absolute;bottom:10px;left:50%;transform:translateX(-50%);font-size:11px;color:var(--text-muted);background:rgba(0,0,0,0.4);padding:4px 10px;border-radius:10px;">드래그해서 회전</div>
       </div>
       <div style="display:flex;gap:8px;padding:10px 14px 14px;flex-shrink:0;">
@@ -4745,6 +4769,7 @@ function updateSegStatus(){
 // 섹션 탭 구성, globalCurl 슬라이더 동기화, 프리뷰 렌더
 function setupAdjustScreen(){
   unlockTab('adjust'); renderAngleSwitch('angleSwitch');
+  bindAdjustViewGestures(); syncAdjustZoomUI();   // (2026-08-08) 확대/이동 손잡이
   const maskBtn = document.getElementById('maskDebugToggle');
   if(maskBtn){
     maskBtn.classList.toggle('on', state.debugShowMask);
@@ -6687,19 +6712,125 @@ function hairBoxOf(maskInf){
   return { x0:x0/mw, x1:(x1+1)/mw, y0:y0/mh, y1:(y1+1)/mh };
 }
 // fit을 머리 중심으로 확대한 새 fit. 확대할 이유가 없으면 원본을 그대로 돌려준다.
+/* ── 조정 화면 확대/이동 (2026-08-08) ────────────────────────────────
+   사용자: "3번 같은 결과화면은 확대/축소가 돼서 확인이 가능한데, 1번 같은
+   화면은 고정화면이라 두상에 맞게 들어오지 않으면 확인이 안 돼."
+   맞다. 자동 프레이밍(zoomFitToHair)은 <b>헤어 박스</b>에 맞추는데, 긴 머리면
+   박스가 어깨까지 늘어나 정작 보고 싶은 정수리가 우표만 해진다. 결과 화면은
+   RESULT_VIEW로 손잡이를 이미 갖고 있었는데 조정 화면만 없었다.
+   ※ fit이 "배율 + 평행이동"이라 여기 한 곳에서 dw/dh/dx/dy만 다시 쓰면
+     마스크 clip·가닥 투영·이식이 전부 fit을 통하므로 자동으로 따라온다
+     (ADJUST_ZOOM이 그렇게 동작한 것과 같은 이유).
+   ※ 재구성(3D)에는 전혀 관여하지 않는다 — 순수 표시 배율. */
+const ADJUST_VIEW = { zoom: 1, panX: 0, panY: 0, min: 0.4, max: 10 };
+function adjustViewReset(){ ADJUST_VIEW.zoom = 1; ADJUST_VIEW.panX = 0; ADJUST_VIEW.panY = 0; syncAdjustZoomUI(); renderAdjustFrame(); }
+/* 커서(px,py) 아래의 그림이 <b>제자리에 있도록</b> 확대한다.
+   표시식이  p = c + (q − c)·z + pan  (q=원래 자리, c=캔버스 중심)이므로
+   같은 q가 그대로 있으려면  pan1 = p − c − (p − c − pan0)·(z1/z0). */
+function adjustViewZoomAt(next, px, py, w, h){
+  const V = ADJUST_VIEW;
+  const z0 = V.zoom, z1 = Math.max(V.min, Math.min(V.max, next));
+  if(Math.abs(z1 - z0) < 1e-4) return;
+  const cx = w/2, cy = h/2, r = z1/z0;
+  if(px == null){ px = cx; py = cy; }
+  V.panX = (px - cx) - ((px - cx) - V.panX) * r;
+  V.panY = (py - cy) - ((py - cy) - V.panY) * r;
+  V.zoom = z1;
+  syncAdjustZoomUI();
+}
+function applyAdjustView(fit, w, h){
+  const V = ADJUST_VIEW;
+  if(V.zoom === 1 && !V.panX && !V.panY) return fit;
+  const cx = w/2, cy = h/2, z = V.zoom;
+  return { ...fit,
+    dw: fit.dw * z, dh: fit.dh * z,
+    dx: cx + (fit.dx - cx) * z + V.panX,
+    dy: cy + (fit.dy - cy) * z + V.panY,
+    _userZoom: z };
+}
+
 function zoomFitToHair(fit, maskInf, w, h){
-  if(!ADJUST_ZOOM.on) return fit;
+  if(!ADJUST_ZOOM.on) return applyAdjustView(fit, w, h);
   const box = hairBoxOf(maskInf);
-  if(!box) return fit;
+  if(!box) return applyAdjustView(fit, w, h);
   const bw = (box.x1 - box.x0) * (1 + ADJUST_ZOOM.pad);
   const bh = (box.y1 - box.y0) * (1 + ADJUST_ZOOM.pad);
-  if(!(bw > 0) || !(bh > 0)) return fit;
+  if(!(bw > 0) || !(bh > 0)) return applyAdjustView(fit, w, h);
   // 확대해도 머리가 캔버스 밖으로 안 나가는 최대 배율
   const k = Math.min(w / (bw * fit.dw), h / (bh * fit.dh), ADJUST_ZOOM.max);
-  if(!(k > 1.02)) return fit;                    // 이미 꽉 차 있으면 그대로
+  if(!(k > 1.02)) return applyAdjustView(fit, w, h);   // 이미 꽉 차 있으면 그대로
   const cx = (box.x0 + box.x1) / 2, cy = (box.y0 + box.y1) / 2;
-  return { dw: fit.dw * k, dh: fit.dh * k,
-           dx: w/2 - (cx * fit.dw * k), dy: h/2 - (cy * fit.dh * k), _zoom: k };
+  return applyAdjustView({ dw: fit.dw * k, dh: fit.dh * k,
+           dx: w/2 - (cx * fit.dw * k), dy: h/2 - (cy * fit.dh * k), _zoom: k }, w, h);
+}
+
+/* 조정 화면 제스처 — 휠·드래그·핀치. 결과 화면(bindResultViewGestures)과 같은 규칙.
+   캔버스 백킹스토어가 1200px 고정이고 화면 표시 크기는 다르므로, 마우스 좌표를
+   <b>백킹 픽셀로 환산</b>해서 넘긴다(안 하면 확대 기준점이 어긋난다). */
+function bindAdjustViewGestures(){
+  const canvas = document.getElementById('adjustCanvas');
+  if(!canvas || canvas._adjBound) return;
+  canvas._adjBound = true;
+  const toCanvas = (e)=>{
+    const r = canvas.getBoundingClientRect();
+    return { x:(e.clientX - r.left) * (canvas.width /(r.width ||1)),
+             y:(e.clientY - r.top ) * (canvas.height/(r.height||1)),
+             sx: canvas.width/(r.width||1), sy: canvas.height/(r.height||1) };
+  };
+  canvas.addEventListener('wheel', (e)=>{
+    e.preventDefault();
+    const p = toCanvas(e);
+    adjustViewZoomAt(ADJUST_VIEW.zoom * Math.exp(-e.deltaY * 0.0016), p.x, p.y, canvas.width, canvas.height);
+    renderAdjustFrame();
+  }, { passive:false });
+  let drag = null, pinch = null;
+  const pts = new Map();
+  canvas.addEventListener('pointerdown', (e)=>{
+    canvas.setPointerCapture(e.pointerId);
+    pts.set(e.pointerId, e);
+    if(pts.size === 1){ const p = toCanvas(e); drag = { x:p.x, y:p.y }; }
+    else if(pts.size === 2){ drag = null; pinch = pinchStateOf(pts, toCanvas); }
+  });
+  canvas.addEventListener('pointermove', (e)=>{
+    if(!pts.has(e.pointerId)) return;
+    pts.set(e.pointerId, e);
+    if(pts.size === 2 && pinch){
+      const now = pinchStateOf(pts, toCanvas);
+      if(now.d > 1 && pinch.d > 1){
+        adjustViewZoomAt(ADJUST_VIEW.zoom * (now.d / pinch.d), now.cx, now.cy, canvas.width, canvas.height);
+        ADJUST_VIEW.panX += now.cx - pinch.cx; ADJUST_VIEW.panY += now.cy - pinch.cy;
+        renderAdjustFrame();
+      }
+      pinch = now; return;
+    }
+    if(!drag) return;
+    const p = toCanvas(e);
+    ADJUST_VIEW.panX += p.x - drag.x; ADJUST_VIEW.panY += p.y - drag.y;
+    drag = { x:p.x, y:p.y };
+    renderAdjustFrame();
+  });
+  const up = (e)=>{ pts.delete(e.pointerId); if(pts.size < 2) pinch = null; if(!pts.size) drag = null; };
+  canvas.addEventListener('pointerup', up);
+  canvas.addEventListener('pointercancel', up);
+  canvas.addEventListener('dblclick', (e)=>{ e.preventDefault(); adjustViewReset(); });
+}
+function twoPtDist(map){
+  const [a,b] = [...map.values()];
+  return Math.hypot(a.clientX-b.clientX, a.clientY-b.clientY);
+}
+function pinchStateOf(pts, toCanvas){
+  const [a,b] = [...pts.values()];
+  const pa = toCanvas(a), pb = toCanvas(b);
+  return { d: Math.hypot(pa.x-pb.x, pa.y-pb.y), cx:(pa.x+pb.x)/2, cy:(pa.y+pb.y)/2 };
+}
+function syncAdjustZoomUI(){
+  const el = document.getElementById('adjustZoomPct');
+  if(el) el.textContent = Math.round(ADJUST_VIEW.zoom * 100) + '%';
+}
+function adjustViewStep(mul){
+  const c = document.getElementById('adjustCanvas');
+  adjustViewZoomAt(ADJUST_VIEW.zoom * mul, null, null, c ? c.width : 1200, c ? c.height : 800);
+  renderAdjustFrame();
 }
 
 // 2D 렌더 캔버스의 devicePixelRatio 배율(2026-07-14 추가).
@@ -11208,6 +11339,7 @@ function computeHeadVerticalRadius(){
 //     상태였음 — 한 곳만 바뀌면 헤어/얼굴/두상이 서로 다른 두상을 기준으로
 //     서게 되는 구조라 통합.
 let _headEllipsoidLogged = false;
+let _headWidthGuardLogged = false;   // [진단] 두상 폭 보정 경고 1회만
 /* ── (2026-07-26) 두상 폭을 밴드 하나가 아니라 최대 단면으로 ──────────
    증상: 어떤 촬영에서는 두상이 정상인데, 어떤 촬영에서는 폭이 반토막 나서
         얼굴이 두상 밖으로 튀어나온 납작한 형태가 됐다(사용자 스크린샷).
@@ -11322,18 +11454,92 @@ function getScalpEllipsoid(){
   }
   return { a, b, c, src };
 }
+/* ══════════════════════════════════════════════════════════════════
+   두상 폭이 <b>머리카락을 따라가는</b> 것 막기 (2026-08-08)
+   ─────────────────────────────────────────────────────────────────
+   시연 대상이 긴 머리로 정해지면서 막아야 하는 것이 됐다. 실기기 밴드:
+       phi0.95:W0.53  phi1.05:W0.61  phi1.55:W0.68  phi1.75:W0.80  phi2.35:W0.87
+   <b>끝까지 커진다.</b> 사람 머리는 귀 높이에서 제일 넓고 목으로 가며 좁아지는데,
+   어깨로 흐른 머리카락이 실루엣에 잡혀 아래로 벌어지는 원뿔이 된다. 그런데
+   getHeadEllipsoid는 phi≤1.62의 <b>최댓값</b>을 폭으로 쓰므로, 긴 머리에서는
+   귀 높이가 아니라 <b>어깨</b>를 두상 폭으로 삼는다(실기기 a=0.696 = 19.4cm).
+   그 값이 두피면·정수리 캡 앵커·결과 화면 두상 크기까지 전부 오염시킨다.
+
+   ── 두 가지로 잡는다 (새 측정 없이) ────────────────────────────────
+   ① <b>적도 통과 판정</b> — W가 최대인 밴드가 범위의 <b>마지막</b>이면 아직
+      꺾이지 않은 것 = 두개골이 아니라 머리카락이다. 뷰끼리 대조할 필요도 없고
+      한 뷰 안에서 판정된다. (실측: 남성 phi0.95에서 꺾임 O / 여성 꺾임 X)
+   ② <b>얼굴 실측으로 클램프</b> — 얼굴 메쉬 반폭은 랜드마크에서 나온 뼈·피부라
+      머리카락이 원리상 안 섞인다. 코드는 이미 이 둘을 비교해 ⚠까지 찍고 있었는데
+      <b>로그만 하고 값은 그대로 썼다</b>(사용자 지적: "이상이 있을 때 참조를 해야지").
+      이제 그 감지 결과를 실제로 쓴다.
+   깊이(c)는 같은 배율 k로 함께 줄인다 — 측정된 깊이/폭 형상비를 보존하려고.
+   ※ 남성 케이스는 비 0.90×라 클램프에 <b>안 걸린다</b>(무변경 확인).
+══════════════════════════════════════════════════════════════════ */
+const HEAD_WIDTH_GUARD = {
+  on: true,
+  faceMinRatio: 0.85,   // 두상 반폭 하한(얼굴 메쉬 반폭 대비) — 기존 플로시빌리티 검사와 같은 값
+  faceMaxRatio: 1.15,   // 상한. 이 위는 사람 두개골이 아니라 머리카락이다
+};
 function getHeadEllipsoid(){
   const eq = interpolateHeadCrossSection(Math.PI/2);
-  let maxW = 0, maxD = 0;
+  let maxW = 0, maxD = 0, turnover = null, peakPhi = null;
   try{
-    computeHeadCrossSections().forEach(bd=>{
-      if(bd.phi > HEAD_WIDTH_MAX_PHI) return;
-      if(typeof bd.halfWidth === 'number' && bd.halfWidth > maxW) maxW = bd.halfWidth;
-      if(typeof bd.halfDepth === 'number' && bd.halfDepth > maxD) maxD = bd.halfDepth;
-    });
+    const inR = computeHeadCrossSections()
+      .filter(bd => bd.phi <= HEAD_WIDTH_MAX_PHI && typeof bd.halfWidth === 'number');
+    if(inR.length){
+      let peak = 0;
+      for(let i=1;i<inR.length;i++) if(inR[i].halfWidth > inR[peak].halfWidth) peak = i;
+      turnover = peak < inR.length - 1;      // 적도를 지나 꺾였나
+      peakPhi = inR[peak].phi;
+      /* 최댓값은 <b>꼭짓점까지만</b> 훑는다. 꺾인 뒤 다시 커지는 구간은
+         목·어깨로 흐른 머리카락이지 두상이 아니다. */
+      for(let i=0;i<=peak;i++){
+        if(inR[i].halfWidth > maxW) maxW = inR[i].halfWidth;
+        if(typeof inR[i].halfDepth === 'number' && inR[i].halfDepth > maxD) maxD = inR[i].halfDepth;
+      }
+    }
   }catch(e){}
-  const aRaw = Math.max(0.2, maxW || 0, eq.halfWidth || 0);
-  const dRaw = Math.max(0.15, maxD || 0, eq.halfDepth || 0);
+  let aRaw = Math.max(0.2, maxW || 0, eq.halfWidth || 0);
+  let dRaw = Math.max(0.15, maxD || 0, eq.halfDepth || 0);
+  // ── 얼굴 실측(머리카락 무관)으로 클램프 — 감지만 하던 것을 실제로 적용 ──
+  if(HEAD_WIDTH_GUARD.on){
+    let faceHalf = 0;
+    try{ faceHalf = getFaceHalfWidthMesh() || 0; }catch(e){}
+    /* ── 언제 <b>고치고</b> 언제 <b>알리기만</b> 하나 (하네스에서 잡음) ──────────
+       처음엔 비율만 보고 무조건 클램프했다. 그러면 <b>얼굴 실측이 오염된</b>
+       케이스(얼굴이 실제보다 작게 잡힘)에서 멀쩡한 두상까지 같이 끌어내린다 —
+       합성으로 얼굴 0.20을 넣었더니 정상 두상 0.460이 0.230으로 반토막 났다.
+       두 경우는 <b>구분이 된다</b>:
+         · 적도를 못 지남(turnover=false) → 실루엣이 머리카락이다 → <b>고친다</b>
+         · 꺾였는데도 비율이 안 맞음        → 얼굴·자 쪽 문제다   → <b>알리기만</b>
+       모르는 쪽은 건드리지 않는다(정수리 캡에서 상한을 뺀 것과 같은 규칙). */
+    if(faceHalf > 0){
+      const hi = faceHalf * HEAD_WIDTH_GUARD.faceMaxRatio;
+      const tooWide = aRaw > hi;
+      const aFix = (tooWide && turnover === false) ? hi : aRaw;
+      if(tooWide && turnover !== false && !_headWidthGuardLogged){
+        _headWidthGuardLogged = true;
+        console.warn('[두상 폭 점검] 실루엣 폭 ' + aRaw.toFixed(3) + '이 얼굴 메쉬 반폭 '
+          + faceHalf.toFixed(3) + '의 ' + (aRaw/faceHalf).toFixed(2) + '배 — 사람 두개골 범위 밖입니다.'
+          + '\n    다만 밴드는 phi' + (peakPhi!=null?peakPhi.toFixed(2):'?') + '에서 <b>꺾였습니다</b>'
+          + '(=실루엣은 머리 모양) → 머리카락이 아니라 <b>얼굴 실측이나 가로 자</b> 쪽 문제로 보입니다.'
+          + ' 값은 그대로 둡니다 — [가로 자 점검]·[자 일치] 줄을 볼 것.');
+      }
+      if(Math.abs(aFix - aRaw) > 1e-6){
+        const k = aFix / aRaw;                 // 깊이도 같은 배율 — 형상비 보존
+        if(!_headWidthGuardLogged){
+          _headWidthGuardLogged = true;
+          console.warn('[두상 폭 보정] 실루엣 폭 ' + aRaw.toFixed(3) + ' → <b>' + aFix.toFixed(3) + '</b>'
+            + ' (얼굴 메쉬 반폭 ' + faceHalf.toFixed(3) + '의 ' + (aRaw/faceHalf).toFixed(2) + '배는 사람 두개골 범위 밖)'
+            + ' · 깊이도 ×' + k.toFixed(2) + ' (형상비 보존)'
+            + '\n    원인: 밴드 W가 <b>끝까지 증가</b>(최대가 phi' + (peakPhi!=null?peakPhi.toFixed(2):'?')
+              + ' = 범위 마지막) — 적도를 못 지났습니다. 어깨로 흐른 머리카락을 두상 폭으로 잡고 있었습니다.');
+        }
+        aRaw = aFix; dRaw = dRaw * k;
+      }
+    }
+  }
   /* ── 비례 가드는 넣지 않는다 (2026-07-26 4차, 실기기 확인) ────────────
      "깊이가 세로보다 크면 비인체적"이라 보고 b ≥ a×1.15 / c ≤ b×1.05 가드를
      넣으려 했으나, 실기기에서 처음으로 잘 나온 케이스가 정확히
@@ -16062,13 +16268,49 @@ function initModel3DRenderer(container){
   let dragging=false, lastX=0, autoRotate=true;
   const dom = renderer.domElement;
   dom.style.touchAction='none';
-  dom.addEventListener('pointerdown', e=>{ dragging=true; autoRotate=false; lastX=e.clientX; });
-  window.addEventListener('pointerup', ()=>{ dragging=false; });
+  /* (2026-08-08) 좌우 드래그 = 회전(기존), <b>Shift/오른쪽 드래그 = 이동</b>,
+     휠·핀치 = 확대. 회전만 있던 탓에 정수리가 프레임 밖이면 확인할 방법이 없었다. */
+  let lastY=0, panning=false;
+  dom.addEventListener('pointerdown', e=>{
+    dragging=true; autoRotate=false; lastX=e.clientX; lastY=e.clientY;
+    panning = e.shiftKey || e.button === 2 || e.button === 1;
+  });
+  dom.addEventListener('contextmenu', e=>e.preventDefault());  // 오른쪽 드래그를 이동으로 쓰므로
+  window.addEventListener('pointerup', ()=>{ dragging=false; panning=false; });
   window.addEventListener('pointermove', e=>{
     if(!dragging) return;
-    const dx = e.clientX - lastX; lastX = e.clientX;
-    headGroup.rotation.y += dx * 0.01;
+    const dx = e.clientX - lastX, dy = e.clientY - lastY;
+    lastX = e.clientX; lastY = e.clientY;
+    if(panning){
+      const r = dom.getBoundingClientRect();
+      MODEL3D_VIEW.panX -= dx / Math.max(1, r.width);
+      MODEL3D_VIEW.panY += dy / Math.max(1, r.height);
+      model3dApplyView();
+    } else {
+      headGroup.rotation.y += dx * 0.01;
+    }
   });
+  dom.addEventListener('wheel', e=>{
+    e.preventDefault(); autoRotate=false;
+    model3dZoomStep(Math.exp(-e.deltaY * 0.0016));
+  }, { passive:false });
+  // 두 손가락 핀치(터치)
+  const tp = new Map();
+  let pd = 0;
+  dom.addEventListener('pointerdown', e=>{ tp.set(e.pointerId, e); if(tp.size===2) pd = twoPtDist(tp); });
+  dom.addEventListener('pointermove', e=>{
+    if(!tp.has(e.pointerId)) return;
+    tp.set(e.pointerId, e);
+    if(tp.size === 2){
+      const d = twoPtDist(tp);
+      if(pd > 1 && d > 1){ dragging=false; autoRotate=false; model3dZoomStep(d/pd); }
+      pd = d;
+    }
+  });
+  const tpUp = e=>{ tp.delete(e.pointerId); if(tp.size<2) pd=0; };
+  dom.addEventListener('pointerup', tpUp);
+  dom.addEventListener('pointercancel', tpUp);
+  dom.addEventListener('dblclick', e=>{ e.preventDefault(); model3dViewReset(); });
 
   const state3D = { renderer, scene, camera, headGroup, container, autoRotateRef:()=>autoRotate };
 
@@ -16103,6 +16345,37 @@ window.addEventListener('resize', resizeModel3D);
 // → 모델의 바운딩 박스를 실측해서 세로 기준/가로 기준 두 필요거리 중 더 큰 쪽으로
 // 카메라를 배치하도록 수정. 이렇게 하면 나중에 진짜 두상 3D 파일(다른 크기·비율)로
 // 바꿔도 다시 눈대중으로 튜닝할 필요 없이 항상 알맞게 잡힘.
+/* ── 3D 화면 확대/이동 (2026-08-08) ──────────────────────────────────
+   사용자: "3D 이미지 나오는 마지막 단계도 마찬가지." — 여기도 고정 프레이밍만
+   있고 손잡이가 없었다. 자동 프레이밍이 잡은 거리를 <b>기준</b>으로 두고
+   배율·이동만 곱한다(프레이밍 로직 자체는 그대로) — 그래야 스타일을 바꿔
+   모델이 재구성돼도 보던 배율이 유지된다. */
+const MODEL3D_VIEW = { zoom: 1, panX: 0, panY: 0, min: 0.4, max: 12, base: null };
+function model3dApplyView(){
+  if(!model3D || !model3D.initialized || !MODEL3D_VIEW.base) return;
+  const { camera } = model3D, B = MODEL3D_VIEW.base;
+  const dist = B.dist / MODEL3D_VIEW.zoom;
+  // 이동은 화면 비율로 — 거리에 비례해야 확대해도 같은 속도로 움직인다
+  const k = dist * Math.tan(camera.fov*Math.PI/360) * 2;
+  const ox = MODEL3D_VIEW.panX * k * camera.aspect, oy = MODEL3D_VIEW.panY * k;
+  camera.position.set(B.cx + ox, B.cy + oy, B.cz + dist);
+  camera.near = Math.max(0.01, dist/100);
+  camera.far  = dist*100;
+  camera.lookAt(B.cx + ox, B.cy + oy, B.cz);
+  camera.updateProjectionMatrix();
+  const el = document.getElementById('model3dZoomPct');
+  if(el) el.textContent = Math.round(MODEL3D_VIEW.zoom*100) + '%';
+}
+function model3dZoomStep(mul){
+  MODEL3D_VIEW.zoom = Math.max(MODEL3D_VIEW.min, Math.min(MODEL3D_VIEW.max, MODEL3D_VIEW.zoom*mul));
+  model3dApplyView();
+}
+function model3dViewReset(){
+  MODEL3D_VIEW.zoom = 1; MODEL3D_VIEW.panX = 0; MODEL3D_VIEW.panY = 0;
+  if(model3D && model3D.headGroup) model3D.headGroup.rotation.set(0,0,0);
+  model3dApplyView();
+}
+
 function frameCameraToHead(){
   if(!model3D || !model3D.initialized) return;
   const { camera, headGroup } = model3D;
@@ -16117,11 +16390,9 @@ function frameCameraToHead(){
   const distForWidth  = (size.x/2) / (Math.tan(vFov/2) * camera.aspect);
   const dist = Math.max(distForHeight, distForWidth) * MARGIN;
 
-  camera.position.set(center.x, center.y, center.z + dist);
-  camera.near = Math.max(0.01, dist/100);
-  camera.far  = dist*100;
-  camera.lookAt(center);
-  camera.updateProjectionMatrix();
+  // 자동 프레이밍 결과를 <b>기준</b>으로 보관하고, 사용자 배율·이동을 그 위에 얹는다
+  MODEL3D_VIEW.base = { cx:center.x, cy:center.y, cz:center.z, dist };
+  model3dApplyView();
 }
 
 // 'model3d' 화면 진입 시 셋업: 렌더러 최초 1회 생성(이후엔 재사용), 확정된
@@ -16262,6 +16533,7 @@ function startNewCustomer(){
   _headCrossSectionCache = null; // 두상 실측 단면(Shape-from-Silhouette) 캐시도 새 고객마다 초기화
   _headVerticalRadiusCache = null; // 두상 세로 반지름 실측 캐시도 새 고객마다 초기화
   _headEllipsoidLogged = false; // [진단용] 두상 넙적도 로그도 새 고객마다 다시 1회 출력
+  _headWidthGuardLogged = false;
   ANGLES.forEach(a=>{state.shots[a]=null;state.hairCanvases[a]=null;state.hairMasks[a]=null;state.baseCanvases[a]=null;state.baseFillCanvases[a]=null;});
   // 새 고객 — 앞 사람의 이마 표본을 물려주면 안 된다(피부톤이 다른 사람에게 이식됨)
   resetSkinGraft();
