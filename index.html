@@ -17034,6 +17034,128 @@ function toggleMannequin(){
    그리는데 전 가닥에 길이·컬·중력·가르마·넘김·볼륨·결흐름을 다 돌리면
    그 계산이 렌더 비용의 대부분이 된다(실측: 밀도 2배 → 시간 2배, 그린 다발
    수는 그대로였음). 그릴 것만 계산하도록 호출부가 간격을 넘긴다. */
+/* ══════════════════════════════════════════════════════════════════
+   커트 기법을 3D로 (2026-08-08) — 시술각·기법·텍스처가 <b>그림에 나오게</b>
+   ─────────────────────────────────────────────────────────────────
+   확인해 보니 elevation/technique/texture/overdirection은 전부 2D 컬럼
+   렌더러에서만 작동하고 있었다. 기본 렌더는 3D 모델 투영이므로 그 값들이
+   그림에 아무 영향이 없었다 — 길이·컬·웨이브·스타일링만 먹었다.
+
+   여기서 <b>실제 시술 정의</b> 그대로 이식한다. 지어낸 곡선이 아니다:
+     · 시술각(elevation) — 모발을 두피에서 얼마나 들어올려 자르는가.
+         0°  = 자연 낙하 상태로 한 라인에 자른다 → <b>끝 높이가 같아진다</b>(원랭스)
+         90° = 두피에서 직각으로 들어올려 자른다 → <b>길이가 같아진다</b>(유니폼 레이어)
+       그래서 각도는 "끝 높이를 맞출지, 길이를 맞출지"의 <b>보간값</b>이다.
+       상수를 하나도 안 만든다 — 두 극단이 전부 실측(그 섹션의 중앙값)이다.
+     · 기법(technique) — 가이드 길이가 섹션 <b>안에서</b> 어느 쪽으로 기우는가.
+         그라데이션 = 아래가 길다(무게 하단) · 인크리스 = 위가 길다 · 유니폼 = 평평
+         원랭스 = 각도와 무관하게 끝 높이를 맞춘다(정의상 0°)
+     · 텍스처(texture) — 끝단을 들쭉날쭉하게 쳐서 가볍게. 가닥별 결정적 해시라
+       슬라이더를 움직여도 같은 가닥은 같은 만큼 쳐진다(프레임 간 반짝임 방지).
+     · 크라운 연동(overdirection, 템플) — 템플 가이드를 크라운 가이드 쪽으로 당긴다.
+══════════════════════════════════════════════════════════════════ */
+const CUT3D = {
+  on: true,
+  techSlope: { onelength:0, graduation:0.35, uniform:0, increase:-0.35 },
+  textureMax: 0.25,   // 텍스처 100%일 때 끝단이 최대 이만큼 짧아진다
+  minRatio: 0.02,
+};
+/* 이 가닥에서 y=targetY에 닿는 지점까지의 호길이. 안 닿으면 전체 길이. */
+function arcAtY(pts, targetY){
+  let acc = 0;
+  for(let i=1;i<pts.length;i++){
+    const a = pts[i-1], c = pts[i];
+    const seg = Math.hypot(c.x-a.x, c.y-a.y, c.z-a.z);
+    if(c.y <= targetY && a.y > targetY){
+      const t = (a.y - targetY) / Math.max(1e-9, a.y - c.y);
+      return acc + seg * t;
+    }
+    acc += seg;
+  }
+  return acc;
+}
+function _cutHash01(st){
+  const p = st.pts[0];
+  const s = Math.sin(p.x*127.1 + p.y*311.7 + p.z*74.7) * 43758.5453;
+  return s - Math.floor(s);
+}
+/* 섹션 가이드 — 시술각의 두 극단이 되는 실측값.
+   Lref = 이 섹션 가닥 길이의 중앙값(슬라이더 반영), Yref = 그때 끝 높이의 중앙값.
+   두 극단이 중앙값 가닥에서 정확히 일치하므로 각도를 바꿔도 섹션 전체 길이감은
+   유지되고 <b>분포만</b> 바뀐다. yTop/yBot는 기법 기울기가 쓰는 뿌리 세로 범위. */
+function sectionCutGuide(secId, lenVal){
+  const m = state.hair3Dneutral;
+  if(!m || !m.strands) return null;
+  const key = secId + '|' + (+lenVal).toFixed(2);
+  const cache = m._guideCache || (m._guideCache = {});
+  if(cache[key] !== undefined) return cache[key];
+  let pool = (m._solveCache && m._solveCache[secId]);
+  if(!pool){
+    const all = m.strands.filter(s=>s.sec === secId);
+    const step = Math.max(1, all.length / SOLVE_SAMPLE);
+    pool = []; for(let i=0;i<all.length;i+=step) pool.push(all[i|0]);
+    (m._solveCache || (m._solveCache = {}))[secId] = pool;
+  }
+  if(!pool.length) return (cache[key] = null);
+  const ratio = sectionLengthRatio(secId, lenVal);
+  const Ls = [], Ys = [];
+  let yLo = Infinity, yHi = -Infinity;
+  for(const st of pool){
+    const total = arcLength3D(st.pts);
+    const L = total * ratio;
+    Ls.push(L);
+    Ys.push(yAtArc(st.pts, L));
+    const ry = st.pts[0].y;
+    if(ry < yLo) yLo = ry; if(ry > yHi) yHi = ry;
+  }
+  Ls.sort((a,b)=>a-b); Ys.sort((a,b)=>a-b);
+  const g = { Lref: Ls[(Ls.length*0.5)|0], Yref: Ys[(Ys.length*0.5)|0], yLo, yHi };
+  return (cache[key] = g);
+}
+/* 호길이 L 지점의 y (arcAtY의 역함수) */
+function yAtArc(pts, L){
+  let acc = 0;
+  for(let i=1;i<pts.length;i++){
+    const a = pts[i-1], c = pts[i];
+    const seg = Math.hypot(c.x-a.x, c.y-a.y, c.z-a.z);
+    if(acc + seg >= L){
+      const t = (L - acc) / Math.max(1e-9, seg);
+      return a.y + (c.y - a.y) * t;
+    }
+    acc += seg;
+  }
+  return pts[pts.length-1].y;
+}
+/* 이 가닥의 커트 후 길이비율 — 위 네 가지를 순서대로 적용 */
+function cutRatioForStrand(st, sec, lenVal, fallbackRatio){
+  if(!CUT3D.on) return fallbackRatio;
+  const g = sectionCutGuide(st.sec, lenVal);
+  if(!g) return fallbackRatio;
+  const total = arcLength3D(st.pts);
+  if(!(total > 1e-9)) return fallbackRatio;
+  const tech = sec.technique || 'uniform';
+  // ① 시술각 — 같은 끝높이(0°) ↔ 같은 길이(90°)
+  let elevT = (typeof sec.elevation === 'number') ? Math.max(0, Math.min(1, sec.elevation/90)) : 0.5;
+  if(tech === 'onelength') elevT = 0;                 // 원랭스는 정의상 0°
+  const Ltip = arcAtY(st.pts, g.Yref);
+  let L = Ltip + (g.Lref - Ltip) * elevT;
+  // ② 기법 — 섹션 안 뿌리 세로 위치(0=위, 1=아래)에 따른 기울기
+  const slope = CUT3D.techSlope[tech] || 0;
+  if(slope && g.yHi > g.yLo){
+    const u = Math.max(0, Math.min(1, (g.yHi - st.pts[0].y) / (g.yHi - g.yLo)));
+    L *= 1 + slope * (u - 0.5);
+  }
+  // ③ 크라운 연동(템플) — 템플 가이드를 크라운 가이드 쪽으로 당겨 자른다
+  if(st.sec === 'temple' && typeof sec.overdirection === 'number' && state.sections.crown){
+    const gc = sectionCutGuide('crown', state.sections.crown.length);
+    if(gc) L += (gc.Lref - L) * Math.max(0, Math.min(1, sec.overdirection/100));
+  }
+  // ④ 텍스처라이징 — 끝단을 가닥마다 다르게 쳐서 가볍게(결정적)
+  const tx = (typeof sec.texture === 'number') ? sec.texture/100 : 0;
+  if(tx > 0) L *= 1 - tx * CUT3D.textureMax * _cutHash01(st);
+  return Math.max(CUT3D.minRatio, L / total);
+}
+
 /* ── 가닥 하나에 커트·펌·스타일링 연산자를 순서대로 (2026-08-08 분리) ──────
    원래 computeAdjustedHair3DStrands 안에 인라인이었는데, <b>스타일 스펙 역산</b>이
    같은 순서를 다시 짜야 했다. 두 벌이 되면 반드시 갈라진다(이 파일이 겪어온
@@ -17046,7 +17168,8 @@ function adjustStrandGeom(st, lenOverride, uni){
   const curlAmt = (typeof sec.curl === 'number') ? sec.curl : 0;
   // ⓪ 시술 전 초기화(촬영 가닥 모델에서만 의미가 있다 — 마네킹은 애초에 곧다)
   const base0 = BASE_RESET.straighten > 0 ? straightenStrand3D(st.pts, BASE_RESET.straighten) : st.pts;
-  let pts = lengthStrand3D(base0, ratio);                                          // ① 길이
+  // ① 길이 — 슬라이더 비율에 <b>시술각·기법·텍스처</b>를 얹은 가닥별 비율
+  let pts = lengthStrand3D(base0, cutRatioForStrand(st, sec, len, ratio));
   pts = curlStrand3D(pts, curlAmt, ((typeof sec.wave === 'number') ? sec.wave : 50)/100); // ② 컬(로드 나선)
   if(curlAmt > 0) pts = gravityDroop3D(pts, curlAmt);                              // ③ 감은 뒤 처짐
   /* ④ 가르마 — 스타일링은 커트/펌 위에 얹는 연출이라 뒤에 온다.
