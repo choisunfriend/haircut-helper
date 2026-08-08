@@ -1880,7 +1880,7 @@ input[type=range]::-moz-range-thumb{width:20px;height:20px;border-radius:50%;bac
           <button onclick="model3dZoomStep(1.3)" title="확대">＋</button>
           <button onclick="model3dViewReset()" title="원래대로">↺</button>
         </div>
-        <div class="model3d-hint" style="position:absolute;bottom:10px;left:50%;transform:translateX(-50%);font-size:11px;color:var(--text-muted);background:rgba(0,0,0,0.4);padding:4px 10px;border-radius:10px;">드래그해서 회전</div>
+        <div class="model3d-hint" style="position:absolute;bottom:10px;left:50%;transform:translateX(-50%);font-size:11px;color:var(--text-muted);background:rgba(0,0,0,0.4);padding:4px 10px;border-radius:10px;">드래그 회전 · Shift+드래그 이동 · 휠 확대</div>
       </div>
       <div style="display:flex;gap:8px;padding:10px 14px 14px;flex-shrink:0;">
         <button class="btn btn-ghost" style="flex:1;font-size:13px;" onclick="navTo('result')">← 결과</button>
@@ -13688,7 +13688,32 @@ const HAIR_OVERLAP = {
   headroom: 1.15,      // 목표치 여유 — 격자·투영 오차만큼은 봐준다(빡빡하면 멀쩡한 것도 깎임)
   // ── 채우기(모자란 실측 셀) ──
   fill: true,          // false면 솎기만(1차 동작)
-  fillMaxMul: 3,       // 그 셀 원본 대비 이 배수까지만 복제 — 1개에서 20개를 만들지 않게
+  /* 그 셀 원본 대비 이 배수까지만 복제 — 1개에서 20개를 만들지 않게.
+     (2026-08-08 #2) 3 → <b>5</b>. 균일 목표를 세워도 이 상한이 먼저 걸리면 성근 셀이
+     목표에 못 닿는다(하네스: 3가닥 셀이 목표 16인데 9에서 멈춤). 5면 15까지 간다.
+     ※ 원본이 1~2가닥인 셀은 5를 써도 목표에 못 닿는다 — 복제는 보간이라
+       없는 것을 만들지는 않는다. 그건 정직한 한계고 로그의 "채운 셀"로 보인다. */
+  fillMaxMul: 5,
+  /* ── #2 균일 채움 (2026-08-08) ────────────────────────────────────────
+     사용자: "일단은 대머리처럼 확실히 머리가 없는 곳이 아니면, 머리 전반적으로
+     뿌리채움 수를 동일하게 해서 고르게 만들기." / "2는 지난 결정을 뒤집는 게 맞아.
+     이번 단계를 위해 일단 특수한 경우를 빼고 일반화해서 가는 거야."
+
+     지난 회차의 규칙(실측 셀만 손대고 추정 셀은 그대로)을 뒤집는다. 그렇게 둔
+     이유는 "지어낸 밀도에 실측 가닥을 맞추지 않는다"였는데, 지금 목표는
+     홍보영상용으로 <b>한 사람을 완성</b>하는 것이라 고르기가 정확성보다 앞선다.
+     그리고 대머리 판정이 아직 못 믿을 상태라(큰 민머리일수록 오히려 지워지는
+     TODO) 실질적으로는 "판정 없이 전부 고르게"가 된다 — 그게 이번 단계의 의도다.
+
+     목표치를 밀도 비례가 아니라 <b>셀당 같은 수</b>로 준다. 부수 효과가 하나 있는데
+     의도에 맞다: 셀 격자가 (극각 × 방위) 균등이라 정수리 셀은 적도 셀의 1/20
+     면적이다. 같은 수를 주면 정수리가 면적당 20배 촘촘해진다 — 지금 비어 보이는
+     바로 그 자리다.
+     예외는 하나만 남긴다: <b>실측으로</b> 밀도가 0에 가까운 셀(est=0 && den<baldDen).
+     추정 셀은 예외가 아니다(=채운다). */
+  uniform: true,       // false면 지난 회차 동작(밀도 비례 + 추정 셀 보존)
+  uniformPct: 0.75,    // 목표치 = 지금 셀당 가닥 수의 이 백분위 (× 껍질 몫)
+  baldDen: 0.08,       // 실측 밀도가 이 미만인 셀만 "확실히 머리 없음" — 안 채운다
   fillRing: 2,         // 셀에 원본이 하나도 없으면 이 반경까지 이웃에서 빌린다
   fillJitter: 0.9,     // 셀 안에서 뿌리를 흔드는 폭(셀 크기 대비) — 1이면 셀 전체
 };
@@ -13760,9 +13785,11 @@ function pruneOverlappedRoots(strands, rootField, hullW, hullD, bucketOfY, CY, b
        ③ 목표치에 <b>껍질 몫</b>(shellFill)을 곱한다 — 헐 분리로 가닥이 두피면~헐
           사이에 t로 흩어지므로 한 겹만 보면 성글다. 그리고 <b>주력 뷰가 그 셀에
           실제로 심은 수(nTop) 아래로는 절대 안 깎는다</b> — 그게 겹침 없는 실측이다. */
-  const ratios = [], topOf = new Map();
+  const ratios = [], topOf = new Map(), cellCounts = [];
   inCell.forEach((arr, ci)=>{
-    if(est[ci] !== 0) return;                              // 추정 셀은 기준으로 안 쓴다
+    /* (2026-08-08 #2) topOf는 <b>모든 셀</b>에 대해 낸다 — 균일 모드에서는 추정 셀도
+       대상이라 "주력 뷰가 실제로 심은 수"라는 바닥이 거기에도 필요하다.
+       K 표본(ratios)은 예전대로 실측 셀에서만 뽑는다(추정 밀도로 기준을 만들지 않는다). */
     const cnt = {}, fac = {};
     for(const i of arr){
       const v = strands[i].srcAngle;
@@ -13773,7 +13800,8 @@ function pruneOverlappedRoots(strands, rootField, hullW, hullD, bucketOfY, CY, b
     for(const v in cnt) if(!best || fac[v] > fac[best]) best = v;   // 제일 정면으로 본 뷰
     const nTop = cnt[best] || 0;
     topOf.set(ci, nTop);
-    if(den[ci] >= O.minDen && nTop >= O.minSamplesPerCell) ratios.push(nTop / den[ci]);
+    cellCounts.push(arr.length);
+    if(est[ci] === 0 && den[ci] >= O.minDen && nTop >= O.minSamplesPerCell) ratios.push(nTop / den[ci]);
   });
   if(ratios.length < O.calibMinCells){
     console.warn('[3D·겹침] 기준을 낼 실측 셀이 ' + ratios.length + '개뿐 — 정리를 건너뜁니다.');
@@ -13786,12 +13814,38 @@ function pruneOverlappedRoots(strands, rootField, hullW, hullD, bucketOfY, CY, b
   /* 목표치 = max(주력 뷰가 실제로 심은 수, K×밀도×여유×껍질몫).
      안전 레일: 솎을 양이 모델의 maxDropFrac을 넘으면 겹침이 아니라 K가 틀린 것이니
      K를 올려 다시 잰다(로그에 남긴다). */
-  const cellTarget = (ci, k)=> Math.max(O.minKeep, topOf.get(ci) || 0,
-        Math.round(k * den[ci] * O.headroom * O.shellFill));
+  /* (2026-08-08 #2) 균일 목표치 — 지금 셀당 가닥 수의 uniformPct 백분위 × 껍질 몫.
+     상수를 지어내지 않고 <b>이 사람의 현재 분포</b>에서 뽑는다(사람마다 자동으로 맞음). */
+  let uniformTarget = 0;
+  if(O.uniform && cellCounts.length){
+    const cc = cellCounts.slice().sort((p,q)=>p-q);
+    /* 껍질 몫(shellFill)은 <b>안 곱한다</b> — base가 이미 "지금 실제로 셀에 있는 수"라
+       껍질에 흩어진 결과가 포함돼 있다. 곱하면 이중 계산이 되어 목표가 26가닥/셀까지
+       뛰고 모델이 두 배로 부푼다(하네스 실측). 고르게 만드는 게 #2고, 전체를 더
+       빽빽하게 만드는 건 #3이다 — 두 손잡이를 섞지 않는다. */
+    const base = cc[Math.min(cc.length-1, Math.floor(cc.length * O.uniformPct))];
+    uniformTarget = Math.max(O.minKeep, Math.round(base * O.headroom));
+  }
+  // 균일 모드에서 이 셀을 손대도 되나 — 실측으로 "머리 없음"이 확인된 곳만 예외
+  const isBald = (ci)=> est[ci] === 0 && den[ci] < O.baldDen;
+  const cellTarget = (ci, k)=>{
+    const top = topOf.get(ci) || 0;
+    if(O.uniform){
+      /* 대머리로 본 셀은 <b>통째로 손 안 댄다</b>(하네스에서 잡음). 처음엔 target=top으로
+         뒀는데, top은 "주력 뷰 몫"이라 겹쳐 심긴 셀에서는 현재 수보다 작다 → 대머리를
+         오히려 <b>솎아냈다</b>(768→384). 안 채우는 것과 깎는 것은 다르다. */
+      if(isBald(ci)) return Infinity;
+      return Math.max(O.minKeep, top, uniformTarget);
+    }
+    if(est[ci] !== 0) return Infinity;                   // 예전 동작: 추정 셀은 손 안 댐
+    return Math.max(O.minKeep, top, Math.round(k * den[ci] * O.headroom * O.shellFill));
+  };
   const dropsFor = (k)=>{
     let d = 0;
-    inCell.forEach((arr, ci)=>{ if(est[ci] !== 0) return;
-      const t2 = cellTarget(ci, k); if(arr.length > t2) d += arr.length - t2; });
+    inCell.forEach((arr, ci)=>{
+      const t2 = cellTarget(ci, k);
+      if(Number.isFinite(t2) && arr.length > t2) d += arr.length - t2;
+    });
     return d;
   };
   const cap = Math.round(strands.length * O.maxDropFrac);
@@ -13802,12 +13856,15 @@ function pruneOverlappedRoots(strands, rootField, hullW, hullD, bucketOfY, CY, b
      아니라 <b>진짜로 그만큼 겹쳐 있었다</b>는 뜻이라, 조용히 겹침을 남기지 않고 알린다. */
   const railHeld = dropsFor(K) <= cap;
 
-  let dropped = 0, thinnedCells = 0, keptEstCells = 0;
+  let dropped = 0, thinnedCells = 0, keptEstCells = 0, baldCells = 0;
   const dropView = {};
   const shortCells = [];   // 모자란 실측 셀 — ④에서 채운다
   inCell.forEach((arr, ci)=>{
-    if(est[ci] !== 0){ keptEstCells++; return; }           // 추정 셀 — 손대지 않는다
     const target = cellTarget(ci, K);
+    if(!Number.isFinite(target)){                        // 손 안 대는 셀
+      if(O.uniform) baldCells++; else keptEstCells++;
+      return;
+    }
     if(arr.length < target){ shortCells.push([ci, target, arr]); return; }
     if(arr.length === target) return;
     arr.sort((p,q)=> (strands[p].rootFacing||0) - (strands[q].rootFacing||0));
@@ -13849,7 +13906,8 @@ function pruneOverlappedRoots(strands, rootField, hullW, hullD, bucketOfY, CY, b
         for(const nb of ringOf(ci)){
           const na = inCell.get(nb);
           if(!na) continue;
-          const usable = na.filter(i=>!strands[i]._drop && est[strands[i]._cell] === 0);
+          // (#2) 이웃에서 빌릴 때 실측/추정을 안 가린다 — 균일 채움의 취지
+          const usable = na.filter(i=>!strands[i]._drop && (O.uniform || est[strands[i]._cell] === 0));
           if(usable.length){ src = usable; borrowed = true; break; }
         }
         if(!src.length) continue;                           // 빌릴 데가 없다 — 지어내지 않는다
@@ -13889,7 +13947,9 @@ function pruneOverlappedRoots(strands, rootField, hullW, hullD, bucketOfY, CY, b
     + Math.round((after/before - 1)*100) + '%)'
     + ' | 과밀 셀 ' + thinnedCells + ' · 채운 셀 ' + filledCells
     + '(그중 원본 없어 이웃에서 빌림 ' + emptyCells + ')'
-    + ' · 추정 셀 ' + keptEstCells + '개는 그대로');
+    + (O.uniform
+        ? ' · <b>균일 목표 ' + uniformTarget + '가닥/셀</b>(전 두상 동일) · 대머리로 보고 안 채운 셀 ' + baldCells + '개'
+        : ' · 추정 셀 ' + keptEstCells + '개는 그대로'));
   /* 기준 한 줄 — 다음에 "성글다/빽빽하다"가 오면 이 세 숫자만 보면 된다:
        자연 = 지금 모델이 실제로 갖고 있는 셀당 밀도
        목표 = 우리가 겨눈 셀당 밀도(껍질 몫 포함)
@@ -16741,6 +16801,7 @@ const I18N = {
   '3D 미리보기: ':'3D preview: ', '3D 미리보기: OFF':'3D preview: OFF',
   '드래그 회전 · ⛶ 확대':'Drag to rotate · ⛶ zoom',
   '드래그해서 회전':'Drag to rotate', '기준면 보기':'Show reference surface',
+  '드래그 회전 · Shift+드래그 이동 · 휠 확대':'Drag to rotate · Shift+drag to move · wheel to zoom',
   'AI 분석':'AI analysis', '음성으로 조정하기':'Adjust by voice',
   '예: "크라운 길게", "네이프 짧게", "볼륨 추가"':'e.g. "crown longer", "nape shorter", "add volume"',
   '크라운·프론트·템플·사이드·후두부·네이프 + 길게·짧게·볼륨·컬':
