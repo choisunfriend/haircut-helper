@@ -1494,6 +1494,11 @@ main{flex:1;position:relative;overflow:hidden;}
 #devMini3DCanvasWrap{flex:1;position:relative;min-height:0;}
 #devMini3DCanvasWrap canvas{width:100%;height:100%;display:block;touch-action:none;}
 #devMini3DHint{font-size:9px;color:var(--text-muted);text-align:center;padding:2px;flex-shrink:0;}
+#devMini3DLegend{display:flex;flex-wrap:wrap;gap:2px 6px;padding:3px 5px;flex-shrink:0;
+  font-size:9px;line-height:1.35;color:var(--text-muted);justify-content:center;}
+#devMini3DLegend span{display:inline-flex;align-items:center;gap:3px;white-space:nowrap;}
+#devMini3DLegend i{width:8px;height:8px;border-radius:2px;display:inline-block;flex-shrink:0;}
+#devMini3DLegend b{color:var(--accent-soft);font-weight:600;}
 .preview-tag{
   position:absolute;top:10px;left:10px;
   background:rgba(27,24,22,0.75);backdrop-filter:blur(4px);
@@ -1805,6 +1810,7 @@ input[type=range]::-moz-range-thumb{width:20px;height:20px;border-radius:50%;bac
             <button id="devMini3DExpand" onclick="toggleDevMini3DExpand()" title="확대/축소">⛶</button>
           </div>
           <div id="devMini3DCanvasWrap"></div>
+          <div id="devMini3DLegend"></div>
           <div id="devMini3DHint">드래그 회전 · ⛶ 확대</div>
         </div>
       </div>
@@ -16908,6 +16914,22 @@ function quantizeStrokeColor(col, step){
 // 드래그 회전 + 탭 확대. 조정 시 refreshDevMini3D로 실시간 갱신.
 // (12차) 미니뷰 섹션 구분색 — 크라운=호박, 프론트=파랑, 템플=핑크, 사이드=초록,
 // 후두부=보라, 네이프=주황. 어느 부위가 어느 섹션인지 3D에서 즉시 확인.
+/* 미니 3D 범례 (2026-08-09, 사용자 요청) — 색만 보고 섹션을 맞히게 두지 않는다.
+   숫자도 같이 낸다: 그 섹션이 <b>지금 모델에서 몇 %</b>인지. "귀 위쪽이 성글다"
+   같은 눈 관찰을 바로 숫자로 확인할 수 있어야 다음 판단이 추측이 아니게 된다. */
+function buildMini3DLegend(){
+  const el = document.getElementById('devMini3DLegend');
+  if(!el) return;
+  const m = state.hair3Dneutral;
+  const n = {}; let tot = 0;
+  if(m && m.strands) for(const st of m.strands){ n[st.sec] = (n[st.sec]||0) + 1; tot++; }
+  el.innerHTML = SECTION_ORDER.map(id=>{
+    const pct = tot ? Math.round(100*(n[id]||0)/tot) : null;
+    const label = (SECTIONS[id] && SECTIONS[id].label) || id;
+    return `<span><i style="background:${SECTION_COLORS[id]}"></i>${label}`
+         + (pct == null ? '' : `<b>${pct}%</b>`) + `</span>`;
+  }).join('');
+}
 const SECTION_COLORS = {
   crown:'#e6b93c', front:'#3ca6e6', temple:'#e64c8c',
   side:'#3ce67a', occipital:'#a860e6', nape:'#e67a3c'
@@ -18009,6 +18031,7 @@ function logAdjustedClip(acc, kept){
 // 재캡처·재리프트 없이 이 함수만 다시 불러 연산자를 재적용한다(효율+이중적용 방지).
 function refreshDevMini3D(){
   if(!devMini3D) return;
+  buildMini3DLegend();          // 색↔섹션과 비중을 항상 같이 보여준다
   const adj = computeAdjustedHair3DStrands();
   if(!adj) return;
   const { group } = devMini3D;
@@ -18745,6 +18768,8 @@ const I18N = {
   '시술각(기법 강도 스케일)':'Lift angle (technique intensity)',
   '텍스처라이징':'Texturizing', '끝단 숱·질감':'End thinning · texture',
   '숱':'Density', '숱치기 · 낮을수록 비침':'Thinning · lower = see-through',
+  '크라운':'Crown', '프론트':'Front', '템플':'Temple',
+  '사이드':'Side', '후두부':'Occipital', '네이프':'Nape',
   '실핀(교차)':'Bobby pins', '헤어밴드':'Headband', '집게핀':'Claw clip',
   '리본':'Ribbon', '진주핀':'Pearl pins',
   '컬':'Curl', '컬 세기':'Curl strength', '0이면 펌 없음':'0 = no perm',
