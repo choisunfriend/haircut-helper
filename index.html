@@ -14653,6 +14653,23 @@ function buildHairIdentity(rootField, field3D){
    지어낸 상수 없음 — 마스크에서 이미 재던 값을 원래 있어야 할 범위까지 재는
    것뿐이다. 캡 구간의 가로 단면은 두피가 아니라 <b>모발만</b> 자르므로
    안쪽 경계 0 ~ 헐까지 꽉 찬 원반이 맞다(층 t가 그대로 그렇게 배치된다). */
+/* ── 뷰 캘리브레이션 앵커 (2026-08-09) ───────────────────────────────────
+   사용자: "좌측·우측 사진에서 보면 뚜렷하고, 사실 정면도 그런데 헤어 렌더링
+   위치가 틀어져 있어."
+   원인은 buildHairStrandsFromPaths의 뷰 앵커였다. image→model 매핑
+   mx = (px - cx)·s 의 cx·s를 <b>헤어 마스크의 좌우 끝</b>에서 뽑고 있었다.
+   머리카락은 두상이 아니다 — 뒤로 흐르고 어깨로 퍼지므로 그 한가운데는
+   정중시상면이 아니고, 그 폭은 두상 폭이 아니다. 옆모습일수록 크게 어긋난다.
+   아래 값들은 전부 "끄면 예전 동작"이 되게 두었다. */
+const VIEWCAL_ANCHOR = {
+  on:        true,   // false = 예전(헤어 실루엣 bbox) 동작으로 완전 복귀
+  isoScale:  true,   // 가로 자를 세로 자와 일치(정사영에서 두 배율은 같다)
+  pitchFix:  true,   // 눈→턱이 pitch로 압축된 만큼 세로 자 보정
+  /* 귀가 두상 중심보다 얼마나 뒤인가 — 깊이 반지름 c 대비. 해부학적으로 외이도는
+     두개골 앞뒤 중앙보다 약간 뒤(≈10%). yaw가 클 때만 의미 있는 작은 항이다
+     (yaw 51°·이 손님 기준 ≈8px). 0으로 두면 "귀 한가운데 = 두상 중심". */
+  earDepth:  0.10,
+};
 const HAIR_TOP_CAP = {
   on: true,
   pct: 0.02,      // 상단 백분위 — 먼지·삐침 픽셀 한둘로 범위가 튀지 않게
@@ -14778,14 +14795,60 @@ function buildHairStrandsFromPaths(){
     // 남지만(눈/턱 간격 압축) 오프셋이 두피에 고정되어 출발점은 불변.
     // 랜드마크 없는 뷰(후면 등)는 기존 v.s 폴백.
     let sy = aH_head/halfPx; // 폴백: x유래 스케일(기존 동작)
-    const lmV = state.landmarks && state.landmarks[angle];
+    /* 랜드마크는 <b>얼굴 실측 우선, 없으면 실루엣 앵커</b>. 후면처럼 얼굴이
+       안 잡히는 뷰도 computeSilhouetteAnchors가 정면 비율을 옮겨 귀/눈/턱을
+       만들어 준다(로그 [앵커·실루엣맞춤]). 예전엔 여기서 그걸 안 써서
+       후면만 통째로 헤어 실루엣 자를 썼다. */
+    const lmV = (state.landmarks && state.landmarks[angle])
+              || (VIEWCAL_ANCHOR.on ? computeSilhouetteAnchors(angle) : null);
     if(lmV && typeof lmV.eyeY === 'number' && typeof lmV.chinY === 'number'){
       const proj = makeFaceProjector(lmV, fmW, fmH);
       if(isFinite(proj.bY) && proj.bY > 0.2 && proj.bY < 15){ // 랜드마크 붕괴(눈≈턱) 가드
         sy = proj.bY / maskInf.h; // 정규화 배율 → 픽셀 배율
+        /* 눈→턱은 pitch만큼 <b>짧게 찍힌다</b>(정사영 cosθ). 그 짧아진 픽셀로
+           나눈 배율은 그만큼 부푼다 — 되돌린다. yaw는 세로를 안 줄이므로 무관. */
+        if(VIEWCAL_ANCHOR.pitchFix){
+          const cp = Math.cos(pose.pitch);
+          if(cp > 0.5) sy *= cp;
+        }
       }
     }
-    views[angle] = { rec, maskInf, cx:(xMin+xMax)/2, crownY, s: aH_head/halfPx, sy, pose, cos2, sin2 };
+    /* ── 가로 앵커·자 — 머리카락이 아니라 <b>두상</b>에 건다 (2026-08-09) ────
+       예전: cx = 헤어 마스크 컬럼의 한가운데, s = 두상 반폭 ÷ 헤어 마스크 반폭.
+       둘 다 <b>머리카락 실루엣</b>이 기준이라, 긴 머리가 뒤로 흐르거나 어깨로
+       퍼진 뷰에서 중심이 밀리고 자가 늘어난다. 같은 로그가 이미 두 번 말하고
+       있었다 — "[두상 폭 보정] 실루엣 폭 0.704 → 0.578(어깨로 흐른 머리카락을
+       두상 폭으로 잡고 있었습니다)" 와 "[자 일치] 가로 13.94cm/단위 vs 세로
+       19.33cm/단위 → 어긋남 0.721배(⚠ 가로·세로가 다른 자를 씀)".
+       0.704 × 0.721 = 0.508 ≈ 얼굴 메쉬 반폭 0.503 — 폭 부풀림의 정체가
+       <b>자 어긋남 그 자체</b>였다는 뜻이다.
+       지금:
+         · 자(s) — 정사영에서 가로·세로 배율은 <b>같다</b>. 세로 자(sy)를 그대로 쓴다.
+                   두상은 yaw로 안 커지는데 헤어 실루엣은 커지므로, 이쪽이 각도에도 강하다.
+         · 중심(cx) — 귀 두 점의 한가운데. 모델의 정중시상면(x=0)이 그 자리다.
+                   귀는 두상 중심보다 조금 <b>뒤</b>에 있어서 yaw가 크면 옆으로
+                   밀려 찍힌다(x=0, z=zEar 점의 투영 = sin(yaw)·zEar). 그만큼 되돌린다.
+       끄려면 VIEWCAL_ANCHOR.on = false — 예전(헤어 실루엣) 동작으로 정확히 복귀. */
+    let sX = aH_head/halfPx, cxUse = (xMin+xMax)/2, anchorSrc = '헤어 실루엣';
+    if(VIEWCAL_ANCHOR.on && lmV && lmV.lEarX != null && lmV.rEarX != null
+       && isFinite(sy) && sy > 0){
+      if(VIEWCAL_ANCHOR.isoScale) sX = sy;
+      const earMidPx = (lmV.lEarX + lmV.rEarX) / 2 * maskInf.w;
+      const zEar = -VIEWCAL_ANCHOR.earDepth * cD;              // 귀 깊이(뒤 = 음수)
+      cxUse = earMidPx - Math.sin(pose.yaw) * zEar / sX;
+      anchorSrc = lmV._silhouette ? '실루엣 앵커(귀)' : '얼굴 랜드마크(귀)';
+      const cxOld = (xMin+xMax)/2, sOld = aH_head/halfPx;
+      console.log('[뷰캘리·앵커] ' + angle + ': 중심 x ' + cxOld.toFixed(0) + '→' + cxUse.toFixed(0) + 'px'
+        + ' (' + (cxUse-cxOld >= 0 ? '+' : '') + (cxUse-cxOld).toFixed(0) + 'px, ' + anchorSrc + ')'
+        + ' · 가로자 ' + sOld.toFixed(5) + '→' + sX.toFixed(5)
+        + ' (×' + (sX/sOld).toFixed(3) + (VIEWCAL_ANCHOR.isoScale ? ', 세로자와 일치' : '') + ')'
+        + '\n    가로/세로 자 어긋남: 이전 ' + (sOld/sy).toFixed(3) + '배 → 지금 ' + (sX/sy).toFixed(3) + '배'
+        + ' (1.000이 정답 — 정사영에서 두상은 가로·세로가 같은 자로 찍힙니다)');
+    } else if(VIEWCAL_ANCHOR.on){
+      console.warn('[뷰캘리·앵커] ' + angle + ': 귀 앵커를 못 구해 <b>헤어 실루엣</b> 자로 폴백 —'
+        + ' 이 뷰는 머리카락이 흐른 만큼 중심·폭이 밀립니다(얼굴 랜드마크/실루엣 앵커 확인).');
+    }
+    views[angle] = { rec, maskInf, cx:cxUse, crownY, s: sX, sy, pose, cos2, sin2 };
   });
   const names = Object.keys(views);
   if(!names.length) return null;
@@ -16790,8 +16853,20 @@ const STYLE_SPECS = {
   layered_bob_hush: {
     name: '레이어드 보브 · 시스루 뱅 · 아웃컬',
     /* 끝이 오는 세로 위치. 0 = 정수리, 1 = 두상 바닥(≈턱선), 1.3 = 그보다
-       두상 높이의 30%만큼 더 아래. 레퍼런스 4뷰에서 얼굴 비율로 읽은 값이다. */
-    tipAt: { front:0.45, crown:0.78, temple:0.95, side:1.15, occipital:1.30, nape:1.35 },
+       두상 높이의 30%만큼 더 아래.
+       ── (2026-08-09) 레퍼런스 4뷰를 <b>픽셀로 재서</b> 다시 넣음 ─────────────
+       예전 값은 눈대중이라 뒤가 통째로 길었다(실기기 결과가 목표보다 한 뼘 김).
+       재는 법: 각 뷰에서 눈높이 = 모델 CY, 눈→턱 11.5cm = FACE_RULER_CM로 자를
+       만들고 b(두상 반높이 12.2cm)를 얹어 yTop·H를 낸 뒤, 헤어 실루엣의 컬럼별
+       최저점 중앙값을 (y - yTop)/H로 환산.
+         정면 뱅(중앙 컬럼)      y204 → 0.50
+         정면·좌·우 바깥 컬럼    y351~369 → 0.98~1.06 (중앙값 1.02)
+         후면 중앙               y375~380 → 1.03~1.05, 최저점 y392 → 1.09
+         내부 레이어 단(허쉬 단) y272~285 → 0.72~0.74
+       그래서 아래 여섯 값이 전부 <b>실측</b>이다. 예전 값과의 차:
+         side −0.12 · occipital −0.25 · nape −0.26 (여기가 "길다"의 정체)
+         front +0.05 · crown −0.04 · temple +0.03 */
+    tipAt: { front:0.50, crown:0.74, temple:0.98, side:1.03, occipital:1.05, nape:1.09 },
     /* 커트 — 레이어드 보브는 시술각을 높여 위층을 짧게 만든다(유니폼 레이어).
        네이프만 각을 낮춰 무게를 남겨야 아래 라인이 안 흩어진다(그라데이션). */
     /* density(숱) — 레퍼런스의 정체적 특징이 여기 있다 (2026-08-09).
@@ -16799,17 +16874,34 @@ const STYLE_SPECS = {
        안 된다(짧고 뾰족한 두꺼운 앞머리가 될 뿐). 가닥을 솎아야 비친다.
        관자는 얼굴 옆 잔머리라 앞머리보다는 촘촘하되 사이드보다는 성기다.
        뒤(사이드·후두부·네이프)는 무게가 남아야 보브 라인이 안 흩어지므로 100. */
+    /* (2026-08-09) 레퍼런스 대조 후 조정 — 바꾼 값에만 이유를 단다.
+       crown elevation 80→85: 내부 레이어 끝(0.74)과 아웃라인(1.03)의 단차가
+         두상 높이의 0.29다. 이 단을 만드는 게 시술각이라 조금 더 세운다.
+       front density 42→34, texture 60→70: 목표의 뱅은 이마가 <b>비친다</b>.
+         지금 결과는 통짜 커튼이라 시스루가 아니다. 숱을 더 솎고 끝을 더 턴다.
+       side/occipital texture 45/40→55/50: 허쉬컷 특유의 뾰족한 끝(포인트 커트).
+       나머지(temple·nape·기법·라인)는 목표와 어긋난 근거가 없어 그대로 둔다. */
     cut: {
-      crown:     { technique:'uniform',    elevation:80, texture:45, density:88 },
-      front:     { technique:'uniform',    elevation:20, texture:60, density:42, line:50 },
+      crown:     { technique:'uniform',    elevation:85, texture:45, density:88 },
+      front:     { technique:'uniform',    elevation:20, texture:70, density:34, line:50 },
       temple:    { technique:'uniform',    elevation:60, texture:45, density:70, overdirection:40 },
-      side:      { technique:'uniform',    elevation:65, texture:45, density:100 },
-      occipital: { technique:'uniform',    elevation:55, texture:40, density:100 },
+      side:      { technique:'uniform',    elevation:65, texture:55, density:100 },
+      occipital: { technique:'uniform',    elevation:55, texture:50, density:100 },
       nape:      { technique:'graduation', elevation:25, texture:25, density:100, line:50 },
     },
-    perm:    { curl:22, wave:70 },                            // 약한 웨이브 · 굵은 로드
-    styling: { sweep:0, volume:55, flow:55, part:0, finish:58 }, // flow + = 바깥말음(아웃컬)
-    color:   '#8B7355',                                        // 애쉬 브라운
+    /* curl 22→28: 목표는 중간기장에 S 한 번이 눈에 보인다(지금 결과는 직모에 가깝다).
+       wave 70(굵은 로드)은 그대로 — 컬을 잘게 만들면 허쉬가 아니라 펌이 된다. */
+    perm:    { curl:28, wave:70 },
+    /* flow 55→68: 목표의 끝은 또렷하게 <b>바깥으로</b> 꺾인다(아웃컬).
+       volume·sweep·part·finish는 목표와 어긋난 근거가 없어 유지. */
+    styling: { sweep:0, volume:55, flow:68, part:0, finish:58 },
+    /* 레퍼런스 4뷰의 헤어 마스크 픽셀 분포(모발 화소 약 25만): p25 #34251B ·
+       p50 #493729 · p75 #66503E · p90 #8B715E.
+       여기 적는 색은 <b>가장 밝을 때</b>의 색이다 — 렌더가 층 깊이로 ×0.55~1.0을
+       곱하고 림만 더하므로, 사진의 중간톤(p50)을 그대로 넣으면 화면은 그보다 더
+       어두워진다. 그래서 p80 언저리를 base로 잡는다.
+       예전 #8B7355는 p90(하이라이트)이라 화면 전체가 그 밝기로 떠 있었다. */
+    color:   '#7A6149',                                        // 밀크티 애쉬 브라운
   },
 };
 /* 이 섹션 가닥들의 <b>끝 높이 중앙값</b>.
