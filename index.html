@@ -13746,14 +13746,30 @@ function buildRootDensityField(probe, hullW, hullD, bucketOfY, CY, b){
   const O = HAIR_OCC3D, NT = O.NT, NP = O.NP;
   const den = new Float32Array(NT*NP), seen = new Float32Array(NT*NP);
   const est = new Uint8Array(NT*NP);
-  let measured = 0;
+  let measured = 0, offScalp = 0;
   forEachHeadSurfaceCell(hullW, hullD, bucketOfY, CY, b, (ci, x, y, z)=>{
+    /* 두피 밖(턱 아래·뺨·얼굴)은 <b>묻지 않는다</b>. 거기 보이는 머리카락은
+       뒤·옆에서 흘러내린 것이지 그 자리에서 난 것이 아니다. */
+    const pi = (ci / NT) | 0, ti = ci % NT;
+    const phi = (pi + 0.5) / NP * Math.PI;
+    const th  = (ti + 0.5) / NT * 2*Math.PI - Math.PI;
+    if(phi > scalpPhiMax(th)){
+      den[ci] = 0; seen[ci] = 0; est[ci] = EST_OFFSCALP; offScalp++;
+      return;
+    }
     const r = probe.densityAt(x, y, z);
     den[ci] = r.density; seen[ci] = r.seen;
     if(r.density >= 0) measured++;
   });
-  const field = { NT, NP, den, seen, est, CY, b, measured, cells: NT*NP, ok: measured > 0 };
+  const field = { NT, NP, den, seen, est, CY, b, measured, offScalp, cells: NT*NP, ok: measured > 0 };
   if(field.ok) fillUnseenRootCells(field);
+  console.log('[뿌리밀도] 셀 ' + (NT*NP) + '개 — 두피 밖 ' + offScalp
+    + '개(뿌리 안 심음) · 실측 ' + measured + '개 · 나머지는 이웃/평균 추정'
+    + '\n    두피 경계(phi 상한): 정면 ' + scalpPhiMax(0).toFixed(2)
+    + ' · 관자 ' + scalpPhiMax(0.75).toFixed(2)
+    + ' · 귀옆 ' + scalpPhiMax(1.35).toFixed(2)
+    + ' · 후면 ' + scalpPhiMax(Math.PI).toFixed(2)
+    + ' (SCALP_ZONES.phiRange 상한에서 나옴 — 이 아래는 사진에 머리가 보여도 두피가 아닙니다)');
   return field;
 }
 
@@ -13954,6 +13970,52 @@ const _angDiff = (a, b2)=>{ let d = a - b2; while(d > Math.PI) d -= 2*Math.PI; w
      side(1.35)·occipital(π)의 중점이라 지어낸 값이 아니다.
    ※ SCALP_ZONES 자체는 그대로 둔다 — HEAD_PHI_BANDS가 그 phiRange에서 나온다.
 ══════════════════════════════════════════════════════════════════ */
+/* ══════════════════════════════════════════════════════════════════
+   두피 경계 — 뿌리가 <b>심길 수 있는 범위</b> (2026-08-09)
+   ─────────────────────────────────────────────────────────────────
+   사용자: "턱 아래쪽 헤어들은 후면에서 이어지는 것들이니 구분이 되어야지.
+   거기에 뿌리가 잡히면 안 되니까." · "뿌리의 범위를 세그멘테이션으로 잡아서
+   그런 것 같은데, 실제 심기는 구간으로 한정해야 되겠다."
+
+   정확한 지적이고, 코드가 실제로 그러고 있었다. buildRootDensityField는
+   두상 표면 셀을 전부 훑으면서 <b>그 점이 사진에서 머리카락으로 보이는가</b>만
+   묻는다(probe.densityAt). 턱 아래·뺨 옆은 손님의 긴 머리가 흘러내려 덮고
+   있으므로 "머리 많음"이 나오고, 그래서 <b>턱 밑 두상 표면에 뿌리가 심긴다</b>.
+   거기서 자란 가닥은 그대로 아래로 떨어져 가슴까지 내려오는 커튼이 된다 —
+   정면 뷰에서 얼굴을 덮던 그 검은 커튼의 정체다.
+
+   세그멘테이션은 "머리카락이 <b>보이는</b> 자리"를 말하지 "머리카락이
+   <b>나는</b> 자리"를 말하지 않는다. 후자는 사진이 아니라 해부학이 정한다:
+   앞은 이마 헤어라인, 옆은 귀 언저리, 뒤는 목덜미. 그 아래로는 두피가 없다.
+
+   경계값은 지어내지 않는다 — SCALP_ZONES의 phiRange <b>상한</b>이 이미 그 선이다:
+     |θ|=0(정면)    → front.phiRange[1]  = 0.95   이마 헤어라인
+     |θ|=0.75(관자) → temple.phiRange[1] = 1.05
+     |θ|=1.35(귀옆) → side.phiRange[1]   = 1.75
+     |θ|=π(후면)    → nape.phiRange[1]   = 2.35   목덜미
+   사이는 선형 보간. 이 선 <b>아래</b> 셀은 실측을 물어보지도 않고 밀도 0으로
+   못박는다(est=3, "확정 대머리") — 사진이 뭐라 하든 두피가 아니기 때문이다. */
+const SCALP_LIMIT = (()=>{
+  const Z = SCALP_ZONES;
+  return [
+    [0,                             Z.front.phiRange[1]],
+    [Math.abs(Z.temple.thetas[0]),  Z.temple.phiRange[1]],
+    [Math.abs(Z.side.thetas[0]),    Z.side.phiRange[1]],
+    [Math.PI,                       Z.nape.phiRange[1]],
+  ].sort((a,b)=>a[0]-b[0]);
+})();
+const EST_OFFSCALP = 3;          // est 값: 0=실측 · 1=이웃추정 · 2=전체평균 · 3=두피 밖
+function scalpPhiMax(th){
+  const t = Math.abs(th), P = SCALP_LIMIT;
+  if(t <= P[0][0]) return P[0][1];
+  for(let i=1;i<P.length;i++){
+    if(t <= P[i][0]){
+      const [t0,p0] = P[i-1], [t1,p1] = P[i];
+      return p0 + (p1 - p0) * (t - t0) / Math.max(1e-9, t1 - t0);
+    }
+  }
+  return P[P.length-1][1];
+}
 const SECTION_CUT = (()=>{
   const Z = SCALP_ZONES;
   const mid = (a, b2)=> (a + b2) / 2;
@@ -14127,7 +14189,10 @@ function pruneOverlappedRoots(strands, rootField, hullW, hullD, bucketOfY, CY, b
     uniformTarget = Math.max(O.minKeep, base * O.headroom * O.densityMul);
   }
   // 균일 모드에서 이 셀을 손대도 되나 — 실측으로 "머리 없음"이 확인된 곳만 예외
-  const isBald = (ci)=> est[ci] === 0 && den[ci] < O.baldDen;
+  /* 두피 밖(est=3)도 대머리다 — 오히려 <b>더 확실한</b> 대머리다(실측 밀도가
+     낮은 게 아니라 애초에 두피가 아니다). 이걸 안 넣으면 채움 단계가 턱 밑에
+     가닥을 다시 심는다(실기기: 채움 12,661개). */
+  const isBald = (ci)=> est[ci] === EST_OFFSCALP || (est[ci] === 0 && den[ci] < O.baldDen);
   const cellTarget = (ci, k)=>{
     const top = topOf.get(ci) || 0;
     if(O.uniform){
@@ -14283,7 +14348,10 @@ function fillUnseenRootCells(f){
   const NT = f.NT, NP = f.NP, den = f.den, est = f.est;
   const N = NT*NP;
   let frontier = [];
-  for(let ci=0; ci<N; ci++) if(den[ci] >= 0) frontier.push(ci);
+  /* 두피 밖 셀(est=3)은 <b>씨앗으로도 안 쓴다</b>. den이 0이라 채움 대상에서는
+     이미 빠지지만, 씨앗으로 두면 밀도 0이 이웃 정수리로 번져 멀쩡한 두피를
+     대머리로 만든다. "모르는 곳을 채운다"와 "없는 곳을 퍼뜨린다"는 다르다. */
+  for(let ci=0; ci<N; ci++) if(den[ci] >= 0 && est[ci] !== EST_OFFSCALP) frontier.push(ci);
   if(!frontier.length || frontier.length === N) return;
   let guard = 0;
   while(frontier.length && guard++ < NP + NT){
@@ -16872,7 +16940,10 @@ function buildMannequinHair3D(){
   const nCell = NT*NP;
   const w = new Float64Array(nCell);
   let wSum = 0, planted = 0, baldCells = 0;
+  let offScalpCells = 0;
   for(let ci=0; ci<nCell; ci++){
+    // 두피 밖은 밀도 0이라 아래 조건에 자동으로 걸리지만, 이유를 따로 센다
+    if(rf.est && rf.est[ci] === EST_OFFSCALP){ offScalpCells++; baldCells++; continue; }
     const d = rf.den[ci];
     if(!(d > MANNEQUIN.baldDen)){ baldCells++; continue; }
     w[ci] = d * (areas ? areas[ci] : 1);
@@ -16904,7 +16975,8 @@ function buildMannequinHair3D(){
   const lenTxt = Object.keys(secLen).map(s=>s+' '+secLen[s].toFixed(3)).join(' · ');
   const vTxt = Object.keys(viewLen).sort().map(k=>k+' '+viewLen[k].toFixed(3)).join(' · ');
   console.log('[마네킹] 가닥 ' + planted + '개(촬영 ' + target + '개 기준) · 심은 셀 '
-    + (nCell - baldCells) + '/' + nCell + '(밀도 0 제외 ' + baldCells + ')'
+    + (nCell - baldCells) + '/' + nCell
+    + '(두피 밖 ' + offScalpCells + ' · 밀도 0 ' + (baldCells - offScalpCells) + ')'
     + ' · 섹션 ' + Object.keys(secHist).map(s=>s+' '+secHist[s]+'('+Math.round(100*secHist[s]/planted)+'%)').join(' ')
     + ' · 섹션길이(중앙값) ' + lenTxt
     + (vTxt ? ('\n[마네킹·뷰별길이] ' + vTxt) : ''));
