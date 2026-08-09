@@ -9222,6 +9222,7 @@ function measureStageDensity(angle, maskInf, inkCells){
 const RENDER_MATCH = { on: true, w: 320, inkAlpha: 24, minCoh: 0.05,
                        fillBlur: 0.012, fillThr: 20 };
 let _matchLogged = {};
+let _shiftLogKey = {};
 function measureRenderVsPhoto(layerCanvas, maskInf, fit, cw, ch, angle, clipGrow){
   if(!RENDER_MATCH.on || !angle || !maskInf) return null;
   try{
@@ -9275,6 +9276,37 @@ function measureRenderVsPhoto(layerCanvas, maskInf, fit, cw, ch, angle, clipGrow
       if(f||m) uni++;
     }
     const iou = uni ? inter/uni : 0;
+    /* ── 쏠림(무게중심 차) (2026-08-09) ─────────────────────────────────
+       사용자: "정면 사진에서도 헤어가 살짝 왼쪽으로 쏠렸어."
+       IoU는 <b>얼마나 겹치나</b>만 말하고 <b>어느 쪽으로 밀렸나</b>는 안 말한다.
+       0.965처럼 높은 값이 나와도 통째로 몇 px 밀려 있을 수 있다. 그래서 렌더와
+       마스크의 <b>무게중심</b>을 따로 재서 차이를 px로 낸다 — 눈으로 "살짝
+       쏠렸다"고 본 것을 숫자로 바꾼다.
+       읽는 법: +x = 렌더가 <b>오른쪽</b>으로 밀림. 네 뷰가 <b>같은 방향</b>이면
+       투영 중심(cal.cx)이 어긋난 것이고, 뷰마다 부호가 다르면 뷰별 캘리브레이션
+       문제다. 두상 폭 대비 %로도 같이 낸다(절대 px는 해상도에 묶이므로). */
+    let rSx=0,rSy=0,rN=0, mSx=0,mSy=0,mN=0, mMinX=W, mMaxX=0;
+    for(let y=0;y<H;y++) for(let x=0;x<W;x++){
+      const i=y*W+x;
+      if(fil[i]){ rSx+=x; rSy+=y; rN++; }
+      if(msk[i]){ mSx+=x; mSy+=y; mN++; if(x<mMinX)mMinX=x; if(x>mMaxX)mMaxX=x; }
+    }
+    const shift = (rN && mN) ? {
+      dx: +((rSx/rN - mSx/mN)).toFixed(1),
+      dy: +((rSy/rN - mSy/mN)).toFixed(1),
+      pctOfHead: (mMaxX>mMinX) ? +(100*(rSx/rN - mSx/mN)/(mMaxX-mMinX)).toFixed(1) : null,
+      scale: cw / W,                                  // 측정 해상도 → 캔버스 배율
+    } : null;
+    /* 로그는 <b>여기서</b> 찍는다. 아래 결 일치 계산이 실패하면(orientation 없음
+       등) 함수가 통째로 catch로 빠지는데, 그때 쏠림까지 같이 잃으면 안 된다. */
+    if(shift && _shiftLogKey[angle] !== shift.dx + '|' + shift.dy){
+      _shiftLogKey[angle] = shift.dx + '|' + shift.dy;
+      const cx2 = (v)=> (v*shift.scale).toFixed(1);   // 측정 해상도 → 화면 px
+      console.log(`[쏠림] ${angle} 무게중심 차 x ${shift.dx>0?'+':''}${cx2(shift.dx)}px`
+        + ` (${shift.pctOfHead>0?'+':''}${shift.pctOfHead}% 머리폭 대비) · y ${shift.dy>0?'+':''}${cx2(shift.dy)}px`
+        + ` · 화면 ${cw}px 기준`
+        + `\n    +x = 렌더가 오른쪽으로 밀림. 네 뷰가 같은 부호면 투영 중심(cal.cx) 문제, 부호가 갈리면 뷰별 캘리브레이션 문제입니다.`);
+    }
 
     // ── ② 결 일치 — 렌더에 같은 구조텐서를 돌린다 ──
     // 알파를 밝기로 쓴다(가닥 패턴이 곧 알파). 투명 배경과의 경계 잡음을 피하려고
@@ -15916,6 +15948,7 @@ const HAIR3D_RENDER = {
   /* 그릴 가닥 수. null = 원본 결 보기가 같은 뷰에 그리는 수와 <b>동일</b>(권장,
      볼륨 50에서 ≈2,830). 숫자를 넣으면 그 값으로 고정한다(성능이 아쉬울 때 1,800
      정도로 내리면 밀도만 옅어지고 가닥 성질은 그대로 유지된다). */
+  headOcclusion: true,   // 두상이 뒤쪽 가닥을 가린다(false면 예전 동작 — A/B용)
   targetStrands: null,
   // 다발 폭 = 그 뷰의 헤어 실루엣 가로폭 × 이 값.
   // 왜 절대 px가 아니라 실루엣 비율인가: 하네스는 340px 캔버스에서 눈으로 맞췄고
@@ -16408,6 +16441,17 @@ function projectHairQuiltToView(ctx, fit, angle, maskInf){
   setQuiltTag(`픽셀 이식 · 띠 ${pool.length}장(끝 ${pool.filter(q=>q.hasTip).length}) · 폭 ${drawW.toFixed(1)}px`);
   return true;
 }
+/* [진단] 두상 가림이 실제로 몇 점을 지웠나. 0이면 안 먹은 것이고, 90%를 넘으면
+   두개골이 너무 크게 잡힌 것이다(그때는 [두상 기준면]부터 볼 것). */
+let _occLogKey = {};
+function logHeadOcclusion(angle, pts, hidden, split, strands, runs){
+  const key = hidden + '/' + pts;
+  if(_occLogKey[angle] === key) return;
+  _occLogKey[angle] = key;
+  console.log(`[${angle}] 두상 가림 — 점 ${pts}개 중 ${hidden}개 숨김(${(100*hidden/Math.max(1,pts)).toFixed(1)}%)`
+    + ` · 가닥 ${strands}개 → 획 ${runs}개(중간이 가려져 쪼개진 가닥 ${split}개)`
+    + (hidden === 0 ? ' ⚠ 하나도 안 숨겼습니다 — HAIR3D_RENDER.headOcclusion 또는 두피 타원체를 확인' : ''));
+}
 let _quiltLogKey = '';
 function logQuiltRender(angle, m){
   const key = angle + '|' + m.pool + '|' + m.unit + '|' + m.swSrc;
@@ -16690,22 +16734,72 @@ function projectHair3DToView(ctx, fit, angle, maskInf){
   /* [진단] 뿌리선 어긋남 — "머리가 원본보다 바깥에서 시작한다"를 <b>재는</b> 장치.
      되쏜 가닥의 뿌리가 그 컬럼의 원본 두피선(scalpY)보다 위에 찍히면 음수다.
      추측으로 계수를 흔들지 않기 위해 만든다(이 문제로 두 번 헛짚었다). */
+  /* ══════════════════════════════════════════════════════════════
+     두상이 <b>뒤쪽 가닥을 가린다</b> (2026-08-09)
+     ──────────────────────────────────────────────────────────────
+     사용자: "우측 화면에서 얼굴이 새로 나온 게 아니고, 반대편 귀 옆에 있어야
+     될 머리가 코로 내려왔어. 좌측도 반대쪽 눈쯤에서 머리가 내려왔어."
+
+     정확한 진단이고, 그럴 수밖에 없었다 — <b>가림 판정이 아예 없었다</b>.
+     여기 있던 컬링은 `if(depth < 0) continue` 하나인데 두 가지가 부족하다:
+       ① depth가 <b>가닥 평균</b>이다. 먼 쪽 관자에서 난 가닥은 뿌리가 뒤에
+          있어도 아래로 내려오며 앞으로 돌아 나와 평균이 양수가 된다 →
+          가닥 <b>전체</b>가 그려지고, 그 경로가 코·눈을 가로지른다.
+       ② 두상이 불투명하다는 사실을 아무도 안 쓴다. 화면에 그리는 건 2D 획이라
+          깊이 버퍼가 없고, 얼굴 위에는 덮어 줄 앞쪽 가닥도 없으니 뒤쪽 머리가
+          <b>얼굴을 뚫고</b> 보인다.
+
+     고침: 점마다 "여기서 카메라로 가는 광선이 두개골을 지나가나"를 푼다.
+     두개골은 이미 실측 타원체로 있다(getScalpEllipsoid). 가닥은 그 바깥에
+     심기므로 자기 자신에 안 가린다. 광선-타원체 교차는 이차방정식 하나다:
+       숨김 = (e·w < 0) 이고 (e·w)² ≥ (w·w)(e·e − 1)     ← 축으로 나눈 좌표에서
+     가려진 점은 버리고 <b>보이는 구간마다 따로</b> 획을 만든다. 이어 버리면
+     머리 뒤를 가로지르는 직선이 얼굴 위에 생긴다(장식 아치에서 겪은 것과 같다).
+  ══════════════════════════════════════════════════════════════ */
+  const SK = (()=>{ try{ return getScalpEllipsoid(); }catch(e){ return null; } })();
+  const camV = { x: cal ? Math.sin(cal.yaw) : 0, y: 0, z: cal ? Math.cos(cal.yaw) : 1 };
+  (function(){ // 카메라 축(월드) — project3DPointToView의 lz 행과 같은 방향
+    const R = composeRotationZYX(cal.yaw, cal.pitch, cal.roll);
+    camV.x = R[6]; camV.y = R[7]; camV.z = R[8];
+  })();
+  const SKULL_EPS = 0.985;   // 두개골을 아주 살짝 줄여 뿌리가 자기 자신에 안 가리게
+  const hiddenByHead = (p)=>{
+    if(!SK || !HAIR3D_RENDER.headOcclusion) return false;
+    const A = SK.a*SKULL_EPS, B = SK.b*SKULL_EPS, C = SK.c*SKULL_EPS;
+    const ex = p.x/A, ey = (p.y - model.CY)/B, ez = p.z/C;
+    const wx = camV.x/A, wy2 = camV.y/B, wz = camV.z/C;
+    const ee = ex*ex + ey*ey + ez*ez;
+    if(ee <= 1) return false;                       // 두개골 안 — 판정 안 함
+    const ew = ex*wx + ey*wy2 + ez*wz;
+    if(ew >= 0) return false;                       // 카메라 쪽으로 멀어짐 = 안 가림
+    const ww = wx*wx + wy2*wy2 + wz*wz;
+    return (ew*ew) >= ww*(ee - 1);                  // 광선이 두개골을 통과 = 가려짐
+  };
   const rootDev = [];
   const projected0 = [];
+  let occHidden = 0, occPts = 0, occSplit = 0;
   for(let si=0; si<adj.length; si++){
     const st = adj[si];
-    const pts = st.pts; let dsum=0; const cpts=[];
+    const pts = st.pts;
     let rootIx = 0, rootIy = 0;
+    /* 보이는 구간(run)으로 쪼갠다. 각 run이 곧 하나의 획이 된다. */
+    const runs = []; let cur = null, curD = 0;
     for(let i=0;i<pts.length;i++){
       const pr = project3DPointToView(pts[i], cal, model.yTop, model.CY);
       if(i===0){ rootIx = pr.ix; rootIy = pr.iy; }
-      cpts.push({ x: toCX(pr.ix), y: toCY(pr.iy) });
-      dsum += pr.depth;
+      occPts++;
+      if(hiddenByHead(pts[i])){
+        occHidden++;
+        if(cur && cur.length >= 2){ runs.push({ cpts:cur, depth: curD/cur.length }); }
+        cur = null; curD = 0; continue;
+      }
+      if(!cur){ cur = []; curD = 0; }
+      cur.push({ x: toCX(pr.ix), y: toCY(pr.iy) });
+      curD += pr.depth;
     }
-    const depth = dsum / pts.length;
-    // 카메라를 등진 가닥(두상 뒤쪽)은 버린다 — 이 각도에서는 안 보여야 한다.
-    // depth는 카메라 축 성분이라 클수록 카메라에 가깝다(정렬 규약과 동일).
-    if(depth < 0) continue;
+    if(cur && cur.length >= 2) runs.push({ cpts:cur, depth: curD/cur.length });
+    if(!runs.length) continue;
+    if(runs.length > 1) occSplit++;
     if(maskInf.scalpY){
       const cx0 = Math.round(rootIx);
       const sY = (cx0 >= 0 && cx0 < maskInf.w) ? maskInf.scalpY[cx0] : -1;
@@ -16717,8 +16811,8 @@ function projectHair3DToView(ctx, fit, angle, maskInf){
        여기선 <b>같은 가닥</b>이 프레임마다 다시 그려지므로, 난수를 인덱스에
        묶어야 슬라이더를 잡고 흔들 때 가닥이 반짝이지 않는다. */
     const rid  = roleOf(hashFract(si * 0.7548776662 + 11.13));
-    projected.push({
-      cpts, depth, color: st.color,
+    for(const run of runs) projected.push({
+      cpts: run.cpts, depth: run.depth, color: st.color,
       w: roles[rid].w,                            // 레이어(굵기) 배정
       /* 굵기가 같은 레이어끼리는 한 묶음으로 그린다(키를 굵기로 잡는 이유).
          MIN_SAFE_WIDTH(0.9px) 하한에 걸리면 네 레이어가 같은 굵기가 되는데 —
@@ -16732,6 +16826,7 @@ function projectHair3DToView(ctx, fit, angle, maskInf){
   }
   if(!projected.length) return false;
   projected.sort((a,b)=> a.depth - b.depth); // 뒤(작은 depth)부터 → 앞이 위에 덮임
+  logHeadOcclusion(angle, occPts, occHidden, occSplit, adj.length, projected.length);
   logStrandRender(angle, { spanX, unit, cssW, roles, rawTotal, targetStrands,
                            stride, total: src.length, drawn: projected.length,
                            rootDev: summarizeRootDev(rootDev, projected0.length, maskInf) });
