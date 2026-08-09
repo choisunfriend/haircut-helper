@@ -16628,6 +16628,47 @@ function projectHair3DToView(ctx, fit, angle, maskInf){
   COMB._proj = { angle, cal, yTop: model.yTop, CY: model.CY, toCX, toCY,
                  pxScale: fit.dw / Math.max(1, maskInf.w) };
   const R = HAIR3D_RENDER;
+  /* ══════════════════════════════════════════════════════════════
+     두상이 <b>뒤쪽 가닥을 가린다</b> (2026-08-09)
+     ──────────────────────────────────────────────────────────────
+     사용자: "우측 화면에서 얼굴이 새로 나온 게 아니고, 반대편 귀 옆에 있어야
+     될 머리가 코로 내려왔어. 좌측도 반대쪽 눈쯤에서 머리가 내려왔어."
+
+     정확한 진단이고, 그럴 수밖에 없었다 — <b>가림 판정이 아예 없었다</b>.
+     여기 있던 컬링은 `if(depth < 0) continue` 하나인데 두 가지가 부족하다:
+       ① depth가 <b>가닥 평균</b>이다. 먼 쪽 관자에서 난 가닥은 뿌리가 뒤에
+          있어도 아래로 내려오며 앞으로 돌아 나와 평균이 양수가 된다 →
+          가닥 <b>전체</b>가 그려지고, 그 경로가 코·눈을 가로지른다.
+       ② 두상이 불투명하다는 사실을 아무도 안 쓴다. 화면에 그리는 건 2D 획이라
+          깊이 버퍼가 없고, 얼굴 위에는 덮어 줄 앞쪽 가닥도 없으니 뒤쪽 머리가
+          <b>얼굴을 뚫고</b> 보인다.
+
+     고침: 점마다 "여기서 카메라로 가는 광선이 두개골을 지나가나"를 푼다.
+     두개골은 이미 실측 타원체로 있다(getScalpEllipsoid). 가닥은 그 바깥에
+     심기므로 자기 자신에 안 가린다. 광선-타원체 교차는 이차방정식 하나다:
+       숨김 = (e·w < 0) 이고 (e·w)² ≥ (w·w)(e·e − 1)     ← 축으로 나눈 좌표에서
+     가려진 점은 버리고 <b>보이는 구간마다 따로</b> 획을 만든다. 이어 버리면
+     머리 뒤를 가로지르는 직선이 얼굴 위에 생긴다(장식 아치에서 겪은 것과 같다).
+  ══════════════════════════════════════════════════════════════ */
+  const SK = (()=>{ try{ return getScalpEllipsoid(); }catch(e){ return null; } })();
+  const camV = { x: cal ? Math.sin(cal.yaw) : 0, y: 0, z: cal ? Math.cos(cal.yaw) : 1 };
+  (function(){ // 카메라 축(월드) — project3DPointToView의 lz 행과 같은 방향
+    const R = composeRotationZYX(cal.yaw, cal.pitch, cal.roll);
+    camV.x = R[6]; camV.y = R[7]; camV.z = R[8];
+  })();
+  const SKULL_EPS = 0.985;   // 두개골을 아주 살짝 줄여 뿌리가 자기 자신에 안 가리게
+  const hiddenByHead = (p)=>{
+    if(!SK || !HAIR3D_RENDER.headOcclusion) return false;
+    const A = SK.a*SKULL_EPS, B = SK.b*SKULL_EPS, C = SK.c*SKULL_EPS;
+    const ex = p.x/A, ey = (p.y - model.CY)/B, ez = p.z/C;
+    const wx = camV.x/A, wy2 = camV.y/B, wz = camV.z/C;
+    const ee = ex*ex + ey*ey + ez*ez;
+    if(ee <= 1) return false;                       // 두개골 안 — 판정 안 함
+    const ew = ex*wx + ey*wy2 + ez*wz;
+    if(ew >= 0) return false;                       // 카메라 쪽으로 멀어짐 = 안 가림
+    const ww = wx*wx + wy2*wy2 + wz*wz;
+    return (ew*ew) >= ww*(ee - 1);                  // 광선이 두개골을 통과 = 가려짐
+  };
 
   // ── 투영 + 슬라이스 키 ──
   // 슬라이스 정의는 2D의 finalizeStrandsWithSlices와 같다(섹션 × 가로 3% × 깊이 10%).
@@ -16664,14 +16705,23 @@ function projectHair3DToView(ctx, fit, angle, maskInf){
   let pMinX = Infinity, pMaxX = -Infinity, pN = 0, pFront = 0;
   for(let si=0; si<src.length; si+=PROBE_STEP){
     const pts = src[si].pts;
-    let dsum = 0;
+    let dsum = 0, pVis = false;
     for(let i=0;i<pts.length;i++){
       const pr = project3DPointToView(pts[i], cal, model.yTop, model.CY);
       const x = toCX(pr.ix);
       if(x < pMinX) pMinX = x; if(x > pMaxX) pMaxX = x;
       dsum += pr.depth;
+      if(!pVis && !hiddenByHead(pts[i])) pVis = true;   // 한 점이라도 보이면 이 가닥은 그려진다
     }
-    pN++; if(dsum > 0) pFront++;
+    /* (2026-08-09) 살아남을 비율의 <b>기준이 바뀌었다</b>. 예전엔 가닥 평균
+       depth>0 하나로 통째 버렸는데(그게 사실상 밀도 조절이었다), 이제는 점마다
+       두상 가림을 보고 <b>보이는 구간만</b> 남긴다 — 뒤통수 가닥도 끝자락이
+       보이면 살아난다. 옛 기준을 그대로 두면 후보를 3배로 잡게 되고, 실기기에서
+       정확히 그렇게 났다(목표 4,248개인데 13,043개를 그림 → 턱수염·먹칠).
+       그래서 <b>새 규칙으로</b> 표본을 세어 비율을 낸다. */
+    pN++;
+    if(HAIR3D_RENDER.headOcclusion){ if(pVis) pFront++; }
+    else if(dsum > 0) pFront++;
   }
   const spanX = (pMaxX > pMinX) ? (pMaxX - pMinX) : fit.dw;
   /* 이 각도에서 <b>앞을 향한</b> 가닥의 비율. 아래 컬링으로 버려질 양을 미리
@@ -16734,47 +16784,6 @@ function projectHair3DToView(ctx, fit, angle, maskInf){
   /* [진단] 뿌리선 어긋남 — "머리가 원본보다 바깥에서 시작한다"를 <b>재는</b> 장치.
      되쏜 가닥의 뿌리가 그 컬럼의 원본 두피선(scalpY)보다 위에 찍히면 음수다.
      추측으로 계수를 흔들지 않기 위해 만든다(이 문제로 두 번 헛짚었다). */
-  /* ══════════════════════════════════════════════════════════════
-     두상이 <b>뒤쪽 가닥을 가린다</b> (2026-08-09)
-     ──────────────────────────────────────────────────────────────
-     사용자: "우측 화면에서 얼굴이 새로 나온 게 아니고, 반대편 귀 옆에 있어야
-     될 머리가 코로 내려왔어. 좌측도 반대쪽 눈쯤에서 머리가 내려왔어."
-
-     정확한 진단이고, 그럴 수밖에 없었다 — <b>가림 판정이 아예 없었다</b>.
-     여기 있던 컬링은 `if(depth < 0) continue` 하나인데 두 가지가 부족하다:
-       ① depth가 <b>가닥 평균</b>이다. 먼 쪽 관자에서 난 가닥은 뿌리가 뒤에
-          있어도 아래로 내려오며 앞으로 돌아 나와 평균이 양수가 된다 →
-          가닥 <b>전체</b>가 그려지고, 그 경로가 코·눈을 가로지른다.
-       ② 두상이 불투명하다는 사실을 아무도 안 쓴다. 화면에 그리는 건 2D 획이라
-          깊이 버퍼가 없고, 얼굴 위에는 덮어 줄 앞쪽 가닥도 없으니 뒤쪽 머리가
-          <b>얼굴을 뚫고</b> 보인다.
-
-     고침: 점마다 "여기서 카메라로 가는 광선이 두개골을 지나가나"를 푼다.
-     두개골은 이미 실측 타원체로 있다(getScalpEllipsoid). 가닥은 그 바깥에
-     심기므로 자기 자신에 안 가린다. 광선-타원체 교차는 이차방정식 하나다:
-       숨김 = (e·w < 0) 이고 (e·w)² ≥ (w·w)(e·e − 1)     ← 축으로 나눈 좌표에서
-     가려진 점은 버리고 <b>보이는 구간마다 따로</b> 획을 만든다. 이어 버리면
-     머리 뒤를 가로지르는 직선이 얼굴 위에 생긴다(장식 아치에서 겪은 것과 같다).
-  ══════════════════════════════════════════════════════════════ */
-  const SK = (()=>{ try{ return getScalpEllipsoid(); }catch(e){ return null; } })();
-  const camV = { x: cal ? Math.sin(cal.yaw) : 0, y: 0, z: cal ? Math.cos(cal.yaw) : 1 };
-  (function(){ // 카메라 축(월드) — project3DPointToView의 lz 행과 같은 방향
-    const R = composeRotationZYX(cal.yaw, cal.pitch, cal.roll);
-    camV.x = R[6]; camV.y = R[7]; camV.z = R[8];
-  })();
-  const SKULL_EPS = 0.985;   // 두개골을 아주 살짝 줄여 뿌리가 자기 자신에 안 가리게
-  const hiddenByHead = (p)=>{
-    if(!SK || !HAIR3D_RENDER.headOcclusion) return false;
-    const A = SK.a*SKULL_EPS, B = SK.b*SKULL_EPS, C = SK.c*SKULL_EPS;
-    const ex = p.x/A, ey = (p.y - model.CY)/B, ez = p.z/C;
-    const wx = camV.x/A, wy2 = camV.y/B, wz = camV.z/C;
-    const ee = ex*ex + ey*ey + ez*ez;
-    if(ee <= 1) return false;                       // 두개골 안 — 판정 안 함
-    const ew = ex*wx + ey*wy2 + ez*wz;
-    if(ew >= 0) return false;                       // 카메라 쪽으로 멀어짐 = 안 가림
-    const ww = wx*wx + wy2*wy2 + wz*wz;
-    return (ew*ew) >= ww*(ee - 1);                  // 광선이 두개골을 통과 = 가려짐
-  };
   const rootDev = [];
   const projected0 = [];
   let occHidden = 0, occPts = 0, occSplit = 0;
@@ -16828,7 +16837,7 @@ function projectHair3DToView(ctx, fit, angle, maskInf){
   projected.sort((a,b)=> a.depth - b.depth); // 뒤(작은 depth)부터 → 앞이 위에 덮임
   logHeadOcclusion(angle, occPts, occHidden, occSplit, adj.length, projected.length);
   logStrandRender(angle, { spanX, unit, cssW, roles, rawTotal, targetStrands,
-                           stride, total: src.length, drawn: projected.length,
+                           stride, total: src.length, drawn: adj.length, runs: projected.length,
                            rootDev: summarizeRootDev(rootDev, projected0.length, maskInf) });
 
   // 다발 속 미세 틴트 — 가닥마다 다른 색을 주되 팔레트 색에서 벗어나진 않게.
@@ -16962,7 +16971,9 @@ function logStrandRender(angle, m){
   console.log(
     `[${angle}] 가닥 렌더(원본 결 보기와 동일 규칙) — 헤어폭 ${m.spanX.toFixed(0)}px(화면 ${css(m.spanX)}) · `
     + `표시배율 1/${m.unit.toFixed(1)} · 굵기 ${wList} · `
-    + `가닥 ${m.drawn}개 그림 / 목표 ${Math.round(m.targetStrands)}개`
+    + `가닥 ${m.drawn}개 그림`
+    + (m.runs && m.runs !== m.drawn ? `(두상에 가려 ${m.runs}획으로 쪼개짐 — 잉크는 가닥 수 기준)` : '')
+    + ` / 목표 ${Math.round(m.targetStrands)}개`
     + `(원본 결 보기 ${Math.round(m.rawTotal)}개 ×${(m.targetStrands/Math.max(1,m.rawTotal)).toFixed(2)}, `
     + `모델 ${m.total}개 중 솎기 ${(+m.stride).toFixed(2)}, 앞면만)`
   );
