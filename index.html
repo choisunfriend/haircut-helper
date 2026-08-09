@@ -10679,6 +10679,35 @@ function buildRingGridIndices(rowSteps, thetaSteps){
 // 커스텀 지오메트리로 바꿈.
 // 상수의 출처로만 남겨두고(computeNeckCrossSections 최후 폴백 참고), 함수
 // 자체는 나중 참고용으로 삭제하지 않음(이 파일의 기존 관례).
+/* ══════════════════════════════════════════════════════════════════
+   목 밑동 y — <b>실측 목 길이</b>에서 (2026-08-09)
+   ─────────────────────────────────────────────────────────────────
+   사용자: 3D 결과보기에서 두상이 몸에서 떠 있다.
+
+   -1.15은 지어낸 불변식이었다. 재보면 그 자리가 어디인지 나온다:
+     턱(두상 최하단) = 0.15 - b = -0.480
+     목 밑동 -1.15  → 목 길이 0.670단위
+     세로 자 19.33cm/단위(실기기 [자 일치]) → <b>목이 13cm</b>
+   성인 턱끝~옷깃선은 8cm 안팎이고, 이 파일도 NECK_LEN_CM=8.0으로 이미 그렇게
+   적어 뒀다. 5cm짜리 목이 더 붙어 있었던 것이고, 그게 두상이 떠 보이는 정체다.
+
+   그래서 자로 잰다: 목 밑동 = 턱 - (NECK_LEN_CM ÷ cm/단위).
+   자를 못 구하면(랜드마크 없음) 두상 높이의 1/3로 폴백 — 그것도 -1.15보다 낫다.
+   ※ 2D 결과 화면의 RESULT_NECK_MESH_Y는 별도 파이프라인이라 건드리지 않는다.
+══════════════════════════════════════════════════════════════════ */
+function neckBottomY(){
+  const b = getHeadEllipsoid().b;
+  const chinY = 0.15 - b;
+  let len = 0;
+  try{
+    const hf = (getFaceMetrics().heightFactor) || 0;
+    const cmPerUnitY = hf > 0 ? (FACE_RULER_CM.eyeToChin / (0.70 * hf)) : 0;
+    if(cmPerUnitY > 0) len = NECK_LEN_CM / cmPerUnitY;
+  }catch(e){}
+  if(!(len > 0)) len = (2*b) / 3;                      // 자가 없을 때: 두상 높이의 1/3
+  len = Math.max(0.12, Math.min(0.75 * b, len));       // 목이 사라지거나 기린이 되지 않게
+  return chinY - len;
+}
 function buildRealNeckMesh(skinColor){
   const neckColor = skinColor.clone().multiplyScalar(0.94); // 살짝 어둡게(그림자 자리표시) — buildNeckMesh와 동일
   const neckMat = new THREE.MeshStandardMaterial({ color: neckColor, roughness: 0.85 });
@@ -10686,7 +10715,7 @@ function buildRealNeckMesh(skinColor){
   const RING_STEPS = 8, THETA_STEPS = 24; // THETA_STEPS=24는 예전 CylinderGeometry 세그먼트 수와 동일하게 유지
   const PHI_MAX = HEAD_PHI_BANDS[HEAD_PHI_BANDS.length-1];
   const neckTopY = headPhiToMeshY(PHI_MAX); // 두상 최하단 링과 같은 공식(공용 headPhiToMeshY) → 이음매 없음
-  const neckBotY = -1.15; // neckAttachPoint 하단(3단계 의상 정렬 불변식)
+  const neckBotY = neckBottomY(); // 실측 목 길이에서 — 위 neckBottomY 주석 참고
 
   const positions = [];
   // (2026-07-17) "원뿔(전등갓) 목" 수정 — personMask 실측에 어깨/턱이 섞이면
@@ -12433,9 +12462,35 @@ function loadOutfitMeshFromOBJ(objUrl, mtlUrl, widthFactor, neckCutFrac){
           const neckCutYRaw = box.min.y + cutFrac * size.y;
           const bodyHeightRaw = neckCutYRaw - box.min.y; // 발~목까지만(머리 제외) 실측 높이
 
-          const TARGET_HEIGHT = 4.0; // 목 밑동~발끝까지 대략 이 정도(절차적 플레이스홀더 기준)
-          const scale = OUTFIT_MESH_SOURCE.scaleOverride || (TARGET_HEIGHT / (bodyHeightRaw || 1)) * widthFactor;
+          /* ── 몸 크기는 <b>두신 비율</b>로 (2026-08-09) ──────────────────────
+             사용자: 3D 결과보기에서 두상이 몸에서 떠 보인다.
+
+             예전: TARGET_HEIGHT 4.0(지어낸 값) × widthFactor. 두 가지가 틀렸다.
+               ① 4.0은 근거가 없다. 두상 높이 1.26(=2b)와 맞물리면
+                  전신 = 0.78~-5.15 = 5.93 → <b>4.7 두신</b>이다. 사람은 7~8이다.
+               ② widthFactor는 <b>얼굴 폭</b> 측정치인데 그걸 <b>키</b>에 곱하고
+                  있었다. 얼굴이 넓은 손님이면 키가 커진다 — 차원이 다른 값이다.
+                  그래서 몸 크기가 손님마다 예측 불가로 흔들리고, 목 밑동(-1.15)에
+                  맞춰 놓은 두상이 몸에 비해 뜨거나 파묻혔다.
+
+             고침: 2D 결과 화면이 이미 쓰는 규칙을 그대로 쓴다 —
+             <b>전신 길이 = 두상 높이 × FIGURE_HEADS(7.5)</b>. 두상 높이는 실측
+             타원체에서 나오므로 손님마다 자동으로 맞는다. 폭 보정은 키에 안 곱한다
+             (필요하면 x/z에만 걸 것 — 지금은 에셋 자체 비율을 따른다). */
+          const _hb = getHeadEllipsoid().b;
+          const headH   = 2 * _hb;                 // 두상 높이(정수리~턱)
+          const crownYm = 0.15 + _hb;              // 정수리 y (두상 중심 0.15)
+          const feetYm  = crownYm - headH * FIGURE_HEADS;
+          const NB = neckBottomY();                              // 목 밑동(실측)
+          const TARGET_HEIGHT = Math.max(1, NB - feetYm);        // 목 밑동 → 발끝
+          const scale = OUTFIT_MESH_SOURCE.scaleOverride || (TARGET_HEIGHT / (bodyHeightRaw || 1));
           obj.scale.setScalar(scale);
+          console.log('[3D·몸 정렬] 두상높이 ' + headH.toFixed(3)
+            + ' × ' + FIGURE_HEADS + '두신 → 전신 ' + (headH*FIGURE_HEADS).toFixed(2)
+            + ' · 턱 ' + (0.15-_hb).toFixed(2) + ' → 목밑동 ' + NB.toFixed(2)
+            + '(목 ' + (0.15-_hb-NB).toFixed(2) + '단위) → 발끝 ' + feetYm.toFixed(2)
+            + ' · 의상 목~발 ' + TARGET_HEIGHT.toFixed(2) + '(배율 ×' + scale.toFixed(3) + ')'
+            + (widthFactor ? ' · 얼굴폭계수 ' + (+widthFactor).toFixed(2) + '는 키에 안 곱함(예전엔 곱했음)' : ''));
 
           // 스케일 적용 후 좌표 기준으로 재계산해서 위치 정렬(중심을 x/z=0으로,
           // 목 밑동 지점이 neckAttachPoint 하단 y=-1.15에 오도록)
@@ -12445,7 +12500,7 @@ function loadOutfitMeshFromOBJ(objUrl, mtlUrl, widthFactor, neckCutFrac){
           const offsetY = OUTFIT_MESH_SOURCE.offsetY || 0;
           obj.position.x += -center2.x;
           obj.position.z += -center2.z;
-          obj.position.y += (-1.15 - neckCutYScaled) + offsetY;
+          obj.position.y += (NB - neckCutYScaled) + offsetY;
           obj.name = 'outfitLoadedOBJ';
 
           // 에셋 자체 "Hair" 재질은 완전히 숨김(우리 자체 헤어 시스템을 쓰므로).
@@ -12458,7 +12513,7 @@ function loadOutfitMeshFromOBJ(objUrl, mtlUrl, widthFactor, neckCutFrac){
           // material.color에도 동일한 보정을 적용해야 카탈로그 색상과 실제
           // 렌더링이 일치함. THREE.Color.convertLinearToSRGB()가 정확히 이 변환.
           const HIDE_MATERIAL_NAMES = ['hair'];
-          const neckClipPlane = new THREE.Plane(new THREE.Vector3(0,-1,0), -1.15);
+          const neckClipPlane = new THREE.Plane(new THREE.Vector3(0,-1,0), NB);
           obj.traverse(child=>{
             if(!child.isMesh) return;
             const matName = (child.material && child.material.name || '').toLowerCase();
