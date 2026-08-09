@@ -8997,45 +8997,33 @@ function hairClipGrowPx(fit, rawMode){
   }catch(e){}
   return Math.max(0, (maxRatio - 1)) * fit.dh * HAIR_LAYER_CLIP.growPerRatio;
 }
-/* 마네킹용 클립 마스크 — <b>얼굴만</b> 뺀 전면 허용 (2026-08-09).
-   3D 재클립(HAIR_OCC3D.mannequinFaceOnly)과 짝이다: 그쪽에서 사진 실루엣 판정을
-   놓아 준 가닥을 여기서 다시 지우면 아무것도 안 바뀐 것과 같다. 두 클립이 같은
-   얼굴 타원을 보게 해서 화면과 3D가 갈라지지 않게 한다.
-   ※ 얼굴 타원이 없는 뷰(후면·yaw>60 측면)는 지킬 얼굴이 없으므로 통과. */
-function buildMannequinClipMask(fit, cw, ch, angle){
-  const c = document.createElement('canvas'); c.width = cw; c.height = ch;
-  const x = c.getContext('2d');
-  x.fillStyle = '#fff'; x.fillRect(0, 0, cw, ch);
-  const fe = angle ? getViewFaceEllipse(angle) : null;
-  if(fe){
-    x.globalCompositeOperation = 'destination-out';
-    x.beginPath();
-    x.ellipse(fit.dx + fe.cx*fit.dw, fit.dy + fe.cy*fit.dh,
-              fe.rx*fit.dw, fe.ry*fit.dh, 0, 0, Math.PI*2);
-    x.fill();
-  }
-  return c;
+/* 마네킹 시술 중의 여유(px) — 3D 재클립의 fringeFrac과 <b>같은 거리</b>를 화면
+   px로 환산한다 (2026-08-09). 두 클립이 다른 폭을 열면 3D에서 살아남은 앞머리가
+   화면에서 다시 지워져 아무것도 안 바뀐 것처럼 보인다.
+   환산은 combClipGrowPx와 같은 경로(모델 → 원본px → 캔버스px)를 쓴다. */
+function mannequinClipGrowPx(fit, angle, rawMode){
+  if(rawMode || !(HAIR_OCC3D.fringeFrac > 0)) return 0;
+  const m = state.hair3Dneutral;
+  if(!m || !m.mannequin) return 0;
+  const cal = m.viewCal && m.viewCal[angle];
+  const mi = state.hairMasks && state.hairMasks[angle];
+  if(!cal || !mi || !(cal.s > 0) || !(mi.w > 0)) return 0;
+  let b = 0; try{ b = getHeadEllipsoid().b || 0; }catch(e){ return 0; }
+  const px = ((2 * b * HAIR_OCC3D.fringeFrac) / cal.s) * (fit.dw / mi.w);
+  return Math.max(0, Math.min(px, fit.dw * 0.25));
 }
 function applyHairLayerClip(layer, hairCanvas, fit, cw, ch, rawMode, angle){
   if(!HAIR_LAYER_CLIP.on || !hairCanvas) return 0;
-  /* 마네킹 시술 중이면 사진 실루엣은 기준이 아니다 — 얼굴만 지킨다.
-     (원본 결 보기는 <b>사진 그대로</b>를 보려는 모드라 예외 없이 원래 클립.) */
-  const mq = state.hair3Dneutral;
-  if(!rawMode && mq && mq.mannequin && HAIR_OCC3D.mannequinFaceOnly){
-    const fx = layer.getContext('2d');
-    fx.save();
-    fx.globalCompositeOperation = 'destination-in';
-    fx.drawImage(buildMannequinClipMask(fit, cw, ch, angle), 0, 0);
-    fx.restore();
-    return 0;
-  }
   /* (#5 수정, 2026-08-08) 처음엔 빗질이 있으면 클립을 <b>통째로 껐다</b>.
      그러면 빗질이 안 지워지긴 하는데, 클립이 하던 일 전부가 같이 사라져서
      가닥이 얼굴 위로 마구 그려진다(사용자 실기기: 시술모드 켜고 클릭 한 번에
      머리가 얼굴을 덮는 성긴 실타래가 됨). 클립은 "마스크 밖 금지" 하나가
      아니라 렌더 모양을 잡아 주는 장치다 — 끄는 게 아니라 <b>빗질한 만큼만
      넓힌다</b>. 길이를 늘렸을 때 growPerRatio로 여유를 주는 것과 같은 처리다. */
-  const grow = hairClipGrowPx(fit, rawMode) + combClipGrowPx(fit, angle, rawMode);
+  /* 길이 여유와 시술 여유는 <b>큰 쪽</b>(같은 "밖으로 나갈 권리"라 더하면 이중),
+     빗질 여유는 <b>더한다</b>(가닥을 물리적으로 더 밀어낸 별개의 변위). */
+  const grow = Math.max(hairClipGrowPx(fit, rawMode), mannequinClipGrowPx(fit, angle, rawMode))
+             + combClipGrowPx(fit, angle, rawMode);
   const mask = buildHairClipMask(hairCanvas, fit, cw, ch, grow, rawMode ? null : angle);
   const x = layer.getContext('2d');
   x.save();
@@ -13452,27 +13440,30 @@ const HAIR_OCC3D = {
   faceInset: 0.10,  // 귀 간격 대비 좌우 안쪽 여백(귀는 얼굴보다 넓다)
   faceThr: 0.5,     // 가중 투표가 이 이상이면 "얼굴 위"로 본다
 
-  /* ── 마네킹에는 사진 실루엣을 안 건다 (2026-08-09) ────────────────────────
+  /* ── 시술 여유 — 앞머리가 앉을 자리만 연다 (2026-08-09) ──────────────────
      사용자: "레이어드 보브를 눌러도 제대로 적용이 안 돼."
 
      역산은 멀쩡했다(끝높이 오차 두상높이 대비 1% 안쪽). 지워지고 있었던 것이다.
      재클립의 여유(growLen)는 <b>길이비율이 1을 넘을 때만</b> 생긴다. 그런데
-     레이어드 보브는 전 섹션을 <b>짧게</b> 자르므로(길이 13~48, 전부 ratio&lt;1)
-     여유가 정확히 0이다. 그 상태에서 판정 기준은 <b>손님의 원래 머리 실루엣</b>이라:
+     레이어드 보브는 전 섹션을 <b>짧게</b> 자르므로 여유가 정확히 0이고, 판정
+     기준은 <b>손님의 원래 머리 실루엣</b>이다:
        · 앞머리(시스루 뱅) — 원래 사진엔 이마에 머리카락이 없다 → 뿌리 토막만 남고 전멸
        · 아웃컬(flow +38) — 바깥으로 뒤집힌 끝이 원래 실루엣 밖 → 잘림
-     스타일의 정의적 특징 두 개가 <b>둘 다</b> 지워졌다. "값은 들어갔는데 그림이
-     안 바뀐다"의 실체다.
+     스타일의 정의적 특징 두 개가 <b>둘 다</b> 지워졌다.
 
-     원래 규칙 자체가 틀린 건 아니다 — <b>촬영 가닥 모델</b>에서는 맞다. 그 가닥은
-     사진에서 뽑은 것이라 사진 밖으로 나가면 근거가 없다. 하지만 마네킹 모델은
-     사진 가닥을 <b>버리고</b> 두피에서 새로 심은 것이고(실측에서 가져온 건 뿌리밀도·
-     섹션·길이·색뿐), 시술은 원래 없던 자리에 머리를 만드는 행위다. 원래 실루엣으로
-     자를 근거가 애초에 없다.
-     남는 규칙은 하나뿐이다 — <b>얼굴을 덮지 않는다</b>. 그건 마스크가 아니라
-     얼굴 타원(getViewFaceEllipse)이 따로 들고 있고, 그대로 살려 둔다.
-     false로 두면 예전 동작(마네킹도 사진 실루엣으로 클립). */
-  mannequinFaceOnly: true,
+     ※ 1차 수정은 여기서 "마네킹은 사진 가닥이 아니니 실루엣으로 자를 근거가
+        없다"며 클립을 <b>통째로</b> 놓아 줬다. 실기기에서 틀린 것으로 판명났다 —
+        left 밖으로 샘 58.4%(IoU 0.404) · right 45.8%. 논리는 맞았지만 전제가
+        틀렸다: 마네킹 기하는 <b>혼자 설 만큼 정확하지 않다</b>(뿌리선 어긋남
+        중앙값 36~89px, 뷰별 크라운 길이 0.46~1.97로 4배 차이). 실루엣 클립이
+        그 오차를 가려 주고 있었고, 걷어내니 머리가 얼굴을 덮었다.
+     그래서 <b>여는 폭을 정한다</b>. 앞머리가 필요로 하는 자리는 이마 하나이고,
+     그건 잴 수 있다 — 헤어라인(두상높이 0.23)에서 눈썹(0.45)까지 <b>0.22</b>다.
+     그만큼만 연다. 아래쪽 한계는 여유가 알아서 못 넘는다: 얼굴 타원이 눈썹에서
+     시작하므로 여유 구간이 눈썹에 닿는 순간 거부된다(faceVeto). 즉 "앞머리는
+     이마까지, 얼굴은 못 덮는다"가 상수 하나 없이 나온다.
+     0으로 두면 예전 동작(마네킹도 여유 0). */
+  fringeFrac: 0.25,
 };
 
 /* 뷰별 얼굴 타원(정규화 [0,1] 이미지 좌표). 2D 클립과 3D 재클립이 <b>같은</b>
@@ -16669,6 +16660,19 @@ function applyStyleSpec(id){
     const L = rep.byView.left && rep.byView.left[sec], R = rep.byView.right && rep.byView.right[sec];
     if(L && R) rep.asym[sec] = L.length - R.length;      // + = 왼쪽이 더 길게 잘라야
   }
+  /* ── 못 푼 섹션을 <b>말한다</b> (2026-08-09) ────────────────────────────
+     실기기 로그에서 crown이 길이 100(상한)에 붙은 채 끝높이 오차 24.9%로 나왔다.
+     이분탐색이 실패한 게 아니라 <b>슬라이더 범위 안에 답이 없었다</b>는 뜻이다 —
+     그 섹션 가닥이 목표 높이까지 닿을 만큼 길지 않다(뿌리 길이가 잘못 심겼거나
+     스펙의 tipAt이 이 두상엔 무리거나). 조용히 상한값을 넣으면 "스펙대로 됐다"고
+     읽히는데 실제로는 그 섹션만 원래보다 <b>더 길어진다</b>. 반드시 눈에 띄게. */
+  const stuck = Object.keys(rep.solved).filter(s=>
+    rep.solved[s] != null && (rep.solved[s] <= 0 || rep.solved[s] >= 100)
+    && rep.missY[s] != null && Math.abs(rep.missY[s]) > 0.05);
+  if(stuck.length) console.warn('[스타일스펙·못 풂] ' + stuck.map(s=>
+      s + ' 길이 ' + rep.solved[s] + '(범위 끝) 남은 오차 ' + (rep.missY[s]*100).toFixed(1) + '%').join(' · ')
+    + '\n    슬라이더 범위 안에 답이 없습니다 — 이 섹션은 스펙대로 안 잘렸고, 값은 상·하한에 붙어 있습니다.'
+    + '\n    먼저 볼 것: [마네킹] 섹션길이(중앙값)와 [마네킹·뷰별길이 가둠] — 뿌리 길이가 뷰마다 달랐다면 그게 원인입니다.');
   const missTxt = Object.keys(rep.missY)
     .map(s=> s + ' ' + (rep.missY[s] == null ? '—' : (rep.missY[s]*100).toFixed(1) + '%')).join(' ');
   console.log('[스타일스펙] ' + sp.name
@@ -16800,8 +16804,37 @@ function buildMannequinHair3D(){
                            return a[Math.min(a.length-1, Math.floor(a.length*q))]; };
   const secLen = {}, secCol = {}, viewLen = {};
   for(const s in byS){ secLen[s] = pick(byS[s].len, MANNEQUIN.lenPct); secCol[s] = byS[s].col; }
+  /* ── 뷰별 길이는 <b>섹션 중앙값 근처</b>에서만 믿는다 (2026-08-09) ──────────
+     실기기 로그: crown|front 0.496 · crown|left 0.456 · crown|right 1.269 ·
+     crown|back 1.973 — 같은 정수리인데 뷰끼리 <b>4배</b>가 벌어졌다.
+     사람 머리가 그렇게 안 생겼다. 이건 비대칭이 아니라 <b>측정</b>이다: 촬영
+     가닥의 호길이는 그 뷰의 카메라가 어디까지 봤고 세그멘테이션이 어디서
+     끊었는지에 좌우된다(정면에서 정수리는 마스크 위쪽에서 잘려 짧게 잡힌다).
+     그 값을 그대로 심으면 같은 섹션 안에 0.46짜리와 1.97짜리가 섞이고, 커트가
+     유니폼으로 길이를 맞추려 하면 짧은 가닥은 <b>3배로 늘여야</b> 한다 —
+     늘린 가닥은 마지막 방향으로 뻗으므로 얼굴을 가로지른다. 실기기에서 본
+     "머리가 얼굴을 덮는 성긴 실타래"의 기하학적 원인이 여기다.
+
+     그렇다고 뷰별 측정을 버리면 진짜 좌우 비대칭도 같이 버린다(원래 이걸
+     남기려고 만든 코드다). 그래서 <b>폭을 정한다</b>: 실제 커트에서 좌우
+     길이차는 커봐야 ±1/3이다(그 이상이면 손님이 먼저 안다). 그 밖은 측정
+     잡음으로 보고 섹션 중앙값 쪽으로 끌어당긴다. 버리는 게 아니라 <b>가두는</b>
+     것이라, 8% 비대칭 같은 진짜 신호는 그대로 통과한다. */
   const MIN_VIEW_N = 12;
-  for(const k in byV) if(byV[k].length >= MIN_VIEW_N) viewLen[k] = pick(byV[k], MANNEQUIN.lenPct);
+  const VIEW_LEN_TOL = 1/3;
+  const clampedTxt = [];
+  for(const k in byV){
+    if(byV[k].length < MIN_VIEW_N) continue;
+    const raw = pick(byV[k], MANNEQUIN.lenPct);
+    const base = secLen[k.split('|')[0]];
+    if(!(base > 0)){ viewLen[k] = raw; continue; }
+    const v = Math.max(base*(1 - VIEW_LEN_TOL), Math.min(base*(1 + VIEW_LEN_TOL), raw));
+    if(Math.abs(v - raw) > 1e-6) clampedTxt.push(k + ' ' + raw.toFixed(3) + '→' + v.toFixed(3));
+    viewLen[k] = v;
+  }
+  if(clampedTxt.length) console.log('[마네킹·뷰별길이 가둠] 섹션 중앙값 ±33% 밖 '
+    + clampedTxt.length + '칸 — ' + clampedTxt.join(' · ')
+    + '\n    ↑ 많이 뜨면 그 섹션은 뷰마다 다르게 잘리고 있다는 뜻(세그멘테이션·마스크 경계 확인). MANNEQUIN 뷰별길이 자체를 끄려면 MIN_VIEW_N을 크게.');
   const fbLen = pick(allLen, MANNEQUIN.lenPct);
   const lenFor = (sec, view)=> viewLen[sec + '|' + view] || secLen[sec] || fbLen;
 
@@ -17190,6 +17223,14 @@ const CUT3D = {
   techSlope: { onelength:0, graduation:0.35, uniform:0, increase:-0.35 },
   textureMax: 0.25,   // 텍스처 100%일 때 끝단이 최대 이만큼 짧아진다
   minRatio: 0.02,
+  /* 한 가닥을 자기 길이의 이 배 넘게는 <b>안 늘인다</b> (2026-08-09).
+     유니폼 커트는 섹션 전체를 가이드 길이(Lref)로 맞추는데, 그 섹션 안에 유난히
+     짧게 잡힌 가닥이 있으면 비율이 3~4배가 된다. 늘린 부분은 실측이 아니라
+     <b>마지막 방향으로의 연장</b>이라, 그만큼 가면 두상을 벗어나 얼굴을 가로지른다.
+     실제 시술로도 "자르기"가 머리를 3배로 늘려 주지는 않는다 — 없는 길이는
+     없는 것이고, 그 가닥은 그냥 짧은 가닥으로 남는 게 맞다(레이어의 정의).
+     ※ 이건 증상 억제이고 원인은 뿌리 쪽이다 — 뷰별길이 가둠(마네킹)이 먼저다. */
+  maxRatio: 1.8,
 };
 /* 이 가닥에서 y=targetY에 닿는 지점까지의 호길이. 안 닿으면 전체 길이. */
 function arcAtY(pts, targetY){
@@ -17284,7 +17325,7 @@ function cutRatioForStrand(st, sec, lenVal, fallbackRatio){
   // ④ 텍스처라이징 — 끝단을 가닥마다 다르게 쳐서 가볍게(결정적)
   const tx = (typeof sec.texture === 'number') ? sec.texture/100 : 0;
   if(tx > 0) L *= 1 - tx * CUT3D.textureMax * _cutHash01(st);
-  return Math.max(CUT3D.minRatio, L / total);
+  return Math.max(CUT3D.minRatio, Math.min(CUT3D.maxRatio, L / total));
 }
 
 /* ── 가닥 하나에 커트·펌·스타일링 연산자를 순서대로 (2026-08-08 분리) ──────
@@ -17340,10 +17381,12 @@ function computeAdjustedHair3DStrands(srcAngleFilter, stride){
     : null;
   const occAcc = occ ? { n:0, dropped:0, trimmed:0, removedPts:0, faceBlocked:0 } : null;
   /* 마네킹이면 점유 판정은 "여유 무한"으로 통과시키고 <b>얼굴 거부만</b> 남긴다
-     (근거는 HAIR_OCC3D.mannequinFaceOnly 주석). growLen이 무한이면 여유 루프가
-     가닥 끝까지 걸어가므로 점유로는 아무것도 안 잘리고, 얼굴을 가로지르는
-     순간에만 거기서 끝난다 — 함수를 새로 만들 필요 없이 같은 경로를 쓴다. */
-  const mqFaceOnly = !!(model.mannequin && HAIR_OCC3D.mannequinFaceOnly);
+     (근거는 HAIR_OCC3D.fringeFrac 주석). 길이를 늘렸을 때의 여유와 <b>큰 쪽</b>을
+     쓴다 — 둘은 서로 다른 이유의 여유라 더하면 이중으로 열린다. */
+  let mqGrow = 0;
+  if(model.mannequin && HAIR_OCC3D.fringeFrac > 0){
+    try{ mqGrow = 2 * getHeadEllipsoid().b * HAIR_OCC3D.fringeFrac; }catch(e){ mqGrow = 0; }
+  }
   for(const st of model.strands){
     if(srcAngleFilter && st.srcAngle !== srcAngleFilter) continue;
     _acc += 1/stp;
@@ -17357,7 +17400,7 @@ function computeAdjustedHair3DStrands(srcAngleFilter, stride){
     if(occ){
       const grow = ratio > 1 ? (ratio - 1) * arcLength3D(st.pts) * HAIR_OCC3D.growPerRatio : 0;
       const t = trimStrandToOccupancy3D(pts, occ, occAcc,
-                  { growLen: mqFaceOnly ? Infinity : grow, neverDrop: true, faceVeto: true });
+                  { growLen: Math.max(grow, mqGrow), neverDrop: true, faceVeto: true });
       if(t && t.length >= 2) pts = t;
     }
     /* ⑨ 빗질(시술모드) — 재클립 <b>뒤</b>다. 클립은 "사진에 머리가 없는 자리에는
