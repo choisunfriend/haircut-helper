@@ -1494,11 +1494,6 @@ main{flex:1;position:relative;overflow:hidden;}
 #devMini3DCanvasWrap{flex:1;position:relative;min-height:0;}
 #devMini3DCanvasWrap canvas{width:100%;height:100%;display:block;touch-action:none;}
 #devMini3DHint{font-size:9px;color:var(--text-muted);text-align:center;padding:2px;flex-shrink:0;}
-#devMini3DLegend{display:flex;flex-wrap:wrap;gap:2px 6px;padding:3px 5px;flex-shrink:0;
-  font-size:9px;line-height:1.35;color:var(--text-muted);justify-content:center;}
-#devMini3DLegend span{display:inline-flex;align-items:center;gap:3px;white-space:nowrap;}
-#devMini3DLegend i{width:8px;height:8px;border-radius:2px;display:inline-block;flex-shrink:0;}
-#devMini3DLegend b{color:var(--accent-soft);font-weight:600;}
 .preview-tag{
   position:absolute;top:10px;left:10px;
   background:rgba(27,24,22,0.75);backdrop-filter:blur(4px);
@@ -1672,11 +1667,6 @@ input[type=range]::-moz-range-thumb{width:20px;height:20px;border-radius:50%;bac
 .mode-bar button:hover{border-color:var(--accent);}
 .mode-bar button.on{background:var(--accent);color:#1B1816;border-color:var(--accent);font-weight:700;}
 .mode-bar button:disabled{opacity:.4;cursor:default;}
-.acc-bar{position:absolute;left:8px;bottom:8px;z-index:60;display:flex;flex-wrap:wrap;gap:4px;max-width:70%;}
-.acc-bar button{background:rgba(27,24,22,0.78);backdrop-filter:blur(4px);border:1px solid var(--line);
-  color:var(--accent-soft);font-size:11px;line-height:1;padding:6px 9px;border-radius:8px;cursor:pointer;}
-.acc-bar button:hover{border-color:var(--accent);}
-.acc-bar button.on{background:var(--accent);color:#1B1816;border-color:var(--accent);font-weight:700;}
 .lang-toggle{background:var(--surface-2);color:var(--text);border:1px solid var(--line);
   border-radius:999px;padding:4px 11px;font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:500;
   letter-spacing:.04em;cursor:pointer;line-height:1.5;}
@@ -1810,7 +1800,6 @@ input[type=range]::-moz-range-thumb{width:20px;height:20px;border-radius:50%;bac
             <button id="devMini3DExpand" onclick="toggleDevMini3DExpand()" title="확대/축소">⛶</button>
           </div>
           <div id="devMini3DCanvasWrap"></div>
-          <div id="devMini3DLegend"></div>
           <div id="devMini3DHint">드래그 회전 · ⛶ 확대</div>
         </div>
       </div>
@@ -1867,8 +1856,6 @@ input[type=range]::-moz-range-thumb{width:20px;height:20px;border-radius:50%;bac
         <div class="result-note" id="resultOutfitNote">의상 준비 중…</div>
         <!-- 확대/축소 — 휠·핀치·드래그도 되고(두 번 탭/더블클릭이면 원래대로),
              화면 안 눌러도 되게 버튼도 둔다 -->
-        <!-- 헤어 장식 고르기 (2026-08-09) -->
-        <div class="acc-bar" id="accBar" onpointerdown="event.stopPropagation()"></div>
         <div class="result-zoom" id="resultZoom" onpointerdown="event.stopPropagation()">
           <button type="button" onclick="resultZoomAt(RESULT_VIEW.zoom/1.25)">−</button>
           <span id="resultZoomLabel">100%</span>
@@ -2807,7 +2794,6 @@ const state = {
     height: 35,       // 0~100, 그 섹션 안에서 페이드가 몇 %까지 올라가는지(로우/미드/하이 페이드)
     blendWidth: 40,   // 0~100, 가드 경계가 얼마나 부드럽게 섞이는지(테이퍼 레버 개념 — 낮으면 칼선, 높으면 부드러운 그라데이션)
   },
-  hairAccessory: 'none',   // 헤어 장식(결과 화면) — HAIR_ACCESSORIES의 id
   // 웨이브 폭(펌 로드 사이즈) — 컬 진폭(_globalCurl)과 별개로 파장(촘촘함)을
   // 조절. 0=작은 로드(촘촘한 스파이럴), 100=큰 로드(느슨한 웨이브).
   waveWidth: 50,
@@ -7405,10 +7391,6 @@ function renderFrame(canvas, angle, opts){
         }
         const clipGrow = applyHairLayerClip(hairLayer, hairC, fit, ctx.canvas.width, ctx.canvas.height, rawMode, angle);
         measureRenderVsPhoto(hairLayer, maskInf, fit, ctx.canvas.width, ctx.canvas.height, angle, clipGrow);
-        /* 장식은 <b>클립·측정 뒤</b>에 얹는다. 클립 앞에 두면 사진 실루엣 밖으로
-           나온 핀이 잘리고, 측정 앞에 두면 장식 픽셀이 "머리카락 잉크"로 잡혀
-           [비교] 숫자가 오염된다. 머리 위에 얹는 물건이므로 마스크에 안 갇힌다. */
-        if(!rawMode) drawHairAccessories(lctx, fit, angle, maskInf);
         ctx.drawImage(hairLayer, 0, 0);
         done(fit, hairLayer); // 결과 화면이 이 레이어를 의상 위에 한 번 더 얹는다
       }
@@ -9037,13 +9019,6 @@ function mannequinClipGrowPx(fit, angle, rawMode){
   const mi = state.hairMasks && state.hairMasks[angle];
   if(!cal || !mi || !(cal.s > 0) || !(mi.w > 0)) return 0;
   let b = 0; try{ b = getHeadEllipsoid().b || 0; }catch(e){ return 0; }
-  /* 여유는 <b>얼굴 보호구역이 있을 때만</b> 연다 (2026-08-09).
-     이 여유의 아래쪽 한계는 상수가 아니라 얼굴 타원이다(HAIR_OCC3D.fringeFrac
-     주석). 그러니 타원을 못 만든 뷰에서는 한계가 없는 것이고, 한계 없는 여유는
-     사방으로 부풀어 얼굴을 덮는다 — 좌·우 뷰에서 실제로 그렇게 됐다.
-     얼굴이 아예 안 찍힌 뷰(후면)는 덮을 얼굴도 없으니 여유를 그대로 준다.
-     "모르는 것으로 지우지 않는다"의 짝 — <b>모르는 것으로 열어 주지도 않는다</b>. */
-  if(state.landmarks && state.landmarks[angle] && !getViewFaceEllipse(angle)) return 0;
   const px = ((2 * b * HAIR_OCC3D.fringeFrac) / cal.s) * (fit.dw / mi.w);
   return Math.max(0, Math.min(px, fit.dw * 0.25));
 }
@@ -9229,7 +9204,6 @@ function measureStageDensity(angle, maskInf, inkCells){
 const RENDER_MATCH = { on: true, w: 320, inkAlpha: 24, minCoh: 0.05,
                        fillBlur: 0.012, fillThr: 20 };
 let _matchLogged = {};
-let _shiftLogKey = {};
 function measureRenderVsPhoto(layerCanvas, maskInf, fit, cw, ch, angle, clipGrow){
   if(!RENDER_MATCH.on || !angle || !maskInf) return null;
   try{
@@ -9283,37 +9257,6 @@ function measureRenderVsPhoto(layerCanvas, maskInf, fit, cw, ch, angle, clipGrow
       if(f||m) uni++;
     }
     const iou = uni ? inter/uni : 0;
-    /* ── 쏠림(무게중심 차) (2026-08-09) ─────────────────────────────────
-       사용자: "정면 사진에서도 헤어가 살짝 왼쪽으로 쏠렸어."
-       IoU는 <b>얼마나 겹치나</b>만 말하고 <b>어느 쪽으로 밀렸나</b>는 안 말한다.
-       0.965처럼 높은 값이 나와도 통째로 몇 px 밀려 있을 수 있다. 그래서 렌더와
-       마스크의 <b>무게중심</b>을 따로 재서 차이를 px로 낸다 — 눈으로 "살짝
-       쏠렸다"고 본 것을 숫자로 바꾼다.
-       읽는 법: +x = 렌더가 <b>오른쪽</b>으로 밀림. 네 뷰가 <b>같은 방향</b>이면
-       투영 중심(cal.cx)이 어긋난 것이고, 뷰마다 부호가 다르면 뷰별 캘리브레이션
-       문제다. 두상 폭 대비 %로도 같이 낸다(절대 px는 해상도에 묶이므로). */
-    let rSx=0,rSy=0,rN=0, mSx=0,mSy=0,mN=0, mMinX=W, mMaxX=0;
-    for(let y=0;y<H;y++) for(let x=0;x<W;x++){
-      const i=y*W+x;
-      if(fil[i]){ rSx+=x; rSy+=y; rN++; }
-      if(msk[i]){ mSx+=x; mSy+=y; mN++; if(x<mMinX)mMinX=x; if(x>mMaxX)mMaxX=x; }
-    }
-    const shift = (rN && mN) ? {
-      dx: +((rSx/rN - mSx/mN)).toFixed(1),
-      dy: +((rSy/rN - mSy/mN)).toFixed(1),
-      pctOfHead: (mMaxX>mMinX) ? +(100*(rSx/rN - mSx/mN)/(mMaxX-mMinX)).toFixed(1) : null,
-      scale: cw / W,                                  // 측정 해상도 → 캔버스 배율
-    } : null;
-    /* 로그는 <b>여기서</b> 찍는다. 아래 결 일치 계산이 실패하면(orientation 없음
-       등) 함수가 통째로 catch로 빠지는데, 그때 쏠림까지 같이 잃으면 안 된다. */
-    if(shift && _shiftLogKey[angle] !== shift.dx + '|' + shift.dy){
-      _shiftLogKey[angle] = shift.dx + '|' + shift.dy;
-      const cx2 = (v)=> (v*shift.scale).toFixed(1);   // 측정 해상도 → 화면 px
-      console.log(`[쏠림] ${angle} 무게중심 차 x ${shift.dx>0?'+':''}${cx2(shift.dx)}px`
-        + ` (${shift.pctOfHead>0?'+':''}${shift.pctOfHead}% 머리폭 대비) · y ${shift.dy>0?'+':''}${cx2(shift.dy)}px`
-        + ` · 화면 ${cw}px 기준`
-        + `\n    +x = 렌더가 오른쪽으로 밀림. 네 뷰가 같은 부호면 투영 중심(cal.cx) 문제, 부호가 갈리면 뷰별 캘리브레이션 문제입니다.`);
-    }
 
     // ── ② 결 일치 — 렌더에 같은 구조텐서를 돌린다 ──
     // 알파를 밝기로 쓴다(가닥 패턴이 곧 알파). 투명 배경과의 경계 잡음을 피하려고
@@ -10435,7 +10378,6 @@ async function setupResultScreen(){
   unlockTab('result');
   renderAngleSwitch('angleSwitchResult');
   bindResultViewGestures();
-  buildAccessoryBar();
   drawResult(); // 의상이 오기 전에도 두상부터 먼저 보여준다(화면 공백 방지)
 
   if(!state.aiOutfitRecommendation && state.shots && state.shots.front){
@@ -10724,35 +10666,6 @@ function buildRingGridIndices(rowSteps, thetaSteps){
 // 커스텀 지오메트리로 바꿈.
 // 상수의 출처로만 남겨두고(computeNeckCrossSections 최후 폴백 참고), 함수
 // 자체는 나중 참고용으로 삭제하지 않음(이 파일의 기존 관례).
-/* ══════════════════════════════════════════════════════════════════
-   목 밑동 y — <b>실측 목 길이</b>에서 (2026-08-09)
-   ─────────────────────────────────────────────────────────────────
-   사용자: 3D 결과보기에서 두상이 몸에서 떠 있다.
-
-   -1.15은 지어낸 불변식이었다. 재보면 그 자리가 어디인지 나온다:
-     턱(두상 최하단) = 0.15 - b = -0.480
-     목 밑동 -1.15  → 목 길이 0.670단위
-     세로 자 19.33cm/단위(실기기 [자 일치]) → <b>목이 13cm</b>
-   성인 턱끝~옷깃선은 8cm 안팎이고, 이 파일도 NECK_LEN_CM=8.0으로 이미 그렇게
-   적어 뒀다. 5cm짜리 목이 더 붙어 있었던 것이고, 그게 두상이 떠 보이는 정체다.
-
-   그래서 자로 잰다: 목 밑동 = 턱 - (NECK_LEN_CM ÷ cm/단위).
-   자를 못 구하면(랜드마크 없음) 두상 높이의 1/3로 폴백 — 그것도 -1.15보다 낫다.
-   ※ 2D 결과 화면의 RESULT_NECK_MESH_Y는 별도 파이프라인이라 건드리지 않는다.
-══════════════════════════════════════════════════════════════════ */
-function neckBottomY(){
-  const b = getHeadEllipsoid().b;
-  const chinY = 0.15 - b;
-  let len = 0;
-  try{
-    const hf = (getFaceMetrics().heightFactor) || 0;
-    const cmPerUnitY = hf > 0 ? (FACE_RULER_CM.eyeToChin / (0.70 * hf)) : 0;
-    if(cmPerUnitY > 0) len = NECK_LEN_CM / cmPerUnitY;
-  }catch(e){}
-  if(!(len > 0)) len = (2*b) / 3;                      // 자가 없을 때: 두상 높이의 1/3
-  len = Math.max(0.12, Math.min(0.75 * b, len));       // 목이 사라지거나 기린이 되지 않게
-  return chinY - len;
-}
 function buildRealNeckMesh(skinColor){
   const neckColor = skinColor.clone().multiplyScalar(0.94); // 살짝 어둡게(그림자 자리표시) — buildNeckMesh와 동일
   const neckMat = new THREE.MeshStandardMaterial({ color: neckColor, roughness: 0.85 });
@@ -10760,7 +10673,7 @@ function buildRealNeckMesh(skinColor){
   const RING_STEPS = 8, THETA_STEPS = 24; // THETA_STEPS=24는 예전 CylinderGeometry 세그먼트 수와 동일하게 유지
   const PHI_MAX = HEAD_PHI_BANDS[HEAD_PHI_BANDS.length-1];
   const neckTopY = headPhiToMeshY(PHI_MAX); // 두상 최하단 링과 같은 공식(공용 headPhiToMeshY) → 이음매 없음
-  const neckBotY = neckBottomY(); // 실측 목 길이에서 — 위 neckBottomY 주석 참고
+  const neckBotY = -1.15; // neckAttachPoint 하단(3단계 의상 정렬 불변식)
 
   const positions = [];
   // (2026-07-17) "원뿔(전등갓) 목" 수정 — personMask 실측에 어깨/턱이 섞이면
@@ -12507,35 +12420,9 @@ function loadOutfitMeshFromOBJ(objUrl, mtlUrl, widthFactor, neckCutFrac){
           const neckCutYRaw = box.min.y + cutFrac * size.y;
           const bodyHeightRaw = neckCutYRaw - box.min.y; // 발~목까지만(머리 제외) 실측 높이
 
-          /* ── 몸 크기는 <b>두신 비율</b>로 (2026-08-09) ──────────────────────
-             사용자: 3D 결과보기에서 두상이 몸에서 떠 보인다.
-
-             예전: TARGET_HEIGHT 4.0(지어낸 값) × widthFactor. 두 가지가 틀렸다.
-               ① 4.0은 근거가 없다. 두상 높이 1.26(=2b)와 맞물리면
-                  전신 = 0.78~-5.15 = 5.93 → <b>4.7 두신</b>이다. 사람은 7~8이다.
-               ② widthFactor는 <b>얼굴 폭</b> 측정치인데 그걸 <b>키</b>에 곱하고
-                  있었다. 얼굴이 넓은 손님이면 키가 커진다 — 차원이 다른 값이다.
-                  그래서 몸 크기가 손님마다 예측 불가로 흔들리고, 목 밑동(-1.15)에
-                  맞춰 놓은 두상이 몸에 비해 뜨거나 파묻혔다.
-
-             고침: 2D 결과 화면이 이미 쓰는 규칙을 그대로 쓴다 —
-             <b>전신 길이 = 두상 높이 × FIGURE_HEADS(7.5)</b>. 두상 높이는 실측
-             타원체에서 나오므로 손님마다 자동으로 맞는다. 폭 보정은 키에 안 곱한다
-             (필요하면 x/z에만 걸 것 — 지금은 에셋 자체 비율을 따른다). */
-          const _hb = getHeadEllipsoid().b;
-          const headH   = 2 * _hb;                 // 두상 높이(정수리~턱)
-          const crownYm = 0.15 + _hb;              // 정수리 y (두상 중심 0.15)
-          const feetYm  = crownYm - headH * FIGURE_HEADS;
-          const NB = neckBottomY();                              // 목 밑동(실측)
-          const TARGET_HEIGHT = Math.max(1, NB - feetYm);        // 목 밑동 → 발끝
-          const scale = OUTFIT_MESH_SOURCE.scaleOverride || (TARGET_HEIGHT / (bodyHeightRaw || 1));
+          const TARGET_HEIGHT = 4.0; // 목 밑동~발끝까지 대략 이 정도(절차적 플레이스홀더 기준)
+          const scale = OUTFIT_MESH_SOURCE.scaleOverride || (TARGET_HEIGHT / (bodyHeightRaw || 1)) * widthFactor;
           obj.scale.setScalar(scale);
-          console.log('[3D·몸 정렬] 두상높이 ' + headH.toFixed(3)
-            + ' × ' + FIGURE_HEADS + '두신 → 전신 ' + (headH*FIGURE_HEADS).toFixed(2)
-            + ' · 턱 ' + (0.15-_hb).toFixed(2) + ' → 목밑동 ' + NB.toFixed(2)
-            + '(목 ' + (0.15-_hb-NB).toFixed(2) + '단위) → 발끝 ' + feetYm.toFixed(2)
-            + ' · 의상 목~발 ' + TARGET_HEIGHT.toFixed(2) + '(배율 ×' + scale.toFixed(3) + ')'
-            + (widthFactor ? ' · 얼굴폭계수 ' + (+widthFactor).toFixed(2) + '는 키에 안 곱함(예전엔 곱했음)' : ''));
 
           // 스케일 적용 후 좌표 기준으로 재계산해서 위치 정렬(중심을 x/z=0으로,
           // 목 밑동 지점이 neckAttachPoint 하단 y=-1.15에 오도록)
@@ -12545,7 +12432,7 @@ function loadOutfitMeshFromOBJ(objUrl, mtlUrl, widthFactor, neckCutFrac){
           const offsetY = OUTFIT_MESH_SOURCE.offsetY || 0;
           obj.position.x += -center2.x;
           obj.position.z += -center2.z;
-          obj.position.y += (NB - neckCutYScaled) + offsetY;
+          obj.position.y += (-1.15 - neckCutYScaled) + offsetY;
           obj.name = 'outfitLoadedOBJ';
 
           // 에셋 자체 "Hair" 재질은 완전히 숨김(우리 자체 헤어 시스템을 쓰므로).
@@ -12558,7 +12445,7 @@ function loadOutfitMeshFromOBJ(objUrl, mtlUrl, widthFactor, neckCutFrac){
           // material.color에도 동일한 보정을 적용해야 카탈로그 색상과 실제
           // 렌더링이 일치함. THREE.Color.convertLinearToSRGB()가 정확히 이 변환.
           const HIDE_MATERIAL_NAMES = ['hair'];
-          const neckClipPlane = new THREE.Plane(new THREE.Vector3(0,-1,0), NB);
+          const neckClipPlane = new THREE.Plane(new THREE.Vector3(0,-1,0), -1.15);
           obj.traverse(child=>{
             if(!child.isMesh) return;
             const matName = (child.material && child.material.name || '').toLowerCase();
@@ -13715,63 +13602,20 @@ const HAIR_OCC3D = {
 };
 
 /* 뷰별 얼굴 타원(정규화 [0,1] 이미지 좌표). 2D 클립과 3D 재클립이 <b>같은</b>
-   영역을 쓰도록 한 곳에서만 만든다. 랜드마크가 없는 뷰(후면)는 null —
-   거부를 아예 안 건다(모르는 것으로 지우지 않는다).
-
-   ══ 옆 뷰가 null이던 것이 얼굴을 덮은 <b>직접 원인</b>이었다 (2026-08-09) ══
-   fringeFrac(위)의 근거는 이렇게 적혀 있었다:
-     "아래쪽 한계는 여유가 알아서 못 넘는다 — 얼굴 타원이 눈썹에서 시작하므로
-      여유 구간이 눈썹에 닿는 순간 거부된다(faceVeto)."
-   그 전제가 <b>네 뷰 중 둘에서 거짓</b>이었다. faceMaxYaw=60인데 좌·우 뷰는
-   yaw≈90이라 여기서 null이 나가고, 그러면 buildHairClipMask의 도려내기가
-   통째로 안 돈다 → 마스크가 두상높이 0.25만큼 <b>사방으로</b> 부풀어 뺨·코·눈을
-   삼킨다. 사용자가 본 그림 그대로다: "반대편 귀 옆에 있어야 될 머리가 코로
-   내려왔다." 실기기도 정확히 좌·우에서만 무너졌다 —
-     front 정상 · left IoU 0.489 밖으로 샘 48.7% · right 0.486 / 50.7%.
-   가림 판정(hiddenByHead)을 넣고도 안 나은 이유가 이것이다. 3D에서 살려 보낸
-   가닥을 2D 마스크가 <b>얼굴 위에서 허가</b>하고 있었으니 서로 무관했다.
-
-   ── 고치는 방법: 귀 간격을 안 쓰면 된다 ────────────────────────────────
-   faceMaxYaw가 있는 이유는 "옆으로 돌면 <b>귀 간격</b>이 무너져서"다. 맞는 말인데,
-   무너지는 건 귀 간격이지 <b>얼굴</b>이 아니다. 랜드마크 468점 전부를
-   rawLandmarks에 이미 저장해 두고 있다(2026-07 얼굴 메쉬 작업). 프로필에서
-   그 점구름의 x 범위는 귀 쪽 얼굴선 ~ 코끝이고, 그게 곧 얼굴 가로폭이다.
-   새 상수도, 새 측정도 필요 없다 — 이미 재 둔 것을 안 쓰고 있었을 뿐이다.
-   세로는 정면과 <b>같은 자</b>(눈썹→턱)를 쓴다. 이마를 일부러 비워 두는 것도
-   같다 — 앞머리는 거기 앉아야 하니까.
-   ※ 정면 경로는 손대지 않는다(사용자가 "잘 잡아놨다"고 한 동작). */
-const _faceEllipseLogged = {};
+   영역을 쓰도록 한 곳에서만 만든다. 랜드마크가 없거나 옆으로 많이 돌아간 뷰는
+   null — 거부를 아예 안 건다(모르는 것으로 지우지 않는다). */
 function getViewFaceEllipse(angle){
   if(!HAIR_OCC3D.faceVeto) return null;
   const lm = state.landmarks && state.landmarks[angle];
-  if(!lm || lm.chinY == null) return null;
-  const yTop = (lm.browTopY != null ? lm.browTopY : lm.eyeY);
-  if(!(lm.chinY > yTop)) return null;
+  if(!lm || lm.lEarX == null || lm.rEarX == null || lm.chinY == null) return null;
   let yaw = 0; try{ yaw = Math.abs(getViewYawDeg(angle) || 0); }catch(e){}
-
-  let lx, rx, inset = 0, src;
-  if(yaw > HAIR_OCC3D.faceMaxYaw){
-    // 프로필 — 귀 간격 대신 얼굴 메쉬 점구름의 가로 범위를 쓴다.
-    const raw = lm.rawLandmarks;
-    if(!raw || !raw.length) return null;
-    lx = 1; rx = 0;
-    for(let i=0;i<raw.length;i++){ const x = raw[i].x; if(x < lx) lx = x; if(x > rx) rx = x; }
-    src = '프로필 메쉬';   // 점구름 자체라 귀 여백(faceInset)을 뺄 이유가 없다
-  } else {
-    if(lm.lEarX == null || lm.rEarX == null) return null;
-    lx = Math.min(lm.lEarX, lm.rEarX); rx = Math.max(lm.lEarX, lm.rEarX);
-    inset = (rx - lx) * HAIR_OCC3D.faceInset;   // 귀는 얼굴보다 넓다
-    src = '귀 간격';
-  }
-  if(!(rx - lx > 0.02)) return null;
-  if(!_faceEllipseLogged[angle]){
-    _faceEllipseLogged[angle] = 1;
-    console.log(`[얼굴 보호구역] ${angle} — ${src} · yaw ${yaw.toFixed(0)}°`
-      + ` · 가로 ${lx.toFixed(3)}~${rx.toFixed(3)}(폭 ${(rx-lx).toFixed(3)})`
-      + ` · 세로 눈썹 ${yTop.toFixed(3)} → 턱 ${lm.chinY.toFixed(3)}`);
-  }
+  if(yaw > HAIR_OCC3D.faceMaxYaw) return null;
+  const lx = Math.min(lm.lEarX, lm.rEarX), rx = Math.max(lm.lEarX, lm.rEarX);
+  const yTop = (lm.browTopY != null ? lm.browTopY : lm.eyeY);
+  if(!(rx - lx > 0.02) || !(lm.chinY > yTop)) return null;
+  const inset = (rx - lx) * HAIR_OCC3D.faceInset;
   return { cx:(lx+rx)/2, cy:(yTop+lm.chinY)/2,
-           rx:Math.max(1e-4, (rx-lx)/2 - inset), ry:Math.max(1e-4, (lm.chinY-yTop)/2), src };
+           rx:Math.max(1e-4, (rx-lx)/2 - inset), ry:Math.max(1e-4, (lm.chinY-yTop)/2) };
 }
 
 /* 뷰별 헤어 마스크 샘플러 — 축소 알파를 1회만 만들어 캐시.
@@ -15998,7 +15842,6 @@ const HAIR3D_RENDER = {
   /* 그릴 가닥 수. null = 원본 결 보기가 같은 뷰에 그리는 수와 <b>동일</b>(권장,
      볼륨 50에서 ≈2,830). 숫자를 넣으면 그 값으로 고정한다(성능이 아쉬울 때 1,800
      정도로 내리면 밀도만 옅어지고 가닥 성질은 그대로 유지된다). */
-  headOcclusion: true,   // 두상이 뒤쪽 가닥을 가린다(false면 예전 동작 — A/B용)
   targetStrands: null,
   // 다발 폭 = 그 뷰의 헤어 실루엣 가로폭 × 이 값.
   // 왜 절대 px가 아니라 실루엣 비율인가: 하네스는 340px 캔버스에서 눈으로 맞췄고
@@ -16491,17 +16334,6 @@ function projectHairQuiltToView(ctx, fit, angle, maskInf){
   setQuiltTag(`픽셀 이식 · 띠 ${pool.length}장(끝 ${pool.filter(q=>q.hasTip).length}) · 폭 ${drawW.toFixed(1)}px`);
   return true;
 }
-/* [진단] 두상 가림이 실제로 몇 점을 지웠나. 0이면 안 먹은 것이고, 90%를 넘으면
-   두개골이 너무 크게 잡힌 것이다(그때는 [두상 기준면]부터 볼 것). */
-let _occLogKey = {};
-function logHeadOcclusion(angle, pts, hidden, split, strands, runs){
-  const key = hidden + '/' + pts;
-  if(_occLogKey[angle] === key) return;
-  _occLogKey[angle] = key;
-  console.log(`[${angle}] 두상 가림 — 점 ${pts}개 중 ${hidden}개 숨김(${(100*hidden/Math.max(1,pts)).toFixed(1)}%)`
-    + ` · 가닥 ${strands}개 → 획 ${runs}개(중간이 가려져 쪼개진 가닥 ${split}개)`
-    + (hidden === 0 ? ' ⚠ 하나도 안 숨겼습니다 — HAIR3D_RENDER.headOcclusion 또는 두피 타원체를 확인' : ''));
-}
 let _quiltLogKey = '';
 function logQuiltRender(angle, m){
   const key = angle + '|' + m.pool + '|' + m.unit + '|' + m.swSrc;
@@ -16516,157 +16348,6 @@ function logQuiltRender(angle, m){
     + ` · 같은 섹션 띠를 쓴 줄 ${m.sameSec}/${m.lanes}`);
 }
 
-/* ══════════════════════════════════════════════════════════════════
-   헤어 장식 (2026-08-09)
-   ─────────────────────────────────────────────────────────────────
-   장식은 <b>두피 좌표</b>에 붙인다 — 화면 좌표가 아니다. 섹션이 쓰는 것과 같은
-   (phi, theta) 한 쌍으로 자리를 적으면, 네 뷰가 각자 알아서 맞는 자리에 그린다.
-   투영은 헤어가 쓰는 project3DPointToView를 그대로 쓴다(경로가 갈라지면 장식만
-   머리에서 떨어져 나간다 — 이 파일이 반복해 겪은 실패다).
-   가림도 공짜로 해결된다: 투영이 돌려주는 depth가 음수면 카메라를 등진 점이라
-   안 그린다. 뒤통수 집게핀은 후면·측면에서만 보이고 정면에서는 사라진다.
-
-   반지름은 <b>헐(모발 바깥면)</b>을 쓴다. 두피에 붙이면 머리카락 속에 파묻힌다.
-   liftMul로 그보다 조금 더 띄운다 — 실제로 핀은 머리 위에 얹히니까.
-══════════════════════════════════════════════════════════════════ */
-const HAIR_ACCESSORIES = [
-  { id:'none', name:'없음', parts:[] },
-  /* 자리는 미용실 기준으로 적는다. phi = 정수리에서 내려간 각(0=정수리,
-     1.57=적도/귀높이), theta = 0이 정면 · ±1.57이 옆 · π가 후면. */
-  { id:'pin-cross', name:'실핀(교차)', parts:[
-      // 관자 위 — 앞머리를 넘겨 꽂는 자리. 두 개를 X자로.
-      {type:'bar', phi:1.00, th:-0.95, len:0.20, w:0.026, rot:-0.40, color:'#C9A227'},
-      {type:'bar', phi:1.00, th:-0.95, len:0.20, w:0.026, rot: 0.40, color:'#C9A227'},
-    ]},
-  { id:'band', name:'헤어밴드', parts:[
-      /* 앨리스 밴드 — 귀에서 귀로 <b>정수리를 넘는</b> 아치다(수평 링이 아니다).
-         수평 링으로 두면 정면에서 일자 막대가 되어 밴드로 안 읽힌다. */
-      {type:'arch', phiMax:1.45, w:0.060, color:'#3B3A38', tol:0.55},
-      {type:'arch', phiMax:1.45, w:0.020, color:'#726E68', lift:1.014, tol:0.55},
-    ]},
-  { id:'claw', name:'집게핀', parts:[
-      {type:'blob', phi:1.25, th:Math.PI, w:0.30, h:0.19, color:'#2E2A28'},
-      {type:'bar',  phi:1.25, th:Math.PI, len:0.24, w:0.030, rot:0, color:'#4A4441', lift:1.03},
-    ]},
-  { id:'ribbon', name:'리본', parts:[
-      // 네이프 — 목덜미에서 묶는 자리
-      {type:'bar',  phi:1.60, th:Math.PI, len:0.34, w:0.10, rot:0.12, color:'#8C2F39'},
-      {type:'blob', phi:1.60, th:Math.PI, w:0.075, h:0.075, color:'#6F2029', lift:1.03},
-    ]},
-  { id:'pearl', name:'진주핀', parts:[
-      {type:'dots', phi:1.05, th:-0.60, n:5, spread:0.34, r:0.024, color:'#F2EDE4'},
-    ]},
-];
-function accessoryById(id){ return HAIR_ACCESSORIES.find(a=>a.id===id) || HAIR_ACCESSORIES[0]; }
-/* 두피 (phi,theta) → 월드 3D. 반지름은 헐 × lift. */
-function accWorldPoint(phi, th, lift, E, CY){
-  const s = Math.sin(phi), c = Math.cos(phi), k = lift || 1;
-  return { x: E.a*k*s*Math.sin(th), y: CY + E.b*k*c, z: E.c*k*s*Math.cos(th) };
-}
-function drawHairAccessories(ctx, fit, angle, maskInf){
-  const acc = accessoryById(state.hairAccessory);
-  if(!acc.parts.length) return false;
-  const model = state.hair3Dneutral;
-  const cal = model && model.viewCal && model.viewCal[angle];
-  if(!cal) return false;
-  let E; try{ E = getHeadEllipsoid(); }catch(e){ return false; }
-  const CY = model.CY, yTop = model.yTop;
-  const { toX, toY } = makeImgToCanvas(fit, maskInf.w, maskInf.h);
-  const LIFT = 1.045;                       // 헐보다 이만큼 바깥 — 머리 위에 얹힌다
-  /* 가림 판정의 여유. depth<=0으로 딱 자르면 <b>실루엣 위에 놓인 물건</b>이
-     반토막 난다: 헤어밴드는 귀-정수리-귀를 잇는 z≈0 평면에 있어 정면에서
-     depth가 0 근처인데, 그 부호로 자르면 왼쪽 반만 남는다(하네스에서 확인).
-     실제로는 정면에서 밴드 전체가 보인다 — 머리에 가리는 게 없으니까.
-     그래서 <b>확실히 뒤에 있을 때만</b> 자른다. 여유는 두상 반높이 기준. */
-  const cullTol = (pt)=> -(pt && pt.tol != null ? pt.tol : 0) * E.b;
-  const P = (phi, th, lift)=>{
-    const w = accWorldPoint(phi, th, (lift || 1) * LIFT, E, CY);
-    const pr = project3DPointToView(w, cal, yTop, CY);
-    return { x: toX(pr.ix), y: toY(pr.iy), depth: pr.depth };
-  };
-  /* 모델 단위 → 캔버스 px. 두상 폭을 두 점으로 재서 그 비율을 쓴다 —
-     cal.s를 직접 쓰지 않는 이유는 fit(확대·프레이밍)이 이미 섞여 있어서다. */
-  const pA = P(Math.PI/2, 0, 1), pB = P(Math.PI/2, 0.30, 1);
-  const spanPx = Math.hypot(pB.x - pA.x, pB.y - pA.y);
-  const uPx = spanPx / Math.max(1e-6, Math.abs(E.a * Math.sin(0.30)));   // 1모델단위 ≈ 몇 px
-  if(!(uPx > 0) || !isFinite(uPx)) return false;
-
-  ctx.save();
-  ctx.lineCap = 'round'; ctx.lineJoin = 'round';
-  let drew = false;
-  for(const pt of acc.parts){
-    if(pt.type === 'arch' || pt.type === 'arc'){
-      const N = 48; let pts = [];
-      /* 카메라를 등진 구간에서 <b>끊어서</b> 그린다 — 이어 버리면 뒤통수를
-         가로지르는 직선이 얼굴 위로 지나간다. */
-      const strokePath = ()=>{
-        if(pts.length < 2){ pts = []; return; }
-        ctx.strokeStyle = pt.color; ctx.lineWidth = Math.max(1, pt.w * uPx);
-        ctx.beginPath(); ctx.moveTo(pts[0].x, pts[0].y);
-        for(let i=1;i<pts.length;i++) ctx.lineTo(pts[i].x, pts[i].y);
-        ctx.stroke(); drew = true; pts = [];
-      };
-      for(let i=0;i<=N;i++){
-        let phi, th;
-        if(pt.type === 'arch'){
-          /* u: -1(왼귀) → 0(정수리) → +1(오른귀). theta는 좌우 두 값만 쓰고
-             phi가 0까지 올라갔다 내려온다 = 귀-정수리-귀를 잇는 대원. */
-          const u = i/N*2 - 1;
-          phi = Math.abs(u) * pt.phiMax;
-          th  = (u < 0 ? -1 : 1) * Math.PI/2;
-        } else {
-          phi = pt.phi; th = pt.th0 + (pt.th1 - pt.th0) * (i/N);
-        }
-        const q = P(phi, th, pt.lift);
-        if(q.depth <= cullTol(pt)){ strokePath(); continue; }
-        pts.push(q);
-      }
-      strokePath();
-    } else if(pt.type === 'bar'){
-      const q = P(pt.phi, pt.th, pt.lift); if(q.depth <= cullTol(pt)) continue;
-      const L = pt.len * uPx, W = Math.max(1, pt.w * uPx);
-      ctx.save(); ctx.translate(q.x, q.y); ctx.rotate(pt.rot || 0);
-      ctx.strokeStyle = pt.color; ctx.lineWidth = W;
-      ctx.beginPath(); ctx.moveTo(-L/2, 0); ctx.lineTo(L/2, 0); ctx.stroke();
-      ctx.restore(); drew = true;
-    } else if(pt.type === 'blob'){
-      const q = P(pt.phi, pt.th, pt.lift); if(q.depth <= cullTol(pt)) continue;
-      ctx.fillStyle = pt.color;
-      ctx.beginPath();
-      ctx.ellipse(q.x, q.y, Math.max(1, pt.w*uPx/2), Math.max(1, pt.h*uPx/2), 0, 0, Math.PI*2);
-      ctx.fill(); drew = true;
-    } else if(pt.type === 'dots'){
-      for(let i=0;i<pt.n;i++){
-        const th = pt.th + (pt.spread) * (i/(pt.n-1) - 0.5);
-        const q = P(pt.phi, th, pt.lift); if(q.depth <= cullTol(pt)) continue;
-        ctx.fillStyle = pt.color;
-        ctx.beginPath(); ctx.arc(q.x, q.y, Math.max(1, pt.r*uPx), 0, Math.PI*2); ctx.fill();
-        // 진주 하이라이트 — 한 점 찍는 것만으로 구슬로 읽힌다
-        ctx.fillStyle = 'rgba(255,255,255,0.75)';
-        const r = Math.max(1, pt.r*uPx);
-        ctx.beginPath(); ctx.arc(q.x - r*0.3, q.y - r*0.3, r*0.32, 0, Math.PI*2); ctx.fill();
-        drew = true;
-      }
-    }
-  }
-  ctx.restore();
-  return drew;
-}
-function setHairAccessory(id){
-  state.hairAccessory = id;
-  const bar = document.getElementById('accBar');
-  if(bar) for(const b of bar.querySelectorAll('button')) b.classList.toggle('on', b.dataset.acc === id);
-  if(currentScreen === 'result') drawResult();
-  else drawAdjustPreview();
-}
-function buildAccessoryBar(){
-  const bar = document.getElementById('accBar');
-  if(!bar) return;
-  bar.innerHTML = HAIR_ACCESSORIES.map(a=>
-    `<button data-acc="${a.id}" class="${state.hairAccessory===a.id?'on':''}"
-      onclick="setHairAccessory('${a.id}')">${a.name}</button>`).join('');
-}
-
 function projectHair3DToView(ctx, fit, angle, maskInf){
   const model = state.hair3Dneutral;
   if(!model || !model.viewCal || !model.viewCal[angle]) return false;
@@ -16678,47 +16359,6 @@ function projectHair3DToView(ctx, fit, angle, maskInf){
   COMB._proj = { angle, cal, yTop: model.yTop, CY: model.CY, toCX, toCY,
                  pxScale: fit.dw / Math.max(1, maskInf.w) };
   const R = HAIR3D_RENDER;
-  /* ══════════════════════════════════════════════════════════════
-     두상이 <b>뒤쪽 가닥을 가린다</b> (2026-08-09)
-     ──────────────────────────────────────────────────────────────
-     사용자: "우측 화면에서 얼굴이 새로 나온 게 아니고, 반대편 귀 옆에 있어야
-     될 머리가 코로 내려왔어. 좌측도 반대쪽 눈쯤에서 머리가 내려왔어."
-
-     정확한 진단이고, 그럴 수밖에 없었다 — <b>가림 판정이 아예 없었다</b>.
-     여기 있던 컬링은 `if(depth < 0) continue` 하나인데 두 가지가 부족하다:
-       ① depth가 <b>가닥 평균</b>이다. 먼 쪽 관자에서 난 가닥은 뿌리가 뒤에
-          있어도 아래로 내려오며 앞으로 돌아 나와 평균이 양수가 된다 →
-          가닥 <b>전체</b>가 그려지고, 그 경로가 코·눈을 가로지른다.
-       ② 두상이 불투명하다는 사실을 아무도 안 쓴다. 화면에 그리는 건 2D 획이라
-          깊이 버퍼가 없고, 얼굴 위에는 덮어 줄 앞쪽 가닥도 없으니 뒤쪽 머리가
-          <b>얼굴을 뚫고</b> 보인다.
-
-     고침: 점마다 "여기서 카메라로 가는 광선이 두개골을 지나가나"를 푼다.
-     두개골은 이미 실측 타원체로 있다(getScalpEllipsoid). 가닥은 그 바깥에
-     심기므로 자기 자신에 안 가린다. 광선-타원체 교차는 이차방정식 하나다:
-       숨김 = (e·w < 0) 이고 (e·w)² ≥ (w·w)(e·e − 1)     ← 축으로 나눈 좌표에서
-     가려진 점은 버리고 <b>보이는 구간마다 따로</b> 획을 만든다. 이어 버리면
-     머리 뒤를 가로지르는 직선이 얼굴 위에 생긴다(장식 아치에서 겪은 것과 같다).
-  ══════════════════════════════════════════════════════════════ */
-  const SK = (()=>{ try{ return getScalpEllipsoid(); }catch(e){ return null; } })();
-  const camV = { x: cal ? Math.sin(cal.yaw) : 0, y: 0, z: cal ? Math.cos(cal.yaw) : 1 };
-  (function(){ // 카메라 축(월드) — project3DPointToView의 lz 행과 같은 방향
-    const R = composeRotationZYX(cal.yaw, cal.pitch, cal.roll);
-    camV.x = R[6]; camV.y = R[7]; camV.z = R[8];
-  })();
-  const SKULL_EPS = 0.985;   // 두개골을 아주 살짝 줄여 뿌리가 자기 자신에 안 가리게
-  const hiddenByHead = (p)=>{
-    if(!SK || !HAIR3D_RENDER.headOcclusion) return false;
-    const A = SK.a*SKULL_EPS, B = SK.b*SKULL_EPS, C = SK.c*SKULL_EPS;
-    const ex = p.x/A, ey = (p.y - model.CY)/B, ez = p.z/C;
-    const wx = camV.x/A, wy2 = camV.y/B, wz = camV.z/C;
-    const ee = ex*ex + ey*ey + ez*ez;
-    if(ee <= 1) return false;                       // 두개골 안 — 판정 안 함
-    const ew = ex*wx + ey*wy2 + ez*wz;
-    if(ew >= 0) return false;                       // 카메라 쪽으로 멀어짐 = 안 가림
-    const ww = wx*wx + wy2*wy2 + wz*wz;
-    return (ew*ew) >= ww*(ee - 1);                  // 광선이 두개골을 통과 = 가려짐
-  };
 
   // ── 투영 + 슬라이스 키 ──
   // 슬라이스 정의는 2D의 finalizeStrandsWithSlices와 같다(섹션 × 가로 3% × 깊이 10%).
@@ -16755,23 +16395,14 @@ function projectHair3DToView(ctx, fit, angle, maskInf){
   let pMinX = Infinity, pMaxX = -Infinity, pN = 0, pFront = 0;
   for(let si=0; si<src.length; si+=PROBE_STEP){
     const pts = src[si].pts;
-    let dsum = 0, pVis = false;
+    let dsum = 0;
     for(let i=0;i<pts.length;i++){
       const pr = project3DPointToView(pts[i], cal, model.yTop, model.CY);
       const x = toCX(pr.ix);
       if(x < pMinX) pMinX = x; if(x > pMaxX) pMaxX = x;
       dsum += pr.depth;
-      if(!pVis && !hiddenByHead(pts[i])) pVis = true;   // 한 점이라도 보이면 이 가닥은 그려진다
     }
-    /* (2026-08-09) 살아남을 비율의 <b>기준이 바뀌었다</b>. 예전엔 가닥 평균
-       depth>0 하나로 통째 버렸는데(그게 사실상 밀도 조절이었다), 이제는 점마다
-       두상 가림을 보고 <b>보이는 구간만</b> 남긴다 — 뒤통수 가닥도 끝자락이
-       보이면 살아난다. 옛 기준을 그대로 두면 후보를 3배로 잡게 되고, 실기기에서
-       정확히 그렇게 났다(목표 4,248개인데 13,043개를 그림 → 턱수염·먹칠).
-       그래서 <b>새 규칙으로</b> 표본을 세어 비율을 낸다. */
-    pN++;
-    if(HAIR3D_RENDER.headOcclusion){ if(pVis) pFront++; }
-    else if(dsum > 0) pFront++;
+    pN++; if(dsum > 0) pFront++;
   }
   const spanX = (pMaxX > pMinX) ? (pMaxX - pMinX) : fit.dw;
   /* 이 각도에서 <b>앞을 향한</b> 가닥의 비율. 아래 컬링으로 버려질 양을 미리
@@ -16836,29 +16467,20 @@ function projectHair3DToView(ctx, fit, angle, maskInf){
      추측으로 계수를 흔들지 않기 위해 만든다(이 문제로 두 번 헛짚었다). */
   const rootDev = [];
   const projected0 = [];
-  let occHidden = 0, occPts = 0, occSplit = 0;
   for(let si=0; si<adj.length; si++){
     const st = adj[si];
-    const pts = st.pts;
+    const pts = st.pts; let dsum=0; const cpts=[];
     let rootIx = 0, rootIy = 0;
-    /* 보이는 구간(run)으로 쪼갠다. 각 run이 곧 하나의 획이 된다. */
-    const runs = []; let cur = null, curD = 0;
     for(let i=0;i<pts.length;i++){
       const pr = project3DPointToView(pts[i], cal, model.yTop, model.CY);
       if(i===0){ rootIx = pr.ix; rootIy = pr.iy; }
-      occPts++;
-      if(hiddenByHead(pts[i])){
-        occHidden++;
-        if(cur && cur.length >= 2){ runs.push({ cpts:cur, depth: curD/cur.length }); }
-        cur = null; curD = 0; continue;
-      }
-      if(!cur){ cur = []; curD = 0; }
-      cur.push({ x: toCX(pr.ix), y: toCY(pr.iy) });
-      curD += pr.depth;
+      cpts.push({ x: toCX(pr.ix), y: toCY(pr.iy) });
+      dsum += pr.depth;
     }
-    if(cur && cur.length >= 2) runs.push({ cpts:cur, depth: curD/cur.length });
-    if(!runs.length) continue;
-    if(runs.length > 1) occSplit++;
+    const depth = dsum / pts.length;
+    // 카메라를 등진 가닥(두상 뒤쪽)은 버린다 — 이 각도에서는 안 보여야 한다.
+    // depth는 카메라 축 성분이라 클수록 카메라에 가깝다(정렬 규약과 동일).
+    if(depth < 0) continue;
     if(maskInf.scalpY){
       const cx0 = Math.round(rootIx);
       const sY = (cx0 >= 0 && cx0 < maskInf.w) ? maskInf.scalpY[cx0] : -1;
@@ -16870,8 +16492,8 @@ function projectHair3DToView(ctx, fit, angle, maskInf){
        여기선 <b>같은 가닥</b>이 프레임마다 다시 그려지므로, 난수를 인덱스에
        묶어야 슬라이더를 잡고 흔들 때 가닥이 반짝이지 않는다. */
     const rid  = roleOf(hashFract(si * 0.7548776662 + 11.13));
-    for(const run of runs) projected.push({
-      cpts: run.cpts, depth: run.depth, color: st.color,
+    projected.push({
+      cpts, depth, color: st.color,
       w: roles[rid].w,                            // 레이어(굵기) 배정
       /* 굵기가 같은 레이어끼리는 한 묶음으로 그린다(키를 굵기로 잡는 이유).
          MIN_SAFE_WIDTH(0.9px) 하한에 걸리면 네 레이어가 같은 굵기가 되는데 —
@@ -16885,9 +16507,8 @@ function projectHair3DToView(ctx, fit, angle, maskInf){
   }
   if(!projected.length) return false;
   projected.sort((a,b)=> a.depth - b.depth); // 뒤(작은 depth)부터 → 앞이 위에 덮임
-  logHeadOcclusion(angle, occPts, occHidden, occSplit, adj.length, projected.length);
   logStrandRender(angle, { spanX, unit, cssW, roles, rawTotal, targetStrands,
-                           stride, total: src.length, drawn: adj.length, runs: projected.length,
+                           stride, total: src.length, drawn: projected.length,
                            rootDev: summarizeRootDev(rootDev, projected0.length, maskInf) });
 
   // 다발 속 미세 틴트 — 가닥마다 다른 색을 주되 팔레트 색에서 벗어나진 않게.
@@ -17021,9 +16642,7 @@ function logStrandRender(angle, m){
   console.log(
     `[${angle}] 가닥 렌더(원본 결 보기와 동일 규칙) — 헤어폭 ${m.spanX.toFixed(0)}px(화면 ${css(m.spanX)}) · `
     + `표시배율 1/${m.unit.toFixed(1)} · 굵기 ${wList} · `
-    + `가닥 ${m.drawn}개 그림`
-    + (m.runs && m.runs !== m.drawn ? `(두상에 가려 ${m.runs}획으로 쪼개짐 — 잉크는 가닥 수 기준)` : '')
-    + ` / 목표 ${Math.round(m.targetStrands)}개`
+    + `가닥 ${m.drawn}개 그림 / 목표 ${Math.round(m.targetStrands)}개`
     + `(원본 결 보기 ${Math.round(m.rawTotal)}개 ×${(m.targetStrands/Math.max(1,m.rawTotal)).toFixed(2)}, `
     + `모델 ${m.total}개 중 솎기 ${(+m.stride).toFixed(2)}, 앞면만)`
   );
@@ -17070,22 +16689,6 @@ function quantizeStrokeColor(col, step){
 // 드래그 회전 + 탭 확대. 조정 시 refreshDevMini3D로 실시간 갱신.
 // (12차) 미니뷰 섹션 구분색 — 크라운=호박, 프론트=파랑, 템플=핑크, 사이드=초록,
 // 후두부=보라, 네이프=주황. 어느 부위가 어느 섹션인지 3D에서 즉시 확인.
-/* 미니 3D 범례 (2026-08-09, 사용자 요청) — 색만 보고 섹션을 맞히게 두지 않는다.
-   숫자도 같이 낸다: 그 섹션이 <b>지금 모델에서 몇 %</b>인지. "귀 위쪽이 성글다"
-   같은 눈 관찰을 바로 숫자로 확인할 수 있어야 다음 판단이 추측이 아니게 된다. */
-function buildMini3DLegend(){
-  const el = document.getElementById('devMini3DLegend');
-  if(!el) return;
-  const m = state.hair3Dneutral;
-  const n = {}; let tot = 0;
-  if(m && m.strands) for(const st of m.strands){ n[st.sec] = (n[st.sec]||0) + 1; tot++; }
-  el.innerHTML = SECTION_ORDER.map(id=>{
-    const pct = tot ? Math.round(100*(n[id]||0)/tot) : null;
-    const label = (SECTIONS[id] && SECTIONS[id].label) || id;
-    return `<span><i style="background:${SECTION_COLORS[id]}"></i>${label}`
-         + (pct == null ? '' : `<b>${pct}%</b>`) + `</span>`;
-  }).join('');
-}
 const SECTION_COLORS = {
   crown:'#e6b93c', front:'#3ca6e6', temple:'#e64c8c',
   side:'#3ce67a', occipital:'#a860e6', nape:'#e67a3c'
@@ -18187,7 +17790,6 @@ function logAdjustedClip(acc, kept){
 // 재캡처·재리프트 없이 이 함수만 다시 불러 연산자를 재적용한다(효율+이중적용 방지).
 function refreshDevMini3D(){
   if(!devMini3D) return;
-  buildMini3DLegend();          // 색↔섹션과 비중을 항상 같이 보여준다
   const adj = computeAdjustedHair3DStrands();
   if(!adj) return;
   const { group } = devMini3D;
@@ -18924,10 +18526,6 @@ const I18N = {
   '시술각(기법 강도 스케일)':'Lift angle (technique intensity)',
   '텍스처라이징':'Texturizing', '끝단 숱·질감':'End thinning · texture',
   '숱':'Density', '숱치기 · 낮을수록 비침':'Thinning · lower = see-through',
-  '크라운':'Crown', '프론트':'Front', '템플':'Temple',
-  '사이드':'Side', '후두부':'Occipital', '네이프':'Nape',
-  '실핀(교차)':'Bobby pins', '헤어밴드':'Headband', '집게핀':'Claw clip',
-  '리본':'Ribbon', '진주핀':'Pearl pins',
   '컬':'Curl', '컬 세기':'Curl strength', '0이면 펌 없음':'0 = no perm',
   '웨이브 폭':'Wave width', '로드 굵기':'rod diameter',
   '넘김':'Sweep', '앞으로':'forward', '뒤로':'back',
