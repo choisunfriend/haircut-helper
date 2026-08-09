@@ -2366,7 +2366,7 @@ const SECTIONS = {
     // gyeol 확장(2026-07-20): 커트기법·텍스처·웨이브·섹션컬러를 전 섹션 공통으로 추가.
     // curl 의미 변경 — 예전엔 "전역컬 대비 %배율(기본100)"이었으나, gyeol UI는
     // 섹션별 컬을 절대값(0~100)으로 다루므로 절대 진폭(기본30=기존 전역컬 30과 동일)으로 통일.
-    defaults:{technique:'uniform', length:80, elevation:45, texture:0, curl:30, wave:50, color:null},
+    defaults:{technique:'uniform', length:80, elevation:45, texture:0, density:100, curl:30, wave:50, color:null},
   },
   front: {
     id:'front', label:'프론트', labelEn:'FRONT',
@@ -2376,7 +2376,7 @@ const SECTIONS = {
     params:['length','line'],
     // gyeol 확장: elevation/texture/curl/wave/technique/color 추가. line(커팅라인)은
     // 렌더러(frontDirBiasFor)가 계속 참조하므로 기본 50(중립)으로 유지.
-    defaults:{technique:'uniform', length:80, elevation:20, texture:0, curl:30, wave:50, color:null, line:50},
+    defaults:{technique:'uniform', length:80, elevation:20, texture:0, density:100, curl:30, wave:50, color:null, line:50},
   },
   temple: {
     id:'temple', label:'템플', labelEn:'TEMPLE',
@@ -2393,7 +2393,7 @@ const SECTIONS = {
     paramMeta:{ overdirection:{min:0, max:100, unit:'%'} },
     // gyeol 확장: overdirection(크라운 연동비율)은 propagateSectionChange가 계속
     // 참조하므로 기본 50으로 유지. 나머지 gyeol 공통 파라미터 추가.
-    defaults:{technique:'uniform', length:80, elevation:30, texture:0, curl:30, wave:50, color:null, overdirection:50},
+    defaults:{technique:'uniform', length:80, elevation:30, texture:0, density:100, curl:30, wave:50, color:null, overdirection:50},
   },
   side: {
     id:'side', label:'사이드', labelEn:'SIDE',
@@ -2402,7 +2402,7 @@ const SECTIONS = {
     visibleIn:['left','right'],
     params:['length','elevation','curl'],
     paramMeta: ELEV_CURL_META,
-    defaults:{technique:'uniform', length:80, elevation:30, texture:0, curl:30, wave:50, color:null},
+    defaults:{technique:'uniform', length:80, elevation:30, texture:0, density:100, curl:30, wave:50, color:null},
   },
   occipital: {
     id:'occipital', label:'후두부', labelEn:'OCCIPITAL',
@@ -2411,7 +2411,7 @@ const SECTIONS = {
     visibleIn:['back','left','right'],
     params:['length','elevation','curl'],
     paramMeta: ELEV_CURL_META,
-    defaults:{technique:'uniform', length:80, elevation:50, texture:0, curl:30, wave:50, color:null},
+    defaults:{technique:'uniform', length:80, elevation:50, texture:0, density:100, curl:30, wave:50, color:null},
   },
   nape: {
     id:'nape', label:'네이프', labelEn:'NAPE',
@@ -2420,7 +2420,7 @@ const SECTIONS = {
     visibleIn:['back','front','left','right'],
     params:['length','line'],
     // gyeol 확장: line(스퀘어/라운드/테이퍼)은 lengthRatioFor가 계속 참조하므로 유지.
-    defaults:{technique:'uniform', length:35, elevation:0, texture:0, curl:30, wave:50, color:null, line:50},
+    defaults:{technique:'uniform', length:35, elevation:0, texture:0, density:100, curl:30, wave:50, color:null, line:50},
     // 길이 기본값만 네이프는 35로 다른 섹션(80)보다 낮게 유지 — 사용자 설명:
     // "일반 커트는 줄이는 방향만 있지 늘리는 방향은 스타일 새로 만들 때뿐이고,
     // 네이프는 원래 길어야 하는 부위도 아니다" — 목선은 자연스럽게 짧은 게
@@ -2462,6 +2462,16 @@ const GYEOL_GROUPS = [
       {key:'length',    label:'길이',         hint:'모발 길이',   min:10, max:100, unit:'%'},
       {key:'elevation', label:'엘리베이션',   hint:'시술각',      min:0,  max:90,  unit:'°'},
       {key:'texture',   label:'텍스처라이징', hint:'끝단 숱·질감', min:0,  max:100, unit:'%'},
+      /* ── 숱치기(틴닝) 신설 (2026-08-09) ────────────────────────────────
+         텍스처라이징과 <b>다른 시술</b>이다. 텍스처는 <b>끝단</b>을 가닥마다
+         다른 길이로 쳐서 가볍게 하는 것이고(가닥 수는 그대로), 숱치기는
+         틴닝가위로 <b>중간 가닥을 솎아내는</b> 것이다(가닥 수가 준다).
+         둘을 한 손잡이로 묶으면 <b>시스루 뱅을 못 만든다</b> — 시스루는
+         "끝이 뾰족한 두꺼운 앞머리"가 아니라 "이마가 비치는 성긴 앞머리"라
+         가닥 자체가 적어야 한다. 실기기에서 앞머리가 불투명한 커튼으로
+         나오던 직접 원인이 이 손잡이의 부재였다.
+         100 = 그대로 · 40 = 40%만 남김(=60% 솎음). */
+      {key:'density',   label:'숱',           hint:'숱치기 · 낮을수록 비침', min:15, max:100, unit:'%'},
     ]},
   { id:'perm', title:'펌', sub:'컬', color:'var(--gy-perm)', optional:true,
     params:[
@@ -5980,7 +5990,7 @@ function onGySlider(secId, key, val){
   if(window.DIAG_VERBOSE) console.log('[진단·조정] '+secId+'.'+key+'='+num+' | 저장확인='+state.sections[secId][key]+' | rawMode='+state.debugShowRaw+' | 현재화면='+currentScreen);
   drawAdjustPreview();
 }
-const GY_UNIT = { length:'%', elevation:'°', texture:'%', curl:'%', wave:'%' };
+const GY_UNIT = { length:'%', elevation:'°', texture:'%', density:'%', curl:'%', wave:'%' };
 
 // 커트기법 변경
 function onGyTechnique(secId, tech){
@@ -16784,16 +16794,21 @@ const STYLE_SPECS = {
     tipAt: { front:0.45, crown:0.78, temple:0.95, side:1.15, occipital:1.30, nape:1.35 },
     /* 커트 — 레이어드 보브는 시술각을 높여 위층을 짧게 만든다(유니폼 레이어).
        네이프만 각을 낮춰 무게를 남겨야 아래 라인이 안 흩어진다(그라데이션). */
+    /* density(숱) — 레퍼런스의 정체적 특징이 여기 있다 (2026-08-09).
+       앞머리는 <b>시스루</b>다: 눈썹을 덮되 이마가 비쳐야 한다. 길이·텍스처로는
+       안 된다(짧고 뾰족한 두꺼운 앞머리가 될 뿐). 가닥을 솎아야 비친다.
+       관자는 얼굴 옆 잔머리라 앞머리보다는 촘촘하되 사이드보다는 성기다.
+       뒤(사이드·후두부·네이프)는 무게가 남아야 보브 라인이 안 흩어지므로 100. */
     cut: {
-      crown:     { technique:'uniform',    elevation:75, texture:35 },
-      front:     { technique:'uniform',    elevation:20, texture:60, line:50 },
-      temple:    { technique:'uniform',    elevation:60, texture:45, overdirection:40 },
-      side:      { technique:'uniform',    elevation:65, texture:45 },
-      occipital: { technique:'uniform',    elevation:55, texture:40 },
-      nape:      { technique:'graduation', elevation:25, texture:25, line:50 },
+      crown:     { technique:'uniform',    elevation:80, texture:45, density:88 },
+      front:     { technique:'uniform',    elevation:20, texture:60, density:42, line:50 },
+      temple:    { technique:'uniform',    elevation:60, texture:45, density:70, overdirection:40 },
+      side:      { technique:'uniform',    elevation:65, texture:45, density:100 },
+      occipital: { technique:'uniform',    elevation:55, texture:40, density:100 },
+      nape:      { technique:'graduation', elevation:25, texture:25, density:100, line:50 },
     },
     perm:    { curl:22, wave:70 },                            // 약한 웨이브 · 굵은 로드
-    styling: { sweep:0, volume:62, flow:38, part:0, finish:58 }, // flow + = 바깥말음(아웃컬)
+    styling: { sweep:0, volume:55, flow:55, part:0, finish:58 }, // flow + = 바깥말음(아웃컬)
     color:   '#8B7355',                                        // 애쉬 브라운
   },
 };
@@ -16955,7 +16970,10 @@ function applyStyleSpec(id){
 const MANNEQUIN = {
   on: false,
   segments: 22,      // 가닥당 마디 수(촬영 가닥의 점 수와 비슷한 수준)
-  rootRamp: 0.14,    // 뿌리에서 법선 → 중력으로 넘어가는 구간(길이 비율)
+  /* 뿌리에서 법선 → 중력으로 넘어가는 구간. (2026-08-09) <b>길이 비율에서
+     고정 거리로</b> 바뀌었다 — 거리는 실측 모발 두께(헐−두피)를 그대로 쓴다.
+     rootRampMax는 그 두께가 가닥 길이보다 클 때(아주 짧은 커트)의 상한일 뿐. */
+  rootRampMax: 0.25,
   clearance: 1.004,  // 두피에서 살짝 띄워 시작(정확히 표면이면 첫 밀어냄이 불안정)
   /* 섹션 길이 = 촬영 가닥 호길이의 이 백분위 (2026-08-09: 0.5 중앙값 → 1.0 최댓값)
      사용자 지정. 이유가 <b>시술의 방향성</b>에 있다: 커트는 <b>빼는</b> 일이다.
@@ -17003,6 +17021,22 @@ function growMannequinStrand(ci, NT, NP, S, E, CY, L, colors){
   const kz = (1 + layer*(E.c/Math.max(1e-6,S.c) - 1)) * K;
   const cA = S.a*kx, cB = S.b*ky, cC = S.c*kz;
   const N = M.segments, step = L / N;
+  /* ── 법선 구간은 <b>고정 거리</b>다 (2026-08-09) ─────────────────────────
+     사용자: "맨 꼭대기 빼고는 거의 잡혔다."
+
+     rootRamp가 <b>길이 비율</b>(0.14×L)이었다. 긴 머리일수록 뿌리에서 두피
+     법선 방향으로 <b>더 길게</b> 선다는 뜻이다. 이 손님 크라운은 L=2.78
+     (모델단위 1 ≈ 17.5cm이니 약 48cm)이라 0.39단위 ≈ <b>6.8cm를 수직으로
+     솟았다가</b> 꺾인다. 정수리에서 법선은 곧 <b>위</b>라, 꼭짓점 가닥이 전부
+     위로 뻗치고 그 아래 두피가 드러난다. 렌더 맨 위에 보이던 삐죽삐죽이 그것이다.
+
+     실제 모발은 길이와 무관하게 모낭에서 <b>몇 mm</b> 나오다 눕는다. 그 거리는
+     이미 실측돼 있다 — 두피면과 헤어 바깥면(헐)의 간격, 곧 <b>모발 두께</b>
+     ([두피면] 옆 1.1cm · 위 0.7cm). 그 거리만큼만 법선으로 가고 눕는다.
+     짧은 머리(스포츠컷)는 두께보다 짧을 수 있으므로 길이의 일부로 한 번 더 막는다. */
+  const pHull = { x: E.a*sp*Math.sin(th), y: CY + E.b*cp, z: E.c*sp*Math.cos(th) };
+  const thick = Math.hypot(pHull.x - p.x, pHull.y - p.y, pHull.z - p.z);
+  const rampLen = Math.max(1e-4, Math.min(thick, L * M.rootRampMax));
   const pts = [ { x:p.x, y:p.y, z:p.z } ];
   /* 접촉 중 <b>바깥 방향</b> — 이 뿌리의 방위각. 두상에 닿아 있는 동안만 섞는다.
      없으면 정수리에서 가닥이 갇힌다: 꼭짓점에서 중력으로 한 발 내려가면 타원체
@@ -17012,7 +17046,7 @@ function growMannequinStrand(ci, NT, NP, S, E, CY, L, colors){
   const outw = { x: Math.sin(th), y: 0, z: Math.cos(th) };
   let contact = false;
   for(let i=1;i<=N;i++){
-    const t = Math.min(1, (i/N) / M.rootRamp);          // 법선 → 중력
+    const t = Math.min(1, (i*step) / rampLen);          // 법선 → 중력 (고정 거리)
     const sx = contact ? M.spread : 0;
     const dir = _v3norm({ x: d0.x*(1-t) + outw.x*sx,
                           y: d0.y*(1-t) - t,
@@ -17705,6 +17739,11 @@ function computeAdjustedHair3DStrands(srcAngleFilter, stride){
     if(_acc < 1) continue;                 // 아직 차례가 아니다
     _acc -= 1;
     const sec = (state.sections && state.sections[st.sec]) || {};
+    /* ⓪ 숱치기 — 솎아낼 가닥은 <b>기하 계산 전에</b> 버린다(공짜로 빨라진다).
+       판정은 가닥 고유 해시라 슬라이더를 움직여도 같은 가닥이 같은 순서로
+       빠진다 — 프레임마다 다른 가닥이 사라지면 반짝인다. */
+    if(typeof sec.density === 'number' && sec.density < 100
+       && _cutHash01(st) > Math.max(0, sec.density) / 100) continue;
     const ratio = sectionLengthRatio(st.sec, sec.length);
     let pts = adjustStrandGeom(st, null, uni);                     // ①~⑦ (아래 함수)
     /* ⑧ 세그멘테이션 재클립 — "세그멘테이션 밖에는 안 그린다"를 3D에도.
@@ -18486,6 +18525,7 @@ const I18N = {
   '엘리베이션(시술각)':'Elevation (lift angle)',
   '시술각(기법 강도 스케일)':'Lift angle (technique intensity)',
   '텍스처라이징':'Texturizing', '끝단 숱·질감':'End thinning · texture',
+  '숱':'Density', '숱치기 · 낮을수록 비침':'Thinning · lower = see-through',
   '컬':'Curl', '컬 세기':'Curl strength', '0이면 펌 없음':'0 = no perm',
   '웨이브 폭':'Wave width', '로드 굵기':'rod diameter',
   '넘김':'Sweep', '앞으로':'forward', '뒤로':'back',
