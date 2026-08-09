@@ -2794,6 +2794,9 @@ const state = {
     height: 35,       // 0~100, 그 섹션 안에서 페이드가 몇 %까지 올라가는지(로우/미드/하이 페이드)
     blendWidth: 40,   // 0~100, 가드 경계가 얼마나 부드럽게 섞이는지(테이퍼 레버 개념 — 낮으면 칼선, 높으면 부드러운 그라데이션)
   },
+  /* 가닥 질감(보기 전용, 전역) — 0 덩어리 / 50 기본 / 100 또렷.
+     뷰별이 아니다: 같은 머리를 어느 각도에서 봐도 질감은 하나다. */
+  strandLook: 50,
   // 웨이브 폭(펌 로드 사이즈) — 컬 진폭(_globalCurl)과 별개로 파장(촘촘함)을
   // 조절. 0=작은 로드(촘촘한 스파이럴), 100=큰 로드(느슨한 웨이브).
   waveWidth: 50,
@@ -6225,8 +6228,29 @@ function buildGyStylingControls(wrap){
       <div class="gy-ends"><span>${pm.left}</span><span>${pm.right}</span></div>`;
     body.appendChild(c);
   });
+  /* 가닥 질감 — 스타일링 칸에 붙이되 <b>전역</b>이다(뷰별 아님). 같은 머리를
+     어느 각도에서 봐도 질감은 하나이므로 다른 손잡이와 동작이 다르고,
+     그래서 오해가 없게 라벨에 "보기"라고 적어 둔다. */
+  {
+    const v = (typeof state.strandLook === 'number') ? state.strandLook : 50;
+    const c = document.createElement('div'); c.className = 'gy-ctrl';
+    c.innerHTML = `<div class="gy-ctrl-top">
+        <span class="gy-ctrl-label">가닥 질감</span><span class="gy-ctrl-hint">보기 전용 · 커트는 안 바뀜</span>
+        <span class="gy-ctrl-val" id="gyst-strandLook">${v}</span>
+      </div>
+      <input type="range" min="0" max="100" value="${v}"
+        oninput="onGyStrandLook(this.value)">
+      <div class="gy-ends"><span>덩어리</span><span>가닥 또렷</span></div>`;
+    body.appendChild(c);
+  }
   g.appendChild(body);
   wrap.appendChild(g);
+}
+function onGyStrandLook(val){
+  state.strandLook = Math.max(0, Math.min(100, parseInt(val, 10) || 0));
+  const el = document.getElementById('gyst-strandLook');
+  if(el) el.textContent = state.strandLook;
+  drawAdjustPreview();
 }
 
 /* ── 현재 조정 상태를 새 스타일로 등록 ──
@@ -8282,9 +8306,37 @@ const HAIR_STRAND_LOOK = {
 };
 /* 이 뷰에서 "원본 결 보기가 그리는 가닥 묶음"을 그대로 계산해 준다.
    → 레이어별 굵기 w · 개수 n · 틴트 범위. 두 렌더러가 이 함수 하나만 본다. */
+/* ══════════════════════════════════════════════════════════════════
+   가닥 질감 손잡이 — 미용사용 (2026-08-09)
+   ─────────────────────────────────────────────────────────────────
+   사용자: "이 헤어 지금 덩어리로 보이는데, 가닥이 모인 거야?" → 가닥이 맞다
+   (정면 4,400개를 선 하나씩 긋는다). 덩어리로 보이는 이유는 셋이었다:
+     ① 언더코트 — 가닥마다 그 아래에 두피색 획을 <b>2.2배 굵기</b>로 깐다.
+        가닥 사이로 배경이 비치는 걸 막는 장치인데, 바로 그래서 연속면이 된다.
+     ② 굵기가 하한에 눌림 — thin 0.48을 거치면 네 레이어가 전부
+        minSafeWidth(0.9px)에 걸려 <b>굵기 변화가 0</b>이 된다. 눈이 개별
+        가닥으로 읽으려면 굵은 가닥과 잔가닥이 달라야 한다.
+     ③ 색 양자화 — 배치 렌더 때문에 인접 가닥 색이 같은 버킷으로 묶인다.
+   콘솔로 셋을 따로 만져 보게 했더니 "본인 머리카락 질감이 안 난다"였다.
+   당연하다 — 셋은 <b>같이</b> 움직여야 하는 하나의 성질이고, 손님마다 정답이
+   다르다(곱슬·광택·숱이 다르므로). 그래서 손잡이 하나로 묶어 미용사에게 준다.
+   0 = 덩어리(부드럽고 뭉침) · 50 = 지금까지의 기본값 · 100 = 가닥이 또렷함.
+   ※ 이 값은 <b>보기</b>만 바꾼다 — 커트·펌·길이 어느 것도 안 건드린다. */
+function strandLookT(){
+  const v = (state && typeof state.strandLook === 'number') ? state.strandLook : 50;
+  return Math.max(0, Math.min(100, v)) / 50 - 1;      // -1(덩어리) ~ 0(기본) ~ +1(또렷)
+}
 function hairStrandRoles(fitDw, volume, thickness){
   const L = HAIR_STRAND_LOOK;
-  const widthScale = (fitDw / L.resBase) * L.thin;
+  /* 또렷하게 갈수록 가닥을 굵게 — 하한(0.9px)에서 띄워야 레이어 간 굵기 차이가
+     살아난다. 덩어리 쪽으로 가면 얇아져 다시 하한에 눌리고 서로 뭉친다. */
+  const t = strandLookT();
+  /* 계수 3.0은 하네스로 정했다: 레이어 기본폭이 0.48~0.65라 thin 0.48을 곱하면
+     0.23~0.31 — minSafeWidth 0.9의 3분의 1이다. 즉 <b>세 배 넘게 키워야</b>
+     비로소 하한을 벗어나 굵기 차이가 생긴다. 1.6으로는 100에서도 한 레이어만
+     겨우 넘었다(측정: 0.9/0.9/0.9/1.19). */
+  const thin = L.thin * (t >= 0 ? (1 + t * 3.0) : (1 + t * 0.4));
+  const widthScale = (fitDw / L.resBase) * thin;
   return L.layers.map(x=>({
     id: x.id,
     w: Math.max(L.minSafeWidth, (x.base + (((x.src==='volume') ? volume : thickness)/100) * x.gain) * widthScale),
@@ -16547,7 +16599,7 @@ function projectHair3DToView(ctx, fit, angle, maskInf){
      가닥 고유 색(st.color)은 중립 캡처 때 원본 결 보기의 틴트가 이미 구워져
      있으므로, 여기서 더하는 건 <b>마무리 질감</b> 몫뿐이다(이중 틴트 방지). */
   const strandTint = (h)=> Math.max(0.45, Math.min(1.55,
-    baseMul + (h - 0.5) * 2 * R.colVar * 0.35 * varMul));
+    baseMul + (h - 0.5) * 2 * R.colVar * 0.35 * varMul * (1 + Math.max(0, strandLookT()) * 1.4)));
   window._lastTint = { fin, varMul, baseMul, forced: !!forced,   // [진단용]
     tint: [strandTint(0), strandTint(0.5), strandTint(1)] };
 
@@ -16566,8 +16618,12 @@ function projectHair3DToView(ctx, fit, angle, maskInf){
       if(!und.has(p.wk)) und.set(p.wk, []);
       und.get(p.wk).push(p);
     }
+    /* 가닥 질감 손잡이 — 또렷 쪽으로 가면 바탕을 얇게 깔아 가닥 사이가 벌어진다.
+       0으로는 안 내린다: 완전히 없애면 뿌리 쪽에 두피가 훤히 비친다. */
+    const uT = strandLookT();
+    const uMul = HAIR_STRAND_LOOK.undercoatMul * (uT >= 0 ? (1 - uT * 0.62) : (1 - uT * 0.25));
     for(const arr of und.values()){
-      ctx.lineWidth = arr[0].w * HAIR_STRAND_LOOK.undercoatMul;
+      ctx.lineWidth = arr[0].w * uMul;
       ctx.beginPath();
       for(const p of arr) traceSmoothPolyline(ctx, p.cpts);
       ctx.stroke();
@@ -16580,7 +16636,9 @@ function projectHair3DToView(ctx, fit, angle, maskInf){
   const batch = new Map();   // key → { col, w, depth, n, items:[cpts] }
   for(const p of projected){
     const col = bundleTintColor(p.color || '#1a1a1a', strandTint(p.hb));
-    const q   = quantizeStrokeColor(col, R.quant);
+    /* 또렷 쪽에서는 색 버킷을 늘린다 — 인접 가닥이 같은 색이면 아무리 가늘게
+       그어도 한 덩어리로 읽힌다(배치 수가 늘어 약간 느려지는 대신). */
+    const q   = quantizeStrokeColor(col, Math.max(8, Math.round(R.quant * (1 + Math.max(0, strandLookT()) * 2))));
     const key = p.slice + '|' + q + '|' + p.wk;
     let e = batch.get(key);
     if(!e){ e = { col: q, w: p.w, depth: 0, n: 0, items: [] }; batch.set(key, e); }
@@ -18526,6 +18584,8 @@ const I18N = {
   '시술각(기법 강도 스케일)':'Lift angle (technique intensity)',
   '텍스처라이징':'Texturizing', '끝단 숱·질감':'End thinning · texture',
   '숱':'Density', '숱치기 · 낮을수록 비침':'Thinning · lower = see-through',
+  '가닥 질감':'Strand texture', '보기 전용 · 커트는 안 바뀜':'View only · cut unchanged',
+  '덩어리':'Mass', '가닥 또렷':'Crisp strands',
   '컬':'Curl', '컬 세기':'Curl strength', '0이면 펌 없음':'0 = no perm',
   '웨이브 폭':'Wave width', '로드 굵기':'rod diameter',
   '넘김':'Sweep', '앞으로':'forward', '뒤로':'back',
