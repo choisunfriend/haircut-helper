@@ -13962,8 +13962,36 @@ function headSurfaceCellPoint(ci, r1, r2, hullW, hullD, bucketOfY, CY, b, NT, NP
    "셀당 같은 수"가 곧 "정수리에 20배 몰기"가 된다(사용자 지적).
    도함수를 풀지 않고 구석점 네 개로 두 삼각형 넓이를 더해 잰다 — 좌표식은
    headSurfaceCellPoint 그대로라 격자가 어긋날 수 없다. */
-function headSurfaceCellAreas(hullW, hullD, bucketOfY, CY, b, NT, NP){
+/* [FIX 2026-08-09] 정수리 셀 면적이 0으로 무너지던 문제.
+   코너점을 <b>y버킷 hull 반경</b>으로 잡는데, 두상 꼭대기에서는 여러 φ행이
+   전부 버킷 0(=꼭짓점, 반경≈0)으로 반올림돼 네 코너가 축 위 한 점으로 모인다.
+   그래서 φ<0.26rad(위 2행)의 면적이 평균 대비 0.0002 — 실제 구면 캡 비율
+   (≈0.08)보다 400배 작다. 면적 가중으로 심는 마네킹은 그 행에 <b>한 가닥도</b>
+   안 심게 되고, 실루엣 꼭대기가 사진보다 두상높이의 3.4% 아래로 내려앉는다
+   (= 정수리 밝은 자국).
+   surf(={a,b,c})를 주면 코너점을 그 타원체에서 <b>해석적으로</b> 잡는다.
+   마네킹은 어차피 그 타원체 위에 심으므로 이게 "심는 자리의 진짜 면적"이고,
+   버킷 반올림이 개입하지 않아 극에서 무너지지 않는다. 안 주면 예전 그대로. */
+function headSurfaceCellAreas(hullW, hullD, bucketOfY, CY, b, NT, NP, surf){
   const A = new Float32Array(NT*NP);
+  if(surf && surf.a > 0 && surf.b > 0 && surf.c > 0){
+    const pt = (pi, ti, r1, r2)=>{
+      const phi = (pi + r1) / NP * Math.PI, th = (ti + r2) / NT * 2*Math.PI - Math.PI;
+      const sp = Math.sin(phi);
+      return { x: surf.a*sp*Math.sin(th), y: CY + surf.b*Math.cos(phi), z: surf.c*sp*Math.cos(th) };
+    };
+    const cr = (u, v)=> Math.hypot(u.y*v.z - u.z*v.y, u.z*v.x - u.x*v.z, u.x*v.y - u.y*v.x);
+    const sb = (q, r)=> ({ x:q.x-r.x, y:q.y-r.y, z:q.z-r.z });
+    let sm = 0;
+    for(let pi=0; pi<NP; pi++) for(let ti=0; ti<NT; ti++){
+      const q00 = pt(pi,ti,0,0), q10 = pt(pi,ti,1,0), q01 = pt(pi,ti,0,1), q11 = pt(pi,ti,1,1);
+      const a = 0.5*cr(sb(q10,q00), sb(q01,q00)) + 0.5*cr(sb(q10,q11), sb(q01,q11));
+      A[pi*NT+ti] = a; sm += a;
+    }
+    const mn = sm / (NT*NP) || 1;
+    for(let i=0;i<A.length;i++) A[i] /= mn;
+    return A;
+  }
   const P = (pi, ti)=> headSurfaceCellPoint(pi*NT + (((ti % NT)+NT)%NT),
       pi >= NP ? 1 : 0, 0, hullW, hullD, bucketOfY, CY, b, NT, NP);
   const cross = (u, v)=> Math.hypot(u.y*v.z - u.z*v.y, u.z*v.x - u.x*v.z, u.x*v.y - u.y*v.x);
@@ -15384,7 +15412,7 @@ function scalpTangentAt(P, d, E){
    곧 "그 지점에서 얼마나 완전히 돌릴 것인가"(0~1)</b>라는 규약이다.
    k=1이면 그 구간부터 결이 통째로 빗질 방향을 향한다 = 뿌리부터 뒤를 봄.
    두피에 수직인 지점(뒤통수 정중앙)은 접선 성분이 0이라 k도 0 — 그대로다. */
-function combStrand3D(pts, dirAt, ramp, tail){
+function bendStrandAlong3D(pts, dirAt, ramp, tail){
   if(!pts || pts.length < 2) return pts;
   const n = pts.length - 1;
   const out = [pts[0]];
@@ -15434,7 +15462,7 @@ function sweepStrand3D(pts, sweepVal, curlAmt){
     if(l < 1e-5) return null;                                // 두피에 수직 = 방향 없음
     return { x:t.x/l*frac, y:t.y/l*frac, z:t.z/l*frac };     // 방향만 점마다, 세기는 뿌리
   };
-  return combStrand3D(pts, dirAt, SWEEP3D.RAMP, SWEEP3D.TAIL);
+  return bendStrandAlong3D(pts, dirAt, SWEEP3D.RAMP, SWEEP3D.TAIL);
 }
 /* 3D 경로용 — 가닥 전체에 가르마 이동을 얹는다. 뿌리(pts[0])는 고정.
    (2026-07-27) 넘김과 같은 이유로 점마다 방향을 다시 구한다. 갈라지는 방향
@@ -15459,7 +15487,7 @@ function partStrand3D(pts, partVal, curlAmt){
     if(l < 1e-5) return null;
     return { x:t.x/l*frac, y:t.y/l*frac, z:t.z/l*frac };     // 방향만 점마다, 세기는 뿌리
   };
-  return combStrand3D(pts, dirAt, PART3D.RAMP, PART3D.TAIL);
+  return bendStrandAlong3D(pts, dirAt, PART3D.RAMP, PART3D.TAIL);
 }
 
 // 3D 길이: 호길이 기준 트림(ratio<1)/연장(ratio>1). 연장은 마지막 진행방향 유지.
@@ -16520,19 +16548,33 @@ const STYLE_SPECS = {
    표본은 섹션당 최대 SOLVE_SAMPLE개 — 중앙값이라 표본으로 충분하고, 이분탐색이
    24번 도는 동안 전 가닥을 돌리면 느리다. */
 const SOLVE_SAMPLE = 160;
-function measureSectionTipY(secId, lenVal){
+/* 이 뿌리가 <b>어느 뷰의 머리</b>인가 — 가장 크게 보이는 뷰. 스타일링이 이미
+   쓰고 있는 viewWeightsForRoot를 그대로 재사용한다(판정 기준이 갈리면 안 된다).
+   섹션은 두피 구역이라 좌우가 한 덩어리(side/temple)인데, 실제 시술은 좌우를
+   따로 자를 수 있으므로 역산은 뷰별로도 낸다. */
+function viewOfRoot(p){
+  const w = viewWeightsForRoot(p);
+  let best = ANGLES[0], bv = -Infinity;
+  for(const a of ANGLES) if(w[a] > bv){ bv = w[a]; best = a; }
+  return best;
+}
+function solvePoolFor(secId, view){
   const m = state.hair3Dneutral;
   if(!m || !m.strands) return null;
-  const list = m._solveCache && m._solveCache[secId];
-  let pool = list;
-  if(!pool){
-    pool = m.strands.filter(s=>s.sec === secId);
-    const step = Math.max(1, pool.length / SOLVE_SAMPLE);
-    const thin = []; for(let i=0;i<pool.length;i+=step) thin.push(pool[i|0]);
-    pool = thin;
-    (m._solveCache || (m._solveCache = {}))[secId] = pool;
-  }
-  if(!pool.length) return null;
+  const key = secId + '|' + (view || '*');
+  const cache = m._solveCache || (m._solveCache = {});
+  if(cache[key]) return cache[key];
+  let all = m.strands.filter(s=>s.sec === secId);
+  if(view) all = all.filter(s=>viewOfRoot(s.pts[0]) === view);
+  const step = Math.max(1, all.length / SOLVE_SAMPLE);
+  const pool = []; for(let i=0;i<all.length;i+=step) pool.push(all[i|0]);
+  return (cache[key] = pool);
+}
+function measureSectionTipY(secId, lenVal, view){
+  const m = state.hair3Dneutral;
+  if(!m || !m.strands) return null;
+  const pool = solvePoolFor(secId, view);
+  if(!pool || !pool.length) return null;
   const uni = uniformStyling();
   const ys = [];
   for(const st of pool){
@@ -16542,13 +16584,14 @@ function measureSectionTipY(secId, lenVal){
   ys.sort((a,b)=>a-b);
   return ys[(ys.length*0.5)|0];
 }
-/* 끝 높이가 targetY가 되는 길이 슬라이더 값. 길이↑ → 끝↓ 로 단조라 이분탐색이 된다. */
-function solveSectionLengthForTipY(secId, targetY){
-  if(measureSectionTipY(secId, 50) == null) return null;
+/* 끝 높이가 targetY가 되는 길이 슬라이더 값. 길이↑ → 끝↓ 로 단조라 이분탐색이 된다.
+   view를 주면 그 뷰에서 보이는 가닥만으로 푼다(좌우 비대칭 확인용). */
+function solveSectionLengthForTipY(secId, targetY, view){
+  if(measureSectionTipY(secId, 50, view) == null) return null;
   let lo = 0, hi = 100;
   for(let i=0;i<24;i++){
     const mid = (lo + hi) / 2;
-    const y = measureSectionTipY(secId, mid);
+    const y = measureSectionTipY(secId, mid, view);
     if(y == null) return null;
     if(y > targetY) lo = mid; else hi = mid;   // 끝이 아직 위에 있다 = 짧다 → 늘린다
   }
@@ -16558,7 +16601,15 @@ function solveSectionLengthForTipY(secId, targetY){
 function applyStyleSpec(id){
   const sp = STYLE_SPECS[id];
   const m = state.hair3Dneutral;
-  if(!sp || !m || !m.strands || !m.strands.length){ console.warn('[스타일스펙] 모델이 없다'); return null; }
+  if(!sp || !m || !m.strands || !m.strands.length){
+    /* [FIX] 조용히 죽지 않는다. 예전엔 console.warn 하나만 찍고 return null이라
+       버튼을 눌러도 화면이 그대로였고, 사용자는 "스펙이 안 먹는다"와
+       "스펙이 실행조차 안 됐다"를 구분할 수 없었다. */
+    console.warn('[스타일스펙] 3D 모델이 없어 적용 못 함(조정 화면에 먼저 들어와야 한다)');
+    const el = document.getElementById('segStatus');
+    if(el) el.textContent = '[스타일스펙] 3D 모델이 아직 없다 — 조정 화면 진입 후 다시 눌러라';
+    return null;
+  }
   const E = getHeadEllipsoid(), CY = m.CY, yTop = CY + E.b, H = 2 * E.b;
   const rep = { name: sp.name, solved: {}, missY: {} };
   /* 순서가 중요하다: 커트기법·펌·스타일링을 <b>먼저</b> 걸고 길이를 푼다.
@@ -16574,6 +16625,7 @@ function applyStyleSpec(id){
     state.stylingByView = neutralStylingByView();
     for(const a of ANGLES) Object.assign(state.stylingByView[a], sp.styling);
   }
+  rep.byView = {};
   for(const sec in sp.tipAt){
     if(!state.sections[sec]) continue;
     const targetY = yTop - sp.tipAt[sec] * H;
@@ -16583,10 +16635,33 @@ function applyStyleSpec(id){
     rep.solved[sec] = v;
     const got = measureSectionTipY(sec, v);
     rep.missY[sec] = (got == null) ? null : +((got - targetY) / H).toFixed(4); // 두상높이 대비 오차
+    /* 뷰별 역산 — 섹션은 두피 구역이라 좌우가 한 덩어리지만, 그 안에서
+       <b>좌우가 서로 다른 값을 요구하는지</b>는 여기서 드러난다. 차이가 크면
+       그 손님은 비대칭이고, 섹션 하나로는 양쪽을 동시에 못 맞춘다. */
+    for(const a of ANGLES){
+      const pool = solvePoolFor(sec, a);
+      if(!pool || pool.length < 8) continue;             // 이 뷰에 거의 없는 섹션은 건너뛴다
+      const vv = solveSectionLengthForTipY(sec, targetY, a);
+      if(vv == null) continue;
+      (rep.byView[a] || (rep.byView[a] = {}))[sec] = { length: vv, n: pool.length, d: vv - v };
+    }
+  }
+  rep.asym = {};
+  for(const sec in rep.solved){
+    const L = rep.byView.left && rep.byView.left[sec], R = rep.byView.right && rep.byView.right[sec];
+    if(L && R) rep.asym[sec] = L.length - R.length;      // + = 왼쪽이 더 길게 잘라야
   }
   console.log('[스타일스펙] ' + sp.name
     + ' · 길이 ' + Object.keys(rep.solved).map(s=>s+' '+rep.solved[s]).join(' ')
     + ' · 끝높이 오차(두상높이 대비) ' + Object.keys(rep.missY).map(s=>s+' '+(rep.missY[s]*100).toFixed(1)+'%').join(' '));
+  const VL = { front:'정면', left:'좌측', right:'우측', back:'후면' };
+  for(const a of ANGLES){
+    const bv = rep.byView[a]; if(!bv) continue;
+    console.log('[스타일스펙·' + (VL[a]||a) + '] '
+      + Object.keys(bv).map(s=>s+' '+bv[s].length+(bv[s].d ? '('+(bv[s].d>0?'+':'')+bv[s].d+')' : '')+'·'+bv[s].n+'가닥').join(' · '));
+  }
+  const asymTxt = Object.keys(rep.asym).filter(s=>Math.abs(rep.asym[s])>0).map(s=>s+' '+(rep.asym[s]>0?'+':'')+rep.asym[s]);
+  console.log('[스타일스펙·좌우차] ' + (asymTxt.length ? asymTxt.join(' · ') + ' (+ = 좌측을 더 길게 잡아야)' : '없음 — 좌우 대칭'));
   return rep;
 }
 
@@ -16684,22 +16759,31 @@ function buildMannequinHair3D(){
   const S = getScalpEllipsoid(), E = getHeadEllipsoid();
   const yStep = (G.yTopH - G.yBot) / (G.NY - 1);
   const bucketOfY = y => Math.min(G.NY-1, Math.max(0, Math.round((G.yTopH - y) / yStep)));
-  const areas = headSurfaceCellAreas(G.hullW, G.hullD, bucketOfY, CY, b, NT, NP);
+  const areas = headSurfaceCellAreas(G.hullW, G.hullD, bucketOfY, CY, b, NT, NP, S);
 
   // ── 섹션별 실측 길이·색 (촬영 가닥에서 뽑는다 — 여기가 "특성만 가져온다"의 실체) ──
-  const byS = {}, allLen = [];
+  /* 길이는 섹션 <b>× 뷰</b>로 잰다. 섹션 하나로 뭉치면 좌우 비대칭이 중앙값에
+     흡수돼 사라진다 — 하네스에서 오른쪽을 8% 길게 넣은 모델이 좌우 완전히
+     같은 마네킹으로 나왔다. 손님의 좌우 길이 차이는 지워야 할 스타일링이
+     아니라 <b>실측 특성</b>이라 남긴다(표본이 모자란 칸은 섹션 전체로 폴백). */
+  const byS = {}, byV = {}, allLen = [];
   for(const st of src.strands){
     const s = st.sec || 'crown';
     const o = byS[s] || (byS[s] = { len:[], col:[] });
     const L = arcLength3D(st.pts);
     o.len.push(L); allLen.push(L);
     if(st.color) o.col.push(st.color);
+    const vk = s + '|' + viewOfRoot(st.pts[0]);
+    (byV[vk] || (byV[vk] = [])).push(L);
   }
   const pick = (arr, q)=>{ if(!arr.length) return 0; const a = arr.slice().sort((p1,p2)=>p1-p2);
                            return a[Math.min(a.length-1, Math.floor(a.length*q))]; };
-  const secLen = {}, secCol = {};
+  const secLen = {}, secCol = {}, viewLen = {};
   for(const s in byS){ secLen[s] = pick(byS[s].len, MANNEQUIN.lenPct); secCol[s] = byS[s].col; }
+  const MIN_VIEW_N = 12;
+  for(const k in byV) if(byV[k].length >= MIN_VIEW_N) viewLen[k] = pick(byV[k], MANNEQUIN.lenPct);
   const fbLen = pick(allLen, MANNEQUIN.lenPct);
+  const lenFor = (sec, view)=> viewLen[sec + '|' + view] || secLen[sec] || fbLen;
 
   // ── 셀별 심을 개수: 밀도 × 면적. 총합은 촬영 모델과 같게(브레젠험 누산) ──
   const nCell = NT*NP;
@@ -16727,7 +16811,7 @@ function buildMannequinHair3D(){
       const rp = { x: S.a*Math.sin(phi)*Math.sin(th), y: CY + S.b*Math.cos(phi),
                    z: S.c*Math.sin(phi)*Math.cos(th) };
       const sec = resolveSection3D(rp, CY, S.b) || 'crown';
-      const st = growMannequinStrand(ci, NT, NP, S, E, CY, secLen[sec] || fbLen, secCol[sec] || secCol.crown);
+      const st = growMannequinStrand(ci, NT, NP, S, E, CY, lenFor(sec, viewOfRoot(rp)), secCol[sec] || secCol.crown);
       if(!st) continue;
       st.sec = sec;
       secHist[sec] = (secHist[sec]||0) + 1;
@@ -16735,10 +16819,12 @@ function buildMannequinHair3D(){
     }
   }
   const lenTxt = Object.keys(secLen).map(s=>s+' '+secLen[s].toFixed(3)).join(' · ');
+  const vTxt = Object.keys(viewLen).sort().map(k=>k+' '+viewLen[k].toFixed(3)).join(' · ');
   console.log('[마네킹] 가닥 ' + planted + '개(촬영 ' + target + '개 기준) · 심은 셀 '
     + (nCell - baldCells) + '/' + nCell + '(밀도 0 제외 ' + baldCells + ')'
     + ' · 섹션 ' + Object.keys(secHist).map(s=>s+' '+secHist[s]+'('+Math.round(100*secHist[s]/planted)+'%)').join(' ')
-    + ' · 섹션길이(중앙값) ' + lenTxt);
+    + ' · 섹션길이(중앙값) ' + lenTxt
+    + (vTxt ? ('\n[마네킹·뷰별길이] ' + vTxt) : ''));
   return { strands: out, viewCal: src.viewCal, yTop: src.yTop, CY: src.CY,
            field: null, occ: null, grid: G, roots: rf, mannequin: true };
 }
@@ -17204,7 +17290,13 @@ function computeAdjustedHair3DStrands(srcAngleFilter, stride){
      연산자가 가닥을 움직인 <b>다음</b>에 세그멘테이션으로 한 번 더 다듬는다.
      프로브는 리프트 때 만든 것을 그대로 재사용한다(뷰 마스크·포즈만 보므로
      조정과 무관하게 유효하다). 없으면 조용히 예전 동작. */
-  const occ = HAIR_OCC3D.clipAdjusted
+  /* [FIX] 마네킹 모델은 <b>사진 마스크로 다시 클립하지 않는다</b>.
+     마네킹은 촬영 가닥이 아니라 실측 특성(뿌리밀도·섹션·길이)으로 새로 심은
+     기하다. 그런데 model.occ이 null이라 아래 폴백이 <b>손님의 원래 긴 머리</b>
+     점유 프로브를 집어와서, 새로 심은 가닥을 "사진에 머리가 있던 자리"로
+     가둬 왔다 — 잘라서 짧아진 실루엣이 원본 실루엣 안에서만 놀게 된다.
+     자기 모델의 프로브가 있을 때만 클립한다. */
+  const occ = (HAIR_OCC3D.clipAdjusted && !(model && model.mannequin))
     ? ((model.occ && model.occ.probe) || (state.hairOcc3D && state.hairOcc3D.probe) || null)
     : null;
   const occAcc = occ ? { n:0, dropped:0, trimmed:0, removedPts:0, faceBlocked:0 } : null;
@@ -17228,7 +17320,12 @@ function computeAdjustedHair3DStrands(srcAngleFilter, stride){
        안 그린다"는 규칙인데, 빗질은 일부러 그 자리로 옮기는 행위라 앞에 두면
        빗는 족족 잘려나간다. 빗질 없으면(격자 없음) 비용 0. */
     pts = combStrand3D(pts);
-    out.push({ pts, color: st.color, sec: st.sec, srcAngle: st.srcAngle });
+    /* [FIX] 섹션 컬러(시술 결과)를 <b>3D 렌더까지</b> 연결한다.
+       예전엔 st.color(촬영 시 구워진 색)만 나갔고, state.sections[*].color는
+       죽은 2D 컬럼 렌더러(colorForSection)에서만 읽혔다 — 그래서 스타일 스펙이
+       color를 지정해도(예: 애쉬브라운 #8B7355) 화면은 늘 촬영 색 그대로였다.
+       우선순위: 섹션 컬러(사용자/스펙이 정한 것) → 촬영 색. */
+    out.push({ pts, color: (sec && sec.color) || st.color, sec: st.sec, srcAngle: st.srcAngle });
   }
   if(occAcc) logAdjustedClip(occAcc, out.length);
   return out;
