@@ -13922,58 +13922,65 @@ const _angDiff = (a, b2)=>{ let d = a - b2; while(d > Math.PI) d -= 2*Math.PI; w
      3) 그래도 남으면 최근접 구역
    결과: 크라운은 정의상 다른 구역이 안 가져간 정수리 잔여만 갖는다. 가중치
    상수 하나(0.55)가 사라지고, 겹침 구간(phi 0.55~0.60)은 방위가 맞는 front로 간다. */
+/* ══════════════════════════════════════════════════════════════════
+   섹션 = 두피의 <b>빈틈없는 분할</b> (2026-08-09)
+   ─────────────────────────────────────────────────────────────────
+   사용자: "사용자가 조정하는 건 1)뷰 2)섹션 3)슬라이더다. 섹션 단위로
+   움직였을 때 결과가 나와야 한다."
+
+   그러면 섹션은 <b>조정의 단위</b>이지 분류 결과가 아니다. 그 관점에서 예전
+   구현을 재보니 문제가 하나 나왔다 — 두피 균등 샘플 6,000점 중 <b>43%</b>가
+   어느 구역에도 안 들어가서 "최근접 구역"으로 억지 배정됐다. 배정 자체는
+   공간적으로 이어져 있었지만(이웃 8개 중 95% 일치) <b>경계가 어디 그어질지를
+   아무도 정하지 않은</b> 상태였다. 특히 얼굴 앞쪽 하단(phi>1.05, θ≈0)이
+   통째로 side로 흘러들어가, 정면 뷰 뿌리의 47%가 side가 됐다.
+
+   구역표를 점수로 겨루게 하는 구조가 원인이다. phiRange가 서로 겹치고
+   (front 0.55~0.95 · temple 0.60~1.05 · occipital 0.70~1.65), 덮이지 않는
+   틈이 남고, 그 틈을 최근접이 메운다. 손잡이(thetaSpread·가중치 0.4/0.6)를
+   흔들면 경계가 통째로 움직인다 — 미용사한테 설명할 수 없는 경계다.
+
+   그래서 <b>겨루기를 없애고 자른다</b>. 미용사가 실제로 섹셔닝하는 순서 그대로:
+     ① 정수리를 먼저 뜬다        (phi < CROWN_PHI)
+     ② 남은 것을 옆선으로 가른다 (|θ| 로 앞·옆·귀·뒤)
+     ③ 목선 아래를 따로 뜬다     (phi ≥ NAPE_PHI)
+   각 점은 정확히 한 구역에 속하고, 경계는 각도 하나로 말할 수 있다.
+   최근접 폴백이 없어진다 — 덮이지 않는 자리가 없으므로.
+
+   경계값은 SCALP_ZONES에서 그대로 가져온다(새 상수를 만들지 않는다):
+     CROWN_PHI = crown.phiRange[1]           = 0.60
+     NAPE_PHI  = nape.phiRange[0]            = 1.55
+     θ 경계는 인접 구역 대표 방위의 <b>중간</b> — front(0)·temple(0.75)·
+     side(1.35)·occipital(π)의 중점이라 지어낸 값이 아니다.
+   ※ SCALP_ZONES 자체는 그대로 둔다 — HEAD_PHI_BANDS가 그 phiRange에서 나온다.
+══════════════════════════════════════════════════════════════════ */
+const SECTION_CUT = (()=>{
+  const Z = SCALP_ZONES;
+  const mid = (a, b2)=> (a + b2) / 2;
+  return {
+    crownPhi: Z.crown.phiRange[1],                       // 0.60
+    napePhi:  Z.nape.phiRange[0],                        // 1.55
+    thFront:  mid(Z.front.thetas[0], Z.temple.thetas[0]),   // 0/0.75 → 0.375
+    thTemple: mid(Z.temple.thetas[0], Z.side.thetas[0]),    // 0.75/1.35 → 1.05
+    thSide:   mid(Z.side.thetas[0], Z.occipital.thetas[0]), // 1.35/π   → 2.25
+  };
+})();
 function resolveSection3D(p, CY, b){
   if(!p || !(b > 1e-6)) return null;
   const ny = Math.max(-1, Math.min(1, (p.y - CY) / b));
   const phi = Math.acos(ny);
-  const th  = Math.atan2(p.x, p.z);          // 0=정면(+Z) · ±pi=후면 — SCALP_ZONES와 같은 규약
-  let best = null, bestScore = -1;
-  for(const id in SCALP_ZONES){
-    const z = SCALP_ZONES[id];
-    if(z.thetas === 'full') continue;                          // ① 크라운은 이 판에 안 올린다
-    const [p0, p1] = z.phiRange;
-    if(phi < p0 || phi > p1) continue;
-    const half = (p1 - p0) / 2 || 1;
-    const pc = 1 - Math.abs(phi - (p0 + p1) / 2) / half;      // phi 중심도 0~1
-    let tBest = -1;
-    for(const t0 of z.thetas){
-      const d = Math.abs(_angDiff(th, t0)), sp = z.thetaSpread || 0.1;
-      if(d <= sp) tBest = Math.max(tBest, 1 - d / sp);
-    }
-    if(tBest < 0) continue;
-    const score = pc * 0.4 + tBest * 0.6;                      // 방위 일치를 더 무겁게
-    if(score > bestScore){ bestScore = score; best = id; }
+  const th  = Math.abs(Math.atan2(p.x, p.z));   // 0=정면(+Z) · π=후면. 좌우 대칭이라 절댓값.
+  const C = SECTION_CUT;
+  if(phi < C.crownPhi) return 'crown';          // ① 정수리를 먼저 뜬다
+  if(phi >= C.napePhi){                         // ③ 목선 아래
+    /* 목선 높이인데 <b>앞쪽</b>이면 그건 목이 아니라 구레나룻·귀 앞이다 —
+       네이프가 얼굴 옆까지 감싸면 네이프 슬라이더가 구레나룻을 자른다. */
+    return (th > C.thTemple) ? 'nape' : 'side';
   }
-  if(best) return best;
-  /* ② 남은 점 중 크라운 밴드 안 → 크라운(정수리 잔여) */
-  for(const id in SCALP_ZONES){
-    const z = SCALP_ZONES[id];
-    if(z.thetas !== 'full') continue;
-    const [p0, p1] = z.phiRange;
-    if(phi >= p0 && phi <= p1) return id;
-  }
-  /* ── 구역 밖 — <b>최근접 구역</b>으로 (하네스에서 잡음) ────────────────────
-     SCALP_ZONES는 구를 빈틈없이 덮지 않는다. 균등 샘플 4,000점을 넣어보니
-     <b>30%가 어느 구역에도 안 들어갔다</b>(주로 phi0.6~0.95의 옆위 띠, 그리고
-     얼굴 쪽). 그대로 두면 그 가닥들이 예전 2D 라벨로 되돌아가 — 고치려던
-     "뷰마다 딴 섹션"이 그만큼 남는다.
-     구역표를 늘려 상수를 지어내는 대신, <b>제일 가까운 구역</b>에 붙인다.
-     거리는 (phi 밴드까지의 거리) + (대표 방위까지의 각거리)로 잰다. */
-  let nearest = null, nd = Infinity;
-  for(const id in SCALP_ZONES){
-    const z = SCALP_ZONES[id];
-    /* 크라운은 ②에서 이미 자기 밴드 전체를 받았다. 여기서 또 후보로 두면 방위
-       거리가 항상 0이라 밴드 바로 아래 얇은 띠(phi 0.60~0.62)까지 크라운이
-       가져간다 — 잔여 정의에 어긋나므로 제외한다. */
-    if(z.thetas === 'full') continue;
-    const [p0, p1] = z.phiRange;
-    const dPhi = phi < p0 ? (p0 - phi) : phi > p1 ? (phi - p1) : 0;
-    let dTh = Infinity;
-    for(const t0 of z.thetas) dTh = Math.min(dTh, Math.max(0, Math.abs(_angDiff(th, t0)) - (z.thetaSpread||0)));
-    const d = dPhi + dTh;
-    if(d < nd){ nd = d; nearest = id; }
-  }
-  return nearest;
+  if(th <= C.thFront)  return 'front';          // ② 옆선으로 가른다
+  if(th <= C.thTemple) return 'temple';
+  if(th <= C.thSide)   return 'side';
+  return 'occipital';
 }
 
 /* 뿌리 3D 점 → 표면 셀 번호. forEachHeadSurfaceCell의 좌표식을 그대로 역산한다
@@ -16715,7 +16722,17 @@ const MANNEQUIN = {
   segments: 22,      // 가닥당 마디 수(촬영 가닥의 점 수와 비슷한 수준)
   rootRamp: 0.14,    // 뿌리에서 법선 → 중력으로 넘어가는 구간(길이 비율)
   clearance: 1.004,  // 두피에서 살짝 띄워 시작(정확히 표면이면 첫 밀어냄이 불안정)
-  lenPct: 0.5,       // 섹션 길이 = 촬영 가닥 호길이의 이 백분위(0.5 = 중앙값)
+  /* 섹션 길이 = 촬영 가닥 호길이의 이 백분위 (2026-08-09: 0.5 중앙값 → 1.0 최댓값)
+     사용자 지정. 이유가 <b>시술의 방향성</b>에 있다: 커트는 <b>빼는</b> 일이다.
+     중앙값으로 심으면 그 섹션 가닥의 절반이 손님 실제 머리보다 짧게 시작하고,
+     그 부족분은 커트로 되돌릴 수 없다(늘리는 건 자르기가 아니고, 실제로
+     CUT3D.maxRatio가 1.8에서 막는다). 그래서 역산이 슬라이더 상한에 붙었다 —
+     실기기에서 crown 100(오차 24.9%)이 정확히 그 모습이었다.
+     최댓값으로 심으면 모든 가닥이 <b>실측 최장</b>에서 시작하므로 어떤 목표
+     길이든 빼기만으로 도달한다. 마네킹 초기 상태가 "아직 안 자른 머리"라는
+     정의와도 맞는다. 대가는 초기 길이가 실제보다 길어 보이는 것인데, 시술
+     전 상태라 그게 맞다. */
+  lenPct: 1.0,
   minLen: 0.02,
   baldDen: 0.08,     // 이보다 밀도가 낮은 셀은 안 심는다(HAIR_OVERLAP과 같은 기준)
   layerLo: 0.15, layerHi: 1.0,  // 가닥이 타고 흐르는 껍질 위치(모발 두께 안)
@@ -16803,7 +16820,20 @@ function buildMannequinHair3D(){
   const pick = (arr, q)=>{ if(!arr.length) return 0; const a = arr.slice().sort((p1,p2)=>p1-p2);
                            return a[Math.min(a.length-1, Math.floor(a.length*q))]; };
   const secLen = {}, secCol = {}, viewLen = {};
-  for(const s in byS){ secLen[s] = pick(byS[s].len, MANNEQUIN.lenPct); secCol[s] = byS[s].col; }
+  /* 최댓값으로 심으므로 <b>이상치 하나가 섹션 전체를 정한다</b> — 세그멘테이션이
+     어깨로 흘러내린 머리를 한 가닥이라도 따라갔으면 그 섹션이 통째로 그만큼
+     길어진다. 막지는 않는다(사용자 지정이 최장이고, 커트가 빼면 된다). 대신
+     중앙값 대비 몇 배인지 <b>찍는다</b> — 3배를 넘으면 길이가 아니라 추적 오류다. */
+  const 이상치 = [];
+  for(const s in byS){
+    secLen[s] = pick(byS[s].len, MANNEQUIN.lenPct);
+    secCol[s] = byS[s].col;
+    const med = pick(byS[s].len, 0.5);
+    if(med > 0 && secLen[s] / med > 3) 이상치.push(s + ' 최장 ' + secLen[s].toFixed(3)
+      + ' = 중앙값 ' + med.toFixed(3) + '의 ' + (secLen[s]/med).toFixed(1) + '배');
+  }
+  if(이상치.length) console.warn('[마네킹·길이 이상치] ' + 이상치.join(' · ')
+    + '\n    최장 가닥이 중앙값의 3배를 넘습니다 — 세그멘테이션이 어깨/옷을 머리로 따라갔을 가능성. MANNEQUIN.lenPct를 0.95 등으로 낮추면 이상치를 뺍니다.');
   /* ── 뷰별 길이는 <b>섹션 중앙값 근처</b>에서만 믿는다 (2026-08-09) ──────────
      실기기 로그: crown|front 0.496 · crown|left 0.456 · crown|right 1.269 ·
      crown|back 1.973 — 같은 정수리인데 뷰끼리 <b>4배</b>가 벌어졌다.
