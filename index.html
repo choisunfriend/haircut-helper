@@ -9037,6 +9037,13 @@ function mannequinClipGrowPx(fit, angle, rawMode){
   const mi = state.hairMasks && state.hairMasks[angle];
   if(!cal || !mi || !(cal.s > 0) || !(mi.w > 0)) return 0;
   let b = 0; try{ b = getHeadEllipsoid().b || 0; }catch(e){ return 0; }
+  /* 여유는 <b>얼굴 보호구역이 있을 때만</b> 연다 (2026-08-09).
+     이 여유의 아래쪽 한계는 상수가 아니라 얼굴 타원이다(HAIR_OCC3D.fringeFrac
+     주석). 그러니 타원을 못 만든 뷰에서는 한계가 없는 것이고, 한계 없는 여유는
+     사방으로 부풀어 얼굴을 덮는다 — 좌·우 뷰에서 실제로 그렇게 됐다.
+     얼굴이 아예 안 찍힌 뷰(후면)는 덮을 얼굴도 없으니 여유를 그대로 준다.
+     "모르는 것으로 지우지 않는다"의 짝 — <b>모르는 것으로 열어 주지도 않는다</b>. */
+  if(state.landmarks && state.landmarks[angle] && !getViewFaceEllipse(angle)) return 0;
   const px = ((2 * b * HAIR_OCC3D.fringeFrac) / cal.s) * (fit.dw / mi.w);
   return Math.max(0, Math.min(px, fit.dw * 0.25));
 }
@@ -13708,20 +13715,63 @@ const HAIR_OCC3D = {
 };
 
 /* 뷰별 얼굴 타원(정규화 [0,1] 이미지 좌표). 2D 클립과 3D 재클립이 <b>같은</b>
-   영역을 쓰도록 한 곳에서만 만든다. 랜드마크가 없거나 옆으로 많이 돌아간 뷰는
-   null — 거부를 아예 안 건다(모르는 것으로 지우지 않는다). */
+   영역을 쓰도록 한 곳에서만 만든다. 랜드마크가 없는 뷰(후면)는 null —
+   거부를 아예 안 건다(모르는 것으로 지우지 않는다).
+
+   ══ 옆 뷰가 null이던 것이 얼굴을 덮은 <b>직접 원인</b>이었다 (2026-08-09) ══
+   fringeFrac(위)의 근거는 이렇게 적혀 있었다:
+     "아래쪽 한계는 여유가 알아서 못 넘는다 — 얼굴 타원이 눈썹에서 시작하므로
+      여유 구간이 눈썹에 닿는 순간 거부된다(faceVeto)."
+   그 전제가 <b>네 뷰 중 둘에서 거짓</b>이었다. faceMaxYaw=60인데 좌·우 뷰는
+   yaw≈90이라 여기서 null이 나가고, 그러면 buildHairClipMask의 도려내기가
+   통째로 안 돈다 → 마스크가 두상높이 0.25만큼 <b>사방으로</b> 부풀어 뺨·코·눈을
+   삼킨다. 사용자가 본 그림 그대로다: "반대편 귀 옆에 있어야 될 머리가 코로
+   내려왔다." 실기기도 정확히 좌·우에서만 무너졌다 —
+     front 정상 · left IoU 0.489 밖으로 샘 48.7% · right 0.486 / 50.7%.
+   가림 판정(hiddenByHead)을 넣고도 안 나은 이유가 이것이다. 3D에서 살려 보낸
+   가닥을 2D 마스크가 <b>얼굴 위에서 허가</b>하고 있었으니 서로 무관했다.
+
+   ── 고치는 방법: 귀 간격을 안 쓰면 된다 ────────────────────────────────
+   faceMaxYaw가 있는 이유는 "옆으로 돌면 <b>귀 간격</b>이 무너져서"다. 맞는 말인데,
+   무너지는 건 귀 간격이지 <b>얼굴</b>이 아니다. 랜드마크 468점 전부를
+   rawLandmarks에 이미 저장해 두고 있다(2026-07 얼굴 메쉬 작업). 프로필에서
+   그 점구름의 x 범위는 귀 쪽 얼굴선 ~ 코끝이고, 그게 곧 얼굴 가로폭이다.
+   새 상수도, 새 측정도 필요 없다 — 이미 재 둔 것을 안 쓰고 있었을 뿐이다.
+   세로는 정면과 <b>같은 자</b>(눈썹→턱)를 쓴다. 이마를 일부러 비워 두는 것도
+   같다 — 앞머리는 거기 앉아야 하니까.
+   ※ 정면 경로는 손대지 않는다(사용자가 "잘 잡아놨다"고 한 동작). */
+const _faceEllipseLogged = {};
 function getViewFaceEllipse(angle){
   if(!HAIR_OCC3D.faceVeto) return null;
   const lm = state.landmarks && state.landmarks[angle];
-  if(!lm || lm.lEarX == null || lm.rEarX == null || lm.chinY == null) return null;
-  let yaw = 0; try{ yaw = Math.abs(getViewYawDeg(angle) || 0); }catch(e){}
-  if(yaw > HAIR_OCC3D.faceMaxYaw) return null;
-  const lx = Math.min(lm.lEarX, lm.rEarX), rx = Math.max(lm.lEarX, lm.rEarX);
+  if(!lm || lm.chinY == null) return null;
   const yTop = (lm.browTopY != null ? lm.browTopY : lm.eyeY);
-  if(!(rx - lx > 0.02) || !(lm.chinY > yTop)) return null;
-  const inset = (rx - lx) * HAIR_OCC3D.faceInset;
+  if(!(lm.chinY > yTop)) return null;
+  let yaw = 0; try{ yaw = Math.abs(getViewYawDeg(angle) || 0); }catch(e){}
+
+  let lx, rx, inset = 0, src;
+  if(yaw > HAIR_OCC3D.faceMaxYaw){
+    // 프로필 — 귀 간격 대신 얼굴 메쉬 점구름의 가로 범위를 쓴다.
+    const raw = lm.rawLandmarks;
+    if(!raw || !raw.length) return null;
+    lx = 1; rx = 0;
+    for(let i=0;i<raw.length;i++){ const x = raw[i].x; if(x < lx) lx = x; if(x > rx) rx = x; }
+    src = '프로필 메쉬';   // 점구름 자체라 귀 여백(faceInset)을 뺄 이유가 없다
+  } else {
+    if(lm.lEarX == null || lm.rEarX == null) return null;
+    lx = Math.min(lm.lEarX, lm.rEarX); rx = Math.max(lm.lEarX, lm.rEarX);
+    inset = (rx - lx) * HAIR_OCC3D.faceInset;   // 귀는 얼굴보다 넓다
+    src = '귀 간격';
+  }
+  if(!(rx - lx > 0.02)) return null;
+  if(!_faceEllipseLogged[angle]){
+    _faceEllipseLogged[angle] = 1;
+    console.log(`[얼굴 보호구역] ${angle} — ${src} · yaw ${yaw.toFixed(0)}°`
+      + ` · 가로 ${lx.toFixed(3)}~${rx.toFixed(3)}(폭 ${(rx-lx).toFixed(3)})`
+      + ` · 세로 눈썹 ${yTop.toFixed(3)} → 턱 ${lm.chinY.toFixed(3)}`);
+  }
   return { cx:(lx+rx)/2, cy:(yTop+lm.chinY)/2,
-           rx:Math.max(1e-4, (rx-lx)/2 - inset), ry:Math.max(1e-4, (lm.chinY-yTop)/2) };
+           rx:Math.max(1e-4, (rx-lx)/2 - inset), ry:Math.max(1e-4, (lm.chinY-yTop)/2), src };
 }
 
 /* 뷰별 헤어 마스크 샘플러 — 축소 알파를 1회만 만들어 캐시.
