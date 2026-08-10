@@ -9992,6 +9992,36 @@ function sampleBackdrop(angle, img){
 /* 두상 오려내기 — (사람 실루엣 ∩ 자르는 선 위) ∪ (렌더된 헤어 레이어).
    헤어 레이어를 합집합에 넣는 이유: 조정으로 길어진 머리는 원본 실루엣 밖으로
    나가는데, 그것도 두상의 일부다(어깨로 내려온 머리가 잘리면 안 된다). */
+/* ── 오려낸 두상에 <b>옛 머리 실루엣</b>이 따라오는 것 (2026-08-10) ────────
+   사용자: "전면 얼굴 뒤쪽으로 다른 마스크 형태들이 또 들어가 있는 걸로 보여."
+
+   픽셀 문제가 아니다 — baseC는 이미 헤어를 destination-out으로 지웠고, 지운
+   자리는 이웃 전파 + 이마 표본 이식으로 채워져 있다. 문제는 <b>모양</b>이다:
+   오리는 틀이 personMask(사람 전체 = 피부·옷·<b>머리카락</b>)라, 새 스타일이
+   원래 머리보다 짧으면 그 차이만큼 <b>옛 긴 머리 윤곽</b>이 그대로 오려져 붙는다.
+   안은 메워진 색인데 테두리가 옛 실루엣이라, 배경 위에 톤이 다른 판때기가
+   얹힌 것처럼 보인다.
+
+   1차 구조에서 겪은 "아무리 지워도 옷이 겹쳐 보인다"와 같은 병이 머리카락에서
+   재발한 것이다. 그때 답이 "사진 상반신을 안 쓴다"였으니, 여기 답도
+   <b>안 오리는 것</b>이다:
+
+     ((personMask − reasonMask) ∪ 보호구역) ∩ 자르는 선 위  ∪ hairLayer
+
+   보호구역이 핵심이다. reasonMask만 빼면 세그멘테이션이 이마·관자로 번진
+   만큼 두피가 뚫리고, 목을 덮은 머리를 빼면 목에 구멍이 난다. 그래서 <b>남길
+   신체</b> 두 곳은 빼지 않는다:
+     · 두상 타원(headEllipseFor) — 이식이 이미 두피를 채워 둔 바로 그 영역
+     · 목 기둥(neckL~neckR, 턱 아래) — 아래에서 옷깃이 덮을 자리
+   빠지는 건 <b>두상 밖으로 흘러 어깨로 내려간 원래 머리</b>뿐이다.
+
+   ※ headEllipseFor는 sectionBandsFor의 <b>정규화 이미지 좌표</b>라 메쉬 자
+     (makeFaceProjector)와 무관하다 — 자 통합과 독립적으로 동작한다. */
+const HEAD_CUTOUT = {
+  dropOldHair: true,   // false = 예전 동작(personMask 그대로 오림)
+  ellipseGrow: 1.00,   // 두상 보호 반경 배수. 두피가 뚫리면 1.05~1.10으로
+};
+const _cutoutLogged = {};
 function buildHeadCutout(srcCanvas, angle, fit, hairLayer, cutPxY, chinPxY, neckHalfPx, neckCxPx){
   const W = srcCanvas.width, H = srcCanvas.height;
   const maskC = document.createElement('canvas'); maskC.width = W; maskC.height = H;
@@ -10013,17 +10043,59 @@ function buildHeadCutout(srcCanvas, angle, fit, hairLayer, cutPxY, chinPxY, neck
     const chinRow = ((chinPxY - fit.dy) / fit.dh) * mh;
     const neckL = ((neckCxPx - neckHalfPx - fit.dx) / fit.dw) * mw;
     const neckR = ((neckCxPx + neckHalfPx - fit.dx) / fit.dw) * mw;
+    /* ── 옛 머리 빼기 준비 ── reasonMask나 두상 타원 중 하나라도 없으면
+       <b>빼지 않는다</b>. 보호구역 없이 빼면 두피가 뚫리는데, 그건 유령보다
+       나쁘다(모르는 쪽은 건드리지 않는다 — 이 파일의 기존 규칙). */
+    const rm = HEAD_CUTOUT.dropOldHair ? maskInf.reasonMask : null;
+    let ell = null;
+    if(rm){ try{ ell = headEllipseFor(angle); }catch(e){ ell = null; } }
+    const dropOld = !!(rm && ell);
+    const erx = ell ? ell.rx * HEAD_CUTOUT.ellipseGrow : 0;
+    const ery = ell ? ell.ry * HEAD_CUTOUT.ellipseGrow : 0;
+    let nKept = 0, nDropped = 0, nProtEll = 0, nProtNeck = 0;
     for(let y=0;y<mh;y++){
       let a = 255;
       if(y > cutRow) a = 0;
       else if(y > cutRow - feather) a = Math.round(255 * (cutRow - y)/feather);
       if(a === 0) continue;
       const narrow = (y > chinRow);
+      const ny = (y + 0.5) / mh;
+      const v = ell ? (ny - ell.cy) / ery : 0;
+      const v2 = v*v;
       for(let x=0;x<mw;x++){
-        if(!pm[y*mw+x]) continue;
+        const i0 = y*mw+x;
+        if(!pm[i0]) continue;
         if(narrow && (x < neckL || x > neckR)) continue;
-        const i=(y*mw+x)*4;
+        if(dropOld && rm[i0] === 1){
+          // 이 픽셀은 손님의 <b>원래 머리카락</b>이다 — 남길 신체가 아니면 뺀다.
+          let prot = 0;
+          if(v2 <= 1){
+            const nx = (x + 0.5) / mw, u = (nx - ell.cx) / erx;
+            if(u*u + v2 <= 1) prot = 1;                       // 두상(두피) 보호
+          }
+          if(!prot && narrow && x >= neckL && x <= neckR) prot = 2;  // 목 기둥 보호
+          if(!prot){ nDropped++; continue; }
+          if(prot === 1) nProtEll++; else nProtNeck++;
+        }
+        nKept++;
+        const i=i0*4;
         id.data[i]=255; id.data[i+1]=255; id.data[i+2]=255; id.data[i+3]=a;
+      }
+    }
+    if(!_cutoutLogged[angle]){
+      _cutoutLogged[angle] = true;
+      if(dropOld){
+        console.log(`[두상 오리기] ${angle}: 옛 머리 ${nDropped}px 뺌`
+          + ` (보호 — 두상 안 ${nProtEll}px · 목기둥 ${nProtNeck}px) · 남긴 ${nKept}px`
+          + ` = personMask의 ${(100*nDropped/Math.max(1,nDropped+nKept)).toFixed(1)}%`
+          + `\n    뺀 자리는 새로 채우지 않습니다 — 결과화면 배경(sampleBackdrop)이 받습니다.`
+          + ` 새 헤어는 아래에서 hairLayer로 합집합됩니다.`
+          + `\n    0%에 가까우면 세그멘테이션이 옛 머리를 못 잡은 것이고, 두피가 뚫려 보이면 HEAD_CUTOUT.ellipseGrow를 올리세요.`);
+      } else {
+        console.warn(`[두상 오리기] ${angle}: 옛 머리 <b>안 뺌</b> — `
+          + (!HEAD_CUTOUT.dropOldHair ? 'HEAD_CUTOUT.dropOldHair=false'
+             : !rm ? 'reasonMask 없음(옛 캐시)' : '두상 타원 계산 실패')
+          + `. 오리는 틀이 옛 머리 실루엣 그대로라 뒤에 판때기가 남습니다.`);
       }
     }
     sctx.putImageData(id, 0, 0);
@@ -10588,6 +10660,35 @@ function getFaceMetrics(){
 /* 투영기가 쓰는 <b>실측 기준자</b>(성인 평균, cm). 메쉬 단위는 이 두 값으로만
    실제 길이에 묶인다 — 아래 [두상 cm 환산] 진단이 같은 상수를 써서 되짚는다. */
 const FACE_RULER_CM = { eyeToChin: 11.5, earHalf: 7.0 };
+/* ── 가로 자와 세로 자를 <b>같게</b> (2026-08-10) ──────────────────────────
+   [자 일치] 로그가 계속 "가로 13.94cm/단위 vs 세로 19.33cm/단위 → 어긋남
+   0.721배 (wf 1.179 / hf 0.850)"를 찍고 있었다. 1/0.721 = 1.387 = wf/hf 이고,
+   그 정체는 아래 EAR_MESH_X의 <b>(widthFactor/heightFactor) 한 항</b>이다:
+
+     EAR_MESH_X = 0.70·hf × (7/11.5) × (wf/hf) = 0.426·wf     ← hf가 약분된다
+     세로 0.70·hf 단위 / 11.5cm = 0.06087·hf 단위/cm
+     가로 0.426·wf 단위 / 7cm   = 0.06087·wf 단위/cm    → 비 = wf/hf
+
+   검산: 0.426 × 1.179 = 0.502 = 로그의 "귀 반간격 0.502단위". 정확히 맞는다.
+   실제 사진은 정면 귀 간격 0.167 × 692px = 115.6px, 반간격 57.8px이고
+   가닥 리프트의 자 s=0.00623을 곱하면 0.360단위 — 고친 값 0.362와 일치한다.
+   지금 값 0.502는 <b>1.39배 넓은 두상</b>을 그리고 있었다는 뜻이다.
+
+   wf/hf는 원래 "얼굴이 둥글면 두상도 넓게"라는 <b>모양</b> 의도였는데, 자에
+   곱해 놓아서 가로로 재는 모든 것(얼굴 폭·두상 폭·깊이·헐)이 함께 부풀었다.
+   모양이 필요하면 메쉬 쪽에서 따로 줘야 한다 — 자에 섞으면 안 된다.
+
+   ⚠ 이 공식은 진단 로그 두 곳([자 일치]·[가로 자 점검])에 <b>복제</b>돼
+     있었다. 한 곳만 고치면 로그가 거짓말을 하므로 아래 함수 하나로 합친다.
+   ⚠ 짝이 되는 수정: VIEWCAL_ANCHOR.isoScale. 이걸 끄고 자만 고치면
+     s = aH_head/halfPx 가 <b>정의상</b> 헤어 실루엣 폭 = 두상 폭으로 만들어
+     모발 두께가 0이 된다(헐/두피 분리가 통째로 무효). 둘은 세트다. */
+const FACE_RULER_ISO = { on: true };   // false = 예전 동작(가로 자 ×wf/hf)
+function earHalfMeshUnits(widthFactor, heightFactor){
+  const hf = heightFactor || 1, wf = widthFactor || 1;
+  return 0.70 * hf * (FACE_RULER_CM.earHalf / FACE_RULER_CM.eyeToChin)
+       * (FACE_RULER_ISO.on ? 1 : (wf / hf));
+}
 function makeFaceProjector(lm, widthFactor, heightFactor){
   const EYE_MESH_Y = 0.15; // headMesh.position.y와 동일(구 적도 = 이 높이)
   const CHIN_MESH_Y = 0.15 - 0.70*heightFactor;
@@ -10608,8 +10709,10 @@ function makeFaceProjector(lm, widthFactor, heightFactor){
      수정: 가로 기준을 세로 기준에서 유도한다. 눈→턱이 0.70단위면 귀 반간격은
           0.70 × (7.0/11.5) = 0.426단위여야 한다. 이제 두 축이 같은 자를 쓴다.
      ※ 되돌리려면 EAR_MESH_X를 예전 식(0.78×wf×0.82)으로 바꾸면 된다. */
-  const EYE_TO_CHIN_CM = FACE_RULER_CM.eyeToChin, EAR_HALF_CM = FACE_RULER_CM.earHalf;
-  const EAR_MESH_X = (EYE_MESH_Y - CHIN_MESH_Y) * (EAR_HALF_CM / EYE_TO_CHIN_CM) * (widthFactor / heightFactor);
+  /* (2026-08-10) (widthFactor/heightFactor) 항을 earHalfMeshUnits로 옮기고 껐다.
+     그 항이 가로 자를 세로 자의 wf/hf(=1.387)배로 부풀리던 원인이다 —
+     위 FACE_RULER_ISO 주석의 검산 참조. 되돌리려면 FACE_RULER_ISO.on = false. */
+  const EAR_MESH_X = earHalfMeshUnits(widthFactor, heightFactor);
   const lx = Math.min(lm.lEarX, lm.rEarX), rx = Math.max(lm.lEarX, lm.rEarX);
   const denomX = (rx - lx) || 0.001;
   const bX = (2*EAR_MESH_X) / denomX;
@@ -11221,7 +11324,13 @@ async function buildFacePhotoDecal(faceMetrics){
   plane.position.set(
     faceMetrics.projector.toMeshX((cropX0+cropX1)/2 / dw),
     faceMetrics.projector.toMeshY((cropY0+cropY1)/2 / dh),
-    0.92 * faceMetrics.widthFactor // 두상 표면(최대 0.85*widthFactor)보다 확실히 앞
+    /* (2026-08-10) 0.92×widthFactor → <b>실측 두상 깊이</b> 기준.
+       예전 상수는 "두상 표면 최대 0.85×wf"라는 <b>옛 가로 자</b> 가정에 묶여
+       있었다. 가로 자를 세로 자에 합치면(FACE_RULER_ISO) 깊이 c가 0.72배로
+       줄어드는데 이 상수만 남으면 얼굴 사진이 두상 앞에 <b>떠서</b> 붙는다.
+       실측 c에 얹으면 자를 어떻게 잡든 "표면보다 조금 앞"이 유지된다. */
+    (function(){ try{ return getHeadEllipsoid().c * 1.05; }
+                 catch(e){ return 0.92 * faceMetrics.widthFactor; } })()
   );
   return plane;
 }
@@ -11583,7 +11692,7 @@ function getScalpEllipsoid(){
     let cmX = NaN, cmY = NaN;
     try{ const fm = getFaceMetrics();
       cmY = FACE_RULER_CM.eyeToChin / (0.70 * (fm.heightFactor||1));
-      cmX = FACE_RULER_CM.earHalf / (0.70*(FACE_RULER_CM.earHalf/FACE_RULER_CM.eyeToChin)*(fm.widthFactor||1));
+      cmX = FACE_RULER_CM.earHalf / earHalfMeshUnits(fm.widthFactor, fm.heightFactor);  // (2026-08-10) 복제 제거
     }catch(err){}
     console.log(`[두피면] 가로 ${a.toFixed(3)}(${src}) 세로 ${b.toFixed(3)}(${srcB}) 깊이 ${c.toFixed(3)}(형상 승계)`
       + (isFinite(cmX) ? ` → 두개골 가로 ${(2*a*cmX).toFixed(1)}cm · 눈→정수리 ${(b*cmY).toFixed(1)}cm · 깊이 ${(2*c*cmX).toFixed(1)}cm` : '')
@@ -11717,7 +11826,9 @@ function getHeadEllipsoid(){
       const fm = getFaceMetrics();
       const wf = fm.widthFactor || 1, hf = fm.heightFactor || 1;
       const cmPerUnitY = FACE_RULER_CM.eyeToChin / (0.70 * hf);
-      const cmPerUnitX = FACE_RULER_CM.earHalf / (0.70 * (FACE_RULER_CM.earHalf/FACE_RULER_CM.eyeToChin) * wf);
+      // (2026-08-10) 공식 복제 제거 — makeFaceProjector와 <b>같은 함수</b>를 쓴다.
+      // 예전엔 여기 식이 따로 적혀 있어서, 투영기만 고치면 이 로그가 거짓말을 했다.
+      const cmPerUnitX = FACE_RULER_CM.earHalf / earHalfMeshUnits(wf, hf);
       const mism = cmPerUnitX / cmPerUnitY;   // 1이면 두 자가 일치
       const inRange = (v, lo, hi)=> (v >= lo && v <= hi) ? '정상' : '⚠ 벗어남';
       const wCm = 2*ell.a*cmPerUnitX, hCm = 2*ell.b*cmPerUnitY, dCm = 2*ell.c*cmPerUnitX;
@@ -11736,7 +11847,7 @@ function getHeadEllipsoid(){
          가로로 재는 모든 것(얼굴 폭·두상 폭·깊이·헤어 헐)이 함께 부푼다.
          점검법: 귀 반간격(EAR_MESH_X)보다 <b>얼굴 메쉬 반폭</b>이 크면 뒤집힌 것이다
          — 사람 얼굴의 최대폭(광대·관자놀이)은 귀 간격을 넘지 않는다. */
-      const earHalfMesh = 0.70 * (FACE_RULER_CM.earHalf/FACE_RULER_CM.eyeToChin) * wf;
+      const earHalfMesh = earHalfMeshUnits(wf, hf);   // (2026-08-10) 복제 제거
       const faceHalf = getFaceHalfWidthMesh();
       const lmF = state.landmarks && state.landmarks.front;
       console.log(`[가로 자 점검] 귀 반간격 ${earHalfMesh.toFixed(3)}단위(=${FACE_RULER_CM.earHalf}cm 배정)`
@@ -11892,7 +12003,7 @@ function applyCrownCap(bands){
   // cm 환산은 로그 표시용(자가 없으면 단위 그대로 — 계산에는 안 쓴다)
   let cmX = NaN;
   try{ const fm = getFaceMetrics();
-    cmX = FACE_RULER_CM.earHalf / (0.70*(FACE_RULER_CM.earHalf/FACE_RULER_CM.eyeToChin)*(fm.widthFactor||1));
+    cmX = FACE_RULER_CM.earHalf / earHalfMeshUnits(fm.widthFactor, fm.heightFactor);  // (2026-08-10) 복제 제거
   }catch(e){}
   const cm = v => isFinite(cmX) ? (v*cmX).toFixed(2)+'cm' : v.toFixed(3);
   const now = bands.filter(b2=>b2.crownCap)
@@ -14844,6 +14955,28 @@ function buildHairStrandsFromPaths(){
         + ' (×' + (sX/sOld).toFixed(3) + (VIEWCAL_ANCHOR.isoScale ? ', 세로자와 일치' : '') + ')'
         + '\n    가로/세로 자 어긋남: 이전 ' + (sOld/sy).toFixed(3) + '배 → 지금 ' + (sX/sy).toFixed(3) + '배'
         + ' (1.000이 정답 — 정사영에서 두상은 가로·세로가 같은 자로 찍힙니다)');
+      /* ── 진짜 검산 (2026-08-10) ─────────────────────────────────────────
+         위 s/sy 비교는 <b>리프트 안에서만</b> 본 것이라, 모델 좌표계(메쉬 단위)가
+         사진과 맞는지는 말해 주지 않는다. 실제로 예전에도 s/sy는 1.00 근처였는데
+         모델 귀 간격은 1.39배 벌어져 있었다 — 그걸 이 로그가 못 잡았다.
+         여기서 <b>모델의 귀</b>를 이 뷰 카메라로 쏴서 <b>사진의 귀</b>와 댄다.
+         두 귀는 (±EAR_MESH_X, y, 같은 z)라 투영 간격이 2·EAR_MESH_X·cos(yaw)다.
+         이 배수가 1.00이면 두상이 사진 위에 정확히 얹힌다. 이게 유일한 정답 검사다.
+         ※ [두상 폭 보정]·[두상 cm 환산]은 <b>비율</b>이라 자를 바꿔도 안 움직인다
+           — 검증에 쓰면 안 된다(가드 1.40배, cm값 16.1/24.4/19.3 그대로). */
+      const earPhotoHalfPx = Math.abs(lmV.rEarX - lmV.lEarX) / 2 * maskInf.w;
+      if(earPhotoHalfPx > 2){
+        const earModelHalfPx = earHalfMeshUnits(fmW, fmH) * Math.abs(Math.cos(pose.yaw)) / sX;
+        const k = earModelHalfPx / earPhotoHalfPx;
+        const verdict = Math.abs(k-1) < 0.05 ? '일치' : (k > 1 ? '⚠ 모델이 넓다' : '⚠ 모델이 좁다');
+        console.log('[뷰캘리·검산] ' + angle + ': 모델 귀 반간격 '
+          + earHalfMeshUnits(fmW, fmH).toFixed(3) + '단위 ÷ s ' + sX.toFixed(5)
+          + ' × cos(yaw ' + (pose.yaw*180/Math.PI).toFixed(0) + '°) = ' + earModelHalfPx.toFixed(1) + 'px'
+          + ' vs 사진 실측 ' + earPhotoHalfPx.toFixed(1) + 'px → <b>' + k.toFixed(3) + '배</b> ' + verdict
+          + (Math.abs(k-1) >= 0.05
+              ? '\n    두상 메쉬가 사진 위에 안 얹힙니다. FACE_RULER_ISO.on(가로 자)와 VIEWCAL_ANCHOR.isoScale(리프트 자)이 <b>둘 다</b> 켜져 있는지 확인하세요 — 하나만 켜면 어긋납니다.'
+              : ''));
+      }
     } else if(VIEWCAL_ANCHOR.on){
       console.warn('[뷰캘리·앵커] ' + angle + ': 귀 앵커를 못 구해 <b>헤어 실루엣</b> 자로 폴백 —'
         + ' 이 뷰는 머리카락이 흐른 만큼 중심·폭이 밀립니다(얼굴 랜드마크/실루엣 앵커 확인).');
