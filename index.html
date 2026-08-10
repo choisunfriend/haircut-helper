@@ -15062,6 +15062,7 @@ function buildHairStrandsFromPaths(){
   // 측면성 관측이 하나도 없으면 기존 폴백(D = W×두상비율) 유지.
   const hullW = new Float32Array(NY), hullD = new Float32Array(NY);
   const rHead = cD / a;
+  const _hullPinned = { w:0, d:0 }, _hullGap = [], _hullNoObs = new Set(); // [진단] 두께 0으로 눌린 밴드
   for(let bi=0; bi<NY; bi++){
     const y = yTopH - bi*yStep;
     let W = NaN, D = NaN;
@@ -15078,10 +15079,46 @@ function buildHairStrandsFromPaths(){
       if(dW2) D = Math.max(0.35*W, Math.min(1.5*W, dAcc/dW2));
     }
     if(isNaN(D) && !isNaN(W)) D = W * rHead;
-    if(isNaN(W)){ W = headHalf(y,'w') * 1.02; D = headHalf(y,'d') * 1.02; }
+    if(isNaN(W)){ W = headHalf(y,'w') * 1.02; D = headHalf(y,'d') * 1.02; _hullNoObs.add(bi); }
+    /* ⚠ 이 max()가 <b>모발 두께가 0이 되는 자리</b>다 (2026-08-10 진단 추가).
+       측정한 헐(W)이 두피면보다 좁으면 여기서 두피면으로 끌어올려진다 —
+       역전은 막지만 그 밴드의 두께는 <b>정확히 0</b>이 된다. 조용히 일어나므로
+       "헐 분리가 안 된다"가 로그 어디에도 안 남았다. 아래에서 센다. */
+    /* 관측이 없어 두피면×1.02로 채운 밴드는 통계에서 뺀다 — 그 2%는 실측이
+       아니라 폴백이라, 섞으면 "얇지만 있다"로 잘못 읽힌다. */
+    if(_hullNoObs.has(bi)){ /* 폴백 밴드 — 세지 않음 */ }
+    else {
+      if(W < headHalf(y,'w') - 1e-6) _hullPinned.w++;
+      if(D < headHalf(y,'d') - 1e-6) _hullPinned.d++;
+      _hullGap.push(Math.max(0, W - headHalf(y,'w')));
+    }
     hullW[bi] = Math.max(W, headHalf(y,'w')); // 헐은 항상 두피면 바깥
     hullD[bi] = Math.max(D, headHalf(y,'d'));
   }
+  /* ── [헐↔두피] 모발 두께 실측 (2026-08-10) ────────────────────────────
+     [두피면]이 찍는 "모발 두께"는 <b>두상 타원(e.a) − 두피면</b>이다. 그런데
+     리프트가 실제로 쓰는 바깥면은 e.a가 아니라 <b>밴드별 hullW</b>다. 두 값은
+     출처가 달라서(전자는 phi≤1.62 최댓값 + 얼굴 클램프, 후자는 밴드 실측)
+     갈라질 수 있고, 갈라지면 화면은 hullW를 따라간다.
+     여기가 그 둘을 <b>같은 자로</b> 재는 유일한 자리다. */
+  try{
+    const gaps = _hullGap.filter(v=>isFinite(v)).sort((p,q)=>p-q);
+    if(gaps.length){
+      let cmX = NaN;
+      try{ const fm = getFaceMetrics();
+           cmX = FACE_RULER_CM.earHalf / earHalfMeshUnits(fm.widthFactor, fm.heightFactor); }catch(e){}
+      const med = gaps[(gaps.length*0.5)|0], p90 = gaps[(gaps.length*0.9)|0];
+      const eA = getHeadEllipsoid().a, sA = getScalpEllipsoid().a;
+      const cm = v => isFinite(cmX) ? (v*cmX).toFixed(2)+'cm' : v.toFixed(3);
+      console.log('[헐↔두피] 밴드별 모발 두께(옆) 중앙값 ' + cm(med) + ' · 상위10% ' + cm(p90)
+        + ' · <b>두께 0으로 눌린 밴드 ' + _hullPinned.w + '/' + gaps.length + '</b>(깊이 ' + _hullPinned.d + ')'
+        + (_hullNoObs.size ? ' · 관측없어 폴백한 밴드 ' + _hullNoObs.size + '개(통계 제외)' : '')
+        + '\n    대조: [두피면]이 찍는 두상−두피 = ' + cm(eA - sA) + ' (두상 a=' + eA.toFixed(3) + ' 두피 a=' + sA.toFixed(3) + ')'
+        + '\n    이 둘이 크게 다르면 화면은 <b>위쪽(밴드 실측)</b>을 따릅니다.'
+        + ' 눌린 밴드가 절반을 넘으면 헐 분리가 사실상 안 된 상태 —'
+        + ' 두피면 폭(HAIR_SCALP3D)이 헐보다 넓다는 뜻이라 minGap이 아니라 <b>앵커</b>를 봐야 합니다.');
+    }
+  }catch(e){}
   for(let pass=0; pass<2; pass++){ // 마스크 노이즈 완화(이동평균 2회)
     for(let bi=1; bi<NY-1; bi++){
       hullW[bi] = (hullW[bi-1] + 2*hullW[bi] + hullW[bi+1]) / 4;
