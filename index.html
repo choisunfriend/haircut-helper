@@ -5008,7 +5008,6 @@ function retakeCurrent(){
   // 사진이 바뀌면 표본도 다시 떠야 한다.
   if(_skinGraft && _skinGraft.src === angle) resetSkinGraft();
   delete _graftLogged[angle];
-  delete _plateLogged[angle];
   _silhouetteAnchorCache = {}; // 실루엣 앵커는 정면 비율도 참조하므로 어느 각도든 재촬영 시 전체 리셋
   _resultScene = null; _personScaleRef = null; // 결과 화면의 두상 자·장면 재료도 사진이 바뀌면 무효
   // 랜드마크/감지상태도 함께 초기화 — 촬영 직후 감지가 생기면서, 지우지 않으면
@@ -6423,9 +6422,7 @@ function warnViewSlotMismatch(angle){
 ══════════════════════════════════════════════════════════════════ */
 const HOLE_FILL = {
   lowW: 160,      // 저주파(색·명암) 계산 해상도
-  outW: 1200,     // 최종 배경 해상도 상한(피부 결이 보이는 해상도)
-                  // (2026-08-10) 900→1200. 두상 <b>밖</b>(어깨·옷·배경)까지 여기서
-                  // 제대로 메우게 되면서, 확대해 깔 때 뭉개지면 그게 그대로 "유령"으로 보인다.
+  outW: 900,      // 최종 배경 해상도 상한(피부 결이 보이는 해상도)
   patch: 72,      // 피부 표본 한 변(출력 해상도 기준)
   texture: 1.0,   // 결 세기(1=패치 그대로)
   skinBoost: 3,   // 피부색 이웃 가중(두상 안에서만)
@@ -6600,419 +6597,8 @@ function fillHolesLowRes(srcCanvas, w, h, skinRGB, ell){
   return c;
 }
 
-/* ══════════════════════════════════════════════════════════════════
-   렌더링 경계 배경 (2026-08-10)
-   ─────────────────────────────────────────────────────────────────
-   증상(사용자): "렌더링 주변에 <b>다른 마스크들이 겹쳐</b> 있어."
-   결과 사진에서 새 헤어 바깥으로 <b>원래 머리 실루엣 모양</b>의 뿌연 회색·살구색
-   덩어리와, 그 덩어리를 따라 도는 <b>검은 톱니 테두리</b>가 같이 보인다.
-   원인은 둘이고, 둘 다 "지운 자리를 어떻게 메우느냐"에 있다.
-
-   [원인 1] 검은 톱니 테두리 = <b>반투명 머리카락 테두리 잔상</b>
-     baseC는 원본에서 머리 마스크를 destination-out으로 지운 그림이다. 마스크를
-     작은 세그멘테이션 해상도에서 원본 크기로 <b>확대</b>해 지우기 때문에 경계
-     픽셀의 알파가 0도 255도 아닌 중간값이 된다. 그 자리엔 <b>검은 머리색이
-     반쯤 남는다</b>. 구멍 메움은 알파 200 이상을 "원래 있던 픽셀"로 보고 안
-     건드렸으므로(옛 코드 holeA[i+3] >= 200), 그 반투명 머리 테두리는 끝까지
-     살아남아 메운 배경 <b>위에</b> 얹혔다 — 화면의 톱니 윤곽이 정확히 이것이다.
-     → 고침: 알파 250 미만을 전부 구멍으로 보고, 거기서 몇 px 더 <b>부풀려</b>
-       지운다. 테두리를 살릴 이유가 없다 — 어차피 새 헤어가 덮거나 배경이다.
-
-   [원인 2] 뿌연 덩어리 = <b>160px 확산 결과를 확대</b>한 것
-     메움은 160px로 줄여 이웃 평균을 반복 전파(fillHolesLowRes)한 뒤 900px로
-     늘려 썼다. 두상 <b>안</b>은 그 위에 이마 표본을 이식하니 티가 안 났지만,
-     두상 <b>밖</b>(어깨·옷·창밖 배경)은 "손대지 않음"이라 그 뭉갠 회색이
-     그대로 남는다. 긴 머리를 지운 자리가 통째로 그 상태다.
-     → 고침: 두상 밖도 <b>출력 해상도에서</b> 메운다. 방식은 확산 평균이 아니라
-       <b>방향성 인페인팅</b> — 구멍의 각 픽셀에서 상·하·좌·우로 나가 처음
-       만나는 "아는 픽셀"을 찾고, 거리의 역제곱으로 섞는다.
-       배경은 행 방향으로 대체로 균일하므로(창틀·니트 짜임·벽) 좌우에서 오는
-       색이 가깝고 강하게 잡혀, 스웨터 자리는 스웨터로 창 자리는 창으로 메워진다.
-       마지막에 주변에서 잰 만큼의 미세 잡티를 얹어 "너무 매끈해서 티 나는"
-       면을 없앤다.
-
-   ※ 새 라이브러리를 안 쓴 이유: 인페인팅 한 번이 아니라 <b>뷰마다 매번</b>
-     돌아야 하고(4뷰 × 조정할 때마다), 위 두 사정(행 균일 배경 + 이미 있는
-     두상 이식)이면 4방향 스윕으로 충분하다. 스윕은 픽셀당 상수시간이다.
-══════════════════════════════════════════════════════════════════ */
-const RENDER_PLATE = {
-  on: true,          // false면 예전 동작(테두리 잔상 + 160px 확산) — A/B용
-  alphaHole: 250,    // 이 알파 미만은 전부 구멍(=반투명 머리 테두리도 구멍)
-  dilatePx: 3,       // 구멍 부풀림(원본 해상도 px) — 마스크 확대로 생긴 반투명 띠 제거용
-  featherPx: 1.0,    // 깎은 자리와 원본 사이 경계 부드럽게(px)
-  power: 2.0,        // 방향성 인페인팅 가중 = 1/거리^power
-  relax: 8,          // 스윕 뒤 구멍만 3×3 평균 회차(빗살무늬 제거) — 0이면 끔
-  grain: 0.55,       // 거울 결을 못 가져왔을 때 얹는 잡티 세기(0=끔)
-  /* ── 남은 머리 테두리 걷어내기 (2026-08-10 2차) ────────────────────────
-     사용자: "블러 시도는 좋은데, 그 이전에 <b>겹친 마스크 자체가 제거되지</b>
-     않았어."
-     맞다. 1차에서는 알파가 애매한 <b>몇 px</b>만 구멍으로 넘겼는데, 실제로
-     남아 있던 건 그게 아니었다 — MediaPipe 헤어 마스크가 <b>진짜 머리보다 작게</b>
-     잡혀서, 지운 자리 둘레에 <b>원본 머리카락이 온전한 알파 255로</b> 10~20px씩
-     띠로 남아 있다. 그 띠는 "아는 픽셀"이라 지워지지도 않고, 더 나쁘게는
-     인페인팅이 <b>그 어두운 머리색을 정답으로 보고 안쪽으로 퍼뜨렸다</b>.
-     후면 목덜미의 검은 얼룩이 정확히 그것이다(메운 면이 회색 108, 니트는 170).
-     고침: 구멍 둘레에서 <b>머리색에 가까운 픽셀만</b> 골라 최대 maxPx까지
-     한 겹씩 구멍으로 넘긴다. 색으로 거르므로 니트·피부·배경은 안 먹는다.
-     ※ 반경을 상한으로 묶는 이유: 금발처럼 머리색이 배경색과 가까우면 색만으로는
-       못 멈춘다. 상한이 안전장치다. 로그의 "테두리 회수"가 크게 튀면 tol을 줄일 것. */
-  rim: { on: true, tol: 96, minPx: 4, maxPx: 18 },
-  /* 거울 결 — 메운 면이 <b>매끈해서</b> 티가 나는 문제. 색·명암은 인페인팅이 만든
-     것을 그대로 쓰고, <b>고주파(니트 짜임·배경 입자)만</b> 경계 건너편에서 거울로
-     비춰 가져온다. 두상 안에서 이미 쓰는 "색은 주변, 결은 실제 피부" 방식과 같다. */
-  detail: 0.75,      // 거울 결 세기(0=끔 — 매끈해도 좋으면 0)
-  detailBlurPx: 2,   // 이 반경보다 <b>고운 것만</b> 결로 본다. 키우면 선반 선 같은
-                     // 큰 구조까지 거울로 넘어와 겹쳐 보인다(오프라인 테스트로 확인).
-};
-
-/* 플래그 팽창 — 분리형 슬라이딩 최대값(가로 한 번, 세로 한 번). O(픽셀). */
-function dilateFlags(flags, w, h, r){
-  if(!(r > 0)) return flags;
-  const tmp = new Uint8Array(w*h);
-  for(let y=0; y<h; y++){
-    const row = y*w;
-    let cnt = 0;
-    for(let x=0; x<=Math.min(r, w-1); x++) cnt += flags[row+x];
-    for(let x=0; x<w; x++){
-      tmp[row+x] = cnt > 0 ? 1 : 0;
-      const add = x+r+1, sub = x-r;
-      if(add < w) cnt += flags[row+add];
-      if(sub >= 0) cnt -= flags[row+sub];
-    }
-  }
-  for(let x=0; x<w; x++){
-    let cnt = 0;
-    for(let y=0; y<=Math.min(r, h-1); y++) cnt += tmp[y*w+x];
-    for(let y=0; y<h; y++){
-      flags[y*w+x] = cnt > 0 ? 1 : 0;
-      const add = y+r+1, sub = y-r;
-      if(add < h) cnt += tmp[add*w+x];
-      if(sub >= 0) cnt -= tmp[sub*w+x];
-    }
-  }
-  return flags;
-}
-
-/* 구멍 둘레의 <b>남은 머리카락</b>을 색으로 골라 구멍에 편입한다.
-   한 겹씩(= 1px씩) 바깥으로 나가며, 구멍에 닿아 있고 색이 머리색에 가까운
-   픽셀만 넘긴다. 색 조건이 있어 니트·피부·배경에서는 저절로 멈춘다.
-   d: baseC의 RGBA (구멍은 알파 0, 남은 머리는 알파 255 + 원본 머리색). */
-function growHairRim(hole, d, w, h, hair, tol, maxIter){
-  let added = 0;
-  for(let it=0; it<maxIter; it++){
-    const add = [];
-    for(let y=0; y<h; y++){
-      for(let x=0; x<w; x++){
-        const p = y*w+x;
-        if(hole[p]) continue;
-        const adj = (x>0 && hole[p-1]) || (x<w-1 && hole[p+1])
-                 || (y>0 && hole[p-w]) || (y<h-1 && hole[p+w]);
-        if(!adj) continue;
-        const i = p*4;
-        if(d[i+3] < 250) continue;
-        const dist = Math.abs(d[i]-hair[0]) + Math.abs(d[i+1]-hair[1]) + Math.abs(d[i+2]-hair[2]);
-        if(dist <= tol) add.push(p);
-      }
-    }
-    if(!add.length) break;
-    for(let k=0; k<add.length; k++) hole[add[k]] = 1;
-    added += add.length;
-  }
-  return added;
-}
-
-/* 플래그 축소 — 한 칸이라도 구멍이면 구멍(최대값 풀링).
-   메움 배경은 원본보다 작은 해상도에서 만들 수 있는데, 평균으로 줄이면
-   가장자리 한 겹이 "구멍 아님"으로 살아나 그 자리에 다시 테두리가 생긴다. */
-function downsampleFlagsMax(src, sw, sh, dw, dh){
-  if(sw === dw && sh === dh) return src.slice();
-  const out = new Uint8Array(dw*dh);
-  for(let y=0; y<dh; y++){
-    const y0 = Math.floor(y*sh/dh), y1 = Math.max(y0+1, Math.floor((y+1)*sh/dh));
-    for(let x=0; x<dw; x++){
-      const x0 = Math.floor(x*sw/dw), x1 = Math.max(x0+1, Math.floor((x+1)*sw/dw));
-      let v = 0;
-      for(let yy=y0; yy<y1 && !v; yy++){
-        for(let xx=x0; xx<x1; xx++){ if(src[yy*sw+xx]){ v=1; break; } }
-      }
-      out[y*dw+x] = v;
-    }
-  }
-  return out;
-}
-
-/* 이 뷰에서 "메워야 할 자리"의 <b>단 하나의</b> 정의 — baseC에 붙여 캐시한다.
-   테두리 정리(baseC)와 메움 배경(fillC)이 <b>같은</b> 구멍을 봐야 한다.
-   서로 1px이라도 어긋나면 그 틈으로 원본 머리색이 실선처럼 남는다. */
-function buildHoleMask(baseC, maskInf){
-  const w = baseC.width, h = baseC.height;
-  const d = baseC.getContext('2d').getImageData(0, 0, w, h).data;
-  const hole = new Uint8Array(w*h);
-  let n0 = 0;
-  for(let p=0, i=3; p<hole.length; p++, i+=4){ if(d[i] < RENDER_PLATE.alphaHole){ hole[p]=1; n0++; } }
-  dilateFlags(hole, w, h, Math.max(1, Math.round(RENDER_PLATE.dilatePx)));
-  let nRim = 0, rimIter = 0;
-  const R = RENDER_PLATE.rim;
-  let hair = null;
-  const m = maskInf && maskInf.avgColor && String(maskInf.avgColor).match(/\d+/g);
-  if(m && m.length >= 3) hair = [+m[0], +m[1], +m[2]];
-  if(R.on && hair && n0){
-    rimIter = Math.max(R.minPx, Math.min(R.maxPx, Math.round(h*0.035)));
-    nRim = growHairRim(hole, d, w, h, hair, R.tol, rimIter);
-  }
-  return { hole, w, h, n0, nRim, rimIter, hair };
-}
-function getHoleMask(baseC, maskInf){
-  if(!baseC) return null;
-  if(baseC._holeMask) return baseC._holeMask;
-  let hm = null;
-  try{ hm = buildHoleMask(baseC, maskInf); }
-  catch(e){ console.warn('구멍 마스크 생성 실패:', e); }
-  baseC._holeMask = hm;
-  return hm;
-}
-
-/* 방향성 인페인팅 — 구멍 픽셀마다 ←→↑↓ 네 방향으로 처음 만나는 "아는 픽셀"을
-   거리 역제곱으로 섞는다. 스윕 4번, 픽셀당 상수시간.
-   d: RGBA Uint8ClampedArray(w*h*4) — 구멍 자리는 여기서 덮어쓴다.
-   hole: Uint8Array(w*h) 1=구멍. */
-function inpaintDirectional(d, hole, w, h, power){
-  const n = w*h;
-  const acc = new Float32Array(n*3), wsum = new Float32Array(n);
-  const P = (power > 0) ? power : 2;
-  const put = (p, dist, r, g, b)=>{
-    const ww = 1 / Math.pow(dist, P);
-    acc[p*3] += r*ww; acc[p*3+1] += g*ww; acc[p*3+2] += b*ww; wsum[p] += ww;
-  };
-  // ← 왼쪽에서 오른쪽
-  for(let y=0; y<h; y++){
-    let lx = -1, r=0, g=0, b=0;
-    for(let x=0; x<w; x++){
-      const p = y*w+x;
-      if(!hole[p]){ lx = x; r = d[p*4]; g = d[p*4+1]; b = d[p*4+2]; continue; }
-      if(lx >= 0) put(p, x-lx, r, g, b);
-    }
-  }
-  // → 오른쪽에서 왼쪽
-  for(let y=0; y<h; y++){
-    let lx = -1, r=0, g=0, b=0;
-    for(let x=w-1; x>=0; x--){
-      const p = y*w+x;
-      if(!hole[p]){ lx = x; r = d[p*4]; g = d[p*4+1]; b = d[p*4+2]; continue; }
-      if(lx >= 0) put(p, lx-x, r, g, b);
-    }
-  }
-  // ↓ 위에서 아래
-  for(let x=0; x<w; x++){
-    let ly = -1, r=0, g=0, b=0;
-    for(let y=0; y<h; y++){
-      const p = y*w+x;
-      if(!hole[p]){ ly = y; r = d[p*4]; g = d[p*4+1]; b = d[p*4+2]; continue; }
-      if(ly >= 0) put(p, y-ly, r, g, b);
-    }
-  }
-  // ↑ 아래에서 위
-  for(let x=0; x<w; x++){
-    let ly = -1, r=0, g=0, b=0;
-    for(let y=h-1; y>=0; y--){
-      const p = y*w+x;
-      if(!hole[p]){ ly = y; r = d[p*4]; g = d[p*4+1]; b = d[p*4+2]; continue; }
-      if(ly >= 0) put(p, ly-y, r, g, b);
-    }
-  }
-  let filled = 0, unreached = 0;
-  for(let p=0; p<n; p++){
-    if(!hole[p]) continue;
-    const s = wsum[p];
-    if(s > 0){
-      d[p*4]   = acc[p*3]  /s;
-      d[p*4+1] = acc[p*3+1]/s;
-      d[p*4+2] = acc[p*3+2]/s;
-      filled++;
-    } else unreached++;
-    d[p*4+3] = 255;   // 메운 배경은 언제나 불투명(검정 비침 방지)
-  }
-  return { filled, unreached };
-}
-
-/* 줄무늬 지우기 — 4방향 스윕만 쓰면 넓은 구멍 <b>안쪽</b>에서 가로/세로 어느
-   방향이 이기느냐가 픽셀마다 갈려 빗살무늬가 생긴다(테스트로 확인됨).
-   구멍 픽셀만 골라 3×3 평균을 몇 번 돌리면 그 무늬가 사라진다 — 경계에 붙은
-   구멍 픽셀은 매번 <b>아는 픽셀</b> 쪽으로 다시 당겨지므로, 가장자리 색은
-   그대로 두고 안쪽만 매끄럽게 이어진다(라플라스 메움과 같은 수렴).
-   스윕 결과가 이미 정답에 가까운 출발점이라 회차가 조금이면 된다. */
-function relaxHoles(d, hole, w, h, iters){
-  const n = w*h;
-  if(!(iters > 0)) return;
-  const buf = new Float32Array(n*3);
-  for(let it=0; it<iters; it++){
-    for(let p=0; p<n; p++){ buf[p*3]=d[p*4]; buf[p*3+1]=d[p*4+1]; buf[p*3+2]=d[p*4+2]; }
-    for(let y=0; y<h; y++){
-      for(let x=0; x<w; x++){
-        const p = y*w+x;
-        if(!hole[p]) continue;
-        let r=0,g=0,b=0,c=0;
-        for(let dy=-1; dy<=1; dy++){
-          const yy=y+dy; if(yy<0||yy>=h) continue;
-          for(let dx=-1; dx<=1; dx++){
-            const xx=x+dx; if(xx<0||xx>=w) continue;
-            const q=(yy*w+xx)*3;
-            r+=buf[q]; g+=buf[q+1]; b+=buf[q+2]; c++;
-          }
-        }
-        if(!c) continue;
-        d[p*4]=r/c; d[p*4+1]=g/c; d[p*4+2]=b/c;
-      }
-    }
-  }
-}
-
-/* 거울 결 — 메운 면에 <b>실제 사진의 결</b>을 얹는다.
-   인페인팅은 색·명암(저주파)은 잘 잇지만 결과가 유리처럼 매끈해서, 니트 짜임과
-   배경 입자가 살아 있는 주변과 붙여 놓으면 그 매끈함만으로 "여기 메웠다"가 보인다.
-   구멍 픽셀마다 <b>가장 가까운 경계</b>를 찾아 그 건너편(거울 대칭 위치)의
-   고주파(원본 − 흐린 원본)를 가져와 더한다. 저주파는 인페인팅 것을 그대로 쓰므로
-   큰 구조가 복제되지 않고 <b>결만</b> 옮겨온다.
-   blurD: 같은 그림을 detailBlurPx로 흐린 것. 둘의 차가 곧 결이다. */
-function mirrorDetail(d, blurD, hole, w, h, strength){
-  const n = w*h;
-  const bestD = new Float32Array(n).fill(Infinity);
-  const srcI  = new Int32Array(n).fill(-1);
-  const cand = (p, dist, q)=>{ if(dist < bestD[p]){ bestD[p]=dist; srcI[p]=q; } };
-  // ← : 왼쪽 경계 lx, 거울 위치 lx-(x-lx)
-  for(let y=0; y<h; y++){
-    let lx=-1;
-    for(let x=0; x<w; x++){
-      const p=y*w+x;
-      if(!hole[p]){ lx=x; continue; }
-      if(lx<0) continue;
-      const dist=x-lx, mx=lx-dist;
-      if(mx>=0) cand(p, dist, y*w+mx);
-    }
-  }
-  // →
-  for(let y=0; y<h; y++){
-    let lx=-1;
-    for(let x=w-1; x>=0; x--){
-      const p=y*w+x;
-      if(!hole[p]){ lx=x; continue; }
-      if(lx<0) continue;
-      const dist=lx-x, mx=lx+dist;
-      if(mx<w) cand(p, dist, y*w+mx);
-    }
-  }
-  // ↓
-  for(let x=0; x<w; x++){
-    let ly=-1;
-    for(let y=0; y<h; y++){
-      const p=y*w+x;
-      if(!hole[p]){ ly=y; continue; }
-      if(ly<0) continue;
-      const dist=y-ly, my=ly-dist;
-      if(my>=0) cand(p, dist, my*w+x);
-    }
-  }
-  // ↑
-  for(let x=0; x<w; x++){
-    let ly=-1;
-    for(let y=h-1; y>=0; y--){
-      const p=y*w+x;
-      if(!hole[p]){ ly=y; continue; }
-      if(ly<0) continue;
-      const dist=ly-y, my=ly+dist;
-      if(my<h) cand(p, dist, my*w+x);
-    }
-  }
-  let used = 0;
-  for(let p=0; p<n; p++){
-    if(!hole[p]) continue;
-    const q = srcI[p];
-    if(q < 0 || hole[q]) continue;       // 거울 자리가 또 구멍이면 결을 못 가져온다
-    for(let ch=0; ch<3; ch++){
-      const hf = d[q*4+ch] - blurD[q*4+ch];
-      d[p*4+ch] = Math.max(0, Math.min(255, d[p*4+ch] + hf*strength));
-    }
-    used++;
-  }
-  return used;
-}
-
-/* 메운 면에 잡티 얹기 — 인페인팅 결과는 완전히 매끈해서, 사진 잡티가 있는
-   주변과 붙여 놓으면 그 매끈함 자체가 "여기 메웠다"고 알려준다.
-   세기는 지어내지 않고 <b>주변 아는 픽셀의 가로 이웃 차이</b>에서 실측한다.
-   난수는 픽셀 좌표 해시(결정적) — 다시 그려도 무늬가 안 바뀌어 깜빡임이 없다. */
-function addGrainToHoles(d, hole, w, h, strength){
-  let sum = 0, n = 0;
-  for(let y=1; y<h-1; y+=3){
-    for(let x=1; x<w-2; x+=3){
-      const p = y*w+x;
-      if(hole[p] || hole[p+1]) continue;
-      const l1 = 0.299*d[p*4]   + 0.587*d[p*4+1]   + 0.114*d[p*4+2];
-      const l2 = 0.299*d[p*4+4] + 0.587*d[p*4+5]   + 0.114*d[p*4+6];
-      sum += Math.abs(l1-l2); n++;
-    }
-  }
-  if(!n) return 0;
-  const sigma = Math.min(6, (sum/n) * 0.8) * strength;
-  if(sigma < 0.3) return 0;
-  for(let p=0; p<w*h; p++){
-    if(!hole[p]) continue;
-    let s = (Math.imul(p, 2654435761)) >>> 0;
-    s ^= s >>> 15; s = Math.imul(s, 2246822519) >>> 0; s ^= s >>> 13;
-    const nz = ((s & 1023)/1023 - 0.5) * 2 * sigma;
-    d[p*4]   = Math.max(0, Math.min(255, d[p*4]   + nz));
-    d[p*4+1] = Math.max(0, Math.min(255, d[p*4+1] + nz));
-    d[p*4+2] = Math.max(0, Math.min(255, d[p*4+2] + nz));
-  }
-  return sigma;
-}
-
-/* baseC 테두리 정리 — 반투명 머리 잔상(검은 톱니 윤곽)을 <b>완전히</b> 떨군다.
-   알파 250 미만은 전부 버리고 몇 px 더 깎은 뒤, 그 경계만 살짝 페더링한다.
-   깎여 나간 자리는 아래 깔린 메움 배경이 이미 채우고 있으므로 구멍이 안 생긴다. */
-function buildCleanBaseCanvas(baseC, maskInf){
-  const w = baseC.width, h = baseC.height;
-  if(!w || !h) return baseC;
-  const hm = getHoleMask(baseC, maskInf);
-  if(!hm || !hm.n0) return baseC;
-  const hole = hm.hole;
-
-  const mc = document.createElement('canvas'); mc.width = w; mc.height = h;
-  const mx = mc.getContext('2d');
-  const md = mx.createImageData(w, h);
-  for(let p=0; p<hole.length; p++){
-    const i = p*4;
-    md.data[i] = md.data[i+1] = md.data[i+2] = 255;
-    md.data[i+3] = hole[p] ? 0 : 255;
-  }
-  mx.putImageData(md, 0, 0);
-
-  const out = document.createElement('canvas'); out.width = w; out.height = h;
-  const ox = out.getContext('2d');
-  ox.drawImage(baseC, 0, 0);
-  ox.globalCompositeOperation = 'destination-in';
-  if(RENDER_PLATE.featherPx > 0) ox.filter = `blur(${RENDER_PLATE.featherPx}px)`;
-  ox.drawImage(mc, 0, 0);
-  ox.filter = 'none';
-  ox.globalCompositeOperation = 'source-over';
-  out._holePx = hm.n0 + hm.nRim;
-  return out;
-}
-
-/* 테두리 정리한 baseC — baseC 객체에 붙여 캐시(baseC가 새로 만들어지면 자동 무효). */
-function getCleanBaseCanvas(baseC, maskInf){
-  if(!baseC) return baseC;
-  if(!RENDER_PLATE.on) return baseC;
-  if(baseC._cleanBase) return baseC._cleanBase;
-  let c = baseC;
-  try{ c = buildCleanBaseCanvas(baseC, maskInf) || baseC; }
-  catch(e){ console.warn('베이스 테두리 정리 실패(원본 사용):', e); c = baseC; }
-  baseC._cleanBase = c;
-  return c;
-}
-
 /* 최종 배경 생성. skinColor가 없으면 결 없이 색만 채운다(안전 폴백). */
-function buildHoleFillCanvas(srcCanvas, skinColor, ell, angle, holeMaskInfo){
+function buildHoleFillCanvas(srcCanvas, skinColor, ell, angle){
   const sw = srcCanvas.width, sh = srcCanvas.height;
   if(!sw || !sh) return null;
   let skinRGB = null;
@@ -7040,7 +6626,9 @@ function buildHoleFillCanvas(srcCanvas, skinColor, ell, angle, holeMaskInfo){
      채운 자리는 그대로고, 못 채운 자리만 두피색이 된다 — 검정은 못 나온다. */
   octx.fillStyle = skinRGB ? `rgb(${skinRGB[0]},${skinRGB[1]},${skinRGB[2]})` : 'rgb(224,178,148)';
   octx.fillRect(0, 0, ow, oh);
-  octx.drawImage(low, 0, 0, ow, oh);           // 저주파(색·명암) — 아래 스윕이 못 닿는 자리의 안전망
+  octx.drawImage(low, 0, 0, ow, oh);           // 저주파(색·명암)
+
+  if(!skinRGB || !ell) return out;             // 결 없이 색만 — 폴백
 
   // 어디가 구멍인지(=원본이 투명했던 자리) 출력 해상도로 다시 읽는다
   const hc = document.createElement('canvas'); hc.width = ow; hc.height = oh;
@@ -7048,52 +6636,7 @@ function buildHoleFillCanvas(srcCanvas, skinColor, ell, angle, holeMaskInfo){
   hctx.drawImage(srcCanvas, 0, 0, ow, oh);
   const holeA = hctx.getImageData(0, 0, ow, oh).data;
 
-  /* ── 렌더링 경계 배경 (2026-08-10) ────────────────────────────────
-     ① 원본 픽셀을 출력 해상도로 얹는다 — 인페인팅이 참조할 "아는 픽셀".
-        (예전엔 low를 확대한 뿌연 값이 유일한 참조였다.)
-     ② 알파 250 미만 + 몇 px 부풀림 = 구멍. 반투명 머리 테두리가 여기 포함되어
-        검은 톱니 윤곽이 사라진다.
-     ③ 4방향 스윕으로 메우고 주변에서 잰 만큼 잡티를 얹는다.
-     두상 안은 아래 이식 루프가 색까지 다시 덮으므로, 여기 결과는 두상 <b>밖</b>
-     (어깨·옷·배경)에서 그대로 최종이 된다 — 유령 덩어리가 없어지는 자리다. */
-  let plateDiag = null;
-  let hole = new Uint8Array(ow*oh);
-  if(RENDER_PLATE.on){
-    octx.drawImage(srcCanvas, 0, 0, ow, oh);   // ① 아는 픽셀(구멍은 투명이라 안 덮임)
-    /* 구멍 정의는 <b>테두리 정리와 같은 것</b>을 쓴다(getHoleMask). 원본 해상도에서
-       한 번 만들어(알파 + 부풀림 + 머리색 테두리 회수) 여기로 축소해 온다.
-       두 곳에서 따로 재면 1px 어긋난 자리에 원본 머리색이 실선으로 남는다. */
-    const hm = getHoleMask(srcCanvas, holeMaskInfo);
-    if(hm) hole = downsampleFlagsMax(hm.hole, hm.w, hm.h, ow, oh);
-    else { for(let p=0, i=3; p<hole.length; p++, i+=4) hole[p] = holeA[i] < RENDER_PLATE.alphaHole ? 1 : 0; }
-    const pimg = octx.getImageData(0, 0, ow, oh), pd = pimg.data;
-    const res = inpaintDirectional(pd, hole, ow, oh, RENDER_PLATE.power); // ②
-    relaxHoles(pd, hole, ow, oh, RENDER_PLATE.relax);                     // ③ 빗살무늬 제거
-    /* ④ 거울 결 — 흐린 판을 한 장 떠서 고주파를 경계 건너편에서 가져온다. */
-    let nDetail = 0, sigma = 0;
-    if(RENDER_PLATE.detail > 0){
-      const bc = document.createElement('canvas'); bc.width = ow; bc.height = oh;
-      const bx = bc.getContext('2d', { willReadFrequently:true });
-      octx.putImageData(pimg, 0, 0);
-      bx.filter = `blur(${RENDER_PLATE.detailBlurPx}px)`;
-      bx.drawImage(out, 0, 0);
-      bx.filter = 'none';
-      const blurD = bx.getImageData(0, 0, ow, oh).data;
-      nDetail = mirrorDetail(pd, blurD, hole, ow, oh, RENDER_PLATE.detail);
-    }
-    if(!nDetail) sigma = addGrainToHoles(pd, hole, ow, oh, RENDER_PLATE.grain);
-    octx.putImageData(pimg, 0, 0);
-    plateDiag = { sigma, detail: nDetail,
-                  rim: hm ? hm.nRim : 0, rimIter: hm ? hm.rimIter : 0,
-                  hair: hm ? hm.hair : null, ...res };
-  } else {
-    for(let p=0, i=3; p<hole.length; p++, i+=4) hole[p] = holeA[i] < 200 ? 1 : 0;
-  }
-  logRenderPlateOnce(angle, plateDiag, ow, oh);
-
-  if(!skinRGB || !ell) return out;             // 결 없이 색만 — 폴백
-
-  const size = Math.min(Math.max(24, Math.round(HOLE_FILL.patch * ow / 900)), ow>>1, oh>>1);
+  const size = Math.min(HOLE_FILL.patch, ow>>1, oh>>1);
   /* ── 이마 표본 확보 ─────────────────────────────────────────────
      이 뷰에서 뜬다 → 못 뜨면 다른 뷰(대개 정면)에서 뜬 것을 쓴다.
      정면 표본은 늘 최신으로 보관한다(얼굴이 가장 크게·정면으로 나오는 뷰). */
@@ -7114,10 +6657,7 @@ function buildHoleFillCanvas(srcCanvas, skinColor, ell, angle, holeMaskInfo){
     const py = gs ? mirror(y, gs) : 0;
     for(let x=0; x<ow; x++){
       const i = (y*ow+x)*4;
-      // 원래 있던 픽셀은 안 건드림. 기준을 holeA 알파에서 <b>부풀린 구멍 플래그</b>로
-      // 바꾼 이유: 반투명 머리 테두리(알파 200~250)가 예전엔 "있던 픽셀"로 통과해
-      // 두피 위에 검은 실선으로 남았다 — 그 자리도 이식 대상이어야 한다.
-      if(!hole[y*ow + x]) continue;
+      if(holeA[i+3] >= 200) continue;          // 원래 있던 픽셀 — 안 건드림
       const nx = (x + 0.5)/ow, u = (nx - ell.cx)/ell.rx;
       const r2 = u*u + v2;
       if(r2 > 1) continue;                     // 두상 밖
@@ -7167,32 +6707,6 @@ function buildHoleFillCanvas(srcCanvas, skinColor, ell, angle, holeMaskInfo){
   return out;
 }
 
-/* [진단] 렌더링 경계 배경 — 뷰당 1회.
-   "주변에 마스크가 겹쳐 보인다"는 신고가 다시 오면 이 한 줄로 갈린다:
-     · 채움 0px      → RENDER_PLATE.on이 꺼졌거나 구멍 판정이 안 됨
-     · 미도달 큰 값  → 마스크가 프레임 가장자리에 닿아 사방이 전부 구멍(=촬영 문제)
-     · 잡티 0        → 주변이 이미 매끈(합성 배경) — 정상 */
-const _plateLogged = {};
-function logRenderPlateOnce(angle, diag, ow, oh){
-  if(!angle || _plateLogged[angle]) return;
-  _plateLogged[angle] = true;
-  if(!diag){ console.log(`[렌더경계] ${angle}: 꺼짐(RENDER_PLATE.on=false) — 예전 동작(160px 확산 + 테두리 잔상)`); return; }
-  const px = ow*oh;
-  const holePx = diag.filled + diag.unreached;
-  console.log(`[렌더경계] ${angle}: 구멍 ${holePx}px (${((holePx/px)*100).toFixed(1)}% of ${ow}×${oh})`
-    + ` · <b>테두리 회수 ${diag.rim}px</b>(머리색 ${diag.hair ? 'rgb('+diag.hair.join(',')+')' : '없음'}, 최대 ${diag.rimIter}겹)`
-    + ` · 방향성 채움 ${diag.filled}px · 미도달 ${diag.unreached}px`
-    + ` · 거울 결 ${diag.detail}px` + (diag.detail ? '' : ` (못 가져와 잡티 σ ${diag.sigma.toFixed(2)}로 대체)`)
-    + ` — 두상 밖(어깨·옷·배경)은 이 값이 최종입니다`);
-  if(diag.rim === 0){
-    console.warn(`[렌더경계] ${angle}: 테두리 회수가 0입니다 — 마스크 밖에 남은 머리색 픽셀이 없다는 뜻이거나,`
-      + ` 머리색(avgColor)이 없어 색 판정을 못 한 것입니다. 겹친 마스크가 계속 보이면 RENDER_PLATE.rim.tol을 키우세요.`);
-  } else if(diag.rim > holePx * 0.5){
-    console.warn(`[렌더경계] ${angle}: 테두리 회수가 구멍의 절반을 넘습니다(${diag.rim}/${holePx})`
-      + ` — 머리색이 옷/배경과 가까워 색 판정이 번지고 있을 수 있습니다. RENDER_PLATE.rim.tol을 줄이세요.`);
-  }
-}
-
 /* [진단] 두피 이식이 실제로 먹었는지 — 뷰당 1회. 까맣게 보인다는 신고가 오면
    여기 숫자 하나로 "안 심었다 / 심었는데 다른 이유"가 갈린다. */
 const _graftLogged = {};
@@ -7230,7 +6744,7 @@ function getHoleFillCanvas(angle, baseC, maskInf){
   if(cached && cached._src === baseC) return cached;
   let c = null;
   try{
-    c = buildHoleFillCanvas(baseC, maskInf && maskInf.scalpColor, headEllipseFor(angle), angle, maskInf);
+    c = buildHoleFillCanvas(baseC, maskInf && maskInf.scalpColor, headEllipseFor(angle), angle);
   }catch(e){ console.warn('구멍 메움 배경 생성 실패:', angle, e); }
   if(c){ c._src = baseC; if(state.baseFillCanvases) state.baseFillCanvases[angle] = c; }
   return c;
@@ -7823,13 +7337,7 @@ function renderFrame(canvas, angle, opts){
         ctx.drawImage(flat, fit.dx, fit.dy, fit.dw, fit.dh);
         warnHoleFillOnce(angle);
       }
-      /* baseC를 <b>테두리 정리해서</b> 얹는다 (2026-08-10).
-         원본 baseC에는 지운 머리의 반투명 경계 픽셀(알파 200~250)이 남아 있어,
-         메움 배경 위에 <b>검은 톱니 윤곽</b>으로 찍혔다 — 사용자가 말한
-         "렌더링 주변에 겹쳐 보이는 다른 마스크"의 절반이 이것이다.
-         정리본은 그 테두리를 버리고 몇 px 더 깎는다. 깎인 자리는 방금 깐
-         메움 배경(방향성 인페인팅)이 이미 채우고 있으므로 구멍이 안 생긴다. */
-      ctx.drawImage(getCleanBaseCanvas(baseC, maskInf), fit.dx, fit.dy, fit.dw, fit.dh);
+      ctx.drawImage(baseC, fit.dx, fit.dy, fit.dw, fit.dh);
 
       // ── (6차) 통짜 언더코트 제거 ──
       // 예전엔 여기서 hairC 마스크 실루엣 전체를 두피색으로 통째로 칠했음 —
@@ -15145,23 +14653,6 @@ function buildHairIdentity(rootField, field3D){
    지어낸 상수 없음 — 마스크에서 이미 재던 값을 원래 있어야 할 범위까지 재는
    것뿐이다. 캡 구간의 가로 단면은 두피가 아니라 <b>모발만</b> 자르므로
    안쪽 경계 0 ~ 헐까지 꽉 찬 원반이 맞다(층 t가 그대로 그렇게 배치된다). */
-/* ── 뷰 캘리브레이션 앵커 (2026-08-09) ───────────────────────────────────
-   사용자: "좌측·우측 사진에서 보면 뚜렷하고, 사실 정면도 그런데 헤어 렌더링
-   위치가 틀어져 있어."
-   원인은 buildHairStrandsFromPaths의 뷰 앵커였다. image→model 매핑
-   mx = (px - cx)·s 의 cx·s를 <b>헤어 마스크의 좌우 끝</b>에서 뽑고 있었다.
-   머리카락은 두상이 아니다 — 뒤로 흐르고 어깨로 퍼지므로 그 한가운데는
-   정중시상면이 아니고, 그 폭은 두상 폭이 아니다. 옆모습일수록 크게 어긋난다.
-   아래 값들은 전부 "끄면 예전 동작"이 되게 두었다. */
-const VIEWCAL_ANCHOR = {
-  on:        true,   // false = 예전(헤어 실루엣 bbox) 동작으로 완전 복귀
-  isoScale:  true,   // 가로 자를 세로 자와 일치(정사영에서 두 배율은 같다)
-  pitchFix:  true,   // 눈→턱이 pitch로 압축된 만큼 세로 자 보정
-  /* 귀가 두상 중심보다 얼마나 뒤인가 — 깊이 반지름 c 대비. 해부학적으로 외이도는
-     두개골 앞뒤 중앙보다 약간 뒤(≈10%). yaw가 클 때만 의미 있는 작은 항이다
-     (yaw 51°·이 손님 기준 ≈8px). 0으로 두면 "귀 한가운데 = 두상 중심". */
-  earDepth:  0.10,
-};
 const HAIR_TOP_CAP = {
   on: true,
   pct: 0.02,      // 상단 백분위 — 먼지·삐침 픽셀 한둘로 범위가 튀지 않게
@@ -15287,60 +14778,14 @@ function buildHairStrandsFromPaths(){
     // 남지만(눈/턱 간격 압축) 오프셋이 두피에 고정되어 출발점은 불변.
     // 랜드마크 없는 뷰(후면 등)는 기존 v.s 폴백.
     let sy = aH_head/halfPx; // 폴백: x유래 스케일(기존 동작)
-    /* 랜드마크는 <b>얼굴 실측 우선, 없으면 실루엣 앵커</b>. 후면처럼 얼굴이
-       안 잡히는 뷰도 computeSilhouetteAnchors가 정면 비율을 옮겨 귀/눈/턱을
-       만들어 준다(로그 [앵커·실루엣맞춤]). 예전엔 여기서 그걸 안 써서
-       후면만 통째로 헤어 실루엣 자를 썼다. */
-    const lmV = (state.landmarks && state.landmarks[angle])
-              || (VIEWCAL_ANCHOR.on ? computeSilhouetteAnchors(angle) : null);
+    const lmV = state.landmarks && state.landmarks[angle];
     if(lmV && typeof lmV.eyeY === 'number' && typeof lmV.chinY === 'number'){
       const proj = makeFaceProjector(lmV, fmW, fmH);
       if(isFinite(proj.bY) && proj.bY > 0.2 && proj.bY < 15){ // 랜드마크 붕괴(눈≈턱) 가드
         sy = proj.bY / maskInf.h; // 정규화 배율 → 픽셀 배율
-        /* 눈→턱은 pitch만큼 <b>짧게 찍힌다</b>(정사영 cosθ). 그 짧아진 픽셀로
-           나눈 배율은 그만큼 부푼다 — 되돌린다. yaw는 세로를 안 줄이므로 무관. */
-        if(VIEWCAL_ANCHOR.pitchFix){
-          const cp = Math.cos(pose.pitch);
-          if(cp > 0.5) sy *= cp;
-        }
       }
     }
-    /* ── 가로 앵커·자 — 머리카락이 아니라 <b>두상</b>에 건다 (2026-08-09) ────
-       예전: cx = 헤어 마스크 컬럼의 한가운데, s = 두상 반폭 ÷ 헤어 마스크 반폭.
-       둘 다 <b>머리카락 실루엣</b>이 기준이라, 긴 머리가 뒤로 흐르거나 어깨로
-       퍼진 뷰에서 중심이 밀리고 자가 늘어난다. 같은 로그가 이미 두 번 말하고
-       있었다 — "[두상 폭 보정] 실루엣 폭 0.704 → 0.578(어깨로 흐른 머리카락을
-       두상 폭으로 잡고 있었습니다)" 와 "[자 일치] 가로 13.94cm/단위 vs 세로
-       19.33cm/단위 → 어긋남 0.721배(⚠ 가로·세로가 다른 자를 씀)".
-       0.704 × 0.721 = 0.508 ≈ 얼굴 메쉬 반폭 0.503 — 폭 부풀림의 정체가
-       <b>자 어긋남 그 자체</b>였다는 뜻이다.
-       지금:
-         · 자(s) — 정사영에서 가로·세로 배율은 <b>같다</b>. 세로 자(sy)를 그대로 쓴다.
-                   두상은 yaw로 안 커지는데 헤어 실루엣은 커지므로, 이쪽이 각도에도 강하다.
-         · 중심(cx) — 귀 두 점의 한가운데. 모델의 정중시상면(x=0)이 그 자리다.
-                   귀는 두상 중심보다 조금 <b>뒤</b>에 있어서 yaw가 크면 옆으로
-                   밀려 찍힌다(x=0, z=zEar 점의 투영 = sin(yaw)·zEar). 그만큼 되돌린다.
-       끄려면 VIEWCAL_ANCHOR.on = false — 예전(헤어 실루엣) 동작으로 정확히 복귀. */
-    let sX = aH_head/halfPx, cxUse = (xMin+xMax)/2, anchorSrc = '헤어 실루엣';
-    if(VIEWCAL_ANCHOR.on && lmV && lmV.lEarX != null && lmV.rEarX != null
-       && isFinite(sy) && sy > 0){
-      if(VIEWCAL_ANCHOR.isoScale) sX = sy;
-      const earMidPx = (lmV.lEarX + lmV.rEarX) / 2 * maskInf.w;
-      const zEar = -VIEWCAL_ANCHOR.earDepth * cD;              // 귀 깊이(뒤 = 음수)
-      cxUse = earMidPx - Math.sin(pose.yaw) * zEar / sX;
-      anchorSrc = lmV._silhouette ? '실루엣 앵커(귀)' : '얼굴 랜드마크(귀)';
-      const cxOld = (xMin+xMax)/2, sOld = aH_head/halfPx;
-      console.log('[뷰캘리·앵커] ' + angle + ': 중심 x ' + cxOld.toFixed(0) + '→' + cxUse.toFixed(0) + 'px'
-        + ' (' + (cxUse-cxOld >= 0 ? '+' : '') + (cxUse-cxOld).toFixed(0) + 'px, ' + anchorSrc + ')'
-        + ' · 가로자 ' + sOld.toFixed(5) + '→' + sX.toFixed(5)
-        + ' (×' + (sX/sOld).toFixed(3) + (VIEWCAL_ANCHOR.isoScale ? ', 세로자와 일치' : '') + ')'
-        + '\n    가로/세로 자 어긋남: 이전 ' + (sOld/sy).toFixed(3) + '배 → 지금 ' + (sX/sy).toFixed(3) + '배'
-        + ' (1.000이 정답 — 정사영에서 두상은 가로·세로가 같은 자로 찍힙니다)');
-    } else if(VIEWCAL_ANCHOR.on){
-      console.warn('[뷰캘리·앵커] ' + angle + ': 귀 앵커를 못 구해 <b>헤어 실루엣</b> 자로 폴백 —'
-        + ' 이 뷰는 머리카락이 흐른 만큼 중심·폭이 밀립니다(얼굴 랜드마크/실루엣 앵커 확인).');
-    }
-    views[angle] = { rec, maskInf, cx:cxUse, crownY, s: sX, sy, pose, cos2, sin2 };
+    views[angle] = { rec, maskInf, cx:(xMin+xMax)/2, crownY, s: aH_head/halfPx, sy, pose, cos2, sin2 };
   });
   const names = Object.keys(views);
   if(!names.length) return null;
@@ -17345,20 +16790,8 @@ const STYLE_SPECS = {
   layered_bob_hush: {
     name: '레이어드 보브 · 시스루 뱅 · 아웃컬',
     /* 끝이 오는 세로 위치. 0 = 정수리, 1 = 두상 바닥(≈턱선), 1.3 = 그보다
-       두상 높이의 30%만큼 더 아래.
-       ── (2026-08-09) 레퍼런스 4뷰를 <b>픽셀로 재서</b> 다시 넣음 ─────────────
-       예전 값은 눈대중이라 뒤가 통째로 길었다(실기기 결과가 목표보다 한 뼘 김).
-       재는 법: 각 뷰에서 눈높이 = 모델 CY, 눈→턱 11.5cm = FACE_RULER_CM로 자를
-       만들고 b(두상 반높이 12.2cm)를 얹어 yTop·H를 낸 뒤, 헤어 실루엣의 컬럼별
-       최저점 중앙값을 (y - yTop)/H로 환산.
-         정면 뱅(중앙 컬럼)      y204 → 0.50
-         정면·좌·우 바깥 컬럼    y351~369 → 0.98~1.06 (중앙값 1.02)
-         후면 중앙               y375~380 → 1.03~1.05, 최저점 y392 → 1.09
-         내부 레이어 단(허쉬 단) y272~285 → 0.72~0.74
-       그래서 아래 여섯 값이 전부 <b>실측</b>이다. 예전 값과의 차:
-         side −0.12 · occipital −0.25 · nape −0.26 (여기가 "길다"의 정체)
-         front +0.05 · crown −0.04 · temple +0.03 */
-    tipAt: { front:0.50, crown:0.74, temple:0.98, side:1.03, occipital:1.05, nape:1.09 },
+       두상 높이의 30%만큼 더 아래. 레퍼런스 4뷰에서 얼굴 비율로 읽은 값이다. */
+    tipAt: { front:0.45, crown:0.78, temple:0.95, side:1.15, occipital:1.30, nape:1.35 },
     /* 커트 — 레이어드 보브는 시술각을 높여 위층을 짧게 만든다(유니폼 레이어).
        네이프만 각을 낮춰 무게를 남겨야 아래 라인이 안 흩어진다(그라데이션). */
     /* density(숱) — 레퍼런스의 정체적 특징이 여기 있다 (2026-08-09).
@@ -17366,34 +16799,17 @@ const STYLE_SPECS = {
        안 된다(짧고 뾰족한 두꺼운 앞머리가 될 뿐). 가닥을 솎아야 비친다.
        관자는 얼굴 옆 잔머리라 앞머리보다는 촘촘하되 사이드보다는 성기다.
        뒤(사이드·후두부·네이프)는 무게가 남아야 보브 라인이 안 흩어지므로 100. */
-    /* (2026-08-09) 레퍼런스 대조 후 조정 — 바꾼 값에만 이유를 단다.
-       crown elevation 80→85: 내부 레이어 끝(0.74)과 아웃라인(1.03)의 단차가
-         두상 높이의 0.29다. 이 단을 만드는 게 시술각이라 조금 더 세운다.
-       front density 42→34, texture 60→70: 목표의 뱅은 이마가 <b>비친다</b>.
-         지금 결과는 통짜 커튼이라 시스루가 아니다. 숱을 더 솎고 끝을 더 턴다.
-       side/occipital texture 45/40→55/50: 허쉬컷 특유의 뾰족한 끝(포인트 커트).
-       나머지(temple·nape·기법·라인)는 목표와 어긋난 근거가 없어 그대로 둔다. */
     cut: {
-      crown:     { technique:'uniform',    elevation:85, texture:45, density:88 },
-      front:     { technique:'uniform',    elevation:20, texture:70, density:34, line:50 },
+      crown:     { technique:'uniform',    elevation:80, texture:45, density:88 },
+      front:     { technique:'uniform',    elevation:20, texture:60, density:42, line:50 },
       temple:    { technique:'uniform',    elevation:60, texture:45, density:70, overdirection:40 },
-      side:      { technique:'uniform',    elevation:65, texture:55, density:100 },
-      occipital: { technique:'uniform',    elevation:55, texture:50, density:100 },
+      side:      { technique:'uniform',    elevation:65, texture:45, density:100 },
+      occipital: { technique:'uniform',    elevation:55, texture:40, density:100 },
       nape:      { technique:'graduation', elevation:25, texture:25, density:100, line:50 },
     },
-    /* curl 22→28: 목표는 중간기장에 S 한 번이 눈에 보인다(지금 결과는 직모에 가깝다).
-       wave 70(굵은 로드)은 그대로 — 컬을 잘게 만들면 허쉬가 아니라 펌이 된다. */
-    perm:    { curl:28, wave:70 },
-    /* flow 55→68: 목표의 끝은 또렷하게 <b>바깥으로</b> 꺾인다(아웃컬).
-       volume·sweep·part·finish는 목표와 어긋난 근거가 없어 유지. */
-    styling: { sweep:0, volume:55, flow:68, part:0, finish:58 },
-    /* 레퍼런스 4뷰의 헤어 마스크 픽셀 분포(모발 화소 약 25만): p25 #34251B ·
-       p50 #493729 · p75 #66503E · p90 #8B715E.
-       여기 적는 색은 <b>가장 밝을 때</b>의 색이다 — 렌더가 층 깊이로 ×0.55~1.0을
-       곱하고 림만 더하므로, 사진의 중간톤(p50)을 그대로 넣으면 화면은 그보다 더
-       어두워진다. 그래서 p80 언저리를 base로 잡는다.
-       예전 #8B7355는 p90(하이라이트)이라 화면 전체가 그 밝기로 떠 있었다. */
-    color:   '#7A6149',                                        // 밀크티 애쉬 브라운
+    perm:    { curl:22, wave:70 },                            // 약한 웨이브 · 굵은 로드
+    styling: { sweep:0, volume:55, flow:55, part:0, finish:58 }, // flow + = 바깥말음(아웃컬)
+    color:   '#8B7355',                                        // 애쉬 브라운
   },
 };
 /* 이 섹션 가닥들의 <b>끝 높이 중앙값</b>.
@@ -18905,7 +18321,7 @@ function startNewCustomer(){
   ANGLES.forEach(a=>{state.shots[a]=null;state.hairCanvases[a]=null;state.hairMasks[a]=null;state.baseCanvases[a]=null;state.baseFillCanvases[a]=null;});
   // 새 고객 — 앞 사람의 이마 표본을 물려주면 안 된다(피부톤이 다른 사람에게 이식됨)
   resetSkinGraft();
-  ANGLES.forEach(a=>{ delete _graftLogged[a]; delete _plateLogged[a]; });
+  ANGLES.forEach(a=>{ delete _graftLogged[a]; });
   state.landmarks = {};
   state.captureLmStatus = {}; // 촬영 직후 랜드마크 감지 배지 상태도 초기화
   state.capturePose = {};     // 셔터 시점 라이브 포즈(감지 실패 폴백)도 초기화
