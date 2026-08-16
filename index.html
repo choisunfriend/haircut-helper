@@ -17721,6 +17721,7 @@ function applyStyleSpec(id){
      됐다"는 말이 끝 높이 하나에만 걸린 채로 남는다. */
   try{ rep.silhouette = reportSilhouette(id); }catch(e){ console.warn('[실루엣] 측정 실패: ' + (e && e.message)); }
   try{ rep.crown = diagCrownCoverage(); }catch(e){ console.warn('[정수리 커버리지] 측정 실패: ' + (e && e.message)); }
+  try{ rep.roundTrip = diagRoundTrip(); }catch(e){ console.warn('[좌표왕복] 측정 실패: ' + (e && e.message)); }
   return rep;
 }
 
@@ -17755,7 +17756,7 @@ function applyStyleSpec(id){
    실기기 로그를 받아 분석했는데 알고 보니 이전 빌드였던 일이 있었다(두피이식 줄이
    옛 형식이라 뒤늦게 알아챘다). 파일을 주고받으며 고치는 구조에서는 캐시·배포 지연이
    상시 위험이라, 새 파일을 낼 때마다 이 숫자를 올린다. 콘솔 맨 위에 한 번 찍힌다. */
-const BUILD = { n: 4, tag: '뷰 컬링 단일화(후면 정수리 복구) + 어두운 표본 차단' };
+const BUILD = { n: 5, tag: '좌표 왕복 진단(2D→3D→2D 어긋남 분해)' };
 console.log('%c[GYEOL 빌드 ' + BUILD.n + '] ' + BUILD.tag,
             'background:#7A6149;color:#fff;padding:2px 8px;border-radius:3px');
 const SILHOUETTE = {
@@ -17779,6 +17780,105 @@ const SILHOUETTE_REF = {
              bot:[0.73,0.81,0.91,1.00,0.95,0.93,0.92,0.97,0.95,0.97,0.94,0.94,0.62] },
   },
 };
+/* ══════════════════════════════════════════════════════════════════
+   좌표 왕복 진단 — 2D→3D→2D가 <b>제자리로 오는가</b> (2026-08-11)
+   ─────────────────────────────────────────────────────────────────
+   사용자: "2D에서 3D 갔다가 재투영하는 과정에서 입체로 변하면서 돌아가는 거 같은데?"
+
+   그럴 만한 구조다. 두 방향이 <b>서로 다른 변환</b>을 쓴다:
+     2D→3D 리프트  projectImagePointToHead → makeFaceProjector(랜드마크 아핀)
+     3D→2D 재투영  project3DPointToView   → cal(뷰캘리 귀 앵커 + 세로자)
+   둘은 각자 만들어졌고 서로를 참조하지 않는다. 뷰캘리가 측면 가로자를
+   ×1.48~1.51로 바꿔도 makeFaceProjector는 모른다. 그러면 왕복이 안 닫힌다.
+
+   방증도 이미 있었다 — [뿌리선 어긋남] front 30px/304(10%) · back 74px/284(26%),
+   그리고 측면 [비교] IoU 0.44~0.51(정면은 0.96).
+
+   재는 법: 사진 위 격자점을 3D로 올렸다가 <b>같은 뷰로</b> 되쏘고, 원래 픽셀과의
+   차이를 본다. 커트도 마네킹도 안 낀 <b>순수 좌표 왕복</b>이라 여기서 어긋나면
+   그 위의 모든 것이 어긋난다.
+
+   ★ 그리고 오차를 그냥 평균내지 않고 <b>평행이동·배율·회전으로 분해</b>한다.
+     "몇 px 틀렸다"는 고칠 데를 안 알려주지만, 분해하면 바로 지목된다:
+       · 평행이동만 크다 → 두 경로의 <b>기준점</b>이 다르다(중심 cx / crownY / CY)
+       · 배율만 1에서 뜬다 → <b>자</b>가 다르다(가로자·세로자)
+       · 회전이 크다 → <b>포즈</b>가 다르다(yaw·pitch·roll)
+       · 셋 다 작은데 잔차만 크다 → 선형으로 설명 안 되는 것 = 두상 <b>모양</b>이 다르다
+         (리프트가 쓰는 타원체와 재투영이 가정하는 면이 다름 — 모발 두께가 여기 낀다)
+     분해는 2D 닮음변환 최소제곱(Umeyama)이다.
+
+   ※ 모발 두께 한계 — 사진의 한 점은 두피면이 아니라 <b>헤어 바깥면</b>일 수도 있어서
+     깊이(z)에는 원리적 모호함이 있다. 하지만 이 검사는 <b>같은 면</b>으로 갔다가
+     돌아오므로 그 모호함이 상쇄된다. 즉 여기 남는 오차는 두께 탓이 아니다.
+══════════════════════════════════════════════════════════════════ */
+function _fitSimilarity2D(P, Q){
+  /* Q ≈ s·R·P + t 를 최소제곱으로. 반환 {s, deg, tx, ty, rms} */
+  const n = P.length; if(n < 3) return null;
+  let mpx=0,mpy=0,mqx=0,mqy=0;
+  for(let i=0;i<n;i++){ mpx+=P[i][0]; mpy+=P[i][1]; mqx+=Q[i][0]; mqy+=Q[i][1]; }
+  mpx/=n; mpy/=n; mqx/=n; mqy/=n;
+  let sxx=0, a=0, b=0;
+  for(let i=0;i<n;i++){
+    const px=P[i][0]-mpx, py=P[i][1]-mpy, qx=Q[i][0]-mqx, qy=Q[i][1]-mqy;
+    sxx += px*px + py*py;
+    a   += px*qx + py*qy;      // cos 성분
+    b   += px*qy - py*qx;      // sin 성분
+  }
+  if(sxx < 1e-9) return null;
+  const s = Math.hypot(a, b) / sxx, th = Math.atan2(b, a);
+  const cs = Math.cos(th)*s, sn = Math.sin(th)*s;
+  const tx = mqx - (cs*mpx - sn*mpy), ty = mqy - (sn*mpx + cs*mpy);
+  let e2 = 0;
+  for(let i=0;i<n;i++){
+    const ex = (cs*P[i][0] - sn*P[i][1] + tx) - Q[i][0];
+    const ey = (sn*P[i][0] + cs*P[i][1] + ty) - Q[i][1];
+    e2 += ex*ex + ey*ey;
+  }
+  return { s, deg: th*180/Math.PI, tx, ty, rms: Math.sqrt(e2/n) };
+}
+function diagRoundTrip(step){
+  const m = state.hair3Dneutral;
+  if(!m || !m.viewCal){ console.warn('[좌표왕복] 뷰 보정이 없다'); return null; }
+  let fm; try{ fm = getFaceMetrics(); }catch(e){ return null; }
+  const VL = { front:'정면', left:'좌측', right:'우측', back:'후면' };
+  const N = Math.max(6, step || 14);
+  const out = {};
+  for(const angle of ANGLES){
+    const cal = m.viewCal[angle], mi = state.hairMasks && state.hairMasks[angle];
+    if(!cal || !mi) continue;
+    const P = [], Q = [], dl = [];
+    for(let iy=1; iy<N; iy++) for(let ix=1; ix<N; ix++){
+      const nx = ix/N, ny = iy/N;
+      let w = null;
+      try{ w = projectImagePointToHead(angle, nx, ny, fm.widthFactor, fm.heightFactor); }catch(e){}
+      if(!w) continue;                                  // 두상 밖 — 왕복 정의가 없다
+      const pr = project3DPointToView(w, cal, m.yTop, m.CY);
+      if(!isFinite(pr.ix) || !isFinite(pr.iy)) continue;
+      const px = nx*mi.w, py = ny*mi.h;
+      P.push([px, py]); Q.push([pr.ix, pr.iy]);
+      dl.push(Math.hypot(pr.ix-px, pr.iy-py));
+    }
+    if(P.length < 8){ console.log('[좌표왕복·' + (VL[angle]||angle) + '] 표본 부족(' + P.length + ')'); continue; }
+    dl.sort((x,y)=>x-y);
+    const med = dl[(dl.length*0.5)|0], p90 = dl[(dl.length*0.9)|0];
+    const f = _fitSimilarity2D(P, Q);
+    out[angle] = { n:P.length, med, p90, fit:f };
+    const diag = mi.w && mi.h ? Math.hypot(mi.w, mi.h) : 0;
+    console.log('[좌표왕복·' + (VL[angle]||angle) + '] 표본 ' + P.length
+      + ' · 어긋남 중앙값 ' + med.toFixed(1) + 'px' + (diag ? '(' + (100*med/diag).toFixed(1) + '%)' : '')
+      + ' · 90% ' + p90.toFixed(1) + 'px'
+      + (f ? '\n   분해 — 평행이동 (' + f.tx.toFixed(1) + ', ' + f.ty.toFixed(1) + ')px'
+             + ' · 배율 ' + f.s.toFixed(3) + ' · 회전 ' + f.deg.toFixed(2) + '°'
+             + ' · 남은 잔차 ' + f.rms.toFixed(1) + 'px' : ''));
+  }
+  console.log('[좌표왕복] 읽는 법 — 배율 1.000·회전 0°·평행이동 0이면 왕복이 닫힌 것입니다.'
+    + '\n   평행이동만 크다 → 두 경로의 <b>기준점</b>이 다름(cx·crownY·CY)'
+    + '\n   배율이 1에서 뜬다 → <b>자</b>가 다름(makeFaceProjector vs 뷰캘리 cal)'
+    + '\n   회전이 크다 → <b>포즈</b>가 다름(yaw·pitch·roll)'
+    + '\n   셋 다 작은데 잔차만 크다 → 두상 <b>모양</b>이 다름(리프트 타원체 ≠ 재투영 가정면)');
+  return out;
+}
+
 /* ══════════════════════════════════════════════════════════════════
    정수리 커버리지 — "뒷머리 위쪽이 텅 비었다"를 <b>가르는</b> 진단 (2026-08-11)
    ─────────────────────────────────────────────────────────────────
