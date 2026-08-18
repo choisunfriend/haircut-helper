@@ -162,6 +162,66 @@
   · photorealActive() — "지금 결과 화면에 실사를 그려야 하는가" 단일 판정.
     drawResult / composeResult / resultZoomAt 세 곳이 이 하나를 공유한다.
 
+  ── 2026-08-18 i 네 가지가 <b>같은 두 뿌리</b>에서 나왔다 — 판정 단위와 색 출처 ──
+  사용자 보고(4건):
+    ① "3번(레이어드 보브)은 뒷머리가 제대로 앞에서 보이는데, <b>1번에서는 뒷머리가
+       목 앞에 그려져</b>."
+    ② "<b>측면 사진</b>에서는 머리가 이상하게 그려져 있고."
+    ③ "마네킹 ON 3D는 머리가 까맣고, 레이어드 보브를 적용하면 조정 화면은 앞머리만
+       갈색인데 <b>3D 결과는 전체가 갈색</b>으로 바뀌어."
+    ④ "원본 결 보기와 마네킹 안 켠 스타일 보기는 <b>원본 헤어 픽셀</b>로 가닥을
+       렌더링하는데, <b>마네킹 모드에서는 그게 적용이 안 돼</b>. 적용해야 돼."
+  그리고 대화 중 나온 지시 둘 — "3D는 모든 결과를 <b>앞에서 조정한 거</b>에 따르는
+  거야" · "여유를 <b>시술이 실제로 움직인 거리</b>로 — 아예 이 방향으로 가자. 컬까지."
+
+  ── 뿌리 1: 판정은 <b>가닥 단위</b>인데 그리기는 통째로였다 (①②) ────────────
+  8/18 h가 컬링을 "가려지나"로 바꾸면서 <b>가닥 하나라도 보이면 남긴다</b>가 됐다.
+  규칙은 맞다. 빠진 것은 그 다음이다 — 남은 가닥은 <b>점 하나도 빠짐없이</b> 그려진다.
+  그래서 목 옆으로 1cm 비어져 나온 뒷머리가 목·턱·얼굴을 가로질러 통째로 그려졌다.
+  조정 화면은 원본 사진 <b>위에</b> 가닥을 얹으므로, 목 뒤를 지나는 구간이 그대로
+  "목 앞의 머리"가 된다. 측면이 이상한 것도 같은 원인이다(먼 쪽 머리가 얼굴 위로).
+  고침 — 판정을 점 단위로 내린다(visibleRuns). 판정식(viewPointVisible)은 그대로다.
+  경계 선분(보임↔가림)은 남긴다 — 안 그러면 실루엣 가장자리에 틈이 보인다.
+  가닥 렌더와 <b>픽셀 이식(quilt)</b> 둘 다에 넣었다(한쪽만 고치면 모드에 따라 갈린다).
+  되돌리기: VIEW_CULL.trimHidden = false.
+
+  ── 뿌리 2: 색의 <b>출처</b>가 화면마다 달랐다 (③④) ──────────────────────
+  조각색(colors)은 <b>촬영 가닥</b>이 2D 캡처 때 자기 경로에서 읽어 온 값이다.
+  마네킹 가닥은 격자에 새로 심은 것이라 읽어 올 경로가 없어 늘 null이었다.
+  조정 화면만 멀쩡해 보인 이유 — 그쪽은 매 프레임 <b>되쏘아 다시 읽는다</b>
+  (sampleProjectedStrandColors). 색이 갈라진 자리는 되쏘기가 없는 곳, 즉 최종 3D다.
+  고침 — 되쏘기를 3D에도 준다(bakeStrandColors3D). 규칙(조각 수·중앙 표본·blend
+  0.85·마스크 밖 폴백)은 2D와 <b>글자 그대로</b> 같고 다른 건 좌표뿐이다.
+    · 마네킹은 심을 때 한 번 구워 둔다([마네킹] 로그에 "원본 픽셀색 N개(=x%)").
+    · 최종 3D는 <b>조정된 좌표</b>로 다시 읽는다 → 조정 화면과 같은 그림이 된다.
+    · 폴백색이 sec.color(염색)이므로 "사진에 머리가 없는 자리만 염색색"이라는
+      조정 화면의 동작이 3D에도 그대로 따라온다(③의 "3D만 전체 갈색"이 사라진다).
+
+  ── 그리고 여유를 <b>시술 변위</b>로 (사용자 지시) ──────────────────────────
+  사용자: "원래 앞머리가 없던 사람에게 뱅 시술을 하기도 하고, 직모였던 사람에게
+  컬을 시술하면 공간적으로 더 차지하는 게 당연한데."
+  맞다. 재클립의 여유는 <b>길이</b>에만 있었다(growPerRatio). 조정 연산자 일곱 중
+  여섯(컬·중력·가르마·넘김·볼륨·결흐름)은 여유를 1도 안 만들어서, 부푼 만큼이
+  시술 <b>전</b> 실루엣에 잘렸다. 새 상수 없이 이미 손에 있는 두 좌표의 차로 바꾼다:
+      여유 = max |조정후 가닥[j] − 중립 가닥[j]|   (잘릴 구간에서)
+  · 시술 안 하면 변위 0 → <b>예전과 완전히 같은 동작</b>(하네스 3/3 동일)
+  · 순수 길이 시술이면 (비율−1)×호길이 = <b>예전 growPerRatio와 같은 값</b>
+  · 컬·볼륨·아웃컬은 부푼 만큼. 방향 게이트를 안 쓴 이유가 이것이다 — 컬은 옆으로 분다.
+  ※ <b>점별</b> 변위로 비교하면 안 된다: 경계 자체도 밀려나므로 늘린 머리를 중간에서
+    자른다(하네스에서 예전 2.00 → 1.50으로 줄었다). 그래서 <b>구간 최댓값</b>을 예산으로.
+  마네킹 바닥값(fringeFrac)은 성격이 다르다 — 시술 여유가 아니라 <b>기하 오차 보정</b>이다.
+  그 주석이 스스로 "여는 자리는 이마 하나"라고 적고 있는데 구현은 사방이었다. 그래서
+  중립 마네킹(변위 0)의 옆·뒤가 두상높이 1/4만큼 뻗었다 — ②의 삐죽삐죽 절반이 이것이다.
+  z>0(앞쪽 반구)에서만 준다(fringeFrontOnly). 상수는 안 늘고 좌표 부호 하나다.
+  검증(Node 하네스 — 파일에서 함수를 그대로 떼어 돌림, 20/20):
+    visibleRuns 무작위 2,000가닥에서 "그릴 선분 = 보이는 선분"(중복·누락 0) ·
+    변위 0이면 예전과 동일 · 길이 여유가 예전 값 이상 · 컬 여유 ≤ 변위(+마디 하나) ·
+    얼굴 거부는 변위 여유 위에서도 유효 · 뒤쪽은 마네킹 여유 안 열림 ·
+    조각색이 사진의 명암을 싣고 blend 0.85가 2D와 같음 · 마스크 없으면 baked 그대로.
+  실기기에서 볼 것: [front] 가닥 렌더 줄의 <b>가림 트리밍 %</b>(0%면 아무 일도 안 한
+  것) · 목·얼굴 위에 뒷머리가 얹히지 않는가 · [마네킹]의 "원본 픽셀색 %"와 [3D]의
+  같은 숫자가 <b>일치</b>하는가 · [3D·클립]의 "여유 받은 가닥"이 컬을 올렸을 때 늘어나는가.
+
   ── 2026-08-18 h 정면에서 <b>목 옆으로 뒷머리가 안 보인다</b> — 컬링이 깊이 부호였다 ──
   사용자: "정면모드에서 <b>목 주변을 통해서 뒷머리가 보여야</b> 되는데 보이지 않아."
 
@@ -9749,6 +9809,37 @@ function sampleProjectedStrandColors(maskInf, ipts, baked, fallbackCss){
   return out;
 }
 
+/* ── <b>3D 가닥</b>에 조각색을 굽는다 — 2D와 같은 규칙, 좌표만 3D (2026-08-18 i) ──
+   사용자: "원본결보기와 마네킹 모드 적용 안 한 스타일 보기에서는 헤어결이
+   원본 헤어에서 채취한 픽셀로 가닥을 렌더링한 건데, <b>마네킹 모드에서는 그게
+   적용이 안 돼</b>. 적용해야 돼." / "3D는 모든 결과를 앞에서 조정한 거에 따르는 거야."
+
+   왜 안 됐나 — 조각색(colors)은 <b>촬영 가닥</b>이 2D 캡처 때 자기 경로 위에서
+   읽어 온 값이다. 마네킹 가닥은 사진에서 온 게 아니라 격자에 새로 심은 것이라
+   읽어 올 경로가 애초에 없었다(그래서 [3D] 로그가 "원본 픽셀색 0개(=0%)").
+   2D 투영 화면만 멀쩡해 보였던 이유도 여기 있다 — 그쪽은 매 프레임
+   sampleProjectedStrandColors로 <b>되쏘아 다시 읽으니</b> 마네킹이든 아니든 같다.
+   색이 갈라진 자리는 되쏘기가 없는 곳, 즉 <b>최종 3D 화면</b>이었다.
+
+   그래서 되쏘기를 3D 쪽에도 준다: 가닥을 자기 뷰로 투영해 그 자리 원본 픽셀을
+   읽는다. 규칙(조각 수·중앙 표본·blend·마스크 밖 폴백)은 sampleProjectedStrandColors
+   <b>그대로</b>다 — 다른 건 "어느 뷰로 되쏘는가"뿐이라 여기서 정한다.
+   뷰 선택은 viewOfRoot(뿌리가 제일 크게 보이는 뷰) — 스타일링·역산이 이미 쓰는
+   판정이라 새로 만들지 않는다. 마스크·캘리브레이션이 없으면 baked를 그대로
+   돌려준다(새 실패 모드를 만들지 않는다). */
+function bakeStrandColors3D(pts, model, angle, fallbackCss, baked){
+  if(!HAIR_PIXEL_COLOR.on || !pts || pts.length < 2 || !model) return baked || null;
+  const cal = model.viewCal && model.viewCal[angle];
+  const mi  = state.hairMasks && state.hairMasks[angle];
+  if(!cal || !mi || !mi.photoRGB) return baked || null;
+  const ipts = new Array(pts.length);
+  for(let i=0;i<pts.length;i++){
+    const pr = project3DPointToView(pts[i], cal, model.yTop, model.CY);
+    ipts[i] = { x: pr.ix, y: pr.iy };
+  }
+  return sampleProjectedStrandColors(mi, ipts, baked || null, fallbackCss);
+}
+
 /* 이 뷰에서 "원본 결 보기가 그리는 가닥 묶음"을 그대로 계산해 준다.
    → 레이어별 굵기 w · 개수 n · 틴트 범위. 두 렌더러가 이 함수 하나만 본다. */
 function hairStrandRoles(fitDw, volume, thickness){
@@ -15755,7 +15846,28 @@ const HAIR_OCC3D = {
         것이므로, 통째로 지우면 볼륨 슬라이더가 머리를 삭제하게 된다.
         2D도 이럴 때 밖으로 나간 부분만 지우지 가닥을 없애지 않는다. */
   clipAdjusted: true,  // false면 예전 동작(조정 후 클립 없음) — A/B용
-  growPerRatio: 1.0,   // (길이비율-1) × 원래 호길이 × 이 값 = 마스크 밖 허용 길이
+  growPerRatio: 1.0,   // (길이비율-1) × 원래 호길이 × 이 값 = 마스크 밖 허용 길이(moveGrow=false일 때만)
+
+  /* ── 여유를 <b>시술이 실제로 움직인 거리</b>로 (2026-08-18 i, 사용자 지시) ──
+     사용자: "미용시술을 하고 나면 원래 앞머리가 없었던 사람에게 뱅 시술을
+     해주기도 하고, 직모였던 사람에게 컬을 시술하면 공간적으로 더 차지하게
+     되는 게 당연한데." / "아예 이 방향으로 가자. 컬까지."
+
+     맞다. 위 growPerRatio는 <b>길이</b>만 여유로 인정한다. 그런데 조정 연산자는
+     일곱이고(길이·컬·중력·가르마·넘김·볼륨·결흐름) 그중 여섯은 여유를 1도 안
+     만든다. 그래서 직모에 컬을 넣으면 부푼 만큼이 <b>시술 전 직모 실루엣</b>에
+     그대로 잘렸다. 뱅도 같다 — 마네킹일 때만 fringeFrac에 얹혀 겨우 살아 있었고
+     마네킹을 끄면 이마에서 전멸했다.
+
+     고침은 새 상수가 아니라 <b>이미 손에 있는 두 좌표의 차</b>다:
+         여유(i) = |조정후 가닥[i] − 중립 가닥[i]|
+     · 아무 시술도 안 했으면 변위 0 → 예전과 <b>완전히 같은 동작</b>(회귀 없음)
+     · 길이를 늘리면 끝이 움직인 만큼 = (비율−1)×호길이 → growPerRatio를 자동 포함
+     · 컬·볼륨·아웃컬은 부푼 만큼 <b>그만큼만</b> — 방향 제한이 필요 없다
+       (앞쪽만 여는 식의 방향 게이트는 컬에 대해 틀린 답이다: 컬은 옆으로 분다)
+     · 얼굴 거부(faceVeto)는 그대로 위에 남는다 — "머리는 늘어나도 얼굴은 못 덮는다"
+     false로 두면 예전 동작(growPerRatio 길이 여유). */
+  moveGrow: true,
 
   /* ── 늘림 여유의 <b>방향</b> 제한 — 얼굴 위로는 안 넘어간다 (2026-08-01) ──
      사용자: "프론트 길이를 늘린 건데, 늘리면 저렇게 나타나서 침범하게 된다고."
@@ -15801,8 +15913,18 @@ const HAIR_OCC3D = {
      그만큼만 연다. 아래쪽 한계는 여유가 알아서 못 넘는다: 얼굴 타원이 눈썹에서
      시작하므로 여유 구간이 눈썹에 닿는 순간 거부된다(faceVeto). 즉 "앞머리는
      이마까지, 얼굴은 못 덮는다"가 상수 하나 없이 나온다.
-     0으로 두면 예전 동작(마네킹도 여유 0). */
+     0으로 두면 예전 동작(마네킹도 여유 0).
+
+     ── (2026-08-18 i) 이 여유는 <b>앞쪽에만</b> 연다 ─────────────────────────
+     위 문단이 스스로 말하듯 이 여유가 여는 자리는 <b>이마</b> 하나다. 그런데
+     구현은 방향 제한이 없어서 옆·뒤로도 똑같이 열려 있었고, 마네킹 중립 상태
+     (=시술 전, 변위 0이라 moveGrow가 아무 여유도 안 주는 상태)에서 옆·뒤 가닥이
+     실루엣 밖으로 두상높이의 4분의 1만큼 뻗었다 — 사용자가 본 측면의 삐죽삐죽이다.
+     그래서 두상 로컬 z>0(앞쪽 반구)에서만 이 <b>바닥값</b>을 준다. 상수는 안 늘고
+     좌표 부호 하나로 끝난다. 시술로 부푸는 몫은 방향과 무관하게 moveGrow가
+     따로 주므로, 이 제한이 컬·볼륨을 막지 않는다(그게 8/18 i의 핵심 분업이다). */
   fringeFrac: 0.25,
+  fringeFrontOnly: true,   // false면 예전 동작(사방으로 열림)
 };
 
 /* 뷰별 얼굴 타원(정규화 [0,1] 이미지 좌표). 2D 클립과 3D 재클립이 <b>같은</b>
@@ -16003,8 +16125,21 @@ function makeHairOccupancyProbe(views, names, yTop, CY, headR){
 function trimStrandToOccupancy3D(pts, probe, acc, opts){
   const O = HAIR_OCC3D;
   if(!probe || !pts || pts.length < 3) return pts;
-  const growLen  = (opts && opts.growLen > 0) ? opts.growLen : 0;   // 마스크 밖 허용 호길이
+  const growLen  = (opts && opts.growLen > 0) ? opts.growLen : 0;   // 마스크 밖 허용 호길이(바닥값)
+  const frontOnlyGrow = !!(opts && opts.growFrontOnly);             // 그 바닥값을 앞쪽에만 줄지
   const neverDrop = !!(opts && opts.neverDrop);
+  /* 시술 변위 여유 — 조정 전(중립) 가닥을 같이 받으면 점마다
+     |조정후 − 중립|을 여유로 쓴다(HAIR_OCC3D.moveGrow 주석 참조).
+     점 개수가 달라질 수 있으므로(길이 연산자) <b>비율</b>로 대응시킨다. */
+  const srcPts = (O.moveGrow && opts && opts.srcPts && opts.srcPts.length >= 2) ? opts.srcPts : null;
+  const dispAt = srcPts
+    ? (j)=>{
+        const m = srcPts.length - 1, n = pts.length - 1;
+        const q = srcPts[Math.max(0, Math.min(m, Math.round(n > 0 ? j/n*m : 0)))];
+        const p = pts[j];
+        return Math.hypot(p.x - q.x, p.y - q.y, p.z - q.z);
+      }
+    : null;
   let off = 0, cut = -1;
   for(let i=Math.min(O.skipRoot, pts.length-1); i<pts.length; i++){
     const p = pts[i];
@@ -16018,16 +16153,32 @@ function trimStrandToOccupancy3D(pts, probe, acc, opts){
   /* 늘린 만큼의 여유 — 경계에서 바로 자르지 않고 growLen 호길이만큼 더 간다.
      2D에서 클립 마스크를 growPx만큼 부풀리는 것과 같은 뜻이다(밖으로 나가는
      가닥에 대해서는 "마스크를 키운다" = "경계 통과 후 그만큼 더 그린다"). */
-  if(growLen > 0){
+  if(growLen > 0 || dispAt){
     const veto = !!(opts && opts.faceVeto) && HAIR_OCC3D.faceVeto && probe.faceAt;
-    let extra = 0, j = Math.max(1, cut), blocked = false;
-    while(j < pts.length && extra < growLen){
+    /* 여유의 크기 = 잘릴 구간에서 <b>시술이 가장 많이 움직인 거리</b>.
+       왜 점별 변위를 그때그때 쓰지 않는가 — 경계 자체도 같이 밀려나기 때문이다.
+       길이를 1.5배로 늘리면 점 j는 j×(1−1/1.5)만큼 움직이는데, 경계에서 재는
+       "밖으로 나간 호길이"는 그보다 빨리 는다. 점별로 비교하면 늘린 머리를
+       중간에서 잘라 버린다(하네스에서 예전 규칙 2.00 → 1.50으로 줄었다).
+       최댓값을 예산으로 쓰면 순수 길이 시술에서 (비율−1)×호길이 = <b>예전
+       growPerRatio와 정확히 같은 값</b>이 나오고, 컬·볼륨은 부푼 만큼이 나온다. */
+    let dispMax = 0;
+    if(dispAt) for(let j=Math.max(1,cut); j<pts.length; j++){ const d = dispAt(j); if(d > dispMax) dispMax = d; }
+    let extra = 0, j = Math.max(1, cut), blocked = false, maxAllow = 0;
+    while(j < pts.length){
       const p0 = pts[j-1], p1 = pts[j];
+      /* 이 점에 허용된 여유 — <b>시술 변위</b>와 바닥값 중 큰 쪽.
+         바닥값(마네킹 기하 오차 보정)은 fringeFrontOnly면 앞쪽 반구에만 준다. */
+      const floor = (frontOnlyGrow && !(p1.z > 0)) ? 0 : growLen;
+      const allow = Math.max(floor, dispMax);
+      if(allow > maxAllow) maxAllow = allow;
+      if(!(extra < allow)) break;
       // 여유는 아래·바깥으로만 열려 있다. 얼굴을 가로지르려 하면 거기서 끝.
       if(veto && probe.faceAt(p1.x, p1.y, p1.z) >= O.faceThr){ blocked = true; break; }
       extra += Math.hypot(p1.x-p0.x, p1.y-p0.y, p1.z-p0.z);
       j++;
     }
+    if(acc && maxAllow > 0){ acc.growN = (acc.growN||0) + 1; acc.growSum = (acc.growSum||0) + maxAllow; }
     cut = j;
     if(blocked){ if(acc) acc.faceBlocked = (acc.faceBlocked||0) + 1; }
     else if(cut >= pts.length) return pts;   // 여유 안에서 다 소진 — 자를 것이 없다
@@ -17959,11 +18110,26 @@ function buildAdjustedHair3DObject(){
      같다 — 세 경로가 갈라지면 조용히 어긋난다(이 파일이 반복해서 겪은 방식).
      ⚠ 끝점을 공유해야(i1 포함) 조각 사이에 틈이 안 생긴다. 3D는 선분 목록이라
        틈이 생기면 가닥이 점선으로 끊겨 보인다. */
+  /* ── (2026-08-18 i) 3D는 <b>앞 화면에서 조정한 그대로</b>를 따른다 (사용자 지시) ──
+     사용자: "3D는 모든 결과를 앞에서 조정한 거에 따르는 거야."
+     조정 화면(projectHair3DToView)의 색 규칙은 <b>되쏘아 읽기</b>다: 가닥이 지금
+     지나는 자리의 원본 픽셀을 쓰고, 원본에 머리가 없는 자리(늘린 구간·이마의
+     뱅·염색으로 덮은 자리)에서만 가닥 색으로 폴백한다. 여기만 그 되쏘기가 없어서
+       · 마네킹 — 조각색이 아예 없어 가닥당 단색(사용자 3번: 3D만 전체가 갈색)
+       · 염색   — 조정 화면은 사진색인데 3D만 스펙 색으로 전부 덮임
+     두 화면이 갈라졌다. 같은 함수(bakeStrandColors3D → sampleProjectedStrandColors)로
+     여기서도 읽으면 규칙이 하나가 된다. 폴백색이 sec.color(염색)이므로 "사진에
+     머리가 없는 자리는 염색색"이라는 조정 화면의 동작까지 그대로 따라온다. */
+  const cmodel = state.hair3Dneutral;
   let pxN = 0;
   for(const st of adj){
     const pts = st.pts;
     if(!pts || pts.length < 2) continue;
-    const segCols = (st.colors && st.colors.length > 1) ? st.colors : null;
+    const view = st.srcAngle || (pts[0] ? viewOfRoot(pts[0]) : null);
+    const reCols = (HAIR_PIXEL_COLOR.reproject && view)
+      ? bakeStrandColors3D(pts, cmodel, view, st.color, st.colors)
+      : (st.colors || null);
+    const segCols = (reCols && reCols.length > 1) ? reCols : null;
     if(segCols) pxN++;
     const n = pts.length, K = segCols ? segCols.length : 0;
     if(!segCols) c.set(st.color || '#1a1a1a');
@@ -18230,7 +18396,26 @@ function curlStrand3D(pts, curlAmt, waveT){
    앞을 향한 점은 예전과 똑같이 무조건 보임이라, 이 변경으로 <b>사라지는</b>
    가닥은 없다(추가만 된다). 가림 기하를 못 만들면 예전 규칙 그대로.
 ══════════════════════════════════════════════════════════════════ */
-const VIEW_CULL = { mode: 'anyVisible' };   // 'anyVisible' | 'anyFacing' | 'mean'(예전)
+/* ── (2026-08-18 i) 판정은 가닥 단위인데 <b>그리기는 통째로</b>였다 ──────────
+   사용자: "1번 사진에서는 뒷머리가 <b>목 앞에</b> 그려져." / "측면 사진에서는
+   머리가 이상하게 그려져 있고."
+
+   8/18 h가 "가닥의 어느 한 점이라도 보이면 남긴다"로 바꿨다. 맞는 규칙이다 —
+   목 옆으로 비어져 나온 뒷머리는 실제로 보이니까. 그런데 <b>남긴 다음</b>이
+   빠져 있었다: 남긴 가닥은 점 하나도 빠짐없이 전부 그려진다. 그래서 목 옆으로
+   1cm 보이는 가닥이 목·턱·얼굴을 <b>가로질러</b> 통째로 그려졌다.
+   2D 조정 화면은 원본 사진 <b>위에</b> 가닥을 얹으므로, 목 뒤를 지나는 구간이
+   그대로 목 앞에 얹힌 그림이 된다 — 사용자가 본 것이 정확히 이것이다.
+   측면도 같은 원인이다: 반대쪽(먼 쪽) 머리가 얼굴을 가로질러 그려진다.
+
+   고침 — 판정을 <b>점 단위</b>로 내려서 보이는 구간만 그린다. 판정식(viewPointVisible)은
+   그대로 쓴다. 새 규칙이 아니라, 이미 있던 규칙을 <b>그리기에도</b> 적용하는 것이다.
+   · 경계 선분(보임↔가림)은 그린다 — 가려지는 지점에서 자연스럽게 끝나야 하고,
+     빼면 실루엣 경계에 눈에 보이는 틈이 생긴다.
+   · 가닥 단위 판정(strandFacesCamera)은 그대로 둔다: 그건 "이 가닥을 아예
+     계산할 가치가 있나"를 정하는 예산 쪽 판정이라 성격이 다르다.
+   되돌리려면 VIEW_CULL.trimHidden = false(8/18 h 동작). */
+const VIEW_CULL = { mode: 'anyVisible', trimHidden: true };   // 'anyVisible' | 'anyFacing' | 'mean'(예전)
 
 /* 이 뷰에서 <b>가리는 몸</b>(두상+목·어깨)의 직교투영 그림자 (2026-08-18 h).
    가리는 것은 두 조각이고 <b>둘 다 이미 실측돼 있다</b>(새 상수 없음):
@@ -18289,6 +18474,22 @@ function strandFacesCamera(dsum, n, dmax, vis){
   if(VIEW_CULL.mode === 'mean') return (n > 0) && (dsum / n >= 0);
   if(VIEW_CULL.mode === 'anyFacing') return dmax >= 0;
   return (vis > 0) || (dmax >= 0);               // 어느 한 점이라도 보이면 남긴다
+}
+/* 점별 보임 배열 → <b>그릴 구간</b>의 인덱스 범위 [시작, 끝](끝 포함).
+   선분 i−1→i는 <b>양 끝 중 하나라도</b> 보이면 그린다(경계에서 끊기지 않게).
+   전부 보이면 [[0, n−1]] 하나 — 그때는 예전과 글자 그대로 같은 그림이다. */
+function visibleRuns(vpt){
+  const n = vpt.length;
+  if(n < 2) return [];
+  const runs = [];
+  let s = -1;
+  for(let i=1;i<n;i++){
+    const draw = vpt[i-1] || vpt[i];
+    if(draw){ if(s < 0) s = i-1; }
+    else if(s >= 0){ runs.push([s, i-1]); s = -1; }
+  }
+  if(s >= 0) runs.push([s, n-1]);
+  return runs;
 }
 
 // (11차) 중력 처짐 — 실제 펌: 로드로 감은 뒤 풀면 자체 무게로 끝이 아래로 늘어짐.
@@ -19107,20 +19308,29 @@ function projectHairQuiltToView(ctx, fit, angle, maskInf){
   let dMin = Infinity, dMax = -Infinity;
   for(const st of adj){
     const pts = st.pts, cp = []; let dsum = 0, dmax = -Infinity, vis = 0;
+    const vpt = [];
     for(let i=0;i<pts.length;i++){
       const pr = project3DPointToView(pts[i], cal, model.yTop, model.CY);
       cp.push({ x: toCX(pr.ix), y: toCY(pr.iy) });
       dsum += pr.depth; if(pr.depth > dmax) dmax = pr.depth;
-      if(viewPointVisible(pr, occ)) vis++;
+      const v = viewPointVisible(pr, occ);
+      vpt.push(v); if(v) vis++;
     }
     const depth = dsum / pts.length;
     if(!strandFacesCamera(dsum, pts.length, dmax, vis)) continue;   // 이 각도에서 안 보이는 가닥
-    const cum = [0];
-    for(let i=1;i<cp.length;i++) cum.push(cum[i-1] + Math.hypot(cp[i].x-cp[i-1].x, cp[i].y-cp[i-1].y));
-    const total = cum[cum.length-1];
-    if(total < Q.segMinPx) continue;
-    if(depth < dMin) dMin = depth; if(depth > dMax) dMax = depth;
-    lanes.push({ cp, cum, total, depth, sec: st.sec || 'crown' });
+    /* 가려진 구간은 <b>띠도 안 붙인다</b> (2026-08-18 i) — 가닥 렌더와 같은 규칙.
+       한쪽만 고치면 이식 모드에서만 뒷머리가 목 앞에 얹힌다(두 경로가 갈라진다). */
+    const runs = VIEW_CULL.trimHidden ? visibleRuns(vpt) : [[0, cp.length-1]];
+    for(const [s,e] of runs){
+      const seg = cp.slice(s, e+1);
+      if(seg.length < 2) continue;
+      const cum = [0];
+      for(let i=1;i<seg.length;i++) cum.push(cum[i-1] + Math.hypot(seg[i].x-seg[i-1].x, seg[i].y-seg[i-1].y));
+      const total = cum[cum.length-1];
+      if(total < Q.segMinPx) continue;
+      if(depth < dMin) dMin = depth; if(depth > dMax) dMax = depth;
+      lanes.push({ cp: seg, cum, total, depth, sec: st.sec || 'crown' });
+    }
   }
   if(!lanes.length) return quiltFail(angle, '이 각도에서 앞을 향한 가닥이 없음');
   lanes.sort((a,b)=> a.depth - b.depth);                       // 뒤부터 — 앞이 위에 덮임
@@ -19356,6 +19566,7 @@ function projectHair3DToView(ctx, fit, angle, maskInf){
   const rootDev = [];
   const projected0 = [];
   let pxN = 0;   // [진단] 조각별 원본 픽셀색을 실제로 얻은 가닥 수
+  let hidPts = 0, hidAll = 0;   // [진단] 가려져서 안 그린 점 / 그린 가닥의 전체 점(8/18 i)
   for(let si=0; si<adj.length; si++){
     const st = adj[si];
     const pts = st.pts; let dsum=0, dmax=-Infinity, vis=0; const cpts=[];
@@ -19363,6 +19574,7 @@ function projectHair3DToView(ctx, fit, angle, maskInf){
        때문(sampleProjectedStrandColors). 캔버스 좌표(cpts)로는 못 읽는다:
        photoRGB는 사진 좌표계에 있다. */
     const ipts=[];
+    const vpt=[];              // 점별 보임 — 그리기도 이 판정으로 자른다(8/18 i)
     let rootIx = 0, rootIy = 0;
     for(let i=0;i<pts.length;i++){
       const pr = project3DPointToView(pts[i], cal, model.yTop, model.CY);
@@ -19370,7 +19582,8 @@ function projectHair3DToView(ctx, fit, angle, maskInf){
       cpts.push({ x: toCX(pr.ix), y: toCY(pr.iy) });
       ipts.push({ x: pr.ix, y: pr.iy });
       dsum += pr.depth; if(pr.depth > dmax) dmax = pr.depth;
-      if(viewPointVisible(pr, occ)) vis++;
+      const v = viewPointVisible(pr, occ);
+      vpt.push(v); if(v) vis++;
     }
     const depth = dsum / pts.length;   // 정렬(painter's)에는 계속 평균을 쓴다 — 겹 순서용
     /* 보이냐 마느냐는 strandFacesCamera 단일 출처(위 "뷰 컬링" 구역). 평균으로
@@ -19395,8 +19608,13 @@ function projectHair3DToView(ctx, fit, angle, maskInf){
       ? sampleProjectedStrandColors(maskInf, ipts, bakedCols, st.color)
       : bakedCols;
     if(pxCols) pxN++;
+    /* 가려진 구간은 안 그린다(8/18 i). 전부 보이면 runs는 [[0, n−1]] 하나라
+       예전과 같은 그림이고, 목·얼굴 뒤로 넘어간 구간만 빠진다. */
+    const runs = VIEW_CULL.trimHidden ? visibleRuns(vpt) : [[0, cpts.length-1]];
+    if(!runs.length) continue;                  // 판정상 남았지만 그릴 구간이 없다
+    hidPts += (pts.length - vis); hidAll += pts.length;
     projected.push({
-      cpts, depth, color: st.color, colors: pxCols,
+      cpts, runs, depth, color: st.color, colors: pxCols,
       w: roles[rid].w,                            // 레이어(굵기) 배정
       /* 굵기가 같은 레이어끼리는 한 묶음으로 그린다(키를 굵기로 잡는 이유).
          MIN_SAFE_WIDTH(0.9px) 하한에 걸리면 네 레이어가 같은 굵기가 되는데 —
@@ -19412,6 +19630,7 @@ function projectHair3DToView(ctx, fit, angle, maskInf){
   projected.sort((a,b)=> a.depth - b.depth); // 뒤(작은 depth)부터 → 앞이 위에 덮임
   logStrandRender(angle, { spanX, unit, cssW, roles, rawTotal, targetStrands, pxN,
                            stride, total: src.length, drawn: projected.length,
+                           hidPts, hidAll,
                            rootDev: summarizeRootDev(rootDev, projected0.length, maskInf) });
 
   // 다발 속 미세 틴트 — 가닥마다 다른 색을 주되 팔레트 색에서 벗어나진 않게.
@@ -19472,7 +19691,8 @@ function projectHair3DToView(ctx, fit, angle, maskInf){
     for(const arr of und.values()){
       ctx.lineWidth = arr[0].w * HAIR_STRAND_LOOK.undercoatMul;
       ctx.beginPath();
-      for(const p of arr) traceSmoothPolyline(ctx, p.cpts);
+      // 언더코트도 <b>보이는 구간</b>만 — 안 그러면 두피색 획이 목·얼굴 위에 남는다
+      for(const p of arr) for(const [s,e] of p.runs) traceSmoothPolyline(ctx, p.cpts.slice(s, e+1));
       ctx.stroke();
     }
   }
@@ -19503,11 +19723,16 @@ function projectHair3DToView(ctx, fit, angle, maskInf){
         const i0 = Math.round(k*(n-1)/K), i1 = Math.round((k+1)*(n-1)/K);
         if(i1 <= i0) continue;
         const q = quantizeStrokeColor(bundleTintColor(p.colors[k], pxTint), R.quant);
-        push(p.slice + '|' + q + '|' + p.wk, q, p, p.cpts.slice(i0, i1 + 1));
+        /* 조각(색) × 구간(보임)의 교집합만 그린다(8/18 i). 조각 경계식(i0/i1)은
+           buildAdjustedHair3DObject·strokeOpColored와 글자 그대로 같게 둔다. */
+        for(const [s,e] of p.runs){
+          const a = Math.max(i0, s), b = Math.min(i1, e);
+          if(b > a) push(p.slice + '|' + q + '|' + p.wk, q, p, p.cpts.slice(a, b + 1));
+        }
       }
     } else {
       const q = quantizeStrokeColor(bundleTintColor(p.color || '#1a1a1a', tint), R.quant);
-      push(p.slice + '|' + q + '|' + p.wk, q, p, p.cpts);
+      for(const [s,e] of p.runs) push(p.slice + '|' + q + '|' + p.wk, q, p, p.cpts.slice(s, e+1));
     }
   }
   // 배치끼리도 평균 깊이 순으로 — 슬라이스 단위 painter's 정렬 유지
@@ -19548,6 +19773,7 @@ function logStrandRender(angle, m){
   window._lastStrandDiag[angle] = {
     headCss: +css(m.spanX), unit: +m.unit.toFixed(2),
     drawn: m.drawn, total: m.total, stride: m.stride, pxN: m.pxN,
+    hidPct: m.hidAll ? +(m.hidPts/m.hidAll*100).toFixed(1) : 0,
     rawTotal: Math.round(m.rawTotal), target: Math.round(m.targetStrands),
     roles: m.roles.map(r=>({ id:r.id, w:+r.w.toFixed(2), wCss:+css(r.w), n:Math.round(r.n) })),
     rootDev: m.rootDev,
@@ -19569,6 +19795,12 @@ function logStrandRender(angle, m){
     + `${m.drawn ? ' = ' + Math.round((m.pxN||0)/m.drawn*100) + '%' : ''}) / 목표 ${Math.round(m.targetStrands)}개`
     + `(원본 결 보기 ${Math.round(m.rawTotal)}개 ×${(m.targetStrands/Math.max(1,m.rawTotal)).toFixed(2)}, `
     + `모델 ${m.total}개 중 솎기 ${(+m.stride).toFixed(2)}, 앞면만)`
+    /* [진단] 가림 트리밍(2026-08-18 i) — 그린 가닥의 점 중 <b>몸에 가려서</b> 안
+       그린 비율. 0%면 트리밍이 아무 일도 안 한 것(=8/18 h와 같은 그림)이고,
+       정면에서 20~40%면 뒷머리가 목·얼굴 뒤를 지나던 구간이 걷힌 것이다.
+       100%에 가까우면 그림자가 과하다(두개골 대신 헐을 쓰고 있는지 의심). */
+    + (m.hidAll ? ` · 가림 트리밍 ${Math.round(m.hidPts/m.hidAll*100)}%(점 ${m.hidPts}/${m.hidAll})`
+                : ``)
   );
 }
 /* 다발 렌더 전용 틴트 — 어두운 쪽은 곱셈, 밝은 쪽은 회색 쪽으로 완만히.
@@ -19938,7 +20170,7 @@ function applyStyleSpec(id){
    실기기 로그를 받아 분석했는데 알고 보니 이전 빌드였던 일이 있었다(두피이식 줄이
    옛 형식이라 뒤늦게 알아챘다). 파일을 주고받으며 고치는 구조에서는 캐시·배포 지연이
    상시 위험이라, 새 파일을 낼 때마다 이 숫자를 올린다. 콘솔 맨 위에 한 번 찍힌다. */
-const BUILD = { n: 11, tag: '미리보기 담기 + 저장본 프레임 잘림 검사 + 숱판정 광택 진단' };
+const BUILD = { n: 12, tag: '가림 점단위 트리밍 + 시술변위 여유 + 마네킹/3D 조각색' };
 console.log('%c[GYEOL 빌드 ' + BUILD.n + '] ' + BUILD.tag,
             'background:#7A6149;color:#fff;padding:2px 8px;border-radius:3px');
 const SILHOUETTE = {
@@ -20491,7 +20723,7 @@ function buildMannequinHair3D(){
   // ── 셀별 심을 개수: 밀도 × 면적. 총합은 촬영 모델과 같게(브레젠험 누산) ──
   const nCell = NT*NP;
   const w = new Float64Array(nCell);
-  let wSum = 0, planted = 0, baldCells = 0;
+  let wSum = 0, planted = 0, baldCells = 0, pxColored = 0;
   let offScalpCells = 0;
   for(let ci=0; ci<nCell; ci++){
     // 두피 밖은 밀도 0이라 아래 조건에 자동으로 걸리지만, 이유를 따로 센다
@@ -20517,9 +20749,16 @@ function buildMannequinHair3D(){
       const rp = { x: S.a*Math.sin(phi)*Math.sin(th), y: CY + S.b*Math.cos(phi),
                    z: S.c*Math.sin(phi)*Math.cos(th) };
       const sec = resolveSection3D(rp, CY, S.b) || 'crown';
-      const st = growMannequinStrand(ci, NT, NP, S, E, CY, lenFor(sec, viewOfRoot(rp)), secCol[sec] || secCol.crown);
+      const view = viewOfRoot(rp);
+      const st = growMannequinStrand(ci, NT, NP, S, E, CY, lenFor(sec, view), secCol[sec] || secCol.crown);
       if(!st) continue;
       st.sec = sec;
+      st.srcAngle = view;
+      /* 조각별 원본 픽셀색 — 마네킹도 <b>사진에서 결을 가져온다</b>(2026-08-18 i).
+         가닥을 자기 뷰로 되쏘아 그 자리 픽셀을 읽는다. 못 읽으면 null이라
+         예전처럼 가닥당 단색으로 떨어진다(새 실패 모드 없음). */
+      st.colors = bakeStrandColors3D(st.pts, src, view, st.color, null);
+      if(st.colors) pxColored++;
       secHist[sec] = (secHist[sec]||0) + 1;
       out.push(st); planted++;
     }
@@ -20531,6 +20770,10 @@ function buildMannequinHair3D(){
     + '(두피 밖 ' + offScalpCells + ' · 밀도 0 ' + (baldCells - offScalpCells) + ')'
     + ' · 섹션 ' + Object.keys(secHist).map(s=>s+' '+secHist[s]+'('+Math.round(100*secHist[s]/planted)+'%)').join(' ')
     + ' · 섹션길이(중앙값) ' + lenTxt
+    /* [진단] 조각별 원본 픽셀색을 실제로 구운 가닥 비율(2026-08-18 i).
+       0%면 마스크·photoRGB·캘리브레이션 중 하나가 없다는 뜻이고, 그때 최종 3D는
+       예전처럼 가닥당 단색이 된다 — [3D]의 "원본 픽셀색 N개"와 같은 숫자여야 한다. */
+    + ' · 원본 픽셀색 ' + pxColored + '개(=' + (planted ? Math.round(pxColored/planted*100) : 0) + '%)'
     + (vTxt ? ('\n[마네킹·뷰별길이] ' + vTxt) : ''));
   return { strands: out, viewCal: src.viewCal, yTop: src.yTop, CY: src.CY,
            field: null, occ: null, grid: G, roots: rf, mannequin: true };
@@ -21103,9 +21346,16 @@ function computeAdjustedHair3DStrands(srcAngleFilter, stride){
     /* ⑧ 세그멘테이션 재클립 — "세그멘테이션 밖에는 안 그린다"를 3D에도.
        늘린 만큼(ratio>1)은 나가는 게 맞으므로 그 호길이만큼 여유를 준다. */
     if(occ){
-      const grow = ratio > 1 ? (ratio - 1) * arcLength3D(st.pts) * HAIR_OCC3D.growPerRatio : 0;
+      /* 여유(2026-08-18 i) — 시술이 <b>실제로 움직인 거리</b>가 여유다(srcPts).
+         길이만 보던 growPerRatio는 moveGrow=false일 때의 폴백으로만 남는다:
+         변위 여유가 그 값을 이미 포함하므로 켜져 있을 때 같이 주면 이중이다.
+         마네킹 바닥값(mqGrow)은 기하 오차 보정이라 성격이 다르므로 그대로 두되
+         앞쪽(이마)에만 준다 — HAIR_OCC3D.fringeFrontOnly 주석 참조. */
+      const grow = (!HAIR_OCC3D.moveGrow && ratio > 1)
+        ? (ratio - 1) * arcLength3D(st.pts) * HAIR_OCC3D.growPerRatio : 0;
       const t = trimStrandToOccupancy3D(pts, occ, occAcc,
-                  { growLen: Math.max(grow, mqGrow), neverDrop: true, faceVeto: true });
+                  { growLen: Math.max(grow, mqGrow), growFrontOnly: (mqGrow > grow) && HAIR_OCC3D.fringeFrontOnly,
+                    srcPts: st.pts, neverDrop: true, faceVeto: true });
       if(t && t.length >= 2) pts = t;
     }
     /* ⑨ 빗질(시술모드) — 재클립 <b>뒤</b>다. 클립은 "사진에 머리가 없는 자리에는
@@ -21138,10 +21388,19 @@ function logAdjustedClip(acc, kept){
   const now = Date.now();
   if(sig === _adjClipSig || now - _adjClipAt < 1000) return;
   _adjClipSig = sig; _adjClipAt = now;
+  /* [진단] 시술 변위 여유(2026-08-18 i) — "컬을 넣었는데도 실루엣에 잘린다"를
+     가르는 줄이다. 여유가 0에 가까우면 연산자가 가닥을 안 움직였다는 뜻이고
+     (그러면 원인은 클립이 아니라 조정 쪽), 여유가 큰데도 자름이 많으면
+     움직인 방향이 얼굴이라 faceVeto가 막고 있는 것이다. */
+  const growTxt = acc.growN
+    ? ' · 여유 받은 가닥 ' + acc.growN + '개(평균 ' + (acc.growSum/acc.growN).toFixed(3) + ' 모델단위)'
+    : ' · 여유 0(시술 변위 없음)';
   console.log('[3D·클립] 조정 후 재클립 — 가닥 ' + kept + '개 중 자름 ' + acc.trimmed
     + '개(평균 ' + (acc.trimmed ? (acc.removedPts/acc.trimmed).toFixed(1) : '0') + '점 제거)'
     + ' · 얼굴침범 차단 ' + (acc.faceBlocked||0) + '개'
+    + growTxt
     + ' · 판정 ' + acc.n + '회'
+    + (HAIR_OCC3D.moveGrow ? '' : ' · moveGrow OFF')
     + (HAIR_OCC3D.clipAdjusted ? '' : ' · OFF'));
 }
 
