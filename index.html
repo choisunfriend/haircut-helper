@@ -10590,7 +10590,14 @@ function toggleDiagInfo(){
     }
   }
 
-  box.textContent = lines.join('\n');
+  /* (2026-08-31) 여기는 textContent였다 — 그래서 로그 문자열의 <b>가 <b>글자 그대로</b>
+     찍혔다(실기기 스크린샷: `얼굴 <b>평면 데칼</b> — 이유 미기록`). 강조하려고 붙인
+     태그가 오히려 한 줄을 읽기 어렵게 만들고 있었다. 태그를 지우는 대신 살린다 —
+     이 파일의 진단 문자열은 <b> 하나만 쓰고, 그건 정확히 "여기가 핵심"이라는 표시다.
+     전부 이스케이프한 뒤 <b>만 되돌리므로 사진·파일명에 <>가 섞여 들어와도 안전하다. */
+  box.innerHTML = lines.join('\n')
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/&lt;b&gt;/g, '<b>').replace(/&lt;\/b&gt;/g, '</b>');
 }
 
 // 결필드 원본을 가공 없이 그리는 디버그 오버레이.
@@ -14001,10 +14008,94 @@ function sampleBackdrop(angle, img){
   }
 }
 
+/* ── 턱선 컷 (2026-08-31 9차) ────────────────────────────────────────────────
+   사용자: "2D 전신상 화면에서 사진을 자르는데 <b>턱선을 살리면서 바로 아래를 잘라서</b>
+   3D 목에다가 얹는 게 되는지 시도해봐."
+
+   8차가 "사진은 턱까지, 목은 3D"로 구조를 바꿨는데, 자르는 선은 <b>가로 직선</b>
+   하나였다(cutPxY = 턱 + 0.10단위). 사람 턱은 직선이 아니다 — 턱 끝이 가장 낮고
+   하악각(귀밑)으로 갈수록 3~4cm 올라간다. 그 차이만큼:
+     · 턱 <b>옆</b>은 직선이 한참 아래를 지나므로 손님 목·옷깃이 다시 들어온다
+       (8차가 없애려던 바로 그것이 옆구리로 돌아온다)
+     · 정면에서는 턱 밑에 <b>가로 띠</b>가 보인다. 곡면(턱)을 직선으로 자른 자국이다.
+
+   그래서 MediaPipe 얼굴 윤곽의 <b>아래 호</b>를 그대로 따라 자른다. 자르는 양은
+   8차와 같다(그 호에서 chinDrop만큼 내려간 곳) — 바꾸는 것은 <b>모양</b>뿐이라
+   3D 목과의 계약(cutPxY 상한)은 그대로 지킨다.
+
+   ⚠ 맞바꾼 것 — 하악각 아래가 높이 잘리면 그 자리를 3D 목이 못 채워 <b>배경이
+     비치는 노치</b>가 생길 수 있다. 그래서 가로 직선보다 maxRiseMesh 이상은 위로
+     안 올라가게 막는다(턱선 모양은 살고, 노치는 안 생기는 절충). 이 값이 이번
+     변경에서 실기기로 <b>먼저 확인해야 할 숫자</b>다.
+   ⚠ 후면처럼 얼굴 랜드마크가 없는 뷰는 <b>예전 가로 직선 그대로</b>다(null 반환).
+     새 실패 모드를 만들지 않는다.
+   되돌리기: RESULT_JAW_CUT.on = false */
+const RESULT_JAW_CUT = {
+  on: true,
+  maxRiseMesh: 0.34,  // 가로 직선보다 이만큼(메쉬단위 ≈5.5cm) 위까지만 허용
+};
+/* 얼굴 윤곽(FACE_OVAL)의 <b>아래 호</b> — 왼쪽 귀밑 → 턱끝(152) → 오른쪽 귀밑을
+   이어지는 순서로 늘어놓은 것. 위쪽(이마) 호는 자를 일이 없어 뺐다.
+   152(턱끝)는 이 파일이 detectFaceLandmarks에서 chin으로 이미 쓰는 인덱스다 —
+   새 인덱스를 추측하지 않고 같은 규약을 따른다. */
+const JAW_ARC_IDX = [132,58,172,136,150,149,176,148,152,377,400,378,379,365,397,288,361];
+/* 마스크 열마다 "이 행부터 아래는 버린다"를 담은 배열. 좌표 변환이 필요 없는 이유:
+   마스크 열 = (fit.dx + u·fit.dw − fit.dx)/fit.dw·mw = u·mw 로 fit이 약분된다
+   (행도 같다). 즉 정규화 랜드마크에 mw·mh만 곱하면 곧 마스크 좌표다. */
+function buildJawCutRows(angle, mw, mh, chinRow, cutRow, pxPerMesh, fit){
+  if(!RESULT_JAW_CUT.on) return null;
+  const lm  = getViewLandmarksFor(angle);
+  const raw = lm && lm.rawLandmarks;
+  if(!raw || raw.length < 468 || !(mw > 4) || !(mh > 4)) return null;
+
+  const dropRows = cutRow - chinRow;                 // 8차의 chinDrop을 행 단위로
+  const pts = [];
+  for(const i of JAW_ARC_IDX){
+    const p = raw[i];
+    if(p) pts.push({ x: p.x * mw, y: p.y * mh + dropRows });
+  }
+  if(pts.length < 4) return null;
+
+  /* 호를 <b>순서대로</b> 이어 래스터화하면서 열마다 가장 아래 y를 남긴다.
+     x로 정렬해 버리면 옆모습에서 호가 x축으로 접히는 구간이 지그재그가 된다 —
+     "가장 아래"를 취하면 접혀도 항상 <b>덜 자르는</b> 쪽으로 안전하게 기운다. */
+  const rows = new Float32Array(mw).fill(NaN);
+  for(let j=0;j<pts.length-1;j++){
+    const a = pts[j], b = pts[j+1];
+    const x0 = Math.max(0, Math.floor(Math.min(a.x, b.x)));
+    const x1 = Math.min(mw-1, Math.ceil(Math.max(a.x, b.x)));
+    for(let x=x0; x<=x1; x++){
+      const t = Math.abs(b.x - a.x) > 1e-6 ? (x - a.x)/(b.x - a.x) : 0;
+      const y = a.y + (b.y - a.y) * Math.max(0, Math.min(1, t));
+      if(Number.isNaN(rows[x]) || y > rows[x]) rows[x] = y;
+    }
+  }
+  // 호 바깥(귀 옆·머리카락 쪽)은 끝점 높이를 그대로 이어 간다. 거기 남는 것은
+  // 어깨·손님 옷이라 잘려야 하고, 머리카락은 아래에서 헤어 레이어로 되살아난다.
+  let first = -1, last = -1;
+  for(let x=0;x<mw;x++){ if(!Number.isNaN(rows[x])){ if(first<0) first=x; last=x; } }
+  if(first < 0) return null;
+  for(let x=0;x<first;x++) rows[x] = rows[first];
+  for(let x=last+1;x<mw;x++) rows[x] = rows[last];
+  for(let x=first+1;x<last;x++) if(Number.isNaN(rows[x])) rows[x] = rows[x-1];  // 안쪽 빈 열
+
+  /* 상·하한. 아래로는 8차의 가로 직선(cutRow)을 절대 안 넘고, 위로는
+     maxRiseMesh 이상 안 올라간다(위 ⚠ 노치 참고). */
+  const rise = (pxPerMesh > 1 && fit && fit.dh > 1)
+    ? (RESULT_JAW_CUT.maxRiseMesh * pxPerMesh / fit.dh) * mh
+    : mh;
+  const floorRow = cutRow - rise;
+  for(let x=0;x<mw;x++){
+    if(rows[x] > cutRow)  rows[x] = cutRow;
+    if(rows[x] < floorRow) rows[x] = floorRow;
+  }
+  return rows;
+}
+
 /* 두상 오려내기 — (사람 실루엣 ∩ 자르는 선 위) ∪ (렌더된 헤어 레이어).
    헤어 레이어를 합집합에 넣는 이유: 조정으로 길어진 머리는 원본 실루엣 밖으로
    나가는데, 그것도 두상의 일부다(어깨로 내려온 머리가 잘리면 안 된다). */
-function buildHeadCutout(srcCanvas, angle, fit, hairLayer, cutPxY, chinPxY, neckHalfPx, neckCxPx){
+function buildHeadCutout(srcCanvas, angle, fit, hairLayer, cutPxY, chinPxY, neckHalfPx, neckCxPx, pxPerMesh){
   const W = srcCanvas.width, H = srcCanvas.height;
   const maskC = document.createElement('canvas'); maskC.width = W; maskC.height = H;
   const mctx = maskC.getContext('2d');
@@ -14027,15 +14118,27 @@ function buildHeadCutout(srcCanvas, angle, fit, hairLayer, cutPxY, chinPxY, neck
     const chinRow = ((chinPxY - fit.dy) / fit.dh) * mh;
     const neckL = ((neckCxPx - neckHalfPx - fit.dx) / fit.dw) * mw;
     const neckR = ((neckCxPx + neckHalfPx - fit.dx) / fit.dw) * mw;
+    /* (2026-08-31 9차) 턱선을 따라가는 곡선 컷. 없으면(후면 등) null이 와서
+       아래 루프가 예전 가로 직선 그대로 돈다 — 위 buildJawCutRows 주석 참고. */
+    const jawRows = buildJawCutRows(angle, mw, mh, chinRow, cutRow, pxPerMesh, fit);
     for(let y=0;y<mh;y++){
-      let a = 255;
-      if(y > cutRow) a = 0;
-      else if(y > cutRow - feather) a = Math.round(255 * (cutRow - y)/feather);
-      if(a === 0) continue;
-      const narrow = (y > chinRow);
+      let aRow = 255;
+      if(y > cutRow) aRow = 0;
+      else if(y > cutRow - feather) aRow = Math.round(255 * (cutRow - y)/feather);
+      if(aRow === 0) continue;
+      // 턱선 컷을 쓰면 턱 아래는 이미 곡선이 다 걷어내므로 목 기둥 좁히기는 안 건다.
+      // (걸면 턱 <b>옆</b>이 세로로 잘려 턱선을 살리려던 목적과 정면충돌한다.)
+      const narrow = !jawRows && (y > chinRow);
       for(let x=0;x<mw;x++){
         if(!pm[y*mw+x]) continue;
         if(narrow && (x < neckL || x > neckR)) continue;
+        let a = aRow;
+        if(jawRows){
+          const jr = jawRows[x];
+          if(y > jr) continue;
+          else if(y > jr - feather) a = Math.min(a, Math.round(255 * (jr - y)/feather));
+        }
+        if(a === 0) continue;
         const i=(y*mw+x)*4;
         id.data[i]=255; id.data[i+1]=255; id.data[i+2]=255; id.data[i+3]=a;
       }
@@ -14230,7 +14333,7 @@ function drawResult(){
       const neckHalfPx = anchor.neck ? anchor.neck.halfPx * 1.10 : 0.55 * anchor.pxPerMesh;
       const neckCxPx   = anchor.neck ? anchor.neck.cxPx : anchor.earPx.x;
       const cutout = buildHeadCutout(src, angle, fit, hairLayer, anchor.cutPxY,
-                                     chinPxY, neckHalfPx, neckCxPx);
+                                     chinPxY, neckHalfPx, neckCxPx, anchor.pxPerMesh);
       const backdrop = sampleBackdrop(angle, img);
       const finish = (snap)=>{
         if(gen !== _resultGen || currentScreen !== 'result') return;
@@ -14989,9 +15092,16 @@ function loadImageAsync(src){
 /* 얼굴이 <b>어떻게</b> 붙었는지의 기록 (2026-08-22). 스틸 한 장으로는 입체 메쉬와
    평면 데칼을 못 가른다 — 돌려 봐야 안다. 그래서 숫자로 남긴다.
    진단정보 패널 맨 위에 같이 찍는다(폰엔 콘솔이 없다). */
+/* (2026-08-31) 세 칸 추가 — sideYaw/reliefGain/reliefCm.
+   "판때기" 진단에 필요한 것은 <b>얼마나 평평한가</b>가 아니라 <b>왜 평평한가</b>였다.
+   zRange만 보면 원인이 ① 측면 실측이 굴곡을 덮어썼다 ② 굴곡 자체가 작다 중
+   어느 쪽인지 못 가른다 — 그래서 그 둘을 각각 숫자로 남긴다. */
 const FACE_BUILD = { path: '-', why: '', zRange: null, zMin: null, zMax: null,
-                     sideHits: 0, ellA: null, ellC: null };
+                     sideHits: 0, ellA: null, ellC: null,
+                     sideYaw: {}, reliefGain: null, reliefCm: null, cmPerUnit: null };
 async function buildRealFaceMesh(faceMetrics){
+  FACE_BUILD.sideYaw = {}; FACE_BUILD.reliefGain = null;
+  FACE_BUILD.reliefCm = null; FACE_BUILD.cmPerUnit = null;
   const lm = faceMetrics.lm;
   const src = state.shots && state.shots.front;
   // rawLandmarks가 없으면(폴백 추정 랜드마크 등, 예전 세션 캐시 데이터 포함)
@@ -15171,15 +15281,56 @@ async function buildRealFaceMesh(faceMetrics){
      같은 절차를 각자 복제하고 있었다. 식·상수·판정 임계 전부 동일했으므로 아래
      3개로 뽑아 양쪽이 같이 쓴다. 동작 변경 없음.
      ※ usableSideViews는 루프 중 state가 안 바뀌므로 한 번만 구해 공유해도 동일. */
-  // 실측 깊이에 쓸 만한 측면 뷰만(랜드마크 468개 + PnP 신뢰도 0.5 이상)
+  /* ── 측면 깊이를 <b>믿을 수 있는 각도</b>인가 (2026-08-31) ────────────────────
+     여태 이 게이트는 getViewPoseConfidence만 봤다. 그런데 그 값이 말하는 것은
+     "포즈 행렬이 PnP로 풀렸는가"이지 "<b>깊이를 잴 만큼 돌아갔는가</b>"가 아니다 —
+     정면에 가까운 사진도 랜드마크만 잘 잡히면 신뢰도가 그냥 1.00으로 나온다.
+     (이 손님 실기기 로그: left yaw <b>26.7°</b> 신뢰도 1.00 / right <b>−22.2°</b> 신뢰도 1.00.)
+
+     그 각도에서 projectImagePointToHead가 돌려주는 z는 사실상 <b>두상 타원면 그 자체</b>다.
+     옆으로 안 돌아갔으니 사진에 새 깊이 정보가 없고, 함수는 이미지 점을 두상 표면에
+     쏘아 맞히는 일을 할 뿐이기 때문이다. 그런데 아래 합성은 실측이 있는 정점의 z를
+     그 값으로 <b>덮어쓴다</b>(map[i] = 실측Z − 정면Z 를 더하면 최종 z = 실측Z).
+     결과 — 코·이마 굴곡이 통째로 지워지고 얼굴이 타원면에 밀착한 <b>가면</b>이 된다.
+     실기기에서 "얼굴이 판때기로 나온다"고 보이던 것이 바로 이것이다.
+     경계 안 정점 468개 중 측면 실측이 걸리는 것이 200개 넘으므로, 얼굴 한가운데가
+     통째로 이 경로를 탄다.
+
+     이 파일은 <b>이미 알고 있었다</b> — 아래 [얼굴 z·항별] 로그 문구에 "깊이를
+     재려면 80~90°가 필요합니다"라고 적어 놓고, 정작 게이트는 각도를 안 봤다.
+     한쪽(로그)만 고쳐지고 다른 쪽(판정)은 안 고쳐진, 이 파일의 단골 모양이다.
+
+     고침: 각도로 한 번 더 거른다. 35° 미만이면 그 뷰는 깊이용으로 아예 안 쓰고,
+     35~55°는 선형으로 깎아 <b>부분만</b> 반영한다.
+     ※ 상한을 55°로 잡은 이유(사용자 지적, 8/31): "45도 이상 되면 좀만 더 돌아가도
+       <b>반대편 얼굴이 안 보여서</b>" — 즉 이 앱이 실제로 받을 수 있는 측면 사진은
+       45°언저리가 천장이다. 이론상 이상적인 80~90°를 상한으로 잡으면 신뢰도가
+       <b>영원히 1에 못 닿아</b> 게이트가 사실상 항상 걸린 것과 같아진다. 잴 수 있는
+       범위 안에서 눈금을 매겨야 그 안의 차이가 의미를 갖는다.
+     걸러진 경우 그 정점은 조용히 front 방식(타원면+굴곡)을 유지한다 — 예전에도
+     측면이 없으면 그렇게 동작했으므로 새 실패 모드가 아니다.
+     되돌리기: PROFILE_YAW_GATE.on = false */
+  const PROFILE_YAW_GATE = { on: true, minDeg: 35, fullDeg: 55 };
+  let _profileTrust = 0;   // [진단용] 실제로 먹은 측면 깊이 신뢰도(0~1)
   function usableSideViews(){
-    return ['left','right'].map(angle=>{
+    const sides = ['left','right'].map(angle=>{
       const lmSide = state.landmarks && state.landmarks[angle];
       if(!lmSide || !lmSide.rawLandmarks || lmSide.rawLandmarks.length < 468) return null;
       const confidence = getViewPoseConfidence(angle);
       if(confidence < 0.5) return null;   // 어림 각도로는 이 보정에 부적합
-      return { angle, raw: lmSide.rawLandmarks, confidence };
+      const yawAbs = Math.abs(getViewYawDeg(angle));
+      const trust = PROFILE_YAW_GATE.on
+        ? clamp((yawAbs - PROFILE_YAW_GATE.minDeg)
+                / Math.max(1e-6, PROFILE_YAW_GATE.fullDeg - PROFILE_YAW_GATE.minDeg), 0, 1)
+        : 1;
+      FACE_BUILD.sideYaw[angle] = { yawAbs, trust };   // 진단 패널이 읽어 간다
+      if(trust <= 0) return null;   // 이 각도로는 깊이를 못 잰다 → front 유지
+      return { angle, raw: lmSide.rawLandmarks, confidence, trust };
     }).filter(Boolean);
+    /* 가중평균은 신뢰도를 정규화해 버리므로(합으로 나눈다) trust를 confidence에
+       섞으면 사라진다. 그래서 <b>보정량 자체</b>에 곱할 스칼라로 따로 들고 있는다. */
+    _profileTrust = sides.reduce((m,s)=>Math.max(m, s.trust), 0);
+    return sides;
   }
   /* 정면 사진만으로 매겼을 Z(비교 기준) + 그 지점의 메쉬 로컬 좌표
      ── ⚠ 이 값은 <b>아래 합성식과 글자 그대로 같아야</b> 한다 (2026-08-18 k-4) ──
@@ -15233,7 +15384,9 @@ async function buildRealFaceMesh(faceMetrics){
       if(distSqFromBound(i) > 1) continue; // 얼굴 경계 밖(뺨 끝·귀)은 front 유지(측면서도 원근으로 뭉개짐)
       const realZ = sideMeasuredZ(i, sides);
       if(realZ === null) continue;         // 측면 실측 없음/모순 → front 유지(NaN)
-      map[i] = clamp(realZ - frontEstimatedZOf(raw[i]).frontZ, -0.6*ELL_C, 0.6*ELL_C);
+      // (2026-08-31) 각도 신뢰도만큼만 반영 — 위 PROFILE_YAW_GATE 주석 참고.
+      map[i] = clamp((realZ - frontEstimatedZOf(raw[i]).frontZ) * _profileTrust,
+                     -0.6*ELL_C, 0.6*ELL_C);
       _fullProfileHitCount++;
     }
     return map;
@@ -15247,7 +15400,9 @@ async function buildRealFaceMesh(faceMetrics){
       const realZ = sideMeasuredZ(anchor.idx, sides);
       if(realZ === null) return;    // 실측 불가/좌우 모순 — 이 지점은 보정 건너뜀
       out.push({ idx: anchor.idx, localX, yLocal,
-                 deltaZ: clamp(realZ - frontZ, -0.6*ELL_C, 0.6*ELL_C) });
+                 // (2026-08-31) 전체맵과 <b>같은</b> 신뢰도 계수를 쓴다(두 경로가
+                 // 갈리면 얼굴에 또 단차가 생긴다 — 아래 "세로 2줄" 항목 참고).
+                 deltaZ: clamp((realZ - frontZ) * _profileTrust, -0.6*ELL_C, 0.6*ELL_C) });
     });
     return out;
   }
@@ -15256,6 +15411,46 @@ async function buildRealFaceMesh(faceMetrics){
   /* 코끝(1)·턱(152)·이마(10)·미간(168)·왼뺨(234) 다섯 자리만 항별로 들여다본다.
      전 정점을 찍으면 로그가 못 읽을 만큼 길어지고, 이 다섯이면 앞뒤가 갈린다. */
   const _ZDBG = { 1:null, 152:null, 10:null, 168:null, 234:null };
+
+  /* ── 굴곡 배율을 <b>cm 자</b>로 맞춘다 (2026-08-31) ──────────────────────────
+     Z_DEPTH_SCALE = 1.0은 "MediaPipe z를 그대로 쓴다"는 뜻인데, MediaPipe의 z는
+     <b>축척이 정의돼 있지 않다</b>(공식 문서도 "x와 대략 같은 축척"까지만 말한다).
+     사람·촬영거리·모델 버전마다 진폭이 달라서 상수 하나로는 어떤 손님은 코가 서고
+     어떤 손님은 안 선다 — 위 게이트를 고쳐 굴곡이 <b>지워지지 않게</b> 만들어도,
+     남은 굴곡이 원래 작으면 화면은 여전히 판때기다.
+
+     그래서 상수를 고정하지 말고 <b>결과를 재서</b> 맞춘다. 경계 안 정점의 굴곡
+     분포에서 (상위 2% − 중앙값)을 "코가 뺨보다 얼마나 나왔나"로 보고,
+     faceRulerCmPerUnit이 주는 cm/단위로 환산해서 목표(성인 평균 코 돌출 ≈2.0cm)에
+     못 미치면 그만큼만 키운다.
+     · <b>줄이지는 않는다</b>(gain ≥ 1) — 원래 충분히 나온 얼굴을 이 보정이 뭉개면
+       안 된다. 이 함수가 고치려는 증상은 "평평하다" 한 방향뿐이다.
+     · 상한 3배 — 잡티·안경 반사로 z가 튀는 얼굴에서 코가 폭발하는 것을 막는 안전선.
+     · 중앙값을 기준으로 삼는 이유: 평균은 코 하나에 끌려간다. 얼굴 대부분은
+       뺨·이마라 중앙값이 곧 "굴곡 0인 면"이다.
+     ⚠ 이 배율은 <b>굴곡 항에만</b> 걸린다. 기준면(타원면)에 걸면 두상 자체가
+       앞뒤로 늘어나 두피·헤어 투영면과 어긋난다(FACE_Z_TO_SKULL 주석과 같은 이유).
+     되돌리기: FACE_RELIEF_FIX.on = false */
+  const FACE_RELIEF_FIX = { on: true, targetCm: 2.0, maxGain: 3.0 };
+  let reliefGain = 1, _reliefCmBefore = null;
+  if(FACE_RELIEF_FIX.on){
+    const rs = [];
+    for(let i=0;i<vertCount;i++){
+      if(!inFaceBound(i)) continue;
+      rs.push(Z_SIGN * raw[i].z * projector.bX * Z_DEPTH_SCALE);
+    }
+    if(rs.length > 20){
+      rs.sort((a,b)=>a-b);
+      const med = rs[Math.floor(rs.length*0.50)];
+      const hi  = rs[Math.floor(rs.length*0.98)];
+      let cmPerUnit = 16.4;                       // 자 계산 실패 시 이 파일의 통상값
+      try{ const r = faceRulerCmPerUnit(faceMetrics); if(r && r.x > 1) cmPerUnit = r.x; }catch(e){}
+      _reliefCmBefore = Math.max(0, hi - med) * cmPerUnit;
+      if(_reliefCmBefore > 0.05){
+        reliefGain = clamp(FACE_RELIEF_FIX.targetCm / _reliefCmBefore, 1, FACE_RELIEF_FIX.maxGain);
+      }
+    }
+  }
 
   const positions = new Float32Array(vertCount*3);
   const uvs = new Float32Array(vertCount*2);
@@ -15266,7 +15461,9 @@ async function buildRealFaceMesh(faceMetrics){
     const localX = projector.toMeshX(p.x);
     const yLocal = projector.toMeshY(p.y) - 0.15;
     const surfaceZLocal = ellipsoidZ(localX, yLocal);
-    const reliefZLocal = Z_SIGN * p.z * projector.bX * Z_DEPTH_SCALE;
+    // (2026-08-31) reliefGain — 위 FACE_RELIEF_FIX 주석 참고. 기본값은 1이라
+    // 그 스위치를 끄면 예전과 <b>산술까지 동일</b>하다.
+    const reliefZLocal = Z_SIGN * p.z * projector.bX * Z_DEPTH_SCALE * reliefGain;
     // 블렌드: 경계(distSq=1)에서 0(=타원 표면값 그대로, 이음새 없이 밀착),
     // 중심(distSq=0)에서 1(=실측 굴곡 전부 반영). 필터링에 쓰는 것과 같은
     // 타원이라 딱 경계선에서 자연스럽게 표면값과 일치함.
@@ -15353,6 +15550,10 @@ async function buildRealFaceMesh(faceMetrics){
     FACE_BUILD.sideHits = _fullProfileHitCount || 0;
     FACE_BUILD.ellA = ellAForFace; FACE_BUILD.ellC = ELL_C;
     FACE_BUILD.why = '';
+    // (2026-08-31) 원인 구분용 — 위 FACE_BUILD 선언부 주석 참고.
+    FACE_BUILD.reliefGain = reliefGain;
+    FACE_BUILD.reliefCm   = (_reliefCmBefore != null) ? _reliefCmBefore * reliefGain : null;
+    try{ FACE_BUILD.cmPerUnit = faceRulerCmPerUnit(faceMetrics).x; }catch(e){}
     console.log(`[얼굴 입체감] z범위=${(zMax-zMin).toFixed(3)} (min${zMin.toFixed(3)}~max${zMax.toFixed(3)}) | 코끝=${zAt(1)} 턱=${zAt(152)} 이마=${zAt(10)}`);
     console.log(`[얼굴 측면보정] 전체정점 실측=${USE_FULL_PROFILE_DEPTH ? '켜짐' : '꺼짐(3앵커만)'} | 측면 실측 기여 정점=${_fullProfileHitCount||0}개`);
     /* ── [얼굴 z·항별] 세 항을 따로 찍는다 (2026-08-18 k-4) ─────────────────
@@ -26257,8 +26458,24 @@ function perfPanelLines(){
       ? (FACE_BUILD.zRange / FACE_BUILD.ellC) : null;
     out.push('  얼굴 <입체메쉬> z범위 ' + (FACE_BUILD.zRange||0).toFixed(3)
       + (flat != null ? ' (두상깊이의 ' + Math.round(flat*100) + '%)' : '')
+      + (FACE_BUILD.cmPerUnit ? ' ≈' + (FACE_BUILD.zRange*FACE_BUILD.cmPerUnit).toFixed(1) + 'cm' : '')
       + ' · 측면실측 ' + FACE_BUILD.sideHits + '점'
       + (flat != null && flat < 0.15 ? '  ⚠ 거의 평면' : ''));
+    /* (2026-08-31) <b>왜</b> 평평한지를 가르는 두 줄. z범위 하나로는 "측면 실측이
+       굴곡을 덮어썼다"와 "굴곡 자체가 작다"를 구별할 수 없다 — 폰에는 콘솔이 없다. */
+    {
+      const sy = FACE_BUILD.sideYaw || {};
+      const fmt = (a)=> sy[a] ? a + ' ' + sy[a].yawAbs.toFixed(0) + '°(신뢰 '
+                                + Math.round(sy[a].trust*100) + '%)' : a + ' 없음';
+      const used = ['left','right'].some(a=>sy[a] && sy[a].trust > 0);
+      out.push('  얼굴 측면깊이 ' + fmt('left') + ' · ' + fmt('right')
+        + (used ? '' : '  ← 각도가 얕아 <b>깊이 보정 안 씀</b>(정면 굴곡 유지)'));
+    }
+    if(FACE_BUILD.reliefGain != null){
+      out.push('  얼굴 굴곡 코돌출 ' + (FACE_BUILD.reliefCm != null ? FACE_BUILD.reliefCm.toFixed(1) + 'cm' : '?')
+        + ' · 배율 ×' + FACE_BUILD.reliefGain.toFixed(2)
+        + (FACE_BUILD.reliefGain >= 2.99 ? '  ⚠ 상한(원본 z가 너무 얕음)' : ''));
+    }
   } else {
     out.push('  얼굴 <b>평면 데칼</b> — ' + (FACE_BUILD.why || '이유 미기록'));
   }
