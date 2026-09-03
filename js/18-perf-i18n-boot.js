@@ -941,7 +941,7 @@ const I18N = {
   '밝기':'Lightness', '채도':'Chroma', '색상':'Hue',
   '검정':'black', '백금':'platinum', '애쉬':'ash', '원색':'vivid',
   '화면 밖':'off-screen',
-  '레벨 — 뿌리 어두움과 겨루는 축':'Level \\u2014 the axis that fights root darkness',
+  '레벨 — 뿌리 어두움과 겨루는 축':'Level — the axis that fights root darkness',
   '0=무채색(애쉬) · 높을수록 원색':'0 = neutral (ash) \\u00b7 higher = more vivid',
   '0°빨강 · 90°노랑 · 150°초록 · 250°파랑':
     '0\\u00b0 red \\u00b7 90\\u00b0 yellow \\u00b7 150\\u00b0 green \\u00b7 250\\u00b0 blue',

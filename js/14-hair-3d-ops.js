@@ -44,13 +44,19 @@ function buildAdjustedHair3DObject(){
      여기서도 읽으면 규칙이 하나가 된다. 폴백색이 sec.color(염색)이므로 "사진에
      머리가 없는 자리는 염색색"이라는 조정 화면의 동작까지 그대로 따라온다. */
   const cmodel = state.hair3Dneutral;
-  let pxN = 0;
+  let pxN = 0, dyeN = 0;
   for(const st of adj){
     const pts = st.pts;
     if(!pts || pts.length < 2) continue;
     const view = st.srcAngle || (pts[0] ? viewOfRoot(pts[0]) : null);
+    /* 이 가닥에 걸린 염색색. st.dye는 _adjApplyFilter가 실어 보낸다.
+       ⚠ 되돌리기 경로(ADJ_CACHE.split=false)에는 dye 필드가 없으므로 섹션에서
+         직접 읽는다 — 안 그러면 그 경로만 또 염색이 빠진다(두 경로가 갈라지는
+         바로 그 모양이라 여기서 한 번에 막는다). */
+    const dye = st.dye || (state.sections[st.sec] && state.sections[st.sec].color) || null;
+    if(dye) dyeN++;
     const reCols = (HAIR_PIXEL_COLOR.reproject && view)
-      ? bakeStrandColors3D(pts, cmodel, view, st.color, st.colors)
+      ? bakeStrandColors3D(pts, cmodel, view, st.color, st.colors, dye)
       : (st.colors || null);
     const segCols = (reCols && reCols.length > 1) ? reCols : null;
     if(segCols) pxN++;
@@ -79,7 +85,12 @@ function buildAdjustedHair3DObject(){
      여기만 0이면 조각색이 이 함수 앞에서 끊긴 것이고, 둘 다 0이면 중립 캡처가
      색을 못 읽은 것이다(원인이 다르므로 숫자로 갈라야 한다 — 8/17 b와 같은 규칙). */
   console.log(`[3D] 조정 반영 헤어: ${adj.length}가닥 (조정 화면과 같은 소스)`
-    + ` · 원본 픽셀색 ${pxN}개(=${adj.length ? Math.round(pxN/adj.length*100) : 0}%)`);
+    + ` · 원본 픽셀색 ${pxN}개(=${adj.length ? Math.round(pxN/adj.length*100) : 0}%)`
+    /* 염색 칸을 <b>따로</b> 찍는다 (2026-09-04). 이 줄이 없어서 9/4의 버그를
+       로그로는 못 갈랐다 — "원본 픽셀색 100%"는 염색이 걸렸든 안 걸렸든 똑같이
+       찍히기 때문이다. 염색이 걸린 가닥 수와 실제로 LUT를 태운 수가 <b>같아야</b>
+       한다. 다르면 dyeCss가 어디선가 또 떨어진 것이다(그게 이번 원인이었다). */
+    + ` · 염색 ${dyeN}가닥` + (dyeN ? ` (LUT ${HAIR_DYE.on ? 'ON' : 'OFF'})` : ''));
   return obj;
 }
 
