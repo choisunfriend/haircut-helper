@@ -239,6 +239,9 @@ function updateSectionSummary(id){
 
 function resetSections(){
   SECTION_ORDER.forEach(id=>{ state.sections[id] = {...SECTIONS[id].defaults}; });
+  /* 바탕 염색도 같이 지운다 — defaults의 color:null이 섹션 덧칠만 지우고
+     state.dyeAll이 남으면, 다음 gyResolveDye에서 색이 <b>혼자 되살아난다</b>. */
+  state.dyeAll = null;
   state.stylingByView = neutralStylingByView();
   bindStylingToCurrentView();
   state._globalCurl = 30;
@@ -371,39 +374,106 @@ function onGyTechnique(secId, tech){
    되돌리기: gyBuildColorBody에서 ①블록(전체 염색)만 빼면 예전 화면.
    ══════════════════════════════════════════════════════════════════ */
 
-/* 지금 "머리 전체가 한 색"인가? 그렇다면 그 색, 아니면 null.
-   따로 상태를 두지 않는 이유 — 진실은 sec.color 여섯 개다. 별도 플래그를 두면
-   섹션 하나만 바꿨을 때 플래그와 실제가 갈라진다(이 파일이 반복해서 당한 자리). */
-function gyDyeAllColor(){
-  let c = null;
+/* ══════════════════════════════════════════════════════════════════
+   염색 모델을 <b>두 층</b>으로 나눈다 (2026-09-04)
+   ─────────────────────────────────────────────────────────────────
+   사용자: "머리 전체에도 할 수 있고 섹션에도 할 수 있도록 구분해뒀는데
+   <b>토글 하나를 켜면 둘 다 켜지고</b> 머리 전체에는 염색이 안 돼."
+
+   원인은 <b>진실을 sec.color 여섯 개에만 둔 것</b>이었다. 9/3에는 그게
+   "플래그와 실제가 갈라지지 않는다"는 이유로 옳아 보였는데, 갈라지지 않는
+   대신 <b>두 손잡이가 한 값을 공유</b>하게 됐다:
+     · 전체를 켜면 여섯 섹션이 다 칠해진다 → 섹션 토글도 켜짐으로 보인다.
+     · 그 상태에서 <b>아래쪽</b>(섹션) 슬라이더를 잡고 색을 돌리면 그 섹션만
+       바뀐다 → 여섯이 더 이상 같은 색이 아니므로 전체 토글이 <b>꺼진다</b>.
+       화면에는 똑같이 생긴 조합기가 둘이라 어느 쪽을 잡았는지 알 수가 없다.
+       이것이 "머리 전체에는 염색이 안 된다"의 정체다 — 걸리기는 걸리는데
+       바로 다음 조작에서 조용히 풀린다.
+   시술로 보면 이 둘은 애초에 <b>다른 공정</b>이다. 전체 염색은 바탕이고,
+   발레아쥬는 그 위에 부분으로 얹는 것이다. 그래서 모델도 두 층으로 둔다:
+
+     state.dyeAll          — 바탕(머리 전체). 없으면 null.
+     sec.colorOwn          — 이 섹션만의 덧칠. 없으면 null.
+     sec.color (파생)      — colorOwn ?? dyeAll.  ← <b>엔진이 읽는 값</b>
+
+   ⚠ 엔진은 한 줄도 안 건드린다. sec.color의 뜻("이 섹션을 칠할 색")도 그대로다.
+     바뀐 건 그 값을 <b>누가 정하느냐</b>뿐이라, adjFilterSig·colorForSection·
+     _adjApplyFilter는 예전 그대로 동작한다(colorOwn은 그쪽에서 안 읽는다).
+   ⚠ 밖에서 sec.color를 직접 쓰는 자리가 아직 있다(applyStyleSpec의 sp.color).
+     그래서 패널을 그릴 때마다 gyAdoptDyeModel()로 <b>다시 읽어들인다</b> —
+     플래그와 실제가 갈라지던 그 사고를 여기 한 곳에서 막는다.
+   되돌리기: 이 구역과 gyBuildColorBody만 9/3판으로 되돌리면 된다.
+   ══════════════════════════════════════════════════════════════════ */
+
+/* 두 층 → sec.color(파생)를 다시 계산한다. 색을 바꾸는 모든 길이 여기를 지난다. */
+function gyResolveDye(){
   for(const id of SECTION_ORDER){
-    const v = state.sections[id] && state.sections[id].color;
-    if(!v) return null;
-    if(c === null) c = v;
-    else if(c.toLowerCase() !== v.toLowerCase()) return null;
+    const s = state.sections[id];
+    if(!s) continue;
+    s.color = s.colorOwn || state.dyeAll || null;
   }
-  return c;
 }
-/* 색 하나를 범위에 건다. scope = 'all'(머리 전체) | 섹션id.
+/* 밖에서 sec.color가 바뀌었으면(스타일 스펙 등) 두 층으로 다시 읽어들인다.
+   판정은 <b>파생값과 실제가 같은가</b> 하나뿐이다 — 같으면 우리가 쓴 것이므로
+   그대로 두고, 다르면 지금 화면에 걸린 색이 진실이므로 그쪽을 받아들인다.
+   여섯이 모두 같은 색이면 바탕(전체)으로, 아니면 각 섹션의 덧칠로 본다. */
+function gyAdoptDyeModel(){
+  if(state.dyeAll === undefined) state.dyeAll = null;
+  const eq = (a,b)=> (a||'').toLowerCase() === (b||'').toLowerCase();
+  let same = true;
+  for(const id of SECTION_ORDER){
+    const s = state.sections[id];
+    if(!s) continue;
+    if(!eq(s.color, s.colorOwn || state.dyeAll || null)){ same = false; break; }
+  }
+  if(same) return;
+  let uni = null, allSame = true;
+  for(const id of SECTION_ORDER){
+    const v = (state.sections[id] && state.sections[id].color) || null;
+    if(!v){ allSame = false; break; }
+    if(uni === null) uni = v; else if(!eq(uni, v)){ allSame = false; break; }
+  }
+  if(allSame && uni){
+    state.dyeAll = uni;
+    for(const id of SECTION_ORDER) if(state.sections[id]) state.sections[id].colorOwn = null;
+  } else {
+    state.dyeAll = null;
+    for(const id of SECTION_ORDER) if(state.sections[id]) state.sections[id].colorOwn = state.sections[id].color || null;
+  }
+  gyResolveDye();
+}
+/* 그 범위에 <b>직접 걸린</b> 색(파생값이 아니다). scope='all' | 섹션id.
+   토글 켜짐·스와치 활성·슬라이더 되읽기가 전부 이 함수 하나를 본다 —
+   여기가 갈라지면 "켜졌는데 안 걸린 색"이 다시 생긴다. */
+function gyDyeColorOf(scope){
+  if(scope === 'all') return state.dyeAll || null;
+  return (state.sections[scope] && state.sections[scope].colorOwn) || null;
+}
+/* 하위호환 — 예전 이름으로 부르는 자리가 남아 있어도 같은 뜻이다. */
+function gyDyeAllColor(){ return state.dyeAll || null; }
+/* 색 하나를 범위에 건다. scope = 'all'(머리 전체 바탕) | 섹션id(그 섹션 덧칠).
    live=true면 패널을 안 다시 그린다(드래그 중) — 표시만 gySyncColorUI가 맞춘다.
    반환: 색을 읽었으면 true, 못 읽는 문자열이면 false(호출부가 빨간 테두리). */
 function gyApplyDye(scope, css, live){
   const v = gyNormalizeColor(css);
   if(v === null) return false;
   if(scope === 'all'){
-    for(const id of SECTION_ORDER) if(state.sections[id]) state.sections[id].color = v;
+    state.dyeAll = v;
   } else if(state.sections[scope]){
-    state.sections[scope].color = v;
+    state.sections[scope].colorOwn = v;
   } else return false;
+  gyResolveDye();
   state.globalColor = v;              // 다음에 토글을 켤 때 기본으로 뜰 색
   if(live) gySyncColorUI(); else buildGyControls();
   drawAdjustPreview();
   return true;
 }
-/* 범위의 색을 <b>끈다</b>(원래 사진 색으로 되돌림). */
+/* 범위의 색을 <b>끈다</b>. 전체를 끄면 덧칠(발레아쥬)은 <b>남는다</b> —
+   바탕을 지우는 것과 부분 염색을 지우는 것은 다른 일이다. */
 function gyClearDye(scope){
-  if(scope === 'all'){ for(const id of SECTION_ORDER) if(state.sections[id]) state.sections[id].color = null; }
-  else if(state.sections[scope]) state.sections[scope].color = null;
+  if(scope === 'all') state.dyeAll = null;
+  else if(state.sections[scope]) state.sections[scope].colorOwn = null;
+  gyResolveDye();
   buildGyControls();
   drawAdjustPreview();
 }
@@ -441,7 +511,7 @@ function gyComposeDye(scope, commit){
    ⚠ 실패해도 조용히 넘긴다(권한 없는 브라우저·http). 화면에는 이미 떠 있으니
      복사가 안 돼도 손으로 적으면 된다 — 색 하나 때문에 예외를 던지지 않는다. */
 function gyCopyColorNumber(scope){
-  const cur = (scope === 'all') ? gyDyeAllColor() : (((state.sections[scope] || {}).color) || null);
+  const cur = gyDyeColorOf(scope);
   const n = cur && gyColorNumbers(cur);
   if(!n) return;
   const s = n.hex + '  ' + n.oklch;
@@ -462,8 +532,7 @@ function gySyncColorUI(){
   if(!wrap) return;
   wrap.querySelectorAll('[data-dye-scope]').forEach(el=>{
     const scope = el.getAttribute('data-dye-scope');
-    const cur = (scope === 'all') ? gyDyeAllColor()
-                                  : (((state.sections[scope] || {}).color) || null);
+    const cur = gyDyeColorOf(scope);
     if(el.classList.contains('gy-sw')){
       const c = el.getAttribute('data-dye-color') || '';
       el.classList.toggle('active', !!cur && cur.toLowerCase() === c.toLowerCase());
@@ -510,7 +579,7 @@ function gyRenderColorNumber(el, scope, cur){
 }
 // 하위호환 — 예전 이름으로 부르는 자리가 남아 있어도 같은 일을 한다.
 function onGyColorToggle(secId){
-  if(state.sections[secId] && state.sections[secId].color) gyClearDye(secId);
+  if(gyDyeColorOf(secId)) gyClearDye(secId);
   else gyApplyDye(secId, state.globalColor || '#6B4A2E', false);
 }
 function onGyColorPick(secId, hex){ gyApplyDye(secId, hex, false); }
@@ -638,9 +707,21 @@ function gyBuildTechniqueSelect(secId, sec){
      안 맞는다.
    ⚠ 텍스트 칸은 남긴다 — 조합기는 hex로 접히지만, 현장에서 받아 적어 둔
      색을 <b>그대로 붙여넣는</b> 입구는 따로 있어야 한다(hsl·oklch·색이름). */
-function gyColorEditor(scope, cur){
+function gyColorEditor(scope, cur, title){
   const box = document.createElement('div');
-  box.style.cssText = 'display:flex;flex-direction:column;gap:9px;';
+  box.style.cssText = 'display:flex;flex-direction:column;gap:9px;'
+    + 'border-left:2px solid var(--line);padding-left:9px;margin-left:2px;';
+
+  /* 어느 범위의 조합기인지 <b>머리에 적는다</b>. 전체와 섹션을 같이 켜면 똑같이
+     생긴 조합기가 둘이 되는데, 이름표가 없어서 아래쪽(섹션)을 잡고 돌리고는
+     "전체 염색이 안 된다"고 보였다 — 이번 수정의 나머지 절반이다. */
+  if(title){
+    const h = document.createElement('div');
+    h.className = 'gy-ctrl-label';
+    h.style.cssText = 'font-size:11px;opacity:.85;';
+    h.textContent = title;
+    box.appendChild(h);
+  }
 
   // ⓐ 스와치 — 자주 쓰는 것을 빨리 집는 용도지 <b>가능한 색의 목록이 아니다</b>.
   const sw = document.createElement('div'); sw.className = 'gy-swatches';
@@ -710,7 +791,10 @@ function gyColorEditor(scope, cur){
   trow.appendChild(txt);
   box.appendChild(trow);
 
-  gySyncColorUI();       // 넘버 줄·눈금 첫 표시(만든 직후 한 번)
+  /* ⚠ 여기서 gySyncColorUI()를 부르면 <b>아무 일도 안 일어난다</b> — 이 box는
+     아직 #gyControls 밖이고, 그 함수는 #gyControls 안만 훑는다. 그래서 색 넘버
+     줄과 축 눈금이 첫 표시에서 늘 비어 있었다(드래그를 한 번 해야 나타났다).
+     첫 표시는 <b>붙인 뒤</b> buildGyControls 끝에서 한 번 한다. */
   return box;
 }
 
@@ -718,26 +802,43 @@ function gyColorEditor(scope, cur){
    순서가 이것인 이유: 기본 염색은 <b>전체</b>이고 발레아쥬가 예외다.
    예전에는 예외만 화면에 있어서, 전체를 칠하려면 섹션 여섯 개를 돌아야 했다. */
 function gyBuildColorBody(body, secId, sec){
-  // ── ① 머리 전체 ──────────────────────────────────────────────────
-  const allCur = gyDyeAllColor();
+  gyAdoptDyeModel();          // 밖에서 색이 바뀌었으면(스타일 스펙 등) 먼저 읽어들인다
+
+  // ── ① 머리 전체(바탕) ────────────────────────────────────────────
+  const allCur = gyDyeColorOf('all');
   const tAll = document.createElement('div'); tAll.className = 'gy-toggle-row';
   tAll.innerHTML = `<div class="gy-toggle ${allCur?'on':''}"></div>
         <span class="gy-ctrl-hint">머리 전체를 한 색으로 (기본 염색)</span>`;
   tAll.querySelector('.gy-toggle').onclick = ()=>
     allCur ? gyClearDye('all') : gyApplyDye('all', state.globalColor || '#6B4A2E', false);
   body.appendChild(tAll);
-  if(allCur) body.appendChild(gyColorEditor('all', allCur));
+  if(allCur) body.appendChild(gyColorEditor('all', allCur, '머리 전체 색'));
 
   body.appendChild(Object.assign(document.createElement('div'), { className:'gy-color-sep' }));
 
-  // ── ② 이 섹션만 ──────────────────────────────────────────────────
-  const on = sec.color !== null && sec.color !== undefined;
+  // ── ② 이 섹션만(덧칠) ────────────────────────────────────────────
+  /* 이 토글은 <b>이 섹션의 덧칠</b>만 본다(colorOwn). 전체를 켜서 sec.color가
+     찬 것과는 무관하다 — 9/3판이 sec.color를 봐서 둘이 같이 켜졌다. */
+  const own = gyDyeColorOf(secId);
+  const secName = (SECTIONS[secId] && SECTIONS[secId].label) || secId;
   const t = document.createElement('div'); t.className = 'gy-toggle-row';
-  t.innerHTML = `<div class="gy-toggle ${on?'on':''}"></div>
-        <span class="gy-ctrl-hint">이 섹션만 다른 색 적용 (발레아쥬 등)</span>`;
-  t.querySelector('.gy-toggle').onclick = ()=> on ? gyClearDye(secId) : gyApplyDye(secId, state.globalColor || '#6B4A2E', false);
+  t.innerHTML = `<div class="gy-toggle ${own?'on':''}"></div>
+        <span class="gy-ctrl-hint">${secName}만 다른 색 적용 (발레아쥬 등)</span>`;
+  t.querySelector('.gy-toggle').onclick = ()=> own ? gyClearDye(secId) : gyApplyDye(secId, state.globalColor || '#6B4A2E', false);
   body.appendChild(t);
-  if(on) body.appendChild(gyColorEditor(secId, sec.color));
+  if(own) body.appendChild(gyColorEditor(secId, own, secName + '만의 색'));
+
+  /* 지금 이 섹션에 <b>실제로</b> 걸린 색을 한 줄로 적는다. 조합기가 둘이면
+     "내가 지금 무엇을 돌리고 있나"가 흐려지는데, 그게 이번 버그의 절반이었다. */
+  if(allCur || own){
+    const note = document.createElement('div');
+    note.className = 'gy-ctrl-hint';
+    note.style.cssText = 'display:flex;align-items:center;gap:6px;padding-top:2px;';
+    note.innerHTML = `<span class="gy-color-chip" style="background:${sec.color}"></span>`
+      + (own ? `${secName}은 덧칠한 색이 적용됩니다` + (allCur ? ' (전체 색보다 우선)' : '')
+             : `${secName}에는 머리 전체 색이 적용됩니다`);
+    body.appendChild(note);
+  }
 }
 
 // 공정 그룹(커트/펌/컬러) 하나를 통째로 만든다(헤드 + 본문).
@@ -1045,6 +1146,7 @@ function buildGyControls(){
   GYEOL_GROUPS.forEach(grp => wrap.appendChild(gyBuildProcessGroup(grp, secId, sec)));
   wrap.appendChild(gyBuildRecipeNote(secId));
   wrap.appendChild(gyBuildAffectsNote(secId));
+  gySyncColorUI();   // 색 넘버·축 눈금 첫 표시 — DOM에 붙은 <b>뒤</b>여야 한다(gyColorEditor 끝 주석)
 }
 
 function buildGyStylingControls(wrap){

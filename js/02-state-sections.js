@@ -590,6 +590,11 @@ const state = {
   styling: neutralStyling(),   // ← bindStylingToCurrentView가 현재 뷰 것으로 교체
   // 섹션별 컬러 토글 시 기본 선택될 색(발레아쥬 첫 스와치)
   globalColor: '#6B4A2E',
+  /* 머리 <b>전체</b> 염색(바탕). null이면 안 걸림. (2026-09-04)
+     섹션 덧칠(sec.colorOwn)과 층이 다르고, 엔진이 읽는 sec.color는 이 둘에서
+     파생된다(colorOwn ?? dyeAll) — gyResolveDye/gyAdoptDyeModel 배너 참고.
+     ⚠ 여기 값을 직접 쓰지 말 것. 쓰는 입구는 gyApplyDye/gyClearDye 둘뿐이다. */
+  dyeAll: null,
   // gyeol 조정 패널: 현재 활성 섹션('styling'이면 마무리 탭), 그룹 접힘 상태
   activePanelSection: 'crown',
   /* recipe(스펙 수치)는 <b>접힌 채</b> 시작한다 — 읽을거리라 열려 있으면 슬라이더를
