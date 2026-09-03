@@ -1,0 +1,427 @@
+:root{
+  --bg:#1B1816; --surface:#242019; --surface-2:#2D2820; --line:#3A332B;
+  --accent:#C98A4B; --accent-soft:#E8C39E; --text:#F3ECE2; --text-muted:#9C9183;
+  --ok:#8FA888; --warn:#C2685A;
+  /* gyeol 공정 색상 — 커트=세이지, 펌=구리, 컬러=자수정 */
+  --gy-cut:#7FA88C; --gy-perm:#C99A6A; --gy-color:#B0788F;
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent;margin:0;padding:0;}
+html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);font-family:'Inter',sans-serif;}
+#app{display:flex;flex-direction:column;height:100vh;height:100dvh;}
+
+/* ── HEADER ── */
+header{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:env(safe-area-inset-top,14px) 20px 12px;
+  padding-top:max(env(safe-area-inset-top),14px);
+  background:var(--surface);border-bottom:1px solid var(--line);flex-shrink:0;
+  min-height:54px;
+}
+.brand-mark{font-family:'Fraunces',serif;font-size:20px;font-weight:600;color:var(--accent-soft);}
+.stage-pill{
+  font-size:11px;letter-spacing:1px;text-transform:uppercase;
+  background:var(--surface-2);border:1px solid var(--line);
+  padding:4px 10px;border-radius:20px;color:var(--text-muted);
+}
+.stage-pill b{color:var(--accent-soft);font-weight:600;}
+
+main{flex:1;position:relative;overflow:hidden;}
+.screen{position:absolute;inset:0;display:none;flex-direction:column;}
+.screen.active{display:flex;}
+
+/* ── BOTTOM NAV ── */
+.bottom-nav{
+  display:flex;background:var(--surface);border-top:1px solid var(--line);
+  padding-bottom:env(safe-area-inset-bottom,0);flex-shrink:0;
+}
+.nav-tab{
+  flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;
+  padding:10px 4px;cursor:pointer;border:none;background:none;
+  color:var(--text-muted);font-size:10px;letter-spacing:0.5px;
+  transition:color .15s;
+}
+.nav-tab .icon{font-size:18px;}
+.nav-tab.active{color:var(--accent-soft);}
+.nav-tab:disabled{opacity:0.35;cursor:not-allowed;}
+
+/* ── BUTTONS ── */
+.btn{
+  border:none;cursor:pointer;font-family:'Inter',sans-serif;font-weight:600;
+  border-radius:12px;padding:13px 20px;font-size:14px;
+  display:inline-flex;align-items:center;justify-content:center;gap:8px;
+  transition:transform .1s,opacity .15s;
+}
+.btn:active{transform:scale(0.97);}
+.btn-primary{background:var(--accent);color:#1B1816;}
+.btn-primary:disabled{background:var(--surface-2);color:var(--text-muted);cursor:not-allowed;}
+.btn-ghost{background:transparent;color:var(--text-muted);border:1px solid var(--line);}
+
+/* ── SCREEN 1: CAPTURE ── */
+#screen-capture{background:var(--bg);}
+.capture-video-wrap{
+  flex:1;position:relative;overflow:hidden;
+  display:flex;align-items:center;justify-content:center;
+  background:#0a0907;
+}
+#video{width:100%;height:100%;object-fit:cover;display:block;}
+.cam-off-msg{color:var(--text-muted);font-size:13px;text-align:center;padding:0 32px;line-height:1.8;position:absolute;}
+/* (2026-08-18) cover → contain. cover는 <b>보이는 것과 저장된 것이 다르다</b> —
+   정사각형에 가까운 사진을 가로로 긴 상자에 cover로 넣으면 위아래가 잘려 보여서
+   "정수리가 잘린 사진"처럼 읽힌다(실제로 그렇게 오진했다). 저장본은 원본 그대로라
+   데이터는 멀쩡한데, 미리보기가 사용자를 속이는 것이다. 담기로 두면 이 화면이
+   곧 파이프라인이 받는 그림이 된다. */
+#shotPreview{width:100%;height:100%;object-fit:contain;display:none;position:absolute;inset:0;background:#0a0907;}
+.face-guide-svg{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;}
+.cap-hint{
+  position:absolute;bottom:14px;left:0;right:0;text-align:center;
+  font-size:13px;color:var(--accent-soft);
+  background:rgba(27,24,22,0.6);padding:6px;
+  transition:background .18s ease, color .18s ease, box-shadow .18s ease;
+}
+/* 혼자 촬영할 때 화면 중앙을 못 보므로, 준비되면 안내 줄 전체가 초록 띠가 된다
+   (사용자 요청: "안내문구 나오는 가로줄 전체도 초록색으로"). 주변시로도 잡힘. */
+.capture-video-wrap.live-ready .cap-hint{
+  background:rgba(91,217,122,0.92); color:#0d2a14; font-weight:800; letter-spacing:.2px;
+  box-shadow:0 0 22px rgba(91,217,122,0.55);
+  animation:hintPulse 1.05s ease-in-out infinite;
+}
+@keyframes hintPulse{0%,100%{box-shadow:0 0 16px rgba(91,217,122,0.45);}
+                     50%{box-shadow:0 0 34px rgba(91,217,122,0.85);}}
+
+/* ── 실시간 각도 가이드 (2026-07-26) ──────────────────────────────
+   촬영 "전"에 라이브 영상으로 각도를 재서, 목표 범위(측면 40~55°)에
+   들어오면 가이드 타원이 초록으로 바뀌고 "지금 찍으세요" 배지가 뜬다.
+   셔터는 사용자가 직접 누름(자동촬영 아님) — 사용자 지시.
+   상태는 .capture-video-wrap의 클래스 하나(.live-ready)로만 구동해서
+   기존 DOM 구조/스크립트에 부작용이 없게 함. */
+.face-guide-svg ellipse{ transition:stroke .18s ease, stroke-width .18s ease, opacity .18s ease; }
+.capture-video-wrap.live-ready .face-guide-svg ellipse{
+  stroke:#5BD97A; stroke-width:1.5; stroke-dasharray:none;
+  filter:drop-shadow(0 0 2px rgba(91,217,122,0.9));
+}
+/* 초록 프레임(네 모서리) — 범위 안일 때만 표시 */
+.live-frame{position:absolute;inset:0;pointer-events:none;opacity:0;transition:opacity .18s ease;}
+.capture-video-wrap.live-ready .live-frame{opacity:1;}
+.live-frame i{position:absolute;width:34px;height:34px;border:2.5px solid #5BD97A;
+  filter:drop-shadow(0 0 4px rgba(91,217,122,0.55));}
+.live-frame i:nth-child(1){top:14px;left:14px;border-right:none;border-bottom:none;border-radius:8px 0 0 0;}
+.live-frame i:nth-child(2){top:14px;right:14px;border-left:none;border-bottom:none;border-radius:0 8px 0 0;}
+.live-frame i:nth-child(3){bottom:14px;left:14px;border-right:none;border-top:none;border-radius:0 0 0 8px;}
+.live-frame i:nth-child(4){bottom:14px;right:14px;border-left:none;border-top:none;border-radius:0 0 8px 0;}
+
+/* "지금 찍으세요" 배지 */
+/* 얼굴을 가리지 않도록 화면 중앙이 아니라 하단(가이드 타원 아래)에 띄운다 */
+.shoot-now{
+  position:absolute;bottom:52px;left:50%;transform:translate(-50%,0) scale(0.92);
+  background:rgba(43,140,66,0.94);color:#F2FFF5;font-size:17px;font-weight:700;
+  letter-spacing:1px;padding:11px 22px;border-radius:26px;pointer-events:none;
+  border:1.5px solid rgba(150,255,175,0.85);
+  box-shadow:0 0 22px rgba(91,217,122,0.45);
+  opacity:0;transition:opacity .18s ease, transform .18s ease;
+  white-space:nowrap;
+}
+.capture-video-wrap.live-ready .shoot-now{opacity:1;transform:translate(-50%,0) scale(1);
+  animation:shootPulse 1.05s ease-in-out infinite;}
+@keyframes shootPulse{0%,100%{box-shadow:0 0 18px rgba(91,217,122,0.35);}50%{box-shadow:0 0 30px rgba(91,217,122,0.7);}}
+
+/* 실시간 각도 수치 칩 */
+.live-angle{
+  position:absolute;top:12px;left:50%;transform:translateX(-50%);
+  background:rgba(27,24,22,0.72);border:1px solid var(--line);
+  color:var(--text-muted);font-family:'JetBrains Mono',monospace;font-size:11px;
+  padding:4px 10px;border-radius:12px;pointer-events:none;white-space:nowrap;
+  transition:color .18s ease,border-color .18s ease;
+}
+.live-angle.ok{color:#8CE8A2;border-color:rgba(91,217,122,0.6);}
+.live-angle.hide{display:none;}
+/* 셔터 버튼 강조 */
+.shutter-btn.live-ready{
+  box-shadow:0 0 0 3px rgba(91,217,122,0.85), 0 0 18px rgba(91,217,122,0.55);
+}
+
+/* angle strip */
+.angle-strip{
+  display:flex;gap:0;background:var(--surface);border-top:1px solid var(--line);
+  flex-shrink:0;
+}
+.angle-item{
+  flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;
+  padding:8px 4px;cursor:pointer;position:relative;border-right:1px solid var(--line);
+}
+.angle-item:last-child{border-right:none;}
+.angle-item.current::after{
+  content:'';position:absolute;top:0;left:0;right:0;height:2px;background:var(--accent);
+}
+.angle-thumb{
+  width:36px;height:36px;border-radius:6px;
+  background:var(--surface-2);overflow:hidden;display:flex;align-items:center;justify-content:center;
+}
+.angle-thumb img{width:100%;height:100%;object-fit:cover;}
+.angle-name{font-size:10px;color:var(--text-muted);letter-spacing:0.5px;}
+.angle-check{font-size:11px;color:var(--ok);}
+
+.capture-actions{
+  display:flex;gap:10px;padding:12px 16px;
+  background:var(--surface);flex-shrink:0;
+}
+.shutter-btn{
+  width:60px;height:60px;border-radius:50%;
+  background:var(--accent);border:4px solid rgba(201,138,75,0.3);
+  flex-shrink:0;cursor:pointer;display:flex;align-items:center;justify-content:center;
+  font-size:20px;transition:transform .1s;align-self:center;
+}
+.shutter-btn:active{transform:scale(0.92);}
+.cap-right{flex:1;display:flex;flex-direction:column;gap:8px;}
+.dial-row{display:flex;align-items:center;gap:10px;}
+.dial-mini{position:relative;width:44px;height:44px;flex-shrink:0;}
+.dial-mini svg{width:100%;height:100%;}
+.dial-mini-center{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--text-muted);}
+.cap-hint-small{font-size:12px;color:var(--accent-soft);flex:1;}
+.cap-btns{display:flex;gap:8px;}
+
+/* ── SCREEN 2: STYLE ── */
+#screen-style{overflow:hidden;}
+.style-scroll{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:12px 12px 4px;}
+.style-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;}
+.style-card{
+  background:var(--surface);border:1.5px solid var(--line);border-radius:14px;
+  padding:12px;cursor:pointer;transition:border-color .15s,transform .1s;
+  display:flex;flex-direction:column;gap:7px;
+}
+.style-card:active{transform:scale(0.98);}
+.style-card.selected{border-color:var(--accent);}
+.style-card-none{border-style:dashed;opacity:0.85;}
+.style-card-none.selected{opacity:1;}
+.style-icon-box{height:80px;border-radius:10px;background:var(--bg);display:flex;align-items:center;justify-content:center;overflow:hidden;}
+.style-card .name{font-size:13px;font-weight:600;}
+.style-card .tags{font-size:10px;color:var(--text-muted);font-family:'JetBrains Mono',monospace;}
+.style-footer{display:flex;padding:10px 14px 14px;gap:8px;flex-shrink:0;}
+
+/* ── SCREEN 3: ADJUST ── */
+#screen-adjust{overflow:hidden;}
+.adjust-preview{
+  height:45vh;position:relative;overflow:hidden;flex-shrink:0;
+  background:var(--surface);
+}
+.adjust-preview canvas{width:100%;height:100%;display:block;}
+/* (10차) 개발용 3D 검증 미니뷰 */
+#devMini3D{position:absolute;right:8px;bottom:8px;width:172px;height:222px;z-index:60;
+  background:rgba(74,70,62,0.95);border:1px solid #6b6252;border-radius:10px;
+  display:flex;flex-direction:column;overflow:hidden;box-shadow:0 4px 16px rgba(0,0,0,0.4);}
+/* (11차) 확대 = 뷰포트 기준 별도 창(fixed) — 미리보기 영역 안에 갇혀 세로가
+   좁던 문제 해결. 화면 거의 전체를 덮어 두상이 크게 보임. */
+#devMini3D.expanded{position:fixed;left:3vw;right:3vw;top:3vh;bottom:3vh;width:auto;height:auto;z-index:300;}
+#devMini3DHeader{display:flex;align-items:center;justify-content:space-between;
+  padding:4px 8px;font-size:11px;font-weight:600;color:var(--accent-soft);
+  background:rgba(0,0,0,0.35);flex-shrink:0;}
+#devMini3DExpand{background:none;border:none;color:var(--accent-soft);font-size:14px;cursor:pointer;padding:0 2px;}
+#devMini3DCanvasWrap{flex:1;position:relative;min-height:0;}
+#devMini3DCanvasWrap canvas{width:100%;height:100%;display:block;touch-action:none;}
+#devMini3DHint{font-size:9px;color:var(--text-muted);text-align:center;padding:2px;flex-shrink:0;}
+/* (2026-08-29 2차) 미니뷰 섹션 색인. 172px 폭에 6개가 들어가야 해서 2열로 접힌다.
+   확대(⛶)하면 넓어지므로 한 줄로 펴진다 — 칩 크기는 그대로 두고 줄만 늘어난다. */
+#devMini3DLegend{display:flex;flex-wrap:wrap;gap:2px 6px;justify-content:center;
+  padding:3px 4px;flex-shrink:0;background:rgba(0,0,0,0.28);}
+#devMini3DLegend .lg{display:flex;align-items:center;gap:3px;font-size:8px;line-height:1.2;
+  color:var(--text-muted);font-family:'JetBrains Mono',monospace;white-space:nowrap;}
+#devMini3DLegend .sw{width:7px;height:7px;border-radius:2px;flex:none;}
+#devMini3D.expanded #devMini3DLegend{gap:4px 12px;padding:6px;}
+#devMini3D.expanded #devMini3DLegend .lg{font-size:11px;gap:5px;}
+#devMini3D.expanded #devMini3DLegend .sw{width:10px;height:10px;}
+.preview-tag{
+  position:absolute;top:10px;left:10px;
+  background:rgba(27,24,22,0.75);backdrop-filter:blur(4px);
+  padding:4px 10px;border-radius:8px;font-size:11px;color:var(--accent-soft);
+}
+.seg-status{position:absolute;bottom:8px;left:0;right:0;text-align:center;font-size:11px;color:var(--text-muted);}
+.debug-btn{
+  position:absolute;right:10px;
+  background:rgba(27,24,22,0.75);backdrop-filter:blur(4px);
+  padding:4px 10px;border-radius:8px;font-size:11px;color:var(--accent-soft);
+  border:1px solid var(--line);cursor:pointer;font-family:'JetBrains Mono',monospace;
+}
+.mask-debug-btn{top:10px;}
+.mask-debug-btn.on{background:var(--accent);color:#1B1816;border-color:var(--accent);font-weight:600;}
+.raw-debug-btn{top:46px;}
+.raw-debug-btn.on{background:var(--accent);color:#1B1816;border-color:var(--accent);font-weight:600;}
+.field-debug-btn{top:82px;}
+.field-debug-btn.on{background:#c04af0;color:#F3ECE2;border-color:#c04af0;font-weight:600;}
+
+.adjust-scroll{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:14px 16px 20px;background:var(--surface);}
+.adjust-controls{display:flex;flex-direction:column;gap:14px;}
+
+.angle-switch{display:flex;gap:5px;background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:4px;}
+.angle-switch button{flex:1;background:transparent;border:none;color:var(--text-muted);padding:7px 0;font-size:11px;border-radius:7px;cursor:pointer;font-family:'JetBrains Mono',monospace;}
+.angle-switch button.on{background:var(--accent);color:#1B1816;font-weight:600;}
+
+/* (2026-08-29) .ai-card / .ai-tag 제거 — 스타일 추천 AI를 걷어내면서 그 카드도
+   같이 사라졌다. .ai-overlay(진행 표시)는 세그멘테이션·의상 추천이 계속 쓴다. */
+
+/* (11차) 슬라이더 가시성↑ — 어두운 트랙이 어두운 배경에 묻혀 안 보이던 것 밝게. */
+input[type=range]{-webkit-appearance:none;width:100%;height:6px;border-radius:3px;background:#7A6E5C;outline:none;}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:22px;height:22px;border-radius:50%;background:var(--accent);cursor:pointer;border:3px solid #F3ECE2;box-shadow:0 1px 5px rgba(0,0,0,.45);}
+input[type=range]::-moz-range-track{height:6px;border-radius:3px;background:#7A6E5C;}
+input[type=range]::-moz-range-thumb{width:20px;height:20px;border-radius:50%;background:var(--accent);border:3px solid #F3ECE2;cursor:pointer;}
+
+.voice-box{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:12px;display:flex;flex-direction:column;gap:8px;}
+.voice-btn{display:flex;align-items:center;gap:10px;cursor:pointer;padding:10px 12px;border-radius:9px;background:var(--surface-2);transition:background .15s;}
+.voice-btn.listening{background:var(--warn);}
+.voice-dot{width:9px;height:9px;border-radius:50%;background:var(--text-muted);flex-shrink:0;}
+.voice-btn.listening .voice-dot{background:#fff;animation:pulse 1s infinite;}
+@keyframes pulse{0%,100%{opacity:1;}50%{opacity:.3;}}
+.voice-transcript{font-size:11px;color:var(--text-muted);line-height:1.5;}
+.voice-transcript b{color:var(--accent-soft);font-weight:600;}
+.voice-hints{font-size:10px;color:var(--text-muted);line-height:1.8;font-family:'JetBrains Mono',monospace;}
+
+/* ── SCREEN 4: RESULT (구 COMPARE) ──
+   BEFORE/AFTER 슬라이더를 걷어내고 "이 뷰의 결과물 = 조정된 헤어 + 추천 의상"
+   한 장을 보여주는 결과 화면. 각도 스위치로 정면/좌/우/후면을 전환한다. */
+#screen-result{overflow:hidden;}
+/* touch-action:none — 핀치 확대/드래그를 브라우저 기본 스크롤에 뺏기지 않게 */
+.result-stage{flex:1;position:relative;overflow:hidden;background:#141110;touch-action:none;cursor:grab;}
+.result-stage:active{cursor:grabbing;}
+.result-zoom{position:absolute;right:10px;bottom:10px;display:flex;align-items:center;gap:4px;
+  background:rgba(27,24,22,0.72);border-radius:10px;padding:4px;}
+.result-zoom button{width:30px;height:28px;border:none;border-radius:7px;background:var(--surface-2);
+  color:var(--text);font-size:15px;line-height:1;cursor:pointer;font-family:inherit;}
+.result-zoom button:active{background:var(--accent);color:#1B1816;}
+.result-zoom span{font-size:10px;color:var(--text-muted);min-width:38px;text-align:center;
+  font-family:'JetBrains Mono',monospace;}
+.result-canvas{width:100%;height:100%;display:block;}
+.result-badge{position:absolute;top:10px;left:10px;font-size:10px;letter-spacing:1px;padding:4px 9px;
+  background:rgba(27,24,22,0.7);border-radius:7px;color:var(--accent-soft);}
+.result-note{position:absolute;top:10px;right:10px;font-size:10px;letter-spacing:.5px;padding:4px 9px;
+  background:rgba(27,24,22,0.7);border-radius:7px;color:var(--text-muted);}
+.result-bottom{padding:10px 14px 14px;display:flex;flex-direction:column;gap:8px;flex-shrink:0;}
+/* 추천 의상 카드 — 지금은 AI가 고른 1벌. 나중에 제휴 상품 DB/쇼핑몰 링크가
+   붙을 자리를 그대로 갖춰둔다(.outfit-shop). */
+.outfit-card{display:flex;align-items:center;gap:10px;background:var(--surface);border:1px solid var(--line);
+  border-radius:12px;padding:10px 12px;}
+.outfit-sw{width:34px;height:34px;border-radius:9px;flex:none;border:1px solid rgba(255,255,255,.12);}
+.outfit-meta{flex:1;min-width:0;}
+.outfit-name{font-size:12.5px;font-weight:600;}
+.outfit-name span{font-size:10px;color:var(--text-muted);font-weight:400;margin-left:5px;}
+.outfit-reason{font-size:11px;color:var(--text-muted);line-height:1.5;margin-top:2px;
+  overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;}
+.outfit-shop{font-size:11px;padding:7px 10px;border-radius:9px;background:var(--surface-2);
+  border:1px solid var(--line);color:var(--accent-soft);text-decoration:none;white-space:nowrap;flex:none;}
+.outfit-shop.disabled{color:var(--text-muted);pointer-events:none;opacity:.65;}
+.outfit-picker{display:flex;gap:6px;flex-wrap:wrap;}
+.outfit-chip{font-size:11px;padding:6px 10px;border-radius:20px;background:var(--surface-2);
+  border:1px solid var(--line);color:var(--text-muted);cursor:pointer;}
+.outfit-chip.on{border-color:var(--accent);color:var(--accent-soft);}
+
+/* (2026-08-29) 실사 전환 바(.pr-*) 제거 — 결과 화면은 <b>사진 위 렌더</b> 한 가지다.
+   API(Gemini 프록시) 경로를 통째로 걷어냈으므로 토글할 대상 자체가 없다. */
+
+/* ── OVERLAYS ── */
+.toast{
+  position:fixed;bottom:80px;left:50%;transform:translateX(-50%) translateY(20px);
+  background:var(--surface-2);border:1px solid var(--line);
+  padding:10px 18px;border-radius:12px;font-size:13px;
+  opacity:0;pointer-events:none;transition:all .25s;z-index:50;
+  white-space:nowrap;max-width:90vw;white-space:normal;text-align:center;
+}
+.toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
+.ai-overlay{
+  position:fixed;inset:0;background:rgba(27,24,22,0.92);z-index:100;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;
+  backdrop-filter:blur(6px);
+}
+.ai-overlay.hidden{display:none;}
+.ai-spinner{width:40px;height:40px;border:3px solid var(--line);border-top-color:var(--accent);border-radius:50%;animation:spin .9s linear infinite;}
+@keyframes spin{to{transform:rotate(360deg);}}
+.ai-overlay-text{font-size:14px;color:var(--accent-soft);}
+.ai-overlay-sub{font-size:12px;color:var(--text-muted);}
+
+::-webkit-scrollbar{width:4px;}
+::-webkit-scrollbar-thumb{background:var(--line);border-radius:2px;}
+
+.section-affects{font-size:10px;color:var(--text-muted);font-family:'JetBrains Mono',monospace;margin-top:2px;}
+
+/* ════════════════════════════════════════════════════════════════
+   gyeol 2D 설계 패널 (조정 화면) — 섹션칩 → 커트/펌/컬러 공정그룹 + 스타일링
+   index 앱 셸(단일 컬럼·모바일)에 맞춰 gyeol 데스크톱 2컬럼 패널을 이식.
+   ════════════════════════════════════════════════════════════════ */
+.gy-section-bar{display:flex;flex-wrap:wrap;gap:5px;margin-bottom:4px;}
+.gy-chip{flex:1 1 auto;min-width:60px;text-align:center;font-size:12px;padding:9px 6px;
+  border-radius:9px;cursor:pointer;background:var(--surface-2);border:1px solid transparent;
+  color:var(--text-muted);transition:.15s;font-family:inherit;line-height:1.25;}
+.gy-chip .en{display:block;font-size:8px;letter-spacing:1px;color:var(--text-muted);opacity:.7;margin-top:1px;font-family:'JetBrains Mono',monospace;}
+.gy-chip.active{border-color:var(--accent);color:var(--accent-soft);background:#2a2318;}
+.gy-chip:hover:not(.active){color:var(--text);}
+.gy-chip.styling{flex-basis:100%;background:#241d28;color:var(--gy-color);}
+.gy-chip.styling.active{border-color:var(--gy-color);color:var(--gy-color);background:#2b2130;}
+
+.gy-groups{display:flex;flex-direction:column;}
+.gy-group{border-bottom:1px solid var(--line);padding:14px 0;}
+.gy-group:last-child{border-bottom:none;}
+.gy-group-head{display:flex;align-items:center;gap:9px;cursor:pointer;user-select:none;}
+.gy-group-head.static{cursor:default;}
+.gy-dot{width:9px;height:9px;border-radius:3px;flex:none;}
+.gy-group-title{font-size:12px;letter-spacing:1.2px;text-transform:uppercase;font-weight:700;}
+.gy-group-sub{font-size:10px;color:var(--text-muted);margin-left:auto;letter-spacing:.5px;}
+.gy-chevron{color:var(--text-muted);transition:.2s;font-size:10px;margin-left:8px;}
+.gy-group.collapsed .gy-chevron{transform:rotate(-90deg);}
+.gy-group.collapsed .gy-group-body{display:none;}
+.gy-group-body{padding-top:12px;display:flex;flex-direction:column;gap:13px;}
+.gy-group.optional .gy-group-title{color:var(--text-muted);}
+
+.gy-ctrl{display:flex;flex-direction:column;gap:6px;}
+.gy-ctrl-top{display:flex;justify-content:space-between;align-items:baseline;}
+.gy-ctrl-label{font-size:12.5px;color:var(--text);}
+.gy-ctrl-hint{font-size:10px;color:var(--text-muted);margin-left:6px;}
+.gy-ctrl-val{font-size:12px;color:var(--accent-soft);font-family:'JetBrains Mono',monospace;}
+.gy-ends{display:flex;justify-content:space-between;font-size:10px;color:var(--text-muted);margin-top:1px;}
+.gy-select{width:100%;background:var(--surface-2);color:var(--text);border:1px solid var(--line);
+  border-radius:8px;padding:9px;font-family:inherit;font-size:12.5px;}
+.gy-swatches{display:flex;gap:8px;flex-wrap:wrap;margin-top:2px;}
+.gy-sw{width:28px;height:28px;border-radius:8px;cursor:pointer;border:2px solid transparent;}
+.gy-sw.active{border-color:var(--text);}
+/* 자유 색상(2026-09-03) — 스와치는 자주 쓰는 것을 빨리 집는 용도고, 색의 목록이
+   아니다. 선택기(OS 피커) + 아무 CSS 색 문자열 입력이 실제 입구다. */
+.gy-color-chip{width:26px;height:26px;border-radius:7px;border:1px solid var(--line);flex:none;}
+/* 색 넘버 줄 (2026-09-03 2차) — 드래그로 만든 색을 <b>옮겨 적을 수 있게</b> 한다. */
+.gy-color-out{display:flex;align-items:center;gap:9px;cursor:pointer;user-select:none;
+  background:var(--surface-2);border:1px solid var(--line);border-radius:9px;padding:7px 9px;}
+.gy-color-hex{font-family:'JetBrains Mono',monospace;font-size:12.5px;color:var(--text);letter-spacing:.5px;}
+.gy-color-oklch{font-family:'JetBrains Mono',monospace;font-size:10.5px;color:var(--text-muted);
+  margin-left:auto;text-align:right;}
+/* 모니터가 못 내는 색 — 슬라이더는 올라가는데 화면은 안 변하는 구간의 표시. */
+.gy-color-gamut{font-size:9.5px;color:#E8A33D;border:1px solid #E8A33D;border-radius:5px;
+  padding:1px 4px;letter-spacing:.5px;flex:none;}
+.gy-color-text{flex:1;min-width:0;background:var(--surface-2);color:var(--text);border:1px solid var(--line);
+  border-radius:8px;padding:7px 8px;font-family:'JetBrains Mono',monospace;font-size:11.5px;}
+.gy-color-text::placeholder{color:var(--text-muted);}
+.gy-color-text.bad{border-color:#C0392B;}
+.gy-color-sep{height:1px;background:var(--line);margin:2px 0;}
+.gy-toggle-row{display:flex;align-items:center;gap:8px;}
+.gy-toggle{width:36px;height:20px;border-radius:11px;background:var(--line);position:relative;cursor:pointer;transition:.2s;flex:none;}
+.gy-toggle.on{background:var(--accent);}
+.gy-toggle::after{content:'';position:absolute;width:16px;height:16px;border-radius:50%;background:var(--text);top:2px;left:2px;transition:.2s;}
+.gy-toggle.on::after{left:18px;background:#1B1816;}
+/* 언어 토글 (2026-08-03) */
+/* 조정·3D 화면 확대 손잡이 (2026-08-08) */
+.view-zoom{position:absolute;right:8px;bottom:8px;z-index:70;display:flex;align-items:center;gap:2px;
+  background:rgba(0,0,0,0.55);border:1px solid var(--line);border-radius:10px;padding:3px 5px;}
+.view-zoom button{background:none;border:none;color:var(--text);font-size:14px;line-height:1;
+  padding:4px 7px;cursor:pointer;border-radius:6px;}
+.view-zoom button:hover{background:var(--surface-2);color:var(--accent-soft);}
+.view-zoom span{font-family:'JetBrains Mono',monospace;font-size:10.5px;color:var(--text-muted);
+  min-width:38px;text-align:center;}
+#adjustCanvas{touch-action:none;}
+/* 마네킹 초기화 바 (#5, 2026-08-08) — 미리보기 좌상단, 스타일 태그 아래 */
+/* (2026-08-25) 버튼이 다섯이 되면서 1080폭 실기기에서 넘쳤다 — '빗질 되돌리기'가
+   잘리고 오른쪽 디버그 버튼들과 겹쳤다(실기기 녹화에서 확인). 오른쪽 버튼들이
+   right 기준으로 붙어 있으므로 폭을 그쪽 전에서 끊고 줄바꿈시킨다. */
+.mode-bar{position:absolute;left:10px;top:40px;z-index:70;display:flex;align-items:center;
+  gap:4px;flex-wrap:wrap;max-width:calc(100% - 150px);}
+.mode-bar button{background:rgba(27,24,22,0.78);backdrop-filter:blur(4px);border:1px solid var(--line);
+  color:var(--accent-soft);font-size:11px;line-height:1;padding:6px 10px;border-radius:8px;cursor:pointer;}
+.mode-bar button:hover{border-color:var(--accent);}
+.mode-bar button.on{background:var(--accent);color:#1B1816;border-color:var(--accent);font-weight:700;}
+.mode-bar button:disabled{opacity:.4;cursor:default;}
+.lang-toggle{background:var(--surface-2);color:var(--text);border:1px solid var(--line);
+  border-radius:999px;padding:4px 11px;font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:500;
+  letter-spacing:.04em;cursor:pointer;line-height:1.5;}
+.lang-toggle:hover{border-color:var(--accent);color:var(--accent-soft);}

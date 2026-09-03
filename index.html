@@ -1,0 +1,344 @@
+<!--
+  GYEOL(결) — 미용실용 헤어스타일 시뮬레이터
+  설계 원칙·좌표 규약: docs/ARCHITECTURE.md
+  변경 이력:            docs/CHANGELOG.md
+  다시 밟지 말 함정:    docs/LESSONS.md
+  ⚠ js/ 아래 파일은 클래식 스크립트다. 아래 <script src> 순서가 곧 실행
+    순서이고, 원본 단일 파일의 위→아래 순서와 같다. 순서를 바꾸면 상수
+    선언 전 참조(TDZ)가 난다.
+-->
+
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>결 GYEOL — 스타일 프리뷰</title>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div id="app">
+  <header>
+    <div class="brand-mark">결</div>
+    <div class="stage-pill" id="stageLabel">단계 <b>1/4 · 촬영</b></div>
+    <!-- 언어 토글 (2026-08-03) — 기본 영어. 첫 화면(촬영)에서 바로 잡히도록 헤더에 둔다. -->
+    <button class="lang-toggle" id="langToggle" onclick="toggleUiLang()" title="Language / 언어">EN</button>
+  </header>
+  <main>
+
+    <!-- ══ SCREEN 1: CAPTURE ══ -->
+    <section class="screen active" id="screen-capture">
+      <div class="capture-video-wrap">
+        <div class="cam-off-msg" id="camOffMsg">카메라를 불러오는 중…<br><span style="font-size:11px;">아래 업로드 버튼도 이용 가능해요</span></div>
+        <video id="video" autoplay playsinline muted></video>
+        <img id="shotPreview">
+        <svg class="face-guide-svg" viewBox="0 0 100 100" preserveAspectRatio="xMidYMid meet">
+          <ellipse cx="50" cy="38" rx="34" ry="46" fill="none" stroke="rgba(232,195,158,0.55)" stroke-width="0.7" stroke-dasharray="3 3"/>
+        </svg>
+        <!-- 실시간 각도 가이드 오버레이 (2026-07-26) — .capture-video-wrap.live-ready일 때만 보임 -->
+        <div class="live-frame"><i></i><i></i><i></i><i></i></div>
+        <div class="shoot-now">지금 찍으세요</div>
+        <div class="live-angle hide" id="liveAngleChip">각도 측정 준비 중…</div>
+        <div class="cap-hint" id="captureHint">정면을 가이드 안에 맞춰주세요</div>
+      </div>
+
+      <!-- angle strip -->
+      <div class="angle-strip">
+        <div class="angle-item current" id="card-front" onclick="jumpToAngle(0)">
+          <div class="angle-thumb" id="thumb-front"></div>
+          <div class="angle-name">정면</div>
+          <div class="angle-check" id="chk-front"></div>
+        </div>
+        <div class="angle-item" id="card-left" onclick="jumpToAngle(1)">
+          <div class="angle-thumb" id="thumb-left"></div>
+          <div class="angle-name">좌측</div>
+          <div class="angle-check" id="chk-left"></div>
+        </div>
+        <div class="angle-item" id="card-right" onclick="jumpToAngle(2)">
+          <div class="angle-thumb" id="thumb-right"></div>
+          <div class="angle-name">우측</div>
+          <div class="angle-check" id="chk-right"></div>
+        </div>
+        <div class="angle-item" id="card-back" onclick="jumpToAngle(3)">
+          <div class="angle-thumb" id="thumb-back"></div>
+          <div class="angle-name">후면</div>
+          <div class="angle-check" id="chk-back"></div>
+        </div>
+      </div>
+
+      <div class="capture-actions">
+        <button class="shutter-btn" id="shutterBtn" onclick="captureCurrentAngle()">📷</button>
+        <div class="cap-right">
+          <div class="dial-row">
+            <div class="dial-mini">
+              <svg viewBox="0 0 100 100">
+                <circle class="seg" id="seg0" cx="50" cy="50" r="42" fill="none" stroke="#3A332B" stroke-width="6" stroke-dasharray="65 197" transform="rotate(-90 50 50)"/>
+                <circle class="seg" id="seg1" cx="50" cy="50" r="42" fill="none" stroke="#3A332B" stroke-width="6" stroke-dasharray="65 197" stroke-dashoffset="-65" transform="rotate(-90 50 50)"/>
+                <circle class="seg" id="seg2" cx="50" cy="50" r="42" fill="none" stroke="#3A332B" stroke-width="6" stroke-dasharray="65 197" stroke-dashoffset="-130" transform="rotate(-90 50 50)"/>
+                <circle class="seg" id="seg3" cx="50" cy="50" r="42" fill="none" stroke="#3A332B" stroke-width="6" stroke-dasharray="65 197" stroke-dashoffset="-195" transform="rotate(-90 50 50)"/>
+              </svg>
+              <div class="dial-mini-center" id="dialCenter">0/4</div>
+            </div>
+            <div class="cap-hint-small" id="capHintSmall">촬영 버튼을 눌러주세요</div>
+          </div>
+          <div class="cap-btns">
+            <button class="btn btn-ghost" style="flex:1;font-size:12px;padding:9px 8px;" onclick="retakeCurrent()">재촬영</button>
+            <button class="btn btn-ghost" style="flex:1;font-size:12px;padding:9px 8px;" onclick="document.getElementById('fileInput').click()">업로드</button>
+            <button class="btn btn-primary" id="toStyleBtn" style="flex:1;font-size:12px;padding:9px 8px;" onclick="navTo('style')" disabled>다음→</button>
+          </div>
+        </div>
+      </div>
+      <input type="file" id="fileInput" accept="image/*" style="display:none;" onchange="handleFileUpload(event)">
+    </section>
+
+    <!-- ══ SCREEN 2: STYLE ══ -->
+    <section class="screen" id="screen-style">
+      <div class="style-scroll">
+        <div class="style-grid" id="styleGrid"></div>
+      </div>
+      <div class="style-footer">
+        <button class="btn btn-ghost" style="flex:1;" onclick="navTo('capture')">← 촬영</button>
+        <button class="btn btn-primary" id="toAdjustBtn" style="flex:2;" onclick="navTo('adjust')" disabled>조정하기 →</button>
+      </div>
+    </section>
+
+    <!-- ══ SCREEN 3: ADJUST ══ -->
+    <section class="screen" id="screen-adjust">
+      <div class="adjust-preview">
+        <canvas id="adjustCanvas"></canvas>
+        <div class="preview-tag" id="adjustStyleTag">스타일 미선택</div>
+        <!-- (#5, 2026-08-08) 마네킹 초기화 표시/전환.
+             '스타일 미선택'으로 들어오면 자동으로 켜진 상태다(selectNoStyle).
+             끄면 손님 원래 컬로 돌아간다. -->
+        <div class="mode-bar">
+          <button id="mannequinBtn" onclick="toggleMannequin()"
+                  title="컬·스타일링을 지운 마네킹 상태에서 시술을 시작합니다">마네킹 초기화 OFF</button>
+          <!-- (2026-08-29 2차) 스펙 버튼 두 개('레이어드 보브'·'페이드 폼파두르') 제거 —
+               사용자 지시 "시술화면에서 폼파두르랑 layerbob 선택하는 탭은 지워도 된다".
+               같은 스펙이 이제 <b>스타일 화면의 카드</b>로 올라갔고(STYLES의 specId),
+               조정 화면 진입 때 setupAdjustScreen이 건다. 고르는 자리가 두 군데면
+               "지금 걸린 게 어느 쪽에서 온 것인가"가 흐려진다 — 입구를 하나로 둔다.
+               엔진(applyStyleSpecAndRender/clearStyleSpec)은 그대로 살아 있다. -->
+          <!-- (2026-08-30) 빗질(COMB) 버튼을 <b>캔버스 위에서 뺐다</b> — 사용자 지시
+               "comb은 일단 off상태로 버튼을 지워놔.. 차라리 comb 슬라이더 옆에다 놔두고
+               필요할 때만 건드리게. 화면에 손댈 때 자꾸 머리가 헝클어져."
+               모드바는 <b>미리보기 캔버스 위</b>라 확대·이동하려고 짚은 손가락이
+               그대로 빗질이 됐다. 손잡이가 있으면 안 되는 자리가 아니라, 손잡이가
+               <b>이 자리</b>에 있으면 안 되는 것이다. 그래서 지운 게 아니라
+               스타일링 슬라이더 묶음(정돈 아래)으로 옮겼다 — 엔진은 한 줄도 안 건드렸고
+               COMB.on 기본값도 false 그대로다. 자리는 buildGyStylingControls. -->
+        </div>
+        <button class="debug-btn mask-debug-btn" id="maskDebugToggle" onclick="toggleMaskDebug()">가닥 보기</button>
+        <button class="debug-btn raw-debug-btn" id="rawDebugToggle" onclick="toggleRawDebug()">원본 결 보기</button>
+        <button class="debug-btn field-debug-btn" id="fieldDebugToggle" onclick="toggleFieldDebug()">결필드 원본</button>
+        <!-- (2026-08-01) '픽셀 이식' 디버그 버튼 제거 — 이 경로가 기본 렌더가 됐다.
+             (2026-08-02 8차) 기본 렌더는 다시 가닥 렌더다(state.hairQuilt=false).
+             원본 결 보기와 가닥 규칙을 공유하는 경로가 그쪽이라서. 이식을 보려면
+             콘솔에서 state.hairQuilt=true 후 다시 그린다. -->
+        <button class="debug-btn" id="diagInfoToggle" onclick="toggleDiagInfo()" style="right:auto;left:8px;bottom:8px;">진단정보</button>
+        <div id="diagInfoBox" style="display:none;position:absolute;left:8px;bottom:44px;right:8px;background:rgba(0,0,0,0.85);color:#0f0;font-family:monospace;font-size:10px;padding:8px;border-radius:6px;white-space:pre-wrap;z-index:50;max-height:200px;overflow:auto;"></div>
+        <div class="seg-status" id="segStatus"></div>
+        <!-- (10차) 개발용 3D 검증 미니뷰 — 3D 조정 엔진 β ON일 때만 표시.
+             정규 3D 모델(state.hair3D)을 직접 렌더(드래그 회전). 탭(확대 버튼)으로
+             전체화면 확대. 출시 땐 이 패널만 숨기면 됨. -->
+        <!-- 조정 화면 확대/이동 (2026-08-08) — 결과 화면과 같은 손잡이.
+             휠·드래그·핀치도 되지만, 터치 기기와 "지금 몇 %인지"를 위해 눈에 보이는 버튼을 둔다. -->
+        <div class="view-zoom" id="adjustZoomBar">
+          <button onclick="adjustViewStep(1/1.3)" title="축소">−</button>
+          <span id="adjustZoomPct">100%</span>
+          <button onclick="adjustViewStep(1.3)" title="확대">＋</button>
+          <button onclick="adjustViewReset()" title="원래대로">↺</button>
+        </div>
+        <div id="devMini3D" style="display:none;">
+          <div id="devMini3DHeader">
+            <span>3D 미리보기</span>
+            <button id="devMini3DExpand" onclick="toggleDevMini3DExpand()" title="확대/축소">⛶</button>
+          </div>
+          <div id="devMini3DCanvasWrap"></div>
+          <!-- (2026-08-29 2차) 섹션 색인 — 미니뷰 가닥은 SECTION_COLORS로 칠해지는데
+               "이 색이 어느 섹션인가"가 화면에 없어서 매번 코드를 봐야 했다.
+               내용은 buildMini3DLegend()가 SECTION_ORDER·SECTION_COLORS·SECTIONS에서
+               <b>그대로</b> 만든다 — 색과 이름을 여기 또 적으면 갈라진다(작업원칙 3). -->
+          <div id="devMini3DLegend"></div>
+          <div id="devMini3DHint">드래그 회전 · ⛶ 확대</div>
+        </div>
+      </div>
+      <div class="adjust-scroll">
+        <div class="adjust-controls">
+
+          <!-- 뷰 전환 (정면/좌/우/후) -->
+          <div class="angle-switch" id="angleSwitch"></div>
+
+          <!-- (2026-08-29) AI 분석 카드 제거 — 사용자 지시 "스타일추천AI는 안 돌린다".
+               얼굴형·머리색을 Claude에 물어보던 경로가 통째로 없어졌으므로 이 카드에
+               채울 내용도 없다. 세그멘테이션(머리카락 추출)은 그대로 돈다. -->
+
+          <!-- ══ gyeol 2D 설계 패널 ══ -->
+          <!-- 섹션 칩 바 (크라운·프론트·템플·사이드·후두부·네이프 + 스타일링 마무리) -->
+          <div class="gy-section-bar" id="gySectionBar"></div>
+          <!-- 활성 섹션의 커트/펌/컬러 공정그룹 또는 스타일링 컨트롤 -->
+          <div class="gy-groups" id="gyControls"></div>
+
+          <div class="voice-box">
+            <div class="voice-btn" id="voiceBtn" onclick="toggleVoice()">
+              <div class="voice-dot"></div>
+              <span id="voiceBtnLabel" style="font-size:13px;font-weight:600;">음성으로 조정하기</span>
+            </div>
+            <div class="voice-transcript" id="voiceTranscript">예: "크라운 길게", "네이프 짧게", "볼륨 추가"</div>
+            <div class="voice-hints">크라운·프론트·템플·사이드·후두부·네이프 + 길게·짧게·볼륨·컬</div>
+          </div>
+
+          <button class="btn btn-ghost" style="font-size:12px;padding:10px;" onclick="resetSections()">초기화</button>
+          <!-- (10차) 3D 조정 엔진 토글 — ON이면 3D 정규 모델을 현재 뷰로 투영해 표시
+               (3D=원본, 2D=투영). 1단계는 표시 경로만; 조정 연산자 이관은 다음 단계. -->
+          <button class="btn btn-ghost" style="font-size:12px;padding:10px;" id="btn3dEngine" onclick="toggle3DAdjust()">3D 미리보기: OFF</button>
+          <button class="btn btn-primary" style="font-size:12px;padding:10px;" onclick="registerCurrentAsStyle()">★ 현재 모델을 스타일로 등록하기</button>
+          <div style="height:4px;"></div>
+        </div>
+      </div>
+      <div style="display:flex;gap:8px;padding:10px 14px 14px;flex-shrink:0;">
+        <button class="btn btn-ghost" style="flex:1;font-size:13px;" onclick="navTo('style')">← 스타일</button>
+        <button class="btn btn-primary" style="flex:2;font-size:13px;" onclick="navTo('result')">결과 보기 →</button>
+      </div>
+    </section>
+
+    <!-- ══ SCREEN 4: RESULT ══
+         뷰마다 "그 각도의 결과물(조정된 헤어) + 추천 의상을 입은 모습" 한 장.
+         정면 탭이면 정면 결과물에 정면 몸체가, 좌측 탭이면 좌측 결과물에 좌측
+         몸체가 합성된다. 예전 BEFORE/AFTER 슬라이더는 제거됨. -->
+    <section class="screen" id="screen-result">
+      <div class="result-stage" id="resultStage">
+        <canvas id="resultCanvas" class="result-canvas"></canvas>
+        <div class="result-badge" id="resultViewBadge">정면</div>
+        <div class="result-note" id="resultOutfitNote">의상 준비 중…</div>
+        <!-- 확대/축소 — 휠·핀치·드래그도 되고(두 번 탭/더블클릭이면 원래대로),
+             화면 안 눌러도 되게 버튼도 둔다 -->
+        <div class="result-zoom" id="resultZoom" onpointerdown="event.stopPropagation()">
+          <button type="button" onclick="resultZoomAt(RESULT_VIEW.zoom/1.25)">−</button>
+          <span id="resultZoomLabel">100%</span>
+          <button type="button" onclick="resultZoomAt(RESULT_VIEW.zoom*1.25)">＋</button>
+          <button type="button" onclick="resultResetView()" title="원래대로">⟲</button>
+        </div>
+      </div>
+      <div class="result-bottom">
+        <div class="outfit-card" id="outfitCard" style="display:none;">
+          <div class="outfit-sw" id="outfitSwatch"></div>
+          <div class="outfit-meta">
+            <div class="outfit-name" id="outfitName">—</div>
+            <div class="outfit-reason" id="outfitReason"></div>
+          </div>
+          <a class="outfit-shop disabled" id="outfitShop" target="_blank" rel="noopener">제휴 준비중</a>
+        </div>
+        <!-- 의상 전환 UI(카탈로그 칩). 지금은 AI 추천 1벌만 쓰므로 기본 숨김 —
+             RESULT_OUTFIT_PICKER=true로 켜면 바로 동작한다(전환 경로 자체는 항상 살아있음). -->
+        <div class="outfit-picker" id="outfitPicker" style="display:none;"></div>
+        <!-- (2026-08-29) 실사 전환 바 제거 — 사용자 지시 "API는 안 쓴다. PHOTO 결과만".
+             결과 화면은 이제 <b>손님 사진 위에 얹은 렌더</b> 한 가지뿐이라 고를 것이
+             없다. 되살리려면 이 자리에 pr-bar 마크업 + PHOTOREAL 구역을 다시 넣으면
+             된다(Cloudflare Worker + GEMINI_API_KEY가 필요했던 경로). -->
+        <div class="angle-switch" id="angleSwitchResult"></div>
+        <div style="display:flex;gap:8px;">
+          <button class="btn btn-ghost" style="flex:1;font-size:13px;" onclick="navTo('adjust')">← 조정</button>
+          <button class="btn btn-primary" style="flex:1;font-size:13px;" onclick="navTo('model3d')">3D로 보기 →</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- ══ SCREEN 5: 3D MODEL (2단계 프로토타입) ══ -->
+    <section class="screen" id="screen-model3d">
+      <div class="model3d-viewport" id="model3dViewport" style="position:relative;width:100%;flex:1;background:#0F0D0B;overflow:hidden;">
+        <div class="preview-tag" id="model3dTag">범용 3D 두상 · 확정 스타일 적용</div>
+        <!-- [진단용] 가닥 뿌리 기준면(가상 타원체) 토글 (2026-07-14 추가) — 헤어 위치 문제 원인 분리용 -->
+        <button class="debug-btn mask-debug-btn" id="strandDebugToggle" onclick="toggleStrandDebug()">기준면 보기</button>
+        <!-- 3D 화면 확대/이동 (2026-08-08) — 휠·핀치·Shift드래그도 됨 -->
+        <div class="view-zoom" id="model3dZoomBar">
+          <button onclick="model3dZoomStep(1/1.3)" title="축소">−</button>
+          <span id="model3dZoomPct">100%</span>
+          <button onclick="model3dZoomStep(1.3)" title="확대">＋</button>
+          <button onclick="model3dViewReset()" title="원래대로">↺</button>
+        </div>
+        <div class="model3d-hint" style="position:absolute;bottom:10px;left:50%;transform:translateX(-50%);font-size:11px;color:var(--text-muted);background:rgba(0,0,0,0.4);padding:4px 10px;border-radius:10px;">드래그 회전 · 두 손가락(Shift+드래그) 이동 · 핀치(휠) 확대</div>
+      </div>
+      <div style="display:flex;gap:8px;padding:10px 14px 14px;flex-shrink:0;">
+        <button class="btn btn-ghost" style="flex:1;font-size:13px;" onclick="navTo('result')">← 결과</button>
+        <button class="btn btn-primary" style="flex:2;font-size:13px;" onclick="startNewCustomer()">새로 시작</button>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- bottom nav -->
+  <nav class="bottom-nav">
+    <button class="nav-tab active" id="nav-capture" onclick="navTo('capture')"><span class="icon">📷</span>촬영</button>
+    <button class="nav-tab" id="nav-style" onclick="navTo('style')" disabled><span class="icon">✂️</span>스타일</button>
+    <button class="nav-tab" id="nav-adjust" onclick="navTo('adjust')" disabled><span class="icon">🎚️</span>조정</button>
+    <button class="nav-tab" id="nav-result" onclick="navTo('result')" disabled><span class="icon">🧥</span>결과</button>
+    <button class="nav-tab" id="nav-model3d" onclick="navTo('model3d')" disabled><span class="icon">🧑</span>3D</button>
+  </nav>
+</div>
+
+<div class="toast" id="toast"></div>
+<div class="ai-overlay hidden" id="aiOverlay">
+  <div class="ai-spinner"></div>
+  <div class="ai-overlay-text" id="aiOverlayText">분석 중…</div>
+  <div class="ai-overlay-sub" id="aiOverlaySub">잠시만 기다려주세요</div>
+</div>
+
+<!-- TensorFlow.js + Body Segmentation -->
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-core@4.17.0/dist/tf-core.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-backend-webgl@4.17.0/dist/tf-backend-webgl.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-converter@4.17.0/dist/tf-converter.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/body-segmentation@1.0.1/dist/body-segmentation.min.js"></script>
+<!-- Three.js (2단계: 범용 3D 두상 렌더용. r128 UMD 빌드 — 나머지 앱 코드가 전부
+     클래식 스크립트 + 전역함수(onclick=) 방식이라 모듈 방식 대신 UMD로 맞춤) -->
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js"></script>
+<!-- OBJLoader/MTLLoader: Quaternius 등에서 받은 .obj+.mtl 의상/전신 에셋을 로드하기
+     위해 추가(2026-07-12, 3단계 착수). GLTFLoader와 달리 이건 실제로 사용 중 —
+     loadOutfitMeshFromOBJ() 참고. -->
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/MTLLoader.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/OBJLoader.js"></script>
+<!-- MediaPipe Tasks Vision (Hair Landmarker) -->
+<!-- MediaPipe Tasks Vision: ES 모듈로만 배포되므로 classic <script src> 태그로는
+     window.FilesetResolver 등 전역이 전혀 생성되지 않는다 (실제 원인이었던 버그).
+     아래 loadVisionModule()에서 동적 import()로 직접 불러온다. -->
+<script>
+/* ════════════════════════════════════════════════════════════════
+   VISION 모듈 로더
+   MediaPipe tasks-vision을 동적 import로 1회만 받아 캐시. FaceLandmarker·
+   ImageSegmenter·PoseLandmarker가 모두 이 프라미스를 공유한다.
+   ════════════════════════════════════════════════════════════════ */
+let __visionModulePromise = null;
+function loadVisionModule(){
+  if(!__visionModulePromise){
+    __visionModulePromise = import('https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.9');
+  }
+  return __visionModulePromise;
+}
+</script>
+<script src="js/01-face-landmarker.js"></script>
+<script src="js/02-state-sections.js"></script>
+<script src="js/03a-hair-mask.js"></script>
+<script src="js/03b-mask-memory.js"></script>
+<script src="js/04-structure-tensor.js"></script>
+<script src="js/05-capture-nav.js"></script>
+<script src="js/06-ui-panels.js"></script>
+<script src="js/07a-render-canvas.js"></script>
+<script src="js/07b-render-compare.js"></script>
+<script src="js/08-cut-engine.js"></script>
+<script src="js/09-strand-dye.js"></script>
+<script src="js/10-hair-render-2d.js"></script>
+<script src="js/11-result-screen.js"></script>
+<script src="js/12a-head-project.js"></script>
+<script src="js/12b-head-measure.js"></script>
+<script src="js/13a-outfit-pose.js"></script>
+<script src="js/13b-lift-fields.js"></script>
+<script src="js/13c-scalp-sections.js"></script>
+<script src="js/14-hair-3d-ops.js"></script>
+<script src="js/15-project-3d.js"></script>
+<script src="js/16-style-spec-diag.js"></script>
+<script src="js/17a-mannequin.js"></script>
+<script src="js/17b-cut3d-piece.js"></script>
+<script src="js/18-perf-i18n-boot.js"></script>
+</body>
+</html>
