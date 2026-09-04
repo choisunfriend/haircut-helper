@@ -564,7 +564,7 @@ async function setupModel3DScreen(){
   // 의상 로딩 전체가 스킵되고 3D에 두상만 남는 원인이었음(recommendOutfitWithAI
   // 자체도 위에서 동일하게 수정). 정면 사진만 있으면 되도록 조건 완화 —
   // recommendOutfitWithAI 내부에서 style 유무에 따라 알아서 다르게 설명 구성.
-  let outfitTag = '';
+  let outfitTag = '', stageOutfit = null;
   if(state.shots && state.shots.front){
     showAI('AI가 어울리는 의상을 고르고 있어요…','헤어스타일 기반 추천 (데모)');
     const outfitRec = await recommendOutfitWithAI();
@@ -576,8 +576,17 @@ async function setupModel3DScreen(){
       refitNeckToGarment(model3D.headGroup,
         (state.hairMasks && state.hairMasks.front && state.hairMasks.front.scalpColor));
       outfitTag = ` · 의상 추천: ${outfitRec.item.name}(${outfitRec.item.category}, 데모)`;
+      stageOutfit = outfitRec.item;
     }
   }
+
+  /* (2026-09-04 2차) 무대 배경을 지금 걸린 헤어·의상 색에 맞춰 고른다.
+     의상이 없으면(추천 실패·사진 없음) null로 부른다 — 헤어만으로도 밝기
+     규칙은 성립한다. 실패해도 화면은 styles.css 기본 팔레트로 그냥 뜬다.
+     ⚠ 여기 자리인 이유: 의상 메쉬가 붙은 <b>뒤</b>여야 stageOutfit이 찼다.
+       위로 올리면 조용히 항상 null이 되어 의상 연동이 사라진다. */
+  try{ applyStageBackdrop(stageOutfit); }
+  catch(e){ console.warn('[무대] 배경 색 적용 실패 — 기본 팔레트 유지:', e); }
 
   frameCameraToHead(); // 버그 수정: 모델 크기 기준으로 카메라 거리 자동 계산 (이전엔 눈대중 고정값이라 심하게 줌인됐었음)
 
