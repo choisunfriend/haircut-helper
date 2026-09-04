@@ -470,17 +470,23 @@ function projectHairQuiltToView(ctx, fit, angle, maskInf){
   // ── 투영 + 호길이 ──
   const lanes = [];
   const occ = makeViewOccluder(cal);   // 가림 판정(두상·목 그림자) — 뷰당 1회
+  /* 얼굴 게이트도 <b>가닥 렌더와 같은 규칙</b>으로 건다 (2026-09-04). 8/18 i가
+     "한쪽만 고치면 이식 모드에서만 뒷머리가 목 앞에 얹힌다"고 적어 둔 그 자리다. */
+  const faceSil = FACE_GATE.on ? makeFaceSilhouette(angle, maskInf.w, maskInf.h) : null;
   let dMin = Infinity, dMax = -Infinity;
   for(const st of adj){
     const pts = st.pts, cp = []; let dsum = 0, dmax = -Infinity, vis = 0;
-    const vpt = [];
+    const vpt = []; const ipts = []; let rootDepth = 0;
     for(let i=0;i<pts.length;i++){
       const pr = project3DPointToView(pts[i], cal, model.yTop, model.CY);
+      if(i===0) rootDepth = pr.depth;
       cp.push({ x: toCX(pr.ix), y: toCY(pr.iy) });
+      ipts.push({ x: pr.ix, y: pr.iy });
       dsum += pr.depth; if(pr.depth > dmax) dmax = pr.depth;
       const v = viewPointVisible(pr, occ, maskInf);
       vpt.push(v); if(v) vis++;
     }
+    vis -= applyFaceGate(vpt, ipts, faceSil, rootDepth);
     const depth = dsum / pts.length;
     if(!strandFacesCamera(dsum, pts.length, dmax, vis)) continue;   // 이 각도에서 안 보이는 가닥
     /* 가려진 구간은 <b>띠도 안 붙인다</b> (2026-08-18 i) — 가닥 렌더와 같은 규칙.
@@ -629,6 +635,12 @@ function projectHair3DToView(ctx, fit, angle, maskInf){
   /* 프로브도 렌더와 <b>같은 판정</b>을 써야 예산(그릴 개수)이 안 어긋난다 —
      같은 occ를 만들어 아래 2패스까지 그대로 쓴다. */
   const occ = makeViewOccluder(cal);
+  /* ── (2026-09-04) 얼굴 실루엣 — 사용자 설계 "얼굴 반대편 라인" ──────────
+     두개골 타원(occ)과 달리 이건 <b>이 사진에서 실측된</b> 얼굴 위치다.
+     반대쪽(뿌리가 카메라 반대편)에서 난 가닥이 이 안으로 들어오면 안 그린다.
+     프로브와 본 렌더가 <b>같은 판정</b>을 써야 예산이 안 어긋나므로 여기서
+     한 번 만들어 둘 다 쓴다(occ와 같은 자리·같은 이유). */
+  const faceSil = FACE_GATE.on ? makeFaceSilhouette(angle, maskInf.w, maskInf.h) : null;
   /* ── 이 프로브는 <b>조정과 무관하다</b> (2026-08-23) ────────────────────────
      위 주석이 이미 적어 둔 대로 1패스는 <b>중립</b> 가닥으로 잰다. 그래서 이
      루프가 읽는 것은 전부 프레임 사이에 안 변하는 값이다 — 중립 모델(개체),
@@ -657,7 +669,10 @@ function projectHair3DToView(ctx, fit, angle, maskInf){
                maskInf.w, maskInf.h, canvasGid(maskInf),
                (cal.yaw||0).toFixed(5), (cal.pitch||0).toFixed(5), (cal.roll||0).toFixed(5),
                (model.yTop||0).toFixed(5), (model.CY||0).toFixed(5),
-               ea.toFixed(5), eb.toFixed(5), ec.toFixed(5)].join(',');
+               ea.toFixed(5), eb.toFixed(5), ec.toFixed(5),
+               /* 얼굴 게이트를 콘솔에서 껐다 켰다 하면 프로브도 다시 돌아야 한다 */
+               (FACE_GATE.on ? 1:0), FACE_GATE.inset, FACE_GATE.chinExtend, FACE_GATE.rootEps
+              ].join(',');
     }catch(e){ _pSig = null; }
   }
   const _pHit = _pSig ? PROBE_CACHE.map.get(_pSig) : null;
@@ -669,13 +684,16 @@ function projectHair3DToView(ctx, fit, angle, maskInf){
     let pMinX = Infinity, pMaxX = -Infinity, pN = 0, pFront = 0;
     for(let si=0; si<src.length; si+=PROBE_STEP){
       const pts = src[si].pts;
-      let dsum = 0, dmax = -Infinity, vis = 0;
+      let dsum = 0, dmax = -Infinity, vis = 0, far = false;
       for(let i=0;i<pts.length;i++){
         const pr = project3DPointToView(pts[i], cal, model.yTop, model.CY);
+        // 0번 점이 뿌리다 — 여기서 이 가닥이 <b>반대쪽</b>인지 한 번 정한다
+        if(i===0) far = !!faceSil && strandIsFarSide(pr.depth);
         const x = toCX(pr.ix);
         if(x < pMinX) pMinX = x; if(x > pMaxX) pMaxX = x;
         dsum += pr.depth; if(pr.depth > dmax) dmax = pr.depth;
-        if(viewPointVisible(pr, occ, maskInf)) vis++;
+        if(viewPointVisible(pr, occ, maskInf)
+           && !(far && faceSil.covers(pr.ix, pr.iy))) vis++;
       }
       pN++; if(strandFacesCamera(dsum, pts.length, dmax, vis)) pFront++;
     }
@@ -783,6 +801,7 @@ function projectHair3DToView(ctx, fit, angle, maskInf){
   const projected0 = [];
   let pxN = 0;   // [진단] 조각별 원본 픽셀색을 실제로 얻은 가닥 수
   let hidPts = 0, hidAll = 0;   // [진단] 가려져서 안 그린 점 / 그린 가닥의 전체 점(8/18 i)
+  let faceCut = 0, faceCutStrands = 0;   // [진단] 얼굴 게이트가 지운 점 / 걸린 가닥(2026-09-04)
   /* ── [진단] 정수리는 <b>어느 단계에서</b> 사라지는가 (2026-08-18 k) ──────────
      사용자: "두정부에 숱이 없어. 그래서 중간가르마 자체가 안되는듯."
      로그가 서로 다른 말을 하고 있었다 — [3D·겹침·뿌리 격자]는 정수리를 93~100%
@@ -813,6 +832,17 @@ function projectHair3DToView(ctx, fit, angle, maskInf){
       const v = viewPointVisible(pr, occ, maskInf);
       vpt.push(v); if(v) vis++;
     }
+    /* ── (2026-09-04) 얼굴 실루엣 게이트 ──────────────────────────────────
+       사용자: "측면에서 반대편 사이드헤어가 얼굴 위로 지나가. 얼굴에
+       가려지는 부분은 안 보여야 하고, 얼굴 반대편으로 넘어가야 한다."
+       위 판정(viewPointVisible)이 통과시킨 점 중, <b>뿌리가 카메라
+       반대쪽</b>인 가닥이 얼굴 안에 찍힌 것만 지운다. 지우기만 하고
+       되살리지 않는다 — 가까운 쪽 앞머리는 예전 그대로 얼굴을 덮는다.
+       지운 구간은 visibleRuns가 알아서 끊어 주므로, 가닥은 얼굴 앞에서
+       사라졌다가 <b>반대편 윤곽선 너머에서 다시 나온다</b>(=사용자가 말한
+       "얼굴 반대편으로 넘어간다"). 되돌리기: FACE_GATE.on = false */
+    const _fcut = applyFaceGate(vpt, ipts, faceSil, rootDepth);
+    if(_fcut){ vis -= _fcut; faceCut += _fcut; faceCutStrands++; }
     /* ── (2026-09-01 6차) 정렬 키를 <b>뿌리 깊이</b>로 ────────────────────────
        사용자: "그 <b>len 변화분은 적은데</b>, 뒤집어지고 난리가 나는 건 변화에
        대한 <b>2D 투영 문제</b>가 맞아. <b>3D는 괜찮아</b>."
@@ -932,7 +962,9 @@ function projectHair3DToView(ctx, fit, angle, maskInf){
   }
   logStrandRender(angle, { spanX, unit, cssW, roles, rawTotal, targetStrands, pxN,
                            stride, total: src.length, drawn: projected.length,
-                           hidPts, hidAll,
+                           hidPts, hidAll, faceCut, faceCutStrands,
+                           faceSil: faceSil ? { w: Math.round(faceSil.w), h: Math.round(faceSil.h),
+                                                yTop: faceSil.yTop, yBot: faceSil.yBot, dir: faceSil.dir } : null,
                            crown: { n: cwN, drop: cwDrop, pts: cwPts, vis: cwVis },
                            rootDev: summarizeRootDev(rootDev, projected0.length, maskInf) });
 
@@ -1047,6 +1079,22 @@ function projectHair3DToView(ctx, fit, angle, maskInf){
     for(const cpts of e.items) traceSmoothPolyline(ctx, cpts);
     ctx.stroke();
   }
+  /* [진단] 얼굴 라인 보기 — FACE_GATE.debug=true 후 다시 그리면 게이트가
+     실제로 어디를 얼굴로 보고 있는지 그대로 보인다. 값을 짐작으로 흔들지
+     않기 위한 장치다(이 파일이 반복해서 필요로 했던 그것). */
+  if(FACE_GATE.debug && faceSil){
+    ctx.save();
+    ctx.strokeStyle = 'rgba(0,255,180,0.9)'; ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    for(let y=faceSil.yTop; y<=faceSil.yBot; y+=2){
+      const l = faceSil.lo[y], h = faceSil.hi[y];
+      if(!(h > l)) continue;
+      ctx.moveTo(toCX(l + faceSil.inset), toCY(y));
+      ctx.lineTo(toCX(h - faceSil.inset), toCY(y));
+    }
+    ctx.stroke();
+    ctx.restore();
+  }
   ctx.restore();
   return true;
 }
@@ -1108,6 +1156,18 @@ function logStrandRender(angle, m){
         + ` 둘 다 멀쩡한데 화면이 비면 <b>그리기</b>입니다(HAIR_SCALP3D.drawInset으로 두개골 구를 안쪽으로).` : '')
     + (m.hidAll ? ` · 가림 트리밍 ${Math.round(m.hidPts/m.hidAll*100)}%(점 ${m.hidPts}/${m.hidAll})`
                 : ``)
+    /* [진단] 얼굴 게이트(2026-09-04) — <b>반대편에서 난 가닥이 얼굴 위에 얼마나
+       찍히고 있었나</b>. 0이면 게이트가 아무 일도 안 한 것이고(라인을 못 만들었거나
+       반대편 가닥이 원래 얼굴에 안 닿았거나), 측면에서 수백 점이 지워지면 그게
+       사용자가 보던 "얼굴 위를 지나가는 반대편 사이드"다.
+       라인이 null이면 그 뷰에 얼굴 랜드마크가 없다는 뜻(후면 등) — 정상이다. */
+    + (m.faceSil
+        ? `\n    [얼굴 게이트] 라인 폭 ${m.faceSil.w}px · 행 ${m.faceSil.yTop}~${m.faceSil.yBot}`
+          + ` · 얼굴방향 ${m.faceSil.dir > 0 ? '오른쪽' : '왼쪽'}`
+          + ` · 지운 점 ${m.faceCut}${m.hidAll ? '(' + (100*m.faceCut/m.hidAll).toFixed(1) + '%)' : ''}`
+          + ` · 걸린 가닥 ${m.faceCutStrands}개`
+          + `\n      끄기: FACE_GATE.on=false · 라인 보기: FACE_GATE.debug=true 후 슬라이더 살짝`
+        : `\n    [얼굴 게이트] 이 뷰는 얼굴 라인 없음(랜드마크 미검출 — 후면이면 정상)`)
   );
 }
 /* 다발 렌더 전용 틴트 — 어두운 쪽은 곱셈, 밝은 쪽은 회색 쪽으로 완만히.

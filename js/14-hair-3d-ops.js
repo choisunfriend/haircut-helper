@@ -685,6 +685,192 @@ function visibleRuns(vpt){
   return runs;
 }
 
+/* ══════════════════════════════════════════════════════════════════
+   얼굴 실루엣 게이트 (2026-09-04) — "반대편 사이드가 얼굴 위로 지나간다"
+
+   사용자: "측면사진에서 반대편 사이드헤어 가닥이 얼굴 위로 지나가. 그거
+   얼굴 반대편으로 넘어가야 하고, 얼굴에 가려지는 부분은 안 보여야 돼."
+
+   ── 왜 지금까지 못 잡았나 ────────────────────────────────────────
+   8/18 h(두개골 그림자) · 8/18 i(점 단위 트리밍) · 8/18 j(사진 한 표) ·
+   9/02(photoOverrides 끔) · 9/02 7차(깊이 버퍼 frontZ) — 다섯 번 다
+   <b>가리는 물체를 우리 3D 모델로 세우고</b> 깊이로 판정했다. 그래서
+   가림 판정의 정확도가 두개골 타원의 정확도를 절대 못 넘는다. 뿌리선
+   어긋남 중앙값이 32~49px인 모델로 "이 점이 뺨 앞이냐 뒤냐"를 가리려는
+   것이고, 측면에서 반대쪽 옆머리는 뺨을 <b>타고</b> 흐르므로 그 오차
+   범위 안에 정확히 들어앉는다 — 원리적으로 안 잡힌다.
+
+   이번엔 <b>사진이 직접 말하는 것</b>을 쓴다. 얼굴이 화면 어디에 있는지는
+   추정할 필요가 없다 — MediaPipe 468점이 이미 재 놨고(state.landmarks[angle]
+   .rawLandmarks), 그건 두개골 타원과 달리 <b>그 사진에서 실측된 값</b>이다.
+   그 윤곽선(FACE_OVAL)이 사용자가 말한 "얼굴 반대편 라인"이다.
+
+   ── 규칙 (사용자 설계 그대로) ─────────────────────────────────────
+   "x값이 반대라인을 넘어가는 경우, 라인 접선 기울기가 양수면 y>라인일
+    때만, 음수면 y<라인일 때만 그린다."
+   이건 <b>얼굴 윤곽선의 바깥쪽만 그린다</b>와 같은 말이다. 타원 왼쪽
+   위 호는 기울기가 음수이고 바깥이 y<라인, 왼쪽 아래 호는 기울기가
+   양수이고 바깥이 y>라인 — 접선 기울기의 부호가 "어느 쪽이 바깥인가"를
+   가리키는 국소 표현이다.
+   여기서는 그걸 y=f(x) 대신 <b>행별 [좌,우] 구간</b>으로 적는다. 이유
+   하나뿐이다: 측면에서 얼굴 윤곽선의 앞쪽 호(이마→코→턱)는 거의
+   수직이라 y=f(x)가 다치일함수가 된다(같은 x에 y가 여러 개). 행으로
+   훑으면 그 문제가 아예 생기지 않고, 판정 결과는 위 규칙과 똑같다.
+   접선 기울기가 하던 "위냐 아래냐"의 역할은 스캔 범위(yTop~yBot)가 한다.
+
+   ── 어느 가닥에 거나 ─────────────────────────────────────────────
+   <b>뿌리가 카메라 반대쪽인 가닥</b>에만 건다(rootDepth < 0). 앞머리·
+   가까운 쪽 옆머리는 실제로 얼굴을 덮는 게 맞으므로 예전 그대로다.
+   판정 기준을 뿌리로 잡는 근거는 이 파일이 이미 정해 둔 것과 같다
+   (DEPTH_SORT.byRoot): "가닥이 앞에 있냐 뒤에 있냐는 어디서 나느냐가
+   정한다. 뒤통수에서 난 머리는 길든 짧든 옆머리 뒤다." 뿌리는 커트가
+   건드리지 않는 유일한 점이라 길이를 흔들어도 판정이 안 튄다.
+
+   ⚠ 이건 <b>추가 게이트</b>다. 기존 판정(viewPointVisible)이 이미 지운
+     점을 되살리지 않는다 — 지우기만 한다. 그래서 켜서 나빠질 수 있는
+     최대치는 "반대편 머리가 얼굴 자리에서 사라지는 것"뿐이다.
+   되돌리기: FACE_GATE.on = false
+   ══════════════════════════════════════════════════════════════════ */
+const FACE_GATE = {
+  on: true,
+  /* 얼굴 폭 대비 안쪽으로 줄이는 비율. 0이면 윤곽선에서 칼같이 끊긴다 —
+     실제 사진에서는 가닥 끝이 뺨 경계에 살짝 걸쳐 보이므로 조금 줄여서
+     경계에 틈이 안 생기게 한다. */
+  inset: 0.02,
+  /* 턱 아래로 더 내려 잡는 비율(얼굴 높이 대비). 턱선 바로 아래 목은
+     FACE_OVAL 밖인데 거기도 반대편 머리가 넘어오면 안 된다. */
+  chinExtend: 0.12,
+  /* 뿌리 깊이 판정 여유(두개골 반깊이 대비). 정수리 가닥은 뿌리 깊이가
+     0 근처라 부호가 잘 뒤집힌다 — 확실히 반대쪽인 것만 건다. */
+  rootEps: 0.05,
+  debug: false,   // true면 조정 캔버스에 얼굴 라인을 그린다
+};
+
+/* 이 뷰의 얼굴 실루엣 — 마스크(=pr.ix/iy) 좌표계. 없으면 null(게이트 꺼짐).
+
+   윤곽선을 FACE_OVAL 링 하나로 잡지 않고 <b>468점 전체의 볼록껍질</b>로
+   잡는다. 이유는 측면이다 — FACE_OVAL은 머리를 <b>감아 도는</b> 링이라
+   yaw가 커지면 투영이 접혀서 자기교차하고, 접힌 폭이 실제 얼굴보다
+   좁게 나온다. 얼굴 표면 점을 전부 넣고 껍질을 씌우면 그 문제가 없다:
+   측면에서는 코(가장 앞)부터 귀 앞(가장 뒤)까지가 그대로 폭이 된다.
+   얼굴 실루엣은 원래 볼록에 가까워서 껍질로 덮어도 남는 오차는 턱선
+   아래 오목한 부분 정도인데, 거기는 chinExtend가 어차피 덮는다.
+
+   껍질을 <b>스캔라인</b>으로 훑어 행별 [minX, maxX]를 만든다. 이게
+   사용자가 말한 "얼굴 반대편 라인"의 양쪽 끝이다. */
+function _convexHull2D(pts){
+  const P = pts.slice().sort((a,b)=> a.x===b.x ? a.y-b.y : a.x-b.x);
+  const cross = (o,a,b)=> (a.x-o.x)*(b.y-o.y) - (a.y-o.y)*(b.x-o.x);
+  const lower = [];
+  for(const p of P){ while(lower.length>=2 && cross(lower[lower.length-2],lower[lower.length-1],p)<=0) lower.pop(); lower.push(p); }
+  const upper = [];
+  for(let i=P.length-1;i>=0;i--){ const p=P[i];
+    while(upper.length>=2 && cross(upper[upper.length-2],upper[upper.length-1],p)<=0) upper.pop(); upper.push(p); }
+  lower.pop(); upper.pop();
+  return lower.concat(upper);
+}
+function makeFaceSilhouette(angle, maskW, maskH){
+  try{
+    const lmi = state.landmarks && state.landmarks[angle];
+    const raw = lmi && lmi.rawLandmarks;
+    if(!raw || raw.length < 468) return null;
+    const all = [];
+    for(const p of raw){
+      if(!p || !isFinite(p.x) || !isFinite(p.y)) continue;
+      all.push({ x: p.x * maskW, y: p.y * maskH });
+    }
+    if(all.length < 100) return null;
+    const P = _convexHull2D(all);
+    if(P.length < 3) return null;
+    const H = Math.max(2, Math.round(maskH));
+    const lo = new Float32Array(H).fill(Infinity);
+    const hi = new Float32Array(H).fill(-Infinity);
+    let yMin = Infinity, yMax = -Infinity, xMin = Infinity, xMax = -Infinity;
+    for(const p of P){
+      if(p.y < yMin) yMin = p.y; if(p.y > yMax) yMax = p.y;
+      if(p.x < xMin) xMin = p.x; if(p.x > xMax) xMax = p.x;
+    }
+    if(!(yMax > yMin) || !(xMax > xMin)) return null;
+    for(let k=0; k<P.length; k++){
+      const a = P[k], b = P[(k+1) % P.length];
+      const dy = b.y - a.y;
+      if(Math.abs(dy) < 1e-6){                       // 수평 변 — 그 행에 양 끝만
+        const iy = Math.round(a.y);
+        if(iy >= 0 && iy < H){
+          lo[iy] = Math.min(lo[iy], a.x, b.x);
+          hi[iy] = Math.max(hi[iy], a.x, b.x);
+        }
+        continue;
+      }
+      const y0 = Math.max(0, Math.ceil(Math.min(a.y, b.y)));
+      const y1 = Math.min(H-1, Math.floor(Math.max(a.y, b.y)));
+      for(let y=y0; y<=y1; y++){
+        const x = a.x + (b.x - a.x) * ((y - a.y) / dy);
+        if(x < lo[y]) lo[y] = x;
+        if(x > hi[y]) hi[y] = x;
+      }
+    }
+    const iyTop = Math.max(0, Math.round(yMin));
+    const iyBot = Math.min(H-1, Math.round(yMax));
+    // 빈 행 메움(꼭짓점에 딱 걸려 교차를 못 잡은 행)
+    for(let y=iyTop; y<=iyBot; y++){
+      if(hi[y] >= lo[y]) continue;
+      let a = y-1; while(a >= iyTop && !(hi[a] >= lo[a])) a--;
+      let b = y+1; while(b <= iyBot && !(hi[b] >= lo[b])) b++;
+      if(a >= iyTop && b <= iyBot){
+        const t = (y - a) / (b - a);
+        lo[y] = lo[a] + (lo[b] - lo[a]) * t;
+        hi[y] = hi[a] + (hi[b] - hi[a]) * t;
+      } else if(a >= iyTop){ lo[y] = lo[a]; hi[y] = hi[a]; }
+      else if(b <= iyBot){   lo[y] = lo[b]; hi[y] = hi[b]; }
+    }
+    // 턱 아래 연장 — 마지막 유효 행의 폭을 아래로 이어 내린다(살짝 좁히면서)
+    const faceH = yMax - yMin;
+    const extBot = Math.min(H-1, Math.round(yMax + faceH * FACE_GATE.chinExtend));
+    for(let y=iyBot+1; y<=extBot; y++){
+      const t = (y - iyBot) / Math.max(1, extBot - iyBot);
+      const c = (lo[iyBot] + hi[iyBot]) / 2, hw = (hi[iyBot] - lo[iyBot]) / 2 * (1 - 0.35*t);
+      lo[y] = c - hw; hi[y] = c + hw;
+    }
+    const inset = (xMax - xMin) * FACE_GATE.inset;
+    // 얼굴이 향한 방향(+1=오른쪽) — 진단·디버그 표시용
+    const nose = raw[1], eL = raw[234], eR = raw[454];
+    const dir = (nose && eL && eR) ? ((nose.x - (eL.x + eR.x)/2) >= 0 ? 1 : -1) : 0;
+    return {
+      dir, poly: P, yTop: iyTop, yBot: extBot, w: xMax - xMin, h: faceH,
+      lo, hi, inset,
+      /* 이 점이 <b>얼굴 안</b>인가 — 마스크 좌표(pr.ix, pr.iy). */
+      covers(ix, iy){
+        const y = Math.round(iy);
+        if(y < this.yTop || y > this.yBot) return false;
+        const l = lo[y], h = hi[y];
+        if(!(h > l)) return false;
+        return ix > l + inset && ix < h - inset;
+      },
+    };
+  }catch(e){ return null; }
+}
+
+/* 이 가닥이 <b>카메라 반대쪽에서 난</b> 가닥인가 — 얼굴 게이트를 걸 대상.
+   rootDepth는 project3DPointToView가 뿌리에 대해 준 lz(두상 중심 기준). */
+function strandIsFarSide(rootDepth){
+  let eps = 0;
+  try{ const E = getDisplaySkullEllipsoid(); if(E && E.c > 0) eps = E.c * FACE_GATE.rootEps; }catch(e){}
+  return rootDepth < -eps;
+}
+
+/* 얼굴 게이트를 점별 보임 배열에 적용한다. 지우기만 하고 되살리지 않는다.
+   돌려주는 값은 <b>새로 지운 점 수</b>(vis 보정용). */
+function applyFaceGate(vpt, ipts, faceSil, rootDepth){
+  if(!FACE_GATE.on || !faceSil || !strandIsFarSide(rootDepth)) return 0;
+  let cut = 0;
+  for(let i=0; i<vpt.length; i++){
+    if(vpt[i] && faceSil.covers(ipts[i].x, ipts[i].y)){ vpt[i] = false; cut++; }
+  }
+  return cut;
+}
+
+
 // (11차) 중력 처짐 — 실제 펌: 로드로 감은 뒤 풀면 자체 무게로 끝이 아래로 늘어짐.
 // 사용자: "그렇게 된 다음에 적절한 중력이 작용." 컬 나선 위에 얹는 마지막 단계.
 // 뿌리 고정, 끝으로 갈수록 가속 처짐(t²). 컬 강할수록 탱탱하게 덜 처짐(hold).
