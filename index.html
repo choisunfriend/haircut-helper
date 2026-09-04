@@ -247,7 +247,23 @@
 
     <!-- ══ SCREEN 5: 3D MODEL (2단계 프로토타입) ══ -->
     <section class="screen" id="screen-model3d">
-      <div class="model3d-viewport" id="model3dViewport" style="position:relative;width:100%;flex:1;background:#0F0D0B;overflow:hidden;">
+      <!-- (2026-09-04) 배경을 #0F0D0B 단색에서 <b>소프트 스튜디오</b>로 바꿨다 —
+           사용자 지시 "배경을 좀 뽀샤시하게, 헤어와 의상이 돋보이게".
+           검정 배경에서는 어두운 모발 끝이 배경에 그대로 먹혀서 실루엣이 안 잡혔다.
+           배경색 자체는 styles.css의 .soft-stage가 쥐고, 여기 세 겹은 그 위에 얹는
+           빛이다. <b>세 겹 다 pointer-events:none</b> — 드래그 회전/이동은 그대로다.
+             .stage-floor  z-index:-1 → 캔버스 <b>아래</b>. 발밑 그림자(안 떠 보이게)
+             .stage-bloom  z-index:1  → 캔버스 위. backdrop-filter로 "밝게 흐린
+                                        복사본"을 겹치는 뽀샤시(오턴) 효과
+             .stage-light  z-index:2  → 위에서 떨어지는 광원 + 옅은 비네트
+           렌더러는 이미 alpha:true에 setClearColor를 안 부른다(18-perf-i18n-boot.js
+           initModel3DRenderer) — 그래서 캔버스가 투명이고 CSS 배경이 그대로 비친다.
+           3D 엔진은 한 줄도 안 건드렸다. 되돌리려면 .soft-stage 클래스와 아래
+           div 세 개만 빼면 원래 검정으로 돌아간다. -->
+      <div class="model3d-viewport soft-stage" id="model3dViewport" style="position:relative;width:100%;flex:1;overflow:hidden;">
+        <div class="stage-floor" aria-hidden="true"></div>
+        <div class="stage-bloom" aria-hidden="true"></div>
+        <div class="stage-light" aria-hidden="true"></div>
         <div class="preview-tag" id="model3dTag">범용 3D 두상 · 확정 스타일 적용</div>
         <!-- [진단용] 가닥 뿌리 기준면(가상 타원체) 토글 (2026-07-14 추가) — 헤어 위치 문제 원인 분리용 -->
         <button class="debug-btn mask-debug-btn" id="strandDebugToggle" onclick="toggleStrandDebug()">기준면 보기</button>
@@ -340,5 +356,8 @@ function loadVisionModule(){
 <script src="js/17a-mannequin.js"></script>
 <script src="js/17b-cut3d-piece.js"></script>
 <script src="js/18-perf-i18n-boot.js"></script>
+<!-- 19: 무대 배경 색 선택(2026-09-04 2차). 09의 OKLCH 헬퍼와 02의
+     OUTFIT_CATALOG를 읽고, 18의 setupModel3DScreen이 호출한다 — 그래서 맨 뒤다. -->
+<script src="js/19-stage-backdrop.js"></script>
 </body>
 </html>

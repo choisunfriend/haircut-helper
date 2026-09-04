@@ -425,3 +425,133 @@ input[type=range]::-moz-range-thumb{width:20px;height:20px;border-radius:50%;bac
   border-radius:999px;padding:4px 11px;font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:500;
   letter-spacing:.04em;cursor:pointer;line-height:1.5;}
 .lang-toggle:hover{border-color:var(--accent);color:var(--accent-soft);}
+
+/* ══════════════════════════════════════════════════════════════════════
+   SOFT STAGE — 3D 결과 화면 배경 (2026-09-04)
+   사용자 지시: "3D 결과보기 배경을 좀 뽀샤시하게, 헤어와 의상이 돋보이게".
+
+   왜 바꿨나: #model3dViewport는 #0F0D0B 단색이었다. 어두운 모발과 어두운
+   의상이 배경과 같은 밝기라 <b>실루엣이 안 잡혔다</b> — 스타일을 보러 온
+   화면에서 정작 커트 라인이 안 보였다. 미용실 촬영이 흰 호리존을 쓰는
+   이유와 같다: 피사체보다 <b>밝은</b> 배경이라야 윤곽이 떨어진다.
+
+   "뽀샤시"는 소프트 필터가 아니라 <b>밝게 흐린 복사본을 원본 위에 겹치는</b>
+   것이다(오턴 효과). CSS에선 backdrop-filter가 그 복사본 역할을 한다 —
+   .stage-bloom 하나가 캔버스를 흐리게+밝게 뜬 상태로 위에 덮는다.
+   그래서 밝은 면(피부·하이라이트)만 번지고 어두운 가닥은 살아남는다.
+
+   ⚠ 함정 세 가지 (docs/LESSONS.md 후보):
+   1) 이 오버레이들은 전부 position:absolute다. 포지션 요소는 z-index가
+      auto여도 <b>static 캔버스보다 위에</b> 그려진다. 배경 역할을 하려면
+      z-index를 반드시 <b>음수</b>로 줘야 캔버스 밑으로 내려간다(.stage-floor).
+   2) 캔버스에 filter를 걸면 CSS2.1 §E 8단계로 올라가서, DOM 마지막에
+      append되는 캔버스가 .preview-tag / .debug-btn(둘 다 z-index auto)을
+      <b>덮어버린다</b>. 2026-07-14에 오버레이가 사라졌던 그 사고와 같은 자리다.
+      그래서 아래에서 오버레이 UI를 z-index:5로 올려두고 filter를 건다.
+      이 z-index 규칙을 지우면 "기준면 보기" 버튼이 다시 사라진다.
+   3) 세 겹 전부 pointer-events:none이어야 한다. 캔버스가 드래그 회전·이동·
+      휠 확대를 직접 받으므로(dom.addEventListener), 한 겹이라도 이벤트를
+      먹으면 3D가 통째로 안 돌아간다.
+   ══════════════════════════════════════════════════════════════════════ */
+
+/* 무대 바닥·벽 — 위가 밝고 아래·모서리로 갈수록 가라앉는 웜 아이보리.
+   순백(#FFF)은 앱 전체 다크 톤(--bg:#1B1816)에서 혼자 튀고 눈이 부시다.
+   --accent-soft(#E8C39E) 계열로 눌러 같은 팔레트 안에 둔다. */
+.soft-stage{
+  /* ⚠ 이 한 줄이 없으면 전부 무너진다. position:relative만으로는 쌓임
+     맥락(stacking context)이 안 생겨서 (a) z-index:-1인 .stage-floor가
+     이 요소의 배경보다 <b>더 아래로</b> 내려가 아예 안 보이고,
+     (b) .stage-light의 mix-blend-mode가 뷰포트 밖 화면과 섞인다. */
+  isolation:isolate;
+
+  /* ── 무대 팔레트 (2026-09-04 2차) ───────────────────────────────────
+     아래 기본값은 <b>JS가 안 돌았을 때의 모습</b>이다 — 1차에서 하드코딩했던
+     웜 아이보리 그대로다. applyStageBackdrop(19-stage-backdrop.js)이 헤어·의상
+     색을 읽어 이 변수만 갈아끼운다. 그림 그리는 규칙(그라디언트 모양·블렌드)은
+     여기 고정이고, <b>색만</b> 변수다 — 색과 구도를 둘 다 JS로 넘기면 무대가
+     매번 다른 모양이 돼서 손님한테 보여주는 화면이 들쭉날쭉해진다.
+     ⚠ 변수 이름을 바꾸려면 19-stage-backdrop.js의 setProperty 목록과 <b>같이</b>
+       고쳐야 한다. 한쪽만 고치면 조용히 기본값으로 돌아간다(에러가 안 난다). */
+  --stage-glow:#FFFFFF;          /* 상단 광원 중심 */
+  --stage-glow-a:0.92;           /*  〃 불투명도 */
+  --stage-1:#FAF3EA;             /* 중심 */
+  --stage-2:#F0E2D2;             /* 중간 */
+  --stage-3:#DCC6B0;             /* 바깥 */
+  --stage-4:#C3A88F;             /* 모서리 */
+  --stage-shadow:rgba(88,62,44,0.30);   /* 발밑 그림자 */
+  --stage-ink:rgba(58,42,30,0.34);      /* 비네트 */
+  --stage-bloom-a:0.34;                 /* 뽀샤시 세기 */
+
+  background:
+    radial-gradient(58% 40% at 50% 24%,
+      rgb(from var(--stage-glow) r g b / var(--stage-glow-a)) 0%,
+      rgb(from var(--stage-glow) r g b / calc(var(--stage-glow-a) * 0.38)) 45%,
+      rgb(from var(--stage-glow) r g b / 0) 72%),
+    radial-gradient(96% 78% at 50% 30%,
+      var(--stage-1)  0%,
+      var(--stage-2) 42%,
+      var(--stage-3) 74%,
+      var(--stage-4) 100%);
+}
+/* rgb(from ...) 상대색 문법을 못 읽는 브라우저 — 광원을 흰색 고정으로 떨군다.
+   무대색(--stage-1~4)은 변수라 그대로 살아 있으므로 색 연동 자체는 유지된다. */
+@supports not (color: rgb(from white r g b / 1)){
+  .soft-stage{
+    background:
+      radial-gradient(58% 40% at 50% 24%, rgba(255,255,255,0.88) 0%, rgba(255,255,255,0.32) 45%, rgba(255,255,255,0) 72%),
+      radial-gradient(96% 78% at 50% 30%, var(--stage-1) 0%, var(--stage-2) 42%, var(--stage-3) 74%, var(--stage-4) 100%);
+  }
+}
+
+/* 발밑 그림자 — 없으면 두상이 배경에 붕 떠서 스티커처럼 보인다.
+   z-index:-1이라 캔버스 아래에 깔린다(함정 1 참고). */
+.soft-stage .stage-floor{
+  position:absolute; left:50%; bottom:4%; transform:translateX(-50%);
+  width:70%; height:11%; z-index:-1; pointer-events:none;
+  background:radial-gradient(50% 50% at 50% 50%,
+             var(--stage-shadow) 0%, transparent 72%);
+  filter:blur(7px);
+}
+
+/* 뽀샤시 본체 — 흐린 복사본을 옅게 겹친다. blur를 더 키우면 예뻐 보이지만
+   자동회전이 도는 화면이라 매 프레임 전체 화면 블러가 된다. 7px/0.34가
+   모바일에서 버티는 선. 무겁다 싶으면 opacity부터 내릴 것. */
+.soft-stage .stage-bloom{
+  position:absolute; inset:0; z-index:1; pointer-events:none;
+  -webkit-backdrop-filter:blur(7px) brightness(1.14) saturate(1.06);
+          backdrop-filter:blur(7px) brightness(1.14) saturate(1.06);
+  opacity:var(--stage-bloom-a);
+}
+/* backdrop-filter가 없는 브라우저 — 흐림은 포기하고 옅은 빛만 얹는다 */
+@supports not ((backdrop-filter:blur(2px)) or (-webkit-backdrop-filter:blur(2px))){
+  .soft-stage .stage-bloom{ background:rgba(255,250,243,0.13); }
+}
+
+/* 위에서 떨어지는 키라이트 + 모서리 비네트.
+   soft-light라 흰 부분은 들뜨고 검은 부분은 가라앉는다 — 대비만 벌리고
+   색은 안 밀어서 헤어 컬러(09-strand-dye)가 왜곡되지 않는다. */
+.soft-stage .stage-light{
+  position:absolute; inset:0; z-index:2; pointer-events:none;
+  mix-blend-mode:soft-light;
+  background:
+    radial-gradient(44% 30% at 50% 8%,  rgba(255,255,255,0.62) 0%, rgba(255,255,255,0) 70%),
+    radial-gradient(118% 96% at 50% 48%, rgba(0,0,0,0) 56%, var(--stage-ink) 100%);
+}
+
+/* 헤어·의상 자체는 살짝만 또렷하게. 색을 바꾸지 않는 선(채도 +6%)이다. */
+.soft-stage > canvas{ filter:contrast(1.04) saturate(1.06); }
+
+/* 함정 2 — 캔버스에 filter를 걸었으므로 오버레이 UI를 반드시 위로 올린다.
+   이 줄을 지우면 태그·디버그 버튼·힌트가 캔버스 밑으로 숨는다. */
+.soft-stage .preview-tag,
+.soft-stage .debug-btn,
+.soft-stage .view-zoom,
+.soft-stage .model3d-hint{ z-index:5; }
+
+/* 오버레이 칩 대비 보정 — 배경이 밝아졌으므로 반투명 검정 칩이 연한 갈색으로
+   떠서 글자가 흐려진다. 밝은 무대에서만 조금 더 눌러준다. */
+.soft-stage:not(.stage-dark) .preview-tag,
+.soft-stage:not(.stage-dark) .debug-btn{ background:rgba(27,24,22,0.88); }
+.soft-stage:not(.stage-dark) .view-zoom{ background:rgba(20,17,15,0.72); }
+.soft-stage:not(.stage-dark) .view-zoom span{ color:var(--accent-soft); }
+.soft-stage:not(.stage-dark) .model3d-hint{ background:rgba(20,17,15,0.62) !important; color:#E7DDD0 !important; }
