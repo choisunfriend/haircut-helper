@@ -964,7 +964,8 @@ function projectHair3DToView(ctx, fit, angle, maskInf){
                            stride, total: src.length, drawn: projected.length,
                            hidPts, hidAll, faceCut, faceCutStrands,
                            faceSil: faceSil ? { w: Math.round(faceSil.w), h: Math.round(faceSil.h),
-                                                yTop: faceSil.yTop, yBot: faceSil.yBot, dir: faceSil.dir } : null,
+                                                yTop: faceSil.yTop, yBot: faceSil.yBot, dir: faceSil.dir,
+                                                fit: faceSil.fit } : null,
                            crown: { n: cwN, drop: cwDrop, pts: cwPts, vis: cwVis },
                            rootDev: summarizeRootDev(rootDev, projected0.length, maskInf) });
 
@@ -1166,6 +1167,11 @@ function logStrandRender(angle, m){
           + ` · 얼굴방향 ${m.faceSil.dir > 0 ? '오른쪽' : '왼쪽'}`
           + ` · 지운 점 ${m.faceCut}${m.hidAll ? '(' + (100*m.faceCut/m.hidAll).toFixed(1) + '%)' : ''}`
           + ` · 걸린 가닥 ${m.faceCutStrands}개`
+          + (m.faceSil.fit
+              ? `\n      정합 ${m.faceSil.fit.used ? '적용' : '<b>거부</b>(안전레일)'}`
+                + ` — 평행이동 (${m.faceSil.fit.tx.toFixed(1)}, ${m.faceSil.fit.ty.toFixed(1)})px`
+                + ` · 배율 ${m.faceSil.fit.s.toFixed(3)} · 잔차 ${m.faceSil.fit.rms.toFixed(1)}px (표본 ${m.faceSil.fit.n})`
+              : `\n      정합 없음(사진 좌표 그대로 — FACE_GATE.align='none'이거나 왕복 실패)`)
           + `\n      끄기: FACE_GATE.on=false · 라인 보기: FACE_GATE.debug=true 후 슬라이더 살짝`
         : `\n    [얼굴 게이트] 이 뷰는 얼굴 라인 없음(랜드마크 미검출 — 후면이면 정상)`)
   );

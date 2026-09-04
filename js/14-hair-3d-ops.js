@@ -743,6 +743,31 @@ const FACE_GATE = {
   /* 뿌리 깊이 판정 여유(두개골 반깊이 대비). 정수리 가닥은 뿌리 깊이가
      0 근처라 부호가 잘 뒤집힌다 — 확실히 반대쪽인 것만 건다. */
   rootEps: 0.05,
+  /* ── (2026-09-04 2차) 라인을 <b>머리카락 공간</b>으로 옮긴다 ──────────────
+     사용자: "얼굴이 우측으로 틀어졌거나 헤어렌더링이 좌측으로 틀어진 것 같다 —
+     좌측면에서는 반대편 헤어가 거의 안 보이고, 우측화면에서는 코에 걸린다."
+     맞았다. diagRoundTrip() 실측:
+       정면 평행이동 ( −1.8,  0.6)px · 배율 1.006 · 잔차 0.2px  ← 닫힘
+       후면 평행이동 ( −1.3, −0.2)px · 배율 1.003 · 잔차 0.2px  ← 닫힘
+       좌측 평행이동 (−35.3,−21.5)px · 배율 1.103 · 잔차 11.4px
+       우측 평행이동 (−26.5, −3.0)px · 배율 1.053 · 잔차 8.6px
+     라인은 <b>사진 좌표</b>(raw.x×maskW)에 있고 머리카락은 <b>투영 좌표</b>
+     (lx/cal.s + cal.cx)에 있다. 측면 두 뷰에서만 cal.cx·cal.s가 귀 앵커로 크게
+     옮겨져서(뷰캘리 로그 left +34px · right −36px) 두 공간이 벌어졌다.
+     tx가 둘 다 <b>음수</b>인 게 사용자가 본 좌우 비대칭의 정체다 — 머리가 왼쪽으로
+     밀리면, 얼굴이 오른쪽을 보는 좌측면에서는 <b>멀어지고</b> 얼굴이 왼쪽을 보는
+     우측면에서는 <b>파고든다</b>.
+     고침은 값을 손으로 넣는 게 아니라 <b>재서 상쇄</b>하는 것이다: 랜드마크를
+     projectImagePointToHead → project3DPointToView로 왕복시켜 (평행이동·배율·회전)을
+     최소제곱으로 뽑고(_fitSimilarity2D — 위 표를 만드는 그 함수) 468점에 그대로
+     적용한다. 그러면 cx가 뷰마다 어떻게 옮겨져 있든 정의상 따라간다.
+     'none'이면 예전(사진 좌표) 동작. */
+  align: 'roundtrip',
+  /* 안전레일 — 실측 변환이 이 범위를 벗어나면 <b>안 쓴다</b>(왕복이 깨진 뷰에서
+     라인을 엉뚱한 데로 옮기느니 안 옮기는 게 낫다). 위 실측이 최대 tx 35px(마스크
+     폭의 4%) · 배율 1.10이라 넉넉히 잡았다. */
+  alignMaxShift: 0.20,          // 마스크 폭 대비
+  alignScale: [0.7, 1.4],
   debug: false,   // true면 조정 캔버스에 얼굴 라인을 그린다
 };
 
@@ -769,15 +794,71 @@ function _convexHull2D(pts){
   lower.pop(); upper.pop();
   return lower.concat(upper);
 }
+/* 사진 좌표 → 이 뷰의 <b>투영 좌표</b> 변환을 실측한다. diagRoundTrip과 같은
+   왕복을 랜드마크 위에서 돌리고 _fitSimilarity2D로 (s, deg, tx, ty)를 뽑는다.
+   결과는 뷰·모델·캘리브레이션이 그대로면 안 변하므로 서명으로 캐시한다
+   (렌더마다 117회 왕복을 다시 도는 건 이 파일이 반복해서 당한 그 낭비다). */
+const _faceAlignCache = new Map();
+function faceLineAlignFit(angle, maskW, maskH, raw){
+  if(FACE_GATE.align !== 'roundtrip') return null;
+  const m = state.hair3Dneutral;
+  if(!m || !m.viewCal || !m.viewCal[angle]) return null;
+  const cal = m.viewCal[angle];
+  const sig = [angle, m._gid || 0, maskW, maskH,
+               (cal.cx||0).toFixed(3), (cal.s||0).toFixed(6), (cal.sy||0).toFixed(6),
+               (cal.crownY||0).toFixed(3), (cal.yaw||0).toFixed(5),
+               (cal.pitch||0).toFixed(5), (cal.roll||0).toFixed(5)].join(',');
+  if(_faceAlignCache.has(sig)) return _faceAlignCache.get(sig);
+  let fit = null;
+  try{
+    const fm = getFaceMetrics();
+    if(fm){
+      const P = [], Q = [];
+      for(let i=0; i<raw.length; i+=4){          // 468 → 표본 117개
+        const p = raw[i]; if(!p) continue;
+        let w = null;
+        try{ w = projectImagePointToHead(angle, p.x, p.y, fm.widthFactor, fm.heightFactor); }catch(e){}
+        if(!w) continue;                          // 두상 밖 — 왕복 정의가 없다
+        const pr = project3DPointToView(w, cal, m.yTop, m.CY);
+        if(!isFinite(pr.ix) || !isFinite(pr.iy)) continue;
+        P.push([p.x*maskW, p.y*maskH]); Q.push([pr.ix, pr.iy]);
+      }
+      if(P.length >= 12) fit = _fitSimilarity2D(P, Q);
+      if(fit) fit.n = P.length;
+    }
+  }catch(e){ fit = null; }
+  if(_faceAlignCache.size > 32) _faceAlignCache.clear();
+  _faceAlignCache.set(sig, fit);
+  return fit;
+}
+/* 안전레일은 <b>캐시 밖</b>에서 본다 — 손잡이(alignMaxShift·alignScale)는 콘솔에서
+   만지는 값인데 서명에 안 들어 있다. 안에서 판정하면 값을 바꿔 놓고 "안 바뀐다"고
+   헤매게 된다(이 파일이 probeCache 주석에 이미 적어 둔 그 함정). */
+function faceLineAlignUsable(fit, maskW){
+  if(!fit) return false;
+  const lim = maskW * FACE_GATE.alignMaxShift;
+  const [s0, s1] = FACE_GATE.alignScale;
+  return isFinite(fit.tx) && isFinite(fit.ty) && isFinite(fit.s)
+      && Math.abs(fit.tx) <= lim && Math.abs(fit.ty) <= lim
+      && fit.s >= s0 && fit.s <= s1;
+}
+
 function makeFaceSilhouette(angle, maskW, maskH){
   try{
     const lmi = state.landmarks && state.landmarks[angle];
     const raw = lmi && lmi.rawLandmarks;
     if(!raw || raw.length < 468) return null;
+    /* 사진 좌표 → 투영 좌표. fit이 없거나 안전레일에 걸리면 예전대로 사진 좌표. */
+    const fit = faceLineAlignFit(angle, maskW, maskH, raw);
+    const use = faceLineAlignUsable(fit, maskW);
+    const th = use ? fit.deg * Math.PI/180 : 0;
+    const cs = use ? Math.cos(th)*fit.s : 1, sn = use ? Math.sin(th)*fit.s : 0;
+    const tx = use ? fit.tx : 0, ty = use ? fit.ty : 0;
     const all = [];
     for(const p of raw){
       if(!p || !isFinite(p.x) || !isFinite(p.y)) continue;
-      all.push({ x: p.x * maskW, y: p.y * maskH });
+      const px = p.x * maskW, py = p.y * maskH;
+      all.push({ x: cs*px - sn*py + tx, y: sn*px + cs*py + ty });
     }
     if(all.length < 100) return null;
     const P = _convexHull2D(all);
@@ -838,6 +919,8 @@ function makeFaceSilhouette(angle, maskW, maskH){
     const dir = (nose && eL && eR) ? ((nose.x - (eL.x + eR.x)/2) >= 0 ? 1 : -1) : 0;
     return {
       dir, poly: P, yTop: iyTop, yBot: extBot, w: xMax - xMin, h: faceH,
+      fit: fit ? { tx: fit.tx, ty: fit.ty, s: fit.s, rms: fit.rms,
+                   n: fit.n, used: use } : null,
       lo, hi, inset,
       /* 이 점이 <b>얼굴 안</b>인가 — 마스크 좌표(pr.ix, pr.iy). */
       covers(ix, iy){
