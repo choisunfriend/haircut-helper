@@ -44,19 +44,13 @@ function buildAdjustedHair3DObject(){
      여기서도 읽으면 규칙이 하나가 된다. 폴백색이 sec.color(염색)이므로 "사진에
      머리가 없는 자리는 염색색"이라는 조정 화면의 동작까지 그대로 따라온다. */
   const cmodel = state.hair3Dneutral;
-  let pxN = 0, dyeN = 0;
+  let pxN = 0;
   for(const st of adj){
     const pts = st.pts;
     if(!pts || pts.length < 2) continue;
     const view = st.srcAngle || (pts[0] ? viewOfRoot(pts[0]) : null);
-    /* 이 가닥에 걸린 염색색. st.dye는 _adjApplyFilter가 실어 보낸다.
-       ⚠ 되돌리기 경로(ADJ_CACHE.split=false)에는 dye 필드가 없으므로 섹션에서
-         직접 읽는다 — 안 그러면 그 경로만 또 염색이 빠진다(두 경로가 갈라지는
-         바로 그 모양이라 여기서 한 번에 막는다). */
-    const dye = st.dye || (state.sections[st.sec] && state.sections[st.sec].color) || null;
-    if(dye) dyeN++;
     const reCols = (HAIR_PIXEL_COLOR.reproject && view)
-      ? bakeStrandColors3D(pts, cmodel, view, st.color, st.colors, dye)
+      ? bakeStrandColors3D(pts, cmodel, view, st.color, st.colors)
       : (st.colors || null);
     const segCols = (reCols && reCols.length > 1) ? reCols : null;
     if(segCols) pxN++;
@@ -85,12 +79,7 @@ function buildAdjustedHair3DObject(){
      여기만 0이면 조각색이 이 함수 앞에서 끊긴 것이고, 둘 다 0이면 중립 캡처가
      색을 못 읽은 것이다(원인이 다르므로 숫자로 갈라야 한다 — 8/17 b와 같은 규칙). */
   console.log(`[3D] 조정 반영 헤어: ${adj.length}가닥 (조정 화면과 같은 소스)`
-    + ` · 원본 픽셀색 ${pxN}개(=${adj.length ? Math.round(pxN/adj.length*100) : 0}%)`
-    /* 염색 칸을 <b>따로</b> 찍는다 (2026-09-04). 이 줄이 없어서 9/4의 버그를
-       로그로는 못 갈랐다 — "원본 픽셀색 100%"는 염색이 걸렸든 안 걸렸든 똑같이
-       찍히기 때문이다. 염색이 걸린 가닥 수와 실제로 LUT를 태운 수가 <b>같아야</b>
-       한다. 다르면 dyeCss가 어디선가 또 떨어진 것이다(그게 이번 원인이었다). */
-    + ` · 염색 ${dyeN}가닥` + (dyeN ? ` (LUT ${HAIR_DYE.on ? 'ON' : 'OFF'})` : ''));
+    + ` · 원본 픽셀색 ${pxN}개(=${adj.length ? Math.round(pxN/adj.length*100) : 0}%)`);
   return obj;
 }
 
@@ -554,18 +543,8 @@ function curlStrand3D(pts, curlAmt, waveT, curlDir){
    "예외의 예외 대신 깊이 버퍼"라고 미리 적어 둔 그 자리다.
    depthEps — 두개골 반깊이 대비 허용 오차. 뿌리는 두피에 붙어 있어 두개골
    앞면과 거의 같은 깊이라, 0이면 수치 오차로 <b>뿌리가 깜빡인다</b>. */
-/* silhouetteExtend — 깊이 버퍼의 <b>구멍</b>을 막는다 (2026-09-04).
-   9/02 7차가 넣은 frontZ는 점이 <b>두개골 그림자 안</b>일 때만 답을 준다.
-   밖이면 null이고, 그때 판정은 다시 <b>깊이의 부호</b>(pr.depth>=0)로 떨어진다 —
-   7차가 틀렸다고 지목한 바로 그 규칙이다. 즉 구멍이 하나 남아 있었다.
-   그 구멍이 화면 어디에 있나가 이 버그의 전부다: 두개골 그림자 가장자리는
-   3/4~측면 뷰에서 <b>코 언저리</b>를 지난다(두개골 반깊이 c가 코끝 z와 비슷).
-   그래서 반대편 사이드가 두개골 실루엣 <b>바로 바깥</b>으로 투영되는 구간만
-   살아남아 코라인 위에 줄줄이 그려졌다 — 사용자가 본 그 자리다.
-   고침은 frontZ를 <b>실루엣까지 연장</b>하는 것이다(아래 주석). 되돌리기: false */
 const VIEW_CULL = { mode: 'anyVisible', trimHidden: true, photoOverrides: false,
-                    depthBuffer: true, depthEps: 0.04,
-                    silhouetteExtend: true };   // 'anyVisible' | 'anyFacing' | 'mean'(예전)
+                    depthBuffer: true, depthEps: 0.04 };   // 'anyVisible' | 'anyFacing' | 'mean'(예전)
 
 /* 이 뷰에서 <b>가리는 몸</b>(두상+목·어깨)의 직교투영 그림자 (2026-08-18 h).
    가리는 것은 두 조각이고 <b>둘 다 이미 실측돼 있다</b>(새 상수 없음):
@@ -601,27 +580,6 @@ function makeViewOccluder(cal){
     try{ neckTopY = headPhiToMeshY(HEAD_PHI_BANDS[HEAD_PHI_BANDS.length-1]); }catch(e){}
     const A00 = A(0,0), A01 = A(0,1), A11 = A(1,1);
     const zEps = E.c * VIEW_CULL.depthEps;
-    /* ── 연장의 <b>한계</b>는 헐(머리카락 겉면)이다 (2026-09-04) ──────────────
-       두개골 그림자 밖이라고 가릴 것이 없는 게 아니다 — 그 바깥에도 <b>이 사람의
-       머리</b>가 있다(헐 a=0.704 vs 두개골 a=0.503, 한쪽당 2.8cm). 그 띠 안이면
-       뒤에 있는 가닥은 앞쪽 머리·살에 묻히므로 안 보이는 게 맞다.
-       그런데 헐 <b>밖</b>까지 막으면 8/18 h가 고친 "정면 목 옆 뒷머리"가 도로
-       사라진다 — 거긴 진짜로 가릴 것이 없다. 그래서 연장은 헐 그림자까지만 한다.
-       헐 그림자도 같은 슈어 여원으로 얻는다(새 모델·새 상수 없음). */
-    let H11 = 0, H12 = 0, H22 = 0, hullOK = false;
-    try{
-      const EH = getHeadEllipsoid();
-      if(EH && EH.a > 0 && EH.b > 0 && EH.c > 0){
-        const MH = [1/(EH.a*EH.a), 1/(EH.b*EH.b), 1/(EH.c*EH.c)];
-        const AH = (i,j)=> R[i*3]*MH[0]*R[j*3] + R[i*3+1]*MH[1]*R[j*3+1] + R[i*3+2]*MH[2]*R[j*3+2];
-        const h33 = AH(2,2), hinv = (h33 > 1e-12) ? 1/h33 : 0;
-        const H02 = AH(0,2), H12z = AH(1,2);
-        H11 = AH(0,0) - H02*H02*hinv;
-        H12 = AH(0,1) - H02*H12z*hinv;
-        H22 = AH(1,1) - H12z*H12z*hinv;
-        hullOK = (H11 > 0 && H22 > 0);
-      }
-    }catch(e){}
     return {
       covers(lx, ly, my){
         if(B11*lx*lx + 2*B12*lx*ly + B22*ly*ly <= 1) return true;   // 두상 그림자 안
@@ -638,41 +596,12 @@ function makeViewOccluder(cal){
          푼다 — 소거 대신 근을 구할 뿐이라 새 모델도 새 상수도 없다:
            A22·lz² + 2(A02·lx + A12·ly)·lz + (A00lx² + 2A01lxly + A11ly² − 1) = 0
          카메라 쪽 근(큰 lz)이 앞면이다. 판별식이 음수면 그림자 밖이라 null. */
-      /* ── (2026-09-04) 그림자 <b>밖</b>도 답을 준다 — 실루엣 깊이로 연장 ────────
-         예전엔 판별식이 음수면(=그림자 밖) null이었고, 호출부는 그때 깊이의
-         <b>부호</b>로 떨어졌다. 그 폴백이 반대편 사이드를 코 옆으로 통과시킨
-         구멍이다(위 VIEW_CULL.silhouetteExtend 주석).
-         연장 방법: 그림자 밖 점을 <b>반경 방향으로 경계까지 당겨</b> 그 자리의
-         앞면 깊이를 쓴다. 경계에서는 판별식이 0이라 앞면=뒷면=<b>실루엣 접점</b>의
-         깊이이고, 그게 "이 방향에서 두개골이 가장 앞에 나온 깊이"다.
-         · 연장값은 두개골 앞면 깊이 중 <b>가장 관대한</b> 값이라, 진짜로 앞에 있는
-           앞머리(카메라 쪽으로 나온 가닥)는 그대로 통과한다.
-         · 뒤통수 쪽 띠에서도 접점 깊이는 0 근처라, 헐 표면에 얹힌 뒷머리 실루엣은
-           살아남고 그보다 <b>한참 뒤</b>인 반대편 가닥만 걸린다.
-         · 헐 그림자 밖은 예전 그대로 null(가릴 것이 없다).
-         q는 covers가 쓰는 그 2차형식이다 — 판정 출처를 둘로 만들지 않는다. */
       frontZ(lx, ly){
         if(!(a33 > 1e-12)) return null;
-        let px = lx, py = ly;
-        if(VIEW_CULL.silhouetteExtend){
-          const q = B11*lx*lx + 2*B12*lx*ly + B22*ly*ly;
-          if(q > 1){
-            if(!hullOK) return null;                                   // 한계를 모르면 손대지 않는다
-            if(H11*lx*lx + 2*H12*lx*ly + H22*ly*ly > 1) return null;   // 헐 밖 = 가릴 것 없음
-            const k = 1 / Math.sqrt(q);                                // 경계까지 당긴다
-            px = lx * k; py = ly * k;
-          }
-        }
-        const bq = A02*px + A12*py;
-        const cq = A00*px*px + 2*A01*px*py + A11*py*py - 1;
+        const bq = A02*lx + A12*ly;
+        const cq = A00*lx*lx + 2*A01*lx*ly + A11*ly*ly - 1;
         const disc = bq*bq - a33*cq;
-        if(!(disc > 0)) {
-          /* 당겨온 점은 경계 위라 disc가 0 언저리다(수치 오차로 −1e-16이 나온다).
-             경계에서 두 근은 같으므로 −bq/a33이 곧 접점 깊이다. 원래 밖이었던
-             경우가 아니면(px===lx) 예전대로 null. */
-          if(px === lx && py === ly) return null;
-          return (-bq) / a33 - zEps;
-        }
+        if(!(disc > 0)) return null;
         return (-bq + Math.sqrt(disc)) / a33 - zEps;
       }
     };

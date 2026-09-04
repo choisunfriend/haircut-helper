@@ -569,13 +569,6 @@ function toggleDiagInfo(){
     });
     lines.push('  가닥 ' + bd.drawn + '개 그림 / 목표 ' + bd.target + '개 (원본 결 보기 ' + bd.rawTotal + '개)');
     lines.push('  모델 ' + bd.total + '개 중 솎기 ' + bd.stride);
-    /* (2026-09-04) 가림으로 <b>안 그린</b> 점의 비율. 콘솔을 못 보는 실기기에서
-       "반대편 사이드가 얼굴을 덮나"를 숫자 하나로 판정하려고 올린다.
-       측면 뷰에서 이 값이 10% 언저리면 두개골 뒤 반구가 통째로 살아 있다는
-       뜻이다(9/02 로그의 right 뷰 9%가 정확히 그 상태였다). 실루엣 연장이
-       걸리면 30~40%대로 올라온다. */
-    lines.push('  가림으로 안 그린 점 <b>' + bd.hidPct + '%</b>'
-      + (bd.hidPct < 15 ? '  ← 측면인데 이 값이면 뒤 반구가 안 잘리고 있음' : ''));
     if(bd.rootDev){
       const d = bd.rootDev;
       lines.push('  뿌리선 어긋남 중앙값 ' + d.med.toFixed(0) + 'px'

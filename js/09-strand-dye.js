@@ -859,7 +859,7 @@ function sampleProjectedStrandColors(maskInf, ipts, baked, fallbackCss, dyeCss){
    뷰 선택은 viewOfRoot(뿌리가 제일 크게 보이는 뷰) — 스타일링·역산이 이미 쓰는
    판정이라 새로 만들지 않는다. 마스크·캘리브레이션이 없으면 baked를 그대로
    돌려준다(새 실패 모드를 만들지 않는다). */
-function bakeStrandColors3D(pts, model, angle, fallbackCss, baked, dyeCss){
+function bakeStrandColors3D(pts, model, angle, fallbackCss, baked){
   if(!HAIR_PIXEL_COLOR.on || !pts || pts.length < 2 || !model) return baked || null;
   const cal = model.viewCal && model.viewCal[angle];
   const mi  = state.hairMasks && state.hairMasks[angle];
@@ -869,21 +869,7 @@ function bakeStrandColors3D(pts, model, angle, fallbackCss, baked, dyeCss){
     const pr = project3DPointToView(pts[i], cal, model.yTop, model.CY);
     ipts[i] = { x: pr.ix, y: pr.iy };
   }
-  /* ── 염색색을 <b>넘긴다</b> (2026-09-04) ────────────────────────────────
-     사용자: "3D 결과보기를 보면 머리 전체 염색이 안 되었다는 걸 볼 수 있다."
-     맞다. 이 함수에 dyeCss 매개변수가 <b>아예 없었다</b>. 그래서 여기만
-     4개 인자로 부르고 있었고, sampleProjectedStrandColors의 lut이 항상 null이라
-     되쏘아 읽은 <b>원본 사진 픽셀</b>이 그대로 화면에 갔다.
-       15-project-3d.js:858  …, st.color, st.dye)   ← 조정·결과 화면(염색됨)
-       여기                  …, fallbackCss)        ← 3D 결과보기(염색 안 됨)
-     _adjApplyFilter가 이미 LUT로 구워 보낸 조각색(baked)은 <b>사진에 머리가
-     없는 자리</b>의 폴백으로만 쓰이므로, 머리가 있는 자리는 100% 사진 색이
-     된다 — 화면 전체가 염색 전 색으로 보이는 정체가 이것이다.
-     ⚠ 되쏘기를 끄는 것으로 고치면 안 된다. 그러면 8/18에 맞춰 놓은 "3D는 앞
-       화면에서 조정한 그대로"가 다시 갈라진다(14-hair-3d-ops.js 배너). 두 경로가
-       <b>같은 함수를 같은 인자로</b> 부르게 하는 것이 고침이다.
-     ⚠ 색을 여기서 섞지 않는다 — 넘기기만 하고 판단은 전부 그쪽 한 곳에 있다. */
-  return sampleProjectedStrandColors(mi, ipts, baked || null, fallbackCss, dyeCss || null);
+  return sampleProjectedStrandColors(mi, ipts, baked || null, fallbackCss);
 }
 
 /* 이 뷰에서 "원본 결 보기가 그리는 가닥 묶음"을 그대로 계산해 준다.
