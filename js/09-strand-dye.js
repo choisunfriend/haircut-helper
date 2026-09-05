@@ -859,7 +859,7 @@ function sampleProjectedStrandColors(maskInf, ipts, baked, fallbackCss, dyeCss){
    뷰 선택은 viewOfRoot(뿌리가 제일 크게 보이는 뷰) — 스타일링·역산이 이미 쓰는
    판정이라 새로 만들지 않는다. 마스크·캘리브레이션이 없으면 baked를 그대로
    돌려준다(새 실패 모드를 만들지 않는다). */
-function bakeStrandColors3D(pts, model, angle, fallbackCss, baked){
+function bakeStrandColors3D(pts, model, angle, fallbackCss, baked, dyeCss){
   if(!HAIR_PIXEL_COLOR.on || !pts || pts.length < 2 || !model) return baked || null;
   const cal = model.viewCal && model.viewCal[angle];
   const mi  = state.hairMasks && state.hairMasks[angle];
@@ -869,7 +869,17 @@ function bakeStrandColors3D(pts, model, angle, fallbackCss, baked){
     const pr = project3DPointToView(pts[i], cal, model.yTop, model.CY);
     ipts[i] = { x: pr.ix, y: pr.iy };
   }
-  return sampleProjectedStrandColors(mi, ipts, baked || null, fallbackCss);
+  /* (2026-09-05) dyeCss를 <b>같이 넘긴다</b> — 사용자: "전체염색을 넣으면 2D 조정
+     화면은 변하는데 3D 결과보기에서 뒤쪽이랑 정수리는 안 바뀐다."
+     원인이 여기 인자 하나였다. 이 함수는 되쏘아 읽은 <b>사진 픽셀</b>을 돌려주는데,
+     염색은 그 픽셀을 LUT로 바꾸는 단계(sampleProjectedStrandColors의 5번째 인자)에서
+     걸린다. 그 인자를 안 넘기니 LUT가 안 만들어지고 사진색이 그대로 나왔다.
+     그래서 <b>사진에 머리가 있는 자리</b>(뒤통수·정수리)만 원래 색으로 남고,
+     머리가 없는 자리(이마 앞머리·늘린 구간)는 폴백이 염색색이라 바뀌어 보였다 —
+     "앞은 되는데 뒤는 안 된다"의 정체가 이 갈림이다.
+     2D 투영은 처음부터 st.dye를 넘기고 있었다(15-project-3d.js). 두 경로가 같은
+     함수를 부르면서 인자만 달랐던 것이라, 규칙을 하나로 되돌리는 수정이다. */
+  return sampleProjectedStrandColors(mi, ipts, baked || null, fallbackCss, dyeCss);
 }
 
 /* 이 뷰에서 "원본 결 보기가 그리는 가닥 묶음"을 그대로 계산해 준다.

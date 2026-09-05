@@ -50,7 +50,7 @@ function buildAdjustedHair3DObject(){
     if(!pts || pts.length < 2) continue;
     const view = st.srcAngle || (pts[0] ? viewOfRoot(pts[0]) : null);
     const reCols = (HAIR_PIXEL_COLOR.reproject && view)
-      ? bakeStrandColors3D(pts, cmodel, view, st.color, st.colors)
+      ? bakeStrandColors3D(pts, cmodel, view, st.color, st.colors, st.dye)
       : (st.colors || null);
     const segCols = (reCols && reCols.length > 1) ? reCols : null;
     if(segCols) pxN++;
