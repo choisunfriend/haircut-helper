@@ -116,6 +116,31 @@ function getNeckBottomY(){
 }
 const NECK_LEN_CM        = 8.0;    // 턱끝 → 옷깃선(목 길이). 성인 평균 근사, 실기기 튜닝 지점
 const FIGURE_HEADS       = 7.5;    // 전신 길이 = 두상 높이 × 이 값(성인 평균 7~8두신)
+/* ══════════════════════════════════════════════════════════════════
+   신체 비율의 자 = <b>두상</b> (2026-09-05 사용자 지시)
+   ─────────────────────────────────────────────────────────────────
+   사용자: "왜 이걸 옷깃으로 봐? 우리가 지금 작업하는 게 두상이기 때문에 두상을
+   기준으로 해서 신체비율을 잡도록 해." · "일반적으로 준수한 체형 있잖아."
+
+   맞는 지적이고, 이 화면은 <b>이미 그렇게</b> 하고 있었다 — 위 FIGURE_HEADS가
+   그것이다. 문제는 3D 화면이 그 자를 안 쓰고 loadOutfitMeshFromOBJ 안의
+   TARGET_HEIGHT=4.0이라는 <b>고정값</b>으로 옷을 맞추고 있었다는 것이다.
+   머리는 사진에서 재는데 몸은 상수라, 두상이 크게 잡힌 사람일수록 머리만 커진다.
+   실기기에서 두상 높이가 1.22단위였으니 몸은 1.22×6.2≈7.6단위여야 하는데 4.0이었다
+   — 눈으로 본 "1/5두신"이 이 숫자 차이 그대로다.
+
+   그래서 두 화면이 같은 함수를 부르게 한다. 새 상수는 없다 —
+   FIGURE_HEADS(7.5두신)와 headHeightMesh(잰 두상 높이)를 쓰던 식을 밖으로 꺼낸 것뿐이다.
+       전신    = 두상높이 × 7.5
+       몸 길이 = 전신 − (정수리 → 목 밑동)      ← 옷이 채워야 할 구간
+   랜드마크가 없어 잴 수 없으면 null을 돌려주고, 부르는 쪽이 옛 상수로 폴백한다.
+══════════════════════════════════════════════════════════════════ */
+function personBodyLenMesh(){
+  const ref = getPersonScaleRef();
+  if(!ref) return null;
+  const len = ref.headHeightMesh * FIGURE_HEADS - (ref.crownMeshY - getNeckBottomY());
+  return (isFinite(len) && len > 0.5) ? len : null;
+}
 const FIGURE_FILL        = 0.94;   // 전신이 프레임 세로를 차지하는 비율(여백 6%)
 
 /* 사용자 확대/축소·이동 상태. 각도를 바꾸거나 새 고객이면 리셋된다. */
@@ -363,9 +388,8 @@ async function ensureResultBodyMesh(item, widthFactor){
     ensureResultNeckMesh(snap);
     return snap;
   }
-  // 전신 = 두상 높이 × 두신. 그중 옷깃 아래가 몸이 차지할 길이.
-  const figureH   = ref.headHeightMesh * FIGURE_HEADS;
-  const bodyNeed  = figureH - (ref.crownMeshY - getNeckBottomY());
+  // 전신 = 두상 높이 × 두신. 그중 옷깃 아래가 몸이 차지할 길이(personBodyLenMesh 단일 출처).
+  const bodyNeed  = personBodyLenMesh() || (ref.headHeightMesh * FIGURE_HEADS - (ref.crownMeshY - getNeckBottomY()));
   const s = (bodyNeed / m.heightRaw) * (RESULT_BODY_FIT.scale || 1);
   snap.group.scale.setScalar(s);
   snap.group.position.y = getNeckBottomY() * (1 - s); // 목 밑동 고정점 스케일

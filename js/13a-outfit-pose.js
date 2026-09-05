@@ -145,7 +145,14 @@ function loadOutfitMeshFromOBJ(objUrl, mtlUrl, widthFactor, neckCutFrac){
           const neckCutYRaw = box.min.y + cutFrac * size.y;
           const bodyHeightRaw = neckCutYRaw - box.min.y; // 발~목까지만(머리 제외) 실측 높이
 
-          const TARGET_HEIGHT = 4.0; // 목 밑동~발끝까지 대략 이 정도(절차적 플레이스홀더 기준)
+          /* (2026-09-05) 옷 길이를 <b>잰 두상</b>에서 낸다 — 위 personBodyLenMesh 배너.
+             4.0은 절차적 플레이스홀더 시절의 고정값이라, 머리만 사진에서 재고 몸은
+             상수인 비대칭이 있었다. 결과 화면은 이미 두신 비율을 쓰고 있었으므로
+             이 줄은 <b>두 화면을 같은 자로 맞추는</b> 수정이다.
+             랜드마크가 없어 못 재면 옛 4.0으로 폴백한다(값이 바뀌지 않는다). */
+          const bodyLen = (typeof personBodyLenMesh === 'function' ? personBodyLenMesh() : null);
+          const TARGET_HEIGHT = bodyLen || 4.0;
+          if(!bodyLen) console.warn('[3D·의상] 두상 자를 못 써서 옛 고정값 4.0으로 맞춥니다 — 정면 랜드마크 확인');
           const scale = OUTFIT_MESH_SOURCE.scaleOverride || (TARGET_HEIGHT / (bodyHeightRaw || 1)) * widthFactor;
           obj.scale.setScalar(scale);
 

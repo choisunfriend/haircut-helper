@@ -225,8 +225,32 @@ function buildRingGridIndices(rowSteps, thetaSteps){
      다시 짓는다. 의상이 끝내 없으면 폴백 그대로 — 새 실패 모드가 아니다.
    되돌리기: NECK_SHAPE.fromGarment = false (예전 두개골 클램프 경로로 복귀) */
 const NECK_SHAPE = {
-  fromGarment: true,
-  inset:    0.86,  // 옷깃 구멍보다 이만큼 안쪽 — 옷 두께·여유분
+  /* ── 목도 <b>두상 자</b>로 (2026-09-05 사용자 지시) ──────────────────────
+     사용자: "일반적으로 준수한 체형 있잖아.. 목도 어차피 옷메쉬에 걸려 있는
+     거니 같이 잡아."
+
+     그래서 목 단면을 옷깃에서 뽑던 것을 끊는다. 12차가 이미 "옷깃은 어떤 옷을
+     입었느냐에 따라 얼마든지 넓어질 수 있지만 목은 아니다"라고 적어 놓고도,
+     그 판단을 <b>난간</b>으로만 걸고 값 자체는 옷깃에서 계속 가져오고 있었다.
+
+     ── 실기기에서 무엇이 났나 ──────────────────────────────────────────
+     이 손님은 옷깃 실측이 아예 실패했다([3D·목] 옷깃 구멍 실측 실패 → 폴백).
+     그래서 실제로 돈 건 폴백 클램프였는데 거기 상한이 비대칭이었다:
+         폭   0.55 × a(두개골 반폭)
+         깊이 0.70 × c(두개골 반깊이)
+     계수도 크고 c > a라 두 배가 곱해진다. 사용자가 본 "폭은 그나마 괜찮은데
+     앞뒤로 너무 넓다"가 이 두 줄이다. 0.55와 0.70이 왜 다른지는 근거가 없었다.
+
+     ── 고침 ────────────────────────────────────────────────────────────
+     성인 목 밑동 치수를 <b>cm로</b> 적고, 이 파일의 유일한 자
+     (faceRulerCmPerUnit)로 환산한다. NECK_LEN_CM(8.0)이 이미 쓰는 방식 그대로다.
+     그러면 폭과 깊이가 <b>같은 종류의 값</b>이 되어 비대칭이 생길 수가 없고,
+     숫자가 실물과 대조 가능해진다(둘레 ≈ π×(W+D)/2 ≈ 35cm).
+     되돌리기: fromGarment = true. */
+  fromGarment: false,
+  baseWCm:  11.5,  // 목 밑동 좌우 폭(cm) — 성인 평균. 난간 9~13의 한가운데
+  baseDCm:  11.0,  // 〃 앞뒤 깊이(cm). 목은 거의 원통이라 폭과 비슷하다 — 이게 빠져 있었다
+  inset:    0.86,  // (fromGarment=true일 때만) 옷깃 구멍보다 이만큼 안쪽
   taperW:   0.74,  // 위 폭 ÷ 아래 폭 (목은 위로 갈수록 좁다)
   taperD:   0.80,  // 위 깊이 ÷ 아래 깊이
   tiltZ:    0.09,  // 위 링을 앞으로(+Z), 목 길이 대비 — 약 5°
@@ -239,10 +263,8 @@ const NECK_SHAPE = {
      쟀다(아래 measureGarmentNeckOpening 주석). 그 결과 실기기에서 목이 얼굴보다
      넓은 <b>갓등</b>이 됐다 — 사용자: "목은 해부학적으로 어느 정도 굵기 이상
      안 주는 게 좋을 거 같아."
-     맞다. 옷깃은 <b>어떤 옷을 입었느냐</b>에 따라 얼마든지 넓어질 수 있지만
-     목은 아니다. 그래서 실측 위에 cm 난간을 건다 — 성인 목 밑동 폭 9~13cm
-     (둘레 대략 30~42cm). 이 난간은 두상이 아니라 <b>사람</b>에서 나온 값이라,
-     "머리에서 목을 뽑지 않는다"는 이번 설계와 어긋나지 않는다.
+     이제 값 자체가 cm라 난간은 <b>자가 튄 경우</b>(얼굴 랜드마크가 깨져 환산이
+     이상할 때)만 잡는다. 자주 걸리면 그건 목이 아니라 자를 봐야 한다는 신호다.
      cm ↔ 메쉬단위 환산은 faceRulerCmPerUnit — 이 파일의 유일한 자다. */
   minBaseCm: 9.0,   // 목 밑동 <b>폭</b> 하한(cm)
   maxBaseCm: 13.0,  // 〃 상한
@@ -319,12 +341,9 @@ function buildRealNeckMesh(skinColor){
   const neckBotY = getNeckBottomY(); // 턱에서 8cm — 예전엔 -1.15 고정이었다(배너 참고)
 
   // (2026-07-17) "원뿔(전등갓) 목" 수정 — personMask 실측에 어깨/턱이 섞이면
-  // 목 단면이 아래로 갈수록 어깨 폭까지 부풀어 원뿔이 됐음. 실측값을 쓰되
-  // 두상 대비 해부학적 상한/하한으로 클램프: 폭은 두상 반폭의 22~55%,
-  // 깊이는 두상 반깊이의 22~70% 범위 안에서만 허용.
-  // (2026-08-17 c) 해부학적 상·하한도 <b>두개골</b> 기준이라야 맞다 — 헐 기준이면
-  // 머리카락 두께만큼 목이 굵어질 여지가 열린다(목은 모발이 아니라 뼈에 붙는다).
-  const headA = skullD.a, headC = skullD.c;
+  /* (2026-09-05) 여기 있던 headA·headC 클램프(폭 22~55%·깊이 22~70%)를 지웠다 —
+     그 비대칭이 이번에 고친 "앞뒤로 넓은 목"의 원인이었고, 밑동을 cm로 내는 지금은
+     부르는 곳이 없다. 원칙 (4)에 따라 주석으로 박제하지 않고 지운다. */
   const clamp = (v,lo,hi)=>Math.min(hi, Math.max(lo, v));
 
   /* 옷깃 실측이 있으면 그것만 쓴다 — 아래 링이 곧 옷깃 구멍이고, 위 링은 거기서
@@ -333,21 +352,35 @@ function buildRealNeckMesh(skinColor){
   const G = NECK_SHAPE.fromGarment ? _garmentNeckOpening : null;
   let baseW = G ? G.halfWidth * NECK_SHAPE.inset : null;
   let baseD = G ? G.halfDepth * NECK_SHAPE.inset : null;
-  /* 해부학적 난간 — 위 NECK_SHAPE 주석 참고. 옷은 넓어질 수 있어도 목은 아니다. */
-  if(G){
-    let cmPerUnit = 16.4;
-    try{ const r = faceRulerCmPerUnit(getFaceMetrics()); if(r && r.x > 1) cmPerUnit = r.x; }catch(e){}
+  /* cm → 메쉬단위 환산자. 옷깃 경로든 두상 경로든 둘 다 이 자를 쓴다. */
+  let cmPerUnit = 16.4;
+  try{ const r = faceRulerCmPerUnit(getFaceMetrics()); if(r && r.x > 1) cmPerUnit = r.x; }catch(e){}
+  if(!G){
+    /* ── 두상 자로 목을 낸다 (2026-09-05) — 위 NECK_SHAPE 배너 참고 ──────────
+       폭과 깊이를 <b>같은 방식</b>으로 낸다. 예전 폴백은 폭 0.55×a · 깊이 0.70×c로
+       계수도 축도 달라서, 앞뒤로만 부푸는 목이 나왔다. */
+    baseW = (NECK_SHAPE.baseWCm / 2) / cmPerUnit;
+    baseD = (NECK_SHAPE.baseDCm / 2) / cmPerUnit;
+  }
+  /* 난간 — 자가 튀었을 때만 잡힌다(옷깃 경로에서는 옷이 넓어지는 것도 잡는다). */
+  {
     const loHalf = (NECK_SHAPE.minBaseCm/2) / cmPerUnit;
     const hiHalf = (NECK_SHAPE.maxBaseCm/2) / cmPerUnit;
     const capped = clamp(baseW, loHalf, hiHalf);
     if(Math.abs(capped - baseW) > 1e-4){
-      console.log('[3D·목] 옷깃 기준 ' + (baseW*2*cmPerUnit).toFixed(1) + 'cm → 해부학 난간으로 '
+      console.log('[3D·목] 밑동 폭 ' + (baseW*2*cmPerUnit).toFixed(1) + 'cm → 난간으로 '
         + (capped*2*cmPerUnit).toFixed(1) + 'cm (허용 ' + NECK_SHAPE.minBaseCm + '~'
-        + NECK_SHAPE.maxBaseCm + 'cm). 난간이 자주 걸리면 옷깃 실측이 구멍이 아니라 테두리를 재고 있는 것.');
-      baseD *= (capped / baseW);   // 깊이도 같은 비율로 — 단면 모양은 유지한다
+        + NECK_SHAPE.maxBaseCm + 'cm). ' + (G
+          ? '옷깃 실측이 구멍이 아니라 테두리를 재고 있는 것.'
+          : '값은 cm 상수인데 난간에 걸렸다 = <b>환산자가 튀었다</b>. 얼굴 랜드마크를 보십시오.'));
+      baseD *= (capped / baseW);
       baseW = capped;
     }
   }
+  console.log('[3D·목] 밑동 ' + (baseW*2*cmPerUnit).toFixed(1) + '×' + (baseD*2*cmPerUnit).toFixed(1)
+    + 'cm (폭×깊이) · 기준 ' + (G ? '옷깃 실측' : '<b>두상 자</b>(cm 상수 ÷ 얼굴 환산자 '
+    + cmPerUnit.toFixed(1) + 'cm/단위)') + ' · 둘레 약 '
+    + (Math.PI * (baseW + baseD) * cmPerUnit).toFixed(0) + 'cm');
   const neckLen = Math.max(1e-4, neckTopY - neckBotY);
 
   const positions = [];
@@ -356,15 +389,12 @@ function buildRealNeckMesh(skinColor){
   for(let ri=0; ri<=RING_STEPS; ri++){
     const t = ri/RING_STEPS;                 // 0 = 위(턱), 1 = 아래(옷깃)
     const y = neckTopY + t*(neckBotY-neckTopY);
-    let halfWidth, halfDepth;
-    if(G){
-      halfWidth = baseW * (NECK_SHAPE.taperW + (1-NECK_SHAPE.taperW)*t);
-      halfDepth = baseD * (NECK_SHAPE.taperD + (1-NECK_SHAPE.taperD)*t);
-    }else{
-      const m = interpolateNeckCrossSection(y);
-      halfWidth = clamp(m.halfWidth, 0.22*headA, 0.55*headA);
-      halfDepth = clamp(m.halfDepth, 0.22*headC, 0.70*headC);
-    }
+    /* 위(턱)로 갈수록 좁아지는 테이퍼. 예전엔 옷깃이 없으면 이 자리에서
+       interpolateNeckCrossSection(사진 실측)을 폭 0.55×a · 깊이 0.70×c로 클램프해
+       썼는데, 그 비대칭이 곧 "앞뒤로 넓은 목"이었다(위 배너). 이제 밑동을 cm로
+       내므로 두 경로가 하나다 — 실측 단면은 자기 축이 뭔지 못 밝혀서 뺐다. */
+    const halfWidth = baseW * (NECK_SHAPE.taperW + (1-NECK_SHAPE.taperW)*t);
+    const halfDepth = baseD * (NECK_SHAPE.taperD + (1-NECK_SHAPE.taperD)*t);
     // 앞으로 기울임 — 위 링일수록(t=0) 앞으로. 사람 목은 수직이 아니다.
     const cz = NECK_SHAPE.tiltZ * neckLen * (1 - t);
     // 승모근 — 아래쪽 뒤편만 부풀린다(위로 갈수록 1로 수렴).
