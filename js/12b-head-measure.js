@@ -501,7 +501,11 @@ const HEAD_WIDTH_GUARD = {
      밖으로 나간다(2026-08-30 6차 배너 — 짧은 머리 남성에서 터진 자리). */
   applyMinAlways: true,
   faceMinRatio: 1.00,   // 두상 반폭 하한 — <b>두상은 얼굴보다 좁을 수 없다</b>(해부학)
-  faceMaxRatio: 1.15,   // 상한. 이 위는 사람 두개골이 아니라 머리카락이다
+  faceMaxRatio: 1.15,   // 상한. 이 위는 사람 <b>두개골</b>이 아니다 — 헐에는 모발 두께를 더해 쓴다
+  /* 위 두 비율을 <b>헐이 아니라 두개골에</b> 걸까 (2026-09-05 3차 배너).
+     false면 예전 동작(비율을 헐에 직접) — 이 손님에서 헐이 두께 1.05cm로
+     깎이던 그 동작이다. */
+  thicknessAware: true,
 };
 function getHeadEllipsoid(){
   const eq = interpolateHeadCrossSection(Math.PI/2);
@@ -537,8 +541,40 @@ function getHeadEllipsoid(){
          · 꺾였는데도 비율이 안 맞음        → 얼굴·자 쪽 문제다   → <b>알리기만</b>
        모르는 쪽은 건드리지 않는다(정수리 캡에서 상한을 뺀 것과 같은 규칙). */
     if(faceHalf > 0){
-      const hi = faceHalf * HEAD_WIDTH_GUARD.faceMaxRatio;
-      const lo = faceHalf * HEAD_WIDTH_GUARD.faceMinRatio;
+      /* ── 상한이 <b>헐에 걸려 있었다</b> (2026-09-05 3차, 실기기 로그) ──────────
+         이 함수가 돌려주는 것은 <b>헤어 헐</b>이다([두피면] 줄이 그렇게 부른다:
+         "두상=헤어 0.417/0.633/0.492"). 그런데 상한 faceMaxRatio의 주석은
+         <b>두개골</b> 이야기다 — "이 위는 사람 두개골이 아니라 머리카락이다".
+         맞는 말인데, 헐에 대해서는 머리카락인 게 <b>정상</b>이다. 두개골 자를
+         헤어에 대고 잰 셈이라, 머리숱이 많을수록 더 깎인다.
+
+         실기기 로그가 그대로 보여 준다:
+           [두상 폭 보정] 0.511 → 0.417 (얼굴 반폭 0.363의 1.41배는 범위 밖)
+         0.417이면 옆 모발 두께가 0.054단위 = <b>1.05cm</b>다. 그런데 같은
+         실행에서 이 파일이 이미 두께를 재 놨다:
+           [두상·정수리캡] 두개골 반축 a=0.363 · 모발 두께 t=<b>1.37cm</b>
+         상한이 함축하는 두께가 <b>자기가 잰 두께보다 얇다</b>. 지어낸 비율이
+         실측을 이긴 자리다(2026-07-26 4차가 경계한 바로 그 모양).
+
+         뒤따르는 진단이 전부 같은 방향을 가리킨다 — [3D·헐 접힘] "헐이 실루엣을
+         못 감싸고 있습니다"(left 최대초과 ×2.80) · [진단·투영 실루엣] left 0.857배 ·
+         [비교] left IoU 0.257 실채움 38%. 좁은 헐 위에 뿌리를 심으니 사진의
+         관자·사이드 자리에 닿을 가닥이 애초에 없었다.
+
+         고침 — 비율은 <b>두개골에</b> 건다. 헐에서 실측 모발 두께를 빼고 재고,
+         걸리면 두개골을 자른 뒤 <b>두께를 도로 얹는다</b>:
+             두개골추정 = aRaw − t        (t = 정수리 캡이 잰 값)
+             넘치면 → aFix = faceHalf×faceMaxRatio + t
+         상수는 하나도 안 늘고, 지어낸 1.15는 <b>두개골</b>이라는 제 자리로
+         돌아간다. t를 못 재면(useSkull=false·얼굴 실측 없음) t=0이 되어
+         예전과 <b>글자 그대로 같은 동작</b>이다.
+         ⚠ t는 <b>정수리</b> 두께다. 옆은 대개 더 두꺼우니 이 상한은 여전히
+           보수적이다 — 그래서 아래 로그가 옆 두께를 cm로 같이 찍는다.
+         되돌리기: HEAD_WIDTH_GUARD.thicknessAware = false */
+      const _mt = HEAD_WIDTH_GUARD.thicknessAware ? HEAD_CROWN_CAP.measured : null;
+      const tHair = (_mt && _mt.tW > 0) ? _mt.tW : 0;
+      const hi = faceHalf * HEAD_WIDTH_GUARD.faceMaxRatio + tHair;
+      const lo = faceHalf * HEAD_WIDTH_GUARD.faceMinRatio + tHair;
       const tooWide = aRaw > hi;
       /* 하한 — 위 주석의 대칭 규칙. 최대 폭 밴드가 <b>적도보다 위</b>면
          실루엣이 적도 아래를 못 본 것(짧은 머리)이므로 고친다. */
@@ -612,6 +648,16 @@ function getHeadEllipsoid(){
                  + ' = 짧은 머리에서 헤어가 정수리에서 끝난 경우)'
                : ' (얼굴 메쉬 반폭 ' + faceHalf.toFixed(3) + '의 ' + (aRaw/faceHalf).toFixed(2) + '배는 사람 두개골 범위 밖)')
             + ' · 깊이도 ×' + k.toFixed(2) + ' (형상비 보존)'
+            + (tHair > 0
+               ? '\n    상한은 <b>두개골에</b> 걸었습니다 — 두개골추정 ' + (aRaw - tHair).toFixed(3)
+                 + ' = 헐 ' + aRaw.toFixed(3) + ' − 실측 모발 두께 ' + tHair.toFixed(3)
+                 + ' (정수리 캡이 잰 값 · phi' + (HEAD_CROWN_CAP.measured ? HEAD_CROWN_CAP.measured.phi : '?') + ')'
+                 + '\n    ※ t는 <b>정수리</b> 두께입니다. 옆은 대개 더 두꺼우므로 이 상한은 보수적입니다 —'
+                 + ' 보정 뒤 옆 두께는 ' + (aFix - faceHalf).toFixed(3) + '단위,'
+                 + ' 보정 전이었다면 ' + (aRaw - faceHalf).toFixed(3) + '단위입니다.'
+                 + ' [3D·헐 접힘]·[진단·투영 실루엣]과 같이 보세요 — 거기가 계속 "못 감쌌다"고 하면 상한이 아직 낮은 것입니다.'
+               : '\n    ⚠ 모발 두께 실측이 없어 상한을 <b>헐에 직접</b> 걸었습니다(예전 동작).'
+                 + ' [두상·정수리캡] 줄이 안 찍혔거나 얼굴 실측이 없는 경우입니다.')
             + '\n    원인: 밴드 W가 <b>끝까지 증가</b>(최대가 phi' + (peakPhi!=null?peakPhi.toFixed(2):'?')
               + ' = 범위 마지막) — 적도를 못 지났습니다. 어깨로 흐른 머리카락을 두상 폭으로 잡고 있었습니다.');
         }
@@ -828,6 +874,9 @@ function accumulateAllViews(accumulate){
    getHeadEllipsoid를 부르지 않는 이유: 그쪽이 computeHeadCrossSections를 부른다(순환).
    같은 규칙(적도=최대 단면)을 여기서 직접 쓴다. */
 function applyCrownCap(bands){
+  /* 이 실행에서 잰 값만 유효하다 — 캡을 못 만들고 빠져나가는 갈래가 여럿이라
+     맨 앞에서 비운다(앞 손님의 두께가 다음 손님의 폭 가드로 새지 않게). */
+  HEAD_CROWN_CAP.measured = null;
   const C = HEAD_CROWN_CAP;
   if(!C.on) return null;
   const anchor = bands.find(b2 => Math.abs(b2.phi - C.anchorPhi) < 1e-6);
@@ -871,6 +920,17 @@ function applyCrownCap(bands){
     tD = (anchor.halfDepth || 0) / Math.max(1e-6, sinA) - cMax;
   }
   const capA = aSkull + tW, capC = (cSkull || 0) + tD;
+  /* ── 잰 두께를 <b>내놓는다</b> (2026-09-05 3차) ────────────────────────────
+     여기까지 오면 이 손님의 <b>모발 두께</b>가 이름 붙은 양으로 손에 있다
+     (t = anchorPhi 실측 ÷ sin(phi) − 두개골 반폭). 지금까지는 정수리 캡을
+     만드는 데만 쓰고 버렸는데, 바로 아래 getHeadEllipsoid의 폭 가드가
+     <b>같은 양을 몰라서</b> 비율 상수로 대신하고 있었다. 재놓고 안 쓰는 값이
+     있는데 지어낸 값을 쓰는 것은 이 파일의 규칙에 어긋난다.
+     소비자는 HEAD_WIDTH_GUARD 블록 하나뿐이고, 없으면(useSkull=false·얼굴
+     실측 없음) null이라 그쪽이 예전 동작으로 떨어진다. */
+  HEAD_CROWN_CAP.measured = (aSkull != null && tW > 0)
+    ? { aSkull, tW, tD, phi: C.anchorPhi }
+    : null;
 
   const was = [];
   bands.forEach(b2=>{
