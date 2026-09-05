@@ -570,6 +570,22 @@ async function setupModel3DScreen(){
     const outfitRec = await recommendOutfitWithAI();
     hideAI();
     if(outfitRec && myGen === model3DGeneration){
+      /* ── (2026-09-05) 자를 <b>화면에 있는 두상</b>에서 잰다 ────────────────────
+         사용자: "조금 비현실적인 거 같아.. 10등신쯤 되는 거 같은데."
+         재보니 화면은 <b>8.9두신</b>이었다(정수리~턱 53px / 전신 474px). 상수는
+         7.5인데 화면이 8.9인 이유는 <b>두상 한 칸의 정의가 두 화면에서 다르기</b>
+         때문이다. getPersonScaleRef의 crownMeshY는 <b>정면 사진의 헤어 박스 위끝</b>
+         이다. 결과 화면은 사진을 그대로 합성하므로 그게 맞는 자다. 그런데 3D
+         화면의 머리는 사진이 아니라 <b>메쉬</b>고, 그 헤어 꼭대기는 사진보다 낮다
+         (HAIR_TOP_CAP이 캡 상승을 잡고, 정수리 커버리지도 약하다). 실측으로 1.19배
+         차이였고, 7.5 × 1.19 = 8.9 — 화면 숫자와 정확히 맞는다.
+         그래서 3D 화면에서는 <b>지금 그려진 두상+헤어</b>의 위끝을 재서 자로 쓴다.
+         새 상수가 아니라 이미 씬에 있는 것을 재는 것이고, 캡이나 커버리지가 좋아지면
+         자도 저절로 따라온다. 의상보다 먼저 재야 하므로 여기(옷 붙이기 직전)다. */
+      try{
+        const hb = new THREE.Box3().setFromObject(model3D.headGroup);
+        if(isFinite(hb.max.y)) state._model3DCrownY = hb.max.y;
+      }catch(e){ state._model3DCrownY = null; }
       const outfitMesh = await loadOutfitMeshMeasured(outfitRec.item, faceMetrics.widthFactor);
       model3D.headGroup.add(outfitMesh);
       // (2026-08-31 11차) 옷깃을 이제 봤으니 목을 그 구멍 기준으로 다시 짓는다.

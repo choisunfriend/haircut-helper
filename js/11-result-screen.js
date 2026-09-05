@@ -115,31 +115,50 @@ function getNeckBottomY(){
   }catch(e){ return RESULT_NECK_MESH_Y; }
 }
 const NECK_LEN_CM        = 8.0;    // 턱끝 → 옷깃선(목 길이). 성인 평균 근사, 실기기 튜닝 지점
-const FIGURE_HEADS       = 7.5;    // 전신 길이 = 두상 높이 × 이 값(성인 평균 7~8두신)
+const FIGURE_HEADS       = 7.0;    // 전신 길이 = 두상 높이 × 이 값
 /* ══════════════════════════════════════════════════════════════════
    신체 비율의 자 = <b>두상</b> (2026-09-05 사용자 지시)
    ─────────────────────────────────────────────────────────────────
    사용자: "왜 이걸 옷깃으로 봐? 우리가 지금 작업하는 게 두상이기 때문에 두상을
    기준으로 해서 신체비율을 잡도록 해." · "일반적으로 준수한 체형 있잖아."
+   이어서: "조금 비현실적인 거 같아.. 10등신쯤 되는 거 같은데. 1:7 정도로."
 
-   맞는 지적이고, 이 화면은 <b>이미 그렇게</b> 하고 있었다 — 위 FIGURE_HEADS가
-   그것이다. 문제는 3D 화면이 그 자를 안 쓰고 loadOutfitMeshFromOBJ 안의
-   TARGET_HEIGHT=4.0이라는 <b>고정값</b>으로 옷을 맞추고 있었다는 것이다.
-   머리는 사진에서 재는데 몸은 상수라, 두상이 크게 잡힌 사람일수록 머리만 커진다.
-   실기기에서 두상 높이가 1.22단위였으니 몸은 1.22×6.2≈7.6단위여야 하는데 4.0이었다
-   — 눈으로 본 "1/5두신"이 이 숫자 차이 그대로다.
+   맞는 지적이고, 이 화면은 <b>이미 그렇게</b> 하고 있었다 — FIGURE_HEADS가 그것이다.
+   3D 화면만 그 자를 안 쓰고 loadOutfitMeshFromOBJ 안의 TARGET_HEIGHT=4.0이라는
+   <b>고정값</b>으로 옷을 맞추고 있었다(4.9두신). 그걸 이 함수로 통일했다.
 
-   그래서 두 화면이 같은 함수를 부르게 한다. 새 상수는 없다 —
-   FIGURE_HEADS(7.5두신)와 headHeightMesh(잰 두상 높이)를 쓰던 식을 밖으로 꺼낸 것뿐이다.
-       전신    = 두상높이 × 7.5
-       몸 길이 = 전신 − (정수리 → 목 밑동)      ← 옷이 채워야 할 구간
-   랜드마크가 없어 잴 수 없으면 null을 돌려주고, 부르는 쪽이 옛 상수로 폴백한다.
+   ── 통일한 뒤에도 화면이 8.9두신이었던 이유 ─────────────────────────────
+   상수는 7.5인데 실측이 8.9였다(영상 96초: 정수리~턱 53px · 전신 474px).
+   <b>두상 한 칸의 정의가 두 화면에서 달랐다.</b> crownMeshY는 정면 사진의
+   <b>헤어 박스 위끝</b>이다 — 결과 화면은 사진을 그대로 합성하니 맞는 자지만,
+   3D 화면의 머리는 <b>메쉬</b>고 그 헤어 꼭대기는 사진보다 낮다. 1.19배 차이였고
+   7.5 × 1.19 = 8.9로 화면 숫자와 맞는다. 자가 실물보다 커서 몸이 그만큼 길어진 것이다.
+   그래서 crownY를 인자로 받는다 — 3D 화면은 씬에서 잰 값을 넣고(state._model3DCrownY),
+   결과 화면은 안 넣어 사진 기준을 그대로 쓴다. 두 화면이 각자 <b>자기가 그리는
+   머리</b>를 잰다.
+   ⚠ 7.5 → 7.0으로 내린 것은 위 자 수정과 <b>별개</b>다. 자만 고쳐도 8.9→7.5가 되고,
+     7.0은 거기서 사용자가 지정한 값이다. 둘을 한 번에 바꿨으므로, 화면이 7.0이
+     아니면 어느 쪽이 안 먹었는지 아래 [3D·비율] 로그로 갈린다.
 ══════════════════════════════════════════════════════════════════ */
-function personBodyLenMesh(){
+function personBodyLenMesh(crownY){
   const ref = getPersonScaleRef();
   if(!ref) return null;
-  const len = ref.headHeightMesh * FIGURE_HEADS - (ref.crownMeshY - getNeckBottomY());
-  return (isFinite(len) && len > 0.5) ? len : null;
+  const crown = (typeof crownY === 'number' && isFinite(crownY)) ? crownY : ref.crownMeshY;
+  const headH = crown - ref.chinMeshY;
+  if(!(headH > 0.3)) return null;
+  const len = headH * FIGURE_HEADS - (crown - getNeckBottomY());
+  if(!(isFinite(len) && len > 0.5)) return null;
+  console.log('[3D·비율] 두상 한 칸 ' + headH.toFixed(2) + '단위'
+    + (crownY != null ? ' (<b>씬 실측</b> 정수리 ' + crown.toFixed(2) + ')'
+                      : ' (사진 헤어박스 기준 — 결과 화면)')
+    + ' · 전신 ' + (headH*FIGURE_HEADS).toFixed(2) + '단위 = ' + FIGURE_HEADS + '두신'
+    + ' · 옷이 채울 길이 ' + len.toFixed(2) + '단위'
+    + (crownY != null && Math.abs(crown - ref.crownMeshY) > 0.02
+        ? '\n    사진 기준 정수리는 ' + ref.crownMeshY.toFixed(2) + ' — 씬과 '
+          + ((crown - ref.chinMeshY) / Math.max(1e-6, ref.crownMeshY - ref.chinMeshY)).toFixed(2)
+          + '배 차이. 이 배수가 곧 화면 두신이 상수에서 벗어나는 양입니다.'
+        : ''));
+  return len;
 }
 const FIGURE_FILL        = 0.94;   // 전신이 프레임 세로를 차지하는 비율(여백 6%)
 
