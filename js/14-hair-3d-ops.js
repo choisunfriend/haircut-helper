@@ -111,7 +111,9 @@ function diagFinal3DCoverage(positions){
     const CY = m.CY, bb = Math.max(1e-6, S.b);
     /* 밴드 경계는 지어내지 않고 SCALP_ZONES에서 파생한다(crownBandEdges와 동일). */
     const E = crownBandEdges(), NB = E.length - 1;
-    // 방위: 정면(|θ|≤0.375) · 옆(≤2.25) · 후면 — SECTION_CUT의 경계 그대로
+    // 방위: 정면(|θ|≤thFront) · 옆(≤thBack) · 후면 — SECTION_CUT의 경계 그대로
+    // (2026-09-05) 숫자를 주석에 박아두지 않는다 — 경계가 SCALP_ZONES에서 파생되므로
+    //   구역표를 고치면 주석만 조용히 낡는다(실제로 0.375/2.25가 그렇게 낡았다).
     const C = SECTION_CUT;
     const len = new Float64Array(NB*3);
     for(let i=0; i+5 < positions.length; i+=6){
@@ -122,7 +124,7 @@ function diagFinal3DCoverage(positions){
       const phi = Math.acos(Math.max(-1, Math.min(1, (my - CY) / bb)));
       let k = 0; while(k < NB-1 && phi >= E[k+1]) k++;
       const th = Math.abs(Math.atan2(mx, mz));
-      const s = th <= C.thFront ? 0 : (th <= C.thSide ? 1 : 2);
+      const s = th <= C.thFront ? 0 : (th <= C.thBack ? 1 : 2);
       len[k*3 + s] += d;
     }
     let tot = 0; for(let i=0;i<len.length;i++) tot += len[i];

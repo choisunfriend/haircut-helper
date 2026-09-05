@@ -271,20 +271,61 @@ const SECTION_3D = { on: true };   // false면 예전 동작(뷰별 2D 밴드 �
      |θ|=π(후면)    → nape.phiRange[1]   = 2.35   목덜미
    사이는 선형 보간. 이 선 <b>아래</b> 셀은 실측을 물어보지도 않고 밀도 0으로
    못박는다(est=3, "확정 대머리") — 사진이 뭐라 하든 두피가 아니기 때문이다. */
-const SCALP_LIMIT = (()=>{
-  const Z = SCALP_ZONES;
-  return [
-    [0,                             Z.front.phiRange[1]],
-    [Math.abs(Z.temple.thetas[0]),  Z.temple.phiRange[1]],
-    [Math.abs(Z.side.thetas[0]),    Z.side.phiRange[1]],
-    [Math.PI,                       Z.nape.phiRange[1]],
-  ].sort((a,b)=>a[0]-b[0]);
-})();
-// est 값: 0=실측 · 1=이웃추정 · 2=전체평균 · 3=두피 밖 · 4=정수리 보강
-const EST_OFFSCALP  = 3;
-const EST_CROWNFILL = 4;
-function scalpPhiMax(th){
-  const t = Math.abs(th), P = SCALP_LIMIT;
+/* ══════════════════════════════════════════════════════════════════
+   섹션 경계 정리 — <b>구역표가 선언한 폭</b>을 실제로 쓴다 (2026-09-05)
+   ─────────────────────────────────────────────────────────────────
+   사용자: "지금 머리를 보면 섹션구분이 여러번 수정하는 과정에서 뒤죽박죽이
+   되었어. 막 섞여있고."
+
+   맞다. 그리고 원인은 <b>경계를 만드는 규칙이 세 개</b>였다는 것이다. 전부
+   같은 SCALP_ZONES를 읽는데 읽는 방식이 서로 달랐다:
+     · SCALP_LIMIT  — phiRange의 <b>상한</b>을 θ로 보간   (두피 끝선)
+     · HEAD_PHI_BANDS — phiRange 값 <b>전부</b>를 모아 정렬 (실측 밴드)
+     · SECTION_CUT  — thetas의 <b>중점</b>만 사용, thetaSpread는 <b>안 읽음</b>
+   세 번째가 문제다. 구역표는 각 구역이 얼마나 <b>넓은지</b>를 thetaSpread로
+   이미 적어 두었는데(front ±0.95 · temple ±0.30 · side ±0.45 · occipital
+   ±1.40), 경계는 중심끼리의 중점으로 잘렸다. 폭이 크게 다른 이웃끼리 중점을
+   잡으면 넓은 쪽이 좁은 쪽으로 밀린다 — 실제로 이렇게 어긋나 있었다:
+     front  선언 ±54°  → 실제 컷 ±21°   (2026-08-11에 넓힌 0.95가 <b>안 먹었다</b>)
+     side   선언 52~103° → 실제 컷 60~129°  (후두부 26°를 사이드가 먹음)
+     occip  선언 100~180° → 실제 컷 129~180°
+   두피 면적으로 재면 front 7% · side 25%다. "프론트가 없고 사이드가 넘친다"는
+   8/08 보고가 <b>고쳐진 게 아니라 절반만 고쳐져 있었다</b>.
+
+   그리고 크라운 아랫선은 θ와 무관한 상수(0.60) 하나였다. 구역표는 구역마다
+   시작 높이를 따로 적어 두었는데(front 0.55 · temple 0.60 · side 0.95 ·
+   occipital 0.70) 그걸 안 쓰고 한 줄로 잘랐다. 그래서 정면에선 크라운이
+   헤어라인까지 내려오고 옆에선 위로 뜬다.
+
+   ── 고침: 규칙을 하나로 ──────────────────────────────────────────
+   경계는 전부 <b>같은 함수</b>(phiByTheta)로 만들고, 각 경계표는 SCALP_ZONES에서
+   그대로 읽는다. 지어낸 상수는 여전히 0개다. 달라지는 건 "무엇을 읽는가"뿐이다.
+     ① 두피 끝선   phiRange[1]  (기존 SCALP_LIMIT — 값·동작 그대로)
+     ② 크라운 아랫선 phiRange[0]  ← 새로 읽음(상수 0.60을 대체)
+     ③ θ 경계      이웃 두 구역이 선언한 <b>바깥끝·안끝의 중점</b>
+                   = (θa+spread_a + θb−spread_b)/2
+   ③이 핵심이다. 중심의 중점이 아니라 <b>폭이 만나는 자리</b>라, thetaSpread를
+   고치면 경계가 따라 움직인다(8/11의 front 0.68→0.95가 이제 실제로 먹는다).
+
+   결과(두피 면적, 균등샘플 300만점):
+     crown 20.3→28.0% · front 7.2→14.5% · temple 14.6→5.7%
+     side 24.8→16.9% · occipital 14.5→21.0% · nape 18.7→13.9%
+
+   ── 같이 지운 것 ────────────────────────────────────────────────
+   옛 resolveSection3D의 "네이프 높이인데 앞쪽이면 side(구레나룻)" 가지는
+   <b>도달할 수 없는 코드</b>였다. 그 가지가 열리려면 θ≤1.05에서 phi≥1.55여야
+   하는데, 같은 파일의 두피 끝선이 그 θ에서 이미 phi 1.40에서 끝난다(표본
+   300만점 중 0개). 구레나룻은 SCALP_LIMIT이 이미 막고 있었다. 네이프는
+   이제 <b>뒤쪽(θ>thBack)에서만</b> 성립하고, 목선 높이는 occipital 상한과
+   nape 하한의 중점(1.60)이다 — 겹침 구간을 반으로 가른 것이라 이것도 데이터다.
+
+   되돌리기: SECTION_PARTITION.v2 = false. 옛 경계값으로 돌아간다(A/B용).
+══════════════════════════════════════════════════════════════════ */
+const SECTION_PARTITION = { v2: true };
+/* θ(0~π)에 대한 phi 경계표를 선형 보간한다. 두피 끝선·크라운 아랫선이 같은
+   골격을 쓴다(원칙 (3) 단일 출처 — 예전엔 scalpPhiMax 안에 이 루프가 박혀 있었다). */
+function phiByTheta(table, th){
+  const t = Math.abs(th), P = table;
   if(t <= P[0][0]) return P[0][1];
   for(let i=1;i<P.length;i++){
     if(t <= P[i][0]){
@@ -294,33 +335,94 @@ function scalpPhiMax(th){
   }
   return P[P.length-1][1];
 }
-const SECTION_CUT = (()=>{
+/* 구역의 대표 방위(|θ|). crown은 'full'이라 대상이 아니다. */
+const _zoneTh = z => Math.abs(z.thetas[0]);
+const SCALP_LIMIT = (()=>{                 // ① 두피 끝선 — phiRange 상한
   const Z = SCALP_ZONES;
-  const mid = (a, b2)=> (a + b2) / 2;
+  return [
+    [0,                 Z.front.phiRange[1]],
+    [_zoneTh(Z.temple), Z.temple.phiRange[1]],
+    [_zoneTh(Z.side),   Z.side.phiRange[1]],
+    [Math.PI,           Z.nape.phiRange[1]],
+  ].sort((a,b)=>a[0]-b[0]);
+})();
+const CROWN_EDGE = (()=>{                  // ② 크라운 아랫선 — phiRange 하한
+  const Z = SCALP_ZONES;
+  return [
+    [0,                 Z.front.phiRange[0]],      // 0.55 이마 쪽 두정선
+    [_zoneTh(Z.temple), Z.temple.phiRange[0]],     // 0.60
+    [_zoneTh(Z.side),   Z.side.phiRange[0]],       // 0.95 옆은 크라운이 더 내려온다
+    [Math.PI,           Z.occipital.phiRange[0]],  // 0.70
+  ].sort((a,b)=>a[0]-b[0]);
+})();
+// est 값: 0=실측 · 1=이웃추정 · 2=전체평균 · 3=두피 밖 · 4=정수리 보강
+const EST_OFFSCALP  = 3;
+const EST_CROWNFILL = 4;
+function scalpPhiMax(th){ return phiByTheta(SCALP_LIMIT, th); }
+function crownPhiMax(th){
+  return SECTION_PARTITION.v2 ? phiByTheta(CROWN_EDGE, th) : SCALP_ZONES.crown.phiRange[1];
+}
+const SECTION_CUT = (()=>{                 // ③ θ 경계 — 선언한 폭이 만나는 자리
+  const Z = SCALP_ZONES;
+  const outer = z => _zoneTh(z) + z.thetaSpread;   // 구역의 바깥 끝
+  const inner = z => _zoneTh(z) - z.thetaSpread;   // 구역의 안쪽 끝
+  const meet  = (a, b2)=> (outer(a) + inner(b2)) / 2;
+  const midC  = (a, b2)=> (_zoneTh(a) + _zoneTh(b2)) / 2;   // v2=false일 때의 옛 규칙
+  const M = SECTION_PARTITION.v2 ? meet : midC;
   return {
-    crownPhi: Z.crown.phiRange[1],                       // 0.60
-    napePhi:  Z.nape.phiRange[0],                        // 1.55
-    thFront:  mid(Z.front.thetas[0], Z.temple.thetas[0]),   // 0/0.75 → 0.375
-    thTemple: mid(Z.temple.thetas[0], Z.side.thetas[0]),    // 0.75/1.35 → 1.05
-    thSide:   mid(Z.side.thetas[0], Z.occipital.thetas[0]), // 1.35/π   → 2.25
+    thFront:  M(Z.front,  Z.temple),   // v2 0.700(40.1°) · 옛 0.375(21.5°)
+    thTemple: M(Z.temple, Z.side),     // v2 0.975(55.9°) · 옛 1.050(60.2°)
+    thBack:   M(Z.side,   Z.occipital),// v2 1.771(101.5°) · 옛 2.246(128.7°)
+    napePhi:  SECTION_PARTITION.v2
+      ? (Z.occipital.phiRange[1] + Z.nape.phiRange[0]) / 2   // 1.60 — 겹침 구간의 중점
+      : Z.nape.phiRange[0],                                   // 1.55
   };
 })();
+/* 두피의 <b>빈틈없는 분할</b>. 미용사가 섹셔닝하는 순서 그대로:
+   ① 정수리를 먼저 뜬다 → ② 옆선으로 가른다 → ③ 목선 아래를 따로 뜬다.
+   각 점은 정확히 한 구역에 속한다(최근접 폴백 없음). */
 function resolveSection3D(p, CY, b){
   if(!p || !(b > 1e-6)) return null;
   const ny = Math.max(-1, Math.min(1, (p.y - CY) / b));
   const phi = Math.acos(ny);
   const th  = Math.abs(Math.atan2(p.x, p.z));   // 0=정면(+Z) · π=후면. 좌우 대칭이라 절댓값.
   const C = SECTION_CUT;
-  if(phi < C.crownPhi) return 'crown';          // ① 정수리를 먼저 뜬다
-  if(phi >= C.napePhi){                         // ③ 목선 아래
-    /* 목선 높이인데 <b>앞쪽</b>이면 그건 목이 아니라 구레나룻·귀 앞이다 —
-       네이프가 얼굴 옆까지 감싸면 네이프 슬라이더가 구레나룻을 자른다. */
-    return (th > C.thTemple) ? 'nape' : 'side';
+  if(!SECTION_PARTITION.v2){
+    /* 옛 판정 — <b>순서까지</b> 그대로여야 A/B가 성립한다. 상수만 되돌리고 순서를
+       새 것으로 두면 side 25%가 33%로 나온다(검증 하네스에서 잡힌 실수다). */
+    if(phi < crownPhiMax(th)) return 'crown';   // v2=false면 이 함수가 옛 상수 0.60을 낸다
+    if(phi >= C.napePhi) return (th > C.thTemple) ? 'nape' : 'side';
+    if(th <= C.thFront)  return 'front';
+    if(th <= C.thTemple) return 'temple';
+    if(th <= C.thBack)   return 'side';
+    return 'occipital';
   }
+  if(phi < crownPhiMax(th)) return 'crown';     // ① 정수리(구역표가 안 가져간 잔여)
   if(th <= C.thFront)  return 'front';          // ② 옆선으로 가른다
   if(th <= C.thTemple) return 'temple';
-  if(th <= C.thSide)   return 'side';
-  return 'occipital';
+  if(th <= C.thBack)   return 'side';
+  return phi >= C.napePhi ? 'nape' : 'occipital';   // ③ 뒤쪽만 목선으로 한 번 더
+}
+
+/* 분할이 두피를 어떻게 나누는가 — 사람과 무관한 <b>기하만의</b> 값이라 사진 없이도
+   돌아간다(경계를 고치고 바로 확인하는 자리). cos φ 균등 = 구면 면적 균등. */
+function sectionAreaShare(N){
+  N = N || 200000;
+  const cnt = {}, CY = 0, b = 1;
+  /* 두 축을 <b>서로 다른</b> 저불일치 수열로 뽑는다. 처음엔 둘 다 i에서 만들었다가
+     (황금각 · hashFract(i·0.75)) 검증에서 잡혔다 — 같은 i로 만든 두 수열은 상관이
+     남아서, 무작위 표본이 side 25%인 자리를 33%로 읽었다. 라디컬 인버스는 축이 다르다. */
+  const vdc = i => { let b2 = 0, f = 0.5; while(i > 0){ f *= 0.5; b2 += f * (i & 1) * 2; i >>= 1; } return b2; };
+  for(let i=0;i<N;i++){
+    const th  = (i * 2.399963229728653) % (2*Math.PI) - Math.PI;   // 황금각 — 결정적
+    const cm  = Math.cos(scalpPhiMax(th));
+    const phi = Math.acos(1 - vdc(i + 1) * (1 - cm));
+    const s = resolveSection3D({ x: Math.sin(phi)*Math.sin(th), y: CY + b*Math.cos(phi),
+                                 z: Math.sin(phi)*Math.cos(th) }, CY, b);
+    if(s) cnt[s] = (cnt[s]||0) + 1;
+  }
+  return ['crown','front','temple','side','occipital','nape']
+    .map(k => [k, Math.round(100*(cnt[k]||0)/N)]);
 }
 
 /* 뿌리 3D 점 → 표면 셀 번호. forEachHeadSurfaceCell의 좌표식을 그대로 역산한다
@@ -726,7 +828,7 @@ function pruneOverlappedRoots(strands, rootField, hullW, hullD, bucketOfY, CY, b
       const phi = (pi + 0.5) / NP * Math.PI;
       const th  = Math.abs((ti + 0.5) / NT * 2*Math.PI - Math.PI);
       let k = 0; while(k < NBB-1 && phi >= EE[k+1]) k++;
-      const s = th <= C2.thFront ? 0 : (th <= C2.thSide ? 1 : 2);
+      const s = th <= C2.thFront ? 0 : (th <= C2.thBack ? 1 : 2);
       const j = key(k, s);
       nCell[j]++;
       if(est[ci] === EST_OFFSCALP){ nOff[j]++; continue; }   // 해부학상 두피 아님 — 정상
@@ -1698,6 +1800,18 @@ function buildHairStrandsFromPaths(){
       + (_sec3DHist._miss ? ' · 구역 밖 ' + _sec3DHist._miss + '개(2D 라벨 승계)' : '')
       + '\n    ↑ 뷰별 [진단·섹션분포]와 달리 <b>하나</b>만 나옵니다 — 섹션은 뷰가 아니라 두피의 성질입니다.'
       + ' SECTION_3D.on=false 면 예전(뷰별 2D 라벨) 동작.');
+    /* (2026-09-05) 위 %는 <b>가닥 수</b>고 아래 %는 <b>두피 면적</b>이다. 둘을 나란히
+       두는 이유: 어긋나면 그건 경계 문제가 아니라 <b>뿌리 분포</b> 문제라는 뜻이라
+       고칠 자리가 다르다(면적 14%인데 가닥 2%면 그 구역에 뿌리를 덜 심은 것). */
+    const D = r => (r*180/Math.PI).toFixed(0) + '°';
+    const C = SECTION_CUT;
+    console.log('[3D·섹션경계] SCALP_ZONES에서 파생 (v2=' + SECTION_PARTITION.v2 + ')'
+      + '\n    θ  front|temple ' + D(C.thFront) + ' · temple|side ' + D(C.thTemple)
+      + ' · side|뒤 ' + D(C.thBack)
+      + '\n    φ  크라운 아랫선 ' + [0, _zoneTh(SCALP_ZONES.temple), _zoneTh(SCALP_ZONES.side), Math.PI]
+          .map(t => D(t) + '→' + D(crownPhiMax(t))).join(' · ')
+      + ' | 네이프선 ' + D(C.napePhi)
+      + '\n    두피 면적 ' + sectionAreaShare().map(r => r[0] + ' ' + r[1] + '%').join(' · '));
   }
   console.log('[3D] 헐 기반 옮기기:', total, '가닥 (실측 뷰:', names.join(','),
     '/ 거울 채움:', jobs.filter(j=>j.mirrored).map(j=>j.angle).join(',') || '없음', ')');

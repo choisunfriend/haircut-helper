@@ -812,10 +812,32 @@ function projectHair3DToView(ctx, fit, angle, maskInf){
      경계 0.55는 지어낸 값이 아니라 위 두 진단이 이미 쓰는 첫 밴드의 상한이다. */
   const CROWN_BAND = 0.55;
   let cwN = 0, cwDrop = 0, cwPts = 0, cwVis = 0;
+  /* ── [진단] 가닥의 <b>깊이 폭</b> — 화가 알고리즘이 표현할 수 있는가 (2026-09-05)
+     ─────────────────────────────────────────────────────────────────────
+     사용자: "뿌리가 뒤통수이고 끝은 뺨 앞으로 나오는 경우는 디렉션이 잘못
+     잡힌 거 아냐?"
+
+     맞다. 그래서 이 표는 <b>정렬 얘기가 아니라 방향 얘기</b>다. 겹 순서는
+     가닥당 스칼라 하나(depth)로 정하는데, 그 하나로 대표가 되려면 가닥 안에서
+     깊이가 별로 안 변해야 한다. 곧게 떨어지는 머리는 그렇다 — 끝이 뿌리 바로
+     아래라 폭이 거의 0이다. 폭이 크게 나오는 정당한 경우는 <b>앞으로 넘긴</b>
+     것(앞머리·가르마)과 두상을 벗어나 앞으로 흘러내리는 긴 머리뿐이다.
+     그 외에 폭이 크면 그건 정렬의 한계가 아니라 <b>리프트나 결 정렬이 방향을
+     잘못 잡은 것</b>이고, 겹 순서를 고쳐도 안 고쳐진다.
+
+     그래서 <b>섹션별로</b> 나눈다 — 어느 칸이 튀느냐가 곧 어느 버그냐다:
+       front·crown이 크다      → 정상(앞머리·가르마). 남는 건 정렬 방식.
+       occipital·nape가 크다   → <b>방향 오류</b>. buildHairStrandsFromPaths의
+                                 두상 밖 z 결정, 또는 alignStrandPtsToField3D.
+     자는 지어내지 않는다 — 두상 자신의 <b>깊이 반경</b>(c)으로 나눈다. 1.0이면
+     "가닥 하나가 두상 앞뒤를 통째로 가로지른다"는 뜻이라 눈금이 말이 된다. */
+  const _spanBySec = {};
+  let _spanC = 1;
+  try{ const E = getHeadEllipsoid(); if(E && E.c > 1e-6) _spanC = E.c; }catch(e){}
   const _rootPhi = (p)=> Math.atan2(Math.hypot(p.x, p.z), p.y - model.CY);
   for(let si=0; si<adj.length; si++){
     const st = adj[si];
-    const pts = st.pts; let dsum=0, dmax=-Infinity, vis=0; const cpts=[];
+    const pts = st.pts; let dsum=0, dmax=-Infinity, dmin=Infinity, vis=0; const cpts=[];
     /* 되쏜 <b>이미지 좌표</b>도 같이 들고 간다 — 원본 픽셀색을 여기서 읽기
        때문(sampleProjectedStrandColors). 캔버스 좌표(cpts)로는 못 읽는다:
        photoRGB는 사진 좌표계에 있다. */
@@ -829,6 +851,7 @@ function projectHair3DToView(ctx, fit, angle, maskInf){
       cpts.push({ x: toCX(pr.ix), y: toCY(pr.iy) });
       ipts.push({ x: pr.ix, y: pr.iy });
       dsum += pr.depth; if(pr.depth > dmax) dmax = pr.depth;
+      if(pr.depth < dmin) dmin = pr.depth;   // (2026-09-05) 깊이 폭 진단 — 아래 _spanBySec
       const v = viewPointVisible(pr, occ, maskInf);
       vpt.push(v); if(v) vis++;
     }
@@ -893,6 +916,15 @@ function projectHair3DToView(ctx, fit, angle, maskInf){
     const runs = VIEW_CULL.trimHidden ? visibleRuns(vpt) : [[0, cpts.length-1]];
     if(!runs.length) continue;                  // 판정상 남았지만 그릴 구간이 없다
     hidPts += (pts.length - vis); hidAll += pts.length;
+    /* 폭은 <b>그리기로 결정된</b> 가닥만 센다 — 컬링·트리밍으로 빠진 것까지 세면
+       화면에 없는 가닥이 표를 흔든다. */
+    {
+      const sc = st.sec || 'crown';
+      const e = _spanBySec[sc] || (_spanBySec[sc] = { n:0, sum:0, big:0, max:0 });
+      const sp = (dmax - dmin) / _spanC;
+      e.n++; e.sum += sp; if(sp > e.max) e.max = sp;
+      if(sp >= DEPTH_SORT.bigSpan) e.big++;
+    }
     projected.push({
       cpts, runs, depth, color: st.color, colors: pxCols,
       w: roles[rid].w,                            // 레이어(굵기) 배정
@@ -967,7 +999,8 @@ function projectHair3DToView(ctx, fit, angle, maskInf){
                                                 yTop: faceSil.yTop, yBot: faceSil.yBot, dir: faceSil.dir,
                                                 fit: faceSil.fit } : null,
                            crown: { n: cwN, drop: cwDrop, pts: cwPts, vis: cwVis },
-                           rootDev: summarizeRootDev(rootDev, projected0.length, maskInf) });
+                           rootDev: summarizeRootDev(rootDev, projected0.length, maskInf),
+                           spanBySec: _spanBySec, spanC: _spanC });
 
   // 다발 속 미세 틴트 — 가닥마다 다른 색을 주되 팔레트 색에서 벗어나진 않게.
   // FORCED_HAIR_COLOR(검정 지정 등)일 땐 상한 1.06 — tintColor가 bright>1에서
@@ -1129,6 +1162,7 @@ function logStrandRender(angle, m){
     rawTotal: Math.round(m.rawTotal), target: Math.round(m.targetStrands),
     roles: m.roles.map(r=>({ id:r.id, w:+r.w.toFixed(2), wCss:+css(r.w), n:Math.round(r.n) })),
     rootDev: m.rootDev,
+    spanBySec: m.spanBySec,
   };
   if(key === _bundleLogKey) return;
   _bundleLogKey = key;
@@ -1139,6 +1173,27 @@ function logStrandRender(angle, m){
       + ` · 원본 두피선보다 <b>위</b>(바깥)에 찍힌 뿌리 ${d.above}/${d.n}개`
       + (d.offMask ? ` · 원본에 머리가 없는 컬럼 ${d.offMask}개` : ``)
       + ` ← 음수일수록 머리가 바깥에서 시작한다는 뜻`);
+  }
+  if(m.spanBySec){
+    /* [깊이 폭] 겹 순서는 가닥당 스칼라 하나로 정한다 — 그게 대표가 되는지를 잰다.
+       읽는 법은 <b>어느 섹션이 큰가</b>다. 위 _spanBySec 구역 주석 참고. */
+    const rows = ['crown','front','temple','side','occipital','nape']
+      .map(k => [k, m.spanBySec[k]]).filter(r => r[1] && r[1].n);
+    if(rows.length){
+      const line = rows.map(([k,e]) =>
+        k + ' ' + (e.big ? '<b>' + Math.round(100*e.big/e.n) + '%</b>' : '0%')
+          + '(평균 ' + (e.sum/e.n).toFixed(2) + ' 최대 ' + e.max.toFixed(2) + ' · ' + e.n + '가닥)'
+      ).join('\n      ');
+      const bad = rows.filter(([k,e]) => (k === 'occipital' || k === 'nape') && e.big/e.n > 0.15);
+      console.log(`[${angle}] 깊이 폭 — 가닥 하나가 앞뒤로 얼마나 걸쳐 있나`
+        + ` (두상 깊이반경 ${m.spanC.toFixed(2)}로 나눈 값 · 굵은 %가 ${DEPTH_SORT.bigSpan} 넘는 비율)`
+        + `\n      ${line}`
+        + `\n    front·crown이 크면 정상입니다 — 앞으로 넘긴 머리라 원래 앞뒤로 걸칩니다.`
+        + ` 남는 문제는 <b>겹 순서</b>고, 볼 자리는 slice 키와 정렬 단위입니다.`
+        + `\n    occipital·nape가 크면 <b>방향 오류</b>입니다 — 뒤통수에서 난 머리가 앞으로 나올 이유가 없습니다.`
+        + ` 겹 순서를 고쳐도 안 고쳐지고, 볼 자리는 buildHairStrandsFromPaths의 두상 밖 z 결정과 alignStrandPtsToField3D입니다.`
+        + (bad.length ? `\n    ⚠ ${bad.map(r=>r[0]).join('·')} 가 문턱을 넘었습니다 — 정렬이 아니라 방향부터 보십시오.` : ``));
+    }
   }
   console.log(
     `[${angle}] 가닥 렌더(원본 결 보기와 동일 규칙) — 헤어폭 ${m.spanX.toFixed(0)}px(화면 ${css(m.spanX)}) · `

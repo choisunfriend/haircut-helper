@@ -249,7 +249,14 @@ function computeCutLayerDelta(sec, rootY, rootSpan, maxRootY){
 const CUT2D_ENGINE = { on: false };
 /* 겹 정렬 키 — true면 <b>뿌리 깊이</b>(길이를 바꿔도 안 튄다), false면 예전
    평균 깊이. projectHair3DToView의 6차 주석 참고. */
-const DEPTH_SORT = { byRoot: true };
+/* bigSpan — "이 가닥은 깊이 스칼라 하나로 대표할 수 없다"의 문턱. 가닥의 깊이
+   폭을 두상 깊이 반경(c)으로 나눈 값이고, 0.5면 <b>가닥 하나가 두상 앞뒤의
+   절반을 가로지른다</b>는 뜻이다. 왜 0.5인가 — 이건 실측이 아니라 <b>기하가
+   주는 눈금</b>이다. 뿌리에서 곧게 떨어지는 가닥은 폭이 0에 수렴하고, 두상을
+   반 바퀴 감아 도는 가닥이라야 c의 절반을 넘는다. 즉 0.5는 "돌아 나왔다"의
+   경계이지 튜닝값이 아니다. 실기기 [깊이 폭] 표가 이 문턱에서 갈리지 않으면
+   (전부 0%거나 전부 100%면) 그때 표를 보고 옮긴다. */
+const DEPTH_SORT = { byRoot: true, bigSpan: 0.5 };
 const PROJ_FALLBACK = { n: 0, lastAngle: null };   // ⓒ가 실제로 도는가
 function neutralSectionsForRender(){
   const out = {};
