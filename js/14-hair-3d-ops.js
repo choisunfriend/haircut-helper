@@ -545,8 +545,41 @@ function curlStrand3D(pts, curlAmt, waveT, curlDir){
    "예외의 예외 대신 깊이 버퍼"라고 미리 적어 둔 그 자리다.
    depthEps — 두개골 반깊이 대비 허용 오차. 뿌리는 두피에 붙어 있어 두개골
    앞면과 거의 같은 깊이라, 0이면 수치 오차로 <b>뿌리가 깜빡인다</b>. */
+/* ── (2026-09-05 2차) 깊이 버퍼를 <b>목·어깨에도</b> 준다 ────────────────────
+   사용자: "photoOverrides 껐을 때야 … 이거 하고 나서 depthBuffer 했는데
+   그건 변화가 없어."
+
+   변화가 없는 게 맞다. 9/05의 깊이 버퍼는 occ.frontZ 하나뿐이고, 그건
+   <b>두개골 타원만</b> 푼다. 그런데 그 타원은 getDisplaySkullEllipsoid =
+   두피면이라 실기기에서 a=0.503이고, 머리카락은 헐(a=0.704)에 있다.
+   옆머리는 그 그림자 <b>밖</b>으로 투영되므로 판별식이 음수 → frontZ가 null →
+   깊이 버퍼가 <b>한 번도 안 걸린다</b>. 켜든 끄든 같은 그림인 이유가 이것이다.
+
+   그러면 실제로 자르고 있는 건 아래 예전 경로다:
+       if(pr.depth >= 0) return true;
+       if(!occ.covers(lx, ly, my)) return true;
+       if(photoOverrides && 사진이 머리라고 함) return true;   ← 지금 꺼져 있음
+       return false;
+   covers의 <b>목·어깨 가지</b>에는 깊이가 없다 — |lx| ≤ half 하나뿐이고,
+   interpolateBands가 마지막 밴드(어깨)로 클램프하므로 그 그림자가 화면 아래
+   끝까지 서 있다. 턱 아래로 내려온 사이드·템플 가닥은 z가 0 근처에서 부호만
+   흔들리는데, 부호가 음수로 떨어진 점을 trimHidden이 점 단위로 잘라낸다 →
+   <b>턱선 아래부터 시작되는 세로 틈과 톱니 밑단</b>. 증상이 턱 위에서는 안
+   보이고 턱 아래에서만 보이는 이유가 neckTopY 그 한 줄이다.
+
+   고침은 8/18 j가 적어 둔 그대로 <b>깊이 버퍼</b>인데, 붙일 자리가 두개골이
+   아니라 목이었다. 단면 타원(반폭 w · 반깊이 d)을 뷰로 돌린 2×2 행렬
+   M = [[R0·w, R2·d],[R6·w, R8·d]] 에서 lz를 소거하면 지금 covers가 쓰는
+   half² = P = u·u 가 그대로 나오고, 소거 대신 lz에 대해 풀면 앞면이 닫힌 해로
+   나온다(두개골 frontZ와 <b>같은 절차</b> · 새 상수 없음).
+
+   neckRimMin — rim 가드. 실루엣 가장자리에서는 단면 두께가 0으로 수렴해서
+   깊이 판정이 성립하지 않는다(가릴 두께가 없는데 부호로 자르면 얼룩이 된다).
+   국소 반두께가 이 비율 밑이면 "여긴 가리는 게 없다"로 본다.
+   되돌리기: VIEW_CULL.neckDepth = false (9/05 1차와 글자 그대로 같은 동작) */
 const VIEW_CULL = { mode: 'anyVisible', trimHidden: true, photoOverrides: false,
-                    depthBuffer: true, depthEps: 0.04 };   // 'anyVisible' | 'anyFacing' | 'mean'(예전)
+                    depthBuffer: true, depthEps: 0.04,
+                    neckDepth: true, neckRimMin: 0.15 };   // 'anyVisible' | 'anyFacing' | 'mean'(예전)
 
 /* 이 뷰에서 <b>가리는 몸</b>(두상+목·어깨)의 직교투영 그림자 (2026-08-18 h).
    가리는 것은 두 조각이고 <b>둘 다 이미 실측돼 있다</b>(새 상수 없음):
@@ -581,6 +614,10 @@ function makeViewOccluder(cal){
     let neckTopY = null;
     try{ neckTopY = headPhiToMeshY(HEAD_PHI_BANDS[HEAD_PHI_BANDS.length-1]); }catch(e){}
     const A00 = A(0,0), A01 = A(0,1), A11 = A(1,1);
+    /* neckFrontZ가 목 단면을 뷰로 돌릴 때 쓰는 R의 (x,z)↔(lx,lz) 네 항.
+       cw/sw는 covers가 쓰던 yaw 전용 근사이고, 이쪽은 같은 R에서 직접 읽는다 —
+       yaw만이면 두 식이 정확히 같은 값으로 환원된다(P = half²). */
+    const R0 = R[0], R2 = R[2], R6 = R[6], R8 = R[8];
     const zEps = E.c * VIEW_CULL.depthEps;
     return {
       covers(lx, ly, my){
@@ -591,6 +628,32 @@ function makeViewOccluder(cal){
         if(!n || !(n.halfWidth > 0)) return false;
         const half = Math.hypot(n.halfWidth*cw, (n.halfDepth||n.halfWidth)*sw);
         return Math.abs(lx) <= half;                                // 목·어깨 그림자 안
+      },
+      /* 이 화면 위치에서 <b>목·어깨의 앞면</b>이 어느 깊이에 있나 (2026-09-05 2차).
+         두개골 frontZ와 같은 절차다 — covers가 소거한 것을 lz에 대해 풀 뿐이다.
+           단면 타원 (x,z) = (w·cosθ, d·sinθ)
+           뷰 좌표 (lx, lz) = M·(cosθ, sinθ),  M = [[R0·w, R2·d],[R6·w, R8·d]]
+         |(cosθ,sinθ)| = 1 이므로 (lx,lz)는 타원 위에 있고, lz에 대해 풀면
+           lz = (S·lx ± |detM|·√(P − lx²)) / P,   P = u·u,  S = u·v,  u,v = M의 행
+         P는 covers의 half²와 <b>같은 값</b>이고(yaw만이면 w²cos²+d²sin²로 환원),
+         카메라 쪽 근(+)이 앞면이다. R을 직접 읽으므로 pitch·roll도 따라온다. */
+      neckFrontZ(lx, my){
+        if(!VIEW_CULL.neckDepth) return null;
+        if(neckTopY == null || my > neckTopY) return null;          // 두상 옆·위 — 목이 아니다
+        let n = null;
+        try{ n = interpolateNeckCrossSection(my); }catch(e){ return null; }
+        if(!n || !(n.halfWidth > 0)) return null;
+        const w = n.halfWidth, d = (n.halfDepth || n.halfWidth);
+        const P = R0*R0*w*w + R2*R2*d*d;                            // = half²
+        if(!(P > 1e-12)) return null;
+        const q = P - lx*lx;
+        if(!(q > 0)) return null;                                   // 그림자 밖 = 가릴 것 없음
+        const rq = Math.sqrt(q);
+        const dM = Math.abs((R0*R8 - R2*R6) * w * d);               // |det M|
+        const hHalf = dM * rq / P;                                  // 이 자리의 <b>반두께</b>
+        if(hHalf < VIEW_CULL.neckRimMin * d) return null;           // rim — 두께가 없으면 못 가린다
+        const S = R0*R6*w*w + R2*R8*d*d;
+        return (S*lx + dM*rq) / P - d*VIEW_CULL.depthEps;
       },
       /* 이 화면 위치에서 <b>두개골의 앞면</b>이 어느 깊이에 있나 (2026-09-02 7차).
          그림자 안이 아니면 null(가릴 두개골이 없다).
@@ -656,7 +719,17 @@ function viewPointVisible(pr, occ, maskInf){
          && isHairPixelAt(maskInf, pr.ix, pr.iy)) return true;
       return false;                                   // 두개골 안/뒤 = 안 보임
     }
-    /* 두개골 그림자 밖 — 목·어깨는 아래 예전 경로가 그대로 판정한다. */
+    /* 두개골 그림자 밖 — 아래 목·어깨 깊이가 이어받는다. */
+  }
+  /* ── (2026-09-05 2차) 목·어깨도 <b>깊이</b>로 판정한다 (VIEW_CULL 배너) ────
+     두개골 타원은 두피면(a≈0.50)이라 옆머리(헐 a≈0.70)가 그림자 밖으로 나간다 —
+     그래서 위 블록은 이 가닥들을 한 번도 안 만난다. 실제로 자르던 것은 아래
+     covers의 목·어깨 가지이고, 거기엔 깊이가 없어서 z 부호만으로 잘라 왔다.
+     여기서 같은 닫힌 해를 주면 "목·어깨 <b>뒤</b>인 것"만 사라진다.
+     neckDepth=false면 이 블록이 통째로 빠져 9/05 1차와 같은 동작이 된다. */
+  if(VIEW_CULL.neckDepth && occ && occ.neckFrontZ){
+    const nz = occ.neckFrontZ(pr.lx, pr.my);
+    if(nz != null) return pr.depth >= nz;
   }
   if(pr.depth >= 0) return true;                 // 카메라 쪽 반구는 언제나 보임(예전과 동일)
   if(!occ) return false;
