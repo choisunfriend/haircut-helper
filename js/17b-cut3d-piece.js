@@ -756,11 +756,16 @@ function adjustStrandGeom(st, lenOverride, uni){
      ⚠ 템플·사이드는 <b>안 건드린다</b>. 옆머리는 얼굴을 가로지르는 게 아니라
        얼굴 <b>옆으로</b> 떨어지는 것이고, 여기 걸면 관자가 눈썹에서 멈춘다
        (사용자: "템플은 눈썹 아래로는 안 내려오고"). */
+  /* (2026-09-05) 선은 이제 <b>섹션당 하나</b>다 — 크라운은 눈썹, 프론트는
+     눈높이(MQ_FRINGE.crownLine 배너). 인자를 안 넘기면 예전처럼 한 선이다. */
   if(st.mannequin && (st.sec === 'front' || st.sec === 'crown')){
-    const yLine = fringeLineY();
+    const yLine = fringeLineY(st.sec);
     if(yLine != null){
       let E = null; try{ E = getHeadEllipsoid(); }catch(e){}
-      if(E) pts = mqTrimAtFringeLine(pts, yLine, E);
+      /* 크라운은 <b>방향을 안 보고</b> 자른다(2026-09-05 2차) — 얼굴 앞만
+         자르면 옆·뒤로 흘러내린 크라운이 남아 절반만 걸린다. */
+      const all = (st.sec === 'crown') && MQ_FRINGE.crownLine && MQ_FRINGE.crownAllAround;
+      if(E || all) pts = mqTrimAtFringeLine(pts, yLine, E, all);
     }
   }
   pts = curlStrand3D(pts, curlAmt, ((typeof sec.wave === 'number') ? sec.wave : 50)/100,

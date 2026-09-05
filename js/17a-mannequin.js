@@ -117,6 +117,39 @@ const MQ_FRINGE = {
      되돌리기: lineGain = 1, lineFloorFaceFrac = 0 (5차 동작) */
   lineGain:          0.75,
   lineFloorFaceFrac: 0.40,
+  /* ── 크라운은 <b>자기 선</b>을 쓴다 · 눈썹 (2026-09-05 사용자 지시) ─────────
+     사용자: "마네킹모드에서 크라운 섹션 헤어가닥이 너무 내려와 있는데, 눈썹
+     높이 정도로 조정해줘."
+     지금까지 선은 <b>하나</b>였다(프론트가 주인, 크라운 지분 0.20 — fringeLineY
+     배너). 그래서 크라운 가닥이 프론트와 같은 눈높이까지 내려왔고, 뿌리가 더
+     뒤에 있는 만큼 얼굴 앞을 <b>길게</b> 가로질러 화면에서 제일 무겁게 보인다.
+     실제 시술도 크라운을 앞으로 당겨 자를 때는 프론트보다 <b>짧게</b> 둔다 —
+     그래야 위층이 뜨고 앞머리에 층이 생긴다. 그래서 크라운만 선을 하나 더 긋는다.
+     ⚠ "일자가 깨진다"는 fringeLineY의 경고는 <b>여전히 유효</b>하다. 그건
+       가닥마다 제 비율을 쓰지 말라는 말이고, 여기서 늘어난 선은 <b>섹션당
+       하나</b>다(프론트 한 줄 · 크라운 한 줄). 프론트끼리는 여전히 일자다.
+     · crownLine    — 끄면 예전처럼 프론트와 한 선을 쓴다(되돌리기 스위치)
+     · crownRiseFrac 0.18 — 눈(CY)에서 <b>위로</b> E.b의 이 비율 = 눈썹.
+       새 자가 아니라 mannequinHasFringe가 이미 쓰던 yBrow의 그 값이다
+       (이제 양쪽이 mqBrowY 하나를 본다 — 두 벌이 되지 않게).
+     · crownAllAround — <b>크라운은 앞머리만이 아니다</b>(2026-09-05 2차 지시:
+       "크라운은 앞머리만 말하는 게 아니야. 크라운 전체적으로 눈썹라인 위로").
+       1차에서는 선을 그어 놓고 <b>얼굴 앞을 지나는 가닥만</b> 잘랐다
+       (mqTrimAtFringeLine의 c.z > faceZ · |x| ≤ halfX 게이트). 그래서 크라운
+       중에서도 관자 옆이나 뒤로 흘러내린 가닥은 그대로 남아, 화면에서는
+       "크라운이 여전히 길다"로 보인다 — 선은 걸렸는데 <b>절반에만</b> 걸린 것이다.
+       이 스위치를 켜면 크라운 가닥은 방향을 안 보고 눈썹 선에서 잘린다.
+       ⚠ 뒤로 떨어지는 크라운도 같이 잘린다 — 크라운 섹션이 통째로 <b>눈썹 위
+         길이</b>가 된다는 뜻이고, 그게 이번 지시다. 뒤는 남기고 싶어지면 이
+         스위치를 끄면 1차(얼굴 앞만) 동작으로 돌아간다.
+     · crownFloorBrow — 크라운 선이 <b>눈썹 밑으로는 안 내려간다</b>. 길이
+       슬라이더를 최대로 올려도 마찬가지다("눈썹라인 위로"가 상한이 아니라
+       <b>경계</b>라는 뜻). 짧게 줄이는 쪽은 그대로 살아 있어 헤어라인까지
+       올라간다 — 슬라이더 전 구간이 죽지 않는다(3차의 실패를 안 되풀이한다). */
+  crownLine:          true,
+  crownRiseFrac:      0.18,
+  crownAllAround:     true,
+  crownFloorBrow:     true,
   frontFrac:      0.60,   // front 뿌리 중 앞머리로 내릴 비율
   crownFrac:      0.15,   // crown 뿌리 중 앞머리로 내릴 비율
   crownThFrac:    0.60,   // crown은 |θ|가 thFront의 이 배 안(=앞쪽 띠)일 때만 후보
@@ -135,7 +168,9 @@ function mannequinHasFringe(src){
   try{ E = getHeadEllipsoid(); S = getScalpEllipsoid(); }catch(e){ return null; }
   if(!E || !S) return null;
   const CY = (src && src.CY != null) ? src.CY : SCALP_CENTER_Y;
-  const yBrow = CY + 0.18 * E.b, yEye = CY;          // 이마 아래쪽 띠(눈썹~눈)
+  const yEye = CY;                                   // 이마 아래쪽 띠(눈썹~눈)
+  const yBrow = mqBrowY(CY, E);
+  if(yBrow == null) return null;                     // 눈썹 자를 못 세우면 모르는 것이다
   let n = 0, hit = 0;
   for(let iy=0; iy<3; iy++){
     const y = yEye + (yBrow - yEye) * (iy/2);
@@ -162,6 +197,21 @@ function mqFringeTipY(CY){
   }
   if(!(faceH > 0)) return null;
   return CY - MQ_FRINGE.tipFaceFrac * faceH;
+}
+/* 눈썹 높이 — 이 파일의 <b>유일한</b> 눈썹 자. 원래 mannequinHasFringe가 이마
+   표본을 뜨려고 안에서 쓰던 식(CY + 0.18·E.b)을 그대로 꺼낸 것이고, 이제
+   크라운 앞머리 선도 같은 것을 본다. 자가 두 벌이 되면 "눈썹"이 화면 두 군데서
+   다른 높이가 된다 — 그래서 상수까지 MQ_FRINGE로 올렸다. */
+function mqBrowY(CY, E){
+  if(!E || !(E.b > 0)) return null;
+  return CY + MQ_FRINGE.crownRiseFrac * E.b;
+}
+/* 크라운 앞머리 끝이 올 모델 y — 중립(길이비율 1)에서 <b>눈썹</b>.
+   크라운 선을 끄면 프론트와 같은 tip(눈높이)으로 떨어진다. */
+function mqCrownTipY(CY, E){
+  if(!MQ_FRINGE.crownLine) return mqFringeTipY(CY);
+  const y = mqBrowY(CY, E);
+  return (y != null) ? y : mqFringeTipY(CY);
 }
 /* 이 뿌리를 앞머리로 내릴 것인가. 결정적 해시라 다시 심어도 같은 가닥이 걸린다. */
 function mqFringePicks(rp, sec, ci, k){
@@ -364,7 +414,7 @@ function buildFaceProfile(){
    ⚠ 길이를 <b>만들지 않는다</b>. 자르기만 한다(MANNEQUIN.lenPct 주석과 같은 규칙).
    ⚠ 옆·뒤로 흐르는 머리는 안 건드린다 — z>0(앞쪽)이면서 두상 너비 안일 때만.
    되돌리기: MQ_FRINGE.lineHalfX = 0 */
-function mqTrimAtFringeLine(pts, tipY, E){
+function mqTrimAtFringeLine(pts, tipY, E, allAround){
   if(!(tipY != null) || !pts || pts.length < 2) return pts;
   /* (2026-09-03) 폭·깊이 둘 다 <b>측면 사진의 얼굴선</b>에서 온다 — 위 배너.
      프로필을 못 만들면 예전 두 값(헐 반너비 · z=0)으로 그대로 떨어진다. */
@@ -372,13 +422,17 @@ function mqTrimAtFringeLine(pts, tipY, E){
   const halfX = (prof && prof.halfX > 0)
               ? prof.halfX
               : ((E && E.a > 0 && MQ_FRINGE.lineHalfX > 0) ? E.a * MQ_FRINGE.lineHalfX : 0);
-  if(!(halfX > 0)) return pts;
+  if(!(halfX > 0) && !allAround) return pts;
   for(let i=1;i<pts.length;i++){
     const a = pts[i-1], c = pts[i];
     if(!(a.y >= tipY && c.y < tipY)) continue;        // 이 마디에서 선을 넘는다
-    // 얼굴 <b>앞면</b>보다 앞인가. 예전엔 두상 중심(0)이라 앞쪽 반구 전체가 걸렸다.
-    const faceZ = prof ? prof.zAt(c.y) : 0;
-    if(!(c.z > faceZ) || Math.abs(c.x) > halfX) continue; // 얼굴 앞이 아니면 통과
+    /* (2026-09-05) allAround면 <b>방향을 안 본다</b> — 크라운 배너 참고.
+       기본(프론트)은 예전 그대로 얼굴 앞을 지나는 가닥만 자른다. */
+    if(!allAround){
+      // 얼굴 <b>앞면</b>보다 앞인가. 예전엔 두상 중심(0)이라 앞쪽 반구 전체가 걸렸다.
+      const faceZ = prof ? prof.zAt(c.y) : 0;
+      if(!(c.z > faceZ) || Math.abs(c.x) > halfX) continue; // 얼굴 앞이 아니면 통과
+    }
     const t = (a.y - tipY) / Math.max(1e-9, a.y - c.y);
     const out = pts.slice(0, i);
     out.push({ x: a.x + (c.x-a.x)*t, y: tipY, z: a.z + (c.z-a.z)*t });
@@ -408,20 +462,47 @@ function mqTrimAtFringeLine(pts, tipY, E){
    지어내지 않고 <b>실제로 내려 심는 비율</b>에서 읽는다:
        crownFrac / (frontFrac + crownFrac) = 0.15 / 0.75 = <b>0.20</b>
    MQ_FRINGE 값을 바꾸면 지분도 따라 움직인다(두 벌이 안 된다). */
-function fringeLineY(){
+function fringeLineY(sec){
   if(!MQ_FRINGE.on || !(MQ_FRINGE.lineHalfX > 0)) return null;
   const m = state.hair3Dneutral;
   if(!m || !m.mannequin) return null;
   const CY = (m.CY != null) ? m.CY : SCALP_CENTER_Y;
-  const tip0 = mqFringeTipY(CY);
-  if(tip0 == null) return null;
   let E = null; try{ E = getHeadEllipsoid(); }catch(e){ return null; }
   if(!E || !(E.b > 1e-6)) return null;
-  const yHair = CY + E.b * Math.cos(SCALP_ZONES.front.phiRange[1]);   // 이마 헤어라인
   const S = state.sections || {};
+  const yHair = CY + E.b * Math.cos(SCALP_ZONES.front.phiRange[1]);   // 이마 헤어라인
+  /* ── 크라운은 <b>자기 선</b>이다 (2026-09-05, MQ_FRINGE.crownLine 배너) ────
+     중립 끝이 눈썹이고, 비율도 지분 섞기 없이 크라운 것만 쓴다 — 프론트가
+     주인인 선에 크라운이 얹혀 있던 게 곧 "너무 내려와 있다"의 원인이었다.
+     감쇠(lineGain)와 자르는 함수(mqTrimAtFringeLine)는 공유하지만, <b>얼굴 앞
+     게이트는 안 쓴다</b>(crownAllAround) — 2차 지시가 "크라운 전체"였다.
+     ⓘ 바닥이 눈썹이라, 길이 슬라이더는 크라운을 <b>짧게</b>만 움직인다.
+       길게 빼는 쪽이 필요해지면 crownFloorBrow를 끈다. */
+  const isCrown = (sec === 'crown') && MQ_FRINGE.crownLine;
+  if(isCrown){
+    const tipC = mqCrownTipY(CY, E);
+    if(tipC == null) return null;
+    let rc = sectionLengthRatio('crown', (S.crown || {}).length);
+    rc = 1 + (rc - 1) * MQ_FRINGE.lineGain;
+    const yc = yHair - (yHair - tipC) * Math.max(0, rc);
+    /* 바닥 = <b>눈썹</b> 그 자체. 길이를 최대로 올려도 눈썹 밑으로는 안 간다
+       (crownFloorBrow 배너). 자는 tipC와 같은 mqBrowY라 두 벌이 되지 않는다. */
+    if(MQ_FRINGE.crownFloorBrow){
+      const floorC = mqBrowY(CY, E);
+      if(floorC != null && yc < floorC) return floorC;
+    }
+    return yc;
+  }
+  const tip0 = mqFringeTipY(CY);
+  if(tip0 == null) return null;
   const rF = sectionLengthRatio('front', (S.front || {}).length);
   const rC = sectionLengthRatio('crown', (S.crown || {}).length);
-  const share = MQ_FRINGE.crownFrac / Math.max(1e-9, MQ_FRINGE.frontFrac + MQ_FRINGE.crownFrac);
+  /* 크라운 지분은 <b>크라운이 이 선을 탈 때만</b> 의미가 있다. 자기 선이
+     생긴 뒤에도 지분을 남겨 두면, 크라운 슬라이더가 크라운 선과 프론트 선을
+     <b>동시에</b> 움직여 "크라운만 올렸는데 앞머리도 따라 올라간다"가 된다.
+     그래서 crownLine이 켜져 있으면 프론트 선은 순수하게 프론트 것이다. */
+  const share = MQ_FRINGE.crownLine ? 0
+              : MQ_FRINGE.crownFrac / Math.max(1e-9, MQ_FRINGE.frontFrac + MQ_FRINGE.crownFrac);
   let r = rF * (1 - share) + rC * share;
   r = 1 + (r - 1) * MQ_FRINGE.lineGain;                              // 선에만 감쇠
   const y = yHair - (yHair - tip0) * Math.max(0, r);
@@ -610,6 +691,8 @@ function buildMannequinHair3D(){
      hasFringe가 null이면 모르는 것이라 안 심는다 — 모르면 지어내지 않는다. */
   const hasFringe = MQ_FRINGE.on ? mannequinHasFringe(src) : null;
   const fringeTipY = MQ_FRINGE.on ? mqFringeTipY(CY) : null;
+  let crownTipY = fringeTipY;                                                    // 크라운은 눈썹
+  if(MQ_FRINGE.on){ const _ct = mqCrownTipY(CY, E); if(_ct != null) crownTipY = _ct; }
   const needFringe = (hasFringe === false) && (fringeTipY != null);
   let fringeN = 0;
   for(let ci=0; ci<nCell; ci++){
@@ -629,7 +712,11 @@ function buildMannequinHair3D(){
       let st = null;
       if(needFringe && mqFringePicks(rp, sec, ci, k)){
         const d0 = _v3norm({ x: rp.x/(S.a*S.a), y: (rp.y-CY)/(S.b*S.b), z: rp.z/(S.c*S.c) });
-        st = growFringeStrand(rp, d0, fringeTipY, lenFor(sec, view), secCol[sec] || secCol.crown);
+        /* 크라운은 <b>눈썹</b>까지만 내려 심는다 (2026-09-05). 심을 때 길게
+           내려놓고 자를 때만 올리면, 커트 전(중립) 그림에서 크라운이 여전히
+           눈까지 내려와 보인다 — 사용자가 본 게 그 상태다. */
+        const tipHere = (sec === 'crown') ? crownTipY : fringeTipY;
+        st = growFringeStrand(rp, d0, tipHere, lenFor(sec, view), secCol[sec] || secCol.crown);
         if(st) fringeN++;
       }
       if(!st) st = growMannequinStrand(ci, NT, NP, S, E, CY, lenFor(sec, view), secCol[sec] || secCol.crown);
@@ -668,7 +755,13 @@ function buildMannequinHair3D(){
              + '(눈에서 눈~턱의 ' + Math.round(MQ_FRINGE.tipFaceFrac*100) + '%'
              + (MQ_FRINGE.tipFaceFrac <= 0.01 ? ' = 눈높이' : '') + ')'
 
-             + ' · front ' + Math.round(MQ_FRINGE.frontFrac*100) + '% / crown ' + Math.round(MQ_FRINGE.crownFrac*100) + '%'))
+             + ' · front ' + Math.round(MQ_FRINGE.frontFrac*100) + '% / crown ' + Math.round(MQ_FRINGE.crownFrac*100) + '%'
+             /* [진단·크라운선] 눈썹 선이 실제로 걸렸는지. 크라운 끝 y가 눈높이(CY)와
+                같으면 crownLine이 꺼졌거나 mqBrowY가 null로 떨어진 것이다. */
+             + (MQ_FRINGE.crownLine && crownTipY != null
+                 ? ' · 크라운 끝 y=' + crownTipY.toFixed(3)
+                   + '(눈 위 ' + (E && E.b > 0 ? Math.round((crownTipY - CY)/E.b*100) : '?') + '% of E.b = <b>눈썹</b>)'
+                 : ' · 크라운 <b>프론트와 같은 선</b>')))
     + (vTxt ? ('\n[마네킹·뷰별길이] ' + vTxt) : ''));
   return { strands: out, viewCal: src.viewCal, yTop: src.yTop, CY: src.CY,
            field: null, occ: null, grid: G, roots: rf, mannequin: true };
