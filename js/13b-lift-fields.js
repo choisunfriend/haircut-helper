@@ -669,77 +669,15 @@ const HAIR_OCC3D = {
 /* 뷰별 얼굴 타원(정규화 [0,1] 이미지 좌표). 2D 클립과 3D 재클립이 <b>같은</b>
    영역을 쓰도록 한 곳에서만 만든다. 랜드마크가 없거나 옆으로 많이 돌아간 뷰는
    null — 거부를 아예 안 건다(모르는 것으로 지우지 않는다). */
-/* ── 얼굴 타원이 <b>얼굴 위에 없었다</b> (2026-09-05) ────────────────────────
-   증상: 측면 뷰에서 사이드·템플 머리가 <b>동그랗게</b> 뜯겨 나가고, 남은 머리가
-        턱선에서 끊겨 단발이 된다. 마네킹을 켜면 3D에서도 같은 자리가 없다.
-
-   ── 같은 원인 하나다 ─────────────────────────────────────────────────
-   이 타원은 두 곳이 쓴다. ① buildHairClipMask의 destination-out(2D) ②
-   trimStrandToOccupancy3D의 faceVeto(3D 기하). 그래서 타원이 엉뚱한 자리에
-   있으면 2D는 <b>지워지고</b> 3D는 <b>잘린다</b> — 사용자가 본 두 증상이 정확히
-   그 둘이다. 마네킹을 끄면 3D가 멀쩡한 것도 설명된다: 촬영 가닥은 원본 실루엣
-   안이라 여유 구간에 안 들어가고, faceVeto는 <b>여유 구간에만</b> 걸린다.
-   반대로 마네킹 가닥은 전부 여유 구간이라 그대로 얻어맞는다.
-
-   ── 자를 잘못 댔다 ───────────────────────────────────────────────────
-   예전 식은 얼굴 좌우를 <b>귀 사이</b>(lm[234]~lm[454])로 잡고 그 중점을
-   얼굴 중심으로 썼다. 이건 정면에서만 맞는다. 두상을 반지름 R의 구로 두고
-   yaw θ만큼 돌리면
-       귀 두 점의 투영 x = ±R·cosθ  → 중점은 언제나 <b>두상 중심</b>
-       얼굴(코)의 투영 x = +R·sinθ
-   즉 얼굴은 sinθ만큼 앞으로 나가는데 타원은 <b>제자리에</b> 남는다. θ=50°면
-   얼굴은 0.77R에 있고 타원은 [−0.58R, +0.58R]을 덮는다 — <b>얼굴을 거의 비껴
-   나가서 뒤통수 쪽 옆머리를 덮는다</b>. 화면의 동그란 구멍이 그 타원이고,
-   타원 아래끝이 chinY라 옆머리가 딱 턱선에서 끊겨 단발이 된다.
-   진단칩의 근사yaw가 이미 그 값을 적고 있었다: left 1.76 · right −1.53
-   (= 코가 귀 반간격의 1.5~1.8배만큼 밖에 있다는 뜻이고, 정면이면 0이다).
-
-   ── 고침: 얼굴 폭을 <b>실측 얼굴 점들</b>로 잰다 ─────────────────────────
-   랜드마크 468점은 이미 저장돼 있다(lm.rawLandmarks). 그 투영 x의 최소·최대가
-   곧 <b>그 뷰에서 보이는 얼굴 폭</b>이고, 얼굴과 함께 돌아간다. 새 상수도 새
-   측정기도 없다 — hairlineVsFaceRatio가 쓰는 그 자다(12b, "얼굴 반폭").
-   ※ 정면에서는 <b>비트 단위로 예전과 같다</b>: 정면 투영에서 468점의 x 극값이
-     바로 lm[234]/lm[454](=lEarX/rEarX)라서 fx0/fx1이 lx/rx와 같은 값이 된다.
-     달라지는 것은 얼굴이 돌아간 뷰뿐이고, 거기서만 타원이 얼굴을 따라간다.
-   되돌리기: FACE_ELLIPSE_HULL = false */
-const FACE_ELLIPSE_HULL = true;
 function getViewFaceEllipse(angle){
   if(!HAIR_OCC3D.faceVeto) return null;
-  /* 마네킹 기하는 깊이 판정이 정확하므로 이 타원이 할 일이 없다 — 오히려
-     9/05 배너가 적어 둔 "사이드·템플이 동그랗게 뜯긴다"가 여기서 난다.
-     되돌리기: MQ_TRUST.faceEllipse = false (MQ_TRUST 배너) */
-  if(MQ_TRUST.faceEllipse && mqGeomTrusted()) return null;
   const lm = state.landmarks && state.landmarks[angle];
-  if(!lm || lm.chinY == null) return null;
+  if(!lm || lm.lEarX == null || lm.rEarX == null || lm.chinY == null) return null;
   let yaw = 0; try{ yaw = Math.abs(getViewYawDeg(angle) || 0); }catch(e){}
   if(yaw > HAIR_OCC3D.faceMaxYaw) return null;
+  const lx = Math.min(lm.lEarX, lm.rEarX), rx = Math.max(lm.lEarX, lm.rEarX);
   const yTop = (lm.browTopY != null ? lm.browTopY : lm.eyeY);
-  if(!(lm.chinY > yTop)) return null;
-
-  let lx = Infinity, rx = -Infinity;
-  const raw = FACE_ELLIPSE_HULL ? lm.rawLandmarks : null;
-  if(raw && raw.length >= 468){
-    for(let i=0;i<raw.length;i++){
-      const x = raw[i].x;
-      if(x < lx) lx = x;
-      if(x > rx) rx = x;
-    }
-  } else if(FACE_ELLIPSE_HULL && lm.features){
-    /* 원본 468점이 없는 세션(예전 캐시)에서는 이름 붙은 부위 상자로 대신한다 —
-       눈썹·눈·입은 전부 <b>얼굴 앞면</b>이라 역시 얼굴을 따라 돈다. */
-    const F = lm.features;
-    for(const k of ['leftBrow','rightBrow','leftEye','rightEye','mouth']){
-      const b = F[k]; if(!b) continue;
-      if(b.minX < lx) lx = b.minX;
-      if(b.maxX > rx) rx = b.maxX;
-    }
-  }
-  if(!(rx - lx > 0.02)){
-    // 아무것도 못 쟀을 때만 예전 귀 기준으로 폴백(모르는 것으로 지우지 않는다)
-    if(lm.lEarX == null || lm.rEarX == null) return null;
-    lx = Math.min(lm.lEarX, lm.rEarX); rx = Math.max(lm.lEarX, lm.rEarX);
-    if(!(rx - lx > 0.02)) return null;
-  }
+  if(!(rx - lx > 0.02) || !(lm.chinY > yTop)) return null;
   const inset = (rx - lx) * HAIR_OCC3D.faceInset;
   return { cx:(lx+rx)/2, cy:(yTop+lm.chinY)/2,
            rx:Math.max(1e-4, (rx-lx)/2 - inset), ry:Math.max(1e-4, (lm.chinY-yTop)/2) };
