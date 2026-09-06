@@ -930,6 +930,9 @@ function projectHair3DToView(ctx, fit, angle, maskInf){
     const runs = VIEW_CULL.trimHidden ? visibleRuns(vpt) : [[0, cpts.length-1]];
     if(!runs.length) continue;                  // 판정상 남았지만 그릴 구간이 없다
     if(_gap) tallyStrandGaps(_gap, runs, vpt, rsn, ipts, st.sec || 'crown');
+    /* 구멍만이 아니라 <b>지워진 점 전부</b>를 문에 귀속시킨다 — 잘린 꼬리가
+       어느 문에서 나왔는지 이 줄이 없으면 아무도 안 센다(14의 배너 참조). */
+    if(_gap) tallyHiddenPoints(_gap, vpt, rsn);
     hidPts += (pts.length - vis); hidAll += pts.length;
     /* 폭은 <b>그리기로 결정된</b> 가닥만 센다 — 컬링·트리밍으로 빠진 것까지 세면
        화면에 없는 가닥이 표를 흔든다. */

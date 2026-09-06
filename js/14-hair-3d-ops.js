@@ -1179,7 +1179,22 @@ function makeFaceSilhouette(angle, maskW, maskH){
    문에 지워졌는지</b>로 귀속시킨다. 사유가 섞이면 제일 많은 문에 준다. */
 function newGapAcc(){
   return { strands:0, holes:0, pts:0, byReason:new Array(GAP_REASON.length).fill(0),
-           bySec:Object.create(null), frag:[] };
+           bySec:Object.create(null), frag:[],
+           allPts:0, allByReason:new Array(GAP_REASON.length).fill(0) };
+}
+/* ── 지워진 점 <b>전수</b> 귀속 (2026-09-06 3차) ─────────────────────────────
+   위 tallyStrandGaps는 <b>구멍</b>만 센다(runs≥2). 그런데 실기기 로그가
+   "[끊긴 가닥] 구멍 87칸 · 빈 점 477 / 가림 트리밍 45%(점 34290/76645)"였다 —
+   지워진 34290점 중 사유가 적힌 것은 477점뿐이고, 나머지는 구멍이 아니라 잘린
+   <b>꼬리</b>라 아무도 안 세고 있었다. "정면에서 목 옆 뒷머리가 안 보인다" 같은
+   증상은 정확히 그 꼬리 쪽이라, 세지 않는 한 문 다섯 중 누구인지 못 가른다.
+   비용은 점당 배열 증가 하나. 끄기: GAP_DIAG.on = false */
+function tallyHiddenPoints(acc, vpt, rsn){
+  if(!acc || !rsn) return;
+  for(let i=0;i<vpt.length;i++){
+    acc.allPts++;
+    if(!vpt[i]) acc.allByReason[(rsn[i] || 0)]++;
+  }
 }
 function tallyStrandGaps(acc, runs, vpt, rsn, ipts, sec){
   if(runs.length < 2) return;
@@ -1225,7 +1240,20 @@ function gapDiagText(acc, drawn){
            MQ_TRUST.photoClip3D&&'점유재클립', MQ_TRUST.photoClip2D&&'2D클립',
            MQ_TRUST.bodyShadow&&'몸그림자폴백'].filter(Boolean).join('·')]
       : ['마네킹 신뢰 OFF(촬영 가닥 모델 — 사진 안전망 그대로)']);
-  if(!acc.holes) return `\n    [끊긴 가닥] 없음 (${gates[0]})`;
+  /* 지워진 점 전수 — 구멍이 없어도 찍는다. "가림 트리밍 45%"의 내역이 이것이고,
+     그 대부분은 구멍이 아니라 잘린 꼬리라 아래 [끊긴 가닥]에는 안 잡힌다. */
+  let all = '';
+  if(acc.allPts){
+    const hid = acc.allByReason.reduce((s,n,r)=> r ? s+n : s, 0);
+    const by = acc.allByReason.map((n,r)=> (r && n) ? `${GAP_REASON[r]} ${n}` : null)
+                 .filter(Boolean).join(' · ');
+    all = `\n    [지운 점 전수] ${hid}/${acc.allPts}점(${Math.round(hid/acc.allPts*100)}%)`
+        + `\n      문별: ${by || '없음'}`;
+  }
+  if(!acc.holes) return all + `\n    [끊긴 가닥] 없음 (${gates[0]})`;
+  return all + gapHolesText(acc, drawn, gates);
+}
+function gapHolesText(acc, drawn, gates){
   const secs = Object.keys(acc.bySec).sort((a,b)=>acc.bySec[b]-acc.bySec[a])
                  .map(k=>`${k} ${acc.bySec[k]}`).join(' · ');
   const rs = acc.byReason.map((n,r)=> n ? `${GAP_REASON[r]} ${n}` : null)
