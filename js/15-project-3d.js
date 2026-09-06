@@ -472,8 +472,7 @@ function projectHairQuiltToView(ctx, fit, angle, maskInf){
   const occ = makeViewOccluder(cal);   // 가림 판정(두상·목 그림자) — 뷰당 1회
   /* 얼굴 게이트도 <b>가닥 렌더와 같은 규칙</b>으로 건다 (2026-09-04). 8/18 i가
      "한쪽만 고치면 이식 모드에서만 뒷머리가 목 앞에 얹힌다"고 적어 둔 그 자리다. */
-  const faceSil = (FACE_GATE.on && !(MQ_TRUST.faceGate && mqGeomTrusted()))
-    ? makeFaceSilhouette(angle, maskInf.w, maskInf.h) : null;   // 마네킹이면 닫는다(MQ_TRUST)
+  const faceSil = FACE_GATE.on ? makeFaceSilhouette(angle, maskInf.w, maskInf.h) : null;
   let dMin = Infinity, dMax = -Infinity;
   for(const st of adj){
     const pts = st.pts, cp = []; let dsum = 0, dmax = -Infinity, vis = 0;
@@ -641,8 +640,7 @@ function projectHair3DToView(ctx, fit, angle, maskInf){
      반대쪽(뿌리가 카메라 반대편)에서 난 가닥이 이 안으로 들어오면 안 그린다.
      프로브와 본 렌더가 <b>같은 판정</b>을 써야 예산이 안 어긋나므로 여기서
      한 번 만들어 둘 다 쓴다(occ와 같은 자리·같은 이유). */
-  const faceSil = (FACE_GATE.on && !(MQ_TRUST.faceGate && mqGeomTrusted()))
-    ? makeFaceSilhouette(angle, maskInf.w, maskInf.h) : null;   // 마네킹이면 닫는다(MQ_TRUST)
+  const faceSil = FACE_GATE.on ? makeFaceSilhouette(angle, maskInf.w, maskInf.h) : null;
   /* ── 이 프로브는 <b>조정과 무관하다</b> (2026-08-23) ────────────────────────
      위 주석이 이미 적어 둔 대로 1패스는 <b>중립</b> 가닥으로 잰다. 그래서 이
      루프가 읽는 것은 전부 프레임 사이에 안 변하는 값이다 — 중립 모델(개체),
@@ -804,9 +802,6 @@ function projectHair3DToView(ctx, fit, angle, maskInf){
   let pxN = 0;   // [진단] 조각별 원본 픽셀색을 실제로 얻은 가닥 수
   let hidPts = 0, hidAll = 0;   // [진단] 가려져서 안 그린 점 / 그린 가닥의 전체 점(8/18 i)
   let faceCut = 0, faceCutStrands = 0;   // [진단] 얼굴 게이트가 지운 점 / 걸린 가닥(2026-09-04)
-  /* [진단] 끊긴 가닥(2026-09-06) — 보이는 구간이 <b>둘 이상</b>으로 쪼개진 가닥만
-     골라 그 구멍을 누가 냈는지 센다. 화면의 "떠 있는 조각"이 정확히 이것이다. */
-  const _gap = GAP_DIAG.on ? newGapAcc() : null;
   /* ── [진단] 정수리는 <b>어느 단계에서</b> 사라지는가 (2026-08-18 k) ──────────
      사용자: "두정부에 숱이 없어. 그래서 중간가르마 자체가 안되는듯."
      로그가 서로 다른 말을 하고 있었다 — [3D·겹침·뿌리 격자]는 정수리를 93~100%
@@ -848,7 +843,6 @@ function projectHair3DToView(ctx, fit, angle, maskInf){
        photoRGB는 사진 좌표계에 있다. */
     const ipts=[];
     const vpt=[];              // 점별 보임 — 그리기도 이 판정으로 자른다(8/18 i)
-    const rsn=_gap ? [] : null; // [진단] 점별 사유 코드(GAP_REASON) — GAP_DIAG.on일 때만
     let rootIx = 0, rootIy = 0;
     let rootDepth = 0;
     for(let i=0;i<pts.length;i++){
@@ -859,9 +853,6 @@ function projectHair3DToView(ctx, fit, angle, maskInf){
       dsum += pr.depth; if(pr.depth > dmax) dmax = pr.depth;
       if(pr.depth < dmin) dmin = pr.depth;   // (2026-09-05) 깊이 폭 진단 — 아래 _spanBySec
       const v = viewPointVisible(pr, occ, maskInf);
-      /* [진단] 이 점을 <b>어느 문</b>이 지웠나. 판정 직후에 읽어야 한다
-         (GAP_DIAG.reason은 스크래치 한 칸을 돌려 쓴다). */
-      if(rsn) rsn.push(GAP_DIAG.reason);
       vpt.push(v); if(v) vis++;
     }
     /* ── (2026-09-04) 얼굴 실루엣 게이트 ──────────────────────────────────
@@ -870,14 +861,10 @@ function projectHair3DToView(ctx, fit, angle, maskInf){
        위 판정(viewPointVisible)이 통과시킨 점 중, <b>뿌리가 카메라
        반대쪽</b>인 가닥이 얼굴 안에 찍힌 것만 지운다. 지우기만 하고
        되살리지 않는다 — 가까운 쪽 앞머리는 예전 그대로 얼굴을 덮는다.
-       ⚠ (2026-09-06) 여기 있던 "가닥은 얼굴 앞에서 사라졌다가 반대편
-       윤곽선 너머에서 <b>다시 나온다</b>"는 설명은 <b>정면 전용</b>이었다.
-       측면에서 볼록껍질의 반대편 윤곽선은 <b>코</b>이고 그 너머는 허공이라,
-       다시 나온 꼬리가 얼굴 옆에 떠 있는 조각이 됐다(사용자: "사이드·템플이
-       뜯겨져 있듯이 중간에 빈 곳"). 이제 applyFaceGate가 <b>처음 막힌
-       자리에서 끊는다</b> — 근거와 되돌리기는 그 함수 배너 참조.
-       되돌리기: FACE_GATE.on = false · FACE_GATE.cutTail = false */
-    const _fcut = applyFaceGate(vpt, ipts, faceSil, rootDepth, rsn);
+       지운 구간은 visibleRuns가 알아서 끊어 주므로, 가닥은 얼굴 앞에서
+       사라졌다가 <b>반대편 윤곽선 너머에서 다시 나온다</b>(=사용자가 말한
+       "얼굴 반대편으로 넘어간다"). 되돌리기: FACE_GATE.on = false */
+    const _fcut = applyFaceGate(vpt, ipts, faceSil, rootDepth);
     if(_fcut){ vis -= _fcut; faceCut += _fcut; faceCutStrands++; }
     /* ── (2026-09-01 6차) 정렬 키를 <b>뿌리 깊이</b>로 ────────────────────────
        사용자: "그 <b>len 변화분은 적은데</b>, 뒤집어지고 난리가 나는 건 변화에
@@ -928,7 +915,6 @@ function projectHair3DToView(ctx, fit, angle, maskInf){
        예전과 같은 그림이고, 목·얼굴 뒤로 넘어간 구간만 빠진다. */
     const runs = VIEW_CULL.trimHidden ? visibleRuns(vpt) : [[0, cpts.length-1]];
     if(!runs.length) continue;                  // 판정상 남았지만 그릴 구간이 없다
-    if(_gap) tallyStrandGaps(_gap, runs, vpt, rsn, ipts, st.sec || 'crown');
     hidPts += (pts.length - vis); hidAll += pts.length;
     /* 폭은 <b>그리기로 결정된</b> 가닥만 센다 — 컬링·트리밍으로 빠진 것까지 세면
        화면에 없는 가닥이 표를 흔든다. */
@@ -1008,7 +994,7 @@ function projectHair3DToView(ctx, fit, angle, maskInf){
   }
   logStrandRender(angle, { spanX, unit, cssW, roles, rawTotal, targetStrands, pxN,
                            stride, total: src.length, drawn: projected.length,
-                           hidPts, hidAll, faceCut, faceCutStrands, gap: _gap,
+                           hidPts, hidAll, faceCut, faceCutStrands,
                            faceSil: faceSil ? { w: Math.round(faceSil.w), h: Math.round(faceSil.h),
                                                 yTop: faceSil.yTop, yBot: faceSil.yBot, dir: faceSil.dir,
                                                 fit: faceSil.fit } : null,
@@ -1243,10 +1229,6 @@ function logStrandRender(angle, m){
               : `\n      정합 없음(사진 좌표 그대로 — FACE_GATE.align='none'이거나 왕복 실패)`)
           + `\n      끄기: FACE_GATE.on=false · 라인 보기: FACE_GATE.debug=true 후 슬라이더 살짝`
         : `\n    [얼굴 게이트] 이 뷰는 얼굴 라인 없음(랜드마크 미검출 — 후면이면 정상)`)
-    /* [진단] 끊긴 가닥(2026-09-06) — 위 숫자들이 "얼마나 지웠나"라면 이건
-       "그래서 <b>화면이 뜯겼나</b>"다. 문이 여섯이라 눈으로는 못 가르므로
-       구멍마다 범인을 적는다. 근거·되돌리기는 14의 GAP_DIAG·MQ_TRUST 배너. */
-    + gapDiagText(m.gap, m.drawn)
   );
 }
 /* 다발 렌더 전용 틴트 — 어두운 쪽은 곱셈, 밝은 쪽은 회색 쪽으로 완만히.
