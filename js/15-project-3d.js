@@ -641,8 +641,14 @@ function projectHair3DToView(ctx, fit, angle, maskInf){
      반대쪽(뿌리가 카메라 반대편)에서 난 가닥이 이 안으로 들어오면 안 그린다.
      프로브와 본 렌더가 <b>같은 판정</b>을 써야 예산이 안 어긋나므로 여기서
      한 번 만들어 둘 다 쓴다(occ와 같은 자리·같은 이유). */
-  const faceSil = (FACE_GATE.on && !(MQ_TRUST.faceGate && mqGeomTrusted()))
-    ? makeFaceSilhouette(angle, maskInf.w, maskInf.h) : null;   // 마네킹이면 닫는다(MQ_TRUST)
+  /* 껍질은 <b>재기 위해서도</b> 필요하다 (2026-09-06 6차).
+     FACE_GATE.on=false면 자르지는 않지만, 얼굴 행이 어디인지와 코 모서리가
+     얼마나 물러났는지는 계속 알아야 한다 — 끄고 나서 측정까지 같이 꺼지면
+     왜 껐는지를 다음 턴에 못 되짚는다. 그래서 <b>만들되 쓰지 않는다</b>:
+     아래 applyFaceGate에는 faceGate만 넘기고, 진단은 faceSilM을 본다. */
+  const faceSilM = (MQ_TRUST.faceGate && mqGeomTrusted())
+    ? null : makeFaceSilhouette(angle, maskInf.w, maskInf.h);
+  const faceSil = FACE_GATE.on ? faceSilM : null;   // 마네킹이면 닫는다(MQ_TRUST)
   /* ── 이 프로브는 <b>조정과 무관하다</b> (2026-08-23) ────────────────────────
      위 주석이 이미 적어 둔 대로 1패스는 <b>중립</b> 가닥으로 잰다. 그래서 이
      루프가 읽는 것은 전부 프레임 사이에 안 변하는 값이다 — 중립 모델(개체),
@@ -877,6 +883,30 @@ function projectHair3DToView(ctx, fit, angle, maskInf){
                              gx0: Infinity, gx1: -Infinity, gn: 0 };
     }
   }
+  /* ── [진단] <b>얼굴 행</b>에서 한 번 더 (2026-09-06 6차) ────────────────────
+     5차에 크라운 띠(두피선~마스크 높이 25%)에서 게이트 전·후를 갈라 쟀는데
+     <b>세 뷰 다 "게이트가 가로로 0px 잘랐습니다"</b>가 나왔고 코 모서리 줄은
+     아예 안 찍혔다. 버그가 아니라 <b>띠를 잘못 잡은 것</b>이다 — 우측 뷰 띠가
+     사진 y 44~130인데 얼굴 실루엣은 그보다 아래에서 시작한다. 얼굴 위 허공에서
+     "게이트가 얼굴을 자르나"를 물었으니 답이 나올 리 없었다.
+     그래서 띠를 하나 더 둔다. 두 띠는 서로 다른 질문에 답한다:
+       크라운 띠 — 그 자리에서 헤어 실루엣은 곧 두상이라 <b>정렬(중심)</b>의 자.
+       얼굴 띠   — 게이트가 실제로 일하는 행. <b>가림</b>과 <b>코 함몰</b>의 자.
+     얼굴 띠의 행은 지어내지 않는다 — faceSil이 이미 yTop~yBot을 들고 있다. */
+  let _drF = null;
+  if(faceSilM && faceSilM.yBot > faceSilM.yTop){
+    const fy0 = Math.max(0, faceSilM.yTop|0), fy1 = Math.min(maskInf.h-1, faceSilM.yBot|0);
+    let px0 = Infinity, px1 = -Infinity;
+    for(let x=0; x<maskInf.w; x++){
+      const sy = maskInf.scalpY[x];
+      if(sy < 0) continue;
+      if(sy > fy1 || maskInf.hairEndY[x] < fy0) continue;  // 이 컬럼의 머리가 얼굴 행에 걸치나
+      if(x < px0) px0 = x; if(x > px1) px1 = x;
+    }
+    if(px1 > px0) _drF = { yTop: fy0, yBot: fy1, px0, px1,
+                           dx0: Infinity, dx1: -Infinity, n: 0,
+                           gx0: Infinity, gx1: -Infinity, gn: 0 };
+  }
   /* ── [진단] 폭을 <b>얼굴 게이트 전·후</b>로 갈라 잰다 (2026-09-06 5차) ───────
      사용자: "3D 결과보기 보면 코 위쪽이 움푹 들어가서 안면이 굴곡지거든...
      그 자리일지도 모르겠는데?"
@@ -927,6 +957,11 @@ function projectHair3DToView(ctx, fit, angle, maskInf){
         if(pr.ix > _drA.dx1) _drA.dx1 = pr.ix;
         _drA.n++;
       }
+      if(_drF && v && pr.iy >= _drF.yTop && pr.iy <= _drF.yBot){
+        if(pr.ix < _drF.dx0) _drF.dx0 = pr.ix;
+        if(pr.ix > _drF.dx1) _drF.dx1 = pr.ix;
+        _drF.n++;
+      }
       vpt.push(v); if(v) vis++;
     }
     /* ── (2026-09-04) 얼굴 실루엣 게이트 ──────────────────────────────────
@@ -945,14 +980,20 @@ function projectHair3DToView(ctx, fit, angle, maskInf){
     const _fcut = applyFaceGate(vpt, ipts, faceSil, rootDepth, rsn);
     if(_fcut){ vis -= _fcut; faceCut += _fcut; faceCutStrands++; }
     /* 게이트 <b>후</b> 폭 — 위 배너. vpt는 방금 게이트가 덮어썼다. */
-    if(_drA){
+    if(_drA || _drF){
       for(let i=0;i<ipts.length;i++){
         if(!vpt[i]) continue;
-        const iy = ipts[i].y; if(iy < _drA.yTop || iy > _drA.yBot) continue;
-        const ix = ipts[i].x;
-        if(ix < _drA.gx0) _drA.gx0 = ix;
-        if(ix > _drA.gx1) _drA.gx1 = ix;
-        _drA.gn++;
+        const iy = ipts[i].y, ix = ipts[i].x;
+        if(_drA && iy >= _drA.yTop && iy <= _drA.yBot){
+          if(ix < _drA.gx0) _drA.gx0 = ix;
+          if(ix > _drA.gx1) _drA.gx1 = ix;
+          _drA.gn++;
+        }
+        if(_drF && iy >= _drF.yTop && iy <= _drF.yBot){
+          if(ix < _drF.gx0) _drF.gx0 = ix;
+          if(ix > _drF.gx1) _drF.gx1 = ix;
+          _drF.gn++;
+        }
       }
     }
     /* ── (2026-09-01 6차) 정렬 키를 <b>뿌리 깊이</b>로 ────────────────────────
@@ -1105,32 +1146,53 @@ function projectHair3DToView(ctx, fit, angle, maskInf){
     } else if(_drA.gn <= 20){
       gLine = '\n      폭(얼굴 게이트 후): 표본 부족(' + _drA.gn + '점) — 띠 안이 통째로 지워졌습니다.';
     }
-    /* 얼굴 껍질의 <b>먼 쪽</b> 모서리를 사진의 코와 대조 — 함몰이 몇 px인지 그 자리에서 나온다.
+    /* 얼굴 껍질의 <b>먼 쪽</b> 모서리를 사진의 코와 대조 — 이제 <b>얼굴 행</b>에서 잰다.
        먼 쪽은 얼굴이 향한 반대편이다(faceSil.dir > 0이면 얼굴이 오른쪽 → 먼 모서리는 hi). */
     let nLine = '';
     try{
       const lm = state.landmarks && state.landmarks[angle];
       const nose = lm && lm.rawLandmarks && lm.rawLandmarks[1];   // MediaPipe 1 = 코끝
-      if(nose && faceSil){
+      if(nose && faceSilM){
         let sum = 0, cnt = 0;
-        for(let y = Math.max(faceSil.yTop, _drA.yTop|0); y <= Math.min(faceSil.yBot, _drA.yBot|0); y++){
-          const l = faceSil.lo[y], h = faceSil.hi[y];
+        for(let y = faceSilM.yTop|0; y <= (faceSilM.yBot|0); y++){
+          const l = faceSilM.lo[y], h = faceSilM.hi[y];
           if(!(h > l)) continue;
-          sum += (faceSil.dir > 0 ? h - faceSil.inset : l + faceSil.inset); cnt++;
+          sum += (faceSilM.dir > 0 ? h - faceSilM.inset : l + faceSilM.inset); cnt++;
         }
         if(cnt){
           const edge = sum / cnt, nx = nose.x * maskInf.w;
           nLine = '\n      껍질 먼쪽 모서리 ' + edge.toFixed(0) + 'px vs 사진 코끝 ' + nx.toFixed(0) + 'px'
-            + ' → <b>' + (faceSil.dir > 0 ? (nx - edge) : (edge - nx)).toFixed(0) + 'px 물러남</b>'
-            + ' (+면 껍질이 코보다 안쪽 = 그만큼 안 자릅니다. 띠 ' + cnt + '행 평균)';
+            + ' → <b>' + (faceSilM.dir > 0 ? (nx - edge) : (edge - nx)).toFixed(0) + 'px 물러남</b>'
+            + ' (+면 껍질이 코보다 안쪽 = 그만큼 안 자릅니다. 얼굴 ' + cnt + '행 평균'
+            + (FACE_GATE.on ? '' : ' · <b>게이트는 꺼져 있어 자르지는 않습니다</b>') + ')';
         }
+      } else if(!faceSilM){
+        nLine = '\n      얼굴 껍질 없음 — 랜드마크 실패이거나 마네킹입니다.';
       }
     }catch(e){}
+    /* 얼굴 띠 — 위 _drF 배너. 게이트가 실제로 일하는 행이라 여기 숫자가 본론이다. */
+    let fLine = '';
+    if(_drF && _drF.n > 20 && _drF.dx1 > _drF.dx0){
+      const fpW = _drF.px1 - _drF.px0, fdW = _drF.dx1 - _drF.dx0;
+      fLine = '\n      [얼굴 띠] 사진 y ' + _drF.yTop + '~' + _drF.yBot
+        + ' · 폭 사진 ' + fpW.toFixed(0) + 'px vs 그린 ' + fdW.toFixed(0) + 'px'
+        + ' (×' + (fdW/fpW).toFixed(3) + ', 게이트 전)';
+      if(_drF.gn > 20 && _drF.gx1 > _drF.gx0){
+        const fgW = _drF.gx1 - _drF.gx0;
+        fLine += '\n        게이트 <b>후</b> ' + fgW.toFixed(0) + 'px (×' + (fgW/fpW).toFixed(3) + ')'
+          + ' — 가로로 ' + (fdW - fgW).toFixed(0) + 'px 잘랐습니다.';
+      } else {
+        fLine += '\n        게이트 후: 표본 ' + _drF.gn + '점 — 얼굴 행이 통째로 지워졌습니다.';
+      }
+      if(!FACE_GATE.on) fLine += ' (FACE_GATE.on=false — 전·후가 같은 게 정상입니다)';
+    } else if(!_drF){
+      fLine = '\n      [얼굴 띠] 없음 — 얼굴 껍질이 없어 이 뷰는 얼굴 행을 못 잡습니다.';
+    }
     console.log('[뷰정렬] ' + angle + ': 크라운 띠에서 사진 중심 ' + pC.toFixed(0) + 'px'
       + ' vs 그린 중심 ' + dC.toFixed(0) + 'px → <b>어긋남 ' + (need>=0?'+':'') + need.toFixed(0) + 'px</b>'
       + '\n      폭(얼굴 게이트 <b>전</b>): 사진 ' + pW.toFixed(0) + 'px vs 그린 ' + dW.toFixed(0) + 'px'
       + ' (×' + wRatio.toFixed(3) + ')'
-      + gLine + nLine
+      + gLine + nLine + fLine
       + '\n      현재 cxNudgePx=' + cur + 'px. cxUse를 +로 밀면 가닥은 화면 <b>왼쪽</b>으로'
       + ' 갑니다(mx=(px−cxUse)·sX) — 즉 어긋남이 +면 이 값을 <b>줄여야</b> 합니다.'
       + '\n      띠는 두피선~마스크 높이 25%(사진 y ' + _drA.yTop.toFixed(0) + '~' + _drA.yBot.toFixed(0) + ')'

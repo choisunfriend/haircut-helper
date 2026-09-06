@@ -611,7 +611,14 @@ function curlStrand3D(pts, curlAmt, waveT, curlDir){
    되돌리기: VIEW_CULL.neckBySide = false (9/05 2차와 글자 그대로 같은 동작) */
 const VIEW_CULL = { mode: 'anyVisible', trimHidden: true, photoOverrides: false,
                     depthBuffer: true, depthEps: 0.04,
-                    neckDepth: true, neckRimMin: 0.15,
+  /* ⚠ (2026-09-06 6차) <b>꺼 둔다</b> — index22(빌드 48)에는 neckDepth·neckBySide가
+     글자 자체가 없다(grep 0건). 그 빌드는 "뒷머리가 나온다"고 사용자가 말한
+     상태이고, 지금 빌드는 안 나온다. 둘 사이에 새로 생긴 문이 정확히 이것이라,
+     통째로 갈아타는 대신 이 문만 index22 상태로 되돌린다 — 정면 얼굴은 지금 것을
+     지킨다(사용자: "요즘엔 정면 딱 봤을 때 진짜 실물처럼 나와").
+     occ.covers(8/18 h의 몸 그림자)는 index22에도 있으므로 <b>그대로 둔다</b>.
+     되돌리기: neckDepth: true */
+                    neckDepth: false, neckRimMin: 0.15,
                     neckBySide: true };   // 'anyVisible' | 'anyFacing' | 'mean'(예전)
 
 /* 이 뷰에서 <b>가리는 몸</b>(두상+목·어깨)의 직교투영 그림자 (2026-08-18 h).
@@ -966,7 +973,15 @@ function visibleRuns(vpt){
    되돌리기: FACE_GATE.on = false
    ══════════════════════════════════════════════════════════════════ */
 const FACE_GATE = {
-  on: true,
+  /* ⚠ (2026-09-06 6차) <b>꺼 둔다</b> — 사용자: "지금이 내가 본 측면 얼굴 중에서
+     제일 심각해. 상관없어. 빼버려."
+     이 문은 9/04에 "측면에서 반대편 사이드가 얼굴 위로 지나간다"를 잡으려고
+     생겼는데, 그 뒤로 두 번(9/06 꼬리 끊기, 9/06 코 함몰) 더 손을 댔고 그때마다
+     측면이 나빠졌다. index22(빌드 48)에는 이 문이 <b>글자 자체가 없고</b>,
+     그 빌드의 측면이 지금보다 낫다는 것이 사용자 판단이다. 판단의 근거가
+     화면이고 그걸 본 사람이 사용자니 그대로 따른다.
+     코드는 남겨 둔다 — 되돌리기는 on: true 하나. */
+  on: false,
   /* 얼굴 폭 대비 안쪽으로 줄이는 비율. 0이면 윤곽선에서 칼같이 끊긴다 —
      실제 사진에서는 가닥 끝이 뺨 경계에 살짝 걸쳐 보이므로 조금 줄여서
      경계에 틈이 안 생기게 한다. */
