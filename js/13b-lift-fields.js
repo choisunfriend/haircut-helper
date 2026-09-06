@@ -705,6 +705,10 @@ const HAIR_OCC3D = {
 const FACE_ELLIPSE_HULL = true;
 function getViewFaceEllipse(angle){
   if(!HAIR_OCC3D.faceVeto) return null;
+  /* 마네킹 기하는 깊이 판정이 정확하므로 이 타원이 할 일이 없다 — 오히려
+     9/05 배너가 적어 둔 "사이드·템플이 동그랗게 뜯긴다"가 여기서 난다.
+     되돌리기: MQ_TRUST.faceEllipse = false (MQ_TRUST 배너) */
+  if(MQ_TRUST.faceEllipse && mqGeomTrusted()) return null;
   const lm = state.landmarks && state.landmarks[angle];
   if(!lm || lm.chinY == null) return null;
   let yaw = 0; try{ yaw = Math.abs(getViewYawDeg(angle) || 0); }catch(e){}

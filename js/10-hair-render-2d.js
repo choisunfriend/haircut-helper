@@ -852,6 +852,10 @@ function mannequinClipGrowPx(fit, angle, rawMode){
 }
 function applyHairLayerClip(layer, hairCanvas, fit, cw, ch, rawMode, angle){
   if(!HAIR_LAYER_CLIP.on || !hairCanvas) return 0;
+  /* 마네킹은 사진 가닥이 아니다 — 손님의 옛 세그멘테이션으로 오려낼 근거가
+     없다(MQ_TRUST 배너). 원본 결 보기(rawMode)는 진짜 사진이라 그대로 건다.
+     되돌리기: MQ_TRUST.photoClip2D = false */
+  if(!rawMode && MQ_TRUST.photoClip2D && mqGeomTrusted()) return 0;
   /* (#5 수정, 2026-08-08) 처음엔 빗질이 있으면 클립을 <b>통째로 껐다</b>.
      그러면 빗질이 안 지워지긴 하는데, 클립이 하던 일 전부가 같이 사라져서
      가닥이 얼굴 위로 마구 그려진다(사용자 실기기: 시술모드 켜고 클릭 한 번에
