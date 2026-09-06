@@ -1166,8 +1166,18 @@ function interpolateHeadCrossSection(phi){
    거의 없고, 0.7배 미만은 목이 두상보다 좁다는 뜻이라 명백한 오탐). */
 const NECK_HEIGHT_FRACS = [0, 0.25, 0.5, 0.75, 1.0]; // 0=두상 최하단(이음매), 1=neckAttachPoint 하단(어깨선)
 const NECK_RATIO_MIN = 0.7, NECK_RATIO_MAX = 3.0; // 두상 대비 목/어깨 폭·깊이 비율의 정직한 안전 범위
-/* 비율에 곱하는 앵커를 헤어 밴드가 아니라 몸 실루엣에서 — computeNeckCrossSections 배너. */
-const NECK_ANCHOR_FROM_BODY = true;
+/* ⚠ (2026-09-06 4차) <b>켜면 안 된다</b> — 7/14의 "UFO 모자챙"이 그대로 돌아온다.
+   3차에 이걸 true로 두고 앵커를 metrics.projector.bX로 환산했다가, 사용자:
+   "목 옆에는 헤어가닥이 있던 자리가 빠지면서 메움이 된 거 같아. 뒷머리 안 보여."
+   바로 위 배너(1136행~)가 그 이유를 이미 적어 두고 있었다 — bX는 <b>얼굴 크기와
+   비슷한 것</b>을 잴 때만 유효한 배율이라, 목·어깨처럼 얼굴보다 넓은 대상에
+   그대로 곱하면 몇 배로 부푼다. 가리는 목이 부풀면 그 폭만큼 뒷머리가 지워진다.
+   같은 파일 200줄 위에 있는 경고를 못 보고 지나간 것이다.
+   진짜 앵커는 <b>메쉬 단위로 검증된 이 사람의 목 반폭</b>이어야 하고, 그런 값을
+   내는 곳은 지금 measureNeckColumn(11-result-screen.js) 하나뿐이다(자가 pxPerMesh라
+   스케일이 맞고, bodyNoHairMask라 머리카락도 안 섞인다). 옮기기 전에 두 값을
+   나란히 찍어 보고 간다 — 아래 [3D·가리는 목] 로그. */
+const NECK_ANCHOR_FROM_BODY = false;
 
 let _neckCrossSectionCache = null;
 function computeNeckCrossSections(){
@@ -1177,31 +1187,21 @@ function computeNeckCrossSections(){
   const neckTopY = headPhiToMeshY(PHI_MAX); // 두상 최하단 링과 같은 공식(공용 headPhiToMeshY) → 이음매 없이 맞물림
   const neckBotY = getNeckBottomY(); // 턱에서 8cm — outfitTorsoPlaceholder 상단과 같은 출처
 
-  /* ── 앵커는 <b>몸</b>에서 잰다 (2026-09-06 3차) ────────────────────────────
-     사용자: "가리는 목은 계산할 때만 쓰고." — 즉 이 밴드의 유일한 일은 가림
-     판정이다. 그리는 목(buildRealNeckMesh)은 9/05에 이 값을 안 쓰기로 끊었고,
-     결과 화면도 그리는 목을 쓴다. 이음매를 맞출 상대가 이제 없다.
+  /* ── 앵커가 무엇으로 잰 값인가 (2026-09-06 4차) ────────────────────────────
+     이 밴드의 유일한 일은 <b>가림 판정</b>이다(사용자: "가리는 목은 계산할 때만
+     쓰고"). 그리는 목은 buildRealNeckMesh, 2D 캔버스의 목은 사진 그 자체다.
 
-     그런데 앵커는 아직 이음매 시절 그대로 interpolateHeadCrossSection(PHI_MAX)다.
-     그 함수는 <b>reasonMask</b>, 즉 헤어 마스크로 잰다. 11차가 비율(widthRatio)의
-     마스크를 bodyNoHairMask로 고치면서 "기준점과 분자가 함께 바뀌어야 의미가
-     유지된다"고 적어 놨는데, 그 기준점은 <b>비율의 분모</b>(anchorRawNorm)였고
-     여기 이 <b>곱하는 자</b>는 안 따라왔다. 그래서 긴 머리 손님은
+     그런데 비율에 곱하는 앵커는 interpolateHeadCrossSection(PHI_MAX)이고, 그건
+     <b>reasonMask</b>(헤어 마스크)로 잰 값이다. 11차가 비율의 마스크를
+     bodyNoHairMask로 고치면서 "분모와 분자가 함께 바뀌어야 한다"고 적었는데,
+     분모(anchorRawNorm)는 바뀌었고 <b>곱하는 자</b>는 안 바뀌었다. 그래서
        목 폭 = (머리카락 뺀 비율) × (머리카락 포함 폭)
-     이 되어, 어깨로 흐른 머리카락 폭만큼 가리는 목이 부푼다. 아래로는
-     NECK_STEP_MAX(1.35)가 한 칸에 26%까지만 좁히므로 굵은 채로 내려간다.
-     "정면에서 목 옆 뒷머리가 안 보인다"가 이것이다 — 화면에 없는 몸이 지운다.
+     이다. 긴 머리 손님이면 어깨로 흐른 머리카락 폭만큼 가리는 목이 굵어진다.
 
-     고침: 비율을 재는 그 마스크에서 <b>앵커도</b> 재고, 같은 자로 환산한다.
-     · anchorRawNorm — accumulate가 이미 뷰마다 재고 있던 값(bodyNoHairMask에서
-       neckTopY 행의 반폭). 새로 재지 않고 버리던 것을 받는다.
-     · 자 — computeHeadCrossSections가 관측을 메쉬단위로 올릴 때 쓰는 그
-       globalScaleX(metrics.projector.bX). 새 상수 없음.
-     · 폭은 정면·후면, 깊이는 좌·우 — accumulateAllViews의 기존 배분 그대로다
-       (측면이 경사 촬영이라 순수 깊이가 아닌 근사인 것도 예전과 같다).
-     실측이 전부 실패하면 예전 헤어 밴드 앵커로 폴백한다 — 조용히 0이 되느니
-     예전대로 틀리는 게 낫다.
-     되돌리기: NECK_ANCHOR_FROM_BODY = false */
+     ⚠ 3차에서 이걸 몸 실루엣 × projector.bX로 바꿨다가 <b>더 부풀렸다</b>.
+        이유는 위 1136행 배너에 이미 있다(bX는 얼굴 크기 전용 배율).
+        그래서 지금은 값을 <b>안 바꾸고</b>, 두 후보를 나란히 찍기만 한다.
+        옮길 곳은 measureNeckColumn 쪽이지 이 자리가 아니다. */
   const headEdge = interpolateHeadCrossSection(PHI_MAX);
   const anchorObs = { w:{sum:0, wt:0}, d:{sum:0, wt:0} };
 
@@ -1243,32 +1243,23 @@ function computeNeckCrossSections(){
 
   accumulateAllViews(accumulate);
 
-  /* 앵커 확정 — 위 배너. 폴백은 예전 값(헤어 밴드) 그대로다. */
-  const bX = (metrics.projector && metrics.projector.bX > 0) ? metrics.projector.bX : null;
-  let anchorHalfWidth = headEdge.halfWidth, anchorHalfDepth = headEdge.halfDepth;
-  let anchorSrc = '헤어 밴드(예전)';
-  if(NECK_ANCHOR_FROM_BODY && bX){
-    const W = anchorObs.w.wt ? (anchorObs.w.sum / anchorObs.w.wt) * bX : null;
-    const D = anchorObs.d.wt ? (anchorObs.d.sum / anchorObs.d.wt) * bX : null;
-    if(W > 0){
-      anchorHalfWidth = W;
-      anchorHalfDepth = (D > 0) ? D : W;   // 측면 실측이 없으면 원형으로 — 지어내지 않는다
-      anchorSrc = (D > 0) ? '몸 실루엣(정면·후면 + 좌·우)' : '몸 실루엣(정면·후면만 — 깊이는 폭과 동일 처리)';
-    }
-  }
-  /* [진단] 예전 앵커와 나란히, cm로. 이 두 줄이 벌어져 있으면 그 차이가 곧
-     "화면에 없는데 가리던 몸"의 크기다. 자는 이 파일이 이미 쓰는 것 하나뿐. */
+  const anchorHalfWidth = headEdge.halfWidth;
+  const anchorHalfDepth = headEdge.halfDepth;
+
+  /* [진단] 앵커 후보 두 개를 나란히 — <b>값은 안 바꾼다</b>. */
   {
     let cmPerUnit = null;
     try{ const r = faceRulerCmPerUnit(metrics); if(r && r.x > 1) cmPerUnit = r.x; }catch(e){}
     const cm = (v)=> cmPerUnit ? (v*2*cmPerUnit).toFixed(1) + 'cm' : (v*2).toFixed(3) + '단위';
-    console.log('[3D·가리는 목] 앵커(두상 최하단 폭) ' + cm(headEdge.halfWidth)
-      + ' → ' + cm(anchorHalfWidth) + ' · 출처 ' + anchorSrc
-      + '\n    예전 값은 <b>헤어 마스크</b>로 잰 두상 최하단 폭입니다 — 긴 머리 손님이면'
-      + ' 어깨로 흐른 머리카락 폭이라 가림 판정만 그만큼 부풉니다(그리는 목은 이 값을 안 씁니다).'
-      + '\n    이 목은 <b>가림 계산 전용</b>입니다. 그리는 목은 buildRealNeckMesh(결과 화면·옷메쉬 연결),'
-      + ' 2D 캔버스의 목은 사진 그 자체입니다.'
-      + '\n    되돌리기: NECK_ANCHOR_FROM_BODY = false');
+    const bX = (metrics.projector && metrics.projector.bX > 0) ? metrics.projector.bX : 0;
+    const bodyW = (anchorObs.w.wt && bX) ? (anchorObs.w.sum / anchorObs.w.wt) * bX : null;
+    console.log('[3D·가리는 목] 앵커 = ' + cm(anchorHalfWidth) + ' (헤어 마스크로 잰 두상 최하단 폭)'
+      + (bodyW ? '\n    참고 — 몸 실루엣 × projector.bX로 환산하면 ' + cm(bodyW)
+                 + ' 입니다. <b>이 값을 쓰면 안 됩니다</b>(bX는 얼굴 크기 전용 배율 —'
+                 + ' 7/14 "UFO 모자챙"이 이것이었고 9/06 3차에 한 번 더 밟았습니다).' : '')
+      + '\n    이 목은 <b>가림 계산 전용</b>입니다. 사람 목 반폭이 메쉬 단위로 필요하면'
+      + ' measureNeckColumn(11-result-screen.js)이 이미 자(pxPerMesh)까지 맞춰 내고 있습니다 —'
+      + ' 두 값이 크게 벌어지면 그 차이가 곧 "화면에 없는데 가리는 몸"입니다.');
   }
 
   // 실측 있는 밴드는 평균, 없는 밴드는 가장 가까운 실측 밴드값을 승계(최근접

@@ -841,6 +841,41 @@ function projectHair3DToView(ctx, fit, angle, maskInf){
   let _spanC = 1;
   try{ const E = getHeadEllipsoid(); if(E && E.c > 1e-6) _spanC = E.c; }catch(e){}
   const _rootPhi = (p)=> Math.atan2(Math.hypot(p.x, p.z), p.y - model.CY);
+  /* ── [진단] 그린 머리가 사진의 머리와 <b>가로로</b> 몇 px 어긋났나 (2026-09-06 4차)
+     ────────────────────────────────────────────────────────────────────────
+     사용자: "오히려 반대로 더 돌아갔어. 얼마나 조정해야 되는지 확인해야 될 거 같아."
+     맞는 지적이다. VIEWCAL_ANCHOR.cxNudgePx는 눈으로 맞춘 값이고, 재는 장치가
+     없어서 <b>부호를 두 번 틀렸다</b>(9/05 +35 → 9/06 −35 → 더 나빠짐).
+     추측으로 계수를 흔든 게 이 파일에서만 세 번째다.
+
+     재는 자리는 <b>크라운 띠</b>다 — 두피선에서 헤어 마스크 높이의 25%까지.
+       · 그 구간에서 헤어 실루엣은 곧 <b>두상</b>이다. 정렬이 맞으면 겹쳐야 한다.
+       · 아래로 내려가면 안 된다: 긴 머리가 어깨로 흐르는 정도는 좌우가 다르고
+         그건 정렬이 아니라 <b>머리 모양</b>이라, 섞으면 이 자가 오염된다.
+     중심은 실루엣 <b>양 끝의 한가운데</b>로 잡는다(무게중심 아님 — 가닥 밀도가
+     한쪽에 몰려도 안 흔들리게).
+     폭도 같이 찍는다: 중심만 다르면 <b>미는</b> 문제고, 폭까지 다르면 <b>자</b>
+     문제라 cxNudgePx로는 영영 안 맞는다. 두 증상을 안 갈라놔서 지금까지 헤맸다.
+     ⚠ 이 값은 아무 데도 <b>안 쓴다</b> — 찍기만 한다. 자동으로 밀면 진짜 원인
+       (귀 앵커)이 이 숫자 뒤에 숨는다. */
+  let _drA = null;
+  if(VIEWCAL_ANCHOR && VIEWCAL_ANCHOR.on){
+    let cy = Infinity, hy = -Infinity, px0 = Infinity, px1 = -Infinity;
+    for(let x=0; x<maskInf.w; x++){
+      if(maskInf.scalpY[x] < 0) continue;
+      if(maskInf.scalpY[x] < cy) cy = maskInf.scalpY[x];
+      if(maskInf.hairEndY[x] > hy) hy = maskInf.hairEndY[x];
+    }
+    if(isFinite(cy) && hy > cy){
+      const yBot = cy + (hy - cy) * 0.25;
+      for(let x=0; x<maskInf.w; x++){
+        const sy = maskInf.scalpY[x];
+        if(sy < 0 || sy > yBot) continue;   // 이 컬럼의 머리가 크라운 띠에 걸리나
+        if(x < px0) px0 = x; if(x > px1) px1 = x;
+      }
+      if(px1 > px0) _drA = { yTop: cy, yBot, px0, px1, dx0: Infinity, dx1: -Infinity, n: 0 };
+    }
+  }
   for(let si=0; si<adj.length; si++){
     const st = adj[si];
     const pts = st.pts; let dsum=0, dmax=-Infinity, dmin=Infinity, vis=0; const cpts=[];
@@ -863,6 +898,13 @@ function projectHair3DToView(ctx, fit, angle, maskInf){
       /* [진단] 이 점을 <b>어느 문</b>이 지웠나. 판정 직후에 읽어야 한다
          (GAP_DIAG.reason은 스크래치 한 칸을 돌려 쓴다). */
       if(rsn) rsn.push(GAP_DIAG.reason);
+      /* 크라운 띠에 <b>보이게</b> 찍힌 점만 — 지워진 점은 화면에 없으니 정렬의
+         증거가 못 된다(위 _drA 배너). */
+      if(_drA && v && pr.iy >= _drA.yTop && pr.iy <= _drA.yBot){
+        if(pr.ix < _drA.dx0) _drA.dx0 = pr.ix;
+        if(pr.ix > _drA.dx1) _drA.dx1 = pr.ix;
+        _drA.n++;
+      }
       vpt.push(v); if(v) vis++;
     }
     /* ── (2026-09-04) 얼굴 실루엣 게이트 ──────────────────────────────────
@@ -1009,6 +1051,22 @@ function projectHair3DToView(ctx, fit, angle, maskInf){
       + perfLine()
       + '\n    JS힙이 뷰를 오갈 때마다 <b>계단처럼</b> 오르면 누수(가닥 객체·캔버스),'
       + ' 평평한데 ms만 크면 순수 계산량입니다. PERF.on=false로 끕니다.');
+  }
+  /* [뷰정렬] 위 _drA 배너 — 필요한 보정을 px로 찍는다. */
+  if(_drA && _drA.n > 20 && _drA.dx1 > _drA.dx0){
+    const pC = (_drA.px0 + _drA.px1) / 2, pW = _drA.px1 - _drA.px0;
+    const dC = (_drA.dx0 + _drA.dx1) / 2, dW = _drA.dx1 - _drA.dx0;
+    const need = pC - dC;                       // +면 그린 머리를 오른쪽으로 더 밀어야 한다
+    const cur = (typeof viewCalNudgePx === 'function') ? viewCalNudgePx(angle) : 0;
+    const wRatio = dW / pW;
+    console.log('[뷰정렬] ' + angle + ': 크라운 띠에서 사진 중심 ' + pC.toFixed(0) + 'px'
+      + ' vs 그린 중심 ' + dC.toFixed(0) + 'px → <b>어긋남 ' + (need>=0?'+':'') + need.toFixed(0) + 'px</b>'
+      + '\n      폭: 사진 ' + pW.toFixed(0) + 'px vs 그린 ' + dW.toFixed(0) + 'px (×' + wRatio.toFixed(3) + ')'
+      + ' — 1.00에서 멀면 <b>자</b> 문제라 미는 걸로는 안 맞습니다(sX·isoScale를 보세요).'
+      + '\n      현재 cxNudgePx=' + cur + 'px. cxUse를 +로 밀면 가닥은 화면 <b>왼쪽</b>으로'
+      + ' 갑니다(mx=(px−cxUse)·sX) — 즉 어긋남이 +면 이 값을 <b>줄여야</b> 합니다.'
+      + '\n      띠는 두피선~마스크 높이 25%(사진 y ' + _drA.yTop.toFixed(0) + '~' + _drA.yBot.toFixed(0) + ')'
+      + ' · 표본 ' + _drA.n + '점. 이 값은 자동 적용하지 않습니다.');
   }
   logStrandRender(angle, { spanX, unit, cssW, roles, rawTotal, targetStrands, pxN,
                            stride, total: src.length, drawn: projected.length,
