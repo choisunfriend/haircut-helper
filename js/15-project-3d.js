@@ -873,9 +873,31 @@ function projectHair3DToView(ctx, fit, angle, maskInf){
         if(sy < 0 || sy > yBot) continue;   // 이 컬럼의 머리가 크라운 띠에 걸리나
         if(x < px0) px0 = x; if(x > px1) px1 = x;
       }
-      if(px1 > px0) _drA = { yTop: cy, yBot, px0, px1, dx0: Infinity, dx1: -Infinity, n: 0 };
+      if(px1 > px0) _drA = { yTop: cy, yBot, px0, px1, dx0: Infinity, dx1: -Infinity, n: 0,
+                             gx0: Infinity, gx1: -Infinity, gn: 0 };
     }
   }
+  /* ── [진단] 폭을 <b>얼굴 게이트 전·후</b>로 갈라 잰다 (2026-09-06 5차) ───────
+     사용자: "3D 결과보기 보면 코 위쪽이 움푹 들어가서 안면이 굴곡지거든...
+     그 자리일지도 모르겠는데?"
+     자리는 맞다. 우측 뷰 띠가 사진 y 44~130이고 마스크 높이가 447px이니 그
+     띠는 정수리~이마다. 그리고 이 앱은 그 함몰을 이미 재고 있다 —
+     [얼굴 z 항별] 이마 타원면 0.530 → 0.391(−0.139), 미간 0.575 → 0.479(−0.097).
+     그 로그의 안내문이 원인까지 적어 뒀다: "yaw 34°/−31°라 실루엣 가장자리가
+     코·이마가 아니라 뺨이다(깊이를 재려면 80~90°가 필요)". 못 잰 깊이가 함몰로 남는다.
+
+     함몰이 폭으로 새는 길은 둘인데, 서로 다른 말을 한다:
+       A 투영     z가 틀리면 화면 x = x·cos(yaw) + z·sin(yaw)로 옆폭이 바뀐다.
+                  다만 <b>방향이 안 맞는다</b> — 함몰은 z가 작다는 뜻이라 덜 퍼져야 한다.
+       B 얼굴 게이트  측면에서 볼록껍질의 반대편 윤곽선은 <b>코</b>다(아래 배너).
+                  코가 뒤로 당겨지면 그 모서리가 물러나 <b>잘라야 할 자리에서 안 자른다</b>.
+                  남은 가닥이 코 위에 그대로 있고, 폭 자도 그만큼 벌어진다.
+
+     지금까지 찍던 ×1.178은 게이트를 <b>통과하기 전</b> 값이었다(이 루프는
+     applyFaceGate보다 먼저 돈다). 그래서 A인지 B인지 못 갈랐다. 후를 같이 잰다:
+       게이트 후가 1.0에 가까워지면 → 게이트는 일하고 있다. 남는 건 A(깊이).
+       전·후가 거의 같으면       → 게이트가 그 자리에서 <b>아무것도 안 잘랐다</b> = B.
+     비용은 가닥당 띠 안 점만 한 번 더 훑는 것. */
   for(let si=0; si<adj.length; si++){
     const st = adj[si];
     const pts = st.pts; let dsum=0, dmax=-Infinity, dmin=Infinity, vis=0; const cpts=[];
@@ -922,6 +944,17 @@ function projectHair3DToView(ctx, fit, angle, maskInf){
        되돌리기: FACE_GATE.on = false · FACE_GATE.cutTail = false */
     const _fcut = applyFaceGate(vpt, ipts, faceSil, rootDepth, rsn);
     if(_fcut){ vis -= _fcut; faceCut += _fcut; faceCutStrands++; }
+    /* 게이트 <b>후</b> 폭 — 위 배너. vpt는 방금 게이트가 덮어썼다. */
+    if(_drA){
+      for(let i=0;i<ipts.length;i++){
+        if(!vpt[i]) continue;
+        const iy = ipts[i].y; if(iy < _drA.yTop || iy > _drA.yBot) continue;
+        const ix = ipts[i].x;
+        if(ix < _drA.gx0) _drA.gx0 = ix;
+        if(ix > _drA.gx1) _drA.gx1 = ix;
+        _drA.gn++;
+      }
+    }
     /* ── (2026-09-01 6차) 정렬 키를 <b>뿌리 깊이</b>로 ────────────────────────
        사용자: "그 <b>len 변화분은 적은데</b>, 뒤집어지고 난리가 나는 건 변화에
        대한 <b>2D 투영 문제</b>가 맞아. <b>3D는 괜찮아</b>."
@@ -1059,10 +1092,45 @@ function projectHair3DToView(ctx, fit, angle, maskInf){
     const need = pC - dC;                       // +면 그린 머리를 오른쪽으로 더 밀어야 한다
     const cur = (typeof viewCalNudgePx === 'function') ? viewCalNudgePx(angle) : 0;
     const wRatio = dW / pW;
+    /* 게이트 후 — 위 배너의 A/B 판정. */
+    let gLine = '';
+    if(_drA.gn > 20 && _drA.gx1 > _drA.gx0){
+      const gW = _drA.gx1 - _drA.gx0, gR = gW / pW;
+      const cut = dW - gW;
+      gLine = '\n      폭(얼굴 게이트 <b>후</b>): ' + gW.toFixed(0) + 'px (×' + gR.toFixed(3) + ')'
+        + ' — 게이트가 가로로 ' + cut.toFixed(0) + 'px 잘랐습니다.'
+        + '\n      후가 1.0에 가까우면 게이트는 일하고 있고 남는 건 <b>깊이(z)</b>,'
+        + ' 전·후가 거의 같으면 게이트가 그 자리에서 <b>안 자른 것</b>입니다'
+        + ' — 후자면 얼굴 껍질의 코 모서리가 함몰만큼 물러난 것입니다.';
+    } else if(_drA.gn <= 20){
+      gLine = '\n      폭(얼굴 게이트 후): 표본 부족(' + _drA.gn + '점) — 띠 안이 통째로 지워졌습니다.';
+    }
+    /* 얼굴 껍질의 <b>먼 쪽</b> 모서리를 사진의 코와 대조 — 함몰이 몇 px인지 그 자리에서 나온다.
+       먼 쪽은 얼굴이 향한 반대편이다(faceSil.dir > 0이면 얼굴이 오른쪽 → 먼 모서리는 hi). */
+    let nLine = '';
+    try{
+      const lm = state.landmarks && state.landmarks[angle];
+      const nose = lm && lm.rawLandmarks && lm.rawLandmarks[1];   // MediaPipe 1 = 코끝
+      if(nose && faceSil){
+        let sum = 0, cnt = 0;
+        for(let y = Math.max(faceSil.yTop, _drA.yTop|0); y <= Math.min(faceSil.yBot, _drA.yBot|0); y++){
+          const l = faceSil.lo[y], h = faceSil.hi[y];
+          if(!(h > l)) continue;
+          sum += (faceSil.dir > 0 ? h - faceSil.inset : l + faceSil.inset); cnt++;
+        }
+        if(cnt){
+          const edge = sum / cnt, nx = nose.x * maskInf.w;
+          nLine = '\n      껍질 먼쪽 모서리 ' + edge.toFixed(0) + 'px vs 사진 코끝 ' + nx.toFixed(0) + 'px'
+            + ' → <b>' + (faceSil.dir > 0 ? (nx - edge) : (edge - nx)).toFixed(0) + 'px 물러남</b>'
+            + ' (+면 껍질이 코보다 안쪽 = 그만큼 안 자릅니다. 띠 ' + cnt + '행 평균)';
+        }
+      }
+    }catch(e){}
     console.log('[뷰정렬] ' + angle + ': 크라운 띠에서 사진 중심 ' + pC.toFixed(0) + 'px'
       + ' vs 그린 중심 ' + dC.toFixed(0) + 'px → <b>어긋남 ' + (need>=0?'+':'') + need.toFixed(0) + 'px</b>'
-      + '\n      폭: 사진 ' + pW.toFixed(0) + 'px vs 그린 ' + dW.toFixed(0) + 'px (×' + wRatio.toFixed(3) + ')'
-      + ' — 1.00에서 멀면 <b>자</b> 문제라 미는 걸로는 안 맞습니다(sX·isoScale를 보세요).'
+      + '\n      폭(얼굴 게이트 <b>전</b>): 사진 ' + pW.toFixed(0) + 'px vs 그린 ' + dW.toFixed(0) + 'px'
+      + ' (×' + wRatio.toFixed(3) + ')'
+      + gLine + nLine
       + '\n      현재 cxNudgePx=' + cur + 'px. cxUse를 +로 밀면 가닥은 화면 <b>왼쪽</b>으로'
       + ' 갑니다(mx=(px−cxUse)·sX) — 즉 어긋남이 +면 이 값을 <b>줄여야</b> 합니다.'
       + '\n      띠는 두피선~마스크 높이 25%(사진 y ' + _drA.yTop.toFixed(0) + '~' + _drA.yBot.toFixed(0) + ')'
