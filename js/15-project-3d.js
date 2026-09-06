@@ -484,7 +484,7 @@ function projectHairQuiltToView(ctx, fit, angle, maskInf){
       cp.push({ x: toCX(pr.ix), y: toCY(pr.iy) });
       ipts.push({ x: pr.ix, y: pr.iy });
       dsum += pr.depth; if(pr.depth > dmax) dmax = pr.depth;
-      const v = viewPointVisible(pr, occ, maskInf);
+      const v = viewPointVisible(pr, occ, maskInf, rootDepth);   // 목 아래는 뿌리 쪽으로(VIEW_CULL.neckBySide)
       vpt.push(v); if(v) vis++;
     }
     vis -= applyFaceGate(vpt, ipts, faceSil, rootDepth);
@@ -686,15 +686,16 @@ function projectHair3DToView(ctx, fit, angle, maskInf){
     let pMinX = Infinity, pMaxX = -Infinity, pN = 0, pFront = 0;
     for(let si=0; si<src.length; si+=PROBE_STEP){
       const pts = src[si].pts;
-      let dsum = 0, dmax = -Infinity, vis = 0, far = false;
+      let dsum = 0, dmax = -Infinity, vis = 0, far = false, rootDepth = 0;
       for(let i=0;i<pts.length;i++){
         const pr = project3DPointToView(pts[i], cal, model.yTop, model.CY);
         // 0번 점이 뿌리다 — 여기서 이 가닥이 <b>반대쪽</b>인지 한 번 정한다
-        if(i===0) far = !!faceSil && strandIsFarSide(pr.depth);
+        if(i===0){ far = !!faceSil && strandIsFarSide(pr.depth); rootDepth = pr.depth; }
         const x = toCX(pr.ix);
         if(x < pMinX) pMinX = x; if(x > pMaxX) pMaxX = x;
         dsum += pr.depth; if(pr.depth > dmax) dmax = pr.depth;
-        if(viewPointVisible(pr, occ, maskInf)
+        /* 프로브는 렌더와 <b>같은 판정</b>이어야 예산이 안 어긋난다 — 뿌리 깊이까지 같이 넘긴다 */
+        if(viewPointVisible(pr, occ, maskInf, rootDepth)
            && !(far && faceSil.covers(pr.ix, pr.iy))) vis++;
       }
       pN++; if(strandFacesCamera(dsum, pts.length, dmax, vis)) pFront++;
@@ -858,7 +859,7 @@ function projectHair3DToView(ctx, fit, angle, maskInf){
       ipts.push({ x: pr.ix, y: pr.iy });
       dsum += pr.depth; if(pr.depth > dmax) dmax = pr.depth;
       if(pr.depth < dmin) dmin = pr.depth;   // (2026-09-05) 깊이 폭 진단 — 아래 _spanBySec
-      const v = viewPointVisible(pr, occ, maskInf);
+      const v = viewPointVisible(pr, occ, maskInf, rootDepth);   // 목 아래는 뿌리 쪽으로(VIEW_CULL.neckBySide)
       /* [진단] 이 점을 <b>어느 문</b>이 지웠나. 판정 직후에 읽어야 한다
          (GAP_DIAG.reason은 스크래치 한 칸을 돌려 쓴다). */
       if(rsn) rsn.push(GAP_DIAG.reason);

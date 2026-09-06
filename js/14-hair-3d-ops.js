@@ -577,9 +577,42 @@ function curlStrand3D(pts, curlAmt, waveT, curlDir){
    깊이 판정이 성립하지 않는다(가릴 두께가 없는데 부호로 자르면 얼룩이 된다).
    국소 반두께가 이 비율 밑이면 "여긴 가리는 게 없다"로 본다.
    되돌리기: VIEW_CULL.neckDepth = false (9/05 1차와 글자 그대로 같은 동작) */
+/* ── (2026-09-06 2차) 목·어깨 아래는 <b>깊이로 못 가른다</b> — 뿌리 쪽으로 ────
+   사용자: "정면에서 봤을 때 긴머리가 다 잘려서 단발로만 보여."
+
+   3D 화면은 같은 모델로 <b>어깨 아래까지</b> 그린다. 그러니 없어서 안 그린 게
+   아니라 <b>그리기 전에 지운 것</b>이고, 마네킹에서 아직 열려 있는 문은 둘뿐이다
+   (MQ_TRUST가 나머지를 닫았다) — 두개골 깊이와 목·어깨 깊이. 두개골 그림자는
+   턱 위에서 끝나므로, 턱 아래를 자르는 것은 <b>목·어깨 깊이</b> 하나다.
+   실측이 그 말을 그대로 한다: [끊긴 가닥]의 구멍은 전부 두개골 깊이인데
+   가림 트리밍은 61%다 — 나머지 트리밍은 구멍이 아니라 <b>꼬리</b>, 즉 잘린 밑단이다.
+
+   왜 잘리나. neckFrontZ는 목·어깨 타원의 <b>앞면</b>을 구해 그보다 뒤면 지운다.
+   그런데 우리 모델의 머리카락은 두상에서 그대로 흘러내릴 뿐 <b>가슴이 없다</b> —
+   턱 아래로 내려온 가닥의 z는 뿌리의 z 언저리(0.1~0.3)에 머무는데, 목·어깨
+   단면의 앞면은 그보다 앞(어깨 밴드는 두상 대비 최대 3배 깊다)이다. 그래서
+   앞으로 흘러내린 머리가 전부 "몸 뒤"로 판정돼 사라진다. 자른 높이가 정확히
+   턱선인 이유가 이것이다(그 위는 두개골 그림자라 이 가지를 안 탄다).
+
+   즉 깊이 판정이 성립하려면 <b>몸과 머리카락이 같은 정밀도로 모델링</b>돼야
+   하는데, 몸통은 실측 밴드의 클램프이고 머리카락엔 드레이프가 없다. 두 개의
+   서로 다른 근사를 부호도 아닌 절대 깊이로 비교한 것이 이 문에 없던 권한이다.
+
+   대신 <b>가닥이 몸의 어느 쪽으로 흘렀나</b>로 가른다. 이건 우리가 실제로 아는
+   값이다 — 뿌리 깊이. 뒤통수에서 난 머리는 길든 짧든 몸 뒤로 가고, 앞·옆에서
+   난 머리는 몸 앞(겉)으로 내려온다. 길이는 그 소속을 안 바꾼다. 이미 겹 정렬
+   키(9/01 6차)와 얼굴 게이트(strandIsFarSide)가 같은 근거를 쓴다.
+     · 뿌리가 카메라 쪽(rootDepth ≥ 0) → 몸 <b>겉</b>에 놓인 머리다. 안 지운다.
+     · 뿌리가 반대쪽                    → 몸에 <b>가려질 때만</b> 지운다(occ.covers).
+       이건 8/18 h가 세운 규칙 그대로라, "정면에서 목 옆으로 보이는 뒷머리"도
+       그대로 살아 있다.
+   부수 효과로 9/05 2차가 겨냥한 <b>톱니 밑단</b>도 같이 없어진다 — 원인이던
+   "z 부호가 0 언저리에서 점마다 흔들림"이 가닥당 한 번의 판정으로 바뀐다.
+   되돌리기: VIEW_CULL.neckBySide = false (9/05 2차와 글자 그대로 같은 동작) */
 const VIEW_CULL = { mode: 'anyVisible', trimHidden: true, photoOverrides: false,
                     depthBuffer: true, depthEps: 0.04,
-                    neckDepth: true, neckRimMin: 0.15 };   // 'anyVisible' | 'anyFacing' | 'mean'(예전)
+                    neckDepth: true, neckRimMin: 0.15,
+                    neckBySide: true };   // 'anyVisible' | 'anyFacing' | 'mean'(예전)
 
 /* 이 뷰에서 <b>가리는 몸</b>(두상+목·어깨)의 직교투영 그림자 (2026-08-18 h).
    가리는 것은 두 조각이고 <b>둘 다 이미 실측돼 있다</b>(새 상수 없음):
@@ -787,7 +820,7 @@ const GAP_DIAG = {
 const GAP_REASON = [
   '보임',
   '두개골 깊이(VIEW_CULL.depthBuffer)',
-  '목·어깨 깊이(VIEW_CULL.neckDepth)',
+  '목·어깨 아래(VIEW_CULL.neckDepth · neckBySide면 뿌리 쪽 판정)',
   '몸 그림자(occ.covers)',
   '뒤쪽 폴백(depth<0)',
   '얼굴 게이트(FACE_GATE.on)',
@@ -795,7 +828,7 @@ const GAP_REASON = [
 /* 판정 본체 — 돌려주는 값이 <b>사유 코드</b>다. 0이면 보임.
    ⚠ 분기·순서·반환 조건은 9/05 2차와 <b>한 글자도 다르지 않다</b>. true를 0으로,
      false를 사유 번호로 바꿔 적었을 뿐이라 그림은 비트 단위로 같다. */
-function viewPointHideReason(pr, occ, maskInf){
+function viewPointHideReason(pr, occ, maskInf, rootDepth){
   /* ── (2026-09-02 7차) <b>깊이의 부호</b>가 아니라 깊이를 본다 ────────────────
      사용자: "사이드가 넘어오는 거야. 그런데 3D에선 얼굴이 가려지는 게 없잖아."
      그 두 문장이 같이 오는 게 답이다 — 3D는 깊이 버퍼가 있고 2D 투영엔 없었다.
@@ -830,7 +863,18 @@ function viewPointHideReason(pr, occ, maskInf){
      neckDepth=false면 이 블록이 통째로 빠져 9/05 1차와 같은 동작이 된다. */
   if(VIEW_CULL.neckDepth && occ && occ.neckFrontZ){
     const nz = occ.neckFrontZ(pr.lx, pr.my);
-    if(nz != null) return (pr.depth >= nz) ? 0 : 2;
+    if(nz != null){
+      /* (2026-09-06 2차) 여기서부터는 <b>목·어깨 아래</b>다. 절대 깊이 대신
+         가닥의 소속(뿌리 쪽)으로 가른다 — 근거는 VIEW_CULL 배너.
+         rootDepth를 안 받은 호출부(진단·마네킹 집기·이식)는 예전처럼
+         그 점 자신의 부호를 쓴다 = 9/05 1차와 같은 그림. */
+      if(VIEW_CULL.neckBySide){
+        const rd = (typeof rootDepth === 'number') ? rootDepth : pr.depth;
+        if(rd >= 0) return 0;                                  // 몸 겉으로 흘러내린 머리
+        return occ.covers(pr.lx, pr.ly, pr.my) ? 2 : 0;        // 뒤로 넘어간 머리는 가려질 때만
+      }
+      return (pr.depth >= nz) ? 0 : 2;
+    }
   }
   /* 여기 아래는 <b>깊이가 없는 옛 가지</b>다(8/18 h). 두개골·목 그림자 밖이라
      깊이를 물을 대상이 없는 자리이고, 그런 자리는 원래 "가릴 게 없다"는 뜻이다.
@@ -848,8 +892,8 @@ function viewPointHideReason(pr, occ, maskInf){
 /* 예전 이름·예전 반환값 그대로의 얇은 겉껍질. 부르는 쪽은 아무것도 안 바뀐다.
    사유는 GAP_DIAG.reason에 남겨 두고, 필요한 호출부만 호출 <b>직후에</b> 읽는다
    (스크래치 한 칸을 돌려 쓰는 것은 이 파일의 _proj와 같은 방식이다). */
-function viewPointVisible(pr, occ, maskInf){
-  const r = viewPointHideReason(pr, occ, maskInf);
+function viewPointVisible(pr, occ, maskInf, rootDepth){
+  const r = viewPointHideReason(pr, occ, maskInf, rootDepth);
   GAP_DIAG.reason = r;
   return r === 0;
 }

@@ -1031,7 +1031,38 @@ const VIEWCAL_ANCHOR = {
      두개골 앞뒤 중앙보다 약간 뒤(≈10%). yaw가 클 때만 의미 있는 작은 항이다
      (yaw 51°·이 손님 기준 ≈8px). 0으로 두면 "귀 한가운데 = 두상 중심". */
   earDepth:  0.10,
+  /* ── (2026-09-06 2차) 측면 뷰 가로 앵커 보정 ───────────────────────────────
+     사용자: "우측 뷰에서만 머리카락이 코 위로 올라오고, 좌측 뷰에서는 뒤로 확
+     넘어간다. 헤어를 우측 귀 방향으로 그만큼 밀어라."
+
+     증상이 <b>어느 쪽으로</b> 틀어지는지가 원인을 가른다. 사진에서 얼굴이
+     향하는 방향은 두 뷰가 반대인데(우측 뷰는 화면 왼쪽, 좌측 뷰는 화면 오른쪽),
+     "우측 뷰는 앞(코)으로 · 좌측 뷰는 뒤로"는 결국 <b>두 뷰 다 화면 왼쪽</b>으로
+     같은 만큼 밀렸다는 뜻이다. 부호가 좌우 대칭이 아니므로 earDepth 항이 아니다
+     (그건 sin(yaw) 비례라 좌우가 반대로 틀어진다). 남는 건 <b>기준점 그 자체</b> —
+     cx를 잡아 주는 귀 앵커(lEarX·rEarX의 중점)가 측면에서 밀려 찍히는 것이다.
+     먼 쪽 귀는 사진에 안 보이고 MediaPipe가 메쉬로 채워 넣는데, 그 채운 값이
+     yaw가 클수록 얼굴 쪽으로 당겨진다.
+
+     ⚠ 이 값은 <b>실측이 아니라 눈으로 맞춘 보정</b>이다(사용자 지정 35px, 마스크
+       픽셀 기준). 그래서 다른 상수들과 달리 "왜 이 숫자인가"를 못 적는다 —
+       제대로 된 자리는 귀 앵커를 사진에서 다시 잡는 것이고, 그때 이 값은 0으로
+       돌아가야 한다. 그 전까지의 임시 받침대라는 뜻으로 여기 남긴다.
+     조절: 콘솔에서 VIEWCAL_ANCHOR.cxNudgePx = {left: 40, right: 40} 처럼 넣고
+           뷰를 다시 들어가면(모델을 다시 만들어야 반영된다) 바로 보인다.
+           끄기: VIEWCAL_ANCHOR.cxNudgePx = 0
+     읽는 법 — 이 평행이동으로 <b>닫히면</b> 원인이 cx가 맞다. 가운데는 맞는데
+     양 끝이 벌어지면 자(sX·sy)나 포즈(yaw) 쪽이라 cx로는 못 고친다. 그때 볼 것은
+     [진단·투영 실루엣] 배율과 [좌표왕복]의 회전 성분이다. */
+  cxNudgePx: { front: 0, left: 35, right: 35, back: 0 },   // 숫자(전 뷰 공통)도 됨
 };
+/* 위 손잡이 읽기 — 숫자면 전 뷰 공통, 객체면 뷰별. 없으면 0. */
+function viewCalNudgePx(angle){
+  const n = VIEWCAL_ANCHOR.cxNudgePx;
+  if(typeof n === 'number') return isFinite(n) ? n : 0;
+  if(n && typeof n[angle] === 'number' && isFinite(n[angle])) return n[angle];
+  return 0;
+}
 const HAIR_TOP_CAP = {
   on: true,
   pct: 0.02,      // 상단 백분위 — 먼지·삐침 픽셀 한둘로 범위가 튀지 않게
@@ -1244,6 +1275,21 @@ function buildHairStrandsFromPaths(){
          · crownY(오프셋) — 마스크에서 제일 높은 두피선 픽셀
          · sy(세로자)     — 눈→턱에서 왔나, 가로에서 왔나
        뷰별로 둘을 같이 찍어야 어느 쪽인지 갈린다. */
+    /* 측면 앵커 보정(위 배너). 적용값과 <b>earDepth 항이 이 뷰에서 몇 px인지</b>를
+       같이 찍는다 — 이 보정이 그 항으로 설명될 크기인지 바로 갈린다(안 된다.
+       그래서 임시 받침대다). */
+    const nudge = viewCalNudgePx(angle);
+    if(nudge){
+      cxUse += nudge;
+      console.log('[뷰캘리·앵커보정] ' + angle + ': 가로 ' + (nudge>=0?'+':'') + nudge.toFixed(0) + 'px'
+        + ' (VIEWCAL_ANCHOR.cxNudgePx — 눈으로 맞춘 임시값. 끄기: = 0)');
+    }
+    if(VIEWCAL_ANCHOR.on && isFinite(sX) && sX > 0){
+      const earTermPx = Math.sin(pose.yaw) * VIEWCAL_ANCHOR.earDepth * cD / sX;
+      console.log('[뷰캘리·귀깊이] ' + angle + ': earDepth 항 ' + earTermPx.toFixed(1) + 'px'
+        + ' (yaw ' + (pose.yaw*180/Math.PI).toFixed(1) + '° · earDepth ' + VIEWCAL_ANCHOR.earDepth + ')'
+        + ' — 필요한 보정이 Δpx면 earDepth += Δpx·' + (sX/Math.max(1e-6, Math.abs(Math.sin(pose.yaw))*cD)).toFixed(5));
+    }
     console.log('[뷰캘리·세로자] ' + angle + ': 자 출처 ' + syFrom
       + ' · sy ' + sy.toFixed(5) + ' · 크라운오프셋 ' + crownY.toFixed(0) + 'px'
       + ' (마스크 높이 ' + maskInf.h + 'px, 상단에서 ' + (100*crownY/maskInf.h).toFixed(1) + '%)'
