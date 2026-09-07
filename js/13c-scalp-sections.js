@@ -1061,14 +1061,69 @@ const VIEWCAL_ANCHOR = {
      15-project-3d.js의 [뷰정렬] 로그가 "이 뷰에서 몇 px 어긋났나"를 찍는다.
      그 숫자가 나오면 여기는 그 값으로 <b>한 번</b> 고치거나, 더 낫게는 0으로
      되돌리고 원인(귀 앵커)을 고친다. 그때까지는 임시 받침대다. */
-  cxNudgePx: { front: 0, left: 35, right: 35, back: 0 },   // 숫자(전 뷰 공통)도 됨
+  /* ⚠ (2026-09-07) <b>이 손잡이는 화면을 밀지 못한다</b> — 여기가 세 턴을 헤맨 이유다.
+     cxUse는 아래에서 views[angle].cx로 들어가고, 그 값이 그대로 viewCal[angle].cx가
+     된다. 그런데 viewCal.cx는 <b>양방향에 다 쓰인다</b>:
+       빌드(사진→모델)   mx = (px − cx)·s      … 13c, buildHairStrandsFromPaths
+       되쏘기(모델→사진) ix = lx/s + cx        … 15-project-3d, project3DPointToView
+     같은 값을 넣고 빼므로 <b>촬영 가닥에서는 정확히 상쇄된다</b>(u≤1 구간에서 왕복 오차 0).
+     그래서 +35든 −35든 화면이 안 움직였고, \"반대로 갔다\"는 관찰은 헐 접힘(u>1)
+     분기가 비선형으로 튄 잔차였다.
+     <b>그런데 마네킹 리셋에서는 상쇄가 안 된다</b> — 마네킹 가닥은 사진에서 뽑지
+     않고 두피 타원에 직접 심으므로 cx가 <b>되쏘기에만</b> 쓰인다. 즉 이 +35는
+     마네킹 모드에서만 살아나서 가닥을 화면 <b>오른쪽</b>으로 35px 밀고 있었다
+     (ix = lx/s + cx — 아래 [뷰정렬] 로그가 \"왼쪽으로 간다\"고 적어 둔 건 빌드식만
+     보고 쓴 것이라 틀렸다. 그 문구도 이번에 고쳤다).
+     증상이 정확히 그 모양이었다: 좌측 뷰(얼굴이 화면 오른쪽)는 머리가 얼굴 위로
+     올라타고, 우측 뷰(얼굴이 화면 왼쪽)는 뒤통수 밖으로 넘어가며 앞이마에 구멍(유령)이 남는다.
+     → 0으로 되돌린다. 화면을 미는 일은 아래 drawNudgePx가 <b>되쏘기에서만</b> 한다. */
+  cxNudgePx: { front: 0, left: 0, right: 0, back: 0 },   // 숫자(전 뷰 공통)도 됨
+
+  /* ── 되쏘기 전용 가로 보정 (2026-09-07) ──────────────────────────────────
+     여기는 <b>그리는 자리만</b> 민다(모델은 안 건드린다). 그래서 촬영 모드든
+     마네킹 모드든 <b>같은 방향으로 같은 만큼</b> 움직인다 — 재는 자와 미는 자가
+     처음으로 일치한다.
+     부호 규약: + = 화면 <b>오른쪽</b>. 마스크 픽셀 기준.
+     ⚠ 좌우는 거울쌍이므로 해부학적 원인(귀 앵커 편향)이라면 <b>부호가 반대</b>여야
+       한다. 예전 값이 left/right 둘 다 +35였던 것 자체가 원인 진단이 틀렸다는 신호였다.
+     조절(모델 재생성 불필요 — 뷰만 다시 그리면 반영):
+       VIEWCAL_ANCHOR.drawNudgePx = { left:-12, right:12 } */
+  drawNudgePx: { front: 0, left: 0, right: 0, back: 0 },
+
+  /* ── 측면 yaw 압축 보정 (2026-09-07) ─────────────────────────────────────
+     사용자: \"헤어를 덜 돌린 거잖아.\"
+     맞다. 마네킹 리셋이 켜져 있으면 2D 캔버스의 머리는 <b>전부</b> cal.yaw/pitch/roll로만
+     자세가 정해진다(가닥이 사진에서 온 게 아니라 모델 공간에서 심긴 것이라
+     되쏘기 회전이 곧 보이는 각도다). 그 yaw는 MediaPipe PnP인데, 큰 측면에서
+     <b>실제보다 작게</b> 나온다 — 이 녹화에서 우측 −41.2°, 좌측 +50.8°로 찍혔지만
+     사진은 코·귀가 다 실루엣으로 빠진 60~70° 프로필이다. 덜 돈 만큼 앞머리가
+     정면처럼 넓은 판으로 얼굴을 덮고, 그 잔차가 \"옆으로 밀린 것\"처럼 읽힌다.
+     sideGain은 측면 뷰의 yaw에만 곱한다(정면·후면은 안 건드린다).
+     되쏘기에서 적용하므로 <b>콘솔에서 바꾸고 뷰만 다시 그리면</b> 바로 보인다:
+       VIEWCAL_ANCHOR.sideGain = 1.6
+     1.0 = 끔(예전 동작). */
+  sideGain: 1.45,
+  sideMinDeg: 12,    // 이보다 정면에 가까우면 손대지 않는다(정면 슬롯 보호)
+  sideMaxDeg: 85,    // 보정 후 상한 — 90°는 이 파일이 교훈 E로 금지해 둔 값
 };
 /* 위 손잡이 읽기 — 숫자면 전 뷰 공통, 객체면 뷰별. 없으면 0. */
-function viewCalNudgePx(angle){
-  const n = VIEWCAL_ANCHOR.cxNudgePx;
+function _viewNudgeOf(n, angle){
   if(typeof n === 'number') return isFinite(n) ? n : 0;
   if(n && typeof n[angle] === 'number' && isFinite(n[angle])) return n[angle];
   return 0;
+}
+function viewCalNudgePx(angle){ return _viewNudgeOf(VIEWCAL_ANCHOR.cxNudgePx, angle); }
+/* 되쏘기 전용 — project3DPointToView가 ix에 그대로 더한다(+ = 화면 오른쪽). */
+function viewDrawNudgePx(angle){ return _viewNudgeOf(VIEWCAL_ANCHOR.drawNudgePx, angle); }
+/* 측면 yaw 보정 — 라디안 in/out. 부호는 유지하고 크기만 키운다. */
+function correctedViewYawRad(yawRad, angle){
+  const g = VIEWCAL_ANCHOR.sideGain;
+  if(!(g > 0) || g === 1) return yawRad;
+  if(angle !== 'left' && angle !== 'right') return yawRad;
+  const deg = yawRad * 180/Math.PI;
+  if(Math.abs(deg) < VIEWCAL_ANCHOR.sideMinDeg) return yawRad;
+  const out = Math.sign(deg) * Math.min(VIEWCAL_ANCHOR.sideMaxDeg, Math.abs(deg) * g);
+  return out * Math.PI/180;
 }
 const HAIR_TOP_CAP = {
   on: true,

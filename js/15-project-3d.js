@@ -22,7 +22,10 @@ function project3DPointToView(world, cal, yTop, CY){
   const lz = R[6]*world.x + R[7]*wy + R[8]*world.z;
   const my = ly + CY;
   return {
-    ix: lx / cal.s + cal.cx,
+    /* (2026-09-07) cal.dx = 되쏘기 전용 가로 보정(+ = 화면 오른쪽).
+       calForDraw가 붙여 준다 — 빌드식(mx=(px−cx)·s)에는 없는 항이라
+       cx와 달리 <b>상쇄되지 않고</b> 실제로 그림을 민다. */
+    ix: lx / cal.s + cal.cx + (cal.dx || 0),
     iy: cal.crownY + (yTop - my) / cal.sy,
     depth: lz, // 카메라 축 성분 — 정렬 부호는 렌더에서 실측 조정
     /* 뷰 좌표를 그대로 들려 보낸다 (2026-08-18 h) — 가림 판정(makeViewOccluder)이
@@ -424,6 +427,39 @@ function setQuiltTag(txt){
   const el = document.getElementById('adjustStyleTag');
   if(el) el.textContent = txt;
 }
+/* ══════════════════════════════════════════════════════════════════
+   되쏘기용 캘리브레이션 (2026-09-07)
+   ─────────────────────────────────────────────────────────────────
+   viewCal[angle]은 <b>빌드에도 되쏘기에도</b> 같은 값이 쓰인다. 그래서 거기 있는
+   cx를 흔들면 촬영 가닥에서는 왕복하며 상쇄되고(=화면이 안 움직이고), 마네킹
+   가닥에서는 상쇄 없이 그대로 밀린다 — 같은 손잡이가 모드마다 다르게 동작했다.
+   여기서 <b>되쏘기에만</b> 붙는 항을 따로 얹는다:
+     dx  — 가로 평행이동(+ = 화면 오른쪽). 빌드식에 없으므로 항상 화면을 민다.
+     yaw — 측면 PnP yaw 압축 보정(VIEWCAL_ANCHOR.sideGain).
+   occluder·얼굴 게이트도 이 같은 cal을 받아야 판정과 그림이 안 갈라진다 —
+   그래서 함수 첫머리에서 한 번만 만들고 아래 전부가 이걸 쓴다.
+   ⚠ 반대로, 화면 좌표를 모델로 되돌리는 경로(빗질 COMB._proj 등)도 이 cal을
+     쓰므로 왕복이 유지된다. viewCal 원본은 건드리지 않는다.
+══════════════════════════════════════════════════════════════════ */
+function calForDraw(model, angle){
+  const cal = model && model.viewCal && model.viewCal[angle];
+  if(!cal) return null;
+  const dx  = (typeof viewDrawNudgePx === 'function') ? viewDrawNudgePx(angle) : 0;
+  const yaw = (typeof correctedViewYawRad === 'function')
+    ? correctedViewYawRad(cal.yaw, angle) : cal.yaw;
+  if(!dx && yaw === cal.yaw) return cal;
+  if(CAL_DRAW_LOG.on && CAL_DRAW_LOG._k !== angle + '|' + dx + '|' + yaw){
+    CAL_DRAW_LOG._k = angle + '|' + dx + '|' + yaw;
+    console.log('[되쏘기보정] ' + angle
+      + ': yaw ' + (cal.yaw*180/Math.PI).toFixed(1) + '° → <b>' + (yaw*180/Math.PI).toFixed(1) + '°</b>'
+      + ' (sideGain ' + VIEWCAL_ANCHOR.sideGain + ')'
+      + ' · 가로 ' + (dx>=0?'+':'') + dx + 'px(+ = 화면 오른쪽)'
+      + '\n    이 둘은 <b>그리는 자리만</b> 바꿉니다(모델·빌드는 그대로). 콘솔에서'
+      + ' VIEWCAL_ANCHOR.sideGain / .drawNudgePx 를 바꾸고 뷰를 다시 그리면 바로 반영됩니다.');
+  }
+  return Object.assign({}, cal, { yaw, dx });
+}
+const CAL_DRAW_LOG = { on: true, _k: null };
 function quiltFail(angle, why){
   const k = angle + '|' + why;
   if(k !== _quiltFailKey){ _quiltFailKey = k;
@@ -441,7 +477,7 @@ function projectHairQuiltToView(ctx, fit, angle, maskInf){
     return quiltFail(angle, '원본 헤어 이미지가 없음(소스를 못 뜸)');
   if(!maskInf.orientation) return quiltFail(angle, '결필드가 없음');
   const Q = HAIR_QUILT, R = HAIR3D_RENDER;
-  const cal = model.viewCal[angle];
+  const cal = calForDraw(model, angle);
   const { toX: toCX, toY: toCY } = makeImgToCanvas(fit, maskInf.w, maskInf.h);
 
   /* ── 띠 폭 (2026-07-27 2차, 사용자 지적으로 분리) ──────────────────
@@ -592,7 +628,7 @@ function logQuiltRender(angle, m){
 function projectHair3DToView(ctx, fit, angle, maskInf){
   const model = state.hair3Dneutral;
   if(!model || !model.viewCal || !model.viewCal[angle]) return false;
-  const cal = model.viewCal[angle];
+  const cal = calForDraw(model, angle);
   const { toX: toCX, toY: toCY } = makeImgToCanvas(fit, maskInf.w, maskInf.h);
   /* (#5) 시술모드 빗질이 화면 좌표 ↔ 3D를 왕복하려면 <b>지금 이 프레임의</b>
      투영 문맥이 필요하다. 렌더가 이미 들고 있는 것을 그대로 남긴다 — 빗질이
@@ -1132,6 +1168,7 @@ function projectHair3DToView(ctx, fit, angle, maskInf){
     const dC = (_drA.dx0 + _drA.dx1) / 2, dW = _drA.dx1 - _drA.dx0;
     const need = pC - dC;                       // +면 그린 머리를 오른쪽으로 더 밀어야 한다
     const cur = (typeof viewCalNudgePx === 'function') ? viewCalNudgePx(angle) : 0;
+    const curDraw = (typeof viewDrawNudgePx === 'function') ? viewDrawNudgePx(angle) : 0;
     const wRatio = dW / pW;
     /* 게이트 후 — 위 배너의 A/B 판정. */
     let gLine = '';
@@ -1193,8 +1230,17 @@ function projectHair3DToView(ctx, fit, angle, maskInf){
       + '\n      폭(얼굴 게이트 <b>전</b>): 사진 ' + pW.toFixed(0) + 'px vs 그린 ' + dW.toFixed(0) + 'px'
       + ' (×' + wRatio.toFixed(3) + ')'
       + gLine + nLine + fLine
-      + '\n      현재 cxNudgePx=' + cur + 'px. cxUse를 +로 밀면 가닥은 화면 <b>왼쪽</b>으로'
-      + ' 갑니다(mx=(px−cxUse)·sX) — 즉 어긋남이 +면 이 값을 <b>줄여야</b> 합니다.'
+      /* ⚠ (2026-09-07 정정) 예전 문구는 <b>빌드식만</b> 보고 \"cxUse를 +로 밀면 왼쪽\"이라
+         적어 두었다. 틀렸다 — 실제로 그리는 식은 되쏘기(ix = lx/s + cx)라 <b>오른쪽</b>이고,
+         게다가 촬영 가닥에서는 그 둘이 상쇄되어 아무 데도 안 간다. 세 턴의 부호 뒤집기가
+         전부 이 한 줄에서 나왔다. 이제 재는 자와 미는 자를 같은 것으로 맞춘다. */
+      + '\n      현재 drawNudgePx=' + curDraw + 'px(되쏘기 전용, + = 화면 <b>오른쪽</b>)'
+      + ' · cxNudgePx=' + cur + 'px(빌드 쪽 — 촬영 가닥에서는 되쏘기와 <b>상쇄</b>되어 화면이 안 움직입니다)'
+      + '\n      → 어긋남이 ' + (need>=0?'+':'') + need.toFixed(0) + 'px면'
+      + ' <b>VIEWCAL_ANCHOR.drawNudgePx.' + angle + ' = ' + (curDraw + need).toFixed(0) + '</b> 로 두면 닫힙니다'
+      + ' (모델 재생성 불필요 — 뷰만 다시 그리면 반영).'
+      + '\n      단, 폭(×' + wRatio.toFixed(3) + ')이 1.0에서 멀면 미는 문제가 아니라 <b>각도</b>입니다 —'
+      + ' 그때 만질 것은 VIEWCAL_ANCHOR.sideGain(측면 yaw 압축 보정)입니다.'
       + '\n      띠는 두피선~마스크 높이 25%(사진 y ' + _drA.yTop.toFixed(0) + '~' + _drA.yBot.toFixed(0) + ')'
       + ' · 표본 ' + _drA.n + '점. 이 값은 자동 적용하지 않습니다.');
   }
