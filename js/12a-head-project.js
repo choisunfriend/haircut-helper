@@ -590,6 +590,37 @@ function loadImageAsync(src){
    "판때기" 진단에 필요한 것은 <b>얼마나 평평한가</b>가 아니라 <b>왜 평평한가</b>였다.
    zRange만 보면 원인이 ① 측면 실측이 굴곡을 덮어썼다 ② 굴곡 자체가 작다 중
    어느 쪽인지 못 가른다 — 그래서 그 둘을 각각 숫자로 남긴다. */
+/* 얼굴 z 보정 스위치. 최상위에 둔다 — 안쪽 함수들이 클로저로 보고, 검사도 본다. */
+const FACE_Z_FIX = { matchBaseline: true, trustWeighted: true };
+/* ── 측면 깊이 가중치 (2026-09-07) ────────────────────────────────────────
+   사용자: "3D 결과보기에서 미간이 함몰돼 굴곡이 졌다."
+   자리가 여기다. 예전 주석은 이렇게 적혀 있었다 —
+     "가중평균은 신뢰도를 정규화해 버리므로(합으로 나눈다) trust를 confidence에
+      섞으면 사라진다."
+   <b>좌우 trust가 같을 때만</b> 맞는 말이다. 이 손님은 좌 50.8°(trust 0.79) ·
+   우 41.2°(trust 0.31)로 크게 다르다. 다르면 정규화해도 <b>상대 가중</b>은 남는다 —
+   사라지는 건 공통 배율뿐이다. 그래서 지금은 41°짜리(정중선 깊이를 사실상 못 보는
+   뷰)가 realZ 평균에 <b>온전한 무게</b>로 들어가고, 정작 보정 크기는 좋은 쪽 trust
+   0.79로 곱해진다. 못 믿는 값을 믿는 배율로 쓰는 셈이다.
+   그 결과가 정중선(이마 10·미간 168)에서 realZ가 얕게 나오고
+   map[i] = realZ − frontZ 가 음수 → <b>함몰</b>. 로그가 이미 재고 있던
+   "이마 −0.139, 미간 −0.097"이 이 몫이다.
+   고침: 상대 가중을 confidence × trust 로 둔다. 각도가 깊이를 못 보는 뷰는
+   그만큼만 말하게 한다. 전체 배율(_profileTrust)은 건드리지 않는다 — 한 번에
+   하나만 바꾼다.
+   ⚠ 이 함수를 <b>바깥으로 뺀 이유</b>는 테스트가 부를 수 있게 하기 위해서다.
+     클로저 안에 있으면 하네스에서 못 잡고, 못 잡으면 다음 세션이 또 눈으로 맞춘다.
+   되돌리기: FACE_Z_FIX.trustWeighted = false */
+function sideDepthWeight(s){
+  if(!s) return 0;
+  const c = (typeof s.confidence === 'number' && isFinite(s.confidence)) ? s.confidence : 0;
+  if(FACE_Z_FIX && FACE_Z_FIX.trustWeighted === false) return c;
+  const t = (typeof s.trust === 'number' && isFinite(s.trust)) ? s.trust : 0;
+  return c * t;
+}
+/* 하네스가 부를 수 있게 노출한다 — 클로저 안에 두면 검사에서 못 잡는다. */
+if(typeof globalThis !== 'undefined') globalThis.__sideDepthWeight = sideDepthWeight;
+
 const FACE_BUILD = { path: '-', why: '', zRange: null, zMin: null, zMax: null,
                      sideHits: 0, ellA: null, ellC: null,
                      sideYaw: {}, reliefGain: null, reliefCm: null, cmPerUnit: null };
@@ -651,7 +682,6 @@ async function buildRealFaceMesh(faceMetrics){
   // "코가 안으로 들어갔다"는 피드백 — 즉 부호가 맞는 함수가 바뀌었으므로
   // 이론값(-1)으로 되돌림.
   /* 얼굴 z 보정 스위치 (2026-08-18 k-4) — matchBaseline은 frontEstimatedZOf 주석 참고. */
-  const FACE_Z_FIX = { matchBaseline: true };
   const Z_SIGN = -1;
   const Z_DEPTH_SCALE = 1.0; // 굴곡이 너무 약하거나 세면 조정
 
@@ -824,17 +854,6 @@ async function buildRealFaceMesh(faceMetrics){
      측면이 없으면 그렇게 동작했으므로 새 실패 모드가 아니다.
      되돌리기: PROFILE_YAW_GATE.on = false */
   const PROFILE_YAW_GATE = { on: true, minDeg: 35, fullDeg: 55 };
-  /* ⚠ (2026-09-07) 위 35/55는 <b>보정 전</b> PnP yaw로 눈금을 매긴 값이다.
-     이제 getViewYawDeg가 측면에 sideGain을 곱해 돌려주므로, 눈금을 그대로 두면
-     신뢰도가 <b>내가 눈으로 정한 배율 때문에</b> 조용히 1.00으로 뛴다 — 이 손님
-     기준 우측 0.31 → 1.00. 그건 각도가 좋아진 게 아니라 자가 늘어난 것이다.
-     그래서 눈금도 같은 배율로 늘려 <b>효력을 그대로</b> 둔다. 미간 함몰이 고쳐지는
-     몫은 신뢰도가 아니라 realZ 자체다(덜 돈 각도로 쏘던 것이 제 각도로 쏘게 됐다).
-     sideGain을 믿게 되면 이 배율을 1로 두고 눈금을 다시 매기면 된다. */
-  const _yawGateScale = (typeof VIEWCAL_ANCHOR !== 'undefined' && VIEWCAL_ANCHOR.sideGain > 0)
-    ? VIEWCAL_ANCHOR.sideGain : 1;
-  const _gateMin  = PROFILE_YAW_GATE.minDeg  * _yawGateScale;
-  const _gateFull = PROFILE_YAW_GATE.fullDeg * _yawGateScale;
   let _profileTrust = 0;   // [진단용] 실제로 먹은 측면 깊이 신뢰도(0~1)
   function usableSideViews(){
     const sides = ['left','right'].map(angle=>{
@@ -844,7 +863,8 @@ async function buildRealFaceMesh(faceMetrics){
       if(confidence < 0.5) return null;   // 어림 각도로는 이 보정에 부적합
       const yawAbs = Math.abs(getViewYawDeg(angle));
       const trust = PROFILE_YAW_GATE.on
-        ? clamp((yawAbs - _gateMin) / Math.max(1e-6, _gateFull - _gateMin), 0, 1)
+        ? clamp((yawAbs - PROFILE_YAW_GATE.minDeg)
+                / Math.max(1e-6, PROFILE_YAW_GATE.fullDeg - PROFILE_YAW_GATE.minDeg), 0, 1)
         : 1;
       FACE_BUILD.sideYaw[angle] = { yawAbs, trust };   // 진단 패널이 읽어 간다
       if(trust <= 0) return null;   // 이 각도로는 깊이를 못 잰다 → front 유지
@@ -887,7 +907,7 @@ async function buildRealFaceMesh(faceMetrics){
       if(!sidePt) continue;
       const world = projectImagePointToHead(s.angle, sidePt.x, sidePt.y, widthFactor, heightFactor);
       if(!world) continue;              // 타원 밖 → 이 뷰선 실측 불가
-      perView.push({ z: world.z, confidence: s.confidence });
+      perView.push({ z: world.z, confidence: s.confidence, trust: s.trust, w: sideDepthWeight(s) });
     }
     if(!perView.length) return null;
     if(perView.length === 2){
@@ -895,8 +915,9 @@ async function buildRealFaceMesh(faceMetrics){
       const disagree = Math.abs(a.z - b.z) > 1.2*ELL_C || (a.z*b.z < 0 && Math.abs(a.z)>0.15*ELL_C && Math.abs(b.z)>0.15*ELL_C);
       if(disagree) return null;
     }
-    const wSum = perView.reduce((s,v)=>s+v.confidence, 0);
-    const zSum = perView.reduce((s,v)=>s+v.z*v.confidence, 0);
+    const wSum = perView.reduce((s,v)=>s+v.w, 0);
+    if(!(wSum > 0)) return null;        // 무게가 0이면 평균이 정의되지 않는다
+    const zSum = perView.reduce((s,v)=>s+v.z*v.w, 0);
     return zSum / wSum;
   }
   function computeFullProfileDepthMap(){

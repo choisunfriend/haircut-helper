@@ -861,7 +861,10 @@ function sampleProjectedStrandColors(maskInf, ipts, baked, fallbackCss, dyeCss){
    돌려준다(새 실패 모드를 만들지 않는다). */
 function bakeStrandColors3D(pts, model, angle, fallbackCss, baked, dyeCss){
   if(!HAIR_PIXEL_COLOR.on || !pts || pts.length < 2 || !model) return baked || null;
-  const cal = model.viewCal && model.viewCal[angle];
+  /* (2026-09-07) 되쏘아 <b>사진 픽셀</b>을 읽는 자리다 — 그리는 것과 같은 cal이어야
+     색을 엉뚱한 픽셀에서 집어 오지 않는다. 검사 ⑦이 이 줄을 잡았다. */
+  const cal = (typeof calForDraw === 'function') ? calForDraw(model, angle)
+                                                 : (model.viewCal && model.viewCal[angle]);
   const mi  = state.hairMasks && state.hairMasks[angle];
   if(!cal || !mi || !mi.photoRGB) return baked || null;
   const ipts = new Array(pts.length);

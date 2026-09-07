@@ -435,29 +435,42 @@ function setQuiltTag(txt){
    가닥에서는 상쇄 없이 그대로 밀린다 — 같은 손잡이가 모드마다 다르게 동작했다.
    여기서 <b>되쏘기에만</b> 붙는 항을 따로 얹는다:
      dx  — 가로 평행이동(+ = 화면 오른쪽). 빌드식에 없으므로 항상 화면을 민다.
-   ⚠ (2026-09-07 2차) 1차에는 여기서 yaw까지 고쳤는데 <b>되돌렸다</b>. 그러면
-     머리카락만 돌고 얼굴 껍질(faceLineAlignFit)·측면 깊이 실측은 예전 각도에
-     남아 두 공간이 갈라진다 — 가닥이 코 위로 지나가고 미간이 함몰되던 것이
-     정확히 그 몫이다. yaw 보정은 이제 getViewYawDeg 한 곳에서 걸리고,
-     viewCal.yaw는 이미 보정된 값으로 만들어진다. 여기서 또 곱하면 <b>두 번</b>이다.
+     yaw — 측면 PnP yaw 압축 보정(VIEWCAL_ANCHOR.sideGain).
+   ⚠ (2026-09-07 3차) 2차에 이 yaw 보정을 getViewYawDeg(출처)로 올렸다가
+     <b>되돌렸다</b>. 이유는 이렇다. getViewYawDeg는 그리기에만 쓰이는 게 아니라
+     <b>모델을 만드는 데</b> 쓰인다 — getHeadEllipsoid·getScalpEllipsoid가 네 뷰의
+     실루엣 폭을 yaw로 나눠 a(폭)와 c(깊이)를 푼다. 측면 yaw를 1.45배로 불리면
+     그 폭이 폭이 아니라 <b>깊이</b>로 귀속되어 머리통이 좁고 깊어지고, 마네킹
+     가닥은 그 두피에 심기므로 통째로 다른 데 앉는다. 사용자 관찰: \"오히려 더
+     쏠렸어.\" 맞는 관찰이었다.
+     즉 sideGain은 <b>보이는 각도를 고치는 값</b>이지 <b>머리통 치수를 다시 재는
+     값</b>이 아니다. 두 역할을 한 손잡이에 겹치면 안 된다. 그래서 여기(되쏘기)에
+     남긴다 — 모델 치수는 실측 yaw 그대로 두고, 그리는 각도만 편다.
+     ⚠ 대신 <b>같은 cal을 쓰는 것들은 전부 따라와야</b> 한다. 얼굴 라인 정렬
+       (faceLineAlignFit)이 viewCal 원본을 쓰고 있어서 가닥이 코 위로 지나갔고,
+       그건 14번에서 calForDraw를 쓰도록 고쳤다. 새 소비자가 생기면 여기를 봐라.
    occluder·얼굴 게이트도 이 같은 cal을 받아야 판정과 그림이 안 갈라진다 —
    그래서 함수 첫머리에서 한 번만 만들고 아래 전부가 이걸 쓴다.
    ⚠ 반대로, 화면 좌표를 모델로 되돌리는 경로(빗질 COMB._proj 등)도 이 cal을
      쓰므로 왕복이 유지된다. viewCal 원본은 건드리지 않는다.
 ══════════════════════════════════════════════════════════════════ */
 function calForDraw(model, angle){
-  const cal = model && model.viewCal && model.viewCal[angle];
+  const cal = model && model.viewCal && model.viewCal[angle];   // calForDraw 원본 읽기 — 검사 ⑦ 면제 지점
   if(!cal) return null;
-  const dx = (typeof viewDrawNudgePx === 'function') ? viewDrawNudgePx(angle) : 0;
-  if(!dx) return cal;
-  if(CAL_DRAW_LOG.on && CAL_DRAW_LOG._k !== angle + '|' + dx){
-    CAL_DRAW_LOG._k = angle + '|' + dx;
-    console.log('[되쏘기보정] ' + angle + ': 가로 ' + (dx>=0?'+':'') + dx + 'px(+ = 화면 오른쪽)'
-      + ' · yaw ' + (cal.yaw*180/Math.PI).toFixed(1) + '°(getViewYawDeg에서 이미 보정됨)'
-      + '\n    가로 보정은 <b>그리는 자리만</b> 바꿉니다(모델·빌드는 그대로).'
-      + ' 콘솔에서 VIEWCAL_ANCHOR.drawNudgePx를 바꾸고 뷰를 다시 그리면 바로 반영됩니다.');
+  const dx  = (typeof viewDrawNudgePx === 'function') ? viewDrawNudgePx(angle) : 0;
+  const yaw = (typeof correctedViewYawRad === 'function')
+    ? correctedViewYawRad(cal.yaw, angle) : cal.yaw;
+  if(!dx && yaw === cal.yaw) return cal;
+  if(CAL_DRAW_LOG.on && CAL_DRAW_LOG._k !== angle + '|' + dx + '|' + yaw){
+    CAL_DRAW_LOG._k = angle + '|' + dx + '|' + yaw;
+    console.log('[되쏘기보정] ' + angle
+      + ': yaw ' + (cal.yaw*180/Math.PI).toFixed(1) + '° → ' + (yaw*180/Math.PI).toFixed(1) + '°'
+      + ' (sideGain ' + VIEWCAL_ANCHOR.sideGain + ')'
+      + ' · 가로 ' + (dx>=0?'+':'') + dx + 'px(+ = 화면 오른쪽)'
+      + '\n    이 둘은 그리는 자리만 바꿉니다(모델 치수·빌드는 실측 yaw 그대로).'
+      + ' 콘솔에서 VIEWCAL_ANCHOR.sideGain / .drawNudgePx 를 바꾸고 뷰를 다시 그리면 반영됩니다.');
   }
-  return Object.assign({}, cal, { dx });
+  return Object.assign({}, cal, { yaw, dx });
 }
 const CAL_DRAW_LOG = { on: true, _k: null };
 function quiltFail(angle, why){
@@ -1230,7 +1243,7 @@ function projectHair3DToView(ctx, fit, angle, maskInf){
       + '\n      폭(얼굴 게이트 <b>전</b>): 사진 ' + pW.toFixed(0) + 'px vs 그린 ' + dW.toFixed(0) + 'px'
       + ' (×' + wRatio.toFixed(3) + ')'
       + gLine + nLine + fLine
-      /* ⚠ (2026-09-07 정정) 예전 문구는 <b>빌드식만</b> 보고 \"cxUse를 +로 밀면 왼쪽\"이라
+      /* ⚠ (2026-09-07 정정) 예전 문구는 <b>빌드식만</b> 보고 "cxUse를 +로 밀면 왼쪽"이라
          적어 두었다. 틀렸다 — 실제로 그리는 식은 되쏘기(ix = lx/s + cx)라 <b>오른쪽</b>이고,
          게다가 촬영 가닥에서는 그 둘이 상쇄되어 아무 데도 안 간다. 세 턴의 부호 뒤집기가
          전부 이 한 줄에서 나왔다. 이제 재는 자와 미는 자를 같은 것으로 맞춘다. */

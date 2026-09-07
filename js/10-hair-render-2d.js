@@ -999,7 +999,10 @@ function measureStageDensity(angle, maskInf, inkCells){
     // ── ② 3D 모델을 이 뷰로 되쏜 것 ──
     const three = _densGrid(G); three.area = F.area;
     const model = state.hair3Dneutral;
-    const cal = model && model.viewCal && model.viewCal[angle];
+    /* (2026-09-07) 3D를 이 뷰로 되쏘아 2D 결과와 겹쳐 보는 진단이다 —
+       렌더와 다른 cal을 쓰면 진단이 화면을 서술하지 못한다. */
+    const cal = (typeof calForDraw === 'function') ? calForDraw(model, angle)
+                                                   : (model && model.viewCal && model.viewCal[angle]);
     if(cal){
       const R = composeRotationZYX(cal.yaw, cal.pitch, cal.roll);
       const CY = model.CY, yTop = model.yTop;

@@ -1042,8 +1042,8 @@ function faceLineAlignFit(angle, maskW, maskH, raw){
   if(!m || !m.viewCal || !m.viewCal[angle]) return null;
   /* ⚠ (2026-09-07) <b>머리카락과 같은 cal</b>을 써야 한다. 머리는
      calForDraw(dx 포함)로 그려지는데 라인만 viewCal 원본으로 맞추면 두 공간이
-     dx만큼 벌어진다 — 9/04 배너가 적어 둔 \"라인은 사진 좌표, 머리카락은 투영
-     좌표\"와 같은 갈라짐이고, 증상도 같다(우측면에서 가닥이 코에 걸린다). */
+     dx만큼 벌어진다 — 9/04 배너가 적어 둔 "라인은 사진 좌표, 머리카락은 투영
+     좌표"와 같은 갈라짐이고, 증상도 같다(우측면에서 가닥이 코에 걸린다). */
   const cal = (typeof calForDraw === 'function') ? calForDraw(m, angle) : m.viewCal[angle];
   if(!cal) return null;
   const sig = [angle, m._gid || 0, maskW, maskH,

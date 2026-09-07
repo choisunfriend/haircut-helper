@@ -720,7 +720,10 @@ function diagRoundTrip(step){
   const N = Math.max(6, step || 14);
   const out = {};
   for(const angle of ANGLES){
-    const cal = m.viewCal[angle], mi = state.hairMasks && state.hairMasks[angle];
+    /* (2026-09-07) 사진↔투영 왕복 오차를 재는 자리다. 렌더가 calForDraw로 그리는데
+       여기만 원본을 재면 "화면은 틀렸는데 진단은 맞다"가 나온다. */
+    const cal = (typeof calForDraw === 'function') ? calForDraw(m, angle) : m.viewCal[angle];
+    const mi = state.hairMasks && state.hairMasks[angle];
     if(!cal || !mi) continue;
     const P = [], Q = [], dl = [];
     for(let iy=1; iy<N; iy++) for(let ix=1; ix<N; ix++){
@@ -796,7 +799,9 @@ function diagCrownCoverage(stride){
   const stp = Math.max(1, stride || 3);
   const vis = {}, visN = {};
   for(const a of ANGLES){
-    const cal = m.viewCal && m.viewCal[a]; if(!cal || !adj) continue;
+    const cal = (typeof calForDraw === 'function') ? calForDraw(m, a)
+                                                  : (m.viewCal && m.viewCal[a]);
+    if(!cal || !adj) continue;   // (9/07) 렌더와 같은 컬링이 목적이니 cal도 같아야 한다
     const occ = makeViewOccluder(cal);
     const mi = state.hairMasks && state.hairMasks[a];   // 사진 한 표(8/18 j) — 렌더와 같은 판정
     const v = new Array(NB).fill(0), n = new Array(NB).fill(0);
@@ -907,7 +912,9 @@ function _scanCross(a, b, key, at){
 function measureSilhouette(angle, stride){
   const model = state.hair3Dneutral;
   if(!model || !model.viewCal || !model.viewCal[angle]) return null;
-  const cal = model.viewCal[angle];
+  /* (2026-09-07) 그려진 실루엣을 재는 함수다 — 아래에서 makeViewOccluder(cal)로
+     "렌더와 같은 가림 판정"을 쓴다고 적어 놨으니 cal도 렌더와 같아야 한다. */
+  const cal = (typeof calForDraw === 'function') ? calForDraw(model, angle) : model.viewCal[angle];
   const adj = computeAdjustedHair3DStrands(null, Math.max(1, stride || SILHOUETTE.stride));
   if(!adj || !adj.length) return null;
   // ① 투영 + 렌더와 같은 컬링
