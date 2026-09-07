@@ -1031,7 +1031,110 @@ const VIEWCAL_ANCHOR = {
      두개골 앞뒤 중앙보다 약간 뒤(≈10%). yaw가 클 때만 의미 있는 작은 항이다
      (yaw 51°·이 손님 기준 ≈8px). 0으로 두면 "귀 한가운데 = 두상 중심". */
   earDepth:  0.10,
+  /* ── (2026-09-06 2차) 측면 뷰 가로 앵커 보정 ───────────────────────────────
+     사용자: "우측 뷰에서만 머리카락이 코 위로 올라오고, 좌측 뷰에서는 뒤로 확
+     넘어간다. 헤어를 우측 귀 방향으로 그만큼 밀어라."
+
+     증상이 <b>어느 쪽으로</b> 틀어지는지가 원인을 가른다. 사진에서 얼굴이
+     향하는 방향은 두 뷰가 반대인데(우측 뷰는 화면 왼쪽, 좌측 뷰는 화면 오른쪽),
+     "우측 뷰는 앞(코)으로 · 좌측 뷰는 뒤로"는 결국 <b>두 뷰 다 화면 왼쪽</b>으로
+     같은 만큼 밀렸다는 뜻이다. 부호가 좌우 대칭이 아니므로 earDepth 항이 아니다
+     (그건 sin(yaw) 비례라 좌우가 반대로 틀어진다). 남는 건 <b>기준점 그 자체</b> —
+     cx를 잡아 주는 귀 앵커(lEarX·rEarX의 중점)가 측면에서 밀려 찍히는 것이다.
+     먼 쪽 귀는 사진에 안 보이고 MediaPipe가 메쉬로 채워 넣는데, 그 채운 값이
+     yaw가 클수록 얼굴 쪽으로 당겨진다.
+
+     ⚠ 이 값은 <b>실측이 아니라 눈으로 맞춘 보정</b>이다(사용자 지정 35px, 마스크
+       픽셀 기준). 그래서 다른 상수들과 달리 "왜 이 숫자인가"를 못 적는다 —
+       제대로 된 자리는 귀 앵커를 사진에서 다시 잡는 것이고, 그때 이 값은 0으로
+       돌아가야 한다. 그 전까지의 임시 받침대라는 뜻으로 여기 남긴다.
+     조절: 콘솔에서 VIEWCAL_ANCHOR.cxNudgePx = {left: 40, right: 40} 처럼 넣고
+           뷰를 다시 들어가면(모델을 다시 만들어야 반영된다) 바로 보인다.
+           끄기: VIEWCAL_ANCHOR.cxNudgePx = 0
+     읽는 법 — 이 평행이동으로 <b>닫히면</b> 원인이 cx가 맞다. 가운데는 맞는데
+     양 끝이 벌어지면 자(sX·sy)나 포즈(yaw) 쪽이라 cx로는 못 고친다. 그때 볼 것은
+     [진단·투영 실루엣] 배율과 [좌표왕복]의 회전 성분이다. */
+  /* ⚠ (2026-09-06 4차) 3차에 부호를 뒤집었다가 <b>훨씬 나빠졌다</b> — 사용자:
+     "오히려 반대로 더 돌아갔어." 그래서 +35로 되돌린다. 부호가 두 번 틀린 이유는
+     하나다: 이 값에 <b>재는 장치가 없다</b>. 눈으로 맞춘 값이라 볼 때마다 반대로
+     간다. 이번 턴에 실제로 넣은 것은 이 숫자가 아니라 아래 자다 —
+     15-project-3d.js의 [뷰정렬] 로그가 "이 뷰에서 몇 px 어긋났나"를 찍는다.
+     그 숫자가 나오면 여기는 그 값으로 <b>한 번</b> 고치거나, 더 낫게는 0으로
+     되돌리고 원인(귀 앵커)을 고친다. 그때까지는 임시 받침대다. */
+  /* ⚠ (2026-09-07) <b>이 손잡이는 화면을 밀지 못한다</b> — 여기가 세 턴을 헤맨 이유다.
+     cxUse는 아래에서 views[angle].cx로 들어가고, 그 값이 그대로 viewCal[angle].cx가
+     된다. 그런데 viewCal.cx는 <b>양방향에 다 쓰인다</b>:
+       빌드(사진→모델)   mx = (px − cx)·s      … 13c, buildHairStrandsFromPaths
+       되쏘기(모델→사진) ix = lx/s + cx        … 15-project-3d, project3DPointToView
+     같은 값을 넣고 빼므로 <b>촬영 가닥에서는 정확히 상쇄된다</b>(u≤1 구간에서 왕복 오차 0).
+     그래서 +35든 −35든 화면이 안 움직였고, "반대로 갔다"는 관찰은 헐 접힘(u>1)
+     분기가 비선형으로 튄 잔차였다.
+     <b>그런데 마네킹 리셋에서는 상쇄가 안 된다</b> — 마네킹 가닥은 사진에서 뽑지
+     않고 두피 타원에 직접 심으므로 cx가 <b>되쏘기에만</b> 쓰인다. 즉 이 +35는
+     마네킹 모드에서만 살아나서 가닥을 화면 <b>오른쪽</b>으로 35px 밀고 있었다
+     (ix = lx/s + cx — 아래 [뷰정렬] 로그가 "왼쪽으로 간다"고 적어 둔 건 빌드식만
+     보고 쓴 것이라 틀렸다. 그 문구도 이번에 고쳤다).
+     증상이 정확히 그 모양이었다: 좌측 뷰(얼굴이 화면 오른쪽)는 머리가 얼굴 위로
+     올라타고, 우측 뷰(얼굴이 화면 왼쪽)는 뒤통수 밖으로 넘어가며 앞이마에 구멍(유령)이 남는다.
+     → 0으로 되돌린다. 화면을 미는 일은 아래 drawNudgePx가 <b>되쏘기에서만</b> 한다. */
+  cxNudgePx: { front: 0, left: 0, right: 0, back: 0 },   // 숫자(전 뷰 공통)도 됨
+
+  /* ── 되쏘기 전용 가로 보정 (2026-09-07) ──────────────────────────────────
+     여기는 <b>그리는 자리만</b> 민다(모델은 안 건드린다). 그래서 촬영 모드든
+     마네킹 모드든 <b>같은 방향으로 같은 만큼</b> 움직인다 — 재는 자와 미는 자가
+     처음으로 일치한다.
+     부호 규약: + = 화면 <b>오른쪽</b>. 마스크 픽셀 기준.
+     ⚠ 좌우는 거울쌍이므로 해부학적 원인(귀 앵커 편향)이라면 <b>부호가 반대</b>여야
+       한다. 예전 값이 left/right 둘 다 +35였던 것 자체가 원인 진단이 틀렸다는 신호였다.
+     조절(모델 재생성 불필요 — 뷰만 다시 그리면 반영):
+       VIEWCAL_ANCHOR.drawNudgePx = { left:-12, right:12 } */
+  drawNudgePx: { front: 0, left: 0, right: 0, back: 0 },
+
+  /* ── 측면 yaw 압축 보정 (2026-09-07) ─────────────────────────────────────
+     사용자: "헤어를 덜 돌린 거잖아."
+     맞다. 마네킹 리셋이 켜져 있으면 2D 캔버스의 머리는 <b>전부</b> cal.yaw/pitch/roll로만
+     자세가 정해진다(가닥이 사진에서 온 게 아니라 모델 공간에서 심긴 것이라
+     되쏘기 회전이 곧 보이는 각도다). 그 yaw는 MediaPipe PnP인데, 큰 측면에서
+     <b>실제보다 작게</b> 나온다 — 이 녹화에서 우측 −41.2°, 좌측 +50.8°로 찍혔지만
+     사진은 코·귀가 다 실루엣으로 빠진 60~70° 프로필이다. 덜 돈 만큼 앞머리가
+     정면처럼 넓은 판으로 얼굴을 덮고, 그 잔차가 "옆으로 밀린 것"처럼 읽힌다.
+     sideGain은 측면 뷰의 yaw에만 곱한다(정면·후면은 안 건드린다).
+     되쏘기에서 적용하므로 <b>콘솔에서 바꾸고 뷰만 다시 그리면</b> 바로 보인다:
+       VIEWCAL_ANCHOR.sideGain = 1.6
+     1.0 = 끔(예전 동작). */
+  sideGain: 1.45,
+  sideMinDeg: 12,    // 이보다 정면에 가까우면 손대지 않는다(정면 슬롯 보호)
+  sideMaxDeg: 85,    // 보정 후 상한 — 90°는 이 파일이 교훈 E로 금지해 둔 값
 };
+/* 위 손잡이 읽기 — 숫자면 전 뷰 공통, 객체면 뷰별. 없으면 0. */
+function _viewNudgeOf(n, angle){
+  if(typeof n === 'number') return isFinite(n) ? n : 0;
+  if(n && typeof n[angle] === 'number' && isFinite(n[angle])) return n[angle];
+  return 0;
+}
+function viewCalNudgePx(angle){ return _viewNudgeOf(VIEWCAL_ANCHOR.cxNudgePx, angle); }
+/* 되쏘기 전용 — project3DPointToView가 ix에 그대로 더한다(+ = 화면 오른쪽). */
+function viewDrawNudgePx(angle){ return _viewNudgeOf(VIEWCAL_ANCHOR.drawNudgePx, angle); }
+/* 측면 yaw 보정 — 부호는 유지하고 크기만 키운다.
+   ⚠ (2026-09-07 3차) 이 보정은 calForDraw(되쏘기)에서만 건다 — getViewYawDeg로
+   올렸다가 되돌렸다. 그 함수는 머리통 치수(getHeadEllipsoid·getScalpEllipsoid)를
+   푸는 데도 쓰여서, yaw를 불리면 실루엣 폭이 깊이로 귀속돼 머리통이 좁고
+   깊어진다. 사용자 관찰 "오히려 더 쏠렸어"가 그 몫이었다. 자세한 배경은
+   15-project-3d.js의 calForDraw 배너를 봐라.
+   ⚠ 대신 이 cal을 쓰는 <b>소비자는 전부 calForDraw를 거쳐야</b> 한다. 얼굴 라인
+   정렬(faceLineAlignFit)이 viewCal 원본을 쓰고 있어서 가닥이 코 위로 지나갔고,
+   14번에서 고쳤다. 아직 안 고친 소비자: projectImagePointToHead(측면 실측 깊이)
+   — 미간 함몰이 여기서 나온다. 손대기 전에 [얼굴 z·항별] 로그부터 읽을 것. */
+function correctedViewYawDeg(deg, angle){
+  const g = VIEWCAL_ANCHOR.sideGain;
+  if(!(g > 0) || g === 1) return deg;
+  if(angle !== 'left' && angle !== 'right') return deg;
+  if(!isFinite(deg) || Math.abs(deg) < VIEWCAL_ANCHOR.sideMinDeg) return deg;
+  return Math.sign(deg) * Math.min(VIEWCAL_ANCHOR.sideMaxDeg, Math.abs(deg) * g);
+}
+function correctedViewYawRad(yawRad, angle){
+  return correctedViewYawDeg(yawRad * 180/Math.PI, angle) * Math.PI/180;
+}
 const HAIR_TOP_CAP = {
   on: true,
   pct: 0.02,      // 상단 백분위 — 먼지·삐침 픽셀 한둘로 범위가 튀지 않게
@@ -1244,6 +1347,21 @@ function buildHairStrandsFromPaths(){
          · crownY(오프셋) — 마스크에서 제일 높은 두피선 픽셀
          · sy(세로자)     — 눈→턱에서 왔나, 가로에서 왔나
        뷰별로 둘을 같이 찍어야 어느 쪽인지 갈린다. */
+    /* 측면 앵커 보정(위 배너). 적용값과 <b>earDepth 항이 이 뷰에서 몇 px인지</b>를
+       같이 찍는다 — 이 보정이 그 항으로 설명될 크기인지 바로 갈린다(안 된다.
+       그래서 임시 받침대다). */
+    const nudge = viewCalNudgePx(angle);
+    if(nudge){
+      cxUse += nudge;
+      console.log('[뷰캘리·앵커보정] ' + angle + ': 가로 ' + (nudge>=0?'+':'') + nudge.toFixed(0) + 'px'
+        + ' (VIEWCAL_ANCHOR.cxNudgePx — 눈으로 맞춘 임시값. 끄기: = 0)');
+    }
+    if(VIEWCAL_ANCHOR.on && isFinite(sX) && sX > 0){
+      const earTermPx = Math.sin(pose.yaw) * VIEWCAL_ANCHOR.earDepth * cD / sX;
+      console.log('[뷰캘리·귀깊이] ' + angle + ': earDepth 항 ' + earTermPx.toFixed(1) + 'px'
+        + ' (yaw ' + (pose.yaw*180/Math.PI).toFixed(1) + '° · earDepth ' + VIEWCAL_ANCHOR.earDepth + ')'
+        + ' — 필요한 보정이 Δpx면 earDepth += Δpx·' + (sX/Math.max(1e-6, Math.abs(Math.sin(pose.yaw))*cD)).toFixed(5));
+    }
     console.log('[뷰캘리·세로자] ' + angle + ': 자 출처 ' + syFrom
       + ' · sy ' + sy.toFixed(5) + ' · 크라운오프셋 ' + crownY.toFixed(0) + 'px'
       + ' (마스크 높이 ' + maskInf.h + 'px, 상단에서 ' + (100*crownY/maskInf.h).toFixed(1) + '%)'
