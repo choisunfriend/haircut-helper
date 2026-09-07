@@ -824,6 +824,17 @@ async function buildRealFaceMesh(faceMetrics){
      측면이 없으면 그렇게 동작했으므로 새 실패 모드가 아니다.
      되돌리기: PROFILE_YAW_GATE.on = false */
   const PROFILE_YAW_GATE = { on: true, minDeg: 35, fullDeg: 55 };
+  /* ⚠ (2026-09-07) 위 35/55는 <b>보정 전</b> PnP yaw로 눈금을 매긴 값이다.
+     이제 getViewYawDeg가 측면에 sideGain을 곱해 돌려주므로, 눈금을 그대로 두면
+     신뢰도가 <b>내가 눈으로 정한 배율 때문에</b> 조용히 1.00으로 뛴다 — 이 손님
+     기준 우측 0.31 → 1.00. 그건 각도가 좋아진 게 아니라 자가 늘어난 것이다.
+     그래서 눈금도 같은 배율로 늘려 <b>효력을 그대로</b> 둔다. 미간 함몰이 고쳐지는
+     몫은 신뢰도가 아니라 realZ 자체다(덜 돈 각도로 쏘던 것이 제 각도로 쏘게 됐다).
+     sideGain을 믿게 되면 이 배율을 1로 두고 눈금을 다시 매기면 된다. */
+  const _yawGateScale = (typeof VIEWCAL_ANCHOR !== 'undefined' && VIEWCAL_ANCHOR.sideGain > 0)
+    ? VIEWCAL_ANCHOR.sideGain : 1;
+  const _gateMin  = PROFILE_YAW_GATE.minDeg  * _yawGateScale;
+  const _gateFull = PROFILE_YAW_GATE.fullDeg * _yawGateScale;
   let _profileTrust = 0;   // [진단용] 실제로 먹은 측면 깊이 신뢰도(0~1)
   function usableSideViews(){
     const sides = ['left','right'].map(angle=>{
@@ -833,8 +844,7 @@ async function buildRealFaceMesh(faceMetrics){
       if(confidence < 0.5) return null;   // 어림 각도로는 이 보정에 부적합
       const yawAbs = Math.abs(getViewYawDeg(angle));
       const trust = PROFILE_YAW_GATE.on
-        ? clamp((yawAbs - PROFILE_YAW_GATE.minDeg)
-                / Math.max(1e-6, PROFILE_YAW_GATE.fullDeg - PROFILE_YAW_GATE.minDeg), 0, 1)
+        ? clamp((yawAbs - _gateMin) / Math.max(1e-6, _gateFull - _gateMin), 0, 1)
         : 1;
       FACE_BUILD.sideYaw[angle] = { yawAbs, trust };   // 진단 패널이 읽어 간다
       if(trust <= 0) return null;   // 이 각도로는 깊이를 못 잰다 → front 유지

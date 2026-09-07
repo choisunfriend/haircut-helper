@@ -352,11 +352,24 @@ function getViewPoseSource(angle){
 // 뷰(angle)의 실측 좌우 회전각(도).
 function getViewYawDeg(angle){
   const { tier, lm, cap } = getViewPoseSource(angle);
-  if(tier === 'pnp') return lm.poseYawDeg;
-  if(tier === 'approx') return lm.yaw * 90;
-  if(tier === 'live') return cap.yawDeg;
+  let deg;
+  if(tier === 'pnp')        deg = lm.poseYawDeg;
+  else if(tier === 'approx') deg = lm.yaw * 90;
+  else if(tier === 'live')   deg = cap.yawDeg;
   // 'poseEar'는 위치 실측일 뿐 각도 실측이 아니다 — 각도는 슬롯 기본값 유지(아래 폴백).
-  return ASSUMED_YAW_DEG[angle] ?? 0;
+  else return ASSUMED_YAW_DEG[angle] ?? 0;
+  /* ── 측면 PnP yaw 압축 보정 (2026-09-07) ────────────────────────────────
+     MediaPipe 포즈 행렬의 yaw는 큰 측면에서 <b>실제보다 작게</b> 나온다. 이
+     손님 실측이 우측 −41.2° / 좌측 +50.8°인데 사진은 코·귀가 실루엣으로 다
+     빠진 60~70° 프로필이다. 그 차이가 세 자리에서 동시에 증상으로 나온다:
+       ① 마네킹 가닥이 덜 돌아 앞머리가 정면처럼 얼굴을 덮는다
+       ② 얼굴 껍질이 코보다 뒤에 서서 게이트가 코 위 가닥을 안 자른다
+       ③ 측면 실측 깊이가 얕게 나와 이마·미간이 함몰된다
+     셋 다 <b>이 함수 하나</b>가 출처라 여기서 한 번만 고친다.
+     손잡이는 VIEWCAL_ANCHOR.sideGain (1.0 = 끔). 바꾼 뒤에는 조정 단계를
+     다시 들어가야 모델·캘리브레이션이 다시 만들어진다. */
+  return (typeof correctedViewYawDeg === 'function')
+    ? correctedViewYawDeg(deg, angle) : deg;
 }
 
 // pitch/roll도 같은 폴백 체인을 탄다. 예전엔 랜드마크가 없으면 그냥 0으로

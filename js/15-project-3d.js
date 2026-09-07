@@ -435,7 +435,11 @@ function setQuiltTag(txt){
    가닥에서는 상쇄 없이 그대로 밀린다 — 같은 손잡이가 모드마다 다르게 동작했다.
    여기서 <b>되쏘기에만</b> 붙는 항을 따로 얹는다:
      dx  — 가로 평행이동(+ = 화면 오른쪽). 빌드식에 없으므로 항상 화면을 민다.
-     yaw — 측면 PnP yaw 압축 보정(VIEWCAL_ANCHOR.sideGain).
+   ⚠ (2026-09-07 2차) 1차에는 여기서 yaw까지 고쳤는데 <b>되돌렸다</b>. 그러면
+     머리카락만 돌고 얼굴 껍질(faceLineAlignFit)·측면 깊이 실측은 예전 각도에
+     남아 두 공간이 갈라진다 — 가닥이 코 위로 지나가고 미간이 함몰되던 것이
+     정확히 그 몫이다. yaw 보정은 이제 getViewYawDeg 한 곳에서 걸리고,
+     viewCal.yaw는 이미 보정된 값으로 만들어진다. 여기서 또 곱하면 <b>두 번</b>이다.
    occluder·얼굴 게이트도 이 같은 cal을 받아야 판정과 그림이 안 갈라진다 —
    그래서 함수 첫머리에서 한 번만 만들고 아래 전부가 이걸 쓴다.
    ⚠ 반대로, 화면 좌표를 모델로 되돌리는 경로(빗질 COMB._proj 등)도 이 cal을
@@ -444,20 +448,16 @@ function setQuiltTag(txt){
 function calForDraw(model, angle){
   const cal = model && model.viewCal && model.viewCal[angle];
   if(!cal) return null;
-  const dx  = (typeof viewDrawNudgePx === 'function') ? viewDrawNudgePx(angle) : 0;
-  const yaw = (typeof correctedViewYawRad === 'function')
-    ? correctedViewYawRad(cal.yaw, angle) : cal.yaw;
-  if(!dx && yaw === cal.yaw) return cal;
-  if(CAL_DRAW_LOG.on && CAL_DRAW_LOG._k !== angle + '|' + dx + '|' + yaw){
-    CAL_DRAW_LOG._k = angle + '|' + dx + '|' + yaw;
-    console.log('[되쏘기보정] ' + angle
-      + ': yaw ' + (cal.yaw*180/Math.PI).toFixed(1) + '° → <b>' + (yaw*180/Math.PI).toFixed(1) + '°</b>'
-      + ' (sideGain ' + VIEWCAL_ANCHOR.sideGain + ')'
-      + ' · 가로 ' + (dx>=0?'+':'') + dx + 'px(+ = 화면 오른쪽)'
-      + '\n    이 둘은 <b>그리는 자리만</b> 바꿉니다(모델·빌드는 그대로). 콘솔에서'
-      + ' VIEWCAL_ANCHOR.sideGain / .drawNudgePx 를 바꾸고 뷰를 다시 그리면 바로 반영됩니다.');
+  const dx = (typeof viewDrawNudgePx === 'function') ? viewDrawNudgePx(angle) : 0;
+  if(!dx) return cal;
+  if(CAL_DRAW_LOG.on && CAL_DRAW_LOG._k !== angle + '|' + dx){
+    CAL_DRAW_LOG._k = angle + '|' + dx;
+    console.log('[되쏘기보정] ' + angle + ': 가로 ' + (dx>=0?'+':'') + dx + 'px(+ = 화면 오른쪽)'
+      + ' · yaw ' + (cal.yaw*180/Math.PI).toFixed(1) + '°(getViewYawDeg에서 이미 보정됨)'
+      + '\n    가로 보정은 <b>그리는 자리만</b> 바꿉니다(모델·빌드는 그대로).'
+      + ' 콘솔에서 VIEWCAL_ANCHOR.drawNudgePx를 바꾸고 뷰를 다시 그리면 바로 반영됩니다.');
   }
-  return Object.assign({}, cal, { yaw, dx });
+  return Object.assign({}, cal, { dx });
 }
 const CAL_DRAW_LOG = { on: true, _k: null };
 function quiltFail(angle, why){

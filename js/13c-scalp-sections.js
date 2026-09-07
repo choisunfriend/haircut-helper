@@ -1115,15 +1115,25 @@ function _viewNudgeOf(n, angle){
 function viewCalNudgePx(angle){ return _viewNudgeOf(VIEWCAL_ANCHOR.cxNudgePx, angle); }
 /* 되쏘기 전용 — project3DPointToView가 ix에 그대로 더한다(+ = 화면 오른쪽). */
 function viewDrawNudgePx(angle){ return _viewNudgeOf(VIEWCAL_ANCHOR.drawNudgePx, angle); }
-/* 측면 yaw 보정 — 라디안 in/out. 부호는 유지하고 크기만 키운다. */
-function correctedViewYawRad(yawRad, angle){
+/* 측면 yaw 보정 — 부호는 유지하고 크기만 키운다.
+   ⚠ (2026-09-07 2차) 이 보정은 <b>getViewYawDeg 한 곳에서만</b> 건다.
+   1차에는 되쏘기(calForDraw)에서만 걸었는데, 그러면 <b>머리카락만</b> 제대로
+   돌고 같은 yaw를 쓰는 나머지가 전부 예전 각도에 남는다:
+     · makeFaceSilhouette의 얼굴 라인 정렬(faceLineAlignFit) — 얼굴 껍질이
+       코보다 뒤에 서서 게이트가 그 자리를 <b>안 자른다</b> → 가닥이 코 위로 지나감
+     · projectImagePointToHead(측면 실측 깊이) — 덜 돈 각도로 쏘면 정중선 점이
+       타원 안쪽에 맞아 realZ가 얕게 나온다 → 이마·미간이 <b>함몰</b>
+   둘 다 실제로 보고된 증상이고, 원인은 \"한 값을 두 곳이 각자 쓰다가 한쪽만
+   고쳐진\" 이 저장소의 단골 모양이다. 그래서 출처를 하나로 되돌린다. */
+function correctedViewYawDeg(deg, angle){
   const g = VIEWCAL_ANCHOR.sideGain;
-  if(!(g > 0) || g === 1) return yawRad;
-  if(angle !== 'left' && angle !== 'right') return yawRad;
-  const deg = yawRad * 180/Math.PI;
-  if(Math.abs(deg) < VIEWCAL_ANCHOR.sideMinDeg) return yawRad;
-  const out = Math.sign(deg) * Math.min(VIEWCAL_ANCHOR.sideMaxDeg, Math.abs(deg) * g);
-  return out * Math.PI/180;
+  if(!(g > 0) || g === 1) return deg;
+  if(angle !== 'left' && angle !== 'right') return deg;
+  if(!isFinite(deg) || Math.abs(deg) < VIEWCAL_ANCHOR.sideMinDeg) return deg;
+  return Math.sign(deg) * Math.min(VIEWCAL_ANCHOR.sideMaxDeg, Math.abs(deg) * g);
+}
+function correctedViewYawRad(yawRad, angle){
+  return correctedViewYawDeg(yawRad * 180/Math.PI, angle) * Math.PI/180;
 }
 const HAIR_TOP_CAP = {
   on: true,

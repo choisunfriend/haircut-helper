@@ -1040,11 +1040,17 @@ function faceLineAlignFit(angle, maskW, maskH, raw){
   if(FACE_GATE.align !== 'roundtrip') return null;
   const m = state.hair3Dneutral;
   if(!m || !m.viewCal || !m.viewCal[angle]) return null;
-  const cal = m.viewCal[angle];
+  /* ⚠ (2026-09-07) <b>머리카락과 같은 cal</b>을 써야 한다. 머리는
+     calForDraw(dx 포함)로 그려지는데 라인만 viewCal 원본으로 맞추면 두 공간이
+     dx만큼 벌어진다 — 9/04 배너가 적어 둔 \"라인은 사진 좌표, 머리카락은 투영
+     좌표\"와 같은 갈라짐이고, 증상도 같다(우측면에서 가닥이 코에 걸린다). */
+  const cal = (typeof calForDraw === 'function') ? calForDraw(m, angle) : m.viewCal[angle];
+  if(!cal) return null;
   const sig = [angle, m._gid || 0, maskW, maskH,
                (cal.cx||0).toFixed(3), (cal.s||0).toFixed(6), (cal.sy||0).toFixed(6),
                (cal.crownY||0).toFixed(3), (cal.yaw||0).toFixed(5),
-               (cal.pitch||0).toFixed(5), (cal.roll||0).toFixed(5)].join(',');
+               (cal.pitch||0).toFixed(5), (cal.roll||0).toFixed(5),
+               (cal.dx||0).toFixed(3)].join(',');
   if(_faceAlignCache.has(sig)) return _faceAlignCache.get(sig);
   let fit = null;
   try{
