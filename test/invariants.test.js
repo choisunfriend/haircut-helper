@@ -109,7 +109,32 @@ test('② sideGain=1.0 이면 보정 전과 글자 그대로 같다(항등)', ()
   ANCHOR.sideGain = before;
 });
 
+/* ─────────────────────────────────────────────────────────────────
+   ③-0 (2026-09-09 2차) <b>기본값은 항등</b>이어야 한다.
+   되쏘기 회전이 리프트 회전과 다르면 R′·Rᵀ = Δψ 만큼의 잔여 회전이 남고,
+   그건 평행이동이 아니라 <b>전단</b>이라 반대쪽 가닥만 얼굴을 가로지른다
+   (VIEWCAL_ANCHOR.sideYawFrom 배너). 그래서 "손대지 않음"이 기본이고,
+   그 사실을 검사로 못 박는다 — 다음 세션이 이 손잡이를 다시 켜면 여기서 깨진다.
+───────────────────────────────────────────────────────────────── */
+test('③-0 되쏘기 yaw는 기본적으로 리프트 yaw와 <b>같다</b>(전단 없음)', () => {
+  const before = ANCHOR.sideYawFrom;
+  ANCHOR.sideYawFrom = 'off';
+  for(const a of ['front','left','right','back']){
+    const m = fakeModel();
+    const drawn = calForDraw(m, a), raw = m.viewCal[a];
+    eq(drawn.yaw, raw.yaw, `${a} — 그리는 yaw가 빌드 yaw와 달라졌다(전단이 생긴다)`);
+  }
+  eq(correctedViewYawDeg(-41.2, 'right'), -41.2, '우측을 손대면 안 된다');
+  eq(correctedViewYawDeg( 50.8, 'left'),   50.8, '좌측을 손대면 안 된다');
+  ok(ANCHOR.sideYawFrom !== undefined, 'sideYawFrom 손잡이가 사라졌다');
+  ANCHOR.sideYawFrom = before;
+  eq(before, 'off', "기본값이 'off'가 아니다 — 되쏘기가 리프트와 다른 각으로 돈다");
+});
+
 test('③ sideGain은 측면만 건드린다 · 부호 유지 · 상한 준수', () => {
+  /* A/B 경로 검사 — 기본값이 'off'이므로 이 검사만 명시적으로 'gain'을 켠다.
+     이 경로가 살아 있어야 "전단이 정말 원인이었나"를 다음 턴에 되돌려 볼 수 있다. */
+  const beforeFrom = ANCHOR.sideYawFrom; ANCHOR.sideYawFrom = 'gain';
   const before = ANCHOR.sideGain; ANCHOR.sideGain = 1.45;
   eq(correctedViewYawDeg(2.9, 'front'), 2.9, '정면은 손대지 않는다');
   eq(correctedViewYawDeg(180, 'back'), 180, '후면은 손대지 않는다');
@@ -121,6 +146,7 @@ test('③ sideGain은 측면만 건드린다 · 부호 유지 · 상한 준수',
   ok(Math.abs(correctedViewYawDeg(-41.2,'right')) <= ANCHOR.sideMaxDeg,
      `sideMaxDeg(${ANCHOR.sideMaxDeg}) 상한이 안 걸렸다 — 90°는 이 저장소가 교훈 E로 금지한 값이다`);
   ANCHOR.sideGain = before;
+  ANCHOR.sideYawFrom = beforeFrom;
 });
 
 /* ─────────────────────────────────────────────────────────────────
