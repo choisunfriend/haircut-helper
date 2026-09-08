@@ -463,12 +463,17 @@ function calForDraw(model, angle){
   if(!dx && yaw === cal.yaw) return cal;
   if(CAL_DRAW_LOG.on && CAL_DRAW_LOG._k !== angle + '|' + dx + '|' + yaw){
     CAL_DRAW_LOG._k = angle + '|' + dx + '|' + yaw;
+    const _nose = (typeof noseRatioYawDeg === 'function') ? noseRatioYawDeg(angle) : null;
+    const _src = (VIEWCAL_ANCHOR.sideYawFrom === 'nose')
+      ? ('랜드마크 실측 — 근사yaw ' + (_nose == null ? '없음' : 'atan → ' + _nose.toFixed(1) + '°')
+         + (yaw === cal.yaw ? ' · <b>안 씀</b>(PnP보다 작거나 부호가 다름 → PnP 그대로)' : ''))
+      : ('상수 배율 sideGain ' + VIEWCAL_ANCHOR.sideGain);
     console.log('[되쏘기보정] ' + angle
       + ': yaw ' + (cal.yaw*180/Math.PI).toFixed(1) + '° → ' + (yaw*180/Math.PI).toFixed(1) + '°'
-      + ' (sideGain ' + VIEWCAL_ANCHOR.sideGain + ')'
+      + ' (' + _src + ')'
       + ' · 가로 ' + (dx>=0?'+':'') + dx + 'px(+ = 화면 오른쪽)'
       + '\n    이 둘은 그리는 자리만 바꿉니다(모델 치수·빌드는 실측 yaw 그대로).'
-      + ' 콘솔에서 VIEWCAL_ANCHOR.sideGain / .drawNudgePx 를 바꾸고 뷰를 다시 그리면 반영됩니다.');
+      + ' 콘솔에서 VIEWCAL_ANCHOR.sideYawFrom / .sideGain / .drawNudgePx 를 바꾸고 뷰를 다시 그리면 반영됩니다.');
   }
   return Object.assign({}, cal, { yaw, dx });
 }

@@ -1105,7 +1105,49 @@ const VIEWCAL_ANCHOR = {
   sideGain: 1.45,
   sideMinDeg: 12,    // 이보다 정면에 가까우면 손대지 않는다(정면 슬롯 보호)
   sideMaxDeg: 85,    // 보정 후 상한 — 90°는 이 파일이 교훈 E로 금지해 둔 값
+  /* ── (2026-09-09) 배율이 아니라 <b>재서</b> 고친다 ─────────────────────────
+     사용자: "위치와 방향이 잘못 투영되는 것 같은데 그걸 바로잡자. 3D는 제대로 나온다."
+     맞는 진단이고, 3D가 멀쩡한 이유가 답을 준다 — 미니3D는 월드 점을 자유 카메라로
+     그린다(cal을 안 쓴다). 2D 되쏘기와 다른 것은 <b>calForDraw의 yaw 하나</b>뿐이다.
+
+     그 yaw를 상수배(1.45)로 불린 것이 문제다. 두 가지가 어긋난다:
+     ① 배율은 뷰마다 필요한 양이 다른데 하나뿐이다. 진단칩의 근사yaw는
+        <b>코가 귀 반간격의 몇 배만큼 밖에 있나</b>이고, 구 두상에서 이 값은
+        정확히 tan(yaw)다(01-face-landmarker: (nose.x−earCX)/(earSpan/2)).
+        이 녹화의 실측:
+          right  근사yaw −1.53 → atan = <b>−56.8°</b> · PnP −41.2° · ×1.45 = −59.8°(3° 초과)
+          left   근사yaw  1.76 → atan = <b>+60.4°</b> · PnP  50.8° · ×1.45 = +73.7°(<b>13° 초과</b>)
+        즉 PnP가 눌린 건 맞지만 눌린 <b>양이 뷰마다 다르다</b>. 좌측이 13°나 더
+        돌아가 있고, 그게 좌우에서 증상이 다르게 보이던 이유다.
+     ② 어긋난 yaw는 <b>가닥마다 다른 크기로</b> 화면을 민다. lx = x·cosψ + z·sinψ라
+        ψ를 키우면 폭 성분은 줄고(cos41→cos60 = ×0.67) 깊이 성분은 커진다(×1.31).
+        미는 양이 그 점의 (x,z)에 달렸으므로 <b>평행이동이 아니라 전단</b>이다.
+        하네스(모델단위 1 = 266px) 실측: 카메라 쪽 두피는 −56px, 반대쪽은 +56px로
+        <b>부호가 반대</b>고, 가닥 하나 안에서도 위 +40px → 아래 +32px로 값이 달라
+        화면 기울기가 최대 19° 꺾인다. "다른 헤어는 잘 향하는데 반대쪽 가닥만
+        디렉션이 이상하다"가 이 전단의 모양 그대로다.
+
+     그래서 배율을 버리고 <b>랜드마크에서 잰 각</b>을 쓴다. 새 측정기는 없다 —
+     진단칩이 이미 찍고 있던 그 값에 atan을 씌울 뿐이다.
+     'gain'으로 두면 예전(상수배) 동작. 'nose'가 기본.
+     ⚠ 남은 어긋남 — 두상 치수(getHeadEllipsoid)는 여전히 PnP yaw로 풀린다.
+       9/07 3차가 여기를 건드렸다가 되돌린 그 자리다. 폭이 얼마나 어긋나는지는
+       [진단·투영 실루엣] 배율이 이미 재고 있으니, 그 숫자를 보고 다음 턴에 정한다. */
+  sideYawFrom: 'nose',   // 'nose' | 'gain'
+  /* 실측 각이 PnP보다 <b>작게</b> 나오면 안 쓴다. 근사yaw는 구 두상 가정이라
+     긴 얼굴에서 과소평가될 수 있고, 그때는 PnP가 더 믿을 만하다. 이 게이트는
+     "덜 돌리는 방향으로는 안 고친다"는 뜻이다. */
+  sideYawNoseMinOnly: true,
 };
+/* 근사yaw(코 오프셋 ÷ 귀 반간격) → 도. 구 두상에서 그 비율이 tan(yaw)다.
+   부호는 그대로 따라간다(우측 뷰 음수 · 좌측 뷰 양수 — PnP와 같은 규약). */
+function noseRatioYawDeg(angle){
+  try{
+    const lm = state.landmarks && state.landmarks[angle];
+    if(!lm || typeof lm.yaw !== 'number' || !isFinite(lm.yaw)) return null;
+    return Math.atan(lm.yaw) * 180/Math.PI;
+  }catch(e){ return null; }
+}
 /* 위 손잡이 읽기 — 숫자면 전 뷰 공통, 객체면 뷰별. 없으면 0. */
 function _viewNudgeOf(n, angle){
   if(typeof n === 'number') return isFinite(n) ? n : 0;
@@ -1126,11 +1168,22 @@ function viewDrawNudgePx(angle){ return _viewNudgeOf(VIEWCAL_ANCHOR.drawNudgePx,
    14번에서 고쳤다. 아직 안 고친 소비자: projectImagePointToHead(측면 실측 깊이)
    — 미간 함몰이 여기서 나온다. 손대기 전에 [얼굴 z·항별] 로그부터 읽을 것. */
 function correctedViewYawDeg(deg, angle){
-  const g = VIEWCAL_ANCHOR.sideGain;
-  if(!(g > 0) || g === 1) return deg;
   if(angle !== 'left' && angle !== 'right') return deg;
   if(!isFinite(deg) || Math.abs(deg) < VIEWCAL_ANCHOR.sideMinDeg) return deg;
-  return Math.sign(deg) * Math.min(VIEWCAL_ANCHOR.sideMaxDeg, Math.abs(deg) * g);
+  const cap = d => Math.sign(deg) * Math.min(VIEWCAL_ANCHOR.sideMaxDeg, Math.abs(d));
+  if(VIEWCAL_ANCHOR.sideYawFrom === 'nose'){
+    const est = noseRatioYawDeg(angle);
+    /* 부호가 PnP와 다르면 둘 중 하나가 뒤집힌 것이다 — 그때는 안 고친다.
+       고칠 근거가 아니라 <b>진단할 근거</b>이고, 조용히 뒤집으면 그게 다음 버그다. */
+    if(est != null && isFinite(est) && Math.sign(est) === Math.sign(deg)){
+      if(!VIEWCAL_ANCHOR.sideYawNoseMinOnly || Math.abs(est) > Math.abs(deg)) return cap(est);
+      return deg;
+    }
+    return deg;   // 랜드마크가 없으면 PnP 그대로 — 배율로 몰래 넘어가지 않는다
+  }
+  const g = VIEWCAL_ANCHOR.sideGain;
+  if(!(g > 0) || g === 1) return deg;
+  return cap(deg * g);
 }
 function correctedViewYawRad(yawRad, angle){
   return correctedViewYawDeg(yawRad * 180/Math.PI, angle) * Math.PI/180;
