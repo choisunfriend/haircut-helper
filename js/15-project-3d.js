@@ -468,12 +468,45 @@ function calForDraw(model, angle){
       ? ('랜드마크 실측 — 근사yaw ' + (_nose == null ? '없음' : 'atan → ' + _nose.toFixed(1) + '°')
          + (yaw === cal.yaw ? ' · <b>안 씀</b>(PnP보다 작거나 부호가 다름 → PnP 그대로)' : ''))
       : ('상수 배율 sideGain ' + VIEWCAL_ANCHOR.sideGain);
+    /* ── 어긋난 yaw가 화면에서 <b>몇 px의 전단</b>인가 (2026-09-09 2차) ─────────
+       "그리는 자리만 바꿉니다"는 <b>평행이동일 때만</b> 맞는 말이었다. yaw는
+       평행이동이 아니라 회전이라, 리프트에 쓴 R과 그리기에 쓴 R′가 다르면
+       R′·Rᵀ = Δψ 만큼의 잔여 회전이 남고 화면에서 <b>전단</b>이 된다(자세한
+       근거는 VIEWCAL_ANCHOR.sideYawFrom 배너).
+       그 크기를 여기서 잰다 — 두상 자신의 반폭 a·반깊이 c를 Δψ로 돌려 보고,
+       x 성분이 얼마나 옮겨지는지를 그 뷰의 자(cal.s)로 나눠 px로 적는다.
+       부호가 반대인 두 값이 나오는 것이 곧 "가까운 쪽은 멀쩡한데 반대쪽만
+       끌려온다"의 숫자다. */
+    let _shear = '';
+    const _d = yaw - cal.yaw;
+    if(Math.abs(_d) > 1e-9){
+      try{
+        const E = getDisplaySkullEllipsoid();
+        const s = cal.s;
+        if(E && isFinite(s) && s > 1e-9){
+          // lx(ψ) = x·cosψ + z·sinψ — 두 대표점의 이동량(모델단위 → px)
+          const dxAt = (x, z) =>
+            ((x*Math.cos(yaw) + z*Math.sin(yaw)) - (x*Math.cos(cal.yaw) + z*Math.sin(cal.yaw))) / s;
+          const near = dxAt(0,  E.c);   // 카메라 쪽 두피
+          const far  = dxAt(0, -E.c);   // 반대쪽 두피 — 사용자가 본 그 가닥들
+          const side = dxAt(E.a, 0);
+          _shear = '\n    ⚠ 이건 평행이동이 아니라 <b>전단</b>입니다(Δψ '
+            + (_d>=0?'+':'') + (_d*180/Math.PI).toFixed(1) + '°) — 화면 이동량이 점의 (x,z)에 달립니다:'
+            + ' 카메라 쪽 두피 ' + (near>=0?'+':'') + near.toFixed(0) + 'px'
+            + ' · <b>반대쪽 두피 ' + (far>=0?'+':'') + far.toFixed(0) + 'px</b>'
+            + ' · 옆 ' + (side>=0?'+':'') + side.toFixed(0) + 'px.'
+            + '\n    부호가 반대라서 가까운 쪽 가닥은 제자리인데 <b>반대쪽 가닥만</b> 얼굴을 가로지릅니다.'
+            + ' 리프트는 PnP yaw로 심었으므로 되쏘기도 같은 yaw여야 왕복이 닫힙니다 —'
+            + ' 끄기: VIEWCAL_ANCHOR.sideYawFrom = \'off\'';
+        }
+      }catch(e){}
+    }
     console.log('[되쏘기보정] ' + angle
       + ': yaw ' + (cal.yaw*180/Math.PI).toFixed(1) + '° → ' + (yaw*180/Math.PI).toFixed(1) + '°'
       + ' (' + _src + ')'
       + ' · 가로 ' + (dx>=0?'+':'') + dx + 'px(+ = 화면 오른쪽)'
-      + '\n    이 둘은 그리는 자리만 바꿉니다(모델 치수·빌드는 실측 yaw 그대로).'
-      + ' 콘솔에서 VIEWCAL_ANCHOR.sideYawFrom / .sideGain / .drawNudgePx 를 바꾸고 뷰를 다시 그리면 반영됩니다.');
+      + _shear
+      + '\n    콘솔에서 VIEWCAL_ANCHOR.sideYawFrom / .sideGain / .drawNudgePx 를 바꾸고 뷰를 다시 그리면 반영됩니다.');
   }
   return Object.assign({}, cal, { yaw, dx });
 }

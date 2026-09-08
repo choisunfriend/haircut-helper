@@ -440,6 +440,114 @@ function buildRealNeckMesh(skinColor){
   return neckMesh;
 }
 
+/* ══════════════════════════════════════════════════════════════════
+   두피면 = <b>사진 픽셀에서 뽑은 안면 색</b> (2026-09-09 사용자 지시)
+   ─────────────────────────────────────────────────────────────────
+   사용자: "이마 위쪽으로 안면부가 끝나면서 회색으로 변해 — 두상타원이 드러나서
+   그런 거다. 안면라인하고 맞게 두피면을 그리고 안면라인 색상으로 넣어줘."
+   이어서: "두피면 색깔은 픽셀에서 뽑아서 넣어. 근데 안면부하고 이어지지 않아 —
+   최소한 머리카락 나는 라인 바로 아래까지는 이어지는 두피면이 있어야 돼."
+
+   ── 왜 회색이었나 ────────────────────────────────────────────────
+   두 가지가 겹쳤다.
+     ① <b>색의 출처가 다르다</b>. 얼굴은 사진 텍스처(buildRealFaceMesh)인데
+        두상 구는 maskInf.scalpColor라는 <b>평균값 하나</b>였다. 그 평균은
+        얼굴을 못 본 뷰에서 배경·머리 그늘이 섞여 회색으로 내려앉는다
+        (03b-mask-memory가 "두피색과 머리색이 너무 가깝다"고 이미 경고를
+        찍고 있던 그 값이다).
+     ② <b>조명을 받는다</b>. 얼굴은 FACE_MAT.unlit=true라 사진 그대로인데
+        두상만 MeshStandardMaterial이라 키/필/앰비언트가 얹혔다. 같은 색을
+        넣어도 이마 위에서 한 단 어두워진다.
+
+   ── 고침 ────────────────────────────────────────────────────────
+   ① 색을 <b>이 사진의 살 픽셀</b>에서 직접 뽑는다. 새로 사진을 읽지 않는다 —
+      maskInf.photoRGB(원본 픽셀)와 reasonMask(1=머리카락)가 이미 있고,
+      photoRGBAt/isHairPixelAt가 그 좌표계를 이미 다룬다.
+      머리카락 픽셀을 빼고 남은 얼굴 픽셀의 <b>밝기 중상위 구간</b>만 평균낸다
+      (눈·눈썹·입·코그늘이 어두운 쪽 꼬리에 몰리므로, 평균이 아니라 구간을
+      잡아야 "살 색"이 나온다).
+   ② 재질을 무조명으로 — 얼굴과 <b>같은 기준</b>. 사용자: "명암 신경쓰지 말고
+      일단 안면부 색상으로 넣어봐."
+   ③ 두피면을 얼굴 기준면까지 <b>되돌린다</b>. drawInset(0.985)은 가닥이 구에
+      묻히는 z-fighting을 피하려고 구를 1.5% 안으로 넣은 값인데, 얼굴 메쉬는
+      안 줄어든 면에 얹히므로 그 1.5%가 곧 <b>얼굴과 두피 사이의 틈</b>이다.
+      기하를 줄이는 대신 polygonOffset으로 <b>깊이만</b> 밀어 같은 효과를 낸다 —
+      가닥은 살아나고, 두피면은 얼굴이 끝나는 자리(눈썹 위)부터 머리카락 나는
+      라인까지 끊김 없이 이어진다.
+   되돌리기: SCALP_SKIN.fromPhoto=false · SCALP_SKIN.unlit=false · SCALP_SKIN.depthOffset=false
+   ══════════════════════════════════════════════════════════════════ */
+const SCALP_SKIN = {
+  fromPhoto: true,     // 두피·목 색을 사진 픽셀에서 뽑는다(false면 예전 scalpColor)
+  unlit: true,         // 얼굴과 같은 기준 — 조명을 안 받는다
+  depthOffset: true,   // drawInset 축소 대신 polygonOffset(기하 그대로 = 얼굴과 안 벌어짐)
+  loPct: 0.50,         // 살 픽셀로 칠 밝기 백분위 구간(아래)
+  hiPct: 0.88,         // 〃 (위) — 하이라이트·안경반사를 위 12%로 버린다
+  minSamples: 200,     // 이보다 적게 모이면 안 쓴다(예전 값으로 폴백)
+};
+let _scalpSkinCache = undefined;
+function resetScalpSkinSample(){ _scalpSkinCache = undefined; }
+/* 이 사람 얼굴의 살 색 — 'rgb(r,g,b)' 또는 null. 정면 마스크만 본다
+   (얼굴이 제일 크게, 제일 정면으로 찍힌 뷰다). */
+function sampleScalpSkinColor(){
+  if(_scalpSkinCache !== undefined) return _scalpSkinCache;
+  _scalpSkinCache = null;
+  try{
+    if(!SCALP_SKIN.fromPhoto) return null;
+    const inf = state.hairMasks && state.hairMasks.front;
+    const lm  = state.landmarks && state.landmarks.front;
+    if(!inf || !inf.photoRGB || !lm) return null;
+    const W = inf.w, H = inf.h;
+    if(!(W > 0 && H > 0)) return null;
+
+    /* 훑는 창 — 눈썹 위 살짝부터 턱까지, 귀 사이. 얼굴 텍스처가 실제로 깔리는
+       그 범위다(buildRealFaceMesh의 경계 타원과 같은 재료를 쓴다). */
+    const brow = (typeof lm.browTopY === 'number') ? lm.browTopY : 0.28;
+    const chin = (typeof lm.chinY    === 'number') ? lm.chinY    : 0.62;
+    const xL   = (typeof lm.lEarX    === 'number') ? lm.lEarX    : 0.28;
+    const xR   = (typeof lm.rEarX    === 'number') ? lm.rEarX    : 0.72;
+    const cxN  = (xL + xR) / 2, halfN = Math.max(0.03, Math.abs(xR - xL) * 0.30);
+    const x0 = Math.max(0, Math.round((cxN - halfN) * W));
+    const x1 = Math.min(W - 1, Math.round((cxN + halfN) * W));
+    const y0 = Math.max(0, Math.round(brow * 0.98 * H));
+    const y1 = Math.min(H - 1, Math.round(chin * H));
+    if(!(x1 > x0 && y1 > y0)) return null;
+
+    const step = Math.max(1, Math.round(Math.min(x1 - x0, y1 - y0) / 90));
+    const lum = [], rr = [], gg = [], bb = [];
+    for(let y = y0; y <= y1; y += step){
+      for(let x = x0; x <= x1; x += step){
+        if(isHairPixelAt(inf, x, y)) continue;      // 머리카락은 살이 아니다
+        const c = photoRGBAt(inf, x, y);
+        if(!c) continue;
+        const L = 0.299*c[0] + 0.587*c[1] + 0.114*c[2];
+        lum.push(L); rr.push(c[0]); gg.push(c[1]); bb.push(c[2]);
+      }
+    }
+    if(lum.length < SCALP_SKIN.minSamples) return null;
+
+    /* 밝기 백분위 구간만 평균 — 어두운 쪽(눈·눈썹·입·콧구멍·머리 그늘)과
+       밝은 쪽(하이라이트)을 둘 다 잘라낸다. */
+    const idx = lum.map((v,i)=>i).sort((a,b)=> lum[a] - lum[b]);
+    const iA = Math.floor(idx.length * SCALP_SKIN.loPct);
+    const iB = Math.max(iA + 1, Math.floor(idx.length * SCALP_SKIN.hiPct));
+    let r = 0, g = 0, b = 0, n = 0;
+    for(let k = iA; k < iB; k++){ const i = idx[k]; r += rr[i]; g += gg[i]; b += bb[i]; n++; }
+    if(!n) return null;
+    r = Math.round(r/n); g = Math.round(g/n); b = Math.round(b/n);
+    _scalpSkinCache = `rgb(${r},${g},${b})`;
+    console.log('[3D·두피색] 사진 픽셀에서 실측 ' + _scalpSkinCache
+      + ' (살 표본 ' + n + '/' + lum.length + '개 · 밝기 '
+      + Math.round(SCALP_SKIN.loPct*100) + '~' + Math.round(SCALP_SKIN.hiPct*100) + '백분위)'
+      + '\n    예전 값(maskInf.scalpColor) = ' + (inf.scalpColor || '없음')
+      + ' — 이 둘이 크게 다르면 예전 평균에 배경·머리 그늘이 섞여 있던 것입니다.'
+      + ' 끄기: SCALP_SKIN.fromPhoto = false');
+    return _scalpSkinCache;
+  }catch(e){
+    console.warn('[3D·두피색] 사진 픽셀 실측 실패 — 예전 scalpColor로 폴백:', e);
+    return null;
+  }
+}
+
 // 절차적 두상: 타원(스케일된 구)으로 두상 근사. getFaceMetrics()가 뽑아낸 실측
 // 종횡비/좌표 변환(projector)과 실제 두피색(skinColorCss)을 반영해서 "이 사람
 // 사진에서 뽑을 수 있는 정보는 최대한 쓴" 근사치로 만든다. 여전히 진짜 3D
@@ -448,12 +556,27 @@ function buildRealNeckMesh(skinColor){
 // 함수로 분리 — 각 부위 로직 자체는 한 글자도 안 바꾸고 그대로 옮김.)
 function buildProceduralHead(skinColorCss){ // faceMetrics 인자 제거 — 내부에서 getFaceMetrics()로 다시 얻음
   const group = new THREE.Group();
-  let skinColor = new THREE.Color(skinColorCss || '#E8C39E');
+  /* (2026-09-09) 색의 출처는 <b>사진 픽셀</b>이 1순위다 — 위 SCALP_SKIN 배너 참고.
+     못 뽑으면 호출부가 준 예전 값(maskInf.scalpColor)으로 폴백한다. */
+  const sampled = sampleScalpSkinColor();
+  let skinColor = new THREE.Color(sampled || skinColorCss || '#E8C39E');
   // (2026-07-17) "검은 베레모"의 어두운 색 원인 방지: 샘플링된 두피색이
   // 지나치게 어두우면(머리카락 픽셀이 섞여 샘플된 경우) 살구톤으로 폴백 —
   // 두상이 헤어처럼 검게 칠해지는 것을 막음.
   if((skinColor.r + skinColor.g + skinColor.b) / 3 < 0.30) skinColor = new THREE.Color('#E0B294');
-  const headMat = new THREE.MeshStandardMaterial({ color: skinColor, roughness: 0.85, metalness: 0 });
+  /* 얼굴과 <b>같은 기준</b>: 사진이 들어간 면은 조명을 안 받는다(FACE_MAT.unlit).
+     두피면도 그 사진에서 뽑은 색이므로 같은 취급을 해야 이마 위에서 한 단
+     어두워지지 않는다. 사용자: "명암 신경쓰지 말고 일단 안면부 색상으로." */
+  const headMat = SCALP_SKIN.unlit
+    ? new THREE.MeshBasicMaterial({ color: skinColor })
+    : new THREE.MeshStandardMaterial({ color: skinColor, roughness: 0.85, metalness: 0 });
+  /* 기하를 줄이는 대신 <b>깊이만</b> 뒤로 민다 — 가닥이 구에 안 묻히면서도
+     두피면이 얼굴 기준면과 같은 자리에 남는다(둘 사이에 틈이 안 생긴다). */
+  if(SCALP_SKIN.depthOffset){
+    headMat.polygonOffset = true;
+    headMat.polygonOffsetFactor = 1;
+    headMat.polygonOffsetUnits = 1;
+  }
 
   // (2026-07-17) "검은 베레모" 수정 — 기존 buildHeadMesh(실루엣 실측 단면
   // 스택)는 상부 단면 실측에 머리카락 실루엣이 섞여 두상 윗부분이 헤어
@@ -473,8 +596,14 @@ function buildProceduralHead(skinColorCss){ // faceMetrics 인자 제거 — 내
      주석. 여기 scale에만 곱한다: getDisplaySkullEllipsoid가 돌려주는 값 자체를
      줄이면 얼굴 기준면·목 이음매까지 딸려 움직인다(8/17 c가 겪은 방식). */
   const skull = getDisplaySkullEllipsoid();
-  const kIn = (HAIR_SCALP3D.applyToHead && HAIR_SCALP3D.drawInset > 0)
-            ? HAIR_SCALP3D.drawInset : 1;
+  /* (2026-09-09) depthOffset을 쓰면 <b>기하는 안 줄인다</b>. drawInset의 목적은
+     z-fighting 회피 하나뿐이었고, 그건 위 polygonOffset이 대신한다. 줄이지 않는
+     쪽이 얼굴 기준면(ellipsoidZ × FACE_Z_TO_SKULL)과 정확히 같은 면이라
+     "안면부하고 이어지지 않는다"가 여기서 닫힌다. */
+  const kIn = SCALP_SKIN.depthOffset
+            ? 1
+            : ((HAIR_SCALP3D.applyToHead && HAIR_SCALP3D.drawInset > 0)
+                ? HAIR_SCALP3D.drawInset : 1);
   const headMesh = new THREE.Mesh(new THREE.SphereGeometry(1, 48, 36), headMat);
   headMesh.scale.set(skull.a*kIn, skull.b*kIn, skull.c*kIn);
   headMesh.position.set(0, 0.15, 0);

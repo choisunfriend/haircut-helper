@@ -124,7 +124,7 @@ function buildOutfitPlaceholderMesh(item, widthFactor){
 // 실측값을 넘겨받음 — 전부 같은 베이스 바디라 비슷하지만 에셋마다 다름.
 // ※ THREE.OBJLoader/Box3는 브라우저 전용 API라 Canvas류와 마찬가지로 이
 // 함수 자체는 Node 샌드박스에서 실행 검증 불가 — 문법 검사만 통과.
-function loadOutfitMeshFromOBJ(objUrl, mtlUrl, widthFactor, neckCutFrac){
+function loadOutfitMeshFromOBJ(objUrl, mtlUrl, widthFactor, neckCutFrac, targetBodyLen){
   return new Promise((resolve, reject)=>{
     if(typeof THREE.OBJLoader !== 'function'){
       reject(new Error('OBJLoader 스크립트가 로드되지 않았습니다'));
@@ -145,7 +145,29 @@ function loadOutfitMeshFromOBJ(objUrl, mtlUrl, widthFactor, neckCutFrac){
           const neckCutYRaw = box.min.y + cutFrac * size.y;
           const bodyHeightRaw = neckCutYRaw - box.min.y; // 발~목까지만(머리 제외) 실측 높이
 
-          const TARGET_HEIGHT = 4.0; // 목 밑동~발끝까지 대략 이 정도(절차적 플레이스홀더 기준)
+          /* ── 목 밑동~발끝 길이는 <b>두신 자</b>가 정한다 (2026-09-09 사용자 지시) ──
+             사용자: "두신은 6.5로 맞춰서 이전에 잘 나왔었는데 4.9로 바뀐 거라고.
+             지금 6.5로 되어 있는 그 함수가 결정하는 값으로 나오도록 하고,
+             고정값은 없애면 돼."
+
+             맞다. 여기 있던 TARGET_HEIGHT = 4.0은 <b>에셋 눈대중</b>이고 두신 자와
+             아무 관계가 없었다. 11-result-screen.js:126의 배너가 "그걸 이 함수로
+             통일했다"고 적어 놓고도, 실제로 personBodyLenMesh를 부르는 곳은 결과
+             화면 한 군데뿐이었다(3D 화면은 이 4.0을 그대로 먹었다 = 4.9두신).
+             이제 <b>두 화면이 같은 자</b>를 쓴다 — 호출부가 그 화면이 재는
+             정수리(결과 화면 = 사진 헤어박스 / 3D 화면 = 씬 실측)로 계산한
+             targetBodyLen을 들려 보낸다.
+             ⚠ 폴백 4.0은 <b>자가 아예 없을 때</b>만이다(정면 랜드마크 실패 →
+               getPersonScaleRef가 null). 그 경우엔 두신을 잴 근거 자체가 없다. */
+          let TARGET_HEIGHT = targetBodyLen;
+          if(!(isFinite(TARGET_HEIGHT) && TARGET_HEIGHT > 0.5)){
+            TARGET_HEIGHT = (typeof personBodyLenMesh === 'function') ? personBodyLenMesh() : null;
+          }
+          if(!(isFinite(TARGET_HEIGHT) && TARGET_HEIGHT > 0.5)){
+            TARGET_HEIGHT = 4.0;
+            console.warn('[3D·비율] 두상 자(getPersonScaleRef)가 없어 폴백 4.0단위로 세웁니다 —'
+              + ' 이 경우에만 두신이 상수에서 벗어납니다.');
+          }
           const scale = OUTFIT_MESH_SOURCE.scaleOverride || (TARGET_HEIGHT / (bodyHeightRaw || 1)) * widthFactor;
           obj.scale.setScalar(scale);
 
@@ -203,15 +225,32 @@ function loadOutfitMeshFromOBJ(objUrl, mtlUrl, widthFactor, neckCutFrac){
 // 이제 실제 에셋 정보는 OUTFIT_CATALOG[i].asset(id별로 다른 obj/mtl/neckCutFrac)에
 // 있음 — item에 asset이 있으면 그걸로 로드, 없으면(아직 실제 에셋 없는 카탈로그
 // 항목) 절차적 플레이스홀더로 폴백. 로드 실패(파일 404 등)해도 동일하게 폴백.
-async function loadOutfitMesh(item, widthFactor){
+async function loadOutfitMesh(item, widthFactor, targetBodyLen){
   if(item.asset && item.asset.objUrl){
     try{
-      return await loadOutfitMeshFromOBJ(item.asset.objUrl, item.asset.mtlUrl, widthFactor, item.asset.neckCutFrac);
+      return await loadOutfitMeshFromOBJ(item.asset.objUrl, item.asset.mtlUrl, widthFactor, item.asset.neckCutFrac, targetBodyLen);
     }catch(e){
       console.warn('OBJ 의상 에셋 로드 실패, 절차적 플레이스홀더로 폴백:', e);
     }
   }
-  return buildOutfitPlaceholderMesh(item, widthFactor);
+  /* 플레이스홀더도 <b>같은 자</b>를 탄다 (2026-09-09). 예전엔 OBJ만 배율을 받고
+     이 쪽은 손으로 짠 ~4단위 그대로였다 — 에셋이 404면 두신이 조용히 달라진다.
+     목 밑동을 고정점으로 스케일하므로 옷깃 위치는 배율과 무관하다(결과 화면의
+     ensureResultBodyMesh가 쓰는 것과 같은 식). */
+  const ph = buildOutfitPlaceholderMesh(item, widthFactor);
+  try{
+    const want = (isFinite(targetBodyLen) && targetBodyLen > 0.5)
+      ? targetBodyLen
+      : ((typeof personBodyLenMesh === 'function') ? personBodyLenMesh() : null);
+    const m = (typeof measureOutfitMeshBody === 'function') ? measureOutfitMeshBody(ph) : null;
+    if(want && m && m.heightRaw > 0.01){
+      const NY = getNeckBottomY();
+      const s = want / m.heightRaw;
+      ph.scale.setScalar(s);
+      ph.position.y = NY * (1 - s);
+    }
+  }catch(e){ console.warn('[3D·비율] 플레이스홀더 두신 배율 실패 — 원래 크기 유지:', e); }
+  return ph;
 }
 
 /* 의상이 만들어지는 <b>유일한</b> 출구에서 목 구멍을 잰다 (2026-08-31 11차).
@@ -220,8 +259,8 @@ async function loadOutfitMesh(item, widthFactor){
    플레이스홀더 폴백이든 <b>여기 한 곳</b>을 지나간다.
    ⚠ 두 호출부 모두 <b>두신 배율을 걸기 전</b>에 이 함수를 지난다(결과 화면은 바로
      위에서 snap.group.scale을 1로 되돌린다). 목 메쉬도 그 배율 밖이라 좌표계가 같다. */
-async function loadOutfitMeshMeasured(item, widthFactor){
-  const mesh = await loadOutfitMesh(item, widthFactor);
+async function loadOutfitMeshMeasured(item, widthFactor, targetBodyLen){
+  const mesh = await loadOutfitMesh(item, widthFactor, targetBodyLen);
   try{
     const g = measureGarmentNeckOpening(mesh);
     if(g){

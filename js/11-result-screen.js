@@ -405,7 +405,11 @@ async function ensureResultBodyMesh(item, widthFactor){
   snap.group.scale.setScalar(1); snap.group.position.set(0,0,0); snap.group.rotation.set(0,0,0);
   snap.meshKey = null; snap.body = null;
 
-  const mesh = await loadOutfitMeshMeasured(item, widthFactor || 1);
+  /* (2026-09-09) 로더에 <b>이 화면의 두신 목표</b>를 들려 보낸다. 결과 화면의 자는
+     사진 헤어박스 정수리라 인자 없이 부른다(personBodyLenMesh 배너 참고).
+     아래 group.scale 재보정은 그대로 남긴다 — 이제는 정의상 ×1에 가깝고,
+     에셋이 스케일오버라이드를 먹었을 때의 난간 역할만 한다. */
+  const mesh = await loadOutfitMeshMeasured(item, widthFactor || 1, personBodyLenMesh());
   if(!mesh) return null;
   snap.group.add(mesh);
   ensureResultNeckMesh(snap);   // 3D 목(8차) — 의상 그룹 밖이라 배율을 안 받는다
