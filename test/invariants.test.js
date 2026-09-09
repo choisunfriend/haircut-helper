@@ -97,9 +97,14 @@ test('① sideGain은 표시용이다 — getViewYawDeg 출력이 흔들리면 �
   }
 });
 
+/* ⚠ (2026-09-09 4차) 이 검사는 <b>sideGain</b>의 항등을 재는 것인데 dx까지 보고
+   있었다. dx를 만드는 손잡이는 drawNudgePx로 <b>따로</b> 있고, 4차에 right=8이
+   들어가면서 여기서 깨졌다 — 깨진 자리가 틀렸다는 뜻이다(검사 대상이 아닌
+   손잡이가 검사를 넘어뜨렸다). 두 손잡이를 다 중립으로 놓고 잰다. */
 test('② sideGain=1.0 이면 보정 전과 글자 그대로 같다(항등)', () => {
-  const before = ANCHOR.sideGain;
+  const before = ANCHOR.sideGain, beforeNudge = ANCHOR.drawNudgePx;
   ANCHOR.sideGain = 1.0;
+  ANCHOR.drawNudgePx = 0;
   for(const a of ['front','left','right','back']){
     const m = fakeModel();
     const drawn = calForDraw(m, a), raw = m.viewCal[a];
@@ -107,6 +112,22 @@ test('② sideGain=1.0 이면 보정 전과 글자 그대로 같다(항등)', ()
     eq(drawn.dx || 0, 0, `${a} dx`);
   }
   ANCHOR.sideGain = before;
+  ANCHOR.drawNudgePx = beforeNudge;
+});
+
+/* ②-b (2026-09-09 4차) drawNudgePx는 <b>가로만</b> 민다 — 각도는 안 건드린다.
+   4차에 right로 +8px을 넣으면서, 미는 자와 도는 자가 섞이지 않는다는 것을
+   못 박아 둔다. 섞이면 다음 턴에 "밀었더니 각도도 변했다"를 못 읽는다. */
+test('②-b drawNudgePx는 dx만 움직이고 yaw는 그대로다', () => {
+  const before = ANCHOR.drawNudgePx;
+  ANCHOR.drawNudgePx = { front: 0, left: 0, right: 8, back: 0 };
+  for(const a of ['front','left','right','back']){
+    const m = fakeModel();
+    const drawn = calForDraw(m, a), raw = m.viewCal[a];
+    eq(drawn.yaw, raw.yaw, `${a} — 미는 손잡이가 각도를 움직였다`);
+    eq(drawn.dx || 0, a === 'right' ? 8 : 0, `${a} dx`);
+  }
+  ANCHOR.drawNudgePx = before;
 });
 
 /* ─────────────────────────────────────────────────────────────────
@@ -128,7 +149,50 @@ test('③-0 되쏘기 yaw는 기본적으로 리프트 yaw와 <b>같다</b>(전�
   eq(correctedViewYawDeg( 50.8, 'left'),   50.8, '좌측을 손대면 안 된다');
   ok(ANCHOR.sideYawFrom !== undefined, 'sideYawFrom 손잡이가 사라졌다');
   ANCHOR.sideYawFrom = before;
-  eq(before, 'off', "기본값이 'off'가 아니다 — 되쏘기가 리프트와 다른 각으로 돈다");
+  /* ⚠ (2026-09-09 4차) 여기는 원래 <b>기본값이 'off'인지</b>를 못 박고 있었다.
+     4차에 사용자가 "조금만 회전시켜봐"라고 해서 'blend'로 올렸으므로 그 못은
+     빠진다 — 다만 <b>빼는 게 아니라 옮긴다</b>. 이 검사가 지키려던 것은
+     "기본값이 off"라는 글자가 아니라 <b>손대지 않는 경로가 존재하고 항등</b>이라는
+     사실이고, 그건 위의 세 eq가 이미 재고 있다. 남는 위험은 하나 —
+     blend가 켜졌다는 걸 <b>아무도 모르는 것</b>이다. 그래서 값을 적어 둔다:
+     이 줄이 깨지면 누군가 각도를 또 만진 것이고, 그때는 녹화의 [되쏘기보정]
+     Δψ부터 다시 읽어야 한다. */
+  eq(before, 'blend',
+    "기본값이 4차에 정한 'blend'가 아니다 — 되쏘기 각도를 누가 또 옮겼다");
+  eq(ANCHOR.sideYawBlend.left, 0, '좌측은 이번 턴에 안 건드리기로 했다');
+  eq(ANCHOR.sideYawBlend.right, 0.4, '우측 blend가 4차에 정한 0.4가 아니다');
+});
+
+/* ─────────────────────────────────────────────────────────────────
+   ③-0b (2026-09-09 4차) blend는 <b>t=0에서 off와 글자 그대로 같다</b>.
+   'blend'를 넣은 이유가 "전부냐 아무것도 아니냐"를 깨는 것이었으므로, 그 양 끝이
+   기존 두 모드와 정확히 일치해야 새 모드가 <b>사이</b>를 걷는다고 말할 수 있다.
+   t=1이 'nose'와 같은지까지 함께 잰다 — 한쪽만 맞으면 그건 보간이 아니다.
+───────────────────────────────────────────────────────────────── */
+test('③-0b blend는 t=0에서 off와, t=1에서 nose와 같다(양 끝 고정)', () => {
+  const beforeFrom = ANCHOR.sideYawFrom, beforeBlend = ANCHOR.sideYawBlend;
+
+  ANCHOR.sideYawFrom = 'blend';
+  ANCHOR.sideYawBlend = { left: 0, right: 0 };
+  eq(correctedViewYawDeg(-41.2, 'right'), -41.2, 't=0인데 우측이 움직였다');
+  eq(correctedViewYawDeg( 50.8, 'left'),   50.8, 't=0인데 좌측이 움직였다');
+
+  ANCHOR.sideYawFrom = 'nose';
+  const noseR = correctedViewYawDeg(-41.2, 'right');
+  ANCHOR.sideYawFrom = 'blend';
+  ANCHOR.sideYawBlend = { left: 1, right: 1 };
+  eq(correctedViewYawDeg(-41.2, 'right'), noseR, "t=1이 'nose'와 다르다 — 보간이 아니다");
+
+  /* 중간값은 실제로 <b>사이</b>에 있어야 한다. 이 녹화 값으로 −41.2° → −56.9°의
+     40%면 약 −47.5°다(랜드마크가 없는 하네스에서는 게이트에 걸려 −41.2° 그대로 —
+     그때는 이 검사가 스킵된다는 뜻이지 통과했다는 뜻이 아니다). */
+  ANCHOR.sideYawBlend = { left: 0, right: 0.4 };
+  const mid = correctedViewYawDeg(-41.2, 'right');
+  ok(mid <= -41.2 && mid >= noseR,
+     `중간값이 두 끝 사이에 없다(${mid} ∉ [${noseR}, -41.2])`);
+
+  ANCHOR.sideYawFrom = beforeFrom;
+  ANCHOR.sideYawBlend = beforeBlend;
 });
 
 test('③ sideGain은 측면만 건드린다 · 부호 유지 · 상한 준수', () => {
