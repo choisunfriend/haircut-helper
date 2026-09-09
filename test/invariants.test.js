@@ -31,6 +31,11 @@ const ANCHOR = G('VIEWCAL_ANCHOR');
 const project3DPointToView = G('project3DPointToView');
 const composeRotationZYX  = G('composeRotationZYX');
 const correctedViewYawDeg = G('correctedViewYawDeg');
+/* (2026-09-09 5차) autoNudge 일습 — 검사 ③-0c·③-0d가 쓴다. */
+const autoNudgeLearn   = G('autoNudgeLearn');
+const autoNudgeTake    = G('autoNudgeTake');
+const autoNudgeReset   = G('autoNudgeReset');
+const viewDrawNudgePx  = G('viewDrawNudgePx');
 const calForDraw          = G('calForDraw');
 const getViewYawDeg       = G('getViewYawDeg');
 
@@ -157,10 +162,68 @@ test('③-0 되쏘기 yaw는 기본적으로 리프트 yaw와 <b>같다</b>(전�
      blend가 켜졌다는 걸 <b>아무도 모르는 것</b>이다. 그래서 값을 적어 둔다:
      이 줄이 깨지면 누군가 각도를 또 만진 것이고, 그때는 녹화의 [되쏘기보정]
      Δψ부터 다시 읽어야 한다. */
-  eq(before, 'blend',
-    "기본값이 4차에 정한 'blend'가 아니다 — 되쏘기 각도를 누가 또 옮겼다");
-  eq(ANCHOR.sideYawBlend.left, 0, '좌측은 이번 턴에 안 건드리기로 했다');
-  eq(ANCHOR.sideYawBlend.right, 0.4, '우측 blend가 4차에 정한 0.4가 아니다');
+  /* ⚠ (2026-09-09 5차) 4차에 이 자리를 'blend'로 옮겼다가 <b>도로 'off'</b>로 왔다.
+     4차가 틀린 이유는 하나로 요약된다: [뷰정렬] right 폭 ×1.042 —
+     그 배너 자신의 규칙("폭이 1.0에서 멀면 각도")에 따르면 각도는 이미 맞았고,
+     맞는 각도를 또 돌린 결과가 Δψ −6.3°의 전단(반대쪽 두피 +7px)이었다.
+     그게 화면에서 반대쪽 가닥이 얼굴을 가로지른 그 픽셀이다.
+     여기 못을 다시 'off'로 박는다. 다음에 이 줄이 깨지면 누군가 <b>폭을 안 보고</b>
+     각도를 만진 것이다 — 만지기 전에 [뷰정렬]의 폭 비율부터 읽어라. */
+  eq(before, 'off',
+    "기본값이 'off'가 아니다 — 각도를 만지기 전에 [뷰정렬] 폭 비율부터 읽어라");
+  eq(ANCHOR.sideYawBlend.left, 0, '좌측 blend가 0이 아니다');
+  eq(ANCHOR.sideYawBlend.right, 0, '우측 blend가 0이 아니다 — 5차에 전부 껐다');
+});
+
+/* ─────────────────────────────────────────────────────────────────
+   ③-0c (2026-09-09 5차) autoNudge — <b>폭이 맞을 때만</b> 민다.
+   이 검사가 지키는 것은 981줄 배너다("자동으로 밀면 진짜 원인이 이 숫자 뒤에
+   숨는다"). 자동화가 그 말을 어기지 않는 유일한 조건이 폭 게이트라,
+   게이트가 사라지면 자동화 자체를 되돌려야 한다. 그래서 여기서 못 박는다.
+───────────────────────────────────────────────────────────────── */
+test('③-0c autoNudge는 폭이 어긋나면 밀기를 거부한다', () => {
+  const A = ANCHOR.autoNudge;
+  ok(A && A.on === true, 'autoNudge 손잡이가 사라졌다');
+  autoNudgeReset();
+
+  // 폭이 맞으면(×1.02) 민다 — 잰 만큼 그대로.
+  ok(autoNudgeLearn('right', 17, 1.02, 8000) === true, '폭이 맞는데 안 밀었다');
+  eq(viewDrawNudgePx('right'), ANCHOR.drawNudgePx.right + 17, '민 양이 잰 양과 다르다');
+  ok(autoNudgeTake('right') === true, '다시 그려야 한다는 표시가 없다');
+  ok(autoNudgeTake('right') === false, '표시가 한 번 읽고도 안 내려갔다');
+
+  // 폭이 어긋나면(×0.868 — 이 녹화의 left 투영 실루엣) <b>안</b> 민다.
+  autoNudgeReset();
+  ok(autoNudgeLearn('left', -20, 0.868, 8000) === false,
+     '폭이 13% 어긋났는데 밀었다 — 평행이동이 자 문제를 덮는다');
+  eq(viewDrawNudgePx('left'), ANCHOR.drawNudgePx.left, '거부했는데 값이 움직였다');
+
+  // 표본이 적으면 안 민다.
+  autoNudgeReset();
+  ok(autoNudgeLearn('right', 17, 1.02, 30) === false, '표본 30점인데 밀었다');
+
+  // 이미 닫혀 있으면(데드밴드) 안 민다 — 프레임마다 떨리는 것 방지.
+  autoNudgeReset();
+  ok(autoNudgeLearn('right', 1, 1.00, 8000) === false, '1px에도 반응했다(떨림)');
+
+  // 상한을 못 넘는다.
+  autoNudgeReset();
+  autoNudgeLearn('right', 500, 1.00, 8000);
+  ok(Math.abs(viewDrawNudgePx('right') - ANCHOR.drawNudgePx.right) <= A.maxPx,
+     '상한 ±' + A.maxPx + 'px을 넘겼다');
+  autoNudgeReset();
+});
+
+/* ③-0d 자동을 끄면 <b>글자 그대로</b> 예전 값이다. 되돌릴 길이 항상 열려 있어야
+   한다 — 이 앱에서 새 손잡이가 위험해지는 건 늘 "끌 수가 없을 때"였다. */
+test('③-0d autoNudge.on=false면 상수만 남는다(항등)', () => {
+  autoNudgeReset();
+  autoNudgeLearn('right', 17, 1.02, 8000);
+  const before = ANCHOR.autoNudge.on;
+  ANCHOR.autoNudge.on = false;
+  eq(viewDrawNudgePx('right'), ANCHOR.drawNudgePx.right, '껐는데 자동값이 남아 있다');
+  ANCHOR.autoNudge.on = before;
+  autoNudgeReset();
 });
 
 /* ─────────────────────────────────────────────────────────────────
