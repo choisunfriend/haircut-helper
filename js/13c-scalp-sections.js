@@ -1088,7 +1088,21 @@ const VIEWCAL_ANCHOR = {
        한다. 예전 값이 left/right 둘 다 +35였던 것 자체가 원인 진단이 틀렸다는 신호였다.
      조절(모델 재생성 불필요 — 뷰만 다시 그리면 반영):
        VIEWCAL_ANCHOR.drawNudgePx = { left:-12, right:12 } */
-  drawNudgePx: { front: 0, left: 0, right: 0, back: 0 },
+  /* ── (2026-09-09 4차) right에 <b>잰 값</b>을 넣는다 ─────────────────────────
+     빌드 56 녹화의 [뷰정렬] 실측:
+       right  사진 중심 435px vs 그린 중심 409px → 어긋남 <b>+26px</b> · 폭 <b>×1.003</b>
+       back   +4px · 폭 ×0.891      front  −2px · 폭 ×0.934
+     폭이 1.003이면 자도 각도도 아니고 <b>중심만</b> 밀린 것이다 — 이 손잡이가
+     정확히 그 경우를 위한 자리다(위 배너의 판정 기준 그대로). front·back은
+     어긋남이 ±4px 안이라 안 건드린다(폭이 1.00에서 먼 건 각도 문제라 여기서
+     못 고친다 — 그건 다음 턴).
+     ⚠ <b>left를 아직 못 쟀다.</b> 원인이 해부학적인 것(먼 쪽 귀를 랜드마크가
+       메워 넣는 편향)이라면 좌우 부호가 <b>반대</b>여야 한다. left도 +26 근처로
+       <b>같은 부호</b>면 진단이 틀린 것이고, 그때 이 26은 또 임시 받침대가 된다
+       (예전 cxNudgePx가 left/right 둘 다 +35였던 것이 바로 그 신호였다).
+       다음 턴에 left의 [뷰정렬]을 받아서 부호부터 확인할 것.
+     되돌리기: VIEWCAL_ANCHOR.drawNudgePx = { front:0, left:0, right:0, back:0 } */
+  drawNudgePx: { front: 0, left: 0, right: 26, back: 0 },
 
   /* ── 측면 yaw 압축 보정 (2026-09-07) ─────────────────────────────────────
      사용자: "헤어를 덜 돌린 거잖아."
@@ -1133,7 +1147,51 @@ const VIEWCAL_ANCHOR = {
      ⚠ 남은 어긋남 — 두상 치수(getHeadEllipsoid)는 여전히 PnP yaw로 풀린다.
        9/07 3차가 여기를 건드렸다가 되돌린 그 자리다. 폭이 얼마나 어긋나는지는
        [진단·투영 실루엣] 배율이 이미 재고 있으니, 그 숫자를 보고 다음 턴에 정한다. */
-  sideYawFrom: 'nose',   // 'nose' | 'gain'
+  /* ── (2026-09-09 2차) 되쏘기 yaw 보정을 <b>끈다</b> ────────────────────────
+     사용자: "3D가 제대로 나왔잖아? 그러면 3D를 제대로 투영하지 못했다는 뜻이기
+     때문에, 게이트로 막는 게 문제가 아니고 실제 잘못 투영된 이유를 찾아서
+     바로잡는 방향으로 가야 돼. 머리카락은 원래 어디로든 갈 수 있으니까."
+
+     맞다. 그리고 <b>그 이유가 이 손잡이다.</b> 바로 위 1차 배너가 원인을 절반까지
+     써 놓고 배율만 교체했는데(1.45 → 랜드마크 실측), 배율이든 실측이든
+     <b>PnP와 다른 각을 쓰는 한</b> 증상은 그대로다. 남은 절반은 이렇다.
+
+     ── 투영은 리프트의 <b>정확한 역</b>이어야 한다 ──────────────────────────
+     가닥의 월드 좌표는 리프트가 만든다(buildHairStrandsFromPaths):
+         w3 = Rᵀ·(px, my−CY, mz) + CY        … R = R(cal.yaw, pitch, roll)
+     되쏘기는 그 역이다(project3DPointToView):
+         local = R·(w3 − CY)
+     project3DPointToView 첫 배너가 "R·Rᵀ=I라 같은 뷰 왕복은 수학적으로 정확"이라고
+     적어 둔 그 항등식이다. calForDraw가 yaw만 ψ′로 바꾸면 실제로 걸리는 것은
+         R′·Rᵀ = <b>Δψ = ψ′ − ψ 만큼의 잔여 회전</b>
+     이고, 항등식이 깨진다. 이 녹화의 실측이 그 크기다:
+         left   PnP  50.8° → 그리기  60.4°   (Δψ = <b>+9.6°</b>)
+         right  PnP −41.2° → 그리기 −56.9°   (Δψ = <b>−15.7°</b>)
+
+     ── 왜 <b>반대쪽 가닥만</b> 휘는가 ───────────────────────────────────────
+     잔여 회전은 평행이동이 아니다. lx = x·cosψ + z·sinψ 이므로 화면에서 밀리는
+     양이 그 점의 (x, z)에 비례한다 — 즉 <b>전단</b>이다. 부호도 위치가 정한다:
+     카메라 쪽 두피(z>0)와 반대쪽 두피(z<0)가 <b>반대 방향으로</b> 밀린다.
+     그래서 가까운 쪽 옆머리는 거의 제자리인데(사용자: "측면 헤어 각도와 위치는
+     잘 잡혀서 나와") 반대쪽 가닥만 얼굴을 가로질러 끌려온다. 게다가 한 가닥
+     안에서도 위·아래의 (x,z)가 달라 미는 양이 달라지므로 <b>가닥 자체가 꺾인다</b> —
+     사용자가 "투영하면서 디렉션이 휜다"고 한 그 모양이 정확히 이것이다.
+     "눈 옆 얼굴 바깥에서 출발해 입으로 내려온다"는 전단이 만든 궤적이지, 그
+     가닥이 원래 그런 데 있는 게 아니다. 미니3D가 멀쩡한 이유도 같다 — 3D는
+     월드 점을 자유 카메라로 그리므로 cal을 아예 안 탄다.
+
+     ── 그래서 고침은 <b>맞추는 것</b>이다 ──────────────────────────────────
+     3D가 옳다는 것은 리프트에 쓴 PnP yaw가 옳다는 뜻이다. 그러면 되쏘기도
+     같은 yaw를 써야 한다. 얼굴 게이트로 잘라 내던 것은 이 전단이 만든 <b>가짜
+     가닥</b>이었고, 원인이 사라지면 잘라 낼 것도 없다(FACE_GATE.on=false).
+
+     ⚠ 이 손잡이가 처음 생긴 이유(마네킹 모드에서 앞머리가 "덜 돌아 보인다")는
+       <b>사라지지 않는다</b>. 다만 그건 그리는 각이 아니라 <b>포즈 추정</b>의
+       문제이고, 고칠 자리는 리프트와 되쏘기가 <b>함께</b> 보는 cal.yaw다.
+       한쪽만 바꾸면 지금 고친 이 전단이 그대로 돌아온다.
+     A/B: 'nose'(랜드마크 실측) · 'gain'(상수배 sideGain) — 둘 다 전단을 되살린다.
+          그 크기는 [되쏘기보정] 로그가 px로 찍는다. */
+  sideYawFrom: 'off',    // 'off' | 'nose' | 'gain'
   /* 실측 각이 PnP보다 <b>작게</b> 나오면 안 쓴다. 근사yaw는 구 두상 가정이라
      긴 얼굴에서 과소평가될 수 있고, 그때는 PnP가 더 믿을 만하다. 이 게이트는
      "덜 돌리는 방향으로는 안 고친다"는 뜻이다. */
@@ -1167,11 +1225,18 @@ function viewDrawNudgePx(angle){ return _viewNudgeOf(VIEWCAL_ANCHOR.drawNudgePx,
    정렬(faceLineAlignFit)이 viewCal 원본을 쓰고 있어서 가닥이 코 위로 지나갔고,
    14번에서 고쳤다. 아직 안 고친 소비자: projectImagePointToHead(측면 실측 깊이)
    — 미간 함몰이 여기서 나온다. 손대기 전에 [얼굴 z·항별] 로그부터 읽을 것. */
-function correctedViewYawDeg(deg, angle){
+function correctedViewYawDeg(deg, angle, modeOverride){
   if(angle !== 'left' && angle !== 'right') return deg;
+  /* (2026-09-09 2차) 기본은 <b>안 고침</b>. 되쏘기 회전은 리프트 회전과 같아야
+     한다 — 근거는 VIEWCAL_ANCHOR.sideYawFrom 배너.
+     modeOverride는 <b>출처에서</b> 고치는 경로(POSE_YAW_FIX)가 쓴다. 그 경로는
+     리프트·되쏘기·치수가 같이 움직이므로 전단이 안 생기고, 따라서 되쏘기 전용
+     손잡이(sideYawFrom)와는 켜고 끄는 기준이 다르다. */
+  const mode = modeOverride || VIEWCAL_ANCHOR.sideYawFrom;
+  if(mode === 'off') return deg;
   if(!isFinite(deg) || Math.abs(deg) < VIEWCAL_ANCHOR.sideMinDeg) return deg;
   const cap = d => Math.sign(deg) * Math.min(VIEWCAL_ANCHOR.sideMaxDeg, Math.abs(d));
-  if(VIEWCAL_ANCHOR.sideYawFrom === 'nose'){
+  if(mode === 'nose'){
     const est = noseRatioYawDeg(angle);
     /* 부호가 PnP와 다르면 둘 중 하나가 뒤집힌 것이다 — 그때는 안 고친다.
        고칠 근거가 아니라 <b>진단할 근거</b>이고, 조용히 뒤집으면 그게 다음 버그다. */
@@ -1216,6 +1281,46 @@ const HAIR_HULL_FIT = {
   enclose: true,         // 적합을 평균이 아니라 감싸기(최댓값)로 — ②
   keepAfterSmooth: true, // 이동평균이 깎은 봉우리를 관측 요구치로 되살림
   log: true,             // [3D·헐 둘레] 진단(예전 방식과 배율 비교)
+};
+/* ── 헐 접힘을 <b>원인에서</b> 없앤다 (2026-09-09 3차) ──────────────────────────
+   사용자: "만질수록 우측으로 자꾸 틀어지고, 우측 캔버스에서 반대편 헤어가
+   아래쪽으로 오면서 휘어." · 앞 작업자: "헐 접힘 때문일 수 있다."
+   맞았다. 빌드 55가 되쏘기 yaw를 리프트와 맞추면서(sideYawFrom='off') 전단은
+   없앴는데, 그 배너가 스스로 적어 둔 단서가 여기다 — 왕복이 닫히는 건
+   <b>u≤1 구간에서만</b>이다. 남은 한 자리가 아래 u>1 분기이고, 그 분기는 두 가지를
+   한다:
+     ① px = sgn·aH·sinθ      — x를 <b>안쪽으로</b> 접는다
+     ② mz = aD·cosθ (θ≤0.85π) — 점을 <b>반대쪽 반구</b>(z<0)로 넘긴다
+
+   ① 이 "아래쪽으로 오면서 휜다"의 정체다. |mx|>aH면 px≠mx라 <b>같은 뷰에
+      되쏘아도</b> 사진과 다른 자리에 그려진다. 게다가 접는 양이 그 높이의 aH(y)에
+      달렸는데 aH는 아래로 갈수록 좁아지므로, 한 가닥 안에서 아래로 갈수록 더
+      접힌다 — 가닥이 <b>휜다</b>. dpx/dmx가 aH에서 부호를 바꾸는 진짜 접힘이라
+      이웃 가닥끼리 좌우 순서까지 뒤집힌다.
+   ② 가 "우측 캔버스에 반대편 헤어"의 정체다. u≤1 분기는 mz≥0만 만든다 —
+      사진에 <b>보이는</b> 점은 그 카메라 쪽 반구에 있다는 뜻이고 그게 리프트의
+      전제다. 그런데 이 분기만 z<0(최대 −0.89·aD)을 만들어, 좌측 뷰에서 넘친
+      가닥을 <b>우측 반구</b>에 떨어뜨린다. 그래서 좌우가 다르게 보였다.
+   그리고 "<b>만질수록</b>"이 그대로 설명된다 — 헐 관측은 <b>마스크</b>(hairEndY)에서
+   재는데 캡처된 가닥은 마스크 밖으로 <b>연장</b>된다(10번 렌더의 ext 구간, 길이
+   슬라이더가 늘리는 그 부분). 길이를 올릴수록 넘치는 점이 늘고, 넘친 만큼
+   ①②가 세진다.
+
+   고침 — <b>사진이 옳다</b>고 본다. |mx|>aH는 "가닥이 헐 밖"이 아니라 "그 밴드의
+   헐이 그만큼 좁게 적합됐다"는 뜻이므로:
+     · x는 안 건드린다(px = mx) → 왕복이 <b>모든</b> 점에서 닫힌다.
+     · 대신 그 점에서만 단면을 필요한 만큼 넓혀 깊이를 <b>양수로</b> 준다.
+       납작한 커튼(2026-07-17이 피하려던 것)도 아니고 반구도 안 넘는다.
+     · 상한을 넘는 진짜 이상점은 림(z=0)에 둔다 — 넘기지 않는다.
+   이음새: over=0에서 k=1·ue=1·mz=0·facing=0이라 위 u≤1 분기와 <b>연속</b>이다
+   (예전 분기도 림에서 연속이었지만 그 다음이 반대쪽 반구였다).
+   되돌리기: HULL_FOLD.on = false → 2026-07-17 동작과 글자 그대로 같음.
+   확인: [진단·헐 접힘] 로그의 "넘침 처리" 줄(넓힌 배율·림으로 간 점 수). */
+const HULL_FOLD = {
+  on: true,
+  grow: 0.10,       // 넘친 점에 주는 최대 여유(단면 배율) — 0이면 전부 림(깊이 0)
+  rampOver: 0.20,   // 이 초과율까지 여유를 0→grow로 서서히(u=1 이음새 연속성)
+  expandMax: 1.80,  // 단면 확대 상한. 넘으면 림에 둔다(연장 튀는 점 방어)
 };
 /* 컬럼별 모발 최상단 y(원본 해상도). reasonMask(1 = 최종 머리카락)에서 잰다. */
 function hairTopYOf(maskInf){
@@ -1689,7 +1794,8 @@ function buildHairStrandsFromPaths(){
   const canonicalStrands = [];      // [{pts:[{x,y,z}], sec, color, srcAngle, mirrored}]
   const _sec3DHist = {};            // [진단] #4 — 3D 뿌리 기준 섹션 분포
   const _capAll = {}, _capStat = {}; // [진단] 두피 돔 위로 나간 점(정수리 삐침 출처)
-  const _wrapStat = {};              // [진단] 헐 단면 밖으로 나가 x가 접힌 점(둘레 좁아짐 출처)
+  const _wrapStat = {};              // [진단] 헐 단면 밖으로 나간 점(둘레 좁아짐 출처)
+  const _wrapFix = { n:0, rim:0, maxK:1 };  // [진단] 그 점들을 넘침 처리로 어떻게 놓았나(2026-09-09 3차)
   const viewCal = {};               // 뷰별 image↔model 캘리브레이션(되쏘기용)
   names.forEach(n3=>{               // names = 실측(비거울) 뷰만
     const vv = views[n3];
@@ -1791,17 +1897,42 @@ function buildHairStrandsFromPaths(){
              이 분기를 못 타고 lastZ(납작한 수직 삐침)로 떨어졌다. 그 구간은
              헐 반폭 aH로 게이트한다 — 두상 아래(긴 머리 늘어짐)의 lastZ 동작은
              그대로 둔다(거긴 목을 감으면 안 되므로 기존 판단이 맞다). */
-          // (2026-07-17) 단면 밖(u>1)이지만 아직 두상 높이 범위 안: 예전엔
-          // lastZ 유지/림 평면(z=0)이라 가장자리 가닥이 납작한 커튼으로
-          // 눌렸음. 반폭 초과분을 호길이로 환산해 타원 둘레를 따라 뒤쪽으로
-          // 감아 배치("타원처럼"). 림(θ=π/2)에서 x=aH, z=0이라 위 분기와
-          // 이음새 연속(림에선 scalpZ=hullZ=0이라 t와 무관하게 mz=0).
-          // θ 상한 0.85π — 반대편 뒤통수 중심을 뚫고 지나가는 것 방지.
-          const sgn = mx >= 0 ? 1 : -1;
-          const rEdge = Math.max(1e-3, (aH + aD) / 2);            // 근사 둘레 반경
-          const theta = Math.min(Math.PI * 0.85, Math.PI/2 + (Math.abs(mx) - aH) / rEdge);
-          px = sgn * aH * Math.sin(theta);
-          mz = aD * Math.cos(theta);
+          if(HULL_FOLD.on){
+            /* (2026-09-09 3차) x를 접지 않고, 넘친 만큼 <b>단면을 넓혀서</b> 깊이를
+               준다. 근거·증상은 HULL_FOLD 배너. 핵심 두 줄:
+                 px = mx        → 사진↔되쏘기 왕복이 이 점에서도 닫힌다
+                 mz ≥ 0         → 사진에 보이는 점은 카메라 쪽 반구에만 놓인다 */
+            const over = Math.abs(mx)/aH - 1;                      // 사진이 헐보다 얼마나 넓은가
+            const ramp = Math.min(1, over / Math.max(1e-6, HULL_FOLD.rampOver));
+            const k    = Math.min(HULL_FOLD.expandMax, (1 + over) * (1 + HULL_FOLD.grow * ramp));
+            const aHe = aH * k, aDe = aD * k;                      // 이 점에서만 넓힌 단면
+            const ue  = (mx/aHe)*(mx/aHe);
+            px = mx;                                               // ← 접지 않는다
+            if(ue < 1){
+              const hullZ  = aDe * Math.sqrt(1 - ue);
+              const uh     = aHh > 1e-4 ? (mx/aHh)*(mx/aHh) : 2;
+              const scalpZ = uh <= 1 ? aDh * Math.sqrt(1 - uh) : 0;
+              mz = scalpZ + (hullZ - scalpZ) * t;
+              facing = Math.sqrt(1 - ue);
+            } else {
+              mz = 0; facing = 0;                                  // 림 — 반대쪽 반구로는 안 넘긴다
+              _wrapFix.rim++;
+            }
+            _wrapFix.n++; if(k > _wrapFix.maxK) _wrapFix.maxK = k;
+          } else {
+            // (2026-07-17) 단면 밖(u>1)이지만 아직 두상 높이 범위 안: 예전엔
+            // lastZ 유지/림 평면(z=0)이라 가장자리 가닥이 납작한 커튼으로
+            // 눌렸음. 반폭 초과분을 호길이로 환산해 타원 둘레를 따라 뒤쪽으로
+            // 감아 배치("타원처럼"). 림(θ=π/2)에서 x=aH, z=0이라 위 분기와
+            // 이음새 연속(림에선 scalpZ=hullZ=0이라 t와 무관하게 mz=0).
+            // θ 상한 0.85π — 반대편 뒤통수 중심을 뚫고 지나가는 것 방지.
+            // ⚠ 이 두 줄이 x를 접고 점을 반대쪽 반구로 넘긴다(HULL_FOLD 배너).
+            const sgn = mx >= 0 ? 1 : -1;
+            const rEdge = Math.max(1e-3, (aH + aD) / 2);            // 근사 둘레 반경
+            const theta = Math.min(Math.PI * 0.85, Math.PI/2 + (Math.abs(mx) - aH) / rEdge);
+            px = sgn * aH * Math.sin(theta);
+            mz = aD * Math.cos(theta);
+          }
         } else if(lastZ !== null){
           mz = lastZ;    // 두상 아래(늘어짐): 마지막 깊이 유지 — 목을 감지 않게
         } else {
@@ -1879,10 +2010,19 @@ function buildHairStrandsFromPaths(){
            + ' 뿌리' + w.root + ' 최대초과 ×' + w.maxOver.toFixed(3);
     });
     const worst = Object.keys(_wrapStat).reduce((m,n)=>Math.max(m, _wrapStat[n].maxOver), 1);
-    console.log('[진단·헐 접힘] 헐 밖으로 나가 접힌 점: ' + (parts.join(' | ') || '없음')
+    /* (2026-09-09 3차) "접힘"은 이제 <b>넘침</b>이라고 읽어야 맞다 — x는 안 접고
+       단면만 넓히므로, 이 숫자가 커도 화면 자리는 사진 그대로다. 커지면 헐 적합이
+       좁다는 뜻이고 그건 여전히 볼 일이지만, <b>가닥이 얼굴을 가로지르는</b> 증상과는
+       이제 무관하다(px=mx · mz≥0). 켜고 끄기: HULL_FOLD.on */
+    console.log('[진단·헐 접힘] 헐 밖으로 나간 점: ' + (parts.join(' | ') || '없음')
+      + (HULL_FOLD.on
+          ? '\n    넘침 처리: ' + _wrapFix.n + '점 · 단면 최대 ×' + _wrapFix.maxK.toFixed(3)
+            + ' · 림(깊이0)으로 ' + _wrapFix.rim + '점'
+            + ' — x는 안 접고(px=mx) 깊이는 카메라 쪽 반구에만 둡니다(mz≥0). 되돌리기: HULL_FOLD.on=false'
+          : '\n    ⚠ HULL_FOLD.on=false — 예전 감기 분기입니다(x가 접히고 점이 반대쪽 반구로 넘어갑니다).')
       + (worst > 1.02
-          ? '\n    ⚠ 헐이 실루엣을 못 감싸고 있습니다 — 그만큼 두상 둘레가 사진보다 좁게 나옵니다([3D·헐 둘레] 줄과 같이 볼 것).'
-          : '\n    헐이 실루엣을 감싸고 있습니다(접힘 없음 = 3D 둘레가 사진과 일치).'));
+          ? '\n    ⚠ 헐이 실루엣을 못 감싸고 있습니다 — 헐 적합이 그만큼 좁습니다([3D·헐 둘레] 줄과 같이 볼 것).'
+          : '\n    헐이 실루엣을 감싸고 있습니다(넘침 없음 = 3D 둘레가 사진과 일치).'));
   }
 
   /* ── 겹침 정리 (2026-08-03) ─────────────────────────────────────────
