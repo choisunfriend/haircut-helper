@@ -1088,7 +1088,17 @@ const VIEWCAL_ANCHOR = {
        한다. 예전 값이 left/right 둘 다 +35였던 것 자체가 원인 진단이 틀렸다는 신호였다.
      조절(모델 재생성 불필요 — 뷰만 다시 그리면 반영):
        VIEWCAL_ANCHOR.drawNudgePx = { left:-12, right:12 } */
-  drawNudgePx: { front: 0, left: 0, right: 0, back: 0 },
+  /* ── (2026-09-09 4차) right만 <b>반대편으로</b> 민다 ────────────────────────
+     사용자: "우측 캔버스 확인해서 일단 반대편으로 조금 밀고 조금만 회전시켜봐."
+     이 녹화의 [되쏘기보정] right가 그대로 값을 준다 —
+       yaw −41.2° → 근사 −56.9° 로 고쳤다면 <b>반대쪽 두피에 +16px</b> 전단.
+     그 +16px이 "반대편"이 가리키는 방향이고 크기다. 전량을 한 번에 넣지 않는
+     이유는 아래 sideYawBlend와 <b>같은 원인을 두 번 미는 셈</b>이 되기 때문이다 —
+     회전을 절반 넣으므로 평행 성분도 절반(+8)만 넣고, 남는 몫은 화면을 보고 정한다.
+     부호 규약은 위와 같다: + = 화면 <b>오른쪽</b>(우측 뷰에서 얼굴은 화면 왼쪽이므로
+     +는 얼굴에서 <b>멀어지는</b> 쪽 = 사용자가 말한 반대편).
+     되돌리기: right: 0 */
+  drawNudgePx: { front: 0, left: 0, right: 8, back: 0 },
 
   /* ── 측면 yaw 압축 보정 (2026-09-07) ─────────────────────────────────────
      사용자: "헤어를 덜 돌린 거잖아."
@@ -1153,7 +1163,27 @@ const VIEWCAL_ANCHOR = {
        (getHeadEllipsoid)까지 따라 움직이므로, 포즈용 yaw와 실루엣 푸는 yaw를
        분리한 뒤에 손대야 한다. 그 전까지는 <b>왕복이 닫히는 쪽</b>이 낫다.
      되살리기: VIEWCAL_ANCHOR.sideYawFrom = 'nose' (또는 'gain') */
-  sideYawFrom: 'off',    // 'off' | 'nose' | 'gain'
+  /* ── (2026-09-09 4차) <b>'blend'</b> — 전부냐 아무것도 아니냐를 깬다 ─────────
+     사용자: "조금만 회전시켜봐."
+     지금까지 이 손잡이는 세 값 다 <b>양자택일</b>이었다: PnP 그대로(off)거나
+     근사yaw 전량(nose)이거나 상수배(gain). 그래서 3차에 'nose'를 껐을 때
+     Δψ −15.7°가 통째로 사라졌고, 이번에 되살리면 통째로 돌아온다 — 3차 배너가
+     적어 둔 "왕복이 닫히는 쪽이 낫다"와 "PnP가 눌린 건 맞다"가 둘 다 참인데
+     그 사이를 <b>표현할 수가 없었다</b>. blend가 그 사이다.
+       ψ = PnP + t·(근사 − PnP)      t=0 → 'off'와 완전히 같음 · t=1 → 'nose'와 같음
+     t는 뷰별로 둔다. 9/09 2차 실측이 눌린 양이 뷰마다 다르다고 이미 적었다
+     (right Δ −15.7° · left Δ +9.6°). 하나의 배율로 못 덮는 이유가 그것이었으므로
+     하나의 t로도 못 덮는다.
+     ⚠ 이건 여전히 <b>되쏘기에서 각도를 만지는</b> 임시 받침대다. 제자리는
+       getViewYawDeg에서 포즈용 yaw와 실루엣 푸는 yaw를 분리하는 것이고(3차 배너),
+       그때 t는 전부 0으로 돌아가야 한다.
+     되돌리기: sideYawFrom = 'off' (blend 값은 남겨 둬도 안 읽힌다) */
+  sideYawFrom: 'blend',  // 'off' | 'blend' | 'nose' | 'gain'
+  /* right만 켠다 — 이번 턴에 사용자가 본 것이 우측 캔버스 하나다. 0.4는 Δ −15.7°의
+     약 40%(−41.2° → 약 −47.5°)로, "조금만"을 숫자로 옮긴 값이지 잰 값이 아니다.
+     left는 0(=off)으로 둬서 <b>한 번에 한 뷰만</b> 움직인다 — 좌우를 같이 만지면
+     다음 녹화에서 어느 쪽이 무엇을 고쳤는지 못 읽는다. */
+  sideYawBlend: { left: 0, right: 0.4 },
   /* 실측 각이 PnP보다 <b>작게</b> 나오면 안 쓴다. 근사yaw는 구 두상 가정이라
      긴 얼굴에서 과소평가될 수 있고, 그때는 PnP가 더 믿을 만하다. 이 게이트는
      "덜 돌리는 방향으로는 안 고친다"는 뜻이다. */
@@ -1197,8 +1227,22 @@ function correctedViewYawDeg(deg, angle){
      아는 값만 통과시키고 모르는 값은 <b>끈 것으로</b> 본다 — 오타로 배율이
      걸리는 쪽보다 안 걸리는 쪽이 안전하다. */
   const _from = VIEWCAL_ANCHOR.sideYawFrom;
-  if(_from !== 'nose' && _from !== 'gain') return deg;
+  if(_from !== 'nose' && _from !== 'gain' && _from !== 'blend') return deg;
   const cap = d => Math.sign(deg) * Math.min(VIEWCAL_ANCHOR.sideMaxDeg, Math.abs(d));
+  /* ── 'blend' — PnP와 근사yaw 사이를 t로 걷는다 (2026-09-09 4차) ────────────
+     'nose'와 <b>같은 게이트를 그대로</b> 통과시킨다(부호 일치 · sideYawNoseMinOnly).
+     게이트에서 걸리면 PnP를 그대로 돌려주므로 t가 얼마든 조용히 안 걸린다 —
+     "덜 돌리는 방향으로는 안 고친다"는 규약이 blend에서도 살아 있어야 한다.
+     t=0이 정확히 off와 같은 값을 내는지가 이 분기의 안전장치다(deg 그대로 반환). */
+  if(_from === 'blend'){
+    const t = _viewNudgeOf(VIEWCAL_ANCHOR.sideYawBlend, angle);
+    if(!(t > 0)) return deg;                       // 0 또는 미설정 = 이 뷰는 끔
+    const est = noseRatioYawDeg(angle);
+    if(est == null || !isFinite(est)) return deg;  // 랜드마크 없으면 PnP 그대로
+    if(Math.sign(est) !== Math.sign(deg)) return deg;
+    if(VIEWCAL_ANCHOR.sideYawNoseMinOnly && Math.abs(est) <= Math.abs(deg)) return deg;
+    return cap(deg + Math.min(1, t) * (est - deg));
+  }
   if(VIEWCAL_ANCHOR.sideYawFrom === 'nose'){
     const est = noseRatioYawDeg(angle);
     /* 부호가 PnP와 다르면 둘 중 하나가 뒤집힌 것이다 — 그때는 안 고친다.
