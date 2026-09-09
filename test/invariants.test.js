@@ -264,4 +264,25 @@ test('⑨ trust가 같으면 예전 동작과 같다(정규화로 사라진다)'
   near(새, 옛, 1e-12, 'trust가 같은데 결과가 달라졌다 — 상대 가중 말고 뭔가 더 바뀌었다');
 });
 
+/* ─────────────────────────────────────────────────────────────────
+   ⑩ (2026-09-09 2차) 투영기의 역이 <b>정말 역</b>인가.
+   두피면 색은 정점을 사진 좌표로 되돌려 그 자리의 살을 집는다. 이 역변환이
+   조금이라도 어긋나면 색이 <b>다른 자리</b>에서 오고, 그건 눈으로는 "톤이 좀
+   안 맞네" 정도로만 보여서 오래 안 잡힌다. 그래서 기계가 잡는다.
+───────────────────────────────────────────────────────────────── */
+test('⑩ makeFaceProjector의 toImg*는 toMesh*의 정확한 역이다', () => {
+  const mk = G('makeFaceProjector');
+  ok(typeof mk === 'function', 'makeFaceProjector를 못 찾았다');
+  const lm = { eyeY: 0.32, chinY: 0.62, lEarX: 0.29, rEarX: 0.71 };
+  for(const [wf, hf] of [[1, 1], [1.12, 0.89], [0.93, 1.07]]){
+    const p = mk(lm, wf, hf);
+    ok(typeof p.toImgX === 'function' && typeof p.toImgY === 'function',
+       'toImgX/toImgY가 없다 — 두피면 색이 좌표를 손으로 다시 풀게 된다');
+    for(const u of [0, 0.17, 0.5, 0.83, 1]){
+      near(p.toImgX(p.toMeshX(u)), u, 1e-12, `가로 왕복(wf=${wf})`);
+      near(p.toImgY(p.toMeshY(u)), u, 1e-12, `세로 왕복(hf=${hf})`);
+    }
+  }
+});
+
 module.exports = { T, app };
