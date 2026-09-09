@@ -1351,7 +1351,20 @@ function projectHair3DToView(ctx, fit, angle, maskInf){
       + '\n      단, 폭(×' + wRatio.toFixed(3) + ')이 1.0에서 멀면 미는 문제가 아니라 <b>각도</b>입니다 —'
       + ' 그때 만질 것은 VIEWCAL_ANCHOR.sideGain(측면 yaw 압축 보정)입니다.'
       + '\n      띠는 두피선~마스크 높이 25%(사진 y ' + _drA.yTop.toFixed(0) + '~' + _drA.yBot.toFixed(0) + ')'
-      + ' · 표본 ' + _drA.n + '점. 이 값은 자동 적용하지 않습니다.');
+      + ' · 표본 ' + _drA.n + '점.'
+      /* (2026-09-09 5차) 예전 꼬리말은 "이 값은 자동 적용하지 않습니다"였다.
+         이제 폭이 맞을 때만 자동 적용한다 — 자세한 건 VIEWCAL_ANCHOR.autoNudge 배너. */
+      + ((VIEWCAL_ANCHOR.autoNudge && VIEWCAL_ANCHOR.autoNudge.on)
+          ? ' 이 값은 <b>폭이 1.0 근처일 때만</b> 자동 적용됩니다(autoNudge).'
+          : ' 이 값은 자동 적용하지 않습니다(autoNudge.on=false).'));
+
+    /* ── 재는 자 → 미는 자 (2026-09-09 5차) ────────────────────────────────
+       여기가 두 달짜리 고리를 끊는 한 줄이다. 위 문장이 넣을 값을 이미 알고
+       있었는데 사람이 콘솔에서 옮겨 적는 절차를 거쳤고, 그 절차가 네 번 실패했다.
+       게이트(폭·표본·상한)는 전부 autoNudgeLearn 안에 있다. */
+    if(typeof autoNudgeLearn === 'function'){
+      autoNudgeLearn(angle, need, wRatio, _drA.n);
+    }
   }
   logStrandRender(angle, { spanX, unit, cssW, roles, rawTotal, targetStrands, pxN,
                            stride, total: src.length, drawn: projected.length,
