@@ -257,6 +257,11 @@ const CUT2D_ENGINE = { on: false };
    경계이지 튜닝값이 아니다. 실기기 [깊이 폭] 표가 이 문턱에서 갈리지 않으면
    (전부 0%거나 전부 100%면) 그때 표를 보고 옮긴다. */
 const DEPTH_SORT = { byRoot: true, bigSpan: 0.5 };
+/* 겹 정렬 동점 처리 (2026-09-09 4차) — 자세한 근거는 15-project-3d.js의
+   projected.sort 배너. 깊이가 tieBand 안으로 비면 뿌리가 <b>높은</b> 가닥을
+   나중에 그린다(=위에 얹는다). 정수리 가닥이 옆·후두부 밑에 깔리던 자리다.
+   tieBand는 두상 깊이반경 대비 — 키우면 더 많은 쌍이 높이로 정렬된다. */
+const LAYER_SORT = { tieByRootHeight: true, tieBand: 0.25 };
 const PROJ_FALLBACK = { n: 0, lastAngle: null };   // ⓒ가 실제로 도는가
 function neutralSectionsForRender(){
   const out = {};
