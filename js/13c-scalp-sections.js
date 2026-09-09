@@ -1211,14 +1211,18 @@ function viewDrawNudgePx(angle){ return _viewNudgeOf(VIEWCAL_ANCHOR.drawNudgePx,
    정렬(faceLineAlignFit)이 viewCal 원본을 쓰고 있어서 가닥이 코 위로 지나갔고,
    14번에서 고쳤다. 아직 안 고친 소비자: projectImagePointToHead(측면 실측 깊이)
    — 미간 함몰이 여기서 나온다. 손대기 전에 [얼굴 z·항별] 로그부터 읽을 것. */
-function correctedViewYawDeg(deg, angle){
+function correctedViewYawDeg(deg, angle, modeOverride){
   if(angle !== 'left' && angle !== 'right') return deg;
   /* (2026-09-09 2차) 기본은 <b>안 고침</b>. 되쏘기 회전은 리프트 회전과 같아야
-     한다 — 근거는 VIEWCAL_ANCHOR.sideYawFrom 배너. */
-  if(VIEWCAL_ANCHOR.sideYawFrom === 'off') return deg;
+     한다 — 근거는 VIEWCAL_ANCHOR.sideYawFrom 배너.
+     modeOverride는 <b>출처에서</b> 고치는 경로(POSE_YAW_FIX)가 쓴다. 그 경로는
+     리프트·되쏘기·치수가 같이 움직이므로 전단이 안 생기고, 따라서 되쏘기 전용
+     손잡이(sideYawFrom)와는 켜고 끄는 기준이 다르다. */
+  const mode = modeOverride || VIEWCAL_ANCHOR.sideYawFrom;
+  if(mode === 'off') return deg;
   if(!isFinite(deg) || Math.abs(deg) < VIEWCAL_ANCHOR.sideMinDeg) return deg;
   const cap = d => Math.sign(deg) * Math.min(VIEWCAL_ANCHOR.sideMaxDeg, Math.abs(d));
-  if(VIEWCAL_ANCHOR.sideYawFrom === 'nose'){
+  if(mode === 'nose'){
     const est = noseRatioYawDeg(angle);
     /* 부호가 PnP와 다르면 둘 중 하나가 뒤집힌 것이다 — 그때는 안 고친다.
        고칠 근거가 아니라 <b>진단할 근거</b>이고, 조용히 뒤집으면 그게 다음 버그다. */

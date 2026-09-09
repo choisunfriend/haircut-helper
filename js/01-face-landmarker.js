@@ -350,7 +350,41 @@ function getViewPoseSource(angle){
 }
 
 // 뷰(angle)의 실측 좌우 회전각(도).
+/* ── 포즈 yaw를 <b>출처에서</b> 고치는 스위치 (2026-09-09 2차) ──────────────────
+   기본값 off. 켜면 이 함수의 출력이 바뀌므로 <b>리프트·되쏘기·두상 치수</b>가
+   전부 같이 따라간다 — 그게 요점이다.
+
+   왜 여기인가. 9/07이 "측면 PnP가 실제보다 덜 돈다"를 발견하고 <b>그리기에만</b>
+   보정을 걸었다가, 그게 리프트와 어긋나 전단을 만들었고(빌드 55에서 되돌림),
+   되돌리고 나니 이번엔 마네킹 가닥이 덜 돌아 보인다. 두 증상은 같은 뿌리다:
+   <b>cal.yaw가 실제 각도가 아니다.</b> 한쪽에서만 고치면 반드시 다른 쪽이 깨진다.
+   PnP가 51°인데 사람이 60°로 돌아 있으면, 그리기만 틀린 게 아니라
+   getHeadEllipsoid가 실루엣 폭을 나눌 때 쓰는 각도도 틀린 것이다.
+
+   ⚠ 9/07 3차가 여기를 건드렸다가 되돌렸다("오히려 더 쏠렸어"). 그때 빠진 것은
+     <b>재는 장치</b>다. yaw를 키우면 실루엣 폭의 일부가 깊이로 귀속돼 머리통이
+     좁고 깊어지는데, 얼마나 그러는지를 아무도 안 쟀다. 그래서 이번엔 켜는
+     순간 [포즈 보정·치수] 로그가 a(폭)·c(깊이)의 before/after를 같이 찍는다.
+     그 숫자를 보고 판단할 것 — 눈으로 다시 켰다 껐다 하지 말 것.
+   켜기: POSE_YAW_FIX.on = true  (모델을 다시 만들어야 반영된다 — 뷰 재진입) */
+const POSE_YAW_FIX = { on: false, from: 'nose' };   // 'nose'(랜드마크 실측) | 'gain'(상수배)
 function getViewYawDeg(angle){
+  const raw = _rawViewYawDeg(angle);
+  if(!POSE_YAW_FIX.on) return raw;
+  if(typeof correctedViewYawDeg !== 'function') return raw;
+  const fixed = correctedViewYawDeg(raw, angle, POSE_YAW_FIX.from);
+  if(fixed !== raw && POSE_YAW_FIX._k !== angle + '|' + fixed){
+    POSE_YAW_FIX._k = angle + '|' + fixed;
+    console.log('[포즈 보정·출처] ' + angle + ': yaw ' + raw.toFixed(1) + '° → ' + fixed.toFixed(1) + '°'
+      + '\n    이 값은 <b>리프트·되쏘기·두상 치수</b>가 같이 씁니다 — 전단은 안 생기지만'
+      + ' getHeadEllipsoid의 a(폭)·c(깊이)가 같이 움직입니다.'
+      + ' 9/07이 여기서 되돌린 이유가 그것이고, 그때 없던 것이 <b>재는 장치</b>입니다:'
+      + ' [진단·투영 실루엣] 배율과 아래 두상 치수 로그를 켜기 전/후로 비교하세요.'
+      + ' 끄기: POSE_YAW_FIX.on = false');
+  }
+  return fixed;
+}
+function _rawViewYawDeg(angle){
   const { tier, lm, cap } = getViewPoseSource(angle);
   if(tier === 'pnp') return lm.poseYawDeg;
   if(tier === 'approx') return lm.yaw * 90;

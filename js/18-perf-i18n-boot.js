@@ -570,7 +570,21 @@ async function setupModel3DScreen(){
     const outfitRec = await recommendOutfitWithAI();
     hideAI();
     if(outfitRec && myGen === model3DGeneration){
-      const outfitMesh = await loadOutfitMeshMeasured(outfitRec.item, faceMetrics.widthFactor);
+      /* ── 두신 자를 <b>씬에서</b> 재서 넘긴다 (2026-09-09) ─────────────────────
+         personBodyLenMesh 배너가 이미 적어 둔 그 자리다: "3D 화면은 씬에서 잰
+         값을 넣고(state._model3DCrownY), 결과 화면은 안 넣어 사진 기준을 쓴다."
+         그 문장은 있는데 <b>재는 코드가 없었고</b> 넘기는 코드도 없었다 —
+         그래서 로더가 고정값 4.0으로 떨어져 4.9두신이 나왔다.
+         여기가 재기에 맞는 자리인 이유: 두상·헤어는 이미 headGroup에 들어갔고
+         의상은 아직 안 들어갔다(들어간 뒤에 재면 발끝이 정수리로 잡힌다). */
+      let crownY3D = null;
+      try{
+        const bb = new THREE.Box3().setFromObject(model3D.headGroup);
+        if(bb && isFinite(bb.max.y)) crownY3D = bb.max.y;
+      }catch(e){ console.warn('[3D·비율] 씬 정수리 실측 실패 — 사진 기준 자로 폴백:', e); }
+      state._model3DCrownY = crownY3D;
+      const bodyLen3D = personBodyLenMesh(crownY3D);
+      const outfitMesh = await loadOutfitMeshMeasured(outfitRec.item, faceMetrics.widthFactor, bodyLen3D);
       model3D.headGroup.add(outfitMesh);
       // (2026-08-31 11차) 옷깃을 이제 봤으니 목을 그 구멍 기준으로 다시 짓는다.
       refitNeckToGarment(model3D.headGroup,
@@ -637,6 +651,8 @@ function showToast(msg){
 function startNewCustomer(){
   stylePrepDone=false;
   state.hair3D=null; state.hair3Dneutral=null; // (11차) 3D 모델 캐시도 새 고객마다 무효화
+  state._model3DCrownY = null;                 // (2026-09-09) 두신 자도 고객마다 다시 잰다
+  if(typeof resetScalpSkinSample === 'function') resetScalpSkinSample(); // 두피색 픽셀 표본
   if(typeof combClear === 'function') combClear();      // (#5) 빗질도 고객마다 초기화
   state.hairField3D=null; // (2026-08-01) 3D 결 필드도 사람이 바뀌면 통째로 무효
   state.hairOcc3D=null;   // (2026-08-01) 3D 점유 필드도 마찬가지
