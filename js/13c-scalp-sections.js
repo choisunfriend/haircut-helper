@@ -1133,7 +1133,27 @@ const VIEWCAL_ANCHOR = {
      ⚠ 남은 어긋남 — 두상 치수(getHeadEllipsoid)는 여전히 PnP yaw로 풀린다.
        9/07 3차가 여기를 건드렸다가 되돌린 그 자리다. 폭이 얼마나 어긋나는지는
        [진단·투영 실루엣] 배율이 이미 재고 있으니, 그 숫자를 보고 다음 턴에 정한다. */
-  sideYawFrom: 'nose',   // 'nose' | 'gain'
+  /* ── (2026-09-09 3차) 기본값을 <b>'off'</b>로 내린다 ─────────────────────────
+     사용자: "우측 캔버스에서 반대편 헤어가 얼굴 쪽으로 휘어 들어온다. 좀 틀어지기도
+     했고, 휘기도 해. 헐 폴드는 아니다."
+     맞다. 그리고 이건 새 증상이 아니라 <b>안 껐던 원인</b>이다. 9/09 2차에
+     14-hair-3d-ops의 FACE_GATE를 끄면서 배너에 "원인을 껐으니 지울 것도 없다"고
+     적었는데, 정작 원인인 이 손잡이는 'nose'로 남아 있었다. 이 녹화의 로그가
+     그대로 증언한다:
+       [되쏘기보정] right: yaw −41.2° → −56.9° (Δψ −15.7°)
+         · 카메라 쪽 두피 −16px · <b>반대쪽 두피 +16px</b> · 옆 −15px
+     부호가 반대인 두 수가 곧 <b>전단</b>이고, 사용자가 말한 두 증상이 이 하나에서
+     같이 나온다 — 평행 성분이 "틀어짐", 가닥 안에서 값이 달라지는 성분이 "휨"이다.
+     헐·폴드를 만져도 안 잡히는 이유도 여기 있다: 그릇이 아니라 <b>되쏘는 회전</b>이
+     리프트와 다른 것이라, 그릇을 아무리 고쳐도 Δψ가 남으면 그대로 남는다.
+     리프트/심기는 cal.yaw(PnP)로 했다. 되쏘기도 같은 yaw여야 왕복이 닫힌다.
+     ⚠ PnP yaw가 큰 측면에서 눌려 보이는 문제(9/07 배너)는 <b>그대로 남아 있다</b>.
+       다만 그건 되쏘기에서 각도를 몰래 불려 고칠 문제가 아니라 포즈 출처
+       (getViewYawDeg)에서 고쳐야 하는 문제다 — 거기를 건드리면 두상 치수
+       (getHeadEllipsoid)까지 따라 움직이므로, 포즈용 yaw와 실루엣 푸는 yaw를
+       분리한 뒤에 손대야 한다. 그 전까지는 <b>왕복이 닫히는 쪽</b>이 낫다.
+     되살리기: VIEWCAL_ANCHOR.sideYawFrom = 'nose' (또는 'gain') */
+  sideYawFrom: 'off',    // 'off' | 'nose' | 'gain'
   /* 실측 각이 PnP보다 <b>작게</b> 나오면 안 쓴다. 근사yaw는 구 두상 가정이라
      긴 얼굴에서 과소평가될 수 있고, 그때는 PnP가 더 믿을 만하다. 이 게이트는
      "덜 돌리는 방향으로는 안 고친다"는 뜻이다. */
@@ -1170,6 +1190,14 @@ function viewDrawNudgePx(angle){ return _viewNudgeOf(VIEWCAL_ANCHOR.drawNudgePx,
 function correctedViewYawDeg(deg, angle){
   if(angle !== 'left' && angle !== 'right') return deg;
   if(!isFinite(deg) || Math.abs(deg) < VIEWCAL_ANCHOR.sideMinDeg) return deg;
+  /* ⚠ (2026-09-09 3차) <b>'off'는 여기서 끊어야 한다.</b> 이 분기가 없어서
+     sideYawFrom='off'가 아래 'gain' 경로로 흘러 <b>조용히 ×1.45</b>가 걸리고
+     있었다. [되쏘기보정] 로그와 FACE_GATE 배너가 둘 다 "끄기: sideYawFrom='off'"
+     라고 안내하고 있었으므로, 그 안내를 따른 사람은 끈 줄 알고 더 크게 튼 셈이다.
+     아는 값만 통과시키고 모르는 값은 <b>끈 것으로</b> 본다 — 오타로 배율이
+     걸리는 쪽보다 안 걸리는 쪽이 안전하다. */
+  const _from = VIEWCAL_ANCHOR.sideYawFrom;
+  if(_from !== 'nose' && _from !== 'gain') return deg;
   const cap = d => Math.sign(deg) * Math.min(VIEWCAL_ANCHOR.sideMaxDeg, Math.abs(d));
   if(VIEWCAL_ANCHOR.sideYawFrom === 'nose'){
     const est = noseRatioYawDeg(angle);

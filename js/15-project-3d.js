@@ -460,7 +460,35 @@ function calForDraw(model, angle){
   const dx  = (typeof viewDrawNudgePx === 'function') ? viewDrawNudgePx(angle) : 0;
   const yaw = (typeof correctedViewYawRad === 'function')
     ? correctedViewYawRad(cal.yaw, angle) : cal.yaw;
-  if(!dx && yaw === cal.yaw) return cal;
+  /* ── (2026-09-09 3차) 안 고쳤을 때도 <b>한 줄 남긴다</b> ────────────────────
+     예전에는 보정이 걸릴 때만 로그가 났다. 그래서 끄고 나면 화면에서 좋아진 것
+     말고는 확인할 방법이 없었고, "정말 껐나 / 왜 안 나오지"를 매번 다시 뒤졌다.
+     여기서는 <b>왕복이 닫혔다</b>는 사실과 그때 피한 전단의 크기를 같이 적는다 —
+     끈 상태의 로그가 있어야 다음 턴에 "이 뷰는 이미 닫혀 있다"를 숫자로 안다. */
+  if(!dx && yaw === cal.yaw){
+    if(CAL_DRAW_LOG.on && CAL_DRAW_LOG._k !== angle + '|closed|' + yaw){
+      CAL_DRAW_LOG._k = angle + '|closed|' + yaw;
+      let _avoided = '';
+      try{
+        const _nose = (typeof noseRatioYawDeg === 'function') ? noseRatioYawDeg(angle) : null;
+        const E = getDisplaySkullEllipsoid();
+        if(_nose != null && isFinite(_nose) && E && isFinite(cal.s) && cal.s > 1e-9
+           && (angle === 'left' || angle === 'right')){
+          const y2 = _nose * Math.PI/180;
+          const far = ((0*Math.cos(y2) + (-E.c)*Math.sin(y2))
+                     - (0*Math.cos(cal.yaw) + (-E.c)*Math.sin(cal.yaw))) / cal.s;
+          _avoided = ' · 랜드마크 근사yaw ' + _nose.toFixed(1) + '°로 고쳤다면'
+            + ' 반대쪽 두피에 ' + (far>=0?'+':'') + far.toFixed(0) + 'px <b>전단</b>이 생겼을 자리';
+        }
+      }catch(e){}
+      console.log('[되쏘기보정] ' + angle + ': <b>보정 없음</b> — 되쏘기 yaw '
+        + (cal.yaw*180/Math.PI).toFixed(1) + '°가 리프트와 같아 왕복이 닫힙니다'
+        + ' (sideYawFrom=' + VIEWCAL_ANCHOR.sideYawFrom + ')' + _avoided
+        + '\n    반대편 가닥이 얼굴을 가로지르면 이제 원인은 전단이 아닙니다 —'
+        + ' 두상 치수(getHeadEllipsoid) 또는 심는 자리(리프트) 쪽을 보세요.');
+    }
+    return cal;
+  }
   if(CAL_DRAW_LOG.on && CAL_DRAW_LOG._k !== angle + '|' + dx + '|' + yaw){
     CAL_DRAW_LOG._k = angle + '|' + dx + '|' + yaw;
     const _nose = (typeof noseRatioYawDeg === 'function') ? noseRatioYawDeg(angle) : null;
