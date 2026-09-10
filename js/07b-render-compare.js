@@ -877,19 +877,7 @@ function renderFrame(canvas, angle, opts){
         const lctx = hairLayer.getContext('2d');
         // (2026-07-27) 픽셀 이식 경로 — 켜져 있으면 먼저 시도하고, 실패하면 가닥 렌더로 폴백
         const quilted = canProject && state.hairQuilt && projectHairQuiltToView(lctx, fit, angle, maskInf);
-        let _projOK = !quilted && canProject && projectHair3DToView(lctx, fit, angle, maskInf);
-        /* ── 자동정렬 재패스 (2026-09-09 5차) ──────────────────────────────
-           어긋남은 그리기가 <b>끝난 뒤</b>에야 잴 수 있다(띠 안의 dx0·dx1이
-           그려진 점에서 나온다). 그래서 이번 프레임에 반영하려면 한 번 더 그려야
-           한다. ix = lx/s + cx + dx가 순수 평행이동이라 need를 dx에 더하면
-           다음 패스에서 need = 0 — 한 번이면 닫힌다. 2회는 안전 여유다.
-           비면 안 돈다: autoNudgeTake는 값이 실제로 바뀌었을 때만 true다. */
-        for(let _p = 0; _projOK && _p < 2 && typeof autoNudgeTake === 'function'
-                        && autoNudgeTake(angle); _p++){
-          lctx.clearRect(0, 0, hairLayer.width, hairLayer.height);
-          _projOK = projectHair3DToView(lctx, fit, angle, maskInf);
-        }
-        if(!_projOK){
+        if(!quilted && !(canProject && projectHair3DToView(lctx, fit, angle, maskInf))){
           /* (2026-09-01 6차) 여기가 <b>ⓒ 투영 실패 폴백</b>이다. 2D 조정 엔진을
              끄면서 "ⓒ가 실제로 도느냐"가 손실 크기를 정하게 됐다 — 안 돌면
              손실이 0이다. 세서 진단정보에 띄운다(추측하지 않기 위해). */

@@ -460,35 +460,7 @@ function calForDraw(model, angle){
   const dx  = (typeof viewDrawNudgePx === 'function') ? viewDrawNudgePx(angle) : 0;
   const yaw = (typeof correctedViewYawRad === 'function')
     ? correctedViewYawRad(cal.yaw, angle) : cal.yaw;
-  /* ── (2026-09-09 3차) 안 고쳤을 때도 <b>한 줄 남긴다</b> ────────────────────
-     예전에는 보정이 걸릴 때만 로그가 났다. 그래서 끄고 나면 화면에서 좋아진 것
-     말고는 확인할 방법이 없었고, "정말 껐나 / 왜 안 나오지"를 매번 다시 뒤졌다.
-     여기서는 <b>왕복이 닫혔다</b>는 사실과 그때 피한 전단의 크기를 같이 적는다 —
-     끈 상태의 로그가 있어야 다음 턴에 "이 뷰는 이미 닫혀 있다"를 숫자로 안다. */
-  if(!dx && yaw === cal.yaw){
-    if(CAL_DRAW_LOG.on && CAL_DRAW_LOG._k !== angle + '|closed|' + yaw){
-      CAL_DRAW_LOG._k = angle + '|closed|' + yaw;
-      let _avoided = '';
-      try{
-        const _nose = (typeof noseRatioYawDeg === 'function') ? noseRatioYawDeg(angle) : null;
-        const E = getDisplaySkullEllipsoid();
-        if(_nose != null && isFinite(_nose) && E && isFinite(cal.s) && cal.s > 1e-9
-           && (angle === 'left' || angle === 'right')){
-          const y2 = _nose * Math.PI/180;
-          const far = ((0*Math.cos(y2) + (-E.c)*Math.sin(y2))
-                     - (0*Math.cos(cal.yaw) + (-E.c)*Math.sin(cal.yaw))) / cal.s;
-          _avoided = ' · 랜드마크 근사yaw ' + _nose.toFixed(1) + '°로 고쳤다면'
-            + ' 반대쪽 두피에 ' + (far>=0?'+':'') + far.toFixed(0) + 'px <b>전단</b>이 생겼을 자리';
-        }
-      }catch(e){}
-      console.log('[되쏘기보정] ' + angle + ': <b>보정 없음</b> — 되쏘기 yaw '
-        + (cal.yaw*180/Math.PI).toFixed(1) + '°가 리프트와 같아 왕복이 닫힙니다'
-        + ' (sideYawFrom=' + VIEWCAL_ANCHOR.sideYawFrom + ')' + _avoided
-        + '\n    반대편 가닥이 얼굴을 가로지르면 이제 원인은 전단이 아닙니다 —'
-        + ' 두상 치수(getHeadEllipsoid) 또는 심는 자리(리프트) 쪽을 보세요.');
-    }
-    return cal;
-  }
+  if(!dx && yaw === cal.yaw) return cal;
   if(CAL_DRAW_LOG.on && CAL_DRAW_LOG._k !== angle + '|' + dx + '|' + yaw){
     CAL_DRAW_LOG._k = angle + '|' + dx + '|' + yaw;
     const _nose = (typeof noseRatioYawDeg === 'function') ? noseRatioYawDeg(angle) : null;
@@ -496,45 +468,12 @@ function calForDraw(model, angle){
       ? ('랜드마크 실측 — 근사yaw ' + (_nose == null ? '없음' : 'atan → ' + _nose.toFixed(1) + '°')
          + (yaw === cal.yaw ? ' · <b>안 씀</b>(PnP보다 작거나 부호가 다름 → PnP 그대로)' : ''))
       : ('상수 배율 sideGain ' + VIEWCAL_ANCHOR.sideGain);
-    /* ── 어긋난 yaw가 화면에서 <b>몇 px의 전단</b>인가 (2026-09-09 2차) ─────────
-       "그리는 자리만 바꿉니다"는 <b>평행이동일 때만</b> 맞는 말이었다. yaw는
-       평행이동이 아니라 회전이라, 리프트에 쓴 R과 그리기에 쓴 R′가 다르면
-       R′·Rᵀ = Δψ 만큼의 잔여 회전이 남고 화면에서 <b>전단</b>이 된다(자세한
-       근거는 VIEWCAL_ANCHOR.sideYawFrom 배너).
-       그 크기를 여기서 잰다 — 두상 자신의 반폭 a·반깊이 c를 Δψ로 돌려 보고,
-       x 성분이 얼마나 옮겨지는지를 그 뷰의 자(cal.s)로 나눠 px로 적는다.
-       부호가 반대인 두 값이 나오는 것이 곧 "가까운 쪽은 멀쩡한데 반대쪽만
-       끌려온다"의 숫자다. */
-    let _shear = '';
-    const _d = yaw - cal.yaw;
-    if(Math.abs(_d) > 1e-9){
-      try{
-        const E = getDisplaySkullEllipsoid();
-        const s = cal.s;
-        if(E && isFinite(s) && s > 1e-9){
-          // lx(ψ) = x·cosψ + z·sinψ — 두 대표점의 이동량(모델단위 → px)
-          const dxAt = (x, z) =>
-            ((x*Math.cos(yaw) + z*Math.sin(yaw)) - (x*Math.cos(cal.yaw) + z*Math.sin(cal.yaw))) / s;
-          const near = dxAt(0,  E.c);   // 카메라 쪽 두피
-          const far  = dxAt(0, -E.c);   // 반대쪽 두피 — 사용자가 본 그 가닥들
-          const side = dxAt(E.a, 0);
-          _shear = '\n    ⚠ 이건 평행이동이 아니라 <b>전단</b>입니다(Δψ '
-            + (_d>=0?'+':'') + (_d*180/Math.PI).toFixed(1) + '°) — 화면 이동량이 점의 (x,z)에 달립니다:'
-            + ' 카메라 쪽 두피 ' + (near>=0?'+':'') + near.toFixed(0) + 'px'
-            + ' · <b>반대쪽 두피 ' + (far>=0?'+':'') + far.toFixed(0) + 'px</b>'
-            + ' · 옆 ' + (side>=0?'+':'') + side.toFixed(0) + 'px.'
-            + '\n    부호가 반대라서 가까운 쪽 가닥은 제자리인데 <b>반대쪽 가닥만</b> 얼굴을 가로지릅니다.'
-            + ' 리프트는 PnP yaw로 심었으므로 되쏘기도 같은 yaw여야 왕복이 닫힙니다 —'
-            + ' 끄기: VIEWCAL_ANCHOR.sideYawFrom = \'off\'';
-        }
-      }catch(e){}
-    }
     console.log('[되쏘기보정] ' + angle
       + ': yaw ' + (cal.yaw*180/Math.PI).toFixed(1) + '° → ' + (yaw*180/Math.PI).toFixed(1) + '°'
       + ' (' + _src + ')'
       + ' · 가로 ' + (dx>=0?'+':'') + dx + 'px(+ = 화면 오른쪽)'
-      + _shear
-      + '\n    콘솔에서 VIEWCAL_ANCHOR.sideYawFrom / .sideGain / .drawNudgePx 를 바꾸고 뷰를 다시 그리면 반영됩니다.');
+      + '\n    이 둘은 그리는 자리만 바꿉니다(모델 치수·빌드는 실측 yaw 그대로).'
+      + ' 콘솔에서 VIEWCAL_ANCHOR.sideYawFrom / .sideGain / .drawNudgePx 를 바꾸고 뷰를 다시 그리면 반영됩니다.');
   }
   return Object.assign({}, cal, { yaw, dx });
 }
@@ -1185,7 +1124,6 @@ function projectHair3DToView(ctx, fit, angle, maskInf){
       hb: hashFract(si * 0.3183098862 + 4.77),    // 밝기 지터(0~1)
       slice: (st.sec||'crown') + '|' + Math.floor(rootIx / SLICE_W)
              + '|' + Math.floor((rootIy / Math.max(1, maskInf.h)) * 10),
-      rootIy,                                     // 겹 정렬 동점 처리용(LAYER_SORT)
     });
   }
   if(!projected.length) return false;
@@ -1227,36 +1165,7 @@ function projectHair3DToView(ctx, fit, angle, maskInf){
       }
     }
   }catch(e){}
-  /* ── (2026-09-09 4차) 깊이가 <b>비기면 높은 뿌리가 위</b> ──────────────────
-     사용자: "크라운 섹션이 젤 먼저 깔려 있어. 크라운은 정수리인데 당연히 제일
-     위에 와야지."
-     맞다. 그리고 뿌리 깊이 하나로는 그걸 표현할 방법이 없다. 깊이는 <b>앞뒤</b>만
-     말한다. 정수리에서 난 가닥은 z가 0 근처라 앞도 뒤도 아니고, 옆머리 뿌리도
-     z가 0 근처다 — 두 가닥의 정렬 키가 <b>사실상 같다</b>. 같으면 sort가
-     안정정렬이라 <b>가닥 인덱스 순서</b>가 겹을 정한다. 즉 지금 크라운이 밑에
-     깔린 건 판단의 결과가 아니라 <b>판단을 안 한 결과</b>다.
-
-     동점을 무엇으로 깨야 하는가는 머리카락이 정한다. 머리는 <b>겹겹이</b>
-     쌓이고, 위에서 난 가닥일수록 아래 가닥을 <b>덮고</b> 내려온다 — 정수리
-     가닥은 옆머리·후두부 가닥의 바깥(=반경이 큰 쪽)을 타고 흐른다. 그래서
-     동점일 때는 <b>뿌리가 높은 쪽이 나중에</b> 그려져야 한다.
-     화면 y로 재면 된다(작을수록 위). 뿌리는 커트가 안 건드리는 점이라
-     byRoot를 고른 이유가 여기서도 그대로 유효하다 — 길이를 흔들어도 안 튄다.
-
-     ⚠ 앞머리는 안 건드린다. 프론트 뿌리는 이마라 z가 <b>확실히</b> 앞이고,
-       tieBand를 넘으므로 1차 키에서 이미 이긴다. 앞머리가 크라운을 덮는 것은
-       맞는 그림이고, 이 변경으로 뒤집히지 않는다. 바뀌는 것은 <b>깊이가 비슷한
-       것들끼리</b>의 순서뿐이다.
-     tieBand는 두상 깊이반경(_spanC) 대비. 0이면 예전 동작(동점=인덱스 순).
-     되돌리기: LAYER_SORT.tieByRootHeight = false */
-  {
-    const _band = (LAYER_SORT.tieByRootHeight ? LAYER_SORT.tieBand : 0) * (_spanC || 0);
-    projected.sort((a,b)=>{
-      const dd = a.depth - b.depth;              // 뒤(작은 depth)부터 → 앞이 위에 덮임
-      if(!(_band > 0) || Math.abs(dd) > _band) return dd;
-      return b.rootIy - a.rootIy;                // 비기면 아래(큰 iy)부터 → 높은 뿌리가 위
-    });
-  }
+  projected.sort((a,b)=> a.depth - b.depth); // 뒤(작은 depth)부터 → 앞이 위에 덮임
   /* 슬라이더를 잡고 흔들면 이 줄이 초당 수십 번 나간다. 폰의 console.log는
      공짜가 아니라(문자열 조립 + 원격 콘솔 버퍼) 재는 행위가 재려는 대상을
      느리게 만든다. PERF.minGapMs 간격으로만 찍는다 — 값 자체는 그대로다. */
@@ -1351,20 +1260,7 @@ function projectHair3DToView(ctx, fit, angle, maskInf){
       + '\n      단, 폭(×' + wRatio.toFixed(3) + ')이 1.0에서 멀면 미는 문제가 아니라 <b>각도</b>입니다 —'
       + ' 그때 만질 것은 VIEWCAL_ANCHOR.sideGain(측면 yaw 압축 보정)입니다.'
       + '\n      띠는 두피선~마스크 높이 25%(사진 y ' + _drA.yTop.toFixed(0) + '~' + _drA.yBot.toFixed(0) + ')'
-      + ' · 표본 ' + _drA.n + '점.'
-      /* (2026-09-09 5차) 예전 꼬리말은 "이 값은 자동 적용하지 않습니다"였다.
-         이제 폭이 맞을 때만 자동 적용한다 — 자세한 건 VIEWCAL_ANCHOR.autoNudge 배너. */
-      + ((VIEWCAL_ANCHOR.autoNudge && VIEWCAL_ANCHOR.autoNudge.on)
-          ? ' 이 값은 <b>폭이 1.0 근처일 때만</b> 자동 적용됩니다(autoNudge).'
-          : ' 이 값은 자동 적용하지 않습니다(autoNudge.on=false).'));
-
-    /* ── 재는 자 → 미는 자 (2026-09-09 5차) ────────────────────────────────
-       여기가 두 달짜리 고리를 끊는 한 줄이다. 위 문장이 넣을 값을 이미 알고
-       있었는데 사람이 콘솔에서 옮겨 적는 절차를 거쳤고, 그 절차가 네 번 실패했다.
-       게이트(폭·표본·상한)는 전부 autoNudgeLearn 안에 있다. */
-    if(typeof autoNudgeLearn === 'function'){
-      autoNudgeLearn(angle, need, wRatio, _drA.n);
-    }
+      + ' · 표본 ' + _drA.n + '점. 이 값은 자동 적용하지 않습니다.');
   }
   logStrandRender(angle, { spanX, unit, cssW, roles, rawTotal, targetStrands, pxN,
                            stride, total: src.length, drawn: projected.length,
