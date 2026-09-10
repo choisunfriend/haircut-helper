@@ -1088,49 +1088,7 @@ const VIEWCAL_ANCHOR = {
        한다. 예전 값이 left/right 둘 다 +35였던 것 자체가 원인 진단이 틀렸다는 신호였다.
      조절(모델 재생성 불필요 — 뷰만 다시 그리면 반영):
        VIEWCAL_ANCHOR.drawNudgePx = { left:-12, right:12 } */
-  /* ── (2026-09-09 4차) right만 <b>반대편으로</b> 민다 ────────────────────────
-     사용자: "우측 캔버스 확인해서 일단 반대편으로 조금 밀고 조금만 회전시켜봐."
-     이 녹화의 [되쏘기보정] right가 그대로 값을 준다 —
-       yaw −41.2° → 근사 −56.9° 로 고쳤다면 <b>반대쪽 두피에 +16px</b> 전단.
-     그 +16px이 "반대편"이 가리키는 방향이고 크기다. 전량을 한 번에 넣지 않는
-     이유는 아래 sideYawBlend와 <b>같은 원인을 두 번 미는 셈</b>이 되기 때문이다 —
-     회전을 절반 넣으므로 평행 성분도 절반(+8)만 넣고, 남는 몫은 화면을 보고 정한다.
-     부호 규약은 위와 같다: + = 화면 <b>오른쪽</b>(우측 뷰에서 얼굴은 화면 왼쪽이므로
-     +는 얼굴에서 <b>멀어지는</b> 쪽 = 사용자가 말한 반대편).
-     되돌리기: right: 0 */
-  /* ── (2026-09-09 5차) 8 → 25. 이 숫자는 <b>내가 정한 게 아니라</b> 앱이 찍었다.
-       [뷰정렬] right: 어긋남 +17px · 현재 drawNudgePx=8px
-                → VIEWCAL_ANCHOR.drawNudgePx.right = 25 로 두면 닫힙니다
-     4차에 8을 넣은 건 "회전이 나머지 절반을 덮는다"고 봤기 때문인데, 위
-     sideYawFrom 배너대로 회전은 그 절반을 안 덮고 전단을 만들었다. 절반이 아니라
-     전량이 여기 몫이었다.
-     ⚠ 이 값은 <b>이 사진 묶음에서만</b> 맞다. 사진을 다시 찍으면 또 틀어진다 —
-       그래서 아래 autoNudge가 있다. 여기 25는 첫 프레임부터 맞게 하는 초기값이고,
-       남는 오차는 autoNudge가 자기가 잰 값으로 닫는다. */
-  drawNudgePx: { front: 0, left: 0, right: 25, back: 0 },
-
-  /* ── autoNudge (2026-09-09 5차) — 재는 자와 미는 자를 <b>이어 붙인다</b> ──────
-     [뷰정렬]은 매 프레임 어긋남을 정확히 재고, 넣을 값까지 문장으로 찍고, 버린다
-     ("이 값은 자동 적용하지 않습니다"). 그래서 두 달 동안 절차가 이랬다:
-       녹화 → 사람이 콘솔에서 숫자를 읽음 → 상수에 박음 → 배포 → 또 틀어짐.
-     네 번 돌았고 네 번 다 실패했다. 실패한 건 숫자가 아니라 <b>이 절차</b>다.
-     자동으로 돌려도 되는 근거: ix = lx/s + cx + <b>dx</b> 라 dx는 순수 평행이동이고,
-     띠 안의 dx0·dx1이 dx만큼 그대로 따라 움직인다. 즉 need를 dx에 더하면
-     다음 패스에서 need = 0이다 — 추정이 아니라 <b>한 번에 닫히는 일차식</b>이다.
-     ⚠ 원래 배너의 반대(981줄, "자동으로 밀면 진짜 원인이 이 숫자 뒤에 숨는다")는
-       여전히 옳다. 그래서 <b>폭이 맞을 때만</b> 민다(wTol). 폭이 어긋난 건 자
-       문제(각도·두상 치수)라 밀어서 덮으면 안 되고, 그때는 밀기를 <b>거부하고</b>
-       왜 거부했는지 찍는다. 미는 것은 "모양은 맞는데 자리만 틀린" 경우로 한정된다.
-     끄기: VIEWCAL_ANCHOR.autoNudge.on = false (그러면 위 상수만 남는다) */
-  autoNudge: {
-    on: true,
-    wTol: 0.06,      // 폭 비율이 1.0에서 이만큼 넘게 벗어나면 밀지 않는다
-    minN: 200,       // 띠 안 표본이 이보다 적으면 못 믿는다
-    deadband: 2,     // 이 아래는 손대지 않는다(프레임마다 떨리는 것 방지)
-    maxPx: 60,       // 한 뷰가 가져갈 수 있는 총량 상한 — 폭주 방지
-    views: { front: true, left: true, right: true, back: true },
-    log: true
-  },
+  drawNudgePx: { front: 0, left: 0, right: 0, back: 0 },
 
   /* ── 측면 yaw 압축 보정 (2026-09-07) ─────────────────────────────────────
      사용자: "헤어를 덜 돌린 거잖아."
@@ -1175,58 +1133,7 @@ const VIEWCAL_ANCHOR = {
      ⚠ 남은 어긋남 — 두상 치수(getHeadEllipsoid)는 여전히 PnP yaw로 풀린다.
        9/07 3차가 여기를 건드렸다가 되돌린 그 자리다. 폭이 얼마나 어긋나는지는
        [진단·투영 실루엣] 배율이 이미 재고 있으니, 그 숫자를 보고 다음 턴에 정한다. */
-  /* ── (2026-09-09 3차) 기본값을 <b>'off'</b>로 내린다 ─────────────────────────
-     사용자: "우측 캔버스에서 반대편 헤어가 얼굴 쪽으로 휘어 들어온다. 좀 틀어지기도
-     했고, 휘기도 해. 헐 폴드는 아니다."
-     맞다. 그리고 이건 새 증상이 아니라 <b>안 껐던 원인</b>이다. 9/09 2차에
-     14-hair-3d-ops의 FACE_GATE를 끄면서 배너에 "원인을 껐으니 지울 것도 없다"고
-     적었는데, 정작 원인인 이 손잡이는 'nose'로 남아 있었다. 이 녹화의 로그가
-     그대로 증언한다:
-       [되쏘기보정] right: yaw −41.2° → −56.9° (Δψ −15.7°)
-         · 카메라 쪽 두피 −16px · <b>반대쪽 두피 +16px</b> · 옆 −15px
-     부호가 반대인 두 수가 곧 <b>전단</b>이고, 사용자가 말한 두 증상이 이 하나에서
-     같이 나온다 — 평행 성분이 "틀어짐", 가닥 안에서 값이 달라지는 성분이 "휨"이다.
-     헐·폴드를 만져도 안 잡히는 이유도 여기 있다: 그릇이 아니라 <b>되쏘는 회전</b>이
-     리프트와 다른 것이라, 그릇을 아무리 고쳐도 Δψ가 남으면 그대로 남는다.
-     리프트/심기는 cal.yaw(PnP)로 했다. 되쏘기도 같은 yaw여야 왕복이 닫힌다.
-     ⚠ PnP yaw가 큰 측면에서 눌려 보이는 문제(9/07 배너)는 <b>그대로 남아 있다</b>.
-       다만 그건 되쏘기에서 각도를 몰래 불려 고칠 문제가 아니라 포즈 출처
-       (getViewYawDeg)에서 고쳐야 하는 문제다 — 거기를 건드리면 두상 치수
-       (getHeadEllipsoid)까지 따라 움직이므로, 포즈용 yaw와 실루엣 푸는 yaw를
-       분리한 뒤에 손대야 한다. 그 전까지는 <b>왕복이 닫히는 쪽</b>이 낫다.
-     되살리기: VIEWCAL_ANCHOR.sideYawFrom = 'nose' (또는 'gain') */
-  /* ── (2026-09-09 4차) <b>'blend'</b> — 전부냐 아무것도 아니냐를 깬다 ─────────
-     사용자: "조금만 회전시켜봐."
-     지금까지 이 손잡이는 세 값 다 <b>양자택일</b>이었다: PnP 그대로(off)거나
-     근사yaw 전량(nose)이거나 상수배(gain). 그래서 3차에 'nose'를 껐을 때
-     Δψ −15.7°가 통째로 사라졌고, 이번에 되살리면 통째로 돌아온다 — 3차 배너가
-     적어 둔 "왕복이 닫히는 쪽이 낫다"와 "PnP가 눌린 건 맞다"가 둘 다 참인데
-     그 사이를 <b>표현할 수가 없었다</b>. blend가 그 사이다.
-       ψ = PnP + t·(근사 − PnP)      t=0 → 'off'와 완전히 같음 · t=1 → 'nose'와 같음
-     t는 뷰별로 둔다. 9/09 2차 실측이 눌린 양이 뷰마다 다르다고 이미 적었다
-     (right Δ −15.7° · left Δ +9.6°). 하나의 배율로 못 덮는 이유가 그것이었으므로
-     하나의 t로도 못 덮는다.
-     ⚠ 이건 여전히 <b>되쏘기에서 각도를 만지는</b> 임시 받침대다. 제자리는
-       getViewYawDeg에서 포즈용 yaw와 실루엣 푸는 yaw를 분리하는 것이고(3차 배너),
-       그때 t는 전부 0으로 돌아가야 한다.
-     되돌리기: sideYawFrom = 'off' (blend 값은 남겨 둬도 안 읽힌다) */
-  /* ── (2026-09-09 5차) 다시 'off'. 4차의 'blend'는 <b>틀린 도구</b>였다 ────────
-     같은 녹화의 [뷰정렬] right가 폭 ×1.042를 찍었다. 그 배너가 스스로 정한 규칙이
-     "폭이 1.0에서 멀면 미는 문제가 아니라 각도"였으니, 1.042는 그 반대 —
-     <b>각도는 이미 맞고 자리만 틀린</b> 경우다. 여기에 회전을 넣었더니 남은 건
-     각도 교정이 아니라 전단이었다(같은 녹화 [되쏘기보정] right: Δψ −6.3° →
-     카메라 쪽 −7px · <b>반대쪽 +7px</b>). 화면에서 반대쪽 가닥이 코와 뺨을
-     가로지른 게 정확히 그 +7px이다.
-     front·left·back은 셋 다 "보정 없음 · 왕복이 닫힙니다"인데 right만 돌렸고,
-     right만 깨져 있었다. 손댄 뷰가 깨진 뷰다.
-     회전이 정말 필요한 날은 폭이 1.0에서 멀 때다. 그때 blend 코드가 아래 그대로
-     있으니 sideYawBlend만 올리면 된다 — 지금은 쓰지 않는다. */
-  sideYawFrom: 'off',    // 'off' | 'blend' | 'nose' | 'gain'
-  /* right만 켠다 — 이번 턴에 사용자가 본 것이 우측 캔버스 하나다. 0.4는 Δ −15.7°의
-     약 40%(−41.2° → 약 −47.5°)로, "조금만"을 숫자로 옮긴 값이지 잰 값이 아니다.
-     left는 0(=off)으로 둬서 <b>한 번에 한 뷰만</b> 움직인다 — 좌우를 같이 만지면
-     다음 녹화에서 어느 쪽이 무엇을 고쳤는지 못 읽는다. */
-  sideYawBlend: { left: 0, right: 0 },
+  sideYawFrom: 'nose',   // 'nose' | 'gain'
   /* 실측 각이 PnP보다 <b>작게</b> 나오면 안 쓴다. 근사yaw는 구 두상 가정이라
      긴 얼굴에서 과소평가될 수 있고, 그때는 PnP가 더 믿을 만하다. 이 게이트는
      "덜 돌리는 방향으로는 안 고친다"는 뜻이다. */
@@ -1248,94 +1155,8 @@ function _viewNudgeOf(n, angle){
   return 0;
 }
 function viewCalNudgePx(angle){ return _viewNudgeOf(VIEWCAL_ANCHOR.cxNudgePx, angle); }
-/* ── autoNudge 저장소 (2026-09-09 5차) ─────────────────────────────────────
-   AUTO_NUDGE_PX: 뷰별로 <b>앱이 스스로 배운</b> 추가 보정(px). 상수 drawNudgePx와
-     따로 둔다 — 섞으면 다음 턴에 "사람이 박은 값"과 "기계가 잰 값"을 못 가른다.
-   AUTO_NUDGE_PEND: 값이 방금 바뀌었으니 이 뷰는 <b>한 번 더 그려야</b> 한다는 표시.
-     재는 자리가 그리기 <b>끝</b>이라 이번 프레임엔 못 쓴다. 소비는 렌더 쪽에서 한다.
-   모델을 다시 만들어도 지우지 않는다 — 지울 필요가 없다. 사진이 바뀌면 어긋남이
-   다시 잡히고, 잡히면 같은 식으로 다시 닫는다. 리셋 훅이 없다는 게 장점이다. */
-const AUTO_NUDGE_PX   = { front: 0, left: 0, right: 0, back: 0 };
-const AUTO_NUDGE_PEND = { front: false, left: false, right: false, back: false };
-const _AUTO_LOGK      = { front: '', left: '', right: '', back: '' };
-
-/* [뷰정렬]이 잰 결과를 받아 민다. 민 게 있으면 true(= 다시 그려야 한다).
-   need: 사진 중심 − 그린 중심 (+면 그린 머리를 오른쪽으로 더 밀어야 한다)
-   wRatio: 그린 폭 ÷ 사진 폭 (1.0이면 자가 맞는다) */
-function autoNudgeLearn(angle, need, wRatio, n){
-  const A = VIEWCAL_ANCHOR && VIEWCAL_ANCHOR.autoNudge;
-  if(!A || !A.on) return false;
-  if(A.views && A.views[angle] === false) return false;
-  if(!isFinite(need) || !isFinite(wRatio)) return false;
-
-  const say = (why) => {
-    if(!A.log) return;
-    const k = angle + '|' + why;
-    if(_AUTO_LOGK[angle] === k) return;      // 같은 사유는 한 번만
-    _AUTO_LOGK[angle] = k;
-    console.log('[자동정렬] ' + angle + ': ' + why);
-  };
-
-  if(n < A.minN){ say('표본 ' + n + '점 — ' + A.minN + '점 미만이라 안 밉니다'); return false; }
-
-  /* 폭 게이트 — 여기가 981줄 배너("자동으로 밀면 진짜 원인이 숨는다")를 지키는 자리다.
-     폭이 틀린 건 자 문제라 평행이동으로 덮으면 원인이 정말로 숨는다. 거부하고 찍는다. */
-  if(Math.abs(wRatio - 1) > A.wTol){
-    say('폭 ×' + wRatio.toFixed(3) + ' — 1.0에서 ' + (A.wTol*100).toFixed(0) + '% 넘게 벗어나'
-      + ' <b>안 밉니다</b>. 이건 미는 문제가 아니라 <b>각도·두상 치수</b>입니다'
-      + ' (sideYawBlend 또는 getHeadEllipsoid). 어긋남 ' + need.toFixed(0) + 'px은 그대로 둡니다.');
-    return false;
-  }
-
-  if(Math.abs(need) < A.deadband) return false;          // 이미 닫혀 있다
-
-  const before = AUTO_NUDGE_PX[angle] || 0;
-  let next = before + need;
-  const cap = A.maxPx;
-  if(next >  cap) next =  cap;
-  if(next < -cap) next = -cap;
-  if(Math.abs(next - before) < 0.5) {                    // 상한에 걸려 더 못 간다
-    say('상한 ±' + cap + 'px에 걸렸습니다 — 남은 어긋남 ' + need.toFixed(0) + 'px은'
-      + ' 미는 것으로 안 닫힙니다. 두상 치수 쪽을 보세요.');
-    return false;
-  }
-  AUTO_NUDGE_PX[angle] = next;
-  AUTO_NUDGE_PEND[angle] = true;
-  _AUTO_LOGK[angle] = '';                                // 사유 로그 초기화(다음에 다시 찍히게)
-  if(A.log){
-    console.log('[자동정렬] ' + angle + ': 어긋남 ' + (need>=0?'+':'') + need.toFixed(0) + 'px'
-      + ' → 자동보정 ' + before.toFixed(0) + ' → <b>' + next.toFixed(0) + 'px</b>'
-      + ' (상수 ' + _viewNudgeOf(VIEWCAL_ANCHOR.drawNudgePx, angle) + 'px + 자동 '
-      + next.toFixed(0) + 'px · 폭 ×' + wRatio.toFixed(3) + ' · 표본 ' + n + '점)');
-  }
-  return true;
-}
-
-/* 렌더가 "이 뷰 다시 그려야 하나"를 물을 때 쓴다. 한 번 물으면 표시는 내려간다. */
-function autoNudgeTake(angle){
-  if(!AUTO_NUDGE_PEND[angle]) return false;
-  AUTO_NUDGE_PEND[angle] = false;
-  return true;
-}
-
-/* 콘솔용 — 배운 값을 버리고 상수만 남긴다. */
-function autoNudgeReset(angle){
-  for(const a of ['front','left','right','back']){
-    if(angle && a !== angle) continue;
-    AUTO_NUDGE_PX[a] = 0; AUTO_NUDGE_PEND[a] = false; _AUTO_LOGK[a] = '';
-  }
-  console.log('[자동정렬] 초기화' + (angle ? ' — ' + angle : ' — 전 뷰'));
-}
-
-/* 되쏘기 전용 — project3DPointToView가 ix에 그대로 더한다(+ = 화면 오른쪽).
-   (2026-09-09 5차) 상수 + 자동보정. 자동을 끄면 예전과 글자 그대로 같다. */
-function viewDrawNudgePx(angle){
-  const base = _viewNudgeOf(VIEWCAL_ANCHOR.drawNudgePx, angle);
-  const A = VIEWCAL_ANCHOR && VIEWCAL_ANCHOR.autoNudge;
-  if(!A || !A.on) return base;
-  const a = AUTO_NUDGE_PX[angle];
-  return base + (isFinite(a) ? a : 0);
-}
+/* 되쏘기 전용 — project3DPointToView가 ix에 그대로 더한다(+ = 화면 오른쪽). */
+function viewDrawNudgePx(angle){ return _viewNudgeOf(VIEWCAL_ANCHOR.drawNudgePx, angle); }
 /* 측면 yaw 보정 — 부호는 유지하고 크기만 키운다.
    ⚠ (2026-09-07 3차) 이 보정은 calForDraw(되쏘기)에서만 건다 — getViewYawDeg로
    올렸다가 되돌렸다. 그 함수는 머리통 치수(getHeadEllipsoid·getScalpEllipsoid)를
@@ -1349,29 +1170,7 @@ function viewDrawNudgePx(angle){
 function correctedViewYawDeg(deg, angle){
   if(angle !== 'left' && angle !== 'right') return deg;
   if(!isFinite(deg) || Math.abs(deg) < VIEWCAL_ANCHOR.sideMinDeg) return deg;
-  /* ⚠ (2026-09-09 3차) <b>'off'는 여기서 끊어야 한다.</b> 이 분기가 없어서
-     sideYawFrom='off'가 아래 'gain' 경로로 흘러 <b>조용히 ×1.45</b>가 걸리고
-     있었다. [되쏘기보정] 로그와 FACE_GATE 배너가 둘 다 "끄기: sideYawFrom='off'"
-     라고 안내하고 있었으므로, 그 안내를 따른 사람은 끈 줄 알고 더 크게 튼 셈이다.
-     아는 값만 통과시키고 모르는 값은 <b>끈 것으로</b> 본다 — 오타로 배율이
-     걸리는 쪽보다 안 걸리는 쪽이 안전하다. */
-  const _from = VIEWCAL_ANCHOR.sideYawFrom;
-  if(_from !== 'nose' && _from !== 'gain' && _from !== 'blend') return deg;
   const cap = d => Math.sign(deg) * Math.min(VIEWCAL_ANCHOR.sideMaxDeg, Math.abs(d));
-  /* ── 'blend' — PnP와 근사yaw 사이를 t로 걷는다 (2026-09-09 4차) ────────────
-     'nose'와 <b>같은 게이트를 그대로</b> 통과시킨다(부호 일치 · sideYawNoseMinOnly).
-     게이트에서 걸리면 PnP를 그대로 돌려주므로 t가 얼마든 조용히 안 걸린다 —
-     "덜 돌리는 방향으로는 안 고친다"는 규약이 blend에서도 살아 있어야 한다.
-     t=0이 정확히 off와 같은 값을 내는지가 이 분기의 안전장치다(deg 그대로 반환). */
-  if(_from === 'blend'){
-    const t = _viewNudgeOf(VIEWCAL_ANCHOR.sideYawBlend, angle);
-    if(!(t > 0)) return deg;                       // 0 또는 미설정 = 이 뷰는 끔
-    const est = noseRatioYawDeg(angle);
-    if(est == null || !isFinite(est)) return deg;  // 랜드마크 없으면 PnP 그대로
-    if(Math.sign(est) !== Math.sign(deg)) return deg;
-    if(VIEWCAL_ANCHOR.sideYawNoseMinOnly && Math.abs(est) <= Math.abs(deg)) return deg;
-    return cap(deg + Math.min(1, t) * (est - deg));
-  }
   if(VIEWCAL_ANCHOR.sideYawFrom === 'nose'){
     const est = noseRatioYawDeg(angle);
     /* 부호가 PnP와 다르면 둘 중 하나가 뒤집힌 것이다 — 그때는 안 고친다.
