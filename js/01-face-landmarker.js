@@ -1,3 +1,74 @@
+/* ══════════════════════════════════════════════════════════════════
+   콘솔 굵은 글씨 어댑터 (2026-09-09) — 로그의 <b>가 글자 그대로 보이던 것
+   ─────────────────────────────────────────────────────────────────
+   이 앱의 로그 문자열에는 <b>…</b>가 146군데 들어 있다. 원래는 <b>폰용</b>이다
+   — 폰엔 F12가 없어서 같은 문자열을 화면의 '진단정보' 패널에도 띄우는데,
+   그쪽은 2026-08-31에 textContent → innerHTML로 바꿔서 제대로 굵어진다
+   (07b-render-compare.js:581 주석이 그 기록이다).
+   고치다 만 쪽이 <b>콘솔</b>이다. console.log는 HTML을 모르니 태그가 그대로
+   찍혀서, 두 달치 로그가 <b>누가 장난쳐 놓은 것처럼</b> 보였다. 실제로 그랬다.
+
+   고치는 자리를 호출부 129곳이 아니라 여기 하나로 잡은 이유:
+     · 앞으로 쓸 로그도 자동으로 걸린다 — 다음 사람이 규칙을 몰라도 된다
+     · 문자열 자체는 안 건드린다. 패널은 계속 같은 문자열을 innerHTML로 받는다
+   %c는 이미 쓰는 자리가 있어서(빌드 배너) 스타일 인자를 세어 가며 끼워 넣는다.
+   %c 말고 다른 서식(%s·%d·%o)이 섞인 줄은 <b>건드리지 않고 태그만 뗀다</b> —
+   인자 짝이 밀리면 로그가 통째로 망가지는데, 그건 굵게 만드는 것보다 나쁘다.
+   끄기: window.GYEOL_LOG_BOLD = false  (그러면 예전처럼 태그가 그대로 보인다)
+══════════════════════════════════════════════════════════════════ */
+/* <b>…</b>가 든 인자 배열을 console이 알아듣는 %c 배열로 바꿔 돌려준다.
+   래퍼와 따로 떼어 둔 이유는 <b>검사</b> 때문이다 — 래퍼는 설치 시점의 raw를
+   닫아 갖고 있어서 밖에서 출력을 가로챌 수가 없다(검사 ⑪). */
+function gyeolBoldArgs(args){
+  const BOLD = ';font-weight:700', THIN = ';font-weight:400';
+  const fmt = args[0];
+  if(typeof fmt !== 'string' || fmt.indexOf('<b>') < 0) return args;
+
+  /* %c 말고 다른 서식이 있으면 인자 짝을 못 믿는다 — 태그만 뗀다.
+     실제 지정자만 본다. 예전엔 /%[^c%]/였는데 "<b>50%</b>" 의 %< 까지
+     서식으로 세서 멀쩡한 줄이 안 굵어졌다. */
+  if(/%[sdifoOj]/.test(fmt)){
+    return [fmt.replace(/<\/?b>/g, '')].concat(args.slice(1));
+  }
+
+  const nStyles = (fmt.match(/%c/g) || []).length;
+  const styles  = args.slice(1, 1 + nStyles);
+  const rest    = args.slice(1 + nStyles);
+
+  let out = '', outStyles = [], base = '', bold = false, si = 0, i = 0;
+  const emit = () => { out += '%c'; outStyles.push(base + (bold ? BOLD : THIN)); };
+
+  while(i < fmt.length){
+    if(fmt.startsWith('%c', i)){ base = String(styles[si++] || ''); emit(); i += 2; continue; }
+    if(fmt.startsWith('<b>', i)){ bold = true;  emit(); i += 3; continue; }
+    if(fmt.startsWith('</b>', i)){ bold = false; emit(); i += 4; continue; }
+    /* 다음 표식까지 한 번에 옮긴다 — %는 %%로 escape해야 자리가 안 밀린다 */
+    let next = fmt.length;
+    for(const t of ['%c', '<b>', '</b>']){
+      const p = fmt.indexOf(t, i);
+      if(p >= 0 && p < next) next = p;
+    }
+    out += fmt.slice(i, next).replace(/%/g, '%%');
+    i = next;
+  }
+  return [out].concat(outStyles, rest);
+}
+
+(function installConsoleBold(){
+  const C = (typeof console !== 'undefined') ? console : null;
+  if(!C || C.__gyeolBold) return;
+  C.__gyeolBold = true;
+  const raw = C.log.bind(C);
+  const G = (typeof window !== 'undefined') ? window
+          : (typeof globalThis !== 'undefined') ? globalThis : {};
+  if(G.GYEOL_LOG_BOLD === undefined) G.GYEOL_LOG_BOLD = true;
+
+  C.log = function(...args){
+    if(G.GYEOL_LOG_BOLD === false) return raw(...args);
+    return raw(...gyeolBoldArgs(args));
+  };
+})();
+
 /* ══════════════════════════════════════════════════════════
    01-face-landmarker.js — 얼굴 랜드마크 실측 · 포즈 행렬 · 섹션 경계 보정
    원본 index.html 4782~5156행. 클래식 스크립트이므로 로드 순서가 곧
