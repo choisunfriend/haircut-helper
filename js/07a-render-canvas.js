@@ -137,6 +137,29 @@ const HOLE_FILL = {
   texture: 1.0,   // 결 세기(1=패치 그대로)
   skinBoost: 3,   // 피부색 이웃 가중(두상 안에서만)
   skinTol: 110,
+  /* ── 살 색 격자 (2026-09-12) — 패치 타일링을 대체한다 ──────────────────
+     사용자: "얼굴 전체를 갖다넣어서 눈이 나오게 하지 말고, 3D 결과보기
+     이마채우기처럼 주변부 픽셀을 가져와서 심어."
+     8/11에 "이마 표본만 쓴다"로 한 번 고쳤는데도 눈이 남은 이유는 <b>고른
+     자리</b>가 아니라 <b>쓰는 방식</b>에 있었다. 어느 자리에서 뜨든 결국
+     patch 한 장(72px)을 구멍 전체에 거울 타일로 까는 구조라, 그 한 장에 뭐가
+     섞이면 화면에 그게 수십 번 찍힌다. 이 손님은 앞머리가 이마를 통째로 덮어
+     이마 후보 여섯이 전부 탈락한다 — 구조가 그대로면 또 같은 일이 난다.
+     12a의 SCALP_SKIN이 이미 같은 문제를 자리별 색으로 풀었다(정점마다 제
+     자리의 살을 집고, 살이 아니면 가장 가까운 살로 번진 값을 집는다).
+     여기도 똑같이 한다: 두상 안 격자에 살 색을 모으고 → 빈 칸을 이웃으로
+     번지게 하고 → 구멍 픽셀마다 <b>제 자리</b> 색을 집는다. 타일이 없으니
+     반복될 무늬 자체가 없다.
+     되돌리기: HOLE_FILL.skinField.on = false (8/11 타일 방식으로 복귀) */
+  skinField: {
+    on: true,
+    gridX: 48, gridY: 64,   // 격자 해상도(두상 타원 위)
+    darkPct: 0.38,          // 이 백분위보다 어두우면 살이 아니다(눈·눈썹·입·머리경계)
+    fillPasses: 96,         // 빈 칸을 이웃 평균으로 번지게 = "가장 가까운 살"
+    minCells: 0.08,         // 살이 이보다 적게 잡히면 안 쓴다(폴백이 낫다)
+    detail: 0.55,           // 결(고주파)만 얹는 세기. 색은 전부 격자가 정한다
+    flatTol: 16,            // 표본 고주파 표준편차 상한 — 넘으면 눈·눈썹이라 결도 안 쓴다
+  },
   dirW: [0.4, 1.0, 2.6], // 위/가운데/아래 이웃 가중 — 살색이 두피로 타고 올라오게
   /* ── 두피 이식 (2026-08-03) ────────────────────────────────────────
      사용자: "머리두피면을 보면 까맣게 보여. 저기 채워지지 않은 자리는 헤어
@@ -165,7 +188,14 @@ const HOLE_FILL = {
    후면처럼 얼굴이 아예 없는 뷰가 정확히 이 경우다(로그: "back 얼굴 감지 실패").
    같은 사람·같은 조명·같은 카메라라 뷰가 달라도 색을 맞출 필요가 없다. */
 let _skinGraft = null;   // { rgb:Uint8ClampedArray(size*size*3), hi:Float32Array, size, lum, src }
-function resetSkinGraft(){ _skinGraft = null; }
+const _fieldLogged = {}, _graftLogged = {};   // 뷰당 1회 로그 표시(재촬영 때 resetSkinGraft가 푼다)
+function resetSkinGraft(){
+  _skinGraft = null;
+  /* (2026-09-12) 뷰당 1회 로그 표시도 같이 푼다 — 안 그러면 재촬영 뒤에
+     격자가 못 서도 경고가 안 뜬다(예전에 이런 자리를 여러 번 놓쳤다). */
+  for(const k in _fieldLogged) delete _fieldLogged[k];
+  for(const k in _graftLogged) delete _graftLogged[k];
+}
 
 // 뷰의 두상 영역(정규 좌표) — 정수리~턱을 감싸는 타원. 없으면 null.
 function headEllipseFor(angle){
@@ -228,6 +258,103 @@ function pickSkinPatch(ctx, W, H, ell, skinRGB, size){
   return best || null;
 }
 
+/* ── 살 색 격자 (2026-09-12) ─────────────────────────────────────────
+   두상 타원 안에서 <b>구멍이 아니고 충분히 밝은</b> 픽셀만 모아 격자 평균을
+   내고, 빈 칸을 이웃으로 번지게 한다. 구멍 픽셀은 나중에 제 자리 색을 집는다.
+   눈·눈썹·입은 darkPct 아래로 떨어져 애초에 안 들어오고, 그 자리는 번지기가
+   주변 살로 메운다 — 12a SCALP_SKIN의 3패스와 같은 구조다.
+   od는 <b>고치기 전</b> 픽셀이어야 한다(이식 루프보다 먼저 부를 것). */
+function buildSkinField(od, ow, oh, hole, ell){
+  const F = HOLE_FILL.skinField;
+  if(!F || !F.on || !ell) return null;
+  const GX = Math.max(4, F.gridX|0), GY = Math.max(4, F.gridY|0);
+  const step = Math.max(1, Math.round(Math.min(ow, oh) / 220));
+
+  // 1패스 — 두상 안 성한 픽셀의 밝기 분포에서 "살의 하한"을 정한다
+  const lums = [];
+  for(let y=0; y<oh; y+=step){
+    const v = ((y+0.5)/oh - ell.cy)/ell.ry, v2 = v*v;
+    if(v2 > 1) continue;
+    for(let x=0; x<ow; x+=step){
+      const u = ((x+0.5)/ow - ell.cx)/ell.rx;
+      if(u*u + v2 > 1) continue;
+      if(hole[y*ow + x]) continue;                 // 지운 머리 자리 — 살이 아니다
+      const i = (y*ow+x)*4;
+      if(od[i+3] < 200) continue;
+      lums.push(0.299*od[i] + 0.587*od[i+1] + 0.114*od[i+2]);
+    }
+  }
+  if(lums.length < 200) return null;
+  lums.sort((a,b)=>a-b);
+  const darkCut = lums[Math.floor(lums.length * F.darkPct)];
+
+  // 2패스 — 격자 칸마다 살 픽셀 평균
+  const r = new Float32Array(GX*GY), g = new Float32Array(GX*GY), b = new Float32Array(GX*GY);
+  const n = new Float32Array(GX*GY);
+  const gxOf = x => Math.min(GX-1, Math.max(0, Math.floor(((x+0.5)/ow - (ell.cx-ell.rx)) / (2*ell.rx) * GX)));
+  const gyOf = y => Math.min(GY-1, Math.max(0, Math.floor(((y+0.5)/oh - (ell.cy-ell.ry)) / (2*ell.ry) * GY)));
+  for(let y=0; y<oh; y+=step){
+    const v = ((y+0.5)/oh - ell.cy)/ell.ry, v2 = v*v;
+    if(v2 > 1) continue;
+    for(let x=0; x<ow; x+=step){
+      const u = ((x+0.5)/ow - ell.cx)/ell.rx;
+      if(u*u + v2 > 1) continue;
+      if(hole[y*ow + x]) continue;
+      const i = (y*ow+x)*4;
+      if(od[i+3] < 200) continue;
+      if(0.299*od[i] + 0.587*od[i+1] + 0.114*od[i+2] < darkCut) continue;   // 이목구비
+      const k = gyOf(y)*GX + gxOf(x);
+      r[k]+=od[i]; g[k]+=od[i+1]; b[k]+=od[i+2]; n[k]++;
+    }
+  }
+  let filled = 0;
+  for(let i=0;i<GX*GY;i++){ if(n[i] > 0){ r[i]/=n[i]; g[i]/=n[i]; b[i]/=n[i]; n[i]=1; filled++; } }
+  const seeded = filled;
+  if(filled < GX*GY*F.minCells) return null;
+
+  /* 3패스 — 번지기. 빈 칸을 채워진 이웃 평균으로 메우기를 반복하면 결과가
+     "가장 가까운 살"이 된다(거리변환을 따로 짜지 않아도 같은 순서로 퍼진다).
+     앞머리가 이마를 덮어 위쪽이 통째로 비어 있어도, 아래 살에서 위로 올라온다 —
+     사용자가 말한 "이마채우기"가 여기서 그대로 일어난다. */
+  let passes = 0;
+  for(; passes<F.fillPasses; passes++){
+    let changed = 0;
+    const nr=r.slice(), ng=g.slice(), nb=b.slice(), nn=n.slice();
+    for(let gy=0; gy<GY; gy++) for(let gx=0; gx<GX; gx++){
+      const i = gy*GX+gx;
+      if(n[i] > 0) continue;
+      let sr=0,sg=0,sb=0,k=0;
+      if(gx>0    && n[i-1] >0){ sr+=r[i-1];  sg+=g[i-1];  sb+=b[i-1];  k++; }
+      if(gx<GX-1 && n[i+1] >0){ sr+=r[i+1];  sg+=g[i+1];  sb+=b[i+1];  k++; }
+      if(gy>0    && n[i-GX]>0){ sr+=r[i-GX]; sg+=g[i-GX]; sb+=b[i-GX]; k++; }
+      if(gy<GY-1 && n[i+GX]>0){ sr+=r[i+GX]; sg+=g[i+GX]; sb+=b[i+GX]; k++; }
+      if(k){ nr[i]=sr/k; ng[i]=sg/k; nb[i]=sb/k; nn[i]=1; changed++; }
+    }
+    if(!changed) break;
+    r.set(nr); g.set(ng); b.set(nb); n.set(nn);
+    filled += changed;
+  }
+
+  return {
+    GX, GY, seeded, filled, passes, cells: GX*GY,
+    /* 격자 <b>밖</b>이면 안으로 물린다 — 정수리(타원 위끝 근처)는 그래서
+       두상에서 제일 위에 있는 살을 집는다. */
+    at(nx, ny, out){
+      const fx = Math.min(GX-1, Math.max(0, (nx - (ell.cx-ell.rx)) / (2*ell.rx) * GX - 0.5));
+      const fy = Math.min(GY-1, Math.max(0, (ny - (ell.cy-ell.ry)) / (2*ell.ry) * GY - 0.5));
+      const x0 = fx|0, y0 = fy|0;
+      const x1 = Math.min(GX-1, x0+1), y1 = Math.min(GY-1, y0+1);
+      const tx = fx-x0, ty = fy-y0;
+      const i00=y0*GX+x0, i10=y0*GX+x1, i01=y1*GX+x0, i11=y1*GX+x1;
+      const bl = (a0,a1,a2,a3)=> (a0*(1-tx)+a1*tx)*(1-ty) + (a2*(1-tx)+a3*tx)*ty;
+      out[0] = bl(r[i00],r[i10],r[i01],r[i11]);
+      out[1] = bl(g[i00],g[i10],g[i01],g[i11]);
+      out[2] = bl(b[i00],b[i10],b[i01],b[i11]);
+      return out;
+    }
+  };
+}
+
 /* 이마 표본을 떠서 "이식 재료"로 만든다.
      rgb — 패치 원본 픽셀(색 + 결). 이식은 이걸 통째로 옮겨 심는다.
      hi  — 패치 − 흐린 패치 = 결만(예전 동작 A/B용으로 남겨둔다).
@@ -258,7 +385,13 @@ function buildSkinGraft(hctx, ow, oh, ell, skinRGB, size, angle){
     rgb[k+2] = sharp[i+2]; hi[k+2] = sharp[i+2] - blur[i+2];
     lumSum += 0.299*sharp[i] + 0.587*sharp[i+1] + 0.114*sharp[i+2];
   }
-  return { rgb, hi, size, lum: lumSum / (size*size), src: angle || '?', at: patch,
+  /* 고주파 표준편차 — 이마 살결은 작고, 눈·눈썹·속눈썹은 크다. 색을 격자가
+     맡게 된 뒤(2026-09-12) 패치에 남은 역할은 <b>결</b> 하나뿐이라, 결로도
+     이목구비가 새어나오지 않게 여기서 세기를 재 둔다(HOLE_FILL.skinField.flatTol). */
+  let d2 = 0;
+  for(let k=0; k<hi.length; k++) d2 += hi[k]*hi[k];
+  const det = Math.sqrt(d2 / hi.length);
+  return { rgb, hi, size, lum: lumSum / (size*size), det, src: angle || '?', at: patch,
            forehead: !!patch.forehead, dy: patch.dy };
 }
 
@@ -858,6 +991,17 @@ function buildHoleFillCanvas(srcCanvas, skinColor, ell, angle, holeMaskInfo){
   const T = HOLE_FILL.texture;
   const gs = graft ? graft.size : 0;
   let nGraft = 0, nFlat = 0;
+  /* ── 색은 격자에서, 결만 패치에서 (2026-09-12) ──────────────────────
+     반드시 이식 루프 <b>전에</b> 만든다 — od를 고치기 시작하면 그 결과가
+     표본으로 되먹여져서 색이 스스로 끌려간다. */
+  const F = HOLE_FILL.skinField;
+  const field = buildSkinField(od, ow, oh, hole, ell);
+  /* 결은 패치가 평평할 때만 쓴다. 격자가 색을 맡으므로 결이 없어도 그림은
+     성립한다 — 눈 무늬가 반복되느니 매끈한 편이 낫다(8/11과 같은 판단). */
+  const useDetail = !!(field && graft && F && F.detail > 0
+                       && (graft.det == null || graft.det <= F.flatTol));
+  const _fc = [0,0,0];
+  const fieldDrop = !!(field && graft && !useDetail);
   for(let y=0; y<oh; y++){
     const ny = (y + 0.5)/oh, v = (ny - ell.cy)/ell.ry, v2 = v*v;
     if(v2 > 1) continue;                       // 두상 밖 — 손대지 않음(목·옷·배경)
@@ -877,6 +1021,24 @@ function buildHoleFillCanvas(srcCanvas, skinColor, ell, angle, holeMaskInfo){
       if(G.edgeFeather > 0){
         const r = Math.sqrt(r2);
         if(r > 1 - G.edgeFeather) wgt = Math.max(0, (1 - r) / G.edgeFeather);
+      }
+      if(field){
+        /* ── 자리별 색 (2026-09-12) ──────────────────────────────────
+           타일이 없으므로 반복될 무늬 자체가 없다. 번져 들어온 od는 색으로도
+           <b>밝기로도</b> 안 쓴다 — 정수리는 벽, 목덜미는 지운 머리라 둘 다
+           살이 아니다(12a SCALP_SKIN이 unlit인 것과 같은 이유).
+           ⚠ 이 분기가 graft 유무보다 <b>앞</b>인 게 핵심이다. 앞머리가 이마를
+             통째로 덮은 손님은 이마 후보 여섯이 전부 탈락해 표본이 없고, 예전엔
+             그대로 단색(flatMix)으로 떨어졌다. 격자는 표본이 없어도 선다 —
+             색을 <b>표본</b>이 아니라 <b>자리</b>에서 가져오기 때문이다. */
+        field.at(nx, ny, _fc);
+        const gk = useDetail ? (mirror(x, gs)*gs + py) * 3 : 0;
+        for(let ch = 0; ch < 3; ch++){
+          const skinPx = _fc[ch] + (useDetail ? graft.hi[gk+ch] * T * F.detail : 0);
+          od[i+ch] = Math.max(0, Math.min(255, od[i+ch]*(1-wgt) + skinPx*wgt));
+        }
+        nGraft++;
+        continue;
       }
       if(!graft){
         /* 표본을 아예 못 떴을 때 — 최소한 <b>두피색 쪽으로</b> 끌어당긴다.
@@ -913,6 +1075,7 @@ function buildHoleFillCanvas(srcCanvas, skinColor, ell, angle, holeMaskInfo){
     }
   }
   octx.putImageData(oimg, 0, 0);
+  logSkinFieldOnce(angle, field, graft, useDetail, ow, oh);
   logSkinGraftOnce(angle, graft, nGraft, nFlat, ow, oh, graftRejected);
   return out;
 }
@@ -929,11 +1092,11 @@ function logRenderPlateOnce(angle, diag, ow, oh){
   if(!diag){ console.log(`[렌더경계] ${angle}: 꺼짐(RENDER_PLATE.on=false) — 예전 동작(160px 확산 + 테두리 잔상)`); return; }
   const px = ow*oh;
   const holePx = diag.filled + diag.unreached;
-  console.log(`[렌더경계] ${angle}: 구멍 ${holePx}px (${((holePx/px)*100).toFixed(1)}% of ${ow}×${oh})`
+  console.log(...gyeolBoldArgs([`[렌더경계] ${angle}: 구멍 ${holePx}px (${((holePx/px)*100).toFixed(1)}% of ${ow}×${oh})`
     + ` · <b>테두리 회수 ${diag.rim}px</b>(머리색 ${diag.hair ? 'rgb('+diag.hair.join(',')+')' : '없음'}, 최대 ${diag.rimIter}겹)`
     + ` · 방향성 채움 ${diag.filled}px · 미도달 ${diag.unreached}px`
     + ` · 거울 결 ${diag.detail}px` + (diag.detail ? '' : ` (못 가져와 잡티 σ ${diag.sigma.toFixed(2)}로 대체)`)
-    + ` — 두상 밖(어깨·옷·배경)은 이 값이 최종입니다`);
+    + ` — 두상 밖(어깨·옷·배경)은 이 값이 최종입니다`]));
   if(diag.rim === 0){
     console.warn(`[렌더경계] ${angle}: 테두리 회수가 0입니다 — 마스크 밖에 남은 머리색 픽셀이 없다는 뜻이거나,`
       + ` 머리색(avgColor)이 없어 색 판정을 못 한 것입니다. 겹친 마스크가 계속 보이면 RENDER_PLATE.rim.tol을 키우세요.`);
@@ -943,9 +1106,30 @@ function logRenderPlateOnce(angle, diag, ow, oh){
   }
 }
 
+/* [진단] 살 색 격자 — 뷰당 1회. "눈이 보인다"가 다시 오면 여기서 갈린다:
+     · 꺼짐/못 섬  → 타일 방식으로 떨어진 것(예전 동작) — 그러면 눈이 날 수 있다
+     · 섰는데 눈   → 결(고주파)로 샌 것 → flatTol을 낮춘다
+     · 씨앗 칸이 적음 → 두상 안이 거의 다 구멍(앞머리·롱헤어) — 번지기 의존도가 큼 */
+function logSkinFieldOnce(angle, field, graft, useDetail, ow, oh){
+  if(!angle || _fieldLogged[angle]) return;
+  _fieldLogged[angle] = true;
+  const F = HOLE_FILL.skinField;
+  if(!F || !F.on){ console.log(`[살색격자] ${angle}: 꺼짐(HOLE_FILL.skinField.on=false) — 패치 타일 방식`); return; }
+  if(!field){
+    console.warn(...gyeolBoldArgs([`[살색격자] ${angle}: <b>못 섰습니다</b> — 두상 안 성한 픽셀이 모자랍니다`
+      + ` · 패치 타일 방식으로 떨어집니다(그 패치에 눈이 있으면 화면에 반복됩니다)`]));
+    return;
+  }
+  console.log(...gyeolBoldArgs([`[살색격자] ${angle}: ${field.GX}×${field.GY}칸 · 살로 잡힌 씨앗 ${field.seeded}칸`
+    + ` → 번지기 ${field.passes}회로 <b>${field.filled}/${field.cells}칸</b>`
+    + ` · 색은 전부 <b>자리에서</b> 옵니다(타일 없음)`
+    + `\n      결: ` + (!graft ? '표본 없음 — 색만(격자는 표본 없이도 섭니다)'
+        : useDetail ? `패치 고주파 σ${graft.det.toFixed(1)} ≤ ${F.flatTol} → <b>얹습니다</b>(세기 ${F.detail})`
+        : `패치 고주파 σ${graft.det.toFixed(1)} > ${F.flatTol} → <b>버립니다</b>(눈·눈썹이 결로 샙니다)`)]));
+}
+
 /* [진단] 두피 이식이 실제로 먹었는지 — 뷰당 1회. 까맣게 보인다는 신고가 오면
    여기 숫자 하나로 "안 심었다 / 심었는데 다른 이유"가 갈린다. */
-const _graftLogged = {};
 function logSkinGraftOnce(angle, graft, nGraft, nFlat, ow, oh, rejected){
   if(!angle || _graftLogged[angle]) return;
   _graftLogged[angle] = true;
