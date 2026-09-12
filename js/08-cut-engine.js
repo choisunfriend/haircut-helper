@@ -261,7 +261,10 @@ const DEPTH_SORT = { byRoot: true, bigSpan: 0.5 };
    projected.sort 배너. 깊이가 tieBand 안으로 비면 뿌리가 <b>높은</b> 가닥을
    나중에 그린다(=위에 얹는다). 정수리 가닥이 옆·후두부 밑에 깔리던 자리다.
    tieBand는 두상 깊이반경 대비 — 키우면 더 많은 쌍이 높이로 정렬된다. */
-const LAYER_SORT = { tieByRootHeight: true, tieBand: 0.25 };
+/* topSections: 깊이보다 <b>위</b>에 있는 1차 키 — 여기 든 섹션은 맨 나중에
+   그린다(= 제일 위에 보인다). 2026-09-12, 15-project-3d.js 정렬부 배너 참고.
+   빈 배열이면 예전 동작 그대로. */
+const LAYER_SORT = { tieByRootHeight: true, tieBand: 0.25, topSections: ['crown'] };
 const PROJ_FALLBACK = { n: 0, lastAngle: null };   // ⓒ가 실제로 도는가
 function neutralSectionsForRender(){
   const out = {};

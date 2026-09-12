@@ -1,5 +1,5 @@
 /* ══════════════════════════════════════════════════════════════════
-   콘솔 굵은 글씨 어댑터 (2026-09-09) — 로그의 <b>가 글자 그대로 보이던 것
+   콘솔 굵은 글씨 (2026-09-09 · 2026-09-12 고침) — 로그의 <b> 처리
    ─────────────────────────────────────────────────────────────────
    이 앱의 로그 문자열에는 <b>…</b>가 146군데 들어 있다. 원래는 <b>폰용</b>이다
    — 폰엔 F12가 없어서 같은 문자열을 화면의 '진단정보' 패널에도 띄우는데,
@@ -8,20 +8,25 @@
    고치다 만 쪽이 <b>콘솔</b>이다. console.log는 HTML을 모르니 태그가 그대로
    찍혀서, 두 달치 로그가 <b>누가 장난쳐 놓은 것처럼</b> 보였다. 실제로 그랬다.
 
-   고치는 자리를 호출부 129곳이 아니라 여기 하나로 잡은 이유:
-     · 앞으로 쓸 로그도 자동으로 걸린다 — 다음 사람이 규칙을 몰라도 된다
-     · 문자열 자체는 안 건드린다. 패널은 계속 같은 문자열을 innerHTML로 받는다
+   ⚠ 9/09에 <b>console.log를 통째로 감쌌다가 9/12에 되돌렸다.</b> 감싸면
+     DevTools 소스 링크가 전부 이 파일로 바뀐다 — 녹화에서 [되쏘기보정] 옆이
+     15-project-3d.js:484 가 아니라 01-face-landmarker.js:68 로 찍혔다.
+     Chrome은 console.log를 <b>직접 부른 프레임</b>을 찍으므로 래퍼로는 피할 수
+     없다. 두 달째 그 링크로 코드를 찾아다니는 판에 굵은 글씨와 바꿀 게 아니었다.
+   그래서 래퍼 대신 <b>호출부에서 펼친다</b>: console.log(...gyeolBoldArgs([…]))
+   console.log를 부르는 자리가 원래 파일이라 링크가 산다.
    %c는 이미 쓰는 자리가 있어서(빌드 배너) 스타일 인자를 세어 가며 끼워 넣는다.
    %c 말고 다른 서식(%s·%d·%o)이 섞인 줄은 <b>건드리지 않고 태그만 뗀다</b> —
    인자 짝이 밀리면 로그가 통째로 망가지는데, 그건 굵게 만드는 것보다 나쁘다.
    끄기: window.GYEOL_LOG_BOLD = false  (그러면 예전처럼 태그가 그대로 보인다)
 ══════════════════════════════════════════════════════════════════ */
-/* <b>…</b>가 든 인자 배열을 console이 알아듣는 %c 배열로 바꿔 돌려준다.
-   래퍼와 따로 떼어 둔 이유는 <b>검사</b> 때문이다 — 래퍼는 설치 시점의 raw를
-   닫아 갖고 있어서 밖에서 출력을 가로챌 수가 없다(검사 ⑪). */
+/* <b>…</b>가 든 인자 배열을 console이 알아듣는 %c 배열로 바꿔 돌려준다. */
 function gyeolBoldArgs(args){
   const BOLD = ';font-weight:700', THIN = ';font-weight:400';
+  const G = (typeof window !== 'undefined') ? window
+          : (typeof globalThis !== 'undefined') ? globalThis : {};
   const fmt = args[0];
+  if(G.GYEOL_LOG_BOLD === false) return args;
   if(typeof fmt !== 'string' || fmt.indexOf('<b>') < 0) return args;
 
   /* %c 말고 다른 서식이 있으면 인자 짝을 못 믿는다 — 태그만 뗀다.
@@ -54,20 +59,6 @@ function gyeolBoldArgs(args){
   return [out].concat(outStyles, rest);
 }
 
-(function installConsoleBold(){
-  const C = (typeof console !== 'undefined') ? console : null;
-  if(!C || C.__gyeolBold) return;
-  C.__gyeolBold = true;
-  const raw = C.log.bind(C);
-  const G = (typeof window !== 'undefined') ? window
-          : (typeof globalThis !== 'undefined') ? globalThis : {};
-  if(G.GYEOL_LOG_BOLD === undefined) G.GYEOL_LOG_BOLD = true;
-
-  C.log = function(...args){
-    if(G.GYEOL_LOG_BOLD === false) return raw(...args);
-    return raw(...gyeolBoldArgs(args));
-  };
-})();
 
 /* ══════════════════════════════════════════════════════════
    01-face-landmarker.js — 얼굴 랜드마크 실측 · 포즈 행렬 · 섹션 경계 보정
@@ -446,12 +437,12 @@ function getViewYawDeg(angle){
   const fixed = correctedViewYawDeg(raw, angle, POSE_YAW_FIX.from);
   if(fixed !== raw && POSE_YAW_FIX._k !== angle + '|' + fixed){
     POSE_YAW_FIX._k = angle + '|' + fixed;
-    console.log('[포즈 보정·출처] ' + angle + ': yaw ' + raw.toFixed(1) + '° → ' + fixed.toFixed(1) + '°'
+    console.log(...gyeolBoldArgs(['[포즈 보정·출처] ' + angle + ': yaw ' + raw.toFixed(1) + '° → ' + fixed.toFixed(1) + '°'
       + '\n    이 값은 <b>리프트·되쏘기·두상 치수</b>가 같이 씁니다 — 전단은 안 생기지만'
       + ' getHeadEllipsoid의 a(폭)·c(깊이)가 같이 움직입니다.'
       + ' 9/07이 여기서 되돌린 이유가 그것이고, 그때 없던 것이 <b>재는 장치</b>입니다:'
       + ' [진단·투영 실루엣] 배율과 아래 두상 치수 로그를 켜기 전/후로 비교하세요.'
-      + ' 끄기: POSE_YAW_FIX.on = false');
+      + ' 끄기: POSE_YAW_FIX.on = false']));
   }
   return fixed;
 }

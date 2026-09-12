@@ -1124,6 +1124,7 @@ function projectHair3DToView(ctx, fit, angle, maskInf){
       hb: hashFract(si * 0.3183098862 + 4.77),    // 밝기 지터(0~1)
       slice: (st.sec||'crown') + '|' + Math.floor(rootIx / SLICE_W)
              + '|' + Math.floor((rootIy / Math.max(1, maskInf.h)) * 10),
+      sec: st.sec || 'crown',                     // 맨 위로 올릴 섹션 판정용(LAYER_SORT.topSections)
     });
   }
   if(!projected.length) return false;
@@ -1165,20 +1166,39 @@ function projectHair3DToView(ctx, fit, angle, maskInf){
       }
     }
   }catch(e){}
-  projected.sort((a,b)=> a.depth - b.depth); // 뒤(작은 depth)부터 → 앞이 위에 덮임
+  /* ── (2026-09-12) 크라운은 <b>맨 마지막</b>에 얹는다 ─────────────────────
+     사용자(미용사): "크라운이 지금 프론트 안쪽으로 들어가 있는데, 맨 마지막으로
+     얹어줘." 머리는 겹겹이 쌓이고 위에서 난 가닥이 아래를 덮고 내려온다 —
+     정수리 가닥은 옆머리·후두부의 바깥을 타고 흐른다. 그게 맞는 그림이다.
+     ⚠ 깊이만으로는 <b>표현할 방법이 없다.</b> 깊이는 앞뒤만 말한다. 프론트
+       뿌리는 이마라 z가 확실히 앞이라 깊이 키에서 늘 이기고, 그래서 크라운은
+       구조적으로 프론트 밑에 깔린다. 동점 처리(LAYER_SORT.tieBand)로도 못
+       닿는다 — 애초에 동점이 아니니까. 깊이보다 <b>위</b>에 키가 하나 더 있어야
+       한다. 그래서 섹션을 1차 키로 올린다.
+     ⚠ 뒤통수로 넘어간 크라운 가닥이 얼굴을 덮지 않느냐 — 안 덮는다. 두개골
+       뒤쪽 점은 정렬이 아니라 <b>깊이 버퍼</b>가 먼저 걸러낸다(빌드 53).
+       정렬은 <b>살아남은 점들끼리</b>의 겹 순서만 정한다.
+     되돌리기: LAYER_SORT.topSections = [] */
+  {
+    const _top = LAYER_SORT.topSections || [];
+    const _rank = (p) => (_top.length && _top.indexOf(p.sec) >= 0) ? 1 : 0;
+    projected.sort((a,b)=>
+      (_rank(a) - _rank(b))          // 크라운(1)이 나중에 = 위에
+      || (a.depth - b.depth));       // 뒤(작은 depth)부터 → 앞이 위에 덮임
+  }
   /* 슬라이더를 잡고 흔들면 이 줄이 초당 수십 번 나간다. 폰의 console.log는
      공짜가 아니라(문자열 조립 + 원격 콘솔 버퍼) 재는 행위가 재려는 대상을
      느리게 만든다. PERF.minGapMs 간격으로만 찍는다 — 값 자체는 그대로다. */
   if(PERF.on && perfCanLog()){
     const t2 = performance.now();
     let pts = 0; for(const st of adj) pts += st.pts.length;
-    console.log('[성능·' + angle + '] 조정연산 <b>' + (_perfT1-_perfT0).toFixed(0) + 'ms</b>'
+    console.log(...gyeolBoldArgs(['[성능·' + angle + '] 조정연산 <b>' + (_perfT1-_perfT0).toFixed(0) + 'ms</b>'
       + ' · 투영 ' + (t2-_perfT1).toFixed(0) + 'ms'
       + ' · 가닥 ' + adj.length + '개/점 ' + (pts/1000).toFixed(0) + '천개'
       + ' · ' + adjCacheLine()
       + perfLine()
       + '\n    JS힙이 뷰를 오갈 때마다 <b>계단처럼</b> 오르면 누수(가닥 객체·캔버스),'
-      + ' 평평한데 ms만 크면 순수 계산량입니다. PERF.on=false로 끕니다.');
+      + ' 평평한데 ms만 크면 순수 계산량입니다. PERF.on=false로 끕니다.']));
   }
   /* [뷰정렬] 위 _drA 배너 — 필요한 보정을 px로 찍는다. */
   if(_drA && _drA.n > 20 && _drA.dx1 > _drA.dx0){
@@ -1243,7 +1263,7 @@ function projectHair3DToView(ctx, fit, angle, maskInf){
     } else if(!_drF){
       fLine = '\n      [얼굴 띠] 없음 — 얼굴 껍질이 없어 이 뷰는 얼굴 행을 못 잡습니다.';
     }
-    console.log('[뷰정렬] ' + angle + ': 크라운 띠에서 사진 중심 ' + pC.toFixed(0) + 'px'
+    console.log(...gyeolBoldArgs(['[뷰정렬] ' + angle + ': 크라운 띠에서 사진 중심 ' + pC.toFixed(0) + 'px'
       + ' vs 그린 중심 ' + dC.toFixed(0) + 'px → <b>어긋남 ' + (need>=0?'+':'') + need.toFixed(0) + 'px</b>'
       + '\n      폭(얼굴 게이트 <b>전</b>): 사진 ' + pW.toFixed(0) + 'px vs 그린 ' + dW.toFixed(0) + 'px'
       + ' (×' + wRatio.toFixed(3) + ')'
@@ -1260,7 +1280,7 @@ function projectHair3DToView(ctx, fit, angle, maskInf){
       + '\n      단, 폭(×' + wRatio.toFixed(3) + ')이 1.0에서 멀면 미는 문제가 아니라 <b>각도</b>입니다 —'
       + ' 그때 만질 것은 VIEWCAL_ANCHOR.sideGain(측면 yaw 압축 보정)입니다.'
       + '\n      띠는 두피선~마스크 높이 25%(사진 y ' + _drA.yTop.toFixed(0) + '~' + _drA.yBot.toFixed(0) + ')'
-      + ' · 표본 ' + _drA.n + '점. 이 값은 자동 적용하지 않습니다.');
+      + ' · 표본 ' + _drA.n + '점. 이 값은 자동 적용하지 않습니다.']));
   }
   logStrandRender(angle, { spanX, unit, cssW, roles, rawTotal, targetStrands, pxN,
                            stride, total: src.length, drawn: projected.length,
@@ -1339,10 +1359,17 @@ function projectHair3DToView(ctx, fit, angle, maskInf){
   // ── 가닥 배치: (슬라이스 × 양자화 색 × 굵기) 한 묶음 = beginPath/stroke 1회 ──
   // 색을 양자화하지 않으면 가닥마다 색이 미세하게 달라 배치가 전혀 안 된다.
   // 굵기를 키에 넣는 이유: 한 묶음 안에서 lineWidth는 하나뿐이라서.
-  const batch = new Map();   // key → { col, w, depth, n, items:[cpts] }
+  const batch = new Map();   // key → { col, w, depth, n, rank, items:[cpts] }
+  /* (2026-09-12) rank = 위 projected.sort와 <b>같은</b> 1차 키.
+     여기가 진짜 그리는 순서다. 위에서 크라운을 맨 뒤로 보내 놔도 이 배치 정렬이
+     평균 깊이로 다시 줄을 세우면 그대로 <b>지워진다</b> — 두 곳이 같은 키를
+     써야 한다. 배치 키에 p.slice(=섹션으로 시작)가 이미 들어 있어서 한 배치
+     안에 두 랭크가 섞이는 일은 없다. */
+  const _topSec = LAYER_SORT.topSections || [];
+  const rankOf = (p) => (_topSec.length && _topSec.indexOf(p.sec) >= 0) ? 1 : 0;
   const push = (key, q, p, cpts)=>{
     let e = batch.get(key);
-    if(!e){ e = { col: q, w: p.w, depth: 0, n: 0, items: [] }; batch.set(key, e); }
+    if(!e){ e = { col: q, w: p.w, depth: 0, n: 0, rank: rankOf(p), items: [] }; batch.set(key, e); }
     e.items.push(cpts); e.depth += p.depth; e.n++;
   };
   for(const p of projected){
@@ -1375,7 +1402,9 @@ function projectHair3DToView(ctx, fit, angle, maskInf){
     }
   }
   // 배치끼리도 평균 깊이 순으로 — 슬라이스 단위 painter's 정렬 유지
-  const keys = Array.from(batch.values()).sort((a,b)=> a.depth/a.n - b.depth/b.n);
+  // (2026-09-12) topSections는 깊이보다 위다 — 크라운 배치가 맨 끝.
+  const keys = Array.from(batch.values())
+    .sort((a,b)=> (a.rank - b.rank) || (a.depth/a.n - b.depth/b.n));
   for(const e of keys){
     ctx.strokeStyle = e.col;
     ctx.lineWidth = e.w;
@@ -1438,11 +1467,11 @@ function logStrandRender(angle, m){
   _bundleLogKey = key;
   if(m.rootDev){
     const d = m.rootDev;
-    console.log(`[${angle}] 뿌리선 어긋남 — 중앙값 ${d.med.toFixed(0)}px`
+    console.log(...gyeolBoldArgs([`[${angle}] 뿌리선 어긋남 — 중앙값 ${d.med.toFixed(0)}px`
       + ` (10~90% ${d.p10.toFixed(0)}~${d.p90.toFixed(0)}px, 마스크 높이 ${d.h}px)`
       + ` · 원본 두피선보다 <b>위</b>(바깥)에 찍힌 뿌리 ${d.above}/${d.n}개`
       + (d.offMask ? ` · 원본에 머리가 없는 컬럼 ${d.offMask}개` : ``)
-      + ` ← 음수일수록 머리가 바깥에서 시작한다는 뜻`);
+      + ` ← 음수일수록 머리가 바깥에서 시작한다는 뜻`]));
   }
   if(m.spanBySec){
     /* [깊이 폭] 겹 순서는 가닥당 스칼라 하나로 정한다 — 그게 대표가 되는지를 잰다.
@@ -1455,17 +1484,17 @@ function logStrandRender(angle, m){
           + '(평균 ' + (e.sum/e.n).toFixed(2) + ' 최대 ' + e.max.toFixed(2) + ' · ' + e.n + '가닥)'
       ).join('\n      ');
       const bad = rows.filter(([k,e]) => (k === 'occipital' || k === 'nape') && e.big/e.n > 0.15);
-      console.log(`[${angle}] 깊이 폭 — 가닥 하나가 앞뒤로 얼마나 걸쳐 있나`
+      console.log(...gyeolBoldArgs([`[${angle}] 깊이 폭 — 가닥 하나가 앞뒤로 얼마나 걸쳐 있나`
         + ` (두상 깊이반경 ${m.spanC.toFixed(2)}로 나눈 값 · 굵은 %가 ${DEPTH_SORT.bigSpan} 넘는 비율)`
         + `\n      ${line}`
         + `\n    front·crown이 크면 정상입니다 — 앞으로 넘긴 머리라 원래 앞뒤로 걸칩니다.`
         + ` 남는 문제는 <b>겹 순서</b>고, 볼 자리는 slice 키와 정렬 단위입니다.`
         + `\n    occipital·nape가 크면 <b>방향 오류</b>입니다 — 뒤통수에서 난 머리가 앞으로 나올 이유가 없습니다.`
         + ` 겹 순서를 고쳐도 안 고쳐지고, 볼 자리는 buildHairStrandsFromPaths의 두상 밖 z 결정과 alignStrandPtsToField3D입니다.`
-        + (bad.length ? `\n    ⚠ ${bad.map(r=>r[0]).join('·')} 가 문턱을 넘었습니다 — 정렬이 아니라 방향부터 보십시오.` : ``));
+        + (bad.length ? `\n    ⚠ ${bad.map(r=>r[0]).join('·')} 가 문턱을 넘었습니다 — 정렬이 아니라 방향부터 보십시오.` : ``)]));
     }
   }
-  console.log(
+  console.log(...gyeolBoldArgs([
     `[${angle}] 가닥 렌더(원본 결 보기와 동일 규칙) — 헤어폭 ${m.spanX.toFixed(0)}px(화면 ${css(m.spanX)}) · `
     + `표시배율 1/${m.unit.toFixed(1)} · 굵기 ${wList} · `
     + `가닥 ${m.drawn}개 그림(원본 픽셀색 ${m.pxN||0}개`
@@ -1503,7 +1532,7 @@ function logStrandRender(angle, m){
        "그래서 <b>화면이 뜯겼나</b>"다. 문이 여섯이라 눈으로는 못 가르므로
        구멍마다 범인을 적는다. 근거·되돌리기는 14의 GAP_DIAG·MQ_TRUST 배너. */
     + gapDiagText(m.gap, m.drawn)
-  );
+  ]));
 }
 /* 다발 렌더 전용 틴트 — 어두운 쪽은 곱셈, 밝은 쪽은 회색 쪽으로 완만히.
    tintColor(전역)와 달리 흰색을 섞지 않아서 검은 머리에서도 색이 안 뜬다.
