@@ -376,19 +376,19 @@ function buildRealNeckMesh(skinColor){
     const hiHalf = (NECK_SHAPE.maxBaseCm/2) / cmPerUnit;
     const capped = clamp(baseW, loHalf, hiHalf);
     if(Math.abs(capped - baseW) > 1e-4){
-      console.log('[3D·목] 밑동 폭 ' + (baseW*2*cmPerUnit).toFixed(1) + 'cm → 난간으로 '
+      console.log(...gyeolBoldArgs(['[3D·목] 밑동 폭 ' + (baseW*2*cmPerUnit).toFixed(1) + 'cm → 난간으로 '
         + (capped*2*cmPerUnit).toFixed(1) + 'cm (허용 ' + NECK_SHAPE.minBaseCm + '~'
         + NECK_SHAPE.maxBaseCm + 'cm). ' + (G
           ? '옷깃 실측이 구멍이 아니라 테두리를 재고 있는 것.'
-          : '값은 cm 상수인데 난간에 걸렸다 = <b>환산자가 튀었다</b>. 얼굴 랜드마크를 보십시오.'));
+          : '값은 cm 상수인데 난간에 걸렸다 = <b>환산자가 튀었다</b>. 얼굴 랜드마크를 보십시오.')]));
       baseD *= (capped / baseW);
       baseW = capped;
     }
   }
-  console.log('[3D·목] 밑동 ' + (baseW*2*cmPerUnit).toFixed(1) + '×' + (baseD*2*cmPerUnit).toFixed(1)
+  console.log(...gyeolBoldArgs(['[3D·목] 밑동 ' + (baseW*2*cmPerUnit).toFixed(1) + '×' + (baseD*2*cmPerUnit).toFixed(1)
     + 'cm (폭×깊이) · 기준 ' + (G ? '옷깃 실측' : '<b>두상 자</b>(cm 상수 ÷ 얼굴 환산자 '
     + cmPerUnit.toFixed(1) + 'cm/단위)') + ' · 둘레 약 '
-    + (Math.PI * (baseW + baseD) * cmPerUnit).toFixed(0) + 'cm');
+    + (Math.PI * (baseW + baseD) * cmPerUnit).toFixed(0) + 'cm']));
   const neckLen = Math.max(1e-4, neckTopY - neckBotY);
 
   const positions = [];
@@ -626,11 +626,11 @@ function buildSkinColorField(){
         return [mix(this.r), mix(this.g), mix(this.b)];
       },
     };
-    console.log('[3D·두피색] 살 색 격자 ' + GX + '×' + GY
+    console.log(...gyeolBoldArgs(['[3D·두피색] 살 색 격자 ' + GX + '×' + GY
       + ' · 살로 잡힌 칸 ' + filled + '/' + (GX*GY)
       + ' · 어두운 하한 ' + Math.round(darkCut) + '(밝기 ' + Math.round(SCALP_SKIN.darkPct*100) + '백분위)'
       + '\n    두피면 정점마다 <b>제 자리의 살</b>을 집습니다. 격자 밖(이마 위)은 안으로 물려'
-      + ' 얼굴 맨 윗줄 픽셀을 씁니다. 끄기: SCALP_SKIN.field = false');
+      + ' 얼굴 맨 윗줄 픽셀을 씁니다. 끄기: SCALP_SKIN.field = false']));
     return _skinFieldCache;
   }catch(e){
     console.warn('[3D·두피색] 살 색 격자 실패 — 평균색 한 개로 폴백:', e);
@@ -787,13 +787,13 @@ function buildProceduralHead(skinColorCss){ // faceMetrics 인자 제거 — 내
   try{
     const hull = getHeadEllipsoid();
     const gapW = skull.a*(1-kIn), gapT = skull.b*(1-kIn);
-    console.log('[3D·두개골 여유] 그리는 구 ×' + kIn
+    console.log(...gyeolBoldArgs(['[3D·두개골 여유] 그리는 구 ×' + kIn
       + ' → 뿌리 면과의 틈 옆 ' + gapW.toFixed(4) + ' · 위 ' + gapT.toFixed(4) + ' 모델단위'
       + ' | 모발 두께 옆 ' + (hull.a-skull.a).toFixed(4) + ' · 위 ' + (hull.b-skull.b).toFixed(4)
       + '\n    틈이 0이면 <b>가닥이 구에 묻힙니다</b>(후두부 상단이 제일 먼저 — 거기가'
       + ' 가닥이 두피를 접선으로 제일 길게 타고 가는 자리라서).'
       + ' 틈이 모발 두께에 근접하면 반대로 구가 너무 안쪽이라 가닥 사이로 배경이 비칩니다.'
-      + ' HAIR_SCALP3D.drawInset=1 로 두면 예전 동작.');
+      + ' HAIR_SCALP3D.drawInset=1 로 두면 예전 동작.']));
   }catch(e){}
 
   // 버그 수정(2026-07-14, 계속) → 재추가(같은 날, 실측 목 메쉬로 교체):
@@ -1256,6 +1256,9 @@ async function buildRealFaceMesh(faceMetrics){
   /* 코끝(1)·턱(152)·이마(10)·미간(168)·왼뺨(234) 다섯 자리만 항별로 들여다본다.
      전 정점을 찍으면 로그가 못 읽을 만큼 길어지고, 이 다섯이면 앞뒤가 갈린다. */
   const _ZDBG = { 1:null, 152:null, 10:null, 168:null, 234:null };
+  /* (2026-09-12) 정점마다 <b>기준면 항만</b> 따로 남긴다 — [이마이음매]가 쓴다.
+     _ZDBG는 다섯 점뿐이라 윗줄 전체를 못 본다. 468칸 Float32 = 1.9KB. */
+  const _faceBaseZ = new Float32Array(vertCount).fill(NaN);
 
   /* ── 굴곡 배율을 <b>cm 자</b>로 맞춘다 (2026-08-31) ──────────────────────────
      Z_DEPTH_SCALE = 1.0은 "MediaPipe z를 그대로 쓴다"는 뜻인데, MediaPipe의 z는
@@ -1346,6 +1349,7 @@ async function buildRealFaceMesh(faceMetrics){
     const localZ = baseTerm + reliefTerm + profileCorrectionZ;
     /* [진단] 세 항을 따로 남긴다 — "코가 나온 건가 이마가 들어간 건가"를
        눈이 아니라 숫자로 가른다. 타원면z와의 차가 곧 함몰/돌출 깊이다. */
+    _faceBaseZ[i] = baseTerm;
     if(_ZDBG[i] !== undefined) _ZDBG[i] = { surf: surfaceZLocal, base: baseTerm,
       relief: reliefTerm, prof: profileCorrectionZ, z: localZ,
       measured: !!(fullProfileDepthMap && !Number.isNaN(fullProfileDepthMap[i])) };
@@ -1358,6 +1362,111 @@ async function buildRealFaceMesh(faceMetrics){
     uvs[i*2+0] = p.x;
     uvs[i*2+1] = 1 - p.y; // 이미지 y(아래로 증가) → UV v(위로 증가) 반전
   }
+  /* ══════════════════════════════════════════════════════════════════
+     [이마이음매] 얼굴 윗줄과 두개골 구 사이가 뜨는가 (2026-09-12)
+     ─────────────────────────────────────────────────────────────────
+     사용자: "두상이랑 안면부의 이마랑 이어지는 게 당연한 거거덩? 근데 어느쪽이
+     잘못되어잇는건지 간격이 떠."
+     같은 말을 8/17에도 하셨고("두피면 색깔은 픽셀에서 뽑아서 넣어. 근데 안면부하고
+     이어지지 않아"), 9/09에도 하셨다("이마 위도 색깔 그런대로 괜찮아. <b>그런데
+     틈은 아직 있고</b>"). 두 번 다 <b>색</b>만 고쳤다 — 위 SCALP_SKIN 배너가
+     "이음매(틈)가 <b>색으로는</b> 사라진다"고 스스로 적어 둔 그대로다.
+
+     이번엔 고치기 전에 <b>잰다</b>. 재는 것은 딱 하나 — 얼굴 메쉬 맨 윗줄
+     정점에서, 같은 (x,y)의 두 표면 z가 얼마나 벌어지는가:
+         얼굴면  = surfaceZLocal × FACE_Z_TO_SKULL   (여기서 쓴 기준면 그대로)
+         두개골면 = skull.c·kIn · √(1 − (x/(a·kIn))² − (y/(b·kIn))²)
+     ⚠ 굴곡(relief)·측면보정은 <b>일부러 뺀다</b>. 그건 기준면에서 벗어난 잔차라
+       이마에서도 0이 아니고, 섞으면 "면이 어긋난 것"과 "이마가 원래 들어간 것"을
+       못 가른다. 우리가 묻는 건 두 <b>기준면</b>이 같은 면인가다.
+
+     읽는 법 — 이게 이 로그의 전부다:
+       · 틈이 어디서나 <b>일정</b>하고 skull.c×(1−kIn)과 같다 → drawInset이 살아
+         있는 것(①). depthOffset이 안 먹은 것이니 그 스위치 한 줄이다.
+       · 틈이 자리마다 다르고 <b>이마 꼭대기(가운데 위)에서 제일 크다</b> → 두 타원이
+         서로 다른 자인 것(②). 얼굴은 ellAForFace(넓힌 폭)·ELL_B·ELL_C를 쓰고
+         두개골은 skull.a/b/c를 쓴다 — 깊이(c)만 FACE_Z_TO_SKULL로 맞췄고 폭·세로는
+         안 맞췄다. 곡률이 센 이마 꼭대기에서 그 차가 제일 크게 벌어진다.
+       · 틈이 <b>음수</b>면 얼굴이 두개골 <b>안으로</b> 들어간 것 — 그러면 화면에
+         보이는 띠는 틈이 아니라 두개골 면이 얼굴을 뚫고 나온 것이다.
+     고치지 않는다. 측정만 한다. */
+  try{
+    const _sk = getDisplaySkullEllipsoid();
+    const _kIn = SCALP_SKIN.depthOffset
+               ? 1
+               : ((HAIR_SCALP3D.applyToHead && HAIR_SCALP3D.drawInset > 0)
+                   ? HAIR_SCALP3D.drawInset : 1);
+    if(_sk && _sk.a > 1e-6 && _sk.b > 1e-6 && _sk.c > 1e-6){
+      const sa = _sk.a*_kIn, sb = _sk.b*_kIn, sc = _sk.c*_kIn;
+      /* 경계 안 정점 중 <b>위쪽</b>만 — 이마 띠가 생기는 자리다.
+         yLocal이 클수록 위(+Y). 위 15%를 윗줄로 본다. */
+      let yTopMost = -Infinity;
+      for(let i=0;i<vertCount;i++){
+        if(!inFaceBound(i)) continue;
+        const yl = positions[i*3+1] - 0.15;
+        if(yl > yTopMost) yTopMost = yl;
+      }
+      const band = yTopMost - Math.abs(yTopMost)*0.15;
+      const rows = [];
+      for(let i=0;i<vertCount;i++){
+        if(!inFaceBound(i)) continue;
+        const lx = positions[i*3+0], yl = positions[i*3+1] - 0.15;
+        if(yl < band) continue;
+        const faceBase = _faceBaseZ[i];
+        if(!isFinite(faceBase)) continue;
+        const inside = (lx/sa)*(lx/sa) + (yl/sb)*(yl/sb);
+        if(inside >= 1) continue;                  // 두개골 구 밖 — 비교 불가
+        const skullZ = sc * Math.sqrt(1 - inside);
+        rows.push({ i, lx, yl, gap: faceBase - skullZ, faceBase, skullZ });
+      }
+      if(rows.length >= 3){
+        rows.sort((a,b)=> a.gap - b.gap);
+        const med = rows[rows.length>>1].gap;
+        const lo = rows[0], hi = rows[rows.length-1];
+        /* 가운데(코 라인 근처, |x| 작은 쪽)와 가장자리(관자놀이)를 갈라 본다 —
+           ②라면 이 둘이 <b>다르게</b> 벌어진다. */
+        const mid = rows.filter(r => Math.abs(r.lx) < sa*0.25);
+        const out = rows.filter(r => Math.abs(r.lx) > sa*0.55);
+        const avg = arr => arr.length ? arr.reduce((s,r)=>s+r.gap,0)/arr.length : NaN;
+        const gMid = avg(mid), gOut = avg(out);
+        const insetGap = _sk.c*(1-_kIn);           // ①이라면 이 값과 같아야 한다
+        const cm = (typeof modelCmPerUnit === 'function' ? modelCmPerUnit() : null);
+        const asCm = v => (cm && isFinite(v)) ? ' (' + (v*cm).toFixed(2) + 'cm)' : '';
+        /* 판정 — 두 가설 중 어느 쪽에 더 가까운지까지 적는다. 다음 세션이
+           이 숫자를 다시 해석하느라 한 턴 쓰지 않게. */
+        const spread = Math.abs(gMid - gOut);
+        let verdict;
+        if(!(Math.abs(med) > 1e-4)){
+          verdict = '두 기준면이 <b>이미 같습니다</b> — 화면의 띠는 기하가 아니라 색·재질 쪽입니다(SCALP_SKIN)';
+        } else if(_kIn < 1 && Math.abs(med - insetGap) < Math.abs(med)*0.25){
+          verdict = '<b>① drawInset</b>입니다 — 틈이 skull.c×(1−kIn)=' + insetGap.toFixed(4)
+                  + '과 같습니다. SCALP_SKIN.depthOffset=true로 두면 닫힙니다';
+        } else if(spread > Math.abs(med)*0.30){
+          verdict = '<b>② 두 타원이 다른 자</b>입니다 — 가운데와 가장자리가 ' + spread.toFixed(4)
+                  + asCm(spread) + '만큼 <b>다르게</b> 벌어집니다. 깊이(c)만 FACE_Z_TO_SKULL로'
+                  + ' 맞췄고 폭(ellAForFace=' + ellAForFace.toFixed(3) + ' vs skull.a=' + _sk.a.toFixed(3)
+                  + ')·세로(ELL_B=' + ELL_B.toFixed(3) + ' vs skull.b=' + _sk.b.toFixed(3) + ')는 안 맞췄습니다';
+        } else {
+          verdict = '<b>일정한 틈</b>입니다(가운데·가장자리 차 ' + spread.toFixed(4) + ')'
+                  + ' — drawInset은 아닌데(kIn=' + _kIn + ') 기준면이 통째로 밀려 있습니다.'
+                  + ' FACE_Z_TO_SKULL=' + FACE_Z_TO_SKULL.toFixed(3) + '을 의심하세요';
+        }
+        console.log(...gyeolBoldArgs(['[이마이음매] 얼굴 윗줄 ' + rows.length + '점'
+          + ' · 틈 중앙값 <b>' + (med>=0?'+':'') + med.toFixed(4) + '</b>' + asCm(med)
+          + ' (최소 ' + lo.gap.toFixed(4) + ' · 최대 ' + hi.gap.toFixed(4) + ')'
+          + ' · + = 얼굴이 두개골보다 <b>앞</b>'
+          + '\n      가운데(|x|<' + (sa*0.25).toFixed(2) + ') ' + gMid.toFixed(4) + asCm(gMid)
+          + ' · 가장자리(|x|>' + (sa*0.55).toFixed(2) + ') ' + gOut.toFixed(4) + asCm(gOut)
+          + ' · 그리는 구 ×' + _kIn + ' → drawInset이 만들 틈 ' + insetGap.toFixed(4)
+          + '\n      → ' + verdict
+          + '\n      굴곡·측면보정은 뺀 <b>기준면끼리</b>의 차입니다. 고치지 않고 재기만 합니다.']));
+      } else {
+        console.warn('[이마이음매] 윗줄 표본 ' + rows.length + '점 — 3점 미만이라 못 잽니다'
+          + '(얼굴 윗줄이 두개골 구 밖으로 나갔을 수 있습니다)');
+      }
+    }
+  }catch(e){ console.warn('[이마이음매] 측정 실패:', e && e.message); }
+
   const filteredTriV = [];
   for(let t=0; t<FACE_MESH_TRI_V.length; t+=3){
     const a=FACE_MESH_TRI_V[t], b=FACE_MESH_TRI_V[t+1], c=FACE_MESH_TRI_V[t+2];
@@ -1420,13 +1529,13 @@ async function buildRealFaceMesh(faceMetrics){
         + (d.z < d.surf ? ' 함몰' : ' 돌출') + ')');
     }
     if(_rows.length){
-      console.log('[얼굴 z·항별] 기준면계수 FACE_Z_TO_SKULL=' + FACE_Z_TO_SKULL.toFixed(3)
+      console.log(...gyeolBoldArgs(['[얼굴 z·항별] 기준면계수 FACE_Z_TO_SKULL=' + FACE_Z_TO_SKULL.toFixed(3)
         + ' · 기준 맞춤 ' + (FACE_Z_FIX.matchBaseline ? '<b>ON</b>' : 'OFF(예전)') + '\n' + _rows.join('\n')
         + '\n  읽는 법 — [측면실측] 정점은 최종 z가 <b>실측 z와 같아야</b> 합니다(차를 더하는 구조라서).'
         + ' 그런데 기준 맞춤이 OFF면 타원면z×(1−k)만큼 <b>일괄 함몰</b>합니다(k=' + FACE_Z_TO_SKULL.toFixed(3)
         + '이면 얼굴 한가운데서 약 ' + ((1-FACE_Z_TO_SKULL)*0.5*19.33).toFixed(1) + 'cm).'
         + '\n  ON인데도 함몰이 남으면 그건 <b>측면 각도</b> 문제입니다 — 이 손님은 yaw 34°/−31°라'
-        + ' 실루엣 가장자리가 코·이마가 아니라 뺨입니다(깊이를 재려면 80~90°가 필요).');
+        + ' 실루엣 가장자리가 코·이마가 아니라 뺨입니다(깊이를 재려면 80~90°가 필요).']));
     }
   }
 
