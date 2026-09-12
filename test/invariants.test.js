@@ -31,10 +31,6 @@ const ANCHOR = G('VIEWCAL_ANCHOR');
 const project3DPointToView = G('project3DPointToView');
 const composeRotationZYX  = G('composeRotationZYX');
 const correctedViewYawDeg = G('correctedViewYawDeg');
-/* (2026-09-09 5차) autoNudge 일습 — 검사 ③-0c·③-0d가 쓴다. */
-const autoNudgeLearn   = G('autoNudgeLearn');
-const autoNudgeTake    = G('autoNudgeTake');
-const autoNudgeReset   = G('autoNudgeReset');
 const viewDrawNudgePx  = G('viewDrawNudgePx');
 const calForDraw          = G('calForDraw');
 const getViewYawDeg       = G('getViewYawDeg');
@@ -142,9 +138,12 @@ test('②-b drawNudgePx는 dx만 움직이고 yaw는 그대로다', () => {
    (VIEWCAL_ANCHOR.sideYawFrom 배너). 그래서 "손대지 않음"이 기본이고,
    그 사실을 검사로 못 박는다 — 다음 세션이 이 손잡이를 다시 켜면 여기서 깨진다.
 ───────────────────────────────────────────────────────────────── */
-test('③-0 되쏘기 yaw는 기본적으로 리프트 yaw와 <b>같다</b>(전단 없음)', () => {
-  const before = ANCHOR.sideYawFrom;
-  ANCHOR.sideYawFrom = 'off';
+test('③-0 되쏘기 보정에는 손대지 않는 경로가 있고 그건 항등이다', () => {
+  const beforeFrom = ANCHOR.sideYawFrom, beforeGain = ANCHOR.sideGain;
+  /* 이 앱에 실제로 있는 모드는 'nose'와 'gain' 둘뿐이다. "손대지 않음"은
+     gain=1 이 맡는다 — 9/09~9/12에 잠깐 있던 'off'·'blend'는 없는 모드다.
+     (그 둘을 넣었던 5차는 되돌렸다. 아래 ⚠ 참고) */
+  ANCHOR.sideYawFrom = 'gain'; ANCHOR.sideGain = 1;
   for(const a of ['front','left','right','back']){
     const m = fakeModel();
     const drawn = calForDraw(m, a), raw = m.viewCal[a];
@@ -152,27 +151,20 @@ test('③-0 되쏘기 yaw는 기본적으로 리프트 yaw와 <b>같다</b>(전�
   }
   eq(correctedViewYawDeg(-41.2, 'right'), -41.2, '우측을 손대면 안 된다');
   eq(correctedViewYawDeg( 50.8, 'left'),   50.8, '좌측을 손대면 안 된다');
-  ok(ANCHOR.sideYawFrom !== undefined, 'sideYawFrom 손잡이가 사라졌다');
-  ANCHOR.sideYawFrom = before;
-  /* ⚠ (2026-09-09 4차) 여기는 원래 <b>기본값이 'off'인지</b>를 못 박고 있었다.
-     4차에 사용자가 "조금만 회전시켜봐"라고 해서 'blend'로 올렸으므로 그 못은
-     빠진다 — 다만 <b>빼는 게 아니라 옮긴다</b>. 이 검사가 지키려던 것은
-     "기본값이 off"라는 글자가 아니라 <b>손대지 않는 경로가 존재하고 항등</b>이라는
-     사실이고, 그건 위의 세 eq가 이미 재고 있다. 남는 위험은 하나 —
-     blend가 켜졌다는 걸 <b>아무도 모르는 것</b>이다. 그래서 값을 적어 둔다:
-     이 줄이 깨지면 누군가 각도를 또 만진 것이고, 그때는 녹화의 [되쏘기보정]
-     Δψ부터 다시 읽어야 한다. */
-  /* ⚠ (2026-09-09 5차) 4차에 이 자리를 'blend'로 옮겼다가 <b>도로 'off'</b>로 왔다.
-     4차가 틀린 이유는 하나로 요약된다: [뷰정렬] right 폭 ×1.042 —
-     그 배너 자신의 규칙("폭이 1.0에서 멀면 각도")에 따르면 각도는 이미 맞았고,
-     맞는 각도를 또 돌린 결과가 Δψ −6.3°의 전단(반대쪽 두피 +7px)이었다.
-     그게 화면에서 반대쪽 가닥이 얼굴을 가로지른 그 픽셀이다.
-     여기 못을 다시 'off'로 박는다. 다음에 이 줄이 깨지면 누군가 <b>폭을 안 보고</b>
-     각도를 만진 것이다 — 만지기 전에 [뷰정렬]의 폭 비율부터 읽어라. */
-  eq(before, 'off',
-    "기본값이 'off'가 아니다 — 각도를 만지기 전에 [뷰정렬] 폭 비율부터 읽어라");
-  eq(ANCHOR.sideYawBlend.left, 0, '좌측 blend가 0이 아니다');
-  eq(ANCHOR.sideYawBlend.right, 0, '우측 blend가 0이 아니다 — 5차에 전부 껐다');
+  ANCHOR.sideYawFrom = beforeFrom; ANCHOR.sideGain = beforeGain;
+
+  /* ⚠ (2026-09-12) 9/09에 여기 못을 'off'로 박았다가 <b>뽑는다.</b>
+     5차가 우측을 'off' + drawNudgePx 25px로 바꿔 놨는데, 사용자(미용사)가
+     직접 되돌렸다: "지금 파일이 결과물이 제일 괜찮아서 지금 구성으로 바꾼 거야."
+     화면을 보고 고르는 쪽이 맞다 — [뷰정렬]이 재는 크라운 띠 중심은 그림이
+     좋아 보이는지와 <b>같은 것이 아니다</b>. 숫자가 사람을 이기는 자리가 아니었다.
+     그래서 기본값을 못 박지 않는다. 대신 <b>지금 무엇인지</b>만 적어 둔다:
+       sideYawFrom='nose' · drawNudgePx 전 뷰 0 (2026-09-12 기준)
+     이 줄이 깨지면 누가 바꾼 것이니, 바꾼 사람이 화면으로 확인했는지만 보라. */
+  eq(ANCHOR.sideYawFrom, 'nose', "sideYawFrom이 'nose'가 아니다 — 누가 바꿨는지 확인하라");
+  for(const a of ['front','left','right','back']){
+    eq(ANCHOR.drawNudgePx[a], 0, a + ' drawNudgePx가 0이 아니다 — 화면으로 확인했는가');
+  }
 });
 
 /* ─────────────────────────────────────────────────────────────────
@@ -182,10 +174,16 @@ test('③-0 되쏘기 yaw는 기본적으로 리프트 yaw와 <b>같다</b>(전�
    ⚠ 여기서 지키는 것은 "굵게"가 아니라 <b>인자 짝</b>이다. %c를 끼워 넣으면서
      스타일 인자 수가 어긋나면 로그가 통째로 밀린다 — 그게 태그보다 나쁘다.
 ───────────────────────────────────────────────────────────────── */
-test('⑪ 콘솔 어댑터는 굵게 태그를 스타일로 바꾸고 인자 짝을 안 흐트러뜨린다', () => {
+test('⑪ 콘솔 굵은 글씨 — 태그를 스타일로 바꾸되 인자 짝을 안 흐트러뜨린다', () => {
   const con = G('console');
-  ok(con.__gyeolBold === true, '어댑터가 안 붙었다 — 01 파일 맨 위를 보라');
   const B = G('gyeolBoldArgs');
+  ok(typeof B === 'function', '변환 함수가 없다 — 01 파일 맨 위를 보라');
+
+  /* ⚠ console.log를 <b>감싸면 안 된다.</b> 감싸면 DevTools 소스 링크가 전부
+     래퍼 파일로 바뀐다(9/09에 그렇게 했다가 9/12에 되돌렸다 — 녹화에서
+     15-project-3d.js:484 가 01-face-landmarker.js:68 로 찍혔다).
+     호출부에서 펼치는 꼴이라야 링크가 산다. 여기서 래퍼가 없음을 못 박는다. */
+  ok(!con.__gyeolBold, 'console.log가 다시 감싸졌다 — 소스 링크가 죽는다');
 
   // 태그 없는 줄은 손대지 않는다
   eq(B(['안녕'])[0], '안녕', '태그 없는 줄을 건드렸다');
@@ -213,88 +211,9 @@ test('⑪ 콘솔 어댑터는 굵게 태그를 스타일로 바꾸고 인자 짝
   eq(B([obj])[0], obj, '객체 인자를 건드렸다');
 });
 
-/* ─────────────────────────────────────────────────────────────────
-   ③-0c (2026-09-09 5차) autoNudge — <b>폭이 맞을 때만</b> 민다.
-   이 검사가 지키는 것은 981줄 배너다("자동으로 밀면 진짜 원인이 이 숫자 뒤에
-   숨는다"). 자동화가 그 말을 어기지 않는 유일한 조건이 폭 게이트라,
-   게이트가 사라지면 자동화 자체를 되돌려야 한다. 그래서 여기서 못 박는다.
-───────────────────────────────────────────────────────────────── */
-test('③-0c autoNudge는 폭이 어긋나면 밀기를 거부한다', () => {
-  const A = ANCHOR.autoNudge;
-  ok(A && A.on === true, 'autoNudge 손잡이가 사라졌다');
-  autoNudgeReset();
 
-  // 폭이 맞으면(×1.02) 민다 — 잰 만큼 그대로.
-  ok(autoNudgeLearn('right', 17, 1.02, 8000) === true, '폭이 맞는데 안 밀었다');
-  eq(viewDrawNudgePx('right'), ANCHOR.drawNudgePx.right + 17, '민 양이 잰 양과 다르다');
-  ok(autoNudgeTake('right') === true, '다시 그려야 한다는 표시가 없다');
-  ok(autoNudgeTake('right') === false, '표시가 한 번 읽고도 안 내려갔다');
 
-  // 폭이 어긋나면(×0.868 — 이 녹화의 left 투영 실루엣) <b>안</b> 민다.
-  autoNudgeReset();
-  ok(autoNudgeLearn('left', -20, 0.868, 8000) === false,
-     '폭이 13% 어긋났는데 밀었다 — 평행이동이 자 문제를 덮는다');
-  eq(viewDrawNudgePx('left'), ANCHOR.drawNudgePx.left, '거부했는데 값이 움직였다');
 
-  // 표본이 적으면 안 민다.
-  autoNudgeReset();
-  ok(autoNudgeLearn('right', 17, 1.02, 30) === false, '표본 30점인데 밀었다');
-
-  // 이미 닫혀 있으면(데드밴드) 안 민다 — 프레임마다 떨리는 것 방지.
-  autoNudgeReset();
-  ok(autoNudgeLearn('right', 1, 1.00, 8000) === false, '1px에도 반응했다(떨림)');
-
-  // 상한을 못 넘는다.
-  autoNudgeReset();
-  autoNudgeLearn('right', 500, 1.00, 8000);
-  ok(Math.abs(viewDrawNudgePx('right') - ANCHOR.drawNudgePx.right) <= A.maxPx,
-     '상한 ±' + A.maxPx + 'px을 넘겼다');
-  autoNudgeReset();
-});
-
-/* ③-0d 자동을 끄면 <b>글자 그대로</b> 예전 값이다. 되돌릴 길이 항상 열려 있어야
-   한다 — 이 앱에서 새 손잡이가 위험해지는 건 늘 "끌 수가 없을 때"였다. */
-test('③-0d autoNudge.on=false면 상수만 남는다(항등)', () => {
-  autoNudgeReset();
-  autoNudgeLearn('right', 17, 1.02, 8000);
-  const before = ANCHOR.autoNudge.on;
-  ANCHOR.autoNudge.on = false;
-  eq(viewDrawNudgePx('right'), ANCHOR.drawNudgePx.right, '껐는데 자동값이 남아 있다');
-  ANCHOR.autoNudge.on = before;
-  autoNudgeReset();
-});
-
-/* ─────────────────────────────────────────────────────────────────
-   ③-0b (2026-09-09 4차) blend는 <b>t=0에서 off와 글자 그대로 같다</b>.
-   'blend'를 넣은 이유가 "전부냐 아무것도 아니냐"를 깨는 것이었으므로, 그 양 끝이
-   기존 두 모드와 정확히 일치해야 새 모드가 <b>사이</b>를 걷는다고 말할 수 있다.
-   t=1이 'nose'와 같은지까지 함께 잰다 — 한쪽만 맞으면 그건 보간이 아니다.
-───────────────────────────────────────────────────────────────── */
-test('③-0b blend는 t=0에서 off와, t=1에서 nose와 같다(양 끝 고정)', () => {
-  const beforeFrom = ANCHOR.sideYawFrom, beforeBlend = ANCHOR.sideYawBlend;
-
-  ANCHOR.sideYawFrom = 'blend';
-  ANCHOR.sideYawBlend = { left: 0, right: 0 };
-  eq(correctedViewYawDeg(-41.2, 'right'), -41.2, 't=0인데 우측이 움직였다');
-  eq(correctedViewYawDeg( 50.8, 'left'),   50.8, 't=0인데 좌측이 움직였다');
-
-  ANCHOR.sideYawFrom = 'nose';
-  const noseR = correctedViewYawDeg(-41.2, 'right');
-  ANCHOR.sideYawFrom = 'blend';
-  ANCHOR.sideYawBlend = { left: 1, right: 1 };
-  eq(correctedViewYawDeg(-41.2, 'right'), noseR, "t=1이 'nose'와 다르다 — 보간이 아니다");
-
-  /* 중간값은 실제로 <b>사이</b>에 있어야 한다. 이 녹화 값으로 −41.2° → −56.9°의
-     40%면 약 −47.5°다(랜드마크가 없는 하네스에서는 게이트에 걸려 −41.2° 그대로 —
-     그때는 이 검사가 스킵된다는 뜻이지 통과했다는 뜻이 아니다). */
-  ANCHOR.sideYawBlend = { left: 0, right: 0.4 };
-  const mid = correctedViewYawDeg(-41.2, 'right');
-  ok(mid <= -41.2 && mid >= noseR,
-     `중간값이 두 끝 사이에 없다(${mid} ∉ [${noseR}, -41.2])`);
-
-  ANCHOR.sideYawFrom = beforeFrom;
-  ANCHOR.sideYawBlend = beforeBlend;
-});
 
 test('③ sideGain은 측면만 건드린다 · 부호 유지 · 상한 준수', () => {
   /* A/B 경로 검사 — 기본값이 'off'이므로 이 검사만 명시적으로 'gain'을 켠다.
@@ -451,3 +370,31 @@ test('⑩ makeFaceProjector의 toImg*는 toMesh*의 정확한 역이다', () => 
 });
 
 module.exports = { T, app };
+
+/* ─────────────────────────────────────────────────────────────────
+   ⑫ (2026-09-12) 크라운은 맨 마지막에 그린다 — 그리고 <b>두 곳이 같이</b>.
+   사용자(미용사): "크라운이 프론트 안쪽으로 들어가 있는데, 맨 마지막으로 얹어줘."
+   ⚠ 이 앱에서 겹 순서를 정하는 자리는 <b>둘</b>이다:
+       ① projected.sort      — 가닥 단위
+       ② 배치(batch) keys.sort — 실제 stroke 순서
+     ②가 평균 깊이로 다시 줄을 세우므로 ①만 고치면 그 결과가 통째로 지워진다.
+     그래서 검사하는 것은 "크라운이 위냐"가 아니라 <b>두 정렬이 같은 키를
+     쓰느냐</b>다. 한쪽만 고치는 다음 수정을 여기서 막는다.
+   ⚠ LAYER_SORT는 08-cut-engine.js에 <b>이미 있었는데</b> 15-project-3d.js가
+     안 쓰고 있었다(tieByRootHeight도 마찬가지). 손잡이만 있고 배선이 없던
+     자리다 — 그것도 이 검사가 같이 잡는다.
+───────────────────────────────────────────────────────────────── */
+test('⑫ 크라운 맨 위 — 가닥 정렬과 배치 정렬이 같은 키를 쓴다', () => {
+  const LS = G('LAYER_SORT');
+  ok(Array.isArray(LS.topSections), 'LAYER_SORT.topSections가 없다');
+  ok(LS.topSections.indexOf('crown') >= 0,
+     '크라운이 topSections에서 빠졌다 — 미용사가 맨 위로 올려 달라고 한 자리다');
+
+  const src = fs.readFileSync(path.join(JS, '15-project-3d.js'), 'utf8');
+  ok(/sec:\s*st\.sec/.test(src), 'projected 항목에 sec이 안 실린다 — 정렬이 섹션을 모른다');
+  ok(/projected\.sort\([\s\S]{0,300}?_rank\(a\)\s*-\s*_rank\(b\)/.test(src),
+     '가닥 정렬이 topSections를 1차 키로 안 쓴다');
+  ok(/rank:\s*rankOf\(p\)/.test(src), '배치 항목에 rank가 안 담긴다');
+  ok(/batch\.values\(\)[\s\S]{0,200}?a\.rank\s*-\s*b\.rank/.test(src),
+     '배치 정렬이 rank를 1차 키로 안 쓴다 — 여기가 진짜 그리는 순서다');
+});
