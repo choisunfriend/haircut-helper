@@ -7,6 +7,9 @@
    의상 메쉬 (3단계 프로토타입)
    AI 추천 결과에 맞춘 의상 표시. 절차 생성 폴백 + OBJ/MTL 로더 경로.
    ════════════════════════════════════════════════════════════════ */
+/* 의상 배율 한 줄 로그 — 화면 두신이 FIGURE_HEADS와 다르면 여기서 갈린다.
+   끄기: OUTFIT_FIT_LOG.on = false */
+const OUTFIT_FIT_LOG = { on: true };
 function buildOutfitPlaceholderMesh(item, widthFactor){
   const group = new THREE.Group();
   group.name = 'outfitPlaceholder'; // 이름은 유지하지만 이제 상반신뿐 아니라 전신(골반·다리·발)까지 포함
@@ -124,7 +127,7 @@ function buildOutfitPlaceholderMesh(item, widthFactor){
 // 실측값을 넘겨받음 — 전부 같은 베이스 바디라 비슷하지만 에셋마다 다름.
 // ※ THREE.OBJLoader/Box3는 브라우저 전용 API라 Canvas류와 마찬가지로 이
 // 함수 자체는 Node 샌드박스에서 실행 검증 불가 — 문법 검사만 통과.
-function loadOutfitMeshFromOBJ(objUrl, mtlUrl, widthFactor, neckCutFrac){
+function loadOutfitMeshFromOBJ(objUrl, mtlUrl, widthFactor, neckCutFrac, bodyLenMesh){
   return new Promise((resolve, reject)=>{
     if(typeof THREE.OBJLoader !== 'function'){
       reject(new Error('OBJLoader 스크립트가 로드되지 않았습니다'));
@@ -145,9 +148,37 @@ function loadOutfitMeshFromOBJ(objUrl, mtlUrl, widthFactor, neckCutFrac){
           const neckCutYRaw = box.min.y + cutFrac * size.y;
           const bodyHeightRaw = neckCutYRaw - box.min.y; // 발~목까지만(머리 제외) 실측 높이
 
-          const TARGET_HEIGHT = 4.0; // 목 밑동~발끝까지 대략 이 정도(절차적 플레이스홀더 기준)
-          const scale = OUTFIT_MESH_SOURCE.scaleOverride || (TARGET_HEIGHT / (bodyHeightRaw || 1)) * widthFactor;
-          obj.scale.setScalar(scale);
+          /* ── 두신은 <b>부르는 쪽</b>이 정한다 (2026-09-09) ────────────────────
+             여기 있던 TARGET_HEIGHT = 4.0은 절차적 플레이스홀더의 대략 높이에서
+             온 <b>고정값</b>이었다. 그래서 FIGURE_HEADS를 6.5로 바꿔도 3D 화면은
+             안 따라오고 4.9두신에 머물렀다 — personBodyLenMesh 배너가 "이 상수
+             하나가 두 화면의 단일 출처"라고 적어 둔 그 문장이 <b>이 줄 때문에</b>
+             거짓이었다. 결과 화면만 멀쩡해 보였던 것은 거기엔 뒤에 group.scale
+             재보정(bodyNeed / m.heightRaw)이 한 번 더 있어서다.
+             ⚠ 못 받으면(예전 호출부) 4.0으로 떨어진다 — 조용히 틀리지 않게 경고한다.
+             ⚠ widthFactor는 이름 그대로 <b>폭</b>이다. 예전엔 setScalar에 곱해 세로도
+               같이 늘렸고, 그만큼 두신이 상수에서 벗어났다. 이제 x·z에만 건다 —
+               그래야 화면 두신이 정확히 FIGURE_HEADS가 된다.
+               되돌리기: OUTFIT_MESH_SOURCE.widthUniform = true (예전처럼 균일 배율) */
+          let targetH = (typeof bodyLenMesh === 'number' && isFinite(bodyLenMesh) && bodyLenMesh > 0.5)
+            ? bodyLenMesh : null;
+          if(targetH == null){
+            targetH = 4.0;
+            console.warn('[3D·비율] 두신 목표를 못 받아 고정값 4.0으로 떨어집니다'
+              + ' — 호출부가 personBodyLenMesh()를 3번째 인자로 넘기는지 보십시오(4.9두신이 이 자리입니다).');
+          }
+          const uniform = !!OUTFIT_MESH_SOURCE.widthUniform;
+          const base  = OUTFIT_MESH_SOURCE.scaleOverride || (targetH / (bodyHeightRaw || 1));
+          const wf    = (typeof widthFactor === 'number' && isFinite(widthFactor) && widthFactor > 0) ? widthFactor : 1;
+          const scale = uniform ? base * wf : base;        // 세로 배율 — 아래 목 밑동 정렬도 이 값을 쓴다
+          obj.scale.set(scale * (uniform ? 1 : wf), scale, scale * (uniform ? 1 : wf));
+          if(OUTFIT_FIT_LOG.on){
+            console.log('[3D·비율·의상] 몸 길이 목표 ' + targetH.toFixed(2) + '단위'
+              + (bodyLenMesh != null ? ' (personBodyLenMesh)' : ' (<b>폴백 고정값</b>)')
+              + ' · 에셋 발~목 ' + bodyHeightRaw.toFixed(3) + ' → 세로 배율 ' + scale.toFixed(4)
+              + ' · 폭 ×' + wf.toFixed(3) + (uniform ? '(세로에도 곱함 — 예전 동작)' : '(가로·깊이만)')
+              + (OUTFIT_MESH_SOURCE.scaleOverride ? ' ⚠ scaleOverride가 걸려 있어 목표를 무시합니다' : ''));
+          }
 
           // 스케일 적용 후 좌표 기준으로 재계산해서 위치 정렬(중심을 x/z=0으로,
           // 목 밑동 지점이 neckAttachPoint 하단 y=-1.15에 오도록)
@@ -203,10 +234,10 @@ function loadOutfitMeshFromOBJ(objUrl, mtlUrl, widthFactor, neckCutFrac){
 // 이제 실제 에셋 정보는 OUTFIT_CATALOG[i].asset(id별로 다른 obj/mtl/neckCutFrac)에
 // 있음 — item에 asset이 있으면 그걸로 로드, 없으면(아직 실제 에셋 없는 카탈로그
 // 항목) 절차적 플레이스홀더로 폴백. 로드 실패(파일 404 등)해도 동일하게 폴백.
-async function loadOutfitMesh(item, widthFactor){
+async function loadOutfitMesh(item, widthFactor, bodyLenMesh){
   if(item.asset && item.asset.objUrl){
     try{
-      return await loadOutfitMeshFromOBJ(item.asset.objUrl, item.asset.mtlUrl, widthFactor, item.asset.neckCutFrac);
+      return await loadOutfitMeshFromOBJ(item.asset.objUrl, item.asset.mtlUrl, widthFactor, item.asset.neckCutFrac, bodyLenMesh);
     }catch(e){
       console.warn('OBJ 의상 에셋 로드 실패, 절차적 플레이스홀더로 폴백:', e);
     }
@@ -220,8 +251,11 @@ async function loadOutfitMesh(item, widthFactor){
    플레이스홀더 폴백이든 <b>여기 한 곳</b>을 지나간다.
    ⚠ 두 호출부 모두 <b>두신 배율을 걸기 전</b>에 이 함수를 지난다(결과 화면은 바로
      위에서 snap.group.scale을 1로 되돌린다). 목 메쉬도 그 배율 밖이라 좌표계가 같다. */
-async function loadOutfitMeshMeasured(item, widthFactor){
-  const mesh = await loadOutfitMesh(item, widthFactor);
+async function loadOutfitMeshMeasured(item, widthFactor, bodyLenMesh){
+  /* ⚠ 3번째 인자는 <b>두신 목표</b>(personBodyLenMesh)다. 두 호출부 모두 넘긴다 —
+     결과 화면은 사진 헤어박스 자, 3D 화면은 씬에서 잰 정수리 자. 여기서 떨어뜨리면
+     로더가 고정값 4.0으로 내려가 3D 화면만 4.9두신이 된다. */
+  const mesh = await loadOutfitMesh(item, widthFactor, bodyLenMesh);
   try{
     const g = measureGarmentNeckOpening(mesh);
     if(g){

@@ -786,7 +786,9 @@ const OUTFIT_CATALOG = [
 // 전역 수동 보정 전용(에셋별 세팅은 이제 OUTFIT_CATALOG[i].asset에 있음).
 // 자동 정렬(bounding box 기준)이 특정 에셋에서 어색할 때만 값 채워서 씀 —
 // scaleOverride: null이면 자동계산, offsetY: 자동 정렬 위치에 추가로 더할 y값.
-const OUTFIT_MESH_SOURCE = { scaleOverride: null, offsetY: 0 };
+/* widthUniform — widthFactor를 <b>세로에도</b> 곱하던 예전 동작(균일 배율).
+   true로 두면 화면 두신이 FIGURE_HEADS에서 widthFactor 배만큼 벗어난다. */
+const OUTFIT_MESH_SOURCE = { scaleOverride: null, offsetY: 0, widthUniform: false };
 
 
 /* (2026-08-29) aiAnalysis(스타일 추천 AI의 응답) → stylePrepDone.
