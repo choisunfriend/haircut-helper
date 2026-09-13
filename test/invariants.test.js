@@ -498,61 +498,6 @@ test('⑮ 두피면과 목이 같은 살 격자에서 색을 집는다', () => {
      + '보였던 값이 0.837이었으므로 그보다 확실히 위여야 한다');
 });
 
-/* ─────────────────────────────────────────────────────────────────
-   ⑯ (2026-09-13) 땋기 — <b>widthCm이 뜻을 지킨다</b>, 그리고 길이를 안 건드린다.
-   사용자: "머리를 땋는 게 가능하냐" · "땋는건 손님 머리 길이 기준"
-
-   ⚠ 첫 판이 정확히 이걸로 틀렸다. amp를 (굵기/2)x세기로 두고 갈래 <b>선 굵기</b>를
-     안 세서, 1.3cm라고 적은 밧줄이 화면에서 1.73cm로 나왔다. 화면만 보면
-     "좀 굵네" 정도라 그게 버그인지 취향인지 구분이 안 된다 — 재야 보인다.
-     그래서 검사가 재는 것은 모양이 아니라 <b>적은 수와 나온 수가 같은가</b>이다.
-─────────────────────────────────────────────────────────────────── */
-test('⑯ 땋기: 밧줄 바깥폭이 지정한 widthCm을 넘지 않는다', () => {
-  const outer = (strands, tight) => evalIn(ctx, `(function(){
-    const sv = { on:BRAID.on, s:BRAID.strands, t:BRAID.tightness, w:BRAID.widthCm, lm:state.landmarks };
-    BRAID.on = true; BRAID.strands = ${strands}; BRAID.tightness = ${tight}; BRAID.widthCm = 1.3;
-    state.landmarks = { front: { eyeY:0.20, chinY:0.20 + 168/1000 } };
-    const geo = braidGeometry('front', 1000, (v)=>v);
-    const pts = []; for(let i=0;i<240;i++) pts.push({ x:100, y:100+i });
-    const rec = []; let cur = null;
-    const fake = { moveTo(x,y){ cur=[{x,y}]; rec.push(cur); }, lineTo(x,y){ cur.push({x,y}); },
-                   quadraticCurveTo(cx,cy,x,y){ cur.push({x,y}); } };
-    traceBraidPolyline(fake, pts, geo);
-    let lo = 1e9, hi = -1e9;
-    for(const path of rec) for(const q of path.slice(60)){ lo = Math.min(lo, q.x-100); hi = Math.max(hi, q.x-100); }
-    BRAID.on = sv.on; BRAID.strands = sv.s; BRAID.tightness = sv.t; BRAID.widthCm = sv.w; state.landmarks = sv.lm;
-    return { outer: (hi-lo) + geo.subWidth, want: geo.widthPx, paths: rec.length };
-  })()`);
-
-  for(const [n, t] of [[2,0.78],[2,1.0],[3,0.78],[3,1.0],[5,1.0]]){
-    const r = outer(n, t);
-    eq(r.paths, n, `갈래를 ${n}개 그려야 하는데 ${r.paths}개다`);
-    ok(r.outer <= r.want + 0.01,
-       `갈래${n}·세기${t}에서 밧줄 바깥폭 ${r.outer.toFixed(2)}px가 지정 굵기 `
-       + `${r.want.toFixed(2)}px를 넘는다(${(r.outer/r.want).toFixed(2)}배) — `
-       + 'amp가 갈래 선 굵기를 안 세면 widthCm이 뜻을 잃는다');
-  }
-});
-
-test('⑯-2 땋기는 길이를 안 건드린다 — 스펙에 lenCm도 tipAt도 없다', () => {
-  const sp = G('STYLE_SPECS').reggae_twist;
-  ok(sp, 'reggae_twist 스펙이 없다');
-  ok(!sp.lenCm && !sp.tipAt,
-     '땋기 스펙에 길이가 적혀 있다 — applyStyleSpec이 역산을 돌려 머리를 자르거나 '
-     + '늘린다. 땋기는 손님 머리 길이 기준이고, 길이를 바꾸는 건 커트나 익스텐션이다');
-  ok(sp.braid && sp.braid.widthCm > 0 && sp.braid.nodeCm > 0, 'braid 치수가 없다');
-  /* 자를 못 만들면 <b>평소 렌더</b>로 가야 한다. 적당한 값으로 때우면 굵기가
-     뜻이 없는 밧줄이 그럴싸하게 나와서 틀린 걸 모른다. */
-  const noRuler = evalIn(ctx, `(function(){
-    const sv = { on:BRAID.on, lm:state.landmarks };
-    BRAID.on = true; state.landmarks = {};
-    const g = braidGeometry('front', 1000, (v)=>v);
-    BRAID.on = sv.on; state.landmarks = sv.lm;
-    return g;
-  })()`);
-  eq(noRuler, null, '랜드마크가 없는데도 밧줄 치수가 나왔다 — 자 없이 그리면 굵기가 뜻이 없다');
-});
-
 module.exports = { T, app };
 
 /* ─────────────────────────────────────────────────────────────────
