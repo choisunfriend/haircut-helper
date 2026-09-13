@@ -192,7 +192,7 @@
           <button class="btn btn-ghost" style="font-size:12px;padding:10px;" onclick="resetSections()">초기화</button>
           <!-- (10차) 3D 조정 엔진 토글 — ON이면 3D 정규 모델을 현재 뷰로 투영해 표시
                (3D=원본, 2D=투영). 1단계는 표시 경로만; 조정 연산자 이관은 다음 단계. -->
-          <button class="btn btn-ghost" style="font-size:12px;padding:10px;" id="btn3dEngine" onclick="toggle3DAdjust()">3D 미리보기: OFF</button>
+          <button class="btn btn-ghost" style="font-size:12px;padding:10px;" id="btn3dEngine" onclick="toggle3DAdjust()">3D 미리보기: ON</button>
           <button class="btn btn-primary" style="font-size:12px;padding:10px;" onclick="registerCurrentAsStyle()">★ 현재 모델을 스타일로 등록하기</button>
           <div style="height:4px;"></div>
         </div>
@@ -359,5 +359,10 @@ function loadVisionModule(){
 <!-- 19: 무대 배경 색 선택(2026-09-04 2차). 09의 OKLCH 헬퍼와 02의
      OUTFIT_CATALOG를 읽고, 18의 setupModel3DScreen이 호출한다 — 그래서 맨 뒤다. -->
 <script src="js/19-stage-backdrop.js"></script>
+<!-- 20: 의상 매칭(2026-09-13). 파일은 저장소에 있었지만 이 줄이 없어서 <b>한 번도
+     로드된 적이 없었다</b> — recommendOutfitWithAI가 그대로 밖을 부르고 401을
+     받아 늘 OUTFIT_CATALOG[0](차콜 슈트)로 떨어지던 이유다. 09의 OKLCH 헬퍼와
+     02의 OUTFIT_CATALOG를 읽고 12b가 부르므로 19 다음이다. -->
+<script src="js/20-outfit-match.js"></script>
 </body>
 </html>
