@@ -369,6 +369,84 @@ test('⑩ makeFaceProjector의 toImg*는 toMesh*의 정확한 역이다', () => 
   }
 });
 
+/* ─────────────────────────────────────────────────────────────────
+   ⑬⑭ (2026-09-13) 의상은 <b>로컬에서</b> 고르고, <b>헤어를 따라 바뀐다</b>.
+   사용자: "밖에 연결하지 말고 머리색이나 헤어스타일 등을 좀 참고해서,
+   옷을 교체하는 메커니즘을 구현해줘."
+
+   ⚠ 이 두 검사가 막으려는 것은 <b>이미 한 번 일어난 일</b>이다. 20-outfit-match.js는
+     저장소에 있었지만 index.html에 <script> 줄이 없어 <b>한 번도 로드된 적이
+     없었고</b>, recommendOutfitWithAI가 그대로 밖을 불러 401 → catch →
+     OUTFIT_CATALOG[0]으로 떨어졌다. 증상은 "늘 차콜 슈트"였는데, 화면만 보면
+     그게 고장인지 취향인지 알 수가 없다. 조용한 실패라 사람 눈으로는 안 잡힌다.
+   ⑬은 배선(밖을 안 부른다)을, ⑭는 효과(옷이 실제로 갈린다)를 본다. 둘 다
+   필요하다 — 배선만 보면 축이 전부 빠져 늘 같은 옷이 나와도 통과하고,
+   효과만 보면 fetch가 다시 들어와도 통과한다.
+───────────────────────────────────────────────────────────────── */
+test('⑬ 이 앱은 밖을 부르지 않는다 — js/ 어디에도 네트워크 호출이 없다', () => {
+  const hits = [];
+  for(const f of loadOrder()){
+    const p = path.join(JS, f);
+    if(!fs.existsSync(p)) continue;
+    const src = fs.readFileSync(p, 'utf8');
+    for(const re of [/\bfetch\s*\(/, /XMLHttpRequest/, /navigator\.sendBeacon/]){
+      if(re.test(src)) hits.push(f + ' → ' + re.source);
+    }
+  }
+  eq(hits.length, 0, '네트워크 호출이 돌아왔다: ' + hits.join(' · ')
+    + ' — 지우기 전에 이 검사부터 고쳐야 한다(11-result-screen.js의 callClaudeJSON 삭제 배너 참고)');
+
+  ok(loadOrder().indexOf('20-outfit-match.js') >= 0,
+     'index.html이 20-outfit-match.js를 안 싣는다 — 파일만 있고 배선이 없던 그 상태로 돌아갔다');
+  ok(typeof G('recommendOutfitLocal') === 'function', 'recommendOutfitLocal이 없다');
+});
+
+test('⑭ 헤어가 바뀌면 의상도 바뀐다 — 카탈로그 네 벌이 전부 쓰인다', () => {
+  const CAT = G('OUTFIT_CATALOG');
+  for(const o of CAT){
+    for(const ax of ['neckline','shoulder','busy']){
+      ok(typeof o[ax] === 'number' && isFinite(o[ax]),
+         `${o.name}에 ${ax} 축이 없다 — 축이 빠지면 20이 중립 0.5로 세어 네 벌의 `
+         + '실루엣 점수가 같아지고, 머리를 어떻게 바꿔도 늘 같은 옷이 나온다');
+    }
+  }
+
+  evalIn(ctx, 'OUTFIT_MATCH.log = false;');
+  const seen = new Set();
+  for(const tipAt of [1.00, 1.20, 1.40, 1.60, 1.90])
+    for(const elevation of [0, 25, 45, 70, 90])
+      for(const curl of [0, 30, 60, 100]){
+        evalIn(ctx, `(function(){
+          state._adjStamp = { '3D화면': { tipAt: ${tipAt} } };
+          state.sections.crown.elevation = ${elevation};
+          state.sections.crown.curl = ${curl};
+          for(const id of SECTION_ORDER) state.sections[id].color = null;
+        })()`);
+        seen.add(evalIn(ctx, 'recommendOutfitLocal().item.id'));
+      }
+  eq(seen.size, CAT.length,
+     `헤어 100조합에서 나온 의상이 ${seen.size}종뿐이다(카탈로그 ${CAT.length}벌) — `
+     + '나온 것: ' + [...seen].join(', ')
+     + ' · 축값이나 OUTFIT_MATCH.w가 한쪽으로 쏠렸는지 보십시오');
+
+  /* 염색이 <b>실제로 판단에 들어가는지</b>. 색 가중치가 낮으면 실루엣이
+     이미 크게 이긴 설정에서는 안 바뀌는 게 정상이라, "어떤 설정에서든 늘
+     바뀐다"가 아니라 "바뀌는 설정이 있다"를 본다(w.color 배너의 9/18). */
+  const flip = new Set();
+  for(const dye of [null, '#E8C15A', '#2E5C9A', '#8B1A1A']){
+    evalIn(ctx, `(function(){
+      state._adjStamp = { '3D화면': { tipAt: 1.10 } };
+      state.sections.crown.elevation = 10;
+      state.sections.crown.curl = 60;
+      for(const id of SECTION_ORDER) state.sections[id].color = ${dye ? `'${dye}'` : 'null'};
+    })()`);
+    flip.add(evalIn(ctx, 'recommendOutfitLocal().item.id'));
+  }
+  ok(flip.size > 1,
+     '염색을 네 색으로 바꿔도 의상이 하나로 고정이다 — outfitColorFit이 염색을 '
+     + '안 보거나(dominantDyeCss) OUTFIT_MATCH.w.color가 너무 낮다');
+});
+
 module.exports = { T, app };
 
 /* ─────────────────────────────────────────────────────────────────
