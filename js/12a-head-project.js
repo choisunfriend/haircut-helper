@@ -266,6 +266,22 @@ const NECK_SHAPE = {
   unlit:    true,  // 얼굴과 같은 기준 — 아래 주석 참고
   shadeRear: 0.78, // 무조명이라 형태가 안 보이므로 정점색으로 뒤쪽을 어둡게
   shadeTop:  0.90, // 턱 밑은 원래 그림자다 — 위쪽을 살짝 어둡게 해 이음매를 눌러 준다
+  /* ── (2026-09-13) 목 색의 <b>출처</b>를 두피면과 합친다 ────────────────────
+     fromField=true면 목 정점도 makeModelSkinSampler로 제 자리의 살을 집는다
+     (두피면이 9/9부터 쓰던 그 격자). 평균색 한 개를 쓰던 예전 방식이 곧
+     "뒷머리 부분이 다른 색"의 원인이었다 — buildRealNeckMesh 안 배너 참고.
+
+     ⚠ 곱(shade)을 <b>왜 0으로 안 만드나</b>: 무조명이라 이걸 빼면 목이 원통
+       스티커가 된다. 형태감은 남기되 눈에 띄지 않을 만큼만 남긴다.
+       숫자 근거 — 화면에서 잰 쐐기가 얼굴 대비 0.837이었고 그게 "다른 색"으로
+       보였다. 아래 0.93은 뒤쪽 최악에서 얼굴 대비 0.93×0.96 ≈ <b>0.89</b>가
+       되도록 잡은 값이다(0.84 → 0.89, 차이를 3분의 1로). 더 올리면 목이
+       평평해지고 더 내리면 다시 띠가 보인다.
+     ⚠ 격자를 못 만들면(사진 실측 실패) sampleSkin이 null이라 예전 평균색 +
+       예전 곱(0.78/0.90)으로 그대로 돌아간다 — 폴백 경로는 안 건드렸다. */
+  fromField: true,
+  shadeRearField: 0.93, // 격자를 쓸 때의 뒤쪽 곱 — 색이 이미 제자리라 살짝만
+  shadeTopField:  0.96, // 〃 위쪽(턱 밑) 곱
   /* ── 해부학적 난간 (2026-08-31 12차) ────────────────────────────────────
      11차는 옷깃 실측 하나만 믿었다. 그런데 그 실측이 <b>구멍이 아니라 테두리</b>를
      쟀다(아래 measureGarmentNeckOpening 주석). 그 결과 실기기에서 목이 얼굴보다
@@ -394,6 +410,34 @@ function buildRealNeckMesh(skinColor){
   const positions = [];
   const colors = [];
   const cBase = skinColor.clone();
+  /* ── 목도 <b>제 자리의 살</b>에서 색을 떼온다 (2026-09-13 사용자 지시) ─────
+     사용자: "뒷머리 부분이 좀 다른 색이 나왔어. 이마쪽 색이랑 같은 색으로 하든지,
+     근처 얼굴색으로 하는 방법으로 해봤으면 좋겠네."
+
+     ── 화면에서 잰 것 ───────────────────────────────────────────────────
+     녹화 프레임의 픽셀을 재 보니 색조는 세 면이 <b>이미 같았다</b>:
+         얼굴 사진   H 25.0° S 31.4%  V 0.884
+         두피면      H 24.9° S 30.4%  V 0.891   ← 얼굴 대비 1.01, 거의 완벽
+         어두운 쐐기 H 25.7° S 29.6%  V 0.740   ← 얼굴 대비 <b>0.837</b>
+     색조·채도가 같고 <b>밝기만</b> 0.84배다. 색을 잘못 뽑은 게 아니라 곱해서
+     어둡게 한 것이고, 0.837은 아래 shadeRear(0.78)~1.0 구간 안이다 = 목이다.
+     두피면(paintScalpFromPhoto)은 이미 제 자리 살을 떼오므로 문제가 없었다.
+
+     ── 그런데 원인은 두 겹이다 ───────────────────────────────────────────
+     ① 곱하기(shade)      — 이번에 완화한다(아래).
+     ② <b>색의 출처가 다르다</b> — 이쪽이 더 근본이다. 두피면은 정점마다 제
+        자리의 살을 집는데 목은 <b>평균색 한 개</b>(skinColor)를 받아 썼다.
+        평균은 정의상 어느 자리와도 안 맞는 색이다 — 9/9에 두피면이 똑같은
+        이유로 "판때기"가 됐고 그때 격자를 도입해 고쳤는데, 목은 그 개편에서
+        빠진 채 옛 방식으로 남아 있었다. 이 저장소가 반복하는 그 모양이다:
+        <b>한 값을 두 곳이 각자 정하다가 한쪽만 고쳐짐</b>.
+     그래서 곱만 손대지 않고 출처를 합친다 — 목 정점도 makeModelSkinSampler로
+     제 자리 살을 집는다. 목은 턱 아래라 격자 <b>아래쪽 밖</b>으로 나가므로
+     at()이 안으로 물려 <b>턱·목 언저리 살</b>을 집는다(사용자가 말한 "근처 얼굴색").
+     되돌리기: NECK_SHAPE.fromField = false (평균색 한 개로 복귀) */
+  const sampleSkin = NECK_SHAPE.fromField ? makeModelSkinSampler() : null;
+  const shRear = sampleSkin ? NECK_SHAPE.shadeRearField : NECK_SHAPE.shadeRear;
+  const shTop  = sampleSkin ? NECK_SHAPE.shadeTopField  : NECK_SHAPE.shadeTop;
   for(let ri=0; ri<=RING_STEPS; ri++){
     const t = ri/RING_STEPS;                 // 0 = 위(턱), 1 = 아래(옷깃)
     const y = neckTopY + t*(neckBotY-neckTopY);
@@ -418,9 +462,10 @@ function buildRealNeckMesh(skinColor){
          앞(ct=1)이 제일 밝고 뒤가 어둡다. 위(턱 밑)는 원래 그림자 지는 자리라
          살짝 눌러서 사진 턱과의 이음매를 덮는다. */
       const face = (ct + 1) / 2;                                   // 0=뒤, 1=앞
-      const k = (NECK_SHAPE.shadeRear + (1-NECK_SHAPE.shadeRear)*face)
-              * (NECK_SHAPE.shadeTop + (1-NECK_SHAPE.shadeTop)*t);
-      colors.push(cBase.r*k, cBase.g*k, cBase.b*k);
+      const k = (shRear + (1-shRear)*face) * (shTop + (1-shTop)*t);
+      /* 격자를 쓰면 <b>이 정점 자리</b>의 살이 기준이고, 아니면 예전처럼 평균색. */
+      const c = sampleSkin ? sampleSkin(x, y) : [cBase.r, cBase.g, cBase.b];
+      colors.push(c[0]*k, c[1]*k, c[2]*k);
     }
   }
   const indices = buildRingGridIndices(RING_STEPS, THETA_STEPS); // buildHeadMesh와 동일한 인덱스 패턴(권취 방향도 동일) — 공용 함수로 정리
@@ -432,7 +477,10 @@ function buildRealNeckMesh(skinColor){
   const bottomCenterIdx = positions.length/3;
   positions.push(0, neckBotY, 0);
   // 정점색 배열은 position과 <b>길이가 같아야</b> 한다 — 캡 중심도 한 벌 넣는다.
-  colors.push(cBase.r*NECK_SHAPE.shadeRear, cBase.g*NECK_SHAPE.shadeRear, cBase.b*NECK_SHAPE.shadeRear);
+  {
+    const c = sampleSkin ? sampleSkin(0, neckBotY) : [cBase.r, cBase.g, cBase.b];
+    colors.push(c[0]*shRear, c[1]*shRear, c[2]*shRear);
+  }
   const bottomRingStart = RING_STEPS*(THETA_STEPS+1);
   for(let ti=0; ti<THETA_STEPS; ti++){
     indices.push(bottomRingStart+ti, bottomCenterIdx, bottomRingStart+ti+1);
@@ -687,13 +735,31 @@ function sampleScalpSkinColor(){
 
    ⚠ 뒤통수(z<0) 정점은 정사영이라 앞면과 같은 (x,y)로 떨어진다. 그대로 둔다 —
      거기는 어차피 머리카락에 덮이고, 억지로 다른 색을 지어내면 그게 다음 버그다. */
+/* ── 모델 좌표 → 그 자리의 살 색 (2026-09-13) ──────────────────────────────
+   paintScalpFromPhoto 안에만 있던 세 줄(격자 + 투영기 + at())을 꺼냈다.
+   <b>목이 같은 것을 써야 하기 때문</b>이다 — 지금까지 목은 평균색 한 개를
+   받아 쓰고 있었고, 그래서 두피면과 색이 갈렸다(아래 NECK_SHAPE.fromField 배너).
+   돌려주는 것은 (mx,my) → [r,g,b] 0~1 함수, 못 만들면 null. */
+function makeModelSkinSampler(){
+  const field = buildSkinColorField();
+  if(!field) return null;
+  const fm = getFaceMetrics();
+  const pr = fm && fm.projector;
+  if(!pr || typeof pr.toImgX !== 'function') return null;
+  return function(mx, my){
+    const c = field.at(pr.toImgX(mx), pr.toImgY(my));
+    return [
+      Math.min(1, Math.max(0, c[0]/255)),
+      Math.min(1, Math.max(0, c[1]/255)),
+      Math.min(1, Math.max(0, c[2]/255)),
+    ];
+  };
+}
+
 function paintScalpFromPhoto(geo, skull, kIn, mat){
   try{
-    const field = buildSkinColorField();
-    if(!field) return false;                       // 폴백: 재질의 단색이 그대로 쓰인다
-    const fm = getFaceMetrics();
-    const pr = fm && fm.projector;
-    if(!pr || typeof pr.toImgX !== 'function') return false;
+    const sample = makeModelSkinSampler();
+    if(!sample) return false;                      // 폴백: 재질의 단색이 그대로 쓰인다
 
     const pos = geo.attributes && geo.attributes.position;
     if(!pos) return false;
@@ -701,10 +767,8 @@ function paintScalpFromPhoto(geo, skull, kIn, mat){
     for(let i=0;i<pos.count;i++){
       const mx = pos.getX(i) * skull.a * kIn;
       const my = pos.getY(i) * skull.b * kIn + 0.15;   // headMesh.position.y
-      const c = field.at(pr.toImgX(mx), pr.toImgY(my));
-      col[i*3]   = Math.min(1, Math.max(0, c[0]/255));
-      col[i*3+1] = Math.min(1, Math.max(0, c[1]/255));
-      col[i*3+2] = Math.min(1, Math.max(0, c[2]/255));
+      const c = sample(mx, my);
+      col[i*3] = c[0]; col[i*3+1] = c[1]; col[i*3+2] = c[2];
     }
     geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
     /* 정점색은 재질색과 <b>곱해진다</b> — 재질색을 흰색으로 두지 않으면 두 번 어두워진다. */

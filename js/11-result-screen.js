@@ -246,9 +246,15 @@ function ensureBodySnapRenderer(){
        지는 자리라 페더로 눌린다(TURN_FEATHER).
      · 그리는 순서가 뒤집힌다 — 예전엔 [머리 → 의상]이라 의상이 사진 목을
        덮었다. 이제는 [의상+목 → 머리]라 사진 턱이 3D 목 윗단을 덮는다.
-   ⚠ 3D 목의 피부색은 사진에서 잰 두피색(scalpColor)을 쓴다 — buildProceduralHead와
-     <b>같은 출처</b>다. 그래도 조명이 얹히므로 턱선에 색 띠가 보일 수 있다.
-     보이면 만질 곳은 NECK_TINT(밝기)와 TURN_FEATHER(번짐)다.
+   ⚠ 3D 목의 피부색: 이 줄은 <b>2026-09-13까지 틀린 말이었다</b>. "buildProceduralHead와
+     같은 출처"라고 적혀 있었지만 실제로는 두피면이 9/9에 정점별 살 격자로 옮겨가는
+     동안 목만 평균색 한 개(scalpColor)에 남아 있었고, 그게 "뒷머리 부분이 다른 색"의
+     원인이었다. 이제는 buildRealNeckMesh가 내부에서 같은 격자를 집으므로(NECK_SHAPE
+     .fromField) 여기서 넘기는 css는 <b>격자 실패 시 폴백</b>일 뿐이다. 진짜로 같은
+     출처가 됐다 — 주석이 코드보다 먼저 그렇다고 주장하지 않게 고쳐 둔다.
+     턱선에 색 띠가 보이면 만질 곳은 NECK_SHAPE.shadeTopField와 TURN_FEATHER(번짐)다.
+     (예전 주석은 NECK_TINT를 가리켰는데 <b>그런 상수는 없다</b>. 아래 tint도 선언만
+      돼 있고 아무도 안 읽는다 — 지우지 않은 것은 이 파일 관례대로 흔적을 남기는 것.)
    되돌리기: RESULT_NECK_FROM_3D = false (예전 구조로 완전히 돌아간다) */
 const RESULT_NECK_FROM_3D = true;
 const RESULT_HEAD_CUT = {
@@ -271,7 +277,12 @@ function ensureResultNeckMesh(snap){
   /* (11차) 옷깃 구멍도 키에 넣는다 — 아래 링이 거기서 나오므로, 안 넣으면
      의상이 바뀌어도 옛 목이 그대로 남는다. */
   const g = _garmentNeckOpening;
-  const key = css + '|' + getNeckTopY().toFixed(4) + '|' + getNeckBottomY().toFixed(4)
+  /* (2026-09-13) 격자 준비 여부도 키에 넣는다. 목은 이제 살 격자에서 색을 집는데
+     (NECK_SHAPE.fromField), 첫 호출이 격자보다 먼저면 폴백 평균색으로 구워진다.
+     키가 그대로면 격자가 준비된 뒤에도 <b>옛 색 목이 그대로 남는다</b> —
+     11차가 옷깃 구멍을 키에 안 넣어서 겪은 것과 같은 종류의 일이다. */
+  const fieldReady = (typeof buildSkinColorField === 'function' && buildSkinColorField()) ? 'F' : '-';
+  const key = css + '|' + fieldReady + '|' + getNeckTopY().toFixed(4) + '|' + getNeckBottomY().toFixed(4)
             + '|' + (g ? g.halfWidth.toFixed(4) + ',' + g.halfDepth.toFixed(4) : '-');
   if(snap.neckKey === key) return;
   while(snap.neckGroup.children.length){
