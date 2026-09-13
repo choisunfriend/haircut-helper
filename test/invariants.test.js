@@ -447,6 +447,57 @@ test('⑭ 헤어가 바뀌면 의상도 바뀐다 — 카탈로그 네 벌이 �
      + '안 보거나(dominantDyeCss) OUTFIT_MATCH.w.color가 너무 낮다');
 });
 
+/* ─────────────────────────────────────────────────────────────────
+   ⑮ (2026-09-13) 피부색의 <b>출처는 하나</b>다 — 두피면도 목도 같은 살 격자.
+   사용자: "뒷머리 부분이 좀 다른 색이 나왔어. 이마쪽 색이랑 같은 색으로 하든지,
+   근처 얼굴색으로 하는 방법으로 해봤으면 좋겠네."
+
+   ⚠ 이건 이 저장소가 <b>반복</b>하는 모양이다: 한 값을 두 곳이 각자 정하다가
+     한쪽만 고쳐진다. 9/9에 두피면이 "평균색 한 개 → 자리마다 다른 색"으로
+     옮겨갈 때 목은 옛 방식에 남았고, 4일 뒤 화면에서 색 띠로 드러났다.
+     화면에서 잰 값이 그 증거였다 — 색조·채도는 같고 밝기만 0.837배.
+   검사는 <b>배선</b>을 본다(색 자체는 손님 사진에 달려 있어 단위검사로 못 잰다):
+   목 메쉬 코드가 makeModelSkinSampler를 거치는가, 그리고 그 함수가 두피면과
+   같은 격자(buildSkinColorField)를 쓰는가.
+───────────────────────────────────────────────────────────────── */
+test('⑮ 두피면과 목이 같은 살 격자에서 색을 집는다', () => {
+  ok(typeof G('makeModelSkinSampler') === 'function',
+     'makeModelSkinSampler가 없다 — 두피면·목이 각자 색을 정하던 때로 돌아갔다');
+
+  const src = fs.readFileSync(path.join(JS, '12a-head-project.js'), 'utf8');
+  /* ⚠ 주석을 <b>먼저 지운다</b>. 안 지우면 이 파일의 설명 주석이 함수 이름을
+     그대로 적고 있어서, 호출을 통째로 빼도 검사가 통과한다 — 회귀를 실제로
+     넣어 보고 나서야 알았다(README: "반드시 깨지는 것을 한 번 보고 나서 믿을 것").
+     주석이 코드를 대신 증언하게 두면 검사가 아니라 장식이다. */
+  const code = src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '');
+  const grab = (name) => {
+    const i = code.indexOf('function ' + name + '(');
+    ok(i >= 0, name + '을 못 찾았다');
+    // 다음 최상위 function 선언까지를 본문으로 본다(이 파일은 전부 최상위 함수다)
+    const j = code.indexOf('\nfunction ', i + 1);
+    return code.slice(i, j < 0 ? code.length : j);
+  };
+
+  for(const fn of ['paintScalpFromPhoto', 'buildRealNeckMesh']){
+    ok(grab(fn).indexOf('makeModelSkinSampler(') >= 0,
+       fn + '이 makeModelSkinSampler를 안 부른다 — 색 출처가 다시 갈렸다');
+  }
+  ok(grab('makeModelSkinSampler').indexOf('buildSkinColorField(') >= 0,
+     'makeModelSkinSampler가 살 격자를 안 쓴다');
+
+  const NS = G('NECK_SHAPE');
+  ok(NS.fromField === true, 'NECK_SHAPE.fromField가 꺼졌다 — 목이 평균색 한 개로 돌아간다');
+  /* 격자를 쓸 때의 곱은 예전 곱보다 <b>1에 가까워야</b> 한다. 색이 이미 제자리라
+     형태감만 남기면 되는데, 예전 값(0.78)을 그대로 두면 띠가 다시 보인다. */
+  ok(NS.shadeRearField > NS.shadeRear && NS.shadeTopField > NS.shadeTop,
+     `격자용 곱이 예전 곱보다 어둡다(뒤 ${NS.shadeRearField} vs ${NS.shadeRear}, `
+     + `위 ${NS.shadeTopField} vs ${NS.shadeTop}) — 색을 맞춰 놓고 다시 어둡게 깎는 셈이다`);
+  const worst = NS.shadeRearField * NS.shadeTopField;
+  ok(worst >= 0.85,
+     `뒤·위가 겹치는 최악에서 얼굴 대비 ${worst.toFixed(3)}배다 — 화면에서 "다른 색"으로 `
+     + '보였던 값이 0.837이었으므로 그보다 확실히 위여야 한다');
+});
+
 module.exports = { T, app };
 
 /* ─────────────────────────────────────────────────────────────────
