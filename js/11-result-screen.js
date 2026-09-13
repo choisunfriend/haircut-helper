@@ -1350,7 +1350,12 @@ function setResultOutfit(idOrItem){
     : idOrItem;
   if(!item) return;
   const prev = state.aiOutfitRecommendation;
-  state.aiOutfitRecommendation = { item, reason: (prev && prev.item && prev.item.id===item.id && prev.reason) || '직접 선택한 의상' };
+  /* manual:true — (2026-09-13) 헤어가 바뀌면 recommendOutfitWithAI가 다시 고르는데,
+     손으로 고른 것까지 덮으면 칩을 눌러도 다음 렌더에 원위치한다. 이 표시 하나가
+     "사람 손이 기계 판단보다 위"를 지키는 자리다. 자동 판단으로 되돌리려면
+     state.aiOutfitRecommendation = null 로 두면 된다. */
+  state.aiOutfitRecommendation = { item, manual:true,
+    reason: (prev && prev.item && prev.item.id===item.id && prev.reason) || '직접 선택한 의상' };
   renderOutfitCard();
   drawResult();
 }
@@ -1364,12 +1369,17 @@ async function setupResultScreen(){
   bindResultViewGestures();
   drawResult(); // 의상이 오기 전에도 두상부터 먼저 보여준다(화면 공백 방지)
 
-  if(!state.aiOutfitRecommendation && state.shots && state.shots.front){
-    showAI('AI가 어울리는 의상을 고르고 있어요…','헤어스타일 기반 추천 (데모)');
-    try{ await recommendOutfitWithAI(); }
-    catch(e){ console.warn('의상 추천 실패:', e); }
-    hideAI();
-  }
+  /* (2026-09-13) 게이트를 `!state.aiOutfitRecommendation`에서 <b>매번 호출</b>로
+     바꿨다. 한 번 고르면 끝이던 이유는 밖을 부르는 값이 비싸서였는데, 이제
+     판단이 로컬이라 공짜다 — 그리고 <b>다시 고르지 않으면 옷이 안 바뀐다</b>.
+     재사용 여부는 recommendOutfitWithAI가 헤어 지문으로 판단한다(단일 지점).
+     showAI 토스트도 뺐다: 계산이 한 프레임 안에 끝나서 "고르고 있어요"가
+     떴다가 바로 사라지는 깜빡임만 남고, 무엇보다 이제 AI가 아니다.
+     ⚠ 정면 사진 조건도 뺐다. 사진을 보내지 않으므로 있으나 없으나 같은 판단이
+       나오는데, 조건만 남으면 사진 없는 손님에게 의상이 통째로 사라진다
+       (2026-07-13에 selectedStyle 조건으로 똑같이 당한 자리다). */
+  try{ await recommendOutfitWithAI(); }
+  catch(e){ console.warn('의상 추천 실패:', e); }
   if(currentScreen !== 'result') return;
   renderOutfitCard();
   drawResult();
@@ -1394,44 +1404,22 @@ window.addEventListener('resize', ()=>{ if(currentScreen==='result') drawResult(
    ⚠ 남아 있는 AI: 결과 화면의 <b>의상 추천</b>(recommendOutfitWithAI)은 그대로다.
    이번 지시는 "결과 이미지 생성"에 대한 것이라 건드리지 않았다. */
 
-/* ════════════════════════════════════════
-   AI 호출 공통부 (구 AI ANALYSIS)
-   (2026-08-29) 스타일 추천이 빠져서 이 구역에 남은 건 공통 호출부뿐이다.
-════════════════════════════════════════ */
-// Claude API 호출(이미지 1장 + 프롬프트 → JSON 응답)의 공통부.
-// analyzeWithClaude(스타일 분석)와 recommendOutfitWithAI(의상 추천)가 fetch
-// 설정·응답 블록 조립·```json 펜스 제거·JSON.parse를 글자 그대로 복제하고
-// 있던 것을 통합(2026-07-18). 다른 건 프롬프트와 max_tokens뿐이라 인자로 받음.
-// (2026-08-29) 호출부는 이제 recommendOutfitWithAI 하나다.
-// 실패 시 예외를 그대로 던져서, 각 호출부가 이미 갖고 있는 catch가 자기
-// 폴백(토스트 / 기본 의상)을 그대로 수행하게 함 — 동작 무변경.
-async function callClaudeJSON({ base64, mediaType, prompt, maxTokens }){
-  const res = await fetch('https://api.anthropic.com/v1/messages', {
-    method:'POST',
-    headers:{'Content-Type':'application/json','anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
-    body: JSON.stringify({ model:'claude-sonnet-4-6', max_tokens:maxTokens, messages:[{ role:'user', content:[
-      { type:'image', source:{ type:'base64', media_type:mediaType, data:base64 } },
-      { type:'text', text:prompt }
-    ]}]})
-  });
-  const data = await res.json().catch(()=>null);
-  /* (2026-08-31) 응답 <b>상태를 안 보고</b> data.content를 바로 읽고 있었다.
-     API가 4xx를 주면 본문은 {type:'error', error:{…}}라 content가 없고,
-     `Cannot read properties of undefined (reading 'map')`이라는 <b>엉뚱한</b>
-     TypeError로 터진다 — 실기기 콘솔에 401 바로 밑에 그 스택이 찍힌 자리다.
-     호출부는 어차피 try/catch로 기본 항목 폴백을 하므로 동작은 같지만,
-     <b>무엇이 잘못됐는지</b>가 로그에 남는 것과 안 남는 것은 다르다.
-     (이 파일이 8/22에 얼굴 경로에서 겪은 것과 같은 종류 — 조용히 빠져나가면
-      본 사람도 만든 사람도 원인을 모른다.) */
-  if(!res.ok){
-    const detail = (data && data.error && data.error.message) ? data.error.message : '';
-    throw new Error(`Claude API ${res.status}${detail ? ' — ' + detail : ''}`
-      + (res.status === 401 ? ' (이 파일을 로컬에서 열면 키가 없어 항상 401입니다 — 정상)' : ''));
-  }
-  if(!data || !Array.isArray(data.content)) throw new Error('Claude API 응답에 content가 없습니다');
-  const raw = data.content.map(b=>b.text||'').join('').replace(/```json|```/g,'').trim();
-  return JSON.parse(raw);
-}
+/* ── (2026-09-13) callClaudeJSON 삭제 — 이 앱에 남은 <b>마지막 fetch</b>였다 ──
+   사용자 지시: "밖에 연결하지 말고 머리색이나 헤어스타일 등을 좀 참고해서,
+   옷을 교체하는 메커니즘을 구현해줘."
+
+   지운 것: callClaudeJSON(이미지 1장 + 프롬프트 → api.anthropic.com → JSON).
+   마지막 호출부였던 recommendOutfitWithAI가 20-outfit-match.js의 로컬 판단으로
+   바뀌면서 호출부가 0건이 됐다. 8/29에 "의상 추천이 같은 함수를 쓰므로 지우지
+   않았다"고 적어 둔 그 조건이 이제 해소된 것이다.
+
+   ⚠ 이걸 지운 것이 <b>기능적으로도 의미가 있다</b>: 브라우저에 키가 없어서 이
+     경로는 늘 401이었고, catch가 OUTFIT_CATALOG[0]을 돌려줬다. 즉 "AI 추천"은
+     실패한 적이 있던 게 아니라 <b>한 번도 성공한 적이 없었다</b> — 무슨 머리를
+     하든 차콜 슈트가 뜨던 원인이다. 지운 것은 동작이 아니라 실패 경로다.
+   ⚠ 되살릴 때: 이 파일에 fetch가 하나도 없다는 것이 이제 불변식이다
+     (검사 ⑬이 그 자리다). 다시 넣으려면 검사부터 고쳐야 한다 — 조용히
+     돌아오지 못하게 하는 것이 목적이다. */
 
 /* ── (2026-08-29) analyzeWithClaude(스타일 추천 AI) 삭제 ────────────────────
    사용자 지시: "스타일추천AI가 처음에 돌아가는데 일단 그 AI를 안 돌릴 거야."

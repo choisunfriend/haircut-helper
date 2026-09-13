@@ -124,6 +124,13 @@ function setupAdjustScreen(){
        상태(state) 판이다. 기본값은 선언이 아니라 <b>매번 그 값이 되는 자리</b>가
        있어야 기본값이다. */
   COMB.on = false; syncCombBtn();
+  /* ── 3D 미리보기도 <b>매번 그 값이 되는 자리</b>가 필요하다 (2026-09-13) ─────
+     바로 위 COMB.on 배너와 같은 이유다. state.use3DAdjust를 true로 바꿔도
+     패널을 여는 코드는 toggle3DAdjust 안의 showDevMini3D(true) 하나뿐이라,
+     버튼을 아무도 안 누르면 <b>상태는 ON인데 화면엔 패널이 없다</b>.
+     여기서 상태 → 화면을 맞춘다. 손님 앞에서 껐다면 그 세션 동안은 꺼진 채로
+     남는다(state를 안 덮어쓰고 화면만 맞추므로). */
+  sync3DPreviewPanel();
   syncMannequinBtn();                             // 마네킹 초기화 상태 표시(스타일 화면에서 정해져 들어온다)
   const maskBtn = document.getElementById('maskDebugToggle');
   if(maskBtn){

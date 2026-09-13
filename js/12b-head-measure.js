@@ -1234,62 +1234,60 @@ function getViewPoseConfidence(angle){
   return 0.25;                        // 실측도 라이브도 없음 → 촬영 슬롯 기본 각도로 폴백
 }
 
-/* ── (3단계) 헤어스타일 기반 의상 추천 AI ──
-   비즈니스 로드맵 3번(파일 상단 주석) 착수. 확정된 헤어스타일(색상·길이·
-   볼륨 느낌)과 정면 사진을 함께 보내서, OUTFIT_CATALOG(지금은 목업, 나중에
-   진짜 제휴 상품 DB로 교체될 자리) 중 가장 잘 어울리는 항목을 고르게 한다.
-   호출 패턴은 callClaudeJSON 공통부를 쓴다(예전엔 analyzeWithClaude와 나눠
-   썼는데, 2026-08-29에 그쪽이 지워져서 지금은 이 함수가 유일한 호출부다).
-   세션당 1회만 호출(캐싱), 새 고객 시작 시 초기화(startNewCustomer 참고). */
-async function recommendOutfitWithAI(){
-  if(state.aiOutfitRecommendation) return state.aiOutfitRecommendation;
-  const frontImg = state.shots.front;
-  if(!frontImg) return null;
+/* ── (3단계) 헤어스타일 기반 의상 추천 — <b>로컬</b> (2026-09-13) ────────────
+   사용자: "밖에 연결하지 말고 머리색이나 헤어스타일 등을 좀 참고해서, 옷을
+   교체하는 메커니즘을 구현해줘."
 
-  // 버그 수정(2026-07-13): 예전엔 state.selectedStyle이 있어야만 추천했는데,
-  // "스타일 미적용"(프리셋 없이 직접 조정) 모드에서는 selectedStyle이 계속
-  // null이라 이 함수 자체가 항상 null을 반환 → setupModel3DScreen의 의상
-  // 로딩 블록 전체가 스킵되고 3D에 두상만 남는 원인이었음. 프리셋 이름/태그
-  // 대신 실제 섹션 값(크라운 길이·엘리베이션)과 실측 헤어 색상으로 설명
-  // 텍스트를 대체 구성해서, 스타일을 확정 안 해도 추천이 되게 함.
-  const style = state.selectedStyle;
-  let styleDesc, colorHex;
-  if(style){
-    styleDesc = `${style.name} (${style.tags})`;
-    colorHex = style.colorHex;
-  } else {
-    const crown = state.sections.crown;
-    styleDesc = tUI('직접 조정한 스타일') + `(${tUI('크라운')} ${tUI('길이')} ${crown.length}, ${tUI('엘리베이션')} ${crown.elevation}°)`;
-    colorHex = (state.hairMasks.front && state.hairMasks.front.avgColor) || '#2A1B12';
-  }
-  // 렌더가 FORCED_HAIR_COLOR로 강제되는 동안엔 추천 프롬프트에 보내는
-  // 헤어컬러도 같은 값이어야 함 — 안 그러면 화면은 검정인데 AI는 실측
-  // 갈색 기준으로 의상을 골라 색 조합 추천이 어긋남.
-  if(FORCED_HAIR_COLOR) colorHex = FORCED_HAIR_COLOR;
+   ── 지운 것과 그 이유 ────────────────────────────────────────────────────
+   여기 있던 본문은 정면 사진 + 프롬프트를 callClaudeJSON으로 보내 의상 id를
+   받아오는 것이었다. 브라우저에 키가 없으니 <b>항상 401</b>이었고, catch가
+   OUTFIT_CATALOG[0]을 돌려줬다 — 그래서 무슨 머리를 하든 화면엔 늘 차콜
+   슈트가 떴다. 실패한 적이 없는 게 아니라 <b>실패가 기본 동작</b>이었다.
+   판단은 20-outfit-match.js가 한다(끝높이·시술각·컬 + 염색색 → 실루엣 축).
 
-  const catalogList = OUTFIT_CATALOG.map(o=>`- ${o.id}: ${tUI(o.name)} (${tUI(o.category)}, ${tUI('태그')}: ${o.tags.map(tUI).join('/')})`).join('\n');
-  const base64 = frontImg.split(',')[1];
-  const mediaType = frontImg.startsWith('data:image/png') ? 'image/png' : 'image/jpeg';
-  const prompt = `미용실 고객 정면 사진과 확정된 헤어스타일 정보입니다.
-헤어스타일: ${styleDesc}, 헤어컬러: ${colorHex}
-아래 의상 목록 중 이 헤어스타일·이미지와 가장 잘 어울리는 것 하나를 고르세요.
-{"outfitId":"${uiLang === 'en' ? 'one id from the list' : '목록의 id 중 하나'}","reason":"${uiLang === 'en' ? 'one sentence in English' : '한국어 1문장 추천 이유'}"}
-JSON만 응답하세요, 다른 텍스트 없이.
-의상 목록:
-${catalogList}`;
+   ── 이름을 왜 안 바꿨나 ──────────────────────────────────────────────────
+   호출부가 둘(11-result-screen.js setupResultScreen · 18의 setupModel3DScreen)
+   이고 둘 다 await + { item, reason } 모양을 그대로 쓴다. 이름을 바꾸면 두 곳을
+   같이 고쳐야 하고, 한 곳만 고치면 이 저장소가 반복해 온 "한 값을 두 곳이 각자
+   쓰다가 한쪽만 고쳐짐"이 또 생긴다. async도 유지한다 — await 하는 쪽은 그대로.
 
+   ── 캐시가 <b>헤어를 따라간다</b> ────────────────────────────────────────
+   예전엔 세션당 1회였다(밖을 부르니 아껴야 했다). 이제 계산이 공짜라, 아끼는
+   대신 <b>헤어가 바뀌면 다시 고른다</b> — 그게 "옷이 바뀌도록"의 실체다.
+   지문(hairOutfitFingerprint)이 같으면 재사용하고 다르면 다시 고른다.
+   ⚠ 손님이 칩으로 직접 고른 것(setResultOutfit → manual:true)은 지문이 달라져도
+     <b>안 덮는다</b>. 사람 손이 기계 판단보다 위다. */
+function hairOutfitFingerprint(){
   try{
-    const parsed = await callClaudeJSON({ base64, mediaType, prompt, maxTokens:200 });
-    const item = OUTFIT_CATALOG.find(o=>o.id===parsed.outfitId) || OUTFIT_CATALOG[0];
-    const result = { item, reason: parsed.reason || '' };
-    state.aiOutfitRecommendation = result;
-    return result;
-  }catch(e){
-    console.warn('의상 추천 AI 실패(기본 항목으로 대체):', e);
-    const result = { item: OUTFIT_CATALOG[0], reason: '' };
-    state.aiOutfitRecommendation = result;
-    return result;
+    const S = state._adjStamp || {};
+    const st = S['3D화면'] || S['미니3D'] || S['2D투영'] || {};
+    const tip = (typeof st.tipAt === 'number' && isFinite(st.tipAt)) ? st.tipAt.toFixed(3) : '-';
+    const c = (state.sections && state.sections.crown) || {};
+    const dye = SECTION_ORDER.map(id=>(state.sections[id] && state.sections[id].color) || '-').join(',');
+    return [tip, c.length, c.elevation, c.curl, dye, state.selectedStyle && state.selectedStyle.id].join('|');
+  }catch(e){ return 'fp-fail'; }
+}
+
+async function recommendOutfitWithAI(){
+  const prev = state.aiOutfitRecommendation;
+  const fp = hairOutfitFingerprint();
+  if(prev && (prev.manual || prev.fp === fp)) return prev;
+
+  if(typeof recommendOutfitLocal !== 'function'){
+    /* 20-outfit-match.js가 안 실려 있으면 여기로 온다. 조용히 [0]으로 떨어지면
+       예전 401 시절과 <b>똑같은 증상</b>(늘 차콜 슈트)이 나면서 원인만 사라진다. */
+    console.warn('[의상] 20-outfit-match.js가 로드되지 않았습니다 —'
+      + ' index.html의 <script src="js/20-outfit-match.js"> 줄을 확인하십시오.'
+      + ' 그때까지는 카탈로그 첫 항목으로 고정됩니다.');
+    const r = { item: OUTFIT_CATALOG[0], reason: '', fp };
+    state.aiOutfitRecommendation = r;
+    return r;
   }
+
+  const r = recommendOutfitLocal();
+  const result = { item: r.item, reason: r.reason || '', alts: r.alts || [], fp };
+  state.aiOutfitRecommendation = result;
+  return result;
 }
 
 /* ── 의상 3D 부착 — 지금은 절차적 플레이스홀더, 나중에 제휴사 3D 에셋으로 교체 ──

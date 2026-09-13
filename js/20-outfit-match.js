@@ -11,13 +11,15 @@
    구조는 19-stage-backdrop.js의 stageChoosePalette를 그대로 따랐다:
    실측 → 규칙 → 실패 시 폴백 + 근거 로그. 그쪽이 이미 배경색으로 증명한 틀이다.
 
-   재는 것은 셋뿐이다(전부 이미 측정돼 있다):
+   재는 것은 넷이다(전부 이미 측정돼 있거나 손님이 고른 값이다):
      tipAt     끝높이 중앙 — (정수리y − 머리끝y) / 두상높이. 07b-render-compare.js가
                state._adjStamp에 찍는다. <b>단위가 없어</b> 사람 크기에 안 휩쓸린다
                (cm로 재면 키 큰 손님이 전부 길게 나온다 — 그래서 lenCm을 안 쓴다).
      elevation 크라운 시술각 0~90°. SECTIONS 주석대로 "볼륨"이 따로 있던 게 아니라
                전부 이것의 결과다. 0=원랭스(무게 아래) · 90=완전 레이어(볼륨 위).
      curl      크라운 컬 진폭 0~100.
+     염색색     sec.color(dominantDyeCss). 없으면 FORCED_HAIR_COLOR로 떨어진다 —
+               둘 중 <b>화면에 실제로 칠해지는 쪽</b>을 본다(outfitColorFit 배너).
 
    끄기: OUTFIT_MATCH.on = false → 예전처럼 OUTFIT_CATALOG[0]으로 폴백.
    ══════════════════════════════════════════════════════════════════════════ */
@@ -25,8 +27,24 @@
 const OUTFIT_MATCH = {
   on: true,
   /* 축별 가중치. 합이 1일 필요는 없지만(거리를 그대로 뺀다) 합이 1이면
-     점수가 0~1에 떨어져 읽기 쉽다. */
-  w: { neckline: 0.40, shoulder: 0.26, busy: 0.22, color: 0.12 },
+     점수가 0~1에 떨어져 읽기 쉽다.
+     ── color 0.12 → 0.20 (2026-09-13) ────────────────────────────────────
+     0.12에서는 <b>염색을 바꿔도 옷이 안 바뀌었다</b>. 색 항이 최대 0.12밖에
+     못 움직이는데 실루엣 1등과 2등의 차이가 대개 그보다 컸기 때문이다.
+     실제로 재 본 것(머리 18설정 × 염색 6색 · 실루엣은 tipAt·시술각·컬 100조합):
+
+       w.color   실루엣 분포(슈트/캐주얼/롱슬리브/버건디)   염색이 옷을 바꾼 설정
+        0.12            24 / 21 / 28 / 27                      2 / 18
+        0.20            17 / 23 / 31 / 29                      9 / 18
+        0.28            14 / 34 / 32 / 20                     13 / 18
+        0.45             3 / 37 / 42 / 18                     18 / 18
+
+     0.20이 접점이다. 더 올리면 염색이 잘 먹는 대신 <b>차콜 슈트가 사라진다</b>
+     (0.45에서 100조합 중 3번) — 검정에 가까운 옷이라 어떤 머리색과도 명도가
+     안 벌어져 색 점수에서 늘 진다. 네 벌을 다 쓰는 것이 우선이라 여기서 멈춘다.
+     ⚠ 이 표는 지금 카탈로그 <b>4벌 기준</b>이다. 제휴 DB로 갈아끼우면 다시 재야
+       한다 — 밝은 옷이 늘면 슈트가 죽는 구간도 같이 움직인다. */
+  w: { neckline: 0.40, shoulder: 0.26, busy: 0.22, color: 0.20 },
   /* tipAt을 0~1로 펴는 구간. ⚠ 이 두 숫자는 <b>실측이 아니라 시작점</b>이다.
      손님 몇 명의 [의상] 로그에 찍히는 tipAt을 보고, 머리끝이 실제로 어깨에
      닿는 지점이 0.5 근처로 오게 맞춰야 한다. 맞추기 전까진 임시 받침대다.
@@ -93,13 +111,57 @@ function hairSilhouetteTarget(){
    순서가 카탈로그 배열 순서로 정해진다(=늘 같은 옷). 색이 그 동점을 가른다.
    가중치가 낮은 건 의도다 — 배경(무대)이 이미 색을 맞춰 주므로 여기서 세게
    걸면 두 장치가 같은 일을 두 번 한다. 끄려면 OUTFIT_MATCH.w.color = 0. */
+/* ── 화면에 실제로 보이는 머리색 (2026-09-13) ──────────────────────────────
+   여기 있던 순서는 FORCED_HAIR_COLOR가 <b>맨 앞</b>이었다. 그건 상수(#141414)라
+   색 축이 통째로 상수가 되고, 그러면 "머리색을 참고해서 옷을 고른다"가 말만
+   남는다 — 손님이 염색을 바꿔도 점수가 한 톨도 안 움직인다.
+
+   ⚠ 그렇다고 아무 색이나 앞에 두면 안 된다. 12b가 예전에 적어 둔 함정이 그것이다:
+     "화면은 검정인데 실측 갈색 기준으로 의상을 골라 색 조합이 어긋난다."
+     골라야 하는 건 <b>화면에 실제로 칠해지는 색</b>이다.
+   그래서 경로를 따라가 확인한 순서다:
+     ① sec.color (염색) — FORCED_HAIR_COLOR와 <b>다른 경로</b>로 칠해진다.
+        FORCED_HAIR_COLOR는 drawHairStrands(중립 캡처·원본 결 보기·폴백)에서
+        opts.color를 덮는 것이고, 염색은 그 뒤 _adjApplyFilter →
+        sampleProjectedStrandColors가 LUT로 올린다(09의 HAIR_DYE 배너). 즉
+        염색이 걸려 있으면 3D 결과에 보이는 건 검정이 아니라 <b>그 색</b>이다.
+        단 HAIR_DYE.on이 꺼져 있으면 LUT를 안 타므로 그때는 안 본다.
+     ② FORCED_HAIR_COLOR — 염색이 없으면 화면은 이 값이다.
+     ③ 스타일 색 · ④ 실측 평균색 — 위 둘이 다 없을 때(원복했을 때) 경로.
+
+   ⚠ 어느 섹션의 염색인가: 섹션마다 다른 색을 넣을 수 있다. 옷과 싸우는 건
+     면적이 넓은 쪽이므로 <b>가장 많은 섹션이 쓰는 색</b>을 고르고, 동수면
+     SECTION_ORDER 앞쪽(크라운·프론트)이 이긴다. 한 색만 쓰면 그냥 그 색이다. */
+function dominantDyeCss(){
+  try{
+    if(typeof HAIR_DYE !== 'undefined' && HAIR_DYE && HAIR_DYE.on === false) return null;
+    const order = (typeof SECTION_ORDER !== 'undefined') ? SECTION_ORDER : Object.keys(state.sections || {});
+    const count = new Map();
+    for(const id of order){
+      const c = state.sections && state.sections[id] && state.sections[id].color;
+      if(!c) continue;
+      if(!count.has(c)) count.set(c, { n:0, first:order.indexOf(id) });
+      count.get(c).n++;
+    }
+    if(!count.size) return null;
+    let best = null, bestN = -1, bestFirst = Infinity;
+    for(const [css, v] of count){
+      if(v.n > bestN || (v.n === bestN && v.first < bestFirst)){
+        best = css; bestN = v.n; bestFirst = v.first;
+      }
+    }
+    return best;
+  }catch(e){ return null; }
+}
+
 function outfitColorFit(item){
   try{
     if(!item || !item.colorHex) return 0.5;
     if(typeof gyToOklch !== 'function') return 0.5;
     let hairCss = null;
     try{
-      hairCss = (typeof FORCED_HAIR_COLOR !== 'undefined' && FORCED_HAIR_COLOR)
+      hairCss = dominantDyeCss()
+        || (typeof FORCED_HAIR_COLOR !== 'undefined' && FORCED_HAIR_COLOR)
         || (state.selectedStyle && state.selectedStyle.colorHex)
         || (state.hairMasks && state.hairMasks.front && state.hairMasks.front.avgColor);
     }catch(e){}
@@ -209,9 +271,12 @@ function recommendOutfitLocal(){
     const r = pickTopOutfits(t);
     if(OUTFIT_MATCH.log){
       const R = t._raw;
+      const dye = dominantDyeCss();
+      const hairCss = dye || (typeof FORCED_HAIR_COLOR !== 'undefined' && FORCED_HAIR_COLOR) || '?';
       console.log('[의상] tipAt ' + R.tipAt.toFixed(3) + (R.measured.tipAt ? '' : '(폴백)')
         + ' · 엘리베이션 ' + R.elev + '°' + (R.measured.sec ? '' : '(폴백)')
         + ' · 컬 ' + R.curl
+        + ' · 머리색 ' + hairCss + (dye ? '(염색)' : '(기본)')
         + ' → 목표 목선 ' + t.neckline.toFixed(2)
         + ' / 어깨 ' + t.shoulder.toFixed(2)
         + ' / 무지 ' + t.busy.toFixed(2)

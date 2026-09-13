@@ -565,10 +565,15 @@ async function setupModel3DScreen(){
   // 자체도 위에서 동일하게 수정). 정면 사진만 있으면 되도록 조건 완화 —
   // recommendOutfitWithAI 내부에서 style 유무에 따라 알아서 다르게 설명 구성.
   let outfitTag = '', stageOutfit = null;
-  if(state.shots && state.shots.front){
-    showAI('AI가 어울리는 의상을 고르고 있어요…','헤어스타일 기반 추천 (데모)');
+  {
+    /* (2026-09-13) showAI('AI가 어울리는 의상을 고르고 있어요…')를 뺐다 —
+       판단이 로컬이라 한 프레임 안에 끝나서 토스트가 떴다 사라지는 깜빡임만
+       남고, 무엇보다 이제 AI가 아니다.
+       ⚠ `state.shots.front` 조건도 같이 뺐다. 사진을 더 이상 안 보내므로 있으나
+         없으나 같은 판단이 나오는데, 조건만 남으면 사진 없는 손님에게 의상이
+         통째로 사라진다 — 바로 아래 2026-07-13 주석이 selectedStyle 조건으로
+         똑같이 당했다고 적어 둔 자리다. 같은 함정을 한 칸 옆에 다시 파지 않는다. */
     const outfitRec = await recommendOutfitWithAI();
-    hideAI();
     if(outfitRec && myGen === model3DGeneration){
       /* ── 두신 자를 <b>씬에서</b> 재서 넘긴다 (2026-09-09) ─────────────────────
          personBodyLenMesh 배너가 이미 적어 둔 그 자리다: "3D 화면은 씬에서 잰
@@ -845,6 +850,7 @@ const I18N = {
   '원본 결 (스타일 미적용)':'Original flow (no style)',
   '진단정보':'Diagnostics', '3D 미리보기':'3D preview',
   '3D 미리보기: ':'3D preview: ', '3D 미리보기: OFF':'3D preview: OFF',
+  '3D 미리보기: ON':'3D preview: ON',   // (2026-09-13) 기본값이 ON이 되면서 이쪽이 첫 화면 문구가 됐다
   '드래그 회전 · ⛶ 확대':'Drag to rotate · ⛶ zoom',
   '드래그해서 회전':'Drag to rotate', '기준면 보기':'Show reference surface',
   '드래그 회전 · 두 손가락(Shift+드래그) 이동 · 핀치(휠) 확대':'Drag to rotate · two-finger (Shift+drag) to move · pinch (wheel) to zoom',

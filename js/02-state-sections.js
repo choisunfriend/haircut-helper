@@ -539,7 +539,14 @@ const state = {
   // 지금은 조정 경로가 3D 하나뿐이라 — "중립 가닥 캡처 → 3D 리프트 → 3D에서
   // 커트/펌/스타일링 → 같은 뷰로 역투영" — 이 값은 우하단 미니 3D 패널을
   // 띄울지만 정한다. 조정 결과는 이 값과 무관하게 항상 3D를 거쳐 나온다.
-  use3DAdjust: false,
+  // (2026-09-13) 기본 <b>ON</b>. 사용자: "3D미리보기 ON상태를 디폴트로 해줘."
+  // ⚠ 이 선언만 바꾸면 <b>패널은 안 뜬다</b>. 패널을 실제로 여는 코드는
+  //   toggle3DAdjust 안에 있는 showDevMini3D(true)뿐이라, 아무도 버튼을 안 누르면
+  //   상태는 ON인데 화면엔 없다 — 이 파일이 COMB.on에서 이미 당한 그 모양이다
+  //   ("기본값은 선언이 아니라 매번 그 값이 되는 자리가 있어야 기본값이다",
+  //    05-capture-nav.js setupAdjustScreen). 그래서 같은 함수에
+  //   sync3DPreviewPanel()을 두고 조정 화면에 들어올 때마다 이 값과 화면을 맞춘다.
+  use3DAdjust: true,
   currentCaptureIndex: 0,
   selectedStyle: null,
   /* (2026-08-29) 스펙 스타일 두 손잡이 — 여태 필요할 때 붙였다 떼던 필드라
@@ -743,14 +750,36 @@ const STYLES = [
    위해 에셋별로 따로 둠. 4종 다 저사양 기기 고려해서 Smooth(고폴리, 정점 4배)
    버전 대신 기본(저폴리, 정점 약 1000개) 버전으로 매핑.
    나중에 진짜 제휴 상품 DB/API가 생기면 이 배열 자체를 그 응답으로 교체. */
+/* ── 실루엣 축 neckline / shoulder / busy (2026-09-13) ─────────────────────
+   20-outfit-match.js가 헤어 실측을 이 세 축의 <b>목표값</b>으로 바꾸고, 여기
+   적힌 값과의 거리로 옷을 고른다. 축이 없으면 전부 중립 0.5로 세어져 네 벌의
+   실루엣 점수가 <b>완전히 같아지고</b>, 순서는 색 하나로만 갈린다 — 머리를
+   어떻게 바꿔도 늘 같은 옷이 나온다는 뜻이다. 그래서 이 값이 기능의 전부다.
+   (검사 ⑭가 이 축이 빠지는 것을 막는다.)
+
+   ⚠ 이 숫자들은 <b>메쉬 실측이 아니다</b>. 재 보고 안 되는 걸 확인한 자리다:
+     네 에셋은 Quaternius 같은 베이스 바디를 공유해서 어깨 반폭이 전체높이
+     대비 0.1138 / 0.1170 / 0.1157 / 0.1156 — 편차 3%다. 옷깃이 어깨 윗면보다
+     올라간 에셋도 <b>하나도 없다</b>(전부 0.0000). 즉 이 네 벌의 차이는 형태가
+     아니라 <b>재질과 색 블록</b>에 있고, 실루엣 축을 지오메트리에서 뽑으면
+     소수점만 있고 뜻은 없는 가짜 정밀도가 나온다.
+   그래서 <b>정면 직교 렌더를 떠서 눈으로 보고</b> 적은 태그다. 다만 busy는
+   셀 수 있다 — 상의 재질 수(usemtl 기준)가 곧 색 블록 수다:
+     Suit 3(재킷+셔츠판+타이) · Shirt 2(버건디+브라운) · Casual 1 · LongSleeve 1.
+   ⚠ 진짜 제휴 상품 DB가 들어오면 이 세 축은 그쪽 태그로 갈아끼울 자리다.
+     축이 없는 항목은 20이 중립 0.5로 세므로 섞여 있어도 안 터진다. */
 const OUTFIT_CATALOG = [
   {id:'ot-charcoal-suit',   name:'차콜 슈트',        category:'포멀',   colorHex:'#2A262A', tags:['클래식','단정','오피스'],
+    neckline:0.30, shoulder:0.88, busy:0.80,   // 타이로 목은 닫힘 · 재킷 각진 어깨 · 라펠 V + 밝은 셔츠판
     asset:{ objUrl:'./assets/Male_Suit.obj',       mtlUrl:'./assets/Male_Suit.mtl',       neckCutFrac:0.8369 }, affiliateUrl:null},
   {id:'ot-slate-casual',    name:'슬레이트 캐주얼 셔츠', category:'캐주얼', colorHex:'#657277', tags:['편안함','데일리','뉴트럴'],
+    neckline:0.78, shoulder:0.30, busy:0.12,   // V넥 반팔 · 맨목·맨팔 · 단일 재질
     asset:{ objUrl:'./assets/Male_Casual.obj',     mtlUrl:'./assets/Male_Casual.mtl',     neckCutFrac:0.8382 }, affiliateUrl:null},
   {id:'ot-olive-longsleeve',name:'올리브 롱슬리브',   category:'캐주얼', colorHex:'#606B55', tags:['캐주얼','차분함','데일리'],
+    neckline:0.12, shoulder:0.26, busy:0.10,   // 턱밑까지 올라오는 높은 크루넥 · 니트라 어깨가 흐른다 · 단일 재질
     asset:{ objUrl:'./assets/Male_LongSleeve.obj', mtlUrl:'./assets/Male_LongSleeve.mtl', neckCutFrac:0.8448 }, affiliateUrl:null},
   {id:'ot-burgundy-shirt',  name:'버건디 셔츠',       category:'포인트', colorHex:'#5C1F34', tags:['포인트컬러','개성','데일리'],
+    neckline:0.55, shoulder:0.45, busy:0.55,   // 얕은 V · 래글런처럼 어깨에서 갈리는 절개 · 2색 블록
     asset:{ objUrl:'./assets/Male_Shirt.obj',      mtlUrl:'./assets/Male_Shirt.mtl',      neckCutFrac:0.8258 }, affiliateUrl:null},
 ];
 

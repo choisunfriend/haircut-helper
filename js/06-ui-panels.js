@@ -251,8 +251,12 @@ function resetSections(){
 // 정하는 경로 스위치였는데, 이제 조정 경로는 3D 하나뿐이라(renderFrame의
 // canProject에서 플래그 게이트 제거) 이 버튼은 미니 3D 패널을 보여줄지만 정한다.
 // state.use3DAdjust는 그 패널 표시 상태를 뜻하는 이름으로 남아 있음.
-function toggle3DAdjust(){
-  state.use3DAdjust = !state.use3DAdjust;
+/* (2026-09-13) 토글을 <b>상태 뒤집기</b>와 <b>상태→화면 반영</b>으로 갈랐다.
+   기본값을 ON으로 바꾸려면(사용자 요청) 화면을 맞추는 쪽이 버튼 밖에서도
+   불릴 수 있어야 한다 — setupAdjustScreen이 조정 화면에 들어올 때마다 부른다.
+   ⚠ 여기서 state를 <b>읽기만</b> 하는 게 핵심이다. 쓰기까지 하면 손님 앞에서
+     끈 패널이 화면을 나갔다 들어올 때마다 되살아난다. */
+function sync3DPreviewPanel(){
   const btn = document.getElementById('btn3dEngine');
   if(btn) btn.textContent = '3D 미리보기: ' + (state.use3DAdjust ? 'ON' : 'OFF');
   if(state.use3DAdjust){
@@ -263,6 +267,10 @@ function toggle3DAdjust(){
   } else {
     showDevMini3D(false);             // 패널만 닫음 — 조정 경로는 그대로 3D
   }
+}
+function toggle3DAdjust(){
+  state.use3DAdjust = !state.use3DAdjust;
+  sync3DPreviewPanel();
 }
 
 /* ════════════════════════════════════════════════════════════════
