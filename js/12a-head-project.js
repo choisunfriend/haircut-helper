@@ -976,6 +976,95 @@ async function buildRealFaceMesh(faceMetrics){
     return ELL_C * Math.sqrt(Math.max(0.02, 1 - Math.min(1, inside))); // 완전히 벗어난 점도 살짝의 표면값은 갖게(0 방지)
   }
 
+  /* ══════════════════════════════════════════════════════════════════
+     얼굴 기준면에 <b>두개골의 자</b>를 쓴다 (2026-09-13 — ②의 정면돌파)
+     ─────────────────────────────────────────────────────────────────
+     9/13 실기기 로그가 판정을 확정했다:
+         자 대조: 폭 0.417/0.363 = ×0.870 · 세로 0.633/0.595 = ×0.939 · 깊이 ×0.870
+         → <b>② 두 타원이 다른 자</b> · 틈↔반지름² 상관 <b>0.99</b> · 최대/최소 ×65.5
+     상관 0.99는 "틈이 반지름²의 <b>함수</b>"라는 뜻이다. 그건 깊이 손잡이
+     (FACE_Z_TO_SKULL)로는 원리상 못 닫는다 — 그 손잡이는 면 전체를 <b>상수배</b>
+     할 뿐이라, 자리마다 다른 양을 줄 수가 없다. [고친 뒤] 로그가 예고한 그대로
+     나왔다: 중앙값은 +0.0031로 0에 붙었는데 <b>최소 −0.0173 · 최대 +0.0564</b>로
+     부호가 갈렸다. 위 (나)가 "부호가 갈리면 이 손잡이는 되돌릴 자리"라고 미리
+     적어 둔 자리다. → FACE_Z_SKULL_FIT.on = false (아래).
+
+     ── 사용자가 본 두 증상이 이 부호에 그대로 들어 있다 ────────────────────
+       가운데(|x|≤0.11) <b>−0.0149</b>(−0.29cm) = 이마 한가운데선 얼굴이 두개골
+         <b>안</b>에 있다 → 두개골 면이 얼굴을 뚫고 나온다 = "두상에 칠하는 부분이
+         <b>미간과 양 눈썹</b>을 침범"
+       가장자리(|x|≥0.21) <b>+0.0249</b>(+0.48cm) = 바깥은 얼굴이 앞 → 벌어진 틈
+     원인 하나(자가 다름)가 안쪽에선 <b>침범</b>으로, 바깥쪽에선 <b>틈</b>으로 보인 것이다.
+
+     ── 왜 이제는 폭·세로를 바꿔도 되는가 (8/31의 splay 걱정이 지워진다) ──────
+     같은 로그 한 줄이 답이다:
+         [진단·얼굴폭] ELL_A=0.417 | 얼굴 실제 최대폭=<b>0.363</b>
+                       → 얼굴 타원폭=0.417 <b>(변화 없음)</b>
+                       | 얼굴 최대세로=<b>0.595</b> vs ELL_B=0.633
+     · 얼굴 최대폭  0.363 = skull.a <b>0.363</b>
+     · 얼굴 최대세로 0.595 = skull.b <b>0.595</b>
+     우연이 아니다. getScalpEllipsoid는 a를 getFaceHalfWidthMesh()(=얼굴 반폭)로,
+     b를 "눈→턱 자"로 잡는다 — <b>두개골 타원의 폭·세로는 원래 얼굴에서 나온 값</b>이다.
+     즉 얼굴은 두개골 타원에 정확히 <b>내접</b>한다. 게다가 FACE_WIDTH_FIT의 넓힘은
+     이 손님에게 이미 <b>아무 일도 안 하고 있었다</b>("변화 없음"). 그러니 이건 얼굴을
+     좁히는 게 아니라 <b>제 자에 돌려놓는</b> 것이고, splay(정점이 inside>1로 나가
+     z가 바닥치는 증상)는 내접에서는 정의상 안 난다. 남는 위험은 테두리(inside≈1)에서
+     √의 기울기가 −∞로 가는 것뿐이라, 바닥 클램프 대신 <b>접선 연장</b>으로 잇는다.
+
+     ── ellipsoidZ는 <b>한 글자도 안 건드린다</b> ──────────────────────────
+     ⚠ 위 FACE_Z_TO_SKULL 주석이 이미 경고해 둔 자리다 — ellipsoidZ는
+       frontEstimatedZOf에서 <b>잔차의 기준</b>으로도 쓰인다. 그걸 바꾸면 deltaZ가
+       정확히 그만큼 어긋나 측면 실측이 있는 222/468 정점만 옛 면으로 끌려간다
+       (= 얼굴이 두 조각으로 찢어진다). 그래서 <b>기준면 전용</b> 함수를 따로 만들고,
+       갈아끼우는 곳은 baseTerm <b>한 줄</b>뿐이다.
+
+     ── 한 번에 다 바꾸지 않는다 ──────────────────────────────────────
+     사용자가 말한 자리는 <b>이마</b>다. 그래서 자 교체를 이마에서 1, 눈썹 아래로
+     0이 되게 세로로 섞는다(smoothstep). 관자놀이·턱은 한 점도 안 움직인다
+     = 실루엣 충격 없음. 얼굴 전체를 두개골 자로 보내려면 browBlend=false.
+     되돌리기: FACE_RULER_FIT.on = false (산술까지 예전과 동일) */
+  const FACE_RULER_FIT = {
+    on: true,          // false면 예전과 <b>산술까지 동일</b> — 이게 되돌리기다
+    browBlend: true,   // true=이마만 · false=얼굴 전체를 두개골 자로
+    fullFrac: 0.15,    // 얼굴 y범위의 위 15%까지는 두개골 자 100% (SCALP_SEAM.bandFrac과 같은 자)
+    zeroFrac: 0.45,    // 위에서 45% 아래부터는 옛 자 100% — 대략 눈썹~눈 사이
+    edgeT:    0.94,    // 테두리 접선 연장 시작점 (t=√inside)
+    seamBias: 0.004,   // 이마에서 얼굴을 두개골보다 이만큼 <b>앞</b>에 (≈0.08cm) · 0이면 끔
+  };
+  /* 아래 pre-pass가 채운다 — 이 함수들은 vertex loop에서만 불리므로 순서 문제 없다. */
+  let _faceYTop = 0, _faceYBot = 0, _rulerSk = null;
+  /* 0 = 옛 자(헐) · 1 = 두개골 자. 새 경계선을 만들지 않으려고 <b>아래 이마 바닥</b>도
+     같은 가중치를 쓴다. */
+  function faceRulerBlend(yLocal){
+    if(!FACE_RULER_FIT.on || !_rulerSk) return 0;
+    if(!FACE_RULER_FIT.browBlend) return 1;
+    const span = _faceYTop - _faceYBot;
+    if(!(span > 1e-6)) return 0;
+    const d = (_faceYTop - yLocal) / span;          // 0 = 맨 위 … 1 = 턱
+    const den = Math.max(1e-6, FACE_RULER_FIT.zeroFrac - FACE_RULER_FIT.fullFrac);
+    const s = Math.min(1, Math.max(0, (FACE_RULER_FIT.zeroFrac - d) / den));
+    return s*s*(3 - 2*s);                          // smoothstep — C¹이라 이음선이 안 생긴다
+  }
+  /* 얼굴 <b>기준면 전용</b> 자. 반환 단위는 ellipsoidZ와 같다(ELL_C 기준) — 밖에서
+     ×FACE_Z_TO_SKULL 하면 정확히 skull.c·√(1−(x/skull.a)²−(y/skull.b)²)가 된다.
+     두개골 면과 <b>같은 식·같은 자</b>이므로 기준면끼리의 틈은 항등적으로 0이다. */
+  function faceBaseZLocal(localX, yLocal){
+    const w = faceRulerBlend(yLocal);
+    if(w <= 0) return ellipsoidZ(localX, yLocal);   // 예전 그대로
+    const t2 = (localX/_rulerSk.a)*(localX/_rulerSk.a) + (yLocal/_rulerSk.b)*(yLocal/_rulerSk.b);
+    const t = Math.sqrt(t2), t0 = FACE_RULER_FIT.edgeT;
+    let f;
+    if(t <= t0){
+      f = Math.sqrt(1 - t2);
+    } else {
+      /* 접선 연장 — t0에서의 값과 기울기로 곧게 잇는다. 바닥 클램프가 만들던
+         <b>옆벽</b>(z가 뚝 떨어져 옆으로 펼쳐지는 것)이 안 생긴다. */
+      const f0 = Math.sqrt(1 - t0*t0);
+      f = Math.max(0.141, f0 - (t0/f0)*(t - t0));   // 0.141 = √0.02 · 옛 바닥과 같은 값
+    }
+    return ellipsoidZ(localX, yLocal)*(1 - w) + (ELL_C * f)*w;
+  }
+
   // 깊이(z) 굴곡 부호: MediaPipe 공식 문서 기준 "z가 작을수록(더 음수) 카메라에
   // 가까움" — 우리 좌표계는 +Z가 보는 사람 쪽이라 이론상 -1이 맞음. 이전
   // 세션엔 옛 headSurfaceZ 기준 실기기 테스트에서 "코가 함몰돼 보인다"며 1로
@@ -1032,15 +1121,23 @@ async function buildRealFaceMesh(faceMetrics){
   // 좁으면 얼굴 폭(+3% 여유)까지 넓힌다. 이러면 모든 얼굴 정점이 타원 안(inside≤1)에
   // 들어와 곡면을 타고 감긴다. yLocal도 세로로 벗어나면 같은 옆벽이 생기므로 함께 반영.
   {
-    let faceMaxX = 0, faceMaxY = 0;
+    let faceMaxX = 0, faceMaxY = 0, _yT = -Infinity, _yB = Infinity;
     for(let i=0;i<vertCount;i++){
       if(!inFaceBound(i)) continue;
       const p = raw[i];
       const lx = Math.abs(projector.toMeshX(p.x));
-      const ly = Math.abs(projector.toMeshY(p.y) - 0.15);
+      const lyS = projector.toMeshY(p.y) - 0.15;   // <b>부호 있는</b> 값 — 자 섞기에 필요
+      const ly = Math.abs(lyS);
       if(lx > faceMaxX) faceMaxX = lx;
       if(ly > faceMaxY) faceMaxY = ly;
+      if(lyS > _yT) _yT = lyS;
+      if(lyS < _yB) _yB = lyS;
     }
+    _faceYTop = _yT; _faceYBot = _yB;
+    try{
+      const _s0 = getDisplaySkullEllipsoid();
+      _rulerSk = (_s0 && _s0.a > 1e-6 && _s0.b > 1e-6 && _s0.c > 1e-6) ? _s0 : null;
+    }catch(e){ _rulerSk = null; }
     /* ── 얼굴이 두상보다 <b>넓은 타원</b>에 감긴다 (2026-08-31 12차) ───────────
        사용자: "폼파두르 적용 버전을 보니까 얼굴이 원래 두상타원에서 좀 뜨네."
        원인은 이 줄이다. 얼굴 메쉬는 여기서 넓힌 ellAForFace에 감기는데, 실제로
@@ -1064,6 +1161,24 @@ async function buildRealFaceMesh(faceMetrics){
       +(widened>ELL_A+1e-4 ? ' (넓혀서 splay 방지)' : ' (변화 없음)')
       +' | 얼굴 최대세로='+faceMaxY.toFixed(3)+' vs ELL_B='+ELL_B.toFixed(3));
     ellAForFace = widened;
+    /* 자 교체가 실제로 걸렸는지, 그리고 <b>내접이 맞는지</b>를 한 줄로 남긴다 —
+       tMax가 1을 넘으면 얼굴이 두개골 타원 밖으로 나간 것이라 접선 연장이 일한다. */
+    if(FACE_RULER_FIT.on && _rulerSk){
+      const tMax = Math.sqrt((faceMaxX/_rulerSk.a)**2 + (faceMaxY/_rulerSk.b)**2);
+      console.log(...gyeolBoldArgs(['[얼굴 기준면·자] <b>두개골 자로 교체</b> — 폭 '
+        + ellAForFace.toFixed(3) + '→' + _rulerSk.a.toFixed(3)
+        + ' · 세로 ' + ELL_B.toFixed(3) + '→' + _rulerSk.b.toFixed(3)
+        + ' (깊이는 이미 ×' + (ELL_C>1e-6 ? (_rulerSk.c/ELL_C).toFixed(3) : '—') + ')'
+        + (FACE_RULER_FIT.browBlend
+            ? '\n      섞는 범위: 얼굴 y범위 위 ' + (FACE_RULER_FIT.fullFrac*100).toFixed(0)
+              + '%까지 100% → ' + (FACE_RULER_FIT.zeroFrac*100).toFixed(0) + '%에서 0%'
+              + ' (그 아래 관자놀이·턱은 <b>한 점도 안 움직입니다</b>)'
+            : '\n      얼굴 <b>전체</b>에 적용(browBlend=false)')
+        + '\n      얼굴 최대 t=' + tMax.toFixed(3)
+        + (tMax <= 1.0001 ? ' ≤ 1 → <b>내접</b>. splay 위험 없음'
+                          : ' > 1 → 테두리 ' + FACE_RULER_FIT.edgeT + ' 밖은 접선 연장으로 잇습니다')
+        + '\n      되돌리기: FACE_RULER_FIT.on=false']));
+    }
   }
 
   // ── 좌/우 측면 사진 기반 코/턱/이마 깊이(Z) 실측 보정(2026-07-14 추가) ──
@@ -1343,14 +1458,18 @@ async function buildRealFaceMesh(faceMetrics){
         profileCorrectionZ += w * c.deltaZ;
       }
     }
-    // (2026-08-17 c) 기준면만 두개골로 옮긴다 — 근거는 위 FACE_Z_TO_SKULL 주석.
-    const baseTerm = surfaceZLocal * FACE_Z_TO_SKULL;
+    /* (2026-08-17 c) 기준면만 두개골로 옮긴다 — 근거는 위 FACE_Z_TO_SKULL 주석.
+       (2026-09-13) 깊이뿐 아니라 <b>폭·세로도</b> 두개골 자로 — 위 FACE_RULER_FIT 주석.
+       surfaceZLocal(헐 자)은 그대로 둔다: frontEstimatedZOf의 잔차 기준이라 건드리면
+       측면 실측 정점만 옛 면으로 끌려간다. */
+    const baseSurf = faceBaseZLocal(localX, yLocal);
+    const baseTerm = baseSurf * FACE_Z_TO_SKULL;
     const reliefTerm = blendWeight * reliefZLocal;
     const localZ = baseTerm + reliefTerm + profileCorrectionZ;
     /* [진단] 세 항을 따로 남긴다 — "코가 나온 건가 이마가 들어간 건가"를
        눈이 아니라 숫자로 가른다. 타원면z와의 차가 곧 함몰/돌출 깊이다. */
     _faceBaseZ[i] = baseTerm;
-    if(_ZDBG[i] !== undefined) _ZDBG[i] = { surf: surfaceZLocal, base: baseTerm,
+    if(_ZDBG[i] !== undefined) _ZDBG[i] = { surf: baseSurf, surfHull: surfaceZLocal, base: baseTerm,
       relief: reliefTerm, prof: profileCorrectionZ, z: localZ,
       measured: !!(fullProfileDepthMap && !Number.isNaN(fullProfileDepthMap[i])) };
     // front는 회전 없이 그대로 월드 좌표로 씀 — 위 되돌림 항목 참고(회전을
@@ -1437,7 +1556,12 @@ async function buildRealFaceMesh(faceMetrics){
             것이고, 부호가 갈리면 ②가 맞고 이 손잡이는 되돌릴 자리다.
      (다) 고치기 전/후를 <b>같은 자로 두 번</b> 잰다. 로그 두 줄이 곧 검증이다. */
   const FACE_Z_SKULL_FIT = {
-    on: true,          // false면 예전과 <b>산술까지 동일</b> — 이게 되돌리기다
+    /* (2026-09-13) <b>껐다</b>. 위 (나)가 "부호가 갈리면 되돌릴 자리"라고 적어 뒀고,
+       [고친 뒤] 로그가 최소 −0.0173 · 최대 +0.0564로 정확히 그렇게 나왔다.
+       이제 자 자체를 맞췄으므로(FACE_RULER_FIT) 이 손잡이는 <b>할 일이 없다</b> —
+       켜 두면 이미 0인 틈을 중앙값 기준으로 또 밀어 이마를 도로 함몰시킨다.
+       자 맞춤이 실패했을 때만 비교용으로 잠깐 켜 본다. */
+    on: false,         // false면 예전과 <b>산술까지 동일</b> — 이게 되돌리기다
     mode: 'measured',  // 'measured' = 윗줄 틈에서 역산 · 'manual' = k를 직접 지정
     manualK: 0.853,    // mode:'manual'일 때 쓸 FACE_Z_TO_SKULL 절대값
     maxAdjust: 0.06,   // 안전대 — k를 6%보다 크게는 못 움직인다(폭주 방지)
@@ -1496,6 +1620,17 @@ async function buildRealFaceMesh(faceMetrics){
       const out = rows.filter(r => Math.abs(r.lx) >= xMax*0.66);
       const avg = arr => arr.length ? arr.reduce((s,r)=>s+r.gap,0)/arr.length : NaN;
       const gMid = avg(mid), gOut = avg(out);
+      /* ── 좌·우를 <b>따로</b> 잰다 (2026-09-13) ──────────────────────────────
+         사용자: "정면에서 볼 때 왼쪽은 거의 붙었는데 <b>오른쪽은 조금 떨어졌어</b>."
+         지금까지 이 로그는 |x|로만 갈라서 좌우를 <b>합쳐</b> 버렸다 — 비대칭이
+         있어도 평균 안에서 사라진다. 못 재는 것을 쟀다고 말하지 않기 위해 나눈다.
+         ⚠ 읽는 법: 기준면끼리의 차라 자를 맞추면 좌·우 <b>둘 다</b> 0이 된다.
+           그런데도 화면이 비대칭이면 원인은 기준면이 아니라 <b>측면보정</b>이다 —
+           이 손님은 좌 50.8°(trust 0.79) · 우 41.2°(trust <b>0.31</b>)로 두 뷰의
+           신뢰도가 2.5배 다르다(위 sideDepthWeight 주석의 그 값). */
+      const gL = avg(rows.filter(r => r.lx < 0));
+      const gR = avg(rows.filter(r => r.lx > 0));
+      const lrGap = Math.abs(gL - gR);
       const spread = Math.abs(gMid - gOut);
       /* ②의 진짜 지문: 틈이 <b>중심에서 멀수록</b> 커지는가. 상관계수 하나면 된다. */
       let rGapU = NaN;
@@ -1541,6 +1676,11 @@ async function buildRealFaceMesh(faceMetrics){
         + ' · + = 얼굴이 두개골보다 <b>앞</b>'
         + '\n      가운데(|x|≤' + (xMax*0.34).toFixed(2) + ') ' + gMid.toFixed(4) + asCm(gMid)
         + ' · 가장자리(|x|≥' + (xMax*0.66).toFixed(2) + ') ' + gOut.toFixed(4) + asCm(gOut)
+        + '\n      좌(x<0) ' + gL.toFixed(4) + asCm(gL) + ' · 우(x>0) ' + gR.toFixed(4) + asCm(gR)
+        + ' · <b>좌우차 ' + lrGap.toFixed(4) + '</b>' + asCm(lrGap)
+        + (isFinite(lrGap) && lrGap > 0.004
+            ? ' ⚠ 기준면이 좌우로 기울었습니다'
+            : ' — 기준면은 좌우 대칭. 화면이 비대칭이면 <b>측면보정</b>(좌 trust 0.79 vs 우 0.31)입니다')
         + ' · 그리는 구 ×' + _kIn + ' → drawInset이 만들 틈 ' + insetGap.toFixed(4)
         + '\n      자 대조: 폭 ' + ellAForFace.toFixed(3) + '/' + _sk.a.toFixed(3)
         + ' = ×' + (ellAForFace>1e-6 ? (_sk.a/ellAForFace).toFixed(3) : '—')
@@ -1553,7 +1693,47 @@ async function buildRealFaceMesh(faceMetrics){
     }catch(e){ console.warn('[이마이음매] 측정 실패:', e && e.message); return null; }
   }
 
-  const _seamBefore = measureForeheadSeam('고치기 전');
+  /* 이 줄은 vertex loop <b>뒤</b>라, 자 맞춤(FACE_RULER_FIT)은 이미 들어가 있다.
+     이름을 그렇게 바꾼다 — "고치기 전"이라고 적어 두면 다음 세션이 또 속는다. */
+  const _seamBefore = measureForeheadSeam(FACE_RULER_FIT.on ? '자 맞춘 뒤' : '고치기 전');
+
+  /* ── 이마에서 얼굴이 두개골 <b>뒤로</b> 못 가게 (2026-09-13) ──────────────────
+     자를 맞추면 <b>기준면끼리</b>는 항등적으로 0이다. 그런데 화면에 그려지는 것은
+     기준면 + 굴곡 + 측면보정이다. 정중선 이마·미간은 그 잔차가 음수로 잡히는
+     자리라(9/07 주석: "이마 −0.139 · 미간 −0.097"), 기준면을 맞춰도 얼굴만 살짝
+     안으로 들어가 두개골 살구색이 <b>미간·눈썹 위로</b> 비친다 — 사용자가 본 그 증상.
+     그래서 이마 밴드에서만 <b>바닥</b>을 둔다: 두개골 면 + seamBias 아래로는 안 내려간다.
+     위로는 자유라 눈썹뼈 돌출·코는 그대로 산다. 가중치는 자 섞기와 <b>같은</b>
+     smoothstep을 쓴다 — 경계선을 하나 더 만들지 않기 위해서다.
+     되돌리기: FACE_RULER_FIT.seamBias = 0 */
+  if(FACE_RULER_FIT.on && _rulerSk && FACE_RULER_FIT.seamBias > 0){
+    let lifted = 0, maxLift = 0, seen = 0;
+    for(let i=0;i<vertCount;i++){
+      if(!inFaceBound(i)) continue;
+      const lx = positions[i*3+0], yl = positions[i*3+1] - 0.15;
+      const w = faceRulerBlend(yl);
+      if(w <= 1e-3) continue;
+      seen++;
+      const u = (lx/_rulerSk.a)*(lx/_rulerSk.a) + (yl/_rulerSk.b)*(yl/_rulerSk.b);
+      if(u >= 1) continue;                       // 두개골 구 밖 — 바닥이 없다
+      const floorZ = _rulerSk.c*Math.sqrt(1-u) + FACE_RULER_FIT.seamBias*w;
+      const z = positions[i*3+2];
+      if(z < floorZ){
+        const lift = (floorZ - z)*w;
+        positions[i*3+2] = z + lift;
+        if(_ZDBG[i] !== undefined) _ZDBG[i].z += lift;
+        lifted++;
+        if(lift > maxLift) maxLift = lift;
+      }
+    }
+    const _cm2 = (typeof modelCmPerUnit === 'function' ? modelCmPerUnit() : null);
+    console.log(...gyeolBoldArgs(['[이마 바닥] 이마 밴드 ' + seen + '점 중 <b>' + lifted
+      + '점</b>을 두개골 면 위로 올렸습니다 (최대 ' + maxLift.toFixed(4)
+      + (_cm2 ? ' = ' + (maxLift*_cm2).toFixed(2) + 'cm' : '') + ')'
+      + '\n      = 두개골 살구색이 <b>미간·눈썹</b>을 덮던 자리를 막는 것입니다.'
+      + ' 0점이면 이미 안 덮고 있었다는 뜻이라 그대로 두면 됩니다.'
+      + '\n      되돌리기: FACE_RULER_FIT.seamBias=0']));
+  }
 
   /* ── FACE_Z_TO_SKULL 되맞춤 (2026-09-13) ─────────────────────────────
      9/12 진단이 시킨 대로 <b>이 손잡이 하나만</b> 움직여 본다. 얼굴 기준면 전체를
@@ -1635,7 +1815,7 @@ async function buildRealFaceMesh(faceMetrics){
         }
       }
     }catch(e){ console.warn('[이마이음매·k되맞춤] 실패:', e && e.message); }
-    measureForeheadSeam('고친 뒤');
+    measureForeheadSeam('k까지 고친 뒤');
   }
 
   const filteredTriV = [];
