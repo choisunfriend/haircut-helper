@@ -732,12 +732,6 @@ const STYLES = [
   { id:'taper_fade_pomp', specId:'taper_fade_pomp',
     name:'페이드 폼파두르', tags:'테이퍼 페이드 · 사이드파트',
     length:34, curl:0,  volume:82, colorHex:'#60554E' },   // ← 아이콘 전용(위 ⚠)
-  /* (2026-09-13) 땋기. 위 둘과 같은 규칙 — 값은 <b>아이콘 전용</b>이고 시술은
-     STYLE_SPECS.reggae_twist가 한다. curl 0인 것에 주의: 땋은 모양은 펌이 아니라
-     BRAID(21-braid.js)가 만들므로 여기 curl을 올리면 아이콘만 거짓말을 한다. */
-  { id:'reggae_twist', specId:'reggae_twist',
-    name:'레게 브레이드', tags:'세 갈래 땋기 · 손님 머리 길이',
-    length:50, curl:0, volume:60, colorHex:'#3A2A20' },    // ← 아이콘 전용(위 ⚠)
 ];
 
 /* ── 의상 카탈로그(OUTFIT_CATALOG) ──

@@ -1405,33 +1405,11 @@ function projectHair3DToView(ctx, fit, angle, maskInf){
   // (2026-09-12) topSections는 깊이보다 위다 — 크라운 배치가 맨 끝.
   const keys = Array.from(batch.values())
     .sort((a,b)=> (a.rank - b.rank) || (a.depth/a.n - b.depth/b.n));
-  /* ── 땋기 (2026-09-13) ──────────────────────────────────────────────────
-     밧줄로 그을지 여기서 <b>한 번</b> 정한다. 가닥마다 물으면 자(px/cm)를
-     수천 번 다시 만들게 된다. geo가 null이면 평소 렌더 그대로다 —
-     BRAID.on이 꺼져 있거나, 랜드마크가 없어 자를 못 만든 경우다.
-     ⚠ 굵기도 같이 갈아탄다. 밧줄은 갈래 여러 개를 각자 긋는 것이라 배치에
-       적힌 한 가닥짜리 굵기(e.w)를 그대로 쓰면 밧줄이 그 굵기의 갈래수 배로
-       부푼다. geo.subWidth가 그 자리다. */
-  const braidGeo = (typeof braidGeometry === 'function')
-    ? braidGeometry(angle, maskInf.h, toCY) : null;
-  if(braidGeo && BRAID.log && !_braidLogged){
-    _braidLogged = true;
-    console.log(...gyeolBoldArgs(['[땋기] ' + braidGeo.strands + '갈래 · 굵기 '
-      + BRAID.widthCm + 'cm(' + braidGeo.widthPx.toFixed(1) + 'px) · 마디 '
-      + BRAID.nodeCm + 'cm(' + braidGeo.nodePx.toFixed(1) + 'px) · 세기 ' + braidGeo.tightness
-      + ' · 자 ' + braidGeo.pxPerCm.toFixed(2) + 'px/cm'
-      + '\n    치수는 <b>목표 이미지에서 잰 초안</b>입니다(실제 시술 실측 아님 — 21-braid.js 배너).'
-      + ' 화면을 보고 BRAID.widthCm / nodeCm / count를 고치는 것이 이 값의 사용법입니다.'
-      + ' 끄기: BRAID.on = false']));
-  }
   for(const e of keys){
     ctx.strokeStyle = e.col;
-    ctx.lineWidth = braidGeo ? braidGeo.subWidth : e.w;
+    ctx.lineWidth = e.w;
     ctx.beginPath();
-    for(const cpts of e.items){
-      if(braidGeo) traceBraidPolyline(ctx, cpts, braidGeo);
-      else         traceSmoothPolyline(ctx, cpts);
-    }
+    for(const cpts of e.items) traceSmoothPolyline(ctx, cpts);
     ctx.stroke();
   }
   /* [진단] 얼굴 라인 보기 — FACE_GATE.debug=true 후 다시 그리면 게이트가
