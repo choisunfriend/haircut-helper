@@ -173,12 +173,28 @@ function loadOutfitMeshFromOBJ(objUrl, mtlUrl, widthFactor, neckCutFrac, targetB
              통일해 놓고 마지막 줄에서 다시 어긋나는 자리다. 결과 화면은 뒤에
              group.scale 재보정이 한 번 더 있어 안 보이고, 3D 화면에만 남는다.
              그래서 세로는 자 그대로 두고 폭은 x·z에만 건다.
-             되돌리기: OUTFIT_MESH_SOURCE.widthUniform = true (예전처럼 균일 배율) */
+             ── 그런데 x·z에만 걸어도 <b>몸이 뚱뚱해진다</b> (2026-09-14) ──────────
+             세로를 자에 맞춰 줄이고 가로는 wf로 둔 순간, 몸 자체의 <b>가로/세로
+             비</b>가 wf배로 벌어진다. 사용자 관찰 "뚱뚱해지고 팔뚝하고 손도
+             커진 느낌"이 정확히 그 몫이다. 의상 에셋은 사람 몸이라 <b>균일</b>하게만
+             키워야 한다 — 늘리면 팔 굵기·손 크기가 같이 늘어난다.
+             그리고 얼굴이 넓다고 몸이 넓어야 할 근거도 없다. 손님의 <b>크기</b>는
+             이미 두상 높이(TARGET_HEIGHT)가 들고 있고, wf는 거기에 두 번째로
+             얹히는 자다 — 한 값을 두 곳이 각자 정하던 이 저장소의 그 함정이다.
+             그래서 기본을 <b>off</b>로 둔다: 균일 배율 · wf 안 씀.
+               off     — 두신 정확 · 몸 비례 에셋 그대로  (기본)
+               uniform — 예전 동작. 두신이 wf배만큼 상수에서 벗어난다
+               xz      — 9/14 오전. 두신은 맞지만 몸이 wf배 뚱뚱해진다
+             되돌리기: OUTFIT_MESH_SOURCE.widthMode = 'uniform' (또는 'xz') */
           const wf = (isFinite(widthFactor) && widthFactor > 0) ? widthFactor : 1;
-          const uniform = !!OUTFIT_MESH_SOURCE.widthUniform;
+          const mode = OUTFIT_MESH_SOURCE.widthMode
+            || (OUTFIT_MESH_SOURCE.widthUniform ? 'uniform' : 'off');
           const scale = OUTFIT_MESH_SOURCE.scaleOverride
-            || (TARGET_HEIGHT / (bodyHeightRaw || 1)) * (uniform ? wf : 1);
-          obj.scale.set(scale * (uniform ? 1 : wf), scale, scale * (uniform ? 1 : wf));
+            || (TARGET_HEIGHT / (bodyHeightRaw || 1)) * (mode === 'uniform' ? wf : 1);
+          const wx = (mode === 'xz') ? wf : 1;
+          obj.scale.set(scale * wx, scale, scale * wx);
+          if(mode !== 'off') console.log('[3D·비율·의상] widthMode=' + mode + ' · 폭 ×' + wf.toFixed(3)
+            + ' — off가 아니면 두신이나 몸 비례 중 하나가 얼굴 폭을 따라 움직입니다.');
 
           // 스케일 적용 후 좌표 기준으로 재계산해서 위치 정렬(중심을 x/z=0으로,
           // 목 밑동 지점이 neckAttachPoint 하단 y=-1.15에 오도록)
