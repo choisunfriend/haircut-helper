@@ -1167,11 +1167,16 @@ function viewDrawNudgePx(angle){ return _viewNudgeOf(VIEWCAL_ANCHOR.drawNudgePx,
    정렬(faceLineAlignFit)이 viewCal 원본을 쓰고 있어서 가닥이 코 위로 지나갔고,
    14번에서 고쳤다. 아직 안 고친 소비자: projectImagePointToHead(측면 실측 깊이)
    — 미간 함몰이 여기서 나온다. 손대기 전에 [얼굴 z·항별] 로그부터 읽을 것. */
-function correctedViewYawDeg(deg, angle){
+/* ⚠ 3번째 인자 from — 부르는 쪽이 출처를 <b>지정</b>할 수 있다(2026-09-09 2차).
+   POSE_YAW_FIX.from이 이 자리로 들어온다. 없으면 예전대로 전역 sideYawFrom을
+   읽으므로 기존 호출부(calForDraw·correctedViewYawRad)는 비트 단위로 같다.
+   이 인자가 없으면 POSE_YAW_FIX.from을 켜도 조용히 무시되고 전역이 먹는다. */
+function correctedViewYawDeg(deg, angle, from){
   if(angle !== 'left' && angle !== 'right') return deg;
   if(!isFinite(deg) || Math.abs(deg) < VIEWCAL_ANCHOR.sideMinDeg) return deg;
   const cap = d => Math.sign(deg) * Math.min(VIEWCAL_ANCHOR.sideMaxDeg, Math.abs(d));
-  if(VIEWCAL_ANCHOR.sideYawFrom === 'nose'){
+  const src = from || VIEWCAL_ANCHOR.sideYawFrom;
+  if(src === 'nose'){
     const est = noseRatioYawDeg(angle);
     /* 부호가 PnP와 다르면 둘 중 하나가 뒤집힌 것이다 — 그때는 안 고친다.
        고칠 근거가 아니라 <b>진단할 근거</b>이고, 조용히 뒤집으면 그게 다음 버그다. */
@@ -1185,8 +1190,8 @@ function correctedViewYawDeg(deg, angle){
   if(!(g > 0) || g === 1) return deg;
   return cap(deg * g);
 }
-function correctedViewYawRad(yawRad, angle){
-  return correctedViewYawDeg(yawRad * 180/Math.PI, angle) * Math.PI/180;
+function correctedViewYawRad(yawRad, angle, from){
+  return correctedViewYawDeg(yawRad * 180/Math.PI, angle, from) * Math.PI/180;
 }
 const HAIR_TOP_CAP = {
   on: true,

@@ -577,64 +577,42 @@ function curlStrand3D(pts, curlAmt, waveT, curlDir){
    깊이 판정이 성립하지 않는다(가릴 두께가 없는데 부호로 자르면 얼룩이 된다).
    국소 반두께가 이 비율 밑이면 "여긴 가리는 게 없다"로 본다.
    되돌리기: VIEW_CULL.neckDepth = false (9/05 1차와 글자 그대로 같은 동작) */
-/* ── (2026-09-06) 목·어깨 아래는 <b>깊이</b>가 아니라 <b>뿌리 쪽</b>으로 가른다 ──
-   9/05 2차가 넣은 neckFrontZ는 "목·어깨 타원의 앞면보다 뒤면 지운다"인데,
-   우리 모델의 머리카락에는 <b>가슴이 없다</b>. 턱 아래로 내려온 가닥은 z가
-   그대로 어깨 밴드 안에 들어가고, 밴드는 화면 아래 끝까지 서 있으므로
-   <b>전부 "몸 뒤"</b>로 판정돼 사라졌다 — 자른 높이가 정확히 턱선이었던 이유다
-   (사용자: "긴 머리가 단발로 안 잘린다"가 아니라 <b>안 그려진다</b>였다).
-   대신 뿌리로 가른다: 뿌리가 <b>카메라 쪽</b>이면 몸 앞에 흘러내린 머리라
-   안 지우고, 반대쪽이면 예전 규칙(occ.covers에 가릴 때만 지움)으로 떨어진다.
-   그래서 8/18 h가 고친 "정면에서 목 옆에 그려지던 뒷머리"는 그대로 안 그려지고,
-   9/05 2차가 노리던 톱니 밑단도 같이 사라진다.
+/* ── (2026-09-06 2차) 목·어깨 아래는 <b>깊이로 못 가른다</b> — 뿌리 쪽으로 ────
+   사용자: "정면에서 봤을 때 긴머리가 다 잘려서 단발로만 보여."
+
+   3D 화면은 같은 모델로 <b>어깨 아래까지</b> 그린다. 그러니 없어서 안 그린 게
+   아니라 <b>그리기 전에 지운 것</b>이고, 마네킹에서 아직 열려 있는 문은 둘뿐이다
+   (MQ_TRUST가 나머지를 닫았다) — 두개골 깊이와 목·어깨 깊이. 두개골 그림자는
+   턱 위에서 끝나므로, 턱 아래를 자르는 것은 <b>목·어깨 깊이</b> 하나다.
+   실측이 그 말을 그대로 한다: [끊긴 가닥]의 구멍은 전부 두개골 깊이인데
+   가림 트리밍은 61%다 — 나머지 트리밍은 구멍이 아니라 <b>꼬리</b>, 즉 잘린 밑단이다.
+
+   왜 잘리나. neckFrontZ는 목·어깨 타원의 <b>앞면</b>을 구해 그보다 뒤면 지운다.
+   그런데 우리 모델의 머리카락은 두상에서 그대로 흘러내릴 뿐 <b>가슴이 없다</b> —
+   턱 아래로 내려온 가닥의 z는 뿌리의 z 언저리(0.1~0.3)에 머무는데, 목·어깨
+   단면의 앞면은 그보다 앞(어깨 밴드는 두상 대비 최대 3배 깊다)이다. 그래서
+   앞으로 흘러내린 머리가 전부 "몸 뒤"로 판정돼 사라진다. 자른 높이가 정확히
+   턱선인 이유가 이것이다(그 위는 두개골 그림자라 이 가지를 안 탄다).
+
+   즉 깊이 판정이 성립하려면 <b>몸과 머리카락이 같은 정밀도로 모델링</b>돼야
+   하는데, 몸통은 실측 밴드의 클램프이고 머리카락엔 드레이프가 없다. 두 개의
+   서로 다른 근사를 부호도 아닌 절대 깊이로 비교한 것이 이 문에 없던 권한이다.
+
+   대신 <b>가닥이 몸의 어느 쪽으로 흘렀나</b>로 가른다. 이건 우리가 실제로 아는
+   값이다 — 뿌리 깊이. 뒤통수에서 난 머리는 길든 짧든 몸 뒤로 가고, 앞·옆에서
+   난 머리는 몸 앞(겉)으로 내려온다. 길이는 그 소속을 안 바꾼다. 이미 겹 정렬
+   키(9/01 6차)와 얼굴 게이트(strandIsFarSide)가 같은 근거를 쓴다.
+     · 뿌리가 카메라 쪽(rootDepth ≥ 0) → 몸 <b>겉</b>에 놓인 머리다. 안 지운다.
+     · 뿌리가 반대쪽                    → 몸에 <b>가려질 때만</b> 지운다(occ.covers).
+       이건 8/18 h가 세운 규칙 그대로라, "정면에서 목 옆으로 보이는 뒷머리"도
+       그대로 살아 있다.
+   부수 효과로 9/05 2차가 겨냥한 <b>톱니 밑단</b>도 같이 없어진다 — 원인이던
+   "z 부호가 0 언저리에서 점마다 흔들림"이 가닥당 한 번의 판정으로 바뀐다.
    되돌리기: VIEW_CULL.neckBySide = false (9/05 2차와 글자 그대로 같은 동작) */
 const VIEW_CULL = { mode: 'anyVisible', trimHidden: true, photoOverrides: false,
                     depthBuffer: true, depthEps: 0.04,
                     neckDepth: true, neckRimMin: 0.15,
                     neckBySide: true };   // 'anyVisible' | 'anyFacing' | 'mean'(예전)
-
-/* ══════════════════════════════════════════════════════════════════
-   마네킹 기하는 <b>믿는다</b> — 사진에서 온 문들을 닫는다 (2026-09-06)
-   ─────────────────────────────────────────────────────────────────
-   마네킹 모드(MANNEQUIN.on)의 가닥은 <b>사진에서 추적한 것이 아니다</b>.
-   실측 특성(뿌리밀도·섹션·길이·색)만 가지고 두피 법선에서 새로 심은 기하라,
-   모든 점의 3D 위치를 우리가 정확히 알고 있다. 반대로 <b>손님 사진에서 온</b>
-   판정들(세그멘테이션 마스크·얼굴 타원·얼굴 실루엣)은 그 기하에 대해 아무
-   근거가 없다 — 다른 머리 모양을 찍은 사진이기 때문이다.
-
-   그런데 그 문들이 마네킹 가닥에도 그대로 걸려 있었고, 증상이 전부 <b>뜯김</b>으로
-   나왔다:
-     · 사이드·템플이 <b>동그랗게</b> 뜯긴다 → 얼굴 타원(getViewFaceEllipse)
-     · 머리를 묶고 온 손님이면 귀 앞·뺨에 머리카락이 없어 <b>옆머리가 정의상
-       전멸한다</b> → 2D 레이어 클립 · 3D 조정 후 재클립
-     · 측면에서 얼굴 게이트가 반대편 가닥을 지운다 → 얼굴 실루엣
-   네 문 다 "<b>이 사진에 머리카락이 있었나</b>"를 묻는데, 마네킹에는 그 질문이
-   성립하지 않는다. 그래서 마네킹일 때만 닫는다. 사진 모델일 때는 <b>비트 단위로</b>
-   예전과 같다(mqGeomTrusted()가 false라 각 조건이 통째로 빠진다).
-
-   ⚠ 닫는 것은 <b>사진에서 온 문</b>뿐이다. 기하에서 온 판정(두개골 깊이 버퍼·
-     목 단면·컬링)은 마네킹에서도 그대로 돈다 — 오히려 거기가 정확한 쪽이다.
-   되돌리기: MQ_TRUST.on = false (네 개가 한꺼번에 열리고 9/05 그림)
-             또는 문 하나씩 — faceEllipse / photoClip2D / photoClip3D / faceGate
-══════════════════════════════════════════════════════════════════ */
-const MQ_TRUST = {
-  on:          true,
-  faceEllipse: true,   // 13b getViewFaceEllipse — 점유 프로브의 얼굴 거부 타원
-  photoClip2D: true,   // 10  applyHairLayerClip — 렌더 레이어의 세그멘테이션 클립
-  photoClip3D: true,   // 17b computeAdjustedHair3DStrands — 조정 후 재클립
-  faceGate:    true,   // 15  makeFaceSilhouette — 얼굴 실루엣 게이트
-};
-/* 지금 화면의 기하가 마네킹에서 온 것인가.
-   ⚠ state.hair3Dneutral 접근자는 <b>게으른 생성</b>이라(02 배너) 읽는 것만으로
-     buildMannequinHair3D()를 돌릴 수 있다. 이 함수는 그 생성 도중에도 불릴 수
-     있으므로(리프트 → 점유 프로브 → getViewFaceEllipse) 접근자를 건드리지 않고
-     같은 조건을 <b>뒷문</b>으로 본다 — 02의 get()과 글자 그대로 같은 조건이다. */
-function mqGeomTrusted(){
-  if(!MQ_TRUST.on) return false;
-  if(typeof MANNEQUIN === 'undefined' || !MANNEQUIN.on) return false;
-  try{ return !!(state && (state._hair3Dneutral || state.hair3Dmannequin)); }
-  catch(e){ return false; }
-}
 
 /* 이 뷰에서 <b>가리는 몸</b>(두상+목·어깨)의 직교투영 그림자 (2026-08-18 h).
    가리는 것은 두 조각이고 <b>둘 다 이미 실측돼 있다</b>(새 상수 없음):
@@ -675,6 +653,9 @@ function makeViewOccluder(cal){
     const R0 = R[0], R2 = R[2], R6 = R[6], R8 = R[8];
     const zEps = E.c * VIEW_CULL.depthEps;
     return {
+      /* 이 뷰에서 <b>부호+covers 폴백</b>을 쓸지. 마네킹이면 깊이(frontZ/neckFrontZ)만
+         남기고 닫는다(MQ_TRUST 배너). 뷰당 한 번만 정하므로 점당 비용은 0이다. */
+      trust: (MQ_TRUST.bodyShadow && mqGeomTrusted()),
       covers(lx, ly, my){
         if(B11*lx*lx + 2*B12*lx*ly + B22*ly*ly <= 1) return true;   // 두상 그림자 안
         if(neckTopY == null || my > neckTopY) return false;         // 두상 옆·위 = 가릴 것 없음
@@ -749,8 +730,105 @@ function makeViewOccluder(cal){
      — 8/18 i가 고친 "목 앞에 그려지는 뒷머리"는 그대로 안 그려진다.
    · 마스크·좌표가 없으면(마네킹 초기·이식 실패) 예전 규칙 그대로.
    되돌리려면 VIEW_CULL.photoOverrides = false. */
-function viewPointVisible(pr, occ, maskInf, rootDepth){
-  GAP_DIAG.reason = null;                          // [진단] 이 점을 지운 문(스크래치 한 칸)
+/* ══════════════════════════════════════════════════════════════════
+   마네킹 기하를 믿는다 (2026-09-06) — 사진 보정용 문을 닫는다
+   ─────────────────────────────────────────────────────────────────
+   사용자: "지금은 마네킹 모드로 가닥 디렉션도 잡았고, 길이는 별도로
+   조정하면 되니까, 불필요한 건 지워."
+
+   ── 어떤 게 불필요한가 ───────────────────────────────────────────
+   지금 가닥을 지우는 문이 여섯이었다. 그런데 여섯이 <b>같은 종류가 아니다</b>:
+
+     A. 진짜 기하 — 두개골·목 앞면 깊이(occ.frontZ / occ.neckFrontZ).
+        닫힌 해로 푼 깊이 비교다. "머리 뒤에 있으면 안 보인다"는 물리다.
+     B. 사진 보정 — 얼굴 타원(8/01) · 점유 재클립(8/01) · 2D 클립 마스크
+        (8/01) · 얼굴 실루엣 게이트(9/04).
+
+   B가 왜 생겼는지는 코드가 직접 적어 뒀다. 9/04 배너: <b>"가림 판정의
+   정확도가 두개골 타원의 정확도를 절대 못 넘는다 — 뿌리선 어긋남 중앙값이
+   32~49px인 모델로 이 점이 뺨 앞이냐 뒤냐를 가리려는 것"</b>. 즉 B는 전부
+   <b>A가 못 미더워서</b> 사진(랜드마크·세그멘테이션)으로 덧댄 안전망이다.
+
+   그 전제가 마네킹에서는 성립하지 않는다. 마네킹 가닥은 <b>바로 그 두상
+   타원 위에</b> 심어 만든 것이라, 가닥과 가림판정이 같은 기하를 쓴다 —
+   뿌리선 어긋남이라는 개념 자체가 없다. A가 정확하므로 B는 A가 이미 하는
+   일을 더 거친 자로 한 번 더 하는 것이고, 거친 자가 이기면 그게 화면의
+   구멍이 된다(사용자가 본 "사이드·템플이 뜯긴 자리").
+
+   그리고 B는 마네킹에서 <b>기준 자체가 틀렸다</b>: 점유 재클립과 2D 클립이
+   대는 자는 <b>손님의 원래 머리 실루엣</b>이다. 머리를 묶고 온 손님이면
+   귀 앞·뺨에 머리카락이 없고, 거기로 내려오는 마네킹 옆머리는 정의상
+   전멸한다. 8/09가 이걸 겪고 "여는 폭을 정한다"(fringeFrac)로 이마만
+   열어 줬는데, 그때 클립을 통째로 못 놓은 이유가 <b>"마네킹 기하가 혼자
+   설 만큼 정확하지 않다"</b>였다. 그 뒤로 깊이 버퍼(9/02 7차)·목 깊이
+   (9/05 2차)·얼굴 타원 정합(9/05)이 들어왔다. 전제가 바뀌었으니 결론도
+   바뀐다.
+
+   ── 그래서 마네킹일 때 닫는 문 ───────────────────────────────────
+   A는 그대로 둔다(뒤통수가 얼굴 위에 그려지면 안 되는 건 여전하다).
+   B는 마네킹 모델에서만 닫는다. 촬영 가닥 모델은 <b>한 글자도 안 바뀐다</b> —
+   거기서는 뿌리선 어긋남이 실재하므로 안전망이 아직 필요하다.
+     faceGate    얼굴 실루엣 게이트(9/04)      → A의 중복
+     faceEllipse 얼굴 타원 거부(8/01)          → A의 중복 + 9/05가 지목한 뜯김
+     photoClip3D 점유 재클립(8/01)             → 손님 옛 실루엣이라 기준이 틀림
+     photoClip2D 레이어 destination-in(8/01)   → 같은 이유
+     bodyShadow  부호+covers 폴백(8/18 h)      → 깊이 없는 옛 가지. A가 대신한다
+   되돌리기: MQ_TRUST.on = false (여기 위 전부가 한 번에 예전 동작)
+            개별로는 아래 플래그 하나씩.
+   확인: 콘솔 [끊긴 가닥] 줄이 어느 문이 몇 점을 지웠는지 찍는다(GAP_DIAG). */
+const MQ_TRUST = {
+  on: true,
+  faceGate:    true,
+  faceEllipse: true,
+  photoClip3D: true,
+  photoClip2D: true,
+  bodyShadow:  true,
+};
+/* 지금 화면의 모델이 마네킹인가. 플래그가 아니라 모델을 보고 판정한다
+   (mqFringeActive와 같은 규칙 — "화면 라벨은 상태가 아니다"). */
+function mqGeomTrusted(){
+  if(!MQ_TRUST.on) return false;
+  try{ const m = state.hair3Dneutral; return !!(m && m.mannequin); }catch(e){ return false; }
+}
+
+/* ══════════════════════════════════════════════════════════════════
+   끊긴 가닥 진단 (2026-09-06) — "누가 이 점을 지웠나"
+   ─────────────────────────────────────────────────────────────────
+   사용자: "사이드헤어와 템플헤어가 뜯겨져 있듯이 중간에 빈 곳이 보인다."
+   그리고 그 증상이 <b>9/04(얼굴 게이트) 이전에도 있었다</b>.
+
+   맞다면 범인은 얼굴 게이트가 아니다. 게이트는 그림을 직접 안 그리고
+   <b>vpt[](점별 보임)에 false를 찍을 뿐</b>이고, 그 배열을 조각으로 끊어
+   그리는 기계는 8/18 i의 visibleRuns다. 같은 배열에 false를 찍는 문이
+   지금 다섯이다 — 두개골 깊이(9/02 7차) · 목·어깨 깊이(9/05 2차) ·
+   몸 그림자(8/18 h) · 뒤쪽 폴백 · 얼굴 게이트(9/04). 화면에 나타나는
+   모양은 다섯이 똑같아서 <b>눈으로는 못 가른다</b>.
+
+   그래서 지우는 쪽에 사유를 달고, 실제로 <b>구멍이 난 가닥</b>(=보이는
+   구간이 둘 이상으로 쪼개진 가닥)만 골라 그 구멍을 누가 냈는지 센다.
+   이 파일의 원칙 (1)이 요구하는 것이 정확히 이것이다 — 스위치를 하나씩
+   꺼 보며 짐작하지 말고, 재서 범인을 찍는다.
+   비용: 점당 정수 하나 저장 + 구멍 난 가닥에서만 세기. 끄려면 GAP_DIAG.on=false */
+const GAP_DIAG = {
+  on: true,
+  reason: 0,        // 마지막 viewPointVisible 판정의 사유(스크래치 — 호출 즉시 읽는다)
+  minGap: 1,        // 이만큼 이상 연속으로 지워져야 "구멍"으로 센다
+  topN: 3,          // 로그에 남길 대표 조각 개수
+};
+/* 사유 코드. 0은 보임이고 나머지는 <b>그 점을 지운 문</b>이다.
+   이름 옆의 괄호가 그 문을 여닫는 손잡이라, 로그를 보고 바로 끌 수 있다. */
+const GAP_REASON = [
+  '보임',
+  '두개골 깊이(VIEW_CULL.depthBuffer)',
+  '목·어깨 아래(VIEW_CULL.neckDepth · neckBySide면 뿌리 쪽 판정)',
+  '몸 그림자(occ.covers)',
+  '뒤쪽 폴백(depth<0)',
+  '얼굴 게이트(FACE_GATE.on)',
+];
+/* 판정 본체 — 돌려주는 값이 <b>사유 코드</b>다. 0이면 보임.
+   ⚠ 분기·순서·반환 조건은 9/05 2차와 <b>한 글자도 다르지 않다</b>. true를 0으로,
+     false를 사유 번호로 바꿔 적었을 뿐이라 그림은 비트 단위로 같다. */
+function viewPointHideReason(pr, occ, maskInf, rootDepth){
   /* ── (2026-09-02 7차) <b>깊이의 부호</b>가 아니라 깊이를 본다 ────────────────
      사용자: "사이드가 넘어오는 거야. 그런데 3D에선 얼굴이 가려지는 게 없잖아."
      그 두 문장이 같이 오는 게 답이다 — 3D는 깊이 버퍼가 있고 2D 투영엔 없었다.
@@ -770,11 +848,10 @@ function viewPointVisible(pr, occ, maskInf, rootDepth){
   if(VIEW_CULL.depthBuffer && occ && occ.frontZ){
     const fz = occ.frontZ(pr.lx, pr.ly);
     if(fz != null){
-      if(pr.depth >= fz) return true;                 // 두개골 앞면보다 앞 = 보임
+      if(pr.depth >= fz) return 0;                    // 두개골 앞면보다 앞 = 보임
       if(VIEW_CULL.photoOverrides && maskInf && maskInf.reasonMask
-         && isHairPixelAt(maskInf, pr.ix, pr.iy)) return true;
-      GAP_DIAG.reason = 'skull';
-      return false;                                   // 두개골 안/뒤 = 안 보임
+         && isHairPixelAt(maskInf, pr.ix, pr.iy)) return 0;
+      return 1;                                       // 두개골 안/뒤 = 안 보임
     }
     /* 두개골 그림자 밖 — 아래 목·어깨 깊이가 이어받는다. */
   }
@@ -787,27 +864,38 @@ function viewPointVisible(pr, occ, maskInf, rootDepth){
   if(VIEW_CULL.neckDepth && occ && occ.neckFrontZ){
     const nz = occ.neckFrontZ(pr.lx, pr.my);
     if(nz != null){
-      /* ── (2026-09-06) 여기서 <b>뿌리 쪽</b>으로 갈아탄다 (VIEW_CULL 배너) ────
-         목·어깨 그림자 안이라는 것까지는 맞다. 하지만 우리 모델엔 가슴이 없어
-         턱 아래 가닥은 z가 전부 밴드 안으로 떨어진다 — 깊이로 자르면 몸 앞에
-         흘러내린 머리까지 같이 사라진다. 뿌리가 카메라 쪽이면 그 머리다. */
+      /* (2026-09-06 2차) 여기서부터는 <b>목·어깨 아래</b>다. 절대 깊이 대신
+         가닥의 소속(뿌리 쪽)으로 가른다 — 근거는 VIEW_CULL 배너.
+         rootDepth를 안 받은 호출부(진단·마네킹 집기·이식)는 예전처럼
+         그 점 자신의 부호를 쓴다 = 9/05 1차와 같은 그림. */
       if(VIEW_CULL.neckBySide){
-        if(!strandIsFarSide(rootDepth || 0)) return true;   // 뿌리가 이쪽 = 몸 앞에 흘러내린 머리
-        /* 반대쪽 뿌리는 예전 규칙(아래 covers)으로 떨어뜨린다 — 8/18 h가 고친
-           "정면에서 목 옆에 그려지던 뒷머리"를 그대로 유지하기 위해서다. */
-      } else {
-        if(pr.depth < nz) GAP_DIAG.reason = 'neck';
-        return pr.depth >= nz;
+        const rd = (typeof rootDepth === 'number') ? rootDepth : pr.depth;
+        if(rd >= 0) return 0;                                  // 몸 겉으로 흘러내린 머리
+        return occ.covers(pr.lx, pr.ly, pr.my) ? 2 : 0;        // 뒤로 넘어간 머리는 가려질 때만
       }
+      return (pr.depth >= nz) ? 0 : 2;
     }
   }
-  if(pr.depth >= 0) return true;                 // 카메라 쪽 반구는 언제나 보임(예전과 동일)
-  if(!occ){ GAP_DIAG.reason = 'backZ'; return false; }
-  if(!occ.covers(pr.lx, pr.ly, pr.my)) return true;   // 뒤에 있어도 <b>가리는 게 없으면</b> 보인다
+  /* 여기 아래는 <b>깊이가 없는 옛 가지</b>다(8/18 h). 두개골·목 그림자 밖이라
+     깊이를 물을 대상이 없는 자리이고, 그런 자리는 원래 "가릴 게 없다"는 뜻이다.
+     마네킹에서는 위 두 깊이 판정이 정확하므로 이 폴백이 할 일이 없다 —
+     오히려 어깨 밴드가 화면 끝까지 세우는 그림자가 밑단을 톱니로 만든다
+     (그 증상은 makeViewOccluder 배너가 이미 적어 뒀다). MQ_TRUST 배너 참조. */
+  if(occ && occ.trust) return 0;
+  if(pr.depth >= 0) return 0;                    // 카메라 쪽 반구는 언제나 보임(예전과 동일)
+  if(!occ) return 4;
+  if(!occ.covers(pr.lx, pr.ly, pr.my)) return 0;      // 뒤에 있어도 <b>가리는 게 없으면</b> 보인다
   if(VIEW_CULL.photoOverrides && maskInf && maskInf.reasonMask
-     && isHairPixelAt(maskInf, pr.ix, pr.iy)) return true;   // 사진이 "여긴 머리카락"이라 말한다
-  GAP_DIAG.reason = 'body';
-  return false;
+     && isHairPixelAt(maskInf, pr.ix, pr.iy)) return 0;      // 사진이 "여긴 머리카락"이라 말한다
+  return 3;
+}
+/* 예전 이름·예전 반환값 그대로의 얇은 겉껍질. 부르는 쪽은 아무것도 안 바뀐다.
+   사유는 GAP_DIAG.reason에 남겨 두고, 필요한 호출부만 호출 <b>직후에</b> 읽는다
+   (스크래치 한 칸을 돌려 쓰는 것은 이 파일의 _proj와 같은 방식이다). */
+function viewPointVisible(pr, occ, maskInf, rootDepth){
+  const r = viewPointHideReason(pr, occ, maskInf, rootDepth);
+  GAP_DIAG.reason = r;
+  return r === 0;
 }
 function strandFacesCamera(dsum, n, dmax, vis){
   if(VIEW_CULL.mode === 'mean') return (n > 0) && (dsum / n >= 0);
@@ -878,13 +966,22 @@ function visibleRuns(vpt){
    되돌리기: FACE_GATE.on = false
    ══════════════════════════════════════════════════════════════════ */
 const FACE_GATE = {
-  /* ── (2026-09-06 7차) <b>꺼 둔다</b> ─────────────────────────────────────
-     이 게이트가 지우던 "얼굴을 가로지르는 반대편 가닥"은 진짜 가닥이 아니라
-     calForDraw가 리프트와 <b>다른 yaw</b>로 되쏘아 만든 전단의 산물이었다
-     (left +9.6° · right −15.7°). 원인을 sideYawFrom에서 고친 뒤로는 지울 것이
-     없고, 켜 두면 <b>멀쩡한 가닥</b>을 지운다 — 9/06의 "사이드·템플이 중간에
-     빈다"가 그 모습이다. 측정은 계속 한다(15의 faceSilM 배너: 만들되 안 쓴다).
-     되돌리기: FACE_GATE.on = true */
+  /* ── (2026-09-09 2차) <b>끈다</b> ─────────────────────────────────────────
+     사용자: "이제는 게이트를 쓰지 않고 가는 거야. 3D가 제대로 나왔으면 3D를
+     제대로 투영하지 못했다는 뜻이니, 게이트로 막는 게 문제가 아니고 실제 잘못
+     투영된 이유를 찾아서 바로잡는 방향으로 가야 돼. 머리카락은 원래 어디로든
+     갈 수 있으니까."
+
+     맞다. 그리고 원인은 찾았다 — calForDraw가 리프트와 <b>다른 yaw</b>로 되쏘고
+     있었고, 그 잔여 회전이 반대쪽 가닥을 얼굴 위로 끌어오는 전단을 만들었다
+     (VIEWCAL_ANCHOR.sideYawFrom 배너 · [되쏘기보정] 로그의 px 수치).
+     이 게이트가 지우던 것은 그 전단이 만든 <b>가짜 가닥</b>이었다. 원인을 껐으니
+     지울 것도 없다. 그리고 지우면 안 된다 — 위 배너가 스스로 적어 둔 대로
+     "켜서 나빠질 수 있는 최대치는 반대편 머리가 얼굴 자리에서 사라지는 것"인데,
+     실제로 얼굴을 가로지르는 시술(앞으로 넘긴 반대쪽 가르마 등)이 그 대가다.
+     ⓘ 장치 자체는 남긴다. 측정(makeFaceSilhouette·[얼굴 게이트] 진단)은 계속
+       돌 수 있어야 다음 턴에 "정말 전단이 없어졌나"를 숫자로 확인한다.
+     되살리기: FACE_GATE.on = true */
   on: false,
   /* 얼굴 폭 대비 안쪽으로 줄이는 비율. 0이면 윤곽선에서 칼같이 끊긴다 —
      실제 사진에서는 가닥 끝이 뺨 경계에 살짝 걸쳐 보이므로 조금 줄여서
@@ -921,6 +1018,9 @@ const FACE_GATE = {
      폭의 4%) · 배율 1.10이라 넉넉히 잡았다. */
   alignMaxShift: 0.20,          // 마스크 폭 대비
   alignScale: [0.7, 1.4],
+  /* 얼굴에 막힌 반대편 가닥을 <b>거기서 끝낸다</b>(구멍 뚫기 → 끊기).
+     근거는 applyFaceGate 배너. false면 9/04 동작(꼬리가 다시 나옴). */
+  cutTail: true,
   debug: false,   // true면 조정 캔버스에 얼굴 라인을 그린다
 };
 
@@ -956,18 +1056,17 @@ function faceLineAlignFit(angle, maskW, maskH, raw){
   if(FACE_GATE.align !== 'roundtrip') return null;
   const m = state.hair3Dneutral;
   if(!m || !m.viewCal || !m.viewCal[angle]) return null;
-  /* ⚠ (2026-09-07 3차) <b>그리는 cal</b>로 왕복해야 한다. 되쏘기 yaw 보정과
-     가로 넛지는 calForDraw에만 있고(15의 배너), 여기서 viewCal 원본을 쓰면
-     정렬이 <b>보정 전 좌표</b>로 맞춰진다 — 그 차이가 전단이라 측면에서 라인이
-     코 위로 올라앉고, 가닥이 코를 가로질렀다. 판정과 그림은 같은 cal을 봐야 한다.
-     calForDraw가 아직 없으면(로드 순서·예전 세션) 원본으로 떨어진다. */
-  const cal = (typeof calForDraw === 'function' ? calForDraw(m, angle) : null)
-              || m.viewCal[angle];
+  /* ⚠ (2026-09-07) <b>머리카락과 같은 cal</b>을 써야 한다. 머리는
+     calForDraw(dx 포함)로 그려지는데 라인만 viewCal 원본으로 맞추면 두 공간이
+     dx만큼 벌어진다 — 9/04 배너가 적어 둔 "라인은 사진 좌표, 머리카락은 투영
+     좌표"와 같은 갈라짐이고, 증상도 같다(우측면에서 가닥이 코에 걸린다). */
+  const cal = (typeof calForDraw === 'function') ? calForDraw(m, angle) : m.viewCal[angle];
+  if(!cal) return null;
   const sig = [angle, m._gid || 0, maskW, maskH,
                (cal.cx||0).toFixed(3), (cal.s||0).toFixed(6), (cal.sy||0).toFixed(6),
                (cal.crownY||0).toFixed(3), (cal.yaw||0).toFixed(5),
                (cal.pitch||0).toFixed(5), (cal.roll||0).toFixed(5),
-               (cal.dx||0).toFixed(3)].join(',');   // dx도 서명에 — 넛지를 바꾸면 캐시가 따라와야 한다
+               (cal.dx||0).toFixed(3)].join(',');
   if(_faceAlignCache.has(sig)) return _faceAlignCache.get(sig);
   let fit = null;
   try{
@@ -1094,6 +1193,103 @@ function makeFaceSilhouette(angle, maskW, maskH){
   }catch(e){ return null; }
 }
 
+/* ── 끊긴 가닥 누산기 ─────────────────────────────────────────────────
+   재는 것은 <b>구멍</b>이지 지워진 점 전체가 아니다. 끝이 잘린 가닥은 짧아질
+   뿐 화면에서 안 이상하다 — 이상한 것은 <b>보이는 구간 사이에 낀 빈 칸</b>과
+   그 뒤에 남은 조각이고, 사용자가 "뜯겨져 있다"고 말한 게 그것이다.
+   그래서 runs.length ≥ 2 인 가닥만 세고, 각 구멍을 <b>그 안의 점들이 어느
+   문에 지워졌는지</b>로 귀속시킨다. 사유가 섞이면 제일 많은 문에 준다. */
+function newGapAcc(){
+  return { strands:0, holes:0, pts:0, byReason:new Array(GAP_REASON.length).fill(0),
+           bySec:Object.create(null), frag:[],
+           allPts:0, allByReason:new Array(GAP_REASON.length).fill(0) };
+}
+/* ── 지워진 점 <b>전수</b> 귀속 (2026-09-06 3차) ─────────────────────────────
+   위 tallyStrandGaps는 <b>구멍</b>만 센다(runs≥2). 그런데 실기기 로그가
+   "[끊긴 가닥] 구멍 87칸 · 빈 점 477 / 가림 트리밍 45%(점 34290/76645)"였다 —
+   지워진 34290점 중 사유가 적힌 것은 477점뿐이고, 나머지는 구멍이 아니라 잘린
+   <b>꼬리</b>라 아무도 안 세고 있었다. "정면에서 목 옆 뒷머리가 안 보인다" 같은
+   증상은 정확히 그 꼬리 쪽이라, 세지 않는 한 문 다섯 중 누구인지 못 가른다.
+   비용은 점당 배열 증가 하나. 끄기: GAP_DIAG.on = false */
+function tallyHiddenPoints(acc, vpt, rsn){
+  if(!acc || !rsn) return;
+  for(let i=0;i<vpt.length;i++){
+    acc.allPts++;
+    if(!vpt[i]) acc.allByReason[(rsn[i] || 0)]++;
+  }
+}
+function tallyStrandGaps(acc, runs, vpt, rsn, ipts, sec){
+  if(runs.length < 2) return;
+  let counted = 0;
+  for(let k=1; k<runs.length; k++){
+    /* ⚠ 구간 경계를 그대로 빼면 안 된다 — visibleRuns는 <b>양 끝 중 하나라도</b>
+       보이면 그 선분을 그리므로, 각 구간이 안 보이는 점을 하나씩 물고 있다.
+       그래서 두 구간의 끝점까지 포함해 훑되 <b>실제로 지워진 점만</b> 센다
+       (그냥 인덱스 차를 쓰면 두 점짜리 구멍이 0으로 나온다 — 하네스에서 잡혔다). */
+    const s = runs[k-1][1], e = runs[k][0];
+    let n = 0;
+    const tally = new Array(GAP_REASON.length).fill(0);
+    for(let i=s; i<=e; i++){
+      if(vpt[i]) continue;
+      n++; tally[(rsn && rsn[i]) || 0]++;
+    }
+    if(n < GAP_DIAG.minGap) continue;
+    counted++;
+    acc.holes++; acc.pts += n;
+    let best = 0, bn = 0;                              // 사유가 섞이면 제일 많은 문에 준다
+    for(let r=1; r<tally.length; r++) if(tally[r] > bn){ bn = tally[r]; best = r; }
+    acc.byReason[best]++;
+    /* 대표 조각 — 구멍 <b>뒤에</b> 남은 구간의 시작점. 화면에서 "여기 떠 있다"고
+       짚을 수 있는 좌표가 있어야 로그와 눈이 만난다. */
+    if(acc.frag.length < GAP_DIAG.topN){
+      const f = ipts[runs[k][0]];
+      acc.frag.push({ sec, r:best, len:(runs[k][1]-runs[k][0]+1),
+                      x:Math.round(f.x), y:Math.round(f.y) });
+    }
+  }
+  if(counted){
+    acc.strands++;
+    acc.bySec[sec] = (acc.bySec[sec] || 0) + counted;
+  }
+}
+/* 로그 한 덩어리. 구멍이 0이면 <b>한 줄만</b> 찍는다 — 정상일 때 콘솔을 채우면
+   비정상일 때 눈에 안 띈다. */
+function gapDiagText(acc, drawn){
+  if(!acc) return '';
+  const gates = []
+    .concat(mqGeomTrusted() ? ['마네킹 신뢰 ON — 닫힌 문: '
+        + [MQ_TRUST.faceGate&&'얼굴게이트', MQ_TRUST.faceEllipse&&'얼굴타원',
+           MQ_TRUST.photoClip3D&&'점유재클립', MQ_TRUST.photoClip2D&&'2D클립',
+           MQ_TRUST.bodyShadow&&'몸그림자폴백'].filter(Boolean).join('·')]
+      : ['마네킹 신뢰 OFF(촬영 가닥 모델 — 사진 안전망 그대로)']);
+  /* 지워진 점 전수 — 구멍이 없어도 찍는다. "가림 트리밍 45%"의 내역이 이것이고,
+     그 대부분은 구멍이 아니라 잘린 꼬리라 아래 [끊긴 가닥]에는 안 잡힌다. */
+  let all = '';
+  if(acc.allPts){
+    const hid = acc.allByReason.reduce((s,n,r)=> r ? s+n : s, 0);
+    const by = acc.allByReason.map((n,r)=> (r && n) ? `${GAP_REASON[r]} ${n}` : null)
+                 .filter(Boolean).join(' · ');
+    all = `\n    [지운 점 전수] ${hid}/${acc.allPts}점(${Math.round(hid/acc.allPts*100)}%)`
+        + `\n      문별: ${by || '없음'}`;
+  }
+  if(!acc.holes) return all + `\n    [끊긴 가닥] 없음 (${gates[0]})`;
+  return all + gapHolesText(acc, drawn, gates);
+}
+function gapHolesText(acc, drawn, gates){
+  const secs = Object.keys(acc.bySec).sort((a,b)=>acc.bySec[b]-acc.bySec[a])
+                 .map(k=>`${k} ${acc.bySec[k]}`).join(' · ');
+  const rs = acc.byReason.map((n,r)=> n ? `${GAP_REASON[r]} ${n}` : null)
+               .filter(Boolean).join(' · ');
+  return `\n    [끊긴 가닥] ${acc.strands}개(그린 가닥의 ${drawn?Math.round(acc.strands/drawn*100):0}%)`
+       + ` · 구멍 ${acc.holes}칸 · 빈 점 ${acc.pts}`
+       + `\n      구멍을 낸 문: ${rs || '사유 미기록'}`
+       + `\n      섹션: ${secs}`
+       + acc.frag.map(f=>`\n      떠 있는 조각 — ${f.sec} · 사진좌표(${f.x},${f.y}) · ${f.len}점 · 앞의 구멍은 ${GAP_REASON[f.r]}`).join('')
+       + `\n      ${gates[0]}`
+       + `\n      제일 큰 문 하나를 끄고 다시 그려 보십시오(슬라이더를 살짝 움직이면 다시 그립니다).`
+       + ` 끄기: GAP_DIAG.on=false`;
+}
+
 /* 이 가닥이 <b>카메라 반대쪽에서 난</b> 가닥인가 — 얼굴 게이트를 걸 대상.
    rootDepth는 project3DPointToView가 뿌리에 대해 준 lz(두상 중심 기준). */
 function strandIsFarSide(rootDepth){
@@ -1103,111 +1299,53 @@ function strandIsFarSide(rootDepth){
 }
 
 /* 얼굴 게이트를 점별 보임 배열에 적용한다. 지우기만 하고 되살리지 않는다.
-   돌려주는 값은 <b>새로 지운 점 수</b>(vis 보정용). */
+   돌려주는 값은 <b>새로 지운 점 수</b>(vis 보정용).
+
+   ── (2026-09-06) 구멍이 아니라 <b>끊기</b>다 — 떠 있는 조각의 정체 ──────────
+   사용자: "사이드헤어와 템플헤어가 뜯겨져 있듯이 중간에 빈 곳이 보인다."
+
+   9/04가 이 게이트를 넣을 때의 설계는 <b>구멍 뚫기</b>였다(15-project-3d.js
+   호출부 주석): "지운 구간은 visibleRuns가 알아서 끊어 주므로, 가닥은 얼굴
+   앞에서 사라졌다가 반대편 윤곽선 너머에서 다시 나온다." 정면을 머리에 두고
+   쓴 문장이고, 정면에서는 맞다 — 얼굴 윤곽선 <b>바깥</b>이 곧 머리통 옆이라
+   거기 다시 나오는 게 실제로 옳다.
+
+   측면에서는 그 문장이 성립하지 않는다. makeFaceSilhouette의 볼록껍질은
+   <b>코(가장 앞)부터 귀 앞(가장 뒤)까지</b>다(그 함수 배너에 그렇게 적혀
+   있다). 그러니 "반대편 윤곽선 너머"는 <b>코 앞의 허공</b>이다. 머리통이
+   없는 자리이고, 거기 다시 나온 꼬리가 얼굴 옆에 <b>혼자 떠 있는 가닥
+   조각</b>이 된다. 화면에서 본 것이 정확히 그것이다:
+     · left 45  — 코 앞 허공에 세로로 긴 가닥 한 줄이 본체와 떨어져 떠 있다
+     · right 45 — 턱선 아래(chinExtend 밖)에 네모난 조각이 따로 남는다
+   즉 <b>중간이 지워진 게 증상이고, 꼬리가 남은 게 원인</b>이다.
+
+   ── 왜 잘라도 되는가(새 상수 없음) ──────────────────────────────────────
+   이 게이트가 걸리는 대상은 이미 <b>뿌리가 카메라 반대쪽인 가닥</b>뿐이다
+   (strandIsFarSide). 반대편에서 난 가닥이 얼굴에 <b>가려졌다</b>면, 그
+   앞쪽 구간은 둘 중 하나다:
+     ① 계속 얼굴·머리 뒤 — 어차피 안 보인다
+     ② 얼굴을 지나 이쪽으로 나온다 — 그러려면 <b>머리를 통과</b>해야 한다
+   ②는 물리적으로 없다. 그래서 "처음 막힌 점부터 끝까지"를 지우는 것이
+   구멍 뚫기보다 규칙이 강하고, 판정에 쓰는 값도 지금 있는 것뿐이다.
+   가까운 쪽 가닥(앞머리·이쪽 옆머리)은 이 함수에 들어오지도 않으므로
+   얼굴을 덮는 정상 시술은 그대로다.
+   되돌리기: FACE_GATE.cutTail = false (9/04와 글자 그대로 같은 동작) */
 function applyFaceGate(vpt, ipts, faceSil, rootDepth, rsn){
   if(!FACE_GATE.on || !faceSil || !strandIsFarSide(rootDepth)) return 0;
-  let cut = 0;
+  let cut = 0, hit = -1;
   for(let i=0; i<vpt.length; i++){
-    if(vpt[i] && faceSil.covers(ipts[i].x, ipts[i].y)){
-      vpt[i] = false; cut++;
-      if(rsn) rsn[i] = 'face';               // [진단] 이 점의 범인을 덮어쓴다(GAP_DIAG)
+    /* 처음 막힌 자리는 <b>이미 안 보이던 점</b>에서도 센다 — 가닥이 얼굴로
+       들어간 사실은 그 점이 그려졌는지와 무관하다(두개골 뒤라 안 보이던
+       구간에서 얼굴로 들어가는 경우가 측면에서는 오히려 흔하다). */
+    if(faceSil.covers(ipts[i].x, ipts[i].y)){
+      if(hit < 0) hit = i;
+      if(vpt[i]){ vpt[i] = false; cut++; if(rsn) rsn[i] = 5; }
     }
+  }
+  if(FACE_GATE.cutTail && hit >= 0){
+    for(let i=hit+1; i<vpt.length; i++){ if(vpt[i]){ vpt[i] = false; cut++; if(rsn) rsn[i] = 5; } }
   }
   return cut;
-}
-
-/* ══════════════════════════════════════════════════════════════════
-   끊긴 가닥 진단 — <b>구멍마다 범인을 적는다</b> (2026-09-06)
-   ─────────────────────────────────────────────────────────────────
-   위 숫자들(가림 트리밍 %·얼굴 게이트 지운 점)은 "<b>얼마나 지웠나</b>"다.
-   그런데 사용자가 보는 것은 "<b>화면이 뜯겼나</b>"이고, 둘은 같지 않다 —
-   가닥 끝을 100점 지워도 화면은 멀쩡하지만 가운데를 1점 지우면 가닥이
-   두 동강 난다. 그리고 점을 지우는 문이 <b>여섯</b>이라(두개골 깊이 · 목·어깨 ·
-   z부호 · 몸 그림자 · 얼굴 게이트 · 조정 후 재클립) 눈으로는 어느 문이 범인인지
-   못 가른다. 실제로 9/05~9/06 내내 "사이드·템플이 중간에 빈다"의 원인을
-   세 번 잘못 짚었다.
-
-   그래서 점 하나가 지워질 때마다 <b>어느 문이었는지</b>를 적고(GAP_DIAG.reason),
-   구멍(=가닥 안쪽의 끊김)만 따로 센다. 꼬리가 짧아진 것은 구멍이 아니다 —
-   그건 커트나 컬링이고, 화면에서 안 뜯긴다.
-     · holes  — 가닥 <b>안쪽</b> 끊김 수(양 끝은 안 센다)
-     · pts    — 지워진 점 전부(문별)
-     · bySec  — 섹션별 구멍 수. 사용자가 말하는 자리("사이드·템플")와 맞춰 본다
-   측정만 한다 — 이 블록은 그림을 <b>한 픽셀도</b> 안 바꾼다.
-   끄기: GAP_DIAG.on = false (rsn 배열도 같이 안 만들어져 비용 0)
-══════════════════════════════════════════════════════════════════ */
-const GAP_DIAG = {
-  on: true,
-  reason: null,          // 스크래치 한 칸 — viewPointVisible이 판정 직후에 채운다
-  /* 구멍으로 셀 최소 길이(점). 1점짜리는 선분이 양 끝 중 하나만 보여도 그려지므로
-     (visibleRuns 규약) 화면에서 안 끊긴다 — 세면 없는 구멍이 잡힌다. */
-  minHolePts: 1,
-};
-const GAP_REASON_LABEL = {
-  skull: '두개골 깊이', neck: '목·어깨 깊이', body: '몸 그림자',
-  backZ: 'z부호(기하 없음)', face: '얼굴 게이트', '?': '미상',
-};
-function newGapAcc(){
-  return { strands: 0, holes: 0, holePts: 0, hidden: 0,
-           byReason: Object.create(null), bySec: Object.create(null) };
-}
-function _gapBump(map, key, n){ map[key] = (map[key] || 0) + (n || 1); }
-/* 그릴 구간(runs) <b>사이</b>가 구멍이다. runs가 하나면 구멍 0 — 그때는 예전과
-   글자 그대로 같은 그림이고 이 함수도 아무것도 안 적는다. */
-function tallyStrandGaps(acc, runs, vpt, rsn, ipts, sec){
-  if(!acc || !runs || runs.length < 2) return;
-  acc.strands++;
-  for(let r=1; r<runs.length; r++){
-    const a = runs[r-1][1], b = runs[r][0];        // 구멍은 (a, b) 사이
-    const n = b - a - 1;
-    if(n < GAP_DIAG.minHolePts) continue;
-    acc.holes++; acc.holePts += n;
-    _gapBump(acc.bySec, sec || 'crown', 1);
-    /* 범인은 <b>구멍 안에서 제일 많이 나온 문</b>. 한 구멍이 두 문에 걸치는
-       경우가 있어(목 그림자로 끊기고 얼굴 게이트가 이어서 지움) 다수결로 본다. */
-    if(!rsn) continue;
-    const tally = Object.create(null);
-    let best = '?', bestN = 0;
-    for(let i=a+1; i<b; i++){
-      const k = rsn[i] || '?';
-      const c = (tally[k] = (tally[k] || 0) + 1);
-      if(c > bestN){ bestN = c; best = k; }
-    }
-    _gapBump(acc.byReason, best, 1);
-  }
-}
-/* 구멍이 아니라 <b>지워진 점 전부</b>를 문에 귀속시킨다 — 잘린 꼬리가 어느
-   문에서 나왔는지는 이 줄이 없으면 아무도 안 센다. */
-function tallyHiddenPoints(acc, vpt, rsn){
-  if(!acc || !vpt) return;
-  for(let i=0; i<vpt.length; i++){
-    if(vpt[i]) continue;
-    acc.hidden++;
-    if(rsn) _gapBump(acc.byReason, '점:' + (rsn[i] || '?'), 1);
-  }
-}
-/* 진단 패널 한 줄. gap이 없으면(꺼 둠) 켜는 법만 적는다 — 숫자가 없는 것과
-   "0개"는 다른 말이라 섞으면 다음 턴에 되짚지 못한다. */
-function gapDiagText(gap, drawn){
-  if(!gap) return `\n    [끊긴 가닥] 꺼져 있음 — 콘솔에서 GAP_DIAG.on=true 후 뷰를 다시 그리세요`;
-  if(!gap.holes) return `\n    [끊긴 가닥] 구멍 <b>0개</b>(그린 가닥 ${drawn || 0}개) — 화면은 안 뜯겨 있습니다`;
-  const sortDesc = (m, pre) => Object.keys(m)
-    .filter(k => pre ? k.indexOf('점:') === 0 : k.indexOf('점:') !== 0)
-    .sort((a,b)=>m[b]-m[a])
-    .map(k => {
-      const raw = pre ? k.slice(2) : k;
-      return `${GAP_REASON_LABEL[raw] || raw} ${m[k]}`;
-    }).join(' · ');
-  const holeBy = sortDesc(gap.byReason, false) || '미상';
-  const ptBy   = sortDesc(gap.byReason, true);
-  const secBy  = Object.keys(gap.bySec).sort((a,b)=>gap.bySec[b]-gap.bySec[a])
-    .map(k => `${k} ${gap.bySec[k]}`).join(' · ');
-  return `\n    [끊긴 가닥] 구멍 <b>${gap.holes}개</b>(가닥 ${gap.strands}/${drawn || 0}개 · 빠진 점 ${gap.holePts})`
-    + `\n      범인(구멍 기준): ${holeBy}`
-    + (secBy ? `\n      섹션: ${secBy}` : '')
-    + (ptBy ? `\n      지워진 점 전부(${gap.hidden}): ${ptBy}` : '')
-    + `\n      구멍이 <b>사이드·템플</b>에 몰려 있고 범인이 목·어깨면 VIEW_CULL.neckBySide를,`
-    + ` 얼굴 게이트면 FACE_GATE.on=false를 확인하세요. 끄기: GAP_DIAG.on=false`;
 }
 
 
