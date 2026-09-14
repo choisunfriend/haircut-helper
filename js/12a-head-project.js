@@ -1180,6 +1180,67 @@ async function buildRealFaceMesh(faceMetrics){
   }
   function inFaceBound(idx){ return distSqFromBound(idx) <= 1; }
 
+  /* ══════════════════════════════════════════════════════════════════
+     얼굴 테두리가 <b>눈썹을 물고 계단으로 잘린다</b> (2026-09-14)
+     ─────────────────────────────────────────────────────────────────
+     사용자: "3D 안면 왼쪽 눈썹 부분이 좀 떨어져있고 안면부 끝부분이 좀
+     파이면서 잘렸어."
+     두 증상이지만 원인은 <b>한 줄</b>이다 — 아래 삼각형 필터의
+
+         if(inFaceBound(a) && inFaceBound(b) && inFaceBound(c))
+
+     ① <b>왜 눈썹이 떨어지나</b>
+        경계 타원은 boundTopY = browTopY×0.90 로 <b>눈썹 바로 위</b>에서 천장을
+        친다. 타원은 천장 근처에서 급격히 좁아지므로, 눈썹 <b>높이</b>에서
+        허용되는 가로 반폭이 이미 눈썹 바깥 끝과 거의 같다. 실제로 재 보면
+          dy=(browTopY−boundCY)/boundRY ≈ −0.80 → dy²≈0.64
+          남는 가로 예산 |dx| ≤ √0.36 ≈ 0.60 → 화면좌표로 ≈0.20
+        눈썹 바깥 끝이 정확히 그 ≈0.20 자리다. 즉 <b>경계선이 눈썹을 지나간다</b>.
+        경계선 위에서 정점 하나만 밖으로 나가도 그 삼각형이 통째로 빠지므로,
+        눈썹 바깥쪽이 본체에서 <b>뜯겨 나간 조각</b>처럼 보인다.
+
+     ② <b>왜 끝이 파이면서 잘리나</b>
+        "셋 다 안이어야 살린다"는 <b>전부-아니면-전무</b>라, 남는 테두리는
+        타원이 아니라 MediaPipe 삼각망을 따라가는 <b>계단</b>이 된다. 게다가
+        얼굴 셸은 열린 면(DoubleSide)이라, 그 계단 단면이 배경과 머리카락을
+        배경으로 실루엣에 그대로 드러난다 = "파였다".
+        (돌려 보면 잘린 틈으로 <b>반대쪽 눈썹의 뒷면</b>이 비치는데, 사용자가
+         "떨어져 있다"고 본 두 번째 눈썹 조각이 바로 그것이다.)
+
+     ── 고침: 자르는 자리와 보이는 자리를 <b>분리</b>한다 ──────────────────
+        · 삼각형은 t=√distSq 가 keepT 까지 살린다 → 경계선이 눈썹을 지나가도
+          눈썹은 한 겹 <b>안쪽</b>에 들어와 온전히 붙어 있다.
+        · 대신 fadeIn→fadeOut 구간에서 정점 알파를 1→0으로 깎는다 → 계단
+          단면은 그려지기 전에 <b>투명해져</b> 사라진다. 실루엣이 폴리곤이
+          아니라 페이드로 끝난다.
+        · 확장 구간은 blendWeight = max(0, 1−distSq) 가 이미 0이라 <b>굴곡·측면
+          보정이 안 들어가고 기준 타원면 그대로</b>다. 즉 넓혀도 원근으로
+          뭉개진 귀·관자놀이 픽셀이 튀어나올 일이 없다(위 경계 주석의 걱정).
+
+     ⚠ inFaceBound(t≤1)는 <b>한 글자도 안 건드린다</b>. 얼굴폭 pre-pass·z진단·
+       이마이음매가 전부 그 자를 쓰기 때문이다 — 그걸 같이 넓히면 ellAForFace와
+       FACE_Z_TO_SKULL 재맞춤까지 동시에 움직여서, 한 번에 하나만 바꾼다는
+       이 파일의 원칙을 깬다. 여기서 새로 생기는 것은 <b>삼각형 보존 범위와
+       알파</b> 둘뿐이다.
+     되돌리기: FACE_BOUND_FIT.on = false (산술까지 예전과 동일) */
+  const FACE_BOUND_FIT = {
+    on: true,
+    keepT:   1.22,  // 이 t까지 삼각형을 살린다(1.0=예전). 눈썹(t≈1.0)에 여유를 준다
+    fadeIn:  1.06,  // 여기까지는 <b>완전 불투명</b> — 눈썹이 절대 흐려지지 않게 1.0보다 크게
+    fadeOut: 1.22,  // 여기서 알파 0 — keepT와 같게 두면 살린 삼각형이 정확히 다 사라진다
+  };
+  function faceBoundT(idx){ return Math.sqrt(distSqFromBound(idx)); }
+  /* 정점 알파 — fadeIn 이전 1, fadeOut 이후 0, 사이는 smoothstep(선형보다 테두리가
+     덜 띠처럼 보인다). on=false면 항상 1이라 재질이 예전과 동일해진다. */
+  function faceEdgeAlpha(idx){
+    if(!FACE_BOUND_FIT.on) return 1;
+    const t = faceBoundT(idx);
+    const a = FACE_BOUND_FIT.fadeIn, b = FACE_BOUND_FIT.fadeOut;
+    if(!(b > a)) return t <= a ? 1 : 0;
+    const u = clamp((t - a) / (b - a), 0, 1);
+    return 1 - u*u*(3 - 2*u);
+  }
+
   // ── 얼굴 전용 타원 폭 확정 (splay 방지) ──
   // 실제 메쉬에 들어가는(경계 안) 정점들의 localX 최대치를 재서, ELL_A가 그보다
   // 좁으면 얼굴 폭(+3% 여유)까지 넓힌다. 이러면 모든 얼굴 정점이 타원 안(inside≤1)에
@@ -1882,12 +1943,38 @@ async function buildRealFaceMesh(faceMetrics){
     measureForeheadSeam('k까지 고친 뒤');
   }
 
+  /* 삼각형 보존 — 위 FACE_BOUND_FIT 배너 참고.
+     keepT=1이면 t≤1 이 곧 inFaceBound라 <b>예전과 산술까지 동일</b>하다. */
+  const _keepT = FACE_BOUND_FIT.on ? FACE_BOUND_FIT.keepT : 1;
   const filteredTriV = [];
+  let _triOld = 0;
   for(let t=0; t<FACE_MESH_TRI_V.length; t+=3){
     const a=FACE_MESH_TRI_V[t], b=FACE_MESH_TRI_V[t+1], c=FACE_MESH_TRI_V[t+2];
-    if(inFaceBound(a) && inFaceBound(b) && inFaceBound(c)){
-      filteredTriV.push(a,b,c);
-    }
+    if(inFaceBound(a) && inFaceBound(b) && inFaceBound(c)) _triOld++;
+    const tMaxTri = Math.max(faceBoundT(a), faceBoundT(b), faceBoundT(c));
+    if(tMaxTri <= _keepT) filteredTriV.push(a,b,c);
+  }
+  /* 정점 알파 — 확장 구간만 깎는다. 얼굴 본체는 전부 1이라 사진이 흐려지지 않는다. */
+  const faceAlpha = new Float32Array(vertCount);
+  for(let i=0;i<vertCount;i++) faceAlpha[i] = faceEdgeAlpha(i);
+  {
+    /* 눈썹이 실제로 <b>불투명 구간 안</b>에 들어왔는지 한 줄로 남긴다 —
+       이게 fadeIn을 넘으면 눈썹이 반투명해지므로 fadeIn을 키워야 한다는 신호다.
+       (MediaPipe 눈썹 정점: 왼 46/53/52/65/55 · 오른 285/295/282/283/276) */
+    const BROW_L = [46,53,52,65,55], BROW_R = [285,295,282,283,276];
+    const tOf = arr => Math.max(...arr.map(faceBoundT));
+    const tL = tOf(BROW_L), tR = tOf(BROW_R);
+    const drop = i => (faceBoundT(i) > _keepT);
+    const lostL = BROW_L.filter(drop).length, lostR = BROW_R.filter(drop).length;
+    console.log(...gyeolBoldArgs(['[얼굴 테두리] 삼각형 ' + _triOld + ' → <b>'
+      + (filteredTriV.length/3) + '</b>개 (keepT=' + _keepT.toFixed(2)
+      + ' · 페이드 ' + FACE_BOUND_FIT.fadeIn.toFixed(2) + '→' + FACE_BOUND_FIT.fadeOut.toFixed(2) + ')'
+      + '\n      눈썹 바깥끝 t — 왼 <b>' + tL.toFixed(2) + '</b> · 오른 <b>' + tR.toFixed(2) + '</b>'
+      + ' (빠진 정점 왼 ' + lostL + ' · 오른 ' + lostR + ')'
+      + '\n      읽는 법 — t가 <b>fadeIn(' + FACE_BOUND_FIT.fadeIn.toFixed(2) + ')보다 크면</b>'
+      + ' 그 눈썹이 반투명해집니다. 그때는 fadeIn·fadeOut·keepT를 같은 양만큼 올리세요.'
+      + ' 예전(전부-아니면-전무)에서는 t>1.00이면 아예 <b>뜯겨 나갔습니다</b>.'
+      + '\n      되돌리기: FACE_BOUND_FIT.on=false']));
   }
 
   // [진단용] 얼굴 입체감 수치 — 경계 안(inFaceBound) 정점들의 z 범위.
@@ -1957,6 +2044,7 @@ async function buildRealFaceMesh(faceMetrics){
   const geo = new THREE.BufferGeometry();
   geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
   geo.setAttribute('uv', new THREE.BufferAttribute(uvs, 2));
+  geo.setAttribute('aFaceAlpha', new THREE.BufferAttribute(faceAlpha, 1));
   geo.setIndex(new THREE.BufferAttribute(new Uint32Array(filteredTriV), 1));
   geo.computeVertexNormals();
 
@@ -1989,6 +2077,30 @@ async function buildRealFaceMesh(faceMetrics){
   const mat = FACE_MAT.unlit
     ? new THREE.MeshBasicMaterial({ map: texture, side: THREE.DoubleSide })
     : new THREE.MeshStandardMaterial({ map: texture, roughness:0.8, metalness:0, side: THREE.DoubleSide });
+  /* 테두리 페이드 — 위 FACE_BOUND_FIT 배너의 ②. 계단 단면을 <b>그리기 전에</b>
+     투명하게 만든다. 재질을 갈아끼우지 않고 셰이더 한 줄만 덧댄 이유는,
+     unlit/lit 두 갈래(FACE_MAT.unlit)에 같은 처리가 한 번에 걸리게 하기 위해서다.
+     ⚠ depthWrite는 <b>켠 채로</b> 둔다. 끄면 페이드 띠가 반투명이 되는 대신
+       얼굴 전체가 머리카락 뒤로 밀려 그려지는 큰 회귀가 난다(불투명 본체가
+       깊이를 안 남기므로). 띠가 얇아서 정렬 문제는 눈에 안 띈다. */
+  if(FACE_BOUND_FIT.on){
+    mat.transparent = true;
+    mat.onBeforeCompile = (shader)=>{
+      shader.vertexShader = 'attribute float aFaceAlpha;\nvarying float vFaceAlpha;\n'
+        + shader.vertexShader.replace('void main() {', 'void main() {\n\tvFaceAlpha = aFaceAlpha;');
+      shader.fragmentShader = 'varying float vFaceAlpha;\n'
+        + shader.fragmentShader.replace(
+            '#include <dithering_fragment>',
+            '#include <dithering_fragment>\n'
+          + '\tif(vFaceAlpha < 0.02) discard;   // 완전히 사라진 띠는 깊이도 안 남긴다\n'
+          + '\tgl_FragColor.a *= vFaceAlpha;');
+    };
+    /* onBeforeCompile은 캐시 키에 안 들어가므로, 같은 형태의 재질과 프로그램이
+       섞이지 않게 키를 따로 준다(three의 정석). */
+    mat.customProgramCacheKey = () => 'gyeolFaceEdgeFade';
+    mat.needsUpdate = true;
+  }
+
   const mesh = new THREE.Mesh(geo, mat);
   mesh.name = 'realFaceMesh';
   return mesh;
