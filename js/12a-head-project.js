@@ -300,6 +300,21 @@ const NECK_SHAPE = {
   taperD:   0.92,  // 위 깊이 ÷ 아래 깊이
   tiltZ:    0.09,  // 위 링을 앞으로(+Z), 목 길이 대비 — 약 5°
   napeFull: 1.08,  // 아래쪽 <b>뒤통수 쪽</b> 부풀림(승모근). 위로 갈수록 1로 수렴
+  /* ── 턱밑 목각과 굴곡 (2026-09-14 3차) ──────────────────────────────────
+     사용자: "턱보다 좀 더 안쪽으로 들어가서 턱선이랑 연결되어야 돼. 그리고
+     어차피 완전 원통 아니고 약간 굴곡있지 사람목은."
+     2차에서 원뿔은 없앴지만 <b>곧은</b> 기둥이 됐다. 사람 목은 옆에서 보면
+     ① 턱 밑에서 <b>뒤로 물러났다가</b>(턱밑 목각, cervicomental angle) 아래로
+        내려오면서 다시 앞으로 나오고,
+     ② 중간이 가장 가늘고 위아래가 조금씩 넓다.
+     ①을 throatSetZ로, ②를 waist로 낸다. 둘 다 <b>앞면·중간</b>만 건드리므로
+     밑동 치수(10.5×10.0cm)와 승모근은 그대로다.
+     ⚠ tiltZ(기둥이 앞으로 기움)와 <b>싸우는 값이 아니다</b> — tiltZ는 목 축
+       전체를 기울이고, throatSetZ는 그 축 위에서 <b>앞쪽 살만</b> 파낸다.
+       실제로도 목은 앞으로 기울어 있으면서 턱밑은 들어가 있다.
+     되돌리기: throatSetZ = 0, waist = 0 (곧은 기둥으로 복귀) */
+  throatSetZ: 0.45, // 윗링 <b>앞면</b>을 윗링 반깊이의 이만큼 뒤로(≈2.1cm). 아래로 갈수록 0
+  waist:      0.06, // 중간(t≈0.5)을 이만큼 오목하게. 양 끝은 안 건드린다
   unlit:    true,  // 얼굴과 같은 기준 — 아래 주석 참고
   shadeRear: 0.78, // 무조명이라 형태가 안 보이므로 정점색으로 뒤쪽을 어둡게
   shadeTop:  0.90, // 턱 밑은 원래 그림자다 — 위쪽을 살짝 어둡게 해 이음매를 눌러 준다
@@ -542,14 +557,20 @@ function buildRealNeckMesh(skinColor){
   for(let ri=0; ri<=RING_STEPS; ri++){
     const t = ri/RING_STEPS;                 // 0 = 위(턱), 1 = 아래(옷깃)
     const y = neckTopY + t*(neckBotY-neckTopY);
+    /* 굴곡 — 중간을 살짝 오목하게. sin(πt)는 양 끝에서 정확히 0이라
+       윗링·밑동 치수를 안 건드리고 <b>가운데만</b> 파인다(C¹이라 각이 안 생긴다). */
+    const waistK = 1 - NECK_SHAPE.waist * Math.sin(Math.PI * t);
     /* 위(턱)로 갈수록 좁아지는 테이퍼. 예전엔 옷깃이 없으면 이 자리에서
        interpolateNeckCrossSection(사진 실측)을 폭 0.55×a · 깊이 0.70×c로 클램프해
        썼는데, 그 비대칭이 곧 "앞뒤로 넓은 목"이었다(위 배너). 이제 밑동을 cm로
        내므로 두 경로가 하나다 — 실측 단면은 자기 축이 뭔지 못 밝혀서 뺐다. */
-    const halfWidth = baseW * (NECK_SHAPE.taperW + (1-NECK_SHAPE.taperW)*t);
-    const halfDepth = baseD * (NECK_SHAPE.taperD + (1-NECK_SHAPE.taperD)*t);
+    const halfWidth = baseW * (NECK_SHAPE.taperW + (1-NECK_SHAPE.taperW)*t) * waistK;
+    const halfDepth = baseD * (NECK_SHAPE.taperD + (1-NECK_SHAPE.taperD)*t) * waistK;
     // 앞으로 기울임 — 위 링일수록(t=0) 앞으로. 사람 목은 수직이 아니다.
     const cz = NECK_SHAPE.tiltZ * neckLen * (1 - t);
+    /* 턱밑 목각 — 위 링일수록 <b>앞면만</b> 뒤로 판다(뒤·옆은 안 건드린다).
+       이게 없으면 목 앞면이 턱 바로 밑에서 곧게 떨어져 턱선과 안 이어진다. */
+    const throat = NECK_SHAPE.throatSetZ * halfDepth * (1 - t);
     // 승모근 — 아래쪽 뒤편만 부풀린다(위로 갈수록 1로 수렴).
     const nape = 1 + (NECK_SHAPE.napeFull - 1) * t;
     for(let ti=0; ti<=THETA_STEPS; ti++){
@@ -557,7 +578,7 @@ function buildRealNeckMesh(skinColor){
       // scalpPointToWorld와 동일한 관례: theta=0에서 z(깊이) 최대, theta=π/2에서 x(폭) 최대
       const ct = Math.cos(theta), st = Math.sin(theta);
       const x = st * halfWidth;
-      const z = ct * halfDepth * (ct < 0 ? nape : 1) + cz;
+      const z = ct * halfDepth * (ct < 0 ? nape : 1) + cz - (ct > 0 ? throat*ct : 0);
       positions.push(x, y, z);
       /* 무조명이라 형태가 스스로 안 드러난다 — 정점색으로 최소한의 입체감을 굽는다.
          앞(ct=1)이 제일 밝고 뒤가 어둡다. 위(턱 밑)는 원래 그림자 지는 자리라
