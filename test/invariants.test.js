@@ -527,3 +527,59 @@ test('⑫ 크라운 맨 위 — 가닥 정렬과 배치 정렬이 같은 키를 
   ok(/batch\.values\(\)[\s\S]{0,200}?a\.rank\s*-\s*b\.rank/.test(src),
      '배치 정렬이 rank를 1차 키로 안 쓴다 — 여기가 진짜 그리는 순서다');
 });
+
+/* ─────────────────────────────────────────────────────────────────
+   ⑯ 후면 두상 안 이식 — 승격은 <b>두 마스크</b>에 같이 찍혀야 한다 (2026-09-14 3차)
+
+   이 저장소가 반복하는 실패 모양이 여기서도 그대로 났다: <b>한 값을 두 곳이
+   각자 쓰다가 한쪽만 고쳐졌다</b>.
+   화면은 [메움 배경] 위에 [baseC 정리본]을 얹어 만든다. 2차(잔재 회수)는
+   메움 배경이 쓰는 <b>축소 사본</b>에만 구멍을 승격했고, 정리본이 쓰는
+   <b>원본 해상도 마스크</b>(getHoleMask 캐시)는 안 건드렸다. 그래서 아래에서
+   아무리 곱게 이식해도 위에 원본 머리 잔재가 그대로 덮여 눈자국이 남았다.
+   검사하는 것은 "예뻐 보이냐"가 아니라 <b>두 마스크가 같은 모양을 받느냐</b>다.
+───────────────────────────────────────────────────────────────── */
+test('⑯ 후면 이식 — 타원 승격이 메움판과 baseC 양쪽에 같은 모양으로 찍힌다', () => {
+  const markEllipseHole = G('markEllipseHole');
+  ok(typeof markEllipseHole === 'function', 'markEllipseHole이 없다');
+
+  const ell = { cx: 0.5, cy: 0.45, rx: 0.22, ry: 0.30 };
+  const FF = G('HOLE_FILL').facelessFill;
+  ok(FF && FF.on, 'HOLE_FILL.facelessFill이 꺼져 있다 — 후면 타원 안이 다시 사진에서 색을 가져간다');
+
+  // 같은 타원을 두 해상도에 찍고, 면적 비율이 같은지 본다(해상도 독립 = 정규 좌표).
+  const run = (w, h) => {
+    const m = new Uint8Array(w*h);
+    const n = markEllipseHole(m, w, h, ell, FF.shrink);
+    return n / (w*h);
+  };
+  const small = run(180, 240), big = run(720, 960);
+  ok(small > 0.02, '승격 면적이 0에 가깝다 — 타원 안이 안 넘어간다');
+  near(small, big, 0.004, '해상도가 바뀌면 승격 모양이 달라진다(정규 좌표가 아니다)');
+
+  // 기대 면적 = 타원 넓이 × shrink² (π·rx·ry)
+  const want = Math.PI * ell.rx * ell.ry * FF.shrink * FF.shrink;
+  near(big, want, 0.004, '승격 면적이 타원 넓이와 다르다');
+
+  // 이미 구멍인 자리를 두 번 세지 않는다(진단 숫자가 거짓말하면 다음 사람이 헤맨다)
+  const m2 = new Uint8Array(200*200).fill(1);
+  eq(markEllipseHole(m2, 200, 200, ell, FF.shrink), 0, '이미 구멍인 자리를 또 승격으로 셌다');
+
+  // 배선 검사 — 승격이 <b>원본 해상도 마스크</b>에도 가고, 정리본 캐시를 무효화하는가
+  const src = fs.readFileSync(path.join(JS, '07a-render-canvas.js'), 'utf8');
+  ok(/markEllipseHole\(\s*hole\s*,\s*ow\s*,\s*oh/.test(src),
+     '메움판(출력 해상도 사본)에 승격이 안 간다');
+  ok(/markEllipseHole\(\s*hm\.hole\s*,\s*hm\.w\s*,\s*hm\.h/.test(src),
+     'baseC가 쓰는 원본 해상도 마스크에 승격이 안 간다 — 2차의 실패가 그대로 돌아왔다');
+  ok(/_cleanBase\s*=\s*null/.test(src),
+     '정리본 캐시를 무효화하지 않는다 — 이미 만들어진 정리본이 옛 마스크로 계속 덮는다');
+
+  // 얼굴이 잡힌 뷰에서는 절대 돌지 않아야 한다(정면 이목구비를 살색으로 밀어버린다)
+  ok(/const\s+noFace\s*=\s*!\(.*state\.landmarks\s*&&\s*state\.landmarks\[angle\]\)/.test(src),
+     '랜드마크 게이트가 없다 — 정면·측면에서 이 경로가 돌면 얼굴이 사라진다');
+  ok(/const\s+faceless\s*=[^;]*noFace/.test(src), 'faceless 판정이 noFace를 안 쓴다');
+
+  // 이식면의 색은 사진이 아니라 표본에서 와야 한다(눈모양이 들어올 경로 차단)
+  ok(/graft\.mean\[ch\]\s*\*\s*shade/.test(src),
+     '이식 색이 표본 평균이 아니다 — od(사진)에서 색이나 밝기를 받으면 스윕 자국이 음영으로 되살아난다');
+});
