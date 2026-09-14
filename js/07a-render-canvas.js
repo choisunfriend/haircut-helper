@@ -260,6 +260,42 @@ const HOLE_FILL = {
     minSample: 400,    // 살 표본이 이보다 적으면 중앙값을 못 믿는다 → 손 안 댐
     maxFrac: 0.25,     // 성한 살 면적의 이 비율을 넘게 잡히면 판정 실패로 보고 취소
   },
+  /* ── 얼굴 없는 뷰: 타원 안을 통째로 <b>이식</b>한다 (2026-09-14 3차) ──────────
+     사용자: "뒷면 두상 타원 내 메움도 정면·측면처럼 <b>피부픽셀 이식</b>으로
+     바꿔줘. 사람 눈 안 들어가게."
+
+     ── 왜 2차(잔재 회수)로 부족했나 — 두 군데가 어긋나 있었다 ─────────────
+     ① <b>승격이 화면에 반영되지 않았다.</b> markSkinResidue는 <b>축소한 사본</b>
+        (downsampleFlagsMax의 결과)에만 OR 했다. 화면은 [메움 배경] 위에
+        <b>baseC 정리본</b>을 얹어 만드는데, 그 정리본은 캐시된 <b>원본 해상도</b>
+        마스크(getHoleMask)로 오려낸다. 사본만 고쳤으니 정리본은 그 자리를 여전히
+        "성한 픽셀"로 보고 <b>원본 머리 잔재를 그대로 덮어 그렸다</b> — 아래에서
+        아무리 곱게 메워도 위에 눈자국이 다시 올라온 것이다.
+     ② <b>색·밝기를 그 사진에서 가져왔다.</b> 후면 타원 안은 성한 살이 거의 없어
+        살 격자(skinField)의 씨앗이 결국 <b>세그가 놓친 머리 뭉치</b>다. 이식
+        분기로 가도 밝기(sh)를 od에서 읽으니 스윕 자국이 <b>음영</b>으로 되살아난다.
+        어느 쪽이든 원본의 어두운 무늬가 형태로 남는다.
+
+     ── 고침: 얼굴 랜드마크가 없는 뷰는 타원 안을 <b>전부</b> 이식면으로 본다 ──
+     후면 두상 타원 안에는 지워야 할 것(머리)과 두피뿐이고, <b>있어야 하는</b>
+     어두운 자리(눈·눈썹·콧구멍)가 없다. 그러니 "어디가 잔재인지" 고를 이유가
+     없다 — 타원 안을 통째로 구멍으로 넘기고, 색·결을 <b>다른 뷰 이마 표본</b>에서
+     가져와 심는다. 그 위에 새 헤어가 그려지므로 두피가 통째로 새 것이어도 된다.
+     · 구멍 승격을 <b>원본 해상도 마스크에도</b> 반영하고 baseC 정리본 캐시를
+       무효화한다(위 ①). 이제 위에 얹히는 그림에서도 그 자리가 비워진다.
+     · 색은 od를 <b>한 방울도</b> 안 쓴다. 표본 평균색 + 완만한 구면 음영뿐이라
+       눈 모양이 들어올 경로 자체가 없다(위 ②).
+     · 결은 표본 고주파를 쓰되 <b>이마 표본이고 평평할 때만</b>이다
+       (skinField.flatTol) — 눈·눈썹은 고주파가 커서 여기서 걸린다.
+     ⚠ 정면·측면은 랜드마크가 잡히므로 이 경로가 <b>절대</b> 돌지 않는다.
+       거기는 이목구비가 정당하게 타원 안에 있다(지우면 얼굴이 사라진다).
+     되돌리기: HOLE_FILL.facelessFill.on = false (2차 잔재 회수 동작으로 복귀) */
+  facelessFill: {
+    on: true,
+    shrink: 0.97,      // 타원을 이 비율까지만 칠한다(타원이 조금 어긋나도 밖으로 안 샘)
+    edgeShade: 0.12,   // 가장자리로 갈수록 살짝 어둡게 — 평평한 스티커처럼 안 보이게
+    detail: 0.55,      // 이마 표본 고주파 세기(평평한 표본일 때만)
+  },
 };
 
 /* 이식용 피부 표본 — 뷰별로 뜨고, 못 뜨면 <b>다른 뷰에서 뜬 것</b>을 재사용한다.
@@ -274,6 +310,7 @@ function resetSkinGraft(){
   for(const k in _fieldLogged) delete _fieldLogged[k];
   for(const k in _graftLogged) delete _graftLogged[k];
   for(const k in _residueLogged) delete _residueLogged[k];   // (2026-09-14) 잔재회수 진단도 같이
+  for(const k in _facelessLogged) delete _facelessLogged[k]; // (2026-09-14 3차) 전면이식 진단도 같이
 }
 
 // 뷰의 두상 영역(정규 좌표) — 정수리~턱을 감싸는 타원. 없으면 null.
@@ -461,6 +498,28 @@ function buildOuterField(od, ow, oh, hole, ell){
   };
 }
 
+/* 두상 타원 안을 통째로 구멍으로 넘긴다(얼굴 없는 뷰 전용).
+   해상도와 무관하게 <b>정규 좌표</b>로 계산하므로, 출력 해상도 사본과 원본
+   해상도 마스크 양쪽에 같은 모양으로 찍을 수 있다 — 둘이 어긋나면 위에 얹히는
+   baseC가 그 차이만큼 원본 머리 잔재를 다시 덮어 그린다(그게 2차의 실패였다). */
+function markEllipseHole(hole, w, h, ell, shrink){
+  if(!ell) return 0;
+  const k = (shrink > 0 ? shrink : 1);
+  const k2 = k*k;
+  let n = 0;
+  for(let y=0; y<h; y++){
+    const v = ((y+0.5)/h - ell.cy)/ell.ry, v2 = v*v;
+    if(v2 > k2) continue;
+    for(let x=0; x<w; x++){
+      const u = ((x+0.5)/w - ell.cx)/ell.rx;
+      if(u*u + v2 > k2) continue;
+      const p = y*w + x;
+      if(!hole[p]){ hole[p] = 1; n++; }
+    }
+  }
+  return n;
+}
+
 /* 두상 안에 남은 "살이 아닌 불투명 덩어리"를 구멍으로 승격시킨다.
    holeA — 원본을 출력 해상도로 다시 그린 RGBA(구멍은 알파 0).
    hole  — 승격 결과를 여기에 직접 OR 한다(이 함수가 유일한 부작용).
@@ -574,6 +633,38 @@ function markSkinResidue(holeA, ow, oh, hole, ell, angle, hairRGB){
     }
   }
   return { n: total, core: n, med, cut, area, nHair, nDark, thin: thin ? lums.length : null };
+}
+
+/* [진단] 얼굴 없는 뷰 전면 이식 — 뷰당 1회.
+   "후면에 아직 눈모양이 보인다"가 다시 오면 이 한 줄로 갈린다:
+     · 안 돎(표본 없음) → 정면을 다시 찍어 이마 표본을 확보해야 한다
+     · 돌았는데 baseC 0 → 원본 해상도 마스크 동기화가 깨진 것(위에 원본이 덮인다)
+     · 돌았고 둘 다 큼  → 이식은 먹었다. 남은 무늬는 타원 <b>밖</b>이다(outerField) */
+const _facelessLogged = {};
+function logFacelessOnce(angle, diag, graft, noFace, ell, ow, oh){
+  if(!angle || _facelessLogged[angle]) return;
+  _facelessLogged[angle] = true;
+  const FF = HOLE_FILL.facelessFill;
+  if(!FF || !FF.on) return;
+  if(!noFace) return;                       // 정면·측면 — 이 경로는 원래 안 돈다
+  if(!ell){ console.warn(`[전면이식] ${angle}: 두상 타원이 없어 못 돕니다(섹션 밴드 미확보)`); return; }
+  if(!diag){
+    console.warn(...gyeolBoldArgs([`[전면이식] ${angle}: <b>안 돌았습니다</b> — 이마 표본이 없습니다`
+      + `(이 뷰엔 얼굴이 없고, 다른 뷰에서 보관된 이마 표본도 없음)`
+      + `\n      정면을 다시 찍어 이마가 드러나면 그 표본이 후면으로 넘어옵니다.`]));
+    return;
+  }
+  console.log(...gyeolBoldArgs([`[전면이식] ${angle}: 얼굴 랜드마크 없음 → 두상 타원 안(${(FF.shrink*100)|0}%)을`
+    + ` <b>통째로 이식면</b>으로 넘겼습니다 · 메움판 ${diag.nIn}px 승격 / baseC ${diag.nBase}px 승격`
+    + ` · ${ow}×${oh}`
+    + `\n      색은 이마 표본 평균 rgb(${graft && graft.mean ? graft.mean.join(',') : '?'})`
+    + `(출처 ${graft ? graft.src : '?'}) + 구면 음영 ${(FF.edgeShade*100)|0}%,`
+    + ` 이 뷰 사진의 픽셀은 <b>색으로도 밝기로도 안 씁니다</b> — 눈모양이 들어올 경로가 없습니다.`
+    + `\n      되돌리기: HOLE_FILL.facelessFill.on=false`]));
+  if(diag.hadHm && !diag.nBase){
+    console.warn(`[전면이식] ${angle}: baseC 승격이 0입니다 — 위에 얹히는 그림이 그 자리를 안 비웁니다.`
+      + ` 원본 머리 잔재가 이식면을 덮어 눈자국이 남을 수 있습니다(구멍 마스크 동기화 확인).`);
+  }
 }
 
 /* [진단] 잔재 회수 — 뷰당 1회. */
@@ -1243,78 +1334,12 @@ function buildHoleFillCanvas(srcCanvas, skinColor, ell, angle, holeMaskInfo){
   hctx.drawImage(srcCanvas, 0, 0, ow, oh);
   const holeA = hctx.getImageData(0, 0, ow, oh).data;
 
-  /* ── 렌더링 경계 배경 (2026-08-10) ────────────────────────────────
-     ① 원본 픽셀을 출력 해상도로 얹는다 — 인페인팅이 참조할 "아는 픽셀".
-        (예전엔 low를 확대한 뿌연 값이 유일한 참조였다.)
-     ② 알파 250 미만 + 몇 px 부풀림 = 구멍. 반투명 머리 테두리가 여기 포함되어
-        검은 톱니 윤곽이 사라진다.
-     ③ 4방향 스윕으로 메우고 주변에서 잰 만큼 잡티를 얹는다.
-     두상 안은 아래 이식 루프가 색까지 다시 덮으므로, 여기 결과는 두상 <b>밖</b>
-     (어깨·옷·배경)에서 그대로 최종이 된다 — 유령 덩어리가 없어지는 자리다. */
-  let plateDiag = null, residueDiag = null;
-  let hole = new Uint8Array(ow*oh);
-  if(RENDER_PLATE.on){
-    octx.drawImage(srcCanvas, 0, 0, ow, oh);   // ① 아는 픽셀(구멍은 투명이라 안 덮임)
-    /* 구멍 정의는 <b>테두리 정리와 같은 것</b>을 쓴다(getHoleMask). 원본 해상도에서
-       한 번 만들어(알파 + 부풀림 + 머리색 테두리 회수) 여기로 축소해 온다.
-       두 곳에서 따로 재면 1px 어긋난 자리에 원본 머리색이 실선으로 남는다. */
-    const hm = getHoleMask(srcCanvas, holeMaskInfo);
-    if(hm) hole = downsampleFlagsMax(hm.hole, hm.w, hm.h, ow, oh);
-    else { for(let p=0, i=3; p<hole.length; p++, i+=4) hole[p] = holeA[i] < RENDER_PLATE.alphaHole ? 1 : 0; }
-    /* 잔재 회수는 <b>반드시 인페인팅 앞</b>이다. 뒤로 가면 검정이 이미 아래로
-       끌려 내려간 뒤라, 승격해봐야 그 자국을 다시 참조해 메우게 된다. */
-    residueDiag = markSkinResidue(holeA, ow, oh, hole, ell, angle, hm && hm.hair);
-    const pimg = octx.getImageData(0, 0, ow, oh), pd = pimg.data;
-    const res = inpaintDirectional(pd, hole, ow, oh, RENDER_PLATE.power); // ②
-    relaxHoles(pd, hole, ow, oh, RENDER_PLATE.relax);                     // ③ 빗살무늬 제거
-    /* ④ 거울 결 — 흐린 판을 한 장 떠서 고주파를 경계 건너편에서 가져온다. */
-    let nDetail = 0, sigma = 0;
-    if(RENDER_PLATE.detail > 0){
-      const bc = document.createElement('canvas'); bc.width = ow; bc.height = oh;
-      const bx = bc.getContext('2d', { willReadFrequently:true });
-      octx.putImageData(pimg, 0, 0);
-      bx.filter = `blur(${RENDER_PLATE.detailBlurPx}px)`;
-      bx.drawImage(out, 0, 0);
-      bx.filter = 'none';
-      const blurD = bx.getImageData(0, 0, ow, oh).data;
-      nDetail = mirrorDetail(pd, blurD, hole, ow, oh, RENDER_PLATE.detail);
-    }
-    if(!nDetail) sigma = addGrainToHoles(pd, hole, ow, oh, RENDER_PLATE.grain);
-    octx.putImageData(pimg, 0, 0);
-    plateDiag = { sigma, detail: nDetail,
-                  rim: hm ? hm.nRim : 0, rimIter: hm ? hm.rimIter : 0,
-                  hair: hm ? hm.hair : null, ...res };
-  } else {
-    for(let p=0, i=3; p<hole.length; p++, i+=4) hole[p] = holeA[i] < 200 ? 1 : 0;
-    const hairInf = holeMaskInfo && holeMaskInfo.avgColor && String(holeMaskInfo.avgColor).match(/\d+/g);
-    residueDiag = markSkinResidue(holeA, ow, oh, hole, ell, angle,
-      (hairInf && hairInf.length>=3) ? [+hairInf[0], +hairInf[1], +hairInf[2]] : null);
-  }
-  logRenderPlateOnce(angle, plateDiag, ow, oh);
-  logSkinResidueOnce(angle, residueDiag, ow, oh);
-
-  /* ⚠ 예전엔 여기서 <b>바로 돌아갔다</b>. 그러면 타원 밖(어깨·배경)은 물론이고
-     타원 자체가 없는 경우까지 mirrorDetail 결과가 그대로 최종이 된다 —
-     위 outerField 배너가 말한 눈 윤곽이 남는 자리다. 이제 밖은 밖대로 메우고
-     간다. 안쪽(살 격자·이식)만 skinRGB·ell이 있을 때 돈다. */
-  /* ── 두피색이 없다고 <b>타원 안까지</b> 포기하지 않는다 (2026-09-14 2차) ──────
-     후면은 얼굴이 안 잡혀 scalpColor가 비는 경우가 있다. 예전엔 그러면 여기서
-     바로 돌아가서 <b>타원 밖만</b> 메우고 끝났다 — 전면·측면에 적용한 살 격자
-     + 이마 표본 이식이 후면 타원 안에서만 통째로 건너뛰어졌고, 그 자리엔
-     mirrorDetail이 접어 넣은 눈 윤곽이 그대로 남았다(사용자가 본 그것).
-     살 격자는 skinRGB가 없어도 선다 — 색을 <b>자리</b>에서 가져오기 때문이다.
-     못 서는 경우를 위해 보관된 이마 표본의 평균색을 두피색 대신 쓴다.
-     이제 <b>타원이 없을 때만</b> 밖으로 빠진다. */
-  const _oimgEarly = (!ell) ? octx.getImageData(0, 0, ow, oh) : null;
-  if(_oimgEarly){
-    const od0 = _oimgEarly.data;
-    const outer0 = buildOuterField(od0, ow, oh, hole, ell);
-    const n0 = outer0 ? paintOuterHoles(od0, ow, oh, hole, ell, outer0) : 0;
-    if(outer0) octx.putImageData(_oimgEarly, 0, 0);
-    logOuterFieldOnce(angle, outer0, n0, ow, oh, '두상 타원 없음');
-    return out;
-  }
-
+  /* ── 이마 표본을 <b>여기서</b> 먼저 뜬다 (2026-09-14 3차) ──────────────────
+     예전엔 인페인팅·잔재 회수를 다 끝낸 뒤에 떴다. 그런데 얼굴 없는 뷰는
+     "표본이 있느냐"로 <b>구멍을 어디까지 넓힐지</b>가 갈린다(facelessFill) —
+     표본이 없으면 타원을 비워봐야 메울 재료가 없어 단색 오벌이 된다.
+     그래서 판단에 필요한 순서대로 앞으로 옮긴다. 표본은 hctx(=원본을 출력
+     해상도로 다시 그린 것)에서 뜨므로, 아래 어떤 수정보다 앞에 와도 값이 같다. */
   const size = Math.min(Math.max(24, Math.round(HOLE_FILL.patch * ow / 900)), ow>>1, oh>>1);
   /* ── 이마 표본 확보 ─────────────────────────────────────────────
      이 뷰에서 뜬다 → 못 뜨면 다른 뷰(대개 정면)에서 뜬 것을 쓴다.
@@ -1362,6 +1387,110 @@ function buildHoleFillCanvas(srcCanvas, skinColor, ell, angle, holeMaskInfo){
   else graft = null;                                          // ③은 안 쓴다 → ④ 단색
   const graftRejected = (own && !own.forehead) ? own : darkRejected;
 
+  /* ── 렌더링 경계 배경 (2026-08-10) ────────────────────────────────
+     ① 원본 픽셀을 출력 해상도로 얹는다 — 인페인팅이 참조할 "아는 픽셀".
+        (예전엔 low를 확대한 뿌연 값이 유일한 참조였다.)
+     ② 알파 250 미만 + 몇 px 부풀림 = 구멍. 반투명 머리 테두리가 여기 포함되어
+        검은 톱니 윤곽이 사라진다.
+     ③ 4방향 스윕으로 메우고 주변에서 잰 만큼 잡티를 얹는다.
+     두상 안은 아래 이식 루프가 색까지 다시 덮으므로, 여기 결과는 두상 <b>밖</b>
+     (어깨·옷·배경)에서 그대로 최종이 된다 — 유령 덩어리가 없어지는 자리다. */
+  /* ── 얼굴 없는 뷰 판정 (2026-09-14 3차) ────────────────────────────────
+     랜드마크가 없다 = 이 뷰의 타원 안에 <b>있어야 하는</b> 이목구비가 없다
+     = 타원 안 전체가 두피이거나 지울 머리다. 후면이 늘 이 경우다.
+     표본(graft)이 없으면 메울 재료가 없으니 켜지 않는다 — 살색 단색 오벌이
+     원본보다 나을 게 없다. 그때는 예전 경로(잔재 회수)로 간다. */
+  const FF = HOLE_FILL.facelessFill;
+  const noFace = !(typeof state !== 'undefined' && state.landmarks && state.landmarks[angle]);
+  const faceless = !!(FF && FF.on && ell && graft && graft.mean && noFace);
+
+  let plateDiag = null, residueDiag = null, facelessDiag = null;
+  let hole = new Uint8Array(ow*oh);
+  if(RENDER_PLATE.on){
+    octx.drawImage(srcCanvas, 0, 0, ow, oh);   // ① 아는 픽셀(구멍은 투명이라 안 덮임)
+    /* 구멍 정의는 <b>테두리 정리와 같은 것</b>을 쓴다(getHoleMask). 원본 해상도에서
+       한 번 만들어(알파 + 부풀림 + 머리색 테두리 회수) 여기로 축소해 온다.
+       두 곳에서 따로 재면 1px 어긋난 자리에 원본 머리색이 실선으로 남는다. */
+    const hm = getHoleMask(srcCanvas, holeMaskInfo);
+    if(hm) hole = downsampleFlagsMax(hm.hole, hm.w, hm.h, ow, oh);
+    else { for(let p=0, i=3; p<hole.length; p++, i+=4) hole[p] = holeA[i] < RENDER_PLATE.alphaHole ? 1 : 0; }
+    if(faceless){
+      /* 타원 안을 통째로 구멍으로 넘긴다. 이게 "어디가 잔재인지 고르기"를
+         대신한다 — 고를 필요가 없으면 고르다 틀릴 일도 없다.
+         ⚠ 승격은 <b>두 군데</b>에 해야 한다:
+           ① 여기(출력 해상도 사본) — 아래 이식 루프가 칠할 자리
+           ② hm.hole(원본 해상도, 캐시) — 위에 얹히는 baseC 정리본이 오려낼 자리
+         ②를 빼먹은 것이 2차에서 눈자국이 그대로 남은 직접 원인이다. 정리본은
+         이미 만들어져 캐시돼 있을 수 있으므로 같이 무효화한다. */
+      const nIn = markEllipseHole(hole, ow, oh, ell, FF.shrink);
+      let nBase = 0;
+      if(hm){
+        nBase = markEllipseHole(hm.hole, hm.w, hm.h, ell, FF.shrink);
+        if(nBase) try{ srcCanvas._cleanBase = null; }catch(e){}
+      }
+      facelessDiag = { nIn, nBase, hadHm: !!hm };
+    } else {
+      /* 잔재 회수는 <b>반드시 인페인팅 앞</b>이다. 뒤로 가면 검정이 이미 아래로
+         끌려 내려간 뒤라, 승격해봐야 그 자국을 다시 참조해 메우게 된다. */
+      residueDiag = markSkinResidue(holeA, ow, oh, hole, ell, angle, hm && hm.hair);
+    }
+    const pimg = octx.getImageData(0, 0, ow, oh), pd = pimg.data;
+    const res = inpaintDirectional(pd, hole, ow, oh, RENDER_PLATE.power); // ②
+    relaxHoles(pd, hole, ow, oh, RENDER_PLATE.relax);                     // ③ 빗살무늬 제거
+    /* ④ 거울 결 — 흐린 판을 한 장 떠서 고주파를 경계 건너편에서 가져온다. */
+    let nDetail = 0, sigma = 0;
+    if(RENDER_PLATE.detail > 0){
+      const bc = document.createElement('canvas'); bc.width = ow; bc.height = oh;
+      const bx = bc.getContext('2d', { willReadFrequently:true });
+      octx.putImageData(pimg, 0, 0);
+      bx.filter = `blur(${RENDER_PLATE.detailBlurPx}px)`;
+      bx.drawImage(out, 0, 0);
+      bx.filter = 'none';
+      const blurD = bx.getImageData(0, 0, ow, oh).data;
+      nDetail = mirrorDetail(pd, blurD, hole, ow, oh, RENDER_PLATE.detail);
+    }
+    if(!nDetail) sigma = addGrainToHoles(pd, hole, ow, oh, RENDER_PLATE.grain);
+    octx.putImageData(pimg, 0, 0);
+    plateDiag = { sigma, detail: nDetail,
+                  rim: hm ? hm.nRim : 0, rimIter: hm ? hm.rimIter : 0,
+                  hair: hm ? hm.hair : null, ...res };
+  } else {
+    for(let p=0, i=3; p<hole.length; p++, i+=4) hole[p] = holeA[i] < 200 ? 1 : 0;
+    if(faceless){
+      facelessDiag = { nIn: markEllipseHole(hole, ow, oh, ell, FF.shrink), nBase: 0, hadHm: false };
+    } else {
+      const hairInf = holeMaskInfo && holeMaskInfo.avgColor && String(holeMaskInfo.avgColor).match(/\d+/g);
+      residueDiag = markSkinResidue(holeA, ow, oh, hole, ell, angle,
+        (hairInf && hairInf.length>=3) ? [+hairInf[0], +hairInf[1], +hairInf[2]] : null);
+    }
+  }
+  logRenderPlateOnce(angle, plateDiag, ow, oh);
+  logSkinResidueOnce(angle, residueDiag, ow, oh);
+  logFacelessOnce(angle, facelessDiag, graft, noFace, ell, ow, oh);
+
+  /* ⚠ 예전엔 여기서 <b>바로 돌아갔다</b>. 그러면 타원 밖(어깨·배경)은 물론이고
+     타원 자체가 없는 경우까지 mirrorDetail 결과가 그대로 최종이 된다 —
+     위 outerField 배너가 말한 눈 윤곽이 남는 자리다. 이제 밖은 밖대로 메우고
+     간다. 안쪽(살 격자·이식)만 skinRGB·ell이 있을 때 돈다. */
+  /* ── 두피색이 없다고 <b>타원 안까지</b> 포기하지 않는다 (2026-09-14 2차) ──────
+     후면은 얼굴이 안 잡혀 scalpColor가 비는 경우가 있다. 예전엔 그러면 여기서
+     바로 돌아가서 <b>타원 밖만</b> 메우고 끝났다 — 전면·측면에 적용한 살 격자
+     + 이마 표본 이식이 후면 타원 안에서만 통째로 건너뛰어졌고, 그 자리엔
+     mirrorDetail이 접어 넣은 눈 윤곽이 그대로 남았다(사용자가 본 그것).
+     살 격자는 skinRGB가 없어도 선다 — 색을 <b>자리</b>에서 가져오기 때문이다.
+     못 서는 경우를 위해 보관된 이마 표본의 평균색을 두피색 대신 쓴다.
+     이제 <b>타원이 없을 때만</b> 밖으로 빠진다. */
+  const _oimgEarly = (!ell) ? octx.getImageData(0, 0, ow, oh) : null;
+  if(_oimgEarly){
+    const od0 = _oimgEarly.data;
+    const outer0 = buildOuterField(od0, ow, oh, hole, ell);
+    const n0 = outer0 ? paintOuterHoles(od0, ow, oh, hole, ell, outer0) : 0;
+    if(outer0) octx.putImageData(_oimgEarly, 0, 0);
+    logOuterFieldOnce(angle, outer0, n0, ow, oh, '두상 타원 없음');
+    return out;
+  }
+
+
   const G = HOLE_FILL.graft;
   // 거울 반복(ping-pong)으로 타일링 — 같은 무늬가 줄줄이 반복되는 티가 안 난다
   const mirror = (v, n)=>{ const p = 2*n - 2; let m = ((v % p) + p) % p; return m < n ? m : p - m; };
@@ -1373,10 +1502,18 @@ function buildHoleFillCanvas(srcCanvas, skinColor, ell, angle, holeMaskInfo){
      반드시 이식 루프 <b>전에</b> 만든다 — od를 고치기 시작하면 그 결과가
      표본으로 되먹여져서 색이 스스로 끌려간다. */
   const F = HOLE_FILL.skinField;
-  const field = buildSkinField(od, ow, oh, hole, ell);
+  /* 얼굴 없는 뷰에서는 살 격자를 <b>아예 안 세운다</b> (2026-09-14 3차).
+     격자는 "이 사진의 이 자리에 있던 살"을 쓰는 방식인데, 후면 타원 안에는
+     그 살이 없다 — 씨앗으로 잡히는 것은 세그가 놓친 머리 뭉치뿐이라, 격자를
+     세우면 그 어두운 무늬가 <b>색</b>으로 승격돼 눈자국이 다시 그려진다.
+     타원을 통째로 구멍으로 넘긴 뒤라 어차피 씨앗이 없어 null이 나오지만,
+     테두리 한 겹으로 격자가 서는 일이 없도록 여기서 못을 박는다. */
+  const field = faceless ? null : buildSkinField(od, ow, oh, hole, ell);
   /* 결은 패치가 평평할 때만 쓴다. 격자가 색을 맡으므로 결이 없어도 그림은
-     성립한다 — 눈 무늬가 반복되느니 매끈한 편이 낫다(8/11과 같은 판단). */
-  const useDetail = !!(field && graft && F && F.detail > 0
+     성립한다 — 눈 무늬가 반복되느니 매끈한 편이 낫다(8/11과 같은 판단).
+     얼굴 없는 뷰(이식 전면 적용)에서도 같은 잣대를 그대로 쓴다: 표본이 평평하지
+     않으면(=눈·눈썹이 섞였으면) 결을 통째로 버리고 색만 심는다. */
+  const useDetail = !!((field || faceless) && graft && F && F.detail > 0
                        && (graft.det == null || graft.det <= F.flatTol));
   const _fc = [0,0,0];
   const fieldDrop = !!(field && graft && !useDetail);
@@ -1402,6 +1539,30 @@ function buildHoleFillCanvas(srcCanvas, skinColor, ell, angle, holeMaskInfo){
       if(G.edgeFeather > 0){
         const r = Math.sqrt(r2);
         if(r > 1 - G.edgeFeather) wgt = Math.max(0, (1 - r) / G.edgeFeather);
+      }
+      if(faceless){
+        /* ── 얼굴 없는 뷰: 순수 이식 (2026-09-14 3차) ─────────────────────
+           od를 <b>한 방울도</b> 쓰지 않는다. 색도 밝기도 안 쓴다 — 후면 타원
+           안의 od는 지운 머리 경계가 사방으로 끌려간 스윕 자국이라, 색으로
+           쓰면 얼룩이 되고 <b>밝기로만</b> 써도 그 얼룩이 음영으로 되살아난다
+           (그게 "눈모양"의 정체다. 형태가 남는 경로를 하나도 안 남긴다).
+           대신 심는 것은 셋뿐이다:
+             · 색   — 이마 표본의 평균색(같은 사람·같은 조명이라 그대로 맞는다)
+             · 음영 — 타원 중심에서 멀수록 살짝 어둡게(구면). 사진과 무관한
+                      기하학이라 무늬가 생길 수 없다.
+             · 결   — 이마 표본의 고주파. 평평한 표본일 때만(useDetail).
+           결과는 "이마 피부를 뒤통수에 통째로 옮겨 심은" 면이 된다. 그 위에
+           새 헤어가 그려지므로 두피가 균일해도 어색하지 않다. */
+        const shade = 1 - FF.edgeShade * r2;
+        const gk = useDetail ? (mirror(x, gs)*gs + py) * 3 : 0;
+        for(let ch = 0; ch < 3; ch++){
+          const skinPx = graft.mean[ch] * shade
+                       + (useDetail ? graft.hi[gk+ch] * T * FF.detail : 0);
+          od[i+ch] = Math.max(0, Math.min(255, od[i+ch]*(1-wgt) + skinPx*wgt));
+        }
+        od[i+3] = 255;
+        nGraft++;
+        continue;
       }
       if(field){
         /* ── 자리별 색 (2026-09-12) ──────────────────────────────────
