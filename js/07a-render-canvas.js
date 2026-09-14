@@ -239,6 +239,21 @@ const HOLE_FILL = {
        "landmarks none"이라 이 경로만 탄다. */
   residue: {
     on: true,
+    /* ── 후면: 밝기가 아니라 <b>머리색</b>으로 잡는다 (2026-09-14 2차) ──────────
+       사용자: "후면 타원 안에 아직 눈모양이 남아 있다. 전면·측면에 적용한
+       피부 픽셀 이식을 후면 타원 안에도 똑같이 적용해라."
+       1차(밝기 중앙값 × darkRatio)로는 후면에서 회수가 <b>취소</b>된다.
+       긴 머리 후면은 타원 안 \"성한 살\"이 애초에 거의 없고(대부분 지운 구멍),
+       세그가 놓친 머리 뭉치가 그 적은 표본의 절반 이상을 차지하기 때문에
+       maxFrac(25%) 안전장치에 걸려 통째로 손을 안 댄다 — 그래서 눈처럼 보이는
+       스윕 자국이 전면·측면과 달리 후면에만 남았다.
+       고침: 머리 평균색(maskInf.avgColor, 구멍 마스크가 이미 쓰는 그 값)과
+       가까운 불투명 픽셀은 <b>밝기와 무관하게</b> 잔재로 본다. 색으로 잡은 것은
+       근거가 분명하므로 maxFrac 취소 대상에서 뺀다(밝기로만 잡은 것은 그대로
+       maxFrac을 적용해 정면 얼굴 오작동을 막는다).
+       되돌리기: HOLE_FILL.residue.byHair = false */
+    byHair: true,
+    hairTol: 78,       // 머리 평균색과의 채널당 평균 거리 한계(0~255) — 넘으면 살로 본다
     darkRatio: 0.80,   // 두상 안 살 밝기 중앙값 대비 이 배율보다 어두우면 <b>심지</b>
     softRatio: 0.93,   // 심지에 <b>붙어 있을 때만</b> 같이 데려갈 반그늘 상한(이력)
     growPx: 3,         // 어두운 심지만 지우면 둘레 흐린 띠가 남는다 — 부풀려 잡는다
@@ -450,9 +465,10 @@ function buildOuterField(od, ow, oh, hole, ell){
    holeA — 원본을 출력 해상도로 다시 그린 RGBA(구멍은 알파 0).
    hole  — 승격 결과를 여기에 직접 OR 한다(이 함수가 유일한 부작용).
    반환   { n, cut, med, cancelled } — 진단용. 안 돈 경우 null. */
-function markSkinResidue(holeA, ow, oh, hole, ell, angle){
+function markSkinResidue(holeA, ow, oh, hole, ell, angle, hairRGB){
   const R = HOLE_FILL.residue;
   if(!R || !R.on || !ell) return null;
+  const useHair = !!(R.byHair && hairRGB);
   /* 게이트 — 얼굴이 잡힌 뷰는 눈·눈썹·콧구멍이 <b>있어야 하는</b> 어두운 자리다.
      여기서 한 번이라도 헷갈리면 정면 얼굴을 살색으로 밀어버린다. */
   if(typeof state !== 'undefined' && state.landmarks && state.landmarks[angle]){
@@ -475,16 +491,20 @@ function markSkinResidue(holeA, ow, oh, hole, ell, angle){
       lums.push(0.299*holeA[i] + 0.587*holeA[i+1] + 0.114*holeA[i+2]);
     }
   }
-  if(lums.length < R.minSample) return { n: 0, thin: lums.length };
+  /* 표본이 얇아도 <b>머리색 경로는 돈다</b> — 긴 머리 후면은 타원 안이 거의 다
+     구멍이라 표본이 원래 얇다. 여기서 돌려보내면 후면만 영영 안 고쳐진다.
+     밝기 기준(med/cut)만 못 세우는 것이므로, 그건 끄고 색으로만 간다. */
+  const thin = lums.length < R.minSample;
+  if(thin && !useHair) return { n: 0, thin: lums.length };
   lums.sort((a,b)=>a-b);
-  const med = lums[lums.length >> 1];
-  const cut = med * R.darkRatio;
-  const soften = med * R.softRatio;
+  const med = thin ? 0 : lums[lums.length >> 1];
+  const cut = thin ? -1 : med * R.darkRatio;      // -1 = 밝기로는 아무것도 안 잡음
+  const soften = thin ? -1 : med * R.softRatio;
 
   // ② 어두운 잔재 표시
   const mark = new Uint8Array(ow*oh);   // 심지(확실히 어두움)
   const soft = new Uint8Array(ow*oh);   // 반그늘(애매함 — 심지에 붙어 있을 때만 쓴다)
-  let n = 0, area = 0;
+  let n = 0, area = 0, nHair = 0, nDark = 0;
   for(let y=0; y<oh; y++){
     const v = ((y+0.5)/oh - ell.cy)/ell.ry, v2 = v*v;
     if(v2 > 1) continue;
@@ -496,14 +516,41 @@ function markSkinResidue(holeA, ow, oh, hole, ell, angle){
       if(holeA[i+3] < 200) continue;
       area++;                                   // 분모는 <b>성한 살</b>만(구멍은 뺀다)
       const L = 0.299*holeA[i] + 0.587*holeA[i+1] + 0.114*holeA[i+2];
-      if(L < cut){ mark[p] = 1; n++; }
+      /* ⓐ 머리색이면 밝기와 무관하게 잔재다 — 이게 후면을 살리는 줄이다.
+         (같은 사진·같은 조명이라 avgColor와의 거리만으로 충분하다. 구멍
+          마스크의 테두리 회수가 이미 같은 판정을 쓰고 있다.) */
+      if(useHair){
+        const dH = (Math.abs(holeA[i]-hairRGB[0]) + Math.abs(holeA[i+1]-hairRGB[1])
+                  + Math.abs(holeA[i+2]-hairRGB[2])) / 3;
+        if(dH <= R.hairTol){ mark[p] = 1; n++; nHair++; continue; }
+      }
+      if(L < cut){ mark[p] = 1; n++; nDark++; }
       else if(L < soften) soft[p] = 1;
     }
   }
-  if(!n) return { n: 0, med, cut };
+  if(!n) return { n: 0, med, cut, thin: thin ? lums.length : null };
   /* ③ 안전장치 — 사진이 통째로 어둡거나 타원이 잘못 잡히면 여기서 절반이
-     걸린다. 그건 "잔재"가 아니라 판정 실패다 — 손대지 않는 편이 낫다. */
-  if(area && n/area > R.maxFrac) return { n: 0, med, cut, cancelled: n, frac: n/area };
+     걸린다. 그건 "잔재"가 아니라 판정 실패다 — 손대지 않는 편이 낫다.
+     단 <b>머리색으로 잡은 몫은 분자에서 뺀다</b>: 그건 "어두워서"가 아니라
+     "머리색이라서" 잡힌 것이고, 후면은 그 몫이 원래 절반을 넘는다(그래서
+     1차 때 통째로 취소돼 눈자국이 남았다). 밝기로만 잡은 몫에만 한계를 건다. */
+  if(area && nDark/area > R.maxFrac){
+    if(nHair){                                   // 색 근거는 살리고 밝기 몫만 버린다
+      // 밝기로만 잡은 픽셀을 되돌린다
+      for(let y=0; y<oh; y++){
+        const v = ((y+0.5)/oh - ell.cy)/ell.ry, v2 = v*v;
+        if(v2 > 1) continue;
+        for(let x=0; x<ow; x++){
+          const p = y*ow+x; if(!mark[p]) continue;
+          const i = p*4;
+          const dH = useHair ? (Math.abs(holeA[i]-hairRGB[0]) + Math.abs(holeA[i+1]-hairRGB[1])
+                              + Math.abs(holeA[i+2]-hairRGB[2]))/3 : 999;
+          if(dH > R.hairTol) mark[p] = 0;
+        }
+      }
+      n = nHair;
+    } else return { n: 0, med, cut, cancelled: n, frac: n/area };
+  }
 
   /* ④ 번짐 — 눈자국은 심지(검정)보다 <b>흐린 띠</b>가 훨씬 넓다. 심지만 지우면
      그 띠가 고스란히 남아 여전히 눈처럼 보인다. 그렇다고 임계를 올리면 정수리
@@ -526,7 +573,7 @@ function markSkinResidue(holeA, ow, oh, hole, ell, angle){
       hole[p] = 1; total++;
     }
   }
-  return { n: total, core: n, med, cut, area };
+  return { n: total, core: n, med, cut, area, nHair, nDark, thin: thin ? lums.length : null };
 }
 
 /* [진단] 잔재 회수 — 뷰당 1회. */
@@ -539,8 +586,9 @@ function logSkinResidueOnce(angle, diag, ow, oh){
     console.log(`[잔재회수] ${angle}: 건너뜀 — 얼굴 랜드마크가 있는 뷰(이목구비를 지우면 안 된다)`);
     return;
   }
-  if(diag.thin != null){
-    console.log(`[잔재회수] ${angle}: 건너뜀 — 두상 안 살 표본 ${diag.thin}px < ${HOLE_FILL.residue.minSample} (밝기 기준을 못 세움)`);
+  if(diag.thin != null && !diag.n){
+    console.log(`[잔재회수] ${angle}: 밝기 기준 없음 — 두상 안 살 표본 ${diag.thin}px < ${HOLE_FILL.residue.minSample}`
+      + ` · 머리색 경로도 못 잡음(머리 평균색이 없거나 hairTol ${HOLE_FILL.residue.hairTol} 밖)`);
     return;
   }
   if(diag.cancelled){
@@ -553,7 +601,7 @@ function logSkinResidueOnce(angle, diag, ow, oh){
     return;
   }
   console.log(...gyeolBoldArgs([`[잔재회수] ${angle}: 살 중앙값 ${diag.med.toFixed(0)} · 기준 ${diag.cut.toFixed(0)}(×${HOLE_FILL.residue.darkRatio}) →`
-    + ` 심지 ${diag.core}px → 부풀려 <b>${diag.n}px 승격</b>`
+    + ` 심지 ${diag.core}px(머리색 ${diag.nHair||0} · 밝기 ${diag.nDark||0}) → 부풀려 <b>${diag.n}px 승격</b>`
     + ` = 두상 안의 ${(100*diag.n/Math.max(1,diag.area)).toFixed(1)}% · ${ow}×${oh}`
     + `\n      이 자리는 이제 다른 부위와 <b>같은 경로</b>로 메워집니다(살 격자 색 + 이마 표본 결).`]));
 }
@@ -685,7 +733,12 @@ function buildSkinGraft(hctx, ow, oh, ell, skinRGB, size, angle){
   let d2 = 0;
   for(let k=0; k<hi.length; k++) d2 += hi[k]*hi[k];
   const det = Math.sqrt(d2 / hi.length);
-  return { rgb, hi, size, lum: lumSum / (size*size), det, src: angle || '?', at: patch,
+  /* 평균색 — 두피색(scalpColor)이 없는 뷰(후면)에서 그 대신 쓴다. */
+  let mr=0, mg=0, mb=0;
+  for(let k=0; k<rgb.length; k+=3){ mr+=rgb[k]; mg+=rgb[k+1]; mb+=rgb[k+2]; }
+  const np = size*size;
+  return { rgb, hi, size, lum: lumSum / np, det, src: angle || '?', at: patch,
+           mean: [Math.round(mr/np), Math.round(mg/np), Math.round(mb/np)],
            forehead: !!patch.forehead, dy: patch.dy };
 }
 
@@ -1158,6 +1211,10 @@ function buildHoleFillCanvas(srcCanvas, skinColor, ell, angle, holeMaskInfo){
     const m = String(skinColor).match(/\d+/g);
     if(m && m.length>=3) skinRGB = [+m[0], +m[1], +m[2]];
   }
+  /* 두피색이 없는 뷰(후면: 얼굴 미검출)는 보관된 이마 표본의 평균색으로 대신한다.
+     같은 사람·같은 조명·같은 카메라라 뷰가 달라도 색을 맞출 필요가 없다.
+     아래 저주파 전파·바탕칠까지 이 값이 쓰이게 <b>여기서</b> 채운다. */
+  if(!skinRGB && _skinGraft && _skinGraft.mean) skinRGB = _skinGraft.mean.slice();
   const lw = Math.max(16, Math.min(HOLE_FILL.lowW, sw));
   const lh = Math.max(16, Math.round(sh * (lw / sw)));
   const low = fillHolesLowRes(srcCanvas, lw, lh, skinRGB, ell);
@@ -1206,7 +1263,7 @@ function buildHoleFillCanvas(srcCanvas, skinColor, ell, angle, holeMaskInfo){
     else { for(let p=0, i=3; p<hole.length; p++, i+=4) hole[p] = holeA[i] < RENDER_PLATE.alphaHole ? 1 : 0; }
     /* 잔재 회수는 <b>반드시 인페인팅 앞</b>이다. 뒤로 가면 검정이 이미 아래로
        끌려 내려간 뒤라, 승격해봐야 그 자국을 다시 참조해 메우게 된다. */
-    residueDiag = markSkinResidue(holeA, ow, oh, hole, ell, angle);
+    residueDiag = markSkinResidue(holeA, ow, oh, hole, ell, angle, hm && hm.hair);
     const pimg = octx.getImageData(0, 0, ow, oh), pd = pimg.data;
     const res = inpaintDirectional(pd, hole, ow, oh, RENDER_PLATE.power); // ②
     relaxHoles(pd, hole, ow, oh, RENDER_PLATE.relax);                     // ③ 빗살무늬 제거
@@ -1229,7 +1286,9 @@ function buildHoleFillCanvas(srcCanvas, skinColor, ell, angle, holeMaskInfo){
                   hair: hm ? hm.hair : null, ...res };
   } else {
     for(let p=0, i=3; p<hole.length; p++, i+=4) hole[p] = holeA[i] < 200 ? 1 : 0;
-    residueDiag = markSkinResidue(holeA, ow, oh, hole, ell, angle);
+    const hairInf = holeMaskInfo && holeMaskInfo.avgColor && String(holeMaskInfo.avgColor).match(/\d+/g);
+    residueDiag = markSkinResidue(holeA, ow, oh, hole, ell, angle,
+      (hairInf && hairInf.length>=3) ? [+hairInf[0], +hairInf[1], +hairInf[2]] : null);
   }
   logRenderPlateOnce(angle, plateDiag, ow, oh);
   logSkinResidueOnce(angle, residueDiag, ow, oh);
@@ -1238,13 +1297,21 @@ function buildHoleFillCanvas(srcCanvas, skinColor, ell, angle, holeMaskInfo){
      타원 자체가 없는 경우까지 mirrorDetail 결과가 그대로 최종이 된다 —
      위 outerField 배너가 말한 눈 윤곽이 남는 자리다. 이제 밖은 밖대로 메우고
      간다. 안쪽(살 격자·이식)만 skinRGB·ell이 있을 때 돈다. */
-  const _oimgEarly = (!skinRGB || !ell) ? octx.getImageData(0, 0, ow, oh) : null;
+  /* ── 두피색이 없다고 <b>타원 안까지</b> 포기하지 않는다 (2026-09-14 2차) ──────
+     후면은 얼굴이 안 잡혀 scalpColor가 비는 경우가 있다. 예전엔 그러면 여기서
+     바로 돌아가서 <b>타원 밖만</b> 메우고 끝났다 — 전면·측면에 적용한 살 격자
+     + 이마 표본 이식이 후면 타원 안에서만 통째로 건너뛰어졌고, 그 자리엔
+     mirrorDetail이 접어 넣은 눈 윤곽이 그대로 남았다(사용자가 본 그것).
+     살 격자는 skinRGB가 없어도 선다 — 색을 <b>자리</b>에서 가져오기 때문이다.
+     못 서는 경우를 위해 보관된 이마 표본의 평균색을 두피색 대신 쓴다.
+     이제 <b>타원이 없을 때만</b> 밖으로 빠진다. */
+  const _oimgEarly = (!ell) ? octx.getImageData(0, 0, ow, oh) : null;
   if(_oimgEarly){
     const od0 = _oimgEarly.data;
     const outer0 = buildOuterField(od0, ow, oh, hole, ell);
     const n0 = outer0 ? paintOuterHoles(od0, ow, oh, hole, ell, outer0) : 0;
     if(outer0) octx.putImageData(_oimgEarly, 0, 0);
-    logOuterFieldOnce(angle, outer0, n0, ow, oh, '두상 타원/두피색 없음');
+    logOuterFieldOnce(angle, outer0, n0, ow, oh, '두상 타원 없음');
     return out;
   }
 
@@ -1358,9 +1425,10 @@ function buildHoleFillCanvas(srcCanvas, skinColor, ell, angle, holeMaskInfo){
         /* 표본을 아예 못 떴을 때 — 최소한 <b>두피색 쪽으로</b> 끌어당긴다.
            벽의 흰색·머리의 검정이 그대로 남는 것보다 낫다(검정은 답이 아니다). */
         const m = G.flatMix * wgt;
-        od[i]   = od[i]  *(1-m) + skinRGB[0]*m;
-        od[i+1] = od[i+1]*(1-m) + skinRGB[1]*m;
-        od[i+2] = od[i+2]*(1-m) + skinRGB[2]*m;
+        const FB = skinRGB || [224,178,148];   // 두피색도 표본도 없을 때(후면)의 최후 폴백
+        od[i]   = od[i]  *(1-m) + FB[0]*m;
+        od[i+1] = od[i+1]*(1-m) + FB[1]*m;
+        od[i+2] = od[i+2]*(1-m) + FB[2]*m;
         nFlat++;
         continue;
       }
