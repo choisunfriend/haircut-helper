@@ -160,6 +160,45 @@ const HOLE_FILL = {
     detail: 0.55,           // 결(고주파)만 얹는 세기. 색은 전부 격자가 정한다
     flatTol: 16,            // 표본 고주파 표준편차 상한 — 넘으면 눈·눈썹이라 결도 안 쓴다
   },
+  /* ── 두상 <b>밖</b>도 주변색으로 (2026-09-14) ────────────────────────────
+     사용자(긴머리 여성 후면): "2D 조정화면 뒷머리 부분, 거기는 색메움이 반영이
+     안되었나봐. 머리를 줄이니까 많이 드러나는데, <b>눈모양이 가득해</b>."
+
+     ── 눈모양의 정체는 타일이 아니라 mirrorDetail이다 ────────────────────
+     8/11·9/12에 고친 것은 <b>패치 타일링</b>이었는데, 후면에 남은 것은 다른
+     함수다. mirrorDetail은 구멍 경계를 기준으로 <b>바깥 픽셀을 안으로 반사</b>해
+     고주파를 가져온다 — 눈 옆이 구멍이면 눈 윤곽이 구멍 안으로 접혀 들어가고,
+     4방향으로 도니까 여러 번 찍힌다. 색칠된 눈이 아니라 <b>윤곽선</b>이다.
+
+     ── 왜 후면에만 남았나 ────────────────────────────────────────────────
+     이식 루프가 `if(v2 > 1) continue; // 두상 밖`으로 <b>타원 안만</b> 돈다.
+     mirrorDetail은 그보다 앞 단계(RENDER_PLATE)에서 <b>타원과 무관하게</b>
+     전체에 돈다. 그래서 타원 안은 나중에 살 격자가 덮어써서 깨끗하고, 타원
+     <b>밖</b>은 mirrorDetail 결과가 그대로 최종이 된다.
+     긴 머리를 줄이면 드러나는 자리가 대부분 타원 밖이라 후면에서만 크게 보였고,
+     짧은 머리 남성은 거의 다 타원 안이라 안 보였다. 뷰의 문제가 아니라
+     <b>구멍이 타원 밖이냐</b>의 문제였다(후면에 랜드마크가 없는 것과는 별개다 —
+     headEllipseFor는 헤어 실루엣 밴드로 서므로 후면에도 타원은 있다).
+
+     ── 고침: 밖에는 <b>밖의</b> 주변색을 쓴다 ────────────────────────────
+     안쪽(살 격자)을 밖으로 넓히지 <b>않는다</b>. 드러난 자리는 두피가 아니라
+     목·어깨·옷·배경이라, 살색으로 메우면 어깨 옆 허공에 살색 덩어리가 생긴다
+     (예전 로그의 "유령 덩어리"가 그것이다).
+     대신 같은 3패스 구조를 <b>타원 밖 픽셀로 따로</b> 세운다 — 씨앗이 옷이면
+     옷색, 배경이면 배경색, 목이면 목 살색이 <b>가장 가까운 것</b>으로 번져 온다.
+     살 격자와 달리 darkPct(어두운 것 거르기)를 <b>안 쓴다</b>: 여기서 찾는 것은
+     살이 아니라 "이 자리에 원래 뭐가 있었나"라서, 검은 니트를 걸러내면 안 된다.
+     ⓘ 이 격자가 덮어쓰므로 타원 밖에서는 mirrorDetail 결과가 버려진다 —
+       눈 윤곽이 사라지는 자리가 바로 거기다. 대신 그 구역은 결 없이 평평해진다.
+       니트 짜임까지 살리려면 detailMix를 올린다(0이면 완전히 평평).
+     되돌리기: HOLE_FILL.outerField.on = false (예전처럼 mirrorDetail 결과가 남는다) */
+  outerField: {
+    on: true,
+    gridX: 64, gridY: 80,   // 격자 해상도(캔버스 전체 위 — 타원이 아니다)
+    fillPasses: 160,        // 밖은 구멍이 크다(어깨까지) — 안쪽보다 넉넉히
+    minCells: 0.04,         // 씨앗이 이보다 적으면 안 쓴다(폴백이 낫다)
+    detailMix: 0.35,        // 메운 자리에 남길 고주파 비율. 0 = 완전히 평평
+  },
   dirW: [0.4, 1.0, 2.6], // 위/가운데/아래 이웃 가중 — 살색이 두피로 타고 올라오게
   /* ── 두피 이식 (2026-08-03) ────────────────────────────────────────
      사용자: "머리두피면을 보면 까맣게 보여. 저기 채워지지 않은 자리는 헤어
@@ -264,6 +303,124 @@ function pickSkinPatch(ctx, W, H, ell, skinRGB, size){
    눈·눈썹·입은 darkPct 아래로 떨어져 애초에 안 들어오고, 그 자리는 번지기가
    주변 살로 메운다 — 12a SCALP_SKIN의 3패스와 같은 구조다.
    od는 <b>고치기 전</b> 픽셀이어야 한다(이식 루프보다 먼저 부를 것). */
+/* 타원 밖 구멍에 주변색을 칠한다. 고주파는 detailMix만큼 남긴다 —
+   0이면 완전히 평평하고, 올리면 니트 짜임·배경 입자가 조금 돌아온다.
+   ⚠ mirrorDetail이 넣은 고주파에는 <b>눈 윤곽</b>이 섞여 있을 수 있다.
+     detailMix를 올린다는 것은 그것도 같이 돌아온다는 뜻이다(그래서 기본이 낮다). */
+function paintOuterHoles(od, ow, oh, hole, ell, outer){
+  const mixK = Math.max(0, Math.min(1, HOLE_FILL.outerField.detailMix));
+  const c = [0,0,0];
+  let n = 0;
+  for(let y=0; y<oh; y++){
+    const ny = (y + 0.5)/oh;
+    const v = ell ? (ny - ell.cy)/ell.ry : 9;
+    const v2 = v*v;
+    for(let x=0; x<ow; x++){
+      const p = y*ow + x;
+      if(!hole[p]) continue;
+      const nx = (x + 0.5)/ow;
+      if(ell){
+        const u = (nx - ell.cx)/ell.rx;
+        if(u*u + v2 <= 1) continue;            // 두상 안 — 살 격자가 이미 칠했다
+      }
+      outer.at(nx, ny, c);
+      const i = p*4;
+      /* 고주파만 남긴다: (현재 − 그 자리 평균)이 결이고, 색은 격자가 정한다.
+         평균을 od에서 다시 구하지 않고 격자 값을 쓰는 이유는, od가 이미
+         mirrorDetail로 오염돼 있어 거기서 평균을 내면 오염이 색으로 승격된다. */
+      for(let ch=0; ch<3; ch++){
+        const detail = mixK > 0 ? (od[i+ch] - c[ch]) * mixK : 0;
+        od[i+ch] = Math.max(0, Math.min(255, c[ch] + detail));
+      }
+      od[i+3] = 255;
+      n++;
+    }
+  }
+  return n;
+}
+
+let _outerFieldLogged = {};
+function logOuterFieldOnce(angle, outer, nPix, ow, oh, why){
+  if(_outerFieldLogged[angle]) return;
+  _outerFieldLogged[angle] = true;
+  if(!outer){
+    console.log('[메움·두상밖] ' + angle + ' — 주변색 격자 <b>못 세움</b>'
+      + (why ? '(' + why + ')' : '(씨앗 부족)') + ' → 예전처럼 mirrorDetail 결과가 남습니다.');
+    return;
+  }
+  console.log(...gyeolBoldArgs(['[메움·두상밖] ' + angle + ' · 격자 ' + outer.GX + '×' + outer.GY
+    + ' · 씨앗 ' + outer.seeded + '칸 → 번져서 ' + outer.filled + '칸(' + outer.passes + '회)'
+    + ' · 칠한 픽셀 <b>' + nPix + '</b>/' + (ow*oh)
+    + (why ? ' · ' + why : '')
+    + '\n    두상 <b>밖</b>(목·어깨·옷·배경)은 살색이 아니라 <b>제 자리 주변색</b>으로 메웁니다.'
+    + ' 여기가 예전에 mirrorDetail의 거울 결이 그대로 남아 <b>눈 윤곽</b>이 반복되던 자리입니다.'
+    + '\n    칠한 픽셀이 0이면 구멍이 전부 두상 안이라는 뜻이고(짧은 머리), 크면 긴 머리를 줄인 것입니다.'
+    + '\n    되돌리기: HOLE_FILL.outerField.on=false']));
+}
+
+/* 타원 <b>밖</b> 주변색 격자 — 위 HOLE_FILL.outerField 배너 참고.
+   살 격자와 같은 3패스지만 두 가지가 다르다:
+     · 씨앗을 <b>타원 밖</b>에서만 모은다(안쪽 살이 어깨로 새어 나오면 안 된다)
+     · 어두운 것을 <b>안 거른다</b>(검은 니트도 정답이다 — 찾는 게 살이 아니다)
+   격자 좌표는 타원이 아니라 <b>캔버스 전체</b> 기준이라, ell이 null이어도 선다. */
+function buildOuterField(od, ow, oh, hole, ell){
+  const F = HOLE_FILL.outerField;
+  if(!F || !F.on) return null;
+  const GX = Math.max(4, F.gridX|0), GY = Math.max(4, F.gridY|0);
+  const step = Math.max(1, Math.round(Math.min(ow, oh) / 220));
+  const r = new Float32Array(GX*GY), g = new Float32Array(GX*GY), b = new Float32Array(GX*GY);
+  const n = new Float32Array(GX*GY);
+  const isOutside = (x, y)=>{
+    if(!ell) return true;
+    const u = ((x+0.5)/ow - ell.cx)/ell.rx, v = ((y+0.5)/oh - ell.cy)/ell.ry;
+    return u*u + v*v > 1;
+  };
+  let seeded = 0;
+  for(let y=0; y<oh; y+=step) for(let x=0; x<ow; x+=step){
+    if(hole[y*ow + x]) continue;                 // 지운 자리는 씨앗이 아니다
+    if(!isOutside(x, y)) continue;               // 두상 안은 살 격자가 맡는다
+    const i = (y*ow+x)*4;
+    if(od[i+3] < 200) continue;
+    const k = Math.min(GY-1, Math.floor(y/oh*GY))*GX + Math.min(GX-1, Math.floor(x/ow*GX));
+    r[k]+=od[i]; g[k]+=od[i+1]; b[k]+=od[i+2]; n[k]++;
+  }
+  for(let i=0;i<GX*GY;i++){ if(n[i] > 0){ r[i]/=n[i]; g[i]/=n[i]; b[i]/=n[i]; n[i]=1; seeded++; } }
+  if(seeded < GX*GY*F.minCells) return null;
+  let filled = seeded, passes = 0;
+  for(; passes<F.fillPasses; passes++){
+    let changed = 0;
+    const nr=r.slice(), ng=g.slice(), nb=b.slice(), nn=n.slice();
+    for(let gy=0; gy<GY; gy++) for(let gx=0; gx<GX; gx++){
+      const i = gy*GX+gx;
+      if(n[i] > 0) continue;
+      let sr=0,sg=0,sb=0,k=0;
+      if(gx>0    && n[i-1] >0){ sr+=r[i-1];  sg+=g[i-1];  sb+=b[i-1];  k++; }
+      if(gx<GX-1 && n[i+1] >0){ sr+=r[i+1];  sg+=g[i+1];  sb+=b[i+1];  k++; }
+      if(gy>0    && n[i-GX]>0){ sr+=r[i-GX]; sg+=g[i-GX]; sb+=b[i-GX]; k++; }
+      if(gy<GY-1 && n[i+GX]>0){ sr+=r[i+GX]; sg+=g[i+GX]; sb+=b[i+GX]; k++; }
+      if(k){ nr[i]=sr/k; ng[i]=sg/k; nb[i]=sb/k; nn[i]=1; changed++; }
+    }
+    if(!changed) break;
+    r.set(nr); g.set(ng); b.set(nb); n.set(nn);
+    filled += changed;
+  }
+  return {
+    GX, GY, r, g, b, seeded, filled, passes,
+    at(nx, ny, out){
+      const fx = Math.min(this.GX-1, Math.max(0, nx*this.GX - 0.5));
+      const fy = Math.min(this.GY-1, Math.max(0, ny*this.GY - 0.5));
+      const x0 = Math.floor(fx), y0 = Math.floor(fy);
+      const x1 = Math.min(this.GX-1, x0+1), y1 = Math.min(this.GY-1, y0+1);
+      const tx = fx-x0, ty = fy-y0;
+      const I = (xx,yy)=> yy*this.GX + xx;
+      const mix = A => A[I(x0,y0)]*(1-tx)*(1-ty) + A[I(x1,y0)]*tx*(1-ty)
+                     + A[I(x0,y1)]*(1-tx)*ty     + A[I(x1,y1)]*tx*ty;
+      out[0]=mix(this.r); out[1]=mix(this.g); out[2]=mix(this.b);
+      return out;
+    },
+  };
+}
+
 function buildSkinField(od, ow, oh, hole, ell){
   const F = HOLE_FILL.skinField;
   if(!F || !F.on || !ell) return null;
@@ -935,7 +1092,19 @@ function buildHoleFillCanvas(srcCanvas, skinColor, ell, angle, holeMaskInfo){
   }
   logRenderPlateOnce(angle, plateDiag, ow, oh);
 
-  if(!skinRGB || !ell) return out;             // 결 없이 색만 — 폴백
+  /* ⚠ 예전엔 여기서 <b>바로 돌아갔다</b>. 그러면 타원 밖(어깨·배경)은 물론이고
+     타원 자체가 없는 경우까지 mirrorDetail 결과가 그대로 최종이 된다 —
+     위 outerField 배너가 말한 눈 윤곽이 남는 자리다. 이제 밖은 밖대로 메우고
+     간다. 안쪽(살 격자·이식)만 skinRGB·ell이 있을 때 돈다. */
+  const _oimgEarly = (!skinRGB || !ell) ? octx.getImageData(0, 0, ow, oh) : null;
+  if(_oimgEarly){
+    const od0 = _oimgEarly.data;
+    const outer0 = buildOuterField(od0, ow, oh, hole, ell);
+    const n0 = outer0 ? paintOuterHoles(od0, ow, oh, hole, ell, outer0) : 0;
+    if(outer0) octx.putImageData(_oimgEarly, 0, 0);
+    logOuterFieldOnce(angle, outer0, n0, ow, oh, '두상 타원/두피색 없음');
+    return out;
+  }
 
   const size = Math.min(Math.max(24, Math.round(HOLE_FILL.patch * ow / 900)), ow>>1, oh>>1);
   /* ── 이마 표본 확보 ─────────────────────────────────────────────
@@ -1002,9 +1171,12 @@ function buildHoleFillCanvas(srcCanvas, skinColor, ell, angle, holeMaskInfo){
                        && (graft.det == null || graft.det <= F.flatTol));
   const _fc = [0,0,0];
   const fieldDrop = !!(field && graft && !useDetail);
+  /* 타원 <b>밖</b> 구멍 — 반드시 이식 루프 전에 만든다(od가 고쳐지기 전 픽셀이
+     씨앗이어야 한다). 실제 칠하기는 아래 루프가 끝난 뒤 한 번에 한다. */
+  const outer = buildOuterField(od, ow, oh, hole, ell);
   for(let y=0; y<oh; y++){
     const ny = (y + 0.5)/oh, v = (ny - ell.cy)/ell.ry, v2 = v*v;
-    if(v2 > 1) continue;                       // 두상 밖 — 손대지 않음(목·옷·배경)
+    if(v2 > 1) continue;                       // 두상 밖 — 아래 paintOuterHoles가 맡는다
     const py = gs ? mirror(y, gs) : 0;
     for(let x=0; x<ow; x++){
       const i = (y*ow+x)*4;
@@ -1014,7 +1186,7 @@ function buildHoleFillCanvas(srcCanvas, skinColor, ell, angle, holeMaskInfo){
       if(!hole[y*ow + x]) continue;
       const nx = (x + 0.5)/ow, u = (nx - ell.cx)/ell.rx;
       const r2 = u*u + v2;
-      if(r2 > 1) continue;                     // 두상 밖
+      if(r2 > 1) continue;                     // 두상 밖 — 아래 paintOuterHoles가 맡는다
       /* 두상 경계 페더 — 이식이 타원 선에서 뚝 끊기면 그 자리에 테두리가 생긴다.
          바깥 몇 %에서 원래(전파된) 색으로 서서히 넘긴다. */
       let wgt = 1;
@@ -1074,7 +1246,9 @@ function buildHoleFillCanvas(srcCanvas, skinColor, ell, angle, holeMaskInfo){
       nGraft++;
     }
   }
+  const nOuter = outer ? paintOuterHoles(od, ow, oh, hole, ell, outer) : 0;
   octx.putImageData(oimg, 0, 0);
+  logOuterFieldOnce(angle, outer, nOuter, ow, oh, null);
   logSkinFieldOnce(angle, field, graft, useDetail, ow, oh);
   logSkinGraftOnce(angle, graft, nGraft, nFlat, ow, oh, graftRejected);
   return out;
