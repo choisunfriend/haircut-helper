@@ -345,6 +345,47 @@ const HAIR_SCALP3D = {
   minGap: 0.03,    // 두피면은 헐보다 최소 이만큼 안쪽(축 붕괴·역전 방어)
   maxThick: 0.45,  // 모발 두께 상한(헐 반경 대비) — 얼굴 실측이 오염돼도 안 무너지게
   fallbackK: 0.78, // 얼굴 실측을 못 얻었을 때만 쓰는 가로 배율
+  /* ══════════════════════════════════════════════════════════════════
+     두개골 반폭을 <b>얼굴 반폭과 같게</b> 놓고 있었다 (2026-09-14)
+     ─────────────────────────────────────────────────────────────────
+     사용자: "안면끝부분을 잘 휘어서 붙인 거 같은 느낌이네. 지금 안면이 앞쪽으로
+     돌출된건지 두상이 작은건지 좀 확인해봐야 될거 같아."
+     <b>두상이 작다.</b> 실기기 로그(9/14)를 환산자 19.3cm/단위로 풀면:
+         두개골 가로 2×0.363×19.3 = <b>14.0cm</b>   (성인 여성 15.0~15.4cm)
+         두개골 깊이            ≈ <b>16.8cm</b>   (성인 여성 18.0~18.5cm)
+         눈→정수리 0.595×19.3   =   11.5cm      ✓ 정상
+       얼굴 쪽은 전부 정상이다 —
+         귀평면→코끝 0.637×19.3 =   12.3cm      ✓ (실측 12~13cm)
+         코끝 돌출(중심면 기준)  =    2.5cm      ✓ (실측 2~3cm)
+       게다가 [이마이음매] 로그의 틈이 전부 <b>0.0000</b>이었다. z(깊이)로는 어긋난
+       데가 없다는 뜻이라 "얼굴이 앞으로 나왔다" 가설은 여기서 탈락한다.
+       남는 건 x·y 자가 짧다는 것 하나뿐이고, 가로·깊이가 <b>나란히 약 7%</b> 작다.
+
+     ── 왜 나란히 7%인가 (원인 한 줄) ──────────────────────────────────
+       아래 getScalpEllipsoid가 a = getFaceHalfWidthMesh() 로, 두개골 반폭을
+       얼굴 반폭과 <b>똑같이</b> 놓는다. HEAD_WIDTH_GUARD.faceMinRatio=1.00도
+       "두상은 얼굴보다 좁을 수 없다"까지만 말한다. 그런데 해부학적 관계는
+       <b>같다</b>가 아니라 머리 최대폭 ≈ 관골폭 × <b>1.06~1.10</b>이다 —
+       머리 최대폭은 귀 위 두정결절에서 나오고, 얼굴 메쉬 최대폭은 관골궁이라
+       애초에 다른 자리다. 딱 그 6~10%가 통째로 빠져 있었다.
+       그리고 깊이 c는 재는 게 아니라 헐에서 <b>형상 승계</b>(a × c헐/a헐)라,
+       폭의 부족분을 그대로 물려받는다. 그래서 두 축이 같은 비율로 작다.
+
+     ── 사용자가 본 "휘어서 붙인"의 정체 ──────────────────────────────
+       a가 얼굴 최대폭과 <b>정확히 같으면</b> 가장 넓은 얼굴 정점의
+       t=√((x/a)²+(y/b)²) 가 1을 넘는다(실측 ≈1.03). 12a의 faceBaseZLocal은
+       t > FACE_RULER_FIT.edgeT(0.94)부터 √(1−t²) 대신 <b>접선 연장</b>으로
+       잇는다 — 관자놀이·이마 테두리가 구면을 벗어나 곧게 눕는다. 그게 화면에서
+       "끝부분을 휘어서 붙인" 모양이다. 원인(작은 두개골)을 고치면 t가 edgeT
+       아래로 내려가 접선 연장이 <b>애초에 안 걸린다</b>.
+
+     ⚠ 이 값은 헤어 투영·리프트·정수리 캡까지 같이 움직인다(파일 상단이 "별도
+       턴으로 미뤄둔다"고 적어 둔 자리다). 다만 아래 cl()의 minGap=0.03이
+       이미 <b>헐에서 0.03단위 안쪽</b>으로 잘라주므로 자기제한적이다 —
+       이 손님은 0.363×1.07=0.388이 minGap 상한 0.387에 걸려 14.9cm에서 멈춘다.
+       즉 모발 두께가 0이 되는 방향으로는 못 간다.
+     되돌리기: skullPerFace = 1.00 (산술까지 예전과 동일) */
+  skullPerFace: 1.07,
   /* (2026-08-17 c) 이름이 applyToMiniHead였을 땐 <b>미니뷰만</b> 두피 크기였고
      최종 3D 화면(buildProceduralHead)은 여전히 헐 크기 살구색 구를 그렸다.
      그래서 "3D 미리보기는 맞는데 마지막 3D 결과보기는 헤어가 안 얹힌다"가 됐다
@@ -402,7 +443,11 @@ function getScalpEllipsoid(){
   if(!HAIR_SCALP3D.on) return { a:e.a, b:e.b, c:e.c, src:'off' };
   const S = HAIR_SCALP3D;
   let a = e.a * S.fallbackK, src = '폴백';
-  try{ const faceA = getFaceHalfWidthMesh(); if(faceA > 0){ a = faceA; src = '얼굴 실측'; } }catch(err){}
+  const _perFace = (typeof S.skullPerFace === 'number' && S.skullPerFace > 0) ? S.skullPerFace : 1;
+  let _faceA = 0;
+  /* 얼굴 반폭은 <b>관골궁</b>, 두개골 최대폭은 <b>두정결절</b> — 자리가 다르다.
+     위 배너의 비(1.07)를 곱해야 같은 것을 재는 자가 된다. 1.00이면 예전과 동일. */
+  try{ const faceA = getFaceHalfWidthMesh(); if(faceA > 0){ _faceA = faceA; a = faceA * _perFace; src = '얼굴 실측×' + _perFace.toFixed(2); } }catch(err){}
   let b = e.b * S.fallbackK, srcB = '폴백';
   try{ const fm = getFaceMetrics(); const eyeToChin = 0.70 * (fm.heightFactor || 1);
        if(eyeToChin > 0){ b = eyeToChin; srcB = '눈→턱 자'; } }catch(err){}
@@ -420,6 +465,28 @@ function getScalpEllipsoid(){
       + (isFinite(cmX) ? ` → 두개골 가로 ${(2*a*cmX).toFixed(1)}cm · 눈→정수리 ${(b*cmY).toFixed(1)}cm · 깊이 ${(2*c*cmX).toFixed(1)}cm` : '')
       + ` | 모발 두께 옆 ${((e.a-a)*(isFinite(cmX)?cmX:0)).toFixed(1)}cm · 위 ${((e.b-b)*(isFinite(cmY)?cmY:0)).toFixed(1)}cm`
       + ` (두상=헤어 ${e.a.toFixed(3)}/${e.b.toFixed(3)}/${e.c.toFixed(3)})`);
+    /* ── 잰 값을 <b>사람 치수와 대조</b>해서 한 줄로 판정한다 (2026-09-14) ────────
+       위 skullPerFace 배너의 판정("얼굴이 나온 게 아니라 두상이 작다")을 다음
+       세션이 눈으로 다시 하지 않게, 대조를 코드가 하게 둔다. 범위는 성인 여성
+       머리 최대폭 15.0~15.4cm · 최대깊이 18.0~18.5cm(남성은 각각 +1cm 남짓).
+       ⚠ 이건 <b>참고 범위</b>지 정답이 아니다 — 개인차가 있으니 벗어났다고
+         자동으로 고치지 않고 <b>알리기만</b> 한다(이 파일의 상·하한 규칙과 같다). */
+    if(isFinite(cmX)){
+      const wCm = 2*a*cmX, dCm = 2*c*cmX;
+      const _v = (v, lo, hi)=> v < lo ? `<b>${v.toFixed(1)}cm ↓작음</b>(참고 ${lo}~${hi})`
+                            : v > hi ? `<b>${v.toFixed(1)}cm ↑큼</b>(참고 ${lo}~${hi})`
+                                     : `${v.toFixed(1)}cm ✓(참고 ${lo}~${hi})`;
+      const hitGap = (a >= e.a - S.minGap - 1e-6);
+      console.log(...gyeolBoldArgs(['[두개골 자 대조] 가로 ' + _v(wCm, 15.0, 15.4)
+        + ' · 깊이 ' + _v(dCm, 18.0, 18.5)
+        + '\n      얼굴 반폭 ' + _faceA.toFixed(3) + ' × skullPerFace ' + _perFace.toFixed(2)
+        + ' = ' + (_faceA*_perFace).toFixed(3) + ' → 적용 ' + a.toFixed(3)
+        + (hitGap ? ' (<b>minGap에 걸려 여기서 멈춤</b> — 더 넓히려면 모발 두께를 먹어야 합니다)' : '')
+        + '\n      읽는 법 — 가로·깊이가 <b>같이</b> 작으면 깊이는 형상 승계라 따라간 것이니'
+        + ' 손댈 곳은 <b>가로 하나</b>(skullPerFace)입니다. 가로는 맞는데 깊이만 틀리면'
+        + ' 그때는 승계를 끊고 측면 사진으로 깊이를 <b>실측</b>해야 합니다.'
+        + '\n      되돌리기: HAIR_SCALP3D.skullPerFace=1.00']));
+    }
   }
   return { a, b, c, src };
 }
@@ -500,7 +567,13 @@ const HEAD_WIDTH_GUARD = {
   /* 적도를 본 경우에도 하한을 적용할까. 안 하면 얼굴만 혼자 넓어져 두개골
      밖으로 나간다(2026-08-30 6차 배너 — 짧은 머리 남성에서 터진 자리). */
   applyMinAlways: true,
-  faceMinRatio: 1.00,   // 두상 반폭 하한 — <b>두상은 얼굴보다 좁을 수 없다</b>(해부학)
+  /* 하한은 <b>두피면이 실제로 쓰는 비</b>와 같아야 한다 (2026-09-14).
+     1.00으로 두면 "두상=얼굴폭"까지 통과시키는데, getScalpEllipsoid는 이제
+     얼굴폭×skullPerFace를 쓰므로 둘이 어긋난다 — 같은 상수 하나를 본다. */
+  get faceMinRatio(){
+    const r = HAIR_SCALP3D && HAIR_SCALP3D.skullPerFace;
+    return (typeof r === 'number' && r > 0) ? r : 1.00;
+  },
   faceMaxRatio: 1.15,   // 상한. 이 위는 사람 두개골이 아니라 머리카락이다
 };
 function getHeadEllipsoid(){

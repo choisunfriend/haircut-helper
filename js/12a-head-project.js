@@ -292,6 +292,10 @@ const NECK_SHAPE = {
      cm ↔ 메쉬단위 환산은 faceRulerCmPerUnit — 이 파일의 유일한 자다. */
   minBaseCm: 9.0,   // 목 밑동 <b>폭</b> 하한(cm)
   maxBaseCm: 13.0,  // 〃 상한
+  /* 윗단을 <b>턱</b>에서 낼까 (2026-09-14) — buildRealNeckMesh 안 배너 참고.
+     false면 옛 헤어 밴드 식(cos(PHI_MAX)×b×1.01+0.15)으로 완전히 복귀한다. */
+  topFromChin: true,
+  topAboveChin: 0.02,  // 턱보다 이만큼만 위로(겹침). 스냅샷 오리는 선 −0.10보다 위여야 한다
 };
 /* 의상 메쉬의 <b>목 구멍</b> — 옷깃선(getNeckBottomY) 바로 아래 얇은 층의 가로/깊이.
    loadOutfitMesh가 에셋의 목 밑동을 정확히 그 y에 맞춰 놓으므로, 그 바로 밑을
@@ -361,7 +365,50 @@ function buildRealNeckMesh(skinColor){
      ⚠ headPhiToMeshY 자체는 안 건드린다. 그건 실측 밴드(두상 단면·목 단면)가
        헤어 실루엣 위에서 재는 자라서 헐이 맞다 — 표시용과 실측용은 다르다. */
   const skullD = getDisplaySkullEllipsoid();
-  const neckTopY = Math.cos(PHI_MAX) * skullD.b * 1.01 + 0.15;
+  /* ══════════════════════════════════════════════════════════════════
+     목 윗단이 <b>턱을 3cm 넘겨</b> 올라와 있었다 (2026-09-14)
+     ─────────────────────────────────────────────────────────────────
+     사용자: "턱이 뒤로 들어간게 아니라 목이 넓게 나온거야. 그래서 턱까지 올라온거고."
+     맞다. 옛 줄은 윗단을 <b>헤어 밴드 스캔</b>에서 냈다:
+         neckTopY = cos(PHI_MAX) × skullD.b × 1.01 + 0.15
+     PHI_MAX는 두상 단면을 어디까지 훑었나를 말하는 값이지 <b>턱이 어디인가</b>와는
+     아무 상관이 없다. 실기기(9/14 남성) 수치로 풀면 —
+         neckTopY = cos(2.35)×0.595×1.01 + 0.15 = <b>−0.273</b>
+         턱      = 0.15 − 0.70×heightFactor    = <b>−0.445</b>
+     윗단이 턱보다 0.172단위 = 환산 <b>3.3cm 위</b>다. 거기는 목이 아니라 아래턱이다.
+     그래서 턱밑 목각(cervicomental angle)이 통째로 메워지고, 옆에서 보면
+     턱선이 그대로 목으로 이어져 <b>얼굴이 앞으로 튀어나온 것처럼</b> 읽힌다.
+
+     ── 스스로 모순이었다는 증거 ───────────────────────────────────────
+     밑동은 getNeckBottomY가 <b>턱 − NECK_LEN_CM(8.0cm)</b>으로 정확히 낸다.
+     그런데 윗단이 턱 위 3.3cm에 있었으니 실제 목 길이는
+         (−0.273) − (−0.860) = 0.587단위 ≈ <b>11.3cm</b>
+     — 선언한 8cm보다 3.3cm 길다. 아래는 자로 재고 위는 딴 자로 잰 것이다.
+     이 저장소가 반복해서 당한 <b>한 값을 두 곳이 각자 정한다</b> 바로 그 모양이다.
+
+     ── 고침 ───────────────────────────────────────────────────────────
+     윗단도 <b>턱</b>에서 낸다. 턱보다 topAboveChin만큼만 위로 올려 겹침을 남긴다 —
+     결과화면 스냅샷이 사진을 턱 −RESULT_HEAD_CUT.chinDrop(0.10)에서 오리고
+     feather(0.06)로 번지게 하므로, 목은 최소 그 선 위까지 올라와 있어야
+     턱 밑에 구멍이 안 생긴다. 0.02면 오리는 선보다 0.12단위(2.3cm) 위라 넉넉하다.
+     부수 효과: neckLen이 0.435단위 ≈ 8.4cm가 되어 <b>NECK_LEN_CM과 맞는다</b>.
+     테이퍼(taperW/taperD)도 이제 진짜 턱밑에서 시작하므로 윗링 8.5×8.8cm가
+     제 자리 치수가 된다 — 예전엔 그 치수가 아래턱 높이에 가 있었다.
+     ⚠ 폭(baseWCm)은 <b>안 건드린다</b>. 밑동 11.5cm는 둘레 35cm로 실물과 맞고,
+       사용자가 본 "넓다"는 윗단이 턱까지 올라와 테이퍼가 안 보인 탓이다.
+       내린 뒤에도 두꺼우면 그때 만질 곳이 baseWCm이다(한 번에 하나만).
+     되돌리기: NECK_SHAPE.topFromChin = false (옛 헤어 밴드 식으로 복귀) */
+  let neckTopY = Math.cos(PHI_MAX) * skullD.b * 1.01 + 0.15;
+  const _neckTopOld = neckTopY;
+  let _chinY = null;
+  if(NECK_SHAPE.topFromChin){
+    try{
+      const fm = getFaceMetrics();
+      const chin = 0.15 - 0.70 * fm.heightFactor;     // getNeckBottomY와 <b>같은 식</b>
+      if(isFinite(chin)) _chinY = chin;
+    }catch(e){}
+    if(_chinY != null) neckTopY = _chinY + NECK_SHAPE.topAboveChin;
+  }
   const neckBotY = getNeckBottomY(); // 턱에서 8cm — 예전엔 -1.15 고정이었다(배너 참고)
 
   // (2026-07-17) "원뿔(전등갓) 목" 수정 — personMask 실측에 어깨/턱이 섞이면
@@ -406,6 +453,23 @@ function buildRealNeckMesh(skinColor){
     + cmPerUnit.toFixed(1) + 'cm/단위)') + ' · 둘레 약 '
     + (Math.PI * (baseW + baseD) * cmPerUnit).toFixed(0) + 'cm']));
   const neckLen = Math.max(1e-4, neckTopY - neckBotY);
+  /* 윗단이 <b>턱 대비</b> 어디인가 — 위 topFromChin 배너의 판정을 코드가 대신한다.
+     +면 턱 위(그만큼 아래턱을 목이 먹는다), −면 턱 아래다. */
+  if(_chinY != null){
+    const upCm = (neckTopY - _chinY) * cmPerUnit;
+    const oldCm = (_neckTopOld - _chinY) * cmPerUnit;
+    const cutY = _chinY - 0.10;                     // RESULT_HEAD_CUT.chinDrop
+    console.log(...gyeolBoldArgs(['[3D·목] 윗단 턱 대비 <b>' + (upCm>=0?'+':'') + upCm.toFixed(1) + 'cm</b>'
+      + ' (옛 식이면 ' + (oldCm>=0?'+':'') + oldCm.toFixed(1) + 'cm) · 목 길이 '
+      + (neckLen*cmPerUnit).toFixed(1) + 'cm (선언 ' + NECK_LEN_CM + 'cm)'
+      + '\n      읽는 법 — 윗단이 턱보다 <b>1cm 넘게 위</b>면 턱밑 목각이 메워져'
+      + ' 옆에서 볼 때 얼굴이 앞으로 튀어나온 것처럼 보입니다.'
+      + ' 목 길이가 선언값과 많이 다르면 윗단과 밑동이 <b>서로 다른 자</b>를 쓰고 있다는 뜻입니다.'
+      + (neckTopY <= cutY + 0.04
+          ? '\n      ⚠ 윗단이 스냅샷 오리는 선(턱 −0.10)에 너무 가깝습니다 — 턱 밑에 구멍이 날 수 있으니 topAboveChin을 올리십시오.'
+          : '')
+      + '\n      되돌리기: NECK_SHAPE.topFromChin=false']));
+  }
 
   const positions = [];
   const colors = [];
