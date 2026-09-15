@@ -583,3 +583,56 @@ test('⑯ 후면 이식 — 타원 승격이 메움판과 baseC 양쪽에 같은
   ok(/graft\.mean\[ch\]\s*\*\s*shade/.test(src),
      '이식 색이 표본 평균이 아니다 — od(사진)에서 색이나 밝기를 받으면 스윕 자국이 음영으로 되살아난다');
 });
+
+/* ─────────────────────────────────────────────────────────────────
+   ⑰ 두피면은 얼굴과 <b>겨루지 않는다</b> (2026-09-14 3차)
+
+   사용자: "얼굴쪽에 칠해진 메움이 눈까지 타고 올라갔는데."
+   볼록한 두개골 타원체는 오목한 얼굴(안와·콧대 옆·관자놀이)보다 앞에 서므로
+   깊이 검사에서 이긴다 — 깊이 오프셋으로는 절대 못 이기는 싸움이다.
+   그래서 두피면은 얼굴이 불투명한 자리를 <b>비운다</b>. 이 검사가 지키는 것은
+   두 가지다: ① 자(경계 타원)가 두 곳에 복제되지 않았는가 ② 비우는 규칙이
+   뒤통수까지 지우지 않는가(정사영이라 앞뒤가 같은 (x,y)로 접힌다).
+───────────────────────────────────────────────────────────────── */
+test('⑰ 두피면 — 얼굴 경계 자는 하나뿐이고, 비우기가 뒤통수를 안 지운다', () => {
+  const faceBoundEllipseNorm = G('faceBoundEllipseNorm');
+  const FBF = G('FACE_BOUND_FIT');
+  ok(typeof faceBoundEllipseNorm === 'function', 'faceBoundEllipseNorm이 최상위에 없다');
+  ok(FBF && FBF.on && FBF.fadeIn > 1, 'FACE_BOUND_FIT가 최상위에서 안 보인다(두피면이 fadeIn을 못 읽는다)');
+
+  // 옮기기 전 식과 산술이 같아야 한다 — 값이 바뀌면 얼굴 테두리가 같이 움직인다
+  const lm = { browTopY: 0.30, chinY: 0.62, lEarX: 0.24, rEarX: 0.76,
+               features: { leftEye:{minX:0.36,maxX:0.44}, rightEye:{minX:0.56,maxX:0.64} } };
+  const b = faceBoundEllipseNorm(lm);
+  const topY = 0.30*0.90, botY = 0.62*1.10;
+  near(b.cx, 0.50, 1e-9, '경계 중심 x가 두 눈 중점이 아니다');
+  near(b.cy, (topY+botY)/2, 1e-9, '경계 중심 y가 달라졌다');
+  near(b.ry, (botY-topY)/2*1.08, 1e-9, '경계 세로 반지름이 달라졌다');
+  near(b.rx, Math.abs(0.76-0.24)*0.56*1.08, 1e-9, '경계 가로 반지름이 달라졌다');
+
+  // 같은 식이 12a에 <b>두 번</b> 적혀 있으면 안 된다(한쪽만 고쳐지는 그 실패)
+  const src = fs.readFileSync(path.join(JS, '12a-head-project.js'), 'utf8');
+  const dup = (src.match(/\*\s*0\.56\s*\*\s*1\.08/g) || []).length;
+  eq(dup, 1, '경계 가로 반지름 식이 여러 곳에 복제돼 있다 — 자는 한 곳에만 둬야 한다');
+  eq((src.match(/keepT:\s*1\.22/g) || []).length, 1, 'FACE_BOUND_FIT가 두 번 정의돼 있다');
+
+  // 비우기 규칙: 앞면(z>0)만 센다 — 안 그러면 뒤통수가 통째로 사라진다
+  ok(/if\(pos\.getZ\(i\)\s*<=\s*0\)\s*continue;/.test(src),
+     '두피면 비우기가 뒤통수를 거르지 않는다 — 정사영이라 뒤통수가 앞면과 같은 (x,y)로 접힌다');
+  ok(/opaque\[a\]\s*&&\s*opaque\[b\]\s*&&\s*opaque\[c\]/.test(src),
+     '삼각형을 "셋 다"가 아니라 하나만 걸려도 버린다 — 경계가 벌어진다');
+  ok(/if\(!keep\.length\s*\|\|\s*dropped\s*===\s*0\)\s*return;/.test(src),
+     '전부 버려질 때의 안전장치가 없다');
+
+  // 앞→뒤 밝기 배율: 색조는 안 건드리고 밝기만, 앞은 1.0
+  const BS = G('SCALP_SKIN').backShade;
+  ok(BS && BS.on, 'SCALP_SKIN.backShade가 꺼져 있다 — 뒤통수가 안면 밝기로 칠해진다');
+  ok(BS.back > 0.6 && BS.back < 1,
+     `뒤통수 배율 ${BS.back}가 범위를 벗어났다 — 1이면 예전처럼 밝고, 너무 낮으면 두피면만 검어진다`);
+  const shade = nz => BS.back + (1 - BS.back) * (0.5 + 0.5*nz);
+  near(shade( 1), 1, 1e-9, '앞면 배율이 1이 아니다 — 이마 위 색이 얼굴과 갈라진다');
+  near(shade(-1), BS.back, 1e-9, '뒤통수 배율이 설정값과 다르다');
+  ok(shade(0) > shade(-1) && shade(0) < shade(1), '옆면이 앞뒤 사이에 있지 않다');
+  ok(/col\[i\*3\]\s*=\s*c\[0\]\*sh;\s*col\[i\*3\+1\]\s*=\s*c\[1\]\*sh;\s*col\[i\*3\+2\]\s*=\s*c\[2\]\*sh;/.test(src),
+     '세 채널에 같은 수를 곱하지 않는다 — 밝기만 바꿔야 하는데 색조가 돈다');
+});
