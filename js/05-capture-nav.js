@@ -344,7 +344,6 @@ function retakeCurrent(){
   if(_skinGraft && _skinGraft.src === angle) resetSkinGraft();
   delete _graftLogged[angle];
   delete _plateLogged[angle];
-  delete _residueLogged[angle];
   _silhouetteAnchorCache = {}; // 실루엣 앵커는 정면 비율도 참조하므로 어느 각도든 재촬영 시 전체 리셋
   _resultScene = null; _personScaleRef = null; // 결과 화면의 두상 자·장면 재료도 사진이 바뀌면 무효
   // 랜드마크/감지상태도 함께 초기화 — 촬영 직후 감지가 생기면서, 지우지 않으면
