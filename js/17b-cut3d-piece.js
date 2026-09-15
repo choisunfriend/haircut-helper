@@ -1399,25 +1399,112 @@ function refreshField3DDebug(){
 // (11차) 중립 3D 모델 생성 — 촬영된 뷰들을 중립(rawMode)으로 캡처 → 리프트.
 // 조정과 무관하게 한 번만 만들면 되고(슬라이더는 연산자 재적용만), 3D 화면의
 // 비중립 캡처(state.strandPaths)는 swap-restore로 보존한다.
+/* ── 중립 모델 빌드는 <b>한 번에 하나</b>만 돈다 (2026-09-16) ─────────────────
+   증상: 후면만 3D 투영(슬라이더가 먹음), 정면·좌·우는 폴백 2D 렌더(조정 안 먹음).
+   원인: viewCal[angle]이 없어 07b의 canProject가 거짓 → drawHairStrands 폴백.
+   viewCal은 지워진 게 아니라, 모델이 <b>일부 뷰 경로만</b> 보고 만들어졌다.
+   조정 화면 진입 때 이 함수가 세 군데서 거의 동시에 불린다:
+     · sync3DPreviewPanel(즉시) · scheduleHair3DRefresh(~200ms) · applyStyleSpecAndRender(120ms)
+   셋 다 `!state.hair3Dneutral`을 보고 들어오는데, 모델은 비동기 캡처가 다 끝나야
+   생기므로 셋 다 통과한다. 예전 코드는 전역 state.strandPaths를 {}로 바꿔 끼우고
+   끝나면 되돌렸다 — 동시에 돌면 한 빌드가 다른 빌드의 임시 객체에 캡처를 쓰고,
+   먼저 끝난 쪽이 전역을 되돌리면 뒤 빌드는 <b>화면용 옛 경로</b>(일부 뷰뿐)로 리프트한다.
+   그 모델이 캐시되면 다시 만들 계기가 없어 그대로 굳는다.
+   고침: ① 단일 비행 — 진행 중이면 콜백만 줄 세운다.
+         ② 캡처는 끝날 때마다 <b>이 빌드의 사본</b>(mine)으로 옮기고, 리프트 직전에
+            그 사본만 전역에 꽂는다(화면 렌더가 중간에 덮어써도 섞이지 않는다).
+         ③ 리프트 전에 state.hair3D를 비운다 — 실패하면 옛 모델이 조용히
+            중립 모델 자리에 들어가던 것을 막는다(실패는 null로 드러난다).
+   되돌리기: NEUTRAL_BUILD.singleFlight = false */
+const NEUTRAL_BUILD = { singleFlight: true, running: false, waiters: [] };
 function buildNeutralHair3D(cb){
   if(typeof THREE === 'undefined'){ cb && cb(); return; }
   const angles = ANGLES.filter(a => state.shots && state.shots[a]);
   if(!angles.length){ cb && cb(); return; }
+  if(NEUTRAL_BUILD.singleFlight){
+    if(cb) NEUTRAL_BUILD.waiters.push(cb);
+    if(NEUTRAL_BUILD.running){
+      console.log('[중립3D] 빌드 진행 중 — 새로 시작하지 않고 끝나면 콜백만 부릅니다');
+      return;
+    }
+    NEUTRAL_BUILD.running = true;
+  }
   const savedPaths = state.strandPaths, savedModel = state.hair3D;
-  state.strandPaths = {}; // 중립 캡처 임시 저장소
+  const tmp = {};
+  const mine = {};                 // 이 빌드가 뜬 중립 캡처만
+  state.strandPaths = tmp;         // 중립 캡처 임시 저장소
   let idx = 0;
+  const finish = ()=>{
+    if(NEUTRAL_BUILD.singleFlight){
+      NEUTRAL_BUILD.running = false;
+      const ws = NEUTRAL_BUILD.waiters.splice(0);
+      for(const w of ws){ try{ w(); }catch(e){ console.warn('[중립3D] 콜백 실패:', e); } }
+    } else { cb && cb(); }
+  };
   const done = ()=>{
+    state.strandPaths = mine;      // 리프트는 <b>이 빌드의</b> 캡처만 본다
+    state.hair3D = null;           // 실패 시 옛 모델이 끼어들지 않게
     try { buildHairStrandsFromPaths(); } catch(e){ console.warn('중립 3D 리프트 실패:', e); }
     state.hair3Dneutral = state.hair3D || null;
     if(typeof COMB !== 'undefined'){ COMB.box = null; }  // (#5) 격자 상자는 모델에서 나온다 — 모델이 바뀌면 다시 잰다
-    // (2026-08-01) 중립 캡처 = <b>3D의 원료</b>. 예전엔 복원하면서 버렸는데, 단계별
-    // 밀도를 재려면 "원료가 이미 비어 있었나"를 봐야 해서 따로 보관한다.
-    state.neutralStrandPaths = state.strandPaths;
-    state.strandPaths = savedPaths; state.hair3D = savedModel; // 복원(3D 화면 캡처 보존)
-    cb && cb();
+    // (2026-08-01) 중립 캡처 = <b>3D의 원료</b>. 단계별 밀도를 재려면 원료를 봐야 해서 보관한다.
+    state.neutralStrandPaths = mine;
+    // 빌드 중에 화면 렌더(폴백)가 tmp에 쓴 비중립 경로는 살려서 되돌린다
+    const restored = savedPaths || {};
+    for(const a in tmp){ if(tmp[a] && tmp[a] !== mine[a]) restored[a] = tmp[a]; }
+    state.strandPaths = restored; state.hair3D = savedModel; // 복원(3D 화면 캡처 보존)
+    const raw = state._hair3Dneutral;
+    const got = raw && raw.viewCal ? Object.keys(raw.viewCal) : [];
+    const miss = angles.filter(a => got.indexOf(a) < 0);
+    console.log('[중립3D] 완료 — 캡처 ' + Object.keys(mine).map(a=>a+' '+((mine[a]&&mine[a].strands)?mine[a].strands.length:0)).join(' · ')
+      + ' | viewCal ' + (got.join(',') || '없음')
+      + (miss.length ? '  ⚠ 빠진 뷰 ' + miss.join(',') + ' — 위의 [3D] 뷰 품질 게이트 로그를 보세요' : ''));
+    finish();
   };
-  const next = ()=>{ if(idx >= angles.length){ done(); return; } captureStrandPathsFor(angles[idx++], true).then(next); };
-  next();
+  const next = ()=>{
+    if(idx >= angles.length){ done(); return; }
+    const a = angles[idx++];
+    captureStrandPathsFor(a, true).then(ok=>{
+      // 캡처는 동기로 그려지고 resolve되므로 이 시점의 값이 방금 뜬 것이다
+      if(ok && tmp[a]) mine[a] = tmp[a];
+      else if(ok && state.strandPaths && state.strandPaths[a]) mine[a] = state.strandPaths[a];
+      next();
+    }, ()=>next());
+  };
+  try{ next(); }
+  catch(e){
+    console.warn('[중립3D] 빌드 시작 실패:', e);
+    state.strandPaths = savedPaths; state.hair3D = savedModel;
+    finish();
+  }
+}
+
+/* ── viewCal 누락 자가 복구 (2026-09-16) ────────────────────────────────────
+   사진·마스크가 있는 뷰인데 모델에 viewCal이 없으면 한 번만 새로 만든다.
+   같은 모델에서 같은 뷰가 또 빠지면 경합이 아니라 리프트 게이트(13c 뷰 루프)에서
+   막힌 것이므로 다시 돌지 않고 경고만 남긴다. */
+function healMissingViewCal(angle){
+  const raw = state._hair3Dneutral;
+  if(!raw || NEUTRAL_BUILD.running) return false;
+  if(raw.viewCal && raw.viewCal[angle]) return false;
+  const mi = state.hairMasks && state.hairMasks[angle];
+  if(!(state.shots && state.shots[angle]) || !mi || !mi.scalpY) return false;
+  const key = angle;
+  state._viewCalHealTried = state._viewCalHealTried || {};
+  if(state._viewCalHealTried[key]){
+    if(state._viewCalHealTried[key] !== 'warned'){
+      state._viewCalHealTried[key] = 'warned';
+      console.warn('[viewCal 누락] ' + angle + ' — 다시 만들어도 빠집니다. 경합이 아니라 리프트 게이트'
+        + '(13c-scalp-sections.js 뷰 루프: 가닥 12개 미만 / 유효 컬럼 8% 미만 / scalpY 없음)에서 막힌 것입니다.');
+    }
+    return false;
+  }
+  state._viewCalHealTried[key] = true;
+  console.warn('[viewCal 누락] ' + angle + ' — 모델(viewCal ' + Object.keys(raw.viewCal||{}).join(',')
+    + ')이 이 뷰 없이 만들어졌습니다. 중립 모델을 한 번 새로 만듭니다.');
+  state.hair3Dneutral = null;
+  buildNeutralHair3D(()=>{ try{ refreshDevMini3D(); }catch(e){} renderAdjustFrame(); });
+  return true;
 }
 
 function resizeDevMini3D(){

@@ -865,6 +865,11 @@ function renderFrame(canvas, angle, opts){
         // 조정 경로가 아니라 폴백(중립 모델 미준비/투영 실패/원본 결 보기)이다.
         const canProject = !rawMode && state.hair3Dneutral
           && state.hair3Dneutral.viewCal && state.hair3Dneutral.viewCal[angle];
+        /* (2026-09-16) 이 뷰만 viewCal이 빠졌으면 폴백으로 굳히지 말고 한 번 다시 만든다
+           (buildNeutralHair3D 동시 실행 경합 — 17b NEUTRAL_BUILD 배너). 결과 화면은 제외. */
+        if(!rawMode && !canProject && !(opts && opts.onDone) && typeof healMissingViewCal === 'function'){
+          try{ healMissingViewCal(angle); }catch(e){ console.warn('[viewCal 누락] 복구 실패:', e); }
+        }
         /* ── 헤어를 자기 <b>레이어</b>에 그린다 (2026-08-01) ────────────────
            예전엔 세 경로(이식/가닥투영/2D폴백)가 전부 배경 사진 위에 직접 그렸다.
            그러면 "그려진 헤어 픽셀"을 배경과 분리할 수 없어서 <b>잴 수가 없다</b>.
