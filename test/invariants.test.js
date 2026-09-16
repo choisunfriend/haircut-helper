@@ -498,6 +498,64 @@ test('⑮ 두피면과 목이 같은 살 격자에서 색을 집는다', () => {
      + '보였던 값이 0.837이었으므로 그보다 확실히 위여야 한다');
 });
 
+
+/* ── ⑱ 페이드는 남지 않고, 등록 스타일의 클리퍼 구역은 새 손님에서 풀린다 (2026-09-16) ──
+   ① 폼파두르를 한 번 건 뒤 "스타일 미적용"을 누르면 페이드가 꺼져 있어야 한다.
+   ② lenCm에 side·nape가 없는(= 등록 손님에게서 못 잰) 스펙을 걸면 두 섹션이
+      <b>루프에 들어가</b> 가드 길이로 풀려야 한다. 예전엔 루프에 안 들어가 기본값 50
+      (손님 원래 길이)으로 남았고, 긴 머리 손님의 사이드 가닥이 어깨까지 내려왔다. */
+test('⑱ 페이드 리셋 · 등록 스타일 클리퍼 구역(side·nape)이 새 손님에서 풀린다', () => {
+  const st = G('state');
+  // ① 리셋
+  Object.assign(st.fade, { enabled:true, guard:2, disc:21, taper:80 });
+  try{ G('selectNoStyle')(); }catch(e){ G('resetSections')(); }
+  eq(st.fade.enabled, false, 'selectNoStyle 뒤 페이드가 켜져 있다');
+  eq(st.fade.disc, 0, 'selectNoStyle 뒤 디스커넥션이 남아 있다');
+  eq(st.fade.taper, 0, 'selectNoStyle 뒤 테이퍼가 남아 있다');
+
+  // ② applyStyleSpec — 무거운 측정기는 가짜로 바꾼다(배선만 본다)
+  const names = ['headHeightRef','solveSectionLengthForCm','measureSectionLenCm','modelCmPerUnit',
+                 'solvePoolFor','reportSilhouette','diagCrownCoverage','logCurlScale'];
+  const saved = {}; for(const n of names) saved[n] = G(n);
+  const savedModel = st.hair3Dneutral;
+  const calls = [];
+  try{
+    st.hair3Dneutral = { strands:[{ pts:[{x:0,y:0,z:0}] }] };
+    ctx.headHeightRef = () => ({ yTop:1, H:2 });
+    ctx.modelCmPerUnit = () => 19.3;
+    ctx.solvePoolFor = () => null;
+    ctx.reportSilhouette = ctx.diagCrownCoverage = ctx.logCurlScale = () => null;
+    ctx.measureSectionLenCm = (sec, v) => 4;
+    ctx.solveSectionLengthForCm = (sec, cm, view, aboveY) => {
+      calls.push({ sec, cm, aboveY });
+      if(sec === 'nape') return null;       // 라인 위에 가닥 없음
+      if(sec === 'side') return 7;          // 라인 위에 가닥 조금 있음
+      return 20;
+    };
+    G('resetSections')();
+    const id = '__t18_spec';
+    G('STYLE_SPECS')[id] = {
+      name:'t18', cut:{}, lenCm:{ crown:4.2, front:3.1, temple:5.7, occipital:8.3 },
+      lenFallback:{ crown:6, front:17, temple:15, side:6, occipital:13, nape:50 },
+      fade:{ enabled:true, guard:2, height:65, blendWidth:45, disc:21, taper:80 },
+    };                                       // clipperZone 표시가 없는 <b>예전 저장본</b>과 같은 모양
+    G('applyStyleSpec')(id);
+    delete G('STYLE_SPECS')[id];
+    const sideCall = calls.find(c => c.sec === 'side');
+    ok(sideCall, 'side가 역산 루프에 안 들어갔다 — 기본값 50(원래 길이)으로 남는다');
+    near(sideCall.cm, 2 * 2.54/8, 1e-9, 'side 목표가 가드 2 길이(cm)가 아니다');
+    ok(typeof sideCall.aboveY === 'number', 'side 역산이 라인 위 가닥으로 제한되지 않았다');
+    eq(st.sections.side.length, 7, 'side 길이');
+    eq(st.sections.nape.length, 0, '라인 위 가닥이 없는 nape는 슬라이더 바닥이어야 한다(클리퍼가 민다)');
+    ok(st.sections.side.length !== 50 && st.sections.nape.length !== 50, '클리퍼 구역이 기본값 50으로 남았다');
+    eq(st.fade.enabled, true, '스펙의 페이드는 역산 뒤 다시 켜져야 한다');
+  } finally {
+    for(const n of names) ctx[n] = saved[n];
+    st.hair3Dneutral = savedModel;
+    G('resetSections')();
+  }
+});
+
 module.exports = { T, app };
 
 /* ─────────────────────────────────────────────────────────────────
