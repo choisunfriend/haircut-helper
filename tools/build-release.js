@@ -23,11 +23,12 @@ const OPTS = {
   numbersToExpressions: false,
   simplify: true,
   splitStrings: false,
-  stringArray: true,
-  stringArrayThreshold: 0.75,
-  stringArrayEncoding: ['base64'],
-  stringArrayRotate: true,
-  stringArrayShuffle: true,
+  /* (2026-09-16 2차) 문자열 배열을 <b>끈다</b>. 1차 빌드가 폰에서 느렸던 원인이다 —
+     켜면 난독화기가 Math.sqrt·obj.x 같은 속성 접근까지 Math[_0x2b66(0x165)] 함수 호출로
+     바꿔서, 수십만 번 도는 픽셀·가닥 루프마다 호출이 끼었다(노드 실측 3~4배 느림).
+     영문만 제외하는 reservedStrings도 속성 접근에는 안 먹었다(실측).
+     대신 설계 노트였던 <b>주석은 전부</b> 지워지고, 지역 이름도 전부 난수가 된다. */
+  stringArray: false,
   transformObjectKeys: false,           // 속성 이름이 바뀌면 저장된 스타일(localStorage) 형식이 깨진다
   selfDefending: false,                 // 코드 포맷터에 걸면 멈추게 하는 장치 — WebView에서 오작동 사례가 있어 끔
   disableConsoleOutput: false,          // 진단 패널이 console을 읽는다
