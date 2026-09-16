@@ -99,6 +99,9 @@
       </div>
       <div class="style-footer">
         <button class="btn btn-ghost" style="flex:1;" onclick="navTo('capture')">← 촬영</button>
+        <!-- (2026-09-16) 등록한 스타일 삭제 — 커스텀 카드를 골랐을 때만 켜진다(프리셋은 못 지운다) -->
+        <button class="btn btn-ghost btn-danger" id="deleteStyleBtn" style="flex:1;" onclick="deleteSelectedStyle()" disabled
+                title="내가 등록한 스타일만 삭제할 수 있어요">🗑 삭제</button>
         <button class="btn btn-primary" id="toAdjustBtn" style="flex:2;" onclick="navTo('adjust')" disabled>조정하기 →</button>
       </div>
     </section>

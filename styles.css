@@ -55,6 +55,9 @@ main{flex:1;position:relative;overflow:hidden;}
 .btn-primary{background:var(--accent);color:#1B1816;}
 .btn-primary:disabled{background:var(--surface-2);color:var(--text-muted);cursor:not-allowed;}
 .btn-ghost{background:transparent;color:var(--text-muted);border:1px solid var(--line);}
+/* (2026-09-16) 스타일 삭제 — 켜졌을 때만 붉게, 꺼지면 흐리게 */
+.btn-danger:not(:disabled){color:#E07A6A;border-color:rgba(224,122,106,0.55);}
+.btn-danger:disabled{opacity:0.35;cursor:not-allowed;}
 
 /* ── SCREEN 1: CAPTURE ── */
 #screen-capture{background:var(--bg);}
