@@ -282,7 +282,10 @@ function ensureResultNeckMesh(snap){
      키가 그대로면 격자가 준비된 뒤에도 <b>옛 색 목이 그대로 남는다</b> —
      11차가 옷깃 구멍을 키에 안 넣어서 겪은 것과 같은 종류의 일이다. */
   const fieldReady = (typeof buildSkinColorField === 'function' && buildSkinColorField()) ? 'F' : '-';
-  const key = css + '|' + fieldReady + '|' + getNeckTopY().toFixed(4) + '|' + getNeckBottomY().toFixed(4)
+  /* (2026-09-16) 얼굴톤 당김 여부도 — 목 색이 SCALP_SKIN.faceTone을 따라가므로 */
+  const toneKey = (typeof SCALP_SKIN !== 'undefined' && SCALP_SKIN.faceTone && SCALP_SKIN.faceTone.on)
+    ? ('T' + SCALP_SKIN.faceTone.mix) : '-';
+  const key = css + '|' + fieldReady + '|' + toneKey + '|' + getNeckTopY().toFixed(4) + '|' + getNeckBottomY().toFixed(4)
             + '|' + (g ? g.halfWidth.toFixed(4) + ',' + g.halfDepth.toFixed(4) : '-');
   if(snap.neckKey === key) return;
   while(snap.neckGroup.children.length){

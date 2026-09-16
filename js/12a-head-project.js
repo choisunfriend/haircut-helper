@@ -980,10 +980,26 @@ const SCALP_SKIN = {
      과하게 어둡지도 않게 한다.
      되돌리기: SCALP_SKIN.backShade.on = false */
   backShade: { on: true, back: 0.78 },   // 뒤통수(z=−1)에서의 밝기 배율. 앞(z=+1)은 1.0
+  /* ── 턱 언저리 두피면·목이 <b>얼굴보다 누렇고 어둡다</b> (2026-09-16) ──────────────
+     사용자: "3D 결과보기 턱부분이 깔끔하게 정리됐는데, 컬러가 얼굴컬러랑 좀 차이가 있어서
+     얼굴컬러를 참고했으면 좋겠어."
+     녹화 프레임(측면)을 재 보니 볼 H20 S29 <b>V73</b> · 턱 얼굴 H26 S33 V61인데
+     턱 뒤 두피면 H27~33 S36~37 <b>V51~54</b> · 목 H31~34 S36~37 V51~53이었다.
+     색조가 노란 쪽으로 돌고 채도가 진하고 어둡다. 원인은 격자의 <b>물린 가장자리</b>다 —
+     턱·옆얼굴 정점은 격자 아래·옆 밖으로 나가 at()이 맨 끝 줄로 물리는데, 그 줄이
+     턱선 그림자·귀 앞 머리카락 경계라 살 중에서도 제일 어둡고 진한 칸이다. 2D 메움이
+     같은 이유로 관자놀이 V70을 냈던 것(HOLE_FILL.faceTone)과 똑같은 모양이다.
+     고침(2D와 같은 방식): 얼굴 가운데 띠의 기준색(sampleScalpSkinColor — 밝기 50~88
+     백분위 평균, 이미 있던 폴백색)으로 격자 색을 mix만큼 당긴다. 밝기 차는
+     shadeMin~shadeMax 안에서만 살려 턱 밑 그늘 결은 남긴다. makeModelSkinSampler
+     <b>한 곳</b>에 거므로 두피면과 목이 같이 따라온다(출처 하나 — 검사 ⑮).
+     되돌리기: SCALP_SKIN.faceTone.on = false */
+  faceTone: { on: true, mix: 0.75, shadeMin: 0.92, shadeMax: 1.04 },   // 하한 0.92: 옆얼굴 backShade(≈0.89)와 곱해도 턱 얼굴 V61 근처(≈V55~58)에 머물게
 };
 let _scalpSkinCache = undefined;
 let _skinFieldCache = undefined;
-function resetScalpSkinSample(){ _scalpSkinCache = undefined; _skinFieldCache = undefined; _scalpCullLogged = false; }
+let _faceTone3DLogged = false;   // (2026-09-16) 얼굴톤 로그 1회 — faceToneRef3D
+function resetScalpSkinSample(){ _scalpSkinCache = undefined; _skinFieldCache = undefined; _scalpCullLogged = false; _faceTone3DLogged = false; }
 
 /* 이 사진에서 <b>살로 볼 픽셀</b>인가 — 머리카락도 아니고 이목구비도 아닌 자리.
    어두운 쪽 꼬리를 자르는 것으로 눈·눈썹·콧구멍·입선이 한 번에 빠진다
@@ -1157,14 +1173,41 @@ function sampleScalpSkinColor(){
    <b>목이 같은 것을 써야 하기 때문</b>이다 — 지금까지 목은 평균색 한 개를
    받아 쓰고 있었고, 그래서 두피면과 색이 갈렸다(아래 NECK_SHAPE.fromField 배너).
    돌려주는 것은 (mx,my) → [r,g,b] 0~1 함수, 못 만들면 null. */
+/* 3D 얼굴 기준색 [r,g,b] 또는 null — 격자와 같은 사진·같은 얼굴 영역의 밝은 살 평균.
+   (2026-09-16) SCALP_SKIN.faceTone 배너. 뷰당이 아니라 정면 한 장이라 캐시를 따로 안 둔다
+   (sampleScalpSkinColor가 이미 캐시한다). */
+function faceToneRef3D(){
+  const FT = SCALP_SKIN.faceTone;
+  if(!FT || !FT.on) return null;
+  const css = sampleScalpSkinColor();
+  const m = css && String(css).match(/\d+/g);
+  if(!m || m.length < 3) return null;
+  const ref = [+m[0], +m[1], +m[2]];
+  if(!_faceTone3DLogged){
+    _faceTone3DLogged = true;
+    console.log(...gyeolBoldArgs(['[3D·두피색·얼굴톤] 얼굴 기준색 rgb(' + ref.join(',') + ') 쪽으로 격자 색을 '
+      + Math.round(FT.mix*100) + '% 당깁니다 · 밝기는 ' + FT.shadeMin + '~' + FT.shadeMax + '배 안에서만 살림'
+      + '\n    두피면·목(턱 언저리)이 얼굴보다 누렇고 어둡게 보이던 것 — 되돌리기: SCALP_SKIN.faceTone.on=false']));
+  }
+  return ref;
+}
 function makeModelSkinSampler(){
   const field = buildSkinColorField();
   if(!field) return null;
   const fm = getFaceMetrics();
   const pr = fm && fm.projector;
   if(!pr || typeof pr.toImgX !== 'function') return null;
+  const tone = faceToneRef3D();
+  const FT = SCALP_SKIN.faceTone;
+  const Lr = tone ? 0.299*tone[0] + 0.587*tone[1] + 0.114*tone[2] : 0;
   return function(mx, my){
     const c = field.at(pr.toImgX(mx), pr.toImgY(my));
+    if(tone && Lr > 1){
+      /* 얼굴 기준색 쪽으로 당긴다 — 색조·채도는 얼굴을 따르고, 밝기 차는 좁은 범위만 */
+      const Lf = 0.299*c[0] + 0.587*c[1] + 0.114*c[2];
+      const shT = Math.max(FT.shadeMin, Math.min(FT.shadeMax, Lf / Lr));
+      for(let ch=0; ch<3; ch++) c[ch] = c[ch]*(1-FT.mix) + tone[ch]*shT*FT.mix;
+    }
     return [
       Math.min(1, Math.max(0, c[0]/255)),
       Math.min(1, Math.max(0, c[1]/255)),

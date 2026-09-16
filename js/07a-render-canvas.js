@@ -331,8 +331,75 @@ const HOLE_FILL = {
     shrink: 0.97,      // 타원을 이 비율까지만 칠한다(타원이 조금 어긋나도 밖으로 안 샘)
     edgeShade: 0.12,   // 가장자리로 갈수록 살짝 어둡게 — 평평한 스티커처럼 안 보이게
     detail: 0.55,      // 이마 표본 고주파 세기(평평한 표본일 때만)
+    /* ── 타원 아래가 <b>배경으로 비치던 것</b> (2026-09-16 3차) ─────────────────
+       사용자: "2D 결과보기 후면에 두상타원 아래쪽이 투명하게 노출되어 있어. 그거까지 메워졌으면."
+       2차(skullClip.faceless=false)로 두개골 자르기는 풀렸는데 녹화에서 그대로였다.
+       프레임을 재 보니 원인은 둘이었다.
+         ① <b>페더가 반경 비율</b>(graft.edgeFeather 0.14)이다 — r 0.86~1에서 이식이 인페인팅
+            배경(=벽색)으로 선형으로 넘어간다. 타원 아래는 경계가 비스듬히 지나가 그
+            띠가 세로로 길게 늘어져, 살이 <b>반투명</b>하게 벽에 녹는 것처럼 보였다
+            (녹화 실측: 같은 열에서 살 126,110,97 → 30px 사이에 벽 219,220,225).
+         ② 타원이 <b>뒤통수에서 끝난다</b>. 긴 머리를 지운 목덜미·목 자리는 타원 밖이라
+            주변색 격자(벽)로 메워졌다 — 머리 밑으로 배경이 뚫려 보인다.
+       고침: 얼굴 없는 뷰만 ① 페더를 <b>px 고정 폭</b>(featherFrac×출력폭)으로 얇게,
+       ② 타원 아래에 <b>목 기둥</b>을 붙여 합집합을 같은 이식면으로 칠한다. 목 기둥은
+       원래 머리였던 자리(hole)만 칠한다 — 사진에 보이던 옷·어깨는 안 건드린다.
+       되돌리기: HOLE_FILL.facelessFill.cover = false (2차 동작) */
+    cover: true,
+    featherFrac: 0.010,   // 가장자리 페더 폭 = 출력폭 × 이 값(px 고정 — 아래쪽만 길게 늘어지지 않게)
+    neck: { on: true,
+            halfK: 0.60,  // 목 반폭 = 타원 rx × 이 값(rx는 헤어 실루엣×0.92라 두개골보다 넓다)
+            lenK: 0.90,   // 타원 바닥에서 목 길이 = ry × 이 값(≈ 목 8~10cm)
+            fadeK: 0.30,  // 그 아래 사라지는 구간 = ry × 이 값
+            flare: 0.18 },// 아래로 갈수록 이만큼 넓어짐(승모근 쪽)
   },
 };
+
+/* 얼굴 없는 뷰의 이식 덮개 가중치(0~1, ow×oh) — 타원(px 페더) ∪ 목 기둥.
+   반환 null이면 예전 동작. nNeck = 타원 밖인데 목 기둥이라 칠할 자리 수(구멍만). */
+function buildFacelessCover(ow, oh, ell, hole){
+  const FF = HOLE_FILL.facelessFill;
+  if(!FF || !FF.cover || !ell) return null;
+  const Rx = ell.rx*ow, Ry = ell.ry*oh, cxP = ell.cx*ow, cyP = ell.cy*oh;
+  if(!(Rx > 2 && Ry > 2)) return null;
+  const fp = Math.max(1.5, ow * (FF.featherFrac || 0.01));
+  const N = FF.neck || {};
+  const neckOn = !!N.on;
+  const botP = cyP + Ry, lenP = (N.lenK||0)*Ry, fadeP = Math.max(1, (N.fadeK||0)*Ry);
+  const w = new Float32Array(ow*oh);
+  let nNeck = 0;
+  for(let y=0; y<oh; y++){
+    const dy = (y+0.5) - cyP;
+    // 목 기둥 세로 가중(타원 가운데 아래부터)
+    let wy = 0, half = 0;
+    if(neckOn && dy >= 0){
+      const below = (y+0.5) - botP;
+      wy = below <= lenP ? 1 : Math.max(0, 1 - (below - lenP)/fadeP);
+      const t = lenP > 0 ? Math.max(0, Math.min(1, below/lenP)) : 0;
+      half = (N.halfK||0) * Rx * (1 + (N.flare||0)*t);
+    }
+    for(let x=0; x<ow; x++){
+      const dx = (x+0.5) - cxP;
+      const r = Math.sqrt((dx/Rx)*(dx/Rx) + (dy/Ry)*(dy/Ry));
+      let we = 0;
+      if(r < 1){
+        const rp = Math.sqrt(dx*dx + dy*dy);
+        const dist = r > 1e-6 ? (1 - r) * rp / r : Infinity;   // 광선 따라 경계까지 px
+        we = Math.min(1, dist / fp);
+      }
+      let wn = 0;
+      if(wy > 0){
+        const ex = half - Math.abs(dx);
+        if(ex > 0) wn = Math.min(1, ex / fp) * wy;
+      }
+      const p = y*ow + x;
+      w[p] = we > wn ? we : wn;
+      if(r >= 1 && wn > 0.002 && hole && hole[p]) nNeck++;
+    }
+  }
+  w.nNeck = nNeck;
+  return w;
+}
 
 /* 이식용 피부 표본 — 뷰별로 뜨고, 못 뜨면 <b>다른 뷰에서 뜬 것</b>을 재사용한다.
    후면처럼 얼굴이 아예 없는 뷰가 정확히 이 경우다(로그: "back 얼굴 감지 실패").
@@ -816,6 +883,8 @@ function logFacelessOnce(angle, diag, graft, noFace, ell, ow, oh){
   console.log(...gyeolBoldArgs([`[전면이식] ${angle}: 얼굴 랜드마크 없음 → 두상 타원 안(${(FF.shrink*100)|0}%)을`
     + ` <b>통째로 이식면</b>으로 넘겼습니다 · 메움판 ${diag.nIn}px 승격 / baseC ${diag.nBase}px 승격`
     + ` · ${ow}×${oh}`
+    + (diag.nNeck != null ? `\n      덮개: 페더 px 고정(${((FF.featherFrac||0)*ow).toFixed(1)}px) · 타원 아래 <b>목 기둥 ${diag.nNeck}px</b> 추가 이식`
+                            + ` (되돌리기 HOLE_FILL.facelessFill.cover=false)` : '')
     + `\n      색은 이마 표본 평균 rgb(${graft && graft.mean ? graft.mean.join(',') : '?'})`
     + `(출처 ${graft ? graft.src : '?'}) + 구면 음영 ${(FF.edgeShade*100)|0}%,`
     + ` 이 뷰 사진의 픽셀은 <b>색으로도 밝기로도 안 씁니다</b> — 눈모양이 들어올 경로가 없습니다.`
@@ -1625,7 +1694,7 @@ function buildHoleFillCanvas(srcCanvas, skinColor, ell, angle, holeMaskInfo){
   }
   logRenderPlateOnce(angle, plateDiag, ow, oh);
   logSkinResidueOnce(angle, residueDiag, ow, oh);
-  logFacelessOnce(angle, facelessDiag, graft, noFace, ell, ow, oh);
+  if(!ell) logFacelessOnce(angle, facelessDiag, graft, noFace, ell, ow, oh);   // 타원이 있으면 덮개 수를 알고 난 뒤(아래)에 찍는다
 
   /* ⚠ 예전엔 여기서 <b>바로 돌아갔다</b>. 그러면 타원 밖(어깨·배경)은 물론이고
      타원 자체가 없는 경우까지 mirrorDetail 결과가 그대로 최종이 된다 —
@@ -1696,9 +1765,16 @@ function buildHoleFillCanvas(srcCanvas, skinColor, ell, angle, holeMaskInfo){
     return _bg;
   };
   let nBg = 0;
+  /* (2026-09-16 3차) 얼굴 없는 뷰 — 타원(px 페더) ∪ 목 기둥 덮개. 위 facelessFill.cover 배너.
+     밖 구멍(주변색)을 <b>먼저</b> 칠해 두고, 덮개가 그 위에 살을 얹는다(목 기둥은 타원 밖이라
+     나중에 칠하면 주변색이 살을 덮어쓴다). 비-얼굴 뷰는 안/밖이 겹치지 않아 순서 무관. */
+  const cover = faceless ? buildFacelessCover(ow, oh, ell, hole) : null;
+  let nOuterEarly = -1;
+  if(cover && outer){ nOuterEarly = paintOuterHoles(od, ow, oh, hole, ell, outer); }
+  if(cover && facelessDiag) facelessDiag.nNeck = cover.nNeck;
   for(let y=0; y<oh; y++){
     const ny = (y + 0.5)/oh, v = (ny - ell.cy)/ell.ry, v2 = v*v;
-    if(v2 > 1) continue;                       // 두상 밖 — 아래 paintOuterHoles가 맡는다
+    if(v2 > 1 && !cover) continue;             // 두상 밖 — 아래 paintOuterHoles가 맡는다(덮개가 있으면 목 기둥까지)
     const py = gs ? mirror(y, gs) : 0;
     for(let x=0; x<ow; x++){
       const i = (y*ow+x)*4;
@@ -1708,13 +1784,17 @@ function buildHoleFillCanvas(srcCanvas, skinColor, ell, angle, holeMaskInfo){
       if(!hole[y*ow + x]) continue;
       const nx = (x + 0.5)/ow, u = (nx - ell.cx)/ell.rx;
       const r2 = u*u + v2;
-      if(r2 > 1) continue;                     // 두상 밖 — 아래 paintOuterHoles가 맡는다
+      if(r2 > 1 && !cover) continue;           // 두상 밖 — 아래 paintOuterHoles가 맡는다
       /* 두상 경계 페더 — 이식이 타원 선에서 뚝 끊기면 그 자리에 테두리가 생긴다.
          바깥 몇 %에서 원래(전파된) 색으로 서서히 넘긴다. */
       let wgt = 1;
       if(G.edgeFeather > 0){
         const r = Math.sqrt(r2);
         if(r > 1 - G.edgeFeather) wgt = Math.max(0, (1 - r) / G.edgeFeather);
+      }
+      if(cover){
+        wgt = cover[y*ow + x];                   // px 고정 페더 · 목 기둥 포함
+        if(wgt <= 0.002) continue;               // 덮개 밖 — 주변색(이미 칠함) 그대로
       }
       const bg = bgAt(i, nx, ny);
       if(skullW){
@@ -1738,7 +1818,7 @@ function buildHoleFillCanvas(srcCanvas, skinColor, ell, angle, holeMaskInfo){
              · 결   — 이마 표본의 고주파. 평평한 표본일 때만(useDetail).
            결과는 "이마 피부를 뒤통수에 통째로 옮겨 심은" 면이 된다. 그 위에
            새 헤어가 그려지므로 두피가 균일해도 어색하지 않다. */
-        const shade = 1 - FF.edgeShade * r2;
+        const shade = 1 - FF.edgeShade * Math.min(1, r2);   // 목 기둥(r2>1)은 가장자리 음영에서 멈춘다
         const gk = useDetail ? (mirror(x, gs)*gs + py) * 3 : 0;
         for(let ch = 0; ch < 3; ch++){
           const skinPx = graft.mean[ch] * shade
@@ -1810,7 +1890,8 @@ function buildHoleFillCanvas(srcCanvas, skinColor, ell, angle, holeMaskInfo){
     }
   }
   logSkullClipOnce(angle, skullW, tone, nBg, ow, oh);
-  const nOuter = outer ? paintOuterHoles(od, ow, oh, hole, ell, outer) : 0;
+  logFacelessOnce(angle, facelessDiag, graft, noFace, ell, ow, oh);
+  const nOuter = (nOuterEarly >= 0) ? nOuterEarly : (outer ? paintOuterHoles(od, ow, oh, hole, ell, outer) : 0);
   octx.putImageData(oimg, 0, 0);
   logOuterFieldOnce(angle, outer, nOuter, ow, oh, null);
   logSkinFieldOnce(angle, field, graft, useDetail, ow, oh);
