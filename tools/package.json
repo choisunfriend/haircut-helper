@@ -1,0 +1,3 @@
+{ "name": "gyeol-release-tools", "private": true,
+  "scripts": { "build": "node build-release.js" },
+  "devDependencies": { "javascript-obfuscator": "^4.1.1" } }
