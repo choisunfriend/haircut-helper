@@ -315,7 +315,17 @@ const HOLE_FILL = {
      viewCal이 아직 없으면(모델 준비 전) 예전 타원 동작 그대로다 — 모델이 생기면
      캐시 서명이 바뀌어 한 번 다시 굽는다.
      되돌리기: HOLE_FILL.skullClip.on = false */
-  skullClip: { on: true, grow: 1.04, featherFrac: 0.010, nPhi: 28, nTheta: 56 },
+  /* ── 얼굴 없는 뷰(후면)는 <b>자르지 않는다</b> (2026-09-16 2차) ────────────────
+     사용자: "후면 2D에서 두상타원 아랫부분이 투명하게 노출되는데 그냥 다 메움으로 되었으면 좋겠어."
+     후면에는 얼굴 랜드마크가 없어 viewCal이 <b>실루엣 앵커</b>로 선다(로그: 뷰정렬 폭 ×0.87,
+     실루엣맞춤 잔차 7.4% ⚠ 헐거움). 그 자로 되쏜 두개골은 사진의 두상보다 작고 위로 떠서,
+     타원 <b>아랫부분</b>(뒤통수 아래·목덜미 위)이 "두개골 밖"으로 판정돼 주변색 격자 = 벽색으로
+     칠해졌다(로그: 타원 안인데 두개골 밖이라 주변색으로 메운 픽셀 back 18934 · front 9049).
+     벽색이라 화면에선 <b>구멍이 뚫린 것</b>처럼 보인다.
+     skullClip이 막으려던 것은 긴 머리 <b>측면</b>에서 뒤로 흐른 머리까지 타원이 덮는 경우다.
+     후면 타원 안은 전부 두피·지울 머리라 살 구역을 줄일 이유가 없다 — 타원 그대로 메운다.
+     되돌리기: HOLE_FILL.skullClip.faceless = true (후면도 두개골 실루엣으로 자름) */
+  skullClip: { on: true, grow: 1.04, featherFrac: 0.010, nPhi: 28, nTheta: 56, faceless: false },
   facelessFill: {
     on: true,
     shrink: 0.97,      // 타원을 이 비율까지만 칠한다(타원이 조금 어긋나도 밖으로 안 샘)
@@ -415,6 +425,7 @@ function pickSkinPatch(ctx, W, H, ell, skinRGB, size){
 function skullClipCal(angle){
   const S = HOLE_FILL.skullClip;
   if(!S || !S.on || typeof state === 'undefined') return null;
+  if(!S.faceless && !(state.landmarks && state.landmarks[angle])) return null;   // 얼굴 없는 뷰 = 타원 그대로(위 배너)
   const m = state.hair3Dneutral;
   const vc = m && m.viewCal;
   if(!vc || !vc[angle]) return null;
@@ -522,7 +533,9 @@ function logSkullClipOnce(angle, skullW, tone, nBg, ow, oh){
                        : '<b>없음</b>(랜드마크 없음/표본 부족 — 격자 색 그대로)';
   console.log(...gyeolBoldArgs(['[메움·두상경계] ' + angle
     + ' · 살 구역 ' + (skullW ? '<b>두개골 되쏜 실루엣</b>(' + skullW.nIn + 'px, ×' + HOLE_FILL.skullClip.grow + ')'
-                              : '헤어 실루엣 타원(viewCal 없음 — 예전 동작)')
+                              : (!HOLE_FILL.skullClip.faceless && !(state.landmarks && state.landmarks[angle])
+                                   ? '헤어 실루엣 타원(<b>얼굴 없는 뷰 — 두개골로 안 자르고 타원 안을 전부 메움</b>)'
+                                   : '헤어 실루엣 타원(viewCal 없음 — 예전 동작)'))
     + ' · 타원 안인데 두개골 밖이라 주변색으로 메운 픽셀 ' + nBg
     + '\n    얼굴 기준색 ' + toneTxt
     + '\n    되돌리기: HOLE_FILL.skullClip.on=false · HOLE_FILL.faceTone.on=false']));
