@@ -1158,11 +1158,57 @@ function gyBuildStylingRecipeNote(){
    localStorage에 저장해서 새로고침/재방문해도 등록한 스타일이 남아있게 함
    (이 파일은 사용자가 직접 배포하는 정적 사이트라 클로드 아티팩트의
    localStorage 금지 규정과 무관 — 일반 웹사이트라 브라우저 저장소 사용 가능). */
+/* 현재 조정 상태 → 스펙(섹션별 cm + 커트 파라미터 + 페이드 + 뷰별 스타일링).
+   모델·자가 없으면 null — 그때는 예전 형식(슬라이더)만 저장한다. 근거는 16 getStyleSpec 배너. */
+function buildSpecFromCurrent(name){
+  if(typeof measureSectionLenCm !== 'function' || typeof modelCmPerUnit !== 'function') return null;
+  const m = state.hair3Dneutral;
+  if(!m || !m.strands || !m.strands.length || !modelCmPerUnit()) return null;
+  const R = (typeof headHeightRef === 'function') ? headHeightRef() : null;
+  const fade = state.fade ? JSON.parse(JSON.stringify(state.fade)) : null;
+  const discY = (R && fade && fade.enabled && fade.disc > 0) ? (R.yTop - (fade.disc/100) * R.H) : null;
+  const cut = {}, lenCm = {}, lenFallback = {};
+  /* 길이를 재는 동안 페이드는 끈다 — applyStyleSpec이 역산할 때와 같은 조건이어야
+     재서 저장한 cm와 풀어서 나오는 cm가 같은 자다(페이드는 역산 뒤에 걸린다). */
+  const fadeWas = state.fade ? state.fade.enabled : false;
+  if(state.fade) state.fade.enabled = false;
+  const report = [];
+  try{
+    for(const sec of SECTION_ORDER){
+      const cur = state.sections[sec]; if(!cur) continue;
+      const c = JSON.parse(JSON.stringify(cur)); delete c.length;
+      cut[sec] = c;
+      lenFallback[sec] = cur.length;
+      const aboveY = (discY != null && FADE_SOLVE_ABOVE_LINE[sec]) ? discY : undefined;
+      const cm = measureSectionLenCm(sec, cur.length, undefined, aboveY);
+      if(cm != null && isFinite(cm)){ lenCm[sec] = +cm.toFixed(2); report.push(sec + ' ' + cur.length + '→' + cm.toFixed(1) + 'cm'); }
+      else report.push(sec + ' ' + cur.length + '(못 잼 · ' + (aboveY != null ? '클리퍼 구역' : '가닥 없음') + ' → 슬라이더 폴백)');
+    }
+  } finally {
+    if(state.fade) state.fade.enabled = fadeWas;
+  }
+  console.log('[스타일등록·스펙] "' + name + '" — 섹션 길이를 이 손님 모델로 cm 환산: ' + report.join(' · ')
+    + ' | 페이드 ' + (fade && fade.enabled ? ('가드 ' + fade.guard + ' · 라인 ' + fade.disc + '% · 테이퍼 ' + fade.taper + '%') : '꺼짐')
+    + ' — 다른 손님에게 걸면 이 cm로 다시 역산합니다.');
+  return {
+    name, cut, lenCm, lenFallback, fade,
+    stylingByView: JSON.parse(JSON.stringify(state.stylingByView || {})),
+    styling: JSON.parse(JSON.stringify(state.styling || {})),
+    globalCurl: state._globalCurl,
+    version: 1,
+  };
+}
 function registerCurrentAsStyle(){
   const name = prompt(tUI('이 스타일 이름을 입력하세요 (예: "오늘 손님 스타일")'), '');
   if(!name || !name.trim()) return; // 취소 또는 빈 입력이면 등록 안 함
+  const _id = 'custom-' + Date.now();
+  let _spec = null;
+  try{ _spec = buildSpecFromCurrent(name.trim()); }catch(e){ console.warn('[스타일등록·스펙] cm 환산 실패 — 예전 형식으로만 저장:', e); }
   const newStyle = {
-    id: 'custom-' + Date.now(),
+    id: _id,
+    /* (2026-09-16) 스펙이 있으면 프리셋과 같은 경로(pendingSpecId → applyStyleSpec)로 걸린다 */
+    specId: _spec ? _id : undefined,
+    spec: _spec || undefined,
     name: name.trim(),
     tags: '커스텀',
     isCustom: true,
@@ -1183,7 +1229,8 @@ function registerCurrentAsStyle(){
   STYLES.push(newStyle);
   saveCustomStylesToStorage();
   buildStyleGrid();
-  showToast(`"${newStyle.name}" 스타일로 등록했어요`);
+  showToast(_spec ? `"${newStyle.name}" 스타일로 등록했어요`
+                  : `"${newStyle.name}" 등록 — 3D 준비 전이라 길이를 cm로 못 재서, 다른 손님에겐 길이가 달라질 수 있어요`);
 }
 
 function saveCustomStylesToStorage(){
