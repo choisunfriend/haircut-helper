@@ -556,6 +556,29 @@ test('⑱ 페이드 리셋 · 등록 스타일 클리퍼 구역(side·nape)이 �
   }
 });
 
+/* ── ⑲ 후면(얼굴 없는 뷰)은 두개골 실루엣으로 살 구역을 자르지 않는다 (2026-09-16 2차) ──
+   실루엣 앵커로 선 후면 viewCal의 두개골은 사진 두상보다 작아, 타원 아랫부분이 벽색으로
+   칠해져 투명하게 보였다. 얼굴이 있는 뷰는 예전대로 자른다(측면 긴 머리 뒤 허공 방지). */
+test('⑲ 후면 2D — 얼굴 없는 뷰는 skullClip이 안 걸리고, 얼굴 있는 뷰는 걸린다', () => {
+  const st = G('state');
+  const HF = G('HOLE_FILL');
+  const savedModel = st.hair3Dneutral, savedLm = st.landmarks;
+  const savedCal = ctx.calForDraw;
+  try{
+    ctx.calForDraw = (m, a) => m.viewCal[a];
+    st.hair3Dneutral = { strands:[], viewCal:{ front:{cx:300,s:0.002,sy:0.002,yaw:0}, back:{cx:300,s:0.002,sy:0.002,yaw:0} } };
+    st.landmarks = { front:{ poseYawDeg:0 } };           // 후면은 랜드마크 없음
+    ok(G('skullClipCal')('front'), '얼굴 있는 정면은 두개골 실루엣으로 잘라야 한다');
+    eq(G('skullClipCal')('back'), null, '후면이 두개골로 잘린다 — 타원 아랫부분이 벽색(투명)으로 메워진다');
+    eq(G('skullClipSig')('back'), 'none', '후면 캐시 서명이 두개골 자를 따라가면 안 된다');
+    HF.skullClip.faceless = true;
+    ok(G('skullClipCal')('back'), '되돌리기 손잡이(faceless=true)가 안 먹는다');
+  } finally {
+    HF.skullClip.faceless = false;
+    ctx.calForDraw = savedCal; st.hair3Dneutral = savedModel; st.landmarks = savedLm;
+  }
+});
+
 module.exports = { T, app };
 
 /* ─────────────────────────────────────────────────────────────────
