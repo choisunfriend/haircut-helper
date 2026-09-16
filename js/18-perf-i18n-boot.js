@@ -619,6 +619,9 @@ async function setupModel3DScreen(){
   buildRealFaceMesh(faceMetrics).then(realFace=>{
     if(realFace && myGen === model3DGeneration && model3D && model3D.initialized){
       model3D.headGroup.add(realFace);
+      /* (2026-09-16) 두피면을 얼굴 <b>최종면</b>(굴곡·측면보정 포함)에 붙인다 — 12a FACE_SCALP_CONFORM */
+      try{ if(typeof conformScalpToFace === 'function') conformScalpToFace(model3D.headGroup, realFace); }
+      catch(e){ console.warn('[3D] 두피면↔얼굴 붙이기 실패:', e); }
       return;
     }
     // 폴백: 평면 데칼

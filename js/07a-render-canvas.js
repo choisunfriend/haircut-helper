@@ -290,6 +290,32 @@ const HOLE_FILL = {
      ⚠ 정면·측면은 랜드마크가 잡히므로 이 경로가 <b>절대</b> 돌지 않는다.
        거기는 이목구비가 정당하게 타원 안에 있다(지우면 얼굴이 사라진다).
      되돌리기: HOLE_FILL.facelessFill.on = false (2차 잔재 회수 동작으로 복귀) */
+  /* ── 메움 색을 <b>얼굴 색</b>에 붙인다 (2026-09-16) ──────────────────────────
+     사용자: "얼굴 색이랑 좀 더 가깝게 칠하고."
+     녹화 프레임을 재 보니(HSV) 얼굴 볼 H23 S29 V85 · 이마 H26 S22 V86인데
+     메움은 정면 관자놀이 <b>V70</b>(15%p 어두움) · 측면 귀 뒤 <b>S41</b>(12%p 진함)이었다.
+     색조는 같고 밝기·채도만 갈렸다. 원인은 살 격자의 <b>씨앗 자리</b>다 — 타원 안에서
+     구멍이 아닌 살은 대개 머리카락 경계 바로 옆(그늘진 관자·턱선·귀 뒤)이라, 번져
+     나온 색이 얼굴 가운데보다 어둡고 진하다.
+     고침: 얼굴 가운데 띠(눈썹~턱, 살색으로 보이는 픽셀의 밝기 50~88백분위 평균)를
+     기준색으로 잡고, 격자 색을 그쪽으로 mix만큼 당긴다. 밝기 차는 shadeMin~Max
+     안에서만 살려 그늘 결은 남긴다.
+     되돌리기: HOLE_FILL.faceTone.on = false */
+  faceTone: { on: true, mix: 0.75, shadeMin: 0.90, shadeMax: 1.04,
+              loPct: 0.50, hiPct: 0.88, minSamples: 150 },
+  /* ── 살색은 <b>두개골 안</b>에만 (2026-09-16) ────────────────────────────────
+     사용자: "배경하고의 경계를 잘 잡으면, 두상밖으로 살색이 칠해지는 게 좀 덜 해질거 같아."
+     지금 살 구역은 headEllipseFor — <b>헤어 실루엣</b> 밴드로 선 타원이다(폭 ×0.92).
+     긴 머리 측면은 뒤로 흐른 머리까지 실루엣이라 타원이 뒤통수 뒤 허공까지 덮고,
+     그 안의 구멍이 전부 살색이 됐다(측면 귀 뒤 반투명 살색 원판).
+     고침: 3D 두개골(getDisplaySkullEllipsoid)을 <b>이 뷰의 viewCal로 되쏜 실루엣</b>을
+     살 구역으로 쓴다. 헤어를 그리는 바로 그 투영이라 새 가닥의 뿌리와 살 경계가
+     같은 자리에 선다. 타원 안이어도 두개골 밖인 구멍은 살이 아니라 <b>주변색 격자</b>
+     (배경·옷)로 메우고, 경계는 featherFrac만큼 부드럽게 넘긴다.
+     viewCal이 아직 없으면(모델 준비 전) 예전 타원 동작 그대로다 — 모델이 생기면
+     캐시 서명이 바뀌어 한 번 다시 굽는다.
+     되돌리기: HOLE_FILL.skullClip.on = false */
+  skullClip: { on: true, grow: 1.04, featherFrac: 0.010, nPhi: 28, nTheta: 56 },
   facelessFill: {
     on: true,
     shrink: 0.97,      // 타원을 이 비율까지만 칠한다(타원이 조금 어긋나도 밖으로 안 샘)
@@ -311,6 +337,7 @@ function resetSkinGraft(){
   for(const k in _graftLogged) delete _graftLogged[k];
   for(const k in _residueLogged) delete _residueLogged[k];   // (2026-09-14) 잔재회수 진단도 같이
   for(const k in _facelessLogged) delete _facelessLogged[k]; // (2026-09-14 3차) 전면이식 진단도 같이
+  for(const k in _skullClipLogged) delete _skullClipLogged[k]; // (2026-09-16) 두상경계 진단도 같이
 }
 
 // 뷰의 두상 영역(정규 좌표) — 정수리~턱을 감싸는 타원. 없으면 null.
@@ -384,6 +411,123 @@ function pickSkinPatch(ctx, W, H, ell, skinRGB, size){
    0이면 완전히 평평하고, 올리면 니트 짜임·배경 입자가 조금 돌아온다.
    ⚠ mirrorDetail이 넣은 고주파에는 <b>눈 윤곽</b>이 섞여 있을 수 있다.
      detailMix를 올린다는 것은 그것도 같이 돌아온다는 뜻이다(그래서 기본이 낮다). */
+/* 두개골 실루엣 가중치(0~1, ow×oh). viewCal이 없으면 null — 호출부는 예전 타원 동작. */
+function skullClipCal(angle){
+  const S = HOLE_FILL.skullClip;
+  if(!S || !S.on || typeof state === 'undefined') return null;
+  const m = state.hair3Dneutral;
+  const vc = m && m.viewCal;
+  if(!vc || !vc[angle]) return null;
+  const cal = (typeof calForDraw === 'function') ? calForDraw(m, angle) : vc[angle];   // 그리기와 같은 자
+  if(!cal || !isFinite(cal.s) || !isFinite(cal.sy) || !isFinite(cal.cx)) return null;
+  return { m, cal };
+}
+function skullClipSig(angle){
+  const k = skullClipCal(angle);
+  if(!k) return 'none';
+  const S = HOLE_FILL.skullClip;
+  return [k.cal.cx.toFixed(1), k.cal.s.toFixed(5), k.cal.sy.toFixed(5), (k.cal.yaw||0).toFixed(3),
+          S.grow, S.featherFrac].join('|');
+}
+function buildSkullClipWeight(angle, ow, oh, imgW, imgH){
+  const k = skullClipCal(angle);
+  if(!k || !(imgW > 0) || !(imgH > 0)) return null;
+  if(typeof getDisplaySkullEllipsoid !== 'function' || typeof project3DPointToView !== 'function') return null;
+  const S = HOLE_FILL.skullClip;
+  let sk; try{ sk = getDisplaySkullEllipsoid(); }catch(e){ return null; }
+  if(!sk || !(sk.a > 0) || !(sk.b > 0) || !(sk.c > 0)) return null;
+  const CY = (k.m.CY != null) ? k.m.CY : 0.15;
+  const a = sk.a*S.grow, b = sk.b*S.grow, c = sk.c*S.grow;
+  const pts = [];
+  for(let i=0; i<=S.nPhi; i++){
+    const phi = i / S.nPhi * Math.PI;
+    for(let j=0; j<S.nTheta; j++){
+      const th = j / S.nTheta * 2*Math.PI;
+      const w = { x: a*Math.sin(phi)*Math.sin(th), y: CY + b*Math.cos(phi), z: c*Math.sin(phi)*Math.cos(th) };
+      const pr = project3DPointToView(w, k.cal, k.m.yTop, CY);
+      if(!isFinite(pr.ix) || !isFinite(pr.iy)) continue;
+      pts.push([pr.ix / imgW * ow, pr.iy / imgH * oh]);
+    }
+  }
+  if(pts.length < 8) return null;
+  // 정사영 타원체의 실루엣은 볼록 — 볼록 껍질이면 충분하다
+  pts.sort((p,q)=> p[0]-q[0] || p[1]-q[1]);
+  const cross = (o,p,q)=> (p[0]-o[0])*(q[1]-o[1]) - (p[1]-o[1])*(q[0]-o[0]);
+  const lo = [], up = [];
+  for(const p of pts){ while(lo.length>=2 && cross(lo[lo.length-2], lo[lo.length-1], p) <= 0) lo.pop(); lo.push(p); }
+  for(let i=pts.length-1;i>=0;i--){ const p=pts[i]; while(up.length>=2 && cross(up[up.length-2], up[up.length-1], p) <= 0) up.pop(); up.push(p); }
+  const hull = lo.slice(0,-1).concat(up.slice(0,-1));
+  if(hull.length < 3) return null;
+  const mc = document.createElement('canvas'); mc.width = ow; mc.height = oh;
+  const mx = mc.getContext('2d', { willReadFrequently:true });
+  const fpx = Math.max(1, ow * S.featherFrac);
+  mx.filter = 'blur(' + fpx.toFixed(1) + 'px)';
+  mx.fillStyle = '#fff';
+  mx.beginPath(); mx.moveTo(hull[0][0], hull[0][1]);
+  for(let i=1;i<hull.length;i++) mx.lineTo(hull[i][0], hull[i][1]);
+  mx.closePath(); mx.fill();
+  mx.filter = 'none';
+  const d = mx.getImageData(0, 0, ow, oh).data;
+  const wgt = new Float32Array(ow*oh);
+  let nIn = 0;
+  for(let p=0, i=3; p<wgt.length; p++, i+=4){ wgt[p] = d[i]/255; if(d[i] > 127) nIn++; }
+  let minX=Infinity,maxX=-Infinity,minY=Infinity,maxY=-Infinity;
+  for(const q of hull){ if(q[0]<minX)minX=q[0]; if(q[0]>maxX)maxX=q[0]; if(q[1]<minY)minY=q[1]; if(q[1]>maxY)maxY=q[1]; }
+  wgt.nIn = nIn;
+  wgt.box = { x0:minX/ow, x1:maxX/ow, y0:minY/oh, y1:maxY/oh };
+  return wgt;
+}
+
+/* 얼굴 가운데 띠의 기준 살색 [r,g,b] 또는 null. 랜드마크가 없는 뷰는 null. */
+function faceToneRefFor(od, ow, oh, hole, ell, angle){
+  const T = HOLE_FILL.faceTone;
+  if(!T || !T.on || !ell || typeof state === 'undefined') return null;
+  const lm = state.landmarks && state.landmarks[angle];
+  if(!lm) return null;
+  const y0 = (typeof lm.browTopY === 'number') ? lm.browTopY : ell.cy - ell.ry*0.4;
+  const y1 = (typeof lm.chinY === 'number') ? lm.chinY : ell.cy + ell.ry*0.6;
+  if(!(y1 > y0)) return null;
+  const step = Math.max(1, Math.round(Math.min(ow, oh) / 200));
+  const L = [], R = [], Gc = [], B = [];
+  for(let y=Math.max(0,Math.floor(y0*oh)); y<Math.min(oh,Math.ceil(y1*oh)); y+=step){
+    const v = ((y+0.5)/oh - ell.cy)/ell.ry, v2 = v*v;
+    if(v2 > 1) continue;
+    for(let x=0; x<ow; x+=step){
+      const u = ((x+0.5)/ow - ell.cx)/ell.rx;
+      if(u*u + v2 > 0.81) continue;              // 가장자리(머리 경계 그늘)는 안 본다
+      if(hole[y*ow+x]) continue;
+      const i = (y*ow+x)*4;
+      if(od[i+3] < 200) continue;
+      const r = od[i], g = od[i+1], b = od[i+2];
+      if(!(r > g && g >= b*0.92 && r - b > 18)) continue;   // 살색처럼 보이는 것만(흰 벽·검은 눈썹 제외)
+      L.push(0.299*r + 0.587*g + 0.114*b); R.push(r); Gc.push(g); B.push(b);
+    }
+  }
+  if(L.length < T.minSamples) return null;
+  const idx = L.map((_,i)=>i).sort((p,q)=> L[p]-L[q]);
+  const iA = Math.floor(idx.length*T.loPct), iB = Math.max(iA+1, Math.floor(idx.length*T.hiPct));
+  let r=0,g=0,b=0,n=0;
+  for(let k=iA;k<iB;k++){ const i=idx[k]; r+=R[i]; g+=Gc[i]; b+=B[i]; n++; }
+  if(!n) return null;
+  const ref = [r/n, g/n, b/n];
+  ref.samples = L.length;
+  return ref;
+}
+const _skullClipLogged = {};
+function logSkullClipOnce(angle, skullW, tone, nBg, ow, oh){
+  if(_skullClipLogged[angle]) return;
+  _skullClipLogged[angle] = true;
+  const toneTxt = tone ? ('rgb(' + tone.map(v=>Math.round(v)).join(',') + ') · 표본 ' + tone.samples
+                          + ' · 당김 ' + Math.round(HOLE_FILL.faceTone.mix*100) + '%')
+                       : '<b>없음</b>(랜드마크 없음/표본 부족 — 격자 색 그대로)';
+  console.log(...gyeolBoldArgs(['[메움·두상경계] ' + angle
+    + ' · 살 구역 ' + (skullW ? '<b>두개골 되쏜 실루엣</b>(' + skullW.nIn + 'px, ×' + HOLE_FILL.skullClip.grow + ')'
+                              : '헤어 실루엣 타원(viewCal 없음 — 예전 동작)')
+    + ' · 타원 안인데 두개골 밖이라 주변색으로 메운 픽셀 ' + nBg
+    + '\n    얼굴 기준색 ' + toneTxt
+    + '\n    되돌리기: HOLE_FILL.skullClip.on=false · HOLE_FILL.faceTone.on=false']));
+}
+
 function paintOuterHoles(od, ow, oh, hole, ell, outer){
   const mixK = Math.max(0, Math.min(1, HOLE_FILL.outerField.detailMix));
   const c = [0,0,0];
@@ -440,7 +584,7 @@ function logOuterFieldOnce(angle, outer, nPix, ow, oh, why){
      · 씨앗을 <b>타원 밖</b>에서만 모은다(안쪽 살이 어깨로 새어 나오면 안 된다)
      · 어두운 것을 <b>안 거른다</b>(검은 니트도 정답이다 — 찾는 게 살이 아니다)
    격자 좌표는 타원이 아니라 <b>캔버스 전체</b> 기준이라, ell이 null이어도 선다. */
-function buildOuterField(od, ow, oh, hole, ell){
+function buildOuterField(od, ow, oh, hole, ell, skullW){
   const F = HOLE_FILL.outerField;
   if(!F || !F.on) return null;
   const GX = Math.max(4, F.gridX|0), GY = Math.max(4, F.gridY|0);
@@ -449,6 +593,8 @@ function buildOuterField(od, ow, oh, hole, ell){
   const n = new Float32Array(GX*GY);
   const isOutside = (x, y)=>{
     if(!ell) return true;
+    // (2026-09-16) 타원 안이어도 두개골 밖이면 배경·옷 씨앗이다
+    if(skullW && skullW[y*ow + x] < 0.2) return true;
     const u = ((x+0.5)/ow - ell.cx)/ell.rx, v = ((y+0.5)/oh - ell.cy)/ell.ry;
     return u*u + v*v > 1;
   };
@@ -1519,7 +1665,24 @@ function buildHoleFillCanvas(srcCanvas, skinColor, ell, angle, holeMaskInfo){
   const fieldDrop = !!(field && graft && !useDetail);
   /* 타원 <b>밖</b> 구멍 — 반드시 이식 루프 전에 만든다(od가 고쳐지기 전 픽셀이
      씨앗이어야 한다). 실제 칠하기는 아래 루프가 끝난 뒤 한 번에 한다. */
-  const outer = buildOuterField(od, ow, oh, hole, ell);
+  /* (2026-09-16) 살 구역 = 두개골 되쏜 실루엣 · 살 색 = 얼굴 기준색 쪽으로 — 위 skullClip·faceTone 배너 */
+  let skullW = null;
+  try{ skullW = buildSkullClipWeight(angle, ow, oh, sw, sh); }
+  catch(e){ console.warn('[메움·두상경계] 두개골 실루엣 실패(타원 그대로):', e && e.message); }
+  const tone = faceToneRefFor(od, ow, oh, hole, ell, angle);
+  const FT = HOLE_FILL.faceTone;
+  const outer = buildOuterField(od, ow, oh, hole, ell, skullW);
+  const clipBg = !!(skullW && outer);
+  const _bg = [0,0,0];
+  const bgMixK = Math.max(0, Math.min(1, HOLE_FILL.outerField.detailMix));
+  /* 두개골 밖 자리의 바탕색 — clipBg면 주변색 격자(+약한 결), 아니면 예전처럼 od 그대로 */
+  const bgAt = (i, nx, ny)=>{
+    if(!clipBg){ _bg[0]=od[i]; _bg[1]=od[i+1]; _bg[2]=od[i+2]; return _bg; }
+    outer.at(nx, ny, _bg);
+    for(let ch=0; ch<3; ch++) _bg[ch] = Math.max(0, Math.min(255, _bg[ch] + (od[i+ch]-_bg[ch])*bgMixK));
+    return _bg;
+  };
+  let nBg = 0;
   for(let y=0; y<oh; y++){
     const ny = (y + 0.5)/oh, v = (ny - ell.cy)/ell.ry, v2 = v*v;
     if(v2 > 1) continue;                       // 두상 밖 — 아래 paintOuterHoles가 맡는다
@@ -1540,6 +1703,15 @@ function buildHoleFillCanvas(srcCanvas, skinColor, ell, angle, holeMaskInfo){
         const r = Math.sqrt(r2);
         if(r > 1 - G.edgeFeather) wgt = Math.max(0, (1 - r) / G.edgeFeather);
       }
+      const bg = bgAt(i, nx, ny);
+      if(skullW){
+        wgt *= skullW[y*ow + x];
+        if(wgt <= 0.002){                        // 두개골 밖 — 살이 아니다
+          od[i] = bg[0]; od[i+1] = bg[1]; od[i+2] = bg[2]; od[i+3] = 255;
+          nBg++;
+          continue;
+        }
+      }
       if(faceless){
         /* ── 얼굴 없는 뷰: 순수 이식 (2026-09-14 3차) ─────────────────────
            od를 <b>한 방울도</b> 쓰지 않는다. 색도 밝기도 안 쓴다 — 후면 타원
@@ -1558,7 +1730,7 @@ function buildHoleFillCanvas(srcCanvas, skinColor, ell, angle, holeMaskInfo){
         for(let ch = 0; ch < 3; ch++){
           const skinPx = graft.mean[ch] * shade
                        + (useDetail ? graft.hi[gk+ch] * T * FF.detail : 0);
-          od[i+ch] = Math.max(0, Math.min(255, od[i+ch]*(1-wgt) + skinPx*wgt));
+          od[i+ch] = Math.max(0, Math.min(255, bg[ch]*(1-wgt) + skinPx*wgt));
         }
         od[i+3] = 255;
         nGraft++;
@@ -1574,10 +1746,17 @@ function buildHoleFillCanvas(srcCanvas, skinColor, ell, angle, holeMaskInfo){
              그대로 단색(flatMix)으로 떨어졌다. 격자는 표본이 없어도 선다 —
              색을 <b>표본</b>이 아니라 <b>자리</b>에서 가져오기 때문이다. */
         field.at(nx, ny, _fc);
+        if(tone){
+          /* 얼굴 기준색 쪽으로 당긴다 — 밝기 차는 좁은 범위에서만 살린다 */
+          const Lf = 0.299*_fc[0] + 0.587*_fc[1] + 0.114*_fc[2];
+          const Lr = 0.299*tone[0] + 0.587*tone[1] + 0.114*tone[2];
+          const shT = Lr > 1 ? Math.max(FT.shadeMin, Math.min(FT.shadeMax, Lf / Lr)) : 1;
+          for(let ch=0; ch<3; ch++) _fc[ch] = _fc[ch]*(1-FT.mix) + tone[ch]*shT*FT.mix;
+        }
         const gk = useDetail ? (mirror(x, gs)*gs + py) * 3 : 0;
         for(let ch = 0; ch < 3; ch++){
           const skinPx = _fc[ch] + (useDetail ? graft.hi[gk+ch] * T * F.detail : 0);
-          od[i+ch] = Math.max(0, Math.min(255, od[i+ch]*(1-wgt) + skinPx*wgt));
+          od[i+ch] = Math.max(0, Math.min(255, bg[ch]*(1-wgt) + skinPx*wgt));
         }
         nGraft++;
         continue;
@@ -1586,10 +1765,10 @@ function buildHoleFillCanvas(srcCanvas, skinColor, ell, angle, holeMaskInfo){
         /* 표본을 아예 못 떴을 때 — 최소한 <b>두피색 쪽으로</b> 끌어당긴다.
            벽의 흰색·머리의 검정이 그대로 남는 것보다 낫다(검정은 답이 아니다). */
         const m = G.flatMix * wgt;
-        const FB = skinRGB || [224,178,148];   // 두피색도 표본도 없을 때(후면)의 최후 폴백
-        od[i]   = od[i]  *(1-m) + FB[0]*m;
-        od[i+1] = od[i+1]*(1-m) + FB[1]*m;
-        od[i+2] = od[i+2]*(1-m) + FB[2]*m;
+        const FB = tone || skinRGB || [224,178,148];   // 두피색도 표본도 없을 때(후면)의 최후 폴백
+        od[i]   = bg[0]*(1-m) + FB[0]*m;
+        od[i+1] = bg[1]*(1-m) + FB[1]*m;
+        od[i+2] = bg[2]*(1-m) + FB[2]*m;
         nFlat++;
         continue;
       }
@@ -1612,11 +1791,12 @@ function buildHoleFillCanvas(srcCanvas, skinColor, ell, angle, holeMaskInfo){
       sh = Math.max(G.shadeMin, Math.min(G.shadeMax, sh));
       for(let ch = 0; ch < 3; ch++){
         const skinPx = graft.rgb[k+ch] * sh;
-        od[i+ch] = Math.max(0, Math.min(255, od[i+ch]*(1-wgt) + skinPx*wgt));
+        od[i+ch] = Math.max(0, Math.min(255, bg[ch]*(1-wgt) + skinPx*wgt));
       }
       nGraft++;
     }
   }
+  logSkullClipOnce(angle, skullW, tone, nBg, ow, oh);
   const nOuter = outer ? paintOuterHoles(od, ow, oh, hole, ell, outer) : 0;
   octx.putImageData(oimg, 0, 0);
   logOuterFieldOnce(angle, outer, nOuter, ow, oh, null);
@@ -1715,12 +1895,19 @@ function warnHoleFillOnce(angle){
 function getHoleFillCanvas(angle, baseC, maskInf){
   if(!baseC) return null;
   const cached = state.baseFillCanvases && state.baseFillCanvases[angle];
-  if(cached && cached._src === baseC) return cached;
+  /* (2026-09-16) 서명에 두개골 실루엣(viewCal)을 넣는다 — 모델이 메움보다 늦게 서므로
+     안 넣으면 타원으로 구운 첫 메움이 끝까지 남는다 */
+  const sig = skullClipSig(angle);
+  if(cached && cached._src === baseC && cached._skullSig === sig) return cached;
+  if(cached && cached._src === baseC && cached._skullSig !== sig){
+    delete _skullClipLogged[angle];
+    try{ baseC._cleanBase = null; }catch(e){}
+  }
   let c = null;
   try{
     c = buildHoleFillCanvas(baseC, maskInf && maskInf.scalpColor, headEllipseFor(angle), angle, maskInf);
   }catch(e){ console.warn('구멍 메움 배경 생성 실패:', angle, e); }
-  if(c){ c._src = baseC; if(state.baseFillCanvases) state.baseFillCanvases[angle] = c; }
+  if(c){ c._src = baseC; c._skullSig = sig; if(state.baseFillCanvases) state.baseFillCanvases[angle] = c; }
   return c;
 }
 

@@ -163,6 +163,177 @@ function faceRulerCmPerUnit(fm){
    실측 단면(아래 구역)과 투영기를 받아 실제 Three.js 지오메트리를 만든다.
    buildProceduralHead(두상 돔) / buildRealNeckMesh(목) / 얼굴 메쉬.
    ════════════════════════════════════════════════════════════════ */
+/* ══════════════════════════════════════════════════════════════════
+   두상면을 <b>얼굴 최종면</b>에 붙인다 (2026-09-16)
+   ─────────────────────────────────────────────────────────────────
+   사용자: "3D결과보기를 보면, 옆에 메워야하는 자리가 큰데, 이게 지금 두상기준면이
+   안면기준면하고 맞춰져 있어.. 안면기준면에 굴곡등의 오차를 추가로 계산하게 되는데,
+   그 결과값이랑 맞춰야 하는거잖아."
+   맞다. 9/09~9/13에 맞춘 것은 <b>기준면끼리</b>다(FACE_Z_TO_SKULL · 자 맞춤 · k되맞춤).
+   화면에 그려지는 얼굴은 기준면 + 굴곡(relief) + 측면보정 + 이마 바닥이고, 그 잔차는
+   관자·광대·턱선에서 수 mm~1cm다. 두피면은 여전히 <b>매끈한 타원체</b>라:
+     · 잔차가 + 인 자리(광대·턱선) → 얼굴 테두리가 두피면 앞에 떠서 옆에서 보면 턱이 진다
+     · 잔차가 − 인 자리(안와·콧대 옆·관자) → 두피면이 얼굴을 뚫고 나온다(눈 위 살색 삼각형)
+   고침: 얼굴 메쉬가 붙은 <b>뒤에</b>, 그 최종 정점을 xy 격자에 래스터해 z를 읽고
+     ① 얼굴이 덮는 자리 — 두피면 정점을 얼굴면 − eps로 옮긴다(앞으로도 뒤로도)
+     ② 얼굴 밖 — 테두리의 잔차를 falloff 거리 안에서 부드럽게 0으로 줄인다
+     ③ 앞면(z>0) 정점만, 그리고 옆 실루엣 쪽(z가 작을수록)은 약하게 — 두상 윤곽을 안 비튼다
+   지우지 않으므로 얼굴의 구멍·페이드·오려낸 자리 뒤에는 늘 같은 깊이의 살이 있다.
+   되돌리기: FACE_SCALP_CONFORM.on = false */
+const FACE_SCALP_CONFORM = {
+  on: true,
+  grid: 128,          // 얼굴 bbox 가로 칸 수(세로는 비율대로)
+  epsK: 0.006,        // 얼굴면 뒤로 물리는 거리(두개골 깊이 c 대비) — polygonOffset과 겹쳐 z-fighting 방지
+  falloffK: 0.30,     // 얼굴 밖으로 잔차를 끌고 가는 거리(두개골 폭 a 대비)
+  maxOutK: 0.10,      // 앞으로 끌어낼 최대(c 대비) — 넘으면 헤어라인 가닥 뿌리가 묻힌다
+  maxInK: 0.30,       // 뒤로 밀 최대(c 대비) — 안와 깊이 정도
+  frontMinZ: 0.08,    // 단위구 z가 이보다 작으면(옆 실루엣) 안 옮긴다
+  frontFullZ: 0.35,   // 이 z부터 온전히 옮긴다
+};
+let _conformLogged = false;
+function conformScalpToFace(headGroup, faceMesh){
+  const C = FACE_SCALP_CONFORM;
+  if(!C || !C.on || !headGroup || !faceMesh || !faceMesh.geometry) return null;
+  try{
+    const head = headGroup.getObjectByName('skullEllipsoid');
+    if(!head || !head.geometry || !head.geometry.attributes.position) return null;
+    const hp = head.geometry.attributes.position;
+    const A = head.scale.x, B = head.scale.y, Cz = head.scale.z, HY = head.position.y;
+    if(!(A > 0 && B > 0 && Cz > 0)) return null;
+    // 원본 구 좌표를 한 번만 보관 — 얼굴을 다시 붙여도 누적되지 않게
+    if(!head.geometry.userData._unitPos) head.geometry.userData._unitPos = Float32Array.from(hp.array);
+    const U = head.geometry.userData._unitPos;
+
+    const fg = faceMesh.geometry, fp = fg.attributes.position, fi = fg.getIndex();
+    const fa = fg.attributes.aFaceAlpha;
+    if(!fp || !fi) return null;
+    const ox = faceMesh.position.x, oy = faceMesh.position.y, oz = faceMesh.position.z;
+    let x0=Infinity,x1=-Infinity,y0=Infinity,y1=-Infinity;
+    for(let i=0;i<fp.count;i++){
+      const x = fp.getX(i)+ox, y = fp.getY(i)+oy;
+      if(x<x0)x0=x; if(x>x1)x1=x; if(y<y0)y0=y; if(y>y1)y1=y;
+    }
+    const pad = A * C.falloffK * 1.05;
+    x0 -= pad; x1 += pad; y0 -= pad; y1 += pad;
+    const GX = Math.max(16, C.grid|0);
+    const GY = Math.max(16, Math.round(GX * (y1-y0) / Math.max(1e-6, x1-x0)));
+    const cw = (x1-x0)/GX, ch = (y1-y0)/GY;
+    const N = GX*GY;
+    const zF = new Float32Array(N).fill(-Infinity);
+    // ── 얼굴 삼각형 래스터(앞쪽 z 우선) ──
+    const idx = fi.array;
+    for(let t=0; t<idx.length; t+=3){
+      const ia = idx[t], ib = idx[t+1], ic = idx[t+2];
+      if(fa && fa.getX(ia) < 0.02 && fa.getX(ib) < 0.02 && fa.getX(ic) < 0.02) continue;
+      const ax = fp.getX(ia)+ox, ay = fp.getY(ia)+oy, az = fp.getZ(ia)+oz;
+      const bx = fp.getX(ib)+ox, by = fp.getY(ib)+oy, bz = fp.getZ(ib)+oz;
+      const qx = fp.getX(ic)+ox, qy = fp.getY(ic)+oy, qz = fp.getZ(ic)+oz;
+      const den = (by-qy)*(ax-qx) + (qx-bx)*(ay-qy);
+      if(Math.abs(den) < 1e-12) continue;
+      const gx0 = Math.max(0, Math.floor((Math.min(ax,bx,qx)-x0)/cw)), gx1 = Math.min(GX-1, Math.floor((Math.max(ax,bx,qx)-x0)/cw));
+      const gy0 = Math.max(0, Math.floor((Math.min(ay,by,qy)-y0)/ch)), gy1 = Math.min(GY-1, Math.floor((Math.max(ay,by,qy)-y0)/ch));
+      for(let gy=gy0; gy<=gy1; gy++){
+        const py = y0 + (gy+0.5)*ch;
+        for(let gx=gx0; gx<=gx1; gx++){
+          const px = x0 + (gx+0.5)*cw;
+          const w1 = ((by-qy)*(px-qx) + (qx-bx)*(py-qy)) / den;
+          const w2 = ((qy-ay)*(px-qx) + (ax-qx)*(py-qy)) / den;
+          const w3 = 1 - w1 - w2;
+          if(w1 < -1e-4 || w2 < -1e-4 || w3 < -1e-4) continue;
+          const z = w1*az + w2*bz + w3*qz;
+          const k = gy*GX + gx;
+          if(z > zF[k]) zF[k] = z;
+        }
+      }
+    }
+    // ── 잔차 = (얼굴면 − eps) − 두개골 앞면 ──
+    const eps = Cz * C.epsK;
+    const res = new Float32Array(N), has = new Uint8Array(N), dist = new Float32Array(N).fill(Infinity);
+    let nFace = 0, rMin = Infinity, rMax = -Infinity;
+    for(let gy=0; gy<GY; gy++){
+      const py = y0 + (gy+0.5)*ch, yl = (py - HY)/B;
+      for(let gx=0; gx<GX; gx++){
+        const k = gy*GX + gx;
+        if(zF[k] === -Infinity) continue;
+        const px = x0 + (gx+0.5)*cw, xl = px/A;
+        const u = xl*xl + yl*yl;
+        if(u >= 0.995) continue;                   // 두개골 실루엣 밖 — 붙일 앞면이 없다
+        const r = Math.max(-Cz*C.maxInK, Math.min(Cz*C.maxOutK, (zF[k] - eps) - Cz*Math.sqrt(1-u)));
+        res[k] = r; has[k] = 1; dist[k] = 0; nFace++;
+        if(r < rMin) rMin = r; if(r > rMax) rMax = r;
+      }
+    }
+    if(nFace < 20) return null;
+    // ── 얼굴 밖으로 잔차 번지기(가장 가까운 테두리 값 + 거리) ──
+    const maxD = Math.max(1, Math.ceil(A*C.falloffK / Math.min(cw, ch)));
+    const filled = has.slice();
+    for(let pass=0; pass<maxD; pass++){
+      let changed = 0;
+      const nres = res.slice(), nfill = filled.slice(), nd = dist.slice();
+      for(let gy=0; gy<GY; gy++) for(let gx=0; gx<GX; gx++){
+        const k = gy*GX + gx;
+        if(filled[k]) continue;
+        let sum = 0, n = 0;
+        if(gx>0    && filled[k-1]) { sum += res[k-1];  n++; }
+        if(gx<GX-1 && filled[k+1]) { sum += res[k+1];  n++; }
+        if(gy>0    && filled[k-GX]){ sum += res[k-GX]; n++; }
+        if(gy<GY-1 && filled[k+GX]){ sum += res[k+GX]; n++; }
+        if(n){ nres[k] = sum/n; nfill[k] = 1; nd[k] = pass+1; changed++; }
+      }
+      if(!changed) break;
+      res.set(nres); filled.set(nfill); dist.set(nd);
+    }
+    const smooth = t => { t = Math.max(0, Math.min(1, t)); return t*t*(3-2*t); };
+    // ── 두피면 정점 옮기기 ──
+    let moved = 0, maxAbs = 0;
+    for(let i=0;i<hp.count;i++){
+      const ux = U[i*3], uy = U[i*3+1], uz = U[i*3+2];
+      hp.setXYZ(i, ux, uy, uz);                    // 매번 원본에서 시작
+      if(uz <= C.frontMinZ) continue;
+      const wx = ux*A, wy = uy*B + HY;
+      const gx = Math.floor((wx - x0)/cw), gy = Math.floor((wy - y0)/ch);
+      if(gx < 0 || gy < 0 || gx >= GX || gy >= GY) continue;
+      const k = gy*GX + gx;
+      if(!filled[k]) continue;
+      const wFront = smooth((uz - C.frontMinZ) / Math.max(1e-6, C.frontFullZ - C.frontMinZ));
+      const wFar = has[k] ? 1 : (1 - smooth(dist[k] / maxD));
+      const dz = res[k] * wFront * wFar;
+      if(Math.abs(dz) < 1e-7) continue;
+      hp.setZ(i, uz + dz / Cz);
+      moved++;
+      if(Math.abs(dz) > maxAbs) maxAbs = Math.abs(dz);
+    }
+    hp.needsUpdate = true;
+    head.geometry.computeVertexNormals();
+    head.geometry.computeBoundingSphere();
+    const diag = { nFace, moved, rMin, rMax, maxAbs, GX, GY };
+    if(!_conformLogged){
+      _conformLogged = true;
+      const cm = (typeof modelCmPerUnit === 'function') ? modelCmPerUnit() : null;
+      const f = v => v.toFixed(4) + (cm ? '(' + (v*cm).toFixed(2) + 'cm)' : '');
+      console.log(...gyeolBoldArgs(['[3D·두상면↔얼굴최종면] 얼굴 격자 ' + nFace + '칸 · 잔차 <b>' + f(rMin) + ' ~ ' + f(rMax) + '</b>'
+        + ' (+ = 얼굴이 두개골보다 앞) · 옮긴 두피면 정점 <b>' + moved + '</b>/' + hp.count + ' · 최대 ' + f(maxAbs)
+        + '\n      기준면끼리가 아니라 <b>굴곡·측면보정까지 들어간 얼굴</b>에 두피면을 붙였습니다.'
+        + ' 잔차가 상한(앞 ' + C.maxOutK + 'c · 뒤 ' + C.maxInK + 'c)에 닿았으면 그 자리는 덜 붙은 것입니다.'
+        + '\n      되돌리기: FACE_SCALP_CONFORM.on=false']));
+    }
+    return diag;
+  }catch(e){
+    console.warn('[3D·두상면↔얼굴최종면] 실패(두피면 그대로):', e && e.message);
+    return null;
+  }
+}
+
+/* ── 얼굴 텍스처에서 <b>머리카락</b>을 오려낸다 (2026-09-16) ─────────────────────
+   얼굴 메쉬는 정면 사진 원본을 그대로 입는다. 긴 머리가 뺨·관자를 덮은 손님은 그
+   자리 텍스처가 <b>머리카락</b>이라, 폼파두르로 바꿔도 옆에서 보면 얼굴 테두리에
+   검은 쐐기가 남았다(3D 결과보기 측면). 정면 헤어 마스크(hairCanvases.front의 알파)로
+   그 픽셀을 투명하게 뚫는다. 뒤에는 FACE_SCALP_CONFORM이 같은 깊이에 붙인 두피면이
+   있으므로 구멍이 아니라 <b>살</b>이 보인다. 눈·눈썹·입은 세그 단계에서 이미 가드로
+   빠져 있어 안 뚫린다.
+   되돌리기: FACE_HAIR_CUT.on = false */
+const FACE_HAIR_CUT = { on: true, blurPx: 1.5 };
+
 // 절차적 두상: 타원(스케일된 구)으로 두상 근사. 이전엔 비율·피부색·이목구비
 // 위치가 전부 눈대중 고정값이었는데, 이제 getFaceMetrics()가 뽑아낸 실측
 // 종횡비/좌표 변환(projector)과 실제 두피색(skinColorCss)을 반영해서 "이
@@ -300,6 +471,31 @@ const NECK_SHAPE = {
   taperD:   0.92,  // 위 깊이 ÷ 아래 깊이
   tiltZ:    0.09,  // 위 링을 앞으로(+Z), 목 길이 대비 — 약 5°
   napeFull: 1.08,  // 아래쪽 <b>뒤통수 쪽</b> 부풀림(승모근). 위로 갈수록 1로 수렴
+  /* ── 턱밑 목각과 굴곡 (2026-09-14 3차) ──────────────────────────────────
+     사용자: "턱보다 좀 더 안쪽으로 들어가서 턱선이랑 연결되어야 돼. 그리고
+     어차피 완전 원통 아니고 약간 굴곡있지 사람목은."
+     2차에서 원뿔은 없앴지만 <b>곧은</b> 기둥이 됐다. 사람 목은 옆에서 보면
+     ① 턱 밑에서 <b>뒤로 물러났다가</b>(턱밑 목각, cervicomental angle) 아래로
+        내려오면서 다시 앞으로 나오고,
+     ② 중간이 가장 가늘고 위아래가 조금씩 넓다.
+     ①을 throatSetZ로, ②를 waist로 낸다. 둘 다 <b>앞면·중간</b>만 건드리므로
+     밑동 치수(10.5×10.0cm)와 승모근은 그대로다.
+     ⚠ tiltZ(기둥이 앞으로 기움)와 <b>싸우는 값이 아니다</b> — tiltZ는 목 축
+       전체를 기울이고, throatSetZ는 그 축 위에서 <b>앞쪽 살만</b> 파낸다.
+       실제로도 목은 앞으로 기울어 있으면서 턱밑은 들어가 있다.
+     되돌리기: throatSetZ = 0, waist = 0 (곧은 기둥으로 복귀) */
+  /* ⚠ 2026-09-14 3차 실기기 결과 — <b>둘 다 0으로 되돌렸다</b>.
+     throatSetZ 0.45는 윗링 앞면을 2.1cm 물려 <b>턱 밑에 평평한 턱(ledge)이
+     다시 생겼다</b>(2차의 "위가 판판하다"가 다른 이유로 재발). 사람은 턱 밑에
+     살이 붙어 있다가 <b>조금 내려가서</b> 각이 지는데, 맨 위 링에서 최대로
+     물러나게 짜서 턱 바로 밑이 빈 것이다 — 물러나는 지점이 틀렸지 방향이
+     틀린 게 아니다. waist 0.06은 화면에서 <b>아예 안 보였다</b>.
+     코드 경로(아래 waistK·throat)는 그대로 둔다 — 0이면 곱이 1·뺄셈이 0이라
+     <b>산술까지 2차와 동일</b>하고, 다시 켤 때 값만 넣으면 된다.
+     다시 손댈 거면 물러남을 윗링이 아니라 t≈0.25에서 최대가 되게 해야 한다.
+     다만 근본은 의상 에셋의 <b>실제 목 메쉬</b>를 쓰는 쪽이다(사용자 제안). */
+  throatSetZ: 0,    // 윗링 <b>앞면</b>을 윗링 반깊이의 이만큼 뒤로. 0 = 2차와 동일
+  waist:      0,    // 중간(t≈0.5)을 이만큼 오목하게. 0 = 2차와 동일
   unlit:    true,  // 얼굴과 같은 기준 — 아래 주석 참고
   shadeRear: 0.78, // 무조명이라 형태가 안 보이므로 정점색으로 뒤쪽을 어둡게
   shadeTop:  0.90, // 턱 밑은 원래 그림자다 — 위쪽을 살짝 어둡게 해 이음매를 눌러 준다
@@ -542,14 +738,20 @@ function buildRealNeckMesh(skinColor){
   for(let ri=0; ri<=RING_STEPS; ri++){
     const t = ri/RING_STEPS;                 // 0 = 위(턱), 1 = 아래(옷깃)
     const y = neckTopY + t*(neckBotY-neckTopY);
+    /* 굴곡 — 중간을 살짝 오목하게. sin(πt)는 양 끝에서 정확히 0이라
+       윗링·밑동 치수를 안 건드리고 <b>가운데만</b> 파인다(C¹이라 각이 안 생긴다). */
+    const waistK = 1 - NECK_SHAPE.waist * Math.sin(Math.PI * t);
     /* 위(턱)로 갈수록 좁아지는 테이퍼. 예전엔 옷깃이 없으면 이 자리에서
        interpolateNeckCrossSection(사진 실측)을 폭 0.55×a · 깊이 0.70×c로 클램프해
        썼는데, 그 비대칭이 곧 "앞뒤로 넓은 목"이었다(위 배너). 이제 밑동을 cm로
        내므로 두 경로가 하나다 — 실측 단면은 자기 축이 뭔지 못 밝혀서 뺐다. */
-    const halfWidth = baseW * (NECK_SHAPE.taperW + (1-NECK_SHAPE.taperW)*t);
-    const halfDepth = baseD * (NECK_SHAPE.taperD + (1-NECK_SHAPE.taperD)*t);
+    const halfWidth = baseW * (NECK_SHAPE.taperW + (1-NECK_SHAPE.taperW)*t) * waistK;
+    const halfDepth = baseD * (NECK_SHAPE.taperD + (1-NECK_SHAPE.taperD)*t) * waistK;
     // 앞으로 기울임 — 위 링일수록(t=0) 앞으로. 사람 목은 수직이 아니다.
     const cz = NECK_SHAPE.tiltZ * neckLen * (1 - t);
+    /* 턱밑 목각 — 위 링일수록 <b>앞면만</b> 뒤로 판다(뒤·옆은 안 건드린다).
+       이게 없으면 목 앞면이 턱 바로 밑에서 곧게 떨어져 턱선과 안 이어진다. */
+    const throat = NECK_SHAPE.throatSetZ * halfDepth * (1 - t);
     // 승모근 — 아래쪽 뒤편만 부풀린다(위로 갈수록 1로 수렴).
     const nape = 1 + (NECK_SHAPE.napeFull - 1) * t;
     for(let ti=0; ti<=THETA_STEPS; ti++){
@@ -557,7 +759,7 @@ function buildRealNeckMesh(skinColor){
       // scalpPointToWorld와 동일한 관례: theta=0에서 z(깊이) 최대, theta=π/2에서 x(폭) 최대
       const ct = Math.cos(theta), st = Math.sin(theta);
       const x = st * halfWidth;
-      const z = ct * halfDepth * (ct < 0 ? nape : 1) + cz;
+      const z = ct * halfDepth * (ct < 0 ? nape : 1) + cz - (ct > 0 ? throat*ct : 0);
       positions.push(x, y, z);
       /* 무조명이라 형태가 스스로 안 드러난다 — 정점색으로 최소한의 입체감을 굽는다.
          앞(ct=1)이 제일 밝고 뒤가 어둡다. 위(턱 밑)는 원래 그림자 지는 자리라
@@ -664,10 +866,58 @@ const SCALP_SKIN = {
   loPct: 0.50,            // (평균색 폴백용) 살 픽셀로 칠 밝기 백분위 구간 아래
   hiPct: 0.88,            // 〃 위 — 하이라이트·안경반사를 버린다
   minSamples: 200,        // 이보다 적게 모이면 안 쓴다(예전 값으로 폴백)
+  /* ── 두피면이 <b>얼굴 위로 올라오던 것</b> (2026-09-14 3차) ────────────────
+     사용자: "얼굴쪽에 칠해진 메움이 <b>눈까지 타고 올라갔는데</b>, 그거 원인도
+     좀 살펴보고 고쳐줘."
+
+     ── 원인: 볼록한 타원체는 <b>오목한 얼굴</b>을 이길 수밖에 없다 ──────────
+     두피면은 두개골 타원체(볼록)이고 얼굴은 실측 굴곡이 들어간 면이다.
+     사람 얼굴에는 타원체보다 <b>안으로 들어간</b> 자리가 있다 — 눈두덩(안와),
+     콧대 옆, 관자놀이. 거기서는 타원체 표면이 얼굴 표면보다 <b>앞</b>에 있고,
+     깊이 검사는 앞선 쪽을 그린다. 그래서 눈 안쪽 구석·콧대 옆에 살색 삼각형이
+     얹히고, 그 모양이 눈으로 타고 올라간 것처럼 보인다.
+     9/09에 drawInset(1.5% 축소)을 polygonOffset으로 바꾼 것과는 <b>무관하다</b> —
+     1.5%(≈1mm)든 polygonOffset(깊이 1단위)이든 안와 깊이(≈1cm)는 못 덮는다.
+     즉 예전에도 있던 것이고, 얼굴이 커지고 색이 살색이 되면서 눈에 띈 것이다.
+
+     ── 고침: 겨루지 않고 <b>비켜선다</b> ─────────────────────────────────
+     깊이로 이기려 들면(오프셋을 키우면) 반대로 정수리에서 가닥이 묻힌다.
+     대신 두피면은 <b>얼굴 사진이 불투명하게 덮는 자리에는 아예 안 그린다</b>.
+     그 자리는 두피면이 할 일이 없다 — 어차피 얼굴이 다 가리는 곳이고,
+     가리지 못하는 경우가 곧 이 버그다.
+     판정은 얼굴 메쉬가 쓰는 그 자(faceBoundEllipseNorm + FACE_BOUND_FIT.fadeIn)를
+     <b>그대로</b> 쓴다. 페이드 구간(반투명 테두리)은 <b>남긴다</b> — 거기는
+     두피면이 뒤를 받쳐야 배경이 안 비친다.
+     · 삼각형 <b>셋 다</b> 조건을 만족할 때만 버린다 = 경계에 한 겹이 남아
+       이음매가 안 벌어진다.
+     · 앞쪽(z>0) 정점만 센다. 뒤통수는 정사영이라 같은 (x,y)로 접히므로,
+       z를 안 보면 뒤통수가 통째로 사라진다.
+     되돌리기: SCALP_SKIN.keepOffFace = false */
+  /* ⚠ (2026-09-16) 기본 <b>off</b> — FACE_SCALP_CONFORM이 대신한다.
+     비켜서기(삼각형 삭제)는 얼굴 메쉬에 뚫린 자리(눈·입 구멍, 테두리 페이드,
+     머리카락을 오려낸 텍스처)마다 두피면이 없어 <b>머리 속이 비쳤다</b>. 9/14 3차가
+     올라간 지 12분 만에 되돌려진 게 그 사고다. 이제는 지우지 않고 두피면 정점을
+     얼굴 <b>최종면 바로 뒤</b>로 옮긴다 — 겨루지도 비키지도 않고 붙는다.
+     A/B용으로 코드는 남긴다: keepOffFace=true로 두면 예전 비켜서기가 같이 돈다. */
+  keepOffFace: false,
+  /* ── 뒤통수가 <b>안면보다 밝다</b> (2026-09-14 3차) ────────────────────────
+     사용자: "뒷머리 부분이 메워져 있는데, 색이 안면보다는 좀 밝아. 진짜
+     크레용에 있는 살색에 가까워."
+     맞다. 두피면 색은 <b>정면 사진</b>의 살 격자에서 오고, 뒤통수 정점은
+     정사영이라 앞면과 같은 (x,y)로 접혀 <b>정면 밝기</b>를 그대로 받는다.
+     게다가 재질이 unlit(얼굴과 같은 기준)이라 조명으로도 안 어두워진다.
+     조명은 앞에 있는데 뒤통수가 앞얼굴 밝기로 칠해지니, 돌려 보면 그 면만
+     붕 떠서 "크레용 살색"으로 보인다.
+     고침: 앞(z=+1)에서 뒤(z=−1)로 가면서 밝기에 완만한 배율을 건다. 색조는
+     안 건드린다(같은 사람 피부다) — <b>밝기만</b>이다. 얼굴이 실제로 보이는
+     범위(이마 215 ~ 턱 152, 비 0.71)보다 얕게 잡아, 두피면 혼자 튀지도
+     과하게 어둡지도 않게 한다.
+     되돌리기: SCALP_SKIN.backShade.on = false */
+  backShade: { on: true, back: 0.78 },   // 뒤통수(z=−1)에서의 밝기 배율. 앞(z=+1)은 1.0
 };
 let _scalpSkinCache = undefined;
 let _skinFieldCache = undefined;
-function resetScalpSkinSample(){ _scalpSkinCache = undefined; _skinFieldCache = undefined; }
+function resetScalpSkinSample(){ _scalpSkinCache = undefined; _skinFieldCache = undefined; _scalpCullLogged = false; }
 
 /* 이 사진에서 <b>살로 볼 픽셀</b>인가 — 머리카락도 아니고 이목구비도 아닌 자리.
    어두운 쪽 꼬리를 자르는 것으로 눈·눈썹·콧구멍·입선이 한 번에 빠진다
@@ -864,23 +1114,85 @@ function paintScalpFromPhoto(geo, skull, kIn, mat){
 
     const pos = geo.attributes && geo.attributes.position;
     if(!pos) return false;
+    const BS = SCALP_SKIN.backShade;
     const col = new Float32Array(pos.count * 3);
     for(let i=0;i<pos.count;i++){
       const mx = pos.getX(i) * skull.a * kIn;
       const my = pos.getY(i) * skull.b * kIn + 0.15;   // headMesh.position.y
       const c = sample(mx, my);
-      col[i*3] = c[0]; col[i*3+1] = c[1]; col[i*3+2] = c[2];
+      /* 앞→뒤 밝기 배율. 정점은 단위구 위라 z가 그대로 "얼마나 앞인가"다.
+         색조는 안 건드린다 — 세 채널에 <b>같은 수</b>를 곱한다. */
+      let sh = 1;
+      if(BS && BS.on){
+        const nz = Math.max(-1, Math.min(1, pos.getZ(i)));
+        sh = BS.back + (1 - BS.back) * (0.5 + 0.5*nz);
+      }
+      col[i*3] = c[0]*sh; col[i*3+1] = c[1]*sh; col[i*3+2] = c[2]*sh;
     }
     geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
     /* 정점색은 재질색과 <b>곱해진다</b> — 재질색을 흰색으로 두지 않으면 두 번 어두워진다. */
     mat.vertexColors = true;
     mat.color = new THREE.Color(0xffffff);
     mat.needsUpdate = true;
+    cullScalpUnderFace(geo, skull, kIn);
     return true;
   }catch(e){
     console.warn('[3D·두피색] 정점색 입히기 실패 — 단색으로 폴백:', e);
     return false;
   }
+}
+
+/* 얼굴 사진이 <b>불투명하게</b> 덮는 자리의 두피면 삼각형을 버린다.
+   위 SCALP_SKIN.keepOffFace 배너 참고. 실패하면 아무것도 안 바꾸고 돌아간다 —
+   두피면이 통째로 사라지는 것보다 눈 위 삼각형이 남는 편이 덜 나쁘다. */
+let _scalpCullLogged = false;
+function cullScalpUnderFace(geo, skull, kIn){
+  try{
+    if(!SCALP_SKIN.keepOffFace) return;
+    /* 얼굴 메쉬가 <b>실제로</b> 붙는 경우에만 비켜선다. 폴백(평면 데칼)이나
+       랜드마크 실패면 덮어 줄 얼굴이 없으므로, 비켜서면 그냥 구멍이 난다. */
+    const fm = getFaceMetrics();
+    const lm = fm && fm.lm;
+    const pr = fm && fm.projector;
+    const bound = faceBoundEllipseNorm(lm);
+    if(!bound || !pr || typeof pr.toImgX !== 'function' || !FACE_BOUND_FIT.on) return;
+    if(!(state.landmarks && state.landmarks.front && state.landmarks.front.rawLandmarks)) return;
+
+    const pos = geo.attributes.position;
+    const idx = geo.getIndex();
+    if(!idx) return;
+    const opaque = new Uint8Array(pos.count);      // 1 = 앞면이고 얼굴이 불투명한 자리
+    const fadeIn = FACE_BOUND_FIT.fadeIn;
+    let nOpaque = 0;
+    for(let i=0;i<pos.count;i++){
+      if(pos.getZ(i) <= 0) continue;               // 뒤통수 — 정사영으로 접히니 절대 안 센다
+      const u = pr.toImgX(pos.getX(i) * skull.a * kIn);
+      const v = pr.toImgY(pos.getY(i) * skull.b * kIn + 0.15);
+      const dx = (u - bound.cx) / bound.rx, dy = (v - bound.cy) / bound.ry;
+      if(Math.sqrt(dx*dx + dy*dy) <= fadeIn){ opaque[i] = 1; nOpaque++; }
+    }
+    const src = idx.array;
+    const keep = [];
+    let dropped = 0;
+    for(let t=0; t<src.length; t+=3){
+      const a = src[t], b = src[t+1], c = src[t+2];
+      // 셋 다 얼굴 밑일 때만 버린다 — 경계에 한 겹을 남겨 이음매를 닫는다
+      if(opaque[a] && opaque[b] && opaque[c]){ dropped++; continue; }
+      keep.push(a, b, c);
+    }
+    if(!keep.length || dropped === 0) return;      // 전부 버릴 상황이면 손대지 않는다
+    geo.setIndex(keep);
+    if(!_scalpCullLogged){
+      _scalpCullLogged = true;
+      console.log(...gyeolBoldArgs(['[3D·두피면] 얼굴이 불투명한 자리에서 <b>비켜섰습니다</b> — 삼각형 '
+        + (src.length/3) + ' → ' + (keep.length/3) + '개(버림 ' + dropped + ' · 앞면 정점 ' + nOpaque + '개)'
+        + '\n      볼록한 두개골 타원체는 <b>오목한 얼굴</b>(안와·콧대 옆·관자놀이)보다 앞에 서므로'
+        + ' 깊이 검사에서 이깁니다 — 그게 눈 위로 올라오던 살색 삼각형의 정체입니다.'
+        + ' 깊이로 겨루는 대신(오프셋을 키우면 정수리에서 가닥이 묻힙니다) 그 자리를 비웁니다.'
+        + '\n      페이드 구간(반투명 테두리)은 <b>남깁니다</b> — 거기는 두피면이 뒤를 받쳐야 배경이 안 비칩니다.'
+        + ' 되돌리기: SCALP_SKIN.keepOffFace=false']));
+    }
+  }catch(e){ console.warn('[3D·두피면] 얼굴 밑 삼각형 정리 실패(그대로 둡니다):', e && e.message); }
 }
 
 // 절차적 두상: 타원(스케일된 구)으로 두상 근사. getFaceMetrics()가 뽑아낸 실측
@@ -1056,6 +1368,37 @@ function loadImageAsync(src){
    "판때기" 진단에 필요한 것은 <b>얼마나 평평한가</b>가 아니라 <b>왜 평평한가</b>였다.
    zRange만 보면 원인이 ① 측면 실측이 굴곡을 덮어썼다 ② 굴곡 자체가 작다 중
    어느 쪽인지 못 가른다 — 그래서 그 둘을 각각 숫자로 남긴다. */
+/* ── 얼굴 경계 타원 — <b>단일 출처</b> (2026-09-14 3차) ──────────────────────
+   원래 이 계산은 buildRealFaceMesh <b>안에만</b> 있었다. 그런데 두피면도 같은
+   자를 봐야 한다 — "얼굴 사진이 불투명하게 덮고 있는 자리"를 알아야 그 위에
+   안 그릴 수 있기 때문이다(아래 SCALP_SKIN.keepOffFace 배너).
+   두 곳이 각자 같은 식을 적으면 한쪽만 고쳐지는 것이 이 저장소의 단골 실패라,
+   식은 여기 한 번만 둔다. 돌려주는 값은 <b>정규 이미지 좌표</b>(0~1)다.
+   ⚠ 산술은 옮기기 전과 한 글자도 다르지 않다. */
+const FACE_BOUND_FIT = {
+  on: true,
+  keepT:   1.22,  // 이 t까지 삼각형을 살린다(1.0=예전). 눈썹(t≈1.0)에 여유를 준다
+  fadeIn:  1.06,  // 여기까지는 <b>완전 불투명</b> — 눈썹이 절대 흐려지지 않게 1.0보다 크게
+  fadeOut: 1.22,  // 여기서 알파 0 — keepT와 같게 두면 살린 삼각형이 정확히 다 사라진다
+};
+function faceBoundEllipseNorm(lm){
+  if(!lm) return null;
+  const eyeCX = ((lm.features && lm.features.leftEye
+                   ? (lm.features.leftEye.minX + lm.features.leftEye.maxX)/2 : 0.5)
+               + (lm.features && lm.features.rightEye
+                   ? (lm.features.rightEye.minX + lm.features.rightEye.maxX)/2 : 0.5)) / 2;
+  const cx = lm.features ? eyeCX : 0.5;
+  const topY = (lm.browTopY != null ? lm.browTopY : 0.28) * 0.90;
+  const botY = (lm.chinY    != null ? lm.chinY    : 0.60) * 1.10;
+  return {
+    cx,
+    cy: (topY + botY) / 2,
+    ry: Math.max(0.05, (botY - topY) / 2 * 1.08),
+    rx: Math.max(0.05, Math.abs((lm.rEarX != null ? lm.rEarX : 0.78)
+                              - (lm.lEarX != null ? lm.lEarX : 0.22)) * 0.56 * 1.08),
+  };
+}
+
 /* 얼굴 z 보정 스위치. 최상위에 둔다 — 안쪽 함수들이 클로저로 보고, 검사도 본다. */
 const FACE_Z_FIX = { matchBaseline: true, trustWeighted: true };
 /* ── 측면 깊이 가중치 (2026-09-07) ────────────────────────────────────────
@@ -1266,14 +1609,10 @@ async function buildRealFaceMesh(faceMetrics){
   // ── 경계 타원(얼굴 중심~바깥) — 필터링과 블렌드 가중치 둘 다에 재사용 ──
   // 귀·관자놀이처럼 정면 사진에서 옆으로 많이 꺾인 부분은 원근 때문에 아주
   // 좁은 픽셀 폭에 눌려 찍히므로, 잘 찍힌 얼굴 중심부만 메쉬로 살린다.
-  const eyeCX = ((lm.features?.leftEye ? (lm.features.leftEye.minX+lm.features.leftEye.maxX)/2 : 0.5)
-               + (lm.features?.rightEye ? (lm.features.rightEye.minX+lm.features.rightEye.maxX)/2 : 0.5)) / 2;
-  const boundCX = lm.features ? eyeCX : 0.5;
-  const boundTopY = (lm.browTopY ?? 0.28) * 0.90;
-  const boundBotY = (lm.chinY ?? 0.60) * 1.10;
-  const boundCY = (boundTopY + boundBotY) / 2;
-  const boundRY = Math.max(0.05, (boundBotY - boundTopY) / 2 * 1.08);
-  const boundRX = Math.max(0.05, Math.abs((lm.rEarX ?? 0.78) - (lm.lEarX ?? 0.22)) * 0.56 * 1.08);
+  /* (2026-09-14 3차) 식은 faceBoundEllipseNorm 한 곳에만 둔다 — 두피면이
+     같은 자를 봐야 해서 꺼냈다. 값은 옮기기 전과 동일하다. */
+  const _fb = faceBoundEllipseNorm(lm) || { cx:0.5, cy:0.44, rx:0.31, ry:0.20 };
+  const boundCX = _fb.cx, boundCY = _fb.cy, boundRY = _fb.ry, boundRX = _fb.rx;
   function distSqFromBound(idx){
     const p = raw[idx];
     const dx = (p.x - boundCX) / boundRX, dy = (p.y - boundCY) / boundRY;
@@ -1324,12 +1663,9 @@ async function buildRealFaceMesh(faceMetrics){
        이 파일의 원칙을 깬다. 여기서 새로 생기는 것은 <b>삼각형 보존 범위와
        알파</b> 둘뿐이다.
      되돌리기: FACE_BOUND_FIT.on = false (산술까지 예전과 동일) */
-  const FACE_BOUND_FIT = {
-    on: true,
-    keepT:   1.22,  // 이 t까지 삼각형을 살린다(1.0=예전). 눈썹(t≈1.0)에 여유를 준다
-    fadeIn:  1.06,  // 여기까지는 <b>완전 불투명</b> — 눈썹이 절대 흐려지지 않게 1.0보다 크게
-    fadeOut: 1.22,  // 여기서 알파 0 — keepT와 같게 두면 살린 삼각형이 정확히 다 사라진다
-  };
+  /* (2026-09-14 3차) FACE_BOUND_FIT는 <b>최상위</b>로 옮겼다 — 두피면이
+     "얼굴이 불투명한 자리"를 알아야 해서(fadeIn을 그쪽에서도 읽는다).
+     값은 그대로다. 위 faceBoundEllipseNorm 옆에 있다. */
   function faceBoundT(idx){ return Math.sqrt(distSqFromBound(idx)); }
   /* 정점 알파 — fadeIn 이전 1, fadeOut 이후 0, 사이는 smoothstep(선형보다 테두리가
      덜 띠처럼 보인다). on=false면 항상 1이라 재질이 예전과 동일해진다. */
@@ -2155,6 +2491,22 @@ async function buildRealFaceMesh(faceMetrics){
   const canvas = document.createElement('canvas');
   canvas.width=dw; canvas.height=dh;
   canvas.getContext('2d').drawImage(img,0,0,dw,dh);
+  /* (2026-09-16) 머리카락 픽셀을 투명하게 — 위 FACE_HAIR_CUT 배너 */
+  let _hairCut = false;
+  if(FACE_HAIR_CUT.on && FACE_BOUND_FIT.on){
+    try{
+      const hc = state.hairCanvases && state.hairCanvases.front;
+      if(hc && hc.width > 0){
+        const cx2 = canvas.getContext('2d');
+        cx2.save();
+        cx2.globalCompositeOperation = 'destination-out';
+        if(FACE_HAIR_CUT.blurPx > 0) cx2.filter = 'blur(' + FACE_HAIR_CUT.blurPx + 'px)';
+        cx2.drawImage(hc, 0, 0, dw, dh);
+        cx2.restore();
+        _hairCut = true;
+      }
+    }catch(e){ console.warn('[3D·얼굴] 머리카락 오려내기 실패(원본 텍스처 그대로):', e && e.message); }
+  }
   const texture = new THREE.CanvasTexture(canvas);
   texture.needsUpdate = true;
 
@@ -2194,16 +2546,19 @@ async function buildRealFaceMesh(faceMetrics){
             '#include <dithering_fragment>',
             '#include <dithering_fragment>\n'
           + '\tif(vFaceAlpha < 0.02) discard;   // 완전히 사라진 띠는 깊이도 안 남긴다\n'
-          + '\tgl_FragColor.a *= vFaceAlpha;');
+          + '\tgl_FragColor.a *= vFaceAlpha;\n'
+          /* (2026-09-16) 오려낸 머리카락 자리도 깊이를 안 남긴다 — 안 그러면 뒤의 두피면이 가려진다 */
+          + '\tif(gl_FragColor.a < 0.03) discard;');
     };
     /* onBeforeCompile은 캐시 키에 안 들어가므로, 같은 형태의 재질과 프로그램이
        섞이지 않게 키를 따로 준다(three의 정석). */
-    mat.customProgramCacheKey = () => 'gyeolFaceEdgeFade';
+    mat.customProgramCacheKey = () => 'gyeolFaceEdgeFade2';
     mat.needsUpdate = true;
   }
 
   const mesh = new THREE.Mesh(geo, mat);
   mesh.name = 'realFaceMesh';
+  mesh.userData.hairCut = _hairCut;
   return mesh;
 }
 
