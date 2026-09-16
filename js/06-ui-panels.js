@@ -72,6 +72,7 @@ function selectStyle(id){
     return;
   }
   state.pendingSpecId = null;   // 다른 카드를 고르면 예약은 취소된다
+  resetFade();                  // (2026-09-16) 예전 형식 등록 스타일엔 페이드가 없다 — 남은 클리퍼를 끈다
 
   if(st.sections){
     // ── 커스텀 등록 스타일("현재 모델을 스타일로 등록하기"로 만든 것) ──
@@ -239,6 +240,7 @@ function updateSectionSummary(id){
 
 function resetSections(){
   SECTION_ORDER.forEach(id=>{ state.sections[id] = {...SECTIONS[id].defaults}; });
+  resetFade();   // (2026-09-16) 페이드도 기본값(OFF)으로 — 앞 스타일의 클리퍼가 남지 않게
   state.stylingByView = neutralStylingByView();
   bindStylingToCurrentView();
   state._globalCurl = 30;
@@ -1167,7 +1169,7 @@ function buildSpecFromCurrent(name){
   const R = (typeof headHeightRef === 'function') ? headHeightRef() : null;
   const fade = state.fade ? JSON.parse(JSON.stringify(state.fade)) : null;
   const discY = (R && fade && fade.enabled && fade.disc > 0) ? (R.yTop - (fade.disc/100) * R.H) : null;
-  const cut = {}, lenCm = {}, lenFallback = {};
+  const cut = {}, lenCm = {}, lenFallback = {}, clipperZone = {};
   /* 길이를 재는 동안 페이드는 끈다 — applyStyleSpec이 역산할 때와 같은 조건이어야
      재서 저장한 cm와 풀어서 나오는 cm가 같은 자다(페이드는 역산 뒤에 걸린다). */
   const fadeWas = state.fade ? state.fade.enabled : false;
@@ -1182,7 +1184,14 @@ function buildSpecFromCurrent(name){
       const aboveY = (discY != null && FADE_SOLVE_ABOVE_LINE[sec]) ? discY : undefined;
       const cm = measureSectionLenCm(sec, cur.length, undefined, aboveY);
       if(cm != null && isFinite(cm)){ lenCm[sec] = +cm.toFixed(2); report.push(sec + ' ' + cur.length + '→' + cm.toFixed(1) + 'cm'); }
-      else report.push(sec + ' ' + cur.length + '(못 잼 · ' + (aboveY != null ? '클리퍼 구역' : '가닥 없음') + ' → 슬라이더 폴백)');
+      else if(aboveY != null){
+        /* (2026-09-16) 라인 위에 가닥이 없다 = 이 섹션은 <b>클리퍼가 정한다</b>.
+           슬라이더 값은 이 손님 머리에 대한 상대값이라 다른 손님에게 뜻이 없다 —
+           applyStyleSpec이 가드 길이로 다시 푼다. */
+        clipperZone[sec] = true;
+        report.push(sec + ' ' + cur.length + '(못 잼 · 클리퍼 구역 → 다른 손님에겐 가드 길이로 역산)');
+      }
+      else report.push(sec + ' ' + cur.length + '(못 잼 · 가닥 없음 → 슬라이더 폴백)');
     }
   } finally {
     if(state.fade) state.fade.enabled = fadeWas;
@@ -1191,7 +1200,7 @@ function buildSpecFromCurrent(name){
     + ' | 페이드 ' + (fade && fade.enabled ? ('가드 ' + fade.guard + ' · 라인 ' + fade.disc + '% · 테이퍼 ' + fade.taper + '%') : '꺼짐')
     + ' — 다른 손님에게 걸면 이 cm로 다시 역산합니다.');
   return {
-    name, cut, lenCm, lenFallback, fade,
+    name, cut, lenCm, lenFallback, clipperZone, fade,
     stylingByView: JSON.parse(JSON.stringify(state.stylingByView || {})),
     styling: JSON.parse(JSON.stringify(state.styling || {})),
     globalCurl: state._globalCurl,

@@ -438,8 +438,49 @@ function applyStyleSpec(id){
   /* 이 스펙에 디스커넥션이 있으면, 페이드 섹션의 가위 목표는 <b>라인 위</b>에만
      해당한다(아래는 클리퍼가 정한다). 그 구분을 여기서 한 번 만들어 넘긴다. */
   const specDiscY = (sp.fade && sp.fade.disc > 0) ? (yTop - (sp.fade.disc/100) * H) : null;
+  /* ── 등록할 때 못 잰 섹션이 <b>통째로 빠져 있었다</b> (2026-09-16) ────────────
+     사용자: "스타일로 저장한 다음에 여자한테 걸었는데, fade는 먹혔는데 사이드헤어가 남네."
+     "man cut2"는 side·nape를 못 쟀다(남자 두상에선 라인 위 가닥이 8개 미만 = 클리퍼 구역).
+     그래서 lenCm에 두 섹션이 <b>없고</b>, 위 secIds는 lenCm·tipAt 키만 도니 두 섹션은
+     루프에 한 번도 안 들어왔다 — 아래 lenFallback 줄은 <b>죽은 코드</b>였다
+     (녹화 로그 [스타일스펙] 줄에 side·nape가 아예 안 찍힌 게 그 흔적이다).
+     결과: side 길이가 resetSections 기본값 50(= 손님 원래 길이 그대로)으로 남았고,
+     페이드는 뿌리가 라인 <b>아래</b>인 가닥만 민다(fadeCutLen). 여자 두상에서 라인
+     언저리·위에 난 side 가닥 한 줄이 원래 길이로 어깨까지 내려온 것이 화면의 그 커튼이다.
+     고침: 클리퍼 구역 섹션을 루프에 넣고, 목표를 <b>가드 길이(cm)</b>로 푼다 —
+     "라인 아래는 클리퍼"라는 등록 당시의 뜻을 새 손님 두상에 그대로 옮기는 것이다.
+     예전에 저장된 스타일(clipperZone 표시가 없는 것)은 같은 조건으로 여기서 판정한다. */
+  const clipperSecs = {};
+  const guardCm = (sp.fade && sp.fade.enabled && typeof FADE3D !== 'undefined')
+    ? Math.max(FADE3D.skinCm, Math.max(0, Math.min(8, sp.fade.guard || 0)) * FADE3D.guardInchStep) : null;
+  if(specDiscY != null && guardCm != null){
+    for(const s in (sp.lenFallback || {})){
+      if(!FADE_SOLVE_ABOVE_LINE[s]) continue;
+      if(sp.lenCm && sp.lenCm[s] != null) continue;
+      if(sp.tipAt && sp.tipAt[s] != null) continue;
+      if(sp.clipperZone && !sp.clipperZone[s]) continue;   // 표시가 있으면 표시를 믿는다
+      clipperSecs[s] = true;
+      if(secIds.indexOf(s) < 0) secIds.push(s);
+    }
+  }
+  /* 클리퍼도 가닥도 아닌데 폴백만 있는 섹션(가닥 없음) — 예전처럼 슬라이더를 돌려놓는다 */
+  for(const s in (sp.lenFallback || {})){
+    if(secIds.indexOf(s) >= 0 || !state.sections[s]) continue;
+    state.sections[s].length = sp.lenFallback[s];
+  }
+  rep.clipperCm = guardCm;
   for(const sec of secIds){
     if(!state.sections[sec]) continue;
+    if(clipperSecs[sec]){
+      /* 라인 위에 이 섹션 가닥이 있으면 그 가닥을 가드 길이로, 없으면 슬라이더를 바닥으로
+         (라인 아래는 어차피 fadeCutLen이 Math.min으로 민다 — 바닥으로 둬도 더 짧아지진 않는다). */
+      const vc = solveSectionLengthForCm(sec, guardCm, undefined, specDiscY);
+      state.sections[sec].length = (vc == null) ? 0 : vc;
+      rep.solved[sec] = null; rep.missY[sec] = null;
+      rep.unit[sec] = 'clipper';
+      (rep.clipperSolved || (rep.clipperSolved = {}))[sec] = state.sections[sec].length;
+      continue;
+    }
     const byCm = !!(sp.lenCm && sp.lenCm[sec] != null);
     const aboveY = (byCm && specDiscY != null && FADE_SOLVE_ABOVE_LINE[sec]) ? specDiscY : undefined;
     rep.unit[sec] = byCm ? 'cm' : 'tip';
@@ -515,7 +556,11 @@ function applyStyleSpec(id){
              + ((rep.missCm && rep.missCm[s] != null) ? '(' + (rep.missCm[s]>0?'+':'') + rep.missCm[s] + 'cm)' : '')).join(' ');
   console.log('[스타일스펙] ' + sp.name
     + ' · 길이 ' + Object.keys(rep.solved).map(s=>s+' '+(rep.solved[s] == null
-          ? (rep.unit && rep.unit[s] === 'clipper' ? '(클리퍼 구역 — 가위 목표 없음)' : '(가닥없음)')
+          ? (rep.unit && rep.unit[s] === 'clipper'
+              ? (rep.clipperSolved && rep.clipperSolved[s] != null
+                  ? '(클리퍼 구역 → 가드 ' + (rep.clipperCm*10).toFixed(1) + 'mm로 역산 · 길이 ' + rep.clipperSolved[s] + ')'
+                  : '(클리퍼 구역 — 가위 목표 없음)')
+              : '(가닥없음)')
           : rep.solved[s])
         + (rep.unit && rep.unit[s] === 'cm' ? '[cm목표 ' + sp.lenCm[s] + ']' : '')).join(' ')
     + ' · 오차(두상높이 대비) ' + missTxt);

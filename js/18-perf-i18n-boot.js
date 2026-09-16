@@ -692,6 +692,7 @@ function startNewCustomer(){
     state.sections[id] = {...SECTIONS[id].defaults};
   });
   state._globalCurl = 30;
+  if(typeof resetFade === 'function') resetFade();   // (2026-09-16) 새 손님 — 앞 손님 클리퍼를 물려주지 않는다
   document.querySelectorAll('.style-card').forEach(c=>c.classList.remove('selected'));
   document.getElementById('toAdjustBtn').disabled=true;
   ['style','adjust','result','model3d'].forEach(id=>{ const t=document.getElementById('nav-'+id); if(t) t.disabled=true; });

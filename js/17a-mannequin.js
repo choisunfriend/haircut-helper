@@ -1081,6 +1081,7 @@ function snapshotForSpec(){
   return {
     sections: JSON.parse(JSON.stringify(state.sections)),
     stylingByView: JSON.parse(JSON.stringify(state.stylingByView || neutralStylingByView())),
+    fade: state.fade ? JSON.parse(JSON.stringify(state.fade)) : null,   // (2026-09-16) 해제하면 클리퍼도 걸기 직전으로
   };
 }
 function clearStyleSpec(){
@@ -1090,6 +1091,7 @@ function clearStyleSpec(){
   if(s){
     state.sections = s.sections;
     state.stylingByView = s.stylingByView;
+    if(s.fade && state.fade) Object.assign(state.fade, s.fade);
   }
   if(typeof buildGyPanel === 'function') buildGyPanel();
   const tag = document.getElementById('adjustStyleTag');

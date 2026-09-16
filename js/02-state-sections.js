@@ -586,6 +586,8 @@ const state = {
   // (가드 번호당 1/8인치 — 업계 표준). enabled가 false면 완전히 무시되고
   // 기존 elevation/length 렌더링만 적용(하위 호환).
   fade: {
+    /* ⚠ (2026-09-16) 이 블록이 곧 FADE_DEFAULTS다(아래 resetFade가 여기서 떠 간다).
+       기본값을 두 곳에 적지 않는다 — 한쪽만 고쳐지는 그 실패다. */
     enabled: false,
     guard: 1,        // 0~8, 페이드 최하단(구레나룻/목선 끝) 길이
     height: 35,       // 0~100, 그 섹션 안에서 페이드가 몇 %까지 올라가는지(로우/미드/하이 페이드)
@@ -818,3 +820,20 @@ let listening = false;
 let segmenter = null;
 let currentScreen = 'capture';
 
+
+/* ── 페이드 기본값은 OFF — 그리고 <b>남지 않는다</b> (2026-09-16) ─────────────────
+   사용자: "남자 사진 걸자마자 no style로 했더니 바로 fade가 걸렸어."
+   state.fade의 기본값은 처음부터 enabled:false였다. 문제는 <b>한 번 켜진 뒤 아무도
+   끄지 않은 것</b>이다. applyStyleSpec이 폼파두르 스펙의 fade(가드2·라인21·테이퍼80)를
+   state.fade에 Object.assign 하는데, selectNoStyle·resetSections·새 손님 리셋·스펙
+   해제(clearStyleSpec) 어디에도 state.fade를 되돌리는 줄이 없었다. 그래서 앞 손님에게
+   걸었던 폼파두르의 클리퍼가 다음 손님의 "스타일 미적용"에 그대로 살아 있었고,
+   그 상태에서 등록한 "man cut2"에도 페이드가 딸려 들어갔다(녹화 로그의
+   [스타일등록·스펙] 페이드 가드 2 · 라인 21% · 테이퍼 80% — 사용자가 켠 적 없는 값).
+   기본값은 위 state.fade 리터럴 한 벌에서 떠 둔다 — 두 곳에 적으면 한쪽만 고쳐진다. */
+const FADE_DEFAULTS = Object.freeze(JSON.parse(JSON.stringify(state.fade)));
+function resetFade(){
+  if(!state.fade) state.fade = {};
+  for(const k in state.fade) if(!(k in FADE_DEFAULTS)) delete state.fade[k];
+  Object.assign(state.fade, FADE_DEFAULTS);   // 같은 객체를 유지한다(참조를 들고 있는 자리가 있어도 안전)
+}
