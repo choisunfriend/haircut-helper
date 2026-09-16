@@ -189,6 +189,20 @@ const FACE_SCALP_CONFORM = {
   maxInK: 0.30,       // 뒤로 밀 최대(c 대비) — 안와 깊이 정도
   frontMinZ: 0.08,    // 단위구 z가 이보다 작으면(옆 실루엣) 안 옮긴다
   frontFullZ: 0.35,   // 이 z부터 온전히 옮긴다
+  /* ── (2026-09-16 2차) 눈·입가에 두피면이 <b>면으로</b> 비친다 ──────────────────
+     사용자(682% 확대): "눈이랑 입술 쯤에 메움이 발생한다."
+     비친 조각의 가장자리가 <b>곧은 선</b>이었다 — 텍스처 오림(흐린 경계)이 아니라
+     두피면 <b>삼각형</b>이다. 정점은 전부 얼굴면−eps 뒤에 뒀지만 정점 간격이
+     약 0.9cm라, 그 사이 평평한 삼각형이 안와·입꼬리·콧방울 옆처럼 <b>그보다 좁게
+     오목한</b> 자리에서 얼굴을 뚫고 나온다(로그 잔차 최소 −1.79cm가 그 자리들).
+     고침 셋:
+       · 정점 목표를 그 점의 z가 아니라 <b>주변(삼각형이 덮는 폭)의 최소 z</b>로
+       · 얼굴 안쪽은 테두리에서 멀수록 coreBackK만큼 <b>더 뒤로</b> — 불투명 얼굴 밑은
+         붙어 있을 필요가 없다. 붙어야 하는 곳은 테두리·페이드뿐이다
+       · 구 분할 48×36 → 96×72(정점 간격 절반) */
+  minRadiusK: 1.3,    // 주변 최소를 볼 반경(두피면 정점 간격 대비)
+  coreBackK: 0.05,    // 얼굴 안쪽에서 추가로 물릴 거리(c 대비)
+  coreRampK: 0.10,    // 테두리에서 이 거리(a 대비)만큼 들어가면 coreBack이 다 걸린다
 };
 let _conformLogged = false;
 function conformScalpToFace(headGroup, faceMesh){
@@ -246,6 +260,29 @@ function conformScalpToFace(headGroup, faceMesh){
         }
       }
     }
+    // ── (2차) 주변 최소 z — 두피면 삼각형 폭 안의 가장 오목한 얼굴면 ──
+    const segs = head.geometry.parameters || {};
+    const nW = segs.widthSegments || 48, nH = segs.heightSegments || 36;
+    const vSpacing = Math.max(2*Math.PI*A/nW, Math.PI*B/nH);
+    const rad = Math.max(1, Math.ceil(vSpacing * C.minRadiusK / Math.min(cw, ch)));
+    const zMin = new Float32Array(N).fill(Infinity), tmpMin = new Float32Array(N).fill(Infinity);
+    for(let gy=0; gy<GY; gy++) for(let gx=0; gx<GX; gx++){      // 가로
+      let m = Infinity;
+      for(let d=-rad; d<=rad; d++){ const xx = gx+d; if(xx<0||xx>=GX) continue; const v = zF[gy*GX+xx]; if(v !== -Infinity && v < m) m = v; }
+      tmpMin[gy*GX+gx] = m;
+    }
+    for(let gy=0; gy<GY; gy++) for(let gx=0; gx<GX; gx++){      // 세로
+      let m = Infinity;
+      for(let d=-rad; d<=rad; d++){ const yy = gy+d; if(yy<0||yy>=GY) continue; const v = tmpMin[yy*GX+gx]; if(v < m) m = v; }
+      zMin[gy*GX+gx] = m;
+    }
+    // ── (2차) 얼굴 안쪽 거리(테두리에서 몇 칸 들어왔나) ──
+    const inD = new Float32Array(N);
+    { const q = []; for(let k=0;k<N;k++){ if(zF[k] === -Infinity){ inD[k] = 0; q.push(k); } else inD[k] = Infinity; }
+      for(let qi=0; qi<q.length; qi++){ const k = q[qi], gx = k % GX, gy = (k/GX)|0, nd = inD[k]+1;
+        const nb = [gx>0?k-1:-1, gx<GX-1?k+1:-1, gy>0?k-GX:-1, gy<GY-1?k+GX:-1];
+        for(const j of nb){ if(j>=0 && inD[j] > nd){ inD[j] = nd; q.push(j); } } } }
+    const rampCells = Math.max(1, A*C.coreRampK / Math.min(cw, ch));
     // ── 잔차 = (얼굴면 − eps) − 두개골 앞면 ──
     const eps = Cz * C.epsK;
     const res = new Float32Array(N), has = new Uint8Array(N), dist = new Float32Array(N).fill(Infinity);
@@ -258,7 +295,10 @@ function conformScalpToFace(headGroup, faceMesh){
         const px = x0 + (gx+0.5)*cw, xl = px/A;
         const u = xl*xl + yl*yl;
         if(u >= 0.995) continue;                   // 두개골 실루엣 밖 — 붙일 앞면이 없다
-        const r = Math.max(-Cz*C.maxInK, Math.min(Cz*C.maxOutK, (zF[k] - eps) - Cz*Math.sqrt(1-u)));
+        const tIn = Math.min(1, inD[k] / rampCells);
+        const back = Cz * C.coreBackK * tIn*tIn*(3-2*tIn);
+        const zT = Math.min(zF[k], isFinite(zMin[k]) ? zMin[k] : zF[k]) - eps - back;
+        const r = Math.max(-Cz*(C.maxInK + C.coreBackK), Math.min(Cz*C.maxOutK, zT - Cz*Math.sqrt(1-u)));
         res[k] = r; has[k] = 1; dist[k] = 0; nFace++;
         if(r < rMin) rMin = r; if(r > rMax) rMax = r;
       }
@@ -306,13 +346,14 @@ function conformScalpToFace(headGroup, faceMesh){
     hp.needsUpdate = true;
     head.geometry.computeVertexNormals();
     head.geometry.computeBoundingSphere();
-    const diag = { nFace, moved, rMin, rMax, maxAbs, GX, GY };
+    const diag = { nFace, moved, rMin, rMax, maxAbs, GX, GY, rad };
     if(!_conformLogged){
       _conformLogged = true;
       const cm = (typeof modelCmPerUnit === 'function') ? modelCmPerUnit() : null;
       const f = v => v.toFixed(4) + (cm ? '(' + (v*cm).toFixed(2) + 'cm)' : '');
       console.log(...gyeolBoldArgs(['[3D·두상면↔얼굴최종면] 얼굴 격자 ' + nFace + '칸 · 잔차 <b>' + f(rMin) + ' ~ ' + f(rMax) + '</b>'
         + ' (+ = 얼굴이 두개골보다 앞) · 옮긴 두피면 정점 <b>' + moved + '</b>/' + hp.count + ' · 최대 ' + f(maxAbs)
+        + ' · 주변최소 반경 ' + rad + '칸 · 안쪽 추가 후퇴 ' + C.coreBackK + 'c'
         + '\n      기준면끼리가 아니라 <b>굴곡·측면보정까지 들어간 얼굴</b>에 두피면을 붙였습니다.'
         + ' 잔차가 상한(앞 ' + C.maxOutK + 'c · 뒤 ' + C.maxInK + 'c)에 닿았으면 그 자리는 덜 붙은 것입니다.'
         + '\n      되돌리기: FACE_SCALP_CONFORM.on=false']));
@@ -1251,7 +1292,7 @@ function buildProceduralHead(skinColorCss){ // faceMetrics 인자 제거 — 내
             ? 1
             : ((HAIR_SCALP3D.applyToHead && HAIR_SCALP3D.drawInset > 0)
                 ? HAIR_SCALP3D.drawInset : 1);
-  const headGeo = new THREE.SphereGeometry(1, 48, 36);
+  const headGeo = new THREE.SphereGeometry(1, 96, 72);   // (2026-09-16 2차) 48×36 → 96×72 — 오목한 얼굴 밑에서 삼각형이 뚫고 나오지 않게(FACE_SCALP_CONFORM)
   paintScalpFromPhoto(headGeo, skull, kIn, headMat);
   const headMesh = new THREE.Mesh(headGeo, headMat);
   headMesh.scale.set(skull.a*kIn, skull.b*kIn, skull.c*kIn);
@@ -2503,6 +2544,22 @@ async function buildRealFaceMesh(faceMetrics){
         if(FACE_HAIR_CUT.blurPx > 0) cx2.filter = 'blur(' + FACE_HAIR_CUT.blurPx + 'px)';
         cx2.drawImage(hc, 0, 0, dw, dh);
         cx2.restore();
+        /* (2차) 눈·눈썹·입은 오리지 않는다 — 세그 가드가 빠뜨린 한 픽셀이라도 거기 뚫리면
+           얼굴 한가운데 살이 비친다. 원본을 그 타원에만 다시 얹는다. */
+        const F = lm && lm.features;
+        if(F){
+          cx2.save();
+          cx2.beginPath();
+          for(const key of ['leftBrow','rightBrow','leftEye','rightEye','mouth']){
+            const bb = F[key]; if(!bb) continue;
+            const ex = (bb.minX+bb.maxX)/2*dw, ey = (bb.minY+bb.maxY)/2*dh;
+            const rx = Math.max(4, (bb.maxX-bb.minX)/2*dw*1.6), ry = Math.max(4, (bb.maxY-bb.minY)/2*dh*2.2);
+            cx2.moveTo(ex+rx, ey); cx2.ellipse(ex, ey, rx, ry, 0, 0, Math.PI*2);
+          }
+          cx2.clip();
+          cx2.drawImage(img, 0, 0, dw, dh);
+          cx2.restore();
+        }
         _hairCut = true;
       }
     }catch(e){ console.warn('[3D·얼굴] 머리카락 오려내기 실패(원본 텍스처 그대로):', e && e.message); }
