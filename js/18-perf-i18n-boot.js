@@ -808,7 +808,8 @@ const I18N = {
   '그대로 계세요 — 자동으로 찍습니다':'Hold still — shooting automatically',
   '정면':'Front', '좌측':'Left', '우측':'Right', '후면':'Back',
   '재촬영':'Retake', '업로드':'Upload', '다음→':'Next →', '← 촬영':'← Capture',
-  '조정하기 →':'Adjust →', '← 스타일':'← Style', '결과 보기 →':'View result →',
+  '조정하기 →':'Adjust →', '🗑 삭제':'🗑 Delete', '내가 등록한 스타일만 삭제할 수 있어요':'Only styles you saved can be deleted',
+  '이 스타일을 삭제할까요?':'Delete this style?', '스타일을 삭제했어요':'style deleted', '← 스타일':'← Style', '결과 보기 →':'View result →',
   '← 조정':'← Adjust', '3D로 보기 →':'View in 3D →', '← 결과':'← Result', '새로 시작':'Start over',
   /* (2026-08-29) 실사 생성 관련 항목 일괄 삭제 — 그 화면과 그 코드가 없어졌다.
      '브라우저 저장소를 쓸 수 없어요.'는 여기 있었지만 커스텀 스타일 저장도

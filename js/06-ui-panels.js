@@ -35,6 +35,40 @@ function buildStyleGrid(){
       <div class="tags">${st.tags}</div>`;
     grid.appendChild(card);
   });
+  syncStyleDeleteBtn();
+}
+/* ── 등록 스타일 삭제 (2026-09-16) ──────────────────────────────────────────
+   사용자: "style 단계에 delete 버튼을 하나 만들어서 스타일 만든 거 중에 필요없는 거
+   삭제할 수 있도록 해줘."
+   · 지울 수 있는 것은 <b>isCustom</b>(★ 현재 모델을 스타일로 등록하기로 만든 것)뿐이다.
+     프리셋은 코드(STYLES/STYLE_SPECS)에 있어 지워도 새로고침하면 돌아오고, 스펙 버튼
+     (조정 화면 모드바)이 같은 id를 가리키므로 지우면 그쪽이 깨진다.
+   · 저장소는 STYLES에서 isCustom만 골라 통째로 다시 쓴다(saveCustomStylesToStorage) —
+     배열에서 빼고 저장하면 localStorage에서도 같이 빠진다. 출처가 하나라 따로 지울 곳이 없다.
+   · 지운 카드가 선택돼 있었으면 선택·스펙 예약을 같이 푼다. 안 풀면 pendingSpecId가
+     없는 스펙을 가리킨 채 조정 화면으로 넘어가 getStyleSpec이 null을 받는다. */
+function syncStyleDeleteBtn(){
+  const btn = document.getElementById('deleteStyleBtn');
+  if(!btn) return;
+  const st = state.selectedStyle;
+  btn.disabled = !(st && st.isCustom);
+}
+function deleteSelectedStyle(){
+  const st = state.selectedStyle;
+  if(!st || !st.isCustom){ syncStyleDeleteBtn(); return; }
+  if(!confirm(tUI('이 스타일을 삭제할까요?') + '\n"' + st.name + '"')) return;
+  const idx = STYLES.findIndex(s => s.id === st.id);
+  if(idx < 0){ syncStyleDeleteBtn(); return; }
+  STYLES.splice(idx, 1);
+  saveCustomStylesToStorage();
+  if(state.pendingSpecId === st.specId || state.pendingSpecId === st.id) state.pendingSpecId = null;
+  state.selectedStyle = null;
+  const toAdj = document.getElementById('toAdjustBtn');
+  if(toAdj) toAdj.disabled = true;
+  buildStyleGrid();              // 카드가 사라지고 버튼도 다시 꺼진다
+  console.log('[스타일삭제] "' + st.name + '" (' + st.id + ') — 남은 등록 스타일 '
+    + STYLES.filter(s => s.isCustom).length + '개');
+  showToast(`"${st.name}" ` + tUI('스타일을 삭제했어요'));
 }
 function styleIconSVG(st){
   let s=''; const n=14;
@@ -48,6 +82,7 @@ function styleIconSVG(st){
 }
 function selectStyle(id){
   state.selectedStyle=STYLES.find(s=>s.id===id);
+  syncStyleDeleteBtn();   // (2026-09-16) 등록 스타일일 때만 삭제 버튼이 켜진다
   document.querySelectorAll('.style-card').forEach(c=>c.classList.remove('selected'));
   document.getElementById('style-'+id).classList.add('selected');
   document.getElementById('toAdjustBtn').disabled=false;
@@ -147,6 +182,7 @@ function selectStyle(id){
    ③까지 해야 진짜 "마네킹 상태"가 된다. */
 function selectNoStyle(){
   state.selectedStyle = null;
+  syncStyleDeleteBtn();
   state.pendingSpecId = null;   // (2026-08-29) 스펙 카드 예약도 취소
   document.querySelectorAll('.style-card').forEach(c=>c.classList.remove('selected'));
   const noneCard = document.getElementById('style-none');
