@@ -1897,17 +1897,22 @@ function getHoleFillCanvas(angle, baseC, maskInf){
   const cached = state.baseFillCanvases && state.baseFillCanvases[angle];
   /* (2026-09-16) 서명에 두개골 실루엣(viewCal)을 넣는다 — 모델이 메움보다 늦게 서므로
      안 넣으면 타원으로 구운 첫 메움이 끝까지 남는다 */
-  const sig = skullClipSig(angle);
+  /* (2026-09-16) 이마 표본(_skinGraft)의 유무도 서명에 넣는다. 실기기(남성): 후면이
+     정면보다 <b>먼저</b> 구워져 "[전면이식] back: 이마 표본 없음 → 단색 85%"로 캐시됐고,
+     정면이 표본을 뜬 뒤에도 그 단색 메움이 끝까지 남았다. */
+  const sig = skullClipSig(angle) + '|graft:' + (_skinGraft ? (_skinGraft.src || 'y') : 'none');
   if(cached && cached._src === baseC && cached._skullSig === sig) return cached;
   if(cached && cached._src === baseC && cached._skullSig !== sig){
     delete _skullClipLogged[angle];
+    delete _facelessLogged[angle]; delete _graftLogged[angle];
     try{ baseC._cleanBase = null; }catch(e){}
   }
   let c = null;
   try{
     c = buildHoleFillCanvas(baseC, maskInf && maskInf.scalpColor, headEllipseFor(angle), angle, maskInf);
   }catch(e){ console.warn('구멍 메움 배경 생성 실패:', angle, e); }
-  if(c){ c._src = baseC; c._skullSig = sig; if(state.baseFillCanvases) state.baseFillCanvases[angle] = c; }
+  if(c){ c._src = baseC; c._skullSig = skullClipSig(angle) + '|graft:' + (_skinGraft ? (_skinGraft.src || 'y') : 'none');   // 굽는 중에 이 뷰가 표본을 세웠으면 그 뒤 서명으로(헛 재굽기 방지)
+      if(state.baseFillCanvases) state.baseFillCanvases[angle] = c; }
   return c;
 }
 

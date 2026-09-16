@@ -180,12 +180,36 @@ function faceRulerCmPerUnit(fm){
      ③ 앞면(z>0) 정점만, 그리고 옆 실루엣 쪽(z가 작을수록)은 약하게 — 두상 윤곽을 안 비튼다
    지우지 않으므로 얼굴의 구멍·페이드·오려낸 자리 뒤에는 늘 같은 깊이의 살이 있다.
    되돌리기: FACE_SCALP_CONFORM.on = false */
+/* ══════════════════════════════════════════════════════════════════
+   옆얼굴이 타원처럼 불룩하다 — 얼굴 기준면의 <b>세로</b> 곡률 (2026-09-16)
+   ─────────────────────────────────────────────────────────────────
+   사용자: "옆에서 안면을 보면 사람얼굴같지 않고 타원처럼 불룩하게 앞으로 나왔어."
+   실기기 로그 [얼굴 z·항별](남성): 미간 기준 0.474 · 턱 기준 <b>0.224</b> — 기준면(두개골
+   타원체)만으로 턱이 미간보다 0.25단위(≈4.8cm) 뒤로 물러난다. 거기에 굴곡이 턱 −1.1cm를
+   더 얹는다. 측면 실측 기여 정점은 0개(yaw 28°/−31°)라 이걸 되잡아 줄 항이 없다.
+   그래서 옆에서 보면 이마→코→턱이 <b>한 호</b>로 휘고 가운데가 불룩하다.
+   사람 옆얼굴은 미간~턱이 거의 수직선이고(부드러운 턱끝이 미간선에서 1~2cm 뒤),
+   코·입술이 그 선에서 튀어나온다 — 호가 아니다.
+   고침: 기준면을 계산할 때 <b>눈높이 아래</b>의 세로 좌표를 flatBelowEye배로 눌러 넣는다
+   (= 그 아래 타원이 flatBelowEye배 느리게 휜다). 눈 위(이마·이음매)는 한 점도 안 바뀐다 —
+   이마이음매·자 맞춤 진단은 그대로다. 코·입술·턱의 모양은 MediaPipe 굴곡이 그대로 준다.
+   0.5면 남성 로그 기준 턱 기준면 0.224 → 약 0.43(미간선에서 ≈0.8cm 뒤, 굴곡 합쳐 ≈1.9cm).
+   두피면은 FACE_SCALP_CONFORM이 이 최종면을 따라가므로 따로 손댈 것이 없다.
+   ⚠ 측면 실측 정점(측면이 45° 넘게 찍힌 손님)도 같은 양만큼 앞으로 온다 — 그 실측은 지금
+   뺨 실루엣만 보고 턱·코선은 못 본다(로그 경고 그대로)라 이번엔 일관성을 택했다.
+   되돌리기: FACE_PROFILE_BASE.on = false */
+const FACE_PROFILE_BASE = { on: true, flatBelowEye: 0.5 };
+
 const FACE_SCALP_CONFORM = {
   on: true,
   grid: 128,          // 얼굴 bbox 가로 칸 수(세로는 비율대로)
   epsK: 0.006,        // 얼굴면 뒤로 물리는 거리(두개골 깊이 c 대비) — polygonOffset과 겹쳐 z-fighting 방지
   falloffK: 0.30,     // 얼굴 밖으로 잔차를 끌고 가는 거리(두개골 폭 a 대비)
   maxOutK: 0.10,      // 앞으로 끌어낼 최대(c 대비) — 넘으면 헤어라인 가닥 뿌리가 묻힌다
+  /* (2026-09-16) 눈높이(두개골 중심 y) <b>아래</b>는 뿌리가 없으니 더 끌어낸다. FACE_PROFILE_BASE가
+     턱을 미간선 가까이 세우면서 턱선에서 얼굴이 두개골보다 최대 ≈4cm 앞에 서게 됐다 —
+     0.10c(≈0.9cm)에서 멈추면 옆에서 턱 테두리 뒤가 비친다. */
+  maxOutLowK: 0.45,
   maxInK: 0.30,       // 뒤로 밀 최대(c 대비) — 안와 깊이 정도
   frontMinZ: 0.08,    // 단위구 z가 이보다 작으면(옆 실루엣) 안 옮긴다
   frontFullZ: 0.35,   // 이 z부터 온전히 옮긴다
@@ -298,7 +322,8 @@ function conformScalpToFace(headGroup, faceMesh){
         const tIn = Math.min(1, inD[k] / rampCells);
         const back = Cz * C.coreBackK * tIn*tIn*(3-2*tIn);
         const zT = Math.min(zF[k], isFinite(zMin[k]) ? zMin[k] : zF[k]) - eps - back;
-        const r = Math.max(-Cz*(C.maxInK + C.coreBackK), Math.min(Cz*C.maxOutK, zT - Cz*Math.sqrt(1-u)));
+        const outCap = Cz * ((py < HY && C.maxOutLowK != null) ? C.maxOutLowK : C.maxOutK);
+        const r = Math.max(-Cz*(C.maxInK + C.coreBackK), Math.min(outCap, zT - Cz*Math.sqrt(1-u)));
         res[k] = r; has[k] = 1; dist[k] = 0; nFace++;
         if(r < rMin) rMin = r; if(r > rMax) rMax = r;
       }
@@ -355,7 +380,7 @@ function conformScalpToFace(headGroup, faceMesh){
         + ' (+ = 얼굴이 두개골보다 앞) · 옮긴 두피면 정점 <b>' + moved + '</b>/' + hp.count + ' · 최대 ' + f(maxAbs)
         + ' · 주변최소 반경 ' + rad + '칸 · 안쪽 추가 후퇴 ' + C.coreBackK + 'c'
         + '\n      기준면끼리가 아니라 <b>굴곡·측면보정까지 들어간 얼굴</b>에 두피면을 붙였습니다.'
-        + ' 잔차가 상한(앞 ' + C.maxOutK + 'c · 뒤 ' + C.maxInK + 'c)에 닿았으면 그 자리는 덜 붙은 것입니다.'
+        + ' 잔차가 상한(앞 ' + C.maxOutK + 'c · 눈 아래 앞 ' + C.maxOutLowK + 'c · 뒤 ' + C.maxInK + 'c)에 닿았으면 그 자리는 덜 붙은 것입니다.'
         + '\n      되돌리기: FACE_SCALP_CONFORM.on=false']));
     }
     return diag;
@@ -1594,10 +1619,19 @@ async function buildRealFaceMesh(faceMetrics){
     const s = Math.min(1, Math.max(0, (FACE_RULER_FIT.zeroFrac - d) / den));
     return s*s*(3 - 2*s);                          // smoothstep — C¹이라 이음선이 안 생긴다
   }
+  /* 눈높이(메쉬 로컬 y) — FACE_PROFILE_BASE가 이 아래만 편다 */
+  const _eyeYLocalForProfile = (lm && lm.eyeY != null && projector) ? (projector.toMeshY(lm.eyeY) - 0.15) : null;
+  function faceProfileY(yLocal){
+    const P = FACE_PROFILE_BASE;
+    if(!P.on || _eyeYLocalForProfile == null || yLocal >= _eyeYLocalForProfile) return yLocal;
+    return _eyeYLocalForProfile + (yLocal - _eyeYLocalForProfile) * P.flatBelowEye;
+  }
   /* 얼굴 <b>기준면 전용</b> 자. 반환 단위는 ellipsoidZ와 같다(ELL_C 기준) — 밖에서
      ×FACE_Z_TO_SKULL 하면 정확히 skull.c·√(1−(x/skull.a)²−(y/skull.b)²)가 된다.
      두개골 면과 <b>같은 식·같은 자</b>이므로 기준면끼리의 틈은 항등적으로 0이다. */
   function faceBaseZLocal(localX, yLocal){
+    /* (2026-09-16) 눈 아래는 세로 곡률을 편다 — 위 FACE_PROFILE_BASE 배너 */
+    yLocal = faceProfileY(yLocal);
     const w = faceRulerBlend(yLocal);
     if(w <= 0) return ellipsoidZ(localX, yLocal);   // 예전 그대로
     const t2 = (localX/_rulerSk.a)*(localX/_rulerSk.a) + (yLocal/_rulerSk.b)*(yLocal/_rulerSk.b);
@@ -2488,6 +2522,20 @@ async function buildRealFaceMesh(faceMetrics){
     FACE_BUILD.reliefGain = reliefGain;
     FACE_BUILD.reliefCm   = (_reliefCmBefore != null) ? _reliefCmBefore * reliefGain : null;
     try{ FACE_BUILD.cmPerUnit = faceRulerCmPerUnit(faceMetrics).x; }catch(e){}
+  if(FACE_PROFILE_BASE.on && _eyeYLocalForProfile != null){
+    const _chinYL = (lm && lm.chinY != null) ? projector.toMeshY(lm.chinY) - 0.15 : null;
+    if(_chinYL != null){
+      const before = ellipsoidZ(0, _chinYL) * FACE_Z_TO_SKULL;
+      const after = faceBaseZLocal(0, _chinYL) * FACE_Z_TO_SKULL;
+      const glab = faceBaseZLocal(0, _eyeYLocalForProfile) * FACE_Z_TO_SKULL;
+      const cm = (typeof modelCmPerUnit === 'function') ? modelCmPerUnit() : null;
+      const f = v => v.toFixed(3) + (cm ? '(' + (v*cm).toFixed(1) + 'cm)' : '');
+      console.log('[얼굴 옆선·기준면] 눈높이 아래 세로 곡률 ×' + FACE_PROFILE_BASE.flatBelowEye
+        + ' · 턱 기준면 ' + before.toFixed(3) + ' → ' + after.toFixed(3)
+        + ' · 눈높이선에서 턱까지 물러남 ' + f(Math.max(0, glab - before)) + ' → ' + f(Math.max(0, glab - after))
+        + ' (굴곡 제외) · 되돌리기 FACE_PROFILE_BASE.on=false');
+    }
+  }
     console.log(`[얼굴 입체감] z범위=${(zMax-zMin).toFixed(3)} (min${zMin.toFixed(3)}~max${zMax.toFixed(3)}) | 코끝=${zAt(1)} 턱=${zAt(152)} 이마=${zAt(10)}`);
     console.log(`[얼굴 측면보정] 전체정점 실측=${USE_FULL_PROFILE_DEPTH ? '켜짐' : '꺼짐(3앵커만)'} | 측면 실측 기여 정점=${_fullProfileHitCount||0}개`);
     /* ── [얼굴 z·항별] 세 항을 따로 찍는다 (2026-08-18 k-4) ─────────────────

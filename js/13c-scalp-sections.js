@@ -175,6 +175,14 @@ const HAIR_OVERLAP = {
      아니라 <b>모델 절반이 비어 있다</b>는 뜻이고, 그건 복제로 덮을 문제가 아니라
      리프트·포즈를 봐야 하는 문제다(로그에 남긴다). */
   voidMaxFrac: 0.25,
+  /* ── 안전레일 예산을 <b>극각 띠별로 나눠</b> 쓴다 (2026-09-16) ─────────────────
+     실기기(남성): [3D·겹침] 안전레일(25%) 도달·중단 · 뿌리 격자 후면 phi 1.55~1.65 채움 43%
+     → 1.65~1.75 4% → 1.75~2.35 <b>0%</b>, 옆도 0%. 예산 총량이 모자랐던 게 아니라
+     <b>줄 서는 순서</b>였다 — 빈 셀은 기존 가닥에서 가까운 순, 보태기는 셀 번호(정수리부터)
+     순이라, 위쪽 띠가 예산을 다 먹고 목덜미 띠는 차례가 오기 전에 끝났다.
+     고침: 모자란 양이 레일보다 크면 띠마다 <b>모자란 비율만큼</b> 예산을 떼어 준다.
+     총량(voidMaxFrac)은 그대로 — 새 상수 없음. 되돌리기: HAIR_OVERLAP.bandFair = false */
+  bandFair: true,
   fillJitter: 0.9,     // 셀 안에서 뿌리를 흔드는 폭(셀 크기 대비) — 1이면 셀 전체
 };
 
@@ -661,12 +669,19 @@ function pruneOverlappedRoots(strands, rootField, hullW, hullD, bucketOfY, CY, b
     }
     voids.sort((p,q)=> p[0] - q[0]);
     let budget = Math.round(strands.length * O.voidMaxFrac);
+    const voidBand = O.bandFair ? bandFairShares(voids.map(v=>[(v[1]/NT)|0, v[2]]), budget) : null;
     for(const v of voids){
       if(budget <= 0){ voidCapped = true; break; }
+      if(voidBand){
+        const bi = (v[1]/NT)|0;
+        if(voidBand.get(bi) <= 0){ voidCapped = true; continue; }
+      }
       /* (2026-08-18) 예산은 <b>실제로 밀어 넣은 몫</b>만 깎는다. 예전엔 잘리기 전
          목표(v[2])를 뺐다 — 마지막 셀에서 예산을 이중으로 소모해, 아직 여유가
          있는데도 안전레일이 한 셀 일찍 걸렸다. */
-      const give = Math.min(v[2], budget);
+      let give = Math.min(v[2], budget);
+      if(voidBand){ const bi = (v[1]/NT)|0; give = Math.min(give, voidBand.get(bi)); voidBand.set(bi, voidBand.get(bi) - give); }
+      if(give <= 0) continue;
       shortCells.push([v[1], give, []]);
       budget -= give; voidCells++;
     }
@@ -681,6 +696,9 @@ function pruneOverlappedRoots(strands, rootField, hullW, hullD, bucketOfY, CY, b
   let added = 0, filledCells = 0, emptyCells = 0, clipDropped = 0, toppedUpCells = 0;
   /* 보태기 전용 예산 — 빈 셀 채움과 같은 비율 상수를 쓴다(지어낸 상수 없음) */
   let topUpBudget = Math.round(strands.length * O.voidMaxFrac), topUpCapped = false;
+  const topUpBand = (O.bandFair && O.fill && shortCells.length)
+    ? bandFairShares(shortCells.map(([ci, target, arr])=>[(ci/NT)|0, Math.max(0, target - arr.length)]), topUpBudget)
+    : null;
   const addView = {};
   if(O.fill && shortCells.length){
     const ringOf = (ci)=>{                                  // 이웃 셀에서 원본 빌리기
@@ -726,9 +744,13 @@ function pruneOverlappedRoots(strands, rootField, hullW, hullD, bucketOfY, CY, b
           /* 안전 레일 — 빈 셀 채움과 <b>같은 비율</b>(voidMaxFrac)을 쓴다. 새 상수를
              만들지 않는다. 여기에 걸린다는 건 성근 셀이 모델 전체에 퍼져 있다는
              뜻이고, 그건 이 단계가 아니라 리프트·뷰 품질에서 볼 문제다. */
-          const room = Math.min(target, own + topUpBudget);
+          const bi = (ci/NT)|0;
+          const bandLeft = topUpBand ? topUpBand.get(bi) : Infinity;
+          const room = Math.min(target, own + topUpBudget, own + Math.max(0, bandLeft));
+          if(room < target) topUpCapped = true;
           if(room > cap){
             topUpBudget -= (room - cap);
+            if(topUpBand) topUpBand.set(bi, bandLeft - (room - cap));
             src = src.concat(lent); cap = room; toppedUpCells++;
             if(cap < target) topUpCapped = true;
           }
@@ -2063,3 +2085,17 @@ function buildHairStrandsFromPaths(){
   return total > 0 ? group : null;
 }
 
+/* 띠별 예산 — items: [[띠번호, 필요량], ...]. 필요 총량이 예산 이하면 제한 없음(Infinity).
+   넘으면 띠마다 필요 비율만큼 나눈다(내림 뒤 남는 몫은 필요가 큰 띠부터 1씩). (2026-09-16 bandFair) */
+function bandFairShares(items, total){
+  const need = new Map();
+  for(const [b, n] of items) if(n > 0) need.set(b, (need.get(b)||0) + n);
+  let sum = 0; for(const v of need.values()) sum += v;
+  const out = new Map();
+  if(sum <= total){ for(const b of need.keys()) out.set(b, Infinity); return out; }
+  let used = 0;
+  for(const [b, v] of need){ const g = Math.floor(total * v / sum); out.set(b, g); used += g; }
+  const order = [...need.entries()].sort((p,q)=> q[1]-p[1]);
+  for(let k=0; used < total && order.length; k=(k+1)%order.length){ const b = order[k][0]; out.set(b, out.get(b)+1); used++; }
+  return out;
+}

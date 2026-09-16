@@ -661,6 +661,7 @@ function startNewCustomer(){
   state.hair3D=null; state.hair3Dneutral=null; // (11차) 3D 모델 캐시도 새 고객마다 무효화
   state._model3DCrownY = null;                 // (2026-09-09) 두신 자도 고객마다 다시 잰다
   if(typeof resetScalpSkinSample === 'function') resetScalpSkinSample(); // 두피색 픽셀 표본
+  if(typeof HAIR_IDENTITY !== 'undefined') HAIR_IDENTITY._refSkinCss = null; // (2026-09-16) 숱 판정 빌림 살색도 손님마다
   if(typeof combClear === 'function') combClear();      // (#5) 빗질도 고객마다 초기화
   state.hairField3D=null; // (2026-08-01) 3D 결 필드도 사람이 바뀌면 통째로 무효
   state.hairOcc3D=null;   // (2026-08-01) 3D 점유 필드도 마찬가지

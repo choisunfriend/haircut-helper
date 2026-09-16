@@ -164,6 +164,18 @@ function avgRGBString(sumR, sumG, sumB, cnt, minCount){
 ══════════════════════════════════════════════════════════════════ */
 const HAIR_IDENTITY = {
   on: true,
+  /* ── 얼굴 없는 뷰의 숱 판정은 <b>얼굴 있는 뷰의 살색</b>으로 (2026-09-16) ─────────
+     실기기(남성 손님): [모발프로필·숱판정] back · 두피색 50 · 머리색 52(차이 2) →
+     대머리 칸 190. 후면엔 이마가 없어 "두피색"을 추정 랜드마크 자리 — 곧 <b>뒷머리</b>
+     — 에서 뽑았다. 두 기준색이 같으니 "머리색에 더 가까운가"는 동전던지기가 되고,
+     그 무작위 대머리 칸이 뒷머리의 빈 얼룩이 됐다(뿌리 격자 후면 대머리 9·5·10·25·8).
+     고침: 실제 랜드마크가 있는 뷰가 잰 살색을 _refSkinCss에 남기고, 얼굴 없는 뷰는
+     그 색으로 잰다. 그래도 두 기준색이 minSkinHairDist보다 가까우면 그 뷰는 밀도를
+     <b>재지 않는다</b>(-1 = 안 잼 → 다른 뷰·이웃이 채움). 대머리 표를 못 던진다.
+     되돌리기: HAIR_IDENTITY.borrowSkin = false */
+  borrowSkin: true,
+  minSkinHairDist: 40,   // RGB 거리 — 이보다 가까우면 판정 불능으로 본다
+  _refSkinCss: null,
   gridN: 48,           // 뿌리 밀도 격자 — 마스크 폭 방향 셀 수(세로는 종횡비로)
   /* 닫기 반경 — <b>머리에 둘러싸인 대머리</b>를 영역 안으로 끌어들이는 값이다.
      반경 r인 닫기는 폭 2r까지의 구멍을 메우므로, 0.06×1200px=72px → 지름
@@ -207,14 +219,20 @@ function lumaOf(r,g,b){ return 0.299*r + 0.587*g + 0.114*b; }
 function measureViewHairIdentity(o){
   const C = HAIR_IDENTITY;
   const { srcPixels, maskBuf, w, h, reasonMask, personMask, orientation, colorPalette } = o;
-  const skin = parseRGBTriple(o.scalpColorCss);
+  let skin = parseRGBTriple(o.densitySkinCss || o.scalpColorCss);
   const hair = parseRGBTriple(o.hairColorCss);
   const out = { w, h, density:null, pitchPx:null, pitchN:0, curlDegPerPx:null, curlN:0,
                 glossHiLo:null, glossStd:null, hairlineTop:null, hairlineBot:null };
   if(!C.on) return out;
 
   // ── ① 뿌리 밀도 — 머리 영역 안에서 "머리색 쪽" 픽셀의 비율 ──
-  if(skin && hair){
+  /* (2026-09-16) 기준색 둘이 너무 가까우면 판정 자체를 안 한다 — 위 borrowSkin 배너 */
+  out.skinHairDist = (skin && hair) ? Math.sqrt((skin.r-hair.r)**2 + (skin.g-hair.g)**2 + (skin.b-hair.b)**2) : null;
+  out.densitySkipped = false;
+  if(C.borrowSkin && out.skinHairDist != null && out.skinHairDist < C.minSkinHairDist){
+    out.densitySkipped = true;
+  }
+  if(skin && hair && !out.densitySkipped){
     const rC = Math.max(2, Math.round(w * C.closeFrac));
     let region = morphClose(maskBuf, w, h, rC);
     // 배경을 두피로 오인할 위험이 없을 때만 바깥으로 부풀린다(대머리 포착).

@@ -976,11 +976,31 @@ async function extractHairMask(angle){
            실패해도 identity=null로 남고 나머지 파이프라인은 영향 없다(곁가지 데이터). */
         let identity = null;
         try{
+          /* (2026-09-16) 얼굴 있는 뷰의 살색을 남기고, 얼굴 없는 뷰는 그걸 빌린다 — 03a HAIR_IDENTITY.borrowSkin */
+          const _hasFace = !!(state.landmarks && state.landmarks[angle]);
+          let densitySkinCss = null;
+          if(HAIR_IDENTITY.borrowSkin){
+            /* 얼굴이 있어도 측면은 이마 띠가 머리카락에 걸려 살색이 머리색이 되기도 한다
+               (실기기 right · 두피색 45 · 머리색 30). 그래서 기준은 "얼굴 유무"가 아니라
+               "이 뷰의 살색이 머리색과 충분히 다른가"다. 다르면 표본으로 남기고, 아니면 빌린다. */
+            const _sk = parseRGBTriple(scalpColor), _hr = parseRGBTriple(avgHairColor);
+            const _own = (_sk && _hr) ? Math.sqrt((_sk.r-_hr.r)**2 + (_sk.g-_hr.g)**2 + (_sk.b-_hr.b)**2) : 0;
+            const _ownOk = _own >= HAIR_IDENTITY.minSkinHairDist;
+            if(_hasFace && _ownOk){ if(!HAIR_IDENTITY._refSkinCss || angle === 'front') HAIR_IDENTITY._refSkinCss = scalpColor; }
+            else if(HAIR_IDENTITY._refSkinCss) densitySkinCss = HAIR_IDENTITY._refSkinCss;
+          }
           identity = measureViewHairIdentity({
             srcPixels, maskBuf: hairMaskBuf, w, h, reasonMask, personMask,
             orientation: orientationColSamples, colorPalette,
-            scalpColorCss: scalpColor, hairColorCss: avgHairColor,
+            scalpColorCss: scalpColor, hairColorCss: avgHairColor, densitySkinCss,
           });
+          if(!_hasFace || identity.densitySkipped || densitySkinCss){
+            console.log('[모발프로필·살색빌림] ' + angle + ' · 얼굴 ' + (_hasFace ? '있음' : '없음')
+              + ' · 판정 살색 ' + (densitySkinCss ? densitySkinCss + '(얼굴 있는 뷰에서 빌림)' : (scalpColor || '없음') + '(이 뷰 자체)')
+              + ' · 살색↔머리색 거리 ' + (identity.skinHairDist != null ? identity.skinHairDist.toFixed(0) : '?')
+              + (identity.densitySkipped ? ' → <b>기준 ' + HAIR_IDENTITY.minSkinHairDist + ' 미만이라 이 뷰는 밀도를 안 잽니다</b>(대머리 표 없음)' : ' → 판정함')
+              + ' · 되돌리기 HAIR_IDENTITY.borrowSkin=false');
+          }
           const d = identity.density;
           console.log('[모발프로필] ' + angle
             + ' · 뿌리밀도 ' + (d ? (d.measured + '/' + d.cells + '셀 실측'
