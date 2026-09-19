@@ -600,7 +600,9 @@ async function setupModel3DScreen(){
          폴백: 표준 인체가 어떤 이유로든 실패하면 buildBody3DForOutfit 안에서
                loadOutfitMeshMeasured 를 그대로 불러 예전 경로로 돌아간다.
                즉 최악의 경우가 "예전과 같음"이다 — 그래서 이 한 줄 교체가 안전하다.
-         주의: 21-body-base.js 는 index.html 에서 이 파일보다 <b>먼저</b> 불러야 한다. */
+         순서: 21-body-base.js 는 index.html 에서 <b>어느 자리에 넣어도</b> 된다.
+               서로 함수 선언만 주고받고 호출은 전부 3D 화면에 들어갈 때 일어나므로
+               로드 순서에 매이지 않는다(실제로는 번호대로 20 다음에 뒀다). */
       const outfitMesh = await buildBody3DForOutfit(outfitRec.item, faceMetrics.widthFactor, bodyLen3D);
       model3D.headGroup.add(outfitMesh);
       // (2026-08-31 11차) 옷깃을 이제 봤으니 목을 그 구멍 기준으로 다시 짓는다.
