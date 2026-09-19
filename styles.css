@@ -558,3 +558,27 @@ input[type=range]::-moz-range-thumb{width:20px;height:20px;border-radius:50%;bac
 .soft-stage:not(.stage-dark) .view-zoom{ background:rgba(20,17,15,0.72); }
 .soft-stage:not(.stage-dark) .view-zoom span{ color:var(--accent-soft); }
 .soft-stage:not(.stage-dark) .model3d-hint{ background:rgba(20,17,15,0.62) !important; color:#E7DDD0 !important; }
+
+/* ── 3D 결과보기 옷장 버튼 (2026-09-20 · 21-body-base.js) ──────────────────
+   버튼은 둘뿐이다: 남/여 · 외투 On/Off. 무엇을 입힐지는 사람이 고르지 않고
+   20-outfit-match.js의 추천이 정한다.
+   자리 — 뷰포트 왼쪽 위, preview-tag 아래(top:44px). 오른쪽 위는 debug-btn,
+   오른쪽 아래는 view-zoom, 가운데 아래는 model3d-hint가 이미 쓰고 있어서
+   남는 자리가 여기뿐이다. 버튼을 늘릴 거면 세로로 늘어나니 max-height를 본다.
+   DOM은 21-body-base.js가 만든다(index.html에 자리 잡을 것 없음). */
+.bb-rack{
+  position:absolute;left:10px;top:44px;z-index:6;      /* 5는 soft-stage 오버레이, 그 위 */
+  display:flex;flex-direction:column;gap:4px;
+  max-width:46%;max-height:calc(100% - 96px);
+  overflow-y:auto;-webkit-overflow-scrolling:touch;
+}
+.bb-rack button{
+  background:rgba(27,24,22,0.78);backdrop-filter:blur(4px);
+  border:1px solid var(--line);color:var(--accent-soft);
+  font-family:inherit;font-size:11px;line-height:1;
+  padding:6px 9px;border-radius:8px;cursor:pointer;text-align:left;white-space:nowrap;
+}
+.bb-rack button:hover{ border-color:var(--accent); }
+.bb-rack button.on{ background:var(--accent);color:#1B1816;border-color:var(--accent);font-weight:700; }
+/* 밝은 무대에서는 칩이 연한 갈색으로 떠서 글자가 흐려진다 — 위 preview-tag와 같은 보정. */
+.soft-stage:not(.stage-dark) .bb-rack button{ background:rgba(27,24,22,0.88); }

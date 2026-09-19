@@ -367,5 +367,14 @@ function loadVisionModule(){
      받아 늘 OUTFIT_CATALOG[0](차콜 슈트)로 떨어지던 이유다. 09의 OKLCH 헬퍼와
      02의 OUTFIT_CATALOG를 읽고 12b가 부르므로 19 다음이다. -->
 <script src="js/20-outfit-match.js"></script>
+<!-- 21: 3D 결과보기의 몸(2026-09-20). 예전에는 의상 에셋(Male_Suit.obj)이 몸과 옷을
+     한 덩어리로 들고 있어서 옷만 갈아입힐 수가 없었다. 이 파일이 MakeHuman 표준
+     인체(assets/body_male.obj · body_female.obj)를 세우고 그 위에 의상 메쉬만 얹는다.
+     18의 setupModel3DScreen이 buildBody3DForOutfit()으로 부르고, 무엇을 입힐지는
+     20의 추천 결과를 받아 정한다(화면 버튼은 남/여 · 외투 On/Off 둘뿐이다).
+     12a의 getNeckBottomY·_garmentNeckOpening, 11의 personBodyLenMesh, 13a의
+     loadOutfitMeshMeasured(폴백용)를 부르지만 전부 3D 화면에 들어갈 때라
+     <b>로드 순서에 매이지 않는다</b> — 번호 순서를 지켜 맨 뒤에 둔다. -->
+<script src="js/21-body-base.js"></script>
 </body>
 </html>
