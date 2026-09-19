@@ -589,7 +589,19 @@ async function setupModel3DScreen(){
       }catch(e){ console.warn('[3D·비율] 씬 정수리 실측 실패 — 사진 기준 자로 폴백:', e); }
       state._model3DCrownY = crownY3D;
       const bodyLen3D = personBodyLenMesh(crownY3D);
-      const outfitMesh = await loadOutfitMeshMeasured(outfitRec.item, faceMetrics.widthFactor, bodyLen3D);
+      /* ── 몸을 의상 에셋에서 떼어냈다 (2026-09-20) ────────────────────────────
+         예전: loadOutfitMeshMeasured 가 Male_Suit.obj 같은 <b>몸+옷 한 덩어리</b>를
+               불러왔다. 그래서 옷을 바꾸려면 몸까지 통째로 갈아끼워야 했고,
+               옷이 없으면 몸도 없었다.
+         지금: buildBody3DForOutfit(21-body-base.js)이 MakeHuman 표준 인체(남/여)를
+               세우고 그 위에 의상 메쉬만 얹는다. 인자·반환이 예전과 같아서
+               <b>이 줄의 함수 이름만</b> 바뀌었고, 아래 add·refitNeckToGarment는
+               손대지 않았다.
+         폴백: 표준 인체가 어떤 이유로든 실패하면 buildBody3DForOutfit 안에서
+               loadOutfitMeshMeasured 를 그대로 불러 예전 경로로 돌아간다.
+               즉 최악의 경우가 "예전과 같음"이다 — 그래서 이 한 줄 교체가 안전하다.
+         주의: 21-body-base.js 는 index.html 에서 이 파일보다 <b>먼저</b> 불러야 한다. */
+      const outfitMesh = await buildBody3DForOutfit(outfitRec.item, faceMetrics.widthFactor, bodyLen3D);
       model3D.headGroup.add(outfitMesh);
       // (2026-08-31 11차) 옷깃을 이제 봤으니 목을 그 구멍 기준으로 다시 짓는다.
       refitNeckToGarment(model3D.headGroup,
@@ -669,6 +681,10 @@ function startNewCustomer(){
   for(const k in _viewMaskCache) delete _viewMaskCache[k]; // 뷰 마스크 샘플러 캐시
   state.aiOutfitRecommendation=null; // (3단계) 의상 추천 캐시도 초기화
   _garmentNeckOpening = null;        // (11차) 옷깃 구멍 실측 — 사람·의상이 바뀌면 무효
+  /* (2026-09-20) 3D 몸 리그 참조와 옷장 버튼도 손님마다 놓는다.
+     에셋 캐시(표준 인체·의상 지오메트리)는 일부러 남긴다 — 사람이 바뀌어도
+     같은 파일이라 다시 읽을 이유가 없다. 놓는 건 "지금 씬에 서 있는 리그"뿐이다. */
+  if(typeof resetBodyBase === 'function') resetBodyBase();
   resetResultScreenCache();   // 결과 화면의 의상 메쉬/스냅샷 캐시(사람·의상이 바뀌면 전부 무효)
   _headCrossSectionCache = null; // 두상 실측 단면(Shape-from-Silhouette) 캐시도 새 고객마다 초기화
   _headVerticalRadiusCache = null; // 두상 세로 반지름 실측 캐시도 새 고객마다 초기화
