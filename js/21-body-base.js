@@ -41,7 +41,14 @@ const BODY_SHOP = {
   'on': true,
   'catalogUrl': 'https://pub-0d2b3979dafc4e7ebc2c1b1b5acca4de.r2.dev/catalog.json',
   'pageUrl':    'https://pub-0d2b3979dafc4e7ebc2c1b1b5acca4de.r2.dev/shop/index.html',
-  'timeoutMs': 6000
+  'timeoutMs': 6000,
+  /* 고른 옷이 지금 몸의 성별용이 아닐 때 어떻게 할지.
+     'switch' — 그 옷에 맞는 몸으로 바꿔서 입힌다(기본). 고른 옷은 반드시 보인다.
+     'wear'   — 몸은 그대로 두고 있는 메쉬를 그냥 얹는다(살이 옷을 뚫을 수 있다).
+     'skip'   — 입히지 않고 추천으로 돌아간다(예전 동작).
+     쇼핑몰이 남성 옷만 올려 두고 손님 몸이 여자면 'skip'에서는 아무 일도 안 일어난다 —
+     그게 "눌러도 옷이 안 바뀐다"의 정체였다. */
+  'crossGender': 'switch'
 };
 /* 손님이 쇼핑몰에서 직접 고른 옷. 추천보다 우선한다(고른 사람이 이긴다).
    null이면 추천이 고른 대로 입는다.
@@ -108,10 +115,13 @@ function loadShopCatalog(force) {
   return _shopLoading;
 }
 
-/* 쇼핑몰 항목을 이 성별에서 입을 수 있는 조각으로 바꾼다(없으면 null). */
-function shopPiece(it, gender) {
-  if (it.gender && it.gender !== 'both' && it.gender !== gender) return null;
-  const url = it.mesh[gender] || (it.gender === 'both' ? (it.mesh.male || it.mesh.female) : null);
+/* 쇼핑몰 항목을 이 성별에서 입을 수 있는 조각으로 바꾼다(없으면 null).
+   loose=true면 성별 표시를 따지지 않고 있는 메쉬를 그대로 쓴다. */
+function shopPiece(it, gender, loose) {
+  if (!it || !it.mesh) return null;
+  if (!loose && it.gender && it.gender !== 'both' && it.gender !== gender) return null;
+  const any = it.mesh.male || it.mesh.female;
+  const url = it.mesh[gender] || ((loose || !it.gender || it.gender === 'both') ? any : null);
   if (!url) return null;
   return { 'id': it.id, 'name': it.name, 'formal': typeof it.formal === 'number' ? it.formal : 0.5,
            'url': url, 'colorHex': it.colorHex || null, 'layer': it.layer || 'outer',
@@ -175,18 +185,19 @@ async function piecesForOutfit(item) {
 
   /* 쇼핑몰에서 직접 고른 옷 — 격식을 따지지 않고 그대로 입는다. */
   if (_pickedShopId) {
-    let hit = shop.map(it => shopPiece(it, gender)).find(p => p && p.id === _pickedShopId);
-    /* 목록에 없으면 쇼핑몰이 메시지에 실어 보낸 옷 정보로 입힌다. */
-    if (!hit && _pickedShopItem && _pickedShopItem.id === _pickedShopId) {
-      hit = shopPiece(_pickedShopItem, gender);
-    }
+    const raw = _shopItemById(_pickedShopId, shop);
+    /* 'skip'이 아니면 성별이 안 맞아도 있는 메쉬를 얹는다. 몸을 바꿔 입히는
+       'switch'는 이 함수에 오기 전(applyShopPick)에 이미 몸을 바꿔 놓는다. */
+    const loose = BODY_SHOP.crossGender !== 'skip';
+    const hit = raw && shopPiece(raw, gender, loose);
     if (hit) {
       const parts = [Object.assign({}, hit, { 'colorHex': hit.colorHex || tint })];
       return { 'label': hit.name + ' · 고름', 'shop': hit.shop || null, 'parts': parts };
     }
-    /* 이 성별에는 없는 옷이다 — 고른 것을 놓고 추천으로 돌아간다. */
-    console.log('[3D·쇼핑몰] 고른 옷(' + _pickedShopId + ')이 ' +
-      BODY_FIGURES[gender].label + ' 몸에는 없어 추천으로 돌아갑니다');
+    /* 정말 입힐 메쉬가 없다 — 그때만 추천으로 돌아가고, 조용히 넘어가지 않는다. */
+    console.warn('[3D·쇼핑몰] 고른 옷(' + _pickedShopId + ')에 ' +
+      BODY_FIGURES[gender].label + ' 몸에 얹을 메쉬가 없어 추천으로 돌아갑니다');
+    bodyToast('고른 옷을 이 몸에 얹을 수 없어 추천 의상으로 돌아갑니다');
     _pickedShopId = null; _pickedShopItem = null;
   }
 
@@ -426,6 +437,9 @@ async function setBodyGender(gender) {
 
 async function toggleBodyOuter() {
   BODY_BASE.outer = !BODY_BASE.outer;
+  /* 고른 옷을 입고 있는 동안에는 이 스위치가 아무것도 못 바꾼다(고른 옷이 먼저다).
+     손님이 스위치를 눌렀다는 건 추천 옷장으로 돌아가겠다는 뜻이므로, 고른 옷을 놓는다. */
+  if (_pickedShopId) { _pickedShopId = null; _pickedShopItem = null; }
   if (!_bodyRig) return false;
   await _mountGarment(_bodyRig, _lastBuild && _lastBuild.item);
   buildBodyGarmentRack(); _updateModel3DTag();
@@ -469,9 +483,22 @@ function buildBodyGarmentRack() {
   bOuter.type = 'button';
   bOuter.textContent = '외투 ' + (BODY_BASE.outer ? 'ON' : 'OFF');
   if (BODY_BASE.outer) bOuter.classList.add('on');
-  bOuter.title = '슈트·재킷을 입었다 벗깁니다 (무슨 옷인지는 추천이 정합니다)';
+  bOuter.title = _pickedShopId
+    ? '지금은 쇼핑몰에서 고른 옷을 입고 있어 이 스위치는 쉽니다'
+    : '슈트·재킷을 입었다 벗깁니다 (무슨 옷인지는 추천이 정합니다)';
+  if (_pickedShopId) bOuter.classList.add('muted');
   bOuter.addEventListener('click', () => toggleBodyOuter());
   rack.appendChild(bOuter);
+
+  /* 고른 옷을 입고 있는 동안은 벗을 길을 열어 둔다. */
+  if (_pickedShopId) {
+    const bClear = document.createElement('button');
+    bClear.type = 'button';
+    bClear.textContent = '고른 옷 벗기';
+    bClear.title = '쇼핑몰에서 고른 옷을 벗고 추천 의상으로 돌아갑니다';
+    bClear.addEventListener('click', () => clearShopPick());
+    rack.appendChild(bClear);
+  }
 
   /* 쇼핑몰 주소가 있으면 옷장 문을 연다 — 3D 화면 위에 덮어 띄운다.
      목록(catalog.json)을 못 받았다고 버튼을 지우면 안 된다. 손님이 고르는 곳은
@@ -574,6 +601,103 @@ function closeShopPanel() {
   buildBodyGarmentRack();
 }
 
+/* ───────────────────────────────────────────────── 고른 옷 입히기
+   예전 판이 여기서 두 가지를 잘못했다.
+   ① 고른 옷이 지금 몸의 성별용이 아니면 말없이 버리고 추천으로 돌아갔다.
+      쇼핑몰에 남성 옷만 있고 손님 몸이 여자면 "눌러도 아무 일도 안 일어난다".
+   ② 손님이 꺼 둔 외투 스위치를 제 마음대로 다시 켰다. 고른 옷은 외투 스위치와
+      상관없이 입혀지므로(piecesForOutfit이 먼저 돌려준다) 켤 이유가 없었다. */
+function _shopItemById(id, list) {
+  if (_pickedShopItem && _pickedShopItem.id === id) return _pickedShopItem;
+  return ((list || _shopItems || []).find(it => it && it.id === id)) || null;
+}
+
+/* 이 옷을 제대로 입을 수 있는 몸의 성별. 없으면 null. */
+function _genderForItem(it) {
+  if (!it || !it.mesh) return null;
+  for (const g of ['male', 'female']) {
+    if (it.mesh[g] && (!it.gender || it.gender === 'both' || it.gender === g)) return g;
+  }
+  return null;
+}
+
+async function applyShopPick(id, rawItem, origin) {
+  if (!id) return false;
+  const pid = String(id);
+
+  /* 메시지에 옷 정보가 실려 왔으면 목록보다 그것을 믿는다(목록이 늦거나 없을 수 있다). */
+  let inline = null;
+  if (rawItem) {
+    inline = _normalizeShopItem(Object.assign({ 'id': pid }, rawItem),
+      (origin && origin !== 'null' ? origin + '/' : BODY_SHOP.catalogUrl));
+  }
+  let list = _shopItems || [];
+  if (!inline) { try { list = await loadShopCatalog(); } catch (e) { list = _shopItems || []; } }
+
+  const it = inline || list.find(x => x && x.id === pid);
+  if (!it) {
+    console.warn('[3D·쇼핑몰] 고른 옷(' + pid + ')을 목록에서 못 찾았습니다');
+    bodyToast('고른 옷 정보를 받지 못했습니다 (' + pid + ')');
+    return false;
+  }
+  _pickedShopId = pid;
+  _pickedShopItem = it;
+  _shopItems = (_shopItems || []).filter(x => x.id !== pid).concat([it]);
+
+  if (!_bodyRig) { console.warn('[3D·쇼핑몰] 아직 몸이 안 세워져 고른 옷만 기억해 둡니다'); return true; }
+
+  /* 성별이 안 맞으면 — 옷에 맞는 몸으로 바꿔 입힌다(기본). */
+  const want = _genderForItem(it);
+  if (BODY_SHOP.crossGender === 'switch' && want && want !== BODY_BASE.gender &&
+      !shopPiece(it, BODY_BASE.gender)) {
+    const from = BODY_FIGURES[BODY_BASE.gender].label;
+    BODY_BASE.gender = want;
+    const okRig = await rebuildBodyRig();          // 몸이 바뀌므로 리그부터 다시 세운다
+    bodyToast(BODY_FIGURES[want].label + ' 의상이라 몸을 ' + from + ' → ' +
+      BODY_FIGURES[want].label + '로 바꿔 입혔습니다');
+    console.log('[3D·쇼핑몰] 성별 전환 후 착용 — ' + pid + ' (' + want + ')');
+    return okRig;
+  }
+
+  try {
+    await _mountGarment(_bodyRig, _lastBuild && _lastBuild.item);
+  } catch (e) {
+    console.warn('[3D·쇼핑몰] 갈아입히기 실패:', e);
+    bodyToast('옷을 불러오지 못했습니다');
+    return false;
+  }
+  buildBodyGarmentRack(); _updateModel3DTag();
+  console.log('[3D·쇼핑몰] 손님이 고른 옷으로 갈아입힘 — ' + pid +
+    ' · 외투 스위치는 ' + (BODY_BASE.outer ? 'ON' : 'OFF') + ' 그대로');
+  return true;
+}
+
+/* 고른 옷을 벗고 추천으로 돌아간다. */
+async function clearShopPick() {
+  if (!_pickedShopId) return false;
+  _pickedShopId = null; _pickedShopItem = null;
+  if (!_bodyRig) return false;
+  await _mountGarment(_bodyRig, _lastBuild && _lastBuild.item);
+  buildBodyGarmentRack(); _updateModel3DTag();
+  return true;
+}
+
+/* 3D 화면 위에 잠깐 뜨는 알림 — 콘솔만 보고 있을 수는 없다. */
+let _toastTimer = null;
+function bodyToast(msg) {
+  const host = document.getElementById('model3dViewport');
+  if (!host || !msg) return;
+  let t = document.getElementById('bbToast');
+  if (!t) {
+    t = document.createElement('div');
+    t.id = 'bbToast'; t.className = 'bb-toast';
+    host.appendChild(t);
+  }
+  t.textContent = msg;
+  if (_toastTimer) clearTimeout(_toastTimer);
+  _toastTimer = setTimeout(() => { const n = document.getElementById('bbToast'); if (n) n.remove(); }, 4200);
+}
+
 /* 쇼핑몰 페이지가 보내는 "이 옷 입혀줘" 신호.
    주소가 우리 쇼핑몰이 아닌 메시지는 무시한다 — 아무 페이지나 아바타를
    갈아입힐 수 있으면 안 된다. */
@@ -590,21 +714,8 @@ function installShopBridge() {
     if (typeof d === 'string') { try { d = JSON.parse(d); } catch (e) { return; } }
     if (!d || d.type !== 'gyeol-wear' || !d.id) return;
 
-    _pickedShopId = String(d.id);
-    /* 목록에 없는 옷이어도 입을 수 있게, 메시지에 실려 온 옷 정보를 챙겨 둔다. */
-    _pickedShopItem = d.item ? _normalizeShopItem(
-      Object.assign({ 'id': _pickedShopId }, d.item), ev.origin + '/') : null;
-    if (_pickedShopItem) {
-      _shopItems = (_shopItems || []).filter(it => it.id !== _pickedShopId).concat([_pickedShopItem]);
-    }
-    if (!BODY_BASE.outer) BODY_BASE.outer = true;   // 외투를 벗어둔 상태면 다시 입힌다
-    if (!_bodyRig) { console.warn('[3D·쇼핑몰] 아직 몸이 안 세워져 고른 옷만 기억해 둡니다'); return; }
-    try {
-      await _mountGarment(_bodyRig, _lastBuild && _lastBuild.item);
-    } catch (e) { console.warn('[3D·쇼핑몰] 갈아입히기 실패:', e); return; }
-    buildBodyGarmentRack(); _updateModel3DTag();
-    if (d.close !== false) closeShopPanel();        // 고르면 옷장 문은 닫는다
-    console.log('[3D·쇼핑몰] 손님이 고른 옷으로 갈아입힘 — ' + _pickedShopId);
+    const ok = await applyShopPick(d.id, d.item, ev.origin);
+    if (ok && d.close !== false) closeShopPanel();  // 입었으면 옷장 문은 닫는다
   });
   console.log('[3D·쇼핑몰] 다리 놓음 — ' + (shopOrigin || '(주소 없음)') + ' 의 gyeol-wear 메시지를 듣습니다');
 }
