@@ -40,8 +40,12 @@ const BODY_BASE = {
 const BODY_SHOP = {
   'on': true,
   'catalogUrl': 'https://pub-0d2b3979dafc4e7ebc2c1b1b5acca4de.r2.dev/catalog.json',
+  'pageUrl':    'https://pub-0d2b3979dafc4e7ebc2c1b1b5acca4de.r2.dev/shop/index.html',
   'timeoutMs': 6000
 };
+/* 손님이 쇼핑몰에서 직접 고른 옷. 추천보다 우선한다(고른 사람이 이긴다).
+   null이면 추천이 고른 대로 입는다. */
+let _pickedShopId = null;
 let _shopItems = null;     // null=아직 안 읽음, []=읽었는데 없음
 
 /* 목록 형식 (catalog.json)
@@ -145,6 +149,19 @@ async function piecesForOutfit(item) {
   const shop = await loadShopCatalog();
   const shopFor = layer => shop.map(it => shopPiece(it, gender))
                                .filter(p => p && (p.layer || 'outer') === layer);
+
+  /* 쇼핑몰에서 직접 고른 옷 — 격식을 따지지 않고 그대로 입는다. */
+  if (_pickedShopId) {
+    const hit = shop.map(it => shopPiece(it, gender)).find(p => p && p.id === _pickedShopId);
+    if (hit) {
+      const parts = [Object.assign({}, hit, { 'colorHex': hit.colorHex || tint })];
+      return { 'label': hit.name + ' · 고름', 'shop': hit.shop || null, 'parts': parts };
+    }
+    /* 이 성별에는 없는 옷이다 — 고른 것을 놓고 추천으로 돌아간다. */
+    console.log('[3D·쇼핑몰] 고른 옷(' + _pickedShopId + ')이 ' +
+      BODY_FIGURES[gender].label + ' 몸에는 없어 추천으로 돌아갑니다');
+    _pickedShopId = null;
+  }
 
   if (BODY_BASE.outer) {
     const cands = (w.outer || []).concat(shopFor('outer'));
@@ -357,7 +374,7 @@ async function buildBody3DForOutfit(item, widthFactor, bodyLenMesh) {
       if (open) _garmentNeckOpening = open;
       else console.log('[3D·목] 몸의 목둘레가 옷깃 실측 범위 밖 — 예전(두개골 클램프) 경로로 세웁니다');
     } catch (e) { console.warn('[3D·목] 목둘레 실측 예외:', e); }
-    try { buildBodyGarmentRack(); } catch (e) { console.warn('[3D·옷] 버튼 UI 실패:', e); }
+    try { installShopBridge(); buildBodyGarmentRack(); } catch (e) { console.warn('[3D·옷] 버튼 UI 실패:', e); }
     return rig;
   } catch (e) {
     console.warn('[3D·몸] 표준 인체 실패 — 예전 의상-바디 에셋으로 폴백:', e);
@@ -429,6 +446,17 @@ function buildBodyGarmentRack() {
   bOuter.addEventListener('click', () => toggleBodyOuter());
   rack.appendChild(bOuter);
 
+  /* 쇼핑몰이 살아 있으면 옷장 문을 연다 — 3D 화면 위에 덮어 띄운다. */
+  if (BODY_SHOP.on && (_shopItems === null || _shopItems.length)) {
+    const bShop = document.createElement('button');
+    bShop.type = 'button';
+    const open = !!document.getElementById('bbShopPanel');
+    bShop.textContent = open ? '옷 닫기' : '옷 고르기';
+    if (open) bShop.classList.add('on');
+    bShop.addEventListener('click', () => open ? closeShopPanel() : openShopPanel());
+    rack.appendChild(bShop);
+  }
+
   /* 쇼핑몰에서 온 옷이면 구매 칸을 하나 더 띄운다 — 상담이 거래로 이어지는 자리다.
      견본 옷에는 안 뜬다(shop 정보가 없다). */
   if (_bodyWornShop && _bodyWornShop.link) {
@@ -443,9 +471,65 @@ function buildBodyGarmentRack() {
   }
 }
 
+/* ─────────────────────────────────────────────────────── 쇼핑몰 패널
+   쇼핑몰을 새 탭으로 열면 앱이 내려가고, 앱이 내려가면 이 손님의 3D 모델이
+   사라진다(사진부터 다시 찍어야 한다). 그래서 밖으로 내보내지 않고
+   3D 화면 <b>위에</b> 얹는다 — 옷을 눌러도 뒤의 아바타는 그대로 서 있다. */
+function openShopPanel() {
+  const host = document.getElementById('model3dViewport');
+  if (!host) return false;
+  if (document.getElementById('bbShopPanel')) return true;
+
+  const panel = document.createElement('div');
+  panel.id = 'bbShopPanel';
+  panel.className = 'bb-shop';
+  const bar = document.createElement('div');
+  bar.className = 'bb-shop-bar';
+  bar.innerHTML = '<span>의상 고르기</span>';
+  const close = document.createElement('button');
+  close.type = 'button'; close.textContent = '✕';
+  close.addEventListener('click', closeShopPanel);
+  bar.appendChild(close);
+  const frame = document.createElement('iframe');
+  frame.src = BODY_SHOP.pageUrl;
+  frame.title = '의상 고르기';
+  panel.appendChild(bar); panel.appendChild(frame);
+  host.appendChild(panel);
+  buildBodyGarmentRack();
+  return true;
+}
+function closeShopPanel() {
+  const p = document.getElementById('bbShopPanel');
+  if (p) p.remove();
+  buildBodyGarmentRack();
+}
+
+/* 쇼핑몰 페이지가 보내는 "이 옷 입혀줘" 신호.
+   주소가 우리 쇼핑몰이 아닌 메시지는 무시한다 — 아무 페이지나 아바타를
+   갈아입힐 수 있으면 안 된다. */
+let _shopBridgeOn = false;
+function installShopBridge() {
+  if (_shopBridgeOn || typeof window === 'undefined') return;
+  _shopBridgeOn = true;
+  let shopOrigin = '';
+  try { shopOrigin = new URL(BODY_SHOP.pageUrl).origin; } catch (e) {}
+  window.addEventListener('message', async ev => {
+    if (shopOrigin && ev.origin !== shopOrigin) return;
+    const d = ev.data;
+    if (!d || d.type !== 'gyeol-wear' || !d.id) return;
+    _pickedShopId = String(d.id);
+    if (!BODY_BASE.outer) BODY_BASE.outer = true;   // 외투를 벗어둔 상태면 다시 입힌다
+    if (!_bodyRig) return;
+    await _mountGarment(_bodyRig, _lastBuild && _lastBuild.item);
+    buildBodyGarmentRack(); _updateModel3DTag();
+    console.log('[3D·쇼핑몰] 손님이 고른 옷으로 갈아입힘 — ' + _pickedShopId);
+  });
+}
+
 /* 손님이 바뀌면 리그 참조를 놓는다(에셋 캐시는 남긴다 — 다시 읽을 필요가 없다). */
 function resetBodyBase() {
   _bodyRig = null; _lastBuild = null; _bodyWornLabel = ''; _bodyWornShop = null;
+  _pickedShopId = null; closeShopPanel();
   const rack = document.getElementById('bodyGarmentRack');
   if (rack) rack.remove();
 }
