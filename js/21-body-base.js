@@ -32,6 +32,65 @@ const BODY_BASE = {
   'rack': true
 };
 
+/* ── 쇼핑몰에서 받아오는 옷 (2026-09-20) ──────────────────────────────────
+   아래 BODY_WARDROBE는 앱에 딸려 오는 <b>견본</b>이다. 실제 팔 옷은 쇼핑몰이
+   가지고 있고, 앱은 catalogUrl에서 목록을 받아 같은 옷장에 섞어 넣는다.
+   목록을 못 받아도(오프라인·주소 오류·CORS) 견본만으로 그대로 돌아간다 —
+   3D 화면이 쇼핑몰 때문에 비는 일은 없어야 한다. */
+const BODY_SHOP = {
+  'on': true,
+  'catalogUrl': 'https://pub-0d2b3979dafc4e7ebc2c1b1b5acca4de.r2.dev/catalog.json',
+  'timeoutMs': 6000
+};
+let _shopItems = null;     // null=아직 안 읽음, []=읽었는데 없음
+
+/* 목록 형식 (catalog.json)
+   { "version":1,
+     "items":[ { "id":"shop-navy-jacket", "name":"네이비 재킷",
+                 "gender":"male",          // male | female | both
+                 "layer":"outer",          // outer | inner
+                 "formal":0.5,             // 0=캐주얼 1=포멀 — 추천의 격식과 맞춰 고른다
+                 "colorHex":"#2E3A4E",     // 없으면 추천 항목의 색을 입힌다
+                 "mesh":{ "male":"clothes/x_male.obj", "female":"clothes/x_female.obj" },
+                 "shop":{ "title":"...", "price":"...", "link":"https://..." } } ] }
+   mesh 주소가 상대경로면 catalogUrl 기준으로 푼다. */
+async function loadShopCatalog() {
+  if (_shopItems || !BODY_SHOP.on) return _shopItems || [];
+  _shopItems = [];
+  try {
+    const ctl = typeof AbortController === 'function' ? new AbortController() : null;
+    const t = ctl && setTimeout(() => ctl.abort(), BODY_SHOP.timeoutMs);
+    const res = await fetch(BODY_SHOP.catalogUrl, ctl ? { 'signal': ctl.signal } : undefined);
+    if (t) clearTimeout(t);
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const data = await res.json();
+    const list = (data && data.items) || [];
+    _shopItems = list.map(it => {
+      const out = Object.assign({}, it, { 'fromShop': true });
+      out.mesh = {};
+      for (const g of ['male', 'female']) {
+        const u = it.mesh && it.mesh[g];
+        if (u) out.mesh[g] = new URL(u, BODY_SHOP.catalogUrl).href;
+      }
+      return out;
+    }).filter(it => it.mesh.male || it.mesh.female);
+    console.log('[3D·쇼핑몰] 옷 목록 ' + _shopItems.length + '벌 받음 — ' + BODY_SHOP.catalogUrl);
+  } catch (e) {
+    console.log('[3D·쇼핑몰] 목록을 못 받아 견본 옷장만 씁니다:', e && e.message || e);
+  }
+  return _shopItems;
+}
+
+/* 쇼핑몰 항목을 이 성별에서 입을 수 있는 조각으로 바꾼다(없으면 null). */
+function shopPiece(it, gender) {
+  if (it.gender && it.gender !== 'both' && it.gender !== gender) return null;
+  const url = it.mesh[gender] || (it.gender === 'both' ? (it.mesh.male || it.mesh.female) : null);
+  if (!url) return null;
+  return { 'id': it.id, 'name': it.name, 'formal': typeof it.formal === 'number' ? it.formal : 0.5,
+           'url': url, 'colorHex': it.colorHex || null, 'layer': it.layer || 'outer',
+           'shop': it.shop || null, 'fromShop': true };
+}
+
 const BODY_FIGURES = {
   'male':   { 'label': '남자', 'objUrl': './assets/body_male.obj',   'neckCutFrac': 0.9474 },
   'female': { 'label': '여자', 'objUrl': './assets/body_female.obj', 'neckCutFrac': 0.9427 }
@@ -76,27 +135,40 @@ function outfitFormality(item) {
   return Math.max(0, Math.min(1, shoulder * 0.6 + busy * 0.4));
 }
 
-/* 지금 성별·외투 상태에서 입을 조각들 — 색은 추천 항목에서 온다(에셋이 무지다). */
-function piecesForOutfit(item) {
-  const w = BODY_WARDROBE[BODY_BASE.gender] || BODY_WARDROBE.male;
+/* 지금 성별·외투 상태에서 입을 조각들.
+   견본 옷장 + 쇼핑몰 목록을 한 자리에 놓고, 추천의 격식에 제일 가까운 것을 고른다.
+   색은 옷이 제 색을 들고 있으면 그것을, 없으면 추천 항목의 색을 쓴다(에셋이 무지다). */
+async function piecesForOutfit(item) {
+  const gender = BODY_BASE.gender;
+  const w = BODY_WARDROBE[gender] || BODY_WARDROBE.male;
   const tint = item && item.colorHex || '#7A7F88';
-  if (BODY_BASE.outer && w.outer && w.outer.length) {
-    const f = outfitFormality(item);
-    let best = w.outer[0], bd = Infinity;
-    for (const o of w.outer) {
-      const d = Math.abs(o.formal - f);
-      if (d < bd) { bd = d; best = o; }
+  const shop = await loadShopCatalog();
+  const shopFor = layer => shop.map(it => shopPiece(it, gender))
+                               .filter(p => p && (p.layer || 'outer') === layer);
+
+  if (BODY_BASE.outer) {
+    const cands = (w.outer || []).concat(shopFor('outer'));
+    if (cands.length) {
+      const f = outfitFormality(item);
+      let best = cands[0], bd = Infinity;
+      for (const o of cands) { const d = Math.abs(o.formal - f); if (d < bd) { bd = d; best = o; } }
+      return { 'label': best.name + (best.fromShop ? ' · 쇼핑몰' : ''),
+               'shop': best.shop || null,
+               'parts': [Object.assign({}, best, { 'colorHex': best.colorHex || tint })] };
     }
-    return { 'label': best.name, 'parts': [Object.assign({}, best, { 'colorHex': tint })] };
   }
-  const parts = (w.inner || []).map(p => Object.assign({}, p, { 'colorHex': p.colorHex || tint }));
-  return { 'label': parts.length ? '상의 + 하의' : '맨몸', 'parts': parts };
+  const shopInner = shopFor('inner');
+  const parts = (shopInner.length ? shopInner : (w.inner || []))
+    .map(p => Object.assign({}, p, { 'colorHex': p.colorHex || tint }));
+  return { 'label': parts.length ? (parts[0].fromShop ? parts[0].name + ' · 쇼핑몰' : '상의 + 하의') : '맨몸',
+           'shop': (parts[0] && parts[0].shop) || null,
+           'parts': parts };
 }
 
 /* ------------------------------------------------------------ 불러오기 */
 const _figureCache = new Map();   // gender → {geoms, box, cutY, neckCx, neckCz}
 const _garmentCache = new Map();  // url|offset → [BufferGeometry]
-let _bodyRig = null, _bodyWornLabel = '', _lastBuild = null;
+let _bodyRig = null, _bodyWornLabel = '', _bodyWornShop = null, _lastBuild = null;
 
 function _loadOBJGroup(objUrl) {
   return new Promise((resolve, reject) => {
@@ -221,7 +293,7 @@ async function _mountGarment(rig, item) {
   const holder = new THREE.Group();
   holder.name = 'bodyGarment';
   rig.add(holder);
-  const pick = piecesForOutfit(item);
+  const pick = await piecesForOutfit(item);
   for (const part of pick.parts) {
     let geoms;
     try { geoms = await loadGarmentGeometries(part); }
@@ -230,6 +302,7 @@ async function _mountGarment(rig, item) {
     _cloned(geoms).forEach(g => holder.add(new THREE.Mesh(g, mat)));
   }
   _bodyWornLabel = pick.label;
+  _bodyWornShop = pick.shop || null;
   return holder;
 }
 
@@ -355,11 +428,24 @@ function buildBodyGarmentRack() {
   bOuter.title = '슈트·재킷을 입었다 벗깁니다 (무슨 옷인지는 추천이 정합니다)';
   bOuter.addEventListener('click', () => toggleBodyOuter());
   rack.appendChild(bOuter);
+
+  /* 쇼핑몰에서 온 옷이면 구매 칸을 하나 더 띄운다 — 상담이 거래로 이어지는 자리다.
+     견본 옷에는 안 뜬다(shop 정보가 없다). */
+  if (_bodyWornShop && _bodyWornShop.link) {
+    const buy = document.createElement('a');
+    buy.className = 'bb-buy';
+    buy.href = _bodyWornShop.link;
+    buy.target = '_blank';
+    buy.rel = 'noopener';
+    buy.textContent = (_bodyWornShop.title || '이 옷 보기') +
+      (_bodyWornShop.price ? ' · ' + _bodyWornShop.price : '');
+    rack.appendChild(buy);
+  }
 }
 
 /* 손님이 바뀌면 리그 참조를 놓는다(에셋 캐시는 남긴다 — 다시 읽을 필요가 없다). */
 function resetBodyBase() {
-  _bodyRig = null; _lastBuild = null; _bodyWornLabel = '';
+  _bodyRig = null; _lastBuild = null; _bodyWornLabel = ''; _bodyWornShop = null;
   const rack = document.getElementById('bodyGarmentRack');
   if (rack) rack.remove();
 }
