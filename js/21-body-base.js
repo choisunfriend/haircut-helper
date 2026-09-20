@@ -44,9 +44,14 @@ const BODY_SHOP = {
   'timeoutMs': 6000
 };
 /* 손님이 쇼핑몰에서 직접 고른 옷. 추천보다 우선한다(고른 사람이 이긴다).
-   null이면 추천이 고른 대로 입는다. */
+   null이면 추천이 고른 대로 입는다.
+   _pickedShopItem은 쇼핑몰이 목록(catalog.json) 없이 옷 정보를 통째로 보냈을 때 쓴다 —
+   목록을 못 받는 상황에서도 "고른 옷"이 입혀져야 한다. */
 let _pickedShopId = null;
+let _pickedShopItem = null;
 let _shopItems = null;     // null=아직 안 읽음, []=읽었는데 없음
+let _shopLoading = null;   // 진행 중인 fetch 약속 — 같은 목록을 두 번 읽지 않는다
+let _shopFailed = false;   // 한 번 실패했다 → 다음에 다시 시도한다
 
 /* 목록 형식 (catalog.json)
    { "version":1,
@@ -58,31 +63,49 @@ let _shopItems = null;     // null=아직 안 읽음, []=읽었는데 없음
                  "mesh":{ "male":"clothes/x_male.obj", "female":"clothes/x_female.obj" },
                  "shop":{ "title":"...", "price":"...", "link":"https://..." } } ] }
    mesh 주소가 상대경로면 catalogUrl 기준으로 푼다. */
-async function loadShopCatalog() {
-  if (_shopItems || !BODY_SHOP.on) return _shopItems || [];
-  _shopItems = [];
-  try {
-    const ctl = typeof AbortController === 'function' ? new AbortController() : null;
-    const t = ctl && setTimeout(() => ctl.abort(), BODY_SHOP.timeoutMs);
-    const res = await fetch(BODY_SHOP.catalogUrl, ctl ? { 'signal': ctl.signal } : undefined);
-    if (t) clearTimeout(t);
-    if (!res.ok) throw new Error('HTTP ' + res.status);
-    const data = await res.json();
-    const list = (data && data.items) || [];
-    _shopItems = list.map(it => {
-      const out = Object.assign({}, it, { 'fromShop': true });
-      out.mesh = {};
-      for (const g of ['male', 'female']) {
-        const u = it.mesh && it.mesh[g];
-        if (u) out.mesh[g] = new URL(u, BODY_SHOP.catalogUrl).href;
-      }
-      return out;
-    }).filter(it => it.mesh.male || it.mesh.female);
-    console.log('[3D·쇼핑몰] 옷 목록 ' + _shopItems.length + '벌 받음 — ' + BODY_SHOP.catalogUrl);
-  } catch (e) {
-    console.log('[3D·쇼핑몰] 목록을 못 받아 견본 옷장만 씁니다:', e && e.message || e);
+/* 목록 항목 하나를 앱이 쓰는 꼴로 다듬는다(상대경로 → 절대경로). */
+function _normalizeShopItem(it, baseUrl) {
+  if (!it || !it.id) return null;
+  const out = Object.assign({}, it, { 'fromShop': true });
+  out.mesh = {};
+  for (const g of ['male', 'female']) {
+    const u = it.mesh && it.mesh[g];
+    if (!u) continue;
+    try { out.mesh[g] = new URL(u, baseUrl || BODY_SHOP.catalogUrl).href; }
+    catch (e) { out.mesh[g] = u; }
   }
-  return _shopItems;
+  return (out.mesh.male || out.mesh.female) ? out : null;
+}
+
+/* 같은 목록을 두 번 읽지 않고(_shopLoading), 실패한 목록은 다음 기회에 다시 읽는다.
+   예전 판은 fetch를 시작하기 전에 _shopItems=[]로 두어서, 동시에 부른 쪽은 빈 목록을
+   받았고 한 번 실패하면 영영 다시 읽지 않았다. */
+function loadShopCatalog(force) {
+  if (!BODY_SHOP.on) return Promise.resolve([]);
+  if (_shopLoading) return _shopLoading;
+  if (_shopItems && !(force && _shopFailed)) return Promise.resolve(_shopItems);
+
+  _shopLoading = (async () => {
+    try {
+      const ctl = typeof AbortController === 'function' ? new AbortController() : null;
+      const t = ctl && setTimeout(() => ctl.abort(), BODY_SHOP.timeoutMs);
+      const res = await fetch(BODY_SHOP.catalogUrl, ctl ? { 'signal': ctl.signal } : undefined);
+      if (t) clearTimeout(t);
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      const data = await res.json();
+      const list = (data && data.items) || [];
+      _shopItems = list.map(it => _normalizeShopItem(it, BODY_SHOP.catalogUrl)).filter(Boolean);
+      _shopFailed = false;
+      console.log('[3D·쇼핑몰] 옷 목록 ' + _shopItems.length + '벌 받음 — ' + BODY_SHOP.catalogUrl);
+    } catch (e) {
+      _shopItems = _shopItems || [];
+      _shopFailed = true;
+      console.log('[3D·쇼핑몰] 목록을 못 받아 견본 옷장만 씁니다:', e && e.message || e);
+    }
+    _shopLoading = null;
+    return _shopItems;
+  })();
+  return _shopLoading;
 }
 
 /* 쇼핑몰 항목을 이 성별에서 입을 수 있는 조각으로 바꾼다(없으면 null). */
@@ -152,7 +175,11 @@ async function piecesForOutfit(item) {
 
   /* 쇼핑몰에서 직접 고른 옷 — 격식을 따지지 않고 그대로 입는다. */
   if (_pickedShopId) {
-    const hit = shop.map(it => shopPiece(it, gender)).find(p => p && p.id === _pickedShopId);
+    let hit = shop.map(it => shopPiece(it, gender)).find(p => p && p.id === _pickedShopId);
+    /* 목록에 없으면 쇼핑몰이 메시지에 실어 보낸 옷 정보로 입힌다. */
+    if (!hit && _pickedShopItem && _pickedShopItem.id === _pickedShopId) {
+      hit = shopPiece(_pickedShopItem, gender);
+    }
     if (hit) {
       const parts = [Object.assign({}, hit, { 'colorHex': hit.colorHex || tint })];
       return { 'label': hit.name + ' · 고름', 'shop': hit.shop || null, 'parts': parts };
@@ -160,7 +187,7 @@ async function piecesForOutfit(item) {
     /* 이 성별에는 없는 옷이다 — 고른 것을 놓고 추천으로 돌아간다. */
     console.log('[3D·쇼핑몰] 고른 옷(' + _pickedShopId + ')이 ' +
       BODY_FIGURES[gender].label + ' 몸에는 없어 추천으로 돌아갑니다');
-    _pickedShopId = null;
+    _pickedShopId = null; _pickedShopItem = null;
   }
 
   if (BODY_BASE.outer) {
@@ -446,8 +473,10 @@ function buildBodyGarmentRack() {
   bOuter.addEventListener('click', () => toggleBodyOuter());
   rack.appendChild(bOuter);
 
-  /* 쇼핑몰이 살아 있으면 옷장 문을 연다 — 3D 화면 위에 덮어 띄운다. */
-  if (BODY_SHOP.on && (_shopItems === null || _shopItems.length)) {
+  /* 쇼핑몰 주소가 있으면 옷장 문을 연다 — 3D 화면 위에 덮어 띄운다.
+     목록(catalog.json)을 못 받았다고 버튼을 지우면 안 된다. 손님이 고르는 곳은
+     목록이 아니라 쇼핑몰 페이지이고, 고른 옷은 메시지로 직접 들어온다. */
+  if (BODY_SHOP.on && BODY_SHOP.pageUrl) {
     const bShop = document.createElement('button');
     bShop.type = 'button';
     const open = !!document.getElementById('bbShopPanel');
@@ -475,32 +504,73 @@ function buildBodyGarmentRack() {
    쇼핑몰을 새 탭으로 열면 앱이 내려가고, 앱이 내려가면 이 손님의 3D 모델이
    사라진다(사진부터 다시 찍어야 한다). 그래서 밖으로 내보내지 않고
    3D 화면 <b>위에</b> 얹는다 — 옷을 눌러도 뒤의 아바타는 그대로 서 있다. */
+let _shopFrame = null;
 function openShopPanel() {
   const host = document.getElementById('model3dViewport');
-  if (!host) return false;
+  if (!host) { console.warn('[3D·쇼핑몰] 3D 화면(model3dViewport)이 없어 옷장을 못 엽니다'); return false; }
   if (document.getElementById('bbShopPanel')) return true;
+  installShopBridge();                 // 패널을 열기 전에 귀부터 연다
+  loadShopCatalog(true);               // 지난번에 실패했으면 여기서 다시 읽는다
 
   const panel = document.createElement('div');
   panel.id = 'bbShopPanel';
   panel.className = 'bb-shop';
+
   const bar = document.createElement('div');
   bar.className = 'bb-shop-bar';
-  bar.innerHTML = '<span>의상 고르기</span>';
+  const ttl = document.createElement('span');
+  ttl.textContent = '의상 고르기';
+  bar.appendChild(ttl);
   const close = document.createElement('button');
-  close.type = 'button'; close.textContent = '✕';
+  close.type = 'button'; close.textContent = '✕'; close.title = '닫기';
   close.addEventListener('click', closeShopPanel);
   bar.appendChild(close);
+
+  /* 안 뜰 때 손님이 빈 화면만 보고 있지 않도록, 상태를 글로 말해 준다. */
+  const note = document.createElement('div');
+  note.className = 'bb-shop-note';
+  note.textContent = '쇼핑몰을 여는 중…';
+
   const frame = document.createElement('iframe');
-  frame.src = BODY_SHOP.pageUrl;
+  frame.id = 'bbShopFrame';
   frame.title = '의상 고르기';
-  panel.appendChild(bar); panel.appendChild(frame);
+  frame.setAttribute('loading', 'eager');
+  frame.setAttribute('referrerpolicy', 'no-referrer');
+  frame.addEventListener('load', () => {
+    note.remove();
+    /* 쇼핑몰에 "나 여기 있다"고 알린다 — 지금 성별도 같이 보낸다. */
+    try {
+      frame.contentWindow.postMessage(
+        { 'type': 'gyeol-hello', 'gender': BODY_BASE.gender }, '*');
+    } catch (e) {}
+  });
+  frame.src = BODY_SHOP.pageUrl;
+
+  /* 6초 안에 load가 안 오면 주소·CORS·X-Frame-Options 문제다 → 새 탭 길을 열어 준다. */
+  const timer = setTimeout(() => {
+    if (!note.isConnected) return;
+    note.innerHTML = '';
+    const p = document.createElement('p');
+    p.textContent = '쇼핑몰 페이지를 화면 안에 띄우지 못했습니다.';
+    const a = document.createElement('a');
+    a.href = BODY_SHOP.pageUrl; a.target = '_blank'; a.rel = 'noopener';
+    a.textContent = '새 탭에서 열기';
+    const q = document.createElement('small');
+    q.textContent = BODY_SHOP.pageUrl;
+    note.appendChild(p); note.appendChild(a); note.appendChild(q);
+  }, BODY_SHOP.timeoutMs);
+  frame.addEventListener('load', () => clearTimeout(timer));
+
+  panel.appendChild(bar); panel.appendChild(note); panel.appendChild(frame);
   host.appendChild(panel);
+  _shopFrame = frame;
   buildBodyGarmentRack();
   return true;
 }
 function closeShopPanel() {
   const p = document.getElementById('bbShopPanel');
   if (p) p.remove();
+  _shopFrame = null;
   buildBodyGarmentRack();
 }
 
@@ -512,24 +582,41 @@ function installShopBridge() {
   if (_shopBridgeOn || typeof window === 'undefined') return;
   _shopBridgeOn = true;
   let shopOrigin = '';
-  try { shopOrigin = new URL(BODY_SHOP.pageUrl).origin; } catch (e) {}
+  try { shopOrigin = new URL(BODY_SHOP.pageUrl, location.href).origin; } catch (e) {}
   window.addEventListener('message', async ev => {
-    if (shopOrigin && ev.origin !== shopOrigin) return;
-    const d = ev.data;
+    if (shopOrigin && ev.origin !== shopOrigin && ev.origin !== location.origin) return;
+    /* 쇼핑몰이 JSON 문자열로 보낼 수도 있다. */
+    let d = ev.data;
+    if (typeof d === 'string') { try { d = JSON.parse(d); } catch (e) { return; } }
     if (!d || d.type !== 'gyeol-wear' || !d.id) return;
+
     _pickedShopId = String(d.id);
+    /* 목록에 없는 옷이어도 입을 수 있게, 메시지에 실려 온 옷 정보를 챙겨 둔다. */
+    _pickedShopItem = d.item ? _normalizeShopItem(
+      Object.assign({ 'id': _pickedShopId }, d.item), ev.origin + '/') : null;
+    if (_pickedShopItem) {
+      _shopItems = (_shopItems || []).filter(it => it.id !== _pickedShopId).concat([_pickedShopItem]);
+    }
     if (!BODY_BASE.outer) BODY_BASE.outer = true;   // 외투를 벗어둔 상태면 다시 입힌다
-    if (!_bodyRig) return;
-    await _mountGarment(_bodyRig, _lastBuild && _lastBuild.item);
+    if (!_bodyRig) { console.warn('[3D·쇼핑몰] 아직 몸이 안 세워져 고른 옷만 기억해 둡니다'); return; }
+    try {
+      await _mountGarment(_bodyRig, _lastBuild && _lastBuild.item);
+    } catch (e) { console.warn('[3D·쇼핑몰] 갈아입히기 실패:', e); return; }
     buildBodyGarmentRack(); _updateModel3DTag();
+    if (d.close !== false) closeShopPanel();        // 고르면 옷장 문은 닫는다
     console.log('[3D·쇼핑몰] 손님이 고른 옷으로 갈아입힘 — ' + _pickedShopId);
   });
+  console.log('[3D·쇼핑몰] 다리 놓음 — ' + (shopOrigin || '(주소 없음)') + ' 의 gyeol-wear 메시지를 듣습니다');
+}
+/* 3D 화면이 세워지기 전에 메시지가 와도 놓치지 않도록, 파일을 읽는 즉시 귀를 연다. */
+if (typeof window !== 'undefined') {
+  try { installShopBridge(); } catch (e) {}
 }
 
 /* 손님이 바뀌면 리그 참조를 놓는다(에셋 캐시는 남긴다 — 다시 읽을 필요가 없다). */
 function resetBodyBase() {
   _bodyRig = null; _lastBuild = null; _bodyWornLabel = ''; _bodyWornShop = null;
-  _pickedShopId = null; closeShopPanel();
+  _pickedShopId = null; _pickedShopItem = null; closeShopPanel();
   const rack = document.getElementById('bodyGarmentRack');
   if (rack) rack.remove();
 }
