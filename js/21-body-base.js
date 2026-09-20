@@ -121,9 +121,12 @@ function shopPiece(it, gender, loose) {
   const any = it.mesh.male || it.mesh.female;
   const url = it.mesh[gender] || ((loose || !it.gender || it.gender === 'both') ? any : null);
   if (!url) return null;
+  /* fitFor — 이 메쉬가 <b>어느 몸에 물려 구운</b> 것이냐. 지금 몸과 다르면 앱이 한 번 더
+     굽는다(fitGarmentToBody). 목록이 직접 적어 두면 그것을 믿고, 없으면 쓴 메쉬 키로 본다. */
+  const fitFor = it.fitFor || (it.mesh[gender] ? gender : (it.mesh.male ? 'male' : 'female'));
   return { 'id': it.id, 'name': it.name, 'formal': typeof it.formal === 'number' ? it.formal : 0.5,
            'url': url, 'colorHex': it.colorHex || null, 'layer': it.layer || 'outer',
-           'shop': it.shop || null, 'fromShop': true };
+           'fitFor': fitFor, 'shop': it.shop || null, 'fromShop': true };
 }
 
 const BODY_FIGURES = {
@@ -187,15 +190,21 @@ async function piecesForOutfit(item) {
     /* 고른 옷은 성별을 따지지 않는다. 지금 몸에 맞는 메쉬가 있으면 그것을,
        없으면 있는 메쉬를 그대로 얹는다 — 몸은 손님이 둔 그대로 둔다. */
     const hit = raw && shopPiece(raw, gender, !BODY_SHOP.pickGenderLock);
-    if (hit) {
+    /* 고른 옷도 제 layer를 지킨다 — 외투를 벗어 둔 손님에게 고른 재킷을 다시 입히면
+       스위치가 거짓말이 된다. 벗어 둔 동안에도 고른 기억(_pickedShopId)은 지우지 않는다.
+       다시 켜면 같은 옷이 돌아온다. */
+    if (hit && ((hit.layer || 'outer') !== 'outer' || BODY_BASE.outer)) {
       const parts = [Object.assign({}, hit, { 'colorHex': hit.colorHex || tint })];
       return { 'label': hit.name + ' · 고름', 'shop': hit.shop || null, 'parts': parts };
     }
-    /* 정말 입힐 메쉬가 없다 — 그때만 추천으로 돌아가고, 조용히 넘어가지 않는다. */
-    console.warn('[3D·쇼핑몰] 고른 옷(' + _pickedShopId + ')에 ' +
-      BODY_FIGURES[gender].label + ' 몸에 얹을 메쉬가 없어 추천으로 돌아갑니다');
-    bodyToast('고른 옷을 이 몸에 얹을 수 없어 추천 의상으로 돌아갑니다');
-    _pickedShopId = null; _pickedShopItem = null;
+    if (!hit) {
+      /* 정말 입힐 메쉬가 없다 — 그때만 추천으로 돌아가고, 조용히 넘어가지 않는다. */
+      console.warn('[3D·쇼핑몰] 고른 옷(' + _pickedShopId + ')에 ' +
+        BODY_FIGURES[gender].label + ' 몸에 얹을 메쉬가 없어 추천으로 돌아갑니다');
+      bodyToast('고른 옷을 이 몸에 얹을 수 없어 추천 의상으로 돌아갑니다');
+      _pickedShopId = null; _pickedShopItem = null;
+    }
+    /* 외투 OFF + 고른 옷이 외투 → 아래 안쪽 한 벌로 내려간다. */
   }
 
   if (BODY_BASE.outer) {
@@ -219,7 +228,7 @@ async function piecesForOutfit(item) {
 
 /* ------------------------------------------------------------ 불러오기 */
 const _figureCache = new Map();   // gender → {geoms, box, cutY, neckCx, neckCz}
-const _garmentCache = new Map();  // url|offset → [BufferGeometry]
+const _garmentCache = new Map();  // url|offset(|gender) → [BufferGeometry]
 let _bodyRig = null, _bodyWornLabel = '', _bodyWornShop = null, _lastBuild = null;
 
 function _loadOBJGroup(objUrl) {
@@ -302,15 +311,134 @@ async function loadBodyFigure(gender) {
   return rec;
 }
 
+/* ------------------------------------------------- 다른 몸에 옮겨 굽기
+   반입 단계의 tools/conform.py가 옷을 <b>한</b> 몸(fitFor)에 물려 굽는다. 그런데 손님은
+   남자 옷을 여자 몸에 입어 보기도 한다 — 성별 구분은 추천이 자동으로 고를 때만 쓰는
+   규칙이지 손님을 막는 규칙이 아니다(BODY_SHOP.pickGenderLock=false).
+
+   두 몸은 정점 번호가 안 맞으므로(남 9529 / 여 9450) conform.py처럼 같은 번호로 옮길 수
+   없다. 대신 몸을 <b>높이 × 방위</b> 칸으로 재서 칸마다 겉 반지름을 하나 두고, 옷의 점을
+   같은 칸의 반지름 비율만큼 옮긴다. 가슴은 앞쪽 방위에서만 커지므로 그 자리만 부풀고
+   허리는 그대로 들어간다. 옷이 몸에서 떠 있던 여유(gap)는 그대로 지킨다.
+
+   ※ 이건 <b>근사</b>다. 파는 성별 몸에는 conform.py로 제대로 구운 메쉬가 그대로 쓰이고
+     (fitFor === 지금 성별이면 이 길을 아예 안 탄다), 교차 피팅일 때만 돈다.
+     목록이 mesh.male·mesh.female을 둘 다 주면 이 길은 영영 안 돌아간다.
+   끄기: FIT_WARP.on = false */
+const FIT_WARP = {
+  'on': true,
+  'NY': 48,          // 세로 칸 (발바닥 ~ 목 절단선)
+  'NTH': 32,         // 방위 칸 — 소매가 어색하면 48~64로 올린다
+  'ease': 0.010,     // 살이 옷을 뚫지 못하게 두는 최소 틈(모델 단위)
+  'keepOther': false // true면 반대 성별로 구운 벌도 캐시에 남긴다
+};
+const _radialCache = new Map();   // gender → 반지름 격자
+
+async function bodyRadialMap(gender) {
+  if (_radialCache.has(gender)) return _radialCache.get(gender);
+  const b = await loadBodyFigure(gender);
+  const y0 = b.box.min.y, y1 = b.cutY, NY = FIT_WARP.NY, NTH = FIT_WARP.NTH;
+  const R = new Float32Array(NY * NTH);
+  for (const g of b.geoms) {
+    const p = g.attributes.position;
+    for (let i = 0; i < p.count; i++) {
+      const y = p.getY(i); if (y < y0 || y > y1) continue;
+      const x = p.getX(i) - b.neckCx, z = p.getZ(i) - b.neckCz;
+      const r = Math.hypot(x, z); if (!r) continue;
+      const iy = Math.min(NY - 1, Math.floor((y - y0) / (y1 - y0) * NY));
+      const it = ((Math.floor((Math.atan2(z, x) + Math.PI) / (2 * Math.PI) * NTH)) % NTH + NTH) % NTH;
+      if (r > R[iy * NTH + it]) R[iy * NTH + it] = r;
+    }
+  }
+  /* 빈 칸(다리 사이·팔 사이)은 같은 높이의 가까운 방위에서 빌린다. */
+  let holes = 0;
+  for (let iy = 0; iy < NY; iy++) for (let it = 0; it < NTH; it++) {
+    if (R[iy * NTH + it] > 0) continue;
+    holes++;
+    for (let d = 1; d < NTH; d++) {
+      const a = R[iy * NTH + (it + d) % NTH], c = R[iy * NTH + ((it - d) % NTH + NTH) % NTH];
+      if (a || c) { R[iy * NTH + it] = Math.max(a, c); break; }
+    }
+  }
+  const rec = { 'R': R, 'y0': y0, 'y1': y1, 'NY': NY, 'NTH': NTH,
+                'cx': b.neckCx, 'cz': b.neckCz };
+  _radialCache.set(gender, rec);
+  console.log('[3D·옷·자] ' + BODY_FIGURES[gender].label + ' 몸 반지름 격자 ' +
+    NY + '×' + NTH + ' · 빈 칸 ' + holes + '개는 이웃에서 빌림');
+  return rec;
+}
+
+/* 격자 한 점 읽기 — 높이는 0(발바닥)~1(목 절단선), 방위는 감아 돈다. */
+function _sampleBodyR(m, yn, th) {
+  const fy = Math.max(0, Math.min(m.NY - 1e-3, yn * m.NY - 0.5));
+  const ft = (th + Math.PI) / (2 * Math.PI) * m.NTH - 0.5;
+  const iy = Math.floor(fy), it = Math.floor(ft), wy = fy - iy, wt = ft - it;
+  const at = (a, b) => m.R[Math.max(0, Math.min(m.NY - 1, a)) * m.NTH +
+                           ((b % m.NTH) + m.NTH) % m.NTH];
+  return (at(iy, it) * (1 - wt) + at(iy, it + 1) * wt) * (1 - wy) +
+         (at(iy + 1, it) * (1 - wt) + at(iy + 1, it + 1) * wt) * wy;
+}
+
+async function fitGarmentToBody(geoms, fitFor, gender) {
+  if (!FIT_WARP.on || !fitFor || fitFor === gender) return geoms;
+  const src = await bodyRadialMap(fitFor), dst = await bodyRadialMap(gender);
+  const s = (dst.y1 - dst.y0) / (src.y1 - src.y0);
+  let pushed = 0, total = 0;
+  const out = geoms.map(g0 => {
+    const g = g0.clone(), p = g.attributes.position;
+    for (let i = 0; i < p.count; i++) {
+      const yn = (p.getY(i) - src.y0) / (src.y1 - src.y0);
+      const x = p.getX(i) - src.cx, z = p.getZ(i) - src.cz;
+      const th = Math.atan2(z, x);
+      let r = Math.hypot(x, z);
+      const rs = _sampleBodyR(src, yn, th), rd = _sampleBodyR(dst, yn, th);
+      const gap = Math.max(0, r - rs) * s;     // 떠 있던 여유는 지킨다
+      r = (rs > 0 && rd > 0) ? rd + gap : r * s;
+      const floor = rd + FIT_WARP.ease;
+      if (r < floor) { r = floor; pushed++; }  // 살이 뚫고 나오던 자리
+      total++;
+      p.setXYZ(i, dst.cx + Math.cos(th) * r,
+                  dst.y0 + yn * (dst.y1 - dst.y0),
+                  dst.cz + Math.sin(th) * r);
+    }
+    p.needsUpdate = true;
+    smoothInflateGeometry(g, 0);               // 법선 다시 (안 하면 각져 보인다)
+    return g;
+  });
+  console.log('[3D·옷·굽기] ' + BODY_FIGURES[fitFor].label + '용 옷 → ' +
+    BODY_FIGURES[gender].label + ' 몸 · 세로 ×' + s.toFixed(3) +
+    ' · 밀어낸 점 ' + pushed + '/' + total +
+    ' (밀어낸 점이 태반이면 그 옷은 이 몸에 너무 작은 것입니다 — 근사로는 여기까지)');
+  return out;
+}
+
+/* 성별이 바뀌면 반대쪽으로 구운 벌은 버린다(원본은 남긴다 — 다시 읽을 필요가 없다). */
+function _pruneGarmentCache(keepGender) {
+  if (FIT_WARP.keepOther) return;
+  const other = keepGender === 'male' ? 'female' : 'male';
+  for (const k of Array.from(_garmentCache.keys())) {
+    if (k.endsWith('|' + other)) _garmentCache.delete(k);
+  }
+}
+
 async function loadGarmentGeometries(part) {
   const offset = part.under ? BODY_BASE.underOffset : BODY_BASE.clothOffset;
-  const key = part.url + '|' + offset;
-  if (_garmentCache.has(key)) return _garmentCache.get(key);
-  const group = await _loadOBJGroup(part.url);
-  const geoms = _collectGeometries(group);
-  geoms.forEach(g => smoothInflateGeometry(g, offset));
-  _garmentCache.set(key, geoms);
-  return geoms;
+  const raw = part.url + '|' + offset;
+  if (!_garmentCache.has(raw)) {
+    const group = await _loadOBJGroup(part.url);
+    const geoms = _collectGeometries(group);
+    geoms.forEach(g => smoothInflateGeometry(g, offset));
+    _garmentCache.set(raw, geoms);
+  }
+  /* 견본 옷장 옷에는 fitFor가 없다 — 성별 폴더에서 온 것이라 지금 몸용이 맞다. */
+  const fitFor = part.fitFor || BODY_BASE.gender;
+  if (!FIT_WARP.on || fitFor === BODY_BASE.gender) return _garmentCache.get(raw);
+  const key = raw + '|' + BODY_BASE.gender;
+  if (!_garmentCache.has(key)) {
+    _garmentCache.set(key,
+      await fitGarmentToBody(_garmentCache.get(raw), fitFor, BODY_BASE.gender));
+  }
+  return _garmentCache.get(key);
 }
 
 /* ------------------------------------------------------------ 리그 조립 */
@@ -340,6 +468,7 @@ function _detach(parent, obj) {
 }
 
 async function _mountGarment(rig, item) {
+  _pruneGarmentCache(BODY_BASE.gender);
   const clip = rig.userData.clipPlane;
   _detach(rig, rig.getObjectByName('bodyGarment'));
   const holder = new THREE.Group();
@@ -433,10 +562,11 @@ async function setBodyGender(gender) {
 }
 
 async function toggleBodyOuter() {
+  /* 스위치의 뜻은 하나다 — <b>외투를 입는다/벗는다</b>.
+     고른 옷은 "어떤 외투냐"만 정하므로 여기서 놓지 않는다(놓으면 껐다 켠 사이에
+     고른 옷이 사라져, 손님 눈에는 스위치가 저 혼자 ON으로 돌아간 것처럼 보였다).
+     고른 옷을 아주 벗는 길은 「고른 옷 벗기」 버튼 하나로 둔다. */
   BODY_BASE.outer = !BODY_BASE.outer;
-  /* 고른 옷을 입고 있는 동안에는 이 스위치가 아무것도 못 바꾼다(고른 옷이 먼저다).
-     손님이 스위치를 눌렀다는 건 추천 옷장으로 돌아가겠다는 뜻이므로, 고른 옷을 놓는다. */
-  if (_pickedShopId) { _pickedShopId = null; _pickedShopItem = null; }
   if (!_bodyRig) return false;
   await _mountGarment(_bodyRig, _lastBuild && _lastBuild.item);
   buildBodyGarmentRack(); _updateModel3DTag();
@@ -481,9 +611,8 @@ function buildBodyGarmentRack() {
   bOuter.textContent = '외투 ' + (BODY_BASE.outer ? 'ON' : 'OFF');
   if (BODY_BASE.outer) bOuter.classList.add('on');
   bOuter.title = _pickedShopId
-    ? '지금은 쇼핑몰에서 고른 옷을 입고 있어 이 스위치는 쉽니다'
+    ? '고른 옷(외투)을 입었다 벗깁니다 — 벗어도 고른 옷은 기억해 둡니다'
     : '슈트·재킷을 입었다 벗깁니다 (무슨 옷인지는 추천이 정합니다)';
-  if (_pickedShopId) bOuter.classList.add('muted');
   bOuter.addEventListener('click', () => toggleBodyOuter());
   rack.appendChild(bOuter);
 
