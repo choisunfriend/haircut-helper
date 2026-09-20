@@ -42,13 +42,11 @@ const BODY_SHOP = {
   'catalogUrl': 'https://pub-0d2b3979dafc4e7ebc2c1b1b5acca4de.r2.dev/catalog.json',
   'pageUrl':    'https://pub-0d2b3979dafc4e7ebc2c1b1b5acca4de.r2.dev/shop/index.html',
   'timeoutMs': 6000,
-  /* 고른 옷이 지금 몸의 성별용이 아닐 때 어떻게 할지.
-     'switch' — 그 옷에 맞는 몸으로 바꿔서 입힌다(기본). 고른 옷은 반드시 보인다.
-     'wear'   — 몸은 그대로 두고 있는 메쉬를 그냥 얹는다(살이 옷을 뚫을 수 있다).
-     'skip'   — 입히지 않고 추천으로 돌아간다(예전 동작).
-     쇼핑몰이 남성 옷만 올려 두고 손님 몸이 여자면 'skip'에서는 아무 일도 안 일어난다 —
-     그게 "눌러도 옷이 안 바뀐다"의 정체였다. */
-  'crossGender': 'switch'
+  /* 성별 구분은 추천이 옷장에서 <b>자동으로</b> 고를 때만 쓰는 규칙이다 —
+     치마가 남자 몸에 얹히는 일을 막으려는 것이지, 손님을 막으려는 게 아니다.
+     손님이 쇼핑몰에서 직접 고른 옷은 남성복이든 여성복이든 지금 몸 그대로 입힌다.
+     (true로 두면 고른 옷도 성별이 맞아야만 입는다 — 예전 동작) */
+  'pickGenderLock': false
 };
 /* 손님이 쇼핑몰에서 직접 고른 옷. 추천보다 우선한다(고른 사람이 이긴다).
    null이면 추천이 고른 대로 입는다.
@@ -186,10 +184,9 @@ async function piecesForOutfit(item) {
   /* 쇼핑몰에서 직접 고른 옷 — 격식을 따지지 않고 그대로 입는다. */
   if (_pickedShopId) {
     const raw = _shopItemById(_pickedShopId, shop);
-    /* 'skip'이 아니면 성별이 안 맞아도 있는 메쉬를 얹는다. 몸을 바꿔 입히는
-       'switch'는 이 함수에 오기 전(applyShopPick)에 이미 몸을 바꿔 놓는다. */
-    const loose = BODY_SHOP.crossGender !== 'skip';
-    const hit = raw && shopPiece(raw, gender, loose);
+    /* 고른 옷은 성별을 따지지 않는다. 지금 몸에 맞는 메쉬가 있으면 그것을,
+       없으면 있는 메쉬를 그대로 얹는다 — 몸은 손님이 둔 그대로 둔다. */
+    const hit = raw && shopPiece(raw, gender, !BODY_SHOP.pickGenderLock);
     if (hit) {
       const parts = [Object.assign({}, hit, { 'colorHex': hit.colorHex || tint })];
       return { 'label': hit.name + ' · 고름', 'shop': hit.shop || null, 'parts': parts };
@@ -605,20 +602,13 @@ function closeShopPanel() {
    예전 판이 여기서 두 가지를 잘못했다.
    ① 고른 옷이 지금 몸의 성별용이 아니면 말없이 버리고 추천으로 돌아갔다.
       쇼핑몰에 남성 옷만 있고 손님 몸이 여자면 "눌러도 아무 일도 안 일어난다".
+      성별 구분은 추천이 자동으로 고를 때 쓰는 규칙일 뿐, 손님이 직접 고른 옷에는
+      적용하지 않는다 — 남성 재킷이 마음에 든 여자 손님은 그냥 입어 보면 된다.
    ② 손님이 꺼 둔 외투 스위치를 제 마음대로 다시 켰다. 고른 옷은 외투 스위치와
       상관없이 입혀지므로(piecesForOutfit이 먼저 돌려준다) 켤 이유가 없었다. */
 function _shopItemById(id, list) {
   if (_pickedShopItem && _pickedShopItem.id === id) return _pickedShopItem;
   return ((list || _shopItems || []).find(it => it && it.id === id)) || null;
-}
-
-/* 이 옷을 제대로 입을 수 있는 몸의 성별. 없으면 null. */
-function _genderForItem(it) {
-  if (!it || !it.mesh) return null;
-  for (const g of ['male', 'female']) {
-    if (it.mesh[g] && (!it.gender || it.gender === 'both' || it.gender === g)) return g;
-  }
-  return null;
 }
 
 async function applyShopPick(id, rawItem, origin) {
@@ -645,19 +635,6 @@ async function applyShopPick(id, rawItem, origin) {
   _shopItems = (_shopItems || []).filter(x => x.id !== pid).concat([it]);
 
   if (!_bodyRig) { console.warn('[3D·쇼핑몰] 아직 몸이 안 세워져 고른 옷만 기억해 둡니다'); return true; }
-
-  /* 성별이 안 맞으면 — 옷에 맞는 몸으로 바꿔 입힌다(기본). */
-  const want = _genderForItem(it);
-  if (BODY_SHOP.crossGender === 'switch' && want && want !== BODY_BASE.gender &&
-      !shopPiece(it, BODY_BASE.gender)) {
-    const from = BODY_FIGURES[BODY_BASE.gender].label;
-    BODY_BASE.gender = want;
-    const okRig = await rebuildBodyRig();          // 몸이 바뀌므로 리그부터 다시 세운다
-    bodyToast(BODY_FIGURES[want].label + ' 의상이라 몸을 ' + from + ' → ' +
-      BODY_FIGURES[want].label + '로 바꿔 입혔습니다');
-    console.log('[3D·쇼핑몰] 성별 전환 후 착용 — ' + pid + ' (' + want + ')');
-    return okRig;
-  }
 
   try {
     await _mountGarment(_bodyRig, _lastBuild && _lastBuild.item);
