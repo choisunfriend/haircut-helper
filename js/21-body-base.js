@@ -54,12 +54,15 @@ const BODY_WARDROBE = {
   },
   'female': {
     'outer': [
-      { 'id': 'f-suit', 'name': '슈트', 'formal': 0.9, 'url': './assets/fitted/female/fem_suit2.fitted.obj' }
+      { 'id': 'f-suit',  'name': '슈트', 'formal': 0.95, 'url': './assets/fitted/female/fem_suit2.fitted.obj' },
+      { 'id': 'f-dress', 'name': '원피스 슈트', 'formal': 0.55,
+        'url': './assets/fitted/female/female_elegantsuit01.fitted.obj' }
     ],
+    /* 여자 안쪽 한 벌은 상·하의가 한 메쉬다(MakeHuman female_casualsuit01).
+       예전에는 남성용 튜닉 + 청바지를 빌려 썼는데, 가슴이 옷을 뚫고 나와 여유를 계속
+       올리다 보니 어깨가 부풀었다. 이 옷은 처음부터 여자 체형에 물려 있어 그 문제가 없다. */
     'inner': [
-      { 'id': 'f-jeans', 'name': '청바지', 'under': true, 'colorHex': '#3E4E6B',
-        'url': './assets/fitted/female/mens_elv_jeans2slf.fitted.obj' },
-      { 'id': 'f-top',   'name': '상의', 'url': './assets/fitted/female/mycenaean_tunic.fitted.obj' }
+      { 'id': 'f-casual', 'name': '캐주얼', 'url': './assets/fitted/female/female_casualsuit01.fitted.obj' }
     ]
   }
 };
