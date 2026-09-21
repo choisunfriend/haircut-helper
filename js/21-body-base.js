@@ -42,11 +42,12 @@ const BODY_SHOP = {
   'catalogUrl': 'https://pub-0d2b3979dafc4e7ebc2c1b1b5acca4de.r2.dev/catalog.json',
   'pageUrl':    'https://pub-0d2b3979dafc4e7ebc2c1b1b5acca4de.r2.dev/shop/index.html',
   'timeoutMs': 6000,
-  /* 성별 구분은 추천이 옷장에서 <b>자동으로</b> 고를 때만 쓰는 규칙이다 —
-     치마가 남자 몸에 얹히는 일을 막으려는 것이지, 손님을 막으려는 게 아니다.
-     손님이 쇼핑몰에서 직접 고른 옷은 남성복이든 여성복이든 지금 몸 그대로 입힌다.
-     (true로 두면 고른 옷도 성별이 맞아야만 입는다 — 예전 동작) */
-  'pickGenderLock': false
+  /* 성별 구분은 <b>추천이든 손님이 고른 것이든</b> 똑같이 지킨다 —
+     남자 몸에는 남성복만, 여자 몸에는 여성복만 얹는다.
+     반대 성별 메쉬를 억지로 구워 맞추면(교차 피팅) 어깨가 부풀거나 가슴이 옷을
+     뚫는 자리가 남아서, 근사로 덮기보다 아예 안 입히는 쪽을 택한다.
+     (false로 두면 고른 옷은 성별을 안 따진다 — 예전 동작) */
+  'pickGenderLock': true
 };
 /* 손님이 쇼핑몰에서 직접 고른 옷. 추천보다 우선한다(고른 사람이 이긴다).
    null이면 추천이 고른 대로 입는다.
@@ -114,16 +115,22 @@ function loadShopCatalog(force) {
 }
 
 /* 쇼핑몰 항목을 이 성별에서 입을 수 있는 조각으로 바꾼다(없으면 null).
-   loose=true면 성별 표시를 따지지 않고 있는 메쉬를 그대로 쓴다. */
+   loose=true면 성별 표시(it.gender)까지는 눈감아 주지만, <b>메쉬는 여전히
+   이 몸용으로 구운 것만</b> 쓴다 — 반대 성별 메쉬를 빌려다 굽는 길은 없앴다. */
 function shopPiece(it, gender, loose) {
   if (!it || !it.mesh) return null;
   if (!loose && it.gender && it.gender !== 'both' && it.gender !== gender) return null;
-  const any = it.mesh.male || it.mesh.female;
-  const url = it.mesh[gender] || ((loose || !it.gender || it.gender === 'both') ? any : null);
+  /* 이 몸에 물려 구운 메쉬가 없으면 이 옷은 이 몸에 없는 옷이다. */
+  const url = it.mesh[gender];
   if (!url) return null;
-  /* fitFor — 이 메쉬가 <b>어느 몸에 물려 구운</b> 것이냐. 지금 몸과 다르면 앱이 한 번 더
-     굽는다(fitGarmentToBody). 목록이 직접 적어 두면 그것을 믿고, 없으면 쓴 메쉬 키로 본다. */
-  const fitFor = it.fitFor || (it.mesh[gender] ? gender : (it.mesh.male ? 'male' : 'female'));
+  /* fitFor — 이 메쉬가 <b>어느 몸에 물려 구운</b> 것이냐. 목록이 직접 적어 두면 그것을
+     믿는다. 위에서 mesh[gender]만 골랐으므로 정상 항목이면 언제나 지금 몸과 같다. */
+  const fitFor = it.fitFor || gender;
+  if (fitFor !== gender) {
+    console.warn('[3D·쇼핑몰] ' + it.id + ' 의 mesh.' + gender +
+      ' 가 fitFor=' + fitFor + ' 로 적혀 있습니다 — 교차 피팅은 하지 않으므로 건너뜁니다');
+    return null;
+  }
   return { 'id': it.id, 'name': it.name, 'formal': typeof it.formal === 'number' ? it.formal : 0.5,
            'url': url, 'colorHex': it.colorHex || null, 'layer': it.layer || 'outer',
            'fitFor': fitFor, 'shop': it.shop || null, 'fromShop': true };
@@ -187,8 +194,8 @@ async function piecesForOutfit(item) {
   /* 쇼핑몰에서 직접 고른 옷 — 격식을 따지지 않고 그대로 입는다. */
   if (_pickedShopId) {
     const raw = _shopItemById(_pickedShopId, shop);
-    /* 고른 옷은 성별을 따지지 않는다. 지금 몸에 맞는 메쉬가 있으면 그것을,
-       없으면 있는 메쉬를 그대로 얹는다 — 몸은 손님이 둔 그대로 둔다. */
+    /* 고른 옷도 성별을 지킨다 — 지금 몸에 물려 구운 메쉬가 없으면 입히지 않고
+       추천으로 돌아간다. 몸을 바꿔 주면 그 옷이 다시 보인다. */
     const hit = raw && shopPiece(raw, gender, !BODY_SHOP.pickGenderLock);
     /* 고른 옷도 제 layer를 지킨다 — 외투를 벗어 둔 손님에게 고른 재킷을 다시 입히면
        스위치가 거짓말이 된다. 벗어 둔 동안에도 고른 기억(_pickedShopId)은 지우지 않는다.
@@ -200,8 +207,8 @@ async function piecesForOutfit(item) {
     if (!hit) {
       /* 정말 입힐 메쉬가 없다 — 그때만 추천으로 돌아가고, 조용히 넘어가지 않는다. */
       console.warn('[3D·쇼핑몰] 고른 옷(' + _pickedShopId + ')에 ' +
-        BODY_FIGURES[gender].label + ' 몸에 얹을 메쉬가 없어 추천으로 돌아갑니다');
-      bodyToast('고른 옷을 이 몸에 얹을 수 없어 추천 의상으로 돌아갑니다');
+        BODY_FIGURES[gender].label + ' 몸용 메쉬가 없어 추천으로 돌아갑니다');
+      bodyToast(BODY_FIGURES[gender].label + ' 몸에 맞는 옷이 아니라 추천 의상으로 돌아갑니다');
       _pickedShopId = null; _pickedShopItem = null;
     }
     /* 외투 OFF + 고른 옷이 외투 → 아래 안쪽 한 벌로 내려간다. */
@@ -311,22 +318,22 @@ async function loadBodyFigure(gender) {
   return rec;
 }
 
-/* ------------------------------------------------- 다른 몸에 옮겨 굽기
-   반입 단계의 tools/conform.py가 옷을 <b>한</b> 몸(fitFor)에 물려 굽는다. 그런데 손님은
-   남자 옷을 여자 몸에 입어 보기도 한다 — 성별 구분은 추천이 자동으로 고를 때만 쓰는
-   규칙이지 손님을 막는 규칙이 아니다(BODY_SHOP.pickGenderLock=false).
+/* ------------------------------------------------- 다른 몸에 옮겨 굽기 (기본 꺼짐)
+   반입 단계의 tools/conform.py가 옷을 <b>한</b> 몸(fitFor)에 물려 굽는다. 남자 옷은
+   남자 몸에 물려 구운 그대로 쓰고, 여자 옷은 여자 몸에 물려 구운 그대로 쓴다 —
+   지금은 성별이 안 맞으면 굽지 않고 아예 안 입힌다(BODY_SHOP.pickGenderLock=true,
+   FIT_WARP.crossGender=false). 아래 길은 그 규칙을 일부러 풀었을 때만 돈다.
 
    두 몸은 정점 번호가 안 맞으므로(남 9529 / 여 9450) conform.py처럼 같은 번호로 옮길 수
    없다. 대신 몸을 <b>높이 × 방위</b> 칸으로 재서 칸마다 겉 반지름을 하나 두고, 옷의 점을
    같은 칸의 반지름 비율만큼 옮긴다. 가슴은 앞쪽 방위에서만 커지므로 그 자리만 부풀고
    허리는 그대로 들어간다. 옷이 몸에서 떠 있던 여유(gap)는 그대로 지킨다.
 
-   ※ 이건 <b>근사</b>다. 파는 성별 몸에는 conform.py로 제대로 구운 메쉬가 그대로 쓰이고
-     (fitFor === 지금 성별이면 이 길을 아예 안 탄다), 교차 피팅일 때만 돈다.
-     목록이 mesh.male·mesh.female을 둘 다 주면 이 길은 영영 안 돌아간다.
-   끄기: FIT_WARP.on = false */
+   ※ 이건 <b>근사</b>다 — 어깨가 부풀거나 가슴이 옷을 뚫는 자리가 남는다. 그래서 기본을
+     끔으로 두었다. 다시 켜려면 FIT_WARP.crossGender = true. */
 const FIT_WARP = {
   'on': true,
+  'crossGender': false, // true라야 반대 성별로 구운 옷을 굽는다 — 기본은 아예 안 입힌다
   'NY': 48,          // 세로 칸 (발바닥 ~ 목 절단선)
   'NTH': 32,         // 방위 칸 — 소매가 어색하면 48~64로 올린다
   'ease': 0.010,     // 살이 옷을 뚫지 못하게 두는 최소 틈(모델 단위)
@@ -432,7 +439,13 @@ async function loadGarmentGeometries(part) {
   }
   /* 견본 옷장 옷에는 fitFor가 없다 — 성별 폴더에서 온 것이라 지금 몸용이 맞다. */
   const fitFor = part.fitFor || BODY_BASE.gender;
-  if (!FIT_WARP.on || fitFor === BODY_BASE.gender) return _garmentCache.get(raw);
+  if (fitFor === BODY_BASE.gender) return _garmentCache.get(raw);
+  /* 여기부터는 반대 성별로 구운 옷이다. 기본값(crossGender=false)에서는 굽지 않고
+     건너뛴다 — 남자 옷은 남자 몸에서만 comfort(conform)로 맞춘 그대로 쓴다. */
+  if (!FIT_WARP.on || !FIT_WARP.crossGender) {
+    throw new Error(BODY_FIGURES[fitFor].label + '용 옷은 ' +
+      BODY_FIGURES[BODY_BASE.gender].label + ' 몸에 입히지 않습니다');
+  }
   const key = raw + '|' + BODY_BASE.gender;
   if (!_garmentCache.has(key)) {
     _garmentCache.set(key,
