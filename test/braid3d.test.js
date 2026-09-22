@@ -16,15 +16,17 @@ global.THREE={ Color,
   LineBasicMaterial: class{ constructor(o){this.o=o;} },
   Mesh: class{ constructor(g,m){this.geometry=g; this.material=m;} },
   LineSegments: class{ constructor(g,m){this.geometry=g; this.material=m; this.isLineSegments=true;} },
-  Group: class{ constructor(){this.children=[]; this.isGroup=true;} add(o){this.children.push(o);} } };
+  Group: class{ constructor(){this.children=[]; this.isGroup=true;} add(o){this.children.push(o);} },
+  DoubleSide: 2 };
 // 묶음이면 튜브 메쉬 / 모아 빗기 선을 꺼낸다
-const meshOf=(o)=> o && o.isGroup ? o.children.find(c=>!c.isLineSegments) : o;
+const meshOf=(o)=> o && o.isGroup ? o.children.find(c=>c.name==='braidedHair') : o;
+const fillOf=(o)=> o && o.isGroup ? o.children.find(c=>c.name==='braidCellFill') : null;
 const linesOf=(o)=> o && o.isGroup ? o.children.find(c=>c.isLineSegments) : null;
 global.gyeolBoldArgs=a=>a; global.state={landmarks:{}}; global.FACE_RULER_CM={eyeToChin:11.5};
 let CMU=16.4; global.modelCmPerUnit=()=>CMU;
 global.getHeadEllipsoid=()=>({a:0.417,b:0.633,c:0.492});     // 실기기 로그의 두상 반축
 state.hair3Dneutral={CY:0};
-eval(S21+';global.BRAID=BRAID;global.BRAID3D=BRAID3D;global.buildBraid3DObject=buildBraid3DObject;global.braidResample3D=braidResample3D;global.braidPickGrid=braidPickGrid;global.braidGridInfo=braidGridInfo;global.braidGroupGrid=braidGroupGrid;');
+eval(S21+';global.BRAID=BRAID;global.BRAID3D=BRAID3D;global.buildBraid3DObject=buildBraid3DObject;global.braidResample3D=braidResample3D;global.braidPickGrid=braidPickGrid;global.braidGridInfo=braidGridInfo;global.braidGroupGrid=braidGroupGrid;global.braidCellOf=braidCellOf;global.braidInTorso=braidInTorso;');
 BRAID.log=false;
 let pass=0,fail=0; const t=(n,c)=>{c?(pass++,console.log('  ok   '+n)):(fail++,console.log('  FAIL '+n));};
 
@@ -190,6 +192,65 @@ console.log('── 파팅 격자 ──');
   console.log('       저사양 모아 빗기 '+nLow+'가닥 · 밧줄 하나에 최대 '+maxPer+'가닥 (상한 '+BRAID3D.gatherPerCellLow+') · 노트북 '+nLines);
   t('저사양은 칸당 상한을 지킨다', maxPer <= BRAID3D.gatherPerCellLow);
   delete global.isLowMemDevice;
+}
+console.log('── 칸 면 · 솟는 가닥 · 몸통 자르기 (2026-09-22 6차) ──');
+{ BRAID.grid=true; BRAID.strands=3; state.hair3Dneutral={CY:0}; CMU=19.26; global.isLowMemDevice=()=>false;
+  const E={a:0.417,b:0.633,c:0.492};
+  let seed=11; const rnd=()=>{ seed=(seed*16807)%2147483647; return seed/2147483647; };
+  const onHead=(phi,th)=>({ x:E.a*Math.sin(phi)*Math.sin(th), y:E.b*Math.cos(phi), z:E.c*Math.sin(phi)*Math.cos(th) });
+  // 두피 위 뿌리 → 두피를 따라 조금 내려가다 늘어지는 가닥 (실제처럼 바깥으로 안 솟음)
+  const mk=(phi,th,len=24)=>{ const pts=[]; for(let i=0;i<30;i++){ const f=Math.min(1.9, phi+i*0.012); const q=onHead(f,th); pts.push({x:q.x*1.02,y:q.y - Math.max(0,i-8)*(len/CMU)/30,z:q.z*1.02}); } return {pts,color:'#2a2018'}; };
+  const adj=[]; while(adj.length<6000){ const cz=1-rnd()*(1-Math.cos(1.5)); adj.push(mk(Math.acos(cz),(rnd()*2-1)*Math.PI)); }
+  delete global.getNeckBottomY;
+  const obj=build(adj); const F=fillOf(obj);
+  t('칸 면이 생긴다', !!F && F.geometry.attr.position.array.length > 0);
+  // 덮임: 두피 임의점에서 바깥으로 쏜 반직선이 칸 면 삼각형을 맞히는가
+  const FP=F.geometry.attr.position.array, tris=[];
+  for(let k=0;k<FP.length;k+=9) tris.push([[FP[k],FP[k+1],FP[k+2]],[FP[k+3],FP[k+4],FP[k+5]],[FP[k+6],FP[k+7],FP[k+8]]]);
+  const hit=(o,d)=>{ for(const [a,b,c] of tris){ // Möller–Trumbore
+      const e1=[b[0]-a[0],b[1]-a[1],b[2]-a[2]], e2=[c[0]-a[0],c[1]-a[1],c[2]-a[2]];
+      const pv=[d[1]*e2[2]-d[2]*e2[1], d[2]*e2[0]-d[0]*e2[2], d[0]*e2[1]-d[1]*e2[0]];
+      const det=e1[0]*pv[0]+e1[1]*pv[1]+e1[2]*pv[2]; if(Math.abs(det)<1e-12) continue;
+      const tv=[o[0]-a[0],o[1]-a[1],o[2]-a[2]]; const u=(tv[0]*pv[0]+tv[1]*pv[1]+tv[2]*pv[2])/det; if(u<0||u>1) continue;
+      const qv=[tv[1]*e1[2]-tv[2]*e1[1], tv[2]*e1[0]-tv[0]*e1[2], tv[0]*e1[1]-tv[1]*e1[0]];
+      const v=(d[0]*qv[0]+d[1]*qv[1]+d[2]*qv[2])/det; if(v<0||u+v>1) continue;
+      const tt=(e2[0]*qv[0]+e2[1]*qv[1]+e2[2]*qv[2])/det; if(tt>-0.05 && tt<0.3) return true; }
+    return false; };
+  let cov=0; const N=600; for(let k=0;k<N;k++){ const cz=1-rnd()*(1-Math.cos(1.35)); const q=onHead(Math.acos(cz),(rnd()*2-1)*Math.PI);
+    const l=Math.hypot(q.x,q.y,q.z); if(hit([q.x,q.y,q.z],[q.x/l,q.y/l,q.z/l])) cov++; }
+  console.log('       두피 임의점 '+N+'개 중 칸 면에 덮인 곳 '+(cov/N*100).toFixed(0)+'% (나머지 = 가르마 틈)');
+  t('칸 면이 두피 대부분을 덮는다 (≥75%)', cov/N >= 0.75);
+  t('가르마 틈은 남는다 (덮임 < 99%)', cov/N < 0.99);
+  const grp=braidGroupGrid(adj.map(a=>a.pts[0]), undefined, adj.map(a=>a.pts[3]));
+  t('뿌리 분포 통계가 나온다 (칸 '+grp.stats.cells+' · 칸당 '+grp.stats.min+'/'+grp.stats.med+'/'+grp.stats.max+' · 성근 칸 '+grp.stats.sparse+')', grp.stats && grp.stats.cells>100);
+
+  // 솟는 가닥: 칸 정중앙에 뿌리를 두고 바깥으로 곧게 솟게 → 밧줄로 안 뽑혀야
+  const G=braidGridInfo(); const cell0=braidCellOf(adj[0].pts[0],G);
+  const same=adj.map((a,i)=>i).filter(i=>braidCellOf(adj[i].pts[0],G).key===cell0.key);
+  // 그 칸에서 원래 밧줄로 뽑히는 뿌리 자리 — 거기에 솟는 가닥을 둬야 대조가 된다
+  const gBase=braidGroupGrid(adj.map(a=>a.pts[0]));
+  const r0=adj[gBase.ropeOf[same[0]]].pts[0];
+  const spike={ pts: Array.from({length:30},(_,i)=>({x:r0.x*(1+i*0.03), y:r0.y*(1+i*0.03), z:r0.z*(1+i*0.03)})), color:'#000' };
+  /* (정정) 솟는 가닥을 맨 <b>앞</b>에 둔다 — 뿌리가 같은 가닥과 점수가 같으면 먼저 온 쪽이 이기므로,
+     뒤에 두면 벌점과 상관없이 안 뽑혀서 대조가 성립하지 않았다. */
+  const adj2=[spike].concat(adj); const si=0;
+  const g0=braidGroupGrid(adj2.map(a=>a.pts[0]));                                 // 벌점 없이
+  const g1=braidGroupGrid(adj2.map(a=>a.pts[0]), undefined, adj2.map(a=>a.pts[3])); // 벌점 있게
+  t('(대조) 벌점 없으면 정중앙의 솟는 가닥이 뽑힌다', g0.ropes.includes(si));
+  t('<b>솟는 가닥은 밧줄로 안 뽑힌다</b>', !g1.ropes.includes(si));
+  t('그래도 그 가닥은 칸 면·모아 빗기에는 들어간다', g1.ropeOf[si]>=0 && g1.ropeOf[si]!==si);
+
+  // 몸통 자르기: 목 밑동을 두상 아래로 두고, 가닥이 그 아래 몸통 안까지 내려가게
+  const neckY=-0.9; global.getNeckBottomY=()=>neckY;
+  const longA=adj.slice(0,1500).map(a=>({ pts: a.pts.concat(Array.from({length:20},(_,i)=>({x:a.pts[29].x*0.9, y:a.pts[29].y-(i+1)*0.05, z:a.pts[29].z*0.9}))), color:a.color }));
+  const mm=meshOf(build(longA)); const P=mm.geometry.attr.position.array;
+  let inside=0, below=0;
+  for(let k=0;k<P.length;k+=3){ const q={x:P[k],y:P[k+1],z:P[k+2]}; if(q.y<neckY){ below++; if(braidInTorso(q,0)) inside++; } }
+  const off=(()=>{ BRAID3D.bodyCut=false; const m2=meshOf(build(longA)); BRAID3D.bodyCut=true; const A=m2.geometry.attr.position.array; let n=0; for(let k=0;k<A.length;k+=3){ if(braidInTorso({x:A[k],y:A[k+1],z:A[k+2]},0)) n++; } return n; })();
+  console.log('       몸통 안 튜브 정점: 자르기 끔 '+off+' → 켬 '+inside);
+  t('(대조) 자르기를 끄면 몸통 안을 지난다', off > 1000);
+  t('<b>몸통 안에 튜브가 없다</b>', inside===0);
+  delete global.getNeckBottomY; delete global.isLowMemDevice;
 }
 console.log('\n'+pass+'/'+(pass+fail)+' 통과'+(fail?'  ← '+fail+'개 실패':''));
 process.exit(fail?1:0);

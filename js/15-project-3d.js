@@ -1126,6 +1126,7 @@ function projectHair3DToView(ctx, fit, angle, maskInf){
              + '|' + Math.floor((rootIy / Math.max(1, maskInf.h)) * 10),
       sec: st.sec || 'crown',                     // 맨 위로 올릴 섹션 판정용(LAYER_SORT.topSections)
       r3: pts[0],                                  // 뿌리 3D 좌표 — 땋기 파팅 격자(21 braidPickGrid)가 3D와 같은 칸을 잡는 데 쓴다
+      r3n: pts[Math.min(3, pts.length - 1)],       // 뿌리 다음 점 — 땋기가 두피 밖으로 솟는 가닥을 밧줄로 안 뽑게(21 braidGroupGrid)
     });
   }
   if(!projected.length) return false;
