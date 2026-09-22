@@ -1310,6 +1310,18 @@ function refreshDevMini3D(){
   diagAdjSourceStamp('미니3D', adj);
   const { group } = devMini3D;
   miniDetach('strandObj');
+  /* 땋기(2026-09-22 2차) — 3D 결과보기와 <b>같은 함수</b>로 밧줄을 짓는다(색만 섹션색).
+     슬라이더마다 다시 지으므로 가볍게: 원주 3 · 마디당 4점 · 로그 끔.
+     못 지으면 아래 평소 선으로. */
+  if(typeof BRAID !== 'undefined' && BRAID.on && typeof buildBraid3DObject === 'function'){
+    const bo = buildBraid3DObject(adj, (st)=> SECTION_COLORS[st.sec] || '#cccccc',
+      { x:0, y: (_m && isFinite(_m.CY)) ? _m.CY : 0, z:0 }, { radial:3, stepsPerNode:4, log:false, mini:true });   // 예산: BRAID3D.miniMaxVerts(저사양 miniMaxVertsLow)
+    if(bo){
+      group.add(bo); devMini3D.strandObj = bo;
+      refreshField3DDebug(); refreshOcc3DDebug();
+      return;
+    }
+  }
   const positions=[], colors=[]; const c=new THREE.Color();
   for(const st of adj){
     const pts = st.pts;

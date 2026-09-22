@@ -52,6 +52,25 @@ function buildAdjustedHair3DObject(){
      여기서도 읽으면 규칙이 하나가 된다. 폴백색이 sec.color(염색)이므로 "사진에
      머리가 없는 자리는 염색색"이라는 조정 화면의 동작까지 그대로 따라온다. */
   const cmodel = state.hair3Dneutral;
+  /* ── 땋기 (2026-09-22 2차) ─────────────────────────────────────────────
+     21-braid.js가 켜져 있으면(스타일 reggae_twist) 1px 선 대신 <b>튜브 밧줄</b>을
+     돌려준다. 색은 아래 선 경로와 <b>같은 규칙</b>(bakeStrandColors3D 되쏘기 → 조각색,
+     없으면 st.color)에서 가닥 가운데 조각을 쓴다 — 두 경로가 색을 따로 정하면
+     염색·마네킹에서 또 갈라진다(8/18 i 배너의 그 일).
+     못 지으면(자 없음 등) null → 아래 평소 선으로 간다. 끄기: BRAID3D.on = false */
+  if(typeof BRAID !== 'undefined' && BRAID.on && typeof buildBraid3DObject === 'function'){
+    const colorOf = (st)=>{
+      const pts = st.pts;
+      const view = st.srcAngle || (pts[0] ? viewOfRoot(pts[0]) : null);
+      const cs = (HAIR_PIXEL_COLOR.reproject && view)
+        ? bakeStrandColors3D(pts, cmodel, view, st.color, st.colors, st.dye)
+        : (st.colors || null);
+      return (cs && cs.length) ? cs[Math.floor(cs.length / 2)] : (st.color || '#1a1a1a');
+    };
+    const center = { x: 0, y: (cmodel && isFinite(cmodel.CY)) ? cmodel.CY : 0, z: 0 };
+    const braided = buildBraid3DObject(adj, colorOf, center);
+    if(braided) return braided;
+  }
   let pxN = 0;
   for(const st of adj){
     const pts = st.pts;
