@@ -111,3 +111,57 @@ function clumpStrands3D(adj){
   }
   return out;
 }
+
+/* ══════════════════════════════════════════════════════════════════════════
+   3D 미리보기 창 옮기기 (2026-09-22)
+   사용자: "3D 미리보기 창 브라우저 창처럼 위에 잡고 움직일 수 있으면 좋겠는데."
+   헤더(#devMini3DHeader)를 잡고 끌면 창이 따라온다. 마우스·손가락 둘 다(Pointer 이벤트).
+   ⚠ 헤더 안의 ⛶·✕ 버튼에서 시작한 끌기는 무시한다 — 안 그러면 버튼이 안 눌린다.
+   ⚠ 확대(.expanded) 상태에서는 안 움직인다(그때는 화면을 거의 다 덮는 창이라 옮길 자리가 없다).
+   ⚠ 위치는 left/top으로 바꿔 놓는다 — 원래 CSS는 right/bottom 고정이라 둘을 같이 쓰면
+     창이 늘어난다. 그래서 잡는 순간 현재 자리를 재서 left/top으로 바꾸고 right/bottom을 푼다.
+   화면 밖으로 나가지 않게 가장자리에서 멈춘다(제목이 안 보이면 다시 못 잡는다).
+   되돌리기: MINI3D_DRAG.on = false 후 새로고침 · 제자리로: resetMini3DPos()
+   ══════════════════════════════════════════════════════════════════════════ */
+const MINI3D_DRAG = { on: true, margin: 4 };
+
+function resetMini3DPos(){
+  const el = document.getElementById('devMini3D');
+  if(!el) return;
+  el.style.left = ''; el.style.top = ''; el.style.right = ''; el.style.bottom = '';
+}
+function installMini3DDrag(){
+  if(!MINI3D_DRAG.on) return;
+  const el = document.getElementById('devMini3D'), h = document.getElementById('devMini3DHeader');
+  if(!el || !h || h._mini3dDrag) return;
+  h._mini3dDrag = true;
+  h.style.cursor = 'move';
+  h.style.touchAction = 'none';          // 손가락 끌기를 스크롤로 뺏기지 않게
+  let id = null, dx = 0, dy = 0;
+  h.addEventListener('pointerdown', (e)=>{
+    if(e.target.closest('button')) return;               // ⛶·✕는 버튼 그대로
+    if(el.classList.contains('expanded')) return;        // 확대 상태는 안 옮긴다
+    const r = el.getBoundingClientRect();
+    // right/bottom 고정을 left/top으로 바꿔 잡는다(둘을 같이 두면 창이 늘어난다)
+    el.style.left = r.left + 'px'; el.style.top = r.top + 'px';
+    el.style.right = 'auto'; el.style.bottom = 'auto';
+    el.style.position = 'fixed';
+    dx = e.clientX - r.left; dy = e.clientY - r.top;
+    id = e.pointerId; h.setPointerCapture(id);
+    e.preventDefault();
+  });
+  h.addEventListener('pointermove', (e)=>{
+    if(id === null || e.pointerId !== id) return;
+    const m = MINI3D_DRAG.margin, r = el.getBoundingClientRect();
+    const x = Math.max(m, Math.min(window.innerWidth  - r.width  - m, e.clientX - dx));
+    const y = Math.max(m, Math.min(window.innerHeight - r.height - m, e.clientY - dy));
+    el.style.left = x + 'px'; el.style.top = y + 'px';
+  });
+  const up = (e)=>{ if(id !== null && e.pointerId === id){ try{ h.releasePointerCapture(id); }catch(_){} id = null; } };
+  h.addEventListener('pointerup', up);
+  h.addEventListener('pointercancel', up);
+}
+if(typeof document !== 'undefined'){
+  if(document.readyState === 'loading') document.addEventListener('DOMContentLoaded', installMini3DDrag);
+  else installMini3DDrag();
+}
