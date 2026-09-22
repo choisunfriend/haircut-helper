@@ -768,18 +768,32 @@ function adjustStrandGeom(st, lenOverride, uni){
       if(E || all) pts = mqTrimAtFringeLine(pts, yLine, E, all);
     }
   }
+  /* (2026-09-21 배포본 반영) 스타일링 순서 스위치 — 14의 STYLE_ORDER 배너.
+     spineFirst면 가르마·넘김(④⑤)을 <b>컬보다 먼저</b> 건다. 컬을 감은 뒤에 넘기면
+     나선 전체가 휘어 컬이 찌그러졌다(히피펌에서 두드러짐). 먼저 곧은 가닥의 "척추"를
+     넘기고 그 위에 컬을 감는다. 이때 넘김 세기는 컬이 셀수록 줄인다(sweepCurlScale).
+     spineFirst=false면 예전 순서(컬 → 처짐 → 가르마 → 넘김) 그대로다. */
+  const spineFirst = (typeof STYLE_ORDER !== 'undefined') && STYLE_ORDER.spineFirst;
+  if(spineFirst){
+    pts = partStrand3D(pts, sty.part || 0, curlAmt, sty.partAmt);                    // ④ 가르마(선행)
+    pts = sweepStrand3D(pts, (sty.sweep || 0) * sweepCurlScale(curlAmt), curlAmt,
+                        sty.part || 0, sty.partAmt);                                 // ⑤ 넘김(선행·컬 감쇠)
+  }
   pts = curlStrand3D(pts, curlAmt, ((typeof sec.wave === 'number') ? sec.wave : 50)/100,
                      (typeof sec.curlDir === 'number') ? sec.curlDir : 0);                // ② 컬(로드 나선)
   if(curlAmt > 0) pts = gravityDroop3D(pts, curlAmt);                              // ③ 감은 뒤 처짐
-  /* ④ 가르마 — 스타일링은 커트/펌 위에 얹는 연출이라 뒤에 온다.
-     ※ 세기는 <b>원래 뿌리</b> 방향으로 정한다(길이·컬로 이동한 뒤가 아니라).
-     (2026-08-29) sty는 함수 첫머리에서 이미 확정됐다 — 조각 합성이 커트와
-     스타일링을 한 번에 정하기 때문이다. 읽는 값은 예전과 같다. */
-  pts = partStrand3D(pts, sty.part || 0, curlAmt, sty.partAmt);
-  /* ⑤ 넘김 — 가르마 값을 <b>같이</b> 넘긴다(2026-08-30). 안 넘기면 넘김이
-     가르마를 덮어쓴다(sweepStrand3D 배너의 실측 표). 읽는 값은 ④와 같은 sty다. */
-  pts = sweepStrand3D(pts, sty.sweep || 0, curlAmt, sty.part || 0, sty.partAmt);
-  pts = volumeStrand3D(pts, (typeof sty.volume === 'number') ? sty.volume : 50);   // ⑥ 뿌리 볼륨
+  if(!spineFirst){
+    /* ④ 가르마 — (예전 순서) 스타일링은 커트/펌 위에 얹는 연출이라 뒤에 온다.
+       ※ 세기는 <b>원래 뿌리</b> 방향으로 정한다(길이·컬로 이동한 뒤가 아니라).
+       (2026-08-29) sty는 함수 첫머리에서 이미 확정됐다 — 조각 합성이 커트와
+       스타일링을 한 번에 정하기 때문이다. 읽는 값은 예전과 같다. */
+    pts = partStrand3D(pts, sty.part || 0, curlAmt, sty.partAmt);
+    /* ⑤ 넘김 — 가르마 값을 <b>같이</b> 넘긴다(2026-08-30). 안 넘기면 넘김이
+       가르마를 덮어쓴다(sweepStrand3D 배너의 실측 표). 읽는 값은 ④와 같은 sty다. */
+    pts = sweepStrand3D(pts, sty.sweep || 0, curlAmt, sty.part || 0, sty.partAmt);
+  }
+  // ⑥ 뿌리 볼륨 — (2026-09-21) 섹션 이름을 넘겨 섹션별 배율(VOLUME3D.secK)을 쓴다
+  pts = volumeStrand3D(pts, (typeof sty.volume === 'number') ? sty.volume : 50, st.sec);
   pts = flowCurlStrand3D(pts, sty.flow || 0);                                      // ⑦ 결 흐름
   /* ⑧ 정돈 — <b>맨 마지막</b>이다. 앞의 연산자들이 만든 뜸을 전부 본 뒤에
      눕혀야 "머리가 붙었다"가 된다. 순서를 앞으로 옮기면 sweep·volume·flow가

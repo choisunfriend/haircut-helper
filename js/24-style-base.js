@@ -55,7 +55,8 @@
         },
         CURL3D_FIX: { ampGamma: 0.7 },   // 컬 50 → 진폭 0.62
         VOLUME3D: { AMP: 0.18 },
-        HAIR_FIELD3D: { maxAlign: 0.4 }, // 원래 사진(곧은 머리) 결에 덜 끌림 — 중립 재빌드 필요
+        // HAIR_FIELD3D.maxAlign 은 뺐습니다 — 중립 3D 빌드 때만 쓰이는 값이라 스타일마다 바꾸면
+        // 스타일을 고를 때마다 3D 전체를 다시 만들어야 해서 (폰에서 수십 초) 원래 방식으로 되돌렸습니다.
         MANNEQUIN: { lenPct: 0.9 },      // 어깨 따라간 이상치 가닥 제외
         MQ_FRINGE: {
           tipFaceFrac: -0.1,     // 앞머리 기장 막대 가운데의 기준선: 눈썹과 눈 사이
@@ -185,15 +186,9 @@
     SB.active = prof;
     bumpCaches();
 
-    // 5) 빌드 시점 설정이 바뀌었으면 다시 만들기
-    var S = st();
-    var mq = sigOf(MQ_KEYS);
-    if (lastMqSig !== null && mq !== lastMqSig && S) S.hair3Dmannequin = null;
-    lastMqSig = mq;
-    if (S && S.hair3Dneutral && builtNeutralSig !== null && builtNeutralSig !== sigOf(NEUTRAL_KEYS) && typeof rebuildHair3D === 'function') {
-      console.log(TAG + ' 결 정렬 설정이 달라 중립 3D를 다시 만듭니다 (' + (SB.activeId || '기본') + ')');
-      try { rebuildHair3D(); } catch (e) { console.warn(TAG + ' 재빌드 실패', e); }
-    }
+    // 5) 스타일을 고를 때 중립 3D·마네킹을 다시 만들지 않습니다 (원래 방식).
+    //    마네킹은 원래 코드대로 스펙 스타일 선택 시 mannequinReset() 에서만 새로 만들어집니다.
+    lastMqSig = sigOf(MQ_KEYS);
     if (changed) console.log(TAG + ' 엔진 프로필 → ' + (prof ? (prof.label || id) : '기본값'));
   }
   SB.applyProfile = applyProfile;

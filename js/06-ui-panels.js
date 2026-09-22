@@ -930,7 +930,8 @@ function gyBuildFadeGroup(){
      그려지므로 <b>캐시한다</b>(키 = 스펙id|섹션|3D모델 세대). 안 하면 진단이
      렌더 비용을 만드는 모양이 되고, 그건 8/22에 걷어낸 것이다.
 ══════════════════════════════════════════════════════════════════ */
-const RECIPE_STYLES = ['layered_bob_hush', 'taper_fade_pomp'];
+// (2026-09-21 배포본 반영) 새 스펙 스타일 두 개도 "스펙 수치" 패널에 나오게 추가
+const RECIPE_STYLES = ['layered_bob_hush', 'taper_fade_pomp', 'hippie_curl_men', 'wavy_bob_seethrough'];
 /* 이 스펙이 이 섹션에서 요구하는 <b>길이 슬라이더 값</b>. 못 풀면 null.
    반환은 {v, unit, target} — unit은 'cm' | 'tip' | 'clipper'. */
 function recipeLengthFor(specId, secId){

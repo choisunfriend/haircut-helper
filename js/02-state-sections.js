@@ -745,13 +745,25 @@ const FORCED_HAIR_COLOR = '#141414';
    ⚠ 역산에는 3D 중립 모델이 필요한데 <b>스타일 화면에는 아직 그게 없다</b>
      (촬영 가닥을 3D로 올리는 건 조정 화면 진입 때 일어난다). 그래서 여기서는
      state.pendingSpecId에 적어만 두고, setupAdjustScreen이 실제로 건다. */
+/* (2026-09-21 배포본 반영) 카드 이름·태그를 영문으로 바꿨다 — 기본 UI 언어가 EN이라
+   I18N 치환을 거치지 않고 바로 보이게. 한국어 모드 문구는 I18N 표 쪽에 남아 있다.
+   같은 날 스펙 스타일 두 개(hippie_curl_men·wavy_bob_seethrough)를 추가했다.
+   실제 시술 값은 16-style-spec-diag.js의 STYLE_SPECS에 있고, 여기 숫자는 역시 아이콘 전용. */
 const STYLES = [
   { id:'layered_bob_hush', specId:'layered_bob_hush',
-    name:'레이어드 보브', tags:'시스루 뱅 · 아웃컬',
+    name:'Layered Bob', tags:'See-through bangs · Flick-out ends',
     length:78, curl:28, volume:70, colorHex:'#7A6149' },   // ← 아이콘 전용(위 ⚠)
   { id:'taper_fade_pomp', specId:'taper_fade_pomp',
-    name:'페이드 폼파두르', tags:'테이퍼 페이드 · 사이드파트',
+    name:'Fade Pompadour', tags:'Taper fade · Side part',
     length:34, curl:0,  volume:82, colorHex:'#60554E' },   // ← 아이콘 전용(위 ⚠)
+  // (2026-09-21 추가) 남자 히피펌 — 촘촘한 컬 + 이마로 내려 쓴 앞머리 + 정수리 볼륨
+  { id:'hippie_curl_men', specId:'hippie_curl_men',
+    name:"Men's Hippie Perm", tags:'Tight curls · Down-swept fringe · Crown volume',
+    length:30, curl:72, volume:75, colorHex:'#2B2016' },   // ← 아이콘 전용(위 ⚠)
+  // (2026-09-21 추가) 웨이브 보브 — 시스루 뱅 + 굵은 컬, 턱선 길이
+  { id:'wavy_bob_seethrough', specId:'wavy_bob_seethrough',
+    name:'Wavy Bob', tags:'See-through bangs · Chunky curls · Jaw length',
+    length:70, curl:50, volume:60, colorHex:'#2B2016' },   // ← 아이콘 전용(위 ⚠)
 ];
 
 /* ── 의상 카탈로그(OUTFIT_CATALOG) ──
