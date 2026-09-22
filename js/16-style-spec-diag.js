@@ -274,6 +274,28 @@ const STYLE_SPECS = {
     globalCurl: 50,
     color:   '#2B2016',
   },
+  /* ── 레게 파마 · 세 갈래 박스 브레이드 (2026-09-22 · 테스트용 초안) ─────────
+     사용자: "땋는건 손님 머리 길이 기준." — 그래서 <b>lenCm·tipAt을 안 적는다</b>.
+     둘 다 없으면 applyStyleSpec의 길이 역산 루프가 한 번도 안 돌고, 섹션 길이는
+     걸기 직전 그대로(= 손님 원래 길이) 남는다. 붙이는 것(익스텐션)은 별개 시술이라
+     이 스펙으로 허리 길이가 나오지 않는 것이 <b>맞는 동작</b>이다.
+     braid — 21-braid.js의 BRAID를 이 값으로 덮고 켠다. 여기 없는 키는 BRAID_DEFAULTS.
+       값은 실제 레게 파마 사진 3장에서 잰 것이다(21의 BRAID 배너):
+         굵기 0.85cm · 마디 0.70cm · 세 갈래 — ② 박스 브레이드 실측(표본 440, 17.0px/20.0px·cm)
+         중심간격 1.60cm = 가닥 0.85 + 두피틈 0.75 (중심간격을 굵기로 읽으면 안 된다)
+       ⚠ 자가 거칠다: 정수리 뷰라 두개 가로폭 15.0cm(성인 평균)로 잰 값 — ±1cm 개인차.
+       ⚠ 21 배너가 "실측 절차와 표본 수는 이 배너에"라고 적어 뒀는데, 사진 3장별 표본
+         수와 재는 법의 세부는 <b>남아 있지 않다</b>. 위가 남은 전부다. 다시 재면 여기 적을 것.
+     count·tightness는 21과 같이 <b>초안</b>(사진에서 못 잰 값).
+     컬은 0 — 땋은 밧줄은 가닥 경로를 따라가므로, 컬이 남으면 밧줄이 구불거린다.
+     볼륨을 낮춘 이유: 땋으면 무게가 모여 두피에 눕는다(초안). */
+  reggae_twist: {
+    name: 'Reggae perm · Three-strand box braids · Natural length',
+    cut: {},
+    styling: { sweep:0, volume:30, flow:0, part:0, partAmt:0, finish:50, sleek:40 },
+    globalCurl: 0,
+    braid: { widthCm: 0.85, nodeCm: 0.70, strands: 3, tightness: 0.78, count: 60 },
+  },
 };
 /* ── 아직 못 적는 것 (2026-08-23 8차 · 2026-08-26 갱신) ────────────────────
    위 스펙으로도 <b>레퍼런스와 다르게</b> 나올 자리를 미리 적어 둔다. 나중에
@@ -459,6 +481,16 @@ function applyStyleSpec(id){
     for(const a of ANGLES) Object.assign(state.stylingByView[a], sp.styling);
   }
   if(typeof sp.globalCurl === 'number') state._globalCurl = sp.globalCurl;
+  /* 땋기(21-braid.js) — 스펙에 braid가 있으면 켜고, 없으면 <b>끈다</b>.
+     끄는 쪽이 중요하다: 땋기 스타일을 건 뒤 다른 스타일을 누르면 밧줄이 그대로
+     남아 있었을 것이다. 매번 기본값(BRAID_DEFAULTS)에서 다시 거는 이유도 같다. */
+  if(typeof BRAID !== 'undefined'){
+    if(typeof BRAID_DEFAULTS !== 'undefined') Object.assign(BRAID, BRAID_DEFAULTS);
+    if(sp.braid) Object.assign(BRAID, sp.braid);
+    BRAID.on = !!sp.braid;
+    if(typeof resetBraidLog === 'function') resetBraidLog();
+    rep.braid = BRAID.on ? { ...sp.braid } : null;
+  }
   /* ── 페이드는 <b>역산 뒤에</b> 건다 (2026-08-23 8차) ───────────────────
      tipAt은 "가위로만 잘랐을 때 끝이 어디 오는가"다. 페이드를 켠 채 역산하면
      사이드 가닥 대부분이 3mm가 되어 <b>중앙값이 클리퍼에 먹힌다</b> —

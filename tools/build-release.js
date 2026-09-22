@@ -51,7 +51,11 @@ rmrf(DIST); fs.mkdirSync(path.join(DIST, 'js'), { recursive: true });
 
 // 1) js/*.js — index.html에 적힌 것만(안 쓰는 파일은 배포본에 안 넣는다)
 let html = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
-const files = [...html.matchAll(/<script\s+src="js\/([^"]+)"/g)].map(m => m[1]);
+/* (2026-09-22) 캐시 버전(?v=…)을 떼고 파일 이름만 잡는다. 예전 식([^"]+)은 ?v까지
+   이름으로 읽어서 "01-face-landmarker.js?v=20260922b"라는 파일을 찾다가 멈췄다 —
+   index.html에 ?v가 붙은 뒤로 이 도구는 한 번도 못 돌았다는 뜻이다.
+   index.html 쪽의 ?v는 그대로 남는다(브라우저 캐시를 끊는 게 그 줄의 일이다). */
+const files = [...html.matchAll(/<script\s+src="js\/([^"?]+)(?:\?[^"]*)?"/g)].map(m => m[1]);
 let inBytes = 0, outBytes = 0;
 for(const f of files){
   const src = fs.readFileSync(path.join(ROOT, 'js', f), 'utf8');

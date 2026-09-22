@@ -764,6 +764,10 @@ const STYLES = [
   { id:'wavy_bob_seethrough', specId:'wavy_bob_seethrough',
     name:'Wavy Bob', tags:'See-through bangs · Chunky curls · Jaw length',
     length:70, curl:50, volume:60, colorHex:'#2B2016' },   // ← 아이콘 전용(위 ⚠)
+  // (2026-09-22 테스트) 레게 파마 — 세 갈래 박스 브레이드, 손님 길이 그대로(21-braid.js)
+  { id:'reggae_twist', specId:'reggae_twist',
+    name:'Reggae Perm', tags:'Box braids · Three-strand · Natural length',
+    length:60, curl:0, volume:30, colorHex:'#1E1A17' },   // ← 아이콘 전용(위 ⚠)
 ];
 
 /* ── 의상 카탈로그(OUTFIT_CATALOG) ──

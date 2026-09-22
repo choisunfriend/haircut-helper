@@ -1088,6 +1088,8 @@ function clearStyleSpec(){
   const s = state._specUndo;
   state._specUndo = null;
   state.specAppliedId = null;
+  // 땋기도 걸기 직전으로 — 스냅샷에 안 들어가는 전역이라 여기서 직접 끈다(2026-09-22)
+  if(typeof BRAID !== 'undefined') BRAID.on = false;
   if(s){
     state.sections = s.sections;
     state.stylingByView = s.stylingByView;

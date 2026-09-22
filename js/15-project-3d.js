@@ -1125,6 +1125,7 @@ function projectHair3DToView(ctx, fit, angle, maskInf){
       slice: (st.sec||'crown') + '|' + Math.floor(rootIx / SLICE_W)
              + '|' + Math.floor((rootIy / Math.max(1, maskInf.h)) * 10),
       sec: st.sec || 'crown',                     // 맨 위로 올릴 섹션 판정용(LAYER_SORT.topSections)
+      r3: pts[0],                                  // 뿌리 3D 좌표 — 땋기 파팅 격자(21 braidPickGrid)가 3D와 같은 칸을 잡는 데 쓴다
     });
   }
   if(!projected.length) return false;
@@ -1335,6 +1336,19 @@ function projectHair3DToView(ctx, fit, angle, maskInf){
   ctx.save();
   ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.globalAlpha = 1;
 
+  /* ── 땋기 (2026-09-22) ────────────────────────────────────────────────
+     21-braid.js가 켜져 있으면(스타일 reggae_twist가 켠다) 가닥을 <b>밧줄</b>로 긋고
+     아래 평소 그리기(언더코트·배치)를 <b>통째로 건너뛴다</b>. 땋은 머리는 잔가닥이
+     밧줄로 묶인 것이라 잔가닥을 또 그리면 밧줄이 묻힌다.
+     여기 끼우는 이유: 투영·가림·얼굴게이트·정렬이 <b>전부 끝난</b> projected를 그대로
+     쓰기 위해서다. 땋기가 자기 투영을 따로 만들면 그게 두 번째 벌이다.
+     꺼져 있거나 자를 못 만들면 false → 아래가 평소대로 돈다(기존 렌더 불변).
+     되돌리기: BRAID.on = false (또는 이 블록 삭제) */
+  const _braided = (typeof braidDrawProjected === 'function') && braidDrawProjected(ctx, projected, {
+    cal, toCY, maskInf, calcN: adj.length, tint: strandTint,
+  });
+  if(!_braided){
+
   /* ── 언더코트 — 원본 결 보기와 같은 규칙 ────────────────────────────────
      원본 결 보기는 "가닥 경로를 따라 두피색 굵은 획(굵기 ×2.2)을 먼저 깔아
      가닥 사이 빈틈만 메운다". 다발 렌더에선 다발 폭 ×1.15였는데(그리고 기본
@@ -1412,6 +1426,7 @@ function projectHair3DToView(ctx, fit, angle, maskInf){
     for(const cpts of e.items) traceSmoothPolyline(ctx, cpts);
     ctx.stroke();
   }
+  }   // ← if(!_braided) 끝 (위 땋기 블록)
   /* [진단] 얼굴 라인 보기 — FACE_GATE.debug=true 후 다시 그리면 게이트가
      실제로 어디를 얼굴로 보고 있는지 그대로 보인다. 값을 짐작으로 흔들지
      않기 위한 장치다(이 파일이 반복해서 필요로 했던 그것). */

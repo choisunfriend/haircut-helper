@@ -1286,8 +1286,10 @@ function miniDetach(key){
   const o = devMini3D[key];
   if(!o) return;
   devMini3D.group.remove(o);
-  if(o.geometry) o.geometry.dispose();
-  if(o.material) o.material.dispose();
+  /* (2026-09-22) 묶음(Group)도 안쪽까지 치운다 — 땋기가 밧줄 메쉬 + 모아 빗기 선을 한 묶음으로
+     넘긴다. 예전처럼 o.geometry만 보면 Group엔 geometry가 없어 안쪽 두 벌이 슬라이더마다 남았다. */
+  const kill = (x)=>{ if(x.geometry) x.geometry.dispose(); if(x.material) x.material.dispose(); };
+  if(typeof o.traverse === 'function') o.traverse(kill); else kill(o);
   devMini3D[key] = null;
 }
 function refreshDevMini3D(){
@@ -1310,6 +1312,18 @@ function refreshDevMini3D(){
   diagAdjSourceStamp('미니3D', adj);
   const { group } = devMini3D;
   miniDetach('strandObj');
+  /* 땋기(2026-09-22 2차) — 3D 결과보기와 <b>같은 함수</b>로 밧줄을 짓는다(색만 섹션색).
+     슬라이더마다 다시 지으므로 가볍게: 원주 3 · 마디당 4점 · 로그 끔.
+     못 지으면 아래 평소 선으로. */
+  if(typeof BRAID !== 'undefined' && BRAID.on && typeof buildBraid3DObject === 'function'){
+    const bo = buildBraid3DObject(adj, (st)=> SECTION_COLORS[st.sec] || '#cccccc',
+      { x:0, y: (_m && isFinite(_m.CY)) ? _m.CY : 0, z:0 }, { radial:3, stepsPerNode:4, log:false, mini:true });   // 예산: BRAID3D.miniMaxVerts(저사양 miniMaxVertsLow)
+    if(bo){
+      group.add(bo); devMini3D.strandObj = bo;
+      refreshField3DDebug(); refreshOcc3DDebug();
+      return;
+    }
+  }
   const positions=[], colors=[]; const c=new THREE.Color();
   for(const st of adj){
     const pts = st.pts;
