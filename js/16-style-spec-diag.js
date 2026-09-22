@@ -27,7 +27,8 @@
 ══════════════════════════════════════════════════════════════════ */
 const STYLE_SPECS = {
   layered_bob_hush: {
-    name: '레이어드 보브 · 시스루 뱅 · 아웃컬',
+    // (2026-09-21 배포본 반영) 영문 이름 — 기본 UI가 EN. 한국어는 I18N 표에 남아 있다.
+    name: 'Layered bob · See-through bangs · Flick-out ends',
     /* 끝이 오는 세로 위치. 0 = 정수리, 1 = 두상 바닥(≈턱선), 1.3 = 그보다
        두상 높이의 30%만큼 더 아래.
        ── (2026-08-09) 레퍼런스 4뷰를 <b>픽셀로 재서</b> 다시 넣음 ─────────────
@@ -113,7 +114,8 @@ const STYLE_SPECS = {
     /* (2026-08-25) 이름에서 '하드파트'를 뺐다 — 사용자 확인 결과 레퍼런스는
        면도선이 아니라 <b>가르마 + 빗질</b>이다. 이름이 틀리면 그 이름을 근거로
        다음 작업(면도선 연산자)이 잡히므로 여기서 바로잡는다. */
-    name: '테이퍼 페이드 · 사이드파트 폼파두르',
+    // (2026-09-21 배포본 반영) 영문 이름 — 기본 UI가 EN.
+    name: 'Taper fade · Side-part pompadour',
     /* ── (2026-08-26) tipAt → <b>lenCm</b> 으로 갈아엎음 ──────────────────
        하네스가 잰 결과 이 스펙은 <b>한 번도 안 풀리고 있었다</b>:
          풀린 길이   front 100 · crown 100 · temple 100 · side 0 · occipital 0 · nape 0
@@ -228,6 +230,49 @@ const STYLE_SPECS = {
        layered_bob_hush와 같은 규칙으로 <b>p80</b>을 base로 잡는다 — 렌더가 층
        깊이로 ×0.55~1.0을 곱하므로 중간톤을 그대로 넣으면 화면이 더 어두워진다. */
     color:   '#60554E',                                        // 다크 애쉬 브라운
+  },
+  /* ── 남자 히피펌 (2026-09-21 배포본 반영 · 초안) ─────────────────────────
+     촘촘한 컬(72) + 이마 쪽으로 내려 쓴 앞머리(sweep −45 = 앞으로) + 정수리 볼륨(75).
+     tipAt은 두상 높이 대비 끝 높이(작을수록 짧음) — 앞머리는 눈썹 위(0.44),
+     정수리는 짧게(0.34), 뒤는 목덜미 근처(0.82~0.93).
+     컬이 세서 14의 STYLE_ORDER(넘김 감쇠)·SCALP_HUG.curlOff(두피 붙임 끔)·
+     GRAV3D.curlK(처짐 감쇠)가 같이 걸린다 — 이 스타일 때문에 들어간 설정들이다.
+     ⚠ 다른 스펙처럼 <b>초안</b>이다. 실기기 [스타일스펙] 로그로 고칠 것. */
+  hippie_curl_men: {
+    name: "Men's hippie perm · Tight curls · Down-swept fringe",
+    tipAt: { front: 0.44, crown: 0.34, temple: 0.55, side: 0.6, occipital: 0.82, nape: 0.93 },
+    cut: {
+      crown:     { technique:'uniform',    elevation:80, texture:50, density:90, curlDir:0 },
+      front:     { technique:'uniform',    elevation:30, texture:55, density:85, line:60, curlDir:0 },
+      temple:    { technique:'graduation', elevation:45, texture:45, density:90, overdirection:20, curlDir:0 },
+      side:      { technique:'graduation', elevation:45, texture:40, density:85, curlDir:0 },
+      occipital: { technique:'graduation', elevation:50, texture:40, density:90, curlDir:0 },
+      nape:      { technique:'graduation', elevation:30, texture:35, density:80, line:70, curlDir:0 },
+    },
+    perm:    { curl:72, wave:18 },
+    styling: { sweep:-45, volume:75, flow:0, part:0, partAmt:0, finish:55, sleek:0 },
+    globalCurl: 72,
+    color:   '#2B2016',                                        // 내추럴 다크 브라운
+  },
+  /* ── 웨이브 보브 (2026-09-21 배포본 반영 · 초안) ─────────────────────────
+     턱선 길이 보브 + 시스루 뱅(front density 30 = 숱을 많이 쳐서 비침) + 굵은 컬(50/웨이브 48).
+     curlDir: 앞은 −10(안말음 쪽), 옆·뒤는 +20(바깥말음) — 얼굴 둘레가 바깥으로 뻗는 모양.
+     tipAt은 앞 0.5, 뒤로 갈수록 1.0 전후(턱선 높이)로 거의 수평 라인. */
+  wavy_bob_seethrough: {
+    name: 'Wavy bob · See-through bangs · Chunky curls',
+    tipAt: { front: 0.5, crown: 0.72, temple: 0.92, side: 0.98, occipital: 1, nape: 1.03 },
+    cut: {
+      crown:     { technique:'uniform',    elevation:70, texture:55, density:88,  curlDir:0 },
+      front:     { technique:'uniform',    elevation:15, texture:70, density:30,  line:50, curlDir:-10 },
+      temple:    { technique:'uniform',    elevation:50, texture:55, density:70,  overdirection:35, curlDir:10 },
+      side:      { technique:'uniform',    elevation:45, texture:60, density:95,  curlDir:20 },
+      occipital: { technique:'uniform',    elevation:45, texture:55, density:100, curlDir:20 },
+      nape:      { technique:'graduation', elevation:20, texture:40, density:100, line:50, curlDir:20 },
+    },
+    perm:    { curl:50, wave:48 },
+    styling: { sweep:-15, volume:60, flow:20, part:0, partAmt:0, finish:45, sleek:0 },
+    globalCurl: 50,
+    color:   '#2B2016',
   },
 };
 /* ── 아직 못 적는 것 (2026-08-23 8차 · 2026-08-26 갱신) ────────────────────

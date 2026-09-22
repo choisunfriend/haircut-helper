@@ -231,6 +231,16 @@ main{flex:1;position:relative;overflow:hidden;}
 #devMini3D.expanded #devMini3DLegend{gap:4px 12px;padding:6px;}
 #devMini3D.expanded #devMini3DLegend .lg{font-size:11px;gap:5px;}
 #devMini3D.expanded #devMini3DLegend .sw{width:10px;height:10px;}
+/* (2026-09-21) 미리보기 헤더 버튼 묶음(⛶ 확대 + ✕ 닫기) */
+.mini3d-btns{display:flex;align-items:center;gap:2px;}
+#devMini3DClose{background:none;border:none;color:var(--accent-soft);font-size:13px;cursor:pointer;padding:0 2px;line-height:1;}
+#devMini3DClose:hover{color:var(--accent);}
+/* 미리보기를 끄면 그 구석에 앉는 켜기 딱지 — #devMini3D와 같은 자리다. */
+#devMini3DOpen{display:none;position:absolute;right:8px;bottom:48px;z-index:80;
+  background:rgba(74,70,62,0.95);border:1px solid #6b6252;border-radius:10px;
+  color:var(--accent-soft);font-size:11px;font-weight:600;padding:7px 11px;cursor:pointer;
+  box-shadow:0 4px 16px rgba(0,0,0,0.4);}
+#devMini3DOpen:hover{border-color:var(--accent);color:var(--accent);}
 .preview-tag{
   position:absolute;top:10px;left:10px;
   background:rgba(27,24,22,0.75);backdrop-filter:blur(4px);

@@ -582,8 +582,10 @@ const LIVE_YAW_TARGET = {
   // (2026-07-26 3차) 하한 35 → 40. 실기기 경험("각도를 많이 돌리고 나서 잘 나왔다")과
   // 깊이 복원의 조건수 계산이 같은 숫자를 가리킨다 — d²=(E²−W²cos²θ)/sin²θ 는 40°
   // 아래에서 오차 증폭이 2배를 넘어 z를 못 믿게 된다(15°:±0.18, 25°:±0.07, 40°:±0.035).
-  left:  { min: 40, max: 65, label:'좌측', turn:'오른쪽' }, // 왼쪽 옆머리 = 고개는 오른쪽으로
-  right: { min:-65, max:-40, label:'우측', turn:'왼쪽'  }, // 오른쪽 옆머리 = 고개는 왼쪽으로
+  // (2026-09-19 배포본 반영) 40~65° → 35~60°. 초록불까지 너무 많이 돌려야 해서
+  // 범위를 5° 앞당겼다. (위 3차 메모의 조건수 이유로 35 아래로는 내리지 말 것)
+  left:  { min: 35, max: 60, label:'좌측', turn:'오른쪽' }, // 왼쪽 옆머리 = 고개는 오른쪽으로
+  right: { min:-60, max:-35, label:'우측', turn:'왼쪽'  }, // 오른쪽 옆머리 = 고개는 왼쪽으로
 };
 const LIVE_MIRROR_SIGN = -1;      // 라이브 yaw → 저장 사진 yaw 변환 계수(미러 촬영이라 -1)
 const LIVE_DETECT_INTERVAL = 120; // ms. 프레임마다 돌리면 과함 — 약 8fps면 안내용으로 충분
@@ -635,8 +637,14 @@ function stopSpeak(){ try{ window.speechSynthesis && window.speechSynthesis.canc
    기준점(정수리)이 통째로 사라지고, 두상 세로 반경도 무너진다.
    얼굴 랜드마크에는 정수리가 없으므로 얼굴 높이로 추정한다 —
    이마(랜드마크 최상단)에서 얼굴 높이의 CROWN_ABOVE_FACE 만큼 위. */
-const CROWN_ABOVE_FACE = 0.55;   // 얼굴 높이 대비 이마→정수리 비율(성인 근사)
-const EDGE_MARGIN      = 0.012;  // 프레임 가장자리 여유(정규 좌표)
+/* (2026-09-19 배포본 반영) 0.55 → 0.30, 여유 0.012 → 0.004.
+   0.55는 정수리를 너무 높게 잡아서 머리가 화면에 다 들어와도 "정수리 잘림"으로
+   막히는 일이 잦았다. 추정을 낮추고 가장자리 여유도 줄였다. */
+const CROWN_ABOVE_FACE = 0.3;    // 얼굴 높이 대비 이마→정수리 비율(보수적으로 낮춤)
+const EDGE_MARGIN      = 0.004;  // 프레임 가장자리 여유(정규 좌표)
+/* (2026-09-19) 정면/좌/우에서 "위" 잘림은 이제 촬영을 막지 않고 칩에 경고만 띄운다.
+   liveAngleCheck가 매 프레임 갱신하고, 같은 함수 아래쪽 칩 문구에서 읽는다. */
+var _crownWarn = false;
 // 랜드마크 배열 → {cut:true/false, where:'위'|'왼쪽'|'오른쪽'}
 function frameCutCheck(pts, crownFactor){
   let minY=1, maxY=0, minX=1, maxX=0;
@@ -887,7 +895,9 @@ function liveEvaluateFrame(angle){
        귀선 위 머리 높이 ≈ 귀 간격의 0.9배(또는 어깨폭의 0.25배)로 근사. */
     {
       const earTopY = Math.min(pts[7].y, pts[8].y);
-      const headAbove = Math.max(span * 0.9, shoW * 0.25);
+      // (2026-09-19 배포본 반영) 0.9/0.25 → 0.6/0.18 — 후면도 정수리 추정이 과해서
+      // 멀쩡한 사진을 막던 것을 완화(위 CROWN_ABOVE_FACE 조정과 같은 이유).
+      const headAbove = Math.max(span * 0.6, shoW * 0.18);
       if(earTopY - headAbove < EDGE_MARGIN)
         return { ready:false, chip:'정수리가 잘려요', hint:'머리 위가 화면 밖이에요 — 조금 물러나 주세요' };
     }
@@ -905,9 +915,11 @@ function liveEvaluateFrame(angle){
   // 머리(정수리·좌우)가 프레임 밖으로 나갔는지 — 나가면 두상 실측 기준점이 사라진다
   {
     const cut = frameCutCheck(res.faceLandmarks[0]);
-    if(cut.cut) return { ready:false, chip:`머리 ${cut.where} 잘림`,
-      hint: cut.where==='위' ? '머리 위가 화면 밖이에요 — 조금 물러나 주세요'
-                             : `머리 ${cut.where}이 잘려요 — 가운데로 맞춰주세요` };
+    // (2026-09-19 배포본 반영) 위 잘림은 경고만(_crownWarn) — 촬영은 계속 가능.
+    // 좌/우 잘림만 예전처럼 막는다.
+    _crownWarn = !!(cut.cut && cut.where === '위');
+    if(cut.cut && cut.where !== '위') return { ready:false, chip:`머리 ${cut.where} 잘림`,
+      hint: `머리 ${cut.where}이 잘려요 — 가운데로 맞춰주세요` };
   }
   let liveYaw = null, livePitch = 0, liveRoll = 0;
   if(res.facialTransformationMatrixes && res.facialTransformationMatrixes.length){
@@ -938,7 +950,12 @@ function liveEvaluateFrame(angle){
   // 고개 숙임(pitch)도 같이 보여준다 — 사용자: "고개를 숙여서 그런가".
   // 판정에는 안 넣는다(숙여도 랜드마크가 잡히면 촬영은 유효). 다만 크게 숙이면
   // 감지가 잘 안 되므로 아래 안내에서 그 사실을 짚어준다.
-  const pitchTxt = (Math.abs(livePitch) >= LIVE_PITCH_WARN) ? ` · 고개 ${livePitch>0?'듦':'숙임'} ${Math.abs(livePitch).toFixed(0)}°` : '';
+  // (2026-09-19 배포본 반영) 정수리 잘림 경고를 칩 끝에 붙인다.
+  // ※ 배포본과 동작을 똑같이 맞췄다: 고개 각도 경고가 떠 있을 때는 정수리 경고가
+  //   붙지 않는다(배포본 식의 연산자 우선순위 때문). 둘 다 보이게 하려면 괄호를 바꿀 것.
+  const pitchTxt = (Math.abs(livePitch) >= LIVE_PITCH_WARN)
+    ? ` · 고개 ${livePitch>0?'듦':'숙임'} ${Math.abs(livePitch).toFixed(0)}°`
+    : (_crownWarn ? ' · ⚠ 정수리 잘림' : '');
   const chip = (angle === 'front')
     ? `정면 ${yaw>=0?'+':''}${yaw.toFixed(0)}° / 목표 ±${t.max}°${pitchTxt}`
     : `${t.label} ${Math.abs(yaw).toFixed(0)}° / 목표 ${tLo}~${tHi}°${pitchTxt}`;

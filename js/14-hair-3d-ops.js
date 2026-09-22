@@ -3,6 +3,14 @@
    원본 index.html 22598~24198행. 클래식 스크립트이므로 로드 순서가 곧
    실행 순서다 — index.html의 <script src> 순서를 바꾸지 말 것.
    ══════════════════════════════════════════════════════════ */
+
+/* (2026-09-21 배포본 반영) Math.hypot 대신 쓰는 빠른 길이 함수.
+   Math.hypot은 오버플로 방지 스케일링 때문에 sqrt(x²+y²+z²)보다 몇 배 느리다.
+   이 파일의 가닥 루프는 가닥 수만 × 마디 수십 번을 도는데, 여기 값들은 두상 단위
+   (±수 단위)라 오버플로 걱정이 없다. 그래서 파일 안의 Math.hypot을 전부 이것으로 바꿨다. */
+function _fh3(a, b, c){ return Math.sqrt(a*a + b*b + c*c); }
+function _fh2(a, b){ return Math.sqrt(a*a + b*b); }
+
 /* ══════════════════════════════════════════════════════════════════
    최종 3D 화면의 헤어 — 조정 결과를 반영 (2026-07-27)
    ─────────────────────────────────────────────────────────────────
@@ -120,7 +128,7 @@ function diagFinal3DCoverage(positions){
       const mx = (positions[i]   + positions[i+3]) / 2;
       const my = (positions[i+1] + positions[i+4]) / 2;
       const mz = (positions[i+2] + positions[i+5]) / 2;
-      const d = Math.hypot(positions[i+3]-positions[i], positions[i+4]-positions[i+1], positions[i+5]-positions[i+2]);
+      const d = _fh3(positions[i+3]-positions[i], positions[i+4]-positions[i+1], positions[i+5]-positions[i+2]);
       const phi = Math.acos(Math.max(-1, Math.min(1, (my - CY) / bb)));
       let k = 0; while(k < NB-1 && phi >= E[k+1]) k++;
       const th = Math.abs(Math.atan2(mx, mz));
@@ -319,7 +327,7 @@ function logCurlScale(){
     const b = R * (2.6 - 2.28*t);
     rows.push(id + ' 컬' + s.curl + '/웨이브' + s.wave
       + ' → 로드반경 ' + (R/a*100).toFixed(0) + '% · 나선반경 <b>' + (A/a*100).toFixed(0) + '%</b>'
-      + ' · 남는 길이 ' + (b/Math.hypot(A,b)*100).toFixed(0) + '%');
+      + ' · 남는 길이 ' + (b/_fh2(A,b)*100).toFixed(0) + '%');
   }
   if(!rows.length){ console.log('[컬 환산] 컬이 걸린 섹션이 없습니다(전부 curl 0).'); return; }
   console.log('[컬 환산] 두상 <b>반폭 대비</b> (radiusGamma ' + g + ' · 1이면 예전 동작)\n  ' + rows.join('\n  ')
@@ -429,7 +437,7 @@ function curlStrand3D(pts, curlAmt, waveT, curlDir){
   /* 시작 기준 벡터 — 뿌리에서 <b>두상 바깥</b>을 향하는 수평 방향. 이게 있어야
      모든 가닥의 컬 위상이 같은 뜻을 갖는다(그래야 "방향"을 손잡이로 줄 수 있다). */
   let T = _v3norm(_v3sub(spine[1], spine[0]));
-  const rl = Math.hypot(root.x, root.z);
+  const rl = _fh2(root.x, root.z);
   let ref = rl > 1e-4 ? { x: root.x/rl, y: 0, z: root.z/rl } : { x: 1, y: 0, z: 0 };
   const strip = (r, t)=>{
     const d = r.x*t.x + r.y*t.y + r.z*t.z;
@@ -662,7 +670,7 @@ function makeViewOccluder(cal){
         let n = null;
         try{ n = interpolateNeckCrossSection(my); }catch(e){ return false; }
         if(!n || !(n.halfWidth > 0)) return false;
-        const half = Math.hypot(n.halfWidth*cw, (n.halfDepth||n.halfWidth)*sw);
+        const half = _fh2(n.halfWidth*cw, (n.halfDepth||n.halfWidth)*sw);
         return Math.abs(lx) <= half;                                // 목·어깨 그림자 안
       },
       /* 이 화면 위치에서 <b>목·어깨의 앞면</b>이 어느 깊이에 있나 (2026-09-05 2차).
@@ -1379,7 +1387,11 @@ function gravityDroop3D(pts, curlAmt){
   if(arc < 1e-5) return pts;
   const curlT = Math.max(0, Math.min(100, curlAmt))/100;
   const hold = 1 - 0.6 * curlT;                       // 강한 컬=덜 처짐(0.4~1)
-  const amt = CURL3D_FIX.droopWithCurl ? curlT * hold : hold;
+  /* (2026-09-21 배포본 반영) 컬이 셀수록 처짐을 추가로 줄인다 — × (1 − GRAV3D.curlK·curlT).
+     히피펌처럼 강한 컬이 중력에 늘어져 컬 덩어리가 풀려 보이던 것. GRAV3D는 아래 VOLUME3D 옆.
+     (typeof 가드는 이 함수가 파일 로드 뒤에만 불리므로 TDZ 문제 없음) */
+  const amt = (CURL3D_FIX.droopWithCurl ? curlT * hold : hold)
+            * Math.max(0, 1 - (typeof GRAV3D !== 'undefined' ? GRAV3D.curlK : 0) * curlT);
   if(!(amt > 0)) return pts;
   return mapStrandFromRoot(pts, (p, t)=>{
     const sag = GRAV3D_STRENGTH * arc * t * t * amt;  // 끝으로 갈수록 가속(t²) 아래로
@@ -1524,8 +1536,8 @@ function partingPushHead(root, partVal, curlAmt, partAmt){
   const mx = PART3D.OFFSET && PART3D.DIST ? 1 : Math.cos(phiP);
   const mz = PART3D.OFFSET && PART3D.DIST ? 0 : -Math.sin(phiP);
   const x = root.x, y = root.y - 0.15, z = root.z;           // 두상 중심 기준
-  const horiz = Math.hypot(x, z);
-  const topness = Math.max(0, y) / Math.max(1e-6, Math.hypot(y, horiz)); // 정수리1 귀0
+  const horiz = _fh2(x, z);
+  const topness = Math.max(0, y) / Math.max(1e-6, _fh2(y, horiz)); // 정수리1 귀0
   if(topness < 0.02) return null;
   const E = getHeadEllipsoid();
   let near, side, along = 1, sd = 0, gd = 0;
@@ -1533,7 +1545,7 @@ function partingPushHead(root, partVal, curlAmt, partAmt){
     /* 정규화 구면(두상 비율을 벗긴 단위구)으로 옮겨서 잰다 — 거기서만
        "분할면까지의 거리"가 방향에 상관없이 같은 뜻을 갖는다. */
     let ux = x/E.a, uy = y/E.b, uz = z/E.c;
-    const ul = Math.hypot(ux, uy, uz) || 1; ux/=ul; uy/=ul; uz/=ul;
+    const ul = _fh3(ux, uy, uz) || 1; ux/=ul; uy/=ul; uz/=ul;
     let px, pz, fx, fz;
     if(PART3D.OFFSET){
       /* 분할면을 <b>옆으로 민다</b>: 법선은 정시상면 그대로(1,0,0)이고
@@ -1547,13 +1559,13 @@ function partingPushHead(root, partVal, curlAmt, partAmt){
       gd = Math.abs(Math.acos(cosA) - Math.acos(off));
     }else{
       px = mx*E.a; pz = mz*E.c;
-      const pl = Math.hypot(px, pz) || 1; px/=pl; pz/=pl;
+      const pl = _fh2(px, pz) || 1; px/=pl; pz/=pl;
       sd = Math.max(-1, Math.min(1, ux*px + uz*pz));         // 0 = 분할선 위
       gd = Math.asin(Math.abs(sd));                          // 분할면까지 각거리(rad)
       /* 선을 따르는 좌표 — f̂는 이마쪽 선 방향. p̂와 직교화해서 쓴다. */
       fx = Math.sin(phiP); fz = Math.cos(phiP);
       const fp = fx*px + fz*pz; fx -= px*fp; fz -= pz*fp;
-      const fl = Math.hypot(fx, fz) || 1; fx/=fl; fz/=fl;
+      const fl = _fh2(fx, fz) || 1; fx/=fl; fz/=fl;
     }
     near = Math.exp(-(gd/PART3D.SIGMA_D)*(gd/PART3D.SIGMA_D));
     side = sd >= 0 ? 1 : -1;                                 // 게이트와 <b>같은 양</b>
@@ -1570,7 +1582,7 @@ function partingPushHead(root, partVal, curlAmt, partAmt){
   if(near * (PART3D.DIST ? 1 : topness) < 0.02) return null;   // DIST면 near에 이미 들어 있다
   // 두피 접선으로 투영
   let nx = x/(E.a*E.a), ny = y/(E.b*E.b), nz = z/(E.c*E.c);
-  const nl = Math.hypot(nx, ny, nz) || 1; nx/=nl; ny/=nl; nz/=nl;
+  const nl = _fh3(nx, ny, nz) || 1; nx/=nl; ny/=nl; nz/=nl;
   const dx0 = side*mx, dz0 = side*mz;
   const dot = dx0*nx + dz0*nz;
   /* DIST 모드에서는 topness가 이미 near 안에 <b>차단</b>으로 들어가 있다.
@@ -1647,17 +1659,49 @@ const SWEEP3D = {
    → 삼각형 프로파일: 0에서 시작해 RAMP에서 최대, 끝에서 다시 0.
    ※ 슬라이더는 0~100이고 50이 중립이다(다른 스타일링 값과 규약이 다름 — 주의).
 ══════════════════════════════════════════════════════════════════ */
+/* (2026-09-21 배포본 반영) 볼륨을 섹션별·가닥별로 고르지 않게.
+   예전엔 모든 가닥이 같은 양만큼 똑같이 떠서 "헬멧"처럼 매끈한 덩어리가 됐다.
+     · AMP 0.10 → 0.13 (전체 세기)
+     · tipHold: 끝이 제자리로 완전히 돌아오지 않고 이 비율만큼 들린 채로 남는다
+       (0 = 예전 삼각형 프로파일, 0.8 = 끝도 80% 들림)
+     · secK: 섹션별 배율 — 정수리가 제일 많이, 목덜미(nape)는 절반
+     · noise·cellCm: 두피를 cellCm(cm) 격자로 나눠 칸마다 ±noise 만큼 세기를 흔든다
+       (같은 칸의 가닥은 같이 움직여 "덩어리" 느낌이 난다)
+     · flyFrac·flyAmp: 칸의 flyFrac 비율은 끝으로 갈수록 추가로 들뜬다(잔머리·삐침)
+   되돌리기: AMP 0.10 · tipHold 0 · secK 전부 1 · noise 0 · flyFrac 0 */
 const VOLUME3D = {
-  AMP:  0.10, // 두상 반경 대비 최대 들림
+  AMP:  0.13, // 두상 반경 대비 최대 들림
   RAMP: 0.30, // 이 지점에서 가장 많이 들림(뿌리~중간)
+  tipHold: 0.8,
+  secK: { crown: 1, front: 0.85, temple: 0.7, side: 0.75, occipital: 0.85, nape: 0.5 },
+  noise: 0.45,
+  cellCm: 1.5,
+  flyFrac: 0.25,
+  flyAmp: 0.7,
 };
+/* (2026-09-21 배포본 반영) 강한 컬의 중력 처짐 감쇠 — gravityDroop3D 참고. 되돌리기: curlK = 0 */
+const GRAV3D = { curlK: 0.35 };
+/* 격자 칸 좌표 → 0~1 난수(결정적). 같은 손님·같은 칸이면 매번 같은 값이라 화면이 깜빡이지 않는다. */
+function _volHash(a, b, c){
+  let h = (Math.imul(a|0, 0x466f45d) ^ Math.imul(b|0, 0x127409f) ^ Math.imul(c|0, 0x4f9ffb7)) >>> 0;
+  h ^= h >>> 13;
+  h = Math.imul(h, 0x4bf19f61) >>> 0;
+  h ^= h >>> 16;
+  return h / 4294967296;
+}
+/* 모델 1단위가 몇 cm인지 — 격자 크기를 cm로 적기 위해. 모를 때는 성인 평균 근사(19.33). */
+function _volCmPerUnit(){
+  try{ if(typeof CM_PER_UNIT !== 'undefined' && +CM_PER_UNIT > 0) return +CM_PER_UNIT; }catch(e){}
+  try{ if(state && +state.cmPerUnit > 0) return +state.cmPerUnit; }catch(e){}
+  return 19.33;
+}
 function volumeLiftHead(root, volumeVal){
   const v = (Math.max(0, Math.min(100, volumeVal)) - 50) / 50;  // -1(눌림) ~ +1(세움)
   if(!v) return null;
   const x = root.x, y = root.y - 0.15, z = root.z;
   const E = getHeadEllipsoid();
   let nx = x/(E.a*E.a), ny = y/(E.b*E.b), nz = z/(E.c*E.c);
-  const nl = Math.hypot(nx, ny, nz) || 1; nx/=nl; ny/=nl; nz/=nl;
+  const nl = _fh3(nx, ny, nz) || 1; nx/=nl; ny/=nl; nz/=nl;
   const amp = VOLUME3D.AMP * v;
   return { x:nx*amp, y:ny*amp, z:nz*amp };
 }
@@ -1665,15 +1709,35 @@ function volumeLiftHead(root, volumeVal){
 function volumeWeightAt(i, n){
   if(i <= 0 || n <= 0) return 0;
   const t = i/n, R = VOLUME3D.RAMP;
-  return (t <= R) ? (t/R) : Math.max(0, 1 - (t-R)/(1-R));
+  // (2026-09-21) RAMP 뒤로는 1 → tipHold 까지만 내려온다(예전: 0까지)
+  const th = Math.max(0, Math.min(1, VOLUME3D.tipHold || 0));
+  return (t <= R) ? (t/R) : Math.max(0, 1 - (1-th)*(t-R)/(1-R));
 }
-function volumeStrand3D(pts, volumeVal){
+/* (2026-09-21 배포본 반영) 세 번째 인자 sec(섹션 이름)가 추가됐다 — 17b buildStrand3D가 넘긴다.
+   없으면 섹션 배율 없이(×1) 동작한다. */
+function volumeStrand3D(pts, volumeVal, sec){
   if(!pts || pts.length < 2) return pts;
   const lift = volumeLiftHead(pts[0], volumeVal);
   if(!lift) return pts;
+  // 가닥별 세기 k = 섹션 배율 × (1 ± 격자 노이즈)
+  let k = 1;
+  if(sec && VOLUME3D.secK && typeof VOLUME3D.secK[sec] === 'number') k *= VOLUME3D.secK[sec];
+  if(VOLUME3D.noise > 0){
+    const cell = (VOLUME3D.cellCm || 1.5) / _volCmPerUnit(), r = pts[0];
+    k *= 1 + VOLUME3D.noise * (2*_volHash(Math.floor(r.x/cell), Math.floor(r.y/cell), Math.floor(r.z/cell)) - 1);
+  }
+  if(!(k > 0)) return pts;
+  // 삐침 가닥: 다른 해시(칸 좌표에 +7,+13,+3)로 flyFrac 확률에 걸리면 끝이 (i/n)²로 더 들린다
+  let fly = 0;
+  if(VOLUME3D.flyFrac > 0 && VOLUME3D.flyAmp > 0){
+    const cell = (VOLUME3D.cellCm || 1.5) / _volCmPerUnit(), r = pts[0];
+    const h = _volHash(Math.floor(r.x/cell) + 7, Math.floor(r.y/cell) + 13, Math.floor(r.z/cell) + 3);
+    if(h < VOLUME3D.flyFrac) fly = VOLUME3D.flyAmp * (0.5 + h / VOLUME3D.flyFrac * 0.5);
+  }
+  const L = { x:lift.x*k, y:lift.y*k, z:lift.z*k };
   return mapStrandFromRoot(pts, (p, t, i, n)=>{
-    const w = volumeWeightAt(i, n);
-    return { x:p.x + lift.x*w, y:p.y + lift.y*w, z:p.z + lift.z*w };
+    const w = volumeWeightAt(i, n) + (fly > 0 ? fly * (i/n) * (i/n) : 0);
+    return { x:p.x + L.x*w, y:p.y + L.y*w, z:p.z + L.z*w };
   });
 }
 
@@ -1694,7 +1758,7 @@ function flowCurlStrand3D(pts, flowVal){
   const f = Math.max(-100, Math.min(100, flowVal)) / 100;   // +=바깥말음, -=안말음
   const root = pts[0];
   const rx = root.x, rz = root.z;
-  const rl = Math.hypot(rx, rz);
+  const rl = _fh2(rx, rz);
   if(rl < 1e-4) return pts;                                  // 세로축 위 — 말 방향이 없음
   const E = getHeadEllipsoid();
   const ux = rx/rl, uz = rz/rl;                              // 바깥 반경 방향(수평)
@@ -1719,9 +1783,9 @@ const SCALP_CENTER_Y = 0.15;
 function scalpShellAt(P, E){
   const x = P.x, y = P.y - SCALP_CENTER_Y, z = P.z;
   let nx = x/(E.a*E.a), ny = y/(E.b*E.b), nz = z/(E.c*E.c);
-  const nl = Math.hypot(nx, ny, nz) || 1;
+  const nl = _fh3(nx, ny, nz) || 1;
   return { nx:nx/nl, ny:ny/nl, nz:nz/nl,
-           q: Math.hypot(x/E.a, y/E.b, z/E.c) };
+           q: _fh3(x/E.a, y/E.b, z/E.c) };
 }
 function scalpTangentAt(P, d, E){
   const s = scalpShellAt(P, E);
@@ -1738,7 +1802,7 @@ function scalpTangentAt(P, d, E){
 function scalpDirAt(d, E, frac){
   return (P)=>{
     const t = scalpTangentAt(P, d, E);
-    const l = Math.hypot(t.x, t.y, t.z);
+    const l = _fh3(t.x, t.y, t.z);
     if(l < 1e-5) return null;                                // 두피에 수직 = 방향 없음
     return { x:t.x/l*frac, y:t.y/l*frac, z:t.z/l*frac };     // 방향만 점마다, 세기는 뿌리
   };
@@ -1796,7 +1860,25 @@ const SCALP_HUG = {
   strength: 0.55,  // 최대 얼마나 세게 안으로 조향할까(0=예전 동작, 1=거의 껍질 위를 김)
   band:     0.35,  // 껍질에서 이만큼(두상 반경 대비) 뜨면 되돌림이 최대가 된다
   lift:     0.06,  // 두피에서 이만큼은 띄운다 — 모발 두께. 0이면 살에 파묻힌다
+  /* (2026-09-21 배포본 반영) 컬이 curlOff(%) 이상이면 두피 붙임을 완전히 끈다(선형 감쇠).
+     컬 머리를 두피 쪽으로 눕히면 컬 볼륨이 납작해져서. 되돌리기: curlOff = 0 */
+  curlOff:  60,
 };
+/* 컬 세기 c(0~100) → 두피 붙임 배율(1 → 0). curlOff가 0이거나 c를 모르면 1. */
+function hugCurlFactor(c){
+  if(typeof c !== 'number' || !(SCALP_HUG.curlOff > 0)) return 1;
+  return Math.max(0, 1 - Math.max(0, Math.min(100, c)) / SCALP_HUG.curlOff);
+}
+/* (2026-09-21 배포본 반영) 스타일링 순서 — spineFirst면 가르마·넘김을 <b>컬보다 먼저</b>
+   (17b buildStrand3D에서) 적용한다. 컬을 먼저 감고 나서 넘기면 나선 전체가 휘어서
+   컬 모양이 찌그러졌다. 먼저 가닥의 "척추"를 넘긴 뒤 그 위에 컬을 감는다.
+   sweepCurlDamp: 컬이 셀수록 넘김 세기를 줄인다(컬 100이면 ×0.4).
+   되돌리기: STYLE_ORDER.spineFirst = false (예전: 컬 뒤에 가르마·넘김) */
+const STYLE_ORDER = { spineFirst: true, sweepCurlDamp: 0.6 };
+function sweepCurlScale(c){
+  const k = Math.max(0, Math.min(100, c || 0)) / 100;
+  return Math.max(0, 1 - STYLE_ORDER.sweepCurlDamp * k);
+}
 /* ══════════════════════════════════════════════════════════════════
    되돌림이 <b>법선으로 자란 가닥</b>에는 무동작이었다 (2026-08-30 2차)
    ─────────────────────────────────────────────────────────────────
@@ -1835,19 +1917,19 @@ function steerDownToScalp(u, sh, pull, hint){
   if(!(pull > 0)) return u;
   if(!HUG_STEER.rotate){                                   // ── 예전 판(빼기)
     const bx = u.x - sh.nx*pull, by = u.y - sh.ny*pull, bz = u.z - sh.nz*pull;
-    const bl = Math.hypot(bx, by, bz);
+    const bl = _fh3(bx, by, bz);
     return bl > 1e-9 ? { x:bx/bl, y:by/bl, z:bz/bl } : u;
   }
   const dn = u.x*sh.nx + u.y*sh.ny + u.z*sh.nz;
   let tx = u.x - sh.nx*dn, ty = u.y - sh.ny*dn, tz = u.z - sh.nz*dn;
-  let tl = Math.hypot(tx, ty, tz);
+  let tl = _fh3(tx, ty, tz);
   if(tl < 1e-4){                                           // 법선과 나란 — 기준이 없다
     const cands = [hint, { x:0, y:-1, z:0 }, { x:0, y:0, z:-1 }];
     for(let ci=0; ci<cands.length; ci++){
       const c = cands[ci]; if(!c) continue;
       const cd = c.x*sh.nx + c.y*sh.ny + c.z*sh.nz;
       tx = c.x - sh.nx*cd; ty = c.y - sh.ny*cd; tz = c.z - sh.nz*cd;
-      tl = Math.hypot(tx, ty, tz);
+      tl = _fh3(tx, ty, tz);
       if(tl > 1e-4) break;
     }
     if(tl < 1e-4) return u;                                // 어느 것도 안 되면 포기
@@ -1857,10 +1939,10 @@ function steerDownToScalp(u, sh, pull, hint){
   if(HUG_STEER.into > 0){                    // 접선보다 살짝 안쪽 — 곡률을 따라간다
     const lam = p * HUG_STEER.into;
     tx -= sh.nx*lam; ty -= sh.ny*lam; tz -= sh.nz*lam;
-    const gl = Math.hypot(tx, ty, tz) || 1; tx/=gl; ty/=gl; tz/=gl;
+    const gl = _fh3(tx, ty, tz) || 1; tx/=gl; ty/=gl; tz/=gl;
   }
   const wx = u.x*(1-p) + tx*p, wy = u.y*(1-p) + ty*p, wz = u.z*(1-p) + tz*p;
-  const wl = Math.hypot(wx, wy, wz);
+  const wl = _fh3(wx, wy, wz);
   return wl > 1e-9 ? { x:wx/wl, y:wy/wl, z:wz/wl } : u;
 }
 /* ── 꺾임을 <b>다음 마디로 물려준다</b> — 단, 눕힘만 (2026-08-30 2차) ────────
@@ -1877,7 +1959,10 @@ function steerDownToScalp(u, sh, pull, hint){
    그래서 M에는 <b>되돌림 증분만</b> 합친다. 빗질 블렌드의 증분은 안 넣는다.
    되돌리기: BEND3D.carry = false (예전 동작 — 산술까지 동일) */
 const BEND3D = { carry: true };
-function bendStrandToDir3D(pts, dirAt, ramp, tail, E){
+/* (2026-09-21 배포본 반영) 여섯 번째 인자 hugCurl = 이 가닥의 컬 세기.
+   hugCurlFactor로 두피 붙임(③)을 약하게/끈다. 안 넘기면 예전과 같다. */
+function bendStrandToDir3D(pts, dirAt, ramp, tail, E, hugCurl){
+  const hugK = hugCurlFactor(hugCurl);
   if(!pts || pts.length < 2) return pts;
   const n = pts.length - 1;
   const out = [pts[0]];
@@ -1892,16 +1977,16 @@ function bendStrandToDir3D(pts, dirAt, ramp, tail, E){
   let M = null;                                  // 누적 <b>눕힘</b> 회전(빗질은 안 넣는다)
   for(let i=1;i<pts.length;i++){
     let vx = pts[i].x - pts[i-1].x, vy = pts[i].y - pts[i-1].y, vz = pts[i].z - pts[i-1].z;
-    const L = Math.hypot(vx, vy, vz);
+    const L = _fh3(vx, vy, vz);
     if(L > 1e-9){
       let u = { x:vx/L, y:vy/L, z:vz/L };
       if(BEND3D.carry && M){                     // ① 지금까지 눕힌 만큼을 물려받는다
         u = _sleekApply(M, u);
-        const ul = Math.hypot(u.x, u.y, u.z) || 1;
+        const ul = _fh3(u.x, u.y, u.z) || 1;
         u = { x:u.x/ul, y:u.y/ul, z:u.z/ul };
       }
       const d = dirAt({ x:cx, y:cy, z:cz });
-      const dl = d ? Math.hypot(d.x, d.y, d.z) : 0;
+      const dl = d ? _fh3(d.x, d.y, d.z) : 0;
       let k = 0, g = null, w = u;
       if(dl > 1e-9){
         g = { x:d.x/dl, y:d.y/dl, z:d.z/dl };
@@ -1910,7 +1995,7 @@ function bendStrandToDir3D(pts, dirAt, ramp, tail, E){
           /* ② 빗질 — <b>k로 고정된 tilt</b>. 누적시키지 않는다(위 배너: 누적하면
              세기 구배가 사라져 가르마 선이 없어진다). */
           let bx = u.x*(1-k) + g.x*k, by = u.y*(1-k) + g.y*k, bz = u.z*(1-k) + g.z*k;
-          let bl = Math.hypot(bx, by, bz);
+          let bl = _fh3(bx, by, bz);
           if(bl < 1e-6){ bx=g.x; by=g.y; bz=g.z; bl=1; }   // 정반대라 상쇄된 경우
           w = { x:bx/bl, y:by/bl, z:bz/bl };
         }
@@ -1918,10 +2003,10 @@ function bendStrandToDir3D(pts, dirAt, ramp, tail, E){
       const uComb = w;                            // 여기까지가 빗질 몫
       /* ③ 되돌림 조향 — 뜬 만큼 접선 쪽으로 회전(steerDownToScalp).
          빼기가 아니라 회전이라 <b>법선으로 자란 가닥도 눕는다</b>. */
-      if(hugOn && k > 0){
+      if(hugOn && hugK > 0 && k > 0){             // (2026-09-21) 강한 컬이면 hugK=0 → 건너뜀
         const sh = scalpShellAt({ x:cx, y:cy, z:cz }, E);
         const over = sh.q - qWant;
-        if(over > 0) w = steerDownToScalp(w, sh, Math.min(1, over/H.band)*H.strength*k, g);
+        if(over > 0) w = steerDownToScalp(w, sh, Math.min(1, over/H.band)*H.strength*hugK*k, g);
       }
       /* ④ 눕힘 증분만 <b>정착</b>시킨다 — 다음 마디가 이 자세에서 이어간다. */
       if(BEND3D.carry){
@@ -1936,7 +2021,7 @@ function bendStrandToDir3D(pts, dirAt, ramp, tail, E){
             const dn = w.x*sh2.nx + w.y*sh2.ny + w.z*sh2.nz;
             if(dn < 0){
               let tx = w.x - sh2.nx*dn, ty = w.y - sh2.ny*dn, tz = w.z - sh2.nz*dn;
-              const tl = Math.hypot(tx, ty, tz);
+              const tl = _fh3(tx, ty, tz);
               if(tl > 1e-9){
                 const nw = { x:tx/tl, y:ty/tl, z:tz/tl };
                 const R2 = _sleekRotate(w, nw);
@@ -2034,27 +2119,29 @@ const SLEEK3D = {
    ⚠ sleek=0이면 <b>같은 개체</b>를 그대로 돌려준다(예전과 산술까지 동일).
    되돌리기: SLEEK3D.carry = false (예전 비누적 판으로 복귀) */
 function _sleekRotate(u, w){
-  /* u→w 회전행렬(로드리게스). 두 벡터 다 단위. 거의 같으면 항등을 준다. */
+  /* u→w 회전행렬(로드리게스). 두 벡터 다 단위. 거의 같으면 null.
+     (2026-09-21 배포본 반영) K·K² 행렬곱 루프를 닫힌 식으로 펼쳤다 — 결과는 같다.
+     M = I + s·K + (1−c)·(a aᵀ − I),  a = 회전축(단위), s = sin, c = cos */
   const c = u.x*w.x + u.y*w.y + u.z*w.z;
-  let ax = { x:u.y*w.z-u.z*w.y, y:u.z*w.x-u.x*w.z, z:u.x*w.y-u.y*w.x };
-  const s = Math.hypot(ax.x, ax.y, ax.z);
+  let x = u.y*w.z - u.z*w.y, y = u.z*w.x - u.x*w.z, z = u.x*w.y - u.y*w.x;
+  const s = Math.sqrt(x*x + y*y + z*z);
   if(s < 1e-9) return null;                       // 회전 없음 — 합칠 것도 없다
-  ax = { x:ax.x/s, y:ax.y/s, z:ax.z/s };
-  const K = [[0,-ax.z,ax.y],[ax.z,0,-ax.x],[-ax.y,ax.x,0]];
-  const M = [[1,0,0],[0,1,0],[0,0,1]];
-  for(let i=0;i<3;i++) for(let j=0;j<3;j++){
-    let kk = 0; for(let m=0;m<3;m++) kk += K[i][m]*K[m][j];
-    M[i][j] += s*K[i][j] + (1-c)*kk;
-  }
-  return M;
+  x /= s; y /= s; z /= s;
+  const t = 1 - c;
+  return [
+    [1 + t*(x*x - 1), -s*z + t*x*y,     s*y + t*x*z],
+    [ s*z + t*x*y,    1 + t*(y*y - 1), -s*x + t*y*z],
+    [-s*y + t*x*z,     s*x + t*y*z,    1 + t*(z*z - 1)],
+  ];
 }
+/* (2026-09-21 배포본 반영) 3×3 곱을 루프 없이 펼친 판 — 가닥 마디마다 불려서. */
 function _sleekMul(A, B){
-  const C = [[0,0,0],[0,0,0],[0,0,0]];
-  for(let i=0;i<3;i++) for(let j=0;j<3;j++){
-    let s = 0; for(let k=0;k<3;k++) s += A[i][k]*B[k][j];
-    C[i][j] = s;
-  }
-  return C;
+  const a0 = A[0], a1 = A[1], a2 = A[2], b0 = B[0], b1 = B[1], b2 = B[2];
+  return [
+    [a0[0]*b0[0] + a0[1]*b1[0] + a0[2]*b2[0], a0[0]*b0[1] + a0[1]*b1[1] + a0[2]*b2[1], a0[0]*b0[2] + a0[1]*b1[2] + a0[2]*b2[2]],
+    [a1[0]*b0[0] + a1[1]*b1[0] + a1[2]*b2[0], a1[0]*b0[1] + a1[1]*b1[1] + a1[2]*b2[1], a1[0]*b0[2] + a1[1]*b1[2] + a1[2]*b2[2]],
+    [a2[0]*b0[0] + a2[1]*b1[0] + a2[2]*b2[0], a2[0]*b0[1] + a2[1]*b1[1] + a2[2]*b2[1], a2[0]*b0[2] + a2[1]*b1[2] + a2[2]*b2[2]],
+  ];
 }
 function _sleekApply(M, v){
   return { x:M[0][0]*v.x + M[0][1]*v.y + M[0][2]*v.z,
@@ -2108,12 +2195,12 @@ function sleekStrand3D(pts, sleekVal){
   let M = null;                                // 누적 회전(없으면 항등)
   for(let i=1;i<pts.length;i++){
     let vx = pts[i].x - pts[i-1].x, vy = pts[i].y - pts[i-1].y, vz = pts[i].z - pts[i-1].z;
-    const L = Math.hypot(vx, vy, vz);
+    const L = _fh3(vx, vy, vz);
     if(L > 1e-9){
       let u = { x:vx/L, y:vy/L, z:vz/L };
       if(K.carry && M){                        // ① 지금까지의 꺾임을 물려받는다
         u = _sleekApply(M, u);
-        const ul = Math.hypot(u.x, u.y, u.z) || 1;
+        const ul = _fh3(u.x, u.y, u.z) || 1;
         u = { x:u.x/ul, y:u.y/ul, z:u.z/ul };
       }
       let w = u;
@@ -2149,7 +2236,7 @@ function sleekStrand3D(pts, sleekVal){
           const dn = w.x*sh2.nx + w.y*sh2.ny + w.z*sh2.nz;
           if(dn < 0){
             let tx = w.x - sh2.nx*dn, ty = w.y - sh2.ny*dn, tz = w.z - sh2.nz*dn;
-            const tl = Math.hypot(tx, ty, tz);
+            const tl = _fh3(tx, ty, tz);
             if(tl > 1e-9){
               const nw = { x:tx/tl, y:ty/tl, z:tz/tl };
               const R = _sleekRotate(w, nw);
@@ -2200,11 +2287,11 @@ function sweepStrand3D(pts, sweepVal, curlAmt, partVal, partAmt){
   if(PART_SWEEP_MIX > 0){
     const seed = partingPushHead(pts[0], partVal || 0, curlAmt, partAmt);
     if(seed){
-      const m = Math.hypot(seed.x, seed.y, seed.z);
+      const m = _fh3(seed.x, seed.y, seed.z);
       if(m > 1e-9){
         const w = Math.min(1, m / PART3D.AMP) * PART_SWEEP_MIX;
         let bx = back.x + seed.x/m*w, by = back.y + seed.y/m*w, bz = back.z + seed.z/m*w;
-        const bl = Math.hypot(bx, by, bz);
+        const bl = _fh3(bx, by, bz);
         if(bl > 1e-9) back = { x:bx/bl, y:by/bl, z:bz/bl };
       }
     }
@@ -2215,10 +2302,11 @@ function sweepStrand3D(pts, sweepVal, curlAmt, partVal, partAmt){
      어느 가닥이 얼마나 넘어가느냐는 그 가닥이 <b>어디서 자랐나</b>로 정해야 맞다.
      점마다 다시 구하는 건 방향뿐이고, 그게 휨을 만든다. */
   const t0 = scalpTangentAt(pts[0], back, E);
-  const reach0 = Math.min(1, Math.hypot(t0.x, t0.y, t0.z));  // 0=두피에 수직(못 쓸림)
+  const reach0 = Math.min(1, _fh3(t0.x, t0.y, t0.z));  // 0=두피에 수직(못 쓸림)
   const frac = Math.abs(s) * turn * reach0;                  // 0~1 = 얼마나 완전히 돌릴까
   if(frac < 1e-4) return pts;
-  return bendStrandToDir3D(pts, scalpDirAt(back, E, frac), SWEEP3D.RAMP, SWEEP3D.TAIL, E);
+  // (2026-09-21) curlAmt를 넘겨 강한 컬은 두피 붙임을 줄인다(hugCurlFactor)
+  return bendStrandToDir3D(pts, scalpDirAt(back, E, frac), SWEEP3D.RAMP, SWEEP3D.TAIL, E, curlAmt);
 }
 /* 3D 경로용 — 가닥 전체에 가르마 이동을 얹는다. 뿌리(pts[0])는 고정.
    (2026-07-27) 넘김과 같은 이유로 점마다 방향을 다시 구한다. 갈라지는 방향
@@ -2228,7 +2316,7 @@ function partStrand3D(pts, partVal, curlAmt, partAmt){
   if(!pts || pts.length < 2) return pts;
   const seed = partingPushHead(pts[0], partVal, curlAmt, partAmt);
   if(!seed) return pts;
-  const mag = Math.hypot(seed.x, seed.y, seed.z);
+  const mag = _fh3(seed.x, seed.y, seed.z);
   if(mag < 1e-9) return pts;
   const E = getHeadEllipsoid();
   const dir = { x:seed.x/mag, y:seed.y/mag, z:seed.z/mag };   // 뿌리가 정한 갈라짐 방향
@@ -2237,7 +2325,8 @@ function partStrand3D(pts, partVal, curlAmt, partAmt){
      (AMP는 이제 이동량이 아니라 정규화 상수 역할). TURN으로 최대 회전을 제한한다 —
      가르마는 넘김만큼 결을 완전히 돌리지는 않는다. */
   const frac = Math.min(1, mag / PART3D.AMP) * PART3D.TURN;
-  return bendStrandToDir3D(pts, scalpDirAt(dir, E, frac), PART3D.RAMP, PART3D.TAIL, E);
+  // (2026-09-21) curlAmt를 넘겨 강한 컬은 두피 붙임을 줄인다(hugCurlFactor)
+  return bendStrandToDir3D(pts, scalpDirAt(dir, E, frac), PART3D.RAMP, PART3D.TAIL, E, curlAmt);
 }
 
 // 3D 길이: 호길이 기준 트림(ratio<1)/연장(ratio>1). 연장은 마지막 진행방향 유지.

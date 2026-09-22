@@ -669,6 +669,9 @@ function startNewCustomer(){
   for(const k in _viewMaskCache) delete _viewMaskCache[k]; // 뷰 마스크 샘플러 캐시
   state.aiOutfitRecommendation=null; // (3단계) 의상 추천 캐시도 초기화
   _garmentNeckOpening = null;        // (11차) 옷깃 구멍 실측 — 사람·의상이 바뀌면 무효
+  // (2026-09-21 배포본 반영) 몸통 베이스 캐시도 새 손님마다 초기화 — 21-body-base.js가
+  // 로드돼 있을 때만(지금 index.html은 안 불러서 typeof 가드로 건너뛴다).
+  if(typeof resetBodyBase === 'function') resetBodyBase();
   resetResultScreenCache();   // 결과 화면의 의상 메쉬/스냅샷 캐시(사람·의상이 바뀌면 전부 무효)
   _headCrossSectionCache = null; // 두상 실측 단면(Shape-from-Silhouette) 캐시도 새 고객마다 초기화
   _headVerticalRadiusCache = null; // 두상 세로 반지름 실측 캐시도 새 고객마다 초기화

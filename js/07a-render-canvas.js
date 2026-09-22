@@ -325,7 +325,10 @@ const HOLE_FILL = {
      skullClip이 막으려던 것은 긴 머리 <b>측면</b>에서 뒤로 흐른 머리까지 타원이 덮는 경우다.
      후면 타원 안은 전부 두피·지울 머리라 살 구역을 줄일 이유가 없다 — 타원 그대로 메운다.
      되돌리기: HOLE_FILL.skullClip.faceless = true (후면도 두개골 실루엣으로 자름) */
-  skullClip: { on: true, grow: 1.04, featherFrac: 0.010, nPhi: 28, nTheta: 56, faceless: false },
+  /* (2026-09-16 배포본 반영) faceless false → <b>true</b>. 후면도 두개골 실루엣으로 자른다.
+     위 2차 메모의 "타원 아래가 벽색으로 뚫림"은 아래 headEllipse 상한(0.8)으로 타원 자체가
+     두상 크기로 줄어서 다시 문제 되지 않는다는 판단. 되돌리기: faceless = false */
+  skullClip: { on: true, grow: 1.04, featherFrac: 0.010, nPhi: 28, nTheta: 56, faceless: true },
   /* ── 얼굴 없는 뷰의 타원이 <b>어깨폭</b>이던 것 (2026-09-19) ──────────────────
      사용자: "후면에 보면 두상타원만 메우라고 했는데, 2D보면 무슨 불상처럼 목부터 경계까지 다 메워져 있어."
      타원의 nxMin/nxMax는 sectionBandsFor가 <b>scalpY가 있는 모든 컬럼</b>에서 뽑는다.
@@ -340,7 +343,9 @@ const HOLE_FILL = {
      ⚠ skullClip.faceless는 <b>계속 false</b>다 — 두개골로 자르면 2차 때처럼 타원 아래가
        다시 벽색으로 뚫린다. 여기서는 자르는 게 아니라 타원 자체를 두상 크기로 세운다.
      되돌리기: HOLE_FILL.headEllipse.facelessMaxAspect = null (실루엣 폭 그대로) */
-  headEllipse: { facelessMaxAspect: 0.95 },
+  /* (2026-09-16 배포본 반영) 0.95 → <b>0.8</b>. 0.95도 후면에서 여전히 넓어서 두상 비율을
+     더 조였다. 배포본은 이 값을 코드에 0.8로 박아 넣었지만, 원본은 스위치를 살려 둔다. */
+  headEllipse: { facelessMaxAspect: 0.8 },
   facelessFill: {
     on: true,
     shrink: 0.97,      // 타원을 이 비율까지만 칠한다(타원이 조금 어긋나도 밖으로 안 샘)
@@ -362,7 +367,10 @@ const HOLE_FILL = {
        되돌리기: HOLE_FILL.facelessFill.cover = false (2차 동작) */
     cover: true,
     featherFrac: 0.010,   // 가장자리 페더 폭 = 출력폭 × 이 값(px 고정 — 아래쪽만 길게 늘어지지 않게)
-    neck: { on: true,
+    /* (2026-09-16 배포본 반영) 목 기둥 덮개를 <b>끈다</b>. 두개골 자르기(skullClip.faceless)를
+       다시 켜면서 타원 아래 목덜미까지 살색으로 칠하는 이 덮개가 "불상처럼 목까지 메워지는"
+       모양을 되살렸기 때문. 되돌리기: neck.on = true */
+    neck: { on: false,
             halfK: 0.60,  // 목 반폭 = 타원 rx × 이 값(rx는 헤어 실루엣×0.92라 두개골보다 넓다)
             lenK: 0.90,   // 타원 바닥에서 목 길이 = ry × 이 값(≈ 목 8~10cm)
             fadeK: 0.30,  // 그 아래 사라지는 구간 = ry × 이 값
@@ -1206,7 +1214,11 @@ const RENDER_PLATE = {
   /* 눈·눈썹 보호 — 위 buildHoleMask/featureGuardMask 배너. padX·padY는 랜드마크 박스
      반경에 곱하는 값(03a STEP 4 가드의 1.35/1.5보다 조금 넉넉), padAbs는 정규화 좌표로 더하는 여유.
      되돌리기: RENDER_PLATE.eyeGuard.on = false */
-  eyeGuard: { on: true, padX: 1.45, padY: 1.60, padAbs: 0.008 },
+  /* (2026-09-16 배포본 반영) 여유를 넓혔다: padX 1.45 → 1.90, padY 1.60 → 2.20.
+     배포본 식은 반경 = w/2 + w×0.45(+0.008) · h/2 + h×0.6(+0.008) 인데,
+     이것을 이 설정 형식(w/2 × pad)으로 옮기면 1.90 / 2.20 이 된다. 1.45/1.60으로는
+     3/4 측면에서 속눈썹 끝·눈썹 꼬리가 아직 조금씩 먹혔다. */
+  eyeGuard: { on: true, padX: 1.90, padY: 2.20, padAbs: 0.008 },
   /* 거울 결 — 메운 면이 <b>매끈해서</b> 티가 나는 문제. 색·명암은 인페인팅이 만든
      것을 그대로 쓰고, <b>고주파(니트 짜임·배경 입자)만</b> 경계 건너편에서 거울로
      비춰 가져온다. 두상 안에서 이미 쓰는 "색은 주변, 결은 실제 피부" 방식과 같다. */
