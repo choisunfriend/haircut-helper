@@ -568,3 +568,56 @@ input[type=range]::-moz-range-thumb{width:20px;height:20px;border-radius:50%;bac
 .soft-stage:not(.stage-dark) .view-zoom{ background:rgba(20,17,15,0.72); }
 .soft-stage:not(.stage-dark) .view-zoom span{ color:var(--accent-soft); }
 .soft-stage:not(.stage-dark) .model3d-hint{ background:rgba(20,17,15,0.62) !important; color:#E7DDD0 !important; }
+
+/* ══ 3D 화면 옷장 · 알림 · 구매 칸 · 의상 패널 (2026-09-20 · 배포본 20260922a 반영) ══
+   21-body-base.js가 만드는 UI다. 배포본에는 있었고 주석본(main)에는 빠져 있었다 —
+   이 규칙이 없으면 옷장 버튼이 캔버스 위에 스타일 없이 쌓여 3D 화면을 가린다.
+   값은 배포본 그대로다(한 글자도 안 바꿨다). 아래 짧은 주석 넷도 배포본에 있던 것.
+   · .bb-rack  왼쪽 위 세로 버튼 줄(남/여 · 외투 · 의상). 캔버스 드래그를 막지 않게
+               폭 46%·높이 제한 + 자체 스크롤.
+   · .bb-toast 3D 화면 아래쪽 알림(bodyToast). pointer-events:none — 알림이 손가락을
+               먹으면 회전이 끊긴다.
+   · .bb-buy   쇼핑몰(BODY_SHOP.catalogUrl)에서 온 옷일 때만 뜬다.
+   · .bb-shop  openShopPanel이 3D 화면 위에 덮는 전체 패널(iframe). 못 띄우면
+               .bb-shop-note가 "새 창으로 열기"를 대신 보여 준다(X-Frame-Options 대비).
+   ⚠ .soft-stage:not(.stage-dark) 규칙은 밝은 무대(19)에서 버튼이 배경에 먹히지
+     않게 하는 것 — 19의 무대 배경 전환과 짝이다. */
+/* 3D 화면 옷장 — 몸은 그대로 두고 옷만 갈아입는다 (21-body-base.js) */
+.bb-rack{position:absolute;left:10px;top:44px;z-index:6;display:flex;flex-direction:column;
+  gap:4px;max-width:46%;max-height:calc(100% - 96px);overflow-y:auto;-webkit-overflow-scrolling:touch;}
+.bb-rack button{background:rgba(27,24,22,0.78);backdrop-filter:blur(4px);border:1px solid var(--line);
+  border-left:6px solid var(--line);color:var(--accent-soft);font-size:11px;line-height:1;
+  padding:6px 9px;border-radius:8px;cursor:pointer;text-align:left;white-space:nowrap;font-family:inherit;}
+.bb-rack button:hover{border-color:var(--accent);}
+.bb-rack button.on{background:var(--accent);color:#1B1816;border-color:var(--accent);font-weight:700;}
+.soft-stage:not(.stage-dark) .bb-rack button{background:rgba(27,24,22,0.88);}
+.bb-rack button.muted{opacity:0.45;}
+
+/* 3D 화면 위 알림 (bodyToast) */
+.bb-toast{position:absolute;left:50%;bottom:52px;transform:translateX(-50%);z-index:22;
+  max-width:80%;background:rgba(20,17,15,0.92);border:1px solid var(--line);
+  color:var(--accent-soft);font-size:12px;line-height:1.5;padding:8px 14px;border-radius:10px;
+  text-align:center;pointer-events:none;backdrop-filter:blur(4px);}
+
+/* 쇼핑몰에서 온 옷일 때 뜨는 구매 칸 */
+.bb-rack .bb-buy{display:block;background:var(--accent);color:#1B1816;border:1px solid var(--accent);
+  font-size:11px;line-height:1.2;padding:6px 9px;border-radius:8px;text-decoration:none;
+  font-weight:700;text-align:left;}
+.bb-rack .bb-buy:hover{filter:brightness(1.08);}
+
+/* 의상 고르기 패널 — 3D 화면 위에 덮어 띄운다 (21-body-base.js openShopPanel) */
+.bb-shop{position:absolute;left:0;top:0;right:0;bottom:0;z-index:20;display:flex;flex-direction:column;
+  background:rgba(20,17,15,0.96);backdrop-filter:blur(2px);}
+.bb-shop-bar{flex:0 0 auto;display:flex;align-items:center;justify-content:space-between;gap:8px;
+  padding:8px 10px;border-bottom:1px solid var(--line);color:var(--accent-soft);
+  font-size:12px;font-weight:700;}
+.bb-shop-bar button{background:transparent;border:1px solid var(--line);color:var(--accent-soft);
+  font-size:12px;line-height:1;padding:5px 9px;border-radius:8px;cursor:pointer;font-family:inherit;}
+.bb-shop-bar button:hover{border-color:var(--accent);color:var(--accent);}
+.bb-shop iframe{flex:1 1 auto;width:100%;height:100%;min-height:0;border:0;display:block;background:#fff;}
+.bb-shop-note{position:absolute;left:0;right:0;top:38px;bottom:0;z-index:1;display:flex;
+  flex-direction:column;align-items:center;justify-content:center;gap:10px;text-align:center;
+  padding:16px;background:rgba(20,17,15,0.96);color:var(--accent-soft);font-size:12px;line-height:1.6;}
+.bb-shop-note a{color:#1B1816;background:var(--accent);padding:7px 12px;border-radius:8px;
+  text-decoration:none;font-weight:700;}
+.bb-shop-note small{opacity:0.6;word-break:break-all;max-width:90%;}
