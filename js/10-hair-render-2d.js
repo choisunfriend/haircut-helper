@@ -1240,8 +1240,41 @@ function tintColor(hex, bright){
 }
 
 let rafId = null;
+/* ── 렌더 문(2026-09-22) ────────────────────────────────────────────────
+   사용자(폰): "요즘 스타일 띄울 때 핸드폰 거의 다운된 것 같아 보이는 수준이야. 뭔가 과정이
+   반복되던가 순서가 안 맞던가 하는 것 같아."
+   rAF 묶기는 <b>한 프레임 안</b>의 여러 호출만 합친다. 그런데 스타일 적용은 여러 단계에 걸쳐
+   <b>순차로</b> 일어난다(스펙 역산 → 패널 다시 짓기 → 기준 저장 → 후처리 → 섹션 갱신).
+   단계마다 프레임이 넘어가면 그때마다 한 번씩 그린다 — 노트북 로그에서 [성능] 줄이 여덟 번
+   넘게 찍혔고, 폰에서는 한 번이 100~200ms라 그게 몇 초짜리 멈춤이 된다.
+   그래서 <b>문</b>을 둔다: 잠근 동안의 요청은 표시만 해 두고, 풀 때 한 번만 그린다.
+   ⚠ 반드시 try/finally로 풀 것 — 중간에 예외가 나면 화면이 영영 안 그려진다.
+   끄기(예전 동작): RENDER_GATE.on = false */
+const RENDER_GATE = { on: true, depth: 0, pending: false, skipped: 0 };
+function beginRenderGate(){ if(RENDER_GATE.on) RENDER_GATE.depth++; }
+function endRenderGate(){
+  if(!RENDER_GATE.on) return;
+  RENDER_GATE.depth = Math.max(0, RENDER_GATE.depth - 1);
+  if(RENDER_GATE.depth === 0 && RENDER_GATE.pending){
+    RENDER_GATE.pending = false;
+    drawAdjustPreview();
+  }
+}
+/* 문을 걸고 fn을 돌린 뒤, 끝나면 한 번 그린다. 몇 번을 아꼈는지 돌려준다. */
+function withRenderGate(fn, tag){
+  beginRenderGate();
+  const n0 = RENDER_GATE.skipped;
+  try{ return fn(); }
+  finally{
+    const saved = RENDER_GATE.skipped - n0;
+    endRenderGate();
+    if(saved > 0 && tag) console.log('[렌더 문] ' + tag + ' — 다시 그리기 ' + (saved + 1) + '회를 <b>1회</b>로 묶음'
+      + ' (끄기 RENDER_GATE.on=false)');
+  }
+}
 function drawAdjustPreview(){
   if(currentScreen!=='adjust') return;
+  if(RENDER_GATE.on && RENDER_GATE.depth > 0){ RENDER_GATE.pending = true; RENDER_GATE.skipped++; return; }
   if(rafId) cancelAnimationFrame(rafId);
   rafId = requestAnimationFrame(()=>{
     renderAdjustFrame();

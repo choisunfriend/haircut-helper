@@ -1120,7 +1120,15 @@ function applyStyleSpecAndRender(id, _retried){
     buildNeutralHair3D(()=>{ applyStyleSpecAndRender(id, true); });
     return null;
   }
+  /* 스타일 적용은 여러 단계가 순차로 돈다 — 단계마다 다시 그리지 않게 <b>문</b>으로 묶는다
+     (10-hair-render-2d.js의 RENDER_GATE 배너). 끝에 한 번만 그린다. */
   const undo = snapshotForSpec();          // 걸기 <b>직전</b> 상태 — 해제하면 여기로 돌아온다
+  const rep = (typeof withRenderGate === 'function')
+    ? withRenderGate(()=> _applyStyleSpecBody(id, undo), '스타일 적용')
+    : _applyStyleSpecBody(id, undo);
+  return rep;
+}
+function _applyStyleSpecBody(id, undo){
   const rep = applyStyleSpec(id);
   if(!rep) return null;
   state._specUndo = undo;
