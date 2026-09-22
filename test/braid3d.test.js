@@ -13,12 +13,18 @@ global.THREE={ Color,
   BufferGeometry: class{ constructor(){this.attr={};} setAttribute(k,v){this.attr[k]=v;} setIndex(i){this.index=i;} },
   Float32BufferAttribute: class{ constructor(a,n){this.array=Float32Array.from(a); this.itemSize=n;} },
   MeshLambertMaterial: class{ constructor(o){this.o=o;} },
-  Mesh: class{ constructor(g,m){this.geometry=g; this.material=m;} } };
+  LineBasicMaterial: class{ constructor(o){this.o=o;} },
+  Mesh: class{ constructor(g,m){this.geometry=g; this.material=m;} },
+  LineSegments: class{ constructor(g,m){this.geometry=g; this.material=m; this.isLineSegments=true;} },
+  Group: class{ constructor(){this.children=[]; this.isGroup=true;} add(o){this.children.push(o);} } };
+// 묶음이면 튜브 메쉬 / 모아 빗기 선을 꺼낸다
+const meshOf=(o)=> o && o.isGroup ? o.children.find(c=>!c.isLineSegments) : o;
+const linesOf=(o)=> o && o.isGroup ? o.children.find(c=>c.isLineSegments) : null;
 global.gyeolBoldArgs=a=>a; global.state={landmarks:{}}; global.FACE_RULER_CM={eyeToChin:11.5};
 let CMU=16.4; global.modelCmPerUnit=()=>CMU;
 global.getHeadEllipsoid=()=>({a:0.417,b:0.633,c:0.492});     // 실기기 로그의 두상 반축
 state.hair3Dneutral={CY:0};
-eval(S21+';global.BRAID=BRAID;global.BRAID3D=BRAID3D;global.buildBraid3DObject=buildBraid3DObject;global.braidResample3D=braidResample3D;global.braidPickGrid=braidPickGrid;global.braidGridInfo=braidGridInfo;');
+eval(S21+';global.BRAID=BRAID;global.BRAID3D=BRAID3D;global.buildBraid3DObject=buildBraid3DObject;global.braidResample3D=braidResample3D;global.braidPickGrid=braidPickGrid;global.braidGridInfo=braidGridInfo;global.braidGroupGrid=braidGroupGrid;');
 BRAID.log=false;
 let pass=0,fail=0; const t=(n,c)=>{c?(pass++,console.log('  ok   '+n)):(fail++,console.log('  FAIL '+n));};
 
@@ -124,7 +130,7 @@ console.log('── 파팅 격자 ──');
   // 3D: 30cm 가닥을 뿌리마다 — 정점 예산
   const adj=roots.slice(0,6000).map(r=>({ pts: Array.from({length:30},(_,i)=>({x:r.x*(1+i*0.01), y:r.y - i*Lu/29, z:r.z*(1+i*0.01)})), color:'#3a2a20' }));
   BRAID.log=false; BRAID3D.maxVerts=600000;
-  const m=build(adj); const nV=m.geometry.attr.position.array.length/3; const nG=braidPickGrid(adj.map(a=>a.pts[0])).length;
+  const m=meshOf(build(adj)); const nV=m.geometry.attr.position.array.length/3; const nG=braidPickGrid(adj.map(a=>a.pts[0])).length;
   console.log('       3D: 밧줄 '+nG+'개 · 정점 '+(nV/1000).toFixed(0)+'천 (예산 600천)');
   t('3D 정점 ≤ 예산 (+5%)', nV <= 600000*1.05);
   t('3D 밧줄 수 = 격자 칸 수', Math.abs(nV/(3*BRAID3D.radial) - 0) > 0 && nG > 100);
@@ -132,7 +138,7 @@ console.log('── 파팅 격자 ──');
   console.log('── 저사양·미니 예산 (폰 실기기: 저사양판정 · 234MB) ──');
   /* 길이 30cm 가닥 6000개 → 격자 약 260칸. 노트북 예산 60만에는 들어가지만 저사양 25만·미니 5만에는
      곡선을 최저로 줄여도 안 들어간다 → 칸을 넓혀야 한다. */
-  const vOf=(o)=>{ const mm=build(adj,o); return mm ? mm.geometry.attr.position.array.length/3 : 0; };
+  const vOf=(o)=>{ const mm=meshOf(build(adj,o)); return mm ? mm.geometry.attr.position.array.length/3 : 0; };
   global.isLowMemDevice=()=>true;
   const vLow=vOf({});
   console.log('       저사양 결과보기: 정점 '+(vLow/1000).toFixed(0)+'천 (예산 '+BRAID3D.maxVertsLow/1000+'천)');
@@ -148,6 +154,41 @@ console.log('── 파팅 격자 ──');
   let over2=0; for(let k=0;k<1500;k++){ const cz=1-rnd()*(1-Math.cos(1.5)); const q=onHead(Math.acos(cz),(rnd()*2-1)*Math.PI);
     let m=Infinity; for(const p of wide) m=Math.min(m,dcm(p,q)); if(m>BRAID.partCm*2.2) over2++; }
   t('칸을 2.2배 넓혀도 빈 곳 없음 (넓힌 칸보다 먼 두피점 1% 미만)', over2 < 15);
+  delete global.isLowMemDevice;
+
+  console.log('── 모아 빗기 — 칸 안의 가닥은 전부 그 칸 밧줄로 ──');
+  global.isLowMemDevice=()=>false; BRAID3D.maxVerts=600000;
+  const grp=braidGroupGrid(adj.map(a=>a.pts[0]));
+  const members=adj.filter((_,i)=>grp.ropeOf[i]>=0 && grp.ropeOf[i]!==i).length;
+  const obj=build(adj); const Ls=linesOf(obj);
+  t('밧줄 + 모아 빗기 선이 한 묶음으로 온다', obj && obj.isGroup && !!meshOf(obj) && !!Ls);
+  const segs=BRAID3D.gatherSegs, LP=Ls.geometry.attr.position.array;
+  const nLines=LP.length/3/2/segs;
+  t('칸 안 나머지 가닥이 <b>전부</b> 모인다 ('+nLines+'/'+members+')', nLines===members);
+  t('버려지는 가닥 없음 — 밧줄 + 모인 가닥 = 칸에 든 가닥 전부', grp.ropes.length + members === adj.filter((_,i)=>grp.ropeOf[i]>=0).length);
+  // 선 끝 = 제 칸 밧줄의 시작점 근처, 선 머리 = 제 뿌리 근처
+  const G=braidGridInfo(); const lift=BRAID.gatherLift/CMU;
+  const en=(p)=>Math.hypot(p.x/G.a,(p.y-G.CY)/G.b,p.z/G.c);
+  let k=0, bad=0, maxDip=0; const liftN=lift/Math.min(G.a,G.b,G.c);
+  for(let i=0;i<adj.length;i++){ const ri=grp.ropeOf[i]; if(ri<0||ri===i) continue;
+    const base=k*segs*6; const p0={x:LP[base],y:LP[base+1],z:LP[base+2]};
+    const r0=adj[i].pts[0]; if(Math.hypot(p0.x-r0.x,p0.y-r0.y,p0.z-r0.z)*CMU > BRAID.gatherLift*1.5+0.05) bad++;
+    // 두피 아래로 파고드는지: 선 위 모든 점의 타원 반지름이 <b>제 뿌리</b> 반지름 아래로 내려가면 파고든 것
+    for(let q=0;q<segs;q++){ const b=base+q*6; for(const o of [0,3]){ const pt={x:LP[b+o],y:LP[b+o+1],z:LP[b+o+2]};
+      maxDip=Math.max(maxDip, en(r0)-en(pt)); } }
+    k++; }
+  t('선 머리가 제 뿌리에서 출발 (어긋남 '+bad+'개)', bad===0);
+  t('두피 안으로 파고들지 않는다 (최대 '+(maxDip*G.a*CMU).toFixed(2)+'cm)', maxDip*G.a*CMU < 0.35);
+  global.isLowMemDevice=()=>true;
+  const LsLow=linesOf(build(adj)); const nLow=LsLow.geometry.attr.position.array.length/3/2/BRAID3D.gatherSegsLow;
+  /* (정정) 저사양은 칸이 넓혀질 수 있어 기본 칸으로 기대값을 세면 틀린다 — 선 끝이 모이는
+     밧줄 시작점별로 <b>직접</b> 센다. 같은 밧줄로 모이는 선 끝은 같은 좌표다. */
+  const LPl=LsLow.geometry.attr.position.array, sl=BRAID3D.gatherSegsLow, ends=new Map();
+  for(let q=0;q<nLow;q++){ const b=(q*sl+sl-1)*6+3; const key=[LPl[b],LPl[b+1],LPl[b+2]].map(v=>v.toFixed(4)).join(',');
+    ends.set(key,(ends.get(key)||0)+1); }
+  const maxPer=Math.max(...ends.values());
+  console.log('       저사양 모아 빗기 '+nLow+'가닥 · 밧줄 하나에 최대 '+maxPer+'가닥 (상한 '+BRAID3D.gatherPerCellLow+') · 노트북 '+nLines);
+  t('저사양은 칸당 상한을 지킨다', maxPer <= BRAID3D.gatherPerCellLow);
   delete global.isLowMemDevice;
 }
 console.log('\n'+pass+'/'+(pass+fail)+' 통과'+(fail?'  ← '+fail+'개 실패':''));

@@ -101,6 +101,13 @@ const BRAID = {
   grid: true,
   partCm: 1.60,
 
+  /* 모아 빗기(2026-09-22 5차) — 칸 안의 나머지 가닥을 두피 위로 밧줄 시작점까지 긋는다.
+     gather=false면 3차처럼 밧줄만(칸 안이 두피로 비어 보인다).
+     gatherLift — 두피에서 띄우는 높이(cm). 빗어 붙인 머리는 두피에 눕지만 0이면 두피면과
+       깊이가 겹쳐 깜빡인다. 0.12는 초안(모발 몇 가닥 두께). */
+  gather: true,
+  gatherLift: 0.12,
+
   /* (2026-09-22) 두피 밑칠 — 가닥 <b>뿌리 쪽 이 비율</b>만 두피색으로 깐다.
      땋으면 가닥이 묶여서 밧줄 사이로 <b>두피(파팅)</b>가 보인다. 밑칠을 안 하면
      그 틈으로 머리를 지운 채움 배경이 비친다. 끝까지 깔면 어깨 위에 두피색
@@ -256,9 +263,10 @@ function braidDrawProjected(ctx, projected, info){
   /* 파팅 격자 — 3D와 같은 braidPickGrid. 15가 넘기는 p.r3(뿌리 3D 좌표)로 칸을 정한다.
      고르는 후보가 "이 뷰에 보이는 가닥"뿐이라 3D와 칸은 같고 칸 안의 가닥은 다를 수
      있다(2D는 솎은 가닥이라). 가르마 자리는 같다. */
-  let ropes = null, how = 'hash';
+  let ropes = null, how = 'hash', grp2 = null;
   if(BRAID.grid && projected.some(p => p.r3)){
-    const ix = braidPickGrid(projected.map(p => p.r3));
+    grp2 = braidGroupGrid(projected.map(p => p.r3));
+    const ix = grp2 && grp2.ropes;
     if(ix && ix.length){ ropes = ix.map(i => projected[i]).filter(p => p.cpts && p.cpts.length > 2); how = 'grid'; }
   }
   if(how !== 'grid'){
@@ -270,6 +278,9 @@ function braidDrawProjected(ctx, projected, info){
      (격자는 Map 순서라 섞인다). */
   const order = new Map(projected.map((p,i)=>[p,i]));
   ropes.sort((a,b)=> order.get(a) - order.get(b));
+
+  const tintOf = (typeof info.tint === 'function') ? info.tint : (()=>1);
+  const colOf = (p)=> (p.colors && p.colors.length) ? p.colors[Math.floor(p.colors.length / 2)] : (p.color || '#1a1a1a');
 
   // ① 두피 밑칠 — <b>모든</b> 보이는 가닥의 뿌리 쪽만(파팅이 두피로 보이게)
   if(BRAID.scalpFrac > 0){
@@ -286,9 +297,39 @@ function braidDrawProjected(ctx, projected, info){
     ctx.stroke();
   }
 
+  /* ①′ 모아 빗기(2026-09-22 5차) — 3D와 같은 규칙: 칸 안의 나머지 가닥을 제 뿌리에서
+     그 칸 밧줄의 시작점(호길이 startAtFrac)까지 긋는다. 2D는 화면 좌표라 두피를 따라 휠
+     필요가 없다(투영된 두피 위의 직선이 곧 두피 위다 — 정사영). 굵기는 가닥 원래 굵기. */
+  let gathered = 0;
+  if(BRAID.gather && how === 'grid' && grp2){
+    const anchorOf = new Map();
+    const anchor = (p)=>{
+      if(anchorOf.has(p)) return anchorOf.get(p);
+      const sA = braidArcLengths(p.cpts), tot = sA[sA.length-1] || 0;
+      let k = 0; while(k < sA.length-1 && sA[k] < tot * BRAID.startAtFrac) k++;
+      const a = p.cpts[k]; anchorOf.set(p, a); return a;
+    };
+    const byCol = new Map();
+    for(let i=0;i<projected.length;i++){
+      const ri = grp2.ropeOf[i];
+      if(ri < 0 || ri === i) continue;
+      const p = projected[i], rp = projected[ri];
+      if(!p.cpts || !p.cpts.length || !rp.cpts || rp.cpts.length < 2) continue;
+      if(!p.runs || !p.runs.length || p.runs[0][0] !== 0) continue;   // 뿌리가 가려진 가닥은 안 긋는다
+      const col = bundleTintColor(colOf(p), tintOf(p.hb));
+      let arr = byCol.get(col); if(!arr){ arr = []; byCol.set(col, arr); }
+      arr.push([p.cpts[0], anchor(rp)]);
+      gathered++;
+    }
+    ctx.lineWidth = Math.max(0.9, geo.subWidth * 0.35);
+    for(const [c, segs] of byCol){
+      ctx.strokeStyle = c; ctx.beginPath();
+      for(const [a, b] of segs){ ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); }
+      ctx.stroke();
+    }
+  }
+
   // ② 밧줄 — 뒤에서 앞으로 하나씩
-  const tintOf = (typeof info.tint === 'function') ? info.tint : (()=>1);
-  const colOf = (p)=> (p.colors && p.colors.length) ? p.colors[Math.floor(p.colors.length / 2)] : (p.color || '#1a1a1a');
   for(const p of ropes){
     const base = colOf(p), t = tintOf(p.hb);
     const sAll = braidArcLengths(p.cpts);
@@ -316,6 +357,7 @@ function braidDrawProjected(ctx, projected, info){
       + (how === 'grid' ? '(파팅 격자 ' + BRAID.partCm + 'cm 칸)' : '(난수 · 두상 전체 목표 ' + BRAID.count + ')')
       + ' · 보이는 가닥 ' + projected.length + '/' + calcN
       + ' · 두피 밑칠 뿌리 ' + Math.round(BRAID.scalpFrac * 100) + '%'
+      + ' · 모아 빗기 ' + gathered + '가닥'
       + '\n    다시 보기: resetBraidLog() 후 화면 갱신 · 끄기: BRAID.on = false']));
   }
   return true;
@@ -391,6 +433,10 @@ const BRAID3D = {
   maxVertsLow: 250000,
   /* 미니 3D(17b)는 슬라이더마다 다시 짓는 진단 창이라 따로 묶는다. 초안. */
   miniMaxVerts: 80000, miniMaxVertsLow: 50000,
+  /* 모아 빗기 선 — 1px 선(LineSegments)이라 튜브보다 훨씬 싸다. 그래도 가닥 2만 개를 다
+     그으면 폰에서 부담이라 칸당 상한을 둔다. null = 전부. 한 선을 몇 토막으로 휘나(두피를 따라). */
+  gatherPerCell: null, gatherPerCellLow: 14, gatherPerCellMini: 6,
+  gatherSegs: 5, gatherSegsLow: 3,
 };
 /* 이번 호출의 정점 예산. opts.maxVerts가 있으면 그것, 없으면 기기에 따라. */
 function braidVertBudget(O, mini){
@@ -484,6 +530,33 @@ function braidPickGrid(roots, partOverride){
   return out;
 }
 
+/* ══ 칸 묶기 — 칸 안의 <b>모든</b> 가닥을 그 칸의 밧줄에 붙인다 (2026-09-22 5차) ══════
+   사용자(실제 박스 브레이드 사진을 보며): "내가 말한 건 땋은 머리가 촘촘해야 된다는 게
+   아니라, 빈틈에 머리카락은 다 있어야 된다는 얘기였어. 구획을 나눈 다음에 거기에 있는
+   머리가닥들은 다 땋는 머리에 사용한다는 거지."
+   3차까지는 칸마다 뿌리 <b>하나</b>만 밧줄로 쓰고 나머지 가닥은 버렸다 — 그래서 칸 안이
+   통째로 두피였다. 실제로는 칸 안의 머리를 전부 빗어 모아 땋으므로, 칸은 <b>모인 결</b>로
+   덮이고 두피는 칸 사이 <b>가르마 선</b>에서만 보인다.
+   돌려주는 것: ropes = 칸마다 밧줄이 될 인덱스, ropeOf[i] = i번 가닥이 붙는 밧줄 인덱스(없으면 -1). */
+function braidGroupGrid(roots, partOverride){
+  const G = braidGridInfo(partOverride);
+  if(!G || !roots || !roots.length) return null;
+  const keys = new Array(roots.length);
+  const best = new Map();
+  for(let i=0;i<roots.length;i++){
+    const p = roots[i];
+    if(!p || !isFinite(p.x) || !isFinite(p.y) || !isFinite(p.z)) continue;
+    const c = braidCellOf(p, G);
+    keys[i] = c.key;
+    const b = best.get(c.key);
+    if(!b || c.d2 < b.d2) best.set(c.key, { i, d2: c.d2 });
+  }
+  const ropeOf = new Int32Array(roots.length).fill(-1);
+  for(let i=0;i<roots.length;i++){ if(keys[i] === undefined) continue; const b = best.get(keys[i]); if(b) ropeOf[i] = b.i; }
+  const ropes = []; for(const v of best.values()) ropes.push(v.i);
+  return { ropes, ropeOf };
+}
+
 /* 3D 자: cm/단위. 못 구하면 null(때우지 않는다 — 2D판과 같은 원칙). */
 function braidCmPerUnit3D(){
   try{
@@ -545,9 +618,11 @@ function buildBraid3DObject(adj, colorOf, center, opts){
 
   /* 밧줄로 쓸 가닥 — 파팅 격자(칸마다 하나). 격자를 못 만들면(두상 타원체·자 없음)
      예전처럼 인덱스 해시로 count만큼(결정적: 다시 지어도 같은 가닥). */
-  let pick = null, how = 'hash';
+  let pick = null, how = 'hash', grp = null;
+  const rootsAll = adj.map(st => st && st.pts && st.pts[0]);
   if(BRAID.grid){
-    pick = braidPickGrid(adj.map(st => st && st.pts && st.pts[0]));
+    grp = braidGroupGrid(rootsAll);
+    pick = grp && grp.ropes;
     if(pick && pick.length) how = 'grid';
   }
   if(how !== 'grid'){
@@ -574,8 +649,10 @@ function buildBraid3DObject(adj, colorOf, center, opts){
   let partUsed = BRAID.partCm;
   if(estV() > budget && how === 'grid'){
     const want = BRAID.partCm * Math.sqrt(estV() / budget) * 1.05;
-    const p2 = braidPickGrid(adj.map(st => st && st.pts && st.pts[0]), want);
+    const g2 = braidGroupGrid(rootsAll, want);
+    const p2 = g2 && g2.ropes;
     if(p2 && p2.length){
+      grp = g2;
       arcSum = 0;
       for(const si of p2){ const pp = adj[si] && adj[si].pts; if(!pp) continue;
         for(let i=1;i<pp.length;i++) arcSum += Math.hypot(pp[i].x-pp[i-1].x, pp[i].y-pp[i-1].y, pp[i].z-pp[i-1].z) || 0; }
@@ -662,6 +739,68 @@ function buildBraid3DObject(adj, colorOf, center, opts){
   const mat = new THREE.MeshLambertMaterial({ vertexColors: true });
   const mesh = new THREE.Mesh(g, mat);
   mesh.name = 'braidedHair';
+
+  /* ── 모아 빗기 선 (2026-09-22 5차) ──────────────────────────────────
+     칸 안의 나머지 가닥(ropeOf[i] = 그 칸 밧줄)을 <b>제 뿌리 → 밧줄 시작점</b>까지 두피를 따라
+     긋는다. 시작점 = 밧줄 축에서 땋기가 시작되는 호길이(startAtFrac)의 자리 — 거기서부터
+     갈래가 벌어지므로, 모인 머리가 그 점으로 들어가야 밧줄 "안으로" 들어간 것처럼 보인다.
+     두피를 따라가게: 두 끝을 직선으로 잇고 각 점을 두상 타원체 기준 반지름으로 다시 편다
+     (직선 그대로면 두피 안으로 파고든다). 선이 1px이라 한 칸에 수십 개가 모여야 결로 읽힌다. */
+  let gatherN = 0, gatherV = 0, gatherObj = null;
+  if(BRAID.gather && how === 'grid' && grp){
+    const G = braidGridInfo(partUsed);
+    const low = (typeof isLowMemDevice === 'function') && isLowMemDevice();
+    const cap = O.mini ? BRAID3D.gatherPerCellMini : (low ? BRAID3D.gatherPerCellLow : BRAID3D.gatherPerCell);
+    const segs = Math.max(2, (low || O.mini) ? BRAID3D.gatherSegsLow : BRAID3D.gatherSegs);
+    const lift = BRAID.gatherLift / cmPerUnit;
+    const enorm = (p)=> Math.hypot(p.x / G.a, (p.y - G.CY) / G.b, p.z / G.c) || 1;
+    const anchorOf = new Map();        // 밧줄마다 시작점 한 번만
+    const anchor = (ri)=>{
+      if(anchorOf.has(ri)) return anchorOf.get(ri);
+      const ax = braidResample3D(adj[ri].pts, L / 4);
+      const total = ax.length ? ax[ax.length-1].s : 0;
+      let a = ax[0] || adj[ri].pts[0];
+      for(const q of ax){ if(q.s >= total * BRAID.startAtFrac){ a = q; break; } }
+      anchorOf.set(ri, a); return a;
+    };
+    const perCell = new Map();
+    const lp = [], lc = [];
+    for(let i=0;i<adj.length;i++){
+      const ri = grp.ropeOf[i];
+      if(ri < 0 || ri === i || !adj[i] || !adj[i].pts || !adj[i].pts[0]) continue;
+      if(cap != null){ const n = perCell.get(ri) || 0; if(n >= cap) continue; perCell.set(ri, n + 1); }
+      const r0 = adj[i].pts[0], a = anchor(ri);
+      const n0 = enorm(r0), n1 = enorm(a);
+      let base = '#1a1a1a';
+      try{ base = colorOf ? (colorOf(adj[i], i) || base) : (adj[i].color || base); }catch(e){}
+      try{ colr.set(base); }catch(e){ colr.set('#1a1a1a'); }
+      let prev = null;
+      for(let k=0;k<=segs;k++){
+        const t = k / segs;
+        const q = { x: r0.x + (a.x - r0.x)*t, y: r0.y + (a.y - r0.y)*t, z: r0.z + (a.z - r0.z)*t };
+        /* 두피를 따라 — 반지름(타원체 정규화)을 양 끝 사이로 펴고, 두피 위로 lift만큼.
+           ⚠ 뿌리 높이(n0) 아래로는 안 내려간다 (하네스로 잡음): 가닥이 뿌리에서 곧장 아래로
+           떨어지면 밧줄 시작점이 두피 <b>안쪽</b>에 있고(n1 < n0), 그대로 펴면 선이 머리 속으로
+           1cm 넘게 파고들었다. 빗어 붙인 머리는 두피 위에 눕는다 — 그 자리에서는 끝점이
+           두피 높이로 떠서 밧줄 시작점보다 조금 위에서 만난다(밧줄 관이 그 틈을 덮는다). */
+        const want = Math.max(n0 + (n1 - n0) * t, n0), now = enorm(q), k2 = want / now;
+        const dx = q.x * k2, dy = (q.y - G.CY) * k2, dz = q.z * k2;
+        const dl = Math.hypot(dx, dy, dz) || 1;
+        const pt = { x: dx + dx/dl*lift, y: G.CY + dy + dy/dl*lift, z: dz + dz/dl*lift };
+        if(prev){ lp.push(prev.x, prev.y, prev.z, pt.x, pt.y, pt.z); lc.push(colr.r, colr.g, colr.b, colr.r, colr.g, colr.b); gatherV += 2; }
+        prev = pt;
+      }
+      gatherN++;
+    }
+    if(lp.length){
+      const lg = new THREE.BufferGeometry();
+      lg.setAttribute('position', new THREE.Float32BufferAttribute(lp, 3));
+      lg.setAttribute('color',    new THREE.Float32BufferAttribute(lc, 3));
+      gatherObj = new THREE.LineSegments(lg, new THREE.LineBasicMaterial({ vertexColors: true }));
+      gatherObj.name = 'braidGather';
+    }
+  }
+
   if(BRAID.log && O.log !== false){
     console.log(...gyeolBoldArgs(['[땋기·3D] 자 ' + cmPerUnit.toFixed(2) + 'cm/단위'
       + ' · 밧줄 <b>' + ropes + '개</b>'
@@ -673,10 +812,15 @@ function buildBraid3DObject(adj, colorOf, center, opts){
       + ' × 갈래 ' + nS
       + ' · 굵기 ' + BRAID.widthCm + 'cm · 마디 ' + BRAID.nodeCm + 'cm'
       + ' · 관 반지름 ' + (r*cmPerUnit).toFixed(2) + 'cm'
+      + '\n    모아 빗기 <b>' + gatherN + '가닥</b>(선 정점 ' + (gatherV/1000).toFixed(0) + '천 — 1px 선이라 튜브 예산과 별개)'
       + '\n    정점 <b>' + (verts/1000).toFixed(0) + '천</b> · 삼각형 ' + (idx.length/3/1000).toFixed(0) + '천 · 드로우콜 1'
       + ' · 예산 ' + (budget/1000) + '천' + ((typeof isLowMemDevice === 'function' && isLowMemDevice()) ? '(저사양)' : '')
       + ((spn !== spn0 || RAD !== RAD0) ? ' · <b>예산에 맞춰 줄임</b>: 마디당 ' + spn0 + '→' + spn + '점 · 원주 ' + RAD0 + '→' + RAD : '')
       + ' — 폰에서 무거우면 BRAID3D.maxVerts를 내린다']));
   }
-  return mesh;
+  if(!gatherObj) return mesh;
+  const grpObj = new THREE.Group();
+  grpObj.name = 'braidedHairGroup';
+  grpObj.add(mesh); grpObj.add(gatherObj);
+  return grpObj;
 }

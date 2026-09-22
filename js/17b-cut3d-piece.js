@@ -1286,8 +1286,10 @@ function miniDetach(key){
   const o = devMini3D[key];
   if(!o) return;
   devMini3D.group.remove(o);
-  if(o.geometry) o.geometry.dispose();
-  if(o.material) o.material.dispose();
+  /* (2026-09-22) 묶음(Group)도 안쪽까지 치운다 — 땋기가 밧줄 메쉬 + 모아 빗기 선을 한 묶음으로
+     넘긴다. 예전처럼 o.geometry만 보면 Group엔 geometry가 없어 안쪽 두 벌이 슬라이더마다 남았다. */
+  const kill = (x)=>{ if(x.geometry) x.geometry.dispose(); if(x.material) x.material.dispose(); };
+  if(typeof o.traverse === 'function') o.traverse(kill); else kill(o);
   devMini3D[key] = null;
 }
 function refreshDevMini3D(){

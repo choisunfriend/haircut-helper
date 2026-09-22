@@ -9,12 +9,12 @@ const S08=J('08-cut-engine.js'),S15=J('15-project-3d.js'),S16=J('16-style-spec-d
 global.state={landmarks:{}}; global.FACE_RULER_CM={eyeToChin:11.5,earHalf:7};
 global.gyeolBoldArgs=a=>a; let CMU=16.4;
 global.faceRulerCmPerUnit=()=>({x:CMU,y:CMU}); global.getFaceMetrics=()=>({});
-const SPC=fs.readdirSync(JS).map(f=>J(f)).find(x=>x.includes('\nfunction parseColorRGB('));
+const SPC=fs.readdirSync(JS).filter(f=>f.endsWith('.js')).map(f=>J(f)).find(x=>x.includes('\nfunction parseColorRGB('));
 eval([grab(S08,'traceSmoothPolyline'),grab(S15,'bundleTintColor'),grab(SPC,'parseColorRGB')].join('\n'));
 try{ eval(grab(S15,'quantizeStrokeColor')); }catch(e){}
 global.traceSmoothPolyline=traceSmoothPolyline; global.bundleTintColor=bundleTintColor;
 // 21 전체를 싣는다(const/let 포함) — 전역으로 꺼내기 위해 끝에 노출
-eval(S21+'\n;global.braidPickGrid=braidPickGrid;global.BRAID=BRAID;global.BRAID_DEFAULTS=BRAID_DEFAULTS;global.braidGeometry=braidGeometry;global.braidPxPerCm3D=braidPxPerCm3D;global.traceBraidPolyline=traceBraidPolyline;global.braidDrawProjected=braidDrawProjected;global.braidArcLengths=braidArcLengths;global.resetBraidLog=resetBraidLog;');
+eval(S21+'\n;global.braidGroupGrid=braidGroupGrid;global.braidPickGrid=braidPickGrid;global.BRAID=BRAID;global.BRAID_DEFAULTS=BRAID_DEFAULTS;global.braidGeometry=braidGeometry;global.braidPxPerCm3D=braidPxPerCm3D;global.traceBraidPolyline=traceBraidPolyline;global.braidDrawProjected=braidDrawProjected;global.braidArcLengths=braidArcLengths;global.resetBraidLog=resetBraidLog;');
 let pass=0,fail=0;const t=(n,c)=>{c?(pass++,console.log('  ok   '+n)):(fail++,console.log('  FAIL '+n));};
 // 기록하는 가짜 ctx
 function mkCtx(){const c={ops:[],strokes:[],cur:null,lineWidth:1,strokeStyle:'#000',
@@ -79,11 +79,27 @@ console.log('── 2D도 파팅 격자로 고른다 ──');
   const P=Array.from({length:3000},(_,i)=>{ const cz=1-rnd()*(1-Math.cos(1.5)), phi=Math.acos(cz), th=(rnd()*2-1)*Math.PI;
     return { r3:{x:0.417*Math.sin(phi)*Math.sin(th), y:0.633*Math.cos(phi), z:0.492*Math.sin(phi)*Math.cos(th)},
              cpts:vert(i%400), runs:[[0,59]], hb:rnd(), color:'#3a2a20', colors:null, w:1, sec:'crown' }; });
+  /* 밧줄 수는 stroke로 센다(밑칠 1 + 밧줄마다 2) — 모아 빗기 선이 끼면 셈이 안 맞으므로 끄고 센다 */
+  BRAID.gather=false; resetBraidLog();
   const c=mkCtx(); const r=braidDrawProjected(c,P,{cal,toCY,calcN:3000,tint:()=>1});
-  const ropes=(c.strokes.length-1)/2;
+  const ropes=(c.strokes.length-1)/2; BRAID.gather=true;
   const G=braidPickGrid(P.map(p=>p.r3)).length;
   t('2D 밧줄 수 = 격자 칸 수('+G+')', r===true && ropes===G);
   t('격자 칸이 난수 목표(60)보다 훨씬 많다', G > 150);
+  /* 모아 빗기 — 칸 안 나머지 가닥은 전부 moveTo(제 뿌리) → lineTo(그 칸 밧줄 시작점).
+     기록용 ctx는 moveTo/lineTo를 한 path에 쌓으므로, 모아 빗기 stroke에서 [뿌리, 끝] 쌍을 꺼낸다. */
+  BRAID.gather=false; resetBraidLog(); const c0=mkCtx(); braidDrawProjected(c0,P,{cal,toCY,calcN:3000,tint:()=>1});
+  BRAID.gather=true;  resetBraidLog(); const c1=mkCtx(); braidDrawProjected(c1,P,{cal,toCY,calcN:3000,tint:()=>1});
+  const gStrokes=c1.strokes.slice(1, c1.strokes.length - (c0.strokes.length - 1));
+  const pairs=[]; for(const st of gStrokes) for(let k=0;k+1<st.pts.length;k+=2) pairs.push([st.pts[k],st.pts[k+1]]);
+  const grpT=braidGroupGrid(P.map(p=>p.r3)); const members=P.filter((_,i)=>grpT.ropeOf[i]>=0&&grpT.ropeOf[i]!==i).length;
+  t('2D 모아 빗기: 칸 안 나머지 가닥 전부 ('+pairs.length+'/'+members+')', pairs.length===members);
+  t('모아 빗기를 끄면 밧줄만(예전 3차)', c0.strokes.length === 1 + 2*G);
+  // 같은 칸이면 끝점이 같다
+  let same=true; const endOf=new Map(); let q=0;
+  for(let i=0;i<P.length;i++){ const ri=grpT.ropeOf[i]; if(ri<0||ri===i) continue; const e=pairs[q++][1]; const k=ri;
+    if(endOf.has(k)){ const o=endOf.get(k); if(o[0]!==e[0]||o[1]!==e[1]) same=false; } else endOf.set(k,e); }
+  t('같은 칸의 가닥은 같은 밧줄 시작점으로 모인다', same);
   state.hair3Dneutral=null; }
 console.log('── 스타일 걸기/풀기 ──');
 { const blk=S16.slice(S16.indexOf("  if(typeof BRAID !== 'undefined'){"), S16.indexOf("rep.braid = BRAID.on ? { ...sp.braid } : null;\n  }")+50);
