@@ -41,6 +41,26 @@ const TREAT_SPEC = {
   asymCm: 1.0,
 };
 
+/* ── 언어 (2026-09-22 2차) ─────────────────────────────────────────────
+   사용자: "디폴트 언어는 모두 영어로 부탁."
+   1차는 한국어로 쓰고 앱의 I18N 관찰자가 번역하길 기다렸다. 결과(실기기 캡처): 섹션 이름·기법처럼
+   <b>사전에 있던 말만</b> 영어가 되고, 이 파일이 새로 쓴 문장("눈썹선", "지금 … 거의 그대로",
+   "좌우 다름")은 한국어로 남아 한 장 안에서 두 언어가 섞였다.
+   사전에 문장을 계속 보태는 대신 <b>처음부터 지금 언어로 쓴다</b>(18의 uiLang — 기본 'en').
+   앱 쪽 이름(섹션·기법·스타일링)은 <b>앱 사전의 영어를 그대로</b> 빌린다 — 다른 화면과 같은 말.
+   uiLang이 없으면(하네스 등) 영어 — 사용자가 정한 기본값. */
+function treatEN(){ return (typeof uiLang === 'undefined') || uiLang !== 'ko'; }
+function treatT(ko, en){ return treatEN() ? en : ko; }
+/* 앱 사전(I18N)으로 앱 쪽 이름을 옮긴다. 사전에 없으면 원문 그대로. */
+function treatAppWord(ko){
+  if(!treatEN() || ko == null) return ko;
+  try{ if(typeof I18N === 'object' && I18N && I18N[ko]) return I18N[ko]; }catch(e){}
+  return ko;
+}
+/* 얼굴 기준점 이름(영어) — 손님과 말하는 짧은 말로. */
+const TREAT_LM_EN = { '헤어라인':'hairline', '눈썹':'eyebrows', '눈':'eyes', '입':'mouth',
+                      '턱':'chin', '어깨':'shoulders', '가슴':'chest' };
+
 /* 얼굴 기준점 사다리 — 모델 높이(y, 위가 +)로. 못 만들면 null. */
 function treatFaceLadder(){
   try{
@@ -81,6 +101,11 @@ function treatTipWords(y, ladder, cmu){
     if(d < bd - 1e-9 || (Math.abs(d - bd) <= 1e-9 && best && L.y < best.y)){ bd = d; best = L; }
   }
   const dc = (y - best.y) * cmu;                      // + = 기준점보다 위
+  if(treatEN()){
+    const nm = (TREAT_LM_EN[best.name] || best.name) + (best.est ? ' (est.)' : '');
+    if(Math.abs(dc) < TREAT_SPEC.nearCm) return 'at ' + (best.name === '턱' ? 'the chin line' : nm);
+    return Math.abs(dc).toFixed(1) + 'cm ' + (dc > 0 ? 'above ' : 'below ') + nm;
+  }
   const nm = best.name + (best.est ? '(추정)' : '');
   if(Math.abs(dc) < TREAT_SPEC.nearCm) return nm + '선';
   return nm + (dc > 0 ? ' 위 ' : ' 아래 ') + Math.abs(dc).toFixed(1) + 'cm';
@@ -101,10 +126,10 @@ function buildTreatmentSpec(){
     const nowCm = measureSectionLenCm(id, base), goalCm = measureSectionLenCm(id, lenVal);
     const tipY = measureSectionTipY(id, lenVal);
     const r = {
-      id, label: (SECTIONS[id] && SECTIONS[id].label) || id,
+      id, label: treatAppWord((SECTIONS[id] && SECTIONS[id].label) || id),
       nowCm, goalCm, cutCm: (nowCm != null && goalCm != null) ? nowCm - goalCm : null,
       tip: treatTipWords(tipY, ladder, cmu),
-      tech: (sec.technique && TECHNIQUES[sec.technique]) ? TECHNIQUES[sec.technique].label : null,
+      tech: (sec.technique && TECHNIQUES[sec.technique]) ? treatAppWord(TECHNIQUES[sec.technique].label) : null,
       elev: (typeof sec.elevation === 'number') ? sec.elevation : null,
       curl: (typeof sec.curl === 'number') ? sec.curl : null,
       color: sec.color || null,
@@ -128,7 +153,7 @@ function buildTreatmentSpec(){
     const span = v > p.neutral ? (p.max - p.neutral) : (p.neutral - p.min);
     const pct = span > 0 ? Math.round(Math.abs(v - p.neutral) / span * 100) : 0;
     if(pct < 5) continue;                                 // 거의 기본이면 안 적는다
-    styling.push({ label: p.label, toward, pct });
+    styling.push({ label: treatAppWord(p.label), toward: treatAppWord(toward), pct });
   }
   const fade = (state.fade && state.fade.enabled) ? {
     guard: state.fade.guard, mm: (typeof guardMm === 'function') ? guardMm(state.fade.guard) : null,
@@ -146,55 +171,65 @@ function buildTreatmentSpec(){
 
 /* 한 장짜리 HTML. 폰에서 보는 걸 먼저 생각했다 — 표 대신 섹션마다 한 덩어리. */
 function treatmentSpecHTML(S){
+  const T = treatT;
   const esc = (t)=> String(t).replace(/[&<>]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
   const cm = (v)=> (v == null ? '—' : v.toFixed(1) + 'cm');
   let h = '';
-  h += '<div class="ts-title">시술 스펙' + (S.styleName ? ' <span class="ts-sub">' + esc(S.styleName) + '</span>' : '') + '</div>';
-  if(!S.ladderOk) h += '<div class="ts-warn">정면 얼굴을 못 찾아 얼굴 기준 길이를 못 적습니다 — cm만 적습니다.</div>';
-  h += '<div class="ts-sec-h">커트 · 섹션별</div>';
+  h += '<div class="ts-title">' + T('시술 스펙', 'Treatment spec') + (S.styleName ? ' <span class="ts-sub">' + esc(S.styleName) + '</span>' : '') + '</div>';
+  if(!S.ladderOk) h += '<div class="ts-warn">' + T('정면 얼굴을 못 찾아 얼굴 기준 길이를 못 적습니다 — cm만 적습니다.',
+                                                    'Front face not found — lengths are given in cm only, not by face landmarks.') + '</div>';
+  h += '<div class="ts-sec-h">' + T('커트 · 섹션별', 'Cut · by section') + '</div>';
   for(const r of S.rows){
     h += '<div class="ts-row"><div class="ts-name">' + esc(r.label) + '</div><div class="ts-body">';
-    if(r.goalCm == null) h += '<div>길이 — 잴 가닥 없음(클리퍼 구역이거나 이 섹션에 머리가 없음)</div>';
+    if(r.goalCm == null) h += '<div>' + T('길이 — 잴 가닥 없음(클리퍼 구역이거나 이 섹션에 머리가 없음)',
+                                          'Length — nothing to measure (clipper zone, or no hair in this section)') + '</div>';
     else {
       h += '<div class="ts-main">' + (r.tip ? '<b>' + esc(r.tip) + '</b>' : '') + ' <span class="ts-dim">(' + cm(r.goalCm) + ')</span></div>';
-      if(r.lr) h += '<div>좌 ' + esc(r.lr.left) + ' · 우 ' + esc(r.lr.right) + ' <span class="ts-dim">(좌우 다름)</span></div>';
+      if(r.lr) h += '<div>' + T('좌 ', 'L: ') + esc(r.lr.left) + ' · ' + T('우 ', 'R: ') + esc(r.lr.right)
+                  + ' <span class="ts-dim">(' + T('좌우 다름', 'left/right differ') + ')</span></div>';
       if(r.cutCm != null){
-        h += '<div class="ts-dim">지금 ' + cm(r.nowCm) + ' → '
-          + (r.cutCm > 0.3 ? '<b>' + r.cutCm.toFixed(1) + 'cm 자름</b>'
-             : r.cutCm < -0.3 ? '<b class="ts-warn-in">' + (-r.cutCm).toFixed(1) + 'cm 더 김 — 지금보다 길게는 안 됩니다(익스텐션 별도)</b>'
-             : '거의 그대로') + '</div>';
+        h += '<div class="ts-dim">' + T('지금 ', 'Now ') + cm(r.nowCm) + ' → '
+          + (r.cutCm > 0.3 ? '<b>' + T(r.cutCm.toFixed(1) + 'cm 자름', 'cut ' + r.cutCm.toFixed(1) + 'cm') + '</b>'
+             : r.cutCm < -0.3 ? '<b class="ts-warn-in">' + T((-r.cutCm).toFixed(1) + 'cm 더 김 — 지금보다 길게는 안 됩니다(익스텐션 별도)',
+                                                             (-r.cutCm).toFixed(1) + 'cm longer — can\'t grow past current length (extensions are separate)') + '</b>'
+             : T('거의 그대로', 'about the same')) + '</div>';
       }
     }
     const ref = [];
     if(r.tech) ref.push(r.tech);
-    if(r.elev != null) ref.push('시술각 ' + r.elev + '°');
-    if(ref.length) h += '<div class="ts-dim">참고 · ' + esc(ref.join(' · ')) + '</div>';
-    if(r.color) h += '<div class="ts-dim">컬러 <span class="ts-chip" style="background:' + esc(r.color) + '"></span>' + esc(r.color) + '</div>';
+    if(r.elev != null) ref.push(T('시술각 ', 'elevation ') + r.elev + '°');
+    if(ref.length) h += '<div class="ts-dim">' + T('참고 · ', 'Ref · ') + esc(ref.join(' · ')) + '</div>';
+    if(r.color) h += '<div class="ts-dim">' + T('컬러', 'Color') + ' <span class="ts-chip" style="background:' + esc(r.color) + '"></span>' + esc(r.color) + '</div>';
     h += '</div></div>';
   }
   if(S.fade){
-    h += '<div class="ts-sec-h">페이드</div><div class="ts-row"><div class="ts-body">'
-      + '가드 ' + S.fade.guard + (S.fade.mm != null ? ' (' + S.fade.mm.toFixed(1) + 'mm)' : '')
-      + ' · 높이 ' + S.fade.height + '%' + (S.fade.taper > 0 ? ' · 테이퍼 ' + S.fade.taper + '%' : '')
-      + (S.fade.disc > 0 ? ' · 디스커넥션 ' + S.fade.disc + '%' : '') + '</div></div>';
+    h += '<div class="ts-sec-h">' + T('페이드', 'Fade') + '</div><div class="ts-row"><div class="ts-body">'
+      + T('가드 ', 'Guard ') + S.fade.guard + (S.fade.mm != null ? ' (' + S.fade.mm.toFixed(1) + 'mm)' : '')
+      + T(' · 높이 ', ' · height ') + S.fade.height + '%'
+      + (S.fade.taper > 0 ? T(' · 테이퍼 ', ' · taper ') + S.fade.taper + '%' : '')
+      + (S.fade.disc > 0 ? T(' · 디스커넥션 ', ' · disconnection ') + S.fade.disc + '%' : '') + '</div></div>';
   }
   if(S.globalCurl != null && S.globalCurl > 0){
-    h += '<div class="ts-sec-h">펌</div><div class="ts-row"><div class="ts-body">컬 세기 ' + S.globalCurl
-      + ' <span class="ts-dim">(0 = 스트레이트 · 섹션별 배율은 위 각 섹션)</span></div></div>';
+    h += '<div class="ts-sec-h">' + T('펌', 'Perm') + '</div><div class="ts-row"><div class="ts-body">'
+      + T('컬 세기 ', 'Curl strength ') + S.globalCurl
+      + ' <span class="ts-dim">(' + T('0 = 스트레이트 · 섹션별 배율은 위 각 섹션', '0 = straight · per-section multipliers above') + ')</span></div></div>';
   }
   if(S.braid){
-    h += '<div class="ts-sec-h">땋기</div><div class="ts-row"><div class="ts-body">'
-      + (S.braid.strands === 2 ? '두 갈래 꼬기' : S.braid.strands + '갈래 땋기')
-      + ' · 파팅 칸 ' + S.braid.partCm + 'cm · 가닥 굵기 ' + S.braid.widthCm + 'cm'
-      + '<div class="ts-dim">길이는 손님 머리 그대로 — 더 긴 땋기는 익스텐션(별도 시술)</div></div></div>';
+    h += '<div class="ts-sec-h">' + T('땋기', 'Braids') + '</div><div class="ts-row"><div class="ts-body">'
+      + (S.braid.strands === 2 ? T('두 갈래 꼬기', 'Two-strand twist') : T(S.braid.strands + '갈래 땋기', S.braid.strands + '-strand braid'))
+      + T(' · 파팅 칸 ', ' · parting ') + S.braid.partCm + 'cm' + T(' · 가닥 굵기 ', ' · braid width ') + S.braid.widthCm + 'cm'
+      + '<div class="ts-dim">' + T('길이는 손님 머리 그대로 — 더 긴 땋기는 익스텐션(별도 시술)',
+                                   'Uses the client\'s own length — longer braids need extensions (a separate service)') + '</div></div></div>';
   }
   if(S.styling.length){
-    h += '<div class="ts-sec-h">마무리(스타일링)</div><div class="ts-row"><div class="ts-body">'
+    h += '<div class="ts-sec-h">' + T('마무리(스타일링)', 'Finish (styling)') + '</div><div class="ts-row"><div class="ts-body">'
       + S.styling.map(s => esc(s.label) + ' — ' + esc(s.toward) + ' ' + s.pct + '%').join('<br>') + '</div></div>';
   }
-  h += '<div class="ts-sec-h">앱이 모르는 것 — 현장에서 확인</div>'
-    + '<div class="ts-row"><div class="ts-body ts-dim">가마·모류 · 모질에 따른 펌/컬러 반응 · 실제 숱과 두께 · '
-    + '손님이 평소 말리는 방법. 화면은 사진 4장으로 만든 시뮬레이션입니다.</div></div>';
+  h += '<div class="ts-sec-h">' + T('앱이 모르는 것 — 현장에서 확인', 'What the app can\'t know — check in person') + '</div>'
+    + '<div class="ts-row"><div class="ts-body ts-dim">'
+    + T('가마·모류 · 모질에 따른 펌/컬러 반응 · 실제 숱과 두께 · 손님이 평소 말리는 방법. 화면은 사진 4장으로 만든 시뮬레이션입니다.',
+        'Crown whorls and growth direction · how this hair takes perm or color · actual density and thickness · how the client usually dries it. The screen is a simulation built from 4 photos.')
+    + '</div></div>';
   return h;
 }
 
@@ -209,8 +244,10 @@ function openTreatmentSpec(){
     ov.onclick = (e)=>{ if(e.target === ov) closeTreatmentSpec(); };
     document.body.appendChild(ov);
   }
-  ov.innerHTML = '<div class="ts-sheet"><button class="ts-close" onclick="closeTreatmentSpec()" aria-label="닫기">✕</button>'
-    + (S ? treatmentSpecHTML(S) : '<div class="ts-title">시술 스펙</div><div class="ts-warn">3D 모델이 아직 준비되지 않았습니다 — 조정 화면이 다 그려진 뒤에 다시 눌러 주세요.</div>')
+  ov.innerHTML = '<div class="ts-sheet"><button class="ts-close" onclick="closeTreatmentSpec()" aria-label="' + treatT('닫기', 'Close') + '">✕</button>'
+    + (S ? treatmentSpecHTML(S) : '<div class="ts-title">' + treatT('시술 스펙', 'Treatment spec') + '</div><div class="ts-warn">'
+         + treatT('3D 모델이 아직 준비되지 않았습니다 — 조정 화면이 다 그려진 뒤에 다시 눌러 주세요.',
+                  'The 3D model isn\'t ready yet — try again once the adjust screen has finished drawing.') + '</div>')
     + '</div>';
   ov.style.display = 'flex';
 }
@@ -255,7 +292,7 @@ function installTreatmentSpecButtons(){
   const bar = document.querySelector('#screen-adjust .mode-bar');
   if(bar && !document.getElementById('treatSpecBtnAdjust')){
     const b = document.createElement('button');
-    b.id = 'treatSpecBtnAdjust'; b.className = 'ts-btn'; b.textContent = '시술 스펙';
+    b.id = 'treatSpecBtnAdjust'; b.className = 'ts-btn'; b.textContent = '시술 스펙';   // 관찰자가 EN으로 옮긴다(아래 I18N 한 줄)
     b.onclick = openTreatmentSpec;
     bar.appendChild(b);
   }

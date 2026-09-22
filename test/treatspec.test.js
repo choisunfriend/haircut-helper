@@ -29,7 +29,8 @@ global.measureSectionLenCm=(id,v)=>v*0.4;
 global.measureSectionTipY=(id,v,view)=>TIP[id][view||'*'];
 eval(src+';global.treatTipWords=treatTipWords;global.treatFaceLadder=treatFaceLadder;global.buildTreatmentSpec=buildTreatmentSpec;global.treatmentSpecHTML=treatmentSpecHTML;global.TREAT_SPEC=TREAT_SPEC;');
 
-console.log('── 끝 높이 → 얼굴 기준 말 ──');
+global.uiLang='ko';   // 아래 기존 검사는 한국어 모드
+console.log('── 끝 높이 → 얼굴 기준 말 (한국어) ──');
 const L=treatFaceLadder();
 t('기준점 7개(헤어라인·눈썹·눈·입·턱·어깨·가슴)', L.length===7 && L.map(x=>x.name).join(',')==='헤어라인,눈썹,눈,입,턱,어깨,가슴');
 t('위에서 아래 순서', L.every((x,i)=>i===0||L[i-1].y>=x.y));
@@ -65,5 +66,28 @@ const S2=buildTreatmentSpec();
 t('얼굴을 못 찾으면 cm만 — 경고 문구', S2 && !S2.ladderOk && /얼굴 기준 길이를 못 적습니다/.test(treatmentSpecHTML(S2)));
 t('얼굴 없을 때 끝 말은 비운다(지어내지 않음)', S2.rows.every(r=>r.tip===null));
 
+console.log('── 영어(기본) ──');
+{ global.getFaceMetrics=()=>({ lm:LM, projector:{ toMeshY:(v)=>1-v } });
+  // 앱 사전(I18N) 흉내 — 앱 쪽 이름은 여기서 빌려 와야 한다
+  global.I18N={ '프론트':'Front','사이드':'Side','네이프':'Nape','원랭스':'One length','그라데이션':'Graduation',
+                '넘김':'Sweep','뒤로':'back','앞으로':'forward','뿌리 볼륨':'Root volume' };
+  global.uiLang='en';
+  const L2=treatFaceLadder();
+  t('"1.0cm above eyebrows"', treatTipWords(L2[1].y+1/CMU, L2, CMU)==='1.0cm above eyebrows');
+  t('"at the chin line"', treatTipWords(L2[4].y+0.3/CMU, L2, CMU)==='at the chin line');
+  t('"3.0cm below shoulders"', treatTipWords(L2[5].y-3/CMU, L2, CMU)==='3.0cm below shoulders');
+  t('chest는 (est.)', /chest \(est\.\)/.test(treatTipWords(L2[6].y, L2, CMU)));
+  global.BRAID={on:true,partCm:1.6,widthCm:0.85,strands:3}; state._globalCurl=40;
+  const HE=treatmentSpecHTML(buildTreatmentSpec());
+  const hangul=(HE.match(/[\uAC00-\uD7A3]/g)||[]);
+  t('<b>영어 모드 지시서에 한글 0자</b>'+(hangul.length?' (남은 것: '+hangul.slice(0,20).join('')+')':''), hangul.length===0);
+  t('앱 사전의 이름을 빌려 쓴다(Front · One length · Sweep — back)', /Front/.test(HE) && /One length/.test(HE) && /Sweep — back 72%/.test(HE));
+  t('자르는 양·경고·모르는 것이 영어로', /cut 8\.0cm/.test(HE) && /can't grow past current length/.test(HE) && /What the app can't know/.test(HE));
+  delete global.BRAID; state._globalCurl=0;
+  delete global.uiLang;
+  t('uiLang이 없으면 영어(사용자 지정 기본값)', /Treatment spec/.test(treatmentSpecHTML(buildTreatmentSpec())));
+  global.uiLang='ko'; t('한국어로 바꾸면 한국어', /시술 스펙/.test(treatmentSpecHTML(buildTreatmentSpec())));
+  delete global.I18N;
+}
 console.log('\n'+pass+'/'+(pass+fail)+' 통과'+(fail?'  ← '+fail+'개 실패':''));
 process.exit(fail?1:0);
