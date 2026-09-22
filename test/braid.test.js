@@ -20,6 +20,7 @@ let pass=0,fail=0;const t=(n,c)=>{c?(pass++,console.log('  ok   '+n)):(fail++,co
 function mkCtx(){const c={ops:[],strokes:[],cur:null,lineWidth:1,strokeStyle:'#000',
   beginPath(){this.cur=[];}, moveTo(x,y){this.cur.push([x,y]);}, lineTo(x,y){this.cur.push([x,y]);},
   quadraticCurveTo(a,b,x,y){this.cur.push([x,y]);}, bezierCurveTo(a,b,c2,d,x,y){this.cur.push([x,y]);},
+  closePath(){}, fillStyle:'#000', fills:0, fill(){ this.fills++; },
   stroke(){this.strokes.push({w:this.lineWidth,col:this.strokeStyle,n:this.cur.length,pts:this.cur});}};return c;}
 const cal={sy:0.02}, toCY=v=>v*0.5;     // 단위→이미지 50px → 캔버스 25px
 const vert=(x,n=60,len=300)=>Array.from({length:n},(_,i)=>({x, y:i*len/(n-1)}));
@@ -100,6 +101,7 @@ console.log('── 2D도 파팅 격자로 고른다 ──');
   for(let i=0;i<P.length;i++){ const ri=grpT.ropeOf[i]; if(ri<0||ri===i) continue; const e=pairs[q++][1]; const k=ri;
     if(endOf.has(k)){ const o=endOf.get(k); if(o[0]!==e[0]||o[1]!==e[1]) same=false; } else endOf.set(k,e); }
   t('같은 칸의 가닥은 같은 밧줄 시작점으로 모인다', same);
+  t('2D 칸 면이 칠해진다 ('+c1.fills+'칸)', c1.fills > 100);
   state.hair3Dneutral=null; }
 console.log('── 스타일 걸기/풀기 ──');
 { const blk=S16.slice(S16.indexOf("  if(typeof BRAID !== 'undefined'){"), S16.indexOf("rep.braid = BRAID.on ? { ...sp.braid } : null;\n  }")+50);
