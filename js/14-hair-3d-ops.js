@@ -72,7 +72,11 @@ function buildAdjustedHair3DObject(){
     if(braided) return braided;
   }
   let pxN = 0;
-  for(const st of adj){
+  /* 다발 모으기(2026-09-22, 26-hair-clump.js) — 2만 가닥이 각자 1px로 따로 놀아 가늘고
+     숱 많아 보이던 것. 1cm 안쪽 다발로 모은 <b>새 배열</b>로 긋는다(adj 원본은 조정 캐시 것이라
+     안 건드린다). 땋기는 위에서 이미 돌아갔으므로 여기 안 온다. 끄기 HAIR_CLUMP3D.on=false */
+  const lines = (typeof clumpStrands3D === 'function') ? clumpStrands3D(adj) : adj;
+  for(const st of lines){
     const pts = st.pts;
     if(!pts || pts.length < 2) continue;
     const view = st.srcAngle || (pts[0] ? viewOfRoot(pts[0]) : null);
