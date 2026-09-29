@@ -160,7 +160,23 @@ const MQ_FRINGE = {
 };
 /* 이 손님에게 <b>이미 앞머리가 있는가</b>. 점유 프로브에 묻는다(새 자 없음).
    프로브가 없으면 null — 모르면 안 심는다(모르는 것을 지어내지 않는다). */
+/* ── 앞머리를 새로 자르는 스타일 (2026-09-29 v3, 옛 js/33-layered-bob-tune.js 끝부분) ─────
+   마네킹은 mannequinHasFringe() === false 일 때만 앞머리선에서 자른 가닥(growFringeStrand)을 만든다.
+   가운데 가르마 긴 머리 손님은 이마 양옆 머리 때문에 "앞머리 있음"으로 잡혀서
+   앞쪽 가닥이 전부 기장대로 자라 얼굴을 덮고 턱까지 내려왔다(녹화 22:54).
+   여기 적힌 스타일은 손님 사진과 상관없이 "앞머리 없음"으로 보고 앞머리를 새로 자른다.
+   판단 기준 id = state.selectedStyle의 specId(없으면 id) → 없으면 state.pendingSpecId.
+   끄기: FORCE_FRINGE_STYLES = [] 또는 항목 삭제 (window 속성이라 콘솔에서 바로 바뀐다) */
+window.FORCE_FRINGE_STYLES = window.FORCE_FRINGE_STYLES || ['layered_bob_hush'];
+function mannequinForcesFringe(){
+  try{
+    const s = (typeof state !== 'undefined') && state;
+    const id = s && ((s.selectedStyle && (s.selectedStyle.specId || s.selectedStyle.id)) || s.pendingSpecId);
+    return !!(id && window.FORCE_FRINGE_STYLES.indexOf(id) >= 0);
+  }catch(e){ return false; }
+}
 function mannequinHasFringe(src){
+  if(mannequinForcesFringe()) return false;   // ↑ 배너 — 앞머리를 새로 자르는 스타일
   const probe = (src && src.occ && src.occ.probe)
              || (state.hairOcc3D && state.hairOcc3D.probe) || null;
   if(!probe || !probe.at) return null;
@@ -765,6 +781,120 @@ function buildMannequinHair3D(){
     + (vTxt ? ('\n[마네킹·뷰별길이] ' + vTxt) : ''));
   return { strands: out, viewCal: src.viewCal, yTop: src.yTop, CY: src.CY,
            field: null, occ: null, grid: G, roots: rf, mannequin: true };
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   앞쪽 뿌리 보강 (ROOT_EVEN) — 2026-09-29 추가, 옛 js/31-side-part-perm.js 5절
+   ──────────────────────────────────────────────────────────────────────────
+   앞·정수리 쪽 셀의 가닥 수(면적당)가 옆·뒤보다 적으면, 그 셀 안에 새 뿌리를 더 심는다.
+   다른 셀의 가닥을 옮기지 않는다 — 순수 추가. 같은 셀에 있던 가닥 모양을 본떠 뿌리만
+   셀 안 새 자리에 둔다(없으면 같은 줄 ±3칸 → 위·아래 줄 ±2칸 이웃 셀 가닥의 모양을 빌림).
+   기준: 옆·뒤(|θ| > backSideThDeg) 셀들의 면적당 가닥 수 중앙값. 표본 10칸 미만이면 안 함.
+
+   ⚠ 호출 위치: buildMannequinHair3D 안이 <b>아니라</b> 24-style-base.js의 "앞 가르마 자리 뿌리
+     메우기" 래퍼가 밀도(den)를 원래대로 되돌린 <b>뒤</b>에 부른다. 그 래퍼는 가르마 자리 빈 칸의
+     den을 잠깐 채워 심고 되돌리는데, 여기서 대머리 판정(den < baldDen)을 그 사이에 하면
+     결과가 달라진다. 옛 31번 파일이 가장 바깥에서 감싸던 순서를 그대로 지킨 것이다.
+
+   boost       : 전체 목표 배율 — 모든 셀을 옆·뒤 면적당 가닥 중앙값 × boost 까지 채움 (2.0 = 두 배 숱)
+   maxAddFrac  : 새로 심는 뿌리 상한(기존 가닥 수 대비) — boost 2.0이면 1.0 이상 필요
+   frontBoost  : 앞쪽(|θ|≤backSideThDeg) 목표 배율 — 1.0이면 옆·뒤와 같은 면적당 가닥수.
+                 2.0 = 앞쪽은 가르마·헤어라인에서 두피가 먼저 비쳐 보이므로 조금 더 촘촘히
+   minFill / frontMinFill : 목표의 이 비율 미만이면 채움. ⚠ boost > 1 이면 옆·뒤도 frontMinFill을 쓴다
+                 (옛 식 그대로: fr || boost > 1 ? frontMinFill : minFill)
+   frontBaldRescue: 앞쪽에서 "대머리"로 판정됐지만 두피 안(두피밖 아님)이고 phi≤frontPhiMax이며
+                 주변 8칸 중 절반 이상이 머리인 셀도 채움
+                 (정면 사진의 가르마 선·광택을 두피로 읽어 생긴 빈 칸 — 로그의 "정면 대머리 5")
+   끄기: ROOT_EVEN.on = false
+   ══════════════════════════════════════════════════════════════════════════ */
+const ROOT_EVEN = { on: true, backSideThDeg: 56, minFill: 0.9, maxAddFrac: 1.2,
+  boost: 1.2, frontBoost: 1.5, frontMinFill: 1.0, frontBaldRescue: true, frontPhiMax: 1.05 };
+window.ROOT_EVEN = ROOT_EVEN;
+/* 결정적 난수(mulberry32) — 같은 손님·같은 설정이면 같은 자리에 심긴다 */
+function mqEvenRng(seed){ let t = seed >>> 0; return () => { t += 0x6D2B79F5; let r = Math.imul(t ^ t >>> 15, 1 | t); r ^= r + Math.imul(r ^ r >>> 7, 61 | r); return ((r ^ r >>> 14) >>> 0) / 4294967296; }; }
+function mannequinEvenRoots(res){
+  if (!ROOT_EVEN.on || !res || !res.strands || !res.roots || !res.grid) return res;
+  const clamp01 = (v, a, b) => Math.max(a, Math.min(b, v));
+  const R = res.roots, G = res.grid, NT = R.NT, NP = R.NP, CY = res.CY;
+  let E; try { E = getScalpEllipsoid(); } catch (e) { return res; }
+  const stepY = (G.yTopH - G.yBot) / (G.NY - 1);
+  const rowOf = y => Math.min(G.NY - 1, Math.max(0, Math.round((G.yTopH - y) / stepY)));
+  let area = null;
+  try { area = headSurfaceCellAreas(G.hullW, G.hullD, rowOf, CY, R.b, NT, NP); } catch (e) {}
+  // 뿌리(pts[0])가 속한 (phi, theta) 셀 — 두피 타원 기준
+  const N = NT * NP, cellOf = p => {
+    const ph = Math.acos(clamp01((p.y - CY) / E.b, -1, 1));
+    const th = Math.atan2(p.x / E.a, p.z / E.c);
+    const pi = Math.min(NP - 1, Math.floor(ph / Math.PI * NP)), ti = Math.min(NT - 1, Math.floor((th + Math.PI) / (2 * Math.PI) * NT));
+    return pi * NT + ti;
+  };
+  const byCell = new Array(N);
+  for (const s of res.strands) { const c = cellOf(s.pts[0]); (byCell[c] || (byCell[c] = [])).push(s); }
+  /* ⚠ 옛 코드 그대로 EST_OFFSCALP(13c, 값 3)과 비교한다 — 13c가 먼저 로드되므로 항상 정의돼 있다 */
+  const offScalp = c => !!(R.est && R.est[c] === (typeof EST_OFFSCALP !== 'undefined' ? EST_OFFSCALP : -1));
+  const bald = c => !(R.den[c] > (typeof MANNEQUIN !== 'undefined' ? MANNEQUIN.baldDen : 0.08));
+  const ok = c => !offScalp(c) && !bald(c);
+  const thOf = c => ((c % NT) + 0.5) / NT * 2 * Math.PI - Math.PI;
+  const isFront = c => Math.abs(thOf(c)) * 180 / Math.PI <= ROOT_EVEN.backSideThDeg;
+  const phiOf = c => ((c / NT | 0) + 0.5) / NP * Math.PI;
+  // 앞쪽 대머리 판정 구제: 두피 안 + 헤어라인 위(phi 상한) + 주변 8칸 중 절반 이상이 머리
+  const rescued = c => {
+    if (!ROOT_EVEN.frontBaldRescue || offScalp(c) || !bald(c) || !isFront(c) || phiOf(c) > ROOT_EVEN.frontPhiMax) return false;
+    const pi = c / NT | 0, ti = c % NT; let n = 0, h = 0;
+    for (let dp = -1; dp <= 1; dp++) for (let dt = -1; dt <= 1; dt++) {
+      if (!dp && !dt) continue; const p2 = pi + dp; if (p2 < 0 || p2 >= NP) continue;
+      const nc = p2 * NT + ((ti + dt) % NT + NT) % NT; n++; if (ok(nc)) h++;
+    }
+    return n > 0 && h * 2 >= n;
+  };
+  const fillable = c => ok(c) || rescued(c);
+  const ar = c => (area ? area[c] : 1) || 0;
+  // 기준: 옆·뒤 셀들의 면적당 가닥 수 중앙값
+  const ref = [];
+  for (let c = 0; c < N; c++) if (ok(c) && ar(c) > 0 && Math.abs(thOf(c)) * 180 / Math.PI > ROOT_EVEN.backSideThDeg && byCell[c])
+    ref.push(byCell[c].length / ar(c));
+  if (ref.length < 10) return res;
+  ref.sort((a, b) => a - b);
+  const target = ref[ref.length >> 1];
+  const rand = mqEvenRng(1234567), maxAdd = Math.round(res.strands.length * ROOT_EVEN.maxAddFrac);
+  let added = 0, cellsFixed = 0, frontAdded = 0, rescuedCells = 0;
+  const secAdd = {};
+  for (let c = 0; c < N && added < maxAdd; c++) {
+    if (!fillable(c) || !(ar(c) > 0)) continue;
+    const fr = isFront(c);
+    const have = byCell[c] ? byCell[c].length : 0, want = Math.round(target * ar(c) * ROOT_EVEN.boost * (fr ? ROOT_EVEN.frontBoost : 1));
+    if (have >= want * (fr || ROOT_EVEN.boost > 1 ? ROOT_EVEN.frontMinFill : ROOT_EVEN.minFill) || want - have < 1) continue;
+    const pi = c / NT | 0, ti = c % NT;
+    // 모양 본보기: 같은 셀 가닥 → 없으면 같은 줄 이웃 셀 가닥(모양만 빌리고 원래 가닥은 그대로 둠)
+    let src = byCell[c] && byCell[c].length ? byCell[c] : null;
+    for (let d = 1; !src && d <= 3; d++) for (const t of [ti - d, ti + d]) {
+      const nc = pi * NT + ((t % NT) + NT) % NT;
+      if (!src && byCell[nc] && byCell[nc].length) src = byCell[nc];
+    }
+    // 같은 줄에 없으면 위·아래 줄(헤어라인 바로 위 칸은 옆 칸도 비어 있는 경우가 많음)
+    for (let d = 1; !src && d <= 2; d++) for (const p2 of [pi - d, pi + d]) {
+      if (p2 < 0 || p2 >= NP) continue; const nc = p2 * NT + ti;
+      if (!src && byCell[nc] && byCell[nc].length) src = byCell[nc];
+    }
+    if (!src) continue;
+    for (let k = have; k < want && added < maxAdd; k++) {
+      const s = src[(rand() * src.length) | 0];
+      // 셀 안 무작위 자리에 뿌리를 두고, 본보기 가닥 전체를 그만큼 평행 이동
+      const ph = (pi + rand()) / NP * Math.PI, th = (ti + rand()) / NT * 2 * Math.PI - Math.PI;
+      const root = { x: E.a * Math.sin(ph) * Math.sin(th), y: CY + E.b * Math.cos(ph), z: E.c * Math.sin(ph) * Math.cos(th) };
+      const o = s.pts[0], dx = root.x - o.x, dy = root.y - o.y, dz = root.z - o.z;
+      const ns = Object.assign({}, s, { pts: s.pts.map(p => ({ x: p.x + dx, y: p.y + dy, z: p.z + dz })), _evenAdded: true });
+      if (s.colors) ns.colors = s.colors.slice ? s.colors.slice() : s.colors;
+      res.strands.push(ns); added++;
+      secAdd[s.sec] = (secAdd[s.sec] || 0) + 1;
+      if (Math.abs(thOf(c)) * 180 / Math.PI <= ROOT_EVEN.backSideThDeg) frontAdded++;
+    }
+    cellsFixed++; if (!ok(c)) rescuedCells++;
+  }
+  console.log('[뿌리 고르게] 기준 = 옆·뒤 셀 면적당 가닥 중앙값 ' + target.toFixed(1) + ' · 모자란 셀 ' + cellsFixed +
+    '개에 새 뿌리 ' + added + '개 추가(앞쪽 ' + frontAdded + ' · 전체 목표 ×' + ROOT_EVEN.boost + ' · 앞쪽 추가 ×' + ROOT_EVEN.frontBoost + ' · 대머리 판정 구제 ' + rescuedCells + '칸) · 섹션 ' +
+    Object.keys(secAdd).map(k => k + ' +' + secAdd[k]).join(' ') + ' · 다른 셀에서 옮긴 가닥 0 · 끄기 ROOT_EVEN.on=false');
+  return res;
 }
 
 /* ══════════════════════════════════════════════════════════════════

@@ -17,6 +17,13 @@
  *
  * 끄기: 콘솔에서  STYLE_BASE.on = false  (래퍼가 전부 원래 함수로 통과) → 뷰 다시 그리기
  * 상태: STYLE_BASE.status()
+ *
+ * 변경 이력 (원본 저장소 기준)
+ *  2026-09-29 배포본 반영: 숱(density) 막대 제거 · 컬 구간(curlLen) 막대 · 손잡이 가운데=기준값 비대칭 매핑 ·
+ *             이분 탐색 16/18회 → 9회 · 자르면 끝 컬도 잘림(cutRemovesCurl) · 가르마 옆 넘김(partSideSweep, 기본 꺼짐) ·
+ *             Long Blowout Waves 스타일 · 앞 가르마 자리 뿌리 메우기(fillPartGap)
+ *  2026-09-30 병합: 옛 32-shag-curtain.js · 33-layered-bob-tune.js의 엔진 프로필을 아래 SB.profiles로,
+ *             옛 31-side-part-perm.js의 앞쪽 뿌리 보강(17a mannequinEvenRoots) 호출을 fillPartGap 래퍼 뒤로 옮김
  * ========================================================================== */
 (function () {
   'use strict';
@@ -37,8 +44,8 @@
    *  false = 프로필이 걸린 스타일에서만 고침(다른 스타일은 지금 보이는 그대로)
    *  true  = 모든 스타일에서 고침(다른 스타일도 볼륨이 커집니다 — 확인 후 켜세요) */
   SB.fixVolHashAll = true;   // 막대만으로 모양을 만들려면 모든 스타일에서 고쳐져 있어야 합니다
-  SB.PARAM_KEYS = ['length', 'elevation', 'texture', 'density', 'overdirection', 'line', 'curl', 'wave', 'curlDir',
-    'base', 'define', 'volShare', 'volPoint', 'weight'];
+  SB.PARAM_KEYS = ['length', 'elevation', 'texture', 'overdirection', 'line', 'curl', 'wave', 'curlDir',
+    'base', 'define', 'volShare', 'volPoint', 'weight', 'curlLen'];
 
   /* 스타일별 엔진 프로필 — 키는 STYLE_SPECS 의 id (또는 커스텀 스타일의 profileId) */
   SB.profiles = {
@@ -75,7 +82,6 @@
         }
       },
       specPatch: function (spec) {
-        spec.cut.front.density = 20;
         spec.perm.wave = 92;          // 로드 ≈ 3.4cm (굵은 로드)
         spec.styling.volume = 50;
         // 펌·세팅 섹션별 기준값 (막대 숫자 그대로)
@@ -89,6 +95,111 @@
         };
         for (var sec in set) if (spec.cut[sec]) Object.assign(spec.cut[sec], set[sec]);
       }
+    },
+
+    /* ── Layered Bob 레퍼런스 맞춤 (2026-09-29, 옛 js/33-layered-bob-tune.js) ───────────────
+     * 레퍼런스(정면·좌50°·우50°·후면 4컷): 턱~목 중간 기장 레이어드 보브
+     *   · 앞머리: 이마 전체를 얇게 덮는 시스루뱅, 끝은 눈썹~눈 사이, 살짝 안으로 C컬
+     *   · 얼굴선: 광대~입꼬리 높이에서 끝나는 짧은 사이드뱅, 얼굴 "옆"에서 바깥으로 넘어감
+     *   · 결: 뿌리는 차분, 중간부터 느슨한 S웨이브, 끝은 바깥으로 살짝 튕김(잔곱슬 없음)
+     *   · 색: 올리브빛 애쉬 브라운 (#6B5A45 — 목록 카드 색은 02-state-sections.js STYLES)
+     * 화면 녹화에서 고친 점:
+     *   1) 앞머리 양갈래 — temple(얼굴선) 끝이 턱선(0.98)까지 내려와 얼굴 앞에 굵은 두 가닥으로 늘어짐
+     *      → 광대 높이(0.80)로 올리고, overdirection·curlDir 로 얼굴 옆·바깥으로 넘김
+     *   2) 앞머리가 무거움 — 앞머리 끝이 두꺼워 통뱅처럼 보임
+     *      → 숱(density) 막대는 없앰(뿌리째 빠지는 문제). 얇은 느낌은 텍스처라이징 80 으로
+     *   3) 잔곱슬 파마처럼 보임 — wave 70(가는 로드) → 95(굵은 롤), 끝 12cm만 느슨하게
+     *   4) (v3) 손님 사진에 앞머리가 "있다"고 잡히면 앞머리를 새로 안 자르던 것
+     *      → 17a-mannequin.js의 FORCE_FRINGE_STYLES 에 이 스타일을 넣음
+     * specPatch는 처음 걸 때 한 번 STYLE_SPECS.layered_bob_hush(16)를 직접 고친다(_specPatched).
+     * 끄기: 이 항목을 지우면 16의 원래 스펙 그대로 */
+    layered_bob_hush: {
+      label: 'Layered bob · See-through bangs · Flick-out ends',
+      config: {
+        CURL_BUNDLE: {
+          rodThickCm: 4,       // 굵은 롤 → 곱슬이 아니라 S결
+          pitchThick: 2.0,     // 한 바퀴를 길게
+          relax: 1.25,
+          microAmp: 0.015,     // 잔곱슬 거의 없음
+          microPhase: 0.15
+        },
+        CURL3D_FIX: { ampGamma: 0.75 },
+        VOLUME3D: { AMP: 0.15 },
+        MANNEQUIN: { lenPct: 0.9 },
+        MQ_FRINGE: {
+          on: true,
+          tipFaceFrac: -0.15,    // 앞머리 끝: 눈썹 높이 (v2: -0.05 는 눈을 덮음)
+          frontFrac: 1.0,        // v2: 앞 섹션 가닥은 전부 앞머리선에서 자름 (0.6 이면 40%가 기장대로 얼굴을 덮고 내려옴)
+          crownFrac: 0.45,       // v2: 정수리 앞쪽 가닥 중 앞머리로 떨어지는 몫 (0.15 → 나머지가 입술까지 내려오던 원인)
+          crownThFrac: 0.7,
+          lineHalfX: 0.9,        // 이마 폭만 덮음(얼굴 양옆으로 흘러내리지 않게)
+          lineGain: 0.45,        // 가운데·바깥 길이 차이 작게 → 일자에 가까운 시스루 라인 (커튼뱅 X)
+          converge: 0.95,        // 끝이 아주 살짝 가운데로 → 가운데가 벌어져 양갈래로 보이지 않게
+          crownAllAround: false  // 앞쪽만 자름
+        },
+        HAIR_DYE: { sMax: 1.2, highlightK: 0.65, glossDesat: 0.7 }
+      },
+      volBase: 1.0,
+      after: { front: { curl: 12 }, temple: { curl: 20 } },   // 앞머리·얼굴선은 거의 곧은 C컬
+      shade: { ao: 0.42, lumCap: 1.3, spec: 0.22, specPow: 60 },
+      specPatch: function (spec) {
+        // 펌·세팅 기준값(막대 숫자) — curlLen 12 = 끝 12cm만 웨이브
+        var set = function (o) {
+          return Object.assign({ base: 30, define: 55, volShare: 50, volPoint: 55, weight: 35, curlLen: 12 }, o);
+        };
+        spec.color = '#6B5A45';   // 레퍼런스 올리브 애쉬 브라운
+        spec.tipAt = Object.assign({}, spec.tipAt, {
+          front: 0.52,        // 시스루뱅: 눈썹~눈 사이
+          crown: 0.80,        // 윗층: 광대~코끝 → 층이 보이게
+          temple: 0.80,       // 얼굴선: 광대 높이 (0.98 → 턱까지 내려와 양갈래로 보이던 원인)
+          side: 1.02,         // 턱 아래
+          occipital: 1.06,
+          nape: 1.10          // 목 중간
+        });
+        Object.assign(spec.cut.front,     set({ texture: 80, elevation: 15, line: 50, curlDir: -15 }), { volShare: 30, weight: 45 });
+        Object.assign(spec.cut.temple,    set({ texture: 60, elevation: 60, overdirection: 60, curlDir: 45 }));
+        Object.assign(spec.cut.crown,     set({ texture: 50, elevation: 80, curlDir: 25 }), { volShare: 55, volPoint: 35 });
+        Object.assign(spec.cut.side,      set({ texture: 60, elevation: 60, curlDir: 40 }));
+        Object.assign(spec.cut.occipital, set({ texture: 55, elevation: 55, curlDir: 35 }));
+        Object.assign(spec.cut.nape,      set({ texture: 55, elevation: 30, curlDir: 40 }), { technique: 'uniform' });
+        spec.perm = { curl: 22, wave: 95 };     // 굵은 롤 · 약한 컬 = 느슨한 S웨이브
+        spec.globalCurl = 22;
+        spec.styling = Object.assign({}, spec.styling, {
+          part: 0, partAmt: 30,  // v2: 앞머리로 안 잘린 윗머리는 가르마 양옆으로 넘김 (10 → 얼굴 위로 떨어짐)
+          flow: 60,              // 끝 바깥말음(플립)
+          volume: 50, finish: 50, sleek: 25
+        });
+      }
+    },
+
+    /* ── Curtain Bang Shag (2026-09-29, 옛 js/32-shag-curtain.js) ──────────────────────────
+     * 스펙(길이·커트·펌·스타일링)은 16-style-spec-diag.js의 STYLE_SPECS.curtain_bang_shag,
+     * 목록 카드는 02 STYLES. 여기는 막대가 없는 엔진 설정만. */
+    curtain_bang_shag: {
+      label: 'Curtain bang shag',
+      config: {
+        CURL_BUNDLE: {
+          rodThickCm: 5,
+          pitchThick: 2.2,     // 한 바퀴를 길게 → 컬이 아니라 S결
+          relax: 1.25,
+          microAmp: 0.01,      // 잔곱슬 없음
+          microPhase: 0.2
+        },
+        CURL3D_FIX: { ampGamma: 0.75 },
+        VOLUME3D: { AMP: 0.16 },            // 크라운 볼륨
+        MQ_FRINGE: {
+          on: true,
+          tipFaceFrac: 0.35,     // 앞머리 끝 기준선: 광대뼈(눈 아래) — 시스루뱅(-0.1)보다 훨씬 길게
+          lineHalfX: 1.1,        // 앞머리 폭을 넓게 → 얼굴 양옆으로 흘러내림
+          lineGain: 1.0,         // 가운데 짧고 바깥으로 갈수록 길어지는 커튼 라인
+          crownAllAround: false  // 앞쪽만 자름
+        },
+        HAIR_DYE: { sMax: 1.3, highlightK: 0.7, glossDesat: 0.7 }   // 레퍼런스의 결 따라 들어간 하이라이트
+      },
+      volBase: 1.0,
+      // 앞·윗머리는 거의 곧게 → 층 끝선이 보이게 (커튼뱅은 스펙 curlDir 35로 바깥으로 넘어가는 C컬)
+      after: { front: { curl: 12 }, crown: { curl: 18 }, temple: { curl: 18 } },
+      shade: { ao: 0.45, lumCap: 1.3, spec: 0.2, specPow: 50 }   // 층 사이 그림자를 조금 더 → 레이어가 도드라짐
     }
   };
 
@@ -211,18 +322,26 @@
     var S = st(), b = S && S._styleBase && S._styleBase[sec];
     return b && typeof b[key] === 'number' ? b[key] : null;
   }
+  // 손잡이 가운데 = 스타일 기준값. 왼쪽 절반은 [최소 ~ 기준], 오른쪽 절반은 [기준 ~ 최대]로 나눠 매핑합니다.
+  // 예전엔 기준 ±50 이라 기준이 163 이면 손잡이를 끝까지 내려도 113 에서 멈췄습니다(앞머리를 못 줄임).
   function toPos(sec, key, eff, def) {
     def = def || paramDef(key);
     var b = SB.on ? baseOf(sec, key) : null;
     if (b == null) return eff;
-    return clamp((def.min + def.max) / 2 + (eff - b), def.min, def.max);
+    var lo = def.min, hi = effMax(key, def), mid = (def.min + def.max) / 2;
+    b = clamp(b, lo, hi);
+    if (eff <= b) return b > lo ? clamp(lo + (eff - lo) / (b - lo) * (mid - lo), def.min, mid) : mid;
+    return hi > b ? clamp(mid + (eff - b) / (hi - b) * (def.max - mid), mid, def.max) : mid;
   }
   function toEff(sec, key, pos, def) {
     def = def || paramDef(key);
     var b = SB.on ? baseOf(sec, key) : null;
     if (b == null) return pos;
-    var e = b + (pos - (def.min + def.max) / 2);
-    return Math.round(clamp(e, def.min, effMax(key, def)) * 1000) / 1000;
+    var lo = def.min, hi = effMax(key, def), mid = (def.min + def.max) / 2;
+    b = clamp(b, lo, hi);
+    var e = pos <= mid ? lo + (pos - lo) / (mid - lo) * (b - lo)
+                       : b + (pos - mid) / (def.max - mid) * (hi - b);
+    return Math.round(clamp(e, lo, hi) * 1000) / 1000;
   }
   SB.toPos = toPos; SB.toEff = toEff;
 
@@ -256,7 +375,7 @@
     var yEnd = measureSectionTipY(sec, SB.LEN_EXT);
     if (yEnd == null) return null;
     var lo = 0, hi = SB.LEN_EXT;
-    for (var i = 0; i < 16; i++) {
+    for (var i = 0; i < 9; i++) {   // 200/2^9 < 0.5 — 정수 올림이라 이걸로 충분 (예전 16)
       var mid = (lo + hi) / 2, y = measureSectionTipY(sec, mid);
       if (y == null) return null;
       if (Math.abs(y - yEnd) <= eps) hi = mid; else lo = mid;
@@ -284,7 +403,7 @@
         best = sat;                                   // 끝까지 가도 목표에 못 닿음 → 닿을 수 있는 최대
       } else {
         var lo = 0, hi = sat;                         // 포화점 안쪽에서 목표를 찾음
-        for (var i = 0; i < 18; i++) {
+        for (var i = 0; i < 9; i++) {   // 예전 18 — 결과를 정수로 반올림하므로 9회면 같은 답
           var mid = (lo + hi) / 2, y = measureSectionTipY(sec, mid);
           if (y == null) break;
           if (y > target) lo = mid; else hi = mid;
@@ -364,7 +483,8 @@
    * ---------------------------------------------------------------------- */
   var NEW_PARAMS = {
     perm: [
-      { key: 'base', label: '베이스 폭', hint: '로드 하나에 감는 모발 폭 · 넓을수록 컬 덩어리가 큼', min: 0, max: 100, unit: '%' }
+      { key: 'base', label: '베이스 폭', hint: '로드 하나에 감는 모발 폭 · 넓을수록 컬 덩어리가 큼', min: 0, max: 100, unit: '%' },
+      { key: 'curlLen', label: '컬 구간', hint: '모발 끝에서부터 말리는 길이 · 짧으면 끝만(블로우아웃) · 60=뿌리까지', min: 3, max: 60, unit: 'cm' }
     ],
     set: [
       { key: 'define',   label: '컬 정리감', hint: '컬크림·에센스로 결을 모은 정도 · 낮으면 부스스', min: 0, max: 100, unit: '%' },
@@ -374,7 +494,7 @@
     ]
   };
   // 예전 엔진값과 같은 결과가 나오는 기본 숫자
-  var NEW_DEFAULTS = { base: 55, define: 30, volShare: 50, volPoint: 50, weight: 50 };
+  var NEW_DEFAULTS = { base: 55, define: 30, volShare: 50, volPoint: 50, weight: 50, curlLen: 20 };   // curlLen 20 = 엔진 기본 windCm
   var VOL_SECK0 = null;   // 섹션별 예전 부피 배수(VOLUME3D.secK)
 
   function secVal(sec, key) {
@@ -414,6 +534,7 @@
     try {
       if (typeof GY_ALL_PARAMS !== 'undefined') {
         if (GY_ALL_PARAMS.perm.indexOf('base') < 0) GY_ALL_PARAMS.perm.push('base');
+        if (GY_ALL_PARAMS.perm.indexOf('curlLen') < 0) GY_ALL_PARAMS.perm.push('curlLen');
         GY_ALL_PARAMS.set = NEW_PARAMS.set.map(function (p) { return p.key; });
       }
     } catch (e) {}
@@ -439,7 +560,8 @@
         '부피감': 'Lift', '이 섹션이 두상에서 뜨는 정도': 'How far this section stands off the head',
         '볼륨 위치': 'Volume point', '뿌리 ↔ 모발 끝 · 끝쪽일수록 밑단이 퍼짐': 'Root ↔ ends · toward ends = flared hem',
         '처짐': 'Weight', '모발 무게로 내려앉는 정도 · 낮을수록 컬이 뜸': 'How much the hair drops under its weight',
-        '앞머리 기장': 'Fringe length', '눈썹 위 ↔ 눈 아래': 'Above brows ↔ below eyes'
+        '앞머리 기장': 'Fringe length', '눈썹 위 ↔ 눈 아래': 'Above brows ↔ below eyes',
+        '컬 구간': 'Curl zone', '모발 끝에서부터 말리는 길이 · 짧으면 끝만(블로우아웃) · 60=뿌리까지': 'How far up from the ends the curl reaches · short = ends only (blowout) · 60 = from roots'
       });
     } catch (e) {}
     try { VOL_SECK0 = clone((CFG.VOLUME3D() || {}).secK) || null; } catch (e) {}
@@ -488,21 +610,98 @@
     });
 
     // 섹션을 아는 곳(adjustStrandGeom)에서 지금 섹션을 기억 → 섹션을 모르는 계산들이 막대 값을 씀
-    var CUR_SEC = null;
+    var CUR_SEC = null, CUR_STRAND = null, CUR_LEN = null;
     wrap('adjustStrandGeom', function (f) {
-      return function (strand) {
-        var prev = CUR_SEC; CUR_SEC = strand && strand.sec || null;
-        try { return f.apply(this, arguments); } finally { CUR_SEC = prev; }
+      return function (strand, len) {
+        var prev = CUR_SEC, ps = CUR_STRAND, pl = CUR_LEN;
+        CUR_SEC = strand && strand.sec || null; CUR_STRAND = strand || null; CUR_LEN = (typeof len === 'number') ? len : null;
+        try { return f.apply(this, arguments); } finally { CUR_SEC = prev; CUR_STRAND = ps; CUR_LEN = pl; }
       };
     });
+    /* 자르기 = 끝의 컬도 같이 잘려 나감
+     * 컬은 "끝에서 windCm 만큼" 감기므로, 길이를 줄이면 컬 구간이 뿌리 쪽으로 따라 올라가
+     * 머리가 두피 속으로 빨려 들어가는 것처럼 보였습니다. 스타일 기준 길이보다 짧게 자른 만큼(cm)
+     * 감기는 길이를 줄이고, 다 잘려 나가면 곧게 둡니다. 스타일을 걸 때(기준 저장 전)는 적용하지 않음. */
+    SB.cutRemovesCurl = true;
+    function cutCm() {
+      var S = st(), base = S && S._styleBase && S._styleBase[CUR_SEC];
+      if (!SB.cutRemovesCurl || !base || base.length == null || !CUR_STRAND || !CUR_STRAND.pts) return 0;
+      var now = CUR_LEN != null ? CUR_LEN : (S.sections[CUR_SEC] && S.sections[CUR_SEC].length);
+      if (!(now < base.length) || typeof sectionLengthRatio !== 'function') return 0;
+      var rb = sectionLengthRatio(CUR_SEC, base.length), rn = sectionLengthRatio(CUR_SEC, now);
+      if (!(rn < rb)) return 0;
+      var cm = (typeof modelCmPerUnit === 'function' && modelCmPerUnit()) || 0;
+      if (!cm || typeof arcLength3D !== 'function') return 0;
+      return arcLength3D(CUR_STRAND.pts) * cm * (rb - rn);
+    }
     SB._asSec = function (sec, fn) { var p = CUR_SEC; CUR_SEC = sec; try { return fn(); } finally { CUR_SEC = p; } };  // 점검용
+    /* 가르마는 앞이마~정수리까지만 — 뒤통수로 넘어가지 않게
+     * 재 보니 가르마 미는 힘이 정수리(고도 88°)에서 최대인 채로 뒤쪽으로 이어져, 뒤 가운데 고도 80°에서
+     * 0.048 · 70°에서 0.019(앞이마 0.061)가 남아 있었습니다 → 뒷머리 가운데가 좌우로 갈라져 두피가 한 줄로 보임.
+     * (Seams 색칠로 확인: 갈라진 줄은 사진 경계가 아니라 후면 사진 한가운데였음)
+     * 뿌리의 앞뒤 위치(z/c)로 약하게 합니다: 정수리보다 조금 앞(+0.15c)까지 100%, 정수리 뒤 -0.15c에서 0. */
+    /* 가르마를 옆으로 옮기면 앞머리도 가르마 반대쪽으로 넘어가게
+     * 원래 가르마 힘은 가르마 선 근처(가우시안 폭 0.35rad)에서만 세서, 가르마를 옆으로 옮기면
+     * 얼굴 앞 가운데 가닥은 선에서 멀어 힘을 거의 못 받고 그대로 얼굴 위로 떨어졌습니다.
+     * 앞·정수리(뿌리 z가 앞쪽) 가닥에는 가르마 선에서 먼 쪽으로 넘기는 힘을 바닥값으로 깝니다.
+     * 가운데 가르마(0)에서는 아무것도 안 바꿉니다. 끄기 STYLE_BASE.partSideSweep=false */
+    SB.partSideSweep = false; SB.partSideK = 0.9;
+    function partSideSweep(v, root, partVal, curlAmt, partAmt) {
+      if (!SB.partSideSweep || !root || !partVal || typeof PART3D === 'undefined') return v;
+      var E; try { E = getHeadEllipsoid(); } catch (e) { return v; }
+      if (!E) return v;
+      var pa = clamp(typeof partAmt === 'number' ? partAmt : 0, 0, 100) / 100;
+      if (!(pa > 0)) return v;
+      var amt = Math.pow(pa, PART3D.GAMMA || 1);
+      var x = root.x, y = root.y - 0.15, z = root.z;
+      var ux = x / E.a, uy = y / E.b, uz = z / E.c, ul = Math.sqrt(ux * ux + uy * uy + uz * uz) || 1;
+      ux /= ul; uy /= ul; uz /= ul;
+      var fz = clamp((uz + 0.05) / 0.45, 0, 1); fz = fz * fz * (3 - 2 * fz);            // 앞쪽일수록 1
+      var top = clamp((uy + 0.1) / 0.4, 0, 1);                                            // 귀 아래는 0
+      var w = fz * top; if (!(w > 0)) return v;
+      var off = clamp((-partVal / 100) * (PART3D.MAXOFF || 0.65), -0.98, 0.98);
+      var d = ux - off, side = d >= 0 ? 1 : -1;
+      var near = clamp(Math.abs(d) / 0.12, 0, 1);                                         // 선 바로 위는 원래 힘에 맡김
+      var amp = PART3D.AMP * amt * w * near * SB.partSideK * (1 - 0.5 * clamp(curlAmt || 0, 0, 100) / 100);
+      if (!(amp > 1e-6)) return v;
+      var nx = x / (E.a * E.a), ny = y / (E.b * E.b), nz = z / (E.c * E.c), nl = Math.sqrt(nx * nx + ny * ny + nz * nz) || 1;
+      nx /= nl; ny /= nl; nz /= nl;
+      var dot = side * nx;
+      var s = { x: (side - dot * nx) * amp, y: (-dot * ny) * amp, z: (-dot * nz) * amp };
+      if (!v) return s;
+      var mv = Math.sqrt(v.x * v.x + v.y * v.y + v.z * v.z), ms = Math.sqrt(s.x * s.x + s.y * s.y + s.z * s.z);
+      return ms > mv ? s : v;
+    }
+    SB.partFrontOnly = false;
+    wrap('partingPushHead', function (f) {
+      return function (root, partVal, curlAmt, partAmt) {
+        var v = f.apply(this, arguments);
+        v = partSideSweep(v, root, partVal, curlAmt, partAmt);
+        if (!v || !SB.partFrontOnly || !root) return v;
+        var c = 1; try { c = getHeadEllipsoid().c || 1; } catch (e) {}
+        var zn = root.z / c, lo = -0.15, hi = 0.15;
+        var t = Math.max(0, Math.min(1, (zn - lo) / (hi - lo))), w = t * t * (3 - 2 * t);
+        if (w >= 1) return v;
+        if (w <= 0) return null;
+        return { x: v.x * w, y: v.y * w, z: v.z * w };
+      };
+    });
     // 펌 · 베이스 폭 / 세팅 · 컬 정리감
     wrap('curlStrand3D', function (f) {
       return function () {
         if (!SB.on || !CUR_SEC || !G.CURL_BUNDLE) return f.apply(this, arguments);
         var self = this, args = arguments, b = secVal(CUR_SEC, 'base'), d = secVal(CUR_SEC, 'define');
-        return withTemp(G.CURL_BUNDLE, { rodK: SB.map.rodK(b), clumpPull: SB.map.clumpPull(d), phaseJitter: SB.map.phaseJitter(d) },
-          function () { return f.apply(self, args); });
+        var tmp = { rodK: SB.map.rodK(b), clumpPull: SB.map.clumpPull(d), phaseJitter: SB.map.phaseJitter(d) };
+        // 컬 구간 막대: 기본 20cm(=엔진 기본)이면 손대지 않음 → 기존 스타일·프리셋 그대로
+        var cl = secVal(CUR_SEC, 'curlLen'), wind = G.CURL_BUNDLE.windCm;
+        if (cl !== NEW_DEFAULTS.curlLen) { wind = cl >= 60 ? 99 : cl; tmp.windCm = wind; }
+        var cut = cutCm();
+        if (cut > 0) {
+          var w = wind - cut;
+          if (w <= 0.5) return args[0];          // 컬 구간이 다 잘려 나감 → 곧은 머리
+          tmp.windCm = w;
+        }
+        return withTemp(G.CURL_BUNDLE, tmp, function () { return f.apply(self, args); });
       };
     });
     // 세팅 · 처짐
@@ -776,4 +975,142 @@
 
   // 앞의 스크립트가 모두 동기 로드된 뒤라 바로 설치합니다(부트 코드가 원래 함수를 먼저 부르지 않도록).
   install();
+})();
+
+/* ==========================================================================
+ * 새 스타일: Long Blowout Waves (미국 살롱 스타일 — 긴 레이어드 + 끝부분 굵은 웨이브)
+ *
+ *   · 길이: 어깨~쇄골 (옆·뒤), 크라운·관자놀이는 레이어로 더 짧게
+ *   · 앞머리 없음: 가운데 가르마로 양옆에 넘김 → 얼굴이 드러남, 얼굴선 레이어는 턱선
+ *   · 컬: 뿌리~중간은 곧게, 끝 약 14cm만 굵은 롤(블로아웃)
+ *       → CURL_BUNDLE.windCm = 끝에서부터 감기는 길이 (헤드리스 시험: 12cm면 위쪽은 0, 끝만 감김)
+ *       → rodThickCm 5 = 굵은 롤, pitchThick 1.8 = 촘촘하지 않은 한 바퀴
+ *   · 볼륨 위치(volPoint)를 아래쪽으로 — 끝이 풍성
+ * 값은 모두 막대 숫자라 조정 화면에서 그대로 움직일 수 있습니다.
+ * ======================================================================== */
+(function () {
+  'use strict';
+  var G = window;
+  var ID = 'long_blowout_waves';
+  if (typeof STYLE_SPECS === 'undefined' || typeof STYLES === 'undefined' || STYLE_SPECS[ID]) return;
+
+  var set = function (o, extra) {   // 펌·세팅 기준값(막대 숫자)
+    return Object.assign({ base: 25, define: 60, volShare: 55, volPoint: 75, weight: 35, curlLen: 14 }, extra || {}, o);   // curlLen 14 = 끝 14cm만 컬
+  };
+  STYLE_SPECS[ID] = {
+    name: 'Long blowout waves · Center part · Big bottom curls',
+    tipAt: {                 // 두상 높이 기준 끝 위치 (1.0 ≈ 턱선)
+      front: 1.00,           // 얼굴선 레이어: 턱선 (앞머리 없음)
+      crown: 1.15,           // 레이어 — 위쪽이 짧아야 끝 웨이브가 층층이 보임
+      temple: 1.18,          // 얼굴 감싸는 층
+      side: 1.42,            // 어깨
+      occipital: 1.50,
+      nape: 1.55             // 쇄골 근처
+    },
+    cut: {
+      crown:     set({ technique: 'uniform', elevation: 70, texture: 40, curlDir: 20 }),
+      front:     set({ technique: 'uniform', elevation: 20, texture: 55, line: 50, curlDir: -10 }, { volShare: 35 }),   // 얼굴 쪽으로 감싸는 컬 — 끝이 벌어지지 않게
+      temple:    set({ technique: 'uniform', elevation: 55, texture: 45, overdirection: 30, curlDir: 5 }),
+      side:      set({ technique: 'uniform', elevation: 45, texture: 45, curlDir: 25 }, { volShare: 65 }),
+      occipital: set({ technique: 'uniform', elevation: 45, texture: 40, curlDir: 20 }, { volShare: 60 }),
+      nape:      set({ technique: 'uniform', elevation: 25, texture: 35, line: 50, curlDir: 20 })
+    },
+    perm: { curl: 42, wave: 95 },     // wave 95 = 굵은 롤
+    styling: { sweep: 0, volume: 50, flow: 30, part: 0, partAmt: 65, finish: 55, sleek: 20 },   // part 0 = 가운데 가르마, partAmt 65 = 양옆으로 넘김(80이면 앞쪽 끝이 벌어짐)
+    globalCurl: 42,
+    color: '#1E1712'
+  };
+
+  STYLES.push({
+    id: ID, specId: ID,
+    name: 'Blowout Waves',
+    tags: 'Long layers · Center part · Big bottom curls',
+    length: 92, curl: 42, volume: 60, colorHex: '#1E1712'
+  });
+  try { if (typeof RECIPE_STYLES !== 'undefined' && RECIPE_STYLES.indexOf(ID) < 0) RECIPE_STYLES.push(ID); } catch (e) {}
+
+  if (G.STYLE_BASE && G.STYLE_BASE.addProfile) {
+    G.STYLE_BASE.addProfile(ID, {
+      label: 'Long blowout waves',
+      config: {
+        CURL_BUNDLE: {
+          rodThickCm: 5,       // 굵은 롤
+          pitchThick: 1.8,     // 한 바퀴가 느슨하게
+          relax: 1.2,
+          microAmp: 0.02,      // 잔곱슬 거의 없음(드라이로 편 결)
+          microPhase: 0.1
+        },
+        CURL3D_FIX: { ampGamma: 0.7 },
+        VOLUME3D: { AMP: 0.16 },
+        MQ_FRINGE: { on: false }   // 앞머리(뱅) 없음 — 가르마로 넘긴 얼굴선 레이어
+      },
+      volBase: 1.0,
+      after: { front: { curl: 30 } },   // 얼굴선은 바깥으로 넘어가는 C컬 정도
+      shade: { ao: 0.42, lumCap: 1.3, spec: 0.26, specPow: 60 }   // 블로아웃 광택 조금 더
+    });
+  }
+  try { if (typeof buildStyleGrid === 'function') buildStyleGrid(); } catch (e) { console.warn('[스타일] 목록 다시 그리기 실패', e); }
+  console.log('[스타일] Blowout Waves 추가');
+})();
+
+/* ==========================================================================
+ * 앞 가르마 자리 뿌리 메우기 (마네킹 재심기)
+ * Roots 보기로 확인: 이마 가운데 헤어라인에 뿌리가 한 칸 덩어리로 비어 있었음 = 원본 사진의 가르마 선이
+ * 두피로 보여 밀도(den)가 baldDen(0.08) 아래로 잡힌 칸. 거기엔 가닥을 안 심어서 앞쪽이 벌어졌습니다.
+ * 같은 가로줄(같은 높이)에서 양옆이 모두 머리인 좁은 빈 칸(최대 GAP칸)만 양옆 평균 밀도로 채웁니다.
+ * 얼굴·두피 밖 칸(EST_OFFSCALP)과 헤어라인 바깥(한쪽만 머리)은 그대로 → 이마가 넓어지지 않음.
+ * 원본 밀도 배열은 심은 뒤 되돌립니다. 끄기: STYLE_BASE.fillPartGap = false
+ * ======================================================================== */
+(function () {
+  'use strict';
+  var G = window, SB = G.STYLE_BASE || {};
+  SB.fillPartGap = true;
+  // v2(09-29): 6 → 10 — 이마 앞 헤어라인의 사각 홈(폭 7~10칸)이 안 채워져 가르마 자리가 휑해 보였음
+  SB.partGapCells = 10;
+  var orig = G.buildMannequinHair3D;
+  if (typeof orig !== 'function') return;
+  G.buildMannequinHair3D = function () {
+    var M = state && (state._hair3Dneutral || state.hair3D), R = M && M.roots;
+    if (!SB.fillPartGap || !R || !R.ok || !R.den || !R.NT || !R.NP) return evenRoots(orig.apply(this, arguments));
+    var NT = R.NT, NP = R.NP, den = R.den, est = R.est, bald = (typeof MANNEQUIN !== 'undefined' ? MANNEQUIN.baldDen : 0.08);
+    var OFF = (typeof EST_OFFSCALP !== 'undefined') ? EST_OFFSCALP : null;
+    var isOff = function (a, i) { return OFF !== null && a && a[i] === OFF; };
+    var saved = Array.prototype.slice.call(den), savedEst = est ? Array.prototype.slice.call(est) : null;
+    var GAP = SB.partGapCells || 6;
+    var hair = function (j) { return !isOff(savedEst, j) && saved[j] > bald; };
+    var filledLow = 0, filledOff = 0;
+    // 이마 쪽(앞) 헤어라인의 파인 홈은 "두피 밖"으로 판정돼 있었음(로그: 정면 phi0.95~1.05 두피밖 12칸, 밀도0은 5칸뿐)
+    // → 같은 가로줄에서 양옆이 머리인 좁은 칸은 두피 밖이어도 두피로 되돌려 심음. 위쪽 절반(phi<1.1)만.
+    var phiMax = 1.1;
+    for (var ip = 0; ip < NP; ip++) {
+      var phi = (ip + 0.5) / NP * Math.PI, row = ip * NT;
+      for (var it = 0; it < NT; it++) {
+        var i = row + it;
+        if (hair(i)) continue;
+        var off = isOff(savedEst, i);
+        if (off && phi > phiMax) continue;
+        var L = 0, Ld = 0, Rt = 0, Rd = 0;
+        for (var k = 1; k <= GAP; k++) { var j = row + (it - k + NT) % NT; if (hair(j)) { L = k; Ld = saved[j]; break; } }
+        for (var k2 = 1; k2 <= GAP; k2++) { var j2 = row + (it + k2) % NT; if (hair(j2)) { Rt = k2; Rd = saved[j2]; break; } }
+        if (!(L && Rt && L + Rt - 1 <= GAP)) continue;
+        den[i] = (Ld + Rd) / 2;
+        if (off) { est[i] = savedEst[row + (it - L + NT) % NT]; filledOff++; } else filledLow++;
+      }
+    }
+    var res;
+    try { res = orig.apply(this, arguments); }
+    finally {
+      for (var q = 0; q < saved.length; q++) den[q] = saved[q];
+      if (savedEst) for (var q2 = 0; q2 < savedEst.length; q2++) est[q2] = savedEst[q2];
+      console.log('[가르마 뿌리 메우기] 좁은 빈 칸 채움 — 밀도 낮음 ' + filledLow + '칸 · 두피밖 판정 ' + filledOff + '칸 (끄기 STYLE_BASE.fillPartGap=false)');
+    }
+    return evenRoots(res);   // 밀도를 되돌린 <b>뒤</b>에 — 아래 evenRoots 주석
+  };
+  /* 앞쪽 뿌리 보강(17a-mannequin.js mannequinEvenRoots · ROOT_EVEN)은 여기서 부른다.
+   * 위에서 잠깐 채운 den이 원래대로 돌아온 다음이어야 그쪽의 대머리 판정이 옛 31번 파일과 같다.
+   * 실패해도 심은 결과는 그대로 돌려준다. */
+  function evenRoots(r) {
+    if (typeof mannequinEvenRoots !== 'function') return r;
+    try { return mannequinEvenRoots(r); } catch (e) { console.warn('[뿌리 고르게] 실패', e); return r; }
+  }
 })();

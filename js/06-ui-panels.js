@@ -931,7 +931,10 @@ function gyBuildFadeGroup(){
      렌더 비용을 만드는 모양이 되고, 그건 8/22에 걷어낸 것이다.
 ══════════════════════════════════════════════════════════════════ */
 // (2026-09-21 배포본 반영) 새 스펙 스타일 두 개도 "스펙 수치" 패널에 나오게 추가
-const RECIPE_STYLES = ['layered_bob_hush', 'taper_fade_pomp', 'hippie_curl_men', 'wavy_bob_seethrough'];
+// (2026-09-29 추가) 가르마펌(side_part_perm) · 커튼뱅 섀그(curtain_bang_shag) — 옛 31·32번 파일이
+//   로드 때 push 하던 것을 여기로 옮겼다. long_blowout_waves는 24-style-base.js가 스스로 push 한다.
+const RECIPE_STYLES = ['layered_bob_hush', 'taper_fade_pomp', 'hippie_curl_men', 'wavy_bob_seethrough',
+                       'side_part_perm', 'curtain_bang_shag'];
 /* 이 스펙이 이 섹션에서 요구하는 <b>길이 슬라이더 값</b>. 못 풀면 null.
    반환은 {v, unit, target} — unit은 'cm' | 'tip' | 'clipper'. */
 function recipeLengthFor(specId, secId){
@@ -1073,7 +1076,32 @@ function gyBuildAffectsNote(secId){
   return note;
 }
 
+/* ── 조정 패널 = 본문 + "모발 상태(자동)" 한 줄 (2026-09-29, 옛 31-side-part-perm.js) ──
+   본문(buildGyControlsInner)은 탭마다 중간에 return 하므로, 한 줄은 겉에서 붙인다.
+   23-section-all이 이 함수를 다시 감싸 "전체" 모드에서는 본문을 안 부르므로
+   그쪽 경로에서도 gyShowHairCondition()을 따로 부른다. */
 function buildGyControls(){
+  const r = buildGyControlsInner.apply(this, arguments);
+  gyShowHairCondition();
+  return r;
+}
+/* 판정 결과만 한 줄로 보여 준다 — 선택 상자는 일부러 없다(미용사가 고르는 값이 아님).
+   판정 전(state._hairCondAuto 없음)이면 아무것도 안 붙인다. 두 번 불려도 한 줄만 남게
+   먼저 지운다. 판정 규칙은 08-cut-engine.js의 hairAutoDetectCondition. */
+function gyShowHairCondition(){
+  const host = document.getElementById('gyControls');
+  const a = (typeof state !== 'undefined') && state._hairCondAuto;
+  if(!host || !a || typeof HAIR_CONDITIONS === 'undefined' || !HAIR_CONDITIONS[a.cond]) return;
+  const old = host.querySelector(':scope > .gy-condition');
+  if(old) old.remove();
+  const box = document.createElement('div');
+  box.className = 'gy-condition';
+  box.style.cssText = 'margin:0 0 10px;font-size:12px;opacity:.7';
+  box.textContent = 'Hair type (auto): ' + HAIR_CONDITIONS[a.cond].label +
+    ' · perm take ' + Math.round(HAIR_CONDITIONS[a.cond].permTake * 100) + '%';
+  host.insertBefore(box, host.firstChild);
+}
+function buildGyControlsInner(){
   const wrap = document.getElementById('gyControls');
   if(!wrap) return;
   wrap.innerHTML = '';

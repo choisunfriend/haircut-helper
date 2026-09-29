@@ -77,7 +77,8 @@ if (typeof state !== 'undefined' && typeof state.gyAllMode !== 'boolean') state.
 
 /* 통합 슬라이더로 다룰 값. min·max는 GYEOL_GROUPS 정의에서 가져온다(없으면 기본). */
 const GY_ALL_PARAMS = {
-  cut:  ['length', 'elevation', 'texture', 'density'],
+  // (2026-09-29) 'density' 뺌 — 숱 막대 자체를 없앴다(02-state-sections.js GYEOL_GROUPS 주석 참고)
+  cut:  ['length', 'elevation', 'texture'],
   perm: ['curl', 'wave', 'curlDir']
 };
 
@@ -346,6 +347,8 @@ function selectGyAll() {
         console.warn('[섹션통합] 통합 패널을 못 그렸습니다 — 섹션별 패널로 대신합니다:', e);
         return innerCtrls.apply(this, arguments);
       }
+      // (2026-09-29) "전체" 모드도 모발 상태(자동) 한 줄을 붙인다 — 섹션별 모드는 innerCtrls가 붙임
+      if (typeof gyShowHairCondition === 'function') gyShowHairCondition();
       return;
     }
     return innerCtrls.apply(this, arguments);
