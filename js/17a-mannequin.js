@@ -608,6 +608,132 @@ function growMannequinStrand(ci, NT, NP, S, E, CY, L, colors){
   const color = (colors && colors.length) ? colors[(_mqRand()*colors.length)|0] : '#2B2320';
   return { pts, sec: null, color, srcAngle: null, rootFacing: 0, mannequin: true };
 }
+/* ══════════════════════════════════════════════════════════════════════════
+   마네킹 뿌리 — 더 촘촘하게 · 빈 데 없이 · 앞(가르마) 쪽은 더 촘촘하게 (2026-09-30)
+   ──────────────────────────────────────────────────────────────────────────
+   사용자(Roots 보기 녹화 08:51): "roots 좀 더 촘촘하게 하고, 앞쪽 두상 부분에 비는 데가 있어..
+   가르마 있는 자리고 하니까 오히려 딴 데보다 촘촘해야 되거든."
+
+   녹화에서 보인 것 두 가지와 원인:
+   ① 이마 위 가운데 헤어라인에 살색 사각 홈.
+      두피 끝선(SCALP_LIMIT)이 앞 가운데 φ0.95 · 관자 φ1.05라, 이마 가운데만 한 줄(φ0.95~1.05)이
+      "두피 밖"이다. 24의 가르마 메우기(fillPartGap)가 그 줄을 채우려 했지만 같은 가로줄 양옆
+      머리까지가 ≈12칸(68°)이라 한도 10칸에 걸려 못 채웠다. 가르마 선·광택이 밀도를 baldDen
+      아래로 떨어뜨린 칸도 같은 자리에 겹친다.
+   ② 앞 띠가 성기다. 예전 셀별 개수 = 사진 밀도 × 면적. 정면 사진은 가르마 선·광택 때문에
+      앞쪽 밀도가 낮게 잡히므로 <b>가르마 자리가 오히려 제일 적게</b> 심겼다. 총량도 촬영 가닥
+      수와 같았다. 17a 아래의 앞쪽 보강(ROOT_EVEN)은 정수리 줄부터 차례로 채우다 상한(×1.2)에
+      먼저 닿아 이마 쪽 줄까지 몫이 안 갔다.
+
+   고침(마네킹은 스타일을 걸면 항상 켜지므로 = 모든 스타일에 적용):
+   A. 심을 칸 = 머리 난 칸 ∪ 메울 칸.
+      · 세로(열) 메움: 칸 열마다 정수리에서 내려가며 헤어라인까지 안쪽 빈 칸을 채운다
+        (연속 holeRun칸 이상 비면 거기가 헤어라인 끝).
+      · 가로 홈 메움: 열별 헤어라인 줄 h(θ)를 좌우 closeW칸 창으로 닫는다 —
+        h′ = min(왼쪽 창 최대, 오른쪽 창 최대). 양쪽에 <b>둘 다</b> 더 낮은 헤어라인이 있을 때만
+        내려오므로 홈만 메우고 헤어라인의 원래 곡선(이마·관자·귀 둘레)은 그대로 둔다.
+        closePhiMax 아래(귀 높이)는 건드리지 않는다.
+      · 두피 밖 칸은 앞쪽(|θ|≤frontThDeg)에서 φ≤offscalpFrontPhi일 때만 메울 수 있다(24와 같은 값).
+   B. 칸별 몫 = 면적 × (앞·가르마 구역이면 frontBoost). 사진 밀도는 "머리가 났나"의 문턱으로만 쓴다
+      (denEven 1). 마네킹은 "아직 안 자른 머리"라 숱을 사진 밀도대로 따라갈 이유가 없다.
+   C. 총량 = 촬영 가닥 수 × countMul. 예전(=1)에 앞쪽 보강이 붙던 것보다 조금 많다.
+      무거우면 countMul부터 내린다(조정·3D 연산이 가닥 수에 비례).
+   ROOT_EVEN(앞쪽 보강)은 이걸로 목적을 다 해서 기본 꺼짐으로 바꿨다.
+   끄기(예전 동작 그대로): MQ_DENSE.on = false 그리고 ROOT_EVEN.on = true
+   ══════════════════════════════════════════════════════════════════════════ */
+const MQ_DENSE = {
+  on: true,
+  countMul: 2.0,          // 총 가닥 = 촬영 가닥 수 × 이 배
+  denEven: 1.0,           // 1 = 머리 난 칸은 면적대로 고르게 · 0 = 예전(사진 밀도 비례) · 사이 값은 섞음
+  frontBoost: 1.6,        // 앞·가르마 구역 면적당 배율 (가르마·헤어라인은 두피가 먼저 비쳐 보인다)
+  frontThDeg: 56,         // 앞 구역 방위 |θ| (관자까지 — SECTION_CUT.thTemple ≈ 55.9°)
+  frontPhiMax: 1.25,      // 앞 구역 극각 상한 (헤어라인 아래 한두 줄 여유)
+  crownPhi: 0.45,         // 정수리 꼭대기 — 가르마가 끝나는 자리라 방위와 무관하게 앞 구역 배율
+  holeRun: 4,             // 세로로 이만큼 연속 비면 헤어라인 끝으로 본다
+  /* 가로 홈 메우기 창(칸, 1칸 ≈ 5.6°) — 좌우 각각. 이마 가운데 두피 밖 줄은 폭 ≈12칸(68°)이라
+     가운데 칸에서 양쪽 관자까지 닿으려면 7칸 이상. 헤어라인은 가운데→옆으로 한쪽으로만 내려가서
+     창을 넓혀도 관자·옆 곡선은 안 바뀐다(닫기는 "양쪽 다 더 낮을 때"만 내린다). */
+  closeW: 8,
+  closePhiMax: 1.3,       // 가로 홈 메우기는 이 극각 위까지만(귀 높이 아래는 안 건드림)
+  offscalpFrontPhi: 1.1,  // 앞쪽 두피 밖 칸도 이 극각까지는 메울 수 있음(24 fillPartGap phiMax와 같은 값)
+  /* 귀 자리는 절대 메우지 않는다 — 세로 메움이 귀 위·아래가 둘 다 머리인 열에서 귀를 "안쪽 빈 칸"으로
+     읽기 때문(하네스에서 확인). 방위 |θ| earThLo~earThHi · 극각 earPhiLo 아래. 머리로 잡힌 칸은 그대로 심는다. */
+  earThLo: 65, earThHi: 115, earPhiLo: 1.25,
+};
+window.MQ_DENSE = MQ_DENSE;
+/* 심을 칸과 칸별 몫을 정한다 — 순수 함수(하네스 test/mannequin-dense.test.js가 합성 격자로 확인).
+   rf: 뿌리 밀도 격자 {NT,NP,den,est} · areas: 칸 면적(없으면 1) · baldDen: 머리 없음 문턱
+   반환 {w, hair, filled, fillOff, front, h, h2} — w[ci]가 0이면 안 심는다. */
+function mannequinPlantPlan(rf, areas, baldDen){
+  const D = MQ_DENSE, NT = rf.NT, NP = rf.NP, N = NT*NP, den = rf.den, est = rf.est;
+  const OFF = (typeof EST_OFFSCALP !== 'undefined') ? EST_OFFSCALP : 3;
+  const phiOf = pi => (pi + 0.5) / NP * Math.PI;
+  const thDegOf = ti => Math.abs(((ti + 0.5) / NT * 2*Math.PI - Math.PI) * 180 / Math.PI);
+  const off = ci => !!(est && est[ci] === OFF);
+  const hair = new Uint8Array(N);
+  for(let ci=0; ci<N; ci++) hair[ci] = (!off(ci) && den[ci] > baldDen) ? 1 : 0;
+  const allowed = ci => {                           // 메워도 되는 칸인가
+    const pi = (ci / NT) | 0, ti = ci % NT, d = thDegOf(ti), ph = phiOf(pi);
+    if(d >= D.earThLo && d <= D.earThHi && ph >= D.earPhiLo) return false;   // 귀
+    if(!off(ci)) return true;
+    return d <= D.frontThDeg && ph <= D.offscalpFrontPhi;
+  };
+  // ── 열별 헤어라인 줄 h[t]: 위에서 내려가며 마지막 머리 칸 + 1 (holeRun칸 연속 빈 곳에서 멈춤) ──
+  const h = new Int32Array(NT);
+  for(let ti=0; ti<NT; ti++){
+    let last = -1, gap = 0, seen = false;
+    for(let pi=0; pi<NP; pi++){
+      const ci = pi*NT + ti;
+      if(hair[ci]){ last = pi; gap = 0; seen = true; continue; }
+      if(off(ci) && !allowed(ci)) break;           // 두피 끝선 너머(메울 수도 없는 곳)
+      /* 귀 칸은 빈 칸으로 센다(아래 머리까지 이어 보되, 메우기 단계에서 allowed가 뺀다) */
+      if(seen && ++gap >= D.holeRun) break;
+    }
+    h[ti] = last + 1;
+  }
+  // ── 가로 홈 닫기: 양옆 창 안에 <b>둘 다</b> 더 낮은 헤어라인이 있으면 그 중 높은 쪽까지 내린다 ──
+  const closeRow = Math.floor(D.closePhiMax / Math.PI * NP);
+  const h2 = new Int32Array(NT);
+  for(let ti=0; ti<NT; ti++){
+    let L = 0, R = 0;
+    for(let k=0; k<=D.closeW; k++){
+      L = Math.max(L, h[(ti - k + NT) % NT]);
+      R = Math.max(R, h[(ti + k) % NT]);
+    }
+    h2[ti] = Math.max(h[ti], Math.min(Math.min(L, R), Math.max(h[ti], closeRow)));
+  }
+  // ── 메울 칸 + 몫 ──
+  const w = new Float64Array(N);
+  const filled = new Uint8Array(N);
+  let nFill = 0, nFillOff = 0, nFront = 0;
+  let medRel = 1;
+  if(D.denEven < 1){                                 // 예전 비례를 섞을 때만 필요
+    const v = []; for(let ci=0; ci<N; ci++) if(hair[ci]) v.push(den[ci]);
+    v.sort((a,b)=>a-b); medRel = v.length ? v[v.length >> 1] : 1;
+  }
+  const planted = new Uint8Array(N);
+  for(let ci=0; ci<N; ci++){                         // ci는 줄(φ) 오름차순 — 위 칸이 먼저 정해진다
+    const pi = (ci / NT) | 0, ti = ci % NT;
+    let plant = hair[ci];
+    if(!plant && allowed(ci)){
+      /* ① 안쪽 빈 칸 · 가로 홈 — 닫힌 헤어라인 h2 위
+         ② 앞 헤어라인 이어 내리기 — 앞 구역에서 바로 위 칸이 심기면 φ≤offscalpFrontPhi까지 한 줄씩.
+            앞 두피 끝선(0.95)이 관자(1.05)보다 한 줄 높아 생기는 이마 가운데 사각 홈은 폭이 ≈12칸(68°)으로
+            평평해서 가로 닫기 창이 가장자리 칸에서 반대편 관자까지 못 닿는다(하네스). 그 줄과 헤어라인
+            맨 아랫줄 광택 구멍을 여기서 메운다. φ 상한이 있어 이마로는 1.1 너머 안 내려간다. */
+      const dropDown = pi > 0 && planted[ci - NT] && thDegOf(ti) <= D.frontThDeg && phiOf(pi) <= D.offscalpFrontPhi;
+      if(pi < h2[ti] || dropDown){ plant = 1; filled[ci] = 1; nFill++; if(off(ci)) nFillOff++; }
+    }
+    if(!plant) continue;
+    planted[ci] = 1;
+    const rel = hair[ci] ? Math.min(1, den[ci] / Math.max(1e-6, medRel)) : 1;
+    const dens = (1 - D.denEven) * rel + D.denEven;
+    const isFront = (thDegOf(ti) <= D.frontThDeg && phiOf(pi) <= D.frontPhiMax) || phiOf(pi) <= D.crownPhi;
+    if(isFront) nFront++;
+    w[ci] = (areas ? areas[ci] : 1) * dens * (isFront ? D.frontBoost : 1);
+  }
+  return { w, hair, filled, fill: nFill, fillOff: nFillOff, front: nFront, h, h2 };
+}
 function buildMannequinHair3D(){
   const src = state._hair3Dneutral || state.hair3D;
   if(!src || !src.strands || !src.strands.length) return null;
@@ -690,7 +816,15 @@ function buildMannequinHair3D(){
   const w = new Float64Array(nCell);
   let wSum = 0, planted = 0, baldCells = 0, pxColored = 0;
   let offScalpCells = 0;
+  // (2026-09-30) MQ_DENSE가 켜져 있으면 심을 칸·몫을 mannequinPlantPlan이 정한다(위 배너)
+  const plan = MQ_DENSE.on ? mannequinPlantPlan(rf, areas, MANNEQUIN.baldDen) : null;
   for(let ci=0; ci<nCell; ci++){
+    if(plan){
+      if(!(plan.w[ci] > 0)){ baldCells++; if(rf.est && rf.est[ci] === EST_OFFSCALP) offScalpCells++; continue; }
+      w[ci] = plan.w[ci]; wSum += w[ci];
+      continue;
+    }
+    // ── 예전 규칙(MQ_DENSE.on=false) ──
     // 두피 밖은 밀도 0이라 아래 조건에 자동으로 걸리지만, 이유를 따로 센다
     if(rf.est && rf.est[ci] === EST_OFFSCALP){ offScalpCells++; baldCells++; continue; }
     const d = rf.den[ci];
@@ -699,7 +833,8 @@ function buildMannequinHair3D(){
     wSum += w[ci];
   }
   if(!(wSum > 0)){ console.warn('[마네킹] 뿌리밀도가 전부 0'); return null; }
-  const target = src.strands.length;
+  // 총량: 예전엔 촬영 가닥 수 그대로. MQ_DENSE가 켜져 있으면 countMul배(위 배너 C)
+  const target = Math.round(src.strands.length * (plan ? MQ_DENSE.countMul : 1));
   const out = [];
   let acc = 0;
   const secHist = {};
@@ -753,6 +888,9 @@ function buildMannequinHair3D(){
   console.log('[마네킹] 가닥 ' + planted + '개(촬영 ' + target + '개 기준) · 심은 셀 '
     + (nCell - baldCells) + '/' + nCell
     + '(두피 밖 ' + offScalpCells + ' · 밀도 0 ' + (baldCells - offScalpCells) + ')'
+    /* [진단·촘촘] 2026-09-30 — 빈 칸 메움 수(그중 두피 밖 판정이던 앞쪽 칸)와 앞·가르마 구역 칸 수 */
+    + (plan ? ' · 촘촘 ×' + MQ_DENSE.countMul + ' · 빈 칸 메움 ' + plan.fill + '(앞쪽 두피밖 ' + plan.fillOff + ')'
+        + ' · 앞·가르마 구역 ' + plan.front + '칸 ×' + MQ_DENSE.frontBoost + ' (끄기 MQ_DENSE.on=false)' : '')
     + ' · 섹션 ' + Object.keys(secHist).map(s=>s+' '+secHist[s]+'('+Math.round(100*secHist[s]/planted)+'%)').join(' ')
     + ' · 섹션길이(중앙값) ' + lenTxt
     /* [진단] 조각별 원본 픽셀색을 실제로 구운 가닥 비율(2026-08-18 i).
@@ -807,7 +945,9 @@ function buildMannequinHair3D(){
                  (정면 사진의 가르마 선·광택을 두피로 읽어 생긴 빈 칸 — 로그의 "정면 대머리 5")
    끄기: ROOT_EVEN.on = false
    ══════════════════════════════════════════════════════════════════════════ */
-const ROOT_EVEN = { on: true, backSideThDeg: 56, minFill: 0.9, maxAddFrac: 1.2,
+/* (2026-09-30) 기본 <b>꺼짐</b> — 위 MQ_DENSE가 심는 단계에서 고르게·앞쪽 더 촘촘하게를 이미 한다.
+   켜면 그 위에 또 얹는다(정수리 줄부터 채우다 상한에 걸리는 옛 순서 그대로). */
+const ROOT_EVEN = { on: false, backSideThDeg: 56, minFill: 0.9, maxAddFrac: 1.2,
   boost: 1.2, frontBoost: 1.5, frontMinFill: 1.0, frontBaldRescue: true, frontPhiMax: 1.05 };
 window.ROOT_EVEN = ROOT_EVEN;
 /* 결정적 난수(mulberry32) — 같은 손님·같은 설정이면 같은 자리에 심긴다 */
