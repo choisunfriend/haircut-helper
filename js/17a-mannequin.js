@@ -816,7 +816,9 @@ function buildMannequinHair3D(){
    되돌리기: ROOT_EVEN.frontFirst=false · ROOT_EVEN.frontOffPhi=0 */
 const ROOT_EVEN = { on: true, backSideThDeg: 56, minFill: 0.9, maxAddFrac: 1.2,
   boost: 1.2, frontBoost: 1.5, frontMinFill: 1.0, frontBaldRescue: true, frontPhiMax: 1.05,
-  frontFirst: true, frontOffPhi: 1.1 };
+  frontFirst: true, frontOffPhi: 0, nearestSrc: true };
+/* (2026-09-30 c) frontOffPhi 1.1 → 0: 이마 가운데 "홈"은 빈 자리가 아니라 <b>가르마가 시작되는 원래 헤어라인</b>이었다.
+   메우니 가르마 자리 라인이 내려와 위 줄 가닥을 옮겨 심은 앞머리가 이마로 쏟아졌다. 켜려면 1.1. */
 window.ROOT_EVEN = ROOT_EVEN;
 /* 결정적 난수(mulberry32) — 같은 손님·같은 설정이면 같은 자리에 심긴다 */
 function mqEvenRng(seed){ let t = seed >>> 0; return () => { t += 0x6D2B79F5; let r = Math.imul(t ^ t >>> 15, 1 | t); r ^= r + Math.imul(r ^ r >>> 7, 61 | r); return ((r ^ r >>> 14) >>> 0) / 4294967296; }; }
@@ -899,10 +901,17 @@ function mannequinEvenRoots(res){
     }
     if (!src) continue;
     for (let k = have; k < want && added < maxAdd; k++) {
-      const s = src[(rand() * src.length) | 0];
       // 셀 안 무작위 자리에 뿌리를 두고, 본보기 가닥 전체를 그만큼 평행 이동
       const ph = (pi + rand()) / NP * Math.PI, th = (ti + rand()) / NT * 2 * Math.PI - Math.PI;
       const root = { x: E.a * Math.sin(ph) * Math.sin(th), y: CY + E.b * Math.cos(ph), z: E.c * Math.sin(ph) * Math.cos(th) };
+      /* 본보기 = <b>뿌리가 가장 가까운</b> 가닥 (2026-09-30 c). 무작위로 고르면 가르마 셀에서 반대편으로
+         넘어가는 가닥을 이쪽 뿌리에 옮겨 심어, 새 가닥이 가르마를 가로질러 빗살(사다리) 무늬가 됐다.
+         되돌리기 ROOT_EVEN.nearestSrc=false */
+      let s = src[(rand() * src.length) | 0];
+      if (ROOT_EVEN.nearestSrc) {
+        let bd = Infinity;
+        for (const c2 of src) { const q = c2.pts[0], d = (q.x-root.x)**2 + (q.y-root.y)**2 + (q.z-root.z)**2; if (d < bd) { bd = d; s = c2; } }
+      }
       const o = s.pts[0], dx = root.x - o.x, dy = root.y - o.y, dz = root.z - o.z;
       const ns = Object.assign({}, s, { pts: s.pts.map(p => ({ x: p.x + dx, y: p.y + dy, z: p.z + dz })), _evenAdded: true });
       if (s.colors) ns.colors = s.colors.slice ? s.colors.slice() : s.colors;
