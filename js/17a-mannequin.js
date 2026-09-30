@@ -807,8 +807,16 @@ function buildMannequinHair3D(){
                  (정면 사진의 가르마 선·광택을 두피로 읽어 생긴 빈 칸 — 로그의 "정면 대머리 5")
    끄기: ROOT_EVEN.on = false
    ══════════════════════════════════════════════════════════════════════════ */
+/* (2026-09-30 b) 배율(×1.2 · 앞 ×1.5)은 그대로. 바뀐 건 <b>적용 순서와 메움 범위</b>:
+   ① 채우는 순서가 셀 번호(= 정수리 줄부터)라 maxAdd 상한에 먼저 닿으면 이마 쪽 줄은 몫을 못 받았다
+      → 앞쪽 셀을 <b>먼저</b> 채우고 옆·뒤는 그다음(frontFirst).
+   ② 구제가 "두피 밖" 칸을 아예 빼서, 이마 가운데 두피 끝선 줄(φ0.95~1.05, 폭 ≈12칸)이 사각 홈으로 남았다
+      → 앞쪽에서 φ≤frontOffPhi이고 <b>바로 위 칸이 머리(또는 이미 메운 칸)</b>면 두피 밖이어도 메운다
+        (옆 8칸 과반 조건은 넓은 홈 가운데에서 3/8이라 못 넘었다).
+   되돌리기: ROOT_EVEN.frontFirst=false · ROOT_EVEN.frontOffPhi=0 */
 const ROOT_EVEN = { on: true, backSideThDeg: 56, minFill: 0.9, maxAddFrac: 1.2,
-  boost: 1.2, frontBoost: 1.5, frontMinFill: 1.0, frontBaldRescue: true, frontPhiMax: 1.05 };
+  boost: 1.2, frontBoost: 1.5, frontMinFill: 1.0, frontBaldRescue: true, frontPhiMax: 1.05,
+  frontFirst: true, frontOffPhi: 1.1 };
 window.ROOT_EVEN = ROOT_EVEN;
 /* 결정적 난수(mulberry32) — 같은 손님·같은 설정이면 같은 자리에 심긴다 */
 function mqEvenRng(seed){ let t = seed >>> 0; return () => { t += 0x6D2B79F5; let r = Math.imul(t ^ t >>> 15, 1 | t); r ^= r + Math.imul(r ^ r >>> 7, 61 | r); return ((r ^ r >>> 14) >>> 0) / 4294967296; }; }
@@ -838,14 +846,22 @@ function mannequinEvenRoots(res){
   const isFront = c => Math.abs(thOf(c)) * 180 / Math.PI <= ROOT_EVEN.backSideThDeg;
   const phiOf = c => ((c / NT | 0) + 0.5) / NP * Math.PI;
   // 앞쪽 대머리 판정 구제: 두피 안 + 헤어라인 위(phi 상한) + 주변 8칸 중 절반 이상이 머리
+  const rescuedSet = new Uint8Array(N);
   const rescued = c => {
-    if (!ROOT_EVEN.frontBaldRescue || offScalp(c) || !bald(c) || !isFront(c) || phiOf(c) > ROOT_EVEN.frontPhiMax) return false;
+    if (!ROOT_EVEN.frontBaldRescue || !isFront(c)) return false;
+    if (rescuedSet[c]) return true;
+    // ② 헤어라인 이어 내리기: 바로 위 칸이 머리(또는 이미 메운 칸)이면 두피 밖 줄도 frontOffPhi까지
+    const up = c - NT;
+    if ((offScalp(c) || bald(c)) && phiOf(c) <= ROOT_EVEN.frontOffPhi && up >= 0 && (ok(up) || rescuedSet[up]))
+      { rescuedSet[c] = 1; return true; }
+    if (offScalp(c) || !bald(c) || phiOf(c) > ROOT_EVEN.frontPhiMax) return false;
     const pi = c / NT | 0, ti = c % NT; let n = 0, h = 0;
     for (let dp = -1; dp <= 1; dp++) for (let dt = -1; dt <= 1; dt++) {
       if (!dp && !dt) continue; const p2 = pi + dp; if (p2 < 0 || p2 >= NP) continue;
       const nc = p2 * NT + ((ti + dt) % NT + NT) % NT; n++; if (ok(nc)) h++;
     }
-    return n > 0 && h * 2 >= n;
+    if (n > 0 && h * 2 >= n) { rescuedSet[c] = 1; return true; }
+    return false;
   };
   const fillable = c => ok(c) || rescued(c);
   const ar = c => (area ? area[c] : 1) || 0;
@@ -859,7 +875,12 @@ function mannequinEvenRoots(res){
   const rand = mqEvenRng(1234567), maxAdd = Math.round(res.strands.length * ROOT_EVEN.maxAddFrac);
   let added = 0, cellsFixed = 0, frontAdded = 0, rescuedCells = 0;
   const secAdd = {};
-  for (let c = 0; c < N && added < maxAdd; c++) {
+  // ① 앞쪽 셀 먼저(줄 순서는 유지 — 이어 내리기가 위 칸 결과를 본다), 옆·뒤는 그다음
+  const order = [];
+  if (ROOT_EVEN.frontFirst) { for (let c = 0; c < N; c++) if (isFront(c)) order.push(c); for (let c = 0; c < N; c++) if (!isFront(c)) order.push(c); }
+  else for (let c = 0; c < N; c++) order.push(c);
+  for (let oi = 0; oi < order.length && added < maxAdd; oi++) {
+    const c = order[oi];
     if (!fillable(c) || !(ar(c) > 0)) continue;
     const fr = isFront(c);
     const have = byCell[c] ? byCell[c].length : 0, want = Math.round(target * ar(c) * ROOT_EVEN.boost * (fr ? ROOT_EVEN.frontBoost : 1));
