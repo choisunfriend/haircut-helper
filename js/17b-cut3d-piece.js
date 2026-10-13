@@ -6246,14 +6246,22 @@ var READ_SHAPE = (function () {
        앞머리선(앞쪽 반)은 세운 앞머리가 있을 수 있어 안 봄. 끄기 READ_SHAPE.riseCm=0 */
     var riseN = 0, riseU = (RS.riseCm || 0) / cpu(), Eh5 = null;
     try { Eh5 = getHeadEllipsoid(); } catch (e) {}
+    /* (2026-10-13j) 내려갔다 다시 솟은 본보기(U자) — 사용자 영상(21:10 긴 생머리): 뒷머리 아래에서 뒤·위로 곧게 솟은 묶음.
+       위 판정은 뿌리 높이만 기준이라 정수리·뒤통수 뿌리에서 등까지 내려갔다가 귀 높이로 되솟은 가닥(끝 < 뿌리)은 통과했고,
+       가까운 마네킹 뿌리 여럿이 그 길을 받아 묶음이 됨. 가장 낮게 내려간 점보다 climbCm(곱슬은 climbCurlCm) 넘게 오르면 본보기 아님(앞머리선도).
+       자는 17a riseClimbIndex · 값은 RISE_FIX와 같음. 끄기 RISE_FIX.climbCm=0 */
     var flipDrop = 0, longH = false; try { longH = !!(G.stats && G.stats.isLong); } catch (e) {}
     if (RS.dropFlipLong && longH) for (i = 0; i < n; i++) { var f6 = info[i]; if (f6 && !f6.rev && S[i].rg && S[i].rg.flip === 1) { f6.rev = true; flipDrop++; } }
-    if (riseU > 0) for (i = 0; i < n; i++) {
+    var climbN = 0, RF = (typeof RISE_FIX !== 'undefined') ? RISE_FIX : null;
+    var climbU = (RF && RF.climbCm > 0 && typeof riseClimbIndex === 'function') ? (curlM >= RF.curlMin ? RF.climbCurlCm : RF.climbCm) / cpu() : 0;
+    for (i = 0; i < n; i++) {
       var f5 = info[i]; if (!f5 || f5.rev) continue;
       var q5 = S[i].pts, r5 = q5[0];
-      if (Eh5 && r5.z > 0.5 * Eh5.c) continue;
-      var top5 = -Infinity; for (j = 1; j < q5.length; j++) if (q5[j].y > top5) top5 = q5[j].y;
-      if (top5 - r5.y > riseU) { f5.rev = true; riseN++; }
+      if (riseU > 0 && !(Eh5 && r5.z > 0.5 * Eh5.c)) {
+        var top5 = -Infinity; for (j = 1; j < q5.length; j++) if (q5[j].y > top5) top5 = q5[j].y;
+        if (top5 - r5.y > riseU) { f5.rev = true; riseN++; continue; }
+      }
+      if (climbU > 0 && riseClimbIndex(q5, climbU) >= 0) { f5.rev = true; climbN++; }
     }
     // 짧게 막힌 가닥 — 뿌리 칸(2cm) 이웃 길이 중앙값 대비
     var RC = RS.rootCell, rc = new Map();
@@ -6270,8 +6278,8 @@ var READ_SHAPE = (function () {
       var k3 = keyOf(Math.floor(g.r.x / RC), Math.floor(g.r.y / RC), Math.floor(g.r.z / RC)), b = cells.get(k3);
       if (!b) cells.set(k3, b = []); b.push(i); good++;
     }
-    ST.built = { rise: riseN, flipDrop: flipDrop, hairline: hlN, long: longN, strayV: strayV, strayN: strayN, n: n, good: good, rev: rev, revRoot: revRoot, revFlip: revFlip, flipN: flipN, short: shortN, vox: flow.size, ms: Date.now() - t0 };
-    try { console.log(TAG + ' 본보기 — 기른 가닥 ' + n + ' 중 ' + good + '개 · 거꾸로 자란 가닥 ' + rev + '(그중 42번이 위로 뒤집어 기른 것 ' + revFlip + '/' + flipN + ') · 짧게 막힌 가닥 ' + shortN + ' · 얼굴·목을 가로지른 가닥 ' + hlN + ' · 길게 샌 가닥 ' + longN + ' · 솟은 가닥 ' + riseN + ' · 긴 머리라 뺀 뒤집어 기른 가닥 ' + flipDrop + ' · ' + ST.built.ms + 'ms'); } catch (e) {}
+    ST.built = { rise: riseN, climb: climbN, flipDrop: flipDrop, hairline: hlN, long: longN, strayV: strayV, strayN: strayN, n: n, good: good, rev: rev, revRoot: revRoot, revFlip: revFlip, flipN: flipN, short: shortN, vox: flow.size, ms: Date.now() - t0 };
+    try { console.log(TAG + ' 본보기 — 기른 가닥 ' + n + ' 중 ' + good + '개 · 거꾸로 자란 가닥 ' + rev + '(그중 42번이 위로 뒤집어 기른 것 ' + revFlip + '/' + flipN + ') · 짧게 막힌 가닥 ' + shortN + ' · 얼굴·목을 가로지른 가닥 ' + hlN + ' · 길게 샌 가닥 ' + longN + ' · 솟은 가닥 ' + riseN + ' · 내려갔다 다시 솟은 가닥 ' + climbN + ' · 긴 머리라 뺀 뒤집어 기른 가닥 ' + flipDrop + ' · ' + ST.built.ms + 'ms'); } catch (e) {}
     return { m: m, arr: S, cells: cells };
   }
   function index() {
