@@ -3086,15 +3086,7 @@ function helixMeasure(rgba,mask,W,H,angle,coh,opt){opt=opt||{};const n=opt.n||25
     var kTop = ((K0.crown || 1) + (K0.front || 1)) / 2, volRaw = {};
     order.forEach(function (sec) {
       var R = raw[sec]; if (!R || !(tTop > 0)) return;
-      /* (2026-10-13l) 긴 머리의 옆·뒤 섹션은 "두께"가 그 섹션이 뜬 정도가 아님 — 근본 원인(사용자 영상 20:47 긴 생머리: 뒷머리가 하늘로 솟음).
-         rg.t는 뿌리 자리에서 두피 → 머리 겉면까지의 거리라, 긴 머리에서는 위(정수리·뒤통수)에서 내려와 덮은 머리가 아래로 갈수록 겹겹이 쌓여
-         두꺼워짐(그 손님: 윗머리 1.3cm · occipital 4.7cm · nape 6.5cm). 그 비율을 그대로 부피감으로 옮겨 occipital 193 · nape 448 → 상한 100으로
-         잘려 들어갔고, 부피감 100 = "이 섹션이 두상에서 최대로 뜸"이라 뒷머리 전체가 두상에서 들려 위·바깥으로 솟았음.
-         긴 머리일 때 아래 섹션은 덮인 두께를 뺄 방법이 없으므로 윗머리와 같은 두께(= 같은 뜸)로 둠. 짧은 머리는 덮는 머리가 없어 예전 그대로.
-         되돌리기 REGROW.longSecVolFlat=false */
-      var thk = R.thickCm;
-      if (info.isLong && G.longSecVolFlat !== false && sec !== 'crown' && sec !== 'front') { R.thickCmCovered = R.thickCm; thk = tTop; }
-      var share = 50 * (thk / tTop) * kTop / (K0[sec] || 1);
+      var share = 50 * (R.thickCm / tTop) * kTop / (K0[sec] || 1);
       var point = 50 + 25 * (R.flareCm || 0);                 // 끝이 1cm 더 벌어지면 +25
       var weight = 50 + 50 * ((R.drop || 0) - 0.6) / 0.4;     // 끝이 곧게 처질수록 무거움
       volRaw[sec] = { volShare: Math.round(share), volPoint: Math.round(point), weight: Math.round(weight) };
