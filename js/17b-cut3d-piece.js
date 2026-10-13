@@ -6092,6 +6092,7 @@ var READ_SHAPE = (function () {
     reach: 4,            // B
     maxPts: 48,
     offKeepCm: 0.5, offFadeCm: 3,
+    riseCm: 2.5,         // (2026-10-13h) 뒤·옆 뿌리 가닥이 뿌리보다 이만큼 넘게 올라가면 본보기 아님 · 0 = 끔
     capK: 1.4,           // (2026-10-13g) 옮겨심은 길 길이 상한 = 마네킹 가닥 길이 × 이 값 · 0 = 끔
     longK: 2.2,          // (2026-10-13g) 이웃 뿌리 길이 중앙값의 이 배를 넘는 가닥은 본보기 아님
     hairlineCm: 1.5, hairlineK: 1.5, hairlineFaceFrac: 0.55,   // (2026-10-13f) 얼굴·목 앞을 가로지르는 본보기 빼기
@@ -6215,14 +6216,24 @@ var READ_SHAPE = (function () {
         for (j = 1; j < q4.length; j++) {
           var a4 = q4[j], b4 = q4[j - 1];
           if (!(a4.y < hlTop) || !(a4.y > hlBot) || !(Math.abs(a4.x) < fg.xHalf)) continue;
-          if (a4.y > fg.botY) {                                                   // 얼굴: 얼굴 앞면 근처
-            var zf4 = fg.prof ? fg.prof.zAt(a4.y) : fg.E.c;
-            if (!(a4.z > zf4 - fg.zBack)) continue;
-          } else if (!(a4.z > 0)) continue;                                       // 목: 앞쪽 반
+          if (a4.y > fg.botY) { if (!fg.inFront(fg, a4)) continue; }             // 얼굴: 얼굴 앞에 보이는 점(17a faceClearInFront)
+          else if (!(a4.z > 0)) continue;                                         // 목: 앞쪽 반
           adx += Math.abs(a4.x - b4.x); ady += Math.abs(a4.y - b4.y);
         }
         if (adx > hlU && adx > hlK * ady) { fh.rev = true; hlN++; }
       }
+    }
+    /* (2026-10-13h) 하늘로 솟은 본보기 — 사용자 영상(20:11, 긴 생머리): 뒤쪽 머리가 위로 솟아 뻗침.
+       뒤·옆 뿌리(머리 앞쪽 반이 아닌 곳)에서 기른 가닥이 뿌리보다 riseCm 넘게 올라가면 본보기에서 뺌(이웃 바른 가닥 모양을 받음).
+       앞머리선(앞쪽 반)은 세운 앞머리가 있을 수 있어 안 봄. 끄기 READ_SHAPE.riseCm=0 */
+    var riseN = 0, riseU = (RS.riseCm || 0) / cpu(), Eh5 = null;
+    try { Eh5 = getHeadEllipsoid(); } catch (e) {}
+    if (riseU > 0) for (i = 0; i < n; i++) {
+      var f5 = info[i]; if (!f5 || f5.rev) continue;
+      var q5 = S[i].pts, r5 = q5[0];
+      if (Eh5 && r5.z > 0.5 * Eh5.c) continue;
+      var top5 = -Infinity; for (j = 1; j < q5.length; j++) if (q5[j].y > top5) top5 = q5[j].y;
+      if (top5 - r5.y > riseU) { f5.rev = true; riseN++; }
     }
     // 짧게 막힌 가닥 — 뿌리 칸(2cm) 이웃 길이 중앙값 대비
     var RC = RS.rootCell, rc = new Map();
@@ -6239,8 +6250,8 @@ var READ_SHAPE = (function () {
       var k3 = keyOf(Math.floor(g.r.x / RC), Math.floor(g.r.y / RC), Math.floor(g.r.z / RC)), b = cells.get(k3);
       if (!b) cells.set(k3, b = []); b.push(i); good++;
     }
-    ST.built = { hairline: hlN, long: longN, strayV: strayV, strayN: strayN, n: n, good: good, rev: rev, revRoot: revRoot, revFlip: revFlip, flipN: flipN, short: shortN, vox: flow.size, ms: Date.now() - t0 };
-    try { console.log(TAG + ' 본보기 — 기른 가닥 ' + n + ' 중 ' + good + '개 · 거꾸로 자란 가닥 ' + rev + '(그중 42번이 위로 뒤집어 기른 것 ' + revFlip + '/' + flipN + ') · 짧게 막힌 가닥 ' + shortN + ' · 얼굴·목을 가로지른 가닥 ' + hlN + ' · 길게 샌 가닥 ' + longN + ' · ' + ST.built.ms + 'ms'); } catch (e) {}
+    ST.built = { rise: riseN, hairline: hlN, long: longN, strayV: strayV, strayN: strayN, n: n, good: good, rev: rev, revRoot: revRoot, revFlip: revFlip, flipN: flipN, short: shortN, vox: flow.size, ms: Date.now() - t0 };
+    try { console.log(TAG + ' 본보기 — 기른 가닥 ' + n + ' 중 ' + good + '개 · 거꾸로 자란 가닥 ' + rev + '(그중 42번이 위로 뒤집어 기른 것 ' + revFlip + '/' + flipN + ') · 짧게 막힌 가닥 ' + shortN + ' · 얼굴·목을 가로지른 가닥 ' + hlN + ' · 길게 샌 가닥 ' + longN + ' · 솟은 가닥 ' + riseN + ' · ' + ST.built.ms + 'ms'); } catch (e) {}
     return { m: m, arr: S, cells: cells };
   }
   function index() {

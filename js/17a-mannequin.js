@@ -378,15 +378,25 @@ var FACE_CLEAR = {
   halfXFrac: 0.8,       // 얼굴 반폭 대비 상자 반폭
   zBackFrac: 0.3,       // 얼굴 앞면에서 이만큼 안쪽까지를 "얼굴 앞"으로 봄(타원체 c 대비)
   ramp: 4,              // 들어가기 전 이 점 수만큼 서서히 밀기
+  outK: 0.85,           // (2026-10-13h) 머리 타원체 (x/a)²+(y/b)²+(z/c)² 가 이보다 크면(겉 근처·밖) 얼굴 앞에 보이는 점
   stats: { strands: 0, moved: 0 }
 };
 function faceClearGeom(){
   const g = eyeGuardGeom();
   if(!g) return null;
   const halfX = g.prof && g.prof.halfX > 0 ? g.prof.halfX : g.E.a * 0.95;
-  return { E: g.E, prof: g.prof, fh: g.fh,
+  return { E: g.E, prof: g.prof, fh: g.fh, CY: g.CY, inFront: faceClearInFront,
            topY: g.CY - FACE_CLEAR.topFaceFrac * g.fh, botY: g.CY - FACE_CLEAR.botFaceFrac * g.fh,
            xHalf: halfX * FACE_CLEAR.halfXFrac, zBack: FACE_CLEAR.zBackFrac * g.E.c };
+}
+/* 점이 얼굴 앞에 보이는가 — (2026-10-13h) 얼굴 앞면(코끝 기준 zAt)에서 zBack 안쪽만 보던 것을, 머리 타원체 밖(앞쪽 반)도 포함.
+   영상(20:08 곱슬): 볼 앞에 늘어진 가닥은 코끝보다 한참 뒤라 예전 판정에서 빠져 그대로 얼굴을 가렸음. */
+function faceClearInFront(g, q){
+  if(!(q.z > 0)) return false;
+  const zf = g.prof ? g.prof.zAt(q.y) : g.E.c;
+  if(q.z > zf - g.zBack) return true;
+  const ex = q.x / g.E.a, ey = (q.y - g.CY) / g.E.b, ez = q.z / g.E.c;
+  return ex*ex + ey*ey + ez*ez > FACE_CLEAR.outK;
 }
 function faceClearAll(out){
   if(!FACE_CLEAR.on || !out || !out.length) return out;
@@ -408,8 +418,7 @@ function faceClearAll(out){
     for(let k=1; k<p.length; k++){
       const q = p[k];
       if(!(q.y < g.topY) || !(q.y > g.botY) || !(Math.abs(q.x) < g.xHalf)) continue;
-      const zf = g.prof ? g.prof.zAt(q.y) : g.E.c;
-      if(!(q.z > zf - g.zBack)) continue;
+      if(!faceClearInFront(g, q)) continue;
       if(first < 0) first = k;
       const d = side > 0 ? g.xHalf - q.x : q.x + g.xHalf;
       if(d > need) need = d;
