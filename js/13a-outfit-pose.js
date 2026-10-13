@@ -555,14 +555,23 @@ var SHOULDER = (function () {
   /* ── ② 몸통 밖으로 ─────────────────────────────────────────────────────── */
   function pushPoint(q, prev, st) {
     var g = grid;
-    if (H.natural) {                                 // (2026-10-12g) 몸통 안에 든 점만 가까운 면으로 — 목·몸통 밖은 그대로
-      if (q.y > g.yTop || q.y <= g.yBot) return q;
+    if (H.natural) {                                 // (2026-10-12g) 몸통 안에 든 점만 가까운 면으로 — 몸통 밖은 그대로
+      /* (2026-10-13) 목 구간도 목 기둥 밖으로 — 사용자 영상(19:30): 목 앞·옷깃에 가시. 예전 natural은 목 구간을 그냥 통과시켜
+         목을 뚫고 나온 가닥 토막이 목 앞에 보였음. 아래 natural이 아닌 쪽과 같은 42번 목 기둥을 씀. */
+      if (q.y > g.yTop) {
+        var NKn = W.REGROW && W.REGROW.neckPush;
+        if (NKn) { var rn = NKn(q); if (rn !== q) { S.neck++; return rn; } }
+        return q;
+      }
+      if (q.y <= g.yBot) return q;
       var ax2 = q.x < 0 ? -q.x : q.x; if (ax2 >= g.xMax) return q;
       var ix2 = ax2 / g.cell | 0, k2 = ((g.yTop - q.y) / g.cell | 0) * g.NX + ix2, zf2 = g.ZF[k2];
       if (zf2 === -Infinity) return q;
       var zb2 = g.ZB[k2], m2 = H.margin;
       if (!(q.z > zb2 - m2 && q.z < zf2 + m2)) return q;
-      if (!st.pref) { var ref2 = prev ? prev.z : q.z; st.pref = ref2 > (zf2 + zb2) / 2 ? 'front' : 'back'; S.touched++; if (st.pref === 'front') S.front++; else S.back++; }
+      /* (2026-10-13) 앞으로 보내는 건 들어가기 직전 점이 정말 몸통 앞면 앞에 있었을 때만 — 예전엔 몸통 두께의 가운데보다 앞이면 앞으로 보내서,
+         어깨·목 밑동 위로 곧게 떨어지던 가닥이 가슴 앞면에 눌려 옷깃 앞에 가시처럼 보였음(영상 19:30). */
+      if (!st.pref) { var ref2 = prev ? prev.z : q.z; st.pref = ref2 >= zf2 - m2 ? 'front' : 'back'; S.touched++; if (st.pref === 'front') S.front++; else S.back++; }
       var dUp2 = g.TOP[ix2] + m2 - q.y, dZ2 = st.pref === 'front' ? zf2 + m2 - q.z : q.z - (zb2 - m2);
       if (dUp2 >= 0 && dUp2 < H.restMax && dUp2 < dZ2) { S.rest++; return { x: q.x, y: g.TOP[ix2] + m2, z: q.z }; }   // 어깨 위에 얹음
       return { x: q.x, y: q.y, z: st.pref === 'front' ? zf2 + m2 : zb2 - m2 };

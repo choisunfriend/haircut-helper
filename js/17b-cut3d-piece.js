@@ -7124,6 +7124,8 @@ function computeAdjustedHair3DStrands(srcAngleFilter, stride){
   let out = (!srcAngleFilter && stride == null) ? STRAND_BUDGET._compute(srcAngleFilter, stride) : _adjComputeCore(srcAngleFilter, stride);
   // (옛 50 어깨) 몸통 안으로 들어간 점을 어깨·등 면에 얹음 — 13a SHOULDER
   out = SHOULDER._apply(out);
+  // (2026-10-13) 원본 머리에서 얼굴 앞을 가로지르는 가닥을 옆으로 비킴(17a FACE_CLEAR)
+  out = faceClearAll(out);
   // (옛 53) 빗질이 있는데 머리 모양이 바뀌었으면 결을 다시 읽어 둠 · 통계(17a COMB3D)
   COMB3D._afterCompute(out, srcAngleFilter, stride, _cbT0);
   // (옛 55 잔머리 정리) 곱슬이면 몸통에서 벗어난 잔머리 꼬리를 자름(17a FLY_TRIM)

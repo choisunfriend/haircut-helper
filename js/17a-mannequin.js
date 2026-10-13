@@ -364,6 +364,70 @@ function faceCoverCheck(out){
     else console.log('[얼굴 가림] ' + id + ' — 얼굴 가림 없음');
   }catch(e){ console.warn('[얼굴 가림] 검사 실패', e); }
 }
+/* ── 얼굴 비우기 (2026-10-13) ──────────────────────────────────────────────
+   사용자(영상 19:30, 긴 곱슬 · 마네킹 초기화 OFF = 원본 머리): "마네킨 모드 안 한 뒤로 계속 가닥이랑 얼굴에 가시같이 생겨."
+   원본 머리는 사진에서 읽은 가닥 모양을 마네킹 뿌리로 옮겨 심는데(READ_SHAPE), 옆머리 뿌리가 가까운 앞쪽 가닥 모양을 받으면
+   그 길이 얼굴 앞을 가로지릅니다. 위 EYE_GUARD는 스타일이 정한 앞머리 길이에만 걸리고, 원본 머리에는 걸리는 장치가 없었습니다.
+   고침: 얼굴 상자(눈썹~턱 · 얼굴 폭 · 얼굴 앞면) 안으로 들어간 가닥은 그 가닥을 통째로 옆으로 밀어 얼굴 밖에 둡니다
+   (자르지 않음 · 들어가기 전 몇 점은 서서히 따라 밀어서 꺾이지 않게). 원본 머리일 때만(등록 스타일은 앞머리를 스펙이 정함 — EYE_GUARD 몫).
+   자리: computeAdjustedHair3DStrands(17b) 어깨 단계 다음. 끄기 FACE_CLEAR.on=false */
+var FACE_CLEAR = {
+  on: true,
+  topFaceFrac: -0.28,   // 상자 윗선 = 눈썹 근처(얼굴 단위 faceH = 눈~턱, 음수 = 눈 위) — 짧은 앞머리는 이 위에서 끝남
+  botFaceFrac: 1.0,     // 상자 아랫선 = 턱
+  halfXFrac: 0.8,       // 얼굴 반폭 대비 상자 반폭
+  zBackFrac: 0.3,       // 얼굴 앞면에서 이만큼 안쪽까지를 "얼굴 앞"으로 봄(타원체 c 대비)
+  ramp: 4,              // 들어가기 전 이 점 수만큼 서서히 밀기
+  stats: { strands: 0, moved: 0 }
+};
+function faceClearGeom(){
+  const g = eyeGuardGeom();
+  if(!g) return null;
+  const halfX = g.prof && g.prof.halfX > 0 ? g.prof.halfX : g.E.a * 0.95;
+  return { E: g.E, prof: g.prof,
+           topY: g.CY - FACE_CLEAR.topFaceFrac * g.fh, botY: g.CY - FACE_CLEAR.botFaceFrac * g.fh,
+           xHalf: halfX * FACE_CLEAR.halfXFrac, zBack: FACE_CLEAR.zBackFrac * g.E.c };
+}
+function faceClearAll(out){
+  if(!FACE_CLEAR.on || !out || !out.length) return out;
+  // 원본 머리일 때만 — 마네킹 + 잰 값(58 ORIG_MQ의 '__original__') 또는 마네킹 OFF(다시 기른 사진 가닥).
+  // 등록 스타일은 앞머리 길이를 스펙이 정하므로(EYE_GUARD 몫) 건드리지 않음.
+  let orig = false;
+  try{ orig = state.specAppliedId === '__original__' || (typeof MANNEQUIN !== 'undefined' && !MANNEQUIN.on); }catch(e){ orig = false; }
+  if(!orig) return out;
+  let g = null;
+  try{ g = faceClearGeom(); }catch(e){ g = null; }
+  if(!g) return out;
+  let res = null, moved = 0;
+  for(let i=0; i<out.length; i++){
+    const sgm = out[i], p = sgm && sgm.pts;
+    if(!p || p.length < 2) continue;
+    // 뿌리 쪽으로 비킴 — 얼굴 상자에 들어간 점이 모두 그쪽 경계 밖에 오도록 가닥을 통째로 옆으로(모양은 그대로)
+    const side = p[0].x < 0 ? -1 : 1;
+    let need = 0, first = -1;
+    for(let k=1; k<p.length; k++){
+      const q = p[k];
+      if(!(q.y < g.topY) || !(q.y > g.botY) || !(Math.abs(q.x) < g.xHalf)) continue;
+      const zf = g.prof ? g.prof.zAt(q.y) : g.E.c;
+      if(!(q.z > zf - g.zBack)) continue;
+      if(first < 0) first = k;
+      const d = side > 0 ? g.xHalf - q.x : q.x + g.xHalf;
+      if(d > need) need = d;
+    }
+    if(first < 0) continue;
+    const np = p.slice(), r0 = Math.max(1, first - FACE_CLEAR.ramp);
+    for(let k=r0; k<np.length; k++){
+      const w = k >= first ? 1 : (k - r0 + 1) / (first - r0 + 1);
+      const s2 = w * w * (3 - 2 * w), q = np[k];
+      np[k] = { x: q.x + side * need * s2, y: q.y, z: q.z };
+    }
+    if(!res) res = out.slice();
+    res[i] = Object.assign({}, sgm, { pts: np });
+    moved++;
+  }
+  FACE_CLEAR.stats.strands = out.length; FACE_CLEAR.stats.moved = moved;
+  return res || out;
+}
 /* 눈썹 높이 — 이 파일의 <b>유일한</b> 눈썹 자. 원래 mannequinHasFringe가 이마
    표본을 뜨려고 안에서 쓰던 식(CY + 0.18·E.b)을 그대로 꺼낸 것이고, 이제
    크라운 앞머리 선도 같은 것을 본다. 자가 두 벌이 되면 "눈썹"이 화면 두 군데서
