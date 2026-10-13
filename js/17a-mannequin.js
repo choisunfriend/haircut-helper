@@ -379,18 +379,9 @@ var FACE_CLEAR = {
   zBackFrac: 0.3,       // 얼굴 앞면에서 이만큼 안쪽까지를 "얼굴 앞"으로 봄(타원체 c 대비)
   ramp: 4,              // 들어가기 전 이 점 수만큼 서서히 밀기
   outK: 0.85,           // (2026-10-13h) 머리 타원체 (x/a)²+(y/b)²+(z/c)² 가 이보다 크면(겉 근처·밖) 얼굴 앞에 보이는 점
+  sideByRoot: false,    // (2026-10-13m) false = 상자 안 점들이 있는 쪽으로 비킴(아래 faceClearAll 주석) · true = 예전(뿌리 x 부호)
   neck: true,           // (2026-10-13i) 턱 아래 목 앞(목 밑동까지 · 앞쪽 반)도 같은 상자로 봄 — 영상(20:26 곱슬): 턱 밑으로 목 앞에 늘어진 가닥 · 끄기 FACE_CLEAR.neck=false
-  /* (2026-10-13j) 영상(21:09 긴 웨이브): 눈·이마 위에 가로로 걸친 가닥이 그대로 남음.
-     원인: faceClearInFront는 "코끝 깊이(zAt, 정중선) − zBack" 앞이거나 머리 타원체 0.85 밖일 때만 얼굴 앞으로 봤음.
-       눈두덩·볼은 코끝보다 한참 뒤이고 타원체 겉면보다 안쪽이라, 얼굴 면에 붙어 가로로 누운 가닥은 두 조건 모두 빠져 비켜지지 않았음.
-     고침: 얼굴 상자(눈썹~턱 · 얼굴 폭 0.8) 안에서는 깊이 zMinFrac·c 앞이면 전부 얼굴 앞으로 봄(그 기둥 안 그 깊이에는 얼굴밖에 없음).
-       · 비키는 양을 점 개수(ramp 4점)가 아니라 호길이 rampCm에 걸쳐 서서히 — 점 간격이 넓은 긴 머리에서 한 마디가 크게 꺾이지 않게
-       · 비킨 뒤 다시 검사(최대 passes번) — 얼굴을 가로질러 반대편까지 간 가닥은 한 번 비키면 꼬리가 도로 상자에 들어왔음
-     예전 판정: FACE_CLEAR.zMinFrac=null */
-  zMinFrac: 0.25,
-  rampCm: 4,
-  passes: 3,
-  stats: { strands: 0, moved: 0, deepOnly: 0 }
+  stats: { strands: 0, moved: 0 }
 };
 function faceClearGeom(){
   const g = eyeGuardGeom();
@@ -419,55 +410,41 @@ function faceClearAll(out){
   let g = null;
   try{ g = faceClearGeom(); }catch(e){ g = null; }
   if(!g) return out;
-  let res = null, moved = 0, deepOnly = 0, yLow = g.botY;
+  let res = null, moved = 0, yLow = g.botY;
   if(FACE_CLEAR.neck){ yLow = g.botY - 0.6 * g.fh; try{ const nb = getNeckBottomY(); if(isFinite(nb) && nb < g.botY) yLow = nb; }catch(e){} }
-  const zMin = (typeof FACE_CLEAR.zMinFrac === 'number') ? FACE_CLEAR.zMinFrac * g.E.c : Infinity;
-  let cpu = 19.33; try{ if(typeof CURL_BUNDLE !== 'undefined' && CURL_BUNDLE.cmPerUnit) cpu = CURL_BUNDLE.cmPerUnit; }catch(e){}
-  const rampU = Math.max(1e-6, (FACE_CLEAR.rampCm || 4) / cpu);
-  // 점 하나가 비켜야 하는가 — 얼굴: (깊이 zMin 앞) 또는 예전 판정 · 목: 앞쪽 반
-  function hit(q){
-    if(!(q.y < g.topY) || !(q.y > yLow) || !(Math.abs(q.x) < g.xHalf)) return 0;
-    if(q.y > g.botY){
-      if(faceClearInFront(g, q)) return 1;
-      return q.z > zMin ? 2 : 0;                        // 2 = 예전 판정이 놓친 점(얼굴 면에 붙은 가닥)
-    }
-    return q.z > 0 ? 1 : 0;                             // (2026-10-13i) 목 앞
-  }
   for(let i=0; i<out.length; i++){
     const sgm = out[i], p = sgm && sgm.pts;
     if(!p || p.length < 2) continue;
-    // 뿌리 쪽으로 비킴 — 얼굴 상자에 들어간 점이 모두 그쪽 경계 밖에 오도록 가닥을 옆으로(모양은 그대로)
-    const side = p[0].x < 0 ? -1 : 1;
-    let np = null, onlyDeep = true;
-    for(let pass=0; pass<(FACE_CLEAR.passes || 1); pass++){
-      const cur = np || p;
-      let need = 0, first = -1;
-      for(let k=1; k<cur.length; k++){
-        const h = hit(cur[k]); if(!h) continue;
-        if(h === 1) onlyDeep = false;
-        if(first < 0) first = k;
-        const d = (side > 0 ? g.xHalf - cur[k].x : cur[k].x + g.xHalf) + 1e-4;
-        if(d > need) need = d;
-      }
-      if(first < 0) break;
-      // first 앞쪽은 호길이 rampCm에 걸쳐 0→1(뿌리는 안 움직임), first부터 끝까지는 전부
-      const S = new Float64Array(cur.length);
-      for(let k=1; k<cur.length; k++) S[k] = S[k-1] + Math.hypot(cur[k].x - cur[k-1].x, cur[k].y - cur[k-1].y, cur[k].z - cur[k-1].z);
-      const s0 = Math.max(0, S[first] - rampU), span = Math.max(1e-6, S[first] - s0);
-      const nx = cur.slice();
-      for(let k=1; k<cur.length; k++){
-        if(S[k] <= s0) continue;
-        const w = k >= first ? 1 : Math.min(1, (S[k] - s0) / span), s2 = w * w * (3 - 2 * w), q = cur[k];
-        nx[k] = Object.assign({}, q, { x: q.x + side * need * s2 });
-      }
-      np = nx;
+    // 얼굴 상자에 들어간 점이 모두 한쪽 경계 밖에 오도록 가닥을 통째로 옆으로(모양은 그대로)
+    /* (2026-10-13m) 비키는 쪽 = 상자 안 점들이 있는 쪽(평균 x). 예전엔 뿌리 x의 부호였음.
+       진단 데이터(23:01 긴 웨이브): 이마 가로줄 55가닥 전부 뿌리가 정수리 가운데(|x| ≤ 1.7cm)라 부호가 사실상 아무 쪽 —
+       얼굴 왼쪽 가장자리를 따라 내려가던 가닥이 이마 높이(y≈6cm)에서 오른쪽 끝까지 통째로 옮겨져(한 마디 ≈ 9cm) 이마를 가로지름.
+       가닥이 이미 있는 쪽으로 밀면 옮기는 양이 경계까지의 짧은 거리만큼이라 가로줄이 안 생김. 예전 = FACE_CLEAR.sideByRoot=true */
+    let first = -1, sx = 0, nIn = 0;
+    const inBox = [];
+    for(let k=1; k<p.length; k++){
+      const q = p[k];
+      if(!(q.y < g.topY) || !(q.y > yLow) || !(Math.abs(q.x) < g.xHalf)) continue;
+      if(q.y > g.botY){ if(!faceClearInFront(g, q)) continue; }
+      else if(!(q.z > 0)) continue;                     // (2026-10-13i) 목 앞
+      if(first < 0) first = k;
+      inBox.push(q.x); sx += q.x; nIn++;
     }
-    if(!np) continue;
+    if(first < 0) continue;
+    const side = FACE_CLEAR.sideByRoot ? (p[0].x < 0 ? -1 : 1) : (sx < 0 ? -1 : 1);
+    let need = 0;
+    for(let k=0; k<inBox.length; k++){ const d = side > 0 ? g.xHalf - inBox[k] : inBox[k] + g.xHalf; if(d > need) need = d; }
+    const np = p.slice(), r0 = Math.max(1, first - FACE_CLEAR.ramp);
+    for(let k=r0; k<np.length; k++){
+      const w = k >= first ? 1 : (k - r0 + 1) / (first - r0 + 1);
+      const s2 = w * w * (3 - 2 * w), q = np[k];
+      np[k] = { x: q.x + side * need * s2, y: q.y, z: q.z };
+    }
     if(!res) res = out.slice();
     res[i] = Object.assign({}, sgm, { pts: np });
-    moved++; if(onlyDeep) deepOnly++;
+    moved++;
   }
-  FACE_CLEAR.stats.strands = out.length; FACE_CLEAR.stats.moved = moved; FACE_CLEAR.stats.deepOnly = deepOnly;
+  FACE_CLEAR.stats.strands = out.length; FACE_CLEAR.stats.moved = moved;
   return res || out;
 }
 /* (2026-10-13i) 하늘로 솟은 뒷머리 — 마지막 단계 안전망. 사용자 영상(20:22·20:23 긴 생머리): 옆에서 보면 뒷머리 가닥이 위로 곧게 솟음.
@@ -475,22 +452,7 @@ function faceClearAll(out){
    원본 머리일 때, 뒤·옆 뿌리(앞쪽 반이 아닌 곳) 가닥이 뿌리보다 riseCm 넘게 올라가면 — 오르기 시작한 마디부터 위로 가는 걸음만
    아래로 뒤집어(가로·깊이 모양과 길이는 그대로) 늘어뜨리고, 머리 덩어리 안으로 들어간 점은 겉으로 밀어냄.
    끄기 RISE_FIX.on=false */
-/* (2026-10-13j) 영상(21:10 긴 생머리): 옆에서 보면 뒷머리 아래에서 뒤·위로 곧게 솟은 가닥 묶음이 그대로 남음.
-   원인: 위 판정(과 READ_SHAPE의 솟은 본보기 빼기)이 "뿌리보다 riseCm 넘게 올라갔나"만 봄. 정수리·뒤통수 뿌리 가닥이 등까지 내려갔다가
-   도로 귀 높이까지 치솟으면(U자) 끝이 뿌리보다는 낮아서 둘 다 통과했음.
-   고침: 가닥이 지금까지 내려간 가장 낮은 점보다 climbCm(곱슬 = 잰 컬 curlMin 이상이면 climbCurlCm) 넘게 다시 올라가도 같은 처리.
-   앞머리선 예외(frontFrac)는 뿌리 기준 판정에만 — 내려갔다 다시 솟는 건 세운 앞머리도 아님. 끄기 RISE_FIX.climbCm=0 */
-var RISE_FIX = { on: true, riseCm: 2.5, frontFrac: 0.5, shell: 1.02, climbCm: 5, climbCurlCm: 9, curlMin: 30, stats: { strands: 0, fixed: 0, climb: 0 } };
-/* 가닥이 낮은 점에서 다시 올라간 높이가 lim을 넘는 첫 점 번호(없으면 -1) — 17b READ_SHAPE 본보기 빼기도 같이 씀 */
-function riseClimbIndex(p, lim){
-  if(!(lim > 0) || !p || p.length < 3) return -1;
-  let lo = p[0].y;
-  for(let j=1; j<p.length; j++){
-    const y = p[j].y;
-    if(y < lo) lo = y; else if(y - lo > lim) return j;
-  }
-  return -1;
-}
+var RISE_FIX = { on: true, riseCm: 2.5, frontFrac: 0.5, shell: 1.02, stats: { strands: 0, fixed: 0 } };
 function riseFixAll(out){
   if(!RISE_FIX.on || !out || !out.length) return out;
   let orig = false;
@@ -501,20 +463,14 @@ function riseFixAll(out){
   const E = g.E, CY = g.CY;
   let cpu = 19.33; try{ if(typeof CURL_BUNDLE !== 'undefined' && CURL_BUNDLE.cmPerUnit) cpu = CURL_BUNDLE.cmPerUnit; }catch(e){}
   const riseU = RISE_FIX.riseCm / cpu, sh = RISE_FIX.shell;
-  let res = null, fixed = 0, climbN = 0;
+  let res = null, fixed = 0;
   for(let i=0; i<out.length; i++){
     const sgm = out[i], p = sgm && sgm.pts;
     if(!p || p.length < 3) continue;
     const r = p[0];
+    if(r.z > RISE_FIX.frontFrac * E.c) continue;          // 앞머리선(세운 앞머리)은 안 봄
     let k = -1;
-    if(!(r.z > RISE_FIX.frontFrac * E.c))                 // 앞머리선(세운 앞머리)은 뿌리 기준 판정을 안 봄
-      for(let j=1; j<p.length; j++) if(p[j].y - r.y > riseU){ k = j; break; }
-    if(k < 0 && RISE_FIX.climbCm > 0){                    // (2026-10-13j) 내려갔다가 다시 솟음(U자)
-      let curl = 0; try{ const sc = state.sections && state.sections[sgm.sec]; curl = (sc && sc.curl) || 0; }catch(e){}
-      const cm = curl >= RISE_FIX.curlMin ? RISE_FIX.climbCurlCm : RISE_FIX.climbCm;
-      k = riseClimbIndex(p, cm / cpu);
-      if(k >= 0) climbN++;
-    }
+    for(let j=1; j<p.length; j++) if(p[j].y - r.y > riseU){ k = j; break; }
     if(k < 0) continue;
     let s0 = k; while(s0 > 1 && p[s0 - 1].y > p[s0 - 2].y) s0--;   // 오르기 시작한 마디
     const np = p.slice(0, s0);
@@ -523,15 +479,14 @@ function riseFixAll(out){
       const dx = p[j].x - p[j-1].x, dy = p[j].y - p[j-1].y, dz = p[j].z - p[j-1].z;
       x += dx; y += (dy > 0 ? -dy : dy); z += dz;
       const ex = x / E.a, ey = (y - CY) / E.b, ez = z / E.c, d2 = ex*ex + ey*ey + ez*ez;
-      if(d2 < sh*sh && d2 > 0.04){   // (13j) 중심 근처 점은 밀면 멀리 튐 — 그런 점은 없어야 정상이라 건너뜀
-        const k2 = sh / Math.sqrt(d2); x *= k2; z *= k2; y = CY + (y - CY) * k2; }
+      if(d2 < sh*sh && d2 > 1e-9){ const k2 = sh / Math.sqrt(d2); x *= k2; z *= k2; y = CY + (y - CY) * k2; }
       np.push(Object.assign({}, p[j], { x: x, y: y, z: z }));
     }
     if(!res) res = out.slice();
     res[i] = Object.assign({}, sgm, { pts: np });
     fixed++;
   }
-  RISE_FIX.stats.strands = out.length; RISE_FIX.stats.fixed = fixed; RISE_FIX.stats.climb = climbN;
+  RISE_FIX.stats.strands = out.length; RISE_FIX.stats.fixed = fixed;
   return res || out;
 }
 /* 눈썹 높이 — 이 파일의 <b>유일한</b> 눈썹 자. 원래 mannequinHasFringe가 이마
