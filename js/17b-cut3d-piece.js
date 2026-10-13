@@ -1429,6 +1429,13 @@ var REGROW = (function () {
     freeDepth: 0.6,     // 두피 밖 구간에서 사진 결이 지어낼 수 있는 깊이(카메라 쪽/반대쪽) 움직임 상한(가로·세로 움직임의 몇 배)
     backFrom: 0.1, backFull: 0.5,   // 두피를 벗어난 자리가 얼마나 뒤쪽인가(0 = 귀 옆 · 1 = 정뒤) — 이 구간에서 0→1로 막음
     // (2026-10-05k) 긴 머리는 목 아래에서 곧게 늘어뜨림 — 머리말 v6 참고
+    /* (2026-10-13k) 두피 밖에서 다시 오르지 않음 — 사용자 영상(21:10·21:26 긴 생머리): 뒷머리 아래에서 뒤·위로 곧게 솟은 묶음.
+       로그: 기른 가닥 28,724 중 솟은 가닥 2,263 + 내려갔다 다시 솟은 가닥 2,138(15%) · "세그멘테이션이 어깨/옷을 머리로 따라갔을 가능성" 경고.
+       원인: 두피 위 구간에는 오르막 벌점(polDown)이 있지만 두피 밖 구간은 사진 결(+중력 0.25)을 그대로 따라감. 어깨·옷까지 머리로 잡힌 사진에서
+         등까지 내려온 가닥이 어깨선·옷 윤곽(목 쪽으로 올라가는 선)의 결을 만나면 그 선을 타고 위로 거슬러 올라감 — 몸에 부딪혀 결이 반대로 잡힌 것.
+       고침: 두피를 벗어난 뒤 가장 낮게 내려간 높이보다 noClimbCm 넘게 올라가는 걸음은 위 성분을 지움(옆·뒤로만 감 → 덩어리 밖에서 끝남).
+         세운 앞머리처럼 두피를 벗어나며 위로 가는 구간은 아직 내려간 적이 없으므로 안 걸림. 끄기 REGROW.noClimbCm=0 */
+    noClimbCm: 3,
     hangDown: false,    // (2026-10-11f) 끔 — 긴 머리도 3D 머리 덩어리를 빠져나가는 곳에서 끝(곧게 늘어뜨려 끝 높이 맞추기 대신)
     hangK: 0.6,         // 한 걸음마다 아래 방향을 섞는 비율(클수록 빨리 곧아짐)
     // (2026-10-05m) 기른 뒤 결 정렬 — 머리말 v7 참고
@@ -2137,8 +2144,8 @@ var REGROW = (function () {
       var tRoot = thickAt(F), rootY = F.y;
       var pts = [{ x: F.x, y: F.y, z: F.z }], P = F, s = 0, prev = null, miss = 0, k, d, dt, fl, estSteps = 0, steps = 0, free = false, stop = 'max';
       var bw = 0, myTip = null, exitI = -1, exitY = 0, exitZ = 0;           // backFix: 뒤쪽 정도(0~1) · 이 가닥이 내려갈 끝 높이 · 두피를 벗어난 자리(점 번호·높이·깊이)
-      var hangTip = null, hung = false;                                     // (v6) 곧게 내릴 끝 높이 · 곧게 내린 적 있음
-      var sOn = 0, sFree = 0, nBack = 0, nNeck = 0, nEst = 0, TS = G.trace ? [] : null;   // (2026-10-10a) 걸음 기록
+      var hangTip = null, hung = false, lowF = Infinity;   // lowF: (13k) 두피 밖에서 가장 낮게 내려간 높이                                     // (v6) 곧게 내릴 끝 높이 · 곧게 내린 적 있음
+      var nClimb = 0, sOn = 0, sFree = 0, nBack = 0, nNeck = 0, nEst = 0, TS = G.trace ? [] : null;   // (2026-10-10a) 걸음 기록
       function rec(ph, est, ex2) {                                          // 걸음 하나: [단계 0두피위 1두피밖 2곧게내림, 결 못읽음, 쓴 사진 수, 주로 쓴 사진, 그 사진 결 또렷함, 사진끼리 벌어진 각, 따로 막은 것(1 앞쏠림 2 목), 머리 영역 표, x,y,z]
         if (!TS) return; var f2 = TRF || {}; TS.push(ph, est ? 1 : 0, f2.nc || 0, f2.best == null ? -1 : f2.best, Math.round((f2.coh || 0) * 100), Math.round(f2.spr || 0), ex2 || 0);
       }
@@ -2182,7 +2189,7 @@ var REGROW = (function () {
           var F2 = onSurf({ x: F.x + dt.x * stp, y: F.y + dt.y * stp, z: F.z + dt.z * stp });
           if (offScalp(cellOf(F2))) {
             if (flip === 3 && G.sideLayStay) { stop = 'side'; st.sideEnd = (st.sideEnd || 0) + 1; break; }   // (2026-10-11p) 옆으로 눕힌 가닥은 두피 밖으로 안 나감
-            free = true; st.free++; prev = dt; k--; steps--; exitI = pts.length - 1; exitY = P.y; exitZ = P.z;
+            free = true; st.free++; prev = dt; k--; steps--; exitI = pts.length - 1; exitY = P.y; exitZ = P.z; lowF = P.y;
             if (G.backFix) {                                                // 두피를 벗어난 자리가 얼마나 뒤쪽인가
               var ex = P.x / Es.a, ez = P.z / Es.c, eh = Math.hypot(ex, ez);
               var tb = eh > 1e-6 ? -ez / eh : 0, tt = Math.max(0, Math.min(1, (tb - G.backFrom) / Math.max(1e-6, G.backFull - G.backFrom)));
@@ -2222,6 +2229,11 @@ var REGROW = (function () {
             }
             var gx = d.x * (1 - G.gravity), gy = d.y * (1 - G.gravity) - G.gravity, gz = d.z * (1 - G.gravity), gl = Math.hypot(gx, gy, gz) || 1;
             d = { x: gx / gl, y: gy / gl, z: gz / gl };
+            if (G.noClimbCm > 0 && d.y > 0 && P.y + d.y * stp - lowF > G.noClimbCm / cmU) {   // (13k) 내려왔던 가닥이 다시 오름 — 위 성분 지움
+              var cl = Math.hypot(d.x, d.z);
+              d = cl > 0.2 ? { x: d.x / cl, y: 0, z: d.z / cl } : down;
+              st.noClimb = (st.noClimb || 0) + 1; nClimb++;
+            }
           }
           var Q = { x: P.x + d.x * stp, y: P.y + d.y * stp, z: P.z + d.z * stp };
           try { Q = ellipsoidPushOut(Q, Es.a * 1.02, Es.b * 1.02, Es.c * 1.02, CY); } catch (e) {}
@@ -2229,7 +2241,7 @@ var REGROW = (function () {
           if (hangNow) {                                                    // 끝 높이까지는 사진과 상관없이 이어 감
             if (Q.y <= hangTip) { miss = 0; stop = 'tip'; break; }
             miss = 0; if (TS) { rec(2, 0, exB); TS.push(1, Q.x, Q.y, Q.z); }
-            pts.push({ x: Q.x, y: Q.y, z: Q.z }); P = Q; s += stp; sFree += stp; prev = d;
+            pts.push({ x: Q.x, y: Q.y, z: Q.z }); P = Q; s += stp; sFree += stp; prev = d; if (Q.y < lowF) lowF = Q.y;
             if (G.lenCap && s >= Lcap) { stop = 'cap'; break; }
             continue;
           }
@@ -2242,7 +2254,7 @@ var REGROW = (function () {
           }
           if (TS) { rec(1, !fl, exB); TS.push(vq ? 1 : 0, Q.x, Q.y, Q.z); }
           if (vq === 0) { if (++miss >= 2) { stop = 'mask'; break; } } else miss = 0;
-          pts.push({ x: Q.x, y: Q.y, z: Q.z }); P = Q; s += stp; sFree += stp; prev = d;
+          pts.push({ x: Q.x, y: Q.y, z: Q.z }); P = Q; s += stp; sFree += stp; prev = d; if (Q.y < lowF) lowF = Q.y;
         }
         if (G.lenCap && s >= Lcap) { stop = 'cap'; break; }
       }
@@ -2281,6 +2293,7 @@ var REGROW = (function () {
       var rg = { t: tRoot, free: free, L: Larc, tipY: pts[pts.length - 1].y, dx: ex / el, dy: ey / el, dz: ez / el,
         flip: flip, stop: stop, sOn: sOn, sFree: sFree, nEst: nEst, nBack: nBack, nNeck: nNeck, steps: steps, cap: Lcap, stp: stp, cell: cellIdx, den: roots.den[cellIdx], est0: roots.est ? roots.est[cellIdx] : 0 };
       if (TS) { TRF = null; if ((!free && (stop === 'cap' || stop === 'max')) || (st.n % Math.max(1, G.traceEvery | 0) === 0)) rg.trace = new Float32Array(TS); }
+      if (nClimb) st.noClimbN = (st.noClimbN || 0) + 1;
       if (stop === 'mask') st.stopMask++; else if (stop === 'cap') st.stopCap++; else if (stop === 'tip') st.stopTip++; else if (stop === 'len' || stop === 'side') { } else st.stopMax++;
       if (bw >= 0.5) st.backLen.push(Larc);
       st.steps += steps; st.est += estSteps;
@@ -2335,7 +2348,7 @@ var REGROW = (function () {
         S = G.stats = {
           ms: Math.round(now() - t0), mShare: mShare, n: st.n, stub: st.stub, skipped: st.skipped, sec: st.sec,
           lenMed: q(st.len, 0.5) * cm, lenP90: q(st.len, 0.9) * cm, kinkMed: q(st.kink, 0.5), kinkP90: q(st.kink, 0.9),
-          estPct: st.steps ? st.est / st.steps * 100 : 0, stopMask: st.stopMask, stopCap: st.stopCap, stopMax: st.stopMax, free: st.free, flipped: st.flipped, flipKept: st.flipKept || 0, flipSide: st.flipSide || 0, stubN: st.stub || 0, glossN: glossN, glossKeep: glossKeep, thinStop: st.thinStop || 0, sideEnd: st.sideEnd || 0,
+          estPct: st.steps ? st.est / st.steps * 100 : 0, stopMask: st.stopMask, stopCap: st.stopCap, stopMax: st.stopMax, free: st.free, flipped: st.flipped, noClimb: st.noClimb || 0, noClimbN: st.noClimbN || 0, flipKept: st.flipKept || 0, flipSide: st.flipSide || 0, stubN: st.stub || 0, glossN: glossN, glossKeep: glossKeep, thinStop: st.thinStop || 0, sideEnd: st.sideEnd || 0,
           isLong: isLong, capTxt: Object.keys(cap).map(function (k) { return k + ' ' + n1(cap[k] * cm); }).join(' · '),
           tMed: q(tv, 0.5), tP90: q(tv, 0.9), tMeasured: tStat.measured, tFilled: tStat.filled, tZero: tStat.zero, cells: NC,
           cams: cams.map(function (c) { return c.angle; }).join(','), hullN: hullN, triN: triN, vol: VOL ? { n: VOL.nx * VOL.ny * VOL.nz, inN: VOL.inN, tN: VOL.tightN, ms: VOL.ms, cm: G.volCellCm } : null, pol: polStat, lenThick: st.lenThick || 0, hullV: cams.filter(function (c) { return c.hull; }).map(function (c) { return c.angle; }).join(','), straight: straightOn ? straightNote.join(' · ') + ' · 편 가닥 ' + nStraight + '개 · 길이 남음(축/걸은 길) 중앙값 ' + (straightShrink.length ? q(straightShrink, 0.5).toFixed(2) : '-') : '',
@@ -3225,7 +3238,7 @@ function helixMeasure(rgba,mask,W,H,angle,coh,opt){opt=opt||{};const n=opt.n||25
     L.push('  뿌리 분포 — ' + secs);
     L.push('  길이 ' + n1(s.lenMed) + '/' + n1(s.lenP90) + 'cm(중앙값/p90) · 꺾임 ' + n1(s.kinkMed) + '°/' + n1(s.kinkP90) + '° · 결을 사진에서 못 읽고 이어 간 걸음 ' + n1(s.estPct) + '%');
     L.push('  길이 상한(' + (s.isLong ? '긴 머리 — 넉넉히' : '짧은 머리 — 섹션 중앙값×' + G.lenMul) + ') cm: ' + s.capTxt);
-    L.push('  멈춘 이유 — 머리 영역 밖 ' + s.stopMask + ' · 길이 상한 ' + s.stopCap + ' · 걸음 수 상한 ' + s.stopMax + ' · 두피 밖으로 나가 늘어뜨린 가닥 ' + s.free + ' · 반대로 기른 뿌리(아래쪽에 머리 없음 · 두께 ' + G.flipThickCm + 'cm 이상) ' + s.flipped + ' · 얇아서 안 뒤집은 뿌리 ' + (s.flipKept || 0) + '(그중 앞 헤어라인에서 옆으로 눕힌 ' + (s.flipSide || 0) + ' · 짧게 심은 ' + (s.stubN || 0) + (G.sideLayStay ? ' · 옆으로 눕힌 가닥을 두피 끝·섹션 길이에서 끝냄 ' + (s.sideEnd || 0) : '') + ')' + ' · 비탈 거꾸로 오르기 벌점 ' + G.polDown + (G.polThickHi > G.polThickLo ? '(뿌리 두께 ' + G.polThickLo + '~' + G.polThickHi + 'cm에서 풀림)' : '(두께로 안 풂)') + (G.glossSkip ? ' · 페이드(두께 없는 자리) 앞에서 멈춘 가닥 ' + (s.thinStop || 0) + ' · 광택 띠라 안 읽은 결 ' + (s.glossN || 0) + '(둘레와 같아 살린 것 ' + (s.glossKeep || 0) + ')' : ''));
+    L.push('  멈춘 이유 — 머리 영역 밖 ' + s.stopMask + ' · 길이 상한 ' + s.stopCap + ' · 걸음 수 상한 ' + s.stopMax + ' · 두피 밖으로 나가 늘어뜨린 가닥 ' + s.free + (G.noClimbCm > 0 ? ' · 두피 밖에서 다시 오르려던 가닥 ' + (s.noClimbN || 0) + '(걸음 ' + (s.noClimb || 0) + ' · 위 성분 지움 · 끄기 REGROW.noClimbCm=0)' : '') + ' · 반대로 기른 뿌리(아래쪽에 머리 없음 · 두께 ' + G.flipThickCm + 'cm 이상) ' + s.flipped + ' · 얇아서 안 뒤집은 뿌리 ' + (s.flipKept || 0) + '(그중 앞 헤어라인에서 옆으로 눕힌 ' + (s.flipSide || 0) + ' · 짧게 심은 ' + (s.stubN || 0) + (G.sideLayStay ? ' · 옆으로 눕힌 가닥을 두피 끝·섹션 길이에서 끝냄 ' + (s.sideEnd || 0) : '') + ')' + ' · 비탈 거꾸로 오르기 벌점 ' + G.polDown + (G.polThickHi > G.polThickLo ? '(뿌리 두께 ' + G.polThickLo + '~' + G.polThickHi + 'cm에서 풀림)' : '(두께로 안 풂)') + (G.glossSkip ? ' · 페이드(두께 없는 자리) 앞에서 멈춘 가닥 ' + (s.thinStop || 0) + ' · 광택 띠라 안 읽은 결 ' + (s.glossN || 0) + '(둘레와 같아 살린 것 ' + (s.glossKeep || 0) + ')' : ''));
     if (s.backFix) L.push('  뒷머리 앞쏠림 막기 — ' + (s.backFoldAfter ? '읽을 때는 안 막음 · 다 읽은 뒤 어깨 아래에서 뒤로 넘긴 가닥 ' + (s.foldN || 0) + '개(옮긴 점 ' + (s.foldPts || 0) + ' · 끄기 REGROW.backFoldAfter=false) · ' : '') + '뒤쪽에서 두피를 벗어난 가닥 ' + s.backN + '개(길이 중앙값 ' + n1(s.backLenMed) + 'cm) · 앞으로 가려던 걸음 ' + s.backFwd + '회 막음 · 뒤 사진 끝 높이까지 이어 간 걸음 ' + s.backKeep +
       (s.backTipN >= 20 ? ' · 뒤 사진 머리 끝 = 정수리에서 ' + n1(s.backTipCm) + 'cm 아래(가닥 ' + s.backTipN + '개 기준)' : ' · 뒤 사진 가닥이 적어(' + s.backTipN + ') 끝 높이 기준은 안 씀'));
     L.push('  곧게 늘어뜨리기(긴 머리 · 목 아래): ' + (!G.hangDown ? '꺼짐' : !s.isLong ? '짧은 머리라 안 씀' : !s.hang ? '끝 높이를 낼 사진 가닥이 모자라 안 씀' :
@@ -6092,6 +6105,11 @@ var READ_SHAPE = (function () {
     reach: 4,            // B
     maxPts: 48,
     offKeepCm: 0.5, offFadeCm: 3,
+    /* (2026-10-13k) 긴 머리에서 42번이 위로 뒤집어 기른 가닥(rg.flip 1)은 본보기로 안 씀 — 사용자 영상(21:26 긴 웨이브): 이마에 머리띠처럼 걸친 줄 · 정수리 더듬이.
+       42번 규칙 "뿌리 아래에 머리가 없고 두께 1.8cm 이상 = 세운 앞머리 → 위로 뒤집어 기름"이, 긴 웨이브는 볼륨 때문에 앞머리선 두께가 3.7cm라 걸림(로그: 반대로 기른 뿌리 275).
+       그중 흐름과 반대로 가서 위 C가 뺀 것은 156뿐이고 나머지는 앞쪽 마네킹 뿌리들의 본보기로 쓰였음. 긴 머리면 뒤집은 가닥은 전부 빼서 앞머리선 뿌리가 바로 뒤 이웃(결대로 내려가는 가닥) 모양을 받게 함.
+       짧은 머리(세운 앞머리가 실제로 있는 경우)는 그대로. 끄기 READ_SHAPE.dropFlipLong=false */
+    dropFlipLong: true,
     riseCm: 2.5,         // (2026-10-13h) 뒤·옆 뿌리 가닥이 뿌리보다 이만큼 넘게 올라가면 본보기 아님 · 0 = 끔
     capK: 1.4,           // (2026-10-13g) 옮겨심은 길 길이 상한 = 마네킹 가닥 길이 × 이 값 · 0 = 끔
     longK: 2.2,          // (2026-10-13g) 이웃 뿌리 길이 중앙값의 이 배를 넘는 가닥은 본보기 아님
@@ -6232,6 +6250,8 @@ var READ_SHAPE = (function () {
        위 판정은 뿌리 높이만 기준이라 정수리·뒤통수 뿌리에서 등까지 내려갔다가 귀 높이로 되솟은 가닥(끝 < 뿌리)은 통과했고,
        가까운 마네킹 뿌리 여럿이 그 길을 받아 묶음이 됨. 가장 낮게 내려간 점보다 climbCm(곱슬은 climbCurlCm) 넘게 오르면 본보기 아님(앞머리선도).
        자는 17a riseClimbIndex · 값은 RISE_FIX와 같음. 끄기 RISE_FIX.climbCm=0 */
+    var flipDrop = 0, longH = false; try { longH = !!(G.stats && G.stats.isLong); } catch (e) {}
+    if (RS.dropFlipLong && longH) for (i = 0; i < n; i++) { var f6 = info[i]; if (f6 && !f6.rev && S[i].rg && S[i].rg.flip === 1) { f6.rev = true; flipDrop++; } }
     var climbN = 0, RF = (typeof RISE_FIX !== 'undefined') ? RISE_FIX : null;
     var climbU = (RF && RF.climbCm > 0 && typeof riseClimbIndex === 'function') ? (curlM >= RF.curlMin ? RF.climbCurlCm : RF.climbCm) / cpu() : 0;
     for (i = 0; i < n; i++) {
@@ -6258,8 +6278,8 @@ var READ_SHAPE = (function () {
       var k3 = keyOf(Math.floor(g.r.x / RC), Math.floor(g.r.y / RC), Math.floor(g.r.z / RC)), b = cells.get(k3);
       if (!b) cells.set(k3, b = []); b.push(i); good++;
     }
-    ST.built = { rise: riseN, climb: climbN, hairline: hlN, long: longN, strayV: strayV, strayN: strayN, n: n, good: good, rev: rev, revRoot: revRoot, revFlip: revFlip, flipN: flipN, short: shortN, vox: flow.size, ms: Date.now() - t0 };
-    try { console.log(TAG + ' 본보기 — 기른 가닥 ' + n + ' 중 ' + good + '개 · 거꾸로 자란 가닥 ' + rev + '(그중 42번이 위로 뒤집어 기른 것 ' + revFlip + '/' + flipN + ') · 짧게 막힌 가닥 ' + shortN + ' · 얼굴·목을 가로지른 가닥 ' + hlN + ' · 길게 샌 가닥 ' + longN + ' · 솟은 가닥 ' + riseN + ' · 내려갔다 다시 솟은 가닥 ' + climbN + ' · ' + ST.built.ms + 'ms'); } catch (e) {}
+    ST.built = { rise: riseN, climb: climbN, flipDrop: flipDrop, hairline: hlN, long: longN, strayV: strayV, strayN: strayN, n: n, good: good, rev: rev, revRoot: revRoot, revFlip: revFlip, flipN: flipN, short: shortN, vox: flow.size, ms: Date.now() - t0 };
+    try { console.log(TAG + ' 본보기 — 기른 가닥 ' + n + ' 중 ' + good + '개 · 거꾸로 자란 가닥 ' + rev + '(그중 42번이 위로 뒤집어 기른 것 ' + revFlip + '/' + flipN + ') · 짧게 막힌 가닥 ' + shortN + ' · 얼굴·목을 가로지른 가닥 ' + hlN + ' · 길게 샌 가닥 ' + longN + ' · 솟은 가닥 ' + riseN + ' · 내려갔다 다시 솟은 가닥 ' + climbN + ' · 긴 머리라 뺀 뒤집어 기른 가닥 ' + flipDrop + ' · ' + ST.built.ms + 'ms'); } catch (e) {}
     return { m: m, arr: S, cells: cells };
   }
   function index() {
