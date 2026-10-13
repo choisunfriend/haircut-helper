@@ -384,7 +384,7 @@ function faceClearGeom(){
   const g = eyeGuardGeom();
   if(!g) return null;
   const halfX = g.prof && g.prof.halfX > 0 ? g.prof.halfX : g.E.a * 0.95;
-  return { E: g.E, prof: g.prof,
+  return { E: g.E, prof: g.prof, fh: g.fh,
            topY: g.CY - FACE_CLEAR.topFaceFrac * g.fh, botY: g.CY - FACE_CLEAR.botFaceFrac * g.fh,
            xHalf: halfX * FACE_CLEAR.halfXFrac, zBack: FACE_CLEAR.zBackFrac * g.E.c };
 }

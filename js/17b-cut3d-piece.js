@@ -6092,6 +6092,9 @@ var READ_SHAPE = (function () {
     reach: 4,            // B
     maxPts: 48,
     offKeepCm: 0.5, offFadeCm: 3,
+    capK: 1.4,           // (2026-10-13g) 옮겨심은 길 길이 상한 = 마네킹 가닥 길이 × 이 값 · 0 = 끔
+    longK: 2.2,          // (2026-10-13g) 이웃 뿌리 길이 중앙값의 이 배를 넘는 가닥은 본보기 아님
+    hairlineCm: 1.5, hairlineK: 1.5, hairlineFaceFrac: 0.55,   // (2026-10-13f) 얼굴·목 앞을 가로지르는 본보기 빼기
     farCm: 1.5,          // (2026-10-13b) 본보기 뿌리가 이보다 멀면(사진에 머리가 없는 자리) 그리지 않음
     strayOn: true, strayOut: 0.2, strayCos: 0.45, strayCurlMax: 30,   // (2026-10-13b) 엇나간 본보기 빼기   // (2026-10-13a) 본보기와 뿌리가 떨어진 만큼 길 전체를 옮기지 않고 3cm에 걸쳐 0.5cm까지 붙임
     lockPull: 0, lockRootCm: 1.5,   // (2026-10-12u) 0: 대표 길로 당기지 않음 — 한 조각의 가닥이 한 줄로 겹쳐 뭉치가 됐음. 타래는 같은 조각 = 같은 사진 선 + 가닥마다 읽은 위상(61번)으로 · 예전 0.85   // (2026-10-12s) 사진 타래 조각의 대표 길로 당기는 정도(0 = 당기지 않고 위상·크기만 같게) · (2026-10-12q) 컬 타래로 당기는 정도 · 뿌리에서 이 길이에 걸쳐 서서히 — 0 = 안 모음          // (2026-10-12o) 옮겨심은 길의 점 수 상한(웨이브 한 번에 8점쯤) · 0 = 그대로
@@ -6147,7 +6150,7 @@ var READ_SHAPE = (function () {
       var dd = d0[i]; if (dd && !(S[i].rg && S[i].rg.flip === 1)) { s[0] -= dd[0]; s[1] -= dd[1]; s[2] -= dd[2]; s[3]--; }
       return s;
     }
-    var info = new Array(n), rev = 0, revFlip = 0, flipN = 0, shortN = 0, revRoot = 0;
+    var info = new Array(n), rev = 0, revFlip = 0, flipN = 0, shortN = 0, longN = 0, revRoot = 0;
     for (i = 0; i < n; i++) {
       var q = S[i] && S[i].pts; if (!q || q.length < 2) { info[i] = null; continue; }
       var L = 0, sum = 0, cnt = 0;
@@ -6193,6 +6196,34 @@ var READ_SHAPE = (function () {
       if (tot && outN / tot > RS.strayOut) { f0.rev = true; strayV++; continue; }
       if (cn >= 4 && cs / cn < RS.strayCos) { f0.rev = true; strayN++; }
     }
+    /* (2026-10-13f) 얼굴·목 앞을 가로지르는 본보기 — 사용자 영상(19:56 긴 곱슬: 이마에 머리띠처럼 가로로 걸친 줄 · 19:59 긴 생머리: 목 앞을 가로지른 한 가닥).
+       사진의 머리선(이마와 머리 경계)·턱선·목선은 결 필터에 "가로 결"로 읽혀, 그 자리에서 기른 가닥이 이마·얼굴·목을 따라 옆으로 걷습니다.
+       위 엇나간 본보기 빼기는 곱슬(잰 컬 30 이상)에서 꺼져 있어 곱슬 손님은 이 가닥이 그대로 앞쪽 뿌리들의 본보기가 됐습니다.
+       컬과 상관없이: 얼굴·목 앞(머리선 ~ 목 밑동 · 얼굴 폭 안 · 얼굴 앞면/목 앞쪽)에서 옆으로 간 거리가 hairlineCm을 넘고
+       내려간 거리의 hairlineK배를 넘는 가닥은 본보기에서 뺌(이웃 바른 가닥 모양을 받음). 옆으로 늘어진 머리는 아래로 가므로 안 걸림.
+       끄기 READ_SHAPE.hairlineOn=false */
+    var hlN = 0;
+    if (RS.hairlineOn !== false) {
+      var fg = null; try { fg = typeof faceClearGeom === 'function' ? faceClearGeom() : null; } catch (e) { fg = null; }
+      var hlU = (RS.hairlineCm || 1.5) / cpu(), hlK = RS.hairlineK || 1.5;
+      var hlTop = fg ? fg.topY + (RS.hairlineFaceFrac || 0.55) * fg.fh : 0;   // 이마 높이 ≈ 얼굴 단위(눈~턱)의 0.55 — 그 위 정수리 가르마 넘김은 안 봄
+      var hlBot = fg ? fg.botY - 0.6 * fg.fh : 0;                             // 턱 아래 목 밑동까지
+      try { var nb = getNeckBottomY(); if (isFinite(nb) && nb < fg.botY) hlBot = nb; } catch (e) {}
+      if (fg) for (i = 0; i < n; i++) {
+        var fh = info[i]; if (!fh || fh.rev) continue;
+        var q4 = S[i].pts, adx = 0, ady = 0;
+        for (j = 1; j < q4.length; j++) {
+          var a4 = q4[j], b4 = q4[j - 1];
+          if (!(a4.y < hlTop) || !(a4.y > hlBot) || !(Math.abs(a4.x) < fg.xHalf)) continue;
+          if (a4.y > fg.botY) {                                                   // 얼굴: 얼굴 앞면 근처
+            var zf4 = fg.prof ? fg.prof.zAt(a4.y) : fg.E.c;
+            if (!(a4.z > zf4 - fg.zBack)) continue;
+          } else if (!(a4.z > 0)) continue;                                       // 목: 앞쪽 반
+          adx += Math.abs(a4.x - b4.x); ady += Math.abs(a4.y - b4.y);
+        }
+        if (adx > hlU && adx > hlK * ady) { fh.rev = true; hlN++; }
+      }
+    }
     // 짧게 막힌 가닥 — 뿌리 칸(2cm) 이웃 길이 중앙값 대비
     var RC = RS.rootCell, rc = new Map();
     for (i = 0; i < n; i++) { var f = info[i]; if (!f) continue; var kk = keyOf(Math.floor(f.r.x / (RC * 2)), Math.floor(f.r.y / (RC * 2)), Math.floor(f.r.z / (RC * 2))), a = rc.get(kk); if (!a) rc.set(kk, a = []); a.push(f.L); }
@@ -6202,11 +6233,14 @@ var READ_SHAPE = (function () {
       var g = info[i]; if (!g || g.rev) continue;
       var a2 = rc.get(keyOf(Math.floor(g.r.x / (RC * 2)), Math.floor(g.r.y / (RC * 2)), Math.floor(g.r.z / (RC * 2))));
       if (a2 && a2.length >= 4 && g.L < a2.med * RS.shortK) { shortN++; continue; }
+      /* (2026-10-13g) 길게 샌 가닥 — 사용자 영상(19:59): 머리 아래로 바닥까지 내려간 한 줄. 세그멘테이션이 옷·몸을 머리로 따라가면
+         그 자리에서 기른 가닥이 이웃보다 몇 배 길어지고, 그걸 받은 마네킹 뿌리가 그대로 길게 늘어짐. 이웃 길이 중앙값의 longK배를 넘으면 본보기 아님. */
+      if (a2 && a2.length >= 4 && g.L > a2.med * (RS.longK || 2.2)) { longN++; continue; }
       var k3 = keyOf(Math.floor(g.r.x / RC), Math.floor(g.r.y / RC), Math.floor(g.r.z / RC)), b = cells.get(k3);
       if (!b) cells.set(k3, b = []); b.push(i); good++;
     }
-    ST.built = { strayV: strayV, strayN: strayN, n: n, good: good, rev: rev, revRoot: revRoot, revFlip: revFlip, flipN: flipN, short: shortN, vox: flow.size, ms: Date.now() - t0 };
-    try { console.log(TAG + ' 본보기 — 기른 가닥 ' + n + ' 중 ' + good + '개 · 거꾸로 자란 가닥 ' + rev + '(그중 42번이 위로 뒤집어 기른 것 ' + revFlip + '/' + flipN + ') · 짧게 막힌 가닥 ' + shortN + ' · ' + ST.built.ms + 'ms'); } catch (e) {}
+    ST.built = { hairline: hlN, long: longN, strayV: strayV, strayN: strayN, n: n, good: good, rev: rev, revRoot: revRoot, revFlip: revFlip, flipN: flipN, short: shortN, vox: flow.size, ms: Date.now() - t0 };
+    try { console.log(TAG + ' 본보기 — 기른 가닥 ' + n + ' 중 ' + good + '개 · 거꾸로 자란 가닥 ' + rev + '(그중 42번이 위로 뒤집어 기른 것 ' + revFlip + '/' + flipN + ') · 짧게 막힌 가닥 ' + shortN + ' · 얼굴·목을 가로지른 가닥 ' + hlN + ' · 길게 샌 가닥 ' + longN + ' · ' + ST.built.ms + 'ms'); } catch (e) {}
     return { m: m, arr: S, cells: cells };
   }
   function index() {
@@ -6320,6 +6354,13 @@ var READ_SHAPE = (function () {
                 var ww = fr < 1 ? Math.min(1, acc / Math.max(1e-6, fadeU)) : 0; ww = ww * ww * (3 - 2 * ww);
                 var f2 = 1 - ww * (1 - fr);
                 pts[k] = { x: src[k].x + dx * f2, y: src[k].y + dy * f2, z: src[k].z + dz * f2 };
+              }
+              /* (2026-10-13g) 길이 상한 — 사용자 영상(19:59, 검은 상의 · 긴 생머리): 머리 아래로 바닥까지 내려간 굵은 줄.
+                 세그멘테이션이 검은 옷을 머리로 따라가 뒤쪽 기른 가닥이 이웃까지 통째로 길어지면 위 longK(이웃 대비)로는 못 거름.
+                 마네킹 가닥(섹션에서 잰 길이 백분위로 심은 길이)의 capK배를 넘는 부분은 끝에서 자름. 끄기 READ_SHAPE.capK=0 */
+              if (RS.capK > 0 && typeof cutFromTipArcLen === 'function' && typeof cutFromTipTruncate === 'function') {
+                var Lm = cutFromTipArcLen(s.pts), Lp = cutFromTipArcLen(pts);
+                if (Lm > 0 && Lp > RS.capK * Lm) { pts = cutFromTipTruncate(pts, RS.capK * Lm); ST.capped = (ST.capped || 0) + 1; }
               }
               if (RS.maxPts > 2 && pts.length > RS.maxPts) pts = resample(pts, RS.maxPts);
               var lk = null; if (RS.lockPull >= 0) { try { var pc2 = pullToClump(ix, bi, root, pts); if (pc2) { pts = pc2.pts; lk = pc2.lk; } } catch (e2) {} }   // (2026-10-12s) 사진 타래 조각
