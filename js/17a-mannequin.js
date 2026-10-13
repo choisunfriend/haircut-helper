@@ -379,6 +379,7 @@ var FACE_CLEAR = {
   zBackFrac: 0.3,       // 얼굴 앞면에서 이만큼 안쪽까지를 "얼굴 앞"으로 봄(타원체 c 대비)
   ramp: 4,              // 들어가기 전 이 점 수만큼 서서히 밀기
   outK: 0.85,           // (2026-10-13h) 머리 타원체 (x/a)²+(y/b)²+(z/c)² 가 이보다 크면(겉 근처·밖) 얼굴 앞에 보이는 점
+  neck: true,           // (2026-10-13i) 턱 아래 목 앞(목 밑동까지 · 앞쪽 반)도 같은 상자로 봄 — 영상(20:26 곱슬): 턱 밑으로 목 앞에 늘어진 가닥 · 끄기 FACE_CLEAR.neck=false
   stats: { strands: 0, moved: 0 }
 };
 function faceClearGeom(){
@@ -408,7 +409,8 @@ function faceClearAll(out){
   let g = null;
   try{ g = faceClearGeom(); }catch(e){ g = null; }
   if(!g) return out;
-  let res = null, moved = 0;
+  let res = null, moved = 0, yLow = g.botY;
+  if(FACE_CLEAR.neck){ yLow = g.botY - 0.6 * g.fh; try{ const nb = getNeckBottomY(); if(isFinite(nb) && nb < g.botY) yLow = nb; }catch(e){} }
   for(let i=0; i<out.length; i++){
     const sgm = out[i], p = sgm && sgm.pts;
     if(!p || p.length < 2) continue;
@@ -417,8 +419,9 @@ function faceClearAll(out){
     let need = 0, first = -1;
     for(let k=1; k<p.length; k++){
       const q = p[k];
-      if(!(q.y < g.topY) || !(q.y > g.botY) || !(Math.abs(q.x) < g.xHalf)) continue;
-      if(!faceClearInFront(g, q)) continue;
+      if(!(q.y < g.topY) || !(q.y > yLow) || !(Math.abs(q.x) < g.xHalf)) continue;
+      if(q.y > g.botY){ if(!faceClearInFront(g, q)) continue; }
+      else if(!(q.z > 0)) continue;                     // (2026-10-13i) 목 앞
       if(first < 0) first = k;
       const d = side > 0 ? g.xHalf - q.x : q.x + g.xHalf;
       if(d > need) need = d;
@@ -435,6 +438,48 @@ function faceClearAll(out){
     moved++;
   }
   FACE_CLEAR.stats.strands = out.length; FACE_CLEAR.stats.moved = moved;
+  return res || out;
+}
+/* (2026-10-13i) 하늘로 솟은 뒷머리 — 마지막 단계 안전망. 사용자 영상(20:22·20:23 긴 생머리): 옆에서 보면 뒷머리 가닥이 위로 곧게 솟음.
+   READ_SHAPE의 솟은 본보기 빼기(13h)는 "본보기"만 걸러서, 이웃 본보기도 솟았거나 슬라이더·컬이 위로 민 가닥은 그대로 남음.
+   원본 머리일 때, 뒤·옆 뿌리(앞쪽 반이 아닌 곳) 가닥이 뿌리보다 riseCm 넘게 올라가면 — 오르기 시작한 마디부터 위로 가는 걸음만
+   아래로 뒤집어(가로·깊이 모양과 길이는 그대로) 늘어뜨리고, 머리 덩어리 안으로 들어간 점은 겉으로 밀어냄.
+   끄기 RISE_FIX.on=false */
+var RISE_FIX = { on: true, riseCm: 2.5, frontFrac: 0.5, shell: 1.02, stats: { strands: 0, fixed: 0 } };
+function riseFixAll(out){
+  if(!RISE_FIX.on || !out || !out.length) return out;
+  let orig = false;
+  try{ orig = state.specAppliedId === '__original__' || (typeof MANNEQUIN !== 'undefined' && !MANNEQUIN.on); }catch(e){ orig = false; }
+  if(!orig) return out;
+  let g = null; try{ g = faceClearGeom(); }catch(e){ g = null; }
+  if(!g || !g.E) return out;
+  const E = g.E, CY = g.CY;
+  let cpu = 19.33; try{ if(typeof CURL_BUNDLE !== 'undefined' && CURL_BUNDLE.cmPerUnit) cpu = CURL_BUNDLE.cmPerUnit; }catch(e){}
+  const riseU = RISE_FIX.riseCm / cpu, sh = RISE_FIX.shell;
+  let res = null, fixed = 0;
+  for(let i=0; i<out.length; i++){
+    const sgm = out[i], p = sgm && sgm.pts;
+    if(!p || p.length < 3) continue;
+    const r = p[0];
+    if(r.z > RISE_FIX.frontFrac * E.c) continue;          // 앞머리선(세운 앞머리)은 안 봄
+    let k = -1;
+    for(let j=1; j<p.length; j++) if(p[j].y - r.y > riseU){ k = j; break; }
+    if(k < 0) continue;
+    let s0 = k; while(s0 > 1 && p[s0 - 1].y > p[s0 - 2].y) s0--;   // 오르기 시작한 마디
+    const np = p.slice(0, s0);
+    let x = p[s0 - 1].x, y = p[s0 - 1].y, z = p[s0 - 1].z;
+    for(let j=s0; j<p.length; j++){
+      const dx = p[j].x - p[j-1].x, dy = p[j].y - p[j-1].y, dz = p[j].z - p[j-1].z;
+      x += dx; y += (dy > 0 ? -dy : dy); z += dz;
+      const ex = x / E.a, ey = (y - CY) / E.b, ez = z / E.c, d2 = ex*ex + ey*ey + ez*ez;
+      if(d2 < sh*sh && d2 > 1e-9){ const k2 = sh / Math.sqrt(d2); x *= k2; z *= k2; y = CY + (y - CY) * k2; }
+      np.push(Object.assign({}, p[j], { x: x, y: y, z: z }));
+    }
+    if(!res) res = out.slice();
+    res[i] = Object.assign({}, sgm, { pts: np });
+    fixed++;
+  }
+  RISE_FIX.stats.strands = out.length; RISE_FIX.stats.fixed = fixed;
   return res || out;
 }
 /* 눈썹 높이 — 이 파일의 <b>유일한</b> 눈썹 자. 원래 mannequinHasFringe가 이마

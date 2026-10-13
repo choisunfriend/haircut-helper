@@ -7175,6 +7175,7 @@ function computeAdjustedHair3DStrands(srcAngleFilter, stride){
   // (옛 48 가닥 수) 조정 화면 전체 요청이면 정해 둔 수만큼만 — 위 STRAND_BUDGET
   let out = (!srcAngleFilter && stride == null) ? STRAND_BUDGET._compute(srcAngleFilter, stride) : _adjComputeCore(srcAngleFilter, stride);
   // (옛 50 어깨) 몸통 안으로 들어간 점을 어깨·등 면에 얹음 — 13a SHOULDER
+  out = riseFixAll(out);   // (2026-10-13i) 하늘로 솟은 뒷머리를 늘어뜨림(17a RISE_FIX) — 어깨 처리 전에
   out = SHOULDER._apply(out);
   // (2026-10-13) 원본 머리에서 얼굴 앞을 가로지르는 가닥을 옆으로 비킴(17a FACE_CLEAR)
   out = faceClearAll(out);
