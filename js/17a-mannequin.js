@@ -445,12 +445,17 @@ function faceClearAll(out){
    원본 머리일 때, 뒤·옆 뿌리(앞쪽 반이 아닌 곳) 가닥이 뿌리보다 riseCm 넘게 올라가면 — 오르기 시작한 마디부터 위로 가는 걸음만
    아래로 뒤집어(가로·깊이 모양과 길이는 그대로) 늘어뜨리고, 머리 덩어리 안으로 들어간 점은 겉으로 밀어냄.
    끄기 RISE_FIX.on=false */
-var RISE_FIX = { on: true, riseCm: 2.5, frontFrac: 0.5, shell: 1.02, stats: { strands: 0, fixed: 0 } };
+var RISE_FIX = { on: false,   // (2026-10-13l) 끔 — 근본 원인(긴 머리 아래 섹션 부피감 100)을 17b REGROW.measure에서 고침. 안전망 다시 켜기 RISE_FIX.on=true
+                   curlMax: 30, riseCm: 2.5, frontFrac: 0.5, shell: 1.02, stats: { strands: 0, fixed: 0 } };
 function riseFixAll(out){
   if(!RISE_FIX.on || !out || !out.length) return out;
   let orig = false;
   try{ orig = state.specAppliedId === '__original__' || (typeof MANNEQUIN !== 'undefined' && !MANNEQUIN.on); }catch(e){ orig = false; }
   if(!orig) return out;
+  /* (2026-10-13j) 곱슬·웨이브(잰 컬 curlMax 이상)는 안 봄 — 컬 고리는 원래 위아래로 오르내려서, 위로 가는 걸음을 뒤집으면
+     컬이 풀려 곧은 막대가 됨(영상 20:45 곱슬: 턱 아래 가슴 앞으로 곧은 줄이 늘어짐). */
+  let curl = 0; try{ const sp = window.ORIG_MQ && window.ORIG_MQ.spec; curl = (sp && sp.perm && sp.perm.curl) || 0; }catch(e){}
+  if(curl >= RISE_FIX.curlMax) return out;
   let g = null; try{ g = faceClearGeom(); }catch(e){ g = null; }
   if(!g || !g.E) return out;
   const E = g.E, CY = g.CY;
@@ -462,8 +467,13 @@ function riseFixAll(out){
     if(!p || p.length < 3) continue;
     const r = p[0];
     if(r.z > RISE_FIX.frontFrac * E.c) continue;          // 앞머리선(세운 앞머리)은 안 봄
-    let k = -1;
-    for(let j=1; j<p.length; j++) if(p[j].y - r.y > riseU){ k = j; break; }
+    /* (2026-10-13k) 뿌리 기준만 보던 것을 "지금까지 내려간 가장 낮은 자리" 기준으로 — 영상(20:47 생머리 뒤): 어깨까지 내려온 뒷머리가
+       거기서 다시 등 뒤로 위로 말려 올라감. 뿌리보다는 낮아서 예전 판정에 안 걸렸음. */
+    let k = -1, minY = r.y;
+    for(let j=1; j<p.length; j++){
+      if(p[j].y < minY) minY = p[j].y;
+      if(p[j].y - r.y > riseU || p[j].y - minY > riseU){ k = j; break; }
+    }
     if(k < 0) continue;
     let s0 = k; while(s0 > 1 && p[s0 - 1].y > p[s0 - 2].y) s0--;   // 오르기 시작한 마디
     const np = p.slice(0, s0);
