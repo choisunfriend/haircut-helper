@@ -172,14 +172,7 @@ const GYEOL_GROUPS = [
          가닥 자체가 적어야 한다. 실기기에서 앞머리가 불투명한 커튼으로
          나오던 직접 원인이 이 손잡이의 부재였다.
          100 = 그대로 · 40 = 40%만 남김(=60% 솎음). */
-      /* ── 숱 막대 제거 (2026-09-29 배포본 반영) ─────────────────────────────
-         값이 낮으면 가닥을 <b>뿌리째</b> 빼서 두피가 비어 보였다(시스루가 아니라 탈모처럼).
-         실제 숱치기 느낌은 텍스처라이징(texture) 막대가 맡는다 — 시스루 뱅도
-         texture 80 + 얇은 앞머리 라인으로 낸다(24-style-base의 layered_bob_hush 프로필).
-         defaults·스펙에 남은 density 값은 이제 <b>아무 데서도 읽지 않는다</b>
-         (23-section-all의 통합 막대 · 24-style-base의 PARAM_KEYS에서도 뺐다).
-         되살리려면 아래 줄의 주석을 풀고 23·24 두 곳에도 'density'를 다시 넣을 것.
-      {key:'density',   label:'숱',           hint:'숱치기 · 낮을수록 비침', min:15, max:100, unit:'%'}, */
+      {key:'density',   label:'숱',           hint:'숱치기 · 낮을수록 비침', min:15, max:100, unit:'%'},
       /* ── 오버디렉션 손잡이 복구 (2026-08-26) ────────────────────────────
          사용자: "얘 지금 3D에 표현되고 있다는 거잖아. 그럼 조절되어야 되는 거잖아."
          맞다. cutRatioForStrand(관자 분기)가 sec.overdirection을 <b>읽고</b> 있는데
@@ -540,11 +533,6 @@ const state = {
   // 서버측 범용 모델 개선이 아니라 클라이언트 로컬 개인화 목적 — 정정 이벤트 자체가
   // 학습 신호. UI 연동 지점은 섹션/슬라이더 명령 파싱하는 곳(추후 신설).
   shots: {front:null,left:null,right:null,back:null},
-  /* (2026-09-29 추가, 옛 31-side-part-perm.js) 모발 상태 — 08-cut-engine의 HAIR_CONDITIONS 키.
-     미용사가 고르지 않는다: 스타일을 걸 때 hairAutoDetectCondition()이 렌더된 3D 가닥의
-     잔굴곡을 재서 'straight' · 'wavy' · 'curly' 중 하나로 덮어쓴다. 판정 결과는
-     state._hairCondAuto에, 지금 걸린 스타일 id는 state._activeSpecId에 붙는다(동적 필드). */
-  hairCondition: 'straight',
   hairMasks: {front:null,left:null,right:null,back:null},
   hairCanvases: {front:null,left:null,right:null,back:null},
   baseCanvases: {front:null,left:null,right:null,back:null},
@@ -764,16 +752,14 @@ const FORCED_HAIR_COLOR = '#141414';
 const STYLES = [
   { id:'layered_bob_hush', specId:'layered_bob_hush',
     name:'Layered Bob', tags:'See-through bangs · Flick-out ends',
-    // (2026-09-29) 레퍼런스 4컷에 맞춰 올리브 애쉬 브라운 · 약한 S웨이브로 — 실제 값은
-    //   24-style-base의 layered_bob_hush 프로필(specPatch)이 스펙에 넣는다. 옛: #7A6149 · curl 28
-    length:78, curl:22, volume:70, colorHex:'#6B5A45' },   // ← 아이콘 전용(위 ⚠)
+    length:78, curl:28, volume:70, colorHex:'#7A6149' },   // ← 아이콘 전용(위 ⚠)
   { id:'taper_fade_pomp', specId:'taper_fade_pomp',
     name:'Fade Pompadour', tags:'Taper fade · Side part',
     length:34, curl:0,  volume:82, colorHex:'#60554E' },   // ← 아이콘 전용(위 ⚠)
-  // (2026-09-21 추가) 남자 히피펌 — 촘촘한 컬 + 이마로 내려 쓴 앞머리 + 정수리 볼륨
+  // (2026-09-21 추가 · 2026-10-01 재조정) 남자 히피펌 — 느슨한 S웨이브 + 시스루 앞머리 + 둥근 볼륨(16 STYLE_SPECS 참고)
   { id:'hippie_curl_men', specId:'hippie_curl_men',
-    name:"Men's Hippie Perm", tags:'Tight curls · Down-swept fringe · Crown volume',
-    length:30, curl:72, volume:75, colorHex:'#2B2016' },   // ← 아이콘 전용(위 ⚠)
+    name:"Men's Hippie Perm", tags:'Loose S-waves · See-through fringe · Rounded volume',
+    length:45, curl:55, volume:72, colorHex:'#2B2016' },   // ← 아이콘 전용(위 ⚠)
   // (2026-09-21 추가) 웨이브 보브 — 시스루 뱅 + 굵은 컬, 턱선 길이
   { id:'wavy_bob_seethrough', specId:'wavy_bob_seethrough',
     name:'Wavy Bob', tags:'See-through bangs · Chunky curls · Jaw length',
@@ -782,17 +768,10 @@ const STYLES = [
   { id:'reggae_twist', specId:'reggae_twist',
     name:'Reggae Perm', tags:'Box braids · Three-strand · Natural length',
     length:60, curl:0, volume:30, colorHex:'#1E1A17' },   // ← 아이콘 전용(위 ⚠)
-  // (2026-09-29 추가, 옛 31-side-part-perm.js) 가르마펌 — 6:4 가르마 · 안으로 감기는 C컬 앞머리 ·
-  //   옆·뒤는 짧게 다운펌. 스펙은 16의 STYLE_SPECS.side_part_perm
-  { id:'side_part_perm', specId:'side_part_perm',
-    name:'Korean Side-Part Perm', tags:'Soft off-center part · Inward C-curl fringe · Short rounded sides',
-    length:38, curl:45, volume:68, colorHex:'#2B2016' },   // ← 아이콘 전용(위 ⚠)
-  // (2026-09-29 추가, 옛 32-shag-curtain.js) 커튼뱅 섀그 — 쇄골 기장 · 크라운 짧은 층 · 바깥으로 튕기는 끝.
-  //   스펙은 16의 STYLE_SPECS.curtain_bang_shag, 엔진 프로필은 24-style-base
-  { id:'curtain_bang_shag', specId:'curtain_bang_shag',
-    name:'Curtain Bang Shag', tags:'Choppy layers · Curtain bangs · Flipped ends',
-    length:60, curl:28, volume:66, colorHex:'#3A2618' },   // ← 아이콘 전용(위 ⚠)
-  // ※ 'Blowout Waves'(long_blowout_waves) 카드는 24-style-base.js가 로드될 때 스스로 push 한다.
+  // (2026-10 추가 · 옛 35-long-layered-curtain.js) 롱 레이어드 + 커튼뱅(16 STYLE_SPECS·24 프로필)
+  { id:'long_layered_curtain', specId:'long_layered_curtain',
+    name:'Long Layers + Curtain Bangs', tags:'Center part · Cheekbone curtain bangs · Sleek coated straight',
+    length:95, curl:32, volume:58, colorHex:'#5A4030' },
 ];
 
 /* ── 의상 카탈로그(OUTFIT_CATALOG) ──

@@ -25,3 +25,8 @@ part/sweep bend · sleek · 17b cut ratio (arcAtY/yAtArc/fade). Glue: 14-hair-3d
 17b-cut3d-piece.wasm-src.js (built from originals with glue/splice.js + glue/g14.js, glue/g17b.js).
 Global function names are kept so the 24-style-base wrappers still apply. Parity: test-parity-geom.js
 (44,000 cases incl. 4,000 full adjustStrandGeom — bit-identical).
+
+Merge 2026-10-13 (branch merge-360): 01~30 match the 360shot deployed behavior; the 360shot patch files
+31~69 are melted into the original files (no separate patch files, no extra script tags). Each melted spot
+carries a "(옛 NN …)" comment naming the old patch. 67-cause-test was never loaded and is not included.
+test/run.js invariants ⑦ ⑲ reflect the old behavior and now fail by design.

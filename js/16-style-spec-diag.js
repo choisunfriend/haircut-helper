@@ -238,21 +238,30 @@ const STYLE_SPECS = {
      컬이 세서 14의 STYLE_ORDER(넘김 감쇠)·SCALP_HUG.curlOff(두피 붙임 끔)·
      GRAV3D.curlK(처짐 감쇠)가 같이 걸린다 — 이 스타일 때문에 들어간 설정들이다.
      ⚠ 다른 스펙처럼 <b>초안</b>이다. 실기기 [스타일스펙] 로그로 고칠 것. */
+  /* (2026-10-01 재조정 · 옛 31-hippie-wave-eyeguard (2)) 레퍼런스(미디엄 S웨이브 · 시스루 앞머리 · 둥근 볼륨)에 맞춤.
+     이전 9/21 초안: 컬 72/웨이브 18(가는 로드 스프링 컬) · sweep −45 · 앞 tipAt 0.44 · 정수리 0.34. 0.5 = 눈높이, 1.0 ≈ 턱선 */
   hippie_curl_men: {
-    name: "Men's hippie perm · Tight curls · Down-swept fringe",
-    tipAt: { front: 0.44, crown: 0.34, temple: 0.55, side: 0.6, occipital: 0.82, nape: 0.93 },
-    cut: {
-      crown:     { technique:'uniform',    elevation:80, texture:50, density:90, curlDir:0 },
-      front:     { technique:'uniform',    elevation:30, texture:55, density:85, line:60, curlDir:0 },
-      temple:    { technique:'graduation', elevation:45, texture:45, density:90, overdirection:20, curlDir:0 },
-      side:      { technique:'graduation', elevation:45, texture:40, density:85, curlDir:0 },
-      occipital: { technique:'graduation', elevation:50, texture:40, density:90, curlDir:0 },
-      nape:      { technique:'graduation', elevation:30, texture:35, density:80, line:70, curlDir:0 },
+    name: "Men's hippie perm · Loose S-waves · See-through fringe",
+    tipAt: {
+      front: 0.43,     // 눈썹~윗눈꺼풀
+      crown: 0.40,     // 크라운 레이어가 이마로 떨어져 앞머리와 섞임
+      temple: 0.52,    // 광대 위
+      side: 0.60,      // 귀를 반쯤 덮음
+      occipital: 0.80,
+      nape: 0.95       // 목덜미 · 살짝 뻗침
     },
-    perm:    { curl:72, wave:18 },
-    styling: { sweep:-45, volume:75, flow:0, part:0, partAmt:0, finish:55, sleek:0 },
-    globalCurl: 72,
-    color:   '#2B2016',                                        // 내추럴 다크 브라운
+    cut: {
+      crown:     { technique: 'uniform',    elevation: 80, texture: 60, density: 90, curlDir: -10 },
+      front:     { technique: 'uniform',    elevation: 25, texture: 70, density: 70, line: 55, curlDir: -30 },
+      temple:    { technique: 'graduation', elevation: 45, texture: 60, density: 85, overdirection: 20, curlDir: 10 },
+      side:      { technique: 'graduation', elevation: 40, texture: 55, density: 85, curlDir: 25 },
+      occipital: { technique: 'uniform',    elevation: 50, texture: 55, density: 90, curlDir: 20 },
+      nape:      { technique: 'graduation', elevation: 25, texture: 50, density: 80, line: 60, curlDir: 30 }
+    },
+    perm: { curl: 55, wave: 62 },   // 이전 72/18 = 가는 로드 스프링 컬
+    styling: { sweep: -12, volume: 70, flow: 10, part: 12, partAmt: 0, finish: 55, sleek: 0 },
+    globalCurl: 55,
+    color: '#2B2016'
   },
   /* ── 웨이브 보브 (2026-09-21 배포본 반영 · 초안) ─────────────────────────
      턱선 길이 보브 + 시스루 뱅(front density 30 = 숱을 많이 쳐서 비침) + 굵은 컬(50/웨이브 48).
@@ -295,94 +304,43 @@ const STYLE_SPECS = {
     styling: { sweep:0, volume:30, flow:0, part:0, partAmt:0, finish:50, sleek:40 },
     globalCurl: 0,
     braid: { widthCm: 0.85, nodeCm: 0.70, strands: 3, tightness: 0.78, count: 60 },
-  },
-  /* ── 가르마펌 (2026-09-29 추가 · 옛 js/31-side-part-perm.js 3절) ─────────────────
-     6:4 가르마, 앞머리는 눈썹 아래~광대 위 길이로 굵은 로드 C컬 → 가르마 반대쪽으로 흘려 넘김.
-     정수리 볼륨, 옆·뒤는 짧게 그라데이션 + 다운펌으로 눌러 두상 정리.
-     ⚠ 이 스펙만 <b>perm 대신 permBase</b>를 쓴다. perm 키가 있으면 applyStyleSpec이 전 섹션에
-       같은 컬을 덮어쓴다. permBase는 "젖은 상태 약 세기"이고, 섹션별 실제 컬은 스펙을 걸기
-       직전에 hairBakeSectionCurls(아래)가 모발 상태 × 섹션 배율(08 HAIR_SECTION_CURL_SCALE) ×
-       드라이 마무리(finishCurl)로 계산해 cut[sec].curl에 굽는다 — 그래서 cut에 curl이 없다.
-     rods · process는 시술 설명용(엔진은 읽지 않음 — 25-treatment-spec 확장 때 쓸 자리).
-     참고 영상: 0:00~0:38 커트·와인딩 / 0:38~1:32 가온·중화·드라이. */
-  side_part_perm: {
-    name: 'Korean side-part perm · Soft part · Inward C-curl fringe · Short rounded sides',
-    tipAt: { front: 0.46, crown: 0.40, temple: 0.50, side: 0.52, occipital: 0.74, nape: 0.88 },
-    cut: {
-      front:     { technique: 'uniform',     elevation: 25, texture: 45, line: 50, curlDir: -45 },
-      crown:     { technique: 'uniform',     elevation: 80, texture: 45, curlDir: -25 },
-      temple:    { technique: 'graduation',  elevation: 40, texture: 35, overdirection: 25, curlDir: -10 },
-      side:      { technique: 'graduation',  elevation: 20, texture: 30, curlDir: 0 },
-      occipital: { technique: 'graduation',  elevation: 45, texture: 35, curlDir: -10 },
-      nape:      { technique: 'graduation',  elevation: 15, texture: 30, line: 45, curlDir: 0 }
-    },
-    permBase: { curl: 70, wave: 45 },   // 젖은 상태 약 세기 (위 ⚠ — perm 키를 두면 전 섹션 동일 컬로 덮어씀)
-    /* 참고 영상(0:00~0:38): 옆·뒤는 로드 없이 짧게, 윗머리만 와인딩.
-       앞 헤어라인은 굵은 로드(분홍)로 뒤쪽(정수리 방향) 말기 → 얼굴에서 멀어지는 C컬,
-       정수리~탑은 중간 로드(파랑)를 가로로 줄지어 뒤로 말기, 가르마 쪽 라인은 사선 배열. */
-    rods: {
-      front:     { size: 'large',  dir: 'back', rows: 1, lift: 'on-base' },
-      crown:     { size: 'medium', dir: 'back', rows: 3, lift: 'on-base' },
-      temple:    { size: 'medium', dir: 'back-diagonal', rows: 1, lift: 'off-base' },
-      side: null, occipital: null, nape: null
-    },
-    styling: { sweep: 20, volume: 65, flow: -45, part: 15, partAmt: 80, finish: 60, sleek: 35 },
-    /* 참고 영상 후반(0:38~1:32): 열처리기로 가온 → 로드 제거 직후엔 강한 컬 →
-       드라이로 뿌리 볼륨 + 끝만 안말음 C로 정리. 결과는 거의 가운데(살짝 치우친) 가르마,
-       앞머리가 양쪽 광대 쪽으로 안으로 감기는 형태, 옆·뒤는 둥글고 짧게. */
-    finishCurl: 0.55,   // 젖은 컬 대비 드라이 마무리 후 남는 컬 비율 (08 hairEffectiveCurl이 읽음)
-    process: ['wet cut', 'rod winding (top only)', 'heat processing', 'neutralize', 'rods off', 'blow-dry: root lift + inward C ends'],
-    globalCurl: 70,     // hairBakeSectionCurls가 굽고 나면 front 섹션 컬로 바뀐다
-    color: '#2B2016'
-  },
-  /* ── 커튼뱅 섀그 (2026-09-29 추가 · 옛 js/32-shag-curtain.js) ─────────────────────
-     미국 2026 가을 트렌드 — 모던 섀그. 레퍼런스(Video Project 15): 쇄골 기장 미디엄 섀그 + 광대까지 오는 커튼뱅
-       · 길이: 옆·뒤는 쇄골 바로 위, 크라운은 짧은 레이어로 층을 많이 냄 (윗부분 볼륨 + 가벼운 끝)
-       · 앞머리: 가운데에서 양쪽으로 갈라지는 커튼뱅, 끝은 광대뼈 높이 → 얼굴선 레이어로 이어짐
-       · 결: 뿌리는 볼륨, 중간부터 느슨한 웨이브, 끝은 바깥으로 튕기는 페더(깃털) 끝
-       · 질감: 레이저/포인트 커트로 끝을 많이 쳐냄 → texture 높게
-       · 블로우아웃 웨이브(24)와 차이: 롤이 더 가늘고 컬 구간이 길며(중간부터), 끝이 안이 아닌 밖으로 뻗음
-     값은 모두 막대 숫자라 조정 화면에서 그대로 움직일 수 있다.
-     cut의 앞 여섯 값(base~curlLen)은 24-style-base의 펌·세팅 막대 기준값이다. 옛 파일은
-       set() 헬퍼로 { base:30, define:35, volShare:55, volPoint:30, weight:25, curlLen:10 }을 깔고
-       섹션마다 덮었다 — 여기엔 풀어서 적었다(키 순서도 그대로).
-       curlLen 10 = 끝 10cm만 느슨하게 (v1의 22cm는 뿌리까지 감겨 파마머리가 됨)
-       volPoint 30 = 볼륨을 위쪽(크라운)에
-     엔진 프로필(롤 굵기·앞머리선·광택)은 24-style-base.js의 curtain_bang_shag 프로필. */
-  curtain_bang_shag: {
-    name: 'Curtain bang shag · Choppy layers · Flipped feathered ends',
-    // v3: 섀그 = 커트. 위는 짧고 아래로 갈수록 급하게 길어지는 층(길이 차이 약 0.7 두상높이)
-    tipAt: {                 // 두상 위에서부터 끝 위치 (두상높이 비율, 1.0 ≈ 턱선, 0.5 ≈ 눈썹)
-      front: 0.70,           // 커튼뱅: 광대뼈 높이
-      crown: 0.62,           // 섀그 핵심 — 크라운을 눈~광대 높이로 짧게 쳐서 윗볼륨
-      temple: 0.82,          // 얼굴선 레이어: 입꼬리 높이, 커튼뱅과 이어짐
-      side: 1.15,            // 턱 아래~목
-      occipital: 1.25,
-      nape: 1.35             // 쇄골 바로 위 (가장 긴 곳, 가늘게)
+  },  /* ── 롱 레이어드 + 커튼뱅 (2026-10 · 옛 35-long-layered-curtain.js) ─────────────────────────
+     레퍼런스: 가슴 기장 롱헤어, 가운데 가르마, 광대~윗입술에서 끝나는 커튼뱅, 얼굴을 감싸는 앞쪽 레이어,
+     얼굴 바깥으로 흐르는 굵은 웨이브, 뿌리 볼륨. 형식은 24-style-base.js의 Blowout Waves(롱 기장)와
+     Curtain Bang Shag(앞머리)를 따름 — 섹션 공통값 base 25 · define 55 · volShare 55 · volPoint 70 · weight 30 · curlLen 14.
+     tipAt: headHeightRef 기준. 0.5 = 눈높이, 1.0 ≈ 턱선, 1.5 ≈ 쇄골 근처.
+     Blowout Waves와의 차이: 커튼뱅이 있음(MQ_FRINGE on), 얼굴 라인 레이어가 더 짧고, 뒷기장은 조금 더 김.
+     렌더 프로필은 24 SB.profiles.long_layered_curtain. */
+  long_layered_curtain: {
+    name: 'Long layers · Curtain bangs · Soft face-framing waves',
+    tipAt: {
+      front: 0.72,     // 커튼뱅 끝: 광대~윗입술
+      temple: 0.95,    // 얼굴 감싸는 레이어: 턱선
+      crown: 1.2,      // 크라운 레이어: 턱 아래
+      side: 1.5,       // 쇄골
+      occipital: 1.6,
+      nape: 1.65       // 가장 긴 곳(가슴 위)
     },
     cut: {
-      // 90° 이상 들어 자른 짧은 층
-      crown:     { base: 30, define: 35, volShare: 70, volPoint: 30, weight: 25, curlLen: 10,
-                   technique: 'uniform', elevation: 100, texture: 80, curlDir: 25 },
-      front:     { base: 30, define: 35, volShare: 40, volPoint: 30, weight: 25, curlLen: 10,
-                   technique: 'uniform', elevation: 40,  texture: 70, line: 30, curlDir: 35 },
-      temple:    { base: 30, define: 35, volShare: 55, volPoint: 30, weight: 25, curlLen: 10,
-                   technique: 'uniform', elevation: 90,  texture: 75, overdirection: 40, curlDir: 30 },
-      // 끝을 많이 쳐내 가볍게
-      side:      { base: 30, define: 35, volShare: 60, volPoint: 30, weight: 25, curlLen: 10,
-                   technique: 'uniform', elevation: 85,  texture: 80, curlDir: 40 },
-      occipital: { base: 30, define: 35, volShare: 60, volPoint: 30, weight: 25, curlLen: 10,
-                   technique: 'uniform', elevation: 90,  texture: 80, curlDir: 35 },
-      // 목덜미는 얇고 뾰족하게
-      nape:      { base: 30, define: 35, volShare: 55, volPoint: 30, weight: 25, curlLen: 10,
-                   technique: 'uniform', elevation: 60,  texture: 85, line: 20, curlDir: 40 }
+      crown:     { base: 25, define: 55, volShare: 55, volPoint: 70, weight: 30, curlLen: 14, technique: 'uniform', elevation: 75, texture: 40, curlDir: 15 },
+      front:     { base: 25, define: 55, volShare: 35, volPoint: 70, weight: 30, curlLen: 14, technique: 'uniform', elevation: 30, texture: 55, line: 30, overdirection: 25, curlDir: 35 },
+      temple:    { base: 25, define: 55, volShare: 55, volPoint: 70, weight: 30, curlLen: 14, technique: 'uniform', elevation: 60, texture: 50, overdirection: 30, curlDir: 25 },
+      side:      { base: 25, define: 55, volShare: 65, volPoint: 70, weight: 30, curlLen: 14, technique: 'uniform', elevation: 45, texture: 45, curlDir: 25 },
+      occipital: { base: 25, define: 55, volShare: 60, volPoint: 70, weight: 30, curlLen: 14, technique: 'uniform', elevation: 45, texture: 40, curlDir: 20 },
+      nape:      { base: 25, define: 55, volShare: 55, volPoint: 70, weight: 30, curlLen: 14, technique: 'uniform', elevation: 25, texture: 35, line: 40, curlDir: 20 }
     },
-    // v2: 굵은 롤 + 약한 컬 → 섀그는 곱슬이 아니라 끝만 흐트러진 결 (v1 wave 80 = 가는 로드 → 잔곱슬)
-    perm: { curl: 28, wave: 97 },
-    // part 0 = 가운데 가르마(커튼뱅이 양쪽으로 갈라짐), sleek 낮게 = 헝클어진 텍스처
-    styling: { sweep: 0, volume: 58, flow: 45, part: 0, partAmt: 55, finish: 40, sleek: 10 },
-    globalCurl: 28,
-    color: '#3A2618'                  // 레퍼런스 대부분이 따뜻한 미디엄 브라운
+    perm: { curl: 32, wave: 92 },          // 굵은 컬 · 넓은 웨이브 (원래 값)
+    styling: {
+      sweep: 18,      // 앞머리를 뒤·옆으로 넘겨 얼굴을 열어 둠
+      volume: 58,     // 뿌리 볼륨(벨크로 롤)
+      flow: 35,       // 끝은 바깥으로
+      part: 0,        // 가운데 가르마
+      partAmt: 88,    // 가르마를 또렷하게 → 커튼뱅이 양옆으로 갈라짐
+      finish: 55,
+      sleek: 15
+    },
+    globalCurl: 32,
+    color: '#5A4030'
   },
 };
 /* ── 아직 못 적는 것 (2026-08-23 8차 · 2026-08-26 갱신) ────────────────────
@@ -538,46 +496,12 @@ function solveSectionLengthForCm(secId, targetCm, view, aboveY){
    저장하고(06 registerCurrentAsStyle), 불러올 때도 프리셋과 <b>같은 이 함수</b>로 역산한다.
    스펙은 STYLE_SPECS(코드) 또는 STYLES의 등록 스타일(.spec) 둘 중 한 곳에서 온다. */
 function getStyleSpec(id){
+  if(typeof ORIG_MQ !== 'undefined' && id === ORIG_MQ.id) return ORIG_MQ.spec;   // (옛 58) 원본 머리 스펙(목록에는 안 보임 · 17b)
   if(STYLE_SPECS[id]) return STYLE_SPECS[id];
   const st = (typeof STYLES !== 'undefined') ? STYLES.find(x => x && x.specId === id && x.spec) : null;
   return st ? st.spec : null;
 }
-/* ── 스펙 걸기 직전: 모발 상태 판정 + 섹션 컬 굽기 (2026-09-29, 옛 js/31-side-part-perm.js) ──
-   ① 지금 거는 스타일 id를 state._activeSpecId에 적는다 — 08의 섹션 컬 배율·finishCurl이 이걸 본다.
-   ② 렌더된 3D 가닥으로 모발 상태를 다시 판정한다(08 hairAutoDetectCondition, 실패해도 계속).
-   ③ permBase가 있는 스펙이면 섹션별 실제 컬을 cut에 굽는다. 3D 가닥은 state.sections[sec].curl을
-      그대로 읽으므로, 아래 길이 계산(tipAt 역산) <b>전에</b> 넣어 둬야 한다
-      (가르마펌의 옆·뒤 0 → 직모 길이로 계산됨).
-   예전엔 이 세 줄이 applyStyleSpec을 가장 바깥에서 감쌌다. 24-style-base·28-perf-probe의
-   래퍼는 원래 함수를 먼저 부르고 뒤처리만 하므로, 함수 맨 앞으로 옮겨도 순서가 같다.
-   ⚠ STYLE_SPECS[id]만 본다(등록 스타일 .spec은 permBase가 없어 굽을 게 없다 — 옛 동작 그대로). */
-function hairBakeSectionCurls(spec){
-  if (!spec || !spec.permBase || !spec.cut) return;
-  for (const sec in spec.cut) {
-    spec.cut[sec].curl = Math.round(hairEffectiveCurl(spec.permBase.curl, sec, 1));
-    spec.cut[sec].wave = spec.permBase.wave;
-  }
-  spec.globalCurl = spec.cut.front ? spec.cut.front.curl : spec.globalCurl;
-}
-/** 모발 상태 / 마무리(wet·dry)를 바꾼 뒤 현재 섹션 컬을 다시 굽고 3D를 다시 짓는다 (콘솔·향후 UI용) */
-function rebakeHairCondition(){
-  const spec = typeof STYLE_SPECS !== 'undefined' && STYLE_SPECS[state._activeSpecId];
-  if (!spec || !spec.permBase) return;
-  hairBakeSectionCurls(spec);
-  for (const sec in spec.cut) if (state.sections[sec]) {
-    state.sections[sec].curl = spec.cut[sec].curl;
-    state.sections[sec].wave = spec.cut[sec].wave;
-  }
-  state._globalCurl = spec.globalCurl;
-  if (typeof rebuildHair3D === 'function') rebuildHair3D();
-}
-window.rebakeHairCondition = rebakeHairCondition;
-
 function applyStyleSpec(id){
-  // ①②③ — 위 배너
-  state._activeSpecId = id;
-  try { hairAutoDetectCondition('스타일 적용 ·'); } catch (e) {}
-  hairBakeSectionCurls(STYLE_SPECS[id]);
   const sp = getStyleSpec(id);
   const m = state.hair3Dneutral;
   if(!sp || !m || !m.strands || !m.strands.length){ console.warn('[스타일스펙] 모델이 없다'); return null; }

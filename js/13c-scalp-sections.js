@@ -905,7 +905,14 @@ function pruneOverlappedRoots(strands, rootField, hullW, hullD, bucketOfY, CY, b
    격자 위 BFS로 실측 셀에서 바깥으로 번져나가며 이웃 평균을 넣는다(θ는 원통이라
    감고, φ는 극이라 안 감는다). 채운 셀은 est=1로 <b>표시해 둔다</b> — 실측과
    추정이 섞이면 나중에 "정수리 숱 없음"을 지어내고도 알아채지 못한다. */
+/* 안 보인 뿌리 칸 채우기 — 이웃으로 채움(fillUnseenRootCellsCore) → (옛 68) 뿌리 고르게(17b READ_SHAPE) */
 function fillUnseenRootCells(f){
+  let r = fillUnseenRootCellsCore(f);
+  if(typeof READ_SHAPE !== 'undefined') r = READ_SHAPE._evenRoots(f, r);
+  if(typeof SEG_ORIENT !== 'undefined') r = SEG_ORIENT._fillRoots(f, r);   // (옛 64) 섬처럼 빈 칸 채우기(대머리·M자는 그대로)
+  return r;
+}
+function fillUnseenRootCellsCore(f){
   const NT = f.NT, NP = f.NP, den = f.den, est = f.est;
   const N = NT*NP;
   let frontier = [];

@@ -211,9 +211,9 @@
   }
 
   // 3D 화면을 만들 때마다(헤드그룹이 비워짐) 다시 붙임
-  var setup = G.setupModel3DScreen;
+  var setup = G.setupModel3DScreenBase;   // 바깥 setupModel3DScreen(18)은 폰 다이어트 단계 — 헤어핀은 원래 화면 만들기에 붙음
   if (typeof setup === 'function') {
-    G.setupModel3DScreen = function () {
+    G.setupModel3DScreenBase = function () {
       buildUI();
       var r = setup.apply(this, arguments);
       var after = function () {

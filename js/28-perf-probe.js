@@ -63,7 +63,7 @@
   function wrap(name) {
     var f = G[name];
     if (typeof f !== 'function' || f.__gyeolWrapped) return false;
-    var slot = P.t[name] = { ms: 0, n: 0 };
+    var slot = P.t[name.replace(/(Base|Core)$/, '')] = { ms: 0, n: 0 };   // …Base(기능 단계 안쪽 원래 함수)도 원래 이름으로 보고
     var w = function () {
       if (!P.probe) return f.apply(this, arguments);
       var t0 = now();
@@ -78,7 +78,7 @@
 
   /* 무거울 만한 자리 — 이름이 없으면 조용히 건너뜁니다(모듈 구성이 바뀌어도 안 깨짐). */
   [
-    'buildNeutralHair3D',        // 중립 3D 모델 생성 — 첫 진입의 큰 덩어리
+    'buildNeutralHair3DCore',    // 중립 3D 모델 생성 — 첫 진입의 큰 덩어리(바깥 기다림 단계 제외)
     'captureStrandPathsFor',     // 사진 한 장에서 가닥 경로 뜨기(뷰마다)
     'applyStyleSpec',            // 스타일 스펙 적용(아래 솔버들을 품음)
     'solveSectionLengthForTipY',
@@ -87,12 +87,12 @@
     'measureSectionLenCm',
     'adjustStrandGeom',          // 가장 안쪽 — 위 전부가 이걸 품는다
     'computeAdjustedHair3DStrands',
-    'projectHair3DToView',       // 2D 되쏘기
+    'projectHair3DToViewBase',   // 2D 되쏘기(바깥 두 번 그리기 단계 제외)
     'projectHairQuiltToView',
     'buildHairStripPool',
-    'extractHairMask',           // 촬영 뒤 분석(비동기 — ms가 대기시간 포함일 수 있음)
-    'setupModel3DScreen',        // 3D 화면 전체
-    'buildAdjustedHair3DObject',
+    'extractHairMaskCore',       // 촬영 뒤 분석(비동기 — ms가 대기시간 포함일 수 있음 · 바깥 단계 제외)
+    'setupModel3DScreenBase',    // 3D 화면 전체(바깥 폰 다이어트 단계 제외)
+    'buildAdjustedHair3DObjectBase',
     'buildRealFaceMesh',
     'loadOutfitMeshMeasured',
     'recommendOutfitWithAI',
@@ -140,6 +140,7 @@
     var seen = {};
     G.navTo = async function (screen) {
       var r = await navOrig.apply(this, arguments);
+      if (screen === 'result') screen = 'model3d';   // navTo('result')는 3D로 감(05 navTo 첫머리)
       if ((screen === 'adjust' || screen === 'model3d') && !seen[screen]) {
         seen[screen] = true;
         setTimeout(function () { P.report('첫 ' + screen + ' 진입까지'); }, 1200);
@@ -334,9 +335,9 @@
     };
   }
 
-  var rafOrig = G.renderAdjustFrame;
+  var rafOrig = G.renderAdjustFrameBase;   // 바깥 renderAdjustFrame(07b)은 기능 단계
   if (typeof rafOrig === 'function') {
-    G.renderAdjustFrame = function () {
+    G.renderAdjustFrameBase = function () {
       if (!waitRender) return rafOrig.apply(this, arguments);
       var t0 = now();
       try { return rafOrig.apply(this, arguments); }
@@ -487,16 +488,16 @@
   timeIt('captureStrandPathsFor', 'prep', function (a) { return '경로·' + a[0]; });
   timeIt('buildHairStrandsFromPaths', 'prep', function () { return '들어올리기'; });
   // 3D 결과 화면
-  var sm = G.setupModel3DScreen;
+  var sm = G.setupModel3DScreenBase;
   if (typeof sm === 'function') {
-    G.setupModel3DScreen = function () { T.scr = {}; var t0 = now(), r = sm.apply(this, arguments);
+    G.setupModel3DScreenBase = function () { T.scr = {}; var t0 = now(), r = sm.apply(this, arguments);
       var d = function () { T.scr['합계'] = now() - t0; }; if (r && r.then) r.then(d, d); else d(); return r; };
   }
   timeIt('loadHeadMesh', 'scr', function () { return '두상'; });
-  timeIt('buildAdjustedHair3DObject', 'scr', function () { return '헤어객체'; });
+  timeIt('buildAdjustedHair3DObjectBase', 'scr', function () { return '헤어객체'; });
   // 헤어객체 안쪽: 가닥 조정 계산(곱슬 포함) · 3D 음영(24번)
-  var inHair = false, ho = G.buildAdjustedHair3DObject;
-  G.buildAdjustedHair3DObject = function () { inHair = true; try { return ho.apply(this, arguments); } finally { inHair = false; } };
+  var inHair = false, ho = G.buildAdjustedHair3DObjectBase;
+  G.buildAdjustedHair3DObjectBase = function () { inHair = true; try { return ho.apply(this, arguments); } finally { inHair = false; } };
   var ca = G.computeAdjustedHair3DStrands;
   if (typeof ca === 'function') G.computeAdjustedHair3DStrands = function () {
     if (!inHair) return ca.apply(this, arguments);
@@ -538,7 +539,10 @@
 (function () {
   'use strict';
   var G = window, F = G.STYLE_FAST;
-  var Q = G.GYEOL_3D = { memo: true, prewarm: true, fastColor: true, skipDiag: true, bakeMemo: true,
+  /* (2026-10-03f) bakeMemo 끔 — 실측에서 적중 0/100,588 (37번이 가닥을 하나씩 새로 만들어 쓰면서 같은 점 배열이
+     다시 오는 일이 없어짐). 저장만 하고 못 꺼내 쓰던 메모리·시간을 없앰. 되돌리기 GYEOL_3D.bakeMemo=true */
+  var Q = G.GYEOL_3D = { memo: true, prewarm: true, fastColor: true, skipDiag: true, bakeMemo: false,
+    warmDelayMs: 400,   // (2026-10-03c) 900 → 400: 실측에서 미리 만들기가 끝나기 전에 3D로 넘어가는 일이 대부분이었음
     hits: 0, miss: 0, warmDone: 0, warmTotal: 0, bakeHits: 0, bakeMiss: 0 };
   function now() { try { return performance.now(); } catch (e) { return Date.now(); } }
   var T = (F && F.t3) ? F.t3 : { scr: {} };
@@ -593,6 +597,9 @@
         ADJ_CACHE.misses++;
       } catch (e) { key = null; }
       var st = Math.max(1, +stride || 1), out = [], acc = 0;
+      // (2026-10-04e) 48번: 조정 화면의 "전체 가닥" 요청은 일정 간격 대신 고른 가닥만(앞머리는 전부 · 옆·뒤에서 고르게 뺌)
+      var SB = G.STRAND_BUDGET, bm = null;
+      try { if (!angle && st > 1 && SB && SB._inFull && typeof SB.maskFor === 'function') bm = SB.maskFor(model); } catch (eb) { bm = null; }
       var psig = strandSig(model);
       if (psig !== M.sig) { M.sig = psig; M.map = new WeakMap(); }
       var ctx = makeCtx(model);
@@ -600,9 +607,10 @@
       for (var i = 0; i < model.strands.length; i++) {
         var s = model.strands[i];
         if (angle && s.srcAngle !== angle) continue;
-        acc += 1 / st; if (acc < 1) continue; acc -= 1;
+        if (bm) { if (!bm.keep[i]) continue; }
+        else { acc += 1 / st; if (acc < 1) continue; acc -= 1; }
         var sec = state.sections && state.sections[s.sec] || {};
-        if (false /* 숱(density) 막대 제거 */ && !ADJ_CACHE.split && typeof sec.density === 'number' && sec.density < 100 && _cutHash01(s) > Math.max(0, sec.density) / 100) continue;
+        if (!ADJ_CACHE.split && typeof sec.density === 'number' && sec.density < 100 && _cutHash01(s) > Math.max(0, sec.density) / 100) continue;
         var e = psig ? M.map.get(s) : null;
         if (e) { Q.hits++; out.push(e); continue; }
         Q.miss++;
@@ -628,34 +636,54 @@
 
   /* 미리 계산 — 조정·결과 화면이 조용해지면 900ms 뒤 시작, 한 번에 ~10ms씩 */
   var warmTimer = null, warmIdx = 0, warmSig = null, warmCtx = null;
+  /* (2026-10-04e) 48번이 조정 화면에서 그릴 가닥을 골라 둔 표({key, keep}) — 다른 화면이거나 48번이 없으면 null(전부) */
+  function budgetMask(model) {
+    try { var SB = G.STRAND_BUDGET; return (SB && typeof SB.maskFor === 'function') ? SB.maskFor(model) : null; } catch (e) { return null; }
+  }
   function scheduleWarm() {
     if (!Q.memo || !Q.prewarm) return;
     if (warmTimer) clearTimeout(warmTimer);
-    warmTimer = setTimeout(warmSlice, 900);
+    warmTimer = setTimeout(warmSlice, Q.warmDelayMs >= 0 ? Q.warmDelayMs : 900);
+  }
+  /* 한 조각(budget ms)만 일함. 돌려주는 값: true = 더 할 게 없음(끝났거나 할 수 없음) · false = 남음 */
+  function warmCore(budget) {
+    var model = state.hair3Dneutral;
+    if (!model || !model.strands) return true;
+    var psig = strandSig(model);
+    if (!psig) return true;
+    if (psig !== M.sig) { M.sig = psig; M.map = new WeakMap(); }
+    var bm = budgetMask(model), wkey = psig + (bm ? '|' + bm.key : '');
+    if (wkey !== warmSig) { warmSig = wkey; warmIdx = 0; warmCtx = makeCtx(model); Q.warmDone = 0; }
+    Q.warmTotal = model.strands.length;
+    var t0 = now();
+    while (warmIdx < model.strands.length && now() - t0 < budget) {
+      var wi = warmIdx++, s = model.strands[wi];
+      if (bm && !bm.keep[wi]) continue;            // 조정 화면에서 안 그리는 가닥은 계산하지 않음
+      if (M.map.has(s)) continue;
+      M.map.set(s, computeEntry(s, warmCtx));
+      Q.warmDone++;
+    }
+    return warmIdx >= model.strands.length;
   }
   function warmSlice() {
     warmTimer = null;
     var scr = (typeof currentScreen !== 'undefined') ? currentScreen : '';
     if (scr !== 'adjust' && scr !== 'result') return;
-    var model = state.hair3Dneutral;
-    if (!model || !model.strands) return;
-    var psig = strandSig(model);
-    if (!psig) return;
-    if (psig !== M.sig) { M.sig = psig; M.map = new WeakMap(); }
-    if (psig !== warmSig) { warmSig = psig; warmIdx = 0; warmCtx = makeCtx(model); Q.warmDone = 0; }
-    Q.warmTotal = model.strands.length;
-    var t0 = now();
-    try {
-      while (warmIdx < model.strands.length && now() - t0 < 10) {
-        var s = model.strands[warmIdx++];
-        if (M.map.has(s)) continue;
-        M.map.set(s, computeEntry(s, warmCtx));
-        Q.warmDone++;
-      }
-    } catch (e) { console.warn('[3D 미리계산] 중단', e); return; }
-    if (warmIdx < model.strands.length) warmTimer = setTimeout(warmSlice, 0);
-    else if (!Q.checked) setTimeout(selfCheck, 50);
+    if (typeof Q.hold === 'function' && Q.hold()) return;   // 37번: 3D 헤어가 이미 만들어져 있으면 가닥을 다시 채우지 않음
+    var done;
+    try { done = warmCore(10); } catch (e) { console.warn('[3D 미리계산] 중단', e); return; }
+    if (!done) warmTimer = setTimeout(warmSlice, 0);
+    else if (!Q.checked && Q.warmTotal && warmIdx >= Q.warmTotal) setTimeout(selfCheck, 50);
   }
+  /* 37번(3D 진입 때 나눠서 만들기)이 부르는 창구 — 화면과 상관없이 한 조각 일하고 진행률(0~1)을 돌려줌 */
+  Q.warmStep = function (budget) {
+    if (!Q.memo || !Q.prewarm) return 1;
+    try {
+      if (warmTimer) { clearTimeout(warmTimer); warmTimer = null; }
+      if (warmCore(budget || 10)) return 1;
+      return Q.warmTotal ? Math.min(0.999, warmIdx / Q.warmTotal) : 0;
+    } catch (e) { console.warn('[3D 미리계산] 중단', e); return 1; }
+  };
   /* 자가 검증 — 미리계산이 처음 끝나면 한 번: 원래 함수와 새 함수의 결과(간격 16)를 점 단위로 비교 */
   function selfCheck() {
     if (Q.checked) return; Q.checked = true;
@@ -679,15 +707,28 @@
     if (same !== n || a.length !== b.length) { Q.memo = false; Q.check += ' → 기억 끔(원래 방식으로 계산)'; }
   }
   Q.scheduleWarm = scheduleWarm;
-  var raf2 = G.renderAdjustFrame;
-  if (typeof raf2 === 'function') G.renderAdjustFrame = function () { var r = raf2.apply(this, arguments); scheduleWarm(); return r; };
+  /* 37번: 3D 헤어를 다 만든 뒤에는 전체 가닥 기억이 필요 없음 — 비움(다음에 필요해지면 처음부터 다시 채움) */
+  Q.dropMemo = function () { M.map = new WeakMap(); warmSig = null; warmIdx = 0; Q.warmDone = 0; };
+  /* 37번(3D 미리 만들기)이 묻는 창구 — 지금 상태의 가닥이 전부 미리 계산돼 있나 */
+  Q.warmReady = function () {
+    try {
+      if (!Q.memo || !Q.prewarm) return false;
+      var model = state.hair3Dneutral;
+      if (!model || !model.strands) return false;
+      var psig = strandSig(model);
+      var bm = budgetMask(model), wkey = psig ? psig + (bm ? '|' + bm.key : '') : null;
+      return !!psig && psig === M.sig && wkey === warmSig && warmIdx >= model.strands.length;
+    } catch (e) { return false; }
+  };
+  var raf2 = G.renderAdjustFrameBase;
+  if (typeof raf2 === 'function') G.renderAdjustFrameBase = function () { var r = raf2.apply(this, arguments); scheduleWarm(); return r; };
   var nav2 = G.navTo;
   if (typeof nav2 === 'function') G.navTo = function () { var r = nav2.apply(this, arguments); scheduleWarm(); return r; };
 
   /* ── ① 헤어 객체 만들기 ────────────────────────────────────────────── */
   var inHair = false, hairEndLines = 0;
-  var hb = G.buildAdjustedHair3DObject;
-  if (typeof hb === 'function') G.buildAdjustedHair3DObject = function () {
+  var hb = G.buildAdjustedHair3DObjectBase;
+  if (typeof hb === 'function') G.buildAdjustedHair3DObjectBase = function () {
     inHair = true; T.scr['└색입히기'] = 0; var t0 = now();
     try { var r = hb.apply(this, arguments);
       if (hairEndLines) T.scr['└음영(24번)'] = now() - hairEndLines;
@@ -718,10 +759,12 @@
       if (!Q.bakeMemo || !pts || typeof pts !== 'object') return bake.apply(this, arguments);
       if (model !== bakeModel) { bakeModel = model; bakeMemo = new WeakMap(); }
       var m = bakeMemo.get(pts);
-      if (m && m.a === ang && m.c === color && m.l === colors && m.d === dye) { Q.bakeHits++; return m.v; }
+      var gk = '';   // (옛 36) 색 고르게(GLOSS_WAVE)가 이 결과 안에 들어가므로 그 설정도 열쇠에
+      try { var gc = typeof glossWaveCfg === 'function' ? glossWaveCfg() : null; gk = gc ? JSON.stringify(gc) : ''; } catch (e) {}
+      if (m && m.a === ang && m.c === color && m.l === colors && m.d === dye && m.g === gk) { Q.bakeHits++; return m.v; }
       Q.bakeMiss++;
       var v = bake.apply(this, arguments);
-      bakeMemo.set(pts, { a: ang, c: color, l: colors, d: dye, v: v });
+      bakeMemo.set(pts, { a: ang, c: color, l: colors, d: dye, g: gk, v: v });
       return v;
     } finally { if (inHair) T.scr['└색입히기'] += now() - t0; }
   };
@@ -746,31 +789,4 @@
       return cset.apply(this, arguments);
     };
   }
-})();
-
-/* F. 의상 OBJ 재시도 — GitHub Pages가 가끔 503을 주면 한 번에 네모 상자 옷으로 떨어지던 것.
- *    실패하면 0.6s·1.5s·3s 뒤 다시 받아 봅니다(캐시 우회). 끄기 OUTFIT_RETRY.on=false */
-(function () {
-  var R = window.OUTFIT_RETRY = window.OUTFIT_RETRY || { on: true, waits: [600, 1500, 3000] };
-  function hook() {
-    var L = window.THREE && THREE.OBJLoader;
-    if (!L || !L.prototype || L.prototype.__retry) return !!L;
-    var orig = L.prototype.load;
-    L.prototype.load = function (url, onLoad, onProgress, onError) {
-      var self = this, n = 0;
-      function go(u) {
-        orig.call(self, u, onLoad, onProgress, function (err) {
-          if (R.on && n < R.waits.length) {
-            var w = R.waits[n++];
-            console.warn('[의상·재시도] ' + url + ' 실패 → ' + w + 'ms 뒤 ' + n + '번째 재시도');
-            setTimeout(function () { go(url + (url.indexOf('?') < 0 ? '?' : '&') + 'r=' + Date.now()); }, w);
-          } else if (onError) onError(err);
-        });
-      }
-      go(url);
-    };
-    L.prototype.__retry = true;
-    return true;
-  }
-  if (!hook()) { var t = setInterval(function () { if (hook()) clearInterval(t); }, 300); setTimeout(function () { clearInterval(t); }, 30000); }
 })();

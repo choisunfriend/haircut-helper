@@ -1272,13 +1272,86 @@ function withRenderGate(fn, tag){
       + ' (끄기 RENDER_GATE.on=false)');
   }
 }
-function drawAdjustPreview(){
-  if(currentScreen!=='adjust') return;
-  if(RENDER_GATE.on && RENDER_GATE.depth > 0){ RENDER_GATE.pending = true; RENDER_GATE.skipped++; return; }
-  if(rafId) cancelAnimationFrame(rafId);
-  rafId = requestAnimationFrame(()=>{
-    renderAdjustFrame();
-    rafId = null;
+const RENDER_SKIP = {
+  'on': !![],
+  'staleMs': 0x5dc,
+  'last': null,
+  'at': 0x0,
+  'skipped': 0x0,
+  'drawn': 0x0,
+  'by': {}
+};
+let _modelGen = 0x0,
+  _modelSeen = null;
+
+function renderSignature() {
+  try {
+    const _0x3f1b02 = state['sections'] || {},
+      _0x2b4946 = [],
+      _0x43b127 = typeof ADJ_GEO_SECTION_KEYS !== 'undefined' ? ADJ_GEO_SECTION_KEYS : [],
+      _0x542f1f = typeof ADJ_FILTER_SECTION_KEYS !== 'undefined' ? ADJ_FILTER_SECTION_KEYS : [],
+      _0x537cf8 = typeof SECTION_ORDER !== 'undefined' ? SECTION_ORDER : Object['keys'](_0x3f1b02);
+    for (const _0xc7b0c7 of _0x537cf8) {
+      const _0x5deadf = _0x3f1b02[_0xc7b0c7] || {};
+      _0x2b4946['push'](_0xc7b0c7 + ':' + _0x43b127['concat'](_0x542f1f)['map'](_0x31285a => _0x5deadf[_0x31285a])['join']('/'));
+    }
+    state['hair3Dneutral'] !== _modelSeen && (_modelSeen = state['hair3Dneutral'], _modelGen++);
+    const _0xb93906 = state['stylingByView'] || state['styling'] || {},
+      _0x385b10 = document['getElementById']('adjustCanvas');
+    return _0x2b4946['push']('v=' + state['currentViewAngle'], 'raw=' + state['debugShowRaw'], 'quilt=' + state['hairQuilt'], 'mq=' + (typeof MANNEQUIN !== 'undefined' && MANNEQUIN['on']), 'gcurl=' + state['_globalCurl'], 'spec=' + state['specAppliedId'], 'sty=' + JSON['stringify'](_0xb93906), 'fade=' + JSON['stringify'](state['fade'] || null), 'zoom=' + (typeof ADJUST_VIEW !== 'undefined' ? [ADJUST_VIEW['zoom'], ADJUST_VIEW['panX'], ADJUST_VIEW['panY']]['join'](',') : ''), 'cv=' + (_0x385b10 ? _0x385b10['width'] + 'x' + _0x385b10['height'] : ''), 'gen=' + _modelGen, 'braid=' + (typeof BRAID !== 'undefined' ? [BRAID['on'], BRAID['partCm'], BRAID['widthCm'], BRAID['strands'], BRAID['gather']]['join'](',') : ''), 'clump=' + (typeof HAIR_CLUMP3D !== 'undefined' ? [HAIR_CLUMP3D['on'], HAIR_CLUMP3D['cellCm'], HAIR_CLUMP3D['pull']]['join'](',') : '')), _0x2b4946['join']('|');
+  } catch (_0x38bc72) {
+    return null;
+  }
+}
+
+function _renderCaller() {
+  try {
+    const _0x14e7e4 = new Error()['stack']['split']('\x0a');
+    for (let _0x1839dc = 0x3; _0x1839dc < _0x14e7e4['length']; _0x1839dc++) {
+      const _0xe29077 = _0x14e7e4[_0x1839dc] && _0x14e7e4[_0x1839dc]['match'](/([\w.\-]+\.js)[^\d]*(\d+):(\d+)/);
+      if (_0xe29077 && !/10-hair-render-2d/ ['test'](_0xe29077[0x1])) return _0xe29077[0x1] + ':' + _0xe29077[0x2];
+    }
+  } catch (_0x5ca552) {}
+  return '?';
+}
+
+function drawAdjustPreviewBase() {
+  if (currentScreen !== 'adjust') return;
+  if (RENDER_GATE['on'] && RENDER_GATE['depth'] > 0x0) {
+    RENDER_GATE['pending'] = !![], RENDER_GATE['skipped']++;
+    return;
+  }
+  if (RENDER_SKIP['on']) {
+    const _0x12fd1e = renderSignature(),
+      _0x577bec = Date['now']();
+    if (_0x12fd1e && _0x12fd1e === RENDER_SKIP['last'] && _0x577bec - RENDER_SKIP['at'] < RENDER_SKIP['staleMs']) {
+      RENDER_SKIP['skipped']++;
+      const _0x49d70b = _renderCaller();
+      RENDER_SKIP['by'][_0x49d70b] = (RENDER_SKIP['by'][_0x49d70b] || 0x0) + 0x1;
+      return;
+    }
+    RENDER_SKIP['last'] = _0x12fd1e, RENDER_SKIP['at'] = _0x577bec, RENDER_SKIP['drawn']++;
+  }
+  if (rafId) cancelAnimationFrame(rafId);
+  rafId = requestAnimationFrame(() => {
+    renderAdjustFrame(), RENDER_SKIP['at'] = Date['now'](), rafId = null, _renderSkipReport();
   });
+}
+/* 조정 화면 다시 그리기 — 기능 단계(바깥) → drawAdjustPreviewBase(원래 그리기)
+   · (옛 37 폰 다이어트 ①) 슬라이더 드래그 중에는 그림을 미룸(손이 멈추거나 뗄 때 Base) */
+function drawAdjustPreview() {
+  if(typeof MOBILE_DIET !== 'undefined' && MOBILE_DIET.deferDraw()) return;
+  return drawAdjustPreviewBase.apply(this, arguments);
+}
+let _skipReportTimer = null;
+
+function _renderSkipReport() {
+  if (!RENDER_SKIP['on'] || _skipReportTimer) return;
+  _skipReportTimer = setTimeout(() => {
+    _skipReportTimer = null;
+    if (!RENDER_SKIP['skipped']) return;
+    const _0x53a468 = Object['entries'](RENDER_SKIP['by'])['sort']((_0x1d4a54, _0x3e2909) => _0x3e2909[0x1] - _0x1d4a54[0x1])['slice'](0x0, 0x6)['map'](([_0xe00ea1, _0x5bff87]) => _0xe00ea1 + '\x20×' + _0x5bff87)['join']('\x20·\x20');
+    console['log']('[다시\x20그리기]\x20그림\x20' + RENDER_SKIP['drawn'] + '회\x20·\x20<b>같은\x20그림이라\x20건너뜀\x20' + RENDER_SKIP['skipped'] + '회</b>\x20\x20부른\x20곳:\x20' + _0x53a468 + '\x20\x20(끄기\x20RENDER_SKIP.on=false\x20·\x20안\x20그려지는\x20게\x20있으면\x20이\x20줄과\x20함께\x20알려\x20주세요)'), RENDER_SKIP['skipped'] = 0x0, RENDER_SKIP['drawn'] = 0x0, RENDER_SKIP['by'] = {};
+  }, 0x4b0);
 }
 

@@ -25,7 +25,7 @@ function _fh2(a, b){ return Math.sqrt(a*a + b*b); }
      구조가 이제 최종 화면까지 한 줄로 이어진다.
    ※ 중립 모델이 아직 없으면(촬영 직후 등) 기존 경로로 폴백한다.
 ══════════════════════════════════════════════════════════════════ */
-function buildAdjustedHair3DObject(){
+function buildAdjustedHair3DObjectBase(){
   if(typeof THREE === 'undefined') return null;
   const adj = computeAdjustedHair3DStrands();     // 전 뷰, 조정 반영
   if(!adj || !adj.length) return null;
@@ -112,6 +112,12 @@ function buildAdjustedHair3DObject(){
   console.log(`[3D] 조정 반영 헤어: ${adj.length}가닥 (조정 화면과 같은 소스)`
     + ` · 원본 픽셀색 ${pxN}개(=${adj.length ? Math.round(pxN/adj.length*100) : 0}%)`);
   return obj;
+}
+/* 3D 결과 화면 헤어 객체 — 기능 단계(바깥) → buildAdjustedHair3DObjectBase(24 음영·28 시간이 감쌈)
+   · (옛 37 폰 다이어트 ②④) 조정 화면에서 미리(또는 진입 때 나눠서) 만든 헤어가 있으면 그걸 받아 씀 */
+function buildAdjustedHair3DObject(){
+  if(typeof MOBILE_DIET !== 'undefined') return MOBILE_DIET.buildHair(this, arguments);
+  return buildAdjustedHair3DObjectBase.apply(this, arguments);
 }
 
 /* ══════════════════════════════════════════════════════════════════
@@ -406,6 +412,10 @@ function curlRodRadius(waveT){
   return Math.pow(lo + w * (hi - lo), 1 / k);
 }
 function curlStrand3D(pts, curlAmt, waveT, curlDir){
+  // (옛 61) 곱슬 원본 머리 — 뭉침 모양·마네킹 위 잰 컬·읽은 굴곡(17b PHOTO_CURL). 그쪽이 안쪽 말기로 다시 부를 땐 건너뜀
+  if(typeof PHOTO_CURL !== 'undefined' && !PHOTO_CURL._inInner()){ const r = PHOTO_CURL._curlStage.apply(this, arguments); if(r !== PHOTO_CURL.PASS) return r; }
+  // (옛 57) 스타일의 로드 배수(마네킹 가닥) — 작게 줄여 말고 다시 키움(17b SPEC_PASS)
+  if(typeof SPEC_PASS !== 'undefined' && SPEC_PASS._wantsRod(pts, curlAmt)) return SPEC_PASS._rodCurl(arguments, a => curlStrand3D.apply(this, a));
   if(!pts || pts.length < 3 || !(curlAmt > 0)) return pts;
   const arc = arcLength3D(pts);
   if(arc < 1e-5) return pts;
@@ -2354,7 +2364,228 @@ function partStrand3D(pts, partVal, curlAmt, partAmt){
 
 // 3D 길이: 호길이 기준 트림(ratio<1)/연장(ratio>1). 연장은 마지막 진행방향 유지.
 // ratio=1이면 원본 그대로. 뿌리 고정, 끝만 이동.
+/* ══ 커트는 끝에서부터 — CUT_FROM_TIP (2026-10 · 옛 33-cut-from-tip.js ①) ══
+   증상: 길이 슬라이더를 줄이면 윗부분 흐름까지 같이 움직였다.
+   원인: adjustStrandGeom이 lengthStrand3D로 "먼저 자르고" 그 짧은 가닥에 가르마·넘김·컬·중력·볼륨·흐름·매끈함을
+         입혔다. 이 연산들은 가닥 길이에 따라 결과가 달라서(컬 주기, 처짐 무게, 넘김 곡선) 길이가 바뀌면 남은 윗부분 모양도
+         다시 계산됐다.
+   고침: 실제 커트처럼 — 원래 길이로 스타일을 다 만든 뒤, 완성된 가닥을 호길이 기준으로 끝에서부터 잘라낸다.
+         · adjustStrandGeom(17b)이 도는 동안(_cutFromTipCtx) 줄이기(비율 < 1)는 자르지 않고 비율만 기억(아래 lengthStrand3D 첫머리)
+         · 비율 > 1(기르기)은 예전 그대로(늘린 뒤 스타일)
+         · 앞머리 선 트림(mqTrimAtFringeLine)은 그대로 두고, 남길 길이는 원래 가닥 기준(17b adjustStrandGeom 끝)
+         · 컬 있는 가닥은 덜 잘림: 잘라낼 양 × hairShrinkFactor(hairEffectiveCurl) — 그 두 함수(08 모발 상태)가 이 판에는
+           없어 지금은 ×1(직모와 같음) · 끄기 CUT_FROM_TIP.curlSpare = false
+   끄기: CUT_FROM_TIP.on = false (예전 동작) · 콘솔 setCutFromTip(false) */
+var CUT_FROM_TIP = { on: true, curlSpare: true, stats: { cut: 0, curlSpared: 0 } };
+var _cutFromTipCtx = null;   // adjustStrandGeom 한 번이 도는 동안의 { ratio, L0, Lpre } — 겹쳐 부르면(재진입) 바깥 것을 같이 씀
+function cutFromTipArcLen(pts){
+  let s = 0;
+  for(let i=1; i<pts.length; i++){ const a = pts[i-1], b = pts[i]; s += Math.hypot(b.x - a.x, b.y - a.y, b.z - a.z); }
+  return s;
+}
+/* 호길이 keep만 남기고 끝을 잘라냄(마지막 점은 보간). 점의 다른 필드는 유지. */
+function cutFromTipTruncate(pts, keep){
+  if(!pts || pts.length < 2 || !(keep > 0)) return pts && pts.length ? pts.slice(0, Math.min(2, pts.length)) : pts;
+  const out = [pts[0]]; let s = 0;
+  for(let i=1; i<pts.length; i++){
+    const a = pts[i-1], b = pts[i], d = Math.hypot(b.x - a.x, b.y - a.y, b.z - a.z);
+    if(s + d >= keep){
+      const t = d > 1e-12 ? (keep - s) / d : 0;
+      out.push(Object.assign({}, b, { x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t, z: a.z + (b.z - a.z) * t }));
+      return out.length >= 2 ? out : pts.slice(0, 2);
+    }
+    out.push(b); s += d;
+  }
+  return out;
+}
+/* 잘라낼 양에 곱할 계수(1 = 그대로, 작을수록 덜 잘림). 직모·펌 없음이면 유효컬 0 → 1. */
+function cutFromTipCurlSpare(strand, ratio){
+  if(!CUT_FROM_TIP.curlSpare) return 1;
+  try{
+    if(typeof hairEffectiveCurl !== 'function' || typeof hairShrinkFactor !== 'function') return 1;
+    const sec = state && state.sections && state.sections[strand.sec];
+    const curl = sec && typeof sec.curl === 'number' ? sec.curl : 0;
+    const eff = hairEffectiveCurl(curl, strand.sec, ratio);
+    if(!(eff > 0)) return 1;
+    const f = hairShrinkFactor(eff);
+    return isFinite(f) ? Math.max(0.3, Math.min(1, f)) : 1;
+  }catch(e){ return 1; }
+}
+function setCutFromTip(on){
+  CUT_FROM_TIP.on = !!on;
+  try{ if(typeof ADJ_CACHE !== 'undefined' && ADJ_CACHE.bump) ADJ_CACHE.bump(); }catch(e){}
+  try{ if(typeof drawAdjustPreview === 'function') drawAdjustPreview(); }catch(e){}
+  try{ if(typeof refreshDevMini3D === 'function') refreshDevMini3D(); }catch(e){}
+  return CUT_FROM_TIP.on;
+}
+
+/* ==========================================================================
+ * NATURAL_GROW (옛 47-natural-grow.js) — 길이를 늘릴 때 뻗치지 않게 (다시 기른 원본 머리)
+ *
+ * 자리: 14, lengthStrand3D 바로 앞. lengthStrand3D 맨 앞에서 늘릴 때(ratio>1) NATURAL_GROW._grow · adjustStrandGeom(17b)이 지금 가닥이 다시 기른 가닥인지 NATURAL_GROW._cur에 적음 · perfPanelLines(18) 끝 줄
+ *
+ * 증상 (2026-10-04 폰 영상): 마네킹 OFF(다시 기른 원본 머리)에서 길이를 58 → 76으로 올리면
+ *   머리 전체가 성게처럼 사방으로 곧게 뻗침. 52·31로 내리면 멀쩡.
+ *
+ * 원인: 42번 adjustRegrown이 길이 비율 > 1이면 lengthStrand3D(가닥, 비율)를 부르는데,
+ *   그 "늘리기" 분기는 가닥의 마지막 한 마디 방향으로 직선을 그어 붙입니다(중력 없음 · 두상 충돌 없음).
+ *     · 마지막 한 마디(≈0.5~1cm)는 웨이브의 어느 위상에서 끝났느냐에 따라 옆·위·앞 아무 데나 봅니다.
+ *     · 58 → 76 = 비율 1.32 → 33cm 가닥이면 +10cm가 그 방향으로 곧게 나갑니다.
+ *     · 두피에 누워 끝난 가닥(넘긴 앞머리·정수리)은 두피 접선 방향으로 끝나므로 머리 위로 가시가 섭니다.
+ *   마네킹 가닥은 원래 아래로 늘어져 끝나서 같은 식으로 늘려도 티가 안 났습니다.
+ *
+ * 고침: 다시 기른 가닥을 늘릴 때는 42번이 두피 밖 구간을 기르던 것과 같은 규칙으로 이어 기릅니다.
+ *   ① 시작 방향 = 끝 한 마디가 아니라 끝쪽 구간(≈4cm) 전체의 방향. 위로 향하면 그 성분을 줄임.
+ *   ② 한 걸음마다 중력 쪽으로 조금씩 꺾음(약 2.5cm 가면 거의 아래) → 늘어난 부분은 아래로 떨어짐.
+ *   ③ 두상 안으로 못 들어감 — 끝이 떠 있던 높이(두피 타원체 기준)를 유지한 채 두상을 타고 흘러내림.
+ *   길이(호길이)는 예전과 똑같이 원래 × 비율. 줄이기(비율 < 1)와 마네킹 가닥은 건드리지 않습니다.
+ *
+ * 끄기: NATURAL_GROW.on=false 후 NATURAL_GROW.refresh()
+ * ========================================================================== */
+var NATURAL_GROW = (function () {
+  'use strict';
+  var W = window, TAG = '[길이 늘리기]';
+  var N = Object.assign({
+    on: true,
+    regrownOnly: true,   // 다시 기른 가닥만(false면 lengthStrand3D를 직접 부르는 모든 자리)
+    dirSpanCm: 4,        // 시작 방향을 재는 끝쪽 구간
+    gravityCm: 2.5,      // 이만큼 가면 방향의 63%가 아래로 넘어감(작을수록 빨리 떨어짐)
+    upDamp: 0.25,        // 시작 방향이 위를 보면 위 성분에 곱함
+    minLevel: 1.02,      // 두피 타원체 대비 최소 높이(이 안으로는 못 들어감)
+    maxLevel: 1.5
+  }, W.NATURAL_GROW || {});
+  var S = N.stats = { grown: 0, addCm: 0, pushed: 0, slid: 0, err: null };
+
+
+  /* ── 두상(두피 타원체) — 가닥마다 다시 재지 않게 잠깐 기억 ─────────────── */
+  var headCache = null, headAt = 0, headKey = null;
+  function now() { try { return performance.now(); } catch (e) { return Date.now(); } }
+  function head() {
+    var key = null, t = now();
+    try { key = state._hair3Dneutral || state.hair3Dneutral || null; } catch (e) {}
+    if (headCache && key === headKey && t - headAt < 400) return headCache;
+    var E = null, cy = 0, cm = 0;
+    try { E = (typeof getScalpEllipsoid === 'function') ? getScalpEllipsoid() : getHeadEllipsoid(); } catch (e) { E = null; }
+    try { var m = state.hair3Dneutral; if (m && isFinite(m.CY)) cy = m.CY; else if (typeof SCALP_CENTER_Y !== 'undefined') cy = SCALP_CENTER_Y; } catch (e) {}
+    try { cm = modelCmPerUnit() || 0; } catch (e) {}
+    headCache = (E && E.a > 0 && E.b > 0 && E.c > 0) ? { a: E.a, b: E.b, c: E.c, cy: cy, cm: cm > 0 ? cm : 19.33 } : { none: true, cm: cm > 0 ? cm : 19.33 };
+    headAt = t; headKey = key;
+    return headCache;
+  }
+
+  /* ── 이어 기르기 ───────────────────────────────────────────────────────── */
+  function grow(pts, ratio) {
+    var n = pts.length, i, L = 0, seg = new Array(n);
+    seg[0] = 0;
+    for (i = 1; i < n; i++) { seg[i] = Math.hypot(pts[i].x - pts[i - 1].x, pts[i].y - pts[i - 1].y, pts[i].z - pts[i - 1].z); L += seg[i]; }
+    if (!(L > 1e-9)) return pts;
+    var H = head(), add = L * (ratio - 1), step = L / (n - 1);
+    if (!(add > 1e-9) || !(step > 1e-9)) return pts;
+
+    // ① 시작 방향: 끝쪽 구간 전체(끝점 − 구간 시작점)
+    var span = Math.min(L * 0.5, Math.max(step * 2, N.dirSpanCm / H.cm)), acc = 0, j = n - 1;
+    while (j > 1 && acc + seg[j] < span) { acc += seg[j]; j--; }
+    var tip = pts[n - 1], from = pts[j - 1];
+    var dx = tip.x - from.x, dy = tip.y - from.y, dz = tip.z - from.z, dl = Math.hypot(dx, dy, dz);
+    if (!(dl > 1e-9)) { dx = 0; dy = -1; dz = 0; dl = 1; }
+    dx /= dl; dy /= dl; dz /= dl;
+    if (dy > 0) { dy *= N.upDamp; dl = Math.hypot(dx, dy, dz) || 1; dx /= dl; dy /= dl; dz /= dl; }
+
+    // ③ 끝이 떠 있던 높이(두피 타원체의 몇 배 껍질인가)
+    var a = 0, b = 0, c = 0, cy = 0, lvl = 0;
+    if (!H.none) {
+      a = H.a; b = H.b; c = H.c; cy = H.cy;
+      var ty = tip.y - cy;
+      lvl = Math.sqrt(tip.x * tip.x / (a * a) + ty * ty / (b * b) + tip.z * tip.z / (c * c));
+      lvl = Math.max(N.minLevel, Math.min(N.maxLevel, lvl));
+      a *= lvl; b *= lvl; c *= lvl;
+    }
+    // 정수리 한가운데처럼 흘러내릴 쪽이 안 정해지는 자리에서 쓸 옆 방향(뿌리 → 끝의 수평 성분, 없으면 바깥쪽)
+    var root = pts[0], hx = tip.x - root.x, hz = tip.z - root.z, hl = Math.hypot(hx, hz);
+    if (!(hl > 1e-6)) { hx = tip.x; hz = tip.z; hl = Math.hypot(hx, hz); }
+    if (!(hl > 1e-6)) { hx = 0; hz = -1; hl = 1; }
+    hx /= hl; hz /= hl;
+
+    var out = pts.slice(), P = { x: tip.x, y: tip.y, z: tip.z }, done = 0, guard = 0;
+    var maxPts = Math.ceil(add / step) * 3 + 8;
+    while (done < add - 1e-9 && guard++ < maxPts) {
+      var h = Math.min(step, add - done);
+      // ② 중력 쪽으로 꺾기(걸음 길이에 비례)
+      var g = 1 - Math.exp(-h * H.cm / Math.max(0.2, N.gravityCm));
+      dx *= (1 - g); dy = dy * (1 - g) - g; dz *= (1 - g);
+      dl = Math.hypot(dx, dy, dz) || 1; dx /= dl; dy /= dl; dz /= dl;
+
+      if (lvl) {
+        // 두상 겉면에 붙어 있고 안쪽을 향하면 → 면을 타고 흐르게(법선 성분 제거)
+        var px = P.x, py = P.y - cy, pz = P.z;
+        var q = px * px / (a * a) + py * py / (b * b) + pz * pz / (c * c);
+        if (q < 1.02) {
+          var nx = px / (a * a), ny = py / (b * b), nz = pz / (c * c), nl = Math.hypot(nx, ny, nz) || 1;
+          nx /= nl; ny /= nl; nz /= nl;
+          var dn = dx * nx + dy * ny + dz * nz;
+          if (dn < 0) {
+            var tx = dx - dn * nx, tyy = dy - dn * ny, tz = dz - dn * nz, tl = Math.hypot(tx, tyy, tz);
+            if (tl < 0.2) {                      // 정수리 꼭대기: 중력이 법선과 겹침 → 옆으로 먼저
+              var hn = hx * nx + hz * nz;
+              tx = hx - hn * nx; tyy = -hn * ny; tz = hz - hn * nz; tl = Math.hypot(tx, tyy, tz) || 1;
+            }
+            dx = tx / tl; dy = tyy / tl; dz = tz / tl;
+            S.slid++;
+          }
+        }
+      }
+
+      var Q = { x: P.x + dx * h, y: P.y + dy * h, z: P.z + dz * h };
+      if (lvl) {
+        var qx = Q.x, qy = Q.y - cy, qz = Q.z, qq = qx * qx / (a * a) + qy * qy / (b * b) + qz * qz / (c * c);
+        if (qq < 1 && qq > 0) { var k = 1 / Math.sqrt(qq); Q.x = qx * k; Q.y = cy + qy * k; Q.z = qz * k; S.pushed++; }
+      }
+      try { if (W.REGROW && typeof W.REGROW.neckPush === 'function') { var Qn = W.REGROW.neckPush(Q); if (Qn !== Q) { Q = Qn; S.neck = (S.neck || 0) + 1; } } } catch (en) {}   // (2026-10-04g) 목 안으로 못 들어감
+      var real = Math.hypot(Q.x - P.x, Q.y - P.y, Q.z - P.z);
+      if (!(real > h * 0.05)) {                  // 거의 못 나감(막힘) — 옆으로 한 걸음 비켜서 계속
+        Q = { x: P.x + hx * h, y: P.y, z: P.z + hz * h };
+        real = h; dx = hx; dy = 0; dz = hz;
+      }
+      out.push(Q);
+      done += real; P = Q;
+    }
+    S.grown++; S.addCm += add * H.cm;
+    return out;
+  }
+
+  /* ── 걸기 ── lengthStrand3D(14) 맨 앞에서 부름. _cur = 지금 조정 중인 가닥이 다시 기른 가닥인가(adjustStrandGeom 17b가 적음) */
+  N._cur = false;
+  N._wants = function (pts, ratio) { return !!(N.on && ratio > 1 + 1e-6 && pts && pts.length >= 2 && (N._cur || !N.regrownOnly)); };
+  N._grow = function (pts, ratio) {
+    try { return grow(pts, ratio); } catch (e) { S.err = String(e && e.message || e); return null; }
+  };
+
+  function redraw() {
+    try { if (typeof ADJ_CACHE !== 'undefined' && ADJ_CACHE.bump) ADJ_CACHE.bump(); } catch (e) {}
+    try { if (typeof renderAdjustFrame === 'function') renderAdjustFrame(); } catch (e) {}
+  }
+  N.refresh = function () { headCache = null; redraw(); return N.on; };
+
+  N._panelLine = function () {   // perfPanelLines(18) 끝
+    var avg = S.grown ? (S.addCm / S.grown) : 0;
+    return TAG + ' ' + (N.on ? '켜짐' : '꺼짐') + ' — 늘린 부분은 중력·두상을 따라 이어 기름 · 늘린 가닥 누적 ' + S.grown +
+      ' · 평균 +' + avg.toFixed(1) + 'cm · 두상 밖으로 밀어냄 ' + S.pushed + '걸음 · 면 타고 흐름 ' + S.slid + '걸음 · 목 밖으로 ' + (S.neck || 0) + '걸음' + (S.err ? ' · ⚠ ' + S.err : '');
+  };
+
+  try { if (typeof ADJ_CACHE !== 'undefined' && ADJ_CACHE.bump) ADJ_CACHE.bump(); } catch (e) {}
+  console.log(TAG + ' 설치 — 다시 기른 머리를 늘릴 때 끝 방향으로 곧게 긋지 않고 중력·두상을 따라 이어 기릅니다. 끄기 NATURAL_GROW.on=false 후 NATURAL_GROW.refresh()');
+  return N;
+})();
+
 function lengthStrand3D(pts, ratio){
+  /* (옛 47) 다시 기른 가닥을 늘릴 때는 끝 방향으로 곧게 긋지 않고 중력·두상을 따라 이어 기름(위 NATURAL_GROW) */
+  if(NATURAL_GROW._wants(pts, ratio)){ const g = NATURAL_GROW._grow(pts, ratio); if(g) return g; }
+  /* (옛 33) adjustStrandGeom 도중의 줄이기는 자르지 않고 비율만 기억 — 스타일을 원래 길이로 다 만든 뒤 17b가 끝에서 자른다 */
+  if(_cutFromTipCtx && ratio > 0 && ratio < 1 && pts && pts.length >= 2){
+    _cutFromTipCtx.ratio = ratio;
+    _cutFromTipCtx.L0 = _cutFromTipCtx.Lpre = cutFromTipArcLen(pts);
+    return pts;
+  }
   if(!pts || pts.length < 2 || !(ratio > 0) || Math.abs(ratio-1) < 1e-6) return pts;
   // 누적 호길이
   const seg = [], cum = [0];
