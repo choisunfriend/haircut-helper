@@ -341,58 +341,58 @@ function loadVisionModule(){
   return __visionModulePromise;
 }
 </script>
-<script src="js/01-face-landmarker.js?v=20261013j"></script>
-<script src="js/02-state-sections.js?v=20261013j"></script>
-<script src="js/03a-hair-mask.js?v=20261013j"></script>
-<script src="js/03b-mask-memory.js?v=20261013j"></script>
-<script src="js/04-structure-tensor.js?v=20261013j"></script>
-<script src="js/05-capture-nav.js?v=20261013j"></script>
-<script src="js/06-ui-panels.js?v=20261013j"></script>
-<script src="js/07a-render-canvas.js?v=20261013j"></script>
-<script src="js/07b-render-compare.js?v=20261013j"></script>
-<script src="js/08-cut-engine.js?v=20261013j"></script>
-<script src="js/09-strand-dye.js?v=20261013j"></script>
-<script src="js/10-hair-render-2d.js?v=20261013j"></script>
-<script src="js/11-result-screen.js?v=20261013j"></script>
-<script src="js/12a-head-project.js?v=20261013j"></script>
-<script src="js/12b-head-measure.js?v=20261013j"></script>
-<script src="js/13a-outfit-pose.js?v=20261013j"></script>
-<script src="js/13b-lift-fields.js?v=20261013j"></script>
-<script src="js/13c-scalp-sections.js?v=20261013j"></script>
-<script src="js/14-hair-3d-ops.js?v=20261013j"></script>
-<script src="js/15-project-3d.js?v=20261013j"></script>
+<script src="js/01-face-landmarker.js?v=20261013k"></script>
+<script src="js/02-state-sections.js?v=20261013k"></script>
+<script src="js/03a-hair-mask.js?v=20261013k"></script>
+<script src="js/03b-mask-memory.js?v=20261013k"></script>
+<script src="js/04-structure-tensor.js?v=20261013k"></script>
+<script src="js/05-capture-nav.js?v=20261013k"></script>
+<script src="js/06-ui-panels.js?v=20261013k"></script>
+<script src="js/07a-render-canvas.js?v=20261013k"></script>
+<script src="js/07b-render-compare.js?v=20261013k"></script>
+<script src="js/08-cut-engine.js?v=20261013k"></script>
+<script src="js/09-strand-dye.js?v=20261013k"></script>
+<script src="js/10-hair-render-2d.js?v=20261013k"></script>
+<script src="js/11-result-screen.js?v=20261013k"></script>
+<script src="js/12a-head-project.js?v=20261013k"></script>
+<script src="js/12b-head-measure.js?v=20261013k"></script>
+<script src="js/13a-outfit-pose.js?v=20261013k"></script>
+<script src="js/13b-lift-fields.js?v=20261013k"></script>
+<script src="js/13c-scalp-sections.js?v=20261013k"></script>
+<script src="js/14-hair-3d-ops.js?v=20261013k"></script>
+<script src="js/15-project-3d.js?v=20261013k"></script>
 <!-- 21: 땋기(2026-09-22 테스트). 가닥을 세 갈래 밧줄로 긋는다. 15의 projectHair3DToView가
      braidDrawProjected를 부르고, 16의 applyStyleSpec이 스펙 braid를 보고 켠다(reggae_twist).
      기본은 꺼짐(BRAID.on=false) — 이 줄이 있어도 땋기 스타일을 걸기 전엔 렌더가 그대로다.
      ⚠ 번호가 21-body-base.js(Changeclothes 브랜치)와 겹친다. 두 브랜치를 합칠 때 번호를 가를 것. -->
-<script src="js/21-braid.js?v=20261013j"></script>
-<script src="js/16-style-spec-diag.js?v=20261013j"></script>
-<script src="js/17a-mannequin.js?v=20261013j"></script>
-<script src="js/17b-cut3d-piece.js?v=20261013j"></script>
+<script src="js/21-braid.js?v=20261013k"></script>
+<script src="js/16-style-spec-diag.js?v=20261013k"></script>
+<script src="js/17a-mannequin.js?v=20261013k"></script>
+<script src="js/17b-cut3d-piece.js?v=20261013k"></script>
 <!-- 14c: 컬 번들(2026-09-21). 17b 다음에 curlStrand3D를 감싸 바꿔 끼운다 — 18보다 앞. -->
-<script src="js/14c-curl-bundle.js?v=20261013j"></script>
-<script src="js/18-perf-i18n-boot.js?v=20261013j"></script>
+<script src="js/14c-curl-bundle.js?v=20261013k"></script>
+<script src="js/18-perf-i18n-boot.js?v=20261013k"></script>
 <!-- 19: 무대 배경 색 선택(2026-09-04 2차). 09의 OKLCH 헬퍼와 02의
      OUTFIT_CATALOG를 읽고, 18의 setupModel3DScreen이 호출한다 — 그래서 맨 뒤다. -->
-<script src="js/19-stage-backdrop.js?v=20261013j"></script>
+<script src="js/19-stage-backdrop.js?v=20261013k"></script>
 <!-- 20: 의상 매칭(2026-09-13). 파일은 저장소에 있었지만 이 줄이 없어서 <b>한 번도
      로드된 적이 없었다</b> — recommendOutfitWithAI가 그대로 밖을 부르고 401을
      받아 늘 OUTFIT_CATALOG[0](차콜 슈트)로 떨어지던 이유다. 09의 OKLCH 헬퍼와
      02의 OUTFIT_CATALOG를 읽고 12b가 부르므로 19 다음이다. -->
-<script src="js/20-outfit-match.js?v=20261013j"></script>
+<script src="js/20-outfit-match.js?v=20261013k"></script>
 <!-- 22: 영문 UI 추가 번역 + 3D 미리보기 켜기 딱지(2026-09-21) — 18의 I18N 뒤. -->
-<script src="js/22-ui-i18n-extra.js?v=20261013j"></script>
+<script src="js/22-ui-i18n-extra.js?v=20261013k"></script>
 <!-- 23: 섹션 통합 조정(2026-09-21) — 06 패널을 감싼다. -->
-<script src="js/23-section-all.js?v=20261013j"></script>
+<script src="js/23-section-all.js?v=20261013k"></script>
 <!-- 24: 스타일 기준점·슬라이더 중앙화·스타일별 엔진 프로필(2026-09-21) — 23 바로 다음. -->
-<script src="js/24-style-base.js?v=20261013j"></script>
+<script src="js/24-style-base.js?v=20261013k"></script>
 <!-- 25: 시술 스펙(지시서, 2026-09-22). 조정 화면 모드바와 3D 결과보기에 "시술 스펙" 버튼을 단다.
      지금 걸린 상태를 미용사 말로 — 섹션별 끝이 얼굴 어디에 닿나(눈썹 위 1cm) + cm, 기법은 참고.
      16의 measureSectionTipY/LenCm을 그대로 쓴다(새 측정식 없음). 끄기 TREAT_SPEC.on=false -->
-<script src="js/25-treatment-spec.js?v=20261013j"></script>
+<script src="js/25-treatment-spec.js?v=20261013k"></script>
 <!-- 26: 3D 결과보기 가닥을 1cm 안쪽 다발로 모은다(2026-09-22). 14 buildAdjustedHair3DObject가 부른다.
      2만 가닥이 각자 1px로 따로 놀아 가늘고 숱 많아 보이던 것. 끄기 HAIR_CLUMP3D.on=false -->
-<script src="js/26-hair-clump.js?v=20261013j"></script>
+<script src="js/26-hair-clump.js?v=20261013k"></script>
 <!-- 27~30 (2026-09-27~29 배포본 반영 — 원본에 없던 파일을 app 저장소에서 가져옴)
      27: 조정 화면 첫 진입 속도(이분 탐색 24→8회 · RENDER_MATCH 기본 끔 · 얼굴 반폭 메모). 끄기 PERF_TUNE.on=false
      28: 무거운 함수 시간 재기(GYEOL_PERF.report()) + 스펙 풀이 탐침 횟수 고침. 16·24의 applyStyleSpec 등을 감싼다
@@ -400,9 +400,9 @@ function loadVisionModule(){
      30: 촬영 사진 4장을 이 기기 IndexedDB에 저장·재사용(업로드 없음)
      ※ 옛 31(가르마펌·모발 상태·뿌리 보강) · 32(커튼뱅 섀그) · 33(레이어드 보브 맞춤)은 파일로 두지 않고
        02 · 06 · 08 · 16 · 17a · 23 · 24에 나눠 넣었다(2026-09-30). 각 자리에 "옛 js/3x" 주석이 있다. -->
-<script src="js/27-perf-tune.js?v=20261013j"></script>
-<script src="js/28-perf-probe.js?v=20261013j"></script>
-<script src="js/29-hairpin-3d.js?v=20261013j"></script>
-<script src="js/30-saved-photos.js?v=20261013j"></script>
+<script src="js/27-perf-tune.js?v=20261013k"></script>
+<script src="js/28-perf-probe.js?v=20261013k"></script>
+<script src="js/29-hairpin-3d.js?v=20261013k"></script>
+<script src="js/30-saved-photos.js?v=20261013k"></script>
 </body>
 </html>
