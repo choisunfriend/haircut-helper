@@ -1,0 +1,8 @@
+# 결 GYEOL — 표준 인체 베이스 재질 (중성 마네킹 살색)
+newmtl BodyMakeHuman
+Ka 0 0 0
+Kd 0.760 0.655 0.560
+Ks 0.04 0.04 0.04
+Ns 14
+d 1
+illum 2
