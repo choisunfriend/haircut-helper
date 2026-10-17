@@ -756,10 +756,10 @@ const STYLES = [
   { id:'taper_fade_pomp', specId:'taper_fade_pomp',
     name:'Fade Pompadour', tags:'Taper fade · Side part',
     length:34, curl:0,  volume:82, colorHex:'#60554E' },   // ← 아이콘 전용(위 ⚠)
-  // (2026-09-21 추가) 남자 히피펌 — 촘촘한 컬 + 이마로 내려 쓴 앞머리 + 정수리 볼륨
+  // (2026-09-21 추가 · 2026-10-01 재조정) 남자 히피펌 — 느슨한 S웨이브 + 시스루 앞머리 + 둥근 볼륨(16 STYLE_SPECS 참고)
   { id:'hippie_curl_men', specId:'hippie_curl_men',
-    name:"Men's Hippie Perm", tags:'Tight curls · Down-swept fringe · Crown volume',
-    length:30, curl:72, volume:75, colorHex:'#2B2016' },   // ← 아이콘 전용(위 ⚠)
+    name:"Men's Hippie Perm", tags:'Loose S-waves · See-through fringe · Rounded volume',
+    length:45, curl:55, volume:72, colorHex:'#2B2016' },   // ← 아이콘 전용(위 ⚠)
   // (2026-09-21 추가) 웨이브 보브 — 시스루 뱅 + 굵은 컬, 턱선 길이
   { id:'wavy_bob_seethrough', specId:'wavy_bob_seethrough',
     name:'Wavy Bob', tags:'See-through bangs · Chunky curls · Jaw length',
@@ -768,6 +768,10 @@ const STYLES = [
   { id:'reggae_twist', specId:'reggae_twist',
     name:'Reggae Perm', tags:'Box braids · Three-strand · Natural length',
     length:60, curl:0, volume:30, colorHex:'#1E1A17' },   // ← 아이콘 전용(위 ⚠)
+  // (2026-10 추가 · 옛 35-long-layered-curtain.js) 롱 레이어드 + 커튼뱅(16 STYLE_SPECS·24 프로필)
+  { id:'long_layered_curtain', specId:'long_layered_curtain',
+    name:'Long Layers + Curtain Bangs', tags:'Center part · Cheekbone curtain bangs · Sleek coated straight',
+    length:95, curl:32, volume:58, colorHex:'#5A4030' },
 ];
 
 /* ── 의상 카탈로그(OUTFIT_CATALOG) ──

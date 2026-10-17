@@ -89,6 +89,37 @@
         };
         for (var sec in set) if (spec.cut[sec]) Object.assign(spec.cut[sec], set[sec]);
       }
+    },
+    /* (2026-10-01 · 옛 31-hippie-wave-eyeguard (2)) 남자 히피펌 — 느슨한 S웨이브(굵은 로드·느슨한 간격) · 둥근 볼륨 */
+    hippie_curl_men: {
+      label: "Men's hippie perm · Loose S-waves",
+      config: {
+        CURL_BUNDLE: { rodThickCm: 4.5, pitchThick: 2.4, relax: 1.3, microAmp: 0.03, microPhase: 0.18 },
+        CURL3D_FIX: { ampGamma: 0.8 },
+        VOLUME3D: { AMP: 0.17 },
+        MANNEQUIN: { lenPct: 0.9 },   // 섹션 최장(=어깨·옷 따라간 이상치) 대신 90백분위
+        MQ_FRINGE: { tipFaceFrac: -0.16, crownAllAround: false }
+      },
+      volBase: 1,
+      shade: { ao: 0.44, lumCap: 1.3, spec: 0.2, specPow: 55 }
+    },
+    /* (2026-10 · 옛 35-long-layered-curtain.js) 롱 레이어드 + 커튼뱅 — 웨이브는 Blowout Waves, 앞머리는 Curtain Bang Shag 설정을 섞음 */
+    long_layered_curtain: {
+      label: 'Long layers · Curtain bangs',
+      config: {
+        CURL_BUNDLE: { rodThickCm: 5, pitchThick: 1.9, relax: 1.2, microAmp: 0.015, microPhase: 0.15 },
+        CURL3D_FIX: { ampGamma: 0.72 },
+        VOLUME3D: { AMP: 0.17 },
+        MQ_FRINGE: { on: true, tipFaceFrac: 0.4, lineHalfX: 1.1, lineGain: 1, crownAllAround: false },
+        HAIR_DYE: { sMax: 1.25, highlightK: 1.0, glossDesat: 0.5 }
+      },
+      volBase: 1,
+      // 조정 화면 All sections → PERM Curl strength 0% 와 같은 상태
+      after: { crown: { curl: 0 }, front: { curl: 0 }, temple: { curl: 0 }, side: { curl: 0 }, occipital: { curl: 0 }, nape: { curl: 0 } },
+      // 광택: 결 하이라이트를 세게(spec)·넓게(specPow↓) → 찰랑이는 광택 띠
+      shade: { ao: 0.55, lumCap: 1.4, spec: 0.62, specPow: 28 },
+      // 코팅만: 가닥 모양은 엔진 그대로(컬은 위 섹션 Curl strength 0), 색을 가닥 따라 고르게(36 GLOSS_WAVE)
+      gloss: { shape: false, colorSmooth: 0.9, colorWin: 6 }
     }
   };
 
@@ -603,16 +634,38 @@
     });
     wrap('applyStyleSpec', function (f) {
       return function (id) {
-        var rep = f.apply(this, arguments);
-        if (!SB.on || !rep) return rep;
-        try { extendPinned(id, rep); } catch (e) { console.warn(TAG + ' 길이 확장 실패', e); }
-        var prof = SB.profiles[id], S = st();
-        if (prof && prof.after && S) {
-          for (var sec in prof.after) if (S.sections[sec]) Object.assign(S.sections[sec], prof.after[sec]);
+        var _fsApply = FLOW_SPEC._beginApply(id);  // (옛 59) 결 표가 든 스타일은 섹션 길이 자동 맞추기를 건너뜀(17b)
+        try {
+        ORIG_MQ._beginApply(id);                   // (옛 58) 다른 스타일을 걸면 원본 보기가 아님(17b)
+        var _spSave = SPEC_PASS._beginApply(id);   // (옛 57) 길이를 맞추는 동안에도 이 스타일의 로드 배수로(17b)
+        /* (2026-10-01 · 옛 31 EYE_GUARD ⓓ) 스펙 앞머리 목표 보정·공통 기본값·적용 중 id 표시 — 스펙 풀이(f)보다 먼저.
+           STYLE_TUNES(17a)로 tipAt.front를 눈썹~윗눈꺼풀로 덮고(specPatch 뒤), 눈높이(0.5) 근처 목표면 경고,
+           공통 기본값(STYLE_COMMON_DEFAULTS)을 건다. 적용 중엔 EYE_GUARD._applying = id(앞머리 심기가 이 스타일 목표를 읽게). */
+        var spec0 = null;
+        try { spec0 = getStyleSpec(id); } catch (e) {}
+        var tune = STYLE_TUNES[id];
+        if (spec0 && tune && tune.tipAt) spec0.tipAt = Object.assign({}, spec0.tipAt, tune.tipAt);
+        if (spec0 && spec0.tipAt && spec0.tipAt.front > 0.46 && spec0.tipAt.front < 0.56 && spec0.eyeGuard !== false) {
+          console.warn('[앞머리 길이] ' + id + ' tipAt.front ' + spec0.tipAt.front +
+            ' — 눈높이(0.5) 근처 목표입니다. 눈썹 0.41 · 윗눈꺼풀 0.465 · 눈 아래로 덮을 거면 0.55↑');
         }
-        captureBase('스펙 ' + id);
-        bumpCaches();
-        return rep;
+        eyeGuardApplyCommonDefaults(id);
+        EYE_GUARD._applying = id;
+        EYE_GUARD._geo = null;
+        FACE_COVER_CHECK.pendingId = id;
+        try {
+          var rep = f.apply(this, arguments);
+          if (!SB.on || !rep) return rep;
+          try { extendPinned(id, rep); } catch (e) { console.warn(TAG + ' 길이 확장 실패', e); }
+          var prof = SB.profiles[id], S = st();
+          if (prof && prof.after && S) {
+            for (var sec in prof.after) if (S.sections[sec]) Object.assign(S.sections[sec], prof.after[sec]);
+          }
+          captureBase('스펙 ' + id);
+          bumpCaches();
+          return rep;
+        } finally { EYE_GUARD._applying = null; SPEC_PASS._endApply(_spSave); ORIG_MQ._endApply(); }
+        } finally { FLOW_SPEC._endApply(_fsApply); }
       };
     });
     wrap('clearStyleSpec', function (f) {
@@ -745,7 +798,7 @@
     });
 
     /* --- 3D 음영 --- */
-    wrap('buildAdjustedHair3DObject', function (f) {
+    wrap('buildAdjustedHair3DObjectBase', function (f) {   // 바깥 buildAdjustedHair3DObject(14)는 폰 다이어트 단계 — 음영은 원래 만들기에만
       return function () {
         var obj = f.apply(this, arguments);
         if (!SB.on) return obj;

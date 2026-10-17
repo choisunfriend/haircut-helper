@@ -1542,7 +1542,7 @@ if(typeof globalThis !== 'undefined') globalThis.__sideDepthWeight = sideDepthWe
 const FACE_BUILD = { path: '-', why: '', zRange: null, zMin: null, zMax: null,
                      sideHits: 0, ellA: null, ellC: null,
                      sideYaw: {}, reliefGain: null, reliefCm: null, cmPerUnit: null };
-async function buildRealFaceMesh(faceMetrics){
+async function buildRealFaceMeshBase(faceMetrics){
   FACE_BUILD.sideYaw = {}; FACE_BUILD.reliefGain = null;
   FACE_BUILD.reliefCm = null; FACE_BUILD.cmPerUnit = null;
   const lm = faceMetrics.lm;
@@ -2709,8 +2709,14 @@ async function buildRealFaceMesh(faceMetrics){
   mesh.userData.hairCut = _hairCut;
   return mesh;
 }
+/* (옛 37 폰 다이어트 ⑤) 얼굴 메쉬가 붙는 약속을 잡아 둠 — 3D 장면을 다 붙은 뒤 한꺼번에 보여 주려고 */
+function buildRealFaceMesh(){
+  const r = buildRealFaceMeshBase.apply(this, arguments);
+  if(typeof MOBILE_DIET !== 'undefined') MOBILE_DIET.noteFace(0, r);
+  return r;
+}
 
-async function buildFacePhotoDecal(faceMetrics){
+async function buildFacePhotoDecalBase(faceMetrics){
   const src = state.shots && state.shots.front;
   // 실측 랜드마크 없인 정렬 기준점이 없어 위치가 부정확해짐 — 추정치로
   // 억지로 배치하면 오히려 더 어색해서, 이 경우엔 스킵하고 절차적
@@ -2800,6 +2806,11 @@ async function buildFacePhotoDecal(faceMetrics){
            catch(e){ return 0.92 * faceMetrics.widthFactor; } })()
   );
   return plane;
+}
+function buildFacePhotoDecal(){
+  const r = buildFacePhotoDecalBase.apply(this, arguments);
+  if(typeof MOBILE_DIET !== 'undefined') MOBILE_DIET.noteFace(1, r);
+  return r;
 }
 
 /* ── 스캘프(두피) 좌표계 ──

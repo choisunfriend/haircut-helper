@@ -325,27 +325,7 @@ const HOLE_FILL = {
      skullClip이 막으려던 것은 긴 머리 <b>측면</b>에서 뒤로 흐른 머리까지 타원이 덮는 경우다.
      후면 타원 안은 전부 두피·지울 머리라 살 구역을 줄일 이유가 없다 — 타원 그대로 메운다.
      되돌리기: HOLE_FILL.skullClip.faceless = true (후면도 두개골 실루엣으로 자름) */
-  /* (2026-09-16 배포본 반영) faceless false → <b>true</b>. 후면도 두개골 실루엣으로 자른다.
-     위 2차 메모의 "타원 아래가 벽색으로 뚫림"은 아래 headEllipse 상한(0.8)으로 타원 자체가
-     두상 크기로 줄어서 다시 문제 되지 않는다는 판단. 되돌리기: faceless = false */
-  skullClip: { on: true, grow: 1.04, featherFrac: 0.010, nPhi: 28, nTheta: 56, faceless: true },
-  /* ── 얼굴 없는 뷰의 타원이 <b>어깨폭</b>이던 것 (2026-09-19) ──────────────────
-     사용자: "후면에 보면 두상타원만 메우라고 했는데, 2D보면 무슨 불상처럼 목부터 경계까지 다 메워져 있어."
-     타원의 nxMin/nxMax는 sectionBandsFor가 <b>scalpY가 있는 모든 컬럼</b>에서 뽑는다.
-     긴 생머리는 어깨까지 흘러내린 컬럼에도 scalpY가 서므로, 후면에서 그 폭이 곧
-     <b>머리카락 전체 폭</b>(≈어깨폭)이 된다 — ×0.92로 좁혀도 두개골보다 한참 넓다.
-     그 타원 전체가 살색이 되고, 목 기둥도 반폭이 rx×halfK라 같이 벌어져서
-     "목부터 경계까지" 살색 원판이 된다.
-     정면·측면은 랜드마크가 있어 이 경로를 안 탄다(거기는 얼굴이 정당하게 타원 안이다).
-     고침: 랜드마크가 없는 뷰에 한해 가로 반경을 <b>두상 비율</b>로 묶는다 —
-     rx_px ≤ ry_px × maxAspect. 머리 가로폭 ÷ (정수리~목덜미) ≈ 0.9라 0.95는 여유 있는 상한이고,
-     실루엣이 이미 좁으면(짧은 머리) min이라 아무 것도 안 바뀐다.
-     ⚠ skullClip.faceless는 <b>계속 false</b>다 — 두개골로 자르면 2차 때처럼 타원 아래가
-       다시 벽색으로 뚫린다. 여기서는 자르는 게 아니라 타원 자체를 두상 크기로 세운다.
-     되돌리기: HOLE_FILL.headEllipse.facelessMaxAspect = null (실루엣 폭 그대로) */
-  /* (2026-09-16 배포본 반영) 0.95 → <b>0.8</b>. 0.95도 후면에서 여전히 넓어서 두상 비율을
-     더 조였다. 배포본은 이 값을 코드에 0.8로 박아 넣었지만, 원본은 스위치를 살려 둔다. */
-  headEllipse: { facelessMaxAspect: 0.8 },
+  skullClip: { on: true, grow: 1.04, featherFrac: 0.010, nPhi: 28, nTheta: 56, faceless: true },   // (360shot 배포본) 후면(얼굴 없는 뷰)도 두개골 실루엣으로 자름
   facelessFill: {
     on: true,
     shrink: 0.97,      // 타원을 이 비율까지만 칠한다(타원이 조금 어긋나도 밖으로 안 샘)
@@ -367,10 +347,7 @@ const HOLE_FILL = {
        되돌리기: HOLE_FILL.facelessFill.cover = false (2차 동작) */
     cover: true,
     featherFrac: 0.010,   // 가장자리 페더 폭 = 출력폭 × 이 값(px 고정 — 아래쪽만 길게 늘어지지 않게)
-    /* (2026-09-16 배포본 반영) 목 기둥 덮개를 <b>끈다</b>. 두개골 자르기(skullClip.faceless)를
-       다시 켜면서 타원 아래 목덜미까지 살색으로 칠하는 이 덮개가 "불상처럼 목까지 메워지는"
-       모양을 되살렸기 때문. 되돌리기: neck.on = true */
-    neck: { on: false,
+    neck: { on: false,   // (360shot 배포본) 목 기둥 칠하기 끔
             halfK: 0.60,  // 목 반폭 = 타원 rx × 이 값(rx는 헤어 실루엣×0.92라 두개골보다 넓다)
             lenK: 0.90,   // 타원 바닥에서 목 길이 = ry × 이 값(≈ 목 8~10cm)
             fadeK: 0.30,  // 그 아래 사라지는 구간 = ry × 이 값
@@ -441,7 +418,6 @@ function resetSkinGraft(){
 }
 
 // 뷰의 두상 영역(정규 좌표) — 정수리~턱을 감싸는 타원. 없으면 null.
-const _headEllipseCapLogged = {};
 function headEllipseFor(angle){
   const b = sectionBandsFor(angle);
   if(!b) return null;
@@ -452,24 +428,13 @@ function headEllipseFor(angle){
   // 실루엣에는 머리숱이 포함돼 있어 두개골보다 넓다 — 조금 좁혀 잡는다.
   let rx = Math.max(0.02, (b.nxMax - b.nxMin) / 2 * 0.92);
   const ry = (bot - top) / 2;
-  /* (2026-09-19) 얼굴 없는 뷰는 실루엣 폭이 어깨폭이라 두상 비율로 묶는다 — 위 headEllipse 배너.
-     rx·ry는 정규화 좌표(가로는 폭, 세로는 높이 기준)라 px로 비교하려면 사진 비율을 곱해야 한다. */
-  const maxAspect = HOLE_FILL.headEllipse && HOLE_FILL.headEllipse.facelessMaxAspect;
-  const hasFace = !!(typeof state !== 'undefined' && state.landmarks && state.landmarks[angle]);
-  if(!hasFace && maxAspect > 0){
-    const img = (typeof imgCache !== 'undefined') ? imgCache[angle] : null;
-    const iw = img && (img.naturalWidth || img.width), ih = img && (img.naturalHeight || img.height);
-    if(iw && ih){
-      const rxMax = ry * maxAspect * (ih / iw);
-      if(rx > rxMax){
-        if(!_headEllipseCapLogged[angle]){
-          _headEllipseCapLogged[angle] = true;
-          console.log('[메움·두상타원] ' + angle + ': 실루엣 rx ' + rx.toFixed(3)
-            + ' → 두상 상한 ' + rxMax.toFixed(3) + ' (×' + maxAspect + ')');
-        }
-        rx = rxMax;
-      }
-    }
+  /* (360shot 배포본) 얼굴이 안 잡힌 뷰(후면 등)는 실루엣에 어깨로 흐른 머리까지 들어가 타원이
+     옆으로 퍼진다 — 가로 반지름을 세로 반지름의 0.8배(사진 종횡비로 환산)까지만 */
+  const hasFace = !!(state.landmarks && state.landmarks[angle]);
+  const img = (typeof imgCache !== 'undefined') ? imgCache[angle] : null;
+  if(!hasFace && img && img.naturalWidth && img.naturalHeight){
+    const rxMax = ry * 0.8 * (img.naturalHeight / img.naturalWidth);
+    if(rx > rxMax) rx = rxMax;
   }
   return { cx, cy: (top + bot) / 2, rx, ry };
 }
@@ -1211,14 +1176,6 @@ const RENDER_PLATE = {
      ※ 반경을 상한으로 묶는 이유: 금발처럼 머리색이 배경색과 가까우면 색만으로는
        못 멈춘다. 상한이 안전장치다. 로그의 "테두리 회수"가 크게 튀면 tol을 줄일 것. */
   rim: { on: true, tol: 96, minPx: 4, maxPx: 18 },
-  /* 눈·눈썹 보호 — 위 buildHoleMask/featureGuardMask 배너. padX·padY는 랜드마크 박스
-     반경에 곱하는 값(03a STEP 4 가드의 1.35/1.5보다 조금 넉넉), padAbs는 정규화 좌표로 더하는 여유.
-     되돌리기: RENDER_PLATE.eyeGuard.on = false */
-  /* (2026-09-16 배포본 반영) 여유를 넓혔다: padX 1.45 → 1.90, padY 1.60 → 2.20.
-     배포본 식은 반경 = w/2 + w×0.45(+0.008) · h/2 + h×0.6(+0.008) 인데,
-     이것을 이 설정 형식(w/2 × pad)으로 옮기면 1.90 / 2.20 이 된다. 1.45/1.60으로는
-     3/4 측면에서 속눈썹 끝·눈썹 꼬리가 아직 조금씩 먹혔다. */
-  eyeGuard: { on: true, padX: 1.90, padY: 2.20, padAbs: 0.008 },
   /* 거울 결 — 메운 면이 <b>매끈해서</b> 티가 나는 문제. 색·명암은 인페인팅이 만든
      것을 그대로 쓰고, <b>고주파(니트 짜임·배경 입자)만</b> 경계 건너편에서 거울로
      비춰 가져온다. 두상 안에서 이미 쓰는 "색은 주변, 결은 실제 피부" 방식과 같다. */
@@ -1306,52 +1263,13 @@ function downsampleFlagsMax(src, sw, sh, dw, dh){
 /* 이 뷰에서 "메워야 할 자리"의 <b>단 하나의</b> 정의 — baseC에 붙여 캐시한다.
    테두리 정리(baseC)와 메움 배경(fillC)이 <b>같은</b> 구멍을 봐야 한다.
    서로 1px이라도 어긋나면 그 틈으로 원본 머리색이 실선처럼 남는다. */
-/* ── 구멍이 <b>반대쪽 눈</b>을 먹던 것 (2026-09-19) ────────────────────────────
-   사용자: "측면캔버스에서 반대쪽 눈에도 메움이 있어."
-   03a STEP 4가 눈썹·눈·입을 reason 3으로 가드해서 <b>머리 마스크</b>에는 눈이 없다.
-   그런데 여기 buildHoleMask는 그 구멍을 dilatePx만큼 넓히고, 다시 growHairRim이
-   머리색과 가까운 픽셀을 최대 rimIter겹 빨아들인다. 3/4 측면에서 반대쪽 눈은
-   머리카락 경계에 붙어 있고 속눈썹·눈동자가 머리색 판정을 통과하므로, 03a가
-   빼 둔 자리가 여기서 되돌아와 살색으로 칠해졌다.
-   고침: 랜드마크의 눈·눈썹 박스를 보호 타원으로 만들고, <b>넓히기·회수가 새로 넣은</b>
-   픽셀만 그 안에서 되돌린다. 원래부터 구멍이던 자리(진짜 머리카락이 눈을 덮은 경우)는
-   그대로 둬야 한다 — 안 그러면 그 자리에 지워진 머리색이 실선으로 남는다.
-   여유는 03a 가드(가로 ×1.35 · 세로 ×1.5)보다 조금 넉넉하게 잡는다.
-   되돌리기: RENDER_PLATE.eyeGuard.on = false */
-function featureGuardMask(angle, w, h){
-  const G = RENDER_PLATE.eyeGuard;
-  if(!G || !G.on || !angle) return null;
-  const lm = (typeof state !== 'undefined') && state.landmarks && state.landmarks[angle];
-  const F = lm && lm.features;
-  if(!F) return null;
-  const g = new Uint8Array(w*h);
-  let n = 0;
-  for(const key of ['leftEye', 'rightEye', 'leftBrow', 'rightBrow']){
-    const b = F[key];
-    if(!b) continue;
-    const bw = b.maxX - b.minX, bh = b.maxY - b.minY;
-    const cx = (b.minX + b.maxX)/2 * w, cy = (b.minY + b.maxY)/2 * h;
-    const rx = Math.max(1, (bw/2 * G.padX + G.padAbs) * w);
-    const ry = Math.max(1, (bh/2 * G.padY + G.padAbs) * h);
-    const x0 = Math.max(0, Math.floor(cx-rx)), x1 = Math.min(w, Math.ceil(cx+rx));
-    const y0 = Math.max(0, Math.floor(cy-ry)), y1 = Math.min(h, Math.ceil(cy+ry));
-    for(let y=y0; y<y1; y++){
-      const dy = (y+0.5-cy)/ry;
-      for(let x=x0; x<x1; x++){
-        const dx = (x+0.5-cx)/rx;
-        if(dx*dx + dy*dy <= 1 && !g[y*w+x]){ g[y*w+x]=1; n++; }
-      }
-    }
-  }
-  return n ? g : null;
-}
 function buildHoleMask(baseC, maskInf){
   const w = baseC.width, h = baseC.height;
   const d = baseC.getContext('2d').getImageData(0, 0, w, h).data;
   const hole = new Uint8Array(w*h);
   let n0 = 0;
   for(let p=0, i=3; p<hole.length; p++, i+=4){ if(d[i] < RENDER_PLATE.alphaHole){ hole[p]=1; n0++; } }
-  const hole0 = hole.slice();   // (2026-09-19) 넓히기 전 원본 구멍 — 눈 보호가 여기까진 안 건드린다
+  const orig = hole.slice();   // (360shot) 넓히기 전 구멍 — 눈 보호가 "넓혀서 생긴 자리"만 되돌리게
   dilateFlags(hole, w, h, Math.max(1, Math.round(RENDER_PLATE.dilatePx)));
   let nRim = 0, rimIter = 0;
   const R = RENDER_PLATE.rim;
@@ -1362,24 +1280,42 @@ function buildHoleMask(baseC, maskInf){
     rimIter = Math.max(R.minPx, Math.min(R.maxPx, Math.round(h*0.035)));
     nRim = growHairRim(hole, d, w, h, hair, R.tol, rimIter);
   }
-  /* (2026-09-19) 눈·눈썹 자리에서 넓히기·회수가 새로 넣은 구멍만 되돌린다 — 위 eyeGuard 배너.
-     baseC._view는 getHoleFillCanvas가 달아 둔다(구멍 마스크는 baseC에 캐시되고
-     buildCleanBaseCanvas도 같은 것을 쓰므로, 뷰 이름은 제일 먼저 부르는 쪽에서 붙인다). */
+  /* (360shot 배포본) 눈 보호 — 구멍을 넓히거나(dilate) 머리 테두리를 키우다가(rim) 눈·눈썹까지 먹으면
+     메움 배경이 눈을 지운다. 눈·눈썹 둘레 타원(featureGuardMask) 안에서 넓혀서 생긴 구멍은 되돌림.
+     원래 구멍(투명)이던 자리는 그대로 둠. */
   let nGuard = 0;
   const guard = featureGuardMask(baseC._view, w, h);
   if(guard){
-    for(let p=0; p<hole.length; p++){
-      if(guard[p] && hole[p] && !hole0[p]){ hole[p]=0; nGuard++; }
-    }
-    if(!_eyeGuardLogged[baseC._view]){
-      _eyeGuardLogged[baseC._view] = true;
-      console.log('[렌더경계·눈보호] ' + baseC._view + ': 넓히기·회수가 먹은 눈·눈썹 ' + nGuard + 'px 되돌림'
-        + (nGuard ? '' : ' (이 뷰는 애초에 안 먹었음)'));
-    }
+    for(let i=0; i<hole.length; i++){ if(guard[i] && hole[i] && !orig[i]){ hole[i] = 0; nGuard++; } }
+    console.log('[렌더경계·눈보호] ' + baseC._view + ': ' + nGuard + 'px 되돌림');
   }
   return { hole, w, h, n0, nRim, rimIter, hair, nGuard };
 }
-const _eyeGuardLogged = {};
+/* (360shot 배포본) 눈·눈썹 보호 마스크 — 얼굴 랜드마크의 눈·눈썹 상자를 가로 0.45배·세로 0.6배(+0.8%) 넓힌 타원.
+   view: 'front' 등(getHoleFillCanvas가 baseC._view에 넣어 줌) · 랜드마크가 없으면 null */
+function featureGuardMask(view, w, h){
+  const lm = view && typeof state !== 'undefined' && state.landmarks && state.landmarks[view];
+  const f = lm && lm.features;
+  if(!f) return null;
+  const g = new Uint8Array(w*h);
+  let n = 0;
+  for(const k of ['leftEye', 'rightEye', 'leftBrow', 'rightBrow']){
+    const b = f[k]; if(!b) continue;
+    const bw = b.maxX - b.minX, bh = b.maxY - b.minY;
+    const cx = (b.minX + b.maxX) / 2 * w, cy = (b.minY + b.maxY) / 2 * h;
+    const rx = Math.max(1, (bw/2 + bw*0.45 + 0.008) * w), ry = Math.max(1, (bh/2 + bh*0.6 + 0.008) * h);
+    const x0 = Math.max(0, Math.floor(cx - rx)), x1 = Math.min(w, Math.ceil(cx + rx));
+    const y0 = Math.max(0, Math.floor(cy - ry)), y1 = Math.min(h, Math.ceil(cy + ry));
+    for(let y=y0; y<y1; y++){
+      const dy = (y + 0.5 - cy) / ry;
+      for(let x=x0; x<x1; x++){
+        const dx = (x + 0.5 - cx) / rx;
+        if(dx*dx + dy*dy <= 1){ g[y*w + x] = 1; n++; }
+      }
+    }
+  }
+  return n ? g : null;
+}
 function getHoleMask(baseC, maskInf){
   if(!baseC) return null;
   if(baseC._holeMask) return baseC._holeMask;
@@ -2096,9 +2032,7 @@ function warnHoleFillOnce(angle){
 
 function getHoleFillCanvas(angle, baseC, maskInf){
   if(!baseC) return null;
-  /* (2026-09-19) 구멍 마스크가 눈·눈썹 랜드마크를 보려면 이 캔버스가 어느 뷰인지 알아야 한다.
-     buildHoleMask·buildCleanBaseCanvas는 뷰를 안 받는데, 07b에서 이 함수가 둘보다 먼저 불린다. */
-  if(!baseC._view) baseC._view = angle;
+  if(!baseC._view) baseC._view = angle;   // (360shot) buildHoleMask의 눈 보호(featureGuardMask)가 어느 뷰인지 알게
   const cached = state.baseFillCanvases && state.baseFillCanvases[angle];
   /* (2026-09-16) 서명에 두개골 실루엣(viewCal)을 넣는다 — 모델이 메움보다 늦게 서므로
      안 넣으면 타원으로 구운 첫 메움이 끝까지 남는다 */

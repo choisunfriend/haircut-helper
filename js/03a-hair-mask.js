@@ -223,7 +223,9 @@ function measureViewHairIdentity(o){
   const hair = parseRGBTriple(o.hairColorCss);
   const out = { w, h, density:null, pitchPx:null, pitchN:0, curlDegPerPx:null, curlN:0,
                 glossHiLo:null, glossStd:null, hairlineTop:null, hairlineBot:null };
-  if(!C.on) return out;
+  // (옛 66) 방향 필터가 같은 크기 사진에서 잰 결 모양(웨이브/컬)을 붙임 — 04 GABOR_ORIENT
+  try{ if(GABOR_ORIENT.last && GABOR_ORIENT.last.w === o.w && GABOR_ORIENT.last.h === o.h) out.waveShape = GABOR_ORIENT.last.shape; }catch(e){}
+  if(!C.on){ if(typeof REGROW !== 'undefined') REGROW._afterIdentity(out, o); return out; }   // (옛 42) 컬 재기 값 붙임
 
   // ── ① 뿌리 밀도 — 머리 영역 안에서 "머리색 쪽" 픽셀의 비율 ──
   /* (2026-09-16) 기준색 둘이 너무 가까우면 판정 자체를 안 한다 — 위 borrowSkin 배너 */
@@ -461,6 +463,7 @@ function measureViewHairIdentity(o){
     }
     out.hairlineTop = top; out.hairlineBot = bot;
   }
+  if(typeof REGROW !== 'undefined') REGROW._afterIdentity(out, o);   // (옛 42) 04에서 잰 컬 곡률·진폭·타래·나선을 붙임(17b REGROW)
   return out;
 }
 

@@ -1,0 +1,85 @@
+/* 31-i18n-en.js — English for UI text that the earlier tables missed.
+   Loads last, so I18N (18-perf-i18n-boot.js) already exists.
+   Also re-registers the comb/sweep table from 17a, which ran before I18N was defined. */
+(function () {
+  if (typeof I18N === 'undefined') return;
+  Object.assign(I18N, {
+    // comb / sweep (17a — never registered because it loaded before I18N)
+    '빗질 ON': 'Comb ON',
+    '빗질 OFF': 'Comb OFF',
+    '넘기기 ON': 'Sweep ON',
+    '넘기기 OFF': 'Sweep OFF',
+    '세기 ': 'Strength ',
+    '넘기기 세기 — 한 번 쓸 때 얼마나 넘어가나(여러 번 쓸면 쌓임)': 'Sweep strength — how far one stroke turns the hair (repeat strokes add up)',
+    '켜면 한 손가락 드래그가 빗어 넘기기가 됩니다 — 원 안의 머리가 뭉치째 쓴 방향으로 넘어갑니다': 'When on, a one-finger drag sweeps — the hair inside the circle moves in the stroke direction',
+    '켜면 한 손가락 드래그가 빗질이 됩니다 — 잔머리를 결 방향으로 쓰다듬어 눕힙니다': 'When on, a one-finger drag combs — flyaways are smoothed along the hair flow',
+    '마지막 빗질 한 획 되돌리기': 'Undo the last comb stroke',
+    '빗질이 너무 많아요 — ↶로 되돌리거나 지워 주세요': 'Too many comb strokes — undo with ↶ or clear them',
+    '넘기고 싶은 머리에 빗(원)을 올리고 보낼 방향으로 쓸어 주세요 — 원 안의 머리가 뭉치째 그 방향으로 넘어갑니다 · 이어서 쓸면 더 넘어가요 · ↶ 되돌리기': 'Place the comb (circle) on the hair and stroke toward where it should go — the hair inside moves that way · stroke again to move it further · ↶ undo',
+    '뜬 머리에 빗(원)을 올리고 결대로 쓸어 주세요 — 주변 머리의 결에 맞춰 눕습니다 · 빗은 손가락 조금 위에 있어요 · 두 손가락: 이동·확대': 'Place the comb (circle) on loose hair and stroke along the flow — it settles with the surrounding hair · the comb sits just above your finger · two fingers: pan/zoom',
+
+    // original-head mode (17b)
+    '원본 머리 (마네킹 + 잰 값)': 'Original hair (mannequin + measured values)',
+    'OFF: 원본 머리(마네킹에 사진에서 잰 값을 올린 것) · ON: 맨 마네킹으로 초기화': 'OFF: original hair (mannequin with values measured from the photos) · ON: reset to a plain mannequin',
+    '원본 3D 그대로 ': 'Original 3D as is ',
+    '사진에서 뜬 가닥을 조정 없이 그대로 3D로 봅니다 (마네킹은 꺼집니다)': 'Show the strands read from the photos in 3D without adjustment (mannequin off)',
+    '옮기기 실험': 'Transfer test',
+    '옮기기 실험 중…': 'Running transfer test…',
+    '스타일 길이 든 스타일 — 마네킹 뿌리 자리만 쓰고 모양은 등록한 그대로': 'Style with saved strand paths — uses mannequin roots, keeps the registered shape',
+    '원본': 'Original',
+
+    // dialogs / panels (06)
+    '취소': 'Cancel',
+    '확인': 'OK',
+    '디스커넥션': 'Disconnection',
+    '0=안 씀 · 윗머리와 끊기는 라인(두상높이)': '0 = off · line where the top section disconnects (head height)',
+    '디스커넥션이 켜져 있어 안 쓰임': 'Not used while disconnection is on',
+    '0=스퀘어(일자) · 50=라운드 · 100=테이퍼(V)': '0 = square · 50 = round · 100 = tapered (V)',
+    '색 넘버 복사됨 · ': 'Color number copied · ',
+    '색 넘버 · ': 'Color number · ',
+    ' 값으로 맞췄어요': ' — values applied',
+    ' (길이는 3D 모델 준비 후)': ' (length after the 3D model is ready)',
+    '이 섹션만 이 값으로 맞추기': 'Apply these values to this section only',
+    '스타일링만 이 값으로 맞추기': 'Apply these values to styling only',
+    ' 스타일링 값으로 맞췄어요': ' — styling values applied',
+    '스펙 수치': 'Spec values',
+    '이 섹션을 손으로 맞출 때의 목표값': 'Target values for adjusting this section by hand',
+    '스타일링 목표값 — 그대로 슬라이더 숫자': 'Styling targets — use these slider numbers directly',
+    '길이는 <b>손님 원래 길이의 비율</b>이라 스펙의 cm·끝높이를 이 손님에게 풀어서 낸 값입니다 — ': 'Length is a <b>ratio of this client\'s natural length</b>, so these are the spec\'s cm / tip heights solved for this client — ',
+    '다른 손님에게 그대로 옮겨 적지 마세요. 넘김·볼륨·가르마 등 <b>머리 전체 연출</b>은 스타일링 탭에 있습니다.': 'don\'t copy them to another client as is. Sweep, volume, parting and other <b>overall styling</b> are in the Styling tab.',
+    '(중립)': '(neutral)',
+    '" 등록 — 3D 준비 전이라 길이를 cm로 못 재서, 다른 손님에겐 길이가 달라질 수 있어요': '" saved — the 3D model wasn\'t ready, so length couldn\'t be measured in cm and may differ on other clients',
+
+    // capture / analysis messages
+    '사람 윤곽 모델 준비 중…': 'Preparing body outline model…',
+    '뒤 사진을 맞추는 데 필요합니다': 'Needed to align the back photo',
+    '사람 윤곽을 읽지 못했어요 — 뒷머리가 짧게 나올 수 있습니다. 새로고침 후 다시 해 주세요.': 'Couldn\'t read the body outline — the back hair may come out short. Please reload and try again.',
+    '사진이 바뀌어 새로 분석합니다': 'Photos changed — analyzing again',
+    '분석 모델을 다시 준비하고 있어요': 'Reloading the analysis model',
+    '3D 헤어 만드는 중…': 'Building 3D hair…',
+    '의상·얼굴 붙이는 중…': 'Attaching outfit and face…',
+    '촬영 안내': 'Photo tips',
+    '장에서 문제가 보였어요.': ' photo(s) have issues.',
+    ')에 문제가 있어 결과가 부정확할 수 있어요.': ') has issues, so the result may be inaccurate.',
+    '기준 사진(': 'Base photo (',
+    '문제가 있는 추가 사진 ': 'Extra photos with issues: ',
+    '장은 빼고 계산합니다.': ' excluded from the calculation.',
+    '° 사진': '° photo',
+    '머리 윗선을 못 잡음': 'Top of head not found',
+    '머리 윗선이 거의 안 잡힘': 'Top of head barely visible',
+    '머리 맨 위가 화면 밖': 'Top of head is outside the frame',
+    '너무 가깝게 찍혔거나 배율이 틀림': 'Too close, or wrong scale',
+    '너무 멀거나 머리가 잘림': 'Too far, or head cut off',
+    '정면 사진 없음': 'No front photo',
+    '사진 로드 실패': 'Photo failed to load',
+    '코끝': 'Nose tip',
+    '턱끝': 'Chin',
+    '이마': 'Forehead',
+    '원래 크기': 'Original size',
+    '2배확대': '2× zoom',
+    '중앙크롭확대': 'Center crop zoom',
+    '한국어': '한국어'
+  });
+  try { _i18nSubKeys = null; } catch (e) {}
+  try { if (typeof applyUiLang === 'function') applyUiLang(); } catch (e) {}
+})();
