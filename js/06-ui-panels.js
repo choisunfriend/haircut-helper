@@ -647,8 +647,17 @@ function onGyColorToggle(secId){
 function onGyColorPick(secId, hex){ gyApplyDye(secId, hex, false); }
 
 // 공정그룹 접힘 토글
+/* (2026-10-17) 아코디언 — 사용자: "기본으로 다 닫혀 있다가 '커팅' 탭하면 하위 슬라이더들이
+   펼쳐지고, 다른 거 탭하거나 '커팅' 다시 탭하면 접히게". 하나를 펴면 나머지 그룹은 전부 접는다. */
 function toggleGyGroup(gid){
-  state.panelCollapsed[gid] = !state.panelCollapsed[gid];
+  const opening = !!state.panelCollapsed[gid] || state.panelCollapsed[gid] === undefined;
+  if(opening){
+    ['cut','perm','color','set','recipe','styling'].concat(Object.keys(state.panelCollapsed))
+      .forEach(k=>{ state.panelCollapsed[k] = true; });
+    state.panelCollapsed[gid] = false;
+  } else {
+    state.panelCollapsed[gid] = true;
+  }
   buildGyControls();
 }
 
@@ -1180,11 +1189,14 @@ function buildGyControls(){
 }
 
 function buildGyStylingControls(wrap){
-  const g = document.createElement('div'); g.className = 'gy-group';
-  g.innerHTML = `<div class="gy-group-head static">
+  const g = document.createElement('div');
+  g.className = 'gy-group' + (state.panelCollapsed.styling !== false ? ' collapsed' : '');
+  g.innerHTML = `<div class="gy-group-head">
       <span class="gy-dot" style="background:var(--accent)"></span>
       <span class="gy-group-title" style="color:var(--accent-soft)">스타일링</span>
-      <span class="gy-group-sub">머리 전체 마무리 연출</span></div>`;
+      <span class="gy-group-sub">머리 전체 마무리 연출</span>
+      <span class="gy-chevron">▼</span></div>`;
+  g.querySelector('.gy-group-head').onclick = ()=> toggleGyGroup('styling');
   const body = document.createElement('div'); body.className = 'gy-group-body';
   GYEOL_STYLING_PARAMS.forEach(pm=>{
     if(pm.hidden) return;          // 프리셋만 쓰는 값 — 미용사가 만질 손잡이가 아니다(위 목록 주석)
