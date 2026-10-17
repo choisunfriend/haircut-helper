@@ -568,3 +568,13 @@ input[type=range]::-moz-range-thumb{width:20px;height:20px;border-radius:50%;bac
 .soft-stage:not(.stage-dark) .view-zoom{ background:rgba(20,17,15,0.72); }
 .soft-stage:not(.stage-dark) .view-zoom span{ color:var(--accent-soft); }
 .soft-stage:not(.stage-dark) .model3d-hint{ background:rgba(20,17,15,0.62) !important; color:#E7DDD0 !important; }
+
+
+/* (2026-10-17) 조정 화면 위 버튼 — 세로 한 줄씩(마네킹 / 원본 대조 / 시술 스펙), 빗질·넘기기(세기·되돌리기)만 한 줄에 나란히.
+   빗질 코드가 버튼마다 display를 켜고 끄므로 grid로 둔다(숨은 버튼은 칸을 차지하지 않음). */
+#screen-adjust .mode-bar{display:grid;grid-template-columns:repeat(4,max-content);gap:5px;align-items:center;justify-items:start;}
+#screen-adjust .mode-bar > *{grid-column:1 / -1;}
+#screen-adjust .mode-bar > #comb3dBtn,
+#screen-adjust .mode-bar > #comb3dSweepBtn,
+#screen-adjust .mode-bar > #comb3dSweepK,
+#screen-adjust .mode-bar > #comb3dUndoBtn{grid-column:auto;}

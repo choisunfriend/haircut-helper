@@ -257,6 +257,7 @@ var PHOTO_CHANGE = (function () {
     tryDo(function () { state.aiOutfitRecommendation = null; });
     tryDo(function () { _garmentNeckOpening = null; });
     tryDo(function () { if (typeof resetBodyBase === 'function') resetBodyBase(); });
+    tryDo(function () { if (typeof resetBodyBase === 'function') resetBodyBase(); });
     tryDo(function () { resetResultScreenCache(); });
     tryDo(function () { _headCrossSectionCache = null; });
     tryDo(function () { _headVerticalRadiusCache = null; });

@@ -621,7 +621,8 @@ const state = {
   activePanelSection: 'crown',
   /* recipe(스펙 수치)는 <b>접힌 채</b> 시작한다 — 읽을거리라 열려 있으면 슬라이더를
      아래로 밀어낸다. 필요할 때 펴서 보는 참조표다(2026-09-01). */
-  panelCollapsed: { perm:false, color:true, recipe:true },
+  /* (2026-10-17) 조정 그룹은 기본 전부 접힘 · 하나를 펴면 나머지는 접힘(아코디언) — toggleGyGroup */
+  panelCollapsed: { cut:true, perm:true, color:true, set:true, recipe:true, styling:true },
   // 하위 호환: sliders는 섹션 파라미터에서 파생 (renderFrame에서 사용)
   // length 필드는 더 이상 여기서 쓰이지 않음 — drawHairStrands가 컬럼별로
   // resolveSectionId()를 통해 해당 위치의 섹션 length를 직접 조회함

@@ -788,9 +788,10 @@ var HAIR_LOOK = (function () {
     light: [-0.45, 0.75, 0.55],   // 화면 기준 빛 방향(왼쪽 위 앞)
     // (2026-10-10b) 사용자: "머리가 너무 글리스하다 — 저 정도 광택(생성 사진의 남자 머리)만 있으면 될 것 같아" → 넓고 은은한 광택으로 낮춤
     diffuse: 0.45,                // 결 방향 확산광 세기(나머지는 고른 빛)
-    spec1: 0.2, pow1: 36, shift1: 0.12,     // 하얀 띠(예전 0.55 · 90 — 젖은 듯 반짝였음)
-    spec2: 0.12, pow2: 12, shift2: -0.10,   // 머리색 띠(예전 0.35 · 22)
-    rim: 0.08, rimPow: 3,
+    // (2026-10-17) 사용자: 3D 뒷모습 정수리가 회색빛으로 뜸(원본은 고른 짙은 갈색) → 하얀 띠를 줄이고 머리색 쪽으로 물들임
+    spec1: 0.12, pow1: 36, shift1: 0.12,     // 하얀 띠(10-10b 0.2)(예전 0.55 · 90 — 젖은 듯 반짝였음)
+    spec2: 0.16, pow2: 12, shift2: -0.10,   // 머리색 띠(예전 0.35 · 22)
+    rim: 0.04, rimPow: 3,          // (2026-10-17) 0.08 → 0.04
     tipFade: 0.3, tipFrom: 0.8,   // 끝 투명(0~1) · 가닥 길이의 이 비율부터
     outerOnly: 0.75,              // 광택을 겉면 가닥에 몰기(0 = 안쪽도 같은 광택)
     pollMs: 400
@@ -834,7 +835,7 @@ var HAIR_LOOK = (function () {
     '  float s2 = kk(T2,H,uP2) * uS2 * outer * face;',
     '  float rim = pow(1.0 - clamp(abs(dot(N,V)),0.0,1.0), uRimP) * uRim * outer;',
     '  vec3 base = vCol * ((1.0-uDiff) + uDiff * dif * (0.55 + 0.45*face));',
-    '  vec3 c = base + vec3(s1) * vec3(1.0,0.97,0.92) + s2 * (vCol*1.6 + vec3(0.06,0.04,0.02)) + rim * (vCol + vec3(0.25,0.22,0.2));',
+    '  vec3 c = base + vec3(s1) * mix(vec3(1.0,0.97,0.92), vCol*2.2 + vec3(0.08,0.06,0.04), 0.65) + s2 * (vCol*1.6 + vec3(0.06,0.04,0.02)) + rim * (vCol + vec3(0.25,0.22,0.2));',
     '  float tip = smoothstep(uTipFrom, 1.0, vHl.x);',
     '  c = mix(c, c*1.15 + vec3(0.02), tip*0.5);',
     '  gl_FragColor = vec4(min(c, vec3(1.0)), 1.0 - tip*uTip);',
@@ -1253,7 +1254,10 @@ async function setupModel3DScreenBase(){
       }catch(e){ console.warn('[3D·비율] 씬 정수리 실측 실패 — 사진 기준 자로 폴백:', e); }
       state._model3DCrownY = crownY3D;
       const bodyLen3D = personBodyLenMesh(crownY3D);
-      const outfitMesh = await loadOutfitMeshMeasured(outfitRec.item, faceMetrics.widthFactor, bodyLen3D);
+      /* 의상 갈아입히기(Changeclothes): 21-body-base의 몸+옷 리그를 쓴다. 없으면 예전 단일 의상 메쉬로. */
+      const outfitMesh = (typeof buildBody3DForOutfit === 'function')
+        ? await buildBody3DForOutfit(outfitRec.item, faceMetrics.widthFactor, bodyLen3D)
+        : await loadOutfitMeshMeasured(outfitRec.item, faceMetrics.widthFactor, bodyLen3D);
       model3D.headGroup.add(outfitMesh);
       // (2026-08-31 11차) 옷깃을 이제 봤으니 목을 그 구멍 기준으로 다시 짓는다.
       refitNeckToGarment(model3D.headGroup,
@@ -2238,6 +2242,7 @@ function startNewCustomer(){
   state.hairIdentity=null; // (2026-08-01) 모발 프로필 — 사람이 바뀌면 당연히 버린다
   for(const k in _viewMaskCache) delete _viewMaskCache[k]; // 뷰 마스크 샘플러 캐시
   state.aiOutfitRecommendation=null; // (3단계) 의상 추천 캐시도 초기화
+  if (typeof resetBodyBase === 'function') resetBodyBase(); // 의상 갈아입히기: 몸·옷 리그 무효
   _garmentNeckOpening = null;        // (11차) 옷깃 구멍 실측 — 사람·의상이 바뀌면 무효
   // (2026-09-21 배포본 반영) 몸통 베이스 캐시도 새 손님마다 초기화 — 21-body-base.js가
   // 로드돼 있을 때만(지금 index.html은 안 불러서 typeof 가드로 건너뛴다).
