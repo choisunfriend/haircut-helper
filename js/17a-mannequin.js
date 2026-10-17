@@ -4,7 +4,7 @@ const MANNEQUIN={'on':![],'segments':0x16,'rootRampMax':0.25,'clearance':1.004,'
    사진(뒤 → 없으면 정면) 머리 영역에서 위→아래 폭 비율을 재고, 3D 가닥의 같은 높이 폭이 그보다 좁으면
    어깨 아래부터 가로(x)로만 벌린다(좁히지는 않음). 원본 머리(__original__/마네킹 끔)에만.
    끄기 TIP_FLARE.on=false · 최대 배수 TIP_FLARE.maxScale · 시작 높이 TIP_FLARE.fromT(0=정수리 1=끝) */
-var TIP_FLARE={on:true,fromT:0.35,rampT:0.15,maxScale:2.4,bands:24,stats:null};
+var TIP_FLARE={on:true,fromT:0.35,rampT:0.15,maxScale:2.4,bands:24,cmpMaxT:0.85,backOnly:true,pct:0.9,stats:null};
 function tipFlarePhotoProfile(){
   var views=['back','front'];
   for(var v=0;v<views.length;v++){
@@ -40,13 +40,15 @@ function tipFlareAll(strands){
   var bandAbs=[];for(var b=0;b<N;b++)bandAbs.push([]);
   var tOf=function(y){return (yTop-y)/(yTop-yBot);};
   for(var i2=0;i2<strands.length;i2++){var q=strands[i2]&&strands[i2].pts;if(!q)continue;
-    for(var k=0;k<q.length;k+=2){var t=tOf(q[k].y);if(t<0||t>=1)continue;bandAbs[Math.floor(t*N)].push(Math.abs(q[k].x));}}
+    for(var k=0;k<q.length;k+=2){if(TIP_FLARE.backOnly&&!(q[k].z<0))continue;var t=tOf(q[k].y);if(t<0||t>=1)continue;bandAbs[Math.floor(t*N)].push(Math.abs(q[k].x));}}
   var cur=new Float64Array(N);
-  for(var b4=0;b4<N;b4++){var a=bandAbs[b4];if(a.length<10){cur[b4]=0;continue;}a.sort(function(u,v){return u-v;});cur[b4]=2*a[Math.floor(a.length*0.95)];}
+  for(var b4=0;b4<N;b4++){var a=bandAbs[b4];if(a.length<10){cur[b4]=0;continue;}a.sort(function(u,v){return u-v;});cur[b4]=2*a[Math.floor(a.length*TIP_FLARE.pct)];}
   var head3=0;for(var b5=0;b5<Math.ceil(N*0.25);b5++)head3=Math.max(head3,cur[b5]);
   if(!(head3>0))return strands;
   var sc=new Float64Array(N);
-  for(var b6=0;b6<N;b6++){var tgt=P.ratio[b6]*head3;sc[b6]=(cur[b6]>0&&tgt>cur[b6])?Math.min(TIP_FLARE.maxScale,tgt/cur[b6]):1;}
+  /* 끝단 가장자리는 둥글게 짧아져 폭이 줄어드는 게 정상이라 cmpMaxT(0.85)까지만 비교하고, 그 아래는 0.85의 배수를 그대로 쓴다 */
+  var bMax=Math.max(1,Math.floor(TIP_FLARE.cmpMaxT*N));
+  for(var b6=0;b6<N;b6++){var bb=Math.min(b6,bMax),tgt=P.ratio[bb]*head3;sc[b6]=(cur[bb]>0&&tgt>cur[bb])?Math.min(TIP_FLARE.maxScale,tgt/cur[bb]):1;}
   for(var r=0;r<2;r++){var s2=Float64Array.from(sc);for(var b7=1;b7<N-1;b7++)sc[b7]=(s2[b7-1]+2*s2[b7]+s2[b7+1])/4;}
   var scaleAt=function(t){if(t<=TIP_FLARE.fromT)return 1;var f=Math.min(1,(t-TIP_FLARE.fromT)/TIP_FLARE.rampT),ff=f*f*(3-2*f);
     var bi=Math.min(N-1,Math.max(0,Math.floor(Math.min(t,0.999)*N)));return 1+(sc[bi]-1)*ff;};
@@ -54,7 +56,7 @@ function tipFlareAll(strands){
   for(var i3=0;i3<strands.length;i3++){var st=strands[i3],pp=st&&st.pts;if(!pp||pp.length<2)continue;
     var np=null;for(var k2=1;k2<pp.length;k2++){var g=scaleAt(tOf(pp[k2].y));if(g>1.0005){if(!np)np=pp.slice();np[k2]=Object.assign({},pp[k2],{x:pp[k2].x*g});if(g>maxS)maxS=g;}}
     if(np){out[i3]=Object.assign({},st,{pts:np});moved++;}}
-  TIP_FLARE.stats={view:P.view,moved:moved,maxScale:+maxS.toFixed(2),photoTip:+P.ratio[N-2].toFixed(2),model3dTip:+(cur[N-2]/head3).toFixed(2)};
-  if(!TIP_FLARE._logged){TIP_FLARE._logged=true;try{console.log('[끝단 퍼짐] '+P.view+' 사진 끝 폭 = 두상의 '+TIP_FLARE.stats.photoTip+'배 · 3D '+TIP_FLARE.stats.model3dTip+'배 → 가닥 '+moved+'개 벌림(최대 ×'+TIP_FLARE.stats.maxScale+') · 끄기 TIP_FLARE.on=false');}catch(e){}}
+  TIP_FLARE.stats={view:P.view,moved:moved,maxScale:+maxS.toFixed(2),photoTip:+P.ratio[Math.floor(TIP_FLARE.cmpMaxT*N)].toFixed(2),model3dTip:+(cur[Math.floor(TIP_FLARE.cmpMaxT*N)]/head3).toFixed(2)};
+  if(!TIP_FLARE._logged){TIP_FLARE._logged=true;try{console.log('[끝단 퍼짐] '+P.view+' 사진 아래쪽(85%) 폭 = 두상의 '+TIP_FLARE.stats.photoTip+'배 · 3D '+TIP_FLARE.stats.model3dTip+'배 → 가닥 '+moved+'개 벌림(최대 ×'+TIP_FLARE.stats.maxScale+') · 끄기 TIP_FLARE.on=false');}catch(e){}}
   return out;
 }
