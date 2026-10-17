@@ -21,6 +21,7 @@
     '닫기': 'Close',
     '새 탭에서 열기': 'Open in new tab',
     '쇼핑몰을 여는 중…': 'Opening the shop…',
+    '다시 불러오기': 'Reload',
     '쇼핑몰이 느리게 열리고 있습니다. 계속 비어 있으면 →': 'The shop is loading slowly. If it stays blank →',
     // comb / sweep (17a — never registered because it loaded before I18N)
     '빗질 ON': 'Comb ON',
