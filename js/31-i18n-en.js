@@ -4,6 +4,24 @@
 (function () {
   if (typeof I18N === 'undefined') return;
   Object.assign(I18N, {
+    // clothes rack / shop panel (21-body-base)
+    '남자': 'Male',
+    '여자': 'Female',
+    ' 몸으로 바꿉니다': ' body',
+    '누르면 ': 'Switch to ',
+    '외투 ': 'Outer ',
+    '고른 옷 벗기': 'Remove picked item',
+    '고른 옷(외투)을 입었다 벗깁니다 — 벗어도 고른 옷은 기억해 둡니다': 'Put the picked outerwear on or off — it stays remembered',
+    '쇼핑몰에서 고른 옷을 벗고 추천 의상으로 돌아갑니다': 'Remove the item picked from the shop and go back to the recommended outfit',
+    '슈트·재킷을 입었다 벗깁니다 (무슨 옷인지는 추천이 정합니다)': 'Put the suit/jacket on or off (the recommendation decides which one)',
+    '옷 고르기': 'Browse clothes',
+    '옷 닫기': 'Close clothes',
+    '의상 고르기': 'Choose an outfit',
+    '이 옷 보기': 'View this item',
+    '닫기': 'Close',
+    '새 탭에서 열기': 'Open in new tab',
+    '쇼핑몰을 여는 중…': 'Opening the shop…',
+    '쇼핑몰이 느리게 열리고 있습니다. 계속 비어 있으면 →': 'The shop is loading slowly. If it stays blank →',
     // comb / sweep (17a — never registered because it loaded before I18N)
     '빗질 ON': 'Comb ON',
     '빗질 OFF': 'Comb OFF',
