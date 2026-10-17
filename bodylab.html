@@ -1,0 +1,391 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>결 · 바디랩 — 몸 하나에 옷 갈아입히기</title>
+<style>
+  :root{
+    --bg:#181410; --panel:#221D18; --panel2:#2B251E; --line:#3A332B;
+    --ink:#EDE4D8; --ink2:#A89886; --accent:#E8C39E; --warn:#C2685A; --ok:#7FA07A;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%;background:var(--bg);color:var(--ink);
+    font-family:Inter,-apple-system,"Apple SD Gothic Neo","Noto Sans KR",sans-serif;font-size:13px}
+  #wrap{display:flex;height:100%}
+  #stage{flex:1;position:relative;min-width:0}
+  #stage canvas{display:block}
+  #panel{width:312px;flex:none;background:var(--panel);border-left:1px solid var(--line);
+    overflow-y:auto;padding:14px 14px 40px}
+  h1{font-size:15px;margin:0 0 2px}
+  h1 b{color:var(--accent)}
+  .sub{color:var(--ink2);font-size:11px;margin-bottom:14px;line-height:1.55}
+  .grp{border:1px solid var(--line);border-radius:8px;padding:10px;margin-bottom:10px;background:var(--panel2)}
+  .grp>.t{font-size:12px;color:var(--accent);margin-bottom:8px;display:flex;justify-content:space-between}
+  .grp>.t span{color:var(--ink2)}
+  label.row{display:block;margin:7px 0}
+  label.row .lb{display:flex;justify-content:space-between;color:var(--ink2);font-size:11px;margin-bottom:3px}
+  label.row .lb b{color:var(--ink);font-weight:500;font-variant-numeric:tabular-nums}
+  input[type=range]{width:100%;accent-color:var(--accent);height:16px}
+  button{background:var(--panel);border:1px solid var(--line);color:var(--ink);border-radius:6px;
+    padding:7px 9px;font-size:12px;cursor:pointer;font-family:inherit}
+  button:hover{border-color:var(--accent)}
+  button.on{background:var(--accent);color:#231C14;border-color:var(--accent)}
+  .btns{display:flex;gap:6px;flex-wrap:wrap}
+  .rack{display:flex;flex-direction:column;gap:5px}
+  .rack button{text-align:left;display:flex;justify-content:space-between;align-items:center;gap:8px}
+  .rack .tag{font-size:10px;color:var(--ink2);border:1px solid var(--line);border-radius:4px;padding:1px 5px}
+  .rack button.on .tag{color:#231C14;border-color:rgba(35,28,20,.35)}
+  input[type=file]{width:100%;font-size:11px;color:var(--ink2);margin-top:5px}
+  #log{font-family:ui-monospace,Menlo,monospace;font-size:10.5px;line-height:1.55;color:var(--ink2);
+    max-height:120px;overflow-y:auto;white-space:pre-wrap}
+  #log .e{color:var(--warn)} #log .k{color:var(--ok)}
+  #hud{position:absolute;left:12px;top:12px;font-family:ui-monospace,monospace;font-size:11px;
+    color:var(--ink2);background:rgba(24,20,16,.72);border:1px solid var(--line);
+    border-radius:6px;padding:8px 10px;line-height:1.6;pointer-events:none}
+  #hud b{color:var(--accent);font-weight:500}
+  .note{font-size:10.5px;color:var(--ink2);line-height:1.5;margin-top:7px}
+  @media(max-width:820px){#wrap{flex-direction:column}#panel{width:100%;border-left:0;border-top:1px solid var(--line);height:54%}#stage{height:46%}}
+</style>
+</head>
+<body>
+<div id="wrap">
+  <div id="stage"><div id="hud"></div></div>
+  <div id="panel">
+    <h1>결 · <b>바디랩</b></h1>
+    <div class="sub">몸은 6.5두신 중성 마네킹 하나로 고정하고, 그 위에서 옷만 갈아입힙니다.</div>
+
+    <div class="grp">
+      <div class="t">옷 <span id="wear">—</span></div>
+      <div class="rack" id="rack"></div>
+      <label class="row" style="margin-top:10px"><span class="lb">여유(옷과 몸 사이) <b id="v_cl">0.3 cm</b></span>
+        <input type="range" id="s_cl" min="0" max="30" value="3"></label>
+      <label class="row"><span class="lb">위아래 <b id="v_gy">0.0 cm</b></span><input type="range" id="s_gy" min="-150" max="150" value="0"></label>
+      <label class="row"><span class="lb">크기 <b id="v_gs">100%</b></span><input type="range" id="s_gs" min="80" max="125" value="100"></label>
+      <div class="btns"><button id="btnNudgeReset">맞춤 초기화</button></div>
+      <input type="file" id="f_cloth" accept=".obj,.glb,.gltf" multiple>
+      <div class="note">assets의 의상 OBJ는 마네킹과 좌표계가 같아 배율 1로 바로 맞습니다. 밖에서 가져온 옷(GLB 등)만 자동으로 어깨너비에 맞춥니다.</div>
+    </div>
+
+    <div class="grp">
+      <div class="t">몸 <span id="bodyName">—</span></div>
+      <label class="row"><span class="lb">머리 길이(정수리→턱) <b id="v_hd">24.0 cm</b></span>
+        <input type="range" id="s_hd" min="180" max="300" value="240"></label>
+      <div class="btns">
+        <button id="btnHead" class="on">머리 자리</button>
+        <button id="btnBody" class="on">몸 보이기</button>
+        <button id="btnWire">와이어</button>
+      </div>
+      <div class="note">두신은 6.5로 고정입니다. 머리 길이를 바꾸면 몸 전체가 같은 비율로 따라 커지고 줄어듭니다 — 앱에서 사진으로 잰 머리 크기가 들어올 자리입니다.</div>
+    </div>
+
+    <div class="grp">
+      <div class="t">보기</div>
+      <div class="btns">
+        <button id="btnGrid" class="on">바닥</button>
+        <button id="btnFront">정면</button>
+        <button id="btnSide">측면</button>
+        <button id="btnBack">후면</button>
+        <button id="btnShot">화면 저장</button>
+      </div>
+    </div>
+
+    <div class="grp">
+      <div class="t">기록</div>
+      <div id="log"></div>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/MTLLoader.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/OBJLoader.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
+<script>
+/* ==========================================================================
+   결 바디랩 v2
+   몸: 중성 마네킹 하나 (머리 위는 잘려 있음 — 앱이 실제 두상/머리카락을 얹는 자리)
+   두신: 6.5 고정. 머리 길이 L을 정하면 전체 키 = 6.5 L, 턱 아래 몸 = 5.5 L.
+   옷: 마네킹과 같은 좌표계로 만든 의상 메시를 그대로 얹는다.
+   ========================================================================== */
+
+const HEAD_COUNT = 6.5;              // 두신 — 고정
+let headLen = 0.24;                  // m, 정수리→턱
+
+const LOG = document.getElementById('log');
+function log(m, c){ const d = document.createElement('div'); if (c) d.className = c;
+  d.textContent = m; LOG.appendChild(d); LOG.scrollTop = LOG.scrollHeight;
+  while (LOG.childNodes.length > 120) LOG.removeChild(LOG.firstChild); }
+
+/* ------------------------------------------------------------------- 씬 */
+const stage = document.getElementById('stage');
+const renderer = new THREE.WebGLRenderer({antialias:true, preserveDrawingBuffer:true});
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.setClearColor(0x181410, 1);
+stage.appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(30, 1, 0.02, 40);
+const controls = new THREE.OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true; controls.dampingFactor = 0.08;
+
+scene.add(new THREE.HemisphereLight(0xEFE2D2, 0x2A231C, 0.9));
+const key = new THREE.DirectionalLight(0xFFF3E4, 0.9); key.position.set(1.3, 2.4, 2.2); scene.add(key);
+const rim = new THREE.DirectionalLight(0x9FB6C9, 0.4); rim.position.set(-1.8, 1.2, -2.2); scene.add(rim);
+const grid = new THREE.GridHelper(3, 12, 0x3A332B, 0x2A241D); scene.add(grid);
+
+function resize(){
+  const w = stage.clientWidth, h = stage.clientHeight;
+  renderer.setSize(w, h); camera.aspect = w/Math.max(1,h); camera.updateProjectionMatrix();
+}
+addEventListener('resize', resize);
+
+/* --------------------------------------------------------------- 뿌리 */
+// 메시 원본 좌표 → 미터. rig 안에서는 원본 좌표를 그대로 쓰고, rig.scale로 한 번에 줄인다.
+const rig = new THREE.Group(); scene.add(rig);
+
+let bodyMesh = null;
+let meshFootY = 0, meshNeckY = 1;     // 원본 좌표계에서의 발바닥/목 절단면
+let meshHalfWidth = 1;                // 원본 좌표계에서의 몸 반폭 (여유 계산용)
+const bodyMat = new THREE.MeshStandardMaterial({color:0xC2A489, roughness:0.85, metalness:0, side:THREE.DoubleSide});
+const wireMat = new THREE.MeshBasicMaterial({color:0x7A6A56, wireframe:true});
+
+const headMat = new THREE.MeshStandardMaterial({color:0xC2A489, roughness:0.85, metalness:0,
+  transparent:true, opacity:0.45});
+const headProxy = new THREE.Mesh(new THREE.SphereGeometry(0.5, 24, 18), headMat);
+rig.add(headProxy);
+
+/* ------------------------------------------------------------- 옷 목록 */
+// fit: 나중에 남성/여성 구분이 필요해지면 여기만 늘리면 된다. 지금은 전부 공용.
+const CATALOG = [
+  {id:'casual',   name:'슬레이트 캐주얼 셔츠', fit:'공용', obj:'./assets/Male_Casual_cloth.obj',     mtl:'./assets/Male_Casual_cloth.mtl',     native:true},
+  {id:'longslv',  name:'올리브 롱슬리브',     fit:'공용', obj:'./assets/Male_LongSleeve_cloth.obj', mtl:'./assets/Male_LongSleeve_cloth.mtl', native:true},
+  {id:'shirt',    name:'버건디 셔츠',         fit:'공용', obj:'./assets/Male_Shirt_cloth.obj',      mtl:'./assets/Male_Shirt_cloth.mtl',      native:true},
+  {id:'suit',     name:'차콜 슈트',           fit:'공용', obj:'./assets/Male_Suit_cloth.obj',       mtl:'./assets/Male_Suit_cloth.mtl',       native:true},
+  {id:'tee',      name:'티셔츠 (외부)',       fit:'공용', glb:'./assets/T Shirt by Nour - oZOt671DyI.glb',        native:false},
+  {id:'jacket',   name:'재킷 (외부)',         fit:'공용', glb:'./assets/Jacket by Polygonal Mind - eeKk3ObCbf.glb', native:false}
+];
+
+const garments = new Map();      // id → {def, root, loaded}
+let wearing = null;
+let clearanceCm = 0.3, nudgeY = 0, nudgeS = 1;
+
+/* ------------------------------------------------------------ 불러오기 */
+function loadOBJ(objUrl, mtlUrl){
+  return new Promise((res, rej) => {
+    const go = mats => {
+      const l = new THREE.OBJLoader();
+      if (mats) l.setMaterials(mats);
+      l.load(encodeURI(objUrl), res, null, rej);
+    };
+    if (!mtlUrl) return go(null);
+    new THREE.MTLLoader().load(encodeURI(mtlUrl), m => { m.preload(); go(m); }, null, () => go(null));
+  });
+}
+function loadGLB(url){
+  return new Promise((res, rej) =>
+    new THREE.GLTFLoader().load(encodeURI(url), g => res(g.scene), null, rej));
+}
+function loadFileObject(file){
+  const url = URL.createObjectURL(file);
+  const ext = file.name.toLowerCase().split('.').pop();
+  const p = ext === 'obj'
+    ? new Promise((res, rej) => new THREE.OBJLoader().load(url, res, null, rej))
+    : new Promise((res, rej) => new THREE.GLTFLoader().load(url, g => res(g.scene), null, rej));
+  return p.finally(() => URL.revokeObjectURL(url));
+}
+
+/* --------------------------------------------------------------- 마네킹 */
+function measureBody(obj){
+  const bb = new THREE.Box3().setFromObject(obj);
+  meshFootY = bb.min.y; meshNeckY = bb.max.y;
+  meshHalfWidth = Math.max(1e-6, (bb.max.x - bb.min.x) * 0.5);
+  return bb;
+}
+
+// 두신 6.5를 지키는 배율: 턱 아래(=목 절단면 아래) 길이가 머리 5.5개가 되도록
+function rigScale(){
+  return (HEAD_COUNT - 1) * headLen / Math.max(1e-6, meshNeckY - meshFootY);
+}
+
+function layout(){
+  const s = rigScale();
+  rig.scale.setScalar(s);
+  rig.position.y = -meshFootY * s;                 // 발바닥을 바닥에 붙인다
+  // 머리 자리: 목 절단면 위에 머리 길이만큼
+  const hr = headLen / s;                          // 원본 좌표계 기준 머리 반지름들
+  headProxy.scale.set(hr*0.39, hr*0.5, hr*0.44);
+  headProxy.position.set(0, meshNeckY + hr*0.5 - hr*0.06, 0);
+  const total = (HEAD_COUNT) * headLen;
+  controls.target.set(0, total*0.62, 0);
+  updateHud();
+}
+
+async function initBody(){
+  let obj = null;
+  try { obj = await loadOBJ('./assets/body_neutral.obj', './assets/body_neutral.mtl'); }
+  catch (e) { log('body_neutral.obj를 찾지 못했습니다 — assets에 올려주세요', 'e'); return; }
+  obj.traverse(o => { if (o.isMesh){ o.material = bodyMat; o.geometry.computeVertexNormals(); } });
+  bodyMesh = obj; rig.add(obj);
+  const bb = measureBody(obj);
+  document.getElementById('bodyName').textContent = 'body_neutral';
+  log('마네킹 불러옴 — 원본 높이 ' + (bb.max.y-bb.min.y).toFixed(2) + '단위', 'k');
+  layout();
+  camera.position.set(0.55, HEAD_COUNT*headLen*0.66, 2.25);
+}
+
+/* ------------------------------------------------------------------ 옷 */
+function applyPlacement(g){
+  const def = g.def;
+  const s0 = rigScale();
+  if (def.native){
+    // 마네킹과 같은 좌표계 — 그대로 얹는다. 여유는 몸 중심을 기준으로 살짝 부풀려서 준다.
+    const grow = (1 + (clearanceCm/100) / (meshHalfWidth * s0)) * nudgeS;
+    const pivotY = (meshFootY + meshNeckY) * 0.5;
+    g.root.scale.setScalar(grow);
+    g.root.position.set(0, pivotY * (1 - grow) + nudgeY/100/s0, 0);
+  } else {
+    // 외부 의상 — 어깨너비에 맞춘 뒤 어깨 높이에 건다
+    const bb = g.localBB;
+    const s = (meshHalfWidth * 2 * 1.06) / Math.max(1e-6, bb.max.x - bb.min.x) * nudgeS;
+    g.root.scale.setScalar(s);
+    const shoulderY = meshFootY + (meshNeckY - meshFootY) * 0.965;
+    g.root.position.set(-(bb.min.x+bb.max.x)*0.5*s,
+                        shoulderY - bb.max.y*s + nudgeY/100/s0,
+                        -(bb.min.z+bb.max.z)*0.5*s);
+  }
+}
+
+async function ensureLoaded(def){
+  if (garments.has(def.id)) return garments.get(def.id);
+  let root;
+  if (def.obj) root = await loadOBJ(def.obj, def.mtl);
+  else root = await loadGLB(def.glb);
+  root.traverse(o => { if (o.isMesh){
+    o.geometry.computeVertexNormals();
+    if (!o.material || !o.material.color) o.material = new THREE.MeshStandardMaterial({color:0x8C94A0, roughness:0.75});
+    o.material.side = THREE.DoubleSide;
+  }});
+  const g = {def, root, localBB: new THREE.Box3().setFromObject(root)};
+  root.visible = false; rig.add(root);
+  garments.set(def.id, g);
+  let n = 0; root.traverse(o => { if (o.isMesh) n += o.geometry.attributes.position.count; });
+  log('옷 불러옴: ' + def.name + ' — 정점 ' + n + '개', 'k');
+  return g;
+}
+
+async function wear(def){
+  try {
+    const g = await ensureLoaded(def);
+    garments.forEach(x => x.root.visible = false);
+    g.root.visible = true;
+    wearing = g;
+    applyPlacement(g);
+    document.querySelectorAll('#rack button').forEach(b =>
+      b.classList.toggle('on', b.dataset.id === def.id));
+    document.getElementById('wear').textContent = def.name;
+    updateHud();
+  } catch (e) { log('입히기 실패: ' + def.name + ' — ' + (e.message || e), 'e'); }
+}
+
+function buildRack(){
+  const rack = document.getElementById('rack');
+  rack.innerHTML = '';
+  for (const def of CATALOG){
+    const b = document.createElement('button');
+    b.dataset.id = def.id;
+    b.innerHTML = '<span>' + def.name + '</span><span class="tag">' + def.fit + '</span>';
+    b.addEventListener('click', () => wear(def));
+    rack.appendChild(b);
+  }
+}
+
+/* ------------------------------------------------------------------ HUD */
+function updateHud(){
+  const total = HEAD_COUNT * headLen;
+  document.getElementById('hud').innerHTML =
+    '두신 <b>' + HEAD_COUNT.toFixed(1) + '</b> (고정)<br>' +
+    '머리 <b>' + (headLen*100).toFixed(1) + '</b> cm · 키 <b>' + (total*100).toFixed(1) + '</b> cm<br>' +
+    '옷 <b>' + (wearing ? wearing.def.name : '없음') + '</b>';
+}
+
+/* ----------------------------------------------------------------- 조작 */
+document.getElementById('s_hd').addEventListener('input', e => {
+  headLen = +e.target.value / 1000;
+  document.getElementById('v_hd').textContent = (headLen*100).toFixed(1) + ' cm';
+  layout(); if (wearing) applyPlacement(wearing);
+});
+document.getElementById('s_cl').addEventListener('input', e => {
+  clearanceCm = +e.target.value / 10;
+  document.getElementById('v_cl').textContent = clearanceCm.toFixed(1) + ' cm';
+  if (wearing) applyPlacement(wearing);
+});
+document.getElementById('s_gy').addEventListener('input', e => {
+  nudgeY = +e.target.value / 10;
+  document.getElementById('v_gy').textContent = nudgeY.toFixed(1) + ' cm';
+  if (wearing) applyPlacement(wearing);
+});
+document.getElementById('s_gs').addEventListener('input', e => {
+  nudgeS = +e.target.value / 100;
+  document.getElementById('v_gs').textContent = e.target.value + '%';
+  if (wearing) applyPlacement(wearing);
+});
+document.getElementById('btnNudgeReset').addEventListener('click', () => {
+  nudgeY = 0; nudgeS = 1; clearanceCm = 0.3;
+  document.getElementById('s_gy').value = 0; document.getElementById('v_gy').textContent = '0.0 cm';
+  document.getElementById('s_gs').value = 100; document.getElementById('v_gs').textContent = '100%';
+  document.getElementById('s_cl').value = 3; document.getElementById('v_cl').textContent = '0.3 cm';
+  if (wearing) applyPlacement(wearing);
+});
+document.getElementById('btnHead').addEventListener('click', e => {
+  e.target.classList.toggle('on'); headProxy.visible = e.target.classList.contains('on');
+});
+document.getElementById('btnBody').addEventListener('click', e => {
+  e.target.classList.toggle('on'); if (bodyMesh) bodyMesh.visible = e.target.classList.contains('on');
+});
+document.getElementById('btnWire').addEventListener('click', e => {
+  e.target.classList.toggle('on');
+  const on = e.target.classList.contains('on');
+  if (bodyMesh) bodyMesh.traverse(o => { if (o.isMesh) o.material = on ? wireMat : bodyMat; });
+});
+document.getElementById('btnGrid').addEventListener('click', e => {
+  e.target.classList.toggle('on'); grid.visible = e.target.classList.contains('on');
+});
+const look = (x, z) => { const t = HEAD_COUNT*headLen;
+  camera.position.set(x*t*1.35, t*0.66, z*t*1.35); controls.target.set(0, t*0.62, 0); };
+document.getElementById('btnFront').addEventListener('click', () => look(0, 1.6));
+document.getElementById('btnSide').addEventListener('click', () => look(1.6, 0));
+document.getElementById('btnBack').addEventListener('click', () => look(0, -1.6));
+document.getElementById('btnShot').addEventListener('click', () => {
+  renderer.render(scene, camera);
+  const a = document.createElement('a');
+  a.download = 'bodylab.png'; a.href = renderer.domElement.toDataURL('image/png'); a.click();
+});
+document.getElementById('f_cloth').addEventListener('change', async e => {
+  for (const f of e.target.files){
+    const def = {id:'file-' + f.name, name: f.name.replace(/\.(obj|glb|gltf)$/i,''), fit:'공용', native:false};
+    try {
+      const root = await loadFileObject(f);
+      root.traverse(o => { if (o.isMesh){ o.geometry.computeVertexNormals(); o.material.side = THREE.DoubleSide; } });
+      root.visible = false; rig.add(root);
+      garments.set(def.id, {def, root, localBB: new THREE.Box3().setFromObject(root)});
+      CATALOG.push(def);
+      log('옷 추가: ' + def.name, 'k');
+    } catch (err) { log('파일 실패 ' + f.name + ': ' + (err.message||err), 'e'); }
+  }
+  buildRack();
+});
+
+/* ------------------------------------------------------------------ 시작 */
+buildRack();
+resize();
+updateHud();
+(async () => {
+  await initBody();
+  if (bodyMesh) await wear(CATALOG[0]);
+})();
+(function loop(){ requestAnimationFrame(loop); controls.update(); renderer.render(scene, camera); })();
+</script>
+</body>
+</html>

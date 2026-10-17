@@ -77,7 +77,10 @@ function makeContext(){
 function loadOrder(){
   const html = fs.readFileSync(path.join(__dirname,'..','index.html'),'utf8');
   const out = [];
-  const re = /<script\s+src="js\/([^"]+)"/g;
+  /* (2026-09-30) 캐시 버전(?v=…)을 떼고 파일 이름만 잡는다 — tools/build-release.js가
+     2026-09-22에 고친 것과 같은 버그. 예전 식은 "01-face-landmarker.js?v=…"라는 파일을 찾다가
+     전부 "없음"으로 건너뛰어, 그 뒤로 검사가 아무것도 안 올린 채 돌았다. */
+  const re = /<script\s+src="js\/([^"?]+)(?:\?[^"]*)?"/g;
   let m; while((m = re.exec(html))) out.push(m[1]);
   return out;
 }
