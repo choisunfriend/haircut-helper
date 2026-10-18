@@ -23,8 +23,9 @@ window.__anaLine = function(){
   const T = window.__anaTimes; if(!T) return '[시간·사진분석] 아직 안 함';
   const r = v => Math.round(v);
   return '[시간·사진분석] 합계 ' + r(T.total||0) + 'ms · 모델 기다림 ' + r(T.wait) + 'ms · ' +
-    T.views.map(v => v.a + ' 랜드마크 ' + r(v.lm) + ' / 머리 추출 ' + r(v.mask) + ' / 섹션 ' + r(v.sec)).join(' · ');
+    T.views.map(v => v.a + ' 랜드마크 ' + (v.lmReuse ? '재사용' : r(v.lm)) + ' / 머리 추출 ' + r(v.mask) + ' / 섹션 ' + r(v.sec)).join(' · ');
 };
+const LM_SHOT = {};   // angle → 랜드마크를 잰 사진(dataURL). 찍을 때 얼굴 확인이 채움
 async function runStyleAnalysisPipelineBase(){
   // segmenter가 아직 로딩 중이면 잠깐 대기 (최대 6초)
   const _T = window.__anaTimes = { wait:0, views:[], t0:performance.now() };
@@ -47,10 +48,13 @@ async function runStyleAnalysisPipelineBase(){
       // Face Landmarker: 랜드마크를 먼저 감지해야 extractHairMask에서
       // 얼굴 위치 기반으로 정확한 제거 영역을 잡을 수 있음 (정면/측면 모두 대응)
       const _v = { a:a, lm:0, mask:0, sec:0 }; let _t = performance.now();
-      if(faceLandmarkerReady){
+      // (10-18 2차) 찍을 때 얼굴 확인에서 같은 사진으로 이미 잰 랜드마크면 다시 안 잼(뷰당 0.15~0.25초)
+      const _lmReuse = !!(state.landmarks && state.landmarks[a] && LM_SHOT[a] && LM_SHOT[a] === state.shots[a]);
+      if(faceLandmarkerReady && !_lmReuse){
         showAI(`얼굴 분석 중… ${done+1}/${validAngles.length}`, `${ANGLE_LABELS[a]} 랜드마크 감지`);
         await detectFaceLandmarks(a);
       }
+      _v.lmReuse = _lmReuse;
       _v.lm = performance.now() - _t; _t = performance.now();
       showAI(`머리카락 추출 중… ${done+1}/${validAngles.length}`, `${ANGLE_LABELS[a]} 처리 중`);
       await extractHairMask(a);
@@ -64,7 +68,7 @@ async function runStyleAnalysisPipelineBase(){
     hideAI();
   }
   _T.total = performance.now() - _T.t0;
-  try{ console.log(window.__anaLine()); }catch(e){}
+  try{ console.log(window.__anaLine() + (typeof SEG_PRE !== 'undefined' && SEG_PRE.status ? ' · ' + SEG_PRE.status() : '')); }catch(e){}
   /* (2026-08-29) 여기서 analyzeWithClaude()를 부르던 것을 걷어냈다. 이 파이프라인이
      하는 일은 이제 <b>세그멘테이션 + 랜드마크</b>뿐이고, 그건 조정 화면의 재료라
      스타일 추천과 무관하게 계속 필요하다. 플래그는 "재료가 준비됐다"는 뜻이다. */
@@ -980,7 +984,8 @@ function captureCurrentAngle(){
     // auto advance
     if(state.currentCaptureIndex<3) state.currentCaptureIndex++;
     updateAngleUI();
-    checkCaptureLandmarks(angle); // 촬영 직후 랜드마크 감지 안내 (비동기, 흐름 안 막음)
+    const _lmJob = checkCaptureLandmarks(angle); // 촬영 직후 랜드마크 감지 안내 (비동기, 흐름 안 막음)
+    try{ SEG_PRE.warm(angle, _lmJob); }catch(e){}   // 얼굴 확인이 끝나면 머리 분리 미리(03b) — 다음 장 찍는 동안
   } else { showToast('카메라가 준비되지 않았어요.'); }
 }
 
@@ -1013,44 +1018,75 @@ function retakeCurrent(){
    지금: createImageBitmap에 크기를 알려 줘서 <b>디코드하면서 바로 줄인다</b>.
    (사진 방향 EXIF는 createImageBitmap이 기본으로 반영한다.) 안 되는 브라우저나
    이미 작은 파일은 예전 길(capShotDataURL)로 간다. 결과 형식(jpeg 0.94)은 같다. */
-async function fileToShotDataURL(file){
-  const M = (typeof INPUT_RES !== 'undefined') ? INPUT_RES.photoMax : 0;
-  if(M > 0 && typeof createImageBitmap === 'function' && file.size > 400*1024){
-    try{
-      let bmp = await createImageBitmap(file, { resizeWidth: M, resizeQuality: 'high' });
-      if(bmp.height > bmp.width){                      // 세로 사진 → 긴 변(세로)을 M에 맞춰 다시
-        bmp.close();
-        bmp = await createImageBitmap(file, { resizeHeight: M, resizeQuality: 'high' });
-      }
-      const c = document.createElement('canvas');
-      c.width = bmp.width; c.height = bmp.height;
-      c.getContext('2d').drawImage(bmp, 0, 0);
-      bmp.close();
-      const url = c.toDataURL('image/jpeg', 0.94);
-      c.width = c.height = 0;
-      return url;
-    }catch(err){ console.warn('업로드 빠른 길 실패 — 예전 길로', err); }
+/* (10-18 2차) 업로드 실패 수정 — 실기기에서 "사진을 불러오지 못했어요"가 가끔 떴다.
+   원인 후보 셋을 다 막는다.
+   ① 입력칸을 너무 일찍 비움: 안드로이드 사진 선택기는 value=''를 하면 아직 안 읽은
+      File을 못 읽는 경우가 있다 → <b>바이트를 먼저 다 읽은 뒤</b> 비운다.
+   ② 클라우드 사진(구글 포토 등)은 고른 직후 잠깐 NotReadableError → 한 번 쉬고 다시 읽는다.
+   ③ createImageBitmap(resizeWidth)은 EXIF 회전 전 크기로 줄이는 브라우저가 있다 →
+      <img>(EXIF 회전 반영)로 디코드해서 <b>800 캔버스에 바로</b> 줄여 그린다(원본 크기 캔버스 없음).
+   그리고 업로드를 빨리 두 번 하면 둘 다 같은 칸을 덮어쓰던 것 → 칸을 시작할 때 예약한다. */
+async function readFileBytes(file){
+  for(let i=0;i<3;i++){
+    try{ return await file.arrayBuffer(); }
+    catch(err){ if(i===2) throw err; await new Promise(r=>setTimeout(r, 300*(i+1))); }
   }
-  const raw = await new Promise((res, rej)=>{
-    const r = new FileReader(); r.onload = ()=>res(r.result); r.onerror = rej; r.readAsDataURL(file);
-  });
-  return capShotDataURL(raw);
 }
+function decodeToShotDataURL(blob){
+  return new Promise((res, rej)=>{
+    const url = URL.createObjectURL(blob), img = new Image();
+    img.onload = ()=>{
+      try{
+        const W = img.naturalWidth, H = img.naturalHeight;
+        const M = (typeof INPUT_RES !== 'undefined' && INPUT_RES.photoMax > 0) ? INPUT_RES.photoMax : Math.max(W,H);
+        const k = Math.min(1, M / Math.max(W, H));
+        const c = document.createElement('canvas');
+        c.width = Math.max(1, Math.round(W*k)); c.height = Math.max(1, Math.round(H*k));
+        const x = c.getContext('2d'); x.imageSmoothingEnabled = true; x.imageSmoothingQuality = 'high';
+        x.drawImage(img, 0, 0, c.width, c.height);
+        const out = c.toDataURL('image/jpeg', 0.94);
+        c.width = c.height = 0; URL.revokeObjectURL(url);
+        res(out);
+      }catch(e){ URL.revokeObjectURL(url); rej(e); }
+    };
+    img.onerror = ()=>{ URL.revokeObjectURL(url); rej(new Error('디코드 실패(형식 미지원 — HEIC 등?)')); };
+    img.src = url;
+  });
+}
+async function fileToShotDataURL(file){
+  const buf = await readFileBytes(file);
+  const blob = new Blob([buf], { type: file.type || 'image/jpeg' });
+  try{ return await decodeToShotDataURL(blob); }
+  catch(err){
+    // 마지막 길: 예전 방식(base64 → capShotDataURL)
+    console.warn('업로드 디코드 실패 — 예전 길로', err);
+    const raw = await new Promise((res, rej)=>{ const r = new FileReader(); r.onload = ()=>res(r.result); r.onerror = ()=>rej(r.error); r.readAsDataURL(blob); });
+    return capShotDataURL(raw);
+  }
+}
+let _uploadPending = 0;   // 불러오는 중인 업로드 수 — 다음 업로드는 그 다음 칸으로
 function handleFileUpload(e){
-  const file=e.target.files[0]; if(!file) return;
-  const angle=ANGLES[state.currentCaptureIndex]; // 인덱스 증가 전에 확정
-  e.target.value='';
+  const input = e.target, file = input.files && input.files[0]; if(!file) return;
+  const idx = Math.min(3, state.currentCaptureIndex + _uploadPending);
+  const angle = ANGLES[idx];                          // 칸을 지금 예약
+  _uploadPending++;
   try{ if(typeof showToast==='function') showToast('사진 불러오는 중…'); }catch(_){}
   (async ()=>{
-    /* (2026-08-23 6차) 업로드는 크기 제한이 아예 없었다 — 요즘 폰 사진이면
-       4000×3000도 들어온다. 촬영과 <b>같은 상한</b>을 건다. */
-    state.shots[angle]=await fileToShotDataURL(file);
+    let url;
+    try{ url = await fileToShotDataURL(file); }
+    finally{ try{ input.value=''; }catch(_){} }       // 다 읽은 뒤에 비움(①)
+    if(!url) throw new Error('빈 결과');
+    state.shots[angle] = url;
     // 업로드 사진은 라이브 측정과 무관 — 이전 촬영의 라이브 포즈가 남아있으면 지운다
     if(state.capturePose) state.capturePose[angle]=null;
-    if(state.currentCaptureIndex<3) state.currentCaptureIndex++;
-    updateAngleUI();
-    checkCaptureLandmarks(angle); // 업로드 직후에도 동일하게 랜드마크 감지 안내
-  })().catch(err=>{ console.warn('업로드 실패', err); try{ showToast('사진을 불러오지 못했어요'); }catch(_){} });
+    if(state.currentCaptureIndex <= idx && idx < 3) state.currentCaptureIndex = idx + 1;
+    try{ updateAngleUI(); }catch(err){ console.warn('updateAngleUI', err); }
+    const lmJob = checkCaptureLandmarks(angle);       // 업로드 직후에도 동일하게 랜드마크 감지 안내
+    try{ SEG_PRE.warm(angle, lmJob); }catch(_){}      // 얼굴 확인 뒤 머리 분리 미리(03b)
+  })().catch(err=>{
+    console.warn('업로드 실패', err);
+    try{ showToast('사진을 불러오지 못했어요' + (err && err.message ? ' (' + err.message + ')' : '')); }catch(_){}
+  }).finally(()=>{ _uploadPending = Math.max(0, _uploadPending - 1); });
 }
 
 // ── 촬영/업로드 직후 랜드마크 감지 안내 (2026-07-14 추가) ──
@@ -1118,6 +1154,7 @@ async function checkCaptureLandmarks(angle){
     console.log(`[${angle}] 셔터 캔버스 감지=${canvasOk} / 저장 이미지 감지=${info ? '성공' : '실패'}`
       + (info && typeof info.poseYawDeg === 'number' ? ` (yaw ${info.poseYawDeg.toFixed(0)}°)` : ''));
   }
+  if(info) LM_SHOT[angle] = state.shots[angle];   // 분석 단계에서 같은 사진이면 재사용
   if(info){
     const yawDeg = (typeof info.poseYawDeg === 'number') ? info.poseYawDeg : null;
     const yawTxt = (yawDeg !== null) ? ` (yaw ${yawDeg.toFixed(0)}°)` : '';

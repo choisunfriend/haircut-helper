@@ -1087,45 +1087,35 @@ GLOSS_WAVE.cfg = glossWaveCfg;
 GLOSS_WAVE.cpu = glossWaveCpu;
 
 /* 스타일 완성 마감 — computeAdjustedHair3DStrands(17b) 끝 단계. gloss 있는 프로필에서만 · 결과 배열마다 기억 */
-/* ══ 마감 결 정리 — FINISH3D (2026-10-18) ══════════════════════════════
-   사용자: "직모일 경우 마지막에 결정리 작업" · "헤어 꺾임이 있을 때 곡선처리.
-   컬이 걸음을 걷다 보면 각형으로 고리가 만들어지는데, 머리가닥에 그런 게 없잖아."
+/* ══ 마감 결 정리 — FINISH3D (2026-10-18 · 2차: SLEEK 방식) ═══════════════════
+   사용자: "직모일 경우 마지막에 결정리" · "헤어 꺾임이 있을 때 곡선처리" · "sleek 모드로 하자고 했는데"
+   1차(점을 끼워 넣는 곡선)는 협의한 방향이 아니어서 걷어냈다 — 점이 17만 개 늘어 폰이 무거워졌다.
 
-   붙는 자리: computeAdjustedHair3DStrands(17b) → _adjComputeCore → glossWaveAll <b>맨 앞</b>.
-   그래서 2D 조정 화면 · 3D · 37번(폰 다이어트, 가닥 단위 분할) 모두 이 결과를 받는다.
-   ⚠ 37번은 GLOSS_WAVE._defer일 때 가닥 수·점 수로 버퍼를 먼저 잡으므로, 점을 늘리는
-     곡선 처리는 반드시 _defer 검사 <b>전에</b> 한다(여기서 늘린 점 수가 그대로 버퍼 크기가 된다).
+   지금 방식 = SLEEK3D와 같은 규약:
+     · 점 수 그대로 · 마디 길이 그대로(커트 기장 불변) · 뿌리 ramp 구간은 안 건드림
+     · 마디 <b>방향</b>만 돌리고, 돌린 만큼을 다음 마디로 <b>물려준다</b>(누적·정착 — 뿌리부터 다시 쌓음)
+   ① 직모(사진에서 잰 컬 < PHOTO_CURL.shapeMinCurl)면 sleekStrand3D를 straightSleek 세기로 한 번 더
+      (스타일링 sleek이 이미 있으면 모자란 만큼만). 컬을 아직 못 쟀으면 직모로 보지 않는다.
+   ② 꺾임 곡선 — 직모·웨이브·컬 모두. 한 마디에서 minDeg 넘게 꺾인 자리는, 그 꺾임을
+      앞뒤 마디에 나눠 준다(방향 평균 쪽으로 회전 · 여러 번). 꺾임 총량(컬이 감기는 양)은
+      그대로이고 한 점에 몰린 꺾임만 퍼진다 → 뾰족한 각이 둥근 굽이가 된다.
+      ⚠ 점이 고르게 꺾인 다각형(점이 적은 컬 고리)은 이미 꺾임이 고르게 퍼져 있어서
+        점을 안 늘리는 이상 더 둥글게 할 수 없다 — 그건 컬을 만드는 단계의 점 간격 문제다.
+   ③ 바닥 — 다시 쌓은 점이 뿌리 껍질보다 안쪽이면 그 방향의 법선 성분을 잘라 접선으로
+      미끄러뜨린다(SLEEK3D의 바닥과 같은 처리 · 길이 불변).
 
-   ① 직모 결 정리 (straight)
-      사진에서 잰 컬(ORIG_MQ.spec.perm.curl)이 PHOTO_CURL.shapeMinCurl(10) 미만이거나
-      못 쟀으면 직모로 본다. 직모면 SLEEK3D(sleekStrand3D — 뿌리 껍질 위로 눕히고
-      꺾임을 누적·정착시키는 정돈 연산)를 <b>straightSleek</b> 세기로 한 번 더 건다.
-      스타일링에서 이미 sleek을 줬으면 모자란 만큼만(straightSleek − styling.sleek) 건다.
-      → 마디 길이 보존(커트 기장 그대로) · 뿌리 ramp 구간은 안 건드림(볼륨 유지).
-   ② 꺾임 곡선 처리 (round) — 직모·웨이브·컬 모두
-      마디와 마디가 minDeg보다 크게 꺾이는 자리에 Catmull-Rom(centripetal) 곡선으로
-      점을 끼워 넣는다. <b>원래 점은 그대로 지나가므로</b> 컬 지름·웨이브 진폭·기장은
-      바뀌지 않고, 꺾인 모서리만 둥근 곡선이 된다(각진 고리 → 둥근 고리).
-      꺾임이 클수록 더 많이(stepDeg마다 1점, 마디당 최대 maxIns점) 끼운다.
-      가닥 하나에 끼우는 점은 원래 점 수의 maxGrow배까지 — 폰 메모리 상한.
-      ⚠ 직모에서 한 점만 뾰족하게 접힌 자리(spikeDeg 이상)는 곡선만으론 뾰족한
-        끝이 남으므로, 그 점을 이웃 쪽으로 spikeRelax만큼 먼저 편다(두 번 · 직모일 때만).
-      점마다 달린 배열(colors 등, pts와 길이가 같은 것)은 같이 보간한다.
-
-   끄기: FINISH3D.on=false · 직모 정리만 끄기 FINISH3D.straight=false
-         곡선만 끄기 FINISH3D.round=false · 세기 FINISH3D.set({ straightSleek:50 })
+   끄기: FINISH3D.on=false · 직모 정리만 FINISH3D.straight=false · 곡선만 FINISH3D.round=false
+   세기: FINISH3D.set({ straightSleek:50, minDeg:15, passes:3 })
 ══════════════════════════════════════════════════════════════════ */
 var FINISH3D = {
   on: true,
   straight: true,
-  straightSleek: 35,  // 직모일 때 마감 sleek 세기(0~100, SLEEK3D 슬라이더와 같은 척도)
+  straightSleek: 35,  // 직모 마감 sleek 세기(0~100, SLEEK3D 슬라이더 척도)
   round: true,
-  minDeg: 18,         // 이보다 덜 꺾인 자리는 그대로(이미 매끈)
-  stepDeg: 22,        // 꺾임 이만큼마다 끼울 점 1개
-  maxIns: 3,          // 마디 하나에 끼울 최대 점 수
-  maxGrow: 2.0,       // 가닥 하나에 늘릴 수 있는 점 수 = 원래 점 수 × 이 값
-  spikeDeg: 75,       // 직모에서 이 이상 접힌 한 점은 먼저 편다
-  spikeRelax: 0.6,
+  minDeg: 15,         // 이보다 덜 꺾인 자리는 그대로
+  share: 0.5,         // 한 번에 꺾임을 앞뒤로 나눠 주는 비율(0~1)
+  passes: 3,          // 나눠 주기 반복 횟수
+  rampCm: 1.5,        // 뿌리에서 이 길이까지는 방향 안 건드림
   _ver: 0
 };
 FINISH3D.set = function (o) { Object.assign(FINISH3D, o || {}); FINISH3D._ver++; try { if (typeof ADJ_CACHE !== 'undefined' && ADJ_CACHE.bump) ADJ_CACHE.bump(); } catch (e) {} };
@@ -1135,131 +1125,96 @@ function finish3DIsStraight() {
     var mq = window.ORIG_MQ, perm = mq && mq.spec && mq.spec.perm;
     var c = perm && typeof perm.curl === 'number' ? perm.curl : null;
     var lim = (window.PHOTO_CURL && typeof PHOTO_CURL.shapeMinCurl === 'number') ? PHOTO_CURL.shapeMinCurl : 10;
-    return c === null || c < lim;
+    return c !== null && c < lim;
   } catch (e) { return false; }
 }
 
-function _f3Angle(a, b, c) {
-  var ux = b.x - a.x, uy = b.y - a.y, uz = b.z - a.z, vx = c.x - b.x, vy = c.y - b.y, vz = c.z - b.z;
-  var lu = Math.hypot(ux, uy, uz), lv = Math.hypot(vx, vy, vz);
-  if (!(lu > 1e-12 && lv > 1e-12)) return 0;
-  var d = (ux * vx + uy * vy + uz * vz) / (lu * lv);
-  return Math.acos(d > 1 ? 1 : d < -1 ? -1 : d) * 180 / Math.PI;
-}
-
-// centripetal Catmull-Rom: p1→p2 사이 t(0~1) 지점
-function _f3CR(p0, p1, p2, p3, t) {
-  function tj(ti, a, b) { var d = Math.hypot(b.x - a.x, b.y - a.y, b.z - a.z); return ti + Math.sqrt(d > 1e-12 ? d : 1e-12); }
-  var t0 = 0, t1 = tj(t0, p0, p1), t2 = tj(t1, p1, p2), t3 = tj(t2, p2, p3);
-  var tt = t1 + (t2 - t1) * t;
-  function L(a, b, ta, tb) { var k = (tt - ta) / (tb - ta); return { x: a.x + (b.x - a.x) * k, y: a.y + (b.y - a.y) * k, z: a.z + (b.z - a.z) * k }; }
-  var A1 = L(p0, p1, t0, t1), A2 = L(p1, p2, t1, t2), A3 = L(p2, p3, t2, t3);
-  var B1 = L(A1, A2, t0, t2), B2 = L(A2, A3, t1, t3);
-  return L(B1, B2, t1, t2);
-}
-
-function _f3LerpVal(a, b, k) {
-  if (typeof a === 'number' && typeof b === 'number') return a + (b - a) * k;
-  if (typeof glossWaveParseCol === 'function' && (typeof a === 'string' || typeof a === 'number')) {
-    var A = glossWaveParseCol(a), B = glossWaveParseCol(b);
-    if (A && B) return glossWaveFmtCol(A[0] + (B[0] - A[0]) * k, A[1] + (B[1] - A[1]) * k, A[2] + (B[2] - A[2]) * k, A[3]);
-  }
-  return k < 0.5 ? a : b;
-}
-
-function finish3DRoundPts(pts, straight, st) {
+// 마디 방향을 고르게(점 수·마디 길이 그대로). 바뀐 게 없으면 null.
+function finish3DRoundPts(pts, cpu, E, st) {
   var n = pts.length;
-  if (n < 3) return null;
-  var C = FINISH3D, P = pts;
-  // 직모의 한 점 접힘 먼저 펴기
-  if (straight && C.spikeRelax > 0) {
-    var cp = null;
-    for (var pass = 0; pass < 2; pass++)
-    for (var i = 1; i < n - 1; i++) {
-      var src = cp || P;
-      if (_f3Angle(src[i - 1], src[i], src[i + 1]) >= C.spikeDeg) {
-        if (!cp) cp = P.slice();
-        var a = cp[i - 1], b = cp[i + 1], q = Object.assign({}, cp[i]), k = C.spikeRelax;
-        q.x += ((a.x + b.x) / 2 - q.x) * k; q.y += ((a.y + b.y) / 2 - q.y) * k; q.z += ((a.z + b.z) / 2 - q.z) * k;
-        cp[i] = q; if (st) st.spikes++;
-      }
+  if (n < 4) return null;
+  var C = FINISH3D, cosMin = Math.cos(C.minDeg * Math.PI / 180);
+  var D = new Float64Array((n - 1) * 3), Ls = new Float64Array(n - 1), i, k;
+  for (i = 0; i < n - 1; i++) {
+    var dx = pts[i + 1].x - pts[i].x, dy = pts[i + 1].y - pts[i].y, dz = pts[i + 1].z - pts[i].z;
+    var l = Math.sqrt(dx * dx + dy * dy + dz * dz); Ls[i] = l;
+    if (l > 1e-12) { D[i * 3] = dx / l; D[i * 3 + 1] = dy / l; D[i * 3 + 2] = dz / l; }
+  }
+  // 뿌리 ramp — 이 마디까지는 고정
+  var ramp = (C.rampCm || 0) / (cpu || 19.3), s = 0, i0 = 0;
+  while (i0 < n - 1 && s + Ls[i0] <= ramp) { s += Ls[i0]; i0++; }
+  if (i0 < 1) i0 = 1;   // 첫 마디(뿌리에서 나가는 방향)는 늘 고정
+  var changed = false, N = new Float64Array(D.length);
+  for (var p = 0; p < C.passes; p++) {
+    N.set(D);
+    var any = false;
+    for (i = i0; i < n - 1; i++) {
+      // 마디 i−1과 i 사이 꺾임
+      var a = (i - 1) * 3, b = i * 3;
+      var c = D[a] * D[b] + D[a + 1] * D[b + 1] + D[a + 2] * D[b + 2];
+      if (c >= cosMin) continue;
+      // 꺾임 양쪽 마디를 서로 쪽으로 share만큼(방향 평균) — 꺾임을 앞뒤로 나눔
+      var mx = D[a] + D[b], my = D[a + 1] + D[b + 1], mz = D[a + 2] + D[b + 2], ml = Math.sqrt(mx * mx + my * my + mz * mz);
+      if (!(ml > 1e-9)) continue;           // 정반대(180°)는 건드리지 않음
+      mx /= ml; my /= ml; mz /= ml;
+      var w = C.share * Math.min(1, (cosMin - c) / (cosMin + 1));   // 많이 꺾일수록 세게
+      if (i - 1 >= i0) { N[a] += (mx - D[a]) * w; N[a + 1] += (my - D[a + 1]) * w; N[a + 2] += (mz - D[a + 2]) * w; }
+      N[b] += (mx - D[b]) * w; N[b + 1] += (my - D[b + 1]) * w; N[b + 2] += (mz - D[b + 2]) * w;
+      any = true;
     }
-    if (cp) P = cp;
-  }
-  // 점마다 꺾임 → 마디마다 끼울 점 수
-  var ang = new Float32Array(n), any = false;
-  for (var j = 1; j < n - 1; j++) { ang[j] = _f3Angle(P[j - 1], P[j], P[j + 1]); if (ang[j] > C.minDeg) any = true; }
-  if (!any) return P === pts ? null : { pts: P, ins: null };
-  var ins = new Int8Array(n - 1), want = new Float32Array(n - 1), budget = Math.max(0, Math.floor(n * C.maxGrow)), tot = 0, used = 0;
-  for (var s = 0; s < n - 1; s++) {
-    var m = Math.max(ang[s], ang[s + 1]);
-    want[s] = m > C.minDeg ? Math.min(C.maxIns, Math.ceil(m / C.stepDeg)) : 0; tot += want[s];
-  }
-  // 예산이 모자라면 가닥 전체에 <b>고르게</b> 줄여 나눈다(앞쪽 마디가 다 먹고 뒤가 각진 채 남지 않게)
-  var sc = tot > budget ? budget / tot : 1, acc = 0;
-  for (var s1 = 0; s1 < n - 1; s1++) {
-    if (!want[s1]) continue;
-    acc += want[s1] * sc; var c = Math.floor(acc + 1e-9) - used;
-    if (c < 0) c = 0; ins[s1] = c; used += c;
-  }
-  if (!used) return P === pts ? null : { pts: P, ins: null };
-  var out = [];
-  for (var s2 = 0; s2 < n - 1; s2++) {
-    out.push(P[s2]);
-    var cnt = ins[s2];
-    if (!cnt) continue;
-    var p0 = P[s2 > 0 ? s2 - 1 : 0], p1 = P[s2], p2 = P[s2 + 1], p3 = P[s2 + 2 < n ? s2 + 2 : n - 1];
-    if (s2 === 0) p0 = { x: 2 * p1.x - p2.x, y: 2 * p1.y - p2.y, z: 2 * p1.z - p2.z };
-    if (s2 + 2 >= n) p3 = { x: 2 * p2.x - p1.x, y: 2 * p2.y - p1.y, z: 2 * p2.z - p1.z };
-    for (var r = 1; r <= cnt; r++) {
-      var t = r / (cnt + 1), v = _f3CR(p0, p1, p2, p3, t);
-      var q2 = Object.assign({}, t < 0.5 ? p1 : p2); q2.x = v.x; q2.y = v.y; q2.z = v.z;
-      out.push(q2);
+    if (!any) break;
+    for (i = 0; i < n - 1; i++) {
+      k = i * 3; var nl = Math.sqrt(N[k] * N[k] + N[k + 1] * N[k + 1] + N[k + 2] * N[k + 2]);
+      if (nl > 1e-12) { D[k] = N[k] / nl; D[k + 1] = N[k + 1] / nl; D[k + 2] = N[k + 2] / nl; }
     }
+    changed = true; if (st) st.passes++;
   }
-  out.push(P[n - 1]);
-  if (st) st.added += used;
-  return { pts: out, ins: ins };
+  if (!changed) return null;
+  // 뿌리부터 다시 쌓기(방향은 고른 것 · 길이는 원래 것) + 바닥(뿌리 껍질 안으로 못 듦)
+  var qFloor = null;
+  try { if (E && typeof scalpShellAt === 'function') qFloor = scalpShellAt(pts[0], E).q; } catch (e) { qFloor = null; }
+  var out = new Array(n); out[0] = pts[0];
+  var cx = pts[0].x, cy = pts[0].y, cz = pts[0].z;
+  for (i = 0; i < n - 1; i++) {
+    k = i * 3; var ux = D[k], uy = D[k + 1], uz = D[k + 2], L = Ls[i];
+    if (qFloor !== null && i >= i0) {
+      try {
+        var nq = scalpShellAt({ x: cx + ux * L, y: cy + uy * L, z: cz + uz * L }, E);
+        if (nq.q < qFloor) {
+          var sh = scalpShellAt({ x: cx, y: cy, z: cz }, E), dn = ux * sh.nx + uy * sh.ny + uz * sh.nz;
+          if (dn < 0) {
+            var tx = ux - sh.nx * dn, ty = uy - sh.ny * dn, tz = uz - sh.nz * dn, tl = Math.sqrt(tx * tx + ty * ty + tz * tz);
+            if (tl > 1e-9) { ux = tx / tl; uy = ty / tl; uz = tz / tl; if (st) st.floor++; }
+          }
+        }
+      } catch (e) {}
+    }
+    cx += ux * L; cy += uy * L; cz += uz * L;
+    var q = Object.assign({}, pts[i + 1]); q.x = cx; q.y = cy; q.z = cz; out[i + 1] = q;
+  }
+  return out;
 }
 
-function finish3DStrand(sd, straight, extraSleek, st) {
+function finish3DStrand(sd, straight, extraSleek, cpu, E, st) {
   if (!sd || !sd.pts || sd.pts.length < 3) return sd;
-  var pts = sd.pts, c = null;
+  var pts = sd.pts;
   try {
     if (straight && extraSleek > 0 && typeof sleekStrand3D === 'function') {
       var sp = sleekStrand3D(pts, extraSleek);
       if (sp && sp !== pts && sp.length === pts.length) {
-        // sleekStrand3D는 x·y·z만 돌려준다 — 점에 달린 다른 값은 원래 점에서 가져온다
+        // sleekStrand3D는 x·y·z만 돌려준다 — 점에 달린 다른 값은 원래 점에서
         var mp = new Array(sp.length);
         for (var i = 0; i < sp.length; i++) { var q = Object.assign({}, pts[i]); q.x = sp[i].x; q.y = sp[i].y; q.z = sp[i].z; mp[i] = q; }
-        c = Object.assign({}, sd); c.pts = mp; pts = mp; if (st) st.sleek++;
+        pts = mp; if (st) st.sleek++;
       }
     }
     if (FINISH3D.round) {
-      var R = finish3DRoundPts(pts, straight, st);
-      if (R) {
-        if (!c) c = Object.assign({}, sd);
-        var n0 = sd.pts.length;
-        c.pts = R.pts;
-        if (R.ins) {
-          // 점마다 달린 배열(colors 등) 같이 늘리기
-          Object.keys(sd).forEach(function (key) {
-            var arr = sd[key];
-            if (key === 'pts' || !Array.isArray(arr) || arr.length !== n0) return;
-            var o = [];
-            for (var s = 0; s < n0 - 1; s++) {
-              o.push(arr[s]);
-              for (var r = 1; r <= R.ins[s]; r++) o.push(_f3LerpVal(arr[s], arr[s + 1], r / (R.ins[s] + 1)));
-            }
-            o.push(arr[n0 - 1]);
-            c[key] = o;
-          });
-          if (st) st.n++;
-        }
-      }
+      var R = finish3DRoundPts(pts, cpu, E, st);
+      if (R) { pts = R; if (st) st.n++; }
     }
   } catch (e) { if (st && !st.err) st.err = e && e.message || String(e); return sd; }
-  return c || sd;
+  if (pts === sd.pts) return sd;
+  var c = Object.assign({}, sd); c.pts = pts; return c;
 }
 
 var _finish3DMemo = new WeakMap();
@@ -1270,22 +1225,25 @@ function finish3DAll(res) {
   var styl = (typeof state !== 'undefined' && state && state.styling) || {};
   var have = typeof styl.sleek === 'number' ? styl.sleek : 0;
   var extra = straight ? Math.max(0, C.straightSleek - have) : 0;
-  var key = [C._ver, straight ? 1 : 0, extra, C.round ? 1 : 0, C.minDeg, C.stepDeg, C.maxIns, C.maxGrow, C.spikeDeg, C.spikeRelax].join('|');
+  var key = [C._ver, straight ? 1 : 0, extra, C.round ? 1 : 0, C.minDeg, C.share, C.passes, C.rampCm].join('|');
   var hit = _finish3DMemo.get(res);
   if (hit && hit.key === key) return hit.out;
-  var t0 = performance.now(), st = { n: 0, added: 0, sleek: 0, spikes: 0, err: null }, out = new Array(res.length);
-  for (var i = 0; i < res.length; i++) out[i] = finish3DStrand(res[i], straight, extra, st);
+  var E = null; try { E = typeof getHeadEllipsoid === 'function' ? getHeadEllipsoid() : null; } catch (e) { E = null; }
+  if (E && !(E.a > 1e-9 && E.b > 1e-9 && E.c > 1e-9)) E = null;
+  var cpu = typeof glossWaveCpu === 'function' ? glossWaveCpu() : 19.3;
+  var t0 = performance.now(), st = { n: 0, passes: 0, sleek: 0, floor: 0, err: null }, out = new Array(res.length);
+  for (var i = 0; i < res.length; i++) out[i] = finish3DStrand(res[i], straight, extra, cpu, E, st);
   _finish3DMemo.set(res, { key: key, out: out });
   if (C._logged !== key) {
     C._logged = key;
-    console.log('[마감 결 정리] ' + (straight ? '직모 — sleek +' + extra + ' (' + st.sleek + '가닥)' + (st.spikes ? ' · 접힌 점 ' + st.spikes + '개 폄' : '') : '컬·웨이브 — 직모 정리 안 함') +
-      ' · 꺾임 곡선 ' + st.n + '가닥 · 점 +' + st.added + ' · ' + Math.round(performance.now() - t0) + 'ms' + (st.err ? ' · ⚠ ' + st.err : '') + ' · 끄기 FINISH3D.on=false');
+    console.log('[마감 결 정리] ' + (straight ? '직모 — sleek +' + extra + ' (' + st.sleek + '가닥)' : '직모 아님(또는 컬 아직 못 잼) — sleek 안 함') +
+      ' · 꺾임 고르게 ' + st.n + '가닥(점 수 그대로) · 두피 바닥 ' + st.floor + ' · ' + Math.round(performance.now() - t0) + 'ms' + (st.err ? ' · ⚠ ' + st.err : '') + ' · 끄기 FINISH3D.on=false');
   }
   return out;
 }
 
 function glossWaveAll(res) {
-  res = finish3DAll(res);   // (2026-10-18) 마감 결 정리 — _defer 전에(37번 버퍼 크기가 늘어난 점 수를 따르게)
+  res = finish3DAll(res);   // (2026-10-18) 마감 결 정리 — 점 수 그대로라 37번 버퍼와도 맞음
   if (GLOSS_WAVE._defer) return res;   // 37번이 가닥 단위로 직접 다듬을 때 — 여기서 통째 복사본을 만들지 않음
   var cfg = glossWaveCfg();
   if (!cfg || !Array.isArray(res) || !res.length) return res;
