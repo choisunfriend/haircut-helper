@@ -19,14 +19,22 @@ function runStyleAnalysisPipeline(){
   // (옛 40 GPU 다이어트 ②) 분석용 모델을 내려놓았으면 다시 올라올 때까지 기다렸다가 → runStyleAnalysisPipelineBase
   return GPU_DIET._pipe(this, arguments);
 }
+window.__anaLine = function(){
+  const T = window.__anaTimes; if(!T) return '[시간·사진분석] 아직 안 함';
+  const r = v => Math.round(v);
+  return '[시간·사진분석] 합계 ' + r(T.total||0) + 'ms · 모델 기다림 ' + r(T.wait) + 'ms · ' +
+    T.views.map(v => v.a + ' 랜드마크 ' + r(v.lm) + ' / 머리 추출 ' + r(v.mask) + ' / 섹션 ' + r(v.sec)).join(' · ');
+};
 async function runStyleAnalysisPipelineBase(){
   // segmenter가 아직 로딩 중이면 잠깐 대기 (최대 6초)
+  const _T = window.__anaTimes = { wait:0, views:[], t0:performance.now() };
   if(!segmenterReady && !segmenterError){
     showAI('모델 로딩 중…', 'Hair Segmentation 준비 중');
     let waited = 0;
     while(!segmenterReady && !segmenterError && waited < 6000){
       await new Promise(r=>setTimeout(r,300)); waited+=300;
     }
+    _T.wait = waited;
   }
   if(segmenter){
     const validAngles = ANGLES.filter(a=>state.shots[a]);
@@ -38,18 +46,25 @@ async function runStyleAnalysisPipelineBase(){
       );
       // Face Landmarker: 랜드마크를 먼저 감지해야 extractHairMask에서
       // 얼굴 위치 기반으로 정확한 제거 영역을 잡을 수 있음 (정면/측면 모두 대응)
+      const _v = { a:a, lm:0, mask:0, sec:0 }; let _t = performance.now();
       if(faceLandmarkerReady){
         showAI(`얼굴 분석 중… ${done+1}/${validAngles.length}`, `${ANGLE_LABELS[a]} 랜드마크 감지`);
         await detectFaceLandmarks(a);
       }
+      _v.lm = performance.now() - _t; _t = performance.now();
+      showAI(`머리카락 추출 중… ${done+1}/${validAngles.length}`, `${ANGLE_LABELS[a]} 처리 중`);
       await extractHairMask(a);
+      _v.mask = performance.now() - _t; _t = performance.now();
       if(faceLandmarkerReady){
         refineSectionBoundaries(a);
       }
+      _v.sec = performance.now() - _t; _T.views.push(_v);
       done++;
     }
     hideAI();
   }
+  _T.total = performance.now() - _T.t0;
+  try{ console.log(window.__anaLine()); }catch(e){}
   /* (2026-08-29) 여기서 analyzeWithClaude()를 부르던 것을 걷어냈다. 이 파이프라인이
      하는 일은 이제 <b>세그멘테이션 + 랜드마크</b>뿐이고, 그건 조정 화면의 재료라
      스타일 추천과 무관하게 계속 필요하다. 플래그는 "재료가 준비됐다"는 뜻이다. */
