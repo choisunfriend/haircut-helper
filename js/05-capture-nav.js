@@ -981,7 +981,6 @@ function captureCurrentAngle(){
     if(state.currentCaptureIndex<3) state.currentCaptureIndex++;
     updateAngleUI();
     checkCaptureLandmarks(angle); // 촬영 직후 랜드마크 감지 안내 (비동기, 흐름 안 막음)
-    try{ SEG_PRE.warm(angle); }catch(e){}   // 다음 장 찍는 동안 머리 분리 미리(03b)
   } else { showToast('카메라가 준비되지 않았어요.'); }
 }
 
@@ -1040,21 +1039,17 @@ async function fileToShotDataURL(file){
 function handleFileUpload(e){
   const file=e.target.files[0]; if(!file) return;
   const angle=ANGLES[state.currentCaptureIndex]; // 인덱스 증가 전에 확정
-  const input=e.target;
+  e.target.value='';
   try{ if(typeof showToast==='function') showToast('사진 불러오는 중…'); }catch(_){}
   (async ()=>{
     /* (2026-08-23 6차) 업로드는 크기 제한이 아예 없었다 — 요즘 폰 사진이면
        4000×3000도 들어온다. 촬영과 <b>같은 상한</b>을 건다. */
-    let url;
-    // 안드로이드: 입력칸을 비우면 아직 안 읽은 파일을 못 읽는다 — 다 읽은 뒤에 비움
-    try{ url=await fileToShotDataURL(file); } finally { input.value=''; }
-    state.shots[angle]=url;
+    state.shots[angle]=await fileToShotDataURL(file);
     // 업로드 사진은 라이브 측정과 무관 — 이전 촬영의 라이브 포즈가 남아있으면 지운다
     if(state.capturePose) state.capturePose[angle]=null;
     if(state.currentCaptureIndex<3) state.currentCaptureIndex++;
     updateAngleUI();
     checkCaptureLandmarks(angle); // 업로드 직후에도 동일하게 랜드마크 감지 안내
-    try{ SEG_PRE.warm(angle); }catch(e){}
   })().catch(err=>{ console.warn('업로드 실패', err); try{ showToast('사진을 불러오지 못했어요'); }catch(_){} });
 }
 

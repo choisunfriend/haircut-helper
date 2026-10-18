@@ -403,84 +403,6 @@ if(cnt > 0){
   return {avgHairColor, avgColorsBySection, colorPalette};
 }
 
-/* ── 찍자마자 미리 분석 (2026-10-18) ─────────────────────────────────────
-   예전엔 4장을 다 찍고 [다음]을 눌러야 머리 추출을 시작해서 8~13초를 기다렸다.
-   그중 무거운 건 모델 두 번(MediaPipe 머리 분리 · TF.js 사람 윤곽)이다.
-   사진이 들어오는 순간(촬영·업로드) 이 두 모델 결과만 <b>미리</b> 뽑아 둔다.
-   extractHairMaskCore는 같은 사진·같은 크기면 모델을 다시 부르지 않고 이걸 쓴다.
-   · 입력 캔버스를 Core와 <b>똑같이</b> 만든다(maxDim 축소 · drawImage) → 결과 동일.
-   · 사진이 바뀌면(다시 찍기) 키(dataURL 문자열)가 달라 자동으로 안 쓴다.
-   · 나머지 계산(섹션·색·가닥 등)은 손대지 않는다 — 상태를 건드리는 건 예전 그대로.
-   끄기: SEG_PRE.on = false */
-const SEG_PRE = (function(){
-  const P = { on:true, hits:0, made:0, miss:0, ms:0 };
-  const box = {};          // angle → { url, w, h, conf(Float32Array)|null, person(Uint8Array)|null }
-  const busy = {};         // angle → Promise (만드는 중)
-  let chain = Promise.resolve();
-  function idle(){ return new Promise(r=>{ if(typeof requestIdleCallback==='function') requestIdleCallback(()=>r(), {timeout:1500}); else setTimeout(r, 200); }); }
-  function load(url){ return new Promise((res,rej)=>{ const im=new Image(); im.crossOrigin='anonymous'; im.onload=()=>res(im); im.onerror=rej; im.src=url; }); }
-  async function make(angle, url){
-    try{ await _segmenterInitPromise; }catch(e){}
-    await idle();
-    if(!P.on || state.shots[angle] !== url) return;            // 그새 다시 찍음
-    if(!mpImageSegmenter && !bodySegmenter) return;
-    const t0 = performance.now();
-    const img = await load(url);
-    const maxDim = INPUT_RES.maxDim;
-    const scale = Math.min(1, maxDim / Math.max(img.width, img.height));
-    const w = Math.round(img.width * scale), h = Math.round(img.height * scale);
-    const c = document.createElement('canvas'); c.width = w; c.height = h;
-    c.getContext('2d').drawImage(img, 0, 0, w, h);
-    const e = { url, w, h, conf:null, person:null };
-    if(bodySegmenter){
-      try{
-        const segs = await bodySegmenter.segmentPeople(c, { multiSegmentation:false, segmentBodyParts:false });
-        if(segs && segs.length>0){
-          const bm = await bodySegmentation.toBinaryMask(segs, {r:255,g:255,b:255,a:255}, {r:0,g:0,b:0,a:0}, false, 0.5);
-          const pm = new Uint8Array(w*h);
-          for(let i=0;i<w*h;i++) pm[i] = (bm.data[i*4+3] > 128) ? 1 : 0;
-          e.person = pm;
-        }
-      }catch(err){ e.person = null; }
-    }
-    if(state.shots[angle] !== url){ c.width = c.height = 0; return; }
-    await idle();
-    if(mpImageSegmenter && state.shots[angle] === url){
-      try{
-        const r = mpImageSegmenter.segment(c);
-        const m = r.confidenceMasks[1];
-        e.conf = new Float32Array(m.getAsFloat32Array());
-        try{ r.confidenceMasks.forEach(x=>x.close()); }catch(_){}
-      }catch(err){ e.conf = null; }
-    }
-    c.width = c.height = 0;
-    if(state.shots[angle] !== url) return;
-    box[angle] = e; P.made++; P.ms = Math.round(performance.now() - t0);
-    console.log('[미리 분석] ' + angle + ' ' + P.ms + 'ms');
-  }
-  P.warm = function(angle){
-    if(!P.on) return;
-    const url = state.shots[angle]; if(!url) return;
-    if(box[angle] && box[angle].url !== url) delete box[angle];
-    const job = chain.then(()=>make(angle, url)).catch(err=>console.warn('[미리 분석] 실패 — 나중에 원래대로 함', err));
-    chain = job; busy[angle] = job;
-    job.then(()=>{ if(busy[angle] === job) delete busy[angle]; });
-  };
-  /* Core가 부름: 만드는 중이면 끝날 때까지 기다림(같은 일을 두 번 안 함) */
-  P.wait = function(angle){ return busy[angle] || Promise.resolve(); };
-  /* Core가 부름: 같은 사진·같은 크기면 꺼내 줌(한 번 쓰면 버림 — 메모리) */
-  P.take = function(angle, url, w, h){
-    const e = box[angle];
-    if(!e) return null;
-    delete box[angle];
-    if(e.url !== url || e.w !== w || e.h !== h){ P.miss++; return null; }
-    P.hits++; return e;
-  };
-  P.clear = function(){ for(const k in box) delete box[k]; };
-  window.SEG_PRE = P;
-  return P;
-})();
-
 /* 머리 추출 — 바깥 단계(위가 바깥): (옛 54) 사람 윤곽 채우기 → (옛 52) 360 세트 나머지 사진 분석 → extractHairMaskCore */
 function extractHairMask(angle){
   return BODY_SEG_WAIT._extract(angle, () =>
@@ -488,7 +410,6 @@ function extractHairMask(angle){
 }
 async function extractHairMaskCore(angle){
   if(typeof REGROW !== 'undefined') REGROW._resetPend();   // (옛 42) 지난 사진의 컬 재기 값 버림
-  try{ await SEG_PRE.wait(angle); }catch(e){}            // 미리 분석 중이면 끝까지 기다렸다 받아 씀
   const dataUrl = state.shots[angle];
   if(!dataUrl || !segmenter) return false;
 
@@ -529,10 +450,7 @@ async function extractHairMaskCore(angle){
         // 로드 실패 등) personMask=null로 남고, 헤어 추출/얼굴 메쉬 등
         // 나머지 파이프라인은 전혀 영향받지 않음(완전히 곁가지 데이터).
         let personMask = null;
-        const _pre = SEG_PRE.take(angle, dataUrl, w, h);   // 찍을 때 미리 뽑아 둔 모델 결과(같은 사진·크기일 때만)
-        if(_pre && _pre.person){
-          personMask = _pre.person;
-        } else if(bodySegmenter){
+        if(bodySegmenter){
           try{
             const bodySegs = await bodySegmenter.segmentPeople(srcC, {
               multiSegmentation: false,
@@ -573,13 +491,9 @@ async function extractHairMaskCore(angle){
           // 기준치를 낮출수록 더 많이 잡히지만 배경 오탐도 늘어날 수 있음 — 실측
           // 데이터 보면서 조정할 예정.
           const HAIR_CONFIDENCE_THRESHOLD = 0.5; // 원상복구: 관대했던 0.3 → categoryMask argmax와 동등한 0.5로 되돌림
-          let hairConf = null, confArr;
-          if(_pre && _pre.conf){ confArr = _pre.conf; }
-          else{
-            const result = mpImageSegmenter.segment(srcC);
-            hairConf = result.confidenceMasks[1]; // 0=background, 1=hair
-            confArr = hairConf.getAsFloat32Array();
-          }
+          const result = mpImageSegmenter.segment(srcC);
+          const hairConf = result.confidenceMasks[1]; // 0=background, 1=hair
+          const confArr = hairConf.getAsFloat32Array();
           // 진단: 확률 분포 요약 (평균/최대값) — 전체적으로 확률이 낮게 나오면
           // 임계값을 더 낮춰야 한다는 신호
           let confSum=0, confMax=0, aboveCount=0;
@@ -591,7 +505,7 @@ async function extractHairMaskCore(angle){
             hairMaskBuf[i] = isHair ? 255 : 0;
           }
           window.__maskValueDiag = `avg:${(confSum/confArr.length).toFixed(3)},max:${confMax.toFixed(3)},≥${HAIR_CONFIDENCE_THRESHOLD}:${aboveCount}`;
-          if(hairConf) hairConf.close();
+          hairConf.close();
         } else {
           // ── TF.js SelfieSegmentation 폴백 ──
           const segs = await segmenter.segmentPeople(srcC, {
