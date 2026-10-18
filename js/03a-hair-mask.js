@@ -39,6 +39,7 @@ async function initSegmenter(){
     });
     segmenter = mpImageSegmenter;
     segmenterReady = true;
+    warmSegmenterLater('hair');
     state.segmenterType = 'MediaPipe';
     console.log('MediaPipe Hair Segmenter 준비 완료');
     return;
@@ -65,7 +66,8 @@ async function initSegmenter(){
     state.segmenterType = '실패';
   }
 }
-const _segmenterInitPromise = initSegmenter();
+// 첫 화면이 뜬 뒤에 시작 — 얼굴 모델보다 조금 늦게(둘이 동시에 CPU를 잡지 않게)
+const _segmenterInitPromise = new Promise(function(res){ __afterBoot(function(){ res(initSegmenter()); }, 400); });
 
 // ── 목/어깨 실루엣 실측용 바디 세그멘터(2026-07-14 추가) ──
 // 사용자 요청: "헤어추출과정에서 잠시 제외했다가 추출끝나면 포함시키면
@@ -83,6 +85,33 @@ const _segmenterInitPromise = initSegmenter();
 // 예외: 헤어 폴백 경로가 이미 같은 모델(MediaPipeSelfieSegmentation)을
 // `segmenter`로 로드해뒀다면 중복 로드하지 않고 그대로 재사용한다.
 let bodySegmenter = null;
+/* ── 모델 예열 (2026-10-18) ─────────────────────────────────────────────
+   첫 사진을 분석할 때만 7초 넘게 걸렸다(정면 머리 추출 7.4s, 나머지 1.3~2s).
+   첫 호출에서 MediaPipe(CPU)·TF.js(WebGL 셰이더 컴파일)가 준비 작업을 하기
+   때문 — 사용자가 촬영하는 동안 작은 빈 그림으로 한 번 돌려 미리 치른다.
+   실패해도 아무 영향 없음(실제 분석이 그때 치를 뿐). */
+function warmSegmenterLater(which){
+  const run = async function(){
+    try{
+      const c = document.createElement('canvas'); c.width = 256; c.height = 256;
+      const x = c.getContext('2d'); x.fillStyle = '#806050'; x.fillRect(0,0,256,256);
+      x.fillStyle = '#201814'; x.fillRect(64,20,128,90);
+      const t = performance.now();
+      if(which === 'hair' && mpImageSegmenter){
+        const r = mpImageSegmenter.segment(c);
+        try{ (r.confidenceMasks||[]).forEach(function(m){ m.close(); }); }catch(e){}
+        try{ r.categoryMask && r.categoryMask.close(); }catch(e){}
+      } else if(which === 'body' && bodySegmenter){
+        const segs = await bodySegmenter.segmentPeople(c, { multiSegmentation:false, segmentBodyParts:false });
+        if(segs && segs.length) await bodySegmentation.toBinaryMask(segs, {r:255,g:255,b:255,a:255}, {r:0,g:0,b:0,a:0}, false, 0.5);
+      }
+      c.width = c.height = 0;
+      console.log('모델 예열(' + which + ') ' + Math.round(performance.now() - t) + 'ms');
+    }catch(e){ console.warn('모델 예열 실패(' + which + ') — 무시', e); }
+  };
+  if(typeof requestIdleCallback === 'function') requestIdleCallback(run, { timeout: 3000 });
+  else setTimeout(run, 500);
+}
 async function initBodySegmenter(){
   await _segmenterInitPromise; // state.segmenterType이 확정될 때까지 대기
   if(state.segmenterType === 'TF.js' && segmenter){
@@ -98,6 +127,7 @@ async function initBodySegmenter(){
       { runtime:'tfjs', modelType:'general' }
     );
     console.log('목 실측용 바디 세그멘터 준비 완료');
+    warmSegmenterLater('body');
   } catch(e){
     // ⚠ 정직한 한계: 이게 실패하면(구형 브라우저·메모리 부족 등) 목은 실측이
     // 아니라 예전 고정 반지름(0.42~0.5*widthFactor)으로 자동 폴백됨

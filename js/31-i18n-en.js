@@ -74,6 +74,8 @@
     '뒤 사진을 맞추는 데 필요합니다': 'Needed to align the back photo',
     '사람 윤곽을 읽지 못했어요 — 뒷머리가 짧게 나올 수 있습니다. 새로고침 후 다시 해 주세요.': 'Couldn\'t read the body outline — the back hair may come out short. Please reload and try again.',
     '사진이 바뀌어 새로 분석합니다': 'Photos changed — analyzing again',
+    '사진 불러오는 중…': 'Loading photo…',
+    '사진을 불러오지 못했어요': 'Could not load the photo',
     '분석 모델을 다시 준비하고 있어요': 'Reloading the analysis model',
     '3D 헤어 만드는 중…': 'Building 3D hair…',
     '의상·얼굴 붙이는 중…': 'Attaching outfit and face…',
