@@ -4,6 +4,8 @@
 <head>
 <meta charset="UTF-8">
 <meta http-equiv="Content-Security-Policy" content="object-src 'none'; base-uri 'self'; form-action 'none'; frame-src https://tryon-marketplace-web.choisunfriend.workers.dev; upgrade-insecure-requests">
+<style>html.booting body>*{visibility:hidden}html.booting::after{content:"GYEOL";position:fixed;inset:0;display:flex;align-items:center;justify-content:center;font:600 22px/1 system-ui,sans-serif;letter-spacing:.3em;color:#c98b52;background:#1b1816;animation:gyb 1.2s ease-in-out infinite alternate}@keyframes gyb{from{opacity:.35}to{opacity:1}}</style>
+<script>document.documentElement.classList.add('booting');setTimeout(function(){document.documentElement.classList.remove('booting')},20000);</script>
 <meta name="referrer" content="strict-origin-when-cross-origin">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>결 GYEOL — 스타일 프리뷰</title>
@@ -222,7 +224,7 @@
 <script src="js/03a-hair-mask.js?v=20261013m"></script>
 <script src="js/03b-mask-memory.js?v=20261013m"></script>
 <script src="js/04-structure-tensor.js?v=20261013m"></script>
-<script src="js/05-capture-nav.js?v=20261017a"></script>
+<script src="js/05-capture-nav.js?v=20261018g"></script>
 <script src="js/06-ui-panels.js?v=20261017e"></script>
 <script src="js/07a-render-canvas.js?v=20261013m"></script>
 <script src="js/07b-render-compare.js?v=20261013m"></script>
@@ -240,7 +242,7 @@
 <script src="js/21-braid.js?v=20261013m"></script>
 <script src="js/16-style-spec-diag.js?v=20261013m"></script>
 <script src="js/17a-mannequin.js?v=20261017g"></script>
-<script src="js/17b-cut3d-piece.js?v=20261018c"></script>
+<script src="js/17b-cut3d-piece.js?v=20261018f"></script>
 <script src="js/14c-curl-bundle.js?v=20261013m"></script>
 <script src="js/18-perf-i18n-boot.js?v=20261017f"></script>
 <script src="js/19-stage-backdrop.js?v=20261013m"></script>
@@ -251,10 +253,12 @@
 <script src="js/25-treatment-spec.js?v=20261013m"></script>
 <script src="js/26-hair-clump.js?v=20261013m"></script>
 <script src="js/27-perf-tune.js?v=20261013m"></script>
-<script src="js/28-perf-probe.js?v=20261013m"></script>
+<script src="js/28-perf-probe.js?v=20261018g"></script>
 <script src="js/29-hairpin-3d.js?v=20261013m"></script>
 <script src="js/30-saved-photos.js?v=20261013m"></script>
 <script src="js/31-i18n-en.js?v=20261017s"></script>
+<script src="js/32-call-probe.js?v=20261018f"></script>
+<script>document.addEventListener("DOMContentLoaded",function(){setTimeout(function(){document.documentElement.classList.remove("booting")},0)});</script>
 <!-- Visitor stats (GoatCounter: free, no cookies, no personal data). Replace YOURCODE with your GoatCounter site code. -->
 <script data-goatcounter="https://choisunfriend.goatcounter.com/count" async src="//gc.zgo.at/count.js"></script>
 </body>
