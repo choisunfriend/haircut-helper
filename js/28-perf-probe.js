@@ -438,7 +438,8 @@
     return '[시간] 3D준비 ' + ms(t.neutral3D) + ' · 길이풀이 ' + ms(t.solve) +
       ' · 첫렌더 ' + ms(t.render) + ' · 미니3D ' + ms(t.mini3D) +
       ' · 합계 ' + ms(t.total) +
-      (F.on ? ' · 미룬 진단 ' + ms(t.diag) + ' (뷰별 풀이 ' + F.skipped + '회 건너뜀)' : ' · (STYLE_FAST 꺼짐)');
+      (F.on ? ' · 미룬 진단 ' + ms(t.diag) + ' (뷰별 풀이 ' + F.skipped + '회 건너뜀)' : ' · (STYLE_FAST 꺼짐)') +
+      (typeof G.__anaLine === 'function' ? '\n' + G.__anaLine() : '');
   }
 
   var perfOrig = G.perfPanelLines;
