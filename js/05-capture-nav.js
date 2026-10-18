@@ -19,14 +19,22 @@ function runStyleAnalysisPipeline(){
   // (옛 40 GPU 다이어트 ②) 분석용 모델을 내려놓았으면 다시 올라올 때까지 기다렸다가 → runStyleAnalysisPipelineBase
   return GPU_DIET._pipe(this, arguments);
 }
+window.__anaLine = function(){
+  const T = window.__anaTimes; if(!T) return '[시간·사진분석] 아직 안 함';
+  const r = v => Math.round(v);
+  return '[시간·사진분석] 합계 ' + r(T.total||0) + 'ms · 모델 기다림 ' + r(T.wait) + 'ms · ' +
+    T.views.map(v => v.a + ' 랜드마크 ' + r(v.lm) + ' / 머리 추출 ' + r(v.mask) + ' / 섹션 ' + r(v.sec)).join(' · ');
+};
 async function runStyleAnalysisPipelineBase(){
   // segmenter가 아직 로딩 중이면 잠깐 대기 (최대 6초)
+  const _T = window.__anaTimes = { wait:0, views:[], t0:performance.now() };
   if(!segmenterReady && !segmenterError){
     showAI('모델 로딩 중…', 'Hair Segmentation 준비 중');
     let waited = 0;
     while(!segmenterReady && !segmenterError && waited < 6000){
       await new Promise(r=>setTimeout(r,300)); waited+=300;
     }
+    _T.wait = waited;
   }
   if(segmenter){
     const validAngles = ANGLES.filter(a=>state.shots[a]);
@@ -38,18 +46,25 @@ async function runStyleAnalysisPipelineBase(){
       );
       // Face Landmarker: 랜드마크를 먼저 감지해야 extractHairMask에서
       // 얼굴 위치 기반으로 정확한 제거 영역을 잡을 수 있음 (정면/측면 모두 대응)
+      const _v = { a:a, lm:0, mask:0, sec:0 }; let _t = performance.now();
       if(faceLandmarkerReady){
         showAI(`얼굴 분석 중… ${done+1}/${validAngles.length}`, `${ANGLE_LABELS[a]} 랜드마크 감지`);
         await detectFaceLandmarks(a);
       }
+      _v.lm = performance.now() - _t; _t = performance.now();
+      showAI(`머리카락 추출 중… ${done+1}/${validAngles.length}`, `${ANGLE_LABELS[a]} 처리 중`);
       await extractHairMask(a);
+      _v.mask = performance.now() - _t; _t = performance.now();
       if(faceLandmarkerReady){
         refineSectionBoundaries(a);
       }
+      _v.sec = performance.now() - _t; _T.views.push(_v);
       done++;
     }
     hideAI();
   }
+  _T.total = performance.now() - _T.t0;
+  try{ console.log(window.__anaLine()); }catch(e){}
   /* (2026-08-29) 여기서 analyzeWithClaude()를 부르던 것을 걷어냈다. 이 파이프라인이
      하는 일은 이제 <b>세그멘테이션 + 랜드마크</b>뿐이고, 그건 조정 화면의 재료라
      스타일 추천과 무관하게 계속 필요하다. 플래그는 "재료가 준비됐다"는 뜻이다. */
@@ -966,6 +981,7 @@ function captureCurrentAngle(){
     if(state.currentCaptureIndex<3) state.currentCaptureIndex++;
     updateAngleUI();
     checkCaptureLandmarks(angle); // 촬영 직후 랜드마크 감지 안내 (비동기, 흐름 안 막음)
+    try{ SEG_PRE.warm(angle); }catch(e){}   // 다음 장 찍는 동안 머리 분리 미리(03b)
   } else { showToast('카메라가 준비되지 않았어요.'); }
 }
 
@@ -992,22 +1008,54 @@ function retakeCurrent(){
   updateAngleUI();
 }
 
+/* ── 업로드 빠른 길 (2026-10-18) ────────────────────────────────────────
+   예전: 파일 전체를 base64 문자열로 읽고(FileReader) → 12MP 그대로 디코드 →
+   원본 크기 캔버스(약 48MB)에 그린 뒤 800px로 줄였다. 폰에서 한 장에 1~3초.
+   지금: createImageBitmap에 크기를 알려 줘서 <b>디코드하면서 바로 줄인다</b>.
+   (사진 방향 EXIF는 createImageBitmap이 기본으로 반영한다.) 안 되는 브라우저나
+   이미 작은 파일은 예전 길(capShotDataURL)로 간다. 결과 형식(jpeg 0.94)은 같다. */
+async function fileToShotDataURL(file){
+  const M = (typeof INPUT_RES !== 'undefined') ? INPUT_RES.photoMax : 0;
+  if(M > 0 && typeof createImageBitmap === 'function' && file.size > 400*1024){
+    try{
+      let bmp = await createImageBitmap(file, { resizeWidth: M, resizeQuality: 'high' });
+      if(bmp.height > bmp.width){                      // 세로 사진 → 긴 변(세로)을 M에 맞춰 다시
+        bmp.close();
+        bmp = await createImageBitmap(file, { resizeHeight: M, resizeQuality: 'high' });
+      }
+      const c = document.createElement('canvas');
+      c.width = bmp.width; c.height = bmp.height;
+      c.getContext('2d').drawImage(bmp, 0, 0);
+      bmp.close();
+      const url = c.toDataURL('image/jpeg', 0.94);
+      c.width = c.height = 0;
+      return url;
+    }catch(err){ console.warn('업로드 빠른 길 실패 — 예전 길로', err); }
+  }
+  const raw = await new Promise((res, rej)=>{
+    const r = new FileReader(); r.onload = ()=>res(r.result); r.onerror = rej; r.readAsDataURL(file);
+  });
+  return capShotDataURL(raw);
+}
 function handleFileUpload(e){
   const file=e.target.files[0]; if(!file) return;
-  const reader=new FileReader();
-  reader.onload=async ev=>{
-    const angle=ANGLES[state.currentCaptureIndex]; // 인덱스 증가 전에 확정
+  const angle=ANGLES[state.currentCaptureIndex]; // 인덱스 증가 전에 확정
+  const input=e.target;
+  try{ if(typeof showToast==='function') showToast('사진 불러오는 중…'); }catch(_){}
+  (async ()=>{
     /* (2026-08-23 6차) 업로드는 크기 제한이 아예 없었다 — 요즘 폰 사진이면
        4000×3000도 들어온다. 촬영과 <b>같은 상한</b>을 건다. */
-    state.shots[angle]=await capShotDataURL(ev.target.result);
+    let url;
+    // 안드로이드: 입력칸을 비우면 아직 안 읽은 파일을 못 읽는다 — 다 읽은 뒤에 비움
+    try{ url=await fileToShotDataURL(file); } finally { input.value=''; }
+    state.shots[angle]=url;
     // 업로드 사진은 라이브 측정과 무관 — 이전 촬영의 라이브 포즈가 남아있으면 지운다
     if(state.capturePose) state.capturePose[angle]=null;
     if(state.currentCaptureIndex<3) state.currentCaptureIndex++;
     updateAngleUI();
     checkCaptureLandmarks(angle); // 업로드 직후에도 동일하게 랜드마크 감지 안내
-  };
-  reader.readAsDataURL(file);
-  e.target.value='';
+    try{ SEG_PRE.warm(angle); }catch(e){}
+  })().catch(err=>{ console.warn('업로드 실패', err); try{ showToast('사진을 불러오지 못했어요'); }catch(_){} });
 }
 
 // ── 촬영/업로드 직후 랜드마크 감지 안내 (2026-07-14 추가) ──

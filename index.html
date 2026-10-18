@@ -217,14 +217,21 @@
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/MTLLoader.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/OBJLoader.js"></script>
+<script>
+/* 앱 첫 화면(촬영)이 뜬 뒤에 무거운 모델 준비를 시작한다 (2026-10-18).
+   예전엔 01·03a가 스크립트를 읽는 도중에 바로 MediaPipe·TF.js 모델을 올려서,
+   폰에서는 나머지 3.5MB 스크립트 해석과 CPU를 다투느라 GYEOL 로딩 화면이
+   20초 가까이 걸렸다. 화면부터 띄우고(DOMContentLoaded → 한 프레임 뒤) 시작한다. */
+function __afterBoot(fn,delay){var done=false;function run(){if(done)return;done=true;setTimeout(function(){try{fn()}catch(e){console.warn('afterBoot',e)}},delay||0)}function go(){try{requestAnimationFrame(function(){setTimeout(run,0)})}catch(e){}setTimeout(run,250)}if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',go);else go();}
+</script>
 <script>let __visionModulePromise=null;function loadVisionModule(){return!__visionModulePromise&&(__visionModulePromise=import('https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.9')),__visionModulePromise;}</script>
-<script src="js/01-face-landmarker.js?v=20261013m"></script>
+<script src="js/01-face-landmarker.js?v=20261018p"></script>
 <script src="js/02-state-sections.js?v=20261017e"></script>
 <script src="js/21-body-base.js?v=20261017s"></script>
-<script src="js/03a-hair-mask.js?v=20261013m"></script>
-<script src="js/03b-mask-memory.js?v=20261013m"></script>
+<script src="js/03a-hair-mask.js?v=20261018p"></script>
+<script src="js/03b-mask-memory.js?v=20261018q"></script>
 <script src="js/04-structure-tensor.js?v=20261013m"></script>
-<script src="js/05-capture-nav.js?v=20261018g"></script>
+<script src="js/05-capture-nav.js?v=20261018q"></script>
 <script src="js/06-ui-panels.js?v=20261017e"></script>
 <script src="js/07a-render-canvas.js?v=20261013m"></script>
 <script src="js/07b-render-compare.js?v=20261013m"></script>
@@ -256,7 +263,7 @@
 <script src="js/28-perf-probe.js?v=20261018g"></script>
 <script src="js/29-hairpin-3d.js?v=20261013m"></script>
 <script src="js/30-saved-photos.js?v=20261013m"></script>
-<script src="js/31-i18n-en.js?v=20261017s"></script>
+<script src="js/31-i18n-en.js?v=20261018p"></script>
 <script src="js/32-call-probe.js?v=20261018f"></script>
 <script>document.addEventListener("DOMContentLoaded",function(){setTimeout(function(){document.documentElement.classList.remove("booting")},0)});</script>
 <!-- Visitor stats (GoatCounter: free, no cookies, no personal data). Replace YOURCODE with your GoatCounter site code. -->

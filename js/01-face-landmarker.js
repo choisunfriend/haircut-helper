@@ -100,7 +100,8 @@ async function initFaceLandmarker(){
     console.warn('Face Landmarker 로드 실패:', e);
   }
 }
-initFaceLandmarker();
+// 첫 화면이 뜬 뒤에 시작(index.html의 __afterBoot 참고)
+__afterBoot(initFaceLandmarker, 0);
 
 /* ── 후면 귀 앵커 (2026-07-26, PoseLandmarker 연결) ────────────────────
    문제: 후면은 FaceLandmarker가 원리적으로 실패한다(검출기가 얼굴 박스를 못 찾으면
