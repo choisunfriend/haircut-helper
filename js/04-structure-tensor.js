@@ -346,7 +346,7 @@ var GABOR_ORIENT = (function () {
       var straight = sAbs < 0.6;
       var lam = flips > 0 ? 2 * n / flips : NaN;
       // 진폭: 파장 폭 이동 평균선에서 벗어난 거리
-      var amp = NaN; if (isFinite(lam) && lam > 6 && lam < n) { var hw = Math.max(2, Math.round(lam / 2)), devs = []; for (j = hw; j < n - hw; j += 2) { var mx = 0, my = 0, c3 = 0, q2; for (q2 = j - hw; q2 <= j + hw; q2++) { mx += P[q2 * 2]; my += P[q2 * 2 + 1]; c3++; } devs.push(Math.hypot(P[j * 2] - mx / c3, P[j * 2 + 1] - my / c3)); } devs.sort(function (u, v) { return u - v; }); if (devs.length) amp = devs[Math.min(devs.length - 1, Math.floor(devs.length * 0.9))] / 0.988; }   // 90%(사인의 꼭대기 근처) — 뿌리 쪽 곧은 구간에 끌려 작게 재지 않게
+      var amp = NaN; if (isFinite(lam) && lam > 6 && lam < n) { var hw = Math.max(2, Math.round(lam / 2)), devs = [], PX = new Float64Array(n + 1), PY = new Float64Array(n + 1), c3 = 2 * hw + 1; for (j = 0; j < n; j++) { PX[j + 1] = PX[j] + P[j * 2]; PY[j + 1] = PY[j] + P[j * 2 + 1]; } for (j = hw; j < n - hw; j += 2) { var mx = PX[j + hw + 1] - PX[j - hw], my = PY[j + hw + 1] - PY[j - hw]; devs.push(Math.hypot(P[j * 2] - mx / c3, P[j * 2 + 1] - my / c3)); }   /* (2026-10-19) 이동 평균을 누적합으로 — 같은 값 · 선 길이×파장 → 선 길이 */ devs.sort(function (u, v) { return u - v; }); if (devs.length) amp = devs[Math.min(devs.length - 1, Math.floor(devs.length * 0.9))] / 0.988; }   // 90%(사인의 꼭대기 근처) — 뿌리 쪽 곧은 구간에 끌려 작게 재지 않게
       var cyS = 0, cxS = 0; for (j = 0; j < n; j++) { cxS += P[j * 2]; cyS += P[j * 2 + 1]; }
       lines.push({ n: n, straight: straight, loop: sAbs > 1e-6 ? Math.abs(sSig) / sAbs : 0, lam: lam, amp: amp, cx: cxS / n, cy: cyS / n });
     }
@@ -368,6 +368,8 @@ var GABOR_ORIENT = (function () {
    *  남겨 두는 값: f.angleT f.cohT f.angleG f.confG f.angle2 f.conflict f.edgeSuspect f.winner(0 텐서 1 필터 2 같이 3 교차)
    *  (2026-10-19 합성 무늬 시험) 텐서를 섞으면 직모·곱슬·저대비·그림자 모두 필터만 쓸 때보다 약간 나빠짐 → 기본은 꺼 둠. 실사 사진 정답으로 다시 재 볼 것
    *  켜기: GABOR_ORIENT.fuse=true (기본 섞는 방식 fuseMode='gate' · 'blend'는 단순 가중합) · 신뢰도 바꾸기만 끄기: GABOR_ORIENT.fuseConf=false */
+  GO.engine = GO.engine || 'steer'; GO.steerInt = GO.steerInt != null ? GO.steerInt : 1; GO.steerAlong = GO.steerAlong != null ? GO.steerAlong : 10; GO.steerAlongPow = GO.steerAlongPow != null ? GO.steerAlongPow : 0.5;
+  GO.alt = GO.alt || null; GO.altBelow = GO.altBelow != null ? GO.altBelow : 0.3; GO.altGain = GO.altGain || 1.0;
   GO.fuse = !!GO.fuse; GO.fuseConf = GO.fuseConf !== false; GO.conflictDeg = GO.conflictDeg || 30; GO.fuseMode = GO.fuseMode || 'gate'; GO.gateLo = GO.gateLo != null ? GO.gateLo : 0.2; GO.gateHi = GO.gateHi != null ? GO.gateHi : 0.6; GO.edgeCut = GO.edgeCut || 0.5;
   GO.consEps = GO.consEps || 0.02; GO.consSig = GO.consSig || 2;
   function consist(ang, mask, Wd, Hd) {
@@ -434,6 +436,61 @@ var GABOR_ORIENT = (function () {
     GO.fuseStats = { px: M, tensor: cntW[0] / M, filter: cntW[1] / M, both: cntW[2] / M, conflict: cntW[3] / M, edge: cntE / M };
     console.log(TAG + ' 합침 — 텐서 ' + (cntW[0] / M * 100).toFixed(0) + '% · 필터 ' + (cntW[1] / M * 100).toFixed(0) + '% · 같이 ' + (cntW[2] / M * 100).toFixed(0) + '% · 교차·컬 ' + (cntW[3] / M * 100).toFixed(0) + '% · 외곽선 의심 ' + (cntE / M * 100).toFixed(0) + '%');
   }
+  /* (2026-10-19) 조종 필터(G2/H2, Freeman–Adelson) — 사용자: "시간 엄청 걸린다" · "최대한 이 방향으로"
+   *  12방향 가버를 하나하나 대 보는 대신, 가로·세로로 나뉘는 기본 필터 7개(각 1차원 두 번)만 돌리고 방향은 식으로 바로 구함(각도가 연속 — 칸이 없음).
+   *  곱셈 수 ≈ 가버의 1/6. 결의 또렷함 = 방향 에너지 ÷ 전체 에너지(0~1). 파장(GO.lambda)에 맞춰 크기를 정함.
+   *  켜기/끄기: GABOR_ORIENT.engine = 'steer'(기본) | 'gabor'(예전)
+   *  합성 무늬 시험(각도 오차 중앙/상위10%, °) — 가버 → 조종: 직모 0.7/1.3 → 0.2/0.6 · 웨이브 5.6/7.0 → 2.8/3.4 · 곱슬 0.7/1.7 → 0.2/0.6 · 저대비 1.7/4.5 → 2.2/5.7(조금 나쁨) · 그림자 0.5/1.2 → 0.3/0.7
+   *  시간 724×800(머리 49만 px): 결 읽기 전체 1.9초 → 0.9초 · 03a 곱슬 °/px 값은 두 방식이 같음(R40px 1.42 vs 1.41 · R20px 2.75 vs 2.78) → curlLo 등 문턱 그대로
+   *  steerInt(둘레 모으기 σ px, 기본 1) · steerAlong(결 따라 모으기 최대 ±px, 기본 10 — 처음 읽은 결이 흐린 곳일수록 길게, steerAlongPow 0.5) */
+  GO._steerField = function (g, mask, Wd, Hd, lam) { return steerField(g, mask, Wd, Hd, lam); };
+  function steerField(g, mask, Wd, Hd, lam) {
+    var s = lam / Math.PI, R = Math.max(2, Math.ceil(3.2 * s)), L = 2 * R + 1, k, u, e;
+    var g0 = new Float32Array(L), g1 = new Float32Array(L), g2 = new Float32Array(L), h3 = new Float32Array(L), h2 = new Float32Array(L);
+    for (k = -R; k <= R; k++) { u = k / s; e = Math.exp(-u * u); g0[k + R] = e; g1[k + R] = u * e; g2[k + R] = (2 * u * u - 1) * e; h3[k + R] = (u * u * u - 2.254 * u) * e; h2[k + R] = (u * u - 0.7515) * e; }
+    // 머리가 있는 줄·칸 범위만
+    var x0 = Wd, x1 = -1, y0 = Hd, y1 = -1, i, x, y;
+    for (y = 0; y < Hd; y++) for (x = 0; x < Wd; x++) if (mask[y * Wd + x]) { if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
+    var N = Wd * Hd, ang = new Float32Array(N), conf = new Float32Array(N), en = new Float32Array(N);
+    if (x1 < 0) return { ang: ang, conf: conf, en: en, r: R };
+    x0 = Math.max(0, x0 - R); x1 = Math.min(Wd - 1, x1 + R); y0 = Math.max(0, y0 - R); y1 = Math.min(Hd - 1, y1 + R);
+    var bw = x1 - x0 + 1, bh = y1 - y0 + 1, BN = bw * bh;
+    function rowPass(ker) { var o = new Float32Array(BN), yy, xx, t, v, xs; for (yy = 0; yy < bh; yy++) { var gr = (yy + y0) * Wd; for (xx = 0; xx < bw; xx++) { v = 0; for (t = -R; t <= R; t++) { xs = xx + x0 + t; if (xs < 0) xs = 0; else if (xs >= Wd) xs = Wd - 1; v += ker[t + R] * g[gr + xs]; } o[yy * bw + xx] = v; } } return o; }
+    function colPass(src, ker) { var o = new Float32Array(BN), yy, xx, t, v, ys; for (yy = 0; yy < bh; yy++) for (xx = 0; xx < bw; xx++) { v = 0; for (t = -R; t <= R; t++) { ys = yy + t; if (ys < 0) ys = 0; else if (ys >= bh) ys = bh - 1; v += ker[t + R] * src[ys * bw + xx]; } o[yy * bw + xx] = v; } return o; }
+    var X0 = rowPass(g0), X1 = rowPass(g1), X2 = rowPass(g2), X3 = rowPass(h3), XH2 = rowPass(h2);
+    var Ga = colPass(X2, g0), Gb = colPass(X1, g1), Gc = colPass(X0, g2), Ha = colPass(X3, g0), Hb = colPass(XH2, g1), Hc = colPass(X1, h2), Hd2 = colPass(X0, h3);
+    X0 = X1 = X2 = X3 = XH2 = null;
+    var C1 = new Float32Array(BN), C2 = new Float32Array(BN), C3 = new Float32Array(BN);
+    for (i = 0; i < BN; i++) {
+      var ga = 0.9213 * Ga[i], gb = 1.843 * Gb[i], gc = 0.9213 * Gc[i], ha = 0.978 * Ha[i], hb = 0.978 * Hb[i], hc = 0.978 * Hc[i], hd = 0.978 * Hd2[i];
+      C1[i] = 0.5 * gb * gb + 0.25 * ga * gc + 0.375 * (ga * ga + gc * gc) + 0.3125 * (ha * ha + hd * hd) + 0.5625 * (hb * hb + hc * hc) + 0.375 * (ha * hc + hb * hd);
+      C2[i] = 0.5 * (ga * ga - gc * gc) + 0.46875 * (ha * ha - hd * hd) + 0.28125 * (hb * hb - hc * hc) + 0.1875 * (ha * hc - hb * hd);
+      C3[i] = -ga * gb - gb * gc - 0.9375 * (hc * hd + ha * hb) - 1.6875 * hb * hc - 0.1875 * ha * hd;
+    }
+    Ga = Gb = Gc = Ha = Hb = Hc = Hd2 = null;
+    if (GO.steerInt > 0) { C1 = blur(C1, bw, bh, GO.steerInt); C2 = blur(C2, bw, bh, GO.steerInt); C3 = blur(C3, bw, bh, GO.steerInt); }   // 방향 에너지를 둘레로 모음(구조텐서의 적분 창과 같은 일) — 저대비·잡음에서 각이 흔들리지 않게
+    if (GO.steerAlong > 0) {                                           // 결 따라 모으기 — 가버의 긴 필터처럼 가닥 방향으로 ±steerAlong px의 에너지를 더함(가닥을 가로질러선 안 섞음)
+      var LA = GO.steerAlong | 0, D2 = new Float32Array(BN), D3 = new Float32Array(BN), D1 = new Float32Array(BN);
+      for (y = 0; y < bh; y++) for (x = 0; x < bw; x++) {
+        var b0 = y * bw + x, th = -0.5 * Math.atan2(C3[b0], C2[b0]) + Math.PI / 2, dx = Math.cos(th), dy = Math.sin(th), a2s = 0, a3s = 0, a1s = 0, q;
+        var cf0 = C1[b0] > 1e-12 ? Math.min(1, Math.sqrt(C2[b0] * C2[b0] + C3[b0] * C3[b0]) / C1[b0]) : 0;   // 처음 읽은 결이 또렷할수록 짧게(굽은 결을 직선으로 펴지 않게) · 흐릴수록 길게
+        var LQ = Math.round(LA * Math.pow(1 - cf0, GO.steerAlongPow));
+        for (q = -LQ; q <= LQ; q++) {
+          var xx = Math.round(x + dx * q), yy = Math.round(y + dy * q); if (xx < 0 || yy < 0 || xx >= bw || yy >= bh) continue;
+          var bq = yy * bw + xx; a2s += C2[bq]; a3s += C3[bq]; a1s += C1[bq];
+        }
+        D2[b0] = a2s; D3[b0] = a3s; D1[b0] = a1s;
+      }
+      C1 = D1; C2 = D2; C3 = D3;
+    }
+    for (y = 0; y < bh; y++) for (x = 0; x < bw; x++) {
+      var bi = y * bw + x, gi = (y + y0) * Wd + x + x0; if (!mask[gi]) continue;
+      var c1 = C1[bi], c2 = C2[bi], c3 = C3[bi], m = Math.sqrt(c2 * c2 + c3 * c3);
+      ang[gi] = -0.5 * Math.atan2(c3, c2) + Math.PI / 2;   // 식의 y축이 위쪽이라 화면(아래쪽 y)에 맞춰 뒤집음
+      conf[gi] = c1 > 1e-12 ? Math.min(1, m / c1) : 0; en[gi] = c1;
+    }
+    return { ang: ang, conf: conf, en: en, r: R };
+  }
   // 사진마다 identity에 붙임(42번의 컬 재기와 같은 자리)
   /* computeHairOrientationField(04) 끝에서 부름 — 04가 구한 방향(f.angle)을 방향 필터 값으로 바꿈 */
   GO.refine = function (f, px, mask, Wd, Hd) {
@@ -446,7 +503,9 @@ var GABOR_ORIENT = (function () {
       var SP = sparse(KK, Wd), RV = new Float32Array(n), ang = new Float32Array(N), conf = new Float32Array(N), idx, x, y, k, i, j, cnt = 0;
       var FU = GO.fuse && GO.replace !== false && f.coherence && f.energyT, eG = FU ? new Float32Array(N) : null, a2 = FU ? new Float32Array(N) : null, r2 = FU ? new Float32Array(N) : null;
       var sd = (GO.refine && GO.stride > 1) ? (GO.stride | 0) : 1;         // 다듬기를 끄면 메울 방법이 없으니 전부 계산
-      for (y = r; y < Hd - r; y += sd) for (x = r; x < Wd - r; x += sd) {
+      var STEER = GO.engine === 'steer';
+      if (STEER) { var SF = steerField(g, mask, Wd, Hd, GO.lambda); r = SF.r; for (idx = 0; idx < N; idx++) if (mask[idx]) { ang[idx] = SF.ang[idx]; conf[idx] = SF.conf[idx]; if (FU) eG[idx] = SF.en[idx]; cnt++; } }
+      if (!STEER) for (y = r; y < Hd - r; y += sd) for (x = r; x < Wd - r; x += sd) {
         idx = y * Wd + x; if (!mask[idx]) continue;
         var best = -1, bk = 0, sumR = 0, bestC = -1, sc;
         for (sc = 0; sc < SCS.length; sc++) {                              // (2026-10-19) 여러 굵기 — 그 자리에서 결이 가장 또렷한 굵기를 고름(가닥 간격이 좁아지는 웨이브 비탈 등)
@@ -470,6 +529,33 @@ var GABOR_ORIENT = (function () {
           if (k2 >= 0) { a2[idx] = k2 * Math.PI / n + Math.PI / 2; r2[idx] = best > 1e-9 ? b2 / best : 0; }
         }
       }
+      if (!STEER && GO.alt && GO.alt.length && SCS.length === 1 && cnt > 0) {      // (2026-10-19) 굵기 다시 보기 — 기본 굵기 반응이 약한 자리만 다른 굵기로 한 번 더(전부 두 번 돌리는 것보다 훨씬 쌈)
+        var ta = performance.now(), cs = [], q0;
+        for (idx = 0; idx < N; idx++) if (mask[idx] && conf[idx] > 0) cs.push(conf[idx]);
+        cs.sort(function (p, q) { return p - q; }); q0 = cs.length ? cs[Math.min(cs.length - 1, Math.floor(cs.length * GO.altBelow))] : 0;
+        var ALT = GO.alt.map(function (lm) { var K3 = kernels(lm, n); return { lam: lm, KK: K3, SP: sparse(K3, Wd) }; }), redo = 0, took = 0;
+        for (y = r; y < Hd - r; y++) for (x = r; x < Wd - r; x++) {
+          idx = y * Wd + x; if (!mask[idx] || !(conf[idx] <= q0)) continue; redo++;
+          for (var ai = 0; ai < ALT.length; ai++) {
+            var SPa = ALT[ai].SP, KKa = ALT[ai].KK, ra = KKa.r, sza = KKa.sz, b3 = -1, k3 = 0, s3 = 0;
+            if (ra > r) continue;
+            for (k = 0; k < n; k++) {
+              var v3 = 0;
+              if (SPa) { var so3 = SPa[k].o, sw3 = SPa[k].w, sn3 = so3.length; for (i = 0; i < sn3; i++) v3 += sw3[i] * g[idx + so3[i]]; }
+              else { var K4 = KKa.K[k], ki4 = 0; for (j = -ra; j <= ra; j++) { var row4 = (y + j) * Wd + x - ra; for (i = 0; i < sza; i++) v3 += K4[ki4++] * g[row4 + i]; } }
+              v3 = v3 < 0 ? -v3 : v3; RS[k] = v3; s3 += v3; if (v3 > b3) { b3 = v3; k3 = k; }
+            }
+            var c3 = b3 > 1e-9 ? (b3 - s3 / n) / b3 : 0;
+            if (c3 > conf[idx] * GO.altGain) {
+              var bo3 = 0;
+              if (GO.interp) { var uL = RS[(k3 + n - 1) % n], uR = RS[(k3 + 1) % n], dn = uL - 2 * b3 + uR; if (dn < -1e-12) { bo3 = 0.5 * (uL - uR) / dn; if (bo3 > 0.5) bo3 = 0.5; else if (bo3 < -0.5) bo3 = -0.5; } }
+              ang[idx] = (k3 + bo3) * Math.PI / n + Math.PI / 2; conf[idx] = c3; took++;
+              if (FU) { eG[idx] = b3; }
+            }
+          }
+        }
+        GO.altStats = { below: q0, redo: redo, took: took, ms: Math.round(performance.now() - ta) };
+      }
       if (GO.refine) {                                                   // 믿을 만한 자리의 결로 둘레를 한 번 다듬음
         var C2 = new Float32Array(N), S2 = new Float32Array(N);
         for (idx = 0; idx < N; idx++) if (mask[idx]) { C2[idx] = Math.cos(2 * ang[idx]) * conf[idx]; S2[idx] = Math.sin(2 * ang[idx]) * conf[idx]; }
@@ -487,11 +573,11 @@ var GABOR_ORIENT = (function () {
       }
       diffs.sort(function (p, q) { return p - q; });
       GO.stats.calls++; GO.stats.ms = Math.round(performance.now() - t0); GO.stats.px = cnt; GO.stats.dMed = diffs.length ? diffs[diffs.length >> 1] : null;
-      console.log(TAG + ' ' + Wd + '×' + Hd + ' · 머리 픽셀 ' + cnt + ' · ' + n + '방향 · ' + GO.stats.ms + 'ms · 예전 방식과 방향 차이 중앙 ' + (GO.stats.dMed != null ? GO.stats.dMed.toFixed(1) + '°' : '-'));
+      console.log(TAG + ' ' + Wd + '×' + Hd + ' · 머리 픽셀 ' + cnt + ' · ' + (STEER ? '조종 필터(연속 각)' : n + '방향') + ' · ' + GO.stats.ms + 'ms · 예전 방식과 방향 차이 중앙 ' + (GO.stats.dMed != null ? GO.stats.dMed.toFixed(1) + '°' : '-'));
     } catch (e) { console.warn(TAG + ' 실패 — 예전 방식 그대로', e); }
     return f;
   };
-  console.log(TAG + ' 설치 — 사진 결을 ' + GO.n + '방향 가는 선 필터로 읽음(파장 ' + GO.lambda + 'px) · 끄기 GABOR_ORIENT.on=false');
+  console.log(TAG + ' 설치 — 사진 결을 ' + (GO.engine === 'steer' ? '조종 필터(G2/H2 · 연속 각 · 가버의 약 절반 시간)' : GO.n + '방향 가는 선 필터') + '로 읽음(파장 ' + GO.lambda + 'px) · 예전 가버: GABOR_ORIENT.engine=\'gabor\' · 끄기 GABOR_ORIENT.on=false');
   return GO;
 })();
 
@@ -521,7 +607,16 @@ function buildColumnOrientationSamples(angleField, coherenceField, maskBuf, w, h
 }
 
 // 특정 (x,y) 근방의 결방향을 컬럼 샘플에서 보간해서 반환 (가닥 그릴 때 사용)
+/* (2026-10-19) 결 읽기 횟수 — 다시 기르기가 오래 걸릴 때 그 시간 중 결 읽기가 얼마인지 보려고. 한 묶음이 끝나고 1초 조용하면 한 줄 남김 · 끄기 SAMPLE_COUNT.on=false */
+var SAMPLE_COUNT = { on: true, n: 0, t: null, total: 0 };
+function sampleCountFlush(){
+  var S = SAMPLE_COUNT; S.t = null; if(!S.n) return;
+  var R = (typeof SEG_ORIENT !== 'undefined' && SEG_ORIENT.rastStats) || null;
+  console.log('[결 읽기 횟수] ' + S.n + '회(이번 묶음) · 누적 ' + S.total + '회' + (R ? ' · 표로 읽음 누적 ' + R.hits + '회 · 표 ' + R.built + '장 ' + R.mb.toFixed(1) + 'MB · 굽기 ' + Math.round(R.ms) + 'ms' : '') + ' — 1회 0.3~0.7µs(노트북) 어림이면 ' + Math.round(S.n * 0.0005) + 'ms 남짓');
+  S.n = 0;
+}
 function sampleOrientation(colSamples, x, w, y){
+  if(SAMPLE_COUNT.on){ SAMPLE_COUNT.n++; SAMPLE_COUNT.total++; if(SAMPLE_COUNT.t === null) SAMPLE_COUNT.t = setTimeout(sampleCountFlush, 1000); else if((SAMPLE_COUNT.n & 65535) === 0){ clearTimeout(SAMPLE_COUNT.t); SAMPLE_COUNT.t = setTimeout(sampleCountFlush, 1000); } }
   // (옛 64) 촘촘히 저장된 사진은 위아래·옆 줄을 섞어 읽음(SEG_ORIENT)
   if(typeof SEG_ORIENT !== 'undefined'){ const r = SEG_ORIENT._sample(colSamples, x, w, y); if(r) return r; }
   const col = colSamples[Math.max(0,Math.min(w-1,Math.round(x)))];
@@ -644,6 +739,72 @@ var SEG_ORIENT = (function () {
     var ang = 0.5 * Math.atan2(sy, cx);
     var fx = (1 - t) * (A.fx || 0) + t * (B.fx || 0), fy = (1 - t) * (A.fy || 0) + t * (B.fy || 0), fl = Math.hypot(fx, fy);
     return { angle: ang, coherence: (1 - t) * A.coherence + t * B.coherence, fx: fl > 1e-6 ? fx / fl : 0, fy: fl > 1e-6 ? fy / fl : 0, fc: ((1 - t) * (A.fc || 0) + t * (B.fc || 0)) * fl };
+  };
+
+  /* (2026-10-19) 결 읽기 빠른 길 — 사용자: "시간 엄청 걸린다. 노트북으로 했는데도"
+   *  다시 기르기(걷기)는 걸음마다 사진 결을 수십 번 읽음. 예전엔 읽을 때마다 위아래 줄 두 개를 이진 탐색 + 객체 2~3개 생성.
+   *  한 사진에서 rastAfter번 넘게 읽으면, 그 사진 결을 1px 칸 표로 한 번 구워 두고 그다음부터는 표에서 바로 읽음(세로는 칸 사이 직선 보간).
+   *  값은 예전과 같은 규칙(at1)으로 구운 것 — 시험(800×800 · 300만 회): 각도 차 중앙 0.000° · 99% 0.001° · 2° 넘게 다른 곳 0.13%(머리가 끊긴 경계 칸) · 2.4배 빠름 · 굽기 70~110ms/장.
+   *  표 크기 = 사진 가로×세로×8바이트(800×800 ≈ 5MB/장). 끄기 SEG_ORIENT.rast=false */
+  SO.rast = SO.rast !== false; SO.rastAfter = SO.rastAfter || 20000;
+  var RS = SO.rastStats = { built: 0, ms: 0, hits: 0, mb: 0 };
+  function buildRast(ori, Wd) {
+    var t0 = performance.now(), Hd = 0, x, y, c, n;
+    for (x = 0; x < Wd; x++) { c = ori[x]; if (c && c.length) { n = c[c.length - 1].y + (c._dense || 1) * SO.gapK + 2; if (n > Hd) Hd = n; } }
+    Hd = Math.max(1, Math.ceil(Hd));
+    var N = Wd * Hd, A = new Int16Array(N), C = new Uint16Array(N), FX = new Int8Array(N), FY = new Int8Array(N), FC = new Uint8Array(N), OK = new Uint8Array(N);
+    var K = 32767 / (Math.PI / 2);
+    for (x = 0; x < Wd; x++) {
+      c = ori[x]; if (!c || !c.length || !c._dense) continue;
+      var y0 = Math.max(0, Math.floor(c[0].y - c._dense * SO.gapK)), y1 = Math.min(Hd - 1, Math.ceil(c[c.length - 1].y + c._dense * SO.gapK));
+      for (y = y0; y <= y1; y++) {
+        var s = at1(c, y); if (!s) continue;
+        var a = s.angle; while (a > Math.PI / 2) a -= Math.PI; while (a < -Math.PI / 2) a += Math.PI;
+        var i = y * Wd + x; A[i] = Math.round(a * K); C[i] = Math.round(Math.max(0, Math.min(1, s.coherence)) * 65535);
+        FX[i] = Math.round((s.fx || 0) * 127); FY[i] = Math.round((s.fy || 0) * 127); FC[i] = Math.round(Math.max(0, Math.min(1, s.fc || 0)) * 255); OK[i] = 1;
+      }
+    }
+    RS.built++; RS.ms += performance.now() - t0; RS.mb += N * 8 / 1048576;
+    return { W: Wd, H: Hd, A: A, C: C, FX: FX, FY: FY, FC: FC, OK: OK, K: 1 / K };
+  }
+  var SA = new Float64Array(5), SB = new Float64Array(5);
+  function rastAt(R, x, Y, o) {              // 한 줄(x)의 Y 자리를 o[5]에 — 위아래 칸 보간 · 한쪽만 있으면 그쪽 · 없으면 false
+    var H = R.H, W = R.W; if (Y < 0) Y = 0; if (Y > H - 1) Y = H - 1;
+    var ya = Y | 0, yb = ya + 1 < H ? ya + 1 : ya, t = Y - ya, ia = ya * W + x, ib = yb * W + x, oa = R.OK[ia], ob = R.OK[ib], k = R.K;
+    if (!oa && !ob) return false;
+    if (!ob || (oa && t < 1e-6)) { o[0] = R.A[ia] * k; o[1] = R.C[ia] / 65535; o[2] = R.FX[ia] / 127; o[3] = R.FY[ia] / 127; o[4] = R.FC[ia] / 255; return true; }
+    if (!oa || t > 1 - 1e-6) { o[0] = R.A[ib] * k; o[1] = R.C[ib] / 65535; o[2] = R.FX[ib] / 127; o[3] = R.FY[ib] / 127; o[4] = R.FC[ib] / 255; return true; }
+    var a0 = R.A[ia] * k, a1 = R.A[ib] * k, d = a1 - a0;
+    if (d > 1.5707963267948966) a1 -= Math.PI; else if (d < -1.5707963267948966) a1 += Math.PI;
+    var fx = (R.FX[ia] + (R.FX[ib] - R.FX[ia]) * t) / 127, fy = (R.FY[ia] + (R.FY[ib] - R.FY[ia]) * t) / 127, fl = Math.sqrt(fx * fx + fy * fy);
+    o[0] = a0 + (a1 - a0) * t; o[1] = (R.C[ia] + (R.C[ib] - R.C[ia]) * t) / 65535;
+    o[2] = fl > 1e-6 ? fx / fl : 0; o[3] = fl > 1e-6 ? fy / fl : 0; o[4] = (R.FC[ia] + (R.FC[ib] - R.FC[ia]) * t) / 255 * fl; return true;
+  }
+  function mk(o) { return { angle: o[0], coherence: o[1], fx: o[2], fy: o[3], fc: o[4] }; }
+  var slowSample = SO._sample;
+  SO._sample = function (ori, X, Wd, Y) {
+    if (!SO.rast || !ori) return slowSample(ori, X, Wd, Y);
+    var R = ori._rast;
+    if (!R) {
+      if (ori._rastW !== Wd) { ori._rastN = 0; ori._rastW = Wd; }
+      if (++ori._rastN < SO.rastAfter) return slowSample(ori, X, Wd, Y);
+      var x0 = Math.max(0, Math.min(Wd - 1, Math.round(X))); if (!ori[x0] || !ori[x0]._dense) return slowSample(ori, X, Wd, Y);
+      try { R = ori._rast = buildRast(ori, Wd); } catch (e) { SO.rast = false; return slowSample(ori, X, Wd, Y); }
+    }
+    if (R.W !== Wd) return slowSample(ori, X, Wd, Y);
+    RS.hits++;
+    var xr = X < 0 ? 0 : X > Wd - 1 ? Wd - 1 : Math.round(X), c0 = ori[xr];
+    if (!c0 || !c0._dense) return null;
+    if (!SO.blendCols) return rastAt(R, xr, Y, SA) ? mk(SA) : NONE;
+    var xf = X < 0 ? 0 : X > Wd - 1 ? Wd - 1 : X, xa = xf | 0, xb = xa + 1 < Wd ? xa + 1 : xa, t = xf - xa;
+    var hA = ori[xa] ? rastAt(R, xa, Y, SA) : false, hB = (xb !== xa && ori[xb]) ? rastAt(R, xb, Y, SB) : false;
+    if (!hA && !hB) return NONE;
+    if (!hA || (hB && t > 0.999)) return mk(SB);
+    if (!hB || t < 1e-3) return mk(SA);
+    var wa = (1 - t) * (SA[1] + 1e-3), wb = t * (SB[1] + 1e-3);
+    var cx = wa * Math.cos(2 * SA[0]) + wb * Math.cos(2 * SB[0]), sy = wa * Math.sin(2 * SA[0]) + wb * Math.sin(2 * SB[0]);
+    var fx = (1 - t) * SA[2] + t * SB[2], fy = (1 - t) * SA[3] + t * SB[3], fl = Math.sqrt(fx * fx + fy * fy);
+    return { angle: 0.5 * Math.atan2(sy, cx), coherence: (1 - t) * SA[1] + t * SB[1], fx: fl > 1e-6 ? fx / fl : 0, fy: fl > 1e-6 ? fy / fl : 0, fc: ((1 - t) * SA[4] + t * SB[4]) * fl };
   };
 
   /* ---------------- ② 머리 영역 다시 찾기 ---------------- */
