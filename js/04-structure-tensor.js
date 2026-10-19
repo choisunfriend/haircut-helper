@@ -223,6 +223,7 @@ function computeHairOrientationField(pixels, maskBuf, w, h){
 
   const angle = new Float32Array(n);
   const coherence = new Float32Array(n);
+  const energyT = new Float32Array(n);   // (2026-10-19) 기울기 세기(λ1+λ2) — 두 방식 합칠 때 어두운 민무늬 잡음을 걸러 냄
 
   for(let i=0;i<n;i++){
     if(maskBuf[i]===0) continue; // 머리카락 영역만 계산
@@ -236,6 +237,7 @@ function computeHairOrientationField(pixels, maskBuf, w, h){
     const lambda2 = (trace-disc)/2; // 작은 고유값 (결방향, 변화가 가장 적은 방향)
 
     coherence[i] = (lambda1+lambda2) > 1e-6 ? (lambda1-lambda2)/(lambda1+lambda2) : 0;
+    energyT[i] = trace;
 
     // 그래디언트가 가장 강한 방향(고유벡터, 결에 수직)을 구한 뒤 90도 회전 → 결방향
     // 2*theta = atan2(2*Jxy, Jxx-Jyy)  (구조텐서 표준 공식)
@@ -250,7 +252,7 @@ function computeHairOrientationField(pixels, maskBuf, w, h){
   }
 
   // (옛 66 2026-10-11b) 방향을 가는 선 필터(가버 묶음)로 다시 읽음 — 아래 GABOR_ORIENT
-  const f = {angle, coherence};
+  const f = {angle, coherence, energyT};
   GABOR_ORIENT.refine(f, pixels, maskBuf, w, h);
   // (옛 42) 컬 곡률·진폭·타래 조각·나선을 재 둠 — measureViewHairIdentity(03a)가 붙임
   if(typeof REGROW !== 'undefined') REGROW._afterOrientField(f, pixels, maskBuf, w, h);
@@ -357,26 +359,116 @@ var GABOR_ORIENT = (function () {
     return { all: all, hairTopPx: yMn, hairBotPx: yMx, lines: lines.length, bent: bent.length, straightFrac: lines.length ? 1 - bent.length / lines.length : 1,
       loop: med(bent.map(function (l) { return l.loop; })), lamPx: med(bent.map(function (l) { return l.lam; })), ampPx: med(bent.map(function (l) { return l.amp; })) };
   }
+  /* (2026-10-19 fuse) 구조텐서 + 방향필터를 서로 메우게 합침 — 사용자: "서로 필요한 방향을 메울 수 있게 설계가 되어야 돼"
+   *  예전: 필터 각도가 텐서 각도를 통째로 덮고, 신뢰도는 텐서 값 그대로(각도·신뢰도 짝이 어긋남).
+   *  지금: 각자 (각도, 신뢰도×세기)를 내고 이중각 벡터로 더함 → 한쪽만 확신하면 그쪽이, 둘 다 확신하면 함께.
+   *   · 둘 다 확신 + 각도 차 > conflictDeg → 교차·컬 자리(f.conflict=1): 평균 안 내고 필터 각도 · 두 번째 방향 f.angle2
+   *   · 텐서만 확신, 필터는 결무늬 없음 → 외곽선·그림자 의심(f.edgeSuspect=1): 신뢰도 깎음
+   *   · f.coherence는 합친 신뢰도를 예전 텐서 coherence 분포(분위)에 맞춰 넣음 → 뒤쪽 문턱값 그대로 씀
+   *  남겨 두는 값: f.angleT f.cohT f.angleG f.confG f.angle2 f.conflict f.edgeSuspect f.winner(0 텐서 1 필터 2 같이 3 교차)
+   *  (2026-10-19 합성 무늬 시험) 텐서를 섞으면 직모·곱슬·저대비·그림자 모두 필터만 쓸 때보다 약간 나빠짐 → 기본은 꺼 둠. 실사 사진 정답으로 다시 재 볼 것
+   *  켜기: GABOR_ORIENT.fuse=true (기본 섞는 방식 fuseMode='gate' · 'blend'는 단순 가중합) · 신뢰도 바꾸기만 끄기: GABOR_ORIENT.fuseConf=false */
+  GO.fuse = !!GO.fuse; GO.fuseConf = GO.fuseConf !== false; GO.conflictDeg = GO.conflictDeg || 30; GO.fuseMode = GO.fuseMode || 'gate'; GO.gateLo = GO.gateLo != null ? GO.gateLo : 0.2; GO.gateHi = GO.gateHi != null ? GO.gateHi : 0.6; GO.edgeCut = GO.edgeCut || 0.5;
+  GO.consEps = GO.consEps || 0.02; GO.consSig = GO.consSig || 2;
+  function consist(ang, mask, Wd, Hd) {
+    var N = Wd * Hd, c = new Float32Array(N), sn = new Float32Array(N), w = new Float32Array(N), i;
+    for (i = 0; i < N; i++) if (mask[i]) { c[i] = Math.cos(2 * ang[i]); sn[i] = Math.sin(2 * ang[i]); w[i] = 1; }
+    c = blur(c, Wd, Hd, GO.consSig); sn = blur(sn, Wd, Hd, GO.consSig); w = blur(w, Wd, Hd, GO.consSig);
+    for (i = 0; i < N; i++) c[i] = w[i] > 1e-6 ? Math.min(1, Math.hypot(c[i], sn[i]) / w[i]) : 0;
+    return c;
+  }
+  function q(arr, p) { return arr.length ? arr[Math.min(arr.length - 1, Math.floor(arr.length * p))] : 0; }
+  function fuse(f, angG, confG, eG, a2, r2, mask, Wd, Hd, rr) {
+    var N = Wd * Hd, A = f.angle, C = f.coherence, ET = f.energyT, idx, list = [];
+    for (idx = 0; idx < N; idx++) if (mask[idx]) list.push(idx);
+    var M = list.length; if (!M) return;
+    // 세기 정규화(머리 안 90% 분위 = 1)
+    var t1 = [], t2 = [], m;
+    for (m = 0; m < M; m++) { t1.push(ET[list[m]]); t2.push(eG[list[m]]); }
+    t1.sort(function (a, b) { return a - b; }); t2.sort(function (a, b) { return a - b; });
+    var nT = q(t1, 0.9) || 1, nG = q(t2, 0.9) || 1;
+    var cT = new Float32Array(M), cG = new Float32Array(M);
+    // 각자 둘레에서 결이 얼마나 한결같은가(이중각 평균 길이 R) — 1−R이 작을수록 그 방식의 오차가 작음 → 가중치 = 세기 ÷ (1−R)
+    var RT = consist(A, mask, Wd, Hd), RG = consist(angG, mask, Wd, Hd);
+    for (m = 0; m < M; m++) { idx = list[m];
+      cT[m] = C[idx] * Math.min(1, ET[idx] / nT) / (1 - RT[idx] + GO.consEps);
+      cG[m] = confG[idx] * Math.min(1, eG[idx] / nG) / (1 - RG[idx] + GO.consEps); }
+    // 두 신뢰도를 한 눈금으로
+    var s1 = Array.from(cT).sort(function (a, b) { return a - b; }), s2 = Array.from(cG).sort(function (a, b) { return a - b; });
+    var mG0 = (q(s2, 0.5) || 1e-6) / Math.sqrt((q(s1, 0.5) || 1e-6) * (q(s2, 0.5) || 1e-6));   // 필터 중앙값(한 눈금 기준)
+    var mT = Math.sqrt((q(s1, 0.5) || 1e-6) * (q(s2, 0.5) || 1e-6)), mG = mT;   // 같은 눈금(두 중앙값의 기하평균) — 한결같은 쪽이 실제로 이기게
+    var oldCoh = Array.from(s1.length ? list.map(function (i2) { return C[i2]; }) : []).sort(function (a, b) { return a - b; });
+    var angleT = new Float32Array(A), cohT = new Float32Array(C), angle2 = new Float32Array(N), conflict = new Uint8Array(N), edge = new Uint8Array(N), win = new Uint8Array(N);
+    var raw = new Float32Array(M), cosLim = Math.cos(2 * GO.conflictDeg * Math.PI / 180), cntW = [0, 0, 0, 0], cntE = 0;
+    for (m = 0; m < M; m++) {
+      idx = list[m];
+      var x = idx % Wd, y = (idx / Wd) | 0, inner = x >= rr && x < Wd - rr && y >= rr && y < Hd - rr;
+      if (!inner) { raw[m] = cT[m] / mT; win[idx] = 0; cntW[0]++; continue; }   // 필터가 못 닿은 가장자리 — 텐서 그대로
+      var wT = cT[m] / mT, wG = cG[m] / mG, tT = 2 * A[idx], tG = 2 * angG[idx];
+      if (GO.fuseMode === 'gate') {                                    // 필터가 주인 · 필터 반응이 약한 자리(중앙값의 gateLo~gateHi배)만 텐서로 메움
+        var al = (wG / mG0 - GO.gateLo) / (GO.gateHi - GO.gateLo); al = al < 0 ? 0 : al > 1 ? 1 : al;
+        wG = wG * al + 1e-9; wT = wT * (1 - al) + 1e-9;
+      }
+      var vx = wT * Math.cos(tT) + wG * Math.cos(tG), vy = wT * Math.sin(tT) + wG * Math.sin(tG);
+      var agree = Math.cos(tT - tG), out;
+      if (wT > 1 && wG > 1 && agree < cosLim) {                          // 둘 다 확신인데 방향이 다름 → 교차·컬
+        out = angG[idx]; conflict[idx] = 1; win[idx] = 3; cntW[3]++;
+        angle2[idx] = r2[idx] > 0.5 ? a2[idx] : A[idx];
+        raw[m] = wG;
+      } else {
+        out = 0.5 * Math.atan2(vy, vx);
+        raw[m] = Math.hypot(vx, vy);
+        win[idx] = wT > 2 * wG ? 0 : wG > 2 * wT ? 1 : 2; cntW[win[idx]]++;
+        if (wT > 1.5 && wG < GO.edgeCut) { edge[idx] = 1; raw[m] *= 0.5; cntE++; }   // 텐서만 확신 — 외곽선·그림자 의심
+      }
+      while (out > Math.PI / 2) out -= Math.PI; while (out <= -Math.PI / 2) out += Math.PI;
+      A[idx] = out;
+    }
+    if (GO.fuseConf) {                                                   // 합친 신뢰도를 예전 coherence 분포에 맞춤(순위 → 같은 순위의 예전 값)
+      var ord = new Uint32Array(M); for (m = 0; m < M; m++) ord[m] = m;
+      ord.sort(function (a, b) { return raw[a] - raw[b]; });
+      for (m = 0; m < M; m++) C[list[ord[m]]] = oldCoh[m];
+    }
+    var angG2 = new Float32Array(N); for (idx = 0; idx < N; idx++) { var g2 = angG[idx]; while (g2 > Math.PI / 2) g2 -= Math.PI; while (g2 <= -Math.PI / 2) g2 += Math.PI; angG2[idx] = g2; }
+    f.angleT = angleT; f.cohT = cohT; f.angleG = angG2; f.confG = confG; f.angle2 = angle2; f.conflict = conflict; f.edgeSuspect = edge; f.winner = win;
+    GO.fuseStats = { px: M, tensor: cntW[0] / M, filter: cntW[1] / M, both: cntW[2] / M, conflict: cntW[3] / M, edge: cntE / M };
+    console.log(TAG + ' 합침 — 텐서 ' + (cntW[0] / M * 100).toFixed(0) + '% · 필터 ' + (cntW[1] / M * 100).toFixed(0) + '% · 같이 ' + (cntW[2] / M * 100).toFixed(0) + '% · 교차·컬 ' + (cntW[3] / M * 100).toFixed(0) + '% · 외곽선 의심 ' + (cntE / M * 100).toFixed(0) + '%');
+  }
   // 사진마다 identity에 붙임(42번의 컬 재기와 같은 자리)
   /* computeHairOrientationField(04) 끝에서 부름 — 04가 구한 방향(f.angle)을 방향 필터 값으로 바꿈 */
   GO.refine = function (f, px, mask, Wd, Hd) {
     if (!GO.on || !f || !f.angle || !px || px.length < Wd * Hd * 4 || !mask) return f;
     try {
       var t0 = performance.now(), N = Wd * Hd, g = gray(px, N), KK = kernels(GO.lambda, GO.n), r = KK.r, sz = KK.sz, n = GO.n;
+      var LAMS = (GO.lambdas && GO.lambdas.length) ? GO.lambdas : [GO.lambda], SCS = LAMS.map(function (lm) { var K2 = kernels(lm, n); return { lam: lm, KK: K2, SP: sparse(K2, Wd) }; });
+      SCS.forEach(function (o) { if (o.KK.r > r) { r = o.KK.r; } });                 // 가장 큰 필터 반경까지 비움
+      var RS = new Float32Array(n), lamAt = LAMS.length > 1 ? new Float32Array(N) : null;
       var SP = sparse(KK, Wd), RV = new Float32Array(n), ang = new Float32Array(N), conf = new Float32Array(N), idx, x, y, k, i, j, cnt = 0;
+      var FU = GO.fuse && GO.replace !== false && f.coherence && f.energyT, eG = FU ? new Float32Array(N) : null, a2 = FU ? new Float32Array(N) : null, r2 = FU ? new Float32Array(N) : null;
       var sd = (GO.refine && GO.stride > 1) ? (GO.stride | 0) : 1;         // 다듬기를 끄면 메울 방법이 없으니 전부 계산
       for (y = r; y < Hd - r; y += sd) for (x = r; x < Wd - r; x += sd) {
         idx = y * Wd + x; if (!mask[idx]) continue;
-        var best = -1, bk = 0, sumR = 0;
-        for (k = 0; k < n; k++) {
-          var v = 0;
-          if (SP) { var so = SP[k].o, sw = SP[k].w, sn = so.length; for (i = 0; i < sn; i++) v += sw[i] * g[idx + so[i]]; }   // 0에 가까운 칸은 빼고 곱함
-          else { var K = KK.K[k], ki = 0; for (j = -r; j <= r; j++) { var row = (y + j) * Wd + x - r; for (i = 0; i < sz; i++) v += K[ki++] * g[row + i]; } }
-          v = v < 0 ? -v : v; RV[k] = v; sumR += v; if (v > best) { best = v; bk = k; }
+        var best = -1, bk = 0, sumR = 0, bestC = -1, sc;
+        for (sc = 0; sc < SCS.length; sc++) {                              // (2026-10-19) 여러 굵기 — 그 자리에서 결이 가장 또렷한 굵기를 고름(가닥 간격이 좁아지는 웨이브 비탈 등)
+          var SPs = SCS[sc].SP, KKs = SCS[sc].KK, rs = KKs.r, szs = KKs.sz, b1 = -1, k1 = 0, sR = 0;
+          for (k = 0; k < n; k++) {
+            var v = 0;
+            if (SPs) { var so = SPs[k].o, sw = SPs[k].w, sn = so.length; for (i = 0; i < sn; i++) v += sw[i] * g[idx + so[i]]; }   // 0에 가까운 칸은 빼고 곱함
+            else { var K = KKs.K[k], ki = 0; for (j = -rs; j <= rs; j++) { var row = (y + j) * Wd + x - rs; for (i = 0; i < szs; i++) v += K[ki++] * g[row + i]; } }
+            v = v < 0 ? -v : v; RS[k] = v; sR += v; if (v > b1) { b1 = v; k1 = k; }
+          }
+          var c1 = b1 > 1e-9 ? (b1 - sR / n) / b1 : 0;
+          if (c1 > bestC) { bestC = c1; best = b1; bk = k1; sumR = sR; for (k = 0; k < n; k++) RV[k] = RS[k]; if (SCS.length > 1 && lamAt) lamAt[idx] = SCS[sc].lam; }
         }
         var bo = 0;
         if (GO.interp) { var vL = RV[(bk + n - 1) % n], vR = RV[(bk + 1) % n], den = vL - 2 * best + vR; if (den < -1e-12) { bo = 0.5 * (vL - vR) / den; if (bo > 0.5) bo = 0.5; else if (bo < -0.5) bo = -0.5; } }   // 가장 센 방향과 양옆 반응으로 사이 각을 어림(방향 수를 줄여도 각이 계단지지 않게)
         ang[idx] = (bk + bo) * Math.PI / n + Math.PI / 2; conf[idx] = best > 1e-9 ? (best - sumR / n) / best : 0; cnt++;
+        if (FU) {                                                            // (2026-10-19 fuse) 세기·두 번째 방향(교차·컬) 기억
+          eG[idx] = best;
+          var k2 = -1, b2 = 0;
+          for (k = 0; k < n; k++) { var dk = Math.abs(k - bk); dk = Math.min(dk, n - dk); if (dk < 2) continue; var vk = RV[k]; if (vk > b2 && vk >= RV[(k + n - 1) % n] && vk >= RV[(k + 1) % n]) { b2 = vk; k2 = k; } }
+          if (k2 >= 0) { a2[idx] = k2 * Math.PI / n + Math.PI / 2; r2[idx] = best > 1e-9 ? b2 / best : 0; }
+        }
       }
       if (GO.refine) {                                                   // 믿을 만한 자리의 결로 둘레를 한 번 다듬음
         var C2 = new Float32Array(N), S2 = new Float32Array(N);
@@ -384,9 +476,10 @@ var GABOR_ORIENT = (function () {
         C2 = blur(C2, Wd, Hd, GO.lambda * 0.6); S2 = blur(S2, Wd, Hd, GO.lambda * 0.6);
         for (idx = 0; idx < N; idx++) if (mask[idx]) { if (sd > 1 && C2[idx] === 0 && S2[idx] === 0) { ang[idx] = f.angle[idx]; } else ang[idx] = 0.5 * Math.atan2(S2[idx], C2[idx]); }   // 둘레에 계산한 자리가 하나도 없으면(가장자리 한 줄) 예전 방식 값
       }
-      try { GO.last = { w: Wd, h: Hd, shape: shapeOf(ang, mask, Wd, Hd, r) }; } catch (e2) { GO.last = null; }
+      try { GO.last = { w: Wd, h: Hd, shape: shapeOf(ang, mask, Wd, Hd, r), lamAt: lamAt }; } catch (e2) { GO.last = null; }
       var A = f.angle, diffs = [];
-      for (idx = 0; idx < N; idx++) {
+      if (FU) { fuse(f, ang, conf, eG, a2, r2, mask, Wd, Hd, r); }
+      else for (idx = 0; idx < N; idx++) {
         if (!mask[idx] || (idx % Wd) < r || (idx % Wd) >= Wd - r || idx < r * Wd || idx >= (Hd - r) * Wd) continue;
         var a = ang[idx]; while (a > Math.PI / 2) a -= Math.PI; while (a <= -Math.PI / 2) a += Math.PI;
         if ((idx & 63) === 0) { var dd = Math.abs(a - A[idx]); if (dd > Math.PI / 2) dd = Math.PI - dd; diffs.push(dd * 57.3); }
