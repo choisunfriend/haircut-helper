@@ -26,13 +26,14 @@ var READ_STEPS = (function () {
   'use strict';
   var W = window, TAG = '[결 읽기 단계]';
   var S = Object.assign({
-    on: true, bridge: false /* (2026-10-21b) 기본 끔 — 생성·실사 4세트에서 효과 없음(옆 결과 어긋남 그대로~약간 나빠짐). 켜기: 주소 끝 ?rsbridge=1 */, fill: true, localAlign: true, keepSnap: true,
+    on: true, bridge: false /* (2026-10-21b) 기본 끔 — 생성·실사 4세트에서 효과 없음(옆 결과 어긋남 그대로~약간 나빠짐). 켜기: 주소 끝 ?rsbridge=1 */, fill: true, localAlign: false /* (2026-10-21f) 기본 끔 — 곱슬도 정렬 세기 1로 펴서 끝이 늘어졌음(정렬 전→후 내려온 높이 5.1→6.2cm). 결 정렬(42번)이 이웃 퍼짐 기준이 될 때까지 예전처럼 · 켜기 ?localalign=1 */, keepSnap: true,
     base: 800,          // 아래 px 값의 기준 가로(분석 사진이 다르면 비례)
     lookPx: 40, resumePx: 13, tol: 25, minCoh: 0.08, inertia: 0.6,
     seedPx: 5, visitCap: 6, maxStepsPx: 1200, majPx: 2.5, fillIters: 120,
     estCohBridge: 0.35, estCohFill: 0.2
   }, W.READ_STEPS || {});
   try { var mQ = /[?&]rsbridge=([01])/.exec(location.search); if (mQ) S.bridge = mQ[1] === '1'; } catch (e) {}
+  try { var mL = /[?&]localalign=([01])/.exec(location.search); if (mL) S.localAlign = mL[1] === '1'; } catch (e) {}
   S.byView = {};        // 사진별 스냅샷 {w,h,raw(Int8 ±127=±90°),coh(Uint8),est(Uint8: 0 읽음 1 건넘 2 채움),stats}
   S._view = null;       // 03b가 결을 읽기 직전에 넣어 줌
   S.align = null;       // 직전 정렬 통계
@@ -156,6 +157,11 @@ var READ_STEPS = (function () {
           var ok = GO.lastWH && GO.lastWH[0] === Wd && GO.lastWH[1] === Hd, gbA = ok ? GO.lastAng : null, gbC = ok ? GO.lastConf : null, shGB = GO.last && GO.last.shape;
           cmp = compareBoth(stA, stC, gbA, gbC, mask, Wd, Hd, shGB);
           if (S.orient === 'st') { f.angle.set(stA); GO.last = { w: Wd, h: Hd, shape: cmp._shST, by: 'structure-tensor' }; }   // 다시 기르기·컬 재기에는 구조텐서
+          if (S.orient === 'mix' && px) {                                   // 자리마다 사진에 가장 맞는 결
+            var mx = mixField(px, mask, Wd, Hd, stA, gbA);
+            f.angle.set(mx.angle); cmp.mix = mx.stats;
+            try { var shM = shapeOf(mx.angle, mask, Wd, Hd, 6); GO.last = { w: Wd, h: Hd, shape: shM, by: 'mix' }; cmp.shapeMix = shapeSum(shM); } catch (e) {}
+          }
           if (S.keepSnap) { var w2 = Math.ceil(Wd / 2), h2 = Math.ceil(Hd / 2); cmp.snap = { w: w2, h: h2, angST: q8a(stA, 0, Wd, Hd, w2, h2), cohST: q8c(stC, Wd, Hd, w2, h2), angGB: gbA ? q8a(gbA, 0, Wd, Hd, w2, h2) : null, cohGB: gbC ? q8c(gbC, Wd, Hd, w2, h2) : null }; }
           delete cmp._shST;
         } catch (e) { cmp = { err: String(e && e.message || e) }; }
@@ -217,7 +223,7 @@ var READ_STEPS = (function () {
 
   function pct(a, b) { return b ? (a / b * 100).toFixed(1) + '%' : '-'; }
   S.lines = function () {
-    var L = [TAG + ' ' + (S.on ? '켜짐' : '꺼짐') + ' — 결 방향: ' + (S.orient === 'st' ? '구조텐서(?orient=st)' : '방향필터(기본 · 구조텐서로 넘기기 ?orient=st)') + ' · 최대한 읽기 →건너기 ' + (S.bridge ? '켬' : '끔') + ' · 채우기 ' + (S.fill ? '켬' : '끔') + ' → 정렬(이웃 기준' + (S.localAlign ? '만 · 머리 전체 컬로 세기 안 줄임' : ' + 머리 전체 컬로 세기 줄임(예전)') + ') · 끄기 READ_STEPS.on/bridge/fill/localAlign=false'];
+    var L = [TAG + ' ' + (S.on ? '켜짐' : '꺼짐') + ' — 결 방향: ' + (S.orient === 'st' ? '구조텐서(?orient=st)' : S.orient === 'mix' ? '자리마다 사진에 가장 맞는 결(기본 · 예전 방식 ?orient=gabor)' : '방향필터(?orient=gabor)') + ' · 최대한 읽기 →건너기 ' + (S.bridge ? '켬' : '끔') + ' · 채우기 ' + (S.fill ? '켬' : '끔') + ' → 정렬(이웃 기준' + (S.localAlign ? '만 · 머리 전체 컬로 세기 안 줄임' : ' + 머리 전체 컬로 세기 줄임(예전)') + ') · 끄기 READ_STEPS.on/bridge/fill/localAlign=false'];
     Object.keys(S.byView).forEach(function (v) {
       var b = S.byView[v], s = b.stats;
       L.push('  ' + v + ' ' + b.w + '×' + b.h + ' · 머리 ' + s.hair + 'px · 건넘 ' + pct(s.bridged, s.hair) + ' · 한쪽에서만 건넘(안 고침) ' + pct(s.oneSide, s.hair) + ' · 채움 ' + pct(s.filled, s.hair) +
@@ -226,7 +232,11 @@ var READ_STEPS = (function () {
     try { L.push('  웨이브 배수: ' + (W.READ_SHAPE && W.READ_SHAPE.waveGainAuto === false && !(W.READ_SHAPE.waveGain > 1) ? '꺼짐(읽은 흔들림 그대로 · 켜기 ?wavegain=1)' : '켜짐 ×' + (W.READ_SHAPE ? W.READ_SHAPE.waveGain : '?') + (W.READ_SHAPE && W.READ_SHAPE.waveGainAuto ? '(자동)' : ''))); } catch (e) {}
     var f1 = function (v, k) { return isFinite(v) ? (+v).toFixed(k == null ? 2 : k) : '-'; };
     Object.keys(S.byView).forEach(function (v) {
-      var c = S.byView[v].cmp; if (!c || c.err) { if (c && c.err) L.push('  ' + v + ' 두 방식 비교 실패: ' + c.err); return; }
+      var c = S.byView[v].cmp; if (c && c.mix) { var M = c.mix, sm = c.shapeMix || {};
+        L.push('  ' + v + ' 자리마다 고른 결(mix) — ' + M.names.map(function (nm, k) { return nm + ' ' + f1(M.picked[k] * 100, 0) + '%'; }).join(' · ') +
+          ' · 다 같아 고를 것 없던 칸 ' + f1(M.sameFrac * 100, 0) + '% | 사진과 맞음(고른 칸 기준 · 작을수록 좋음) 고른 결 ' + f1(M.fitBest, 3) + ' vs ' + M.names.map(function (nm, k) { return nm + ' ' + f1(M.fitMean[k], 3); }).join(' · ') +
+          ' | 모양 곧은 선 ' + f1(sm.straightFrac * 100, 0) + '% · 진폭 ' + f1(sm.ampPx, 1) + 'px · 파장 ' + f1(sm.lamPx, 1) + 'px · ' + M.ms + 'ms'); }
+      if (!c || c.err) { if (c && c.err) L.push('  ' + v + ' 두 방식 비교 실패: ' + c.err); return; }
       var a = c.shapeST || {}, b = c.shapeGB || {};
       L.push('  ' + v + ' 구조텐서 vs 방향필터 — 결 방향 차이 중앙 ' + f1(c.dirDiffMed, 1) + '° / p90 ' + f1(c.dirDiffP90, 1) + '° · 15° 안 ' + f1(c.agree15 * 100, 0) + '%' +
         ' | 결 또렷함 평균 ' + f1(c.cohST) + ' vs ' + f1(c.cohGB) + ' (0.6↑ ' + f1(c.cohHiST * 100, 0) + '% vs ' + f1(c.cohHiGB * 100, 0) + '%)' +
@@ -245,8 +255,8 @@ var READ_STEPS = (function () {
      다시 켜기: 주소 끝 ?wavegain=1 */
   /* (2026-10-21d) 읽기 방식 비교 — ?orient=st : 방향필터 완전히 끔(결 방향·컬 수치·웨이브 모양 모두 구조텐서 결)
                                    ?orient=gabor 또는 없음 : 지금처럼 방향필터가 방향을 덮어씀 */
-  S.orient = 'gabor';
-  try { var mO = /[?&]orient=(st|gabor)/.exec(location.search); if (mO) S.orient = mO[1]; } catch (e) {}
+  S.orient = 'mix';   // (2026-10-21h) 기본 = 자리마다 사진에 가장 맞는 결 · 예전 방식 ?orient=gabor · 구조텐서만 ?orient=st
+  try { var mO = /[?&]orient=(st|gabor|mix)/.exec(location.search); if (mO) S.orient = mO[1]; } catch (e) {}
   /* (2026-10-21e) 두 방식 나란히 재기 — 사진마다 구조텐서와 방향필터가 결 방향·결 또렷함·컬/웨이브 모양·컬 수치를 각각 잼(둘 다 기록).
      다시 기르기에 넘기는 쪽만 ?orient=로 고름(st = 구조텐서 · 없음 = 방향필터). 모양 재기는 04의 shapeOf를 그대로 옮긴 사본으로 둘 다 같은 계산. */
   var GOx = W.GABOR_ORIENT || { shapeStep: 10, shapeMaxLen: 260, shapeMinLen: 40 };
@@ -293,6 +303,80 @@ var READ_STEPS = (function () {
     return { all: all, hairTopPx: yMn, hairBotPx: yMx, lines: lines.length, bent: bent.length, straightFrac: lines.length ? 1 - bent.length / lines.length : 1,
       loop: med(bent.map(function (l) { return l.loop; })), lamPx: med(bent.map(function (l) { return l.lam; })), ampPx: med(bent.map(function (l) { return l.amp; })),
       curlDegPx: med(lines.map(function (l) { return l.curl; })) };
+  }
+  /* (2026-10-21g) ?orient=mix — 자리마다 사진에 가장 맞는 결 고르기.
+     후보: 구조텐서 7px(04 그대로) · 구조텐서 σ2 · 구조텐서 σ4 · 방향필터.
+     판정: 그 방향을 따라 그은 9px 선의 밝기 흔들림 ÷ 수직으로 그은 9px 선의 흔들림 — 작을수록 사진의 결과 맞음(머리카락은 결을 따라 밝기가 이어짐).
+     사진 15장(생성 웨이브·직모·곱슬 + 실사)에서 자리마다 고른 결이 네 세트 모두 가장 잘 맞았음(지금 방향필터 대비 5~21%). 결 또렷함은 그대로(다시 기르기 기준값이 그 값에 맞춰져 있음). */
+  S.mixLh = 4; S.mixBlock = 3; S.mixSame = 8 * Math.PI / 180;   // 후보가 모두 8° 안이면 판정 생략   // 3×3마다 한 번 고름(속도 · 2×2와 결과 같음) · 1 = 픽셀마다
+  function grayOf(px, N) { var g = new Float32Array(N), i, j; for (i = 0, j = 0; i < N; i++, j += 4) g[i] = (0.299 * px[j] + 0.587 * px[j + 1] + 0.114 * px[j + 2]) / 255; return g; }
+  function boxH(src, dst, w, h, r) {          // 가로 상자 평균(가장자리는 끝값 반복)
+    var n = 2 * r + 1, y, x, row, acc, last;
+    for (y = 0; y < h; y++) {
+      row = y * w; last = row + w - 1; acc = src[row] * (r + 1);
+      for (x = 1; x <= r; x++) acc += src[x < w ? row + x : last];
+      for (x = 0; x < w; x++) {
+        dst[row + x] = acc / n;
+        var xa = x + r + 1, xs = x - r;
+        acc += src[xa < w ? row + xa : last] - src[xs > 0 ? row + xs : row];
+      }
+    }
+  }
+  function boxV(src, dst, w, h, r) {          // 세로 상자 평균 — 줄 단위로 더해 나감(메모리 순서대로)
+    var n = 2 * r + 1, acc = new Float32Array(w), x, y, k, lastRow = (h - 1) * w;
+    for (x = 0; x < w; x++) acc[x] = src[x] * (r + 1);
+    for (k = 1; k <= r; k++) { var rk = (k < h ? k : h - 1) * w; for (x = 0; x < w; x++) acc[x] += src[rk + x]; }
+    for (y = 0; y < h; y++) {
+      var row = y * w, ya = y + r + 1, ys = y - r, ra = (ya < h ? ya : h - 1) * w, rs = (ys > 0 ? ys : 0) * w;
+      for (x = 0; x < w; x++) { dst[row + x] = acc[x] / n; acc[x] += src[ra + x] - src[rs + x]; }
+    }
+  }
+  function fblur(a, w, h, sig) {           // 상자 흐림 3번 ≈ 가우시안 σ
+    var r = Math.max(1, Math.round(Math.sqrt(sig * sig * 4 + 1) / 2 - 0.5 + 0.5)), t = new Float32Array(a.length), o = new Float32Array(a), k;
+    r = Math.max(1, Math.round((Math.sqrt(12 * sig * sig / 3 + 1) - 1) / 2));
+    for (k = 0; k < 3; k++) { boxH(o, t, w, h, r); boxV(t, o, w, h, r); }
+    return o;
+  }
+  function stAt(g, w, h, sig, pre) {     // 구조텐서(가우시안 창 sig, 미리 흐림 pre) → 결 방향(이미지 좌표, -π/2..π/2)
+    var a = pre > 0 ? fblur(g, w, h, pre) : g, N = w * h, gx = new Float32Array(N), gy = new Float32Array(N), x, y, i;
+    for (y = 1; y < h - 1; y++) for (x = 1; x < w - 1; x++) {
+      i = y * w + x;
+      gx[i] = (a[i - w + 1] + 2 * a[i + 1] + a[i + w + 1]) - (a[i - w - 1] + 2 * a[i - 1] + a[i + w - 1]);
+      gy[i] = (a[i + w - 1] + 2 * a[i + w] + a[i + w + 1]) - (a[i - w - 1] + 2 * a[i - w] + a[i - w + 1]);
+    }
+    var J11 = new Float32Array(N), J22 = new Float32Array(N), J12 = new Float32Array(N);
+    for (i = 0; i < N; i++) { J11[i] = gx[i] * gx[i]; J22[i] = gy[i] * gy[i]; J12[i] = gx[i] * gy[i]; }
+    J11 = fblur(J11, w, h, sig); J22 = fblur(J22, w, h, sig); J12 = fblur(J12, w, h, sig);
+    var o = new Float32Array(N);
+    for (i = 0; i < N; i++) { var t = 0.5 * Math.atan2(2 * J12[i], J11[i] - J22[i]) + Math.PI / 2; if (t > Math.PI / 2) t -= Math.PI; o[i] = t; }
+    return o;
+  }
+  function bil(g, w, h, x, y) {
+    if (x < 0) x = 0; else if (x > w - 1.001) x = w - 1.001; if (y < 0) y = 0; else if (y > h - 1.001) y = h - 1.001;
+    var x0 = x | 0, y0 = y | 0, fx = x - x0, fy = y - y0, i = y0 * w + x0;
+    return (g[i] * (1 - fx) + g[i + 1] * fx) * (1 - fy) + (g[i + w] * (1 - fx) + g[i + w + 1] * fx) * fy;
+  }
+  function fitAt(g, w, h, x, y, t, Lh) {   // 결 따라 흔들림 ÷ 가로질러 흔들림
+    var c = Math.cos(t), s = Math.sin(t), k, pa = bil(g, w, h, x - Lh * c, y - Lh * s), pp = bil(g, w, h, x + Lh * s, y - Lh * c), va = 0, vp = 0, a, p;
+    for (k = -Lh + 1; k <= Lh; k++) { a = bil(g, w, h, x + k * c, y + k * s); p = bil(g, w, h, x - k * s, y + k * c); va += Math.abs(a - pa); vp += Math.abs(p - pp); pa = a; pp = p; }
+    return va / (vp + 1e-4 * 2 * Lh);
+  }
+  function mixField(px, mask, Wd, Hd, stA, gbA) {
+    var t0 = performance.now(), N = Wd * Hd, g = grayOf(px, N), c2 = stAt(g, Wd, Hd, 2, 0.7), t1 = performance.now(), c4 = stAt(g, Wd, Hd, 4, 1.0), t2 = performance.now(), cands = [stA, c2, c4], names = ['구조텐서7px', '구조텐서σ2', '구조텐서σ4'];
+    if (gbA) { cands.push(gbA); names.push('방향필터'); }
+    var out = new Float32Array(stA), cnt = new Array(cands.length).fill(0), sum = new Array(cands.length).fill(0), sumBest = 0, n = 0, i, k, Lh = S.mixLh, B = Math.max(1, S.mixBlock | 0), bx, by, dx, dy, same = 0;
+    // B×B 칸마다 가운데 픽셀에서 한 번 고르고, 그 칸의 픽셀은 고른 후보의 자기 값을 씀(방향은 픽셀마다 그대로)
+    for (by = 0; by < Hd; by += B) for (bx = 0; bx < Wd; bx += B) {
+      var cx = Math.min(Wd - 1, bx + (B >> 1)), cy = Math.min(Hd - 1, by + (B >> 1)), ci = cy * Wd + cx;
+      if (!mask[ci]) { var found = -1; for (dy = 0; dy < B && found < 0; dy++) for (dx = 0; dx < B; dx++) { var jj = (by + dy) * Wd + bx + dx; if (by + dy < Hd && bx + dx < Wd && mask[jj]) { found = jj; break; } } if (found < 0) continue; ci = found; cx = ci % Wd; cy = (ci / Wd) | 0; }
+      var bi = 0, bv = 1e9, v, a0 = cands[0][ci], agreeAll = true;
+      for (k = 1; k < cands.length; k++) { var dd = Math.abs(cands[k][ci] - a0); if (dd > Math.PI / 2) dd = Math.PI - dd; if (dd > S.mixSame) { agreeAll = false; break; } }
+      if (agreeAll) { same++; for (dy = 0; dy < B; dy++) for (dx = 0; dx < B; dx++) { if (by + dy >= Hd || bx + dx >= Wd) continue; i = (by + dy) * Wd + bx + dx; if (mask[i]) out[i] = cands[0][i]; } continue; }   // 다 같은 방향 — 고를 것 없음(구조텐서 7px 값)
+      for (k = 0; k < cands.length; k++) { v = fitAt(g, Wd, Hd, cx, cy, cands[k][ci], Lh); sum[k] += v; if (v < bv) { bv = v; bi = k; } }
+      cnt[bi]++; sumBest += bv; n++;
+      for (dy = 0; dy < B; dy++) for (dx = 0; dx < B; dx++) { if (by + dy >= Hd || bx + dx >= Wd) continue; i = (by + dy) * Wd + bx + dx; if (mask[i]) out[i] = cands[bi][i]; }
+    }
+    return { angle: out, stats: { n: n, names: names, picked: cnt.map(function (c) { return n ? c / n : 0; }), fitMean: sum.map(function (v) { return n ? v / n : NaN; }), fitBest: n ? sumBest / n : NaN, sameFrac: (n + same) ? same / (n + same) : 0, ms: Math.round(performance.now() - t0), msParts: [Math.round(t1 - t0), Math.round(t2 - t1), Math.round(performance.now() - t2)] } };
   }
   function shapeSum(sh) { return sh ? { lines: sh.lines, bent: sh.bent, straightFrac: sh.straightFrac, loop: sh.loop, lamPx: sh.lamPx, ampPx: sh.ampPx, curlDegPx: sh.curlDegPx } : null; }
   function q8a(a, N, w, h, w2, h2) { var o = new Int8Array(w2 * h2), x, y; for (y = 0; y < h2; y++) for (x = 0; x < w2; x++) { var v = a[Math.min(h - 1, y * 2) * w + Math.min(w - 1, x * 2)]; while (v > Math.PI / 2) v -= Math.PI; while (v < -Math.PI / 2) v += Math.PI; o[y * w2 + x] = Math.round(v / (Math.PI / 2) * 127); } return o; }
