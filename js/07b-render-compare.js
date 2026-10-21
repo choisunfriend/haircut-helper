@@ -1927,6 +1927,20 @@ var PHOTO_CHECK = (function () {
             }
             add('cam' + ci + '.angRaw', AR, { scale: 'x/127*90deg', conv: '04 이미지 좌표(y 아래)' }); add('cam' + ci + '.cohRaw', KR, { scale: 'x/255' }); add('cam' + ci + '.est', ER, { values: '0 읽음 1 건넘 2 채움' });
             H.cams[H.cams.length - 1].readSteps = RSb.stats;
+            // (2026-10-21e) 두 방식 나란히 — 구조텐서 vs 방향필터(방향 · 또렷함), 각도는 04 이미지 좌표(y 아래)
+            if (RSb.cmp && !RSb.cmp.err) {
+              var cmpS = Object.assign({}, RSb.cmp); delete cmpS.snap; H.cams[H.cams.length - 1].compare = cmpS;
+              var SN = RSb.cmp.snap;
+              if (SN) {
+                var kx3 = SN.w / c.iw, ky3 = SN.h / c.ih, aS = new Int8Array(gw * gh), aG = new Int8Array(gw * gh), kS = new Uint8Array(gw * gh), kG = new Uint8Array(gw * gh), j5;
+                for (y = 0; y < gh; y++) for (x = 0; x < gw; x++) {
+                  j5 = Math.min(SN.h - 1, Math.floor((y + 0.5) * cell * ky3)) * SN.w + Math.min(SN.w - 1, Math.floor((x + 0.5) * cell * kx3));
+                  aS[y * gw + x] = SN.angST[j5]; kS[y * gw + x] = SN.cohST[j5]; if (SN.angGB) aG[y * gw + x] = SN.angGB[j5]; if (SN.cohGB) kG[y * gw + x] = SN.cohGB[j5];
+                }
+                add('cam' + ci + '.angST', aS, { scale: 'x/127*90deg', conv: '04 이미지 좌표(y 아래)' }); add('cam' + ci + '.cohST', kS, { scale: 'x/255' });
+                if (SN.angGB) { add('cam' + ci + '.angGB', aG, { scale: 'x/127*90deg', conv: '04 이미지 좌표(y 아래)' }); add('cam' + ci + '.cohGB', kG, { scale: 'x/255 · 필터 반응 대비' }); }
+              }
+            }
           }
         } catch (e) { H.notes.push('readSteps cam' + ci + ': ' + e.message); }
       });

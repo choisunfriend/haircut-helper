@@ -385,6 +385,7 @@ var GABOR_ORIENT = (function () {
         for (idx = 0; idx < N; idx++) if (mask[idx]) { if (sd > 1 && C2[idx] === 0 && S2[idx] === 0) { ang[idx] = f.angle[idx]; } else ang[idx] = 0.5 * Math.atan2(S2[idx], C2[idx]); }   // 둘레에 계산한 자리가 하나도 없으면(가장자리 한 줄) 예전 방식 값
       }
       try { GO.last = { w: Wd, h: Hd, shape: shapeOf(ang, mask, Wd, Hd, r) }; } catch (e2) { GO.last = null; }
+      GO.lastAng = ang; GO.lastConf = conf; GO.lastWH = [Wd, Hd];   // (2026-10-21) 34 결 읽기 단계가 구조텐서와 나란히 기록하려고 꺼내 둠(방향필터 방향 · 필터 반응 대비 = 방향필터의 결 또렷함)
       var A = f.angle, diffs = [];
       for (idx = 0; idx < N; idx++) {
         if (!mask[idx] || (idx % Wd) < r || (idx % Wd) >= Wd - r || idx < r * Wd || idx >= (Hd - r) * Wd) continue;
