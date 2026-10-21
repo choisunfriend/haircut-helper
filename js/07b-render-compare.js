@@ -1889,6 +1889,15 @@ var PHOTO_CHECK = (function () {
         add('cur.root', R); add('cur.sec', rs); add('cur.fl', rf); H.current = { n: nR, mannequin: !!cur.mannequin, CY: cur.CY };
       }
     } catch (e) { H.notes.push('cur: ' + e.message); }
+    // (2026-10-21) 34 결 읽기 단계 — 정렬 전 가닥(정렬 뒤는 위 rg.*)
+    try {
+      var RS0 = W.READ_STEPS && W.READ_STEPS.rg0;
+      if (RS0 && RS0.length) {
+        var lst0 = RS0.map(function (a) { if (!a) return null; var p = new Array(a.length / 3); for (var q = 0; q < p.length; q++) p[q] = { x: a[q * 3], y: a[q * 3 + 1], z: a[q * 3 + 2] }; return { pts: p }; });
+        var r0 = packStrands(lst0, 2, null); add('rg0.cnt', r0.cnt); add('rg0.pts', r0.D, { stride: 2, note: '정렬 전(같은 순서 · rg.*와 짝)' });
+        H.readSteps = { align: W.READ_STEPS.align, cfg: { bridge: W.READ_STEPS.bridge, fill: W.READ_STEPS.fill, localAlign: W.READ_STEPS.localAlign, lookPx: W.READ_STEPS.lookPx, resumePx: W.READ_STEPS.resumePx, tol: W.READ_STEPS.tol } };
+      }
+    } catch (e) { H.notes.push('rg0: ' + e.message); }
     // 지금 걸린 결 표
     try { var fl = FSx && FSx.active ? FSx.active() : null; if (fl && fl.d) { H.flow = { v: fl.v, cs: fl.cs, bin: fl.bin, lmax: fl.lmax, n: fl.n }; var enc = new TextEncoder().encode(fl.d); add('flow.d', enc, { enc: 'base64-text' }); } else H.notes.push('걸린 결 표 없음'); } catch (e) { H.notes.push('flow: ' + e.message); }
     // 이 손님의 다시 기른 가닥에서 뽑은 표(걸린 표와 다를 수 있음 — 다른 스타일이 걸려 있을 때)
@@ -1907,6 +1916,19 @@ var PHOTO_CHECK = (function () {
         }
         H.cams.push({ angle: c.angle, R: Array.prototype.slice.call(c.R), cx: c.cx, s: c.s, sy: c.sy, crownY: c.crownY, iw: c.iw, ih: c.ih, gw: gw, gh: gh, cell: cell, hasDir: typeof c.dirAt === 'function' });
         add('cam' + ci + '.mask', M); add('cam' + ci + '.ang', A, { scale: 'x/127*90deg' }); add('cam' + ci + '.coh', K, { scale: 'x/255' });
+        // (2026-10-21) 34 결 읽기 단계 스냅샷 — 읽은 그대로(건너기·채우기 전)와 고친 표시. 각도는 04 이미지 좌표(y 아래) 그대로라 위 .ang와 부호가 반대일 수 있음(angRawConv)
+        try {
+          var RSb = W.READ_STEPS && W.READ_STEPS.byView && W.READ_STEPS.byView[c.angle];
+          if (RSb && RSb.raw) {
+            var AR = new Int8Array(gw * gh), KR = new Uint8Array(gw * gh), ER = new Uint8Array(gw * gh), kx2 = RSb.w / c.iw, ky2 = RSb.h / c.ih, xi2, yi2, j4;
+            for (y = 0; y < gh; y++) for (x = 0; x < gw; x++) {
+              xi2 = Math.min(RSb.w - 1, Math.floor((x + 0.5) * cell * kx2)); yi2 = Math.min(RSb.h - 1, Math.floor((y + 0.5) * cell * ky2)); j4 = yi2 * RSb.w + xi2;
+              AR[y * gw + x] = RSb.raw[j4]; KR[y * gw + x] = RSb.coh[j4]; ER[y * gw + x] = RSb.est[j4];
+            }
+            add('cam' + ci + '.angRaw', AR, { scale: 'x/127*90deg', conv: '04 이미지 좌표(y 아래)' }); add('cam' + ci + '.cohRaw', KR, { scale: 'x/255' }); add('cam' + ci + '.est', ER, { values: '0 읽음 1 건넘 2 채움' });
+            H.cams[H.cams.length - 1].readSteps = RSb.stats;
+          }
+        } catch (e) { H.notes.push('readSteps cam' + ci + ': ' + e.message); }
       });
     } catch (e) { H.notes.push('cams: ' + e.message); }
     H.parts = parts;

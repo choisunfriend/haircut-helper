@@ -869,6 +869,7 @@ async function extractHairMaskCore(angle){
             //   경계 픽셀 자체가 결방향 계산에 아예 들어가지 않게 함.
             const orientErodeR = Math.max(3, Math.round(w*0.004));
             const orientMaskBuf = erode(hairMaskBuf, w, h, orientErodeR);
+            if(typeof READ_STEPS !== 'undefined') READ_STEPS._view = angle;   // (2026-10-21) 34 결 읽기 단계 — 어느 사진인지
             const {angle: angleField, coherence: coherenceField} = computeHairOrientationField(srcPixels, orientMaskBuf, w, h);
             /* ── 극성(뿌리→끝) — 측정한 각도는 그대로 두고 <b>부호만</b> 정한다 ──
                거리장은 침식 전 마스크(hairMaskBuf)로 잰다. 침식본은 결 계산의
