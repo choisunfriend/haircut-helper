@@ -1,62 +1,4967 @@
-const MANNEQUIN={'on':![],'segments':0x16,'rootRampMax':0.25,'clearance':1.004,'lenPct':0x1,'minLen':0.02,'baldDen':0.08,'layerLo':0.15,'layerHi':0x1,'spread':0.7},MQ_FRINGE={'on':!![],'tipFaceFrac':0x0,'lineHalfX':0.95,'lineGain':0.75,'lineFloorFaceFrac':0.4,'crownLine':!![],'crownRiseFrac':0.18,'crownAllAround':!![],'crownFloorBrow':!![],'frontFrac':0.6,'crownFrac':0.15,'crownThFrac':0.6,'bulge':0.35,'converge':0x1,'haveFringeFrac':0.3,'minLen':0.05};function mannequinHasFringe(_0x5ce5bb){const _0x324ad1=_0x5ce5bb&&_0x5ce5bb['occ']&&_0x5ce5bb['occ']['probe']||state['hairOcc3D']&&state['hairOcc3D']['probe']||null;if(!_0x324ad1||!_0x324ad1['at'])return null;let _0x14bfc1=null,_0x2edcbf=null;try{_0x14bfc1=getHeadEllipsoid(),_0x2edcbf=getScalpEllipsoid();}catch(_0xac9de){return null;}if(!_0x14bfc1||!_0x2edcbf)return null;const _0x150b2a=_0x5ce5bb&&_0x5ce5bb['CY']!=null?_0x5ce5bb['CY']:SCALP_CENTER_Y,_0x14809e=_0x150b2a,_0x558b91=mqBrowY(_0x150b2a,_0x14bfc1);if(_0x558b91==null)return null;let _0x48922e=0x0,_0xabc1ef=0x0;for(let _0x201a0a=0x0;_0x201a0a<0x3;_0x201a0a++){const _0x198677=_0x14809e+(_0x558b91-_0x14809e)*(_0x201a0a/0x2),_0xbf2e4a=Math['max'](-0x1,Math['min'](0x1,(_0x198677-_0x150b2a)/_0x14bfc1['b'])),_0x4cdcf8=_0x14bfc1['c']*Math['sqrt'](Math['max'](0x0,0x1-_0xbf2e4a*_0xbf2e4a));for(let _0x35eeed=-0x2;_0x35eeed<=0x2;_0x35eeed++){const _0x188515=_0x14bfc1['a']*0.3*_0x35eeed/0x2,_0x174822=_0x324ad1['at'](_0x188515,_0x198677,_0x4cdcf8*1.02);if(!_0x174822)continue;_0x48922e++;if(_0x174822['occ']>=HAIR_OCC3D['occThr'])_0xabc1ef++;}}if(!_0x48922e)return null;return _0xabc1ef/_0x48922e>=MQ_FRINGE['haveFringeFrac'];}function mqFringeTipY(_0x1ae0fc){let _0x1654c1=null;try{const _0x35a537=getFaceMetrics();if(_0x35a537&&_0x35a537['heightFactor']>0x0)_0x1654c1=0.7*_0x35a537['heightFactor'];}catch(_0x5765d7){}if(!(_0x1654c1>0x0))try{const _0x17b519=getHeadEllipsoid();if(_0x17b519&&_0x17b519['b']>0x0)_0x1654c1=0.7*(_0x17b519['b']/0.633);}catch(_0x509bde){}if(!(_0x1654c1>0x0))return null;const _0xf19229=_0x1ae0fc-MQ_FRINGE['tipFaceFrac']*_0x1654c1;if(!eyeGuardActive()||eyeGuardProfileSetsTip())return _0xf19229;const _0x52e2ea=eyeGuardGeom(),_0x1569ef=eyeGuardFrontTarget();let _0x283f1a=null;try{_0x283f1a=eyeGuardSafeHeadRef();}catch(_0x2bb177){}if(_0x1569ef!=null&&_0x283f1a)return _0x283f1a['yTop']-_0x1569ef*_0x283f1a['H'];return _0x52e2ea?_0x1ae0fc-EYE_GUARD['defaultTipFaceFrac']*_0x52e2ea['fh']:_0xf19229;}var EYE_GUARD={'on':!![],'defaultTipFaceFrac':-0.14,'fixSolveLength':!![],'boxTopFaceFrac':-0.06,'boxBotFaceFrac':0.3,'boxHalfXFrac':0.75,'zBackFrac':0.22},STYLE_TUNES={'layered_bob_hush':{'tipAt':{'front':0.45}},'wavy_bob_seethrough':{'tipAt':{'front':0.44}},'side_part_perm':{'tipAt':{'front':0.43}}},STYLE_COMMON_DEFAULTS={'on':!![],'MANNEQUIN':{'lenPct':0.9},'MQ_FRINGE':{'crownAllAround':![]}},FACE_COVER_CHECK={'on':!![],'warnFrac':0.01,'last':null,'pendingId':null};function eyeGuardSafeHeadRef(){if(typeof state==='undefined'||!state)return null;const _0xb87a07=state['hair3Dmannequin']||state['_hair3Dneutral'];let _0x1ecd06=null;try{_0x1ecd06=getHeadEllipsoid();}catch(_0x1ea7ee){}if(!_0xb87a07||!_0x1ecd06||!(_0x1ecd06['b']>0.000001))return null;const _0x1606f6=_0xb87a07['CY']!=null?_0xb87a07['CY']:typeof SCALP_CENTER_Y!=='undefined'?SCALP_CENTER_Y:0.15;return{'yTop':_0x1606f6+_0x1ecd06['b'],'H':0x2*_0x1ecd06['b']};}function eyeGuardFrontTarget(){const _0x58ed32=EYE_GUARD['_applying']||typeof state!=='undefined'&&state&&state['specAppliedId']||null;let _0x106ef2=null;try{_0x106ef2=_0x58ed32?getStyleSpec(_0x58ed32):null;}catch(_0x4c45e7){}if(!_0x106ef2||_0x106ef2['eyeGuard']===![]||!_0x106ef2['tipAt']||typeof _0x106ef2['tipAt']['front']!=='number')return null;return _0x106ef2['tipAt']['front'];}function eyeGuardActive(){return EYE_GUARD['on']&&typeof MANNEQUIN!=='undefined'&&!!MANNEQUIN['on']&&eyeGuardFrontTarget()!=null;}function eyeGuardProfileSetsTip(){const _0x11102c=window['STYLE_BASE']&&window['STYLE_BASE']['active'];return!!(_0x11102c&&_0x11102c['config']&&_0x11102c['config']['MQ_FRINGE']&&typeof _0x11102c['config']['MQ_FRINGE']['tipFaceFrac']==='number');}function eyeGuardGeom(){if(typeof state==='undefined'||!state)return null;const _0x385dfc=state['_hair3Dneutral']||null;let _0x2544c2=null;try{_0x2544c2=typeof getFaceProfile==='function'?getFaceProfile():null;}catch(_0x699678){}const _0x849820=EYE_GUARD['_geo'];if(_0x849820&&_0x849820['h']===_0x385dfc&&_0x849820['prof']===_0x2544c2)return _0x849820['v'];let _0x318563=null;try{const _0x243d4a=getHeadEllipsoid();if(_0x243d4a&&_0x243d4a['a']>0x0&&_0x243d4a['b']>0x0&&_0x243d4a['c']>0x0){const _0x51e8e3=_0x385dfc&&isFinite(_0x385dfc['CY'])?_0x385dfc['CY']:typeof SCALP_CENTER_Y!=='undefined'?SCALP_CENTER_Y:0.15,_0x335797=typeof _mqFaceH==='function'?_mqFaceH(_0x51e8e3,_0x243d4a):_0x243d4a['b']/0.633*0.7;if(_0x335797>0x0){const _0x296967=_0x2544c2&&_0x2544c2['halfX']>0x0?_0x2544c2['halfX']:_0x243d4a['a']*0.95;_0x318563={'E':_0x243d4a,'CY':_0x51e8e3,'fh':_0x335797,'prof':_0x2544c2,'topY':_0x51e8e3-EYE_GUARD['boxTopFaceFrac']*_0x335797,'botY':_0x51e8e3-EYE_GUARD['boxBotFaceFrac']*_0x335797,'xHalf':_0x296967*EYE_GUARD['boxHalfXFrac'],'zBack':EYE_GUARD['zBackFrac']*_0x243d4a['c']};}}}catch(_0x2422b0){_0x318563=null;}return EYE_GUARD['_geo']={'h':_0x385dfc,'prof':_0x2544c2,'v':_0x318563},_0x318563;}function eyeGuardCoversFace(_0x15f6b7,_0x20d5c5){if(!_0x15f6b7||_0x15f6b7['length']<0x2||!_0x20d5c5)return![];for(let _0x4e530f=0x1;_0x4e530f<_0x15f6b7['length'];_0x4e530f++){const _0x2c4082=_0x15f6b7[_0x4e530f];if(!(_0x2c4082['y']<_0x20d5c5['topY'])||!(_0x2c4082['y']>_0x20d5c5['botY'])||!(Math['abs'](_0x2c4082['x'])<_0x20d5c5['xHalf']))continue;const _0x56c34e=_0x20d5c5['prof']?_0x20d5c5['prof']['zAt'](_0x2c4082['y']):_0x20d5c5['E']['c'];if(_0x2c4082['z']>_0x56c34e-_0x20d5c5['zBack'])return!![];}return![];}function eyeGuardApplyCommonDefaults(_0x19011a){const _0x18b8b8=STYLE_COMMON_DEFAULTS;if(!_0x18b8b8['on'])return;const _0x227ffd=window['STYLE_BASE'],_0xedbe2e=_0x227ffd&&_0x227ffd['active']&&_0x227ffd['active']['config']||{},_0xde6df={'MANNEQUIN':typeof MANNEQUIN!=='undefined'?MANNEQUIN:null,'MQ_FRINGE':typeof MQ_FRINGE!=='undefined'?MQ_FRINGE:null};let _0x12ecdc=![];const _0x57195c=[];for(const _0x795be3 in _0xde6df){if(!_0xde6df[_0x795be3]||!_0x18b8b8[_0x795be3])continue;for(const _0x4187a3 in _0x18b8b8[_0x795be3]){if(_0xedbe2e[_0x795be3]&&_0x4187a3 in _0xedbe2e[_0x795be3])continue;if(_0xde6df[_0x795be3][_0x4187a3]===_0x18b8b8[_0x795be3][_0x4187a3])continue;_0xde6df[_0x795be3][_0x4187a3]=_0x18b8b8[_0x795be3][_0x4187a3],_0x57195c['push'](_0x795be3+'.'+_0x4187a3+'='+_0x18b8b8[_0x795be3][_0x4187a3]);if(_0x795be3==='MANNEQUIN')_0x12ecdc=!![];}}if(_0x12ecdc&&typeof state!=='undefined'&&state)state['hair3Dmannequin']=null;if(_0x57195c['length'])console['log']('[앞머리\x20길이]\x20공통\x20기본값\x20'+_0x19011a+':\x20'+_0x57195c['join']('\x20·\x20')+'\x20(끄기\x20STYLE_COMMON_DEFAULTS.on=false)');}function faceCoverCheck(_0x208179){if(!FACE_COVER_CHECK['on']||!FACE_COVER_CHECK['pendingId']||!_0x208179||!_0x208179['length'])return;const _0x5a61b4=FACE_COVER_CHECK['pendingId'];FACE_COVER_CHECK['pendingId']=null;try{const _0x44e3f2=eyeGuardGeom();if(!_0x44e3f2)return;const _0x1d6691={},_0x495231={};for(let _0x15297a=0x0;_0x15297a<_0x208179['length'];_0x15297a++){const _0x505f63=_0x208179[_0x15297a],_0x3466c8=_0x505f63['sec']||'?';_0x495231[_0x3466c8]=(_0x495231[_0x3466c8]||0x0)+0x1;if(eyeGuardCoversFace(_0x505f63['pts'],_0x44e3f2))_0x1d6691[_0x3466c8]=(_0x1d6691[_0x3466c8]||0x0)+0x1;}const _0x5d7789=[];for(const _0x436dd8 in _0x1d6691)if(_0x1d6691[_0x436dd8]/_0x495231[_0x436dd8]>FACE_COVER_CHECK['warnFrac'])_0x5d7789['push'](_0x436dd8+'\x20'+_0x1d6691[_0x436dd8]+'/'+_0x495231[_0x436dd8]);FACE_COVER_CHECK['last']={'id':_0x5a61b4,'by':_0x1d6691,'n':_0x495231,'bad':_0x5d7789,'at':Date['now']()};if(_0x5d7789['length'])console['warn']('[얼굴\x20가림]\x20'+_0x5a61b4+'\x20—\x20얼굴을\x20덮는\x20섹션:\x20'+_0x5d7789['join']('\x20·\x20')+'\x0a\x20\x20\x20\x20→\x20자르지\x20않았습니다.\x20이\x20스타일\x20스펙에서\x20해당\x20섹션의\x20tipAt을\x20줄이거나(짧게),'+'\x20가르마(partAmt)·넘김(sweep)·curlDir·overdirection으로\x20얼굴\x20밖으로\x20보내세요.');else console['log']('[얼굴\x20가림]\x20'+_0x5a61b4+'\x20—\x20얼굴\x20가림\x20없음');}catch(_0x54a628){console['warn']('[얼굴\x20가림]\x20검사\x20실패',_0x54a628);}}var FACE_CLEAR={'on':!![],'topFaceFrac':-0.1,'trimTailCm':0x5,'trimmed':0x0,'botFaceFrac':0x1,'halfXFrac':0.8,'zBackFrac':0.3,'ramp':0x4,'outK':0.85,'sideByRoot':![],'neck':!![],'stats':{'strands':0x0,'moved':0x0}};function faceClearGeom(){const _0xe8a8af=eyeGuardGeom();if(!_0xe8a8af)return null;const _0x394f55=_0xe8a8af['prof']&&_0xe8a8af['prof']['halfX']>0x0?_0xe8a8af['prof']['halfX']:_0xe8a8af['E']['a']*0.95;return{'E':_0xe8a8af['E'],'prof':_0xe8a8af['prof'],'fh':_0xe8a8af['fh'],'CY':_0xe8a8af['CY'],'inFront':faceClearInFront,'topY':_0xe8a8af['CY']-FACE_CLEAR['topFaceFrac']*_0xe8a8af['fh'],'botY':_0xe8a8af['CY']-FACE_CLEAR['botFaceFrac']*_0xe8a8af['fh'],'xHalf':_0x394f55*FACE_CLEAR['halfXFrac'],'zBack':FACE_CLEAR['zBackFrac']*_0xe8a8af['E']['c']};}function faceClearInFront(_0x550f91,_0x111051){if(!(_0x111051['z']>0x0))return![];const _0x5a7052=_0x550f91['prof']?_0x550f91['prof']['zAt'](_0x111051['y']):_0x550f91['E']['c'];if(_0x111051['z']>_0x5a7052-_0x550f91['zBack'])return!![];const _0x1a8669=_0x111051['x']/_0x550f91['E']['a'],_0x5141dd=(_0x111051['y']-_0x550f91['CY'])/_0x550f91['E']['b'],_0x25680f=_0x111051['z']/_0x550f91['E']['c'];return _0x1a8669*_0x1a8669+_0x5141dd*_0x5141dd+_0x25680f*_0x25680f>FACE_CLEAR['outK'];}function faceClearAll(_0x40754b){if(!FACE_CLEAR['on']||!_0x40754b||!_0x40754b['length'])return _0x40754b;let _0x448630=![];try{_0x448630=state['specAppliedId']==='__original__'||typeof MANNEQUIN!=='undefined'&&!MANNEQUIN['on'];}catch(_0x2e0598){_0x448630=![];}if(!_0x448630)return _0x40754b;let _0x2c5c40=null;try{_0x2c5c40=faceClearGeom();}catch(_0x4efd09){_0x2c5c40=null;}if(!_0x2c5c40)return _0x40754b;let _0x778472=null,_0x29acf3=0x0,_0x5608cc=_0x2c5c40['botY'];if(FACE_CLEAR['neck']){_0x5608cc=_0x2c5c40['botY']-0.6*_0x2c5c40['fh'];try{const _0x1558c1=getNeckBottomY();if(isFinite(_0x1558c1)&&_0x1558c1<_0x2c5c40['botY'])_0x5608cc=_0x1558c1;}catch(_0xef03e){}}for(let _0x3bfee8=0x0;_0x3bfee8<_0x40754b['length'];_0x3bfee8++){const _0x39db0a=_0x40754b[_0x3bfee8],_0xb896c9=_0x39db0a&&_0x39db0a['pts'];if(!_0xb896c9||_0xb896c9['length']<0x2)continue;let _0x4c0fef=-0x1,_0x17dc91=0x0,_0x38f4c0=0x0;const _0x23308c=[];for(let _0x6140ba=0x1;_0x6140ba<_0xb896c9['length'];_0x6140ba++){const _0x5c51ec=_0xb896c9[_0x6140ba];if(!(_0x5c51ec['y']<_0x2c5c40['topY'])||!(_0x5c51ec['y']>_0x5608cc)||!(Math['abs'](_0x5c51ec['x'])<_0x2c5c40['xHalf']))continue;if(_0x5c51ec['y']>_0x2c5c40['botY']){if(!faceClearInFront(_0x2c5c40,_0x5c51ec))continue;}else{if(!(_0x5c51ec['z']>0x0))continue;}if(_0x4c0fef<0x0)_0x4c0fef=_0x6140ba;_0x23308c['push'](_0x5c51ec['x']),_0x17dc91+=_0x5c51ec['x'],_0x38f4c0++;}if(_0x4c0fef<0x0)continue;if(FACE_CLEAR['trimTailCm']>0x0&&_0x4c0fef>=0x2){var _tl=0x0;for(var _tk=_0x4c0fef;_tk<_0xb896c9['length'];_tk++){var _ta=_0xb896c9[_tk],_tb=_0xb896c9[_tk-0x1];_tl+=Math['hypot'](_ta['x']-_tb['x'],_ta['y']-_tb['y'],_ta['z']-_tb['z']);}var _tcpu=(typeof CURL_BUNDLE!=='undefined'&&CURL_BUNDLE['cmPerUnit'])||19.33;if(_tl*_tcpu<FACE_CLEAR['trimTailCm']){if(!_0x778472)_0x778472=_0x40754b['slice']();_0x778472[_0x3bfee8]=Object['assign']({},_0x39db0a,{'pts':_0xb896c9['slice'](0x0,_0x4c0fef)});FACE_CLEAR['trimmed']++;continue;}}const _0x5eca13=FACE_CLEAR['sideByRoot']?_0xb896c9[0x0]['x']<0x0?-0x1:0x1:_0x17dc91<0x0?-0x1:0x1;let _0x5624c8=0x0;for(let _0x16e47e=0x0;_0x16e47e<_0x23308c['length'];_0x16e47e++){const _0x161773=_0x5eca13>0x0?_0x2c5c40['xHalf']-_0x23308c[_0x16e47e]:_0x23308c[_0x16e47e]+_0x2c5c40['xHalf'];if(_0x161773>_0x5624c8)_0x5624c8=_0x161773;}const _0x55c0bd=_0xb896c9['slice'](),_0xafdc90=Math['max'](0x1,_0x4c0fef-FACE_CLEAR['ramp']);for(let _0x40e2ab=_0xafdc90;_0x40e2ab<_0x55c0bd['length'];_0x40e2ab++){const _0x34d6f6=_0x40e2ab>=_0x4c0fef?0x1:(_0x40e2ab-_0xafdc90+0x1)/(_0x4c0fef-_0xafdc90+0x1),_0x36484f=_0x34d6f6*_0x34d6f6*(0x3-0x2*_0x34d6f6),_0x42f175=_0x55c0bd[_0x40e2ab];_0x55c0bd[_0x40e2ab]={'x':_0x42f175['x']+_0x5eca13*_0x5624c8*_0x36484f,'y':_0x42f175['y'],'z':_0x42f175['z']};}if(!_0x778472)_0x778472=_0x40754b['slice']();_0x778472[_0x3bfee8]=Object['assign']({},_0x39db0a,{'pts':_0x55c0bd}),_0x29acf3++;}return FACE_CLEAR['stats']['strands']=_0x40754b['length'],FACE_CLEAR['stats']['moved']=_0x29acf3,_0x778472||_0x40754b;}var RISE_FIX={'on':![],'riseCm':2.5,'frontFrac':0.5,'shell':1.02,'stats':{'strands':0x0,'fixed':0x0}};function riseFixAll(_0x50e09){if(!RISE_FIX['on']||!_0x50e09||!_0x50e09['length'])return _0x50e09;let _0x545b58=![];try{_0x545b58=state['specAppliedId']==='__original__'||typeof MANNEQUIN!=='undefined'&&!MANNEQUIN['on'];}catch(_0x546d9e){_0x545b58=![];}if(!_0x545b58)return _0x50e09;let _0x52892f=null;try{_0x52892f=faceClearGeom();}catch(_0x4243b0){_0x52892f=null;}if(!_0x52892f||!_0x52892f['E'])return _0x50e09;const _0xacad0c=_0x52892f['E'],_0xc28bc8=_0x52892f['CY'];let _0x2b153f=19.33;try{if(typeof CURL_BUNDLE!=='undefined'&&CURL_BUNDLE['cmPerUnit'])_0x2b153f=CURL_BUNDLE['cmPerUnit'];}catch(_0xaa1a43){}const _0x22a95b=RISE_FIX['riseCm']/_0x2b153f,_0x944d21=RISE_FIX['shell'];let _0x5dc78f=null,_0x4df393=0x0;for(let _0x12cc57=0x0;_0x12cc57<_0x50e09['length'];_0x12cc57++){const _0x2ee6be=_0x50e09[_0x12cc57],_0x1d6190=_0x2ee6be&&_0x2ee6be['pts'];if(!_0x1d6190||_0x1d6190['length']<0x3)continue;const _0x18d8c6=_0x1d6190[0x0];if(_0x18d8c6['z']>RISE_FIX['frontFrac']*_0xacad0c['c'])continue;let _0x439a50=-0x1;for(let _0x199d4a=0x1;_0x199d4a<_0x1d6190['length'];_0x199d4a++)if(_0x1d6190[_0x199d4a]['y']-_0x18d8c6['y']>_0x22a95b){_0x439a50=_0x199d4a;break;}if(_0x439a50<0x0)continue;let _0x3ef8b6=_0x439a50;while(_0x3ef8b6>0x1&&_0x1d6190[_0x3ef8b6-0x1]['y']>_0x1d6190[_0x3ef8b6-0x2]['y'])_0x3ef8b6--;const _0x318d93=_0x1d6190['slice'](0x0,_0x3ef8b6);let _0x13eae5=_0x1d6190[_0x3ef8b6-0x1]['x'],_0x3a601b=_0x1d6190[_0x3ef8b6-0x1]['y'],_0x359c11=_0x1d6190[_0x3ef8b6-0x1]['z'];for(let _0x2a1a3d=_0x3ef8b6;_0x2a1a3d<_0x1d6190['length'];_0x2a1a3d++){const _0x4dc912=_0x1d6190[_0x2a1a3d]['x']-_0x1d6190[_0x2a1a3d-0x1]['x'],_0x2ee3d4=_0x1d6190[_0x2a1a3d]['y']-_0x1d6190[_0x2a1a3d-0x1]['y'],_0x52abbe=_0x1d6190[_0x2a1a3d]['z']-_0x1d6190[_0x2a1a3d-0x1]['z'];_0x13eae5+=_0x4dc912,_0x3a601b+=_0x2ee3d4>0x0?-_0x2ee3d4:_0x2ee3d4,_0x359c11+=_0x52abbe;const _0x2ffa9e=_0x13eae5/_0xacad0c['a'],_0x4f2593=(_0x3a601b-_0xc28bc8)/_0xacad0c['b'],_0x39d23b=_0x359c11/_0xacad0c['c'],_0xdc0fb0=_0x2ffa9e*_0x2ffa9e+_0x4f2593*_0x4f2593+_0x39d23b*_0x39d23b;if(_0xdc0fb0<_0x944d21*_0x944d21&&_0xdc0fb0>1e-9){const _0x1e6d43=_0x944d21/Math['sqrt'](_0xdc0fb0);_0x13eae5*=_0x1e6d43,_0x359c11*=_0x1e6d43,_0x3a601b=_0xc28bc8+(_0x3a601b-_0xc28bc8)*_0x1e6d43;}_0x318d93['push'](Object['assign']({},_0x1d6190[_0x2a1a3d],{'x':_0x13eae5,'y':_0x3a601b,'z':_0x359c11}));}if(!_0x5dc78f)_0x5dc78f=_0x50e09['slice']();_0x5dc78f[_0x12cc57]=Object['assign']({},_0x2ee6be,{'pts':_0x318d93}),_0x4df393++;}return RISE_FIX['stats']['strands']=_0x50e09['length'],RISE_FIX['stats']['fixed']=_0x4df393,_0x5dc78f||_0x50e09;}function mqBrowY(_0x1a04e0,_0x28ef8f){if(!_0x28ef8f||!(_0x28ef8f['b']>0x0))return null;return _0x1a04e0+MQ_FRINGE['crownRiseFrac']*_0x28ef8f['b'];}function mqCrownTipY(_0x193ff5,_0x92a14d){if(!MQ_FRINGE['crownLine'])return mqFringeTipY(_0x193ff5);const _0x2cf136=mqBrowY(_0x193ff5,_0x92a14d);return _0x2cf136!=null?_0x2cf136:mqFringeTipY(_0x193ff5);}function mqFringePicks(_0x4eac22,_0x338af7,_0x4167cb,_0x26d501){if(!MQ_FRINGE['on'])return![];const _0x4c5b47=Math['abs'](Math['atan2'](_0x4eac22['x'],_0x4eac22['z']));let _0x2baedb=0x0;if(_0x338af7==='front')_0x2baedb=MQ_FRINGE['frontFrac'];else{if(_0x338af7==='crown'&&_0x4c5b47<=SECTION_CUT['thFront']*MQ_FRINGE['crownThFrac'])_0x2baedb=MQ_FRINGE['crownFrac'];}if(!(_0x2baedb>0x0))return![];return hashFract(_0x4167cb*0.6180339887+_0x26d501*0.7548776662+3.71)<_0x2baedb;}function growFringeStrand(_0x4c47a8,_0x2cc5f3,_0x2bfd89,_0x2e20e9,_0x449bdb){const _0x4ed735=MQ_FRINGE,_0x182bcc=MANNEQUIN['segments'];if(!(_0x2bfd89!=null)||!(_0x2e20e9>_0x4ed735['minLen']))return null;const _0x24ad77=_0x4c47a8['y']-_0x2bfd89;if(!(_0x24ad77>_0x4ed735['minLen']))return null;const _0x322bf8={'x':_0x4c47a8['x']*_0x4ed735['converge'],'y':_0x2bfd89,'z':Math['abs'](_0x4c47a8['z'])+_0x24ad77*_0x4ed735['bulge']},_0x5884f0=Math['hypot'](_0x322bf8['x']-_0x4c47a8['x'],_0x322bf8['y']-_0x4c47a8['y'],_0x322bf8['z']-_0x4c47a8['z']);if(!(_0x5884f0>0.000001))return null;const _0x141195=Math['hypot'](_0x2cc5f3['x'],_0x2cc5f3['z']),_0x146b58=_0x141195>0.000001?{'x':_0x2cc5f3['x']/_0x141195,'y':0x0,'z':_0x2cc5f3['z']/_0x141195}:{'x':0x0,'y':0x0,'z':0x1},_0x1b8b14=_0x2c7caf=>{const _0xb8c34=[{'x':_0x4c47a8['x'],'y':_0x4c47a8['y'],'z':_0x4c47a8['z']}];for(let _0xfd11aa=0x1;_0xfd11aa<=_0x182bcc;_0xfd11aa++){const _0x26cac1=_0xfd11aa/_0x182bcc*_0x2c7caf,_0x16f57a=_0x26cac1*_0x26cac1*(0x3-0x2*_0x26cac1),_0x421c06=Math['min'](0x1,_0x26cac1*0x3),_0x545260=_0x4c47a8['x']+(_0x322bf8['x']-_0x4c47a8['x'])*_0x16f57a,_0xfa258a=_0x4c47a8['y']+(_0x322bf8['y']-_0x4c47a8['y'])*_0x16f57a,_0xf04d25=_0x4c47a8['z']+(_0x322bf8['z']-_0x4c47a8['z'])*_0x16f57a,_0x155040=_0x5884f0*0.1*(0x1-_0x16f57a)*_0x421c06;_0xb8c34['push']({'x':_0x545260+_0x146b58['x']*_0x155040,'y':_0xfa258a,'z':_0xf04d25+_0x146b58['z']*_0x155040});}return _0xb8c34;};let _0x40a175=Math['min'](0x1,_0x2e20e9/_0x5884f0),_0x606e06=_0x1b8b14(_0x40a175);const _0x3292e3=arcLength3D(_0x606e06);if(_0x3292e3>_0x2e20e9&&_0x3292e3>1e-9)_0x606e06=_0x1b8b14(_0x40a175*(_0x2e20e9/_0x3292e3));const _0x141608=_0x449bdb&&_0x449bdb['length']?_0x449bdb[_mqRand()*_0x449bdb['length']|0x0]:'#2B2320';return{'pts':_0x606e06,'sec':null,'color':_0x141608,'srcAngle':null,'rootFacing':0x0,'mannequin':!![],'fringe':!![]};}const FACE_PROFILE={'on':!![],'midline':[0xa,0x97,0x9,0x8,0xa8,0x6,0xc5,0xc3,0x5,0x4,0x1,0x13,0x5e,0x2,0xa4,0x0,0xd,0xe,0x11,0x12,0xc8,0xc7,0xaf,0x98],'bands':0xc,'src':null,'n':0x0};let _faceProfileCache=null;function getFaceProfile(){if(!FACE_PROFILE['on'])return null;const _0x5dbf57=state['landmarks']||{},_0x169711=[_0x5dbf57['left'],_0x5dbf57['right'],_0x5dbf57['front']];if(_faceProfileCache&&_faceProfileCache['_key']['every']((_0x4f3466,_0x2ddcb0)=>_0x4f3466===_0x169711[_0x2ddcb0]))return _faceProfileCache['v'];let _0x1dd8cf=null;try{_0x1dd8cf=buildFaceProfile();}catch(_0xfb03d4){_0x1dd8cf=null;}return _faceProfileCache={'_key':_0x169711,'v':_0x1dd8cf},_0x1dd8cf;}function buildFaceProfile(){let _0x4aec8c;try{_0x4aec8c=getFaceMetrics();}catch(_0x513c2f){return null;}if(!_0x4aec8c)return null;let _0x572051;try{_0x572051=getHeadEllipsoid();}catch(_0x49dd86){return null;}if(!_0x572051||!(_0x572051['b']>0x0)||!(_0x572051['c']>0x0))return null;const _0x41dc9e=0.15;let _0x362006=0x0;try{const _0x52f9ff=_0x4aec8c['lm'],_0x175f3b=_0x4aec8c['projector'];_0x52f9ff&&_0x175f3b&&_0x52f9ff['lEarX']!=null&&_0x52f9ff['rEarX']!=null&&(_0x362006=Math['abs'](_0x175f3b['toMeshX'](Math['max'](_0x52f9ff['lEarX'],_0x52f9ff['rEarX']))));}catch(_0x1fa411){}if(!(_0x362006>0x0))_0x362006=_0x572051['a']*MQ_FRINGE['lineHalfX'];const _0x5cbce4=_0x41dc9e+_0x572051['b'],_0x172abb=_0x41dc9e-_0x572051['b'],_0x27368c=Math['max'](0.000001,_0x5cbce4-_0x172abb),_0x4762cc=Math['max'](0x4,FACE_PROFILE['bands']|0x0),_0x14cc08=new Array(_0x4762cc)['fill'](-Infinity);let _0xff8aea=0x0;for(const _0x717c5b of['left','right']){const _0x23cb3e=state['landmarks']&&state['landmarks'][_0x717c5b];if(!_0x23cb3e||!_0x23cb3e['rawLandmarks']||_0x23cb3e['rawLandmarks']['length']<0x1d4)continue;let _0x577542=0x0;try{_0x577542=getViewPoseConfidence(_0x717c5b);}catch(_0x1bd9b3){}if(_0x577542<0.5)continue;for(const _0x150db7 of FACE_PROFILE['midline']){const _0x480dd1=_0x23cb3e['rawLandmarks'][_0x150db7];if(!_0x480dd1)continue;let _0x23b012=null;try{_0x23b012=projectImagePointToHead(_0x717c5b,_0x480dd1['x'],_0x480dd1['y'],_0x4aec8c['widthFactor'],_0x4aec8c['heightFactor']);}catch(_0x5a917f){}if(!_0x23b012||!isFinite(_0x23b012['z'])||!isFinite(_0x23b012['y']))continue;const _0xed4885=Math['min'](_0x4762cc-0x1,Math['max'](0x0,Math['floor']((_0x5cbce4-_0x23b012['y'])/_0x27368c*_0x4762cc)));if(_0x23b012['z']>_0x14cc08[_0xed4885])_0x14cc08[_0xed4885]=_0x23b012['z'];_0xff8aea++;}}const _0x187a91=_0x14cc08['some'](_0x59d115=>_0x59d115>-Infinity),_0x2f5562=new Array(_0x4762cc),_0x12264b=_0x4b177c=>{const _0x2da803=(_0x4b177c-_0x41dc9e)/_0x572051['b'];return _0x572051['c']*Math['sqrt'](Math['max'](0x0,0x1-Math['min'](0x1,_0x2da803*_0x2da803)));};for(let _0x2fe1a4=0x0;_0x2fe1a4<_0x4762cc;_0x2fe1a4++){if(_0x14cc08[_0x2fe1a4]>-Infinity){_0x2f5562[_0x2fe1a4]=_0x14cc08[_0x2fe1a4];continue;}if(!_0x187a91){_0x2f5562[_0x2fe1a4]=_0x12264b(_0x5cbce4-(_0x2fe1a4+0.5)/_0x4762cc*_0x27368c);continue;}let _0x859dba=_0x2fe1a4,_0x296eec=_0x2fe1a4;while(_0x859dba>=0x0&&_0x14cc08[_0x859dba]===-Infinity)_0x859dba--;while(_0x296eec<_0x4762cc&&_0x14cc08[_0x296eec]===-Infinity)_0x296eec++;_0x2f5562[_0x2fe1a4]=_0x859dba>=0x0&&_0x296eec<_0x4762cc?(_0x14cc08[_0x859dba]+_0x14cc08[_0x296eec])/0x2:_0x859dba>=0x0?_0x14cc08[_0x859dba]:_0x14cc08[_0x296eec];}return FACE_PROFILE['src']=_0x187a91?'side':'ellipsoid',FACE_PROFILE['n']=_0xff8aea,{'src':FACE_PROFILE['src'],'halfX':_0x362006,'zAt'(_0x496e60){const _0x342808=(_0x5cbce4-_0x496e60)/_0x27368c*_0x4762cc-0.5;if(_0x342808<=0x0)return _0x2f5562[0x0];if(_0x342808>=_0x4762cc-0x1)return _0x2f5562[_0x4762cc-0x1];const _0xef71a8=Math['floor'](_0x342808),_0x3b442a=_0x342808-_0xef71a8;return _0x2f5562[_0xef71a8]*(0x1-_0x3b442a)+_0x2f5562[_0xef71a8+0x1]*_0x3b442a;}};}function mqTrimAtFringeLine(_0x5e8a9a,_0x39e431,_0xa9267e,_0x24f13c){if(!(_0x39e431!=null)||!_0x5e8a9a||_0x5e8a9a['length']<0x2)return _0x5e8a9a;const _0x13fc1a=getFaceProfile(),_0x5cf021=_0x13fc1a&&_0x13fc1a['halfX']>0x0?_0x13fc1a['halfX']:_0xa9267e&&_0xa9267e['a']>0x0&&MQ_FRINGE['lineHalfX']>0x0?_0xa9267e['a']*MQ_FRINGE['lineHalfX']:0x0;if(!(_0x5cf021>0x0)&&!_0x24f13c)return _0x5e8a9a;for(let _0x4d5944=0x1;_0x4d5944<_0x5e8a9a['length'];_0x4d5944++){const _0x55a846=_0x5e8a9a[_0x4d5944-0x1],_0x1cddef=_0x5e8a9a[_0x4d5944];if(!(_0x55a846['y']>=_0x39e431&&_0x1cddef['y']<_0x39e431))continue;if(!_0x24f13c){const _0x460f00=_0x13fc1a?_0x13fc1a['zAt'](_0x1cddef['y']):0x0;if(!(_0x1cddef['z']>_0x460f00)||Math['abs'](_0x1cddef['x'])>_0x5cf021)continue;}const _0x5595ce=(_0x55a846['y']-_0x39e431)/Math['max'](1e-9,_0x55a846['y']-_0x1cddef['y']),_0x66156d=_0x5e8a9a['slice'](0x0,_0x4d5944);return _0x66156d['push']({'x':_0x55a846['x']+(_0x1cddef['x']-_0x55a846['x'])*_0x5595ce,'y':_0x39e431,'z':_0x55a846['z']+(_0x1cddef['z']-_0x55a846['z'])*_0x5595ce}),_0x66156d['length']>=0x2?_0x66156d:_0x5e8a9a;}return _0x5e8a9a;}function fringeLineY(_0x1dc7a6){if(!MQ_FRINGE['on']||!(MQ_FRINGE['lineHalfX']>0x0))return null;const _0x51bb7d=state['hair3Dneutral'];if(!_0x51bb7d||!_0x51bb7d['mannequin'])return null;const _0x53eb92=_0x51bb7d['CY']!=null?_0x51bb7d['CY']:SCALP_CENTER_Y;let _0x47865b=null;try{_0x47865b=getHeadEllipsoid();}catch(_0x359e2b){return null;}if(!_0x47865b||!(_0x47865b['b']>0.000001))return null;const _0x1526a2=state['sections']||{},_0x1faf9f=_0x53eb92+_0x47865b['b']*Math['cos'](SCALP_ZONES['front']['phiRange'][0x1]),_0x4bd8d6=_0x1dc7a6==='crown'&&MQ_FRINGE['crownLine'];if(_0x4bd8d6){const _0x3065df=mqCrownTipY(_0x53eb92,_0x47865b);if(_0x3065df==null)return null;let _0x28d06f=sectionLengthRatio('crown',(_0x1526a2['crown']||{})['length']);_0x28d06f=0x1+(_0x28d06f-0x1)*MQ_FRINGE['lineGain'];const _0x394737=_0x1faf9f-(_0x1faf9f-_0x3065df)*Math['max'](0x0,_0x28d06f);if(MQ_FRINGE['crownFloorBrow']){const _0x26d166=mqBrowY(_0x53eb92,_0x47865b);if(_0x26d166!=null&&_0x394737<_0x26d166)return _0x26d166;}return _0x394737;}const _0x3d304c=mqFringeTipY(_0x53eb92);if(_0x3d304c==null)return null;const _0x2939b4=sectionLengthRatio('front',(_0x1526a2['front']||{})['length']),_0x367a57=sectionLengthRatio('crown',(_0x1526a2['crown']||{})['length']),_0x31ae6d=MQ_FRINGE['crownLine']?0x0:MQ_FRINGE['crownFrac']/Math['max'](1e-9,MQ_FRINGE['frontFrac']+MQ_FRINGE['crownFrac']);let _0x19e22b=_0x2939b4*(0x1-_0x31ae6d)+_0x367a57*_0x31ae6d;_0x19e22b=0x1+(_0x19e22b-0x1)*MQ_FRINGE['lineGain'];const _0x8ea59d=_0x1faf9f-(_0x1faf9f-_0x3d304c)*Math['max'](0x0,_0x19e22b);if(MQ_FRINGE['lineFloorFaceFrac']>0x0&&MQ_FRINGE['tipFaceFrac']!==MQ_FRINGE['lineFloorFaceFrac']){const _0x1fd1c7=(_0x53eb92-_0x3d304c)/Math['max'](1e-9,MQ_FRINGE['tipFaceFrac']||0x1),_0x4fb96e=MQ_FRINGE['tipFaceFrac']>0x0?_0x53eb92-MQ_FRINGE['lineFloorFaceFrac']*_0x1fd1c7:_0x53eb92-MQ_FRINGE['lineFloorFaceFrac']*_mqFaceH(_0x53eb92,_0x47865b);if(_0x4fb96e!=null&&_0x8ea59d<_0x4fb96e)return _0x4fb96e;}return _0x8ea59d;}function _mqFaceH(_0x1aee69,_0x2ff311){try{const _0x50c792=getFaceMetrics();if(_0x50c792&&_0x50c792['heightFactor']>0x0)return 0.7*_0x50c792['heightFactor'];}catch(_0x3de9f6){}return _0x2ff311&&_0x2ff311['b']>0x0?0.7*(_0x2ff311['b']/0.633):0x0;}let _mqSeed=0x13527c8;const _mqRand=()=>{return _mqSeed=_mqSeed*0x41c64e6d+0x3039&0x7fffffff,_mqSeed/0x7fffffff;};function ellipsoidPushOut(_0x42f141,_0x1eae38,_0x5787cd,_0xe9fb8a,_0x2acd41){const _0x15bfe4=_0x42f141['x'],_0x309a19=_0x42f141['y']-_0x2acd41,_0x3026da=_0x42f141['z'],_0x1a4c66=_0x15bfe4*_0x15bfe4/(_0x1eae38*_0x1eae38)+_0x309a19*_0x309a19/(_0x5787cd*_0x5787cd)+_0x3026da*_0x3026da/(_0xe9fb8a*_0xe9fb8a);if(_0x1a4c66>=0x1||!(_0x1a4c66>0x0))return _0x42f141;const _0x3a5449=0x1/Math['sqrt'](_0x1a4c66);return{'x':_0x15bfe4*_0x3a5449,'y':_0x2acd41+_0x309a19*_0x3a5449,'z':_0x3026da*_0x3a5449};}function growMannequinStrand(_0x34dd50,_0x244907,_0x3cc049,_0x4bd175,_0x2f4d4f,_0x37e700,_0x2acb7f,_0xdfd56c){if(!(_0x2acb7f>MANNEQUIN['minLen']))return null;const _0x500d1c=MANNEQUIN,_0x4ea068=_0x34dd50/_0x244907|0x0,_0x35b7b9=_0x34dd50%_0x244907,_0x1e49d1=(_0x4ea068+_mqRand())/_0x3cc049*Math['PI'],_0x33bbc6=(_0x35b7b9+_mqRand())/_0x244907*0x2*Math['PI']-Math['PI'],_0x24e267=Math['sin'](_0x1e49d1),_0x5660e9=Math['cos'](_0x1e49d1),_0x3bcd9c=_0x500d1c['clearance'],_0x459400=_0x4bd175['a']*_0x3bcd9c,_0x31dbc2=_0x4bd175['b']*_0x3bcd9c,_0x4f54fb=_0x4bd175['c']*_0x3bcd9c;let _0x525217={'x':_0x459400*_0x24e267*Math['sin'](_0x33bbc6),'y':_0x37e700+_0x31dbc2*_0x5660e9,'z':_0x4f54fb*_0x24e267*Math['cos'](_0x33bbc6)};const _0x50a9d7=_v3norm({'x':_0x525217['x']/(_0x459400*_0x459400),'y':(_0x525217['y']-_0x37e700)/(_0x31dbc2*_0x31dbc2),'z':_0x525217['z']/(_0x4f54fb*_0x4f54fb)}),_0x49f5eb=_0x500d1c['layerLo']+(_0x500d1c['layerHi']-_0x500d1c['layerLo'])*_mqRand(),_0x26c19a=(0x1+_0x49f5eb*(_0x2f4d4f['a']/Math['max'](0.000001,_0x4bd175['a'])-0x1))*_0x3bcd9c,_0x354ad5=(0x1+_0x49f5eb*(_0x2f4d4f['b']/Math['max'](0.000001,_0x4bd175['b'])-0x1))*_0x3bcd9c,_0x2978e3=(0x1+_0x49f5eb*(_0x2f4d4f['c']/Math['max'](0.000001,_0x4bd175['c'])-0x1))*_0x3bcd9c,_0x4167ca=_0x4bd175['a']*_0x26c19a,_0x558101=_0x4bd175['b']*_0x354ad5,_0x1a4b28=_0x4bd175['c']*_0x2978e3,_0x4a1772=_0x500d1c['segments'],_0x1fb474=_0x2acb7f/_0x4a1772,_0x190aa4={'x':_0x2f4d4f['a']*_0x24e267*Math['sin'](_0x33bbc6),'y':_0x37e700+_0x2f4d4f['b']*_0x5660e9,'z':_0x2f4d4f['c']*_0x24e267*Math['cos'](_0x33bbc6)},_0x55a69f=Math['hypot'](_0x190aa4['x']-_0x525217['x'],_0x190aa4['y']-_0x525217['y'],_0x190aa4['z']-_0x525217['z']),_0x58310c=Math['max'](0.0001,Math['min'](_0x55a69f,_0x2acb7f*_0x500d1c['rootRampMax'])),_0x262788=[{'x':_0x525217['x'],'y':_0x525217['y'],'z':_0x525217['z']}],_0x53c926={'x':Math['sin'](_0x33bbc6),'y':0x0,'z':Math['cos'](_0x33bbc6)};let _0x37bb04=![];for(let _0x464117=0x1;_0x464117<=_0x4a1772;_0x464117++){const _0x314cd5=Math['min'](0x1,_0x464117*_0x1fb474/_0x58310c),_0x4dd7f9=_0x37bb04?_0x500d1c['spread']:0x0,_0x48ce3a=_v3norm({'x':_0x50a9d7['x']*(0x1-_0x314cd5)+_0x53c926['x']*_0x4dd7f9,'y':_0x50a9d7['y']*(0x1-_0x314cd5)-_0x314cd5,'z':_0x50a9d7['z']*(0x1-_0x314cd5)+_0x53c926['z']*_0x4dd7f9});_0x525217={'x':_0x525217['x']+_0x48ce3a['x']*_0x1fb474,'y':_0x525217['y']+_0x48ce3a['y']*_0x1fb474,'z':_0x525217['z']+_0x48ce3a['z']*_0x1fb474};const _0x1538a8=ellipsoidPushOut(_0x525217,_0x4167ca,_0x558101,_0x1a4b28,_0x37e700);_0x37bb04=_0x1538a8!==_0x525217,_0x525217=_0x1538a8,_0x262788['push']({'x':_0x525217['x'],'y':_0x525217['y'],'z':_0x525217['z']});}const _0x3c4f7f=_0xdfd56c&&_0xdfd56c['length']?_0xdfd56c[_mqRand()*_0xdfd56c['length']|0x0]:'#2B2320';return{'pts':_0x262788,'sec':null,'color':_0x3c4f7f,'srcAngle':null,'rootFacing':0x0,'mannequin':!![]};}function buildMannequinHair3D(){try{ROOTS_FALLBACK['ensureRoots'](state['_hair3Dneutral']||state['hair3D']);}catch(_0x476675){}const _0x4a450f=state['_hair3Dneutral']||state['hair3D'];if(!_0x4a450f||!_0x4a450f['strands']||!_0x4a450f['strands']['length'])return null;const _0x4e3ea6=_0x4a450f['grid'],_0x3513b5=_0x4a450f['roots'];if(!_0x4e3ea6||!_0x3513b5||!_0x3513b5['ok'])return console['warn']('[마네킹]\x20격자/뿌리밀도가\x20없어\x20못\x20심음'),null;const _0x1577ef=_0x3513b5['NT'],_0x47d3e9=_0x3513b5['NP'],_0x594fb8=_0x4a450f['CY'],_0x336ae0=_0x3513b5['b'],_0x2d53cc=getScalpEllipsoid(),_0x40b8ba=getHeadEllipsoid(),_0x292e92=(_0x4e3ea6['yTopH']-_0x4e3ea6['yBot'])/(_0x4e3ea6['NY']-0x1),_0x5ec2f2=_0x1bbf95=>Math['min'](_0x4e3ea6['NY']-0x1,Math['max'](0x0,Math['round']((_0x4e3ea6['yTopH']-_0x1bbf95)/_0x292e92))),_0x20a872=headSurfaceCellAreas(_0x4e3ea6['hullW'],_0x4e3ea6['hullD'],_0x5ec2f2,_0x594fb8,_0x336ae0,_0x1577ef,_0x47d3e9),_0x5e3815={},_0x44bfc7={},_0x17aa1f=[];for(const _0x57f124 of _0x4a450f['strands']){const _0x229331=_0x57f124['sec']||'crown',_0x487d1d=_0x5e3815[_0x229331]||(_0x5e3815[_0x229331]={'len':[],'col':[]}),_0x2eb678=arcLength3D(_0x57f124['pts']);_0x487d1d['len']['push'](_0x2eb678),_0x17aa1f['push'](_0x2eb678);if(_0x57f124['color'])_0x487d1d['col']['push'](_0x57f124['color']);const _0xf913fa=_0x229331+'|'+viewOfRoot(_0x57f124['pts'][0x0]);(_0x44bfc7[_0xf913fa]||(_0x44bfc7[_0xf913fa]=[]))['push'](_0x2eb678);}const _0x41e1d0=(_0x2467c8,_0x582caa)=>{if(!_0x2467c8['length'])return 0x0;const _0x4deb37=_0x2467c8['slice']()['sort']((_0x13b4d0,_0x8e3c6d)=>_0x13b4d0-_0x8e3c6d);return _0x4deb37[Math['min'](_0x4deb37['length']-0x1,Math['floor'](_0x4deb37['length']*_0x582caa))];},_0x1f06a4={},_0x425f67={},_0xc78c6f={},_0x5c874e=[];for(const _0x1ff356 in _0x5e3815){_0x1f06a4[_0x1ff356]=_0x41e1d0(_0x5e3815[_0x1ff356]['len'],MANNEQUIN['lenPct']),_0x425f67[_0x1ff356]=_0x5e3815[_0x1ff356]['col'];const _0x3ed5c8=_0x41e1d0(_0x5e3815[_0x1ff356]['len'],0.5);if(_0x3ed5c8>0x0&&_0x1f06a4[_0x1ff356]/_0x3ed5c8>0x3)_0x5c874e['push'](_0x1ff356+'\x20최장\x20'+_0x1f06a4[_0x1ff356]['toFixed'](0x3)+'\x20=\x20중앙값\x20'+_0x3ed5c8['toFixed'](0x3)+'의\x20'+(_0x1f06a4[_0x1ff356]/_0x3ed5c8)['toFixed'](0x1)+'배');}if(_0x5c874e['length'])console['warn']('[마네킹·길이\x20이상치]\x20'+_0x5c874e['join']('\x20·\x20')+'\x0a\x20\x20\x20\x20최장\x20가닥이\x20중앙값의\x203배를\x20넘습니다\x20—\x20세그멘테이션이\x20어깨/옷을\x20머리로\x20따라갔을\x20가능성.\x20MANNEQUIN.lenPct를\x200.95\x20등으로\x20낮추면\x20이상치를\x20뺍니다.');const _0x4cb726=0xc,_0xa94670=0x1/0x3,_0x1effd0=[];for(const _0x29139d in _0x44bfc7){if(_0x44bfc7[_0x29139d]['length']<_0x4cb726)continue;const _0x19b89c=_0x41e1d0(_0x44bfc7[_0x29139d],MANNEQUIN['lenPct']),_0x44ffdb=_0x1f06a4[_0x29139d['split']('|')[0x0]];if(!(_0x44ffdb>0x0)){_0xc78c6f[_0x29139d]=_0x19b89c;continue;}const _0x263b86=Math['max'](_0x44ffdb*(0x1-_0xa94670),Math['min'](_0x44ffdb*(0x1+_0xa94670),_0x19b89c));if(Math['abs'](_0x263b86-_0x19b89c)>0.000001)_0x1effd0['push'](_0x29139d+'\x20'+_0x19b89c['toFixed'](0x3)+'→'+_0x263b86['toFixed'](0x3));_0xc78c6f[_0x29139d]=_0x263b86;}if(_0x1effd0['length'])console['log']('[마네킹·뷰별길이\x20가둠]\x20섹션\x20중앙값\x20±33%\x20밖\x20'+_0x1effd0['length']+'칸\x20—\x20'+_0x1effd0['join']('\x20·\x20')+'\x0a\x20\x20\x20\x20↑\x20많이\x20뜨면\x20그\x20섹션은\x20뷰마다\x20다르게\x20잘리고\x20있다는\x20뜻(세그멘테이션·마스크\x20경계\x20확인).\x20MANNEQUIN\x20뷰별길이\x20자체를\x20끄려면\x20MIN_VIEW_N을\x20크게.');const _0x3c2648=_0x41e1d0(_0x17aa1f,MANNEQUIN['lenPct']),_0x56fefe=(_0x34e20e,_0x5183b5)=>_0xc78c6f[_0x34e20e+'|'+_0x5183b5]||_0x1f06a4[_0x34e20e]||_0x3c2648,_0x597a73=_0x1577ef*_0x47d3e9,_0x7d98f6=new Float64Array(_0x597a73);let _0x35dcba=0x0,_0x5bbd27=0x0,_0xfb9fbc=0x0,_0x172e6e=0x0,_0x2d71a6=0x0;for(let _0x5763cf=0x0;_0x5763cf<_0x597a73;_0x5763cf++){if(_0x3513b5['est']&&_0x3513b5['est'][_0x5763cf]===EST_OFFSCALP){_0x2d71a6++,_0xfb9fbc++;continue;}const _0x540861=_0x3513b5['den'][_0x5763cf];if(!(_0x540861>MANNEQUIN['baldDen'])){_0xfb9fbc++;continue;}_0x7d98f6[_0x5763cf]=_0x540861*(_0x20a872?_0x20a872[_0x5763cf]:0x1),_0x35dcba+=_0x7d98f6[_0x5763cf];}if(!(_0x35dcba>0x0))return console['warn']('[마네킹]\x20뿌리밀도가\x20전부\x200'),null;const _0x26babb=window['STRAND_BUDGET']&&window['STRAND_BUDGET']['on']!==![]&&window['STRAND_BUDGET']['total']>0x0?window['STRAND_BUDGET']['total']:_0x4a450f['strands']['length'],_0x5796b4=[];let _0xf27d4=0x0;const _0x59ea48={},_0x4f58a4=MQ_FRINGE['on']?mannequinHasFringe(_0x4a450f):null,_0x15aeb5=MQ_FRINGE['on']?mqFringeTipY(_0x594fb8):null;let _0x80b49e=_0x15aeb5;if(MQ_FRINGE['on']){const _0x560b99=mqCrownTipY(_0x594fb8,_0x40b8ba);if(_0x560b99!=null)_0x80b49e=_0x560b99;}const _0x395377=_0x4f58a4===![]&&_0x15aeb5!=null;let _0x4da71b=0x0;for(let _0xd1517b=0x0;_0xd1517b<_0x597a73;_0xd1517b++){if(!_0x7d98f6[_0xd1517b])continue;_0xf27d4+=_0x7d98f6[_0xd1517b]/_0x35dcba*_0x26babb;const _0x462771=Math['floor'](_0xf27d4);_0xf27d4-=_0x462771;for(let _0x130a5=0x0;_0x130a5<_0x462771;_0x130a5++){const _0x2989f6=_0xd1517b/_0x1577ef|0x0,_0x53be00=_0xd1517b%_0x1577ef,_0x459f0a=(_0x2989f6+0.5)/_0x47d3e9*Math['PI'],_0x5d0d5c=(_0x53be00+0.5)/_0x1577ef*0x2*Math['PI']-Math['PI'],_0x2b9b9f={'x':_0x2d53cc['a']*Math['sin'](_0x459f0a)*Math['sin'](_0x5d0d5c),'y':_0x594fb8+_0x2d53cc['b']*Math['cos'](_0x459f0a),'z':_0x2d53cc['c']*Math['sin'](_0x459f0a)*Math['cos'](_0x5d0d5c)},_0xe5d760=resolveSection3D(_0x2b9b9f,_0x594fb8,_0x2d53cc['b'])||'crown',_0x372b8f=viewOfRoot(_0x2b9b9f);let _0x5cfe10=null;if(_0x395377&&mqFringePicks(_0x2b9b9f,_0xe5d760,_0xd1517b,_0x130a5)){const _0x211de7=_v3norm({'x':_0x2b9b9f['x']/(_0x2d53cc['a']*_0x2d53cc['a']),'y':(_0x2b9b9f['y']-_0x594fb8)/(_0x2d53cc['b']*_0x2d53cc['b']),'z':_0x2b9b9f['z']/(_0x2d53cc['c']*_0x2d53cc['c'])}),_0x5cf2b6=_0xe5d760==='crown'?_0x80b49e:_0x15aeb5;_0x5cfe10=growFringeStrand(_0x2b9b9f,_0x211de7,_0x5cf2b6,_0x56fefe(_0xe5d760,_0x372b8f),_0x425f67[_0xe5d760]||_0x425f67['crown']);if(_0x5cfe10)_0x4da71b++;}if(!_0x5cfe10)_0x5cfe10=growMannequinStrand(_0xd1517b,_0x1577ef,_0x47d3e9,_0x2d53cc,_0x40b8ba,_0x594fb8,_0x56fefe(_0xe5d760,_0x372b8f),_0x425f67[_0xe5d760]||_0x425f67['crown']);if(!_0x5cfe10)continue;_0x5cfe10['sec']=_0xe5d760,_0x5cfe10['srcAngle']=_0x372b8f,_0x5cfe10['colors']=bakeStrandColors3D(_0x5cfe10['pts'],_0x4a450f,_0x372b8f,_0x5cfe10['color'],null);if(_0x5cfe10['colors'])_0x172e6e++;_0x59ea48[_0xe5d760]=(_0x59ea48[_0xe5d760]||0x0)+0x1,_0x5796b4['push'](_0x5cfe10),_0x5bbd27++;}}const _0x5e728d=Object['keys'](_0x1f06a4)['map'](_0x21338d=>_0x21338d+'\x20'+_0x1f06a4[_0x21338d]['toFixed'](0x3))['join']('\x20·\x20'),_0x906035=Object['keys'](_0xc78c6f)['sort']()['map'](_0x1b19fb=>_0x1b19fb+'\x20'+_0xc78c6f[_0x1b19fb]['toFixed'](0x3))['join']('\x20·\x20');return console['log']('[마네킹]\x20가닥\x20'+_0x5bbd27+'개(촬영\x20'+_0x26babb+'개\x20기준)\x20·\x20심은\x20셀\x20'+(_0x597a73-_0xfb9fbc)+'/'+_0x597a73+'(두피\x20밖\x20'+_0x2d71a6+'\x20·\x20밀도\x200\x20'+(_0xfb9fbc-_0x2d71a6)+')'+'\x20·\x20섹션\x20'+Object['keys'](_0x59ea48)['map'](_0x1dfe75=>_0x1dfe75+'\x20'+_0x59ea48[_0x1dfe75]+'('+Math['round'](0x64*_0x59ea48[_0x1dfe75]/_0x5bbd27)+'%)')['join']('\x20')+'\x20·\x20섹션길이(중앙값)\x20'+_0x5e728d+'\x20·\x20원본\x20픽셀색\x20'+_0x172e6e+'개(='+(_0x5bbd27?Math['round'](_0x172e6e/_0x5bbd27*0x64):0x0)+'%)'+'\x0a[마네킹·앞머리]\x20'+(_0x4f58a4==null?'<b>모름</b>(점유\x20프로브\x20없음\x20—\x20안\x20심음)':_0x4f58a4?'손님에게\x20<b>이미\x20있음</b>\x20—\x20안\x20심음':_0x15aeb5==null?'<b>끝높이\x20못\x20잼</b>(얼굴\x20계측\x20없음)\x20—\x20안\x20심음':'내려\x20심음\x20<b>'+_0x4da71b+'개</b>\x20·\x20끝\x20y='+_0x15aeb5['toFixed'](0x3)+'(눈에서\x20눈~턱의\x20'+Math['round'](MQ_FRINGE['tipFaceFrac']*0x64)+'%'+(MQ_FRINGE['tipFaceFrac']<=0.01?'\x20=\x20눈높이':'')+')'+'\x20·\x20front\x20'+Math['round'](MQ_FRINGE['frontFrac']*0x64)+'%\x20/\x20crown\x20'+Math['round'](MQ_FRINGE['crownFrac']*0x64)+'%'+(MQ_FRINGE['crownLine']&&_0x80b49e!=null?'\x20·\x20크라운\x20끝\x20y='+_0x80b49e['toFixed'](0x3)+'(눈\x20위\x20'+(_0x40b8ba&&_0x40b8ba['b']>0x0?Math['round']((_0x80b49e-_0x594fb8)/_0x40b8ba['b']*0x64):'?')+'%\x20of\x20E.b\x20=\x20<b>눈썹</b>)':'\x20·\x20크라운\x20<b>프론트와\x20같은\x20선</b>'))+(_0x906035?'\x0a[마네킹·뷰별길이]\x20'+_0x906035:'')),{'strands':_0x5796b4,'viewCal':_0x4a450f['viewCal'],'yTop':_0x4a450f['yTop'],'CY':_0x4a450f['CY'],'field':null,'occ':null,'grid':_0x4e3ea6,'roots':_0x3513b5,'mannequin':!![]};}const COMB={'on':![],'radiusPx':0x40,'falloff':1.6,'gripFrom':0.18,'maxStrokes':0xfa0,'N':0x20,'minMovePx':0x4,'strokes':[],'grid':null,'box':null,'_proj':null,'bmin':null,'bmax':null,'maxDisp':0x0};function combEnsureBox(){if(COMB['box'])return COMB['box'];const _0x178ef4=state['hair3Dneutral'];if(!_0x178ef4||!_0x178ef4['strands']||!_0x178ef4['strands']['length'])return null;let _0x1820f3=Infinity,_0x2b620e=Infinity,_0x1a8719=Infinity,_0x48a5b6=-Infinity,_0x26710f=-Infinity,_0x51f306=-Infinity;const _0x51dfc5=Math['max'](0x1,Math['floor'](_0x178ef4['strands']['length']/0x190));for(let _0x1bf87d=0x0;_0x1bf87d<_0x178ef4['strands']['length'];_0x1bf87d+=_0x51dfc5){for(const _0xa64712 of _0x178ef4['strands'][_0x1bf87d]['pts']){if(_0xa64712['x']<_0x1820f3)_0x1820f3=_0xa64712['x'];if(_0xa64712['x']>_0x48a5b6)_0x48a5b6=_0xa64712['x'];if(_0xa64712['y']<_0x2b620e)_0x2b620e=_0xa64712['y'];if(_0xa64712['y']>_0x26710f)_0x26710f=_0xa64712['y'];if(_0xa64712['z']<_0x1a8719)_0x1a8719=_0xa64712['z'];if(_0xa64712['z']>_0x51f306)_0x51f306=_0xa64712['z'];}}if(!isFinite(_0x1820f3))return null;const _0xa96aee=0.3*Math['max'](_0x48a5b6-_0x1820f3,_0x26710f-_0x2b620e,_0x51f306-_0x1a8719);return COMB['box']={'x0':_0x1820f3-_0xa96aee,'y0':_0x2b620e-_0xa96aee,'z0':_0x1a8719-_0xa96aee,'x1':_0x48a5b6+_0xa96aee,'y1':_0x26710f+_0xa96aee,'z1':_0x51f306+_0xa96aee},COMB['box'];}function combGrid(){if(COMB['grid'])return COMB['grid'];if(!combEnsureBox())return null;return COMB['grid']=new Float32Array(COMB['N']*COMB['N']*COMB['N']*0x3),COMB['grid'];}function combSplat(_0x184003,_0x140b80,_0x5dd453){const _0x543f46=combGrid(),_0x245564=COMB['box'],_0x4f52ce=COMB['N'];if(!_0x543f46||!_0x245564||!(_0x5dd453>0x0))return;const _0x852beb=(_0x245564['x1']-_0x245564['x0'])/(_0x4f52ce-0x1),_0x3ea54f=(_0x245564['y1']-_0x245564['y0'])/(_0x4f52ce-0x1),_0xb7bf19=(_0x245564['z1']-_0x245564['z0'])/(_0x4f52ce-0x1);{const _0x42e58f=(_0x184003['x']-_0x245564['x0'])/_0x852beb,_0x2c64cf=(_0x184003['y']-_0x245564['y0'])/_0x3ea54f,_0x53c2d7=(_0x184003['z']-_0x245564['z0'])/_0xb7bf19,_0x2aa54e=Math['min'](_0x4f52ce-0x2,Math['max'](0x0,Math['floor'](_0x42e58f))),_0x25e595=Math['min'](_0x4f52ce-0x2,Math['max'](0x0,Math['floor'](_0x2c64cf))),_0x1aa832=Math['min'](_0x4f52ce-0x2,Math['max'](0x0,Math['floor'](_0x53c2d7))),_0x2aaab8=_0x42e58f-_0x2aa54e,_0x1c1fcb=_0x2c64cf-_0x25e595,_0x4e1c24=_0x53c2d7-_0x1aa832;let _0x562b71=0x0;for(let _0x2d74c7=0x0;_0x2d74c7<0x2;_0x2d74c7++)for(let _0x273854=0x0;_0x273854<0x2;_0x273854++)for(let _0x5f0da7=0x0;_0x5f0da7<0x2;_0x5f0da7++){const _0x2eddba=(_0x5f0da7?_0x2aaab8:0x1-_0x2aaab8)*(_0x273854?_0x1c1fcb:0x1-_0x1c1fcb)*(_0x2d74c7?_0x4e1c24:0x1-_0x4e1c24);if(!_0x2eddba)continue;const _0xa55513=Math['hypot'](_0x245564['x0']+(_0x2aa54e+_0x5f0da7)*_0x852beb-_0x184003['x'],_0x245564['y0']+(_0x25e595+_0x273854)*_0x3ea54f-_0x184003['y'],_0x245564['z0']+(_0x1aa832+_0x2d74c7)*_0xb7bf19-_0x184003['z']);if(_0xa55513<_0x5dd453)_0x562b71+=_0x2eddba*Math['pow'](0x1-_0xa55513/_0x5dd453,COMB['falloff']);}if(_0x562b71>0.15)_0x140b80={'x':_0x140b80['x']/_0x562b71,'y':_0x140b80['y']/_0x562b71,'z':_0x140b80['z']/_0x562b71};}!COMB['bmin']&&(COMB['bmin']={'x':Infinity,'y':Infinity,'z':Infinity},COMB['bmax']={'x':-Infinity,'y':-Infinity,'z':-Infinity});COMB['bmin']['x']=Math['min'](COMB['bmin']['x'],_0x184003['x']-_0x5dd453),COMB['bmax']['x']=Math['max'](COMB['bmax']['x'],_0x184003['x']+_0x5dd453),COMB['bmin']['y']=Math['min'](COMB['bmin']['y'],_0x184003['y']-_0x5dd453),COMB['bmax']['y']=Math['max'](COMB['bmax']['y'],_0x184003['y']+_0x5dd453),COMB['bmin']['z']=Math['min'](COMB['bmin']['z'],_0x184003['z']-_0x5dd453),COMB['bmax']['z']=Math['max'](COMB['bmax']['z'],_0x184003['z']+_0x5dd453);const _0x5aacd8=Math['max'](0x0,Math['floor']((_0x184003['x']-_0x5dd453-_0x245564['x0'])/_0x852beb)),_0x574dc8=Math['min'](_0x4f52ce-0x1,Math['ceil']((_0x184003['x']+_0x5dd453-_0x245564['x0'])/_0x852beb)),_0x59a78e=Math['max'](0x0,Math['floor']((_0x184003['y']-_0x5dd453-_0x245564['y0'])/_0x3ea54f)),_0x1f7113=Math['min'](_0x4f52ce-0x1,Math['ceil']((_0x184003['y']+_0x5dd453-_0x245564['y0'])/_0x3ea54f)),_0x44c65d=Math['max'](0x0,Math['floor']((_0x184003['z']-_0x5dd453-_0x245564['z0'])/_0xb7bf19)),_0xff0ead=Math['min'](_0x4f52ce-0x1,Math['ceil']((_0x184003['z']+_0x5dd453-_0x245564['z0'])/_0xb7bf19));for(let _0x3c6b96=_0x5aacd8;_0x3c6b96<=_0x574dc8;_0x3c6b96++){const _0x49b013=_0x245564['x0']+_0x3c6b96*_0x852beb;for(let _0x11ada6=_0x59a78e;_0x11ada6<=_0x1f7113;_0x11ada6++){const _0x4c097d=_0x245564['y0']+_0x11ada6*_0x3ea54f;for(let _0x410984=_0x44c65d;_0x410984<=_0xff0ead;_0x410984++){const _0xbfe617=_0x245564['z0']+_0x410984*_0xb7bf19,_0x7264=Math['hypot'](_0x49b013-_0x184003['x'],_0x4c097d-_0x184003['y'],_0xbfe617-_0x184003['z']);if(_0x7264>_0x5dd453)continue;const _0x950b10=Math['pow'](0x1-_0x7264/_0x5dd453,COMB['falloff']),_0x1b429f=((_0x410984*_0x4f52ce+_0x11ada6)*_0x4f52ce+_0x3c6b96)*0x3;_0x543f46[_0x1b429f]+=_0x140b80['x']*_0x950b10,_0x543f46[_0x1b429f+0x1]+=_0x140b80['y']*_0x950b10,_0x543f46[_0x1b429f+0x2]+=_0x140b80['z']*_0x950b10;const _0x362275=Math['hypot'](_0x543f46[_0x1b429f],_0x543f46[_0x1b429f+0x1],_0x543f46[_0x1b429f+0x2]);if(_0x362275>COMB['maxDisp'])COMB['maxDisp']=_0x362275;}}}}function combSampleInto(_0x5a82ed,_0x2d1e8b){const _0x5ac596=COMB['grid'],_0x27fe0e=COMB['box'],_0x453949=COMB['N'];_0x2d1e8b['x']=_0x2d1e8b['y']=_0x2d1e8b['z']=0x0;if(!_0x5ac596||!_0x27fe0e)return _0x2d1e8b;const _0x46a52c=(_0x5a82ed['x']-_0x27fe0e['x0'])/(_0x27fe0e['x1']-_0x27fe0e['x0'])*(_0x453949-0x1),_0x4c7889=(_0x5a82ed['y']-_0x27fe0e['y0'])/(_0x27fe0e['y1']-_0x27fe0e['y0'])*(_0x453949-0x1),_0x4fad5b=(_0x5a82ed['z']-_0x27fe0e['z0'])/(_0x27fe0e['z1']-_0x27fe0e['z0'])*(_0x453949-0x1);if(_0x46a52c<0x0||_0x4c7889<0x0||_0x4fad5b<0x0||_0x46a52c>_0x453949-0x1||_0x4c7889>_0x453949-0x1||_0x4fad5b>_0x453949-0x1)return _0x2d1e8b;const _0xf01c37=Math['min'](_0x453949-0x2,Math['floor'](_0x46a52c)),_0x49b654=Math['min'](_0x453949-0x2,Math['floor'](_0x4c7889)),_0x5ce991=Math['min'](_0x453949-0x2,Math['floor'](_0x4fad5b)),_0x20fe57=_0x46a52c-_0xf01c37,_0x52118c=_0x4c7889-_0x49b654,_0xe94206=_0x4fad5b-_0x5ce991;for(let _0x1bef45=0x0;_0x1bef45<0x2;_0x1bef45++)for(let _0x425057=0x0;_0x425057<0x2;_0x425057++)for(let _0x18270b=0x0;_0x18270b<0x2;_0x18270b++){const _0x57d90b=(_0x18270b?_0x20fe57:0x1-_0x20fe57)*(_0x425057?_0x52118c:0x1-_0x52118c)*(_0x1bef45?_0xe94206:0x1-_0xe94206);if(!_0x57d90b)continue;const _0x491fc9=(((_0x5ce991+_0x1bef45)*_0x453949+(_0x49b654+_0x425057))*_0x453949+(_0xf01c37+_0x18270b))*0x3;_0x2d1e8b['x']+=_0x5ac596[_0x491fc9]*_0x57d90b,_0x2d1e8b['y']+=_0x5ac596[_0x491fc9+0x1]*_0x57d90b,_0x2d1e8b['z']+=_0x5ac596[_0x491fc9+0x2]*_0x57d90b;}return _0x2d1e8b;}function combRebake(){COMB['grid']=null,COMB['bmin']=COMB['bmax']=null,COMB['maxDisp']=0x0;if(!COMB['strokes']['length'])return;combGrid();for(const _0x30a5ea of COMB['strokes'])combSplat(_0x30a5ea['p'],_0x30a5ea['d'],_0x30a5ea['r']);}function combClear(){COMB['strokes']['length']=0x0,COMB['grid']=null,COMB['bmin']=COMB['bmax']=null,COMB['maxDisp']=0x0;}function combUndo(){if(!COMB['strokes']['length'])return;const _0x4e0352=COMB['strokes'][COMB['strokes']['length']-0x1]['g'];while(COMB['strokes']['length']&&COMB['strokes'][COMB['strokes']['length']-0x1]['g']===_0x4e0352)COMB['strokes']['pop']();combRebake(),combRefresh();}const _combTmp={'x':0x0,'y':0x0,'z':0x0};function combStrand3D(_0x1b257e){return FLY_TRIM['_comb'](()=>COMB3D['_apply'](combStrand3DGrid(_0x1b257e)));}function combStrand3DGrid(_0x172158){if(!COMB['grid']||!_0x172158||_0x172158['length']<0x2)return _0x172158;const _0x282610=COMB['bmin'],_0x476750=COMB['bmax'];if(_0x282610){let _0x3cc5fa=![];for(let _0x1da471=0x0;_0x1da471<_0x172158['length'];_0x1da471++){const _0x25c5ff=_0x172158[_0x1da471];if(_0x25c5ff['x']>=_0x282610['x']&&_0x25c5ff['x']<=_0x476750['x']&&_0x25c5ff['y']>=_0x282610['y']&&_0x25c5ff['y']<=_0x476750['y']&&_0x25c5ff['z']>=_0x282610['z']&&_0x25c5ff['z']<=_0x476750['z']){_0x3cc5fa=!![];break;}}if(!_0x3cc5fa)return _0x172158;}const _0x5c4d1a=_0x172158['length']-0x1,_0x4d3a21=new Array(_0x172158['length']);let _0x3b3b59=![];for(let _0x1a4bc9=0x0;_0x1a4bc9<_0x172158['length'];_0x1a4bc9++){const _0x2bf74e=_0x172158[_0x1a4bc9];combSampleInto(_0x2bf74e,_combTmp);const _0x174fb5=_0x1a4bc9/_0x5c4d1a,_0x5b962b=_0x174fb5<=COMB['gripFrom']?_0x174fb5/COMB['gripFrom']:0x1;if(_combTmp['x']||_combTmp['y']||_combTmp['z'])_0x3b3b59=!![];_0x4d3a21[_0x1a4bc9]={'x':_0x2bf74e['x']+_combTmp['x']*_0x5b962b,'y':_0x2bf74e['y']+_combTmp['y']*_0x5b962b,'z':_0x2bf74e['z']+_combTmp['z']*_0x5b962b};}if(!_0x3b3b59)return _0x172158;const _0x411962=[_0x4d3a21[0x0]];for(let _0x3799df=0x1;_0x3799df<_0x172158['length'];_0x3799df++){const _0x5ce339=Math['hypot'](_0x172158[_0x3799df]['x']-_0x172158[_0x3799df-0x1]['x'],_0x172158[_0x3799df]['y']-_0x172158[_0x3799df-0x1]['y'],_0x172158[_0x3799df]['z']-_0x172158[_0x3799df-0x1]['z']),_0x42ba60=_0x411962[_0x3799df-0x1];let _0x14c9ee=_0x4d3a21[_0x3799df]['x']-_0x4d3a21[_0x3799df-0x1]['x'],_0x263624=_0x4d3a21[_0x3799df]['y']-_0x4d3a21[_0x3799df-0x1]['y'],_0x103ff9=_0x4d3a21[_0x3799df]['z']-_0x4d3a21[_0x3799df-0x1]['z'];const _0x289404=Math['hypot'](_0x14c9ee,_0x263624,_0x103ff9)||0x1;_0x411962['push']({'x':_0x42ba60['x']+_0x14c9ee/_0x289404*_0x5ce339,'y':_0x42ba60['y']+_0x263624/_0x289404*_0x5ce339,'z':_0x42ba60['z']+_0x103ff9/_0x289404*_0x5ce339});}return _0x411962;}var COMB3D=(function(){'use strict';var _0x2ee1c6=window,_0x544e7f='[빗질\x203D]',_0x2fc59f=Object['assign']({'enabled':!![],'on':![],'radiusPx':0x1e,'maxRadius':0.16,'cell':0.025,'pickPx':0x16,'strength':0.6,'falloff':1.4,'gripFrom':0.12,'spacing':0.35,'minMovePx':0x3,'maxSamples':0x5dc,'dab':0.045,'dabCell':0.03,'dabMax':0x5dc,'depthMargin':0.2,'liveMs':0xfa,'dirLagPx':0x16,'touchOffset':0x34,'indicator':!![],'grain':!![],'flowCell':0.07,'flowSmooth':0.2,'flowMin':0x18,'flowNear':0x2,'flowDense':0.2,'flowShare':0x1,'flowOwn':0x37,'flowFinger':0x3c,'flowCoh':0.6,'flowReach':0x3,'tolFrom':0xc,'tolFull':0x1c,'collide':!![],'anchor':!![],'flyOnly':!![],'anchorLen':0.13,'bodyFull':0x8,'pullIn':0.3,'headLift':1.02,'surf':!![],'surfThr':0.3,'surfNbr':0x6,'surfCore':0xc,'surfHead':1.15,'flyFrom':0.02,'flyFull':0.05,'depthLayer':0.13,'visCell':0x4,'partFinger':!![],'reachIn':0x4,'reachBack':!![],'divAngle':0xf,'flyTol':0x0,'flyTolFull':0x6,'lead':0.6,'settle':0.7,'maxMove':0.32,'settleReach':0.16,'settleGain':0.6,'ease':0.5,'relax':0x2,'pickStrands':0x1f40,'sweep':!![],'mode':'tidy','sweepStrength':0.6,'sweepLevel':0x7,'sweepGrip':0.12,'sweepTol':0x3,'sweepDepth':0.2,'sweepWrap':!![],'wrapNear':1.15,'wrapFar':1.5},_0x2ee1c6['COMB3D']||{});_0x2fc59f['sweeps']=[];if(_0x2fc59f['mode']!=='sweep')_0x2fc59f['mode']='tidy';_0x2fc59f['samples']=[];var _0x5c89cf=_0x2fc59f['stats']={'strokes':0x0,'touched':0x0,'_t':0x0,'ms':0x0,'pickMs':0x0,'pickPts':0x0,'pickFly':0x0,'pickHidden':0x0,'reached':0x0,'dabs':0x0,'seen':0x0,'tOwn':0x0,'tSide':0x0,'tAll':0x0,'tReach':0x0,'tFinger':0x0,'tSkip':0x0,'_to':0x0,'_ts':0x0,'_ta':0x0,'_tr':0x0,'_tf':0x0,'_tk':0x0,'pushed':0x0,'neck':0x0,'_pu':0x0,'_nk':0x0,'anch':0x0,'pin':0x0,'_an':0x0,'_pi':0x0,'fly':0x0,'_fl':0x0,'up':0x0,'_up':0x0,'clamp':0x0,'_cl':0x0,'surfRef':0x0,'surfCells':0x0,'flowRef':0x0,'flowCells':0x0,'flowMs':0x0,'err':null},_0x345f7d=0x0,_0x3c92e0=0x0,_0x3e7f23=null;_0x5c89cf['_sw']=0x0,_0x5c89cf['_swp']=0x0,_0x5c89cf['swept']=0x0,_0x5c89cf['sweptPush']=0x0,_0x5c89cf['sweepStrokes']=0x0;function _0x220e02(){try{return performance['now']();}catch(_0x313383){return Date['now']();}}function _0x4507c1(){try{return currentScreen;}catch(_0x416f06){return'';}}function _0x2e3212(){try{return model3D&&model3D['initialized']?model3D:null;}catch(_0x2e9eae){return null;}}function _0x111ed9(){try{return!!(_0x2ee1c6['ADJUST3D']&&_0x2ee1c6['ADJUST3D']['on']);}catch(_0x29d379){return![];}}function _0x437cdf(){return!!(_0x2fc59f['enabled']&&_0x111ed9()&&_0x4507c1()==='adjust'&&_0x2e3212());}var _0x58970e=null,_0x22349b=0x0,_0x1089ac=0x0,_0xd1ce6c=0x0,_0x301e9e=0x200,_0x5906f1=0x400;function _0x2ad720(){return{'map':new Map(),'V':new Float32Array(0x3*0x1000),'n':0x0,'mn':[Infinity,Infinity,Infinity],'mx':[-Infinity,-Infinity,-Infinity]};}function _0x2e1676(_0x376363,_0x48fa2e,_0x2db0c4,_0x39e90b,_0x3d0d2f,_0x40ea4f,_0x2cbe47,_0x12140f,_0x1650b3){var _0x242716=_0x2fc59f['cell'],_0x3a101d=_0x3d0d2f*_0x3d0d2f,_0x22bf37=Math['floor']((_0x48fa2e-_0x3d0d2f)/_0x242716),_0x19a579=Math['floor']((_0x48fa2e+_0x3d0d2f)/_0x242716),_0x5f283b=Math['floor']((_0x2db0c4-_0x3d0d2f)/_0x242716),_0xbff32=Math['floor']((_0x2db0c4+_0x3d0d2f)/_0x242716),_0x5224c3=Math['floor']((_0x39e90b-_0x3d0d2f)/_0x242716),_0x11bf9d=Math['floor']((_0x39e90b+_0x3d0d2f)/_0x242716),_0x5f5c1a,_0xe9dac6,_0x1b01bc,_0x1b8ed4,_0xbb7860,_0x1b6776,_0x3d9faf,_0x393702;if(_0x22bf37<-_0x301e9e||_0x5f283b<-_0x301e9e||_0x5224c3<-_0x301e9e||_0x19a579>=_0x301e9e||_0xbff32>=_0x301e9e||_0x11bf9d>=_0x301e9e)return;for(_0x1b01bc=_0x5224c3;_0x1b01bc<=_0x11bf9d;_0x1b01bc++){var _0x22133c=(_0x1b01bc+0.5)*_0x242716-_0x39e90b;for(_0xe9dac6=_0x5f283b;_0xe9dac6<=_0xbff32;_0xe9dac6++){var _0x787c00=(_0xe9dac6+0.5)*_0x242716-_0x2db0c4;for(_0x5f5c1a=_0x22bf37;_0x5f5c1a<=_0x19a579;_0x5f5c1a++){var _0x32dfd3=(_0x5f5c1a+0.5)*_0x242716-_0x48fa2e;_0x1b6776=_0x32dfd3*_0x32dfd3+_0x787c00*_0x787c00+_0x22133c*_0x22133c;if(_0x1b6776>=_0x3a101d)continue;_0x3d9faf=_0x40ea4f*Math['min'](0x1,1.6*(0x1-Math['sqrt'](_0x1b6776)/_0x3d0d2f));if(_0x3d9faf<0.004)continue;_0x1b8ed4=_0x5f5c1a+_0x301e9e+_0x5906f1*(_0xe9dac6+_0x301e9e+_0x5906f1*(_0x1b01bc+_0x301e9e)),_0xbb7860=_0x376363['map']['get'](_0x1b8ed4);if(_0xbb7860===undefined){_0xbb7860=_0x376363['n']++,_0x376363['map']['set'](_0x1b8ed4,_0xbb7860);if(_0xbb7860*0x3+0x3>_0x376363['V']['length']){var _0x4caae0=new Float32Array(_0x376363['V']['length']*0x2);_0x4caae0['set'](_0x376363['V']),_0x376363['V']=_0x4caae0;}}_0x393702=_0x376363['V'],_0xbb7860*=0x3,_0x393702[_0xbb7860]=_0x393702[_0xbb7860]*(0x1-_0x3d9faf)+_0x2cbe47*_0x3d9faf,_0x393702[_0xbb7860+0x1]=_0x393702[_0xbb7860+0x1]*(0x1-_0x3d9faf)+_0x12140f*_0x3d9faf,_0x393702[_0xbb7860+0x2]=_0x393702[_0xbb7860+0x2]*(0x1-_0x3d9faf)+_0x1650b3*_0x3d9faf;}}}if(_0x48fa2e-_0x3d0d2f<_0x376363['mn'][0x0])_0x376363['mn'][0x0]=_0x48fa2e-_0x3d0d2f;if(_0x2db0c4-_0x3d0d2f<_0x376363['mn'][0x1])_0x376363['mn'][0x1]=_0x2db0c4-_0x3d0d2f;if(_0x39e90b-_0x3d0d2f<_0x376363['mn'][0x2])_0x376363['mn'][0x2]=_0x39e90b-_0x3d0d2f;if(_0x48fa2e+_0x3d0d2f>_0x376363['mx'][0x0])_0x376363['mx'][0x0]=_0x48fa2e+_0x3d0d2f;if(_0x2db0c4+_0x3d0d2f>_0x376363['mx'][0x1])_0x376363['mx'][0x1]=_0x2db0c4+_0x3d0d2f;if(_0x39e90b+_0x3d0d2f>_0x376363['mx'][0x2])_0x376363['mx'][0x2]=_0x39e90b+_0x3d0d2f;}function _0x220546(_0x1a275c,_0x2a407a){var _0x5d4bb8=_0x2a407a['dabs'],_0x45c103=_0x2a407a['m'],_0x35c22c,_0x49a9ff=_0x2fc59f['dab'];for(_0x35c22c=0x0;_0x35c22c<_0x45c103;_0x35c22c++)_0x2e1676(_0x1a275c,_0x5d4bb8[_0x35c22c*0x4],_0x5d4bb8[_0x35c22c*0x4+0x1],_0x5d4bb8[_0x35c22c*0x4+0x2],_0x49a9ff,_0x2a407a['k']*_0x5d4bb8[_0x35c22c*0x4+0x3],_0x2a407a['dx'],_0x2a407a['dy'],_0x2a407a['dz']);}function _0x4f9fdb(){var _0x57d876=_0x2fc59f['samples']['length'];(!_0x58970e||_0x1089ac!==_0xd1ce6c||_0x22349b>_0x57d876)&&(_0x58970e=_0x2ad720(),_0x22349b=0x0,_0x1089ac=_0xd1ce6c);for(;_0x22349b<_0x57d876;_0x22349b++)_0x220546(_0x58970e,_0x2fc59f['samples'][_0x22349b]);return _0x57d876?_0x58970e:null;}var _0x1a801d=null,_0x5484d9=0x0,_0x341ad5=0x0;function _0x39bc6f(){var _0x236195=_0x2fc59f['sweeps']['length'];(!_0x1a801d||_0x341ad5!==_0xd1ce6c||_0x5484d9>_0x236195)&&(_0x1a801d=_0x2ad720(),_0x5484d9=0x0,_0x341ad5=_0xd1ce6c);for(;_0x5484d9<_0x236195;_0x5484d9++)_0x220546(_0x1a801d,_0x2fc59f['sweeps'][_0x5484d9]);return _0x236195?_0x1a801d:null;}var _0x97d605=null,_0xff9dcb=-0x3b9aca00,_0x5a277d=null;function _0x3c62fd(){var _0x3158bb=null,_0x500009=_0x220e02();try{_0x3158bb=state['_hair3Dneutral']||state['hair3Dneutral']||null;}catch(_0x35a44f){}if(_0x97d605!==null&&_0x3158bb===_0x5a277d&&_0x500009-_0xff9dcb<0x190)return _0x97d605||null;var _0x150339=null,_0x2d7a12=0x0;try{_0x150339=typeof getScalpEllipsoid==='function'?getScalpEllipsoid():getHeadEllipsoid();}catch(_0x4f37cc){_0x150339=null;}try{var _0x30c8c9=state['hair3Dneutral'];if(_0x30c8c9&&isFinite(_0x30c8c9['CY']))_0x2d7a12=_0x30c8c9['CY'];else{if(typeof SCALP_CENTER_Y!=='undefined')_0x2d7a12=SCALP_CENTER_Y;}}catch(_0x174fd5){}return _0x97d605=_0x150339&&_0x150339['a']>0x0&&_0x150339['b']>0x0&&_0x150339['c']>0x0&&isFinite(_0x2d7a12)?{'a2':_0x150339['a']*_0x150339['a'],'b2':_0x150339['b']*_0x150339['b'],'c2':_0x150339['c']*_0x150339['c'],'cy':_0x2d7a12}:![],_0xff9dcb=_0x500009,_0x5a277d=_0x3158bb,_0x97d605||null;}var _0x5a2e5b=new Float64Array(0x4*0x100),_0xba8d57=new Float64Array(0x3*0x100),_0x26cea4=new Float64Array(0x100),_0x41ed15=new Float64Array(0x100),_0x321c1b=new Int32Array(0x100),_0x56f8e4=Math['PI']/0xb4;function _0x434ea3(_0x40ea19,_0x583b8c,_0x530c02,_0x17ea3f){var _0x52b265=(_0x583b8c-_0x40ea19['x0'])*_0x40ea19['inv']-0.5,_0x39809d=(_0x530c02-_0x40ea19['y0'])*_0x40ea19['inv']-0.5,_0x1dc3fe=(_0x17ea3f-_0x40ea19['z0'])*_0x40ea19['inv']-0.5,_0x353b7c=Math['floor'](_0x52b265),_0x1bae8f=Math['floor'](_0x39809d),_0x1f7c0e=Math['floor'](_0x1dc3fe);if(_0x353b7c<0x0||_0x1bae8f<0x0||_0x1f7c0e<0x0||_0x353b7c>=_0x40ea19['mx']-0x1||_0x1bae8f>=_0x40ea19['my']-0x1||_0x1f7c0e>=_0x40ea19['mz']-0x1)return _0x40ea19['far'];var _0x528fcb=_0x52b265-_0x353b7c,_0x1336b1=_0x39809d-_0x1bae8f,_0x54d0b1=_0x1dc3fe-_0x1f7c0e,_0x340866=_0x40ea19['D'],_0x4cce41=_0x353b7c+_0x40ea19['mx']*(_0x1bae8f+_0x40ea19['my']*_0x1f7c0e),_0x5d6108=_0x40ea19['mx'],_0x5144c9=_0x40ea19['mx']*_0x40ea19['my'],_0xdb92ef=_0x340866[_0x4cce41]+(_0x340866[_0x4cce41+0x1]-_0x340866[_0x4cce41])*_0x528fcb,_0x14aadc=_0x340866[_0x4cce41+_0x5d6108]+(_0x340866[_0x4cce41+_0x5d6108+0x1]-_0x340866[_0x4cce41+_0x5d6108])*_0x528fcb,_0x15e2ca=_0x340866[_0x4cce41+_0x5144c9]+(_0x340866[_0x4cce41+_0x5144c9+0x1]-_0x340866[_0x4cce41+_0x5144c9])*_0x528fcb,_0x17a8cc=_0x340866[_0x4cce41+_0x5144c9+_0x5d6108]+(_0x340866[_0x4cce41+_0x5144c9+_0x5d6108+0x1]-_0x340866[_0x4cce41+_0x5144c9+_0x5d6108])*_0x528fcb;return _0xdb92ef+=(_0x14aadc-_0xdb92ef)*_0x1336b1,_0x15e2ca+=(_0x17a8cc-_0x15e2ca)*_0x1336b1,_0xdb92ef+(_0x15e2ca-_0xdb92ef)*_0x54d0b1;}var _0x5ee604=new Float64Array(0x3);function _0x4bdcdc(_0x5a3589,_0x3445f2,_0x4e56ef,_0x1ab463){var _0x3c04ff=_0x5a3589['h'],_0x34e262=_0x434ea3(_0x5a3589,_0x3445f2-_0x3c04ff,_0x4e56ef,_0x1ab463)-_0x434ea3(_0x5a3589,_0x3445f2+_0x3c04ff,_0x4e56ef,_0x1ab463),_0xc15fc9=_0x434ea3(_0x5a3589,_0x3445f2,_0x4e56ef-_0x3c04ff,_0x1ab463)-_0x434ea3(_0x5a3589,_0x3445f2,_0x4e56ef+_0x3c04ff,_0x1ab463),_0x23e756=_0x434ea3(_0x5a3589,_0x3445f2,_0x4e56ef,_0x1ab463-_0x3c04ff)-_0x434ea3(_0x5a3589,_0x3445f2,_0x4e56ef,_0x1ab463+_0x3c04ff),_0x200b9a=Math['sqrt'](_0x34e262*_0x34e262+_0xc15fc9*_0xc15fc9+_0x23e756*_0x23e756);if(!(_0x200b9a>1e-9))return 0x0;return _0x5ee604[0x0]=_0x34e262/_0x200b9a,_0x5ee604[0x1]=_0xc15fc9/_0x200b9a,_0x5ee604[0x2]=_0x23e756/_0x200b9a,_0x200b9a/(0x2*_0x3c04ff);}function _0x348fe3(_0x39fb1b,_0x7392fa,_0x486914,_0x12dbaf){var _0x3e2cc4=Math['floor']((_0x7392fa-_0x39fb1b['x0'])*_0x39fb1b['inv']),_0x393e72=Math['floor']((_0x486914-_0x39fb1b['y0'])*_0x39fb1b['inv']),_0x1cfaea=Math['floor']((_0x12dbaf-_0x39fb1b['z0'])*_0x39fb1b['inv']);if(_0x3e2cc4<0x0||_0x393e72<0x0||_0x1cfaea<0x0||_0x3e2cc4>=_0x39fb1b['nx']||_0x393e72>=_0x39fb1b['ny']||_0x1cfaea>=_0x39fb1b['nz'])return 0x0;var _0x2d2c2c=(_0x39fb1b['GA'][_0x3e2cc4+_0x39fb1b['nx']*(_0x393e72+_0x39fb1b['ny']*_0x1cfaea)]-_0x39fb1b['bLo'])/(_0x39fb1b['bHi']-_0x39fb1b['bLo']);return _0x2d2c2c<=0x0?0x0:_0x2d2c2c>=0x1?0x1:_0x2d2c2c*_0x2d2c2c*(0x3-0x2*_0x2d2c2c);}var _0x3a9650=new Float64Array(0x3);function _0x1ff530(_0x3f63dc,_0x441e59,_0x249cb3,_0x212ecf,_0x57e82a,_0x208ae4,_0x591601,_0x56b243,_0xd8a8c5,_0x8ef0fe,_0x3cc5b6,_0x2f3bb5){var _0x145722=Math['floor']((_0x441e59-_0x3f63dc['x0'])*_0x3f63dc['inv']),_0x1e3609=Math['floor']((_0x249cb3-_0x3f63dc['y0'])*_0x3f63dc['inv']),_0x45a2be=Math['floor']((_0x212ecf-_0x3f63dc['z0'])*_0x3f63dc['inv']),_0x5391f4,_0xe3ba02,_0x36dab4,_0x2de980,_0x2c0711,_0xa3d44f,_0x26a75f,_0x2a2016,_0x39fbfe,_0x4ca28e,_0x24a496=0x0,_0x3a814c=0x0,_0x49df56=0x0,_0x2d89e7=0x0,_0x498ebe=0x0,_0x8669e0=0x0,_0x2e3027=0x0,_0x409e99=0x0,_0x3861cf=0x0,_0x2f4d53=0x0,_0x686426=0x0,_0x2ad7bf=0x0,_0x22b3ba=_0x3f63dc['GN'],_0x2740d3=_0x3f63dc['GM'],_0x177b5d=_0x3f63dc['GX'],_0x2f11bb=_0x3f63dc['GY'],_0x409e86=_0x3f63dc['GZ'],_0x4b273d=_0x3f63dc['nx'],_0x49b52a=_0x3f63dc['ny'],_0xaffa6=_0x3f63dc['nz'];for(_0x36dab4=_0x45a2be-0x1;_0x36dab4<=_0x45a2be+0x1;_0x36dab4++){if(_0x36dab4<0x0||_0x36dab4>=_0xaffa6)continue;for(_0xe3ba02=_0x1e3609-0x1;_0xe3ba02<=_0x1e3609+0x1;_0xe3ba02++){if(_0xe3ba02<0x0||_0xe3ba02>=_0x49b52a)continue;for(_0x5391f4=_0x145722-0x1;_0x5391f4<=_0x145722+0x1;_0x5391f4++){if(_0x5391f4<0x0||_0x5391f4>=_0x4b273d)continue;_0x2de980=_0x5391f4+_0x4b273d*(_0xe3ba02+_0x49b52a*_0x36dab4),_0x2c0711=_0x22b3ba[_0x2de980];if(!_0x2c0711)continue;_0x2ad7bf+=_0x2c0711,_0xa3d44f=_0x2740d3[_0x2de980];if(!(_0xa3d44f>0.000001))continue;_0x26a75f=_0x177b5d[_0x2de980],_0x2a2016=_0x2f11bb[_0x2de980],_0x39fbfe=_0x409e86[_0x2de980],_0x3861cf+=_0x26a75f,_0x2f4d53+=_0x2a2016,_0x686426+=_0x39fbfe,_0x26a75f*_0x57e82a+_0x2a2016*_0x208ae4+_0x39fbfe*_0x591601>_0x3cc5b6*_0xa3d44f&&(_0x24a496+=_0x26a75f,_0x3a814c+=_0x2a2016,_0x49df56+=_0x39fbfe,_0x2d89e7+=_0x2c0711),_0x26a75f*_0x56b243+_0x2a2016*_0xd8a8c5+_0x39fbfe*_0x8ef0fe>_0x2f3bb5*_0xa3d44f&&(_0x498ebe+=_0x26a75f,_0x8669e0+=_0x2a2016,_0x2e3027+=_0x39fbfe,_0x409e99+=_0x2c0711);}}}if(_0x2ad7bf<_0x3f63dc['near'])return 0x0;var _0xc8e168=_0x3f63dc['near']*_0x2fc59f['flowShare'];if(_0x2d89e7>=_0xc8e168){_0x4ca28e=Math['sqrt'](_0x24a496*_0x24a496+_0x3a814c*_0x3a814c+_0x49df56*_0x49df56);if(_0x4ca28e>0.000001)return _0x3a9650[0x0]=_0x24a496/_0x4ca28e,_0x3a9650[0x1]=_0x3a814c/_0x4ca28e,_0x3a9650[0x2]=_0x49df56/_0x4ca28e,0x1;}if(_0x409e99>=_0xc8e168){_0x4ca28e=Math['sqrt'](_0x498ebe*_0x498ebe+_0x8669e0*_0x8669e0+_0x2e3027*_0x2e3027);if(_0x4ca28e>0.000001)return _0x3a9650[0x0]=_0x498ebe/_0x4ca28e,_0x3a9650[0x1]=_0x8669e0/_0x4ca28e,_0x3a9650[0x2]=_0x2e3027/_0x4ca28e,0x2;}_0x4ca28e=Math['sqrt'](_0x3861cf*_0x3861cf+_0x2f4d53*_0x2f4d53+_0x686426*_0x686426);if(_0x4ca28e>0.000001&&_0x4ca28e/_0x2ad7bf>=_0x2fc59f['flowCoh'])return _0x3a9650[0x0]=_0x3861cf/_0x4ca28e,_0x3a9650[0x1]=_0x2f4d53/_0x4ca28e,_0x3a9650[0x2]=_0x686426/_0x4ca28e,0x3;return-0x1;}function _0x39471a(_0x6da85a,_0x46fe9a,_0x42d347){var _0x3bdb22=_0x42d347['DF'],_0xca9cae=_0x6da85a['length'],_0x41e39f=_0xca9cae-0x1,_0x4c7a9e=_0x2fc59f['cell'],_0x204bf8=_0x46fe9a['map'],_0x4ec139=_0x46fe9a['V'],_0x12f646=_0x5a2e5b,_0x179ccd=_0xba8d57,_0x9ff59f=_0x26cea4,_0x160fc7=_0x41ed15,_0xcc7525=_0x321c1b,_0x4a189c,_0x3e718b,_0x29ea66,_0x3f814d,_0x50852e,_0x53ad20,_0x545b8c,_0x349905,_0x1c8cfc,_0x5a919e,_0x3c6b2a,_0xc3c812,_0x13a7f5,_0x3186e1,_0x1a157f,_0x303cfc,_0x31f130,_0x61c9ac=0x0,_0x554725=_0xca9cae,_0xdbb09=0x0,_0x595959,_0x449668=_0x6da85a[0x0]['x'],_0x32d736=_0x6da85a[0x0]['y'],_0x2b9915=_0x6da85a[0x0]['z'],_0x3f20e3=_0x3bdb22['d0'],_0x507ea1=0x1/(_0x3bdb22['d1']-_0x3bdb22['d0']);for(_0x4a189c=0x1;_0x4a189c<_0xca9cae;_0x4a189c++){_0x3e718b=_0x6da85a[_0x4a189c],_0x13a7f5=_0x3e718b['x']-_0x449668,_0x3186e1=_0x3e718b['y']-_0x32d736,_0x1a157f=_0x3e718b['z']-_0x2b9915,_0x31f130=Math['sqrt'](_0x13a7f5*_0x13a7f5+_0x3186e1*_0x3186e1+_0x1a157f*_0x1a157f),_0x31f130>1e-9?(_0x12f646[_0x4a189c*0x4]=_0x13a7f5/_0x31f130,_0x12f646[_0x4a189c*0x4+0x1]=_0x3186e1/_0x31f130,_0x12f646[_0x4a189c*0x4+0x2]=_0x1a157f/_0x31f130):(_0x12f646[_0x4a189c*0x4]=0x0,_0x12f646[_0x4a189c*0x4+0x1]=-0x1,_0x12f646[_0x4a189c*0x4+0x2]=0x0),_0x12f646[_0x4a189c*0x4+0x3]=_0x31f130,_0x61c9ac+=_0x31f130,_0x449668=_0x3e718b['x'],_0x32d736=_0x3e718b['y'],_0x2b9915=_0x3e718b['z'];}for(_0x4a189c=0x1;_0x4a189c<_0xca9cae;_0x4a189c++){_0x9ff59f[_0x4a189c]=0x0,_0x160fc7[_0x4a189c]=0x0,_0xcc7525[_0x4a189c]=-0x1;if(!(_0x12f646[_0x4a189c*0x4+0x3]>1e-9))continue;_0x3e718b=_0x6da85a[_0x4a189c],_0x29ea66=_0x6da85a[_0x4a189c-0x1],_0x13a7f5=(_0x3e718b['x']+_0x29ea66['x'])*0.5,_0x3186e1=(_0x3e718b['y']+_0x29ea66['y'])*0.5,_0x1a157f=(_0x3e718b['z']+_0x29ea66['z'])*0.5,_0x3f814d=Math['floor'](_0x13a7f5/_0x4c7a9e)+_0x301e9e,_0x50852e=Math['floor'](_0x3186e1/_0x4c7a9e)+_0x301e9e,_0x53ad20=Math['floor'](_0x1a157f/_0x4c7a9e)+_0x301e9e;if(_0x3f814d<0x0||_0x50852e<0x0||_0x53ad20<0x0||_0x3f814d>=_0x5906f1||_0x50852e>=_0x5906f1||_0x53ad20>=_0x5906f1)continue;_0x545b8c=_0x204bf8['get'](_0x3f814d+_0x5906f1*(_0x50852e+_0x5906f1*_0x53ad20));if(_0x545b8c===undefined)continue;_0x5a919e=_0x4ec139[_0x545b8c*0x3],_0x3c6b2a=_0x4ec139[_0x545b8c*0x3+0x1],_0xc3c812=_0x4ec139[_0x545b8c*0x3+0x2],_0x349905=Math['sqrt'](_0x5a919e*_0x5a919e+_0x3c6b2a*_0x3c6b2a+_0xc3c812*_0xc3c812);if(!(_0x349905>0.01))continue;_0x1c8cfc=_0x4a189c/_0x41e39f;if(_0x1c8cfc<_0x2fc59f['gripFrom'])_0x349905*=_0x1c8cfc/_0x2fc59f['gripFrom'];if(_0x349905>0x1)_0x349905=0x1;_0xcc7525[_0x4a189c]=_0x545b8c,_0x160fc7[_0x4a189c]=_0x349905,_0x2fc59f['flyOnly']&&(_0x595959=(_0x434ea3(_0x3bdb22,_0x13a7f5,_0x3186e1,_0x1a157f)-_0x3f20e3)*_0x507ea1,_0x349905*=_0x595959<=0x0?0x0:_0x595959>=0x1?0x1:_0x595959*_0x595959*(0x3-0x2*_0x595959)),_0x9ff59f[_0x4a189c]=_0x349905;}if(_0x2fc59f['reachBack']){var _0x4d0eac=0x0,_0x340164=-0x1,_0xad3eec,_0x65f75b,_0x4ebeee,_0xdb646a=Math['cos'](Math['max'](0x1,_0x2fc59f['divAngle'])*_0x56f8e4);for(_0x4a189c=_0x41e39f;_0x4a189c>=0x1;_0x4a189c--){_0x349905=_0x9ff59f[_0x4a189c];if(_0x349905>_0x4d0eac){_0x4d0eac=_0x349905,_0x340164=_0xcc7525[_0x4a189c];continue;}if(!(_0x4d0eac>0.05)||!(_0x12f646[_0x4a189c*0x4+0x3]>1e-9))continue;if(!(_0x160fc7[_0x4a189c]>0.01)){_0x4d0eac*=0.5;continue;}_0x3e718b=_0x6da85a[_0x4a189c],_0x29ea66=_0x6da85a[_0x4a189c-0x1],_0x595959=(_0x434ea3(_0x3bdb22,(_0x3e718b['x']+_0x29ea66['x'])*0.5,(_0x3e718b['y']+_0x29ea66['y'])*0.5,(_0x3e718b['z']+_0x29ea66['z'])*0.5)-_0x3f20e3)*_0x507ea1,_0xad3eec=_0x595959>0x0;if(!_0xad3eec){_0x3f814d=Math['floor'](((_0x3e718b['x']+_0x29ea66['x'])*0.5-_0x42d347['x0'])*_0x42d347['inv']),_0x50852e=Math['floor'](((_0x3e718b['y']+_0x29ea66['y'])*0.5-_0x42d347['y0'])*_0x42d347['inv']),_0x53ad20=Math['floor'](((_0x3e718b['z']+_0x29ea66['z'])*0.5-_0x42d347['z0'])*_0x42d347['inv']),_0x545b8c=0x0;if(_0x3f814d>=0x0&&_0x50852e>=0x0&&_0x53ad20>=0x0&&_0x3f814d<_0x42d347['nx']&&_0x50852e<_0x42d347['ny']&&_0x53ad20<_0x42d347['nz']){_0x3f814d+=_0x42d347['nx']*(_0x50852e+_0x42d347['ny']*_0x53ad20);if(_0x42d347['GN'][_0x3f814d]>=_0x42d347['dense']&&_0x42d347['GM'][_0x3f814d]>=0.85*_0x42d347['GN'][_0x3f814d]&&_0x42d347['GX'][_0x3f814d]*_0x12f646[_0x4a189c*0x4]+_0x42d347['GY'][_0x3f814d]*_0x12f646[_0x4a189c*0x4+0x1]+_0x42d347['GZ'][_0x3f814d]*_0x12f646[_0x4a189c*0x4+0x2]<_0xdb646a*_0x42d347['GM'][_0x3f814d])_0x545b8c=0x1;}if(!_0x545b8c)_0x4d0eac*=_0x2fc59f['lead'];}_0x1c8cfc=_0x4a189c/_0x41e39f,_0x65f75b=_0x1c8cfc<_0x2fc59f['gripFrom']?_0x1c8cfc/_0x2fc59f['gripFrom']:0x1,_0x4ebeee=_0x4d0eac*_0x65f75b;if(_0x4ebeee>_0x349905){_0x9ff59f[_0x4a189c]=_0x4ebeee;if(_0xcc7525[_0x4a189c]<0x0)_0xcc7525[_0x4a189c]=_0x340164;_0x5c89cf['_up']++;}}}else{if(_0x2fc59f['lead']>0x0)for(_0x4a189c=_0x41e39f-0x1;_0x4a189c>=0x1;_0x4a189c--){_0x349905=_0x9ff59f[_0x4a189c+0x1]*_0x2fc59f['lead'];if(_0x349905>_0x160fc7[_0x4a189c])_0x349905=_0x160fc7[_0x4a189c];if(_0x349905>_0x9ff59f[_0x4a189c])_0x9ff59f[_0x4a189c]=_0x349905;}}for(_0x4a189c=0x1;_0x4a189c<_0xca9cae;_0x4a189c++)if(_0x9ff59f[_0x4a189c]>0.01){if(_0x4a189c<_0x554725)_0x554725=_0x4a189c;_0xdbb09=_0x4a189c;}if(_0x554725>_0xdbb09)return _0x6da85a;var _0x507b5c=_0x61c9ac>0x0?Math['round'](_0x2fc59f['flowSmooth']/(_0x61c9ac/_0x41e39f)):0x1;if(!(_0x507b5c>=0x1))_0x507b5c=0x1;else{if(_0x507b5c>0x10)_0x507b5c=0x10;}var _0x32e4d2,_0x5ca870,_0x5b3ea0,_0xac324,_0x3a2412,_0x18fcd5,_0x433bd6,_0x13e15b,_0x172b41,_0x3a5e17,_0x102e44;for(_0x4a189c=_0x554725;_0x4a189c<=_0xdbb09;_0x4a189c++){if(!(_0x9ff59f[_0x4a189c]>0.01))continue;_0x3e718b=_0x6da85a[_0x4a189c],_0x29ea66=_0x6da85a[_0x4a189c-0x1],_0x32e4d2=_0x6da85a[_0x4a189c-0x1-_0x507b5c<0x0?0x0:_0x4a189c-0x1-_0x507b5c],_0x5ca870=_0x6da85a[_0x4a189c+_0x507b5c>_0x41e39f?_0x41e39f:_0x4a189c+_0x507b5c],_0x5b3ea0=_0x12f646[_0x4a189c*0x4],_0xac324=_0x12f646[_0x4a189c*0x4+0x1],_0x3a2412=_0x12f646[_0x4a189c*0x4+0x2],_0x13a7f5=_0x5ca870['x']-_0x32e4d2['x'],_0x3186e1=_0x5ca870['y']-_0x32e4d2['y'],_0x1a157f=_0x5ca870['z']-_0x32e4d2['z'],_0x303cfc=Math['sqrt'](_0x13a7f5*_0x13a7f5+_0x3186e1*_0x3186e1+_0x1a157f*_0x1a157f),_0x303cfc>1e-9?(_0x13a7f5/=_0x303cfc,_0x3186e1/=_0x303cfc,_0x1a157f/=_0x303cfc,_0x3a5e17=_0x13a7f5*_0x5b3ea0+_0x3186e1*_0xac324+_0x1a157f*_0x3a2412):(_0x13a7f5=_0x5b3ea0,_0x3186e1=_0xac324,_0x1a157f=_0x3a2412,_0x3a5e17=0x1),_0x18fcd5=_0x3e718b['x']-_0x32e4d2['x'],_0x433bd6=_0x3e718b['y']-_0x32e4d2['y'],_0x13e15b=_0x3e718b['z']-_0x32e4d2['z'],_0x172b41=Math['sqrt'](_0x18fcd5*_0x18fcd5+_0x433bd6*_0x433bd6+_0x13e15b*_0x13e15b),_0x172b41>1e-9&&(_0x102e44=(_0x18fcd5*_0x5b3ea0+_0x433bd6*_0xac324+_0x13e15b*_0x3a2412)/_0x172b41,_0x102e44>_0x3a5e17&&(_0x3a5e17=_0x102e44,_0x13a7f5=_0x18fcd5/_0x172b41,_0x3186e1=_0x433bd6/_0x172b41,_0x1a157f=_0x13e15b/_0x172b41)),_0x18fcd5=_0x5ca870['x']-_0x29ea66['x'],_0x433bd6=_0x5ca870['y']-_0x29ea66['y'],_0x13e15b=_0x5ca870['z']-_0x29ea66['z'],_0x172b41=Math['sqrt'](_0x18fcd5*_0x18fcd5+_0x433bd6*_0x433bd6+_0x13e15b*_0x13e15b),_0x172b41>1e-9&&(_0x102e44=(_0x18fcd5*_0x5b3ea0+_0x433bd6*_0xac324+_0x13e15b*_0x3a2412)/_0x172b41,_0x102e44>_0x3a5e17&&(_0x3a5e17=_0x102e44,_0x13a7f5=_0x18fcd5/_0x172b41,_0x3186e1=_0x433bd6/_0x172b41,_0x1a157f=_0x13e15b/_0x172b41)),_0x179ccd[_0x4a189c*0x3]=_0x13a7f5,_0x179ccd[_0x4a189c*0x3+0x1]=_0x3186e1,_0x179ccd[_0x4a189c*0x3+0x2]=_0x1a157f;}var _0x5d75e9=Math['max'](0x0,_0x2fc59f['flyTol'])*_0x56f8e4,_0x1d6a16=Math['max'](_0x5d75e9+0.001,_0x2fc59f['flyTolFull']*_0x56f8e4),_0x117939=Math['cos'](_0x2fc59f['flowOwn']*_0x56f8e4),_0x1391d1=Math['cos'](_0x2fc59f['flowFinger']*_0x56f8e4),_0xa4ce02=Math['max'](0x0,_0x2fc59f['flowReach']|0x0),_0x56dc2f=_0x3c62fd(),_0x325053=_0x2fc59f['collide']?_0x56dc2f:null,_0x2c1dc7=null,_0x36ef85=_0x2fc59f['headLift']>0x0?_0x2fc59f['headLift']:1.02,_0x176628=(_0x56dc2f?_0x56dc2f['cy']:0.15)+0.3,_0x1a39c6=_0x3f20e3*0.5,_0x4eef53=0x1,_0x50834e=0x1,_0x2034f7=0x1,_0x413c3b=0x0,_0x290453=Math['cos'](0x28*_0x56f8e4),_0x49b0b7=Math['cos'](0x50*_0x56f8e4),_0x2bfe52=null,_0x402a2e={'x':0x0,'y':0x0,'z':0x0},_0x3534aa=_0x2fc59f['maxMove']>0x0?_0x2fc59f['maxMove']:0x0;try{_0x2bfe52=_0x2ee1c6['REGROW']&&typeof _0x2ee1c6['REGROW']['neckPush']==='function'?_0x2ee1c6['REGROW']['neckPush']:null;}catch(_0x2c9fff){_0x2bfe52=null;}if(_0x325053){_0x4eef53=_0x325053['a2'],_0x50834e=_0x325053['b2'],_0x2034f7=_0x325053['c2'],_0x413c3b=_0x325053['cy'];try{_0x2c1dc7=_0x2ee1c6['REGROW']&&typeof _0x2ee1c6['REGROW']['neckPush']==='function'?_0x2ee1c6['REGROW']['neckPush']:null;}catch(_0x1137a5){_0x2c1dc7=null;}}var _0x46f58d=new Array(_0xca9cae),_0x29726f=_0x6da85a[_0x554725-0x1]['x'],_0x37b315=_0x6da85a[_0x554725-0x1]['y'],_0xfe1dc7=_0x6da85a[_0x554725-0x1]['z'],_0x4d0d8b,_0x5591a7,_0x2c0c98,_0x140aa3=0x0,_0x2d2c1c=0x0,_0x1db2c8=0x0,_0x36252f=0x0,_0x448190=![],_0x4f8714,_0x242922,_0x24c107,_0xf87099,_0xa2c901,_0x17abfb,_0x40b4ad,_0x193e85,_0x2b89c8,_0x2c211c,_0x2de958,_0x5a52bc,_0x4ea20a,_0x4a4f3e,_0x401a1c,_0x451c5c,_0x51d1fd,_0x57a6f6,_0x969b21,_0x1923b9,_0x1395f5,_0x30b782,_0x4fbc4d,_0x353f7f,_0x2270a3,_0x4a3f97,_0x5d1963,_0x28ef75,_0x5c1204,_0xaeb891,_0x2e353e,_0x3f8289,_0x43dad5,_0x2b892,_0x57b92c,_0x34bcca,_0x5702e0,_0x49ff1f,_0x173450,_0x404347,_0x5f5a26;_0x554725>0x1&&(_0x2d2c1c=_0x12f646[(_0x554725-0x1)*0x4],_0x1db2c8=_0x12f646[(_0x554725-0x1)*0x4+0x1],_0x36252f=_0x12f646[(_0x554725-0x1)*0x4+0x2],_0x448190=_0x12f646[(_0x554725-0x1)*0x4+0x3]>1e-9);for(_0x4a189c=0x0;_0x4a189c<_0x554725;_0x4a189c++)_0x46f58d[_0x4a189c]=_0x6da85a[_0x4a189c];for(_0x4a189c=_0x554725;_0x4a189c<_0xca9cae;_0x4a189c++){_0x5b3ea0=_0x12f646[_0x4a189c*0x4],_0xac324=_0x12f646[_0x4a189c*0x4+0x1],_0x3a2412=_0x12f646[_0x4a189c*0x4+0x2],_0x31f130=_0x12f646[_0x4a189c*0x4+0x3],_0x349905=_0x4a189c<=_0xdbb09?_0x9ff59f[_0x4a189c]:0x0;if(_0x349905>0.01&&_0x31f130>1e-9){_0x5c89cf['_fl']++,_0x545b8c=_0xcc7525[_0x4a189c]*0x3,_0x2c211c=_0x4ec139[_0x545b8c],_0x2de958=_0x4ec139[_0x545b8c+0x1],_0x5a52bc=_0x4ec139[_0x545b8c+0x2],_0x4ea20a=Math['sqrt'](_0x2c211c*_0x2c211c+_0x2de958*_0x2de958+_0x5a52bc*_0x5a52bc),_0x2c211c/=_0x4ea20a,_0x2de958/=_0x4ea20a,_0x5a52bc/=_0x4ea20a,_0x4f8714=_0x434ea3(_0x3bdb22,_0x29726f,_0x37b315,_0xfe1dc7),_0x17abfb=![],_0x40b4ad=_0x29726f,_0x193e85=_0x37b315,_0x2b89c8=_0xfe1dc7,_0x242922=0x0;if(_0x4f8714>0.0001&&_0x4f8714<_0x3bdb22['far']&&(_0x242922=_0x4bdcdc(_0x3bdb22,_0x29726f,_0x37b315,_0xfe1dc7))>0.2){_0x24c107=_0x5ee604[0x0],_0xf87099=_0x5ee604[0x1],_0xa2c901=_0x5ee604[0x2],_0x13a7f5=_0x29726f+_0x24c107*_0x4f8714,_0x3186e1=_0x37b315+_0xf87099*_0x4f8714,_0x1a157f=_0xfe1dc7+_0xa2c901*_0x4f8714,_0x401a1c=0x1;if(_0x29726f*_0x13a7f5+_0xfe1dc7*_0x1a157f<0x0)_0x401a1c=0x0;else{if(_0x56dc2f){_0x5702e0=_0x3186e1-_0x56dc2f['cy'];if(_0x13a7f5*_0x13a7f5/_0x56dc2f['a2']+_0x5702e0*_0x5702e0/_0x56dc2f['b2']+_0x1a157f*_0x1a157f/_0x56dc2f['c2']<0x1)_0x401a1c=0x0;else{_0x5702e0=(_0x37b315+_0x3186e1)*0.5-_0x56dc2f['cy'];if((_0x29726f+_0x13a7f5)*(_0x29726f+_0x13a7f5)*0.25/_0x56dc2f['a2']+_0x5702e0*_0x5702e0/_0x56dc2f['b2']+(_0xfe1dc7+_0x1a157f)*(_0xfe1dc7+_0x1a157f)*0.25/_0x56dc2f['c2']<0x1)_0x401a1c=0x0;}}}if(_0x401a1c&&_0x2bfe52)try{_0x402a2e['x']=_0x13a7f5,_0x402a2e['y']=_0x3186e1,_0x402a2e['z']=_0x1a157f;if(_0x2bfe52(_0x402a2e)!==_0x402a2e)_0x401a1c=0x0;else{_0x402a2e['x']=(_0x29726f+_0x13a7f5)*0.5,_0x402a2e['y']=(_0x37b315+_0x3186e1)*0.5,_0x402a2e['z']=(_0xfe1dc7+_0x1a157f)*0.5;if(_0x2bfe52(_0x402a2e)!==_0x402a2e)_0x401a1c=0x0;}}catch(_0x219b82){}if(!_0x401a1c)_0x242922=0x0;else _0x40b4ad=_0x13a7f5,_0x193e85=_0x3186e1,_0x2b89c8=_0x1a157f;_0x451c5c=-_0x29726f,_0x51d1fd=_0x37b315>_0x176628?_0x176628-_0x37b315:0x0,_0x57a6f6=-_0xfe1dc7,_0x969b21=Math['sqrt'](_0x451c5c*_0x451c5c+_0x51d1fd*_0x51d1fd+_0x57a6f6*_0x57a6f6),_0x1923b9=_0x969b21>0.000001?(_0x24c107*_0x451c5c+_0xf87099*_0x51d1fd+_0xa2c901*_0x57a6f6)/_0x969b21:0x1,_0x17abfb=_0x401a1c===0x1&&_0x2fc59f['settle']>0x0&&_0x4f8714>_0x1a39c6&&_0x4f8714<=_0x2fc59f['settleReach']&&_0x1923b9>0.2;}_0x448190?(_0x13a7f5=_0x2d2c1c,_0x3186e1=_0x1db2c8,_0x1a157f=_0x36252f):(_0x13a7f5=_0x179ccd[_0x4a189c*0x3],_0x3186e1=_0x179ccd[_0x4a189c*0x3+0x1],_0x1a157f=_0x179ccd[_0x4a189c*0x3+0x2]);_0x4a4f3e=_0x1ff530(_0x42d347,_0x40b4ad,_0x193e85,_0x2b89c8,_0x13a7f5,_0x3186e1,_0x1a157f,_0x2c211c,_0x2de958,_0x5a52bc,_0x117939,_0x1391d1);if(_0x4a4f3e===0x0)for(_0x401a1c=0x1;_0x401a1c<=_0xa4ce02;_0x401a1c++){if(_0x242922>0.2)_0x28ef75=_0x24c107,_0x5c1204=_0xf87099,_0xaeb891=_0xa2c901,_0x172b41=0x1;else{_0x28ef75=-_0x40b4ad,_0x5c1204=_0x193e85<_0x176628?0x0:_0x176628-_0x193e85,_0xaeb891=-_0x2b89c8,_0x172b41=Math['sqrt'](_0x28ef75*_0x28ef75+_0x5c1204*_0x5c1204+_0xaeb891*_0xaeb891);if(!(_0x172b41>0.000001))break;}_0x40b4ad+=_0x28ef75/_0x172b41*_0x42d347['fc'],_0x193e85+=_0x5c1204/_0x172b41*_0x42d347['fc'],_0x2b89c8+=_0xaeb891/_0x172b41*_0x42d347['fc'],_0x4a4f3e=_0x1ff530(_0x42d347,_0x40b4ad,_0x193e85,_0x2b89c8,_0x13a7f5,_0x3186e1,_0x1a157f,_0x2c211c,_0x2de958,_0x5a52bc,_0x117939,_0x1391d1);if(_0x4a4f3e!==0x0){if(_0x4a4f3e>0x0)_0x4a4f3e=0x4;break;}}if(_0x4a4f3e===0x0&&_0x242922>0.2&&_0x24c107*_0x5b3ea0+_0xf87099*_0xac324+_0xa2c901*_0x3a2412<-0.6)_0x4a4f3e=-0x2;if(_0x4a4f3e===-0x1){_0x5c89cf['_tk']++;if(_0x2fc59f['partFinger'])_0x4a4f3e=0x0;}if(_0x4a4f3e<0x0){}else{if(_0x4a4f3e===0x0)_0x18fcd5=_0x2c211c,_0x433bd6=_0x2de958,_0x13e15b=_0x5a52bc,_0x5c89cf['_tf']++;else{_0x18fcd5=_0x3a9650[0x0],_0x433bd6=_0x3a9650[0x1],_0x13e15b=_0x3a9650[0x2];if(_0x4a4f3e===0x1)_0x5c89cf['_to']++;else{if(_0x4a4f3e===0x2)_0x5c89cf['_ts']++;else{if(_0x4a4f3e===0x3)_0x5c89cf['_ta']++;else _0x5c89cf['_tr']++;}}}_0x401a1c=0x0;if(_0x17abfb){_0x1395f5=_0x24c107*_0x18fcd5+_0xf87099*_0x433bd6+_0xa2c901*_0x13e15b,_0x28ef75=_0x24c107-_0x1395f5*_0x18fcd5,_0x5c1204=_0xf87099-_0x1395f5*_0x433bd6,_0xaeb891=_0xa2c901-_0x1395f5*_0x13e15b,_0x30b782=Math['sqrt'](_0x28ef75*_0x28ef75+_0x5c1204*_0x5c1204+_0xaeb891*_0xaeb891);if(_0x30b782>0.3){_0x4fbc4d=_0x2fc59f['settleGain']*(_0x4f8714-_0x1a39c6)/_0x31f130;if(_0x4fbc4d>_0x2fc59f['settle'])_0x4fbc4d=_0x2fc59f['settle'];_0x4fbc4d*=(_0x1923b9>=0.6?0x1:(_0x1923b9-0.2)/0.4)/_0x30b782,_0x18fcd5+=_0x28ef75*_0x4fbc4d,_0x433bd6+=_0x5c1204*_0x4fbc4d,_0x13e15b+=_0xaeb891*_0x4fbc4d,_0x303cfc=Math['sqrt'](_0x18fcd5*_0x18fcd5+_0x433bd6*_0x433bd6+_0x13e15b*_0x13e15b),_0x18fcd5/=_0x303cfc,_0x433bd6/=_0x303cfc,_0x13e15b/=_0x303cfc,_0x5c89cf['_pi']++,_0x401a1c=0x1;}}_0x448190&&_0x2fc59f['ease']>0x0&&_0x2d2c1c*_0x18fcd5+_0x1db2c8*_0x433bd6+_0x36252f*_0x13e15b>0x0&&(_0x18fcd5+=_0x2d2c1c*_0x2fc59f['ease'],_0x433bd6+=_0x1db2c8*_0x2fc59f['ease'],_0x13e15b+=_0x36252f*_0x2fc59f['ease'],_0x303cfc=Math['sqrt'](_0x18fcd5*_0x18fcd5+_0x433bd6*_0x433bd6+_0x13e15b*_0x13e15b),_0x18fcd5/=_0x303cfc,_0x433bd6/=_0x303cfc,_0x13e15b/=_0x303cfc);_0x353f7f=_0x5b3ea0*_0x18fcd5+_0xac324*_0x433bd6+_0x3a2412*_0x13e15b;if(_0x353f7f<0x0)_0x2270a3=_0x349905<=0.15?0x0:_0x349905>=0.4?0x1:(_0x349905-0.15)/0.25,_0x2270a3=_0x2270a3*_0x2270a3*(0x3-0x2*_0x2270a3),_0x2270a3>0.5&&(_0x13a7f5=_0x5b3ea0*(0x1-_0x2270a3)+_0x18fcd5*_0x2270a3,_0x3186e1=_0xac324*(0x1-_0x2270a3)+_0x433bd6*_0x2270a3,_0x1a157f=_0x3a2412*(0x1-_0x2270a3)+_0x13e15b*_0x2270a3,_0x303cfc=Math['sqrt'](_0x13a7f5*_0x13a7f5+_0x3186e1*_0x3186e1+_0x1a157f*_0x1a157f),_0x303cfc>0.2?(_0x5b3ea0=_0x13a7f5/_0x303cfc,_0xac324=_0x3186e1/_0x303cfc,_0x3a2412=_0x1a157f/_0x303cfc):(_0x5b3ea0=_0x18fcd5,_0xac324=_0x433bd6,_0x3a2412=_0x13e15b));else{_0x13a7f5=_0x179ccd[_0x4a189c*0x3],_0x3186e1=_0x179ccd[_0x4a189c*0x3+0x1],_0x1a157f=_0x179ccd[_0x4a189c*0x3+0x2];_0x13a7f5*_0x5b3ea0+_0x3186e1*_0xac324+_0x1a157f*_0x3a2412<0.5&&(_0x13a7f5=_0x5b3ea0,_0x3186e1=_0xac324,_0x1a157f=_0x3a2412);_0x3a5e17=_0x13a7f5*_0x18fcd5+_0x3186e1*_0x433bd6+_0x1a157f*_0x13e15b;if(_0x3a5e17>0x1)_0x3a5e17=0x1;else{if(_0x3a5e17<-0x1)_0x3a5e17=-0x1;}_0x102e44=Math['acos'](_0x3a5e17);if(_0x102e44>_0x5d75e9||_0x401a1c&&_0x102e44>0.01){_0x4a3f97=_0x401a1c||_0x102e44>=_0x1d6a16?0x1:(_0x102e44-_0x5d75e9)/(_0x1d6a16-_0x5d75e9);if(_0x4a3f97<0x1)_0x4a3f97=_0x4a3f97*_0x4a3f97*(0x3-0x2*_0x4a3f97);_0x5d1963=_0x102e44*_0x4a3f97*_0x349905,_0x28ef75=_0x3186e1*_0x13e15b-_0x1a157f*_0x433bd6,_0x5c1204=_0x1a157f*_0x18fcd5-_0x13a7f5*_0x13e15b,_0xaeb891=_0x13a7f5*_0x433bd6-_0x3186e1*_0x18fcd5,_0x172b41=Math['sqrt'](_0x28ef75*_0x28ef75+_0x5c1204*_0x5c1204+_0xaeb891*_0xaeb891),_0x5d1963>=0.003&&_0x172b41>0.0001&&(_0x28ef75/=_0x172b41,_0x5c1204/=_0x172b41,_0xaeb891/=_0x172b41,_0x2e353e=Math['cos'](_0x5d1963),_0x3f8289=Math['sin'](_0x5d1963),_0x43dad5=(_0x28ef75*_0x5b3ea0+_0x5c1204*_0xac324+_0xaeb891*_0x3a2412)*(0x1-_0x2e353e),_0x13a7f5=_0x5b3ea0*_0x2e353e+(_0x5c1204*_0x3a2412-_0xaeb891*_0xac324)*_0x3f8289+_0x28ef75*_0x43dad5,_0x3186e1=_0xac324*_0x2e353e+(_0xaeb891*_0x5b3ea0-_0x28ef75*_0x3a2412)*_0x3f8289+_0x5c1204*_0x43dad5,_0x1a157f=_0x3a2412*_0x2e353e+(_0x28ef75*_0xac324-_0x5c1204*_0x5b3ea0)*_0x3f8289+_0xaeb891*_0x43dad5,_0x5b3ea0=_0x13a7f5,_0xac324=_0x3186e1,_0x3a2412=_0x1a157f);}}}_0x2fc59f['relax']>0x0&&_0x448190&&(_0x3a5e17=_0x5b3ea0*_0x2d2c1c+_0xac324*_0x1db2c8+_0x3a2412*_0x36252f,_0x3a5e17<_0x290453&&(_0x4a3f97=_0x3a5e17<=_0x49b0b7?0x1:(_0x290453-_0x3a5e17)/(_0x290453-_0x49b0b7),_0x4a3f97=_0x4a3f97*_0x4a3f97*(0x3-0x2*_0x4a3f97)*_0x349905*(_0x2fc59f['relax']>0x1?0x1:_0x2fc59f['relax']),_0x13a7f5=_0x5b3ea0+(_0x2d2c1c-_0x5b3ea0)*_0x4a3f97,_0x3186e1=_0xac324+(_0x1db2c8-_0xac324)*_0x4a3f97,_0x1a157f=_0x3a2412+(_0x36252f-_0x3a2412)*_0x4a3f97,_0x303cfc=Math['sqrt'](_0x13a7f5*_0x13a7f5+_0x3186e1*_0x3186e1+_0x1a157f*_0x1a157f),_0x303cfc>0.2&&(_0x5b3ea0=_0x13a7f5/_0x303cfc,_0xac324=_0x3186e1/_0x303cfc,_0x3a2412=_0x1a157f/_0x303cfc)));}_0x4d0d8b=_0x29726f+_0x5b3ea0*_0x31f130,_0x5591a7=_0x37b315+_0xac324*_0x31f130,_0x2c0c98=_0xfe1dc7+_0x3a2412*_0x31f130,_0x2b892=_0x6da85a[_0x4a189c];_0x3534aa>0x0&&_0x31f130>1e-9&&(_0x13a7f5=_0x4d0d8b-_0x2b892['x'],_0x3186e1=_0x5591a7-_0x2b892['y'],_0x1a157f=_0x2c0c98-_0x2b892['z'],_0x5f5a26=_0x13a7f5*_0x13a7f5+_0x3186e1*_0x3186e1+_0x1a157f*_0x1a157f,_0x5f5a26>_0x3534aa*_0x3534aa&&(_0x4fbc4d=_0x3534aa/Math['sqrt'](_0x5f5a26),_0x18fcd5=_0x2b892['x']+_0x13a7f5*_0x4fbc4d-_0x29726f,_0x433bd6=_0x2b892['y']+_0x3186e1*_0x4fbc4d-_0x37b315,_0x13e15b=_0x2b892['z']+_0x1a157f*_0x4fbc4d-_0xfe1dc7,_0x303cfc=Math['sqrt'](_0x18fcd5*_0x18fcd5+_0x433bd6*_0x433bd6+_0x13e15b*_0x13e15b),_0x303cfc>1e-9&&(_0x4d0d8b=_0x29726f+_0x18fcd5/_0x303cfc*_0x31f130,_0x5591a7=_0x37b315+_0x433bd6/_0x303cfc*_0x31f130,_0x2c0c98=_0xfe1dc7+_0x13e15b/_0x303cfc*_0x31f130,_0x5c89cf['_cl']++)));if(_0x2fc59f['anchor']&&_0x31f130>1e-9){_0x13a7f5=_0x4d0d8b-_0x2b892['x'],_0x3186e1=_0x5591a7-_0x2b892['y'],_0x1a157f=_0x2c0c98-_0x2b892['z'],_0x5f5a26=_0x13a7f5*_0x13a7f5+_0x3186e1*_0x3186e1+_0x1a157f*_0x1a157f;if(_0x5f5a26>1e-10){_0x595959=(_0x434ea3(_0x3bdb22,_0x2b892['x'],_0x2b892['y'],_0x2b892['z'])-_0x3f20e3)*_0x507ea1,_0x595959=_0x595959<=0x0?0x1:_0x595959>=0x1?0x0:0x1-_0x595959*_0x595959*(0x3-0x2*_0x595959);if(_0x595959>0x0&&!(_0x349905>0.01)){_0x4fbc4d=_0x31f130/(_0x2fc59f['anchorLen']>0.01?_0x2fc59f['anchorLen']:0.13);if(_0x4fbc4d>0.5)_0x4fbc4d=0.5;_0x4fbc4d*=_0x595959,_0x3a5e17=_0x13a7f5*_0x12f646[_0x4a189c*0x4]+_0x3186e1*_0x12f646[_0x4a189c*0x4+0x1]+_0x1a157f*_0x12f646[_0x4a189c*0x4+0x2],_0x13a7f5-=_0x3a5e17*_0x12f646[_0x4a189c*0x4],_0x3186e1-=_0x3a5e17*_0x12f646[_0x4a189c*0x4+0x1],_0x1a157f-=_0x3a5e17*_0x12f646[_0x4a189c*0x4+0x2],_0x18fcd5=_0x4d0d8b-_0x13a7f5*_0x4fbc4d-_0x29726f,_0x433bd6=_0x5591a7-_0x3186e1*_0x4fbc4d-_0x37b315,_0x13e15b=_0x2c0c98-_0x1a157f*_0x4fbc4d-_0xfe1dc7,_0x303cfc=Math['sqrt'](_0x18fcd5*_0x18fcd5+_0x433bd6*_0x433bd6+_0x13e15b*_0x13e15b),_0x303cfc>1e-9&&(_0x4d0d8b=_0x29726f+_0x18fcd5/_0x303cfc*_0x31f130,_0x5591a7=_0x37b315+_0x433bd6/_0x303cfc*_0x31f130,_0x2c0c98=_0xfe1dc7+_0x13e15b/_0x303cfc*_0x31f130,_0x5c89cf['_an']++);}}}if(_0x325053&&_0x31f130>1e-9){_0x5702e0=_0x2b892['y']-_0x413c3b,_0x173450=Math['sqrt'](_0x2b892['x']*_0x2b892['x']/_0x4eef53+_0x5702e0*_0x5702e0/_0x50834e+_0x2b892['z']*_0x2b892['z']/_0x2034f7);if(_0x173450>_0x36ef85)_0x173450=_0x36ef85;_0x5702e0=_0x5591a7-_0x413c3b,_0x49ff1f=Math['sqrt'](_0x4d0d8b*_0x4d0d8b/_0x4eef53+_0x5702e0*_0x5702e0/_0x50834e+_0x2c0c98*_0x2c0c98/_0x2034f7),_0x49ff1f<_0x173450-0.000001&&(_0x5702e0=_0x37b315-_0x413c3b,_0x451c5c=_0x29726f/_0x4eef53,_0x51d1fd=_0x5702e0/_0x50834e,_0x57a6f6=_0xfe1dc7/_0x2034f7,_0x969b21=Math['sqrt'](_0x451c5c*_0x451c5c+_0x51d1fd*_0x51d1fd+_0x57a6f6*_0x57a6f6),_0x969b21>1e-9&&(_0x451c5c/=_0x969b21,_0x51d1fd/=_0x969b21,_0x57a6f6/=_0x969b21,_0x18fcd5=(_0x4d0d8b-_0x29726f)/_0x31f130,_0x433bd6=(_0x5591a7-_0x37b315)/_0x31f130,_0x13e15b=(_0x2c0c98-_0xfe1dc7)/_0x31f130,_0x404347=_0x18fcd5*_0x451c5c+_0x433bd6*_0x51d1fd+_0x13e15b*_0x57a6f6,_0x404347<0x0&&(_0x18fcd5-=_0x404347*_0x451c5c,_0x433bd6-=_0x404347*_0x51d1fd,_0x13e15b-=_0x404347*_0x57a6f6,_0x303cfc=Math['sqrt'](_0x18fcd5*_0x18fcd5+_0x433bd6*_0x433bd6+_0x13e15b*_0x13e15b),_0x303cfc<0.35&&(_0x29ea66=_0x6da85a[_0x4a189c-0x1],_0x18fcd5=(_0x2b892['x']-_0x29ea66['x'])/_0x31f130,_0x433bd6=(_0x2b892['y']-_0x29ea66['y'])/_0x31f130,_0x13e15b=(_0x2b892['z']-_0x29ea66['z'])/_0x31f130,_0x404347=_0x18fcd5*_0x451c5c+_0x433bd6*_0x51d1fd+_0x13e15b*_0x57a6f6,_0x404347<0x0&&(_0x18fcd5-=_0x404347*_0x451c5c,_0x433bd6-=_0x404347*_0x51d1fd,_0x13e15b-=_0x404347*_0x57a6f6),_0x303cfc=Math['sqrt'](_0x18fcd5*_0x18fcd5+_0x433bd6*_0x433bd6+_0x13e15b*_0x13e15b)),_0x303cfc>0.001&&(_0x4d0d8b=_0x29726f+_0x18fcd5/_0x303cfc*_0x31f130,_0x5591a7=_0x37b315+_0x433bd6/_0x303cfc*_0x31f130,_0x2c0c98=_0xfe1dc7+_0x13e15b/_0x303cfc*_0x31f130))),_0x5702e0=_0x5591a7-_0x413c3b,_0x49ff1f=Math['sqrt'](_0x4d0d8b*_0x4d0d8b/_0x4eef53+_0x5702e0*_0x5702e0/_0x50834e+_0x2c0c98*_0x2c0c98/_0x2034f7),_0x49ff1f<_0x173450-0.000001&&_0x49ff1f>1e-9&&(_0x4fbc4d=_0x173450/_0x49ff1f,_0x4d0d8b*=_0x4fbc4d,_0x5591a7=_0x413c3b+_0x5702e0*_0x4fbc4d,_0x2c0c98*=_0x4fbc4d,_0x18fcd5=_0x4d0d8b-_0x29726f,_0x433bd6=_0x5591a7-_0x37b315,_0x13e15b=_0x2c0c98-_0xfe1dc7,_0x303cfc=Math['sqrt'](_0x18fcd5*_0x18fcd5+_0x433bd6*_0x433bd6+_0x13e15b*_0x13e15b),_0x303cfc>1e-9&&(_0x4d0d8b=_0x29726f+_0x18fcd5/_0x303cfc*_0x31f130,_0x5591a7=_0x37b315+_0x433bd6/_0x303cfc*_0x31f130,_0x2c0c98=_0xfe1dc7+_0x13e15b/_0x303cfc*_0x31f130)),_0x5c89cf['_pu']++);}_0x57b92c={'x':_0x4d0d8b,'y':_0x5591a7,'z':_0x2c0c98};if(_0x2c1dc7&&_0x31f130>1e-9)try{_0x34bcca=_0x2c1dc7(_0x57b92c),_0x34bcca&&_0x34bcca!==_0x57b92c&&_0x2c1dc7(_0x2b892)===_0x2b892&&(_0x18fcd5=_0x34bcca['x']-_0x29726f,_0x433bd6=_0x34bcca['y']-_0x37b315,_0x13e15b=_0x34bcca['z']-_0xfe1dc7,_0x303cfc=Math['sqrt'](_0x18fcd5*_0x18fcd5+_0x433bd6*_0x433bd6+_0x13e15b*_0x13e15b),_0x303cfc>1e-9&&(_0x57b92c={'x':_0x29726f+_0x18fcd5/_0x303cfc*_0x31f130,'y':_0x37b315+_0x433bd6/_0x303cfc*_0x31f130,'z':_0xfe1dc7+_0x13e15b/_0x303cfc*_0x31f130},_0x5c89cf['_nk']++));}catch(_0x251587){}_0x31f130>1e-9&&(_0x2d2c1c=(_0x57b92c['x']-_0x29726f)/_0x31f130,_0x1db2c8=(_0x57b92c['y']-_0x37b315)/_0x31f130,_0x36252f=(_0x57b92c['z']-_0xfe1dc7)/_0x31f130,_0x448190=!![]);_0x13a7f5=_0x57b92c['x']-_0x2b892['x'],_0x3186e1=_0x57b92c['y']-_0x2b892['y'],_0x1a157f=_0x57b92c['z']-_0x2b892['z'],_0x5f5a26=_0x13a7f5*_0x13a7f5+_0x3186e1*_0x3186e1+_0x1a157f*_0x1a157f;if(_0x5f5a26>_0x140aa3)_0x140aa3=_0x5f5a26;_0x29726f=_0x57b92c['x'],_0x37b315=_0x57b92c['y'],_0xfe1dc7=_0x57b92c['z'],_0x46f58d[_0x4a189c]=_0x57b92c;}if(!(_0x140aa3>1e-12))return _0x6da85a;_0x5c89cf['_t']++;try{_0x46f58d['_pre']=_0x6da85a['_pre']||_0x6da85a;}catch(_0x2d813f){}return _0x46f58d;}function _0x237698(_0x120335){if(!_0x2fc59f['enabled']||!_0x2fc59f['samples']['length']||!_0x120335||_0x120335['length']<0x2)return _0x120335;var _0x1bcce2=_0x4f9fdb();if(!_0x1bcce2||!_0x1bcce2['n'])return _0x120335;var _0x651dc9=_0x120335['length'],_0x4f25f0,_0x4e74e2,_0x2a85d5=_0x1bcce2['mn'],_0x7fc487=_0x1bcce2['mx'],_0x49239d=![];for(_0x4f25f0=0x0;_0x4f25f0<_0x651dc9;_0x4f25f0++){_0x4e74e2=_0x120335[_0x4f25f0];if(_0x4e74e2['x']>=_0x2a85d5[0x0]&&_0x4e74e2['x']<=_0x7fc487[0x0]&&_0x4e74e2['y']>=_0x2a85d5[0x1]&&_0x4e74e2['y']<=_0x7fc487[0x1]&&_0x4e74e2['z']>=_0x2a85d5[0x2]&&_0x4e74e2['z']<=_0x7fc487[0x2]){_0x49239d=!![];break;}}if(!_0x49239d)return _0x120335;_0x5a2e5b['length']<_0x651dc9*0x4&&(_0x5a2e5b=new Float64Array(_0x651dc9*0x4+0x80),_0xba8d57=new Float64Array(_0x651dc9*0x3+0x60),_0x26cea4=new Float64Array(_0x651dc9+0x20),_0x41ed15=new Float64Array(_0x651dc9+0x20),_0x321c1b=new Int32Array(_0x651dc9+0x20));if(_0x2fc59f['grain']&&_0x2fc59f['surf']&&_0xbfb422&&_0xbfb422['flow']&&_0xbfb422['flow']['DF'])return _0x39471a(_0x120335,_0x1bcce2,_0xbfb422['flow']);var _0x478e2c=_0x2fc59f['cell'],_0xca84c0=_0x1bcce2['map'],_0x1be637=_0x1bcce2['V'],_0x533768=_0x651dc9-0x1,_0x11cbcb=![],_0x691d39=_0x5a2e5b,_0x17ca02=_0xba8d57,_0x265f41=_0x120335[0x0]['x'],_0x3f489a=_0x120335[0x0]['y'],_0x18fcec=_0x120335[0x0]['z'],_0x1854f5=_0x651dc9,_0x219a18=0x0,_0x48ace5=0x0,_0x508576,_0x1b7d2a,_0x5817c1,_0x146a55,_0x256e56;for(_0x4f25f0=0x1;_0x4f25f0<_0x651dc9;_0x4f25f0++){_0x4e74e2=_0x120335[_0x4f25f0],_0x1b7d2a=_0x4e74e2['x']-_0x265f41,_0x5817c1=_0x4e74e2['y']-_0x3f489a,_0x146a55=_0x4e74e2['z']-_0x18fcec,_0x508576=Math['sqrt'](_0x1b7d2a*_0x1b7d2a+_0x5817c1*_0x5817c1+_0x146a55*_0x146a55),_0x508576>1e-9?(_0x691d39[_0x4f25f0*0x4]=_0x1b7d2a/_0x508576,_0x691d39[_0x4f25f0*0x4+0x1]=_0x5817c1/_0x508576,_0x691d39[_0x4f25f0*0x4+0x2]=_0x146a55/_0x508576):(_0x691d39[_0x4f25f0*0x4]=0x0,_0x691d39[_0x4f25f0*0x4+0x1]=-0x1,_0x691d39[_0x4f25f0*0x4+0x2]=0x0),_0x691d39[_0x4f25f0*0x4+0x3]=_0x508576,_0x48ace5+=_0x508576,_0x265f41=_0x4e74e2['x'],_0x3f489a=_0x4e74e2['y'],_0x18fcec=_0x4e74e2['z'];}var _0x39bd33=_0x48ace5>0x0?Math['round'](_0x2fc59f['flowSmooth']/(_0x48ace5/_0x533768)):0x1;if(!(_0x39bd33>=0x1))_0x39bd33=0x1;else{if(_0x39bd33>0x10)_0x39bd33=0x10;}var _0x418fd9=Math['max'](0x0,_0x2fc59f['tolFrom'])*_0x56f8e4,_0x166958=Math['max'](_0x418fd9+0.001,_0x2fc59f['tolFull']*_0x56f8e4),_0x38105e,_0x13e151,_0x10ee65,_0x45a00c,_0x4123eb,_0x4b3681,_0x326b38,_0x22cb11,_0xaf4d22,_0x45858e,_0x4a22f2,_0xbe091b,_0x52b50f,_0x120f7c,_0x5ad864,_0x29f383,_0xbb6fa7,_0x10ff28,_0x2694c6,_0x5a7896,_0x1a5daf,_0x4aae52,_0x2da21f,_0x37bad0,_0x15962f,_0x4ec584,_0x1d9ccc,_0x4992f1=_0x2fc59f['grain']&&_0xbfb422&&_0xbfb422['flow']?_0xbfb422['flow']:null,_0x28f21d=null,_0x39b0e6,_0x2024f2,_0x14f6a0,_0x29f88b,_0x1362c8,_0xf55f4,_0x4bd342,_0x224444,_0x30710e=Math['max'](0x0,_0x2fc59f['flowReach']|0x0),_0x2187fc=_0x26cea4,_0x9f3297=_0x2fc59f['anchor']&&_0xbfb422&&_0xbfb422['flow']&&_0xbfb422['flow']['GA']?_0xbfb422['flow']:null,_0x504035=Math['cos'](_0x418fd9),_0x32c97c=Math['cos'](_0x2fc59f['flowOwn']*_0x56f8e4),_0x5b1726=Math['cos'](_0x2fc59f['flowFinger']*_0x56f8e4),_0x54dbd7=0.45;_0x4992f1&&(_0x28f21d=_0x3c62fd(),_0x54dbd7=(_0x28f21d?_0x28f21d['cy']:0.15)+0.3);for(_0x4f25f0=0x1;_0x4f25f0<_0x651dc9;_0x4f25f0++){_0x17ca02[_0x4f25f0*0x3]=0x0,_0x17ca02[_0x4f25f0*0x3+0x1]=0x0,_0x17ca02[_0x4f25f0*0x3+0x2]=0x0,_0x2187fc[_0x4f25f0]=0x0;if(!(_0x691d39[_0x4f25f0*0x4+0x3]>1e-9))continue;_0x4e74e2=_0x120335[_0x4f25f0],_0x10ee65=_0x120335[_0x4f25f0-0x1],_0x45a00c=Math['floor']((_0x4e74e2['x']+_0x10ee65['x'])*0.5/_0x478e2c)+_0x301e9e,_0x4123eb=Math['floor']((_0x4e74e2['y']+_0x10ee65['y'])*0.5/_0x478e2c)+_0x301e9e,_0x4b3681=Math['floor']((_0x4e74e2['z']+_0x10ee65['z'])*0.5/_0x478e2c)+_0x301e9e;if(_0x45a00c<0x0||_0x4123eb<0x0||_0x4b3681<0x0||_0x45a00c>=_0x5906f1||_0x4123eb>=_0x5906f1||_0x4b3681>=_0x5906f1)continue;_0x326b38=_0xca84c0['get'](_0x45a00c+_0x5906f1*(_0x4123eb+_0x5906f1*_0x4b3681));if(_0x326b38===undefined)continue;_0x326b38*=0x3,_0x22cb11=_0x1be637[_0x326b38],_0xaf4d22=_0x1be637[_0x326b38+0x1],_0x45858e=_0x1be637[_0x326b38+0x2],_0x4a22f2=Math['sqrt'](_0x22cb11*_0x22cb11+_0xaf4d22*_0xaf4d22+_0x45858e*_0x45858e),_0xbe091b=_0x4a22f2;if(!(_0xbe091b>0.01))continue;_0x52b50f=_0x4f25f0/_0x533768;if(_0x52b50f<_0x2fc59f['gripFrom'])_0xbe091b*=_0x52b50f/_0x2fc59f['gripFrom'];if(_0xbe091b>0x1)_0xbe091b=0x1;if(_0x9f3297&&_0x2fc59f['flyOnly']){_0xbe091b*=0x1-_0x348fe3(_0x9f3297,(_0x4e74e2['x']+_0x10ee65['x'])*0.5,(_0x4e74e2['y']+_0x10ee65['y'])*0.5,(_0x4e74e2['z']+_0x10ee65['z'])*0.5);if(!(_0xbe091b>0.01))continue;}_0x2187fc[_0x4f25f0]=_0xbe091b;if(_0x9f3297&&_0x2fc59f['pullIn']>0x0&&_0x348fe3(_0x9f3297,_0x4e74e2['x'],_0x4e74e2['y'],_0x4e74e2['z'])<0.5){_0x11cbcb=!![];if(_0x4f25f0<_0x1854f5)_0x1854f5=_0x4f25f0;if(_0x4f25f0>_0x219a18)_0x219a18=_0x4f25f0;}_0x38105e=_0x120335[_0x4f25f0-0x1-_0x39bd33<0x0?0x0:_0x4f25f0-0x1-_0x39bd33],_0x13e151=_0x120335[_0x4f25f0+_0x39bd33>_0x533768?_0x533768:_0x4f25f0+_0x39bd33],_0x15962f=_0x691d39[_0x4f25f0*0x4],_0x4ec584=_0x691d39[_0x4f25f0*0x4+0x1],_0x1d9ccc=_0x691d39[_0x4f25f0*0x4+0x2],_0x1b7d2a=_0x13e151['x']-_0x38105e['x'],_0x5817c1=_0x13e151['y']-_0x38105e['y'],_0x146a55=_0x13e151['z']-_0x38105e['z'],_0x256e56=Math['sqrt'](_0x1b7d2a*_0x1b7d2a+_0x5817c1*_0x5817c1+_0x146a55*_0x146a55);_0x256e56>1e-9?(_0x1b7d2a/=_0x256e56,_0x5817c1/=_0x256e56,_0x146a55/=_0x256e56,_0xbb6fa7=_0x1b7d2a*_0x15962f+_0x5817c1*_0x4ec584+_0x146a55*_0x1d9ccc):(_0x1b7d2a=_0x15962f,_0x5817c1=_0x4ec584,_0x146a55=_0x1d9ccc,_0xbb6fa7=0x1);_0x120f7c=_0x4e74e2['x']-_0x38105e['x'],_0x5ad864=_0x4e74e2['y']-_0x38105e['y'],_0x29f383=_0x4e74e2['z']-_0x38105e['z'],_0x37bad0=Math['sqrt'](_0x120f7c*_0x120f7c+_0x5ad864*_0x5ad864+_0x29f383*_0x29f383);_0x37bad0>1e-9&&(_0x10ff28=(_0x120f7c*_0x15962f+_0x5ad864*_0x4ec584+_0x29f383*_0x1d9ccc)/_0x37bad0,_0x10ff28>_0xbb6fa7&&(_0xbb6fa7=_0x10ff28,_0x1b7d2a=_0x120f7c/_0x37bad0,_0x5817c1=_0x5ad864/_0x37bad0,_0x146a55=_0x29f383/_0x37bad0));_0x120f7c=_0x13e151['x']-_0x10ee65['x'],_0x5ad864=_0x13e151['y']-_0x10ee65['y'],_0x29f383=_0x13e151['z']-_0x10ee65['z'],_0x37bad0=Math['sqrt'](_0x120f7c*_0x120f7c+_0x5ad864*_0x5ad864+_0x29f383*_0x29f383);_0x37bad0>1e-9&&(_0x10ff28=(_0x120f7c*_0x15962f+_0x5ad864*_0x4ec584+_0x29f383*_0x1d9ccc)/_0x37bad0,_0x10ff28>_0xbb6fa7&&(_0xbb6fa7=_0x10ff28,_0x1b7d2a=_0x120f7c/_0x37bad0,_0x5817c1=_0x5ad864/_0x37bad0,_0x146a55=_0x29f383/_0x37bad0));_0x120f7c=_0x22cb11/_0x4a22f2,_0x5ad864=_0xaf4d22/_0x4a22f2,_0x29f383=_0x45858e/_0x4a22f2;if(_0x4992f1){_0x14f6a0=(_0x4e74e2['x']+_0x10ee65['x'])*0.5,_0x29f88b=(_0x4e74e2['y']+_0x10ee65['y'])*0.5,_0x1362c8=(_0x4e74e2['z']+_0x10ee65['z'])*0.5,_0x45a00c=Math['floor']((_0x14f6a0-_0x4992f1['x0'])*_0x4992f1['inv']),_0x4123eb=Math['floor']((_0x29f88b-_0x4992f1['y0'])*_0x4992f1['inv']),_0x4b3681=Math['floor']((_0x1362c8-_0x4992f1['z0'])*_0x4992f1['inv']);if(_0x45a00c>=0x0&&_0x4123eb>=0x0&&_0x4b3681>=0x0&&_0x45a00c<_0x4992f1['nx']&&_0x4123eb<_0x4992f1['ny']&&_0x4b3681<_0x4992f1['nz']){_0xf55f4=_0x45a00c+_0x4992f1['nx']*(_0x4123eb+_0x4992f1['ny']*_0x4b3681),_0x4bd342=_0x4992f1['GN'][_0xf55f4],_0x224444=_0x4992f1['GM'][_0xf55f4];if(_0x4bd342>=_0x4992f1['dense']&&_0x224444>=0.85*_0x4bd342&&_0x4992f1['GX'][_0xf55f4]*_0x1b7d2a+_0x4992f1['GY'][_0xf55f4]*_0x5817c1+_0x4992f1['GZ'][_0xf55f4]*_0x146a55>=_0x504035*_0x224444)continue;}_0x39b0e6=_0x1ff530(_0x4992f1,_0x14f6a0,_0x29f88b,_0x1362c8,_0x1b7d2a,_0x5817c1,_0x146a55,_0x120f7c,_0x5ad864,_0x29f383,_0x32c97c,_0x5b1726);if(_0x39b0e6===0x0)for(_0x2024f2=0x1;_0x2024f2<=_0x30710e;_0x2024f2++){_0x1a5daf=-_0x14f6a0,_0x4aae52=_0x29f88b<_0x54dbd7?0x0:_0x54dbd7-_0x29f88b,_0x2da21f=-_0x1362c8,_0x37bad0=Math['sqrt'](_0x1a5daf*_0x1a5daf+_0x4aae52*_0x4aae52+_0x2da21f*_0x2da21f);if(!(_0x37bad0>0.000001))break;_0x14f6a0+=_0x1a5daf/_0x37bad0*_0x4992f1['fc'],_0x29f88b+=_0x4aae52/_0x37bad0*_0x4992f1['fc'],_0x1362c8+=_0x2da21f/_0x37bad0*_0x4992f1['fc'],_0x39b0e6=_0x1ff530(_0x4992f1,_0x14f6a0,_0x29f88b,_0x1362c8,_0x1b7d2a,_0x5817c1,_0x146a55,_0x120f7c,_0x5ad864,_0x29f383,_0x32c97c,_0x5b1726);if(_0x39b0e6!==0x0){if(_0x39b0e6>0x0)_0x39b0e6=0x4;break;}}if(_0x39b0e6<0x0){_0x5c89cf['_tk']++;continue;}if(_0x39b0e6===0x0)_0x5c89cf['_tf']++;else{_0x120f7c=_0x3a9650[0x0],_0x5ad864=_0x3a9650[0x1],_0x29f383=_0x3a9650[0x2];if(_0x39b0e6===0x1)_0x5c89cf['_to']++;else{if(_0x39b0e6===0x2)_0x5c89cf['_ts']++;else{if(_0x39b0e6===0x3)_0x5c89cf['_ta']++;else _0x5c89cf['_tr']++;}}}}_0xbb6fa7=_0x1b7d2a*_0x120f7c+_0x5817c1*_0x5ad864+_0x146a55*_0x29f383;if(_0xbb6fa7>0x1)_0xbb6fa7=0x1;else{if(_0xbb6fa7<-0x1)_0xbb6fa7=-0x1;}_0x10ff28=Math['acos'](_0xbb6fa7);if(_0x10ff28<=_0x418fd9)continue;_0x2694c6=_0x10ff28>=_0x166958?0x1:(_0x10ff28-_0x418fd9)/(_0x166958-_0x418fd9);if(_0x2694c6<0x1)_0x2694c6=_0x2694c6*_0x2694c6*(0x3-0x2*_0x2694c6);_0x5a7896=_0x10ff28*_0x2694c6*_0xbe091b;if(_0x5a7896<0.003)continue;_0x1a5daf=_0x5817c1*_0x29f383-_0x146a55*_0x5ad864,_0x4aae52=_0x146a55*_0x120f7c-_0x1b7d2a*_0x29f383,_0x2da21f=_0x1b7d2a*_0x5ad864-_0x5817c1*_0x120f7c,_0x37bad0=Math['sqrt'](_0x1a5daf*_0x1a5daf+_0x4aae52*_0x4aae52+_0x2da21f*_0x2da21f);if(_0x37bad0<0.0001){Math['abs'](_0x1b7d2a)<0.9?(_0x1a5daf=0x0,_0x4aae52=_0x146a55,_0x2da21f=-_0x5817c1):(_0x1a5daf=-_0x146a55,_0x4aae52=0x0,_0x2da21f=_0x1b7d2a);_0x37bad0=Math['sqrt'](_0x1a5daf*_0x1a5daf+_0x4aae52*_0x4aae52+_0x2da21f*_0x2da21f);if(!(_0x37bad0>1e-9))continue;}_0x5a7896/=_0x37bad0,_0x17ca02[_0x4f25f0*0x3]=_0x1a5daf*_0x5a7896,_0x17ca02[_0x4f25f0*0x3+0x1]=_0x4aae52*_0x5a7896,_0x17ca02[_0x4f25f0*0x3+0x2]=_0x2da21f*_0x5a7896,_0x11cbcb=!![];if(_0x4f25f0<_0x1854f5)_0x1854f5=_0x4f25f0;if(_0x4f25f0>_0x219a18)_0x219a18=_0x4f25f0;}if(!_0x11cbcb)return _0x120335;var _0x19e7fb=Math['max'](0x1,_0x1854f5-0x1),_0xbe0a57=Math['min'](_0x533768,_0x219a18+0x1),_0x523fc9,_0x216ef7,_0x4a87e7,_0x26f0fe,_0x3ec6a6,_0x4a140e,_0x448243;_0x448243=(_0x19e7fb>0x1?_0x19e7fb-0x1:_0x19e7fb)*0x3,_0x523fc9=_0x17ca02[_0x448243],_0x216ef7=_0x17ca02[_0x448243+0x1],_0x4a87e7=_0x17ca02[_0x448243+0x2];for(_0x4f25f0=_0x19e7fb;_0x4f25f0<=_0xbe0a57;_0x4f25f0++){_0x448243=_0x4f25f0*0x3,_0x26f0fe=_0x17ca02[_0x448243],_0x3ec6a6=_0x17ca02[_0x448243+0x1],_0x4a140e=_0x17ca02[_0x448243+0x2],_0x4f25f0<_0x533768?(_0x17ca02[_0x448243]=(_0x523fc9+0x2*_0x26f0fe+_0x17ca02[_0x448243+0x3])*0.25,_0x17ca02[_0x448243+0x1]=(_0x216ef7+0x2*_0x3ec6a6+_0x17ca02[_0x448243+0x4])*0.25,_0x17ca02[_0x448243+0x2]=(_0x4a87e7+0x2*_0x4a140e+_0x17ca02[_0x448243+0x5])*0.25):(_0x17ca02[_0x448243]=(_0x523fc9+0x3*_0x26f0fe)*0.25,_0x17ca02[_0x448243+0x1]=(_0x216ef7+0x3*_0x3ec6a6)*0.25,_0x17ca02[_0x448243+0x2]=(_0x4a87e7+0x3*_0x4a140e)*0.25),_0x523fc9=_0x26f0fe,_0x216ef7=_0x3ec6a6,_0x4a87e7=_0x4a140e;}var _0x406f73=new Array(_0x651dc9),_0x45b65d=_0x2fc59f['collide']?_0x3c62fd():null,_0x5f085e=null,_0x4aa992=_0x2fc59f['headLift']>0x0?_0x2fc59f['headLift']:1.02,_0x25a978=0x1,_0x2e77bc=0x1,_0x2e8d24=0x1,_0x187da6=0x0,_0x5d8af4,_0x32c743,_0x2ec89a,_0x45df53,_0x54d013,_0x55b8f9,_0x2355f6,_0x39cf7e,_0x14e42c,_0x33c403,_0x3138c4,_0x2a91ad,_0xe16b6f,_0x287869,_0x1c6134,_0x190fff,_0x2a364d,_0x42d3ae,_0x1be172,_0x160a34,_0x1758ad;if(_0x45b65d){_0x25a978=_0x45b65d['a2'],_0x2e77bc=_0x45b65d['b2'],_0x2e8d24=_0x45b65d['c2'],_0x187da6=_0x45b65d['cy'];try{_0x5f085e=_0x2ee1c6['REGROW']&&typeof _0x2ee1c6['REGROW']['neckPush']==='function'?_0x2ee1c6['REGROW']['neckPush']:null;}catch(_0x1068aa){_0x5f085e=null;}}for(_0x4f25f0=0x0;_0x4f25f0<_0x19e7fb;_0x4f25f0++)_0x406f73[_0x4f25f0]=_0x120335[_0x4f25f0];var _0x45a17c=_0x120335[_0x19e7fb-0x1]['x'],_0x2af630=_0x120335[_0x19e7fb-0x1]['y'],_0x4803b2=_0x120335[_0x19e7fb-0x1]['z'];for(_0x4f25f0=_0x19e7fb;_0x4f25f0<_0x651dc9;_0x4f25f0++){_0x15962f=_0x691d39[_0x4f25f0*0x4],_0x4ec584=_0x691d39[_0x4f25f0*0x4+0x1],_0x1d9ccc=_0x691d39[_0x4f25f0*0x4+0x2],_0x508576=_0x691d39[_0x4f25f0*0x4+0x3];_0x4f25f0<=_0xbe0a57&&(_0x5d8af4=_0x17ca02[_0x4f25f0*0x3],_0x32c743=_0x17ca02[_0x4f25f0*0x3+0x1],_0x2ec89a=_0x17ca02[_0x4f25f0*0x3+0x2],_0x5a7896=Math['sqrt'](_0x5d8af4*_0x5d8af4+_0x32c743*_0x32c743+_0x2ec89a*_0x2ec89a),_0x5a7896>0.00001&&(_0x5d8af4/=_0x5a7896,_0x32c743/=_0x5a7896,_0x2ec89a/=_0x5a7896,_0x45df53=Math['cos'](_0x5a7896),_0x54d013=Math['sin'](_0x5a7896),_0x55b8f9=(_0x5d8af4*_0x15962f+_0x32c743*_0x4ec584+_0x2ec89a*_0x1d9ccc)*(0x1-_0x45df53),_0x120f7c=_0x15962f*_0x45df53+(_0x32c743*_0x1d9ccc-_0x2ec89a*_0x4ec584)*_0x54d013+_0x5d8af4*_0x55b8f9,_0x5ad864=_0x4ec584*_0x45df53+(_0x2ec89a*_0x15962f-_0x5d8af4*_0x1d9ccc)*_0x54d013+_0x32c743*_0x55b8f9,_0x29f383=_0x1d9ccc*_0x45df53+(_0x5d8af4*_0x4ec584-_0x32c743*_0x15962f)*_0x54d013+_0x2ec89a*_0x55b8f9,_0x15962f=_0x120f7c,_0x4ec584=_0x5ad864,_0x1d9ccc=_0x29f383));_0x2355f6=_0x45a17c+_0x15962f*_0x508576,_0x39cf7e=_0x2af630+_0x4ec584*_0x508576,_0x14e42c=_0x4803b2+_0x1d9ccc*_0x508576;if(_0x9f3297&&_0x508576>1e-9){_0x2a91ad=_0x120335[_0x4f25f0];var _0x3fae99=_0x2355f6-_0x2a91ad['x'],_0x203e45=_0x39cf7e-_0x2a91ad['y'],_0x445032=_0x14e42c-_0x2a91ad['z'],_0x485aa9=_0x3fae99*_0x3fae99+_0x203e45*_0x203e45+_0x445032*_0x445032,_0x3ddb45=0x0,_0xae4fdc=0x1;if(_0x485aa9>1e-10){_0x3ddb45=_0x348fe3(_0x9f3297,_0x2a91ad['x'],_0x2a91ad['y'],_0x2a91ad['z']);if(_0x3ddb45>0x0){var _0x3bc83a=_0x508576/(_0x2fc59f['anchorLen']>0.01?_0x2fc59f['anchorLen']:0.13);if(_0x3bc83a>0.5)_0x3bc83a=0.5;_0x3bc83a*=_0x3ddb45,_0x2a364d=_0x2a91ad['x'],_0x42d3ae=_0x2a91ad['y']>_0x54dbd7?_0x2a91ad['y']-_0x54dbd7:0x0,_0x1be172=_0x2a91ad['z'],_0x160a34=Math['sqrt'](_0x2a364d*_0x2a364d+_0x42d3ae*_0x42d3ae+_0x1be172*_0x1be172);_0x160a34>1e-9?(_0x2a364d/=_0x160a34,_0x42d3ae/=_0x160a34,_0x1be172/=_0x160a34):(_0x2a364d=0x0,_0x42d3ae=0x1,_0x1be172=0x0);_0xae4fdc=_0x348fe3(_0x9f3297,_0x2355f6,_0x39cf7e,_0x14e42c);var _0x440d01=_0x3fae99*_0x2a364d+_0x203e45*_0x42d3ae+_0x445032*_0x1be172,_0x32dc20=_0x3bc83a*(0x1-_0xae4fdc),_0x44e500=_0x2fc59f['flyOnly']?_0x3bc83a:_0x2187fc[_0x4f25f0]>0.01?_0x32dc20:Math['max'](_0x32dc20,_0x3bc83a*0.5),_0x213a4f=-(_0x440d01*_0x2a364d*_0x3bc83a+(_0x3fae99-_0x440d01*_0x2a364d)*_0x44e500),_0x2f9e75=-(_0x440d01*_0x42d3ae*_0x3bc83a+(_0x203e45-_0x440d01*_0x42d3ae)*_0x44e500),_0x28ebd8=-(_0x440d01*_0x1be172*_0x3bc83a+(_0x445032-_0x440d01*_0x1be172)*_0x44e500),_0xc65e9e=Math['sqrt'](_0x213a4f*_0x213a4f+_0x2f9e75*_0x2f9e75+_0x28ebd8*_0x28ebd8),_0x3bd0bc=0.5*_0x508576;_0xc65e9e>_0x3bd0bc&&(_0x213a4f*=_0x3bd0bc/_0xc65e9e,_0x2f9e75*=_0x3bd0bc/_0xc65e9e,_0x28ebd8*=_0x3bd0bc/_0xc65e9e),_0x120f7c=_0x2355f6+_0x213a4f-_0x45a17c,_0x5ad864=_0x39cf7e+_0x2f9e75-_0x2af630,_0x29f383=_0x14e42c+_0x28ebd8-_0x4803b2,_0x256e56=Math['sqrt'](_0x120f7c*_0x120f7c+_0x5ad864*_0x5ad864+_0x29f383*_0x29f383),_0x256e56>1e-9&&(_0x2355f6=_0x45a17c+_0x120f7c/_0x256e56*_0x508576,_0x39cf7e=_0x2af630+_0x5ad864/_0x256e56*_0x508576,_0x14e42c=_0x4803b2+_0x29f383/_0x256e56*_0x508576,_0x5c89cf['_an']++);}}if(_0x2fc59f['pullIn']>0x0&&_0x2187fc[_0x4f25f0]>0.01&&_0x3ddb45<0.5){_0xae4fdc=_0x348fe3(_0x9f3297,_0x2355f6,_0x39cf7e,_0x14e42c);if(_0xae4fdc<0x1){_0x2a364d=-_0x2355f6,_0x42d3ae=_0x39cf7e>_0x54dbd7?_0x54dbd7-_0x39cf7e:0x0,_0x1be172=-_0x14e42c,_0x160a34=Math['sqrt'](_0x2a364d*_0x2a364d+_0x42d3ae*_0x42d3ae+_0x1be172*_0x1be172);if(_0x160a34>0.000001){_0x2a364d/=_0x160a34,_0x42d3ae/=_0x160a34,_0x1be172/=_0x160a34;var _0x8575bc=![],_0x10127b;for(_0x10127b=0x1;_0x10127b<=_0x30710e+0x1;_0x10127b++)if(_0x348fe3(_0x9f3297,_0x2355f6+_0x2a364d*_0x9f3297['fc']*_0x10127b,_0x39cf7e+_0x42d3ae*_0x9f3297['fc']*_0x10127b,_0x14e42c+_0x1be172*_0x9f3297['fc']*_0x10127b)>=0.5){_0x8575bc=!![];break;}if(_0x8575bc){var _0x3925ca=_0x2fc59f['pullIn']*_0x2187fc[_0x4f25f0]*(0x1-_0xae4fdc);_0x120f7c=(_0x2355f6-_0x45a17c)/_0x508576+_0x2a364d*_0x3925ca,_0x5ad864=(_0x39cf7e-_0x2af630)/_0x508576+_0x42d3ae*_0x3925ca,_0x29f383=(_0x14e42c-_0x4803b2)/_0x508576+_0x1be172*_0x3925ca,_0x256e56=Math['sqrt'](_0x120f7c*_0x120f7c+_0x5ad864*_0x5ad864+_0x29f383*_0x29f383),_0x256e56>1e-9&&(_0x2355f6=_0x45a17c+_0x120f7c/_0x256e56*_0x508576,_0x39cf7e=_0x2af630+_0x5ad864/_0x256e56*_0x508576,_0x14e42c=_0x4803b2+_0x29f383/_0x256e56*_0x508576,_0x5c89cf['_pi']++);}}}}}if(_0x45b65d&&_0x508576>1e-9){_0x2a91ad=_0x120335[_0x4f25f0],_0x190fff=_0x2a91ad['y']-_0x187da6,_0x3138c4=Math['sqrt'](_0x2a91ad['x']*_0x2a91ad['x']/_0x25a978+_0x190fff*_0x190fff/_0x2e77bc+_0x2a91ad['z']*_0x2a91ad['z']/_0x2e8d24);if(_0x3138c4>_0x4aa992)_0x3138c4=_0x4aa992;_0x190fff=_0x39cf7e-_0x187da6,_0x33c403=Math['sqrt'](_0x2355f6*_0x2355f6/_0x25a978+_0x190fff*_0x190fff/_0x2e77bc+_0x14e42c*_0x14e42c/_0x2e8d24),_0x33c403<_0x3138c4-0.000001&&(_0x190fff=_0x2af630-_0x187da6,_0x2a364d=_0x45a17c/_0x25a978,_0x42d3ae=_0x190fff/_0x2e77bc,_0x1be172=_0x4803b2/_0x2e8d24,_0x160a34=Math['sqrt'](_0x2a364d*_0x2a364d+_0x42d3ae*_0x42d3ae+_0x1be172*_0x1be172),_0x160a34>1e-9&&(_0x2a364d/=_0x160a34,_0x42d3ae/=_0x160a34,_0x1be172/=_0x160a34,_0x1758ad=_0x15962f*_0x2a364d+_0x4ec584*_0x42d3ae+_0x1d9ccc*_0x1be172,_0x1758ad<0x0&&(_0x120f7c=_0x15962f-_0x1758ad*_0x2a364d,_0x5ad864=_0x4ec584-_0x1758ad*_0x42d3ae,_0x29f383=_0x1d9ccc-_0x1758ad*_0x1be172,_0x256e56=Math['sqrt'](_0x120f7c*_0x120f7c+_0x5ad864*_0x5ad864+_0x29f383*_0x29f383),_0x256e56<0.35&&(_0x10ee65=_0x120335[_0x4f25f0-0x1],_0x120f7c=(_0x2a91ad['x']-_0x10ee65['x'])/_0x508576,_0x5ad864=(_0x2a91ad['y']-_0x10ee65['y'])/_0x508576,_0x29f383=(_0x2a91ad['z']-_0x10ee65['z'])/_0x508576,_0x1758ad=_0x120f7c*_0x2a364d+_0x5ad864*_0x42d3ae+_0x29f383*_0x1be172,_0x1758ad<0x0&&(_0x120f7c-=_0x1758ad*_0x2a364d,_0x5ad864-=_0x1758ad*_0x42d3ae,_0x29f383-=_0x1758ad*_0x1be172),_0x256e56=Math['sqrt'](_0x120f7c*_0x120f7c+_0x5ad864*_0x5ad864+_0x29f383*_0x29f383)),_0x256e56>0.001&&(_0x2355f6=_0x45a17c+_0x120f7c/_0x256e56*_0x508576,_0x39cf7e=_0x2af630+_0x5ad864/_0x256e56*_0x508576,_0x14e42c=_0x4803b2+_0x29f383/_0x256e56*_0x508576))),_0x190fff=_0x39cf7e-_0x187da6,_0x33c403=Math['sqrt'](_0x2355f6*_0x2355f6/_0x25a978+_0x190fff*_0x190fff/_0x2e77bc+_0x14e42c*_0x14e42c/_0x2e8d24),_0x33c403<_0x3138c4-0.000001&&_0x33c403>1e-9&&(_0xe16b6f=_0x3138c4/_0x33c403,_0x2355f6*=_0xe16b6f,_0x39cf7e=_0x187da6+_0x190fff*_0xe16b6f,_0x14e42c*=_0xe16b6f,_0x120f7c=_0x2355f6-_0x45a17c,_0x5ad864=_0x39cf7e-_0x2af630,_0x29f383=_0x14e42c-_0x4803b2,_0x256e56=Math['sqrt'](_0x120f7c*_0x120f7c+_0x5ad864*_0x5ad864+_0x29f383*_0x29f383),_0x256e56>1e-9&&(_0x2355f6=_0x45a17c+_0x120f7c/_0x256e56*_0x508576,_0x39cf7e=_0x2af630+_0x5ad864/_0x256e56*_0x508576,_0x14e42c=_0x4803b2+_0x29f383/_0x256e56*_0x508576)),_0x5c89cf['_pu']++);}_0x287869={'x':_0x2355f6,'y':_0x39cf7e,'z':_0x14e42c};if(_0x5f085e&&_0x508576>1e-9)try{_0x1c6134=_0x5f085e(_0x287869),_0x1c6134&&_0x1c6134!==_0x287869&&_0x5f085e(_0x120335[_0x4f25f0])===_0x120335[_0x4f25f0]&&(_0x120f7c=_0x1c6134['x']-_0x45a17c,_0x5ad864=_0x1c6134['y']-_0x2af630,_0x29f383=_0x1c6134['z']-_0x4803b2,_0x256e56=Math['sqrt'](_0x120f7c*_0x120f7c+_0x5ad864*_0x5ad864+_0x29f383*_0x29f383),_0x256e56>1e-9&&(_0x287869={'x':_0x45a17c+_0x120f7c/_0x256e56*_0x508576,'y':_0x2af630+_0x5ad864/_0x256e56*_0x508576,'z':_0x4803b2+_0x29f383/_0x256e56*_0x508576},_0x5c89cf['_nk']++));}catch(_0x3cdce9){}_0x45a17c=_0x287869['x'],_0x2af630=_0x287869['y'],_0x4803b2=_0x287869['z'],_0x406f73[_0x4f25f0]=_0x287869;}_0x5c89cf['_t']++;try{_0x406f73['_pre']=_0x120335['_pre']||_0x120335;}catch(_0x531840){}return _0x406f73;}_0x2fc59f['_apply']=_0x237698,_0x2fc59f['_cell']=function(_0x65e5c9,_0x354527,_0x125cc9){var _0x2a765a=_0x4f9fdb();if(!_0x2a765a)return null;var _0x442ab6=_0x2a765a['map']['get'](Math['floor'](_0x65e5c9/_0x2fc59f['cell'])+_0x301e9e+_0x5906f1*(Math['floor'](_0x354527/_0x2fc59f['cell'])+_0x301e9e+_0x5906f1*(Math['floor'](_0x125cc9/_0x2fc59f['cell'])+_0x301e9e)));return _0x442ab6===undefined?null:[_0x2a765a['V'][_0x442ab6*0x3],_0x2a765a['V'][_0x442ab6*0x3+0x1],_0x2a765a['V'][_0x442ab6*0x3+0x2]];},_0x2fc59f['_dist']=function(_0x3967da,_0x39269f,_0x126d0d){return _0xbfb422&&_0xbfb422['flow']&&_0xbfb422['flow']['DF']?_0x434ea3(_0xbfb422['flow']['DF'],_0x3967da,_0x39269f,_0x126d0d):null;};function _0x2445f8(_0x10e17b,_0x13b3c9){if(!_0x2fc59f['enabled']||!_0x2fc59f['sweep']||!_0x2fc59f['sweeps']['length']||!_0x10e17b||_0x10e17b['length']<0x2)return _0x10e17b;var _0x93a284=_0x39bc6f();if(!_0x93a284||!_0x93a284['n'])return _0x10e17b;var _0x3b49c6=_0x10e17b['length'],_0x1cd026,_0x3e9b11,_0x441f29,_0x21ac75=_0x93a284['mn'],_0x69464e=_0x93a284['mx'],_0x997859=![];if(!_0x13b3c9||_0x13b3c9['length']!==_0x3b49c6)_0x13b3c9=_0x10e17b;for(_0x1cd026=0x0;_0x1cd026<_0x3b49c6;_0x1cd026++){_0x3e9b11=_0x13b3c9[_0x1cd026];if(_0x3e9b11['x']>=_0x21ac75[0x0]&&_0x3e9b11['x']<=_0x69464e[0x0]&&_0x3e9b11['y']>=_0x21ac75[0x1]&&_0x3e9b11['y']<=_0x69464e[0x1]&&_0x3e9b11['z']>=_0x21ac75[0x2]&&_0x3e9b11['z']<=_0x69464e[0x2]){_0x997859=!![];break;}}if(!_0x997859)return _0x10e17b;_0x5a2e5b['length']<_0x3b49c6*0x4&&(_0x5a2e5b=new Float64Array(_0x3b49c6*0x4+0x80),_0xba8d57=new Float64Array(_0x3b49c6*0x3+0x60),_0x26cea4=new Float64Array(_0x3b49c6+0x20),_0x41ed15=new Float64Array(_0x3b49c6+0x20),_0x321c1b=new Int32Array(_0x3b49c6+0x20));var _0x1f0328=_0x2fc59f['cell'],_0x4e325d=_0x93a284['map'],_0x50eca5=_0x93a284['V'],_0x456e42=_0x3b49c6-0x1,_0x4f104f=_0x5a2e5b,_0x5162c2=_0xba8d57,_0x1c79d6=![],_0x3cd105=_0x3b49c6,_0x367ad9=0x0,_0x3adf6e=0x0,_0x3f362f=_0x10e17b[0x0]['x'],_0x2571c8=_0x10e17b[0x0]['y'],_0x2d5ff8=_0x10e17b[0x0]['z'],_0x7742fb,_0x359fea,_0x267fd6,_0x3fd41a,_0x1d62b8;for(_0x1cd026=0x1;_0x1cd026<_0x3b49c6;_0x1cd026++){_0x3e9b11=_0x10e17b[_0x1cd026],_0x7742fb=_0x3e9b11['x']-_0x3f362f,_0x359fea=_0x3e9b11['y']-_0x2571c8,_0x267fd6=_0x3e9b11['z']-_0x2d5ff8,_0x1d62b8=Math['sqrt'](_0x7742fb*_0x7742fb+_0x359fea*_0x359fea+_0x267fd6*_0x267fd6),_0x1d62b8>1e-9?(_0x4f104f[_0x1cd026*0x4]=_0x7742fb/_0x1d62b8,_0x4f104f[_0x1cd026*0x4+0x1]=_0x359fea/_0x1d62b8,_0x4f104f[_0x1cd026*0x4+0x2]=_0x267fd6/_0x1d62b8):(_0x4f104f[_0x1cd026*0x4]=0x0,_0x4f104f[_0x1cd026*0x4+0x1]=-0x1,_0x4f104f[_0x1cd026*0x4+0x2]=0x0),_0x4f104f[_0x1cd026*0x4+0x3]=_0x1d62b8,_0x3adf6e+=_0x1d62b8,_0x3f362f=_0x3e9b11['x'],_0x2571c8=_0x3e9b11['y'],_0x2d5ff8=_0x3e9b11['z'];}var _0xe477b0=_0x3adf6e>0x0?Math['round'](_0x2fc59f['flowSmooth']/(_0x3adf6e/_0x456e42)):0x1;if(!(_0xe477b0>=0x1))_0xe477b0=0x1;else{if(_0xe477b0>0x10)_0xe477b0=0x10;}var _0x24792c=_0x3c62fd(),_0x1ae0a9=0x1,_0x52da1f=0x1,_0x235fd6=0x1,_0x25106f=0x0,_0x420be6=_0x2fc59f['wrapNear'],_0x3c4b53=Math['max'](_0x2fc59f['wrapFar'],_0x420be6+0.001),_0x76c371=_0x2fc59f['sweepGrip'],_0x59530b=Math['max'](0x0,_0x2fc59f['sweepTol'])*_0x56f8e4;_0x24792c&&(_0x1ae0a9=_0x24792c['a2'],_0x52da1f=_0x24792c['b2'],_0x235fd6=_0x24792c['c2'],_0x25106f=_0x24792c['cy']);var _0x196cf0,_0x50742a,_0xf95004,_0x49ee07,_0x40c8dd,_0x4f8031,_0x2959ac,_0x2a88ce,_0x16cf2f,_0x26a9a6,_0x193ebf,_0x3829b4,_0x117ca5,_0x425fd0,_0x1877e5,_0x55c481,_0x3347c4,_0x252900,_0x162b93,_0x35182d,_0x3da543,_0x181ce2,_0x1a3cb0,_0x398262,_0x16928b,_0x246490,_0x19e77f,_0x470308,_0xc7a951,_0x403b28,_0x5740ed,_0x3a35e7,_0xb6a933;for(_0x1cd026=0x1;_0x1cd026<_0x3b49c6;_0x1cd026++){_0x5162c2[_0x1cd026*0x3]=0x0,_0x5162c2[_0x1cd026*0x3+0x1]=0x0,_0x5162c2[_0x1cd026*0x3+0x2]=0x0;if(!(_0x4f104f[_0x1cd026*0x4+0x3]>1e-9))continue;_0x3e9b11=_0x13b3c9[_0x1cd026],_0x441f29=_0x13b3c9[_0x1cd026-0x1],_0x196cf0=Math['floor']((_0x3e9b11['x']+_0x441f29['x'])*0.5/_0x1f0328)+_0x301e9e,_0x50742a=Math['floor']((_0x3e9b11['y']+_0x441f29['y'])*0.5/_0x1f0328)+_0x301e9e,_0xf95004=Math['floor']((_0x3e9b11['z']+_0x441f29['z'])*0.5/_0x1f0328)+_0x301e9e;if(_0x196cf0<0x0||_0x50742a<0x0||_0xf95004<0x0||_0x196cf0>=_0x5906f1||_0x50742a>=_0x5906f1||_0xf95004>=_0x5906f1)continue;_0x49ee07=_0x4e325d['get'](_0x196cf0+_0x5906f1*(_0x50742a+_0x5906f1*_0xf95004));if(_0x49ee07===undefined)continue;_0x49ee07*=0x3,_0x40c8dd=_0x50eca5[_0x49ee07],_0x4f8031=_0x50eca5[_0x49ee07+0x1],_0x2959ac=_0x50eca5[_0x49ee07+0x2],_0x2a88ce=Math['sqrt'](_0x40c8dd*_0x40c8dd+_0x4f8031*_0x4f8031+_0x2959ac*_0x2959ac),_0x16cf2f=_0x2a88ce;if(!(_0x16cf2f>0.01))continue;_0x26a9a6=_0x1cd026/_0x456e42;if(_0x76c371>0x0&&_0x26a9a6<_0x76c371)_0x16cf2f*=_0x26a9a6/_0x76c371;if(_0x16cf2f>0x1)_0x16cf2f=0x1;_0x193ebf=_0x40c8dd/_0x2a88ce,_0x3829b4=_0x4f8031/_0x2a88ce,_0x117ca5=_0x2959ac/_0x2a88ce,_0x3e9b11=_0x10e17b[_0x1cd026],_0x441f29=_0x10e17b[_0x1cd026-0x1];if(_0x24792c&&_0x2fc59f['sweepWrap']){_0x5740ed=(_0x3e9b11['x']+_0x441f29['x'])*0.5,_0x3a35e7=(_0x3e9b11['y']+_0x441f29['y'])*0.5-_0x25106f,_0xb6a933=(_0x3e9b11['z']+_0x441f29['z'])*0.5,_0x470308=Math['sqrt'](_0x5740ed*_0x5740ed/_0x1ae0a9+_0x3a35e7*_0x3a35e7/_0x52da1f+_0xb6a933*_0xb6a933/_0x235fd6);if(_0x470308<_0x3c4b53){_0x1a3cb0=_0x5740ed/_0x1ae0a9,_0x398262=_0x3a35e7/_0x52da1f,_0x16928b=_0xb6a933/_0x235fd6,_0x246490=Math['sqrt'](_0x1a3cb0*_0x1a3cb0+_0x398262*_0x398262+_0x16928b*_0x16928b);if(_0x246490>1e-9){_0x1a3cb0/=_0x246490,_0x398262/=_0x246490,_0x16928b/=_0x246490,_0x403b28=_0x470308<=_0x420be6?0x1:(_0x3c4b53-_0x470308)/(_0x3c4b53-_0x420be6),_0x19e77f=(_0x193ebf*_0x1a3cb0+_0x3829b4*_0x398262+_0x117ca5*_0x16928b)*_0x403b28,_0x7742fb=_0x193ebf-_0x19e77f*_0x1a3cb0,_0x359fea=_0x3829b4-_0x19e77f*_0x398262,_0x267fd6=_0x117ca5-_0x19e77f*_0x16928b,_0x3fd41a=Math['sqrt'](_0x7742fb*_0x7742fb+_0x359fea*_0x359fea+_0x267fd6*_0x267fd6);if(_0x3fd41a<0.2)continue;_0x193ebf=_0x7742fb/_0x3fd41a,_0x3829b4=_0x359fea/_0x3fd41a,_0x117ca5=_0x267fd6/_0x3fd41a;}}}_0x425fd0=_0x10e17b[_0x1cd026-0x1-_0xe477b0<0x0?0x0:_0x1cd026-0x1-_0xe477b0],_0x1877e5=_0x10e17b[_0x1cd026+_0xe477b0>_0x456e42?_0x456e42:_0x1cd026+_0xe477b0],_0x7742fb=_0x1877e5['x']-_0x425fd0['x'],_0x359fea=_0x1877e5['y']-_0x425fd0['y'],_0x267fd6=_0x1877e5['z']-_0x425fd0['z'],_0x3fd41a=Math['sqrt'](_0x7742fb*_0x7742fb+_0x359fea*_0x359fea+_0x267fd6*_0x267fd6);_0x3fd41a>1e-9?(_0x7742fb/=_0x3fd41a,_0x359fea/=_0x3fd41a,_0x267fd6/=_0x3fd41a):(_0x7742fb=_0x4f104f[_0x1cd026*0x4],_0x359fea=_0x4f104f[_0x1cd026*0x4+0x1],_0x267fd6=_0x4f104f[_0x1cd026*0x4+0x2]);_0x55c481=_0x7742fb*_0x193ebf+_0x359fea*_0x3829b4+_0x267fd6*_0x117ca5;if(_0x55c481>0x1)_0x55c481=0x1;else{if(_0x55c481<-0x1)_0x55c481=-0x1;}_0x3347c4=Math['acos'](_0x55c481);if(_0x3347c4<=_0x59530b)continue;_0x252900=_0x3347c4*_0x16cf2f;if(_0x252900<0.003)continue;_0x162b93=_0x359fea*_0x117ca5-_0x267fd6*_0x3829b4,_0x35182d=_0x267fd6*_0x193ebf-_0x7742fb*_0x117ca5,_0x3da543=_0x7742fb*_0x3829b4-_0x359fea*_0x193ebf,_0x181ce2=Math['sqrt'](_0x162b93*_0x162b93+_0x35182d*_0x35182d+_0x3da543*_0x3da543);if(_0x181ce2<0.0001){_0x1a3cb0=_0x3e9b11['x'],_0x398262=_0x24792c?_0x3e9b11['y']-_0x25106f:0x0,_0x16928b=_0x3e9b11['z'],_0x162b93=_0x359fea*_0x16928b-_0x267fd6*_0x398262,_0x35182d=_0x267fd6*_0x1a3cb0-_0x7742fb*_0x16928b,_0x3da543=_0x7742fb*_0x398262-_0x359fea*_0x1a3cb0,_0x181ce2=Math['sqrt'](_0x162b93*_0x162b93+_0x35182d*_0x35182d+_0x3da543*_0x3da543);_0x181ce2<0.000001&&(Math['abs'](_0x7742fb)<0.9?(_0x162b93=0x0,_0x35182d=_0x267fd6,_0x3da543=-_0x359fea):(_0x162b93=-_0x267fd6,_0x35182d=0x0,_0x3da543=_0x7742fb),_0x181ce2=Math['sqrt'](_0x162b93*_0x162b93+_0x35182d*_0x35182d+_0x3da543*_0x3da543));if(!(_0x181ce2>1e-9))continue;}_0x252900/=_0x181ce2,_0x5162c2[_0x1cd026*0x3]=_0x162b93*_0x252900,_0x5162c2[_0x1cd026*0x3+0x1]=_0x35182d*_0x252900,_0x5162c2[_0x1cd026*0x3+0x2]=_0x3da543*_0x252900,_0x1c79d6=!![];if(_0x1cd026<_0x3cd105)_0x3cd105=_0x1cd026;if(_0x1cd026>_0x367ad9)_0x367ad9=_0x1cd026;}if(!_0x1c79d6)return _0x10e17b;var _0x48bb67=Math['max'](0x1,_0x3cd105-0x1),_0x2b0f38=Math['min'](_0x456e42,_0x367ad9+0x1),_0x1cf6d3,_0x92fbe,_0x5acae7,_0x3b14e8,_0x43c141,_0x183cf3,_0x42a381;_0x42a381=(_0x48bb67>0x1?_0x48bb67-0x1:_0x48bb67)*0x3,_0x1cf6d3=_0x5162c2[_0x42a381],_0x92fbe=_0x5162c2[_0x42a381+0x1],_0x5acae7=_0x5162c2[_0x42a381+0x2];for(_0x1cd026=_0x48bb67;_0x1cd026<=_0x2b0f38;_0x1cd026++){_0x42a381=_0x1cd026*0x3,_0x3b14e8=_0x5162c2[_0x42a381],_0x43c141=_0x5162c2[_0x42a381+0x1],_0x183cf3=_0x5162c2[_0x42a381+0x2],_0x1cd026<_0x456e42?(_0x5162c2[_0x42a381]=(_0x1cf6d3+0x2*_0x3b14e8+_0x5162c2[_0x42a381+0x3])*0.25,_0x5162c2[_0x42a381+0x1]=(_0x92fbe+0x2*_0x43c141+_0x5162c2[_0x42a381+0x4])*0.25,_0x5162c2[_0x42a381+0x2]=(_0x5acae7+0x2*_0x183cf3+_0x5162c2[_0x42a381+0x5])*0.25):(_0x5162c2[_0x42a381]=(_0x1cf6d3+0x3*_0x3b14e8)*0.25,_0x5162c2[_0x42a381+0x1]=(_0x92fbe+0x3*_0x43c141)*0.25,_0x5162c2[_0x42a381+0x2]=(_0x5acae7+0x3*_0x183cf3)*0.25),_0x1cf6d3=_0x3b14e8,_0x92fbe=_0x43c141,_0x5acae7=_0x183cf3;}var _0x1a3d9f=new Array(_0x3b49c6),_0x36796e=_0x2fc59f['collide']&&_0x24792c?_0x24792c:null,_0x42d407=null,_0x32dca8=_0x2fc59f['headLift']>0x0?_0x2fc59f['headLift']:1.02,_0x86ee22,_0x2f8184,_0x38dfdf,_0x386184,_0x2afe66,_0x1945a5,_0x2391e5,_0x272016,_0x5e56ac,_0x50dde4,_0x5069af,_0x312887,_0x3acb80,_0x43b236,_0x4fd40d,_0x5cb71e;if(_0x36796e)try{_0x42d407=_0x2ee1c6['REGROW']&&typeof _0x2ee1c6['REGROW']['neckPush']==='function'?_0x2ee1c6['REGROW']['neckPush']:null;}catch(_0xb5aafe){_0x42d407=null;}for(_0x1cd026=0x0;_0x1cd026<_0x48bb67;_0x1cd026++)_0x1a3d9f[_0x1cd026]=_0x10e17b[_0x1cd026];var _0x599c41=_0x10e17b[_0x48bb67-0x1]['x'],_0x1a74b9=_0x10e17b[_0x48bb67-0x1]['y'],_0xc47952=_0x10e17b[_0x48bb67-0x1]['z'];for(_0x1cd026=_0x48bb67;_0x1cd026<_0x3b49c6;_0x1cd026++){_0x86ee22=_0x4f104f[_0x1cd026*0x4],_0x2f8184=_0x4f104f[_0x1cd026*0x4+0x1],_0x38dfdf=_0x4f104f[_0x1cd026*0x4+0x2],_0x1d62b8=_0x4f104f[_0x1cd026*0x4+0x3];_0x1cd026<=_0x2b0f38&&(_0x386184=_0x5162c2[_0x1cd026*0x3],_0x2afe66=_0x5162c2[_0x1cd026*0x3+0x1],_0x1945a5=_0x5162c2[_0x1cd026*0x3+0x2],_0x252900=Math['sqrt'](_0x386184*_0x386184+_0x2afe66*_0x2afe66+_0x1945a5*_0x1945a5),_0x252900>0.00001&&(_0x386184/=_0x252900,_0x2afe66/=_0x252900,_0x1945a5/=_0x252900,_0x2391e5=Math['cos'](_0x252900),_0x272016=Math['sin'](_0x252900),_0x5e56ac=(_0x386184*_0x86ee22+_0x2afe66*_0x2f8184+_0x1945a5*_0x38dfdf)*(0x1-_0x2391e5),_0x193ebf=_0x86ee22*_0x2391e5+(_0x2afe66*_0x38dfdf-_0x1945a5*_0x2f8184)*_0x272016+_0x386184*_0x5e56ac,_0x3829b4=_0x2f8184*_0x2391e5+(_0x1945a5*_0x86ee22-_0x386184*_0x38dfdf)*_0x272016+_0x2afe66*_0x5e56ac,_0x117ca5=_0x38dfdf*_0x2391e5+(_0x386184*_0x2f8184-_0x2afe66*_0x86ee22)*_0x272016+_0x1945a5*_0x5e56ac,_0x86ee22=_0x193ebf,_0x2f8184=_0x3829b4,_0x38dfdf=_0x117ca5));_0x50dde4=_0x599c41+_0x86ee22*_0x1d62b8,_0x5069af=_0x1a74b9+_0x2f8184*_0x1d62b8,_0x312887=_0xc47952+_0x38dfdf*_0x1d62b8;if(_0x36796e&&_0x1d62b8>1e-9){_0x43b236=_0x10e17b[_0x1cd026],_0xc7a951=_0x43b236['y']-_0x25106f,_0x3acb80=Math['sqrt'](_0x43b236['x']*_0x43b236['x']/_0x1ae0a9+_0xc7a951*_0xc7a951/_0x52da1f+_0x43b236['z']*_0x43b236['z']/_0x235fd6);if(_0x3acb80>_0x32dca8)_0x3acb80=_0x32dca8;_0xc7a951=_0x5069af-_0x25106f,_0x470308=Math['sqrt'](_0x50dde4*_0x50dde4/_0x1ae0a9+_0xc7a951*_0xc7a951/_0x52da1f+_0x312887*_0x312887/_0x235fd6),_0x470308<_0x3acb80-0.000001&&(_0xc7a951=_0x1a74b9-_0x25106f,_0x1a3cb0=_0x599c41/_0x1ae0a9,_0x398262=_0xc7a951/_0x52da1f,_0x16928b=_0xc47952/_0x235fd6,_0x246490=Math['sqrt'](_0x1a3cb0*_0x1a3cb0+_0x398262*_0x398262+_0x16928b*_0x16928b),_0x246490>1e-9&&(_0x1a3cb0/=_0x246490,_0x398262/=_0x246490,_0x16928b/=_0x246490,_0x19e77f=_0x86ee22*_0x1a3cb0+_0x2f8184*_0x398262+_0x38dfdf*_0x16928b,_0x19e77f<0x0&&(_0x193ebf=_0x86ee22-_0x19e77f*_0x1a3cb0,_0x3829b4=_0x2f8184-_0x19e77f*_0x398262,_0x117ca5=_0x38dfdf-_0x19e77f*_0x16928b,_0x3fd41a=Math['sqrt'](_0x193ebf*_0x193ebf+_0x3829b4*_0x3829b4+_0x117ca5*_0x117ca5),_0x3fd41a>0.001&&(_0x50dde4=_0x599c41+_0x193ebf/_0x3fd41a*_0x1d62b8,_0x5069af=_0x1a74b9+_0x3829b4/_0x3fd41a*_0x1d62b8,_0x312887=_0xc47952+_0x117ca5/_0x3fd41a*_0x1d62b8))),_0xc7a951=_0x5069af-_0x25106f,_0x470308=Math['sqrt'](_0x50dde4*_0x50dde4/_0x1ae0a9+_0xc7a951*_0xc7a951/_0x52da1f+_0x312887*_0x312887/_0x235fd6),_0x470308<_0x3acb80-0.000001&&_0x470308>1e-9&&(_0x403b28=_0x3acb80/_0x470308,_0x50dde4*=_0x403b28,_0x5069af=_0x25106f+_0xc7a951*_0x403b28,_0x312887*=_0x403b28,_0x193ebf=_0x50dde4-_0x599c41,_0x3829b4=_0x5069af-_0x1a74b9,_0x117ca5=_0x312887-_0xc47952,_0x3fd41a=Math['sqrt'](_0x193ebf*_0x193ebf+_0x3829b4*_0x3829b4+_0x117ca5*_0x117ca5),_0x3fd41a>1e-9&&(_0x50dde4=_0x599c41+_0x193ebf/_0x3fd41a*_0x1d62b8,_0x5069af=_0x1a74b9+_0x3829b4/_0x3fd41a*_0x1d62b8,_0x312887=_0xc47952+_0x117ca5/_0x3fd41a*_0x1d62b8)),_0x5c89cf['_swp']++);}_0x4fd40d={'x':_0x50dde4,'y':_0x5069af,'z':_0x312887};if(_0x42d407&&_0x1d62b8>1e-9)try{_0x5cb71e=_0x42d407(_0x4fd40d);if(_0x5cb71e&&_0x5cb71e!==_0x4fd40d&&_0x42d407(_0x10e17b[_0x1cd026])===_0x10e17b[_0x1cd026]){_0x193ebf=_0x5cb71e['x']-_0x599c41,_0x3829b4=_0x5cb71e['y']-_0x1a74b9,_0x117ca5=_0x5cb71e['z']-_0xc47952,_0x3fd41a=Math['sqrt'](_0x193ebf*_0x193ebf+_0x3829b4*_0x3829b4+_0x117ca5*_0x117ca5);if(_0x3fd41a>1e-9)_0x4fd40d={'x':_0x599c41+_0x193ebf/_0x3fd41a*_0x1d62b8,'y':_0x1a74b9+_0x3829b4/_0x3fd41a*_0x1d62b8,'z':_0xc47952+_0x117ca5/_0x3fd41a*_0x1d62b8};}}catch(_0x491c46){}_0x599c41=_0x4fd40d['x'],_0x1a74b9=_0x4fd40d['y'],_0xc47952=_0x4fd40d['z'],_0x1a3d9f[_0x1cd026]=_0x4fd40d;}_0x5c89cf['_sw']++;try{_0x1a3d9f['_pre']=_0x10e17b['_pre']||_0x13b3c9;}catch(_0x3310f3){}return _0x1a3d9f;}_0x2fc59f['_sweep']=_0x2445f8,_0x2fc59f['_apply']=function(_0x10daba){if(!_0x2fc59f['samples']['length']&&!_0x2fc59f['sweeps']['length'])return _0x10daba;var _0x2ae4d0=_0x10daba;if(_0x2fc59f['samples']['length'])try{_0x2ae4d0=_0x237698(_0x10daba);}catch(_0x35a708){_0x5c89cf['err']=String(_0x35a708&&_0x35a708['message']||_0x35a708),_0x2ae4d0=_0x10daba;}if(_0x2fc59f['sweeps']['length'])try{_0x2ae4d0=_0x2445f8(_0x2ae4d0,_0x10daba);}catch(_0x1520c7){_0x5c89cf['err']=String(_0x1520c7&&_0x1520c7['message']||_0x1520c7);}return _0x2ae4d0;};function _0x12728a(){var _0x4e7fc3=null;try{_0x4e7fc3=state['hair3Dneutral'];}catch(_0x47211b){}_0x4e7fc3!==_0x3e7f23&&(_0x3e7f23=_0x4e7fc3,(_0x2fc59f['samples']['length']||_0x2fc59f['sweeps']['length'])&&(_0x2fc59f['samples']['length']=0x0,_0x2fc59f['sweeps']['length']=0x0,_0x345f7d++,_0xd1ce6c++,_0xce4c4d()));}_0x2fc59f['_beforeCompute']=function(){try{_0x12728a(),_0x5c89cf['_t']=0x0,_0x5c89cf['_pu']=0x0,_0x5c89cf['_nk']=0x0,_0x5c89cf['_an']=0x0,_0x5c89cf['_pi']=0x0,_0x5c89cf['_fl']=0x0,_0x5c89cf['_up']=0x0,_0x5c89cf['_cl']=0x0,_0x5c89cf['_to']=_0x5c89cf['_ts']=_0x5c89cf['_ta']=_0x5c89cf['_tr']=_0x5c89cf['_tf']=_0x5c89cf['_tk']=0x0,_0x5c89cf['_sw']=0x0,_0x5c89cf['_swp']=0x0;}catch(_0xabba36){}return _0x220e02();},_0x2fc59f['_afterCompute']=function(_0x1010e2,_0x34e005,_0x18871e,_0x316eec){var _0x5e5676=[_0x34e005,_0x18871e];try{if(_0x2fc59f['grain']&&_0x2fc59f['samples']['length']&&_0x1010e2&&_0x1010e2['length']&&!_0x5e5676[0x0]&&!(_0x5e5676[0x1]>0x1)&&_0x3e7f23){var _0xc0e15e=_0xbfb422;_0x18e672(_0x1010e2,Math['max'](0x1,Math['ceil'](_0x1010e2['length']/_0x2fc59f['pickStrands'])),_0x3e7f23);if(_0xc0e15e&&_0xc0e15e!==_0xbfb422&&typeof ADJ_CACHE!=='undefined'&&ADJ_CACHE['bump'])ADJ_CACHE['bump']();}}catch(_0x33de99){}if(_0x5c89cf['_sw']>0x0){_0x5c89cf['swept']=_0x5c89cf['_sw'],_0x5c89cf['sweptPush']=_0x5c89cf['_swp'];if(!(_0x5c89cf['_t']>0x0))_0x5c89cf['ms']=_0x220e02()-_0x316eec;}else!_0x2fc59f['sweeps']['length']&&(_0x5c89cf['swept']=0x0,_0x5c89cf['sweptPush']=0x0);return(_0x5c89cf['_t']>0x0||_0x5c89cf['_tk']>0x0)&&(_0x5c89cf['touched']=_0x5c89cf['_t'],_0x5c89cf['ms']=_0x220e02()-_0x316eec,_0x5c89cf['pushed']=_0x5c89cf['_pu'],_0x5c89cf['neck']=_0x5c89cf['_nk'],_0x5c89cf['anch']=_0x5c89cf['_an'],_0x5c89cf['pin']=_0x5c89cf['_pi'],_0x5c89cf['fly']=_0x5c89cf['_fl'],_0x5c89cf['up']=_0x5c89cf['_up'],_0x5c89cf['clamp']=_0x5c89cf['_cl'],_0x5c89cf['tOwn']=_0x5c89cf['_to'],_0x5c89cf['tSide']=_0x5c89cf['_ts'],_0x5c89cf['tAll']=_0x5c89cf['_ta'],_0x5c89cf['tReach']=_0x5c89cf['_tr'],_0x5c89cf['tFinger']=_0x5c89cf['_tf'],_0x5c89cf['tSkip']=_0x5c89cf['_tk']),_0x1010e2;},_0x2fc59f['_sigTail']=function(){return'|cb'+_0x345f7d;};function _0x3f0942(){try{if(typeof ADJ_CACHE!=='undefined'&&ADJ_CACHE['bump'])ADJ_CACHE['bump']();}catch(_0x5bd738){}try{if(_0x4507c1()==='adjust'&&typeof renderAdjustFrame==='function')renderAdjustFrame();}catch(_0x4272f3){}}_0x2fc59f['refresh']=function(){_0x345f7d++,_0xd1ce6c++,_0x3f0942(),_0xce4c4d();},_0x2fc59f['clear']=function(){if(!_0x2fc59f['samples']['length']&&!_0x2fc59f['sweeps']['length'])return;_0x2fc59f['samples']['length']=0x0,_0x2fc59f['sweeps']['length']=0x0,_0x345f7d++,_0xd1ce6c++,_0x5c89cf['strokes']=0x0,_0x5c89cf['sweepStrokes']=0x0,_0x3f0942(),_0xce4c4d();},_0x2fc59f['clearSweeps']=function(){if(!_0x2fc59f['sweeps']['length'])return;_0x2fc59f['sweeps']['length']=0x0,_0x345f7d++,_0xd1ce6c++,_0x5c89cf['sweepStrokes']=0x0,_0x3f0942(),_0xce4c4d();},_0x2fc59f['undo']=function(){var _0x57e445=_0x2fc59f['samples']['length']?_0x2fc59f['samples'][_0x2fc59f['samples']['length']-0x1]['g']:-0x1,_0x255c9e=_0x2fc59f['sweeps']['length']?_0x2fc59f['sweeps'][_0x2fc59f['sweeps']['length']-0x1]['g']:-0x1;if(_0x57e445<0x0&&_0x255c9e<0x0)return;var _0x2fb345=_0x255c9e>_0x57e445?_0x2fc59f['sweeps']:_0x2fc59f['samples'],_0x15b397=Math['max'](_0x57e445,_0x255c9e);while(_0x2fb345['length']&&_0x2fb345[_0x2fb345['length']-0x1]['g']===_0x15b397)_0x2fb345['pop']();_0x345f7d++,_0xd1ce6c++,_0x3f0942(),_0xce4c4d();};function _0x3ec7d2(){var _0x46dcf3=_0x2e3212(),_0x231638=null;if(!_0x46dcf3)return null;return _0x46dcf3['headGroup']['traverse'](function(_0x4f4d8c){if(!_0x231638&&(_0x4f4d8c['isLineSegments']||_0x4f4d8c['isLine'])&&_0x4f4d8c['geometry'])_0x231638=_0x4f4d8c;}),_0x231638||_0x46dcf3['headGroup'];}var _0xbfb422=null;function _0x2ca396(_0x1c241d,_0x356253,_0x362a5e,_0x3b2546,_0x146a7a){var _0x4d6e5c=_0x146a7a,_0x49b69a=_0x146a7a*1.41421356,_0x5f3bcc=_0x146a7a*1.7320508,_0x3c369f=_0x356253*_0x362a5e,_0x5ec881,_0x5cf990,_0x132ff6,_0x57a359,_0x3d49cd,_0x1e7dd1,_0x3a0a70,_0x2ae474,_0x54cdc9,_0x3555db,_0x41b6fd;for(_0x5ec881=0x0;_0x5ec881<0x2;_0x5ec881++){_0x5cf990=_0x5ec881?-0x1:0x1;for(_0x3d49cd=_0x5ec881?_0x3b2546-0x2:0x1;_0x3d49cd>=0x1&&_0x3d49cd<=_0x3b2546-0x2;_0x3d49cd+=_0x5cf990)for(_0x57a359=_0x5ec881?_0x362a5e-0x2:0x1;_0x57a359>=0x1&&_0x57a359<=_0x362a5e-0x2;_0x57a359+=_0x5cf990){_0x54cdc9=_0x356253*(_0x57a359+_0x362a5e*_0x3d49cd),_0x3555db=_0x54cdc9-_0x5cf990*_0x3c369f,_0x41b6fd=_0x54cdc9-_0x5cf990*_0x356253;for(_0x132ff6=_0x5ec881?_0x356253-0x2:0x1;_0x132ff6>=0x1&&_0x132ff6<=_0x356253-0x2;_0x132ff6+=_0x5cf990){_0x1e7dd1=_0x54cdc9+_0x132ff6,_0x3a0a70=_0x1c241d[_0x1e7dd1];if(_0x3a0a70===0x0)continue;_0x1e7dd1=_0x3555db+_0x132ff6,_0x2ae474=_0x1c241d[_0x1e7dd1]+_0x4d6e5c;if(_0x2ae474<_0x3a0a70)_0x3a0a70=_0x2ae474;_0x2ae474=_0x1c241d[_0x1e7dd1-0x1]+_0x49b69a;if(_0x2ae474<_0x3a0a70)_0x3a0a70=_0x2ae474;_0x2ae474=_0x1c241d[_0x1e7dd1+0x1]+_0x49b69a;if(_0x2ae474<_0x3a0a70)_0x3a0a70=_0x2ae474;_0x2ae474=_0x1c241d[_0x1e7dd1-_0x356253]+_0x49b69a;if(_0x2ae474<_0x3a0a70)_0x3a0a70=_0x2ae474;_0x2ae474=_0x1c241d[_0x1e7dd1+_0x356253]+_0x49b69a;if(_0x2ae474<_0x3a0a70)_0x3a0a70=_0x2ae474;_0x2ae474=_0x1c241d[_0x1e7dd1-_0x356253-0x1]+_0x5f3bcc;if(_0x2ae474<_0x3a0a70)_0x3a0a70=_0x2ae474;_0x2ae474=_0x1c241d[_0x1e7dd1-_0x356253+0x1]+_0x5f3bcc;if(_0x2ae474<_0x3a0a70)_0x3a0a70=_0x2ae474;_0x2ae474=_0x1c241d[_0x1e7dd1+_0x356253-0x1]+_0x5f3bcc;if(_0x2ae474<_0x3a0a70)_0x3a0a70=_0x2ae474;_0x2ae474=_0x1c241d[_0x1e7dd1+_0x356253+0x1]+_0x5f3bcc;if(_0x2ae474<_0x3a0a70)_0x3a0a70=_0x2ae474;_0x1e7dd1=_0x41b6fd+_0x132ff6,_0x2ae474=_0x1c241d[_0x1e7dd1]+_0x4d6e5c;if(_0x2ae474<_0x3a0a70)_0x3a0a70=_0x2ae474;_0x2ae474=_0x1c241d[_0x1e7dd1-0x1]+_0x49b69a;if(_0x2ae474<_0x3a0a70)_0x3a0a70=_0x2ae474;_0x2ae474=_0x1c241d[_0x1e7dd1+0x1]+_0x49b69a;if(_0x2ae474<_0x3a0a70)_0x3a0a70=_0x2ae474;_0x2ae474=_0x1c241d[_0x54cdc9+_0x132ff6-_0x5cf990]+_0x4d6e5c;if(_0x2ae474<_0x3a0a70)_0x3a0a70=_0x2ae474;_0x1c241d[_0x54cdc9+_0x132ff6]=_0x3a0a70;}}}}function _0x18e672(_0x5757bf,_0x4e8748,_0x5e35fa){var _0x42c303=_0x220e02(),_0x59f180,_0xd25bf5,_0x446270,_0x20d6fd,_0x57276e,_0x228679=0x0,_0x4a3bd2=Math['max'](0x1,Math['floor'](_0x5757bf['length']/0x61));for(_0x59f180=0x0;_0x59f180<_0x5757bf['length'];_0x59f180+=_0x4a3bd2){_0x446270=_0x5757bf[_0x59f180]['pts'];if(!_0x446270||!_0x446270['length'])continue;if(_0x446270['_pre']&&_0x446270['_pre']['length']===_0x446270['length'])_0x446270=_0x446270['_pre'];_0x20d6fd=_0x446270[_0x446270['length']-0x1],_0x228679+=_0x20d6fd['x']*1.3+_0x20d6fd['y']*2.1+_0x20d6fd['z']*3.7+_0x446270['length'];}var _0x2f9b8d=_0x5757bf['length']+':'+_0x4e8748+':'+_0x228679['toFixed'](0x4)+':'+_0x2fc59f['flowCell']+':'+_0x2fc59f['flowSmooth']+':'+_0x2fc59f['flowMin']+':'+_0x2fc59f['flowNear']+':'+_0x2fc59f['flowDense']+':'+(_0x2fc59f['surf']?_0x2fc59f['surfThr']+'/'+_0x2fc59f['surfNbr']+'/'+_0x2fc59f['surfCore']+'/'+_0x2fc59f['surfHead']+'/'+_0x2fc59f['flyFrom']+'/'+_0x2fc59f['flyFull']:'x');if(_0xbfb422&&_0xbfb422['fp']===_0x2f9b8d&&_0xbfb422['model']===_0x5e35fa)return _0xbfb422['flow'];_0xbfb422&&_0xbfb422['flow']&&(_0x345f7d++,_0x5c89cf['flowRebuilt']=(_0x5c89cf['flowRebuilt']||0x0)+0x1);var _0x21de37=_0x2fc59f['flowCell']>0.01?_0x2fc59f['flowCell']:0.07,_0x1b9adf=Infinity,_0x43333b=Infinity,_0x3f89c5=Infinity,_0x4c4736=-Infinity,_0x5bec7a=-Infinity,_0x4170c5=-Infinity,_0xb95bbd=0x0;for(_0x59f180=0x0;_0x59f180<_0x5757bf['length'];_0x59f180+=_0x4e8748){_0x446270=_0x5757bf[_0x59f180]['pts'];if(!_0x446270)continue;if(_0x446270['_pre']&&_0x446270['_pre']['length']===_0x446270['length'])_0x446270=_0x446270['_pre'];_0xb95bbd++;for(_0xd25bf5=0x0;_0xd25bf5<_0x446270['length'];_0xd25bf5+=0x2){_0x20d6fd=_0x446270[_0xd25bf5];if(_0x20d6fd['x']<_0x1b9adf)_0x1b9adf=_0x20d6fd['x'];if(_0x20d6fd['x']>_0x4c4736)_0x4c4736=_0x20d6fd['x'];if(_0x20d6fd['y']<_0x43333b)_0x43333b=_0x20d6fd['y'];if(_0x20d6fd['y']>_0x5bec7a)_0x5bec7a=_0x20d6fd['y'];if(_0x20d6fd['z']<_0x3f89c5)_0x3f89c5=_0x20d6fd['z'];if(_0x20d6fd['z']>_0x4170c5)_0x4170c5=_0x20d6fd['z'];}}var _0x586fd0=null;if(_0x4c4736>=_0x1b9adf&&isFinite(_0x1b9adf+_0x4c4736+_0x43333b+_0x5bec7a+_0x3f89c5+_0x4170c5)){var _0x982302=isFinite(_0x5e35fa['CY'])?_0x5e35fa['CY']:0x0,_0x1829b6=0x40*_0x21de37;_0x1b9adf=Math['max'](_0x1b9adf,-_0x1829b6)-_0x21de37,_0x4c4736=Math['min'](_0x4c4736,_0x1829b6)+_0x21de37,_0x43333b=Math['max'](_0x43333b,_0x982302-_0x1829b6)-_0x21de37,_0x5bec7a=Math['min'](_0x5bec7a,_0x982302+_0x1829b6)+_0x21de37,_0x3f89c5=Math['max'](_0x3f89c5,-_0x1829b6)-_0x21de37,_0x4170c5=Math['min'](_0x4170c5,_0x1829b6)+_0x21de37;var _0x4e5528=Math['floor']((_0x4c4736-_0x1b9adf)/_0x21de37)+0x1,_0x1a0fb7=Math['floor']((_0x5bec7a-_0x43333b)/_0x21de37)+0x1,_0x4e21d5=Math['floor']((_0x4170c5-_0x3f89c5)/_0x21de37)+0x1,_0x89be82=_0x4e5528*_0x1a0fb7*_0x4e21d5;if(_0x4e5528>0x0&&_0x1a0fb7>0x0&&_0x4e21d5>0x0){var _0x3a3bb5=new Float32Array(_0x89be82),_0x52713d=new Float32Array(_0x89be82),_0x4064e9=new Float32Array(_0x89be82),_0x2daef0=new Uint16Array(_0x89be82),_0x2d5917=new Int32Array(_0x89be82)['fill'](-0x1),_0x4a39df=0x1/_0x21de37,_0x188d08,_0x433d93,_0x5603c0,_0x2b826a,_0x4840c0,_0x5ee246,_0x422da0,_0x56ef7f,_0xe8c889,_0x37cb00,_0x32f581,_0x41ea1e,_0x39d542,_0x4517aa,_0x4fe67b,_0x35ad92;for(_0x59f180=0x0;_0x59f180<_0x5757bf['length'];_0x59f180+=_0x4e8748){_0x446270=_0x5757bf[_0x59f180]['pts'];if(!_0x446270)continue;if(_0x446270['_pre']&&_0x446270['_pre']['length']===_0x446270['length'])_0x446270=_0x446270['_pre'];_0x57276e=_0x446270['length'];if(_0x57276e<0x2)continue;_0x433d93=0x0,_0x5603c0=_0x57276e-0x1<0x8?_0x57276e-0x1:0x8,_0x2b826a=_0x446270[0x0];for(_0xd25bf5=0x1;_0xd25bf5<=_0x5603c0;_0xd25bf5++){_0x4840c0=_0x446270[_0xd25bf5],_0x433d93+=Math['sqrt']((_0x4840c0['x']-_0x2b826a['x'])*(_0x4840c0['x']-_0x2b826a['x'])+(_0x4840c0['y']-_0x2b826a['y'])*(_0x4840c0['y']-_0x2b826a['y'])+(_0x4840c0['z']-_0x2b826a['z'])*(_0x4840c0['z']-_0x2b826a['z'])),_0x2b826a=_0x4840c0;}_0x433d93/=_0x5603c0,_0x188d08=_0x433d93>0x0?Math['round'](_0x2fc59f['flowSmooth']/_0x433d93):0x1;if(!(_0x188d08>=0x1))_0x188d08=0x1;else{if(_0x188d08>0x10)_0x188d08=0x10;}_0x35ad92=_0x433d93>0x0?Math['floor'](_0x21de37*0.8/_0x433d93):0x1;if(!(_0x35ad92>=0x1))_0x35ad92=0x1;else{if(_0x35ad92>0x6)_0x35ad92=0x6;}for(_0xd25bf5=0x0;_0xd25bf5<_0x57276e;_0xd25bf5+=_0x35ad92){_0x20d6fd=_0x446270[_0xd25bf5],_0x41ea1e=(_0x20d6fd['x']-_0x1b9adf)*_0x4a39df|0x0,_0x39d542=(_0x20d6fd['y']-_0x43333b)*_0x4a39df|0x0,_0x4517aa=(_0x20d6fd['z']-_0x3f89c5)*_0x4a39df|0x0;if(!(_0x20d6fd['x']>=_0x1b9adf&&_0x20d6fd['y']>=_0x43333b&&_0x20d6fd['z']>=_0x3f89c5&&_0x41ea1e<_0x4e5528&&_0x39d542<_0x1a0fb7&&_0x4517aa<_0x4e21d5))continue;_0x4fe67b=_0x41ea1e+_0x4e5528*(_0x39d542+_0x1a0fb7*_0x4517aa);if(_0x2d5917[_0x4fe67b]===_0x59f180)continue;_0x5ee246=_0x446270[_0xd25bf5-_0x188d08<0x0?0x0:_0xd25bf5-_0x188d08],_0x422da0=_0x446270[_0xd25bf5+_0x188d08>=_0x57276e?_0x57276e-0x1:_0xd25bf5+_0x188d08],_0x56ef7f=_0x422da0['x']-_0x5ee246['x'],_0xe8c889=_0x422da0['y']-_0x5ee246['y'],_0x37cb00=_0x422da0['z']-_0x5ee246['z'],_0x32f581=Math['sqrt'](_0x56ef7f*_0x56ef7f+_0xe8c889*_0xe8c889+_0x37cb00*_0x37cb00);if(!(_0x32f581>1e-9))continue;_0x2d5917[_0x4fe67b]=_0x59f180;if(_0x2daef0[_0x4fe67b]<0xffff)_0x2daef0[_0x4fe67b]++;_0x3a3bb5[_0x4fe67b]+=_0x56ef7f/_0x32f581,_0x52713d[_0x4fe67b]+=_0xe8c889/_0x32f581,_0x4064e9[_0x4fe67b]+=_0x37cb00/_0x32f581;}}var _0x5e3334=[],_0x25d1b0=0x0,_0x3d8961=0x0,_0x273aca=0x1;for(_0xd25bf5=0x0;_0xd25bf5<_0x89be82;_0xd25bf5++)_0x2daef0[_0xd25bf5]&&(_0x5e3334['push'](_0x2daef0[_0xd25bf5]),_0x25d1b0+=_0x2daef0[_0xd25bf5]);_0x5e3334['sort'](function(_0x2fed44,_0x562bf0){return _0x2fed44-_0x562bf0;});for(_0xd25bf5=0x0;_0xd25bf5<_0x5e3334['length'];_0xd25bf5++){_0x3d8961+=_0x5e3334[_0xd25bf5];if(_0x3d8961*0x2>=_0x25d1b0){_0x273aca=_0x5e3334[_0xd25bf5];break;}}var _0x5cb195=Math['max'](0x6,Math['round'](_0x2fc59f['flowMin']*Math['min'](0x1,_0xb95bbd/0x1f40))),_0x36bfae=new Float32Array(_0x89be82);for(_0xd25bf5=0x0;_0xd25bf5<_0x89be82;_0xd25bf5++)if(_0x2daef0[_0xd25bf5])_0x36bfae[_0xd25bf5]=Math['sqrt'](_0x3a3bb5[_0xd25bf5]*_0x3a3bb5[_0xd25bf5]+_0x52713d[_0xd25bf5]*_0x52713d[_0xd25bf5]+_0x4064e9[_0xd25bf5]*_0x4064e9[_0xd25bf5]);var _0x353ee9=new Float32Array(_0x89be82),_0x95fce8=new Float32Array(_0x89be82),_0x252d65,_0x498567,_0x331c4a,_0x55ff6b,_0x52b3b8;for(_0x331c4a=0x0;_0x331c4a<_0x4e21d5;_0x331c4a++)for(_0x498567=0x0;_0x498567<_0x1a0fb7;_0x498567++)for(_0x252d65=0x0;_0x252d65<_0x4e5528;_0x252d65++){_0x55ff6b=_0x252d65+_0x4e5528*(_0x498567+_0x1a0fb7*_0x331c4a),_0x52b3b8=_0x2daef0[_0x55ff6b];if(_0x252d65>0x0)_0x52b3b8+=_0x2daef0[_0x55ff6b-0x1];if(_0x252d65<_0x4e5528-0x1)_0x52b3b8+=_0x2daef0[_0x55ff6b+0x1];_0x95fce8[_0x55ff6b]=_0x52b3b8;}for(_0x331c4a=0x0;_0x331c4a<_0x4e21d5;_0x331c4a++)for(_0x498567=0x0;_0x498567<_0x1a0fb7;_0x498567++)for(_0x252d65=0x0;_0x252d65<_0x4e5528;_0x252d65++){_0x55ff6b=_0x252d65+_0x4e5528*(_0x498567+_0x1a0fb7*_0x331c4a),_0x52b3b8=_0x95fce8[_0x55ff6b];if(_0x498567>0x0)_0x52b3b8+=_0x95fce8[_0x55ff6b-_0x4e5528];if(_0x498567<_0x1a0fb7-0x1)_0x52b3b8+=_0x95fce8[_0x55ff6b+_0x4e5528];_0x353ee9[_0x55ff6b]=_0x52b3b8;}for(_0x331c4a=0x0;_0x331c4a<_0x4e21d5;_0x331c4a++)for(_0x498567=0x0;_0x498567<_0x1a0fb7;_0x498567++)for(_0x252d65=0x0;_0x252d65<_0x4e5528;_0x252d65++){_0x55ff6b=_0x252d65+_0x4e5528*(_0x498567+_0x1a0fb7*_0x331c4a),_0x52b3b8=_0x353ee9[_0x55ff6b];if(_0x331c4a>0x0)_0x52b3b8+=_0x353ee9[_0x55ff6b-_0x4e5528*_0x1a0fb7];if(_0x331c4a<_0x4e21d5-0x1)_0x52b3b8+=_0x353ee9[_0x55ff6b+_0x4e5528*_0x1a0fb7];_0x95fce8[_0x55ff6b]=_0x52b3b8;}var _0x5428ae=Math['max'](_0x5cb195,_0x2fc59f['flowNear']*_0x273aca),_0x1cc24f=null;if(_0x2fc59f['surf']){var _0x3c8587=_0x21de37*0.5,_0x4dcb92=0x1/_0x3c8587,_0x38dfd4=_0x4e5528*0x2,_0x4875cc=_0x1a0fb7*0x2,_0x387c67=_0x4e21d5*0x2,_0x5cd7d2=_0x38dfd4*_0x4875cc*_0x387c67;if(_0x5cd7d2>0x0&&_0x5cd7d2<=0x2dc6c0){var _0x592a1e=new Uint16Array(_0x5cd7d2),_0x2909ae=new Int32Array(_0x5cd7d2)['fill'](-0x1),_0x5a85f2,_0x501fef,_0x4cb06d,_0x503cdc,_0x4ef62a,_0x16aa51,_0x1d663f,_0x5ed255,_0x25f8e0,_0xf47592;for(_0x59f180=0x0;_0x59f180<_0x5757bf['length'];_0x59f180+=_0x4e8748){_0x446270=_0x5757bf[_0x59f180]['pts'];if(!_0x446270)continue;if(_0x446270['_pre']&&_0x446270['_pre']['length']===_0x446270['length'])_0x446270=_0x446270['_pre'];_0x57276e=_0x446270['length'];for(_0xd25bf5=0x0;_0xd25bf5<_0x57276e;_0xd25bf5++){_0x20d6fd=_0x446270[_0xd25bf5],_0x5a85f2=0x0;if(_0xd25bf5+0x1<_0x57276e){_0x4840c0=_0x446270[_0xd25bf5+0x1],_0x4cb06d=_0x4840c0['x']-_0x20d6fd['x'],_0x503cdc=_0x4840c0['y']-_0x20d6fd['y'],_0x4ef62a=_0x4840c0['z']-_0x20d6fd['z'],_0x16aa51=Math['sqrt'](_0x4cb06d*_0x4cb06d+_0x503cdc*_0x503cdc+_0x4ef62a*_0x4ef62a),_0x5a85f2=Math['floor'](_0x16aa51/(_0x3c8587*0.9));if(_0x5a85f2>0xc)_0x5a85f2=0xc;}for(_0x501fef=0x0;_0x501fef<=_0x5a85f2;_0x501fef++){_0x5ed255=_0x5a85f2?_0x20d6fd['x']+_0x4cb06d*_0x501fef/(_0x5a85f2+0x1):_0x20d6fd['x'],_0x25f8e0=_0x5a85f2?_0x20d6fd['y']+_0x503cdc*_0x501fef/(_0x5a85f2+0x1):_0x20d6fd['y'],_0xf47592=_0x5a85f2?_0x20d6fd['z']+_0x4ef62a*_0x501fef/(_0x5a85f2+0x1):_0x20d6fd['z'],_0x41ea1e=(_0x5ed255-_0x1b9adf)*_0x4dcb92|0x0,_0x39d542=(_0x25f8e0-_0x43333b)*_0x4dcb92|0x0,_0x4517aa=(_0xf47592-_0x3f89c5)*_0x4dcb92|0x0;if(!(_0x5ed255>=_0x1b9adf&&_0x25f8e0>=_0x43333b&&_0xf47592>=_0x3f89c5&&_0x41ea1e<_0x38dfd4&&_0x39d542<_0x4875cc&&_0x4517aa<_0x387c67))continue;_0x1d663f=_0x41ea1e+_0x38dfd4*(_0x39d542+_0x4875cc*_0x4517aa);if(_0x2909ae[_0x1d663f]===_0x59f180)continue;_0x2909ae[_0x1d663f]=_0x59f180;if(_0x592a1e[_0x1d663f]<0xffff)_0x592a1e[_0x1d663f]++;}}}_0x2909ae=null;var _0x353c08=[],_0x3d78f2=0x0,_0x1bb1cc=0x0,_0x4b0d48=0x1;for(_0xd25bf5=0x0;_0xd25bf5<_0x5cd7d2;_0xd25bf5++)_0x592a1e[_0xd25bf5]&&(_0x353c08['push'](_0x592a1e[_0xd25bf5]),_0x3d78f2+=_0x592a1e[_0xd25bf5]);_0x353c08['sort'](function(_0x126704,_0x489e0f){return _0x126704-_0x489e0f;});for(_0xd25bf5=0x0;_0xd25bf5<_0x353c08['length'];_0xd25bf5++){_0x1bb1cc+=_0x353c08[_0xd25bf5];if(_0x1bb1cc*0x2>=_0x3d78f2){_0x4b0d48=_0x353c08[_0xd25bf5];break;}}var _0x1acdf5=Math['max'](0x2,Math['round'](_0x2fc59f['surfThr']*_0x4b0d48)),_0x518ea3=new Uint8Array(_0x5cd7d2),_0x32388a=_0x38dfd4*_0x4875cc,_0x1640e8=0x0,_0x411a23=Math['max'](0x0,_0x2fc59f['surfNbr']|0x0),_0xc8a420,_0x317c30,_0x3001a9,_0x5bb91b,_0x167087,_0x2ea5c9,_0xa5c23b,_0x316ca3,_0x217d7f,_0x539d48,_0x9bc756,_0x43c6a0,_0x46972e,_0xdee817;for(_0x331c4a=0x0;_0x331c4a<_0x387c67;_0x331c4a++)for(_0x498567=0x0;_0x498567<_0x4875cc;_0x498567++)for(_0x252d65=0x0;_0x252d65<_0x38dfd4;_0x252d65++){_0x55ff6b=_0x252d65+_0x38dfd4*(_0x498567+_0x4875cc*_0x331c4a);if(_0x592a1e[_0x55ff6b]<0x2)continue;_0x316ca3=_0x252d65>0x2?_0x252d65-0x2:0x0,_0x217d7f=_0x252d65<_0x38dfd4-0x3?_0x252d65+0x2:_0x38dfd4-0x1,_0x539d48=_0x498567>0x2?_0x498567-0x2:0x0,_0x9bc756=_0x498567<_0x4875cc-0x3?_0x498567+0x2:_0x4875cc-0x1,_0x43c6a0=_0x331c4a>0x2?_0x331c4a-0x2:0x0,_0x46972e=_0x331c4a<_0x387c67-0x3?_0x331c4a+0x2:_0x387c67-0x1,_0x167087=0x0,_0x2ea5c9=0x0;for(_0x5bb91b=_0x43c6a0;_0x5bb91b<=_0x46972e;_0x5bb91b++)for(_0x3001a9=_0x539d48;_0x3001a9<=_0x9bc756;_0x3001a9++){_0xdee817=_0x38dfd4*(_0x3001a9+_0x4875cc*_0x5bb91b);for(_0x317c30=_0x316ca3;_0x317c30<=_0x217d7f;_0x317c30++){_0xa5c23b=_0x592a1e[_0xdee817+_0x317c30],_0x167087+=_0xa5c23b,_0x2ea5c9+=_0xa5c23b*_0xa5c23b;}}if(_0x592a1e[_0x55ff6b]*_0x167087>=_0x2fc59f['surfThr']*_0x2ea5c9)_0x518ea3[_0x55ff6b]=0x1;}var _0x5d4856=new Float32Array(_0x5cd7d2),_0x2b3602=0xf4240,_0x13ec5a=new Uint8Array(_0x5cd7d2),_0x44d7ac=Math['max'](0x1,_0x2fc59f['surfCore']|0x0),_0x365b5d=[],_0x4f7c8c,_0x279195,_0x198755=_0x3c62fd(),_0x47875f,_0x2b66e3=_0x2fc59f['surfHead']>0x1?_0x2fc59f['surfHead']:1.15,_0xb0cf19,_0xdd549d,_0x7ce44;for(_0x331c4a=0x0;_0x331c4a<_0x387c67;_0x331c4a++)for(_0x498567=0x0;_0x498567<_0x4875cc;_0x498567++)for(_0x252d65=0x0;_0x252d65<_0x38dfd4;_0x252d65++){_0x55ff6b=_0x252d65+_0x38dfd4*(_0x498567+_0x4875cc*_0x331c4a),_0x5d4856[_0x55ff6b]=_0x2b3602;if(!_0x518ea3[_0x55ff6b])continue;_0xc8a420=0x0;for(_0x5bb91b=-0x1;_0x5bb91b<=0x1;_0x5bb91b++){if(_0x331c4a+_0x5bb91b<0x0||_0x331c4a+_0x5bb91b>=_0x387c67)continue;for(_0x3001a9=-0x1;_0x3001a9<=0x1;_0x3001a9++){if(_0x498567+_0x3001a9<0x0||_0x498567+_0x3001a9>=_0x4875cc)continue;for(_0x317c30=-0x1;_0x317c30<=0x1;_0x317c30++){if(_0x252d65+_0x317c30<0x0||_0x252d65+_0x317c30>=_0x38dfd4||!_0x317c30&&!_0x3001a9&&!_0x5bb91b)continue;if(_0x518ea3[_0x55ff6b+_0x317c30+_0x38dfd4*_0x3001a9+_0x32388a*_0x5bb91b])_0xc8a420++;}}}_0x13ec5a[_0x55ff6b]=_0xc8a420;}for(_0xd25bf5=0x0;_0xd25bf5<_0x5cd7d2;_0xd25bf5++)_0x518ea3[_0xd25bf5]&&_0x13ec5a[_0xd25bf5]>=_0x44d7ac&&(_0x518ea3[_0xd25bf5]=0x3,_0x365b5d['push'](_0xd25bf5));while(_0x365b5d['length']){_0x55ff6b=_0x365b5d['pop'](),_0x252d65=_0x55ff6b%_0x38dfd4,_0x498567=(_0x55ff6b-_0x252d65)/_0x38dfd4%_0x4875cc,_0x331c4a=(_0x55ff6b-_0x252d65-_0x38dfd4*_0x498567)/_0x32388a;for(_0x5bb91b=-0x2;_0x5bb91b<=0x2;_0x5bb91b++){if(_0x331c4a+_0x5bb91b<0x0||_0x331c4a+_0x5bb91b>=_0x387c67)continue;for(_0x3001a9=-0x2;_0x3001a9<=0x2;_0x3001a9++){if(_0x498567+_0x3001a9<0x0||_0x498567+_0x3001a9>=_0x4875cc)continue;for(_0x317c30=-0x2;_0x317c30<=0x2;_0x317c30++){if(_0x252d65+_0x317c30<0x0||_0x252d65+_0x317c30>=_0x38dfd4)continue;_0x279195=_0x55ff6b+_0x317c30+_0x38dfd4*_0x3001a9+_0x32388a*_0x5bb91b,_0x518ea3[_0x279195]===0x1&&_0x13ec5a[_0x279195]>=_0x411a23&&(_0x518ea3[_0x279195]=0x3,_0x365b5d['push'](_0x279195));}}}}for(_0x331c4a=0x0;_0x331c4a<_0x387c67;_0x331c4a++)for(_0x498567=0x0;_0x498567<_0x4875cc;_0x498567++)for(_0x252d65=0x0;_0x252d65<_0x38dfd4;_0x252d65++){_0x55ff6b=_0x252d65+_0x38dfd4*(_0x498567+_0x4875cc*_0x331c4a);if(!_0x518ea3[_0x55ff6b])continue;if(_0x518ea3[_0x55ff6b]!==0x3){if(!_0x198755){if(_0x13ec5a[_0x55ff6b]<_0x411a23)continue;}else{if(_0x13ec5a[_0x55ff6b]<0x2)continue;_0xdd549d=_0x1b9adf+(_0x252d65+0.5)*_0x3c8587,_0xb0cf19=_0x43333b+(_0x498567+0.5)*_0x3c8587-_0x198755['cy'],_0x7ce44=_0x3f89c5+(_0x331c4a+0.5)*_0x3c8587,_0x47875f=Math['sqrt'](_0xdd549d*_0xdd549d/_0x198755['a2']+_0xb0cf19*_0xb0cf19/_0x198755['b2']+_0x7ce44*_0x7ce44/_0x198755['c2']);if(!(_0x47875f<=_0x2b66e3))continue;}}_0x5d4856[_0x55ff6b]=0x0,_0x1640e8++;}_0x13ec5a=null;if(_0x1640e8){_0x2ca396(_0x5d4856,_0x38dfd4,_0x4875cc,_0x387c67,_0x3c8587);var _0x5df41e=0x8*_0x3c8587;for(_0xd25bf5=0x0;_0xd25bf5<_0x5cd7d2;_0xd25bf5++)if(_0x5d4856[_0xd25bf5]>_0x5df41e)_0x5d4856[_0xd25bf5]=_0x5df41e;_0x1cc24f={'D':_0x5d4856,'h':_0x3c8587,'inv':_0x4dcb92,'x0':_0x1b9adf,'y0':_0x43333b,'z0':_0x3f89c5,'mx':_0x38dfd4,'my':_0x4875cc,'mz':_0x387c67,'far':_0x5df41e-0.000001,'d0':Math['max'](0x0,_0x2fc59f['flyFrom']),'d1':Math['max'](_0x2fc59f['flyFrom']+0.001,_0x2fc59f['flyFull']),'ref':_0x4b0d48,'thr':_0x1acdf5,'cells':_0x1640e8};}}}_0x586fd0={'DF':_0x1cc24f,'fc':_0x21de37,'inv':_0x4a39df,'x0':_0x1b9adf,'y0':_0x43333b,'z0':_0x3f89c5,'nx':_0x4e5528,'ny':_0x1a0fb7,'nz':_0x4e21d5,'GX':_0x3a3bb5,'GY':_0x52713d,'GZ':_0x4064e9,'GN':_0x2daef0,'GM':_0x36bfae,'GA':_0x95fce8,'bLo':_0x5428ae,'bHi':Math['max'](_0x5428ae*1.5,_0x2fc59f['bodyFull']*_0x273aca),'ref':_0x273aca,'cells':_0x5e3334['length'],'dense':Math['max'](0x2,_0x2fc59f['flowDense']*_0x273aca),'near':_0x5428ae};}}return _0xbfb422={'fp':_0x2f9b8d,'model':_0x5e35fa,'flow':_0x586fd0},_0x5c89cf['flowRef']=_0x586fd0?_0x586fd0['ref']:0x0,_0x5c89cf['flowCells']=_0x586fd0?_0x586fd0['cells']:0x0,_0x5c89cf['surfRef']=_0x586fd0&&_0x586fd0['DF']?_0x586fd0['DF']['ref']:0x0,_0x5c89cf['surfCells']=_0x586fd0&&_0x586fd0['DF']?_0x586fd0['DF']['cells']:0x0,_0x5c89cf['flowMs']=_0x220e02()-_0x42c303,_0x586fd0;}var _0x548587=null;function _0x8e4183(_0x30ac51,_0x18154c){var _0x559419=_0xbfb422,_0x4e03cb,_0x2b0b73,_0x88ade9,_0x1aae33=0x0,_0x3d72f8=new Int32Array(_0x30ac51['length']+0x1);for(_0x4e03cb=0x0;_0x4e03cb<_0x30ac51['length'];_0x4e03cb++){_0x3d72f8[_0x4e03cb]=_0x1aae33,_0x88ade9=_0x30ac51[_0x4e03cb]['pts'];if(_0x88ade9)_0x1aae33+=_0x88ade9['length'];}_0x3d72f8[_0x30ac51['length']]=_0x1aae33;if(_0x548587&&_0x548587['fm']===_0x559419&&_0x548587['n']===_0x30ac51['length']&&_0x548587['tot']===_0x1aae33)return _0x548587;var _0x30b54c=new Uint8Array(_0x1aae33),_0x5b1c53=0x0,_0x14bc0f=_0x18154c['d0'],_0x56be7c=0x0;for(_0x4e03cb=0x0;_0x4e03cb<_0x30ac51['length'];_0x4e03cb++){_0x88ade9=_0x30ac51[_0x4e03cb]['pts'];if(!_0x88ade9)continue;if(_0x88ade9['_pre']&&_0x88ade9['_pre']['length']===_0x88ade9['length'])_0x88ade9=_0x88ade9['_pre'];for(_0x2b0b73=0x0;_0x2b0b73<_0x88ade9['length'];_0x2b0b73++,_0x5b1c53++)_0x434ea3(_0x18154c,_0x88ade9[_0x2b0b73]['x'],_0x88ade9[_0x2b0b73]['y'],_0x88ade9[_0x2b0b73]['z'])>_0x14bc0f&&(_0x30b54c[_0x5b1c53]=0x1,_0x56be7c++);}return _0x548587={'fm':_0x559419,'n':_0x30ac51['length'],'tot':_0x1aae33,'F':_0x30b54c,'off':_0x3d72f8,'cnt':_0x56be7c},_0x548587;}var _0x388137=null;function _0x1e4f78(){var _0x277b12=_0x2e3212();if(!_0x277b12)return null;var _0x6b1f0e=_0x220e02(),_0x23c763=null;try{_0x23c763=state['hair3Dneutral'];}catch(_0x5bd6da){}if(!_0x23c763||!_0x23c763['strands']||!_0x23c763['strands']['length'])return null;var _0x2819a9=null;try{_0x2819a9=computeAdjustedHair3DStrands();}catch(_0x55c546){_0x2819a9=null;}if(!_0x2819a9||!_0x2819a9['length'])return null;var _0x5aca6b=Math['max'](0x1,Math['ceil'](_0x2819a9['length']/_0x2fc59f['pickStrands'])),_0x39b24b=_0x3ec7d2(),_0x4883a8=_0x277b12['camera'],_0x588ae7=_0x277b12['renderer']['domElement'],_0x1ff57e=_0x588ae7['getBoundingClientRect']();_0x277b12['scene']['updateMatrixWorld'](!![]),_0x4883a8['updateMatrixWorld'](!![]);var _0xc58965=new THREE['Matrix4']()['multiplyMatrices'](_0x4883a8['projectionMatrix'],_0x4883a8['matrixWorldInverse'])['multiply'](_0x39b24b['matrixWorld']),_0x55ddbf=_0xc58965['elements'];if(_0x2fc59f['grain'])try{_0x18e672(_0x2819a9,_0x5aca6b,_0x23c763);}catch(_0x1eb384){_0x5c89cf['err']=String(_0x1eb384&&_0x1eb384['message']||_0x1eb384);}var _0x423775=_0x2fc59f['surf']&&_0x2fc59f['grain']&&_0xbfb422&&_0xbfb422['flow']&&_0xbfb422['flow']['DF']?_0xbfb422['flow']['DF']:null,_0x5cd8b5=null,_0x32f3da=0x0,_0x2c9bcd,_0x562acf,_0x5dd4bd=0x0,_0x2a5cb8;if(_0x423775)try{_0x5cd8b5=_0x8e4183(_0x2819a9,_0x423775);}catch(_0x29d1a0){_0x5cd8b5=null,_0x423775=null,_0x5c89cf['err']=String(_0x29d1a0&&_0x29d1a0['message']||_0x29d1a0);}for(_0x2c9bcd=0x0;_0x2c9bcd<_0x2819a9['length'];_0x2c9bcd++){if(!_0x2819a9[_0x2c9bcd]['pts'])continue;if(_0x2c9bcd%_0x5aca6b===0x0){_0x32f3da+=_0x2819a9[_0x2c9bcd]['pts']['length'];continue;}if(_0x5cd8b5){for(_0x2a5cb8=_0x5cd8b5['off'][_0x2c9bcd],_0x562acf=_0x5cd8b5['off'][_0x2c9bcd+0x1];_0x2a5cb8<_0x562acf;_0x2a5cb8++)_0x32f3da+=_0x5cd8b5['F'][_0x2a5cb8];}}var _0x4dc9fd=new Float32Array(_0x32f3da),_0x75658=new Float32Array(_0x32f3da),_0x194bd3=new Float32Array(_0x32f3da),_0x271150=new Float32Array(_0x32f3da),_0x49ee08=new Float32Array(_0x32f3da),_0x49e8c0=new Float32Array(_0x32f3da),_0x4bbae9=_0x5cd8b5?new Int32Array(_0x32f3da):null,_0xe48c06=_0x5cd8b5?new Int32Array(_0x32f3da):null,_0x63d8c7=_0x5cd8b5?new Uint8Array(_0x32f3da):null,_0x28a750=Math['max'](0x8,_0x2fc59f['pickPx']),_0x3042e8=Math['ceil'](_0x1ff57e['width']/_0x28a750)+0x1,_0x1e77f2=Math['ceil'](_0x1ff57e['height']/_0x28a750)+0x1,_0x2386a5=new Int32Array(_0x3042e8*_0x1e77f2)['fill'](-0x1),_0x31c4ad=new Int32Array(_0x32f3da),_0x1f35b7=0x0;for(_0x2c9bcd=0x0;_0x2c9bcd<_0x2819a9['length'];_0x2c9bcd++){var _0x3746cd=_0x2819a9[_0x2c9bcd]['pts'];if(!_0x3746cd)continue;var _0x2bf9e9=_0x2c9bcd%_0x5aca6b===0x0;if(!_0x2bf9e9&&!_0x5cd8b5)continue;var _0x75c489=_0x3746cd['_pre']&&_0x3746cd['_pre']['length']===_0x3746cd['length']?_0x3746cd['_pre']:_0x3746cd;_0x2a5cb8=_0x5cd8b5?_0x5cd8b5['off'][_0x2c9bcd]:0x0;for(_0x562acf=0x0;_0x562acf<_0x3746cd['length'];_0x562acf++){if(!_0x2bf9e9){if(!_0x5cd8b5['F'][_0x2a5cb8+_0x562acf])continue;_0x5dd4bd++;}var _0x17fbe0=_0x3746cd[_0x562acf],_0x41119c=_0x55ddbf[0x3]*_0x17fbe0['x']+_0x55ddbf[0x7]*_0x17fbe0['y']+_0x55ddbf[0xb]*_0x17fbe0['z']+_0x55ddbf[0xf];if(!(_0x41119c>0.000001))continue;var _0x59e282=((_0x55ddbf[0x0]*_0x17fbe0['x']+_0x55ddbf[0x4]*_0x17fbe0['y']+_0x55ddbf[0x8]*_0x17fbe0['z']+_0x55ddbf[0xc])/_0x41119c*0.5+0.5)*_0x1ff57e['width'],_0x4a3bdf=(0x1-((_0x55ddbf[0x1]*_0x17fbe0['x']+_0x55ddbf[0x5]*_0x17fbe0['y']+_0x55ddbf[0x9]*_0x17fbe0['z']+_0x55ddbf[0xd])/_0x41119c*0.5+0.5))*_0x1ff57e['height'];if(_0x59e282<0x0||_0x4a3bdf<0x0||_0x59e282>=_0x1ff57e['width']||_0x4a3bdf>=_0x1ff57e['height'])continue;var _0x44ee10=(_0x4a3bdf/_0x28a750|0x0)*_0x3042e8+(_0x59e282/_0x28a750|0x0);_0x4dc9fd[_0x1f35b7]=_0x59e282,_0x75658[_0x1f35b7]=_0x4a3bdf,_0x194bd3[_0x1f35b7]=_0x41119c,_0x271150[_0x1f35b7]=_0x75c489[_0x562acf]['x'],_0x49ee08[_0x1f35b7]=_0x75c489[_0x562acf]['y'],_0x49e8c0[_0x1f35b7]=_0x75c489[_0x562acf]['z'],_0x31c4ad[_0x1f35b7]=_0x2386a5[_0x44ee10],_0x2386a5[_0x44ee10]=_0x1f35b7,_0x5cd8b5&&(_0x4bbae9[_0x1f35b7]=_0x2c9bcd,_0xe48c06[_0x1f35b7]=_0x562acf,_0x63d8c7[_0x1f35b7]=_0x5cd8b5['F'][_0x2a5cb8+_0x562acf]),_0x1f35b7++;}}var _0x1ce256=new THREE['Matrix4']()['copy'](_0x39b24b['matrixWorld'])['invert'](),_0x553a7e=new THREE['Vector3']()['setFromMatrixColumn'](_0x4883a8['matrixWorld'],0x0)['transformDirection'](_0x1ce256),_0xcc379=new THREE['Vector3']()['setFromMatrixColumn'](_0x4883a8['matrixWorld'],0x1)['transformDirection'](_0x1ce256),_0x55788c=isFinite(_0x23c763['CY'])?_0x23c763['CY']:0x0,_0x5c9274=_0x55ddbf[0x7]*_0x55788c+_0x55ddbf[0xf],_0x576e57=_0x5c9274+_0x2fc59f['depthMargin'],_0x304148=null,_0x19e6f7=0x0,_0x1eeee0=_0x2fc59f['mode']==='sweep'&&_0x2fc59f['sweep']?_0x2fc59f['sweepDepth']:_0x2fc59f['depthLayer'];if(_0x5cd8b5&&_0x1eeee0>0x0){var _0x57b1ea=Math['max'](0x2,_0x2fc59f['visCell']),_0x5ebca3=Math['ceil'](_0x1ff57e['width']/_0x57b1ea)+0x1,_0x495909=Math['ceil'](_0x1ff57e['height']/_0x57b1ea)+0x1,_0x3abc37=new Float32Array(_0x5ebca3*_0x495909)['fill'](Infinity),_0x2fc036;for(_0x2c9bcd=0x0;_0x2c9bcd<_0x1f35b7;_0x2c9bcd++){_0x2fc036=(_0x75658[_0x2c9bcd]/_0x57b1ea|0x0)*_0x5ebca3+(_0x4dc9fd[_0x2c9bcd]/_0x57b1ea|0x0);if(_0x194bd3[_0x2c9bcd]<_0x3abc37[_0x2fc036])_0x3abc37[_0x2fc036]=_0x194bd3[_0x2c9bcd];}_0x304148=new Uint8Array(_0x1f35b7);for(_0x2c9bcd=0x0;_0x2c9bcd<_0x1f35b7;_0x2c9bcd++){if(_0x194bd3[_0x2c9bcd]<=_0x3abc37[(_0x75658[_0x2c9bcd]/_0x57b1ea|0x0)*_0x5ebca3+(_0x4dc9fd[_0x2c9bcd]/_0x57b1ea|0x0)]+_0x1eeee0)_0x304148[_0x2c9bcd]=0x1;else{if(_0x194bd3[_0x2c9bcd]<=_0x576e57)_0x19e6f7++;}}}return _0x5c89cf['pickMs']=_0x220e02()-_0x6b1f0e,_0x5c89cf['pickPts']=_0x1f35b7,_0x5c89cf['pickFly']=_0x5dd4bd,_0x5c89cf['pickHidden']=_0x19e6f7,{'sweep':_0x2fc59f['mode']==='sweep'&&_0x2fc59f['sweep'],'DF':_0x423775,'FM':_0x5cd8b5,'list':_0x2819a9,'e':_0x55ddbf,'wMax':_0x576e57,'SX':_0x4dc9fd,'SY':_0x75658,'SW':_0x194bd3,'PX':_0x271150,'PY':_0x49ee08,'PZ':_0x49e8c0,'SI':_0x4bbae9,'SK':_0xe48c06,'FL':_0x63d8c7,'VIS':_0x304148,'head':_0x2386a5,'next':_0x31c4ad,'cell':_0x28a750,'gw':_0x3042e8,'gh':_0x1e77f2,'rect':_0x1ff57e,'right':_0x553a7e,'up':_0xcc379,'perPx':function(_0x5023cb){return 0x2*_0x5023cb*Math['tan'](_0x4883a8['fov']*Math['PI']/0x168)/_0x1ff57e['height'];}};}function _0x8f4f97(_0x562d1b,_0x2714c2,_0x404bdf,_0x4b151e){var _0xbc19d1=_0x562d1b['cell'],_0x45738c=_0x2714c2/_0xbc19d1|0x0,_0x108a45=_0x404bdf/_0xbc19d1|0x0,_0x5e8c72=Math['ceil'](_0x4b151e/_0xbc19d1),_0x5d51ef=-0x1,_0x5c8cc5=Infinity,_0x48cbdc=_0x4b151e*_0x4b151e,_0x1e890d,_0x440bf5,_0x593cc1,_0x524449=_0x562d1b['VIS'];for(_0x440bf5=_0x108a45-_0x5e8c72;_0x440bf5<=_0x108a45+_0x5e8c72;_0x440bf5++){if(_0x440bf5<0x0||_0x440bf5>=_0x562d1b['gh'])continue;for(_0x1e890d=_0x45738c-_0x5e8c72;_0x1e890d<=_0x45738c+_0x5e8c72;_0x1e890d++){if(_0x1e890d<0x0||_0x1e890d>=_0x562d1b['gw'])continue;for(_0x593cc1=_0x562d1b['head'][_0x440bf5*_0x562d1b['gw']+_0x1e890d];_0x593cc1>=0x0;_0x593cc1=_0x562d1b['next'][_0x593cc1]){if(_0x562d1b['SW'][_0x593cc1]>_0x562d1b['wMax']||_0x524449&&!_0x524449[_0x593cc1])continue;var _0x152670=_0x562d1b['SX'][_0x593cc1]-_0x2714c2,_0x3e1f34=_0x562d1b['SY'][_0x593cc1]-_0x404bdf;if(_0x152670*_0x152670+_0x3e1f34*_0x3e1f34>_0x48cbdc)continue;_0x562d1b['SW'][_0x593cc1]<_0x5c8cc5&&(_0x5c8cc5=_0x562d1b['SW'][_0x593cc1],_0x5d51ef=_0x593cc1);}}}return _0x5d51ef;}var _0x3889c2=new Int32Array(0x2000);function _0x1ec3ad(_0x3946cf,_0x4af1c7,_0x4c61db,_0x163acc){var _0x24920c=_0x3946cf['cell'],_0x4c17ae=_0x4af1c7/_0x24920c|0x0,_0x2edd6f=_0x4c61db/_0x24920c|0x0,_0x33cd43=Math['ceil'](_0x163acc/_0x24920c),_0x3e49db=_0x163acc*_0x163acc,_0x570750,_0x41503f,_0x1a2b6b,_0xa17b02=0x0,_0x27814a=_0x3946cf['VIS'];for(_0x41503f=_0x2edd6f-_0x33cd43;_0x41503f<=_0x2edd6f+_0x33cd43;_0x41503f++){if(_0x41503f<0x0||_0x41503f>=_0x3946cf['gh'])continue;for(_0x570750=_0x4c17ae-_0x33cd43;_0x570750<=_0x4c17ae+_0x33cd43;_0x570750++){if(_0x570750<0x0||_0x570750>=_0x3946cf['gw'])continue;for(_0x1a2b6b=_0x3946cf['head'][_0x41503f*_0x3946cf['gw']+_0x570750];_0x1a2b6b>=0x0;_0x1a2b6b=_0x3946cf['next'][_0x1a2b6b]){if(_0x3946cf['SW'][_0x1a2b6b]>_0x3946cf['wMax']||_0x27814a&&!_0x27814a[_0x1a2b6b])continue;var _0x1a7f72=_0x3946cf['SX'][_0x1a2b6b]-_0x4af1c7,_0x2fefca=_0x3946cf['SY'][_0x1a2b6b]-_0x4c61db;if(_0x1a7f72*_0x1a7f72+_0x2fefca*_0x2fefca>_0x3e49db)continue;if(_0xa17b02>=_0x3889c2['length']){var _0x492ad4=new Int32Array(_0x3889c2['length']*0x2);_0x492ad4['set'](_0x3889c2),_0x3889c2=_0x492ad4;}_0x3889c2[_0xa17b02++]=_0x1a2b6b;}}}if(!_0xa17b02)return null;var _0x3fd4b2=_0x2fc59f['dabCell'],_0x3ee823=new Map(),_0x548715,_0x2953c7,_0x3d1a1f,_0x23c749,_0x3670df,_0x44743b,_0xe307a9=_0x3946cf['FL'],_0x1d4fb6=0x0,_0x361f4a=null,_0x14282d;function _0x4d09b7(_0x2dcb2c,_0x16d4ec,_0x461206,_0x56d5bc,_0x3c071e){_0x2953c7=Math['floor'](_0x2dcb2c/_0x3fd4b2)+0x800+0x1000*(Math['floor'](_0x16d4ec/_0x3fd4b2)+0x800+0x1000*(Math['floor'](_0x461206/_0x3fd4b2)+0x800)),_0x44743b=_0x3ee823['get'](_0x2953c7);if(_0x44743b===undefined){_0x3ee823['set'](_0x2953c7,[_0x2dcb2c,_0x16d4ec,_0x461206,_0x56d5bc,_0x3c071e]);if(_0x3c071e)_0x1d4fb6++;}else _0x56d5bc>_0x44743b[0x3]&&(_0x44743b[0x0]=_0x2dcb2c,_0x44743b[0x1]=_0x16d4ec,_0x44743b[0x2]=_0x461206,_0x44743b[0x3]=_0x56d5bc),_0x3c071e&&!_0x44743b[0x4]&&(_0x44743b[0x4]=0x1,_0x1d4fb6++);}for(_0x548715=0x0;_0x548715<_0xa17b02;_0x548715++){_0x1a2b6b=_0x3889c2[_0x548715],_0x23c749=_0x3946cf['SX'][_0x1a2b6b]-_0x4af1c7,_0x3670df=_0x3946cf['SY'][_0x1a2b6b]-_0x4c61db,_0x3d1a1f=Math['pow'](0x1-Math['sqrt'](_0x23c749*_0x23c749+_0x3670df*_0x3670df)/_0x163acc,_0x2fc59f['falloff']),_0x4d09b7(_0x3946cf['PX'][_0x1a2b6b],_0x3946cf['PY'][_0x1a2b6b],_0x3946cf['PZ'][_0x1a2b6b],_0x3d1a1f,_0xe307a9?_0xe307a9[_0x1a2b6b]:0x0);if(_0xe307a9&&_0xe307a9[_0x1a2b6b]&&_0x2fc59f['reachBack']&&!_0x3946cf['sweep']){if(!_0x361f4a)_0x361f4a=new Map();_0x14282d=_0x361f4a['get'](_0x3946cf['SI'][_0x1a2b6b]);if(_0x14282d===undefined)_0x361f4a['set'](_0x3946cf['SI'][_0x1a2b6b],[_0x3946cf['SK'][_0x1a2b6b],_0x3d1a1f]);else{if(_0x3946cf['SK'][_0x1a2b6b]>_0x14282d[0x0])_0x14282d[0x0]=_0x3946cf['SK'][_0x1a2b6b];if(_0x3d1a1f>_0x14282d[0x1])_0x14282d[0x1]=_0x3d1a1f;}}}var _0x4031a9=0x0;if(_0x361f4a&&_0x3946cf['FM']){var _0x47c9e2=_0x3946cf['e'],_0xcde1bf=_0x3946cf['FM']['F'],_0x4d2ecd=_0x3946cf['FM']['off'],_0x5c626c=Math['max'](0x0,_0x2fc59f['reachIn']|0x0);_0x361f4a['forEach'](function(_0x5c921a,_0x36039c){var _0x2c4efb=_0x3946cf['list'][_0x36039c]['pts'],_0x1f361d=_0x2c4efb['_pre']&&_0x2c4efb['_pre']['length']===_0x2c4efb['length']?_0x2c4efb['_pre']:_0x2c4efb,_0x2da108=_0x4d2ecd[_0x36039c],_0x53abfb=0x0,_0x19ed0d,_0x44f607;for(_0x19ed0d=_0x5c921a[0x0]-0x1;_0x19ed0d>=0x1;_0x19ed0d--){_0x44f607=_0x2c4efb[_0x19ed0d];if(_0x47c9e2[0x3]*_0x44f607['x']+_0x47c9e2[0x7]*_0x44f607['y']+_0x47c9e2[0xb]*_0x44f607['z']+_0x47c9e2[0xf]>_0x3946cf['wMax'])break;if(_0xcde1bf[_0x2da108+_0x19ed0d])_0x53abfb=0x0;else{if(++_0x53abfb>_0x5c626c)break;}_0x4d09b7(_0x1f361d[_0x19ed0d]['x'],_0x1f361d[_0x19ed0d]['y'],_0x1f361d[_0x19ed0d]['z'],_0x5c921a[0x1],0x1),_0x4031a9++;}});}var _0x5ce8db=_0x3ee823['size'],_0x21f7df=0x1,_0x1d8ae1=0x0,_0x1f8c57=0x0;if(_0x5ce8db>_0x2fc59f['dabMax'])_0x21f7df=Math['max'](0x1,Math['ceil']((_0x5ce8db-_0x1d4fb6)/Math['max'](0x1,_0x2fc59f['dabMax']-_0x1d4fb6)));var _0x4da86f=new Float32Array((_0x1d4fb6+Math['ceil']((_0x5ce8db-_0x1d4fb6)/_0x21f7df)+0x1)*0x4);return _0x3ee823['forEach'](function(_0x33c74e){if(!_0x33c74e[0x4]&&_0x1f8c57++%_0x21f7df)return;_0x4da86f[_0x1d8ae1*0x4]=_0x33c74e[0x0],_0x4da86f[_0x1d8ae1*0x4+0x1]=_0x33c74e[0x1],_0x4da86f[_0x1d8ae1*0x4+0x2]=_0x33c74e[0x2],_0x4da86f[_0x1d8ae1*0x4+0x3]=_0x33c74e[0x3],_0x1d8ae1++;}),{'dabs':_0x4da86f,'m':_0x1d8ae1,'seen':_0xa17b02,'reached':_0x4031a9};}var _0x5e590d=null,_0x2b98cc=![],_0x3134b7=new Map(),_0x2cb5cd=![],_0x213da4=0x0,_0x4ab198=null;function _0x299ebe(_0x4796bc){var _0x1835d6=_0x2e3212();return!!(_0x1835d6&&_0x4796bc['target']===_0x1835d6['renderer']['domElement']&&_0x1835d6['container']&&_0x1835d6['container']['id']==='adjust3dHost');}function _0x11e61e(){if(_0x4ab198)return;var _0x58555a=Math['max'](0x0,_0x2fc59f['liveMs']-(_0x220e02()-_0x213da4));_0x4ab198=setTimeout(function(){_0x4ab198=null,_0x213da4=_0x220e02(),_0x3f0942();},_0x58555a);}function _0x3cc424(_0x54cd03,_0x286551,_0x4c5d67){var _0x365b62=_0x54cd03['trail'],_0x339799=_0x365b62['length'],_0x157479=0x0,_0x31043c;for(_0x31043c=_0x339799-0x2;_0x31043c>=0x0;_0x31043c-=0x2){_0x157479+=Math['hypot']((_0x31043c+0x2<_0x339799?_0x365b62[_0x31043c+0x2]:_0x286551)-_0x365b62[_0x31043c],(_0x31043c+0x3<_0x339799?_0x365b62[_0x31043c+0x3]:_0x4c5d67)-_0x365b62[_0x31043c+0x1]);if(_0x157479>=_0x2fc59f['dirLagPx'])break;}if(_0x31043c<0x0)_0x31043c=0x0;return[_0x286551-_0x365b62[_0x31043c],_0x4c5d67-_0x365b62[_0x31043c+0x1]];}function _0xda2f96(_0x3fa795,_0x5e4fc6){var _0xcf64cc=_0x5e590d,_0x67b6c3=_0xcf64cc['pk'];if(!_0x67b6c3)return;var _0x238e16=_0x3fa795-_0xcf64cc['lx'],_0x450893=_0x5e4fc6-_0xcf64cc['ly'],_0x19e78b=Math['sqrt'](_0x238e16*_0x238e16+_0x450893*_0x450893);if(_0x19e78b<_0x2fc59f['minMovePx'])return;var _0x35cfd9=_0x3cc424(_0xcf64cc,_0x3fa795,_0x5e4fc6);_0xcf64cc['trail']['push'](_0x3fa795,_0x5e4fc6);if(_0xcf64cc['trail']['length']>0xf0)_0xcf64cc['trail']['splice'](0x0,0x78);var _0x1062a6=Math['hypot'](_0x35cfd9[0x0],_0x35cfd9[0x1])||0x1;_0xcf64cc['vx']===0x0&&_0xcf64cc['vy']===0x0?(_0xcf64cc['vx']=_0x35cfd9[0x0]/_0x1062a6,_0xcf64cc['vy']=_0x35cfd9[0x1]/_0x1062a6):(_0xcf64cc['vx']=_0xcf64cc['vx']*0.7+_0x35cfd9[0x0]/_0x1062a6*0.3,_0xcf64cc['vy']=_0xcf64cc['vy']*0.7+_0x35cfd9[0x1]/_0x1062a6*0.3);var _0x3b3dcb=_0x8f4f97(_0x67b6c3,_0x3fa795,_0x5e4fc6,_0x2fc59f['radiusPx']);if(_0x3b3dcb>=0x0)_0xcf64cc['w']=_0x67b6c3['SW'][_0x3b3dcb];var _0x447f07=_0xcf64cc['w']>0x0?Math['min'](_0x2fc59f['maxRadius'],_0x2fc59f['radiusPx']*_0x67b6c3['perPx'](_0xcf64cc['w']))/_0x67b6c3['perPx'](_0xcf64cc['w']):null;_0x1edb9c(_0x3fa795,_0x5e4fc6,_0x447f07,Math['atan2'](_0xcf64cc['vy'],_0xcf64cc['vx'])),_0xcf64cc['lx']=_0x3fa795,_0xcf64cc['ly']=_0x5e4fc6;if(_0x447f07==null)return;var _0x54d265=_0x67b6c3['right']['x']*_0xcf64cc['vx']-_0x67b6c3['up']['x']*_0xcf64cc['vy'],_0x372a71=_0x67b6c3['right']['y']*_0xcf64cc['vx']-_0x67b6c3['up']['y']*_0xcf64cc['vy'],_0x1cba09=_0x67b6c3['right']['z']*_0xcf64cc['vx']-_0x67b6c3['up']['z']*_0xcf64cc['vy'],_0x17efda=Math['sqrt'](_0x54d265*_0x54d265+_0x372a71*_0x372a71+_0x1cba09*_0x1cba09);if(!(_0x17efda>1e-9))return;if(_0xcf64cc['has']&&Math['hypot'](_0x3fa795-_0xcf64cc['sx'],_0x5e4fc6-_0xcf64cc['sy'])<_0x2fc59f['spacing']*_0x447f07)return;var _0x4b6a97=_0x1ec3ad(_0x67b6c3,_0x3fa795,_0x5e4fc6,_0x447f07);if(!_0x4b6a97)return;if(_0x2fc59f['samples']['length']+_0x2fc59f['sweeps']['length']>=_0x2fc59f['maxSamples']){if(!_0xcf64cc['full']){_0xcf64cc['full']=!![];try{showToast(_0x5621bc()==='ko'?'빗질이\x20너무\x20많아요\x20—\x20↶로\x20되돌리거나\x20지워\x20주세요':'Too\x20many\x20comb\x20strokes\x20—\x20undo\x20or\x20clear\x20some');}catch(_0x176ba3){}}return;}if(_0x67b6c3['sweep'])_0x2fc59f['sweeps']['push']({'dabs':_0x4b6a97['dabs'],'m':_0x4b6a97['m'],'dx':_0x54d265/_0x17efda,'dy':_0x372a71/_0x17efda,'dz':_0x1cba09/_0x17efda,'k':_0x2fc59f['sweepStrength'],'g':_0xcf64cc['g']});else _0x2fc59f['samples']['push']({'dabs':_0x4b6a97['dabs'],'m':_0x4b6a97['m'],'dx':_0x54d265/_0x17efda,'dy':_0x372a71/_0x17efda,'dz':_0x1cba09/_0x17efda,'k':_0x2fc59f['strength'],'g':_0xcf64cc['g']});_0xcf64cc['sx']=_0x3fa795,_0xcf64cc['sy']=_0x5e4fc6,_0xcf64cc['has']=!![],_0xcf64cc['n']++,_0x5c89cf['dabs']=_0x4b6a97['m'],_0x5c89cf['seen']=_0x4b6a97['seen'],_0x5c89cf['reached']=_0x4b6a97['reached']||0x0,_0x345f7d++,_0x11e61e();}function _0x5c44e0(){var _0xa613e1=_0x5e590d;_0x5e590d=null;if(!_0xa613e1)return;if(_0xa613e1['n']){if(_0xa613e1['sweep'])_0x5c89cf['sweepStrokes']=(_0x5c89cf['sweepStrokes']||0x0)+0x1;else _0x5c89cf['strokes']++;_0x4ab198&&(clearTimeout(_0x4ab198),_0x4ab198=null),_0x3f0942();}_0xce4c4d();}function _0x465f9b(_0x332e13){if(_0x2cb5cd||!_0x2fc59f['on']||!_0x437cdf()||!_0x299ebe(_0x332e13))return;_0x3134b7['set'](_0x332e13['pointerId'],{'x':_0x332e13['clientX'],'y':_0x332e13['clientY'],'type':_0x332e13['pointerType']});if(_0x2b98cc)return;if(_0x5e590d){var _0x537343=_0x5e590d['id'],_0x568b9c=_0x3134b7['get'](_0x537343);_0x5c44e0(),_0x2b98cc=!![];if(_0x568b9c){try{_0x2cb5cd=!![],_0x332e13['target']['dispatchEvent'](new PointerEvent('pointerdown',{'pointerId':_0x537343,'clientX':_0x568b9c['x'],'clientY':_0x568b9c['y'],'bubbles':!![],'isPrimary':!![],'button':0x0,'pointerType':_0x568b9c['type']||'touch'}));}catch(_0x578f13){}_0x2cb5cd=![];}return;}if(_0x332e13['button']!==0x0||_0x332e13['shiftKey'])return;var _0x31b3bf=null;try{_0x31b3bf=_0x1e4f78();}catch(_0x287dae){_0x5c89cf['err']=String(_0x287dae&&_0x287dae['message']||_0x287dae);}if(!_0x31b3bf)return;var _0x2b02dd=_0x31b3bf['rect'],_0x1172b7=_0x332e13['pointerType']==='touch'?_0x2fc59f['touchOffset']:0x0,_0x4228af=_0x332e13['clientX']-_0x2b02dd['left'],_0x583c94=_0x332e13['clientY']-_0x2b02dd['top']-_0x1172b7;_0x5e590d={'sweep':!!_0x31b3bf['sweep'],'id':_0x332e13['pointerId'],'pk':_0x31b3bf,'oy':_0x1172b7,'lx':_0x4228af,'ly':_0x583c94,'vx':0x0,'vy':0x0,'trail':[_0x4228af,_0x583c94],'has':![],'n':0x0,'g':++_0x3c92e0,'cx':0x0,'cy':0x0,'cz':0x0,'sx':0x0,'sy':0x0,'sz':0x0,'w':0x0};var _0x4c3831=_0x8f4f97(_0x31b3bf,_0x4228af,_0x583c94,_0x2fc59f['radiusPx']);if(_0x4c3831>=0x0)_0x5e590d['w']=_0x31b3bf['SW'][_0x4c3831];_0x1edb9c(_0x4228af,_0x583c94,_0x4c3831>=0x0?Math['min'](_0x2fc59f['maxRadius'],_0x2fc59f['radiusPx']*_0x31b3bf['perPx'](_0x31b3bf['SW'][_0x4c3831]))/_0x31b3bf['perPx'](_0x31b3bf['SW'][_0x4c3831]):null,null),_0x332e13['stopPropagation']();}function _0x3e5b73(_0x490656){if(_0x3134b7['has'](_0x490656['pointerId'])){var _0x5cc32c=_0x3134b7['get'](_0x490656['pointerId']);_0x5cc32c['x']=_0x490656['clientX'],_0x5cc32c['y']=_0x490656['clientY'];}if(!_0x5e590d&&_0x2fc59f['on']&&!_0x2b98cc&&_0x490656['pointerType']==='mouse'&&_0x437cdf()&&_0x299ebe(_0x490656)){var _0x1c5159=_0x490656['target']['getBoundingClientRect']();_0x1edb9c(_0x490656['clientX']-_0x1c5159['left'],_0x490656['clientY']-_0x1c5159['top'],null,null);}if(!_0x5e590d||_0x490656['pointerId']!==_0x5e590d['id'])return;_0x490656['stopPropagation']();var _0x55a5ad=_0x5e590d['pk']['rect'],_0x2e1234=_0x5e590d['oy'],_0x515e13=typeof _0x490656['getCoalescedEvents']==='function'?_0x490656['getCoalescedEvents']():null;if(_0x515e13&&_0x515e13['length']>0x1){for(var _0x464040=0x0;_0x464040<_0x515e13['length'];_0x464040++)_0xda2f96(_0x515e13[_0x464040]['clientX']-_0x55a5ad['left'],_0x515e13[_0x464040]['clientY']-_0x55a5ad['top']-_0x2e1234);}else _0xda2f96(_0x490656['clientX']-_0x55a5ad['left'],_0x490656['clientY']-_0x55a5ad['top']-_0x2e1234);}function _0x50a9e5(_0xdf7c){_0x3134b7['delete'](_0xdf7c['pointerId']);if(_0x5e590d&&_0xdf7c['pointerId']===_0x5e590d['id'])_0x5c44e0();if(!_0x3134b7['size'])_0x2b98cc=![];}document['addEventListener']('pointerdown',_0x465f9b,!![]),_0x2ee1c6['addEventListener']('pointermove',_0x3e5b73,!![]),_0x2ee1c6['addEventListener']('pointerup',_0x50a9e5,!![]),_0x2ee1c6['addEventListener']('pointercancel',_0x50a9e5,!![]);var _0x52dedd=null,_0x2dfa11=0xe;function _0x5c7567(){try{var _0x334215=_0x2e3212(),_0x5d4afc=_0x334215['renderer']['domElement']['getBoundingClientRect'](),_0x4217e7=MODEL3D_VIEW['base']?MODEL3D_VIEW['base']['dist']/MODEL3D_VIEW['zoom']:_0x334215['camera']['position']['length'](),_0x290832=0x2*_0x4217e7*Math['tan'](_0x334215['camera']['fov']*Math['PI']/0x168)/_0x5d4afc['height'];return Math['min'](_0x2fc59f['maxRadius'],_0x2fc59f['radiusPx']*_0x290832)/_0x290832;}catch(_0x2986e9){return _0x2fc59f['radiusPx'];}}function _0x68344f(){var _0x13ef44=_0x2e3212();if(!_0x13ef44||!_0x13ef44['container']||_0x13ef44['container']['id']!=='adjust3dHost')return null;if(_0x52dedd&&_0x52dedd['parentNode']===_0x13ef44['container'])return _0x52dedd;return _0x52dedd=document['createElement']('div'),_0x52dedd['id']='comb3dMark',_0x52dedd['style']['cssText']='position:absolute;left:0;top:0;width:0;height:0;z-index:5;pointer-events:none;display:none;',_0x52dedd['innerHTML']='<svg\x20width=\x22120\x22\x20height=\x22120\x22\x20viewBox=\x22-60\x20-60\x20120\x20120\x22\x20style=\x22position:absolute;left:-60px;top:-60px;overflow:visible\x22>'+'<circle\x20id=\x22comb3dRing\x22\x20r=\x2214\x22\x20fill=\x22rgba(201,135,74,0.10)\x22\x20stroke=\x22#fff\x22\x20stroke-width=\x222.5\x22\x20opacity=\x220.9\x22/>'+'<circle\x20id=\x22comb3dRing2\x22\x20r=\x2214\x22\x20fill=\x22none\x22\x20stroke=\x22#c9874a\x22\x20stroke-width=\x221.5\x22\x20stroke-dasharray=\x224\x203\x22/>'+'<g\x20id=\x22comb3dGlyph\x22><g\x20transform=\x22translate(0,0)\x22>'+'<rect\x20x=\x22-13\x22\x20y=\x22-8\x22\x20width=\x2226\x22\x20height=\x226\x22\x20rx=\x222\x22\x20fill=\x22#c9874a\x22\x20stroke=\x22#1a1410\x22\x20stroke-width=\x221\x22/>'+[-10.5,-0x7,-3.5,0x0,3.5,0x7,10.5]['map'](function(_0x4ab422){return'<rect\x20x=\x22'+(_0x4ab422-0.9)+'\x22\x20y=\x22-2.5\x22\x20width=\x221.8\x22\x20height=\x2210\x22\x20rx=\x220.8\x22\x20fill=\x22#c9874a\x22\x20stroke=\x22#1a1410\x22\x20stroke-width=\x220.6\x22/>';})['join']('')+'</g></g></svg>',_0x13ef44['container']['appendChild'](_0x52dedd),_0x52dedd;}function _0x1edb9c(_0x5e6c52,_0x21d8b3,_0x2ef2c2,_0x10f61c){if(!_0x2fc59f['indicator'])return;var _0x3ab6e3=_0x68344f();if(!_0x3ab6e3)return;if(_0x2ef2c2!=null&&isFinite(_0x2ef2c2))_0x2dfa11=Math['max'](0x4,_0x2ef2c2);_0x3ab6e3['style']['display']='block',_0x3ab6e3['style']['transform']='translate('+_0x5e6c52['toFixed'](0x1)+'px,'+_0x21d8b3['toFixed'](0x1)+'px)';try{_0x3ab6e3['querySelector']('#comb3dRing')['setAttribute']('r',_0x2dfa11['toFixed'](0x1)),_0x3ab6e3['querySelector']('#comb3dRing2')['setAttribute']('r',_0x2dfa11['toFixed'](0x1));var _0x41d446=_0x10f61c==null?0x0:_0x10f61c*0xb4/Math['PI']-0x5a;_0x3ab6e3['querySelector']('#comb3dGlyph')['setAttribute']('transform','rotate('+_0x41d446['toFixed'](0x1)+')');}catch(_0x4df920){}}function _0x52fb15(){if(_0x52dedd)_0x52dedd['style']['display']='none';}function _0x4d6dd9(){try{var _0x3736e7=_0x2e3212();if(!_0x3736e7||!_0x2fc59f['on']){_0x52fb15();return;}var _0x3391d1=_0x3736e7['renderer']['domElement']['getBoundingClientRect']();_0x1edb9c(_0x3391d1['width']/0x2,_0x3391d1['height']/0x2,_0x5c7567(),null);}catch(_0x2d2849){}}_0x2fc59f['_mark']=function(){return _0x52dedd;};function _0x5621bc(){try{return uiLang==='ko'?'ko':'en';}catch(_0x514190){return'ko';}}var _0x5a1c2c=null,_0x3df434=null,_0x2159ce=null,_0x4da6a5=null,_0x42017b=null,_0xb89ae=null,_0x55834f=0.03,_0x24a8a3=0.6,_0x1dd549='gyeol_sweepLevel';function _0x52d3d4(_0x3b269a){return _0x3b269a=Math['max'](0x1,Math['min'](0xa,+_0x3b269a||0x7)),+(_0x55834f*Math['pow'](_0x24a8a3/_0x55834f,(_0x3b269a-0x1)/0x9))['toFixed'](0x3);}_0x2fc59f['setSweepLevel']=function(_0x34e3ce,_0x1f8ec9){_0x34e3ce=Math['max'](0x1,Math['min'](0xa,Math['round'](+_0x34e3ce||0x7))),_0x2fc59f['sweepLevel']=_0x34e3ce,_0x2fc59f['sweepStrength']=_0x52d3d4(_0x34e3ce);if(!_0x1f8ec9)try{localStorage['setItem'](_0x1dd549,String(_0x34e3ce));}catch(_0x5f2576){}try{if(_0x42017b)_0x42017b['value']=String(_0x34e3ce);if(_0xb89ae)_0xb89ae['textContent']=(_0x5621bc()==='ko'?'세기\x20':'Strength\x20')+_0x34e3ce;}catch(_0x41ddba){}return _0x2fc59f['sweepStrength'];};function _0xce4c4d(){try{if(!_0x5a1c2c)return;var _0x4880e8=_0x2fc59f['enabled']&&_0x111ed9(),_0x42b96a=_0x2fc59f['on']&&_0x2fc59f['mode']==='sweep'&&_0x2fc59f['sweep'];_0x5a1c2c['style']['display']=_0x4880e8?'':'none',_0x5a1c2c['classList']['toggle']('on',!!_0x2fc59f['on']&&!_0x42b96a),_0x5a1c2c['textContent']=_0x2fc59f['on']&&!_0x42b96a?'빗질\x20ON':'빗질\x20OFF';_0x2159ce&&(_0x2159ce['style']['display']=_0x4880e8&&_0x2fc59f['sweep']?'':'none',_0x2159ce['classList']['toggle']('on',!!_0x42b96a),_0x2159ce['textContent']=_0x42b96a?'넘기기\x20ON':'넘기기\x20OFF');if(_0x4da6a5)_0x4da6a5['style']['display']=_0x4880e8&&_0x42b96a?'inline-flex':'none';_0x3df434['style']['display']=_0x4880e8&&_0x2fc59f['on']?'':'none',_0x3df434['disabled']=!(_0x2fc59f['samples']['length']||_0x2fc59f['sweeps']['length']);if(_0x52dedd){var _0x44a540=_0x52dedd['querySelector']('#comb3dRing2');if(_0x44a540)_0x44a540['setAttribute']('stroke',_0x42b96a?'#3b82c4':'#c9874a');}var _0x468037=_0x2e3212();if(_0x468037&&_0x468037['container']&&_0x468037['container']['id']==='adjust3dHost')_0x468037['renderer']['domElement']['style']['cursor']=_0x2fc59f['on']?'crosshair':'';}catch(_0x593fa6){}}_0x2fc59f['toggle']=function(_0xc9073c,_0x16ed31){_0x16ed31=_0x16ed31==='sweep'&&_0x2fc59f['sweep']?'sweep':'tidy';if(_0xc9073c==null)_0xc9073c=!(_0x2fc59f['on']&&_0x2fc59f['mode']===_0x16ed31);if(_0x5e590d)_0x5c44e0();_0x2fc59f['on']=!!_0xc9073c;if(_0x2fc59f['on'])_0x2fc59f['mode']=_0x16ed31;_0xce4c4d();if(_0x2fc59f['on']&&_0x16ed31==='sweep'){_0x4d6dd9(),_0xce4c4d();try{showToast(_0x5621bc()==='ko'?'넘기고\x20싶은\x20머리에\x20빗(원)을\x20올리고\x20보낼\x20방향으로\x20쓸어\x20주세요\x20—\x20원\x20안의\x20머리가\x20뭉치째\x20그\x20방향으로\x20넘어갑니다\x20·\x20이어서\x20쓸면\x20더\x20넘어가요\x20·\x20↶\x20되돌리기':'Put\x20the\x20comb\x20(circle)\x20on\x20the\x20hair\x20and\x20stroke\x20the\x20way\x20you\x20want\x20it\x20to\x20go\x20—\x20the\x20whole\x20bundle\x20inside\x20the\x20circle\x20turns\x20that\x20way\x20·\x20keep\x20stroking\x20to\x20carry\x20it\x20further\x20·\x20↶\x20undo');}catch(_0x3b0629){}}else{if(_0x2fc59f['on']){_0x4d6dd9(),_0xce4c4d();try{showToast(_0x5621bc()==='ko'?'뜬\x20머리에\x20빗(원)을\x20올리고\x20결대로\x20쓸어\x20주세요\x20—\x20주변\x20머리의\x20결에\x20맞춰\x20눕습니다\x20·\x20빗은\x20손가락\x20조금\x20위에\x20있어요\x20·\x20두\x20손가락:\x20이동·확대':'Put\x20the\x20comb\x20(circle)\x20on\x20the\x20flyaways\x20and\x20sweep\x20along\x20the\x20hair\x20—\x20they\x20lie\x20down\x20into\x20the\x20surrounding\x20flow\x20·\x20the\x20comb\x20sits\x20just\x20above\x20your\x20finger\x20·\x20two\x20fingers:\x20move\x20/\x20zoom');}catch(_0x1788ec){}}else _0x52fb15();}};try{var _0x50bc85=document['querySelector']('#screen-adjust\x20.mode-bar'),_0xe7c5b2=document['getElementById']('mannequinBtn');if(_0x50bc85){_0x5a1c2c=document['createElement']('button'),_0x5a1c2c['id']='comb3dBtn',_0x5a1c2c['type']='button';if(_0xe7c5b2&&_0xe7c5b2['className'])_0x5a1c2c['className']=_0xe7c5b2['className'];_0x5a1c2c['title']='켜면\x20한\x20손가락\x20드래그가\x20빗질이\x20됩니다\x20—\x20잔머리를\x20결\x20방향으로\x20쓰다듬어\x20눕힙니다',_0x5a1c2c['addEventListener']('click',function(){_0x2fc59f['toggle']();}),_0x3df434=document['createElement']('button'),_0x3df434['id']='comb3dUndoBtn',_0x3df434['type']='button';if(_0xe7c5b2&&_0xe7c5b2['className'])_0x3df434['className']=_0xe7c5b2['className'];_0x3df434['textContent']='↶',_0x3df434['title']='마지막\x20빗질\x20한\x20획\x20되돌리기',_0x3df434['addEventListener']('click',function(){_0x2fc59f['undo']();}),_0x2159ce=document['createElement']('button'),_0x2159ce['id']='comb3dSweepBtn',_0x2159ce['type']='button';if(_0xe7c5b2&&_0xe7c5b2['className'])_0x2159ce['className']=_0xe7c5b2['className'];_0x2159ce['title']='켜면\x20한\x20손가락\x20드래그가\x20빗어\x20넘기기가\x20됩니다\x20—\x20원\x20안의\x20머리가\x20뭉치째\x20쓴\x20방향으로\x20넘어갑니다',_0x2159ce['addEventListener']('click',function(){_0x2fc59f['toggle'](null,'sweep');}),_0x4da6a5=document['createElement']('span'),_0x4da6a5['id']='comb3dSweepK',_0x4da6a5['style']['cssText']='display:none;align-items:center;gap:5px;vertical-align:middle;padding:2px\x208px;border-radius:999px;background:rgba(30,25,21,0.82);color:#f3e9da;font-size:11px;line-height:1;white-space:nowrap;',_0xb89ae=document['createElement']('span'),_0x42017b=document['createElement']('input'),_0x42017b['type']='range',_0x42017b['min']='1',_0x42017b['max']='10',_0x42017b['step']='1',_0x42017b['style']['cssText']='width:84px;height:22px;margin:0;accent-color:#3b82c4;touch-action:pan-x;',_0x42017b['title']='넘기기\x20세기\x20—\x20한\x20번\x20쓸\x20때\x20얼마나\x20넘어가나(여러\x20번\x20쓸면\x20쌓임)',_0x42017b['addEventListener']('input',function(){_0x2fc59f['setSweepLevel'](_0x42017b['value']);}),['pointerdown','touchstart','mousedown']['forEach'](function(_0x41e927){_0x4da6a5['addEventListener'](_0x41e927,function(_0x493638){_0x493638['stopPropagation']();});}),_0x4da6a5['appendChild'](_0xb89ae),_0x4da6a5['appendChild'](_0x42017b);var _0x3cbae8=_0x2fc59f['sweepLevel'];try{var _0x405aea=parseInt(localStorage['getItem'](_0x1dd549),0xa);if(_0x405aea>=0x1&&_0x405aea<=0xa)_0x3cbae8=_0x405aea;}catch(_0x1af155){}_0x2fc59f['setSweepLevel'](_0x3cbae8,!![]),_0x50bc85['appendChild'](_0x5a1c2c),_0x50bc85['appendChild'](_0x2159ce),_0x50bc85['appendChild'](_0x4da6a5),_0x50bc85['appendChild'](_0x3df434),_0xce4c4d();}}catch(_0x4152ca){console['warn'](_0x544e7f+'\x20버튼\x20만들기\x20실패',_0x4152ca);}try{if(typeof I18N!=='undefined'){Object['assign'](I18N,{'빗질\x20ON':'Comb\x20ON','빗질\x20OFF':'Comb\x20OFF','넘기기\x20ON':'Sweep\x20ON','넘기기\x20OFF':'Sweep\x20OFF','넘기기\x20세기\x20—\x20한\x20번\x20쓸\x20때\x20얼마나\x20넘어가나(여러\x20번\x20쓸면\x20쌓임)':'Sweep\x20strength\x20—\x20how\x20far\x20one\x20stroke\x20turns\x20the\x20hair\x20(repeat\x20strokes\x20add\x20up)','켜면\x20한\x20손가락\x20드래그가\x20빗어\x20넘기기가\x20됩니다\x20—\x20원\x20안의\x20머리가\x20뭉치째\x20쓴\x20방향으로\x20넘어갑니다':'When\x20on,\x20a\x20one-finger\x20drag\x20sweeps\x20—\x20the\x20whole\x20bundle\x20inside\x20the\x20circle\x20turns\x20the\x20way\x20you\x20stroke','켜면\x20한\x20손가락\x20드래그가\x20빗질이\x20됩니다\x20—\x20잔머리를\x20결\x20방향으로\x20쓰다듬어\x20눕힙니다':'When\x20on,\x20a\x20one-finger\x20drag\x20combs\x20—\x20stroke\x20flyaways\x20along\x20the\x20hair\x20flow\x20to\x20lay\x20them\x20down','마지막\x20빗질\x20한\x20획\x20되돌리기':'Undo\x20the\x20last\x20comb\x20stroke'});try{_i18nSubKeys=null;}catch(_0x3ef256){}try{if(typeof applyUiLang==='function')applyUiLang();}catch(_0x36146f){}}}catch(_0x4e4bf0){}return _0x2fc59f['_afterUi']=function(_0x1d307c,_0x2ce2f5){try{if(_0x1d307c==='activateScreen'&&_0x2ce2f5!=='adjust'&&_0x2fc59f['on']){_0x2fc59f['on']=![];if(_0x5e590d)_0x5c44e0();_0x52fb15();}_0xce4c4d();}catch(_0xfb2cb2){}},_0x2fc59f['_afterApplyView']=function(){try{_0x2fc59f['on']&&!_0x5e590d&&_0x52dedd&&_0x52dedd['style']['display']!=='none'&&(_0x2dfa11=Math['max'](0x4,_0x5c7567()),_0x52dedd['querySelector']('#comb3dRing')['setAttribute']('r',_0x2dfa11['toFixed'](0x1)),_0x52dedd['querySelector']('#comb3dRing2')['setAttribute']('r',_0x2dfa11['toFixed'](0x1)));}catch(_0x588bd4){}},_0x2fc59f['_syncBtn']=function(){try{_0xce4c4d();}catch(_0x25e0ad){}},_0x2fc59f['_panelLines']=function(){var _0x4f442c=[];try{_0x4f442c['push'](_0x544e7f+'\x20'+(_0x2fc59f['enabled']?_0x2fc59f['on']?'켜짐(빗질\x20모드)':'대기':'꺼짐')+'\x20·\x20획\x20'+_0x5c89cf['strokes']+'\x20·\x20표본\x20'+_0x2fc59f['samples']['length']+'/'+_0x2fc59f['maxSamples']+'\x20·\x20넘기기\x20'+(_0x2fc59f['sweep']?(_0x2fc59f['on']&&_0x2fc59f['mode']==='sweep'?'켜짐':'대기')+'\x20—\x20세기\x20'+_0x2fc59f['sweepLevel']+'/10(표본\x20세기\x20'+_0x2fc59f['sweepStrength']+')\x20·\x20획\x20'+(_0x5c89cf['sweepStrokes']||0x0)+'\x20·\x20표본\x20'+_0x2fc59f['sweeps']['length']+'\x20·\x20직전에\x20넘어간\x20가닥\x20'+(_0x5c89cf['swept']||0x0)+'(두상에\x20막혀\x20눕힌\x20마디\x20'+(_0x5c89cf['sweptPush']||0x0)+')\x20·\x20방향\x20장\x20'+(_0x1a801d?_0x1a801d['n']:0x0)+'칸':'꺼짐(COMB3D.sweep=false)')+'\x20·\x20직전에\x20바뀐\x20가닥\x20'+_0x5c89cf['touched']+'\x20·\x20가닥\x20만들기\x20'+Math['round'](_0x5c89cf['ms'])+'ms(빗질\x20포함)\x20·\x20붓\x20자리\x20찾기\x20준비\x20'+Math['round'](_0x5c89cf['pickMs'])+'ms(점\x20'+_0x5c89cf['pickPts']+')\x20·\x20직전\x20표본이\x20칠한\x20점\x20'+_0x5c89cf['dabs']+'(원\x20안에\x20보인\x20점\x20'+_0x5c89cf['seen']+')'+'\x20·\x20방향\x20장\x20'+(_0x58970e?_0x58970e['n']:0x0)+'칸\x20·\x20붓\x20'+_0x2fc59f['radiusPx']+'px(상한\x20'+_0x2fc59f['maxRadius']+'\x20·\x20지금\x20화면에서\x20'+Math['round'](_0x2dfa11)+'px)\x20·\x20세기\x20'+_0x2fc59f['strength']+'\x20·\x20터치\x20빗\x20위치\x20손가락\x20위\x20'+_0x2fc59f['touchOffset']+'px'+(_0x5c89cf['err']?'\x20·\x20⚠\x20'+_0x5c89cf['err']:'')),_0x4f442c['push']('\x20\x20결\x20따라\x20빗기\x20'+(_0x2fc59f['grain']?_0xbfb422&&_0xbfb422['flow']?'켜짐\x20—\x20결\x20칸\x20'+_0x5c89cf['flowCells']+'\x20·\x20몸통\x20머리\x20보통\x20밀도\x20칸당\x20'+_0x5c89cf['flowRef']+'가닥\x20·\x20결\x20읽기\x20'+Math['round'](_0x5c89cf['flowMs'])+'ms':'켜짐(아직\x20결을\x20안\x20읽음\x20—\x20빗을\x20대면\x20읽음)':'꺼짐(손가락\x20방향\x20그대로)')+'\x20·\x20직전에\x20본\x20마디의\x20목표:\x20제\x20무리의\x20결\x20'+_0x5c89cf['tOwn']+'\x20/\x20손가락\x20쪽\x20이웃의\x20결\x20'+_0x5c89cf['tSide']+'\x20/\x20이웃\x20전체의\x20결\x20'+_0x5c89cf['tAll']+'\x20/\x20두상\x20쪽에서\x20찾은\x20결\x20'+_0x5c89cf['tReach']+'\x20/\x20손가락\x20방향(주변에\x20머리\x20없음)\x20'+_0x5c89cf['tFinger']+'\x20/\x20결이\x20갈려\x20그대로\x20둠\x20'+_0x5c89cf['tSkip']+'\x20·\x20허용\x20각\x20'+_0x2fc59f['tolFrom']+'~'+_0x2fc59f['tolFull']+'°\x20·\x20'+(_0x2fc59f['collide']?'두상에\x20막혀\x20눕힌\x20마디\x20'+_0x5c89cf['pushed']+'\x20/\x20목\x20밖으로\x20민\x20점\x20'+_0x5c89cf['neck']:'두상\x20막기\x20꺼짐')+'\x20·\x20'+(_0x2fc59f['anchor']?'몸통\x20붙들기\x20켜짐\x20—\x20제자리로\x20되돌린\x20점\x20'+_0x5c89cf['anch']+'\x20/\x20몸통\x20쪽으로\x20기울인\x20마디\x20'+_0x5c89cf['pin']:'몸통\x20붙들기\x20꺼짐')),_0x4f442c['push']('\x20\x20겉면\x20타기\x20'+(_0x2fc59f['surf']?_0xbfb422&&_0xbfb422['flow']&&_0xbfb422['flow']['DF']?'켜짐\x20—\x20몸통\x20칸\x20'+_0x5c89cf['surfCells']+'(잔칸\x20보통\x20밀도\x20'+_0x5c89cf['surfRef']+'가닥)\x20·\x20뜬\x20점\x20'+(_0x548587?_0x548587['cnt']+'/'+_0x548587['tot']:'-')+'\x20·\x20직전에\x20세기가\x20걸린\x20잔머리\x20마디\x20'+_0x5c89cf['fly']+'\x20·\x20그중\x20거슬러\x20올라가\x20세기를\x20올린\x20마디\x20'+_0x5c89cf['up']+(_0x2fc59f['reachBack']?'(직전\x20표본이\x20가닥을\x20따라\x20올라가며\x20칠한\x20점\x20'+_0x5c89cf['reached']+')':'(거슬러\x20올라가기\x20꺼짐)')+'\x20·\x20겉면\x20쪽으로\x20튼\x20마디\x20'+_0x5c89cf['pin']+(_0x2fc59f['settle']>0x0?'':'(꺼짐\x20—\x20방향\x20정렬만)')+'\x20·\x206cm\x20상한에\x20걸린\x20점\x20'+_0x5c89cf['clamp']+'\x20·\x20붓\x20자리\x20찾기:\x20따로\x20넣은\x20뜬\x20점\x20'+(_0x5c89cf['pickFly']||0x0)+'\x20/\x20겉층\x20뒤라\x20뺀\x20점\x20'+(_0x5c89cf['pickHidden']||0x0)+(_0x2fc59f['depthLayer']>0x0?'':'(깊이\x20안\x20가림)'):_0x2fc59f['grain']?'켜짐(아직\x20거리장\x20없음\x20—\x20빗을\x20대면\x20만듦)':'꺼짐(결\x20따라\x20빗기가\x20꺼져\x20있음)':'꺼짐(예전\x20방식)'));}catch(_0x19f108){}return _0x4f442c;},console['log'](_0x544e7f+'\x20설치\x20—\x203D\x20조정\x20화면에서\x20[빗질]을\x20켜고\x20잔머리를\x20결\x20방향으로\x20쓰다듬으면\x20그\x20방향으로\x20눕습니다\x20·\x20[넘기기]를\x20켜고\x20쓸면\x20원\x20안의\x20머리가\x20뭉치째\x20그\x20방향으로\x20넘어갑니다.\x20지우기\x20COMB3D.clear()\x20·\x20되돌리기\x20COMB3D.undo()'),_0x2fc59f;}()),FLY_TRIM=(function(){'use strict';var _0x1e382f=window,_0x579d1a='[잔머리\x20정리]',_0x260bdf=Object['assign']({'on':!![],'auto':![],'brush':!![],'minCurl':0x1e,'cell':0.07,'minStrands':0x3,'frac':0.12,'refStrands':0x2710,'minTail':0.08,'maxOut':0.16,'brushBack':0.25,'keepPts':0x3,'final':!![],'finalCellCm':0.8,'finalLo':0x4,'finalHi':0xa,'finalFrac':0.2,'finalDilate':0x0,'finalMinSegs':0x4e20},_0x1e382f['FLY_TRIM']||{}),_0x525db9=_0x260bdf['stats']={'curly':![],'curl':0x0,'strands':0x0,'autoCut':0x0,'loopCut':0x0,'brushCut':0x0,'cutLen':0x0,'cells':0x0,'body':0x0,'thr':0x0,'ms':0x0,'err':null},_0x3392e3=0x0,_0x322b2c=[];function _0x1dc3a4(){try{return performance['now']();}catch(_0x259bce){return Date['now']();}}function _0x3745fa(){try{var _0x1ee7ac,_0x5e9020=0x0,_0x397ef8=0x0;for(_0x1ee7ac in state['sections']){var _0x232e65=+state['sections'][_0x1ee7ac]['curl'];isFinite(_0x232e65)&&(_0x397ef8+=_0x232e65,_0x5e9020++);}return _0x5e9020?_0x397ef8/_0x5e9020:0x0;}catch(_0x2f5803){return 0x0;}}function _0x4676c7(){return!!(_0x260bdf['on']&&_0x3745fa()>=_0x260bdf['minCurl']);}_0x260bdf['curly']=_0x4676c7,_0x260bdf['_comb']=function(_0x3b941d){var _0x2395ad=_0x1e382f['COMB3D'];if(!(_0x260bdf['brush']&&_0x2395ad&&_0x2395ad['samples']&&_0x2395ad['samples']['length']&&_0x4676c7()))return _0x3b941d();var _0x1af4a6=_0x2395ad['samples'];_0x2395ad['samples']=_0x322b2c;try{return _0x3b941d();}finally{_0x2395ad['samples']=_0x1af4a6;}};var _0x5f060b=new WeakMap();function _0x49ebe1(_0x5cc36e){_0x525db9['curl']=Math['round'](_0x3745fa()),_0x525db9['curly']=_0x4676c7();if(!_0x525db9['curly']||!_0x5cc36e||!_0x5cc36e['length'])return _0x5cc36e;var _0x3d7de6=_0x1e382f['COMB3D'],_0x2bda85=_0x260bdf['brush']&&_0x3d7de6&&_0x3d7de6['samples']?_0x3d7de6['samples']['length']:0x0,_0x3bdf8f=_0x5f060b['get'](_0x5cc36e);if(_0x3bdf8f&&_0x3bdf8f['ver']===_0x3392e3&&_0x3bdf8f['nSm']===_0x2bda85)return _0x3bdf8f['out'];var _0x224d6d=_0x1dc3a4(),_0x2e04d7=_0x5cc36e['length'],_0x368037,_0x1f9a83,_0x13c693,_0x2ae057,_0x53d99f=_0x260bdf['cell'],_0x1ee2c3=[Infinity,Infinity,Infinity],_0x3af263=[-Infinity,-Infinity,-Infinity];for(_0x368037=0x0;_0x368037<_0x2e04d7;_0x368037++){_0x13c693=_0x5cc36e[_0x368037]&&_0x5cc36e[_0x368037]['pts'];if(!_0x13c693)continue;for(_0x1f9a83=0x0;_0x1f9a83<_0x13c693['length'];_0x1f9a83++){var _0x3f8330=_0x13c693[_0x1f9a83];if(_0x3f8330['x']<_0x1ee2c3[0x0])_0x1ee2c3[0x0]=_0x3f8330['x'];if(_0x3f8330['y']<_0x1ee2c3[0x1])_0x1ee2c3[0x1]=_0x3f8330['y'];if(_0x3f8330['z']<_0x1ee2c3[0x2])_0x1ee2c3[0x2]=_0x3f8330['z'];if(_0x3f8330['x']>_0x3af263[0x0])_0x3af263[0x0]=_0x3f8330['x'];if(_0x3f8330['y']>_0x3af263[0x1])_0x3af263[0x1]=_0x3f8330['y'];if(_0x3f8330['z']>_0x3af263[0x2])_0x3af263[0x2]=_0x3f8330['z'];}}if(!isFinite(_0x1ee2c3[0x0]))return _0x5cc36e;var _0x5911f2=Math['min'](0xa0,Math['floor']((_0x3af263[0x0]-_0x1ee2c3[0x0])/_0x53d99f)+0x3),_0x2cc20e=Math['min'](0xc8,Math['floor']((_0x3af263[0x1]-_0x1ee2c3[0x1])/_0x53d99f)+0x3),_0x326c89=Math['min'](0xa0,Math['floor']((_0x3af263[0x2]-_0x1ee2c3[0x2])/_0x53d99f)+0x3),_0x45f630=_0x1ee2c3[0x0]-_0x53d99f,_0xe03d9f=_0x1ee2c3[0x1]-_0x53d99f,_0xc82692=_0x1ee2c3[0x2]-_0x53d99f,_0x1152de=_0x5911f2*_0x2cc20e*_0x326c89,_0x4f40cf=new Uint16Array(_0x1152de),_0xf4fb8b=new Int32Array(_0x1152de)['fill'](-0x1);function _0x26c08e(_0x14510c){var _0x3015f8=Math['floor']((_0x14510c['x']-_0x45f630)/_0x53d99f),_0x1d4468=Math['floor']((_0x14510c['y']-_0xe03d9f)/_0x53d99f),_0x36f057=Math['floor']((_0x14510c['z']-_0xc82692)/_0x53d99f);return _0x3015f8<0x0||_0x1d4468<0x0||_0x36f057<0x0||_0x3015f8>=_0x5911f2||_0x1d4468>=_0x2cc20e||_0x36f057>=_0x326c89?-0x1:_0x3015f8+_0x5911f2*(_0x1d4468+_0x2cc20e*_0x36f057);}for(_0x368037=0x0;_0x368037<_0x2e04d7;_0x368037++){_0x13c693=_0x5cc36e[_0x368037]&&_0x5cc36e[_0x368037]['pts'];if(!_0x13c693)continue;for(_0x1f9a83=0x0;_0x1f9a83<_0x13c693['length'];_0x1f9a83++){var _0x15af84=_0x26c08e(_0x13c693[_0x1f9a83]);if(_0x15af84>=0x0&&_0xf4fb8b[_0x15af84]!==_0x368037){_0xf4fb8b[_0x15af84]=_0x368037;if(_0x4f40cf[_0x15af84]<0xffff)_0x4f40cf[_0x15af84]++;}}}var _0x48c334=[],_0x44a768;for(_0x44a768=0x0;_0x44a768<_0x1152de;_0x44a768++)if(_0x4f40cf[_0x44a768])_0x48c334['push'](_0x4f40cf[_0x44a768]);_0x48c334['sort'](function(_0x594446,_0x42c36b){return _0x594446-_0x42c36b;});var _0x319bd8=_0x48c334['length']?_0x48c334[_0x48c334['length']>>0x1]:0x0,_0x11e27b=Math['max'](_0x260bdf['minStrands']*Math['max'](0x1,_0x2e04d7/_0x260bdf['refStrands']),_0x260bdf['frac']*_0x319bd8),_0x507eb9=new Uint8Array(_0x1152de),_0x20919f=new Uint8Array(_0x1152de),_0x565d66=0x0,_0x320652=0x1,_0x587d0f=_0x5911f2,_0xee4a56=_0x5911f2*_0x2cc20e;for(_0x44a768=0x0;_0x44a768<_0x1152de;_0x44a768++)_0x4f40cf[_0x44a768]>=_0x11e27b&&(_0x507eb9[_0x44a768]=0x1,_0x565d66++);for(_0x44a768=0x0;_0x44a768<_0x1152de;_0x44a768++)if(_0x507eb9[_0x44a768]){_0x20919f[_0x44a768]=0x1;if(_0x44a768-_0x320652>=0x0)_0x20919f[_0x44a768-_0x320652]=0x1;if(_0x44a768+_0x320652<_0x1152de)_0x20919f[_0x44a768+_0x320652]=0x1;if(_0x44a768-_0x587d0f>=0x0)_0x20919f[_0x44a768-_0x587d0f]=0x1;if(_0x44a768+_0x587d0f<_0x1152de)_0x20919f[_0x44a768+_0x587d0f]=0x1;if(_0x44a768-_0xee4a56>=0x0)_0x20919f[_0x44a768-_0xee4a56]=0x1;if(_0x44a768+_0xee4a56<_0x1152de)_0x20919f[_0x44a768+_0xee4a56]=0x1;}_0x525db9['cells']=_0x48c334['length'],_0x525db9['body']=_0x565d66,_0x525db9['thr']=_0x11e27b;var _0x20deaa=null;if(_0x2bda85){_0x20deaa=new Uint8Array(_0x1152de);var _0x219d1f=Math['max'](0x1,Math['round']((_0x3d7de6['dab']>0x0?_0x3d7de6['dab']:0.045)/_0x53d99f)),_0x17c025,_0x2ead8c,_0x1b0922,_0x39a86c;for(_0x17c025=0x0;_0x17c025<_0x3d7de6['samples']['length'];_0x17c025++){var _0x1b18f6=_0x3d7de6['samples'][_0x17c025],_0x46b410=_0x1b18f6&&_0x1b18f6['dabs'],_0xb2020a=_0x1b18f6&&_0x1b18f6['m'];if(!_0x46b410||!_0xb2020a)continue;for(_0x1f9a83=0x0;_0x1f9a83<_0xb2020a;_0x1f9a83++){var _0x507e00=Math['floor']((_0x46b410[_0x1f9a83*0x4]-_0x45f630)/_0x53d99f),_0x1f73b5=Math['floor']((_0x46b410[_0x1f9a83*0x4+0x1]-_0xe03d9f)/_0x53d99f),_0xce7b1e=Math['floor']((_0x46b410[_0x1f9a83*0x4+0x2]-_0xc82692)/_0x53d99f);for(_0x39a86c=_0xce7b1e-_0x219d1f;_0x39a86c<=_0xce7b1e+_0x219d1f;_0x39a86c++){if(_0x39a86c<0x0||_0x39a86c>=_0x326c89)continue;for(_0x1b0922=_0x1f73b5-_0x219d1f;_0x1b0922<=_0x1f73b5+_0x219d1f;_0x1b0922++){if(_0x1b0922<0x0||_0x1b0922>=_0x2cc20e)continue;for(_0x2ead8c=_0x507e00-_0x219d1f;_0x2ead8c<=_0x507e00+_0x219d1f;_0x2ead8c++){if(_0x2ead8c<0x0||_0x2ead8c>=_0x5911f2)continue;_0x20deaa[_0x2ead8c+_0x5911f2*(_0x1b0922+_0x2cc20e*_0x39a86c)]=0x1;}}}}}}var _0x2343f2=new Array(_0x2e04d7),_0x144074=0x0,_0x55b6bb=0x0,_0x1a9bf0=0x0,_0x8b0266=0x0;for(_0x368037=0x0;_0x368037<_0x2e04d7;_0x368037++){_0x2ae057=_0x5cc36e[_0x368037],_0x13c693=_0x2ae057&&_0x2ae057['pts'],_0x2343f2[_0x368037]=_0x2ae057;if(!_0x13c693||_0x13c693['length']<=_0x260bdf['keepPts'])continue;var _0x3b35c0=_0x13c693['length'],_0x415982=_0x3b35c0,_0x4425ea=0x0,_0x5e45ae=-0x1,_0x12f4ed=0x0,_0x5749f2;for(_0x1f9a83=0x1;_0x1f9a83<_0x3b35c0;_0x1f9a83++){_0x5749f2=_0x26c08e(_0x13c693[_0x1f9a83]);if(_0x20deaa&&_0x1f9a83>=_0x260bdf['keepPts']&&_0x5749f2>=0x0&&_0x20deaa[_0x5749f2]&&!_0x507eb9[_0x5749f2]){var _0x3194ba=0x0,_0x280ddb,_0x1cafa4;for(_0x280ddb=_0x1f9a83+0x1;_0x280ddb<_0x3b35c0;_0x280ddb++){_0x1cafa4=_0x26c08e(_0x13c693[_0x280ddb]);if(_0x1cafa4>=0x0&&_0x507eb9[_0x1cafa4])_0x3194ba++;}if(_0x3194ba<=_0x260bdf['brushBack']*(_0x3b35c0-_0x1f9a83)){_0x415982=_0x1f9a83,_0x4425ea=0x3;break;}}if(!_0x260bdf['auto'])continue;if(_0x5749f2<0x0||!_0x20919f[_0x5749f2]){_0x5e45ae<0x0&&(_0x5e45ae=_0x1f9a83,_0x12f4ed=0x0);_0x12f4ed+=Math['hypot'](_0x13c693[_0x1f9a83]['x']-_0x13c693[_0x1f9a83-0x1]['x'],_0x13c693[_0x1f9a83]['y']-_0x13c693[_0x1f9a83-0x1]['y'],_0x13c693[_0x1f9a83]['z']-_0x13c693[_0x1f9a83-0x1]['z']);if(_0x12f4ed>=_0x260bdf['maxOut']&&_0x1f9a83<_0x3b35c0-0x1){_0x415982=Math['max'](_0x260bdf['keepPts'],_0x5e45ae),_0x4425ea=0x2;break;}}else _0x5e45ae=-0x1;}_0x415982===_0x3b35c0&&_0x260bdf['auto']&&_0x5e45ae>=0x0&&_0x12f4ed>=_0x260bdf['minTail']&&(_0x415982=Math['max'](_0x260bdf['keepPts'],_0x5e45ae),_0x4425ea=0x1);if(_0x415982>=_0x3b35c0)continue;for(_0x1f9a83=_0x415982;_0x1f9a83<_0x3b35c0;_0x1f9a83++)_0x8b0266+=Math['hypot'](_0x13c693[_0x1f9a83]['x']-_0x13c693[_0x1f9a83-0x1]['x'],_0x13c693[_0x1f9a83]['y']-_0x13c693[_0x1f9a83-0x1]['y'],_0x13c693[_0x1f9a83]['z']-_0x13c693[_0x1f9a83-0x1]['z']);var _0x34533b=_0x13c693['slice'](0x0,_0x415982);try{_0x34533b['_pre']=_0x13c693['_pre']&&_0x13c693['_pre']['length']===_0x13c693['length']?_0x13c693['_pre']['slice'](0x0,_0x415982):_0x34533b;}catch(_0x588abb){}var _0xc1c18f=Object['assign']({},_0x2ae057,{'pts':_0x34533b});try{if(_0x2ae057['colors']&&_0x2ae057['colors']['length']===_0x13c693['length'])_0xc1c18f['colors']=_0x2ae057['colors']['slice'](0x0,_0x415982);if(_0x2ae057['srcColors']&&_0x2ae057['srcColors']['length']===_0x13c693['length'])_0xc1c18f['srcColors']=_0x2ae057['srcColors']['slice'](0x0,_0x415982);}catch(_0x3d50f7){}_0x2343f2[_0x368037]=_0xc1c18f;if(_0x4425ea===0x1)_0x144074++;else{if(_0x4425ea===0x2)_0x55b6bb++;else _0x1a9bf0++;}}return _0x525db9['strands']=_0x2e04d7,_0x525db9['autoCut']=_0x144074,_0x525db9['loopCut']=_0x55b6bb,_0x525db9['brushCut']=_0x1a9bf0,_0x525db9['cutLen']=_0x8b0266,_0x525db9['ms']=_0x1dc3a4()-_0x224d6d,_0x5f060b['set'](_0x5cc36e,{'ver':_0x3392e3,'nSm':_0x2bda85,'out':_0x2343f2}),_0x2343f2;}_0x260bdf['_pass']=_0x49ebe1,_0x260bdf['_apply']=function(_0x5f1179){try{return _0x49ebe1(_0x5f1179);}catch(_0x4ca06a){return _0x525db9['err']=String(_0x4ca06a&&_0x4ca06a['message']||_0x4ca06a),_0x5f1179;}},_0x260bdf['_sigTail']=function(){return'|ft'+_0x3392e3+(_0x4676c7()?'c':'s');},_0x260bdf['refresh']=function(){_0x3392e3++;try{if(typeof ADJ_CACHE!=='undefined'&&ADJ_CACHE['bump'])ADJ_CACHE['bump']();}catch(_0x52955e){}try{if(typeof renderAdjustFrame==='function')renderAdjustFrame();}catch(_0x281d89){}};var _0x5e248f=_0x260bdf['finalStats']={'runs':0x0,'segs':0x0,'removed':0x0,'cells':0x0,'body':0x0,'lo':0x0,'hi':0x0,'ms':0x0,'objs':0x0,'err':null};_0x260bdf['filterSegments']=function(_0x58a432,_0x15ba86,_0x1a44ec){var _0x1be241=_0x1dc3a4(),_0x51e10c=_0x1a44ec>0x0?_0x1a44ec:16.4,_0x1c0388=_0x260bdf['finalCellCm']/_0x51e10c,_0x5bcbff,_0x5d6de0,_0x17f717=Infinity,_0x157281=Infinity,_0x1eadc9=Infinity,_0x4282ab=-Infinity,_0x44d6ba=-Infinity,_0x118e1f=-Infinity,_0x1af64f,_0x407bf8,_0x4dbefb;for(_0x5bcbff=0x0;_0x5bcbff<_0x15ba86*0x2;_0x5bcbff++){_0x1af64f=_0x58a432[_0x5bcbff*0x3],_0x407bf8=_0x58a432[_0x5bcbff*0x3+0x1],_0x4dbefb=_0x58a432[_0x5bcbff*0x3+0x2];if(!(_0x1af64f===_0x1af64f))continue;if(_0x1af64f<_0x17f717)_0x17f717=_0x1af64f;if(_0x1af64f>_0x4282ab)_0x4282ab=_0x1af64f;if(_0x407bf8<_0x157281)_0x157281=_0x407bf8;if(_0x407bf8>_0x44d6ba)_0x44d6ba=_0x407bf8;if(_0x4dbefb<_0x1eadc9)_0x1eadc9=_0x4dbefb;if(_0x4dbefb>_0x118e1f)_0x118e1f=_0x4dbefb;}if(!isFinite(_0x17f717))return 0x0;var _0x24c75f,_0x13ee55,_0x409524,_0x234df0;for(;;){_0x24c75f=Math['floor']((_0x4282ab-_0x17f717)/_0x1c0388)+0x3,_0x13ee55=Math['floor']((_0x44d6ba-_0x157281)/_0x1c0388)+0x3,_0x409524=Math['floor']((_0x118e1f-_0x1eadc9)/_0x1c0388)+0x3,_0x234df0=_0x24c75f*_0x13ee55*_0x409524;if(_0x234df0<=0x2625a0)break;_0x1c0388*=1.26;}var _0x48b2c1=_0x17f717-_0x1c0388,_0x44dd71=_0x157281-_0x1c0388,_0x2ffa16=_0x1eadc9-_0x1c0388,_0x7cb90e=0x1/_0x1c0388,_0x278c49=_0x1c0388*0.5,_0x350b88=new Float32Array(_0x234df0);function _0x45341b(_0x5831da,_0x3b98ac,_0x5526bb){return Math['floor']((_0x5831da-_0x48b2c1)*_0x7cb90e)+_0x24c75f*(Math['floor']((_0x3b98ac-_0x44dd71)*_0x7cb90e)+_0x13ee55*Math['floor']((_0x5526bb-_0x2ffa16)*_0x7cb90e));}var _0xda5bc0,_0x328846,_0xf1d69a,_0x5e4abf,_0x30c8a5,_0x7ec00e,_0x4c8eea,_0x268255,_0x4785ff,_0x1d832b;for(_0x5bcbff=0x0;_0x5bcbff<_0x15ba86;_0x5bcbff++){_0x5d6de0=_0x5bcbff*0x6,_0xda5bc0=_0x58a432[_0x5d6de0],_0x328846=_0x58a432[_0x5d6de0+0x1],_0xf1d69a=_0x58a432[_0x5d6de0+0x2],_0x5e4abf=_0x58a432[_0x5d6de0+0x3],_0x30c8a5=_0x58a432[_0x5d6de0+0x4],_0x7ec00e=_0x58a432[_0x5d6de0+0x5],_0x4c8eea=Math['sqrt']((_0x5e4abf-_0xda5bc0)*(_0x5e4abf-_0xda5bc0)+(_0x30c8a5-_0x328846)*(_0x30c8a5-_0x328846)+(_0x7ec00e-_0xf1d69a)*(_0x7ec00e-_0xf1d69a));if(!(_0x4c8eea>1e-9))continue;_0x268255=Math['ceil'](_0x4c8eea/_0x278c49);if(_0x268255>0x40)_0x268255=0x40;for(_0x4785ff=0x0;_0x4785ff<_0x268255;_0x4785ff++){_0x1d832b=(_0x4785ff+0.5)/_0x268255,_0x350b88[_0x45341b(_0xda5bc0+(_0x5e4abf-_0xda5bc0)*_0x1d832b,_0x328846+(_0x30c8a5-_0x328846)*_0x1d832b,_0xf1d69a+(_0x7ec00e-_0xf1d69a)*_0x1d832b)]+=_0x4c8eea/_0x268255;}}var _0x9385a5=[];for(_0x5bcbff=0x0;_0x5bcbff<_0x234df0;_0x5bcbff++)if(_0x350b88[_0x5bcbff]>0x0)_0x9385a5['push'](_0x350b88[_0x5bcbff]);if(!_0x9385a5['length'])return 0x0;_0x9385a5['sort'](function(_0x3b8c1a,_0x323734){return _0x3b8c1a-_0x323734;});var _0x24deb2=_0x9385a5[_0x9385a5['length']>>0x1],_0x412acc=_0x260bdf['finalLo']*_0x1c0388,_0x21a5e4=Math['max'](_0x260bdf['finalHi']*_0x1c0388,_0x260bdf['finalFrac']*_0x24deb2),_0x58f0b1=new Uint8Array(_0x234df0),_0x259703=[],_0x23347f=0x0,_0x21e0ca,_0x2bfa25,_0x5b0433,_0x440dcd,_0x181efb,_0x7d8b5,_0x37c315,_0x8ad396=_0x24c75f*_0x13ee55;for(_0x5bcbff=0x0;_0x5bcbff<_0x234df0;_0x5bcbff++)_0x350b88[_0x5bcbff]>=_0x21a5e4&&(_0x58f0b1[_0x5bcbff]=0x1,_0x259703['push'](_0x5bcbff),_0x23347f++);while(_0x259703['length']){_0x5bcbff=_0x259703['pop'](),_0x5b0433=_0x5bcbff/_0x8ad396|0x0,_0x2bfa25=(_0x5bcbff-_0x5b0433*_0x8ad396)/_0x24c75f|0x0,_0x21e0ca=_0x5bcbff-_0x5b0433*_0x8ad396-_0x2bfa25*_0x24c75f;for(_0x7d8b5=-0x1;_0x7d8b5<=0x1;_0x7d8b5++){if(_0x5b0433+_0x7d8b5<0x0||_0x5b0433+_0x7d8b5>=_0x409524)continue;for(_0x181efb=-0x1;_0x181efb<=0x1;_0x181efb++){if(_0x2bfa25+_0x181efb<0x0||_0x2bfa25+_0x181efb>=_0x13ee55)continue;for(_0x440dcd=-0x1;_0x440dcd<=0x1;_0x440dcd++){if(_0x21e0ca+_0x440dcd<0x0||_0x21e0ca+_0x440dcd>=_0x24c75f)continue;_0x37c315=_0x21e0ca+_0x440dcd+_0x24c75f*(_0x2bfa25+_0x181efb+_0x13ee55*(_0x5b0433+_0x7d8b5)),!_0x58f0b1[_0x37c315]&&_0x350b88[_0x37c315]>=_0x412acc&&(_0x58f0b1[_0x37c315]=0x1,_0x259703['push'](_0x37c315),_0x23347f++);}}}}var _0x277c73=_0x58f0b1,_0x24d18f;for(_0x24d18f=0x0;_0x24d18f<(_0x260bdf['finalDilate']|0x0);_0x24d18f++){var _0x2cb2e1=new Uint8Array(_0x277c73);for(_0x5bcbff=0x0;_0x5bcbff<_0x234df0;_0x5bcbff++)if(_0x277c73[_0x5bcbff]){if(_0x5bcbff-0x1>=0x0)_0x2cb2e1[_0x5bcbff-0x1]=0x1;if(_0x5bcbff+0x1<_0x234df0)_0x2cb2e1[_0x5bcbff+0x1]=0x1;if(_0x5bcbff-_0x24c75f>=0x0)_0x2cb2e1[_0x5bcbff-_0x24c75f]=0x1;if(_0x5bcbff+_0x24c75f<_0x234df0)_0x2cb2e1[_0x5bcbff+_0x24c75f]=0x1;if(_0x5bcbff-_0x8ad396>=0x0)_0x2cb2e1[_0x5bcbff-_0x8ad396]=0x1;if(_0x5bcbff+_0x8ad396<_0x234df0)_0x2cb2e1[_0x5bcbff+_0x8ad396]=0x1;}_0x277c73=_0x2cb2e1;}var _0x2dcd2b=0x0;for(_0x5bcbff=0x0;_0x5bcbff<_0x15ba86;_0x5bcbff++){_0x5d6de0=_0x5bcbff*0x6,_0xda5bc0=_0x58a432[_0x5d6de0],_0x328846=_0x58a432[_0x5d6de0+0x1],_0xf1d69a=_0x58a432[_0x5d6de0+0x2],_0x5e4abf=_0x58a432[_0x5d6de0+0x3],_0x30c8a5=_0x58a432[_0x5d6de0+0x4],_0x7ec00e=_0x58a432[_0x5d6de0+0x5];if(_0xda5bc0===_0x5e4abf&&_0x328846===_0x30c8a5&&_0xf1d69a===_0x7ec00e)continue;!_0x277c73[_0x45341b((_0xda5bc0+_0x5e4abf)*0.5,(_0x328846+_0x30c8a5)*0.5,(_0xf1d69a+_0x7ec00e)*0.5)]&&(_0x58a432[_0x5d6de0+0x3]=_0xda5bc0,_0x58a432[_0x5d6de0+0x4]=_0x328846,_0x58a432[_0x5d6de0+0x5]=_0xf1d69a,_0x2dcd2b++);}return _0x5e248f['runs']++,_0x5e248f['segs']=_0x15ba86,_0x5e248f['removed']=_0x2dcd2b,_0x5e248f['cells']=_0x9385a5['length'],_0x5e248f['body']=_0x23347f,_0x5e248f['lo']=_0x412acc/_0x1c0388,_0x5e248f['hi']=_0x21a5e4/_0x1c0388,_0x5e248f['ms']=_0x1dc3a4()-_0x1be241,_0x2dcd2b;};function _0x215afc(){try{return currentScreen;}catch(_0x59e951){return'';}}_0x260bdf['sweepScene']=function(){if(!_0x260bdf['on']||!_0x260bdf['final'])return 0x0;var _0x4db890=null;try{_0x4db890=model3D&&model3D['initialized']?model3D:null;}catch(_0x6a993){_0x4db890=null;}if(!_0x4db890||!_0x4db890['headGroup']||typeof _0x4db890['headGroup']['traverse']!=='function')return 0x0;var _0x223079=16.4,_0x38e556=0x0;try{_0x223079=modelCmPerUnit()||16.4;}catch(_0x208aa4){}_0x4db890['headGroup']['traverse'](function(_0x2725b7){try{if(!_0x2725b7||!_0x2725b7['isLineSegments']||!_0x2725b7['geometry']||_0x2725b7['geometry']['index'])return;var _0x16dd6c=_0x2725b7['geometry'],_0x28c600=_0x16dd6c['attributes']&&_0x16dd6c['attributes']['position'];if(!_0x28c600||!_0x28c600['array']||_0x28c600['itemSize']!==0x3)return;var _0x2c023e=Math['floor'](_0x28c600['count']/0x2);if(_0x2c023e<_0x260bdf['finalMinSegs'])return;var _0x5b9230=_0x16dd6c['userData']||(_0x16dd6c['userData']={});if(_0x5b9230['_ftArr']===_0x28c600['array']&&_0x5b9230['_ftVer']===_0x28c600['version']&&_0x5b9230['_ftCfg']===_0x3392e3)return;_0x260bdf['filterSegments'](_0x28c600['array'],_0x2c023e,_0x223079),_0x28c600['needsUpdate']=!![],_0x5b9230['_ftArr']=_0x28c600['array'],_0x5b9230['_ftVer']=_0x28c600['version'],_0x5b9230['_ftCfg']=_0x3392e3,_0x38e556++;}catch(_0x351a8f){_0x5e248f['err']=String(_0x351a8f&&_0x351a8f['message']||_0x351a8f);}});if(_0x38e556)_0x5e248f['objs']=_0x38e556;return _0x38e556;};function _0x54eb2d(){try{var _0x3632a7=model3D&&model3D['initialized']?model3D:null;if(!_0x3632a7||!_0x3632a7['renderer']||_0x3632a7['renderer']['__ft'])return;var _0x5dae10=_0x3632a7['renderer'],_0x19b6f5=_0x5dae10['render'];_0x5dae10['__ft']=!![],_0x5dae10['render']=function(){if(_0x260bdf['on']&&_0x260bdf['final']&&_0x215afc()==='model3d')try{_0x260bdf['sweepScene']();}catch(_0x4c796d){_0x5e248f['err']=String(_0x4c796d&&_0x4c796d['message']||_0x4c796d);}return _0x19b6f5['apply'](this,arguments);};}catch(_0x42aa61){}}return _0x260bdf['_patchRender']=function(_0x348983){try{_0x54eb2d();if(_0x348983&&typeof _0x348983['then']==='function')_0x348983['then'](_0x54eb2d,function(){});}catch(_0x27d3b8){}},_0x260bdf['_panelLines']=function(){var _0x1d0ce6=[];try{var _0x1587da=16.4;try{_0x1587da=modelCmPerUnit()||16.4;}catch(_0x1c2a89){}var _0x599b85=_0x525db9['autoCut']+_0x525db9['loopCut']+_0x525db9['brushCut'];_0x1d0ce6['push'](_0x579d1a+'\x20'+(!_0x260bdf['on']?'꺼짐':!_0x525db9['curly']?'대기\x20—\x20컬\x20평균\x20'+_0x525db9['curl']+'\x20<\x20'+_0x260bdf['minCurl']+'\x20(직모는\x20빗질\x20=\x20결\x20정렬\x20그대로)':'켜짐(컬\x20평균\x20'+_0x525db9['curl']+')\x20·\x20직전\x20가닥\x20'+_0x525db9['strands']+'개\x20중\x20자른\x20것\x20'+_0x599b85+'개\x20—\x20밖에서\x20끝난\x20꼬리\x20'+_0x525db9['autoCut']+'\x20·\x20멀리\x20나간\x20고리\x20'+_0x525db9['loopCut']+'\x20·\x20빗이\x20지나간\x20자리\x20'+_0x525db9['brushCut']+'\x20·\x20자른\x20길이\x20평균\x20'+(_0x599b85?(_0x525db9['cutLen']/_0x599b85*_0x1587da)['toFixed'](0x1):'0')+'cm\x20·\x20몸통\x20칸\x20'+_0x525db9['body']+'/'+_0x525db9['cells']+'(기준\x20가닥\x20'+_0x525db9['thr']['toFixed'](0x1)+'개)\x20·\x20'+Math['round'](_0x525db9['ms'])+'ms'+'\x20·\x20이\x20머리에서는\x20빗\x20=\x20가위(53번\x20결\x20정렬은\x20건너뜀)')+(_0x525db9['err']?'\x20·\x20⚠\x20'+_0x525db9['err']:'')),_0x1d0ce6['push']('\x20\x203D\x20결과\x20화면\x20선분\x20거르기:\x20'+(!_0x260bdf['on']||!_0x260bdf['final']?'꺼짐':!_0x5e248f['runs']?'켜짐\x20·\x20아직\x20결과\x20화면을\x20안\x20그림':'켜짐\x20·\x20직전\x20묶음\x20선분\x20'+_0x5e248f['segs']+'개\x20중\x20뺀\x20것\x20'+_0x5e248f['removed']+'개('+(_0x5e248f['removed']/Math['max'](0x1,_0x5e248f['segs'])*0x64)['toFixed'](0x1)+'%)\x20·\x20머리\x20있는\x20칸\x20'+_0x5e248f['cells']+'\x20중\x20몸통\x20'+_0x5e248f['body']+'\x20·\x20기준:\x20가닥\x20'+_0x5e248f['lo']['toFixed'](0x1)+'개\x20이상\x20이어진\x20칸(씨앗\x20'+_0x5e248f['hi']['toFixed'](0x1)+'개)\x20·\x20'+Math['round'](_0x5e248f['ms'])+'ms\x20·\x20처리한\x20횟수\x20'+_0x5e248f['runs'])+(_0x5e248f['err']?'\x20·\x20⚠\x20'+_0x5e248f['err']:''));}catch(_0x5e44e7){}return _0x1d0ce6;},console['log'](_0x579d1a+'\x20설치\x20—\x20컬이\x20있는\x20머리(섹션\x20컬\x20평균\x20'+_0x260bdf['minCurl']+'\x20이상)는\x20몸통에서\x20벗어난\x20잔머리를\x20잘라\x20내고,\x20빗질도\x20정렬\x20대신\x20자르기로\x20동작합니다.\x20끄기\x20FLY_TRIM.on=false\x20후\x20FLY_TRIM.refresh()'),_0x260bdf;}());function combRefresh(){if(typeof drawAdjustPreview==='function')drawAdjustPreview();if(typeof refreshDevMini3D==='function')refreshDevMini3D();const _0x38436f=document['getElementById']('combUndoBtn');if(_0x38436f)_0x38436f['disabled']=!COMB['strokes']['length'];}function combPickAnchor(_0x3e08fa,_0x2c5afe){const _0x37e163=COMB['_proj'],_0x4746b7=state['hair3Dneutral'];if(!_0x37e163||!_0x4746b7||!_0x4746b7['strands']||!_0x4746b7['strands']['length'])return null;const _0x122243=computeAdjustedHair3DStrands(null,Math['max'](0x1,_0x4746b7['strands']['length']/0x384));if(!_0x122243||!_0x122243['length'])return null;let _0xcf32e0=null,_0x2c8578=Infinity;const _0x579d78=makeViewOccluder(_0x37e163['cal']);for(const _0x5cabae of _0x122243){for(const _0x56d9f5 of _0x5cabae['pts']){const _0x34a4bd=project3DPointToView(_0x56d9f5,_0x37e163['cal'],_0x37e163['yTop'],_0x37e163['CY']);if(!viewPointVisible(_0x34a4bd,_0x579d78,state['hairMasks']&&state['hairMasks'][_0x37e163['angle']]))continue;const _0x2fa6e3=_0x37e163['toCX'](_0x34a4bd['ix'])-_0x3e08fa,_0x40ae50=_0x37e163['toCY'](_0x34a4bd['iy'])-_0x2c5afe,_0x4cf3c1=_0x2fa6e3*_0x2fa6e3+_0x40ae50*_0x40ae50;_0x4cf3c1<_0x2c8578&&(_0x2c8578=_0x4cf3c1,_0xcf32e0=_0x56d9f5);}}return _0xcf32e0?{'x':_0xcf32e0['x'],'y':_0xcf32e0['y'],'z':_0xcf32e0['z'],'dist':Math['sqrt'](_0x2c8578)}:null;}function combDeltaToWorld(_0x58b10a,_0x47ccb1){const _0x365be1=COMB['_proj'];if(!_0x365be1)return null;const _0x31956b=_0x58b10a/Math['max'](0.000001,_0x365be1['pxScale']),_0x460586=_0x47ccb1/Math['max'](0.000001,_0x365be1['pxScale']),_0x4e3250=composeRotationZYX(_0x365be1['cal']['yaw'],_0x365be1['cal']['pitch'],_0x365be1['cal']['roll']),_0x189825=applyRotationTranspose3(_0x4e3250,new THREE['Vector3'](_0x31956b*_0x365be1['cal']['s'],-_0x460586*_0x365be1['cal']['sy'],0x0));return{'x':_0x189825['x'],'y':_0x189825['y'],'z':_0x189825['z']};}function combRadiusModel(){const _0x2dc4a9=COMB['_proj'];if(!_0x2dc4a9)return 0x0;return COMB['radiusPx']/Math['max'](0.000001,_0x2dc4a9['pxScale'])*_0x2dc4a9['cal']['s'];}let _combGroup=0x0;function combStrokeFromDrag(_0x251fa2,_0x4a444,_0x35eb03){const _0x578a25=combDeltaToWorld(_0x4a444,_0x35eb03),_0x43ace6=combRadiusModel();if(!_0x578a25||!(_0x43ace6>0x0))return null;COMB['strokes']['push']({'p':{'x':_0x251fa2['x'],'y':_0x251fa2['y'],'z':_0x251fa2['z']},'d':_0x578a25,'r':_0x43ace6,'g':_combGroup});if(COMB['strokes']['length']>COMB['maxStrokes'])COMB['strokes']['shift']();return combSplat(_0x251fa2,_0x578a25,_0x43ace6),_0x578a25;}function toggleCombMode(){COMB['on']=!COMB['on'],syncCombBtn(),combRefresh();}function syncCombBtn(){const _0x52ef8f=document['getElementById']('gyst-comb');if(_0x52ef8f)_0x52ef8f['textContent']=COMB['on']?'ON':'OFF';const _0x497e68=document['getElementById']('combBtn');if(!_0x497e68)return;_0x497e68['classList']['toggle']('on',COMB['on']),_0x497e68['textContent']=COMB['on']?'빗질\x20ON':'빗질\x20OFF';}function mannequinReset(){const _0x8898b0=REGROW['_beforeMqReset']();if(typeof ORIG_ASIS!=='undefined')ORIG_ASIS['_onMannequinReset']();state['stylingByView']=neutralStylingByView(),combClear(),COMB['on']=![],syncCombBtn(),MANNEQUIN['on']=!![],state['hair3Dmannequin']=null,syncMannequinBtn();if(typeof buildGyControls==='function')buildGyControls();combRefresh(),REGROW['_afterMqReset'](_0x8898b0),COMB3D['_afterUi']('mannequinReset');}function syncMannequinBtn(){const _0x288541=document['getElementById']('mannequinBtn');if(!_0x288541)return;_0x288541['classList']['toggle']('on',MANNEQUIN['on']),_0x288541['textContent']=MANNEQUIN['on']?'마네킹\x20초기화\x20ON':'마네킹\x20초기화\x20OFF';!MANNEQUIN['on']&&(state['specAppliedId']=null,state['_specUndo']=null);if(typeof ORIG_MQ!=='undefined')ORIG_MQ['_btnTail']();if(typeof STYLE_PATHS!=='undefined')STYLE_PATHS['btnSync']();}function snapshotForSpec(){return{'sections':JSON['parse'](JSON['stringify'](state['sections'])),'stylingByView':JSON['parse'](JSON['stringify'](state['stylingByView']||neutralStylingByView())),'fade':state['fade']?JSON['parse'](JSON['stringify'](state['fade'])):null};}function clearStyleSpec(){const _0x275ede=state['_specUndo'];state['_specUndo']=null,state['specAppliedId']=null;if(typeof BRAID!=='undefined')BRAID['on']=![];if(_0x275ede){state['sections']=_0x275ede['sections'],state['stylingByView']=_0x275ede['stylingByView'];if(_0x275ede['fade']&&state['fade'])Object['assign'](state['fade'],_0x275ede['fade']);}if(typeof buildGyPanel==='function')buildGyPanel();const _0x433274=document['getElementById']('adjustStyleTag');if(_0x433274)_0x433274['textContent']=state['selectedStyle']&&state['selectedStyle']['name']||'스타일\x20미선택';console['log']('[스타일스펙]\x20해제\x20—\x20걸기\x20직전\x20값으로\x20되돌림'+(_0x275ede?'':'\x20(되돌릴\x20스냅샷이\x20없어\x20현재\x20값\x20유지)')),combRefresh();try{ADJ_CACHE['bump']();}catch(_0x5804df){}return FLOW_SPEC['_afterClear'](),null;}function applyStyleSpecAndRender(_0x8a6f41,_0x201bbb){{const _0xb6c217=FLOW_SPEC['_asr'](_0x8a6f41);if(_0xb6c217['handled'])return _0xb6c217['value'];}if(state['specAppliedId']===_0x8a6f41)return clearStyleSpec();if(!MANNEQUIN['on'])mannequinReset();if(!state['hair3Dneutral']){if(_0x201bbb||typeof buildNeutralHair3D!=='function')return console['warn']('[스타일스펙]\x203D\x20모델을\x20못\x20만들었다\x20—\x20촬영/세그멘테이션부터\x20확인할\x20것'),null;const _0x4b7295=document['getElementById']('adjustStyleTag');if(_0x4b7295)_0x4b7295['textContent']='3D\x20준비\x20중…';return buildNeutralHair3D(()=>{applyStyleSpecAndRender(_0x8a6f41,!![]);}),null;}const _0x2c8fd1=snapshotForSpec(),_0x2526ca=typeof withRenderGate==='function'?withRenderGate(()=>_applyStyleSpecBody(_0x8a6f41,_0x2c8fd1),'스타일\x20적용'):_applyStyleSpecBody(_0x8a6f41,_0x2c8fd1);return _0x2526ca;}function _applyStyleSpecBody(_0x280cbb,_0x757c1c){const _0x1cc756=applyStyleSpec(_0x280cbb);if(!_0x1cc756)return null;state['_specUndo']=_0x757c1c,state['specAppliedId']=_0x280cbb;if(typeof buildGyPanel==='function')buildGyPanel();else{if(typeof buildGyControls==='function')buildGyControls();}const _0x3d24cb=document['getElementById']('adjustStyleTag');if(_0x3d24cb)_0x3d24cb['textContent']=_0x1cc756['name']||'스타일\x20스펙\x20적용';return combRefresh(),_0x1cc756;}function toggleMannequin(){const _0x33a877=MANNEQUIN['on'],_0x396eac=ORIG_MQ['_beforeToggle']();if(_0x396eac==='handled'){toggleMannequinBareCheck(_0x33a877);return;}const _0x27db0a=REGROW['_beforeToggleMq']();MANNEQUIN['on']?(MANNEQUIN['on']=![],syncMannequinBtn(),combRefresh()):mannequinReset();REGROW['_afterToggleMq'](_0x27db0a),COMB3D['_afterUi']('toggleMannequin');if(_0x396eac==='inner')ORIG_MQ['_syncBtn']();toggleMannequinBareCheck(_0x33a877);}function toggleMannequinBareCheck(_0x2fc56c){try{if(!_0x2fc56c&&MANNEQUIN['on']&&typeof ORIG_MQ!=='undefined'&&typeof ORIG_MQ['bare']==='function'){let _0x3ee1ab=0x0;try{Object['keys'](state['sections']||{})['forEach'](_0x24abf7=>{if((state['sections'][_0x24abf7]['curl']||0x0)>0x0)_0x3ee1ab++;});}catch(_0x3fc7e9){}(_0x3ee1ab||state['_globalCurl'])&&(ORIG_MQ['bare'](),console['log']('[64]\x20마네킹\x20켬\x20—\x20남아\x20있던\x20컬\x20지움(섹션\x20'+_0x3ee1ab+'곳)\x20→\x20맨\x20마네킹'));}}catch(_0x71caef){console['warn']('[64]\x20맨\x20마네킹\x20맞추기\x20실패',_0x71caef);}}var CROWN_FILL={'on':!![],'mul':0x1,'phiMax':0.75,'NP':0x18,'NT':0x20,'maxAddFrac':0.6,'maxSrcDist':2.5};function crownFill(_0x1c9583){if(!CROWN_FILL['on']||!_0x1c9583||!_0x1c9583['strands']||!_0x1c9583['strands']['length'])return _0x1c9583;var _0x5c6ac5=null;try{_0x5c6ac5=getScalpEllipsoid();}catch(_0x53635d){}if(!_0x5c6ac5)return _0x1c9583;var _0x53fb99=isFinite(_0x1c9583['CY'])?_0x1c9583['CY']:typeof SCALP_CENTER_Y!=='undefined'?SCALP_CENTER_Y:0.15,_0x3c5fa7=CROWN_FILL['NP'],_0x277ad4=CROWN_FILL['NT'],_0x1da67b=Math['PI']/_0x3c5fa7,_0x3ba6de=0x2*Math['PI']/_0x277ad4;function _0x394838(_0x248526,_0x30e624){return{'x':_0x5c6ac5['a']*Math['sin'](_0x248526)*Math['sin'](_0x30e624),'y':_0x53fb99+_0x5c6ac5['b']*Math['cos'](_0x248526),'z':_0x5c6ac5['c']*Math['sin'](_0x248526)*Math['cos'](_0x30e624)};}function _0x2f6dc2(_0x1bd4e6,_0x272faf){var _0x37631f=(_0x1bd4e6+0.5)*_0x1da67b,_0x34aa8b=(_0x272faf+0.5)*_0x3ba6de-Math['PI'],_0xcb3e72=0.0001,_0x196489=_0x394838(_0x37631f,_0x34aa8b),_0xd23650=_0x394838(_0x37631f+_0xcb3e72,_0x34aa8b),_0xe914b5=_0x394838(_0x37631f,_0x34aa8b+_0xcb3e72),_0x12694f=_0xd23650['x']-_0x196489['x'],_0x271e44=_0xd23650['y']-_0x196489['y'],_0x9a2971=_0xd23650['z']-_0x196489['z'],_0x47ae53=_0xe914b5['x']-_0x196489['x'],_0x5e08a7=_0xe914b5['y']-_0x196489['y'],_0x372ac9=_0xe914b5['z']-_0x196489['z'],_0x104c65=_0x271e44*_0x372ac9-_0x9a2971*_0x5e08a7,_0x45c08e=_0x9a2971*_0x47ae53-_0x12694f*_0x372ac9,_0x5507ad=_0x12694f*_0x5e08a7-_0x271e44*_0x47ae53;return Math['sqrt'](_0x104c65*_0x104c65+_0x45c08e*_0x45c08e+_0x5507ad*_0x5507ad)/(_0xcb3e72*_0xcb3e72)*_0x1da67b*_0x3ba6de;}function _0x450233(_0x535474){var _0x3ba329=Math['acos'](Math['max'](-0x1,Math['min'](0x1,(_0x535474['y']-_0x53fb99)/_0x5c6ac5['b']))),_0x3a724e=Math['atan2'](_0x535474['x']/_0x5c6ac5['a'],_0x535474['z']/_0x5c6ac5['c']),_0x39d365=Math['min'](_0x3c5fa7-0x1,Math['floor'](_0x3ba329/_0x1da67b)),_0xecc10e=Math['min'](_0x277ad4-0x1,Math['floor']((_0x3a724e+Math['PI'])/_0x3ba6de));return _0x39d365*_0x277ad4+_0xecc10e;}var _0x3d7749=new Array(_0x3c5fa7*_0x277ad4);for(var _0x8aa68c=0x0;_0x8aa68c<_0x1c9583['strands']['length'];_0x8aa68c++){var _0x41082d=_0x1c9583['strands'][_0x8aa68c];if(!_0x41082d||!_0x41082d['pts']||!_0x41082d['pts']['length'])continue;var _0x58e8e3=_0x450233(_0x41082d['pts'][0x0]);(_0x3d7749[_0x58e8e3]||(_0x3d7749[_0x58e8e3]=[]))['push'](_0x41082d);}var _0x1fdcdd=[];for(var _0x37f965=0x0;_0x37f965<_0x3c5fa7;_0x37f965++){var _0x14001b=(_0x37f965+0.5)*_0x1da67b;if(_0x14001b<0.9||_0x14001b>1.6)continue;for(var _0x224255=0x0;_0x224255<_0x277ad4;_0x224255++){var _0x2858d4=_0x3d7749[_0x37f965*_0x277ad4+_0x224255];if(_0x2858d4&&_0x2858d4['length']>=0x3)_0x1fdcdd['push'](_0x2858d4['length']/_0x2f6dc2(_0x37f965,_0x224255));}}if(_0x1fdcdd['length']<0x8)return _0x1c9583;_0x1fdcdd['sort'](function(_0x54090a,_0x28eb1c){return _0x54090a-_0x28eb1c;});var _0x66afec=_0x1fdcdd[_0x1fdcdd['length']>>0x1]*CROWN_FILL['mul'],_0x26ab23=Math['round'](_0x1c9583['strands']['length']*CROWN_FILL['maxAddFrac']),_0x5a6030=0x0,_0x563cf2=0x0,_0x30e1ce=0x0,_0xb95bb3=0x17cfb;function _0x15a33e(){return _0xb95bb3=_0xb95bb3*0x41c64e6d+0x3039&0x7fffffff,_0xb95bb3/0x7fffffff;}for(_0x37f965=0x0;_0x37f965<_0x3c5fa7&&_0x5a6030<_0x26ab23;_0x37f965++){if((_0x37f965+0.5)*_0x1da67b>CROWN_FILL['phiMax'])break;for(_0x224255=0x0;_0x224255<_0x277ad4&&_0x5a6030<_0x26ab23;_0x224255++){var _0x106e8b=_0x2f6dc2(_0x37f965,_0x224255),_0x291a1a=(_0x3d7749[_0x37f965*_0x277ad4+_0x224255]||[])['length'],_0x1b66d3=Math['round'](_0x66afec*_0x106e8b);if(_0x291a1a>=_0x1b66d3)continue;var _0x509a66=[];for(var _0x4c12f0=-0x1;_0x4c12f0<=0x1;_0x4c12f0++)for(var _0x1a07b1=-0x1;_0x1a07b1<=0x1;_0x1a07b1++){var _0x5524cb=_0x37f965+_0x4c12f0;if(_0x5524cb<0x0||_0x5524cb>=_0x3c5fa7)continue;var _0x567a60=_0x3d7749[_0x5524cb*_0x277ad4+((_0x224255+_0x1a07b1)%_0x277ad4+_0x277ad4)%_0x277ad4];if(_0x567a60)_0x509a66=_0x509a66['concat'](_0x567a60);}if(!_0x509a66['length']){_0x30e1ce++;continue;}var _0x3cb6ea=Math['sqrt'](_0x106e8b);_0x563cf2++;for(var _0x5d679c=_0x291a1a;_0x5d679c<_0x1b66d3&&_0x5a6030<_0x26ab23;_0x5d679c++){var _0x17f069=_0x394838((_0x37f965+_0x15a33e())*_0x1da67b,(_0x224255+_0x15a33e())*_0x3ba6de-Math['PI']),_0x28e9f8=null,_0x20c578=Infinity;for(var _0x3010fc=0x0;_0x3010fc<_0x509a66['length'];_0x3010fc++){var _0x80ba73=_0x509a66[_0x3010fc]['pts'][0x0],_0x22b64f=(_0x80ba73['x']-_0x17f069['x'])*(_0x80ba73['x']-_0x17f069['x'])+(_0x80ba73['y']-_0x17f069['y'])*(_0x80ba73['y']-_0x17f069['y'])+(_0x80ba73['z']-_0x17f069['z'])*(_0x80ba73['z']-_0x17f069['z']);_0x22b64f<_0x20c578&&(_0x20c578=_0x22b64f,_0x28e9f8=_0x509a66[_0x3010fc]);}if(!_0x28e9f8||Math['sqrt'](_0x20c578)>CROWN_FILL['maxSrcDist']*_0x3cb6ea+0.000001){_0x30e1ce++;break;}var _0x2e64c6=_0x28e9f8['pts'][0x0],_0x49fcd9=_0x17f069['x']-_0x2e64c6['x'],_0x57d5c0=_0x17f069['y']-_0x2e64c6['y'],_0x545caf=_0x17f069['z']-_0x2e64c6['z'],_0xe4c0e0=Object['assign']({},_0x28e9f8,{'pts':_0x28e9f8['pts']['map'](function(_0x496d5c){return{'x':_0x496d5c['x']+_0x49fcd9,'y':_0x496d5c['y']+_0x57d5c0,'z':_0x496d5c['z']+_0x545caf};}),'_crownAdded':!![]});if(_0x28e9f8['colors']&&_0x28e9f8['colors']['slice'])_0xe4c0e0['colors']=_0x28e9f8['colors']['slice']();_0x1c9583['strands']['push'](_0xe4c0e0),_0x5a6030++;}}}return console['log']('[앞머리\x20길이]\x20[정수리\x20채움]\x20기준\x20밀도(옆·뒤\x20중앙)\x20×'+CROWN_FILL['mul']+'\x20·\x20모자란\x20칸\x20'+_0x563cf2+'개에\x20'+_0x5a6030+'가닥\x20추가'+(_0x30e1ce?'\x20·\x20원본이\x20멀어\x20건너뛴\x20칸\x20'+_0x30e1ce:'')+'\x20·\x20끄기\x20CROWN_FILL.on=false'),_0x1c9583;}function setCrownFill(_0x23df4d){CROWN_FILL['mul']=Math['max'](0.5,Math['min'](0x3,+_0x23df4d||0x1));if(typeof state!=='undefined'&&state)state['hair3Dmannequin']=null;try{if(typeof ADJ_CACHE!=='undefined')ADJ_CACHE['bump']();}catch(_0x1a7f4d){}try{if(typeof combRefresh==='function')combRefresh();}catch(_0x390f10){}return CROWN_FILL['mul'];}var _hairDensityBase=null;function setHairDensity(_0x33abff){_0x33abff=Math['max'](0.5,Math['min'](0x3,+_0x33abff||0x1));var _0x5b555e=window['ROOT_EVEN'],_0x2fc109=typeof HAIR3D_RENDER!=='undefined'?HAIR3D_RENDER:null;if(!_hairDensityBase)_hairDensityBase={'boost':_0x5b555e?_0x5b555e['boost']:1.2,'maxAdd':_0x5b555e?_0x5b555e['maxAddFrac']:1.2,'mul':_0x2fc109?_0x2fc109['targetMul']:1.5};_0x5b555e&&(_0x5b555e['boost']=_hairDensityBase['boost']*_0x33abff,_0x5b555e['maxAddFrac']=_hairDensityBase['maxAdd']*_0x33abff);if(_0x2fc109)_0x2fc109['targetMul']=_hairDensityBase['mul']*_0x33abff;if(typeof state!=='undefined'&&state)state['hair3Dmannequin']=null;try{if(typeof ADJ_CACHE!=='undefined')ADJ_CACHE['bump']();}catch(_0x14be0b){}EYE_GUARD['_geo']=null;try{if(typeof combRefresh==='function')combRefresh();}catch(_0xbeedc0){}return console['log']('[앞머리\x20길이]\x20숱\x20×'+_0x33abff+'\x20—\x20ROOT_EVEN.boost\x20'+(_0x5b555e&&_0x5b555e['boost']['toFixed'](0x2))+'\x20·\x20maxAddFrac\x20'+(_0x5b555e&&_0x5b555e['maxAddFrac']['toFixed'](0x2))+'\x20·\x20HAIR3D_RENDER.targetMul\x20'+(_0x2fc109&&_0x2fc109['targetMul']['toFixed'](0x2))+'\x20(되돌리기\x20setHairDensity(1))'),_0x33abff;}console['log']('[앞머리\x20길이]\x20설치\x20—\x20앞머리\x20기본\x20끝\x20'+EYE_GUARD['defaultTipFaceFrac']+'\x20·\x20가닥\x20자르기\x20없음(얼굴\x20가림은\x20FACE_COVER_CHECK가\x20검사만\x20함)');
+/* 17a-mannequin.js — 읽을 수 있는 판(2026-10-22)
+   배포된 난독화본(10/17)을 펼친 것: 동작은 그대로. 9/23 원본에 같은 이름으로 있던 함수는 그 변수 이름과 주석을 옮겨 왔고,
+   9/23 뒤에 생긴 부분(COMB3D · CROWN_FILL · EYE_GUARD · FACE_CLEAR · RISE_FIX · TIP_FLARE 등)은 이름이 v1·v2…로 남아 있고 주석이 없음. */
+/* ══════════════════════════════════════════════════════════
+   17a-mannequin.js — 마네킹 헤어 · 마네킹 앞머리 · 얼굴 프로필 · 시술모드
+   원본 index.html 26569~27618행. 클래식 스크립트이므로 로드 순서가 곧
+   실행 순서다 — index.html의 <script src> 순서를 바꾸지 말 것.
+   ══════════════════════════════════════════════════════════ */
+/* ══════════════════════════════════════════════════════════════════
+   마네킹 헤어 — 촬영 가닥을 쓰지 않고 <b>새로 심는다</b> (2026-08-08)
+   ─────────────────────────────────────────────────────────────────
+   촬영 가닥 모델은 가닥 하나하나의 모양·길이·존재 여부가 전부 그 사진의
+   세그멘테이션 결과다. 그래서 길이를 늘리면 추적 경로가 향하던 방향으로 뻗고
+   (얼굴을 가로지르고), 뷰마다 다른 자리에서 없던 게 튀어나온다.
+
+   마네킹 모델은 사진에서 <b>특성만</b> 가져온다:
+     · 뿌리 — 실측 뿌리밀도 격자(rootField.den)에 <b>면적 비례</b>로 심는다.
+              밀도 0인 셀(헤어라인 아래·대머리)에는 아예 안 심으므로 헤어라인이
+              실측 그대로 나온다. 총 개수는 촬영 모델과 같게 맞춘다.
+     · 섹션 — 뿌리의 3D 위치로 resolveSection3D. 뷰와 무관하게 딱 나뉜다.
+     · 길이 — 그 섹션 촬영 가닥 호길이의 <b>중앙값</b>(사용자 선택: 고객 실측 길이).
+     · 모양 — 두피 법선으로 나와 rootRamp 구간에서 중력으로 넘어가고, 두상에
+              닿으면 타원체 표면으로 밀려 미끄러진다(사용자 선택).
+     · 색   — 그 섹션 촬영 가닥의 실측 색에서 뽑는다.
+   컬은 0이다 — 초기화 상태니까. 펌은 이 위에 얹는다.
+
+   지어낸 상수: rootRamp / clearance / segments 셋뿐이고, 길이·밀도·색·섹션·
+   두상 반경은 전부 실측에서 온다.
+══════════════════════════════════════════════════════════════════ */
+const MANNEQUIN = {
+  on: false,
+  segments: 22,
+  rootRampMax: 0.25,
+  clearance: 1.004,
+  lenPct: 1,
+  minLen: 0.02,
+  baldDen: 0.08,
+  layerLo: 0.15,
+  layerHi: 1,
+  spread: 0.7,
+  /* (2026-10-22) 길이는 다시 기른 가닥에서 — 뿌리 칸마다 그 칸에서 자란 가닥 길이의 중앙값(없으면 둘레 칸 → 섹션 중앙값).
+     예전: 13c가 사진 가닥을 사진마다 겉면에 붙인 모델(_hair3Dneutral.strands)의 섹션·사진별 lenPct(기본 1 = 최댓값) 길이.
+       그 모델은 사진 한 장씩 따로 붙여 같은 머리가 장마다 생기고 · 머리 영역 번짐을 따라 길게 그어져서(실사 3장: crown 52cm ↔ 다시 기르기 23cm)
+       첫 마네킹이 삐죽했고(lenPct 1 · crownAllAround) · 원본 스펙을 걸며 lenPct 0.9로 한 번 더 지었음.
+     다시 기른 모델이 없으면(아직 안 기름·끔) 예전대로. 끄기 MANNEQUIN.lenFromRegrow=false */
+  lenFromRegrow: true,
+  lenNbr: 2
+};
+/* ══════════════════════════════════════════════════════════════════
+   마네킹 앞머리 — <b>심을 게 없으면 프론트·크라운에서 내린다</b> (2026-09-02 3차)
+   ─────────────────────────────────────────────────────────────────
+   사용자: "앞머리 심긴 거 <b>거꾸로</b> 된 거부터 고쳐. … 원래 헤어라인 따라서
+   심어야 되는 건 심고, <b>심을 게 없으면 프론트와 크라운 섹션에서 일부 앞머리로
+   내려줘</b>."
+
+   ── 화면에 보이던 게 <b>앞머리가 아니었다</b> ────────────────────────────
+   눈두덩 위에 뜬 두 개의 쐐기는 심긴 앞머리가 아니라 <b>뿌리 없는 꼬리 토막</b>이다.
+   이마를 지나는 구간이 잘려 나가고, 옆머리 높이에서 사진 마스크가 1인 자리만
+   남아 그 조각이 공중에 떠 있었다. 그래서 방향이 뿌리→끝이 아니라 끝만 보여
+   <b>거꾸로</b>로 보이고 본체와 따로 놀았다. 즉 고칠 것은 "뒤집힌 가닥"이 아니라
+   <b>애초에 앞머리가 없다</b>는 것이다.
+
+   ── 왜 없었나: 이 손님은 <b>앞머리가 없다</b> ───────────────────────────
+   원본 사진이 이마가 드러난 가르마 머리다. 마네킹 뿌리는 실측 밀도 격자
+   (rf.den > baldDen)로 심으므로 헤어라인 위에만 심긴다 — <b>여기까지는 맞다</b>
+   (헤어라인이 실측 그대로 나오는 근거가 이것이라 안 건드린다). 문제는 그 뿌리에서
+   난 가닥이 이마 앞으로 <b>못 내려간다</b>는 것이고, 막는 문턱이 셋이었다:
+     ① _adjGeometry 재클립의 growAboveY = CY — 여유를 <b>눈 위까지만</b> 준다
+     ② trimStrandToOccupancy3D의 faceVeto — "머리는 늘어나도 얼굴은 못 덮는다"
+     ③ buildHairClipMask — 늘림 여유에서 <b>얼굴 타원을 destination-out</b>
+   하나만 열면 다른 데서 다시 잘린다. mannequinClipGrowPx 주석이 이미 그 경고를
+   적어 뒀다("두 클립이 다른 폭을 열면 3D에서 살아남은 앞머리가 화면에서 다시
+   지워져 아무것도 안 바뀐 것처럼 보인다"). 그래서 <b>셋 다</b> 연다 — 단
+   fringe 표시가 붙은 가닥에만. 나머지 가닥의 동작은 비트 단위로 그대로다.
+
+   ── "심을 게 없으면"을 <b>재서</b> 정한다 ──────────────────────────────
+   손님에게 이미 앞머리가 있으면 이 연산자는 <b>돌면 안 된다</b>(있는 머리 위에
+   또 얹으면 숱만 두 배가 된다). 판정은 지어내지 않고 이미 있는 점유 프로브에
+   묻는다 — 이마 앞면을 표본으로 훑어 occ ≥ occThr인 비율이 haveFringeFrac을
+   넘으면 "이미 있다"로 보고 아무것도 안 심는다. 새 측정기가 아니라 리프트가
+   쓰는 그 프로브다(작업원칙 1).
+
+   ── 지어낸 값 셋 (전부 <b>초안</b> — tipAt과 같은 자격) ────────────────
+   · tipFaceFrac 0.35 — 끝이 눈→턱의 35% 지점, 곧 <b>광대</b>(사용자 지정).
+     자는 makeFaceProjector와 같다(눈 y=CY, 턱 y=CY−0.70·heightFactor).
+   · frontFrac 0.60 / crownFrac 0.15 — 내릴 뿌리의 비율. 시스루 뱅이 아니라
+     보통 뱅 기준이고, 크라운은 헤어라인에 가까운 앞쪽 띠만 걸린다.
+   · bulge 0.35 — 이마에서 앞으로 뜨는 정도. 0이면 이마에 달라붙어 두피에
+     칠한 것처럼 보이고, 크게 하면 차양처럼 뜬다.
+   되돌리기: MQ_FRINGE.on = false (①②③ 면제가 한꺼번에 닫히고 예전 그림) */
+const MQ_FRINGE = {
+  on: true,
+  tipFaceFrac: 0,
+  lineHalfX: 0.95,
+  lineGain: 0.75,
+  lineFloorFaceFrac: 0.4,
+  crownLine: true,
+  crownRiseFrac: 0.18,
+  crownAllAround: false,   // (2026-10-22) 공통 기본값(STYLE_COMMON_DEFAULTS)과 같게 — 스타일을 걸기 전 첫 마네킹에서 정수리 둘레 앞머리 선이 솟던 것
+  crownFloorBrow: true,
+  frontFrac: 0.6,
+  crownFrac: 0.15,
+  crownThFrac: 0.6,
+  bulge: 0.35,
+  converge: 1,
+  haveFringeFrac: 0.3,
+  minLen: 0.05
+};
+/* 이 손님에게 <b>이미 앞머리가 있는가</b>. 점유 프로브에 묻는다(새 자 없음).
+   프로브가 없으면 null — 모르면 안 심는다(모르는 것을 지어내지 않는다). */
+function mannequinHasFringe(src) {
+  const probe = src && src.occ && src.occ.probe || state.hairOcc3D && state.hairOcc3D.probe || null;
+  if (!probe || !probe.at) return null;
+  let E = null,
+    S = null;
+  try {
+    E = getHeadEllipsoid(), S = getScalpEllipsoid();
+  } catch (v1) {
+    return null;
+  }
+  if (!E || !S) return null;
+  const CY = src && src.CY != null ? src.CY : SCALP_CENTER_Y,
+    yEye = CY,
+    yBrow = mqBrowY(CY, E);
+  if (yBrow == null) return null;
+  let n = 0,
+    hit = 0;
+  for (let v2 = 0; v2 < 3; v2++) {
+    const v3 = yEye + (yBrow - yEye) * (v2 / 2),
+      v4 = Math.max(-1, Math.min(1, (v3 - CY) / E.b)),
+      v5 = E.c * Math.sqrt(Math.max(0, 1 - v4 * v4));
+    for (let v6 = -2; v6 <= 2; v6++) {
+      const v7 = E.a * 0.3 * v6 / 2,
+        v8 = probe.at(v7, v3, v5 * 1.02);
+      if (!v8) continue;
+      n++;
+      if (v8.occ >= HAIR_OCC3D.occThr) hit++;
+    }
+  }
+  if (!n) return null;
+  return hit / n >= MQ_FRINGE.haveFringeFrac;
+}
+/* 앞머리 끝이 올 모델 y — 눈(CY)에서 눈→턱의 tipFaceFrac만큼 아래.
+   자는 makeFaceProjector와 <b>같은 것</b>을 쓴다(EYE=CY, 눈~턱=0.70·heightFactor).
+   얼굴 계측을 못 얻으면 두상 높이 자로 폴백한다. */
+function mqFringeTipY(CY) {
+  let v9 = null;
+  try {
+    const v14 = getFaceMetrics();
+    if (v14 && v14.heightFactor > 0) v9 = 0.7 * v14.heightFactor;
+  } catch (v15) {}
+  if (!(v9 > 0)) try {
+    const v16 = getHeadEllipsoid();
+    if (v16 && v16.b > 0) v9 = 0.7 * (v16.b / 0.633);
+  } catch (v17) {}
+  if (!(v9 > 0)) return null;
+  const v10 = CY - MQ_FRINGE.tipFaceFrac * v9;
+  if (!eyeGuardActive() || eyeGuardProfileSetsTip()) return v10;
+  const v11 = eyeGuardGeom(),
+    v12 = eyeGuardFrontTarget();
+  let v13 = null;
+  try {
+    v13 = eyeGuardSafeHeadRef();
+  } catch (v18) {}
+  if (v12 != null && v13) return v13.yTop - v12 * v13.H;
+  return v11 ? CY - EYE_GUARD.defaultTipFaceFrac * v11.fh : v10;
+}
+var EYE_GUARD = {
+  on: true,
+  defaultTipFaceFrac: -0.14,
+  fixSolveLength: true,
+  boxTopFaceFrac: -0.06,
+  boxBotFaceFrac: 0.3,
+  boxHalfXFrac: 0.75,
+  zBackFrac: 0.22
+};
+var STYLE_TUNES = {
+  layered_bob_hush: {
+    tipAt: {
+      front: 0.45
+    }
+  },
+  wavy_bob_seethrough: {
+    tipAt: {
+      front: 0.44
+    }
+  },
+  side_part_perm: {
+    tipAt: {
+      front: 0.43
+    }
+  }
+};
+var STYLE_COMMON_DEFAULTS = {
+  on: true,
+  MANNEQUIN: {
+    lenPct: 0.9
+  },
+  MQ_FRINGE: {
+    crownAllAround: false
+  }
+};
+var FACE_COVER_CHECK = {
+  on: true,
+  warnFrac: 0.01,
+  last: null,
+  pendingId: null
+};
+function eyeGuardSafeHeadRef() {
+  if (typeof state === "undefined" || !state) return null;
+  const v19 = state.hair3Dmannequin || state._hair3Dneutral;
+  let v20 = null;
+  try {
+    v20 = getHeadEllipsoid();
+  } catch (v22) {}
+  if (!v19 || !v20 || !(v20.b > 0.000001)) return null;
+  const v21 = v19.CY != null ? v19.CY : typeof SCALP_CENTER_Y !== "undefined" ? SCALP_CENTER_Y : 0.15;
+  return {
+    yTop: v21 + v20.b,
+    H: 2 * v20.b
+  };
+}
+function eyeGuardFrontTarget() {
+  const v23 = EYE_GUARD._applying || typeof state !== "undefined" && state && state.specAppliedId || null;
+  let v24 = null;
+  try {
+    v24 = v23 ? getStyleSpec(v23) : null;
+  } catch (v25) {}
+  if (!v24 || v24.eyeGuard === false || !v24.tipAt || typeof v24.tipAt.front !== "number") return null;
+  return v24.tipAt.front;
+}
+function eyeGuardActive() {
+  return EYE_GUARD.on && typeof MANNEQUIN !== "undefined" && !!MANNEQUIN.on && eyeGuardFrontTarget() != null;
+}
+function eyeGuardProfileSetsTip() {
+  const v26 = window.STYLE_BASE && window.STYLE_BASE.active;
+  return !!(v26 && v26.config && v26.config.MQ_FRINGE && typeof v26.config.MQ_FRINGE.tipFaceFrac === "number");
+}
+function eyeGuardGeom() {
+  if (typeof state === "undefined" || !state) return null;
+  const v27 = state._hair3Dneutral || null;
+  let v28 = null;
+  try {
+    v28 = typeof getFaceProfile === "function" ? getFaceProfile() : null;
+  } catch (v31) {}
+  const v29 = EYE_GUARD._geo;
+  if (v29 && v29.h === v27 && v29.prof === v28) return v29.v;
+  let v30 = null;
+  try {
+    const v32 = getHeadEllipsoid();
+    if (v32 && v32.a > 0 && v32.b > 0 && v32.c > 0) {
+      const v33 = v27 && isFinite(v27.CY) ? v27.CY : typeof SCALP_CENTER_Y !== "undefined" ? SCALP_CENTER_Y : 0.15,
+        v34 = typeof _mqFaceH === "function" ? _mqFaceH(v33, v32) : v32.b / 0.633 * 0.7;
+      if (v34 > 0) {
+        const v35 = v28 && v28.halfX > 0 ? v28.halfX : v32.a * 0.95;
+        v30 = {
+          E: v32,
+          CY: v33,
+          fh: v34,
+          prof: v28,
+          topY: v33 - EYE_GUARD.boxTopFaceFrac * v34,
+          botY: v33 - EYE_GUARD.boxBotFaceFrac * v34,
+          xHalf: v35 * EYE_GUARD.boxHalfXFrac,
+          zBack: EYE_GUARD.zBackFrac * v32.c
+        };
+      }
+    }
+  } catch (v36) {
+    v30 = null;
+  }
+  return EYE_GUARD._geo = {
+    h: v27,
+    prof: v28,
+    v: v30
+  }, v30;
+}
+function eyeGuardCoversFace(v37, v38) {
+  if (!v37 || v37.length < 2 || !v38) return false;
+  for (let v39 = 1; v39 < v37.length; v39++) {
+    const v40 = v37[v39];
+    if (!(v40.y < v38.topY) || !(v40.y > v38.botY) || !(Math.abs(v40.x) < v38.xHalf)) continue;
+    const v41 = v38.prof ? v38.prof.zAt(v40.y) : v38.E.c;
+    if (v40.z > v41 - v38.zBack) return true;
+  }
+  return false;
+}
+function eyeGuardApplyCommonDefaults(v42) {
+  const v43 = STYLE_COMMON_DEFAULTS;
+  if (!v43.on) return;
+  const v44 = window.STYLE_BASE,
+    v45 = v44 && v44.active && v44.active.config || {},
+    v46 = {
+      MANNEQUIN: typeof MANNEQUIN !== "undefined" ? MANNEQUIN : null,
+      MQ_FRINGE: typeof MQ_FRINGE !== "undefined" ? MQ_FRINGE : null
+    };
+  let v47 = false;
+  const v48 = [];
+  for (const v49 in v46) {
+    if (!v46[v49] || !v43[v49]) continue;
+    for (const v50 in v43[v49]) {
+      if (v45[v49] && v50 in v45[v49]) continue;
+      if (v46[v49][v50] === v43[v49][v50]) continue;
+      v46[v49][v50] = v43[v49][v50], v48.push(v49 + "." + v50 + "=" + v43[v49][v50]);
+      if (v49 === "MANNEQUIN") v47 = true;
+    }
+  }
+  if (v47 && typeof state !== "undefined" && state) state.hair3Dmannequin = null;
+  if (v48.length) console.log("[앞머리 길이] 공통 기본값 " + v42 + ": " + v48.join(" · ") + " (끄기 STYLE_COMMON_DEFAULTS.on=false)");
+}
+function faceCoverCheck(v51) {
+  if (!FACE_COVER_CHECK.on || !FACE_COVER_CHECK.pendingId || !v51 || !v51.length) return;
+  const v52 = FACE_COVER_CHECK.pendingId;
+  FACE_COVER_CHECK.pendingId = null;
+  try {
+    const v53 = eyeGuardGeom();
+    if (!v53) return;
+    const v54 = {},
+      v55 = {};
+    for (let v57 = 0; v57 < v51.length; v57++) {
+      const v58 = v51[v57],
+        v59 = v58.sec || "?";
+      v55[v59] = (v55[v59] || 0) + 1;
+      if (eyeGuardCoversFace(v58.pts, v53)) v54[v59] = (v54[v59] || 0) + 1;
+    }
+    const v56 = [];
+    for (const v60 in v54) if (v54[v60] / v55[v60] > FACE_COVER_CHECK.warnFrac) v56.push(v60 + " " + v54[v60] + "/" + v55[v60]);
+    FACE_COVER_CHECK.last = {
+      id: v52,
+      by: v54,
+      n: v55,
+      bad: v56,
+      at: Date.now()
+    };
+    if (v56.length) console.warn("[얼굴 가림] " + v52 + " — 얼굴을 덮는 섹션: " + v56.join(" · ") + "\n    → 자르지 않았습니다. 이 스타일 스펙에서 해당 섹션의 tipAt을 줄이거나(짧게)," + " 가르마(partAmt)·넘김(sweep)·curlDir·overdirection으로 얼굴 밖으로 보내세요.");else console.log("[얼굴 가림] " + v52 + " — 얼굴 가림 없음");
+  } catch (v61) {
+    console.warn("[얼굴 가림] 검사 실패", v61);
+  }
+}
+var FACE_CLEAR = {
+  on: true,
+  topFaceFrac: -0.1,
+  trimTailCm: 5,
+  trimmed: 0,
+  botFaceFrac: 1,
+  halfXFrac: 0.8,
+  zBackFrac: 0.3,
+  ramp: 4,
+  outK: 0.85,
+  sideByRoot: false,
+  neck: true,
+  stats: {
+    strands: 0,
+    moved: 0
+  }
+};
+function faceClearGeom() {
+  const v62 = eyeGuardGeom();
+  if (!v62) return null;
+  const v63 = v62.prof && v62.prof.halfX > 0 ? v62.prof.halfX : v62.E.a * 0.95;
+  return {
+    E: v62.E,
+    prof: v62.prof,
+    fh: v62.fh,
+    CY: v62.CY,
+    inFront: faceClearInFront,
+    topY: v62.CY - FACE_CLEAR.topFaceFrac * v62.fh,
+    botY: v62.CY - FACE_CLEAR.botFaceFrac * v62.fh,
+    xHalf: v63 * FACE_CLEAR.halfXFrac,
+    zBack: FACE_CLEAR.zBackFrac * v62.E.c
+  };
+}
+function faceClearInFront(v64, v65) {
+  if (!(v65.z > 0)) return false;
+  const v66 = v64.prof ? v64.prof.zAt(v65.y) : v64.E.c;
+  if (v65.z > v66 - v64.zBack) return true;
+  const v67 = v65.x / v64.E.a,
+    v68 = (v65.y - v64.CY) / v64.E.b,
+    v69 = v65.z / v64.E.c;
+  return v67 * v67 + v68 * v68 + v69 * v69 > FACE_CLEAR.outK;
+}
+function faceClearAll(v70) {
+  if (!FACE_CLEAR.on || !v70 || !v70.length) return v70;
+  let v71 = false;
+  try {
+    v71 = state.specAppliedId === "__original__" || typeof MANNEQUIN !== "undefined" && !MANNEQUIN.on;
+  } catch (v76) {
+    v71 = false;
+  }
+  if (!v71) return v70;
+  let v72 = null;
+  try {
+    v72 = faceClearGeom();
+  } catch (v77) {
+    v72 = null;
+  }
+  if (!v72) return v70;
+  let v73 = null,
+    v74 = 0,
+    v75 = v72.botY;
+  if (FACE_CLEAR.neck) {
+    v75 = v72.botY - 0.6 * v72.fh;
+    try {
+      const v78 = getNeckBottomY();
+      if (isFinite(v78) && v78 < v72.botY) v75 = v78;
+    } catch (v79) {}
+  }
+  for (let v80 = 0; v80 < v70.length; v80++) {
+    const v81 = v70[v80],
+      v82 = v81 && v81.pts;
+    if (!v82 || v82.length < 2) continue;
+    let v83 = -1,
+      v84 = 0,
+      v85 = 0;
+    const v86 = [];
+    for (let v91 = 1; v91 < v82.length; v91++) {
+      const v92 = v82[v91];
+      if (!(v92.y < v72.topY) || !(v92.y > v75) || !(Math.abs(v92.x) < v72.xHalf)) continue;
+      if (v92.y > v72.botY) {
+        if (!faceClearInFront(v72, v92)) continue;
+      } else {
+        if (!(v92.z > 0)) continue;
+      }
+      if (v83 < 0) v83 = v91;
+      v86.push(v92.x), v84 += v92.x, v85++;
+    }
+    if (v83 < 0) continue;
+    if (FACE_CLEAR.trimTailCm > 0 && v83 >= 2) {
+      var _tl = 0;
+      for (var _tk = v83; _tk < v82.length; _tk++) {
+        var _ta = v82[_tk],
+          _tb = v82[_tk - 1];
+        _tl += Math.hypot(_ta.x - _tb.x, _ta.y - _tb.y, _ta.z - _tb.z);
+      }
+      var _tcpu = typeof CURL_BUNDLE !== "undefined" && CURL_BUNDLE.cmPerUnit || 19.33;
+      if (_tl * _tcpu < FACE_CLEAR.trimTailCm) {
+        if (!v73) v73 = v70.slice();
+        v73[v80] = Object.assign({}, v81, {
+          pts: v82.slice(0, v83)
+        });
+        FACE_CLEAR.trimmed++;
+        continue;
+      }
+    }
+    const v87 = FACE_CLEAR.sideByRoot ? v82[0].x < 0 ? -1 : 1 : v84 < 0 ? -1 : 1;
+    let v88 = 0;
+    for (let v93 = 0; v93 < v86.length; v93++) {
+      const v94 = v87 > 0 ? v72.xHalf - v86[v93] : v86[v93] + v72.xHalf;
+      if (v94 > v88) v88 = v94;
+    }
+    const v89 = v82.slice(),
+      v90 = Math.max(1, v83 - FACE_CLEAR.ramp);
+    for (let v95 = v90; v95 < v89.length; v95++) {
+      const v96 = v95 >= v83 ? 1 : (v95 - v90 + 1) / (v83 - v90 + 1),
+        v97 = v96 * v96 * (3 - 2 * v96),
+        v98 = v89[v95];
+      v89[v95] = {
+        x: v98.x + v87 * v88 * v97,
+        y: v98.y,
+        z: v98.z
+      };
+    }
+    if (!v73) v73 = v70.slice();
+    v73[v80] = Object.assign({}, v81, {
+      pts: v89
+    }), v74++;
+  }
+  return FACE_CLEAR.stats.strands = v70.length, FACE_CLEAR.stats.moved = v74, v73 || v70;
+}
+var RISE_FIX = {
+  on: false,
+  riseCm: 2.5,
+  frontFrac: 0.5,
+  shell: 1.02,
+  stats: {
+    strands: 0,
+    fixed: 0
+  }
+};
+function riseFixAll(v99) {
+  if (!RISE_FIX.on || !v99 || !v99.length) return v99;
+  let v100 = false;
+  try {
+    v100 = state.specAppliedId === "__original__" || typeof MANNEQUIN !== "undefined" && !MANNEQUIN.on;
+  } catch (v109) {
+    v100 = false;
+  }
+  if (!v100) return v99;
+  let v101 = null;
+  try {
+    v101 = faceClearGeom();
+  } catch (v110) {
+    v101 = null;
+  }
+  if (!v101 || !v101.E) return v99;
+  const v102 = v101.E,
+    v103 = v101.CY;
+  let v104 = 19.33;
+  try {
+    if (typeof CURL_BUNDLE !== "undefined" && CURL_BUNDLE.cmPerUnit) v104 = CURL_BUNDLE.cmPerUnit;
+  } catch (v111) {}
+  const v105 = RISE_FIX.riseCm / v104,
+    v106 = RISE_FIX.shell;
+  let v107 = null,
+    v108 = 0;
+  for (let v112 = 0; v112 < v99.length; v112++) {
+    const v113 = v99[v112],
+      v114 = v113 && v113.pts;
+    if (!v114 || v114.length < 3) continue;
+    const v115 = v114[0];
+    if (v115.z > RISE_FIX.frontFrac * v102.c) continue;
+    let v116 = -1;
+    for (let v122 = 1; v122 < v114.length; v122++) if (v114[v122].y - v115.y > v105) {
+      v116 = v122;
+      break;
+    }
+    if (v116 < 0) continue;
+    let v117 = v116;
+    while (v117 > 1 && v114[v117 - 1].y > v114[v117 - 2].y) v117--;
+    const v118 = v114.slice(0, v117);
+    let v119 = v114[v117 - 1].x,
+      v120 = v114[v117 - 1].y,
+      v121 = v114[v117 - 1].z;
+    for (let v123 = v117; v123 < v114.length; v123++) {
+      const v124 = v114[v123].x - v114[v123 - 1].x,
+        v125 = v114[v123].y - v114[v123 - 1].y,
+        v126 = v114[v123].z - v114[v123 - 1].z;
+      v119 += v124, v120 += v125 > 0 ? -v125 : v125, v121 += v126;
+      const v127 = v119 / v102.a,
+        v128 = (v120 - v103) / v102.b,
+        v129 = v121 / v102.c,
+        v130 = v127 * v127 + v128 * v128 + v129 * v129;
+      if (v130 < v106 * v106 && v130 > 1e-9) {
+        const v131 = v106 / Math.sqrt(v130);
+        v119 *= v131, v121 *= v131, v120 = v103 + (v120 - v103) * v131;
+      }
+      v118.push(Object.assign({}, v114[v123], {
+        x: v119,
+        y: v120,
+        z: v121
+      }));
+    }
+    if (!v107) v107 = v99.slice();
+    v107[v112] = Object.assign({}, v113, {
+      pts: v118
+    }), v108++;
+  }
+  return RISE_FIX.stats.strands = v99.length, RISE_FIX.stats.fixed = v108, v107 || v99;
+}
+/* 눈썹 높이 — 이 파일의 <b>유일한</b> 눈썹 자. 원래 mannequinHasFringe가 이마
+   표본을 뜨려고 안에서 쓰던 식(CY + 0.18·E.b)을 그대로 꺼낸 것이고, 이제
+   크라운 앞머리 선도 같은 것을 본다. 자가 두 벌이 되면 "눈썹"이 화면 두 군데서
+   다른 높이가 된다 — 그래서 상수까지 MQ_FRINGE로 올렸다. */
+function mqBrowY(CY, E) {
+  if (!E || !(E.b > 0)) return null;
+  return CY + MQ_FRINGE.crownRiseFrac * E.b;
+}
+/* 크라운 앞머리 끝이 올 모델 y — 중립(길이비율 1)에서 <b>눈썹</b>.
+   크라운 선을 끄면 프론트와 같은 tip(눈높이)으로 떨어진다. */
+function mqCrownTipY(CY, E) {
+  if (!MQ_FRINGE.crownLine) return mqFringeTipY(CY);
+  const y = mqBrowY(CY, E);
+  return y != null ? y : mqFringeTipY(CY);
+}
+/* 이 뿌리를 앞머리로 내릴 것인가. 결정적 해시라 다시 심어도 같은 가닥이 걸린다. */
+function mqFringePicks(rp, sec, ci, k) {
+  if (!MQ_FRINGE.on) return false;
+  const th = Math.abs(Math.atan2(rp.x, rp.z));
+  let frac = 0;
+  if (sec === "front") frac = MQ_FRINGE.frontFrac;else {
+    if (sec === "crown" && th <= SECTION_CUT.thFront * MQ_FRINGE.crownThFrac) frac = MQ_FRINGE.crownFrac;
+  }
+  if (!(frac > 0)) return false;
+  return hashFract(ci * 0.6180339887 + k * 0.7548776662 + 3.71) < frac;
+}
+/* 앞머리 한 가닥 — 뿌리(헤어라인)에서 <b>이마 앞으로 넘겨</b> 광대까지 내린다.
+   ── 왜 growMannequinStrand를 안 쓰나 ─────────────────────────────────
+   저쪽은 "법선으로 조금 나갔다가 중력, 두상에 닿으면 타원체로 밀어내기"다.
+   이마에서 그 규칙을 그대로 돌리면 가닥이 <b>두개골 표면을 타고</b> 내려가
+   얼굴 안쪽으로 들어간다(그리고 그 자리는 사진에 머리가 없어 통째로 잘린다).
+   실제 뱅은 두피에서 나와 <b>이마를 타지 않고 앞으로 떨어진다</b> — 그래서
+   밀어내기를 안 쓰고 뿌리→끝 곡선을 직접 그린다.
+   길이는 그 섹션 실측 호길이 L에서 <b>못 넘어간다</b> — 커트는 빼는 일이고,
+   없는 길이를 만들지 않는다(MANNEQUIN.lenPct 주석과 같은 규칙). */
+function growFringeStrand(rp, d0, tipY, L, colors) {
+  const F = MQ_FRINGE,
+    N = MANNEQUIN.segments;
+  if (!(tipY != null) || !(L > F.minLen)) return null;
+  const drop = rp.y - tipY;
+  if (!(drop > F.minLen)) return null;
+  const end = {
+      x: rp.x * F.converge,
+      y: tipY,
+      z: Math.abs(rp.z) + drop * F.bulge
+    },
+    span = Math.hypot(end.x - rp.x, end.y - rp.y, end.z - rp.z);
+  if (!(span > 0.000001)) return null;
+  const nh = Math.hypot(d0.x, d0.z),
+    dOut = nh > 0.000001 ? {
+      x: d0.x / nh,
+      y: 0,
+      z: d0.z / nh
+    } : {
+      x: 0,
+      y: 0,
+      z: 1
+    },
+    build = v132 => {
+      const out = [{
+        x: rp.x,
+        y: rp.y,
+        z: rp.z
+      }];
+      for (let v133 = 1; v133 <= N; v133++) {
+        const v134 = v133 / N * v132,
+          v135 = v134 * v134 * (3 - 2 * v134),
+          v136 = Math.min(1, v134 * 3),
+          v137 = rp.x + (end.x - rp.x) * v135,
+          v138 = rp.y + (end.y - rp.y) * v135,
+          v139 = rp.z + (end.z - rp.z) * v135,
+          v140 = span * 0.1 * (1 - v135) * v136;
+        // 뿌리 쪽만 앞으로 살짝 들림
+        out.push({
+          x: v137 + dOut.x * v140,
+          y: v138,
+          z: v139 + dOut.z * v140
+        });
+      }
+      return out;
+    };
+  // 실측 길이가 모자라면 덜 내려온다
+  /* 앞으로 부푼 몫이 호길이에 얹히므로 span만으로는 <b>실측 길이를 넘을 수 있다</b>
+       (하네스: 0.306 vs 0.297). 한 번 재서 그만큼 당긴다 — 커트는 빼는 일이고,
+       없는 길이를 만들지 않는다(MANNEQUIN.lenPct 주석과 같은 규칙). */
+  let reach = Math.min(1, L / span),
+    pts = build(reach);
+  const arc0 = arcLength3D(pts);
+  if (arc0 > L && arc0 > 1e-9) pts = build(reach * (L / arc0));
+  const color = colors && colors.length ? colors[_mqRand() * colors.length | 0] : "#2B2320";
+  return {
+    pts: pts,
+    sec: null,
+    color: color,
+    srcAngle: null,
+    rootFacing: 0,
+    mannequin: true,
+    fringe: true
+  };
+}
+/* ══════════════════════════════════════════════════════════════════
+   얼굴 프로필 — <b>측면 사진의 얼굴선</b> (2026-09-03)
+   ─────────────────────────────────────────────────────────────────
+   사용자: \"코앞을 지나는 라인이 하나 설정되어 있는데 그게 잘못설정된 거 같아.
+   2D측면사진의 얼굴라인(두상타원이 아닌)을 확인해서 그 라인으로 새로 지정해야 돼.\"
+   맞다. mqTrimAtFringeLine의 \"얼굴 앞인가\" 판정은 두 인자 <b>둘 다 두상 타원</b>이었다:
+     · Math.abs(c.x) > halfX — halfX = E.a × 0.95, 곧 <b>헐</b>(머리카락 겉면)의
+       반너비다. 파일 실측이 그대로 말한다: 헐 a=0.704 vs <b>얼굴 실측 0.503</b>
+       (한쪽당 2.8cm). 0.95를 곱해도 얼굴보다 33% 넓다.
+     · c.z > 0 — 기준면이 <b>두상 중심</b>이라 앞쪽 반구면 전부 \"얼굴 앞\"이다.
+       실제 얼굴 표면은 z=0이 아니다([얼굴 입체감] 코끝 0.639 · 이마 0.285,
+       두상 깊이 c=0.541). 즉 선이 얼굴보다 <b>넓고 얕게</b> 서 있었다.
+   그래서 관자놀이 옆 커튼과 반대쪽 사이드가 같이 잘리는데 정작 코앞은 못 지킨다.
+
+   ── 자를 어디서 가져오나: <b>이미 있는 것만</b> ───────────────────────────
+   측면 사진에서는 앞뒤 깊이가 이미지의 좌우 위치로 <b>직접</b> 나타난다. 이
+   원리와 그 구현(projectImagePointToHead)은 이 파일이 헤어 뿌리에 이미 쓰고
+   있다. 새로 만드는 것은 없고, 정중선(midsagittal) 랜드마크를 그 함수에 통과
+   시켜 \"높이 → 얼굴 앞면 z\" 곡선 하나로 모을 뿐이다.
+   ⚠ 깊이맵(computeFullProfileDepthMap)은 <b>안 쓴다</b>(사용자 지시 — 필요한지
+     확인하고 쓴다). 그건 async·정면 사진 의존이라 이 경로가 그 실패 모드를
+     떠안게 된다. 여기서 필요한 건 468정점이 아니라 <b>선 하나</b>다.
+
+   ── 정직한 한계 ──────────────────────────────────────────────────────
+   측면이 덜 돌아간 사진에서는 projectImagePointToHead가 사실상 <b>두상 타원면</b>을
+   돌려준다(PROFILE_YAW_GATE 배너가 재어 둔 그것 — 이 손님 right는 yaw 40.9°다).
+   그래도 지금보다 낫다: 그때도 선이 z=0(중심면)이 아니라 <b>표면</b>에 서기
+   때문이다. 코 돌출까지 살아나는 건 각도가 충분할 때다. 그러니 이 곡선은
+   \"실측이면 실측, 아니면 타원면\"이고 어느 쪽인지 진단에 찍는다 — 좋아 보이는데
+   실은 타원면이더라, 를 나중에 못 가리면 안 된다.
+   되돌리기: FACE_PROFILE.on = false (c.z > 0 · halfX = E.a×lineHalfX 그대로) */
+const FACE_PROFILE = {
+  on: true,
+  midline: [10, 151, 9, 8, 168, 6, 197, 195, 5, 4, 1, 19, 94, 2, 164, 0, 13, 14, 17, 18, 200, 199, 175, 152],
+  bands: 12,
+  src: null,
+  n: 0
+};
+let _faceProfileCache = null;
+/* 이 손님의 얼굴 프로필. 반환 {zAt(meshY), halfX, src} — zAt은 그 높이에서
+   얼굴 <b>앞면</b>의 두상 로컬 z. 못 만들면 null(호출부가 예전 동작).
+   ⚠ 캐시 키를 state.landmarks <b>객체</b>로 잡으면 안 된다 — 그 객체는 한 번
+     만들어지고 detectFaceLandmarks가 [angle]에 <b>제자리로</b> 채워 넣으므로
+     참조가 영영 안 바뀐다. 재촬영해도 옛 프로필을 계속 쓰게 된다. 뷰별 lm
+     객체는 매번 새로 만들어지므로 그 셋을 본다. */
+function getFaceProfile() {
+  if (!FACE_PROFILE.on) return null;
+  const L = state.landmarks || {},
+    key = [L.left, L.right, L.front];
+  if (_faceProfileCache && _faceProfileCache._key.every((v141, v142) => v141 === key[v142])) return _faceProfileCache.v;
+  let v = null;
+  try {
+    v = buildFaceProfile();
+  } catch (v143) {
+    v = null;
+  }
+  return _faceProfileCache = {
+    _key: key,
+    v: v
+  }, v;
+}
+function buildFaceProfile() {
+  /** (9/23 원본 주석 — 코드가 바뀌어 제자리를 못 찾음)
+     · 밴드 사이는 선형 보간 — 프로필은 연속이고, 계단으로 두면 그 높이에서
+       가닥이 갑자기 걸리거나 빠진다(무게선이 톱니가 되는 것과 같은 이유).
+  */
+  /* 빈 밴드는 <b>지어내지 않고</b> 가장 가까운 실측을 잇는다 — 이 파일의
+       fillBandsWithNearestNeighbor와 같은 원칙(원칙 (1)). 하나도 없으면 타원면. */
+  let fm;
+  try {
+    fm = getFaceMetrics();
+  } catch (v144) {
+    return null;
+  }
+  if (!fm) return null;
+  let E;
+  try {
+    E = getHeadEllipsoid();
+  } catch (v145) {
+    return null;
+  }
+  if (!E || !(E.b > 0) || !(E.c > 0)) return null;
+  const CY = 0.15;
+  let faceHalfX = 0;
+  try {
+    const v146 = fm.lm,
+      v147 = fm.projector;
+    v146 && v147 && v146.lEarX != null && v146.rEarX != null && (faceHalfX = Math.abs(v147.toMeshX(Math.max(v146.lEarX, v146.rEarX))));
+  } catch (v148) {}
+  if (!(faceHalfX > 0)) faceHalfX = E.a * MQ_FRINGE.lineHalfX;
+  const yTop = CY + E.b,
+    yBot = CY - E.b,
+    span = Math.max(0.000001, yTop - yBot),
+    NB = Math.max(4, FACE_PROFILE.bands | 0),
+    zMax = new Array(NB).fill(-Infinity);
+  let nHit = 0;
+  for (const v149 of ["left", "right"]) {
+    const v150 = state.landmarks && state.landmarks[v149];
+    if (!v150 || !v150.rawLandmarks || v150.rawLandmarks.length < 468) continue;
+    let v151 = 0;
+    try {
+      v151 = getViewPoseConfidence(v149);
+    } catch (v152) {}
+    // 어림 각도로는 선을 안 긋는다
+    if (v151 < 0.5) continue;
+    for (const v153 of FACE_PROFILE.midline) {
+      const v154 = v150.rawLandmarks[v153];
+      if (!v154) continue;
+      let v155 = null;
+      try {
+        v155 = projectImagePointToHead(v149, v154.x, v154.y, fm.widthFactor, fm.heightFactor);
+      } catch (v157) {}
+      if (!v155 || !isFinite(v155.z) || !isFinite(v155.y)) continue;
+      /* 좌·우가 같은 높이를 보면 <b>더 앞</b>을 쓴다 — 얼굴 앞면을 찾는 것이고,
+               한쪽 사진이 덜 돌아가 얕게 나왔다고 코를 뒤로 당기면 안 된다. */
+      const v156 = Math.min(NB - 1, Math.max(0, Math.floor((yTop - v155.y) / span * NB)));
+      if (v155.z > zMax[v156]) zMax[v156] = v155.z;
+      nHit++;
+    }
+  }
+  const measured = zMax.some(v158 => v158 > -Infinity),
+    zs = new Array(NB),
+    ellZAt = my => {
+      const yl = (my - CY) / E.b;
+      return E.c * Math.sqrt(Math.max(0, 1 - Math.min(1, yl * yl)));
+    };
+  for (let v159 = 0; v159 < NB; v159++) {
+    if (zMax[v159] > -Infinity) {
+      zs[v159] = zMax[v159];
+      continue;
+    }
+    if (!measured) {
+      zs[v159] = ellZAt(yTop - (v159 + 0.5) / NB * span);
+      continue;
+    }
+    let v160 = v159,
+      v161 = v159;
+    while (v160 >= 0 && zMax[v160] === -Infinity) v160--;
+    while (v161 < NB && zMax[v161] === -Infinity) v161++;
+    zs[v159] = v160 >= 0 && v161 < NB ? (zMax[v160] + zMax[v161]) / 2 : v160 >= 0 ? zMax[v160] : zMax[v161];
+  }
+  return FACE_PROFILE.src = measured ? "side" : "ellipsoid", FACE_PROFILE.n = nHit, {
+    src: FACE_PROFILE.src,
+    halfX: faceHalfX,
+    zAt(v162) {
+      const v163 = (yTop - v162) / span * NB - 0.5;
+      if (v163 <= 0) return zs[0];
+      if (v163 >= NB - 1) return zs[NB - 1];
+      const v164 = Math.floor(v163),
+        v165 = v163 - v164;
+      return zs[v164] * (1 - v165) + zs[v164 + 1] * v165;
+    }
+  };
+}
+/* 앞머리 라인 — 얼굴 앞으로 내려온 가닥을 <b>그 높이에서 일자로</b> 자른다.
+   ── 왜 가닥을 고르지 않고 선으로 자르나 ─────────────────────────────
+   앞머리는 "어느 가닥이냐"가 아니라 <b>어느 높이냐</b>로 정해진다. 뽑힌 가닥만
+   짧게 하면 안 뽑힌 이웃이 그 사이로 흘러내려 화면에서는 그냥 <b>긴 머리 몇
+   가닥</b>으로 보인다. 가위는 선을 긋고, 그 선을 넘은 것은 무엇이든 잘린다.
+   ⚠ 길이를 <b>만들지 않는다</b>. 자르기만 한다(MANNEQUIN.lenPct 주석과 같은 규칙).
+   ⚠ 옆·뒤로 흐르는 머리는 안 건드린다 — z>0(앞쪽)이면서 두상 너비 안일 때만.
+   되돌리기: MQ_FRINGE.lineHalfX = 0 */
+function mqTrimAtFringeLine(pts, tipY, E, allAround) {
+  if (!(tipY != null) || !pts || pts.length < 2) return pts;
+  const prof = getFaceProfile(),
+    halfX = prof && prof.halfX > 0 ? prof.halfX : E && E.a > 0 && MQ_FRINGE.lineHalfX > 0 ? E.a * MQ_FRINGE.lineHalfX : 0;
+  if (!(halfX > 0) && !allAround) return pts;
+  for (let v166 = 1; v166 < pts.length; v166++) {
+    const v167 = pts[v166 - 1],
+      v168 = pts[v166];
+    // 이 마디에서 선을 넘는다
+    /* (2026-09-05) allAround면 <b>방향을 안 본다</b> — 크라운 배너 참고.
+           기본(프론트)은 예전 그대로 얼굴 앞을 지나는 가닥만 자른다. */
+    if (!(v167.y >= tipY && v168.y < tipY)) continue;
+    if (!allAround) {
+      // 얼굴 <b>앞면</b>보다 앞인가. 예전엔 두상 중심(0)이라 앞쪽 반구 전체가 걸렸다.
+      const v171 = prof ? prof.zAt(v168.y) : 0;
+      // 얼굴 앞이 아니면 통과
+      if (!(v168.z > v171) || Math.abs(v168.x) > halfX) continue;
+    }
+    const v169 = (v167.y - tipY) / Math.max(1e-9, v167.y - v168.y),
+      v170 = pts.slice(0, v166);
+    return v170.push({
+      x: v167.x + (v168.x - v167.x) * v169,
+      y: tipY,
+      z: v167.z + (v168.z - v167.z) * v169
+    }), v170.length >= 2 ? v170 : pts;
+  }
+  // 뿌리 한 점만 남기지는 않는다
+  return pts;
+}
+/* 앞머리 선이 <b>지금</b> 어느 높이인가 — 길이 슬라이더가 정한다 (2026-09-02 5차).
+   ── 3차의 잘못 ────────────────────────────────────────────────────
+   3차는 이 선을 <b>심을 때 고정 y로</b> 그었다. 그러니 선이 바닥이자 천장이
+   돼서, 길이를 아무리 내려도 가닥이 여전히 그 선까지 닿아 앞머리가 눈썹에
+   붙박이가 됐다(사용자: "아무리 줄여도 눈썹이 한계"). 앞머리 길이는 고정
+   높이가 아니라 <b>커트 결과</b>다 — 그래서 자를 때마다 다시 긋는다.
+   ── 자 ───────────────────────────────────────────────────────────
+   위 끝은 이마 헤어라인이다. 지어내지 않고 SCALP_ZONES.front의 phiRange 상한을
+   그대로 읽는다 — SCALP_LIMIT이 "두피가 여기까지"라고 이미 정한 그 선이다.
+   아래 끝은 비율 1(중립)에서 mqFringeTipY, 곧 <b>눈높이</b>다.
+     선 = 헤어라인 − (헤어라인 − 눈높이) × 길이비율
+   비율 0.05면 헤어라인 바로 아래(거의 안 남김), 1이면 눈, 1.8이면 광대 근처.
+   단조이고, 슬라이더 전 구간이 살아 있고, 얼굴을 <b>덮는 데까지는 못 간다</b>.
+   ── 누구의 비율인가: <b>프론트가 주인, 크라운이 거든다</b> ─────────────
+   앞머리는 프론트 섹션의 물건이라 선은 하나여야 한다(가닥마다 자기 섹션 비율을
+   쓰면 크라운 앞머리와 프론트 앞머리가 다른 높이에서 잘려 일자가 깨진다).
+   다만 사용자: "크라운이 프론트와 같이 움직이니 올라가졌네. 그런데 크라운이
+   <b>덜 움직일 정도면</b> 길이변화배율을 조금 조정해야 될 거 같아."
+   맞다 — 크라운도 앞머리에 뿌리를 대고 있으니 지분이 0은 아니다. 지분은
+   지어내지 않고 <b>실제로 내려 심는 비율</b>에서 읽는다:
+       crownFrac / (frontFrac + crownFrac) = 0.15 / 0.75 = <b>0.20</b>
+   MQ_FRINGE 값을 바꾸면 지분도 따라 움직인다(두 벌이 안 된다). */
+function fringeLineY(sec) {
+  if (!MQ_FRINGE.on || !(MQ_FRINGE.lineHalfX > 0)) return null;
+  const m = state.hair3Dneutral;
+  if (!m || !m.mannequin) return null;
+  const CY = m.CY != null ? m.CY : SCALP_CENTER_Y;
+  let E = null;
+  try {
+    E = getHeadEllipsoid();
+  } catch (v172) {
+    return null;
+  }
+  if (!E || !(E.b > 0.000001)) return null;
+  const S = state.sections || {},
+    yHair = CY + E.b * Math.cos(SCALP_ZONES.front.phiRange[1]),
+    isCrown = sec === "crown" && MQ_FRINGE.crownLine;
+  if (isCrown) {
+    const v173 = mqCrownTipY(CY, E);
+    if (v173 == null) return null;
+    let v174 = sectionLengthRatio("crown", (S.crown || {}).length);
+    v174 = 1 + (v174 - 1) * MQ_FRINGE.lineGain;
+    /* 바닥 = <b>눈썹</b> 그 자체. 길이를 최대로 올려도 눈썹 밑으로는 안 간다
+           (crownFloorBrow 배너). 자는 tipC와 같은 mqBrowY라 두 벌이 되지 않는다. */
+    const v175 = yHair - (yHair - v173) * Math.max(0, v174);
+    if (MQ_FRINGE.crownFloorBrow) {
+      const v176 = mqBrowY(CY, E);
+      if (v176 != null && v175 < v176) return v176;
+    }
+    return v175;
+  }
+  const tip0 = mqFringeTipY(CY);
+  if (tip0 == null) return null;
+  /* 크라운 지분은 <b>크라운이 이 선을 탈 때만</b> 의미가 있다. 자기 선이
+       생긴 뒤에도 지분을 남겨 두면, 크라운 슬라이더가 크라운 선과 프론트 선을
+       <b>동시에</b> 움직여 "크라운만 올렸는데 앞머리도 따라 올라간다"가 된다.
+       그래서 crownLine이 켜져 있으면 프론트 선은 순수하게 프론트 것이다. */
+  const rF = sectionLengthRatio("front", (S.front || {}).length),
+    rC = sectionLengthRatio("crown", (S.crown || {}).length),
+    share = MQ_FRINGE.crownLine ? 0 : MQ_FRINGE.crownFrac / Math.max(1e-9, MQ_FRINGE.frontFrac + MQ_FRINGE.crownFrac);
+  let r = rF * (1 - share) + rC * share;
+  // 선에만 감쇠
+  r = 1 + (r - 1) * MQ_FRINGE.lineGain;
+  /* 바닥 — 눈~턱의 lineFloorFaceFrac 아래로는 안 내려간다. 자는 mqFringeTipY와
+       같은 것이라 두 벌이 되지 않는다(tip0 = CY − tipFaceFrac × 눈~턱). */
+  const y = yHair - (yHair - tip0) * Math.max(0, r);
+  if (MQ_FRINGE.lineFloorFaceFrac > 0 && MQ_FRINGE.tipFaceFrac !== MQ_FRINGE.lineFloorFaceFrac) {
+    const v177 = (CY - tip0) / Math.max(1e-9, MQ_FRINGE.tipFaceFrac || 1),
+      v178 = MQ_FRINGE.tipFaceFrac > 0 ? CY - MQ_FRINGE.lineFloorFaceFrac * v177 : CY - MQ_FRINGE.lineFloorFaceFrac * _mqFaceH(CY, E);
+    if (v178 != null && y < v178) return v178;
+  }
+  return y;
+}
+/* 눈~턱 — mqFringeTipY와 <b>같은 자</b>(tipFaceFrac이 0이면 tip0에서 역산이
+   안 되므로 여기서 직접 잰다. 식은 mqFringeTipY 그대로다). */
+function _mqFaceH(CY, E) {
+  try {
+    const v179 = getFaceMetrics();
+    if (v179 && v179.heightFactor > 0) return 0.7 * v179.heightFactor;
+  } catch (v180) {}
+  return E && E.b > 0 ? 0.7 * (E.b / 0.633) : 0;
+}
+let _mqSeed = 20260808;
+const _mqRand = () => {
+  return _mqSeed = _mqSeed * 1103515245 + 12345 & 2147483647, _mqSeed / 2147483647;
+};
+/* 타원체 안이면 표면으로 방사 밀어내기. 밖이면 그대로 — 두상 미끄러짐의 전부다. */
+function ellipsoidPushOut(p, a, b, c, CY) {
+  const x = p.x,
+    y = p.y - CY,
+    z = p.z,
+    f = x * x / (a * a) + y * y / (b * b) + z * z / (c * c);
+  if (f >= 1 || !(f > 0)) return p;
+  const s = 1 / Math.sqrt(f);
+  return {
+    x: x * s,
+    y: CY + y * s,
+    z: z * s
+  };
+}
+function growMannequinStrand(ci, NT, NP, S, E, CY, L, colors) {
+  if (!(L > MANNEQUIN.minLen)) return null;
+  const M = MANNEQUIN,
+    pi = ci / NT | 0,
+    ti = ci % NT,
+    phi = (pi + _mqRand()) / NP * Math.PI,
+    th = (ti + _mqRand()) / NT * 2 * Math.PI - Math.PI,
+    sp = Math.sin(phi),
+    cp = Math.cos(phi),
+    K = M.clearance,
+    aR = S.a * K,
+    bR = S.b * K,
+    cR = S.c * K;
+  let p = {
+    x: aR * sp * Math.sin(th),
+    y: CY + bR * cp,
+    z: cR * sp * Math.cos(th)
+  };
+  const d0 = _v3norm({
+      x: p.x / (aR * aR),
+      y: (p.y - CY) / (bR * bR),
+      z: p.z / (cR * cR)
+    }),
+    layer = M.layerLo + (M.layerHi - M.layerLo) * _mqRand(),
+    kx = (1 + layer * (E.a / Math.max(0.000001, S.a) - 1)) * K,
+    ky = (1 + layer * (E.b / Math.max(0.000001, S.b) - 1)) * K,
+    kz = (1 + layer * (E.c / Math.max(0.000001, S.c) - 1)) * K,
+    cA = S.a * kx,
+    cB = S.b * ky,
+    cC = S.c * kz,
+    N = M.segments,
+    step = L / N,
+    pHull = {
+      x: E.a * sp * Math.sin(th),
+      y: CY + E.b * cp,
+      z: E.c * sp * Math.cos(th)
+    },
+    thick = Math.hypot(pHull.x - p.x, pHull.y - p.y, pHull.z - p.z),
+    rampLen = Math.max(0.0001, Math.min(thick, L * M.rootRampMax)),
+    pts = [{
+      x: p.x,
+      y: p.y,
+      z: p.z
+    }],
+    outw = {
+      x: Math.sin(th),
+      y: 0,
+      z: Math.cos(th)
+    };
+  let contact = false;
+  for (let v181 = 1; v181 <= N; v181++) {
+    const v182 = Math.min(1, v181 * step / rampLen),
+      v183 = contact ? M.spread : 0,
+      v184 = _v3norm({
+        x: d0.x * (1 - v182) + outw.x * v183,
+        y: d0.y * (1 - v182) - v182,
+        z: d0.z * (1 - v182) + outw.z * v183
+      });
+    p = {
+      x: p.x + v184.x * step,
+      y: p.y + v184.y * step,
+      z: p.z + v184.z * step
+    };
+    // 두상 미끄러짐
+    const v185 = ellipsoidPushOut(p, cA, cB, cC, CY);
+    contact = v185 !== p, p = v185, pts.push({
+      x: p.x,
+      y: p.y,
+      z: p.z
+    });
+  }
+  const color = colors && colors.length ? colors[_mqRand() * colors.length | 0] : "#2B2320";
+  return {
+    pts: pts,
+    sec: null,
+    color: color,
+    srcAngle: null,
+    rootFacing: 0,
+    mannequin: true
+  };
+}
+function buildMannequinHair3D() {
+  /** (9/23 원본 주석 — 코드가 바뀌어 제자리를 못 찾음)
+     · 섹션은 뿌리를 심어 봐야 안다 — 임시로 길이를 모르는 채 뿌리만 먼저 잡는다
+     · 앞머리 — "심을 게 없으면 프론트·크라운에서 내린다"(위 MQ_FRINGE 배너).
+       needFringe가 false(이미 앞머리 있음)거나 null(모름)이면 안 걸린다.
+     · [진단] 조각별 원본 픽셀색을 실제로 구운 가닥 비율(2026-08-18 i).
+       0%면 마스크·photoRGB·캘리브레이션 중 하나가 없다는 뜻이고, 그때 최종 3D는
+       예전처럼 가닥당 단색이 된다 — [3D]의 "원본 픽셀색 N개"와 같은 숫자여야 한다.
+     · [진단·앞머리] 셋을 한 줄에 — <b>왜 안 내려왔는지</b>를 화면에서 바로 가른다.
+       · 이미 있음  → 손님에게 앞머리가 있어 안 심은 것(정상)
+       · 모름       → 점유 프로브가 없다. 안 심는 게 맞고, 원인은 리프트 쪽이다
+       · 0개        → 판정은 내렸는데 한 가닥도 안 났다 = 뿌리가 광대보다 아래거나
+       실측 길이가 minLen 미만. 그때 볼 값은 tipFaceFrac다.
+     · [진단·크라운선] 눈썹 선이 실제로 걸렸는지. 크라운 끝 y가 눈높이(CY)와
+       같으면 crownLine이 꺼졌거나 mqBrowY가 null로 떨어진 것이다.
+  */
+  try {
+    ROOTS_FALLBACK.ensureRoots(state._hair3Dneutral || state.hair3D);
+  } catch (v186) {}
+  const src = state._hair3Dneutral || state.hair3D;
+  if (!src || !src.strands || !src.strands.length) return null;
+  const G = src.grid,
+    rf = src.roots;
+  if (!G || !rf || !rf.ok) return console.warn("[마네킹] 격자/뿌리밀도가 없어 못 심음"), null;
+  const NT = rf.NT,
+    NP = rf.NP,
+    CY = src.CY,
+    b = rf.b,
+    S = getScalpEllipsoid(),
+    E = getHeadEllipsoid(),
+    yStep = (G.yTopH - G.yBot) / (G.NY - 1),
+    bucketOfY = y => Math.min(G.NY - 1, Math.max(0, Math.round((G.yTopH - y) / yStep))),
+    areas = headSurfaceCellAreas(G.hullW, G.hullD, bucketOfY, CY, b, NT, NP),
+    byS = {},
+    byV = {},
+    allLen = [];
+  for (const v187 of src.strands) {
+    const v188 = v187.sec || "crown",
+      v189 = byS[v188] || (byS[v188] = {
+        len: [],
+        col: []
+      }),
+      v190 = arcLength3D(v187.pts);
+    v189.len.push(v190), allLen.push(v190);
+    if (v187.color) v189.col.push(v187.color);
+    const v191 = v188 + "|" + viewOfRoot(v187.pts[0]);
+    (byV[v191] || (byV[v191] = [])).push(v190);
+  }
+  const pick = (arr, q) => {
+      if (!arr.length) return 0;
+      const a = arr.slice().sort((v192, v193) => v192 - v193);
+      return a[Math.min(a.length - 1, Math.floor(a.length * q))];
+    },
+    secLen = {},
+    secCol = {},
+    viewLen = {},
+    이상치 = [];
+  for (const v194 in byS) {
+    secLen[v194] = pick(byS[v194].len, MANNEQUIN.lenPct), secCol[v194] = byS[v194].col;
+    const v195 = pick(byS[v194].len, 0.5);
+    if (v195 > 0 && secLen[v194] / v195 > 3) 이상치.push(v194 + " 최장 " + secLen[v194].toFixed(3) + " = 중앙값 " + v195.toFixed(3) + "의 " + (secLen[v194] / v195).toFixed(1) + "배");
+  }
+  if (이상치.length) console.warn("[마네킹·길이 이상치] " + 이상치.join(" · ") + "\n    최장 가닥이 중앙값의 3배를 넘습니다 — 세그멘테이션이 어깨/옷을 머리로 따라갔을 가능성. MANNEQUIN.lenPct를 0.95 등으로 낮추면 이상치를 뺍니다.");
+  const MIN_VIEW_N = 12,
+    VIEW_LEN_TOL = 1 / 3,
+    clampedTxt = [];
+  for (const v196 in byV) {
+    if (byV[v196].length < MIN_VIEW_N) continue;
+    const v197 = pick(byV[v196], MANNEQUIN.lenPct),
+      v198 = secLen[v196.split("|")[0]];
+    if (!(v198 > 0)) {
+      viewLen[v196] = v197;
+      continue;
+    }
+    const v199 = Math.max(v198 * (1 - VIEW_LEN_TOL), Math.min(v198 * (1 + VIEW_LEN_TOL), v197));
+    if (Math.abs(v199 - v197) > 0.000001) clampedTxt.push(v196 + " " + v197.toFixed(3) + "→" + v199.toFixed(3));
+    viewLen[v196] = v199;
+  }
+  if (clampedTxt.length) console.log("[마네킹·뷰별길이 가둠] 섹션 중앙값 ±33% 밖 " + clampedTxt.length + "칸 — " + clampedTxt.join(" · ") + "\n    ↑ 많이 뜨면 그 섹션은 뷰마다 다르게 잘리고 있다는 뜻(세그멘테이션·마스크 경계 확인). MANNEQUIN 뷰별길이 자체를 끄려면 MIN_VIEW_N을 크게.");
+  let fbLen = pick(allLen, MANNEQUIN.lenPct),
+    lenFor = (sec, view) => viewLen[sec + "|" + view] || secLen[sec] || fbLen;
+  const nCell = NT * NP,
+    w = new Float64Array(nCell);
+  /* (2026-10-22) 다시 기른 가닥으로 칸마다 길이 */
+  let cellLen = null, rgTxt = "꺼짐(MANNEQUIN.lenFromRegrow=false)";
+  try {
+    const RG = window.REGROW, rgm = RG && RG.model;
+    if (!MANNEQUIN.lenFromRegrow) {} else if (!(rgm && RG.src === src && rgm.strands && rgm.strands.length)) rgTxt = "다시 기른 모델 없음 — 예전(사진 가닥 모델 lenPct " + MANNEQUIN.lenPct + ")";
+    else {
+      const lists = new Array(nCell), secL = {}, allL = [];
+      for (const s of rgm.strands) {
+        const p = s.pts; if (!p || p.length < 2) continue;
+        const L = arcLength3D(p), r = p[0];
+        const ny = Math.max(-1, Math.min(1, (r.y - CY) / S.b)), pi = Math.max(0, Math.min(NP - 1, Math.floor(Math.acos(ny) / Math.PI * NP)));
+        let ti = Math.floor((Math.atan2(r.x / S.a, r.z / S.c) + Math.PI) / (2 * Math.PI) * NT); ti = (ti % NT + NT) % NT;
+        const ci = pi * NT + ti; (lists[ci] || (lists[ci] = [])).push(L); allL.push(L);
+        const sc = s.sec || "crown"; (secL[sc] || (secL[sc] = [])).push(L);
+      }
+      const med = a => pick(a, 0.5);
+      cellLen = new Float32Array(nCell);
+      let own = 0, nbr = 0, bySec = 0;
+      for (let ci = 0; ci < nCell; ci++) {
+        if (lists[ci] && lists[ci].length) { cellLen[ci] = med(lists[ci]); own++; continue; }
+        const pr = ci / NT | 0, tc = ci % NT; let got = null;
+        for (let rr = 1; rr <= MANNEQUIN.lenNbr && !got; rr++) {
+          const acc = [];
+          for (let dp = -rr; dp <= rr; dp++) for (let dt = -rr; dt <= rr; dt++) {
+            const pp = pr + dp; if (pp < 0 || pp >= NP) continue;
+            const L2 = lists[pp * NT + ((tc + dt) % NT + NT) % NT]; if (L2) for (const x of L2) acc.push(x);
+          }
+          if (acc.length) got = med(acc);
+        }
+        if (got != null) { cellLen[ci] = got; nbr++; } else bySec++;
+      }
+      for (const k in secL) secLen[k] = med(secL[k]);
+      fbLen = med(allL);
+      for (const k in viewLen) delete viewLen[k];
+      rgTxt = "다시 기른 가닥 " + rgm.strands.length + "개 · 칸 길이 제 칸 " + own + " · 둘레 칸 " + nbr + " · 섹션 중앙값 " + bySec;
+    }
+  } catch (e) { cellLen = null; rgTxt = "실패 — 예전대로: " + (e && e.message); }
+  const lenAt = (ci, sec, view) => cellLen && cellLen[ci] > 0 ? cellLen[ci] : lenFor(sec, view);
+  let wSum = 0,
+    planted = 0,
+    baldCells = 0,
+    pxColored = 0,
+    offScalpCells = 0;
+  for (let v200 = 0; v200 < nCell; v200++) {
+    // 두피 밖은 밀도 0이라 아래 조건에 자동으로 걸리지만, 이유를 따로 센다
+    if (rf.est && rf.est[v200] === EST_OFFSCALP) {
+      offScalpCells++, baldCells++;
+      continue;
+    }
+    const v201 = rf.den[v200];
+    if (!(v201 > MANNEQUIN.baldDen)) {
+      baldCells++;
+      continue;
+    }
+    w[v200] = v201 * (areas ? areas[v200] : 1), wSum += w[v200];
+  }
+  if (!(wSum > 0)) return console.warn("[마네킹] 뿌리밀도가 전부 0"), null;
+  const target = window.STRAND_BUDGET && window.STRAND_BUDGET.on !== false && window.STRAND_BUDGET.total > 0 ? window.STRAND_BUDGET.total : src.strands.length,
+    out = [];
+  let acc = 0;
+  /* 앞머리를 내릴지는 <b>심기 전에 한 번만</b> 정한다(프로브 표본 15점).
+       hasFringe가 null이면 모르는 것이라 안 심는다 — 모르면 지어내지 않는다. */
+  const secHist = {},
+    hasFringe = MQ_FRINGE.on ? mannequinHasFringe(src) : null,
+    fringeTipY = MQ_FRINGE.on ? mqFringeTipY(CY) : null;
+  // 크라운은 눈썹
+  let crownTipY = fringeTipY;
+  if (MQ_FRINGE.on) {
+    const v202 = mqCrownTipY(CY, E);
+    if (v202 != null) crownTipY = v202;
+  }
+  const needFringe = hasFringe === false && fringeTipY != null;
+  let fringeN = 0;
+  /* 크라운은 <b>눈썹</b>까지만 내려 심는다 (2026-09-05). 심을 때 길게
+             내려놓고 자를 때만 올리면, 커트 전(중립) 그림에서 크라운이 여전히
+             눈까지 내려와 보인다 — 사용자가 본 게 그 상태다. */
+  /* 조각별 원본 픽셀색 — 마네킹도 <b>사진에서 결을 가져온다</b>(2026-08-18 i).
+           가닥을 자기 뷰로 되쏘아 그 자리 픽셀을 읽는다. 못 읽으면 null이라
+           예전처럼 가닥당 단색으로 떨어진다(새 실패 모드 없음). */
+  for (let v203 = 0; v203 < nCell; v203++) {
+    if (!w[v203]) continue;
+    acc += w[v203] / wSum * target;
+    const v204 = Math.floor(acc);
+    acc -= v204;
+    for (let v205 = 0; v205 < v204; v205++) {
+      const v206 = v203 / NT | 0,
+        v207 = v203 % NT,
+        v208 = (v206 + 0.5) / NP * Math.PI,
+        v209 = (v207 + 0.5) / NT * 2 * Math.PI - Math.PI,
+        v210 = {
+          x: S.a * Math.sin(v208) * Math.sin(v209),
+          y: CY + S.b * Math.cos(v208),
+          z: S.c * Math.sin(v208) * Math.cos(v209)
+        },
+        v211 = resolveSection3D(v210, CY, S.b) || "crown",
+        v212 = viewOfRoot(v210);
+      let v213 = null;
+      if (needFringe && mqFringePicks(v210, v211, v203, v205)) {
+        const v214 = _v3norm({
+            x: v210.x / (S.a * S.a),
+            y: (v210.y - CY) / (S.b * S.b),
+            z: v210.z / (S.c * S.c)
+          }),
+          v215 = v211 === "crown" ? crownTipY : fringeTipY;
+        v213 = growFringeStrand(v210, v214, v215, lenAt(v203, v211, v212), secCol[v211] || secCol.crown);
+        if (v213) fringeN++;
+      }
+      if (!v213) v213 = growMannequinStrand(v203, NT, NP, S, E, CY, lenAt(v203, v211, v212), secCol[v211] || secCol.crown);
+      if (!v213) continue;
+      v213.sec = v211, v213.srcAngle = v212, v213.colors = bakeStrandColors3D(v213.pts, src, v212, v213.color, null);
+      if (v213.colors) pxColored++;
+      secHist[v211] = (secHist[v211] || 0) + 1, out.push(v213), planted++;
+    }
+  }
+  const lenTxt = Object.keys(secLen).map(v216 => v216 + " " + secLen[v216].toFixed(3)).join(" · "),
+    vTxt = Object.keys(viewLen).sort().map(v217 => v217 + " " + viewLen[v217].toFixed(3)).join(" · ");
+  return console.log("[마네킹] 가닥 " + planted + "개(촬영 " + target + "개 기준) · 심은 셀 " + (nCell - baldCells) + "/" + nCell + "(두피 밖 " + offScalpCells + " · 밀도 0 " + (baldCells - offScalpCells) + ")" + " · 섹션 " + Object.keys(secHist).map(v218 => v218 + " " + secHist[v218] + "(" + Math.round(100 * secHist[v218] / planted) + "%)").join(" ") + " · 섹션길이(중앙값) " + lenTxt + " · 원본 픽셀색 " + pxColored + "개(=" + (planted ? Math.round(pxColored / planted * 100) : 0) + "%)" + "\n[마네킹·앞머리] " + (hasFringe == null ? "<b>모름</b>(점유 프로브 없음 — 안 심음)" : hasFringe ? "손님에게 <b>이미 있음</b> — 안 심음" : fringeTipY == null ? "<b>끝높이 못 잼</b>(얼굴 계측 없음) — 안 심음" : "내려 심음 <b>" + fringeN + "개</b> · 끝 y=" + fringeTipY.toFixed(3) + "(눈에서 눈~턱의 " + Math.round(MQ_FRINGE.tipFaceFrac * 100) + "%" + (MQ_FRINGE.tipFaceFrac <= 0.01 ? " = 눈높이" : "") + ")" + " · front " + Math.round(MQ_FRINGE.frontFrac * 100) + "% / crown " + Math.round(MQ_FRINGE.crownFrac * 100) + "%" + (MQ_FRINGE.crownLine && crownTipY != null ? " · 크라운 끝 y=" + crownTipY.toFixed(3) + "(눈 위 " + (E && E.b > 0 ? Math.round((crownTipY - CY) / E.b * 100) : "?") + "% of E.b = <b>눈썹</b>)" : " · 크라운 <b>프론트와 같은 선</b>")) + (vTxt ? "\n[마네킹·뷰별길이] " + vTxt : "") + "\n[마네킹·길이 출처] " + rgTxt), {
+    strands: out,
+    viewCal: src.viewCal,
+    yTop: src.yTop,
+    CY: src.CY,
+    field: null,
+    occ: null,
+    grid: G,
+    roots: rf,
+    mannequin: true
+  };
+}
+/* ══════════════════════════════════════════════════════════════════
+   #5 시술모드 — 빗질한 자리에 머리가 <b>남는다</b>
+   ─────────────────────────────────────────────────────────────────
+   사용자: "시술모드 — 마네킹처럼 리셋, 자유롭게 움직이는 머리(빗질·쓸어넘김이
+   유지됨)". 기존 스타일링(넘김/가르마/볼륨/결흐름)은 <b>머리 전체</b>에 한
+   방향으로 걸리는 슬라이더다. 실제 시술은 그렇지 않다 — 빗을 댄 자리만,
+   댄 방향으로 움직이고, 손을 떼면 거기 있다.
+
+   설계 — 스트로크 목록이 아니라 <b>변위장</b>:
+   빗질 한 획을 그대로 목록에 쌓고 가닥마다 전부 훑으면 비용이
+   (획 수 × 가닥 수 × 점 수)로 커진다(획 200개면 6천만 회). 대신 두상+모발을
+   감싸는 성긴 3D 격자(N³)에 변위를 <b>누적</b>해 두고, 가닥은 자기 점에서
+   삼선형 보간으로 한 번만 읽는다 — 획을 아무리 그어도 적용 비용이 일정하다.
+   획 목록(strokes)은 되돌리기·재굽기용으로만 남긴다.
+
+   두 가지 물리 규칙만 지킨다(나머지는 손대지 않는다):
+     · 뿌리는 두피에 박혀 있다 — 뿌리 쪽 gripFrom 구간은 거의 안 움직인다
+     · 머리카락 <b>길이는 변하지 않는다</b> — 변위 후 원래 마디 길이로 다시 걷는다
+       (안 하면 빗질할수록 머리가 늘어난다)
+══════════════════════════════════════════════════════════════════ */
+const COMB = {
+  on: false,
+  radiusPx: 64,
+  falloff: 1.6,
+  gripFrom: 0.18,
+  maxStrokes: 4000,
+  N: 32,
+  minMovePx: 4,
+  strokes: [],
+  grid: null,
+  box: null,
+  _proj: null,
+  bmin: null,
+  bmax: null,
+  maxDisp: 0
+};
+/* 격자 상자 — 중립 모델의 실제 점 범위에서 잡는다(지어낸 크기 아님). */
+function combEnsureBox() {
+  if (COMB.box) return COMB.box;
+  const m = state.hair3Dneutral;
+  if (!m || !m.strands || !m.strands.length) return null;
+  let x0 = Infinity,
+    y0 = Infinity,
+    z0 = Infinity,
+    x1 = -Infinity,
+    y1 = -Infinity,
+    z1 = -Infinity;
+  const step = Math.max(1, Math.floor(m.strands.length / 400));
+  for (let v219 = 0; v219 < m.strands.length; v219 += step) {
+    for (const v220 of m.strands[v219].pts) {
+      if (v220.x < x0) x0 = v220.x;
+      if (v220.x > x1) x1 = v220.x;
+      if (v220.y < y0) y0 = v220.y;
+      if (v220.y > y1) y1 = v220.y;
+      if (v220.z < z0) z0 = v220.z;
+      if (v220.z > z1) z1 = v220.z;
+    }
+  }
+  if (!isFinite(x0)) return null;
+  const pad = 0.3 * Math.max(x1 - x0, y1 - y0, z1 - z0);
+  return COMB.box = {
+    x0: x0 - pad,
+    y0: y0 - pad,
+    z0: z0 - pad,
+    x1: x1 + pad,
+    y1: y1 + pad,
+    z1: z1 + pad
+  }, COMB.box;
+}
+function combGrid() {
+  if (COMB.grid) return COMB.grid;
+  if (!combEnsureBox()) return null;
+  return COMB.grid = new Float32Array(COMB.N * COMB.N * COMB.N * 3), COMB.grid;
+}
+/* 획 하나를 격자에 뿌린다(누적). r은 모델 단위 반경. */
+function combSplat(p, d, r) {
+  const g = combGrid(),
+    B = COMB.box,
+    N = COMB.N;
+  if (!g || !B || !(r > 0)) return;
+  const sx = (B.x1 - B.x0) / (N - 1),
+    sy = (B.y1 - B.y0) / (N - 1),
+    sz = (B.z1 - B.z0) / (N - 1);
+  {
+    const v221 = (p.x - B.x0) / sx,
+      v222 = (p.y - B.y0) / sy,
+      v223 = (p.z - B.z0) / sz,
+      v224 = Math.min(N - 2, Math.max(0, Math.floor(v221))),
+      v225 = Math.min(N - 2, Math.max(0, Math.floor(v222))),
+      v226 = Math.min(N - 2, Math.max(0, Math.floor(v223))),
+      v227 = v221 - v224,
+      v228 = v222 - v225,
+      v229 = v223 - v226;
+    let v230 = 0;
+    for (let v231 = 0; v231 < 2; v231++) for (let v232 = 0; v232 < 2; v232++) for (let v233 = 0; v233 < 2; v233++) {
+      const v234 = (v233 ? v227 : 1 - v227) * (v232 ? v228 : 1 - v228) * (v231 ? v229 : 1 - v229);
+      if (!v234) continue;
+      const v235 = Math.hypot(B.x0 + (v224 + v233) * sx - p.x, B.y0 + (v225 + v232) * sy - p.y, B.z0 + (v226 + v231) * sz - p.z);
+      if (v235 < r) v230 += v234 * Math.pow(1 - v235 / r, COMB.falloff);
+    }
+    if (v230 > 0.15) d = {
+      x: d.x / v230,
+      y: d.y / v230,
+      z: d.z / v230
+    };
+  }
+  !COMB.bmin && (COMB.bmin = {
+    x: Infinity,
+    y: Infinity,
+    z: Infinity
+  }, COMB.bmax = {
+    x: -Infinity,
+    y: -Infinity,
+    z: -Infinity
+  });
+  COMB.bmin.x = Math.min(COMB.bmin.x, p.x - r), COMB.bmax.x = Math.max(COMB.bmax.x, p.x + r), COMB.bmin.y = Math.min(COMB.bmin.y, p.y - r), COMB.bmax.y = Math.max(COMB.bmax.y, p.y + r), COMB.bmin.z = Math.min(COMB.bmin.z, p.z - r), COMB.bmax.z = Math.max(COMB.bmax.z, p.z + r);
+  const i0 = Math.max(0, Math.floor((p.x - r - B.x0) / sx)),
+    i1 = Math.min(N - 1, Math.ceil((p.x + r - B.x0) / sx)),
+    j0 = Math.max(0, Math.floor((p.y - r - B.y0) / sy)),
+    j1 = Math.min(N - 1, Math.ceil((p.y + r - B.y0) / sy)),
+    k0 = Math.max(0, Math.floor((p.z - r - B.z0) / sz)),
+    k1 = Math.min(N - 1, Math.ceil((p.z + r - B.z0) / sz));
+  for (let v236 = i0; v236 <= i1; v236++) {
+    const v237 = B.x0 + v236 * sx;
+    for (let v238 = j0; v238 <= j1; v238++) {
+      const v239 = B.y0 + v238 * sy;
+      for (let v240 = k0; v240 <= k1; v240++) {
+        const v241 = B.z0 + v240 * sz,
+          v242 = Math.hypot(v237 - p.x, v239 - p.y, v241 - p.z);
+        if (v242 > r) continue;
+        const v243 = Math.pow(1 - v242 / r, COMB.falloff),
+          v244 = ((v240 * N + v238) * N + v236) * 3;
+        g[v244] += d.x * v243, g[v244 + 1] += d.y * v243, g[v244 + 2] += d.z * v243;
+        const v245 = Math.hypot(g[v244], g[v244 + 1], g[v244 + 2]);
+        if (v245 > COMB.maxDisp) COMB.maxDisp = v245;
+      }
+    }
+  }
+}
+function combSampleInto(p, out) {
+  const g = COMB.grid,
+    B = COMB.box,
+    N = COMB.N;
+  out.x = out.y = out.z = 0;
+  if (!g || !B) return out;
+  const fx = (p.x - B.x0) / (B.x1 - B.x0) * (N - 1),
+    fy = (p.y - B.y0) / (B.y1 - B.y0) * (N - 1),
+    fz = (p.z - B.z0) / (B.z1 - B.z0) * (N - 1);
+  if (fx < 0 || fy < 0 || fz < 0 || fx > N - 1 || fy > N - 1 || fz > N - 1) return out;
+  const i = Math.min(N - 2, Math.floor(fx)),
+    j = Math.min(N - 2, Math.floor(fy)),
+    k = Math.min(N - 2, Math.floor(fz)),
+    tx = fx - i,
+    ty = fy - j,
+    tz = fz - k;
+  for (let v246 = 0; v246 < 2; v246++) for (let v247 = 0; v247 < 2; v247++) for (let v248 = 0; v248 < 2; v248++) {
+    const v249 = (v248 ? tx : 1 - tx) * (v247 ? ty : 1 - ty) * (v246 ? tz : 1 - tz);
+    if (!v249) continue;
+    const v250 = (((k + v246) * N + (j + v247)) * N + (i + v248)) * 3;
+    out.x += g[v250] * v249, out.y += g[v250 + 1] * v249, out.z += g[v250 + 2] * v249;
+  }
+  return out;
+}
+function combRebake() {
+  COMB.grid = null, COMB.bmin = COMB.bmax = null, COMB.maxDisp = 0;
+  if (!COMB.strokes.length) return;
+  combGrid();
+  /* 재굽기는 원래 명령값(s.d)으로 다시 뿌려야 한다 — combSplat이 감쇠 보정을
+       또 걸므로, 저장은 <b>보정 전</b> 값이어야 왕복이 맞는다(그래서 splat은
+       인자 d를 지역 변수로만 바꾸고 호출자의 객체는 안 건드린다). */
+  for (const v251 of COMB.strokes) combSplat(v251.p, v251.d, v251.r);
+}
+function combClear() {
+  COMB.strokes.length = 0, COMB.grid = null, COMB.bmin = COMB.bmax = null, COMB.maxDisp = 0;
+}
+function combUndo() {
+  if (!COMB.strokes.length) return;
+  const id = COMB.strokes[COMB.strokes.length - 1].g;
+  while (COMB.strokes.length && COMB.strokes[COMB.strokes.length - 1].g === id) COMB.strokes.pop();
+  combRebake(), combRefresh();
+}
+/* 변위장을 가닥에 적용 — 뿌리 고정 + 길이 보존 */
+const _combTmp = {
+  x: 0,
+  y: 0,
+  z: 0
+};
+function combStrand3D(pts) {
+  /** (9/23 원본 주석 — 코드가 바뀌어 제자리를 못 찾음)
+     · 획이 닿은 범위 밖이면 통째로 건너뛴다(대부분의 가닥이 여기서 끝난다)
+     · 길이 보존 — 옮겨진 곡선의 <b>접선</b>을 따라 원래 마디 길이로 다시 걷는다.
+       (목표점을 향해 걷는 방식은 곡선이 줄어들면 앞질러 나가 지그재그가 된다 —
+       straightenStrand3D에서 실측으로 확인한 그 함정. 같은 형태를 쓴다.)
+  */
+  return FLY_TRIM._comb(() => COMB3D._apply(combStrand3DGrid(pts)));
+}
+function combStrand3DGrid(v252) {
+  if (!COMB.grid || !v252 || v252.length < 2) return v252;
+  const v253 = COMB.bmin,
+    v254 = COMB.bmax;
+  if (v253) {
+    let v259 = false;
+    for (let v260 = 0; v260 < v252.length; v260++) {
+      const v261 = v252[v260];
+      if (v261.x >= v253.x && v261.x <= v254.x && v261.y >= v253.y && v261.y <= v254.y && v261.z >= v253.z && v261.z <= v254.z) {
+        v259 = true;
+        break;
+      }
+    }
+    if (!v259) return v252;
+  }
+  const v255 = v252.length - 1,
+    v256 = new Array(v252.length);
+  let v257 = false;
+  for (let v262 = 0; v262 < v252.length; v262++) {
+    const v263 = v252[v262];
+    combSampleInto(v263, _combTmp);
+    const v264 = v262 / v255,
+      v265 = v264 <= COMB.gripFrom ? v264 / COMB.gripFrom : 1;
+    if (_combTmp.x || _combTmp.y || _combTmp.z) v257 = true;
+    v256[v262] = {
+      x: v263.x + _combTmp.x * v265,
+      y: v263.y + _combTmp.y * v265,
+      z: v263.z + _combTmp.z * v265
+    };
+  }
+  if (!v257) return v252;
+  const v258 = [v256[0]];
+  for (let v266 = 1; v266 < v252.length; v266++) {
+    const v267 = Math.hypot(v252[v266].x - v252[v266 - 1].x, v252[v266].y - v252[v266 - 1].y, v252[v266].z - v252[v266 - 1].z),
+      v268 = v258[v266 - 1];
+    let v269 = v256[v266].x - v256[v266 - 1].x,
+      v270 = v256[v266].y - v256[v266 - 1].y,
+      v271 = v256[v266].z - v256[v266 - 1].z;
+    const v272 = Math.hypot(v269, v270, v271) || 1;
+    v258.push({
+      x: v268.x + v269 / v272 * v267,
+      y: v268.y + v270 / v272 * v267,
+      z: v268.z + v271 / v272 * v267
+    });
+  }
+  return v258;
+}
+var COMB3D = function () {
+  'use strict';
+
+  var v273 = window,
+    v274 = "[빗질 3D]",
+    v275 = Object.assign({
+      enabled: true,
+      on: false,
+      radiusPx: 30,
+      maxRadius: 0.16,
+      cell: 0.025,
+      pickPx: 22,
+      strength: 0.6,
+      falloff: 1.4,
+      gripFrom: 0.12,
+      spacing: 0.35,
+      minMovePx: 3,
+      maxSamples: 1500,
+      dab: 0.045,
+      dabCell: 0.03,
+      dabMax: 1500,
+      depthMargin: 0.2,
+      liveMs: 250,
+      dirLagPx: 22,
+      touchOffset: 52,
+      indicator: true,
+      grain: true,
+      flowCell: 0.07,
+      flowSmooth: 0.2,
+      flowMin: 24,
+      flowNear: 2,
+      flowDense: 0.2,
+      flowShare: 1,
+      flowOwn: 55,
+      flowFinger: 60,
+      flowCoh: 0.6,
+      flowReach: 3,
+      tolFrom: 12,
+      tolFull: 28,
+      collide: true,
+      anchor: true,
+      flyOnly: true,
+      anchorLen: 0.13,
+      bodyFull: 8,
+      pullIn: 0.3,
+      headLift: 1.02,
+      surf: true,
+      surfThr: 0.3,
+      surfNbr: 6,
+      surfCore: 12,
+      surfHead: 1.15,
+      flyFrom: 0.02,
+      flyFull: 0.05,
+      depthLayer: 0.13,
+      visCell: 4,
+      partFinger: true,
+      reachIn: 4,
+      reachBack: true,
+      divAngle: 15,
+      flyTol: 0,
+      flyTolFull: 6,
+      lead: 0.6,
+      settle: 0.7,
+      maxMove: 0.32,
+      settleReach: 0.16,
+      settleGain: 0.6,
+      ease: 0.5,
+      relax: 2,
+      pickStrands: 8000,
+      sweep: true,
+      mode: "tidy",
+      sweepStrength: 0.6,
+      sweepLevel: 7,
+      sweepGrip: 0.12,
+      sweepTol: 3,
+      sweepDepth: 0.2,
+      sweepWrap: true,
+      wrapNear: 1.15,
+      wrapFar: 1.5
+    }, v273.COMB3D || {});
+  v275.sweeps = [];
+  if (v275.mode !== "sweep") v275.mode = "tidy";
+  v275.samples = [];
+  var v276 = v275.stats = {
+      strokes: 0,
+      touched: 0,
+      _t: 0,
+      ms: 0,
+      pickMs: 0,
+      pickPts: 0,
+      pickFly: 0,
+      pickHidden: 0,
+      reached: 0,
+      dabs: 0,
+      seen: 0,
+      tOwn: 0,
+      tSide: 0,
+      tAll: 0,
+      tReach: 0,
+      tFinger: 0,
+      tSkip: 0,
+      _to: 0,
+      _ts: 0,
+      _ta: 0,
+      _tr: 0,
+      _tf: 0,
+      _tk: 0,
+      pushed: 0,
+      neck: 0,
+      _pu: 0,
+      _nk: 0,
+      anch: 0,
+      pin: 0,
+      _an: 0,
+      _pi: 0,
+      fly: 0,
+      _fl: 0,
+      up: 0,
+      _up: 0,
+      clamp: 0,
+      _cl: 0,
+      surfRef: 0,
+      surfCells: 0,
+      flowRef: 0,
+      flowCells: 0,
+      flowMs: 0,
+      err: null
+    },
+    v277 = 0,
+    v278 = 0,
+    v279 = null;
+  v276._sw = 0, v276._swp = 0, v276.swept = 0, v276.sweptPush = 0, v276.sweepStrokes = 0;
+  function v280() {
+    try {
+      return performance.now();
+    } catch (v368) {
+      return Date.now();
+    }
+  }
+  function v281() {
+    try {
+      return currentScreen;
+    } catch (v369) {
+      return "";
+    }
+  }
+  function v282() {
+    try {
+      return model3D && model3D.initialized ? model3D : null;
+    } catch (v370) {
+      return null;
+    }
+  }
+  function v283() {
+    try {
+      return !!(v273.ADJUST3D && v273.ADJUST3D.on);
+    } catch (v371) {
+      return false;
+    }
+  }
+  function v284() {
+    return !!(v275.enabled && v283() && v281() === "adjust" && v282());
+  }
+  var v285 = null,
+    v286 = 0,
+    v287 = 0,
+    v288 = 0,
+    v289 = 512,
+    v290 = 1024;
+  function v291() {
+    return {
+      map: new Map(),
+      V: new Float32Array(3 * 4096),
+      n: 0,
+      mn: [Infinity, Infinity, Infinity],
+      mx: [-Infinity, -Infinity, -Infinity]
+    };
+  }
+  function v292(v372, v373, v374, v375, v376, v377, v378, v379, v380) {
+    var v381 = v275.cell,
+      v382 = v376 * v376,
+      v383 = Math.floor((v373 - v376) / v381),
+      v384 = Math.floor((v373 + v376) / v381),
+      v385 = Math.floor((v374 - v376) / v381),
+      v386 = Math.floor((v374 + v376) / v381),
+      v387 = Math.floor((v375 - v376) / v381),
+      v388 = Math.floor((v375 + v376) / v381),
+      v389,
+      v390,
+      v391,
+      v392,
+      v393,
+      v394,
+      v395,
+      v396;
+    if (v383 < -v289 || v385 < -v289 || v387 < -v289 || v384 >= v289 || v386 >= v289 || v388 >= v289) return;
+    for (v391 = v387; v391 <= v388; v391++) {
+      var v397 = (v391 + 0.5) * v381 - v375;
+      for (v390 = v385; v390 <= v386; v390++) {
+        var v398 = (v390 + 0.5) * v381 - v374;
+        for (v389 = v383; v389 <= v384; v389++) {
+          var v399 = (v389 + 0.5) * v381 - v373;
+          v394 = v399 * v399 + v398 * v398 + v397 * v397;
+          if (v394 >= v382) continue;
+          v395 = v377 * Math.min(1, 1.6 * (1 - Math.sqrt(v394) / v376));
+          if (v395 < 0.004) continue;
+          v392 = v389 + v289 + v290 * (v390 + v289 + v290 * (v391 + v289)), v393 = v372.map.get(v392);
+          if (v393 === undefined) {
+            v393 = v372.n++, v372.map.set(v392, v393);
+            if (v393 * 3 + 3 > v372.V.length) {
+              var v400 = new Float32Array(v372.V.length * 2);
+              v400.set(v372.V), v372.V = v400;
+            }
+          }
+          v396 = v372.V, v393 *= 3, v396[v393] = v396[v393] * (1 - v395) + v378 * v395, v396[v393 + 1] = v396[v393 + 1] * (1 - v395) + v379 * v395, v396[v393 + 2] = v396[v393 + 2] * (1 - v395) + v380 * v395;
+        }
+      }
+    }
+    if (v373 - v376 < v372.mn[0]) v372.mn[0] = v373 - v376;
+    if (v374 - v376 < v372.mn[1]) v372.mn[1] = v374 - v376;
+    if (v375 - v376 < v372.mn[2]) v372.mn[2] = v375 - v376;
+    if (v373 + v376 > v372.mx[0]) v372.mx[0] = v373 + v376;
+    if (v374 + v376 > v372.mx[1]) v372.mx[1] = v374 + v376;
+    if (v375 + v376 > v372.mx[2]) v372.mx[2] = v375 + v376;
+  }
+  function v293(v401, v402) {
+    var v403 = v402.dabs,
+      v404 = v402.m,
+      v405,
+      v406 = v275.dab;
+    for (v405 = 0; v405 < v404; v405++) v292(v401, v403[v405 * 4], v403[v405 * 4 + 1], v403[v405 * 4 + 2], v406, v402.k * v403[v405 * 4 + 3], v402.dx, v402.dy, v402.dz);
+  }
+  function v294() {
+    var v407 = v275.samples.length;
+    (!v285 || v287 !== v288 || v286 > v407) && (v285 = v291(), v286 = 0, v287 = v288);
+    for (; v286 < v407; v286++) v293(v285, v275.samples[v286]);
+    return v407 ? v285 : null;
+  }
+  var v295 = null,
+    v296 = 0,
+    v297 = 0;
+  function v298() {
+    var v408 = v275.sweeps.length;
+    (!v295 || v297 !== v288 || v296 > v408) && (v295 = v291(), v296 = 0, v297 = v288);
+    for (; v296 < v408; v296++) v293(v295, v275.sweeps[v296]);
+    return v408 ? v295 : null;
+  }
+  var v299 = null,
+    v300 = -1000000000,
+    v301 = null;
+  function v302() {
+    var v409 = null,
+      v410 = v280();
+    try {
+      v409 = state._hair3Dneutral || state.hair3Dneutral || null;
+    } catch (v414) {}
+    if (v299 !== null && v409 === v301 && v410 - v300 < 400) return v299 || null;
+    var v411 = null,
+      v412 = 0;
+    try {
+      v411 = typeof getScalpEllipsoid === "function" ? getScalpEllipsoid() : getHeadEllipsoid();
+    } catch (v415) {
+      v411 = null;
+    }
+    try {
+      var v413 = state.hair3Dneutral;
+      if (v413 && isFinite(v413.CY)) v412 = v413.CY;else {
+        if (typeof SCALP_CENTER_Y !== "undefined") v412 = SCALP_CENTER_Y;
+      }
+    } catch (v416) {}
+    return v299 = v411 && v411.a > 0 && v411.b > 0 && v411.c > 0 && isFinite(v412) ? {
+      a2: v411.a * v411.a,
+      b2: v411.b * v411.b,
+      c2: v411.c * v411.c,
+      cy: v412
+    } : false, v300 = v410, v301 = v409, v299 || null;
+  }
+  var v303 = new Float64Array(4 * 256),
+    v304 = new Float64Array(3 * 256),
+    v305 = new Float64Array(256),
+    v306 = new Float64Array(256),
+    v307 = new Int32Array(256),
+    v308 = Math.PI / 180;
+  function v309(v417, v418, v419, v420) {
+    var v421 = (v418 - v417.x0) * v417.inv - 0.5,
+      v422 = (v419 - v417.y0) * v417.inv - 0.5,
+      v423 = (v420 - v417.z0) * v417.inv - 0.5,
+      v424 = Math.floor(v421),
+      v425 = Math.floor(v422),
+      v426 = Math.floor(v423);
+    if (v424 < 0 || v425 < 0 || v426 < 0 || v424 >= v417.mx - 1 || v425 >= v417.my - 1 || v426 >= v417.mz - 1) return v417.far;
+    var v427 = v421 - v424,
+      v428 = v422 - v425,
+      v429 = v423 - v426,
+      v430 = v417.D,
+      v431 = v424 + v417.mx * (v425 + v417.my * v426),
+      v432 = v417.mx,
+      v433 = v417.mx * v417.my,
+      v434 = v430[v431] + (v430[v431 + 1] - v430[v431]) * v427,
+      v435 = v430[v431 + v432] + (v430[v431 + v432 + 1] - v430[v431 + v432]) * v427,
+      v436 = v430[v431 + v433] + (v430[v431 + v433 + 1] - v430[v431 + v433]) * v427,
+      v437 = v430[v431 + v433 + v432] + (v430[v431 + v433 + v432 + 1] - v430[v431 + v433 + v432]) * v427;
+    return v434 += (v435 - v434) * v428, v436 += (v437 - v436) * v428, v434 + (v436 - v434) * v429;
+  }
+  var v310 = new Float64Array(3);
+  function v311(v438, v439, v440, v441) {
+    var v442 = v438.h,
+      v443 = v309(v438, v439 - v442, v440, v441) - v309(v438, v439 + v442, v440, v441),
+      v444 = v309(v438, v439, v440 - v442, v441) - v309(v438, v439, v440 + v442, v441),
+      v445 = v309(v438, v439, v440, v441 - v442) - v309(v438, v439, v440, v441 + v442),
+      v446 = Math.sqrt(v443 * v443 + v444 * v444 + v445 * v445);
+    if (!(v446 > 1e-9)) return 0;
+    return v310[0] = v443 / v446, v310[1] = v444 / v446, v310[2] = v445 / v446, v446 / (2 * v442);
+  }
+  function v312(v447, v448, v449, v450) {
+    var v451 = Math.floor((v448 - v447.x0) * v447.inv),
+      v452 = Math.floor((v449 - v447.y0) * v447.inv),
+      v453 = Math.floor((v450 - v447.z0) * v447.inv);
+    if (v451 < 0 || v452 < 0 || v453 < 0 || v451 >= v447.nx || v452 >= v447.ny || v453 >= v447.nz) return 0;
+    var v454 = (v447.GA[v451 + v447.nx * (v452 + v447.ny * v453)] - v447.bLo) / (v447.bHi - v447.bLo);
+    return v454 <= 0 ? 0 : v454 >= 1 ? 1 : v454 * v454 * (3 - 2 * v454);
+  }
+  var v313 = new Float64Array(3);
+  function v314(v455, v456, v457, v458, v459, v460, v461, v462, v463, v464, v465, v466) {
+    var v467 = Math.floor((v456 - v455.x0) * v455.inv),
+      v468 = Math.floor((v457 - v455.y0) * v455.inv),
+      v469 = Math.floor((v458 - v455.z0) * v455.inv),
+      v470,
+      v471,
+      v472,
+      v473,
+      v474,
+      v475,
+      v476,
+      v477,
+      v478,
+      v479,
+      v480 = 0,
+      v481 = 0,
+      v482 = 0,
+      v483 = 0,
+      v484 = 0,
+      v485 = 0,
+      v486 = 0,
+      v487 = 0,
+      v488 = 0,
+      v489 = 0,
+      v490 = 0,
+      v491 = 0,
+      v492 = v455.GN,
+      v493 = v455.GM,
+      v494 = v455.GX,
+      v495 = v455.GY,
+      v496 = v455.GZ,
+      v497 = v455.nx,
+      v498 = v455.ny,
+      v499 = v455.nz;
+    for (v472 = v469 - 1; v472 <= v469 + 1; v472++) {
+      if (v472 < 0 || v472 >= v499) continue;
+      for (v471 = v468 - 1; v471 <= v468 + 1; v471++) {
+        if (v471 < 0 || v471 >= v498) continue;
+        for (v470 = v467 - 1; v470 <= v467 + 1; v470++) {
+          if (v470 < 0 || v470 >= v497) continue;
+          v473 = v470 + v497 * (v471 + v498 * v472), v474 = v492[v473];
+          if (!v474) continue;
+          v491 += v474, v475 = v493[v473];
+          if (!(v475 > 0.000001)) continue;
+          v476 = v494[v473], v477 = v495[v473], v478 = v496[v473], v488 += v476, v489 += v477, v490 += v478, v476 * v459 + v477 * v460 + v478 * v461 > v465 * v475 && (v480 += v476, v481 += v477, v482 += v478, v483 += v474), v476 * v462 + v477 * v463 + v478 * v464 > v466 * v475 && (v484 += v476, v485 += v477, v486 += v478, v487 += v474);
+        }
+      }
+    }
+    if (v491 < v455.near) return 0;
+    var v500 = v455.near * v275.flowShare;
+    if (v483 >= v500) {
+      v479 = Math.sqrt(v480 * v480 + v481 * v481 + v482 * v482);
+      if (v479 > 0.000001) return v313[0] = v480 / v479, v313[1] = v481 / v479, v313[2] = v482 / v479, 1;
+    }
+    if (v487 >= v500) {
+      v479 = Math.sqrt(v484 * v484 + v485 * v485 + v486 * v486);
+      if (v479 > 0.000001) return v313[0] = v484 / v479, v313[1] = v485 / v479, v313[2] = v486 / v479, 2;
+    }
+    v479 = Math.sqrt(v488 * v488 + v489 * v489 + v490 * v490);
+    if (v479 > 0.000001 && v479 / v491 >= v275.flowCoh) return v313[0] = v488 / v479, v313[1] = v489 / v479, v313[2] = v490 / v479, 3;
+    return -1;
+  }
+  function v315(v501, v502, v503) {
+    var v504 = v503.DF,
+      v505 = v501.length,
+      v506 = v505 - 1,
+      v507 = v275.cell,
+      v508 = v502.map,
+      v509 = v502.V,
+      v510 = v303,
+      v511 = v304,
+      v512 = v305,
+      v513 = v306,
+      v514 = v307,
+      v515,
+      v516,
+      v517,
+      v518,
+      v519,
+      v520,
+      v521,
+      v522,
+      v523,
+      v524,
+      v525,
+      v526,
+      v527,
+      v528,
+      v529,
+      v530,
+      v531,
+      v532 = 0,
+      v533 = v505,
+      v534 = 0,
+      v535,
+      v536 = v501[0].x,
+      v537 = v501[0].y,
+      v538 = v501[0].z,
+      v539 = v504.d0,
+      v540 = 1 / (v504.d1 - v504.d0);
+    for (v515 = 1; v515 < v505; v515++) {
+      v516 = v501[v515], v527 = v516.x - v536, v528 = v516.y - v537, v529 = v516.z - v538, v531 = Math.sqrt(v527 * v527 + v528 * v528 + v529 * v529), v531 > 1e-9 ? (v510[v515 * 4] = v527 / v531, v510[v515 * 4 + 1] = v528 / v531, v510[v515 * 4 + 2] = v529 / v531) : (v510[v515 * 4] = 0, v510[v515 * 4 + 1] = -1, v510[v515 * 4 + 2] = 0), v510[v515 * 4 + 3] = v531, v532 += v531, v536 = v516.x, v537 = v516.y, v538 = v516.z;
+    }
+    for (v515 = 1; v515 < v505; v515++) {
+      v512[v515] = 0, v513[v515] = 0, v514[v515] = -1;
+      if (!(v510[v515 * 4 + 3] > 1e-9)) continue;
+      v516 = v501[v515], v517 = v501[v515 - 1], v527 = (v516.x + v517.x) * 0.5, v528 = (v516.y + v517.y) * 0.5, v529 = (v516.z + v517.z) * 0.5, v518 = Math.floor(v527 / v507) + v289, v519 = Math.floor(v528 / v507) + v289, v520 = Math.floor(v529 / v507) + v289;
+      if (v518 < 0 || v519 < 0 || v520 < 0 || v518 >= v290 || v519 >= v290 || v520 >= v290) continue;
+      v521 = v508.get(v518 + v290 * (v519 + v290 * v520));
+      if (v521 === undefined) continue;
+      v524 = v509[v521 * 3], v525 = v509[v521 * 3 + 1], v526 = v509[v521 * 3 + 2], v522 = Math.sqrt(v524 * v524 + v525 * v525 + v526 * v526);
+      if (!(v522 > 0.01)) continue;
+      v523 = v515 / v506;
+      if (v523 < v275.gripFrom) v522 *= v523 / v275.gripFrom;
+      if (v522 > 1) v522 = 1;
+      v514[v515] = v521, v513[v515] = v522, v275.flyOnly && (v535 = (v309(v504, v527, v528, v529) - v539) * v540, v522 *= v535 <= 0 ? 0 : v535 >= 1 ? 1 : v535 * v535 * (3 - 2 * v535)), v512[v515] = v522;
+    }
+    if (v275.reachBack) {
+      var v541 = 0,
+        v542 = -1,
+        v543,
+        v544,
+        v545,
+        v546 = Math.cos(Math.max(1, v275.divAngle) * v308);
+      for (v515 = v506; v515 >= 1; v515--) {
+        v522 = v512[v515];
+        if (v522 > v541) {
+          v541 = v522, v542 = v514[v515];
+          continue;
+        }
+        if (!(v541 > 0.05) || !(v510[v515 * 4 + 3] > 1e-9)) continue;
+        if (!(v513[v515] > 0.01)) {
+          v541 *= 0.5;
+          continue;
+        }
+        v516 = v501[v515], v517 = v501[v515 - 1], v535 = (v309(v504, (v516.x + v517.x) * 0.5, (v516.y + v517.y) * 0.5, (v516.z + v517.z) * 0.5) - v539) * v540, v543 = v535 > 0;
+        if (!v543) {
+          v518 = Math.floor(((v516.x + v517.x) * 0.5 - v503.x0) * v503.inv), v519 = Math.floor(((v516.y + v517.y) * 0.5 - v503.y0) * v503.inv), v520 = Math.floor(((v516.z + v517.z) * 0.5 - v503.z0) * v503.inv), v521 = 0;
+          if (v518 >= 0 && v519 >= 0 && v520 >= 0 && v518 < v503.nx && v519 < v503.ny && v520 < v503.nz) {
+            v518 += v503.nx * (v519 + v503.ny * v520);
+            if (v503.GN[v518] >= v503.dense && v503.GM[v518] >= 0.85 * v503.GN[v518] && v503.GX[v518] * v510[v515 * 4] + v503.GY[v518] * v510[v515 * 4 + 1] + v503.GZ[v518] * v510[v515 * 4 + 2] < v546 * v503.GM[v518]) v521 = 1;
+          }
+          if (!v521) v541 *= v275.lead;
+        }
+        v523 = v515 / v506, v544 = v523 < v275.gripFrom ? v523 / v275.gripFrom : 1, v545 = v541 * v544;
+        if (v545 > v522) {
+          v512[v515] = v545;
+          if (v514[v515] < 0) v514[v515] = v542;
+          v276._up++;
+        }
+      }
+    } else {
+      if (v275.lead > 0) for (v515 = v506 - 1; v515 >= 1; v515--) {
+        v522 = v512[v515 + 1] * v275.lead;
+        if (v522 > v513[v515]) v522 = v513[v515];
+        if (v522 > v512[v515]) v512[v515] = v522;
+      }
+    }
+    for (v515 = 1; v515 < v505; v515++) if (v512[v515] > 0.01) {
+      if (v515 < v533) v533 = v515;
+      v534 = v515;
+    }
+    if (v533 > v534) return v501;
+    var v547 = v532 > 0 ? Math.round(v275.flowSmooth / (v532 / v506)) : 1;
+    if (!(v547 >= 1)) v547 = 1;else {
+      if (v547 > 16) v547 = 16;
+    }
+    var v548, v549, v550, v551, v552, v553, v554, v555, v556, v557, v558;
+    for (v515 = v533; v515 <= v534; v515++) {
+      if (!(v512[v515] > 0.01)) continue;
+      v516 = v501[v515], v517 = v501[v515 - 1], v548 = v501[v515 - 1 - v547 < 0 ? 0 : v515 - 1 - v547], v549 = v501[v515 + v547 > v506 ? v506 : v515 + v547], v550 = v510[v515 * 4], v551 = v510[v515 * 4 + 1], v552 = v510[v515 * 4 + 2], v527 = v549.x - v548.x, v528 = v549.y - v548.y, v529 = v549.z - v548.z, v530 = Math.sqrt(v527 * v527 + v528 * v528 + v529 * v529), v530 > 1e-9 ? (v527 /= v530, v528 /= v530, v529 /= v530, v557 = v527 * v550 + v528 * v551 + v529 * v552) : (v527 = v550, v528 = v551, v529 = v552, v557 = 1), v553 = v516.x - v548.x, v554 = v516.y - v548.y, v555 = v516.z - v548.z, v556 = Math.sqrt(v553 * v553 + v554 * v554 + v555 * v555), v556 > 1e-9 && (v558 = (v553 * v550 + v554 * v551 + v555 * v552) / v556, v558 > v557 && (v557 = v558, v527 = v553 / v556, v528 = v554 / v556, v529 = v555 / v556)), v553 = v549.x - v517.x, v554 = v549.y - v517.y, v555 = v549.z - v517.z, v556 = Math.sqrt(v553 * v553 + v554 * v554 + v555 * v555), v556 > 1e-9 && (v558 = (v553 * v550 + v554 * v551 + v555 * v552) / v556, v558 > v557 && (v557 = v558, v527 = v553 / v556, v528 = v554 / v556, v529 = v555 / v556)), v511[v515 * 3] = v527, v511[v515 * 3 + 1] = v528, v511[v515 * 3 + 2] = v529;
+    }
+    var v559 = Math.max(0, v275.flyTol) * v308,
+      v560 = Math.max(v559 + 0.001, v275.flyTolFull * v308),
+      v561 = Math.cos(v275.flowOwn * v308),
+      v562 = Math.cos(v275.flowFinger * v308),
+      v563 = Math.max(0, v275.flowReach | 0),
+      v564 = v302(),
+      v565 = v275.collide ? v564 : null,
+      v566 = null,
+      v567 = v275.headLift > 0 ? v275.headLift : 1.02,
+      v568 = (v564 ? v564.cy : 0.15) + 0.3,
+      v569 = v539 * 0.5,
+      v570 = 1,
+      v571 = 1,
+      v572 = 1,
+      v573 = 0,
+      v574 = Math.cos(40 * v308),
+      v575 = Math.cos(80 * v308),
+      v576 = null,
+      v577 = {
+        x: 0,
+        y: 0,
+        z: 0
+      },
+      v578 = v275.maxMove > 0 ? v275.maxMove : 0;
+    try {
+      v576 = v273.REGROW && typeof v273.REGROW.neckPush === "function" ? v273.REGROW.neckPush : null;
+    } catch (v632) {
+      v576 = null;
+    }
+    if (v565) {
+      v570 = v565.a2, v571 = v565.b2, v572 = v565.c2, v573 = v565.cy;
+      try {
+        v566 = v273.REGROW && typeof v273.REGROW.neckPush === "function" ? v273.REGROW.neckPush : null;
+      } catch (v633) {
+        v566 = null;
+      }
+    }
+    var v579 = new Array(v505),
+      v580 = v501[v533 - 1].x,
+      v581 = v501[v533 - 1].y,
+      v582 = v501[v533 - 1].z,
+      v583,
+      v584,
+      v585,
+      v586 = 0,
+      v587 = 0,
+      v588 = 0,
+      v589 = 0,
+      v590 = false,
+      v591,
+      v592,
+      v593,
+      v594,
+      v595,
+      v596,
+      v597,
+      v598,
+      v599,
+      v600,
+      v601,
+      v602,
+      v603,
+      v604,
+      v605,
+      v606,
+      v607,
+      v608,
+      v609,
+      v610,
+      v611,
+      v612,
+      v613,
+      v614,
+      v615,
+      v616,
+      v617,
+      v618,
+      v619,
+      v620,
+      v621,
+      v622,
+      v623,
+      v624,
+      v625,
+      v626,
+      v627,
+      v628,
+      v629,
+      v630,
+      v631;
+    v533 > 1 && (v587 = v510[(v533 - 1) * 4], v588 = v510[(v533 - 1) * 4 + 1], v589 = v510[(v533 - 1) * 4 + 2], v590 = v510[(v533 - 1) * 4 + 3] > 1e-9);
+    for (v515 = 0; v515 < v533; v515++) v579[v515] = v501[v515];
+    for (v515 = v533; v515 < v505; v515++) {
+      v550 = v510[v515 * 4], v551 = v510[v515 * 4 + 1], v552 = v510[v515 * 4 + 2], v531 = v510[v515 * 4 + 3], v522 = v515 <= v534 ? v512[v515] : 0;
+      if (v522 > 0.01 && v531 > 1e-9) {
+        v276._fl++, v521 = v514[v515] * 3, v600 = v509[v521], v601 = v509[v521 + 1], v602 = v509[v521 + 2], v603 = Math.sqrt(v600 * v600 + v601 * v601 + v602 * v602), v600 /= v603, v601 /= v603, v602 /= v603, v591 = v309(v504, v580, v581, v582), v596 = false, v597 = v580, v598 = v581, v599 = v582, v592 = 0;
+        if (v591 > 0.0001 && v591 < v504.far && (v592 = v311(v504, v580, v581, v582)) > 0.2) {
+          v593 = v310[0], v594 = v310[1], v595 = v310[2], v527 = v580 + v593 * v591, v528 = v581 + v594 * v591, v529 = v582 + v595 * v591, v605 = 1;
+          if (v580 * v527 + v582 * v529 < 0) v605 = 0;else {
+            if (v564) {
+              v627 = v528 - v564.cy;
+              if (v527 * v527 / v564.a2 + v627 * v627 / v564.b2 + v529 * v529 / v564.c2 < 1) v605 = 0;else {
+                v627 = (v581 + v528) * 0.5 - v564.cy;
+                if ((v580 + v527) * (v580 + v527) * 0.25 / v564.a2 + v627 * v627 / v564.b2 + (v582 + v529) * (v582 + v529) * 0.25 / v564.c2 < 1) v605 = 0;
+              }
+            }
+          }
+          if (v605 && v576) try {
+            v577.x = v527, v577.y = v528, v577.z = v529;
+            if (v576(v577) !== v577) v605 = 0;else {
+              v577.x = (v580 + v527) * 0.5, v577.y = (v581 + v528) * 0.5, v577.z = (v582 + v529) * 0.5;
+              if (v576(v577) !== v577) v605 = 0;
+            }
+          } catch (v634) {}
+          if (!v605) v592 = 0;else v597 = v527, v598 = v528, v599 = v529;
+          v606 = -v580, v607 = v581 > v568 ? v568 - v581 : 0, v608 = -v582, v609 = Math.sqrt(v606 * v606 + v607 * v607 + v608 * v608), v610 = v609 > 0.000001 ? (v593 * v606 + v594 * v607 + v595 * v608) / v609 : 1, v596 = v605 === 1 && v275.settle > 0 && v591 > v569 && v591 <= v275.settleReach && v610 > 0.2;
+        }
+        v590 ? (v527 = v587, v528 = v588, v529 = v589) : (v527 = v511[v515 * 3], v528 = v511[v515 * 3 + 1], v529 = v511[v515 * 3 + 2]);
+        v604 = v314(v503, v597, v598, v599, v527, v528, v529, v600, v601, v602, v561, v562);
+        if (v604 === 0) for (v605 = 1; v605 <= v563; v605++) {
+          if (v592 > 0.2) v618 = v593, v619 = v594, v620 = v595, v556 = 1;else {
+            v618 = -v597, v619 = v598 < v568 ? 0 : v568 - v598, v620 = -v599, v556 = Math.sqrt(v618 * v618 + v619 * v619 + v620 * v620);
+            if (!(v556 > 0.000001)) break;
+          }
+          v597 += v618 / v556 * v503.fc, v598 += v619 / v556 * v503.fc, v599 += v620 / v556 * v503.fc, v604 = v314(v503, v597, v598, v599, v527, v528, v529, v600, v601, v602, v561, v562);
+          if (v604 !== 0) {
+            if (v604 > 0) v604 = 4;
+            break;
+          }
+        }
+        if (v604 === 0 && v592 > 0.2 && v593 * v550 + v594 * v551 + v595 * v552 < -0.6) v604 = -2;
+        if (v604 === -1) {
+          v276._tk++;
+          if (v275.partFinger) v604 = 0;
+        }
+        if (v604 < 0) {} else {
+          if (v604 === 0) v553 = v600, v554 = v601, v555 = v602, v276._tf++;else {
+            v553 = v313[0], v554 = v313[1], v555 = v313[2];
+            if (v604 === 1) v276._to++;else {
+              if (v604 === 2) v276._ts++;else {
+                if (v604 === 3) v276._ta++;else v276._tr++;
+              }
+            }
+          }
+          v605 = 0;
+          if (v596) {
+            v611 = v593 * v553 + v594 * v554 + v595 * v555, v618 = v593 - v611 * v553, v619 = v594 - v611 * v554, v620 = v595 - v611 * v555, v612 = Math.sqrt(v618 * v618 + v619 * v619 + v620 * v620);
+            if (v612 > 0.3) {
+              v613 = v275.settleGain * (v591 - v569) / v531;
+              if (v613 > v275.settle) v613 = v275.settle;
+              v613 *= (v610 >= 0.6 ? 1 : (v610 - 0.2) / 0.4) / v612, v553 += v618 * v613, v554 += v619 * v613, v555 += v620 * v613, v530 = Math.sqrt(v553 * v553 + v554 * v554 + v555 * v555), v553 /= v530, v554 /= v530, v555 /= v530, v276._pi++, v605 = 1;
+            }
+          }
+          v590 && v275.ease > 0 && v587 * v553 + v588 * v554 + v589 * v555 > 0 && (v553 += v587 * v275.ease, v554 += v588 * v275.ease, v555 += v589 * v275.ease, v530 = Math.sqrt(v553 * v553 + v554 * v554 + v555 * v555), v553 /= v530, v554 /= v530, v555 /= v530);
+          v614 = v550 * v553 + v551 * v554 + v552 * v555;
+          if (v614 < 0) v615 = v522 <= 0.15 ? 0 : v522 >= 0.4 ? 1 : (v522 - 0.15) / 0.25, v615 = v615 * v615 * (3 - 2 * v615), v615 > 0.5 && (v527 = v550 * (1 - v615) + v553 * v615, v528 = v551 * (1 - v615) + v554 * v615, v529 = v552 * (1 - v615) + v555 * v615, v530 = Math.sqrt(v527 * v527 + v528 * v528 + v529 * v529), v530 > 0.2 ? (v550 = v527 / v530, v551 = v528 / v530, v552 = v529 / v530) : (v550 = v553, v551 = v554, v552 = v555));else {
+            v527 = v511[v515 * 3], v528 = v511[v515 * 3 + 1], v529 = v511[v515 * 3 + 2];
+            v527 * v550 + v528 * v551 + v529 * v552 < 0.5 && (v527 = v550, v528 = v551, v529 = v552);
+            v557 = v527 * v553 + v528 * v554 + v529 * v555;
+            if (v557 > 1) v557 = 1;else {
+              if (v557 < -1) v557 = -1;
+            }
+            v558 = Math.acos(v557);
+            if (v558 > v559 || v605 && v558 > 0.01) {
+              v616 = v605 || v558 >= v560 ? 1 : (v558 - v559) / (v560 - v559);
+              if (v616 < 1) v616 = v616 * v616 * (3 - 2 * v616);
+              v617 = v558 * v616 * v522, v618 = v528 * v555 - v529 * v554, v619 = v529 * v553 - v527 * v555, v620 = v527 * v554 - v528 * v553, v556 = Math.sqrt(v618 * v618 + v619 * v619 + v620 * v620), v617 >= 0.003 && v556 > 0.0001 && (v618 /= v556, v619 /= v556, v620 /= v556, v621 = Math.cos(v617), v622 = Math.sin(v617), v623 = (v618 * v550 + v619 * v551 + v620 * v552) * (1 - v621), v527 = v550 * v621 + (v619 * v552 - v620 * v551) * v622 + v618 * v623, v528 = v551 * v621 + (v620 * v550 - v618 * v552) * v622 + v619 * v623, v529 = v552 * v621 + (v618 * v551 - v619 * v550) * v622 + v620 * v623, v550 = v527, v551 = v528, v552 = v529);
+            }
+          }
+        }
+        v275.relax > 0 && v590 && (v557 = v550 * v587 + v551 * v588 + v552 * v589, v557 < v574 && (v616 = v557 <= v575 ? 1 : (v574 - v557) / (v574 - v575), v616 = v616 * v616 * (3 - 2 * v616) * v522 * (v275.relax > 1 ? 1 : v275.relax), v527 = v550 + (v587 - v550) * v616, v528 = v551 + (v588 - v551) * v616, v529 = v552 + (v589 - v552) * v616, v530 = Math.sqrt(v527 * v527 + v528 * v528 + v529 * v529), v530 > 0.2 && (v550 = v527 / v530, v551 = v528 / v530, v552 = v529 / v530)));
+      }
+      v583 = v580 + v550 * v531, v584 = v581 + v551 * v531, v585 = v582 + v552 * v531, v624 = v501[v515];
+      v578 > 0 && v531 > 1e-9 && (v527 = v583 - v624.x, v528 = v584 - v624.y, v529 = v585 - v624.z, v631 = v527 * v527 + v528 * v528 + v529 * v529, v631 > v578 * v578 && (v613 = v578 / Math.sqrt(v631), v553 = v624.x + v527 * v613 - v580, v554 = v624.y + v528 * v613 - v581, v555 = v624.z + v529 * v613 - v582, v530 = Math.sqrt(v553 * v553 + v554 * v554 + v555 * v555), v530 > 1e-9 && (v583 = v580 + v553 / v530 * v531, v584 = v581 + v554 / v530 * v531, v585 = v582 + v555 / v530 * v531, v276._cl++)));
+      if (v275.anchor && v531 > 1e-9) {
+        v527 = v583 - v624.x, v528 = v584 - v624.y, v529 = v585 - v624.z, v631 = v527 * v527 + v528 * v528 + v529 * v529;
+        if (v631 > 1e-10) {
+          v535 = (v309(v504, v624.x, v624.y, v624.z) - v539) * v540, v535 = v535 <= 0 ? 1 : v535 >= 1 ? 0 : 1 - v535 * v535 * (3 - 2 * v535);
+          if (v535 > 0 && !(v522 > 0.01)) {
+            v613 = v531 / (v275.anchorLen > 0.01 ? v275.anchorLen : 0.13);
+            if (v613 > 0.5) v613 = 0.5;
+            v613 *= v535, v557 = v527 * v510[v515 * 4] + v528 * v510[v515 * 4 + 1] + v529 * v510[v515 * 4 + 2], v527 -= v557 * v510[v515 * 4], v528 -= v557 * v510[v515 * 4 + 1], v529 -= v557 * v510[v515 * 4 + 2], v553 = v583 - v527 * v613 - v580, v554 = v584 - v528 * v613 - v581, v555 = v585 - v529 * v613 - v582, v530 = Math.sqrt(v553 * v553 + v554 * v554 + v555 * v555), v530 > 1e-9 && (v583 = v580 + v553 / v530 * v531, v584 = v581 + v554 / v530 * v531, v585 = v582 + v555 / v530 * v531, v276._an++);
+          }
+        }
+      }
+      if (v565 && v531 > 1e-9) {
+        v627 = v624.y - v573, v629 = Math.sqrt(v624.x * v624.x / v570 + v627 * v627 / v571 + v624.z * v624.z / v572);
+        if (v629 > v567) v629 = v567;
+        v627 = v584 - v573, v628 = Math.sqrt(v583 * v583 / v570 + v627 * v627 / v571 + v585 * v585 / v572), v628 < v629 - 0.000001 && (v627 = v581 - v573, v606 = v580 / v570, v607 = v627 / v571, v608 = v582 / v572, v609 = Math.sqrt(v606 * v606 + v607 * v607 + v608 * v608), v609 > 1e-9 && (v606 /= v609, v607 /= v609, v608 /= v609, v553 = (v583 - v580) / v531, v554 = (v584 - v581) / v531, v555 = (v585 - v582) / v531, v630 = v553 * v606 + v554 * v607 + v555 * v608, v630 < 0 && (v553 -= v630 * v606, v554 -= v630 * v607, v555 -= v630 * v608, v530 = Math.sqrt(v553 * v553 + v554 * v554 + v555 * v555), v530 < 0.35 && (v517 = v501[v515 - 1], v553 = (v624.x - v517.x) / v531, v554 = (v624.y - v517.y) / v531, v555 = (v624.z - v517.z) / v531, v630 = v553 * v606 + v554 * v607 + v555 * v608, v630 < 0 && (v553 -= v630 * v606, v554 -= v630 * v607, v555 -= v630 * v608), v530 = Math.sqrt(v553 * v553 + v554 * v554 + v555 * v555)), v530 > 0.001 && (v583 = v580 + v553 / v530 * v531, v584 = v581 + v554 / v530 * v531, v585 = v582 + v555 / v530 * v531))), v627 = v584 - v573, v628 = Math.sqrt(v583 * v583 / v570 + v627 * v627 / v571 + v585 * v585 / v572), v628 < v629 - 0.000001 && v628 > 1e-9 && (v613 = v629 / v628, v583 *= v613, v584 = v573 + v627 * v613, v585 *= v613, v553 = v583 - v580, v554 = v584 - v581, v555 = v585 - v582, v530 = Math.sqrt(v553 * v553 + v554 * v554 + v555 * v555), v530 > 1e-9 && (v583 = v580 + v553 / v530 * v531, v584 = v581 + v554 / v530 * v531, v585 = v582 + v555 / v530 * v531)), v276._pu++);
+      }
+      v625 = {
+        x: v583,
+        y: v584,
+        z: v585
+      };
+      if (v566 && v531 > 1e-9) try {
+        v626 = v566(v625), v626 && v626 !== v625 && v566(v624) === v624 && (v553 = v626.x - v580, v554 = v626.y - v581, v555 = v626.z - v582, v530 = Math.sqrt(v553 * v553 + v554 * v554 + v555 * v555), v530 > 1e-9 && (v625 = {
+          x: v580 + v553 / v530 * v531,
+          y: v581 + v554 / v530 * v531,
+          z: v582 + v555 / v530 * v531
+        }, v276._nk++));
+      } catch (v635) {}
+      v531 > 1e-9 && (v587 = (v625.x - v580) / v531, v588 = (v625.y - v581) / v531, v589 = (v625.z - v582) / v531, v590 = true);
+      v527 = v625.x - v624.x, v528 = v625.y - v624.y, v529 = v625.z - v624.z, v631 = v527 * v527 + v528 * v528 + v529 * v529;
+      if (v631 > v586) v586 = v631;
+      v580 = v625.x, v581 = v625.y, v582 = v625.z, v579[v515] = v625;
+    }
+    if (!(v586 > 1e-12)) return v501;
+    v276._t++;
+    try {
+      v579._pre = v501._pre || v501;
+    } catch (v636) {}
+    return v579;
+  }
+  function v316(v637) {
+    if (!v275.enabled || !v275.samples.length || !v637 || v637.length < 2) return v637;
+    var v638 = v294();
+    if (!v638 || !v638.n) return v637;
+    var v639 = v637.length,
+      v640,
+      v641,
+      v642 = v638.mn,
+      v643 = v638.mx,
+      v644 = false;
+    for (v640 = 0; v640 < v639; v640++) {
+      v641 = v637[v640];
+      if (v641.x >= v642[0] && v641.x <= v643[0] && v641.y >= v642[1] && v641.y <= v643[1] && v641.z >= v642[2] && v641.z <= v643[2]) {
+        v644 = true;
+        break;
+      }
+    }
+    if (!v644) return v637;
+    v303.length < v639 * 4 && (v303 = new Float64Array(v639 * 4 + 128), v304 = new Float64Array(v639 * 3 + 96), v305 = new Float64Array(v639 + 32), v306 = new Float64Array(v639 + 32), v307 = new Int32Array(v639 + 32));
+    if (v275.grain && v275.surf && v321 && v321.flow && v321.flow.DF) return v315(v637, v638, v321.flow);
+    var v645 = v275.cell,
+      v646 = v638.map,
+      v647 = v638.V,
+      v648 = v639 - 1,
+      v649 = false,
+      v650 = v303,
+      v651 = v304,
+      v652 = v637[0].x,
+      v653 = v637[0].y,
+      v654 = v637[0].z,
+      v655 = v639,
+      v656 = 0,
+      v657 = 0,
+      v658,
+      v659,
+      v660,
+      v661,
+      v662;
+    for (v640 = 1; v640 < v639; v640++) {
+      v641 = v637[v640], v659 = v641.x - v652, v660 = v641.y - v653, v661 = v641.z - v654, v658 = Math.sqrt(v659 * v659 + v660 * v660 + v661 * v661), v658 > 1e-9 ? (v650[v640 * 4] = v659 / v658, v650[v640 * 4 + 1] = v660 / v658, v650[v640 * 4 + 2] = v661 / v658) : (v650[v640 * 4] = 0, v650[v640 * 4 + 1] = -1, v650[v640 * 4 + 2] = 0), v650[v640 * 4 + 3] = v658, v657 += v658, v652 = v641.x, v653 = v641.y, v654 = v641.z;
+    }
+    var v663 = v657 > 0 ? Math.round(v275.flowSmooth / (v657 / v648)) : 1;
+    if (!(v663 >= 1)) v663 = 1;else {
+      if (v663 > 16) v663 = 16;
+    }
+    var v664 = Math.max(0, v275.tolFrom) * v308,
+      v665 = Math.max(v664 + 0.001, v275.tolFull * v308),
+      v666,
+      v667,
+      v668,
+      v669,
+      v670,
+      v671,
+      v672,
+      v673,
+      v674,
+      v675,
+      v676,
+      v677,
+      v678,
+      v679,
+      v680,
+      v681,
+      v682,
+      v683,
+      v684,
+      v685,
+      v686,
+      v687,
+      v688,
+      v689,
+      v690,
+      v691,
+      v692,
+      v693 = v275.grain && v321 && v321.flow ? v321.flow : null,
+      v694 = null,
+      v695,
+      v696,
+      v697,
+      v698,
+      v699,
+      v700,
+      v701,
+      v702,
+      v703 = Math.max(0, v275.flowReach | 0),
+      v704 = v305,
+      v705 = v275.anchor && v321 && v321.flow && v321.flow.GA ? v321.flow : null,
+      v706 = Math.cos(v664),
+      v707 = Math.cos(v275.flowOwn * v308),
+      v708 = Math.cos(v275.flowFinger * v308),
+      v709 = 0.45;
+    v693 && (v694 = v302(), v709 = (v694 ? v694.cy : 0.15) + 0.3);
+    for (v640 = 1; v640 < v639; v640++) {
+      v651[v640 * 3] = 0, v651[v640 * 3 + 1] = 0, v651[v640 * 3 + 2] = 0, v704[v640] = 0;
+      if (!(v650[v640 * 4 + 3] > 1e-9)) continue;
+      v641 = v637[v640], v668 = v637[v640 - 1], v669 = Math.floor((v641.x + v668.x) * 0.5 / v645) + v289, v670 = Math.floor((v641.y + v668.y) * 0.5 / v645) + v289, v671 = Math.floor((v641.z + v668.z) * 0.5 / v645) + v289;
+      if (v669 < 0 || v670 < 0 || v671 < 0 || v669 >= v290 || v670 >= v290 || v671 >= v290) continue;
+      v672 = v646.get(v669 + v290 * (v670 + v290 * v671));
+      if (v672 === undefined) continue;
+      v672 *= 3, v673 = v647[v672], v674 = v647[v672 + 1], v675 = v647[v672 + 2], v676 = Math.sqrt(v673 * v673 + v674 * v674 + v675 * v675), v677 = v676;
+      if (!(v677 > 0.01)) continue;
+      v678 = v640 / v648;
+      if (v678 < v275.gripFrom) v677 *= v678 / v275.gripFrom;
+      if (v677 > 1) v677 = 1;
+      if (v705 && v275.flyOnly) {
+        v677 *= 1 - v312(v705, (v641.x + v668.x) * 0.5, (v641.y + v668.y) * 0.5, (v641.z + v668.z) * 0.5);
+        if (!(v677 > 0.01)) continue;
+      }
+      v704[v640] = v677;
+      if (v705 && v275.pullIn > 0 && v312(v705, v641.x, v641.y, v641.z) < 0.5) {
+        v649 = true;
+        if (v640 < v655) v655 = v640;
+        if (v640 > v656) v656 = v640;
+      }
+      v666 = v637[v640 - 1 - v663 < 0 ? 0 : v640 - 1 - v663], v667 = v637[v640 + v663 > v648 ? v648 : v640 + v663], v690 = v650[v640 * 4], v691 = v650[v640 * 4 + 1], v692 = v650[v640 * 4 + 2], v659 = v667.x - v666.x, v660 = v667.y - v666.y, v661 = v667.z - v666.z, v662 = Math.sqrt(v659 * v659 + v660 * v660 + v661 * v661);
+      v662 > 1e-9 ? (v659 /= v662, v660 /= v662, v661 /= v662, v682 = v659 * v690 + v660 * v691 + v661 * v692) : (v659 = v690, v660 = v691, v661 = v692, v682 = 1);
+      v679 = v641.x - v666.x, v680 = v641.y - v666.y, v681 = v641.z - v666.z, v689 = Math.sqrt(v679 * v679 + v680 * v680 + v681 * v681);
+      v689 > 1e-9 && (v683 = (v679 * v690 + v680 * v691 + v681 * v692) / v689, v683 > v682 && (v682 = v683, v659 = v679 / v689, v660 = v680 / v689, v661 = v681 / v689));
+      v679 = v667.x - v668.x, v680 = v667.y - v668.y, v681 = v667.z - v668.z, v689 = Math.sqrt(v679 * v679 + v680 * v680 + v681 * v681);
+      v689 > 1e-9 && (v683 = (v679 * v690 + v680 * v691 + v681 * v692) / v689, v683 > v682 && (v682 = v683, v659 = v679 / v689, v660 = v680 / v689, v661 = v681 / v689));
+      v679 = v673 / v676, v680 = v674 / v676, v681 = v675 / v676;
+      if (v693) {
+        v697 = (v641.x + v668.x) * 0.5, v698 = (v641.y + v668.y) * 0.5, v699 = (v641.z + v668.z) * 0.5, v669 = Math.floor((v697 - v693.x0) * v693.inv), v670 = Math.floor((v698 - v693.y0) * v693.inv), v671 = Math.floor((v699 - v693.z0) * v693.inv);
+        if (v669 >= 0 && v670 >= 0 && v671 >= 0 && v669 < v693.nx && v670 < v693.ny && v671 < v693.nz) {
+          v700 = v669 + v693.nx * (v670 + v693.ny * v671), v701 = v693.GN[v700], v702 = v693.GM[v700];
+          if (v701 >= v693.dense && v702 >= 0.85 * v701 && v693.GX[v700] * v659 + v693.GY[v700] * v660 + v693.GZ[v700] * v661 >= v706 * v702) continue;
+        }
+        v695 = v314(v693, v697, v698, v699, v659, v660, v661, v679, v680, v681, v707, v708);
+        if (v695 === 0) for (v696 = 1; v696 <= v703; v696++) {
+          v686 = -v697, v687 = v698 < v709 ? 0 : v709 - v698, v688 = -v699, v689 = Math.sqrt(v686 * v686 + v687 * v687 + v688 * v688);
+          if (!(v689 > 0.000001)) break;
+          v697 += v686 / v689 * v693.fc, v698 += v687 / v689 * v693.fc, v699 += v688 / v689 * v693.fc, v695 = v314(v693, v697, v698, v699, v659, v660, v661, v679, v680, v681, v707, v708);
+          if (v695 !== 0) {
+            if (v695 > 0) v695 = 4;
+            break;
+          }
+        }
+        if (v695 < 0) {
+          v276._tk++;
+          continue;
+        }
+        if (v695 === 0) v276._tf++;else {
+          v679 = v313[0], v680 = v313[1], v681 = v313[2];
+          if (v695 === 1) v276._to++;else {
+            if (v695 === 2) v276._ts++;else {
+              if (v695 === 3) v276._ta++;else v276._tr++;
+            }
+          }
+        }
+      }
+      v682 = v659 * v679 + v660 * v680 + v661 * v681;
+      if (v682 > 1) v682 = 1;else {
+        if (v682 < -1) v682 = -1;
+      }
+      v683 = Math.acos(v682);
+      if (v683 <= v664) continue;
+      v684 = v683 >= v665 ? 1 : (v683 - v664) / (v665 - v664);
+      if (v684 < 1) v684 = v684 * v684 * (3 - 2 * v684);
+      v685 = v683 * v684 * v677;
+      if (v685 < 0.003) continue;
+      v686 = v660 * v681 - v661 * v680, v687 = v661 * v679 - v659 * v681, v688 = v659 * v680 - v660 * v679, v689 = Math.sqrt(v686 * v686 + v687 * v687 + v688 * v688);
+      if (v689 < 0.0001) {
+        Math.abs(v659) < 0.9 ? (v686 = 0, v687 = v661, v688 = -v660) : (v686 = -v661, v687 = 0, v688 = v659);
+        v689 = Math.sqrt(v686 * v686 + v687 * v687 + v688 * v688);
+        if (!(v689 > 1e-9)) continue;
+      }
+      v685 /= v689, v651[v640 * 3] = v686 * v685, v651[v640 * 3 + 1] = v687 * v685, v651[v640 * 3 + 2] = v688 * v685, v649 = true;
+      if (v640 < v655) v655 = v640;
+      if (v640 > v656) v656 = v640;
+    }
+    if (!v649) return v637;
+    var v710 = Math.max(1, v655 - 1),
+      v711 = Math.min(v648, v656 + 1),
+      v712,
+      v713,
+      v714,
+      v715,
+      v716,
+      v717,
+      v718;
+    v718 = (v710 > 1 ? v710 - 1 : v710) * 3, v712 = v651[v718], v713 = v651[v718 + 1], v714 = v651[v718 + 2];
+    for (v640 = v710; v640 <= v711; v640++) {
+      v718 = v640 * 3, v715 = v651[v718], v716 = v651[v718 + 1], v717 = v651[v718 + 2], v640 < v648 ? (v651[v718] = (v712 + 2 * v715 + v651[v718 + 3]) * 0.25, v651[v718 + 1] = (v713 + 2 * v716 + v651[v718 + 4]) * 0.25, v651[v718 + 2] = (v714 + 2 * v717 + v651[v718 + 5]) * 0.25) : (v651[v718] = (v712 + 3 * v715) * 0.25, v651[v718 + 1] = (v713 + 3 * v716) * 0.25, v651[v718 + 2] = (v714 + 3 * v717) * 0.25), v712 = v715, v713 = v716, v714 = v717;
+    }
+    var v719 = new Array(v639),
+      v720 = v275.collide ? v302() : null,
+      v721 = null,
+      v722 = v275.headLift > 0 ? v275.headLift : 1.02,
+      v723 = 1,
+      v724 = 1,
+      v725 = 1,
+      v726 = 0,
+      v727,
+      v728,
+      v729,
+      v730,
+      v731,
+      v732,
+      v733,
+      v734,
+      v735,
+      v736,
+      v737,
+      v738,
+      v739,
+      v740,
+      v741,
+      v742,
+      v743,
+      v744,
+      v745,
+      v746,
+      v747;
+    if (v720) {
+      v723 = v720.a2, v724 = v720.b2, v725 = v720.c2, v726 = v720.cy;
+      try {
+        v721 = v273.REGROW && typeof v273.REGROW.neckPush === "function" ? v273.REGROW.neckPush : null;
+      } catch (v769) {
+        v721 = null;
+      }
+    }
+    for (v640 = 0; v640 < v710; v640++) v719[v640] = v637[v640];
+    var v748 = v637[v710 - 1].x,
+      v749 = v637[v710 - 1].y,
+      v750 = v637[v710 - 1].z;
+    for (v640 = v710; v640 < v639; v640++) {
+      v690 = v650[v640 * 4], v691 = v650[v640 * 4 + 1], v692 = v650[v640 * 4 + 2], v658 = v650[v640 * 4 + 3];
+      v640 <= v711 && (v727 = v651[v640 * 3], v728 = v651[v640 * 3 + 1], v729 = v651[v640 * 3 + 2], v685 = Math.sqrt(v727 * v727 + v728 * v728 + v729 * v729), v685 > 0.00001 && (v727 /= v685, v728 /= v685, v729 /= v685, v730 = Math.cos(v685), v731 = Math.sin(v685), v732 = (v727 * v690 + v728 * v691 + v729 * v692) * (1 - v730), v679 = v690 * v730 + (v728 * v692 - v729 * v691) * v731 + v727 * v732, v680 = v691 * v730 + (v729 * v690 - v727 * v692) * v731 + v728 * v732, v681 = v692 * v730 + (v727 * v691 - v728 * v690) * v731 + v729 * v732, v690 = v679, v691 = v680, v692 = v681));
+      v733 = v748 + v690 * v658, v734 = v749 + v691 * v658, v735 = v750 + v692 * v658;
+      if (v705 && v658 > 1e-9) {
+        v738 = v637[v640];
+        var v751 = v733 - v738.x,
+          v752 = v734 - v738.y,
+          v753 = v735 - v738.z,
+          v754 = v751 * v751 + v752 * v752 + v753 * v753,
+          v755 = 0,
+          v756 = 1;
+        if (v754 > 1e-10) {
+          v755 = v312(v705, v738.x, v738.y, v738.z);
+          if (v755 > 0) {
+            var v757 = v658 / (v275.anchorLen > 0.01 ? v275.anchorLen : 0.13);
+            if (v757 > 0.5) v757 = 0.5;
+            v757 *= v755, v743 = v738.x, v744 = v738.y > v709 ? v738.y - v709 : 0, v745 = v738.z, v746 = Math.sqrt(v743 * v743 + v744 * v744 + v745 * v745);
+            v746 > 1e-9 ? (v743 /= v746, v744 /= v746, v745 /= v746) : (v743 = 0, v744 = 1, v745 = 0);
+            v756 = v312(v705, v733, v734, v735);
+            var v758 = v751 * v743 + v752 * v744 + v753 * v745,
+              v759 = v757 * (1 - v756),
+              v760 = v275.flyOnly ? v757 : v704[v640] > 0.01 ? v759 : Math.max(v759, v757 * 0.5),
+              v761 = -(v758 * v743 * v757 + (v751 - v758 * v743) * v760),
+              v762 = -(v758 * v744 * v757 + (v752 - v758 * v744) * v760),
+              v763 = -(v758 * v745 * v757 + (v753 - v758 * v745) * v760),
+              v764 = Math.sqrt(v761 * v761 + v762 * v762 + v763 * v763),
+              v765 = 0.5 * v658;
+            v764 > v765 && (v761 *= v765 / v764, v762 *= v765 / v764, v763 *= v765 / v764), v679 = v733 + v761 - v748, v680 = v734 + v762 - v749, v681 = v735 + v763 - v750, v662 = Math.sqrt(v679 * v679 + v680 * v680 + v681 * v681), v662 > 1e-9 && (v733 = v748 + v679 / v662 * v658, v734 = v749 + v680 / v662 * v658, v735 = v750 + v681 / v662 * v658, v276._an++);
+          }
+        }
+        if (v275.pullIn > 0 && v704[v640] > 0.01 && v755 < 0.5) {
+          v756 = v312(v705, v733, v734, v735);
+          if (v756 < 1) {
+            v743 = -v733, v744 = v734 > v709 ? v709 - v734 : 0, v745 = -v735, v746 = Math.sqrt(v743 * v743 + v744 * v744 + v745 * v745);
+            if (v746 > 0.000001) {
+              v743 /= v746, v744 /= v746, v745 /= v746;
+              var v766 = false,
+                v767;
+              for (v767 = 1; v767 <= v703 + 1; v767++) if (v312(v705, v733 + v743 * v705.fc * v767, v734 + v744 * v705.fc * v767, v735 + v745 * v705.fc * v767) >= 0.5) {
+                v766 = true;
+                break;
+              }
+              if (v766) {
+                var v768 = v275.pullIn * v704[v640] * (1 - v756);
+                v679 = (v733 - v748) / v658 + v743 * v768, v680 = (v734 - v749) / v658 + v744 * v768, v681 = (v735 - v750) / v658 + v745 * v768, v662 = Math.sqrt(v679 * v679 + v680 * v680 + v681 * v681), v662 > 1e-9 && (v733 = v748 + v679 / v662 * v658, v734 = v749 + v680 / v662 * v658, v735 = v750 + v681 / v662 * v658, v276._pi++);
+              }
+            }
+          }
+        }
+      }
+      if (v720 && v658 > 1e-9) {
+        v738 = v637[v640], v742 = v738.y - v726, v737 = Math.sqrt(v738.x * v738.x / v723 + v742 * v742 / v724 + v738.z * v738.z / v725);
+        if (v737 > v722) v737 = v722;
+        v742 = v734 - v726, v736 = Math.sqrt(v733 * v733 / v723 + v742 * v742 / v724 + v735 * v735 / v725), v736 < v737 - 0.000001 && (v742 = v749 - v726, v743 = v748 / v723, v744 = v742 / v724, v745 = v750 / v725, v746 = Math.sqrt(v743 * v743 + v744 * v744 + v745 * v745), v746 > 1e-9 && (v743 /= v746, v744 /= v746, v745 /= v746, v747 = v690 * v743 + v691 * v744 + v692 * v745, v747 < 0 && (v679 = v690 - v747 * v743, v680 = v691 - v747 * v744, v681 = v692 - v747 * v745, v662 = Math.sqrt(v679 * v679 + v680 * v680 + v681 * v681), v662 < 0.35 && (v668 = v637[v640 - 1], v679 = (v738.x - v668.x) / v658, v680 = (v738.y - v668.y) / v658, v681 = (v738.z - v668.z) / v658, v747 = v679 * v743 + v680 * v744 + v681 * v745, v747 < 0 && (v679 -= v747 * v743, v680 -= v747 * v744, v681 -= v747 * v745), v662 = Math.sqrt(v679 * v679 + v680 * v680 + v681 * v681)), v662 > 0.001 && (v733 = v748 + v679 / v662 * v658, v734 = v749 + v680 / v662 * v658, v735 = v750 + v681 / v662 * v658))), v742 = v734 - v726, v736 = Math.sqrt(v733 * v733 / v723 + v742 * v742 / v724 + v735 * v735 / v725), v736 < v737 - 0.000001 && v736 > 1e-9 && (v739 = v737 / v736, v733 *= v739, v734 = v726 + v742 * v739, v735 *= v739, v679 = v733 - v748, v680 = v734 - v749, v681 = v735 - v750, v662 = Math.sqrt(v679 * v679 + v680 * v680 + v681 * v681), v662 > 1e-9 && (v733 = v748 + v679 / v662 * v658, v734 = v749 + v680 / v662 * v658, v735 = v750 + v681 / v662 * v658)), v276._pu++);
+      }
+      v740 = {
+        x: v733,
+        y: v734,
+        z: v735
+      };
+      if (v721 && v658 > 1e-9) try {
+        v741 = v721(v740), v741 && v741 !== v740 && v721(v637[v640]) === v637[v640] && (v679 = v741.x - v748, v680 = v741.y - v749, v681 = v741.z - v750, v662 = Math.sqrt(v679 * v679 + v680 * v680 + v681 * v681), v662 > 1e-9 && (v740 = {
+          x: v748 + v679 / v662 * v658,
+          y: v749 + v680 / v662 * v658,
+          z: v750 + v681 / v662 * v658
+        }, v276._nk++));
+      } catch (v770) {}
+      v748 = v740.x, v749 = v740.y, v750 = v740.z, v719[v640] = v740;
+    }
+    v276._t++;
+    try {
+      v719._pre = v637._pre || v637;
+    } catch (v771) {}
+    return v719;
+  }
+  v275._apply = v316, v275._cell = function (v772, v773, v774) {
+    var v775 = v294();
+    if (!v775) return null;
+    var v776 = v775.map.get(Math.floor(v772 / v275.cell) + v289 + v290 * (Math.floor(v773 / v275.cell) + v289 + v290 * (Math.floor(v774 / v275.cell) + v289)));
+    return v776 === undefined ? null : [v775.V[v776 * 3], v775.V[v776 * 3 + 1], v775.V[v776 * 3 + 2]];
+  }, v275._dist = function (v777, v778, v779) {
+    return v321 && v321.flow && v321.flow.DF ? v309(v321.flow.DF, v777, v778, v779) : null;
+  };
+  function v317(v780, v781) {
+    if (!v275.enabled || !v275.sweep || !v275.sweeps.length || !v780 || v780.length < 2) return v780;
+    var v782 = v298();
+    if (!v782 || !v782.n) return v780;
+    var v783 = v780.length,
+      v784,
+      v785,
+      v786,
+      v787 = v782.mn,
+      v788 = v782.mx,
+      v789 = false;
+    if (!v781 || v781.length !== v783) v781 = v780;
+    for (v784 = 0; v784 < v783; v784++) {
+      v785 = v781[v784];
+      if (v785.x >= v787[0] && v785.x <= v788[0] && v785.y >= v787[1] && v785.y <= v788[1] && v785.z >= v787[2] && v785.z <= v788[2]) {
+        v789 = true;
+        break;
+      }
+    }
+    if (!v789) return v780;
+    v303.length < v783 * 4 && (v303 = new Float64Array(v783 * 4 + 128), v304 = new Float64Array(v783 * 3 + 96), v305 = new Float64Array(v783 + 32), v306 = new Float64Array(v783 + 32), v307 = new Int32Array(v783 + 32));
+    var v790 = v275.cell,
+      v791 = v782.map,
+      v792 = v782.V,
+      v793 = v783 - 1,
+      v794 = v303,
+      v795 = v304,
+      v796 = false,
+      v797 = v783,
+      v798 = 0,
+      v799 = 0,
+      v800 = v780[0].x,
+      v801 = v780[0].y,
+      v802 = v780[0].z,
+      v803,
+      v804,
+      v805,
+      v806,
+      v807;
+    for (v784 = 1; v784 < v783; v784++) {
+      v785 = v780[v784], v803 = v785.x - v800, v804 = v785.y - v801, v805 = v785.z - v802, v807 = Math.sqrt(v803 * v803 + v804 * v804 + v805 * v805), v807 > 1e-9 ? (v794[v784 * 4] = v803 / v807, v794[v784 * 4 + 1] = v804 / v807, v794[v784 * 4 + 2] = v805 / v807) : (v794[v784 * 4] = 0, v794[v784 * 4 + 1] = -1, v794[v784 * 4 + 2] = 0), v794[v784 * 4 + 3] = v807, v799 += v807, v800 = v785.x, v801 = v785.y, v802 = v785.z;
+    }
+    var v808 = v799 > 0 ? Math.round(v275.flowSmooth / (v799 / v793)) : 1;
+    if (!(v808 >= 1)) v808 = 1;else {
+      if (v808 > 16) v808 = 16;
+    }
+    var v809 = v302(),
+      v810 = 1,
+      v811 = 1,
+      v812 = 1,
+      v813 = 0,
+      v814 = v275.wrapNear,
+      v815 = Math.max(v275.wrapFar, v814 + 0.001),
+      v816 = v275.sweepGrip,
+      v817 = Math.max(0, v275.sweepTol) * v308;
+    v809 && (v810 = v809.a2, v811 = v809.b2, v812 = v809.c2, v813 = v809.cy);
+    var v818, v819, v820, v821, v822, v823, v824, v825, v826, v827, v828, v829, v830, v831, v832, v833, v834, v835, v836, v837, v838, v839, v840, v841, v842, v843, v844, v845, v846, v847, v848, v849, v850;
+    for (v784 = 1; v784 < v783; v784++) {
+      v795[v784 * 3] = 0, v795[v784 * 3 + 1] = 0, v795[v784 * 3 + 2] = 0;
+      if (!(v794[v784 * 4 + 3] > 1e-9)) continue;
+      v785 = v781[v784], v786 = v781[v784 - 1], v818 = Math.floor((v785.x + v786.x) * 0.5 / v790) + v289, v819 = Math.floor((v785.y + v786.y) * 0.5 / v790) + v289, v820 = Math.floor((v785.z + v786.z) * 0.5 / v790) + v289;
+      if (v818 < 0 || v819 < 0 || v820 < 0 || v818 >= v290 || v819 >= v290 || v820 >= v290) continue;
+      v821 = v791.get(v818 + v290 * (v819 + v290 * v820));
+      if (v821 === undefined) continue;
+      v821 *= 3, v822 = v792[v821], v823 = v792[v821 + 1], v824 = v792[v821 + 2], v825 = Math.sqrt(v822 * v822 + v823 * v823 + v824 * v824), v826 = v825;
+      if (!(v826 > 0.01)) continue;
+      v827 = v784 / v793;
+      if (v816 > 0 && v827 < v816) v826 *= v827 / v816;
+      if (v826 > 1) v826 = 1;
+      v828 = v822 / v825, v829 = v823 / v825, v830 = v824 / v825, v785 = v780[v784], v786 = v780[v784 - 1];
+      if (v809 && v275.sweepWrap) {
+        v848 = (v785.x + v786.x) * 0.5, v849 = (v785.y + v786.y) * 0.5 - v813, v850 = (v785.z + v786.z) * 0.5, v845 = Math.sqrt(v848 * v848 / v810 + v849 * v849 / v811 + v850 * v850 / v812);
+        if (v845 < v815) {
+          v840 = v848 / v810, v841 = v849 / v811, v842 = v850 / v812, v843 = Math.sqrt(v840 * v840 + v841 * v841 + v842 * v842);
+          if (v843 > 1e-9) {
+            v840 /= v843, v841 /= v843, v842 /= v843, v847 = v845 <= v814 ? 1 : (v815 - v845) / (v815 - v814), v844 = (v828 * v840 + v829 * v841 + v830 * v842) * v847, v803 = v828 - v844 * v840, v804 = v829 - v844 * v841, v805 = v830 - v844 * v842, v806 = Math.sqrt(v803 * v803 + v804 * v804 + v805 * v805);
+            if (v806 < 0.2) continue;
+            v828 = v803 / v806, v829 = v804 / v806, v830 = v805 / v806;
+          }
+        }
+      }
+      v831 = v780[v784 - 1 - v808 < 0 ? 0 : v784 - 1 - v808], v832 = v780[v784 + v808 > v793 ? v793 : v784 + v808], v803 = v832.x - v831.x, v804 = v832.y - v831.y, v805 = v832.z - v831.z, v806 = Math.sqrt(v803 * v803 + v804 * v804 + v805 * v805);
+      v806 > 1e-9 ? (v803 /= v806, v804 /= v806, v805 /= v806) : (v803 = v794[v784 * 4], v804 = v794[v784 * 4 + 1], v805 = v794[v784 * 4 + 2]);
+      v833 = v803 * v828 + v804 * v829 + v805 * v830;
+      if (v833 > 1) v833 = 1;else {
+        if (v833 < -1) v833 = -1;
+      }
+      v834 = Math.acos(v833);
+      if (v834 <= v817) continue;
+      v835 = v834 * v826;
+      if (v835 < 0.003) continue;
+      v836 = v804 * v830 - v805 * v829, v837 = v805 * v828 - v803 * v830, v838 = v803 * v829 - v804 * v828, v839 = Math.sqrt(v836 * v836 + v837 * v837 + v838 * v838);
+      if (v839 < 0.0001) {
+        v840 = v785.x, v841 = v809 ? v785.y - v813 : 0, v842 = v785.z, v836 = v804 * v842 - v805 * v841, v837 = v805 * v840 - v803 * v842, v838 = v803 * v841 - v804 * v840, v839 = Math.sqrt(v836 * v836 + v837 * v837 + v838 * v838);
+        v839 < 0.000001 && (Math.abs(v803) < 0.9 ? (v836 = 0, v837 = v805, v838 = -v804) : (v836 = -v805, v837 = 0, v838 = v803), v839 = Math.sqrt(v836 * v836 + v837 * v837 + v838 * v838));
+        if (!(v839 > 1e-9)) continue;
+      }
+      v835 /= v839, v795[v784 * 3] = v836 * v835, v795[v784 * 3 + 1] = v837 * v835, v795[v784 * 3 + 2] = v838 * v835, v796 = true;
+      if (v784 < v797) v797 = v784;
+      if (v784 > v798) v798 = v784;
+    }
+    if (!v796) return v780;
+    var v851 = Math.max(1, v797 - 1),
+      v852 = Math.min(v793, v798 + 1),
+      v853,
+      v854,
+      v855,
+      v856,
+      v857,
+      v858,
+      v859;
+    v859 = (v851 > 1 ? v851 - 1 : v851) * 3, v853 = v795[v859], v854 = v795[v859 + 1], v855 = v795[v859 + 2];
+    for (v784 = v851; v784 <= v852; v784++) {
+      v859 = v784 * 3, v856 = v795[v859], v857 = v795[v859 + 1], v858 = v795[v859 + 2], v784 < v793 ? (v795[v859] = (v853 + 2 * v856 + v795[v859 + 3]) * 0.25, v795[v859 + 1] = (v854 + 2 * v857 + v795[v859 + 4]) * 0.25, v795[v859 + 2] = (v855 + 2 * v858 + v795[v859 + 5]) * 0.25) : (v795[v859] = (v853 + 3 * v856) * 0.25, v795[v859 + 1] = (v854 + 3 * v857) * 0.25, v795[v859 + 2] = (v855 + 3 * v858) * 0.25), v853 = v856, v854 = v857, v855 = v858;
+    }
+    var v860 = new Array(v783),
+      v861 = v275.collide && v809 ? v809 : null,
+      v862 = null,
+      v863 = v275.headLift > 0 ? v275.headLift : 1.02,
+      v864,
+      v865,
+      v866,
+      v867,
+      v868,
+      v869,
+      v870,
+      v871,
+      v872,
+      v873,
+      v874,
+      v875,
+      v876,
+      v877,
+      v878,
+      v879;
+    if (v861) try {
+      v862 = v273.REGROW && typeof v273.REGROW.neckPush === "function" ? v273.REGROW.neckPush : null;
+    } catch (v883) {
+      v862 = null;
+    }
+    for (v784 = 0; v784 < v851; v784++) v860[v784] = v780[v784];
+    var v880 = v780[v851 - 1].x,
+      v881 = v780[v851 - 1].y,
+      v882 = v780[v851 - 1].z;
+    for (v784 = v851; v784 < v783; v784++) {
+      v864 = v794[v784 * 4], v865 = v794[v784 * 4 + 1], v866 = v794[v784 * 4 + 2], v807 = v794[v784 * 4 + 3];
+      v784 <= v852 && (v867 = v795[v784 * 3], v868 = v795[v784 * 3 + 1], v869 = v795[v784 * 3 + 2], v835 = Math.sqrt(v867 * v867 + v868 * v868 + v869 * v869), v835 > 0.00001 && (v867 /= v835, v868 /= v835, v869 /= v835, v870 = Math.cos(v835), v871 = Math.sin(v835), v872 = (v867 * v864 + v868 * v865 + v869 * v866) * (1 - v870), v828 = v864 * v870 + (v868 * v866 - v869 * v865) * v871 + v867 * v872, v829 = v865 * v870 + (v869 * v864 - v867 * v866) * v871 + v868 * v872, v830 = v866 * v870 + (v867 * v865 - v868 * v864) * v871 + v869 * v872, v864 = v828, v865 = v829, v866 = v830));
+      v873 = v880 + v864 * v807, v874 = v881 + v865 * v807, v875 = v882 + v866 * v807;
+      if (v861 && v807 > 1e-9) {
+        v877 = v780[v784], v846 = v877.y - v813, v876 = Math.sqrt(v877.x * v877.x / v810 + v846 * v846 / v811 + v877.z * v877.z / v812);
+        if (v876 > v863) v876 = v863;
+        v846 = v874 - v813, v845 = Math.sqrt(v873 * v873 / v810 + v846 * v846 / v811 + v875 * v875 / v812), v845 < v876 - 0.000001 && (v846 = v881 - v813, v840 = v880 / v810, v841 = v846 / v811, v842 = v882 / v812, v843 = Math.sqrt(v840 * v840 + v841 * v841 + v842 * v842), v843 > 1e-9 && (v840 /= v843, v841 /= v843, v842 /= v843, v844 = v864 * v840 + v865 * v841 + v866 * v842, v844 < 0 && (v828 = v864 - v844 * v840, v829 = v865 - v844 * v841, v830 = v866 - v844 * v842, v806 = Math.sqrt(v828 * v828 + v829 * v829 + v830 * v830), v806 > 0.001 && (v873 = v880 + v828 / v806 * v807, v874 = v881 + v829 / v806 * v807, v875 = v882 + v830 / v806 * v807))), v846 = v874 - v813, v845 = Math.sqrt(v873 * v873 / v810 + v846 * v846 / v811 + v875 * v875 / v812), v845 < v876 - 0.000001 && v845 > 1e-9 && (v847 = v876 / v845, v873 *= v847, v874 = v813 + v846 * v847, v875 *= v847, v828 = v873 - v880, v829 = v874 - v881, v830 = v875 - v882, v806 = Math.sqrt(v828 * v828 + v829 * v829 + v830 * v830), v806 > 1e-9 && (v873 = v880 + v828 / v806 * v807, v874 = v881 + v829 / v806 * v807, v875 = v882 + v830 / v806 * v807)), v276._swp++);
+      }
+      v878 = {
+        x: v873,
+        y: v874,
+        z: v875
+      };
+      if (v862 && v807 > 1e-9) try {
+        v879 = v862(v878);
+        if (v879 && v879 !== v878 && v862(v780[v784]) === v780[v784]) {
+          v828 = v879.x - v880, v829 = v879.y - v881, v830 = v879.z - v882, v806 = Math.sqrt(v828 * v828 + v829 * v829 + v830 * v830);
+          if (v806 > 1e-9) v878 = {
+            x: v880 + v828 / v806 * v807,
+            y: v881 + v829 / v806 * v807,
+            z: v882 + v830 / v806 * v807
+          };
+        }
+      } catch (v884) {}
+      v880 = v878.x, v881 = v878.y, v882 = v878.z, v860[v784] = v878;
+    }
+    v276._sw++;
+    try {
+      v860._pre = v780._pre || v781;
+    } catch (v885) {}
+    return v860;
+  }
+  v275._sweep = v317, v275._apply = function (v886) {
+    if (!v275.samples.length && !v275.sweeps.length) return v886;
+    var v887 = v886;
+    if (v275.samples.length) try {
+      v887 = v316(v886);
+    } catch (v888) {
+      v276.err = String(v888 && v888.message || v888), v887 = v886;
+    }
+    if (v275.sweeps.length) try {
+      v887 = v317(v887, v886);
+    } catch (v889) {
+      v276.err = String(v889 && v889.message || v889);
+    }
+    return v887;
+  };
+  function v318() {
+    var v890 = null;
+    try {
+      v890 = state.hair3Dneutral;
+    } catch (v891) {}
+    v890 !== v279 && (v279 = v890, (v275.samples.length || v275.sweeps.length) && (v275.samples.length = 0, v275.sweeps.length = 0, v277++, v288++, v363()));
+  }
+  v275._beforeCompute = function () {
+    try {
+      v318(), v276._t = 0, v276._pu = 0, v276._nk = 0, v276._an = 0, v276._pi = 0, v276._fl = 0, v276._up = 0, v276._cl = 0, v276._to = v276._ts = v276._ta = v276._tr = v276._tf = v276._tk = 0, v276._sw = 0, v276._swp = 0;
+    } catch (v892) {}
+    return v280();
+  }, v275._afterCompute = function (v893, v894, v895, v896) {
+    var v897 = [v894, v895];
+    try {
+      if (v275.grain && v275.samples.length && v893 && v893.length && !v897[0] && !(v897[1] > 1) && v279) {
+        var v898 = v321;
+        v323(v893, Math.max(1, Math.ceil(v893.length / v275.pickStrands)), v279);
+        if (v898 && v898 !== v321 && typeof ADJ_CACHE !== "undefined" && ADJ_CACHE.bump) ADJ_CACHE.bump();
+      }
+    } catch (v899) {}
+    if (v276._sw > 0) {
+      v276.swept = v276._sw, v276.sweptPush = v276._swp;
+      if (!(v276._t > 0)) v276.ms = v280() - v896;
+    } else !v275.sweeps.length && (v276.swept = 0, v276.sweptPush = 0);
+    return (v276._t > 0 || v276._tk > 0) && (v276.touched = v276._t, v276.ms = v280() - v896, v276.pushed = v276._pu, v276.neck = v276._nk, v276.anch = v276._an, v276.pin = v276._pi, v276.fly = v276._fl, v276.up = v276._up, v276.clamp = v276._cl, v276.tOwn = v276._to, v276.tSide = v276._ts, v276.tAll = v276._ta, v276.tReach = v276._tr, v276.tFinger = v276._tf, v276.tSkip = v276._tk), v893;
+  }, v275._sigTail = function () {
+    return "|cb" + v277;
+  };
+  function v319() {
+    try {
+      if (typeof ADJ_CACHE !== "undefined" && ADJ_CACHE.bump) ADJ_CACHE.bump();
+    } catch (v900) {}
+    try {
+      if (v281() === "adjust" && typeof renderAdjustFrame === "function") renderAdjustFrame();
+    } catch (v901) {}
+  }
+  v275.refresh = function () {
+    v277++, v288++, v319(), v363();
+  }, v275.clear = function () {
+    if (!v275.samples.length && !v275.sweeps.length) return;
+    v275.samples.length = 0, v275.sweeps.length = 0, v277++, v288++, v276.strokes = 0, v276.sweepStrokes = 0, v319(), v363();
+  }, v275.clearSweeps = function () {
+    if (!v275.sweeps.length) return;
+    v275.sweeps.length = 0, v277++, v288++, v276.sweepStrokes = 0, v319(), v363();
+  }, v275.undo = function () {
+    var v902 = v275.samples.length ? v275.samples[v275.samples.length - 1].g : -1,
+      v903 = v275.sweeps.length ? v275.sweeps[v275.sweeps.length - 1].g : -1;
+    if (v902 < 0 && v903 < 0) return;
+    var v904 = v903 > v902 ? v275.sweeps : v275.samples,
+      v905 = Math.max(v902, v903);
+    while (v904.length && v904[v904.length - 1].g === v905) v904.pop();
+    v277++, v288++, v319(), v363();
+  };
+  function v320() {
+    var v906 = v282(),
+      v907 = null;
+    if (!v906) return null;
+    return v906.headGroup.traverse(function (v908) {
+      if (!v907 && (v908.isLineSegments || v908.isLine) && v908.geometry) v907 = v908;
+    }), v907 || v906.headGroup;
+  }
+  var v321 = null;
+  function v322(v909, v910, v911, v912, v913) {
+    var v914 = v913,
+      v915 = v913 * 1.41421356,
+      v916 = v913 * 1.7320508,
+      v917 = v910 * v911,
+      v918,
+      v919,
+      v920,
+      v921,
+      v922,
+      v923,
+      v924,
+      v925,
+      v926,
+      v927,
+      v928;
+    for (v918 = 0; v918 < 2; v918++) {
+      v919 = v918 ? -1 : 1;
+      for (v922 = v918 ? v912 - 2 : 1; v922 >= 1 && v922 <= v912 - 2; v922 += v919) for (v921 = v918 ? v911 - 2 : 1; v921 >= 1 && v921 <= v911 - 2; v921 += v919) {
+        v926 = v910 * (v921 + v911 * v922), v927 = v926 - v919 * v917, v928 = v926 - v919 * v910;
+        for (v920 = v918 ? v910 - 2 : 1; v920 >= 1 && v920 <= v910 - 2; v920 += v919) {
+          v923 = v926 + v920, v924 = v909[v923];
+          if (v924 === 0) continue;
+          v923 = v927 + v920, v925 = v909[v923] + v914;
+          if (v925 < v924) v924 = v925;
+          v925 = v909[v923 - 1] + v915;
+          if (v925 < v924) v924 = v925;
+          v925 = v909[v923 + 1] + v915;
+          if (v925 < v924) v924 = v925;
+          v925 = v909[v923 - v910] + v915;
+          if (v925 < v924) v924 = v925;
+          v925 = v909[v923 + v910] + v915;
+          if (v925 < v924) v924 = v925;
+          v925 = v909[v923 - v910 - 1] + v916;
+          if (v925 < v924) v924 = v925;
+          v925 = v909[v923 - v910 + 1] + v916;
+          if (v925 < v924) v924 = v925;
+          v925 = v909[v923 + v910 - 1] + v916;
+          if (v925 < v924) v924 = v925;
+          v925 = v909[v923 + v910 + 1] + v916;
+          if (v925 < v924) v924 = v925;
+          v923 = v928 + v920, v925 = v909[v923] + v914;
+          if (v925 < v924) v924 = v925;
+          v925 = v909[v923 - 1] + v915;
+          if (v925 < v924) v924 = v925;
+          v925 = v909[v923 + 1] + v915;
+          if (v925 < v924) v924 = v925;
+          v925 = v909[v926 + v920 - v919] + v914;
+          if (v925 < v924) v924 = v925;
+          v909[v926 + v920] = v924;
+        }
+      }
+    }
+  }
+  function v323(v929, v930, v931) {
+    var v932 = v280(),
+      v933,
+      v934,
+      v935,
+      v936,
+      v937,
+      v938 = 0,
+      v939 = Math.max(1, Math.floor(v929.length / 97));
+    for (v933 = 0; v933 < v929.length; v933 += v939) {
+      v935 = v929[v933].pts;
+      if (!v935 || !v935.length) continue;
+      if (v935._pre && v935._pre.length === v935.length) v935 = v935._pre;
+      v936 = v935[v935.length - 1], v938 += v936.x * 1.3 + v936.y * 2.1 + v936.z * 3.7 + v935.length;
+    }
+    var v940 = v929.length + ":" + v930 + ":" + v938.toFixed(4) + ":" + v275.flowCell + ":" + v275.flowSmooth + ":" + v275.flowMin + ":" + v275.flowNear + ":" + v275.flowDense + ":" + (v275.surf ? v275.surfThr + "/" + v275.surfNbr + "/" + v275.surfCore + "/" + v275.surfHead + "/" + v275.flyFrom + "/" + v275.flyFull : "x");
+    if (v321 && v321.fp === v940 && v321.model === v931) return v321.flow;
+    v321 && v321.flow && (v277++, v276.flowRebuilt = (v276.flowRebuilt || 0) + 1);
+    var v941 = v275.flowCell > 0.01 ? v275.flowCell : 0.07,
+      v942 = Infinity,
+      v943 = Infinity,
+      v944 = Infinity,
+      v945 = -Infinity,
+      v946 = -Infinity,
+      v947 = -Infinity,
+      v948 = 0;
+    for (v933 = 0; v933 < v929.length; v933 += v930) {
+      v935 = v929[v933].pts;
+      if (!v935) continue;
+      if (v935._pre && v935._pre.length === v935.length) v935 = v935._pre;
+      v948++;
+      for (v934 = 0; v934 < v935.length; v934 += 2) {
+        v936 = v935[v934];
+        if (v936.x < v942) v942 = v936.x;
+        if (v936.x > v945) v945 = v936.x;
+        if (v936.y < v943) v943 = v936.y;
+        if (v936.y > v946) v946 = v936.y;
+        if (v936.z < v944) v944 = v936.z;
+        if (v936.z > v947) v947 = v936.z;
+      }
+    }
+    var v949 = null;
+    if (v945 >= v942 && isFinite(v942 + v945 + v943 + v946 + v944 + v947)) {
+      var v950 = isFinite(v931.CY) ? v931.CY : 0,
+        v951 = 64 * v941;
+      v942 = Math.max(v942, -v951) - v941, v945 = Math.min(v945, v951) + v941, v943 = Math.max(v943, v950 - v951) - v941, v946 = Math.min(v946, v950 + v951) + v941, v944 = Math.max(v944, -v951) - v941, v947 = Math.min(v947, v951) + v941;
+      var v952 = Math.floor((v945 - v942) / v941) + 1,
+        v953 = Math.floor((v946 - v943) / v941) + 1,
+        v954 = Math.floor((v947 - v944) / v941) + 1,
+        v955 = v952 * v953 * v954;
+      if (v952 > 0 && v953 > 0 && v954 > 0) {
+        var v956 = new Float32Array(v955),
+          v957 = new Float32Array(v955),
+          v958 = new Float32Array(v955),
+          v959 = new Uint16Array(v955),
+          v960 = new Int32Array(v955).fill(-1),
+          v961 = 1 / v941,
+          v962,
+          v963,
+          v964,
+          v965,
+          v966,
+          v967,
+          v968,
+          v969,
+          v970,
+          v971,
+          v972,
+          v973,
+          v974,
+          v975,
+          v976,
+          v977;
+        for (v933 = 0; v933 < v929.length; v933 += v930) {
+          v935 = v929[v933].pts;
+          if (!v935) continue;
+          if (v935._pre && v935._pre.length === v935.length) v935 = v935._pre;
+          v937 = v935.length;
+          if (v937 < 2) continue;
+          v963 = 0, v964 = v937 - 1 < 8 ? v937 - 1 : 8, v965 = v935[0];
+          for (v934 = 1; v934 <= v964; v934++) {
+            v966 = v935[v934], v963 += Math.sqrt((v966.x - v965.x) * (v966.x - v965.x) + (v966.y - v965.y) * (v966.y - v965.y) + (v966.z - v965.z) * (v966.z - v965.z)), v965 = v966;
+          }
+          v963 /= v964, v962 = v963 > 0 ? Math.round(v275.flowSmooth / v963) : 1;
+          if (!(v962 >= 1)) v962 = 1;else {
+            if (v962 > 16) v962 = 16;
+          }
+          v977 = v963 > 0 ? Math.floor(v941 * 0.8 / v963) : 1;
+          if (!(v977 >= 1)) v977 = 1;else {
+            if (v977 > 6) v977 = 6;
+          }
+          for (v934 = 0; v934 < v937; v934 += v977) {
+            v936 = v935[v934], v973 = (v936.x - v942) * v961 | 0, v974 = (v936.y - v943) * v961 | 0, v975 = (v936.z - v944) * v961 | 0;
+            if (!(v936.x >= v942 && v936.y >= v943 && v936.z >= v944 && v973 < v952 && v974 < v953 && v975 < v954)) continue;
+            v976 = v973 + v952 * (v974 + v953 * v975);
+            if (v960[v976] === v933) continue;
+            v967 = v935[v934 - v962 < 0 ? 0 : v934 - v962], v968 = v935[v934 + v962 >= v937 ? v937 - 1 : v934 + v962], v969 = v968.x - v967.x, v970 = v968.y - v967.y, v971 = v968.z - v967.z, v972 = Math.sqrt(v969 * v969 + v970 * v970 + v971 * v971);
+            if (!(v972 > 1e-9)) continue;
+            v960[v976] = v933;
+            if (v959[v976] < 65535) v959[v976]++;
+            v956[v976] += v969 / v972, v957[v976] += v970 / v972, v958[v976] += v971 / v972;
+          }
+        }
+        var v978 = [],
+          v979 = 0,
+          v980 = 0,
+          v981 = 1;
+        for (v934 = 0; v934 < v955; v934++) v959[v934] && (v978.push(v959[v934]), v979 += v959[v934]);
+        v978.sort(function (v1048, v1049) {
+          return v1048 - v1049;
+        });
+        for (v934 = 0; v934 < v978.length; v934++) {
+          v980 += v978[v934];
+          if (v980 * 2 >= v979) {
+            v981 = v978[v934];
+            break;
+          }
+        }
+        var v982 = Math.max(6, Math.round(v275.flowMin * Math.min(1, v948 / 8000))),
+          v983 = new Float32Array(v955);
+        for (v934 = 0; v934 < v955; v934++) if (v959[v934]) v983[v934] = Math.sqrt(v956[v934] * v956[v934] + v957[v934] * v957[v934] + v958[v934] * v958[v934]);
+        var v984 = new Float32Array(v955),
+          v985 = new Float32Array(v955),
+          v986,
+          v987,
+          v988,
+          v989,
+          v990;
+        for (v988 = 0; v988 < v954; v988++) for (v987 = 0; v987 < v953; v987++) for (v986 = 0; v986 < v952; v986++) {
+          v989 = v986 + v952 * (v987 + v953 * v988), v990 = v959[v989];
+          if (v986 > 0) v990 += v959[v989 - 1];
+          if (v986 < v952 - 1) v990 += v959[v989 + 1];
+          v985[v989] = v990;
+        }
+        for (v988 = 0; v988 < v954; v988++) for (v987 = 0; v987 < v953; v987++) for (v986 = 0; v986 < v952; v986++) {
+          v989 = v986 + v952 * (v987 + v953 * v988), v990 = v985[v989];
+          if (v987 > 0) v990 += v985[v989 - v952];
+          if (v987 < v953 - 1) v990 += v985[v989 + v952];
+          v984[v989] = v990;
+        }
+        for (v988 = 0; v988 < v954; v988++) for (v987 = 0; v987 < v953; v987++) for (v986 = 0; v986 < v952; v986++) {
+          v989 = v986 + v952 * (v987 + v953 * v988), v990 = v984[v989];
+          if (v988 > 0) v990 += v984[v989 - v952 * v953];
+          if (v988 < v954 - 1) v990 += v984[v989 + v952 * v953];
+          v985[v989] = v990;
+        }
+        var v991 = Math.max(v982, v275.flowNear * v981),
+          v992 = null;
+        if (v275.surf) {
+          var v993 = v941 * 0.5,
+            v994 = 1 / v993,
+            v995 = v952 * 2,
+            v996 = v953 * 2,
+            v997 = v954 * 2,
+            v998 = v995 * v996 * v997;
+          if (v998 > 0 && v998 <= 3000000) {
+            var v999 = new Uint16Array(v998),
+              v1000 = new Int32Array(v998).fill(-1),
+              v1001,
+              v1002,
+              v1003,
+              v1004,
+              v1005,
+              v1006,
+              v1007,
+              v1008,
+              v1009,
+              v1010;
+            for (v933 = 0; v933 < v929.length; v933 += v930) {
+              v935 = v929[v933].pts;
+              if (!v935) continue;
+              if (v935._pre && v935._pre.length === v935.length) v935 = v935._pre;
+              v937 = v935.length;
+              for (v934 = 0; v934 < v937; v934++) {
+                v936 = v935[v934], v1001 = 0;
+                if (v934 + 1 < v937) {
+                  v966 = v935[v934 + 1], v1003 = v966.x - v936.x, v1004 = v966.y - v936.y, v1005 = v966.z - v936.z, v1006 = Math.sqrt(v1003 * v1003 + v1004 * v1004 + v1005 * v1005), v1001 = Math.floor(v1006 / (v993 * 0.9));
+                  if (v1001 > 12) v1001 = 12;
+                }
+                for (v1002 = 0; v1002 <= v1001; v1002++) {
+                  v1008 = v1001 ? v936.x + v1003 * v1002 / (v1001 + 1) : v936.x, v1009 = v1001 ? v936.y + v1004 * v1002 / (v1001 + 1) : v936.y, v1010 = v1001 ? v936.z + v1005 * v1002 / (v1001 + 1) : v936.z, v973 = (v1008 - v942) * v994 | 0, v974 = (v1009 - v943) * v994 | 0, v975 = (v1010 - v944) * v994 | 0;
+                  if (!(v1008 >= v942 && v1009 >= v943 && v1010 >= v944 && v973 < v995 && v974 < v996 && v975 < v997)) continue;
+                  v1007 = v973 + v995 * (v974 + v996 * v975);
+                  if (v1000[v1007] === v933) continue;
+                  v1000[v1007] = v933;
+                  if (v999[v1007] < 65535) v999[v1007]++;
+                }
+              }
+            }
+            v1000 = null;
+            var v1011 = [],
+              v1012 = 0,
+              v1013 = 0,
+              v1014 = 1;
+            for (v934 = 0; v934 < v998; v934++) v999[v934] && (v1011.push(v999[v934]), v1012 += v999[v934]);
+            v1011.sort(function (v1050, v1051) {
+              return v1050 - v1051;
+            });
+            for (v934 = 0; v934 < v1011.length; v934++) {
+              v1013 += v1011[v934];
+              if (v1013 * 2 >= v1012) {
+                v1014 = v1011[v934];
+                break;
+              }
+            }
+            var v1015 = Math.max(2, Math.round(v275.surfThr * v1014)),
+              v1016 = new Uint8Array(v998),
+              v1017 = v995 * v996,
+              v1018 = 0,
+              v1019 = Math.max(0, v275.surfNbr | 0),
+              v1020,
+              v1021,
+              v1022,
+              v1023,
+              v1024,
+              v1025,
+              v1026,
+              v1027,
+              v1028,
+              v1029,
+              v1030,
+              v1031,
+              v1032,
+              v1033;
+            for (v988 = 0; v988 < v997; v988++) for (v987 = 0; v987 < v996; v987++) for (v986 = 0; v986 < v995; v986++) {
+              v989 = v986 + v995 * (v987 + v996 * v988);
+              if (v999[v989] < 2) continue;
+              v1027 = v986 > 2 ? v986 - 2 : 0, v1028 = v986 < v995 - 3 ? v986 + 2 : v995 - 1, v1029 = v987 > 2 ? v987 - 2 : 0, v1030 = v987 < v996 - 3 ? v987 + 2 : v996 - 1, v1031 = v988 > 2 ? v988 - 2 : 0, v1032 = v988 < v997 - 3 ? v988 + 2 : v997 - 1, v1024 = 0, v1025 = 0;
+              for (v1023 = v1031; v1023 <= v1032; v1023++) for (v1022 = v1029; v1022 <= v1030; v1022++) {
+                v1033 = v995 * (v1022 + v996 * v1023);
+                for (v1021 = v1027; v1021 <= v1028; v1021++) {
+                  v1026 = v999[v1033 + v1021], v1024 += v1026, v1025 += v1026 * v1026;
+                }
+              }
+              if (v999[v989] * v1024 >= v275.surfThr * v1025) v1016[v989] = 1;
+            }
+            var v1034 = new Float32Array(v998),
+              v1035 = 1000000,
+              v1036 = new Uint8Array(v998),
+              v1037 = Math.max(1, v275.surfCore | 0),
+              v1038 = [],
+              v1039,
+              v1040,
+              v1041 = v302(),
+              v1042,
+              v1043 = v275.surfHead > 1 ? v275.surfHead : 1.15,
+              v1044,
+              v1045,
+              v1046;
+            for (v988 = 0; v988 < v997; v988++) for (v987 = 0; v987 < v996; v987++) for (v986 = 0; v986 < v995; v986++) {
+              v989 = v986 + v995 * (v987 + v996 * v988), v1034[v989] = v1035;
+              if (!v1016[v989]) continue;
+              v1020 = 0;
+              for (v1023 = -1; v1023 <= 1; v1023++) {
+                if (v988 + v1023 < 0 || v988 + v1023 >= v997) continue;
+                for (v1022 = -1; v1022 <= 1; v1022++) {
+                  if (v987 + v1022 < 0 || v987 + v1022 >= v996) continue;
+                  for (v1021 = -1; v1021 <= 1; v1021++) {
+                    if (v986 + v1021 < 0 || v986 + v1021 >= v995 || !v1021 && !v1022 && !v1023) continue;
+                    if (v1016[v989 + v1021 + v995 * v1022 + v1017 * v1023]) v1020++;
+                  }
+                }
+              }
+              v1036[v989] = v1020;
+            }
+            for (v934 = 0; v934 < v998; v934++) v1016[v934] && v1036[v934] >= v1037 && (v1016[v934] = 3, v1038.push(v934));
+            while (v1038.length) {
+              v989 = v1038.pop(), v986 = v989 % v995, v987 = (v989 - v986) / v995 % v996, v988 = (v989 - v986 - v995 * v987) / v1017;
+              for (v1023 = -2; v1023 <= 2; v1023++) {
+                if (v988 + v1023 < 0 || v988 + v1023 >= v997) continue;
+                for (v1022 = -2; v1022 <= 2; v1022++) {
+                  if (v987 + v1022 < 0 || v987 + v1022 >= v996) continue;
+                  for (v1021 = -2; v1021 <= 2; v1021++) {
+                    if (v986 + v1021 < 0 || v986 + v1021 >= v995) continue;
+                    v1040 = v989 + v1021 + v995 * v1022 + v1017 * v1023, v1016[v1040] === 1 && v1036[v1040] >= v1019 && (v1016[v1040] = 3, v1038.push(v1040));
+                  }
+                }
+              }
+            }
+            for (v988 = 0; v988 < v997; v988++) for (v987 = 0; v987 < v996; v987++) for (v986 = 0; v986 < v995; v986++) {
+              v989 = v986 + v995 * (v987 + v996 * v988);
+              if (!v1016[v989]) continue;
+              if (v1016[v989] !== 3) {
+                if (!v1041) {
+                  if (v1036[v989] < v1019) continue;
+                } else {
+                  if (v1036[v989] < 2) continue;
+                  v1045 = v942 + (v986 + 0.5) * v993, v1044 = v943 + (v987 + 0.5) * v993 - v1041.cy, v1046 = v944 + (v988 + 0.5) * v993, v1042 = Math.sqrt(v1045 * v1045 / v1041.a2 + v1044 * v1044 / v1041.b2 + v1046 * v1046 / v1041.c2);
+                  if (!(v1042 <= v1043)) continue;
+                }
+              }
+              v1034[v989] = 0, v1018++;
+            }
+            v1036 = null;
+            if (v1018) {
+              v322(v1034, v995, v996, v997, v993);
+              var v1047 = 8 * v993;
+              for (v934 = 0; v934 < v998; v934++) if (v1034[v934] > v1047) v1034[v934] = v1047;
+              v992 = {
+                D: v1034,
+                h: v993,
+                inv: v994,
+                x0: v942,
+                y0: v943,
+                z0: v944,
+                mx: v995,
+                my: v996,
+                mz: v997,
+                far: v1047 - 0.000001,
+                d0: Math.max(0, v275.flyFrom),
+                d1: Math.max(v275.flyFrom + 0.001, v275.flyFull),
+                ref: v1014,
+                thr: v1015,
+                cells: v1018
+              };
+            }
+          }
+        }
+        v949 = {
+          DF: v992,
+          fc: v941,
+          inv: v961,
+          x0: v942,
+          y0: v943,
+          z0: v944,
+          nx: v952,
+          ny: v953,
+          nz: v954,
+          GX: v956,
+          GY: v957,
+          GZ: v958,
+          GN: v959,
+          GM: v983,
+          GA: v985,
+          bLo: v991,
+          bHi: Math.max(v991 * 1.5, v275.bodyFull * v981),
+          ref: v981,
+          cells: v978.length,
+          dense: Math.max(2, v275.flowDense * v981),
+          near: v991
+        };
+      }
+    }
+    return v321 = {
+      fp: v940,
+      model: v931,
+      flow: v949
+    }, v276.flowRef = v949 ? v949.ref : 0, v276.flowCells = v949 ? v949.cells : 0, v276.surfRef = v949 && v949.DF ? v949.DF.ref : 0, v276.surfCells = v949 && v949.DF ? v949.DF.cells : 0, v276.flowMs = v280() - v932, v949;
+  }
+  var v324 = null;
+  function v325(v1052, v1053) {
+    var v1054 = v321,
+      v1055,
+      v1056,
+      v1057,
+      v1058 = 0,
+      v1059 = new Int32Array(v1052.length + 1);
+    for (v1055 = 0; v1055 < v1052.length; v1055++) {
+      v1059[v1055] = v1058, v1057 = v1052[v1055].pts;
+      if (v1057) v1058 += v1057.length;
+    }
+    v1059[v1052.length] = v1058;
+    if (v324 && v324.fm === v1054 && v324.n === v1052.length && v324.tot === v1058) return v324;
+    var v1060 = new Uint8Array(v1058),
+      v1061 = 0,
+      v1062 = v1053.d0,
+      v1063 = 0;
+    for (v1055 = 0; v1055 < v1052.length; v1055++) {
+      v1057 = v1052[v1055].pts;
+      if (!v1057) continue;
+      if (v1057._pre && v1057._pre.length === v1057.length) v1057 = v1057._pre;
+      for (v1056 = 0; v1056 < v1057.length; v1056++, v1061++) v309(v1053, v1057[v1056].x, v1057[v1056].y, v1057[v1056].z) > v1062 && (v1060[v1061] = 1, v1063++);
+    }
+    return v324 = {
+      fm: v1054,
+      n: v1052.length,
+      tot: v1058,
+      F: v1060,
+      off: v1059,
+      cnt: v1063
+    }, v324;
+  }
+  var v326 = null;
+  function v327() {
+    var v1064 = v282();
+    if (!v1064) return null;
+    var v1065 = v280(),
+      v1066 = null;
+    try {
+      v1066 = state.hair3Dneutral;
+    } catch (v1119) {}
+    if (!v1066 || !v1066.strands || !v1066.strands.length) return null;
+    var v1067 = null;
+    try {
+      v1067 = computeAdjustedHair3DStrands();
+    } catch (v1120) {
+      v1067 = null;
+    }
+    if (!v1067 || !v1067.length) return null;
+    var v1068 = Math.max(1, Math.ceil(v1067.length / v275.pickStrands)),
+      v1069 = v320(),
+      v1070 = v1064.camera,
+      v1071 = v1064.renderer.domElement,
+      v1072 = v1071.getBoundingClientRect();
+    v1064.scene.updateMatrixWorld(true), v1070.updateMatrixWorld(true);
+    var v1073 = new THREE.Matrix4().multiplyMatrices(v1070.projectionMatrix, v1070.matrixWorldInverse).multiply(v1069.matrixWorld),
+      v1074 = v1073.elements;
+    if (v275.grain) try {
+      v323(v1067, v1068, v1066);
+    } catch (v1121) {
+      v276.err = String(v1121 && v1121.message || v1121);
+    }
+    var v1075 = v275.surf && v275.grain && v321 && v321.flow && v321.flow.DF ? v321.flow.DF : null,
+      v1076 = null,
+      v1077 = 0,
+      v1078,
+      v1079,
+      v1080 = 0,
+      v1081;
+    if (v1075) try {
+      v1076 = v325(v1067, v1075);
+    } catch (v1122) {
+      v1076 = null, v1075 = null, v276.err = String(v1122 && v1122.message || v1122);
+    }
+    for (v1078 = 0; v1078 < v1067.length; v1078++) {
+      if (!v1067[v1078].pts) continue;
+      if (v1078 % v1068 === 0) {
+        v1077 += v1067[v1078].pts.length;
+        continue;
+      }
+      if (v1076) {
+        for (v1081 = v1076.off[v1078], v1079 = v1076.off[v1078 + 1]; v1081 < v1079; v1081++) v1077 += v1076.F[v1081];
+      }
+    }
+    var v1082 = new Float32Array(v1077),
+      v1083 = new Float32Array(v1077),
+      v1084 = new Float32Array(v1077),
+      v1085 = new Float32Array(v1077),
+      v1086 = new Float32Array(v1077),
+      v1087 = new Float32Array(v1077),
+      v1088 = v1076 ? new Int32Array(v1077) : null,
+      v1089 = v1076 ? new Int32Array(v1077) : null,
+      v1090 = v1076 ? new Uint8Array(v1077) : null,
+      v1091 = Math.max(8, v275.pickPx),
+      v1092 = Math.ceil(v1072.width / v1091) + 1,
+      v1093 = Math.ceil(v1072.height / v1091) + 1,
+      v1094 = new Int32Array(v1092 * v1093).fill(-1),
+      v1095 = new Int32Array(v1077),
+      v1096 = 0;
+    for (v1078 = 0; v1078 < v1067.length; v1078++) {
+      var v1097 = v1067[v1078].pts;
+      if (!v1097) continue;
+      var v1098 = v1078 % v1068 === 0;
+      if (!v1098 && !v1076) continue;
+      var v1099 = v1097._pre && v1097._pre.length === v1097.length ? v1097._pre : v1097;
+      v1081 = v1076 ? v1076.off[v1078] : 0;
+      for (v1079 = 0; v1079 < v1097.length; v1079++) {
+        if (!v1098) {
+          if (!v1076.F[v1081 + v1079]) continue;
+          v1080++;
+        }
+        var v1100 = v1097[v1079],
+          v1101 = v1074[3] * v1100.x + v1074[7] * v1100.y + v1074[11] * v1100.z + v1074[15];
+        if (!(v1101 > 0.000001)) continue;
+        var v1102 = ((v1074[0] * v1100.x + v1074[4] * v1100.y + v1074[8] * v1100.z + v1074[12]) / v1101 * 0.5 + 0.5) * v1072.width,
+          v1103 = (1 - ((v1074[1] * v1100.x + v1074[5] * v1100.y + v1074[9] * v1100.z + v1074[13]) / v1101 * 0.5 + 0.5)) * v1072.height;
+        if (v1102 < 0 || v1103 < 0 || v1102 >= v1072.width || v1103 >= v1072.height) continue;
+        var v1104 = (v1103 / v1091 | 0) * v1092 + (v1102 / v1091 | 0);
+        v1082[v1096] = v1102, v1083[v1096] = v1103, v1084[v1096] = v1101, v1085[v1096] = v1099[v1079].x, v1086[v1096] = v1099[v1079].y, v1087[v1096] = v1099[v1079].z, v1095[v1096] = v1094[v1104], v1094[v1104] = v1096, v1076 && (v1088[v1096] = v1078, v1089[v1096] = v1079, v1090[v1096] = v1076.F[v1081 + v1079]), v1096++;
+      }
+    }
+    var v1105 = new THREE.Matrix4().copy(v1069.matrixWorld).invert(),
+      v1106 = new THREE.Vector3().setFromMatrixColumn(v1070.matrixWorld, 0).transformDirection(v1105),
+      v1107 = new THREE.Vector3().setFromMatrixColumn(v1070.matrixWorld, 1).transformDirection(v1105),
+      v1108 = isFinite(v1066.CY) ? v1066.CY : 0,
+      v1109 = v1074[7] * v1108 + v1074[15],
+      v1110 = v1109 + v275.depthMargin,
+      v1111 = null,
+      v1112 = 0,
+      v1113 = v275.mode === "sweep" && v275.sweep ? v275.sweepDepth : v275.depthLayer;
+    if (v1076 && v1113 > 0) {
+      var v1114 = Math.max(2, v275.visCell),
+        v1115 = Math.ceil(v1072.width / v1114) + 1,
+        v1116 = Math.ceil(v1072.height / v1114) + 1,
+        v1117 = new Float32Array(v1115 * v1116).fill(Infinity),
+        v1118;
+      for (v1078 = 0; v1078 < v1096; v1078++) {
+        v1118 = (v1083[v1078] / v1114 | 0) * v1115 + (v1082[v1078] / v1114 | 0);
+        if (v1084[v1078] < v1117[v1118]) v1117[v1118] = v1084[v1078];
+      }
+      v1111 = new Uint8Array(v1096);
+      for (v1078 = 0; v1078 < v1096; v1078++) {
+        if (v1084[v1078] <= v1117[(v1083[v1078] / v1114 | 0) * v1115 + (v1082[v1078] / v1114 | 0)] + v1113) v1111[v1078] = 1;else {
+          if (v1084[v1078] <= v1110) v1112++;
+        }
+      }
+    }
+    return v276.pickMs = v280() - v1065, v276.pickPts = v1096, v276.pickFly = v1080, v276.pickHidden = v1112, {
+      sweep: v275.mode === "sweep" && v275.sweep,
+      DF: v1075,
+      FM: v1076,
+      list: v1067,
+      e: v1074,
+      wMax: v1110,
+      SX: v1082,
+      SY: v1083,
+      SW: v1084,
+      PX: v1085,
+      PY: v1086,
+      PZ: v1087,
+      SI: v1088,
+      SK: v1089,
+      FL: v1090,
+      VIS: v1111,
+      head: v1094,
+      next: v1095,
+      cell: v1091,
+      gw: v1092,
+      gh: v1093,
+      rect: v1072,
+      right: v1106,
+      up: v1107,
+      perPx: function (v1123) {
+        return 2 * v1123 * Math.tan(v1070.fov * Math.PI / 360) / v1072.height;
+      }
+    };
+  }
+  function v328(v1124, v1125, v1126, v1127) {
+    var v1128 = v1124.cell,
+      v1129 = v1125 / v1128 | 0,
+      v1130 = v1126 / v1128 | 0,
+      v1131 = Math.ceil(v1127 / v1128),
+      v1132 = -1,
+      v1133 = Infinity,
+      v1134 = v1127 * v1127,
+      v1135,
+      v1136,
+      v1137,
+      v1138 = v1124.VIS;
+    for (v1136 = v1130 - v1131; v1136 <= v1130 + v1131; v1136++) {
+      if (v1136 < 0 || v1136 >= v1124.gh) continue;
+      for (v1135 = v1129 - v1131; v1135 <= v1129 + v1131; v1135++) {
+        if (v1135 < 0 || v1135 >= v1124.gw) continue;
+        for (v1137 = v1124.head[v1136 * v1124.gw + v1135]; v1137 >= 0; v1137 = v1124.next[v1137]) {
+          if (v1124.SW[v1137] > v1124.wMax || v1138 && !v1138[v1137]) continue;
+          var v1139 = v1124.SX[v1137] - v1125,
+            v1140 = v1124.SY[v1137] - v1126;
+          if (v1139 * v1139 + v1140 * v1140 > v1134) continue;
+          v1124.SW[v1137] < v1133 && (v1133 = v1124.SW[v1137], v1132 = v1137);
+        }
+      }
+    }
+    return v1132;
+  }
+  var v329 = new Int32Array(8192);
+  function v330(v1141, v1142, v1143, v1144) {
+    var v1145 = v1141.cell,
+      v1146 = v1142 / v1145 | 0,
+      v1147 = v1143 / v1145 | 0,
+      v1148 = Math.ceil(v1144 / v1145),
+      v1149 = v1144 * v1144,
+      v1150,
+      v1151,
+      v1152,
+      v1153 = 0,
+      v1154 = v1141.VIS;
+    for (v1151 = v1147 - v1148; v1151 <= v1147 + v1148; v1151++) {
+      if (v1151 < 0 || v1151 >= v1141.gh) continue;
+      for (v1150 = v1146 - v1148; v1150 <= v1146 + v1148; v1150++) {
+        if (v1150 < 0 || v1150 >= v1141.gw) continue;
+        for (v1152 = v1141.head[v1151 * v1141.gw + v1150]; v1152 >= 0; v1152 = v1141.next[v1152]) {
+          if (v1141.SW[v1152] > v1141.wMax || v1154 && !v1154[v1152]) continue;
+          var v1155 = v1141.SX[v1152] - v1142,
+            v1156 = v1141.SY[v1152] - v1143;
+          if (v1155 * v1155 + v1156 * v1156 > v1149) continue;
+          if (v1153 >= v329.length) {
+            var v1157 = new Int32Array(v329.length * 2);
+            v1157.set(v329), v329 = v1157;
+          }
+          v329[v1153++] = v1152;
+        }
+      }
+    }
+    if (!v1153) return null;
+    var v1158 = v275.dabCell,
+      v1159 = new Map(),
+      v1160,
+      v1161,
+      v1162,
+      v1163,
+      v1164,
+      v1165,
+      v1166 = v1141.FL,
+      v1167 = 0,
+      v1168 = null,
+      v1169;
+    function v1170(v1181, v1182, v1183, v1184, v1185) {
+      v1161 = Math.floor(v1181 / v1158) + 2048 + 4096 * (Math.floor(v1182 / v1158) + 2048 + 4096 * (Math.floor(v1183 / v1158) + 2048)), v1165 = v1159.get(v1161);
+      if (v1165 === undefined) {
+        v1159.set(v1161, [v1181, v1182, v1183, v1184, v1185]);
+        if (v1185) v1167++;
+      } else v1184 > v1165[3] && (v1165[0] = v1181, v1165[1] = v1182, v1165[2] = v1183, v1165[3] = v1184), v1185 && !v1165[4] && (v1165[4] = 1, v1167++);
+    }
+    for (v1160 = 0; v1160 < v1153; v1160++) {
+      v1152 = v329[v1160], v1163 = v1141.SX[v1152] - v1142, v1164 = v1141.SY[v1152] - v1143, v1162 = Math.pow(1 - Math.sqrt(v1163 * v1163 + v1164 * v1164) / v1144, v275.falloff), v1170(v1141.PX[v1152], v1141.PY[v1152], v1141.PZ[v1152], v1162, v1166 ? v1166[v1152] : 0);
+      if (v1166 && v1166[v1152] && v275.reachBack && !v1141.sweep) {
+        if (!v1168) v1168 = new Map();
+        v1169 = v1168.get(v1141.SI[v1152]);
+        if (v1169 === undefined) v1168.set(v1141.SI[v1152], [v1141.SK[v1152], v1162]);else {
+          if (v1141.SK[v1152] > v1169[0]) v1169[0] = v1141.SK[v1152];
+          if (v1162 > v1169[1]) v1169[1] = v1162;
+        }
+      }
+    }
+    var v1171 = 0;
+    if (v1168 && v1141.FM) {
+      var v1172 = v1141.e,
+        v1173 = v1141.FM.F,
+        v1174 = v1141.FM.off,
+        v1175 = Math.max(0, v275.reachIn | 0);
+      v1168.forEach(function (v1186, v1187) {
+        var v1188 = v1141.list[v1187].pts,
+          v1189 = v1188._pre && v1188._pre.length === v1188.length ? v1188._pre : v1188,
+          v1190 = v1174[v1187],
+          v1191 = 0,
+          v1192,
+          v1193;
+        for (v1192 = v1186[0] - 1; v1192 >= 1; v1192--) {
+          v1193 = v1188[v1192];
+          if (v1172[3] * v1193.x + v1172[7] * v1193.y + v1172[11] * v1193.z + v1172[15] > v1141.wMax) break;
+          if (v1173[v1190 + v1192]) v1191 = 0;else {
+            if (++v1191 > v1175) break;
+          }
+          v1170(v1189[v1192].x, v1189[v1192].y, v1189[v1192].z, v1186[1], 1), v1171++;
+        }
+      });
+    }
+    var v1176 = v1159.size,
+      v1177 = 1,
+      v1178 = 0,
+      v1179 = 0;
+    if (v1176 > v275.dabMax) v1177 = Math.max(1, Math.ceil((v1176 - v1167) / Math.max(1, v275.dabMax - v1167)));
+    var v1180 = new Float32Array((v1167 + Math.ceil((v1176 - v1167) / v1177) + 1) * 4);
+    return v1159.forEach(function (v1194) {
+      if (!v1194[4] && v1179++ % v1177) return;
+      v1180[v1178 * 4] = v1194[0], v1180[v1178 * 4 + 1] = v1194[1], v1180[v1178 * 4 + 2] = v1194[2], v1180[v1178 * 4 + 3] = v1194[3], v1178++;
+    }), {
+      dabs: v1180,
+      m: v1178,
+      seen: v1153,
+      reached: v1171
+    };
+  }
+  var v331 = null,
+    v332 = false,
+    v333 = new Map(),
+    v334 = false,
+    v335 = 0,
+    v336 = null;
+  function v337(v1195) {
+    var v1196 = v282();
+    return !!(v1196 && v1195.target === v1196.renderer.domElement && v1196.container && v1196.container.id === "adjust3dHost");
+  }
+  function v338() {
+    if (v336) return;
+    var v1197 = Math.max(0, v275.liveMs - (v280() - v335));
+    v336 = setTimeout(function () {
+      v336 = null, v335 = v280(), v319();
+    }, v1197);
+  }
+  function v339(v1198, v1199, v1200) {
+    var v1201 = v1198.trail,
+      v1202 = v1201.length,
+      v1203 = 0,
+      v1204;
+    for (v1204 = v1202 - 2; v1204 >= 0; v1204 -= 2) {
+      v1203 += Math.hypot((v1204 + 2 < v1202 ? v1201[v1204 + 2] : v1199) - v1201[v1204], (v1204 + 3 < v1202 ? v1201[v1204 + 3] : v1200) - v1201[v1204 + 1]);
+      if (v1203 >= v275.dirLagPx) break;
+    }
+    if (v1204 < 0) v1204 = 0;
+    return [v1199 - v1201[v1204], v1200 - v1201[v1204 + 1]];
+  }
+  function v340(v1205, v1206) {
+    var v1207 = v331,
+      v1208 = v1207.pk;
+    if (!v1208) return;
+    var v1209 = v1205 - v1207.lx,
+      v1210 = v1206 - v1207.ly,
+      v1211 = Math.sqrt(v1209 * v1209 + v1210 * v1210);
+    if (v1211 < v275.minMovePx) return;
+    var v1212 = v339(v1207, v1205, v1206);
+    v1207.trail.push(v1205, v1206);
+    if (v1207.trail.length > 240) v1207.trail.splice(0, 120);
+    var v1213 = Math.hypot(v1212[0], v1212[1]) || 1;
+    v1207.vx === 0 && v1207.vy === 0 ? (v1207.vx = v1212[0] / v1213, v1207.vy = v1212[1] / v1213) : (v1207.vx = v1207.vx * 0.7 + v1212[0] / v1213 * 0.3, v1207.vy = v1207.vy * 0.7 + v1212[1] / v1213 * 0.3);
+    var v1214 = v328(v1208, v1205, v1206, v275.radiusPx);
+    if (v1214 >= 0) v1207.w = v1208.SW[v1214];
+    var v1215 = v1207.w > 0 ? Math.min(v275.maxRadius, v275.radiusPx * v1208.perPx(v1207.w)) / v1208.perPx(v1207.w) : null;
+    v349(v1205, v1206, v1215, Math.atan2(v1207.vy, v1207.vx)), v1207.lx = v1205, v1207.ly = v1206;
+    if (v1215 == null) return;
+    var v1216 = v1208.right.x * v1207.vx - v1208.up.x * v1207.vy,
+      v1217 = v1208.right.y * v1207.vx - v1208.up.y * v1207.vy,
+      v1218 = v1208.right.z * v1207.vx - v1208.up.z * v1207.vy,
+      v1219 = Math.sqrt(v1216 * v1216 + v1217 * v1217 + v1218 * v1218);
+    if (!(v1219 > 1e-9)) return;
+    if (v1207.has && Math.hypot(v1205 - v1207.sx, v1206 - v1207.sy) < v275.spacing * v1215) return;
+    var v1220 = v330(v1208, v1205, v1206, v1215);
+    if (!v1220) return;
+    if (v275.samples.length + v275.sweeps.length >= v275.maxSamples) {
+      if (!v1207.full) {
+        v1207.full = true;
+        try {
+          showToast(v352() === "ko" ? "빗질이 너무 많아요 — ↶로 되돌리거나 지워 주세요" : "Too many comb strokes — undo or clear some");
+        } catch (v1221) {}
+      }
+      return;
+    }
+    if (v1208.sweep) v275.sweeps.push({
+      dabs: v1220.dabs,
+      m: v1220.m,
+      dx: v1216 / v1219,
+      dy: v1217 / v1219,
+      dz: v1218 / v1219,
+      k: v275.sweepStrength,
+      g: v1207.g
+    });else v275.samples.push({
+      dabs: v1220.dabs,
+      m: v1220.m,
+      dx: v1216 / v1219,
+      dy: v1217 / v1219,
+      dz: v1218 / v1219,
+      k: v275.strength,
+      g: v1207.g
+    });
+    v1207.sx = v1205, v1207.sy = v1206, v1207.has = true, v1207.n++, v276.dabs = v1220.m, v276.seen = v1220.seen, v276.reached = v1220.reached || 0, v277++, v338();
+  }
+  function v341() {
+    var v1222 = v331;
+    v331 = null;
+    if (!v1222) return;
+    if (v1222.n) {
+      if (v1222.sweep) v276.sweepStrokes = (v276.sweepStrokes || 0) + 1;else v276.strokes++;
+      v336 && (clearTimeout(v336), v336 = null), v319();
+    }
+    v363();
+  }
+  function v342(v1223) {
+    if (v334 || !v275.on || !v284() || !v337(v1223)) return;
+    v333.set(v1223.pointerId, {
+      x: v1223.clientX,
+      y: v1223.clientY,
+      type: v1223.pointerType
+    });
+    if (v332) return;
+    if (v331) {
+      var v1224 = v331.id,
+        v1225 = v333.get(v1224);
+      v341(), v332 = true;
+      if (v1225) {
+        try {
+          v334 = true, v1223.target.dispatchEvent(new PointerEvent("pointerdown", {
+            pointerId: v1224,
+            clientX: v1225.x,
+            clientY: v1225.y,
+            bubbles: true,
+            isPrimary: true,
+            button: 0,
+            pointerType: v1225.type || "touch"
+          }));
+        } catch (v1232) {}
+        v334 = false;
+      }
+      return;
+    }
+    if (v1223.button !== 0 || v1223.shiftKey) return;
+    var v1226 = null;
+    try {
+      v1226 = v327();
+    } catch (v1233) {
+      v276.err = String(v1233 && v1233.message || v1233);
+    }
+    if (!v1226) return;
+    var v1227 = v1226.rect,
+      v1228 = v1223.pointerType === "touch" ? v275.touchOffset : 0,
+      v1229 = v1223.clientX - v1227.left,
+      v1230 = v1223.clientY - v1227.top - v1228;
+    v331 = {
+      sweep: !!v1226.sweep,
+      id: v1223.pointerId,
+      pk: v1226,
+      oy: v1228,
+      lx: v1229,
+      ly: v1230,
+      vx: 0,
+      vy: 0,
+      trail: [v1229, v1230],
+      has: false,
+      n: 0,
+      g: ++v278,
+      cx: 0,
+      cy: 0,
+      cz: 0,
+      sx: 0,
+      sy: 0,
+      sz: 0,
+      w: 0
+    };
+    var v1231 = v328(v1226, v1229, v1230, v275.radiusPx);
+    if (v1231 >= 0) v331.w = v1226.SW[v1231];
+    v349(v1229, v1230, v1231 >= 0 ? Math.min(v275.maxRadius, v275.radiusPx * v1226.perPx(v1226.SW[v1231])) / v1226.perPx(v1226.SW[v1231]) : null, null), v1223.stopPropagation();
+  }
+  function v343(v1234) {
+    if (v333.has(v1234.pointerId)) {
+      var v1235 = v333.get(v1234.pointerId);
+      v1235.x = v1234.clientX, v1235.y = v1234.clientY;
+    }
+    if (!v331 && v275.on && !v332 && v1234.pointerType === "mouse" && v284() && v337(v1234)) {
+      var v1236 = v1234.target.getBoundingClientRect();
+      v349(v1234.clientX - v1236.left, v1234.clientY - v1236.top, null, null);
+    }
+    if (!v331 || v1234.pointerId !== v331.id) return;
+    v1234.stopPropagation();
+    var v1237 = v331.pk.rect,
+      v1238 = v331.oy,
+      v1239 = typeof v1234.getCoalescedEvents === "function" ? v1234.getCoalescedEvents() : null;
+    if (v1239 && v1239.length > 1) {
+      for (var v1240 = 0; v1240 < v1239.length; v1240++) v340(v1239[v1240].clientX - v1237.left, v1239[v1240].clientY - v1237.top - v1238);
+    } else v340(v1234.clientX - v1237.left, v1234.clientY - v1237.top - v1238);
+  }
+  function v344(v1241) {
+    v333.delete(v1241.pointerId);
+    if (v331 && v1241.pointerId === v331.id) v341();
+    if (!v333.size) v332 = false;
+  }
+  document.addEventListener("pointerdown", v342, true), v273.addEventListener("pointermove", v343, true), v273.addEventListener("pointerup", v344, true), v273.addEventListener("pointercancel", v344, true);
+  var v345 = null,
+    v346 = 14;
+  function v347() {
+    try {
+      var v1242 = v282(),
+        v1243 = v1242.renderer.domElement.getBoundingClientRect(),
+        v1244 = MODEL3D_VIEW.base ? MODEL3D_VIEW.base.dist / MODEL3D_VIEW.zoom : v1242.camera.position.length(),
+        v1245 = 2 * v1244 * Math.tan(v1242.camera.fov * Math.PI / 360) / v1243.height;
+      return Math.min(v275.maxRadius, v275.radiusPx * v1245) / v1245;
+    } catch (v1246) {
+      return v275.radiusPx;
+    }
+  }
+  function v348() {
+    var v1247 = v282();
+    if (!v1247 || !v1247.container || v1247.container.id !== "adjust3dHost") return null;
+    if (v345 && v345.parentNode === v1247.container) return v345;
+    return v345 = document.createElement("div"), v345.id = "comb3dMark", v345.style.cssText = "position:absolute;left:0;top:0;width:0;height:0;z-index:5;pointer-events:none;display:none;", v345.innerHTML = "<svg width=\"120\" height=\"120\" viewBox=\"-60 -60 120 120\" style=\"position:absolute;left:-60px;top:-60px;overflow:visible\">" + "<circle id=\"comb3dRing\" r=\"14\" fill=\"rgba(201,135,74,0.10)\" stroke=\"#fff\" stroke-width=\"2.5\" opacity=\"0.9\"/>" + "<circle id=\"comb3dRing2\" r=\"14\" fill=\"none\" stroke=\"#c9874a\" stroke-width=\"1.5\" stroke-dasharray=\"4 3\"/>" + "<g id=\"comb3dGlyph\"><g transform=\"translate(0,0)\">" + "<rect x=\"-13\" y=\"-8\" width=\"26\" height=\"6\" rx=\"2\" fill=\"#c9874a\" stroke=\"#1a1410\" stroke-width=\"1\"/>" + [-10.5, -7, -3.5, 0, 3.5, 7, 10.5].map(function (v1248) {
+      return "<rect x=\"" + (v1248 - 0.9) + "\" y=\"-2.5\" width=\"1.8\" height=\"10\" rx=\"0.8\" fill=\"#c9874a\" stroke=\"#1a1410\" stroke-width=\"0.6\"/>";
+    }).join("") + "</g></g></svg>", v1247.container.appendChild(v345), v345;
+  }
+  function v349(v1249, v1250, v1251, v1252) {
+    if (!v275.indicator) return;
+    var v1253 = v348();
+    if (!v1253) return;
+    if (v1251 != null && isFinite(v1251)) v346 = Math.max(4, v1251);
+    v1253.style.display = "block", v1253.style.transform = "translate(" + v1249.toFixed(1) + "px," + v1250.toFixed(1) + "px)";
+    try {
+      v1253.querySelector("#comb3dRing").setAttribute("r", v346.toFixed(1)), v1253.querySelector("#comb3dRing2").setAttribute("r", v346.toFixed(1));
+      var v1254 = v1252 == null ? 0 : v1252 * 180 / Math.PI - 90;
+      v1253.querySelector("#comb3dGlyph").setAttribute("transform", "rotate(" + v1254.toFixed(1) + ")");
+    } catch (v1255) {}
+  }
+  function v350() {
+    if (v345) v345.style.display = "none";
+  }
+  function v351() {
+    try {
+      var v1256 = v282();
+      if (!v1256 || !v275.on) {
+        v350();
+        return;
+      }
+      var v1257 = v1256.renderer.domElement.getBoundingClientRect();
+      v349(v1257.width / 2, v1257.height / 2, v347(), null);
+    } catch (v1258) {}
+  }
+  v275._mark = function () {
+    return v345;
+  };
+  function v352() {
+    try {
+      return uiLang === "ko" ? "ko" : "en";
+    } catch (v1259) {
+      return "ko";
+    }
+  }
+  var v353 = null,
+    v354 = null,
+    v355 = null,
+    v356 = null,
+    v357 = null,
+    v358 = null,
+    v359 = 0.03,
+    v360 = 0.6,
+    v361 = "gyeol_sweepLevel";
+  function v362(v1260) {
+    return v1260 = Math.max(1, Math.min(10, +v1260 || 7)), +(v359 * Math.pow(v360 / v359, (v1260 - 1) / 9)).toFixed(3);
+  }
+  v275.setSweepLevel = function (v1261, v1262) {
+    v1261 = Math.max(1, Math.min(10, Math.round(+v1261 || 7))), v275.sweepLevel = v1261, v275.sweepStrength = v362(v1261);
+    if (!v1262) try {
+      localStorage.setItem(v361, String(v1261));
+    } catch (v1263) {}
+    try {
+      if (v357) v357.value = String(v1261);
+      if (v358) v358.textContent = (v352() === "ko" ? "세기 " : "Strength ") + v1261;
+    } catch (v1264) {}
+    return v275.sweepStrength;
+  };
+  function v363() {
+    try {
+      if (!v353) return;
+      var v1265 = v275.enabled && v283(),
+        v1266 = v275.on && v275.mode === "sweep" && v275.sweep;
+      v353.style.display = v1265 ? "" : "none", v353.classList.toggle("on", !!v275.on && !v1266), v353.textContent = v275.on && !v1266 ? "빗질 ON" : "빗질 OFF";
+      v355 && (v355.style.display = v1265 && v275.sweep ? "" : "none", v355.classList.toggle("on", !!v1266), v355.textContent = v1266 ? "넘기기 ON" : "넘기기 OFF");
+      if (v356) v356.style.display = v1265 && v1266 ? "inline-flex" : "none";
+      v354.style.display = v1265 && v275.on ? "" : "none", v354.disabled = !(v275.samples.length || v275.sweeps.length);
+      if (v345) {
+        var v1267 = v345.querySelector("#comb3dRing2");
+        if (v1267) v1267.setAttribute("stroke", v1266 ? "#3b82c4" : "#c9874a");
+      }
+      var v1268 = v282();
+      if (v1268 && v1268.container && v1268.container.id === "adjust3dHost") v1268.renderer.domElement.style.cursor = v275.on ? "crosshair" : "";
+    } catch (v1269) {}
+  }
+  v275.toggle = function (v1270, v1271) {
+    v1271 = v1271 === "sweep" && v275.sweep ? "sweep" : "tidy";
+    if (v1270 == null) v1270 = !(v275.on && v275.mode === v1271);
+    if (v331) v341();
+    v275.on = !!v1270;
+    if (v275.on) v275.mode = v1271;
+    v363();
+    if (v275.on && v1271 === "sweep") {
+      v351(), v363();
+      try {
+        showToast(v352() === "ko" ? "넘기고 싶은 머리에 빗(원)을 올리고 보낼 방향으로 쓸어 주세요 — 원 안의 머리가 뭉치째 그 방향으로 넘어갑니다 · 이어서 쓸면 더 넘어가요 · ↶ 되돌리기" : "Put the comb (circle) on the hair and stroke the way you want it to go — the whole bundle inside the circle turns that way · keep stroking to carry it further · ↶ undo");
+      } catch (v1272) {}
+    } else {
+      if (v275.on) {
+        v351(), v363();
+        try {
+          showToast(v352() === "ko" ? "뜬 머리에 빗(원)을 올리고 결대로 쓸어 주세요 — 주변 머리의 결에 맞춰 눕습니다 · 빗은 손가락 조금 위에 있어요 · 두 손가락: 이동·확대" : "Put the comb (circle) on the flyaways and sweep along the hair — they lie down into the surrounding flow · the comb sits just above your finger · two fingers: move / zoom");
+        } catch (v1273) {}
+      } else v350();
+    }
+  };
+  try {
+    var v364 = document.querySelector("#screen-adjust .mode-bar"),
+      v365 = document.getElementById("mannequinBtn");
+    if (v364) {
+      v353 = document.createElement("button"), v353.id = "comb3dBtn", v353.type = "button";
+      if (v365 && v365.className) v353.className = v365.className;
+      v353.title = "켜면 한 손가락 드래그가 빗질이 됩니다 — 잔머리를 결 방향으로 쓰다듬어 눕힙니다", v353.addEventListener("click", function () {
+        v275.toggle();
+      }), v354 = document.createElement("button"), v354.id = "comb3dUndoBtn", v354.type = "button";
+      if (v365 && v365.className) v354.className = v365.className;
+      v354.textContent = "↶", v354.title = "마지막 빗질 한 획 되돌리기", v354.addEventListener("click", function () {
+        v275.undo();
+      }), v355 = document.createElement("button"), v355.id = "comb3dSweepBtn", v355.type = "button";
+      if (v365 && v365.className) v355.className = v365.className;
+      v355.title = "켜면 한 손가락 드래그가 빗어 넘기기가 됩니다 — 원 안의 머리가 뭉치째 쓴 방향으로 넘어갑니다", v355.addEventListener("click", function () {
+        v275.toggle(null, "sweep");
+      }), v356 = document.createElement("span"), v356.id = "comb3dSweepK", v356.style.cssText = "display:none;align-items:center;gap:5px;vertical-align:middle;padding:2px 8px;border-radius:999px;background:rgba(30,25,21,0.82);color:#f3e9da;font-size:11px;line-height:1;white-space:nowrap;", v358 = document.createElement("span"), v357 = document.createElement("input"), v357.type = "range", v357.min = "1", v357.max = "10", v357.step = "1", v357.style.cssText = "width:84px;height:22px;margin:0;accent-color:#3b82c4;touch-action:pan-x;", v357.title = "넘기기 세기 — 한 번 쓸 때 얼마나 넘어가나(여러 번 쓸면 쌓임)", v357.addEventListener("input", function () {
+        v275.setSweepLevel(v357.value);
+      }), ["pointerdown", "touchstart", "mousedown"].forEach(function (v1274) {
+        v356.addEventListener(v1274, function (v1275) {
+          v1275.stopPropagation();
+        });
+      }), v356.appendChild(v358), v356.appendChild(v357);
+      var v366 = v275.sweepLevel;
+      try {
+        var v367 = parseInt(localStorage.getItem(v361), 10);
+        if (v367 >= 1 && v367 <= 10) v366 = v367;
+      } catch (v1276) {}
+      v275.setSweepLevel(v366, true), v364.appendChild(v353), v364.appendChild(v355), v364.appendChild(v356), v364.appendChild(v354), v363();
+    }
+  } catch (v1277) {
+    console.warn(v274 + " 버튼 만들기 실패", v1277);
+  }
+  try {
+    if (typeof I18N !== "undefined") {
+      Object.assign(I18N, {
+        "빗질 ON": "Comb ON",
+        "빗질 OFF": "Comb OFF",
+        "넘기기 ON": "Sweep ON",
+        "넘기기 OFF": "Sweep OFF",
+        "넘기기 세기 — 한 번 쓸 때 얼마나 넘어가나(여러 번 쓸면 쌓임)": "Sweep strength — how far one stroke turns the hair (repeat strokes add up)",
+        "켜면 한 손가락 드래그가 빗어 넘기기가 됩니다 — 원 안의 머리가 뭉치째 쓴 방향으로 넘어갑니다": "When on, a one-finger drag sweeps — the whole bundle inside the circle turns the way you stroke",
+        "켜면 한 손가락 드래그가 빗질이 됩니다 — 잔머리를 결 방향으로 쓰다듬어 눕힙니다": "When on, a one-finger drag combs — stroke flyaways along the hair flow to lay them down",
+        "마지막 빗질 한 획 되돌리기": "Undo the last comb stroke"
+      });
+      try {
+        _i18nSubKeys = null;
+      } catch (v1278) {}
+      try {
+        if (typeof applyUiLang === "function") applyUiLang();
+      } catch (v1279) {}
+    }
+  } catch (v1280) {}
+  return v275._afterUi = function (v1281, v1282) {
+    try {
+      if (v1281 === "activateScreen" && v1282 !== "adjust" && v275.on) {
+        v275.on = false;
+        if (v331) v341();
+        v350();
+      }
+      v363();
+    } catch (v1283) {}
+  }, v275._afterApplyView = function () {
+    try {
+      v275.on && !v331 && v345 && v345.style.display !== "none" && (v346 = Math.max(4, v347()), v345.querySelector("#comb3dRing").setAttribute("r", v346.toFixed(1)), v345.querySelector("#comb3dRing2").setAttribute("r", v346.toFixed(1)));
+    } catch (v1284) {}
+  }, v275._syncBtn = function () {
+    try {
+      v363();
+    } catch (v1285) {}
+  }, v275._panelLines = function () {
+    var v1286 = [];
+    try {
+      v1286.push(v274 + " " + (v275.enabled ? v275.on ? "켜짐(빗질 모드)" : "대기" : "꺼짐") + " · 획 " + v276.strokes + " · 표본 " + v275.samples.length + "/" + v275.maxSamples + " · 넘기기 " + (v275.sweep ? (v275.on && v275.mode === "sweep" ? "켜짐" : "대기") + " — 세기 " + v275.sweepLevel + "/10(표본 세기 " + v275.sweepStrength + ") · 획 " + (v276.sweepStrokes || 0) + " · 표본 " + v275.sweeps.length + " · 직전에 넘어간 가닥 " + (v276.swept || 0) + "(두상에 막혀 눕힌 마디 " + (v276.sweptPush || 0) + ") · 방향 장 " + (v295 ? v295.n : 0) + "칸" : "꺼짐(COMB3D.sweep=false)") + " · 직전에 바뀐 가닥 " + v276.touched + " · 가닥 만들기 " + Math.round(v276.ms) + "ms(빗질 포함) · 붓 자리 찾기 준비 " + Math.round(v276.pickMs) + "ms(점 " + v276.pickPts + ") · 직전 표본이 칠한 점 " + v276.dabs + "(원 안에 보인 점 " + v276.seen + ")" + " · 방향 장 " + (v285 ? v285.n : 0) + "칸 · 붓 " + v275.radiusPx + "px(상한 " + v275.maxRadius + " · 지금 화면에서 " + Math.round(v346) + "px) · 세기 " + v275.strength + " · 터치 빗 위치 손가락 위 " + v275.touchOffset + "px" + (v276.err ? " · ⚠ " + v276.err : "")), v1286.push("  결 따라 빗기 " + (v275.grain ? v321 && v321.flow ? "켜짐 — 결 칸 " + v276.flowCells + " · 몸통 머리 보통 밀도 칸당 " + v276.flowRef + "가닥 · 결 읽기 " + Math.round(v276.flowMs) + "ms" : "켜짐(아직 결을 안 읽음 — 빗을 대면 읽음)" : "꺼짐(손가락 방향 그대로)") + " · 직전에 본 마디의 목표: 제 무리의 결 " + v276.tOwn + " / 손가락 쪽 이웃의 결 " + v276.tSide + " / 이웃 전체의 결 " + v276.tAll + " / 두상 쪽에서 찾은 결 " + v276.tReach + " / 손가락 방향(주변에 머리 없음) " + v276.tFinger + " / 결이 갈려 그대로 둠 " + v276.tSkip + " · 허용 각 " + v275.tolFrom + "~" + v275.tolFull + "° · " + (v275.collide ? "두상에 막혀 눕힌 마디 " + v276.pushed + " / 목 밖으로 민 점 " + v276.neck : "두상 막기 꺼짐") + " · " + (v275.anchor ? "몸통 붙들기 켜짐 — 제자리로 되돌린 점 " + v276.anch + " / 몸통 쪽으로 기울인 마디 " + v276.pin : "몸통 붙들기 꺼짐")), v1286.push("  겉면 타기 " + (v275.surf ? v321 && v321.flow && v321.flow.DF ? "켜짐 — 몸통 칸 " + v276.surfCells + "(잔칸 보통 밀도 " + v276.surfRef + "가닥) · 뜬 점 " + (v324 ? v324.cnt + "/" + v324.tot : "-") + " · 직전에 세기가 걸린 잔머리 마디 " + v276.fly + " · 그중 거슬러 올라가 세기를 올린 마디 " + v276.up + (v275.reachBack ? "(직전 표본이 가닥을 따라 올라가며 칠한 점 " + v276.reached + ")" : "(거슬러 올라가기 꺼짐)") + " · 겉면 쪽으로 튼 마디 " + v276.pin + (v275.settle > 0 ? "" : "(꺼짐 — 방향 정렬만)") + " · 6cm 상한에 걸린 점 " + v276.clamp + " · 붓 자리 찾기: 따로 넣은 뜬 점 " + (v276.pickFly || 0) + " / 겉층 뒤라 뺀 점 " + (v276.pickHidden || 0) + (v275.depthLayer > 0 ? "" : "(깊이 안 가림)") : v275.grain ? "켜짐(아직 거리장 없음 — 빗을 대면 만듦)" : "꺼짐(결 따라 빗기가 꺼져 있음)" : "꺼짐(예전 방식)"));
+    } catch (v1287) {}
+    return v1286;
+  }, console.log(v274 + " 설치 — 3D 조정 화면에서 [빗질]을 켜고 잔머리를 결 방향으로 쓰다듬으면 그 방향으로 눕습니다 · [넘기기]를 켜고 쓸면 원 안의 머리가 뭉치째 그 방향으로 넘어갑니다. 지우기 COMB3D.clear() · 되돌리기 COMB3D.undo()"), v275;
+}();
+var FLY_TRIM = function () {
+  'use strict';
+
+  var v1288 = window,
+    v1289 = "[잔머리 정리]",
+    v1290 = Object.assign({
+      on: true,
+      auto: false,
+      brush: true,
+      minCurl: 30,
+      cell: 0.07,
+      minStrands: 3,
+      frac: 0.12,
+      refStrands: 10000,
+      minTail: 0.08,
+      maxOut: 0.16,
+      brushBack: 0.25,
+      keepPts: 3,
+      final: true,
+      finalCellCm: 0.8,
+      finalLo: 4,
+      finalHi: 10,
+      finalFrac: 0.2,
+      finalDilate: 0,
+      finalMinSegs: 20000
+    }, v1288.FLY_TRIM || {}),
+    v1291 = v1290.stats = {
+      curly: false,
+      curl: 0,
+      strands: 0,
+      autoCut: 0,
+      loopCut: 0,
+      brushCut: 0,
+      cutLen: 0,
+      cells: 0,
+      body: 0,
+      thr: 0,
+      ms: 0,
+      err: null
+    },
+    v1292 = 0,
+    v1293 = [];
+  function v1294() {
+    try {
+      return performance.now();
+    } catch (v1302) {
+      return Date.now();
+    }
+  }
+  function v1295() {
+    try {
+      var v1303,
+        v1304 = 0,
+        v1305 = 0;
+      for (v1303 in state.sections) {
+        var v1306 = +state.sections[v1303].curl;
+        isFinite(v1306) && (v1305 += v1306, v1304++);
+      }
+      return v1304 ? v1305 / v1304 : 0;
+    } catch (v1307) {
+      return 0;
+    }
+  }
+  function v1296() {
+    return !!(v1290.on && v1295() >= v1290.minCurl);
+  }
+  v1290.curly = v1296, v1290._comb = function (v1308) {
+    var v1309 = v1288.COMB3D;
+    if (!(v1290.brush && v1309 && v1309.samples && v1309.samples.length && v1296())) return v1308();
+    var v1310 = v1309.samples;
+    v1309.samples = v1293;
+    try {
+      return v1308();
+    } finally {
+      v1309.samples = v1310;
+    }
+  };
+  var v1297 = new WeakMap();
+  function v1298(v1311) {
+    v1291.curl = Math.round(v1295()), v1291.curly = v1296();
+    if (!v1291.curly || !v1311 || !v1311.length) return v1311;
+    var v1312 = v1288.COMB3D,
+      v1313 = v1290.brush && v1312 && v1312.samples ? v1312.samples.length : 0,
+      v1314 = v1297.get(v1311);
+    if (v1314 && v1314.ver === v1292 && v1314.nSm === v1313) return v1314.out;
+    var v1315 = v1294(),
+      v1316 = v1311.length,
+      v1317,
+      v1318,
+      v1319,
+      v1320,
+      v1321 = v1290.cell,
+      v1322 = [Infinity, Infinity, Infinity],
+      v1323 = [-Infinity, -Infinity, -Infinity];
+    for (v1317 = 0; v1317 < v1316; v1317++) {
+      v1319 = v1311[v1317] && v1311[v1317].pts;
+      if (!v1319) continue;
+      for (v1318 = 0; v1318 < v1319.length; v1318++) {
+        var v1324 = v1319[v1318];
+        if (v1324.x < v1322[0]) v1322[0] = v1324.x;
+        if (v1324.y < v1322[1]) v1322[1] = v1324.y;
+        if (v1324.z < v1322[2]) v1322[2] = v1324.z;
+        if (v1324.x > v1323[0]) v1323[0] = v1324.x;
+        if (v1324.y > v1323[1]) v1323[1] = v1324.y;
+        if (v1324.z > v1323[2]) v1323[2] = v1324.z;
+      }
+    }
+    if (!isFinite(v1322[0])) return v1311;
+    var v1325 = Math.min(160, Math.floor((v1323[0] - v1322[0]) / v1321) + 3),
+      v1326 = Math.min(200, Math.floor((v1323[1] - v1322[1]) / v1321) + 3),
+      v1327 = Math.min(160, Math.floor((v1323[2] - v1322[2]) / v1321) + 3),
+      v1328 = v1322[0] - v1321,
+      v1329 = v1322[1] - v1321,
+      v1330 = v1322[2] - v1321,
+      v1331 = v1325 * v1326 * v1327,
+      v1332 = new Uint16Array(v1331),
+      v1333 = new Int32Array(v1331).fill(-1);
+    function v1334(v1374) {
+      var v1375 = Math.floor((v1374.x - v1328) / v1321),
+        v1376 = Math.floor((v1374.y - v1329) / v1321),
+        v1377 = Math.floor((v1374.z - v1330) / v1321);
+      return v1375 < 0 || v1376 < 0 || v1377 < 0 || v1375 >= v1325 || v1376 >= v1326 || v1377 >= v1327 ? -1 : v1375 + v1325 * (v1376 + v1326 * v1377);
+    }
+    for (v1317 = 0; v1317 < v1316; v1317++) {
+      v1319 = v1311[v1317] && v1311[v1317].pts;
+      if (!v1319) continue;
+      for (v1318 = 0; v1318 < v1319.length; v1318++) {
+        var v1335 = v1334(v1319[v1318]);
+        if (v1335 >= 0 && v1333[v1335] !== v1317) {
+          v1333[v1335] = v1317;
+          if (v1332[v1335] < 65535) v1332[v1335]++;
+        }
+      }
+    }
+    var v1336 = [],
+      v1337;
+    for (v1337 = 0; v1337 < v1331; v1337++) if (v1332[v1337]) v1336.push(v1332[v1337]);
+    v1336.sort(function (v1378, v1379) {
+      return v1378 - v1379;
+    });
+    var v1338 = v1336.length ? v1336[v1336.length >> 1] : 0,
+      v1339 = Math.max(v1290.minStrands * Math.max(1, v1316 / v1290.refStrands), v1290.frac * v1338),
+      v1340 = new Uint8Array(v1331),
+      v1341 = new Uint8Array(v1331),
+      v1342 = 0,
+      v1343 = 1,
+      v1344 = v1325,
+      v1345 = v1325 * v1326;
+    for (v1337 = 0; v1337 < v1331; v1337++) v1332[v1337] >= v1339 && (v1340[v1337] = 1, v1342++);
+    for (v1337 = 0; v1337 < v1331; v1337++) if (v1340[v1337]) {
+      v1341[v1337] = 1;
+      if (v1337 - v1343 >= 0) v1341[v1337 - v1343] = 1;
+      if (v1337 + v1343 < v1331) v1341[v1337 + v1343] = 1;
+      if (v1337 - v1344 >= 0) v1341[v1337 - v1344] = 1;
+      if (v1337 + v1344 < v1331) v1341[v1337 + v1344] = 1;
+      if (v1337 - v1345 >= 0) v1341[v1337 - v1345] = 1;
+      if (v1337 + v1345 < v1331) v1341[v1337 + v1345] = 1;
+    }
+    v1291.cells = v1336.length, v1291.body = v1342, v1291.thr = v1339;
+    var v1346 = null;
+    if (v1313) {
+      v1346 = new Uint8Array(v1331);
+      var v1347 = Math.max(1, Math.round((v1312.dab > 0 ? v1312.dab : 0.045) / v1321)),
+        v1348,
+        v1349,
+        v1350,
+        v1351;
+      for (v1348 = 0; v1348 < v1312.samples.length; v1348++) {
+        var v1352 = v1312.samples[v1348],
+          v1353 = v1352 && v1352.dabs,
+          v1354 = v1352 && v1352.m;
+        if (!v1353 || !v1354) continue;
+        for (v1318 = 0; v1318 < v1354; v1318++) {
+          var v1355 = Math.floor((v1353[v1318 * 4] - v1328) / v1321),
+            v1356 = Math.floor((v1353[v1318 * 4 + 1] - v1329) / v1321),
+            v1357 = Math.floor((v1353[v1318 * 4 + 2] - v1330) / v1321);
+          for (v1351 = v1357 - v1347; v1351 <= v1357 + v1347; v1351++) {
+            if (v1351 < 0 || v1351 >= v1327) continue;
+            for (v1350 = v1356 - v1347; v1350 <= v1356 + v1347; v1350++) {
+              if (v1350 < 0 || v1350 >= v1326) continue;
+              for (v1349 = v1355 - v1347; v1349 <= v1355 + v1347; v1349++) {
+                if (v1349 < 0 || v1349 >= v1325) continue;
+                v1346[v1349 + v1325 * (v1350 + v1326 * v1351)] = 1;
+              }
+            }
+          }
+        }
+      }
+    }
+    var v1358 = new Array(v1316),
+      v1359 = 0,
+      v1360 = 0,
+      v1361 = 0,
+      v1362 = 0;
+    for (v1317 = 0; v1317 < v1316; v1317++) {
+      v1320 = v1311[v1317], v1319 = v1320 && v1320.pts, v1358[v1317] = v1320;
+      if (!v1319 || v1319.length <= v1290.keepPts) continue;
+      var v1363 = v1319.length,
+        v1364 = v1363,
+        v1365 = 0,
+        v1366 = -1,
+        v1367 = 0,
+        v1368;
+      for (v1318 = 1; v1318 < v1363; v1318++) {
+        v1368 = v1334(v1319[v1318]);
+        if (v1346 && v1318 >= v1290.keepPts && v1368 >= 0 && v1346[v1368] && !v1340[v1368]) {
+          var v1369 = 0,
+            v1370,
+            v1371;
+          for (v1370 = v1318 + 1; v1370 < v1363; v1370++) {
+            v1371 = v1334(v1319[v1370]);
+            if (v1371 >= 0 && v1340[v1371]) v1369++;
+          }
+          if (v1369 <= v1290.brushBack * (v1363 - v1318)) {
+            v1364 = v1318, v1365 = 3;
+            break;
+          }
+        }
+        if (!v1290.auto) continue;
+        if (v1368 < 0 || !v1341[v1368]) {
+          v1366 < 0 && (v1366 = v1318, v1367 = 0);
+          v1367 += Math.hypot(v1319[v1318].x - v1319[v1318 - 1].x, v1319[v1318].y - v1319[v1318 - 1].y, v1319[v1318].z - v1319[v1318 - 1].z);
+          if (v1367 >= v1290.maxOut && v1318 < v1363 - 1) {
+            v1364 = Math.max(v1290.keepPts, v1366), v1365 = 2;
+            break;
+          }
+        } else v1366 = -1;
+      }
+      v1364 === v1363 && v1290.auto && v1366 >= 0 && v1367 >= v1290.minTail && (v1364 = Math.max(v1290.keepPts, v1366), v1365 = 1);
+      if (v1364 >= v1363) continue;
+      for (v1318 = v1364; v1318 < v1363; v1318++) v1362 += Math.hypot(v1319[v1318].x - v1319[v1318 - 1].x, v1319[v1318].y - v1319[v1318 - 1].y, v1319[v1318].z - v1319[v1318 - 1].z);
+      var v1372 = v1319.slice(0, v1364);
+      try {
+        v1372._pre = v1319._pre && v1319._pre.length === v1319.length ? v1319._pre.slice(0, v1364) : v1372;
+      } catch (v1380) {}
+      var v1373 = Object.assign({}, v1320, {
+        pts: v1372
+      });
+      try {
+        if (v1320.colors && v1320.colors.length === v1319.length) v1373.colors = v1320.colors.slice(0, v1364);
+        if (v1320.srcColors && v1320.srcColors.length === v1319.length) v1373.srcColors = v1320.srcColors.slice(0, v1364);
+      } catch (v1381) {}
+      v1358[v1317] = v1373;
+      if (v1365 === 1) v1359++;else {
+        if (v1365 === 2) v1360++;else v1361++;
+      }
+    }
+    return v1291.strands = v1316, v1291.autoCut = v1359, v1291.loopCut = v1360, v1291.brushCut = v1361, v1291.cutLen = v1362, v1291.ms = v1294() - v1315, v1297.set(v1311, {
+      ver: v1292,
+      nSm: v1313,
+      out: v1358
+    }), v1358;
+  }
+  v1290._pass = v1298, v1290._apply = function (v1382) {
+    try {
+      return v1298(v1382);
+    } catch (v1383) {
+      return v1291.err = String(v1383 && v1383.message || v1383), v1382;
+    }
+  }, v1290._sigTail = function () {
+    return "|ft" + v1292 + (v1296() ? "c" : "s");
+  }, v1290.refresh = function () {
+    v1292++;
+    try {
+      if (typeof ADJ_CACHE !== "undefined" && ADJ_CACHE.bump) ADJ_CACHE.bump();
+    } catch (v1384) {}
+    try {
+      if (typeof renderAdjustFrame === "function") renderAdjustFrame();
+    } catch (v1385) {}
+  };
+  var v1299 = v1290.finalStats = {
+    runs: 0,
+    segs: 0,
+    removed: 0,
+    cells: 0,
+    body: 0,
+    lo: 0,
+    hi: 0,
+    ms: 0,
+    objs: 0,
+    err: null
+  };
+  v1290.filterSegments = function (v1386, v1387, v1388) {
+    var v1389 = v1294(),
+      v1390 = v1388 > 0 ? v1388 : 16.4,
+      v1391 = v1290.finalCellCm / v1390,
+      v1392,
+      v1393,
+      v1394 = Infinity,
+      v1395 = Infinity,
+      v1396 = Infinity,
+      v1397 = -Infinity,
+      v1398 = -Infinity,
+      v1399 = -Infinity,
+      v1400,
+      v1401,
+      v1402;
+    for (v1392 = 0; v1392 < v1387 * 2; v1392++) {
+      v1400 = v1386[v1392 * 3], v1401 = v1386[v1392 * 3 + 1], v1402 = v1386[v1392 * 3 + 2];
+      if (!(v1400 === v1400)) continue;
+      if (v1400 < v1394) v1394 = v1400;
+      if (v1400 > v1397) v1397 = v1400;
+      if (v1401 < v1395) v1395 = v1401;
+      if (v1401 > v1398) v1398 = v1401;
+      if (v1402 < v1396) v1396 = v1402;
+      if (v1402 > v1399) v1399 = v1402;
+    }
+    if (!isFinite(v1394)) return 0;
+    var v1403, v1404, v1405, v1406;
+    for (;;) {
+      v1403 = Math.floor((v1397 - v1394) / v1391) + 3, v1404 = Math.floor((v1398 - v1395) / v1391) + 3, v1405 = Math.floor((v1399 - v1396) / v1391) + 3, v1406 = v1403 * v1404 * v1405;
+      if (v1406 <= 2500000) break;
+      v1391 *= 1.26;
+    }
+    var v1407 = v1394 - v1391,
+      v1408 = v1395 - v1391,
+      v1409 = v1396 - v1391,
+      v1410 = 1 / v1391,
+      v1411 = v1391 * 0.5,
+      v1412 = new Float32Array(v1406);
+    function v1413(v1443, v1444, v1445) {
+      return Math.floor((v1443 - v1407) * v1410) + v1403 * (Math.floor((v1444 - v1408) * v1410) + v1404 * Math.floor((v1445 - v1409) * v1410));
+    }
+    var v1414, v1415, v1416, v1417, v1418, v1419, v1420, v1421, v1422, v1423;
+    for (v1392 = 0; v1392 < v1387; v1392++) {
+      v1393 = v1392 * 6, v1414 = v1386[v1393], v1415 = v1386[v1393 + 1], v1416 = v1386[v1393 + 2], v1417 = v1386[v1393 + 3], v1418 = v1386[v1393 + 4], v1419 = v1386[v1393 + 5], v1420 = Math.sqrt((v1417 - v1414) * (v1417 - v1414) + (v1418 - v1415) * (v1418 - v1415) + (v1419 - v1416) * (v1419 - v1416));
+      if (!(v1420 > 1e-9)) continue;
+      v1421 = Math.ceil(v1420 / v1411);
+      if (v1421 > 64) v1421 = 64;
+      for (v1422 = 0; v1422 < v1421; v1422++) {
+        v1423 = (v1422 + 0.5) / v1421, v1412[v1413(v1414 + (v1417 - v1414) * v1423, v1415 + (v1418 - v1415) * v1423, v1416 + (v1419 - v1416) * v1423)] += v1420 / v1421;
+      }
+    }
+    var v1424 = [];
+    for (v1392 = 0; v1392 < v1406; v1392++) if (v1412[v1392] > 0) v1424.push(v1412[v1392]);
+    if (!v1424.length) return 0;
+    v1424.sort(function (v1446, v1447) {
+      return v1446 - v1447;
+    });
+    var v1425 = v1424[v1424.length >> 1],
+      v1426 = v1290.finalLo * v1391,
+      v1427 = Math.max(v1290.finalHi * v1391, v1290.finalFrac * v1425),
+      v1428 = new Uint8Array(v1406),
+      v1429 = [],
+      v1430 = 0,
+      v1431,
+      v1432,
+      v1433,
+      v1434,
+      v1435,
+      v1436,
+      v1437,
+      v1438 = v1403 * v1404;
+    for (v1392 = 0; v1392 < v1406; v1392++) v1412[v1392] >= v1427 && (v1428[v1392] = 1, v1429.push(v1392), v1430++);
+    while (v1429.length) {
+      v1392 = v1429.pop(), v1433 = v1392 / v1438 | 0, v1432 = (v1392 - v1433 * v1438) / v1403 | 0, v1431 = v1392 - v1433 * v1438 - v1432 * v1403;
+      for (v1436 = -1; v1436 <= 1; v1436++) {
+        if (v1433 + v1436 < 0 || v1433 + v1436 >= v1405) continue;
+        for (v1435 = -1; v1435 <= 1; v1435++) {
+          if (v1432 + v1435 < 0 || v1432 + v1435 >= v1404) continue;
+          for (v1434 = -1; v1434 <= 1; v1434++) {
+            if (v1431 + v1434 < 0 || v1431 + v1434 >= v1403) continue;
+            v1437 = v1431 + v1434 + v1403 * (v1432 + v1435 + v1404 * (v1433 + v1436)), !v1428[v1437] && v1412[v1437] >= v1426 && (v1428[v1437] = 1, v1429.push(v1437), v1430++);
+          }
+        }
+      }
+    }
+    var v1439 = v1428,
+      v1440;
+    for (v1440 = 0; v1440 < (v1290.finalDilate | 0); v1440++) {
+      var v1441 = new Uint8Array(v1439);
+      for (v1392 = 0; v1392 < v1406; v1392++) if (v1439[v1392]) {
+        if (v1392 - 1 >= 0) v1441[v1392 - 1] = 1;
+        if (v1392 + 1 < v1406) v1441[v1392 + 1] = 1;
+        if (v1392 - v1403 >= 0) v1441[v1392 - v1403] = 1;
+        if (v1392 + v1403 < v1406) v1441[v1392 + v1403] = 1;
+        if (v1392 - v1438 >= 0) v1441[v1392 - v1438] = 1;
+        if (v1392 + v1438 < v1406) v1441[v1392 + v1438] = 1;
+      }
+      v1439 = v1441;
+    }
+    var v1442 = 0;
+    for (v1392 = 0; v1392 < v1387; v1392++) {
+      v1393 = v1392 * 6, v1414 = v1386[v1393], v1415 = v1386[v1393 + 1], v1416 = v1386[v1393 + 2], v1417 = v1386[v1393 + 3], v1418 = v1386[v1393 + 4], v1419 = v1386[v1393 + 5];
+      if (v1414 === v1417 && v1415 === v1418 && v1416 === v1419) continue;
+      !v1439[v1413((v1414 + v1417) * 0.5, (v1415 + v1418) * 0.5, (v1416 + v1419) * 0.5)] && (v1386[v1393 + 3] = v1414, v1386[v1393 + 4] = v1415, v1386[v1393 + 5] = v1416, v1442++);
+    }
+    return v1299.runs++, v1299.segs = v1387, v1299.removed = v1442, v1299.cells = v1424.length, v1299.body = v1430, v1299.lo = v1426 / v1391, v1299.hi = v1427 / v1391, v1299.ms = v1294() - v1389, v1442;
+  };
+  function v1300() {
+    try {
+      return currentScreen;
+    } catch (v1448) {
+      return "";
+    }
+  }
+  v1290.sweepScene = function () {
+    if (!v1290.on || !v1290.final) return 0;
+    var v1449 = null;
+    try {
+      v1449 = model3D && model3D.initialized ? model3D : null;
+    } catch (v1452) {
+      v1449 = null;
+    }
+    if (!v1449 || !v1449.headGroup || typeof v1449.headGroup.traverse !== "function") return 0;
+    var v1450 = 16.4,
+      v1451 = 0;
+    try {
+      v1450 = modelCmPerUnit() || 16.4;
+    } catch (v1453) {}
+    v1449.headGroup.traverse(function (v1454) {
+      try {
+        if (!v1454 || !v1454.isLineSegments || !v1454.geometry || v1454.geometry.index) return;
+        var v1455 = v1454.geometry,
+          v1456 = v1455.attributes && v1455.attributes.position;
+        if (!v1456 || !v1456.array || v1456.itemSize !== 3) return;
+        var v1457 = Math.floor(v1456.count / 2);
+        if (v1457 < v1290.finalMinSegs) return;
+        var v1458 = v1455.userData || (v1455.userData = {});
+        if (v1458._ftArr === v1456.array && v1458._ftVer === v1456.version && v1458._ftCfg === v1292) return;
+        v1290.filterSegments(v1456.array, v1457, v1450), v1456.needsUpdate = true, v1458._ftArr = v1456.array, v1458._ftVer = v1456.version, v1458._ftCfg = v1292, v1451++;
+      } catch (v1459) {
+        v1299.err = String(v1459 && v1459.message || v1459);
+      }
+    });
+    if (v1451) v1299.objs = v1451;
+    return v1451;
+  };
+  function v1301() {
+    try {
+      var v1460 = model3D && model3D.initialized ? model3D : null;
+      if (!v1460 || !v1460.renderer || v1460.renderer.__ft) return;
+      var v1461 = v1460.renderer,
+        v1462 = v1461.render;
+      v1461.__ft = true, v1461.render = function () {
+        if (v1290.on && v1290.final && v1300() === "model3d") try {
+          v1290.sweepScene();
+        } catch (v1463) {
+          v1299.err = String(v1463 && v1463.message || v1463);
+        }
+        return v1462.apply(this, arguments);
+      };
+    } catch (v1464) {}
+  }
+  return v1290._patchRender = function (v1465) {
+    try {
+      v1301();
+      if (v1465 && typeof v1465.then === "function") v1465.then(v1301, function () {});
+    } catch (v1466) {}
+  }, v1290._panelLines = function () {
+    var v1467 = [];
+    try {
+      var v1468 = 16.4;
+      try {
+        v1468 = modelCmPerUnit() || 16.4;
+      } catch (v1470) {}
+      var v1469 = v1291.autoCut + v1291.loopCut + v1291.brushCut;
+      v1467.push(v1289 + " " + (!v1290.on ? "꺼짐" : !v1291.curly ? "대기 — 컬 평균 " + v1291.curl + " < " + v1290.minCurl + " (직모는 빗질 = 결 정렬 그대로)" : "켜짐(컬 평균 " + v1291.curl + ") · 직전 가닥 " + v1291.strands + "개 중 자른 것 " + v1469 + "개 — 밖에서 끝난 꼬리 " + v1291.autoCut + " · 멀리 나간 고리 " + v1291.loopCut + " · 빗이 지나간 자리 " + v1291.brushCut + " · 자른 길이 평균 " + (v1469 ? (v1291.cutLen / v1469 * v1468).toFixed(1) : "0") + "cm · 몸통 칸 " + v1291.body + "/" + v1291.cells + "(기준 가닥 " + v1291.thr.toFixed(1) + "개) · " + Math.round(v1291.ms) + "ms" + " · 이 머리에서는 빗 = 가위(53번 결 정렬은 건너뜀)") + (v1291.err ? " · ⚠ " + v1291.err : "")), v1467.push("  3D 결과 화면 선분 거르기: " + (!v1290.on || !v1290.final ? "꺼짐" : !v1299.runs ? "켜짐 · 아직 결과 화면을 안 그림" : "켜짐 · 직전 묶음 선분 " + v1299.segs + "개 중 뺀 것 " + v1299.removed + "개(" + (v1299.removed / Math.max(1, v1299.segs) * 100).toFixed(1) + "%) · 머리 있는 칸 " + v1299.cells + " 중 몸통 " + v1299.body + " · 기준: 가닥 " + v1299.lo.toFixed(1) + "개 이상 이어진 칸(씨앗 " + v1299.hi.toFixed(1) + "개) · " + Math.round(v1299.ms) + "ms · 처리한 횟수 " + v1299.runs) + (v1299.err ? " · ⚠ " + v1299.err : ""));
+    } catch (v1471) {}
+    return v1467;
+  }, console.log(v1289 + " 설치 — 컬이 있는 머리(섹션 컬 평균 " + v1290.minCurl + " 이상)는 몸통에서 벗어난 잔머리를 잘라 내고, 빗질도 정렬 대신 자르기로 동작합니다. 끄기 FLY_TRIM.on=false 후 FLY_TRIM.refresh()"), v1290;
+}();
+function combRefresh() {
+  if (typeof drawAdjustPreview === "function") drawAdjustPreview();
+  if (typeof refreshDevMini3D === "function") refreshDevMini3D();
+  const b = document.getElementById("combUndoBtn");
+  if (b) b.disabled = !COMB.strokes.length;
+}
+/* 화면 좌표 → 지금 보이는 가닥 중 가장 가까운 점(3D). 역투영을 새로 만들지
+   않고 <b>렌더가 쓰는 정투영</b>을 그대로 되돌려 쓴다 — 두 경로가 갈라지지 않게. */
+function combPickAnchor(px, py) {
+  const P = COMB._proj,
+    m = state.hair3Dneutral;
+  if (!P || !m || !m.strands || !m.strands.length) return null;
+  const adj = computeAdjustedHair3DStrands(null, Math.max(1, m.strands.length / 900));
+  if (!adj || !adj.length) return null;
+  let best = null,
+    bd = Infinity;
+  const occ = makeViewOccluder(P.cal);
+  for (const v1472 of adj) {
+    for (const v1473 of v1472.pts) {
+      const v1474 = project3DPointToView(v1473, P.cal, P.yTop, P.CY);
+      // 가려진 자리의 가닥은 못 집는다
+      if (!viewPointVisible(v1474, occ, state.hairMasks && state.hairMasks[P.angle])) continue;
+      const v1475 = P.toCX(v1474.ix) - px,
+        v1476 = P.toCY(v1474.iy) - py,
+        v1477 = v1475 * v1475 + v1476 * v1476;
+      v1477 < bd && (bd = v1477, best = v1473);
+    }
+  }
+  return best ? {
+    x: best.x,
+    y: best.y,
+    z: best.z,
+    dist: Math.sqrt(bd)
+  } : null;
+}
+/* 캔버스 이동량 → 월드 변위. 화면 드래그이므로 <b>카메라 상면</b>에 놓는다:
+   이미지 x는 모델 x(cal.s), 이미지 y는 모델 y(cal.sy, 부호 반대), 깊이 0.
+   그 다음 이 뷰의 실측 포즈로 되돌린다(리프트가 쓰는 것과 같은 R^T). */
+function combDeltaToWorld(dxPx, dyPx) {
+  const P = COMB._proj;
+  if (!P) return null;
+  const dIx = dxPx / Math.max(0.000001, P.pxScale),
+    dIy = dyPx / Math.max(0.000001, P.pxScale),
+    rot = composeRotationZYX(P.cal.yaw, P.cal.pitch, P.cal.roll),
+    v = applyRotationTranspose3(rot, new THREE.Vector3(dIx * P.cal.s, -dIy * P.cal.sy, 0));
+  return {
+    x: v.x,
+    y: v.y,
+    z: v.z
+  };
+}
+function combRadiusModel() {
+  const P = COMB._proj;
+  if (!P) return 0;
+  return COMB.radiusPx / Math.max(0.000001, P.pxScale) * P.cal.s;
+}
+let _combGroup = 0;
+function combStrokeFromDrag(anchor, dxPx, dyPx) {
+  const d = combDeltaToWorld(dxPx, dyPx),
+    r = combRadiusModel();
+  if (!d || !(r > 0)) return null;
+  COMB.strokes.push({
+    p: {
+      x: anchor.x,
+      y: anchor.y,
+      z: anchor.z
+    },
+    d: d,
+    r: r,
+    g: _combGroup
+  });
+  if (COMB.strokes.length > COMB.maxStrokes) COMB.strokes.shift();
+  return combSplat(anchor, d, r), d;
+}
+/* 빗질(COMB)은 <b>주차</b>다 (2026-08-08). 엔진(변위장·길이보존·되돌리기)은
+   검증까지 끝났지만, 사용자가 말한 시술모드는 "빗질할 수 있는 모드"가 아니라
+   <b>마네킹 초기화 상태</b>였다. UI를 붙이지 않으므로 COMB.on은 계속 false이고
+   빗질 경로는 한 번도 안 탄다(비용 0). 나중에 필요하면 버튼 하나만 다시 달면 된다. */
+/* (2026-08-25) 주차 해제 — 조정화면 모드바에 버튼을 달았다. 위 "주차" 주석의
+   "나중에 필요하면 버튼 하나만 다시 달면 된다"가 이것이다. 엔진은 안 건드렸다. */
+function toggleCombMode() {
+  COMB.on = !COMB.on, syncCombBtn(), combRefresh();
+}
+function syncCombBtn() {
+  const v = document.getElementById("gyst-comb");
+  if (v) v.textContent = COMB.on ? "ON" : "OFF";
+  const b = document.getElementById("combBtn");
+  if (!b) return;
+  b.classList.toggle("on", COMB.on), b.textContent = COMB.on ? "빗질 ON" : "빗질 OFF";
+}
+/* 마네킹 리셋 — 시술을 <b>깨끗한 바닥</b>에서 시작하기 위한 초기화.
+     · 스타일링(넘김·볼륨·결흐름·가르마) 전부 중립
+     · 빗질 삭제
+     · 손님 머리에 구워져 있는 웨이브를 편다(생머리)
+   커트·펌·컬러는 <b>시술 결과</b>라 건드리지 않는다 — 되돌리려면 '초기화'. */
+function mannequinReset() {
+  const v1478 = REGROW._beforeMqReset();
+  if (typeof ORIG_ASIS !== "undefined") ORIG_ASIS._onMannequinReset();
+  state.stylingByView = neutralStylingByView(), combClear(), COMB.on = false, syncCombBtn(), MANNEQUIN.on = true, state.hair3Dmannequin = null, syncMannequinBtn();
+  if (typeof buildGyControls === "function") buildGyControls();
+  combRefresh(), REGROW._afterMqReset(v1478), COMB3D._afterUi("mannequinReset");
+}
+function syncMannequinBtn() {
+  const b = document.getElementById("mannequinBtn");
+  if (!b) return;
+  b.classList.toggle("on", MANNEQUIN.on), b.textContent = MANNEQUIN.on ? "마네킹 초기화 ON" : "마네킹 초기화 OFF";
+  !MANNEQUIN.on && (state.specAppliedId = null, state._specUndo = null);
+  if (typeof ORIG_MQ !== "undefined") ORIG_MQ._btnTail();
+  if (typeof STYLE_PATHS !== "undefined") STYLE_PATHS.btnSync();
+}
+/* 켜면 마네킹 모델(절차 생성)로, 끄면 촬영 가닥 모델로 돌아간다.
+   스타일링은 끌 때 되돌리지 않는다 — 끄는 건 "손님 원래 머리 보기"지
+   "리셋"이 아니다. */
+/* 스펙 적용 + 화면 갱신. 시술은 마네킹 상태에서 시작하는 게 원칙이라 꺼져 있으면 켠다.
+   (2026-08-09) 중립 모델이 아직 없으면 예전엔 console.warn 한 줄 찍고 <b>조용히</b>
+   끝났다 — 조정 화면에 막 들어온 순간(리프트는 120ms 뒤에 시작한다)에 누르면
+   버튼이 먹지 않은 것처럼 보였고, 그게 "적용이 안 된다"로 읽혔다. 이제 모델을
+   만들고 나서 다시 건다(한 번만 재시도한다 — 실패가 반복되면 원인은 다른 데 있다). */
+/* ── 스펙은 <b>껐다 켤 수 있어야 한다</b> (2026-08-09) ──────────────────────
+   사용자: "레이어드 보브 버튼 적용은 되는데 꺼지질 않아."
+   맞다. 누를 때마다 다시 걸기만 했다. 그러면 <b>비교를 못 한다</b> — 스펙이
+   뭘 바꿨는지 보려면 끄고 켜 봐야 하는데 그 길이 없었다.
+
+   되돌릴 때 기본값으로 리셋하지 <b>않는다</b>. 미용사가 스펙을 걸기 전에 이미
+   손으로 만져 둔 값이 있을 수 있고, 그걸 기본값으로 밀어버리면 "껐다"가 아니라
+   "지웠다"가 된다. 걸기 직전 상태를 통째로 찍어 두고 그대로 돌려놓는다.
+   (마네킹 ON/OFF는 건드리지 않는다 — 그건 별개 손잡이다.) */
+/* (2026-08-29 2차) 여기 잠깐 있던 SPEC_BUTTONS/syncSpecButtons/specBtnEl 삭제 —
+   모드바의 스펙 버튼 두 개가 없어졌으니 잡을 대상이 없다. 그 지도가 고쳤던 버그
+   (버튼이 늘었는데 세 곳이 specBtn 하나만 잡던 것)는 버튼이 사라지며 함께 소멸.
+   지금 "무엇이 걸려 있는가"를 말하는 자리는 미리보기 딱지(adjustStyleTag) 하나다. */
+function snapshotForSpec() {
+  /** (9/23 원본 주석 — 코드가 바뀌어 제자리를 못 찾음)
+     · (2026-09-16) 해제하면 클리퍼도 걸기 직전으로
+  */
+  return {
+    sections: JSON.parse(JSON.stringify(state.sections)),
+    stylingByView: JSON.parse(JSON.stringify(state.stylingByView || neutralStylingByView())),
+    fade: state.fade ? JSON.parse(JSON.stringify(state.fade)) : null
+  };
+}
+function clearStyleSpec() {
+  const s = state._specUndo;
+  state._specUndo = null, state.specAppliedId = null;
+  if (typeof BRAID !== "undefined") BRAID.on = false;
+  if (s) {
+    state.sections = s.sections, state.stylingByView = s.stylingByView;
+    if (s.fade && state.fade) Object.assign(state.fade, s.fade);
+  }
+  if (typeof buildGyPanel === "function") buildGyPanel();
+  const tag = document.getElementById("adjustStyleTag");
+  if (tag) tag.textContent = state.selectedStyle && state.selectedStyle.name || "스타일 미선택";
+  console.log("[스타일스펙] 해제 — 걸기 직전 값으로 되돌림" + (s ? "" : " (되돌릴 스냅샷이 없어 현재 값 유지)")), combRefresh();
+  try {
+    ADJ_CACHE.bump();
+  } catch (v1479) {}
+  return FLOW_SPEC._afterClear(), null;
+}
+function applyStyleSpecAndRender(id, _retried) {
+  {
+    const v1480 = FLOW_SPEC._asr(id);
+    if (v1480.handled) return v1480.value;
+  }
+  if (state.specAppliedId === id) return clearStyleSpec();
+  if (!MANNEQUIN.on) mannequinReset();
+  /* 스타일 적용은 여러 단계가 순차로 돈다 — 단계마다 다시 그리지 않게 <b>문</b>으로 묶는다
+       (10-hair-render-2d.js의 RENDER_GATE 배너). 끝에 한 번만 그린다. */
+  /* (2026-08-29 2차) 진행 표시를 <b>버튼 라벨에서 미리보기 딱지로</b> 옮겼다.
+         버튼이 없어졌기 때문이기도 하지만, 이제 이 경로는 미용사가 누르는 게
+         아니라 조정 화면에 들어오면 <b>저절로</b> 도는 자리라서 그렇다 —
+         아무 표시가 없으면 몇 초 동안 "왜 스타일이 안 걸렸지"로 읽힌다. */
+  if (!state.hair3Dneutral) {
+    if (_retried || typeof buildNeutralHair3D !== "function") return console.warn("[스타일스펙] 3D 모델을 못 만들었다 — 촬영/세그멘테이션부터 확인할 것"), null;
+    const v1481 = document.getElementById("adjustStyleTag");
+    if (v1481) v1481.textContent = "3D 준비 중…";
+    return buildNeutralHair3D(() => {
+      applyStyleSpecAndRender(id, true);
+    }), null;
+  }
+  // 걸기 <b>직전</b> 상태 — 해제하면 여기로 돌아온다
+  const undo = snapshotForSpec(),
+    rep = typeof withRenderGate === "function" ? withRenderGate(() => _applyStyleSpecBody(id, undo), "스타일 적용") : _applyStyleSpecBody(id, undo);
+  return rep;
+}
+function _applyStyleSpecBody(id, undo) {
+  const rep = applyStyleSpec(id);
+  if (!rep) return null;
+  state._specUndo = undo, state.specAppliedId = id;
+  if (typeof buildGyPanel === "function") buildGyPanel();else {
+    if (typeof buildGyControls === "function") buildGyControls();
+  }
+  const tag = document.getElementById("adjustStyleTag");
+  if (tag) tag.textContent = rep.name || "스타일 스펙 적용";
+  return combRefresh(), rep;
+}
+function toggleMannequin() {
+  const v1482 = MANNEQUIN.on,
+    v1483 = ORIG_MQ._beforeToggle();
+  if (v1483 === "handled") {
+    toggleMannequinBareCheck(v1482);
+    return;
+  }
+  const v1484 = REGROW._beforeToggleMq();
+  MANNEQUIN.on ? (MANNEQUIN.on = false, syncMannequinBtn(), combRefresh()) : mannequinReset();
+  REGROW._afterToggleMq(v1484), COMB3D._afterUi("toggleMannequin");
+  if (v1483 === "inner") ORIG_MQ._syncBtn();
+  toggleMannequinBareCheck(v1482);
+}
+function toggleMannequinBareCheck(v1485) {
+  try {
+    if (!v1485 && MANNEQUIN.on && typeof ORIG_MQ !== "undefined" && typeof ORIG_MQ.bare === "function") {
+      let v1486 = 0;
+      try {
+        Object.keys(state.sections || {}).forEach(v1487 => {
+          if ((state.sections[v1487].curl || 0) > 0) v1486++;
+        });
+      } catch (v1488) {}
+      (v1486 || state._globalCurl) && (ORIG_MQ.bare(), console.log("[64] 마네킹 켬 — 남아 있던 컬 지움(섹션 " + v1486 + "곳) → 맨 마네킹"));
+    }
+  } catch (v1489) {
+    console.warn("[64] 맨 마네킹 맞추기 실패", v1489);
+  }
+}
+var CROWN_FILL = {
+  on: true,
+  mul: 1,
+  phiMax: 0.75,
+  NP: 24,
+  NT: 32,
+  maxAddFrac: 0.6,
+  maxSrcDist: 2.5
+};
+function crownFill(v1490) {
+  if (!CROWN_FILL.on || !v1490 || !v1490.strands || !v1490.strands.length) return v1490;
+  var v1491 = null;
+  try {
+    v1491 = getScalpEllipsoid();
+  } catch (v1537) {}
+  if (!v1491) return v1490;
+  var v1492 = isFinite(v1490.CY) ? v1490.CY : typeof SCALP_CENTER_Y !== "undefined" ? SCALP_CENTER_Y : 0.15,
+    v1493 = CROWN_FILL.NP,
+    v1494 = CROWN_FILL.NT,
+    v1495 = Math.PI / v1493,
+    v1496 = 2 * Math.PI / v1494;
+  function v1497(v1538, v1539) {
+    return {
+      x: v1491.a * Math.sin(v1538) * Math.sin(v1539),
+      y: v1492 + v1491.b * Math.cos(v1538),
+      z: v1491.c * Math.sin(v1538) * Math.cos(v1539)
+    };
+  }
+  function v1498(v1540, v1541) {
+    var v1542 = (v1540 + 0.5) * v1495,
+      v1543 = (v1541 + 0.5) * v1496 - Math.PI,
+      v1544 = 0.0001,
+      v1545 = v1497(v1542, v1543),
+      v1546 = v1497(v1542 + v1544, v1543),
+      v1547 = v1497(v1542, v1543 + v1544),
+      v1548 = v1546.x - v1545.x,
+      v1549 = v1546.y - v1545.y,
+      v1550 = v1546.z - v1545.z,
+      v1551 = v1547.x - v1545.x,
+      v1552 = v1547.y - v1545.y,
+      v1553 = v1547.z - v1545.z,
+      v1554 = v1549 * v1553 - v1550 * v1552,
+      v1555 = v1550 * v1551 - v1548 * v1553,
+      v1556 = v1548 * v1552 - v1549 * v1551;
+    return Math.sqrt(v1554 * v1554 + v1555 * v1555 + v1556 * v1556) / (v1544 * v1544) * v1495 * v1496;
+  }
+  function v1499(v1557) {
+    var v1558 = Math.acos(Math.max(-1, Math.min(1, (v1557.y - v1492) / v1491.b))),
+      v1559 = Math.atan2(v1557.x / v1491.a, v1557.z / v1491.c),
+      v1560 = Math.min(v1493 - 1, Math.floor(v1558 / v1495)),
+      v1561 = Math.min(v1494 - 1, Math.floor((v1559 + Math.PI) / v1496));
+    return v1560 * v1494 + v1561;
+  }
+  var v1500 = new Array(v1493 * v1494);
+  for (var v1501 = 0; v1501 < v1490.strands.length; v1501++) {
+    var v1502 = v1490.strands[v1501];
+    if (!v1502 || !v1502.pts || !v1502.pts.length) continue;
+    var v1503 = v1499(v1502.pts[0]);
+    (v1500[v1503] || (v1500[v1503] = [])).push(v1502);
+  }
+  var v1504 = [];
+  for (var v1505 = 0; v1505 < v1493; v1505++) {
+    var v1506 = (v1505 + 0.5) * v1495;
+    if (v1506 < 0.9 || v1506 > 1.6) continue;
+    for (var v1507 = 0; v1507 < v1494; v1507++) {
+      var v1508 = v1500[v1505 * v1494 + v1507];
+      if (v1508 && v1508.length >= 3) v1504.push(v1508.length / v1498(v1505, v1507));
+    }
+  }
+  if (v1504.length < 8) return v1490;
+  v1504.sort(function (v1562, v1563) {
+    return v1562 - v1563;
+  });
+  var v1509 = v1504[v1504.length >> 1] * CROWN_FILL.mul,
+    v1510 = Math.round(v1490.strands.length * CROWN_FILL.maxAddFrac),
+    v1511 = 0,
+    v1512 = 0,
+    v1513 = 0,
+    v1514 = 97531;
+  function v1515() {
+    return v1514 = v1514 * 1103515245 + 12345 & 2147483647, v1514 / 2147483647;
+  }
+  for (v1505 = 0; v1505 < v1493 && v1511 < v1510; v1505++) {
+    if ((v1505 + 0.5) * v1495 > CROWN_FILL.phiMax) break;
+    for (v1507 = 0; v1507 < v1494 && v1511 < v1510; v1507++) {
+      var v1516 = v1498(v1505, v1507),
+        v1517 = (v1500[v1505 * v1494 + v1507] || []).length,
+        v1518 = Math.round(v1509 * v1516);
+      if (v1517 >= v1518) continue;
+      var v1519 = [];
+      for (var v1520 = -1; v1520 <= 1; v1520++) for (var v1521 = -1; v1521 <= 1; v1521++) {
+        var v1522 = v1505 + v1520;
+        if (v1522 < 0 || v1522 >= v1493) continue;
+        var v1523 = v1500[v1522 * v1494 + ((v1507 + v1521) % v1494 + v1494) % v1494];
+        if (v1523) v1519 = v1519.concat(v1523);
+      }
+      if (!v1519.length) {
+        v1513++;
+        continue;
+      }
+      var v1524 = Math.sqrt(v1516);
+      v1512++;
+      for (var v1525 = v1517; v1525 < v1518 && v1511 < v1510; v1525++) {
+        var v1526 = v1497((v1505 + v1515()) * v1495, (v1507 + v1515()) * v1496 - Math.PI),
+          v1527 = null,
+          v1528 = Infinity;
+        for (var v1529 = 0; v1529 < v1519.length; v1529++) {
+          var v1530 = v1519[v1529].pts[0],
+            v1531 = (v1530.x - v1526.x) * (v1530.x - v1526.x) + (v1530.y - v1526.y) * (v1530.y - v1526.y) + (v1530.z - v1526.z) * (v1530.z - v1526.z);
+          v1531 < v1528 && (v1528 = v1531, v1527 = v1519[v1529]);
+        }
+        if (!v1527 || Math.sqrt(v1528) > CROWN_FILL.maxSrcDist * v1524 + 0.000001) {
+          v1513++;
+          break;
+        }
+        var v1532 = v1527.pts[0],
+          v1533 = v1526.x - v1532.x,
+          v1534 = v1526.y - v1532.y,
+          v1535 = v1526.z - v1532.z,
+          v1536 = Object.assign({}, v1527, {
+            pts: v1527.pts.map(function (v1564) {
+              return {
+                x: v1564.x + v1533,
+                y: v1564.y + v1534,
+                z: v1564.z + v1535
+              };
+            }),
+            _crownAdded: true
+          });
+        if (v1527.colors && v1527.colors.slice) v1536.colors = v1527.colors.slice();
+        v1490.strands.push(v1536), v1511++;
+      }
+    }
+  }
+  return console.log("[앞머리 길이] [정수리 채움] 기준 밀도(옆·뒤 중앙) ×" + CROWN_FILL.mul + " · 모자란 칸 " + v1512 + "개에 " + v1511 + "가닥 추가" + (v1513 ? " · 원본이 멀어 건너뛴 칸 " + v1513 : "") + " · 끄기 CROWN_FILL.on=false"), v1490;
+}
+function setCrownFill(v1565) {
+  CROWN_FILL.mul = Math.max(0.5, Math.min(3, +v1565 || 1));
+  if (typeof state !== "undefined" && state) state.hair3Dmannequin = null;
+  try {
+    if (typeof ADJ_CACHE !== "undefined") ADJ_CACHE.bump();
+  } catch (v1566) {}
+  try {
+    if (typeof combRefresh === "function") combRefresh();
+  } catch (v1567) {}
+  return CROWN_FILL.mul;
+}
+var _hairDensityBase = null;
+function setHairDensity(v1568) {
+  v1568 = Math.max(0.5, Math.min(3, +v1568 || 1));
+  var v1569 = window.ROOT_EVEN,
+    v1570 = typeof HAIR3D_RENDER !== "undefined" ? HAIR3D_RENDER : null;
+  if (!_hairDensityBase) _hairDensityBase = {
+    boost: v1569 ? v1569.boost : 1.2,
+    maxAdd: v1569 ? v1569.maxAddFrac : 1.2,
+    mul: v1570 ? v1570.targetMul : 1.5
+  };
+  v1569 && (v1569.boost = _hairDensityBase.boost * v1568, v1569.maxAddFrac = _hairDensityBase.maxAdd * v1568);
+  if (v1570) v1570.targetMul = _hairDensityBase.mul * v1568;
+  if (typeof state !== "undefined" && state) state.hair3Dmannequin = null;
+  try {
+    if (typeof ADJ_CACHE !== "undefined") ADJ_CACHE.bump();
+  } catch (v1571) {}
+  EYE_GUARD._geo = null;
+  try {
+    if (typeof combRefresh === "function") combRefresh();
+  } catch (v1572) {}
+  return console.log("[앞머리 길이] 숱 ×" + v1568 + " — ROOT_EVEN.boost " + (v1569 && v1569.boost.toFixed(2)) + " · maxAddFrac " + (v1569 && v1569.maxAddFrac.toFixed(2)) + " · HAIR3D_RENDER.targetMul " + (v1570 && v1570.targetMul.toFixed(2)) + " (되돌리기 setHairDensity(1))"), v1568;
+}
+console.log("[앞머리 길이] 설치 — 앞머리 기본 끝 " + EYE_GUARD.defaultTipFaceFrac + " · 가닥 자르기 없음(얼굴 가림은 FACE_COVER_CHECK가 검사만 함)");
 /* (2026-10-17) 끝단 퍼짐 — 사용자: "뒤모습에서 보면 머리 끝단이 옆으로 좀 퍼져야 하는데 그렇게 안 나왔다".
    같은 사진: 뒷모습 머리 폭이 끝으로 갈수록 두상 폭의 약 2배(A라인)인데, 3D는 끝이 모이는 V자였다.
    사진(뒤 → 없으면 정면) 머리 영역에서 위→아래 폭 비율을 재고, 3D 가닥의 같은 높이 폭이 그보다 좁으면
    어깨 아래부터 가로(x)로만 벌린다(좁히지는 않음). 원본 머리(__original__/마네킹 끔)에만.
    끄기 TIP_FLARE.on=false · 최대 배수 TIP_FLARE.maxScale · 시작 높이 TIP_FLARE.fromT(0=정수리 1=끝) */
-var TIP_FLARE={on:true,fromT:0.35,rampT:0.15,maxScale:2.4,bands:24,cmpMaxT:0.85,backOnly:true,pct:0.9,stats:null};
-function tipFlarePhotoProfile(){
-  var views=['back','front'];
-  for(var v=0;v<views.length;v++){
-    var m=state.hairMasks&&state.hairMasks[views[v]];
-    if(!m||!m.scalpY||!m.hairEndY)continue;
-    var W=m.scalpY.length,top=1e9,bot=[];
-    for(var x=0;x<W;x++){if(m.scalpY[x]>=0&&m.hairEndY[x]>m.scalpY[x]){if(m.scalpY[x]<top)top=m.scalpY[x];bot.push(m.hairEndY[x]);}}
-    if(bot.length<20)continue;
-    bot.sort(function(a,b){return a-b;});var end=bot[Math.floor(bot.length*0.9)];
-    if(!(end>top+10))continue;
-    var N=TIP_FLARE.bands,prof=new Float64Array(N);
-    for(var b=0;b<N;b++){var y=top+(end-top)*(b+0.5)/N,lo=1e9,hi=-1;
-      for(var x2=0;x2<W;x2++){if(m.scalpY[x2]>=0&&m.scalpY[x2]<=y&&m.hairEndY[x2]>=y){if(x2<lo)lo=x2;if(x2>hi)hi=x2;}}
-      prof[b]=hi>=lo?(hi-lo+1):0;}
-    var head=0;for(var b2=0;b2<Math.ceil(N*0.25);b2++)head=Math.max(head,prof[b2]);
-    if(!(head>0))continue;
-    for(var b3=0;b3<N;b3++)prof[b3]/=head;
-    return {view:views[v],ratio:prof};
+var TIP_FLARE = {
+  on: true,
+  fromT: 0.35,
+  rampT: 0.15,
+  maxScale: 2.4,
+  bands: 24,
+  cmpMaxT: 0.85,
+  backOnly: true,
+  pct: 0.9,
+  stats: null
+};
+function tipFlarePhotoProfile() {
+  var views = ["back", "front"];
+  for (var v = 0; v < views.length; v++) {
+    var m = state.hairMasks && state.hairMasks[views[v]];
+    if (!m || !m.scalpY || !m.hairEndY) continue;
+    var W = m.scalpY.length,
+      top = 1e9,
+      bot = [];
+    for (var x = 0; x < W; x++) {
+      if (m.scalpY[x] >= 0 && m.hairEndY[x] > m.scalpY[x]) {
+        if (m.scalpY[x] < top) top = m.scalpY[x];
+        bot.push(m.hairEndY[x]);
+      }
+    }
+    if (bot.length < 20) continue;
+    bot.sort(function (a, b) {
+      return a - b;
+    });
+    var end = bot[Math.floor(bot.length * 0.9)];
+    if (!(end > top + 10)) continue;
+    var N = TIP_FLARE.bands,
+      prof = new Float64Array(N);
+    for (var b = 0; b < N; b++) {
+      var y = top + (end - top) * (b + 0.5) / N,
+        lo = 1e9,
+        hi = -1;
+      for (var x2 = 0; x2 < W; x2++) {
+        if (m.scalpY[x2] >= 0 && m.scalpY[x2] <= y && m.hairEndY[x2] >= y) {
+          if (x2 < lo) lo = x2;
+          if (x2 > hi) hi = x2;
+        }
+      }
+      prof[b] = hi >= lo ? hi - lo + 1 : 0;
+    }
+    var head = 0;
+    for (var b2 = 0; b2 < Math.ceil(N * 0.25); b2++) head = Math.max(head, prof[b2]);
+    if (!(head > 0)) continue;
+    for (var b3 = 0; b3 < N; b3++) prof[b3] /= head;
+    return {
+      view: views[v],
+      ratio: prof
+    };
   }
   return null;
 }
-function tipFlareAll(strands){
-  if(!TIP_FLARE.on||!strands||!strands.length)return strands;
-  var orig=false;try{orig=state.specAppliedId==='__original__'||(typeof MANNEQUIN!=='undefined'&&!MANNEQUIN.on);}catch(e){}
-  if(!orig)return strands;
-  var P=null;try{P=tipFlarePhotoProfile();}catch(e){P=null;}
-  if(!P)return strands;
-  var N=TIP_FLARE.bands,yTop=-1e9,tips=[];
-  for(var i=0;i<strands.length;i++){var p=strands[i]&&strands[i].pts;if(!p||p.length<2)continue;if(p[0].y>yTop)yTop=p[0].y;tips.push(p[p.length-1].y);}
-  if(tips.length<50)return strands;
-  tips.sort(function(a,b){return a-b;});var yBot=tips[Math.floor(tips.length*0.1)];
-  if(!(yTop>yBot))return strands;
-  var bandAbs=[];for(var b=0;b<N;b++)bandAbs.push([]);
-  var tOf=function(y){return (yTop-y)/(yTop-yBot);};
-  for(var i2=0;i2<strands.length;i2++){var q=strands[i2]&&strands[i2].pts;if(!q)continue;
-    for(var k=0;k<q.length;k+=2){if(TIP_FLARE.backOnly&&!(q[k].z<0))continue;var t=tOf(q[k].y);if(t<0||t>=1)continue;bandAbs[Math.floor(t*N)].push(Math.abs(q[k].x));}}
-  var cur=new Float64Array(N);
-  for(var b4=0;b4<N;b4++){var a=bandAbs[b4];if(a.length<10){cur[b4]=0;continue;}a.sort(function(u,v){return u-v;});cur[b4]=2*a[Math.floor(a.length*TIP_FLARE.pct)];}
-  var head3=0;for(var b5=0;b5<Math.ceil(N*0.25);b5++)head3=Math.max(head3,cur[b5]);
-  if(!(head3>0))return strands;
-  var sc=new Float64Array(N);
+function tipFlareAll(strands) {
+  if (!TIP_FLARE.on || !strands || !strands.length) return strands;
+  var orig = false;
+  try {
+    orig = state.specAppliedId === "__original__" || typeof MANNEQUIN !== "undefined" && !MANNEQUIN.on;
+  } catch (e) {}
+  if (!orig) return strands;
+  var P = null;
+  try {
+    P = tipFlarePhotoProfile();
+  } catch (e) {
+    P = null;
+  }
+  if (!P) return strands;
+  var N = TIP_FLARE.bands,
+    yTop = -1e9,
+    tips = [];
+  for (var i = 0; i < strands.length; i++) {
+    var p = strands[i] && strands[i].pts;
+    if (!p || p.length < 2) continue;
+    if (p[0].y > yTop) yTop = p[0].y;
+    tips.push(p[p.length - 1].y);
+  }
+  if (tips.length < 50) return strands;
+  tips.sort(function (a, b) {
+    return a - b;
+  });
+  var yBot = tips[Math.floor(tips.length * 0.1)];
+  if (!(yTop > yBot)) return strands;
+  var bandAbs = [];
+  for (var b = 0; b < N; b++) bandAbs.push([]);
+  var tOf = function (y) {
+    return (yTop - y) / (yTop - yBot);
+  };
+  for (var i2 = 0; i2 < strands.length; i2++) {
+    var q = strands[i2] && strands[i2].pts;
+    if (!q) continue;
+    for (var k = 0; k < q.length; k += 2) {
+      if (TIP_FLARE.backOnly && !(q[k].z < 0)) continue;
+      var t = tOf(q[k].y);
+      if (t < 0 || t >= 1) continue;
+      bandAbs[Math.floor(t * N)].push(Math.abs(q[k].x));
+    }
+  }
+  var cur = new Float64Array(N);
+  for (var b4 = 0; b4 < N; b4++) {
+    var a = bandAbs[b4];
+    if (a.length < 10) {
+      cur[b4] = 0;
+      continue;
+    }
+    a.sort(function (u, v) {
+      return u - v;
+    });
+    cur[b4] = 2 * a[Math.floor(a.length * TIP_FLARE.pct)];
+  }
+  var head3 = 0;
+  for (var b5 = 0; b5 < Math.ceil(N * 0.25); b5++) head3 = Math.max(head3, cur[b5]);
+  if (!(head3 > 0)) return strands;
+  var sc = new Float64Array(N);
   /* 끝단 가장자리는 둥글게 짧아져 폭이 줄어드는 게 정상이라 cmpMaxT(0.85)까지만 비교하고, 그 아래는 0.85의 배수를 그대로 쓴다 */
-  var bMax=Math.max(1,Math.floor(TIP_FLARE.cmpMaxT*N));
-  for(var b6=0;b6<N;b6++){var bb=Math.min(b6,bMax),tgt=P.ratio[bb]*head3;sc[b6]=(cur[bb]>0&&tgt>cur[bb])?Math.min(TIP_FLARE.maxScale,tgt/cur[bb]):1;}
-  for(var r=0;r<2;r++){var s2=Float64Array.from(sc);for(var b7=1;b7<N-1;b7++)sc[b7]=(s2[b7-1]+2*s2[b7]+s2[b7+1])/4;}
-  var scaleAt=function(t){if(t<=TIP_FLARE.fromT)return 1;var f=Math.min(1,(t-TIP_FLARE.fromT)/TIP_FLARE.rampT),ff=f*f*(3-2*f);
-    var bi=Math.min(N-1,Math.max(0,Math.floor(Math.min(t,0.999)*N)));return 1+(sc[bi]-1)*ff;};
-  var out=strands.slice(),moved=0,maxS=1;
-  for(var i3=0;i3<strands.length;i3++){var st=strands[i3],pp=st&&st.pts;if(!pp||pp.length<2)continue;
-    var np=null;for(var k2=1;k2<pp.length;k2++){var g=scaleAt(tOf(pp[k2].y));if(g>1.0005){if(!np)np=pp.slice();np[k2]=Object.assign({},pp[k2],{x:pp[k2].x*g});if(g>maxS)maxS=g;}}
-    if(np){out[i3]=Object.assign({},st,{pts:np});moved++;}}
-  TIP_FLARE.stats={view:P.view,moved:moved,maxScale:+maxS.toFixed(2),photoTip:+P.ratio[Math.floor(TIP_FLARE.cmpMaxT*N)].toFixed(2),model3dTip:+(cur[Math.floor(TIP_FLARE.cmpMaxT*N)]/head3).toFixed(2)};
-  if(!TIP_FLARE._logged){TIP_FLARE._logged=true;try{console.log('[끝단 퍼짐] '+P.view+' 사진 아래쪽(85%) 폭 = 두상의 '+TIP_FLARE.stats.photoTip+'배 · 3D '+TIP_FLARE.stats.model3dTip+'배 → 가닥 '+moved+'개 벌림(최대 ×'+TIP_FLARE.stats.maxScale+') · 끄기 TIP_FLARE.on=false');}catch(e){}}
+  var bMax = Math.max(1, Math.floor(TIP_FLARE.cmpMaxT * N));
+  for (var b6 = 0; b6 < N; b6++) {
+    var bb = Math.min(b6, bMax),
+      tgt = P.ratio[bb] * head3;
+    sc[b6] = cur[bb] > 0 && tgt > cur[bb] ? Math.min(TIP_FLARE.maxScale, tgt / cur[bb]) : 1;
+  }
+  for (var r = 0; r < 2; r++) {
+    var s2 = Float64Array.from(sc);
+    for (var b7 = 1; b7 < N - 1; b7++) sc[b7] = (s2[b7 - 1] + 2 * s2[b7] + s2[b7 + 1]) / 4;
+  }
+  var scaleAt = function (t) {
+    if (t <= TIP_FLARE.fromT) return 1;
+    var f = Math.min(1, (t - TIP_FLARE.fromT) / TIP_FLARE.rampT),
+      ff = f * f * (3 - 2 * f);
+    var bi = Math.min(N - 1, Math.max(0, Math.floor(Math.min(t, 0.999) * N)));
+    return 1 + (sc[bi] - 1) * ff;
+  };
+  var out = strands.slice(),
+    moved = 0,
+    maxS = 1;
+  for (var i3 = 0; i3 < strands.length; i3++) {
+    var st = strands[i3],
+      pp = st && st.pts;
+    if (!pp || pp.length < 2) continue;
+    var np = null;
+    for (var k2 = 1; k2 < pp.length; k2++) {
+      var g = scaleAt(tOf(pp[k2].y));
+      if (g > 1.0005) {
+        if (!np) np = pp.slice();
+        np[k2] = Object.assign({}, pp[k2], {
+          x: pp[k2].x * g
+        });
+        if (g > maxS) maxS = g;
+      }
+    }
+    if (np) {
+      out[i3] = Object.assign({}, st, {
+        pts: np
+      });
+      moved++;
+    }
+  }
+  TIP_FLARE.stats = {
+    view: P.view,
+    moved: moved,
+    maxScale: +maxS.toFixed(2),
+    photoTip: +P.ratio[Math.floor(TIP_FLARE.cmpMaxT * N)].toFixed(2),
+    model3dTip: +(cur[Math.floor(TIP_FLARE.cmpMaxT * N)] / head3).toFixed(2)
+  };
+  if (!TIP_FLARE._logged) {
+    TIP_FLARE._logged = true;
+    try {
+      console.log("[끝단 퍼짐] " + P.view + " 사진 아래쪽(85%) 폭 = 두상의 " + TIP_FLARE.stats.photoTip + "배 · 3D " + TIP_FLARE.stats.model3dTip + "배 → 가닥 " + moved + "개 벌림(최대 ×" + TIP_FLARE.stats.maxScale + ") · 끄기 TIP_FLARE.on=false");
+    } catch (e) {}
+  }
   return out;
 }
+/** (9/23 원본의 맨 윗단 주석 — 제자리를 못 찾음)
+   · 가닥당 마디 수(촬영 가닥의 점 수와 비슷한 수준)
+   · 뿌리에서 법선 → 중력으로 넘어가는 구간. (2026-08-09) <b>길이 비율에서
+     고정 거리로</b> 바뀌었다 — 거리는 실측 모발 두께(헐−두피)를 그대로 쓴다.
+     rootRampMax는 그 두께가 가닥 길이보다 클 때(아주 짧은 커트)의 상한일 뿐.
+   · 두피에서 살짝 띄워 시작(정확히 표면이면 첫 밀어냄이 불안정)
+   · 섹션 길이 = 촬영 가닥 호길이의 이 백분위 (2026-08-09: 0.5 중앙값 → 1.0 최댓값)
+     사용자 지정. 이유가 <b>시술의 방향성</b>에 있다: 커트는 <b>빼는</b> 일이다.
+     중앙값으로 심으면 그 섹션 가닥의 절반이 손님 실제 머리보다 짧게 시작하고,
+     그 부족분은 커트로 되돌릴 수 없다(늘리는 건 자르기가 아니고, 실제로
+     CUT3D.maxRatio가 1.8에서 막는다). 그래서 역산이 슬라이더 상한에 붙었다 —
+     실기기에서 crown 100(오차 24.9%)이 정확히 그 모습이었다.
+     최댓값으로 심으면 모든 가닥이 <b>실측 최장</b>에서 시작하므로 어떤 목표
+     길이든 빼기만으로 도달한다. 마네킹 초기 상태가 "아직 안 자른 머리"라는
+     정의와도 맞는다. 대가는 초기 길이가 실제보다 길어 보이는 것인데, 시술
+     전 상태라 그게 맞다.
+   · 이보다 밀도가 낮은 셀은 안 심는다(HAIR_OVERLAP과 같은 기준)
+   · 가닥이 타고 흐르는 껍질 위치(모발 두께 안)
+   · 두상에 닿아 있는 동안 바깥으로 퍼지는 정도(정수리 갇힘 방지)
+   · 끝 높이 = 눈에서 눈→턱의 이 비율만큼 아래.
+     (2026-09-02 4차) 0.35(광대) → <b>0</b>(눈높이). 사용자: "눈높이 정도에서
+     일자로 되게 정리해줘." 자는 그대로 makeFaceProjector(EYE = CY)다.
+   · 앞머리 라인을 <b>가닥 종류와 무관하게</b> 먹인다 (2026-09-02 4차).
+     화면에 남아 있던 "중간의 긴 머리"는 앞머리 가닥이 아니었다 — 앞머리로
+     안 뽑힌 나머지 40%가 growMannequinStrand로 두상을 타고 내려와 얼굴 앞을
+     가로질러 턱 밑까지 떨어진 것이다. 앞머리만 눈높이에 맞추면 그 옆으로
+     안 잘린 가닥이 계속 흘러내려 <b>일자가 안 된다</b>. 실제 시술도 뱅은
+     "뽑은 가닥만"이 아니라 <b>그 선을 넘는 것 전부</b>를 자른다.
+     lineHalfX: 얼굴 앞을 지나는가의 판정 폭(두상 반너비 대비). 이보다 바깥은
+     옆머리 커튼이라 안 건드린다.
+   · 앞머리 선의 <b>길이 감도</b>와 <b>바닥</b> (2026-09-02 6차).
+     · lineGain — 선이 중립(눈높이)에서 벗어나는 폭. 1.0이면 5차 그대로인데
+     실기기에서 상단이 인중까지 내려왔다(사용자: "길이값 최고로 하면 얼굴
+     사라지는 건 여전"). 비율 자체를 건드리면 커트 길이가 같이 바뀌므로
+     <b>선에만</b> 감쇠를 건다 — 머리는 길어지되 앞머리가 얼굴을 삼키지 않는다.
+     · lineFloorFaceFrac — 선이 내려갈 수 있는 최저. 눈에서 눈→턱의 이 비율.
+     0.40은 대략 <b>코끝</b>이다. 이 아래로는 앞머리가 아니라 커튼이 된다.
+     감마가 아니라 <b>하드 클램프</b>인 이유: 감마는 어디서 멈추는지 모르고,
+     여기서 알아야 하는 것은 정확히 "얼굴이 남는가"다.
+     되돌리기: lineGain = 1, lineFloorFaceFrac = 0 (5차 동작)
+   · ── 크라운은 <b>자기 선</b>을 쓴다 · 눈썹 (2026-09-05 사용자 지시) ─────────
+     사용자: "마네킹모드에서 크라운 섹션 헤어가닥이 너무 내려와 있는데, 눈썹
+     높이 정도로 조정해줘."
+     지금까지 선은 <b>하나</b>였다(프론트가 주인, 크라운 지분 0.20 — fringeLineY
+     배너). 그래서 크라운 가닥이 프론트와 같은 눈높이까지 내려왔고, 뿌리가 더
+     뒤에 있는 만큼 얼굴 앞을 <b>길게</b> 가로질러 화면에서 제일 무겁게 보인다.
+     실제 시술도 크라운을 앞으로 당겨 자를 때는 프론트보다 <b>짧게</b> 둔다 —
+     그래야 위층이 뜨고 앞머리에 층이 생긴다. 그래서 크라운만 선을 하나 더 긋는다.
+     ⚠ "일자가 깨진다"는 fringeLineY의 경고는 <b>여전히 유효</b>하다. 그건
+     가닥마다 제 비율을 쓰지 말라는 말이고, 여기서 늘어난 선은 <b>섹션당
+     하나</b>다(프론트 한 줄 · 크라운 한 줄). 프론트끼리는 여전히 일자다.
+     · crownLine    — 끄면 예전처럼 프론트와 한 선을 쓴다(되돌리기 스위치)
+     · crownRiseFrac 0.18 — 눈(CY)에서 <b>위로</b> E.b의 이 비율 = 눈썹.
+     새 자가 아니라 mannequinHasFringe가 이미 쓰던 yBrow의 그 값이다
+     (이제 양쪽이 mqBrowY 하나를 본다 — 두 벌이 되지 않게).
+     · crownAllAround — <b>크라운은 앞머리만이 아니다</b>(2026-09-05 2차 지시:
+     "크라운은 앞머리만 말하는 게 아니야. 크라운 전체적으로 눈썹라인 위로").
+     1차에서는 선을 그어 놓고 <b>얼굴 앞을 지나는 가닥만</b> 잘랐다
+     (mqTrimAtFringeLine의 c.z > faceZ · |x| ≤ halfX 게이트). 그래서 크라운
+     중에서도 관자 옆이나 뒤로 흘러내린 가닥은 그대로 남아, 화면에서는
+     "크라운이 여전히 길다"로 보인다 — 선은 걸렸는데 <b>절반에만</b> 걸린 것이다.
+     이 스위치를 켜면 크라운 가닥은 방향을 안 보고 눈썹 선에서 잘린다.
+     ⚠ 뒤로 떨어지는 크라운도 같이 잘린다 — 크라운 섹션이 통째로 <b>눈썹 위
+     길이</b>가 된다는 뜻이고, 그게 이번 지시다. 뒤는 남기고 싶어지면 이
+     스위치를 끄면 1차(얼굴 앞만) 동작으로 돌아간다.
+     · crownFloorBrow — 크라운 선이 <b>눈썹 밑으로는 안 내려간다</b>. 길이
+     슬라이더를 최대로 올려도 마찬가지다("눈썹라인 위로"가 상한이 아니라
+     <b>경계</b>라는 뜻). 짧게 줄이는 쪽은 그대로 살아 있어 헤어라인까지
+     올라간다 — 슬라이더 전 구간이 죽지 않는다(3차의 실패를 안 되풀이한다).
+   · front 뿌리 중 앞머리로 내릴 비율
+   · crown 뿌리 중 앞머리로 내릴 비율
+   · crown은 |θ|가 thFront의 이 배 안(=앞쪽 띠)일 때만 후보
+   · 이마 앞으로 뜨는 정도(뿌리~끝 거리 대비)
+   · 끝이 중앙 쪽으로 모이는 정도(1이면 안 모임)
+   · 이마 앞 표본 중 이 비율 이상이 "머리 있음"이면 안 심는다
+   · 뿌리~끝 거리가 이보다 짧으면 앞머리로 안 친다
+   · MediaPipe 정중선 정점 — <b>추측하지 않는다</b>. 이마(10)·미간(168)·코끝(1)·
+     턱(152)은 이 파일이 detectFaceLandmarks/PROFILE_DEPTH_ANCHORS에서 이미
+     쓰는 검증된 인덱스이고, 나머지는 그 사이를 잇는 같은 정중선 위의 점이다.
+   · 높이 구간 수 — 선 하나를 표현하는 데 이 이상은 잡음이다
+   · [진단] 'side'(실측) | 'ellipsoid'(폴백) | null
+   · [진단] 실제로 곡선에 들어간 정점 수
+   · 시술모드 ON/OFF
+   · 브러시 반경(캔버스 백킹 px) — 화면 확대에 따라 자동 환산
+   · 거리 감쇠 지수
+   · 이 비율까지의 뿌리 구간은 붙잡혀 있다
+   · 변위장 격자 한 변
+   · 이만큼 움직여야 한 획으로 친다
+   · 획들이 실제로 건드린 범위(AABB). 대부분의 가닥은 여기 밖이라 6번 비교로
+   · 통째로 건너뛴다 — 이게 없으면 안 움직이는 가닥까지 8모서리 보간을 돈다
+   · (실측: 16,000가닥 442ms → 이 컷으로 대부분 제거).
+   · 변위장의 최대 크기(모델 단위) — 클립 여유 계산에 쓴다
+   · (11차) 중립 3D 모델에 섹션별 조정 연산자(길이·컬)를 적용해 "조정된 월드 가닥"을
+   · 반환. 미니뷰(3D)와 조정창 투영(2D)이 같은 소스를 쓰게 하는 단일 출처.
+   · srcAngleFilter를 주면 그 뷰 캡처 가닥만(뷰별 투영 시 교차뷰 잡음 방지).
+   · stride: 조정 연산을 적용할 가닥 간격(1=전부). 조정 화면은 어차피 일부만
+     그리는데 전 가닥에 길이·컬·중력·가르마·넘김·볼륨·결흐름을 다 돌리면
+     그 계산이 렌더 비용의 대부분이 된다(실측: 밀도 2배 → 시간 2배, 그린 다발
+     수는 그대로였음). 그릴 것만 계산하도록 호출부가 간격을 넘긴다.
+*/
+;
