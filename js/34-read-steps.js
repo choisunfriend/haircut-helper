@@ -26,12 +26,13 @@ var READ_STEPS = (function () {
   'use strict';
   var W = window, TAG = '[결 읽기 단계]';
   var S = Object.assign({
-    on: true, bridge: true, fill: true, localAlign: true, keepSnap: true,
+    on: true, bridge: false /* (2026-10-21b) 기본 끔 — 생성·실사 4세트에서 효과 없음(옆 결과 어긋남 그대로~약간 나빠짐). 켜기: 주소 끝 ?rsbridge=1 */, fill: true, localAlign: true, keepSnap: true,
     base: 800,          // 아래 px 값의 기준 가로(분석 사진이 다르면 비례)
     lookPx: 40, resumePx: 13, tol: 25, minCoh: 0.08, inertia: 0.6,
     seedPx: 5, visitCap: 6, maxStepsPx: 1200, majPx: 2.5, fillIters: 120,
     estCohBridge: 0.35, estCohFill: 0.2
   }, W.READ_STEPS || {});
+  try { var mQ = /[?&]rsbridge=([01])/.exec(location.search); if (mQ) S.bridge = mQ[1] === '1'; } catch (e) {}
   S.byView = {};        // 사진별 스냅샷 {w,h,raw(Int8 ±127=±90°),coh(Uint8),est(Uint8: 0 읽음 1 건넘 2 채움),stats}
   S._view = null;       // 03b가 결을 읽기 직전에 넣어 줌
   S.align = null;       // 직전 정렬 통계
@@ -211,6 +212,7 @@ var READ_STEPS = (function () {
       L.push('  ' + v + ' ' + b.w + '×' + b.h + ' · 머리 ' + s.hair + 'px · 건넘 ' + pct(s.bridged, s.hair) + ' · 한쪽에서만 건넘(안 고침) ' + pct(s.oneSide, s.hair) + ' · 채움 ' + pct(s.filled, s.hair) +
         ' · 끊김 ' + s.breaks + '곳 → 이어져 건넌 ' + s.bridgedRuns + ' / 진짜 꺾임 ' + s.turns + ' · 내다봄 ' + s.look + 'px · 확인 ' + s.resume + 'px · ' + s.ms + 'ms');
     });
+    try { L.push('  웨이브 배수: ' + (W.READ_SHAPE && W.READ_SHAPE.waveGainAuto === false && !(W.READ_SHAPE.waveGain > 1) ? '꺼짐(읽은 흔들림 그대로 · 켜기 ?wavegain=1)' : '켜짐 ×' + (W.READ_SHAPE ? W.READ_SHAPE.waveGain : '?') + (W.READ_SHAPE && W.READ_SHAPE.waveGainAuto ? '(자동)' : ''))); } catch (e) {}
     if (!Object.keys(S.byView).length) L.push('  아직 읽은 사진 없음(사진을 분석하면 찍힘)');
     var a = S.align;
     if (a && !a.err) L.push('  정렬: 받은 세기 ×' + (a.kIn == null ? '1' : (+a.kIn).toFixed(2)) + ' → 쓴 세기 ×' + (+a.kUsed || 1).toFixed(2) + ' · 바뀐 가닥 ' + a.changed + '/' + a.strands + '(' + pct(a.changed, a.strands) + ') · 1° 넘게 돌린 마디 ' + pct(a.moved, a.segs) + ' · 돌린 각 중앙값 ' + (+a.rotMed).toFixed(1) + '° / p90 ' + (+a.rotP90).toFixed(1) + '° (정렬 전 가닥은 디버그 파일 rg0.*)');
@@ -218,6 +220,18 @@ var READ_STEPS = (function () {
     else L.push('  정렬: 아직 안 함(다시 기르기 뒤에 찍힘)');
     return L;
   };
+
+  /* (2026-10-21c) 웨이브 배수 끔 — 머리 전체를 웨이브로 판정해 읽은 흔들림을 ×3으로 키우던 것(17b READ_SHAPE).
+     직모도 S자로 판정돼 ×3.06이 걸려 지그재그·삐져나온 가닥이 생겼음(사용자 확인). 읽은 흐름 그대로 그림.
+     다시 켜기: 주소 끝 ?wavegain=1 */
+  S.waveGainOff = true;
+  try { var mW = /[?&]wavegain=([01])/.exec(location.search); if (mW) S.waveGainOff = mW[1] !== '1'; } catch (e) {}
+  function offWaveGain() {
+    var RSx = W.READ_SHAPE; if (!RSx) return false;
+    if (S.waveGainOff) { RSx.waveGainAuto = false; RSx.waveGain = 1; }
+    return true;
+  }
+  if (!offWaveGain()) { var tw = 0, tmW = setInterval(function () { if (offWaveGain() || ++tw > 50) clearInterval(tmW); }, 200); }
 
   var ok04 = install04(), ok17 = install17b();
   if (!ok17) { var tries = 0, tm = setInterval(function () { if (install17b() || ++tries > 50) clearInterval(tm); }, 200); }
