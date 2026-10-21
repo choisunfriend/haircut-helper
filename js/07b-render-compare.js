@@ -1805,6 +1805,8 @@ var PHOTO_CHECK = (function () {
     } catch (e) { S.err = String(e && e.message || e); }
     return list;
   };
+  P._cams = function () { return getCams(); };   // (2026-10-21i) 34 다시 기르기 끝 자르기가 같은 사진·투영을 씀
+  P._env = function () { return getEnv(); };
   P._sigTail = function () {   // adjFilterSig(17b) 끝
     try { return '|pc' + (P.on && (P.trim || P.fixDir) ? ver + (styleOn() ? 's' : ((P.trim ? (lengthened() ? 'l' : 't') : '') + (P.fixDir ? 'd' : ''))) : 0); } catch (e) { return ''; }
   };
