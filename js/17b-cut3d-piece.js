@@ -1424,7 +1424,7 @@ var REGROW = (function () {
        가장 믿을 만한 사진(정면도² × 결 또렷함이 큰 쪽)과 맞는 사진만 씀. 엇갈린 사진도 그만큼 믿을 만하면(무게가 agreeRatio배 안쪽)
        어느 쪽이 맞는지 모르는 것이니 이 걸음은 결을 못 읽은 걸로 보고 관성으로 이어 감(agreeAmbig='skip').
        생성 사진(장마다 따로 그림)은 33-synth-photo.js가 이 값을 느슨하게 바꿈. 끄기 REGROW.agree=false */
-    agree: false, agreeDeg: 30, agreeRatio: 1.5, agreeAmbig: 'skip',
+    agree: true, agreeDeg: 30, agreeRatio: 1.5, agreeAmbig: 'skip',
     minCoh: 0.08,       // 결 또렷함 하한
     layerLo: 0.2, layerHi: 1.0,   // 가닥이 두께의 몇 %까지 뜨는가(가닥마다 무작위)
     tMax: 0.45,         // 두께 재기 상한(모델 단위 ≈ 9cm)
@@ -1438,7 +1438,7 @@ var REGROW = (function () {
     sideLayStay: true,  // (2026-10-11p) 앞 헤어라인에서 옆으로 눕힌 가닥(10d)은 두피를 벗어나는 자리에서 끝 · 길이도 그 섹션 상한까지 — 길이 상한을 끈 뒤(11f) 관자놀이 밖 허공으로 뻗어 나가 옆머리에 가시가 되던 것. false = 예전(두피 밖으로 이어 감)
     stubCm: 1.2,        // (2026-10-10e) 안 뒤집은 얇은 자리(옆·목덜미 머리선)에 심는 짧은 머리 길이(cm) · 0 = 안 심음
     polDown: 2.5,       // (2026-10-10f) 두피 위에서 결(앞뒤 없는 선)의 앞뒤를 고를 때 비탈을 거꾸로 오르는 쪽에만 이만큼 벌점(비탈 기울기에 비례) — 한 번 위로 가면 계속 위로 가며 두상을 감던 것. 옆으로 흐르는 결(가마·가르마)은 안 건드림 · 0 = 예전(직전 방향만)
-    glossSkip: false,   // (2026-10-22 있는 그대로) 판정 뺌 · (2026-10-10f) 광택 보정 — 머리색보다 많이 밝은 자리(광택 띠)에서 수평에 가까운 결은 안 읽음(광택 띠 가장자리를 결로 잘못 읽은 것) · false = 끔
+    glossSkip: true,    // (2026-10-10f) 광택 보정 — 머리색보다 많이 밝은 자리(광택 띠)에서 수평에 가까운 결은 안 읽음(광택 띠 가장자리를 결로 잘못 읽은 것) · false = 끔
     glossLo: 0.35,      // 광택 판정: (밝기 − 머리색 밝기) ÷ (255 − 머리색 밝기)가 이 값 이상
     glossFlat: 0.5,
     glossNbrKeep: false, // (2026-10-12b) 끔 — 광택 띠의 수평 결은 둘레와 같아도 안 읽음(직모 손님에서 798개가 살아 가닥이 옆으로 꺾임). 다시 켜기 true   // (2026-10-11s) 3·6번만 되돌림 — 이것은 12:25 그대로 · 끄기 false   // (2026-10-11q) 원인 찾기용 스위치 — false면 광택 띠의 수평 결을 둘레와 같아도 안 읽음(10f)
@@ -1451,8 +1451,8 @@ var REGROW = (function () {
     flipThickCm_note: 0,     // (2026-10-10c) 출발 방향 뒤집기(아래에 머리가 없으면 위로)는 뿌리 자리 머리 두께가 이 cm 이상일 때만 — 세운 앞머리. 얇으면(눕힌 머리·목덜미 짧은 머리) 안 뒤집음 · 0 = 예전처럼 늘 뒤집음
     trace: true,        // (2026-10-10b) 걸음 기록 — 기본 켬(시험판). 끄기 REGROW.trace=false · 켜면 가닥마다 걸음별로 무엇이 방향을 정했는지 남김(60번 내보내기에 실림) · 머리 모양은 그대로
     traceEvery: 25,     // 기록할 보통 가닥 표본 간격(두피 위에서 길이 상한까지 간 가닥은 전부)
-    inertia: 0,         // (2026-10-22 있는 그대로) 0.55 → 0 · 걸음마다 직전 방향을 섞으면 굽은 결이 펴짐 · 직전 방향을 섞는 비율(0 = 사진 결 그대로)
-    smooth: 0,          // (2026-10-22 있는 그대로) 2 → 0 · 다 기른 뒤 펴기 안 함 · 다 기른 뒤 고르게 펴는 횟수
+    inertia: 0.55,      // 직전 방향을 섞는 비율(0 = 사진 결 그대로)
+    smooth: 2,          // 다 기른 뒤 고르게 펴는 횟수
     liftK: 2.2,
     onScalpLen: true,   // (2026-10-11a) 짧은 머리: 두피 위로 누운 가닥은 뿌리 자리 두께 × liftK에서 끝(누운 머리는 기와처럼 겹쳐 사진에서 끝없이 이어 보임 — 걸어간 거리는 가닥 길이가 아님. 스펙 길이와 같은 잣대)         // 짧은 머리 길이 어림 = 뿌리 자리 두께 × 이 값
     // (2026-10-04h) 컬 재기 — 머리말 v4 참고
@@ -1479,7 +1479,7 @@ var REGROW = (function () {
     // (2026-10-04e) 뒷머리가 앞으로 쏠리는 것 막기 — 아래 backFix 설명 참고
     backFix: false,     // (2026-10-12r) 끔 — 사용자: "그거 꺼" (뒷머리 뒤로 넘기기 · 몸통에 자연스럽게 흘러내리기와 겹치면 안 됨) · 다시 켜기 REGROW.backFix=true
     backFix_was: true,  // (2026-10-11j) 다시 켬(사용자 선택 (가)) — 끄니 뒷머리가 몸통을 뚫고 앞으로 넘어옴(뒤 뿌리 → 몸 앞 1,278가닥). 몸통이 없는 동안은 이것이 뒷머리를 뒤에 둠
-    backFoldAfter: false, backFoldFlat: false, backFoldDropCm: 6, backFoldRampCm: 6, backFoldBw: 0.25,   // (2026-10-12d) 뒷머리를 뒤에 두는 것을 "읽은 뒤"에 함 — 사용자: "읽을 때 뺄 필요는 없거든? 렌더링까지는 읽어서 한 뒤 처리 과정에서 뒤로 넘기는 걸로" · "뒷머리에서 나온 가닥들을 결 정리하는 식으로". 걷는 동안에는 앞으로 가는 것을 안 막고(사진대로 끝까지 읽음), 다 읽은 가닥에서 어깨 높이(턱·목덜미 높이에서 backFoldDropCm 아래)부터 backFoldRampCm에 걸쳐 서서히 두피를 벗어난 자리의 깊이까지 뒤로 옮김 → 귀~어깨 사이 옆머리는 사진 그대로. backFoldBw: 뒤쪽 정도가 이 값 이상이면 온전히 넘김. false = 예전(걷는 동안 막음)
+    backFoldAfter: true, backFoldFlat: false, backFoldDropCm: 6, backFoldRampCm: 6, backFoldBw: 0.25,   // (2026-10-12d) 뒷머리를 뒤에 두는 것을 "읽은 뒤"에 함 — 사용자: "읽을 때 뺄 필요는 없거든? 렌더링까지는 읽어서 한 뒤 처리 과정에서 뒤로 넘기는 걸로" · "뒷머리에서 나온 가닥들을 결 정리하는 식으로". 걷는 동안에는 앞으로 가는 것을 안 막고(사진대로 끝까지 읽음), 다 읽은 가닥에서 어깨 높이(턱·목덜미 높이에서 backFoldDropCm 아래)부터 backFoldRampCm에 걸쳐 서서히 두피를 벗어난 자리의 깊이까지 뒤로 옮김 → 귀~어깨 사이 옆머리는 사진 그대로. backFoldBw: 뒤쪽 정도가 이 값 이상이면 온전히 넘김. false = 예전(걷는 동안 막음)
     freeDepth: 0.6,     // 두피 밖 구간에서 사진 결이 지어낼 수 있는 깊이(카메라 쪽/반대쪽) 움직임 상한(가로·세로 움직임의 몇 배)
     backFrom: 0.1, backFull: 0.5,   // 두피를 벗어난 자리가 얼마나 뒤쪽인가(0 = 귀 옆 · 1 = 정뒤) — 이 구간에서 0→1로 막음
     // (2026-10-05k) 긴 머리는 목 아래에서 곧게 늘어뜨림 — 머리말 v6 참고
@@ -1499,7 +1499,7 @@ var REGROW = (function () {
     hangDown: false,    // (2026-10-11f) 끔 — 긴 머리도 3D 머리 덩어리를 빠져나가는 곳에서 끝(곧게 늘어뜨려 끝 높이 맞추기 대신)
     hangK: 0.6,         // 한 걸음마다 아래 방향을 섞는 비율(클수록 빨리 곧아짐)
     // (2026-10-05m) 기른 뒤 결 정렬 — 머리말 v7 참고
-    align: false,       // (2026-10-22 있는 그대로) 이웃 평균 쪽으로 돌리기 안 함
+    align: true,
     alignCell: 0.07,    // 이웃을 보는 칸 크기(모델 단위 ≈ 1.3cm)
     alignK: 0.75,       // 많이 벗어난 마디를 평균 쪽으로 돌리는 세기(0~1)
     alignTol: 12, alignFull: 40, alignFlip: 100,   // 도: 이 안쪽은 그대로 · 이 이상은 alignK만큼 · 이 넘게 반대면 안 건드림
@@ -1507,14 +1507,14 @@ var REGROW = (function () {
     alignMin: 4,        // 칸을 지나는 가닥이 이만큼은 돼야 기준으로 씀
     alignReach: 3,      // 제 칸에 기준이 없으면 두상 쪽으로 이 칸 수까지 들어가며 이웃 결을 찾음(겉면 밖으로 뜬 잔머리)
     alignRoot: 0.15, alignRootFade: 0.1,   // 뿌리에서 이 길이(≈ 2.7cm)까지는 안 돌리고, 그 뒤 이 길이에 걸쳐 서서히(뿌리 볼륨을 눕히지 않게)
-    strayTrim: false, strayMax: 1, strayMinSeg: 4, strayKeep: 1,   // 혼자 나간 꼬리 자르기
+    strayTrim: true, strayMax: 1, strayMinSeg: 4, strayKeep: 1,   // 혼자 나간 꼬리 자르기
     alignCurlOff: 40,   // (2026-10-06p) 사진에서 잰 컬이 이 값 이상이면 결 정렬을 안 함(0~이 값 사이는 세기를 비례해서 줄임) · 0 = 컬과 무관하게 정렬
     // (2026-10-04g) 목 — 늘어뜨린 가닥이 목(과 그 아래 몸통 기둥) 안으로 못 들어가게. 화면에 보이는 목과 같은 치수.
     neck: false, neckMargin: 1.1,
     hullRule: 'front',  // (2026-10-11h) 사용자: "다수결방식에 정면을 참고하는 걸로" — 'front' = 다수결 + 정면이 1cm 넘게 밖이면 머리 아님 ·    // (2026-10-11g) 'tol' = 여유 둔 교집합: 그 자리를 보는 사진 중 하나라도 머리 영역에서 여유(정면 1 · 옆·뒤 1.5cm) 넘게 밖이면 머리 아님 — 예전 다수결은 2:2 동점도 머리로 쳐서 웨이브 손님 덩어리가 1.3배 컸음 · 'face' = 다수결 + 마주 보는 사진
     hullViews: ['front', 'left', 'right', 'back'], hullMarginCm: 1.0, hullMarginSideCm: 1.5, hullFacing: true, hullCellPx: 3,   // (2026-10-11b) 그 자리를 가장 정면으로 마주 보는 사진이 '밖'이라고 하면 밖(정면 1cm · 옆·뒤 1.5cm 여유) — 사용자: "정 안맞는 곳은 해당 면의 사진영역으로 결정" · 사진 맞춤은 65번   // (2026-10-11a) 껍질 = 사진들의 "교집합" — 이 사진들이 머리 영역 밖(여유 이 cm 넘게)이라고 하면 다른 사진이 머리라고 해도 머리 아님. 정면은 얼굴 랜드마크로 맞춘 사진이라 믿을 수 있음 · [] = 예전 다수결만
     tri3D: false, /* (2026-10-11r) 원인 찾기 결과 — 끔. 다시 켜기 REGROW.tri3D=true */ tri3DMinDeg: 35, tri3DPrior: 0.15,   // (2026-10-11a) 두피 밖 결의 3D 방향 = 두 장 이상의 사진 결이 만드는 평면들의 교선(깊이를 직전 걸음에서 물려받지 않음) · 시선축이 이 각 이상 벌어진 사진들일 때만
-    volume: true, volCellCm: 0.6, volTight: false, volTightMinCurl: 30,   // (2026-10-11d) 3D 머리 덩어리 — 사진 네 장(마주 보는 사진 규칙)으로 칸마다 머리/아님을 한 번 정해 두고, 걷기·61번(마네킹 위 컬의 축 길이)이 같은 덩어리를 씀
+    volume: true, volCellCm: 0.6, volTight: true, volTightMinCurl: 30,   // (2026-10-11d) 3D 머리 덩어리 — 사진 네 장(마주 보는 사진 규칙)으로 칸마다 머리/아님을 한 번 정해 두고, 걷기·61번(마네킹 위 컬의 축 길이)이 같은 덩어리를 씀
     polNbr: true,       // (2026-10-11d) 뿌리 결이 옆으로 흐릴 때 앞뒤 방향을 "가운데 선 바깥"이 아니라 이웃 뿌리들의 방향으로(남자분 가운데 가르마의 원인)
     straightCurly: false, straightMode: 'path', straightWinK: 1.0, straightCurlMin: 40, straightPitchK: 0.5, straightDHalfK: 4, straightRMinPx: 5, straightRMaxPx: 40,   // (2026-10-10s) 곱슬 사진은 큰 흐름만 따라 직모 뼈대로 기름(컬은 61·14c가 그 위에 얹음) — 반경 = 한 바퀴 간격 × K (못 쟀으면 dHalf × K) · 사진 px
     sliceMs: 60,        // (2026-10-12e) 30 → 60: 화면에 양보하는 횟수를 반으로(폰에서 쉬는 시간이 얼마인지는 아래 진단 줄 '일한 시간/쉰 시간'으로 확인)
@@ -1532,21 +1532,8 @@ var REGROW = (function () {
        같은 데이터로 돌려 본 결과: 직모 아래 끝 +3.3/+1.1/+1.2/+3.6 → +0.3/−0.3/+0.2/+0.5cm · 넘침 6.5/4.4/8.9/4.6 → 3.8/0.8/0.6/0.0%
          (대신 빔 9.3/9.5/10.8 → 15.4/14.3/12.1% — 어깨 앞으로 떨어지는 머리를 걷기가 원래 못 채움. 얼굴 앞 가닥이 가려 주던 몫이 드러난 것)
          곱슬: 거의 그대로(넘침 1.7/6.8/4.9/2.0 → 0.8/2.6/3.6/0.4%).
-       끄기 ?rgtrim=0 또는 REGROW.trimTail=false · 사진·투영은 07b PHOTO_CHECK와 같은 것
-       (2026-10-21j) 판정은 정면·뒤 사진만(trimViews). 네 장 다 쓰면 옆 사진 각도가 틀린 세트에서 멀쩡한 긴 머리를 잘랐음:
-         웨이브 긴머리(2101 · 오른쪽 포즈 못 잡아 −90° 가정 · 왼쪽 pnp 52°) 가닥 87% 잘림 · 정면 빔 31 → 54% / 실사 3장(2103 · 포즈 전부 가정) 46% 잘림.
-         정면·뒤만: 웨이브 1% · 실사 8% · 직모(2107) 아래 끝 +2.5/+2.9 → +0.4/+0.1cm 그대로 고치면서 정면 빔 7.3 → 7.8%(네 장일 때 14%) · 곱슬 넘침 1.8/2.0 → 1.0/0.4%.
-         대신 옆 사진에서만 보이는 얼굴 앞 가닥(옆 넘침 3~8%)은 안 자름 — 옆 포즈를 믿을 수 있게 되면 trimViews에 넣기 */
-    /* (2026-10-21k) 중력은 결을 못 읽은 걸음에만 — 예전엔 매 걸음(관성 0.55 뒤에) 아래로 0.25를 더해 좌우로 꺾이는 성분이 걸음마다 깎임 → 웨이브가 직모가 됨.
-       직모를 깔끔하게 하려고 중력·관성을 올리면 웨이브가 죽는 트레이드오프의 원인. 직모 사진은 결 자체가 아래로 곧아 중력이 할 일이 없음.
-       같은 결 격자에서 2D로 걸어 본 큰 물결(1~8cm 대역 결 흔들림, 사진 → 매 걸음 중력 → 못 읽은 걸음만):
-         웨이브 긴머리 정면 18.1 → 10.6 → 13.0° · 뒤 9.1 → 4.4 → 5.9° / 직모 정면 8.5 → 4.3 → 4.4° · 뒤 4.7 → 2.2 → 3.1° / 곱슬 뒤 29.9 → 9.6 → 18.2°
-       예전대로 REGROW.gravityRead = 0.25 */
-    gravityRead: 0,
-    /* (2026-10-22) 있는 그대로 — 사용자: "판정 다 빼고. 결 읽는 단계와 그대로 그리는 단계만 지금 적용되도록 해. 그렇게 한 다음에 사진과 맞춰보는 거 거기까지만"
-       꺼 둔 것: agree(사진끼리 엇갈리면 빼거나 관성으로 넘김) · glossSkip(광택 띠 결 안 읽음) · inertia 0.55 · smooth 2 · align(이웃 평균) · strayTrim · backFoldAfter · volTight(컬 30 이상 판정) · trimTail · ORIG_MQ(원본 = 마네킹 + 잰 값) · 26번 다발 모으기.
-       다시 켜기는 각 값을 예전 값으로(REGROW.inertia=0.55 등) */
-    trimTail: false, trimTolCm: 0.4, trimOutCm: 1.0, trimTailCm: 0.4, trimKeepPts: 3, trimViews: ['front', 'back']
+       끄기 ?rgtrim=0 또는 REGROW.trimTail=false · 사진·투영은 07b PHOTO_CHECK와 같은 것 */
+    trimTail: true, trimTolCm: 0.4, trimOutCm: 1.0, trimTailCm: 0.4, trimKeepPts: 3
   }, W.REGROW || {});
   var S = G.stats = null;
   try { var rgtQ = /[?&]rgtrim=([01])/.exec(String(location.search || '')); if (rgtQ) G.trimTail = rgtQ[1] === '1'; } catch (e) {}
@@ -2336,8 +2323,7 @@ var REGROW = (function () {
               d = fl2 > 0.2 ? { x: d.x / fl2, y: d.y / fl2, z: fz / fl2 } : down;
               st.backFwd++; nBack++; exB = 1;
             }
-            var gv = fl ? (G.gravityRead || 0) : G.gravity;                  // (2026-10-21k) 결을 읽은 걸음엔 중력 gravityRead(기본 0) · 못 읽은 걸음만 gravity
-            var gx = d.x * (1 - gv), gy = d.y * (1 - gv) - gv, gz = d.z * (1 - gv), gl = Math.hypot(gx, gy, gz) || 1;
+            var gx = d.x * (1 - G.gravity), gy = d.y * (1 - G.gravity) - G.gravity, gz = d.z * (1 - G.gravity), gl = Math.hypot(gx, gy, gz) || 1;
             d = { x: gx / gl, y: gy / gl, z: gz / gl };
             if (G.noClimbCm > 0 && d.y > 0 && P.y + d.y * stp - lowF > G.noClimbCm / cmU) {   // (13k) 내려왔던 가닥이 다시 오름 — 위 성분 지움
               var cl = Math.hypot(d.x, d.z);
@@ -2643,8 +2629,6 @@ var REGROW = (function () {
     if (!core || typeof PC._cams !== 'function' || typeof PC._env !== 'function') { st.why = '07b 없음'; return st; }
     var t0 = now(), cams = PC._cams(), env0 = PC._env();
     if (!cams || !cams.length || !env0) { st.why = '사진·두상 값 없음'; return st; }
-    if (G.trimViews && G.trimViews.length) cams = cams.filter(function (c) { return G.trimViews.indexOf(c.angle) >= 0; });
-    if (!cams.length) { st.why = '판정할 사진 없음(trimViews ' + (G.trimViews || []).join(',') + ')'; return st; }
     var env = core.mkEnv(env0), cfg = { cols: (PC.cols | 0) || 200 }, pcs = cams.map(function (c) { return core.prepCam(c, env, cfg, G.trimTolCm); }), o = [0, 0];
     var cmU = env.cm, outU = G.trimOutCm / cmU, tailU = G.trimTailCm / cmU, keep = Math.max(2, G.trimKeepPts | 0), lens = [];
     st.views = pcs.length;
@@ -3413,7 +3397,7 @@ function helixMeasure(rgba,mask,W,H,angle,coh,opt){opt=opt||{};const n=opt.n||25
     var tS = G.trimStat;
     if (tS && tS.err) L.push('  윤곽 끝 자르기 실패: ' + tS.err);
     else if (tS && tS.why) L.push('  윤곽 끝 자르기: ' + tS.why + (G.trimTail ? '' : ' (켜기 ?rgtrim=1)'));
-    else if (tS) L.push('  윤곽 끝 자르기(정렬 뒤 · 마주 보는 사진 ' + tS.views + '장(' + (G.trimViews || []).join('·') + ') · 여유 ' + G.trimTolCm + 'cm): 자른 가닥 ' + tS.cut + '/' + tS.strands + '(' + (tS.strands ? (tS.cut / tS.strands * 100).toFixed(1) : '0') + '%) — 밖으로 ' + G.trimOutCm + 'cm 넘게 나감 ' + tS.cutMid + ' · 밖에서 끝난 꼬리 ' + tS.cutTail + ' · 자른 길이 중앙값 ' + n1(tS.lenMed) + ' / p90 ' + n1(tS.lenP90) + 'cm · ' + tS.ms + 'ms (끄기 ?rgtrim=0)');
+    else if (tS) L.push('  윤곽 끝 자르기(정렬 뒤 · 마주 보는 사진 ' + tS.views + '장 · 여유 ' + G.trimTolCm + 'cm): 자른 가닥 ' + tS.cut + '/' + tS.strands + '(' + (tS.strands ? (tS.cut / tS.strands * 100).toFixed(1) : '0') + '%) — 밖으로 ' + G.trimOutCm + 'cm 넘게 나감 ' + tS.cutMid + ' · 밖에서 끝난 꼬리 ' + tS.cutTail + ' · 자른 길이 중앙값 ' + n1(tS.lenMed) + ' / p90 ' + n1(tS.lenP90) + 'cm · ' + tS.ms + 'ms (끄기 ?rgtrim=0)');
     L.push('  목: ' + (G.neck ? '켜짐 — 목 안으로 들어가려던 걸음 ' + (s.neckPush || 0) + '회 밖으로 밀어냄' : '꺼짐'));
     L.push('  두께(두피→머리 겉면) 중앙값 ' + n1(s.tMed) + 'cm · p90 ' + n1(s.tP90) + 'cm · 윤곽선으로 잰 칸 ' + s.tMeasured + ' · 이웃으로 메운 칸(추정) ' + s.tFilled + ' · 두께 0으로 잰 칸 ' + s.tZero + ' / 전체 ' + s.cells);
     return L;
@@ -4143,7 +4127,7 @@ var ORIG_MQ = (function () {
   var G = REGROW;
 
   var ID = '__original__';
-  var OM = Object.assign({ on: false, name: '원본 머리 (마네킹 + 잰 값)' }, W.ORIG_MQ || {});
+  var OM = Object.assign({ on: true, name: '원본 머리 (마네킹 + 잰 값)' }, W.ORIG_MQ || {});
   OM.id = ID; OM.spec = null; OM.src = null; OM.mode = 'orig';   // mode: 'orig' = 원본 머리를 보는 중 · 'mq' = 맨 마네킹/다른 스타일
   var ST = OM.stats = { applied: 0, fellBack: 0, lastErr: null, at: null };
 
@@ -5788,16 +5772,11 @@ var PHOTO_CURL = (function () {
    *  물결: 축(마네킹 가닥)을 따라 진폭 × sin(2π·호길이/파장 + 위상) 만큼 옆(두상 면에 나란한 방향)으로 흔듦. 뿌리 waveRootCm는 서서히.
    *  위상은 2cm 칸마다 같게(한 타래가 같이 출렁임) · 겉 길이 = 축 길이(스펙 길이). */
   PC.waveMode = true; PC.waveLoopMax = 0.33; PC.waveRootCm = 2; PC.waveLockCm = 2; PC.waveJitter = 0.35;
-  /* (2026-10-21k) 웨이브면 큰 물결(04 bigWaveOf) 값으로 — 예전 선 모양은 잡음 흔들림이 파장을 정해서 잔물결만 잼
-   *   (웨이브 긴머리 2101: 파장 4.2cm · 진폭 0.24cm → 마네킹이 거의 직모. 큰 물결: 물결 있는 선 75~94% · 파장 16~21cm · 진폭 1.0~1.8cm)
-   *   문턱 없음 — 사진이 잰 그대로(선마다: 큰 물결 없는 선은 진폭 0 · 작게 출렁이면 작게). 사용자: "제한이나 조건으로 걸어놓으면 거기서 트레이드오프"
-   *   (같은 데이터 진폭 중앙값: 직모 단발 0~0.13cm · 실사 3장 0.15~0.31cm · 웨이브 긴머리 1.0~1.8cm) · 끄기 PHOTO_CURL.bigWave=false */
-  PC.bigWave = true;
   var wsMemo = { key: '', v: null };
   function waveShape() {
     var key = ''; try { key = (state._hair3Dneutral ? 1 : 0) + '|' + (G && G.model ? G.model.strands.length : 0); } catch (e) {}
     if (wsMemo.key === key && wsMemo.v) return wsMemo.v;
-    var loops = [], lams = [], amps = [], views = [], byView = {}, nAll = 0, sfA = [], bSh = [], bLam = [], bAmp = [], bBy = {}, bN = 0;
+    var loops = [], lams = [], amps = [], views = [], byView = {}, nAll = 0, sfA = [];
     (typeof ANGLES !== 'undefined' ? ANGLES : ['front', 'left', 'right', 'back']).forEach(function (a) {
       try {
         var id = state.hairMasks && state.hairMasks[a] && state.hairMasks[a].identity, ws = id && id.waveShape; if (!ws || !(ws.bent >= 20)) return;
@@ -5806,11 +5785,6 @@ var PHOTO_CURL = (function () {
         if (isFinite(ws.loop)) loops.push(ws.loop); if (isFinite(ws.lamPx)) lams.push(ws.lamPx * cpp); if (isFinite(ws.ampPx)) amps.push(ws.ampPx * cpp);
         if (ws.all && ws.all.length) { byView[a] = ws.all.map(function (l) { return [l[0], l[1], l[2] * cpp, l[3] * cpp, l[4], l[5]]; }); nAll += ws.all.length; }
         views.push(a + ' 고리 ' + (+ws.loop).toFixed(2) + ' · 파장 ' + (ws.lamPx * cpp).toFixed(1) + ' · 진폭 ' + (ws.ampPx * cpp).toFixed(2) + 'cm');
-        var bw = ws.big; if (bw && bw.lines >= 20) {
-          bSh.push(bw.share); if (isFinite(bw.lamPx)) bLam.push(bw.lamPx * cpp); if (isFinite(bw.ampPx)) bAmp.push(bw.ampPx * cpp);
-          if (bw.all && bw.all.length) { bBy[a] = bw.all.map(function (l) { return [l[0], l[1], l[2] * cpp, l[3] * cpp, ws.loop, l[2] > 0 ? 0 : 1]; }); bN += bw.all.length; }
-          views[views.length - 1] += ' · 큰 물결 선 ' + Math.round(bw.share * 100) + '% · 파장 ' + (bw.lamPx * cpp).toFixed(1) + ' · 진폭 ' + (bw.ampPx * cpp).toFixed(2) + 'cm';
-        }
       } catch (e) {}
     });
     function med(a) { a = a.slice().sort(function (x, y) { return x - y; }); return a.length ? a[a.length >> 1] : NaN; }
@@ -5818,12 +5792,8 @@ var PHOTO_CURL = (function () {
     v.isWave = isFinite(v.loop) && v.loop < PC.waveLoopMax && v.lamCm > 1 && v.ampCm > 0.05
       && v.ampCm / v.lamCm < (PC.waveSteepMax || 0.12)                    // (2026-10-18 배포본) 가파른 굴곡은 웨이브 아님
       && !(v.straightFrac >= (PC.waveStraightMax || 0.6));               // (2026-10-20) 곧은 선이 60% 이상이면 직모 — 웨이브 아님
-    v.bigShare = med(bSh); v.bigLamCm = med(bLam); v.bigAmpCm = med(bAmp);
-    if (PC.bigWave && v.isWave && bN > 0) {
-      v.fineLamCm = v.lamCm; v.fineAmpCm = v.ampCm; v.lamCm = v.bigLamCm > 1 ? v.bigLamCm : v.lamCm; v.ampCm = isFinite(v.bigAmpCm) ? v.bigAmpCm : 0; v.byView = bBy; v.nAll = bN; v.big = true;
-    }
     wsMemo = { key: key, v: v };
-    try { console.log(TAG + ' ② 사진 선 모양 — ' + (v.isWave ? '웨이브(S자)' : '컬(고리)') + ' · 고리 정도 ' + (+v.loop).toFixed(2) + '(웨이브 기준 ' + PC.waveLoopMax + ' 미만) · 파장 ' + (+v.lamCm).toFixed(1) + 'cm · 진폭 ' + (+v.ampCm).toFixed(2) + 'cm' + (v.big ? '(큰 물결 · 잔물결은 ' + (+v.fineLamCm).toFixed(1) + '/' + (+v.fineAmpCm).toFixed(2) + 'cm)' : (isFinite(v.bigShare) ? ' · 큰 물결 안 씀(선 ' + Math.round(v.bigShare * 100) + '% · 진폭 ' + (+v.bigAmpCm).toFixed(2) + 'cm)' : '')) + ' · ' + views.join(' | ')); } catch (e) {}
+    try { console.log(TAG + ' ② 사진 선 모양 — ' + (v.isWave ? '웨이브(S자)' : '컬(고리)') + ' · 고리 정도 ' + (+v.loop).toFixed(2) + '(웨이브 기준 ' + PC.waveLoopMax + ' 미만) · 파장 ' + (+v.lamCm).toFixed(1) + 'cm · 진폭 ' + (+v.ampCm).toFixed(2) + 'cm · ' + views.join(' | ')); } catch (e) {}
     return v;
   }
   PC.waveShape = waveShape;
@@ -5915,15 +5885,9 @@ var PHOTO_CURL = (function () {
     try { console.log(TAG + ' ③ 컬 모양(기준선 없음) — ' + mqS.shapeTxt); } catch (e) {}
     return v;
   }
-  /* (2026-10-21k) 큰 물결(S자)은 이웃 가닥이 같이 출렁여야 덩어리로 보임 — 예전 흩음(방향 필터 그대로 2.0rad · 위상 공간 파장 7cm)은 큰 물결 한 주기(16~21cm) 안에서
-   *   이웃끼리 위상이 반대가 돼 서로 지워짐(부스스한 직모처럼). 큰 물결이면 위상 공간 파장 = 물결 파장 × phaseWaveBigK · 흩음 phaseJitBig */
-  PC.phaseWaveBigK = 1.5; PC.phaseJitBig = 0.6;
-  PC.wavePlaneView = true; PC.wavePlaneJit = 0.6;   // (2026-10-21l) 물결 평면을 사진 화면 평면에(shapeStrandAll) · 평면 흩음(라디안, 나선 쪽 아닌 몫)
   function smoothPhase(r0, waveCm) {                                      // 자리에 따라 부드럽게 바뀌는 위상(파장 phaseWaveCm · 주면 그 값)
-    var bigV = wsMemo && wsMemo.v && wsMemo.v.big ? wsMemo.v : null;
-    var wc = waveCm > 0 ? waveCm : PC.phaseWaveCm; if (bigV) wc = Math.max(wc, bigV.lamCm * PC.phaseWaveBigK);   // 타래 크기(lockCm)를 받아도 큰 물결이면 물결 파장 쪽으로
-    var cpu = (typeof CURL_BUNDLE !== 'undefined' && CURL_BUNDLE.cmPerUnit) || 19.33, k = 2 * Math.PI / (wc / cpu);
-    return Math.PI * (Math.sin(r0.x * k + 1.3) + Math.sin(r0.y * k * 0.83 + 2.1) + Math.sin(r0.z * k * 1.17 + 0.4)) + (bigV ? PC.phaseJitBig : PC.gaborAsIs ? PC.phaseJitAsIs : PC.phaseJit) * (hash3(r0.x * 91, r0.y * 37, r0.z * 53) - 0.5);
+    var cpu = (typeof CURL_BUNDLE !== 'undefined' && CURL_BUNDLE.cmPerUnit) || 19.33, k = 2 * Math.PI / ((waveCm > 0 ? waveCm : PC.phaseWaveCm) / cpu);
+    return Math.PI * (Math.sin(r0.x * k + 1.3) + Math.sin(r0.y * k * 0.83 + 2.1) + Math.sin(r0.z * k * 1.17 + 0.4)) + (PC.gaborAsIs ? PC.phaseJitAsIs : PC.phaseJit) * (hash3(r0.x * 91, r0.y * 37, r0.z * 53) - 0.5);
   }
   /* (2026-10-12i) 선 하나하나 그대로 — 사용자: "정보를 중앙값만 갖고 오지 말고 다 가져와 · 머리가 밧줄처럼 일자 · 굴곡지면서 퍼져야"
    *  가닥마다: 뿌리 방위로 그 자리를 마주 본 사진을 고르고(앞·뒤·옆) · 가닥을 위→아래 5칸으로 나눠 칸마다 그 사진의 같은 높이에서 그은 선 하나를 뽑음(가닥마다 다른 선)
@@ -6044,10 +6008,6 @@ var PHOTO_CURL = (function () {
     if (OV) useH = false;
     for (b = 0; b < nb; b++) { PF.L[b] = useH ? (1 - w) * PF.L[b] + w * SH.pH : PF.L[b]; if (PF.L[b] < Lmin) Lmin = PF.L[b]; }
     var r0 = g[0], phi = OV ? OV.phi : 2 * Math.PI * hash3(rP.x * 13.7, rP.y * 71.3, rP.z * 37.9), cf = Math.cos(phi), sf = Math.sin(phi);
-    // (2026-10-21l) 물결 평면 = 굴곡을 읽어 온 사진의 화면 평면 — 예전엔 평면을 가닥마다 0~2π 무작위로 돌려서, 정면 사진의 얼굴 옆 긴 머리는 깊이 쪽으로 출렁여 정면에서 안 보였음
-    //   (웨이브 긴머리 2215 · 가닥마다 잰 큰 물결 진폭: 사진 0.96~1.05cm ↔ 마네킹 뒤 1.05 · 옆 0.75 · 정면 0.37cm)
-    //   나선 쪽(w)만큼은 예전처럼 돌림(원은 방향이 상관없고 돌린 각이 위상 흩음 역할) — 문턱 없이 w에 비례 · 끄기 PHOTO_CURL.wavePlaneView=false
-    var VP = null; if (PC.wavePlaneView && !OV && PF.view) { var vd = { front: [0, 0, 1], back: [0, 0, -1], left: [1, 0, 0], right: [-1, 0, 0] }[PF.view]; if (vd) VP = { v: vd, ph: w * phi + (1 - w) * PC.wavePlaneJit * (hash3(rP.x * 13.7, rP.y * 71.3, rP.z * 37.9) - 0.5) }; }
     var Am = 0, An = 0; for (b = 0; b < nb; b++) if (PF.A[b] > 0) { Am += PF.A[b]; An++; } Am = An ? Am / An : SH.A;
     var lockCm = Math.max(PC.lockMinCmAsIs, PC.lockDiaAsIs * 2 * Am);   // (2026-10-12m) 한 타래 크기 = 컬 지름 × lockDiaAsIs — 예전 7cm 칸이 통째로 같은 위상이라 한 고리에 가닥이 너무 많았음
     var t = OV ? OV.t0 : LK ? 2 * Math.PI * hash3(rP.x * 41.3, rP.y * 17.9, rP.z * 63.1) + PC.lockJit * (hash3(r0.x * 91, r0.y * 37, r0.z * 53) - 0.5) : smoothPhase(r0, lockCm), ds = Math.max(Math.min(Lmin / cpu / PC.ptsPerWave, Lt / 6), Lt / PC.maxPts), m = Math.max(3, Math.ceil(Lt / ds) + 1), out = [], j = 0, sPrev = 0;
@@ -6060,12 +6020,7 @@ var PHOTO_CURL = (function () {
       var ox = px, oy = py - CY0, oz = pz, od = ox * tx + oy * ty + oz * tz; ox -= od * tx; oy -= od * ty; oz -= od * tz;
       var ol = Math.hypot(ox, oy, oz) || 1; ox /= ol; oy /= ol; oz /= ol;
       var bx = ty * oz - tz * oy, by = tz * ox - tx * oz, bz = tx * oy - ty * ox, bl = Math.hypot(bx, by, bz) || 1; bx /= bl; by /= bl; bz /= bl;
-      if (VP) {                                                            // 화면 평면 안에서 가닥에 수직인 방향 n = 시선 × 접선 · 그와 접선에 수직인 m = 접선 × n
-        var nx = VP.v[1] * tz - VP.v[2] * ty, ny = VP.v[2] * tx - VP.v[0] * tz, nz = VP.v[0] * ty - VP.v[1] * tx, nl = Math.hypot(nx, ny, nz);
-        if (nl > 0.15) { nx /= nl; ny /= nl; nz /= nl; bx = nx; by = ny; bz = nz; ox = ty * nz - tz * ny; oy = tz * nx - tx * nz; oz = tx * ny - ty * nx; var ml = Math.hypot(ox, oy, oz) || 1; ox /= ml; oy /= ml; oz /= ml; }   // 가닥이 시선과 거의 나란하면(nl 작음) 예전 축
-        var cv = Math.cos(VP.ph), sv = Math.sin(VP.ph);
-        E1.push([cv * bx + sv * ox, cv * by + sv * oy, cv * bz + sv * oz]); E2.push([-sv * bx + cv * ox, -sv * by + cv * oy, -sv * bz + cv * oz]);
-      } else { E1.push([cf * bx + sf * ox, cf * by + sf * oy, cf * bz + sf * oz]); E2.push([-sf * bx + cf * ox, -sf * by + cf * oy, -sf * bz + cf * oz]); }
+      E1.push([cf * bx + sf * ox, cf * by + sf * oy, cf * bz + sf * oz]); E2.push([-sf * bx + cf * ox, -sf * by + cf * oy, -sf * bz + cf * oz]);
       var f = s / Lt * nb - 0.5, b0 = Math.max(0, Math.min(nb - 1, Math.floor(f))), b1 = Math.min(nb - 1, b0 + 1), q = Math.max(0, Math.min(1, f - b0)); q = q * q * (3 - 2 * q);
       var Acm = PF.A[b0] + (PF.A[b1] - PF.A[b0]) * q, Lcm = PF.L[b0] + (PF.L[b1] - PF.L[b0]) * q;
       t += 2 * Math.PI * (s - sPrev) * cpu / Math.max(0.3, Lcm); sPrev = s;   // 파장이 칸마다 달라도 위상이 끊기지 않게 쌓아 감

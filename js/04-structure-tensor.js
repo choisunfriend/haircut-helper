@@ -357,66 +357,6 @@ var GABOR_ORIENT = (function () {
     return { all: all, hairTopPx: yMn, hairBotPx: yMx, lines: lines.length, bent: bent.length, straightFrac: lines.length ? 1 - bent.length / lines.length : 1,
       loop: med(bent.map(function (l) { return l.loop; })), lamPx: med(bent.map(function (l) { return l.lam; })), ampPx: med(bent.map(function (l) { return l.amp; })) };
   }
-  /* (2026-10-21k) 큰 물결(S자) — 위 shapeOf는 곡률 부호가 0.02rad만 넘어도 바뀜으로 세서 잡음 흔들림이 파장을 정함(직모도 파장 3~4cm),
-   *  진폭은 그 짧은 파장 폭 평균선에서 잰 잔물결뿐. 웨이브 긴머리(2101): 지금 방식 파장 4.1~6.1cm · 진폭 0.24~0.36cm ↔ 사진의 S자는 눈으로도 10cm 넘음.
-   *  여기서는: 긴 선(600px · 120px 이상)을 긋고 → 선의 긴 평균선(선 길이의 절반 · 60px 이상)에서 옆으로 벗어난 거리 → 1.5px 넘게 반대쪽으로 넘어갈 때만 한 번 바뀜(잡음 무시)
-   *    → 파장 = 2 × 길이 ÷ 바뀐 횟수 · 진폭 = |벗어난 거리|의 90% 값. 바뀐 적 없으면 큰 물결 없는 선.
-   *  같은 결 격자로 디버그 파일에서 잰 값(cm): 웨이브 긴머리 물결 있는 선 75~93% · 파장 16~21 · 진폭 1.4~2.3 / 직모 단발 31~55% · 진폭 0.4~1.4 / 실사 3장 63~77% · 0.5~1.0 / 곱슬 82~89% · 파장 9~11 · 0.9~1.2
-   *  px 값은 분석 사진 긴 변 800px 기준(다르면 비례) */
-  GO.bigWave = { on: true, stride: 20, maxLen: 600, minLen: 120, winMin: 60, hystPx: 1.5, turnCos: 0.5 };
-  function bigWaveOf(ang, mask, Wd, Hd, rr) {
-    var C = GO.bigWave; if (!C || !C.on) return null;
-    var sc = Math.max(Wd, Hd) / 800, st = Math.max(4, Math.round(C.stride * sc)), maxL = Math.round(C.maxLen * sc), minL = Math.round(C.minLen * sc), hy = C.hystPx * sc, x0, y0;
-    function trace(x, y, sgn) {
-      var P = [], pdx = 0, pdy = 0, k;
-      for (k = 0; k < maxL; k++) {
-        var xi = x | 0, yi = y | 0; if (xi < rr || yi < rr || xi >= Wd - rr || yi >= Hd - rr) break;
-        var id = yi * Wd + xi; if (!mask[id]) break;
-        var t = ang[id], dx = Math.cos(t), dy = Math.sin(t);
-        if (k === 0) { dx *= sgn; dy *= sgn; } else if (dx * pdx + dy * pdy < 0) { dx = -dx; dy = -dy; }
-        if (k > 0 && dx * pdx + dy * pdy < C.turnCos) break;
-        P.push(x, y); x += dx; y += dy; pdx = dx; pdy = dy;
-      }
-      return P;
-    }
-    function box(a, w) {                                                    // 이동 평균(끝은 끝값 반복)
-      var n = a.length, o = new Float64Array(n), h = w >> 1, s = 0, i, j;
-      for (i = -h; i <= h; i++) s += a[Math.min(n - 1, Math.max(0, i))];
-      for (i = 0; i < n; i++) { o[i] = s / (2 * h + 1); j = i + h + 1; s += a[Math.min(n - 1, j)] - a[Math.max(0, i - h)]; }
-      return o;
-    }
-    var out = [], yMn = Hd, yMx = 0, xMn = Wd, xMx = 0, q;
-    for (q = 0; q < Wd * Hd; q += 2) if (mask[q]) { var yy = (q / Wd) | 0, xx = q - yy * Wd; if (yy < yMn) yMn = yy; if (yy > yMx) yMx = yy; if (xx < xMn) xMn = xx; if (xx > xMx) xMx = xx; }
-    var dy3 = Math.max(1, yMx - yMn), dx3 = Math.max(1, xMx - xMn);
-    for (y0 = st; y0 < Hd - st; y0 += st) for (x0 = st; x0 < Wd - st; x0 += st) {
-      if (!mask[y0 * Wd + x0]) continue;
-      var a = trace(x0 + 0.5, y0 + 0.5, 1), b = trace(x0 + 0.5, y0 + 0.5, -1), X = [], Y = [], i;
-      for (i = b.length - 2; i >= 2; i -= 2) { X.push(b[i]); Y.push(b[i + 1]); }
-      for (i = 0; i < a.length; i += 2) { X.push(a[i]); Y.push(a[i + 1]); }
-      var n = X.length; if (n < minL) continue;
-      var Wn = Math.max(Math.round(C.winMin * sc), n >> 1); if (n < Wn + 10) continue;
-      var mx = box(X, Wn), my = box(Y, Wn), dev = new Float64Array(n);
-      for (i = 0; i < n; i++) {
-        var i0 = Math.max(0, i - 1), i1 = Math.min(n - 1, i + 1), tx = mx[i1] - mx[i0], ty = my[i1] - my[i0], tl = Math.hypot(tx, ty) || 1e-9;
-        dev[i] = (X[i] - mx[i]) * (-ty / tl) + (Y[i] - my[i]) * (tx / tl);
-      }
-      dev = box(dev, 9);
-      var h2 = Wn >> 1, s = 0, cr = 0, ab = [];
-      for (i = h2; i < n - h2; i++) {
-        var v = dev[i]; ab.push(v < 0 ? -v : v);
-        if (v > hy && s <= 0) { if (s < 0) cr++; s = 1; } else if (v < -hy && s >= 0) { if (s > 0) cr++; s = -1; }
-      }
-      if (!ab.length) continue;
-      ab.sort(function (u, w) { return u - w; });
-      var L = ab.length, amp = ab[Math.min(L - 1, Math.floor(L * 0.9))], cy = 0, cx = 0;
-      for (i = 0; i < n; i++) { cx += X[i]; cy += Y[i]; }
-      out.push([(cy / n - yMn) / dy3, (cx / n - xMn) / dx3, cr > 0 ? 2 * L / cr : 0, cr > 0 ? amp : 0]);   // 파장 0 = 큰 물결 없는 선
-    }
-    var wav = out.filter(function (l) { return l[2] > 0; });
-    function med(arr) { arr = arr.slice().sort(function (u, w) { return u - w; }); return arr.length ? arr[arr.length >> 1] : NaN; }
-    return { lines: out.length, share: out.length ? wav.length / out.length : 0, lamPx: med(wav.map(function (l) { return l[2]; })), ampPx: med(out.map(function (l) { return l[3]; })), all: out };
-  }
-  GO.bigWaveOf = bigWaveOf;
   // 사진마다 identity에 붙임(42번의 컬 재기와 같은 자리)
   /* computeHairOrientationField(04) 끝에서 부름 — 04가 구한 방향(f.angle)을 방향 필터 값으로 바꿈 */
   GO.refine = function (f, px, mask, Wd, Hd) {
@@ -444,7 +384,7 @@ var GABOR_ORIENT = (function () {
         C2 = blur(C2, Wd, Hd, GO.lambda * 0.6); S2 = blur(S2, Wd, Hd, GO.lambda * 0.6);
         for (idx = 0; idx < N; idx++) if (mask[idx]) { if (sd > 1 && C2[idx] === 0 && S2[idx] === 0) { ang[idx] = f.angle[idx]; } else ang[idx] = 0.5 * Math.atan2(S2[idx], C2[idx]); }   // 둘레에 계산한 자리가 하나도 없으면(가장자리 한 줄) 예전 방식 값
       }
-      try { GO.last = { w: Wd, h: Hd, shape: shapeOf(ang, mask, Wd, Hd, r) }; try { GO.last.shape.big = bigWaveOf(ang, mask, Wd, Hd, r); } catch (e3) {} } catch (e2) { GO.last = null; }
+      try { GO.last = { w: Wd, h: Hd, shape: shapeOf(ang, mask, Wd, Hd, r) }; } catch (e2) { GO.last = null; }
       GO.lastAng = ang; GO.lastConf = conf; GO.lastWH = [Wd, Hd];   // (2026-10-21) 34 결 읽기 단계가 구조텐서와 나란히 기록하려고 꺼내 둠(방향필터 방향 · 필터 반응 대비 = 방향필터의 결 또렷함)
       var A = f.angle, diffs = [];
       for (idx = 0; idx < N; idx++) {

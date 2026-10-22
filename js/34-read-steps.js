@@ -30,8 +30,23 @@ var READ_STEPS = (function () {
     base: 800,          // 아래 px 값의 기준 가로(분석 사진이 다르면 비례)
     lookPx: 40, resumePx: 13, tol: 25, minCoh: 0.08, inertia: 0.6,
     seedPx: 5, visitCap: 6, maxStepsPx: 1200, majPx: 2.5, fillIters: 120,
-    estCohBridge: 0.35, estCohFill: 0.2
+    estCohBridge: 0.35, estCohFill: 0.2,
+    /* (2026-10-21i) ④ 사진 윤곽 끝 자르기(다시 기르기 정렬 바로 뒤)
+       디버그 파일 2개(곱슬 단발 1947 · 직모 단발 1952)를 같은 투영으로 대 보니:
+       - 걷기는 "마주 보는 사진에서 머리 영역 밖으로 1cm(정면)·1.5cm(옆·뒤) 넘게" 나가야 멈춤 → 끝이 늘 그만큼 밖에서 끝남. 정렬이 조금 더 밈.
+         직모: 아래 끝 정면 +3.3 · 뒤 +3.6cm, 1cm 넘게 밖으로 나간 가닥 35%(정렬 전 28%) · 앞머리 가닥은 중앙값 3.1cm가 이마 위 · 옆머리 p90 15cm가 얼굴 앞.
+       - 그 점을 "마주 보는"(머리 중심보다 카메라 쪽) 사진 중 하나라도 머리 영역(+tolCm) 밖이면 밖으로 봄 — 얼굴·목 뒤로 가려진 뒷머리는 판정 안 함.
+       - 밖으로 outCm 넘게 이어지면 그 자리에서, 밖에서 끝난 꼬리가 tailCm 넘으면 꼬리를 자름(뿌리 쪽 keepPts점은 남김).
+       같은 데이터로 돌려 본 결과(파이썬): 직모 아래 끝 +3.3/+1.1/+1.2/+3.6 → +0.3/−0.3/+0.2/+0.5cm · 넘침 6.5/4.4/8.9/4.6 → 3.8/0.8/0.6/0.0%
+         (대신 빔 9.3/9.5/10.8 → 15.4/14.3/12.1% — 어깨 앞으로 떨어지는 머리를 걷기가 원래 못 채움. 얼굴 앞 가닥이 가려 주던 몫이 드러난 것)
+         곱슬: 거의 그대로(넘침 1.7/6.8/4.9/2.0 → 0.8/2.6/3.6/0.4%).
+       끄기 ?rgtrim=0 또는 READ_STEPS.trim=false */
+    trim: true, trimTolCm: 0.4, trimOutCm: 1.0, trimTailCm: 0.4, trimKeepPts: 3
   }, W.READ_STEPS || {});
+  try { var mT = /[?&]rgtrim=([01])/.exec(location.search); if (mT) S.trim = mT[1] === '1'; } catch (e) {}
+  // 시험용: 두피 밖 3D 방향(사진 두 장 이상의 결로 깊이까지) — 어깨 앞으로 떨어지는 머리(빔)가 채워지는지 보려고 · ?tri3d=1
+  try { var m3 = /[?&]tri3d=([01])/.exec(location.search); if (m3) { var setTri = function () { if (!W.REGROW) return false; W.REGROW.tri3D = m3[1] === '1'; return true; }; if (!setTri()) { var t3 = 0, tm3 = setInterval(function () { if (setTri() || ++t3 > 50) clearInterval(tm3); }, 200); } } } catch (e) {}
+  S.trimStat = null;
   try { var mQ = /[?&]rsbridge=([01])/.exec(location.search); if (mQ) S.bridge = mQ[1] === '1'; } catch (e) {}
   try { var mL = /[?&]localalign=([01])/.exec(location.search); if (mL) S.localAlign = mL[1] === '1'; } catch (e) {}
   S.byView = {};        // 사진별 스냅샷 {w,h,raw(Int8 ±127=±90°),coh(Uint8),est(Uint8: 0 읽음 1 건넘 2 채움),stats}
@@ -160,7 +175,7 @@ var READ_STEPS = (function () {
           if (S.orient === 'mix' && px) {                                   // 자리마다 사진에 가장 맞는 결
             var mx = mixField(px, mask, Wd, Hd, stA, gbA);
             f.angle.set(mx.angle); cmp.mix = mx.stats;
-            try { var shM = shapeOf(mx.angle, mask, Wd, Hd, 6); try { if (typeof GO.bigWaveOf === 'function') shM.big = GO.bigWaveOf(mx.angle, mask, Wd, Hd, 6); } catch (e4) {} GO.last = { w: Wd, h: Hd, shape: shM, by: 'mix' }; cmp.shapeMix = shapeSum(shM); if (shM.big) cmp.shapeMix.big = { lines: shM.big.lines, share: shM.big.share, lamPx: shM.big.lamPx, ampPx: shM.big.ampPx }; } catch (e) {}   // (2026-10-21k) 큰 물결도(04 bigWaveOf)
+            try { var shM = shapeOf(mx.angle, mask, Wd, Hd, 6); GO.last = { w: Wd, h: Hd, shape: shM, by: 'mix' }; cmp.shapeMix = shapeSum(shM); } catch (e) {}
           }
           if (S.keepSnap) { var w2 = Math.ceil(Wd / 2), h2 = Math.ceil(Hd / 2); cmp.snap = { w: w2, h: h2, angST: q8a(stA, 0, Wd, Hd, w2, h2), cohST: q8c(stC, Wd, Hd, w2, h2), angGB: gbA ? q8a(gbA, 0, Wd, Hd, w2, h2) : null, cohGB: gbC ? q8c(gbC, Wd, Hd, w2, h2) : null }; }
           delete cmp._shST;
@@ -182,12 +197,58 @@ var READ_STEPS = (function () {
     GO._rsWrapped = true; return true;
   }
 
-  /* 17b REGROW.alignStrands 앞뒤 — 정렬 전 보관 · 머리 전체 컬로 세기 줄이기 끔 · 바꾼 양 */
+  /* ④ 사진 윤곽 끝 자르기 — 가닥 배열을 그 자리에서 고침(17b finish가 넘긴 배열 그대로) */
+  function trimTails(strands) {
+    var st = { at: Date.now(), on: !!S.trim, strands: strands ? strands.length : 0, cut: 0, cutMid: 0, cutTail: 0, lenCm: [], views: 0, ms: 0, why: '' };
+    S.trimStat = st;
+    if (!S.trim || !strands || !strands.length) { st.why = S.trim ? '가닥 없음' : '꺼짐'; return; }
+    var PC = W.PHOTO_CHECK, core = PC && PC._core;
+    if (!core || typeof PC._cams !== 'function' || typeof PC._env !== 'function') { st.why = '07b 없음'; return; }
+    var t0 = performance.now(), cams = PC._cams(), env0 = PC._env();
+    if (!cams || !cams.length || !env0) { st.why = '사진·두상 값 없음'; return; }
+    var env = core.mkEnv(env0), cfg = { cols: (PC.cols | 0) || 200 }, pcs = cams.map(function (c) { return core.prepCam(c, env, cfg, S.trimTolCm); }), o = [0, 0];
+    var cmU = env.cm, outU = S.trimOutCm / cmU, tailU = S.trimTailCm / cmU, keep = Math.max(2, S.trimKeepPts | 0);
+    st.views = pcs.length;
+    function outside(p) {
+      for (var ci = 0; ci < pcs.length; ci++) {
+        var pc = pcs[ci], R = pc.cam.R;
+        if (R[6] * p.x + R[7] * (p.y - env.CY) + R[8] * p.z <= 0) continue;          // 이 사진을 마주 보는 쪽만(가려진 뒷머리는 판정 못 함)
+        if (!core.project(pc.cam, env, p.x, p.y, p.z, o)) continue;
+        var gx = Math.floor(o[0] / pc.cell), gy = Math.floor(o[1] / pc.cell);
+        if (gx < 0 || gy < 0 || gx >= pc.gw || gy >= pc.gh) continue;
+        if (!pc.MD[gy * pc.gw + gx]) return true;
+      }
+      return false;
+    }
+    for (var i = 0; i < strands.length; i++) {
+      var e = strands[i], p = e && e.pts; if (!p || p.length <= keep + 1) continue;
+      var m = p.length, cut = m, rs = -1, rl = 0, mid = false, k, q, a;
+      for (k = 1; k < m; k++) {
+        if (outside(p[k])) {
+          if (rs < 0) { rs = k; rl = 0; }
+          q = p[k - 1]; rl += Math.hypot(p[k].x - q.x, p[k].y - q.y, p[k].z - q.z);
+          if (rl >= outU) { cut = Math.max(keep, rs); mid = true; break; }
+        } else rs = -1;
+      }
+      if (!mid && rs >= 0 && rl >= tailU) cut = Math.max(keep, rs);
+      if (cut >= m) continue;
+      var L = 0; for (k = cut; k < m; k++) L += Math.hypot(p[k].x - p[k - 1].x, p[k].y - p[k - 1].y, p[k].z - p[k - 1].z);
+      for (a in e) if (a !== 'pts' && Array.isArray(e[a]) && e[a].length === m) e[a] = e[a].slice(0, cut);   // 점마다 붙은 값(색 등)도 같이
+      e.pts = p.slice(0, cut);
+      st.cut++; if (mid) st.cutMid++; else st.cutTail++; if (st.lenCm.length < 100000) st.lenCm.push(L * cmU);
+    }
+    st.lenCm.sort(function (u, v) { return u - v; });
+    st.lenMed = st.lenCm.length ? st.lenCm[st.lenCm.length >> 1] : 0; st.lenP90 = st.lenCm.length ? st.lenCm[Math.floor(st.lenCm.length * 0.9)] : 0; st.lenCm = null;
+    st.ms = Math.round(performance.now() - t0);
+  }
+
+  /* 17b REGROW.alignStrands 앞뒤 — 정렬 전 보관 · 머리 전체 컬로 세기 줄이기 끔 · 바꾼 양 · ④ 끝 자르기 */
   function install17b() {
     var G = W.REGROW; if (!G || typeof G.alignStrands !== 'function' || G._rsWrapped) return !!(G && G._rsWrapped);
     var orig = G.alignStrands;
+    function trimSafe(strands) { try { trimTails(strands); } catch (e) { S.trimStat = { err: String(e && e.message || e) }; } }
     G.alignStrands = function (strands, CY, kMul) {
-      if (!S.on) return orig.apply(this, arguments);
+      if (!S.on) { var r0 = orig.apply(this, arguments); trimSafe(strands); return r0; }
       var kIn = kMul, before = null;
       try {
         if (S.keepSnap && strands && strands.length) {
@@ -216,6 +277,7 @@ var READ_STEPS = (function () {
           rotMed: rot.length ? rot[rot.length >> 1] : 0, rotP90: rot.length ? rot[Math.floor(rot.length * 0.9)] : 0 };
         S.rg0 = before;
       } catch (e) { S.align = { err: String(e && e.message || e) }; }
+      trimSafe(strands);                                         // ④ 정렬 통계를 낸 뒤에 자름(통계에 안 섞이게)
       return r;
     };
     G._rsWrapped = true; return true;
@@ -235,7 +297,7 @@ var READ_STEPS = (function () {
       var c = S.byView[v].cmp; if (c && c.mix) { var M = c.mix, sm = c.shapeMix || {};
         L.push('  ' + v + ' 자리마다 고른 결(mix) — ' + M.names.map(function (nm, k) { return nm + ' ' + f1(M.picked[k] * 100, 0) + '%'; }).join(' · ') +
           ' · 다 같아 고를 것 없던 칸 ' + f1(M.sameFrac * 100, 0) + '% | 사진과 맞음(고른 칸 기준 · 작을수록 좋음) 고른 결 ' + f1(M.fitBest, 3) + ' vs ' + M.names.map(function (nm, k) { return nm + ' ' + f1(M.fitMean[k], 3); }).join(' · ') +
-          ' | 모양 곧은 선 ' + f1(sm.straightFrac * 100, 0) + '% · 진폭 ' + f1(sm.ampPx, 1) + 'px · 파장 ' + f1(sm.lamPx, 1) + 'px' + (sm.big ? ' · 큰 물결 선 ' + f1(sm.big.share * 100, 0) + '% · 파장 ' + f1(sm.big.lamPx, 0) + 'px · 진폭 ' + f1(sm.big.ampPx, 1) + 'px' : '') + ' · ' + M.ms + 'ms'); }
+          ' | 모양 곧은 선 ' + f1(sm.straightFrac * 100, 0) + '% · 진폭 ' + f1(sm.ampPx, 1) + 'px · 파장 ' + f1(sm.lamPx, 1) + 'px · ' + M.ms + 'ms'); }
       if (!c || c.err) { if (c && c.err) L.push('  ' + v + ' 두 방식 비교 실패: ' + c.err); return; }
       var a = c.shapeST || {}, b = c.shapeGB || {};
       L.push('  ' + v + ' 구조텐서 vs 방향필터 — 결 방향 차이 중앙 ' + f1(c.dirDiffMed, 1) + '° / p90 ' + f1(c.dirDiffP90, 1) + '° · 15° 안 ' + f1(c.agree15 * 100, 0) + '%' +
@@ -247,6 +309,12 @@ var READ_STEPS = (function () {
     if (a && !a.err) L.push('  정렬: 받은 세기 ×' + (a.kIn == null ? '1' : (+a.kIn).toFixed(2)) + ' → 쓴 세기 ×' + (+a.kUsed || 1).toFixed(2) + ' · 바뀐 가닥 ' + a.changed + '/' + a.strands + '(' + pct(a.changed, a.strands) + ') · 1° 넘게 돌린 마디 ' + pct(a.moved, a.segs) + ' · 돌린 각 중앙값 ' + (+a.rotMed).toFixed(1) + '° / p90 ' + (+a.rotP90).toFixed(1) + '° (정렬 전 가닥은 디버그 파일 rg0.*)');
     else if (a && a.err) L.push('  정렬 통계 실패: ' + a.err);
     else L.push('  정렬: 아직 안 함(다시 기르기 뒤에 찍힘)');
+    var t = S.trimStat;
+    if (t && t.err) L.push('  윤곽 끝 자르기 실패: ' + t.err);
+    else if (t && t.why) L.push('  윤곽 끝 자르기: ' + t.why + (S.trim ? '' : ' (켜기 ?rgtrim=1)'));
+    else if (t) L.push('  윤곽 끝 자르기(정렬 뒤 · 마주 보는 사진 ' + t.views + '장 · 여유 ' + S.trimTolCm + 'cm): 자른 가닥 ' + t.cut + '/' + t.strands + '(' + pct(t.cut, t.strands) + ') — 밖으로 ' + S.trimOutCm + 'cm 넘게 나감 ' + t.cutMid + ' · 밖에서 끝난 꼬리 ' + t.cutTail + ' · 자른 길이 중앙값 ' + (+t.lenMed).toFixed(1) + ' / p90 ' + (+t.lenP90).toFixed(1) + 'cm · ' + t.ms + 'ms (끄기 ?rgtrim=0)');
+    else L.push('  윤곽 끝 자르기: 아직 안 함(다시 기르기 뒤에 찍힘)');
+    try { if (W.REGROW && W.REGROW.tri3D) L.push('  두피 밖 3D 방향(시험): 켜짐(?tri3d=1)'); } catch (e) {}
     return L;
   };
 
