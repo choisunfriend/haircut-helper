@@ -21,6 +21,24 @@
 
    끄기: READ_STEPS.on=false(전부) · .bridge=false · .fill=false · .localAlign=false — 사진을 다시 분석하면 반영
    진단: [결 읽기 단계] 줄
+
+   (2026-10-22) 판정 단계 끔 — 사용자: "결 읽기 · 미리 판정해서 고치지 않고 읽은 대로 그리기 · 사진과 대조 분석까지만 남기고 나머지는 꺼 둠"
+     문제: 지금까지의 판정은 머리 자리자리를 재지 않고 뷰 중앙값(평균) 하나로 머리 전체를 직모/웨이브/컬로 갈라서 그림 → 직모와 컬이 섞인 머리를 뭉뚱그림.
+     남김: ① 결 읽기(04 + 이 파일의 자리마다 고른 결 mix · 못 읽은 칸 채우기) ② 다시 기르기(읽은 결을 따라 걸은 길 그대로)
+           ③ 사진 대조(07b PHOTO_CHECK — 그린 가닥을 사진에 비춰 넘침·빔을 잼). 재기 값(컬 수치·반경 등)은 진단에만 남음.
+     끈 것(17b 기본값에서 끔 · 주소 끝 ?judge=1 로 한꺼번에 예전처럼):
+       ORIG_MQ.on            원본 머리를 마네킹 + 잰 숫자(길이·컬·넘김·볼륨·페이드)로 다시 그리던 것 → 다시 기른 가닥을 그대로 그림
+       REGROW.curl           뷰 중앙값 컬 하나를 모든 섹션에 걸어 나선을 얹던 것(컬 0 = 가닥 손 안 댐)
+       REGROW.fadeOn         잰 페이드로 토글을 켜서 가닥을 깎던 것
+       REGROW.align          기른 뒤 이웃 평균으로 돌리기(세기는 머리 전체 컬 alignCurlOff) · 혼자 나간 꼬리 자르기
+       REGROW.onScalpLen     머리 전체 "짧은 머리" 판정이면 누운 가닥 길이 = 뿌리 두께 × liftK(읽은 길이 대신)
+       REGROW.volTight       머리 전체 컬 30 이상이면 만들던 좁은 덩어리(61번 전용)
+       REGROW.trimTail · READ_STEPS.trim   사진 윤곽 끝 자르기(그린 뒤 고치기 — 대조 결과를 보고 다시 정함 · 켜기 ?rgtrim=1)
+       PHOTO_CURL.on         머리 전체 컬이 30 이상이면 굵기·뭉침·타래 뼈대를 걸던 것
+       READ_SHAPE.waveRaw    머리 전체 "웨이브 사진" 판정(웨이브 배수는 이미 꺼짐)
+       (22b) 걷기 안의 그 자리 규칙도 끔 — 사용자: "읽기·기르기를 강화하는 단계라 한계에 부딪히면 그때 고침"
+       REGROW.polDown 0 · glossSkip · flipRule(앞머리선 뒤집기·옆으로 눕히기·짧게 심기) · thinStopCm 0 · stubCm 0 · READ_SHAPE.evenRoots(뿌리 고르게)
+     건드리지 않은 것: 마네킹 스타일 경로.
    ══════════════════════════════════════════════════════════ */
 var READ_STEPS = (function () {
   'use strict';
@@ -41,7 +59,7 @@ var READ_STEPS = (function () {
          (대신 빔 9.3/9.5/10.8 → 15.4/14.3/12.1% — 어깨 앞으로 떨어지는 머리를 걷기가 원래 못 채움. 얼굴 앞 가닥이 가려 주던 몫이 드러난 것)
          곱슬: 거의 그대로(넘침 1.7/6.8/4.9/2.0 → 0.8/2.6/3.6/0.4%).
        끄기 ?rgtrim=0 또는 READ_STEPS.trim=false */
-    trim: true, trimTolCm: 0.4, trimOutCm: 1.0, trimTailCm: 0.4, trimKeepPts: 3
+    trim: false /* (2026-10-22) 끔 — 위 '판정 단계 끔' · 켜기 ?rgtrim=1 */, trimTolCm: 0.4, trimOutCm: 1.0, trimTailCm: 0.4, trimKeepPts: 3
   }, W.READ_STEPS || {});
   try { var mT = /[?&]rgtrim=([01])/.exec(location.search); if (mT) S.trim = mT[1] === '1'; } catch (e) {}
   // 시험용: 두피 밖 3D 방향(사진 두 장 이상의 결로 깊이까지) — 어깨 앞으로 떨어지는 머리(빔)가 채워지는지 보려고 · ?tri3d=1
@@ -305,6 +323,7 @@ var READ_STEPS = (function () {
         ' | 곧은 선 ' + f1(a.straightFrac * 100, 0) + '% vs ' + f1(b.straightFrac * 100, 0) + '% · 고리 ' + f1(a.loop) + ' vs ' + f1(b.loop) + ' · 파장 ' + f1(a.lamPx, 1) + ' vs ' + f1(b.lamPx, 1) + 'px · 진폭 ' + f1(a.ampPx, 1) + ' vs ' + f1(b.ampPx, 1) + 'px · 컬 수치 ' + f1(a.curlDegPx) + ' vs ' + f1(b.curlDegPx) + '°/px');
     });
     if (!Object.keys(S.byView).length) L.push('  아직 읽은 사진 없음(사진을 분석하면 찍힘)');
+    try { L.push('  판정 단계: ' + (S.judge ? '켜짐(?judge=1 — 예전처럼 머리 전체 판정으로 그림)' : '꺼짐 — 읽은 대로 그리고 사진과 대조만(원본=마네킹+숫자 ' + (W.ORIG_MQ && W.ORIG_MQ.on ? '켬' : '끔') + ' · 머리 전체 컬 ' + (W.REGROW && W.REGROW.curl ? '켬' : '끔') + ' · 이웃 정렬 ' + (W.REGROW && W.REGROW.align ? '켬' : '끔') + ' · 짧은 머리 길이 규칙 ' + (W.REGROW && W.REGROW.onScalpLen ? '켬' : '끔') + ' · 사진 컬 ' + (W.PHOTO_CURL && W.PHOTO_CURL.on ? '켬' : '끔') + ' · 걷기 규칙(오르막·광택·뒤집기·얇은 자리·뿌리 고르게) ' + (W.REGROW && (W.REGROW.polDown || W.REGROW.glossSkip || W.REGROW.flipRule) ? '켬' : '끔') + ' · 윤곽 끝 자르기 ' + (S.trim || (W.REGROW && W.REGROW.trimTail) ? '켬' : '끔') + ' · 되돌리기 ?judge=1)')); } catch (e) {}
     var a = S.align;
     if (a && !a.err) L.push('  정렬: 받은 세기 ×' + (a.kIn == null ? '1' : (+a.kIn).toFixed(2)) + ' → 쓴 세기 ×' + (+a.kUsed || 1).toFixed(2) + ' · 바뀐 가닥 ' + a.changed + '/' + a.strands + '(' + pct(a.changed, a.strands) + ') · 1° 넘게 돌린 마디 ' + pct(a.moved, a.segs) + ' · 돌린 각 중앙값 ' + (+a.rotMed).toFixed(1) + '° / p90 ' + (+a.rotP90).toFixed(1) + '° (정렬 전 가닥은 디버그 파일 rg0.*)');
     else if (a && a.err) L.push('  정렬 통계 실패: ' + a.err);
@@ -472,6 +491,19 @@ var READ_STEPS = (function () {
     return true;
   }
   if (!offWaveGain()) { var tw = 0, tmW = setInterval(function () { if (offWaveGain() || ++tw > 50) clearInterval(tmW); }, 200); }
+
+  /* (2026-10-22) ?judge=1 — 끈 판정 단계를 한꺼번에 예전 값으로(나란히 비교용) */
+  S.judge = false;
+  try { S.judge = /[?&]judge=1\b/.test(location.search); } catch (e) {}
+  S.judgeOff = { REGROW: { curl: true, fadeOn: true, align: true, onScalpLen: true, volTight: true, trimTail: true, polDown: 2.5, glossSkip: true, flipRule: true, thinStopCm: 0.5, stubCm: 1.2 }, ORIG_MQ: { on: true }, PHOTO_CURL: { on: true }, READ_SHAPE: { waveRaw: true, evenRoots: true } };
+  function judgeBack() {
+    if (!S.judge) return true;
+    var all = true;
+    Object.keys(S.judgeOff).forEach(function (k) { var o = W[k]; if (!o) { all = false; return; } if (!o._judgeBack) { Object.assign(o, S.judgeOff[k]); o._judgeBack = true; } });
+    if (all) S.trim = true;
+    return all;
+  }
+  if (!judgeBack()) { var tj = 0, tmJ = setInterval(function () { if (judgeBack() || ++tj > 50) clearInterval(tmJ); }, 200); }
 
   var ok04 = install04(), ok17 = install17b();
   if (!ok17) { var tries = 0, tm = setInterval(function () { if (install17b() || ++tries > 50) clearInterval(tm); }, 200); }

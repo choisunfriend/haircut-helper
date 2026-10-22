@@ -1436,16 +1436,20 @@ var REGROW = (function () {
     longPct: 0.95, longMul: 1.3,  // 긴 머리(어깨 아래로 내려오는 가닥이 longShare 넘게 있음)는 넉넉히
     longShare: 0.1,
     sideLayStay: true,  // (2026-10-11p) 앞 헤어라인에서 옆으로 눕힌 가닥(10d)은 두피를 벗어나는 자리에서 끝 · 길이도 그 섹션 상한까지 — 길이 상한을 끈 뒤(11f) 관자놀이 밖 허공으로 뻗어 나가 옆머리에 가시가 되던 것. false = 예전(두피 밖으로 이어 감)
-    stubCm: 1.2,        // (2026-10-10e) 안 뒤집은 얇은 자리(옆·목덜미 머리선)에 심는 짧은 머리 길이(cm) · 0 = 안 심음
-    polDown: 2.5,       // (2026-10-10f) 두피 위에서 결(앞뒤 없는 선)의 앞뒤를 고를 때 비탈을 거꾸로 오르는 쪽에만 이만큼 벌점(비탈 기울기에 비례) — 한 번 위로 가면 계속 위로 가며 두상을 감던 것. 옆으로 흐르는 결(가마·가르마)은 안 건드림 · 0 = 예전(직전 방향만)
-    glossSkip: true,    // (2026-10-10f) 광택 보정 — 머리색보다 많이 밝은 자리(광택 띠)에서 수평에 가까운 결은 안 읽음(광택 띠 가장자리를 결로 잘못 읽은 것) · false = 끔
+    stubCm: 0,          // (2026-10-22) 끔 — 걷기 안 규칙도 끔(읽기·기르기 강화 단계 · 되돌리기 ?judge=1) · 예전 1.2
+    stubCm_was: 1.2,    // (2026-10-10e) 안 뒤집은 얇은 자리(옆·목덜미 머리선)에 심는 짧은 머리 길이(cm) · 0 = 안 심음
+    polDown: 0,         // (2026-10-22) 끔 — 걷기 안 규칙도 끔(읽기·기르기 강화 단계 · 되돌리기 ?judge=1): 오르막 벌점 · 예전 2.5
+    polDown_was: 2.5,   // (2026-10-10f) 두피 위에서 결(앞뒤 없는 선)의 앞뒤를 고를 때 비탈을 거꾸로 오르는 쪽에만 이만큼 벌점(비탈 기울기에 비례) — 한 번 위로 가면 계속 위로 가며 두상을 감던 것. 옆으로 흐르는 결(가마·가르마)은 안 건드림 · 0 = 예전(직전 방향만)
+    glossSkip: false,   // (2026-10-22) 끔 — 걷기 안 규칙도 끔(읽기·기르기 강화 단계 · 되돌리기 ?judge=1): 광택 띠 수평 결 안 읽기 · 예전 true
+    glossSkip_was: true, // (2026-10-10f) 광택 보정 — 머리색보다 많이 밝은 자리(광택 띠)에서 수평에 가까운 결은 안 읽음(광택 띠 가장자리를 결로 잘못 읽은 것) · false = 끔
     glossLo: 0.35,      // 광택 판정: (밝기 − 머리색 밝기) ÷ (255 − 머리색 밝기)가 이 값 이상
     glossFlat: 0.5,
     glossNbrKeep: false, // (2026-10-12b) 끔 — 광택 띠의 수평 결은 둘레와 같아도 안 읽음(직모 손님에서 798개가 살아 가닥이 옆으로 꺾임). 다시 켜기 true   // (2026-10-11s) 3·6번만 되돌림 — 이것은 12:25 그대로 · 끄기 false   // (2026-10-11q) 원인 찾기용 스위치 — false면 광택 띠의 수평 결을 둘레와 같아도 안 읽음(10f)
     secVol: true,        // (2026-10-11s) 3·6번만 되돌림 — 이것은 12:25 그대로 · 끄기 false   // (2026-10-11q) 원인 찾기용 스위치 — false면 섹션 부피(volShare/volPoint/weight)를 스펙에 안 넣음
     glossNbr: 8,        // (2026-10-10i) 둘레 결을 볼 거리(마스크 px)     // 수평에 가까움: |sin(결 각)| 이 값 미만(±30°)
     flipThickCm: 1.8,   // (2026-10-10g) 4 → 1.8 — 실측 앞쪽 뿌리 두께: 넘겨 세운 남자 앞머리 중앙값 2.3cm · 눕힌 여자 앞머리 1.0cm
-    thinStopCm: 0.5, thinStopRoot: 1.2, thinStopAfter: 1.0,   // (2026-10-10j) 뿌리 두께가 thinStopRoot cm 이상인 가닥은 두께 thinStopCm 미만 자리(페이드)에 들어서면 멈춤(뿌리에서 thinStopAfter cm 지난 뒤) · 0 = 끔
+    flipRule: false,    // (2026-10-22) 끔 — 걷기 안 규칙도 끔(읽기·기르기 강화 단계 · 되돌리기 ?judge=1): 앞머리선 뿌리 뒤집기·옆으로 눕히기(flipThickCm · sideLayStay · stubCm 모두 이 규칙 뒤에 걸림) · 예전 true
+    thinStopCm: 0 /* (2026-10-22) 끔 — 걷기 안 규칙도 끔(읽기·기르기 강화 단계 · 되돌리기 ?judge=1): 얇은 자리에서 멈춤 · 예전 0.5 */, thinStopRoot: 1.2, thinStopAfter: 1.0,   // (2026-10-10j) 뿌리 두께가 thinStopRoot cm 이상인 가닥은 두께 thinStopCm 미만 자리(페이드)에 들어서면 멈춤(뿌리에서 thinStopAfter cm 지난 뒤) · 0 = 끔
     polSlopeLo: 0.35, polSlopeHi: 0.75,   // (2026-10-10i) 오르막 벌점은 비탈이 이 기울기(내리막 방향 길이 0~1) 사이에서 서서히 걸림 — 가마·정수리처럼 완만한 곳은 결 그대로 돎
     polThickLo: 0, polThickHi: 0,   // (2026-10-12b) 끔(둘 다 0 = 두께로 벌점을 안 풂) — 뿌리 두께 2.2cm 이상인 자리(직모 손님 옆·뒤)에서 벌점이 꺼져 가닥이 위로 거슬러 가던 것. 예전 값 1.4 / 2.2   // (2026-10-10g) 오르막 벌점을 뿌리 두께로 풂 — 이 cm 이하면 벌점 그대로 · 이 cm 이상(세운 머리·볼륨)이면 벌점 없음 · 사이는 서서히
     flipThickCm_note: 0,     // (2026-10-10c) 출발 방향 뒤집기(아래에 머리가 없으면 위로)는 뿌리 자리 머리 두께가 이 cm 이상일 때만 — 세운 앞머리. 얇으면(눕힌 머리·목덜미 짧은 머리) 안 뒤집음 · 0 = 예전처럼 늘 뒤집음
@@ -1454,9 +1458,10 @@ var REGROW = (function () {
     inertia: 0.55,      // 직전 방향을 섞는 비율(0 = 사진 결 그대로)
     smooth: 2,          // 다 기른 뒤 고르게 펴는 횟수
     liftK: 2.2,
-    onScalpLen: true,   // (2026-10-11a) 짧은 머리: 두피 위로 누운 가닥은 뿌리 자리 두께 × liftK에서 끝(누운 머리는 기와처럼 겹쳐 사진에서 끝없이 이어 보임 — 걸어간 거리는 가닥 길이가 아님. 스펙 길이와 같은 잣대)         // 짧은 머리 길이 어림 = 뿌리 자리 두께 × 이 값
+    onScalpLen: false,  // (2026-10-22) 판정 끔 — 읽은 대로 그리고 사진과 대조만(34 READ_STEPS · 되돌리기 ?judge=1): 머리 전체 '짧은/긴 머리' 판정으로 길이를 두께×liftK로 정하던 것 · 예전 true
+    onScalpLen_was: true, // (2026-10-11a) 짧은 머리: 두피 위로 누운 가닥은 뿌리 자리 두께 × liftK에서 끝(누운 머리는 기와처럼 겹쳐 사진에서 끝없이 이어 보임 — 걸어간 거리는 가닥 길이가 아님. 스펙 길이와 같은 잣대)         // 짧은 머리 길이 어림 = 뿌리 자리 두께 × 이 값
     // (2026-10-04h) 컬 재기 — 머리말 v4 참고
-    curl: true,
+    curl: false,        // (2026-10-22) 판정 끔 — 읽은 대로 그리고 사진과 대조만(34 READ_STEPS · 되돌리기 ?judge=1): 뷰 중앙값 하나(머리 전체 컬)를 모든 섹션에 걸어 나선을 얹던 것 — 재기는 그대로(진단 raw) · 예전 true
     curlLo: 1.8, curlHi: 4.0,   // 결 꺾임(°/px) 이 구간을 컬 0 → curlMax로 (⚠ 합성 무늬로 잡은 어림값)
     curlMax: 90,                // 100이면 가닥 점 수가 3배(나선 11바퀴) — 90이면 2배쯤
     curlMin: 10,                // 이보다 작게 재지면 0(직모)으로 봄
@@ -1466,7 +1471,8 @@ var REGROW = (function () {
     curlRadius: false,          // (2026-10-06r) 끔 — 켜면 컬이 죽음(웨이브 100 + 로드 ×1.29 = 곧은 막대). q에서 다시 켠 것은 잘못 읽은 것 — 머리말 v8 참고
     clumps: true, clumpWin: 17, clumpLift: 1.5, clumpMinPx: 25,   // (2026-10-10m) 곱슬 사진에서 타래 조각 찾기(61번이 3D 가닥을 조각대로 묶음)
     waveFromHelix: true, waveFromHelixBelow: 30, waveHelixPitchLo: 3, waveHelixPitchHi: 15, waveHelixRLo: 0.8, waveHelixRMaxK: 0.6, waveCurlLo: 40, waveCurlHi: 65,   // (2026-10-10p) 굵은 웨이브: 컬이 30 미만으로 잡혀도 나선 측정이 한 바퀴 3~15cm·반경 0.8cm 이상을 잡으면 컬 40~65(반경÷간격에 비례). 사용자: 이 정도(한 바퀴 7~8cm)면 "강한 펌은 아니지만 약한 펌도 아님" → 60대 · 더 굵은 미국식 웨이브(간격이 더 김)는 40~50대
-    fadeOn: true,       // (2026-10-10l) 페이드를 잰 손님은 페이드 토글을 켜서 시작
+    fadeOn: false,      // (2026-10-22) 판정 끔 — 읽은 대로 그리고 사진과 대조만(34 READ_STEPS · 되돌리기 ?judge=1): 잰 페이드로 토글을 켜 가닥을 깎던 것 · 예전 true
+    fadeOn_was: true,   // (2026-10-10l) 페이드를 잰 손님은 페이드 토글을 켜서 시작
     curlHelix: true,    // (2026-10-10m) 다시 켬(사용자: 타래 구현까지 한 다음에 판단) · 예전 메모: 실제 곱슬 사진(타래가 여러 방향으로 감김)에서 사진마다 0.6~1.1cm로 들쭉날쭉·정면은 못 잼 → 사진 전체 한 번이 아니라 부분마다 재는 방식으로 다시 만들 때까지 예전 어림식
     curlHelix_was: true, helixPeak: 0.3, helixBetaLo: 25, helixBetaHi: 78,   // (2026-10-10k) 나선 측정으로 컬 반경·한 바퀴 간격을 잼(쓸 조건: 반복 세기 · 가닥 기울기 범위) · false = 예전 어림식
     curlAmp: false, curlAmpK: 1.15, curlAmpWavy: 0.25,   // (2026-10-10j) 끔 — 실제 곱슬 사진에서 0.4cm로 작게 잼(큰 컬은 선이 타래 경계에서 끊겨 빠지고 잔물결만 남음) → 뽀글이. 고칠 때까지 예전 어림식   // (2026-10-10h) 컬 반경을 결 선의 흔들림 폭으로 직접 잼(합성 컬 진폭 3~25px에서 실제의 74~96% → ×1.15) · 흔들리는 선이 이 비율 이상일 때만 · false = 예전 어림식
@@ -1499,7 +1505,7 @@ var REGROW = (function () {
     hangDown: false,    // (2026-10-11f) 끔 — 긴 머리도 3D 머리 덩어리를 빠져나가는 곳에서 끝(곧게 늘어뜨려 끝 높이 맞추기 대신)
     hangK: 0.6,         // 한 걸음마다 아래 방향을 섞는 비율(클수록 빨리 곧아짐)
     // (2026-10-05m) 기른 뒤 결 정렬 — 머리말 v7 참고
-    align: true,
+    align: false,       // (2026-10-22) 판정 끔 — 읽은 대로 그리고 사진과 대조만(34 READ_STEPS · 되돌리기 ?judge=1): 이웃 평균 쪽으로 돌리기 + 세기를 머리 전체 컬(alignCurlOff)로 정하던 것 · 예전 true
     alignCell: 0.07,    // 이웃을 보는 칸 크기(모델 단위 ≈ 1.3cm)
     alignK: 0.75,       // 많이 벗어난 마디를 평균 쪽으로 돌리는 세기(0~1)
     alignTol: 12, alignFull: 40, alignFlip: 100,   // 도: 이 안쪽은 그대로 · 이 이상은 alignK만큼 · 이 넘게 반대면 안 건드림
@@ -1514,7 +1520,7 @@ var REGROW = (function () {
     hullRule: 'front',  // (2026-10-11h) 사용자: "다수결방식에 정면을 참고하는 걸로" — 'front' = 다수결 + 정면이 1cm 넘게 밖이면 머리 아님 ·    // (2026-10-11g) 'tol' = 여유 둔 교집합: 그 자리를 보는 사진 중 하나라도 머리 영역에서 여유(정면 1 · 옆·뒤 1.5cm) 넘게 밖이면 머리 아님 — 예전 다수결은 2:2 동점도 머리로 쳐서 웨이브 손님 덩어리가 1.3배 컸음 · 'face' = 다수결 + 마주 보는 사진
     hullViews: ['front', 'left', 'right', 'back'], hullMarginCm: 1.0, hullMarginSideCm: 1.5, hullFacing: true, hullCellPx: 3,   // (2026-10-11b) 그 자리를 가장 정면으로 마주 보는 사진이 '밖'이라고 하면 밖(정면 1cm · 옆·뒤 1.5cm 여유) — 사용자: "정 안맞는 곳은 해당 면의 사진영역으로 결정" · 사진 맞춤은 65번   // (2026-10-11a) 껍질 = 사진들의 "교집합" — 이 사진들이 머리 영역 밖(여유 이 cm 넘게)이라고 하면 다른 사진이 머리라고 해도 머리 아님. 정면은 얼굴 랜드마크로 맞춘 사진이라 믿을 수 있음 · [] = 예전 다수결만
     tri3D: false, /* (2026-10-11r) 원인 찾기 결과 — 끔. 다시 켜기 REGROW.tri3D=true */ tri3DMinDeg: 35, tri3DPrior: 0.15,   // (2026-10-11a) 두피 밖 결의 3D 방향 = 두 장 이상의 사진 결이 만드는 평면들의 교선(깊이를 직전 걸음에서 물려받지 않음) · 시선축이 이 각 이상 벌어진 사진들일 때만
-    volume: true, volCellCm: 0.6, volTight: true, volTightMinCurl: 30,   // (2026-10-11d) 3D 머리 덩어리 — 사진 네 장(마주 보는 사진 규칙)으로 칸마다 머리/아님을 한 번 정해 두고, 걷기·61번(마네킹 위 컬의 축 길이)이 같은 덩어리를 씀
+    volume: true, volCellCm: 0.6, volTight: false /* (2026-10-22) 끔 — 머리 전체 컬 30 이상이면 만들던 좁은 덩어리(61번 전용) */, volTightMinCurl: 30,   // (2026-10-11d) 3D 머리 덩어리 — 사진 네 장(마주 보는 사진 규칙)으로 칸마다 머리/아님을 한 번 정해 두고, 걷기·61번(마네킹 위 컬의 축 길이)이 같은 덩어리를 씀
     polNbr: true,       // (2026-10-11d) 뿌리 결이 옆으로 흐릴 때 앞뒤 방향을 "가운데 선 바깥"이 아니라 이웃 뿌리들의 방향으로(남자분 가운데 가르마의 원인)
     straightCurly: false, straightMode: 'path', straightWinK: 1.0, straightCurlMin: 40, straightPitchK: 0.5, straightDHalfK: 4, straightRMinPx: 5, straightRMaxPx: 40,   // (2026-10-10s) 곱슬 사진은 큰 흐름만 따라 직모 뼈대로 기름(컬은 61·14c가 그 위에 얹음) — 반경 = 한 바퀴 간격 × K (못 쟀으면 dHalf × K) · 사진 px
     sliceMs: 60,        // (2026-10-12e) 30 → 60: 화면에 양보하는 횟수를 반으로(폰에서 쉬는 시간이 얼마인지는 아래 진단 줄 '일한 시간/쉰 시간'으로 확인)
@@ -1533,7 +1539,7 @@ var REGROW = (function () {
          (대신 빔 9.3/9.5/10.8 → 15.4/14.3/12.1% — 어깨 앞으로 떨어지는 머리를 걷기가 원래 못 채움. 얼굴 앞 가닥이 가려 주던 몫이 드러난 것)
          곱슬: 거의 그대로(넘침 1.7/6.8/4.9/2.0 → 0.8/2.6/3.6/0.4%).
        끄기 ?rgtrim=0 또는 REGROW.trimTail=false · 사진·투영은 07b PHOTO_CHECK와 같은 것 */
-    trimTail: true, trimTolCm: 0.4, trimOutCm: 1.0, trimTailCm: 0.4, trimKeepPts: 3
+    trimTail: false /* (2026-10-22) 판정 끔 — 읽은 대로 그리고 사진과 대조만(34 READ_STEPS · 되돌리기 ?judge=1): 사진 윤곽 끝 자르기 — 대조는 07b가 함 · 켜기 ?rgtrim=1 */, trimTolCm: 0.4, trimOutCm: 1.0, trimTailCm: 0.4, trimKeepPts: 3
   }, W.REGROW || {});
   var S = G.stats = null;
   try { var rgtQ = /[?&]rgtrim=([01])/.exec(String(location.search || '')); if (rgtQ) G.trimTail = rgtQ[1] === '1'; } catch (e) {}
@@ -2256,7 +2262,7 @@ var REGROW = (function () {
       var r1 = room(F, n, dt, sgn);
       var flip = 0, tCm0 = tRoot * cmU;
       var polK = G.polThickHi > G.polThickLo ? Math.max(0, Math.min(1, (G.polThickHi - tCm0) / (G.polThickHi - G.polThickLo))) : 1;   // (2026-10-10g) 두꺼운(세운) 자리는 오르막 허용
-      if (r1 < 2) {
+      if (G.flipRule !== false && r1 < 2) {   // (2026-10-22) flipRule=false면 결이 가리킨 쪽 그대로
         var r2 = room(F, n, dt, -sgn);
         if (r2 > r1) {
           var tCm = tRoot * cmU;
@@ -4127,7 +4133,7 @@ var ORIG_MQ = (function () {
   var G = REGROW;
 
   var ID = '__original__';
-  var OM = Object.assign({ on: true, name: '원본 머리 (마네킹 + 잰 값)' }, W.ORIG_MQ || {});
+  var OM = Object.assign({ on: false /* (2026-10-22) 끔 — 원본 머리 = 다시 기른 가닥 그대로(마네킹 + 머리 전체로 잰 숫자로 다시 그리지 않음) · 되돌리기 ?judge=1 */, name: '원본 머리 (마네킹 + 잰 값)' }, W.ORIG_MQ || {});
   OM.id = ID; OM.spec = null; OM.src = null; OM.mode = 'orig';   // mode: 'orig' = 원본 머리를 보는 중 · 'mq' = 맨 마네킹/다른 스타일
   var ST = OM.stats = { applied: 0, fellBack: 0, lastErr: null, at: null };
 
@@ -5478,7 +5484,7 @@ var PHOTO_CURL = (function () {
   'use strict';
   var W = window, TAG = '[사진 컬]';
   var PC = Object.assign({
-    on: true,
+    on: false,           // (2026-10-22) 끔 — 머리 전체 컬(lookMinCurl 이상)로 굵기·뭉침·타래 뼈대를 거는 것 · 되돌리기 ?judge=1
     radius: true,        // ① 컬 굵기를 사진 반경에 맞춤
     clump: true,         // ② 뭉침 모양
     lookMinCurl: 30,     // 사진에서 잰 컬이 이 이상일 때만
@@ -6241,9 +6247,10 @@ var READ_SHAPE = (function () {
   var W = window, TAG = '[읽은 모양]';
   var RS = Object.assign({
     on: true,            // B·C
-    waveRaw: true,       // (2026-10-17 배포본) 켬 — 웨이브(S자) 사진이면 읽은 길 그대로 + 출렁임 키우기(__rsWaveGain)
+    waveRaw: false,      // (2026-10-22) 끔 — 머리 전체 '웨이브 사진' 판정 · 예전 true
+    waveRaw_was: true,   // (2026-10-17 배포본) 켬 — 웨이브(S자) 사진이면 읽은 길 그대로 + 출렁임 키우기(__rsWaveGain)
     // was: waveRaw: false,      // A — (2026-10-12j) 끔: 웨이브도 42번 축(방향 필터 파장으로 고른 결)으로 걷고 굴곡은 61번이 얹음. 켜면 예전(읽은 길 그대로)
-    evenRoots: true,     // D
+    evenRoots: false,    // D — (2026-10-22) 끔 — 걷기 안 규칙도 끔(읽기·기르기 강화 단계 · 되돌리기 ?judge=1): 뿌리 고르게 · 예전 true
     rootLow: 0.6,        // D: 보통 밀도의 이 비율 미만 칸은 손대지 않음(대머리·숱 적은 곳 후보 — 64번이 덩어리 크기로 가름)
     vox: 0.05,           // C: 흐름 칸(모델 단위 ≈ 1cm)
     revLen: 0.42,        // C: 뿌리에서 이 길이(≈ 8cm)까지 봄
