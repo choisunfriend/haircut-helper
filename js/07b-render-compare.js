@@ -1866,6 +1866,10 @@ var PHOTO_CHECK = (function () {
     try { H.pc = { trim: P.trim, fixDir: P.fixDir }; } catch (e) {}
     // 다시 기른 가닥(점은 하나 걸러)
     try { if (G && G.model && G.model.strands && G.model.strands.length) { var rg = packStrands(G.model.strands, 2, secIdx); add('rg.cnt', rg.cnt); add('rg.sec', rg.sec); add('rg.pts', rg.D, { stride: 2 }); H.regrown = { n: G.model.strands.length, on: !!G.on, CY: G.model.CY }; } else H.notes.push('다시 기른 모델 없음'); } catch (e) { H.notes.push('rg: ' + e.message); }
+    // (2026-10-24g) 사진 가닥을 헐로 옮긴 것(13c "헐 기반 옮기기" · 17b 옮긴 점 겉면의 재료) — 점은 하나 걸러 · lift.mir 1 = 거울 채움
+    try { var LS = G && G.src && G.src.strands; if (LS && LS.length) { var lp = packStrands(LS, 2, secIdx), lm = new Uint8Array(LS.length), lv = new Uint8Array(LS.length), AN = ['front', 'left', 'right', 'back'];
+        for (var li = 0; li < LS.length; li++) { lm[li] = LS[li] && LS[li].mirrored ? 1 : 0; var ai = LS[li] ? AN.indexOf(LS[li].srcAngle) : -1; lv[li] = ai < 0 ? 255 : ai; }
+        add('lift.cnt', lp.cnt); add('lift.sec', lp.sec); add('lift.mir', lm); add('lift.view', lv); add('lift.pts', lp.D, { stride: 2 }); H.lift = { n: LS.length, view: 'lift.view 0 front 1 left 2 right 3 back 255 기타', stat: G.liftStat || null }; } } catch (e) { H.notes.push('lift: ' + e.message); }
     // (2026-10-10a) 다시 기른 가닥마다 멈춘 이유·두피 위/밖 길이 등(42번 rg) + 걸음 기록(REGROW.trace를 켜고 기른 경우) + 사진에서 잰 뿌리 밀도
     try {
       if (G && G.model && G.model.strands && G.model.strands.length) {
