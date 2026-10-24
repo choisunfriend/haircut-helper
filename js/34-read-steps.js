@@ -59,6 +59,12 @@ var READ_STEPS = (function () {
          (대신 빔 9.3/9.5/10.8 → 15.4/14.3/12.1% — 어깨 앞으로 떨어지는 머리를 걷기가 원래 못 채움. 얼굴 앞 가닥이 가려 주던 몫이 드러난 것)
          곱슬: 거의 그대로(넘침 1.7/6.8/4.9/2.0 → 0.8/2.6/3.6/0.4%).
        끄기 ?rgtrim=0 또는 READ_STEPS.trim=false */
+    /* (2026-10-24) 머리 경계 결 빼기 — 머리 영역 가장자리(edgeFrac × 사진 가로 안쪽)에서 결이 경계선과 나란하면(edgeDeg° 안) 머리카락 결이 아니라
+       "머리/배경 경계"를 읽은 것으로 보고 못 읽은 칸으로 둠 → ② 채우기가 안쪽 결로 채움.
+       잰 것(직모 단발 15:11 디버그 파일 · 아래 20% 높이): 경계에서 0.3cm 안 결의 44~72%가 거의 수평(밑단선) · 0.8~1.5cm 안 9~19% · 그 안쪽 3~7%.
+       사진은 밑단까지 곧게 내려오는데 가닥이 밑단선을 따라 옆으로 돌아 다시 올라가 길이가 25→50cm · 3cm 넘게 거슬러 오른 가닥 1→59%.
+       ⚠ 곱슬처럼 경계를 따라 진짜로 감기는 결도 같이 빠질 수 있음. 끄기 ?edgefix=0 · READ_STEPS.edgeFix=false */
+    edgeFix: true, edgeFrac: 0.02, edgeDeg: 30,
     trim: false /* (2026-10-22) 끔 — 위 '판정 단계 끔' · 켜기 ?rgtrim=1 */, trimTolCm: 0.4, trimOutCm: 1.0, trimTailCm: 0.4, trimKeepPts: 3
   }, W.READ_STEPS || {});
   try { var mT = /[?&]rgtrim=([01])/.exec(location.search); if (mT) S.trim = mT[1] === '1'; } catch (e) {}
@@ -67,6 +73,7 @@ var READ_STEPS = (function () {
   S.trimStat = null;
   try { var mQ = /[?&]rsbridge=([01])/.exec(location.search); if (mQ) S.bridge = mQ[1] === '1'; } catch (e) {}
   try { var mL = /[?&]localalign=([01])/.exec(location.search); if (mL) S.localAlign = mL[1] === '1'; } catch (e) {}
+  try { var mE = /[?&]edgefix=([01])/.exec(location.search); if (mE) S.edgeFix = mE[1] === '1'; } catch (e) {}
   S.byView = {};        // 사진별 스냅샷 {w,h,raw(Int8 ±127=±90°),coh(Uint8),est(Uint8: 0 읽음 1 건넘 2 채움),stats}
   S._view = null;       // 03b가 결을 읽기 직전에 넣어 줌
   S.align = null;       // 직전 정렬 통계
@@ -177,6 +184,26 @@ var READ_STEPS = (function () {
     return { est: est, stats: st };
   }
 
+  /* (2026-10-24) 머리 경계 결 빼기 — 경계와 나란한 결을 못 읽은 칸으로(coh 0). 돌려줌: 뺀 칸 수 */
+  function edgeClear(ang, coh, mask, w, h) {
+    var N = w * h, D = new Float32Array(N), i, x, y, BIG = 1e9, band = Math.max(3, Math.round(S.edgeFrac * w)), cosT = Math.cos(S.edgeDeg * Math.PI / 180), n = 0, near = 0;
+    for (i = 0; i < N; i++) D[i] = mask[i] ? BIG : 0;
+    for (y = 0; y < h; y++) for (x = 0; x < w; x++) { i = y * w + x; if (!D[i]) continue; var v = D[i];
+      if (x > 0 && D[i - 1] + 1 < v) v = D[i - 1] + 1; if (y > 0 && D[i - w] + 1 < v) v = D[i - w] + 1;
+      if (x > 0 && y > 0 && D[i - w - 1] + 1.414 < v) v = D[i - w - 1] + 1.414; if (x < w - 1 && y > 0 && D[i - w + 1] + 1.414 < v) v = D[i - w + 1] + 1.414;
+      if (x === 0 || y === 0 || x === w - 1) v = Math.min(v, 1); D[i] = v; }
+    for (y = h - 1; y >= 0; y--) for (x = w - 1; x >= 0; x--) { i = y * w + x; if (!D[i]) continue; var v2 = D[i];
+      if (x < w - 1 && D[i + 1] + 1 < v2) v2 = D[i + 1] + 1; if (y < h - 1 && D[i + w] + 1 < v2) v2 = D[i + w] + 1;
+      if (x < w - 1 && y < h - 1 && D[i + w + 1] + 1.414 < v2) v2 = D[i + w + 1] + 1.414; if (x > 0 && y < h - 1 && D[i + w - 1] + 1.414 < v2) v2 = D[i + w - 1] + 1.414;
+      if (y === h - 1) v2 = Math.min(v2, 1); D[i] = v2; }
+    for (y = 2; y < h - 2; y++) for (x = 2; x < w - 2; x++) {
+      i = y * w + x; if (!mask[i] || D[i] > band) continue; near++;
+      var gx = D[i + 2] - D[i - 2], gy = D[i + 2 * w] - D[i - 2 * w], gl = Math.hypot(gx, gy); if (gl < 0.5) continue;
+      var tx = -gy / gl, ty = gx / gl;                                       // 경계선 방향(안쪽 법선에 수직)
+      if (Math.abs(Math.cos(ang[i]) * tx + Math.sin(ang[i]) * ty) >= cosT) { coh[i] = 0; n++; }
+    }
+    return { n: n, near: near, band: band };
+  }
   /* 04 GABOR_ORIENT.refine 뒤에 끼움 */
   function install04() {
     var GO = W.GABOR_ORIENT; if (!GO || GO._rsWrapped) return !!GO;
@@ -204,11 +231,12 @@ var READ_STEPS = (function () {
       try {
         var N = Wd * Hd, i, raw = null, rc = null;
         if (S.keepSnap) { raw = new Int8Array(N); rc = new Uint8Array(N); for (i = 0; i < N; i++) { raw[i] = Math.max(-127, Math.min(127, Math.round(f.angle[i] / (Math.PI / 2) * 127))); rc[i] = Math.max(0, Math.min(255, Math.round(f.coherence[i] * 255))); } }
-        var o = bridgeFill(f.angle, f.coherence, mask, Wd, Hd);
+        var eg = null; if (S.edgeFix) { try { eg = edgeClear(f.angle, f.coherence, mask, Wd, Hd); } catch (e2) { eg = { err: String(e2 && e2.message || e2) }; } }
+        var o = bridgeFill(f.angle, f.coherence, mask, Wd, Hd); o.stats.edge = eg;
         f.est = o.est;
         S.byView[view] = { w: Wd, h: Hd, raw: raw, coh: rc, est: o.est, stats: o.stats, cmp: cmp, at: Date.now() };
         var s = o.stats;
-        console.log(TAG + ' ' + view + ' ' + Wd + '×' + Hd + ' · 건넘 ' + pct(s.bridged, s.hair) + ' · 채움 ' + pct(s.filled, s.hair) + ' · 끊김 ' + s.breaks + '곳 중 이어져 건넌 ' + s.bridgedRuns + ' · 진짜 꺾임 ' + s.turns + ' · ' + s.ms + 'ms');
+        console.log(TAG + ' ' + view + ' ' + Wd + '×' + Hd + (s.edge && !s.edge.err ? ' · 경계 결 뺌 ' + s.edge.n + '/' + s.edge.near + '칸(경계 ' + s.edge.band + 'px 안)' : '') + ' · 건넘 ' + pct(s.bridged, s.hair) + ' · 채움 ' + pct(s.filled, s.hair) + ' · 끊김 ' + s.breaks + '곳 중 이어져 건넌 ' + s.bridgedRuns + ' · 진짜 꺾임 ' + s.turns + ' · ' + s.ms + 'ms');
       } catch (e) { console.warn(TAG + ' 실패(읽은 그대로 둠)', e); }
       return r;
     };
@@ -307,7 +335,7 @@ var READ_STEPS = (function () {
     Object.keys(S.byView).forEach(function (v) {
       var b = S.byView[v], s = b.stats;
       L.push('  ' + v + ' ' + b.w + '×' + b.h + ' · 머리 ' + s.hair + 'px · 건넘 ' + pct(s.bridged, s.hair) + ' · 한쪽에서만 건넘(안 고침) ' + pct(s.oneSide, s.hair) + ' · 채움 ' + pct(s.filled, s.hair) +
-        ' · 끊김 ' + s.breaks + '곳 → 이어져 건넌 ' + s.bridgedRuns + ' / 진짜 꺾임 ' + s.turns + ' · 내다봄 ' + s.look + 'px · 확인 ' + s.resume + 'px · ' + s.ms + 'ms');
+        (s.edge && !s.edge.err ? ' · 경계와 나란해 뺀 결 ' + pct(s.edge.n, s.hair) + '(경계 ' + s.edge.band + 'px 안 ' + pct(s.edge.n, s.edge.near) + ' · 끄기 ?edgefix=0)' : '') + ' · 끊김 ' + s.breaks + '곳 → 이어져 건넌 ' + s.bridgedRuns + ' / 진짜 꺾임 ' + s.turns + ' · 내다봄 ' + s.look + 'px · 확인 ' + s.resume + 'px · ' + s.ms + 'ms');
     });
     try { L.push('  웨이브 배수: ' + (W.READ_SHAPE && W.READ_SHAPE.waveGainAuto === false && !(W.READ_SHAPE.waveGain > 1) ? '꺼짐(읽은 흔들림 그대로 · 켜기 ?wavegain=1)' : '켜짐 ×' + (W.READ_SHAPE ? W.READ_SHAPE.waveGain : '?') + (W.READ_SHAPE && W.READ_SHAPE.waveGainAuto ? '(자동)' : ''))); } catch (e) {}
     var f1 = function (v, k) { return isFinite(v) ? (+v).toFixed(k == null ? 2 : k) : '-'; };
