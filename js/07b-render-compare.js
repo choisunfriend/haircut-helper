@@ -1655,7 +1655,12 @@ var PHOTO_CHECK = (function () {
       var photo = photoModel(), probe = (photo && photo.occ && photo.occ.probe) || (state.hairOcc3D && state.hairOcc3D.probe);
       if (!probe || !probe.cams) return [];
       var list = probe.cams.filter(function (c) { return c && c.smp && c.iw > 0 && c.ih > 0 && c.s > 0 && c.sy > 0 && P.skip.indexOf(c.angle) < 0; });
-      return list.map(function (c) {
+      /* (2026-10-24c) 다시 기르기가 사진끼리 맞춘 양(REGROW.camShift)을 그대로 씀 — 다시 기른 머리를 볼 때만(마네킹은 옮기기 전 사진 값으로 만든 가닥) */
+      var RGs = W.REGROW, shift = null;
+      try { if (RGs && RGs.camShift && RGs.camShift.photo === photo && !(typeof MANNEQUIN !== 'undefined' && MANNEQUIN.on)) shift = RGs.camShift.by; } catch (e) { shift = null; }
+      var withShift = function (cam) { var d = shift && shift[cam.angle]; return d ? Object.assign({}, cam, { cx: cam.cx + d.cx, crownY: cam.crownY + d.crownY }) : cam; };
+      return list.map(function (c) { return withShift(getCam1(c)); });
+      function getCam1(c) {
         var mi = state.hairMasks && state.hairMasks[c.angle], ori = mi && mi.orientation;
         if (!ori || typeof sampleOrientation !== 'function') return c;
         var hit = dirCamMemo.get(c); if (hit && hit.ori === ori) return hit.cam;
@@ -1668,7 +1673,7 @@ var PHOTO_CHECK = (function () {
         } });
         dirCamMemo.set(c, { ori: ori, cam: cam });
         return cam;
-      });
+      }
     } catch (e) { return []; }
   }
   function getEnv() {

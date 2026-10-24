@@ -278,6 +278,10 @@ function selectNoStyle(){
   // "원본 결" 취지: 펌 없이 실측 결방향만 따라가도록 전 섹션 컬을 0으로.
   SECTION_ORDER.forEach(id=>{ state.sections[id].curl = 0; });
   mannequinReset();      // ③ 손님 웨이브 펴기 + 빗질 삭제
+  /* (2026-10-24) 사용자: "지금은 노스타일이니까 다시기르기부터 되게" — 스타일을 안 골랐으면 마네킹을 끈 채로 조정 화면에 들어가
+     (setupAdjustScreen 끝 REGROW._afterSetupAdjust → REGROW.sync) 바로 다시 기른 원본 머리부터 보임. 스타일을 고르면 예전처럼 마네킹 + 스타일.
+     되돌리기: NOSTYLE_REGROW = false */
+  try { if (typeof NOSTYLE_REGROW === 'undefined' || NOSTYLE_REGROW !== false) { MANNEQUIN.on = false; syncMannequinBtn(); } } catch (e) {}
   syncSliderUI();
 }
 /* 프리셋 스타일을 고르면 초기화 상태를 <b>풀지 않는다</b>. 시술 순서상
