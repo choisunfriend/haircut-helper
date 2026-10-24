@@ -495,7 +495,7 @@ var READ_STEPS = (function () {
   /* (2026-10-22) ?judge=1 — 끈 판정 단계를 한꺼번에 예전 값으로(나란히 비교용) */
   S.judge = false;
   try { S.judge = /[?&]judge=1\b/.test(location.search); } catch (e) {}
-  S.judgeOff = { REGROW: { curl: true, fadeOn: true, align: true, onScalpLen: true, volTight: true, trimTail: true, polDown: 2.5, glossSkip: true, flipRule: true, thinStopCm: 0.5, stubCm: 1.2 }, ORIG_MQ: { on: true }, PHOTO_CURL: { on: true }, READ_SHAPE: { waveRaw: true, evenRoots: true } };
+  S.judgeOff = { REGROW: { curl: true, fadeOn: true, align: true, onScalpLen: true, volTight: true, trimTail: true, polDown: 2.5, glossSkip: true, flipRule: true, thinStopCm: 0.5, stubCm: 1.2, inertia: 0.55, gravity: 0.25 }, ORIG_MQ: { on: true }, PHOTO_CURL: { on: true }, READ_SHAPE: { waveRaw: true, evenRoots: true } };
   function judgeBack() {
     if (!S.judge) return true;
     var all = true;

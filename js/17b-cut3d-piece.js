@@ -1424,7 +1424,15 @@ var REGROW = (function () {
        가장 믿을 만한 사진(정면도² × 결 또렷함이 큰 쪽)과 맞는 사진만 씀. 엇갈린 사진도 그만큼 믿을 만하면(무게가 agreeRatio배 안쪽)
        어느 쪽이 맞는지 모르는 것이니 이 걸음은 결을 못 읽은 걸로 보고 관성으로 이어 감(agreeAmbig='skip').
        생성 사진(장마다 따로 그림)은 33-synth-photo.js가 이 값을 느슨하게 바꿈. 끄기 REGROW.agree=false */
-    agree: true, agreeDeg: 30, agreeRatio: 1.5, agreeAmbig: 'skip',
+    agree: true, agreeDeg: 30, agreeRatio: 1.5, agreeAmbig: 'best' /* (2026-10-24) 'skip' → 'best': 두 사진이 엇갈리고 둘 다 믿을 만해도 결을 버리지 않고 가장 믿을 만한 사진(정면도²×또렷함)을 따름 — 각도가 조금 틀려 결이 어긋날 때 "결이 빠지는" 걸음을 없앰 · 예전 ?ambig=skip */,
+    /* (2026-10-24) 사진끼리 머리 영역 맞추기 — 각도는 미디어파이프 그대로 두고, 사진마다 가운데(cx)·정수리 높이(crownY)만 ±photoAlignMaxCm 안에서 옮겨
+       "다른 사진들로 깎은 3D 덩어리가 그 사진의 머리 영역을 얼마나 설명하나"(사진 평균)가 가장 큰 자리로. 다시 기르기의 사진 값만 바꿈(다른 단계는 그대로).
+       기준 사진(정면 · 없으면 뒤)은 안 옮김. 실제 사진 세트(09:40 · 세 장)로 미리 재 본 값: 평균 0.837 → 0.866. 끄기 ?photoalign=0 · REGROW.photoAlign=false */
+    photoAlign: true, photoAlignMaxCm: 2, photoAlignN: 30000, photoAlignCols: 96, photoAlignMinGain: 0.004,
+    /* (2026-10-24) 걸음 안 세 번 더 보기(RK4) — 0.4cm 걸음 하나를 정할 때 처음 자리(사진 여러 장 · 맞춰 보기 포함)에 더해
+       걸음 중간 두 번 · 끝 한 번을 "처음 자리에서 쓴 사진"의 결로만 다시 읽어 평균(1:2:2:1). 걸음은 그대로라 가닥 점 수는 안 늘고, 굽은 결(컬 고리·웨이브)을 0.1cm 걸음만큼 따라감.
+       디버그 파일 곱슬 뒷모습으로 흉내: 0.4cm 걸음 = 고리 안 닫힘 · 0.1cm 걸음 = 닫힘 · 0.4cm+RK4 = 0.1cm와 거의 같음. 끄기 ?rk=0 · REGROW.rk=false */
+    rk: true,
     minCoh: 0.08,       // 결 또렷함 하한
     layerLo: 0.2, layerHi: 1.0,   // 가닥이 두께의 몇 %까지 뜨는가(가닥마다 무작위)
     tMax: 0.45,         // 두께 재기 상한(모델 단위 ≈ 9cm)
@@ -1455,7 +1463,8 @@ var REGROW = (function () {
     flipThickCm_note: 0,     // (2026-10-10c) 출발 방향 뒤집기(아래에 머리가 없으면 위로)는 뿌리 자리 머리 두께가 이 cm 이상일 때만 — 세운 앞머리. 얇으면(눕힌 머리·목덜미 짧은 머리) 안 뒤집음 · 0 = 예전처럼 늘 뒤집음
     trace: true,        // (2026-10-10b) 걸음 기록 — 기본 켬(시험판). 끄기 REGROW.trace=false · 켜면 가닥마다 걸음별로 무엇이 방향을 정했는지 남김(60번 내보내기에 실림) · 머리 모양은 그대로
     traceEvery: 25,     // 기록할 보통 가닥 표본 간격(두피 위에서 길이 상한까지 간 가닥은 전부)
-    inertia: 0.55,      // 직전 방향을 섞는 비율(0 = 사진 결 그대로)
+    inertia: 0,         // (2026-10-24) 0.55 → 0: 읽은 결 그대로(관성이 웨이브·삐침·컬 고리를 폄 — 디버그 파일 흉내로 확인) · 되돌리기 ?judge=1
+    inertia_was: 0.55,  // 직전 방향을 섞는 비율(0 = 사진 결 그대로)
     smooth: 2,          // 다 기른 뒤 고르게 펴는 횟수
     liftK: 2.2,
     onScalpLen: false,  // (2026-10-22) 판정 끔 — 읽은 대로 그리고 사진과 대조만(34 READ_STEPS · 되돌리기 ?judge=1): 머리 전체 '짧은/긴 머리' 판정으로 길이를 두께×liftK로 정하던 것 · 예전 true
@@ -1481,7 +1490,8 @@ var REGROW = (function () {
     curlRodScaleMax: 3,         // 로드 최대를 넘길 수 있는 배수 상한
     minLenCm: 0.8,
     tapPx: 4,           // 머리 영역 판정 여유(800px 기준)
-    gravity: 0.25,      // 두피 밖 구간에서 중력을 섞는 비율
+    gravity: 0,         // (2026-10-24) 0.25 → 0: 중력이 웨이브 출렁임·끝 삐침을 아래로 눌러 폈음(디버그 파일 흉내로 확인) · 극성(결의 앞뒤)을 못 정하는 자리는 이제 드러남 · 되돌리기 ?judge=1
+    gravity_was: 0.25,  // 두피 밖 구간에서 중력을 섞는 비율
     // (2026-10-04e) 뒷머리가 앞으로 쏠리는 것 막기 — 아래 backFix 설명 참고
     backFix: false,     // (2026-10-12r) 끔 — 사용자: "그거 꺼" (뒷머리 뒤로 넘기기 · 몸통에 자연스럽게 흘러내리기와 겹치면 안 됨) · 다시 켜기 REGROW.backFix=true
     backFix_was: true,  // (2026-10-11j) 다시 켬(사용자 선택 (가)) — 끄니 뒷머리가 몸통을 뚫고 앞으로 넘어옴(뒤 뿌리 → 몸 앞 1,278가닥). 몸통이 없는 동안은 이것이 뒷머리를 뒤에 둠
@@ -1543,7 +1553,12 @@ var REGROW = (function () {
   }, W.REGROW || {});
   var S = G.stats = null;
   try { var rgtQ = /[?&]rgtrim=([01])/.exec(String(location.search || '')); if (rgtQ) G.trimTail = rgtQ[1] === '1'; } catch (e) {}
-  try { var t3Q = /[?&]tri3d=([01])/.exec(String(location.search || '')); if (t3Q) G.tri3D = t3Q[1] === '1'; } catch (e) {}   // 시험용: 어깨 앞으로 떨어지는 머리(빔)가 채워지는지
+  try { var t3Q = /[?&]tri3d=([01])/.exec(String(location.search || '')); if (t3Q) G.tri3D = t3Q[1] === '1'; } catch (e) {}
+  try { var qs24 = String(location.search || ''), m24;
+    if ((m24 = /[?&]rk=([01])/.exec(qs24))) G.rk = m24[1] === '1';
+    if ((m24 = /[?&]photoalign=([01])/.exec(qs24))) G.photoAlign = m24[1] === '1';
+    if ((m24 = /[?&]ambig=(skip|best)/.exec(qs24))) G.agreeAmbig = m24[1];
+  } catch (e) {}   // 시험용: 어깨 앞으로 떨어지는 머리(빔)가 채워지는지
   G.trimStat = null;
 
   function now() { try { return performance.now(); } catch (e) { return Date.now(); } }
@@ -1845,6 +1860,75 @@ var REGROW = (function () {
       if (D <= 0) return false;
       return (-B + Math.sqrt(D)) / (2 * A) > 1e-4;
     }
+    /* (2026-10-24) 사진끼리 머리 영역 맞추기(G.photoAlign) — 각도(R)는 그대로, cx·crownY만 옮김. 위 머리말 참고 */
+    var paStat = { on: !!G.photoAlign, before: null, after: null, moved: [], ms: 0, why: '' };
+    (function () {
+      if (!G.photoAlign) { paStat.why = '꺼짐'; return; }
+      if (cams.length < 2) { paStat.why = '사진 ' + cams.length + '장'; return; }
+      var t0p = now(), cmP = 18.6; try { cmP = modelCmPerUnit() || cmP; } catch (e) {}
+      var N = Math.max(2000, G.photoAlignN | 0), PX = new Float64Array(N), PY = new Float64Array(N), PZ = new Float64Array(N), seed = 12345, i, k;
+      function rr() { seed = (seed * 1103515245 + 12345) & 0x7fffffff; return seed / 0x7fffffff; }
+      var x0 = -2.4 * Es.a, x1 = 2.4 * Es.a, z0 = -2.4 * Es.c, z1 = 2.4 * Es.c, y1 = CY + 1.4 * Es.b, y0 = Math.min(CY - 1.2 * Es.b, yTop - 75 / cmP);
+      for (i = 0; i < N; i++) { PX[i] = x0 + (x1 - x0) * rr(); PY[i] = y0 + (y1 - y0) * rr(); PZ[i] = z0 + (z1 - z0) * rr(); }
+      var GR = cams.map(function (cam) {                                     // 사진마다 머리 영역 칸 지도
+        var gw = Math.max(40, G.photoAlignCols | 0), cell = cam.iw / gw, gh = Math.max(1, Math.ceil(cam.ih / cell)), M = new Uint8Array(gw * gh), n = 0, x, y;
+        for (y = 0; y < gh; y++) for (x = 0; x < gw; x++) if (cam.smp.at((x + 0.5) * cell, (y + 0.5) * cell) > 0) { M[y * gw + x] = 1; n++; }
+        return { gw: gw, gh: gh, cell: cell, M: M, n: n, gx: new Int32Array(N), cov: new Uint8Array(gw * gh) };
+      });
+      function place(ci) {                                                   // 점마다 이 사진에서의 칸(-1 = 사진 밖)
+        var cam = cams[ci], g = GR[ci], R = cam.R, j, x, y, z, ix, iy, a, b;
+        for (j = 0; j < N; j++) {
+          x = PX[j]; y = PY[j] - CY; z = PZ[j];
+          ix = (R[0] * x + R[1] * y + R[2] * z) / cam.s + cam.cx; iy = cam.crownY + (yTop - ((R[3] * x + R[4] * y + R[5] * z) + CY)) / cam.sy;
+          a = Math.floor(ix / g.cell); b = Math.floor(iy / g.cell);
+          g.gx[j] = (a < 0 || b < 0 || a >= g.gw || b >= g.gh) ? -1 : b * g.gw + a;
+        }
+      }
+      function score() {                                                     // 사진 평균 "다른 사진 포함 덩어리가 설명하는 비율"
+        var j, c, g, tot = 0, cnt = 0;
+        GR.forEach(function (g2) { g2.cov.fill(0); });
+        for (j = 0; j < N; j++) {
+          var inAll = true;
+          for (c = 0; c < GR.length; c++) { var q2 = GR[c].gx[j]; if (q2 < 0 || !GR[c].M[q2]) { inAll = false; break; } }
+          if (!inAll) continue;
+          for (c = 0; c < GR.length; c++) GR[c].cov[GR[c].gx[j]] = 1;
+        }
+        for (c = 0; c < GR.length; c++) {
+          g = GR[c]; if (!g.n) continue; var hit = 0, x, y, q3;
+          for (y = 0; y < g.gh; y++) for (x = 0; x < g.gw; x++) {
+            q3 = y * g.gw + x; if (!g.M[q3]) continue;
+            var ok = false, dx, dy;
+            for (dy = -1; dy <= 1 && !ok; dy++) for (dx = -1; dx <= 1; dx++) { var xx = x + dx, yy = y + dy; if (xx >= 0 && yy >= 0 && xx < g.gw && yy < g.gh && g.cov[yy * g.gw + xx]) { ok = true; break; } }
+            if (ok) hit++;
+          }
+          tot += hit / g.n; cnt++;
+        }
+        return cnt ? tot / cnt : 0;
+      }
+      for (i = 0; i < cams.length; i++) place(i);
+      var base = score(); paStat.before = base;
+      var refI = -1; for (i = 0; i < cams.length; i++) if (cams[i].angle === 'front') refI = i;
+      if (refI < 0) for (i = 0; i < cams.length; i++) if (cams[i].angle === 'back') refI = i;
+      paStat.ref = refI >= 0 ? cams[refI].angle : '-';
+      var maxC = Math.max(0, +G.photoAlignMaxCm || 0);
+      for (i = 0; i < cams.length; i++) {
+        if (i === refI) continue;
+        var cam = cams[i], pxPerCm = 1 / Math.max(1e-9, cam.s * cmP), cx0 = cam.cx, cy0 = cam.crownY, best = { v: base, dx: 0, dy: 0 };
+        var tryAt = function (dxc, dyc) {
+          if (Math.abs(dxc) > maxC + 1e-9 || Math.abs(dyc) > maxC + 1e-9) return;
+          cam.cx = cx0 + dxc * pxPerCm; cam.crownY = cy0 + dyc * pxPerCm; place(i);
+          var v = score(); if (v > best.v + 1e-6) best = { v: v, dx: dxc, dy: dyc };
+        };
+        var stp1 = Math.max(0.5, maxC / 2), a1, b1;
+        for (a1 = -maxC; a1 <= maxC + 1e-9; a1 += stp1) for (b1 = -maxC; b1 <= maxC + 1e-9; b1 += stp1) if (a1 || b1) tryAt(a1, b1);
+        var cx1 = best.dx, cy1 = best.dy;
+        for (a1 = -0.5; a1 <= 0.5; a1 += 0.5) for (b1 = -0.5; b1 <= 0.5; b1 += 0.5) if (a1 || b1) tryAt(cx1 + a1, cy1 + b1);
+        if (best.v - base >= (G.photoAlignMinGain || 0)) { cam.cx = cx0 + best.dx * pxPerCm; cam.crownY = cy0 + best.dy * pxPerCm; base = best.v; paStat.moved.push(cam.angle + ' 가로 ' + (best.dx >= 0 ? '+' : '') + best.dx.toFixed(1) + ' · 세로 ' + (best.dy >= 0 ? '+' : '') + best.dy.toFixed(1) + 'cm'); }
+        else { cam.cx = cx0; cam.crownY = cy0; }
+        place(i);
+      }
+      paStat.after = base; paStat.ms = Math.round(now() - t0p);
+    })();
     /* 이 점이 사진들에서 머리 영역인가. 1 = 머리 · 0 = 아님 · -1 = 어느 사진도 판정 못 함 */
     /* (2026-10-11a) 믿을 수 있는 사진의 "머리 영역에서 떨어진 거리"(사진 px) — 거리 지도(체스판 거리 · 3px 칸) */
     var hullN = 0, triN = 0;
@@ -1933,6 +2017,8 @@ var REGROW = (function () {
     var flowNC = 0;   // (13l) flow()가 이번 걸음에 결을 읽은 사진 수
     var glossN = 0, glossKeep = 0;   // 광택 띠라 안 읽은 결 표본 수
     var agreeN = 0, agreeDrop = 0, agreeSkip = 0;   // (2026-10-20) 두 장 이상 읽은 걸음 · 엇갈려 뺀 사진 · 갈피를 못 잡아 관성으로 넘긴 걸음
+    var lastUse = [];   // (2026-10-24) flow()가 이번에 쓴 사진(번호) — RK 걸음 안 다시 보기에서 같은 사진만 씀
+    var rkN = 0, rkSub = 0, rkMiss = 0;
     var polW = 0;     // (2026-10-10d) 이번 걸음의 내리막 무게(두피 위 · 뒤집힌 뿌리 아님일 때만 G.polDown)
     function flow(p, n, ref, flat) {
       flowNC = 0;
@@ -2017,6 +2103,7 @@ var REGROW = (function () {
         if (amb && G.agreeAmbig === 'skip') { agreeSkip++; flowNC = 0; if (TRF) TRF.nc = 0; return null; }
         if (drop) { agreeDrop += drop; ax = 0; ay = 0; az = 0; wsum = 0; flowNC = 0; for (k2 = 0; k2 < VD.length; k2 += 6) if (VD[k2 + 3] > 0) { ax += VD[k2 + 3] * VD[k2]; ay += VD[k2 + 3] * VD[k2 + 1]; az += VD[k2 + 3] * VD[k2 + 2]; wsum += VD[k2 + 3]; flowNC++; } }
       }
+      lastUse.length = 0; for (var k4 = 0; k4 < VD.length; k4 += 6) if (VD[k4 + 3] > 0) lastUse.push(VD[k4 + 4]);
       if (TRF) for (var k3 = 0; k3 < VD.length; k3 += 6) if (VD[k3 + 3] > 0) { TRF.nc++; if (VD[k3 + 3] > TRF.bw) { TRF.bw = VD[k3 + 3]; TRF.best = VD[k3 + 4]; TRF.coh = VD[k3 + 5]; } TRF.dirs.push(VD[k3], VD[k3 + 1], VD[k3 + 2], VD[k3 + 3]); }
       l = Math.hypot(ax, ay, az);
       if (TRF && l > 1e-9 && TRF.dirs.length > 4) { var sp = 0, j2; for (j2 = 0; j2 < TRF.dirs.length; j2 += 4) { var c2 = (TRF.dirs[j2] * ax + TRF.dirs[j2 + 1] * ay + TRF.dirs[j2 + 2] * az) / l; var a2 = Math.acos(Math.max(-1, Math.min(1, c2))) * 57.3; if (a2 > sp) sp = a2; } TRF.spr = sp; }
@@ -2035,6 +2122,38 @@ var REGROW = (function () {
         }
       }
       return { x: rx, y: ry, z: rz };
+    }
+    /* (2026-10-24) 걸음 안 다시 보기 — 처음 자리에서 쓴 사진들의 결만 그 점에서 다시 읽음(맞춰 보기·광택은 처음 자리에서 끝남) */
+    function flowLite(p, n, ref, flat) {
+      var ax = 0, ay = 0, az = 0, ws = 0, t, i, cam, R, ncz, o, sm, ncx, ncy, dX, dY, dZ, l, mx, my, mz, w;
+      for (t = 0; t < lastUse.length; t++) {
+        i = lastUse[t]; cam = cams[i]; if (!cam || !cam.ori) continue; R = cam.R;
+        ncz = R[6] * n.x + R[7] * n.y + R[8] * n.z; if (ncz < G.minFacing) continue;
+        o = proj(cam, p); if (o.ix < 0 || o.iy < 0 || o.ix >= cam.iw || o.iy >= cam.ih) continue;
+        if (!(cam.smp.at(o.ix, o.iy) > 0)) continue;
+        sm = sampleOri(cam, o.ix, o.iy); if (!sm || !(sm.coherence >= G.minCoh)) continue;
+        ncx = R[0] * n.x + R[1] * n.y + R[2] * n.z; ncy = R[3] * n.x + R[4] * n.y + R[5] * n.z;
+        dX = Math.cos(sm.angle) * cam.s; dY = -Math.sin(sm.angle) * cam.sy; dZ = -(dX * ncx + dY * ncy) / ncz; l = Math.hypot(dX, dY);
+        var zl = (flat && G.backFix) ? G.freeDepth : 3; if (Math.abs(dZ) > zl * l) dZ = (dZ < 0 ? -zl : zl) * l;
+        mx = R[0] * dX + R[3] * dY + R[6] * dZ; my = R[1] * dX + R[4] * dY + R[7] * dZ; mz = R[2] * dX + R[5] * dY + R[8] * dZ;
+        l = Math.hypot(mx, my, mz); if (!(l > 1e-12)) continue; mx /= l; my /= l; mz /= l;
+        if (mx * ref.x + my * ref.y + mz * ref.z < 0) { mx = -mx; my = -my; mz = -mz; }
+        w = ncz * ncz * sm.coherence; ax += w * mx; ay += w * my; az += w * mz; ws += w;
+      }
+      l = Math.hypot(ax, ay, az); if (!(ws > 0) || !(l > 1e-9)) return null;
+      return { x: ax / l, y: ay / l, z: az / l };
+    }
+    /* 0.4cm 걸음 = 처음 자리(flow) + 중간 두 번 · 끝 한 번(flowLite) — 1:2:2:1 */
+    function flowStep(p, n, ref, flat, h) {
+      var k1 = flow(p, n, ref, flat);
+      if (!k1 || !G.rk || !(h > 0) || !lastUse.length) return k1;
+      rkN++;
+      var q = function (d, f) { return { x: p.x + d.x * h * f, y: p.y + d.y * h * f, z: p.z + d.z * h * f }; };
+      var k2 = flowLite(q(k1, 0.5), n, k1, flat); if (!k2) { k2 = k1; rkMiss++; } else rkSub++;
+      var k3 = flowLite(q(k2, 0.5), n, k1, flat); if (!k3) { k3 = k2; rkMiss++; } else rkSub++;
+      var k4 = flowLite(q(k3, 1), n, k1, flat); if (!k4) { k4 = k3; rkMiss++; } else rkSub++;
+      var x = k1.x + 2 * k2.x + 2 * k3.x + k4.x, y = k1.y + 2 * k2.y + 2 * k3.y + k4.y, z = k1.z + 2 * k2.z + 2 * k3.z + k4.z, l = Math.hypot(x, y, z);
+      return l > 1e-9 ? { x: x / l, y: y / l, z: z / l } : k1;
     }
     function mixDir(prev, d) {       // 관성
       var a = G.inertia, x = prev.x * a + d.x * (1 - a), y = prev.y * a + d.y * (1 - a), z = prev.z * a + d.z * (1 - a), l = Math.hypot(x, y, z);
@@ -2282,7 +2401,7 @@ var REGROW = (function () {
         steps++;
         if (!free) {
           // 두피 위 구간: 발은 두피면을 따라, 몸은 그 위 두께만큼 떠서
-          polW = (flip === 1) ? 0 : (G.polDown || 0) * polK; fl = flow(P, n, prev); polW = 0; if (!fl) { estSteps++; nEst++; }
+          polW = (flip === 1) ? 0 : (G.polDown || 0) * polK; fl = flowStep(P, n, prev, false, stp); polW = 0; if (!fl) { estSteps++; nEst++; }
           if (fl) fl = mixDir(prev, fl);
           dt = tangent(fl || prev, n) || prev;
           var F2 = onSurf({ x: F.x + dt.x * stp, y: F.y + dt.y * stp, z: F.z + dt.z * stp });
@@ -2319,7 +2438,7 @@ var REGROW = (function () {
             st.hangSteps++;
           } else {
             var rr = Math.hypot(P.x, P.z), nc = rr > 1e-6 ? { x: P.x / rr, y: 0, z: P.z / rr } : n;
-            fl = flow(P, nc, prev, true);
+            fl = flowStep(P, nc, prev, true, stp);
             // (13l) 두상 아래에서 사진 한 장만 옆으로 누운 결을 말하면 안 믿음 — 결을 못 읽은 걸음처럼 직전 방향 + 중력
             if (fl && G.soloSideBelow && flowNC === 1 && P.y < CY - Es.b && Math.abs(fl.y) < G.soloSideCos) { fl = null; st.soloSide = (st.soloSide || 0) + 1; }
             if (!fl) { estSteps++; nEst++; }
@@ -2449,7 +2568,7 @@ var REGROW = (function () {
         try { G.trimStat = G.trimTails(out); } catch (e) { G.trimStat = { err: String(e && e.message || e) }; console.warn(TAG + ' 윤곽 끝 자르기 실패(그대로 둠)', e); }   // (2026-10-21i)
         var tv = []; for (var k = 0; k < NC; k++) if (known[k] === 1 && !offScalp(k)) tv.push(T[k] * cm);
         S = G.stats = {
-          ms: Math.round(now() - t0), mShare: mShare, n: st.n, stub: st.stub, skipped: st.skipped, sec: st.sec,
+          ms: Math.round(now() - t0), mShare: mShare, pa: paStat, rk: { on: !!G.rk, n: rkN, sub: rkSub, miss: rkMiss }, n: st.n, stub: st.stub, skipped: st.skipped, sec: st.sec,
           lenMed: q(st.len, 0.5) * cm, lenP90: q(st.len, 0.9) * cm, kinkMed: q(st.kink, 0.5), kinkP90: q(st.kink, 0.9),
           estPct: st.steps ? st.est / st.steps * 100 : 0, stopMask: st.stopMask, stopCap: st.stopCap, stopMax: st.stopMax, free: st.free, flipped: st.flipped, soloSide: st.soloSide || 0, noClimb: st.noClimb || 0, noClimbN: st.noClimbN || 0, flipKept: st.flipKept || 0, flipSide: st.flipSide || 0, stubN: st.stub || 0, glossN: glossN, glossKeep: glossKeep, agreeN: agreeN, agreeDrop: agreeDrop, agreeSkip: agreeSkip, thinStop: st.thinStop || 0, sideEnd: st.sideEnd || 0,
           isLong: isLong, capTxt: Object.keys(cap).map(function (k) { return k + ' ' + n1(cap[k] * cm); }).join(' · '),
@@ -3386,7 +3505,9 @@ function helixMeasure(rgba,mask,W,H,angle,coh,opt){opt=opt||{};const n=opt.n||25
     L.push('  길이 ' + n1(s.lenMed) + '/' + n1(s.lenP90) + 'cm(중앙값/p90) · 꺾임 ' + n1(s.kinkMed) + '°/' + n1(s.kinkP90) + '° · 결을 사진에서 못 읽고 이어 간 걸음 ' + n1(s.estPct) + '%');
     L.push('  길이 상한(' + (s.isLong ? '긴 머리 — 넉넉히' : '짧은 머리 — 섹션 중앙값×' + G.lenMul) + ') cm: ' + s.capTxt);
     L.push('  멈춘 이유 — 머리 영역 밖 ' + s.stopMask + ' · 길이 상한 ' + s.stopCap + ' · 걸음 수 상한 ' + s.stopMax + ' · 두피 밖으로 나가 늘어뜨린 가닥 ' + s.free + (G.soloSideBelow ? ' · 두상 아래 사진 한 장의 누운 결이라 안 따른 걸음 ' + (s.soloSide || 0) + '(끄기 REGROW.soloSideBelow=false)' : '') + (G.noClimbCm > 0 ? ' · 두피 밖에서 다시 오르려던 가닥 ' + (s.noClimbN || 0) + '(걸음 ' + (s.noClimb || 0) + ' · 위 성분 지움 · 끄기 REGROW.noClimbCm=0)' : '') + ' · 반대로 기른 뿌리(아래쪽에 머리 없음 · 두께 ' + G.flipThickCm + 'cm 이상) ' + s.flipped + ' · 얇아서 안 뒤집은 뿌리 ' + (s.flipKept || 0) + '(그중 앞 헤어라인에서 옆으로 눕힌 ' + (s.flipSide || 0) + ' · 짧게 심은 ' + (s.stubN || 0) + (G.sideLayStay ? ' · 옆으로 눕힌 가닥을 두피 끝·섹션 길이에서 끝냄 ' + (s.sideEnd || 0) : '') + ')' + ' · 비탈 거꾸로 오르기 벌점 ' + G.polDown + (G.polThickHi > G.polThickLo ? '(뿌리 두께 ' + G.polThickLo + '~' + G.polThickHi + 'cm에서 풀림)' : '(두께로 안 풂)') + (G.glossSkip ? ' · 페이드(두께 없는 자리) 앞에서 멈춘 가닥 ' + (s.thinStop || 0) + ' · 광택 띠라 안 읽은 결 ' + (s.glossN || 0) + '(둘레와 같아 살린 것 ' + (s.glossKeep || 0) + ')' : ''));
-    L.push('  사진끼리 맞춰 보기: ' + (G.agree ? '켜짐(' + G.agreeDeg + '° · ' + G.agreeRatio + '배 · 갈피 없으면 ' + (G.agreeAmbig === 'skip' ? '관성' : '평균') + ') — 두 장 이상 읽은 걸음 ' + (s.agreeN || 0) + ' · 엇갈려 뺀 사진 ' + (s.agreeDrop || 0) + ' · 갈피를 못 잡아 관성으로 넘긴 걸음 ' + (s.agreeSkip || 0) + (W.SYNTH_PHOTO && W.SYNTH_PHOTO.on ? ' · 생성 사진 보정 걸림(33번)' : '') : '꺼짐(끄기 REGROW.agree=false)'));
+    try { var pa = s.pa; if (pa) L.push('  사진끼리 머리 영역 맞추기(각도는 그대로 · 가운데·정수리 높이만 ±' + G.photoAlignMaxCm + 'cm): ' + (!pa.on ? '꺼짐(켜기 ?photoalign=1)' : pa.why ? pa.why : '기준 ' + pa.ref + ' · 다른 사진들로 깎은 덩어리가 설명하는 비율(사진 평균) ' + (pa.before * 100).toFixed(1) + '% → ' + (pa.after * 100).toFixed(1) + '% · 옮긴 사진: ' + (pa.moved.length ? pa.moved.join(' / ') : '없음') + ' · ' + pa.ms + 'ms (끄기 ?photoalign=0)')); } catch (e) {}
+    try { var rk = s.rk; if (rk) L.push('  걸음 안 세 번 더 보기(RK4 · 0.4cm 걸음): ' + (rk.on ? '켜짐 — 걸음 ' + rk.n + ' · 다시 본 자리 ' + rk.sub + ' · 결이 없어 앞 값을 쓴 자리 ' + rk.miss + ' (끄기 ?rk=0)' : '꺼짐(켜기 ?rk=1)') + ' · 관성 ' + G.inertia + ' · 중력 ' + G.gravity); } catch (e) {}
+    L.push('  사진끼리 맞춰 보기: ' + (G.agree ? '켜짐(' + G.agreeDeg + '° · ' + G.agreeRatio + '배 · 갈피 없으면 ' + (G.agreeAmbig === 'skip' ? '관성' : '가장 믿을 만한 사진') + ') — 두 장 이상 읽은 걸음 ' + (s.agreeN || 0) + ' · 엇갈려 뺀 사진 ' + (s.agreeDrop || 0) + ' · 갈피를 못 잡아 관성으로 넘긴 걸음 ' + (s.agreeSkip || 0) + (W.SYNTH_PHOTO && W.SYNTH_PHOTO.on ? ' · 생성 사진 보정 걸림(33번)' : '') : '꺼짐(끄기 REGROW.agree=false)'));
     if (s.backFix) L.push('  뒷머리 앞쏠림 막기 — ' + (s.backFoldAfter ? '읽을 때는 안 막음 · 다 읽은 뒤 어깨 아래에서 뒤로 넘긴 가닥 ' + (s.foldN || 0) + '개(옮긴 점 ' + (s.foldPts || 0) + ' · 끄기 REGROW.backFoldAfter=false) · ' : '') + '뒤쪽에서 두피를 벗어난 가닥 ' + s.backN + '개(길이 중앙값 ' + n1(s.backLenMed) + 'cm) · 앞으로 가려던 걸음 ' + s.backFwd + '회 막음 · 뒤 사진 끝 높이까지 이어 간 걸음 ' + s.backKeep +
       (s.backTipN >= 20 ? ' · 뒤 사진 머리 끝 = 정수리에서 ' + n1(s.backTipCm) + 'cm 아래(가닥 ' + s.backTipN + '개 기준)' : ' · 뒤 사진 가닥이 적어(' + s.backTipN + ') 끝 높이 기준은 안 씀'));
     L.push('  곧게 늘어뜨리기(긴 머리 · 목 아래): ' + (!G.hangDown ? '꺼짐' : !s.isLong ? '짧은 머리라 안 씀' : !s.hang ? '끝 높이를 낼 사진 가닥이 모자라 안 씀' :
