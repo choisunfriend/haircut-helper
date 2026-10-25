@@ -1485,6 +1485,7 @@ var REGROW = (function () {
     /* (2026-10-24) 결이 끊긴 곳에서 끝(시험 · 기본 끔) — 한 걸음 꺾인 각이 직전 세 걸음 꺾임의 중앙값보다 kinkDeg° 넘게 크면(곡선이 이어지지 않고 다른 결로 갈아탐) 그 앞에서 끝.
        디버그 파일(점 0.8cm 간격)로 잰 것: 꺾여 오르기 시작하는 자리의 튐 중앙값 직모 단발 61° · 실제 66° · 곱슬 33° / 고리 도는 구간 13~18°.
        45°에서 꺾여 오르는 자리 잡힘 61% · 69% · 39% / 고리 구간 점이 잘못 잘림 8% · 13% · 5%(점마다 — 고리 한 바퀴면 더 큼). 켜기 ?kink=1 · REGROW.kinkStop=true */
+    camFit: !/[?&]camfit=0/.test(location.search), camFitPitch: 20, camFitDyCm: 2, camFitScale: 0.08, camFitCols: 96, camFitPts: 40000,   // (2026-10-25g) 기른 가닥으로 옆·뒤 카메라 맞추고 한 번 더 기르기 · 끄기 ?camfit=0
     kinkStop: true /* (2026-10-25f) 켬 — 사용자: "쓰고 있는 거면 켜기만 하면 되잖아.. 결과를 보자" · 끄기 ?kink=0 */, kinkDeg: 45, kinkMinCm: 2,
     minCoh: 0.08,       // 결 또렷함 하한
     layerLo: 0.2, layerHi: 1.0,   // 가닥이 두께의 몇 %까지 뜨는가(가닥마다 무작위)
@@ -2812,6 +2813,96 @@ var REGROW = (function () {
     try { if (typeof ADJ_CACHE !== 'undefined' && ADJ_CACHE.bump) ADJ_CACHE.bump(); } catch (e) {}
     try { if (typeof combRefresh === 'function') combRefresh(); else if (typeof renderAdjustFrame === 'function') renderAdjustFrame(); } catch (e) { console.warn(TAG + ' 다시 그리기 실패', e); }
   }
+
+  /* (2026-10-25g) 카메라 맞추기 — 찍는 사람이 폰 높이·기울기를 바꾸면(특히 뒤쪽) 센서로도 얼굴로도 못 잡음.
+     한 번 기른 가닥(그리기 전)을 각 사진에 되쏜 실루엣이 그 사진 머리 영역과 가장 잘 겹치도록
+     그 카메라의 위아래 각도·높이·배율만 풂. 머리 모양은 안 건드림 — 맞춘 카메라로 처음부터 다시 기름.
+     정면과 얼굴 랜드마크(좌우·위아래 각도)가 잡힌 사진은 기준이라 고정. 결과: G.camFitLast */
+  G.camFitRun = function (model, probe) {
+    var t0 = now(), Eh = getHeadEllipsoid(), CY = model.CY, yTop = model.yTop, cm = 19;
+    try { cm = modelCmPerUnit() || 19; } catch (e) {}
+    if (!Eh || !probe || !probe.cams) return null;
+    var targets = probe.cams.filter(function (c) {
+      if (c.angle === 'front' || !c.smp || !(c.iw > 0)) return false;
+      var lm = null; try { lm = state.landmarks && state.landmarks[c.angle]; } catch (e) {}
+      return !(lm && typeof lm.poseYawDeg === 'number' && typeof lm.posePitchDeg === 'number');
+    });
+    if (!targets.length) return null;
+    // 점(가닥 점 + 사이 점) 고르게 줄여 모음 · 머리 중심 기준 좌표
+    var all = 0; model.strands.forEach(function (st) { all += st.pts.length * 2; });
+    var every = Math.max(1, Math.ceil(all / G.camFitPts)), PX = [], PY = [], PZ = [], k = 0;
+    model.strands.forEach(function (st) {
+      var q = st.pts, i;
+      for (i = 0; i < q.length; i++) {
+        if ((k++ % every) === 0) { PX.push(q[i].x); PY.push(q[i].y - CY); PZ.push(q[i].z); }
+        if (i + 1 < q.length && (k++ % every) === 0) { PX.push((q[i].x + q[i + 1].x) / 2); PY.push((q[i].y + q[i + 1].y) / 2 - CY); PZ.push((q[i].z + q[i + 1].z) / 2); }
+      }
+    });
+    var N = PX.length, ia = 1 / Eh.a, ib = 1 / Eh.b, ic = 1 / Eh.c;
+    function rotX(R, t) {   // Rx(t)·R (행 우선 3×3)
+      var c = Math.cos(t), s_ = Math.sin(t);
+      return [R[0], R[1], R[2], c * R[3] - s_ * R[6], c * R[4] - s_ * R[7], c * R[5] - s_ * R[8], s_ * R[3] + c * R[6], s_ * R[4] + c * R[7], s_ * R[5] + c * R[8]];
+    }
+    function variant(c0, dp, dyCm, ds) {
+      var sy = c0.sy / ds;
+      return { R: dp ? rotX(c0.R, dp) : c0.R, s: c0.s / ds, sy: sy, cx: c0.cx, crownY: c0.crownY + (yTop - CY) * (1 / c0.sy - 1 / sy) + dyCm / (cm * sy) };
+    }
+    var res = [];
+    targets.forEach(function (c0) {
+      var cols = G.camFitCols, cell = c0.iw / cols, gw = cols, gh = Math.max(1, Math.ceil(c0.ih / cell)), M = new Uint8Array(gw * gh), x, y, nM = 0;
+      for (y = 0; y < gh; y++) for (x = 0; x < gw; x++) if (c0.smp.at((x + 0.5) * cell, (y + 0.5) * cell) > 0) { M[y * gw + x] = 1; nM++; }
+      if (nM < 20) return;
+      var S = new Uint8Array(gw * gh), T = new Uint8Array(gw * gh), Q = new Int32Array(gw * gh);
+      function morph(A, B, dil) {   // 3×3 팽창/침식 A→B
+        for (var yy = 0; yy < gh; yy++) for (var xx = 0; xx < gw; xx++) {
+          var v = dil ? 0 : 1;
+          for (var dy = -1; dy <= 1; dy++) for (var dx = -1; dx <= 1; dx++) {
+            var X2 = xx + dx, Y2 = yy + dy, a = (X2 < 0 || Y2 < 0 || X2 >= gw || Y2 >= gh) ? 0 : A[Y2 * gw + X2];
+            if (dil ? a : !a) { v = dil ? 1 : 0; }
+          }
+          B[yy * gw + xx] = v;
+        }
+      }
+      function score(cv) {
+        var R = cv.R, fx = R[6], fy = R[7], fz = R[8], i;
+        S.fill(0);
+        var dX = fx * ia, dY = fy * ib, dZ = fz * ic, A2 = dX * dX + dY * dY + dZ * dZ;
+        for (i = 0; i < N; i++) {
+          var px = PX[i], py = PY[i], pz = PZ[i];
+          var oX = px * ia, oY = py * ib, oZ = pz * ic, C2 = oX * oX + oY * oY + oZ * oZ - 1;
+          if (C2 > 0) { var B2 = 2 * (oX * dX + oY * dY + oZ * dZ), disc = B2 * B2 - 4 * A2 * C2; if (disc > 0 && (-B2 + Math.sqrt(disc)) > 0.02 * A2) continue; }   // 두상 뒤에 가림(두상 안쪽 점은 보이는 걸로 침)
+          var ix = (R[0] * px + R[1] * py + R[2] * pz) / cv.s + cv.cx, iy = cv.crownY + (yTop - ((R[3] * px + R[4] * py + R[5] * pz) + CY)) / cv.sy;
+          var gx = Math.floor(ix / cell), gq = Math.floor(iy / cell);
+          if (gx >= 0 && gq >= 0 && gx < gw && gq < gh) S[gq * gw + gx] = 1;
+        }
+        morph(S, T, 1); morph(T, S, 1); morph(S, T, 0); morph(T, S, 0);   // 닫기 2
+        // 구멍 메우기 — 바깥에서 닿는 빈칸만 바깥
+        T.fill(0); var h = 0, t = 0, j;
+        for (j = 0; j < gw; j++) { if (!S[j]) { T[j] = 1; Q[t++] = j; } var b = (gh - 1) * gw + j; if (!S[b] && !T[b]) { T[b] = 1; Q[t++] = b; } }
+        for (j = 0; j < gh; j++) { var l = j * gw, r = l + gw - 1; if (!S[l] && !T[l]) { T[l] = 1; Q[t++] = l; } if (!S[r] && !T[r]) { T[r] = 1; Q[t++] = r; } }
+        while (h < t) { var u = Q[h++], ux = u % gw, nb = [ux > 0 ? u - 1 : -1, ux < gw - 1 ? u + 1 : -1, u - gw, u + gw];
+          for (var m = 0; m < 4; m++) { var w = nb[m]; if (w >= 0 && w < S.length && !S[w] && !T[w]) { T[w] = 1; Q[t++] = w; } } }
+        var I = 0, U = 0; for (j = 0; j < S.length; j++) { var sv = !T[j], mv = M[j]; if (sv && mv) I++; if (sv || mv) U++; }
+        return U ? I / U : 0;
+      }
+      var rad = Math.PI / 180, P = G.camFitPitch, D = G.camFitDyCm, Sc = G.camFitScale, b0 = score(c0), best = { s: b0, dp: 0, dy: 0, ds: 1 }, dp, dy, ds, sc;
+      for (dp = -P; dp <= P; dp += 3) for (dy = -D; dy <= D + 1e-6; dy += D / 4) for (ds = 1 - Sc; ds <= 1 + Sc + 1e-6; ds += Sc / 2) {
+        sc = score(variant(c0, dp * rad, dy, ds)); if (sc > best.s) best = { s: sc, dp: dp, dy: dy, ds: ds };
+      }
+      var b1 = best;
+      for (dp = b1.dp - 2; dp <= b1.dp + 2; dp += 1) for (dy = b1.dy - D / 8; dy <= b1.dy + D / 8 + 1e-6; dy += D / 8) for (ds = b1.ds - Sc / 4; ds <= b1.ds + Sc / 4 + 1e-6; ds += Sc / 4) {
+        if (Math.abs(dp) > P || Math.abs(ds - 1) > Sc + 1e-6) continue;
+        sc = score(variant(c0, dp * rad, dy, ds)); if (sc > best.s) best = { s: sc, dp: dp, dy: dy, ds: ds };
+      }
+      if (best.s > b0 + 0.01) { var cv = variant(c0, best.dp * rad, best.dy, best.ds); c0.R = cv.R; c0.s = cv.s; c0.sy = cv.sy; c0.crownY = cv.crownY; }
+      else best = { s: b0, dp: 0, dy: 0, ds: 1 };
+      res.push({ angle: c0.angle, before: b0, after: best.s, pitch: best.dp, dyCm: best.dy, scale: best.ds, edge: Math.abs(best.dp) >= P });
+    });
+    var out = { views: res, ms: Math.round(now() - t0), pts: N };
+    G.camFitLast = out;
+    console.log(TAG + ' 카메라 맞추기(' + out.ms + 'ms · 점 ' + N + '): ' + res.map(function (r) { return r.angle + ' ' + Math.round(r.before * 100) + '→' + Math.round(r.after * 100) + '% (각도 ' + (r.pitch >= 0 ? '+' : '') + r.pitch + '°' + (r.edge ? '·범위끝' : '') + ' 높이 ' + r.dyCm.toFixed(1) + 'cm 배율 ' + r.scale.toFixed(2) + ')'; }).join(' · '));
+    return out;
+  };
   G.build = function (cb) {
     // (옛 65) 기르기 직전 옆·뒤 사진을 정면 기준으로 맞춤(VIEW_ALIGN · 기본 꺼짐)
     if (typeof VIEW_ALIGN !== 'undefined') VIEW_ALIGN._beforeRegrowBuild();
@@ -2855,6 +2946,12 @@ var REGROW = (function () {
       if (!model || !model.strands.length || state._hair3Dneutral !== photo) {
         if (!model || !model.strands.length) { G.failedFor = photo; G.lastErr = G.lastErr || '가닥 0개'; console.warn(TAG + ' 결과가 비었습니다 — 사진 가닥을 그대로 씁니다'); }
         if (cb) cb(false); return;
+      }
+      if (G.camFit && photo._camFitDone !== photo) {           // (2026-10-25g) 카메라 맞추고 한 번 더 기르기
+        photo._camFitDone = photo;
+        var fit = null, prb = (photo.occ && photo.occ.probe) || (state.hairOcc3D && state.hairOcc3D.probe) || null;
+        try { fit = G.camFitRun(model, prb); } catch (e) { console.warn(TAG + ' 카메라 맞추기 실패 — 그대로 씀', e); }
+        if (fit && fit.views.some(function (r) { return r.pitch || r.dyCm || r.scale !== 1; })) { G.camFitFirstMs = Math.round(workMs); return G.build(cb); }
       }
       G.model = model; G.src = photo;
       console.log(G.lines().join('\n'));
