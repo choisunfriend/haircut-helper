@@ -166,14 +166,21 @@ async function detectFaceLandmarks(angle){
         // 않는다(랜드마크 인덱스의 좌/우 의미가 뒤집혀 lEarX/rEarX 규약이 깨짐).
         // 좌표는 정규화(0~1)라, 크롭·확대는 아래 map()의 1차식으로 정확히 되돌아온다.
         const IW = img.naturalWidth || img.width, IH = img.naturalHeight || img.height;
-        const attempts = [
+        /* (2026-10-25c) 메모리 — 사용자: "얼굴 분석할 때 램 많이 쓰나봐 자꾸 녹화가 꺼져"
+           ① 확대 사본 상한 1800 → FACE_LM_MAXPX(1200)px · 쓴 사본은 바로 반납(cv.width=0)
+           ② 얼굴이 나올 수 없는 뒷모습(뒤 칸 · 360 추가 사진 중 ±120° 바깥)은 재시도 없이 원본 한 번만 */
+        const backish = angle === 'back' || /^vm?(1[2-9]\d|180)$/.test(String(angle));
+        const attempts = backish ? [
+          { name:'원본',          sx:0,        sy:0,        sw:IW,      sh:IH,      scale:1 },
+        ] : [
           { name:'원본',          sx:0,        sy:0,        sw:IW,      sh:IH,      scale:1 },
           { name:'2배확대',       sx:0,        sy:0,        sw:IW,      sh:IH,      scale:2 },
           { name:'중앙크롭확대',  sx:IW*0.15,  sy:IH*0.08,  sw:IW*0.70, sh:IH*0.84, scale:2 },
         ];
+        const LMAX = (typeof window !== 'undefined' && window.FACE_LM_MAXPX > 0) ? window.FACE_LM_MAXPX : 1200;
         let result = null, mapPt = null, via = null;
         for(const at of attempts){
-          const s = Math.max(1, Math.min(at.scale, 1800/at.sw, 1800/at.sh));
+          const s = Math.max(1, Math.min(at.scale, LMAX/at.sw, LMAX/at.sh));
           let src, m;
           if(at.sw === IW && at.sh === IH && s === 1){
             src = img; m = null;                       // 원본 그대로 — 좌표 변환 불필요
@@ -188,6 +195,7 @@ async function detectFaceLandmarks(angle){
           }
           let r = null;
           try{ r = faceLandmarker.detect(src); }catch(e){ r = null; }
+          if(src !== img){ try{ src.width = 0; src.height = 0; }catch(e){} }   // (2026-10-25c) 확대 사본 바로 반납
           if(r && r.faceLandmarks && r.faceLandmarks.length){ result = r; mapPt = m; via = at.name; break; }
         }
         if(!result){
@@ -264,6 +272,34 @@ async function detectFaceLandmarks(angle){
     };
     img.onerror = ()=>resolve(null);
     img.src = dataUrl;
+  });
+}
+
+/* (2026-10-25c) 360 세트 정면 고르기용 가벼운 얼굴 재기 — 긴 변 maxSide(640)px 사본에 한 번만(재시도 없음) · 사본은 바로 반납 · state는 안 건드림.
+   돌려줌: null(못 찾음) | { yaw(도 · 얼굴 실측), ecN(눈→턱 ÷ 사진 높이 = 얼굴 크기) } */
+function quickFaceLandmarks(url, maxSide){
+  if(!faceLandmarkerReady || !faceLandmarker || !url) return Promise.resolve(null);
+  return new Promise(resolve=>{
+    const img = new Image();
+    img.onload = ()=>{
+      let cv = null;
+      try{
+        const IW = img.naturalWidth || img.width, IH = img.naturalHeight || img.height, k = Math.min(1, (maxSide || 640) / Math.max(IW, IH));
+        cv = document.createElement('canvas'); cv.width = Math.max(8, Math.round(IW * k)); cv.height = Math.max(8, Math.round(IH * k));
+        cv.getContext('2d').drawImage(img, 0, 0, cv.width, cv.height);
+        let r = null; try{ r = faceLandmarker.detect(cv); }catch(e){ r = null; }
+        if(!r || !r.faceLandmarks || !r.faceLandmarks.length){ resolve(null); return; }
+        const lm = r.faceLandmarks[0];
+        let yaw = null;
+        if(r.facialTransformationMatrixes && r.facialTransformationMatrixes.length){ try{ yaw = decomposePoseMatrix(r.facialTransformationMatrixes[0].data).yawRad * 180 / Math.PI; }catch(e){} }
+        if(yaw == null){ const nose = lm[1], le = lm[234], re = lm[454], sp = Math.abs(re.x - le.x); yaw = sp > 0.01 ? (nose.x - (le.x + re.x) / 2) / (sp * 0.5) * 60 : 0; }
+        const ecN = lm[152].y - (lm[33].y + lm[263].y) / 2;
+        resolve({ yaw: yaw, ecN: ecN > 0 ? ecN : 0, n: lm.length });
+      }catch(e){ resolve(null); }
+      finally{ if(cv){ cv.width = 0; cv.height = 0; } }
+    };
+    img.onerror = ()=>resolve(null);
+    img.src = url;
   });
 }
 
