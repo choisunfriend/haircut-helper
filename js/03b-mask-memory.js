@@ -403,92 +403,90 @@ if(cnt > 0){
   return {avgHairColor, avgColorsBySection, colorPalette};
 }
 
-/* ── 찍자마자 미리 분석 (2026-10-18) ─────────────────────────────────────
-   예전엔 4장을 다 찍고 [다음]을 눌러야 머리 추출을 시작해서 8~13초를 기다렸다.
-   그중 무거운 건 모델 두 번(MediaPipe 머리 분리 · TF.js 사람 윤곽)이다.
-   사진이 들어오는 순간(촬영·업로드) 이 두 모델 결과만 <b>미리</b> 뽑아 둔다.
-   extractHairMaskCore는 같은 사진·같은 크기면 모델을 다시 부르지 않고 이걸 쓴다.
-   · 입력 캔버스를 Core와 <b>똑같이</b> 만든다(maxDim 축소 · drawImage) → 결과 동일.
-   · 사진이 바뀌면(다시 찍기) 키(dataURL 문자열)가 달라 자동으로 안 쓴다.
-   · 나머지 계산(섹션·색·가닥 등)은 손대지 않는다 — 상태를 건드리는 건 예전 그대로.
-   끄기: SEG_PRE.on = false */
-const SEG_PRE = (function(){
-  const P = { on:true, hits:0, made:0, miss:0, ms:0 };
-  const box = {};          // angle → { url, w, h, conf(Float32Array)|null, person(Uint8Array)|null }
-  const busy = {};         // angle → Promise (만드는 중)
-  let chain = Promise.resolve();
-  function idle(){ return new Promise(r=>{ if(typeof requestIdleCallback==='function') requestIdleCallback(()=>r(), {timeout:1500}); else setTimeout(r, 200); }); }
-  function load(url){ return new Promise((res,rej)=>{ const im=new Image(); im.crossOrigin='anonymous'; im.onload=()=>res(im); im.onerror=rej; im.src=url; }); }
-  async function make(angle, url){
-    try{ await _segmenterInitPromise; }catch(e){}
-    await idle();
-    if(!P.on || state.shots[angle] !== url) return;            // 그새 다시 찍음
-    if(!mpImageSegmenter && !bodySegmenter) return;
-    const t0 = performance.now();
-    const img = await load(url);
-    const maxDim = INPUT_RES.maxDim;
-    const scale = Math.min(1, maxDim / Math.max(img.width, img.height));
-    const w = Math.round(img.width * scale), h = Math.round(img.height * scale);
-    const c = document.createElement('canvas'); c.width = w; c.height = h;
-    c.getContext('2d').drawImage(img, 0, 0, w, h);
-    const e = { url, w, h, conf:null, person:null };
-    if(bodySegmenter){
-      try{
-        const segs = await bodySegmenter.segmentPeople(c, { multiSegmentation:false, segmentBodyParts:false });
-        if(segs && segs.length>0){
-          const bm = await bodySegmentation.toBinaryMask(segs, {r:255,g:255,b:255,a:255}, {r:0,g:0,b:0,a:0}, false, 0.5);
-          const pm = new Uint8Array(w*h);
-          for(let i=0;i<w*h;i++) pm[i] = (bm.data[i*4+3] > 128) ? 1 : 0;
-          e.person = pm;
-        }
-      }catch(err){ e.person = null; }
-    }
-    if(state.shots[angle] !== url){ c.width = c.height = 0; return; }
-    await idle();
-    if(mpImageSegmenter && state.shots[angle] === url){
-      try{
-        const r = mpImageSegmenter.segment(c);
-        const m = r.confidenceMasks[1];
-        e.conf = new Float32Array(m.getAsFloat32Array());
-        try{ r.confidenceMasks.forEach(x=>x.close()); }catch(_){}
-      }catch(err){ e.conf = null; }
-    }
-    c.width = c.height = 0;
-    if(state.shots[angle] !== url) return;
-    box[angle] = e; P.made++; P.ms = Math.round(performance.now() - t0);
-    console.log('[미리 분석] ' + angle + ' ' + P.ms + 'ms');
-  }
-  P.warm = function(angle){
-    if(!P.on) return;
-    const url = state.shots[angle]; if(!url) return;
-    if(box[angle] && box[angle].url !== url) delete box[angle];
-    const job = chain.then(()=>make(angle, url)).catch(err=>console.warn('[미리 분석] 실패 — 나중에 원래대로 함', err));
-    chain = job; busy[angle] = job;
-    job.then(()=>{ if(busy[angle] === job) delete busy[angle]; });
-  };
-  /* Core가 부름: 만드는 중이면 끝날 때까지 기다림(같은 일을 두 번 안 함) */
-  P.wait = function(angle){ return busy[angle] || Promise.resolve(); };
-  /* Core가 부름: 같은 사진·같은 크기면 꺼내 줌(한 번 쓰면 버림 — 메모리) */
-  P.take = function(angle, url, w, h){
-    const e = box[angle];
-    if(!e) return null;
-    delete box[angle];
-    if(e.url !== url || e.w !== w || e.h !== h){ P.miss++; return null; }
-    P.hits++; return e;
-  };
-  P.clear = function(){ for(const k in box) delete box[k]; };
-  window.SEG_PRE = P;
-  return P;
-})();
-
 /* 머리 추출 — 바깥 단계(위가 바깥): (옛 54) 사람 윤곽 채우기 → (옛 52) 360 세트 나머지 사진 분석 → extractHairMaskCore */
+/* ══════════════════════════════════════════════════════════
+   (2026-10-25) SUBJECT_ZOOM — 머리가 작게 찍힌 사진을 머리 둘레로 잘라 키움
+   사용자: "사람들 얼굴에 들이밀어서 촬영하는 게 익숙하지가 않아 → 작은 사진이 나올 확률이 많아 · 품질이 훼손되지 않는 선에선 확대도 필요"
+   실측: 360 세트(0844)는 450×800 전체 프레임에서 머리가 작아 정면 머리 영역 849칸(뒤의 4%) · 얼굴 인식 0개 · 곱슬 세트(1615)는 270px 폭.
+   분석은 긴 변 800px로 고정이라, 머리가 화면의 1/4이면 머리에는 200px만 쓰임.
+   하는 일(세그멘테이션 직전 · 각 사진 한 번):
+     ① 머리카락 세그멘터(mpImageSegmenter)를 긴 변 256px 사본에 돌려 머리 상자(머리카락 픽셀의 행·열 분포)
+     ② 자를 상자 = 머리 폭 hw 기준: 위 0.35hw 여유 · 아래로 머리 아래끝과 (위 + 3.0hw) 중 큰 쪽(얼굴·목·어깨 포함) · 가로는 머리 폭의 2.0배와 세로×0.75 중 큰 쪽
+     ③ 상자가 사진 넓이의 maxArea보다 크면 안 자름(이미 크게 찍힘)
+     ④ 원본 해상도(촬영·업로드·360 원본 — state.shotsHi에 보관)에서 잘라 긴 변 photoMax(800)로 · 키우는 배율은 maxUp 이하(뭉개짐 방지)
+     ⑤ 사진이 바뀌었으니 이 각도의 얼굴 랜드마크를 다시 잼
+   끄기 SUBJECT_ZOOM.on=false (사진을 다시 분석) · 진단 SUBJECT_ZOOM.stats
+   ══════════════════════════════════════════════════════════ */
+var SUBJECT_ZOOM = Object.assign({ on: true, maxArea: 0.55, maxUp: 2.5, padTop: 0.35, downK: 3.0, sideK: 2.0, thr: 0.5, minFrac: 0.02, stats: {} }, window.SUBJECT_ZOOM || {});
+function _szLoad(url){ return new Promise(function(res){ var im = new Image(); im.onload = function(){ res(im); }; im.onerror = function(){ res(null); }; im.src = url; }); }
+async function subjectZoom(angle){
+  const Z = SUBJECT_ZOOM, st = { at: Date.now(), done: false, why: '' };
+  Z.stats[angle] = st;
+  try{
+    if(!Z.on){ st.why = '꺼짐'; return false; }
+    if(typeof mpImageSegmenter === 'undefined' || !mpImageSegmenter){ st.why = '머리카락 세그멘터 없음'; return false; }
+    const lo = state.shots[angle]; if(!lo){ st.why = '사진 없음'; return false; }
+    if(state._zoomedShot && state._zoomedShot[angle] === lo){ st.why = '이미 키운 사진'; st.done = true; return false; }
+    const hiRec = state.shotsHi && state.shotsHi[angle];
+    const srcUrl = (hiRec && hiRec.lo === lo && hiRec.hi) ? hiRec.hi : lo;
+    const img = await _szLoad(srcUrl); if(!img){ st.why = '사진을 못 읽음'; return false; }
+    const IW = img.naturalWidth || img.width, IH = img.naturalHeight || img.height;
+    const k = 256 / Math.max(IW, IH), sw = Math.max(8, Math.round(IW * k)), sh = Math.max(8, Math.round(IH * k));
+    const sc = document.createElement('canvas'); sc.width = sw; sc.height = sh; sc.getContext('2d').drawImage(img, 0, 0, sw, sh);
+    const r = mpImageSegmenter.segment(sc), cm = r && r.confidenceMasks;
+    if(!cm || !cm[1]){ st.why = '세그멘테이션 실패'; try{ (cm || []).forEach(function(m){ m.close(); }); }catch(e){} return false; }
+    const conf = cm[1].getAsFloat32Array();
+    const rows = new Int32Array(sh), cols = new Int32Array(sw); let n = 0;
+    for(let y = 0; y < sh; y++) for(let x = 0; x < sw; x++){ if(conf[y * sw + x] >= Z.thr){ rows[y]++; cols[x]++; n++; } }
+    try{ cm.forEach(function(m){ m.close(); }); }catch(e){}
+    if(n < sw * sh * 0.004){ st.why = '머리카락이 거의 안 잡힘'; return false; }
+    const rMin = Math.max(1, Math.round(sw * Z.minFrac)), cMin = Math.max(1, Math.round(sh * Z.minFrac));
+    let top = -1, bot = -1, left = -1, right = -1;
+    for(let y = 0; y < sh; y++) if(rows[y] >= rMin){ if(top < 0) top = y; bot = y; }
+    for(let x = 0; x < sw; x++) if(cols[x] >= cMin){ if(left < 0) left = x; right = x; }
+    if(top < 0 || left < 0 || right <= left){ st.why = '머리 상자를 못 잡음'; return false; }
+    const hw = right - left + 1, cx = (left + right) / 2;
+    let y0 = top - Z.padTop * hw, y1 = Math.max(bot + 0.25 * hw, top + Z.downK * hw);
+    let bh = y1 - y0, bw = Math.max(Z.sideK * hw, bh * 0.75);
+    let x0 = cx - bw / 2;
+    // 사진 안으로
+    if(x0 < 0) x0 = 0; if(x0 + bw > sw){ x0 = Math.max(0, sw - bw); bw = Math.min(bw, sw); }
+    if(y0 < 0) y0 = 0; if(y0 + bh > sh){ bh = sh - y0; }
+    const area = (bw * bh) / (sw * sh);
+    st.box = { x: +(x0 / sw).toFixed(3), y: +(y0 / sh).toFixed(3), w: +(bw / sw).toFixed(3), h: +(bh / sh).toFixed(3) }; st.area = +area.toFixed(2); st.src = IW + '×' + IH + (srcUrl !== lo ? '(원본)' : '');
+    if(area > Z.maxArea){ st.why = '이미 크게 찍힘(머리 둘레 상자가 사진의 ' + Math.round(area * 100) + '%)'; return false; }
+    const kx = IW / sw, ky = IH / sh, cxs = x0 * kx, cys = y0 * ky, cws = bw * kx, chs = bh * ky;
+    const M = (typeof INPUT_RES !== 'undefined' && INPUT_RES.photoMax > 0) ? INPUT_RES.photoMax : 800;
+    const up = Math.min(Z.maxUp, M / Math.max(cws, chs));
+    const out = document.createElement('canvas'); out.width = Math.max(8, Math.round(cws * up)); out.height = Math.max(8, Math.round(chs * up));
+    const ox = out.getContext('2d'); ox.imageSmoothingEnabled = true; try{ ox.imageSmoothingQuality = 'high'; }catch(e){}
+    ox.drawImage(img, cxs, cys, cws, chs, 0, 0, out.width, out.height);
+    const url = out.toDataURL('image/jpeg', 0.94); out.width = 0; out.height = 0;
+    state.shots[angle] = url;
+    if(!state._zoomedShot) state._zoomedShot = {};
+    state._zoomedShot[angle] = url;
+    st.done = true; st.out = Math.round(cws * up) + '×' + Math.round(chs * up); st.scale = +up.toFixed(2);
+    st.headPxBefore = Math.round(hw * (Math.max(IW, IH) > M ? M / Math.max(IW, IH) : 1) * kx); st.headPxAfter = Math.round(hw * kx * up);
+    // 사진이 바뀜 — 이 각도의 랜드마크·보관 캔버스 무효화 후 다시 잼
+    ['landmarks', 'captureLmStatus', 'poseEars'].forEach(function(n){ try{ if(state[n]) state[n][angle] = null; }catch(e){} });
+    try{ if(typeof _lastShotCanvas !== 'undefined' && _lastShotCanvas && _lastShotCanvas.angle === angle) _lastShotCanvas = null; }catch(e){}
+    try{ if(typeof detectFaceLandmarks === 'function') await detectFaceLandmarks(angle); }catch(e){}
+    console.log('[머리 키우기] ' + angle + ' · ' + st.src + ' → 머리 둘레 ' + Math.round(area * 100) + '% 잘라 ' + st.out + '(×' + st.scale + ') · 머리 폭 ' + st.headPxBefore + '→' + st.headPxAfter + 'px');
+    return true;
+  }catch(e){ st.why = '오류: ' + (e && e.message || e); return false; }
+}
+/* 원본 해상도 보관 — 촬영·업로드·360이 상한(800)으로 줄이기 전 사진. lo = 줄인 사진(그 짝일 때만 씀) */
+function rememberShotHi(angle, hiUrl, loUrl){
+  try{ if(!state.shotsHi) state.shotsHi = {}; state.shotsHi[angle] = (hiUrl && hiUrl !== loUrl) ? { hi: hiUrl, lo: loUrl } : null; }catch(e){}
+}
+
 function extractHairMask(angle){
   return BODY_SEG_WAIT._extract(angle, () =>
     VIEWS360._extract(angle, () => extractHairMaskCore(angle)));
 }
 async function extractHairMaskCore(angle){
   if(typeof REGROW !== 'undefined') REGROW._resetPend();   // (옛 42) 지난 사진의 컬 재기 값 버림
-  try{ await SEG_PRE.wait(angle); }catch(e){}            // 미리 분석 중이면 끝까지 기다렸다 받아 씀
+  try{ await subjectZoom(angle); }catch(e){}   // (2026-10-25) 머리가 작게 찍혔으면 머리 둘레로 잘라 키움
   const dataUrl = state.shots[angle];
   if(!dataUrl || !segmenter) return false;
 
@@ -529,10 +527,7 @@ async function extractHairMaskCore(angle){
         // 로드 실패 등) personMask=null로 남고, 헤어 추출/얼굴 메쉬 등
         // 나머지 파이프라인은 전혀 영향받지 않음(완전히 곁가지 데이터).
         let personMask = null;
-        const _pre = SEG_PRE.take(angle, dataUrl, w, h);   // 찍을 때 미리 뽑아 둔 모델 결과(같은 사진·크기일 때만)
-        if(_pre && _pre.person){
-          personMask = _pre.person;
-        } else if(bodySegmenter){
+        if(bodySegmenter){
           try{
             const bodySegs = await bodySegmenter.segmentPeople(srcC, {
               multiSegmentation: false,
@@ -573,13 +568,9 @@ async function extractHairMaskCore(angle){
           // 기준치를 낮출수록 더 많이 잡히지만 배경 오탐도 늘어날 수 있음 — 실측
           // 데이터 보면서 조정할 예정.
           const HAIR_CONFIDENCE_THRESHOLD = 0.5; // 원상복구: 관대했던 0.3 → categoryMask argmax와 동등한 0.5로 되돌림
-          let hairConf = null, confArr;
-          if(_pre && _pre.conf){ confArr = _pre.conf; }
-          else{
-            const result = mpImageSegmenter.segment(srcC);
-            hairConf = result.confidenceMasks[1]; // 0=background, 1=hair
-            confArr = hairConf.getAsFloat32Array();
-          }
+          const result = mpImageSegmenter.segment(srcC);
+          const hairConf = result.confidenceMasks[1]; // 0=background, 1=hair
+          const confArr = hairConf.getAsFloat32Array();
           // 진단: 확률 분포 요약 (평균/최대값) — 전체적으로 확률이 낮게 나오면
           // 임계값을 더 낮춰야 한다는 신호
           let confSum=0, confMax=0, aboveCount=0;
@@ -591,7 +582,7 @@ async function extractHairMaskCore(angle){
             hairMaskBuf[i] = isHair ? 255 : 0;
           }
           window.__maskValueDiag = `avg:${(confSum/confArr.length).toFixed(3)},max:${confMax.toFixed(3)},≥${HAIR_CONFIDENCE_THRESHOLD}:${aboveCount}`;
-          if(hairConf) hairConf.close();
+          hairConf.close();
         } else {
           // ── TF.js SelfieSegmentation 폴백 ──
           const segs = await segmenter.segmentPeople(srcC, {
@@ -955,6 +946,7 @@ async function extractHairMaskCore(angle){
             //   경계 픽셀 자체가 결방향 계산에 아예 들어가지 않게 함.
             const orientErodeR = Math.max(3, Math.round(w*0.004));
             const orientMaskBuf = erode(hairMaskBuf, w, h, orientErodeR);
+            if(typeof READ_STEPS !== 'undefined') READ_STEPS._view = angle;   // (2026-10-21) 34 결 읽기 단계 — 어느 사진인지
             const {angle: angleField, coherence: coherenceField} = computeHairOrientationField(srcPixels, orientMaskBuf, w, h);
             /* ── 극성(뿌리→끝) — 측정한 각도는 그대로 두고 <b>부호만</b> 정한다 ──
                거리장은 침식 전 마스크(hairMaskBuf)로 잰다. 침식본은 결 계산의
