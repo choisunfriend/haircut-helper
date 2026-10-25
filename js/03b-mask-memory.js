@@ -462,6 +462,8 @@ async function subjectZoom(angle){
     const ox = out.getContext('2d'); ox.imageSmoothingEnabled = true; try{ ox.imageSmoothingQuality = 'high'; }catch(e){}
     ox.drawImage(img, cxs, cys, cws, chs, 0, 0, out.width, out.height);
     const url = out.toDataURL('image/jpeg', 0.94); out.width = 0; out.height = 0;
+    if(!state._zoomFrom) state._zoomFrom = {};
+    state._zoomFrom[angle] = lo;   // 키우기 전 사진 — 360 세트 지문(13b fpNow)이 이걸 봄(안 그러면 '지금 4장이 그 세트의 것이 아님'으로 추가 사진을 버림)
     state.shots[angle] = url;
     if(!state._zoomedShot) state._zoomedShot = {};
     state._zoomedShot[angle] = url;

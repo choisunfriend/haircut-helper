@@ -232,7 +232,9 @@ var PHOTO_CHANGE = (function () {
   }
   function sigs() {
     var o = {};
-    angles().forEach(function (a) { var s = null; try { s = state.shots && state.shots[a]; } catch (e) {} o[a] = sigOf(s); });
+    angles().forEach(function (a) { var s = null; try { s = state.shots && state.shots[a];
+      if (s && state._zoomedShot && state._zoomedShot[a] === s && state._zoomFrom && state._zoomFrom[a]) s = state._zoomFrom[a];   // (2026-10-25) 머리 키우기(03b)로 바뀐 건 "사진이 바뀜"이 아님
+    } catch (e) {} o[a] = sigOf(s); });
     return o;
   }
   function changed(now) {

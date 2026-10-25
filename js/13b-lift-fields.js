@@ -1034,7 +1034,10 @@ var VIEWS360 = (function () {
 
   var BASE = ['front', 'left', 'right', 'back'];
   function tail(u) { return typeof u === 'string' ? u.length + ':' + u.slice(-24) : ''; }
-  function fpNow() { try { return BASE.map(function (a) { return tail(state.shots && state.shots[a]); }).join('|'); } catch (e) { return ''; } }
+  /* (2026-10-25) 지문은 머리 키우기(03b SUBJECT_ZOOM) 전 사진으로 — 키운 사진으로 지문을 잡으면 세트를 넣은 직후와 달라져
+     "지금 4장이 그 세트의 것이 아님"이 되어 추가 사진을 전부 버렸음(사용자: "360에 저장된 거 누르고 next 눌렀는데 왜 4장만 분석하냐") */
+  function shotFp(a) { var u = state.shots && state.shots[a]; try { if (u && state._zoomedShot && state._zoomedShot[a] === u && state._zoomFrom && state._zoomFrom[a]) u = state._zoomFrom[a]; } catch (e) {} return tail(u); }
+  function fpNow() { try { return BASE.map(shotFp).join('|'); } catch (e) { return ''; } }
   function wrapDeg(d) { d = ((d + 180) % 360 + 360) % 360 - 180; return d === -180 ? 180 : d; }
   function keyOf(deg) { var d = Math.round(wrapDeg(deg)); return 'v' + (d < 0 ? 'm' + (-d) : d); }
   function nearest(frames, deg, maxOff) {
