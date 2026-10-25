@@ -399,7 +399,12 @@ var SHOT360 = (function () {
     maxSide: 1280,        // 저장 해상도(긴 변)
     jpeg: 0.9,
     slowDegPerSec: 50,    // 이보다 빨리 돌면 "천천히"
-    maxTries: 4,          // 한 각도에서 더 선명한 장으로 바꿔 보는 횟수
+    maxTries: 12,         // 한 각도에서 바꿔 보는 횟수 — (2026-10-25) 4 → 12(나중 장을 받으려고)
+    /* (2026-10-25) 나중에 찍힌 장을 우선 — 360 세트 08:40(.json): 0° 칸이 [시작]을 누른 순간의 멀리서 찍힌 전신 사진(머리 ~60px)이라 얼굴 인식 0개 ·
+       정면 자가 무너져 추가 10장이 다 빠짐. 사람들은 멀리서 시작해 다가가며 도는데, 예전 규칙은 "더 선명해야(1.1배) 바꿈"이라 처음 장이 남았고
+       선명도(화면 가운데 윤곽 세기)는 멀리서 찍은 전신 사진이 오히려 높게 나옴. 이제 같은 칸을 laterMs 넘게 지나 다시 지나가면,
+       선명도가 기존의 laterRel배 이상이기만 하면 나중 장으로 바꿈(출발점으로 돌아오며 찍힌 정면이 들어감). 끄기 SHOT360.laterRel=0 */
+    laterMs: 1500, laterRel: 0.7,
     sign: 0               // +1/-1 = 좌우 고정 · 0 = 자동(얼굴 각도로 정함, 못 정하면 기본 -1)
   }, W.SHOT360 || {});
   if (!Q.on) return;
@@ -609,7 +614,8 @@ var SHOT360 = (function () {
         for (i = 0; i < T.length; i++) { var d = Math.abs(wrap(cur - T[i])); if (d < bd) { bd = d; best = T[i]; } }
         if (best != null && bd <= Q.tolDeg && (tries[best] || 0) < Q.maxTries) {
           var sh = sharpness();
-          if (!got[best] || sh > got[best].sharp * 1.1) takeFor(best, sh);
+          var gb = got[best], later = gb && Q.laterRel > 0 && (Date.now() - gb.time) > Q.laterMs && sh >= gb.sharp * Q.laterRel;
+          if (!gb || sh > gb.sharp * 1.1 || later) takeFor(best, sh);
         }
         faceVote();
         setInfo(speed > Q.slowDegPerSec ? '너무 빨라요 — 천천히 도세요' : (Object.keys(got).length >= T.length ? '다 찍었어요 — [끝내기]를 누르세요' : '머리를 타원 안에 두고 천천히 한 바퀴 도세요'));
