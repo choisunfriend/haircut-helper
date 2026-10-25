@@ -64,7 +64,7 @@ var READ_STEPS = (function () {
        잰 것(직모 단발 15:11 디버그 파일 · 아래 20% 높이): 경계에서 0.3cm 안 결의 44~72%가 거의 수평(밑단선) · 0.8~1.5cm 안 9~19% · 그 안쪽 3~7%.
        사진은 밑단까지 곧게 내려오는데 가닥이 밑단선을 따라 옆으로 돌아 다시 올라가 길이가 25→50cm · 3cm 넘게 거슬러 오른 가닥 1→59%.
        ⚠ 곱슬처럼 경계를 따라 진짜로 감기는 결도 같이 빠질 수 있음. 끄기 ?edgefix=0 · READ_STEPS.edgeFix=false */
-    edgeFix: true, edgeFrac: 0.02, edgeDeg: 30,
+    edgeFix: false /* (2026-10-25d) 끔 — 원인(머리 밖 밝기 경계를 읽던 것)을 04 HAIR_READ_FILL이 읽기 전에 없앰. 옆머리처럼 경계를 따라 흐르는 진짜 결까지 지우고 있었음(직모 정면 메운 칸 41% 중 39%가 또렷하게 읽은 칸) · 켜기 ?edgefix=1 */, edgeFrac: 0.02, edgeDeg: 30,
     trim: false /* (2026-10-22) 끔 — 위 '판정 단계 끔' · 켜기 ?rgtrim=1 */, trimTolCm: 0.4, trimOutCm: 1.0, trimTailCm: 0.4, trimKeepPts: 3
   }, W.READ_STEPS || {});
   try { var mT = /[?&]rgtrim=([01])/.exec(location.search); if (mT) S.trim = mT[1] === '1'; } catch (e) {}

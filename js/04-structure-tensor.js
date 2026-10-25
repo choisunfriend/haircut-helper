@@ -200,8 +200,41 @@ function buildRootFlowField(maskBuf, w, h){
   return { fx, fy, fc, inMask, conf };
 }
 
+/* (2026-10-25d) 결은 머리 안 무늬로만 읽음 — 사용자: "결읽기에서 그 부분을 가로로 읽은 원인을 찾는 게 우선순위"
+   원인: 밝기 기울기를 사진 전체에서 구하고 머리 영역은 "어느 칸 값을 쓸지"만 골랐음 → 머리 끝(밑단)·목덜미 칸의 창(Sobel 3×3 + 평균 반경 3 ·
+   σ4 · 방향필터)에 머리↔옷·피부 경계가 들어가 머리 무늬보다 훨씬 센 그 경계를 결로 읽음.
+   잰 것(디버그 1110 직모 · 1038·1107 360 실사진): 밑단 경계에서 4~8px 안 칸의 56~94%가 가로(안쪽 4~6%) · 옆 가장자리는 1~3%(경계가 세로라 우연히 맞음).
+   고침: 읽기 전에 머리 영역 밖 픽셀을 "가까운 머리의 부드러운 평균색"(머리만 넣은 정규화 흐림)으로 바꿈 → 경계의 밝기 계단이 사라지고
+   머리 안 무늬만 남음. 구조텐서·방향필터·mix·컬 재기가 모두 이 사진을 씀(영역 다시 찾기 등 다른 단계는 원래 사진 그대로).
+   그래서 경계 결 빼기(34 READ_STEPS.edgeFix — 결과에서 지우던 손질)는 끔. 끄기 HAIR_READ_FILL.on=false */
+var HAIR_READ_FILL = Object.assign({ on: true, r: 6, passes: 3 }, (typeof window !== 'undefined' && window.HAIR_READ_FILL) || {});
+function fillOutsideHair(pixels, maskBuf, w, h){
+  const n = w*h, m = new Float32Array(n);
+  let any = 0, mr = 0, mg = 0, mb = 0;
+  for(let i=0;i<n;i++){ if(maskBuf[i]){ m[i] = 1; any++; mr += pixels[i*4]; mg += pixels[i*4+1]; mb += pixels[i*4+2]; } }
+  if(!any || any === n) return pixels;
+  mr /= any; mg /= any; mb /= any;
+  const R = HAIR_READ_FILL.r, P = Math.max(1, HAIR_READ_FILL.passes|0);
+  const blurN = (buf)=>{ let b = buf; for(let k=0;k<P;k++) b = boxBlur(b, w, h, R); return b; };
+  const den = blurN(m), out = new Uint8ClampedArray(pixels);
+  for(let c=0;c<3;c++){
+    const ch = new Float32Array(n);
+    for(let i=0;i<n;i++) if(m[i]) ch[i] = pixels[i*4+c];
+    const num = blurN(ch), gm = c === 0 ? mr : c === 1 ? mg : mb;
+    for(let i=0;i<n;i++){
+      if(m[i]) continue;
+      const d = den[i];
+      out[i*4+c] = d > 0.02 ? num[i] / d : gm;    // 머리에서 먼 곳은 머리 전체 평균색
+    }
+  }
+  HAIR_READ_FILL.last = { w: w, h: h, hair: any, at: Date.now() };
+  return out;
+}
 function computeHairOrientationField(pixels, maskBuf, w, h){
-  const gray = toGrayscale(pixels, w, h);
+  toGrayscale(pixels, w, h);   // (옛 64) 영역 다시 찾기가 원래 사진을 기억하게(아래는 바꾼 사진으로 읽음)
+  if(HAIR_READ_FILL.on){ try{ pixels = fillOutsideHair(pixels, maskBuf, w, h); }catch(e){ console.warn('[결 읽기] 머리 밖 채우기 실패 — 원래 사진으로 읽음', e); } }
+  const gray = new Float32Array(w*h);
+  for(let i=0;i<w*h;i++){ const pi=i*4; gray[i] = 0.299*pixels[pi] + 0.587*pixels[pi+1] + 0.114*pixels[pi+2]; }
   const {Ix, Iy} = sobelGradients(gray, w, h);
 
   // 구조텐서 성분: Jxx=Ix², Jyy=Iy², Jxy=IxIy
