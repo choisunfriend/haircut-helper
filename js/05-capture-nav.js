@@ -470,6 +470,7 @@ var SHOT360 = (function () {
     return Promise.all(angles.map(function (a) { return cap(pick[a].url); })).then(function (urls) {
       angles.forEach(function (a, i) {
         state.shots[a] = urls[i];
+        try { if (typeof rememberShotHi === 'function') rememberShotHi(a, pick[a].url, urls[i]); } catch (e) {}   // (2026-10-25) 원본(SUBJECT_ZOOM 재료)
         ['hairCanvases', 'hairMasks', 'baseCanvases', 'baseFillCanvases'].forEach(function (k) { if (state[k]) state[k][a] = null; });
         ['landmarks', 'captureLmStatus', 'capturePose', 'poseEars'].forEach(function (k) { if (state[k]) state[k][a] = null; });
         if (state.strandPaths) state.strandPaths[a] = null;
@@ -611,7 +612,7 @@ var SHOT360 = (function () {
           if (!got[best] || sh > got[best].sharp * 1.1) takeFor(best, sh);
         }
         faceVote();
-        setInfo(speed > Q.slowDegPerSec ? '너무 빨라요 — 천천히 도세요' : (Object.keys(got).length >= T.length ? '다 찍었어요 — [완료]를 누르세요' : '머리를 타원 안에 두고 천천히 한 바퀴 도세요'));
+        setInfo(speed > Q.slowDegPerSec ? '너무 빨라요 — 천천히 도세요' : (Object.keys(got).length >= T.length ? '다 찍었어요 — [끝내기]를 누르세요' : '머리를 타원 안에 두고 천천히 한 바퀴 도세요'));
       } else setInfo('폰을 세워서 손님 머리를 향해 주세요');
     } else setInfo('각도 센서가 없습니다 — [수동 찍기]로 한 장씩 찍으세요(정면부터 한 방향으로)');
     drawRing();
@@ -620,7 +621,9 @@ var SHOT360 = (function () {
   function start() {
     var go = function () {
       T = targets(); got = {}; tries = {}; h0 = null; cur = 0; lastDeg = null; speed = 0; signVote = 0; signN = 0; userFlip = false;
-      running = true; btnStart.textContent = '다시 시작';
+      running = true;
+      btnStart.textContent = '끝내기';                                    // (2026-10-25) 사용자: "start누르면 그 자리가 finish로 바뀌면서 다시 누르면 정지 · restart는 Done자리에"
+      if (btnDone) { btnDone.textContent = '다시 시작'; btnDone.style.display = ''; }
       W.addEventListener('deviceorientation', onOri, true);
       setTimeout(function () { if (btnManual) btnManual.style.display = sensorOk ? 'none' : ''; }, 1500);
       if (!raf) raf = requestAnimationFrame(tick);
@@ -787,13 +790,13 @@ var SHOT360 = (function () {
     info = el('div', 'position:absolute;left:10px;right:124px;top:10px;padding:8px 10px;border-radius:10px;background:rgba(0,0,0,.55);color:#f3eadf;font:600 13px/1.4 system-ui,sans-serif;',
       '카메라를 여는 중…');
     var tip = el('div', 'position:absolute;left:10px;right:10px;bottom:10px;padding:6px 10px;border-radius:10px;background:rgba(0,0,0,.45);color:#cfc5b8;font:12px/1.4 system-ui,sans-serif;',
-      '15~20초에 걸쳐 한 바퀴 · 손님은 고개와 머리카락을 움직이지 않습니다 · 출발점으로 돌아오면 [완료]');
+      '15~20초에 걸쳐 한 바퀴 · 손님은 고개와 머리카락을 움직이지 않습니다 · 출발점으로 돌아오면 [끝내기]');
     stage.appendChild(vid); stage.appendChild(oval); stage.appendChild(ringWrap); stage.appendChild(info); stage.appendChild(tip);
     var bar = el('div', 'display:flex;gap:8px;padding:10px;background:#15110d;flex-wrap:wrap;');
-    btnStart = btn('시작', true, start);
+    btnStart = btn('시작', true, function () { if (running) finish(); else start(); });   // (2026-10-25) 시작 ↔ 끝내기
     btnManual = btn('수동 찍기', false, manualShot); btnManual.style.display = 'none';
     btnFlip = btn('좌우 바꾸기', false, function () { userFlip = !userFlip; toast(userFlip ? '좌우를 바꿨어요' : '좌우를 원래대로 했어요'); });
-    btnDone = btn('완료', true, finish);
+    btnDone = btn('다시 시작', false, start); btnDone.style.display = 'none';   // (2026-10-25) 완료 자리 = 다시 시작(시작 뒤에만 보임)
     btnCam = btn('카메라 다시 열기', true, function () { stopCam(); releaseAppCam(); openCam(0); }); btnCam.style.display = 'none';
     bar.appendChild(btn('닫기', false, close)); bar.appendChild(btnCam); bar.appendChild(btnStart); bar.appendChild(btnManual); bar.appendChild(btnFlip); bar.appendChild(btnDone);
     ov.appendChild(stage); ov.appendChild(bar);
@@ -942,8 +945,12 @@ function captureCurrentAngle(){
        ※ detectPoseOnCanvas는 <b>줄이기 전</b> 캔버스로 이미 끝났다. 포즈 측정은
          해상도가 높을수록 좋고 결과는 각도 몇 개뿐이라 그 순서가 맞다. */
     const shotC = capShotCanvas(c);
-    if(shotC !== c){ c.width = 0; c.height = 0; }   // 원본 크기 캔버스는 바로 반납
     state.shots[angle]=shotC.toDataURL('image/jpeg',0.94);
+    if(shotC !== c){                                  // 원본 크기 캔버스는 반납 — (2026-10-25) 그 전에 원본 해상도를 파일로 남김(머리가 작게 찍혔으면 분석 때 머리 둘레로 잘라 키우는 재료 · 03b SUBJECT_ZOOM)
+      const keep = c, loUrl = state.shots[angle];
+      try{ keep.toBlob(b=>{ try{ if(b && typeof rememberShotHi === 'function') rememberShotHi(angle, URL.createObjectURL(b), loUrl); }catch(e){} keep.width = 0; keep.height = 0; }, 'image/jpeg', 0.92); }
+      catch(e){ keep.width = 0; keep.height = 0; }
+    }
     _lastShotCanvas = { angle, canvas:shotC };
     // ── 촬영 시점 포즈 저장 ──
     // 저장 사진에서 나중에 랜드마크가 안 잡혀도 이 각도는 버리지 않는다
@@ -1000,6 +1007,7 @@ function handleFileUpload(e){
     /* (2026-08-23 6차) 업로드는 크기 제한이 아예 없었다 — 요즘 폰 사진이면
        4000×3000도 들어온다. 촬영과 <b>같은 상한</b>을 건다. */
     state.shots[angle]=await capShotDataURL(ev.target.result);
+    try{ if(typeof rememberShotHi === 'function') rememberShotHi(angle, ev.target.result, state.shots[angle]); }catch(e){}   // (2026-10-25) 원본 해상도(SUBJECT_ZOOM 재료)
     // 업로드 사진은 라이브 측정과 무관 — 이전 촬영의 라이브 포즈가 남아있으면 지운다
     if(state.capturePose) state.capturePose[angle]=null;
     if(state.currentCaptureIndex<3) state.currentCaptureIndex++;

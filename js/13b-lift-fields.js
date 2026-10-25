@@ -1022,7 +1022,13 @@ var VIEWS360 = (function () {
     rulerTol: 0.12,     // 어깨선·목 밑동 자가 얼굴 자와 이 안쪽으로 맞아야 그 자를 믿음(얼굴이 잡힌 사진들에서 확인)
     // (2026-10-05d) 촬영 안내
     advise: true,
-    blurFrac: 0.5       // 선명도가 세트 중앙값의 이 비율 미만이면 "흔들림"
+    blurFrac: 0.5,      // 선명도가 세트 중앙값의 이 비율 미만이면 "흔들림"
+    /* (2026-10-25) 머리 폭 자 — 사용자: "사람들한테 (촬영 조건을) 시키면 안 돼. 두상을 다 찍으면 가능한 다 활용하는 방법으로"
+       디버그 0844(360 세트 14장): 추가 10장이 전부 '어깨선 비가 범위 밖'(0.17~9.56)으로 빠짐 — 정면에 얼굴이 안 잡혀 얼굴 자가 없고, 몸 자(어깨선)는 사진마다 어깨가 잘리거나 팔이 들려 엉망.
+       배율을 얼굴·몸으로 못 재면(또는 그 값이 범위 밖이면) 머리 자체로 잼: 정면에서 "머리 윗선 반폭 ÷ 두상 반폭" 비 q0를 재 두고,
+       이 사진의 배율 = q0 × (그 각도의 두상 반폭) ÷ (이 사진의 머리 윗선 반폭). 머리가 화면 안에 다 들어온 사진이면 쓸 수 있음.
+       (옆머리 볼륨이 각도마다 달라 ±10~15% 오차는 남음 — 얼굴·몸 자가 있으면 그쪽을 먼저 씀) · 끄기 VIEWS360.headRuler=false */
+    headRuler: true
   }, W.VIEWS360 || {});
   X.views = {}; X.order = []; X.ref = null; X.busy = false; X.setFp = null; X.fp = null; X.forSet = null; X.note = ''; X.last = null; X.advisePending = false;
 
@@ -1108,7 +1114,7 @@ var VIEWS360 = (function () {
    * ① 나머지 사진 분석
    * ────────────────────────────────────────────────────────────────────── */
   function dropKey(k) {
-    ['shots', 'hairCanvases', 'baseCanvases', 'baseFillCanvases', 'strandPaths', 'landmarks', 'captureLmStatus', 'capturePose', 'poseEars'].forEach(function (n) {
+    ['shots', 'shotsHi', '_zoomedShot', 'hairCanvases', 'baseCanvases', 'baseFillCanvases', 'strandPaths', 'landmarks', 'captureLmStatus', 'capturePose', 'poseEars'].forEach(function (n) {
       try { if (state[n] && k in state[n]) delete state[n][k]; } catch (e) {}
     });
     try { if (typeof imgCache !== 'undefined' && imgCache[k]) delete imgCache[k]; } catch (e) {}
@@ -1228,10 +1234,16 @@ var VIEWS360 = (function () {
       try { if (typeof showAI === 'function') showAI('360° 사진 분석 중… ' + i + '/' + list.length, Math.round(it.deg) + '° 사진'); } catch (e) {}
       return cap(it.url).then(function (u) {
         state.shots[it.key] = u;
+        try { if (typeof rememberShotHi === 'function') rememberShotHi(it.key, it.url, u); } catch (e) {}   // (2026-10-25) 원본(SUBJECT_ZOOM 재료)
         return X.faceOne(it.key);
       }).then(function (fy) {
         faceYaw = fy;
         return X.extractOne(it.key);
+      }).then(function (ok) {
+        // (2026-10-25) 머리 둘레로 잘라 키웠으면 얼굴 값(눈→턱 길이 등)을 새 사진에서 다시
+        var z = null; try { z = SUBJECT_ZOOM.stats[it.key]; } catch (e) {}
+        if (z && z.done && z.at > Date.now() - 60000) return X.faceOne(it.key).then(function (fy2) { if (fy2 !== undefined) faceYaw = fy2; return ok; }, function () { return ok; });
+        return ok;
       }).then(function (ok) {
         var mi = state.hairMasks && state.hairMasks[it.key], m = null;
         if (ok && mi) { try { m = measure(mi); } catch (e) { m = null; } }
@@ -1355,6 +1367,23 @@ var VIEWS360 = (function () {
     if (v.faceYaw === null && Math.abs(yawS) <= X.faceMustDeg) return { kind: 'angle', why: '얼굴이 보여야 할 각도(' + yawS.toFixed(0) + '°)인데 얼굴을 못 찾음' };
     return { kind: '', why: '' };
   }
+  /* (2026-10-25) 머리 폭 자의 기준 비 q0 = 머리 윗선 반폭(사진 px × 배율) ÷ 그 각도의 두상 반폭 — 기준 4장 중 화면에 머리가 다 들어온 사진들의 중앙값
+     (360 세트의 정면이 흐리거나 머리가 덜 잡혀도 좌·우·후면으로 잼) */
+  function headQ0(viewCal) {
+    if (X._q0 && X._q0.vc === viewCal) return X._q0.q;
+    var qs = [];
+    BASE.forEach(function (name) {
+      try {
+        var mi = state.hairMasks && state.hairMasks[name], cal = viewCal && viewCal[name]; if (!mi || !cal || !(cal.sy > 0) || !cal.pose) return;
+        var mm = measure(mi); if (!mm || frameProblem(mm) || !(mm.hw > 4)) return;
+        var A = headHalfWidthAt(cal.pose.yaw || 0); if (A > 0) qs.push(mm.hw * cal.sy / A);
+      } catch (e) {}
+    });
+    qs.sort(function (a, b) { return a - b; });
+    var q = qs.length ? qs[qs.length >> 1] : 0;
+    X._q0 = { vc: viewCal, q: q, n: qs.length };
+    return q;
+  }
   /* 추가 사진 한 장: 카메라 + 뺄 이유(없으면 '') */
   function calFor(v, viewCal, yTop, CY, ctx) {
     var f = viewCal && viewCal.front, m = v.m, out = { cal: null, why: '', kind: '' };
@@ -1362,6 +1391,14 @@ var VIEWS360 = (function () {
     if (!f || !(f.sy > 0) || !f.pose) { out.why = '정면 보정 없음'; return out; }
     var basic = !m || m.hw < 4 || m.valid < m.w * X.minCols;
     if (basic) { out.why = frameProblem(m); out.kind = 'frame'; return out; }
+    if (X.headRuler && (!(v.ratio > 0) || v.ratioBad)) {                         // (2026-10-25) 머리 폭 자
+      var yawH = (typeof v.faceYaw === 'number') ? v.faceYaw : wrapDeg(v.deg - (X.degFront || 0)) + (f.pose.yaw || 0) * 180 / Math.PI;
+      var Av = headHalfWidthAt(yawH * Math.PI / 180), q0 = headQ0(viewCal);
+      if (q0 > 0 && Av > 0 && m.hw > 0) {
+        var rH = q0 * Av / (m.hw * f.sy);
+        v.ratioWas = v.ratioBad || v.ratioSrc; v.ratio = rH; v.ratioSrc = '머리 폭(정면 머리/두상 ' + q0.toFixed(2) + ')'; v.ratioBad = ''; v.headRuled = true;
+      }
+    }
     if (!(v.ratio > 0)) { out.why = '배율 없음'; out.kind = 'dist'; return out; }
     var sy = f.sy * v.ratio;
     if (!isFinite(sy) || !(sy > 0)) { out.why = '배율 계산 실패'; out.kind = 'dist'; return out; }

@@ -337,6 +337,7 @@ var READ_STEPS = (function () {
       L.push('  ' + v + ' ' + b.w + '×' + b.h + ' · 머리 ' + s.hair + 'px · 건넘 ' + pct(s.bridged, s.hair) + ' · 한쪽에서만 건넘(안 고침) ' + pct(s.oneSide, s.hair) + ' · 채움 ' + pct(s.filled, s.hair) +
         (s.edge && !s.edge.err ? ' · 경계와 나란해 뺀 결 ' + pct(s.edge.n, s.hair) + '(경계 ' + s.edge.band + 'px 안 ' + pct(s.edge.n, s.edge.near) + ' · 끄기 ?edgefix=0)' : '') + ' · 끊김 ' + s.breaks + '곳 → 이어져 건넌 ' + s.bridgedRuns + ' / 진짜 꺾임 ' + s.turns + ' · 내다봄 ' + s.look + 'px · 확인 ' + s.resume + 'px · ' + s.ms + 'ms');
     });
+    try { var SZ = W.SUBJECT_ZOOM, zk = SZ && SZ.stats ? Object.keys(SZ.stats) : []; if (zk.length) L.push('  머리 키우기(작게 찍힌 사진을 머리 둘레로 잘라 키움 · 끄기 SUBJECT_ZOOM.on=false): ' + zk.map(function (k) { var z = SZ.stats[k]; return k + ' ' + (z.done && z.out ? z.src + '→' + z.out + '(×' + z.scale + ' · 머리 폭 ' + z.headPxBefore + '→' + z.headPxAfter + 'px)' : (z.why || '안 함')); }).join(' · ')); } catch (e) {}
     try { L.push('  웨이브 배수: ' + (W.READ_SHAPE && W.READ_SHAPE.waveGainAuto === false && !(W.READ_SHAPE.waveGain > 1) ? '꺼짐(읽은 흔들림 그대로 · 켜기 ?wavegain=1)' : '켜짐 ×' + (W.READ_SHAPE ? W.READ_SHAPE.waveGain : '?') + (W.READ_SHAPE && W.READ_SHAPE.waveGainAuto ? '(자동)' : ''))); } catch (e) {}
     var f1 = function (v, k) { return isFinite(v) ? (+v).toFixed(k == null ? 2 : k) : '-'; };
     Object.keys(S.byView).forEach(function (v) {
