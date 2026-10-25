@@ -1428,7 +1428,7 @@ var REGROW = (function () {
     /* (2026-10-24) 사진끼리 머리 영역 맞추기 — 각도는 미디어파이프 그대로 두고, 사진마다 가운데(cx)·정수리 높이(crownY)만 ±photoAlignMaxCm 안에서 옮겨
        "다른 사진들로 깎은 3D 덩어리가 그 사진의 머리 영역을 얼마나 설명하나"(사진 평균)가 가장 큰 자리로. 다시 기르기의 사진 값만 바꿈(다른 단계는 그대로).
        기준 사진(정면 · 없으면 뒤)은 안 옮김. 실제 사진 세트(09:40 · 세 장)로 미리 재 본 값: 평균 0.837 → 0.866. 끄기 ?photoalign=0 · REGROW.photoAlign=false */
-    photoAlign: false /* (2026-10-25h) 끔 — 사용자: "기르기 전·후 두 번 맞춰서 어느 게 먹는지 모름 · 기르기 전 맞추기는 일단 꺼줘" — 기른 뒤 카메라 맞추기(camFit)만 남김 · 켜기 ?photoalign=1 */, photoAlignMaxCm: 2, photoAlignN: 30000, photoAlignCols: 96, photoAlignMinGain: 0.004,
+    photoAlign: true, photoAlignMaxCm: 2, photoAlignN: 30000, photoAlignCols: 96, photoAlignMinGain: 0.004,
     /* (2026-10-24) 걸음 안 세 번 더 보기(RK4) — 0.4cm 걸음 하나를 정할 때 처음 자리(사진 여러 장 · 맞춰 보기 포함)에 더해
        걸음 중간 두 번 · 끝 한 번을 "처음 자리에서 쓴 사진"의 결로만 다시 읽어 평균(1:2:2:1). 걸음은 그대로라 가닥 점 수는 안 늘고, 굽은 결(컬 고리·웨이브)을 0.1cm 걸음만큼 따라감.
        디버그 파일 곱슬 뒷모습으로 흉내: 0.4cm 걸음 = 고리 안 닫힘 · 0.1cm 걸음 = 닫힘 · 0.4cm+RK4 = 0.1cm와 거의 같음. 끄기 ?rk=0 · REGROW.rk=false */
