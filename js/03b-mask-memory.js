@@ -535,22 +535,38 @@ var SEG_CONF = (function(){
   return C;
 })();
 
+/* (2026-10-25f) 분석 시간 — 사용자: "직모분석할 때 1분 걸렸어 · 기존에는 헤어 다 그리기까지 1분이었는데, 지금은 사진분석까지가 1분"
+   녹화(11:59): 4장 분석 약 50초(정면 20 · 좌 12 · 우 12 · 뒤 8초)인데 단계별 시간이 어디에도 안 찍혀 원인을 못 짚음 → 사진마다 단계별로 잼.
+   진단 [결 읽기 단계] 아래 "분석 시간" 줄. 화면 안내도 단계마다 바꿈(예전엔 "얼굴 분석 중"이 추출 끝까지 남아 있었음). */
+var ANALYSIS_TIME = { byView: {}, order: [] };
+ANALYSIS_TIME.mark = function(angle, key, ms){ try{ var v = this.byView[angle] || (this.byView[angle] = {}); if(this.order.indexOf(angle) < 0) this.order.push(angle); v[key] = (v[key] || 0) + Math.round(ms); }catch(e){} };
+ANALYSIS_TIME.lines = function(){
+  var ks = this.order.filter(function(a){ return ANALYSIS_TIME.byView[a]; }); if(!ks.length) return [];
+  var NM = { zoom: '머리 키우기', face: '얼굴', seg: '세그멘테이션', orient: '결 읽기', ident: '색·컬·밀도', total: '합계' };
+  return ['  분석 시간(사진마다 ms) — ' + ks.map(function(a){ var v = ANALYSIS_TIME.byView[a]; return a + ' ' + ['zoom','face','seg','orient','ident','total'].filter(function(k){ return v[k] != null; }).map(function(k){ return NM[k] + ' ' + v[k]; }).join('·'); }).join(' | ')];
+};
+
 function extractHairMask(angle){
   return BODY_SEG_WAIT._extract(angle, () =>
     VIEWS360._extract(angle, () => extractHairMaskCore(angle)));
 }
 async function extractHairMaskCore(angle){
   if(typeof REGROW !== 'undefined') REGROW._resetPend();   // (옛 42) 지난 사진의 컬 재기 값 버림
+  const _tA = performance.now(); try{ ANALYSIS_TIME.byView[angle] = {}; }catch(e){}
   let _zoomed = false;
-  try{ _zoomed = await subjectZoom(angle); }catch(e){}   // (2026-10-25) 머리가 작게 찍혔으면 머리 둘레로 잘라 키움(키웠으면 얼굴도 새 사진에서 이미 잼)
+  try{ _zoomed = await subjectZoom(angle); }catch(e){}
+  ANALYSIS_TIME.mark(angle, 'zoom', performance.now() - _tA);   // (2026-10-25) 머리가 작게 찍혔으면 머리 둘레로 잘라 키움(키웠으면 얼굴도 새 사진에서 이미 잼)
   // (2026-10-25b) 분석 파이프라인(05)이 "재 달라"고 한 각도 — 키우지 않았을 때만 여기서 한 번(예전엔 키우기 전에 한 번 + 키운 뒤 또 한 번)
   if(state._lmWant && state._lmWant[angle]){
     state._lmWant[angle] = false;
     if(!_zoomed && typeof detectFaceLandmarks === 'function'){
       try{ if(typeof showAI === 'function' && typeof ANGLE_LABELS !== 'undefined') showAI('얼굴 분석 중…', (ANGLE_LABELS[angle] || angle) + ' 랜드마크 감지'); }catch(e){}
+      const _tF = performance.now();
       try{ await detectFaceLandmarks(angle); }catch(e){}
+      ANALYSIS_TIME.mark(angle, 'face', performance.now() - _tF);
     }
   }
+  try{ if(typeof showAI === 'function' && typeof ANGLE_LABELS !== 'undefined') showAI('머리카락 추출 중…', (ANGLE_LABELS[angle] || angle) + ' 처리 중'); }catch(e){}   // (2026-10-25f) 안내를 실제 단계로
   const dataUrl = state.shots[angle];
   if(!dataUrl || !segmenter) return false;
 
@@ -682,7 +698,7 @@ async function extractHairMaskCore(angle){
           }
         }
         } // runSegmentation
-        await runSegmentation();
+        const _tS = performance.now(); await runSegmentation(); ANALYSIS_TIME.mark(angle, 'seg', performance.now() - _tS);
 
         // ── STEP 2: 배경 오탐 제거 — 사람 머리 영역 바깥은 무조건 제외 ──
         // confidenceMask 임계값을 관대하게 낮췄더니(0.3), 벽/천장 경계선처럼
@@ -1032,7 +1048,7 @@ async function extractHairMaskCore(angle){
             orientationColSamples = null;
           }
         }
-        computeOrientation();
+        { const _tO = performance.now(); computeOrientation(); ANALYSIS_TIME.mark(angle, 'orient', performance.now() - _tO); }
 
         // ── STEP 10: 두피(scalpY)·모발끝(hairEndY) 라인 추출 후 원본 해상도로 스케일업 ──
         const {scalpY, hairEndY} = extractScalpAndEndLines(hairMaskBuf, w, h, img.width, scale);
@@ -1139,11 +1155,13 @@ async function extractHairMaskCore(angle){
             else if(HAIR_IDENTITY._refSkinCss) densitySkinCss = HAIR_IDENTITY._refSkinCss;
           }
           // (옛 51) 살색이 머리색과 너무 가까우면 코·볼에서 다시 잰 살색으로 바꿔 넘김(13b ROOTS_FALLBACK)
+          var _tI = performance.now();
           identity = measureViewHairIdentity(ROOTS_FALLBACK._fixSkin(angle, {
             srcPixels, maskBuf: hairMaskBuf, w, h, reasonMask, personMask,
             orientation: orientationColSamples, colorPalette,
             scalpColorCss: scalpColor, hairColorCss: avgHairColor, densitySkinCss,
           }));
+          ANALYSIS_TIME.mark(angle, 'ident', performance.now() - _tI);
           if(!_hasFace || identity.densitySkipped || densitySkinCss){
             console.log('[모발프로필·살색빌림] ' + angle + ' · 얼굴 ' + (_hasFace ? '있음' : '없음')
               + ' · 판정 살색 ' + (densitySkinCss ? densitySkinCss + '(얼굴 있는 뷰에서 빌림)' : (scalpColor || '없음') + '(이 뷰 자체)')
@@ -1228,6 +1246,7 @@ async function extractHairMaskCore(angle){
                      // 실패 시 null일 수 있음 — 그 경우 목은 고정값으로 폴백.
         };
         console.log('[진단] extractHairMask 완료', angle, 'faceBoxDiag=', faceBoxDiag);
+        ANALYSIS_TIME.mark(angle, 'total', performance.now() - _tA);
         resolve(true);
       }catch(e){
         console.warn('extractHairMask 실패:', angle, e);

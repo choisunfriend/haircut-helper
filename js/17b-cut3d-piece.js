@@ -1485,7 +1485,7 @@ var REGROW = (function () {
     /* (2026-10-24) 결이 끊긴 곳에서 끝(시험 · 기본 끔) — 한 걸음 꺾인 각이 직전 세 걸음 꺾임의 중앙값보다 kinkDeg° 넘게 크면(곡선이 이어지지 않고 다른 결로 갈아탐) 그 앞에서 끝.
        디버그 파일(점 0.8cm 간격)로 잰 것: 꺾여 오르기 시작하는 자리의 튐 중앙값 직모 단발 61° · 실제 66° · 곱슬 33° / 고리 도는 구간 13~18°.
        45°에서 꺾여 오르는 자리 잡힘 61% · 69% · 39% / 고리 구간 점이 잘못 잘림 8% · 13% · 5%(점마다 — 고리 한 바퀴면 더 큼). 켜기 ?kink=1 · REGROW.kinkStop=true */
-    kinkStop: false, kinkDeg: 45, kinkMinCm: 2,
+    kinkStop: true /* (2026-10-25f) 켬 — 사용자: "쓰고 있는 거면 켜기만 하면 되잖아.. 결과를 보자" · 끄기 ?kink=0 */, kinkDeg: 45, kinkMinCm: 2,
     minCoh: 0.08,       // 결 또렷함 하한
     layerLo: 0.2, layerHi: 1.0,   // 가닥이 두께의 몇 %까지 뜨는가(가닥마다 무작위)
     tMax: 0.45,         // 두께 재기 상한(모델 단위 ≈ 9cm)
@@ -1499,7 +1499,15 @@ var REGROW = (function () {
     sideLayStay: true,  // (2026-10-11p) 앞 헤어라인에서 옆으로 눕힌 가닥(10d)은 두피를 벗어나는 자리에서 끝 · 길이도 그 섹션 상한까지 — 길이 상한을 끈 뒤(11f) 관자놀이 밖 허공으로 뻗어 나가 옆머리에 가시가 되던 것. false = 예전(두피 밖으로 이어 감)
     stubCm: 0,          // (2026-10-22) 끔 — 걷기 안 규칙도 끔(읽기·기르기 강화 단계 · 되돌리기 ?judge=1) · 예전 1.2
     stubCm_was: 1.2,    // (2026-10-10e) 안 뒤집은 얇은 자리(옆·목덜미 머리선)에 심는 짧은 머리 길이(cm) · 0 = 안 심음
-    polDown: 0,         // (2026-10-22) 끔 — 걷기 안 규칙도 끔(읽기·기르기 강화 단계 · 되돌리기 ?judge=1): 오르막 벌점 · 예전 2.5
+    /* (2026-10-25f) 중력 = 오름·내림 고르기 — 사용자: "중력은 방향설정에만 쓰이도록 · 오름이냐 내림이냐만 헷갈리지 않게 보면 되고, 수평은 그대로 그려지잖아"
+       사진 결은 앞뒤 없는 선이라 걸을 때마다 +/− 중 하나를 골라야 함. 지금까지: 두피 위는 직전 걸음과 이어지는 쪽만(중력 없음) → 디버그 1157 직모:
+       뒤통수·옆 뿌리 1,893가닥이 첫 걸음을 위로 잡아 두피 위로 22cm를 걸어 정수리를 넘어 가르마(이마 맨살)에서 끝남 = 가르마가 벌어지고 뿌리가 떠 보인 원인.
+       두피 밖은 반대로 걸음마다 아래 25%를 섞어 읽은 결의 모양을 바꿨음.
+       지금: 두 구간 모두 "직전 걸음과 이어지는 쪽 + 오르막 쪽 벌점(비탈 기울기 비례)"으로 +/−만 고름(polDown · gravSign) — 수평 결(가르마·가마·옆으로 감는 결)은 비탈이 0이라 그대로,
+       삐침·고리처럼 이어서 꺾이는 결은 직전 걸음과 잘 이어지니 그대로. 두피 밖에서 아래를 섞는 것은 결을 못 읽은 걸음에서만(gravity).
+       되돌리기: REGROW.polDown=0 · REGROW.gravSign=0 · REGROW.gravBlendRead=true */
+    polDown: 2.5, gravSign: 1.0, gravBlendRead: false,
+    polDown_off_was: 0, // (2026-10-22) 끔 — 걷기 안 규칙도 끔(읽기·기르기 강화 단계 · 되돌리기 ?judge=1): 오르막 벌점 · 예전 2.5
     polDown_was: 2.5,   // (2026-10-10f) 두피 위에서 결(앞뒤 없는 선)의 앞뒤를 고를 때 비탈을 거꾸로 오르는 쪽에만 이만큼 벌점(비탈 기울기에 비례) — 한 번 위로 가면 계속 위로 가며 두상을 감던 것. 옆으로 흐르는 결(가마·가르마)은 안 건드림 · 0 = 예전(직전 방향만)
     glossSkip: false,   // (2026-10-22) 끔 — 걷기 안 규칙도 끔(읽기·기르기 강화 단계 · 되돌리기 ?judge=1): 광택 띠 수평 결 안 읽기 · 예전 true
     glossSkip_was: true, // (2026-10-10f) 광택 보정 — 머리색보다 많이 밝은 자리(광택 띠)에서 수평에 가까운 결은 안 읽음(광택 띠 가장자리를 결로 잘못 읽은 것) · false = 끔
@@ -2587,7 +2595,7 @@ var REGROW = (function () {
             st.hangSteps++;
           } else {
             var rr = Math.hypot(P.x, P.z), nc = rr > 1e-6 ? { x: P.x / rr, y: 0, z: P.z / rr } : n;
-            fl = flowStep(P, nc, prev, true, stp);
+            polW = G.gravSign || 0; fl = flowStep(P, nc, prev, true, stp); polW = 0;   // (2026-10-25f) 두피 밖도 중력으로 오름·내림만 고름
             // (13l) 두상 아래에서 사진 한 장만 옆으로 누운 결을 말하면 안 믿음 — 결을 못 읽은 걸음처럼 직전 방향 + 중력
             if (fl && G.soloSideBelow && flowNC === 1 && P.y < CY - Es.b && Math.abs(fl.y) < G.soloSideCos) { fl = null; st.soloSide = (st.soloSide || 0) + 1; }
             if (!fl) { estSteps++; nEst++; }
@@ -2597,8 +2605,10 @@ var REGROW = (function () {
               d = fl2 > 0.2 ? { x: d.x / fl2, y: d.y / fl2, z: fz / fl2 } : down;
               st.backFwd++; nBack++; exB = 1;
             }
-            var gx = d.x * (1 - G.gravity), gy = d.y * (1 - G.gravity) - G.gravity, gz = d.z * (1 - G.gravity), gl = Math.hypot(gx, gy, gz) || 1;
-            d = { x: gx / gl, y: gy / gl, z: gz / gl };
+            if (!fl || G.gravBlendRead) {                                   // (2026-10-25f) 아래로 섞기는 결을 못 읽은 걸음만 — 읽은 결의 모양은 안 바꿈
+              var gx = d.x * (1 - G.gravity), gy = d.y * (1 - G.gravity) - G.gravity, gz = d.z * (1 - G.gravity), gl = Math.hypot(gx, gy, gz) || 1;
+              d = { x: gx / gl, y: gy / gl, z: gz / gl };
+            }
             if (G.noClimbCm > 0 && d.y > 0 && P.y + d.y * stp - lowF > G.noClimbCm / cmU) {   // (13k) 내려왔던 가닥이 다시 오름 — 위 성분 지움
               var cl = Math.hypot(d.x, d.z);
               d = cl > 0.2 ? { x: d.x / cl, y: 0, z: d.z / cl } : down;

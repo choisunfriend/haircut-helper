@@ -1088,10 +1088,36 @@ var VIEWS360 = (function () {
     return out;
   }
   /* 머리 윗선(scalpY)에서: 좌우 끝 · 맨 위 · 정수리 아래 얕은 깊이의 가로 중심 */
+  /* (2026-10-25f) 손님 머리 덩어리 — 사진에서 머리로 잡힌 덩어리 중 가장 큰 것만(배경에 지나가는 사람 머리 빼기).
+     실측(360 세트 13:47 뒤 사진): 왼쪽 위 배경 사람 두 명의 머리까지 머리 영역으로 잡혀 머리가 화면 왼쪽 끝(3px)까지 이어짐 → "머리가 화면 밖"으로 빠짐.
+     돌려줌: { cols(마스크 열마다 그 덩어리가 있나), top(열마다 맨 윗줄), h(덩어리 높이), edgeL/edgeR(좌·우 끝 열에 닿은 줄 비율), topCut(맨 윗줄이 사진 위 끝) } · 마스크마다 한 번 */
+  function mainBlob(mi) {
+    if (!mi || !mi.reasonMask) return null;
+    if (mi._mainBlob && mi._mainBlob.src === mi.reasonMask) return mi._mainBlob;
+    var mw = mi.maskW || mi.w, mh = mi.maskH || mi.h, mk = mi.reasonMask, N = mw * mh, lab = new Int32Array(N), st = new Int32Array(N), i, j, n, best = 0, bestA = 0, cur = 0;
+    for (i = 0; i < N; i++) {
+      if (mk[i] !== 1 || lab[i]) continue;
+      cur++; var sp = 0, a = 0; st[sp++] = i; lab[i] = cur;
+      while (sp) { j = st[--sp]; a++; var x = j % mw, y = (j / mw) | 0;
+        if (x > 0 && mk[j - 1] === 1 && !lab[j - 1]) { lab[j - 1] = cur; st[sp++] = j - 1; }
+        if (x < mw - 1 && mk[j + 1] === 1 && !lab[j + 1]) { lab[j + 1] = cur; st[sp++] = j + 1; }
+        if (y > 0 && mk[j - mw] === 1 && !lab[j - mw]) { lab[j - mw] = cur; st[sp++] = j - mw; }
+        if (y < mh - 1 && mk[j + mw] === 1 && !lab[j + mw]) { lab[j + mw] = cur; st[sp++] = j + mw; } }
+      if (a > bestA) { bestA = a; best = cur; }
+    }
+    if (!best) return (mi._mainBlob = null);
+    var cols = new Uint8Array(mw), top = new Int32Array(mw).fill(-1), yMin = mh, yMax = -1, eL = 0, eR = 0, rL = new Uint8Array(mh), rR = new Uint8Array(mh);
+    for (n = 0; n < N; n++) if (lab[n] === best) { var xx = n % mw, yy = (n / mw) | 0; cols[xx] = 1; if (top[xx] < 0 || yy < top[xx]) top[xx] = yy; if (yy < yMin) yMin = yy; if (yy > yMax) yMax = yy; if (xx <= 1 && !rL[yy]) { rL[yy] = 1; eL++; } if (xx >= mw - 2 && !rR[yy]) { rR[yy] = 1; eR++; } }
+    var hh = Math.max(1, yMax - yMin + 1);
+    return (mi._mainBlob = { src: mi.reasonMask, mw: mw, mh: mh, cols: cols, top: top, h: hh, edgeL: eL / hh, edgeR: eR / hh, topCut: yMin <= 1, area: bestA, comps: cur });
+  }
+  X._mainBlob = mainBlob;
   function measure(mi) {
     if (!mi || !mi.scalpY || !(mi.w > 8) || !(mi.h > 8)) return null;
-    var sY = mi.scalpY, w = mi.w, x, minX = Infinity, maxX = -Infinity, crown = Infinity, valid = 0;
-    for (x = 0; x < w; x++) { var v = sY[x]; if (v >= 0) { valid++; if (x < minX) minX = x; if (x > maxX) maxX = x; if (v < crown) crown = v; } }
+    var sY = mi.scalpY, w = mi.w, x, minX = Infinity, maxX = -Infinity, crown = Infinity, valid = 0, MB = null;
+    try { MB = X.mainOnly !== false ? mainBlob(mi) : null; } catch (e) { MB = null; }
+    var inMain = function (xx) { if (!MB) return true; var c = Math.min(MB.mw - 1, Math.floor(xx * MB.mw / w)); return !!MB.cols[c]; };
+    for (x = 0; x < w; x++) { var v = sY[x]; if (v >= 0 && inMain(x)) { valid++; if (x < minX) minX = x; if (x > maxX) maxX = x; if (v < crown) crown = v; } }
     if (!(maxX > minX) || !isFinite(crown)) return null;
     var mw = mi.maskW || w, mh = mi.maskH || mi.h, ky = mi.h / mh;
     var ps = personStats(mi.personMask, mw, mh);
@@ -1099,9 +1125,10 @@ var VIEWS360 = (function () {
     var H = (top >= 0 && sh > top) ? sh - top : 0, HB = (top >= 0 && nb > top) ? nb - top : 0;
     var depth = X.capDepth * (H > 0 ? H : HB > 0 ? HB : (maxX - minX));
     var cl = Infinity, cr = -Infinity;
-    for (x = 0; x < w; x++) if (sY[x] >= 0 && sY[x] <= crown + depth) { if (x < cl) cl = x; if (x > cr) cr = x; }
+    for (x = 0; x < w; x++) if (sY[x] >= 0 && inMain(x) && sY[x] <= crown + depth) { if (x < cl) cl = x; if (x > cr) cr = x; }
     return { w: w, h: mi.h, minX: minX, maxX: maxX, hw: (maxX - minX) / 2, crown: crown, valid: valid, top: top, shoulder: sh, H: H, neckBase: nb, HB: HB,
-      capCx: cr >= cl ? (cl + cr) / 2 : (minX + maxX) / 2 };
+      capCx: cr >= cl ? (cl + cr) / 2 : (minX + maxX) / 2,
+      edgeL: MB ? MB.edgeL : 0, edgeR: MB ? MB.edgeR : 0, topCut: MB ? MB.topCut : false, blobs: MB ? MB.comps : 0 };
   }
   X._measure = measure;
   /* 머리가 화면에 다 들어왔나. 문제 있으면 사유 문자열 */
@@ -1109,8 +1136,15 @@ var VIEWS360 = (function () {
     if (!m) return '머리 윗선을 못 잡음';
     if (m.hw < 4 || m.valid < m.w * X.minCols) return '머리 윗선이 거의 안 잡힘';
     var e = Math.max(1, X.edgeFrac * m.w);
-    if (m.minX <= e || m.maxX >= m.w - 1 - e) return '머리가 화면 ' + (m.minX <= e ? '왼쪽' : '오른쪽') + ' 가장자리에 걸림';
     if (m.crown <= 1) return '머리 맨 위가 화면 밖';
+    if (m.minX <= e || m.maxX >= m.w - 1 - e) {
+      /* (2026-10-25f) 옆이 조금 잘린 사진은 빼지 않음 — 사용자: "장수가 많아졌으니 다른 사진으로 보충이 되잖아. 조금 잘린 사진도 넣자"
+         사진 밖은 원래 형태 계산에서 판정을 안 함(모름) → 잘린 쪽은 그 자리를 보는 다른 사진이 채움. 머리 덩어리 높이의 cutMax 넘게 닿았을 때만 뺌.
+         잘린 사진은 머리 폭으로 배율을 재면 틀리므로 얼굴·이웃 사진 배율을 씀(calFor). 끄기 VIEWS360.keepCut=false */
+      var cut = Math.max(m.minX <= e ? (m.edgeL || 1) : 0, m.maxX >= m.w - 1 - e ? (m.edgeR || 1) : 0);
+      if (X.keepCut !== false && cut <= (X.cutMax || 0.4)) { m.sideCut = cut; return ''; }
+      return '머리가 화면 ' + (m.minX <= e ? '왼쪽' : '오른쪽') + ' 가장자리에 걸림(머리 높이의 ' + Math.round(cut * 100) + '%)';
+    }
     return '';
   }
 
@@ -1236,18 +1270,18 @@ var VIEWS360 = (function () {
       if (i >= list.length) return Promise.resolve();
       var it = list[i++], faceYaw;
       try { if (typeof showAI === 'function') showAI('360° 사진 분석 중… ' + i + '/' + list.length, Math.round(it.deg) + '° 사진'); } catch (e) {}
+      /* (2026-10-25f) 얼굴은 한 번만 — 예전: 키우기 전에 한 번 + 키운 뒤 또 한 번(키우기 자체도 한 번 더 잼). 지금: 추출(키우기 포함) 뒤
+         키우기가 잰 값이 있으면 그것, 없으면 그때 한 번. 뒤쪽(정면에서 120° 넘게 돈 사진)은 얼굴이 나올 수 없어 안 잼 */
+      var backish = Math.abs(wrapDeg(it.deg - (X.degFront || 0))) > 120;
       return cap(it.url).then(function (u) {
         state.shots[it.key] = u;
         try { if (typeof rememberShotHi === 'function') rememberShotHi(it.key, it.url, u); } catch (e) {}   // (2026-10-25) 원본(SUBJECT_ZOOM 재료)
-        return X.faceOne(it.key);
-      }).then(function (fy) {
-        faceYaw = fy;
         return X.extractOne(it.key);
       }).then(function (ok) {
-        // (2026-10-25) 머리 둘레로 잘라 키웠으면 얼굴 값(눈→턱 길이 등)을 새 사진에서 다시
-        var z = null; try { z = SUBJECT_ZOOM.stats[it.key]; } catch (e) {}
-        if (z && z.done && z.at > Date.now() - 60000) return X.faceOne(it.key).then(function (fy2) { if (fy2 !== undefined) faceYaw = fy2; return ok; }, function () { return ok; });
-        return ok;
+        var lm0 = null; try { lm0 = state.landmarks && state.landmarks[it.key]; } catch (e) {}
+        if (lm0) { faceYaw = faceOf(lm0); return ok; }
+        if (backish) { faceYaw = undefined; return ok; }
+        return X.faceOne(it.key).then(function (fy2) { faceYaw = fy2; return ok; }, function () { return ok; });
       }).then(function (ok) {
         var mi = state.hairMasks && state.hairMasks[it.key], m = null;
         if (ok && mi) { try { m = measure(mi); } catch (e) { m = null; } }
@@ -1407,7 +1441,8 @@ var VIEWS360 = (function () {
     if (!f || !(f.sy > 0) || !f.pose) { out.why = '정면 보정 없음'; return out; }
     var basic = !m || m.hw < 4 || m.valid < m.w * X.minCols;
     if (basic) { out.why = frameProblem(m); out.kind = 'frame'; return out; }
-    if (X.headRuler && (f._synth || !(v.ratio > 0) || v.ratioBad)) {                         // (2026-10-25) 머리 폭 자
+    var cutNow = false; try { frameProblem(m); cutNow = !!m.sideCut; } catch (e) {}
+    if (X.headRuler && !cutNow && (f._synth || !(v.ratio > 0) || v.ratioBad)) {   // (2026-10-25f) 옆이 잘린 사진은 머리 폭 자를 안 씀                         // (2026-10-25) 머리 폭 자
       var yawH = (typeof v.faceYaw === 'number') ? v.faceYaw : wrapDeg(v.deg - (X.degFront || 0)) + (f.pose.yaw || 0) * 180 / Math.PI;
       var Av = headHalfWidthAt(yawH * Math.PI / 180), q0 = headQ0(viewCal);
       if (q0 > 0 && Av > 0 && m.hw > 0) {
@@ -1429,7 +1464,7 @@ var VIEWS360 = (function () {
     if (!X.gate) return out;
     var pre = precheck(v, frontYaw);
     if (pre.why) { out.why = pre.why; out.kind = pre.kind; }
-    else if (v.q != null && (v.q < X.qLo || v.q > X.qHi)) { out.kind = 'dist'; out.why = '머리 크기가 안 맞음(두상 폭의 ' + v.q.toFixed(2) + '배 — ' + (v.q > X.qHi ? '너무 가깝게 찍혔거나 배율이 틀림' : '너무 멀거나 머리가 잘림') + ')'; }
+    else if (!cutNow && v.q != null && (v.q < X.qLo || v.q > X.qHi)) { out.kind = 'dist'; out.why = '머리 크기가 안 맞음(두상 폭의 ' + v.q.toFixed(2) + '배 — ' + (v.q > X.qHi ? '너무 가깝게 찍혔거나 배율이 틀림' : '너무 멀거나 머리가 잘림') + ')'; }
     else if (Math.abs(wrapDeg(yawDeg)) >= X.agreeFromDeg && v.agree != null && v.agree < ctx.thr) { out.kind = 'angle'; out.why = '두피가 머리 영역 밖으로 나감(맞음 ' + Math.round(v.agree * 100) + '% < ' + Math.round(ctx.thr * 100) + '%)'; }
     return out;
   }

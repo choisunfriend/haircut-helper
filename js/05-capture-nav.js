@@ -410,6 +410,12 @@ var SHOT360 = (function () {
        선명도(화면 가운데 윤곽 세기)는 멀리서 찍은 전신 사진이 오히려 높게 나옴. 이제 같은 칸을 laterMs 넘게 지나 다시 지나가면,
        선명도가 기존의 laterRel배 이상이기만 하면 나중 장으로 바꿈(출발점으로 돌아오며 찍힌 정면이 들어감). 끄기 SHOT360.laterRel=0 */
     laterMs: 1500, laterRel: 0.7,
+    /* (2026-10-25f) 촬영 중 정면 찾기 — 사용자: "0도 근처에서 연속촬영된 프레임들을 분석해서 정면사진을 찾으라는 거지. 거기서부터는 30도씩 돌고"
+       센서 0° ± frontSeekDeg 안을 지나는 동안 frontSeekMs마다 영상 한 장을 긴 변 640px로 줄여 얼굴 각도를 잼(재시도 없음).
+       얼굴이 잡히고 |yaw| + 0.5·|pitch|가 가장 작은 장을 정면으로 따로 둠(처음 지날 때든 한 바퀴 돌고 돌아올 때든).
+       [끝내기] 때: 그 장의 센서 각도 − 얼굴 yaw = 진짜 0° → 모든 장의 각도를 그 기준으로 다시 매기고, 그 장을 정면 칸(front:true)에 넣음.
+       세트를 넣을 때(applySet) 12장 얼굴을 다시 재지 않음(정면이 표시돼 있으면). 끄기 SHOT360.frontSeek=false */
+    frontSeek: true, frontSeekDeg: 35, frontSeekMs: 400, frontSeekPx: 640,
     sign: 0               // +1/-1 = 좌우 고정 · 0 = 자동(얼굴 각도로 정함, 못 정하면 기본 -1)
   }, W.SHOT360 || {});
   if (!Q.on) return;
@@ -490,6 +496,12 @@ var SHOT360 = (function () {
     return one().then(function () { try { if (typeof hideAI === 'function') hideAI(); } catch (e) {} });
   }
   function pickFrames(set) {
+    var fr0 = set.frames.filter(function (f) { return f && f.front; })[0];
+    if (fr0) {                                                         // (2026-10-25f) 촬영 중 찾은 정면
+      var yw = typeof fr0.faceYaw === 'number' ? fr0.faceYaw : 0, z0 = wrap(fr0.deg - yw), rest0 = set.frames.filter(function (f) { return f !== fr0; });
+      try { if (!fr0._fy) Object.defineProperty(fr0, '_fy', { value: { yaw: yw, ecN: 0 }, writable: true, configurable: true, enumerable: false }); } catch (e) {}
+      return { front: fr0, left: nearest(rest0, wrap(z0 + Q.sideDeg), 20), right: nearest(rest0, wrap(z0 - Q.sideDeg), 20), back: nearest(rest0, wrap(z0 + 180), 35), zero: z0, by: 'capture' };
+    }
     var faces = set.frames.filter(function (f) { return f && f._fy && typeof f._fy.yaw === 'number'; }), front = null;
     faces.forEach(function (f) {
       if (!front) { front = f; return; }
@@ -507,6 +519,7 @@ var SHOT360 = (function () {
   Q._pickFrames = pickFrames;
   function applySetCore(set) {
     if (!set || !set.frames || !set.frames.length) { toast('360 세트가 비어 있습니다'); return Promise.resolve(false); }
+    if (set.frames.some(function (f) { return f && f.front; })) return applySetPicked(set);   // (2026-10-25f) 촬영 중 정면을 찾았으면 다시 안 잼
     return scanFaces(set).then(function () { return applySetPicked(set); });
   }
   function applySetPicked(set) {
@@ -533,7 +546,7 @@ var SHOT360 = (function () {
       try { state.currentCaptureIndex = 3; } catch (e) {}
       try { updateAngleUI(); } catch (e) {}
       angles.forEach(function (a) { try { checkCaptureLandmarks(a); } catch (e) {} });
-      console.log(TAG + ' 세트 적용 — 정면은 ' + (pick.by === 'face' ? '얼굴로 고름(얼굴 yaw ' + pick.front._fy.yaw.toFixed(0) + '° · 진짜 0° = 센서 ' + Math.round(pick.zero) + '°)' : '얼굴을 못 찾아 센서 0°') + ' · ' + set.frames.length + '장 중 정면 ' + Math.round(pick.front.deg) + '° · 좌 ' + Math.round(pick.left.deg) + '° · 우 ' + Math.round(pick.right.deg) +
+      console.log(TAG + ' 세트 적용 — 정면은 ' + (pick.by === 'capture' ? '촬영 중 찾음(얼굴 yaw ' + pick.front._fy.yaw.toFixed(0) + '°)' : pick.by === 'face' ? '얼굴로 고름(얼굴 yaw ' + pick.front._fy.yaw.toFixed(0) + '° · 진짜 0° = 센서 ' + Math.round(pick.zero) + '°)' : '얼굴을 못 찾아 센서 0°') + ' · ' + set.frames.length + '장 중 정면 ' + Math.round(pick.front.deg) + '° · 좌 ' + Math.round(pick.left.deg) + '° · 우 ' + Math.round(pick.right.deg) +
         '° · 후면 ' + Math.round(pick.back.deg) + '° 를 4장 슬롯에 넣음 · 나머지 ' + (set.frames.length - 4) + '장은 정보용(state.shots360)');
       toast('360° 사진 ' + set.frames.length + '장 — 4장을 슬롯에 넣었어요');
       return true;
@@ -566,7 +579,7 @@ var SHOT360 = (function () {
   /* ── 촬영 화면(전체 화면 덮개) ────────────────────────────────────────── */
   var ov = null, vid = null, stream = null, ring = null, info = null, btnStart = null, btnDone = null, btnManual = null, btnFlip = null, needle = null;
   var running = false, raf = null, sensorOk = false, lastEvt = null, h0 = null, cur = 0, lastDeg = null, lastT = 0, speed = 0;
-  var T = [], got = {}, tries = {}, small = null, grab = null, signVote = 0, signN = 0, userFlip = false, lastFaceAt = 0;
+  var T = [], got = {}, tries = {}, small = null, grab = null, signVote = 0, signN = 0, userFlip = false, lastFaceAt = 0, frontBest = null, lastSeekAt = 0, seekCv = null, seekN = 0;
 
   function el(tag, css, text) { var e = document.createElement(tag); if (css) e.style.cssText = css; if (text != null) e.textContent = text; return e; }
   function btn(label, primary, fn) {
@@ -636,6 +649,24 @@ var SHOT360 = (function () {
     signVote += (p.yawDeg > 0 ? 1 : -1) * (cur > 0 ? 1 : -1) * Math.min(Math.abs(p.yawDeg), a);
     signN++;
   }
+  function frontSeek() {            // (2026-10-25f) 0° 근처를 지나는 동안 정면 후보를 잼
+    if (!Q.frontSeek || typeof detectPoseOnCanvas !== 'function') return;
+    if (Math.abs(cur) > Q.frontSeekDeg) return;
+    var t = now(); if (t - lastSeekAt < Q.frontSeekMs) return; lastSeekAt = t;
+    var c = grabFrame(); if (!c) return;
+    try {
+      var k = Math.min(1, Q.frontSeekPx / Math.max(c.width, c.height));
+      if (!seekCv) seekCv = document.createElement('canvas');
+      seekCv.width = Math.max(8, Math.round(c.width * k)); seekCv.height = Math.max(8, Math.round(c.height * k));
+      seekCv.getContext('2d').drawImage(c, 0, 0, seekCv.width, seekCv.height);
+      var p = detectPoseOnCanvas(seekCv); seekN++;
+      if (!p || !isFinite(p.yawDeg)) return;
+      var score = Math.abs(p.yawDeg) + 0.5 * Math.abs(p.pitchDeg || 0);
+      if (frontBest && score >= frontBest.score - 1) return;            // 1° 넘게 나아질 때만 바꿈
+      var url = c.toDataURL('image/jpeg', Q.jpeg);
+      frontBest = { raw: cur, yaw: p.yawDeg, pitch: p.pitchDeg || 0, score: score, url: url, sharp: Math.round(sharpness()), time: Date.now() };
+    } catch (e) {}
+  }
   function appSign() {
     var s = Q.sign ? (Q.sign > 0 ? 1 : -1) : (signN >= 2 && Math.abs(signVote) > 15 ? (signVote > 0 ? 1 : -1) : -1);
     return userFlip ? -s : s;
@@ -662,6 +693,7 @@ var SHOT360 = (function () {
           if (!gb || sh > gb.sharp * 1.1 || later) takeFor(best, sh);
         }
         faceVote();
+        frontSeek();
         setInfo(speed > Q.slowDegPerSec ? '너무 빨라요 — 천천히 도세요' : (Object.keys(got).length >= T.length ? '다 찍었어요 — [끝내기]를 누르세요' : '머리를 타원 안에 두고 천천히 한 바퀴 도세요'));
       } else setInfo('폰을 세워서 손님 머리를 향해 주세요');
     } else setInfo('각도 센서가 없습니다 — [수동 찍기]로 한 장씩 찍으세요(정면부터 한 방향으로)');
@@ -670,7 +702,7 @@ var SHOT360 = (function () {
   }
   function start() {
     var go = function () {
-      T = targets(); got = {}; tries = {}; h0 = null; cur = 0; lastDeg = null; speed = 0; signVote = 0; signN = 0; userFlip = false;
+      T = targets(); got = {}; tries = {}; h0 = null; cur = 0; lastDeg = null; speed = 0; signVote = 0; signN = 0; userFlip = false; frontBest = null; lastSeekAt = 0; seekN = 0;
       running = true;
       btnStart.textContent = '끝내기';                                    // (2026-10-25) 사용자: "start누르면 그 자리가 finish로 바뀌면서 다시 누르면 정지 · restart는 Done자리에"
       if (btnDone) { btnDone.textContent = '다시 시작'; btnDone.style.display = ''; }
@@ -694,8 +726,18 @@ var SHOT360 = (function () {
     var keys = Object.keys(got);
     if (keys.length < 4) { toast('사진이 모자랍니다 — 정면·양옆·뒤가 다 찍혀야 해요'); return; }
     var s = appSign(), frames = keys.map(function (k) { var f = got[k]; return { deg: wrap(s * f.raw), url: f.url, sharp: Math.round(f.sharp), time: f.time }; });
+    var fz = null;
+    if (frontBest) {                                                  // (2026-10-25f) 촬영 중 찾은 정면으로 0°를 다시 잡음
+      var zero = wrap(s * frontBest.raw - frontBest.yaw);
+      frames.forEach(function (f) { f.deg = wrap(f.deg - zero); });
+      var fd = wrap(s * frontBest.raw - zero);                       // = 얼굴 yaw
+      frames = frames.filter(function (f) { return Math.abs(wrap(f.deg - fd)) >= Q.stepDeg / 2; });   // 정면 칸에 있던 장은 뺌(정면 장으로 바꿈)
+      frames.push({ deg: fd, url: frontBest.url, sharp: frontBest.sharp, time: frontBest.time, front: true, faceYaw: +frontBest.yaw.toFixed(1), facePitch: +frontBest.pitch.toFixed(1) });
+      fz = { zero: zero, yaw: frontBest.yaw, seen: seekN };
+    }
     frames.sort(function (a, b) { return a.deg - b.deg; });
-    var set = { version: 1, at: Date.now(), stepDeg: Q.stepDeg, sign: s, signAuto: !Q.sign && !userFlip && signN >= 2, sensor: sensorOk, frames: frames };
+    var set = { version: 1, at: Date.now(), stepDeg: Q.stepDeg, sign: s, signAuto: !Q.sign && !userFlip && signN >= 2, sensor: sensorOk, frames: frames, frontSeek: fz };
+    console.log(TAG + ' 정면 ' + (fz ? '촬영 중 찾음(얼굴 ' + fz.yaw.toFixed(0) + '° · 0°를 센서 ' + fz.zero.toFixed(0) + '°로 다시 잡음 · 잰 장 ' + fz.seen + ')' : '못 찾음(얼굴이 안 잡힘 — 세트를 넣을 때 다시 찾음)'));
     console.log(TAG + ' 완료 — ' + frames.length + '장 · 좌우 부호 ' + s + (set.signAuto ? '(얼굴 각도로 자동 · 표 ' + signN + '회 · 합 ' + Math.round(signVote) + ')' : userFlip ? '(직접 바꿈)' : '(기본값 — 얼굴 각도를 못 읽음)') +
       ' · 각도 ' + frames.map(function (f) { return Math.round(f.deg); }).join(','));
     close();
@@ -771,6 +813,11 @@ var SHOT360 = (function () {
       if (!ov || my !== camSeq) { s.getTracks().forEach(function (t) { t.stop(); }); return; }
       stopCam();
       stream = s;
+      /* (2026-10-25f) 가장 넓게 — 기기가 1배보다 작은 배율(광각)을 주면 그 최솟값으로. 머리가 잘리는 것보다 작게 찍히는 쪽이 살리기 쉬움(작으면 03b 머리 키우기)
+         끄기 SHOT360.widest=false */
+      try { if (Q.widest !== false) s.getVideoTracks().forEach(function (tr) { var cp = tr.getCapabilities ? tr.getCapabilities() : null, st = tr.getSettings ? tr.getSettings() : {};
+        if (cp && cp.zoom && typeof cp.zoom.min === 'number' && cp.zoom.min < (st.zoom || 1) - 1e-3) { tr.applyConstraints({ advanced: [{ zoom: cp.zoom.min }] }).then(function () { Q.cam.zoom = cp.zoom.min; console.log(TAG + ' 카메라 배율 ' + cp.zoom.min + '배(가장 넓게)'); }, function () {}); }
+        else Q.cam.zoom = st.zoom || 1; }); } catch (e) {}
       try { s.getVideoTracks().forEach(function (t) { t.onended = function () { if (ov && stream === s) camFail('카메라가 끊겼습니다 — [카메라 다시 열기]를 눌러 주세요'); }; }); } catch (e) {}
       try { vid.srcObject = s; } catch (e) { try { vid.src = URL.createObjectURL(s); } catch (x) {} }
       vid.onloadedmetadata = function () { playVid(); camReady(); };
@@ -834,14 +881,16 @@ var SHOT360 = (function () {
     vid = el('video', 'position:absolute;inset:0;width:100%;height:100%;object-fit:cover;');
     vid.autoplay = true; vid.muted = true; vid.defaultMuted = true; vid.playsInline = true;
     vid.setAttribute('autoplay', ''); vid.setAttribute('muted', ''); vid.setAttribute('playsinline', ''); vid.setAttribute('webkit-playsinline', '');   // 아이폰은 속성으로 있어야 화면 안에서 재생
-    var oval = el('div', 'position:absolute;left:50%;top:40%;width:56%;aspect-ratio:3/4;transform:translate(-50%,-50%);border:2px dashed rgba(232,195,158,.75);border-radius:50%;pointer-events:none;');
+    /* (2026-10-25f) 머리 타원 — 사용자: "중앙에 타원 하나 그려줘" · 예전 점선(폭 56%)은 머리보다 크고 잘 안 보였음 → 머리 크기(폭 40%)로 진하게 + 바깥에 연한 여유선(이 밖으로 나가면 잘림) */
+    var oval = el('div', 'position:absolute;left:50%;top:38%;width:40%;aspect-ratio:3/4;transform:translate(-50%,-50%);border:3px solid rgba(255,214,170,.95);border-radius:50%;box-shadow:0 0 0 2px rgba(0,0,0,.35);pointer-events:none;');
+    var ovalOuter = el('div', 'position:absolute;left:50%;top:38%;width:62%;aspect-ratio:3/4;transform:translate(-50%,-50%);border:2px dashed rgba(255,214,170,.45);border-radius:50%;pointer-events:none;');
     var ringWrap = el('div', 'position:absolute;right:10px;top:10px;width:104px;height:104px;background:rgba(0,0,0,.45);border-radius:50%;pointer-events:none;');
     ringWrap.innerHTML = '<svg viewBox="0 0 100 100" width="104" height="104"></svg>'; ring = ringWrap.firstChild;
     info = el('div', 'position:absolute;left:10px;right:124px;top:10px;padding:8px 10px;border-radius:10px;background:rgba(0,0,0,.55);color:#f3eadf;font:600 13px/1.4 system-ui,sans-serif;',
       '카메라를 여는 중…');
     var tip = el('div', 'position:absolute;left:10px;right:10px;bottom:10px;padding:6px 10px;border-radius:10px;background:rgba(0,0,0,.45);color:#cfc5b8;font:12px/1.4 system-ui,sans-serif;',
       '15~20초에 걸쳐 한 바퀴 · 손님은 고개와 머리카락을 움직이지 않습니다 · 출발점으로 돌아오면 [끝내기]');
-    stage.appendChild(vid); stage.appendChild(oval); stage.appendChild(ringWrap); stage.appendChild(info); stage.appendChild(tip);
+    stage.appendChild(vid); stage.appendChild(ovalOuter); stage.appendChild(oval); stage.appendChild(ringWrap); stage.appendChild(info); stage.appendChild(tip);
     var bar = el('div', 'display:flex;gap:8px;padding:10px;background:#15110d;flex-wrap:wrap;');
     btnStart = btn('시작', true, function () { if (running) finish(); else start(); });   // (2026-10-25) 시작 ↔ 끝내기
     btnManual = btn('수동 찍기', false, manualShot); btnManual.style.display = 'none';
