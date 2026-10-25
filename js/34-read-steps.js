@@ -345,7 +345,7 @@ var READ_STEPS = (function () {
     Object.keys(S.byView).forEach(function (v) {
       var c = S.byView[v].cmp; if (c && c.mix) { var M = c.mix, sm = c.shapeMix || {};
         L.push('  ' + v + ' 자리마다 고른 결(mix) — ' + M.names.map(function (nm, k) { return nm + ' ' + f1(M.picked[k] * 100, 0) + '%'; }).join(' · ') +
-          ' · 다 같아 고를 것 없던 칸 ' + f1(M.sameFrac * 100, 0) + '% | 사진과 맞음(고른 칸 기준 · 작을수록 좋음) 고른 결 ' + f1(M.fitBest, 3) + ' vs ' + M.names.map(function (nm, k) { return nm + ' ' + f1(M.fitMean[k], 3); }).join(' · ') +
+          ' · 다 같아 고를 것 없던 칸 ' + f1(M.sameFrac * 100, 0) + '%' + (M.badFrac != null ? ' · 판정 선이 머리 밖이라 못 잰 칸 ' + f1(M.badFrac * 100, 1) + '%' : '') + (M.blend ? ' · 섞기(1등 무게 몫 평균 ' + f1(M.topShare * 100, 0) + '% · τ ' + M.tau + ' · 예전 고르기 ?mixblend=0)' : ' · 고르기(칸마다 1등)') + ' | 사진과 맞음(고른 칸 기준 · 작을수록 좋음) 고른 결 ' + f1(M.fitBest, 3) + ' vs ' + M.names.map(function (nm, k) { return nm + ' ' + f1(M.fitMean[k], 3); }).join(' · ') +
           ' | 모양 곧은 선 ' + f1(sm.straightFrac * 100, 0) + '% · 진폭 ' + f1(sm.ampPx, 1) + 'px · 파장 ' + f1(sm.lamPx, 1) + 'px · ' + M.ms + 'ms'); }
       if (!c || c.err) { if (c && c.err) L.push('  ' + v + ' 두 방식 비교 실패: ' + c.err); return; }
       var a = c.shapeST || {}, b = c.shapeGB || {};
@@ -427,6 +427,17 @@ var READ_STEPS = (function () {
      판정: 그 방향을 따라 그은 9px 선의 밝기 흔들림 ÷ 수직으로 그은 9px 선의 흔들림 — 작을수록 사진의 결과 맞음(머리카락은 결을 따라 밝기가 이어짐).
      사진 15장(생성 웨이브·직모·곱슬 + 실사)에서 자리마다 고른 결이 네 세트 모두 가장 잘 맞았음(지금 방향필터 대비 5~21%). 결 또렷함은 그대로(다시 기르기 기준값이 그 값에 맞춰져 있음). */
   S.mixLh = 4; S.mixBlock = 3; S.mixSame = 8 * Math.PI / 180;   // 후보가 모두 8° 안이면 판정 생략   // 3×3마다 한 번 고름(속도 · 2×2와 결과 같음) · 1 = 픽셀마다
+  /* (2026-10-25i) 고르기 → 섞기 — 사용자: "부분최적화가 전체최적화는 아니긴 하지" · "판정없이 읽기가 결 자체를 반영해줘야"
+     실측(디버그 1900·1903·1905 · 세 머리 모두): 칸마다 1등 후보로 갈아 끼운 결이 어느 후보 하나보다도 거칠었음(2칸 이웃 결 차이 중앙 —
+     직모 정면 9.2° vs 구조텐서 7.8° · 방향필터 6.4° / 웨이브 정면 4.3° vs 2.1° / 남자 정면 4.3° vs 2.1°).
+     원인: ① 후보끼리 몇 °밖에 안 다를 때 맞음 점수 차는 픽셀 잡음 수준이라 1등이 칸마다 무작위로 바뀜 ② 3×3 칸 경계에서 후보가 통째로 바뀜.
+     지금: 칸마다 후보별 맞음 점수 v로 무게 w = exp(−(v − v최소) ÷ (mixTau × v최소)) — 점수가 비슷하면 고르게, 크게 벌어지면 1등 쪽으로.
+     무게는 칸 가운데에 두고 픽셀마다 이웃 네 칸 무게를 이어 붙여(쌍선형) 2배각으로 평균 → 칸 경계에서 안 튐.
+     머리 종류 판정 없음(그 자리 점수 차만 봄). 끄기 READ_STEPS.mixBlend=false(예전: 칸마다 1등)
+     τ 고르기(테스트 17장 5세트 — 페이드·실사 남자·중단발·직모 단발·곱슬): τ가 클수록 매끄럽고 사진과 맞음은 조금씩 나빠짐.
+     0.3 = 사진과 맞음이 예전(칸마다 1등)과 같은 마지막 자리(그 뒤로는 예전보다 나빠짐) · 잔떨림은 예전보다 31~39% 적음 · 0.3→0.5는 매끄러움 이득 0.1~0.2°뿐 */
+  S.mixBlend = S.mixBlend !== false; S.mixTau = S.mixTau || 0.3;
+  try { if (/[?&]mixblend=0/.test(location.search)) S.mixBlend = false; } catch (e) {}
   function grayOf(px, N) { var g = new Float32Array(N), i, j; for (i = 0, j = 0; i < N; i++, j += 4) g[i] = (0.299 * px[j] + 0.587 * px[j + 1] + 0.114 * px[j + 2]) / 255; return g; }
   function boxH(src, dst, w, h, r) {          // 가로 상자 평균(가장자리는 끝값 반복)
     var n = 2 * r + 1, y, x, row, acc, last;
@@ -509,19 +520,53 @@ var READ_STEPS = (function () {
       try { var gb1 = M ? nblur(g, M, Wd, Hd, 1.0) : fblur(g, Wd, Hd, 1.0), gb4 = M ? nblur(g, M, Wd, Hd, 4.0) : fblur(g, Wd, Hd, 4.0), bp = new Float32Array(N), ib; for (ib = 0; ib < N; ib++) bp[ib] = gb1[ib] - gb4[ib];
         cands.push(stAt(bp, Wd, Hd, 2, 0, M)); names.push('밴드패스'); } catch (eB) {}
     }
-    var out = new Float32Array(stA), cnt = new Array(cands.length).fill(0), sum = new Array(cands.length).fill(0), sumBest = 0, n = 0, i, k, Lh = S.mixLh, B = Math.max(1, S.mixBlock | 0), bx, by, dx, dy, same = 0;
-    // B×B 칸마다 가운데 픽셀에서 한 번 고르고, 그 칸의 픽셀은 고른 후보의 자기 값을 씀(방향은 픽셀마다 그대로)
+    var out = new Float32Array(stA), K = cands.length, cnt = new Array(K).fill(0), sum = new Array(K).fill(0), sumN = new Array(K).fill(0), sumBest = 0, n = 0, bad = 0, i, k, Lh = S.mixLh, B = Math.max(1, S.mixBlock | 0), bx, by, dx, dy, same = 0;
+    var GX = Math.ceil(Wd / B), GY = Math.ceil(Hd / B), WG = S.mixBlend ? new Float32Array(GX * GY * K) : null, HAS = S.mixBlend ? new Uint8Array(GX * GY) : null, wsum = 0, wmax = 0;
+    // B×B 칸마다 가운데 픽셀에서 한 번 잼. 고르기(mixBlend=false): 그 칸 픽셀은 1등 후보의 자기 값 · 섞기: 칸마다 후보 무게를 둠
     for (by = 0; by < Hd; by += B) for (bx = 0; bx < Wd; bx += B) {
-      var cx = Math.min(Wd - 1, bx + (B >> 1)), cy = Math.min(Hd - 1, by + (B >> 1)), ci = cy * Wd + cx;
+      var cx = Math.min(Wd - 1, bx + (B >> 1)), cy = Math.min(Hd - 1, by + (B >> 1)), ci = cy * Wd + cx, gi = (by / B | 0) * GX + (bx / B | 0);
       if (!mask[ci]) { var found = -1; for (dy = 0; dy < B && found < 0; dy++) for (dx = 0; dx < B; dx++) { var jj = (by + dy) * Wd + bx + dx; if (by + dy < Hd && bx + dx < Wd && mask[jj]) { found = jj; break; } } if (found < 0) continue; ci = found; cx = ci % Wd; cy = (ci / Wd) | 0; }
-      var bi = 0, bv = 1e9, v, a0 = cands[0][ci], agreeAll = true;
-      for (k = 1; k < cands.length; k++) { var dd = Math.abs(cands[k][ci] - a0); if (dd > Math.PI / 2) dd = Math.PI - dd; if (dd > S.mixSame) { agreeAll = false; break; } }
-      if (agreeAll) { same++; for (dy = 0; dy < B; dy++) for (dx = 0; dx < B; dx++) { if (by + dy >= Hd || bx + dx >= Wd) continue; i = (by + dy) * Wd + bx + dx; if (mask[i]) out[i] = cands[0][i]; } continue; }   // 다 같은 방향 — 고를 것 없음(구조텐서 7px 값)
-      for (k = 0; k < cands.length; k++) { v = fitAt(g, Wd, Hd, cx, cy, cands[k][ci], Lh, mk); if (v < 1e8) sum[k] += v; if (v < bv) { bv = v; bi = k; } }
+      var bi = 0, bv = 1e9, v, a0 = cands[0][ci], agreeAll = true, V = [];
+      for (k = 1; k < K; k++) { var dd = Math.abs(cands[k][ci] - a0); if (dd > Math.PI / 2) dd = Math.PI - dd; if (dd > S.mixSame) { agreeAll = false; break; } }
+      if (agreeAll) {                                                   // 다 같은 방향 — 고를 것 없음
+        same++;
+        if (WG) { HAS[gi] = 1; for (k = 0; k < K; k++) WG[gi * K + k] = 1; continue; }   // 섞기: 고르게
+        for (dy = 0; dy < B; dy++) for (dx = 0; dx < B; dx++) { if (by + dy >= Hd || bx + dx >= Wd) continue; i = (by + dy) * Wd + bx + dx; if (mask[i]) out[i] = cands[0][i]; } continue;
+      }
+      for (k = 0; k < K; k++) { v = fitAt(g, Wd, Hd, cx, cy, cands[k][ci], Lh, mk); V.push(v); if (v < 1e8) { sum[k] += v; sumN[k]++; } if (v < bv) { bv = v; bi = k; } }
+      if (!(bv < 1e8)) {                                                // (2026-10-25i) 판정 선이 모두 머리 밖 — 점수 평균에 안 넣음(예전엔 1e9가 그대로 들어가 평균이 수십만으로 찍힘)
+        bad++;
+        if (WG) { HAS[gi] = 1; for (k = 0; k < K; k++) WG[gi * K + k] = 1; continue; }
+        for (dy = 0; dy < B; dy++) for (dx = 0; dx < B; dx++) { if (by + dy >= Hd || bx + dx >= Wd) continue; i = (by + dy) * Wd + bx + dx; if (mask[i]) out[i] = cands[0][i]; } continue;
+      }
       cnt[bi]++; sumBest += bv; n++;
+      if (WG) {
+        var tau = Math.max(1e-6, S.mixTau * bv), ws = 0, w1 = 0;
+        for (k = 0; k < K; k++) { var wk = V[k] < 1e8 ? Math.exp(-(V[k] - bv) / tau) : 0; WG[gi * K + k] = wk; ws += wk; if (wk > w1 && k !== bi) w1 = wk; }
+        HAS[gi] = 1; wsum += 1 / ws; wmax += (1 - w1);                    // 진단: 1등 무게 몫 · 1등과 2등 차
+        continue;
+      }
       for (dy = 0; dy < B; dy++) for (dx = 0; dx < B; dx++) { if (by + dy >= Hd || bx + dx >= Wd) continue; i = (by + dy) * Wd + bx + dx; if (mask[i]) out[i] = cands[bi][i]; }
     }
-    return { angle: out, stats: { n: n, names: names, picked: cnt.map(function (c) { return n ? c / n : 0; }), fitMean: sum.map(function (v) { return n ? v / n : NaN; }), fitBest: n ? sumBest / n : NaN, sameFrac: (n + same) ? same / (n + same) : 0, ms: Math.round(performance.now() - t0), msParts: [Math.round(t1 - t0), Math.round(t2 - t1), Math.round(performance.now() - t2)] } };
+    if (WG) {                                                           // 픽셀마다 이웃 네 칸 무게(쌍선형) × 후보 방향(2배각) 평균
+      var Cc = new Float32Array(K), Ss = new Float32Array(K), x, y;
+      for (k = 0; k < K; k++) { Cc[k] = 0; Ss[k] = 0; }
+      for (y = 0; y < Hd; y++) {
+        var fy = (y - (B >> 1)) / B, gy0 = Math.floor(fy), ty = fy - gy0;
+        for (x = 0; x < Wd; x++) {
+          i = y * Wd + x; if (!mask[i]) continue;
+          var fx = (x - (B >> 1)) / B, gx0 = Math.floor(fx), tx = fx - gx0, sc = 0, ss = 0, wt = 0, q, qy, qx, qw;
+          for (q = 0; q < 4; q++) {
+            qy = gy0 + (q >> 1); qx = gx0 + (q & 1); if (qy < 0 || qx < 0 || qy >= GY || qx >= GX) continue;
+            var gq = qy * GX + qx; if (!HAS[gq]) continue;
+            qw = ((q >> 1) ? ty : 1 - ty) * ((q & 1) ? tx : 1 - tx); if (qw <= 0) continue;
+            for (k = 0; k < K; k++) { var wk2 = WG[gq * K + k] * qw; if (wk2 <= 0) continue; var t2 = 2 * cands[k][i]; sc += wk2 * Math.cos(t2); ss += wk2 * Math.sin(t2); wt += wk2; }
+          }
+          if (wt > 0) out[i] = 0.5 * Math.atan2(ss, sc);
+        }
+      }
+    }
+    return { angle: out, stats: { n: n, bad: bad, blend: !!WG, tau: S.mixTau, topShare: (WG && n) ? wsum / n : null, names: names, picked: cnt.map(function (c) { return n ? c / n : 0; }), fitMean: sum.map(function (v, k) { return sumN[k] ? v / sumN[k] : NaN; }), fitBest: n ? sumBest / n : NaN, sameFrac: (n + same + bad) ? same / (n + same + bad) : 0, badFrac: (n + same + bad) ? bad / (n + same + bad) : 0, ms: Math.round(performance.now() - t0), msParts: [Math.round(t1 - t0), Math.round(t2 - t1), Math.round(performance.now() - t2)] } };
   }
   function shapeSum(sh) { return sh ? { lines: sh.lines, bent: sh.bent, straightFrac: sh.straightFrac, loop: sh.loop, lamPx: sh.lamPx, ampPx: sh.ampPx, curlDegPx: sh.curlDegPx } : null; }
   function q8a(a, N, w, h, w2, h2) { var o = new Int8Array(w2 * h2), x, y; for (y = 0; y < h2; y++) for (x = 0; x < w2; x++) { var v = a[Math.min(h - 1, y * 2) * w + Math.min(w - 1, x * 2)]; while (v > Math.PI / 2) v -= Math.PI; while (v < -Math.PI / 2) v += Math.PI; o[y * w2 + x] = Math.round(v / (Math.PI / 2) * 127); } return o; }
