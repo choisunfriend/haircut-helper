@@ -64,7 +64,7 @@ var READ_STEPS = (function () {
        잰 것(직모 단발 15:11 디버그 파일 · 아래 20% 높이): 경계에서 0.3cm 안 결의 44~72%가 거의 수평(밑단선) · 0.8~1.5cm 안 9~19% · 그 안쪽 3~7%.
        사진은 밑단까지 곧게 내려오는데 가닥이 밑단선을 따라 옆으로 돌아 다시 올라가 길이가 25→50cm · 3cm 넘게 거슬러 오른 가닥 1→59%.
        ⚠ 곱슬처럼 경계를 따라 진짜로 감기는 결도 같이 빠질 수 있음. 끄기 ?edgefix=0 · READ_STEPS.edgeFix=false */
-    edgeFix: false /* (2026-10-25d) 끔 — 원인(머리 밖 밝기 경계를 읽던 것)을 04 HAIR_READ_FILL이 읽기 전에 없앰. 옆머리처럼 경계를 따라 흐르는 진짜 결까지 지우고 있었음(직모 정면 메운 칸 41% 중 39%가 또렷하게 읽은 칸) · 켜기 ?edgefix=1 */, edgeFrac: 0.02, edgeDeg: 30,
+    edgeFix: false /* (2026-10-25d) 끔 — 원인(머리 밖 밝기 경계를 읽던 것)을 04 HAIR_READ_MASK가 없앰(결을 머리 안 픽셀로만 계산). 옆머리처럼 경계를 따라 흐르는 진짜 결까지 지우고 있었음(직모 정면 메운 칸 41% 중 39%가 또렷하게 읽은 칸) · 켜기 ?edgefix=1 */, edgeFrac: 0.02, edgeDeg: 30,
     trim: false /* (2026-10-22) 끔 — 위 '판정 단계 끔' · 켜기 ?rgtrim=1 */, trimTolCm: 0.4, trimOutCm: 1.0, trimTailCm: 0.4, trimKeepPts: 3
   }, W.READ_STEPS || {});
   try { var mT = /[?&]rgtrim=([01])/.exec(location.search); if (mT) S.trim = mT[1] === '1'; } catch (e) {}
@@ -337,6 +337,7 @@ var READ_STEPS = (function () {
       L.push('  ' + v + ' ' + b.w + '×' + b.h + ' · 머리 ' + s.hair + 'px · 건넘 ' + pct(s.bridged, s.hair) + ' · 한쪽에서만 건넘(안 고침) ' + pct(s.oneSide, s.hair) + ' · 채움 ' + pct(s.filled, s.hair) +
         (s.edge && !s.edge.err ? ' · 경계와 나란해 뺀 결 ' + pct(s.edge.n, s.hair) + '(경계 ' + s.edge.band + 'px 안 ' + pct(s.edge.n, s.edge.near) + ' · 끄기 ?edgefix=0)' : '') + ' · 끊김 ' + s.breaks + '곳 → 이어져 건넌 ' + s.bridgedRuns + ' / 진짜 꺾임 ' + s.turns + ' · 내다봄 ' + s.look + 'px · 확인 ' + s.resume + 'px · ' + s.ms + 'ms');
     });
+    try { if (W.SEG_CONF && typeof W.SEG_CONF.lines === 'function') W.SEG_CONF.lines().forEach(function (l) { L.push(l); }); } catch (e) {}   // (2026-10-25e) 세그 확신도
     try { var SZ = W.SUBJECT_ZOOM, zk = SZ && SZ.stats ? Object.keys(SZ.stats) : []; if (zk.length) L.push('  머리 키우기(작게 찍힌 사진을 머리 둘레로 잘라 키움 · 끄기 SUBJECT_ZOOM.on=false): ' + zk.map(function (k) { var z = SZ.stats[k]; return k + ' ' + (z.done && z.out ? z.src + '→' + z.out + '(×' + z.scale + ' · 머리 폭 ' + z.headPxBefore + '→' + z.headPxAfter + 'px)' : (z.why || '안 함')); }).join(' · ')); } catch (e) {}
     try { L.push('  웨이브 배수: ' + (W.READ_SHAPE && W.READ_SHAPE.waveGainAuto === false && !(W.READ_SHAPE.waveGain > 1) ? '꺼짐(읽은 흔들림 그대로 · 켜기 ?wavegain=1)' : '켜짐 ×' + (W.READ_SHAPE ? W.READ_SHAPE.waveGain : '?') + (W.READ_SHAPE && W.READ_SHAPE.waveGainAuto ? '(자동)' : ''))); } catch (e) {}
     var f1 = function (v, k) { return isFinite(v) ? (+v).toFixed(k == null ? 2 : k) : '-'; };
@@ -453,16 +454,27 @@ var READ_STEPS = (function () {
     for (k = 0; k < 3; k++) { boxH(o, t, w, h, r); boxV(t, o, w, h, r); }
     return o;
   }
-  function stAt(g, w, h, sig, pre) {     // 구조텐서(가우시안 창 sig, 미리 흐림 pre) → 결 방향(이미지 좌표, -π/2..π/2)
-    var a = pre > 0 ? fblur(g, w, h, pre) : g, N = w * h, gx = new Float32Array(N), gy = new Float32Array(N), x, y, i;
+  /* (2026-10-25e) 머리 안 픽셀로만 — 04 HAIR_READ_MASK와 같은 방식. M = 머리 칸(1/0, Float32) */
+  function maskF(mask, N) { var m = new Float32Array(N), i; for (i = 0; i < N; i++) m[i] = mask[i] ? 1 : 0; return m; }
+  function nblur(a, M, w, h, sig) {      // 머리 칸끼리만 흐림(머리 칸 수로 나눔)
+    var N = w * h, t = new Float32Array(N), i; for (i = 0; i < N; i++) t[i] = a[i] * M[i];
+    var num = fblur(t, w, h, sig), den = fblur(M, w, h, sig);
+    for (i = 0; i < N; i++) num[i] = den[i] > 1e-4 ? num[i] / den[i] : 0;
+    return num;
+  }
+  function stAt(g, w, h, sig, pre, M) {     // 구조텐서(가우시안 창 sig, 미리 흐림 pre) → 결 방향(이미지 좌표, -π/2..π/2) · M이 있으면 머리 안 픽셀로만
+    var N = w * h, a = pre > 0 ? (M ? nblur(g, M, w, h, pre) : fblur(g, w, h, pre)) : g, gx = new Float32Array(N), gy = new Float32Array(N), V = M ? new Float32Array(N) : null, x, y, i;
     for (y = 1; y < h - 1; y++) for (x = 1; x < w - 1; x++) {
       i = y * w + x;
+      if (M && !(M[i - w - 1] && M[i - w] && M[i - w + 1] && M[i - 1] && M[i] && M[i + 1] && M[i + w - 1] && M[i + w] && M[i + w + 1])) continue;   // 3×3이 모두 머리 안일 때만
+      if (V) V[i] = 1;
       gx[i] = (a[i - w + 1] + 2 * a[i + 1] + a[i + w + 1]) - (a[i - w - 1] + 2 * a[i - 1] + a[i + w - 1]);
       gy[i] = (a[i + w - 1] + 2 * a[i + w] + a[i + w + 1]) - (a[i - w - 1] + 2 * a[i - w] + a[i - w + 1]);
     }
     var J11 = new Float32Array(N), J22 = new Float32Array(N), J12 = new Float32Array(N);
     for (i = 0; i < N; i++) { J11[i] = gx[i] * gx[i]; J22[i] = gy[i] * gy[i]; J12[i] = gx[i] * gy[i]; }
-    J11 = fblur(J11, w, h, sig); J22 = fblur(J22, w, h, sig); J12 = fblur(J12, w, h, sig);
+    if (V) { J11 = nblur(J11, V, w, h, sig); J22 = nblur(J22, V, w, h, sig); J12 = nblur(J12, V, w, h, sig); }
+    else { J11 = fblur(J11, w, h, sig); J22 = fblur(J22, w, h, sig); J12 = fblur(J12, w, h, sig); }
     var o = new Float32Array(N);
     for (i = 0; i < N; i++) { var t = 0.5 * Math.atan2(2 * J12[i], J11[i] - J22[i]) + Math.PI / 2; if (t > Math.PI / 2) t -= Math.PI; o[i] = t; }
     return o;
@@ -472,14 +484,30 @@ var READ_STEPS = (function () {
     var x0 = x | 0, y0 = y | 0, fx = x - x0, fy = y - y0, i = y0 * w + x0;
     return (g[i] * (1 - fx) + g[i + 1] * fx) * (1 - fy) + (g[i + w] * (1 - fx) + g[i + w + 1] * fx) * fy;
   }
-  function fitAt(g, w, h, x, y, t, Lh) {   // 결 따라 흔들림 ÷ 가로질러 흔들림
-    var c = Math.cos(t), s = Math.sin(t), k, pa = bil(g, w, h, x - Lh * c, y - Lh * s), pp = bil(g, w, h, x + Lh * s, y - Lh * c), va = 0, vp = 0, a, p;
-    for (k = -Lh + 1; k <= Lh; k++) { a = bil(g, w, h, x + k * c, y + k * s); p = bil(g, w, h, x - k * s, y + k * c); va += Math.abs(a - pa); vp += Math.abs(p - pp); pa = a; pp = p; }
+  function inM(mask, w, h, x, y) { var xi = Math.round(x), yi = Math.round(y); return xi >= 0 && yi >= 0 && xi < w && yi < h && !!mask[yi * w + xi]; }
+  function fitAt(g, w, h, x, y, t, Lh, mask) {   // 결 따라 흔들림 ÷ 가로질러 흔들림 · (2026-10-25e) mask가 있으면 머리 밖 점이 낀 마디는 안 셈
+    var c = Math.cos(t), s = Math.sin(t), k, ax0 = x - Lh * c, ay0 = y - Lh * s, px0 = x + Lh * s, py0 = y - Lh * c, pa = bil(g, w, h, ax0, ay0), pp = bil(g, w, h, px0, py0), va = 0, vp = 0, na = 0, np = 0, a, p;
+    var ia = !mask || inM(mask, w, h, ax0, ay0), ip = !mask || inM(mask, w, h, px0, py0);
+    for (k = -Lh + 1; k <= Lh; k++) {
+      var axk = x + k * c, ayk = y + k * s, pxk = x - k * s, pyk = y + k * c, ja = !mask || inM(mask, w, h, axk, ayk), jp = !mask || inM(mask, w, h, pxk, pyk);
+      a = bil(g, w, h, axk, ayk); p = bil(g, w, h, pxk, pyk);
+      if (ia && ja) { va += Math.abs(a - pa); na++; } if (ip && jp) { vp += Math.abs(p - pp); np++; }
+      pa = a; pp = p; ia = ja; ip = jp;
+    }
+    if (mask) { if (!na || !np) return 1e9; va /= na; vp /= np; return va / (vp + 1e-4); }
     return va / (vp + 1e-4 * 2 * Lh);
   }
   function mixField(px, mask, Wd, Hd, stA, gbA) {
-    var t0 = performance.now(), N = Wd * Hd, g = grayOf(px, N), c2 = stAt(g, Wd, Hd, 2, 0.7), t1 = performance.now(), c4 = stAt(g, Wd, Hd, 4, 1.0), t2 = performance.now(), cands = [stA, c2, c4], names = ['구조텐서7px', '구조텐서σ2', '구조텐서σ4'];
+    var MK = !!(W.HAIR_READ_MASK && W.HAIR_READ_MASK.on), M = MK ? maskF(mask, Wd * Hd) : null, mk = MK ? mask : null;
+    var t0 = performance.now(), N = Wd * Hd, g = grayOf(px, N), c2 = stAt(g, Wd, Hd, 2, 0.7, M), t1 = performance.now(), c4 = stAt(g, Wd, Hd, 4, 1.0, M), t2 = performance.now(), cands = [stA, c2, c4], names = ['구조텐서7px', '구조텐서σ2', '구조텐서σ4'];
     if (gbA) { cands.push(gbA); names.push('방향필터'); }
+    /* (2026-10-25e) 밴드패스 후보 — 넓은 범위의 밝기 변화(광택 띠·그늘)를 빼고 머리카락 굵기 무늬만 남겨 읽음(σ1 흐림 − σ4 흐림 → 구조텐서 σ2).
+       실측(직모 뒤 사진): 광택 띠 가장자리에서 30° 넘게 어긋난 결 18.2% → 12.0% · 조명이 고른 자리는 그대로. 자리마다 고르는 후보라 맞는 자리에서만 뽑힘.
+       끄기 READ_STEPS.mixBandpass=false */
+    if (S.mixBandpass !== false) {
+      try { var gb1 = M ? nblur(g, M, Wd, Hd, 1.0) : fblur(g, Wd, Hd, 1.0), gb4 = M ? nblur(g, M, Wd, Hd, 4.0) : fblur(g, Wd, Hd, 4.0), bp = new Float32Array(N), ib; for (ib = 0; ib < N; ib++) bp[ib] = gb1[ib] - gb4[ib];
+        cands.push(stAt(bp, Wd, Hd, 2, 0, M)); names.push('밴드패스'); } catch (eB) {}
+    }
     var out = new Float32Array(stA), cnt = new Array(cands.length).fill(0), sum = new Array(cands.length).fill(0), sumBest = 0, n = 0, i, k, Lh = S.mixLh, B = Math.max(1, S.mixBlock | 0), bx, by, dx, dy, same = 0;
     // B×B 칸마다 가운데 픽셀에서 한 번 고르고, 그 칸의 픽셀은 고른 후보의 자기 값을 씀(방향은 픽셀마다 그대로)
     for (by = 0; by < Hd; by += B) for (bx = 0; bx < Wd; bx += B) {
@@ -488,7 +516,7 @@ var READ_STEPS = (function () {
       var bi = 0, bv = 1e9, v, a0 = cands[0][ci], agreeAll = true;
       for (k = 1; k < cands.length; k++) { var dd = Math.abs(cands[k][ci] - a0); if (dd > Math.PI / 2) dd = Math.PI - dd; if (dd > S.mixSame) { agreeAll = false; break; } }
       if (agreeAll) { same++; for (dy = 0; dy < B; dy++) for (dx = 0; dx < B; dx++) { if (by + dy >= Hd || bx + dx >= Wd) continue; i = (by + dy) * Wd + bx + dx; if (mask[i]) out[i] = cands[0][i]; } continue; }   // 다 같은 방향 — 고를 것 없음(구조텐서 7px 값)
-      for (k = 0; k < cands.length; k++) { v = fitAt(g, Wd, Hd, cx, cy, cands[k][ci], Lh); sum[k] += v; if (v < bv) { bv = v; bi = k; } }
+      for (k = 0; k < cands.length; k++) { v = fitAt(g, Wd, Hd, cx, cy, cands[k][ci], Lh, mk); if (v < 1e8) sum[k] += v; if (v < bv) { bv = v; bi = k; } }
       cnt[bi]++; sumBest += bv; n++;
       for (dy = 0; dy < B; dy++) for (dx = 0; dx < B; dx++) { if (by + dy >= Hd || bx + dx >= Wd) continue; i = (by + dy) * Wd + bx + dx; if (mask[i]) out[i] = cands[bi][i]; }
     }

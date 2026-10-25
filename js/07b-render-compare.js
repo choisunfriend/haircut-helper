@@ -1927,6 +1927,11 @@ var PHOTO_CHECK = (function () {
         }
         H.cams.push({ angle: c.angle, R: Array.prototype.slice.call(c.R), cx: c.cx, s: c.s, sy: c.sy, crownY: c.crownY, iw: c.iw, ih: c.ih, gw: gw, gh: gh, cell: cell, hasDir: typeof c.dirAt === 'function' });
         add('cam' + ci + '.mask', M); add('cam' + ci + '.ang', A, { scale: 'x/127*90deg' }); add('cam' + ci + '.coh', K, { scale: 'x/255' });
+        // (2026-10-25e) 세그멘테이션 확신도(03b SEG_CONF) — 칸 단위 ×255 · 없으면 안 넣음
+        try { var SC = W.SEG_CONF && W.SEG_CONF.byView && W.SEG_CONF.byView[c.angle];
+          if (SC && SC.map) { var CF = new Uint8Array(gw * gh), kxc = SC.w / c.iw, kyc = SC.h / c.ih;
+            for (y = 0; y < gh; y++) for (x = 0; x < gw; x++) CF[y * gw + x] = SC.map[Math.min(SC.h - 1, Math.floor((y + 0.5) * cell * kyc)) * SC.w + Math.min(SC.w - 1, Math.floor((x + 0.5) * cell * kxc))];
+            add('cam' + ci + '.conf', CF, { scale: 'x/255 · 세그멘테이션 머리 확신도(기준 ' + SC.thr + ')' }); } } catch (eC) { H.notes.push('conf cam' + ci + ': ' + eC.message); }
         // (2026-10-21) 34 결 읽기 단계 스냅샷 — 읽은 그대로(건너기·채우기 전)와 고친 표시. 각도는 04 이미지 좌표(y 아래) 그대로라 위 .ang와 부호가 반대일 수 있음(angRawConv)
         try {
           var RSb = W.READ_STEPS && W.READ_STEPS.byView && W.READ_STEPS.byView[c.angle];

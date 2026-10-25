@@ -482,6 +482,59 @@ function rememberShotHi(angle, hiUrl, loUrl){
   try{ if(!state.shotsHi) state.shotsHi = {}; state.shotsHi[angle] = (hiUrl && hiUrl !== loUrl) ? { hi: hiUrl, lo: loUrl } : null; }catch(e){}
 }
 
+/* ══════════════════════════════════════════════════════════
+   (2026-10-25e) SEG_CONF — 세그멘테이션 확신도 기록(재기만 · 판정에 안 씀)
+   사용자: "그 세그멘테이션 신뢰도, 실사에서는 얼마까지 낮게 나와?" — 지금은 사진 전체 평균·최댓값만 window.__maskValueDiag에 남아 답을 못 함.
+   직모 테스트 사진: 머리 끝이 흐리게 번진 띠(밝기 39→108)가 머리 영역 안에 들어와 결을 가로로 읽음 → 결 읽기에서 그 띠를 빼려면
+   "확신도 몇부터가 진짜 머리인가"를 실사진으로 정해야 함. 그래서 먼저 잼.
+   사진마다: 머리 영역(≥ 기준 0.5) 안 확신도 분포를 경계에서 거리(0~4 · 4~8 · 8~16 · 16px 넘게)별로 0.5~0.6/0.6~0.7/0.7~0.8/0.8~0.9/0.9↑ 비율 ·
+   경계에서 8px 안 확신도 중앙값. 진단 [결 읽기 단계] 아래 줄 · 디버그 파일 camN.conf(칸 단위, ×255).
+   끄기 SEG_CONF.on=false
+   ══════════════════════════════════════════════════════════ */
+var SEG_CONF = (function(){
+  var C = Object.assign({ on: true, bands: [4, 8, 16], bins: [0.6, 0.7, 0.8, 0.9] }, window.SEG_CONF || {});
+  C.byView = {};
+  C.note = function(angle, conf, w, h, thr){
+    if(!C.on || !conf || conf.length < w * h) return;
+    var N = w * h, D = new Float32Array(N), i, x, y, BIG = 1e9;
+    for(i = 0; i < N; i++) D[i] = conf[i] >= thr ? BIG : 0;
+    for(y = 0; y < h; y++) for(x = 0; x < w; x++){ i = y*w + x; if(!D[i]) continue; var v = D[i];
+      if(x > 0 && D[i-1] + 1 < v) v = D[i-1] + 1; if(y > 0 && D[i-w] + 1 < v) v = D[i-w] + 1;
+      if(x === 0 || y === 0 || x === w-1) v = Math.min(v, 1); D[i] = v; }
+    for(y = h-1; y >= 0; y--) for(x = w-1; x >= 0; x--){ i = y*w + x; if(!D[i]) continue; var v2 = D[i];
+      if(x < w-1 && D[i+1] + 1 < v2) v2 = D[i+1] + 1; if(y < h-1 && D[i+w] + 1 < v2) v2 = D[i+w] + 1;
+      if(y === h-1) v2 = Math.min(v2, 1); D[i] = v2; }
+    var nb = C.bands.length + 1, nbin = C.bins.length + 1, H = [], b, k, edgeVals = [];
+    for(b = 0; b < nb; b++){ H.push(new Array(nbin).fill(0)); }
+    for(i = 0; i < N; i++){
+      if(!(D[i] > 0)) continue;
+      var d = D[i]; for(b = 0; b < C.bands.length && d > C.bands[b]; b++); 
+      var c = conf[i]; for(k = 0; k < C.bins.length && c >= C.bins[k]; k++);
+      H[b][k]++;
+      if(d <= 8 && (i & 3) === 0) edgeVals.push(c);
+    }
+    edgeVals.sort(function(p, q){ return p - q; });
+    // 디버그 파일용 — 사진 크기 그대로(×255)
+    var q8 = null; if(['front','left','right','back'].indexOf(angle) >= 0){ q8 = new Uint8Array(N); for(i = 0; i < N; i++) q8[i] = Math.max(0, Math.min(255, Math.round(conf[i] * 255))); }   // 기준 4장만(메모리)
+    C.byView[angle] = { w: w, h: h, thr: thr, hist: H, edgeMed: edgeVals.length ? edgeVals[edgeVals.length >> 1] : null, edgeP10: edgeVals.length ? edgeVals[Math.floor(edgeVals.length * 0.1)] : null, map: q8, at: Date.now() };
+  };
+  C.at = function(angle, x, y){ var v = C.byView[angle]; if(!v || !v.map) return -1; var xi = Math.max(0, Math.min(v.w-1, Math.round(x))), yi = Math.max(0, Math.min(v.h-1, Math.round(y))); return v.map[yi * v.w + xi] / 255; };
+  C.lines = function(){
+    var L = [], ks = Object.keys(C.byView);
+    if(!C.on) return ['  세그 확신도: 꺼짐'];
+    if(!ks.length) return ['  세그 확신도: 아직 잰 사진 없음'];
+    var bl = ['0~' + C.bands[0]].concat(C.bands.slice(1).map(function(v, i){ return C.bands[i] + '~' + v; })).concat([C.bands[C.bands.length-1] + '↑']);
+    L.push('  세그 확신도(머리 영역 ≥0.5 안 · 경계에서 px 거리별 0.5~0.6/0.6~0.7/0.7~0.8/0.8~0.9/0.9↑ 비율 · 판정엔 안 씀 · 끄기 SEG_CONF.on=false):');
+    ks.forEach(function(a){
+      var v = C.byView[a];
+      L.push('   ' + a + ' ' + v.w + '×' + v.h + ' · 경계 8px 안 중앙 ' + (v.edgeMed != null ? v.edgeMed.toFixed(2) : '-') + ' (하위10% ' + (v.edgeP10 != null ? v.edgeP10.toFixed(2) : '-') + ') · ' +
+        v.hist.map(function(row, b){ var t = row.reduce(function(p, q){ return p + q; }, 0); return bl[b] + 'px[' + (t ? row.map(function(c){ return Math.round(c / t * 100); }).join('/') : '-') + ']'; }).join(' '));
+    });
+    return L;
+  };
+  return C;
+})();
+
 function extractHairMask(angle){
   return BODY_SEG_WAIT._extract(angle, () =>
     VIEWS360._extract(angle, () => extractHairMaskCore(angle)));
@@ -593,6 +646,7 @@ async function extractHairMaskCore(angle){
             hairMaskBuf[i] = isHair ? 255 : 0;
           }
           window.__maskValueDiag = `avg:${(confSum/confArr.length).toFixed(3)},max:${confMax.toFixed(3)},≥${HAIR_CONFIDENCE_THRESHOLD}:${aboveCount}`;
+          try{ if(typeof SEG_CONF !== 'undefined') SEG_CONF.note(angle, confArr, hairConf.width || w, hairConf.height || h, HAIR_CONFIDENCE_THRESHOLD); }catch(e){}   // (2026-10-25e) 확신도 기록
           hairConf.close();
         } else {
           // ── TF.js SelfieSegmentation 폴백 ──

@@ -200,42 +200,36 @@ function buildRootFlowField(maskBuf, w, h){
   return { fx, fy, fc, inMask, conf };
 }
 
-/* (2026-10-25d) 결은 머리 안 무늬로만 읽음 — 사용자: "결읽기에서 그 부분을 가로로 읽은 원인을 찾는 게 우선순위"
-   원인: 밝기 기울기를 사진 전체에서 구하고 머리 영역은 "어느 칸 값을 쓸지"만 골랐음 → 머리 끝(밑단)·목덜미 칸의 창(Sobel 3×3 + 평균 반경 3 ·
-   σ4 · 방향필터)에 머리↔옷·피부 경계가 들어가 머리 무늬보다 훨씬 센 그 경계를 결로 읽음.
-   잰 것(디버그 1110 직모 · 1038·1107 360 실사진): 밑단 경계에서 4~8px 안 칸의 56~94%가 가로(안쪽 4~6%) · 옆 가장자리는 1~3%(경계가 세로라 우연히 맞음).
-   고침: 읽기 전에 머리 영역 밖 픽셀을 "가까운 머리의 부드러운 평균색"(머리만 넣은 정규화 흐림)으로 바꿈 → 경계의 밝기 계단이 사라지고
-   머리 안 무늬만 남음. 구조텐서·방향필터·mix·컬 재기가 모두 이 사진을 씀(영역 다시 찾기 등 다른 단계는 원래 사진 그대로).
-   그래서 경계 결 빼기(34 READ_STEPS.edgeFix — 결과에서 지우던 손질)는 끔. 끄기 HAIR_READ_FILL.on=false */
-var HAIR_READ_FILL = Object.assign({ on: true, r: 6, passes: 3 }, (typeof window !== 'undefined' && window.HAIR_READ_FILL) || {});
-function fillOutsideHair(pixels, maskBuf, w, h){
-  const n = w*h, m = new Float32Array(n);
-  let any = 0, mr = 0, mg = 0, mb = 0;
-  for(let i=0;i<n;i++){ if(maskBuf[i]){ m[i] = 1; any++; mr += pixels[i*4]; mg += pixels[i*4+1]; mb += pixels[i*4+2]; } }
-  if(!any || any === n) return pixels;
-  mr /= any; mg /= any; mb /= any;
-  const R = HAIR_READ_FILL.r, P = Math.max(1, HAIR_READ_FILL.passes|0);
-  const blurN = (buf)=>{ let b = buf; for(let k=0;k<P;k++) b = boxBlur(b, w, h, R); return b; };
-  const den = blurN(m), out = new Uint8ClampedArray(pixels);
-  for(let c=0;c<3;c++){
-    const ch = new Float32Array(n);
-    for(let i=0;i<n;i++) if(m[i]) ch[i] = pixels[i*4+c];
-    const num = blurN(ch), gm = c === 0 ? mr : c === 1 ? mg : mb;
-    for(let i=0;i<n;i++){
-      if(m[i]) continue;
-      const d = den[i];
-      out[i*4+c] = d > 0.02 ? num[i] / d : gm;    // 머리에서 먼 곳은 머리 전체 평균색
-    }
-  }
-  HAIR_READ_FILL.last = { w: w, h: h, hair: any, at: Date.now() };
+/* (2026-10-25e) 결은 세그멘테이션 머리 영역 안 픽셀로만 계산 — 사용자: "세그멘테이션 바깥영역은 결읽기에 포함시키지마"
+   원인: 밝기 기울기를 사진 전체에서 구하고 머리 영역은 "어느 칸 값을 쓸지"만 골랐음 → 경계 가까운 칸의 창(Sobel 3×3 + 평균 반경 3 ·
+   σ2/σ4 · 방향필터)에 머리 밖 옷·피부·배경이 섞임(디버그 1110·1038·1107: 밑단 경계 4~8px 안 칸의 56~94%가 가로).
+   지금: ① 기울기는 3×3이 모두 머리 안일 때만 · ② 평균은 기울기가 있는 칸만 더해 그 수로 나눔 · ③ 방향필터는 머리 밖 칸을 빼고
+   남은 칸으로 반응(평균을 빼서 밝기만 다른 자리에 반응 안 함) · 남은 칸이 절반 미만이면 못 읽음 · ④ mix 후보(34)도 같은 방식.
+   (2026-10-25d의 "머리 밖을 머리 평균색으로 채우기"는 뺌 — 바깥을 여전히 계산에 넣는 방식이라서)
+   ⚠ 사진이 작아 머리 끝이 흐리게 번진 띠가 세그멘테이션 안에 들어온 경우(직모 테스트 사진)는 그 띠가 머리 안이라 그대로 읽힘 — 세그 확신도 기록(03b SEG_CONF)으로 따로 봄.
+   끄기 HAIR_READ_MASK.on=false(예전처럼 사진 전체로) */
+var HAIR_READ_MASK = Object.assign({ on: true, minFrac: 0.5 }, (typeof window !== 'undefined' && window.HAIR_READ_MASK) || {});
+/* 머리 칸 수 상자합(반경 r) — 정수 누적표 */
+function maskBoxCount(maskBuf, w, h, r){
+  const W1 = w + 1, I = new Int32Array(W1 * (h + 1));
+  for(let y=0;y<h;y++){ let row = 0; for(let x=0;x<w;x++){ row += maskBuf[y*w+x] ? 1 : 0; I[(y+1)*W1 + x+1] = I[y*W1 + x+1] + row; } }
+  const out = new Int32Array(w*h);
+  for(let y=0;y<h;y++){ const y0 = Math.max(0, y-r), y1 = Math.min(h-1, y+r);
+    for(let x=0;x<w;x++){ const x0 = Math.max(0, x-r), x1 = Math.min(w-1, x+r);
+      out[y*w+x] = I[(y1+1)*W1 + x1+1] - I[y0*W1 + x1+1] - I[(y1+1)*W1 + x0] + I[y0*W1 + x0]; } }
   return out;
 }
 function computeHairOrientationField(pixels, maskBuf, w, h){
-  toGrayscale(pixels, w, h);   // (옛 64) 영역 다시 찾기가 원래 사진을 기억하게(아래는 바꾼 사진으로 읽음)
-  if(HAIR_READ_FILL.on){ try{ pixels = fillOutsideHair(pixels, maskBuf, w, h); }catch(e){ console.warn('[결 읽기] 머리 밖 채우기 실패 — 원래 사진으로 읽음', e); } }
+  toGrayscale(pixels, w, h);   // (옛 64) 영역 다시 찾기가 원래 사진을 기억하게
   const gray = new Float32Array(w*h);
   for(let i=0;i<w*h;i++){ const pi=i*4; gray[i] = 0.299*pixels[pi] + 0.587*pixels[pi+1] + 0.114*pixels[pi+2]; }
   const {Ix, Iy} = sobelGradients(gray, w, h);
+  const masked = !!(HAIR_READ_MASK.on && maskBuf);
+  let valid = null;
+  if(masked){                                   // ① 3×3이 모두 머리 안인 칸만 기울기
+    const c9 = maskBoxCount(maskBuf, w, h, 1); valid = new Float32Array(w*h);
+    for(let i=0;i<w*h;i++){ if(c9[i] === 9 && maskBuf[i]) valid[i] = 1; else { Ix[i] = 0; Iy[i] = 0; } }
+  }
 
   // 구조텐서 성분: Jxx=Ix², Jyy=Iy², Jxy=IxIy
   const n = w*h;
@@ -253,6 +247,11 @@ function computeHairOrientationField(pixels, maskBuf, w, h){
   const JxxB = boxBlur(Jxx, w, h, blurR);
   const JyyB = boxBlur(Jyy, w, h, blurR);
   const JxyB = boxBlur(Jxy, w, h, blurR);
+  if(masked){                                   // ② 기울기가 있는 칸 수로 나눔(평균 = 머리 안 칸들만의 평균)
+    const nB = boxBlur(valid, w, h, blurR);
+    for(let i=0;i<w*h;i++){ const d = nB[i]; if(d > 1e-6){ JxxB[i] /= d; JyyB[i] /= d; JxyB[i] /= d; } else { JxxB[i] = 0; JyyB[i] = 0; JxyB[i] = 0; } }
+    HAIR_READ_MASK.last = { w: w, h: h, at: Date.now() };
+  }
 
   const angle = new Float32Array(n);
   const coherence = new Float32Array(n);
@@ -397,10 +396,22 @@ var GABOR_ORIENT = (function () {
     try {
       var t0 = performance.now(), N = Wd * Hd, g = gray(px, N), KK = kernels(GO.lambda, GO.n), r = KK.r, sz = KK.sz, n = GO.n;
       var SP = sparse(KK, Wd), RV = new Float32Array(n), ang = new Float32Array(N), conf = new Float32Array(N), idx, x, y, k, i, j, cnt = 0;
+      /* (2026-10-25e) 머리 영역 안 픽셀로만 — 필터 창(반경 r)에 머리 밖 칸이 있는 자리는 그 칸을 빼고, 남은 칸의 밝기 평균을 빼서(밝기만 다른 자리에 반응 안 하게) 계산 · 남은 칸이 minFrac 미만이면 못 읽음 */
+      var MK = (typeof HAIR_READ_MASK !== 'undefined' && HAIR_READ_MASK.on), full = (2 * r + 1) * (2 * r + 1), cnt9 = MK ? maskBoxCount(mask, Wd, Hd, r) : null, edgeN = 0, edgeSkip = 0;
       var sd = (GO.refine && GO.stride > 1) ? (GO.stride | 0) : 1;         // 다듬기를 끄면 메울 방법이 없으니 전부 계산
       for (y = r; y < Hd - r; y += sd) for (x = r; x < Wd - r; x += sd) {
         idx = y * Wd + x; if (!mask[idx]) continue;
         var best = -1, bk = 0, sumR = 0;
+        if (MK && cnt9[idx] < full) {                                     // 경계 가까운 자리 — 머리 칸만으로
+          if (cnt9[idx] < full * HAIR_READ_MASK.minFrac) { conf[idx] = 0; ang[idx] = f.angle[idx]; edgeSkip++; continue; }
+          var gm = 0, nv = 0, jj, ii; for (jj = -r; jj <= r; jj++) for (ii = -r; ii <= r; ii++) { var q = idx + jj * Wd + ii; if (mask[q]) { gm += g[q]; nv++; } } gm /= nv;
+          for (k = 0; k < n; k++) {
+            var Kk = KK.K[k], vv = 0, ki2 = 0;
+            for (jj = -r; jj <= r; jj++) for (ii = -r; ii <= r; ii++, ki2++) { var q2 = idx + jj * Wd + ii; if (mask[q2]) vv += Kk[ki2] * (g[q2] - gm); }
+            vv = vv < 0 ? -vv : vv; RV[k] = vv; sumR += vv; if (vv > best) { best = vv; bk = k; }
+          }
+          edgeN++;
+        } else
         for (k = 0; k < n; k++) {
           var v = 0;
           if (SP) { var so = SP[k].o, sw = SP[k].w, sn = so.length; for (i = 0; i < sn; i++) v += sw[i] * g[idx + so[i]]; }   // 0에 가까운 칸은 빼고 곱함
