@@ -38,9 +38,12 @@ async function runStyleAnalysisPipelineBase(){
       );
       // Face Landmarker: 랜드마크를 먼저 감지해야 extractHairMask에서
       // 얼굴 위치 기반으로 정확한 제거 영역을 잡을 수 있음 (정면/측면 모두 대응)
+      /* (2026-10-25b) 여기서 바로 재지 않고 "재 달라"고만 표시 — 추출(03b extractHairMaskCore)이 머리 키우기(SUBJECT_ZOOM) 뒤에 잼.
+         예전: 여기서 원본으로 한 번 재고, 키우면 키운 사진으로 또 잼(360 세트 정면·우·후면 = 두 번 · 얼굴 없는 뒤 사진은 3번 시도 ×2).
+         사용자: "360도를 촬영한 걸 돌리는데, 4장 분석을 먼저한 다음에 다시 10장을 분석" — 4장은 기준 사진이라 빼지 못하지만 겹친 얼굴 재기는 뺌 */
       if(faceLandmarkerReady){
-        showAI(`얼굴 분석 중… ${done+1}/${validAngles.length}`, `${ANGLE_LABELS[a]} 랜드마크 감지`);
-        await detectFaceLandmarks(a);
+        if(!state._lmWant) state._lmWant = {};
+        state._lmWant[a] = true;
       }
       await extractHairMask(a);
       if(faceLandmarkerReady){

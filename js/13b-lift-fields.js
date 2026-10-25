@@ -1046,7 +1046,7 @@ var VIEWS360 = (function () {
     return best && bd <= maxOff ? best : null;
   }
   /* 45번 applySet과 같은 규칙으로 4장을 고름 */
-  function picks(set) { return { front: nearest(set.frames, 0, 20), left: nearest(set.frames, 45, 25), right: nearest(set.frames, -45, 25), back: nearest(set.frames, 180, 35) }; }
+  function picks(set) { return { front: (X.frontSub && X.frontSubFor === set) ? X.frontSub : nearest(set.frames, 0, 20), left: nearest(set.frames, 45, 25), right: nearest(set.frames, -45, 25), back: nearest(set.frames, 180, 35) }; }
   function isExtraKey(k) { return /^vm?\d+$/.test(k); }
 
   /* ────────────────────────────────────────────────────────────────────────
@@ -1216,7 +1216,7 @@ var VIEWS360 = (function () {
     if (!X.on || !set || !set.frames || !setLive()) return Promise.resolve(false);
     if (X.forSet === set && X.fp === fpNow()) return Promise.resolve(true);
     clearViews();
-    var p = picks(set), used = [p.front, p.left, p.right, p.back], seen = {}, list = [];
+    var p = picks(set), used = [p.front, p.left, p.right, p.back, X.frontSubFor === set ? X.frontOrig : null], seen = {}, list = [];   // (2026-10-25b) 바꿔 낸 정면(불량)도 추가 사진에서 뺌
     set.frames.forEach(function (f) {
       if (!f || !f.url || used.indexOf(f) >= 0) return;
       var k = keyOf(f.deg); if (seen[k] || X.skip.indexOf(k) >= 0) return;
@@ -1283,9 +1283,101 @@ var VIEWS360 = (function () {
     return X.busy;
   };
 
+  /* ────────────────────────────────────────────────────────────────────────
+   * (2026-10-25b) 정면 살리기 — 사용자: "계속 사진 불량이 나오는데, 일단 살릴 수 있는 방법을 강구해줘"
+   *   360 세트 08:40(.json · 디버그 1015): 0° 칸이 [시작]을 누른 순간 멀리서 찍힌 전신 사진(머리 폭 ~60px)이라 키워도 머리 영역 55px.
+   *   정면이 빠지자 다시 기르기는 left,right,back만 썼고, 추가 10장은 "정면 보정 없음"으로 아예 평가도 안 됨(진단: 전부 "아직 평가 전" ·
+   *   형태 계산에 넣은 추가 사진 0장) — 32초 분석한 10장을 통째로 버림.
+   *   하는 일: 정면 추출이 끝났을 때 머리 영역이 사진의 frontMinHair 미만이면(또는 머리 윗선을 못 잡으면) 세트에서 정면 ±frontAltDeg 안의
+   *   다른 사진(가까운 각도 → 선명한 순)을 정면 칸에 넣고 다시 추출. 처음 괜찮은 것을 씀. 다 나쁘면 머리 영역이 가장 큰 것.
+   *   각도: 0° 기준은 그대로(센서), 정면 칸 사진의 실제 yaw는 얼굴로 잰 값 — 좌·우·뒤의 센서 포즈도 그 값으로 다시 맞춤.
+   *   "사진이 바뀜"(05 PHOTO_CHANGE)·세트 지문(fpNow)은 바꾸기 전 사진으로 봄(머리 키우기와 같은 방식).
+   *   끄기 VIEWS360.frontRescue=false
+   * ────────────────────────────────────────────────────────────────────── */
+  X.frontRescue = X.frontRescue !== false; X.frontMinHair = X.frontMinHair || 0.004; X.frontAltDeg = X.frontAltDeg || 35;
+  X.frontSub = null; X.frontSubFor = null; X.frontOrig = null; X.rescueNote = '';
+  function hairFrac(mi) {
+    if (!mi || !mi.reasonMask) return 0;
+    var mk = mi.reasonMask, n = mk.length, c = 0, i; for (i = 0; i < n; i++) if (mk[i] === 1) c++;
+    return n ? c / n : 0;
+  }
+  function frontQuality() {
+    var mi = state.hairMasks && state.hairMasks.front, f = hairFrac(mi), m = null;
+    try { m = measure(mi); } catch (e) {}
+    return { frac: f, ok: f >= X.frontMinHair && !!m };
+  }
+  function putFront(url) {
+    var cap = (typeof capShotDataURL === 'function') ? capShotDataURL : function (u) { return Promise.resolve(u); };
+    return cap(url).then(function (u) {
+      state.shots.front = u;
+      try { if (typeof rememberShotHi === 'function') rememberShotHi('front', url, u); } catch (e) {}
+      ['hairCanvases', 'hairMasks', 'baseCanvases', 'baseFillCanvases', 'landmarks', 'captureLmStatus', 'poseEars'].forEach(function (k) { try { if (state[k]) state[k].front = null; } catch (e) {} });
+      try { if (state.strandPaths) state.strandPaths.front = null; } catch (e) {}
+      try { if (state._zoomedShot) delete state._zoomedShot.front; } catch (e) {}
+      try { if (!state._lmWant) state._lmWant = {}; state._lmWant.front = true; } catch (e) {}
+      return X.extractOne('front');
+    });
+  }
+  function rescueFront(r) {
+    var set = null; try { set = state.shots360; } catch (e) {}
+    if (!X.on || !X.frontRescue || !set || !set.frames || !setLive() || X.frontSubFor === set) return r;
+    var q0 = frontQuality(); if (q0.ok) return r;
+    X.frontSubFor = set; X.frontSub = null;
+    var orig = nearest(set.frames, 0, 20); if (!orig) return r;
+    X.frontOrig = orig;
+    var cur = state.shots.front, origLo = (state._zoomedShot && state._zoomedShot.front === cur && state._zoomFrom && state._zoomFrom.front) || cur;
+    var cands = set.frames.filter(function (f) { return f && f.url && f !== orig && Math.abs(wrapDeg(f.deg - orig.deg)) <= X.frontAltDeg; })
+      .sort(function (a, b) { return Math.abs(wrapDeg(a.deg - orig.deg)) - Math.abs(wrapDeg(b.deg - orig.deg)) || (b.sharp || 0) - (a.sharp || 0); });
+    var why0 = '정면(' + Math.round(orig.deg) + '°) 머리 영역 ' + (q0.frac * 100).toFixed(2) + '%';
+    if (!cands.length) { X.rescueNote = why0 + ' — 바꿔 넣을 사진이 세트에 없음'; console.warn(TAG + ' ' + X.rescueNote); return r; }
+    var best = { f: orig, frac: q0.frac }, tried = [], i = 0;
+    try { if (typeof showAI === 'function') showAI('정면 사진 다시 고르는 중…', why0); } catch (e) {}
+    function fin(f) {
+      var ok = frontQuality();
+      try { if (!state._zoomFrom) state._zoomFrom = {}; if (!state._zoomedShot) state._zoomedShot = {}; state._zoomFrom.front = origLo; state._zoomedShot.front = state.shots.front; } catch (e) {}   // 지문은 바꾸기 전 사진으로
+      if (f !== orig) {
+        X.frontSub = f;
+        try {                                                     // 좌·우·뒤 센서 포즈를 이 사진의 얼굴 yaw 기준으로
+          var lm = state.landmarks && state.landmarks.front, fy = (lm && typeof lm.poseYawDeg === 'number') ? lm.poseYawDeg : wrapDeg(f.deg - orig.deg);
+          var p = picks(set); state.capturePose = state.capturePose || {};
+          ['left', 'right', 'back'].forEach(function (a) { if (p[a]) state.capturePose[a] = { yawDeg: wrapDeg(p[a].deg - f.deg) + fy, pitchDeg: 0, rollDeg: 0, _x360: true }; });
+        } catch (e) {}
+      }
+      X.rescueNote = why0 + ' → ' + (f === orig ? '다른 사진도 나아서 그대로(' + tried.join(' · ') + ')' : Math.round(f.deg) + '° 사진으로 바꿈(머리 영역 ' + (ok.frac * 100).toFixed(1) + '%' + (tried.length > 1 ? ' · 본 것 ' + tried.join(' · ') : '') + ')');
+      console.warn(TAG + ' 정면 살리기 — ' + X.rescueNote);
+      return true;
+    }
+    function next() {
+      if (i >= cands.length) {
+        if (best.f === cands[cands.length - 1]) return fin(best.f);
+        return putFront(best.f.url).then(function () { return fin(best.f); }, function () { return fin(best.f); });
+      }
+      var f = cands[i++];
+      return putFront(f.url).then(function () {
+        var q = frontQuality(); tried.push(Math.round(f.deg) + '° ' + (q.frac * 100).toFixed(1) + '%');
+        if (q.frac > best.frac) best = { f: f, frac: q.frac };
+        return q.ok ? fin(f) : next();
+      }, next);
+    }
+    return Promise.resolve(next()).then(function () { return true; }, function () { return r; });
+  }
+  X._rescueFront = rescueFront;
+  /* 정면 사진을 못 쓰면(보정이 없으면) 좌·우(얼굴 yaw 실측)·뒤 카메라에서 0° 기준을 거꾸로 세움 — 추가 사진은 머리 폭 자로만 배율을 잼 */
+  function synthFront(viewCal) {
+    var order = ['left', 'right', 'back'], i, a, c;
+    for (i = 0; i < order.length; i++) {
+      a = order[i]; c = viewCal && viewCal[a];
+      if (!c || !c.pose || !(c.sy > 0) || !X.baseDeg || X.baseDeg[a] == null) continue;
+      var fy = c.pose.yaw * 180 / Math.PI - wrapDeg(X.baseDeg[a] - (X.degFront || 0));
+      return { sy: c.sy, s: c.s, cx: c.cx, crownY: c.crownY, pose: { yaw: wrapDeg(fy) * Math.PI / 180, pitch: 0, roll: 0 }, _synth: a };
+    }
+    return null;
+  }
+
   /* 4장 추출이 끝난 직후(모델이 올라와 있는 동안) 이어서 — extractHairMask(03b) 바깥 단계. run = 안쪽 추출 */
   X._extract = function (angle, run) {
     var p = run();
+    if (angle === 'front' && p && typeof p.then === 'function') return p.then(function (r) { return Promise.resolve(rescueFront(r)).then(function (r2) { return r2; }, function () { return r; }); });
     if (angle !== 'back' || !p || typeof p.then !== 'function') return p;
     return p.then(function (r) {
       var go = false; try { go = X.on && setLive() && !(X.forSet === state.shots360 && X.fp === fpNow()); } catch (e) {}
@@ -1296,7 +1388,7 @@ var VIEWS360 = (function () {
   /* 세트를 넣은 순간의 4장 지문 — 이후 4장이 바뀌면(다른 손님 사진) 추가 사진은 안 씀.
      얼굴 각도를 못 재는 좌·우·후면은 가정값(±90°·180°) 대신 센서 각도를 쓰게 촬영 포즈로 넣어 둠(01 getViewPoseSource의 'live' 단계).
      SHOT360.applySet(05) 맨 앞 _beforeApplySet · 결과로 _afterApplySet */
-  X._beforeApplySet = function () { clearViews(); X.setFp = null; };
+  X._beforeApplySet = function () { clearViews(); X.setFp = null; X.frontSub = null; X.frontSubFor = null; X.frontOrig = null; X.rescueNote = ''; };
   X._afterApplySet = function (set, ok) {
     if (!ok) return ok;
     X.setFp = fpNow();
@@ -1377,7 +1469,7 @@ var VIEWS360 = (function () {
     var qs = [];
     BASE.forEach(function (name) {
       try {
-        var mi = state.hairMasks && state.hairMasks[name], cal = viewCal && viewCal[name]; if (!mi || !cal || !(cal.sy > 0) || !cal.pose) return;
+        var mi = state.hairMasks && state.hairMasks[name], cal = viewCal && viewCal[name]; if (!mi || !cal || cal._synth || !(cal.sy > 0) || !cal.pose) return;
         var mm = measure(mi); if (!mm || frameProblem(mm) || !(mm.hw > 4)) return;
         var A = headHalfWidthAt(cal.pose.yaw || 0); if (A > 0) qs.push(mm.hw * cal.sy / A);
       } catch (e) {}
@@ -1390,11 +1482,11 @@ var VIEWS360 = (function () {
   /* 추가 사진 한 장: 카메라 + 뺄 이유(없으면 '') */
   function calFor(v, viewCal, yTop, CY, ctx) {
     var f = viewCal && viewCal.front, m = v.m, out = { cal: null, why: '', kind: '' };
-    v.q = null; v.agree = null; v.yawSensor = null;
+    v.q = null; v.agree = null; v.yawSensor = null; if (f && f._synth) v.headRuled = false;
     if (!f || !(f.sy > 0) || !f.pose) { out.why = '정면 보정 없음'; return out; }
     var basic = !m || m.hw < 4 || m.valid < m.w * X.minCols;
     if (basic) { out.why = frameProblem(m); out.kind = 'frame'; return out; }
-    if (X.headRuler && (!(v.ratio > 0) || v.ratioBad)) {                         // (2026-10-25) 머리 폭 자
+    if (X.headRuler && (f._synth || !(v.ratio > 0) || v.ratioBad)) {                         // (2026-10-25) 머리 폭 자
       var yawH = (typeof v.faceYaw === 'number') ? v.faceYaw : wrapDeg(v.deg - (X.degFront || 0)) + (f.pose.yaw || 0) * 180 / Math.PI;
       var Av = headHalfWidthAt(yawH * Math.PI / 180), q0 = headQ0(viewCal);
       if (q0 > 0 && Av > 0 && m.hw > 0) {
@@ -1402,6 +1494,7 @@ var VIEWS360 = (function () {
         v.ratioWas = v.ratioBad || v.ratioSrc; v.ratio = rH; v.ratioSrc = '머리 폭(정면 머리/두상 ' + q0.toFixed(2) + ')'; v.ratioBad = ''; v.headRuled = true;
       }
     }
+    if (f._synth && !v.headRuled) { out.why = '정면 사진을 못 써서 배율을 못 잼'; out.kind = 'dist'; return out; }
     if (!(v.ratio > 0)) { out.why = '배율 없음'; out.kind = 'dist'; return out; }
     var sy = f.sy * v.ratio;
     if (!isFinite(sy) || !(sy > 0)) { out.why = '배율 계산 실패'; out.kind = 'dist'; return out; }
@@ -1439,8 +1532,10 @@ var VIEWS360 = (function () {
   X._probeArgs = function (viewCal, names, yTop, CY) {
     X.last = { used: [], dropped: [], base: (names || []).slice(), baseDropped: [], baseWarn: [], baseInfo: {}, setBad: '', thr: null, agreeFront: null };
     try {
-      if (active() && viewCal && viewCal.front) {
-        var L = X.last, vc = Object.assign({}, viewCal), nm = names.slice();
+      var frontCal = viewCal && (viewCal.front || synthFront(viewCal));   // (2026-10-25b) 정면을 못 쓰면 좌·우·뒤에서 세운 기준으로
+      if (active() && frontCal) {
+        var L = X.last, vc = Object.assign({}, viewCal), nm = names.slice(), vcE = viewCal.front ? viewCal : Object.assign({}, viewCal, { front: frontCal });
+        L.synthFront = frontCal._synth || '';
         var ctx = { thr: X.agreeMin };
         L.thr = ctx.thr;
         // 추가 사진 평가
@@ -1449,7 +1544,7 @@ var VIEWS360 = (function () {
           var v = X.views[k]; v.cal = null; v.why = '';
           if (X.skip.indexOf(k) >= 0) { v.why = '사용자가 뺌(skip)'; return; }
           if (!(state.hairMasks && state.hairMasks[k])) { v.why = '마스크 없음'; return; }
-          res[k] = calFor(v, viewCal, yTop, CY, ctx); v.why = res[k].why; v.kind = res[k].kind;
+          res[k] = calFor(v, vcE, yTop, CY, ctx); v.why = res[k].why; v.kind = res[k].kind;
         });
         // 세트 전체: 얼굴로 확인한 사진 중 센서 각도가 어긋난 것
         var checked = 0, bad = 0;
@@ -1462,7 +1557,7 @@ var VIEWS360 = (function () {
           try {
             var lm = state.landmarks && state.landmarks[a], sd = X.baseDeg && X.baseDeg[a];
             if (sd == null || !viewCal[a]) return;
-            var ys = wrapDeg(sd - (X.degFront || 0)) + (viewCal.front.pose.yaw || 0) * 180 / Math.PI;
+            var ys = wrapDeg(sd - (X.degFront || 0)) + (vcE.front.pose.yaw || 0) * 180 / Math.PI;
             if (lm && typeof lm.poseYawDeg === 'number') { checked++; if (Math.abs(wrapDeg(lm.poseYawDeg - ys)) > X.yawTol) bad++; }
             else if (X.canFace() && Math.abs(ys) <= X.faceMustDeg) { checked++; bad++; }
           } catch (e) {}
@@ -1656,6 +1751,8 @@ var VIEWS360 = (function () {
       (la && la.baseDropped.length ? ' · 뺀 기준 사진 ' + la.baseDropped.join(',') : '') +
       (la && la.baseWarn && la.baseWarn.length ? ' · ⚠ 의심스러운 기준 사진 ' + la.baseWarn.join(',') + '(그대로 씀 — 다시 찍는 것이 좋음)' : '') + (X.gate ? '' : ' · 걸러내기 꺼짐') +
       (la ? '' : ' (3D를 아직 안 만듦)'));
+    if (X.rescueNote) L.push('  정면 살리기 — ' + X.rescueNote + ' (끄기 VIEWS360.frontRescue=false)');
+    if (la && la.synthFront) L.push('  ⚠ 정면 보정이 없어 ' + la.synthFront + ' 사진에서 0° 기준을 세움 — 추가 사진 배율은 머리 폭 자로만');
     if (la && la.setBad) L.push('  ⚠ ' + la.setBad);
     try { var ad = X.advice(); if (ad) L.push('  촬영 안내(화면 카드) — ' + (ad.items.length ? ad.items.map(function (it) { return Math.round(it.deg) + '°' + (it.base ? '(기준)' : '') + ' ' + it.kind; }).join(' · ') : '문제 없음') + (X.advise ? '' : ' · 카드 꺼짐')); } catch (e) {}
     if (X.bodyRuler) L.push('  배율 자 — 얼굴이 잡힌 사진은 눈→턱 · 없는 사진은 어깨선/목 밑동: ' + (X.bodyRuler.n ? '얼굴 자와 대조 ' + X.bodyRuler.n + '장 · 중앙 오차 ' + Math.round(X.bodyRuler.med * 100) + '% → ' + (X.bodyRuler.ok ? '믿음' : '⚠ 못 믿음(얼굴 없는 사진은 뺌)') : '대조할 얼굴 사진이 없어 그대로 씀'));

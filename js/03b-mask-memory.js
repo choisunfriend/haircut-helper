@@ -488,7 +488,16 @@ function extractHairMask(angle){
 }
 async function extractHairMaskCore(angle){
   if(typeof REGROW !== 'undefined') REGROW._resetPend();   // (옛 42) 지난 사진의 컬 재기 값 버림
-  try{ await subjectZoom(angle); }catch(e){}   // (2026-10-25) 머리가 작게 찍혔으면 머리 둘레로 잘라 키움
+  let _zoomed = false;
+  try{ _zoomed = await subjectZoom(angle); }catch(e){}   // (2026-10-25) 머리가 작게 찍혔으면 머리 둘레로 잘라 키움(키웠으면 얼굴도 새 사진에서 이미 잼)
+  // (2026-10-25b) 분석 파이프라인(05)이 "재 달라"고 한 각도 — 키우지 않았을 때만 여기서 한 번(예전엔 키우기 전에 한 번 + 키운 뒤 또 한 번)
+  if(state._lmWant && state._lmWant[angle]){
+    state._lmWant[angle] = false;
+    if(!_zoomed && typeof detectFaceLandmarks === 'function'){
+      try{ if(typeof showAI === 'function' && typeof ANGLE_LABELS !== 'undefined') showAI('얼굴 분석 중…', (ANGLE_LABELS[angle] || angle) + ' 랜드마크 감지'); }catch(e){}
+      try{ await detectFaceLandmarks(angle); }catch(e){}
+    }
+  }
   const dataUrl = state.shots[angle];
   if(!dataUrl || !segmenter) return false;
 
