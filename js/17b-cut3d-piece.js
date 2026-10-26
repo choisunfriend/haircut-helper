@@ -1548,6 +1548,7 @@ var REGROW = (function () {
     onScalpLen: false,  // (2026-10-22) 판정 끔 — 읽은 대로 그리고 사진과 대조만(34 READ_STEPS · 되돌리기 ?judge=1): 머리 전체 '짧은/긴 머리' 판정으로 길이를 두께×liftK로 정하던 것 · 예전 true
     onScalpLen_was: true, // (2026-10-11a) 짧은 머리: 두피 위로 누운 가닥은 뿌리 자리 두께 × liftK에서 끝(누운 머리는 기와처럼 겹쳐 사진에서 끝없이 이어 보임 — 걸어간 거리는 가닥 길이가 아님. 스펙 길이와 같은 잣대)         // 짧은 머리 길이 어림 = 뿌리 자리 두께 × 이 값
     // (2026-10-04h) 컬 재기 — 머리말 v4 참고
+    curlEngine: false,  // (2026-10-26) 다시 기른 원본 머리에는 컬 엔진(14c curlStrand3D)을 안 돌림 — 곱슬·웨이브는 다시 기르기가 읽은 결 그대로. 잰 컬 값이 새어 들어와도(굵은 웨이브 분기 등) 안 감음 · 마네킹 스타일 경로는 그대로 · 켜기 REGROW.curlEngine=true(?judge=1도 켬)
     curl: false,        // (2026-10-22) 판정 끔 — 읽은 대로 그리고 사진과 대조만(34 READ_STEPS · 되돌리기 ?judge=1): 뷰 중앙값 하나(머리 전체 컬)를 모든 섹션에 걸어 나선을 얹던 것 — 재기는 그대로(진단 raw) · 예전 true
     curlLo: 1.8, curlHi: 4.0,   // 결 꺾임(°/px) 이 구간을 컬 0 → curlMax로 (⚠ 합성 무늬로 잡은 어림값)
     curlMax: 90,                // 100이면 가닥 점 수가 3배(나선 11바퀴) — 90이면 2배쯤
@@ -3276,6 +3277,7 @@ var REGROW = (function () {
     var sty = (styOverride !== undefined ? styOverride : uniformStyling()) || stylingForRoot(s.pts[0]) || {};
     if (typeof lenOverride === 'number') cur = Object.assign({}, cur, { length: lenOverride });
     var bs = b.sections[s.sec] || {}, g = s.pts, C0 = bs.curl || 0;
+    if (!G.curlEngine) { C0 = 0; if (cur.curl) cur = Object.assign({}, cur, { curl: 0 }); }   // (2026-10-26) 원본 머리 — 컬 엔진 안 씀(새어 들어온 컬 값도 무시)
     if (atBase(s.sec, cur, sty) && !(C0 > 0)) return s.pts;            // 직모 기준 — 손대지 않음
     var r = sectionLengthRatio(s.sec, cur.length) / (sectionLengthRatio(s.sec, bs.length) || 1);
     // 가닥(s.pts)은 컬을 편 뼈대 — 컬은 지금 슬라이더 값을 그대로 겁니다(기준이 직모면 예전의 "더한 만큼"과 같음)
@@ -3294,7 +3296,7 @@ var REGROW = (function () {
     if (keep && total > cover * 1.0005) g = padArc(g, total / cover);    // 호길이만 편 길이에 맞춤(덧댄 구간은 나선이 쓰지 않음)
     var ks = (C0 > 0 && b.rodScale > 1 && curl > 0) ? b.rodScale : 1;   // 로드 최대보다 굵은 컬 — 가닥을 줄여서 걸고 다시 키움
     if (ks > 1) g = scalePts(g, 1 / ks);
-    g = curlStrand3D(g, curl, (typeof cur.wave === 'number' ? cur.wave : 50) / 100, typeof cur.curlDir === 'number' ? cur.curlDir : 0);
+    if (G.curlEngine) g = curlStrand3D(g, curl, (typeof cur.wave === 'number' ? cur.wave : 50) / 100, typeof cur.curlDir === 'number' ? cur.curlDir : 0);
     if (ks > 1) g = scalePts(g, ks);
     if (keep) { if (curl > C0) g = gravityDroop3D(g, curl - C0); }     // 잰 컬까지는 사진에 이미 처져 있음 — 더한 만큼만
     else if (curl > 0) g = gravityDroop3D(g, curl);
@@ -3639,11 +3641,12 @@ function helixMeasure(rgba,mask,W,H,angle,coh,opt){opt=opt||{};const n=opt.n||25
       // (2026-10-10o) 굵은 웨이브(물결 펌) — 결 꺾임(°/px)이 낮아 컬 0으로 잡히지만, 나선 측정이 큰 반복(한 바퀴 3~15cm)을 잡으면 웨이브로 봄
       try {
         var hv = out.rViews.filter(function (v) { return v.how === 'helix' && v.pitchCm >= G.waveHelixPitchLo && v.pitchCm <= G.waveHelixPitchHi && v.cm >= G.waveHelixRLo && (!(G.waveHelixRMaxK > 0) || v.cm <= G.waveHelixRMaxK * v.pitchCm); });   // (2026-10-12c) 반경이 한 바퀴 간격보다 큰 값은 웨이브가 아님(직모 정면 사진이 반경 8.3cm·간격 7.2cm로 통과해 컬 65가 들어갔음)
-        if (G.waveFromHelix && out.value < G.waveFromHelixBelow && hv.length >= 1) {
+        if (G.waveFromHelix && out.raw < G.waveFromHelixBelow && hv.length >= 1) {   // (2026-10-26) raw로 봄 — curl=false면 value가 늘 0이라 언제나 들어왔음
           var ps = hv.map(function (v) { return v.pitchCm; }).sort(function (x, y) { return x - y; }), rr = hv.map(function (v) { return v.cm; }).sort(function (x, y) { return x - y; });
           var pm = ps[ps.length >> 1], rm = rr[rr.length >> 1];
           out.waveHelix = { pitchCm: pm, rCm: rm, views: hv.length, was: out.value };
-          out.value = out.raw = Math.round(Math.max(G.waveCurlLo, Math.min(G.waveCurlHi, G.waveCurlLo + (G.waveCurlHi - G.waveCurlLo) * Math.min(1, rm / Math.max(0.5, pm) * 2))));
+          out.raw = Math.round(Math.max(G.waveCurlLo, Math.min(G.waveCurlHi, G.waveCurlLo + (G.waveCurlHi - G.waveCurlLo) * Math.min(1, rm / Math.max(0.5, pm) * 2))));
+          out.value = G.curl ? out.raw : 0;                              // (2026-10-26) 잰 값은 raw(진단)에만 — 꺼져 있으면 스펙·섹션 컬로 안 샘
           out.rCm = rm; out.pitchCm = pm;
         }
       } catch (e) {}
@@ -6968,7 +6971,7 @@ var READ_SHAPE = (function () {
     var vol = Math.max(0, Math.min(100, 50 + ((typeof sty.volume === 'number' ? sty.volume : 50) - (typeof base.volume === 'number' ? base.volume : 50))));
     var samePart = (sty.part || 0) === (base.part || 0) && (sty.partAmt || 0) === (base.partAmt || 0);
     var part = samePart ? 0 : (sty.part || 0), partAmt = samePart ? 0 : sty.partAmt;
-    if (dC > 1) { g = curlStrand3D(g, dC, (typeof cur.wave === 'number' ? cur.wave : 50) / 100, typeof cur.curlDir === 'number' ? cur.curlDir : 0); g = gravityDroop3D(g, dC); ST.curlAdd++; }
+    if (dC > 1 && (!W.REGROW || W.REGROW.curlEngine)) { g = curlStrand3D(g, dC, (typeof cur.wave === 'number' ? cur.wave : 50) / 100, typeof cur.curlDir === 'number' ? cur.curlDir : 0); g = gravityDroop3D(g, dC); ST.curlAdd++; }
     g = partStrand3D(g, part, curl, partAmt);
     g = sweepStrand3D(g, sweep, curl, part, partAmt);
     g = volumeStrand3D(g, vol, s.sec);
@@ -7226,7 +7229,7 @@ var STYLE_PATHS = (function () {
     var samePart = (sty.part || 0) === (base.part || 0) && (sty.partAmt || 0) === (base.partAmt || 0);
     var part = samePart ? 0 : (sty.part || 0), partAmt = samePart ? 0 : sty.partAmt;
     try {
-      if (dC > 1 && W.PHOTO_CURL && typeof W.PHOTO_CURL.activeRS === 'function' && !W.PHOTO_CURL.activeRS()) { g = curlStrand3D(g, dC, (typeof cur.wave === 'number' ? cur.wave : 50) / 100, typeof cur.curlDir === 'number' ? cur.curlDir : 0); g = gravityDroop3D(g, dC); }
+      if (dC > 1 && (!W.REGROW || W.REGROW.curlEngine) && W.PHOTO_CURL && typeof W.PHOTO_CURL.activeRS === 'function' && !W.PHOTO_CURL.activeRS()) { g = curlStrand3D(g, dC, (typeof cur.wave === 'number' ? cur.wave : 50) / 100, typeof cur.curlDir === 'number' ? cur.curlDir : 0); g = gravityDroop3D(g, dC); }
       if (part || sweep) { g = partStrand3D(g, part, curl, partAmt); g = sweepStrand3D(g, sweep, curl, part, partAmt); }
       if (vol !== 50) g = volumeStrand3D(g, vol, s.sec);
       var fl = (sty.flow || 0) - (base.flow || 0); if (fl) g = flowCurlStrand3D(g, fl);
