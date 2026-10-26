@@ -488,7 +488,50 @@ function _rawViewYawDeg(angle){
   if(tier === 'approx') return lm.yaw * 90;
   if(tier === 'live') return cap.yawDeg;
   // 'poseEar'는 위치 실측일 뿐 각도 실측이 아니다 — 각도는 슬롯 기본값 유지(아래 폴백).
+  // (2026-10-26) 이음새로 고친 각도(17b VIEW_SEAM — 실측 옆 사진으로 검증됐을 때만 들어감)
+  if(typeof VIEW_SEAM !== 'undefined' && VIEW_SEAM.yawFor){ const sy = VIEW_SEAM.yawFor(angle); if(typeof sy === 'number') return sy; }
+  if(YAW_FALLBACK.on && (angle === 'left' || angle === 'right')) return sideFallbackYawDeg(angle);
   return ASSUMED_YAW_DEG[angle] ?? 0;
+}
+
+/* ── (2026-10-26) 옆 사진 각도 폴백: ±90° 대신 반대쪽 실측을 뒤집어 씀 ─────────
+   사용자 영상(긴 웨이브 · 16:39): 화면 오른쪽 머리와 어깨 앞 머리가 빈약.
+   진단: 오른쪽 사진에서 얼굴 감지가 실패해 ASSUMED_YAW_DEG.right = −90°(옆얼굴 정측면)로 떨어짐.
+     실제 사진은 얼굴 옆선이 보이는 3/4 각도(왼쪽은 실측 52.6°). 위 머리말 교훈대로 실제 옆 촬영은
+     24~55°라 ±90°는 쓰면 안 되는 값인데, 저장 사진·라이브 포즈가 둘 다 없으면(생성 사진·불러온 사진) 여기로 옴.
+     −90°로 비추면 그 사진의 머리 영역이 엉뚱한 3D 자리를 덮음 → 다시 기르기의 껍질(사진 교집합)이
+     +x 쪽 가닥 6,734개를 "그 사진 머리 영역 밖"으로 멈춤 · 턱 아래까지 내려간 가닥 +x 7,933 vs −x 18,977.
+   지금: 옆 사진이 실측도 라이브도 없으면
+     ① 반대쪽 옆 사진이 실측(pnp·근사·라이브)이면 그 각도를 좌우로 뒤집어 씀(사람은 보통 좌우를 비슷하게 돌림)
+     ② 둘 다 없으면 촬영 목표 범위(35~60°)의 가운데 YAW_FALLBACK.sideDeg
+   이 값은 getViewYawDeg를 거쳐 리프트·되쏘기·두상 치수·다시 기르기가 같이 씀(출처에서 고침 — 위 POSE_YAW_FIX 머리말 참고).
+   신뢰도(getViewPoseConfidence)는 그대로 0.25 — 실측이 아니라는 표시는 유지.
+   끄기: YAW_FALLBACK.on = false (예전 ±90°) · 뒤집기만 끄기: YAW_FALLBACK.mirror = false · 사진을 다시 분석해야 반영 */
+const YAW_FALLBACK = { on: true, mirror: true, sideDeg: 47, _log: {} };
+function _measuredYawDeg(angle){                        // 재귀 없이 실측 등급만
+  const lm = state.landmarks && state.landmarks[angle];
+  if(lm && typeof lm.poseYawDeg === 'number' && !Number.isNaN(lm.poseYawDeg)) return { yaw: lm.poseYawDeg, tier: 'pnp' };
+  if(lm && typeof lm.yaw === 'number' && !Number.isNaN(lm.yaw)) return { yaw: lm.yaw * 90, tier: 'approx' };
+  const cap = getCapturePose(angle);
+  if(cap) return { yaw: cap.yawDeg, tier: 'live' };
+  return null;
+}
+function sideFallbackYawDeg(angle){
+  const sign = angle === 'left' ? 1 : -1, opp = angle === 'left' ? 'right' : 'left';
+  let yaw = sign * YAW_FALLBACK.sideDeg, why = '촬영 목표 범위 가운데 ' + YAW_FALLBACK.sideDeg + '°';
+  if(YAW_FALLBACK.mirror){
+    const m = _measuredYawDeg(opp);
+    // 반대쪽 값이 제 방향(부호)이고 옆 사진다운 크기일 때만 — 정면처럼 찍힌 값은 안 뒤집음
+    if(m && Math.sign(m.yaw) === -sign && Math.abs(m.yaw) >= 15 && Math.abs(m.yaw) <= 80){
+      yaw = -m.yaw; why = '반대쪽 ' + opp + ' ' + m.tier + ' 실측 ' + m.yaw.toFixed(1) + '°를 뒤집음';
+    }
+  }
+  const key = yaw.toFixed(1);
+  if(YAW_FALLBACK._log[angle] !== key){
+    YAW_FALLBACK._log[angle] = key;
+    try{ console.log('[각도 폴백] ' + angle + ': 얼굴·라이브 포즈 없음 → ' + yaw.toFixed(1) + '° (' + why + ' · 예전 ' + (ASSUMED_YAW_DEG[angle] ?? 0) + '°) · 끄기 YAW_FALLBACK.on=false'); }catch(e){}
+  }
+  return yaw;
 }
 
 // pitch/roll도 같은 폴백 체인을 탄다. 예전엔 랜드마크가 없으면 그냥 0으로

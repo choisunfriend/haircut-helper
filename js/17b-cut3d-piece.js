@@ -8223,12 +8223,287 @@ function refreshField3DDebug(){
          ③ 리프트 전에 state.hair3D를 비운다 — 실패하면 옛 모델이 조용히
             중립 모델 자리에 들어가던 것을 막는다(실패는 null로 드러난다).
    되돌리기: NEUTRAL_BUILD.singleFlight = false */
+/* ==========================================================================
+ * VIEW_SEAM — 사진 두 장의 이음새로 옆 사진 카메라 각도를 검증·보정 (2026-10-26)
+ *
+ * 왜 (사용자 · 긴 웨이브 16:39 영상): "화면 오른쪽 머리와 어깨 앞 머리가 빈약."
+ *   진단: 오른쪽 사진의 얼굴 감지가 실패해 각도가 고정 폴백(−90° 정측면)으로 떨어짐 — 실제 사진은 3/4 각도.
+ *   틀린 각도로 비춘 그 사진의 머리 영역이 다시 기르기의 껍질(사진 교집합)에서 +x 쪽 가닥 6,734개를 멈춤.
+ *   사용자: "카메라가 틀리든 생성 사진이라 틀리든, 어차피 걷기에서도 틀리니 미리 맞춰 두는 게 낫다."
+ *
+ * 무엇을:
+ *   ① 정면 사진(얼굴 실측)을 기준으로, 옆 사진(왼쪽·오른쪽)마다 각도 θ를 15~80° 범위에서 바꿔 가며
+ *      "같은 머리 겉면이 두 사진에서 같은 무늬로 보이는가"를 점수로 잼.
+ *        · 겉면 = 두상 타원체 + 머리 두께(thickCm) 껍질 · 두 사진에서 다 보이는 자리만 · 턱 위만
+ *        · 결(무늬): 정면 사진의 결을 그 자리 겉면에 붙인 3D 방향으로 올리고(걷기와 같은 식) 옆 사진에 다시 비춰
+ *          옆 사진의 결과 비교. 큰 흐름(대부분 아래로)은 어느 각도에서나 맞아서 변별력이 없으므로
+ *          둘레 평균을 뺀 잔결(high-pass)끼리 비교 — 웨이브 마루·가닥 다발의 자리.
+ *        · 밝기: 원본 색이 있으면 잔밝기(둘레 평균을 뺀 밝기)끼리 상관.
+ *        · 각도마다 가로 위치(cx)도 ±dxPx 안에서 같이 찾음(옆 사진 cx는 각도를 전제로 잡은 앵커라서).
+ *   ② 검증: 얼굴로 각도를 잰 옆 사진이 있으면 그 사진도 같은 방법으로 재서 실측과 비교.
+ *      오차가 tolDeg 안이면 "이 손님 사진에서는 이음새가 믿을 만함" → 실측 없는 쪽에 적용(검증에서 본 치우침만큼 빼서).
+ *      오차가 크면 적용 안 함(폴백 그대로) — 생성 사진처럼 사진끼리 안 맞는 경우가 여기서 걸러짐.
+ *      양쪽 다 실측이 없으면 검증할 길이 없어 적용 안 함(applyUnchecked=true로 켤 수 있음).
+ *   ③ 적용 = 각도의 출처(01 getViewYawDeg)를 고침 → 리프트·헐·두상 치수·다시 기르기가 전부 같은 각도.
+ *      그래서 3D를 한 번 다시 만듦(buildNeutralHair3D 바깥 단계 · 같은 사진에는 한 번만).
+ *
+ * 오프라인 시험(디버그 파일 · 결만 · 밝기 없음 · 이 코드 그대로 Node로): 긴 웨이브 왼쪽 실측 52.6° → 65.5° · 오른쪽(폴백) → −21.6°
+ *   곱슬 왼쪽 30.7° → 66.9° · 오른쪽 −32.6° → −61.4° · 맞는 각도에서도 잔결 상관 0.01~0.12(우연 수준).
+ *   → 결만으로는 각도를 못 찾음. 그래서 검증 게이트(실측 옆 사진 오차 ±tolDeg)를 통과할 때만 적용 —
+ *     결만이면 지금은 거의 항상 "안 함"으로 끝나고 폴백(01 YAW_FALLBACK)이 그대로 쓰임.
+ *   밝기(원본 색)는 디버그 파일에 없어 앱에서만 돌아감 — [이음새 각도] 줄의 검증 오차로 판단할 것.
+ *
+ * 진단: [이음새 각도] 줄 · 끄기 ?seam=0 또는 VIEW_SEAM.on=false · 재기만 VIEW_SEAM.apply=false
+ * ========================================================================== */
+var VIEW_SEAM = (function () {
+  'use strict';
+  var W = (typeof window !== 'undefined') ? window : globalThis, TAG = '[이음새 각도]';
+  var S = {
+    on: !(typeof location !== 'undefined' && /[?&]seam=0\b/.test(location.search)),
+    apply: true,              // false = 재고 진단만
+    applyUnchecked: false,    // 검증할 실측 옆 사진이 없어도 적용
+    ref: 'front',
+    minDeg: 15, maxDeg: 80, stepDeg: 2,
+    dxPx: 24, dxStep: 4,      // 가로 위치 찾기(사진 폭 488px 기준 · 사진 크기에 비례)
+    thickCm: 2.5,             // 두상 → 머리 겉면 두께(어림)
+    hpPx: 4,                  // 잔결·잔밝기: 이 반경(사진 폭 488px 기준) 둘레 평균을 뺌
+    cells: 240,               // 사진을 가로 이만큼 칸으로 나눠 읽음(488px 사진이면 칸 2px)
+    wOri: 0.4, wLum: 0.6,     // 결·밝기 무게(밝기 없으면 결만)
+    tolDeg: 10,               // 검증 오차 허용
+    minChangeDeg: 5,          // 이보다 작게 바뀌면 그대로
+    yaw: {},                  // 적용된 각도: { [angle]: { deg, mask } } — 01 _rawViewYawDeg가 읽음
+    last: null
+  };
+
+  /* ── 수학 ─────────────────────────────────────────────── */
+  function yawOf(R) { return Math.atan2(-R[6], R[8]) * 180 / Math.PI; }
+  function rotYaw(R, dDeg) {   // R·Ry(d) — 같은 위아래 기울기로 좌우만 돌림
+    var t = dDeg * Math.PI / 180, c = Math.cos(t), s = Math.sin(t), o = new Array(9), i;
+    for (i = 0; i < 3; i++) { var a = R[3 * i], b = R[3 * i + 1], d = R[3 * i + 2]; o[3 * i] = a * c - d * s; o[3 * i + 1] = b; o[3 * i + 2] = a * s + d * c; }
+    return o;
+  }
+  function boxBlur(src, gw, gh, r) {   // 분리형 상자 흐림 두 번(≈ 가우스)
+    var a = new Float32Array(src), b = new Float32Array(src.length), pass, x, y, k, acc, n;
+    for (pass = 0; pass < 2; pass++) {
+      for (y = 0; y < gh; y++) { acc = 0; n = 0; for (x = -r; x < gw + r; x++) { if (x + r < gw && x + r >= 0) { acc += a[y * gw + x + r]; n++; } if (x - r - 1 >= 0) { acc -= a[y * gw + x - r - 1]; n--; } if (x >= 0 && x < gw) b[y * gw + x] = acc / Math.max(1, n); } }
+      for (x = 0; x < gw; x++) { acc = 0; n = 0; for (y = -r; y < gh + r; y++) { if (y + r < gh && y + r >= 0) { acc += b[(y + r) * gw + x]; n++; } if (y - r - 1 >= 0) { acc -= b[(y - r - 1) * gw + x]; n--; } if (y >= 0 && y < gh) a[y * gw + x] = acc / Math.max(1, n); } }
+    }
+    return a;
+  }
+
+  /* 사진 한 장 → 칸 격자(머리 · 결 각 · 또렷함 · 잔결 각 · 잔밝기)
+     src: { iw, ih, hair(x,y)→bool, ori(x,y)→{angle,coherence}|null, lum(x,y)→0..255|null } — 각은 걷기와 같은 규칙(sampleOrientation) */
+  function makeField(src) {
+    var gw = S.cells, cell = src.iw / gw, gh = Math.max(1, Math.ceil(src.ih / cell)), N = gw * gh;
+    var H = new Uint8Array(N), A = new Float32Array(N), K = new Float32Array(N), L = new Float32Array(N), hasL = false, x, y, k;
+    for (y = 0; y < gh; y++) for (x = 0; x < gw; x++) {
+      k = y * gw + x; var px = (x + 0.5) * cell, py = (y + 0.5) * cell;
+      if (!src.hair(px, py)) continue;
+      H[k] = 1;
+      var o = src.ori(px, py); if (o && isFinite(o.angle) && o.coherence > 0) { A[k] = o.angle; K[k] = o.coherence; }
+      var l = src.lum ? src.lum(px, py) : null; if (l != null) { L[k] = l; hasL = true; }
+    }
+    var r = Math.max(2, Math.round(S.hpPx * (src.iw / 488) / cell));
+    var cx = new Float32Array(N), sx = new Float32Array(N), w = new Float32Array(N), lw = new Float32Array(N);
+    for (k = 0; k < N; k++) { if (!H[k]) continue; cx[k] = Math.cos(2 * A[k]) * K[k]; sx[k] = Math.sin(2 * A[k]) * K[k]; w[k] = K[k]; lw[k] = L[k]; }
+    var bc = boxBlur(cx, gw, gh, r), bs = boxBlur(sx, gw, gh, r), hb = boxBlur(Float32Array.from(H), gw, gh, r), bl = hasL ? boxBlur(lw, gw, gh, r) : null;
+    var AH = new Float32Array(N), LH = hasL ? new Float32Array(N) : null;
+    for (k = 0; k < N; k++) {
+      if (!H[k]) continue;
+      var m = 0.5 * Math.atan2(bs[k], bc[k]), d = A[k] - m;
+      d = ((d + Math.PI / 2) % Math.PI + Math.PI) % Math.PI - Math.PI / 2; AH[k] = d;
+      if (hasL) LH[k] = L[k] - bl[k] / Math.max(1e-3, hb[k]);
+    }
+    return { gw: gw, gh: gh, cell: cell, H: H, A: A, K: K, AH: AH, LH: LH };
+  }
+  function at(F, ix, iy) { var x = Math.floor(ix / F.cell), y = Math.floor(iy / F.cell); if (x < 0 || y < 0 || x >= F.gw || y >= F.gh) return -1; var k = y * F.gw + x; return F.H[k] ? k : -1; }
+
+  /* 겉면 점(머리 중심 기준 좌표) + 바깥 법선 */
+  function surface(E, tU) {
+    var A = E.a + tU, B = E.b + tU, C = E.c + tU, P = [], Nn = [], th, ph;
+    for (ph = 0.05; ph <= Math.PI * 0.62; ph += Math.PI / 200) for (th = -Math.PI; th < Math.PI; th += Math.PI / 180) {
+      var x = A * Math.sin(ph) * Math.sin(th), y = B * Math.cos(ph), z = C * Math.sin(ph) * Math.cos(th);
+      var nx = x / (A * A), ny = y / (B * B), nz = z / (C * C), nl = Math.hypot(nx, ny, nz) || 1;
+      P.push(x, y, z); Nn.push(nx / nl, ny / nl, nz / nl);
+    }
+    return { P: P, N: Nn, n: P.length / 3 };
+  }
+  function prj(cam, R, x, y, z, yTop, CY) { return [(R[0] * x + R[1] * y + R[2] * z) / cam.s + cam.cx, cam.crownY + (yTop - ((R[3] * x + R[4] * y + R[5] * z) + CY)) / cam.sy]; }
+
+  /* 기준 사진(A)에서 겉면 점마다 3D 결과 잔결 무늬를 올려 둠 */
+  function liftRef(camA, FA, Sf, yTop, CY) {
+    var R = camA.R, out = [], i;
+    for (i = 0; i < Sf.n; i++) {
+      var x = Sf.P[3 * i], y = Sf.P[3 * i + 1], z = Sf.P[3 * i + 2], nx = Sf.N[3 * i], ny = Sf.N[3 * i + 1], nz = Sf.N[3 * i + 2];
+      if (R[6] * nx + R[7] * ny + R[8] * nz < 0.25) continue;
+      var q = prj(camA, R, x, y, z, yTop, CY), k = at(FA, q[0], q[1]); if (k < 0 || !(FA.K[k] > 0)) continue;
+      var ncx = R[0] * nx + R[1] * ny + R[2] * nz, ncy = R[3] * nx + R[4] * ny + R[5] * nz, ncz = R[6] * nx + R[7] * ny + R[8] * nz;
+      // 잔결 각(AH)이 아니라 결 각(A)으로 3D 방향을 만들고, 옆 사진에서 다시 잔결로 바꿔 비교(둘레 평균도 같이 비춤)
+      var dX = Math.cos(FA.A[k]) * camA.s, dY = -Math.sin(FA.A[k]) * camA.sy, dZ = -(dX * ncx + dY * ncy) / Math.max(1e-3, ncz);
+      var tx = R[0] * dX + R[3] * dY + R[6] * dZ, ty = R[1] * dX + R[4] * dY + R[7] * dZ, tz = R[2] * dX + R[5] * dY + R[8] * dZ;
+      // 둘레 평균 방향(잔결을 뺀 큰 흐름)도 같은 식으로
+      var am = FA.A[k] - FA.AH[k], mX = Math.cos(am) * camA.s, mY = -Math.sin(am) * camA.sy, mZ = -(mX * ncx + mY * ncy) / Math.max(1e-3, ncz);
+      var ux = R[0] * mX + R[3] * mY + R[6] * mZ, uy = R[1] * mX + R[4] * mY + R[7] * mZ, uz = R[2] * mX + R[5] * mY + R[8] * mZ;
+      out.push({ x: x, y: y, z: z, nx: nx, ny: ny, nz: nz, t: [tx, ty, tz], u: [ux, uy, uz], k: FA.K[k], l: FA.LH ? FA.LH[k] : null });
+    }
+    return out;
+  }
+  function angIn(cam, R, v) { var X = (R[0] * v[0] + R[1] * v[1] + R[2] * v[2]) / cam.s, Y = (R[3] * v[0] + R[4] * v[1] + R[5] * v[2]) / cam.sy; return Math.atan2(-Y, X); }
+
+  function wncc(a, b, w) {
+    if (a.length < 50) return 0;
+    var sw = 0, ma = 0, mb = 0, j; for (j = 0; j < a.length; j++) { sw += w[j]; ma += w[j] * a[j]; mb += w[j] * b[j]; } ma /= sw; mb /= sw;
+    var sab = 0, saa = 0, sbb = 0; for (j = 0; j < a.length; j++) { var da = a[j] - ma, db = b[j] - mb; sab += w[j] * da * db; saa += w[j] * da * da; sbb += w[j] * db * db; }
+    return sab / Math.max(1e-12, Math.sqrt(saa * sbb));
+  }
+  /* 옆 사진(B)을 각도 R로 놓았을 때의 점수 */
+  function scoreAt(camB, FB, R, ref, yTop, CY, dx) {
+    var n = 0, la = [], lb = [], oa = [], ob = [], ow = [], seen = 0, i;
+    for (i = 0; i < ref.length; i++) {
+      var p = ref[i]; if (R[6] * p.nx + R[7] * p.ny + R[8] * p.nz < 0.25) continue;
+      seen++;
+      var q = prj(camB, R, p.x, p.y, p.z, yTop, CY), k = at(FB, q[0] + dx, q[1]); if (k < 0 || !(FB.K[k] > 0)) continue;
+      var pred = angIn(camB, R, p.t) - angIn(camB, R, p.u);              // 기준 사진 잔결을 이 사진에 비춘 것
+      pred = ((pred + Math.PI / 2) % Math.PI + Math.PI) % Math.PI - Math.PI / 2;
+      oa.push(pred); ob.push(FB.AH[k]); ow.push(p.k * FB.K[k]); n++;
+      if (p.l != null && FB.LH) { la.push(p.l); lb.push(FB.LH[k]); }
+    }
+    // 잔결끼리 무게 준 상관(둘 다 0 근처라 그냥 각 차이를 재면 어느 각도에서나 맞아 보임)
+    var ori = wncc(oa, ob, ow), lum = null;
+    if (la.length > 50) {
+      var ma = 0, mb = 0, j; for (j = 0; j < la.length; j++) { ma += la[j]; mb += lb[j]; } ma /= la.length; mb /= lb.length;
+      var sab = 0, saa = 0, sbb = 0; for (j = 0; j < la.length; j++) { var da = la[j] - ma, db = lb[j] - mb; sab += da * db; saa += da * da; sbb += db * db; }
+      lum = sab / Math.max(1e-9, Math.sqrt(saa * sbb));
+    }
+    var cover = seen ? n / seen : 0;
+    var sc = (lum != null ? S.wOri * ori + S.wLum * lum : ori) * Math.min(1, cover / 0.6);   // 겹쳐 보이는 머리가 너무 적으면 깎음
+    return { s: sc, ori: ori, lum: lum, n: n, cover: cover };
+  }
+
+  /* 옆 사진 한 장의 각도 찾기 — sign: 왼쪽 +1 · 오른쪽 −1 */
+  function estimate(camA, FA, camB, FB, sign, E, tU, yTop, CY) {
+    var Sf = surface(E, tU), ref = liftRef(camA, FA, Sf, yTop, CY);
+    if (ref.length < 200) return { err: '기준 사진에서 올린 겉면 점이 적음(' + ref.length + ')' };
+    var y0 = yawOf(camB.R), dxR = Math.round(S.dxPx * camB.iw / 488), dxS = Math.max(1, Math.round(S.dxStep * camB.iw / 488));
+    var curve = [], best = null, deg, dx;
+    for (deg = S.minDeg; deg <= S.maxDeg + 1e-6; deg += S.stepDeg) {
+      var R = rotYaw(camB.R, sign * deg - y0), bd = null;
+      for (dx = -dxR; dx <= dxR; dx += dxS) { var r = scoreAt(camB, FB, R, ref, yTop, CY, dx); if (!bd || r.s > bd.s) { bd = r; bd.dx = dx; } }
+      bd.deg = sign * deg; curve.push(bd); if (!best || bd.s > best.s) best = bd;
+    }
+    var bi = curve.indexOf(best), est = best.deg;
+    if (bi > 0 && bi < curve.length - 1) {                            // 꼭대기 포물선 보정
+      var a = curve[bi - 1].s, b = curve[bi].s, c = curve[bi + 1].s, den = a - 2 * b + c;
+      if (den < 0) est += sign * S.stepDeg * 0.5 * (a - c) / den;
+    }
+    var ss = curve.map(function (r) { return r.s; }).sort(function (p, q) { return p - q; }), med = ss[ss.length >> 1];
+    var cur = null; try { var Rc = camB.R, bc = null; for (dx = -dxR; dx <= dxR; dx += dxS) { var rc = scoreAt(camB, FB, Rc, ref, yTop, CY, dx); if (!bc || rc.s > bc.s) bc = rc; } cur = bc; } catch (e) {}
+    return { est: est, best: best, cur: cur, curDeg: y0, prom: best.s - med, edge: bi === 0 || bi === curve.length - 1, curve: curve, refN: ref.length };
+  }
+
+  /* ── 앱 연결 ─────────────────────────────────────────── */
+  function srcOf(cam) {
+    var mi = state.hairMasks && state.hairMasks[cam.angle]; if (!mi) return null;
+    var mw = mi.maskW || mi.w, kx = mw / mi.w, ky = (mi.maskH || mi.h) / mi.h, ori = mi.orientation;
+    return {
+      iw: cam.iw, ih: cam.ih, mask: mi,
+      hair: function (x, y) { return cam.smp.at(x, y) > 0; },
+      ori: function (x, y) { if (!ori || typeof sampleOrientation !== 'function') return null; try { return sampleOrientation(ori, x * kx, mw, y * ky); } catch (e) { return null; } },
+      lum: (mi.photoRGB && typeof photoRGBAt === 'function') ? function (x, y) { var c = photoRGBAt(mi, x, y); return c ? 0.299 * c[0] + 0.587 * c[1] + 0.114 * c[2] : null; } : null
+    };
+  }
+  function measuredYaw(angle) {
+    try { var src = getViewPoseSource(angle); if (src.tier === 'pnp' || src.tier === 'approx' || src.tier === 'live') return { deg: _rawViewYawDeg(angle), tier: src.tier }; } catch (e) {}
+    return null;
+  }
+
+  /* 중립 3D를 한 번 만든 뒤 — 고칠 각도가 있으면 true(그러면 3D를 다시 만듦) */
+  S.check = function () {
+    if (!S.on) return false;
+    var photo = state._hair3Dneutral; if (!photo) return false;
+    var probe = (photo.occ && photo.occ.probe) || (state.hairOcc3D && state.hairOcc3D.probe) || null;
+    if (!probe || !probe.cams) return false;
+    var masks = state.hairMasks || {}, sides = ['left', 'right'].filter(function (a) { return masks[a]; });
+    if (!sides.length || !masks[S.ref]) return false;
+    if (sides.every(function (a) { return masks[a]._seamDone; })) return false;      // 이 사진들로는 이미 함
+    sides.forEach(function (a) { masks[a]._seamDone = true; });
+    var t0 = (typeof performance !== 'undefined' ? performance.now() : Date.now());
+    var camA = null, cams = {}; probe.cams.forEach(function (c) { cams[c.angle] = c; }); camA = cams[S.ref];
+    var refTier = null; try { refTier = getViewPoseSource(S.ref).tier; } catch (e) {}
+    var out = { views: {}, applied: {}, note: '' };
+    if (!camA || refTier !== 'pnp') { out.note = '기준(' + S.ref + ') 사진 각도가 실측이 아님 — 안 함'; S.last = out; console.log(TAG + ' ' + out.note); return false; }
+    var E = getHeadEllipsoid(), cmU = 19; try { cmU = modelCmPerUnit() || 19; } catch (e) {}
+    var yTop = photo.yTop, CY = photo.CY, tU = S.thickCm / cmU;
+    var sA = srcOf(camA); if (!E || !sA) return false;
+    var FA = makeField(sA);
+    sides.forEach(function (a) {
+      var cB = cams[a], sB = cB && srcOf(cB); if (!sB) return;
+      var r = null; try { r = estimate(camA, FA, cB, makeField(sB), a === 'left' ? 1 : -1, E, tU, yTop, CY); } catch (e) { r = { err: String(e && e.message || e) }; }
+      r.meas = measuredYaw(a); out.views[a] = r;
+    });
+    // 검증 — 실측 있는 옆 사진에서 이음새 오차(크기 기준 · + = 이음새가 더 돌렸다고 봄)
+    var errs = [];
+    sides.forEach(function (a) { var r = out.views[a]; if (r && !r.err && r.meas) { r.errDeg = Math.abs(r.est) - Math.abs(r.meas.deg); errs.push(r.errDeg); } });
+    var checked = errs.length > 0, ok = checked ? errs.every(function (e) { return Math.abs(e) <= S.tolDeg; }) : S.applyUnchecked;
+    var bias = checked ? errs.reduce(function (p, q) { return p + q; }, 0) / errs.length : 0;
+    var changed = false;
+    sides.forEach(function (a) {
+      var r = out.views[a]; if (!r || r.err || r.meas) return;
+      var sign = a === 'left' ? 1 : -1, corr = sign * Math.max(S.minDeg, Math.min(S.maxDeg, Math.abs(r.est) - bias));
+      r.corr = corr;
+      if (!S.apply || !ok || r.edge) return;
+      if (Math.abs(corr - r.curDeg) < S.minChangeDeg) return;
+      S.yaw[a] = { deg: corr, mask: masks[a] }; out.applied[a] = corr; changed = true;
+    });
+    out.ok = ok; out.checked = checked; out.bias = bias; out.ms = Math.round((typeof performance !== 'undefined' ? performance.now() : Date.now()) - t0);
+    S.last = out;
+    console.log(S.lines().join('\n'));
+    return changed;
+  };
+  S.lines = function () {
+    var o = S.last; if (!o) return [TAG + ' 아직 안 함'];
+    if (o.note) return [TAG + ' ' + o.note];
+    var L = [TAG + ' 기준 ' + S.ref + ' · ' + o.ms + 'ms · 겉면 두께 ' + S.thickCm + 'cm · 잔결 반경 ' + S.hpPx + 'px · 무게 결 ' + S.wOri + '/밝기 ' + S.wLum + ' (끄기 ?seam=0 · 재기만 VIEW_SEAM.apply=false)'];
+    Object.keys(o.views).forEach(function (a) {
+      var r = o.views[a];
+      if (r.err) { L.push('  ' + a + ': 못 잼 — ' + r.err); return; }
+      var b = r.best, c = r.cur;
+      L.push('  ' + a + ': 이음새 ' + r.est.toFixed(1) + '°' + (r.edge ? '(범위 끝 — 못 믿음)' : '') + ' · 점수 ' + b.s.toFixed(3) + '(결 ' + b.ori.toFixed(3) + (b.lum != null ? ' · 밝기 ' + b.lum.toFixed(3) : ' · 밝기 없음') + ' · 겹침 ' + Math.round(b.cover * 100) + '% · 가로 ' + (b.dx >= 0 ? '+' : '') + b.dx + 'px)'
+        + ' · 꼭대기 두드러짐 ' + r.prom.toFixed(3)
+        + ' | 지금 ' + r.curDeg.toFixed(1) + '°' + (c ? '(점수 ' + c.s.toFixed(3) + ')' : '')
+        + (r.meas ? ' | 실측 ' + r.meas.deg.toFixed(1) + '°(' + r.meas.tier + ') → 검증 오차 ' + (r.errDeg >= 0 ? '+' : '') + r.errDeg.toFixed(1) + '°' : ' | 실측 없음 → 치우침 뺀 값 ' + (r.corr != null ? r.corr.toFixed(1) + '°' : '-')
+          + (o.applied[a] != null ? ' → <b>적용</b>' : (!S.apply ? ' → 재기만' : !o.ok ? (o.checked ? ' → 안 함(검증 오차 ' + S.tolDeg + '° 넘음)' : ' → 안 함(검증할 실측 옆 사진 없음)') : r.edge ? ' → 안 함(범위 끝)' : ' → 안 함(차이 ' + S.minChangeDeg + '° 미만)'))));
+    });
+    if (o.checked) L.push('  검증: 실측 옆 사진에서 평균 치우침 ' + (o.bias >= 0 ? '+' : '') + o.bias.toFixed(1) + '° · ' + (o.ok ? '통과' : '실패') + '(허용 ±' + S.tolDeg + '°)');
+    return L;
+  };
+  /* 01 _rawViewYawDeg가 부름 — 이 사진들에 대해 고친 각도가 있으면 */
+  S.yawFor = function (angle) {
+    var y = S.yaw[angle]; if (!y || !S.on) return null;
+    if (!(state.hairMasks && state.hairMasks[angle] === y.mask)) { delete S.yaw[angle]; return null; }   // 사진이 바뀜
+    return y.deg;
+  };
+  /* buildNeutralHair3D 바깥 단계 — 한 번 만들고, 각도를 고쳤으면 한 번 더 */
+  S._wrap = function (core, cb) {
+    core(function () {
+      var again = false; try { again = S.check(); } catch (e) { console.warn(TAG + ' 실패 — 그대로 씀', e); }
+      if (again) { console.log(TAG + ' 각도를 고쳐 3D를 다시 만듭니다'); core(cb); }
+      else if (cb) cb();
+    });
+  };
+  S._test = { makeField: makeField, estimate: estimate, rotYaw: rotYaw, yawOf: yawOf, scoreAt: scoreAt };
+  try { console.log(TAG + ' 설치 — 정면 사진과의 이음새(겉면 잔결·잔밝기)로 옆 사진 각도를 재고, 실측 옆 사진으로 검증되면 실측 없는 쪽을 고침 · 끄기 ?seam=0'); } catch (e) {}
+  return S;
+})();
+
 const NEUTRAL_BUILD = { singleFlight: true, running: false, waiters: [] };
 /* 중립 3D 모델 만들기 — 바깥 단계(위가 바깥): (옛 54) 빠진 사람 윤곽 채우기 → (옛 52) 360 추가 사진 분석 → buildNeutralHair3DCore */
 function buildNeutralHair3D(cb){
   const self = this, args = arguments;
   return BODY_SEG_WAIT._build(() =>
-    VIEWS360._build(() => buildNeutralHair3DCore.apply(self, args)));
+    VIEWS360._build(() => (typeof VIEW_SEAM !== 'undefined' && VIEW_SEAM.on)
+      ? VIEW_SEAM._wrap(cb2 => buildNeutralHair3DCore.call(self, cb2), cb)       // (2026-10-26) 한 번 만들고 이음새로 옆 사진 각도를 고쳤으면 한 번 더
+      : buildNeutralHair3DCore.apply(self, args)));
 }
 function buildNeutralHair3DCore(cb){
   if(typeof THREE === 'undefined'){ cb && cb(); return; }
