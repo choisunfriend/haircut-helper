@@ -64,7 +64,7 @@ var READ_STEPS = (function () {
        잰 것(직모 단발 15:11 디버그 파일 · 아래 20% 높이): 경계에서 0.3cm 안 결의 44~72%가 거의 수평(밑단선) · 0.8~1.5cm 안 9~19% · 그 안쪽 3~7%.
        사진은 밑단까지 곧게 내려오는데 가닥이 밑단선을 따라 옆으로 돌아 다시 올라가 길이가 25→50cm · 3cm 넘게 거슬러 오른 가닥 1→59%.
        ⚠ 곱슬처럼 경계를 따라 진짜로 감기는 결도 같이 빠질 수 있음. 끄기 ?edgefix=0 · READ_STEPS.edgeFix=false */
-    edgeFix: true, edgeFrac: 0.02, edgeDeg: 30,
+    edgeFix: false /* (2026-10-25d) 끔 — 원인(머리 밖 밝기 경계를 읽던 것)을 04 HAIR_READ_MASK가 없앰(결을 머리 안 픽셀로만 계산). 옆머리처럼 경계를 따라 흐르는 진짜 결까지 지우고 있었음(직모 정면 메운 칸 41% 중 39%가 또렷하게 읽은 칸) · 켜기 ?edgefix=1 */, edgeFrac: 0.02, edgeDeg: 30,
     trim: false /* (2026-10-22) 끔 — 위 '판정 단계 끔' · 켜기 ?rgtrim=1 */, trimTolCm: 0.4, trimOutCm: 1.0, trimTailCm: 0.4, trimKeepPts: 3
   }, W.READ_STEPS || {});
   try { var mT = /[?&]rgtrim=([01])/.exec(location.search); if (mT) S.trim = mT[1] === '1'; } catch (e) {}
@@ -204,6 +204,52 @@ var READ_STEPS = (function () {
     }
     return { n: n, near: near, band: band };
   }
+  /* (2026-10-25j) 머리 끝 경계 결 — 사용자: "머리끝에서 가로결이 읽히거나, 꺾이는 부위 · 경계라서 그런 듯"
+     잰 것(디버그 2214·2218·2221·2225·2241): 머리 안 픽셀로만 읽어도(HAIR_READ_MASK) 밑단 경계 3~6px 안 결의 50~73%가 가로, 6~16px도 안쪽보다 높음
+     (예: 2225 오른쪽 57/23/13% → 16px 안쪽 1.9%). 후보 다섯(구조텐서 셋·방향필터·밴드패스)이 모두 같이 가로 → 섞기로는 못 고침.
+     원인: 머리카락이 끝나며 머리↔배경 밝기 차가 머리 영역 "안"에 생김(끝이 성겨지는 띠) → 그 밝기 경계를 결로 읽음.
+     edgeFix(경계와 나란하면 다 뺌)는 옆머리처럼 경계를 따라 흐르는 진짜 결까지 지워서 꺼 둠.
+     지금: 그 자리 앞뒤만 봄(머리 전체 판정 없음) — 경계 띠(tipBandPx) 안에서 결이 경계와 나란한데(tipParDeg° 안)
+       경계 안쪽(띠 바로 안) 결은 경계를 가로지르면(경계와 tipCrossDeg° 넘게) = 끝을 향해 내려오던 결이 경계에서만 옆으로 꺾인 것 → 안쪽 결을 이어 감.
+       안쪽 결도 경계와 나란하면(옆머리) 손대지 않음. 경계에 가까울수록 안쪽 결 쪽으로 많이(띠 끝에서 0) · 또렷함은 estCohTip로 낮춰 "추정" 표시(est 3).
+     거리(px)는 필터 창 크기(절대 px)에서 나온 것이라 사진 크기로 늘리지 않음. 끄기 READ_STEPS.tipFix=false · ?tipfix=0 */
+  S.tipFix = S.tipFix !== false; S.tipBandPx = S.tipBandPx || 12; S.tipRefPx = S.tipRefPx || 6; S.tipParDeg = S.tipParDeg || 35; S.tipCrossDeg = S.tipCrossDeg || 45; S.estCohTip = S.estCohTip || 0.3;
+  try { var mTF = /[?&]tipfix=([01])/.exec(location.search); if (mTF) S.tipFix = mTF[1] === '1'; } catch (e) {}
+  function tipFixField(ang, coh, mask, w, h, est) {
+    var N = w * h, D = new Float32Array(N), i, x, y, BIG = 1e9, band = S.tipBandPx, ref = band + S.tipRefPx, n = 0, near = 0, skipSide = 0;
+    for (i = 0; i < N; i++) D[i] = mask[i] ? BIG : 0;
+    for (y = 0; y < h; y++) for (x = 0; x < w; x++) { i = y * w + x; if (!D[i]) continue; var v = D[i];
+      if (x > 0 && D[i - 1] + 1 < v) v = D[i - 1] + 1; if (y > 0 && D[i - w] + 1 < v) v = D[i - w] + 1;
+      if (x > 0 && y > 0 && D[i - w - 1] + 1.414 < v) v = D[i - w - 1] + 1.414; if (x < w - 1 && y > 0 && D[i - w + 1] + 1.414 < v) v = D[i - w + 1] + 1.414;
+      if (x === 0 || y === 0 || x === w - 1) v = Math.min(v, 1); D[i] = v; }
+    for (y = h - 1; y >= 0; y--) for (x = w - 1; x >= 0; x--) { i = y * w + x; if (!D[i]) continue; var v2 = D[i];
+      if (x < w - 1 && D[i + 1] + 1 < v2) v2 = D[i + 1] + 1; if (y < h - 1 && D[i + w] + 1 < v2) v2 = D[i + w] + 1;
+      if (x < w - 1 && y < h - 1 && D[i + w + 1] + 1.414 < v2) v2 = D[i + w + 1] + 1.414; if (x > 0 && y < h - 1 && D[i + w - 1] + 1.414 < v2) v2 = D[i + w - 1] + 1.414;
+      if (y === h - 1) v2 = Math.min(v2, 1); D[i] = v2; }
+    // 안쪽 결(띠 밖 칸만 · 또렷함 무게 · 2배각 흐림) — 띠 칸의 기준
+    var C = new Float32Array(N), Sn = new Float32Array(N), Wt = new Float32Array(N);
+    for (i = 0; i < N; i++) if (mask[i] && D[i] > band) { var cw = Math.max(0.05, coh[i]); C[i] = cw * Math.cos(2 * ang[i]); Sn[i] = cw * Math.sin(2 * ang[i]); Wt[i] = cw; }
+    C = gblur(C, w, h, 3); Sn = gblur(Sn, w, h, 3); Wt = gblur(Wt, w, h, 3);
+    var Ds = gblur(D, w, h, 2), cosP = Math.cos(S.tipParDeg * Math.PI / 180), cosX = Math.cos(S.tipCrossDeg * Math.PI / 180);
+    var nA = new Float32Array(N), nC = new Float32Array(N), hit = [];
+    for (y = 2; y < h - 2; y++) for (x = 2; x < w - 2; x++) {
+      i = y * w + x; if (!mask[i] || D[i] > band) continue; near++;
+      var gx = Ds[i + 1] - Ds[i - 1], gy = Ds[i + w] - Ds[i - w], gl = Math.hypot(gx, gy); if (gl < 0.2) continue;
+      var nx = gx / gl, ny = gy / gl, tx = -ny, ty = nx;                            // 안쪽 법선 · 경계선 방향
+      if (Math.abs(Math.cos(ang[i]) * tx + Math.sin(ang[i]) * ty) < cosP) continue;   // 경계와 나란하지 않음 — 그대로
+      var rx = Math.round(x + nx * (ref - D[i])), ry = Math.round(y + ny * (ref - D[i]));
+      if (rx < 0 || ry < 0 || rx >= w || ry >= h) continue; var j = ry * w + rx;
+      if (!mask[j] || D[j] <= band || Wt[j] < 1e-4) continue;                       // 안쪽이 얇아 기준이 없음 — 그대로
+      var ra = 0.5 * Math.atan2(Sn[j], C[j]);
+      if (Math.abs(Math.cos(ra) * tx + Math.sin(ra) * ty) > cosX) { skipSide++; continue; }   // 안쪽도 경계를 따라 흐름(옆머리) — 그대로
+      var t = 1 - D[i] / (band + 1); if (t < 0) t = 0;                               // 경계에서 1 · 띠 끝에서 0
+      var c2 = (1 - t) * Math.cos(2 * ang[i]) + t * Math.cos(2 * ra), s2 = (1 - t) * Math.sin(2 * ang[i]) + t * Math.sin(2 * ra);
+      hit.push(i); nA[i] = 0.5 * Math.atan2(s2, c2); nC[i] = Math.min(coh[i], S.estCohTip + (1 - t) * (coh[i] - S.estCohTip));
+    }
+    for (var q = 0; q < hit.length; q++) { i = hit[q]; ang[i] = nA[i]; coh[i] = Math.max(S.minCoh, nC[i]); if (est) est[i] = 3; n++; }
+    return { n: n, near: near, side: skipSide, band: band };
+  }
+  S._tipFixField = tipFixField;   // 시험용(콘솔·하네스)
   /* 04 GABOR_ORIENT.refine 뒤에 끼움 */
   function install04() {
     var GO = W.GABOR_ORIENT; if (!GO || GO._rsWrapped) return !!GO;
@@ -232,11 +278,13 @@ var READ_STEPS = (function () {
         var N = Wd * Hd, i, raw = null, rc = null;
         if (S.keepSnap) { raw = new Int8Array(N); rc = new Uint8Array(N); for (i = 0; i < N; i++) { raw[i] = Math.max(-127, Math.min(127, Math.round(f.angle[i] / (Math.PI / 2) * 127))); rc[i] = Math.max(0, Math.min(255, Math.round(f.coherence[i] * 255))); } }
         var eg = null; if (S.edgeFix) { try { eg = edgeClear(f.angle, f.coherence, mask, Wd, Hd); } catch (e2) { eg = { err: String(e2 && e2.message || e2) }; } }
-        var o = bridgeFill(f.angle, f.coherence, mask, Wd, Hd); o.stats.edge = eg;
+        var tf = null, tfEst = new Uint8Array(N); if (S.tipFix) { try { tf = tipFixField(f.angle, f.coherence, mask, Wd, Hd, tfEst); } catch (e3) { tf = { err: String(e3 && e3.message || e3) }; } }
+        var o = bridgeFill(f.angle, f.coherence, mask, Wd, Hd); o.stats.edge = eg; o.stats.tip = tf;
+        if (tf && !tf.err) for (i = 0; i < N; i++) if (tfEst[i] && !o.est[i]) o.est[i] = 3;
         f.est = o.est;
         S.byView[view] = { w: Wd, h: Hd, raw: raw, coh: rc, est: o.est, stats: o.stats, cmp: cmp, at: Date.now() };
         var s = o.stats;
-        console.log(TAG + ' ' + view + ' ' + Wd + '×' + Hd + (s.edge && !s.edge.err ? ' · 경계 결 뺌 ' + s.edge.n + '/' + s.edge.near + '칸(경계 ' + s.edge.band + 'px 안)' : '') + ' · 건넘 ' + pct(s.bridged, s.hair) + ' · 채움 ' + pct(s.filled, s.hair) + ' · 끊김 ' + s.breaks + '곳 중 이어져 건넌 ' + s.bridgedRuns + ' · 진짜 꺾임 ' + s.turns + ' · ' + s.ms + 'ms');
+        console.log(TAG + ' ' + view + ' ' + Wd + '×' + Hd + (s.edge && !s.edge.err ? ' · 경계 결 뺌 ' + s.edge.n + '/' + s.edge.near + '칸(경계 ' + s.edge.band + 'px 안)' : '') + ' · 건넘 ' + pct(s.bridged, s.hair) + ' · 채움 ' + pct(s.filled, s.hair) + (s.tip && !s.tip.err ? ' · 끝 경계 결 이어 감 ' + s.tip.n + '/' + s.tip.near + '칸(옆머리라 둠 ' + s.tip.side + ')' : '') + ' · 끊김 ' + s.breaks + '곳 중 이어져 건넌 ' + s.bridgedRuns + ' · 진짜 꺾임 ' + s.turns + ' · ' + s.ms + 'ms');
       } catch (e) { console.warn(TAG + ' 실패(읽은 그대로 둠)', e); }
       return r;
     };
@@ -335,15 +383,17 @@ var READ_STEPS = (function () {
     Object.keys(S.byView).forEach(function (v) {
       var b = S.byView[v], s = b.stats;
       L.push('  ' + v + ' ' + b.w + '×' + b.h + ' · 머리 ' + s.hair + 'px · 건넘 ' + pct(s.bridged, s.hair) + ' · 한쪽에서만 건넘(안 고침) ' + pct(s.oneSide, s.hair) + ' · 채움 ' + pct(s.filled, s.hair) +
-        (s.edge && !s.edge.err ? ' · 경계와 나란해 뺀 결 ' + pct(s.edge.n, s.hair) + '(경계 ' + s.edge.band + 'px 안 ' + pct(s.edge.n, s.edge.near) + ' · 끄기 ?edgefix=0)' : '') + ' · 끊김 ' + s.breaks + '곳 → 이어져 건넌 ' + s.bridgedRuns + ' / 진짜 꺾임 ' + s.turns + ' · 내다봄 ' + s.look + 'px · 확인 ' + s.resume + 'px · ' + s.ms + 'ms');
+        (s.tip ? (s.tip.err ? ' · 끝 경계 ⚠ ' + s.tip.err : ' · 끝 경계 결 이어 감 ' + pct(s.tip.n, s.hair) + '(경계 ' + s.tip.band + 'px 안 ' + pct(s.tip.n, s.tip.near) + ' · 안쪽도 경계 따라 흘러 둠 ' + s.tip.side + '칸 · 끄기 ?tipfix=0)') : '') + (s.edge && !s.edge.err ? ' · 경계와 나란해 뺀 결 ' + pct(s.edge.n, s.hair) + '(경계 ' + s.edge.band + 'px 안 ' + pct(s.edge.n, s.edge.near) + ' · 끄기 ?edgefix=0)' : '') + ' · 끊김 ' + s.breaks + '곳 → 이어져 건넌 ' + s.bridgedRuns + ' / 진짜 꺾임 ' + s.turns + ' · 내다봄 ' + s.look + 'px · 확인 ' + s.resume + 'px · ' + s.ms + 'ms');
     });
+    try { if (typeof ANALYSIS_TIME !== 'undefined') ANALYSIS_TIME.lines().forEach(function (l) { L.push(l); }); } catch (e) {}   // (2026-10-25f) 분석 시간
+    try { if (W.SEG_CONF && typeof W.SEG_CONF.lines === 'function') W.SEG_CONF.lines().forEach(function (l) { L.push(l); }); } catch (e) {}   // (2026-10-25e) 세그 확신도
     try { var SZ = W.SUBJECT_ZOOM, zk = SZ && SZ.stats ? Object.keys(SZ.stats) : []; if (zk.length) L.push('  머리 키우기(작게 찍힌 사진을 머리 둘레로 잘라 키움 · 끄기 SUBJECT_ZOOM.on=false): ' + zk.map(function (k) { var z = SZ.stats[k]; return k + ' ' + (z.done && z.out ? z.src + '→' + z.out + '(×' + z.scale + ' · 머리 폭 ' + z.headPxBefore + '→' + z.headPxAfter + 'px)' : (z.why || '안 함')); }).join(' · ')); } catch (e) {}
     try { L.push('  웨이브 배수: ' + (W.READ_SHAPE && W.READ_SHAPE.waveGainAuto === false && !(W.READ_SHAPE.waveGain > 1) ? '꺼짐(읽은 흔들림 그대로 · 켜기 ?wavegain=1)' : '켜짐 ×' + (W.READ_SHAPE ? W.READ_SHAPE.waveGain : '?') + (W.READ_SHAPE && W.READ_SHAPE.waveGainAuto ? '(자동)' : ''))); } catch (e) {}
     var f1 = function (v, k) { return isFinite(v) ? (+v).toFixed(k == null ? 2 : k) : '-'; };
     Object.keys(S.byView).forEach(function (v) {
       var c = S.byView[v].cmp; if (c && c.mix) { var M = c.mix, sm = c.shapeMix || {};
         L.push('  ' + v + ' 자리마다 고른 결(mix) — ' + M.names.map(function (nm, k) { return nm + ' ' + f1(M.picked[k] * 100, 0) + '%'; }).join(' · ') +
-          ' · 다 같아 고를 것 없던 칸 ' + f1(M.sameFrac * 100, 0) + '% | 사진과 맞음(고른 칸 기준 · 작을수록 좋음) 고른 결 ' + f1(M.fitBest, 3) + ' vs ' + M.names.map(function (nm, k) { return nm + ' ' + f1(M.fitMean[k], 3); }).join(' · ') +
+          ' · 다 같아 고를 것 없던 칸 ' + f1(M.sameFrac * 100, 0) + '%' + (M.badFrac != null ? ' · 판정 선이 머리 밖이라 못 잰 칸 ' + f1(M.badFrac * 100, 1) + '%' : '') + (M.blend ? ' · 섞기(1등 무게 몫 평균 ' + f1(M.topShare * 100, 0) + '% · τ ' + M.tau + ' · 예전 고르기 ?mixblend=0)' : ' · 고르기(칸마다 1등)') + ' | 사진과 맞음(고른 칸 기준 · 작을수록 좋음) 고른 결 ' + f1(M.fitBest, 3) + ' vs ' + M.names.map(function (nm, k) { return nm + ' ' + f1(M.fitMean[k], 3); }).join(' · ') +
           ' | 모양 곧은 선 ' + f1(sm.straightFrac * 100, 0) + '% · 진폭 ' + f1(sm.ampPx, 1) + 'px · 파장 ' + f1(sm.lamPx, 1) + 'px · ' + M.ms + 'ms'); }
       if (!c || c.err) { if (c && c.err) L.push('  ' + v + ' 두 방식 비교 실패: ' + c.err); return; }
       var a = c.shapeST || {}, b = c.shapeGB || {};
@@ -425,6 +475,17 @@ var READ_STEPS = (function () {
      판정: 그 방향을 따라 그은 9px 선의 밝기 흔들림 ÷ 수직으로 그은 9px 선의 흔들림 — 작을수록 사진의 결과 맞음(머리카락은 결을 따라 밝기가 이어짐).
      사진 15장(생성 웨이브·직모·곱슬 + 실사)에서 자리마다 고른 결이 네 세트 모두 가장 잘 맞았음(지금 방향필터 대비 5~21%). 결 또렷함은 그대로(다시 기르기 기준값이 그 값에 맞춰져 있음). */
   S.mixLh = 4; S.mixBlock = 3; S.mixSame = 8 * Math.PI / 180;   // 후보가 모두 8° 안이면 판정 생략   // 3×3마다 한 번 고름(속도 · 2×2와 결과 같음) · 1 = 픽셀마다
+  /* (2026-10-25i) 고르기 → 섞기 — 사용자: "부분최적화가 전체최적화는 아니긴 하지" · "판정없이 읽기가 결 자체를 반영해줘야"
+     실측(디버그 1900·1903·1905 · 세 머리 모두): 칸마다 1등 후보로 갈아 끼운 결이 어느 후보 하나보다도 거칠었음(2칸 이웃 결 차이 중앙 —
+     직모 정면 9.2° vs 구조텐서 7.8° · 방향필터 6.4° / 웨이브 정면 4.3° vs 2.1° / 남자 정면 4.3° vs 2.1°).
+     원인: ① 후보끼리 몇 °밖에 안 다를 때 맞음 점수 차는 픽셀 잡음 수준이라 1등이 칸마다 무작위로 바뀜 ② 3×3 칸 경계에서 후보가 통째로 바뀜.
+     지금: 칸마다 후보별 맞음 점수 v로 무게 w = exp(−(v − v최소) ÷ (mixTau × v최소)) — 점수가 비슷하면 고르게, 크게 벌어지면 1등 쪽으로.
+     무게는 칸 가운데에 두고 픽셀마다 이웃 네 칸 무게를 이어 붙여(쌍선형) 2배각으로 평균 → 칸 경계에서 안 튐.
+     머리 종류 판정 없음(그 자리 점수 차만 봄). 끄기 READ_STEPS.mixBlend=false(예전: 칸마다 1등)
+     τ 고르기(테스트 17장 5세트 — 페이드·실사 남자·중단발·직모 단발·곱슬): τ가 클수록 매끄럽고 사진과 맞음은 조금씩 나빠짐.
+     0.3 = 사진과 맞음이 예전(칸마다 1등)과 같은 마지막 자리(그 뒤로는 예전보다 나빠짐) · 잔떨림은 예전보다 31~39% 적음 · 0.3→0.5는 매끄러움 이득 0.1~0.2°뿐 */
+  S.mixBlend = S.mixBlend !== false; S.mixTau = S.mixTau || 0.3;
+  try { if (/[?&]mixblend=0/.test(location.search)) S.mixBlend = false; } catch (e) {}
   function grayOf(px, N) { var g = new Float32Array(N), i, j; for (i = 0, j = 0; i < N; i++, j += 4) g[i] = (0.299 * px[j] + 0.587 * px[j + 1] + 0.114 * px[j + 2]) / 255; return g; }
   function boxH(src, dst, w, h, r) {          // 가로 상자 평균(가장자리는 끝값 반복)
     var n = 2 * r + 1, y, x, row, acc, last;
@@ -453,16 +514,27 @@ var READ_STEPS = (function () {
     for (k = 0; k < 3; k++) { boxH(o, t, w, h, r); boxV(t, o, w, h, r); }
     return o;
   }
-  function stAt(g, w, h, sig, pre) {     // 구조텐서(가우시안 창 sig, 미리 흐림 pre) → 결 방향(이미지 좌표, -π/2..π/2)
-    var a = pre > 0 ? fblur(g, w, h, pre) : g, N = w * h, gx = new Float32Array(N), gy = new Float32Array(N), x, y, i;
+  /* (2026-10-25e) 머리 안 픽셀로만 — 04 HAIR_READ_MASK와 같은 방식. M = 머리 칸(1/0, Float32) */
+  function maskF(mask, N) { var m = new Float32Array(N), i; for (i = 0; i < N; i++) m[i] = mask[i] ? 1 : 0; return m; }
+  function nblur(a, M, w, h, sig) {      // 머리 칸끼리만 흐림(머리 칸 수로 나눔)
+    var N = w * h, t = new Float32Array(N), i; for (i = 0; i < N; i++) t[i] = a[i] * M[i];
+    var num = fblur(t, w, h, sig), den = fblur(M, w, h, sig);
+    for (i = 0; i < N; i++) num[i] = den[i] > 1e-4 ? num[i] / den[i] : 0;
+    return num;
+  }
+  function stAt(g, w, h, sig, pre, M) {     // 구조텐서(가우시안 창 sig, 미리 흐림 pre) → 결 방향(이미지 좌표, -π/2..π/2) · M이 있으면 머리 안 픽셀로만
+    var N = w * h, a = pre > 0 ? (M ? nblur(g, M, w, h, pre) : fblur(g, w, h, pre)) : g, gx = new Float32Array(N), gy = new Float32Array(N), V = M ? new Float32Array(N) : null, x, y, i;
     for (y = 1; y < h - 1; y++) for (x = 1; x < w - 1; x++) {
       i = y * w + x;
+      if (M && !(M[i - w - 1] && M[i - w] && M[i - w + 1] && M[i - 1] && M[i] && M[i + 1] && M[i + w - 1] && M[i + w] && M[i + w + 1])) continue;   // 3×3이 모두 머리 안일 때만
+      if (V) V[i] = 1;
       gx[i] = (a[i - w + 1] + 2 * a[i + 1] + a[i + w + 1]) - (a[i - w - 1] + 2 * a[i - 1] + a[i + w - 1]);
       gy[i] = (a[i + w - 1] + 2 * a[i + w] + a[i + w + 1]) - (a[i - w - 1] + 2 * a[i - w] + a[i - w + 1]);
     }
     var J11 = new Float32Array(N), J22 = new Float32Array(N), J12 = new Float32Array(N);
     for (i = 0; i < N; i++) { J11[i] = gx[i] * gx[i]; J22[i] = gy[i] * gy[i]; J12[i] = gx[i] * gy[i]; }
-    J11 = fblur(J11, w, h, sig); J22 = fblur(J22, w, h, sig); J12 = fblur(J12, w, h, sig);
+    if (V) { J11 = nblur(J11, V, w, h, sig); J22 = nblur(J22, V, w, h, sig); J12 = nblur(J12, V, w, h, sig); }
+    else { J11 = fblur(J11, w, h, sig); J22 = fblur(J22, w, h, sig); J12 = fblur(J12, w, h, sig); }
     var o = new Float32Array(N);
     for (i = 0; i < N; i++) { var t = 0.5 * Math.atan2(2 * J12[i], J11[i] - J22[i]) + Math.PI / 2; if (t > Math.PI / 2) t -= Math.PI; o[i] = t; }
     return o;
@@ -472,27 +544,77 @@ var READ_STEPS = (function () {
     var x0 = x | 0, y0 = y | 0, fx = x - x0, fy = y - y0, i = y0 * w + x0;
     return (g[i] * (1 - fx) + g[i + 1] * fx) * (1 - fy) + (g[i + w] * (1 - fx) + g[i + w + 1] * fx) * fy;
   }
-  function fitAt(g, w, h, x, y, t, Lh) {   // 결 따라 흔들림 ÷ 가로질러 흔들림
-    var c = Math.cos(t), s = Math.sin(t), k, pa = bil(g, w, h, x - Lh * c, y - Lh * s), pp = bil(g, w, h, x + Lh * s, y - Lh * c), va = 0, vp = 0, a, p;
-    for (k = -Lh + 1; k <= Lh; k++) { a = bil(g, w, h, x + k * c, y + k * s); p = bil(g, w, h, x - k * s, y + k * c); va += Math.abs(a - pa); vp += Math.abs(p - pp); pa = a; pp = p; }
+  function inM(mask, w, h, x, y) { var xi = Math.round(x), yi = Math.round(y); return xi >= 0 && yi >= 0 && xi < w && yi < h && !!mask[yi * w + xi]; }
+  function fitAt(g, w, h, x, y, t, Lh, mask) {   // 결 따라 흔들림 ÷ 가로질러 흔들림 · (2026-10-25e) mask가 있으면 머리 밖 점이 낀 마디는 안 셈
+    var c = Math.cos(t), s = Math.sin(t), k, ax0 = x - Lh * c, ay0 = y - Lh * s, px0 = x + Lh * s, py0 = y - Lh * c, pa = bil(g, w, h, ax0, ay0), pp = bil(g, w, h, px0, py0), va = 0, vp = 0, na = 0, np = 0, a, p;
+    var ia = !mask || inM(mask, w, h, ax0, ay0), ip = !mask || inM(mask, w, h, px0, py0);
+    for (k = -Lh + 1; k <= Lh; k++) {
+      var axk = x + k * c, ayk = y + k * s, pxk = x - k * s, pyk = y + k * c, ja = !mask || inM(mask, w, h, axk, ayk), jp = !mask || inM(mask, w, h, pxk, pyk);
+      a = bil(g, w, h, axk, ayk); p = bil(g, w, h, pxk, pyk);
+      if (ia && ja) { va += Math.abs(a - pa); na++; } if (ip && jp) { vp += Math.abs(p - pp); np++; }
+      pa = a; pp = p; ia = ja; ip = jp;
+    }
+    if (mask) { if (!na || !np) return 1e9; va /= na; vp /= np; return va / (vp + 1e-4); }
     return va / (vp + 1e-4 * 2 * Lh);
   }
   function mixField(px, mask, Wd, Hd, stA, gbA) {
-    var t0 = performance.now(), N = Wd * Hd, g = grayOf(px, N), c2 = stAt(g, Wd, Hd, 2, 0.7), t1 = performance.now(), c4 = stAt(g, Wd, Hd, 4, 1.0), t2 = performance.now(), cands = [stA, c2, c4], names = ['구조텐서7px', '구조텐서σ2', '구조텐서σ4'];
+    var MK = !!(W.HAIR_READ_MASK && W.HAIR_READ_MASK.on), M = MK ? maskF(mask, Wd * Hd) : null, mk = MK ? mask : null;
+    var t0 = performance.now(), N = Wd * Hd, g = grayOf(px, N), c2 = stAt(g, Wd, Hd, 2, 0.7, M), t1 = performance.now(), c4 = stAt(g, Wd, Hd, 4, 1.0, M), t2 = performance.now(), cands = [stA, c2, c4], names = ['구조텐서7px', '구조텐서σ2', '구조텐서σ4'];
     if (gbA) { cands.push(gbA); names.push('방향필터'); }
-    var out = new Float32Array(stA), cnt = new Array(cands.length).fill(0), sum = new Array(cands.length).fill(0), sumBest = 0, n = 0, i, k, Lh = S.mixLh, B = Math.max(1, S.mixBlock | 0), bx, by, dx, dy, same = 0;
-    // B×B 칸마다 가운데 픽셀에서 한 번 고르고, 그 칸의 픽셀은 고른 후보의 자기 값을 씀(방향은 픽셀마다 그대로)
+    /* (2026-10-25e) 밴드패스 후보 — 넓은 범위의 밝기 변화(광택 띠·그늘)를 빼고 머리카락 굵기 무늬만 남겨 읽음(σ1 흐림 − σ4 흐림 → 구조텐서 σ2).
+       실측(직모 뒤 사진): 광택 띠 가장자리에서 30° 넘게 어긋난 결 18.2% → 12.0% · 조명이 고른 자리는 그대로. 자리마다 고르는 후보라 맞는 자리에서만 뽑힘.
+       끄기 READ_STEPS.mixBandpass=false */
+    if (S.mixBandpass !== false) {
+      try { var gb1 = M ? nblur(g, M, Wd, Hd, 1.0) : fblur(g, Wd, Hd, 1.0), gb4 = M ? nblur(g, M, Wd, Hd, 4.0) : fblur(g, Wd, Hd, 4.0), bp = new Float32Array(N), ib; for (ib = 0; ib < N; ib++) bp[ib] = gb1[ib] - gb4[ib];
+        cands.push(stAt(bp, Wd, Hd, 2, 0, M)); names.push('밴드패스'); } catch (eB) {}
+    }
+    var out = new Float32Array(stA), K = cands.length, cnt = new Array(K).fill(0), sum = new Array(K).fill(0), sumN = new Array(K).fill(0), sumBest = 0, n = 0, bad = 0, i, k, Lh = S.mixLh, B = Math.max(1, S.mixBlock | 0), bx, by, dx, dy, same = 0;
+    var GX = Math.ceil(Wd / B), GY = Math.ceil(Hd / B), WG = S.mixBlend ? new Float32Array(GX * GY * K) : null, HAS = S.mixBlend ? new Uint8Array(GX * GY) : null, wsum = 0, wmax = 0;
+    // B×B 칸마다 가운데 픽셀에서 한 번 잼. 고르기(mixBlend=false): 그 칸 픽셀은 1등 후보의 자기 값 · 섞기: 칸마다 후보 무게를 둠
     for (by = 0; by < Hd; by += B) for (bx = 0; bx < Wd; bx += B) {
-      var cx = Math.min(Wd - 1, bx + (B >> 1)), cy = Math.min(Hd - 1, by + (B >> 1)), ci = cy * Wd + cx;
+      var cx = Math.min(Wd - 1, bx + (B >> 1)), cy = Math.min(Hd - 1, by + (B >> 1)), ci = cy * Wd + cx, gi = (by / B | 0) * GX + (bx / B | 0);
       if (!mask[ci]) { var found = -1; for (dy = 0; dy < B && found < 0; dy++) for (dx = 0; dx < B; dx++) { var jj = (by + dy) * Wd + bx + dx; if (by + dy < Hd && bx + dx < Wd && mask[jj]) { found = jj; break; } } if (found < 0) continue; ci = found; cx = ci % Wd; cy = (ci / Wd) | 0; }
-      var bi = 0, bv = 1e9, v, a0 = cands[0][ci], agreeAll = true;
-      for (k = 1; k < cands.length; k++) { var dd = Math.abs(cands[k][ci] - a0); if (dd > Math.PI / 2) dd = Math.PI - dd; if (dd > S.mixSame) { agreeAll = false; break; } }
-      if (agreeAll) { same++; for (dy = 0; dy < B; dy++) for (dx = 0; dx < B; dx++) { if (by + dy >= Hd || bx + dx >= Wd) continue; i = (by + dy) * Wd + bx + dx; if (mask[i]) out[i] = cands[0][i]; } continue; }   // 다 같은 방향 — 고를 것 없음(구조텐서 7px 값)
-      for (k = 0; k < cands.length; k++) { v = fitAt(g, Wd, Hd, cx, cy, cands[k][ci], Lh); sum[k] += v; if (v < bv) { bv = v; bi = k; } }
+      var bi = 0, bv = 1e9, v, a0 = cands[0][ci], agreeAll = true, V = [];
+      for (k = 1; k < K; k++) { var dd = Math.abs(cands[k][ci] - a0); if (dd > Math.PI / 2) dd = Math.PI - dd; if (dd > S.mixSame) { agreeAll = false; break; } }
+      if (agreeAll) {                                                   // 다 같은 방향 — 고를 것 없음
+        same++;
+        if (WG) { HAS[gi] = 1; for (k = 0; k < K; k++) WG[gi * K + k] = 1; continue; }   // 섞기: 고르게
+        for (dy = 0; dy < B; dy++) for (dx = 0; dx < B; dx++) { if (by + dy >= Hd || bx + dx >= Wd) continue; i = (by + dy) * Wd + bx + dx; if (mask[i]) out[i] = cands[0][i]; } continue;
+      }
+      for (k = 0; k < K; k++) { v = fitAt(g, Wd, Hd, cx, cy, cands[k][ci], Lh, mk); V.push(v); if (v < 1e8) { sum[k] += v; sumN[k]++; } if (v < bv) { bv = v; bi = k; } }
+      if (!(bv < 1e8)) {                                                // (2026-10-25i) 판정 선이 모두 머리 밖 — 점수 평균에 안 넣음(예전엔 1e9가 그대로 들어가 평균이 수십만으로 찍힘)
+        bad++;
+        if (WG) { HAS[gi] = 1; for (k = 0; k < K; k++) WG[gi * K + k] = 1; continue; }
+        for (dy = 0; dy < B; dy++) for (dx = 0; dx < B; dx++) { if (by + dy >= Hd || bx + dx >= Wd) continue; i = (by + dy) * Wd + bx + dx; if (mask[i]) out[i] = cands[0][i]; } continue;
+      }
       cnt[bi]++; sumBest += bv; n++;
+      if (WG) {
+        var tau = Math.max(1e-6, S.mixTau * bv), ws = 0, w1 = 0;
+        for (k = 0; k < K; k++) { var wk = V[k] < 1e8 ? Math.exp(-(V[k] - bv) / tau) : 0; WG[gi * K + k] = wk; ws += wk; if (wk > w1 && k !== bi) w1 = wk; }
+        HAS[gi] = 1; wsum += 1 / ws; wmax += (1 - w1);                    // 진단: 1등 무게 몫 · 1등과 2등 차
+        continue;
+      }
       for (dy = 0; dy < B; dy++) for (dx = 0; dx < B; dx++) { if (by + dy >= Hd || bx + dx >= Wd) continue; i = (by + dy) * Wd + bx + dx; if (mask[i]) out[i] = cands[bi][i]; }
     }
-    return { angle: out, stats: { n: n, names: names, picked: cnt.map(function (c) { return n ? c / n : 0; }), fitMean: sum.map(function (v) { return n ? v / n : NaN; }), fitBest: n ? sumBest / n : NaN, sameFrac: (n + same) ? same / (n + same) : 0, ms: Math.round(performance.now() - t0), msParts: [Math.round(t1 - t0), Math.round(t2 - t1), Math.round(performance.now() - t2)] } };
+    if (WG) {                                                           // 픽셀마다 이웃 네 칸 무게(쌍선형) × 후보 방향(2배각) 평균
+      var Cc = new Float32Array(K), Ss = new Float32Array(K), x, y;
+      for (k = 0; k < K; k++) { Cc[k] = 0; Ss[k] = 0; }
+      for (y = 0; y < Hd; y++) {
+        var fy = (y - (B >> 1)) / B, gy0 = Math.floor(fy), ty = fy - gy0;
+        for (x = 0; x < Wd; x++) {
+          i = y * Wd + x; if (!mask[i]) continue;
+          var fx = (x - (B >> 1)) / B, gx0 = Math.floor(fx), tx = fx - gx0, sc = 0, ss = 0, wt = 0, q, qy, qx, qw;
+          for (q = 0; q < 4; q++) {
+            qy = gy0 + (q >> 1); qx = gx0 + (q & 1); if (qy < 0 || qx < 0 || qy >= GY || qx >= GX) continue;
+            var gq = qy * GX + qx; if (!HAS[gq]) continue;
+            qw = ((q >> 1) ? ty : 1 - ty) * ((q & 1) ? tx : 1 - tx); if (qw <= 0) continue;
+            for (k = 0; k < K; k++) { var wk2 = WG[gq * K + k] * qw; if (wk2 <= 0) continue; var t2 = 2 * cands[k][i]; sc += wk2 * Math.cos(t2); ss += wk2 * Math.sin(t2); wt += wk2; }
+          }
+          if (wt > 0) out[i] = 0.5 * Math.atan2(ss, sc);
+        }
+      }
+    }
+    return { angle: out, stats: { n: n, bad: bad, blend: !!WG, tau: S.mixTau, topShare: (WG && n) ? wsum / n : null, names: names, picked: cnt.map(function (c) { return n ? c / n : 0; }), fitMean: sum.map(function (v, k) { return sumN[k] ? v / sumN[k] : NaN; }), fitBest: n ? sumBest / n : NaN, sameFrac: (n + same + bad) ? same / (n + same + bad) : 0, badFrac: (n + same + bad) ? bad / (n + same + bad) : 0, ms: Math.round(performance.now() - t0), msParts: [Math.round(t1 - t0), Math.round(t2 - t1), Math.round(performance.now() - t2)] } };
   }
   function shapeSum(sh) { return sh ? { lines: sh.lines, bent: sh.bent, straightFrac: sh.straightFrac, loop: sh.loop, lamPx: sh.lamPx, ampPx: sh.ampPx, curlDegPx: sh.curlDegPx } : null; }
   function q8a(a, N, w, h, w2, h2) { var o = new Int8Array(w2 * h2), x, y; for (y = 0; y < h2; y++) for (x = 0; x < w2; x++) { var v = a[Math.min(h - 1, y * 2) * w + Math.min(w - 1, x * 2)]; while (v > Math.PI / 2) v -= Math.PI; while (v < -Math.PI / 2) v += Math.PI; o[y * w2 + x] = Math.round(v / (Math.PI / 2) * 127); } return o; }

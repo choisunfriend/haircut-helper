@@ -1655,7 +1655,12 @@ var PHOTO_CHECK = (function () {
       var photo = photoModel(), probe = (photo && photo.occ && photo.occ.probe) || (state.hairOcc3D && state.hairOcc3D.probe);
       if (!probe || !probe.cams) return [];
       var list = probe.cams.filter(function (c) { return c && c.smp && c.iw > 0 && c.ih > 0 && c.s > 0 && c.sy > 0 && P.skip.indexOf(c.angle) < 0; });
-      return list.map(function (c) {
+      /* (2026-10-24c) 다시 기르기가 사진끼리 맞춘 양(REGROW.camShift)을 그대로 씀 — 다시 기른 머리를 볼 때만(마네킹은 옮기기 전 사진 값으로 만든 가닥) */
+      var RGs = W.REGROW, shift = null;
+      try { if (RGs && RGs.camShift && RGs.camShift.photo === photo && !(typeof MANNEQUIN !== 'undefined' && MANNEQUIN.on)) shift = RGs.camShift.by; } catch (e) { shift = null; }
+      var withShift = function (cam) { var d = shift && shift[cam.angle]; return d ? Object.assign({}, cam, { cx: cam.cx + d.cx, crownY: cam.crownY + d.crownY }) : cam; };
+      return list.map(function (c) { return withShift(getCam1(c)); });
+      function getCam1(c) {
         var mi = state.hairMasks && state.hairMasks[c.angle], ori = mi && mi.orientation;
         if (!ori || typeof sampleOrientation !== 'function') return c;
         var hit = dirCamMemo.get(c); if (hit && hit.ori === ori) return hit.cam;
@@ -1668,7 +1673,7 @@ var PHOTO_CHECK = (function () {
         } });
         dirCamMemo.set(c, { ori: ori, cam: cam });
         return cam;
-      });
+      }
     } catch (e) { return []; }
   }
   function getEnv() {
@@ -1805,6 +1810,8 @@ var PHOTO_CHECK = (function () {
     } catch (e) { S.err = String(e && e.message || e); }
     return list;
   };
+  P._cams = function () { return getCams(); };   // (2026-10-21i) 34 다시 기르기 끝 자르기가 같은 사진·투영을 씀
+  P._env = function () { return getEnv(); };
   P._sigTail = function () {   // adjFilterSig(17b) 끝
     try { return '|pc' + (P.on && (P.trim || P.fixDir) ? ver + (styleOn() ? 's' : ((P.trim ? (lengthened() ? 'l' : 't') : '') + (P.fixDir ? 'd' : ''))) : 0); } catch (e) { return ''; }
   };
@@ -1859,6 +1866,10 @@ var PHOTO_CHECK = (function () {
     try { H.pc = { trim: P.trim, fixDir: P.fixDir }; } catch (e) {}
     // 다시 기른 가닥(점은 하나 걸러)
     try { if (G && G.model && G.model.strands && G.model.strands.length) { var rg = packStrands(G.model.strands, 2, secIdx); add('rg.cnt', rg.cnt); add('rg.sec', rg.sec); add('rg.pts', rg.D, { stride: 2 }); H.regrown = { n: G.model.strands.length, on: !!G.on, CY: G.model.CY }; } else H.notes.push('다시 기른 모델 없음'); } catch (e) { H.notes.push('rg: ' + e.message); }
+    // (2026-10-24g) 사진 가닥을 헐로 옮긴 것(13c "헐 기반 옮기기" · 17b 옮긴 점 겉면의 재료) — 점은 하나 걸러 · lift.mir 1 = 거울 채움
+    try { var LS = G && G.src && G.src.strands; if (LS && LS.length) { var lp = packStrands(LS, 2, secIdx), lm = new Uint8Array(LS.length), lv = new Uint8Array(LS.length), AN = ['front', 'left', 'right', 'back'];
+        for (var li = 0; li < LS.length; li++) { lm[li] = LS[li] && LS[li].mirrored ? 1 : 0; var ai = LS[li] ? AN.indexOf(LS[li].srcAngle) : -1; lv[li] = ai < 0 ? 255 : ai; }
+        add('lift.cnt', lp.cnt); add('lift.sec', lp.sec); add('lift.mir', lm); add('lift.view', lv); add('lift.pts', lp.D, { stride: 2 }); H.lift = { n: LS.length, view: 'lift.view 0 front 1 left 2 right 3 back 255 기타', stat: G.liftStat || null }; } } catch (e) { H.notes.push('lift: ' + e.message); }
     // (2026-10-10a) 다시 기른 가닥마다 멈춘 이유·두피 위/밖 길이 등(42번 rg) + 걸음 기록(REGROW.trace를 켜고 기른 경우) + 사진에서 잰 뿌리 밀도
     try {
       if (G && G.model && G.model.strands && G.model.strands.length) {
@@ -1889,6 +1900,15 @@ var PHOTO_CHECK = (function () {
         add('cur.root', R); add('cur.sec', rs); add('cur.fl', rf); H.current = { n: nR, mannequin: !!cur.mannequin, CY: cur.CY };
       }
     } catch (e) { H.notes.push('cur: ' + e.message); }
+    // (2026-10-21) 34 결 읽기 단계 — 정렬 전 가닥(정렬 뒤는 위 rg.*)
+    try {
+      var RS0 = W.READ_STEPS && W.READ_STEPS.rg0;
+      if (RS0 && RS0.length) {
+        var lst0 = RS0.map(function (a) { if (!a) return null; var p = new Array(a.length / 3); for (var q = 0; q < p.length; q++) p[q] = { x: a[q * 3], y: a[q * 3 + 1], z: a[q * 3 + 2] }; return { pts: p }; });
+        var r0 = packStrands(lst0, 2, null); add('rg0.cnt', r0.cnt); add('rg0.pts', r0.D, { stride: 2, note: '정렬 전(같은 순서 · rg.*와 짝)' });
+        H.readSteps = { align: W.READ_STEPS.align, cfg: { bridge: W.READ_STEPS.bridge, fill: W.READ_STEPS.fill, localAlign: W.READ_STEPS.localAlign, lookPx: W.READ_STEPS.lookPx, resumePx: W.READ_STEPS.resumePx, tol: W.READ_STEPS.tol } };
+      }
+    } catch (e) { H.notes.push('rg0: ' + e.message); }
     // 지금 걸린 결 표
     try { var fl = FSx && FSx.active ? FSx.active() : null; if (fl && fl.d) { H.flow = { v: fl.v, cs: fl.cs, bin: fl.bin, lmax: fl.lmax, n: fl.n }; var enc = new TextEncoder().encode(fl.d); add('flow.d', enc, { enc: 'base64-text' }); } else H.notes.push('걸린 결 표 없음'); } catch (e) { H.notes.push('flow: ' + e.message); }
     // 이 손님의 다시 기른 가닥에서 뽑은 표(걸린 표와 다를 수 있음 — 다른 스타일이 걸려 있을 때)
@@ -1907,6 +1927,38 @@ var PHOTO_CHECK = (function () {
         }
         H.cams.push({ angle: c.angle, R: Array.prototype.slice.call(c.R), cx: c.cx, s: c.s, sy: c.sy, crownY: c.crownY, iw: c.iw, ih: c.ih, gw: gw, gh: gh, cell: cell, hasDir: typeof c.dirAt === 'function' });
         add('cam' + ci + '.mask', M); add('cam' + ci + '.ang', A, { scale: 'x/127*90deg' }); add('cam' + ci + '.coh', K, { scale: 'x/255' });
+        // (2026-10-25e) 세그멘테이션 확신도(03b SEG_CONF) — 칸 단위 ×255 · 없으면 안 넣음
+        try { var SC = W.SEG_CONF && W.SEG_CONF.byView && W.SEG_CONF.byView[c.angle];
+          if (SC && SC.map) { var CF = new Uint8Array(gw * gh), kxc = SC.w / c.iw, kyc = SC.h / c.ih;
+            for (y = 0; y < gh; y++) for (x = 0; x < gw; x++) CF[y * gw + x] = SC.map[Math.min(SC.h - 1, Math.floor((y + 0.5) * cell * kyc)) * SC.w + Math.min(SC.w - 1, Math.floor((x + 0.5) * cell * kxc))];
+            add('cam' + ci + '.conf', CF, { scale: 'x/255 · 세그멘테이션 머리 확신도(기준 ' + SC.thr + ')' }); } } catch (eC) { H.notes.push('conf cam' + ci + ': ' + eC.message); }
+        // (2026-10-21) 34 결 읽기 단계 스냅샷 — 읽은 그대로(건너기·채우기 전)와 고친 표시. 각도는 04 이미지 좌표(y 아래) 그대로라 위 .ang와 부호가 반대일 수 있음(angRawConv)
+        try {
+          var RSb = W.READ_STEPS && W.READ_STEPS.byView && W.READ_STEPS.byView[c.angle];
+          if (RSb && RSb.raw) {
+            var AR = new Int8Array(gw * gh), KR = new Uint8Array(gw * gh), ER = new Uint8Array(gw * gh), kx2 = RSb.w / c.iw, ky2 = RSb.h / c.ih, xi2, yi2, j4;
+            for (y = 0; y < gh; y++) for (x = 0; x < gw; x++) {
+              xi2 = Math.min(RSb.w - 1, Math.floor((x + 0.5) * cell * kx2)); yi2 = Math.min(RSb.h - 1, Math.floor((y + 0.5) * cell * ky2)); j4 = yi2 * RSb.w + xi2;
+              AR[y * gw + x] = RSb.raw[j4]; KR[y * gw + x] = RSb.coh[j4]; ER[y * gw + x] = RSb.est[j4];
+            }
+            add('cam' + ci + '.angRaw', AR, { scale: 'x/127*90deg', conv: '04 이미지 좌표(y 아래)' }); add('cam' + ci + '.cohRaw', KR, { scale: 'x/255' }); add('cam' + ci + '.est', ER, { values: '0 읽음 1 건넘 2 채움 3 끝 경계 이어 감' });
+            H.cams[H.cams.length - 1].readSteps = RSb.stats;
+            // (2026-10-21e) 두 방식 나란히 — 구조텐서 vs 방향필터(방향 · 또렷함), 각도는 04 이미지 좌표(y 아래)
+            if (RSb.cmp && !RSb.cmp.err) {
+              var cmpS = Object.assign({}, RSb.cmp); delete cmpS.snap; H.cams[H.cams.length - 1].compare = cmpS;
+              var SN = RSb.cmp.snap;
+              if (SN) {
+                var kx3 = SN.w / c.iw, ky3 = SN.h / c.ih, aS = new Int8Array(gw * gh), aG = new Int8Array(gw * gh), kS = new Uint8Array(gw * gh), kG = new Uint8Array(gw * gh), j5;
+                for (y = 0; y < gh; y++) for (x = 0; x < gw; x++) {
+                  j5 = Math.min(SN.h - 1, Math.floor((y + 0.5) * cell * ky3)) * SN.w + Math.min(SN.w - 1, Math.floor((x + 0.5) * cell * kx3));
+                  aS[y * gw + x] = SN.angST[j5]; kS[y * gw + x] = SN.cohST[j5]; if (SN.angGB) aG[y * gw + x] = SN.angGB[j5]; if (SN.cohGB) kG[y * gw + x] = SN.cohGB[j5];
+                }
+                add('cam' + ci + '.angST', aS, { scale: 'x/127*90deg', conv: '04 이미지 좌표(y 아래)' }); add('cam' + ci + '.cohST', kS, { scale: 'x/255' });
+                if (SN.angGB) { add('cam' + ci + '.angGB', aG, { scale: 'x/127*90deg', conv: '04 이미지 좌표(y 아래)' }); add('cam' + ci + '.cohGB', kG, { scale: 'x/255 · 필터 반응 대비' }); }
+              }
+            }
+          }
+        } catch (e) { H.notes.push('readSteps cam' + ci + ': ' + e.message); }
       });
     } catch (e) { H.notes.push('cams: ' + e.message); }
     H.parts = parts;
