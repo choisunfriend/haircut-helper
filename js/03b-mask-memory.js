@@ -417,7 +417,11 @@ if(cnt > 0){
      ⑤ 사진이 바뀌었으니 이 각도의 얼굴 랜드마크를 다시 잼
    끄기 SUBJECT_ZOOM.on=false (사진을 다시 분석) · 진단 SUBJECT_ZOOM.stats
    ══════════════════════════════════════════════════════════ */
-var SUBJECT_ZOOM = Object.assign({ on: true, maxArea: 0.55, maxUp: 2.5, padTop: 0.35, downK: 3.0, sideK: 2.0, thr: 0.5, minFrac: 0.02, stats: {} }, window.SUBJECT_ZOOM || {});
+/* (2026-10-26) cm 기준으로 읽기 — 결 필터 창은 px 고정(구조텐서 7px · 방향필터 파장 4px)이라, 머리가 작은 사진은 같은 필터가 더 넓은 cm를 봄
+   → 올 대신 컬 덩어리의 위·아래 광택 경계를 결로 읽어 가로결(디버그 0928 곱슬 270×503: 사진 결 30~37% 가로 · 488px 세트 4~13%).
+   머리 둘레 상자가 커서(이미 크게 찍힘) 안 자르는 사진도, 사진 긴 변이 분석 상한(800)보다 작고 머리 폭이 minHeadPx보다 작으면 사진 전체를 상한까지 키움
+   → 어떤 사진이든 필터가 비슷한 cm를 봄(머리 폭 ≈ 18cm · 340px ≈ 19px/cm — 800px 세트들과 같은 수준). 끄기 SUBJECT_ZOOM.cmScale=false */
+var SUBJECT_ZOOM = Object.assign({ on: true, cmScale: true, minHeadPx: 340, maxArea: 0.55, maxUp: 2.5, padTop: 0.35, downK: 3.0, sideK: 2.0, thr: 0.5, minFrac: 0.02, stats: {} }, window.SUBJECT_ZOOM || {});
 function _szLoad(url){ return new Promise(function(res){ var im = new Image(); im.onload = function(){ res(im); }; im.onerror = function(){ res(null); }; im.src = url; }); }
 async function subjectZoom(angle){
   const Z = SUBJECT_ZOOM, st = { at: Date.now(), done: false, why: '' };
@@ -454,9 +458,14 @@ async function subjectZoom(angle){
     if(y0 < 0) y0 = 0; if(y0 + bh > sh){ bh = sh - y0; }
     const area = (bw * bh) / (sw * sh);
     st.box = { x: +(x0 / sw).toFixed(3), y: +(y0 / sh).toFixed(3), w: +(bw / sw).toFixed(3), h: +(bh / sh).toFixed(3) }; st.area = +area.toFixed(2); st.src = IW + '×' + IH + (srcUrl !== lo ? '(원본)' : '');
-    if(area > Z.maxArea){ st.why = '이미 크게 찍힘(머리 둘레 상자가 사진의 ' + Math.round(area * 100) + '%)'; return false; }
-    const kx = IW / sw, ky = IH / sh, cxs = x0 * kx, cys = y0 * ky, cws = bw * kx, chs = bh * ky;
+    const kx = IW / sw, ky = IH / sh;
     const M = (typeof INPUT_RES !== 'undefined' && INPUT_RES.photoMax > 0) ? INPUT_RES.photoMax : 800;
+    let cxs = x0 * kx, cys = y0 * ky, cws = bw * kx, chs = bh * ky;
+    if(area > Z.maxArea){
+      const headNow = hw * kx * Math.min(1, M / Math.max(IW, IH));        // 분석 사진에서 머리 폭(px)
+      if(!(Z.cmScale && Math.max(IW, IH) < M * 0.95 && headNow < Z.minHeadPx)){ st.why = '이미 크게 찍힘(머리 둘레 상자가 사진의 ' + Math.round(area * 100) + '%)'; return false; }
+      cxs = 0; cys = 0; cws = IW; chs = IH; st.cm = '사진 전체를 키움(머리 폭 ' + Math.round(headNow) + 'px < ' + Z.minHeadPx + ')';   // (2026-10-26) cm 기준으로 읽기
+    }
     const up = Math.min(Z.maxUp, M / Math.max(cws, chs));
     const out = document.createElement('canvas'); out.width = Math.max(8, Math.round(cws * up)); out.height = Math.max(8, Math.round(chs * up));
     const ox = out.getContext('2d'); ox.imageSmoothingEnabled = true; try{ ox.imageSmoothingQuality = 'high'; }catch(e){}

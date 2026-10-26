@@ -1480,7 +1480,7 @@ var REGROW = (function () {
        사진(정면)이 "여기는 얼굴"이라 해서 끊김 → 가운데 4cm 폭에 겉면 점이 옆의 10%뿐(갈라져 보임). 사진의 가르마는 실선 하나인데 그린 건 4cm 틈.
        사진이 머리 아니라고 한 자리(얼굴 앞)에 닿으면 끊지 않고, 머리 둘레를 따라 옆(뿌리가 있던 쪽 · 가르마 바깥)·아래로 비켜 가 봄 — 비켜 간 자리를 사진이 머리라고 하면 이어 감.
        앞 헤어라인 뿌리(정면 ±50°)만 · 얼굴 앞(z > 0)에서만. 끄기 REGROW.faceSlide=false */
-    faceSlide: true, faceSlideDown: 0.55,
+    faceSlide: false /* (2026-10-26) 끔 — 사용자: "규칙 말고 결 읽기에서 원인 찾기" · 다시 켜기 REGROW.faceSlide=true */, faceSlideDown: 0.55,
     thinLenBareCells: 3, thinLenBareFromDeg: 70,   // 정면에서 이 각도(방위) 넘게 돈 자리의 맨살만 — 옆·뒤
     /* (2026-10-24) 결이 끊긴 곳에서 끝(시험 · 기본 끔) — 한 걸음 꺾인 각이 직전 세 걸음 꺾임의 중앙값보다 kinkDeg° 넘게 크면(곡선이 이어지지 않고 다른 결로 갈아탐) 그 앞에서 끝.
        디버그 파일(점 0.8cm 간격)로 잰 것: 꺾여 오르기 시작하는 자리의 튐 중앙값 직모 단발 61° · 실제 66° · 곱슬 33° / 고리 도는 구간 13~18°.
@@ -1507,7 +1507,11 @@ var REGROW = (function () {
        지금: 두 구간 모두 "직전 걸음과 이어지는 쪽 + 오르막 쪽 벌점(비탈 기울기 비례)"으로 +/−만 고름(polDown · gravSign) — 수평 결(가르마·가마·옆으로 감는 결)은 비탈이 0이라 그대로,
        삐침·고리처럼 이어서 꺾이는 결은 직전 걸음과 잘 이어지니 그대로. 두피 밖에서 아래를 섞는 것은 결을 못 읽은 걸음에서만(gravity).
        되돌리기: REGROW.polDown=0 · REGROW.gravSign=0 · REGROW.gravBlendRead=true */
-    polDown: 2.5, gravSign: 1.0, gravBlendRead: false,
+    /* (2026-10-26) 벌점 끔 → 중력으로 +/−만 고름 — 사용자: "중력만 켜줘. 방향 정하게"
+       사진 결(앞뒤 없는 선)이 위·아래 성분을 gravPickFlat 이상 가지면 아래로 가는 쪽, 그보다 누우면(수평 결) 직전 걸음과 이어지는 쪽. 결의 모양(각)은 안 바꿈.
+       되돌리기: REGROW.gravPick=false · REGROW.polDown=2.5 · REGROW.gravSign=1 */
+    gravPick: true, gravPickFlat: 0.2,
+    polDown: 0, gravSign: 0, gravBlendRead: false,   // 예전 polDown 2.5 · gravSign 1.0
     polDown_off_was: 0, // (2026-10-22) 끔 — 걷기 안 규칙도 끔(읽기·기르기 강화 단계 · 되돌리기 ?judge=1): 오르막 벌점 · 예전 2.5
     polDown_was: 2.5,   // (2026-10-10f) 두피 위에서 결(앞뒤 없는 선)의 앞뒤를 고를 때 비탈을 거꾸로 오르는 쪽에만 이만큼 벌점(비탈 기울기에 비례) — 한 번 위로 가면 계속 위로 가며 두상을 감던 것. 옆으로 흐르는 결(가마·가르마)은 안 건드림 · 0 = 예전(직전 방향만)
     glossSkip: false,   // (2026-10-22) 끔 — 걷기 안 규칙도 끔(읽기·기르기 강화 단계 · 되돌리기 ?judge=1): 광택 띠 수평 결 안 읽기 · 예전 true
@@ -2150,6 +2154,7 @@ var REGROW = (function () {
         mx /= l; my /= l; mz /= l;
         if (ref) {
           dot = mx * ref.x + my * ref.y + mz * ref.z;
+          if (G.gravPick && Math.abs(my) >= G.gravPickFlat) dot = -my;     // (2026-10-26) 중력으로 앞뒤만 — 아래로 가는 쪽
           if (polW > 0) {                                                   // (2026-10-10f) 오르막에만 벌점 — 내리막 = 아래(0,-1,0)를 이 자리 두피면에 놓은 방향(정수리처럼 평평한 곳은 짧아져 저절로 약해짐)
             var kd = -n.y, ddx = -kd * n.x, ddy = -1 - kd * n.y, ddz = -kd * n.z, b = mx * ddx + my * ddy + mz * ddz;
             var ddl = Math.sqrt(ddx * ddx + ddy * ddy + ddz * ddz), sl = G.polSlopeHi > G.polSlopeLo ? Math.max(0, Math.min(1, (ddl - G.polSlopeLo) / Math.max(1e-6, G.polSlopeHi - G.polSlopeLo))) : 1;   // (2026-10-10i) 완만한 곳(정수리·가마)은 벌점을 풂

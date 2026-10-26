@@ -387,7 +387,7 @@ var READ_STEPS = (function () {
     });
     try { if (typeof ANALYSIS_TIME !== 'undefined') ANALYSIS_TIME.lines().forEach(function (l) { L.push(l); }); } catch (e) {}   // (2026-10-25f) 분석 시간
     try { if (W.SEG_CONF && typeof W.SEG_CONF.lines === 'function') W.SEG_CONF.lines().forEach(function (l) { L.push(l); }); } catch (e) {}   // (2026-10-25e) 세그 확신도
-    try { var SZ = W.SUBJECT_ZOOM, zk = SZ && SZ.stats ? Object.keys(SZ.stats) : []; if (zk.length) L.push('  머리 키우기(작게 찍힌 사진을 머리 둘레로 잘라 키움 · 끄기 SUBJECT_ZOOM.on=false): ' + zk.map(function (k) { var z = SZ.stats[k]; return k + ' ' + (z.done && z.out ? z.src + '→' + z.out + '(×' + z.scale + ' · 머리 폭 ' + z.headPxBefore + '→' + z.headPxAfter + 'px)' : (z.why || '안 함')); }).join(' · ')); } catch (e) {}
+    try { var SZ = W.SUBJECT_ZOOM, zk = SZ && SZ.stats ? Object.keys(SZ.stats) : []; if (zk.length) L.push('  머리 키우기(작게 찍힌 사진을 머리 둘레로 잘라 키움 · 끄기 SUBJECT_ZOOM.on=false): ' + zk.map(function (k) { var z = SZ.stats[k]; return k + ' ' + (z.done && z.out ? z.src + '→' + z.out + '(×' + z.scale + ' · 머리 폭 ' + z.headPxBefore + '→' + z.headPxAfter + 'px' + (z.cm ? ' · ' + z.cm : '') + ')' : (z.why || '안 함')); }).join(' · ')); } catch (e) {}
     try { L.push('  웨이브 배수: ' + (W.READ_SHAPE && W.READ_SHAPE.waveGainAuto === false && !(W.READ_SHAPE.waveGain > 1) ? '꺼짐(읽은 흔들림 그대로 · 켜기 ?wavegain=1)' : '켜짐 ×' + (W.READ_SHAPE ? W.READ_SHAPE.waveGain : '?') + (W.READ_SHAPE && W.READ_SHAPE.waveGainAuto ? '(자동)' : ''))); } catch (e) {}
     var f1 = function (v, k) { return isFinite(v) ? (+v).toFixed(k == null ? 2 : k) : '-'; };
     Object.keys(S.byView).forEach(function (v) {
