@@ -204,6 +204,52 @@ var READ_STEPS = (function () {
     }
     return { n: n, near: near, band: band };
   }
+  /* (2026-10-25j) 머리 끝 경계 결 — 사용자: "머리끝에서 가로결이 읽히거나, 꺾이는 부위 · 경계라서 그런 듯"
+     잰 것(디버그 2214·2218·2221·2225·2241): 머리 안 픽셀로만 읽어도(HAIR_READ_MASK) 밑단 경계 3~6px 안 결의 50~73%가 가로, 6~16px도 안쪽보다 높음
+     (예: 2225 오른쪽 57/23/13% → 16px 안쪽 1.9%). 후보 다섯(구조텐서 셋·방향필터·밴드패스)이 모두 같이 가로 → 섞기로는 못 고침.
+     원인: 머리카락이 끝나며 머리↔배경 밝기 차가 머리 영역 "안"에 생김(끝이 성겨지는 띠) → 그 밝기 경계를 결로 읽음.
+     edgeFix(경계와 나란하면 다 뺌)는 옆머리처럼 경계를 따라 흐르는 진짜 결까지 지워서 꺼 둠.
+     지금: 그 자리 앞뒤만 봄(머리 전체 판정 없음) — 경계 띠(tipBandPx) 안에서 결이 경계와 나란한데(tipParDeg° 안)
+       경계 안쪽(띠 바로 안) 결은 경계를 가로지르면(경계와 tipCrossDeg° 넘게) = 끝을 향해 내려오던 결이 경계에서만 옆으로 꺾인 것 → 안쪽 결을 이어 감.
+       안쪽 결도 경계와 나란하면(옆머리) 손대지 않음. 경계에 가까울수록 안쪽 결 쪽으로 많이(띠 끝에서 0) · 또렷함은 estCohTip로 낮춰 "추정" 표시(est 3).
+     거리(px)는 필터 창 크기(절대 px)에서 나온 것이라 사진 크기로 늘리지 않음. 끄기 READ_STEPS.tipFix=false · ?tipfix=0 */
+  S.tipFix = S.tipFix !== false; S.tipBandPx = S.tipBandPx || 12; S.tipRefPx = S.tipRefPx || 6; S.tipParDeg = S.tipParDeg || 35; S.tipCrossDeg = S.tipCrossDeg || 45; S.estCohTip = S.estCohTip || 0.3;
+  try { var mTF = /[?&]tipfix=([01])/.exec(location.search); if (mTF) S.tipFix = mTF[1] === '1'; } catch (e) {}
+  function tipFixField(ang, coh, mask, w, h, est) {
+    var N = w * h, D = new Float32Array(N), i, x, y, BIG = 1e9, band = S.tipBandPx, ref = band + S.tipRefPx, n = 0, near = 0, skipSide = 0;
+    for (i = 0; i < N; i++) D[i] = mask[i] ? BIG : 0;
+    for (y = 0; y < h; y++) for (x = 0; x < w; x++) { i = y * w + x; if (!D[i]) continue; var v = D[i];
+      if (x > 0 && D[i - 1] + 1 < v) v = D[i - 1] + 1; if (y > 0 && D[i - w] + 1 < v) v = D[i - w] + 1;
+      if (x > 0 && y > 0 && D[i - w - 1] + 1.414 < v) v = D[i - w - 1] + 1.414; if (x < w - 1 && y > 0 && D[i - w + 1] + 1.414 < v) v = D[i - w + 1] + 1.414;
+      if (x === 0 || y === 0 || x === w - 1) v = Math.min(v, 1); D[i] = v; }
+    for (y = h - 1; y >= 0; y--) for (x = w - 1; x >= 0; x--) { i = y * w + x; if (!D[i]) continue; var v2 = D[i];
+      if (x < w - 1 && D[i + 1] + 1 < v2) v2 = D[i + 1] + 1; if (y < h - 1 && D[i + w] + 1 < v2) v2 = D[i + w] + 1;
+      if (x < w - 1 && y < h - 1 && D[i + w + 1] + 1.414 < v2) v2 = D[i + w + 1] + 1.414; if (x > 0 && y < h - 1 && D[i + w - 1] + 1.414 < v2) v2 = D[i + w - 1] + 1.414;
+      if (y === h - 1) v2 = Math.min(v2, 1); D[i] = v2; }
+    // 안쪽 결(띠 밖 칸만 · 또렷함 무게 · 2배각 흐림) — 띠 칸의 기준
+    var C = new Float32Array(N), Sn = new Float32Array(N), Wt = new Float32Array(N);
+    for (i = 0; i < N; i++) if (mask[i] && D[i] > band) { var cw = Math.max(0.05, coh[i]); C[i] = cw * Math.cos(2 * ang[i]); Sn[i] = cw * Math.sin(2 * ang[i]); Wt[i] = cw; }
+    C = gblur(C, w, h, 3); Sn = gblur(Sn, w, h, 3); Wt = gblur(Wt, w, h, 3);
+    var Ds = gblur(D, w, h, 2), cosP = Math.cos(S.tipParDeg * Math.PI / 180), cosX = Math.cos(S.tipCrossDeg * Math.PI / 180);
+    var nA = new Float32Array(N), nC = new Float32Array(N), hit = [];
+    for (y = 2; y < h - 2; y++) for (x = 2; x < w - 2; x++) {
+      i = y * w + x; if (!mask[i] || D[i] > band) continue; near++;
+      var gx = Ds[i + 1] - Ds[i - 1], gy = Ds[i + w] - Ds[i - w], gl = Math.hypot(gx, gy); if (gl < 0.2) continue;
+      var nx = gx / gl, ny = gy / gl, tx = -ny, ty = nx;                            // 안쪽 법선 · 경계선 방향
+      if (Math.abs(Math.cos(ang[i]) * tx + Math.sin(ang[i]) * ty) < cosP) continue;   // 경계와 나란하지 않음 — 그대로
+      var rx = Math.round(x + nx * (ref - D[i])), ry = Math.round(y + ny * (ref - D[i]));
+      if (rx < 0 || ry < 0 || rx >= w || ry >= h) continue; var j = ry * w + rx;
+      if (!mask[j] || D[j] <= band || Wt[j] < 1e-4) continue;                       // 안쪽이 얇아 기준이 없음 — 그대로
+      var ra = 0.5 * Math.atan2(Sn[j], C[j]);
+      if (Math.abs(Math.cos(ra) * tx + Math.sin(ra) * ty) > cosX) { skipSide++; continue; }   // 안쪽도 경계를 따라 흐름(옆머리) — 그대로
+      var t = 1 - D[i] / (band + 1); if (t < 0) t = 0;                               // 경계에서 1 · 띠 끝에서 0
+      var c2 = (1 - t) * Math.cos(2 * ang[i]) + t * Math.cos(2 * ra), s2 = (1 - t) * Math.sin(2 * ang[i]) + t * Math.sin(2 * ra);
+      hit.push(i); nA[i] = 0.5 * Math.atan2(s2, c2); nC[i] = Math.min(coh[i], S.estCohTip + (1 - t) * (coh[i] - S.estCohTip));
+    }
+    for (var q = 0; q < hit.length; q++) { i = hit[q]; ang[i] = nA[i]; coh[i] = Math.max(S.minCoh, nC[i]); if (est) est[i] = 3; n++; }
+    return { n: n, near: near, side: skipSide, band: band };
+  }
+  S._tipFixField = tipFixField;   // 시험용(콘솔·하네스)
   /* 04 GABOR_ORIENT.refine 뒤에 끼움 */
   function install04() {
     var GO = W.GABOR_ORIENT; if (!GO || GO._rsWrapped) return !!GO;
@@ -232,11 +278,13 @@ var READ_STEPS = (function () {
         var N = Wd * Hd, i, raw = null, rc = null;
         if (S.keepSnap) { raw = new Int8Array(N); rc = new Uint8Array(N); for (i = 0; i < N; i++) { raw[i] = Math.max(-127, Math.min(127, Math.round(f.angle[i] / (Math.PI / 2) * 127))); rc[i] = Math.max(0, Math.min(255, Math.round(f.coherence[i] * 255))); } }
         var eg = null; if (S.edgeFix) { try { eg = edgeClear(f.angle, f.coherence, mask, Wd, Hd); } catch (e2) { eg = { err: String(e2 && e2.message || e2) }; } }
-        var o = bridgeFill(f.angle, f.coherence, mask, Wd, Hd); o.stats.edge = eg;
+        var tf = null, tfEst = new Uint8Array(N); if (S.tipFix) { try { tf = tipFixField(f.angle, f.coherence, mask, Wd, Hd, tfEst); } catch (e3) { tf = { err: String(e3 && e3.message || e3) }; } }
+        var o = bridgeFill(f.angle, f.coherence, mask, Wd, Hd); o.stats.edge = eg; o.stats.tip = tf;
+        if (tf && !tf.err) for (i = 0; i < N; i++) if (tfEst[i] && !o.est[i]) o.est[i] = 3;
         f.est = o.est;
         S.byView[view] = { w: Wd, h: Hd, raw: raw, coh: rc, est: o.est, stats: o.stats, cmp: cmp, at: Date.now() };
         var s = o.stats;
-        console.log(TAG + ' ' + view + ' ' + Wd + '×' + Hd + (s.edge && !s.edge.err ? ' · 경계 결 뺌 ' + s.edge.n + '/' + s.edge.near + '칸(경계 ' + s.edge.band + 'px 안)' : '') + ' · 건넘 ' + pct(s.bridged, s.hair) + ' · 채움 ' + pct(s.filled, s.hair) + ' · 끊김 ' + s.breaks + '곳 중 이어져 건넌 ' + s.bridgedRuns + ' · 진짜 꺾임 ' + s.turns + ' · ' + s.ms + 'ms');
+        console.log(TAG + ' ' + view + ' ' + Wd + '×' + Hd + (s.edge && !s.edge.err ? ' · 경계 결 뺌 ' + s.edge.n + '/' + s.edge.near + '칸(경계 ' + s.edge.band + 'px 안)' : '') + ' · 건넘 ' + pct(s.bridged, s.hair) + ' · 채움 ' + pct(s.filled, s.hair) + (s.tip && !s.tip.err ? ' · 끝 경계 결 이어 감 ' + s.tip.n + '/' + s.tip.near + '칸(옆머리라 둠 ' + s.tip.side + ')' : '') + ' · 끊김 ' + s.breaks + '곳 중 이어져 건넌 ' + s.bridgedRuns + ' · 진짜 꺾임 ' + s.turns + ' · ' + s.ms + 'ms');
       } catch (e) { console.warn(TAG + ' 실패(읽은 그대로 둠)', e); }
       return r;
     };
@@ -335,7 +383,7 @@ var READ_STEPS = (function () {
     Object.keys(S.byView).forEach(function (v) {
       var b = S.byView[v], s = b.stats;
       L.push('  ' + v + ' ' + b.w + '×' + b.h + ' · 머리 ' + s.hair + 'px · 건넘 ' + pct(s.bridged, s.hair) + ' · 한쪽에서만 건넘(안 고침) ' + pct(s.oneSide, s.hair) + ' · 채움 ' + pct(s.filled, s.hair) +
-        (s.edge && !s.edge.err ? ' · 경계와 나란해 뺀 결 ' + pct(s.edge.n, s.hair) + '(경계 ' + s.edge.band + 'px 안 ' + pct(s.edge.n, s.edge.near) + ' · 끄기 ?edgefix=0)' : '') + ' · 끊김 ' + s.breaks + '곳 → 이어져 건넌 ' + s.bridgedRuns + ' / 진짜 꺾임 ' + s.turns + ' · 내다봄 ' + s.look + 'px · 확인 ' + s.resume + 'px · ' + s.ms + 'ms');
+        (s.tip ? (s.tip.err ? ' · 끝 경계 ⚠ ' + s.tip.err : ' · 끝 경계 결 이어 감 ' + pct(s.tip.n, s.hair) + '(경계 ' + s.tip.band + 'px 안 ' + pct(s.tip.n, s.tip.near) + ' · 안쪽도 경계 따라 흘러 둠 ' + s.tip.side + '칸 · 끄기 ?tipfix=0)') : '') + (s.edge && !s.edge.err ? ' · 경계와 나란해 뺀 결 ' + pct(s.edge.n, s.hair) + '(경계 ' + s.edge.band + 'px 안 ' + pct(s.edge.n, s.edge.near) + ' · 끄기 ?edgefix=0)' : '') + ' · 끊김 ' + s.breaks + '곳 → 이어져 건넌 ' + s.bridgedRuns + ' / 진짜 꺾임 ' + s.turns + ' · 내다봄 ' + s.look + 'px · 확인 ' + s.resume + 'px · ' + s.ms + 'ms');
     });
     try { if (typeof ANALYSIS_TIME !== 'undefined') ANALYSIS_TIME.lines().forEach(function (l) { L.push(l); }); } catch (e) {}   // (2026-10-25f) 분석 시간
     try { if (W.SEG_CONF && typeof W.SEG_CONF.lines === 'function') W.SEG_CONF.lines().forEach(function (l) { L.push(l); }); } catch (e) {}   // (2026-10-25e) 세그 확신도

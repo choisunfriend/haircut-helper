@@ -1941,7 +1941,7 @@ var PHOTO_CHECK = (function () {
               xi2 = Math.min(RSb.w - 1, Math.floor((x + 0.5) * cell * kx2)); yi2 = Math.min(RSb.h - 1, Math.floor((y + 0.5) * cell * ky2)); j4 = yi2 * RSb.w + xi2;
               AR[y * gw + x] = RSb.raw[j4]; KR[y * gw + x] = RSb.coh[j4]; ER[y * gw + x] = RSb.est[j4];
             }
-            add('cam' + ci + '.angRaw', AR, { scale: 'x/127*90deg', conv: '04 이미지 좌표(y 아래)' }); add('cam' + ci + '.cohRaw', KR, { scale: 'x/255' }); add('cam' + ci + '.est', ER, { values: '0 읽음 1 건넘 2 채움' });
+            add('cam' + ci + '.angRaw', AR, { scale: 'x/127*90deg', conv: '04 이미지 좌표(y 아래)' }); add('cam' + ci + '.cohRaw', KR, { scale: 'x/255' }); add('cam' + ci + '.est', ER, { values: '0 읽음 1 건넘 2 채움 3 끝 경계 이어 감' });
             H.cams[H.cams.length - 1].readSteps = RSb.stats;
             // (2026-10-21e) 두 방식 나란히 — 구조텐서 vs 방향필터(방향 · 또렷함), 각도는 04 이미지 좌표(y 아래)
             if (RSb.cmp && !RSb.cmp.err) {
