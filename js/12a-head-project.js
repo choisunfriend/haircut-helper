@@ -580,7 +580,7 @@ const NECK_SHAPE = {
        예전 곱(0.78/0.90)으로 그대로 돌아간다 — 폴백 경로는 안 건드렸다. */
   fromField: true,
   shadeRearField: 0.93, // 격자를 쓸 때의 뒤쪽 곱 — 색이 이미 제자리라 살짝만
-  shadeTopField:  0.96, // 〃 위쪽(턱 밑) 곱
+  shadeTopField:  1.0,  // 〃 위쪽(턱 밑) 곱 — (2026-10-26) 0.96 → 1.0: 턱 밑 띠가 얼굴보다 어둡게 끊겨 보였음(SCALP_SKIN.faceTone 배너)
   /* ── 해부학적 난간 (2026-08-31 12차) ────────────────────────────────────
      11차는 옷깃 실측 하나만 믿었다. 그런데 그 실측이 <b>구멍이 아니라 테두리</b>를
      쟀다(아래 measureGarmentNeckOpening 주석). 그 결과 실기기에서 목이 얼굴보다
@@ -994,12 +994,19 @@ const SCALP_SKIN = {
      shadeMin~shadeMax 안에서만 살려 턱 밑 그늘 결은 남긴다. makeModelSkinSampler
      <b>한 곳</b>에 거므로 두피면과 목이 같이 따라온다(출처 하나 — 검사 ⑮).
      되돌리기: SCALP_SKIN.faceTone.on = false */
-  faceTone: { on: true, mix: 0.75, shadeMin: 0.92, shadeMax: 1.04 },   // 하한 0.92: 옆얼굴 backShade(≈0.89)와 곱해도 턱 얼굴 V61 근처(≈V55~58)에 머물게
+  faceTone: { on: true, mix: 0.75, shadeMin: 0.97, shadeMax: 1.04, loPct: 0.60, hiPct: 0.95 },
+  /* (2026-10-26) 두피·목으로 이어지는 띠가 얼굴보다 어둡다 — 사용자: "두피, 목으로 이어지는 띠 색깔이 얼굴색과 달라"
+     녹화(곱슬 손님 3D 결과)에서 잰 것: 볼 V93 · 턱 V93 · 턱 밑 띠 V85 · 목 V82~84 — 색조(H20)·채도는 같고 <b>밝기만</b> 약 10% 낮음.
+     원인 ① 기준색이 살 밝기 50~88 백분위 평균 = 그늘·턱선까지 섞인 값이라 실제로 보이는 볼·턱보다 어두움
+          ② 턱 아래·옆 격자 끝 칸(턱선 그늘)이 하한 0.92배로 눌림 ③ 목 위쪽 그늘 0.96이 또 곱해짐.
+     고침: 기준색을 60~95 백분위(밝은 살 = 볼·이마·턱에 보이는 색)로 · 하한 0.92 → 0.97 · 목 위쪽 그늘 0.96 → 1.0(뒤쪽 그늘 0.93은 형태감이라 둠).
+     되돌리기: SCALP_SKIN.faceTone.loPct=0.50 · .hiPct=0.88 · .shadeMin=0.92 · NECK_SHAPE.shadeTopField=0.96 */
 };
 let _scalpSkinCache = undefined;
 let _skinFieldCache = undefined;
+let _faceToneCache = undefined;   // (2026-10-26) 얼굴 기준색(밝은 살 구간) 캐시
 let _faceTone3DLogged = false;   // (2026-09-16) 얼굴톤 로그 1회 — faceToneRef3D
-function resetScalpSkinSample(){ _scalpSkinCache = undefined; _skinFieldCache = undefined; _scalpCullLogged = false; _faceTone3DLogged = false; }
+function resetScalpSkinSample(){ _scalpSkinCache = undefined; _faceToneCache = undefined; _skinFieldCache = undefined; _scalpCullLogged = false; _faceTone3DLogged = false; }
 
 /* 이 사진에서 <b>살로 볼 픽셀</b>인가 — 머리카락도 아니고 이목구비도 아닌 자리.
    어두운 쪽 꼬리를 자르는 것으로 눈·눈썹·콧구멍·입선이 한 번에 빠진다
@@ -1121,9 +1128,14 @@ function buildSkinColorField(){
 
 /* 평균색 한 개 — 격자를 못 만들었을 때의 폴백이자 목·재질 기본색.
    'rgb(r,g,b)' 또는 null. 정면 마스크만 본다(얼굴이 제일 크게 찍힌 뷰다). */
-function sampleScalpSkinColor(){
-  if(_scalpSkinCache !== undefined) return _scalpSkinCache;
-  _scalpSkinCache = null;
+function sampleScalpSkinColor(loPct, hiPct){
+  /* (2026-10-26) 구간을 받으면 따로 계산(얼굴 기준색용 — 캐시도 따로). 안 받으면 예전 그대로. */
+  const custom = (typeof loPct === 'number' && typeof hiPct === 'number');
+  if(custom){ if(_faceToneCache !== undefined && _faceToneCache.k === loPct + '|' + hiPct) return _faceToneCache.v; }
+  else if(_scalpSkinCache !== undefined) return _scalpSkinCache;
+  const lo = custom ? loPct : SCALP_SKIN.loPct, hi = custom ? hiPct : SCALP_SKIN.hiPct;
+  const save = (v)=>{ if(custom) _faceToneCache = { k: loPct + '|' + hiPct, v }; else _scalpSkinCache = v; return v; };
+  save(null);
   try{
     if(!SCALP_SKIN.fromPhoto) return null;
     const R = _skinRegionOfFront();
@@ -1141,13 +1153,12 @@ function sampleScalpSkinColor(){
     }
     if(lum.length < SCALP_SKIN.minSamples) return null;
     const idx = lum.map((v,i)=>i).sort((a,b)=> lum[a] - lum[b]);
-    const iA = Math.floor(idx.length * SCALP_SKIN.loPct);
-    const iB = Math.max(iA + 1, Math.floor(idx.length * SCALP_SKIN.hiPct));
+    const iA = Math.floor(idx.length * lo);
+    const iB = Math.min(idx.length, Math.max(iA + 1, Math.floor(idx.length * hi)));
     let r=0,g=0,b=0,n=0;
     for(let k=iA;k<iB;k++){ const i=idx[k]; r+=rr[i]; g+=gg[i]; b+=bb[i]; n++; }
     if(!n) return null;
-    _scalpSkinCache = `rgb(${Math.round(r/n)},${Math.round(g/n)},${Math.round(b/n)})`;
-    return _scalpSkinCache;
+    return save(`rgb(${Math.round(r/n)},${Math.round(g/n)},${Math.round(b/n)})`);
   }catch(e){
     console.warn('[3D·두피색] 사진 픽셀 실측 실패 — 예전 scalpColor로 폴백:', e);
     return null;
@@ -1179,7 +1190,9 @@ function sampleScalpSkinColor(){
 function faceToneRef3D(){
   const FT = SCALP_SKIN.faceTone;
   if(!FT || !FT.on) return null;
-  const css = sampleScalpSkinColor();
+  const css = (typeof FT.loPct === 'number' && typeof FT.hiPct === 'number')
+    ? (sampleScalpSkinColor(FT.loPct, FT.hiPct) || sampleScalpSkinColor())
+    : sampleScalpSkinColor();
   const m = css && String(css).match(/\d+/g);
   if(!m || m.length < 3) return null;
   const ref = [+m[0], +m[1], +m[2]];
