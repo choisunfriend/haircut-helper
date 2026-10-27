@@ -1,1 +1,231 @@
-(function extendI18N(){if(typeof I18N==='undefined'){console['warn']('[i18n]\x20I18N\x20표가\x20없습니다\x20—\x2018-perf-i18n-boot.js보다\x20먼저\x20불렸습니까?');return;}Object['assign'](I18N,{'남자':'Male','여자':'Female','외투\x20':'Outer\x20','고른\x20옷\x20벗기':'Remove\x20pick','옷\x20고르기':'Browse','옷\x20닫기':'Close\x20shop','의상\x20고르기':'Choose\x20an\x20outfit','이\x20옷\x20보기':'View\x20this\x20item','누르면\x20':'Switch\x20to\x20','\x20몸으로\x20바꿉니다':'\x20body','고른\x20옷(외투)을\x20입었다\x20벗깁니다\x20—\x20벗어도\x20고른\x20옷은\x20기억해\x20둡니다':'Takes\x20the\x20picked\x20outer\x20layer\x20on\x20and\x20off\x20—\x20your\x20pick\x20is\x20remembered','슈트·재킷을\x20입었다\x20벗깁니다\x20(무슨\x20옷인지는\x20추천이\x20정합니다)':'Takes\x20the\x20suit\x20or\x20jacket\x20on\x20and\x20off\x20(the\x20recommendation\x20picks\x20which)','쇼핑몰에서\x20고른\x20옷을\x20벗고\x20추천\x20의상으로\x20돌아갑니다':'Drops\x20your\x20pick\x20and\x20goes\x20back\x20to\x20the\x20recommended\x20outfit','슈트':'Suit','재킷':'Jacket','원피스\x20슈트':'Dress\x20suit','청바지':'Jeans','상의\x20+\x20하의':'Top\x20+\x20bottoms','상의':'Top','맨몸':'No\x20clothes','\x20·\x20고름':'\x20·\x20picked','\x20·\x20쇼핑몰':'\x20·\x20shop','몸:\x20':'Body:\x20','\x20몸에\x20맞는\x20옷이\x20아니라\x20추천\x20의상으로\x20돌아갑니다':'\x20—\x20not\x20an\x20outfit\x20for\x20this\x20body,\x20going\x20back\x20to\x20the\x20recommendation','고른\x20옷\x20정보를\x20받지\x20못했습니다\x20(':'Couldn’t\x20read\x20the\x20picked\x20item\x20(','옷을\x20불러오지\x20못했습니다':'Couldn’t\x20load\x20that\x20outfit','쇼핑몰을\x20여는\x20중…':'Opening\x20the\x20shop…','쇼핑몰\x20페이지를\x20화면\x20안에\x20띄우지\x20못했습니다.':'The\x20shop\x20page\x20can’t\x20be\x20shown\x20inside\x20the\x20app.','새\x20탭에서\x20열기':'Open\x20in\x20a\x20new\x20tab','닫기':'Close','3D\x20미리보기\x20켜기':'Show\x203D\x20preview','미리보기\x20닫기':'Close\x20preview','확대/축소':'Expand\x20/\x20shrink'});try{_i18nSubKeys=null;}catch(_0x5a8455){}try{if(typeof applyUiLang==='function')applyUiLang();}catch(_0x478eed){}}(),function extendI18N_late(){'use strict';var _0x18e888={'시작':'Start','완료':'Done','복사':'Copy','의상':'Outfit','보기':'View','자동':'Auto','전신':'Full\x20body','상반신':'Upper\x20body','머리':'Head','원본\x20머리':'Your\x20hair'},_0x5cb33f={'🔄\x20360°\x20촬영':'🔄\x20360°\x20Capture','저장된\x20360\x20세트\x20불러오기\x20(':'Load\x20saved\x20360\x20set\x20(','내보내기':'Export','가져오기':'Import','다시\x20시작':'Restart','수동\x20찍기':'Manual\x20shot','좌우\x20바꾸기':'Swap\x20left/right','카메라\x20다시\x20열기':'Retry\x20camera','화면을\x20눌러\x20카메라\x20켜기':'Tap\x20to\x20start\x20the\x20camera','카메라를\x20여는\x20중…':'Opening\x20the\x20camera…','손님\x20정면에\x20서서\x20[시작]을\x20누르세요.\x20폰은\x20세워서\x20머리를\x20향하게.':'Stand\x20in\x20front\x20of\x20the\x20client\x20and\x20press\x20[Start].\x20Hold\x20the\x20phone\x20upright,\x20pointed\x20at\x20the\x20head.','15~20초에\x20걸쳐\x20한\x20바퀴\x20·\x20손님은\x20고개와\x20머리카락을\x20움직이지\x20않습니다\x20·\x20출발점으로\x20돌아오면\x20[완료]':'One\x20full\x20circle\x20in\x2015–20\x20seconds\x20·\x20the\x20client\x20keeps\x20head\x20and\x20hair\x20still\x20·\x20press\x20[Done]\x20when\x20you\x20are\x20back\x20at\x20the\x20start','너무\x20빨라요\x20—\x20천천히\x20도세요':'Too\x20fast\x20—\x20walk\x20around\x20slowly','다\x20찍었어요\x20—\x20[완료]를\x20누르세요':'All\x20angles\x20captured\x20—\x20press\x20[Done]','머리를\x20타원\x20안에\x20두고\x20천천히\x20한\x20바퀴\x20도세요':'Keep\x20the\x20head\x20inside\x20the\x20oval\x20and\x20walk\x20one\x20slow\x20circle','폰을\x20세워서\x20손님\x20머리를\x20향해\x20주세요':'Hold\x20the\x20phone\x20upright\x20and\x20point\x20it\x20at\x20the\x20client’s\x20head','각도\x20센서가\x20없습니다\x20—\x20[수동\x20찍기]로\x20한\x20장씩\x20찍으세요(정면부터\x20한\x20방향으로)':'No\x20rotation\x20sensor\x20—\x20use\x20[Manual\x20shot]\x20to\x20take\x20one\x20photo\x20at\x20a\x20time\x20(start\x20at\x20the\x20front,\x20keep\x20going\x20one\x20way)','사진이\x20모자랍니다\x20—\x20정면·양옆·뒤가\x20다\x20찍혀야\x20해요':'Not\x20enough\x20photos\x20—\x20front,\x20both\x20sides\x20and\x20back\x20are\x20all\x20needed','좌우를\x20바꿨어요':'Left/right\x20swapped','좌우를\x20원래대로\x20했어요':'Left/right\x20back\x20to\x20normal','360\x20세트가\x20비어\x20있습니다':'The\x20360\x20set\x20is\x20empty','360\x20세트에\x20':'The\x20360\x20set\x20has\x20no\x20','\x20각도\x20사진이\x20없습니다\x20—\x20다시\x20찍어\x20주세요':'\x20photo\x20—\x20please\x20capture\x20again','360°\x20사진\x20':'360°\x20set:\x20','장\x20—\x204장을\x20슬롯에\x20넣었어요':'\x20photos\x20—\x204\x20placed\x20in\x20the\x20slots','내보낼\x20360\x20세트가\x20없습니다':'No\x20360\x20set\x20to\x20export','내보내기\x20실패':'Export\x20failed','360\x20세트\x20파일을\x20읽지\x20못했습니다':'Couldn’t\x20read\x20the\x20360\x20set\x20file','카메라는\x20https\x20주소에서만\x20열\x20수\x20있습니다\x20—\x20주소가\x20https://로\x20시작하는지\x20확인해\x20주세요':'The\x20camera\x20only\x20works\x20on\x20https\x20—\x20check\x20that\x20the\x20address\x20starts\x20with\x20https://','이\x20브라우저에서는\x20카메라를\x20열\x20수\x20없습니다':'This\x20browser\x20can’t\x20open\x20the\x20camera','카메라가\x20끊겼습니다\x20—\x20[카메라\x20다시\x20열기]를\x20눌러\x20주세요':'The\x20camera\x20was\x20disconnected\x20—\x20press\x20[Retry\x20camera]','카메라\x20영상이\x20나오지\x20않습니다\x20—\x20다른\x20앱이\x20카메라를\x20쓰고\x20있지\x20않은지\x20확인하고\x20[카메라\x20다시\x20열기]를\x20눌러\x20주세요':'No\x20picture\x20from\x20the\x20camera\x20—\x20make\x20sure\x20no\x20other\x20app\x20is\x20using\x20it,\x20then\x20press\x20[Retry\x20camera]','카메라\x20권한이\x20꺼져\x20있습니다\x20—\x20브라우저\x20주소창의\x20카메라\x20권한을\x20허용한\x20뒤\x20[카메라\x20다시\x20열기]를\x20눌러\x20주세요':'Camera\x20permission\x20is\x20off\x20—\x20allow\x20the\x20camera\x20in\x20the\x20browser’s\x20address\x20bar,\x20then\x20press\x20[Retry\x20camera]','쓸\x20수\x20있는\x20카메라를\x20찾지\x20못했습니다':'No\x20usable\x20camera\x20found','카메라를\x20열\x20수\x20없습니다\x20—\x20다른\x20앱이나\x20탭이\x20카메라를\x20쓰고\x20있지\x20않은지\x20확인하고\x20[카메라\x20다시\x20열기]를\x20눌러\x20주세요':'Couldn’t\x20open\x20the\x20camera\x20—\x20make\x20sure\x20no\x20other\x20app\x20or\x20tab\x20is\x20using\x20it,\x20then\x20press\x20[Retry\x20camera]','3D\x20모델\x20준비\x20중…':'Preparing\x20the\x203D\x20model…','머리\x20만드는\x20중…':'Building\x20hair…','드래그\x20회전\x20·\x20Shift+드래그(두\x20손가락)\x20이동\x20·\x20휠(핀치)\x20확대':'Drag\x20to\x20rotate\x20·\x20Shift+drag\x20(two\x20fingers)\x20to\x20move\x20·\x20wheel\x20(pinch)\x20to\x20zoom','뿌리부터\x20다시\x20기르는\x20중…':'Rebuilding\x20your\x20hair\x20from\x20the\x20roots…','다시\x20만드는\x20중…':'Rebuilding…','원본\x20머리\x20·\x20치수\x20잼\x20—\x20긴\x20머리\x20·\x20볼륨\x20':'Your\x20hair\x20·\x20measured\x20—\x20long\x20hair\x20·\x20volume\x20','원본\x20머리\x20·\x20치수\x20잼\x20—\x20윗머리\x20':'Your\x20hair\x20·\x20measured\x20—\x20top\x20','원본\x20머리\x20·\x20치수\x20잼':'Your\x20hair\x20·\x20measured','cm\x20·\x20옆\x20':'cm\x20·\x20sides\x20','cm\x20·\x20뒤\x20':'cm\x20·\x20back\x20','cm\x20·\x20볼륨\x20':'cm\x20·\x20volume\x20','\x20·\x20넘김\x20':'\x20·\x20sweep\x20','\x20·\x20컬\x20':'\x20·\x20curl\x20','ON:\x20마네킹\x20모드(컬·스타일링을\x20지운\x20상태에서\x20시작)\x20·\x20OFF:\x20사진에서\x20다시\x20기른\x20원본\x20머리(치수\x20잼)':'ON:\x20mannequin\x20mode\x20(starts\x20with\x20curl\x20and\x20styling\x20cleared)\x20·\x20OFF:\x20your\x20own\x20hair\x20rebuilt\x20from\x20the\x20photos\x20(measured)','원본\x20머리를\x20아직\x20못\x20쟀어요\x20—\x20마네킹을\x20끄고\x20잠시\x20기다려\x20주세요':'Your\x20hair\x20hasn’t\x20been\x20measured\x20yet\x20—\x20turn\x20the\x20mannequin\x20off\x20and\x20wait\x20a\x20moment','이\x20스타일\x20이름을\x20입력하세요\x20(원본\x20머리에서\x20잰\x20숫자로\x20등록)':'Name\x20this\x20style\x20(saved\x20from\x20the\x20numbers\x20measured\x20on\x20your\x20hair)','스타일로\x20등록했어요:\x20':'Saved\x20as\x20a\x20style:\x20','원본에서\x20잼':'Measured\x20from\x20photos',']\x20랜드마크\x20없음\x20—\x20슬롯\x20기본각\x20':']\x20no\x20landmarks\x20—\x20assuming\x20slot\x20angle\x20','°\x20가정':'°',']\x20랜드마크\x20없음\x20—\x20촬영시점\x20실측\x20사용\x20yaw:':']\x20no\x20landmarks\x20—\x20using\x20the\x20angle\x20measured\x20at\x20capture,\x20yaw:',']\x20포즈행렬\x20없음\x20—\x20근사yaw:':']\x20no\x20pose\x20matrix\x20—\x20approx.\x20yaw:','만\x20사용':'\x20only','(근사yaw:':'(approx.\x20yaw:','의상\x20입히는\x20중…':'Changing\x20outfit…','직접\x20고름':'Picked\x20by\x20you','복사됨\x20✓':'Copied\x20✓','복사\x20실패':'Copy\x20failed','진단\x20계산\x20중…\x20(스타일을\x20고른\x20뒤\x20처음\x20열\x20때는\x20몇\x20초\x20걸립니다)':'Calculating\x20diagnostics…\x20(takes\x20a\x20few\x20seconds\x20the\x20first\x20time\x20after\x20picking\x20a\x20style)','진단\x20실패:\x20':'Diagnostics\x20failed:\x20','원본\x20대조':'Compare\x20photos','지금\x20화면의\x20머리를\x20원본\x20사진의\x20머리\x20윤곽과\x20겹쳐\x20봅니다':'Overlay\x20the\x20current\x20hair\x20on\x20the\x20hair\x20outline\x20of\x20the\x20original\x20photos'};Object['assign'](I18N,_0x5cb33f,_0x18e888);try{if(typeof I18N_EXACT_ONLY!=='undefined')Object['keys'](_0x18e888)['forEach'](function(_0x4e528f){I18N_EXACT_ONLY['add'](_0x4e528f);});}catch(_0x4e6450){}try{_i18nSubKeys=null;}catch(_0x2c4a21){}try{if(typeof applyUiLang==='function')applyUiLang();}catch(_0x5f0460){}}());function _devMini3DOpenBtn(){let _0x426014=document['getElementById']('devMini3DOpen');if(_0x426014)return _0x426014;const _0x130b40=document['getElementById']('devMini3D'),_0x3c1835=_0x130b40&&_0x130b40['parentNode'];if(!_0x3c1835)return null;return _0x426014=document['createElement']('button'),_0x426014['id']='devMini3DOpen',_0x426014['type']='button',_0x426014['textContent']='3D\x20미리보기\x20켜기',_0x426014['addEventListener']('click',()=>{if(typeof toggle3DAdjust==='function')toggle3DAdjust();}),_0x3c1835['appendChild'](_0x426014),_0x426014;}function syncDevMini3DOpenBtn(){const _0x585768=_devMini3DOpenBtn();if(!_0x585768)return;const _0x976eb0=!!(typeof state!=='undefined'&&state&&state['use3DAdjust']);_0x585768['style']['display']=_0x976eb0?'none':'block';}(function wrapSync3DPreviewPanel(){const _0x46435a=window['sync3DPreviewPanel'];if(typeof _0x46435a!=='function'){console['warn']('[3D미리보기]\x20sync3DPreviewPanel이\x20없습니다\x20—\x2006-ui-panels.js보다\x20먼저\x20불렸습니까?');return;}window['sync3DPreviewPanel']=function(){const _0x7b15f4=_0x46435a['apply'](this,arguments);try{syncDevMini3DOpenBtn();}catch(_0x18159c){console['warn']('[3D미리보기]\x20켜기\x20단추\x20갱신\x20실패:',_0x18159c);}return _0x7b15f4;};}());if(document['readyState']==='loading')document['addEventListener']('DOMContentLoaded',()=>{try{syncDevMini3DOpenBtn();}catch(_0x498b3e){}});else try{syncDevMini3DOpenBtn();}catch(_0x4c915b){}
+/* ==========================================================================
+   22-ui-i18n-extra.js — 3D 미리보기 여닫기 + 뒤늦게 붙은 말 영역본 (2026-09-20)
+
+   이 파일은 <b>난독화하지 않는다</b>. 앞의 파일들을 건드리지 않고 바깥에서만
+   덧댄다 — 18-perf-i18n-boot.js의 I18N 표에 빠진 말을 더하고, 06-ui-panels.js의
+   sync3DPreviewPanel을 감싸서 켜기 단추를 같이 여닫는다.
+
+   ① 말(I18N)
+      21-body-base.js가 3D 결과 화면에 새로 그리는 단추·쪽지는 한국어로 적혀 있고,
+      I18N 표에 그 말이 없어서 EN으로 두어도 한국어 그대로 남았다. 여기서 표에
+      더해 주면 기존 언어 단추(EN/한국어)가 그대로 두 언어를 오간다.
+      ※ 화면에 <b>한국어로 적고 표에서 영어로 바꾸는</b> 것이 이 앱의 방식이다.
+        21-body-base.js 안의 글자를 영어로 고치면 한국어로 못 돌아온다.
+
+   ② 3D 미리보기 여닫기
+      예전: 조정 화면에 미리보기가 늘 떠 있고 머리의 ⛶(전체화면)만 있었다.
+            끄려면 스크롤을 한참 내려 "3D 미리보기: ON" 단추를 찾아야 했다.
+      지금: 머리에 ✕를 두어 그 자리에서 끄고, 끄면 같은 구석에 "3D 미리보기 켜기"
+            딱지가 앉는다. 아래쪽 단추는 index.html에서 뺐다.
+      토글 알맹이(state.use3DAdjust·showDevMini3D)는 06-ui-panels.js 것을 그대로 쓴다.
+   ========================================================================== */
+
+/* ------------------------------------------------------------------ ① 말 */
+(function extendI18N() {
+  if (typeof I18N === 'undefined') {
+    console.warn('[i18n] I18N 표가 없습니다 — 18-perf-i18n-boot.js보다 먼저 불렸습니까?');
+    return;
+  }
+  Object.assign(I18N, {
+    /* 몸·옷 단추 (21-body-base.js) */
+    '남자': 'Male',
+    '여자': 'Female',
+    '외투 ': 'Outer ',
+    '고른 옷 벗기': 'Remove pick',
+    '옷 고르기': 'Browse',
+    '옷 닫기': 'Close shop',
+    '의상 고르기': 'Choose an outfit',
+    '이 옷 보기': 'View this item',
+
+    /* 단추에 붙는 설명(title) */
+    '누르면 ': 'Switch to ',
+    ' 몸으로 바꿉니다': ' body',
+    '고른 옷(외투)을 입었다 벗깁니다 — 벗어도 고른 옷은 기억해 둡니다':
+      'Takes the picked outer layer on and off — your pick is remembered',
+    '슈트·재킷을 입었다 벗깁니다 (무슨 옷인지는 추천이 정합니다)':
+      'Takes the suit or jacket on and off (the recommendation picks which)',
+    '쇼핑몰에서 고른 옷을 벗고 추천 의상으로 돌아갑니다':
+      'Drops your pick and goes back to the recommended outfit',
+
+    /* 옷 이름 (BODY_WARDROBE) */
+    '슈트': 'Suit',
+    '재킷': 'Jacket',
+    '원피스 슈트': 'Dress suit',
+    '청바지': 'Jeans',
+    '상의 + 하의': 'Top + bottoms',
+    '상의': 'Top',
+    '맨몸': 'No clothes',
+    ' · 고름': ' · picked',
+    ' · 쇼핑몰': ' · shop',
+    '몸: ': 'Body: ',
+
+    /* 쪽지(toast)·쇼핑몰 패널 */
+    ' 몸에 맞는 옷이 아니라 추천 의상으로 돌아갑니다':
+      ' — not an outfit for this body, going back to the recommendation',
+    '고른 옷 정보를 받지 못했습니다 (': 'Couldn’t read the picked item (',
+    '옷을 불러오지 못했습니다': 'Couldn’t load that outfit',
+    '쇼핑몰을 여는 중…': 'Opening the shop…',
+    '쇼핑몰 페이지를 화면 안에 띄우지 못했습니다.':
+      'The shop page can’t be shown inside the app.',
+    '새 탭에서 열기': 'Open in a new tab',
+    '닫기': 'Close',
+
+    /* 3D 미리보기 여닫기 (index.html) */
+    '3D 미리보기 켜기': 'Show 3D preview',
+    '미리보기 닫기': 'Close preview',
+    '확대/축소': 'Expand / shrink'
+  });
+  /* 표가 늘었으니 부분치환 키 목록을 다시 만들게 한다(한 번 만들면 캐시된다). */
+  try { _i18nSubKeys = null; } catch (e) {}
+  /* 이미 그려진 화면이 있으면 지금 말로 다시 칠한다. */
+  try { if (typeof applyUiLang === 'function') applyUiLang(); } catch (e) {}
+})();
+
+/* ==========================================================================
+ * (옛 46-i18n-en.js) 영어 화면에 한글로 남아 있던 글자들 (2026-10-04) — 위 ①과 같은 일. 탭 제목은 18 applyUiLang 끝.
+ *
+ * 왜: 번역 표(I18N — 18번·22번)가 만들어진 뒤에 붙인 화면들(360° 촬영 · 조정 3D · 다시 기르기 · 피팅 ·
+ *     진단 [복사] 등)은 표에 없어서 영어 화면(EN)에서도 한글로 나왔습니다. 그 글자들을 표에 넣습니다.
+ *     원문(한글)은 그대로 두므로 [EN]/[한국어] 전환은 예전처럼 됩니다.
+ *
+ * 규칙(기존 표와 같음): 글자 전체가 표에 있으면 그대로 바꾸고, 아니면 긴 것부터 부분 치환.
+ *   한두 낱말짜리 버튼 글자는 다른 문장 속에서 잘못 바뀌지 않게 "전체가 같을 때만"(I18N_EXACT_ONLY).
+ *
+ * 범위: 사용자가 보는 화면 글자(버튼·안내·알림·덮개). 진단 패널 본문(개발용 숫자 줄)과 콘솔 기록은 한글 그대로.
+ * ========================================================================== */
+(function extendI18N_late() {
+  'use strict';
+
+  var EXACT = {                                   // 전체가 같을 때만
+    '시작': 'Start', '완료': 'Done', '복사': 'Copy', '의상': 'Outfit', '보기': 'View', '자동': 'Auto',
+    '전신': 'Full body', '상반신': 'Upper body', '머리': 'Head', '원본 머리': 'Your hair'
+  };
+  var T = {
+    /* ── 360° 촬영 (45) ── */
+    '🔄 360° 촬영': '🔄 360° Capture',
+    '저장된 360 세트 불러오기 (': 'Load saved 360 set (',
+    '내보내기': 'Export', '가져오기': 'Import',
+    '다시 시작': 'Restart', '수동 찍기': 'Manual shot', '좌우 바꾸기': 'Swap left/right', '카메라 다시 열기': 'Retry camera',
+    '화면을 눌러 카메라 켜기': 'Tap to start the camera',
+    '카메라를 여는 중…': 'Opening the camera…',
+    '손님 정면에 서서 [시작]을 누르세요. 폰은 세워서 머리를 향하게.': 'Stand in front of the client and press [Start]. Hold the phone upright, pointed at the head.',
+    '15~20초에 걸쳐 한 바퀴 · 손님은 고개와 머리카락을 움직이지 않습니다 · 출발점으로 돌아오면 [완료]': 'One full circle in 15–20 seconds · the client keeps head and hair still · press [Done] when you are back at the start',
+    '너무 빨라요 — 천천히 도세요': 'Too fast — walk around slowly',
+    '끝내기': 'Finish',
+    '15~20초에 걸쳐 한 바퀴 · 손님은 고개와 머리카락을 움직이지 않습니다 · 출발점으로 돌아오면 [끝내기]': 'One full circle in 15–20 seconds · the client keeps head and hair still · press [Finish] when you are back at the start',
+    '다 찍었어요 — [끝내기]를 누르세요': 'All angles captured — press [Finish]',
+    '머리를 타원 안에, 어깨까지 화면에 두고 천천히 한 바퀴 도세요': 'Keep the head in the oval and the shoulders in frame, and walk one slow circle',
+    '15~20초에 걸쳐 한 바퀴 · 손님은 고개와 머리카락을 움직이지 않습니다 · 링이 주황이면 그 각도를 다시 천천히 · 출발점으로 돌아오면 [끝내기]': 'One full circle in 15–20 seconds · the client keeps head and hair still · if the ring turns orange, go over that angle again slowly · press [Finish] when you are back at the start',
+    '너무 빨라요 — 이 각도에서 잠깐 천천히': 'Too fast — slow down at this angle',
+    '흔들렸어요 — 폰을 멈추듯 천천히': 'Blurry — move the phone slowly, almost pausing',
+    '얼굴이 안 잡혀요 — 머리를 타원 안에, 얼굴이 보이게': 'Face not found — keep the head in the oval with the face visible',
+    '각도가 안 맞아요 — 손님은 고개를 돌리지 말고, 폰만 돌며 찍기': 'Angle mismatch — the client should not turn the head; only the phone moves around',
+    '정면 사진이 아직 없어요 — 정면에서 얼굴이 잡히게 한 번 더': 'No front photo yet — go back to the front until the face is detected',
+    '다 찍었어요 — [완료]를 누르세요': 'All angles captured — press [Done]',
+    '머리를 타원 안에 두고 천천히 한 바퀴 도세요': 'Keep the head inside the oval and walk one slow circle',
+    '폰을 세워서 손님 머리를 향해 주세요': 'Hold the phone upright and point it at the client’s head',
+    '각도 센서가 없습니다 — [수동 찍기]로 한 장씩 찍으세요(정면부터 한 방향으로)': 'No rotation sensor — use [Manual shot] to take one photo at a time (start at the front, keep going one way)',
+    '사진이 모자랍니다 — 정면·양옆·뒤가 다 찍혀야 해요': 'Not enough photos — front, both sides and back are all needed',
+    '좌우를 바꿨어요': 'Left/right swapped', '좌우를 원래대로 했어요': 'Left/right back to normal',
+    '360 세트가 비어 있습니다': 'The 360 set is empty',
+    '360 세트에 ': 'The 360 set has no ', ' 각도 사진이 없습니다 — 다시 찍어 주세요': ' photo — please capture again',
+    '360° 사진 ': '360° set: ', '장 — 4장을 슬롯에 넣었어요': ' photos — 4 placed in the slots',
+    '내보낼 360 세트가 없습니다': 'No 360 set to export', '내보내기 실패': 'Export failed',
+    '360 세트 파일을 읽지 못했습니다': 'Couldn’t read the 360 set file',
+    '카메라는 https 주소에서만 열 수 있습니다 — 주소가 https://로 시작하는지 확인해 주세요': 'The camera only works on https — check that the address starts with https://',
+    '이 브라우저에서는 카메라를 열 수 없습니다': 'This browser can’t open the camera',
+    '카메라가 끊겼습니다 — [카메라 다시 열기]를 눌러 주세요': 'The camera was disconnected — press [Retry camera]',
+    '카메라 영상이 나오지 않습니다 — 다른 앱이 카메라를 쓰고 있지 않은지 확인하고 [카메라 다시 열기]를 눌러 주세요': 'No picture from the camera — make sure no other app is using it, then press [Retry camera]',
+    '카메라 권한이 꺼져 있습니다 — 브라우저 주소창의 카메라 권한을 허용한 뒤 [카메라 다시 열기]를 눌러 주세요': 'Camera permission is off — allow the camera in the browser’s address bar, then press [Retry camera]',
+    '쓸 수 있는 카메라를 찾지 못했습니다': 'No usable camera found',
+    '카메라를 열 수 없습니다 — 다른 앱이나 탭이 카메라를 쓰고 있지 않은지 확인하고 [카메라 다시 열기]를 눌러 주세요': 'Couldn’t open the camera — make sure no other app or tab is using it, then press [Retry camera]',
+
+    /* ── 조정 화면 3D (43) · 원본 머리 (42) ── */
+    '3D 모델 준비 중…': 'Preparing the 3D model…',
+    '머리 만드는 중…': 'Building hair…',
+    '드래그 회전 · Shift+드래그(두 손가락) 이동 · 휠(핀치) 확대': 'Drag to rotate · Shift+drag (two fingers) to move · wheel (pinch) to zoom',
+    '뿌리부터 다시 기르는 중…': 'Rebuilding your hair from the roots…',
+    '다시 만드는 중…': 'Rebuilding…',
+    '원본 머리 · 치수 잼 — 긴 머리 · 볼륨 ': 'Your hair · measured — long hair · volume ',
+    '원본 머리 · 치수 잼 — 윗머리 ': 'Your hair · measured — top ',
+    '원본 머리 · 치수 잼': 'Your hair · measured',
+    'cm · 옆 ': 'cm · sides ', 'cm · 뒤 ': 'cm · back ', 'cm · 볼륨 ': 'cm · volume ', ' · 넘김 ': ' · sweep ', ' · 컬 ': ' · curl ',
+    'ON: 마네킹 모드(컬·스타일링을 지운 상태에서 시작) · OFF: 사진에서 다시 기른 원본 머리(치수 잼)': 'ON: mannequin mode (starts with curl and styling cleared) · OFF: your own hair rebuilt from the photos (measured)',
+    '원본 머리를 아직 못 쟀어요 — 마네킹을 끄고 잠시 기다려 주세요': 'Your hair hasn’t been measured yet — turn the mannequin off and wait a moment',
+    '이 스타일 이름을 입력하세요 (원본 머리에서 잰 숫자로 등록)': 'Name this style (saved from the numbers measured on your hair)',
+    '스타일로 등록했어요: ': 'Saved as a style: ',
+    '원본에서 잼': 'Measured from photos',
+
+    /* ── 조정 화면 상태 줄 (05) ── */
+    '] 랜드마크 없음 — 슬롯 기본각 ': '] no landmarks — assuming slot angle ', '° 가정': '°',
+    '] 랜드마크 없음 — 촬영시점 실측 사용 yaw:': '] no landmarks — using the angle measured at capture, yaw:',
+    '] 포즈행렬 없음 — 근사yaw:': '] no pose matrix — approx. yaw:', '만 사용': ' only', '(근사yaw:': '(approx. yaw:',
+
+    /* ── 3D 결과 화면 피팅 (44) ── */
+    '의상 입히는 중…': 'Changing outfit…', '직접 고름': 'Picked by you',
+
+    /* ── 진단 패널 버튼 (38) ── */
+    '복사됨 ✓': 'Copied ✓', '복사 실패': 'Copy failed',
+    '진단 계산 중… (스타일을 고른 뒤 처음 열 때는 몇 초 걸립니다)': 'Calculating diagnostics… (takes a few seconds the first time after picking a style)',
+    '진단 실패: ': 'Diagnostics failed: ',
+
+    /* ── 원본 대조 (옛 60 · 07b PHOTO_CHECK) ── */
+    '원본 대조': 'Compare photos', '지금 화면의 머리를 원본 사진의 머리 윤곽과 겹쳐 봅니다': 'Overlay the current hair on the hair outline of the original photos'
+  };
+
+  Object.assign(I18N, T, EXACT);
+  try { if (typeof I18N_EXACT_ONLY !== 'undefined') Object.keys(EXACT).forEach(function (k) { I18N_EXACT_ONLY.add(k); }); } catch (e) {}
+  try { _i18nSubKeys = null; } catch (e) {}
+
+  try { if (typeof applyUiLang === 'function') applyUiLang(); } catch (e) {}
+})();
+
+/* -------------------------------------------------- ② 3D 미리보기 여닫기 */
+/* 켜기 딱지는 미리보기가 앉던 구석에 그대로 앉는다(styles.css #devMini3D와 같은 자리).
+   미리보기가 꺼져 있을 때만 보이고, 누르면 예전 단추와 똑같은 일을 한다. */
+function _devMini3DOpenBtn() {
+  let b = document.getElementById('devMini3DOpen');
+  if (b) return b;
+  const host = document.getElementById('devMini3D');
+  const parent = host && host.parentNode;
+  if (!parent) return null;
+  b = document.createElement('button');
+  b.id = 'devMini3DOpen';
+  b.type = 'button';
+  b.textContent = '3D 미리보기 켜기';
+  b.addEventListener('click', () => {
+    if (typeof toggle3DAdjust === 'function') toggle3DAdjust();
+  });
+  parent.appendChild(b);
+  return b;
+}
+
+function syncDevMini3DOpenBtn() {
+  const b = _devMini3DOpenBtn();
+  if (!b) return;
+  const on = !!(typeof state !== 'undefined' && state && state.use3DAdjust);
+  b.style.display = on ? 'none' : 'block';
+}
+
+/* 06-ui-panels.js의 sync3DPreviewPanel을 감싼다 — 알맹이는 그대로 두고
+   켜기 딱지만 뒤따라 맞춘다. 미리보기를 켜고 끄는 길이 여럿이어도(단추·음성·
+   navTo에서 자동으로 켜는 길) 전부 이 함수를 지나므로 한 군데만 감싸면 된다. */
+(function wrapSync3DPreviewPanel() {
+  const inner = window.sync3DPreviewPanel;
+  if (typeof inner !== 'function') {
+    console.warn('[3D미리보기] sync3DPreviewPanel이 없습니다 — 06-ui-panels.js보다 먼저 불렸습니까?');
+    return;
+  }
+  window.sync3DPreviewPanel = function () {
+    const r = inner.apply(this, arguments);
+    try { syncDevMini3DOpenBtn(); } catch (e) { console.warn('[3D미리보기] 켜기 단추 갱신 실패:', e); }
+    return r;
+  };
+})();
+
+/* 화면이 처음 서고 나면 한 번 맞춰 둔다(조정 화면에 아직 안 들어갔을 때 대비). */
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', () => { try { syncDevMini3DOpenBtn(); } catch (e) {} });
+} else {
+  try { syncDevMini3DOpenBtn(); } catch (e) {}
+}

@@ -1,1 +1,2957 @@
-const HEAD_MESH_SOURCE={'type':'procedural','url':null};let model3D=null,model3DGeneration=0x0;function clamp(_0x35c706,_0x13f33e,_0x281820){return Math['max'](_0x13f33e,Math['min'](_0x281820,_0x35c706));}function getFaceMetrics(){const _0x32c76b=state['landmarks']&&state['landmarks']['front']||getEstimatedLandmarks('front'),_0x5d6458=state['hairMasks']&&state['hairMasks']['front']&&state['hairMasks']['front']['w']||0x1,_0x61e0fb=state['hairMasks']&&state['hairMasks']['front']&&state['hairMasks']['front']['h']||0x1,_0x235276=Math['max'](0x1,(_0x32c76b['chinY']-_0x32c76b['browTopY'])*_0x61e0fb),_0x2d706f=Math['max'](0x1,Math['abs'](_0x32c76b['rEarX']-_0x32c76b['lEarX'])*_0x5d6458),_0x259bc3=_0x235276/_0x2d706f,_0x5de17a=1.55,_0x7fa049=clamp(_0x259bc3/_0x5de17a,0.72,1.38),_0x337171=clamp(0x1/Math['sqrt'](_0x7fa049),0.85,1.18),_0x2c5910=clamp(Math['sqrt'](_0x7fa049),0.85,1.18),_0x2ad897=makeFaceProjector(_0x32c76b,_0x337171,_0x2c5910);return{'lm':_0x32c76b,'imgW':_0x5d6458,'imgH':_0x61e0fb,'widthFactor':_0x337171,'heightFactor':_0x2c5910,'projector':_0x2ad897};}const FACE_RULER_CM={'eyeToChin':11.5,'earHalf':0x7};function makeFaceProjector(_0x1a2d27,_0x236fa0,_0x4c596e){const _0x553052=0.15,_0x555cdd=0.15-0.7*_0x4c596e,_0x40dd58=_0x1a2d27['chinY']-_0x1a2d27['eyeY']||0.001,_0x42712d=(_0x553052-_0x555cdd)/_0x40dd58,_0x2206ea=_0x553052+_0x42712d*_0x1a2d27['eyeY'],_0xbfad74=_0x45c309=>_0x2206ea-_0x42712d*_0x45c309,_0xb0a004=FACE_RULER_CM['eyeToChin'],_0x732acf=FACE_RULER_CM['earHalf'],_0x1f0f1d=(_0x553052-_0x555cdd)*(_0x732acf/_0xb0a004),_0x653dd9=Math['min'](_0x1a2d27['lEarX'],_0x1a2d27['rEarX']),_0x4686d2=Math['max'](_0x1a2d27['lEarX'],_0x1a2d27['rEarX']),_0x4d7500=_0x4686d2-_0x653dd9||0.001,_0x13ee07=0x2*_0x1f0f1d/_0x4d7500,_0x4dfdb0=_0x2de7bd=>(_0x2de7bd-_0x653dd9)*_0x13ee07-_0x1f0f1d,_0x1e1a8e=_0x2b827d=>(_0x2b827d+_0x1f0f1d)/_0x13ee07+_0x653dd9,_0x5da943=_0x336c91=>(_0x2206ea-_0x336c91)/_0x42712d;return{'toMeshX':_0x4dfdb0,'toMeshY':_0xbfad74,'toImgX':_0x1e1a8e,'toImgY':_0x5da943,'bX':_0x13ee07,'bY':_0x42712d};}function faceRulerCmPerUnit(_0x4b654d){const _0x1df105=_0x4b654d&&_0x4b654d['heightFactor']||0x1;let _0x452374=0.7*_0x1df105,_0x192f3d=_0x452374*(FACE_RULER_CM['earHalf']/FACE_RULER_CM['eyeToChin']);const _0x2e86c7=_0x4b654d&&_0x4b654d['lm'],_0x12730e=_0x4b654d&&_0x4b654d['projector'];if(_0x12730e&&_0x2e86c7&&typeof _0x12730e['toMeshX']==='function'&&typeof _0x12730e['toMeshY']==='function'&&_0x2e86c7['lEarX']!=null&&_0x2e86c7['rEarX']!=null&&_0x2e86c7['eyeY']!=null&&_0x2e86c7['chinY']!=null){const _0x14df42=_0x12730e['toMeshY'](_0x2e86c7['eyeY'])-_0x12730e['toMeshY'](_0x2e86c7['chinY']),_0x400944=(_0x12730e['toMeshX'](Math['max'](_0x2e86c7['lEarX'],_0x2e86c7['rEarX']))-_0x12730e['toMeshX'](Math['min'](_0x2e86c7['lEarX'],_0x2e86c7['rEarX'])))/0x2;_0x14df42>0.000001&&_0x400944>0.000001&&(_0x452374=_0x14df42,_0x192f3d=_0x400944);}return{'x':FACE_RULER_CM['earHalf']/_0x192f3d,'y':FACE_RULER_CM['eyeToChin']/_0x452374};}const FACE_PROFILE_BASE={'on':!![],'flatBelowEye':0.5},FACE_SCALP_CONFORM={'on':!![],'grid':0x80,'epsK':0.006,'falloffK':0.3,'maxOutK':0.1,'maxOutLowK':0.45,'maxInK':0.3,'frontMinZ':0.08,'frontFullZ':0.35,'minRadiusK':1.3,'coreBackK':0.05,'coreRampK':0.1};let _conformLogged=![];function conformScalpToFace(_0x1179a0,_0x5c0d97){const _0xce28d1=FACE_SCALP_CONFORM;if(!_0xce28d1||!_0xce28d1['on']||!_0x1179a0||!_0x5c0d97||!_0x5c0d97['geometry'])return null;try{const _0x39738e=_0x1179a0['getObjectByName']('skullEllipsoid');if(!_0x39738e||!_0x39738e['geometry']||!_0x39738e['geometry']['attributes']['position'])return null;const _0x408fe6=_0x39738e['geometry']['attributes']['position'],_0x370455=_0x39738e['scale']['x'],_0x3b82a5=_0x39738e['scale']['y'],_0x259e91=_0x39738e['scale']['z'],_0xaf5a6=_0x39738e['position']['y'];if(!(_0x370455>0x0&&_0x3b82a5>0x0&&_0x259e91>0x0))return null;if(!_0x39738e['geometry']['userData']['_unitPos'])_0x39738e['geometry']['userData']['_unitPos']=Float32Array['from'](_0x408fe6['array']);const _0x162f13=_0x39738e['geometry']['userData']['_unitPos'],_0x543b99=_0x5c0d97['geometry'],_0x54d458=_0x543b99['attributes']['position'],_0x58faae=_0x543b99['getIndex'](),_0x226729=_0x543b99['attributes']['aFaceAlpha'];if(!_0x54d458||!_0x58faae)return null;const _0x340688=_0x5c0d97['position']['x'],_0x157dd2=_0x5c0d97['position']['y'],_0x25d085=_0x5c0d97['position']['z'];let _0x3d3c51=Infinity,_0x238f1f=-Infinity,_0x176b9c=Infinity,_0x13dadb=-Infinity;for(let _0x385644=0x0;_0x385644<_0x54d458['count'];_0x385644++){const _0x249a4e=_0x54d458['getX'](_0x385644)+_0x340688,_0x3dc8dd=_0x54d458['getY'](_0x385644)+_0x157dd2;if(_0x249a4e<_0x3d3c51)_0x3d3c51=_0x249a4e;if(_0x249a4e>_0x238f1f)_0x238f1f=_0x249a4e;if(_0x3dc8dd<_0x176b9c)_0x176b9c=_0x3dc8dd;if(_0x3dc8dd>_0x13dadb)_0x13dadb=_0x3dc8dd;}const _0x923938=_0x370455*_0xce28d1['falloffK']*1.05;_0x3d3c51-=_0x923938,_0x238f1f+=_0x923938,_0x176b9c-=_0x923938,_0x13dadb+=_0x923938;const _0x5c4330=Math['max'](0x10,_0xce28d1['grid']|0x0),_0xe67111=Math['max'](0x10,Math['round'](_0x5c4330*(_0x13dadb-_0x176b9c)/Math['max'](0.000001,_0x238f1f-_0x3d3c51))),_0x16eb27=(_0x238f1f-_0x3d3c51)/_0x5c4330,_0x4a27b4=(_0x13dadb-_0x176b9c)/_0xe67111,_0x1bd888=_0x5c4330*_0xe67111,_0x4223bb=new Float32Array(_0x1bd888)['fill'](-Infinity),_0x68b34b=_0x58faae['array'];for(let _0x2066d6=0x0;_0x2066d6<_0x68b34b['length'];_0x2066d6+=0x3){const _0x3fb616=_0x68b34b[_0x2066d6],_0x49b29c=_0x68b34b[_0x2066d6+0x1],_0xe32ad7=_0x68b34b[_0x2066d6+0x2];if(_0x226729&&_0x226729['getX'](_0x3fb616)<0.02&&_0x226729['getX'](_0x49b29c)<0.02&&_0x226729['getX'](_0xe32ad7)<0.02)continue;const _0x48cb11=_0x54d458['getX'](_0x3fb616)+_0x340688,_0x15e76e=_0x54d458['getY'](_0x3fb616)+_0x157dd2,_0x170f57=_0x54d458['getZ'](_0x3fb616)+_0x25d085,_0x5b1c37=_0x54d458['getX'](_0x49b29c)+_0x340688,_0x3ef208=_0x54d458['getY'](_0x49b29c)+_0x157dd2,_0x106e11=_0x54d458['getZ'](_0x49b29c)+_0x25d085,_0x4fc593=_0x54d458['getX'](_0xe32ad7)+_0x340688,_0x30cef2=_0x54d458['getY'](_0xe32ad7)+_0x157dd2,_0x15e0ca=_0x54d458['getZ'](_0xe32ad7)+_0x25d085,_0xf4e593=(_0x3ef208-_0x30cef2)*(_0x48cb11-_0x4fc593)+(_0x4fc593-_0x5b1c37)*(_0x15e76e-_0x30cef2);if(Math['abs'](_0xf4e593)<1e-12)continue;const _0x5f192b=Math['max'](0x0,Math['floor']((Math['min'](_0x48cb11,_0x5b1c37,_0x4fc593)-_0x3d3c51)/_0x16eb27)),_0x2ec642=Math['min'](_0x5c4330-0x1,Math['floor']((Math['max'](_0x48cb11,_0x5b1c37,_0x4fc593)-_0x3d3c51)/_0x16eb27)),_0x30b104=Math['max'](0x0,Math['floor']((Math['min'](_0x15e76e,_0x3ef208,_0x30cef2)-_0x176b9c)/_0x4a27b4)),_0xec8650=Math['min'](_0xe67111-0x1,Math['floor']((Math['max'](_0x15e76e,_0x3ef208,_0x30cef2)-_0x176b9c)/_0x4a27b4));for(let _0x2c460f=_0x30b104;_0x2c460f<=_0xec8650;_0x2c460f++){const _0xd03cb=_0x176b9c+(_0x2c460f+0.5)*_0x4a27b4;for(let _0x302f11=_0x5f192b;_0x302f11<=_0x2ec642;_0x302f11++){const _0x51cbf0=_0x3d3c51+(_0x302f11+0.5)*_0x16eb27,_0x340ff0=((_0x3ef208-_0x30cef2)*(_0x51cbf0-_0x4fc593)+(_0x4fc593-_0x5b1c37)*(_0xd03cb-_0x30cef2))/_0xf4e593,_0x17c862=((_0x30cef2-_0x15e76e)*(_0x51cbf0-_0x4fc593)+(_0x48cb11-_0x4fc593)*(_0xd03cb-_0x30cef2))/_0xf4e593,_0x5970e4=0x1-_0x340ff0-_0x17c862;if(_0x340ff0<-0.0001||_0x17c862<-0.0001||_0x5970e4<-0.0001)continue;const _0x3610ef=_0x340ff0*_0x170f57+_0x17c862*_0x106e11+_0x5970e4*_0x15e0ca,_0x4788a3=_0x2c460f*_0x5c4330+_0x302f11;if(_0x3610ef>_0x4223bb[_0x4788a3])_0x4223bb[_0x4788a3]=_0x3610ef;}}}const _0x2090f4=_0x39738e['geometry']['parameters']||{},_0x54d7f4=_0x2090f4['widthSegments']||0x30,_0x1a505b=_0x2090f4['heightSegments']||0x24,_0x421d2c=Math['max'](0x2*Math['PI']*_0x370455/_0x54d7f4,Math['PI']*_0x3b82a5/_0x1a505b),_0x5f58aa=Math['max'](0x1,Math['ceil'](_0x421d2c*_0xce28d1['minRadiusK']/Math['min'](_0x16eb27,_0x4a27b4))),_0x220f50=new Float32Array(_0x1bd888)['fill'](Infinity),_0x1ae49f=new Float32Array(_0x1bd888)['fill'](Infinity);for(let _0x25f2fe=0x0;_0x25f2fe<_0xe67111;_0x25f2fe++)for(let _0x472336=0x0;_0x472336<_0x5c4330;_0x472336++){let _0x2e1f44=Infinity;for(let _0x3ed897=-_0x5f58aa;_0x3ed897<=_0x5f58aa;_0x3ed897++){const _0x2f6408=_0x472336+_0x3ed897;if(_0x2f6408<0x0||_0x2f6408>=_0x5c4330)continue;const _0x4d8a97=_0x4223bb[_0x25f2fe*_0x5c4330+_0x2f6408];if(_0x4d8a97!==-Infinity&&_0x4d8a97<_0x2e1f44)_0x2e1f44=_0x4d8a97;}_0x1ae49f[_0x25f2fe*_0x5c4330+_0x472336]=_0x2e1f44;}for(let _0x1b160f=0x0;_0x1b160f<_0xe67111;_0x1b160f++)for(let _0x343b38=0x0;_0x343b38<_0x5c4330;_0x343b38++){let _0x2d3acd=Infinity;for(let _0x2c0d4d=-_0x5f58aa;_0x2c0d4d<=_0x5f58aa;_0x2c0d4d++){const _0x34d2e7=_0x1b160f+_0x2c0d4d;if(_0x34d2e7<0x0||_0x34d2e7>=_0xe67111)continue;const _0x139773=_0x1ae49f[_0x34d2e7*_0x5c4330+_0x343b38];if(_0x139773<_0x2d3acd)_0x2d3acd=_0x139773;}_0x220f50[_0x1b160f*_0x5c4330+_0x343b38]=_0x2d3acd;}const _0x166ec8=new Float32Array(_0x1bd888);{const _0x270c4f=[];for(let _0x44f742=0x0;_0x44f742<_0x1bd888;_0x44f742++){if(_0x4223bb[_0x44f742]===-Infinity)_0x166ec8[_0x44f742]=0x0,_0x270c4f['push'](_0x44f742);else _0x166ec8[_0x44f742]=Infinity;}for(let _0x547df2=0x0;_0x547df2<_0x270c4f['length'];_0x547df2++){const _0x2cc863=_0x270c4f[_0x547df2],_0x4e2e3b=_0x2cc863%_0x5c4330,_0x13dc63=_0x2cc863/_0x5c4330|0x0,_0x2de0d2=_0x166ec8[_0x2cc863]+0x1,_0x2517e7=[_0x4e2e3b>0x0?_0x2cc863-0x1:-0x1,_0x4e2e3b<_0x5c4330-0x1?_0x2cc863+0x1:-0x1,_0x13dc63>0x0?_0x2cc863-_0x5c4330:-0x1,_0x13dc63<_0xe67111-0x1?_0x2cc863+_0x5c4330:-0x1];for(const _0x455c74 of _0x2517e7){_0x455c74>=0x0&&_0x166ec8[_0x455c74]>_0x2de0d2&&(_0x166ec8[_0x455c74]=_0x2de0d2,_0x270c4f['push'](_0x455c74));}}}const _0x5efb1b=Math['max'](0x1,_0x370455*_0xce28d1['coreRampK']/Math['min'](_0x16eb27,_0x4a27b4)),_0xd8bd70=_0x259e91*_0xce28d1['epsK'],_0x1af0a8=new Float32Array(_0x1bd888),_0x2435a1=new Uint8Array(_0x1bd888),_0x4c3863=new Float32Array(_0x1bd888)['fill'](Infinity);let _0xf5706a=0x0,_0x33af58=Infinity,_0x40b214=-Infinity;for(let _0x18ab9a=0x0;_0x18ab9a<_0xe67111;_0x18ab9a++){const _0x2da1e3=_0x176b9c+(_0x18ab9a+0.5)*_0x4a27b4,_0x32096c=(_0x2da1e3-_0xaf5a6)/_0x3b82a5;for(let _0x12e27b=0x0;_0x12e27b<_0x5c4330;_0x12e27b++){const _0x11fd9c=_0x18ab9a*_0x5c4330+_0x12e27b;if(_0x4223bb[_0x11fd9c]===-Infinity)continue;const _0x5d152c=_0x3d3c51+(_0x12e27b+0.5)*_0x16eb27,_0x119687=_0x5d152c/_0x370455,_0xed4e1e=_0x119687*_0x119687+_0x32096c*_0x32096c;if(_0xed4e1e>=0.995)continue;const _0x3b3e0e=Math['min'](0x1,_0x166ec8[_0x11fd9c]/_0x5efb1b),_0x54365b=_0x259e91*_0xce28d1['coreBackK']*_0x3b3e0e*_0x3b3e0e*(0x3-0x2*_0x3b3e0e),_0xcb02e0=Math['min'](_0x4223bb[_0x11fd9c],isFinite(_0x220f50[_0x11fd9c])?_0x220f50[_0x11fd9c]:_0x4223bb[_0x11fd9c])-_0xd8bd70-_0x54365b,_0x52d363=_0x259e91*(_0x2da1e3<_0xaf5a6&&_0xce28d1['maxOutLowK']!=null?_0xce28d1['maxOutLowK']:_0xce28d1['maxOutK']),_0x3f6dfb=Math['max'](-_0x259e91*(_0xce28d1['maxInK']+_0xce28d1['coreBackK']),Math['min'](_0x52d363,_0xcb02e0-_0x259e91*Math['sqrt'](0x1-_0xed4e1e)));_0x1af0a8[_0x11fd9c]=_0x3f6dfb,_0x2435a1[_0x11fd9c]=0x1,_0x4c3863[_0x11fd9c]=0x0,_0xf5706a++;if(_0x3f6dfb<_0x33af58)_0x33af58=_0x3f6dfb;if(_0x3f6dfb>_0x40b214)_0x40b214=_0x3f6dfb;}}if(_0xf5706a<0x14)return null;const _0x211d16=Math['max'](0x1,Math['ceil'](_0x370455*_0xce28d1['falloffK']/Math['min'](_0x16eb27,_0x4a27b4))),_0x4594c1=_0x2435a1['slice']();for(let _0x2406b3=0x0;_0x2406b3<_0x211d16;_0x2406b3++){let _0x34b5bb=0x0;const _0x3e73ac=_0x1af0a8['slice'](),_0x5e2839=_0x4594c1['slice'](),_0x2d958b=_0x4c3863['slice']();for(let _0x6ad123=0x0;_0x6ad123<_0xe67111;_0x6ad123++)for(let _0x10d248=0x0;_0x10d248<_0x5c4330;_0x10d248++){const _0x50d498=_0x6ad123*_0x5c4330+_0x10d248;if(_0x4594c1[_0x50d498])continue;let _0x121ecc=0x0,_0x9b9209=0x0;_0x10d248>0x0&&_0x4594c1[_0x50d498-0x1]&&(_0x121ecc+=_0x1af0a8[_0x50d498-0x1],_0x9b9209++),_0x10d248<_0x5c4330-0x1&&_0x4594c1[_0x50d498+0x1]&&(_0x121ecc+=_0x1af0a8[_0x50d498+0x1],_0x9b9209++),_0x6ad123>0x0&&_0x4594c1[_0x50d498-_0x5c4330]&&(_0x121ecc+=_0x1af0a8[_0x50d498-_0x5c4330],_0x9b9209++),_0x6ad123<_0xe67111-0x1&&_0x4594c1[_0x50d498+_0x5c4330]&&(_0x121ecc+=_0x1af0a8[_0x50d498+_0x5c4330],_0x9b9209++),_0x9b9209&&(_0x3e73ac[_0x50d498]=_0x121ecc/_0x9b9209,_0x5e2839[_0x50d498]=0x1,_0x2d958b[_0x50d498]=_0x2406b3+0x1,_0x34b5bb++);}if(!_0x34b5bb)break;_0x1af0a8['set'](_0x3e73ac),_0x4594c1['set'](_0x5e2839),_0x4c3863['set'](_0x2d958b);}const _0x372714=_0x4f7e56=>{return _0x4f7e56=Math['max'](0x0,Math['min'](0x1,_0x4f7e56)),_0x4f7e56*_0x4f7e56*(0x3-0x2*_0x4f7e56);};let _0x33e7f1=0x0,_0xd50317=0x0;for(let _0x4339fb=0x0;_0x4339fb<_0x408fe6['count'];_0x4339fb++){const _0x108d8d=_0x162f13[_0x4339fb*0x3],_0x3432de=_0x162f13[_0x4339fb*0x3+0x1],_0x5e4c01=_0x162f13[_0x4339fb*0x3+0x2];_0x408fe6['setXYZ'](_0x4339fb,_0x108d8d,_0x3432de,_0x5e4c01);if(_0x5e4c01<=_0xce28d1['frontMinZ'])continue;const _0x2a8cbb=_0x108d8d*_0x370455,_0x167668=_0x3432de*_0x3b82a5+_0xaf5a6,_0x1853c4=Math['floor']((_0x2a8cbb-_0x3d3c51)/_0x16eb27),_0x144970=Math['floor']((_0x167668-_0x176b9c)/_0x4a27b4);if(_0x1853c4<0x0||_0x144970<0x0||_0x1853c4>=_0x5c4330||_0x144970>=_0xe67111)continue;const _0x3a0889=_0x144970*_0x5c4330+_0x1853c4;if(!_0x4594c1[_0x3a0889])continue;const _0x2ba2eb=_0x372714((_0x5e4c01-_0xce28d1['frontMinZ'])/Math['max'](0.000001,_0xce28d1['frontFullZ']-_0xce28d1['frontMinZ'])),_0x1f17d5=_0x2435a1[_0x3a0889]?0x1:0x1-_0x372714(_0x4c3863[_0x3a0889]/_0x211d16),_0x309827=_0x1af0a8[_0x3a0889]*_0x2ba2eb*_0x1f17d5;if(Math['abs'](_0x309827)<1e-7)continue;_0x408fe6['setZ'](_0x4339fb,_0x5e4c01+_0x309827/_0x259e91),_0x33e7f1++;if(Math['abs'](_0x309827)>_0xd50317)_0xd50317=Math['abs'](_0x309827);}_0x408fe6['needsUpdate']=!![],_0x39738e['geometry']['computeVertexNormals'](),_0x39738e['geometry']['computeBoundingSphere']();const _0x5606ed={'nFace':_0xf5706a,'moved':_0x33e7f1,'rMin':_0x33af58,'rMax':_0x40b214,'maxAbs':_0xd50317,'GX':_0x5c4330,'GY':_0xe67111,'rad':_0x5f58aa};if(!_conformLogged){_conformLogged=!![];const _0x48ffc6=typeof modelCmPerUnit==='function'?modelCmPerUnit():null,_0x506d6b=_0x14475d=>_0x14475d['toFixed'](0x4)+(_0x48ffc6?'('+(_0x14475d*_0x48ffc6)['toFixed'](0x2)+'cm)':'');console['log'](...gyeolBoldArgs(['[3D·두상면↔얼굴최종면]\x20얼굴\x20격자\x20'+_0xf5706a+'칸\x20·\x20잔차\x20<b>'+_0x506d6b(_0x33af58)+'\x20~\x20'+_0x506d6b(_0x40b214)+'</b>'+'\x20(+\x20=\x20얼굴이\x20두개골보다\x20앞)\x20·\x20옮긴\x20두피면\x20정점\x20<b>'+_0x33e7f1+'</b>/'+_0x408fe6['count']+'\x20·\x20최대\x20'+_0x506d6b(_0xd50317)+'\x20·\x20주변최소\x20반경\x20'+_0x5f58aa+'칸\x20·\x20안쪽\x20추가\x20후퇴\x20'+_0xce28d1['coreBackK']+'c'+'\x0a\x20\x20\x20\x20\x20\x20기준면끼리가\x20아니라\x20<b>굴곡·측면보정까지\x20들어간\x20얼굴</b>에\x20두피면을\x20붙였습니다.'+'\x20잔차가\x20상한(앞\x20'+_0xce28d1['maxOutK']+'c\x20·\x20눈\x20아래\x20앞\x20'+_0xce28d1['maxOutLowK']+'c\x20·\x20뒤\x20'+_0xce28d1['maxInK']+'c)에\x20닿았으면\x20그\x20자리는\x20덜\x20붙은\x20것입니다.'+'\x0a\x20\x20\x20\x20\x20\x20되돌리기:\x20FACE_SCALP_CONFORM.on=false']));}return _0x5606ed;}catch(_0x295d6a){return console['warn']('[3D·두상면↔얼굴최종면]\x20실패(두피면\x20그대로):',_0x295d6a&&_0x295d6a['message']),null;}}const FACE_HAIR_CUT={'on':!![],'blurPx':1.5};function buildRingGridIndices(_0x47ce05,_0x401c4f){const _0x576902=[];for(let _0x59e478=0x0;_0x59e478<_0x47ce05;_0x59e478++){for(let _0x2d0e48=0x0;_0x2d0e48<_0x401c4f;_0x2d0e48++){const _0x42ae7e=_0x59e478*(_0x401c4f+0x1)+_0x2d0e48,_0x5a7daa=_0x42ae7e+(_0x401c4f+0x1),_0xf4ba54=_0x42ae7e+0x1,_0x341b53=_0x5a7daa+0x1;_0x576902['push'](_0x42ae7e,_0x5a7daa,_0xf4ba54,_0x5a7daa,_0x341b53,_0xf4ba54);}}return _0x576902;}const NECK_SHAPE={'fromGarment':![],'baseWCm':10.5,'baseDCm':0xa,'inset':0.86,'taperW':0.92,'taperD':0.92,'tiltZ':0.09,'napeFull':1.08,'throatSetZ':0x0,'waist':0x0,'unlit':!![],'shadeRear':0.78,'shadeTop':0.9,'fromField':!![],'shadeRearField':0.93,'shadeTopField':0.96,'minBaseCm':0x9,'maxBaseCm':0xd,'topFromChin':!![],'topAboveChin':0.12};let _garmentNeckOpening=null;function measureGarmentNeckOpening(_0x3b7dc6){if(!_0x3b7dc6)return null;const _0x43af09=getNeckBottomY(),_0x2f3e9c=0.1,_0x3af3dd=[],_0x2ad30b=[],_0x102944=new THREE['Vector3']();_0x3b7dc6['updateMatrixWorld'](!![]),_0x3b7dc6['traverse'](_0x133ed1=>{if(!_0x133ed1['isMesh']||_0x133ed1['visible']===![])return;const _0x4bc449=_0x133ed1['geometry']&&_0x133ed1['geometry']['attributes']&&_0x133ed1['geometry']['attributes']['position'];if(!_0x4bc449)return;for(let _0x5d924b=0x0;_0x5d924b<_0x4bc449['count'];_0x5d924b++){_0x102944['fromBufferAttribute'](_0x4bc449,_0x5d924b)['applyMatrix4'](_0x133ed1['matrixWorld']);if(_0x102944['y']>_0x43af09||_0x102944['y']<_0x43af09-_0x2f3e9c)continue;_0x3af3dd['push'](Math['abs'](_0x102944['x'])),_0x2ad30b['push'](Math['abs'](_0x102944['z']));}});if(_0x3af3dd['length']<0x18)return null;const _0x55641f=(_0x450e2e,_0x4c16d8)=>{return _0x450e2e['sort']((_0x4b8c63,_0x46429f)=>_0x4b8c63-_0x46429f),_0x450e2e[Math['floor'](_0x450e2e['length']*_0x4c16d8)];};let _0x21fe52=_0x55641f(_0x3af3dd,0.15),_0x34b18a=_0x55641f(_0x2ad30b,0.15);if(!(_0x21fe52>0.15&&_0x21fe52<0.75))return null;if(!(_0x34b18a>0.1&&_0x34b18a<0.8))_0x34b18a=_0x21fe52*0.82;return{'halfWidth':_0x21fe52,'halfDepth':_0x34b18a};}function buildRealNeckMesh(_0x24ae81){const _0xae1e0e=_0x24ae81['clone'](),_0x1118af=NECK_SHAPE['unlit']?new THREE['MeshBasicMaterial']({'color':0xffffff,'vertexColors':!![]}):new THREE['MeshStandardMaterial']({'color':_0xae1e0e['clone']()['multiplyScalar'](0.94),'roughness':0.85}),_0x4b395c=0x8,_0x5c30e9=0x18,_0x3a4e5d=HEAD_PHI_BANDS[HEAD_PHI_BANDS['length']-0x1],_0x57e006=getDisplaySkullEllipsoid();let _0x4bf830=Math['cos'](_0x3a4e5d)*_0x57e006['b']*1.01+0.15;const _0x344a3f=_0x4bf830;let _0x164519=null;if(NECK_SHAPE['topFromChin']){try{const _0x195a05=getFaceMetrics(),_0x56bf33=0.15-0.7*_0x195a05['heightFactor'];if(isFinite(_0x56bf33))_0x164519=_0x56bf33;}catch(_0x1d717b){}if(_0x164519!=null)_0x4bf830=_0x164519+NECK_SHAPE['topAboveChin'];}const _0x2a196d=getNeckBottomY(),_0x4ac0b8=(_0x10eb3c,_0x288421,_0x5c43b4)=>Math['min'](_0x5c43b4,Math['max'](_0x288421,_0x10eb3c)),_0x44ab14=NECK_SHAPE['fromGarment']?_garmentNeckOpening:null;let _0x1dde83=_0x44ab14?_0x44ab14['halfWidth']*NECK_SHAPE['inset']:null,_0x1a78c3=_0x44ab14?_0x44ab14['halfDepth']*NECK_SHAPE['inset']:null,_0x35c421=16.4;try{const _0x5d38fb=faceRulerCmPerUnit(getFaceMetrics());if(_0x5d38fb&&_0x5d38fb['x']>0x1)_0x35c421=_0x5d38fb['x'];}catch(_0x4e4510){}!_0x44ab14&&(_0x1dde83=NECK_SHAPE['baseWCm']/0x2/_0x35c421,_0x1a78c3=NECK_SHAPE['baseDCm']/0x2/_0x35c421);{const _0x35ade4=NECK_SHAPE['minBaseCm']/0x2/_0x35c421,_0x197465=NECK_SHAPE['maxBaseCm']/0x2/_0x35c421,_0x3956b5=_0x4ac0b8(_0x1dde83,_0x35ade4,_0x197465);Math['abs'](_0x3956b5-_0x1dde83)>0.0001&&(console['log'](...gyeolBoldArgs(['[3D·목]\x20밑동\x20폭\x20'+(_0x1dde83*0x2*_0x35c421)['toFixed'](0x1)+'cm\x20→\x20난간으로\x20'+(_0x3956b5*0x2*_0x35c421)['toFixed'](0x1)+'cm\x20(허용\x20'+NECK_SHAPE['minBaseCm']+'~'+NECK_SHAPE['maxBaseCm']+'cm).\x20'+(_0x44ab14?'옷깃\x20실측이\x20구멍이\x20아니라\x20테두리를\x20재고\x20있는\x20것.':'값은\x20cm\x20상수인데\x20난간에\x20걸렸다\x20=\x20<b>환산자가\x20튀었다</b>.\x20얼굴\x20랜드마크를\x20보십시오.')])),_0x1a78c3*=_0x3956b5/_0x1dde83,_0x1dde83=_0x3956b5);}console['log'](...gyeolBoldArgs(['[3D·목]\x20밑동\x20'+(_0x1dde83*0x2*_0x35c421)['toFixed'](0x1)+'×'+(_0x1a78c3*0x2*_0x35c421)['toFixed'](0x1)+'cm\x20(폭×깊이)\x20·\x20기준\x20'+(_0x44ab14?'옷깃\x20실측':'<b>두상\x20자</b>(cm\x20상수\x20÷\x20얼굴\x20환산자\x20'+_0x35c421['toFixed'](0x1)+'cm/단위)')+'\x20·\x20둘레\x20약\x20'+(Math['PI']*(_0x1dde83+_0x1a78c3)*_0x35c421)['toFixed'](0x0)+'cm']));const _0x32e0fc=Math['max'](0.0001,_0x4bf830-_0x2a196d);if(_0x164519!=null){const _0x1a11fd=(_0x4bf830-_0x164519)*_0x35c421,_0x492db0=(_0x344a3f-_0x164519)*_0x35c421,_0x3cec85=_0x164519-0.1;console['log'](...gyeolBoldArgs(['[3D·목]\x20윗단\x20턱\x20대비\x20<b>'+(_0x1a11fd>=0x0?'+':'')+_0x1a11fd['toFixed'](0x1)+'cm</b>'+'\x20(옛\x20식이면\x20'+(_0x492db0>=0x0?'+':'')+_0x492db0['toFixed'](0x1)+'cm)\x20·\x20목\x20길이\x20'+(_0x32e0fc*_0x35c421)['toFixed'](0x1)+'cm\x20(선언\x20'+NECK_LEN_CM+'cm)'+'\x0a\x20\x20\x20\x20\x20\x20읽는\x20법\x20—\x20윗단이\x20턱보다\x20<b>1cm\x20넘게\x20위</b>면\x20턱밑\x20목각이\x20메워져'+'\x20옆에서\x20볼\x20때\x20얼굴이\x20앞으로\x20튀어나온\x20것처럼\x20보입니다.'+'\x20목\x20길이가\x20선언값과\x20많이\x20다르면\x20윗단과\x20밑동이\x20<b>서로\x20다른\x20자</b>를\x20쓰고\x20있다는\x20뜻입니다.'+(_0x4bf830<=_0x3cec85+0.04?'\x0a\x20\x20\x20\x20\x20\x20⚠\x20윗단이\x20스냅샷\x20오리는\x20선(턱\x20−0.10)에\x20너무\x20가깝습니다\x20—\x20턱\x20밑에\x20구멍이\x20날\x20수\x20있으니\x20topAboveChin을\x20올리십시오.':'')+'\x0a\x20\x20\x20\x20\x20\x20되돌리기:\x20NECK_SHAPE.topFromChin=false']));}const _0x5ae08b=[],_0x1aa48f=[],_0xec1e26=_0x24ae81['clone'](),_0x5f43a6=NECK_SHAPE['fromField']?makeModelSkinSampler():null,_0x54d3b2=_0x5f43a6?NECK_SHAPE['shadeRearField']:NECK_SHAPE['shadeRear'],_0x3fc757=_0x5f43a6?NECK_SHAPE['shadeTopField']:NECK_SHAPE['shadeTop'];for(let _0x2eff88=0x0;_0x2eff88<=_0x4b395c;_0x2eff88++){const _0x319d98=_0x2eff88/_0x4b395c,_0x457f1e=_0x4bf830+_0x319d98*(_0x2a196d-_0x4bf830),_0x3c74d2=0x1-NECK_SHAPE['waist']*Math['sin'](Math['PI']*_0x319d98),_0x27e7a3=_0x1dde83*(NECK_SHAPE['taperW']+(0x1-NECK_SHAPE['taperW'])*_0x319d98)*_0x3c74d2,_0x23fbec=_0x1a78c3*(NECK_SHAPE['taperD']+(0x1-NECK_SHAPE['taperD'])*_0x319d98)*_0x3c74d2,_0x316659=NECK_SHAPE['tiltZ']*_0x32e0fc*(0x1-_0x319d98),_0x36b666=NECK_SHAPE['throatSetZ']*_0x23fbec*(0x1-_0x319d98),_0x5cabb6=0x1+(NECK_SHAPE['napeFull']-0x1)*_0x319d98;for(let _0x56ef3b=0x0;_0x56ef3b<=_0x5c30e9;_0x56ef3b++){const _0xf4493=-Math['PI']+0x2*Math['PI']*(_0x56ef3b/_0x5c30e9),_0x468dda=Math['cos'](_0xf4493),_0x1fc52d=Math['sin'](_0xf4493),_0x1b74c7=_0x1fc52d*_0x27e7a3,_0x400324=_0x468dda*_0x23fbec*(_0x468dda<0x0?_0x5cabb6:0x1)+_0x316659-(_0x468dda>0x0?_0x36b666*_0x468dda:0x0);_0x5ae08b['push'](_0x1b74c7,_0x457f1e,_0x400324);const _0x4b4891=(_0x468dda+0x1)/0x2,_0x3b8480=(_0x54d3b2+(0x1-_0x54d3b2)*_0x4b4891)*(_0x3fc757+(0x1-_0x3fc757)*_0x319d98),_0x4e707c=_0x5f43a6?_0x5f43a6(_0x1b74c7,_0x457f1e):[_0xec1e26['r'],_0xec1e26['g'],_0xec1e26['b']];_0x1aa48f['push'](_0x4e707c[0x0]*_0x3b8480,_0x4e707c[0x1]*_0x3b8480,_0x4e707c[0x2]*_0x3b8480);}}const _0x3f6f1f=buildRingGridIndices(_0x4b395c,_0x5c30e9),_0x52994b=_0x5ae08b['length']/0x3;_0x5ae08b['push'](0x0,_0x2a196d,0x0);{const _0x1f1a5c=_0x5f43a6?_0x5f43a6(0x0,_0x2a196d):[_0xec1e26['r'],_0xec1e26['g'],_0xec1e26['b']];_0x1aa48f['push'](_0x1f1a5c[0x0]*_0x54d3b2,_0x1f1a5c[0x1]*_0x54d3b2,_0x1f1a5c[0x2]*_0x54d3b2);}const _0x33b229=_0x4b395c*(_0x5c30e9+0x1);for(let _0x58aca0=0x0;_0x58aca0<_0x5c30e9;_0x58aca0++){_0x3f6f1f['push'](_0x33b229+_0x58aca0,_0x52994b,_0x33b229+_0x58aca0+0x1);}const _0x508400=new THREE['BufferGeometry']();_0x508400['setAttribute']('position',new THREE['BufferAttribute'](new Float32Array(_0x5ae08b),0x3)),_0x508400['setAttribute']('color',new THREE['BufferAttribute'](new Float32Array(_0x1aa48f),0x3)),_0x508400['setIndex'](_0x3f6f1f),_0x508400['computeVertexNormals']();const _0x42c587=new THREE['Mesh'](_0x508400,_0x1118af);return _0x42c587['name']='neckAttachPoint',_0x42c587;}const SCALP_SKIN={'fromPhoto':!![],'unlit':!![],'depthOffset':!![],'field':!![],'gridX':0x28,'gridY':0x38,'darkPct':0.4,'fillPasses':0x40,'loPct':0.5,'hiPct':0.88,'minSamples':0xc8,'keepOffFace':![],'backShade':{'on':!![],'back':0.78},'faceTone':{'on':!![],'mix':0.75,'shadeMin':0.92,'shadeMax':1.04}};let _scalpSkinCache=undefined,_skinFieldCache=undefined,_faceTone3DLogged=![];function resetScalpSkinSample(){_scalpSkinCache=undefined,_skinFieldCache=undefined,_scalpCullLogged=![],_faceTone3DLogged=![];}function _skinRegionOfFront(){const _0x2e967e=state['hairMasks']&&state['hairMasks']['front'],_0x56cf23=state['landmarks']&&state['landmarks']['front'];if(!_0x2e967e||!_0x2e967e['photoRGB']||!_0x56cf23)return null;const _0x1c70b3=_0x2e967e['w'],_0x18d8a7=_0x2e967e['h'];if(!(_0x1c70b3>0x0&&_0x18d8a7>0x0))return null;const _0x534c0d=typeof _0x56cf23['browTopY']==='number'?_0x56cf23['browTopY']:0.28,_0x308133=typeof _0x56cf23['chinY']==='number'?_0x56cf23['chinY']:0.62,_0x28e294=typeof _0x56cf23['lEarX']==='number'?_0x56cf23['lEarX']:0.28,_0x434d6c=typeof _0x56cf23['rEarX']==='number'?_0x56cf23['rEarX']:0.72,_0xc28112=(_0x28e294+_0x434d6c)/0x2,_0x3a1f07=Math['max'](0.03,Math['abs'](_0x434d6c-_0x28e294)*0.34);return{'inf':_0x2e967e,'W':_0x1c70b3,'H':_0x18d8a7,'u0':Math['max'](0x0,_0xc28112-_0x3a1f07),'u1':Math['min'](0x1,_0xc28112+_0x3a1f07),'v0':Math['max'](0x0,_0x534c0d*0.96),'v1':Math['min'](0x1,_0x308133*0.99)};}function buildSkinColorField(){if(_skinFieldCache!==undefined)return _skinFieldCache;_skinFieldCache=null;try{if(!SCALP_SKIN['fromPhoto']||!SCALP_SKIN['field'])return null;const _0x8ae8ec=_skinRegionOfFront();if(!_0x8ae8ec)return null;const {inf:_0x143401,W:_0x11bdfb,H:_0x4e0a4a,u0:_0x5c682f,u1:_0xf93baa,v0:_0x3f34ab,v1:_0x349928}=_0x8ae8ec;if(!(_0xf93baa>_0x5c682f&&_0x349928>_0x3f34ab))return null;const _0x11a96a=Math['round'](_0x5c682f*_0x11bdfb),_0x558efd=Math['round'](_0xf93baa*_0x11bdfb),_0x37c143=Math['round'](_0x3f34ab*_0x4e0a4a),_0x26581d=Math['round'](_0x349928*_0x4e0a4a),_0x3eac21=Math['max'](0x1,Math['round'](Math['min'](_0x558efd-_0x11a96a,_0x26581d-_0x37c143)/0xa0)),_0x5b9bdf=[];for(let _0x483f84=_0x37c143;_0x483f84<=_0x26581d;_0x483f84+=_0x3eac21)for(let _0x3bebae=_0x11a96a;_0x3bebae<=_0x558efd;_0x3bebae+=_0x3eac21){if(isHairPixelAt(_0x143401,_0x3bebae,_0x483f84))continue;const _0x1e1b23=photoRGBAt(_0x143401,_0x3bebae,_0x483f84);if(!_0x1e1b23)continue;_0x5b9bdf['push'](0.299*_0x1e1b23[0x0]+0.587*_0x1e1b23[0x1]+0.114*_0x1e1b23[0x2]);}if(_0x5b9bdf['length']<SCALP_SKIN['minSamples'])return null;_0x5b9bdf['sort']((_0xd0f7c1,_0x3055c4)=>_0xd0f7c1-_0x3055c4);const _0x3c7b5f=_0x5b9bdf[Math['floor'](_0x5b9bdf['length']*SCALP_SKIN['darkPct'])],_0x509b2f=Math['max'](0x4,SCALP_SKIN['gridX']|0x0),_0x7e7cd=Math['max'](0x4,SCALP_SKIN['gridY']|0x0),_0x59b845=new Float32Array(_0x509b2f*_0x7e7cd),_0x1f2e30=new Float32Array(_0x509b2f*_0x7e7cd),_0x4fd45c=new Float32Array(_0x509b2f*_0x7e7cd),_0x2a887a=new Float32Array(_0x509b2f*_0x7e7cd);for(let _0x5c473a=_0x37c143;_0x5c473a<=_0x26581d;_0x5c473a+=_0x3eac21)for(let _0x45ef8=_0x11a96a;_0x45ef8<=_0x558efd;_0x45ef8+=_0x3eac21){if(isHairPixelAt(_0x143401,_0x45ef8,_0x5c473a))continue;const _0x468445=photoRGBAt(_0x143401,_0x45ef8,_0x5c473a);if(!_0x468445)continue;if(0.299*_0x468445[0x0]+0.587*_0x468445[0x1]+0.114*_0x468445[0x2]<_0x3c7b5f)continue;const _0x4bef2e=Math['min'](_0x509b2f-0x1,Math['max'](0x0,Math['floor']((_0x45ef8-_0x11a96a)/(_0x558efd-_0x11a96a+0x1)*_0x509b2f))),_0x550fb1=Math['min'](_0x7e7cd-0x1,Math['max'](0x0,Math['floor']((_0x5c473a-_0x37c143)/(_0x26581d-_0x37c143+0x1)*_0x7e7cd))),_0x40e027=_0x550fb1*_0x509b2f+_0x4bef2e;_0x59b845[_0x40e027]+=_0x468445[0x0],_0x1f2e30[_0x40e027]+=_0x468445[0x1],_0x4fd45c[_0x40e027]+=_0x468445[0x2],_0x2a887a[_0x40e027]++;}let _0x35dc16=0x0;for(let _0x2a5d66=0x0;_0x2a5d66<_0x509b2f*_0x7e7cd;_0x2a5d66++){_0x2a887a[_0x2a5d66]>0x0&&(_0x59b845[_0x2a5d66]/=_0x2a887a[_0x2a5d66],_0x1f2e30[_0x2a5d66]/=_0x2a887a[_0x2a5d66],_0x4fd45c[_0x2a5d66]/=_0x2a887a[_0x2a5d66],_0x2a887a[_0x2a5d66]=0x1,_0x35dc16++);}if(_0x35dc16<_0x509b2f*_0x7e7cd*0.1)return null;for(let _0x1fb433=0x0;_0x1fb433<SCALP_SKIN['fillPasses'];_0x1fb433++){let _0x2f6f5f=0x0;const _0x21a228=_0x59b845['slice'](),_0x49cf1d=_0x1f2e30['slice'](),_0x449020=_0x4fd45c['slice'](),_0x4e309f=_0x2a887a['slice']();for(let _0x3d769b=0x0;_0x3d769b<_0x7e7cd;_0x3d769b++)for(let _0x508060=0x0;_0x508060<_0x509b2f;_0x508060++){const _0x21b3dc=_0x3d769b*_0x509b2f+_0x508060;if(_0x2a887a[_0x21b3dc]>0x0)continue;let _0x47554a=0x0,_0x31079a=0x0,_0x48f362=0x0,_0x9cd849=0x0;_0x508060>0x0&&_0x2a887a[_0x21b3dc-0x1]>0x0&&(_0x47554a+=_0x59b845[_0x21b3dc-0x1],_0x31079a+=_0x1f2e30[_0x21b3dc-0x1],_0x48f362+=_0x4fd45c[_0x21b3dc-0x1],_0x9cd849++),_0x508060<_0x509b2f-0x1&&_0x2a887a[_0x21b3dc+0x1]>0x0&&(_0x47554a+=_0x59b845[_0x21b3dc+0x1],_0x31079a+=_0x1f2e30[_0x21b3dc+0x1],_0x48f362+=_0x4fd45c[_0x21b3dc+0x1],_0x9cd849++),_0x3d769b>0x0&&_0x2a887a[_0x21b3dc-_0x509b2f]>0x0&&(_0x47554a+=_0x59b845[_0x21b3dc-_0x509b2f],_0x31079a+=_0x1f2e30[_0x21b3dc-_0x509b2f],_0x48f362+=_0x4fd45c[_0x21b3dc-_0x509b2f],_0x9cd849++),_0x3d769b<_0x7e7cd-0x1&&_0x2a887a[_0x21b3dc+_0x509b2f]>0x0&&(_0x47554a+=_0x59b845[_0x21b3dc+_0x509b2f],_0x31079a+=_0x1f2e30[_0x21b3dc+_0x509b2f],_0x48f362+=_0x4fd45c[_0x21b3dc+_0x509b2f],_0x9cd849++),_0x9cd849&&(_0x21a228[_0x21b3dc]=_0x47554a/_0x9cd849,_0x49cf1d[_0x21b3dc]=_0x31079a/_0x9cd849,_0x449020[_0x21b3dc]=_0x48f362/_0x9cd849,_0x4e309f[_0x21b3dc]=0x1,_0x2f6f5f++);}if(!_0x2f6f5f)break;_0x59b845['set'](_0x21a228),_0x1f2e30['set'](_0x49cf1d),_0x4fd45c['set'](_0x449020),_0x2a887a['set'](_0x4e309f);}return _skinFieldCache={'GX':_0x509b2f,'GY':_0x7e7cd,'u0':_0x5c682f,'u1':_0xf93baa,'v0':_0x3f34ab,'v1':_0x349928,'r':_0x59b845,'g':_0x1f2e30,'b':_0x4fd45c,'at'(_0x4b26ef,_0x52beda){const _0x29fff2=Math['min'](this['u1'],Math['max'](this['u0'],_0x4b26ef)),_0x4ec4b9=Math['min'](this['v1'],Math['max'](this['v0'],_0x52beda)),_0x3e5033=(_0x29fff2-this['u0'])/(this['u1']-this['u0'])*(this['GX']-0x1),_0x30abbc=(_0x4ec4b9-this['v0'])/(this['v1']-this['v0'])*(this['GY']-0x1),_0x5a21bf=Math['floor'](_0x3e5033),_0xb2f3a3=Math['floor'](_0x30abbc),_0x280a28=Math['min'](this['GX']-0x1,_0x5a21bf+0x1),_0x3b8efa=Math['min'](this['GY']-0x1,_0xb2f3a3+0x1),_0x273d94=_0x3e5033-_0x5a21bf,_0x219d09=_0x30abbc-_0xb2f3a3,_0x1c45f0=(_0x394cd1,_0x3986b2)=>_0x3986b2*this['GX']+_0x394cd1,_0x3d0292=_0x37a9fd=>_0x37a9fd[_0x1c45f0(_0x5a21bf,_0xb2f3a3)]*(0x1-_0x273d94)*(0x1-_0x219d09)+_0x37a9fd[_0x1c45f0(_0x280a28,_0xb2f3a3)]*_0x273d94*(0x1-_0x219d09)+_0x37a9fd[_0x1c45f0(_0x5a21bf,_0x3b8efa)]*(0x1-_0x273d94)*_0x219d09+_0x37a9fd[_0x1c45f0(_0x280a28,_0x3b8efa)]*_0x273d94*_0x219d09;return[_0x3d0292(this['r']),_0x3d0292(this['g']),_0x3d0292(this['b'])];}},console['log'](...gyeolBoldArgs(['[3D·두피색]\x20살\x20색\x20격자\x20'+_0x509b2f+'×'+_0x7e7cd+'\x20·\x20살로\x20잡힌\x20칸\x20'+_0x35dc16+'/'+_0x509b2f*_0x7e7cd+'\x20·\x20어두운\x20하한\x20'+Math['round'](_0x3c7b5f)+'(밝기\x20'+Math['round'](SCALP_SKIN['darkPct']*0x64)+'백분위)'+'\x0a\x20\x20\x20\x20두피면\x20정점마다\x20<b>제\x20자리의\x20살</b>을\x20집습니다.\x20격자\x20밖(이마\x20위)은\x20안으로\x20물려'+'\x20얼굴\x20맨\x20윗줄\x20픽셀을\x20씁니다.\x20끄기:\x20SCALP_SKIN.field\x20=\x20false'])),_skinFieldCache;}catch(_0x3360a1){return console['warn']('[3D·두피색]\x20살\x20색\x20격자\x20실패\x20—\x20평균색\x20한\x20개로\x20폴백:',_0x3360a1),null;}}function sampleScalpSkinColor(){if(_scalpSkinCache!==undefined)return _scalpSkinCache;_scalpSkinCache=null;try{if(!SCALP_SKIN['fromPhoto'])return null;const _0x19b8de=_skinRegionOfFront();if(!_0x19b8de)return null;const {inf:_0x1052e3,W:_0xf38976,H:_0x4358f2,u0:_0x3c5a29,u1:_0x4be722,v0:_0x44213d,v1:_0x2a914e}=_0x19b8de,_0x35e54d=Math['max'](0x0,Math['round'](_0x3c5a29*_0xf38976)),_0x5a9eeb=Math['min'](_0xf38976-0x1,Math['round'](_0x4be722*_0xf38976)),_0xb31053=Math['max'](0x0,Math['round'](_0x44213d*_0x4358f2)),_0x144d74=Math['min'](_0x4358f2-0x1,Math['round'](_0x2a914e*_0x4358f2));if(!(_0x5a9eeb>_0x35e54d&&_0x144d74>_0xb31053))return null;const _0x1828be=Math['max'](0x1,Math['round'](Math['min'](_0x5a9eeb-_0x35e54d,_0x144d74-_0xb31053)/0x5a)),_0x48a57a=[],_0x426e44=[],_0xc9d943=[],_0x52d4c5=[];for(let _0x3fada2=_0xb31053;_0x3fada2<=_0x144d74;_0x3fada2+=_0x1828be)for(let _0x113ae5=_0x35e54d;_0x113ae5<=_0x5a9eeb;_0x113ae5+=_0x1828be){if(isHairPixelAt(_0x1052e3,_0x113ae5,_0x3fada2))continue;const _0x150855=photoRGBAt(_0x1052e3,_0x113ae5,_0x3fada2);if(!_0x150855)continue;_0x48a57a['push'](0.299*_0x150855[0x0]+0.587*_0x150855[0x1]+0.114*_0x150855[0x2]),_0x426e44['push'](_0x150855[0x0]),_0xc9d943['push'](_0x150855[0x1]),_0x52d4c5['push'](_0x150855[0x2]);}if(_0x48a57a['length']<SCALP_SKIN['minSamples'])return null;const _0x25bc79=_0x48a57a['map']((_0x3478a1,_0x22d75f)=>_0x22d75f)['sort']((_0x4eb2cc,_0x3d7a59)=>_0x48a57a[_0x4eb2cc]-_0x48a57a[_0x3d7a59]),_0x4d1a86=Math['floor'](_0x25bc79['length']*SCALP_SKIN['loPct']),_0x53ee02=Math['max'](_0x4d1a86+0x1,Math['floor'](_0x25bc79['length']*SCALP_SKIN['hiPct']));let _0x161e61=0x0,_0x43fbf6=0x0,_0x1dadb8=0x0,_0x68fdd4=0x0;for(let _0x118831=_0x4d1a86;_0x118831<_0x53ee02;_0x118831++){const _0xcc1fc3=_0x25bc79[_0x118831];_0x161e61+=_0x426e44[_0xcc1fc3],_0x43fbf6+=_0xc9d943[_0xcc1fc3],_0x1dadb8+=_0x52d4c5[_0xcc1fc3],_0x68fdd4++;}if(!_0x68fdd4)return null;return _scalpSkinCache='rgb('+Math['round'](_0x161e61/_0x68fdd4)+','+Math['round'](_0x43fbf6/_0x68fdd4)+','+Math['round'](_0x1dadb8/_0x68fdd4)+')',_scalpSkinCache;}catch(_0x316d0e){return console['warn']('[3D·두피색]\x20사진\x20픽셀\x20실측\x20실패\x20—\x20예전\x20scalpColor로\x20폴백:',_0x316d0e),null;}}function faceToneRef3D(){const _0x458bf9=SCALP_SKIN['faceTone'];if(!_0x458bf9||!_0x458bf9['on'])return null;const _0x2c9b5f=sampleScalpSkinColor(),_0x3fcdd9=_0x2c9b5f&&String(_0x2c9b5f)['match'](/\d+/g);if(!_0x3fcdd9||_0x3fcdd9['length']<0x3)return null;const _0x400585=[+_0x3fcdd9[0x0],+_0x3fcdd9[0x1],+_0x3fcdd9[0x2]];return!_faceTone3DLogged&&(_faceTone3DLogged=!![],console['log'](...gyeolBoldArgs(['[3D·두피색·얼굴톤]\x20얼굴\x20기준색\x20rgb('+_0x400585['join'](',')+')\x20쪽으로\x20격자\x20색을\x20'+Math['round'](_0x458bf9['mix']*0x64)+'%\x20당깁니다\x20·\x20밝기는\x20'+_0x458bf9['shadeMin']+'~'+_0x458bf9['shadeMax']+'배\x20안에서만\x20살림'+'\x0a\x20\x20\x20\x20두피면·목(턱\x20언저리)이\x20얼굴보다\x20누렇고\x20어둡게\x20보이던\x20것\x20—\x20되돌리기:\x20SCALP_SKIN.faceTone.on=false']))),_0x400585;}function makeModelSkinSampler(){const _0x29a02d=buildSkinColorField();if(!_0x29a02d)return null;const _0x45e59c=getFaceMetrics(),_0xf8ca03=_0x45e59c&&_0x45e59c['projector'];if(!_0xf8ca03||typeof _0xf8ca03['toImgX']!=='function')return null;const _0x3971fb=faceToneRef3D(),_0x2b8f8c=SCALP_SKIN['faceTone'],_0x187661=_0x3971fb?0.299*_0x3971fb[0x0]+0.587*_0x3971fb[0x1]+0.114*_0x3971fb[0x2]:0x0;return function(_0x44a93e,_0x7cc07d){const _0x4fbd7d=_0x29a02d['at'](_0xf8ca03['toImgX'](_0x44a93e),_0xf8ca03['toImgY'](_0x7cc07d));if(_0x3971fb&&_0x187661>0x1){const _0x25ddfc=0.299*_0x4fbd7d[0x0]+0.587*_0x4fbd7d[0x1]+0.114*_0x4fbd7d[0x2],_0x30aac=Math['max'](_0x2b8f8c['shadeMin'],Math['min'](_0x2b8f8c['shadeMax'],_0x25ddfc/_0x187661));for(let _0x4a57dd=0x0;_0x4a57dd<0x3;_0x4a57dd++)_0x4fbd7d[_0x4a57dd]=_0x4fbd7d[_0x4a57dd]*(0x1-_0x2b8f8c['mix'])+_0x3971fb[_0x4a57dd]*_0x30aac*_0x2b8f8c['mix'];}return[Math['min'](0x1,Math['max'](0x0,_0x4fbd7d[0x0]/0xff)),Math['min'](0x1,Math['max'](0x0,_0x4fbd7d[0x1]/0xff)),Math['min'](0x1,Math['max'](0x0,_0x4fbd7d[0x2]/0xff))];};}function paintScalpFromPhoto(_0x38c45e,_0x4e9379,_0x350d96,_0x343033){try{const _0x3fd922=makeModelSkinSampler();if(!_0x3fd922)return![];const _0x22cbe8=_0x38c45e['attributes']&&_0x38c45e['attributes']['position'];if(!_0x22cbe8)return![];const _0x446911=SCALP_SKIN['backShade'],_0x5f1844=new Float32Array(_0x22cbe8['count']*0x3);for(let _0x1be54a=0x0;_0x1be54a<_0x22cbe8['count'];_0x1be54a++){const _0x243501=_0x22cbe8['getX'](_0x1be54a)*_0x4e9379['a']*_0x350d96,_0x5161d1=_0x22cbe8['getY'](_0x1be54a)*_0x4e9379['b']*_0x350d96+0.15,_0x5d7a3a=_0x3fd922(_0x243501,_0x5161d1);let _0x5f56b3=0x1;if(_0x446911&&_0x446911['on']){const _0xe52e3d=Math['max'](-0x1,Math['min'](0x1,_0x22cbe8['getZ'](_0x1be54a)));_0x5f56b3=_0x446911['back']+(0x1-_0x446911['back'])*(0.5+0.5*_0xe52e3d);}_0x5f1844[_0x1be54a*0x3]=_0x5d7a3a[0x0]*_0x5f56b3,_0x5f1844[_0x1be54a*0x3+0x1]=_0x5d7a3a[0x1]*_0x5f56b3,_0x5f1844[_0x1be54a*0x3+0x2]=_0x5d7a3a[0x2]*_0x5f56b3;}return _0x38c45e['setAttribute']('color',new THREE['BufferAttribute'](_0x5f1844,0x3)),_0x343033['vertexColors']=!![],_0x343033['color']=new THREE['Color'](0xffffff),_0x343033['needsUpdate']=!![],cullScalpUnderFace(_0x38c45e,_0x4e9379,_0x350d96),!![];}catch(_0x491b43){return console['warn']('[3D·두피색]\x20정점색\x20입히기\x20실패\x20—\x20단색으로\x20폴백:',_0x491b43),![];}}let _scalpCullLogged=![];function cullScalpUnderFace(_0x4e047b,_0x2da9be,_0x21e599){try{if(!SCALP_SKIN['keepOffFace'])return;const _0x197ed7=getFaceMetrics(),_0x2d17a3=_0x197ed7&&_0x197ed7['lm'],_0x5cc1fa=_0x197ed7&&_0x197ed7['projector'],_0x2dcec9=faceBoundEllipseNorm(_0x2d17a3);if(!_0x2dcec9||!_0x5cc1fa||typeof _0x5cc1fa['toImgX']!=='function'||!FACE_BOUND_FIT['on'])return;if(!(state['landmarks']&&state['landmarks']['front']&&state['landmarks']['front']['rawLandmarks']))return;const _0x17a300=_0x4e047b['attributes']['position'],_0x4a8a63=_0x4e047b['getIndex']();if(!_0x4a8a63)return;const _0x2b9948=new Uint8Array(_0x17a300['count']),_0x36ea41=FACE_BOUND_FIT['fadeIn'];let _0x3a46c4=0x0;for(let _0x396e7b=0x0;_0x396e7b<_0x17a300['count'];_0x396e7b++){if(_0x17a300['getZ'](_0x396e7b)<=0x0)continue;const _0x2be20b=_0x5cc1fa['toImgX'](_0x17a300['getX'](_0x396e7b)*_0x2da9be['a']*_0x21e599),_0x325e21=_0x5cc1fa['toImgY'](_0x17a300['getY'](_0x396e7b)*_0x2da9be['b']*_0x21e599+0.15),_0x1aa737=(_0x2be20b-_0x2dcec9['cx'])/_0x2dcec9['rx'],_0x40ebed=(_0x325e21-_0x2dcec9['cy'])/_0x2dcec9['ry'];Math['sqrt'](_0x1aa737*_0x1aa737+_0x40ebed*_0x40ebed)<=_0x36ea41&&(_0x2b9948[_0x396e7b]=0x1,_0x3a46c4++);}const _0x379350=_0x4a8a63['array'],_0xf53b16=[];let _0x436358=0x0;for(let _0x1c17e3=0x0;_0x1c17e3<_0x379350['length'];_0x1c17e3+=0x3){const _0x34af29=_0x379350[_0x1c17e3],_0x2f423e=_0x379350[_0x1c17e3+0x1],_0x4448d5=_0x379350[_0x1c17e3+0x2];if(_0x2b9948[_0x34af29]&&_0x2b9948[_0x2f423e]&&_0x2b9948[_0x4448d5]){_0x436358++;continue;}_0xf53b16['push'](_0x34af29,_0x2f423e,_0x4448d5);}if(!_0xf53b16['length']||_0x436358===0x0)return;_0x4e047b['setIndex'](_0xf53b16),!_scalpCullLogged&&(_scalpCullLogged=!![],console['log'](...gyeolBoldArgs(['[3D·두피면]\x20얼굴이\x20불투명한\x20자리에서\x20<b>비켜섰습니다</b>\x20—\x20삼각형\x20'+_0x379350['length']/0x3+'\x20→\x20'+_0xf53b16['length']/0x3+'개(버림\x20'+_0x436358+'\x20·\x20앞면\x20정점\x20'+_0x3a46c4+'개)'+'\x0a\x20\x20\x20\x20\x20\x20볼록한\x20두개골\x20타원체는\x20<b>오목한\x20얼굴</b>(안와·콧대\x20옆·관자놀이)보다\x20앞에\x20서므로'+'\x20깊이\x20검사에서\x20이깁니다\x20—\x20그게\x20눈\x20위로\x20올라오던\x20살색\x20삼각형의\x20정체입니다.'+'\x20깊이로\x20겨루는\x20대신(오프셋을\x20키우면\x20정수리에서\x20가닥이\x20묻힙니다)\x20그\x20자리를\x20비웁니다.'+'\x0a\x20\x20\x20\x20\x20\x20페이드\x20구간(반투명\x20테두리)은\x20<b>남깁니다</b>\x20—\x20거기는\x20두피면이\x20뒤를\x20받쳐야\x20배경이\x20안\x20비칩니다.'+'\x20되돌리기:\x20SCALP_SKIN.keepOffFace=false'])));}catch(_0x143808){console['warn']('[3D·두피면]\x20얼굴\x20밑\x20삼각형\x20정리\x20실패(그대로\x20둡니다):',_0x143808&&_0x143808['message']);}}function buildProceduralHead(_0x32a873){const _0x805a5a=new THREE['Group'](),_0x3f46b9=sampleScalpSkinColor();let _0x2c4d14=new THREE['Color'](_0x3f46b9||_0x32a873||'#E8C39E');if((_0x2c4d14['r']+_0x2c4d14['g']+_0x2c4d14['b'])/0x3<0.3)_0x2c4d14=new THREE['Color']('#E0B294');const _0xc2e6d3=SCALP_SKIN['unlit']?new THREE['MeshBasicMaterial']({'color':_0x2c4d14}):new THREE['MeshStandardMaterial']({'color':_0x2c4d14,'roughness':0.85,'metalness':0x0});SCALP_SKIN['depthOffset']&&(_0xc2e6d3['polygonOffset']=!![],_0xc2e6d3['polygonOffsetFactor']=0x1,_0xc2e6d3['polygonOffsetUnits']=0x1);const _0x5ef6f3=getDisplaySkullEllipsoid(),_0x21e132=SCALP_SKIN['depthOffset']?0x1:HAIR_SCALP3D['applyToHead']&&HAIR_SCALP3D['drawInset']>0x0?HAIR_SCALP3D['drawInset']:0x1,_0xb02195=new THREE['SphereGeometry'](0x1,0x60,0x48);paintScalpFromPhoto(_0xb02195,_0x5ef6f3,_0x21e132,_0xc2e6d3);const _0x45ffef=new THREE['Mesh'](_0xb02195,_0xc2e6d3);_0x45ffef['scale']['set'](_0x5ef6f3['a']*_0x21e132,_0x5ef6f3['b']*_0x21e132,_0x5ef6f3['c']*_0x21e132),_0x45ffef['position']['set'](0x0,0.15,0x0),_0x45ffef['name']='skullEllipsoid',_0x805a5a['add'](_0x45ffef);try{const _0x5eab07=getHeadEllipsoid(),_0x4886f3=_0x5ef6f3['a']*(0x1-_0x21e132),_0x14012f=_0x5ef6f3['b']*(0x1-_0x21e132);console['log'](...gyeolBoldArgs(['[3D·두개골\x20여유]\x20그리는\x20구\x20×'+_0x21e132+'\x20→\x20뿌리\x20면과의\x20틈\x20옆\x20'+_0x4886f3['toFixed'](0x4)+'\x20·\x20위\x20'+_0x14012f['toFixed'](0x4)+'\x20모델단위'+'\x20|\x20모발\x20두께\x20옆\x20'+(_0x5eab07['a']-_0x5ef6f3['a'])['toFixed'](0x4)+'\x20·\x20위\x20'+(_0x5eab07['b']-_0x5ef6f3['b'])['toFixed'](0x4)+'\x0a\x20\x20\x20\x20틈이\x200이면\x20<b>가닥이\x20구에\x20묻힙니다</b>(후두부\x20상단이\x20제일\x20먼저\x20—\x20거기가'+'\x20가닥이\x20두피를\x20접선으로\x20제일\x20길게\x20타고\x20가는\x20자리라서).'+'\x20틈이\x20모발\x20두께에\x20근접하면\x20반대로\x20구가\x20너무\x20안쪽이라\x20가닥\x20사이로\x20배경이\x20비칩니다.'+'\x20HAIR_SCALP3D.drawInset=1\x20로\x20두면\x20예전\x20동작.']));}catch(_0x1d7299){}const _0x2df37c=buildRealNeckMesh(_0x2c4d14);return _0x805a5a['add'](_0x2df37c),{'group':_0x805a5a,'headMesh':_0x45ffef};}function loadImageAsync(_0x4062f6){return new Promise((_0x15cc3b,_0x43e7b2)=>{const _0x3f6980=new Image();_0x3f6980['onload']=()=>_0x15cc3b(_0x3f6980),_0x3f6980['onerror']=_0x43e7b2,_0x3f6980['src']=_0x4062f6;});}const FACE_BOUND_FIT={'on':!![],'keepT':1.22,'fadeIn':1.06,'fadeOut':1.22};function faceBoundEllipseNorm(_0x9c10a5){if(!_0x9c10a5)return null;const _0x29f490=((_0x9c10a5['features']&&_0x9c10a5['features']['leftEye']?(_0x9c10a5['features']['leftEye']['minX']+_0x9c10a5['features']['leftEye']['maxX'])/0x2:0.5)+(_0x9c10a5['features']&&_0x9c10a5['features']['rightEye']?(_0x9c10a5['features']['rightEye']['minX']+_0x9c10a5['features']['rightEye']['maxX'])/0x2:0.5))/0x2,_0x13de91=_0x9c10a5['features']?_0x29f490:0.5,_0xcddf4b=(_0x9c10a5['browTopY']!=null?_0x9c10a5['browTopY']:0.28)*0.9,_0x406ee7=(_0x9c10a5['chinY']!=null?_0x9c10a5['chinY']:0.6)*1.1;return{'cx':_0x13de91,'cy':(_0xcddf4b+_0x406ee7)/0x2,'ry':Math['max'](0.05,(_0x406ee7-_0xcddf4b)/0x2*1.08),'rx':Math['max'](0.05,Math['abs']((_0x9c10a5['rEarX']!=null?_0x9c10a5['rEarX']:0.78)-(_0x9c10a5['lEarX']!=null?_0x9c10a5['lEarX']:0.22))*0.56*1.08)};}const FACE_Z_FIX={'matchBaseline':!![],'trustWeighted':!![]};function sideDepthWeight(_0x5de5ae){if(!_0x5de5ae)return 0x0;const _0x28a5d=typeof _0x5de5ae['confidence']==='number'&&isFinite(_0x5de5ae['confidence'])?_0x5de5ae['confidence']:0x0;if(FACE_Z_FIX&&FACE_Z_FIX['trustWeighted']===![])return _0x28a5d;const _0x26c32e=typeof _0x5de5ae['trust']==='number'&&isFinite(_0x5de5ae['trust'])?_0x5de5ae['trust']:0x0;return _0x28a5d*_0x26c32e;}if(typeof globalThis!=='undefined')globalThis['__sideDepthWeight']=sideDepthWeight;const FACE_BUILD={'path':'-','why':'','zRange':null,'zMin':null,'zMax':null,'sideHits':0x0,'ellA':null,'ellC':null,'sideYaw':{},'reliefGain':null,'reliefCm':null,'cmPerUnit':null};async function buildRealFaceMeshBase(_0x525578){FACE_BUILD['sideYaw']={},FACE_BUILD['reliefGain']=null,FACE_BUILD['reliefCm']=null,FACE_BUILD['cmPerUnit']=null;const _0x1a9320=_0x525578['lm'],_0x41ec06=state['shots']&&state['shots']['front'];if(!_0x41ec06)return FACE_BUILD['path']='decal',FACE_BUILD['why']='정면\x20사진\x20없음',console['warn']('[얼굴]\x20입체\x20메쉬\x20스킵\x20—\x20정면\x20사진\x20없음\x20→\x20평면\x20데칼'),null;if(!_0x1a9320['rawLandmarks']||_0x1a9320['rawLandmarks']['length']<0x1d4)return FACE_BUILD['path']='decal',FACE_BUILD['why']='랜드마크\x20원본\x20'+(_0x1a9320['rawLandmarks']?_0x1a9320['rawLandmarks']['length']:0x0)+'개(468\x20필요)',console['warn']('[얼굴]\x20입체\x20메쉬\x20스킵\x20—\x20'+FACE_BUILD['why']+'\x20→\x20<b>평면\x20데칼</b>'),null;let _0x3f64c5;try{_0x3f64c5=await loadImageAsync(_0x41ec06);}catch(_0x35fa16){return FACE_BUILD['path']='decal',FACE_BUILD['why']='사진\x20로드\x20실패',console['warn']('실제\x20얼굴\x20메쉬용\x20이미지\x20로드\x20실패:',_0x35fa16),null;}const _0x110759=_0x1a9320['rawLandmarks'],_0x53574d=0x1d4,_0x403c45=_0x525578['projector'],_0x283acd=_0x525578['widthFactor'],_0x609b1d=_0x525578['heightFactor'],{a:_0x542d89,b:_0xf9cf27,c:_0x505c51}=getHeadEllipsoid(),_0x4b5287={'blend':0x1};let _0x1f78c8=_0x542d89;function _0x1d0a72(_0x5644ab,_0x2c86b8){const _0x293aa8=_0x5644ab/_0x1f78c8*(_0x5644ab/_0x1f78c8)+_0x2c86b8/_0xf9cf27*(_0x2c86b8/_0xf9cf27);return _0x505c51*Math['sqrt'](Math['max'](0.02,0x1-Math['min'](0x1,_0x293aa8)));}const _0x2e5aaa={'on':!![],'browBlend':!![],'fullFrac':0.15,'zeroFrac':0.45,'edgeT':0.94,'seamBias':0.004};let _0xc30736=0x0,_0x3daeef=0x0,_0x41c8c2=null;function _0x140d49(_0x4e8a53){if(!_0x2e5aaa['on']||!_0x41c8c2)return 0x0;if(!_0x2e5aaa['browBlend'])return 0x1;const _0x2d537b=_0xc30736-_0x3daeef;if(!(_0x2d537b>0.000001))return 0x0;const _0x3ad5c8=(_0xc30736-_0x4e8a53)/_0x2d537b,_0x575254=Math['max'](0.000001,_0x2e5aaa['zeroFrac']-_0x2e5aaa['fullFrac']),_0x5283db=Math['min'](0x1,Math['max'](0x0,(_0x2e5aaa['zeroFrac']-_0x3ad5c8)/_0x575254));return _0x5283db*_0x5283db*(0x3-0x2*_0x5283db);}const _0x598a84=_0x1a9320&&_0x1a9320['eyeY']!=null&&_0x403c45?_0x403c45['toMeshY'](_0x1a9320['eyeY'])-0.15:null;function _0x51707e(_0x1a0513){const _0x9363b2=FACE_PROFILE_BASE;if(!_0x9363b2['on']||_0x598a84==null||_0x1a0513>=_0x598a84)return _0x1a0513;return _0x598a84+(_0x1a0513-_0x598a84)*_0x9363b2['flatBelowEye'];}function _0x47a700(_0x3b21b1,_0x1a1f58){_0x1a1f58=_0x51707e(_0x1a1f58);const _0x514213=_0x140d49(_0x1a1f58);if(_0x514213<=0x0)return _0x1d0a72(_0x3b21b1,_0x1a1f58);const _0x343ade=_0x3b21b1/_0x41c8c2['a']*(_0x3b21b1/_0x41c8c2['a'])+_0x1a1f58/_0x41c8c2['b']*(_0x1a1f58/_0x41c8c2['b']),_0x45d278=Math['sqrt'](_0x343ade),_0x172fc2=_0x2e5aaa['edgeT'];let _0x4401fb;if(_0x45d278<=_0x172fc2)_0x4401fb=Math['sqrt'](0x1-_0x343ade);else{const _0x40459a=Math['sqrt'](0x1-_0x172fc2*_0x172fc2);_0x4401fb=Math['max'](0.141,_0x40459a-_0x172fc2/_0x40459a*(_0x45d278-_0x172fc2));}return _0x1d0a72(_0x3b21b1,_0x1a1f58)*(0x1-_0x514213)+_0x505c51*_0x4401fb*_0x514213;}const _0x469145=-0x1,_0x3fc548=0x1;let _0x157826=0x1;try{const _0x5e6e03=getDisplaySkullEllipsoid();if(_0x5e6e03&&_0x505c51>0.000001&&_0x5e6e03['c']>0x0)_0x157826=_0x5e6e03['c']/_0x505c51;}catch(_0x231ef2){}const _0xd80476=faceBoundEllipseNorm(_0x1a9320)||{'cx':0.5,'cy':0.44,'rx':0.31,'ry':0.2},_0x2b7304=_0xd80476['cx'],_0x137ef8=_0xd80476['cy'],_0xacabde=_0xd80476['ry'],_0x42f643=_0xd80476['rx'];function _0x4d07a4(_0x3d7e40){const _0x5af61e=_0x110759[_0x3d7e40],_0x3c6188=(_0x5af61e['x']-_0x2b7304)/_0x42f643,_0x33205d=(_0x5af61e['y']-_0x137ef8)/_0xacabde;return _0x3c6188*_0x3c6188+_0x33205d*_0x33205d;}function _0x37f983(_0x5ba75f){return _0x4d07a4(_0x5ba75f)<=0x1;}function _0x5fa252(_0x355269){return Math['sqrt'](_0x4d07a4(_0x355269));}function _0x1b3435(_0x4d4367){if(!FACE_BOUND_FIT['on'])return 0x1;const _0x1f6c0e=_0x5fa252(_0x4d4367),_0xa33ef9=FACE_BOUND_FIT['fadeIn'],_0x5ea844=FACE_BOUND_FIT['fadeOut'];if(!(_0x5ea844>_0xa33ef9))return _0x1f6c0e<=_0xa33ef9?0x1:0x0;const _0xeabc2a=clamp((_0x1f6c0e-_0xa33ef9)/(_0x5ea844-_0xa33ef9),0x0,0x1);return 0x1-_0xeabc2a*_0xeabc2a*(0x3-0x2*_0xeabc2a);}{let _0x25c58f=0x0,_0x4d297b=0x0,_0x3a8252=-Infinity,_0x5bfbca=Infinity;for(let _0x3cb510=0x0;_0x3cb510<_0x53574d;_0x3cb510++){if(!_0x37f983(_0x3cb510))continue;const _0x44434a=_0x110759[_0x3cb510],_0x4ecea2=Math['abs'](_0x403c45['toMeshX'](_0x44434a['x'])),_0x95ed88=_0x403c45['toMeshY'](_0x44434a['y'])-0.15,_0xf354ce=Math['abs'](_0x95ed88);if(_0x4ecea2>_0x25c58f)_0x25c58f=_0x4ecea2;if(_0xf354ce>_0x4d297b)_0x4d297b=_0xf354ce;if(_0x95ed88>_0x3a8252)_0x3a8252=_0x95ed88;if(_0x95ed88<_0x5bfbca)_0x5bfbca=_0x95ed88;}_0xc30736=_0x3a8252,_0x3daeef=_0x5bfbca;try{const _0x2b48ea=getDisplaySkullEllipsoid();_0x41c8c2=_0x2b48ea&&_0x2b48ea['a']>0.000001&&_0x2b48ea['b']>0.000001&&_0x2b48ea['c']>0.000001?_0x2b48ea:null;}catch(_0x5759b2){_0x41c8c2=null;}const _0x10f82b=_0x542d89+(Math['max'](_0x542d89,_0x25c58f*1.03)-_0x542d89)*_0x4b5287['blend'];console['log']('[진단·얼굴폭]\x20ELL_A(두상\x20적도폭)='+_0x542d89['toFixed'](0x3)+'\x20|\x20얼굴\x20실제\x20최대폭='+_0x25c58f['toFixed'](0x3)+'\x20→\x20얼굴\x20타원폭='+_0x10f82b['toFixed'](0x3)+(_0x10f82b>_0x542d89+0.0001?'\x20(넓혀서\x20splay\x20방지)':'\x20(변화\x20없음)')+'\x20|\x20얼굴\x20최대세로='+_0x4d297b['toFixed'](0x3)+'\x20vs\x20ELL_B='+_0xf9cf27['toFixed'](0x3)),_0x1f78c8=_0x10f82b;if(_0x2e5aaa['on']&&_0x41c8c2){const _0xf39f5c=Math['sqrt']((_0x25c58f/_0x41c8c2['a'])**0x2+(_0x4d297b/_0x41c8c2['b'])**0x2);console['log'](...gyeolBoldArgs(['[얼굴\x20기준면·자]\x20<b>두개골\x20자로\x20교체</b>\x20—\x20폭\x20'+_0x1f78c8['toFixed'](0x3)+'→'+_0x41c8c2['a']['toFixed'](0x3)+'\x20·\x20세로\x20'+_0xf9cf27['toFixed'](0x3)+'→'+_0x41c8c2['b']['toFixed'](0x3)+'\x20(깊이는\x20이미\x20×'+(_0x505c51>0.000001?(_0x41c8c2['c']/_0x505c51)['toFixed'](0x3):'—')+')'+(_0x2e5aaa['browBlend']?'\x0a\x20\x20\x20\x20\x20\x20섞는\x20범위:\x20얼굴\x20y범위\x20위\x20'+(_0x2e5aaa['fullFrac']*0x64)['toFixed'](0x0)+'%까지\x20100%\x20→\x20'+(_0x2e5aaa['zeroFrac']*0x64)['toFixed'](0x0)+'%에서\x200%'+'\x20(그\x20아래\x20관자놀이·턱은\x20<b>한\x20점도\x20안\x20움직입니다</b>)':'\x0a\x20\x20\x20\x20\x20\x20얼굴\x20<b>전체</b>에\x20적용(browBlend=false)')+'\x0a\x20\x20\x20\x20\x20\x20얼굴\x20최대\x20t='+_0xf39f5c['toFixed'](0x3)+(_0xf39f5c<=1.0001?'\x20≤\x201\x20→\x20<b>내접</b>.\x20splay\x20위험\x20없음':'\x20>\x201\x20→\x20테두리\x20'+_0x2e5aaa['edgeT']+'\x20밖은\x20접선\x20연장으로\x20잇습니다')+'\x0a\x20\x20\x20\x20\x20\x20되돌리기:\x20FACE_RULER_FIT.on=false']));}}const _0x558963=[{'idx':0x1,'label':'코끝'},{'idx':0x98,'label':'턱끝'},{'idx':0xa,'label':'이마'}],_0x5861f3=0.18,_0x154d10=!![];let _0x395116=0x0;const _0x1fae62={'on':!![],'minDeg':0x23,'fullDeg':0x37};let _0x55e42b=0x0;function _0x32e193(){const _0xc30654=['left','right']['map'](_0xaf6490=>{const _0x409b74=state['landmarks']&&state['landmarks'][_0xaf6490];if(!_0x409b74||!_0x409b74['rawLandmarks']||_0x409b74['rawLandmarks']['length']<0x1d4)return null;const _0x58ae26=getViewPoseConfidence(_0xaf6490);if(_0x58ae26<0.5)return null;const _0x18622=Math['abs'](getViewYawDeg(_0xaf6490)),_0x4d3e29=_0x1fae62['on']?clamp((_0x18622-_0x1fae62['minDeg'])/Math['max'](0.000001,_0x1fae62['fullDeg']-_0x1fae62['minDeg']),0x0,0x1):0x1;FACE_BUILD['sideYaw'][_0xaf6490]={'yawAbs':_0x18622,'trust':_0x4d3e29};if(_0x4d3e29<=0x0)return null;return{'angle':_0xaf6490,'raw':_0x409b74['rawLandmarks'],'confidence':_0x58ae26,'trust':_0x4d3e29};})['filter'](Boolean);return _0x55e42b=_0xc30654['reduce']((_0x5c5f4e,_0x240248)=>Math['max'](_0x5c5f4e,_0x240248['trust']),0x0),_0xc30654;}function _0x21db12(_0x3ecee0){const _0x50cd6b=_0x403c45['toMeshX'](_0x3ecee0['x']),_0x5b1e1e=_0x403c45['toMeshY'](_0x3ecee0['y'])-0.15,_0x43a358=(_0x3ecee0['x']-_0x2b7304)/_0x42f643,_0x128746=(_0x3ecee0['y']-_0x137ef8)/_0xacabde,_0x30a074=Math['max'](0x0,0x1-(_0x43a358*_0x43a358+_0x128746*_0x128746)),_0x5843b4=FACE_Z_FIX['matchBaseline']?_0x157826:0x1;return{'localX':_0x50cd6b,'yLocal':_0x5b1e1e,'frontZ':_0x1d0a72(_0x50cd6b,_0x5b1e1e)*_0x5843b4+_0x30a074*(_0x469145*_0x3ecee0['z']*_0x403c45['bX']*_0x3fc548)};}function _0x341271(_0x2349db,_0x56aa91){const _0x39ef4a=[];for(const _0x3d47e5 of _0x56aa91){const _0x11f39e=_0x3d47e5['raw'][_0x2349db];if(!_0x11f39e)continue;const _0x3d6bae=projectImagePointToHead(_0x3d47e5['angle'],_0x11f39e['x'],_0x11f39e['y'],_0x283acd,_0x609b1d);if(!_0x3d6bae)continue;_0x39ef4a['push']({'z':_0x3d6bae['z'],'confidence':_0x3d47e5['confidence'],'trust':_0x3d47e5['trust'],'w':sideDepthWeight(_0x3d47e5)});}if(!_0x39ef4a['length'])return null;if(_0x39ef4a['length']===0x2){const [_0x3f8a24,_0x281586]=_0x39ef4a,_0x2ceb60=Math['abs'](_0x3f8a24['z']-_0x281586['z'])>1.2*_0x505c51||_0x3f8a24['z']*_0x281586['z']<0x0&&Math['abs'](_0x3f8a24['z'])>0.15*_0x505c51&&Math['abs'](_0x281586['z'])>0.15*_0x505c51;if(_0x2ceb60)return null;}const _0x3479d8=_0x39ef4a['reduce']((_0x198f52,_0x66644d)=>_0x198f52+_0x66644d['w'],0x0);if(!(_0x3479d8>0x0))return null;const _0x3bcc73=_0x39ef4a['reduce']((_0x159e2d,_0x152be9)=>_0x159e2d+_0x152be9['z']*_0x152be9['w'],0x0);return _0x3bcc73/_0x3479d8;}function _0x231f5(){const _0x1aa787=new Float32Array(_0x53574d)['fill'](NaN),_0x31d165=_0x32e193();if(!_0x31d165['length'])return _0x1aa787;for(let _0xe51caf=0x0;_0xe51caf<_0x53574d;_0xe51caf++){if(_0x4d07a4(_0xe51caf)>0x1)continue;const _0x2b3d42=_0x341271(_0xe51caf,_0x31d165);if(_0x2b3d42===null)continue;_0x1aa787[_0xe51caf]=clamp((_0x2b3d42-_0x21db12(_0x110759[_0xe51caf])['frontZ'])*_0x55e42b,-0.6*_0x505c51,0.6*_0x505c51),_0x395116++;}return _0x1aa787;}function _0x32650a(){const _0x3b0d94=[],_0x367e6e=_0x32e193();if(!_0x367e6e['length'])return _0x3b0d94;return _0x558963['forEach'](_0xfdd827=>{const {localX:_0x44d66e,yLocal:_0x3677c1,frontZ:_0x19c69a}=_0x21db12(_0x110759[_0xfdd827['idx']]),_0x1c15a3=_0x341271(_0xfdd827['idx'],_0x367e6e);if(_0x1c15a3===null)return;_0x3b0d94['push']({'idx':_0xfdd827['idx'],'localX':_0x44d66e,'yLocal':_0x3677c1,'deltaZ':clamp((_0x1c15a3-_0x19c69a)*_0x55e42b,-0.6*_0x505c51,0.6*_0x505c51)});}),_0x3b0d94;}const _0x40bf42=_0x32650a(),_0x3461ca=_0x154d10?_0x231f5():null,_0x144589={0x1:null,0x98:null,0xa:null,0xa8:null,0xea:null},_0x6af470=new Float32Array(_0x53574d)['fill'](NaN),_0x4aa848={'on':!![],'targetCm':0x2,'maxGain':0x3};let _0x36fb05=0x1,_0x247591=null;if(_0x4aa848['on']){const _0xfaf9=[];for(let _0x3b4dbf=0x0;_0x3b4dbf<_0x53574d;_0x3b4dbf++){if(!_0x37f983(_0x3b4dbf))continue;_0xfaf9['push'](_0x469145*_0x110759[_0x3b4dbf]['z']*_0x403c45['bX']*_0x3fc548);}if(_0xfaf9['length']>0x14){_0xfaf9['sort']((_0x5db913,_0x2962aa)=>_0x5db913-_0x2962aa);const _0xd56778=_0xfaf9[Math['floor'](_0xfaf9['length']*0.5)],_0x4fc91a=_0xfaf9[Math['floor'](_0xfaf9['length']*0.98)];let _0xd70ddd=16.4;try{const _0x211ccc=faceRulerCmPerUnit(_0x525578);if(_0x211ccc&&_0x211ccc['x']>0x1)_0xd70ddd=_0x211ccc['x'];}catch(_0x384701){}_0x247591=Math['max'](0x0,_0x4fc91a-_0xd56778)*_0xd70ddd,_0x247591>0.05&&(_0x36fb05=clamp(_0x4aa848['targetCm']/_0x247591,0x1,_0x4aa848['maxGain']));}}const _0x1a8fd9=new Float32Array(_0x53574d*0x3),_0x56910f=new Float32Array(_0x53574d*0x2);for(let _0x59f118=0x0;_0x59f118<_0x53574d;_0x59f118++){const _0x17da98=_0x110759[_0x59f118],_0x3f5a76=_0x403c45['toMeshX'](_0x17da98['x']),_0x1b1a2b=_0x403c45['toMeshY'](_0x17da98['y'])-0.15,_0x4afc51=_0x1d0a72(_0x3f5a76,_0x1b1a2b),_0x4dfb72=_0x469145*_0x17da98['z']*_0x403c45['bX']*_0x3fc548*_0x36fb05,_0x373252=Math['max'](0x0,0x1-_0x4d07a4(_0x59f118));let _0x6441f6=0x0;if(_0x3461ca&&!Number['isNaN'](_0x3461ca[_0x59f118]))_0x6441f6=_0x3461ca[_0x59f118];else for(let _0x39a4eb=0x0;_0x39a4eb<_0x40bf42['length'];_0x39a4eb++){const _0x16660f=_0x40bf42[_0x39a4eb],_0x3f34ea=_0x3f5a76-_0x16660f['localX'],_0x6d7ba5=_0x1b1a2b-_0x16660f['yLocal'],_0x51c25d=Math['exp'](-(_0x3f34ea*_0x3f34ea+_0x6d7ba5*_0x6d7ba5)/(0x2*_0x5861f3*_0x5861f3));_0x6441f6+=_0x51c25d*_0x16660f['deltaZ'];}const _0x19cd2b=_0x47a700(_0x3f5a76,_0x1b1a2b),_0x1ad6cb=_0x19cd2b*_0x157826,_0x488220=_0x373252*_0x4dfb72,_0x573c46=_0x1ad6cb+_0x488220+_0x6441f6;_0x6af470[_0x59f118]=_0x1ad6cb;if(_0x144589[_0x59f118]!==undefined)_0x144589[_0x59f118]={'surf':_0x19cd2b,'surfHull':_0x4afc51,'base':_0x1ad6cb,'relief':_0x488220,'prof':_0x6441f6,'z':_0x573c46,'measured':!!(_0x3461ca&&!Number['isNaN'](_0x3461ca[_0x59f118]))};_0x1a8fd9[_0x59f118*0x3+0x0]=_0x3f5a76,_0x1a8fd9[_0x59f118*0x3+0x1]=_0x1b1a2b+0.15,_0x1a8fd9[_0x59f118*0x3+0x2]=_0x573c46,_0x56910f[_0x59f118*0x2+0x0]=_0x17da98['x'],_0x56910f[_0x59f118*0x2+0x1]=0x1-_0x17da98['y'];}const _0x123169={'on':![],'mode':'measured','manualK':0.853,'maxAdjust':0.06,'bandFrac':0.15},_0x4fcf12=_0x123169;function _0x4dbc4e(_0x5b46d8){try{const _0x45fd25=getDisplaySkullEllipsoid(),_0x4ae9c8=SCALP_SKIN['depthOffset']?0x1:HAIR_SCALP3D['applyToHead']&&HAIR_SCALP3D['drawInset']>0x0?HAIR_SCALP3D['drawInset']:0x1;if(!(_0x45fd25&&_0x45fd25['a']>0.000001&&_0x45fd25['b']>0.000001&&_0x45fd25['c']>0.000001))return null;const _0x27adc8=_0x45fd25['a']*_0x4ae9c8,_0x37eafd=_0x45fd25['b']*_0x4ae9c8,_0x2b83a2=_0x45fd25['c']*_0x4ae9c8;let _0x1f3411=-Infinity,_0x446fa1=Infinity;for(let _0x2c95d5=0x0;_0x2c95d5<_0x53574d;_0x2c95d5++){if(!_0x37f983(_0x2c95d5))continue;const _0x6f7c19=_0x1a8fd9[_0x2c95d5*0x3+0x1]-0.15;if(_0x6f7c19>_0x1f3411)_0x1f3411=_0x6f7c19;if(_0x6f7c19<_0x446fa1)_0x446fa1=_0x6f7c19;}if(!isFinite(_0x1f3411)||!isFinite(_0x446fa1)||!(_0x1f3411-_0x446fa1>0.000001))return null;const _0x225e20=_0x1f3411-(_0x1f3411-_0x446fa1)*_0x4fcf12['bandFrac'],_0x1bebee=[];for(let _0x311601=0x0;_0x311601<_0x53574d;_0x311601++){if(!_0x37f983(_0x311601))continue;const _0x4364b4=_0x1a8fd9[_0x311601*0x3+0x0],_0x57a80d=_0x1a8fd9[_0x311601*0x3+0x1]-0.15;if(_0x57a80d<_0x225e20)continue;const _0x508a09=_0x6af470[_0x311601];if(!isFinite(_0x508a09))continue;const _0x30fe11=_0x4364b4/_0x27adc8*(_0x4364b4/_0x27adc8)+_0x57a80d/_0x37eafd*(_0x57a80d/_0x37eafd);if(_0x30fe11>=0x1)continue;const _0x52b623=_0x2b83a2*Math['sqrt'](0x1-_0x30fe11);_0x1bebee['push']({'i':_0x311601,'lx':_0x4364b4,'yl':_0x57a80d,'u':_0x30fe11,'gap':_0x508a09-_0x52b623});}const _0x44230a=typeof modelCmPerUnit==='function'?modelCmPerUnit():null,_0x55669b=_0x1242e7=>_0x44230a&&isFinite(_0x1242e7)?'\x20('+(_0x1242e7*_0x44230a)['toFixed'](0x2)+'cm)':'';if(_0x1bebee['length']<0x6)return console['warn']('[이마이음매'+(_0x5b46d8?'·'+_0x5b46d8:'')+']\x20윗줄\x20표본\x20'+_0x1bebee['length']+'점\x20—\x206점\x20미만이라\x20<b>판정하지\x20않습니다</b>'+'(얼굴\x20윗줄이\x20두개골\x20구\x20밖으로\x20나갔거나\x20띠가\x20너무\x20얇습니다).'),null;const _0x9223da=_0x1bebee['map'](_0x564752=>_0x564752['gap'])['sort']((_0x32e414,_0x413517)=>_0x32e414-_0x413517),_0x3ae7dd=_0x9223da[_0x9223da['length']>>0x1],_0x50bbdf=_0x9223da[0x0],_0xe72e80=_0x9223da[_0x9223da['length']-0x1];let _0x10da78=0x0;for(const _0x1d5661 of _0x1bebee)if(Math['abs'](_0x1d5661['lx'])>_0x10da78)_0x10da78=Math['abs'](_0x1d5661['lx']);const _0x47a313=_0x1bebee['filter'](_0x418970=>Math['abs'](_0x418970['lx'])<=_0x10da78*0.34),_0x52157c=_0x1bebee['filter'](_0x18b23b=>Math['abs'](_0x18b23b['lx'])>=_0x10da78*0.66),_0x421eb8=_0x5f22ed=>_0x5f22ed['length']?_0x5f22ed['reduce']((_0x3a134d,_0x2509c7)=>_0x3a134d+_0x2509c7['gap'],0x0)/_0x5f22ed['length']:NaN,_0x5f3431=_0x421eb8(_0x47a313),_0x2af955=_0x421eb8(_0x52157c),_0x286040=_0x421eb8(_0x1bebee['filter'](_0x3e10dc=>_0x3e10dc['lx']<0x0)),_0x378f01=_0x421eb8(_0x1bebee['filter'](_0x4cf916=>_0x4cf916['lx']>0x0)),_0x407b76=Math['abs'](_0x286040-_0x378f01),_0x2e93bf=Math['abs'](_0x5f3431-_0x2af955);let _0x1e1b16=NaN;{const _0x288e04=_0x1bebee['length'];let _0x275fbf=0x0,_0x20f222=0x0;for(const _0x54bfdd of _0x1bebee){_0x275fbf+=_0x54bfdd['u'],_0x20f222+=_0x54bfdd['gap'];}const _0x1d4dcd=_0x275fbf/_0x288e04,_0x2969fc=_0x20f222/_0x288e04;let _0x5c1573=0x0,_0x479c0b=0x0,_0x2f9704=0x0;for(const _0x2ffe6f of _0x1bebee){const _0x41fc29=_0x2ffe6f['u']-_0x1d4dcd,_0x25e338=_0x2ffe6f['gap']-_0x2969fc;_0x5c1573+=_0x41fc29*_0x41fc29,_0x479c0b+=_0x25e338*_0x25e338,_0x2f9704+=_0x41fc29*_0x25e338;}if(_0x5c1573>1e-18&&_0x479c0b>1e-18)_0x1e1b16=_0x2f9704/Math['sqrt'](_0x5c1573*_0x479c0b);}const _0x4132bc=_0x45fd25['c']*(0x1-_0x4ae9c8),_0xfdd1bd=_0xe72e80!==0x0&&_0x50bbdf!==0x0&&_0x50bbdf>0x0?_0xe72e80/_0x50bbdf:NaN;let _0x545069;if(!(Math['abs'](_0x3ae7dd)>0.0001))_0x545069='두\x20기준면이\x20<b>이미\x20같습니다</b>'+(_0x5b46d8?'\x20—\x20이음매가\x20닫혔습니다':'\x20—\x20화면의\x20띠는\x20기하가\x20아니라\x20색·재질\x20쪽입니다(SCALP_SKIN)');else{if(_0x4ae9c8<0x1&&Math['abs'](_0x3ae7dd-_0x4132bc)<Math['abs'](_0x3ae7dd)*0.25)_0x545069='<b>①\x20drawInset</b>입니다\x20—\x20틈이\x20skull.c×(1−kIn)='+_0x4132bc['toFixed'](0x4)+'과\x20같습니다.\x20SCALP_SKIN.depthOffset=true로\x20두면\x20닫힙니다';else{if(isFinite(_0x1e1b16)&&_0x1e1b16>0.6)_0x545069='<b>②\x20두\x20타원이\x20다른\x20자</b>입니다\x20—\x20틈이\x20중심에서\x20멀수록\x20커집니다'+'(틈↔반지름²\x20상관\x20'+_0x1e1b16['toFixed'](0x2)+(isFinite(_0xfdd1bd)?'\x20·\x20최대/최소\x20×'+_0xfdd1bd['toFixed'](0x1):'')+').'+'\x20깊이(c)만\x20FACE_Z_TO_SKULL로\x20맞췄고\x20폭(ellAForFace='+_0x1f78c8['toFixed'](0x3)+'\x20vs\x20skull.a='+_0x45fd25['a']['toFixed'](0x3)+')·세로(ELL_B='+_0xf9cf27['toFixed'](0x3)+'\x20vs\x20skull.b='+_0x45fd25['b']['toFixed'](0x3)+')는\x20안\x20맞췄습니다';else{if(isFinite(_0x2e93bf)&&_0x2e93bf>Math['abs'](_0x3ae7dd)*0.3)_0x545069='<b>②\x20두\x20타원이\x20다른\x20자</b>입니다\x20—\x20가운데와\x20가장자리가\x20'+_0x2e93bf['toFixed'](0x4)+_0x55669b(_0x2e93bf)+'만큼\x20<b>다르게</b>\x20벌어집니다';else!isFinite(_0x2e93bf)||!isFinite(_0x1e1b16)?_0x545069='<b>못\x20가릅니다</b>\x20—\x20표본이\x20한쪽에\x20몰려\x20가운데·가장자리가\x20갈리지\x20않습니다'+'(gMid='+_0x5f3431['toFixed'](0x4)+'\x20gOut='+_0x2af955['toFixed'](0x4)+').\x20판정을\x20보류합니다':_0x545069='<b>일정한\x20틈</b>입니다(가운데·가장자리\x20차\x20'+_0x2e93bf['toFixed'](0x4)+'\x20·\x20틈↔반지름²\x20상관\x20'+_0x1e1b16['toFixed'](0x2)+')'+'\x20—\x20drawInset은\x20아닌데(kIn='+_0x4ae9c8+')\x20기준면이\x20통째로\x20밀려\x20있습니다.'+'\x20FACE_Z_TO_SKULL='+_0x157826['toFixed'](0x3)+'을\x20의심하세요';}}}return console['log'](...gyeolBoldArgs(['[이마이음매'+(_0x5b46d8?'·'+_0x5b46d8:'')+']\x20얼굴\x20윗줄\x20'+_0x1bebee['length']+'점'+'\x20·\x20틈\x20중앙값\x20<b>'+(_0x3ae7dd>=0x0?'+':'')+_0x3ae7dd['toFixed'](0x4)+'</b>'+_0x55669b(_0x3ae7dd)+'\x20(최소\x20'+_0x50bbdf['toFixed'](0x4)+'\x20·\x20최대\x20'+_0xe72e80['toFixed'](0x4)+')'+'\x20·\x20+\x20=\x20얼굴이\x20두개골보다\x20<b>앞</b>'+'\x0a\x20\x20\x20\x20\x20\x20가운데(|x|≤'+(_0x10da78*0.34)['toFixed'](0x2)+')\x20'+_0x5f3431['toFixed'](0x4)+_0x55669b(_0x5f3431)+'\x20·\x20가장자리(|x|≥'+(_0x10da78*0.66)['toFixed'](0x2)+')\x20'+_0x2af955['toFixed'](0x4)+_0x55669b(_0x2af955)+'\x0a\x20\x20\x20\x20\x20\x20좌(x<0)\x20'+_0x286040['toFixed'](0x4)+_0x55669b(_0x286040)+'\x20·\x20우(x>0)\x20'+_0x378f01['toFixed'](0x4)+_0x55669b(_0x378f01)+'\x20·\x20<b>좌우차\x20'+_0x407b76['toFixed'](0x4)+'</b>'+_0x55669b(_0x407b76)+(isFinite(_0x407b76)&&_0x407b76>0.004?'\x20⚠\x20기준면이\x20좌우로\x20기울었습니다':'\x20—\x20기준면은\x20좌우\x20대칭.\x20화면이\x20비대칭이면\x20<b>측면보정</b>(좌\x20trust\x200.79\x20vs\x20우\x200.31)입니다')+'\x20·\x20그리는\x20구\x20×'+_0x4ae9c8+'\x20→\x20drawInset이\x20만들\x20틈\x20'+_0x4132bc['toFixed'](0x4)+'\x0a\x20\x20\x20\x20\x20\x20자\x20대조:\x20폭\x20'+_0x1f78c8['toFixed'](0x3)+'/'+_0x45fd25['a']['toFixed'](0x3)+'\x20=\x20×'+(_0x1f78c8>0.000001?(_0x45fd25['a']/_0x1f78c8)['toFixed'](0x3):'—')+'\x20·\x20세로\x20'+_0xf9cf27['toFixed'](0x3)+'/'+_0x45fd25['b']['toFixed'](0x3)+'\x20=\x20×'+(_0xf9cf27>0.000001?(_0x45fd25['b']/_0xf9cf27)['toFixed'](0x3):'—')+'\x20·\x20깊이\x20×'+_0x157826['toFixed'](0x3)+'\x20(깊이만\x20맞춰져\x20있으면\x20②)'+'\x0a\x20\x20\x20\x20\x20\x20→\x20'+_0x545069+'\x0a\x20\x20\x20\x20\x20\x20굴곡·측면보정은\x20뺀\x20<b>기준면끼리</b>의\x20차입니다.'])),{'rows':_0x1bebee['length'],'med':_0x3ae7dd,'lo':_0x50bbdf,'hi':_0xe72e80,'gMid':_0x5f3431,'gOut':_0x2af955,'rGapU':_0x1e1b16};}catch(_0x407a1b){return console['warn']('[이마이음매]\x20측정\x20실패:',_0x407a1b&&_0x407a1b['message']),null;}}const _0x5f3bc9=_0x4dbc4e(_0x2e5aaa['on']?'자\x20맞춘\x20뒤':'고치기\x20전');if(_0x2e5aaa['on']&&_0x41c8c2&&_0x2e5aaa['seamBias']>0x0){let _0x36ea7d=0x0,_0x5b7ba3=0x0,_0x2cf721=0x0;for(let _0x2a996f=0x0;_0x2a996f<_0x53574d;_0x2a996f++){if(!_0x37f983(_0x2a996f))continue;const _0x3d4b23=_0x1a8fd9[_0x2a996f*0x3+0x0],_0x35c139=_0x1a8fd9[_0x2a996f*0x3+0x1]-0.15,_0x1394f0=_0x140d49(_0x35c139);if(_0x1394f0<=0.001)continue;_0x2cf721++;const _0x58af78=_0x3d4b23/_0x41c8c2['a']*(_0x3d4b23/_0x41c8c2['a'])+_0x35c139/_0x41c8c2['b']*(_0x35c139/_0x41c8c2['b']);if(_0x58af78>=0x1)continue;const _0x4e63e7=_0x41c8c2['c']*Math['sqrt'](0x1-_0x58af78)+_0x2e5aaa['seamBias']*_0x1394f0,_0xe517cf=_0x1a8fd9[_0x2a996f*0x3+0x2];if(_0xe517cf<_0x4e63e7){const _0xba79a8=(_0x4e63e7-_0xe517cf)*_0x1394f0;_0x1a8fd9[_0x2a996f*0x3+0x2]=_0xe517cf+_0xba79a8;if(_0x144589[_0x2a996f]!==undefined)_0x144589[_0x2a996f]['z']+=_0xba79a8;_0x36ea7d++;if(_0xba79a8>_0x5b7ba3)_0x5b7ba3=_0xba79a8;}}const _0x4ae305=typeof modelCmPerUnit==='function'?modelCmPerUnit():null;console['log'](...gyeolBoldArgs(['[이마\x20바닥]\x20이마\x20밴드\x20'+_0x2cf721+'점\x20중\x20<b>'+_0x36ea7d+'점</b>을\x20두개골\x20면\x20위로\x20올렸습니다\x20(최대\x20'+_0x5b7ba3['toFixed'](0x4)+(_0x4ae305?'\x20=\x20'+(_0x5b7ba3*_0x4ae305)['toFixed'](0x2)+'cm':'')+')'+'\x0a\x20\x20\x20\x20\x20\x20=\x20두개골\x20살구색이\x20<b>미간·눈썹</b>을\x20덮던\x20자리를\x20막는\x20것입니다.'+'\x200점이면\x20이미\x20안\x20덮고\x20있었다는\x20뜻이라\x20그대로\x20두면\x20됩니다.'+'\x0a\x20\x20\x20\x20\x20\x20되돌리기:\x20FACE_RULER_FIT.seamBias=0']));}if(_0x123169['on']){try{const _0x543c41=getDisplaySkullEllipsoid();if(_0x543c41&&_0x543c41['a']>0.000001&&_0x543c41['b']>0.000001&&_0x543c41['c']>0.000001){let _0x36bab5=-Infinity,_0x22f678=Infinity;for(let _0x2475a0=0x0;_0x2475a0<_0x53574d;_0x2475a0++){if(!_0x37f983(_0x2475a0))continue;const _0x5864bc=_0x1a8fd9[_0x2475a0*0x3+0x1]-0.15;if(_0x5864bc>_0x36bab5)_0x36bab5=_0x5864bc;if(_0x5864bc<_0x22f678)_0x22f678=_0x5864bc;}const _0x5928b3=_0x36bab5-_0x22f678,_0x7c2052=_0x36bab5-_0x5928b3*_0x123169['bandFrac'],_0x1128b0=[];if(isFinite(_0x5928b3)&&_0x5928b3>0.000001)for(let _0x531fe5=0x0;_0x531fe5<_0x53574d;_0x531fe5++){if(!_0x37f983(_0x531fe5))continue;const _0xe38f43=_0x1a8fd9[_0x531fe5*0x3+0x0],_0x50b5e5=_0x1a8fd9[_0x531fe5*0x3+0x1]-0.15;if(_0x50b5e5<_0x7c2052)continue;const _0x1d8830=_0x6af470[_0x531fe5];if(!isFinite(_0x1d8830)||Math['abs'](_0x1d8830)<0.000001)continue;const _0x7cf7bb=_0xe38f43/_0x543c41['a']*(_0xe38f43/_0x543c41['a'])+_0x50b5e5/_0x543c41['b']*(_0x50b5e5/_0x543c41['b']);if(_0x7cf7bb>=0x1)continue;_0x1128b0['push'](_0x543c41['c']*Math['sqrt'](0x1-_0x7cf7bb)/_0x1d8830);}let _0x4961fe=NaN;if(_0x123169['mode']==='manual')_0x4961fe=_0x157826>0.000001?_0x123169['manualK']/_0x157826:NaN;else _0x1128b0['length']>=0x6&&(_0x1128b0['sort']((_0x33b53a,_0x3c643a)=>_0x33b53a-_0x3c643a),_0x4961fe=_0x1128b0[_0x1128b0['length']>>0x1]);const _0x3cbd34=_0x157826*_0x4961fe,_0x449a9f=typeof modelCmPerUnit==='function'?modelCmPerUnit():null;if(!isFinite(_0x4961fe))console['warn']('[이마이음매·k되맞춤]\x20윗줄\x20표본\x20'+_0x1128b0['length']+'점\x20—\x20역산할\x20수\x20없어\x20<b>적용하지\x20않습니다</b>(FACE_Z_TO_SKULL='+_0x157826['toFixed'](0x3)+'\x20그대로).');else{if(Math['abs'](0x1-_0x4961fe)>_0x123169['maxAdjust'])console['warn']('[이마이음매·k되맞춤]\x20역산값이\x20안전대를\x20넘었습니다\x20—\x20×'+_0x4961fe['toFixed'](0x4)+'(FACE_Z_TO_SKULL\x20'+_0x157826['toFixed'](0x3)+'→'+_0x3cbd34['toFixed'](0x3)+',\x20허용\x20±'+(_0x123169['maxAdjust']*0x64)['toFixed'](0x0)+'%).\x20<b>적용하지\x20않습니다</b>.');else{let _0x500265=0x0,_0xd29d39=0x0;for(let _0x5206c7=0x0;_0x5206c7<_0x53574d;_0x5206c7++){const _0x3b83fc=_0x6af470[_0x5206c7];if(!isFinite(_0x3b83fc))continue;const _0x4d55c2=_0x3b83fc*(0x1-_0x4961fe);_0x1a8fd9[_0x5206c7*0x3+0x2]-=_0x4d55c2,_0x6af470[_0x5206c7]=_0x3b83fc-_0x4d55c2;_0x144589[_0x5206c7]!==undefined&&(_0x144589[_0x5206c7]['base']-=_0x4d55c2,_0x144589[_0x5206c7]['z']-=_0x4d55c2);_0xd29d39++;if(Math['abs'](_0x4d55c2)>Math['abs'](_0x500265))_0x500265=_0x4d55c2;}console['log'](...gyeolBoldArgs(['[이마이음매·k되맞춤]\x20FACE_Z_TO_SKULL\x20<b>'+_0x157826['toFixed'](0x3)+'\x20→\x20'+_0x3cbd34['toFixed'](0x3)+'</b>\x20(×'+_0x4961fe['toFixed'](0x4)+'\x20·\x20윗줄\x20'+_0x1128b0['length']+'점의\x20두개골면÷얼굴면\x20중앙값)'+'\x0a\x20\x20\x20\x20\x20\x20기준면만\x20곱했습니다\x20—\x20굴곡·측면보정(잔차)은\x20그대로라\x20코\x20돌출은\x20안\x20변합니다.'+'\x20정점\x20'+_0xd29d39+'개\x20·\x20최대\x20이동\x20'+_0x500265['toFixed'](0x4)+(_0x449a9f?'\x20('+(_0x500265*_0x449a9f)['toFixed'](0x2)+'cm)':'')+'\x0a\x20\x20\x20\x20\x20\x20⚠\x20읽는\x20법\x20—\x20아래\x20[고친\x20뒤]에서\x20<b>중앙값이\x20아니라\x20최소·최대의\x20부호</b>를\x20보세요.'+'\x20둘\x20다\x200\x20근처면\x20이\x20손잡이가\x20맞았던\x20것이고,\x20최소가\x20<b>음수</b>·최대가\x20<b>양수</b>로'+'\x20갈리면\x20②(두\x20타원이\x20다른\x20자)라\x20이\x20손잡이로는\x20못\x20닫습니다.'+'\x0a\x20\x20\x20\x20\x20\x20되돌리기:\x20FACE_Z_SKULL_FIT.on=false\x20(산술까지\x20예전과\x20동일)'+'\x20·\x20이\x20값을\x20굳히려면\x20mode:\x27manual\x27\x20·\x20manualK='+_0x3cbd34['toFixed'](0x3)]));}}}}catch(_0x58eb12){console['warn']('[이마이음매·k되맞춤]\x20실패:',_0x58eb12&&_0x58eb12['message']);}_0x4dbc4e('k까지\x20고친\x20뒤');}const _0x5ccbbe=FACE_BOUND_FIT['on']?FACE_BOUND_FIT['keepT']:0x1,_0x34eb88=[];let _0xfcbaba=0x0;for(let _0x458d74=0x0;_0x458d74<FACE_MESH_TRI_V['length'];_0x458d74+=0x3){const _0x1d638f=FACE_MESH_TRI_V[_0x458d74],_0xa04ca6=FACE_MESH_TRI_V[_0x458d74+0x1],_0x3ed0dd=FACE_MESH_TRI_V[_0x458d74+0x2];if(_0x37f983(_0x1d638f)&&_0x37f983(_0xa04ca6)&&_0x37f983(_0x3ed0dd))_0xfcbaba++;const _0x21ad2b=Math['max'](_0x5fa252(_0x1d638f),_0x5fa252(_0xa04ca6),_0x5fa252(_0x3ed0dd));if(_0x21ad2b<=_0x5ccbbe)_0x34eb88['push'](_0x1d638f,_0xa04ca6,_0x3ed0dd);}const _0x4908ab=new Float32Array(_0x53574d);for(let _0x11ef7e=0x0;_0x11ef7e<_0x53574d;_0x11ef7e++)_0x4908ab[_0x11ef7e]=_0x1b3435(_0x11ef7e);{const _0x5b5979=[0x2e,0x35,0x34,0x41,0x37],_0x431b79=[0x11d,0x127,0x11a,0x11b,0x114],_0x1a1323=_0x3e6d41=>Math['max'](..._0x3e6d41['map'](_0x5fa252)),_0x33e64a=_0x1a1323(_0x5b5979),_0x471efa=_0x1a1323(_0x431b79),_0x2b9043=_0x4ec974=>_0x5fa252(_0x4ec974)>_0x5ccbbe,_0x2bc811=_0x5b5979['filter'](_0x2b9043)['length'],_0x57d5b9=_0x431b79['filter'](_0x2b9043)['length'];console['log'](...gyeolBoldArgs(['[얼굴\x20테두리]\x20삼각형\x20'+_0xfcbaba+'\x20→\x20<b>'+_0x34eb88['length']/0x3+'</b>개\x20(keepT='+_0x5ccbbe['toFixed'](0x2)+'\x20·\x20페이드\x20'+FACE_BOUND_FIT['fadeIn']['toFixed'](0x2)+'→'+FACE_BOUND_FIT['fadeOut']['toFixed'](0x2)+')'+'\x0a\x20\x20\x20\x20\x20\x20눈썹\x20바깥끝\x20t\x20—\x20왼\x20<b>'+_0x33e64a['toFixed'](0x2)+'</b>\x20·\x20오른\x20<b>'+_0x471efa['toFixed'](0x2)+'</b>'+'\x20(빠진\x20정점\x20왼\x20'+_0x2bc811+'\x20·\x20오른\x20'+_0x57d5b9+')'+'\x0a\x20\x20\x20\x20\x20\x20읽는\x20법\x20—\x20t가\x20<b>fadeIn('+FACE_BOUND_FIT['fadeIn']['toFixed'](0x2)+')보다\x20크면</b>'+'\x20그\x20눈썹이\x20반투명해집니다.\x20그때는\x20fadeIn·fadeOut·keepT를\x20같은\x20양만큼\x20올리세요.'+'\x20예전(전부-아니면-전무)에서는\x20t>1.00이면\x20아예\x20<b>뜯겨\x20나갔습니다</b>.'+'\x0a\x20\x20\x20\x20\x20\x20되돌리기:\x20FACE_BOUND_FIT.on=false']));}{let _0x18bcf2=Infinity,_0x54778e=-Infinity;for(let _0x45c9ab=0x0;_0x45c9ab<_0x53574d;_0x45c9ab++){if(!_0x37f983(_0x45c9ab))continue;const _0x20b68a=_0x1a8fd9[_0x45c9ab*0x3+0x2];if(_0x20b68a<_0x18bcf2)_0x18bcf2=_0x20b68a;if(_0x20b68a>_0x54778e)_0x54778e=_0x20b68a;}const _0x4125d3=_0x19811f=>_0x1a8fd9[_0x19811f*0x3+0x2]['toFixed'](0x3);FACE_BUILD['path']='mesh',FACE_BUILD['zRange']=_0x54778e-_0x18bcf2,FACE_BUILD['zMin']=_0x18bcf2,FACE_BUILD['zMax']=_0x54778e,FACE_BUILD['sideHits']=_0x395116||0x0,FACE_BUILD['ellA']=_0x1f78c8,FACE_BUILD['ellC']=_0x505c51,FACE_BUILD['why']='',FACE_BUILD['reliefGain']=_0x36fb05,FACE_BUILD['reliefCm']=_0x247591!=null?_0x247591*_0x36fb05:null;try{FACE_BUILD['cmPerUnit']=faceRulerCmPerUnit(_0x525578)['x'];}catch(_0xab82a7){}if(FACE_PROFILE_BASE['on']&&_0x598a84!=null){const _0x276304=_0x1a9320&&_0x1a9320['chinY']!=null?_0x403c45['toMeshY'](_0x1a9320['chinY'])-0.15:null;if(_0x276304!=null){const _0x37cae5=_0x1d0a72(0x0,_0x276304)*_0x157826,_0x2b3db4=_0x47a700(0x0,_0x276304)*_0x157826,_0x18eff6=_0x47a700(0x0,_0x598a84)*_0x157826,_0x5d403c=typeof modelCmPerUnit==='function'?modelCmPerUnit():null,_0x281487=_0x2bad58=>_0x2bad58['toFixed'](0x3)+(_0x5d403c?'('+(_0x2bad58*_0x5d403c)['toFixed'](0x1)+'cm)':'');console['log']('[얼굴\x20옆선·기준면]\x20눈높이\x20아래\x20세로\x20곡률\x20×'+FACE_PROFILE_BASE['flatBelowEye']+'\x20·\x20턱\x20기준면\x20'+_0x37cae5['toFixed'](0x3)+'\x20→\x20'+_0x2b3db4['toFixed'](0x3)+'\x20·\x20눈높이선에서\x20턱까지\x20물러남\x20'+_0x281487(Math['max'](0x0,_0x18eff6-_0x37cae5))+'\x20→\x20'+_0x281487(Math['max'](0x0,_0x18eff6-_0x2b3db4))+'\x20(굴곡\x20제외)\x20·\x20되돌리기\x20FACE_PROFILE_BASE.on=false');}}console['log']('[얼굴\x20입체감]\x20z범위='+(_0x54778e-_0x18bcf2)['toFixed'](0x3)+'\x20(min'+_0x18bcf2['toFixed'](0x3)+'~max'+_0x54778e['toFixed'](0x3)+')\x20|\x20코끝='+_0x4125d3(0x1)+'\x20턱='+_0x4125d3(0x98)+'\x20이마='+_0x4125d3(0xa)),console['log']('[얼굴\x20측면보정]\x20전체정점\x20실측='+(_0x154d10?'켜짐':'꺼짐(3앵커만)')+'\x20|\x20측면\x20실측\x20기여\x20정점='+(_0x395116||0x0)+'개');const _0x1f2c39={0x1:'코끝',0x98:'턱',0xa:'이마',0xa8:'미간',0xea:'왼뺨'},_0x31e0e6=[];for(const _0x33845d in _0x144589){const _0x4ccfc5=_0x144589[_0x33845d];if(!_0x4ccfc5)continue;const _0x7e27df=_0x4ccfc5['surf']*_0x157826;_0x31e0e6['push']('\x20\x20'+(_0x1f2c39[_0x33845d]||_0x33845d)+(_0x4ccfc5['measured']?'\x20[측면실측]':'\x20[정면추정]')+'\x20타원면\x20'+_0x4ccfc5['surf']['toFixed'](0x3)+'\x20→\x20기준\x20'+_0x4ccfc5['base']['toFixed'](0x3)+'\x20|\x20굴곡\x20'+(_0x4ccfc5['relief']>=0x0?'+':'')+_0x4ccfc5['relief']['toFixed'](0x3)+'\x20|\x20측면보정\x20'+(_0x4ccfc5['prof']>=0x0?'+':'')+_0x4ccfc5['prof']['toFixed'](0x3)+'\x20=\x20<b>'+_0x4ccfc5['z']['toFixed'](0x3)+'</b>'+'\x20\x20(타원면\x20대비\x20'+(_0x4ccfc5['z']-_0x4ccfc5['surf']>=0x0?'+':'')+(_0x4ccfc5['z']-_0x4ccfc5['surf'])['toFixed'](0x3)+(_0x4ccfc5['z']<_0x4ccfc5['surf']?'\x20함몰':'\x20돌출')+')');}_0x31e0e6['length']&&console['log'](...gyeolBoldArgs(['[얼굴\x20z·항별]\x20기준면계수\x20FACE_Z_TO_SKULL='+_0x157826['toFixed'](0x3)+'\x20·\x20기준\x20맞춤\x20'+(FACE_Z_FIX['matchBaseline']?'<b>ON</b>':'OFF(예전)')+'\x0a'+_0x31e0e6['join']('\x0a')+'\x0a\x20\x20읽는\x20법\x20—\x20[측면실측]\x20정점은\x20최종\x20z가\x20<b>실측\x20z와\x20같아야</b>\x20합니다(차를\x20더하는\x20구조라서).'+'\x20그런데\x20기준\x20맞춤이\x20OFF면\x20타원면z×(1−k)만큼\x20<b>일괄\x20함몰</b>합니다(k='+_0x157826['toFixed'](0x3)+'이면\x20얼굴\x20한가운데서\x20약\x20'+((0x1-_0x157826)*0.5*19.33)['toFixed'](0x1)+'cm).'+'\x0a\x20\x20ON인데도\x20함몰이\x20남으면\x20그건\x20<b>측면\x20각도</b>\x20문제입니다\x20—\x20이\x20손님은\x20yaw\x2034°/−31°라'+'\x20실루엣\x20가장자리가\x20코·이마가\x20아니라\x20뺨입니다(깊이를\x20재려면\x2080~90°가\x20필요).']));}const _0x5595f3=new THREE['BufferGeometry']();_0x5595f3['setAttribute']('position',new THREE['BufferAttribute'](_0x1a8fd9,0x3)),_0x5595f3['setAttribute']('uv',new THREE['BufferAttribute'](_0x56910f,0x2)),_0x5595f3['setAttribute']('aFaceAlpha',new THREE['BufferAttribute'](_0x4908ab,0x1)),_0x5595f3['setIndex'](new THREE['BufferAttribute'](new Uint32Array(_0x34eb88),0x1)),_0x5595f3['computeVertexNormals']();const _0x4bc415=0x400;let _0x57d8e6=_0x3f64c5['width'],_0x155cfa=_0x3f64c5['height'];if(Math['max'](_0x57d8e6,_0x155cfa)>_0x4bc415){const _0x17230d=_0x4bc415/Math['max'](_0x57d8e6,_0x155cfa);_0x57d8e6=Math['round'](_0x57d8e6*_0x17230d),_0x155cfa=Math['round'](_0x155cfa*_0x17230d);}const _0x48ef7c=document['createElement']('canvas');_0x48ef7c['width']=_0x57d8e6,_0x48ef7c['height']=_0x155cfa,_0x48ef7c['getContext']('2d')['drawImage'](_0x3f64c5,0x0,0x0,_0x57d8e6,_0x155cfa);let _0x266346=![];if(FACE_HAIR_CUT['on']&&FACE_BOUND_FIT['on'])try{const _0x587a40=state['hairCanvases']&&state['hairCanvases']['front'];if(_0x587a40&&_0x587a40['width']>0x0){const _0x37f4ef=_0x48ef7c['getContext']('2d');_0x37f4ef['save'](),_0x37f4ef['globalCompositeOperation']='destination-out';if(FACE_HAIR_CUT['blurPx']>0x0)_0x37f4ef['filter']='blur('+FACE_HAIR_CUT['blurPx']+'px)';_0x37f4ef['drawImage'](_0x587a40,0x0,0x0,_0x57d8e6,_0x155cfa),_0x37f4ef['restore']();const _0x1b0647=_0x1a9320&&_0x1a9320['features'];if(_0x1b0647){_0x37f4ef['save'](),_0x37f4ef['beginPath']();for(const _0x591523 of['leftBrow','rightBrow','leftEye','rightEye','mouth']){const _0xa685b0=_0x1b0647[_0x591523];if(!_0xa685b0)continue;const _0x6a458e=(_0xa685b0['minX']+_0xa685b0['maxX'])/0x2*_0x57d8e6,_0x4e9d5d=(_0xa685b0['minY']+_0xa685b0['maxY'])/0x2*_0x155cfa,_0x358ffb=Math['max'](0x4,(_0xa685b0['maxX']-_0xa685b0['minX'])/0x2*_0x57d8e6*1.6),_0x4fec35=Math['max'](0x4,(_0xa685b0['maxY']-_0xa685b0['minY'])/0x2*_0x155cfa*2.2);_0x37f4ef['moveTo'](_0x6a458e+_0x358ffb,_0x4e9d5d),_0x37f4ef['ellipse'](_0x6a458e,_0x4e9d5d,_0x358ffb,_0x4fec35,0x0,0x0,Math['PI']*0x2);}_0x37f4ef['clip'](),_0x37f4ef['drawImage'](_0x3f64c5,0x0,0x0,_0x57d8e6,_0x155cfa),_0x37f4ef['restore']();}_0x266346=!![];}}catch(_0x2bc6e5){console['warn']('[3D·얼굴]\x20머리카락\x20오려내기\x20실패(원본\x20텍스처\x20그대로):',_0x2bc6e5&&_0x2bc6e5['message']);}const _0x49371a=new THREE['CanvasTexture'](_0x48ef7c);_0x49371a['needsUpdate']=!![];const _0x462026=FACE_MAT['unlit']?new THREE['MeshBasicMaterial']({'map':_0x49371a,'side':THREE['DoubleSide']}):new THREE['MeshStandardMaterial']({'map':_0x49371a,'roughness':0.8,'metalness':0x0,'side':THREE['DoubleSide']});FACE_BOUND_FIT['on']&&(_0x462026['transparent']=!![],_0x462026['onBeforeCompile']=_0x2d730b=>{_0x2d730b['vertexShader']='attribute\x20float\x20aFaceAlpha;\x0avarying\x20float\x20vFaceAlpha;\x0a'+_0x2d730b['vertexShader']['replace']('void\x20main()\x20{','void\x20main()\x20{\x0a\x09vFaceAlpha\x20=\x20aFaceAlpha;'),_0x2d730b['fragmentShader']='varying\x20float\x20vFaceAlpha;\x0a'+_0x2d730b['fragmentShader']['replace']('#include\x20<dithering_fragment>','#include\x20<dithering_fragment>\x0a'+'\x09if(vFaceAlpha\x20<\x200.02)\x20discard;\x20\x20\x20//\x20완전히\x20사라진\x20띠는\x20깊이도\x20안\x20남긴다\x0a'+'\x09gl_FragColor.a\x20*=\x20vFaceAlpha;\x0a'+'\x09if(gl_FragColor.a\x20<\x200.03)\x20discard;');},_0x462026['customProgramCacheKey']=()=>'gyeolFaceEdgeFade2',_0x462026['needsUpdate']=!![]);const _0x36dadf=new THREE['Mesh'](_0x5595f3,_0x462026);return _0x36dadf['name']='realFaceMesh',_0x36dadf['userData']['hairCut']=_0x266346,_0x36dadf;}function buildRealFaceMesh(){const _0x17b55d=buildRealFaceMeshBase['apply'](this,arguments);if(typeof MOBILE_DIET!=='undefined')MOBILE_DIET['noteFace'](0x0,_0x17b55d);return _0x17b55d;}async function buildFacePhotoDecalBase(_0x24b3b0){const _0x787c5b=state['shots']&&state['shots']['front'];if(!_0x787c5b||!state['landmarks']||!state['landmarks']['front'])return null;let _0x19cbb5;try{_0x19cbb5=await loadImageAsync(_0x787c5b);}catch(_0x238e3e){return console['warn']('데칼용\x20이미지\x20로드\x20실패:',_0x238e3e),null;}const _0x5684a6=0x200;let _0x385e06=_0x19cbb5['width'],_0x49de6e=_0x19cbb5['height'];if(Math['max'](_0x385e06,_0x49de6e)>_0x5684a6){const _0x526cf4=_0x5684a6/Math['max'](_0x385e06,_0x49de6e);_0x385e06=Math['round'](_0x385e06*_0x526cf4),_0x49de6e=Math['round'](_0x49de6e*_0x526cf4);}const _0x4a9ebb=document['createElement']('canvas');_0x4a9ebb['width']=_0x385e06,_0x4a9ebb['height']=_0x49de6e;const _0x45642c=_0x4a9ebb['getContext']('2d');_0x45642c['drawImage'](_0x19cbb5,0x0,0x0,_0x385e06,_0x49de6e);const _0x1dc259=_0x24b3b0['lm'];if(!_0x1dc259['features'])return null;const _0x234384=((_0x1dc259['features']['leftEye']['minX']+_0x1dc259['features']['leftEye']['maxX'])/0x2+(_0x1dc259['features']['rightEye']['minX']+_0x1dc259['features']['rightEye']['maxX'])/0x2)/0x2,_0xea2e82=_0x234384*_0x385e06,_0x1095fa=_0x1dc259['browTopY']*_0x49de6e,_0x394be2=_0x1dc259['chinY']*_0x49de6e*1.06,_0x2f353d=(_0x1095fa+_0x394be2)/0x2,_0x2812cd=(_0x394be2-_0x1095fa)/0x2,_0x3e3c19=Math['max'](0x4,_0x2812cd*0.92),_0x9bb26a=Math['max'](0x4,Math['abs'](_0x1dc259['rEarX']-_0x1dc259['lEarX'])*_0x385e06*0.56);_0x45642c['globalCompositeOperation']='destination-in';const _0x53c9ea=_0x45642c['createRadialGradient'](_0xea2e82,_0x2f353d,Math['min'](_0x9bb26a,_0x3e3c19)*0.35,_0xea2e82,_0x2f353d,Math['max'](_0x9bb26a,_0x3e3c19));_0x53c9ea['addColorStop'](0x0,'rgba(255,255,255,1)'),_0x53c9ea['addColorStop'](0.7,'rgba(255,255,255,0.9)'),_0x53c9ea['addColorStop'](0x1,'rgba(255,255,255,0)'),_0x45642c['fillStyle']=_0x53c9ea,_0x45642c['beginPath'](),_0x45642c['ellipse'](_0xea2e82,_0x2f353d,_0x9bb26a,_0x3e3c19,0x0,0x0,Math['PI']*0x2),_0x45642c['fill'](),_0x45642c['globalCompositeOperation']='source-over';const _0x2b5466=_0x9bb26a*1.05,_0x51eef0=_0x3e3c19*1.15,_0x37d03e=Math['max'](0x0,_0xea2e82-_0x2b5466),_0x398fbf=Math['max'](0x0,_0x2f353d-_0x51eef0),_0x32bded=Math['min'](_0x385e06,_0xea2e82+_0x2b5466),_0x2ee937=Math['min'](_0x49de6e,_0x2f353d+_0x51eef0),_0x7e1cf2=Math['max'](0x1,Math['round'](_0x32bded-_0x37d03e)),_0x15f992=Math['max'](0x1,Math['round'](_0x2ee937-_0x398fbf)),_0x427c59=document['createElement']('canvas');_0x427c59['width']=_0x7e1cf2,_0x427c59['height']=_0x15f992,_0x427c59['getContext']('2d')['drawImage'](_0x4a9ebb,_0x37d03e,_0x398fbf,_0x7e1cf2,_0x15f992,0x0,0x0,_0x7e1cf2,_0x15f992);const _0x5ba0a0=new THREE['CanvasTexture'](_0x427c59);_0x5ba0a0['needsUpdate']=!![];const _0x2460ef=_0x24b3b0['projector']['bY']/_0x49de6e,_0x287c3d=_0x7e1cf2*_0x2460ef,_0x44bd7f=_0x15f992*_0x2460ef,_0x1533c1=new THREE['MeshBasicMaterial']({'map':_0x5ba0a0,'transparent':!![],'depthWrite':![]}),_0x1154c0=new THREE['Mesh'](new THREE['PlaneGeometry'](_0x287c3d,_0x44bd7f),_0x1533c1);_0x1154c0['name']='facePhotoDecal',FACE_BUILD['path']='decal';if(!FACE_BUILD['why'])FACE_BUILD['why']='입체\x20메쉬가\x20null을\x20반환';return FACE_BUILD['zRange']=0x0,_0x1154c0['position']['set'](_0x24b3b0['projector']['toMeshX']((_0x37d03e+_0x32bded)/0x2/_0x385e06),_0x24b3b0['projector']['toMeshY']((_0x398fbf+_0x2ee937)/0x2/_0x49de6e),((()=>{try{return getDisplaySkullEllipsoid()['c']*1.02;}catch(_0x5f4e91){return 0.92*_0x24b3b0['widthFactor'];}})())),_0x1154c0;}function buildFacePhotoDecal(){const _0x5ad934=buildFacePhotoDecalBase['apply'](this,arguments);if(typeof MOBILE_DIET!=='undefined')MOBILE_DIET['noteFace'](0x1,_0x5ad934);return _0x5ad934;}
+/* ══════════════════════════════════════════════════════════
+   12a-head-project.js — 얼굴 계측 · 이미지↔두상 좌표 투영 · 두상/목/얼굴 메쉬
+   원본 index.html 16495~17717행. 클래식 스크립트이므로 로드 순서가 곧
+   실행 순서다 — index.html의 <script src> 순서를 바꾸지 말 것.
+   ══════════════════════════════════════════════════════════ */
+/* ════════════════════════════════════════
+   3D 두상 (2단계 프로토타입)
+   ────────────────────────────────────────
+   방향: 지금은 절차적(procedural) 도형으로 두상을 대충 근사해서 화면에
+   띄우지만, 코드 구조는 처음부터 "진짜 3D 두상 파일(.glb)로 교체 가능"
+   하게 짜둠 — HEAD_MESH_SOURCE.type을 'gltf'로 바꾸고 url만 넣으면
+   loadHeadMesh()가 알아서 GLTFLoader 경로를 타도록 분기되어 있음.
+   실제 진짜 메시가 생기기 전까지는 procedural 분기만 쓰임.
+════════════════════════════════════════ */
+const HEAD_MESH_SOURCE = {
+  type: 'procedural', // 'procedural' | 'gltf' — 나중에 실제 두상 파일 생기면 'gltf'+url로 교체
+  url: null,           // 예: '/assets/generic_head.glb'
+};
+
+let model3D = null; // { renderer, scene, camera, headGroup, hairMesh, animId, initialized, container }
+// setupModel3DScreen()이 호출될 때마다 +1. 사진 데칼은 비동기로 로드되므로,
+// 로드 도중 화면을 벗어났다 다시 들어와 headGroup이 통째로 재구성된 경우
+// 오래된 데칼 Promise가 새 headGroup에 잘못 붙는 걸 이 번호로 막는다.
+let model3DGeneration = 0;
+
+function clamp(v,lo,hi){ return Math.max(lo, Math.min(hi, v)); }
+
+/* ════════════════════════════════════════════════════════════════
+   얼굴 계측 · 이미지↔두상 좌표 투영기
+   getFaceMetrics(실측 종횡비) / makeFaceProjector(이미지 정규좌표 ↔ 메쉬 좌표).
+   얼굴·두상·목·헤어가 전부 이 두 개를 기준점으로 공유한다 — 여기가 어긋나면
+   전부 따로 논다(상단 3D 좌표 규약 참고).
+   ════════════════════════════════════════════════════════════════ */
+// state.landmarks.front + state.hairMasks.front(실제 캡처 픽셀 크기)로
+// "이 사람 얼굴이 대략 얼마나 갸름한지/넓은지"를 실측해서 절차적 두상의
+// 가로/세로 스케일 보정 계수를 뽑는다. 랜드마크 정규화좌표는 각각 이미지
+// 가로/세로 기준이라 그대로 비율 비교하면 안 되고 실제 픽셀 폭/높이를
+// 곱해줘야 진짜 종횡비가 나옴. 오검출로 두상이 그로테스크하게 찌그러지는
+// 걸 막기 위해 배율 범위를 좁게 clamp.
+function getFaceMetrics(){
+  const lm = (state.landmarks && state.landmarks.front) || getEstimatedLandmarks('front');
+  const imgW = (state.hairMasks && state.hairMasks.front && state.hairMasks.front.w) || 1;
+  const imgH = (state.hairMasks && state.hairMasks.front && state.hairMasks.front.h) || 1;
+
+  const faceHeightPx = Math.max(1, (lm.chinY - lm.browTopY) * imgH);
+  const faceWidthPx  = Math.max(1, Math.abs(lm.rEarX - lm.lEarX) * imgW);
+  const aspect = faceHeightPx / faceWidthPx; // 클수록 갸름한 얼굴, 작을수록 둥근/넓은 얼굴
+
+  const BASELINE_ASPECT = 1.55; // 기존 고정 스케일(0.78/0.85)이 암묵적으로 가정하던 기준 비율
+  const ratio = clamp(aspect / BASELINE_ASPECT, 0.72, 1.38);
+  const widthFactor  = clamp(1/Math.sqrt(ratio), 0.85, 1.18);
+  const heightFactor = clamp(Math.sqrt(ratio), 0.85, 1.18);
+
+  const projector = makeFaceProjector(lm, widthFactor, heightFactor);
+  return { lm, imgW, imgH, widthFactor, heightFactor, projector };
+}
+
+// 이미지 정규화좌표(0~1) → 두상 로컬(x,y) 근사 변환. "눈높이/턱높이" 두
+// 기준점을 두상 로컬 y좌표 두 지점(EYE_MESH_Y/CHIN_MESH_Y)에 맞추는 아핀
+// 변환 하나로 세로를, "좌/우 귀" 두 기준점을 ±EAR_MESH_X에 맞추는 아핀
+// 변환 하나로 가로를 처리. 진짜 카메라 캘리브레이션이 아니라 "실측 비율에
+// 대략 맞는 자리" 수준 근사 — 이 파이프라인 전체가 원래 이 수준(procedural
+// placeholder)이라 과설계하지 않음. widthFactor/heightFactor는
+// getFaceMetrics()가 이미 반영한 두상 스케일과 같은 값을 받아 기준점 자체가
+// 두상 크기에 맞춰 같이 움직이게 한다.
+/* 투영기가 쓰는 <b>실측 기준자</b>(성인 평균, cm). 메쉬 단위는 이 두 값으로만
+   실제 길이에 묶인다 — 아래 [두상 cm 환산] 진단이 같은 상수를 써서 되짚는다. */
+const FACE_RULER_CM = { eyeToChin: 11.5, earHalf: 7.0 };
+function makeFaceProjector(lm, widthFactor, heightFactor){
+  const EYE_MESH_Y = 0.15; // headMesh.position.y와 동일(구 적도 = 이 높이)
+  const CHIN_MESH_Y = 0.15 - 0.70*heightFactor;
+  const denomY = (lm.chinY - lm.eyeY) || 0.001;
+  const bY = (EYE_MESH_Y - CHIN_MESH_Y) / denomY;
+  const aY = EYE_MESH_Y + bY * lm.eyeY;
+  const toMeshY = (v)=> aY - bY * v;
+
+  /* ── 가로·세로 스케일 일치 (2026-07-26 4차, 실기기 비례 오류 수정) ──────
+     증상: 두상이 사람 비례가 아니다. 세로/폭 = 1.04인데 사람은 1.48
+          (얼굴이 넙대대하고 머리가 앞뒤로만 긴 형태).
+     원인: 이 투영기가 세로와 가로를 서로 다른 기준으로 정규화하고 있었다.
+          세로 — 눈→턱(실제 ≈11.5cm)을 0.70 단위로  → 0.0609 단위/cm
+          가로 — 귀 반간격(실제 ≈7.0cm)을 0.6396 단위로 → 0.0914 단위/cm
+          같은 1cm가 가로에서 1.50배 크게 잡힌다. 그래서 가로로 재는 모든 값
+          (얼굴 폭·두상 폭·헤어 헐 폭)이 함께 부풀었다.
+     검증: 사람 세로/폭 1.48 ÷ 스케일오차 1.44 = 1.03 ≈ 실측 1.04 — 정확히 일치.
+     수정: 가로 기준을 세로 기준에서 유도한다. 눈→턱이 0.70단위면 귀 반간격은
+          0.70 × (7.0/11.5) = 0.426단위여야 한다. 이제 두 축이 같은 자를 쓴다.
+     ※ 되돌리려면 EAR_MESH_X를 예전 식(0.78×wf×0.82)으로 바꾸면 된다.
+
+     ── (2026-08-11) 위 수정을 <b>같은 줄이 도로 깨뜨리고 있었다</b> ──────────
+     식 끝에 `× (widthFactor / heightFactor)`가 붙어 있었다. (EYE−CHIN)이
+     0.70·hf이므로 전개하면 hf가 <b>약분돼 사라진다</b>:
+         EAR_MESH_X = 0.70·hf × (7/11.5) × (wf/hf) = 0.4261 × <b>wf</b>
+     세로는 hf 자, 가로는 wf 자가 되어 두 축이 다시 다른 자를 쓴다. 어긋남은
+     정확히 hf/wf = r(=aspect/BASELINE_ASPECT)이고, 실기기 로그의
+     "[자 일치] … 어긋남 0.721배"가 바로 이 값이다(r의 하한 클램프 0.72).
+
+     왜 이게 치명적인가 — wf·hf는 <b>일부러 서로 반대로</b> 움직이게 만든 값이다
+     (wf=1/√r, hf=√r). 즉 "얼굴이 둥그니 두상을 넓게"라는 모양 보정이 먹는
+     순간 <b>자가 반드시 어긋난다</b>. 두 요구를 동시에 만족할 수 없는 구조였다.
+     사용자 지적: "사람마다 비례가 다른데 계속 같은 값을 적용하면 당연히 자가
+     달라지지. 그걸 매번 실측에서 잡아야지."
+
+     그래서 꼬리표를 뗀다. 그러면 EAR_MESH_X = 0.4261·hf가 되어 <b>어떤
+     얼굴이든</b> 가로·세로 cm/단위가 16.43/hf로 자동 일치한다(hf가 양쪽에
+     똑같이 걸리므로). 모양 보정은 사라지지 않는다 — 두상 a·b·c는 어차피
+     실루엣/두피선 <b>실측</b>에서 나오고, 투영기가 등방이 되어야 그 실측이
+     한 자로 나온다. 즉 모양을 가정에서 빼고 실측에 맡기는 방향이다.
+
+     남는 가정은 "귀반간격:눈→턱 = 7:11.5"(성인 평균)뿐인데, 이건 성격이
+     다르다 — 편차가 가로·세로에 <b>똑같이</b> 걸리므로 두상이 조금 크거나
+     작아질 뿐 <b>모양은 안 찌그러진다</b>. 실루엣 지표(W/H·폭 프로파일)는
+     바운딩박스로 나누므로 크기 오차는 상쇄되고 모양 오차만 남는다.
+
+     ⚠ widthFactor 인자는 이제 이 함수에서 안 쓴다. 시그니처는 유지한다 —
+       호출부 세 곳이 getFaceMetrics의 같은 쌍을 넘기고 있어서, 인자를 빼면
+       "어느 값을 넘겨야 하는가"가 호출부마다 갈릴 여지가 생긴다.
+     되돌리려면 `* (widthFactor / heightFactor)`를 다시 붙이면 된다. */
+  const EYE_TO_CHIN_CM = FACE_RULER_CM.eyeToChin, EAR_HALF_CM = FACE_RULER_CM.earHalf;
+  const EAR_MESH_X = (EYE_MESH_Y - CHIN_MESH_Y) * (EAR_HALF_CM / EYE_TO_CHIN_CM);
+  const lx = Math.min(lm.lEarX, lm.rEarX), rx = Math.max(lm.lEarX, lm.rEarX);
+  const denomX = (rx - lx) || 0.001;
+  const bX = (2*EAR_MESH_X) / denomX;
+  const toMeshX = (u)=> (u - lx) * bX - EAR_MESH_X;
+
+  /* ── 역변환 (2026-09-09 2차) ────────────────────────────────────────────
+     두 식 다 아핀이라 역이 닫힌 형태로 나온다. 손으로 다시 적지 않고 여기서
+     같이 돌려준다 — 이 저장소가 반복해서 당한 "한 값을 두 곳이 각자 쓴다"를
+     안 만들려면 정변환과 역변환이 <b>같은 자리</b>에 있어야 한다.
+     두피면 색을 사진에서 떼올 때 쓴다(메쉬 좌표 → 이 사진의 정규화 좌표). */
+  const toImgX = (mx)=> (mx + EAR_MESH_X) / bX + lx;
+  const toImgY = (my)=> (aY - my) / bY;
+
+  return { toMeshX, toMeshY, toImgX, toImgY, bX, bY }; // EAR_MESH_X는 외부에서 안 읽어 반환 목록에서 제외
+}
+/* 메쉬 1단위가 몇 cm인가 — 축별로. (2026-08-11 단일 출처로 통합)
+   위 EAR_MESH_X·CHIN_MESH_Y 식을 <b>그대로</b> 뒤집은 것이다. 진단 로그 세 곳이
+   각자 이 식을 손으로 복제하고 있었는데, 그게 위험한 이유가 이번에 실제로 드러났다:
+   EAR_MESH_X에서 wf를 떼는 순간 복제본들은 옛 식(wf)을 그대로 들고 있어서
+   <b>고쳐진 뒤에도 "어긋남 0.721배"를 계속 찍는다</b> — 고친 사람이 안 고쳐졌다고
+   믿게 만드는 종류의 오류다(파일 작업원칙 (3) 단일 출처).
+   x와 y가 <b>같은 값</b>이어야 정상이다. 다르면 투영기가 축마다 다른 자를 쓴다는 뜻. */
+function faceRulerCmPerUnit(fm){
+  const hf = (fm && fm.heightFactor) || 1;
+  let spanY = 0.70 * hf;                                                  // 눈→턱 (단위)
+  let earX  = spanY * (FACE_RULER_CM.earHalf / FACE_RULER_CM.eyeToChin);  // 귀 반간격 (단위)
+  /* 가능하면 <b>투영기에 직접 물어본다</b>. 식을 다시 쓰면 그 순간 또 복제본이
+     되어, 투영기가 바뀌어도 이 진단은 옛날 말을 계속 하게 된다(방금 그 일이
+     났다). 실제 toMeshX/toMeshY에 랜드마크를 넣어 나온 <b>결과</b>로 재면
+     투영기가 어떻게 바뀌든 이 검사는 항상 참말을 한다. */
+  const lm = fm && fm.lm, p = fm && fm.projector;
+  if(p && lm && typeof p.toMeshX === 'function' && typeof p.toMeshY === 'function'
+     && lm.lEarX != null && lm.rEarX != null && lm.eyeY != null && lm.chinY != null){
+    const sy = p.toMeshY(lm.eyeY) - p.toMeshY(lm.chinY);
+    const sx = (p.toMeshX(Math.max(lm.lEarX, lm.rEarX)) - p.toMeshX(Math.min(lm.lEarX, lm.rEarX))) / 2;
+    if(sy > 1e-6 && sx > 1e-6){ spanY = sy; earX = sx; }
+  }
+  return { x: FACE_RULER_CM.earHalf / earX, y: FACE_RULER_CM.eyeToChin / spanY };
+}
+
+/* ════════════════════════════════════════════════════════════════
+   두상·목·얼굴 메쉬 생성
+   실측 단면(아래 구역)과 투영기를 받아 실제 Three.js 지오메트리를 만든다.
+   buildProceduralHead(두상 돔) / buildRealNeckMesh(목) / 얼굴 메쉬.
+   ════════════════════════════════════════════════════════════════ */
+/* ══════════════════════════════════════════════════════════════════
+   두상면을 <b>얼굴 최종면</b>에 붙인다 (2026-09-16)
+   ─────────────────────────────────────────────────────────────────
+   사용자: "3D결과보기를 보면, 옆에 메워야하는 자리가 큰데, 이게 지금 두상기준면이
+   안면기준면하고 맞춰져 있어.. 안면기준면에 굴곡등의 오차를 추가로 계산하게 되는데,
+   그 결과값이랑 맞춰야 하는거잖아."
+   맞다. 9/09~9/13에 맞춘 것은 <b>기준면끼리</b>다(FACE_Z_TO_SKULL · 자 맞춤 · k되맞춤).
+   화면에 그려지는 얼굴은 기준면 + 굴곡(relief) + 측면보정 + 이마 바닥이고, 그 잔차는
+   관자·광대·턱선에서 수 mm~1cm다. 두피면은 여전히 <b>매끈한 타원체</b>라:
+     · 잔차가 + 인 자리(광대·턱선) → 얼굴 테두리가 두피면 앞에 떠서 옆에서 보면 턱이 진다
+     · 잔차가 − 인 자리(안와·콧대 옆·관자) → 두피면이 얼굴을 뚫고 나온다(눈 위 살색 삼각형)
+   고침: 얼굴 메쉬가 붙은 <b>뒤에</b>, 그 최종 정점을 xy 격자에 래스터해 z를 읽고
+     ① 얼굴이 덮는 자리 — 두피면 정점을 얼굴면 − eps로 옮긴다(앞으로도 뒤로도)
+     ② 얼굴 밖 — 테두리의 잔차를 falloff 거리 안에서 부드럽게 0으로 줄인다
+     ③ 앞면(z>0) 정점만, 그리고 옆 실루엣 쪽(z가 작을수록)은 약하게 — 두상 윤곽을 안 비튼다
+   지우지 않으므로 얼굴의 구멍·페이드·오려낸 자리 뒤에는 늘 같은 깊이의 살이 있다.
+   되돌리기: FACE_SCALP_CONFORM.on = false */
+/* ══════════════════════════════════════════════════════════════════
+   옆얼굴이 타원처럼 불룩하다 — 얼굴 기준면의 <b>세로</b> 곡률 (2026-09-16)
+   ─────────────────────────────────────────────────────────────────
+   사용자: "옆에서 안면을 보면 사람얼굴같지 않고 타원처럼 불룩하게 앞으로 나왔어."
+   실기기 로그 [얼굴 z·항별](남성): 미간 기준 0.474 · 턱 기준 <b>0.224</b> — 기준면(두개골
+   타원체)만으로 턱이 미간보다 0.25단위(≈4.8cm) 뒤로 물러난다. 거기에 굴곡이 턱 −1.1cm를
+   더 얹는다. 측면 실측 기여 정점은 0개(yaw 28°/−31°)라 이걸 되잡아 줄 항이 없다.
+   그래서 옆에서 보면 이마→코→턱이 <b>한 호</b>로 휘고 가운데가 불룩하다.
+   사람 옆얼굴은 미간~턱이 거의 수직선이고(부드러운 턱끝이 미간선에서 1~2cm 뒤),
+   코·입술이 그 선에서 튀어나온다 — 호가 아니다.
+   고침: 기준면을 계산할 때 <b>눈높이 아래</b>의 세로 좌표를 flatBelowEye배로 눌러 넣는다
+   (= 그 아래 타원이 flatBelowEye배 느리게 휜다). 눈 위(이마·이음매)는 한 점도 안 바뀐다 —
+   이마이음매·자 맞춤 진단은 그대로다. 코·입술·턱의 모양은 MediaPipe 굴곡이 그대로 준다.
+   0.5면 남성 로그 기준 턱 기준면 0.224 → 약 0.43(미간선에서 ≈0.8cm 뒤, 굴곡 합쳐 ≈1.9cm).
+   두피면은 FACE_SCALP_CONFORM이 이 최종면을 따라가므로 따로 손댈 것이 없다.
+   ⚠ 측면 실측 정점(측면이 45° 넘게 찍힌 손님)도 같은 양만큼 앞으로 온다 — 그 실측은 지금
+   뺨 실루엣만 보고 턱·코선은 못 본다(로그 경고 그대로)라 이번엔 일관성을 택했다.
+   되돌리기: FACE_PROFILE_BASE.on = false */
+const FACE_PROFILE_BASE = { on: true, flatBelowEye: 0.5 };
+
+const FACE_SCALP_CONFORM = {
+  on: true,
+  grid: 128,          // 얼굴 bbox 가로 칸 수(세로는 비율대로)
+  epsK: 0.006,        // 얼굴면 뒤로 물리는 거리(두개골 깊이 c 대비) — polygonOffset과 겹쳐 z-fighting 방지
+  falloffK: 0.30,     // 얼굴 밖으로 잔차를 끌고 가는 거리(두개골 폭 a 대비)
+  maxOutK: 0.10,      // 앞으로 끌어낼 최대(c 대비) — 넘으면 헤어라인 가닥 뿌리가 묻힌다
+  /* (2026-09-16) 눈높이(두개골 중심 y) <b>아래</b>는 뿌리가 없으니 더 끌어낸다. FACE_PROFILE_BASE가
+     턱을 미간선 가까이 세우면서 턱선에서 얼굴이 두개골보다 최대 ≈4cm 앞에 서게 됐다 —
+     0.10c(≈0.9cm)에서 멈추면 옆에서 턱 테두리 뒤가 비친다. */
+  maxOutLowK: 0.45,
+  maxInK: 0.30,       // 뒤로 밀 최대(c 대비) — 안와 깊이 정도
+  frontMinZ: 0.08,    // 단위구 z가 이보다 작으면(옆 실루엣) 안 옮긴다
+  frontFullZ: 0.35,   // 이 z부터 온전히 옮긴다
+  /* ── (2026-09-16 2차) 눈·입가에 두피면이 <b>면으로</b> 비친다 ──────────────────
+     사용자(682% 확대): "눈이랑 입술 쯤에 메움이 발생한다."
+     비친 조각의 가장자리가 <b>곧은 선</b>이었다 — 텍스처 오림(흐린 경계)이 아니라
+     두피면 <b>삼각형</b>이다. 정점은 전부 얼굴면−eps 뒤에 뒀지만 정점 간격이
+     약 0.9cm라, 그 사이 평평한 삼각형이 안와·입꼬리·콧방울 옆처럼 <b>그보다 좁게
+     오목한</b> 자리에서 얼굴을 뚫고 나온다(로그 잔차 최소 −1.79cm가 그 자리들).
+     고침 셋:
+       · 정점 목표를 그 점의 z가 아니라 <b>주변(삼각형이 덮는 폭)의 최소 z</b>로
+       · 얼굴 안쪽은 테두리에서 멀수록 coreBackK만큼 <b>더 뒤로</b> — 불투명 얼굴 밑은
+         붙어 있을 필요가 없다. 붙어야 하는 곳은 테두리·페이드뿐이다
+       · 구 분할 48×36 → 96×72(정점 간격 절반) */
+  minRadiusK: 1.3,    // 주변 최소를 볼 반경(두피면 정점 간격 대비)
+  coreBackK: 0.05,    // 얼굴 안쪽에서 추가로 물릴 거리(c 대비)
+  coreRampK: 0.10,    // 테두리에서 이 거리(a 대비)만큼 들어가면 coreBack이 다 걸린다
+};
+let _conformLogged = false;
+function conformScalpToFace(headGroup, faceMesh){
+  const C = FACE_SCALP_CONFORM;
+  if(!C || !C.on || !headGroup || !faceMesh || !faceMesh.geometry) return null;
+  try{
+    const head = headGroup.getObjectByName('skullEllipsoid');
+    if(!head || !head.geometry || !head.geometry.attributes.position) return null;
+    const hp = head.geometry.attributes.position;
+    const A = head.scale.x, B = head.scale.y, Cz = head.scale.z, HY = head.position.y;
+    if(!(A > 0 && B > 0 && Cz > 0)) return null;
+    // 원본 구 좌표를 한 번만 보관 — 얼굴을 다시 붙여도 누적되지 않게
+    if(!head.geometry.userData._unitPos) head.geometry.userData._unitPos = Float32Array.from(hp.array);
+    const U = head.geometry.userData._unitPos;
+
+    const fg = faceMesh.geometry, fp = fg.attributes.position, fi = fg.getIndex();
+    const fa = fg.attributes.aFaceAlpha;
+    if(!fp || !fi) return null;
+    const ox = faceMesh.position.x, oy = faceMesh.position.y, oz = faceMesh.position.z;
+    let x0=Infinity,x1=-Infinity,y0=Infinity,y1=-Infinity;
+    for(let i=0;i<fp.count;i++){
+      const x = fp.getX(i)+ox, y = fp.getY(i)+oy;
+      if(x<x0)x0=x; if(x>x1)x1=x; if(y<y0)y0=y; if(y>y1)y1=y;
+    }
+    const pad = A * C.falloffK * 1.05;
+    x0 -= pad; x1 += pad; y0 -= pad; y1 += pad;
+    const GX = Math.max(16, C.grid|0);
+    const GY = Math.max(16, Math.round(GX * (y1-y0) / Math.max(1e-6, x1-x0)));
+    const cw = (x1-x0)/GX, ch = (y1-y0)/GY;
+    const N = GX*GY;
+    const zF = new Float32Array(N).fill(-Infinity);
+    // ── 얼굴 삼각형 래스터(앞쪽 z 우선) ──
+    const idx = fi.array;
+    for(let t=0; t<idx.length; t+=3){
+      const ia = idx[t], ib = idx[t+1], ic = idx[t+2];
+      if(fa && fa.getX(ia) < 0.02 && fa.getX(ib) < 0.02 && fa.getX(ic) < 0.02) continue;
+      const ax = fp.getX(ia)+ox, ay = fp.getY(ia)+oy, az = fp.getZ(ia)+oz;
+      const bx = fp.getX(ib)+ox, by = fp.getY(ib)+oy, bz = fp.getZ(ib)+oz;
+      const qx = fp.getX(ic)+ox, qy = fp.getY(ic)+oy, qz = fp.getZ(ic)+oz;
+      const den = (by-qy)*(ax-qx) + (qx-bx)*(ay-qy);
+      if(Math.abs(den) < 1e-12) continue;
+      const gx0 = Math.max(0, Math.floor((Math.min(ax,bx,qx)-x0)/cw)), gx1 = Math.min(GX-1, Math.floor((Math.max(ax,bx,qx)-x0)/cw));
+      const gy0 = Math.max(0, Math.floor((Math.min(ay,by,qy)-y0)/ch)), gy1 = Math.min(GY-1, Math.floor((Math.max(ay,by,qy)-y0)/ch));
+      for(let gy=gy0; gy<=gy1; gy++){
+        const py = y0 + (gy+0.5)*ch;
+        for(let gx=gx0; gx<=gx1; gx++){
+          const px = x0 + (gx+0.5)*cw;
+          const w1 = ((by-qy)*(px-qx) + (qx-bx)*(py-qy)) / den;
+          const w2 = ((qy-ay)*(px-qx) + (ax-qx)*(py-qy)) / den;
+          const w3 = 1 - w1 - w2;
+          if(w1 < -1e-4 || w2 < -1e-4 || w3 < -1e-4) continue;
+          const z = w1*az + w2*bz + w3*qz;
+          const k = gy*GX + gx;
+          if(z > zF[k]) zF[k] = z;
+        }
+      }
+    }
+    // ── (2차) 주변 최소 z — 두피면 삼각형 폭 안의 가장 오목한 얼굴면 ──
+    const segs = head.geometry.parameters || {};
+    const nW = segs.widthSegments || 48, nH = segs.heightSegments || 36;
+    const vSpacing = Math.max(2*Math.PI*A/nW, Math.PI*B/nH);
+    const rad = Math.max(1, Math.ceil(vSpacing * C.minRadiusK / Math.min(cw, ch)));
+    const zMin = new Float32Array(N).fill(Infinity), tmpMin = new Float32Array(N).fill(Infinity);
+    for(let gy=0; gy<GY; gy++) for(let gx=0; gx<GX; gx++){      // 가로
+      let m = Infinity;
+      for(let d=-rad; d<=rad; d++){ const xx = gx+d; if(xx<0||xx>=GX) continue; const v = zF[gy*GX+xx]; if(v !== -Infinity && v < m) m = v; }
+      tmpMin[gy*GX+gx] = m;
+    }
+    for(let gy=0; gy<GY; gy++) for(let gx=0; gx<GX; gx++){      // 세로
+      let m = Infinity;
+      for(let d=-rad; d<=rad; d++){ const yy = gy+d; if(yy<0||yy>=GY) continue; const v = tmpMin[yy*GX+gx]; if(v < m) m = v; }
+      zMin[gy*GX+gx] = m;
+    }
+    // ── (2차) 얼굴 안쪽 거리(테두리에서 몇 칸 들어왔나) ──
+    const inD = new Float32Array(N);
+    { const q = []; for(let k=0;k<N;k++){ if(zF[k] === -Infinity){ inD[k] = 0; q.push(k); } else inD[k] = Infinity; }
+      for(let qi=0; qi<q.length; qi++){ const k = q[qi], gx = k % GX, gy = (k/GX)|0, nd = inD[k]+1;
+        const nb = [gx>0?k-1:-1, gx<GX-1?k+1:-1, gy>0?k-GX:-1, gy<GY-1?k+GX:-1];
+        for(const j of nb){ if(j>=0 && inD[j] > nd){ inD[j] = nd; q.push(j); } } } }
+    const rampCells = Math.max(1, A*C.coreRampK / Math.min(cw, ch));
+    // ── 잔차 = (얼굴면 − eps) − 두개골 앞면 ──
+    const eps = Cz * C.epsK;
+    const res = new Float32Array(N), has = new Uint8Array(N), dist = new Float32Array(N).fill(Infinity);
+    let nFace = 0, rMin = Infinity, rMax = -Infinity;
+    for(let gy=0; gy<GY; gy++){
+      const py = y0 + (gy+0.5)*ch, yl = (py - HY)/B;
+      for(let gx=0; gx<GX; gx++){
+        const k = gy*GX + gx;
+        if(zF[k] === -Infinity) continue;
+        const px = x0 + (gx+0.5)*cw, xl = px/A;
+        const u = xl*xl + yl*yl;
+        if(u >= 0.995) continue;                   // 두개골 실루엣 밖 — 붙일 앞면이 없다
+        const tIn = Math.min(1, inD[k] / rampCells);
+        const back = Cz * C.coreBackK * tIn*tIn*(3-2*tIn);
+        const zT = Math.min(zF[k], isFinite(zMin[k]) ? zMin[k] : zF[k]) - eps - back;
+        const outCap = Cz * ((py < HY && C.maxOutLowK != null) ? C.maxOutLowK : C.maxOutK);
+        const r = Math.max(-Cz*(C.maxInK + C.coreBackK), Math.min(outCap, zT - Cz*Math.sqrt(1-u)));
+        res[k] = r; has[k] = 1; dist[k] = 0; nFace++;
+        if(r < rMin) rMin = r; if(r > rMax) rMax = r;
+      }
+    }
+    if(nFace < 20) return null;
+    // ── 얼굴 밖으로 잔차 번지기(가장 가까운 테두리 값 + 거리) ──
+    const maxD = Math.max(1, Math.ceil(A*C.falloffK / Math.min(cw, ch)));
+    const filled = has.slice();
+    for(let pass=0; pass<maxD; pass++){
+      let changed = 0;
+      const nres = res.slice(), nfill = filled.slice(), nd = dist.slice();
+      for(let gy=0; gy<GY; gy++) for(let gx=0; gx<GX; gx++){
+        const k = gy*GX + gx;
+        if(filled[k]) continue;
+        let sum = 0, n = 0;
+        if(gx>0    && filled[k-1]) { sum += res[k-1];  n++; }
+        if(gx<GX-1 && filled[k+1]) { sum += res[k+1];  n++; }
+        if(gy>0    && filled[k-GX]){ sum += res[k-GX]; n++; }
+        if(gy<GY-1 && filled[k+GX]){ sum += res[k+GX]; n++; }
+        if(n){ nres[k] = sum/n; nfill[k] = 1; nd[k] = pass+1; changed++; }
+      }
+      if(!changed) break;
+      res.set(nres); filled.set(nfill); dist.set(nd);
+    }
+    const smooth = t => { t = Math.max(0, Math.min(1, t)); return t*t*(3-2*t); };
+    // ── 두피면 정점 옮기기 ──
+    let moved = 0, maxAbs = 0;
+    for(let i=0;i<hp.count;i++){
+      const ux = U[i*3], uy = U[i*3+1], uz = U[i*3+2];
+      hp.setXYZ(i, ux, uy, uz);                    // 매번 원본에서 시작
+      if(uz <= C.frontMinZ) continue;
+      const wx = ux*A, wy = uy*B + HY;
+      const gx = Math.floor((wx - x0)/cw), gy = Math.floor((wy - y0)/ch);
+      if(gx < 0 || gy < 0 || gx >= GX || gy >= GY) continue;
+      const k = gy*GX + gx;
+      if(!filled[k]) continue;
+      const wFront = smooth((uz - C.frontMinZ) / Math.max(1e-6, C.frontFullZ - C.frontMinZ));
+      const wFar = has[k] ? 1 : (1 - smooth(dist[k] / maxD));
+      const dz = res[k] * wFront * wFar;
+      if(Math.abs(dz) < 1e-7) continue;
+      hp.setZ(i, uz + dz / Cz);
+      moved++;
+      if(Math.abs(dz) > maxAbs) maxAbs = Math.abs(dz);
+    }
+    hp.needsUpdate = true;
+    head.geometry.computeVertexNormals();
+    head.geometry.computeBoundingSphere();
+    const diag = { nFace, moved, rMin, rMax, maxAbs, GX, GY, rad };
+    if(!_conformLogged){
+      _conformLogged = true;
+      const cm = (typeof modelCmPerUnit === 'function') ? modelCmPerUnit() : null;
+      const f = v => v.toFixed(4) + (cm ? '(' + (v*cm).toFixed(2) + 'cm)' : '');
+      console.log(...gyeolBoldArgs(['[3D·두상면↔얼굴최종면] 얼굴 격자 ' + nFace + '칸 · 잔차 <b>' + f(rMin) + ' ~ ' + f(rMax) + '</b>'
+        + ' (+ = 얼굴이 두개골보다 앞) · 옮긴 두피면 정점 <b>' + moved + '</b>/' + hp.count + ' · 최대 ' + f(maxAbs)
+        + ' · 주변최소 반경 ' + rad + '칸 · 안쪽 추가 후퇴 ' + C.coreBackK + 'c'
+        + '\n      기준면끼리가 아니라 <b>굴곡·측면보정까지 들어간 얼굴</b>에 두피면을 붙였습니다.'
+        + ' 잔차가 상한(앞 ' + C.maxOutK + 'c · 눈 아래 앞 ' + C.maxOutLowK + 'c · 뒤 ' + C.maxInK + 'c)에 닿았으면 그 자리는 덜 붙은 것입니다.'
+        + '\n      되돌리기: FACE_SCALP_CONFORM.on=false']));
+    }
+    return diag;
+  }catch(e){
+    console.warn('[3D·두상면↔얼굴최종면] 실패(두피면 그대로):', e && e.message);
+    return null;
+  }
+}
+
+/* ── 얼굴 텍스처에서 <b>머리카락</b>을 오려낸다 (2026-09-16) ─────────────────────
+   얼굴 메쉬는 정면 사진 원본을 그대로 입는다. 긴 머리가 뺨·관자를 덮은 손님은 그
+   자리 텍스처가 <b>머리카락</b>이라, 폼파두르로 바꿔도 옆에서 보면 얼굴 테두리에
+   검은 쐐기가 남았다(3D 결과보기 측면). 정면 헤어 마스크(hairCanvases.front의 알파)로
+   그 픽셀을 투명하게 뚫는다. 뒤에는 FACE_SCALP_CONFORM이 같은 깊이에 붙인 두피면이
+   있으므로 구멍이 아니라 <b>살</b>이 보인다. 눈·눈썹·입은 세그 단계에서 이미 가드로
+   빠져 있어 안 뚫린다.
+   되돌리기: FACE_HAIR_CUT.on = false */
+const FACE_HAIR_CUT = { on: true, blurPx: 1.5 };
+
+// 절차적 두상: 타원(스케일된 구)으로 두상 근사. 이전엔 비율·피부색·이목구비
+// 위치가 전부 눈대중 고정값이었는데, 이제 getFaceMetrics()가 뽑아낸 실측
+// 종횡비/좌표 변환(projector)과 실제 두피색(skinColorCss)을 반영해서 "이
+// 사람 사진에서 뽑을 수 있는 정보는 최대한 쓴" 근사치로 만든다. 여전히
+// 진짜 3D 스캔은 아니고 절차적 근사(placeholder)라는 성격 자체는 그대로.
+// 두상 본체(실측 종횡비 반영한 타원). buildProceduralHead()에서 분리됨(로직 동일).
+// ── 실측 단면 기반 두상 메쉬(2026-07-14, 타원체 완전 제거) ──
+// 사용자 지시: "기존 타원체는 지워, 중간이 허공이어도 일단은 상관없어".
+// 고정 타원체(SphereGeometry.scale)를 없애고, scalpPointToWorld(이미
+// computeHeadCrossSections의 실측 단면 데이터를 쓰도록 교체됨)를 (phi,theta)
+// 격자로 촘촘히 샘플링해서 실제 메쉬를 만든다. widthFactor/heightFactor
+// 인자는 scalpPointToWorld 내부에서 getFaceMetrics()로 같은 값을 다시
+// 가져오므로(호출부 buildProceduralHead도 같은 faceMetrics에서 뽑은 값이라
+// 불일치 없음) 여기선 직접 안 씀 — 시그니처만 호환성 위해 유지.
+// PHI_MAX는 HEAD_PHI_BANDS(실측 데이터가 있는 범위, 네이프 부근)까지만 —
+// 그 아래(목)는 이번엔 안 채움(사용자: "중간이 허공이어도 상관없다").
+// 2026-07-14 정리: buildHeadMesh(phi 링)와 buildRealNeckMesh(높이 링)가
+// "row(위상/높이) × theta 격자를 사각형당 삼각형 2개로 잇는" 완전히 같은
+// 인덱스 수식(권취 방향 포함)을 각자 만들고 있었음 — 정점 좌표 계산과는
+// 무관한 순수 정수 인덱스 공식이라 동작 차이 없이 하나로 합침.
+function buildRingGridIndices(rowSteps, thetaSteps){
+  const indices = [];
+  for(let ri=0; ri<rowSteps; ri++){
+    for(let ti=0; ti<thetaSteps; ti++){
+      const a = ri*(thetaSteps+1)+ti;
+      const b = a + (thetaSteps+1);
+      const c = a+1;
+      const d = b+1;
+      indices.push(a,b,c, b,d,c);
+    }
+  }
+  return indices;
+}
+
+// ── 실측 단면 기반 목 메쉬 ──
+// extractHairMask STEP 1.5의 personMask(사람 전체 실루엣) + computeNeckCrossSections
+// 로 뽑은 그 사람 실측 목 단면(높이별 halfWidth/halfDepth)을 써서, 여러 높이
+// 링을 쌓아 BufferGeometry로 연결해 짓는다.
+// CylinderGeometry는 원형(가로=세로)만 가능해서 폐기 — 목은 보통 좌우 폭과
+// 앞뒤 깊이가 다른데(원형이 아님) 이게 바로 실측으로 얻을 수 있는 정보라
+// 커스텀 지오메트리로 바꿈.
+// 상수의 출처로만 남겨두고(computeNeckCrossSections 최후 폴백 참고), 함수
+// 자체는 나중 참고용으로 삭제하지 않음(이 파일의 기존 관례).
+/* ── 목은 <b>옷깃에서 올라온다</b> (2026-08-31 11차) ──────────────────────────
+   사용자: "3D결과보기도 두상에서 목을 뽑을 게 아니고, 의상라인에서 체형을 잡았으니까
+   거기서 좀 더 자연스럽게 올리는 게 나을 거 같아. 어차피 굵거나 가늘거나 원기둥
+   형태라서 실제 목 형태랑은 차이가 있어."
+
+   옛 구조는 목의 <b>양쪽 끝이 다 머리</b>였다 — 폭·깊이를 두개골 반경 대비
+   22~55% / 22~70%로 클램프했다(headA·headC). 머리가 크면 목이 굵어진다는 뜻인데
+   해부학적으로 목은 뼈와 어깨에 붙지 두상 크기에 비례하지 않는다. 게다가 그 실측
+   자체가 머리카락 섞인 실루엣이라(11차에서 별도 수정) 긴 머리 손님은 비율이
+   1.0으로 나와 항상 상한에 붙었다 — 그게 "턱만큼 굵은 원기둥"의 정체다.
+
+   새 구조: 목의 <b>기준은 옷깃 구멍</b> 하나다.
+     · 아래 링 = 의상 메쉬의 목 구멍 실측(measureGarmentNeckOpening) × inset
+       의상은 이미 이 사람 체형(두신 비율)으로 맞춰져 있으므로, 그 구멍이 곧
+       이 사람의 목 밑동이다. 새로 재지 않고 이미 있는 값을 읽는다.
+     · 위 링 = 아래 링 × 해부학적 테이퍼(사용자 지시: "3번은 해부학적 비율로 해")
+     · 앞으로 기울인다 — 사람 목은 수직이 아니다. 원기둥과 실물의 차이 중 절반이 이것.
+     · 뒤쪽을 부풀린다 — 승모근이 붙어 단면이 앞뒤 비대칭이다. 나머지 절반이 이것.
+
+   ⚠ y 좌표 계약(getNeckTopY / getNeckBottomY / y=−1.15)은 <b>한 글자도 안 건드린다.</b>
+     8/30에 그 계약의 한쪽만 옮겼다가 옷깃이 통째로 날아간 기록이 있다. 이번에
+     바꾸는 것은 그 사이의 <b>단면·기울기·재질</b>뿐이다.
+   ⚠ 의상보다 목이 <b>먼저</b> 만들어진다(setupModel3DScreen 순서). 그래서 첫 빌드는
+     아래 폴백(예전 실측 경로)으로 서고, 의상이 도착하면 refitNeckToGarment가
+     다시 짓는다. 의상이 끝내 없으면 폴백 그대로 — 새 실패 모드가 아니다.
+   되돌리기: NECK_SHAPE.fromGarment = false (예전 두개골 클램프 경로로 복귀) */
+const NECK_SHAPE = {
+  /* ── 목도 <b>두상 자</b>로 (2026-09-05 사용자 지시) ──────────────────────
+     사용자: "일반적으로 준수한 체형 있잖아.. 목도 어차피 옷메쉬에 걸려 있는
+     거니 같이 잡아."
+
+     그래서 목 단면을 옷깃에서 뽑던 것을 끊는다. 12차가 이미 "옷깃은 어떤 옷을
+     입었느냐에 따라 얼마든지 넓어질 수 있지만 목은 아니다"라고 적어 놓고도,
+     그 판단을 <b>난간</b>으로만 걸고 값 자체는 옷깃에서 계속 가져오고 있었다.
+
+     ── 실기기에서 무엇이 났나 ──────────────────────────────────────────
+     이 손님은 옷깃 실측이 아예 실패했다([3D·목] 옷깃 구멍 실측 실패 → 폴백).
+     그래서 실제로 돈 건 폴백 클램프였는데 거기 상한이 비대칭이었다:
+         폭   0.55 × a(두개골 반폭)
+         깊이 0.70 × c(두개골 반깊이)
+     계수도 크고 c > a라 두 배가 곱해진다. 사용자가 본 "폭은 그나마 괜찮은데
+     앞뒤로 너무 넓다"가 이 두 줄이다. 0.55와 0.70이 왜 다른지는 근거가 없었다.
+
+     ── 고침 ────────────────────────────────────────────────────────────
+     성인 목 밑동 치수를 <b>cm로</b> 적고, 이 파일의 유일한 자
+     (faceRulerCmPerUnit)로 환산한다. NECK_LEN_CM(8.0)이 이미 쓰는 방식 그대로다.
+     그러면 폭과 깊이가 <b>같은 종류의 값</b>이 되어 비대칭이 생길 수가 없고,
+     숫자가 실물과 대조 가능해진다(둘레 ≈ π×(W+D)/2 ≈ 35cm).
+     되돌리기: fromGarment = true. */
+  fromGarment: false,
+  /* ══════════════════════════════════════════════════════════════════
+     원뿔로 세워 놓고 <b>윗단을 잘라</b> 놓았다 (2026-09-14 2차)
+     ─────────────────────────────────────────────────────────────────
+     사용자: "목은 사다리꼴 형태로 위가 판판하니까 어색해. 이전처럼 얼굴이랑
+     빈틈없이 메워지면서 좀 더 가는 원통형태가 좋은거 같아."
+     녹화를 확대해 보니 두 가지가 같이 보인다 —
+       ① 턱 밑에 <b>배경이 비치는 가로 틈</b>이 있고, 그 아래 목의 윗면이
+          곧은 수평선(원기둥 윗뚜껑)으로 드러난다.
+       ② 아래로 갈수록 확연히 넓어지는 <b>원뿔</b>이다.
+
+     ── ①은 같은 날 1차 고침이 만든 것이다 ──────────────────────────────
+     1차에서 윗단을 헤어 밴드 식에서 턱 기준(topFromChin)으로 옮기면서
+     topAboveChin을 0.02로 뒀다. 턱 <b>바로 위</b>다. 그런데 옆에서 보면
+     아래턱 밑면은 턱끝에서 귀 쪽으로 <b>올라가며</b> 물러난다 — 그 밑을
+     메우던 것이 예전의 높은 윗단이었다. 0.02는 턱끝 하나만 겨우 덮고
+     턱 밑 공간은 못 덮으니 거기가 뚫린 것이다.
+     1차가 고친 것("윗단 3.3cm는 아래턱 높이다")은 <b>여전히 맞다</b>. 그때
+     어색했던 진짜 이유는 높이 하나가 아니라 <b>높이 × 굵기</b>였다 —
+     11.5cm짜리 굵은 원뿔이 턱까지 올라오니 턱밑 목각이 통째로 메워졌다.
+     가늘게 만들면 높아도 안 어색하다. 그래서 높이는 <b>되돌리지 않고</b>
+     턱 위 0.12(≈2.3cm)로 절반만 올리고, 굵기로 나머지를 푼다.
+
+     ── ②는 세 값이 같이 만든다 ─────────────────────────────────────────
+       taperW 0.74 · taperD 0.80 — 윗단이 밑동의 4분의 3
+       napeFull 1.20            — 밑동 뒤쪽만 20% 더 부풀림
+     셋이 겹쳐 밑동이 윗단의 <b>1.4배</b>가 된다. 사람 목은 승모근으로 넘어가는
+     맨 아래만 벌어지고 그 위는 거의 원기둥이다. 테이퍼를 0.92로 올려 원기둥에
+     가깝게 두고, 승모근도 8%만 남긴다.
+
+     ── 굵기 ────────────────────────────────────────────────────────────
+     밑동 11.5×11.0cm(둘레 35cm)은 <b>실물과 맞는 값</b>이지만, 그건 승모근까지
+     포함한 목 <b>밑동</b> 치수다. 이제 테이퍼가 거의 없어 그 값이 목 전체
+     굵기가 되므로 기둥 치수인 10.5×10.0cm(둘레 32cm)로 내린다. 성인 남성
+     목 둘레 실측 범위 안이고, minBaseCm 난간(9.0)에도 안 걸린다.
+     ⓘ 알짜 효과: 밑동은 1cm 가늘어지고 윗단은 오히려 1cm 굵어진다. 턱 밑이
+       빈틈없이 차면서 전체는 가늘어 보이는 것이 이 조합이다.
+     되돌리기: 아래 여섯 값을 11.5 / 11.0 / 0.74 / 0.80 / 1.20 / 0.02로 */
+  baseWCm:  10.5,  // 목 좌우 폭(cm) — 밑동이 아니라 <b>기둥</b> 치수다(테이퍼가 거의 없다)
+  baseDCm:  10.0,  // 〃 앞뒤 깊이(cm). 목은 거의 원통이라 폭과 비슷하다
+  inset:    0.86,  // (fromGarment=true일 때만) 옷깃 구멍보다 이만큼 안쪽
+  taperW:   0.92,  // 위 폭 ÷ 아래 폭 — 1.00이 완전한 원기둥
+  taperD:   0.92,  // 위 깊이 ÷ 아래 깊이
+  tiltZ:    0.09,  // 위 링을 앞으로(+Z), 목 길이 대비 — 약 5°
+  napeFull: 1.08,  // 아래쪽 <b>뒤통수 쪽</b> 부풀림(승모근). 위로 갈수록 1로 수렴
+  /* ── 턱밑 목각과 굴곡 (2026-09-14 3차) ──────────────────────────────────
+     사용자: "턱보다 좀 더 안쪽으로 들어가서 턱선이랑 연결되어야 돼. 그리고
+     어차피 완전 원통 아니고 약간 굴곡있지 사람목은."
+     2차에서 원뿔은 없앴지만 <b>곧은</b> 기둥이 됐다. 사람 목은 옆에서 보면
+     ① 턱 밑에서 <b>뒤로 물러났다가</b>(턱밑 목각, cervicomental angle) 아래로
+        내려오면서 다시 앞으로 나오고,
+     ② 중간이 가장 가늘고 위아래가 조금씩 넓다.
+     ①을 throatSetZ로, ②를 waist로 낸다. 둘 다 <b>앞면·중간</b>만 건드리므로
+     밑동 치수(10.5×10.0cm)와 승모근은 그대로다.
+     ⚠ tiltZ(기둥이 앞으로 기움)와 <b>싸우는 값이 아니다</b> — tiltZ는 목 축
+       전체를 기울이고, throatSetZ는 그 축 위에서 <b>앞쪽 살만</b> 파낸다.
+       실제로도 목은 앞으로 기울어 있으면서 턱밑은 들어가 있다.
+     되돌리기: throatSetZ = 0, waist = 0 (곧은 기둥으로 복귀) */
+  /* ⚠ 2026-09-14 3차 실기기 결과 — <b>둘 다 0으로 되돌렸다</b>.
+     throatSetZ 0.45는 윗링 앞면을 2.1cm 물려 <b>턱 밑에 평평한 턱(ledge)이
+     다시 생겼다</b>(2차의 "위가 판판하다"가 다른 이유로 재발). 사람은 턱 밑에
+     살이 붙어 있다가 <b>조금 내려가서</b> 각이 지는데, 맨 위 링에서 최대로
+     물러나게 짜서 턱 바로 밑이 빈 것이다 — 물러나는 지점이 틀렸지 방향이
+     틀린 게 아니다. waist 0.06은 화면에서 <b>아예 안 보였다</b>.
+     코드 경로(아래 waistK·throat)는 그대로 둔다 — 0이면 곱이 1·뺄셈이 0이라
+     <b>산술까지 2차와 동일</b>하고, 다시 켤 때 값만 넣으면 된다.
+     다시 손댈 거면 물러남을 윗링이 아니라 t≈0.25에서 최대가 되게 해야 한다.
+     다만 근본은 의상 에셋의 <b>실제 목 메쉬</b>를 쓰는 쪽이다(사용자 제안). */
+  throatSetZ: 0,    // 윗링 <b>앞면</b>을 윗링 반깊이의 이만큼 뒤로. 0 = 2차와 동일
+  waist:      0,    // 중간(t≈0.5)을 이만큼 오목하게. 0 = 2차와 동일
+  unlit:    true,  // 얼굴과 같은 기준 — 아래 주석 참고
+  shadeRear: 0.78, // 무조명이라 형태가 안 보이므로 정점색으로 뒤쪽을 어둡게
+  shadeTop:  0.90, // 턱 밑은 원래 그림자다 — 위쪽을 살짝 어둡게 해 이음매를 눌러 준다
+  /* ── (2026-09-13) 목 색의 <b>출처</b>를 두피면과 합친다 ────────────────────
+     fromField=true면 목 정점도 makeModelSkinSampler로 제 자리의 살을 집는다
+     (두피면이 9/9부터 쓰던 그 격자). 평균색 한 개를 쓰던 예전 방식이 곧
+     "뒷머리 부분이 다른 색"의 원인이었다 — buildRealNeckMesh 안 배너 참고.
+
+     ⚠ 곱(shade)을 <b>왜 0으로 안 만드나</b>: 무조명이라 이걸 빼면 목이 원통
+       스티커가 된다. 형태감은 남기되 눈에 띄지 않을 만큼만 남긴다.
+       숫자 근거 — 화면에서 잰 쐐기가 얼굴 대비 0.837이었고 그게 "다른 색"으로
+       보였다. 아래 0.93은 뒤쪽 최악에서 얼굴 대비 0.93×0.96 ≈ <b>0.89</b>가
+       되도록 잡은 값이다(0.84 → 0.89, 차이를 3분의 1로). 더 올리면 목이
+       평평해지고 더 내리면 다시 띠가 보인다.
+     ⚠ 격자를 못 만들면(사진 실측 실패) sampleSkin이 null이라 예전 평균색 +
+       예전 곱(0.78/0.90)으로 그대로 돌아간다 — 폴백 경로는 안 건드렸다. */
+  fromField: true,
+  shadeRearField: 0.93, // 격자를 쓸 때의 뒤쪽 곱 — 색이 이미 제자리라 살짝만
+  shadeTopField:  1.0,  // 〃 위쪽(턱 밑) 곱 — (2026-10-26) 0.96 → 1.0: 턱 밑 띠가 얼굴보다 어둡게 끊겨 보였음(SCALP_SKIN.faceTone 배너)
+  /* ── 해부학적 난간 (2026-08-31 12차) ────────────────────────────────────
+     11차는 옷깃 실측 하나만 믿었다. 그런데 그 실측이 <b>구멍이 아니라 테두리</b>를
+     쟀다(아래 measureGarmentNeckOpening 주석). 그 결과 실기기에서 목이 얼굴보다
+     넓은 <b>갓등</b>이 됐다 — 사용자: "목은 해부학적으로 어느 정도 굵기 이상
+     안 주는 게 좋을 거 같아."
+     이제 값 자체가 cm라 난간은 <b>자가 튄 경우</b>(얼굴 랜드마크가 깨져 환산이
+     이상할 때)만 잡는다. 자주 걸리면 그건 목이 아니라 자를 봐야 한다는 신호다.
+     cm ↔ 메쉬단위 환산은 faceRulerCmPerUnit — 이 파일의 유일한 자다. */
+  minBaseCm: 9.0,   // 목 밑동 <b>폭</b> 하한(cm)
+  maxBaseCm: 13.0,  // 〃 상한
+  /* 윗단을 <b>턱</b>에서 낼까 (2026-09-14) — buildRealNeckMesh 안 배너 참고.
+     false면 옛 헤어 밴드 식(cos(PHI_MAX)×b×1.01+0.15)으로 완전히 복귀한다. */
+  topFromChin: true,
+  topAboveChin: 0.12,  // 턱보다 이만큼 위로(≈2.3cm) — 아래턱 밑면을 덮어야 틈이 안 생긴다
+};
+/* 의상 메쉬의 <b>목 구멍</b> — 옷깃선(getNeckBottomY) 바로 아래 얇은 층의 가로/깊이.
+   loadOutfitMesh가 에셋의 목 밑동을 정확히 그 y에 맞춰 놓으므로, 그 바로 밑을
+   자르면 나오는 단면이 옷깃 구멍이다. measureOutfitMeshBody(어깨·발끝을 재는
+   기존 함수)와 <b>다른 것을 재므로</b> 따로 둔다 — 저쪽은 최대 폭, 이쪽은 구멍이다. */
+let _garmentNeckOpening = null;   // { halfWidth, halfDepth } (목 메쉬와 같은 좌표계)
+function measureGarmentNeckOpening(obj){
+  if(!obj) return null;
+  const NY = getNeckBottomY();
+  const slab = 0.10;              // 옷깃 바로 아래 이 두께만(두꺼우면 어깨가 들어온다)
+  /* ⚠ 11차의 잘못 — 여기서 max|x|를 썼다. 구멍을 재려면 <b>안쪽</b> 경계를 봐야
+     하는데 max는 그 층에서 가장 <b>바깥</b> 정점, 즉 옷깃의 겉테두리(어깨 쪽)를
+     준다. 그래서 목 밑동이 옷 어깨폭만큼 벌어져 갓등이 됐다.
+     구멍 반지름은 축에서 가까운 쪽이므로 <b>하위 백분위</b>로 잡는다 — 최솟값은
+     스트레이 정점 하나에 0으로 무너지니 쓰지 않는다. */
+  const xs = [], zs = [];
+  const v = new THREE.Vector3();
+  obj.updateMatrixWorld(true);
+  obj.traverse(child=>{
+    if(!child.isMesh || child.visible === false) return;
+    const pos = child.geometry && child.geometry.attributes && child.geometry.attributes.position;
+    if(!pos) return;
+    for(let i=0;i<pos.count;i++){
+      v.fromBufferAttribute(pos, i).applyMatrix4(child.matrixWorld);
+      if(v.y > NY || v.y < NY - slab) continue;
+      xs.push(Math.abs(v.x)); zs.push(Math.abs(v.z));
+    }
+  });
+  if(xs.length < 24) return null;
+  const pct = (arr, p)=>{ arr.sort((a,b)=>a-b); return arr[Math.floor(arr.length*p)]; };
+  let maxX = pct(xs, 0.15), maxZ = pct(zs, 0.15);
+  /* 정직성 점검 — 반폭이 0.15~0.75단위를 벗어나면 옷깃이 아니라 어깨나 소매를
+     잰 것이다. 그때는 null(폴백)이 맞는 답이다. 어차피 아래에서 cm 난간이 한 번 더
+     받지만, <b>왜</b> 그 값이 나왔는지는 여기서 갈라야 로그에 남는다. */
+  if(!(maxX > 0.15 && maxX < 0.75)) return null;
+  if(!(maxZ > 0.10 && maxZ < 0.80)) maxZ = maxX * 0.82;   // 깊이만 이상하면 비율로
+  return { halfWidth: maxX, halfDepth: maxZ };
+}
+
+function buildRealNeckMesh(skinColor){
+  /* ── 톤은 <b>얼굴을 따라간다</b> (2026-08-31 11차) ──────────────────────────
+     사용자: "톤 같은 경우는 얼굴 톤을 따라가는 게 당연히 자연스럽지."
+     8/22에 얼굴을 MeshBasicMaterial(무조명)로 바꿨다 — 사진에 촬영 조명이 이미
+     구워져 있는데 장면 조명을 또 걸면 밝은 피부가 255에 잘려 납작해지기 때문이다.
+     그런데 <b>목은 그때 같이 안 옮겼다.</b> 사진 얼굴(무조명)과 장면 조명을 받는
+     목이 턱선에서 만나니 색이 끊긴다 — 8/30 배너가 예고한 "턱선에 색 띠" 그대로이고,
+     실기기에서 얼굴은 밝고 목만 어두운 갈색으로 나온 것이 이것이다.
+     같은 판단이 두 곳에 있고 한쪽만 옮겨진, 이 파일의 단골 모양이다.
+     고침: 목도 무조명으로. 대신 조명이 없으면 원기둥이 <b>납작한 색면</b>이 되므로,
+     형태감을 정점색으로 구워 넣는다(아래 shadeRear/shadeTop).
+     되돌리기: NECK_SHAPE.unlit = false */
+  const neckColor = skinColor.clone();
+  const neckMat = NECK_SHAPE.unlit
+    ? new THREE.MeshBasicMaterial({ color: 0xffffff, vertexColors: true })
+    : new THREE.MeshStandardMaterial({ color: neckColor.clone().multiplyScalar(0.94), roughness: 0.85 });
+
+  const RING_STEPS = 8, THETA_STEPS = 24; // THETA_STEPS=24는 예전 CylinderGeometry 세그먼트 수와 동일하게 유지
+  const PHI_MAX = HEAD_PHI_BANDS[HEAD_PHI_BANDS.length-1];
+  /* ── 이음매는 <b>그려지는 두개골</b>을 따라간다 (2026-08-17 c) ──────────────
+     headPhiToMeshY는 <b>헐</b>의 세로 반경(computeHeadVerticalRadius)으로 Y를
+     낸다. 두개골 구가 헐 크기였을 땐 그게 곧 두개골 표면이라 목 윗링이 구
+     안쪽(정규화 높이 cos(PHI_MAX)≈-0.70)에 얌전히 박혔다. 그런데 위에서
+     두개골을 두피면 크기로 줄였으므로, 이 식을 그대로 두면 구 바닥
+     (0.15-b_scalp)이 목 윗링보다 <b>위</b>로 올라와 목과 머리 사이가 벌어진다.
+     그래서 같은 <b>정규화 높이</b>를 그려지는 두개골의 반경에 다시 적용한다 —
+     새 상수를 만드는 게 아니라 기준면만 바꾸는 것이라 위치 관계는 그대로다.
+     ⚠ headPhiToMeshY 자체는 안 건드린다. 그건 실측 밴드(두상 단면·목 단면)가
+       헤어 실루엣 위에서 재는 자라서 헐이 맞다 — 표시용과 실측용은 다르다. */
+  const skullD = getDisplaySkullEllipsoid();
+  /* ══════════════════════════════════════════════════════════════════
+     목 윗단이 <b>턱을 3cm 넘겨</b> 올라와 있었다 (2026-09-14)
+     ─────────────────────────────────────────────────────────────────
+     사용자: "턱이 뒤로 들어간게 아니라 목이 넓게 나온거야. 그래서 턱까지 올라온거고."
+     맞다. 옛 줄은 윗단을 <b>헤어 밴드 스캔</b>에서 냈다:
+         neckTopY = cos(PHI_MAX) × skullD.b × 1.01 + 0.15
+     PHI_MAX는 두상 단면을 어디까지 훑었나를 말하는 값이지 <b>턱이 어디인가</b>와는
+     아무 상관이 없다. 실기기(9/14 남성) 수치로 풀면 —
+         neckTopY = cos(2.35)×0.595×1.01 + 0.15 = <b>−0.273</b>
+         턱      = 0.15 − 0.70×heightFactor    = <b>−0.445</b>
+     윗단이 턱보다 0.172단위 = 환산 <b>3.3cm 위</b>다. 거기는 목이 아니라 아래턱이다.
+     그래서 턱밑 목각(cervicomental angle)이 통째로 메워지고, 옆에서 보면
+     턱선이 그대로 목으로 이어져 <b>얼굴이 앞으로 튀어나온 것처럼</b> 읽힌다.
+
+     ── 스스로 모순이었다는 증거 ───────────────────────────────────────
+     밑동은 getNeckBottomY가 <b>턱 − NECK_LEN_CM(8.0cm)</b>으로 정확히 낸다.
+     그런데 윗단이 턱 위 3.3cm에 있었으니 실제 목 길이는
+         (−0.273) − (−0.860) = 0.587단위 ≈ <b>11.3cm</b>
+     — 선언한 8cm보다 3.3cm 길다. 아래는 자로 재고 위는 딴 자로 잰 것이다.
+     이 저장소가 반복해서 당한 <b>한 값을 두 곳이 각자 정한다</b> 바로 그 모양이다.
+
+     ── 고침 ───────────────────────────────────────────────────────────
+     윗단도 <b>턱</b>에서 낸다. 턱보다 topAboveChin만큼만 위로 올려 겹침을 남긴다 —
+     결과화면 스냅샷이 사진을 턱 −RESULT_HEAD_CUT.chinDrop(0.10)에서 오리고
+     feather(0.06)로 번지게 하므로, 목은 최소 그 선 위까지 올라와 있어야
+     턱 밑에 구멍이 안 생긴다. 0.02면 오리는 선보다 0.12단위(2.3cm) 위라 넉넉하다.
+     부수 효과: neckLen이 0.435단위 ≈ 8.4cm가 되어 <b>NECK_LEN_CM과 맞는다</b>.
+     테이퍼(taperW/taperD)도 이제 진짜 턱밑에서 시작하므로 윗링 8.5×8.8cm가
+     제 자리 치수가 된다 — 예전엔 그 치수가 아래턱 높이에 가 있었다.
+     ⚠ 폭(baseWCm)은 <b>안 건드린다</b>. 밑동 11.5cm는 둘레 35cm로 실물과 맞고,
+       사용자가 본 "넓다"는 윗단이 턱까지 올라와 테이퍼가 안 보인 탓이다.
+       내린 뒤에도 두꺼우면 그때 만질 곳이 baseWCm이다(한 번에 하나만).
+     되돌리기: NECK_SHAPE.topFromChin = false (옛 헤어 밴드 식으로 복귀) */
+  let neckTopY = Math.cos(PHI_MAX) * skullD.b * 1.01 + 0.15;
+  const _neckTopOld = neckTopY;
+  let _chinY = null;
+  if(NECK_SHAPE.topFromChin){
+    try{
+      const fm = getFaceMetrics();
+      const chin = 0.15 - 0.70 * fm.heightFactor;     // getNeckBottomY와 <b>같은 식</b>
+      if(isFinite(chin)) _chinY = chin;
+    }catch(e){}
+    if(_chinY != null) neckTopY = _chinY + NECK_SHAPE.topAboveChin;
+  }
+  const neckBotY = getNeckBottomY(); // 턱에서 8cm — 예전엔 -1.15 고정이었다(배너 참고)
+
+  // (2026-07-17) "원뿔(전등갓) 목" 수정 — personMask 실측에 어깨/턱이 섞이면
+  /* (2026-09-05) 여기 있던 headA·headC 클램프(폭 22~55%·깊이 22~70%)를 지웠다 —
+     그 비대칭이 이번에 고친 "앞뒤로 넓은 목"의 원인이었고, 밑동을 cm로 내는 지금은
+     부르는 곳이 없다. 원칙 (4)에 따라 주석으로 박제하지 않고 지운다. */
+  const clamp = (v,lo,hi)=>Math.min(hi, Math.max(lo, v));
+
+  /* 옷깃 실측이 있으면 그것만 쓴다 — 아래 링이 곧 옷깃 구멍이고, 위 링은 거기서
+     해부학적 비율로 좁힌 값이다(머리는 어느 쪽에도 안 들어온다). 없으면 예전
+     실측·클램프 경로로 폴백. */
+  const G = NECK_SHAPE.fromGarment ? _garmentNeckOpening : null;
+  let baseW = G ? G.halfWidth * NECK_SHAPE.inset : null;
+  let baseD = G ? G.halfDepth * NECK_SHAPE.inset : null;
+  /* cm → 메쉬단위 환산자. 옷깃 경로든 두상 경로든 둘 다 이 자를 쓴다. */
+  let cmPerUnit = 16.4;
+  try{ const r = faceRulerCmPerUnit(getFaceMetrics()); if(r && r.x > 1) cmPerUnit = r.x; }catch(e){}
+  if(!G){
+    /* ── 두상 자로 목을 낸다 (2026-09-05) — 위 NECK_SHAPE 배너 참고 ──────────
+       폭과 깊이를 <b>같은 방식</b>으로 낸다. 예전 폴백은 폭 0.55×a · 깊이 0.70×c로
+       계수도 축도 달라서, 앞뒤로만 부푸는 목이 나왔다. */
+    baseW = (NECK_SHAPE.baseWCm / 2) / cmPerUnit;
+    baseD = (NECK_SHAPE.baseDCm / 2) / cmPerUnit;
+  }
+  /* 난간 — 자가 튀었을 때만 잡힌다(옷깃 경로에서는 옷이 넓어지는 것도 잡는다). */
+  {
+    const loHalf = (NECK_SHAPE.minBaseCm/2) / cmPerUnit;
+    const hiHalf = (NECK_SHAPE.maxBaseCm/2) / cmPerUnit;
+    const capped = clamp(baseW, loHalf, hiHalf);
+    if(Math.abs(capped - baseW) > 1e-4){
+      console.log(...gyeolBoldArgs(['[3D·목] 밑동 폭 ' + (baseW*2*cmPerUnit).toFixed(1) + 'cm → 난간으로 '
+        + (capped*2*cmPerUnit).toFixed(1) + 'cm (허용 ' + NECK_SHAPE.minBaseCm + '~'
+        + NECK_SHAPE.maxBaseCm + 'cm). ' + (G
+          ? '옷깃 실측이 구멍이 아니라 테두리를 재고 있는 것.'
+          : '값은 cm 상수인데 난간에 걸렸다 = <b>환산자가 튀었다</b>. 얼굴 랜드마크를 보십시오.')]));
+      baseD *= (capped / baseW);
+      baseW = capped;
+    }
+  }
+  console.log(...gyeolBoldArgs(['[3D·목] 밑동 ' + (baseW*2*cmPerUnit).toFixed(1) + '×' + (baseD*2*cmPerUnit).toFixed(1)
+    + 'cm (폭×깊이) · 기준 ' + (G ? '옷깃 실측' : '<b>두상 자</b>(cm 상수 ÷ 얼굴 환산자 '
+    + cmPerUnit.toFixed(1) + 'cm/단위)') + ' · 둘레 약 '
+    + (Math.PI * (baseW + baseD) * cmPerUnit).toFixed(0) + 'cm']));
+  const neckLen = Math.max(1e-4, neckTopY - neckBotY);
+  /* 윗단이 <b>턱 대비</b> 어디인가 — 위 topFromChin 배너의 판정을 코드가 대신한다.
+     +면 턱 위(그만큼 아래턱을 목이 먹는다), −면 턱 아래다. */
+  if(_chinY != null){
+    const upCm = (neckTopY - _chinY) * cmPerUnit;
+    const oldCm = (_neckTopOld - _chinY) * cmPerUnit;
+    const cutY = _chinY - 0.10;                     // RESULT_HEAD_CUT.chinDrop
+    console.log(...gyeolBoldArgs(['[3D·목] 윗단 턱 대비 <b>' + (upCm>=0?'+':'') + upCm.toFixed(1) + 'cm</b>'
+      + ' (옛 식이면 ' + (oldCm>=0?'+':'') + oldCm.toFixed(1) + 'cm) · 목 길이 '
+      + (neckLen*cmPerUnit).toFixed(1) + 'cm (선언 ' + NECK_LEN_CM + 'cm)'
+      + '\n      읽는 법 — 윗단이 턱보다 <b>1cm 넘게 위</b>면 턱밑 목각이 메워져'
+      + ' 옆에서 볼 때 얼굴이 앞으로 튀어나온 것처럼 보입니다.'
+      + ' 목 길이가 선언값과 많이 다르면 윗단과 밑동이 <b>서로 다른 자</b>를 쓰고 있다는 뜻입니다.'
+      + (neckTopY <= cutY + 0.04
+          ? '\n      ⚠ 윗단이 스냅샷 오리는 선(턱 −0.10)에 너무 가깝습니다 — 턱 밑에 구멍이 날 수 있으니 topAboveChin을 올리십시오.'
+          : '')
+      + '\n      되돌리기: NECK_SHAPE.topFromChin=false']));
+  }
+
+  const positions = [];
+  const colors = [];
+  const cBase = skinColor.clone();
+  /* ── 목도 <b>제 자리의 살</b>에서 색을 떼온다 (2026-09-13 사용자 지시) ─────
+     사용자: "뒷머리 부분이 좀 다른 색이 나왔어. 이마쪽 색이랑 같은 색으로 하든지,
+     근처 얼굴색으로 하는 방법으로 해봤으면 좋겠네."
+
+     ── 화면에서 잰 것 ───────────────────────────────────────────────────
+     녹화 프레임의 픽셀을 재 보니 색조는 세 면이 <b>이미 같았다</b>:
+         얼굴 사진   H 25.0° S 31.4%  V 0.884
+         두피면      H 24.9° S 30.4%  V 0.891   ← 얼굴 대비 1.01, 거의 완벽
+         어두운 쐐기 H 25.7° S 29.6%  V 0.740   ← 얼굴 대비 <b>0.837</b>
+     색조·채도가 같고 <b>밝기만</b> 0.84배다. 색을 잘못 뽑은 게 아니라 곱해서
+     어둡게 한 것이고, 0.837은 아래 shadeRear(0.78)~1.0 구간 안이다 = 목이다.
+     두피면(paintScalpFromPhoto)은 이미 제 자리 살을 떼오므로 문제가 없었다.
+
+     ── 그런데 원인은 두 겹이다 ───────────────────────────────────────────
+     ① 곱하기(shade)      — 이번에 완화한다(아래).
+     ② <b>색의 출처가 다르다</b> — 이쪽이 더 근본이다. 두피면은 정점마다 제
+        자리의 살을 집는데 목은 <b>평균색 한 개</b>(skinColor)를 받아 썼다.
+        평균은 정의상 어느 자리와도 안 맞는 색이다 — 9/9에 두피면이 똑같은
+        이유로 "판때기"가 됐고 그때 격자를 도입해 고쳤는데, 목은 그 개편에서
+        빠진 채 옛 방식으로 남아 있었다. 이 저장소가 반복하는 그 모양이다:
+        <b>한 값을 두 곳이 각자 정하다가 한쪽만 고쳐짐</b>.
+     그래서 곱만 손대지 않고 출처를 합친다 — 목 정점도 makeModelSkinSampler로
+     제 자리 살을 집는다. 목은 턱 아래라 격자 <b>아래쪽 밖</b>으로 나가므로
+     at()이 안으로 물려 <b>턱·목 언저리 살</b>을 집는다(사용자가 말한 "근처 얼굴색").
+     되돌리기: NECK_SHAPE.fromField = false (평균색 한 개로 복귀) */
+  const sampleSkin = NECK_SHAPE.fromField ? makeModelSkinSampler() : null;
+  const shRear = sampleSkin ? NECK_SHAPE.shadeRearField : NECK_SHAPE.shadeRear;
+  const shTop  = sampleSkin ? NECK_SHAPE.shadeTopField  : NECK_SHAPE.shadeTop;
+  for(let ri=0; ri<=RING_STEPS; ri++){
+    const t = ri/RING_STEPS;                 // 0 = 위(턱), 1 = 아래(옷깃)
+    const y = neckTopY + t*(neckBotY-neckTopY);
+    /* 굴곡 — 중간을 살짝 오목하게. sin(πt)는 양 끝에서 정확히 0이라
+       윗링·밑동 치수를 안 건드리고 <b>가운데만</b> 파인다(C¹이라 각이 안 생긴다). */
+    const waistK = 1 - NECK_SHAPE.waist * Math.sin(Math.PI * t);
+    /* 위(턱)로 갈수록 좁아지는 테이퍼. 예전엔 옷깃이 없으면 이 자리에서
+       interpolateNeckCrossSection(사진 실측)을 폭 0.55×a · 깊이 0.70×c로 클램프해
+       썼는데, 그 비대칭이 곧 "앞뒤로 넓은 목"이었다(위 배너). 이제 밑동을 cm로
+       내므로 두 경로가 하나다 — 실측 단면은 자기 축이 뭔지 못 밝혀서 뺐다. */
+    const halfWidth = baseW * (NECK_SHAPE.taperW + (1-NECK_SHAPE.taperW)*t) * waistK;
+    const halfDepth = baseD * (NECK_SHAPE.taperD + (1-NECK_SHAPE.taperD)*t) * waistK;
+    // 앞으로 기울임 — 위 링일수록(t=0) 앞으로. 사람 목은 수직이 아니다.
+    const cz = NECK_SHAPE.tiltZ * neckLen * (1 - t);
+    /* 턱밑 목각 — 위 링일수록 <b>앞면만</b> 뒤로 판다(뒤·옆은 안 건드린다).
+       이게 없으면 목 앞면이 턱 바로 밑에서 곧게 떨어져 턱선과 안 이어진다. */
+    const throat = NECK_SHAPE.throatSetZ * halfDepth * (1 - t);
+    // 승모근 — 아래쪽 뒤편만 부풀린다(위로 갈수록 1로 수렴).
+    const nape = 1 + (NECK_SHAPE.napeFull - 1) * t;
+    for(let ti=0; ti<=THETA_STEPS; ti++){
+      const theta = -Math.PI + (2*Math.PI)*(ti/THETA_STEPS);
+      // scalpPointToWorld와 동일한 관례: theta=0에서 z(깊이) 최대, theta=π/2에서 x(폭) 최대
+      const ct = Math.cos(theta), st = Math.sin(theta);
+      const x = st * halfWidth;
+      const z = ct * halfDepth * (ct < 0 ? nape : 1) + cz - (ct > 0 ? throat*ct : 0);
+      positions.push(x, y, z);
+      /* 무조명이라 형태가 스스로 안 드러난다 — 정점색으로 최소한의 입체감을 굽는다.
+         앞(ct=1)이 제일 밝고 뒤가 어둡다. 위(턱 밑)는 원래 그림자 지는 자리라
+         살짝 눌러서 사진 턱과의 이음매를 덮는다. */
+      const face = (ct + 1) / 2;                                   // 0=뒤, 1=앞
+      const k = (shRear + (1-shRear)*face) * (shTop + (1-shTop)*t);
+      /* 격자를 쓰면 <b>이 정점 자리</b>의 살이 기준이고, 아니면 예전처럼 평균색. */
+      const c = sampleSkin ? sampleSkin(x, y) : [cBase.r, cBase.g, cBase.b];
+      colors.push(c[0]*k, c[1]*k, c[2]*k);
+    }
+  }
+  const indices = buildRingGridIndices(RING_STEPS, THETA_STEPS); // buildHeadMesh와 동일한 인덱스 패턴(권취 방향도 동일) — 공용 함수로 정리
+  // 바닥 캡: 두상 쪽(윗단)은 buildHeadMesh 최하단 링과 y가 같아 맞물리므로
+  // 캡 불필요. 아랫단(어깨쪽, neckAttachPoint)은 지금 화면(두상+목 단독
+  // 테스트 — 아직 의상이 안 붙음)에서 뻥 뚫린 구멍으로 보이는 것을 막기
+  // 위해 중심점 하나를 추가해 부채꼴로 막는다. 3단계에서 의상이 이 위에
+  // 씌워지면 이 캡은 안 보이게 됨(문제 없음).
+  const bottomCenterIdx = positions.length/3;
+  positions.push(0, neckBotY, 0);
+  // 정점색 배열은 position과 <b>길이가 같아야</b> 한다 — 캡 중심도 한 벌 넣는다.
+  {
+    const c = sampleSkin ? sampleSkin(0, neckBotY) : [cBase.r, cBase.g, cBase.b];
+    colors.push(c[0]*shRear, c[1]*shRear, c[2]*shRear);
+  }
+  const bottomRingStart = RING_STEPS*(THETA_STEPS+1);
+  for(let ti=0; ti<THETA_STEPS; ti++){
+    indices.push(bottomRingStart+ti, bottomCenterIdx, bottomRingStart+ti+1);
+  }
+
+  const neckGeo = new THREE.BufferGeometry();
+  neckGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(positions), 3));
+  neckGeo.setAttribute('color', new THREE.BufferAttribute(new Float32Array(colors), 3));
+  neckGeo.setIndex(indices);
+  neckGeo.computeVertexNormals();
+  const neckMesh = new THREE.Mesh(neckGeo, neckMat);
+  neckMesh.name = 'neckAttachPoint'; // 3단계에서 의상 메시 정렬 기준점 — buildNeckMesh와 동일한 이름 유지
+  return neckMesh;
+}
+
+/* ══════════════════════════════════════════════════════════════════
+   두피면 = <b>사진 픽셀에서 뽑은 안면 색</b> (2026-09-09 사용자 지시)
+   ─────────────────────────────────────────────────────────────────
+   사용자: "이마 위쪽으로 안면부가 끝나면서 회색으로 변해 — 두상타원이 드러나서
+   그런 거다. 안면라인하고 맞게 두피면을 그리고 안면라인 색상으로 넣어줘."
+   이어서: "두피면 색깔은 픽셀에서 뽑아서 넣어. 근데 안면부하고 이어지지 않아 —
+   최소한 머리카락 나는 라인 바로 아래까지는 이어지는 두피면이 있어야 돼."
+
+   ── 왜 회색이었나 ────────────────────────────────────────────────
+   두 가지가 겹쳤다.
+     ① <b>색의 출처가 다르다</b>. 얼굴은 사진 텍스처(buildRealFaceMesh)인데
+        두상 구는 maskInf.scalpColor라는 <b>평균값 하나</b>였다. 그 평균은
+        얼굴을 못 본 뷰에서 배경·머리 그늘이 섞여 회색으로 내려앉는다
+        (03b-mask-memory가 "두피색과 머리색이 너무 가깝다"고 이미 경고를
+        찍고 있던 그 값이다).
+     ② <b>조명을 받는다</b>. 얼굴은 FACE_MAT.unlit=true라 사진 그대로인데
+        두상만 MeshStandardMaterial이라 키/필/앰비언트가 얹혔다. 같은 색을
+        넣어도 이마 위에서 한 단 어두워진다.
+
+   ── 고침 ────────────────────────────────────────────────────────
+   ① 색을 <b>이 사진의 살 픽셀</b>에서 직접 뽑는다. 새로 사진을 읽지 않는다 —
+      maskInf.photoRGB(원본 픽셀)와 reasonMask(1=머리카락)가 이미 있고,
+      photoRGBAt/isHairPixelAt가 그 좌표계를 이미 다룬다.
+      머리카락 픽셀을 빼고 남은 얼굴 픽셀의 <b>밝기 중상위 구간</b>만 평균낸다
+      (눈·눈썹·입·코그늘이 어두운 쪽 꼬리에 몰리므로, 평균이 아니라 구간을
+      잡아야 "살 색"이 나온다).
+   ② 재질을 무조명으로 — 얼굴과 <b>같은 기준</b>. 사용자: "명암 신경쓰지 말고
+      일단 안면부 색상으로 넣어봐."
+   ③ 두피면을 얼굴 기준면까지 <b>되돌린다</b>. drawInset(0.985)은 가닥이 구에
+      묻히는 z-fighting을 피하려고 구를 1.5% 안으로 넣은 값인데, 얼굴 메쉬는
+      안 줄어든 면에 얹히므로 그 1.5%가 곧 <b>얼굴과 두피 사이의 틈</b>이다.
+      기하를 줄이는 대신 polygonOffset으로 <b>깊이만</b> 밀어 같은 효과를 낸다 —
+      가닥은 살아나고, 두피면은 얼굴이 끝나는 자리(눈썹 위)부터 머리카락 나는
+      라인까지 끊김 없이 이어진다.
+   되돌리기: SCALP_SKIN.fromPhoto=false · SCALP_SKIN.unlit=false · SCALP_SKIN.depthOffset=false
+   ══════════════════════════════════════════════════════════════════ */
+const SCALP_SKIN = {
+  fromPhoto: true,     // 두피·목 색을 사진 픽셀에서 뽑는다(false면 예전 scalpColor)
+  unlit: true,         // 얼굴과 같은 기준 — 조명을 안 받는다
+  depthOffset: true,   // drawInset 축소 대신 polygonOffset(기하 그대로 = 얼굴과 안 벌어짐)
+  /* ── (2026-09-09 2차) 평균색 한 개 → <b>가장 가까운 살</b>에서 떼오기 ──────────
+     사용자: "이마 위도 색깔 그런대로 괜찮아. 그런데 틈은 아직 있고. 눈과 코 사이에
+     메워진 부분이 좀 거슬리게 됐네. <b>가장 가까운 피부에서 떼어오는 방식</b>으로
+     해봐. 이마 부분은 <b>안면부 가장 상단 픽셀</b>에서 떼오고."
+
+     1차는 얼굴 픽셀의 평균 <b>한 색</b>으로 구 전체를 칠했다. 이마 위는 그럭저럭
+     맞았지만, 얼굴 메쉬에 뚫린 구멍(미간·콧대 옆·눈 안쪽)까지 같은 색으로 메워지니
+     주변 살결과 톤이 안 맞는 <b>판때기</b>가 됐다. 평균은 정의상 어느 자리와도
+     안 맞는 색이다 — 자리마다 다른 색이 필요하다.
+
+     그래서 색을 <b>자리에서</b> 가져온다. 두피면 정점 하나하나를 정면 사진 좌표로
+     되돌려(makeFaceProjector의 toImgX/toImgY — 얼굴 메쉬가 쓰는 그 변환의 역),
+     그 자리의 살 색을 읽는다. 살이 아니면(머리카락·눈·눈썹·입) 가장 가까운 살로
+     번진 값을 읽는다 — 아래 격자의 <b>메움</b>이 그 "가장 가까움"이다.
+     이마처럼 격자 <b>위쪽 밖</b>으로 나간 정점은 좌표를 격자 안으로 물리므로
+     자연히 <b>얼굴에서 제일 위에 있는 살 픽셀</b>을 집는다(사용자 지시 그대로).
+
+     결과는 정점색이라 삼각형 사이에서 부드럽게 이어진다 — 얼굴 텍스처와 만나는
+     자리에서 같은 살 색이 되므로 이음매(틈)가 색으로는 사라진다.
+     되돌리기: SCALP_SKIN.field = false (1차의 평균색 한 개로 복귀) */
+  field: true,
+  gridX: 40, gridY: 56,   // 살 색 격자 해상도(얼굴 영역 위). 정점 1,800개엔 이 정도면 충분
+  darkPct: 0.40,          // 이 백분위보다 어두우면 살이 아니다(눈·눈썹·콧구멍·입선)
+  fillPasses: 64,         // 빈 칸을 이웃 평균으로 번지게 하는 횟수 = "가장 가까운 살"
+  loPct: 0.50,            // (평균색 폴백용) 살 픽셀로 칠 밝기 백분위 구간 아래
+  hiPct: 0.88,            // 〃 위 — 하이라이트·안경반사를 버린다
+  minSamples: 200,        // 이보다 적게 모이면 안 쓴다(예전 값으로 폴백)
+  /* ── 두피면이 <b>얼굴 위로 올라오던 것</b> (2026-09-14 3차) ────────────────
+     사용자: "얼굴쪽에 칠해진 메움이 <b>눈까지 타고 올라갔는데</b>, 그거 원인도
+     좀 살펴보고 고쳐줘."
+
+     ── 원인: 볼록한 타원체는 <b>오목한 얼굴</b>을 이길 수밖에 없다 ──────────
+     두피면은 두개골 타원체(볼록)이고 얼굴은 실측 굴곡이 들어간 면이다.
+     사람 얼굴에는 타원체보다 <b>안으로 들어간</b> 자리가 있다 — 눈두덩(안와),
+     콧대 옆, 관자놀이. 거기서는 타원체 표면이 얼굴 표면보다 <b>앞</b>에 있고,
+     깊이 검사는 앞선 쪽을 그린다. 그래서 눈 안쪽 구석·콧대 옆에 살색 삼각형이
+     얹히고, 그 모양이 눈으로 타고 올라간 것처럼 보인다.
+     9/09에 drawInset(1.5% 축소)을 polygonOffset으로 바꾼 것과는 <b>무관하다</b> —
+     1.5%(≈1mm)든 polygonOffset(깊이 1단위)이든 안와 깊이(≈1cm)는 못 덮는다.
+     즉 예전에도 있던 것이고, 얼굴이 커지고 색이 살색이 되면서 눈에 띈 것이다.
+
+     ── 고침: 겨루지 않고 <b>비켜선다</b> ─────────────────────────────────
+     깊이로 이기려 들면(오프셋을 키우면) 반대로 정수리에서 가닥이 묻힌다.
+     대신 두피면은 <b>얼굴 사진이 불투명하게 덮는 자리에는 아예 안 그린다</b>.
+     그 자리는 두피면이 할 일이 없다 — 어차피 얼굴이 다 가리는 곳이고,
+     가리지 못하는 경우가 곧 이 버그다.
+     판정은 얼굴 메쉬가 쓰는 그 자(faceBoundEllipseNorm + FACE_BOUND_FIT.fadeIn)를
+     <b>그대로</b> 쓴다. 페이드 구간(반투명 테두리)은 <b>남긴다</b> — 거기는
+     두피면이 뒤를 받쳐야 배경이 안 비친다.
+     · 삼각형 <b>셋 다</b> 조건을 만족할 때만 버린다 = 경계에 한 겹이 남아
+       이음매가 안 벌어진다.
+     · 앞쪽(z>0) 정점만 센다. 뒤통수는 정사영이라 같은 (x,y)로 접히므로,
+       z를 안 보면 뒤통수가 통째로 사라진다.
+     되돌리기: SCALP_SKIN.keepOffFace = false */
+  /* ⚠ (2026-09-16) 기본 <b>off</b> — FACE_SCALP_CONFORM이 대신한다.
+     비켜서기(삼각형 삭제)는 얼굴 메쉬에 뚫린 자리(눈·입 구멍, 테두리 페이드,
+     머리카락을 오려낸 텍스처)마다 두피면이 없어 <b>머리 속이 비쳤다</b>. 9/14 3차가
+     올라간 지 12분 만에 되돌려진 게 그 사고다. 이제는 지우지 않고 두피면 정점을
+     얼굴 <b>최종면 바로 뒤</b>로 옮긴다 — 겨루지도 비키지도 않고 붙는다.
+     A/B용으로 코드는 남긴다: keepOffFace=true로 두면 예전 비켜서기가 같이 돈다. */
+  keepOffFace: false,
+  /* ── 뒤통수가 <b>안면보다 밝다</b> (2026-09-14 3차) ────────────────────────
+     사용자: "뒷머리 부분이 메워져 있는데, 색이 안면보다는 좀 밝아. 진짜
+     크레용에 있는 살색에 가까워."
+     맞다. 두피면 색은 <b>정면 사진</b>의 살 격자에서 오고, 뒤통수 정점은
+     정사영이라 앞면과 같은 (x,y)로 접혀 <b>정면 밝기</b>를 그대로 받는다.
+     게다가 재질이 unlit(얼굴과 같은 기준)이라 조명으로도 안 어두워진다.
+     조명은 앞에 있는데 뒤통수가 앞얼굴 밝기로 칠해지니, 돌려 보면 그 면만
+     붕 떠서 "크레용 살색"으로 보인다.
+     고침: 앞(z=+1)에서 뒤(z=−1)로 가면서 밝기에 완만한 배율을 건다. 색조는
+     안 건드린다(같은 사람 피부다) — <b>밝기만</b>이다. 얼굴이 실제로 보이는
+     범위(이마 215 ~ 턱 152, 비 0.71)보다 얕게 잡아, 두피면 혼자 튀지도
+     과하게 어둡지도 않게 한다.
+     되돌리기: SCALP_SKIN.backShade.on = false */
+  backShade: { on: true, back: 0.78 },   // 뒤통수(z=−1)에서의 밝기 배율. 앞(z=+1)은 1.0
+  /* ── 턱 언저리 두피면·목이 <b>얼굴보다 누렇고 어둡다</b> (2026-09-16) ──────────────
+     사용자: "3D 결과보기 턱부분이 깔끔하게 정리됐는데, 컬러가 얼굴컬러랑 좀 차이가 있어서
+     얼굴컬러를 참고했으면 좋겠어."
+     녹화 프레임(측면)을 재 보니 볼 H20 S29 <b>V73</b> · 턱 얼굴 H26 S33 V61인데
+     턱 뒤 두피면 H27~33 S36~37 <b>V51~54</b> · 목 H31~34 S36~37 V51~53이었다.
+     색조가 노란 쪽으로 돌고 채도가 진하고 어둡다. 원인은 격자의 <b>물린 가장자리</b>다 —
+     턱·옆얼굴 정점은 격자 아래·옆 밖으로 나가 at()이 맨 끝 줄로 물리는데, 그 줄이
+     턱선 그림자·귀 앞 머리카락 경계라 살 중에서도 제일 어둡고 진한 칸이다. 2D 메움이
+     같은 이유로 관자놀이 V70을 냈던 것(HOLE_FILL.faceTone)과 똑같은 모양이다.
+     고침(2D와 같은 방식): 얼굴 가운데 띠의 기준색(sampleScalpSkinColor — 밝기 50~88
+     백분위 평균, 이미 있던 폴백색)으로 격자 색을 mix만큼 당긴다. 밝기 차는
+     shadeMin~shadeMax 안에서만 살려 턱 밑 그늘 결은 남긴다. makeModelSkinSampler
+     <b>한 곳</b>에 거므로 두피면과 목이 같이 따라온다(출처 하나 — 검사 ⑮).
+     되돌리기: SCALP_SKIN.faceTone.on = false */
+  faceTone: { on: true, mix: 0.75, shadeMin: 0.97, shadeMax: 1.04, loPct: 0.60, hiPct: 0.95 },
+  /* (2026-10-26) 두피·목으로 이어지는 띠가 얼굴보다 어둡다 — 사용자: "두피, 목으로 이어지는 띠 색깔이 얼굴색과 달라"
+     녹화(곱슬 손님 3D 결과)에서 잰 것: 볼 V93 · 턱 V93 · 턱 밑 띠 V85 · 목 V82~84 — 색조(H20)·채도는 같고 <b>밝기만</b> 약 10% 낮음.
+     원인 ① 기준색이 살 밝기 50~88 백분위 평균 = 그늘·턱선까지 섞인 값이라 실제로 보이는 볼·턱보다 어두움
+          ② 턱 아래·옆 격자 끝 칸(턱선 그늘)이 하한 0.92배로 눌림 ③ 목 위쪽 그늘 0.96이 또 곱해짐.
+     고침: 기준색을 60~95 백분위(밝은 살 = 볼·이마·턱에 보이는 색)로 · 하한 0.92 → 0.97 · 목 위쪽 그늘 0.96 → 1.0(뒤쪽 그늘 0.93은 형태감이라 둠).
+     되돌리기: SCALP_SKIN.faceTone.loPct=0.50 · .hiPct=0.88 · .shadeMin=0.92 · NECK_SHAPE.shadeTopField=0.96 */
+};
+let _scalpSkinCache = undefined;
+let _skinFieldCache = undefined;
+let _faceToneCache = undefined;   // (2026-10-26) 얼굴 기준색(밝은 살 구간) 캐시
+let _faceTone3DLogged = false;   // (2026-09-16) 얼굴톤 로그 1회 — faceToneRef3D
+function resetScalpSkinSample(){ _scalpSkinCache = undefined; _faceToneCache = undefined; _skinFieldCache = undefined; _scalpCullLogged = false; _faceTone3DLogged = false; }
+
+/* 이 사진에서 <b>살로 볼 픽셀</b>인가 — 머리카락도 아니고 이목구비도 아닌 자리.
+   어두운 쪽 꼬리를 자르는 것으로 눈·눈썹·콧구멍·입선이 한 번에 빠진다
+   (얼굴 안에서 살보다 어두운 것은 사실상 그것들뿐이다). */
+function _skinRegionOfFront(){
+  const inf = state.hairMasks && state.hairMasks.front;
+  const lm  = state.landmarks && state.landmarks.front;
+  if(!inf || !inf.photoRGB || !lm) return null;
+  const W = inf.w, H = inf.h;
+  if(!(W > 0 && H > 0)) return null;
+  const brow = (typeof lm.browTopY === 'number') ? lm.browTopY : 0.28;
+  const chin = (typeof lm.chinY    === 'number') ? lm.chinY    : 0.62;
+  const xL   = (typeof lm.lEarX    === 'number') ? lm.lEarX    : 0.28;
+  const xR   = (typeof lm.rEarX    === 'number') ? lm.rEarX    : 0.72;
+  const cxN  = (xL + xR) / 2, halfN = Math.max(0.03, Math.abs(xR - xL) * 0.34);
+  return {
+    inf, W, H,
+    u0: Math.max(0, cxN - halfN), u1: Math.min(1, cxN + halfN),
+    /* 위 끝은 눈썹 조금 위 — 이 손님처럼 앞머리가 있으면 그 위는 전부 머리카락이라
+       어차피 살이 없다. 아래 끝은 턱보다 살짝 위(턱선 그림자를 안 물게). */
+    v0: Math.max(0, brow * 0.96), v1: Math.min(1, chin * 0.99),
+  };
+}
+
+/* 얼굴 영역 위의 <b>살 색 격자</b>. 빈 칸(머리카락·이목구비)은 이웃에서 번져
+   채우므로, 어느 좌표를 물어도 "가장 가까운 살"의 색이 나온다. */
+function buildSkinColorField(){
+  if(_skinFieldCache !== undefined) return _skinFieldCache;
+  _skinFieldCache = null;
+  try{
+    if(!SCALP_SKIN.fromPhoto || !SCALP_SKIN.field) return null;
+    const R = _skinRegionOfFront();
+    if(!R) return null;
+    const { inf, W, H, u0, u1, v0, v1 } = R;
+    if(!(u1 > u0 && v1 > v0)) return null;
+
+    const x0 = Math.round(u0*W), x1 = Math.round(u1*W);
+    const y0 = Math.round(v0*H), y1 = Math.round(v1*H);
+    const step = Math.max(1, Math.round(Math.min(x1-x0, y1-y0) / 160));
+
+    // 1패스 — 머리카락이 아닌 픽셀의 밝기 분포에서 "살의 하한"을 정한다
+    const lums = [];
+    for(let y=y0; y<=y1; y+=step) for(let x=x0; x<=x1; x+=step){
+      if(isHairPixelAt(inf, x, y)) continue;
+      const c = photoRGBAt(inf, x, y); if(!c) continue;
+      lums.push(0.299*c[0] + 0.587*c[1] + 0.114*c[2]);
+    }
+    if(lums.length < SCALP_SKIN.minSamples) return null;
+    lums.sort((a,b)=>a-b);
+    const darkCut = lums[Math.floor(lums.length * SCALP_SKIN.darkPct)];
+
+    // 2패스 — 격자 칸마다 살 픽셀 평균
+    const GX = Math.max(4, SCALP_SKIN.gridX|0), GY = Math.max(4, SCALP_SKIN.gridY|0);
+    const r = new Float32Array(GX*GY), g = new Float32Array(GX*GY), b = new Float32Array(GX*GY);
+    const n = new Float32Array(GX*GY);
+    for(let y=y0; y<=y1; y+=step) for(let x=x0; x<=x1; x+=step){
+      if(isHairPixelAt(inf, x, y)) continue;
+      const c = photoRGBAt(inf, x, y); if(!c) continue;
+      if(0.299*c[0] + 0.587*c[1] + 0.114*c[2] < darkCut) continue;   // 이목구비
+      const gx = Math.min(GX-1, Math.max(0, Math.floor((x - x0) / (x1-x0+1) * GX)));
+      const gy = Math.min(GY-1, Math.max(0, Math.floor((y - y0) / (y1-y0+1) * GY)));
+      const i = gy*GX + gx;
+      r[i]+=c[0]; g[i]+=c[1]; b[i]+=c[2]; n[i]++;
+    }
+    let filled = 0;
+    for(let i=0;i<GX*GY;i++){ if(n[i] > 0){ r[i]/=n[i]; g[i]/=n[i]; b[i]/=n[i]; n[i]=1; filled++; } }
+    if(filled < GX*GY*0.10) return null;   // 살이 거의 안 잡혔다 — 폴백이 낫다
+
+    /* 3패스 — <b>번지기</b>. 빈 칸을 채워진 이웃의 평균으로 메우기를 반복한다.
+       거리변환을 따로 짜지 않고도 결과가 "가장 가까운 살"이 된다(같은 순서로
+       바깥으로 퍼져 나가므로). 얼굴 안의 구멍(눈·입)도, 격자 가장자리도 같이 닫힌다. */
+    for(let pass=0; pass<SCALP_SKIN.fillPasses; pass++){
+      let changed = 0;
+      const nr = r.slice(), ng = g.slice(), nb = b.slice(), nn = n.slice();
+      for(let gy=0; gy<GY; gy++) for(let gx=0; gx<GX; gx++){
+        const i = gy*GX+gx;
+        if(n[i] > 0) continue;
+        let sr=0,sg=0,sb=0,k=0;
+        if(gx>0   && n[i-1]  >0){ sr+=r[i-1];  sg+=g[i-1];  sb+=b[i-1];  k++; }
+        if(gx<GX-1&& n[i+1]  >0){ sr+=r[i+1];  sg+=g[i+1];  sb+=b[i+1];  k++; }
+        if(gy>0   && n[i-GX] >0){ sr+=r[i-GX]; sg+=g[i-GX]; sb+=b[i-GX]; k++; }
+        if(gy<GY-1&& n[i+GX] >0){ sr+=r[i+GX]; sg+=g[i+GX]; sb+=b[i+GX]; k++; }
+        if(k){ nr[i]=sr/k; ng[i]=sg/k; nb[i]=sb/k; nn[i]=1; changed++; }
+      }
+      if(!changed) break;
+      r.set(nr); g.set(ng); b.set(nb); n.set(nn);
+    }
+
+    _skinFieldCache = {
+      GX, GY, u0, u1, v0, v1, r, g, b,
+      /* 정규화 사진 좌표(u,v)의 살 색. 격자 <b>밖</b>이면 안으로 물린다 —
+         이마(v < v0)는 그래서 얼굴 맨 윗줄의 살을 집는다. */
+      at(u, v){
+        const cu = Math.min(this.u1, Math.max(this.u0, u));
+        const cv = Math.min(this.v1, Math.max(this.v0, v));
+        const fx = (cu - this.u0) / (this.u1 - this.u0) * (this.GX - 1);
+        const fy = (cv - this.v0) / (this.v1 - this.v0) * (this.GY - 1);
+        const x0i = Math.floor(fx), y0i = Math.floor(fy);
+        const x1i = Math.min(this.GX-1, x0i+1), y1i = Math.min(this.GY-1, y0i+1);
+        const tx = fx - x0i, ty = fy - y0i;
+        const I = (xx,yy)=> yy*this.GX + xx;
+        const mix = (A)=>
+            A[I(x0i,y0i)]*(1-tx)*(1-ty) + A[I(x1i,y0i)]*tx*(1-ty)
+          + A[I(x0i,y1i)]*(1-tx)*ty     + A[I(x1i,y1i)]*tx*ty;
+        return [mix(this.r), mix(this.g), mix(this.b)];
+      },
+    };
+    console.log(...gyeolBoldArgs(['[3D·두피색] 살 색 격자 ' + GX + '×' + GY
+      + ' · 살로 잡힌 칸 ' + filled + '/' + (GX*GY)
+      + ' · 어두운 하한 ' + Math.round(darkCut) + '(밝기 ' + Math.round(SCALP_SKIN.darkPct*100) + '백분위)'
+      + '\n    두피면 정점마다 <b>제 자리의 살</b>을 집습니다. 격자 밖(이마 위)은 안으로 물려'
+      + ' 얼굴 맨 윗줄 픽셀을 씁니다. 끄기: SCALP_SKIN.field = false']));
+    return _skinFieldCache;
+  }catch(e){
+    console.warn('[3D·두피색] 살 색 격자 실패 — 평균색 한 개로 폴백:', e);
+    return null;
+  }
+}
+
+/* 평균색 한 개 — 격자를 못 만들었을 때의 폴백이자 목·재질 기본색.
+   'rgb(r,g,b)' 또는 null. 정면 마스크만 본다(얼굴이 제일 크게 찍힌 뷰다). */
+function sampleScalpSkinColor(loPct, hiPct){
+  /* (2026-10-26) 구간을 받으면 따로 계산(얼굴 기준색용 — 캐시도 따로). 안 받으면 예전 그대로. */
+  const custom = (typeof loPct === 'number' && typeof hiPct === 'number');
+  if(custom){ if(_faceToneCache !== undefined && _faceToneCache.k === loPct + '|' + hiPct) return _faceToneCache.v; }
+  else if(_scalpSkinCache !== undefined) return _scalpSkinCache;
+  const lo = custom ? loPct : SCALP_SKIN.loPct, hi = custom ? hiPct : SCALP_SKIN.hiPct;
+  const save = (v)=>{ if(custom) _faceToneCache = { k: loPct + '|' + hiPct, v }; else _scalpSkinCache = v; return v; };
+  save(null);
+  try{
+    if(!SCALP_SKIN.fromPhoto) return null;
+    const R = _skinRegionOfFront();
+    if(!R) return null;
+    const { inf, W, H, u0, u1, v0, v1 } = R;
+    const x0 = Math.max(0, Math.round(u0*W)), x1 = Math.min(W-1, Math.round(u1*W));
+    const y0 = Math.max(0, Math.round(v0*H)), y1 = Math.min(H-1, Math.round(v1*H));
+    if(!(x1 > x0 && y1 > y0)) return null;
+    const step = Math.max(1, Math.round(Math.min(x1-x0, y1-y0) / 90));
+    const lum = [], rr = [], gg = [], bb = [];
+    for(let y=y0; y<=y1; y+=step) for(let x=x0; x<=x1; x+=step){
+      if(isHairPixelAt(inf, x, y)) continue;
+      const c = photoRGBAt(inf, x, y); if(!c) continue;
+      lum.push(0.299*c[0] + 0.587*c[1] + 0.114*c[2]); rr.push(c[0]); gg.push(c[1]); bb.push(c[2]);
+    }
+    if(lum.length < SCALP_SKIN.minSamples) return null;
+    const idx = lum.map((v,i)=>i).sort((a,b)=> lum[a] - lum[b]);
+    const iA = Math.floor(idx.length * lo);
+    const iB = Math.min(idx.length, Math.max(iA + 1, Math.floor(idx.length * hi)));
+    let r=0,g=0,b=0,n=0;
+    for(let k=iA;k<iB;k++){ const i=idx[k]; r+=rr[i]; g+=gg[i]; b+=bb[i]; n++; }
+    if(!n) return null;
+    return save(`rgb(${Math.round(r/n)},${Math.round(g/n)},${Math.round(b/n)})`);
+  }catch(e){
+    console.warn('[3D·두피색] 사진 픽셀 실측 실패 — 예전 scalpColor로 폴백:', e);
+    return null;
+  }
+}
+
+/* 두피면 구에 <b>정점색</b>을 입힌다 — 정점 하나하나가 제 자리의 살 색을 집는다.
+
+   왜 정점색인가: 텍스처를 구우려면 UV·해상도·메모리를 새로 정해야 하는데,
+   두피면에 필요한 것은 <b>살결 무늬</b>가 아니라 <b>자리마다 다른 톤</b>뿐이다.
+   48×36 구면 = 1,813개 정점이면 이마~관자~턱 밑 사이의 톤 변화를 담기에 충분하고,
+   삼각형 안에서는 GPU가 보간하므로 결과가 매끄럽다.
+
+   좌표: 정점(단위구) → 모델 좌표(구의 scale·position을 그대로 적용) →
+   projector.toImgX/toImgY로 정면 사진의 정규화 좌표. 이 변환은 얼굴 메쉬가
+   랜드마크를 올릴 때 쓴 것의 <b>역</b>이라, 얼굴과 두피면이 만나는 자리에서
+   두 색이 같은 픽셀에서 나온다 = 이음매가 색으로는 사라진다.
+
+   ⚠ 뒤통수(z<0) 정점은 정사영이라 앞면과 같은 (x,y)로 떨어진다. 그대로 둔다 —
+     거기는 어차피 머리카락에 덮이고, 억지로 다른 색을 지어내면 그게 다음 버그다. */
+/* ── 모델 좌표 → 그 자리의 살 색 (2026-09-13) ──────────────────────────────
+   paintScalpFromPhoto 안에만 있던 세 줄(격자 + 투영기 + at())을 꺼냈다.
+   <b>목이 같은 것을 써야 하기 때문</b>이다 — 지금까지 목은 평균색 한 개를
+   받아 쓰고 있었고, 그래서 두피면과 색이 갈렸다(아래 NECK_SHAPE.fromField 배너).
+   돌려주는 것은 (mx,my) → [r,g,b] 0~1 함수, 못 만들면 null. */
+/* 3D 얼굴 기준색 [r,g,b] 또는 null — 격자와 같은 사진·같은 얼굴 영역의 밝은 살 평균.
+   (2026-09-16) SCALP_SKIN.faceTone 배너. 뷰당이 아니라 정면 한 장이라 캐시를 따로 안 둔다
+   (sampleScalpSkinColor가 이미 캐시한다). */
+function faceToneRef3D(){
+  const FT = SCALP_SKIN.faceTone;
+  if(!FT || !FT.on) return null;
+  const css = (typeof FT.loPct === 'number' && typeof FT.hiPct === 'number')
+    ? (sampleScalpSkinColor(FT.loPct, FT.hiPct) || sampleScalpSkinColor())
+    : sampleScalpSkinColor();
+  const m = css && String(css).match(/\d+/g);
+  if(!m || m.length < 3) return null;
+  const ref = [+m[0], +m[1], +m[2]];
+  if(!_faceTone3DLogged){
+    _faceTone3DLogged = true;
+    console.log(...gyeolBoldArgs(['[3D·두피색·얼굴톤] 얼굴 기준색 rgb(' + ref.join(',') + ') 쪽으로 격자 색을 '
+      + Math.round(FT.mix*100) + '% 당깁니다 · 밝기는 ' + FT.shadeMin + '~' + FT.shadeMax + '배 안에서만 살림'
+      + '\n    두피면·목(턱 언저리)이 얼굴보다 누렇고 어둡게 보이던 것 — 되돌리기: SCALP_SKIN.faceTone.on=false']));
+  }
+  return ref;
+}
+function makeModelSkinSampler(){
+  const field = buildSkinColorField();
+  if(!field) return null;
+  const fm = getFaceMetrics();
+  const pr = fm && fm.projector;
+  if(!pr || typeof pr.toImgX !== 'function') return null;
+  const tone = faceToneRef3D();
+  const FT = SCALP_SKIN.faceTone;
+  const Lr = tone ? 0.299*tone[0] + 0.587*tone[1] + 0.114*tone[2] : 0;
+  return function(mx, my){
+    const c = field.at(pr.toImgX(mx), pr.toImgY(my));
+    if(tone && Lr > 1){
+      /* 얼굴 기준색 쪽으로 당긴다 — 색조·채도는 얼굴을 따르고, 밝기 차는 좁은 범위만 */
+      const Lf = 0.299*c[0] + 0.587*c[1] + 0.114*c[2];
+      const shT = Math.max(FT.shadeMin, Math.min(FT.shadeMax, Lf / Lr));
+      for(let ch=0; ch<3; ch++) c[ch] = c[ch]*(1-FT.mix) + tone[ch]*shT*FT.mix;
+    }
+    return [
+      Math.min(1, Math.max(0, c[0]/255)),
+      Math.min(1, Math.max(0, c[1]/255)),
+      Math.min(1, Math.max(0, c[2]/255)),
+    ];
+  };
+}
+
+function paintScalpFromPhoto(geo, skull, kIn, mat){
+  try{
+    const sample = makeModelSkinSampler();
+    if(!sample) return false;                      // 폴백: 재질의 단색이 그대로 쓰인다
+
+    const pos = geo.attributes && geo.attributes.position;
+    if(!pos) return false;
+    const BS = SCALP_SKIN.backShade;
+    const col = new Float32Array(pos.count * 3);
+    for(let i=0;i<pos.count;i++){
+      const mx = pos.getX(i) * skull.a * kIn;
+      const my = pos.getY(i) * skull.b * kIn + 0.15;   // headMesh.position.y
+      const c = sample(mx, my);
+      /* 앞→뒤 밝기 배율. 정점은 단위구 위라 z가 그대로 "얼마나 앞인가"다.
+         색조는 안 건드린다 — 세 채널에 <b>같은 수</b>를 곱한다. */
+      let sh = 1;
+      if(BS && BS.on){
+        const nz = Math.max(-1, Math.min(1, pos.getZ(i)));
+        sh = BS.back + (1 - BS.back) * (0.5 + 0.5*nz);
+      }
+      col[i*3] = c[0]*sh; col[i*3+1] = c[1]*sh; col[i*3+2] = c[2]*sh;
+    }
+    geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
+    /* 정점색은 재질색과 <b>곱해진다</b> — 재질색을 흰색으로 두지 않으면 두 번 어두워진다. */
+    mat.vertexColors = true;
+    mat.color = new THREE.Color(0xffffff);
+    mat.needsUpdate = true;
+    cullScalpUnderFace(geo, skull, kIn);
+    return true;
+  }catch(e){
+    console.warn('[3D·두피색] 정점색 입히기 실패 — 단색으로 폴백:', e);
+    return false;
+  }
+}
+
+/* 얼굴 사진이 <b>불투명하게</b> 덮는 자리의 두피면 삼각형을 버린다.
+   위 SCALP_SKIN.keepOffFace 배너 참고. 실패하면 아무것도 안 바꾸고 돌아간다 —
+   두피면이 통째로 사라지는 것보다 눈 위 삼각형이 남는 편이 덜 나쁘다. */
+let _scalpCullLogged = false;
+function cullScalpUnderFace(geo, skull, kIn){
+  try{
+    if(!SCALP_SKIN.keepOffFace) return;
+    /* 얼굴 메쉬가 <b>실제로</b> 붙는 경우에만 비켜선다. 폴백(평면 데칼)이나
+       랜드마크 실패면 덮어 줄 얼굴이 없으므로, 비켜서면 그냥 구멍이 난다. */
+    const fm = getFaceMetrics();
+    const lm = fm && fm.lm;
+    const pr = fm && fm.projector;
+    const bound = faceBoundEllipseNorm(lm);
+    if(!bound || !pr || typeof pr.toImgX !== 'function' || !FACE_BOUND_FIT.on) return;
+    if(!(state.landmarks && state.landmarks.front && state.landmarks.front.rawLandmarks)) return;
+
+    const pos = geo.attributes.position;
+    const idx = geo.getIndex();
+    if(!idx) return;
+    const opaque = new Uint8Array(pos.count);      // 1 = 앞면이고 얼굴이 불투명한 자리
+    const fadeIn = FACE_BOUND_FIT.fadeIn;
+    let nOpaque = 0;
+    for(let i=0;i<pos.count;i++){
+      if(pos.getZ(i) <= 0) continue;               // 뒤통수 — 정사영으로 접히니 절대 안 센다
+      const u = pr.toImgX(pos.getX(i) * skull.a * kIn);
+      const v = pr.toImgY(pos.getY(i) * skull.b * kIn + 0.15);
+      const dx = (u - bound.cx) / bound.rx, dy = (v - bound.cy) / bound.ry;
+      if(Math.sqrt(dx*dx + dy*dy) <= fadeIn){ opaque[i] = 1; nOpaque++; }
+    }
+    const src = idx.array;
+    const keep = [];
+    let dropped = 0;
+    for(let t=0; t<src.length; t+=3){
+      const a = src[t], b = src[t+1], c = src[t+2];
+      // 셋 다 얼굴 밑일 때만 버린다 — 경계에 한 겹을 남겨 이음매를 닫는다
+      if(opaque[a] && opaque[b] && opaque[c]){ dropped++; continue; }
+      keep.push(a, b, c);
+    }
+    if(!keep.length || dropped === 0) return;      // 전부 버릴 상황이면 손대지 않는다
+    geo.setIndex(keep);
+    if(!_scalpCullLogged){
+      _scalpCullLogged = true;
+      console.log(...gyeolBoldArgs(['[3D·두피면] 얼굴이 불투명한 자리에서 <b>비켜섰습니다</b> — 삼각형 '
+        + (src.length/3) + ' → ' + (keep.length/3) + '개(버림 ' + dropped + ' · 앞면 정점 ' + nOpaque + '개)'
+        + '\n      볼록한 두개골 타원체는 <b>오목한 얼굴</b>(안와·콧대 옆·관자놀이)보다 앞에 서므로'
+        + ' 깊이 검사에서 이깁니다 — 그게 눈 위로 올라오던 살색 삼각형의 정체입니다.'
+        + ' 깊이로 겨루는 대신(오프셋을 키우면 정수리에서 가닥이 묻힙니다) 그 자리를 비웁니다.'
+        + '\n      페이드 구간(반투명 테두리)은 <b>남깁니다</b> — 거기는 두피면이 뒤를 받쳐야 배경이 안 비칩니다.'
+        + ' 되돌리기: SCALP_SKIN.keepOffFace=false']));
+    }
+  }catch(e){ console.warn('[3D·두피면] 얼굴 밑 삼각형 정리 실패(그대로 둡니다):', e && e.message); }
+}
+
+// 절차적 두상: 타원(스케일된 구)으로 두상 근사. getFaceMetrics()가 뽑아낸 실측
+// 종횡비/좌표 변환(projector)과 실제 두피색(skinColorCss)을 반영해서 "이 사람
+// 사진에서 뽑을 수 있는 정보는 최대한 쓴" 근사치로 만든다. 여전히 진짜 3D
+// 스캔은 아니고 절차적 근사(placeholder)라는 성격 자체는 그대로.
+// (2026-07-12: 너무 길어서 다루기 힘들다는 지적으로 두상/목/귀/이목구비 4개
+// 함수로 분리 — 각 부위 로직 자체는 한 글자도 안 바꾸고 그대로 옮김.)
+function buildProceduralHead(skinColorCss){ // faceMetrics 인자 제거 — 내부에서 getFaceMetrics()로 다시 얻음
+  const group = new THREE.Group();
+  /* (2026-09-09) 색의 출처는 <b>사진 픽셀</b>이 1순위다 — 위 SCALP_SKIN 배너 참고.
+     못 뽑으면 호출부가 준 예전 값(maskInf.scalpColor)으로 폴백한다. */
+  const sampled = sampleScalpSkinColor();
+  let skinColor = new THREE.Color(sampled || skinColorCss || '#E8C39E');
+  // (2026-07-17) "검은 베레모"의 어두운 색 원인 방지: 샘플링된 두피색이
+  // 지나치게 어두우면(머리카락 픽셀이 섞여 샘플된 경우) 살구톤으로 폴백 —
+  // 두상이 헤어처럼 검게 칠해지는 것을 막음.
+  if((skinColor.r + skinColor.g + skinColor.b) / 3 < 0.30) skinColor = new THREE.Color('#E0B294');
+  /* 얼굴과 <b>같은 기준</b>: 사진이 들어간 면은 조명을 안 받는다(FACE_MAT.unlit).
+     두피면도 그 사진에서 뽑은 색이므로 같은 취급을 해야 이마 위에서 한 단
+     어두워지지 않는다. 사용자: "명암 신경쓰지 말고 일단 안면부 색상으로." */
+  const headMat = SCALP_SKIN.unlit
+    ? new THREE.MeshBasicMaterial({ color: skinColor })
+    : new THREE.MeshStandardMaterial({ color: skinColor, roughness: 0.85, metalness: 0 });
+  /* 기하를 줄이는 대신 <b>깊이만</b> 뒤로 민다 — 가닥이 구에 안 묻히면서도
+     두피면이 얼굴 기준면과 같은 자리에 남는다(둘 사이에 틈이 안 생긴다). */
+  if(SCALP_SKIN.depthOffset){
+    headMat.polygonOffset = true;
+    headMat.polygonOffsetFactor = 1;
+    headMat.polygonOffsetUnits = 1;
+  }
+
+  // (2026-07-17) "검은 베레모" 수정 — 기존 buildHeadMesh(실루엣 실측 단면
+  // 스택)는 상부 단면 실측에 머리카락 실루엣이 섞여 두상 윗부분이 헤어
+  // 폭만큼 옆으로 퍼졌음(베레모 모양의 진짜 원인). 두개골 표시는 헤어
+  // 가닥·헐이 기준으로 쓰는 것과 동일한 실측 타원체(적도 반폭 a, 세로 b,
+  // 반깊이 cD, 중심 y=0.15)로 교체 — 헤어 헐이 정의상 이 면 바깥에 있으므로
+  // 두개골이 헤어 밖으로 삐져나올 수 없음. buildHeadMesh 함수 자체는
+  // 이 파일 관례대로 참고용으로 남김(호출만 제거).
+  /* (2026-08-17 c) getHeadEllipsoid() → getDisplaySkullEllipsoid().
+     위 2026-07-17 주석의 "헤어 헐이 정의상 이 면 바깥에 있으므로 두개골이
+     헤어 밖으로 삐져나올 수 없음"은 <b>그때는</b> 맞았다 — 그 시점엔 두피면이
+     따로 없어서 헐과 두개골이 같은 값이었기 때문이다(그게 곧 "한 껍질" 문제).
+     2026-08-01에 getScalpEllipsoid가 생기며 둘이 갈라졌는데 이 줄만 헐에
+     남아 있었고, 그래서 최종 3D에서 살구색 구가 모발 겉면까지 부풀어
+     가닥을 통째로 삼켰다. 상세는 getDisplaySkullEllipsoid 주석. */
+  /* (2026-08-18) 그리는 구만 <b>뿌리 면 안쪽</b>으로 — 근거는 HAIR_SCALP3D.drawInset
+     주석. 여기 scale에만 곱한다: getDisplaySkullEllipsoid가 돌려주는 값 자체를
+     줄이면 얼굴 기준면·목 이음매까지 딸려 움직인다(8/17 c가 겪은 방식). */
+  const skull = getDisplaySkullEllipsoid();
+  /* (2026-09-09) depthOffset을 쓰면 <b>기하는 안 줄인다</b>. drawInset의 목적은
+     z-fighting 회피 하나뿐이었고, 그건 위 polygonOffset이 대신한다. 줄이지 않는
+     쪽이 얼굴 기준면(ellipsoidZ × FACE_Z_TO_SKULL)과 정확히 같은 면이라
+     "안면부하고 이어지지 않는다"가 여기서 닫힌다. */
+  const kIn = SCALP_SKIN.depthOffset
+            ? 1
+            : ((HAIR_SCALP3D.applyToHead && HAIR_SCALP3D.drawInset > 0)
+                ? HAIR_SCALP3D.drawInset : 1);
+  const headGeo = new THREE.SphereGeometry(1, 96, 72);   // (2026-09-16 2차) 48×36 → 96×72 — 오목한 얼굴 밑에서 삼각형이 뚫고 나오지 않게(FACE_SCALP_CONFORM)
+  paintScalpFromPhoto(headGeo, skull, kIn, headMat);
+  const headMesh = new THREE.Mesh(headGeo, headMat);
+  headMesh.scale.set(skull.a*kIn, skull.b*kIn, skull.c*kIn);
+  headMesh.position.set(0, 0.15, 0);
+  headMesh.name = 'skullEllipsoid';
+  group.add(headMesh);
+  /* [진단] 그리는 구가 뿌리 면보다 얼마나 안쪽인가 — 이 여유가 0이면 가닥이
+     구와 같은 평면이라 z-fighting으로 묻힌다(2026-08-18). 모발 두께와 나란히
+     찍어서 "너무 파고들지도, 붙지도 않았는가"를 한 줄로 본다. */
+  try{
+    const hull = getHeadEllipsoid();
+    const gapW = skull.a*(1-kIn), gapT = skull.b*(1-kIn);
+    console.log(...gyeolBoldArgs(['[3D·두개골 여유] 그리는 구 ×' + kIn
+      + ' → 뿌리 면과의 틈 옆 ' + gapW.toFixed(4) + ' · 위 ' + gapT.toFixed(4) + ' 모델단위'
+      + ' | 모발 두께 옆 ' + (hull.a-skull.a).toFixed(4) + ' · 위 ' + (hull.b-skull.b).toFixed(4)
+      + '\n    틈이 0이면 <b>가닥이 구에 묻힙니다</b>(후두부 상단이 제일 먼저 — 거기가'
+      + ' 가닥이 두피를 접선으로 제일 길게 타고 가는 자리라서).'
+      + ' 틈이 모발 두께에 근접하면 반대로 구가 너무 안쪽이라 가닥 사이로 배경이 비칩니다.'
+      + ' HAIR_SCALP3D.drawInset=1 로 두면 예전 동작.']));
+  }catch(e){}
+
+  // 버그 수정(2026-07-14, 계속) → 재추가(같은 날, 실측 목 메쉬로 교체):
+  // 실기기 피드백 "목이랑 그 위쪽으로 연결된 부위가 중간에 버티고 있어서
+  // 걸린다, 저기에 의지하고 있는 게 없다"를 받고 한 번은 완전히 뺐었음
+  // (buildNeckMesh가 고정 반지름 원통이라 "아무 근거 없이 뜬 막대"처럼
+  // 보였던 게 진짜 원인 — neckAttachPoint 자체가 문제가 아니라 실측 없는
+  // 임의 형태였던 게 문제). 이후 사용자 요청: "목과 잠깐 배제해놓은
+  // 안면부위들 3D에 적용해줘" — extractHairMask STEP 1.5(personMask)로
+  // 그 사람 실제 목/어깨 실루엣을 재서 buildRealNeckMesh(위, 실측 단면
+  // 기반)로 교체 재추가. 이제는 "아무 근거 없이 뜬 막대"가 아니라 그 사람
+  // 사진에서 실측한 폭/깊이를 반영한 형태라 다시 붙여도 된다는 판단.
+  // buildOutfitPlaceholderMesh 등 나머지 코드는 neckMesh 객체를 직접
+  // 참조하지 않고 고정 좌표(y=-1.15)만 쓰므로(코드 전수 확인 완료) 이
+  // 교체는 3단계 의상 부착 로직에 영향 없음.
+  // ⚠ 정직한 한계: 아직 실기기 재확인 전. personMask 실측이 실패한
+  // 경우(bodySegmenter 로드 실패 등) computeNeckCrossSections의 최후
+  // 폴백(예전 고정 반지름)으로 자동 전환되므로 최악의 경우에도 예전
+  // 수준으로만 돌아갈 뿐 깨지지는 않지만, 실측이 잘 됐을 때와 폴백일 때
+  // 시각적 차이가 있는지는 실기기에서 확인 필요.
+  const neckMesh = buildRealNeckMesh(skinColor);
+  group.add(neckMesh);
+
+  // 버그 수정(2026-07-14): 귀 메쉬 제거 — "얼굴이랑 뒤통수 사이에 살구색
+  // 덩어리가 붙어있다"는 실기기 피드백의 정체가 이거였음. buildEarMeshes는
+  // 오늘/어제 작업(실측 두상 단면, 얼굴 랜드마크 메쉬)과 무관하게 훨씬 예전
+  // (3D 처음 만들 때)부터 있던 코드로, 실측 귀 형태가 아니라 임의로 뭉갠
+  // 작은 구 두 개일 뿐이고 Z좌표도 고정값(0.02, 앞뒤 거의 정중앙)이라
+  // 위치도 부정확했음. 실측 기반이 아닌 임의 덩어리라 위치를 고치는 대신
+  // 제거하는 쪽으로 결정(사용자 승인).
+  // buildEarMeshes(widthFactor, heightFactor, projector, lm, headMat).forEach(ear=>group.add(ear));
+
+  // (2026-07-17 정리) 절차적 이목구비(buildFaceDetailGroup)는 씬에 추가되지
+  // 않는 그룹을 만들어 visible만 껐다 켜던 완전한 잔재라 함수째 삭제 —
+  // 얼굴은 buildRealFaceMesh(실측 468 랜드마크)/buildFacePhotoDecal(폴백)이 담당.
+  return { group, headMesh };
+}
+
+function loadImageAsync(src){
+  return new Promise((resolve,reject)=>{
+    const img = new Image();
+    img.onload = ()=>resolve(img);
+    img.onerror = reject;
+    img.src = src;
+  });
+}
+
+// 실측 촬영 사진(state.shots.front) 자체를 두상 앞면에 얇게 띄운 평면에
+// 입혀서 "그 사람 얼굴처럼 보이는" 효과를 낸다. 구면에 직접 UV 투영하는
+// 진짜 텍스처 매핑은 왜곡·이음새 위험이 커서 채택하지 않음 — 대신 캔버스
+// 상에서 destination-in + radial gradient로 가장자리를 페더 처리해 두상
+// 피부색과 하드엣지 없이 섞이게 함. 위치/크기는 makeFaceProjector와 동일한
+// 실측 기준점(눈/귀/턱)으로 정렬하므로 촬영 각도·얼굴 크기가 달라도 자동
+// 정렬됨. 알려진 한계: 평면이라 옆모습으로 회전하면 거의 안 보임(정면
+// 전용 효과) — 나중에 진짜 두상 3D 스캔(.glb)으로 바뀌면 이 로직 자체가
+// 통째로 필요 없어짐.
+/* ── 진짜 3D 얼굴 메쉬(2026-07-13 착수, 같은 날 재작업) ──
+   지적: "얼굴이 중요하지" — 지금까지 buildFacePhotoDecal()은 평면 사진 한
+   장을 두상 표면에 살짝 띄운 것(그래서 옆에서 보면 거의 안 보임). 실제로는
+   MediaPipe가 468개 랜드마크 전부에 x,y,z(깊이)를 주는데 그중 10여 개
+   이름 붙은 점만 뽑아 쓰고 나머지는 버리고 있었음. 여기서부터 실제로
+   468개 전부와, MediaPipe 공식 삼각형 연결정보(FACE_MESH_TRI_V, 위쪽에서
+   canonical_face_model.obj를 직접 받아 파싱)를 써서 그 사람 실제 얼굴
+   입체 형태를 반영한 진짜 3D 메쉬를 만든다.
+   UV(텍스처 좌표)는 FACE_MESH_UV(캐노니컬 모델 자체의 uv — 표준 "얼굴 펼침"
+   참조 텍스처용, 우리처럼 그 사람 실제 사진을 그대로 씌우는 경우엔 안 맞음)
+   대신, 각 랜드마크 "자기 자신의 이미지 좌표"를 그대로 UV로 씀.
+
+   ── 재작업(같은 날, 실기기 확인 후) ──
+   1차 버전은 깊이(z)를 "고정 상수(Z_BASE) + 실측 굴곡"으로만 계산했는데,
+   실기기에서 얼굴 전체가 두상(타원체)에서 한참 동떨어져 붕 뜬 채로 나옴
+   — 미세 보정 문제가 아니라 애초에 "두상이 실제로 어디 있는지"와 무관한
+   임의의 상수를 썼던 게 근본 원인("추정하지 말고 두상 좌표값을 직접
+   비교해서 위치를 잡아라"는 지적).
+   해결: buildHeadMesh가 두상을 만드는 실제 수식 — 단위구를
+   (0.78·wf, 1·hf, 0.85·wf)로 스케일한 타원체, y로 0.15 이동 — 을 그대로
+   가져와서, 각 랜드마크의 실측 (x,y) 위치에서 "그 타원체 표면이 실제로
+   어디 있는지"(surfaceZ)를 역산(귀 배치 buildEarMeshes가 이미 같은
+   방식으로 표면 반경을 역산하던 것과 동일한 원리, 다만 여기선 X,Y 둘 다
+   고려한 완전한 버전). 그 다음 "얼굴을 두상 위에 별도로 얹는" 대신,
+   "경계(귀·이마 언저리)에서는 두상 표면에 정확히 붙고, 중심(코 등)으로
+   갈수록 실측 굴곡이 살아나게 이어붙이는" 방식으로 재설계 — 사용자 지시:
+   "얼굴메쉬와 헤어입체이미지도 결국 조합할 거니, 지금의 타원형 두상
+   한 덩어리처럼 취급되게 하라". 경계 필터링에 이미 쓰던 타원(0=중심,
+   1=경계)의 거리 제곱을 그대로 블렌드 가중치로 재사용(경계에서 정확히
+   0이 되어 두상 표면값과 매끄럽게 이어짐, 새 파라미터 추가 없음):
+     surfaceZ(그 점의 실제 두상 표면 위치) + blendWeight(중심=1~경계=0) × reliefZ(실측 굴곡)
+   ※ 그래도 남는 한계: reliefZ 자체의 부호/배율(Z_SIGN/Z_DEPTH_SCALE)은
+   MediaPipe 공식 문서 기준으로 정한 것이라 브라우저에서 실제로 렌더링해
+   봐야 최종 확인 가능. */
+/* 얼굴이 <b>어떻게</b> 붙었는지의 기록 (2026-08-22). 스틸 한 장으로는 입체 메쉬와
+   평면 데칼을 못 가른다 — 돌려 봐야 안다. 그래서 숫자로 남긴다.
+   진단정보 패널 맨 위에 같이 찍는다(폰엔 콘솔이 없다). */
+/* (2026-08-31) 세 칸 추가 — sideYaw/reliefGain/reliefCm.
+   "판때기" 진단에 필요한 것은 <b>얼마나 평평한가</b>가 아니라 <b>왜 평평한가</b>였다.
+   zRange만 보면 원인이 ① 측면 실측이 굴곡을 덮어썼다 ② 굴곡 자체가 작다 중
+   어느 쪽인지 못 가른다 — 그래서 그 둘을 각각 숫자로 남긴다. */
+/* ── 얼굴 경계 타원 — <b>단일 출처</b> (2026-09-14 3차) ──────────────────────
+   원래 이 계산은 buildRealFaceMesh <b>안에만</b> 있었다. 그런데 두피면도 같은
+   자를 봐야 한다 — "얼굴 사진이 불투명하게 덮고 있는 자리"를 알아야 그 위에
+   안 그릴 수 있기 때문이다(아래 SCALP_SKIN.keepOffFace 배너).
+   두 곳이 각자 같은 식을 적으면 한쪽만 고쳐지는 것이 이 저장소의 단골 실패라,
+   식은 여기 한 번만 둔다. 돌려주는 값은 <b>정규 이미지 좌표</b>(0~1)다.
+   ⚠ 산술은 옮기기 전과 한 글자도 다르지 않다. */
+const FACE_BOUND_FIT = {
+  on: true,
+  keepT:   1.22,  // 이 t까지 삼각형을 살린다(1.0=예전). 눈썹(t≈1.0)에 여유를 준다
+  fadeIn:  1.06,  // 여기까지는 <b>완전 불투명</b> — 눈썹이 절대 흐려지지 않게 1.0보다 크게
+  fadeOut: 1.22,  // 여기서 알파 0 — keepT와 같게 두면 살린 삼각형이 정확히 다 사라진다
+};
+function faceBoundEllipseNorm(lm){
+  if(!lm) return null;
+  const eyeCX = ((lm.features && lm.features.leftEye
+                   ? (lm.features.leftEye.minX + lm.features.leftEye.maxX)/2 : 0.5)
+               + (lm.features && lm.features.rightEye
+                   ? (lm.features.rightEye.minX + lm.features.rightEye.maxX)/2 : 0.5)) / 2;
+  const cx = lm.features ? eyeCX : 0.5;
+  const topY = (lm.browTopY != null ? lm.browTopY : 0.28) * 0.90;
+  const botY = (lm.chinY    != null ? lm.chinY    : 0.60) * 1.10;
+  return {
+    cx,
+    cy: (topY + botY) / 2,
+    ry: Math.max(0.05, (botY - topY) / 2 * 1.08),
+    rx: Math.max(0.05, Math.abs((lm.rEarX != null ? lm.rEarX : 0.78)
+                              - (lm.lEarX != null ? lm.lEarX : 0.22)) * 0.56 * 1.08),
+  };
+}
+
+/* 얼굴 z 보정 스위치. 최상위에 둔다 — 안쪽 함수들이 클로저로 보고, 검사도 본다. */
+const FACE_Z_FIX = { matchBaseline: true, trustWeighted: true };
+/* (2026-10-27) 360 옆얼굴 윤곽으로 정중선 깊이 — buildRealFaceMeshBase의 prof360Map 주석 참고.
+   sigmaCm: 정중선 보정을 좌우로 퍼뜨리는 폭 · minScore: 옆모습 점수(13b profileOf) 하한 · pairFrac: 두 번째 사진도 쓸 점수 비 */
+var FACE_PROFILE360 = (typeof window !== 'undefined' && window.FACE_PROFILE360) || { on: true, sigmaCm: 1.8, minScore: 0.03, pairFrac: 0.7 };
+/* ── 측면 깊이 가중치 (2026-09-07) ────────────────────────────────────────
+   사용자: "3D 결과보기에서 미간이 함몰돼 굴곡이 졌다."
+   자리가 여기다. 예전 주석은 이렇게 적혀 있었다 —
+     "가중평균은 신뢰도를 정규화해 버리므로(합으로 나눈다) trust를 confidence에
+      섞으면 사라진다."
+   <b>좌우 trust가 같을 때만</b> 맞는 말이다. 이 손님은 좌 50.8°(trust 0.79) ·
+   우 41.2°(trust 0.31)로 크게 다르다. 다르면 정규화해도 <b>상대 가중</b>은 남는다 —
+   사라지는 건 공통 배율뿐이다. 그래서 지금은 41°짜리(정중선 깊이를 사실상 못 보는
+   뷰)가 realZ 평균에 <b>온전한 무게</b>로 들어가고, 정작 보정 크기는 좋은 쪽 trust
+   0.79로 곱해진다. 못 믿는 값을 믿는 배율로 쓰는 셈이다.
+   그 결과가 정중선(이마 10·미간 168)에서 realZ가 얕게 나오고
+   map[i] = realZ − frontZ 가 음수 → <b>함몰</b>. 로그가 이미 재고 있던
+   "이마 −0.139, 미간 −0.097"이 이 몫이다.
+   고침: 상대 가중을 confidence × trust 로 둔다. 각도가 깊이를 못 보는 뷰는
+   그만큼만 말하게 한다. 전체 배율(_profileTrust)은 건드리지 않는다 — 한 번에
+   하나만 바꾼다.
+   ⚠ 이 함수를 <b>바깥으로 뺀 이유</b>는 테스트가 부를 수 있게 하기 위해서다.
+     클로저 안에 있으면 하네스에서 못 잡고, 못 잡으면 다음 세션이 또 눈으로 맞춘다.
+   되돌리기: FACE_Z_FIX.trustWeighted = false */
+function sideDepthWeight(s){
+  if(!s) return 0;
+  const c = (typeof s.confidence === 'number' && isFinite(s.confidence)) ? s.confidence : 0;
+  if(FACE_Z_FIX && FACE_Z_FIX.trustWeighted === false) return c;
+  const t = (typeof s.trust === 'number' && isFinite(s.trust)) ? s.trust : 0;
+  return c * t;
+}
+/* 하네스가 부를 수 있게 노출한다 — 클로저 안에 두면 검사에서 못 잡는다. */
+if(typeof globalThis !== 'undefined') globalThis.__sideDepthWeight = sideDepthWeight;
+
+const FACE_BUILD = { path: '-', why: '', zRange: null, zMin: null, zMax: null,
+                     sideHits: 0, ellA: null, ellC: null,
+                     sideYaw: {}, reliefGain: null, reliefCm: null, cmPerUnit: null };
+async function buildRealFaceMeshBase(faceMetrics){
+  FACE_BUILD.sideYaw = {}; FACE_BUILD.reliefGain = null;
+  FACE_BUILD.reliefCm = null; FACE_BUILD.cmPerUnit = null;
+  const lm = faceMetrics.lm;
+  const src = state.shots && state.shots.front;
+  // rawLandmarks가 없으면(폴백 추정 랜드마크 등, 예전 세션 캐시 데이터 포함)
+  // 스킵 — 호출부에서 buildFacePhotoDecal로 자동 대체됨(신규 실패 모드 아님).
+  /* ⚠ 여태 여기서 <b>조용히</b> 빠져나갔다. 그러면 화면엔 평면 데칼이 걸리는데
+     로그도 화면 표시도 없어서, 사용자는 "3D 얼굴"을 보고 있다고 믿게 된다.
+     이유를 남기고 나간다. */
+  if(!src){ FACE_BUILD.path = 'decal'; FACE_BUILD.why = '정면 사진 없음';
+            console.warn('[얼굴] 입체 메쉬 스킵 — 정면 사진 없음 → 평면 데칼'); return null; }
+  if(!lm.rawLandmarks || lm.rawLandmarks.length < 468){
+    FACE_BUILD.path = 'decal';
+    FACE_BUILD.why = '랜드마크 원본 ' + (lm.rawLandmarks ? lm.rawLandmarks.length : 0) + '개(468 필요)';
+    console.warn('[얼굴] 입체 메쉬 스킵 — ' + FACE_BUILD.why + ' → <b>평면 데칼</b>');
+    return null;
+  }
+
+  let img;
+  try{ img = await loadImageAsync(src); }
+  catch(e){ FACE_BUILD.path = 'decal'; FACE_BUILD.why = '사진 로드 실패';
+            console.warn('실제 얼굴 메쉬용 이미지 로드 실패:', e); return null; }
+
+  const raw = lm.rawLandmarks;
+  const vertCount = 468;
+  const projector = faceMetrics.projector;
+  const widthFactor = faceMetrics.widthFactor, heightFactor = faceMetrics.heightFactor;
+
+  // 얼굴 메쉬 Z(깊이)는 두상 타원 방정식 ellipsoidZ로 구한다 — getHeadEllipsoid의
+  // 반경(a,b,c)을 쓰므로 두상 돔·헤어 투영면과 정확히 같은 표면 위에 얹힌다
+  // (얼굴-두피 경계가 어긋나지 않는 이유). 이 방정식은 머리카락 유무와 무관하게
+  // 모든 (x,y)에서 정의되므로 턱처럼 실측이 없는 높이에서도 특이값이 안 생긴다.
+  // ※ 교훈(좌표 규약 참고): front 얼굴 메쉬에는 실측 회전을 적용하지 않는다 —
+  //   두상 시스템 전체가 front를 곧 월드 기준으로 취급하므로, 여기에 회전을
+  //   또 걸면 이중 적용이 돼 "코가 목 위 막대기 끝에 매달린" 회귀가 났었다.
+    const { a: ELL_A, b: ELL_B, c: ELL_C } = getHeadEllipsoid();
+  // 얼굴 전용 타원 폭: 전역 ELL_A는 두상 적도(이 사람은 턱 높이라 좁게 잡힘)에서
+  // 나오는데, 얼굴 메쉬는 관자놀이까지 그보다 넓게 퍼진다. ELL_A가 얼굴보다 좁으면
+  // 얼굴 바깥 정점이 ellipsoidZ의 "타원 밖(inside>1)" 분기로 빠져 z≈0(평평한 옆벽)이
+  // 돼 옆으로 펼쳐진다(실기기 증상). → 얼굴의 실제 최대 폭(아래 pre-pass에서 측정)까지
+  // 폭을 넓혀 얼굴이 곡면을 타고 감기게 한다. 전역 두상/스컬/헤어 투영은 그대로 유지.
+  // (12차) 얼굴 타원 폭을 두상 폭 쪽으로 얼마나 되돌릴지 — 아래 widened 주석 참고.
+  // ⚠ const는 TDZ가 있어 <b>쓰는 곳보다 위</b>에 있어야 한다(같은 함수 스코프다).
+  const FACE_WIDTH_FIT = { blend: 1.0 };
+  let ellAForFace = ELL_A;
+  function ellipsoidZ(localX, yLocal){
+    const inside = (localX/ellAForFace)*(localX/ellAForFace) + (yLocal/ELL_B)*(yLocal/ELL_B);
+    return ELL_C * Math.sqrt(Math.max(0.02, 1 - Math.min(1, inside))); // 완전히 벗어난 점도 살짝의 표면값은 갖게(0 방지)
+  }
+
+  /* ══════════════════════════════════════════════════════════════════
+     얼굴 기준면에 <b>두개골의 자</b>를 쓴다 (2026-09-13 — ②의 정면돌파)
+     ─────────────────────────────────────────────────────────────────
+     9/13 실기기 로그가 판정을 확정했다:
+         자 대조: 폭 0.417/0.363 = ×0.870 · 세로 0.633/0.595 = ×0.939 · 깊이 ×0.870
+         → <b>② 두 타원이 다른 자</b> · 틈↔반지름² 상관 <b>0.99</b> · 최대/최소 ×65.5
+     상관 0.99는 "틈이 반지름²의 <b>함수</b>"라는 뜻이다. 그건 깊이 손잡이
+     (FACE_Z_TO_SKULL)로는 원리상 못 닫는다 — 그 손잡이는 면 전체를 <b>상수배</b>
+     할 뿐이라, 자리마다 다른 양을 줄 수가 없다. [고친 뒤] 로그가 예고한 그대로
+     나왔다: 중앙값은 +0.0031로 0에 붙었는데 <b>최소 −0.0173 · 최대 +0.0564</b>로
+     부호가 갈렸다. 위 (나)가 "부호가 갈리면 이 손잡이는 되돌릴 자리"라고 미리
+     적어 둔 자리다. → FACE_Z_SKULL_FIT.on = false (아래).
+
+     ── 사용자가 본 두 증상이 이 부호에 그대로 들어 있다 ────────────────────
+       가운데(|x|≤0.11) <b>−0.0149</b>(−0.29cm) = 이마 한가운데선 얼굴이 두개골
+         <b>안</b>에 있다 → 두개골 면이 얼굴을 뚫고 나온다 = "두상에 칠하는 부분이
+         <b>미간과 양 눈썹</b>을 침범"
+       가장자리(|x|≥0.21) <b>+0.0249</b>(+0.48cm) = 바깥은 얼굴이 앞 → 벌어진 틈
+     원인 하나(자가 다름)가 안쪽에선 <b>침범</b>으로, 바깥쪽에선 <b>틈</b>으로 보인 것이다.
+
+     ── 왜 이제는 폭·세로를 바꿔도 되는가 (8/31의 splay 걱정이 지워진다) ──────
+     같은 로그 한 줄이 답이다:
+         [진단·얼굴폭] ELL_A=0.417 | 얼굴 실제 최대폭=<b>0.363</b>
+                       → 얼굴 타원폭=0.417 <b>(변화 없음)</b>
+                       | 얼굴 최대세로=<b>0.595</b> vs ELL_B=0.633
+     · 얼굴 최대폭  0.363 = skull.a <b>0.363</b>
+     · 얼굴 최대세로 0.595 = skull.b <b>0.595</b>
+     우연이 아니다. getScalpEllipsoid는 a를 getFaceHalfWidthMesh()(=얼굴 반폭)로,
+     b를 "눈→턱 자"로 잡는다 — <b>두개골 타원의 폭·세로는 원래 얼굴에서 나온 값</b>이다.
+     즉 얼굴은 두개골 타원에 정확히 <b>내접</b>한다. 게다가 FACE_WIDTH_FIT의 넓힘은
+     이 손님에게 이미 <b>아무 일도 안 하고 있었다</b>("변화 없음"). 그러니 이건 얼굴을
+     좁히는 게 아니라 <b>제 자에 돌려놓는</b> 것이고, splay(정점이 inside>1로 나가
+     z가 바닥치는 증상)는 내접에서는 정의상 안 난다. 남는 위험은 테두리(inside≈1)에서
+     √의 기울기가 −∞로 가는 것뿐이라, 바닥 클램프 대신 <b>접선 연장</b>으로 잇는다.
+
+     ── ellipsoidZ는 <b>한 글자도 안 건드린다</b> ──────────────────────────
+     ⚠ 위 FACE_Z_TO_SKULL 주석이 이미 경고해 둔 자리다 — ellipsoidZ는
+       frontEstimatedZOf에서 <b>잔차의 기준</b>으로도 쓰인다. 그걸 바꾸면 deltaZ가
+       정확히 그만큼 어긋나 측면 실측이 있는 222/468 정점만 옛 면으로 끌려간다
+       (= 얼굴이 두 조각으로 찢어진다). 그래서 <b>기준면 전용</b> 함수를 따로 만들고,
+       갈아끼우는 곳은 baseTerm <b>한 줄</b>뿐이다.
+
+     ── 한 번에 다 바꾸지 않는다 ──────────────────────────────────────
+     사용자가 말한 자리는 <b>이마</b>다. 그래서 자 교체를 이마에서 1, 눈썹 아래로
+     0이 되게 세로로 섞는다(smoothstep). 관자놀이·턱은 한 점도 안 움직인다
+     = 실루엣 충격 없음. 얼굴 전체를 두개골 자로 보내려면 browBlend=false.
+     되돌리기: FACE_RULER_FIT.on = false (산술까지 예전과 동일) */
+  const FACE_RULER_FIT = {
+    on: true,          // false면 예전과 <b>산술까지 동일</b> — 이게 되돌리기다
+    browBlend: true,   // true=이마만 · false=얼굴 전체를 두개골 자로
+    fullFrac: 0.15,    // 얼굴 y범위의 위 15%까지는 두개골 자 100% (SCALP_SEAM.bandFrac과 같은 자)
+    zeroFrac: 0.45,    // 위에서 45% 아래부터는 옛 자 100% — 대략 눈썹~눈 사이
+    edgeT:    0.94,    // 테두리 접선 연장 시작점 (t=√inside)
+    seamBias: 0.004,   // 이마에서 얼굴을 두개골보다 이만큼 <b>앞</b>에 (≈0.08cm) · 0이면 끔
+  };
+  /* 아래 pre-pass가 채운다 — 이 함수들은 vertex loop에서만 불리므로 순서 문제 없다. */
+  let _faceYTop = 0, _faceYBot = 0, _rulerSk = null;
+  /* 0 = 옛 자(헐) · 1 = 두개골 자. 새 경계선을 만들지 않으려고 <b>아래 이마 바닥</b>도
+     같은 가중치를 쓴다. */
+  function faceRulerBlend(yLocal){
+    if(!FACE_RULER_FIT.on || !_rulerSk) return 0;
+    if(!FACE_RULER_FIT.browBlend) return 1;
+    const span = _faceYTop - _faceYBot;
+    if(!(span > 1e-6)) return 0;
+    const d = (_faceYTop - yLocal) / span;          // 0 = 맨 위 … 1 = 턱
+    const den = Math.max(1e-6, FACE_RULER_FIT.zeroFrac - FACE_RULER_FIT.fullFrac);
+    const s = Math.min(1, Math.max(0, (FACE_RULER_FIT.zeroFrac - d) / den));
+    return s*s*(3 - 2*s);                          // smoothstep — C¹이라 이음선이 안 생긴다
+  }
+  /* 눈높이(메쉬 로컬 y) — FACE_PROFILE_BASE가 이 아래만 편다 */
+  const _eyeYLocalForProfile = (lm && lm.eyeY != null && projector) ? (projector.toMeshY(lm.eyeY) - 0.15) : null;
+  function faceProfileY(yLocal){
+    const P = FACE_PROFILE_BASE;
+    if(!P.on || _eyeYLocalForProfile == null || yLocal >= _eyeYLocalForProfile) return yLocal;
+    return _eyeYLocalForProfile + (yLocal - _eyeYLocalForProfile) * P.flatBelowEye;
+  }
+  /* 얼굴 <b>기준면 전용</b> 자. 반환 단위는 ellipsoidZ와 같다(ELL_C 기준) — 밖에서
+     ×FACE_Z_TO_SKULL 하면 정확히 skull.c·√(1−(x/skull.a)²−(y/skull.b)²)가 된다.
+     두개골 면과 <b>같은 식·같은 자</b>이므로 기준면끼리의 틈은 항등적으로 0이다. */
+  function faceBaseZLocal(localX, yLocal){
+    /* (2026-09-16) 눈 아래는 세로 곡률을 편다 — 위 FACE_PROFILE_BASE 배너 */
+    yLocal = faceProfileY(yLocal);
+    const w = faceRulerBlend(yLocal);
+    if(w <= 0) return ellipsoidZ(localX, yLocal);   // 예전 그대로
+    const t2 = (localX/_rulerSk.a)*(localX/_rulerSk.a) + (yLocal/_rulerSk.b)*(yLocal/_rulerSk.b);
+    const t = Math.sqrt(t2), t0 = FACE_RULER_FIT.edgeT;
+    let f;
+    if(t <= t0){
+      f = Math.sqrt(1 - t2);
+    } else {
+      /* 접선 연장 — t0에서의 값과 기울기로 곧게 잇는다. 바닥 클램프가 만들던
+         <b>옆벽</b>(z가 뚝 떨어져 옆으로 펼쳐지는 것)이 안 생긴다. */
+      const f0 = Math.sqrt(1 - t0*t0);
+      f = Math.max(0.141, f0 - (t0/f0)*(t - t0));   // 0.141 = √0.02 · 옛 바닥과 같은 값
+    }
+    return ellipsoidZ(localX, yLocal)*(1 - w) + (ELL_C * f)*w;
+  }
+
+  // 깊이(z) 굴곡 부호: MediaPipe 공식 문서 기준 "z가 작을수록(더 음수) 카메라에
+  // 가까움" — 우리 좌표계는 +Z가 보는 사람 쪽이라 이론상 -1이 맞음. 이전
+  // 세션엔 옛 headSurfaceZ 기준 실기기 테스트에서 "코가 함몰돼 보인다"며 1로
+  // 뒤집었었는데, 이번엔 그 자리를 ellipsoidZ로 교체한 뒤 실기기에서 정반대로
+  // "코가 안으로 들어갔다"는 피드백 — 즉 부호가 맞는 함수가 바뀌었으므로
+  // 이론값(-1)으로 되돌림.
+  /* 얼굴 z 보정 스위치 (2026-08-18 k-4) — matchBaseline은 frontEstimatedZOf 주석 참고. */
+  const Z_SIGN = -1;
+  const Z_DEPTH_SCALE = 1.0; // 굴곡이 너무 약하거나 세면 조정
+
+  /* ── 얼굴을 <b>그려지는 두개골</b> 위로 (2026-08-17 c) ────────────────────
+     위에서 두개골 구를 헐(머리카락 겉면) → 두피면으로 줄였다. 얼굴 z의 <b>기준면</b>은
+     여전히 ELL_C(헐 깊이)라서, 그대로 두면 얼굴만 모발 두께만큼(실기기 환산 약 3.6cm)
+     앞에 뜬 채 남는다 — 두개골을 고치다가 얼굴을 띄우는 새 버그를 만드는 셈이다.
+     그래서 <b>기준면 성분만</b> 같은 비율로 옮긴다:
+         localZ = ellipsoidZ×k + 굴곡 + 측면보정      (k = 두개골 깊이 / 헐 깊이)
+     · 기준면만 곱하는 이유 — 굴곡(MediaPipe relief)과 측면 실측 보정은 "기준면에서
+       얼마나 벗어났는가"라는 <b>잔차</b>다. 잔차까지 k배 하면 코가 29% 납작해진다
+       (이 파일의 미해결 목록에 "얼굴이 평평"이 이미 있다 — 그 반대로 가야 한다).
+     · frontEstimatedZOf는 <b>안 건드린다</b>. 거기서 나오는 deltaZ는 realZ와 같은
+       헐 기준에서 뺀 잔차라, 여기서 k를 안 태워야 잔차의 의미가 유지된다.
+       (만약 ellipsoidZ 자체를 줄였다면 deltaZ가 정확히 그만큼 커져서 측면 실측이
+        있는 정점 222/468개만 도로 헐로 끌려간다 — 얼굴이 두 조각으로 찢어진다.)
+     · ELL_A/ELL_B는 그대로 둔다. ELL_B를 두피면 세로로 줄이면 턱 정점의
+       (yLocal/ELL_B)가 1에 닿아 ellipsoidZ가 0 바닥으로 붕괴한다(=위 주석의
+       "옆벽 splay"가 세로로 재현). 폭 확장 로직과 같은 이유로 손대지 않는다.
+     applyToHead=false면 k=1 — 예전과 <b>산술까지 동일</b>하다. */
+  let FACE_Z_TO_SKULL = 1;
+  try{
+    const _sk = getDisplaySkullEllipsoid();
+    if(_sk && ELL_C > 1e-6 && _sk.c > 0) FACE_Z_TO_SKULL = _sk.c / ELL_C;
+  }catch(e){}
+
+  // ── 경계 타원(얼굴 중심~바깥) — 필터링과 블렌드 가중치 둘 다에 재사용 ──
+  // 귀·관자놀이처럼 정면 사진에서 옆으로 많이 꺾인 부분은 원근 때문에 아주
+  // 좁은 픽셀 폭에 눌려 찍히므로, 잘 찍힌 얼굴 중심부만 메쉬로 살린다.
+  /* (2026-09-14 3차) 식은 faceBoundEllipseNorm 한 곳에만 둔다 — 두피면이
+     같은 자를 봐야 해서 꺼냈다. 값은 옮기기 전과 동일하다. */
+  const _fb = faceBoundEllipseNorm(lm) || { cx:0.5, cy:0.44, rx:0.31, ry:0.20 };
+  const boundCX = _fb.cx, boundCY = _fb.cy, boundRY = _fb.ry, boundRX = _fb.rx;
+  function distSqFromBound(idx){
+    const p = raw[idx];
+    const dx = (p.x - boundCX) / boundRX, dy = (p.y - boundCY) / boundRY;
+    return dx*dx + dy*dy; // 0=정중앙, 1=경계선 위, 1보다 크면 경계 밖
+  }
+  function inFaceBound(idx){ return distSqFromBound(idx) <= 1; }
+
+  /* ══════════════════════════════════════════════════════════════════
+     얼굴 테두리가 <b>눈썹을 물고 계단으로 잘린다</b> (2026-09-14)
+     ─────────────────────────────────────────────────────────────────
+     사용자: "3D 안면 왼쪽 눈썹 부분이 좀 떨어져있고 안면부 끝부분이 좀
+     파이면서 잘렸어."
+     두 증상이지만 원인은 <b>한 줄</b>이다 — 아래 삼각형 필터의
+
+         if(inFaceBound(a) && inFaceBound(b) && inFaceBound(c))
+
+     ① <b>왜 눈썹이 떨어지나</b>
+        경계 타원은 boundTopY = browTopY×0.90 로 <b>눈썹 바로 위</b>에서 천장을
+        친다. 타원은 천장 근처에서 급격히 좁아지므로, 눈썹 <b>높이</b>에서
+        허용되는 가로 반폭이 이미 눈썹 바깥 끝과 거의 같다. 실제로 재 보면
+          dy=(browTopY−boundCY)/boundRY ≈ −0.80 → dy²≈0.64
+          남는 가로 예산 |dx| ≤ √0.36 ≈ 0.60 → 화면좌표로 ≈0.20
+        눈썹 바깥 끝이 정확히 그 ≈0.20 자리다. 즉 <b>경계선이 눈썹을 지나간다</b>.
+        경계선 위에서 정점 하나만 밖으로 나가도 그 삼각형이 통째로 빠지므로,
+        눈썹 바깥쪽이 본체에서 <b>뜯겨 나간 조각</b>처럼 보인다.
+
+     ② <b>왜 끝이 파이면서 잘리나</b>
+        "셋 다 안이어야 살린다"는 <b>전부-아니면-전무</b>라, 남는 테두리는
+        타원이 아니라 MediaPipe 삼각망을 따라가는 <b>계단</b>이 된다. 게다가
+        얼굴 셸은 열린 면(DoubleSide)이라, 그 계단 단면이 배경과 머리카락을
+        배경으로 실루엣에 그대로 드러난다 = "파였다".
+        (돌려 보면 잘린 틈으로 <b>반대쪽 눈썹의 뒷면</b>이 비치는데, 사용자가
+         "떨어져 있다"고 본 두 번째 눈썹 조각이 바로 그것이다.)
+
+     ── 고침: 자르는 자리와 보이는 자리를 <b>분리</b>한다 ──────────────────
+        · 삼각형은 t=√distSq 가 keepT 까지 살린다 → 경계선이 눈썹을 지나가도
+          눈썹은 한 겹 <b>안쪽</b>에 들어와 온전히 붙어 있다.
+        · 대신 fadeIn→fadeOut 구간에서 정점 알파를 1→0으로 깎는다 → 계단
+          단면은 그려지기 전에 <b>투명해져</b> 사라진다. 실루엣이 폴리곤이
+          아니라 페이드로 끝난다.
+        · 확장 구간은 blendWeight = max(0, 1−distSq) 가 이미 0이라 <b>굴곡·측면
+          보정이 안 들어가고 기준 타원면 그대로</b>다. 즉 넓혀도 원근으로
+          뭉개진 귀·관자놀이 픽셀이 튀어나올 일이 없다(위 경계 주석의 걱정).
+
+     ⚠ inFaceBound(t≤1)는 <b>한 글자도 안 건드린다</b>. 얼굴폭 pre-pass·z진단·
+       이마이음매가 전부 그 자를 쓰기 때문이다 — 그걸 같이 넓히면 ellAForFace와
+       FACE_Z_TO_SKULL 재맞춤까지 동시에 움직여서, 한 번에 하나만 바꾼다는
+       이 파일의 원칙을 깬다. 여기서 새로 생기는 것은 <b>삼각형 보존 범위와
+       알파</b> 둘뿐이다.
+     되돌리기: FACE_BOUND_FIT.on = false (산술까지 예전과 동일) */
+  /* (2026-09-14 3차) FACE_BOUND_FIT는 <b>최상위</b>로 옮겼다 — 두피면이
+     "얼굴이 불투명한 자리"를 알아야 해서(fadeIn을 그쪽에서도 읽는다).
+     값은 그대로다. 위 faceBoundEllipseNorm 옆에 있다. */
+  function faceBoundT(idx){ return Math.sqrt(distSqFromBound(idx)); }
+  /* 정점 알파 — fadeIn 이전 1, fadeOut 이후 0, 사이는 smoothstep(선형보다 테두리가
+     덜 띠처럼 보인다). on=false면 항상 1이라 재질이 예전과 동일해진다. */
+  function faceEdgeAlpha(idx){
+    if(!FACE_BOUND_FIT.on) return 1;
+    const t = faceBoundT(idx);
+    const a = FACE_BOUND_FIT.fadeIn, b = FACE_BOUND_FIT.fadeOut;
+    if(!(b > a)) return t <= a ? 1 : 0;
+    const u = clamp((t - a) / (b - a), 0, 1);
+    return 1 - u*u*(3 - 2*u);
+  }
+
+  // ── 얼굴 전용 타원 폭 확정 (splay 방지) ──
+  // 실제 메쉬에 들어가는(경계 안) 정점들의 localX 최대치를 재서, ELL_A가 그보다
+  // 좁으면 얼굴 폭(+3% 여유)까지 넓힌다. 이러면 모든 얼굴 정점이 타원 안(inside≤1)에
+  // 들어와 곡면을 타고 감긴다. yLocal도 세로로 벗어나면 같은 옆벽이 생기므로 함께 반영.
+  {
+    let faceMaxX = 0, faceMaxY = 0, _yT = -Infinity, _yB = Infinity;
+    for(let i=0;i<vertCount;i++){
+      if(!inFaceBound(i)) continue;
+      const p = raw[i];
+      const lx = Math.abs(projector.toMeshX(p.x));
+      const lyS = projector.toMeshY(p.y) - 0.15;   // <b>부호 있는</b> 값 — 자 섞기에 필요
+      const ly = Math.abs(lyS);
+      if(lx > faceMaxX) faceMaxX = lx;
+      if(ly > faceMaxY) faceMaxY = ly;
+      if(lyS > _yT) _yT = lyS;
+      if(lyS < _yB) _yB = lyS;
+    }
+    _faceYTop = _yT; _faceYBot = _yB;
+    try{
+      const _s0 = getDisplaySkullEllipsoid();
+      _rulerSk = (_s0 && _s0.a > 1e-6 && _s0.b > 1e-6 && _s0.c > 1e-6) ? _s0 : null;
+    }catch(e){ _rulerSk = null; }
+    /* ── 얼굴이 두상보다 <b>넓은 타원</b>에 감긴다 (2026-08-31 12차) ───────────
+       사용자: "폼파두르 적용 버전을 보니까 얼굴이 원래 두상타원에서 좀 뜨네."
+       원인은 이 줄이다. 얼굴 메쉬는 여기서 넓힌 ellAForFace에 감기는데, 실제로
+       <b>그려지는</b> 두개골·두피·헤어 투영은 전부 원래 ELL_A를 쓴다(바로 아래
+       주석이 "전역 두상/스컬/헤어 투영은 그대로 유지"라고 스스로 적어 놨다).
+       두 면이 다르면 얼굴이 두상 실루엣 밖으로 부풀어 <b>뜬 것처럼</b> 보인다 —
+       한 값(두상 폭)을 두 곳이 각자 쓰는, 이 파일 작업원칙 (3)의 위반이다.
+
+       지금 당장 ELL_A로 되돌리면 <b>옆벽 splay</b>가 되살아난다(관자놀이 정점이
+       타원 밖으로 나가 z가 바닥쳐 옆으로 펼쳐진다 — 위 주석의 그 증상). 그래서
+       두 실패 사이를 잇는 손잡이를 둔다:
+         blend = 1 → 지금까지와 <b>산술까지 동일</b>(얼굴 폭까지 넓힘, splay 없음, 뜸)
+         blend = 0 → 두상과 같은 폭(안 뜸, splay 위험)
+       실기기에서 뜨는 정도를 보고 이 숫자 하나만 내리면 된다. 근본 해결은 두상
+       폭 자체를 얼굴 실측까지 넓히는 것인데, 그건 헤어 투영·두피면까지 같이
+       움직이는 일이라 별도 항목으로 둔다. */
+    const widened = ELL_A + (Math.max(ELL_A, faceMaxX * 1.03) - ELL_A) * FACE_WIDTH_FIT.blend;
+    console.log('[진단·얼굴폭] ELL_A(두상 적도폭)='+ELL_A.toFixed(3)
+      +' | 얼굴 실제 최대폭='+faceMaxX.toFixed(3)
+      +' → 얼굴 타원폭='+widened.toFixed(3)
+      +(widened>ELL_A+1e-4 ? ' (넓혀서 splay 방지)' : ' (변화 없음)')
+      +' | 얼굴 최대세로='+faceMaxY.toFixed(3)+' vs ELL_B='+ELL_B.toFixed(3));
+    ellAForFace = widened;
+    /* 자 교체가 실제로 걸렸는지, 그리고 <b>내접이 맞는지</b>를 한 줄로 남긴다 —
+       tMax가 1을 넘으면 얼굴이 두개골 타원 밖으로 나간 것이라 접선 연장이 일한다. */
+    if(FACE_RULER_FIT.on && _rulerSk){
+      const tMax = Math.sqrt((faceMaxX/_rulerSk.a)**2 + (faceMaxY/_rulerSk.b)**2);
+      console.log(...gyeolBoldArgs(['[얼굴 기준면·자] <b>두개골 자로 교체</b> — 폭 '
+        + ellAForFace.toFixed(3) + '→' + _rulerSk.a.toFixed(3)
+        + ' · 세로 ' + ELL_B.toFixed(3) + '→' + _rulerSk.b.toFixed(3)
+        + ' (깊이는 이미 ×' + (ELL_C>1e-6 ? (_rulerSk.c/ELL_C).toFixed(3) : '—') + ')'
+        + (FACE_RULER_FIT.browBlend
+            ? '\n      섞는 범위: 얼굴 y범위 위 ' + (FACE_RULER_FIT.fullFrac*100).toFixed(0)
+              + '%까지 100% → ' + (FACE_RULER_FIT.zeroFrac*100).toFixed(0) + '%에서 0%'
+              + ' (그 아래 관자놀이·턱은 <b>한 점도 안 움직입니다</b>)'
+            : '\n      얼굴 <b>전체</b>에 적용(browBlend=false)')
+        + '\n      얼굴 최대 t=' + tMax.toFixed(3)
+        + (tMax <= 1.0001 ? ' ≤ 1 → <b>내접</b>. splay 위험 없음'
+                          : ' > 1 → 테두리 ' + FACE_RULER_FIT.edgeT + ' 밖은 접선 연장으로 잇습니다')
+        + '\n      되돌리기: FACE_RULER_FIT.on=false']));
+    }
+  }
+
+  // ── 좌/우 측면 사진 기반 코/턱/이마 깊이(Z) 실측 보정(2026-07-14 추가) ──
+  // 사용자 요청: "측면 사진의 z값등의 정보를 이용해서 안면세부조정하는 기능을
+  // 추가해봐" — 이전 세션에 "좌/우 사진으로 깊이 실측 보정(추천)"으로 골라
+  // 뒀다가 목/정수리 버그가 우선순위에서 앞서 미뤄뒀던 바로 그 작업.
+  // 배경: 위 reliefZLocal(=Z_SIGN*p.z*...)은 front 사진 한 장에서 MediaPipe가
+  // 추정한 z값을 쓰는데, 이건 모노큘러(단안) 추정치라 "코가 실제로 얼마나
+  // 튀어나왔는지" 같은 절대 돌출량은 원래 부정확하기로 알려져 있음(2D 이미지
+  // 한 장만으로는 깊이가 근본적으로 모호함 — 이게 정면 얼굴 사진만으로 깊이를
+  // 재는 것의 이론적 한계).
+  // 반면 좌/우 측면 사진에서는 다름 — 카메라를 옆에서 보고 있으니 얼굴의
+  // 앞뒤 깊이(코가 얼마나 앞으로 나왔는지)가 이미지의 좌우 위치로 "직접"
+  // 나타남(정면에서는 안 보이던 정보가 옆에서는 보임). 이 원리는 이미
+  // projectImagePointToHead(헤어 가닥 뿌리를 좌/우 실측 회전으로 투영하는,
+  // 이미 실기기로 확인된 함수)가 쓰고 있는 것과 동일 — 그 함수를 그대로
+  // 재사용해서 "코끝·턱끝·이마" 세 지점(이 파일이 이미 detectFaceLandmarks
+  // 에서 nose/chin/forehead로 쓰는 바로 그 랜드마크 인덱스 1/152/10 — 새
+  // 인덱스를 추측하지 않고 이미 검증된 것만 사용)의 좌/우 사진 속 실제
+  // 위치를 실측 회전으로 월드 좌표까지 투영해서 "실측 Z"를 얻는다.
+  // 이 실측 Z와, 지금 이 함수가 정면 사진만으로 그 같은 지점에 매기고 있는
+  // Z(=ellipsoidZ+reliefZLocal) 사이의 차이(deltaZ)를 계산해서, 그 지점
+  // 주변에만(가우시안 감쇠) 국소적으로 더해준다 — 코 하나만 실측이 어긋나도
+  // 얼굴 전체가 아니라 코 주변만 밀리게.
+  // ⚠ 정직한 한계: (1) 좌/우 사진 둘 다 없거나 포즈 신뢰도가 낮으면(옆모습이
+  // 잘 안 찍혔거나 랜드마크 감지 실패) 그 지점은 조용히 보정을 건너뛰고
+  // 기존 방식 그대로 씀 — 실패해도 깨지지 않음. (2) 그림자·안경·헤어 등으로
+  // 측면 랜드마크 자체가 부정확할 수 있어, 위 목(neck) 버그 때와 같은
+  // 이유로 deltaZ를 ±0.6*ELL_C로 clamp해서 오탐이 코를 스파이크처럼
+  // 튀어나오게 만드는 것을 막음. (3) 아직 실기기 재확인 전.
+  const PROFILE_DEPTH_ANCHORS = [
+    { idx: 1,   label: '코끝' },   // detectFaceLandmarks의 nose=lm[1]과 동일 인덱스
+    { idx: 152, label: '턱끝' },   // 〃 chin=lm[152]
+    { idx: 10,  label: '이마' },   // 〃 forehead=lm[10]
+  ];
+  const PROFILE_DEPTH_FALLOFF_SIGMA = 0.18; // 보정 영향 반경(메쉬 로컬 단위) — ELL_A(대략 0.3~0.4)의 절반 수준
+
+  // ── (2026-07-19) 측면 실측 깊이를 얼굴 "전체 정점"으로 확장 ──
+  // 사용자 지적: outputFacialTransformationMatrix(실측 회전)를 헤어에는 4장
+  // 전부 적용하면서 얼굴은 front 단안 z만 쓰고 측면 실측은 코·턱·이마 3점에만
+  // 쓰고 있었음 — "안 쓸 거면 헤어처럼 전체를 같은 방식으로 통합하면 연결부위
+  // 문제가 없다". 그 통합의 올바른 형태: front 자체엔 회전을 걸지 않되(막대기
+  // 버그 방지 — front는 월드 기준 유지), 깊이(z)만은 465개 나머지 정점도
+  // 좌/우 측면 실측(projectImagePointToHead, 헤어와 동일 경로)으로 받아온다.
+  // 안전장치는 3앵커 버전과 동일하게 전 정점에 적용:
+  //   · 측면 신뢰도<0.5(어림 각도)면 그 뷰 스킵
+  //   · 측면 투영이 타원 밖(귀 너머 등)이면 그 정점 스킵(null 반환)
+  //   · 좌/우가 크게 어긋나면(오탐) 그 정점 스킵
+  //   · deltaZ는 ±0.6*ELL_C로 clamp(스파이크 방지)
+  //   · 측면 실측이 없는 정점은 조용히 front 방식 유지(실패해도 안 깨짐)
+  // 3앵커 방식(가우시안 확산)과 달리 정점별 직접 실측이라, 실측이 있는
+  // 정점은 그 값을 직접 쓰고 없는 정점만 front로 폴백 — 확산 겹침이 없다.
+  // 반환: 정점 idx → deltaZ 맵(Float32Array, NaN=측면 실측 없음→front 유지).
+  const USE_FULL_PROFILE_DEPTH = true; // 문제 생기면 false로 → 기존 3앵커 방식
+  let _fullProfileHitCount = 0; // [진단용] 측면 실측이 실제 적용된 정점 수
+  /* ── (2026-07-26 중복 통합) 측면 실측 깊이 공통 로직 ──────────────────
+     computeFullProfileDepthMap(전 정점)과 computeProfileDepthCorrections(3앵커)이
+     "정면 추정 Z 계산 → 좌/우 실측 Z 수집 → 모순 검사 → 신뢰도 가중 평균"이라는
+     같은 절차를 각자 복제하고 있었다. 식·상수·판정 임계 전부 동일했으므로 아래
+     3개로 뽑아 양쪽이 같이 쓴다. 동작 변경 없음.
+     ※ usableSideViews는 루프 중 state가 안 바뀌므로 한 번만 구해 공유해도 동일. */
+  /* ── 측면 깊이를 <b>믿을 수 있는 각도</b>인가 (2026-08-31) ────────────────────
+     여태 이 게이트는 getViewPoseConfidence만 봤다. 그런데 그 값이 말하는 것은
+     "포즈 행렬이 PnP로 풀렸는가"이지 "<b>깊이를 잴 만큼 돌아갔는가</b>"가 아니다 —
+     정면에 가까운 사진도 랜드마크만 잘 잡히면 신뢰도가 그냥 1.00으로 나온다.
+     (이 손님 실기기 로그: left yaw <b>26.7°</b> 신뢰도 1.00 / right <b>−22.2°</b> 신뢰도 1.00.)
+
+     그 각도에서 projectImagePointToHead가 돌려주는 z는 사실상 <b>두상 타원면 그 자체</b>다.
+     옆으로 안 돌아갔으니 사진에 새 깊이 정보가 없고, 함수는 이미지 점을 두상 표면에
+     쏘아 맞히는 일을 할 뿐이기 때문이다. 그런데 아래 합성은 실측이 있는 정점의 z를
+     그 값으로 <b>덮어쓴다</b>(map[i] = 실측Z − 정면Z 를 더하면 최종 z = 실측Z).
+     결과 — 코·이마 굴곡이 통째로 지워지고 얼굴이 타원면에 밀착한 <b>가면</b>이 된다.
+     실기기에서 "얼굴이 판때기로 나온다"고 보이던 것이 바로 이것이다.
+     경계 안 정점 468개 중 측면 실측이 걸리는 것이 200개 넘으므로, 얼굴 한가운데가
+     통째로 이 경로를 탄다.
+
+     이 파일은 <b>이미 알고 있었다</b> — 아래 [얼굴 z·항별] 로그 문구에 "깊이를
+     재려면 80~90°가 필요합니다"라고 적어 놓고, 정작 게이트는 각도를 안 봤다.
+     한쪽(로그)만 고쳐지고 다른 쪽(판정)은 안 고쳐진, 이 파일의 단골 모양이다.
+
+     고침: 각도로 한 번 더 거른다. 35° 미만이면 그 뷰는 깊이용으로 아예 안 쓰고,
+     35~55°는 선형으로 깎아 <b>부분만</b> 반영한다.
+     ※ 상한을 55°로 잡은 이유(사용자 지적, 8/31): "45도 이상 되면 좀만 더 돌아가도
+       <b>반대편 얼굴이 안 보여서</b>" — 즉 이 앱이 실제로 받을 수 있는 측면 사진은
+       45°언저리가 천장이다. 이론상 이상적인 80~90°를 상한으로 잡으면 신뢰도가
+       <b>영원히 1에 못 닿아</b> 게이트가 사실상 항상 걸린 것과 같아진다. 잴 수 있는
+       범위 안에서 눈금을 매겨야 그 안의 차이가 의미를 갖는다.
+     걸러진 경우 그 정점은 조용히 front 방식(타원면+굴곡)을 유지한다 — 예전에도
+     측면이 없으면 그렇게 동작했으므로 새 실패 모드가 아니다.
+     되돌리기: PROFILE_YAW_GATE.on = false */
+  const PROFILE_YAW_GATE = { on: true, minDeg: 35, fullDeg: 55 };
+  let _profileTrust = 0;   // [진단용] 실제로 먹은 측면 깊이 신뢰도(0~1)
+  function usableSideViews(){
+    const sides = ['left','right'].map(angle=>{
+      const lmSide = state.landmarks && state.landmarks[angle];
+      if(!lmSide || !lmSide.rawLandmarks || lmSide.rawLandmarks.length < 468) return null;
+      const confidence = getViewPoseConfidence(angle);
+      if(confidence < 0.5) return null;   // 어림 각도로는 이 보정에 부적합
+      const yawAbs = Math.abs(getViewYawDeg(angle));
+      const trust = PROFILE_YAW_GATE.on
+        ? clamp((yawAbs - PROFILE_YAW_GATE.minDeg)
+                / Math.max(1e-6, PROFILE_YAW_GATE.fullDeg - PROFILE_YAW_GATE.minDeg), 0, 1)
+        : 1;
+      FACE_BUILD.sideYaw[angle] = { yawAbs, trust };   // 진단 패널이 읽어 간다
+      if(trust <= 0) return null;   // 이 각도로는 깊이를 못 잰다 → front 유지
+      return { angle, raw: lmSide.rawLandmarks, confidence, trust };
+    }).filter(Boolean);
+    /* 가중평균은 신뢰도를 정규화해 버리므로(합으로 나눈다) trust를 confidence에
+       섞으면 사라진다. 그래서 <b>보정량 자체</b>에 곱할 스칼라로 따로 들고 있는다. */
+    _profileTrust = sides.reduce((m,s)=>Math.max(m, s.trust), 0);
+    return sides;
+  }
+  /* 정면 사진만으로 매겼을 Z(비교 기준) + 그 지점의 메쉬 로컬 좌표
+     ── ⚠ 이 값은 <b>아래 합성식과 글자 그대로 같아야</b> 한다 (2026-08-18 k-4) ──
+     측면 보정은 절대값이 아니라 <b>차</b>로 저장된다: map[i] = 실측Z − frontZ.
+     그리고 합성은 localZ = 기준면 + 굴곡 + map[i] 다. 그래서 여기서 뺀 기준과
+     저기서 더하는 기준이 <b>같을 때만</b> localZ = 실측Z가 된다.
+     그런데 2026-08-17 c가 합성식에만 FACE_Z_TO_SKULL(=두개골깊이/헐깊이)을
+     곱하고 <b>이쪽은 안 곱했다</b>. 그러면 측면으로 잰 정점이
+         실측Z − 타원면z×(1−k)
+     에 앉는다. k=0.871이면 얼굴 한가운데(타원면z≈0.5)에서 <b>1.25cm 함몰</b>이다.
+     실기기 로그의 "이마가 두상 표면보다 안쪽"이 이 몫이다.
+     한 값(기준면)을 두 곳이 각자 쓰다가 한쪽만 고쳐진 것 — 작업원칙 (3) 그 자체이고,
+     이 파일이 2026-08-09에 앵커/관측으로 똑같이 겪은 모양이다.
+     되돌리기: FACE_Z_FIX.matchBaseline = false */
+  function frontEstimatedZOf(p){
+    const localX = projector.toMeshX(p.x);
+    const yLocal = projector.toMeshY(p.y) - 0.15;
+    const dx = (p.x - boundCX) / boundRX, dy = (p.y - boundCY) / boundRY;
+    const frontBlend = Math.max(0, 1 - (dx*dx+dy*dy));   // distSqFromBound와 같은 식(확인함)
+    const kBase = FACE_Z_FIX.matchBaseline ? FACE_Z_TO_SKULL : 1;
+    return { localX, yLocal,
+             frontZ: ellipsoidZ(localX, yLocal) * kBase + frontBlend * (Z_SIGN * p.z * projector.bX * Z_DEPTH_SCALE) };
+  }
+  // 좌/우 실측 Z의 신뢰도 가중 평균. 둘이 모순되거나 쓸 값이 없으면 null.
+  // (좌/우가 서로 부호가 다르거나 크게 어긋나면 평균이 둘 다 못 믿는 값을 만든다 —
+  //  "둘 다 안 믿는다"가 "잘못 합친 값을 믿는다"보다 안전)
+  function sideMeasuredZ(idx, sides){
+    const perView = [];
+    for(const s of sides){
+      const sidePt = s.raw[idx];
+      if(!sidePt) continue;
+      const world = projectImagePointToHead(s.angle, sidePt.x, sidePt.y, widthFactor, heightFactor);
+      if(!world) continue;              // 타원 밖 → 이 뷰선 실측 불가
+      perView.push({ z: world.z, confidence: s.confidence, trust: s.trust, w: sideDepthWeight(s) });
+    }
+    if(!perView.length) return null;
+    if(perView.length === 2){
+      const [a,b] = perView;
+      const disagree = Math.abs(a.z - b.z) > 1.2*ELL_C || (a.z*b.z < 0 && Math.abs(a.z)>0.15*ELL_C && Math.abs(b.z)>0.15*ELL_C);
+      if(disagree) return null;
+    }
+    const wSum = perView.reduce((s,v)=>s+v.w, 0);
+    if(!(wSum > 0)) return null;        // 무게가 0이면 평균이 정의되지 않는다
+    const zSum = perView.reduce((s,v)=>s+v.z*v.w, 0);
+    return zSum / wSum;
+  }
+  function computeFullProfileDepthMap(){
+    const map = new Float32Array(vertCount).fill(NaN);
+    const sides = usableSideViews();
+    if(!sides.length) return map; // 쓸 만한 측면 없음 → 전부 front 폴백
+    for(let i=0;i<vertCount;i++){
+      if(distSqFromBound(i) > 1) continue; // 얼굴 경계 밖(뺨 끝·귀)은 front 유지(측면서도 원근으로 뭉개짐)
+      const realZ = sideMeasuredZ(i, sides);
+      if(realZ === null) continue;         // 측면 실측 없음/모순 → front 유지(NaN)
+      // (2026-08-31) 각도 신뢰도만큼만 반영 — 위 PROFILE_YAW_GATE 주석 참고.
+      map[i] = clamp((realZ - frontEstimatedZOf(raw[i]).frontZ) * _profileTrust,
+                     -0.6*ELL_C, 0.6*ELL_C);
+      _fullProfileHitCount++;
+    }
+    return map;
+  }
+  function computeProfileDepthCorrections(){
+    const out = [];
+    const sides = usableSideViews();
+    if(!sides.length) return out; // 좌/우 둘 다 없거나 신뢰도 낮음 — 보정 없이 기존 방식 유지
+    PROFILE_DEPTH_ANCHORS.forEach(anchor=>{
+      const { localX, yLocal, frontZ } = frontEstimatedZOf(raw[anchor.idx]);
+      const realZ = sideMeasuredZ(anchor.idx, sides);
+      if(realZ === null) return;    // 실측 불가/좌우 모순 — 이 지점은 보정 건너뜀
+      out.push({ idx: anchor.idx, localX, yLocal,
+                 // (2026-08-31) 전체맵과 <b>같은</b> 신뢰도 계수를 쓴다(두 경로가
+                 // 갈리면 얼굴에 또 단차가 생긴다 — 아래 "세로 2줄" 항목 참고).
+                 deltaZ: clamp((realZ - frontZ) * _profileTrust, -0.6*ELL_C, 0.6*ELL_C) });
+    });
+    return out;
+  }
+  const profileDepthCorrections = computeProfileDepthCorrections();
+  const fullProfileDepthMap = USE_FULL_PROFILE_DEPTH ? computeFullProfileDepthMap() : null;
+  /* 코끝(1)·턱(152)·이마(10)·미간(168)·왼뺨(234) 다섯 자리만 항별로 들여다본다.
+     전 정점을 찍으면 로그가 못 읽을 만큼 길어지고, 이 다섯이면 앞뒤가 갈린다. */
+  const _ZDBG = { 1:null, 152:null, 10:null, 168:null, 234:null };
+  /* (2026-09-12) 정점마다 <b>기준면 항만</b> 따로 남긴다 — [이마이음매]가 쓴다.
+     _ZDBG는 다섯 점뿐이라 윗줄 전체를 못 본다. 468칸 Float32 = 1.9KB. */
+  const _faceBaseZ = new Float32Array(vertCount).fill(NaN);
+
+  /* ── 굴곡 배율을 <b>cm 자</b>로 맞춘다 (2026-08-31) ──────────────────────────
+     Z_DEPTH_SCALE = 1.0은 "MediaPipe z를 그대로 쓴다"는 뜻인데, MediaPipe의 z는
+     <b>축척이 정의돼 있지 않다</b>(공식 문서도 "x와 대략 같은 축척"까지만 말한다).
+     사람·촬영거리·모델 버전마다 진폭이 달라서 상수 하나로는 어떤 손님은 코가 서고
+     어떤 손님은 안 선다 — 위 게이트를 고쳐 굴곡이 <b>지워지지 않게</b> 만들어도,
+     남은 굴곡이 원래 작으면 화면은 여전히 판때기다.
+
+     그래서 상수를 고정하지 말고 <b>결과를 재서</b> 맞춘다. 경계 안 정점의 굴곡
+     분포에서 (상위 2% − 중앙값)을 "코가 뺨보다 얼마나 나왔나"로 보고,
+     faceRulerCmPerUnit이 주는 cm/단위로 환산해서 목표(성인 평균 코 돌출 ≈2.0cm)에
+     못 미치면 그만큼만 키운다.
+     · <b>줄이지는 않는다</b>(gain ≥ 1) — 원래 충분히 나온 얼굴을 이 보정이 뭉개면
+       안 된다. 이 함수가 고치려는 증상은 "평평하다" 한 방향뿐이다.
+     · 상한 3배 — 잡티·안경 반사로 z가 튀는 얼굴에서 코가 폭발하는 것을 막는 안전선.
+     · 중앙값을 기준으로 삼는 이유: 평균은 코 하나에 끌려간다. 얼굴 대부분은
+       뺨·이마라 중앙값이 곧 "굴곡 0인 면"이다.
+     ⚠ 이 배율은 <b>굴곡 항에만</b> 걸린다. 기준면(타원면)에 걸면 두상 자체가
+       앞뒤로 늘어나 두피·헤어 투영면과 어긋난다(FACE_Z_TO_SKULL 주석과 같은 이유).
+     되돌리기: FACE_RELIEF_FIX.on = false */
+  const FACE_RELIEF_FIX = { on: true, targetCm: 2.0, maxGain: 3.0 };
+  let reliefGain = 1, _reliefCmBefore = null;
+  if(FACE_RELIEF_FIX.on){
+    const rs = [];
+    for(let i=0;i<vertCount;i++){
+      if(!inFaceBound(i)) continue;
+      rs.push(Z_SIGN * raw[i].z * projector.bX * Z_DEPTH_SCALE);
+    }
+    if(rs.length > 20){
+      rs.sort((a,b)=>a-b);
+      const med = rs[Math.floor(rs.length*0.50)];
+      const hi  = rs[Math.floor(rs.length*0.98)];
+      let cmPerUnit = 16.4;                       // 자 계산 실패 시 이 파일의 통상값
+      try{ const r = faceRulerCmPerUnit(faceMetrics); if(r && r.x > 1) cmPerUnit = r.x; }catch(e){}
+      _reliefCmBefore = Math.max(0, hi - med) * cmPerUnit;
+      if(_reliefCmBefore > 0.05){
+        reliefGain = clamp(FACE_RELIEF_FIX.targetCm / _reliefCmBefore, 1, FACE_RELIEF_FIX.maxGain);
+      }
+    }
+  }
+
+  /* ── (2026-10-27) 360 옆얼굴 윤곽으로 정중선 깊이 ─────────────────────────
+     사용자: "안면을 그릴 때 90도 사진도 포함시켜서 좀 더 정밀한 안면이 나오도록."
+     좌·우 기준 사진은 ±34° 안팎이라 위 PROFILE_YAW_GATE(35~55°)에 걸려 측면 깊이를 못 씀 → 지금까지 얼굴 깊이는
+     정면 사진의 MediaPipe z(굴곡)뿐이었음. 360 세트에는 진짜 옆모습이 있는데, 옆모습에서는 얼굴 인식이 안 잡혀(랜드마크 없음)
+     위 측면 경로(sideMeasuredZ)로는 못 씀.
+     그래서 랜드마크 대신 <b>사람 윤곽의 앞쪽 선</b>(= 옆얼굴 선: 이마·미간·코·입술·턱)을 씀(13b VIEWS360.faceProfiles).
+       세로 맞추기 = 정수리(사람 윤곽 맨 위)와 턱(옆선이 목으로 가파르게 들어가는 줄)을 정면의 정수리·턱 랜드마크에 맞춤
+                    (턱을 못 믿으면 VIEWS360 배율) — 옆 사진 1px = 정면 k px
+       깊이     = 그 줄의 앞쪽 끝 × k → 정면 투영기와 같은 자(bX)로 메쉬 단위
+       기준     = 깊이의 원점은 모르므로 정중선 정점들에서 "지금 깊이 − 옆선 깊이"의 중앙값만큼 옮김(얼굴 전체 위치는 그대로,
+                  코 높이·입술·턱 끝의 <b>모양</b>만 옆선으로)
+       퍼뜨리기 = 정중선에서 잰 보정을 같은 높이의 정점에 좌우 가우시안(sigmaCm)으로 · 얼굴 경계에서는 0(두피와 이음매 유지)
+     앞쪽 끝이 머리카락인 줄(앞머리가 이마를 덮음)은 안 씀. 진단: [360 뷰] 콘솔 VIEWS360.lines() · FACE_BUILD.prof360
+     끄기 FACE_PROFILE360.on = false */
+  function zTermsNoP360(i){
+    const p = raw[i];
+    const localX = projector.toMeshX(p.x);
+    const yLocal = projector.toMeshY(p.y) - 0.15;
+    const reliefZLocal = Z_SIGN * p.z * projector.bX * Z_DEPTH_SCALE * reliefGain;
+    const blendWeight = Math.max(0, 1 - distSqFromBound(i));
+    let pc = 0;
+    if(fullProfileDepthMap && !Number.isNaN(fullProfileDepthMap[i])) pc = fullProfileDepthMap[i];
+    else for(let k=0;k<profileDepthCorrections.length;k++){
+      const c = profileDepthCorrections[k];
+      const ddx = localX - c.localX, ddy = yLocal - c.yLocal;
+      pc += Math.exp(-(ddx*ddx+ddy*ddy) / (2*PROFILE_DEPTH_FALLOFF_SIGMA*PROFILE_DEPTH_FALLOFF_SIGMA)) * c.deltaZ;
+    }
+    return { localX, yLocal, z: faceBaseZLocal(localX, yLocal) * FACE_Z_TO_SKULL + blendWeight * reliefZLocal + pc };
+  }
+  const prof360Map = (function(){
+    FACE_BUILD.prof360 = null;
+    const P = (typeof FACE_PROFILE360 !== 'undefined') ? FACE_PROFILE360 : null;
+    if(!P || !P.on){ FACE_BUILD.prof360 = { why: '꺼짐(FACE_PROFILE360.on=false)' }; return null; }
+    let list = null;
+    try{ list = (typeof VIEWS360 !== 'undefined' && VIEWS360.faceProfiles) ? VIEWS360.faceProfiles() : null; }catch(e){ list = null; }
+    if(!list || !list.length){ FACE_BUILD.prof360 = { why: '360 세트의 옆모습 사진 없음' }; return null; }
+    const fmk = state.hairMasks && state.hairMasks.front;
+    const ref = (typeof VIEWS360 !== 'undefined') ? VIEWS360.ref : null;
+    if(!fmk || !ref || !(ref.top >= 0) || typeof lm.chinY !== 'number'){ FACE_BUILD.prof360 = { why: '정면 정수리·턱을 못 잼' }; return null; }
+    const fw = fmk.w, fh = fmk.h, topF = ref.top, chinF = lm.chinY * fh;
+    if(!(chinF - topF > 8)){ FACE_BUILD.prof360 = { why: '정면 정수리→턱이 너무 짧음' }; return null; }
+    const best = list[0].prof.score;
+    const use = list.filter(q => q.prof.score >= (P.minScore || 0) && q.prof.score >= best * (P.pairFrac || 0.7)).slice(0, 2);
+    if(!use.length){ FACE_BUILD.prof360 = { why: '옆모습답지 않음(점수 ' + best.toFixed(3) + ' < ' + P.minScore + ')' }; return null; }
+    const MID = [10,151,9,8,168,6,197,195,5,4,1,19,94,2,164,0,11,12,13,14,15,16,17,18,200,199,175,152];
+    const cur = MID.map(zTermsNoP360);
+    const views = [];
+    use.forEach(q => {
+      const pr = q.prof;
+      let k = (chinF - topF) / Math.max(1e-6, (pr.chin - pr.top) * pr.ky), kSrc = '정수리·턱';
+      if(!(k > 0.5 && k < 2.5) && q.ratio > 0){ k = q.ratio; kSrc = '360 배율'; }
+      if(!(k > 0.5 && k < 2.5)) return;
+      const zs = MID.map(idx => {
+        const yImgP = pr.top * pr.ky + (raw[idx].y * fh - topF) / k;
+        const yr = yImgP / pr.ky, y0 = Math.floor(yr), fr = yr - y0;
+        if(y0 < 0 || y0 + 1 >= pr.mh) return NaN;
+        const a = pr.F[y0], b = pr.F[y0+1];
+        if(!(a === a) || !(b === b) || pr.HF[y0] || pr.HF[y0+1]) return NaN;
+        const fPx = (a * (1 - fr) + b * fr) * pr.kx;               // 옆 사진 px(앞쪽이 +)
+        return fPx * k / fw * projector.bX;                          // 정면 투영기 자로 메쉬 단위
+      });
+      const off = [];
+      zs.forEach((z, j) => { if(z === z) off.push(cur[j].z - z); });
+      if(off.length < 8) return;
+      off.sort((a, b) => a - b);
+      const o = off[off.length >> 1];
+      views.push({ key: q.key, kSrc, k, zs: zs.map(z => z === z ? z + o : NaN) });
+    });
+    if(!views.length){ FACE_BUILD.prof360 = { why: '옆 사진 줄을 정면에 못 맞춤(배율 범위 밖·앞머리)' }; return null; }
+    let cmU = 16.4; try{ const r = faceRulerCmPerUnit(faceMetrics); if(r && r.x > 1) cmU = r.x; }catch(e){}
+    const lim = 0.6 * ELL_C, samp = [];
+    MID.forEach((idx, j) => {
+      let s = 0, n = 0; views.forEach(v => { if(v.zs[j] === v.zs[j]){ s += v.zs[j]; n++; } });
+      if(!n) return;
+      samp.push({ y: cur[j].yLocal, x: cur[j].localX, d: clamp(s / n - cur[j].z, -lim, lim), idx });
+    });
+    if(samp.length < 6){ FACE_BUILD.prof360 = { why: '맞춘 정중선 점 ' + samp.length + '개(6 필요)' }; return null; }
+    samp.sort((a, b) => b.y - a.y);
+    function at(y){                                                   // 높이로 보간(위→아래)
+      if(y >= samp[0].y) return samp[0];
+      const L = samp[samp.length - 1]; if(y <= L.y) return L;
+      for(let t = 0; t + 1 < samp.length; t++){
+        const A = samp[t], B = samp[t+1];
+        if(y <= A.y && y >= B.y){ const u = (A.y - y) / Math.max(1e-9, A.y - B.y); return { x: A.x + (B.x - A.x) * u, d: A.d + (B.d - A.d) * u }; }
+      }
+      return L;
+    }
+    const sg = (P.sigmaCm || 1.8) / cmU, map = new Float32Array(vertCount);
+    for(let i = 0; i < vertCount; i++){
+      const bw = Math.max(0, 1 - distSqFromBound(i)); if(!(bw > 0)) continue;
+      const lx = projector.toMeshX(raw[i].x), yl = projector.toMeshY(raw[i].y) - 0.15, m = at(yl), dx = lx - m.x;
+      map[i] = m.d * bw * Math.exp(-dx * dx / (2 * sg * sg));
+    }
+    const ds = samp.map(q => Math.abs(q.d)).sort((a, b) => a - b), nz = samp.filter(q => q.idx === 1)[0];
+    FACE_BUILD.prof360 = { used: views.map(v => v.key + '(' + v.kSrc + ' ×' + v.k.toFixed(2) + ')').join(' + '), n: samp.length,
+      medCm: (ds[ds.length >> 1] * cmU).toFixed(2), maxCm: (ds[ds.length - 1] * cmU).toFixed(2), noseCm: nz ? (nz.d * cmU).toFixed(2) : '-' };
+    console.log('[얼굴 360 옆윤곽] ' + FACE_BUILD.prof360.used + ' · 정중선 ' + samp.length + '점 · 보정 중앙 ' + FACE_BUILD.prof360.medCm + 'cm · 최대 ' + FACE_BUILD.prof360.maxCm + 'cm · 코끝 ' + FACE_BUILD.prof360.noseCm + 'cm');
+    return map;
+  })();
+
+  const positions = new Float32Array(vertCount*3);
+  const uvs = new Float32Array(vertCount*2);
+  for(let i=0;i<vertCount;i++){
+    const p = raw[i];
+    // localX/yLocal: 두상 중심(0, 0.15, 0) 기준 로컬 좌표(회전 전) — projectImagePointToHead
+    // 와 동일하게 "그 뷰가 정면이라고 가정했을 때"의 평면좌표를 먼저 구한다.
+    const localX = projector.toMeshX(p.x);
+    const yLocal = projector.toMeshY(p.y) - 0.15;
+    const surfaceZLocal = ellipsoidZ(localX, yLocal);
+    // (2026-08-31) reliefGain — 위 FACE_RELIEF_FIX 주석 참고. 기본값은 1이라
+    // 그 스위치를 끄면 예전과 <b>산술까지 동일</b>하다.
+    const reliefZLocal = Z_SIGN * p.z * projector.bX * Z_DEPTH_SCALE * reliefGain;
+    // 블렌드: 경계(distSq=1)에서 0(=타원 표면값 그대로, 이음새 없이 밀착),
+    // 중심(distSq=0)에서 1(=실측 굴곡 전부 반영). 필터링에 쓰는 것과 같은
+    // 타원이라 딱 경계선에서 자연스럽게 표면값과 일치함.
+    const blendWeight = Math.max(0, 1 - distSqFromBound(i));
+    // 좌/우 측면 실측 보정. 전체맵(USE_FULL_PROFILE_DEPTH)에 이 정점의 직접
+    // 실측이 있으면 그 값을 그대로 쓰고(정점별 실측 우선), 없으면 기존 3앵커
+    // 가우시안 확산으로 폴백 — 확산은 실측이 아예 없던 정점을 코/턱/이마
+    // 실측의 "번짐"으로 근사하던 것이므로, 직접 실측이 있으면 확산보다 정확.
+    /* ⚠ 미해결 (2026-07-27, 세부작업으로 미룸) — 얼굴에 <b>세로로 진한 띠 2줄</b>.
+       사용자: "안에서 작업할 때도 세로로 좀 진한 부분이 있었어. 2군데 정도."
+       (밖에서 찍을 때 생기는 흩뿌린 잡티와는 다른, 이전부터 있던 증상이다.)
+       원인은 바로 아래 분기다. 정점마다 깊이 보정을 <b>두 가지 다른 공식</b>으로
+       구한다 — 측면에서 직접 실측된 정점은 그 값을 그대로, 아닌 정점은 3앵커
+       가우시안 확산으로. 두 값이 경계에서 이어지지 않아 <b>깊이에 단차</b>가 생기고,
+       그 주름이 빛을 다르게 받아 띠로 보인다.
+       실측 정점은 좌·우 측면 사진이 볼 수 있는 영역이라, 그 경계가 양 볼을 따라
+       세로로 내려온다 → 정확히 "세로 2줄"(로그: 측면 실측 기여 정점 222/468).
+       고칠 방향: 분기로 값을 고르지 말고 <b>보정값 배열을 먼저 다 만든 뒤</b>
+       메쉬 인접(FACE_MESH_TRI_V로 만든 이웃 관계)으로 몇 회 라플라시안 평활을
+       걸어 단차를 녹인다. 어느 쪽이 실측인지 구분할 필요 없이 경계만 부드러워진다. */
+    let profileCorrectionZ = 0;
+    if(fullProfileDepthMap && !Number.isNaN(fullProfileDepthMap[i])){
+      profileCorrectionZ = fullProfileDepthMap[i];
+    } else {
+      for(let k=0;k<profileDepthCorrections.length;k++){
+        const c = profileDepthCorrections[k];
+        const ddx = localX - c.localX, ddy = yLocal - c.yLocal;
+        const w = Math.exp(-(ddx*ddx+ddy*ddy) / (2*PROFILE_DEPTH_FALLOFF_SIGMA*PROFILE_DEPTH_FALLOFF_SIGMA));
+        profileCorrectionZ += w * c.deltaZ;
+      }
+    }
+    /* (2026-08-17 c) 기준면만 두개골로 옮긴다 — 근거는 위 FACE_Z_TO_SKULL 주석.
+       (2026-09-13) 깊이뿐 아니라 <b>폭·세로도</b> 두개골 자로 — 위 FACE_RULER_FIT 주석.
+       surfaceZLocal(헐 자)은 그대로 둔다: frontEstimatedZOf의 잔차 기준이라 건드리면
+       측면 실측 정점만 옛 면으로 끌려간다. */
+    const baseSurf = faceBaseZLocal(localX, yLocal);
+    const baseTerm = baseSurf * FACE_Z_TO_SKULL;
+    const reliefTerm = blendWeight * reliefZLocal;
+    const localZ = baseTerm + reliefTerm + profileCorrectionZ + (prof360Map ? prof360Map[i] : 0);   // (2026-10-27) 360 옆얼굴 윤곽
+    /* [진단] 세 항을 따로 남긴다 — "코가 나온 건가 이마가 들어간 건가"를
+       눈이 아니라 숫자로 가른다. 타원면z와의 차가 곧 함몰/돌출 깊이다. */
+    _faceBaseZ[i] = baseTerm;
+    if(_ZDBG[i] !== undefined) _ZDBG[i] = { surf: baseSurf, surfHull: surfaceZLocal, base: baseTerm,
+      relief: reliefTerm, prof: profileCorrectionZ, z: localZ,
+      measured: !!(fullProfileDepthMap && !Number.isNaN(fullProfileDepthMap[i])) };
+    // front는 회전 없이 그대로 월드 좌표로 씀 — 위 되돌림 항목 참고(회전을
+    // 걸면 코처럼 튀어나온 점이 지렛대처럼 크게 밀려서 "막대기에 매달린"
+    // 모양이 됨. 나머지 두상 시스템도 front 자신의 실측 회전은 쓰지 않음).
+    positions[i*3+0] = localX;
+    positions[i*3+1] = yLocal + 0.15; // 중심 오프셋 복원
+    positions[i*3+2] = localZ;
+    uvs[i*2+0] = p.x;
+    uvs[i*2+1] = 1 - p.y; // 이미지 y(아래로 증가) → UV v(위로 증가) 반전
+  }
+  /* ══════════════════════════════════════════════════════════════════
+     [이마이음매] 얼굴 윗줄과 두개골 구 사이가 뜨는가 (2026-09-12)
+     ─────────────────────────────────────────────────────────────────
+     사용자: "두상이랑 안면부의 이마랑 이어지는 게 당연한 거거덩? 근데 어느쪽이
+     잘못되어잇는건지 간격이 떠."
+     같은 말을 8/17에도 하셨고("두피면 색깔은 픽셀에서 뽑아서 넣어. 근데 안면부하고
+     이어지지 않아"), 9/09에도 하셨다("이마 위도 색깔 그런대로 괜찮아. <b>그런데
+     틈은 아직 있고</b>"). 두 번 다 <b>색</b>만 고쳤다 — 위 SCALP_SKIN 배너가
+     "이음매(틈)가 <b>색으로는</b> 사라진다"고 스스로 적어 둔 그대로다.
+
+     이번엔 고치기 전에 <b>잰다</b>. 재는 것은 딱 하나 — 얼굴 메쉬 맨 윗줄
+     정점에서, 같은 (x,y)의 두 표면 z가 얼마나 벌어지는가:
+         얼굴면  = surfaceZLocal × FACE_Z_TO_SKULL   (여기서 쓴 기준면 그대로)
+         두개골면 = skull.c·kIn · √(1 − (x/(a·kIn))² − (y/(b·kIn))²)
+     ⚠ 굴곡(relief)·측면보정은 <b>일부러 뺀다</b>. 그건 기준면에서 벗어난 잔차라
+       이마에서도 0이 아니고, 섞으면 "면이 어긋난 것"과 "이마가 원래 들어간 것"을
+       못 가른다. 우리가 묻는 건 두 <b>기준면</b>이 같은 면인가다.
+
+     읽는 법 — 이게 이 로그의 전부다:
+       · 틈이 어디서나 <b>일정</b>하고 skull.c×(1−kIn)과 같다 → drawInset이 살아
+         있는 것(①). depthOffset이 안 먹은 것이니 그 스위치 한 줄이다.
+       · 틈이 자리마다 다르고 <b>이마 꼭대기(가운데 위)에서 제일 크다</b> → 두 타원이
+         서로 다른 자인 것(②). 얼굴은 ellAForFace(넓힌 폭)·ELL_B·ELL_C를 쓰고
+         두개골은 skull.a/b/c를 쓴다 — 깊이(c)만 FACE_Z_TO_SKULL로 맞췄고 폭·세로는
+         안 맞췄다. 곡률이 센 이마 꼭대기에서 그 차가 제일 크게 벌어진다.
+       · 틈이 <b>음수</b>면 얼굴이 두개골 <b>안으로</b> 들어간 것 — 그러면 화면에
+         보이는 띠는 틈이 아니라 두개골 면이 얼굴을 뚫고 나온 것이다.
+     ── 9/12 로그를 읽고 나서 (2026-09-13) ─────────────────────────────
+     실기기 로그:
+         [이마이음매] 얼굴 윗줄 <b>5점</b> · 틈 중앙값 +0.0074 (0.14cm)
+                      (최소 0.0025 · 최대 0.0190) · + = 얼굴이 두개골보다 앞
+           가운데(|x|<0.09) 0.0034 · 가장자리(|x|>0.20) <b>NaN</b>
+           → "일정한 틈입니다(가운데·가장자리 차 NaN)"
+     ⚠ 이 판정은 <b>틀렸다</b>. 그리고 틀린 이유가 위 "읽는 법"이 아니라
+       <b>재는 쪽</b>에 있었다 — 세 군데다.
+       ① 띠가 종이처럼 얇았다. band = yTopMost − |yTopMost|×0.15는 "위에서 15%"가
+          아니라 "<b>원점에서의 거리</b>의 15%"다. 얼굴 윗줄이 원점 근처면 띠가
+          0에 수렴한다 → 표본 5점.
+       ② 가장자리 칸이 비었다. |x| > skull.a×0.55 = 0.20인데, 그 5점은 이마
+          꼭대기라 |x|가 0.09를 겨우 넘는다 → out=[] → gOut=<b>NaN</b>.
+       ③ NaN이 판정을 삼켰다. `spread > |med|×0.30`은 spread가 NaN이면 <b>false</b>라,
+          "못 가른다"가 조용히 "<b>일정한 틈</b>"으로 떨어진다. 못 잰 것을
+          쟀다고 말한 자리다.
+     그 5점만 봐도 답은 이미 나와 있었다: <b>최소 0.0025 → 최대 0.0190</b>은 7.6배다.
+     일정한 틈이 7.6배로 변할 수는 없다. 가운데 0.0034 < 중앙값 0.0074도 같은 말이다
+     — 틈은 <b>중심에서 멀수록 커진다</b>. 그게 ②의 지문이다.
+
+     숫자로도 닫힌다. 같은 로그에서 ELL_A=0.417 · ellAForFace=0.417 ·
+     FACE_Z_TO_SKULL=0.870이고, 판정이 쓴 문턱에서 skull.a = 0.20/0.55 ≈ 0.364.
+     즉 skull.a/ellAForFace = 0.873 ≈ 0.870 — 두피 타원은 헐 타원을 <b>세 축 모두</b>
+     0.87배 한 닮은꼴이다. 그런데 얼굴 기준면은 깊이만 0.87배 하고 폭·세로는
+     헐 것을 그대로 쓴다:
+         얼굴면  = skull.c·√(1 − (x/ellA)²   − (y/ELL_B)²)
+         두개골면 = skull.c·√(1 − (x/skull.a)² − (y/skull.b)²)
+     반지름이 0이 아닌 한 앞쪽이 항상 크다 = 얼굴이 늘 <b>앞</b>이고, 중심에서
+     멀수록 벌어진다. 로그의 부호(+)·경향(중심<중앙값<최대)과 정확히 같다.
+     ⇒ ①(drawInset)도 "기준면이 통째로 밀림"도 아니다. <b>②, 두 타원이 다른 자</b>다.
+
+     ── 그래서 무엇을 고쳤나 ───────────────────────────────────────────
+     (가) <b>재는 쪽</b>을 먼저 고친다 — 위 ①②③. 띠를 얼굴 y 범위로 잡고,
+          가운데/가장자리를 <b>표본 자신의 |x| 범위</b>로 가르고(빌 수 없다),
+          NaN이면 "못 가름"이라고 말하게 한다. 덤으로 틈과 반지름의 상관을
+          같이 찍는다 — ②를 가리키는 건 결국 그 상관이다.
+     (나) 그럼에도 <b>진단이 시킨 대로 먼저 해 본다</b> — FACE_Z_TO_SKULL이다
+          (사용자: "진단값 틀린 건 알겠는데, 수치상 크지 않으니까 일단 해보고
+          아니면 되돌릴 거라고"). 근거가 있다: 틈 중앙값 0.0074는 <b>0.14cm</b>이고,
+          k를 그만큼 내리는 데 드는 값은 0.870→약 0.853 — 얼굴 한가운데 함몰도
+          같은 0.14cm다. 눈으로 안 보일 크기라 <b>싸게 시험할 수 있는 가설</b>이다.
+          ⚠ 단, ②가 맞다면 이 손잡이로는 <b>중앙값만</b> 0이 된다. 틈이 반지름을
+            따라가므로 가운데는 <b>음수</b>(얼굴이 두개골 안으로)가 되고 가장자리는
+            여전히 <b>양수</b>로 남는다. 그래서 아래 "고친 뒤" 로그는 중앙값이 아니라
+            <b>최소·최대의 부호</b>를 보라 — 둘 다 0 근처면 ③(통째 밀림)이 맞았던
+            것이고, 부호가 갈리면 ②가 맞고 이 손잡이는 되돌릴 자리다.
+     (다) 고치기 전/후를 <b>같은 자로 두 번</b> 잰다. 로그 두 줄이 곧 검증이다. */
+  const FACE_Z_SKULL_FIT = {
+    /* (2026-09-13) <b>껐다</b>. 위 (나)가 "부호가 갈리면 되돌릴 자리"라고 적어 뒀고,
+       [고친 뒤] 로그가 최소 −0.0173 · 최대 +0.0564로 정확히 그렇게 나왔다.
+       이제 자 자체를 맞췄으므로(FACE_RULER_FIT) 이 손잡이는 <b>할 일이 없다</b> —
+       켜 두면 이미 0인 틈을 중앙값 기준으로 또 밀어 이마를 도로 함몰시킨다.
+       자 맞춤이 실패했을 때만 비교용으로 잠깐 켜 본다. */
+    on: false,         // false면 예전과 <b>산술까지 동일</b> — 이게 되돌리기다
+    mode: 'measured',  // 'measured' = 윗줄 틈에서 역산 · 'manual' = k를 직접 지정
+    manualK: 0.853,    // mode:'manual'일 때 쓸 FACE_Z_TO_SKULL 절대값
+    maxAdjust: 0.06,   // 안전대 — k를 6%보다 크게는 못 움직인다(폭주 방지)
+    bandFrac: 0.15,    // 진단용 "윗줄" = 얼굴 y범위의 위 15%
+  };
+  const SCALP_SEAM = FACE_Z_SKULL_FIT;   // 아래 진단이 쓰는 bandFrac 한 곳만 공유
+  /* 재는 일을 함수로 뺐다 — 고치기 전/후에 같은 자를 두 번 대려면 한 벌이어야 한다. */
+  function measureForeheadSeam(when){
+    try{
+      const _sk = getDisplaySkullEllipsoid();
+      const _kIn = SCALP_SKIN.depthOffset
+                 ? 1
+                 : ((HAIR_SCALP3D.applyToHead && HAIR_SCALP3D.drawInset > 0)
+                     ? HAIR_SCALP3D.drawInset : 1);
+      if(!(_sk && _sk.a > 1e-6 && _sk.b > 1e-6 && _sk.c > 1e-6)) return null;
+      const sa = _sk.a*_kIn, sb = _sk.b*_kIn, sc = _sk.c*_kIn;
+      /* 윗줄 = 얼굴 <b>y 범위</b>의 위 bandFrac. (옛 식은 원점 거리 기준이라
+         얼굴이 원점 근처면 띠가 0으로 수렴했다 — 9/12의 5점이 그 자리다.) */
+      let yTop = -Infinity, yBot = Infinity;
+      for(let i=0;i<vertCount;i++){
+        if(!inFaceBound(i)) continue;
+        const yl = positions[i*3+1] - 0.15;
+        if(yl > yTop) yTop = yl;
+        if(yl < yBot) yBot = yl;
+      }
+      if(!isFinite(yTop) || !isFinite(yBot) || !(yTop - yBot > 1e-6)) return null;
+      const band = yTop - (yTop - yBot)*SCALP_SEAM.bandFrac;
+      const rows = [];
+      for(let i=0;i<vertCount;i++){
+        if(!inFaceBound(i)) continue;
+        const lx = positions[i*3+0], yl = positions[i*3+1] - 0.15;
+        if(yl < band) continue;
+        const faceBase = _faceBaseZ[i];
+        if(!isFinite(faceBase)) continue;
+        const inside = (lx/sa)*(lx/sa) + (yl/sb)*(yl/sb);
+        if(inside >= 1) continue;                  // 두개골 구 밖 — 비교 불가
+        const skullZ = sc * Math.sqrt(1 - inside);
+        rows.push({ i, lx, yl, u: inside, gap: faceBase - skullZ });
+      }
+      const cm = (typeof modelCmPerUnit === 'function' ? modelCmPerUnit() : null);
+      const asCm = v => (cm && isFinite(v)) ? ' (' + (v*cm).toFixed(2) + 'cm)' : '';
+      if(rows.length < 6){
+        console.warn('[이마이음매' + (when ? '·' + when : '') + '] 윗줄 표본 '
+          + rows.length + '점 — 6점 미만이라 <b>판정하지 않습니다</b>'
+          + '(얼굴 윗줄이 두개골 구 밖으로 나갔거나 띠가 너무 얇습니다).');
+        return null;
+      }
+      const gaps = rows.map(r=>r.gap).sort((a,b)=>a-b);
+      const med = gaps[gaps.length>>1];
+      const lo = gaps[0], hi = gaps[gaps.length-1];
+      /* 가운데/가장자리를 <b>표본 자신의 |x| 범위</b>로 가른다 — skull.a로 가르면
+         이마 꼭대기 표본에서는 가장자리 칸이 통째로 빈다(9/12의 NaN). */
+      let xMax = 0;
+      for(const r of rows) if(Math.abs(r.lx) > xMax) xMax = Math.abs(r.lx);
+      const mid = rows.filter(r => Math.abs(r.lx) <= xMax*0.34);
+      const out = rows.filter(r => Math.abs(r.lx) >= xMax*0.66);
+      const avg = arr => arr.length ? arr.reduce((s,r)=>s+r.gap,0)/arr.length : NaN;
+      const gMid = avg(mid), gOut = avg(out);
+      /* ── 좌·우를 <b>따로</b> 잰다 (2026-09-13) ──────────────────────────────
+         사용자: "정면에서 볼 때 왼쪽은 거의 붙었는데 <b>오른쪽은 조금 떨어졌어</b>."
+         지금까지 이 로그는 |x|로만 갈라서 좌우를 <b>합쳐</b> 버렸다 — 비대칭이
+         있어도 평균 안에서 사라진다. 못 재는 것을 쟀다고 말하지 않기 위해 나눈다.
+         ⚠ 읽는 법: 기준면끼리의 차라 자를 맞추면 좌·우 <b>둘 다</b> 0이 된다.
+           그런데도 화면이 비대칭이면 원인은 기준면이 아니라 <b>측면보정</b>이다 —
+           이 손님은 좌 50.8°(trust 0.79) · 우 41.2°(trust <b>0.31</b>)로 두 뷰의
+           신뢰도가 2.5배 다르다(위 sideDepthWeight 주석의 그 값). */
+      const gL = avg(rows.filter(r => r.lx < 0));
+      const gR = avg(rows.filter(r => r.lx > 0));
+      const lrGap = Math.abs(gL - gR);
+      const spread = Math.abs(gMid - gOut);
+      /* ②의 진짜 지문: 틈이 <b>중심에서 멀수록</b> 커지는가. 상관계수 하나면 된다. */
+      let rGapU = NaN;
+      {
+        const n = rows.length;
+        let su=0, sg=0; for(const r of rows){ su+=r.u; sg+=r.gap; }
+        const mu=su/n, mg=sg/n;
+        let suu=0, sgg=0, sug=0;
+        for(const r of rows){ const du=r.u-mu, dg=r.gap-mg; suu+=du*du; sgg+=dg*dg; sug+=du*dg; }
+        if(suu > 1e-18 && sgg > 1e-18) rGapU = sug/Math.sqrt(suu*sgg);
+      }
+      const insetGap = _sk.c*(1-_kIn);             // ①이라면 이 값과 같아야 한다
+      const ratio = (hi !== 0 && lo !== 0 && lo > 0) ? (hi/lo) : NaN;
+      /* 판정 — NaN은 <b>판정하지 않는다</b>. 못 잰 것을 쟀다고 말하지 않기 위해. */
+      let verdict;
+      if(!(Math.abs(med) > 1e-4)){
+        verdict = '두 기준면이 <b>이미 같습니다</b>'
+                + (when ? ' — 이음매가 닫혔습니다' : ' — 화면의 띠는 기하가 아니라 색·재질 쪽입니다(SCALP_SKIN)');
+      } else if(_kIn < 1 && Math.abs(med - insetGap) < Math.abs(med)*0.25){
+        verdict = '<b>① drawInset</b>입니다 — 틈이 skull.c×(1−kIn)=' + insetGap.toFixed(4)
+                + '과 같습니다. SCALP_SKIN.depthOffset=true로 두면 닫힙니다';
+      } else if(isFinite(rGapU) && rGapU > 0.6){
+        verdict = '<b>② 두 타원이 다른 자</b>입니다 — 틈이 중심에서 멀수록 커집니다'
+                + '(틈↔반지름² 상관 ' + rGapU.toFixed(2) + (isFinite(ratio) ? ' · 최대/최소 ×' + ratio.toFixed(1) : '') + ').'
+                + ' 깊이(c)만 FACE_Z_TO_SKULL로 맞췄고 폭(ellAForFace=' + ellAForFace.toFixed(3)
+                + ' vs skull.a=' + _sk.a.toFixed(3) + ')·세로(ELL_B=' + ELL_B.toFixed(3)
+                + ' vs skull.b=' + _sk.b.toFixed(3) + ')는 안 맞췄습니다';
+      } else if(isFinite(spread) && spread > Math.abs(med)*0.30){
+        verdict = '<b>② 두 타원이 다른 자</b>입니다 — 가운데와 가장자리가 ' + spread.toFixed(4)
+                + asCm(spread) + '만큼 <b>다르게</b> 벌어집니다';
+      } else if(!isFinite(spread) || !isFinite(rGapU)){
+        verdict = '<b>못 가릅니다</b> — 표본이 한쪽에 몰려 가운데·가장자리가 갈리지 않습니다'
+                + '(gMid=' + gMid.toFixed(4) + ' gOut=' + gOut.toFixed(4) + '). 판정을 보류합니다';
+      } else {
+        verdict = '<b>일정한 틈</b>입니다(가운데·가장자리 차 ' + spread.toFixed(4)
+                + ' · 틈↔반지름² 상관 ' + rGapU.toFixed(2) + ')'
+                + ' — drawInset은 아닌데(kIn=' + _kIn + ') 기준면이 통째로 밀려 있습니다.'
+                + ' FACE_Z_TO_SKULL=' + FACE_Z_TO_SKULL.toFixed(3) + '을 의심하세요';
+      }
+      console.log(...gyeolBoldArgs(['[이마이음매' + (when ? '·' + when : '') + '] 얼굴 윗줄 ' + rows.length + '점'
+        + ' · 틈 중앙값 <b>' + (med>=0?'+':'') + med.toFixed(4) + '</b>' + asCm(med)
+        + ' (최소 ' + lo.toFixed(4) + ' · 최대 ' + hi.toFixed(4) + ')'
+        + ' · + = 얼굴이 두개골보다 <b>앞</b>'
+        + '\n      가운데(|x|≤' + (xMax*0.34).toFixed(2) + ') ' + gMid.toFixed(4) + asCm(gMid)
+        + ' · 가장자리(|x|≥' + (xMax*0.66).toFixed(2) + ') ' + gOut.toFixed(4) + asCm(gOut)
+        + '\n      좌(x<0) ' + gL.toFixed(4) + asCm(gL) + ' · 우(x>0) ' + gR.toFixed(4) + asCm(gR)
+        + ' · <b>좌우차 ' + lrGap.toFixed(4) + '</b>' + asCm(lrGap)
+        + (isFinite(lrGap) && lrGap > 0.004
+            ? ' ⚠ 기준면이 좌우로 기울었습니다'
+            : ' — 기준면은 좌우 대칭. 화면이 비대칭이면 <b>측면보정</b>(좌 trust 0.79 vs 우 0.31)입니다')
+        + ' · 그리는 구 ×' + _kIn + ' → drawInset이 만들 틈 ' + insetGap.toFixed(4)
+        + '\n      자 대조: 폭 ' + ellAForFace.toFixed(3) + '/' + _sk.a.toFixed(3)
+        + ' = ×' + (ellAForFace>1e-6 ? (_sk.a/ellAForFace).toFixed(3) : '—')
+        + ' · 세로 ' + ELL_B.toFixed(3) + '/' + _sk.b.toFixed(3)
+        + ' = ×' + (ELL_B>1e-6 ? (_sk.b/ELL_B).toFixed(3) : '—')
+        + ' · 깊이 ×' + FACE_Z_TO_SKULL.toFixed(3) + ' (깊이만 맞춰져 있으면 ②)'
+        + '\n      → ' + verdict
+        + '\n      굴곡·측면보정은 뺀 <b>기준면끼리</b>의 차입니다.']));
+      return { rows: rows.length, med, lo, hi, gMid, gOut, rGapU };
+    }catch(e){ console.warn('[이마이음매] 측정 실패:', e && e.message); return null; }
+  }
+
+  /* 이 줄은 vertex loop <b>뒤</b>라, 자 맞춤(FACE_RULER_FIT)은 이미 들어가 있다.
+     이름을 그렇게 바꾼다 — "고치기 전"이라고 적어 두면 다음 세션이 또 속는다. */
+  const _seamBefore = measureForeheadSeam(FACE_RULER_FIT.on ? '자 맞춘 뒤' : '고치기 전');
+
+  /* ── 이마에서 얼굴이 두개골 <b>뒤로</b> 못 가게 (2026-09-13) ──────────────────
+     자를 맞추면 <b>기준면끼리</b>는 항등적으로 0이다. 그런데 화면에 그려지는 것은
+     기준면 + 굴곡 + 측면보정이다. 정중선 이마·미간은 그 잔차가 음수로 잡히는
+     자리라(9/07 주석: "이마 −0.139 · 미간 −0.097"), 기준면을 맞춰도 얼굴만 살짝
+     안으로 들어가 두개골 살구색이 <b>미간·눈썹 위로</b> 비친다 — 사용자가 본 그 증상.
+     그래서 이마 밴드에서만 <b>바닥</b>을 둔다: 두개골 면 + seamBias 아래로는 안 내려간다.
+     위로는 자유라 눈썹뼈 돌출·코는 그대로 산다. 가중치는 자 섞기와 <b>같은</b>
+     smoothstep을 쓴다 — 경계선을 하나 더 만들지 않기 위해서다.
+     되돌리기: FACE_RULER_FIT.seamBias = 0 */
+  if(FACE_RULER_FIT.on && _rulerSk && FACE_RULER_FIT.seamBias > 0){
+    let lifted = 0, maxLift = 0, seen = 0;
+    for(let i=0;i<vertCount;i++){
+      if(!inFaceBound(i)) continue;
+      const lx = positions[i*3+0], yl = positions[i*3+1] - 0.15;
+      const w = faceRulerBlend(yl);
+      if(w <= 1e-3) continue;
+      seen++;
+      const u = (lx/_rulerSk.a)*(lx/_rulerSk.a) + (yl/_rulerSk.b)*(yl/_rulerSk.b);
+      if(u >= 1) continue;                       // 두개골 구 밖 — 바닥이 없다
+      const floorZ = _rulerSk.c*Math.sqrt(1-u) + FACE_RULER_FIT.seamBias*w;
+      const z = positions[i*3+2];
+      if(z < floorZ){
+        const lift = (floorZ - z)*w;
+        positions[i*3+2] = z + lift;
+        if(_ZDBG[i] !== undefined) _ZDBG[i].z += lift;
+        lifted++;
+        if(lift > maxLift) maxLift = lift;
+      }
+    }
+    const _cm2 = (typeof modelCmPerUnit === 'function' ? modelCmPerUnit() : null);
+    console.log(...gyeolBoldArgs(['[이마 바닥] 이마 밴드 ' + seen + '점 중 <b>' + lifted
+      + '점</b>을 두개골 면 위로 올렸습니다 (최대 ' + maxLift.toFixed(4)
+      + (_cm2 ? ' = ' + (maxLift*_cm2).toFixed(2) + 'cm' : '') + ')'
+      + '\n      = 두개골 살구색이 <b>미간·눈썹</b>을 덮던 자리를 막는 것입니다.'
+      + ' 0점이면 이미 안 덮고 있었다는 뜻이라 그대로 두면 됩니다.'
+      + '\n      되돌리기: FACE_RULER_FIT.seamBias=0']));
+  }
+
+  /* ── FACE_Z_TO_SKULL 되맞춤 (2026-09-13) ─────────────────────────────
+     9/12 진단이 시킨 대로 <b>이 손잡이 하나만</b> 움직여 본다. 얼굴 기준면 전체를
+     같은 비율로 재는 것이라, 아래 loop는 결국 "FACE_Z_TO_SKULL을 k×fit으로 다시
+     계산했다면 나왔을 값"과 산술이 같다(기준면만 곱한다 — 굴곡·측면보정은 기준면에서의
+     <b>잔차</b>라 손대지 않는다. 잔차까지 곱하면 코가 납작해진다는 위 주석 그대로다).
+
+     fit은 손으로 정하지 않는다 — 윗줄에서 잰 <b>두개골면/얼굴면 비</b>의 중앙값이다.
+     그래야 "0.14cm 만큼 내린다"가 눈대중이 아니라 측정에서 나온 값이 된다.
+     안전대(maxAdjust)를 넘으면 <b>적용하지 않고</b> 숫자만 남긴다 — 진단이 이상한
+     값을 뱉었을 때 얼굴을 통째로 밀어 버리는 것보다 아무것도 안 하는 쪽이 낫다. */
+  if(FACE_Z_SKULL_FIT.on){
+    try{
+      const _sk = getDisplaySkullEllipsoid();
+      if(_sk && _sk.a > 1e-6 && _sk.b > 1e-6 && _sk.c > 1e-6){
+        let yTop = -Infinity, yBot = Infinity;
+        for(let i=0;i<vertCount;i++){
+          if(!inFaceBound(i)) continue;
+          const yl = positions[i*3+1] - 0.15;
+          if(yl > yTop) yTop = yl;
+          if(yl < yBot) yBot = yl;
+        }
+        const span = yTop - yBot;
+        const band = yTop - span*FACE_Z_SKULL_FIT.bandFrac;
+        const ratios = [];
+        if(isFinite(span) && span > 1e-6){
+          for(let i=0;i<vertCount;i++){
+            if(!inFaceBound(i)) continue;
+            const lx = positions[i*3+0], yl = positions[i*3+1] - 0.15;
+            if(yl < band) continue;
+            const fb = _faceBaseZ[i];
+            if(!isFinite(fb) || Math.abs(fb) < 1e-6) continue;
+            const u = (lx/_sk.a)*(lx/_sk.a) + (yl/_sk.b)*(yl/_sk.b);
+            if(u >= 1) continue;                       // 두개골 구 밖 — 비교 불가
+            ratios.push((_sk.c*Math.sqrt(1-u)) / fb);  // 두개골면 ÷ 얼굴면
+          }
+        }
+        let fit = NaN;
+        if(FACE_Z_SKULL_FIT.mode === 'manual'){
+          fit = (FACE_Z_TO_SKULL > 1e-6) ? (FACE_Z_SKULL_FIT.manualK / FACE_Z_TO_SKULL) : NaN;
+        } else if(ratios.length >= 6){
+          ratios.sort((a,b)=>a-b);
+          fit = ratios[ratios.length>>1];
+        }
+        const kNew = FACE_Z_TO_SKULL * fit;
+        const _cm = (typeof modelCmPerUnit === 'function' ? modelCmPerUnit() : null);
+        if(!isFinite(fit)){
+          console.warn('[이마이음매·k되맞춤] 윗줄 표본 ' + ratios.length
+            + '점 — 역산할 수 없어 <b>적용하지 않습니다</b>(FACE_Z_TO_SKULL='
+            + FACE_Z_TO_SKULL.toFixed(3) + ' 그대로).');
+        } else if(Math.abs(1 - fit) > FACE_Z_SKULL_FIT.maxAdjust){
+          console.warn('[이마이음매·k되맞춤] 역산값이 안전대를 넘었습니다 — ×'
+            + fit.toFixed(4) + '(FACE_Z_TO_SKULL ' + FACE_Z_TO_SKULL.toFixed(3)
+            + '→' + kNew.toFixed(3) + ', 허용 ±'
+            + (FACE_Z_SKULL_FIT.maxAdjust*100).toFixed(0) + '%). <b>적용하지 않습니다</b>.');
+        } else {
+          let maxShift = 0, n = 0;
+          for(let i=0;i<vertCount;i++){
+            const fb = _faceBaseZ[i];
+            if(!isFinite(fb)) continue;
+            const shift = fb * (1 - fit);              // 기준면만 줄인다 = k를 바꾼 것과 동치
+            positions[i*3+2] -= shift;
+            _faceBaseZ[i]     = fb - shift;
+            if(_ZDBG[i] !== undefined){ _ZDBG[i].base -= shift; _ZDBG[i].z -= shift; }
+            n++;
+            if(Math.abs(shift) > Math.abs(maxShift)) maxShift = shift;
+          }
+          console.log(...gyeolBoldArgs(['[이마이음매·k되맞춤] FACE_Z_TO_SKULL <b>'
+            + FACE_Z_TO_SKULL.toFixed(3) + ' → ' + kNew.toFixed(3) + '</b> (×' + fit.toFixed(4)
+            + ' · 윗줄 ' + ratios.length + '점의 두개골면÷얼굴면 중앙값)'
+            + '\n      기준면만 곱했습니다 — 굴곡·측면보정(잔차)은 그대로라 코 돌출은 안 변합니다.'
+            + ' 정점 ' + n + '개 · 최대 이동 ' + maxShift.toFixed(4)
+            + (_cm ? ' (' + (maxShift*_cm).toFixed(2) + 'cm)' : '')
+            + '\n      ⚠ 읽는 법 — 아래 [고친 뒤]에서 <b>중앙값이 아니라 최소·최대의 부호</b>를 보세요.'
+            + ' 둘 다 0 근처면 이 손잡이가 맞았던 것이고, 최소가 <b>음수</b>·최대가 <b>양수</b>로'
+            + ' 갈리면 ②(두 타원이 다른 자)라 이 손잡이로는 못 닫습니다.'
+            + '\n      되돌리기: FACE_Z_SKULL_FIT.on=false (산술까지 예전과 동일)'
+            + ' · 이 값을 굳히려면 mode:\'manual\' · manualK=' + kNew.toFixed(3)]));
+        }
+      }
+    }catch(e){ console.warn('[이마이음매·k되맞춤] 실패:', e && e.message); }
+    measureForeheadSeam('k까지 고친 뒤');
+  }
+
+  /* 삼각형 보존 — 위 FACE_BOUND_FIT 배너 참고.
+     keepT=1이면 t≤1 이 곧 inFaceBound라 <b>예전과 산술까지 동일</b>하다. */
+  const _keepT = FACE_BOUND_FIT.on ? FACE_BOUND_FIT.keepT : 1;
+  const filteredTriV = [];
+  let _triOld = 0;
+  for(let t=0; t<FACE_MESH_TRI_V.length; t+=3){
+    const a=FACE_MESH_TRI_V[t], b=FACE_MESH_TRI_V[t+1], c=FACE_MESH_TRI_V[t+2];
+    if(inFaceBound(a) && inFaceBound(b) && inFaceBound(c)) _triOld++;
+    const tMaxTri = Math.max(faceBoundT(a), faceBoundT(b), faceBoundT(c));
+    if(tMaxTri <= _keepT) filteredTriV.push(a,b,c);
+  }
+  /* 정점 알파 — 확장 구간만 깎는다. 얼굴 본체는 전부 1이라 사진이 흐려지지 않는다. */
+  const faceAlpha = new Float32Array(vertCount);
+  for(let i=0;i<vertCount;i++) faceAlpha[i] = faceEdgeAlpha(i);
+  {
+    /* 눈썹이 실제로 <b>불투명 구간 안</b>에 들어왔는지 한 줄로 남긴다 —
+       이게 fadeIn을 넘으면 눈썹이 반투명해지므로 fadeIn을 키워야 한다는 신호다.
+       (MediaPipe 눈썹 정점: 왼 46/53/52/65/55 · 오른 285/295/282/283/276) */
+    const BROW_L = [46,53,52,65,55], BROW_R = [285,295,282,283,276];
+    const tOf = arr => Math.max(...arr.map(faceBoundT));
+    const tL = tOf(BROW_L), tR = tOf(BROW_R);
+    const drop = i => (faceBoundT(i) > _keepT);
+    const lostL = BROW_L.filter(drop).length, lostR = BROW_R.filter(drop).length;
+    console.log(...gyeolBoldArgs(['[얼굴 테두리] 삼각형 ' + _triOld + ' → <b>'
+      + (filteredTriV.length/3) + '</b>개 (keepT=' + _keepT.toFixed(2)
+      + ' · 페이드 ' + FACE_BOUND_FIT.fadeIn.toFixed(2) + '→' + FACE_BOUND_FIT.fadeOut.toFixed(2) + ')'
+      + '\n      눈썹 바깥끝 t — 왼 <b>' + tL.toFixed(2) + '</b> · 오른 <b>' + tR.toFixed(2) + '</b>'
+      + ' (빠진 정점 왼 ' + lostL + ' · 오른 ' + lostR + ')'
+      + '\n      읽는 법 — t가 <b>fadeIn(' + FACE_BOUND_FIT.fadeIn.toFixed(2) + ')보다 크면</b>'
+      + ' 그 눈썹이 반투명해집니다. 그때는 fadeIn·fadeOut·keepT를 같은 양만큼 올리세요.'
+      + ' 예전(전부-아니면-전무)에서는 t>1.00이면 아예 <b>뜯겨 나갔습니다</b>.'
+      + '\n      되돌리기: FACE_BOUND_FIT.on=false']));
+  }
+
+  // [진단용] 얼굴 입체감 수치 — 경계 안(inFaceBound) 정점들의 z 범위.
+  // 평평하면 zRange가 작고, 입체적이면 큼. 코끝(1)·턱(152)·이마(10) 개별 z도.
+  {
+    let zMin=Infinity, zMax=-Infinity;
+    for(let i=0;i<vertCount;i++){
+      if(!inFaceBound(i)) continue;
+      const z = positions[i*3+2];
+      if(z<zMin) zMin=z; if(z>zMax) zMax=z;
+    }
+    const zAt = idx => positions[idx*3+2].toFixed(3);
+    /* ── 이 값을 <b>화면에서도</b> 볼 수 있어야 한다 (2026-08-22) ────────────────
+       사용자: "그게 아니라 정면 사진이 <b>평면으로 걸려</b> 있었던 거야."
+       나는 스크린샷만 보고 "얼굴이 한 덩어리로 붙었다 = 좋아졌다"고 읽었는데,
+       사용자는 돌려 보고 <b>평면</b>이라는 걸 알았다. 정면 스틸로는 못 가른다.
+       그리고 지금 이 파일은 두 경로 중 <b>어느 쪽이 실제로 화면에 올라갔는지</b>를
+       아무 데도 안 남긴다 — buildRealFaceMesh가 null을 반환하면 호출부가 조용히
+       평면 데칼로 바꿔 달고 끝이다. 그래서 <b>본 사람도 만든 사람도</b> 모른다.
+       두 가지를 기록한다:
+         path   — 실제로 붙은 것이 입체 메쉬인가 평면 데칼인가
+         zRange — 메쉬라면 얼마나 <b>입체</b>인가. 이게 0에 가까우면 메쉬인데도
+                  평면이라는 뜻이고, 그때 원인은 ellipsoidZ 붕괴다(두상 폭이
+                  얼굴보다 좁으면 관자놀이 정점이 타원 밖으로 나가 z가 바닥친다 —
+                  두상 폭 하한 문제와 <b>같은 뿌리</b>). */
+    FACE_BUILD.path = 'mesh';
+    FACE_BUILD.zRange = zMax - zMin;
+    FACE_BUILD.zMin = zMin; FACE_BUILD.zMax = zMax;
+    FACE_BUILD.sideHits = _fullProfileHitCount || 0;
+    FACE_BUILD.ellA = ellAForFace; FACE_BUILD.ellC = ELL_C;
+    FACE_BUILD.why = '';
+    // (2026-08-31) 원인 구분용 — 위 FACE_BUILD 선언부 주석 참고.
+    FACE_BUILD.reliefGain = reliefGain;
+    FACE_BUILD.reliefCm   = (_reliefCmBefore != null) ? _reliefCmBefore * reliefGain : null;
+    try{ FACE_BUILD.cmPerUnit = faceRulerCmPerUnit(faceMetrics).x; }catch(e){}
+  if(FACE_PROFILE_BASE.on && _eyeYLocalForProfile != null){
+    const _chinYL = (lm && lm.chinY != null) ? projector.toMeshY(lm.chinY) - 0.15 : null;
+    if(_chinYL != null){
+      const before = ellipsoidZ(0, _chinYL) * FACE_Z_TO_SKULL;
+      const after = faceBaseZLocal(0, _chinYL) * FACE_Z_TO_SKULL;
+      const glab = faceBaseZLocal(0, _eyeYLocalForProfile) * FACE_Z_TO_SKULL;
+      const cm = (typeof modelCmPerUnit === 'function') ? modelCmPerUnit() : null;
+      const f = v => v.toFixed(3) + (cm ? '(' + (v*cm).toFixed(1) + 'cm)' : '');
+      console.log('[얼굴 옆선·기준면] 눈높이 아래 세로 곡률 ×' + FACE_PROFILE_BASE.flatBelowEye
+        + ' · 턱 기준면 ' + before.toFixed(3) + ' → ' + after.toFixed(3)
+        + ' · 눈높이선에서 턱까지 물러남 ' + f(Math.max(0, glab - before)) + ' → ' + f(Math.max(0, glab - after))
+        + ' (굴곡 제외) · 되돌리기 FACE_PROFILE_BASE.on=false');
+    }
+  }
+    console.log(`[얼굴 입체감] z범위=${(zMax-zMin).toFixed(3)} (min${zMin.toFixed(3)}~max${zMax.toFixed(3)}) | 코끝=${zAt(1)} 턱=${zAt(152)} 이마=${zAt(10)}`);
+    console.log(`[얼굴 측면보정] 전체정점 실측=${USE_FULL_PROFILE_DEPTH ? '켜짐' : '꺼짐(3앵커만)'} | 측면 실측 기여 정점=${_fullProfileHitCount||0}개`);
+    /* ── [얼굴 z·항별] 세 항을 따로 찍는다 (2026-08-18 k-4) ─────────────────
+       사용자: "정면얼굴을 측면과 z값 대조해서 조금 더 낫게 만들어보자."
+       그러려면 먼저 <b>어느 항이 얼마나 미는지</b>가 보여야 한다. 눈으로는
+       "코가 크다"로 보이지만 숫자로는 <b>이마가 들어간</b> 것일 수 있다 —
+       실제로 그랬다(이마가 타원면보다 안쪽). 그 판별을 이 줄이 한다. */
+    const _NM = { 1:'코끝', 152:'턱', 10:'이마', 168:'미간', 234:'왼뺨' };
+    const _rows = [];
+    for(const k in _ZDBG){
+      const d = _ZDBG[k]; if(!d) continue;
+      const surfK = d.surf * FACE_Z_TO_SKULL;
+      _rows.push('  ' + (_NM[k]||k) + (d.measured ? ' [측면실측]' : ' [정면추정]')
+        + ' 타원면 ' + d.surf.toFixed(3) + ' → 기준 ' + d.base.toFixed(3)
+        + ' | 굴곡 ' + (d.relief>=0?'+':'') + d.relief.toFixed(3)
+        + ' | 측면보정 ' + (d.prof>=0?'+':'') + d.prof.toFixed(3)
+        + ' = <b>' + d.z.toFixed(3) + '</b>'
+        + '  (타원면 대비 ' + (d.z - d.surf >= 0 ? '+' : '') + (d.z - d.surf).toFixed(3)
+        + (d.z < d.surf ? ' 함몰' : ' 돌출') + ')');
+    }
+    if(_rows.length){
+      console.log(...gyeolBoldArgs(['[얼굴 z·항별] 기준면계수 FACE_Z_TO_SKULL=' + FACE_Z_TO_SKULL.toFixed(3)
+        + ' · 기준 맞춤 ' + (FACE_Z_FIX.matchBaseline ? '<b>ON</b>' : 'OFF(예전)') + '\n' + _rows.join('\n')
+        + '\n  읽는 법 — [측면실측] 정점은 최종 z가 <b>실측 z와 같아야</b> 합니다(차를 더하는 구조라서).'
+        + ' 그런데 기준 맞춤이 OFF면 타원면z×(1−k)만큼 <b>일괄 함몰</b>합니다(k=' + FACE_Z_TO_SKULL.toFixed(3)
+        + '이면 얼굴 한가운데서 약 ' + ((1-FACE_Z_TO_SKULL)*0.5*19.33).toFixed(1) + 'cm).'
+        + '\n  ON인데도 함몰이 남으면 그건 <b>측면 각도</b> 문제입니다 — 이 손님은 yaw 34°/−31°라'
+        + ' 실루엣 가장자리가 코·이마가 아니라 뺨입니다(깊이를 재려면 80~90°가 필요).']));
+    }
+  }
+
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+  geo.setAttribute('uv', new THREE.BufferAttribute(uvs, 2));
+  geo.setAttribute('aFaceAlpha', new THREE.BufferAttribute(faceAlpha, 1));
+  geo.setIndex(new THREE.BufferAttribute(new Uint32Array(filteredTriV), 1));
+  geo.computeVertexNormals();
+
+  const MAX_DIM = 1024;
+  let dw=img.width, dh=img.height;
+  if(Math.max(dw,dh) > MAX_DIM){ const s=MAX_DIM/Math.max(dw,dh); dw=Math.round(dw*s); dh=Math.round(dh*s); }
+  const canvas = document.createElement('canvas');
+  canvas.width=dw; canvas.height=dh;
+  canvas.getContext('2d').drawImage(img,0,0,dw,dh);
+  /* (2026-09-16) 머리카락 픽셀을 투명하게 — 위 FACE_HAIR_CUT 배너 */
+  let _hairCut = false;
+  if(FACE_HAIR_CUT.on && FACE_BOUND_FIT.on){
+    try{
+      const hc = state.hairCanvases && state.hairCanvases.front;
+      if(hc && hc.width > 0){
+        const cx2 = canvas.getContext('2d');
+        cx2.save();
+        cx2.globalCompositeOperation = 'destination-out';
+        if(FACE_HAIR_CUT.blurPx > 0) cx2.filter = 'blur(' + FACE_HAIR_CUT.blurPx + 'px)';
+        cx2.drawImage(hc, 0, 0, dw, dh);
+        cx2.restore();
+        /* (2차) 눈·눈썹·입은 오리지 않는다 — 세그 가드가 빠뜨린 한 픽셀이라도 거기 뚫리면
+           얼굴 한가운데 살이 비친다. 원본을 그 타원에만 다시 얹는다. */
+        const F = lm && lm.features;
+        if(F){
+          cx2.save();
+          cx2.beginPath();
+          for(const key of ['leftBrow','rightBrow','leftEye','rightEye','mouth']){
+            const bb = F[key]; if(!bb) continue;
+            const ex = (bb.minX+bb.maxX)/2*dw, ey = (bb.minY+bb.maxY)/2*dh;
+            const rx = Math.max(4, (bb.maxX-bb.minX)/2*dw*1.6), ry = Math.max(4, (bb.maxY-bb.minY)/2*dh*2.2);
+            cx2.moveTo(ex+rx, ey); cx2.ellipse(ex, ey, rx, ry, 0, 0, Math.PI*2);
+          }
+          cx2.clip();
+          cx2.drawImage(img, 0, 0, dw, dh);
+          cx2.restore();
+        }
+        _hairCut = true;
+      }
+    }catch(e){ console.warn('[3D·얼굴] 머리카락 오려내기 실패(원본 텍스처 그대로):', e && e.message); }
+  }
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.needsUpdate = true;
+
+  /* ══════════════════════════════════════════════════════════════
+     얼굴이 <b>뜬다</b> — 사진에 조명을 한 번 더 걸고 있었다 (2026-08-22)
+     ─────────────────────────────────────────────────────────────
+     사용자(새 남자 사진): "3D에서 얼굴이 뜨네."
+     결과 화면에서 얼굴 중앙선을 세로로 훑어 재 봤다:
+       이마·콧대  RGB(255,255,255)  ← <b>완전히 날아간 흰색</b>
+       목        RGB(254,211,176)  ← 빨강이 254에 붙어 아예 평평
+     사진 텍스처에는 <b>촬영 당시의 조명이 이미 들어 있다.</b> 그런데 이 메쉬가
+     MeshStandardMaterial이라 장면 조명(키 0.9 + 필 0.35 + 앰비언트 0.55)을
+     한 번 더 받는다. 밝은 피부는 곱해지는 순간 255를 넘어 잘리고, 잘리면
+     얼굴의 굴곡이 통째로 사라져 <b>납작한 흰 가면</b>이 된다 — 화장이 뜬 그 모양이다.
+
+     ⚠ 폴백 경로(buildFacePhotoDecal)는 <b>이미 MeshBasicMaterial</b>(무조명)을
+       쓰고 있었다. 같은 판단이 두 곳에 있고 한쪽만 맞았던, 이 파일의 단골 모양이다.
+     고침: 사진이 들어간 면은 조명을 안 받는다. 절차적 두개골·목은 자기 조명이
+     필요하므로 그대로 둔다(그쪽은 구운 빛이 없다).
+     되돌리기: FACE_MAT.unlit = false */
+  const mat = FACE_MAT.unlit
+    ? new THREE.MeshBasicMaterial({ map: texture, side: THREE.DoubleSide })
+    : new THREE.MeshStandardMaterial({ map: texture, roughness:0.8, metalness:0, side: THREE.DoubleSide });
+  /* 테두리 페이드 — 위 FACE_BOUND_FIT 배너의 ②. 계단 단면을 <b>그리기 전에</b>
+     투명하게 만든다. 재질을 갈아끼우지 않고 셰이더 한 줄만 덧댄 이유는,
+     unlit/lit 두 갈래(FACE_MAT.unlit)에 같은 처리가 한 번에 걸리게 하기 위해서다.
+     ⚠ depthWrite는 <b>켠 채로</b> 둔다. 끄면 페이드 띠가 반투명이 되는 대신
+       얼굴 전체가 머리카락 뒤로 밀려 그려지는 큰 회귀가 난다(불투명 본체가
+       깊이를 안 남기므로). 띠가 얇아서 정렬 문제는 눈에 안 띈다. */
+  if(FACE_BOUND_FIT.on){
+    mat.transparent = true;
+    mat.onBeforeCompile = (shader)=>{
+      shader.vertexShader = 'attribute float aFaceAlpha;\nvarying float vFaceAlpha;\n'
+        + shader.vertexShader.replace('void main() {', 'void main() {\n\tvFaceAlpha = aFaceAlpha;');
+      shader.fragmentShader = 'varying float vFaceAlpha;\n'
+        + shader.fragmentShader.replace(
+            '#include <dithering_fragment>',
+            '#include <dithering_fragment>\n'
+          + '\tif(vFaceAlpha < 0.02) discard;   // 완전히 사라진 띠는 깊이도 안 남긴다\n'
+          + '\tgl_FragColor.a *= vFaceAlpha;\n'
+          /* (2026-09-16) 오려낸 머리카락 자리도 깊이를 안 남긴다 — 안 그러면 뒤의 두피면이 가려진다 */
+          + '\tif(gl_FragColor.a < 0.03) discard;');
+    };
+    /* onBeforeCompile은 캐시 키에 안 들어가므로, 같은 형태의 재질과 프로그램이
+       섞이지 않게 키를 따로 준다(three의 정석). */
+    mat.customProgramCacheKey = () => 'gyeolFaceEdgeFade2';
+    mat.needsUpdate = true;
+  }
+
+  const mesh = new THREE.Mesh(geo, mat);
+  mesh.name = 'realFaceMesh';
+  mesh.userData.hairCut = _hairCut;
+  return mesh;
+}
+/* (옛 37 폰 다이어트 ⑤) 얼굴 메쉬가 붙는 약속을 잡아 둠 — 3D 장면을 다 붙은 뒤 한꺼번에 보여 주려고 */
+function buildRealFaceMesh(){
+  const r = buildRealFaceMeshBase.apply(this, arguments);
+  if(typeof MOBILE_DIET !== 'undefined') MOBILE_DIET.noteFace(0, r);
+  return r;
+}
+
+async function buildFacePhotoDecalBase(faceMetrics){
+  const src = state.shots && state.shots.front;
+  // 실측 랜드마크 없인 정렬 기준점이 없어 위치가 부정확해짐 — 추정치로
+  // 억지로 배치하면 오히려 더 어색해서, 이 경우엔 스킵하고 절차적
+  // 이목구비(faceDetailGroup)를 그대로 보여주는 쪽이 낫다고 판단.
+  if(!src || !state.landmarks || !state.landmarks.front) return null;
+
+  let img;
+  try{ img = await loadImageAsync(src); }
+  catch(e){ console.warn('데칼용 이미지 로드 실패:', e); return null; }
+
+  const MAX_DECAL_DIM = 512; // 원본 캡처(최대 1024)보다 작게 — 데칼은 성능보다 정렬이 중요하지 해상도는 이 정도로 충분
+  let dw = img.width, dh = img.height;
+  if(Math.max(dw,dh) > MAX_DECAL_DIM){ const s = MAX_DECAL_DIM/Math.max(dw,dh); dw=Math.round(dw*s); dh=Math.round(dh*s); }
+
+  const canvas = document.createElement('canvas');
+  canvas.width = dw; canvas.height = dh;
+  const ctx = canvas.getContext('2d');
+  ctx.drawImage(img, 0, 0, dw, dh);
+
+  const lm = faceMetrics.lm;
+  if(!lm.features) return null; // features bbox 없으면(폴백 랜드마크) 페더 중심도 못 잡음
+
+  const eyeCX = (
+    (lm.features.leftEye.minX + lm.features.leftEye.maxX)/2 +
+    (lm.features.rightEye.minX + lm.features.rightEye.maxX)/2
+  ) / 2;
+  const cx = eyeCX * dw;
+  // 세로 범위는 일부러 browTopY(눈썹 위) 아래로만 잡는다 — 그 위(이마~헤어라인)는
+  // 앞머리/잔머리가 걸쳐 있을 확률이 높은 영역이라, 거기까지 사진을 그대로 오려
+  // 붙이면 실제 사용자 사진에서 이마에 어두운 머리카락 얼룩이 번져 보이는
+  // 사고가 나기 쉬움(합성 테스트 이미지로 재현·확인함). 대신 눈썹선을 상단
+  // 경계로 고정해 어떤 헤어스타일/앞머리 사진이 와도 항상 안전하게 동작.
+  const topY = lm.browTopY * dh;
+  const botY = lm.chinY * dh * 1.06; // 턱 아래 살짝 여유
+  const cy = (topY + botY) / 2;
+  const halfH = (botY - topY) / 2;
+  const ry = Math.max(4, halfH * 0.92); // 상단이 browTopY보다 살짝 더 안쪽에 오도록 여유
+  const rx = Math.max(4, Math.abs(lm.rEarX - lm.lEarX) * dw * 0.56);
+
+  ctx.globalCompositeOperation = 'destination-in';
+  const grad = ctx.createRadialGradient(cx, cy, Math.min(rx,ry)*0.35, cx, cy, Math.max(rx,ry));
+  grad.addColorStop(0, 'rgba(255,255,255,1)');
+  grad.addColorStop(0.7, 'rgba(255,255,255,0.9)');
+  grad.addColorStop(1, 'rgba(255,255,255,0)');
+  ctx.fillStyle = grad;
+  ctx.beginPath(); ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI*2); ctx.fill();
+  ctx.globalCompositeOperation = 'source-over';
+
+  // 캔버스 전체(=사진 전체, 배경/어깨/여백 포함)를 그대로 평면 텍스처로 쓰면
+  // 두상보다 훨씬 큰 평면이 나옴(사진 속 얼굴이 프레임의 일부만 차지하므로).
+  // 페더 타원을 살짝 여유 있게 감싸는 만큼만 잘라내서, 평면 크기가 항상
+  // "얼굴 크기"에 비례하게(=두상 크기와 같은 축척으로) 만든다.
+  const cropHalfW = rx * 1.05, cropHalfH = ry * 1.15;
+  const cropX0 = Math.max(0, cx - cropHalfW), cropY0 = Math.max(0, cy - cropHalfH);
+  const cropX1 = Math.min(dw, cx + cropHalfW), cropY1 = Math.min(dh, cy + cropHalfH);
+  const cropW = Math.max(1, Math.round(cropX1 - cropX0)), cropH = Math.max(1, Math.round(cropY1 - cropY0));
+
+  const faceCanvas = document.createElement('canvas');
+  faceCanvas.width = cropW; faceCanvas.height = cropH;
+  faceCanvas.getContext('2d').drawImage(canvas, cropX0, cropY0, cropW, cropH, 0, 0, cropW, cropH);
+
+  const texture = new THREE.CanvasTexture(faceCanvas);
+  texture.needsUpdate = true;
+
+  // 두상 로컬 좌표계에서 픽셀당 월드유닛 크기 — 세로 기준점(눈~턱) 아핀변환의
+  // 기울기(bY)를 그대로 재사용해 크롭된 얼굴 영역을 두상과 같은 축척으로 배치.
+  const worldPerPixel = faceMetrics.projector.bY / dh;
+  const planeW = cropW * worldPerPixel;
+  const planeH = cropH * worldPerPixel;
+
+  const mat = new THREE.MeshBasicMaterial({ map: texture, transparent: true, depthWrite: false });
+  const plane = new THREE.Mesh(new THREE.PlaneGeometry(planeW, planeH), mat);
+  plane.name = 'facePhotoDecal';
+  /* 여기까지 왔다는 건 <b>평면</b>이 화면에 걸린다는 뜻이다. 확정 시점에 기록한다
+     (위 스킵 지점에서 이미 적었더라도, 실제로 붙은 것이 이것임을 여기서 확정). */
+  FACE_BUILD.path = 'decal';
+  if(!FACE_BUILD.why) FACE_BUILD.why = '입체 메쉬가 null을 반환';
+  FACE_BUILD.zRange = 0;   // 평면이므로 정의상 0
+  plane.position.set(
+    faceMetrics.projector.toMeshX((cropX0+cropX1)/2 / dw),
+    faceMetrics.projector.toMeshY((cropY0+cropY1)/2 / dh),
+    /* (2026-08-17 c) 0.92*widthFactor는 두상이 고정 상수 타원(0.85*wf)이던 시절의
+       값이라, 실측 두상이 생긴 뒤로는 근거 없는 숫자로 남아 있었다. 그리는 두개골의
+       실제 깊이 바로 앞에 놓는다 — 두개골이 두피면으로 줄어든 지금은 특히,
+       이 상수를 두면 데칼만 허공에 뜬다. 실측 실패 시에만 옛 값으로 폴백. */
+    (()=>{ try{ return getDisplaySkullEllipsoid().c * 1.02; }
+           catch(e){ return 0.92 * faceMetrics.widthFactor; } })()
+  );
+  return plane;
+}
+function buildFacePhotoDecal(){
+  const r = buildFacePhotoDecalBase.apply(this, arguments);
+  if(typeof MOBILE_DIET !== 'undefined') MOBILE_DIET.noteFace(1, r);
+  return r;
+}
+
+/* ── 스캘프(두피) 좌표계 ──
+   phi: 정수리(top)=0에서 목쪽으로 갈수록 커지는 극각(라디안). 0=정수리,
+   π/2(1.57)=귀 높이(적도), π(3.14)=턱 밑. 대략 0~2.5 사용.
+   theta: 정면(+Z 방향)=0 기준 방위각. +/- 로 좌우 대칭, π=정후면.
+   실측 헤어라인 데이터가 아니라 "6개 섹션이 두상 어디쯤 위치하는지"를
+   대략적으로 근사한 배치표 — 진짜 헤어라인 인식 데이터가 3D에도 연동되면
+   교체될 자리표시자였음. (2026-07-17 정리: 이 배치표를 쓰던 절차 생성 3D
+   경로는 삭제됨 — 지금 이 표의 유일한 살아있는 소비자는 HEAD_PHI_BANDS
+   (phiRange들에서 두상 단면 측정 밴드를 파생, 아래 참고). 단일 출처 원칙
+   때문에 표 자체는 유지.)
+   ※ 버그 수정 이력(theta): center±spread를 섹션마다 눈대중으로 잡다 보니
+   side(최대 약 78°)와 occipital/nape(최소 약 120°) 사이 약 42° 구간에
+   어느 섹션도 안 걸치는 빈 틈이 있었음 — 실기기 스크린샷에서 "귀 뒤쪽
+   대각선으로 대머리 띠"가 그대로 보임. 아래 값은 각 섹션 경계가 서로
+   살짝씩 겹치도록(빈틈 없이) 다시 계산한 것 — 오른쪽 반원(0~180°) 기준
+   front 0~39°, temple 26~60°, side 51~103°, occipital/nape 94~180°로
+   이어지게 함(왼쪽은 자동 대칭). */
+/* ── MediaPipe 공식 캐노니컬 얼굴 메쉬 토폴로지(2026-07-13 추가) ──
+   진짜 3D 얼굴 메쉬 구축용. MediaPipe 공식 저장소(github.com/google-ai-edge/
+   mediapipe, mediapipe/modules/face_geometry/data/canonical_face_model.obj)
+   에서 직접 받아서 파싱: 정점 468개(=랜드마크 인덱스와 1:1 대응), UV좌표
+   468개, 삼각형 898개. 정점 위치 자체(v 라인)는 "캐노니컬(범용) 얼굴 형태"
+   라 그 사람 얼굴이 아니라서 안 씀 — 여기 쓰는 건 UV(468개)와 삼각형
+   연결정보(v/vt 인덱스 쌍, 898*3=2694개)뿐. 실제 정점 위치는 그 사람
+   본인의 랜드마크 감지 결과(state.landmarks.front.rawLandmarks)로 매 실행
+   시 새로 채움 — buildRealFaceMesh() 참고. */

@@ -1,1 +1,1219 @@
-function buildOutfitPlaceholderMesh(_0x1499f7,_0x15ff35){const _0x4c337d=new THREE['Group']();_0x4c337d['name']='outfitPlaceholder';const _0x1b65fc=new THREE['Color'](_0x1499f7['colorHex']||'#888888'),_0x3b6308=new THREE['MeshStandardMaterial']({'color':_0x1b65fc,'roughness':0.75}),_0x2f24da=_0x1b65fc['clone']()['multiplyScalar'](0.55),_0x1836c2=new THREE['MeshStandardMaterial']({'color':_0x2f24da,'roughness':0.75}),_0x2e320d=new THREE['MeshStandardMaterial']({'color':new THREE['Color']('#241E1A'),'roughness':0.6}),_0x5c0850=0.5*_0x15ff35,_0x31e699=0.92*_0x15ff35,_0xae30e5=1.15,_0x36e917=new THREE['CylinderGeometry'](_0x5c0850,_0x31e699,_0xae30e5,0x18),_0x518acc=new THREE['Mesh'](_0x36e917,_0x3b6308),_0x274159=getNeckBottomY(),_0xefa98=_0x274159-_0xae30e5;_0x518acc['position']['y']=(_0x274159+_0xefa98)/0x2,_0x518acc['name']='outfitTorsoPlaceholder',_0x4c337d['add'](_0x518acc);const _0x206eed=new THREE['MeshStandardMaterial']({'color':_0x1b65fc['clone']()['multiplyScalar'](0.75),'roughness':0.8}),_0x5762a2=new THREE['TorusGeometry'](_0x5c0850*1.03,0.035*_0x15ff35,0x8,0x14),_0x582ab6=new THREE['Mesh'](_0x5762a2,_0x206eed);_0x582ab6['position']['y']=_0x274159,_0x582ab6['rotation']['x']=Math['PI']/0x2,_0x582ab6['name']='outfitCollarPlaceholder',_0x4c337d['add'](_0x582ab6);const _0x5d2c5=_0x31e699,_0x3b5aad=0.72*_0x15ff35,_0x566652=0.45,_0x35180b=new THREE['CylinderGeometry'](_0x5d2c5,_0x3b5aad,_0x566652,0x14),_0x36d1ca=new THREE['Mesh'](_0x35180b,_0x1836c2),_0xdc6ccd=_0xefa98,_0x301849=_0xdc6ccd-_0x566652;_0x36d1ca['position']['y']=(_0xdc6ccd+_0x301849)/0x2,_0x36d1ca['name']='outfitHipPlaceholder',_0x4c337d['add'](_0x36d1ca);const _0x1bdfa2=0.3*_0x15ff35,_0x5dc53f=0.19*_0x15ff35,_0x98790e=2.35,_0x4a78bb=new THREE['CylinderGeometry'](_0x1bdfa2,_0x5dc53f,_0x98790e,0x10),_0x3d7bec=0.32*_0x15ff35,_0x564957=_0x301849-_0x98790e;[-0x1,0x1]['forEach'](_0x45e2e=>{const _0x17a3ea=new THREE['Mesh'](_0x4a78bb,_0x1836c2);_0x17a3ea['position']['set'](_0x45e2e*_0x3d7bec,(_0x301849+_0x564957)/0x2,0x0),_0x17a3ea['name']='outfitLegPlaceholder',_0x4c337d['add'](_0x17a3ea);});const _0x2b4746=0.24*_0x15ff35,_0x708869=0.16,_0x31efd8=0.46*_0x15ff35,_0x24563e=new THREE['BoxGeometry'](_0x2b4746,_0x708869,_0x31efd8);[-0x1,0x1]['forEach'](_0x54123b=>{const _0xa526b9=new THREE['Mesh'](_0x24563e,_0x2e320d);_0xa526b9['position']['set'](_0x54123b*_0x3d7bec,_0x564957-_0x708869/0x2,_0x31efd8*0.28),_0xa526b9['name']='outfitFootPlaceholder',_0x4c337d['add'](_0xa526b9);});const _0x3d7c2b=-1.35,_0x380d08=(_0x3d7c2b-_0x274159)/-_0xae30e5,_0xdf0e90=_0x5c0850+_0x380d08*(_0x31e699-_0x5c0850),_0x377ce8=2.6,_0x102f08=0.15*_0x15ff35,_0x23a919=0.1*_0x15ff35,_0x1c7807=new THREE['CylinderGeometry'](_0x102f08,_0x23a919,_0x377ce8,0xc);[-0x1,0x1]['forEach'](_0x485ce2=>{const _0x37648a=new THREE['Mesh'](_0x1c7807,_0x3b6308),_0x51cdba=-_0x485ce2*2.9,_0x1ff85a=new THREE['Vector3'](-Math['sin'](_0x51cdba),Math['cos'](_0x51cdba),0x0),_0x5ed378=new THREE['Vector3'](_0x485ce2*_0xdf0e90*0.92,_0x3d7c2b,0.02);_0x37648a['position']['set'](_0x5ed378['x']+_0x1ff85a['x']*_0x377ce8*0.5,_0x5ed378['y']+_0x1ff85a['y']*_0x377ce8*0.5,_0x5ed378['z']+_0x1ff85a['z']*_0x377ce8*0.5),_0x37648a['rotation']['z']=_0x51cdba,_0x37648a['name']='outfitArmPlaceholder',_0x4c337d['add'](_0x37648a);});if(_0x1499f7['category']==='포멀'){const _0x260c73=new THREE['MeshStandardMaterial']({'color':_0x1b65fc['clone']()['multiplyScalar'](0.85),'roughness':0.7}),_0x571007=new THREE['BoxGeometry'](0.16*_0x15ff35,0.55,0.02);[-0x1,0x1]['forEach'](_0x20512a=>{const _0x3407c2=new THREE['Mesh'](_0x571007,_0x260c73);_0x3407c2['position']['set'](_0x20512a*0.14*_0x15ff35,-1.45,_0x5c0850*0.85),_0x3407c2['rotation']['z']=-_0x20512a*0.28,_0x3407c2['name']='outfitLapelPlaceholder',_0x4c337d['add'](_0x3407c2);});}return _0x4c337d;}function loadOutfitMeshFromOBJ(_0x54bac2,_0x95ab0f,_0x44a48a,_0x4f56dc,_0x1d43a9){return new Promise((_0xc9a78c,_0x14325a)=>{if(typeof THREE['OBJLoader']!=='function'){_0x14325a(new Error('OBJLoader\x20스크립트가\x20로드되지\x20않았습니다'));return;}function _0x53223e(_0x8dbb22){const _0x30ac19=new THREE['OBJLoader']();if(_0x8dbb22)_0x30ac19['setMaterials'](_0x8dbb22);_0x30ac19['load'](_0x54bac2,_0x396b00=>{try{const _0xf3c09b=new THREE['Box3']()['setFromObject'](_0x396b00),_0x4ca967=new THREE['Vector3']();_0xf3c09b['getSize'](_0x4ca967);const _0x47261f=typeof _0x4f56dc==='number'?_0x4f56dc:0.84,_0x3f3554=_0xf3c09b['min']['y']+_0x47261f*_0x4ca967['y'],_0x49dcd9=_0x3f3554-_0xf3c09b['min']['y'];let _0xd44b6b=_0x1d43a9;!(isFinite(_0xd44b6b)&&_0xd44b6b>0.5)&&(_0xd44b6b=typeof personBodyLenMesh==='function'?personBodyLenMesh():null);!(isFinite(_0xd44b6b)&&_0xd44b6b>0.5)&&(_0xd44b6b=0x4,console['warn']('[3D·비율]\x20두상\x20자(getPersonScaleRef)가\x20없어\x20폴백\x204.0단위로\x20세웁니다\x20—'+'\x20이\x20경우에만\x20두신이\x20상수에서\x20벗어납니다.'));const _0x477466=isFinite(_0x44a48a)&&_0x44a48a>0x0?_0x44a48a:0x1,_0x397cae=OUTFIT_MESH_SOURCE['widthMode']||(OUTFIT_MESH_SOURCE['widthUniform']?'uniform':'off'),_0x2be4b4=OUTFIT_MESH_SOURCE['scaleOverride']||_0xd44b6b/(_0x49dcd9||0x1)*(_0x397cae==='uniform'?_0x477466:0x1),_0x3d7460=_0x397cae==='xz'?_0x477466:0x1;_0x396b00['scale']['set'](_0x2be4b4*_0x3d7460,_0x2be4b4,_0x2be4b4*_0x3d7460);if(_0x397cae!=='off')console['log']('[3D·비율·의상]\x20widthMode='+_0x397cae+'\x20·\x20폭\x20×'+_0x477466['toFixed'](0x3)+'\x20—\x20off가\x20아니면\x20두신이나\x20몸\x20비례\x20중\x20하나가\x20얼굴\x20폭을\x20따라\x20움직입니다.');const _0x4df875=new THREE['Box3']()['setFromObject'](_0x396b00),_0x4419e4=new THREE['Vector3']();_0x4df875['getCenter'](_0x4419e4);const _0x36fa3e=_0x3f3554*_0x2be4b4,_0x415e32=OUTFIT_MESH_SOURCE['offsetY']||0x0;_0x396b00['position']['x']+=-_0x4419e4['x'],_0x396b00['position']['z']+=-_0x4419e4['z'],_0x396b00['position']['y']+=getNeckBottomY()-_0x36fa3e+_0x415e32,_0x396b00['name']='outfitLoadedOBJ';const _0x2aec22=['hair'],_0x194c9d=new THREE['Plane'](new THREE['Vector3'](0x0,-0x1,0x0),getNeckBottomY());_0x396b00['traverse'](_0x62979a=>{if(!_0x62979a['isMesh'])return;const _0x4965cd=(_0x62979a['material']&&_0x62979a['material']['name']||'')['toLowerCase']();if(_0x2aec22['includes'](_0x4965cd)){_0x62979a['visible']=![];return;}const _0x3e9ad5=Array['isArray'](_0x62979a['material'])?_0x62979a['material']:[_0x62979a['material']];_0x3e9ad5['forEach'](_0x17c5cf=>{if(!_0x17c5cf)return;_0x17c5cf['clippingPlanes']=[_0x194c9d],_0x17c5cf['clipShadows']=!![];if(_0x17c5cf['color']&&typeof _0x17c5cf['color']['convertLinearToSRGB']==='function')_0x17c5cf['color']['convertLinearToSRGB']();});}),_0xc9a78c(_0x396b00);}catch(_0x480655){_0x14325a(_0x480655);}},undefined,_0x2746a2=>_0x14325a(_0x2746a2));}if(_0x95ab0f&&typeof THREE['MTLLoader']==='function'){const _0xababd8=new THREE['MTLLoader']();_0xababd8['load'](_0x95ab0f,_0x21ea17=>{_0x21ea17['preload'](),_0x53223e(_0x21ea17);},undefined,()=>_0x53223e(null));}else _0x53223e(null);});}async function loadOutfitMesh(_0x1ced28,_0x5de715,_0x57dcac){if(_0x1ced28['asset']&&_0x1ced28['asset']['objUrl'])try{return await loadOutfitMeshFromOBJ(_0x1ced28['asset']['objUrl'],_0x1ced28['asset']['mtlUrl'],_0x5de715,_0x1ced28['asset']['neckCutFrac'],_0x57dcac);}catch(_0x1e2187){console['warn']('OBJ\x20의상\x20에셋\x20로드\x20실패,\x20절차적\x20플레이스홀더로\x20폴백:',_0x1e2187);}const _0xe174a8=buildOutfitPlaceholderMesh(_0x1ced28,_0x5de715);try{const _0x2e77b2=isFinite(_0x57dcac)&&_0x57dcac>0.5?_0x57dcac:typeof personBodyLenMesh==='function'?personBodyLenMesh():null,_0x4d0d08=typeof measureOutfitMeshBody==='function'?measureOutfitMeshBody(_0xe174a8):null;if(_0x2e77b2&&_0x4d0d08&&_0x4d0d08['heightRaw']>0.01){const _0x310e3f=getNeckBottomY(),_0x37d7c1=_0x2e77b2/_0x4d0d08['heightRaw'];_0xe174a8['scale']['setScalar'](_0x37d7c1),_0xe174a8['position']['y']=_0x310e3f*(0x1-_0x37d7c1);}}catch(_0x20154d){console['warn']('[3D·비율]\x20플레이스홀더\x20두신\x20배율\x20실패\x20—\x20원래\x20크기\x20유지:',_0x20154d);}return _0xe174a8;}async function loadOutfitMeshMeasured(_0x2108e2,_0x3e5a2f,_0x3a11fe){const _0xac6d58=await loadOutfitMesh(_0x2108e2,_0x3e5a2f,_0x3a11fe);try{const _0x42ef8=measureGarmentNeckOpening(_0xac6d58);_0x42ef8?(_garmentNeckOpening=_0x42ef8,console['log']('[3D·목]\x20옷깃\x20구멍\x20실측\x20반폭\x20'+_0x42ef8['halfWidth']['toFixed'](0x3)+'\x20·\x20반깊이\x20'+_0x42ef8['halfDepth']['toFixed'](0x3)+'\x20단위\x20→\x20아래\x20링\x20=\x20이\x20값\x20×'+NECK_SHAPE['inset'])):console['warn']('[3D·목]\x20옷깃\x20구멍\x20실측\x20실패\x20—\x20예전(두개골\x20클램프)\x20경로로\x20폴백');}catch(_0x35cc17){console['warn']('[3D·목]\x20옷깃\x20구멍\x20실측\x20예외:',_0x35cc17);}return SHOULDER['_afterOutfitLoad'](_0xac6d58,_0x2108e2),_0xac6d58;}var SHOULDER=(function(){'use strict';var _0x4a9717=window,_0x206726='[어깨]',_0x12afce=Object['assign']({'on':!![],'resultOnly':!![],'on_was12m':![],'natural':!![],'on_was':![],'preload':!![],'cell':0.05,'xMax':1.5,'depth':1.9,'margin':0.03,'restMax':0.07,'ambig':0.2,'shoulderRatio':2.1,'earSpanCm':0xf,'frontOnlyIfDraped':!![],'centerBand':0.3,'frontDrape':!![],'mqBack':!![],'sweepLen':0.45,'sweepMinJump':0.08},_0x4a9717['SHOULDER']||{}),_0x327302=_0x12afce['stats']={'strands':0x0,'touched':0x0,'front':0x0,'back':0x0,'rest':0x0,'neck':0x0,'forced':0x0,'swept':0x0,'smooth':0x0,'mq':![],'ms':0x0,'src':'','item':'','err':null},_0x282f36=null,_0x50a40b=null,_0x2569ad=0x1,_0x427a28=null,_0x5cc555=null;function _0x4dfe79(){try{return currentScreen;}catch(_0x3060e8){return'';}}function _0x5e93de(){try{return performance['now']();}catch(_0x4b8a82){return Date['now']();}}function _0x210823(){try{return modelCmPerUnit()||0x13;}catch(_0x18f6cf){return 0x13;}}function _0x3fbef6(){try{var _0x5f55bb=state['shots']&&state['shots']['front'];return _0x5f55bb?_0x5f55bb['length']+':'+_0x5f55bb['slice'](-0x18):'';}catch(_0xe359b8){return'';}}function _0x2d7345(_0x6256bb,_0x4908e5,_0x3e6908,_0x5c3b26){var _0x3a294d;try{_0x3a294d=getNeckBottomY()+0.02;}catch(_0xaed43e){return![];}if(!isFinite(_0x3a294d))return![];var _0x425506=_0x12afce['cell'],_0x22bcf2=Math['ceil'](_0x12afce['xMax']/_0x425506),_0x125958=Math['ceil'](_0x12afce['depth']/_0x425506),_0x2abc46=_0x3a294d-_0x125958*_0x425506,_0x5bb0f4=_0x22bcf2*_0x425506,_0x33c89b=new Float32Array(_0x22bcf2*_0x125958)['fill'](-Infinity),_0x4fe85d=new Float32Array(_0x22bcf2*_0x125958)['fill'](Infinity),_0x5bb36f=new Float32Array(_0x22bcf2)['fill'](-Infinity),_0x1d83a2=0x0,_0x2d0a0e=0x0;try{_0x6256bb['updateMatrixWorld'](!![]);}catch(_0x4c1390){}function _0x5778b2(_0x2a337c,_0x54aede,_0x1ca24b){if(_0x54aede>_0x3a294d||_0x54aede<=_0x2abc46)return;var _0xa5e71e=_0x2a337c<0x0?-_0x2a337c:_0x2a337c;if(_0xa5e71e>=_0x5bb0f4)return;var _0x1bb45d=_0xa5e71e/_0x425506|0x0,_0x28818c=(_0x3a294d-_0x54aede)/_0x425506|0x0,_0x2e8791=_0x28818c*_0x22bcf2+_0x1bb45d;if(_0x1ca24b>_0x33c89b[_0x2e8791])_0x33c89b[_0x2e8791]=_0x1ca24b;if(_0x1ca24b<_0x4fe85d[_0x2e8791])_0x4fe85d[_0x2e8791]=_0x1ca24b;if(_0x54aede>_0x5bb36f[_0x1bb45d])_0x5bb36f[_0x1bb45d]=_0x54aede;}_0x6256bb['traverse'](function(_0x2ba196){if(!_0x2ba196['isMesh']||_0x2ba196['visible']===![])return;var _0x36cc7b=_0x2ba196['geometry'],_0x520bcb=_0x36cc7b&&_0x36cc7b['attributes']&&_0x36cc7b['attributes']['position'];if(!_0x520bcb)return;var _0x49ce94=_0x2ba196['matrixWorld']['elements'],_0x5a7c5e=_0x36cc7b['index'],_0x4385ea=_0x5a7c5e?_0x5a7c5e['count']:_0x520bcb['count'],_0x30166f,_0x485d1a,_0x31d981,_0x2e93ae,_0x1fc0cf=[0x0,0x0,0x0,0x0,0x0,0x0,0x0,0x0,0x0];for(_0x30166f=0x0;_0x30166f+0x2<_0x4385ea;_0x30166f+=0x3){for(_0x485d1a=0x0;_0x485d1a<0x3;_0x485d1a++){var _0x424939=_0x5a7c5e?_0x5a7c5e['getX'](_0x30166f+_0x485d1a):_0x30166f+_0x485d1a,_0x2078f1=_0x520bcb['getX'](_0x424939),_0xffd91b=_0x520bcb['getY'](_0x424939),_0x2de749=_0x520bcb['getZ'](_0x424939);_0x1fc0cf[_0x485d1a*0x3]=_0x49ce94[0x0]*_0x2078f1+_0x49ce94[0x4]*_0xffd91b+_0x49ce94[0x8]*_0x2de749+_0x49ce94[0xc],_0x1fc0cf[_0x485d1a*0x3+0x1]=_0x49ce94[0x1]*_0x2078f1+_0x49ce94[0x5]*_0xffd91b+_0x49ce94[0x9]*_0x2de749+_0x49ce94[0xd],_0x1fc0cf[_0x485d1a*0x3+0x2]=_0x49ce94[0x2]*_0x2078f1+_0x49ce94[0x6]*_0xffd91b+_0x49ce94[0xa]*_0x2de749+_0x49ce94[0xe];}var _0x4db0b2=Math['max'](_0x1fc0cf[0x1],_0x1fc0cf[0x4],_0x1fc0cf[0x7]),_0x1f38d3=Math['min'](_0x1fc0cf[0x1],_0x1fc0cf[0x4],_0x1fc0cf[0x7]);if(_0x1f38d3>_0x3a294d||_0x4db0b2<_0x2abc46)continue;if(Math['min'](Math['abs'](_0x1fc0cf[0x0]),Math['abs'](_0x1fc0cf[0x3]),Math['abs'](_0x1fc0cf[0x6]))>=_0x5bb0f4&&_0x1fc0cf[0x0]>0x0===_0x1fc0cf[0x3]>0x0&&_0x1fc0cf[0x3]>0x0===_0x1fc0cf[0x6]>0x0)continue;var _0x447e00=Math['hypot'](_0x1fc0cf[0x3]-_0x1fc0cf[0x0],_0x1fc0cf[0x4]-_0x1fc0cf[0x1],_0x1fc0cf[0x5]-_0x1fc0cf[0x2]),_0xd08d65=Math['hypot'](_0x1fc0cf[0x6]-_0x1fc0cf[0x0],_0x1fc0cf[0x7]-_0x1fc0cf[0x1],_0x1fc0cf[0x8]-_0x1fc0cf[0x2]),_0x3faa8a=Math['hypot'](_0x1fc0cf[0x6]-_0x1fc0cf[0x3],_0x1fc0cf[0x7]-_0x1fc0cf[0x4],_0x1fc0cf[0x8]-_0x1fc0cf[0x5]),_0x16d5b3=Math['max'](0x1,Math['min'](0x28,Math['ceil'](Math['max'](_0x447e00,_0xd08d65,_0x3faa8a)/(_0x425506*0.5))));for(_0x31d981=0x0;_0x31d981<=_0x16d5b3;_0x31d981++)for(_0x2e93ae=0x0;_0x2e93ae<=_0x16d5b3-_0x31d981;_0x2e93ae++){var _0x91f3c1=_0x31d981/_0x16d5b3,_0x3179ee=_0x2e93ae/_0x16d5b3,_0x50d22e=0x1-_0x91f3c1-_0x3179ee;_0x5778b2(_0x1fc0cf[0x0]*_0x50d22e+_0x1fc0cf[0x3]*_0x91f3c1+_0x1fc0cf[0x6]*_0x3179ee,_0x1fc0cf[0x1]*_0x50d22e+_0x1fc0cf[0x4]*_0x91f3c1+_0x1fc0cf[0x7]*_0x3179ee,_0x1fc0cf[0x2]*_0x50d22e+_0x1fc0cf[0x5]*_0x91f3c1+_0x1fc0cf[0x8]*_0x3179ee);}_0x1d83a2++;}});for(var _0x46d27a=0x0;_0x46d27a<_0x33c89b['length'];_0x46d27a++)if(_0x33c89b[_0x46d27a]>-Infinity)_0x2d0a0e++;if(_0x2d0a0e<0x3c||!(_0x5bb36f[0x0]>-Infinity))return _0x327302['err']='몸통\x20메쉬에서\x20어깨를\x20못\x20읽음(칸\x20'+_0x2d0a0e+')',![];var _0x1b8d2d=0x0,_0x35d27f=0x0,_0xcd58fc;for(_0xcd58fc=0x0;_0xcd58fc<_0x22bcf2;_0xcd58fc++)if(_0x5bb36f[_0xcd58fc]>_0x3a294d-0.9)_0x1b8d2d=_0xcd58fc;return _0x35d27f=_0x3a294d-_0x5bb36f[_0x1b8d2d],_0x282f36={'yTop':_0x3a294d,'yBot':_0x2abc46,'cell':_0x425506,'NX':_0x22bcf2,'NY':_0x125958,'xMax':_0x5bb0f4,'ZF':_0x33c89b,'ZB':_0x4fe85d,'TOP':_0x5bb36f,'tris':_0x1d83a2,'filled':_0x2d0a0e,'halfW':(_0x1b8d2d+0x1)*_0x425506,'drop':_0x35d27f},_0x50a40b=_0x4908e5,_0x2569ad++,_0x327302['src']=_0x3e6908||'',_0x327302['item']=_0x5c3b26||'',_0x327302['err']=null,_0x348a8d=null,console['log'](_0x206726+'\x20몸통\x20메쉬에서\x20어깨를\x20읽음('+_0x327302['src']+(_0x327302['item']?'\x20·\x20'+_0x327302['item']:'')+')\x20—\x20삼각형\x20'+_0x1d83a2+'개\x20·\x20칸\x20'+_0x2d0a0e+'\x20·\x20어깨\x20끝(팔\x20바깥)까지\x20반폭\x20'+(_0x282f36['halfW']*_0x210823())['toFixed'](0x1)+'cm\x20·\x20거기서\x20윗면이\x20목\x20밑동보다\x20'+(_0x35d27f*_0x210823())['toFixed'](0x1)+'cm\x20낮음'),!![];}_0x12afce['_measure']=_0x2d7345,_0x12afce['ensure']=function(){if(!_0x12afce['on']||!_0x12afce['preload']||_0x12afce['resultOnly'])return Promise['resolve'](![]);var _0x2606c8=_0x3fbef6();if(!_0x2606c8)return Promise['resolve'](![]);if(_0x282f36&&_0x50a40b===_0x2606c8)return Promise['resolve'](![]);if(_0x427a28&&_0x5cc555===_0x2606c8)return _0x427a28;if(typeof loadOutfitMesh!=='function'||typeof recommendOutfitWithAI!=='function'||typeof THREE==='undefined')return Promise['resolve'](![]);return _0x5cc555=_0x2606c8,_0x427a28=(async function(){try{if(!(state['landmarks']&&state['landmarks']['front'])||!(state['hairMasks']&&state['hairMasks']['front']))return![];var _0x136e44=await recommendOutfitWithAI();if(!_0x136e44||!_0x136e44['item'])return![];var _0x3c0c27=getFaceMetrics(),_0x2b0760=null,_0x14f7ad=null;try{if(isFinite(state['_model3DCrownY']))_0x2b0760=state['_model3DCrownY'];}catch(_0x5248ff){}try{_0x14f7ad=personBodyLenMesh(_0x2b0760==null?undefined:_0x2b0760);}catch(_0x87f318){_0x14f7ad=null;}if(!(_0x14f7ad>0.5))return![];var _0x4461eb=await loadOutfitMesh(_0x136e44['item'],_0x3c0c27['widthFactor'],_0x14f7ad);if(_0x3fbef6()!==_0x2606c8)return![];var _0x3f19f5=_0x2d7345(_0x4461eb,_0x2606c8,'미리\x20불러옴',_0x136e44['item']['name']||_0x136e44['item']['id']||'');try{if(typeof disposeObject3D==='function')disposeObject3D(_0x4461eb);}catch(_0xf3c134){}return _0x3f19f5;}catch(_0x4c082e){return _0x327302['err']=String(_0x4c082e&&_0x4c082e['message']||_0x4c082e),console['warn'](_0x206726+'\x20미리\x20재기\x20실패',_0x4c082e),![];}finally{_0x427a28=null;}}()),_0x427a28;},_0x12afce['_afterOutfitLoad']=function(_0x191d4a,_0x7b42fc){try{var _0x151cc1=_0x3fbef6();if(_0x12afce['on']&&_0x191d4a&&!(_0x282f36&&_0x50a40b===_0x151cc1)){_0x2d7345(_0x191d4a,_0x151cc1,'3D\x20결과\x20화면에서',_0x7b42fc&&(_0x7b42fc['name']||_0x7b42fc['id'])||'');if(_0x12afce['resultOnly']&&_0x282f36)try{_0x12afce['refresh']();}catch(_0x3605a2){}}}catch(_0x235569){console['warn'](_0x206726+'\x20재기\x20실패',_0x235569);}};var _0x348a8d=null;function _0x35a501(_0x398c7b,_0x9a4d98,_0x47f031,_0x19583a){var _0x267fff=_0x19583a,_0x350d3d=_0x19583a,_0x123c31=_0x47f031*_0x9a4d98;if(!_0x398c7b[_0x123c31+_0x19583a])return null;while(_0x267fff>0x0&&_0x398c7b[_0x123c31+_0x267fff-0x1])_0x267fff--;while(_0x350d3d<_0x9a4d98-0x1&&_0x398c7b[_0x123c31+_0x350d3d+0x1])_0x350d3d++;return[_0x267fff,_0x350d3d];}function _0x1412a3(){var _0x13bb30=_0x3fbef6();if(_0x348a8d&&_0x348a8d['key']===_0x13bb30)return _0x348a8d;var _0x272bcf={'key':_0x13bb30,'front':null,'back':null,'signX':0x1};try{var _0x1f9cbf=state['hairMasks']&&state['hairMasks']['front'],_0xfb6bbe=state['landmarks']&&state['landmarks']['front'];if(_0x1f9cbf&&_0xfb6bbe&&_0x1f9cbf['reasonMask']&&_0x1f9cbf['personMask']&&_0x1f9cbf['maskW']&&_0x1f9cbf['maskH']&&_0xfb6bbe['chinY']!=null){var _0xbcebb2=_0x1f9cbf['maskW'],_0x3e82c9=_0x1f9cbf['maskH'],_0x4a6389=_0x1f9cbf['reasonMask'],_0x3ee457=_0x1f9cbf['personMask'],_0x53cd5b=Math['abs'](_0xfb6bbe['rEarX']-_0xfb6bbe['lEarX'])*_0xbcebb2,_0x90fe29=Math['round']((_0xfb6bbe['lEarX']+_0xfb6bbe['rEarX'])/0x2*_0xbcebb2),_0x2d80fe=Math['round'](_0xfb6bbe['chinY']*_0x3e82c9);if(_0x53cd5b>0x4&&_0x90fe29>0x0&&_0x90fe29<_0xbcebb2-0x1){var _0x531f7d=_0x12afce['earSpanCm']/_0x53cd5b,_0x59a958,_0x4677da=-0x1,_0x58bdd7='사람\x20폭';for(_0x59a958=_0x2d80fe+Math['round'](_0x53cd5b*0.15);_0x59a958<_0x3e82c9;_0x59a958++){var _0xa4debf=_0x35a501(_0x3ee457,_0xbcebb2,_0x59a958,_0x90fe29);if(_0xa4debf&&_0xa4debf[0x1]-_0xa4debf[0x0]+0x1>=_0x12afce['shoulderRatio']*_0x53cd5b){_0x4677da=_0x59a958;break;}}_0x4677da<0x0&&(_0x4677da=_0x2d80fe+Math['round'](_0x53cd5b*0.75),_0x58bdd7='어림(턱\x20아래\x20'+(0.75*_0x12afce['earSpanCm'])['toFixed'](0x0)+'cm)');var _0x3f11e2={'shRow':_0x4677da,'how':_0x58bdd7,'inFrame':_0x4677da<_0x3e82c9-0x2,'L':{'low':-0x1,'area':0x0},'R':{'low':-0x1,'area':0x0},'cmPx':_0x531f7d};for(_0x59a958=Math['max'](0x0,_0x4677da);_0x59a958<_0x3e82c9;_0x59a958++){var _0x3d011b=0x0,_0x5d6e29=0x0,_0x5f5025=_0x59a958*_0xbcebb2,_0x20a32b;for(_0x20a32b=0x0;_0x20a32b<_0xbcebb2;_0x20a32b++)if(_0x4a6389[_0x5f5025+_0x20a32b]===0x1){if(_0x20a32b<_0x90fe29)_0x3d011b++;else _0x5d6e29++;}_0x3f11e2['L']['area']+=_0x3d011b,_0x3f11e2['R']['area']+=_0x5d6e29;if(_0x3d011b>=0x3)_0x3f11e2['L']['low']=_0x59a958;if(_0x5d6e29>=0x3)_0x3f11e2['R']['low']=_0x59a958;}['L','R']['forEach'](function(_0x236eac){var _0x1cddf9=_0x3f11e2[_0x236eac];_0x1cddf9['depthCm']=_0x1cddf9['low']>=0x0?(_0x1cddf9['low']-_0x4677da)*_0x531f7d:0x0,_0x1cddf9['areaCm2']=_0x1cddf9['area']*_0x531f7d*_0x531f7d,_0x1cddf9['draped']=_0x3f11e2['inFrame']&&_0x1cddf9['depthCm']>=0x3&&_0x1cddf9['areaCm2']>=0x6;}),_0x272bcf['front']=_0x3f11e2;}}}catch(_0x2308f8){_0x272bcf['err']=String(_0x2308f8&&_0x2308f8['message']||_0x2308f8);}try{var _0x4a6486=state['hairMasks']&&state['hairMasks']['back'],_0x26a6de=state['poseEars']&&state['poseEars']['back'];if(_0x4a6486&&_0x4a6486['reasonMask']&&_0x4a6486['maskW']&&_0x26a6de&&_0x26a6de['shoulderY']!=null&&_0x26a6de['span']>0x0){var _0x5acd38=_0x4a6486['maskW'],_0x3acc00=_0x4a6486['maskH'],_0x500ba5=_0x4a6486['reasonMask'],_0x40aa23=Math['round'](_0x26a6de['shoulderY']*_0x3acc00),_0x570577=-0x1,_0x421acc,_0x6473f5,_0x3de995;for(_0x421acc=Math['max'](0x0,_0x40aa23);_0x421acc<_0x3acc00;_0x421acc++){_0x3de995=0x0;for(_0x6473f5=0x0;_0x6473f5<_0x5acd38;_0x6473f5++)if(_0x500ba5[_0x421acc*_0x5acd38+_0x6473f5]===0x1)_0x3de995++;if(_0x3de995>=0x3)_0x570577=_0x421acc;}_0x272bcf['back']={'shRow':_0x40aa23,'depthCm':_0x570577>=0x0?(_0x570577-_0x40aa23)*(_0x12afce['earSpanCm']/(_0x26a6de['span']*_0x5acd38)):0x0};}}catch(_0x410cbd){}try{var _0x4f91b2=state['_hair3Dneutral'],_0x239f31=_0x4f91b2&&_0x4f91b2['occ']&&_0x4f91b2['occ']['probe']||state['hairOcc3D']&&state['hairOcc3D']['probe'],_0x17af17=_0x239f31&&_0x239f31['cams']&&_0x239f31['cams']['filter'](function(_0x2c2192){return _0x2c2192['angle']==='front';})[0x0];if(_0x17af17&&_0x17af17['R']&&_0x17af17['s'])_0x272bcf['signX']=_0x17af17['R'][0x0]/_0x17af17['s']>=0x0?0x1:-0x1;}catch(_0x1cfa0d){}return _0x348a8d=_0x272bcf,_0x272bcf;}_0x12afce['recognize']=_0x1412a3;function _0x31b2a2(_0xa647d2){var _0x37a751=_0x1412a3();if(!_0x37a751['front'])return![];var _0x18d505=_0xa647d2>=0x0===_0x37a751['signX']>0x0;return!!(_0x18d505?_0x37a751['front']['R']['draped']:_0x37a751['front']['L']['draped']);}function _0x5ee23c(_0x8567d3,_0x2db7b6,_0x4e5df4){var _0x3ebe05=_0x282f36;if(_0x12afce['natural']){if(_0x8567d3['y']>_0x3ebe05['yTop']){var _0x46e3d6=_0x4a9717['REGROW']&&_0x4a9717['REGROW']['neckPush'];if(_0x46e3d6){var _0xc8c3b7=_0x46e3d6(_0x8567d3);if(_0xc8c3b7!==_0x8567d3)return _0x327302['neck']++,_0xc8c3b7;}return _0x8567d3;}if(_0x8567d3['y']<=_0x3ebe05['yBot'])return _0x8567d3;var _0x359285=_0x8567d3['x']<0x0?-_0x8567d3['x']:_0x8567d3['x'];if(_0x359285>=_0x3ebe05['xMax'])return _0x8567d3;var _0x29a413=_0x359285/_0x3ebe05['cell']|0x0,_0x3e718c=((_0x3ebe05['yTop']-_0x8567d3['y'])/_0x3ebe05['cell']|0x0)*_0x3ebe05['NX']+_0x29a413,_0x216158=_0x3ebe05['ZF'][_0x3e718c];if(_0x216158===-Infinity)return _0x8567d3;var _0x4d41bf=_0x3ebe05['ZB'][_0x3e718c],_0x3e46dc=_0x12afce['margin'];if(!(_0x8567d3['z']>_0x4d41bf-_0x3e46dc&&_0x8567d3['z']<_0x216158+_0x3e46dc))return _0x8567d3;if(!_0x4e5df4['pref']){var _0x1d8b9a=_0x2db7b6?_0x2db7b6['z']:_0x8567d3['z'];_0x4e5df4['pref']=_0x1d8b9a>=_0x216158-_0x3e46dc?'front':'back',_0x327302['touched']++;if(_0x4e5df4['pref']==='front')_0x327302['front']++;else _0x327302['back']++;}var _0x2b4caa=_0x3ebe05['TOP'][_0x29a413]+_0x3e46dc-_0x8567d3['y'],_0x384c60=_0x4e5df4['pref']==='front'?_0x216158+_0x3e46dc-_0x8567d3['z']:_0x8567d3['z']-(_0x4d41bf-_0x3e46dc);if(_0x2b4caa>=0x0&&_0x2b4caa<_0x12afce['restMax']&&_0x2b4caa<_0x384c60)return _0x327302['rest']++,{'x':_0x8567d3['x'],'y':_0x3ebe05['TOP'][_0x29a413]+_0x3e46dc,'z':_0x8567d3['z']};return{'x':_0x8567d3['x'],'y':_0x8567d3['y'],'z':_0x4e5df4['pref']==='front'?_0x216158+_0x3e46dc:_0x4d41bf-_0x3e46dc};}if(_0x8567d3['y']>_0x3ebe05['yTop']){var _0x3f400a=_0x4a9717['REGROW']&&_0x4a9717['REGROW']['neckPush'];if(_0x3f400a){var _0x40309a=_0x3f400a(_0x8567d3);if(_0x40309a!==_0x8567d3)return _0x327302['neck']++,_0x40309a;}return _0x8567d3;}if(_0x8567d3['y']<=_0x3ebe05['yBot'])return _0x8567d3;var _0x259f92=_0x8567d3['x']<0x0?-_0x8567d3['x']:_0x8567d3['x'];if(_0x259f92>=_0x3ebe05['xMax'])return _0x8567d3;var _0x121b00=_0x259f92/_0x3ebe05['cell']|0x0,_0x9f793b=(_0x3ebe05['yTop']-_0x8567d3['y'])/_0x3ebe05['cell']|0x0,_0x4477b9=_0x9f793b*_0x3ebe05['NX']+_0x121b00,_0x1d8d2b=_0x3ebe05['ZF'][_0x4477b9];if(_0x1d8d2b===-Infinity)return _0x8567d3;var _0x5c1c55=_0x3ebe05['ZB'][_0x4477b9],_0x5b3694=_0x12afce['margin'],_0x2b297a=_0x12afce['frontOnlyIfDraped']&&_0x259f92>=_0x12afce['centerBand'],_0x3f35f6=_0x12afce['frontDrape']&&!_0x4e5df4['mq'];if(_0x2b297a&&_0x3f35f6&&_0x4e5df4['drp']==null)_0x4e5df4['drp']=_0x31b2a2(_0x8567d3['x']);var _0x5ba0d7=_0x2b297a&&(!_0x3f35f6||!_0x4e5df4['drp']);if(!(_0x8567d3['z']>_0x5c1c55-_0x5b3694&&_0x8567d3['z']<_0x1d8d2b+_0x5b3694)){if(_0x5ba0d7&&_0x8567d3['z']>=_0x1d8d2b+_0x5b3694&&_0x8567d3['y']<_0x3ebe05['TOP'][_0x121b00]){!_0x4e5df4['pref']&&(_0x4e5df4['pref']='back',_0x327302['touched']++,_0x327302['back']++,_0x327302['forced']++);if(_0x4e5df4['pref']==='back')return _0x327302['swept']++,{'x':_0x8567d3['x'],'y':_0x8567d3['y'],'z':_0x5c1c55-_0x5b3694};}return _0x8567d3;}if(!_0x4e5df4['pref']){var _0x167343=(_0x1d8d2b+_0x5c1c55)/0x2,_0x8e7f7d=_0x2db7b6?_0x2db7b6['z']:_0x8567d3['z'];if(_0x5ba0d7){_0x4e5df4['pref']='back';if(_0x8e7f7d>_0x167343)_0x327302['forced']++;}else{if(Math['abs'](_0x8e7f7d-_0x167343)<_0x12afce['ambig'])_0x4e5df4['pref']=_0x3f35f6&&_0x31b2a2(_0x8567d3['x'])?'front':'back';else _0x4e5df4['pref']=_0x8e7f7d>_0x167343?'front':'back';}_0x327302['touched']++;if(_0x4e5df4['pref']==='front')_0x327302['front']++;else _0x327302['back']++;}var _0x112a22=_0x3ebe05['TOP'][_0x121b00]+_0x5b3694-_0x8567d3['y'],_0x5c46a8=_0x4e5df4['pref']==='front'?_0x1d8d2b+_0x5b3694-_0x8567d3['z']:_0x8567d3['z']-(_0x5c1c55-_0x5b3694);if(_0x112a22>=0x0&&_0x112a22<_0x12afce['restMax']&&_0x112a22<_0x5c46a8)return _0x327302['rest']++,{'x':_0x8567d3['x'],'y':_0x3ebe05['TOP'][_0x121b00]+_0x5b3694,'z':_0x8567d3['z']};return{'x':_0x8567d3['x'],'y':_0x8567d3['y'],'z':_0x4e5df4['pref']==='front'?_0x1d8d2b+_0x5b3694:_0x5c1c55-_0x5b3694};}function _0x34d458(_0x2d2a44,_0x527885,_0x32d5b6){var _0x4e5044=_0x12afce['sweepLen'];if(!(_0x4e5044>0x0)||_0x32d5b6<0x2)return![];var _0x4608da=_0x2d2a44[_0x32d5b6]['z'],_0x36fad2=0x0,_0xe6fec,_0x1eac7d,_0x777927,_0x30f2e4,_0x22d171,_0x306885,_0x20db0f,_0x34e81a=![],_0x9c10dd=_0x4a9717['REGROW']&&_0x4a9717['REGROW']['neckPush'];for(_0xe6fec=_0x32d5b6-0x1;_0xe6fec>=0x1;_0xe6fec--){_0x36fad2+=Math['hypot'](_0x527885[_0xe6fec]['x']-_0x527885[_0xe6fec+0x1]['x'],_0x527885[_0xe6fec]['y']-_0x527885[_0xe6fec+0x1]['y'],_0x527885[_0xe6fec]['z']-_0x527885[_0xe6fec+0x1]['z']);if(_0x36fad2>=_0x4e5044)break;_0x1eac7d=_0x2d2a44[_0xe6fec],_0x30f2e4=0x1-_0x36fad2/_0x4e5044,_0x22d171=_0x30f2e4*_0x30f2e4*(0x3-0x2*_0x30f2e4),_0x20db0f=_0x1eac7d['z']+(_0x4608da-_0x1eac7d['z'])*_0x22d171;if(!(_0x20db0f<_0x1eac7d['z']-0.0001))continue;_0x306885={'x':_0x1eac7d['x'],'y':_0x1eac7d['y'],'z':_0x20db0f};if(_0x9c10dd&&_0x306885['y']>_0x282f36['yTop'])try{_0x306885=_0x9c10dd(_0x306885)||_0x306885;}catch(_0x27de16){}_0x2d2a44[_0xe6fec]=_0x306885,_0x34e81a=!![];}return _0x34e81a;}var _0x1805fc=new WeakMap();function _0x322ec3(_0x2d0c88){if(!_0x12afce['on']||!_0x282f36||!_0x2d0c88||!_0x2d0c88['length'])return _0x2d0c88;if(_0x12afce['resultOnly']&&_0x4dfe79()==='adjust')return _0x2d0c88;var _0x2b18b4=_0x1805fc['get'](_0x2d0c88);if(_0x2b18b4&&_0x2b18b4['ver']===_0x2569ad)return _0x2b18b4['out'];var _0x376a32=_0x5e93de(),_0x57be8e=_0x2d0c88['length'],_0x59921f=new Array(_0x57be8e),_0x294b42,_0x2f68be,_0x2a8016,_0x2362d9,_0x2bfd16,_0x1841f1,_0x4c9e29,_0x511e9f=_0x282f36['yTop']+0.6;_0x327302['strands']=_0x57be8e,_0x327302['touched']=_0x327302['front']=_0x327302['back']=_0x327302['rest']=_0x327302['neck']=_0x327302['forced']=_0x327302['swept']=_0x327302['smooth']=0x0;var _0x9f474a=![];try{_0x9f474a=!!(_0x12afce['mqBack']&&MANNEQUIN['on']);}catch(_0x5abeb8){_0x9f474a=![];}_0x327302['mq']=_0x9f474a;for(_0x294b42=0x0;_0x294b42<_0x57be8e;_0x294b42++){_0x2a8016=_0x2d0c88[_0x294b42],_0x2362d9=_0x2a8016&&_0x2a8016['pts'],_0x2bfd16=null;if(_0x2362d9&&_0x2362d9['length']>0x1){_0x1841f1={'pref':null,'drp':null,'mq':_0x9f474a,'k0':-0x1};for(_0x2f68be=0x1;_0x2f68be<_0x2362d9['length'];_0x2f68be++){if(!(_0x2362d9[_0x2f68be]['y']<_0x511e9f))continue;_0x4c9e29=_0x5ee23c(_0x2362d9[_0x2f68be],_0x2bfd16?_0x2bfd16[_0x2f68be-0x1]:_0x2362d9[_0x2f68be-0x1],_0x1841f1);if(_0x4c9e29!==_0x2362d9[_0x2f68be]){if(!_0x2bfd16){_0x2bfd16=_0x2362d9['slice']();try{_0x2bfd16['_pre']=_0x2362d9['_pre']||_0x2362d9;}catch(_0x18f7c8){}}_0x2bfd16[_0x2f68be]=_0x4c9e29;if(_0x1841f1['k0']<0x0&&_0x1841f1['pref']==='back'&&_0x4c9e29['z']<_0x2362d9[_0x2f68be]['z']-_0x12afce['sweepMinJump'])_0x1841f1['k0']=_0x2f68be;}}if(_0x2bfd16&&_0x1841f1['k0']>0x0&&_0x34d458(_0x2bfd16,_0x2362d9,_0x1841f1['k0']))_0x327302['smooth']++;}_0x59921f[_0x294b42]=_0x2bfd16?Object['assign']({},_0x2a8016,{'pts':_0x2bfd16}):_0x2a8016;}return _0x327302['ms']=_0x5e93de()-_0x376a32,_0x1805fc['set'](_0x2d0c88,{'ver':_0x2569ad,'out':_0x59921f}),_0x59921f;}_0x12afce['_pass']=_0x322ec3,_0x12afce['_apply']=function(_0x5b49a5){try{return _0x322ec3(_0x5b49a5);}catch(_0x2b2ca9){return _0x327302['err']=String(_0x2b2ca9&&_0x2b2ca9['message']||_0x2b2ca9),_0x5b49a5;}},_0x12afce['_sigTail']=function(){return'|sh'+(_0x12afce['on']&&_0x282f36&&!(_0x12afce['resultOnly']&&_0x4dfe79()==='adjust')?_0x2569ad+(_0x12afce['natural']?'n':''):0x0);};function _0x1703b8(){try{if(typeof ADJ_CACHE!=='undefined'&&ADJ_CACHE['bump'])ADJ_CACHE['bump']();}catch(_0x16336b){}try{if(_0x4dfe79()==='adjust'&&typeof renderAdjustFrame==='function')renderAdjustFrame();}catch(_0x3871c5){}}return _0x12afce['refresh']=function(){return _0x2569ad++,_0x1805fc=new WeakMap(),_0x348a8d=null,_0x1703b8(),_0x12afce['on'];},_0x12afce['reset']=function(){_0x282f36=null,_0x50a40b=null,_0x348a8d=null,_0x2569ad++;},_0x12afce['_afterNav']=function(_0x54258d){try{if(_0x54258d==='style'||_0x54258d==='adjust')_0x12afce['ensure']()['then'](function(_0x35385d){if(_0x35385d)_0x1703b8();});}catch(_0x22315e){}},_0x12afce['_panelLines']=function(){var _0x27fd79=[],_0x38456a=_0x210823(),_0x25af38;if(!_0x12afce['on'])return _0x27fd79['concat']([_0x206726+'\x20꺼짐']);_0x25af38=_0x206726+'\x20켜짐\x20·\x20'+(_0x282f36?'몸통\x20메쉬에서\x20읽음('+_0x327302['src']+(_0x327302['item']?'\x20·\x20'+_0x327302['item']:'')+')\x20—\x20어깨\x20끝(팔\x20바깥)까지\x20반폭\x20'+(_0x282f36['halfW']*_0x38456a)['toFixed'](0x1)+'cm\x20·\x20거기서\x20윗면이\x20목\x20밑동보다\x20'+(_0x282f36['drop']*_0x38456a)['toFixed'](0x1)+'cm\x20낮음\x20·\x20칸\x20'+_0x282f36['filled']:'아직\x20못\x20읽음(몸통\x20메쉬를\x20불러오기\x20전)'+(_0x427a28?'\x20·\x20불러오는\x20중':''))+(_0x327302['err']?'\x20·\x20⚠\x20'+_0x327302['err']:''),_0x27fd79=_0x27fd79['concat']([_0x25af38]);if(_0x282f36)_0x27fd79['push']('\x20\x20적용(직전)\x20—\x20가닥\x20'+_0x327302['strands']+'개\x20중\x20몸통에\x20닿은\x20가닥\x20'+_0x327302['touched']+'\x20(앞으로\x20'+_0x327302['front']+'\x20/\x20뒤로\x20'+_0x327302['back']+')\x20·\x20어깨\x20위에\x20얹은\x20점\x20'+_0x327302['rest']+'\x20·\x20목\x20밖으로\x20민\x20점\x20'+_0x327302['neck']+'\x20·\x20'+Math['round'](_0x327302['ms'])+'ms'+(!_0x12afce['frontDrape']?'\x20·\x20어깨\x20앞으로\x20넘기기\x20꺼짐\x20—\x20전부\x20등\x20쪽으로:\x20앞에\x20있었지만\x20뒤로\x20보낸\x20가닥\x20'+_0x327302['forced']+'\x20(어깨\x20앞에\x20떠\x20있던\x20점\x20'+_0x327302['swept']+')':_0x12afce['frontOnlyIfDraped']?'\x20·\x20앞은\x20사진에서\x20넘긴\x20쪽만:\x20앞에\x20있었지만\x20뒤로\x20보낸\x20가닥\x20'+_0x327302['forced']+'\x20(어깨\x20앞에\x20떠\x20있던\x20점\x20'+_0x327302['swept']+')'+(_0x327302['mq']?'\x20·\x20마네킹:\x20전부\x20등\x20쪽으로':''):'\x20·\x20앞은\x20사진에서\x20넘긴\x20쪽만:\x20꺼짐')+'\x20·\x20넘어가는\x20자리\x20다듬은\x20가닥\x20'+_0x327302['smooth']);if(!_0x12afce['frontDrape'])return _0x27fd79;try{var _0x2a557c=_0x1412a3(),_0x49a6fe=_0x2a557c['front'];if(_0x49a6fe){var _0x4846af=function(_0x5ea23f){return'어깨선\x20아래\x20'+_0x5ea23f['depthCm']['toFixed'](0x1)+'cm\x20·\x20'+_0x5ea23f['areaCm2']['toFixed'](0x0)+'cm²\x20→\x20'+(_0x5ea23f['draped']?'앞으로\x20넘김':'안\x20넘김');};_0x27fd79['push']('\x20\x20사진\x20인지(정면)\x20—\x20어깨선:\x20사진\x20높이의\x20'+Math['round'](_0x49a6fe['shRow']/(state['hairMasks']['front']['maskH']||0x1)*0x64)+'%\x20줄('+_0x49a6fe['how']+')'+(_0x49a6fe['inFrame']?'':'\x20⚠\x20어깨가\x20사진\x20밖\x20—\x20판정\x20안\x20함')+'\x20·\x20화면\x20왼쪽:\x20'+_0x4846af(_0x49a6fe['L'])+'\x20·\x20화면\x20오른쪽:\x20'+_0x4846af(_0x49a6fe['R']));}else _0x27fd79['push']('\x20\x20사진\x20인지(정면)\x20—\x20못\x20함(정면\x20머리\x20영역/랜드마크\x20없음)'+(_0x2a557c['err']?'\x20⚠\x20'+_0x2a557c['err']:''));_0x27fd79['push']('\x20\x20사진\x20인지(후면)\x20—\x20'+(_0x2a557c['back']?'어깨\x20아래로\x20'+_0x2a557c['back']['depthCm']['toFixed'](0x1)+'cm\x20내려온\x20머리(등\x20쪽)':'어깨\x20높이를\x20못\x20잡음(포즈\x20없음)'));}catch(_0x364b0a){}return _0x27fd79;},console['log'](_0x206726+(_0x12afce['on']?'\x20설치\x20—\x20몸통\x20메쉬에서\x20어깨를\x20읽어\x20머리카락이\x20몸통을\x20뚫지\x20않게\x20합니다(전부\x20등\x20쪽으로\x20·\x20어깨\x20앞으로\x20넘기기는\x20SHOULDER.frontDrape=true로\x20켬).\x20끄기\x20SHOULDER.on=false\x20후\x20SHOULDER.refresh()':'\x20설치\x20—\x20꺼짐(기본):\x20머리가\x20만들어진\x20그대로\x20내려갑니다(앞·뒤로\x20보내지\x20않음\x20·\x20몸통을\x20통과할\x20수\x20있음).\x20켜기\x20SHOULDER.on=true;\x20SHOULDER.refresh()')),_0x12afce;}());function refitNeckToGarment(_0x9dd8b8,_0x15d418){if(!NECK_SHAPE['fromGarment']||!_garmentNeckOpening||!_0x9dd8b8)return![];const _0xe255bd=_0x9dd8b8['getObjectByName']('neckAttachPoint');if(!_0xe255bd)return![];try{let _0x3d5556=new THREE['Color'](_0x15d418||'#E8C39E');if((_0x3d5556['r']+_0x3d5556['g']+_0x3d5556['b'])/0x3<0.3)_0x3d5556=new THREE['Color']('#E0B294');const _0x388992=buildRealNeckMesh(_0x3d5556);if(!_0x388992)return![];const _0x56e26c=_0xe255bd['parent']||_0x9dd8b8;return _0x56e26c['remove'](_0xe255bd),disposeObject3D(_0xe255bd),_0x56e26c['add'](_0x388992),!![];}catch(_0x2152ac){return console['warn']('[3D·목]\x20옷깃\x20기준\x20재생성\x20실패(예전\x20목\x20유지):',_0x2152ac),![];}}function composeRotationZYX(_0x5b871c,_0x1f04c0,_0x578882){const _0x40c16f=Math['cos'](_0x5b871c),_0xb5c113=Math['sin'](_0x5b871c),_0x1c76f0=Math['cos'](_0x1f04c0),_0x1c0eba=Math['sin'](_0x1f04c0),_0x3e3b89=Math['cos'](_0x578882),_0x21fbb5=Math['sin'](_0x578882);function _0x1e5881(_0x5cc401,_0x7a7a06){const _0x5b7a8d=new Array(0x9);for(let _0x559310=0x0;_0x559310<0x3;_0x559310++)for(let _0x58ae84=0x0;_0x58ae84<0x3;_0x58ae84++){let _0x5c39b2=0x0;for(let _0x359fe6=0x0;_0x359fe6<0x3;_0x359fe6++)_0x5c39b2+=_0x5cc401[_0x559310*0x3+_0x359fe6]*_0x7a7a06[_0x359fe6*0x3+_0x58ae84];_0x5b7a8d[_0x559310*0x3+_0x58ae84]=_0x5c39b2;}return _0x5b7a8d;}const _0x40014d=[_0x3e3b89,-_0x21fbb5,0x0,_0x21fbb5,_0x3e3b89,0x0,0x0,0x0,0x1],_0x180b77=[_0x40c16f,0x0,_0xb5c113,0x0,0x1,0x0,-_0xb5c113,0x0,_0x40c16f],_0x1fb57f=[0x1,0x0,0x0,0x0,_0x1c76f0,-_0x1c0eba,0x0,_0x1c0eba,_0x1c76f0];return _0x1e5881(_0x1e5881(_0x40014d,_0x180b77),_0x1fb57f);}function applyRotationTranspose3(_0x37244e,_0x2236de){return new THREE['Vector3'](_0x37244e[0x0]*_0x2236de['x']+_0x37244e[0x3]*_0x2236de['y']+_0x37244e[0x6]*_0x2236de['z'],_0x37244e[0x1]*_0x2236de['x']+_0x37244e[0x4]*_0x2236de['y']+_0x37244e[0x7]*_0x2236de['z'],_0x37244e[0x2]*_0x2236de['x']+_0x37244e[0x5]*_0x2236de['y']+_0x37244e[0x8]*_0x2236de['z']);}let _silhouetteAnchorCache={};function computeSilhouetteAnchors(_0x4efa7a){if(_silhouetteAnchorCache[_0x4efa7a]!==undefined)return _silhouetteAnchorCache[_0x4efa7a];let _0x1fd07f=null;try{const _0x1268b7=state['hairMasks']&&state['hairMasks'][_0x4efa7a],_0x1959e3=state['landmarks']&&state['landmarks']['front'],_0x3eb933=state['hairMasks']&&state['hairMasks']['front'];if(_0x1268b7&&_0x1268b7['personMask']&&_0x1959e3&&_0x3eb933&&_0x3eb933['personMask']&&_0x3eb933['scalpY']){const _0x5c5c16=(_0x48a536,_0x3b97ac,_0x33b3cf)=>{const _0x25e80e=[];for(let _0x422ea9=Math['floor'](_0x3b97ac/0x3);_0x422ea9<Math['floor'](_0x3b97ac*0x2/0x3);_0x422ea9++){for(let _0x9fdce0=0x0;_0x9fdce0<_0x33b3cf;_0x9fdce0++){if(_0x48a536[_0x9fdce0*_0x3b97ac+_0x422ea9]){_0x25e80e['push'](_0x9fdce0);break;}}}if(_0x25e80e['length']<0xa)return-0x1;return _0x25e80e['sort']((_0x24e342,_0x3e3c55)=>_0x24e342-_0x3e3c55),_0x25e80e[Math['floor'](_0x25e80e['length']*0.05)];},_0x237c44=(_0x484b24,_0x2b7615,_0x55ef46)=>{let _0x586646=-0x1,_0x20bc97=-0x1;for(let _0x28677d=0x0;_0x28677d<_0x2b7615;_0x28677d++){if(_0x484b24[_0x55ef46*_0x2b7615+_0x28677d]){_0x586646=_0x28677d;break;}}for(let _0x1d3be2=_0x2b7615-0x1;_0x1d3be2>=0x0;_0x1d3be2--){if(_0x484b24[_0x55ef46*_0x2b7615+_0x1d3be2]){_0x20bc97=_0x1d3be2;break;}}return _0x586646>=0x0&&_0x20bc97>=_0x586646?{'l':_0x586646,'r':_0x20bc97,'w':_0x20bc97-_0x586646+0x1}:null;},_0x1e6651=(_0x3dd423,_0x4eb887,_0x24f679,_0x4ac4fb)=>{let _0x499db1=-0x1,_0x5e95f4=0x0,_0x4c4957=0x0,_0x190845=0x0,_0x732461=-0x1;const _0x30cfc5=[];for(let _0x4dc2e=_0x4ac4fb;_0x4dc2e<_0x24f679;_0x4dc2e++){const _0x5734d0=_0x237c44(_0x3dd423,_0x4eb887,_0x4dc2e);if(!_0x5734d0)continue;_0x30cfc5['push'](_0x5734d0['w']);if(_0x30cfc5['length']>0x8){const _0xd3d2d1=_0x30cfc5['slice']()['sort']((_0x1fcd48,_0x163fca)=>_0x1fcd48-_0x163fca)[Math['floor'](_0x30cfc5['length']/0x2)];if(_0x5734d0['w']>_0xd3d2d1*1.6){_0x732461=_0x4dc2e;break;}}_0x5734d0['w']>_0x190845&&(_0x190845=_0x5734d0['w'],_0x499db1=_0x4dc2e,_0x5e95f4=_0x5734d0['l'],_0x4c4957=_0x5734d0['r']);}return _0x499db1>_0x4ac4fb?{'earRow':_0x499db1,'earL':_0x5e95f4,'earR':_0x4c4957,'span':_0x4c4957-_0x5e95f4,'shoulderRow':_0x732461}:null;},_0x4dad6f=_0x1268b7['maskW'],_0x245ce6=_0x1268b7['maskH'],_0x17de0a=_0x3eb933['maskW'],_0x581acb=_0x3eb933['maskH'],_0x14c769=_0x5c5c16(_0x1268b7['personMask'],_0x4dad6f,_0x245ce6),_0x4d7c50=_0x5c5c16(_0x3eb933['personMask'],_0x17de0a,_0x581acb),_0x68fdfe=_0x14c769>=0x0?_0x1e6651(_0x1268b7['personMask'],_0x4dad6f,_0x245ce6,_0x14c769):null,_0x23114e=_0x4d7c50>=0x0?_0x1e6651(_0x3eb933['personMask'],_0x17de0a,_0x581acb,_0x4d7c50):null;let _0x3aae79=state['poseEars']&&state['poseEars'][_0x4efa7a];if(_0x3aae79&&_0x68fdfe&&_0x68fdfe['span']>0x4){const _0x1722f3=(_0x3aae79['rEarX']-_0x3aae79['lEarX'])*_0x4dad6f/_0x68fdfe['span'],_0x1dbe11=_0x23114e&&_0x23114e['span']>0x4?clamp(Math['abs'](_0x1959e3['rEarX']-_0x1959e3['lEarX'])*_0x17de0a/_0x23114e['span'],0.4,1.05):0x0,_0x1fb122=_0x1dbe11?_0x1dbe11*0.5:0.3,_0x23abe4=_0x1dbe11?_0x1dbe11*1.6:1.4;(_0x1722f3<_0x1fb122||_0x1722f3>_0x23abe4)&&(console['log']('['+_0x4efa7a+']\x20포즈\x20귀\x20=\x20실루엣\x20폭의\x20'+(_0x1722f3*0x64)['toFixed'](0x0)+'%'+(_0x1dbe11?'\x20(정면\x20실측\x20기준\x20'+(_0x1dbe11*0x64)['toFixed'](0x0)+'%,\x20허용\x20'+(_0x1fb122*0x64)['toFixed'](0x0)+'~'+(_0x23abe4*0x64)['toFixed'](0x0)+'%)':'\x20(허용\x2030~140%)')+'\x20—\x20비정상으로\x20보고\x20실루엣\x20앵커\x20사용'),_0x3aae79=null);}const _0x3710b7=(_0x16096c,_0x389345,_0x406f54,_0x13cdd4,_0x1b2e78)=>{const _0x4d2f27=[];for(let _0x309735=_0x13cdd4;_0x309735<Math['min'](_0x406f54,_0x13cdd4+_0x1b2e78);_0x309735++){const _0x3d269b=_0x237c44(_0x16096c,_0x389345,_0x309735);_0x4d2f27['push'](_0x3d269b?_0x3d269b['w']/0x2:0x0);}return _0x4d2f27;},_0x3a928c=(_0x331bf1,_0x21b78b)=>{let _0x3f4123=null;for(let _0x586e48=0.55;_0x586e48<=1.85;_0x586e48+=0.004){const _0x4592d8=Math['min'](_0x331bf1['length']-0x1,Math['floor']((_0x21b78b['length']-0x1)/_0x586e48));if(_0x4592d8<0x18)continue;let _0xfbe3ac=0x0,_0x20e019=0x0;for(let _0x3f7642=0x0;_0x3f7642<=_0x4592d8;_0x3f7642++){const _0x30e4c6=_0x3f7642*_0x586e48,_0x5e572b=Math['floor'](_0x30e4c6),_0x5298e=_0x30e4c6-_0x5e572b,_0x422844=_0x5e572b+0x1<_0x21b78b['length']?_0x21b78b[_0x5e572b]*(0x1-_0x5298e)+_0x21b78b[_0x5e572b+0x1]*_0x5298e:_0x21b78b[_0x21b78b['length']-0x1];_0xfbe3ac+=Math['abs'](_0x422844-_0x586e48*_0x331bf1[_0x3f7642]),_0x20e019+=_0x586e48*_0x331bf1[_0x3f7642];}const _0x15468c=_0xfbe3ac/Math['max'](0.000001,_0x20e019);if(!_0x3f4123||_0x15468c<_0x3f4123['err'])_0x3f4123={'s':_0x586e48,'err':_0x15468c,'n':_0x4592d8+0x1};}return _0x3f4123;},_0x54ee76=typeof _0x1959e3['chinY']==='number'?Math['round'](_0x1959e3['chinY']*_0x581acb-_0x4d7c50):0x0,_0x27e457=typeof _0x1959e3['earY']==='number'?Math['round']((_0x1959e3['earY']*_0x581acb-_0x4d7c50)*1.25):0x0;let _0x2fd07d=null,_0x4fd4ca=null,_0xde4e32=null;if(!_0x3aae79&&_0x54ee76>0x18&&_0x4d7c50>=0x0&&_0x14c769>=0x0){const _0xc3d6f2=_0x5165d=>_0x5165d>0x18?_0x3a928c(_0x3710b7(_0x3eb933['personMask'],_0x17de0a,_0x581acb,_0x4d7c50,_0x5165d),_0x3710b7(_0x1268b7['personMask'],_0x4dad6f,_0x245ce6,_0x14c769,Math['round'](_0x5165d*1.9))):null;_0x4fd4ca=_0xc3d6f2(_0x54ee76*0x2),_0xde4e32=_0xc3d6f2(_0x27e457);const _0x1a7c30=[_0x4fd4ca,_0xde4e32]['filter'](Boolean);_0x1a7c30['length']&&(_0x2fd07d=_0x1a7c30['reduce']((_0x54021d,_0x240bab)=>_0x240bab['err']<_0x54021d['err']?_0x240bab:_0x54021d),_0x2fd07d['which']=_0x2fd07d===_0x4fd4ca?'옆선\x20전체':'정수리\x20구간');}const _0x38cc90=!!_0x2fd07d&&typeof _0x1959e3['earY']==='number';let _0x554f8a,_0x5ec78f,_0xaa2bdc;if(_0x3aae79)_0x554f8a={'l':_0x3aae79['lEarX']*_0x4dad6f,'r':_0x3aae79['rEarX']*_0x4dad6f,'row':_0x3aae79['earY']*_0x245ce6,'span':(_0x3aae79['rEarX']-_0x3aae79['lEarX'])*_0x4dad6f,'src':'pose'},_0x5ec78f=Math['abs'](_0x1959e3['rEarX']-_0x1959e3['lEarX'])*_0x17de0a,_0xaa2bdc='pose';else{if(_0x38cc90){const _0x25d748=_0x2fd07d['s'],_0x1bb65f=_0x14c769+(_0x1959e3['earY']*_0x581acb-_0x4d7c50)*_0x25d748,_0x1bc6e1=Math['abs'](_0x1959e3['rEarX']-_0x1959e3['lEarX'])*_0x17de0a*_0x25d748,_0x4cd63e=_0x237c44(_0x1268b7['personMask'],_0x4dad6f,Math['max'](0x0,Math['min'](_0x245ce6-0x1,Math['round'](_0x1bb65f)))),_0x39cbd0=_0x4cd63e?(_0x4cd63e['l']+_0x4cd63e['r'])/0x2:_0x4dad6f/0x2;_0x554f8a={'l':_0x39cbd0-_0x1bc6e1/0x2,'r':_0x39cbd0+_0x1bc6e1/0x2,'row':_0x1bb65f,'span':_0x1bc6e1,'src':'silhouette-fit'},_0x5ec78f=Math['abs'](_0x1959e3['rEarX']-_0x1959e3['lEarX'])*_0x17de0a,_0xaa2bdc='profile';const _0x30931d=_0x2fd07d['err']<0.02?'아주\x20잘\x20맞음':_0x2fd07d['err']<0.05?'맞음':_0x2fd07d['err']<0.1?'⚠\x20헐거움':'⚠⚠\x20앞뒤\x20실루엣이\x20안\x20닮음';console['log']('[앵커·실루엣맞춤]\x20'+_0x4efa7a+':\x20배율\x20×'+_0x25d748['toFixed'](0x3)+'\x20·\x20잔차\x20'+(_0x2fd07d['err']*0x64)['toFixed'](0x1)+'%\x20('+_0x30931d+')'+('\x20·\x20채택\x20'+_0x2fd07d['which']+'\x20('+_0x2fd07d['n']+'행\x20대조)')+(_0x4fd4ca&&_0xde4e32?'\x20·\x20옆선전체\x20×'+_0x4fd4ca['s']['toFixed'](0x3)+'/'+(_0x4fd4ca['err']*0x64)['toFixed'](0x1)+'%'+('\x20vs\x20정수리\x20×'+_0xde4e32['s']['toFixed'](0x3)+'/'+(_0xde4e32['err']*0x64)['toFixed'](0x1)+'%'):'')+('\x0a\x20\x20\x20\x20귀높이\x20y\x20'+(_0x1bb65f/_0x245ce6)['toFixed'](0x3)+'\x20(정면\x20실측\x20'+_0x1959e3['earY']['toFixed'](0x3)+'를\x20옮김)\x20·\x20귀\x20간격\x20'+(_0x1bc6e1/_0x4dad6f)['toFixed'](0x3))+(_0x68fdfe?'\x20·\x20예전\x20최대폭\x20자였다면\x20y\x20'+(_0x68fdfe['earRow']/_0x245ce6)['toFixed'](0x3)+'\x20/\x20간격\x20'+(_0x68fdfe['span']/_0x4dad6f)['toFixed'](0x3):'')+'\x0a\x20\x20\x20\x20잔차\x20기준(하네스\x20실측):\x20실루엣이\x20진짜\x20닮으면\x201%\x20미만으로\x20떨어지고\x20배율\x20오차\x200.2%.\x208%를\x20넘으면\x20앞뒤\x20숱이\x20달라\x20배율을\x20믿을\x20수\x20없습니다.');}else _0x554f8a=_0x68fdfe?{'l':_0x68fdfe['earL'],'r':_0x68fdfe['earR'],'row':_0x68fdfe['earRow'],'span':_0x68fdfe['span'],'src':'silhouette'}:null,_0x5ec78f=_0x23114e?_0x23114e['span']:0x0,_0xaa2bdc='width',console['warn']('[앵커·실루엣맞춤]\x20'+_0x4efa7a+':\x20옆선\x20대조\x20실패\x20—\x20예전\x20최대폭\x20자로\x20폴백'+(headRows>0x18?'':'\x20·\x20정면\x20턱\x20랜드마크가\x20없어\x20비교\x20구간을\x20못\x20정함')+(typeof _0x1959e3['earY']==='number'?'':'\x20·\x20정면\x20귀높이\x20랜드마크\x20없음'));}if(_0x554f8a&&_0x554f8a['span']>0x4&&_0x5ec78f>0x4&&_0x14c769>=0x0&&_0x4d7c50>=0x0){const _0x3d4c5c=(_0x1959e3['eyeY']*_0x581acb-_0x4d7c50)/_0x5ec78f,_0x3da8bf=(_0x1959e3['chinY']*_0x581acb-_0x4d7c50)/_0x5ec78f,_0x2fbf54=(_0x14c769+_0x3d4c5c*_0x554f8a['span'])/_0x245ce6,_0x452821=(_0x14c769+_0x3da8bf*_0x554f8a['span'])/_0x245ce6;_0x1fd07f={'eyeY':_0x2fbf54,'chinY':_0x452821,'browTopY':Math['max'](0x0,_0x2fbf54-(_0x1959e3['eyeY']-_0x1959e3['browTopY'])),'earY':_0x554f8a['row']/_0x245ce6,'foreheadY':Math['max'](0x0,_0x2fbf54-(_0x1959e3['eyeY']-_0x1959e3['foreheadY'])),'lEarX':_0x554f8a['l']/_0x4dad6f,'rEarX':_0x554f8a['r']/_0x4dad6f,'_silhouette':!![],'_anchorSrc':_0x554f8a['src'],'_rowRule':_0xaa2bdc};}}}catch(_0x2370f6){console['warn']('실루엣\x20앵커\x20계산\x20실패:',_0x4efa7a,_0x2370f6);}return _silhouetteAnchorCache[_0x4efa7a]=_0x1fd07f,_0x1fd07f;}function projectImagePointToHead(_0x40f345,_0x57f230,_0x6895ed,_0x55aa9e,_0x5d7244,_0x51bec6){const _0x267653=state['landmarks']&&state['landmarks'][_0x40f345]||computeSilhouetteAnchors(_0x40f345)||getEstimatedLandmarks(_0x40f345);if(!_0x267653)return null;const _0x20061d=_0x55aa9e||0x1,_0x15c378=_0x5d7244||0x1,_0x4a3de0=makeFaceProjector(_0x267653,_0x20061d,_0x15c378),_0x2145a1=_0x4a3de0['toMeshX'](_0x57f230),_0x5d5c63=_0x4a3de0['toMeshY'](_0x6895ed),{a:_0x1b1474,b:_0x5766c1,c:_0x4de4a4}=getHeadEllipsoid(),_0x1b0525=_0x5d5c63-0.15,_0x2a808d=_0x2145a1/_0x1b1474*(_0x2145a1/_0x1b1474)+_0x1b0525/_0x5766c1*(_0x1b0525/_0x5766c1);let _0x32bb55;if(_0x2a808d<=0.98)_0x32bb55=_0x4de4a4*Math['sqrt'](Math['max'](0x0,0x1-_0x2a808d));else{if(_0x51bec6&&typeof _0x51bec6['hangZ']==='number')_0x32bb55=_0x51bec6['hangZ'];else{if(_0x51bec6&&_0x51bec6['clampRim']&&_0x2a808d<=1.2)_0x32bb55=0x0;else return null;}}if(_0x51bec6)_0x51bec6['usedZ']=_0x32bb55;const _0x2fa7cf=(_0x267653['poseYawDeg']??getViewYawDeg(_0x40f345))*Math['PI']/0xb4,_0x5db717=(_0x267653['posePitchDeg']??getViewPitchDeg(_0x40f345))*Math['PI']/0xb4,_0x3d3b02=(_0x267653['poseRollDeg']??getViewRollDeg(_0x40f345))*Math['PI']/0xb4,_0x352730=composeRotationZYX(_0x2fa7cf,_0x5db717,_0x3d3b02),_0x424ccd=applyRotationTranspose3(_0x352730,new THREE['Vector3'](_0x2145a1,_0x1b0525,_0x32bb55));return _0x424ccd['y']+=0.15,_0x424ccd;}function buildStrandProjectionEllipsoidDebug(){const _0x16193d=new THREE['Group']();_0x16193d['name']='strandEllipsoidDebug';const _0x220cc7=(_0x486a5a,_0x581400,_0x37b541)=>{const _0x46302f=new THREE['Mesh'](new THREE['SphereGeometry'](0x1,0x18,0x10),new THREE['MeshBasicMaterial']({'color':_0x581400,'wireframe':!![],'transparent':!![],'opacity':_0x37b541}));return _0x46302f['scale']['set'](_0x486a5a['a'],_0x486a5a['b'],_0x486a5a['c']),_0x46302f['position']['set'](0x0,0.15,0x0),_0x46302f;};_0x16193d['add'](_0x220cc7(getHeadEllipsoid(),0x4fc3f7,0.3));try{_0x16193d['add'](_0x220cc7(getScalpEllipsoid(),0x7be38a,0.45));}catch(_0xa0a657){}return _0x16193d;}function toggleStrandDebug(){state['debugShowStrandSurface']=!state['debugShowStrandSurface'];const _0x51be35=document['getElementById']('strandDebugToggle');_0x51be35&&(_0x51be35['textContent']=state['debugShowStrandSurface']?'기준면\x20숨기기':'기준면\x20보기',_0x51be35['classList']['toggle']('on',state['debugShowStrandSurface']));if(model3D&&model3D['initialized']){const _0x234f46=model3D['headGroup']['getObjectByName']('strandEllipsoidDebug');if(_0x234f46)_0x234f46['visible']=state['debugShowStrandSurface'];}}function captureStrandPathsFor(_0x176f2c,_0x405727){return new Promise(_0x3e1d5a=>{const _0x3be84c=state['hairMasks']&&state['hairMasks'][_0x176f2c],_0x1c9c73=state['hairCanvases']&&state['hairCanvases'][_0x176f2c];if(!_0x3be84c||!_0x3be84c['scalpY']||!_0x1c9c73){_0x3e1d5a(![]);return;}getCachedImg(_0x176f2c,_0x189a58=>{if(!_0x189a58){_0x3e1d5a(![]);return;}try{const _0x23e7b1=countValidCols(_0x3be84c['scalpY']);if(_0x23e7b1<=_0x3be84c['w']*0.05){_0x3e1d5a(![]);return;}const _0x12272d=document['createElement']('canvas');_0x12272d['width']=DRAW_RES,_0x12272d['height']=Math['round'](DRAW_RES*_0x189a58['height']/_0x189a58['width']);const _0x39d150=_0x12272d['getContext']('2d'),_0x70ae9f=computeFit(_0x189a58['width'],_0x189a58['height'],_0x12272d['width'],_0x12272d['height']);drawHairStrands(_0x39d150,_0x70ae9f,_0x3be84c['scalpY'],_0x3be84c['hairEndY'],_0x3be84c['w'],_0x3be84c['h'],_0x1c9c73,buildStrandOpts(_0x3be84c,_0x176f2c,!!_0x405727)),_0x3e1d5a(!!(state['strandPaths']&&state['strandPaths'][_0x176f2c]&&state['strandPaths'][_0x176f2c]['strands']['length']));}catch(_0x4648e2){console['warn']('오프스크린\x20가닥\x20캡처\x20실패('+_0x176f2c+'):',_0x4648e2),_0x3e1d5a(![]);}});});}
+/* ══════════════════════════════════════════════════════════
+   13a-outfit-pose.js — 의상 메쉬 · 포즈 회전 · 이미지점→두상 3D
+   원본 index.html 19029~19767행. 클래식 스크립트이므로 로드 순서가 곧
+   실행 순서다 — index.html의 <script src> 순서를 바꾸지 말 것.
+   ══════════════════════════════════════════════════════════ */
+/* ════════════════════════════════════════════════════════════════
+   의상 메쉬 (3단계 프로토타입)
+   AI 추천 결과에 맞춘 의상 표시. 절차 생성 폴백 + OBJ/MTL 로더 경로.
+   ════════════════════════════════════════════════════════════════ */
+function buildOutfitPlaceholderMesh(item, widthFactor){
+  const group = new THREE.Group();
+  group.name = 'outfitPlaceholder'; // 이름은 유지하지만 이제 상반신뿐 아니라 전신(골반·다리·발)까지 포함
+  const color = new THREE.Color(item.colorHex || '#888888');
+  const mat = new THREE.MeshStandardMaterial({ color, roughness: 0.75 });
+  const pantsColor = color.clone().multiplyScalar(0.55); // 상의보다 어두운 톤 = 하의(바지) 자리표시자
+  const pantsMat = new THREE.MeshStandardMaterial({ color: pantsColor, roughness: 0.75 });
+  const shoeMat = new THREE.MeshStandardMaterial({ color: new THREE.Color('#241E1A'), roughness: 0.6 }); // 신발은 색과 무관하게 어두운 톤 고정
+
+  // 어깨~가슴 상단부를 대충 근사하는 원뿔대(목에서 어깨로 벌어지는 형태).
+  const torsoTopR = 0.50*widthFactor, torsoBotR = 0.92*widthFactor, torsoH = 1.15;
+  const torsoGeo = new THREE.CylinderGeometry(torsoTopR, torsoBotR, torsoH, 24);
+  const torso = new THREE.Mesh(torsoGeo, mat);
+  const torsoTopY = getNeckBottomY(), torsoBotY = torsoTopY - torsoH; // 목이 짧아지면 몸통도 같이 올라온다
+  torso.position.y = (torsoTopY + torsoBotY) / 2;
+  torso.name = 'outfitTorsoPlaceholder';
+  group.add(torso);
+
+  // 옷깃: 목 밑동(y=-1.15)에 딱 맞는 얇은 링. 몸통보다 살짝 어둡게 해서
+  // "여기가 목선이다"를 시각적으로 구분해줌 — 원뿔 하나뿐이던 것보다 훨씬
+  // 옷처럼 보이게 하는 최소한의 디테일.
+  const collarMat = new THREE.MeshStandardMaterial({ color: color.clone().multiplyScalar(0.75), roughness: 0.8 });
+  const collarGeo = new THREE.TorusGeometry(torsoTopR*1.03, 0.035*widthFactor, 8, 20);
+  const collar = new THREE.Mesh(collarGeo, collarMat);
+  collar.position.y = torsoTopY;
+  collar.rotation.x = Math.PI/2; // 눕혀서 목 둘레를 감싸는 링 형태로
+  collar.name = 'outfitCollarPlaceholder';
+  group.add(collar);
+
+  // ── 골반: 몸통 하단에서 허벅지로 이어지는 완충 구간 ──
+  const hipTopR = torsoBotR, hipBotR = 0.72*widthFactor, hipH = 0.45;
+  const hipGeo = new THREE.CylinderGeometry(hipTopR, hipBotR, hipH, 20);
+  const hip = new THREE.Mesh(hipGeo, pantsMat);
+  const hipTopY = torsoBotY, hipBotY = hipTopY - hipH; // 골반 하단 = 다리 시작점
+  hip.position.y = (hipTopY + hipBotY) / 2;
+  hip.name = 'outfitHipPlaceholder';
+  group.add(hip);
+
+  // ── 다리 2개: 골반 하단에서 발까지 ──
+  const legTopR = 0.30*widthFactor, legBotR = 0.19*widthFactor, legH = 2.35;
+  const legGeo = new THREE.CylinderGeometry(legTopR, legBotR, legH, 16);
+  const legXOffset = 0.32*widthFactor;
+  const legBotY = hipBotY - legH;
+  [-1, 1].forEach(side=>{
+    const leg = new THREE.Mesh(legGeo, pantsMat);
+    leg.position.set(side*legXOffset, (hipBotY + legBotY)/2, 0);
+    leg.name = 'outfitLegPlaceholder';
+    group.add(leg);
+  });
+
+  // ── 발 2개: 다리 하단에서 앞(+Z)으로 살짝 뻗은 형태 ──
+  const footW = 0.24*widthFactor, footH = 0.16, footD = 0.46*widthFactor;
+  const footGeo = new THREE.BoxGeometry(footW, footH, footD);
+  [-1, 1].forEach(side=>{
+    const foot = new THREE.Mesh(footGeo, shoeMat);
+    foot.position.set(side*legXOffset, legBotY - footH/2, footD*0.28); // 발끝이 앞으로 나오도록 z 오프셋
+    foot.name = 'outfitFootPlaceholder';
+    group.add(foot);
+  });
+
+  // ── 팔 2개: 어깨에서 대략 허벅지 중간 높이까지(안정된 직립 자세 근사) ──
+  // 이전엔 짧은 소매(0.85)로 상반신에서 끝났음 — 전신상 요청으로 실제
+  // 팔 길이만큼 늘리고, 각도도 옆으로 60° 벌어진 소매가 아니라 몸통을 따라
+  // 거의 수직으로 내려오되 살짝 바깥으로 벌어지는(자연스러운 직립 자세)
+  // 방향으로 변경.
+  const shoulderY = -1.35; // 목 밑동보다 살짝 아래(어깨선 근사)
+  const shoulderFrac = (shoulderY - torsoTopY) / (-torsoH); // 원뿔대 상단 기준 진행률(0=상단, 1=하단)
+  const shoulderR = torsoTopR + shoulderFrac * (torsoBotR - torsoTopR);
+  const armLen = 2.6, armTopR = 0.15*widthFactor, armBotR = 0.10*widthFactor;
+  const armGeo = new THREE.CylinderGeometry(armTopR, armBotR, armLen, 12);
+  [-1, 1].forEach(side=>{
+    const arm = new THREE.Mesh(armGeo, mat);
+    // 거의 수직 아래(-Y)로 내려오되 살짝 바깥으로 벌어지는 방향 —
+    // Rz(dirAngle)·(0,1,0) = (-sin(dirAngle), cos(dirAngle), 0)이 되도록
+    // 목표 방향(옆으로 살짝, 대부분 아래)에 맞는 각도를 역산해서 사용.
+    const dirAngle = -side * 2.900; // 라디안 — 목표 방향 벡터(±0.24, -0.97, 0)에 대응
+    const dir = new THREE.Vector3(-Math.sin(dirAngle), Math.cos(dirAngle), 0);
+    const shoulderPos = new THREE.Vector3(side*shoulderR*0.92, shoulderY, 0.02);
+    arm.position.set(
+      shoulderPos.x + dir.x*armLen*0.5,
+      shoulderPos.y + dir.y*armLen*0.5,
+      shoulderPos.z + dir.z*armLen*0.5,
+    );
+    arm.rotation.z = dirAngle;
+    arm.name = 'outfitArmPlaceholder';
+    group.add(arm);
+  });
+
+  // 포멀 카테고리는 옷깃 아래로 앞트임(라펠) 느낌의 판 2개를 V자로 추가 —
+  // 재킷 실루엣을 아주 단순하게나마 구분되게(캐주얼/스트릿과 같은 원뿔로
+  // 뭉뚱그려지지 않도록).
+  if(item.category === '포멀'){
+    const lapelMat = new THREE.MeshStandardMaterial({ color: color.clone().multiplyScalar(0.85), roughness: 0.7 });
+    const lapelGeo = new THREE.BoxGeometry(0.16*widthFactor, 0.55, 0.02);
+    [-1, 1].forEach(side=>{
+      const lapel = new THREE.Mesh(lapelGeo, lapelMat);
+      lapel.position.set(side*0.14*widthFactor, -1.45, torsoTopR*0.85);
+      lapel.rotation.z = -side*0.28;
+      lapel.name = 'outfitLapelPlaceholder';
+      group.add(lapel);
+    });
+  }
+
+  return group;
+}
+
+// 실제 .obj(+.mtl) 의상/전신 에셋 로더. Quaternius 등에서 받은 파일을
+// OUTFIT_MESH_SOURCE.objUrl(+mtlUrl)에 넣으면 절차적 플레이스홀더 대신
+// 진짜 3D가 붙는다. 에셋마다 원래 스케일·피벗이 제각각이라, bounding box를
+// 재서 자동으로 (a) neckAttachPoint 하단(y=-1.15)에 상단이 맞닿도록,
+// (b) 전신 높이가 지금 절차적 플레이스홀더와 비슷한 범위(약 4유닛)가
+// 되도록 스케일·위치를 맞춘다 — 에셋마다 정확도가 다를 수 있어
+// OUTFIT_MESH_SOURCE.offsetY/scaleOverride로 수동 보정 가능하게 열어둠.
+// neckCutFrac은 호출 쪽(OUTFIT_CATALOG[i].asset.neckCutFrac)에서 에셋별
+// 실측값을 넘겨받음 — 전부 같은 베이스 바디라 비슷하지만 에셋마다 다름.
+// ※ THREE.OBJLoader/Box3는 브라우저 전용 API라 Canvas류와 마찬가지로 이
+// 함수 자체는 Node 샌드박스에서 실행 검증 불가 — 문법 검사만 통과.
+function loadOutfitMeshFromOBJ(objUrl, mtlUrl, widthFactor, neckCutFrac, targetBodyLen){
+  return new Promise((resolve, reject)=>{
+    if(typeof THREE.OBJLoader !== 'function'){
+      reject(new Error('OBJLoader 스크립트가 로드되지 않았습니다'));
+      return;
+    }
+    function loadObj(materials){
+      const objLoader = new THREE.OBJLoader();
+      if(materials) objLoader.setMaterials(materials);
+      objLoader.load(objUrl, (obj)=>{
+        try{
+          const box = new THREE.Box3().setFromObject(obj);
+          const size = new THREE.Vector3(); box.getSize(size);
+
+          // 에셋 자체 높이(발~정수리) 대비 "목 밑동" 위치 비율로, 그 위쪽(에셋 자체
+          // 머리/목/헤어)은 스케일 계산에서도 제외하고 나중에 클리핑으로도 잘라냄 —
+          // 우리 두상(실측 사진 기반 얼굴+헤어)만 보이게 하기 위함.
+          const cutFrac = (typeof neckCutFrac === 'number') ? neckCutFrac : 0.84;
+          const neckCutYRaw = box.min.y + cutFrac * size.y;
+          const bodyHeightRaw = neckCutYRaw - box.min.y; // 발~목까지만(머리 제외) 실측 높이
+
+          /* ── 목 밑동~발끝 길이는 <b>두신 자</b>가 정한다 (2026-09-09 사용자 지시) ──
+             사용자: "두신은 6.5로 맞춰서 이전에 잘 나왔었는데 4.9로 바뀐 거라고.
+             지금 6.5로 되어 있는 그 함수가 결정하는 값으로 나오도록 하고,
+             고정값은 없애면 돼."
+
+             맞다. 여기 있던 TARGET_HEIGHT = 4.0은 <b>에셋 눈대중</b>이고 두신 자와
+             아무 관계가 없었다. 11-result-screen.js:126의 배너가 "그걸 이 함수로
+             통일했다"고 적어 놓고도, 실제로 personBodyLenMesh를 부르는 곳은 결과
+             화면 한 군데뿐이었다(3D 화면은 이 4.0을 그대로 먹었다 = 4.9두신).
+             이제 <b>두 화면이 같은 자</b>를 쓴다 — 호출부가 그 화면이 재는
+             정수리(결과 화면 = 사진 헤어박스 / 3D 화면 = 씬 실측)로 계산한
+             targetBodyLen을 들려 보낸다.
+             ⚠ 폴백 4.0은 <b>자가 아예 없을 때</b>만이다(정면 랜드마크 실패 →
+               getPersonScaleRef가 null). 그 경우엔 두신을 잴 근거 자체가 없다. */
+          let TARGET_HEIGHT = targetBodyLen;
+          if(!(isFinite(TARGET_HEIGHT) && TARGET_HEIGHT > 0.5)){
+            TARGET_HEIGHT = (typeof personBodyLenMesh === 'function') ? personBodyLenMesh() : null;
+          }
+          if(!(isFinite(TARGET_HEIGHT) && TARGET_HEIGHT > 0.5)){
+            TARGET_HEIGHT = 4.0;
+            console.warn('[3D·비율] 두상 자(getPersonScaleRef)가 없어 폴백 4.0단위로 세웁니다 —'
+              + ' 이 경우에만 두신이 상수에서 벗어납니다.');
+          }
+          /* ⚠ widthFactor는 이름 그대로 <b>폭</b>이다. setScalar에 곱하면 세로도 같이
+             늘어나고, 그만큼 화면 두신이 FIGURE_HEADS에서 벗어난다 — 위에서 자를
+             통일해 놓고 마지막 줄에서 다시 어긋나는 자리다. 결과 화면은 뒤에
+             group.scale 재보정이 한 번 더 있어 안 보이고, 3D 화면에만 남는다.
+             그래서 세로는 자 그대로 두고 폭은 x·z에만 건다.
+             ── 그런데 x·z에만 걸어도 <b>몸이 뚱뚱해진다</b> (2026-09-14) ──────────
+             세로를 자에 맞춰 줄이고 가로는 wf로 둔 순간, 몸 자체의 <b>가로/세로
+             비</b>가 wf배로 벌어진다. 사용자 관찰 "뚱뚱해지고 팔뚝하고 손도
+             커진 느낌"이 정확히 그 몫이다. 의상 에셋은 사람 몸이라 <b>균일</b>하게만
+             키워야 한다 — 늘리면 팔 굵기·손 크기가 같이 늘어난다.
+             그리고 얼굴이 넓다고 몸이 넓어야 할 근거도 없다. 손님의 <b>크기</b>는
+             이미 두상 높이(TARGET_HEIGHT)가 들고 있고, wf는 거기에 두 번째로
+             얹히는 자다 — 한 값을 두 곳이 각자 정하던 이 저장소의 그 함정이다.
+             그래서 기본을 <b>off</b>로 둔다: 균일 배율 · wf 안 씀.
+               off     — 두신 정확 · 몸 비례 에셋 그대로  (기본)
+               uniform — 예전 동작. 두신이 wf배만큼 상수에서 벗어난다
+               xz      — 9/14 오전. 두신은 맞지만 몸이 wf배 뚱뚱해진다
+             되돌리기: OUTFIT_MESH_SOURCE.widthMode = 'uniform' (또는 'xz') */
+          const wf = (isFinite(widthFactor) && widthFactor > 0) ? widthFactor : 1;
+          const mode = OUTFIT_MESH_SOURCE.widthMode
+            || (OUTFIT_MESH_SOURCE.widthUniform ? 'uniform' : 'off');
+          const scale = OUTFIT_MESH_SOURCE.scaleOverride
+            || (TARGET_HEIGHT / (bodyHeightRaw || 1)) * (mode === 'uniform' ? wf : 1);
+          const wx = (mode === 'xz') ? wf : 1;
+          obj.scale.set(scale * wx, scale, scale * wx);
+          if(mode !== 'off') console.log('[3D·비율·의상] widthMode=' + mode + ' · 폭 ×' + wf.toFixed(3)
+            + ' — off가 아니면 두신이나 몸 비례 중 하나가 얼굴 폭을 따라 움직입니다.');
+
+          // 스케일 적용 후 좌표 기준으로 재계산해서 위치 정렬(중심을 x/z=0으로,
+          // 목 밑동 지점이 neckAttachPoint 하단 y=-1.15에 오도록)
+          const box2 = new THREE.Box3().setFromObject(obj);
+          const center2 = new THREE.Vector3(); box2.getCenter(center2);
+          const neckCutYScaled = neckCutYRaw * scale;
+          const offsetY = OUTFIT_MESH_SOURCE.offsetY || 0;
+          obj.position.x += -center2.x;
+          obj.position.z += -center2.z;
+          obj.position.y += (getNeckBottomY() - neckCutYScaled) + offsetY;
+          obj.name = 'outfitLoadedOBJ';
+
+          // 에셋 자체 "Hair" 재질은 완전히 숨김(우리 자체 헤어 시스템을 쓰므로).
+          // 나머지 재질(Skin/Eyes/Shirt/Pants/Socks 등)에는 위치 정렬 후의
+          // 월드 좌표 기준 y=-1.15 클리핑 플레인을 적용해서, 정렬이 살짝 어긋나도
+          // 그 위쪽(에셋 자체 머리/목)은 어차피 안 보이게 하는 안전장치로 사용.
+          // + 감마 보정: Blender OBJ export는 Kd를 리니어 색공간으로 쓰는데
+          // 렌더러가 그대로 표시하면 실제보다 어둡게 나옴(카탈로그 colorHex는
+          // 이미 보정된 "진짜 보일 색"으로 계산해둠) — 여기서 실제 로드된
+          // material.color에도 동일한 보정을 적용해야 카탈로그 색상과 실제
+          // 렌더링이 일치함. THREE.Color.convertLinearToSRGB()가 정확히 이 변환.
+          const HIDE_MATERIAL_NAMES = ['hair'];
+          const neckClipPlane = new THREE.Plane(new THREE.Vector3(0,-1,0), getNeckBottomY());
+          obj.traverse(child=>{
+            if(!child.isMesh) return;
+            const matName = (child.material && child.material.name || '').toLowerCase();
+            if(HIDE_MATERIAL_NAMES.includes(matName)){ child.visible = false; return; }
+            const mats = Array.isArray(child.material) ? child.material : [child.material];
+            mats.forEach(m=>{
+              if(!m) return;
+              m.clippingPlanes = [neckClipPlane];
+              m.clipShadows = true;
+              if(m.color && typeof m.color.convertLinearToSRGB === 'function') m.color.convertLinearToSRGB();
+            });
+          });
+
+          resolve(obj);
+        }catch(e){ reject(e); }
+      }, undefined, (err)=>reject(err));
+    }
+    if(mtlUrl && typeof THREE.MTLLoader === 'function'){
+      const mtlLoader = new THREE.MTLLoader();
+      mtlLoader.load(mtlUrl, (materials)=>{
+        materials.preload();
+        loadObj(materials);
+      }, undefined, ()=>loadObj(null)); // mtl 로드 실패해도 obj는 시도(무채색으로)
+    } else {
+      loadObj(null);
+    }
+  });
+}
+
+// 이제 실제 에셋 정보는 OUTFIT_CATALOG[i].asset(id별로 다른 obj/mtl/neckCutFrac)에
+// 있음 — item에 asset이 있으면 그걸로 로드, 없으면(아직 실제 에셋 없는 카탈로그
+// 항목) 절차적 플레이스홀더로 폴백. 로드 실패(파일 404 등)해도 동일하게 폴백.
+async function loadOutfitMesh(item, widthFactor, targetBodyLen){
+  if(item.asset && item.asset.objUrl){
+    try{
+      return await loadOutfitMeshFromOBJ(item.asset.objUrl, item.asset.mtlUrl, widthFactor, item.asset.neckCutFrac, targetBodyLen);
+    }catch(e){
+      console.warn('OBJ 의상 에셋 로드 실패, 절차적 플레이스홀더로 폴백:', e);
+    }
+  }
+  /* 플레이스홀더도 <b>같은 자</b>를 탄다 (2026-09-09). 예전엔 OBJ만 배율을 받고
+     이 쪽은 손으로 짠 ~4단위 그대로였다 — 에셋이 404면 두신이 조용히 달라진다.
+     목 밑동을 고정점으로 스케일하므로 옷깃 위치는 배율과 무관하다(결과 화면의
+     ensureResultBodyMesh가 쓰는 것과 같은 식). */
+  const ph = buildOutfitPlaceholderMesh(item, widthFactor);
+  try{
+    const want = (isFinite(targetBodyLen) && targetBodyLen > 0.5)
+      ? targetBodyLen
+      : ((typeof personBodyLenMesh === 'function') ? personBodyLenMesh() : null);
+    const m = (typeof measureOutfitMeshBody === 'function') ? measureOutfitMeshBody(ph) : null;
+    if(want && m && m.heightRaw > 0.01){
+      const NY = getNeckBottomY();
+      const s = want / m.heightRaw;
+      ph.scale.setScalar(s);
+      ph.position.y = NY * (1 - s);
+    }
+  }catch(e){ console.warn('[3D·비율] 플레이스홀더 두신 배율 실패 — 원래 크기 유지:', e); }
+  return ph;
+}
+
+/* 의상이 만들어지는 <b>유일한</b> 출구에서 목 구멍을 잰다 (2026-08-31 11차).
+   호출부마다 재면 3D 화면과 결과 화면이 서로 다른 옷깃을 보게 된다 — 이 파일이
+   여러 번 겪은 그 모양이다. loadOutfitMesh를 감싸는 이유도 같다: OBJ 경로든
+   플레이스홀더 폴백이든 <b>여기 한 곳</b>을 지나간다.
+   ⚠ 두 호출부 모두 <b>두신 배율을 걸기 전</b>에 이 함수를 지난다(결과 화면은 바로
+     위에서 snap.group.scale을 1로 되돌린다). 목 메쉬도 그 배율 밖이라 좌표계가 같다. */
+async function loadOutfitMeshMeasured(item, widthFactor, targetBodyLen){
+  const mesh = await loadOutfitMesh(item, widthFactor, targetBodyLen);
+  try{
+    const g = measureGarmentNeckOpening(mesh);
+    if(g){
+      _garmentNeckOpening = g;
+      console.log('[3D·목] 옷깃 구멍 실측 반폭 ' + g.halfWidth.toFixed(3)
+        + ' · 반깊이 ' + g.halfDepth.toFixed(3) + ' 단위 → 아래 링 = 이 값 ×' + NECK_SHAPE.inset);
+    }else{
+      console.warn('[3D·목] 옷깃 구멍 실측 실패 — 예전(두개골 클램프) 경로로 폴백');
+    }
+  }catch(e){ console.warn('[3D·목] 옷깃 구멍 실측 예외:', e); }
+  // (옛 50) 3D 결과 화면이 실제로 불러올 때 — 아직 못 쟀으면 여기서 어깨를 잼(아래 SHOULDER)
+  SHOULDER._afterOutfitLoad(mesh, item);
+  return mesh;
+}
+/* ==========================================================================
+ * SHOULDER (옛 50-shoulders.js) — 어깨: 머리카락이 몸통을 뚫지 않고 어깨 위·앞·뒤로 놓이게 + "어깨 앞으로 넘겼는가" 인지
+ *
+ * 자리: 13a, loadOutfitMeshMeasured 바로 뒤. loadOutfitMeshMeasured 끝에서 몸통 메쉬로 어깨 재기 · computeAdjustedHair3DStrands(17b) 마감 단계 SHOULDER._apply · adjFilterSig 꼬리표 · navTo(05) 끝에서 미리 재기 · perfPanelLines(18) 끝 줄
+ *
+ * 왜 (2026-10-04 사용자): "어깨 위에 놓이지는 않았어." → "어깨 앞으로 나왔다는 건 인지할 수 있어?
+ *   그러면 3D 결과보기에 붙일 몸통 메쉬에서 읽어 보면 되겠네." → "다 넣고, 안 맞으면 빼면 되지."
+ *   지금까지 머리카락 계산에는 두상(과 47g의 목 기둥)만 있었고 어깨가 없어서, 긴 머리가 몸통을 그대로 통과했습니다.
+ *
+ * 무엇을:
+ *   ① 어깨 모양을 3D 결과 화면에 붙는 몸통(의상) 메쉬에서 직접 읽습니다 — 어림값이 아니라 그 메쉬의 삼각형을
+ *      촘촘히 찍어 (좌우 |x| × 높이 y) 칸마다 "몸통 앞면 z / 뒷면 z"와 "어깨 윗면 높이"를 적어 둡니다.
+ *      · 몸통 메쉬는 원래 3D 결과 화면에 들어갈 때 처음 불러오므로, 스타일·조정 화면에 들어올 때 한 번 미리 불러와 잽니다
+ *        (재고 나면 버림 · 사진이 바뀌면 다시 잼). 미리 못 쟀으면 3D 결과 화면이 불러올 때 잽니다.
+ *   ② 모든 가닥(다시 기른 원본 머리 · 마네킹 스타일 · 길이를 늘린 부분)에 마지막으로 한 번 "몸통 밖으로" 통과시킵니다.
+ *      몸통 안에 든 점은 — 어깨 윗면에 살짝 걸친 정도면 위에 얹고, 깊으면 앞면이나 뒷면으로 밀어냅니다.
+ *      앞/뒤는 가닥마다 한 번 정합니다: 몸통에 닿기 직전에 어깨 능선보다 앞에 있었으면 앞, 뒤에 있었으면 뒤.
+ *      능선 바로 위라 애매하면 ③의 인지 결과를 따릅니다(그쪽을 앞으로 넘긴 사진이면 앞, 아니면 뒤).
+ *      목(턱 밑~목 밑동)은 42번의 목 기둥을 같이 씁니다.
+ *   ③ 인지 — 정면 사진에서 어깨선 아래에 보이는 머리는 몸 앞에 있는 머리입니다(뒤에 있으면 몸에 가려 안 보임).
+ *      사람 영역의 폭이 귀 사이 거리의 2.1배를 넘는 첫 줄을 어깨선으로 보고, 그 아래 머리를 화면 왼쪽/오른쪽 따로 잽니다.
+ *      후면 사진은 포즈가 잡은 어깨 높이 아래의 머리(= 등 쪽 머리)를 잽니다. 진단에 숫자로 찍습니다.
+ *
+ * (2026-10-04i) 앞으로는 사진에서 넘긴 쪽만 — 사용자: "머리가 길기만 하면 다 어깨 앞으로 나온다. 사진에서 어깨 앞으로 머리를 뺀 경우만."
+ *   예전: 가닥이 몸통에 닿기 직전에 어깨 능선보다 앞에 있었으면 무조건 앞으로 보냈습니다(사진 인지는 능선 근처의 애매한 가닥에만 씀).
+ *        그래서 긴 머리는 옆머리가 전부 어깨 앞으로 나왔습니다.
+ *   지금: 그쪽(왼/오른)을 사진에서 어깨 앞으로 넘겼다고 인지했을 때만 예전 규칙. 아니면
+ *        · 몸통에 닿은 가닥은 전부 뒤로(어깨 위에 얕게 걸친 점은 그대로 위에 얹음),
+ *        · 몸통에 닿지 않고 어깨 앞에 떠 있는 점(어깨 윗면보다 아래 · 몸통 앞면보다 앞)도 뒤로 보냅니다.
+ *        목 바로 아래 가운데 띠(|x| < centerBand)는 예외 — 뒤로 보내면 목을 가로지르므로 예전 규칙 그대로.
+ *   되돌리기: SHOULDER.frontOnlyIfDraped=false; SHOULDER.refresh()
+ *
+ * (2026-10-05j) 마네킹은 전부 등 쪽으로 · 어깨를 넘어갈 때 나란히 — 사용자: "마네킹 모드가 떴을 때 어깨 부위가 갈라진 모습.
+ *   나란히 정렬해서 등 쪽으로 넘기는 게 기본."
+ *   ① 마네킹 모드(mqBack): 사진에서 넘겼는지와 상관없이 전부 뒤로(가운데 띠는 예외). 예전에는 사진이 "앞으로 넘김"이면
+ *      마네킹도 능선 앞 가닥은 앞으로, 뒤 가닥은 뒤로 가서 어깨에서 두 갈래로 갈라졌습니다.
+ *   ② 넘어가는 자리 다듬기(sweepLen): 뒤로 보낸 가닥은 어깨 아래 점만 등 면으로 옮겨져서, 어깨 높이에서 앞 → 뒤로 한 번에
+ *      꺾였습니다(옆에서 보면 가로줄). 처음 뒤로 옮겨진 점에서 가닥을 거슬러 sweepLen만큼은 z를 부드럽게 이어 줍니다
+ *      (어깨 위로 올수록 원래 자리 · 내려갈수록 등 쪽). 마네킹·원본 머리 모두 적용.
+ *   되돌리기: SHOULDER.mqBack=false · SHOULDER.sweepLen=0 후 SHOULDER.refresh()
+ *
+ * (2026-10-05k) 어깨 앞으로 넘기기는 끔 — 사용자: "어깨 앞으로 머리를 내려야 할 필요가 있기 전까지는 그냥 아래로 늘어뜨린 형태로.
+ *   복잡도만 높아지고 아직 스타일에 꼭 필요할 것 같진 않다. 마네킹도, 어깨 앞으로 넘긴 손님도 일괄적으로 쭉 내려오도록."
+ *   frontDrape=false(기본): 사진을 보지 않고, 마네킹·원본 머리 모두 몸통에 닿는 가닥을 전부 등 쪽으로 보냅니다(가운데 띠는 예외).
+ *   사진 인지(어깨 앞으로 넘겼는가)는 계산하지 않습니다. 다시 쓰려면 SHOULDER.frontDrape=true; SHOULDER.refresh()
+ *
+ * (2026-10-07) 어깨 처리 전체를 끔(기본) — 사용자: "얼굴·목 쪽 막음은 최소한으로 해야 한다. 그쪽으로 일부러 보내는 경우도 있으니까."
+ *   "(어깨 넘김은) 테스트 삼아 넘겨 본 거다. 그 기능 전혀 필요 없어서 그냥 원복하면 된다." → 선택: 어깨 처리 전체 끔.
+ *   계기(폰 영상 · 긴 직모 · 결 표를 건 마네킹): 턱 밑 목 앞을 가로지르는 가닥 뭉치. 같은 손님·같은 사진에서 목 밖으로 민 점이
+ *   다시 기른 가닥일 때 6 → 결 표를 건 마네킹일 때 2,632(가닥이 목 앞·목 자리에 와 있었음 — 59번 표 쪽 문제), 거기서 "전부 등 쪽으로"가
+ *   그 가닥을 목을 가로질러 뒤로 끌어 가로줄이 됐습니다. 재현(이 파일의 _pass · 상자 몸통 · 합성 긴 머리 12,000가닥):
+ *   목·어깨 높이의 가로 마디 — 전부 등 쪽으로 1,214~4,905개 → 어깨 처리를 끄면 0개.
+ *   지금: on=false(기본) — 머리가 만들어진 그대로 내려갑니다. 앞·뒤로 보내지 않고, 어깨 위에 얹지 않고, 몸통 메쉬를 미리 불러와 재지도 않습니다.
+ *   대신: 긴 머리가 어깨·몸통을 통과할 수 있습니다(이 파일이 생기기 전과 같음).
+ *   다시 켜기: SHOULDER.on=true; SHOULDER.refresh()  (조정 화면에 다시 들어오면 몸통을 재고 적용합니다)
+ *
+ * 끄기: SHOULDER.on=false; SHOULDER.refresh()      (어깨만 끔 · 목 기둥은 REGROW.neck=false)
+ * 조절: SHOULDER.margin(몸에서 띄우는 거리) · SHOULDER.restMax(이보다 얕게 걸치면 위에 얹음) 후 SHOULDER.refresh()
+ * ========================================================================== */
+var SHOULDER = (function () {
+  'use strict';
+  var W = window, TAG = '[어깨]';
+  var H = Object.assign({
+    on: true, resultOnly: true,   // (2026-10-13d) 3D 결과 화면에서만 켬 — 사용자: "머리를 어깨에 자연스럽게 내리기 안 되어 있다". 조정 화면의 가로줄·쭈글한 띠(12m에 끈 이유)는 조정 화면에서만 생겼으므로 조정 화면은 그대로 둠 · 예전 = SHOULDER.resultOnly=false
+    on_was12m: false,   // (2026-10-12m) 다시 끔 — 몸통 메쉬를 조정 화면에도 불러와 가슴 높이 아래를 면에 눌러 가로줄·쭈글한 띠가 생김(10/7과 같은 이유) · 켜기 SHOULDER.on=true; SHOULDER.refresh()   // (2026-10-12g) 다시 켬 — 아래 natural 방식으로만(긴 웨이브 손님: 몸통을 통과한 아랫머리가 뜯겨 보임). 예전 기본 = false
+    natural: true,      // (2026-10-12g) 자연스럽게 놓기 — 몸통 안에 든 점만, 그 가닥이 몸통에 들어가기 직전 자리에서 가까운 면(앞/등)으로 밀어 얹음.
+                        //   앞·뒤로 강제로 보내지 않고 · 몸통 밖에 뜬 점은 안 건드리고 · 목 구간은 안 건드림(10/7의 목 가로줄 원인 = '전부 등 쪽으로' 강제) · false = 아래 예전 규칙
+    on_was: false,      // (2026-10-07) 기본 끔 — 머리가 만들어진 그대로 내려감. 켜기: SHOULDER.on=true; SHOULDER.refresh()
+    preload: true,      // 스타일·조정 화면에서 몸통 메쉬를 미리 불러와 잼
+    cell: 0.05,         // 격자 한 칸(모델 단위 ≈ 0.9cm)
+    xMax: 1.5,          // 좌우 범위(≈ 27cm — 어깨 끝 + 팔 윗부분)
+    depth: 1.9,         // 목 밑동에서 아래로 재는 범위(≈ 35cm)
+    margin: 0.03,       // 몸에서 띄우는 거리(≈ 0.5cm)
+    restMax: 0.07,      // 어깨 윗면에서 이보다 얕게 든 점은 위에 얹음(≈ 1.3cm)
+    ambig: 0.2,         // 능선에서 이 안쪽(≈ 3.7cm)이면 앞/뒤가 애매 → 사진 인지를 따름
+    shoulderRatio: 2.1, // 사진에서 사람 폭이 귀 사이 거리의 이 배수를 넘는 줄 = 어깨선
+    earSpanCm: 15,      // 귀 사이 거리(cm 환산용 어림)
+    frontOnlyIfDraped: true,   // (2026-10-04i) 사진에서 어깨 앞으로 넘긴 쪽만 앞으로 — 아니면 전부 뒤로
+    centerBand: 0.3,    // 가운데 띠 반폭(≈ 5.5cm) — 이 안쪽은 뒤로 보내지 않음(목을 가로지르게 됨)
+    frontDrape: true,   // (2026-10-17) 다시 켬 — 사용자: 전부 등 쪽으로 모으지 말 것. 사진에서 어깨 앞으로 넘긴 머리는 앞으로 걸침 · 예전 = false
+    // (2026-10-05k) 어깨 앞으로 넘기기(사진 인지) — 끔: 전부 등 쪽으로 곧게
+    mqBack: true,       // (2026-10-05j) 마네킹 모드는 사진과 상관없이 전부 등 쪽으로(frontDrape를 켰을 때 쓰임)
+    sweepLen: 0.45,     // 뒤로 넘어가는 자리를 가닥 길이로 이만큼(≈ 8cm) 거슬러 부드럽게 이음 · 0 = 끔
+    sweepMinJump: 0.08  // 처음 뒤로 옮겨진 점이 이만큼은 움직였을 때만 다듬음
+  }, W.SHOULDER || {});
+  var S = H.stats = { strands: 0, touched: 0, front: 0, back: 0, rest: 0, neck: 0, forced: 0, swept: 0, smooth: 0, mq: false, ms: 0, src: '', item: '', err: null };
+  var grid = null, gridKey = null, ver = 1, pending = null, pendingKey = null;
+
+  function scr() { try { return currentScreen; } catch (e) { return ''; } }
+  function now() { try { return performance.now(); } catch (e) { return Date.now(); } }
+  function cmPer() { try { return modelCmPerUnit() || 19; } catch (e) { return 19; } }
+  function photoKey() {
+    try { var s = state.shots && state.shots.front; return s ? s.length + ':' + s.slice(-24) : ''; } catch (e) { return ''; }
+  }
+
+  /* ── ① 몸통 메쉬에서 어깨 읽기 ─────────────────────────────────────────── */
+  function measure(obj, key, src, item) {
+    var yTop; try { yTop = getNeckBottomY() + 0.02; } catch (e) { return false; }
+    if (!isFinite(yTop)) return false;
+    var cell = H.cell, NX = Math.ceil(H.xMax / cell), NY = Math.ceil(H.depth / cell), yBot = yTop - NY * cell, xMax = NX * cell;
+    var ZF = new Float32Array(NX * NY).fill(-Infinity), ZB = new Float32Array(NX * NY).fill(Infinity), TOP = new Float32Array(NX).fill(-Infinity);
+    var tris = 0, filled = 0;
+    try { obj.updateMatrixWorld(true); } catch (e) {}
+    function put(x, y, z) {
+      if (y > yTop || y <= yBot) return;
+      var ax = x < 0 ? -x : x; if (ax >= xMax) return;
+      var ix = ax / cell | 0, iy = (yTop - y) / cell | 0, k = iy * NX + ix;
+      if (z > ZF[k]) ZF[k] = z; if (z < ZB[k]) ZB[k] = z; if (y > TOP[ix]) TOP[ix] = y;
+    }
+    obj.traverse(function (m) {
+      if (!m.isMesh || m.visible === false) return;
+      var g = m.geometry, pos = g && g.attributes && g.attributes.position; if (!pos) return;
+      var e = m.matrixWorld.elements, idx = g.index, n = idx ? idx.count : pos.count, t, q, i, j;
+      var P = [0, 0, 0, 0, 0, 0, 0, 0, 0];
+      for (t = 0; t + 2 < n; t += 3) {
+        for (q = 0; q < 3; q++) {
+          var vi = idx ? idx.getX(t + q) : t + q, x = pos.getX(vi), y = pos.getY(vi), z = pos.getZ(vi);
+          P[q * 3] = e[0] * x + e[4] * y + e[8] * z + e[12];
+          P[q * 3 + 1] = e[1] * x + e[5] * y + e[9] * z + e[13];
+          P[q * 3 + 2] = e[2] * x + e[6] * y + e[10] * z + e[14];
+        }
+        var yMaxT = Math.max(P[1], P[4], P[7]), yMinT = Math.min(P[1], P[4], P[7]);
+        if (yMinT > yTop || yMaxT < yBot) continue;
+        if (Math.min(Math.abs(P[0]), Math.abs(P[3]), Math.abs(P[6])) >= xMax && (P[0] > 0) === (P[3] > 0) && (P[3] > 0) === (P[6] > 0)) continue;
+        var e1 = Math.hypot(P[3] - P[0], P[4] - P[1], P[5] - P[2]), e2 = Math.hypot(P[6] - P[0], P[7] - P[1], P[8] - P[2]), e3 = Math.hypot(P[6] - P[3], P[7] - P[4], P[8] - P[5]);
+        var N = Math.max(1, Math.min(40, Math.ceil(Math.max(e1, e2, e3) / (cell * 0.5))));
+        for (i = 0; i <= N; i++) for (j = 0; j <= N - i; j++) {
+          var u = i / N, v = j / N, w = 1 - u - v;
+          put(P[0] * w + P[3] * u + P[6] * v, P[1] * w + P[4] * u + P[7] * v, P[2] * w + P[5] * u + P[8] * v);
+        }
+        tris++;
+      }
+    });
+    for (var k = 0; k < ZF.length; k++) if (ZF[k] > -Infinity) filled++;
+    if (filled < 60 || !(TOP[0] > -Infinity)) { S.err = '몸통 메쉬에서 어깨를 못 읽음(칸 ' + filled + ')'; return false; }
+    // 어깨 끝: 윗면이 목 밑동에서 가장 멀리(옆으로) 이어지는 칸 · 어깨 내려감: 그 칸의 윗면 높이
+    var tipIx = 0, drop = 0, ix;
+    for (ix = 0; ix < NX; ix++) if (TOP[ix] > yTop - 0.9) tipIx = ix;
+    drop = yTop - TOP[tipIx];
+    grid = { yTop: yTop, yBot: yBot, cell: cell, NX: NX, NY: NY, xMax: xMax, ZF: ZF, ZB: ZB, TOP: TOP, tris: tris, filled: filled,
+      halfW: (tipIx + 1) * cell, drop: drop };
+    gridKey = key; ver++;
+    S.src = src || ''; S.item = item || ''; S.err = null;
+    drapeMemo = null;
+    console.log(TAG + ' 몸통 메쉬에서 어깨를 읽음(' + S.src + (S.item ? ' · ' + S.item : '') + ') — 삼각형 ' + tris + '개 · 칸 ' + filled +
+      ' · 어깨 끝(팔 바깥)까지 반폭 ' + (grid.halfW * cmPer()).toFixed(1) + 'cm · 거기서 윗면이 목 밑동보다 ' + (drop * cmPer()).toFixed(1) + 'cm 낮음');
+    return true;
+  }
+  H._measure = measure;
+
+  /* 미리 불러와 재기. 돌려주는 Promise: true = 이번에 새로 쟀음 */
+  H.ensure = function () {
+    if (!H.on || !H.preload || H.resultOnly) return Promise.resolve(false);
+    var key = photoKey();
+    if (!key) return Promise.resolve(false);
+    if (grid && gridKey === key) return Promise.resolve(false);
+    if (pending && pendingKey === key) return pending;
+    if (typeof loadOutfitMesh !== 'function' || typeof recommendOutfitWithAI !== 'function' || typeof THREE === 'undefined') return Promise.resolve(false);
+    pendingKey = key;
+    pending = (async function () {
+      try {
+        if (!(state.landmarks && state.landmarks.front) || !(state.hairMasks && state.hairMasks.front)) return false;
+        var rec = await recommendOutfitWithAI();
+        if (!rec || !rec.item) return false;
+        var fm = getFaceMetrics(), crown = null, len = null;
+        try { if (isFinite(state._model3DCrownY)) crown = state._model3DCrownY; } catch (e) {}
+        try { len = personBodyLenMesh(crown == null ? undefined : crown); } catch (e) { len = null; }
+        if (!(len > 0.5)) return false;                               // 몸 길이 자가 아직 없음 — 3D 결과 화면이 불러올 때 잼
+        var obj = await loadOutfitMesh(rec.item, fm.widthFactor, len);
+        if (photoKey() !== key) return false;
+        var ok = measure(obj, key, '미리 불러옴', rec.item.name || rec.item.id || '');
+        try { if (typeof disposeObject3D === 'function') disposeObject3D(obj); } catch (e) {}
+        return ok;
+      } catch (e) { S.err = String(e && e.message || e); console.warn(TAG + ' 미리 재기 실패', e); return false; }
+      finally { pending = null; }
+    })();
+    return pending;
+  };
+
+  // 3D 결과 화면이 실제로 불러올 때 — 아직 못 쟀으면 여기서 잼(이미 쟀으면 그대로: 머리를 다시 만들지 않게)
+  H._afterOutfitLoad = function (obj, item) {   // loadOutfitMeshMeasured(13a) 끝
+    try {
+      var key = photoKey();
+      if (H.on && obj && !(grid && gridKey === key)) { measure(obj, key, '3D 결과 화면에서', (item && (item.name || item.id)) || ''); if (H.resultOnly && grid) { try { H.refresh(); } catch (e2) {} } }
+    } catch (e) { console.warn(TAG + ' 재기 실패', e); }
+  };
+
+  /* ── ③ 인지: 어깨 앞으로 넘긴 머리 ─────────────────────────────────────── */
+  var drapeMemo = null;
+  function runAt(mask, Wm, row, cx) {              // 가운데 열을 품은 사람 영역의 좌우 끝
+    var x0 = cx, x1 = cx, base = row * Wm;
+    if (!mask[base + cx]) return null;
+    while (x0 > 0 && mask[base + x0 - 1]) x0--;
+    while (x1 < Wm - 1 && mask[base + x1 + 1]) x1++;
+    return [x0, x1];
+  }
+  function recognize() {
+    var key = photoKey();
+    if (drapeMemo && drapeMemo.key === key) return drapeMemo;
+    var R = { key: key, front: null, back: null, signX: 1 };
+    try {
+      var mi = state.hairMasks && state.hairMasks.front, lm = state.landmarks && state.landmarks.front;
+      if (mi && lm && mi.reasonMask && mi.personMask && mi.maskW && mi.maskH && lm.chinY != null) {
+        var Wm = mi.maskW, Hm = mi.maskH, hair = mi.reasonMask, per = mi.personMask;
+        var span = Math.abs(lm.rEarX - lm.lEarX) * Wm, cx = Math.round((lm.lEarX + lm.rEarX) / 2 * Wm), chin = Math.round(lm.chinY * Hm);
+        if (span > 4 && cx > 0 && cx < Wm - 1) {
+          var cmPx = H.earSpanCm / span, row, shRow = -1, how = '사람 폭';
+          for (row = chin + Math.round(span * 0.15); row < Hm; row++) {
+            var rn = runAt(per, Wm, row, cx);
+            if (rn && rn[1] - rn[0] + 1 >= H.shoulderRatio * span) { shRow = row; break; }
+          }
+          if (shRow < 0) { shRow = chin + Math.round(span * 0.75); how = '어림(턱 아래 ' + (0.75 * H.earSpanCm).toFixed(0) + 'cm)'; }
+          var F = { shRow: shRow, how: how, inFrame: shRow < Hm - 2, L: { low: -1, area: 0 }, R: { low: -1, area: 0 }, cmPx: cmPx };
+          for (row = Math.max(0, shRow); row < Hm; row++) {
+            var nL = 0, nR = 0, base = row * Wm, x;
+            for (x = 0; x < Wm; x++) if (hair[base + x] === 1) { if (x < cx) nL++; else nR++; }
+            F.L.area += nL; F.R.area += nR;
+            if (nL >= 3) F.L.low = row; if (nR >= 3) F.R.low = row;
+          }
+          ['L', 'R'].forEach(function (k) {
+            var o = F[k];
+            o.depthCm = o.low >= 0 ? (o.low - shRow) * cmPx : 0;
+            o.areaCm2 = o.area * cmPx * cmPx;
+            o.draped = F.inFrame && o.depthCm >= 3 && o.areaCm2 >= 6;      // 3cm 넘게 내려오고 6cm² 넘게 보임
+          });
+          R.front = F;
+        }
+      }
+    } catch (e) { R.err = String(e && e.message || e); }
+    try {
+      var mb = state.hairMasks && state.hairMasks.back, pe = state.poseEars && state.poseEars.back;
+      if (mb && mb.reasonMask && mb.maskW && pe && pe.shoulderY != null && pe.span > 0) {
+        var Wb = mb.maskW, Hb = mb.maskH, hb = mb.reasonMask, sr = Math.round(pe.shoulderY * Hb), low = -1, r2, x2, cnt;
+        for (r2 = Math.max(0, sr); r2 < Hb; r2++) { cnt = 0; for (x2 = 0; x2 < Wb; x2++) if (hb[r2 * Wb + x2] === 1) cnt++; if (cnt >= 3) low = r2; }
+        R.back = { shRow: sr, depthCm: low >= 0 ? (low - sr) * (H.earSpanCm / (pe.span * Wb)) : 0 };
+      }
+    } catch (e) {}
+    try {                                             // 사진의 오른쪽이 모델의 +x인가
+      var photo = state._hair3Dneutral, probe = (photo && photo.occ && photo.occ.probe) || (state.hairOcc3D && state.hairOcc3D.probe);
+      var cam = probe && probe.cams && probe.cams.filter(function (c) { return c.angle === 'front'; })[0];
+      if (cam && cam.R && cam.s) R.signX = (cam.R[0] / cam.s) >= 0 ? 1 : -1;
+    } catch (e) {}
+    drapeMemo = R;
+    return R;
+  }
+  H.recognize = recognize;
+  /* 모델 x 쪽(부호)의 머리를 사진에서 어깨 앞으로 넘겼는가 */
+  function drapedAt(x) {
+    var R = recognize(); if (!R.front) return false;
+    var imgRight = (x >= 0) === (R.signX > 0);
+    return !!(imgRight ? R.front.R.draped : R.front.L.draped);
+  }
+
+  /* ── ② 몸통 밖으로 ─────────────────────────────────────────────────────── */
+  function pushPoint(q, prev, st) {
+    var g = grid;
+    if (H.natural) {                                 // (2026-10-12g) 몸통 안에 든 점만 가까운 면으로 — 몸통 밖은 그대로
+      /* (2026-10-13) 목 구간도 목 기둥 밖으로 — 사용자 영상(19:30): 목 앞·옷깃에 가시. 예전 natural은 목 구간을 그냥 통과시켜
+         목을 뚫고 나온 가닥 토막이 목 앞에 보였음. 아래 natural이 아닌 쪽과 같은 42번 목 기둥을 씀. */
+      if (q.y > g.yTop) {
+        var NKn = W.REGROW && W.REGROW.neckPush;
+        if (NKn) { var rn = NKn(q); if (rn !== q) { S.neck++; return rn; } }
+        return q;
+      }
+      if (q.y <= g.yBot) return q;
+      var ax2 = q.x < 0 ? -q.x : q.x; if (ax2 >= g.xMax) return q;
+      var ix2 = ax2 / g.cell | 0, k2 = ((g.yTop - q.y) / g.cell | 0) * g.NX + ix2, zf2 = g.ZF[k2];
+      if (zf2 === -Infinity) return q;
+      var zb2 = g.ZB[k2], m2 = H.margin;
+      if (!(q.z > zb2 - m2 && q.z < zf2 + m2)) return q;
+      /* (2026-10-13) 앞으로 보내는 건 들어가기 직전 점이 정말 몸통 앞면 앞에 있었을 때만 — 예전엔 몸통 두께의 가운데보다 앞이면 앞으로 보내서,
+         어깨·목 밑동 위로 곧게 떨어지던 가닥이 가슴 앞면에 눌려 옷깃 앞에 가시처럼 보였음(영상 19:30). */
+      if (!st.pref) { var ref2 = prev ? prev.z : q.z; st.pref = ref2 >= zf2 - m2 ? 'front' : 'back'; S.touched++; if (st.pref === 'front') S.front++; else S.back++; }
+      var dUp2 = g.TOP[ix2] + m2 - q.y, dZ2 = st.pref === 'front' ? zf2 + m2 - q.z : q.z - (zb2 - m2);
+      if (dUp2 >= 0 && dUp2 < H.restMax && dUp2 < dZ2) { S.rest++; return { x: q.x, y: g.TOP[ix2] + m2, z: q.z }; }   // 어깨 위에 얹음
+      return { x: q.x, y: q.y, z: st.pref === 'front' ? zf2 + m2 : zb2 - m2 };
+    }
+    if (q.y > g.yTop) {                              // 목 구간 — 42번의 목 기둥
+      var NK = W.REGROW && W.REGROW.neckPush;
+      if (NK) { var r0 = NK(q); if (r0 !== q) { S.neck++; return r0; } }
+      return q;
+    }
+    if (q.y <= g.yBot) return q;
+    var ax = q.x < 0 ? -q.x : q.x; if (ax >= g.xMax) return q;
+    var ix = ax / g.cell | 0, iy = (g.yTop - q.y) / g.cell | 0, k = iy * g.NX + ix, zf = g.ZF[k];
+    if (zf === -Infinity) return q;
+    var zb = g.ZB[k], m = H.margin;
+    // (2026-10-04i) 사진에서 이쪽을 어깨 앞으로 안 넘겼으면 앞에 두지 않음(가운데 띠는 예외)
+    var only = H.frontOnlyIfDraped && ax >= H.centerBand;
+    var useDrape = H.frontDrape && !st.mq;                         // 사진에서 넘겼는지 볼 것인가
+    if (only && useDrape && st.drp == null) st.drp = drapedAt(q.x);
+    var noFront = only && (!useDrape || !st.drp);                  // 기본: 전부 뒤로
+    if (!(q.z > zb - m && q.z < zf + m)) {
+      // 몸통 밖 — 어깨 윗면보다 아래에서 몸통 앞에 떠 있는 점
+      if (noFront && q.z >= zf + m && q.y < g.TOP[ix]) {
+        if (!st.pref) { st.pref = 'back'; S.touched++; S.back++; S.forced++; }
+        if (st.pref === 'back') { S.swept++; return { x: q.x, y: q.y, z: zb - m }; }
+      }
+      return q;
+    }
+    // 몸통 안
+    if (!st.pref) {
+      var mid = (zf + zb) / 2, ref = prev ? prev.z : q.z;
+      if (noFront) { st.pref = 'back'; if (ref > mid) S.forced++; }
+      else if (Math.abs(ref - mid) < H.ambig) st.pref = (useDrape && drapedAt(q.x)) ? 'front' : 'back';
+      else st.pref = ref > mid ? 'front' : 'back';
+      S.touched++; if (st.pref === 'front') S.front++; else S.back++;
+    }
+    var dUp = g.TOP[ix] + m - q.y, dZ = st.pref === 'front' ? zf + m - q.z : q.z - (zb - m);
+    if (dUp >= 0 && dUp < H.restMax && dUp < dZ) { S.rest++; return { x: q.x, y: g.TOP[ix] + m, z: q.z }; }   // 어깨 위에 얹음
+    return { x: q.x, y: q.y, z: st.pref === 'front' ? zf + m : zb - m };
+  }
+  /* 뒤로 넘어가는 자리 다듬기: k0(처음 등 면으로 옮겨진 점)에서 가닥을 거슬러 sweepLen만큼 z를 부드럽게 */
+  function sweepBack(np, p, k0) {
+    var len = H.sweepLen; if (!(len > 0) || k0 < 2) return false;
+    var zt = np[k0].z, acc = 0, j, a, b, t, sm, q, z, did = false, NK = W.REGROW && W.REGROW.neckPush;
+    for (j = k0 - 1; j >= 1; j--) {
+      acc += Math.hypot(p[j].x - p[j + 1].x, p[j].y - p[j + 1].y, p[j].z - p[j + 1].z);   // 원래 가닥의 길이로 잼
+      if (acc >= len) break;
+      a = np[j];
+      t = 1 - acc / len; sm = t * t * (3 - 2 * t);
+      z = a.z + (zt - a.z) * sm;
+      if (!(z < a.z - 1e-4)) continue;                             // 뒤쪽으로만
+      q = { x: a.x, y: a.y, z: z };
+      if (NK && q.y > grid.yTop) { try { q = NK(q) || q; } catch (e) {} }
+      np[j] = q; did = true;
+    }
+    return did;
+  }
+  var passMemo = new WeakMap();
+  function pass(list) {
+    if (!H.on || !grid || !list || !list.length) return list;
+    if (H.resultOnly && scr() === 'adjust') return list;   // (2026-10-13d)
+    var hit = passMemo.get(list);
+    if (hit && hit.ver === ver) return hit.out;
+    var t0 = now(), n = list.length, out = new Array(n), i, k, e, p, np, st, r, top = grid.yTop + 0.6;
+    S.strands = n; S.touched = S.front = S.back = S.rest = S.neck = S.forced = S.swept = S.smooth = 0;
+    var mq = false; try { mq = !!(H.mqBack && MANNEQUIN.on); } catch (e2) { mq = false; }
+    S.mq = mq;
+    for (i = 0; i < n; i++) {
+      e = list[i]; p = e && e.pts; np = null;
+      if (p && p.length > 1) {
+        st = { pref: null, drp: null, mq: mq, k0: -1 };
+        for (k = 1; k < p.length; k++) {
+          if (!(p[k].y < top)) continue;
+          r = pushPoint(p[k], np ? np[k - 1] : p[k - 1], st);
+          if (r !== p[k]) {
+            if (!np) { np = p.slice(); try { np._pre = p._pre || p; } catch (e3) {} }   // _pre: 53번 빗질이 달아 둔 "빗기 전 자리"
+            np[k] = r;
+            if (st.k0 < 0 && st.pref === 'back' && r.z < p[k].z - H.sweepMinJump) st.k0 = k;
+          }
+        }
+        if (np && st.k0 > 0 && sweepBack(np, p, st.k0)) S.smooth++;
+      }
+      out[i] = np ? Object.assign({}, e, { pts: np }) : e;
+    }
+    S.ms = now() - t0;
+    passMemo.set(list, { ver: ver, out: out });
+    return out;
+  }
+  H._pass = pass;
+
+  H._apply = function (out) {   // computeAdjustedHair3DStrands(17b) 마감 단계
+    try { return pass(out); } catch (e) { S.err = String(e && e.message || e); return out; }
+  };
+  // 서명 — 어깨가 새로 재지거나 꺼지면 미리 만든 헤어도 다시(adjFilterSig 17b 끝)
+  H._sigTail = function () { return '|sh' + (H.on && grid && !(H.resultOnly && scr() === 'adjust') ? ver + (H.natural ? 'n' : '') : 0); };
+
+  function redraw() {
+    try { if (typeof ADJ_CACHE !== 'undefined' && ADJ_CACHE.bump) ADJ_CACHE.bump(); } catch (e) {}
+    try { if (scr() === 'adjust' && typeof renderAdjustFrame === 'function') renderAdjustFrame(); } catch (e) {}
+  }
+  H.refresh = function () { ver++; passMemo = new WeakMap(); drapeMemo = null; redraw(); return H.on; };
+  H.reset = function () { grid = null; gridKey = null; drapeMemo = null; ver++; };
+
+  // 스타일·조정 화면에 들어오면 미리 잼. 조정 화면에서 뒤늦게 재졌으면 머리를 한 번 다시 만듦
+  H._afterNav = function (name) {   // navTo(05) 끝 — 스타일·조정 화면에 들어오면 미리 잼
+    try {
+      if (name === 'style' || name === 'adjust') H.ensure().then(function (fresh) { if (fresh) redraw(); });
+    } catch (e) {}
+  };
+
+  H._panelLines = function () {   // perfPanelLines(18) 끝
+    var L = [], cm = cmPer(), a;
+    if (!H.on) return L.concat([TAG + ' 꺼짐']);
+    a = TAG + ' 켜짐 · ' + (grid ? '몸통 메쉬에서 읽음(' + S.src + (S.item ? ' · ' + S.item : '') + ') — 어깨 끝(팔 바깥)까지 반폭 ' + (grid.halfW * cm).toFixed(1) + 'cm · 거기서 윗면이 목 밑동보다 ' + (grid.drop * cm).toFixed(1) + 'cm 낮음 · 칸 ' + grid.filled
+      : '아직 못 읽음(몸통 메쉬를 불러오기 전)' + (pending ? ' · 불러오는 중' : '')) + (S.err ? ' · ⚠ ' + S.err : '');
+    L = L.concat([a]);
+    if (grid) L.push('  적용(직전) — 가닥 ' + S.strands + '개 중 몸통에 닿은 가닥 ' + S.touched + ' (앞으로 ' + S.front + ' / 뒤로 ' + S.back + ') · 어깨 위에 얹은 점 ' + S.rest + ' · 목 밖으로 민 점 ' + S.neck + ' · ' + Math.round(S.ms) + 'ms' +
+      (!H.frontDrape ? ' · 어깨 앞으로 넘기기 꺼짐 — 전부 등 쪽으로: 앞에 있었지만 뒤로 보낸 가닥 ' + S.forced + ' (어깨 앞에 떠 있던 점 ' + S.swept + ')'
+        : H.frontOnlyIfDraped ? ' · 앞은 사진에서 넘긴 쪽만: 앞에 있었지만 뒤로 보낸 가닥 ' + S.forced + ' (어깨 앞에 떠 있던 점 ' + S.swept + ')' + (S.mq ? ' · 마네킹: 전부 등 쪽으로' : '') : ' · 앞은 사진에서 넘긴 쪽만: 꺼짐') +
+      ' · 넘어가는 자리 다듬은 가닥 ' + S.smooth);
+    if (!H.frontDrape) return L;                       // 사진 인지는 안 씀(계산도 안 함)
+    try {
+      var R = recognize(), F = R.front;
+      if (F) {
+        var side = function (o) { return '어깨선 아래 ' + o.depthCm.toFixed(1) + 'cm · ' + o.areaCm2.toFixed(0) + 'cm² → ' + (o.draped ? '앞으로 넘김' : '안 넘김'); };
+        L.push('  사진 인지(정면) — 어깨선: 사진 높이의 ' + Math.round(F.shRow / (state.hairMasks.front.maskH || 1) * 100) + '% 줄(' + F.how + ')' + (F.inFrame ? '' : ' ⚠ 어깨가 사진 밖 — 판정 안 함') +
+          ' · 화면 왼쪽: ' + side(F.L) + ' · 화면 오른쪽: ' + side(F.R));
+      } else L.push('  사진 인지(정면) — 못 함(정면 머리 영역/랜드마크 없음)' + (R.err ? ' ⚠ ' + R.err : ''));
+      L.push('  사진 인지(후면) — ' + (R.back ? '어깨 아래로 ' + R.back.depthCm.toFixed(1) + 'cm 내려온 머리(등 쪽)' : '어깨 높이를 못 잡음(포즈 없음)'));
+    } catch (e) {}
+    return L;
+  };
+
+  console.log(TAG + (H.on ? ' 설치 — 몸통 메쉬에서 어깨를 읽어 머리카락이 몸통을 뚫지 않게 합니다(전부 등 쪽으로 · 어깨 앞으로 넘기기는 SHOULDER.frontDrape=true로 켬). 끄기 SHOULDER.on=false 후 SHOULDER.refresh()'
+    : ' 설치 — 꺼짐(기본): 머리가 만들어진 그대로 내려갑니다(앞·뒤로 보내지 않음 · 몸통을 통과할 수 있음). 켜기 SHOULDER.on=true; SHOULDER.refresh()'));
+  return H;
+})();
+
+/* 의상이 도착한 뒤 목을 <b>다시</b> 짓는다. setupModel3DScreen은 두상·목을 먼저
+   세우고 의상을 나중에 로드하므로 첫 빌드는 옷깃을 못 본다 — 여기서 그 한 번을
+   메운다. 결과 화면 쪽은 의상 다음에 목을 지어서 이 함수가 필요 없다. */
+function refitNeckToGarment(group, skinColorCss){
+  if(!NECK_SHAPE.fromGarment || !_garmentNeckOpening || !group) return false;
+  const old = group.getObjectByName('neckAttachPoint');
+  if(!old) return false;
+  try{
+    let c = new THREE.Color(skinColorCss || '#E8C39E');
+    if((c.r + c.g + c.b)/3 < 0.30) c = new THREE.Color('#E0B294');
+    const fresh = buildRealNeckMesh(c);
+    if(!fresh) return false;
+    const parent = old.parent || group;
+    parent.remove(old); disposeObject3D(old);
+    parent.add(fresh);
+    return true;
+  }catch(e){ console.warn('[3D·목] 옷깃 기준 재생성 실패(예전 목 유지):', e); return false; }
+}
+
+/* ── 뿌리 위치·길이·결방향을 진짜로 3D에 반영 ──
+   지적: "computeSectionRealExtent가 만드는 건 섹션 전체에 곱하는 배율 하나뿐이고,
+   뿌리가 어디 심기는지(phi/theta)·어느 방향으로 흐르는지(결방향)는 여전히 랜덤
+   아니냐" — 정확한 지적. state.hairMasks[angle].orientation(실측 결방향 필드,
+   2D에서 이미 쓰고 있는 그 데이터)이 3D 쪽에서는 한 번도 안 읽히고 있었음.
+   여기서부터 실제로 연결한다.
+   좌우 대칭(temple/side)은 어느 실측 뷰가 물리적으로 어느 쪽(왼/오)에
+   대응하는지 좌표계 관례가 코드 어디에도 확정돼 있지 않아서, 잘못 매핑하면
+   "왼쪽 결이 오른쪽에 심긴다" 같은 검증하기 어려운 좌우反전 버그가 생길 위험이
+   있음. 그래서:
+   - phi(위아래 뿌리 위치)·길이비율·결 강도(방향의 크기, 부호 아님)는 모든
+     섹션에 안전하게 적용(좌우 모호성이 없는 값들).
+   - theta(좌우 뿌리 위치)의 "실측 위치 매핑"은 중심이 하나뿐인 섹션(front/
+     occipital/nape)에만 적용 — 그 사진 한 장 안에서 좌/우가 자체적으로
+     일관되므로 좌우反전 위험이 없음. temple/side(거울대칭 2중심)는 기존처럼
+     무작위 배치를 유지하되, 실측 길이·결 강도는 그대로 반영. */
+
+/* ── 진짜 2D→3D 투영: outputFacialTransformationMatrixes를 실제로 활용 ──
+   지적: "makeFaceProjector 말고, 랜드마크 연결할 때 쓰던 AR용 진짜 캘리브레이션
+   행렬(outputFacialTransformationMatrixes)이 있었잖아, 그건 왜 안 써?" — 정확한
+   지적. 이 매트릭스는 MediaPipe가 "캐노니컬 얼굴을 실제 감지된 얼굴 위치/각도에
+   맞춰 정렬하는" 진짜 AR 캘리브레이션 결과인데, decomposePoseMatrix()가 여기서
+   yaw/pitch/roll "각도 3개"만 뽑고 나머지(그 각도로 실제 회전을 재구성하는 데
+   필요한 나머지 정보)는 버리고 있었음. 심지어 파일 상단 개발 로그에 "이 방향
+   재활용 가능"이라고 이미 적어뒀던 걸 놓쳤음.
+   여기서부터: 저장된 yaw/pitch/roll(비손실 분해값, 실측 행렬과 100% 동일한
+   회전 정보)로 회전행렬을 다시 조립해서, 사진 픽셀 하나하나를 실제 두상 표면
+   3D 좌표로 진짜 투영한다 — "시작점·끝점 좌표를 그대로 찍어서 쓴다"는 원래
+   말씀하신 방식. */
+
+/* ════════════════════════════════════════════════════════════════
+   포즈 회전 · 이미지점 → 두상 3D 좌표
+   촬영 뷰의 실측 yaw/pitch/roll로 회전행렬을 만들고(composeRotationZYX),
+   사진의 한 점을 두상 표면 3D 좌표로 되돌린다(projectImagePointToHead).
+   4장을 하나의 두상 좌표계 위에 올리는 접합부.
+   ════════════════════════════════════════════════════════════════ */
+// decomposePoseMatrix가 어떤 합성순서를 가정한 건지 몰라서(그 함수엔 각도를
+// 다시 행렬로 되돌리는 대응 함수가 없었음), Node로 300개 랜덤 각도 왕복
+// 테스트를 돌려 정확히 일치하는 합성순서를 수치로 찾아냄: R = Rz(roll)·Ry(yaw)·Rx(pitch)
+// (row-major 3x3, 왕복 오차 0.000000 확인됨).
+function composeRotationZYX(yawRad, pitchRad, rollRad){
+  const cy=Math.cos(yawRad), sy=Math.sin(yawRad);
+  const cx=Math.cos(pitchRad), sx=Math.sin(pitchRad);
+  const cz=Math.cos(rollRad), sz=Math.sin(rollRad);
+  function matMul(a,b){ const r=new Array(9); for(let i=0;i<3;i++)for(let j=0;j<3;j++){ let s=0; for(let k=0;k<3;k++) s+=a[i*3+k]*b[k*3+j]; r[i*3+j]=s; } return r; }
+  const Rz=[cz,-sz,0, sz,cz,0, 0,0,1];
+  const Ry=[cy,0,sy, 0,1,0, -sy,0,cy];
+  const Rx=[1,0,0, 0,cx,-sx, 0,sx,cx];
+  return matMul(matMul(Rz,Ry),Rx);
+}
+// 전치(=직교행렬의 역) 적용 — "카메라 공간 → 두상 공간" 방향 변환용.
+// MediaPipe 포즈 행렬은 "두상(캐노니컬) → 카메라" 방향이므로, 사진에서 읽은
+// 카메라 공간 좌표를 두상 공간으로 가져오려면 역회전을 써야 함(아래
+// projectImagePointToHead의 2026-07-14 방향 버그 수정 참고).
+function applyRotationTranspose3(mat9, v){
+  return new THREE.Vector3(
+    mat9[0]*v.x + mat9[3]*v.y + mat9[6]*v.z,
+    mat9[1]*v.x + mat9[4]*v.y + mat9[7]*v.z,
+    mat9[2]*v.x + mat9[5]*v.y + mat9[8]*v.z,
+  );
+}
+
+// ── 후면(랜드마크 없는 뷰) 실루엣 앵커 (2026-07-14, 사용자 설계) ──
+// "후면 사진 앵커 귀와 정수리 등으로 잡아" — 얼굴 랜드마크가 없는 사진의
+// 투영 기준점을 지어낸 고정값(getEstimatedLandmarks) 대신 그 사진에 실제로
+// 있는 것에서 실측:
+//   가로 축척 = 귀 높이의 실루엣 폭(뒤에서도 귀는 실루엣 양옆으로 보임 —
+//     정수리에서 아래로 내려가며 폭을 재다가, 어깨(폭 급증) 전 구간에서
+//     가장 넓은 행 = 귀 높이/귀 간격)
+//   세로 기준(눈/턱 높이) = 같은 사람 정면 사진에서 실측한 "정수리→눈/턱
+//     거리 ÷ 귀높이 실루엣 폭" 비율을 후면 실루엣에 적용(같은 사람이니
+//     비율은 동일 — 지어낸 상수 없이 전부 그 사람 실측).
+// 정면 쪽 폭도 랜드마크 귀 간격이 아니라 같은 정의(실루엣 폭@귀높이)로
+// 재서 앞/뒤 측정 정의를 일치시킴(헤어가 부풀어도 양쪽이 같이 부풀어
+// 비율이 유지되도록). 포즈는 poseYawDeg를 넣지 않아 기존 폴백(촬영 슬롯
+// 기본각 — back이면 180°)을 그대로 따름.
+let _silhouetteAnchorCache = {};
+function computeSilhouetteAnchors(angle){
+  if(_silhouetteAnchorCache[angle] !== undefined) return _silhouetteAnchorCache[angle];
+  let result = null;
+  try{
+    const maskInf = state.hairMasks && state.hairMasks[angle];
+    const frontLm = state.landmarks && state.landmarks.front;
+    const frontInf = state.hairMasks && state.hairMasks.front;
+    if(maskInf && maskInf.personMask && frontLm && frontInf && frontInf.personMask && frontInf.scalpY){
+      // 공용: 특정 마스크에서 "중앙 1/3 구간 최상단(5퍼센타일)"과 "행별 실루엣 폭"
+      const topOf = (mask, mw, mh)=>{
+        const tops = [];
+        for(let x=Math.floor(mw/3); x<Math.floor(mw*2/3); x++){
+          for(let y=0; y<mh; y++){ if(mask[y*mw+x]){ tops.push(y); break; } }
+        }
+        if(tops.length < 10) return -1;
+        tops.sort((a,b)=>a-b);
+        return tops[Math.floor(tops.length*0.05)];
+      };
+      const rowSpanOf = (mask, mw, y)=>{
+        let l=-1, r=-1;
+        for(let x=0;x<mw;x++){ if(mask[y*mw+x]){ l=x; break; } }
+        for(let x=mw-1;x>=0;x--){ if(mask[y*mw+x]){ r=x; break; } }
+        return (l>=0 && r>=l) ? { l, r, w: r-l+1 } : null;
+      };
+      // "정수리부터 내려가며 어깨(폭 급증) 전 최대 폭 행" = 귀 높이
+      const earRowOf = (mask, mw, mh, topRow)=>{
+        let earRow=-1, earL=0, earR=0, best=0, shoulderRow=-1;
+        const widths = [];
+        for(let y=topRow; y<mh; y++){
+          const rw = rowSpanOf(mask, mw, y); if(!rw) continue;
+          widths.push(rw.w);
+          if(widths.length > 8){
+            const med = widths.slice().sort((a,b)=>a-b)[Math.floor(widths.length/2)];
+            if(rw.w > med*1.6){ shoulderRow = y; break; } // 어깨 시작 — 머리 구간 종료
+          }
+          if(rw.w > best){ best=rw.w; earRow=y; earL=rw.l; earR=rw.r; }
+        }
+        return earRow > topRow ? { earRow, earL, earR, span: earR-earL, shoulderRow } : null;
+      };
+
+      const mw = maskInf.maskW, mh = maskInf.maskH;
+      const fw = frontInf.maskW, fh = frontInf.maskH;
+      const topB = topOf(maskInf.personMask, mw, mh);
+      const topF = topOf(frontInf.personMask, fw, fh);
+      const earB = topB >= 0 ? earRowOf(maskInf.personMask, mw, mh, topB) : null;
+      const earF = topF >= 0 ? earRowOf(frontInf.personMask, fw, fh, topF) : null;
+      /* 귀 앵커 선택 — PoseLandmarker 실측이 있으면 그걸 쓴다(2026-07-26).
+         정면·좌·우가 쓰는 기준점(귀)과 같아져서 네 장이 한 자로 연결된다.
+         없으면 기존 방식(어깨 직전 최대폭 행)으로 폴백. */
+      let pe = state.poseEars && state.poseEars[angle];
+      /* 2차 타당성 검사(2026-07-26): 같은 사진의 실루엣 폭과 대조한다.
+         주의 — "귀 간격 ÷ 실루엣 폭"은 고정 상수로 두면 안 된다. 실루엣 폭에는
+         머리숱이 포함돼서, 숱이 많거나 부풀린 머리는 이 비율이 크게 낮아진다
+         (제대로 잡힌 귀를 오탐으로 버릴 수 있음).
+         그래서 그 사람 정면 사진에서 같은 비율을 실측해 기준으로 삼는다.
+         (정면: 귀 랜드마크 간격 ÷ 귀높이 실루엣 폭 — 같은 사람이라 숱이 반영됨)
+         정면 비율을 못 구할 때만 넉넉한 절대 범위(0.30~1.40)로 최소한만 거른다. */
+      if(pe && earB && earB.span > 4){
+        const rel = (pe.rEarX - pe.lEarX) * mw / earB.span;
+        const relF = (earF && earF.span > 4)
+          ? clamp(Math.abs(frontLm.rEarX - frontLm.lEarX) * fw / earF.span, 0.40, 1.05)
+          : 0;
+        const lo = relF ? relF * 0.50 : 0.30;
+        const hi = relF ? relF * 1.60 : 1.40;
+        if(rel < lo || rel > hi){
+          console.log(`[${angle}] 포즈 귀 = 실루엣 폭의 ${(rel*100).toFixed(0)}%`
+            + (relF ? ` (정면 실측 기준 ${(relF*100).toFixed(0)}%, 허용 ${(lo*100).toFixed(0)}~${(hi*100).toFixed(0)}%)` : ' (허용 30~140%)')
+            + ' — 비정상으로 보고 실루엣 앵커 사용');
+          pe = null;
+        }
+      }
+      /* ══════════════════════════════════════════════════════════════
+         가로 자(실루엣 폭)를 <b>세로 자(정수리→어깨)</b>로 바꾼다 (2026-08-09)
+         ──────────────────────────────────────────────────────────────
+         사용자: "후면을 실루엣비교로 잡기로 했는데(긴머리는 귀가 안 보여서)
+         그게 자가 어긋났을 거라고? 그거 잡아야지."
+
+         맞다. 실루엣 비교라는 <b>방침</b>은 옳은데 <b>재는 물건</b>이 틀렸다.
+         원래 설계는 "앞뒤 모두 실루엣 폭@귀높이로 재면 헤어가 부풀어도 양쪽이
+         같이 부풀어 비율이 유지된다"였다. 전제가 하나 깔려 있다 — <b>앞뒤의
+         '귀높이'가 같은 높이일 것</b>. 그게 안 맞는다:
+           · 정면 — 머리가 앞으로 넘어와 있어 어깨 직전 최대폭이 <b>귀·턱 근처</b>
+           · 후면 — 머리가 어깨까지 계속 넓어져 최대폭이 <b>어깨 바로 위</b>
+         실기기 로그가 그대로다: 후면 "귀높이 y 0.635" — 이미지 세로 63.5%면
+         귀가 아니라 어깨선이다. 두 자를 서로 다른 자리에서 대고 있었다.
+         (같은 현상을 [두상 폭 보정]도 잡는다 — "밴드 W가 끝까지 증가, 적도를
+          못 지남 = 어깨로 흐른 머리카락을 두상 폭으로 잡음".)
+
+         ── 1차 고침이 또 틀렸다 (2026-08-09, 사용자 지적) ────────────────
+         "앞뒤 실루엣이 거의 일치하니까 그렇게 대조하라고 한 건데, 왜 한 구역을
+         지정해서 잡아. 긴머리는 후면에서 본 어깨 위치도 정확하지 않을 수 있어."
+         맞다. 가로 자(최대폭 행)를 세로 자(어깨 행)로 바꾼 건 <b>재는 행 하나를
+         다른 행 하나로 옮긴 것</b>뿐이다. 그 행이 틀리면 스케일이 통째로 틀리는
+         구조는 그대로다. 긴머리의 후면 어깨선은 머리카락에 덮여 있어 특히 위태롭다.
+
+         ── 실제 고침: 옆선 <b>전체</b>로 맞춘다 ──────────────────────────
+         사용자 제안: "정수리부터 어깨까지의 삼각형을 만들고 후면에서 그 삼각형에
+         일치시켜라." 그 삼각형을 <b>꼭짓점 두 개</b>로 쓰면 다시 점 잡기가 되므로,
+         옆선을 이루는 <b>모든 행</b>으로 쓴다 — 삼각형을 한 점에서 재지 않고
+         빗변 전체로 겹치는 것이다.
+
+           정면 프로파일  halfF(u) = 정수리에서 u행 아래의 실루엣 반폭
+           후면 프로파일  halfB(v) = 같은 정의
+           찾는 것        halfB(u·s) ≈ s·halfF(u) 를 가장 잘 만족하는 s
+
+         s를 0.55~1.85에서 훑어 정규화 평균오차가 최소인 값을 고른다. 어느 한
+         행이 틀려도 나머지 수백 행이 결정하므로 점 하나에 안 휘고, 어깨를
+         <b>찾을 필요조차 없다</b> — 어깨는 프로파일에 이미 들어 있는 특징일 뿐이다.
+         (완전한 원뿔이라면 s가 안 정해진다. 실제 실루엣은 정수리가 둥글고 목이
+          잘록하고 어깨에서 꺾이므로 그 특징들이 s를 고정한다. 그래서 잔차를
+          같이 찍는다 — 잔차가 크면 앞뒤 실루엣이 실제로는 안 닮았다는 신호다.)
+
+         비교 구간은 정수리→턱(정면 실측)의 2배까지. 2는 측정값이 아니라 <b>어디까지
+         볼지</b>의 범위일 뿐이라 s를 편향시키지 않는다(팔·배경만 잘라낸다). */
+      const profileOf = (mask, mw2, mh2, top, rows)=>{
+        const out = [];
+        for(let y=top; y<Math.min(mh2, top+rows); y++){
+          const rw = rowSpanOf(mask, mw2, y);
+          out.push(rw ? rw.w/2 : 0);
+        }
+        return out;
+      };
+      /* halfB(u·s) ≈ s·halfF(u) 를 최소오차로 만드는 s. */
+      const fitProfileScale = (pf, pb)=>{
+        let best = null;
+        for(let s=0.55; s<=1.85; s+=0.004){
+          const uMax = Math.min(pf.length-1, Math.floor((pb.length-1)/s));
+          if(uMax < 24) continue;
+          let sum=0, ref=0;
+          for(let u=0; u<=uMax; u++){
+            const yb = u*s, i = Math.floor(yb), fr = yb - i;
+            const hb = (i+1 < pb.length) ? pb[i]*(1-fr) + pb[i+1]*fr : pb[pb.length-1];
+            sum += Math.abs(hb - s*pf[u]);
+            ref += s*pf[u];
+          }
+          const err = sum / Math.max(1e-6, ref);
+          if(!best || err < best.err) best = { s, err, n: uMax+1 };
+        }
+        return best;
+      };
+      /* ── 구간을 둘 다 재고 <b>잔차가 작은 쪽</b>을 쓴다 (2026-08-09) ──────────
+         하네스에서 이 방법의 한계가 정확히 드러났다:
+           앞뒤 실루엣이 <b>실제로 닮았으면</b> 배율을 0.2% 오차로 맞춘다
+             (숱 같음 배율1.0 → 0.998 잔차 0.3% · 후면 20% 크게 → 1.202 잔차 0.7%)
+           <b>안 닮았으면</b> 크게 틀린다
+             (정면 숱 0.35 / 후면 1.30 → 1.782 잔차 13.7%)
+         즉 이 방법의 전제("앞뒤 실루엣이 거의 일치")가 <b>맞는 손님에게만</b>
+         맞다. 다행히 <b>잔차가 그걸 말해 준다</b> — 닮았을 때 1% 미만, 안 닮으면
+         8%를 넘는다. 그래서 문턱을 두고, 넘으면 <b>정수리 구간만</b>으로 다시
+         맞춘다: 머리카락은 아래로 갈수록 퍼지므로 정수리 근처는 앞뒤가 훨씬
+         닮아 있다(두개골 + 얇은 모발층). 둘 다 재서 잔차가 작은 쪽을 쓴다. */
+      const chinRows = (typeof frontLm.chinY === 'number')
+        ? Math.round(frontLm.chinY*fh - topF) : 0;
+      const earRows  = (typeof frontLm.earY  === 'number')
+        ? Math.round((frontLm.earY*fh - topF) * 1.25) : 0;
+      let fit = null, fitFull = null, fitTop = null;
+      if(!pe && chinRows > 24 && topF >= 0 && topB >= 0){
+        const tryRows = (rows)=> rows > 24 ? fitProfileScale(
+          profileOf(frontInf.personMask, fw, fh, topF, rows),
+          profileOf(maskInf.personMask,  mw, mh, topB, Math.round(rows*1.9))) : null;
+        fitFull = tryRows(chinRows * 2);       // 정수리→어깨까지 옆선 전체
+        fitTop  = tryRows(earRows);            // 정수리 구간만(숱 오염이 제일 적다)
+        const cand = [fitFull, fitTop].filter(Boolean);
+        if(cand.length){
+          fit = cand.reduce((a,c)=> c.err < a.err ? c : a);
+          fit.which = (fit === fitFull) ? '옆선 전체' : '정수리 구간';
+        }
+      }
+      const useV = !!fit && typeof frontLm.earY === 'number';
+      let earPx, frontSpan, rowRule;
+      if(pe){
+        earPx = { l: pe.lEarX*mw, r: pe.rEarX*mw, row: pe.earY*mh, span: (pe.rEarX-pe.lEarX)*mw, src:'pose' };
+        frontSpan = Math.abs(frontLm.rEarX - frontLm.lEarX) * fw;   // 귀 앵커면 정면도 귀 간격
+        rowRule = 'pose';
+      } else if(useV){
+        const k = fit.s;                                      // 후면 픽셀 / 정면 픽셀
+        const earRowB = topB + (frontLm.earY*fh - topF) * k;  // 정면 귀높이를 그 자로 옮김
+        const spanB   = Math.abs(frontLm.rEarX - frontLm.lEarX) * fw * k;
+        /* 귀의 <b>좌우 중심</b>은 그 높이 실루엣의 중심에서 잡는다(머리는
+           실루엣 한가운데 있다). 폭은 위에서 옮겨 온 값이라 숱과 무관. */
+        const rowB = rowSpanOf(maskInf.personMask, mw,
+                       Math.max(0, Math.min(mh-1, Math.round(earRowB))));
+        const cx = rowB ? (rowB.l + rowB.r) / 2 : mw/2;
+        earPx = { l: cx - spanB/2, r: cx + spanB/2, row: earRowB, span: spanB, src:'silhouette-fit' };
+        frontSpan = Math.abs(frontLm.rEarX - frontLm.lEarX) * fw;
+        rowRule = 'profile';
+        const q = fit.err < 0.02 ? '아주 잘 맞음' : fit.err < 0.05 ? '맞음'
+                : fit.err < 0.10 ? '⚠ 헐거움' : '⚠⚠ 앞뒤 실루엣이 안 닮음';
+        console.log(`[앵커·실루엣맞춤] ${angle}: 배율 ×${k.toFixed(3)} · 잔차 ${(fit.err*100).toFixed(1)}% (${q})`
+          + ` · 채택 ${fit.which} (${fit.n}행 대조)`
+          + (fitFull && fitTop ? ` · 옆선전체 ×${fitFull.s.toFixed(3)}/${(fitFull.err*100).toFixed(1)}%`
+              + ` vs 정수리 ×${fitTop.s.toFixed(3)}/${(fitTop.err*100).toFixed(1)}%` : '')
+          + `\n    귀높이 y ${(earRowB/mh).toFixed(3)} (정면 실측 ${frontLm.earY.toFixed(3)}를 옮김) · 귀 간격 ${(spanB/mw).toFixed(3)}`
+          + (earB ? ` · 예전 최대폭 자였다면 y ${(earB.earRow/mh).toFixed(3)} / 간격 ${(earB.span/mw).toFixed(3)}` : '')
+          + `\n    잔차 기준(하네스 실측): 실루엣이 진짜 닮으면 1% 미만으로 떨어지고 배율 오차 0.2%. 8%를 넘으면 앞뒤 숱이 달라 배율을 믿을 수 없습니다.`);
+      } else {
+        earPx = earB ? { l: earB.earL, r: earB.earR, row: earB.earRow, span: earB.span, src:'silhouette' } : null;
+        frontSpan = earF ? earF.span : 0;
+        rowRule = 'width';
+        console.warn(`[앵커·실루엣맞춤] ${angle}: 옆선 대조 실패 — 예전 최대폭 자로 폴백`
+          + (headRows > 24 ? '' : ' · 정면 턱 랜드마크가 없어 비교 구간을 못 정함')
+          + (typeof frontLm.earY === 'number' ? '' : ' · 정면 귀높이 랜드마크 없음'));
+      }
+      if(earPx && earPx.span > 4 && frontSpan > 4 && topB >= 0 && topF >= 0){
+        // 정면 실측 비율(프레이밍 무관): 정수리→눈/턱 거리 ÷ 귀 간격
+        const rEye  = (frontLm.eyeY*fh  - topF) / frontSpan;
+        const rChin = (frontLm.chinY*fh - topF) / frontSpan;
+        const eyeY  = (topB + rEye  * earPx.span) / mh;
+        const chinY = (topB + rChin * earPx.span) / mh;
+        result = {
+          eyeY, chinY,
+          browTopY: Math.max(0, eyeY - (frontLm.eyeY - frontLm.browTopY)), // 정면 실측 간격 재사용
+          earY: earPx.row / mh,
+          foreheadY: Math.max(0, eyeY - (frontLm.eyeY - frontLm.foreheadY)),
+          lEarX: earPx.l / mw, rEarX: earPx.r / mw,
+          _silhouette: true, _anchorSrc: earPx.src, _rowRule: rowRule, // [진단용]
+        };
+      }
+    }
+  }catch(e){ console.warn('실루엣 앵커 계산 실패:', angle, e); }
+  _silhouetteAnchorCache[angle] = result;
+  return result;
+}
+
+// 사진 한 장의 정규화 좌표(nx,ny 0~1)를 실제 두상 표면 3D 좌표로 투영.
+// 1) makeFaceProjector로 "그 뷰가 정면을 보고 있다고 가정했을 때"의 로컬
+//    평면 좌표(localX,localY)를 구함(뷰마다 자기 랜드마크 기준이라 재사용 가능).
+// 2) 로컬 좌표가 두상 타원면 위에 있다고 보고 localZ를 방정식으로 풀어냄
+//    (카메라를 향한 쪽 = +Z해를 선택).
+// 3) 그 뷰의 실측 회전(yaw/pitch/roll, PnP 결과)을 로컬 좌표에 실제로 적용해서
+//    월드(두상 전체 기준) 좌표로 회전 — 이 부분이 기존엔 없었음(yaw 각도를
+//    "어느 섹션이 이 뷰에 가까운가" 가중치 계산에만 쓰고, 실제 좌표 회전에는
+//    한 번도 안 썼음). 왼쪽/오른쪽 사진이 실측으로 서로 다른 부호의 회전을
+//    갖게 되므로, 예전에 걱정했던 "좌우反전 위험"이 추측이 아니라 실측값으로
+//    해소됨.
+// (2026-07-16) opts 추가 — "2D 헤어·두피 좌표 그대로 옮기기"용:
+//   opts.hangZ    : 점이 두피 타원 밖(머리 실루엣 아래로 늘어진 구간)이어도
+//                   버리지 않고, 넘겨준 카메라공간 깊이(z)로 그대로 배치.
+//                   호출부(buildHairStrandsFromPaths)가 "이 가닥에서 마지막으로
+//                   두피면 위에 있었던 점의 깊이"를 넘겨서, 늘어진 머리가
+//                   두피에서 떨어지는 지점의 깊이를 유지한 채 이미지 그대로의
+//                   모양으로 내려가게 함(예전엔 이 구간이 전부 null로 잘려서
+//                   경로가 끊기고, 나머지는 타원면을 따라 감겨 우산/버섯 모양이 됐음).
+//   opts.clampRim : 타원 살짝 밖(실루엣 가장자리 컬럼의 뿌리)을 z=0(림 평면)에
+//                   붙임 — 가장자리 뿌리가 통째로 버려지지 않게.
+//   opts.usedZ    : (출력) 이번 점에 실제 사용된 카메라공간 z — 호출부가
+//                   다음 점의 hangZ로 이어받음.
+// opts 없이 부르면 기존 동작과 완전히 동일(다른 호출부 영향 없음).
+function projectImagePointToHead(angle, nx, ny, widthFactor, heightFactor, opts){
+  // (2026-07-14, 후면 실루엣 앵커) 실측 랜드마크가 없으면 지어낸 고정값
+  // (getEstimatedLandmarks) 전에 실루엣 실측 앵커(귀+정수리, 아래 함수)를
+  // 먼저 시도 — 사용자 설계: "후면 사진 앵커 귀와 정수리 등으로 잡아".
+  const lm = (state.landmarks && state.landmarks[angle]) || computeSilhouetteAnchors(angle) || getEstimatedLandmarks(angle);
+  if(!lm) return null;
+  const wf = widthFactor || 1, hf = heightFactor || 1;
+  const proj = makeFaceProjector(lm, wf, hf);
+  const localX = proj.toMeshX(nx);
+  const localY = proj.toMeshY(ny);
+
+  // 버그 수정(2026-07-14, 계속): 실기기에서 "정면/측면 헤어가 두상 밖으로
+  // 튀어나와 보인다" 피드백 — buildRealFaceMesh에서 고쳤던 것과 정확히
+  // 같은 원인이었음. 여기(헤어 실측 투영)는 여전히 고정 타원 상수(a=0.78wf,
+  // c=0.85wf)로 Z를 풀고 있었는데, 실제로 화면에 그려지는 두상(buildHeadMesh)
+  // 은 이미 "★★ 타원체 완전 제거" 항목에서 이 사람 실측 단면 기반 메쉬로
+  // 바뀐 지 오래라 — 그 실측 폭/깊이가 고정 0.78/0.85보다 좁으면, 이 함수가
+  // 계산한 헤어 뿌리·끝점이 실제 두상 표면보다 바깥에 놓여 "머리가 두상보다
+  // 붕 떠서 튀어나온" 것처럼 보임. 위 얼굴 메쉬 수정 때 남겨둔 "다음 단계
+  // 후보"(두상 표시와 헤어/얼굴 위치 계산의 두상 모양 기준이 서로 다르다)가
+  // 바로 이거였음 — 이번에 같은 방식으로 통일.
+  // 수정: 고정 상수 대신 buildHeadMesh와 동일한 데이터 출처(이 사람의 실측
+  // 적도=눈높이 단면, interpolateHeadCrossSection(π/2))로 a/c를 계산 — 얼굴
+  // 메쉬에 적용한 것과 동일한 보정.
+  // (2026-07-14) 세로축 b: 1×hf(임의) → 실측 세로 반지름 — 헤어 뿌리를 놓는
+  // 이 면이 두상 돔(두피면)과 정의상 같은 면이 되도록 정렬. 뿌리의 높이는
+  // 사진 픽셀(toMeshY)에서 오므로 이 변경으로 헤어 높이가 움직이진 않고,
+  // 정수리 근처 뿌리가 두피 표면에 정확히 붙게 되는 것만 달라짐.
+  const { a, b, c } = getHeadEllipsoid(); // 두상 타원 반경(x,y,z)
+  const yLocal = localY - 0.15; // 타원 중심(0,0.15,0) 기준으로 이동
+  const inside = (localX/a)*(localX/a) + (yLocal/b)*(yLocal/b);
+  let localZ;
+  if(inside <= 0.98){
+    localZ = c * Math.sqrt(Math.max(0, 1 - inside)); // 두피면 위: 카메라를 향한 쪽(+Z) 해 — 이 점의 "두피 3D 좌표"
+  } else if(opts && typeof opts.hangZ === 'number'){
+    localZ = opts.hangZ; // 두피면 밖(늘어진 구간): 마지막 두피 깊이를 유지한 채 이미지 좌표 그대로 배치
+  } else if(opts && opts.clampRim && inside <= 1.2){
+    localZ = 0; // 실루엣 가장자리 뿌리: 림 평면에 붙임
+  } else {
+    return null; // 타원 밖(귀/윤곽 밖 극단치) — 이 픽셀은 투영 포기 (기존 동작)
+  }
+  if(opts) opts.usedZ = localZ;
+
+  // (2026-07-26) pitch/roll도 0 고정이 아니라 yaw와 같은 폴백 체인을 탄다 —
+  // 랜드마크 실패 뷰라도 셔터 직전 라이브 실측이 있으면 3축 모두 그 값을 쓴다.
+  const yawRad   = (lm.poseYawDeg   ?? getViewYawDeg(angle))   * Math.PI/180;
+  const pitchRad = (lm.posePitchDeg ?? getViewPitchDeg(angle)) * Math.PI/180;
+  const rollRad  = (lm.poseRollDeg  ?? getViewRollDeg(angle))  * Math.PI/180;
+  const rot = composeRotationZYX(yawRad, pitchRad, rollRad);
+
+  // ── 회전 방향 버그 수정(2026-07-14, "우산처럼 벌어진 헤어"의 원인) ──
+  // 기존엔 applyRotation3(rot, …) 즉 포즈 행렬 R을 정방향으로 적용했는데,
+  // R은 "두상(캐노니컬) 공간 → 카메라 공간" 방향이고 localX/yLocal/localZ는
+  // 사진에서 읽은 "카메라 공간" 좌표라, 두상 공간으로 가려면 역회전(R^T)이
+  // 맞음. yaw만 클 땐 티가 덜 났지만 pitch/roll이 섞이면(폰을 살짝 내려/
+  // 기울여 찍는 자연스러운 자세) 뷰마다 반대 방향으로 뿌리가 벌어져 정수리
+  // 위에 우산처럼 퍼지는 모양이 됨 — 실기기 스크린샷과 일치.
+  // 검증(합성 실험, verify_rotation_direction.js): 정답을 아는 합성 두상을
+  // 실측 포즈(정면 -2.8/-7.6/-1.2, 좌 50.7/-18.5/-18.6, 우 -57.8/-19.2/26.3)로
+  // 촬영→복원했을 때 측면 뷰에서 역회전이 5~6배 정확했고, 포즈 그리드
+  // 스윕(yaw ±60, pitch -25~0, roll ±25, 2293점)에서도 평균 오차
+  // 0.42→0.19(최악 1.13→0.55)로 역회전이 최선(yaw만 적용하는 변형들보다도
+  // 나음). 잔여 오차 ~0.19는 회전이 아니라 프로젝터의 앵커(귀 간격 등)
+  // 보정 한계에서 옴 — 별도 항목.
+  const rotated = applyRotationTranspose3(rot, new THREE.Vector3(localX, yLocal, localZ));
+  rotated.y += 0.15; // 중심 오프셋 복원
+  return rotated;
+}
+
+// ── [진단용] 가닥 뿌리 기준면(가상 타원체) 시각화 (2026-07-14 추가) ──
+// 사용자 아이디어: "헤어들이 만나서 가상의 타원 하나가 생겨야 되잖아? 그
+// 가상의 타원을 3D 이미지에 그려 넣으면 어느 쪽이 문제인지 알 수 있지 않을까"
+// — 실기기에서 두상(안면 메쉬)은 제자리인데 헤어 가닥들만 떠 있는 문제의
+// 원인 분리용. 가닥 뿌리는 두 경로로 배치됨:
+//   (1) 실측 투영 경로: projectImagePointToHead(위)가 푸는 가상 타원체
+//       (a=적도 실측 halfWidth, b=1×heightFactor, c=적도 실측 halfDepth,
+//       중심 y=0.15) 표면 — 이 함수가 그리는 것이 바로 이 타원체.
+//   (2) 합성 폴백 경로: scalpPointToWorld(phi별 실측 단면) — 이건 두상
+//       메쉬(buildHeadMesh)와 같은 면이라 두상 자체가 기준면 역할을 함.
+// 따라서 이 타원체(하늘색 와이어프레임)를 그렸을 때:
+//   - 타원체가 두상과 잘 겹치는데 가닥만 떠 있다 → 투영 계산(포즈 회전/
+//     랜드마크 프로젝터) 쪽 문제
+//   - 타원체 자체가 두상과 어긋나 있다 → 타원체 모델(a/b/c/중심) 자체가
+//     두상 메쉬와 안 맞는 것 (예: b=1×heightFactor는 위아래 대칭인데 실제
+//     두상 메쉬는 y=0.15 중심에서 위로 1.0, 아래로 cos(PHI_MAX)≈0.70까지라
+//     아래쪽 반이 두상보다 김 — 그려보면 바로 보임)
+// a/b/c/중심 계산식은 projectImagePointToHead와 글자 단위로 동일하게 유지할 것
+// (여기가 달라지면 진단 자체가 무의미해짐).
+function buildStrandProjectionEllipsoidDebug(){
+  // (2026-07-14) heightFactor 인자 제거 — 세로축이 실측 반지름으로 바뀌면서 미사용
+  /* (2026-08-17 c) <b>두 면을 같이</b> 그린다. 예전엔 헐 하나만 하늘색으로 나왔는데,
+     "헤어가 제대로 얹혔나"는 원리상 한 면으로는 판정이 안 된다 — 가닥은 두피면과
+     헐 <b>사이</b>에 있어야 하고, 이번 버그가 정확히 그 사이 공간이 화면의 살구색
+     구에 먹힌 것이었다. 하늘색(헐, 바깥) 안에 초록(두피면, 안쪽)이 보이고 그 틈에
+     가닥이 차 있으면 정상. 초록이 하늘색과 겹쳐 보이면 모발 두께가 0으로 붕괴한
+     것이고([두피면] 로그의 "모발 두께" cm와 같은 이야기를 눈으로 보는 것이다). */
+  const group = new THREE.Group();
+  group.name = 'strandEllipsoidDebug';   // 토글이 이 이름을 찾는다(Group.visible이 자식까지 끈다)
+  const shell = (ell, color, opacity)=>{
+    const mesh = new THREE.Mesh(new THREE.SphereGeometry(1, 24, 16),
+      new THREE.MeshBasicMaterial({ color, wireframe: true, transparent: true, opacity }));
+    mesh.scale.set(ell.a, ell.b, ell.c);
+    mesh.position.set(0, 0.15, 0); // 타원 중심(0,0.15,0) — projectImagePointToHead의 중심 오프셋과 동일
+    return mesh;
+  };
+  group.add(shell(getHeadEllipsoid(), 0x4FC3F7, 0.30));   // 헐(머리카락 겉면) — 기존 하늘색 유지
+  try{ group.add(shell(getScalpEllipsoid(), 0x7BE38A, 0.45)); }catch(e){}  // 두피면(뿌리가 놓이는 면)
+  return group;
+}
+
+// 3D 화면의 "기준면 보기" 토글 — 기본 꺼짐(일반 사용자용 화면을 어지럽히지
+// 않기 위함), 켜면 위 가상 타원체가 하늘색 와이어프레임으로 표시됨.
+function toggleStrandDebug(){
+  state.debugShowStrandSurface = !state.debugShowStrandSurface;
+  const btn = document.getElementById('strandDebugToggle');
+  if(btn){
+    btn.textContent = state.debugShowStrandSurface ? '기준면 숨기기' : '기준면 보기';
+    btn.classList.toggle('on', state.debugShowStrandSurface);
+  }
+  if(model3D && model3D.initialized){
+    const m = model3D.headGroup.getObjectByName('strandEllipsoidDebug');
+    if(m) m.visible = state.debugShowStrandSurface;
+  }
+}
+
+
+// ── 2D 가닥 경로를 3D로 들어올려 렌더(현재 방식) ──
+// 사용자 설계: "2D 렌더링이 끝나면 그 점들을 3D 좌표로 옮겨서 렌더하면 된다".
+// 절차 생성 방식(섹션별로 3D에서 새로 심기)
+// 대신, 조정 화면에서 실제로 그려진(사용자가 눈으로 확인한) 가닥 경로의
+// 점들을 projectImagePointToHead로 각각 3D화해서 가는 선(LineSegments)으로
+// 그림. 모양·길이·색(실측 팔레트)·컬이 2D와 정의상 일치. 경로 캡처가 없으면
+// null을 반환하고 호출부가 기존 절차 생성으로 폴백(동작 보존).
+// (2026-07-16) 3D 진입 시, 아직 캡처 안 된 뷰의 2D 가닥 경로를 오프스크린
+// 렌더로 확보 — "2D 헤어·두피의 3D 좌표를 산출해서 그대로 옮긴다"가 네 뷰
+// 전부에서 성립하도록. (기존엔 사용자가 조정 화면에서 실제로 열어본 뷰만
+// 캡처돼 있어서, 안 열어본 뷰는 절차 생성 폴백과 섞였음.) 렌더 조건·옵션은
+// renderFrame의 가닥 호출과 동일하게 맞춤(rawMode 아님) — 화면에 그려질
+// 그 가닥과 같은 것이 캡처됨. 캔버스 크기도 DRAW_RES(1200) 동일.
+function captureStrandPathsFor(angle, rawMode){
+  return new Promise(resolve=>{
+    const maskInf = state.hairMasks && state.hairMasks[angle];
+    const hairC = state.hairCanvases && state.hairCanvases[angle];
+    if(!maskInf || !maskInf.scalpY || !hairC){ resolve(false); return; }
+    getCachedImg(angle, (img)=>{
+      if(!img){ resolve(false); return; }
+      try{
+        const validCount = countValidCols(maskInf.scalpY);
+        if(validCount <= maskInf.w * 0.05){ resolve(false); return; }
+        const canvas = document.createElement('canvas');
+        canvas.width = DRAW_RES;
+        canvas.height = Math.round(DRAW_RES * img.height / img.width);
+        const ctx = canvas.getContext('2d');
+        const fit = computeFit(img.width, img.height, canvas.width, canvas.height);
+        // (11차) rawMode=true면 중립(길이 기본·컬0) 캡처 — 3D 조정 연산자의 소스.
+        drawHairStrands(ctx, fit, maskInf.scalpY, maskInf.hairEndY, maskInf.w, maskInf.h, hairC,
+          buildStrandOpts(maskInf, angle, !!rawMode));
+        resolve(!!(state.strandPaths && state.strandPaths[angle] && state.strandPaths[angle].strands.length));
+      }catch(e){ console.warn('오프스크린 가닥 캡처 실패('+angle+'):', e); resolve(false); }
+    });
+  });
+}
+

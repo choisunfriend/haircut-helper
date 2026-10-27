@@ -1,1 +1,2070 @@
-function renderAngleSwitch(_0x14d180){const _0x1bfc4d=document['getElementById'](_0x14d180);if(!_0x1bfc4d)return;_0x1bfc4d['innerHTML']='',ANGLES['forEach'](_0x90e3d9=>{const _0x4f50b9=document['createElement']('button');_0x4f50b9['textContent']=ANGLE_LABELS[_0x90e3d9],_0x4f50b9['className']=state['currentViewAngle']===_0x90e3d9?'on':'',_0x4f50b9['onclick']=()=>{state['currentViewAngle']=_0x90e3d9;try{trimDerivedCanvases(_0x90e3d9,'뷰\x20전환');}catch(_0x1124ae){}bindStylingToCurrentView(),renderAngleSwitches(),updateSegStatus(),syncSliderUI(),drawAdjustPreview(),drawResult();},_0x1bfc4d['appendChild'](_0x4f50b9);});}function renderAngleSwitches(){renderAngleSwitch('angleSwitch'),renderAngleSwitch('angleSwitchResult');}const imgCache={};function getCachedImg(_0x2144be,_0x534fab){const _0xfa1dab=state['shots'][_0x2144be];if(!_0xfa1dab){_0x534fab(null);return;}if(imgCache[_0x2144be]&&imgCache[_0x2144be]['src']['endsWith'](_0xfa1dab['slice'](-0x14))){_0x534fab(imgCache[_0x2144be]);return;}const _0x260912=new Image();_0x260912['onload']=()=>{imgCache[_0x2144be]=_0x260912,_0x534fab(_0x260912);},_0x260912['onerror']=()=>_0x534fab(null),_0x260912['src']=_0xfa1dab;}function computeFit(_0x55b94a,_0x341872,_0x50ed3d,_0x54ca0e){const _0x539338=_0x55b94a/_0x341872,_0x4dcef2=_0x50ed3d/_0x54ca0e;let _0x555fb3,_0x590ec0,_0x374db1,_0x488852;return _0x539338>_0x4dcef2?(_0x590ec0=_0x54ca0e,_0x555fb3=_0x54ca0e*_0x539338,_0x374db1=(_0x50ed3d-_0x555fb3)/0x2,_0x488852=0x0):(_0x555fb3=_0x50ed3d,_0x590ec0=_0x50ed3d/_0x539338,_0x374db1=0x0,_0x488852=(_0x54ca0e-_0x590ec0)/0x2),{'dw':_0x555fb3,'dh':_0x590ec0,'dx':_0x374db1,'dy':_0x488852};}function computeFitContain(_0x5cabb6,_0x44c97a,_0x5107bc,_0x3dd603){const _0x37d981=_0x5cabb6/_0x44c97a,_0xd49d46=_0x5107bc/_0x3dd603;let _0xa33c0f,_0x44346b,_0x1556da,_0x36ad6d;return _0x37d981>_0xd49d46?(_0xa33c0f=_0x5107bc,_0x44346b=_0x5107bc/_0x37d981,_0x1556da=0x0,_0x36ad6d=(_0x3dd603-_0x44346b)/0x2):(_0x44346b=_0x3dd603,_0xa33c0f=_0x3dd603*_0x37d981,_0x1556da=(_0x5107bc-_0xa33c0f)/0x2,_0x36ad6d=0x0),{'dw':_0xa33c0f,'dh':_0x44346b,'dx':_0x1556da,'dy':_0x36ad6d};}const SLOT_YAW_MIN_BACK=0x78,SLOT_YAW_MIN_SIDE=0xf;function warnViewSlotMismatch(_0x3bc9c3){const _0x5da85c=state['landmarks']&&state['landmarks'][_0x3bc9c3],_0x2a0c5f=_0x5da85c&&typeof _0x5da85c['poseYawDeg']==='number'?_0x5da85c['poseYawDeg']:null;if(_0x2a0c5f===null)return;const _0x48fbae=Math['abs'](_0x2a0c5f);let _0x31953c=null;if(_0x3bc9c3==='back'){if(_0x48fbae<SLOT_YAW_MIN_BACK)_0x31953c='얼굴이\x20'+_0x48fbae['toFixed'](0x0)+'°로\x20잡힘\x20—\x20뒷머리\x20사진이\x20아님';}else{if(_0x3bc9c3==='left'||_0x3bc9c3==='right'){const _0x5b0163=LIVE_YAW_TARGET[_0x3bc9c3];if(_0x5b0163&&_0x48fbae>SLOT_YAW_MIN_SIDE&&_0x2a0c5f>=0x0!==_0x5b0163['max']>0x0)_0x31953c='반대쪽\x20옆얼굴(yaw\x20'+_0x2a0c5f['toFixed'](0x0)+'°)';else{if(_0x48fbae<=SLOT_YAW_MIN_SIDE)_0x31953c='거의\x20정면(yaw\x20'+_0x2a0c5f['toFixed'](0x0)+'°)';}}else{if(_0x3bc9c3==='front'){if(_0x48fbae>0x2d)_0x31953c='정면\x20슬롯인데\x20yaw\x20'+_0x2a0c5f['toFixed'](0x0)+'°';}}}_0x31953c&&console['warn']('[슬롯\x20불일치]\x20'+_0x3bc9c3+'\x20—\x20'+_0x31953c+'.'+'\x20이\x20뷰의\x20가닥이\x20반대편(예:\x20후면\x20라벨이\x20앞머리\x20자리)에\x20얹혀\x203D에서\x20섞여\x20보일\x20수\x20있습니다.'+'\x20배제하지\x20않고\x20그대로\x20씁니다\x20—\x20다시\x20촬영하면\x20정상화됩니다.');}const HOLE_FILL={'lowW':0xa0,'outW':0x4b0,'patch':0x48,'texture':0x1,'skinBoost':0x3,'skinTol':0x6e,'skinField':{'on':!![],'gridX':0x30,'gridY':0x40,'darkPct':0.38,'fillPasses':0x60,'minCells':0.08,'detail':0.55,'flatTol':0x10},'outerField':{'on':!![],'gridX':0x40,'gridY':0x50,'fillPasses':0xa0,'minCells':0.04,'detailMix':0.35},'dirW':[0.4,0x1,2.6],'graft':{'on':!![],'shadeMin':0.72,'shadeMax':1.12,'edgeFeather':0.14,'flatMix':0.85},'residue':{'on':!![],'byHair':!![],'hairTol':0x4e,'darkRatio':0.8,'softRatio':0.93,'growPx':0x3,'minSample':0x190,'maxFrac':0.25},'faceTone':{'on':!![],'mix':0.75,'shadeMin':0.9,'shadeMax':1.04,'loPct':0.5,'hiPct':0.88,'minSamples':0x96},'skullClip':{'on':!![],'grow':1.04,'featherFrac':0.01,'nPhi':0x1c,'nTheta':0x38,'faceless':!![]},'facelessFill':{'on':!![],'shrink':0.97,'edgeShade':0.12,'detail':0.55,'cover':!![],'featherFrac':0.01,'neck':{'on':![],'halfK':0.6,'lenK':0.9,'fadeK':0.3,'flare':0.18}}};function buildFacelessCover(_0x4d207a,_0x209f79,_0x1d5b81,_0x5c5fe0){const _0x7e4bb9=HOLE_FILL['facelessFill'];if(!_0x7e4bb9||!_0x7e4bb9['cover']||!_0x1d5b81)return null;const _0x3ae00b=_0x1d5b81['rx']*_0x4d207a,_0x3e6b9d=_0x1d5b81['ry']*_0x209f79,_0x14beee=_0x1d5b81['cx']*_0x4d207a,_0x364809=_0x1d5b81['cy']*_0x209f79;if(!(_0x3ae00b>0x2&&_0x3e6b9d>0x2))return null;const _0x3906c2=Math['max'](1.5,_0x4d207a*(_0x7e4bb9['featherFrac']||0.01)),_0x39c8d1=_0x7e4bb9['neck']||{},_0x38908a=!!_0x39c8d1['on'],_0x2680b2=_0x364809+_0x3e6b9d,_0x11551b=(_0x39c8d1['lenK']||0x0)*_0x3e6b9d,_0x292d2f=Math['max'](0x1,(_0x39c8d1['fadeK']||0x0)*_0x3e6b9d),_0x4b47e1=new Float32Array(_0x4d207a*_0x209f79);let _0x417b5f=0x0;for(let _0x1c7883=0x0;_0x1c7883<_0x209f79;_0x1c7883++){const _0x433086=_0x1c7883+0.5-_0x364809;let _0x1df95f=0x0,_0xc51819=0x0;if(_0x38908a&&_0x433086>=0x0){const _0x7b991e=_0x1c7883+0.5-_0x2680b2;_0x1df95f=_0x7b991e<=_0x11551b?0x1:Math['max'](0x0,0x1-(_0x7b991e-_0x11551b)/_0x292d2f);const _0x3ac178=_0x11551b>0x0?Math['max'](0x0,Math['min'](0x1,_0x7b991e/_0x11551b)):0x0;_0xc51819=(_0x39c8d1['halfK']||0x0)*_0x3ae00b*(0x1+(_0x39c8d1['flare']||0x0)*_0x3ac178);}for(let _0x25e745=0x0;_0x25e745<_0x4d207a;_0x25e745++){const _0x12d09b=_0x25e745+0.5-_0x14beee,_0x45fc3f=Math['sqrt'](_0x12d09b/_0x3ae00b*(_0x12d09b/_0x3ae00b)+_0x433086/_0x3e6b9d*(_0x433086/_0x3e6b9d));let _0x8bb49f=0x0;if(_0x45fc3f<0x1){const _0x510814=Math['sqrt'](_0x12d09b*_0x12d09b+_0x433086*_0x433086),_0x5a3df3=_0x45fc3f>0.000001?(0x1-_0x45fc3f)*_0x510814/_0x45fc3f:Infinity;_0x8bb49f=Math['min'](0x1,_0x5a3df3/_0x3906c2);}let _0x2fa7af=0x0;if(_0x1df95f>0x0){const _0x1b8813=_0xc51819-Math['abs'](_0x12d09b);if(_0x1b8813>0x0)_0x2fa7af=Math['min'](0x1,_0x1b8813/_0x3906c2)*_0x1df95f;}const _0x65a452=_0x1c7883*_0x4d207a+_0x25e745;_0x4b47e1[_0x65a452]=_0x8bb49f>_0x2fa7af?_0x8bb49f:_0x2fa7af;if(_0x45fc3f>=0x1&&_0x2fa7af>0.002&&_0x5c5fe0&&_0x5c5fe0[_0x65a452])_0x417b5f++;}}return _0x4b47e1['nNeck']=_0x417b5f,_0x4b47e1;}let _skinGraft=null;const _fieldLogged={},_graftLogged={};function resetSkinGraft(){_skinGraft=null;for(const _0x5bb293 in _fieldLogged)delete _fieldLogged[_0x5bb293];for(const _0x24d357 in _graftLogged)delete _graftLogged[_0x24d357];for(const _0x5029db in _residueLogged)delete _residueLogged[_0x5029db];for(const _0x16cd0e in _facelessLogged)delete _facelessLogged[_0x16cd0e];for(const _0x488ac7 in _skullClipLogged)delete _skullClipLogged[_0x488ac7];}function headEllipseFor(_0x96f06d){const _0x1123e6=sectionBandsFor(_0x96f06d);if(!_0x1123e6)return null;const _0x176c2f=_0x1123e6['headTopY'],_0x3fa32d=typeof _0x1123e6['chinLineY']==='number'?_0x1123e6['chinLineY']:_0x1123e6['napeTopY'];if(!(_0x3fa32d>_0x176c2f))return null;const _0x396308=(_0x1123e6['nxMin']+_0x1123e6['nxMax'])/0x2;let _0x579cb7=Math['max'](0.02,(_0x1123e6['nxMax']-_0x1123e6['nxMin'])/0x2*0.92);const _0x4b7801=(_0x3fa32d-_0x176c2f)/0x2,_0x2624d1=!!(state['landmarks']&&state['landmarks'][_0x96f06d]),_0x3ac990=typeof imgCache!=='undefined'?imgCache[_0x96f06d]:null;if(!_0x2624d1&&_0x3ac990&&_0x3ac990['naturalWidth']&&_0x3ac990['naturalHeight']){const _0x3c83f1=_0x4b7801*0.8*(_0x3ac990['naturalHeight']/_0x3ac990['naturalWidth']);if(_0x579cb7>_0x3c83f1)_0x579cb7=_0x3c83f1;}return{'cx':_0x396308,'cy':(_0x176c2f+_0x3fa32d)/0x2,'rx':_0x579cb7,'ry':_0x4b7801};}const SKIN_PATCH_CANDS=[[0x0,-0.28,0.25],[-0.28,-0.24,0.22],[0.28,-0.24,0.22],[0x0,-0.16,0.2],[-0.4,-0.1,0.15],[0.4,-0.1,0.15],[0x0,0.15,0.05],[-0.35,0.1,0.05],[0.35,0.1,0.05],[-0.55,0.35,0x0],[0.55,0.35,0x0],[-0.5,0.6,0x0],[0.5,0.6,0x0],[0x0,0.7,0x0]];function pickSkinPatch(_0x57f1a4,_0x5b8dc4,_0x671ad7,_0x160135,_0x30bbf6,_0x29c27e){if(!_0x160135)return null;const _0x8a97bf=[];for(const [_0x172fab,_0x241d9c,_0xaba9a]of SKIN_PATCH_CANDS){const _0x44e101=Math['round']((_0x160135['cx']+_0x160135['rx']*_0x172fab)*_0x5b8dc4-_0x29c27e/0x2),_0x27ab95=Math['round']((_0x160135['cy']+_0x160135['ry']*_0x241d9c)*_0x671ad7-_0x29c27e/0x2);if(_0x44e101<0x0||_0x27ab95<0x0||_0x44e101+_0x29c27e>_0x5b8dc4||_0x27ab95+_0x29c27e>_0x671ad7)continue;const _0x3fa5d3=_0x57f1a4['getImageData'](_0x44e101,_0x27ab95,_0x29c27e,_0x29c27e)['data'];let _0x3eb54c=0x0,_0x3c7b62=0x0;for(let _0x3d0887=0x0;_0x3d0887<_0x3fa5d3['length'];_0x3d0887+=0x4){if(_0x3fa5d3[_0x3d0887+0x3]<0xc8)continue;_0x3eb54c++;const _0xb05d2b=Math['abs'](_0x3fa5d3[_0x3d0887]-_0x30bbf6[0x0])+Math['abs'](_0x3fa5d3[_0x3d0887+0x1]-_0x30bbf6[0x1])+Math['abs'](_0x3fa5d3[_0x3d0887+0x2]-_0x30bbf6[0x2]);if(_0xb05d2b<HOLE_FILL['skinTol'])_0x3c7b62++;}const _0x976c98=_0x29c27e*_0x29c27e;if(_0x3eb54c<_0x976c98*0.98)continue;_0x8a97bf['push']({'px':_0x44e101,'py':_0x27ab95,'dx':_0x172fab,'dy':_0x241d9c,'forehead':_0x241d9c<0x0,'score':_0x3c7b62/_0x976c98,'rank':_0x3c7b62/_0x976c98+_0xaba9a});}if(!_0x8a97bf['length'])return null;_0x8a97bf['sort']((_0x23b061,_0x2eca11)=>_0x2eca11['rank']-_0x23b061['rank']);const _0x27506e=_0x8a97bf['find'](_0x3214fa=>_0x3214fa['score']>0.5);return _0x27506e||null;}function skullClipCal(_0x2001e1){const _0x5c769a=HOLE_FILL['skullClip'];if(!_0x5c769a||!_0x5c769a['on']||typeof state==='undefined')return null;if(!_0x5c769a['faceless']&&!(state['landmarks']&&state['landmarks'][_0x2001e1]))return null;const _0x15626e=state['hair3Dneutral'],_0x3c19e3=_0x15626e&&_0x15626e['viewCal'];if(!_0x3c19e3||!_0x3c19e3[_0x2001e1])return null;const _0x20fafa=typeof calForDraw==='function'?calForDraw(_0x15626e,_0x2001e1):_0x3c19e3[_0x2001e1];if(!_0x20fafa||!isFinite(_0x20fafa['s'])||!isFinite(_0x20fafa['sy'])||!isFinite(_0x20fafa['cx']))return null;return{'m':_0x15626e,'cal':_0x20fafa};}function skullClipSig(_0x58d74a){const _0x402940=skullClipCal(_0x58d74a);if(!_0x402940)return'none';const _0x5d187d=HOLE_FILL['skullClip'];return[_0x402940['cal']['cx']['toFixed'](0x1),_0x402940['cal']['s']['toFixed'](0x5),_0x402940['cal']['sy']['toFixed'](0x5),(_0x402940['cal']['yaw']||0x0)['toFixed'](0x3),_0x5d187d['grow'],_0x5d187d['featherFrac']]['join']('|');}function buildSkullClipWeight(_0x57b182,_0x38f9b7,_0x473ead,_0x9e7606,_0x24f2a8){const _0x22bece=skullClipCal(_0x57b182);if(!_0x22bece||!(_0x9e7606>0x0)||!(_0x24f2a8>0x0))return null;if(typeof getDisplaySkullEllipsoid!=='function'||typeof project3DPointToView!=='function')return null;const _0x48788e=HOLE_FILL['skullClip'];let _0x3bb446;try{_0x3bb446=getDisplaySkullEllipsoid();}catch(_0x575bdf){return null;}if(!_0x3bb446||!(_0x3bb446['a']>0x0)||!(_0x3bb446['b']>0x0)||!(_0x3bb446['c']>0x0))return null;const _0x48336d=_0x22bece['m']['CY']!=null?_0x22bece['m']['CY']:0.15,_0x146745=_0x3bb446['a']*_0x48788e['grow'],_0x1b6a3b=_0x3bb446['b']*_0x48788e['grow'],_0x224e4e=_0x3bb446['c']*_0x48788e['grow'],_0x37282e=[];for(let _0x2c79b5=0x0;_0x2c79b5<=_0x48788e['nPhi'];_0x2c79b5++){const _0x335baf=_0x2c79b5/_0x48788e['nPhi']*Math['PI'];for(let _0x13e8c4=0x0;_0x13e8c4<_0x48788e['nTheta'];_0x13e8c4++){const _0x1b92a6=_0x13e8c4/_0x48788e['nTheta']*0x2*Math['PI'],_0x2c03bc={'x':_0x146745*Math['sin'](_0x335baf)*Math['sin'](_0x1b92a6),'y':_0x48336d+_0x1b6a3b*Math['cos'](_0x335baf),'z':_0x224e4e*Math['sin'](_0x335baf)*Math['cos'](_0x1b92a6)},_0x523646=project3DPointToView(_0x2c03bc,_0x22bece['cal'],_0x22bece['m']['yTop'],_0x48336d);if(!isFinite(_0x523646['ix'])||!isFinite(_0x523646['iy']))continue;_0x37282e['push']([_0x523646['ix']/_0x9e7606*_0x38f9b7,_0x523646['iy']/_0x24f2a8*_0x473ead]);}}if(_0x37282e['length']<0x8)return null;_0x37282e['sort']((_0x1a9863,_0x3de230)=>_0x1a9863[0x0]-_0x3de230[0x0]||_0x1a9863[0x1]-_0x3de230[0x1]);const _0x2d7c49=(_0x472939,_0xfdd748,_0x26a168)=>(_0xfdd748[0x0]-_0x472939[0x0])*(_0x26a168[0x1]-_0x472939[0x1])-(_0xfdd748[0x1]-_0x472939[0x1])*(_0x26a168[0x0]-_0x472939[0x0]),_0x125afc=[],_0x443017=[];for(const _0x5acf89 of _0x37282e){while(_0x125afc['length']>=0x2&&_0x2d7c49(_0x125afc[_0x125afc['length']-0x2],_0x125afc[_0x125afc['length']-0x1],_0x5acf89)<=0x0)_0x125afc['pop']();_0x125afc['push'](_0x5acf89);}for(let _0x5448e5=_0x37282e['length']-0x1;_0x5448e5>=0x0;_0x5448e5--){const _0x484d64=_0x37282e[_0x5448e5];while(_0x443017['length']>=0x2&&_0x2d7c49(_0x443017[_0x443017['length']-0x2],_0x443017[_0x443017['length']-0x1],_0x484d64)<=0x0)_0x443017['pop']();_0x443017['push'](_0x484d64);}const _0x1d3364=_0x125afc['slice'](0x0,-0x1)['concat'](_0x443017['slice'](0x0,-0x1));if(_0x1d3364['length']<0x3)return null;const _0x453b69=document['createElement']('canvas');_0x453b69['width']=_0x38f9b7,_0x453b69['height']=_0x473ead;const _0x3d81d9=_0x453b69['getContext']('2d',{'willReadFrequently':!![]}),_0x34769e=Math['max'](0x1,_0x38f9b7*_0x48788e['featherFrac']);_0x3d81d9['filter']='blur('+_0x34769e['toFixed'](0x1)+'px)',_0x3d81d9['fillStyle']='#fff',_0x3d81d9['beginPath'](),_0x3d81d9['moveTo'](_0x1d3364[0x0][0x0],_0x1d3364[0x0][0x1]);for(let _0x5c4ed5=0x1;_0x5c4ed5<_0x1d3364['length'];_0x5c4ed5++)_0x3d81d9['lineTo'](_0x1d3364[_0x5c4ed5][0x0],_0x1d3364[_0x5c4ed5][0x1]);_0x3d81d9['closePath'](),_0x3d81d9['fill'](),_0x3d81d9['filter']='none';const _0x20c5cf=_0x3d81d9['getImageData'](0x0,0x0,_0x38f9b7,_0x473ead)['data'],_0x5ec382=new Float32Array(_0x38f9b7*_0x473ead);let _0x2d4b49=0x0;for(let _0x5a3ac3=0x0,_0x45e9e9=0x3;_0x5a3ac3<_0x5ec382['length'];_0x5a3ac3++,_0x45e9e9+=0x4){_0x5ec382[_0x5a3ac3]=_0x20c5cf[_0x45e9e9]/0xff;if(_0x20c5cf[_0x45e9e9]>0x7f)_0x2d4b49++;}let _0x3b763c=Infinity,_0x222530=-Infinity,_0xc12337=Infinity,_0x16bde5=-Infinity;for(const _0x472079 of _0x1d3364){if(_0x472079[0x0]<_0x3b763c)_0x3b763c=_0x472079[0x0];if(_0x472079[0x0]>_0x222530)_0x222530=_0x472079[0x0];if(_0x472079[0x1]<_0xc12337)_0xc12337=_0x472079[0x1];if(_0x472079[0x1]>_0x16bde5)_0x16bde5=_0x472079[0x1];}return _0x5ec382['nIn']=_0x2d4b49,_0x5ec382['box']={'x0':_0x3b763c/_0x38f9b7,'x1':_0x222530/_0x38f9b7,'y0':_0xc12337/_0x473ead,'y1':_0x16bde5/_0x473ead},_0x5ec382;}function faceToneRefFor(_0x5ad495,_0x51a9e6,_0x145fd1,_0x117e4c,_0x301941,_0x1028f8){const _0x509040=HOLE_FILL['faceTone'];if(!_0x509040||!_0x509040['on']||!_0x301941||typeof state==='undefined')return null;const _0x56ce9f=state['landmarks']&&state['landmarks'][_0x1028f8];if(!_0x56ce9f)return null;const _0x157040=typeof _0x56ce9f['browTopY']==='number'?_0x56ce9f['browTopY']:_0x301941['cy']-_0x301941['ry']*0.4,_0x544f9e=typeof _0x56ce9f['chinY']==='number'?_0x56ce9f['chinY']:_0x301941['cy']+_0x301941['ry']*0.6;if(!(_0x544f9e>_0x157040))return null;const _0x55c85f=Math['max'](0x1,Math['round'](Math['min'](_0x51a9e6,_0x145fd1)/0xc8)),_0x52f833=[],_0x3cec3c=[],_0x4a0a38=[],_0x107a05=[];for(let _0x1c83c0=Math['max'](0x0,Math['floor'](_0x157040*_0x145fd1));_0x1c83c0<Math['min'](_0x145fd1,Math['ceil'](_0x544f9e*_0x145fd1));_0x1c83c0+=_0x55c85f){const _0x4c1f3c=((_0x1c83c0+0.5)/_0x145fd1-_0x301941['cy'])/_0x301941['ry'],_0xedfde4=_0x4c1f3c*_0x4c1f3c;if(_0xedfde4>0x1)continue;for(let _0x232135=0x0;_0x232135<_0x51a9e6;_0x232135+=_0x55c85f){const _0x2a2a1b=((_0x232135+0.5)/_0x51a9e6-_0x301941['cx'])/_0x301941['rx'];if(_0x2a2a1b*_0x2a2a1b+_0xedfde4>0.81)continue;if(_0x117e4c[_0x1c83c0*_0x51a9e6+_0x232135])continue;const _0x4c52f6=(_0x1c83c0*_0x51a9e6+_0x232135)*0x4;if(_0x5ad495[_0x4c52f6+0x3]<0xc8)continue;const _0x528c3e=_0x5ad495[_0x4c52f6],_0x2d67b0=_0x5ad495[_0x4c52f6+0x1],_0x2e5249=_0x5ad495[_0x4c52f6+0x2];if(!(_0x528c3e>_0x2d67b0&&_0x2d67b0>=_0x2e5249*0.92&&_0x528c3e-_0x2e5249>0x12))continue;_0x52f833['push'](0.299*_0x528c3e+0.587*_0x2d67b0+0.114*_0x2e5249),_0x3cec3c['push'](_0x528c3e),_0x4a0a38['push'](_0x2d67b0),_0x107a05['push'](_0x2e5249);}}if(_0x52f833['length']<_0x509040['minSamples'])return null;const _0x22621c=_0x52f833['map']((_0x4c9144,_0x3caa2f)=>_0x3caa2f)['sort']((_0x917e3d,_0x2a858f)=>_0x52f833[_0x917e3d]-_0x52f833[_0x2a858f]),_0x31ca7e=Math['floor'](_0x22621c['length']*_0x509040['loPct']),_0x4d6cef=Math['max'](_0x31ca7e+0x1,Math['floor'](_0x22621c['length']*_0x509040['hiPct']));let _0xdd176f=0x0,_0x51f199=0x0,_0x29a8d1=0x0,_0x551c03=0x0;for(let _0x1a44a8=_0x31ca7e;_0x1a44a8<_0x4d6cef;_0x1a44a8++){const _0x7de029=_0x22621c[_0x1a44a8];_0xdd176f+=_0x3cec3c[_0x7de029],_0x51f199+=_0x4a0a38[_0x7de029],_0x29a8d1+=_0x107a05[_0x7de029],_0x551c03++;}if(!_0x551c03)return null;const _0x5d3411=[_0xdd176f/_0x551c03,_0x51f199/_0x551c03,_0x29a8d1/_0x551c03];return _0x5d3411['samples']=_0x52f833['length'],_0x5d3411;}const _skullClipLogged={};function logSkullClipOnce(_0x198c7e,_0x2ec991,_0x2a8eab,_0x582043,_0x3793de,_0x590e54){if(_skullClipLogged[_0x198c7e])return;_skullClipLogged[_0x198c7e]=!![];const _0x2d88b5=_0x2a8eab?'rgb('+_0x2a8eab['map'](_0x5866de=>Math['round'](_0x5866de))['join'](',')+')\x20·\x20표본\x20'+_0x2a8eab['samples']+'\x20·\x20당김\x20'+Math['round'](HOLE_FILL['faceTone']['mix']*0x64)+'%':'<b>없음</b>(랜드마크\x20없음/표본\x20부족\x20—\x20격자\x20색\x20그대로)';console['log'](...gyeolBoldArgs(['[메움·두상경계]\x20'+_0x198c7e+'\x20·\x20살\x20구역\x20'+(_0x2ec991?'<b>두개골\x20되쏜\x20실루엣</b>('+_0x2ec991['nIn']+'px,\x20×'+HOLE_FILL['skullClip']['grow']+')':!HOLE_FILL['skullClip']['faceless']&&!(state['landmarks']&&state['landmarks'][_0x198c7e])?'헤어\x20실루엣\x20타원(<b>얼굴\x20없는\x20뷰\x20—\x20두개골로\x20안\x20자르고\x20타원\x20안을\x20전부\x20메움</b>)':'헤어\x20실루엣\x20타원(viewCal\x20없음\x20—\x20예전\x20동작)')+'\x20·\x20타원\x20안인데\x20두개골\x20밖이라\x20주변색으로\x20메운\x20픽셀\x20'+_0x582043+'\x0a\x20\x20\x20\x20얼굴\x20기준색\x20'+_0x2d88b5+'\x0a\x20\x20\x20\x20되돌리기:\x20HOLE_FILL.skullClip.on=false\x20·\x20HOLE_FILL.faceTone.on=false']));}function paintOuterHoles(_0x84250a,_0x7e8bf0,_0x58bac4,_0x5e9915,_0x134b45,_0x140d38){const _0x1ac255=Math['max'](0x0,Math['min'](0x1,HOLE_FILL['outerField']['detailMix'])),_0x594ea2=[0x0,0x0,0x0];let _0xc59f32=0x0;for(let _0x4d51e2=0x0;_0x4d51e2<_0x58bac4;_0x4d51e2++){const _0x363b67=(_0x4d51e2+0.5)/_0x58bac4,_0x25856f=_0x134b45?(_0x363b67-_0x134b45['cy'])/_0x134b45['ry']:0x9,_0x2970d9=_0x25856f*_0x25856f;for(let _0x3b2ec4=0x0;_0x3b2ec4<_0x7e8bf0;_0x3b2ec4++){const _0x16d312=_0x4d51e2*_0x7e8bf0+_0x3b2ec4;if(!_0x5e9915[_0x16d312])continue;const _0x517850=(_0x3b2ec4+0.5)/_0x7e8bf0;if(_0x134b45){const _0x4eca08=(_0x517850-_0x134b45['cx'])/_0x134b45['rx'];if(_0x4eca08*_0x4eca08+_0x2970d9<=0x1)continue;}_0x140d38['at'](_0x517850,_0x363b67,_0x594ea2);const _0x226305=_0x16d312*0x4;for(let _0x523ee2=0x0;_0x523ee2<0x3;_0x523ee2++){const _0x3332b3=_0x1ac255>0x0?(_0x84250a[_0x226305+_0x523ee2]-_0x594ea2[_0x523ee2])*_0x1ac255:0x0;_0x84250a[_0x226305+_0x523ee2]=Math['max'](0x0,Math['min'](0xff,_0x594ea2[_0x523ee2]+_0x3332b3));}_0x84250a[_0x226305+0x3]=0xff,_0xc59f32++;}}return _0xc59f32;}let _outerFieldLogged={};function logOuterFieldOnce(_0x2afb88,_0x47cfaa,_0x275fef,_0x23556e,_0x22ea97,_0x53ee8f){if(_outerFieldLogged[_0x2afb88])return;_outerFieldLogged[_0x2afb88]=!![];if(!_0x47cfaa){console['log']('[메움·두상밖]\x20'+_0x2afb88+'\x20—\x20주변색\x20격자\x20<b>못\x20세움</b>'+(_0x53ee8f?'('+_0x53ee8f+')':'(씨앗\x20부족)')+'\x20→\x20예전처럼\x20mirrorDetail\x20결과가\x20남습니다.');return;}console['log'](...gyeolBoldArgs(['[메움·두상밖]\x20'+_0x2afb88+'\x20·\x20격자\x20'+_0x47cfaa['GX']+'×'+_0x47cfaa['GY']+'\x20·\x20씨앗\x20'+_0x47cfaa['seeded']+'칸\x20→\x20번져서\x20'+_0x47cfaa['filled']+'칸('+_0x47cfaa['passes']+'회)'+'\x20·\x20칠한\x20픽셀\x20<b>'+_0x275fef+'</b>/'+_0x23556e*_0x22ea97+(_0x53ee8f?'\x20·\x20'+_0x53ee8f:'')+'\x0a\x20\x20\x20\x20두상\x20<b>밖</b>(목·어깨·옷·배경)은\x20살색이\x20아니라\x20<b>제\x20자리\x20주변색</b>으로\x20메웁니다.'+'\x20여기가\x20예전에\x20mirrorDetail의\x20거울\x20결이\x20그대로\x20남아\x20<b>눈\x20윤곽</b>이\x20반복되던\x20자리입니다.'+'\x0a\x20\x20\x20\x20칠한\x20픽셀이\x200이면\x20구멍이\x20전부\x20두상\x20안이라는\x20뜻이고(짧은\x20머리),\x20크면\x20긴\x20머리를\x20줄인\x20것입니다.'+'\x0a\x20\x20\x20\x20되돌리기:\x20HOLE_FILL.outerField.on=false']));}function buildOuterField(_0x530a0e,_0x23c7ab,_0x366696,_0x7cf591,_0x2a8d3f,_0x1c86fc){const _0x41dc02=HOLE_FILL['outerField'];if(!_0x41dc02||!_0x41dc02['on'])return null;const _0x2cf372=Math['max'](0x4,_0x41dc02['gridX']|0x0),_0x1a5d8f=Math['max'](0x4,_0x41dc02['gridY']|0x0),_0x18f344=Math['max'](0x1,Math['round'](Math['min'](_0x23c7ab,_0x366696)/0xdc)),_0x26e841=new Float32Array(_0x2cf372*_0x1a5d8f),_0x39c8e4=new Float32Array(_0x2cf372*_0x1a5d8f),_0x444512=new Float32Array(_0x2cf372*_0x1a5d8f),_0x268a8c=new Float32Array(_0x2cf372*_0x1a5d8f),_0x49089a=(_0x533688,_0x43d374)=>{if(!_0x2a8d3f)return!![];if(_0x1c86fc&&_0x1c86fc[_0x43d374*_0x23c7ab+_0x533688]<0.2)return!![];const _0x40d56a=((_0x533688+0.5)/_0x23c7ab-_0x2a8d3f['cx'])/_0x2a8d3f['rx'],_0x1f394d=((_0x43d374+0.5)/_0x366696-_0x2a8d3f['cy'])/_0x2a8d3f['ry'];return _0x40d56a*_0x40d56a+_0x1f394d*_0x1f394d>0x1;};let _0x59a154=0x0;for(let _0x558432=0x0;_0x558432<_0x366696;_0x558432+=_0x18f344)for(let _0x1afdc2=0x0;_0x1afdc2<_0x23c7ab;_0x1afdc2+=_0x18f344){if(_0x7cf591[_0x558432*_0x23c7ab+_0x1afdc2])continue;if(!_0x49089a(_0x1afdc2,_0x558432))continue;const _0x1c2462=(_0x558432*_0x23c7ab+_0x1afdc2)*0x4;if(_0x530a0e[_0x1c2462+0x3]<0xc8)continue;const _0x4748d6=Math['min'](_0x1a5d8f-0x1,Math['floor'](_0x558432/_0x366696*_0x1a5d8f))*_0x2cf372+Math['min'](_0x2cf372-0x1,Math['floor'](_0x1afdc2/_0x23c7ab*_0x2cf372));_0x26e841[_0x4748d6]+=_0x530a0e[_0x1c2462],_0x39c8e4[_0x4748d6]+=_0x530a0e[_0x1c2462+0x1],_0x444512[_0x4748d6]+=_0x530a0e[_0x1c2462+0x2],_0x268a8c[_0x4748d6]++;}for(let _0x5cd1fc=0x0;_0x5cd1fc<_0x2cf372*_0x1a5d8f;_0x5cd1fc++){_0x268a8c[_0x5cd1fc]>0x0&&(_0x26e841[_0x5cd1fc]/=_0x268a8c[_0x5cd1fc],_0x39c8e4[_0x5cd1fc]/=_0x268a8c[_0x5cd1fc],_0x444512[_0x5cd1fc]/=_0x268a8c[_0x5cd1fc],_0x268a8c[_0x5cd1fc]=0x1,_0x59a154++);}if(_0x59a154<_0x2cf372*_0x1a5d8f*_0x41dc02['minCells'])return null;let _0x3a4525=_0x59a154,_0x1deec1=0x0;for(;_0x1deec1<_0x41dc02['fillPasses'];_0x1deec1++){let _0x356081=0x0;const _0x1c0e5d=_0x26e841['slice'](),_0x193937=_0x39c8e4['slice'](),_0x17cf84=_0x444512['slice'](),_0x46933f=_0x268a8c['slice']();for(let _0x5b2651=0x0;_0x5b2651<_0x1a5d8f;_0x5b2651++)for(let _0x2ceddd=0x0;_0x2ceddd<_0x2cf372;_0x2ceddd++){const _0x158fb9=_0x5b2651*_0x2cf372+_0x2ceddd;if(_0x268a8c[_0x158fb9]>0x0)continue;let _0x49d541=0x0,_0x13c8b6=0x0,_0x55fe06=0x0,_0x12c9c2=0x0;_0x2ceddd>0x0&&_0x268a8c[_0x158fb9-0x1]>0x0&&(_0x49d541+=_0x26e841[_0x158fb9-0x1],_0x13c8b6+=_0x39c8e4[_0x158fb9-0x1],_0x55fe06+=_0x444512[_0x158fb9-0x1],_0x12c9c2++),_0x2ceddd<_0x2cf372-0x1&&_0x268a8c[_0x158fb9+0x1]>0x0&&(_0x49d541+=_0x26e841[_0x158fb9+0x1],_0x13c8b6+=_0x39c8e4[_0x158fb9+0x1],_0x55fe06+=_0x444512[_0x158fb9+0x1],_0x12c9c2++),_0x5b2651>0x0&&_0x268a8c[_0x158fb9-_0x2cf372]>0x0&&(_0x49d541+=_0x26e841[_0x158fb9-_0x2cf372],_0x13c8b6+=_0x39c8e4[_0x158fb9-_0x2cf372],_0x55fe06+=_0x444512[_0x158fb9-_0x2cf372],_0x12c9c2++),_0x5b2651<_0x1a5d8f-0x1&&_0x268a8c[_0x158fb9+_0x2cf372]>0x0&&(_0x49d541+=_0x26e841[_0x158fb9+_0x2cf372],_0x13c8b6+=_0x39c8e4[_0x158fb9+_0x2cf372],_0x55fe06+=_0x444512[_0x158fb9+_0x2cf372],_0x12c9c2++),_0x12c9c2&&(_0x1c0e5d[_0x158fb9]=_0x49d541/_0x12c9c2,_0x193937[_0x158fb9]=_0x13c8b6/_0x12c9c2,_0x17cf84[_0x158fb9]=_0x55fe06/_0x12c9c2,_0x46933f[_0x158fb9]=0x1,_0x356081++);}if(!_0x356081)break;_0x26e841['set'](_0x1c0e5d),_0x39c8e4['set'](_0x193937),_0x444512['set'](_0x17cf84),_0x268a8c['set'](_0x46933f),_0x3a4525+=_0x356081;}return{'GX':_0x2cf372,'GY':_0x1a5d8f,'r':_0x26e841,'g':_0x39c8e4,'b':_0x444512,'seeded':_0x59a154,'filled':_0x3a4525,'passes':_0x1deec1,'at'(_0x57a82e,_0x58a18c,_0x235a52){const _0x549989=Math['min'](this['GX']-0x1,Math['max'](0x0,_0x57a82e*this['GX']-0.5)),_0x13b30c=Math['min'](this['GY']-0x1,Math['max'](0x0,_0x58a18c*this['GY']-0.5)),_0x16070e=Math['floor'](_0x549989),_0x2cbd9b=Math['floor'](_0x13b30c),_0x1af0e3=Math['min'](this['GX']-0x1,_0x16070e+0x1),_0x139460=Math['min'](this['GY']-0x1,_0x2cbd9b+0x1),_0x54f424=_0x549989-_0x16070e,_0x46752a=_0x13b30c-_0x2cbd9b,_0x4aa2b6=(_0x2d724c,_0x264d2a)=>_0x264d2a*this['GX']+_0x2d724c,_0x1d91b7=_0x474fa0=>_0x474fa0[_0x4aa2b6(_0x16070e,_0x2cbd9b)]*(0x1-_0x54f424)*(0x1-_0x46752a)+_0x474fa0[_0x4aa2b6(_0x1af0e3,_0x2cbd9b)]*_0x54f424*(0x1-_0x46752a)+_0x474fa0[_0x4aa2b6(_0x16070e,_0x139460)]*(0x1-_0x54f424)*_0x46752a+_0x474fa0[_0x4aa2b6(_0x1af0e3,_0x139460)]*_0x54f424*_0x46752a;return _0x235a52[0x0]=_0x1d91b7(this['r']),_0x235a52[0x1]=_0x1d91b7(this['g']),_0x235a52[0x2]=_0x1d91b7(this['b']),_0x235a52;}};}function markEllipseHole(_0x3c03cc,_0x4a5447,_0x154dfe,_0x364431,_0xaf369b){if(!_0x364431)return 0x0;const _0x5c9ed2=_0xaf369b>0x0?_0xaf369b:0x1,_0x533c11=_0x5c9ed2*_0x5c9ed2;let _0x23ad24=0x0;for(let _0x205539=0x0;_0x205539<_0x154dfe;_0x205539++){const _0x6b91b3=((_0x205539+0.5)/_0x154dfe-_0x364431['cy'])/_0x364431['ry'],_0x100b88=_0x6b91b3*_0x6b91b3;if(_0x100b88>_0x533c11)continue;for(let _0x790ffa=0x0;_0x790ffa<_0x4a5447;_0x790ffa++){const _0x5d4bd8=((_0x790ffa+0.5)/_0x4a5447-_0x364431['cx'])/_0x364431['rx'];if(_0x5d4bd8*_0x5d4bd8+_0x100b88>_0x533c11)continue;const _0x487a85=_0x205539*_0x4a5447+_0x790ffa;!_0x3c03cc[_0x487a85]&&(_0x3c03cc[_0x487a85]=0x1,_0x23ad24++);}}return _0x23ad24;}function markSkinResidue(_0x8986f3,_0x56d791,_0x2b3c60,_0x2dfafe,_0x5579c3,_0xee4982,_0x70515c){const _0x1e4d15=HOLE_FILL['residue'];if(!_0x1e4d15||!_0x1e4d15['on']||!_0x5579c3)return null;const _0x580fca=!!(_0x1e4d15['byHair']&&_0x70515c);if(typeof state!=='undefined'&&state['landmarks']&&state['landmarks'][_0xee4982])return{'n':0x0,'gated':!![]};const _0x1ee43=Math['max'](0x1,Math['round'](Math['min'](_0x56d791,_0x2b3c60)/0xdc)),_0x3e1196=(_0x28a91f,_0x18879b,_0x334fb9)=>{const _0x10cc30=((_0x28a91f+0.5)/_0x56d791-_0x5579c3['cx'])/_0x5579c3['rx'];return _0x10cc30*_0x10cc30+_0x334fb9<=0x1;},_0x2fcd3a=[];for(let _0xba6f9=0x0;_0xba6f9<_0x2b3c60;_0xba6f9+=_0x1ee43){const _0x2e4900=((_0xba6f9+0.5)/_0x2b3c60-_0x5579c3['cy'])/_0x5579c3['ry'],_0x3148c5=_0x2e4900*_0x2e4900;if(_0x3148c5>0x1)continue;for(let _0x1fee65=0x0;_0x1fee65<_0x56d791;_0x1fee65+=_0x1ee43){if(!_0x3e1196(_0x1fee65,_0xba6f9,_0x3148c5))continue;const _0x2da163=_0xba6f9*_0x56d791+_0x1fee65;if(_0x2dfafe[_0x2da163])continue;const _0x5eecd1=_0x2da163*0x4;if(_0x8986f3[_0x5eecd1+0x3]<0xc8)continue;_0x2fcd3a['push'](0.299*_0x8986f3[_0x5eecd1]+0.587*_0x8986f3[_0x5eecd1+0x1]+0.114*_0x8986f3[_0x5eecd1+0x2]);}}const _0x4ed074=_0x2fcd3a['length']<_0x1e4d15['minSample'];if(_0x4ed074&&!_0x580fca)return{'n':0x0,'thin':_0x2fcd3a['length']};_0x2fcd3a['sort']((_0x37ffbd,_0x1a00a2)=>_0x37ffbd-_0x1a00a2);const _0x76cf2=_0x4ed074?0x0:_0x2fcd3a[_0x2fcd3a['length']>>0x1],_0x2ce5c2=_0x4ed074?-0x1:_0x76cf2*_0x1e4d15['darkRatio'],_0x122705=_0x4ed074?-0x1:_0x76cf2*_0x1e4d15['softRatio'],_0x107705=new Uint8Array(_0x56d791*_0x2b3c60),_0x58c70c=new Uint8Array(_0x56d791*_0x2b3c60);let _0x49056d=0x0,_0x27942e=0x0,_0x27d473=0x0,_0x1c3ee0=0x0;for(let _0x3e196e=0x0;_0x3e196e<_0x2b3c60;_0x3e196e++){const _0x518fda=((_0x3e196e+0.5)/_0x2b3c60-_0x5579c3['cy'])/_0x5579c3['ry'],_0x57ba5e=_0x518fda*_0x518fda;if(_0x57ba5e>0x1)continue;for(let _0x514e98=0x0;_0x514e98<_0x56d791;_0x514e98++){if(!_0x3e1196(_0x514e98,_0x3e196e,_0x57ba5e))continue;const _0x217e1b=_0x3e196e*_0x56d791+_0x514e98;if(_0x2dfafe[_0x217e1b])continue;const _0x4c6c87=_0x217e1b*0x4;if(_0x8986f3[_0x4c6c87+0x3]<0xc8)continue;_0x27942e++;const _0x3a73f3=0.299*_0x8986f3[_0x4c6c87]+0.587*_0x8986f3[_0x4c6c87+0x1]+0.114*_0x8986f3[_0x4c6c87+0x2];if(_0x580fca){const _0x241e0b=(Math['abs'](_0x8986f3[_0x4c6c87]-_0x70515c[0x0])+Math['abs'](_0x8986f3[_0x4c6c87+0x1]-_0x70515c[0x1])+Math['abs'](_0x8986f3[_0x4c6c87+0x2]-_0x70515c[0x2]))/0x3;if(_0x241e0b<=_0x1e4d15['hairTol']){_0x107705[_0x217e1b]=0x1,_0x49056d++,_0x27d473++;continue;}}if(_0x3a73f3<_0x2ce5c2)_0x107705[_0x217e1b]=0x1,_0x49056d++,_0x1c3ee0++;else{if(_0x3a73f3<_0x122705)_0x58c70c[_0x217e1b]=0x1;}}}if(!_0x49056d)return{'n':0x0,'med':_0x76cf2,'cut':_0x2ce5c2,'thin':_0x4ed074?_0x2fcd3a['length']:null};if(_0x27942e&&_0x1c3ee0/_0x27942e>_0x1e4d15['maxFrac']){if(_0x27d473){for(let _0x580847=0x0;_0x580847<_0x2b3c60;_0x580847++){const _0x1324c6=((_0x580847+0.5)/_0x2b3c60-_0x5579c3['cy'])/_0x5579c3['ry'],_0x222913=_0x1324c6*_0x1324c6;if(_0x222913>0x1)continue;for(let _0x36f89b=0x0;_0x36f89b<_0x56d791;_0x36f89b++){const _0x42216a=_0x580847*_0x56d791+_0x36f89b;if(!_0x107705[_0x42216a])continue;const _0x3c066b=_0x42216a*0x4,_0x2e299c=_0x580fca?(Math['abs'](_0x8986f3[_0x3c066b]-_0x70515c[0x0])+Math['abs'](_0x8986f3[_0x3c066b+0x1]-_0x70515c[0x1])+Math['abs'](_0x8986f3[_0x3c066b+0x2]-_0x70515c[0x2]))/0x3:0x3e7;if(_0x2e299c>_0x1e4d15['hairTol'])_0x107705[_0x42216a]=0x0;}}_0x49056d=_0x27d473;}else return{'n':0x0,'med':_0x76cf2,'cut':_0x2ce5c2,'cancelled':_0x49056d,'frac':_0x49056d/_0x27942e};}const _0x23445b=Math['max'](0x1,Math['round'](_0x1e4d15['growPx']*_0x56d791/0x384)),_0x5dc31b=_0x107705['slice']();dilateFlags(_0x5dc31b,_0x56d791,_0x2b3c60,_0x23445b);for(let _0x316e78=0x0;_0x316e78<_0x107705['length'];_0x316e78++)if(_0x5dc31b[_0x316e78]&&_0x58c70c[_0x316e78])_0x107705[_0x316e78]=0x1;dilateFlags(_0x107705,_0x56d791,_0x2b3c60,_0x23445b);let _0x25a82e=0x0;for(let _0x5552ed=0x0;_0x5552ed<_0x2b3c60;_0x5552ed++){const _0x370cfb=((_0x5552ed+0.5)/_0x2b3c60-_0x5579c3['cy'])/_0x5579c3['ry'],_0x4b58db=_0x370cfb*_0x370cfb;if(_0x4b58db>0x1)continue;for(let _0x582c89=0x0;_0x582c89<_0x56d791;_0x582c89++){const _0x42aaac=_0x5552ed*_0x56d791+_0x582c89;if(!_0x107705[_0x42aaac]||_0x2dfafe[_0x42aaac])continue;if(!_0x3e1196(_0x582c89,_0x5552ed,_0x4b58db))continue;_0x2dfafe[_0x42aaac]=0x1,_0x25a82e++;}}return{'n':_0x25a82e,'core':_0x49056d,'med':_0x76cf2,'cut':_0x2ce5c2,'area':_0x27942e,'nHair':_0x27d473,'nDark':_0x1c3ee0,'thin':_0x4ed074?_0x2fcd3a['length']:null};}const _facelessLogged={};function logFacelessOnce(_0x35d07a,_0x155cb8,_0x3ffb64,_0x4e60fc,_0x4ae186,_0x18e2f2,_0x2ffae4){if(!_0x35d07a||_facelessLogged[_0x35d07a])return;_facelessLogged[_0x35d07a]=!![];const _0x258837=HOLE_FILL['facelessFill'];if(!_0x258837||!_0x258837['on'])return;if(!_0x4e60fc)return;if(!_0x4ae186){console['warn']('[전면이식]\x20'+_0x35d07a+':\x20두상\x20타원이\x20없어\x20못\x20돕니다(섹션\x20밴드\x20미확보)');return;}if(!_0x155cb8){console['warn'](...gyeolBoldArgs(['[전면이식]\x20'+_0x35d07a+':\x20<b>안\x20돌았습니다</b>\x20—\x20이마\x20표본이\x20없습니다'+'(이\x20뷰엔\x20얼굴이\x20없고,\x20다른\x20뷰에서\x20보관된\x20이마\x20표본도\x20없음)'+'\x0a\x20\x20\x20\x20\x20\x20정면을\x20다시\x20찍어\x20이마가\x20드러나면\x20그\x20표본이\x20후면으로\x20넘어옵니다.']));return;}console['log'](...gyeolBoldArgs(['[전면이식]\x20'+_0x35d07a+':\x20얼굴\x20랜드마크\x20없음\x20→\x20두상\x20타원\x20안('+(_0x258837['shrink']*0x64|0x0)+'%)을'+('\x20<b>통째로\x20이식면</b>으로\x20넘겼습니다\x20·\x20메움판\x20'+_0x155cb8['nIn']+'px\x20승격\x20/\x20baseC\x20'+_0x155cb8['nBase']+'px\x20승격')+('\x20·\x20'+_0x18e2f2+'×'+_0x2ffae4)+(_0x155cb8['nNeck']!=null?'\x0a\x20\x20\x20\x20\x20\x20덮개:\x20페더\x20px\x20고정('+((_0x258837['featherFrac']||0x0)*_0x18e2f2)['toFixed'](0x1)+'px)\x20·\x20타원\x20아래\x20<b>목\x20기둥\x20'+_0x155cb8['nNeck']+'px</b>\x20추가\x20이식'+'\x20(되돌리기\x20HOLE_FILL.facelessFill.cover=false)':'')+('\x0a\x20\x20\x20\x20\x20\x20색은\x20이마\x20표본\x20평균\x20rgb('+(_0x3ffb64&&_0x3ffb64['mean']?_0x3ffb64['mean']['join'](','):'?')+')')+('(출처\x20'+(_0x3ffb64?_0x3ffb64['src']:'?')+')\x20+\x20구면\x20음영\x20'+(_0x258837['edgeShade']*0x64|0x0)+'%,')+'\x20이\x20뷰\x20사진의\x20픽셀은\x20<b>색으로도\x20밝기로도\x20안\x20씁니다</b>\x20—\x20눈모양이\x20들어올\x20경로가\x20없습니다.'+'\x0a\x20\x20\x20\x20\x20\x20되돌리기:\x20HOLE_FILL.facelessFill.on=false'])),_0x155cb8['hadHm']&&!_0x155cb8['nBase']&&console['warn']('[전면이식]\x20'+_0x35d07a+':\x20baseC\x20승격이\x200입니다\x20—\x20위에\x20얹히는\x20그림이\x20그\x20자리를\x20안\x20비웁니다.'+'\x20원본\x20머리\x20잔재가\x20이식면을\x20덮어\x20눈자국이\x20남을\x20수\x20있습니다(구멍\x20마스크\x20동기화\x20확인).');}const _residueLogged={};function logSkinResidueOnce(_0x17fea5,_0x4c9816,_0x34f4d5,_0x5aaa42){if(!_0x17fea5||_residueLogged[_0x17fea5])return;_residueLogged[_0x17fea5]=!![];if(!_0x4c9816)return;if(_0x4c9816['gated']){console['log']('[잔재회수]\x20'+_0x17fea5+':\x20건너뜀\x20—\x20얼굴\x20랜드마크가\x20있는\x20뷰(이목구비를\x20지우면\x20안\x20된다)');return;}if(_0x4c9816['thin']!=null&&!_0x4c9816['n']){console['log']('[잔재회수]\x20'+_0x17fea5+':\x20밝기\x20기준\x20없음\x20—\x20두상\x20안\x20살\x20표본\x20'+_0x4c9816['thin']+'px\x20<\x20'+HOLE_FILL['residue']['minSample']+('\x20·\x20머리색\x20경로도\x20못\x20잡음(머리\x20평균색이\x20없거나\x20hairTol\x20'+HOLE_FILL['residue']['hairTol']+'\x20밖)'));return;}if(_0x4c9816['cancelled']){console['log'](...gyeolBoldArgs(['[잔재회수]\x20'+_0x17fea5+':\x20<b>취소</b>\x20—\x20성한\x20살의\x20'+(_0x4c9816['frac']*0x64)['toFixed'](0x1)+'%가\x20어둡게\x20잡혔다'+('(한계\x20'+(HOLE_FILL['residue']['maxFrac']*0x64|0x0)+'%)\x20·\x20잔재가\x20아니라\x20판정\x20실패로\x20봅니다(사진이\x20어둡거나\x20타원이\x20어긋남)')]));return;}if(!_0x4c9816['n']){console['log']('[잔재회수]\x20'+_0x17fea5+':\x20없음\x20—\x20두상\x20안이\x20전부\x20살\x20밝기(중앙값\x20'+(_0x4c9816['med']!=null?_0x4c9816['med']['toFixed'](0x0):'?')+'\x20·\x20기준\x20'+(_0x4c9816['cut']!=null?_0x4c9816['cut']['toFixed'](0x0):'?')+')');return;}console['log'](...gyeolBoldArgs(['[잔재회수]\x20'+_0x17fea5+':\x20살\x20중앙값\x20'+_0x4c9816['med']['toFixed'](0x0)+'\x20·\x20기준\x20'+_0x4c9816['cut']['toFixed'](0x0)+'(×'+HOLE_FILL['residue']['darkRatio']+')\x20→'+('\x20심지\x20'+_0x4c9816['core']+'px(머리색\x20'+(_0x4c9816['nHair']||0x0)+'\x20·\x20밝기\x20'+(_0x4c9816['nDark']||0x0)+')\x20→\x20부풀려\x20<b>'+_0x4c9816['n']+'px\x20승격</b>')+('\x20=\x20두상\x20안의\x20'+(0x64*_0x4c9816['n']/Math['max'](0x1,_0x4c9816['area']))['toFixed'](0x1)+'%\x20·\x20'+_0x34f4d5+'×'+_0x5aaa42)+'\x0a\x20\x20\x20\x20\x20\x20이\x20자리는\x20이제\x20다른\x20부위와\x20<b>같은\x20경로</b>로\x20메워집니다(살\x20격자\x20색\x20+\x20이마\x20표본\x20결).']));}function buildSkinField(_0x1684fb,_0x30da5f,_0x34b12f,_0x473feb,_0x492ace){const _0x35ed9a=HOLE_FILL['skinField'];if(!_0x35ed9a||!_0x35ed9a['on']||!_0x492ace)return null;const _0x385cfb=Math['max'](0x4,_0x35ed9a['gridX']|0x0),_0x15de87=Math['max'](0x4,_0x35ed9a['gridY']|0x0),_0x4e179f=Math['max'](0x1,Math['round'](Math['min'](_0x30da5f,_0x34b12f)/0xdc)),_0x4ac862=[];for(let _0x2a06ea=0x0;_0x2a06ea<_0x34b12f;_0x2a06ea+=_0x4e179f){const _0x4a3cde=((_0x2a06ea+0.5)/_0x34b12f-_0x492ace['cy'])/_0x492ace['ry'],_0x2a4290=_0x4a3cde*_0x4a3cde;if(_0x2a4290>0x1)continue;for(let _0x1de20e=0x0;_0x1de20e<_0x30da5f;_0x1de20e+=_0x4e179f){const _0x38cb56=((_0x1de20e+0.5)/_0x30da5f-_0x492ace['cx'])/_0x492ace['rx'];if(_0x38cb56*_0x38cb56+_0x2a4290>0x1)continue;if(_0x473feb[_0x2a06ea*_0x30da5f+_0x1de20e])continue;const _0x490349=(_0x2a06ea*_0x30da5f+_0x1de20e)*0x4;if(_0x1684fb[_0x490349+0x3]<0xc8)continue;_0x4ac862['push'](0.299*_0x1684fb[_0x490349]+0.587*_0x1684fb[_0x490349+0x1]+0.114*_0x1684fb[_0x490349+0x2]);}}if(_0x4ac862['length']<0xc8)return null;_0x4ac862['sort']((_0x538aae,_0x2cb5cb)=>_0x538aae-_0x2cb5cb);const _0x8cbc19=_0x4ac862[Math['floor'](_0x4ac862['length']*_0x35ed9a['darkPct'])],_0x1761e2=new Float32Array(_0x385cfb*_0x15de87),_0x3e4e72=new Float32Array(_0x385cfb*_0x15de87),_0x4ae24b=new Float32Array(_0x385cfb*_0x15de87),_0x4daa65=new Float32Array(_0x385cfb*_0x15de87),_0x292497=_0x42ada2=>Math['min'](_0x385cfb-0x1,Math['max'](0x0,Math['floor'](((_0x42ada2+0.5)/_0x30da5f-(_0x492ace['cx']-_0x492ace['rx']))/(0x2*_0x492ace['rx'])*_0x385cfb))),_0x15d91e=_0x236ad6=>Math['min'](_0x15de87-0x1,Math['max'](0x0,Math['floor'](((_0x236ad6+0.5)/_0x34b12f-(_0x492ace['cy']-_0x492ace['ry']))/(0x2*_0x492ace['ry'])*_0x15de87)));for(let _0x3bfc83=0x0;_0x3bfc83<_0x34b12f;_0x3bfc83+=_0x4e179f){const _0x231a0e=((_0x3bfc83+0.5)/_0x34b12f-_0x492ace['cy'])/_0x492ace['ry'],_0x406923=_0x231a0e*_0x231a0e;if(_0x406923>0x1)continue;for(let _0x4511c0=0x0;_0x4511c0<_0x30da5f;_0x4511c0+=_0x4e179f){const _0x2cea48=((_0x4511c0+0.5)/_0x30da5f-_0x492ace['cx'])/_0x492ace['rx'];if(_0x2cea48*_0x2cea48+_0x406923>0x1)continue;if(_0x473feb[_0x3bfc83*_0x30da5f+_0x4511c0])continue;const _0x1836e2=(_0x3bfc83*_0x30da5f+_0x4511c0)*0x4;if(_0x1684fb[_0x1836e2+0x3]<0xc8)continue;if(0.299*_0x1684fb[_0x1836e2]+0.587*_0x1684fb[_0x1836e2+0x1]+0.114*_0x1684fb[_0x1836e2+0x2]<_0x8cbc19)continue;const _0x34c8fc=_0x15d91e(_0x3bfc83)*_0x385cfb+_0x292497(_0x4511c0);_0x1761e2[_0x34c8fc]+=_0x1684fb[_0x1836e2],_0x3e4e72[_0x34c8fc]+=_0x1684fb[_0x1836e2+0x1],_0x4ae24b[_0x34c8fc]+=_0x1684fb[_0x1836e2+0x2],_0x4daa65[_0x34c8fc]++;}}let _0x2f3874=0x0;for(let _0x11aadc=0x0;_0x11aadc<_0x385cfb*_0x15de87;_0x11aadc++){_0x4daa65[_0x11aadc]>0x0&&(_0x1761e2[_0x11aadc]/=_0x4daa65[_0x11aadc],_0x3e4e72[_0x11aadc]/=_0x4daa65[_0x11aadc],_0x4ae24b[_0x11aadc]/=_0x4daa65[_0x11aadc],_0x4daa65[_0x11aadc]=0x1,_0x2f3874++);}const _0x188922=_0x2f3874;if(_0x2f3874<_0x385cfb*_0x15de87*_0x35ed9a['minCells'])return null;let _0x1830e8=0x0;for(;_0x1830e8<_0x35ed9a['fillPasses'];_0x1830e8++){let _0x340f9d=0x0;const _0x4d98c5=_0x1761e2['slice'](),_0x118f45=_0x3e4e72['slice'](),_0x2decbb=_0x4ae24b['slice'](),_0x145c94=_0x4daa65['slice']();for(let _0x105f4d=0x0;_0x105f4d<_0x15de87;_0x105f4d++)for(let _0x189959=0x0;_0x189959<_0x385cfb;_0x189959++){const _0x422f92=_0x105f4d*_0x385cfb+_0x189959;if(_0x4daa65[_0x422f92]>0x0)continue;let _0x3281a5=0x0,_0x4a034f=0x0,_0x15ce2c=0x0,_0x1ef0ac=0x0;_0x189959>0x0&&_0x4daa65[_0x422f92-0x1]>0x0&&(_0x3281a5+=_0x1761e2[_0x422f92-0x1],_0x4a034f+=_0x3e4e72[_0x422f92-0x1],_0x15ce2c+=_0x4ae24b[_0x422f92-0x1],_0x1ef0ac++),_0x189959<_0x385cfb-0x1&&_0x4daa65[_0x422f92+0x1]>0x0&&(_0x3281a5+=_0x1761e2[_0x422f92+0x1],_0x4a034f+=_0x3e4e72[_0x422f92+0x1],_0x15ce2c+=_0x4ae24b[_0x422f92+0x1],_0x1ef0ac++),_0x105f4d>0x0&&_0x4daa65[_0x422f92-_0x385cfb]>0x0&&(_0x3281a5+=_0x1761e2[_0x422f92-_0x385cfb],_0x4a034f+=_0x3e4e72[_0x422f92-_0x385cfb],_0x15ce2c+=_0x4ae24b[_0x422f92-_0x385cfb],_0x1ef0ac++),_0x105f4d<_0x15de87-0x1&&_0x4daa65[_0x422f92+_0x385cfb]>0x0&&(_0x3281a5+=_0x1761e2[_0x422f92+_0x385cfb],_0x4a034f+=_0x3e4e72[_0x422f92+_0x385cfb],_0x15ce2c+=_0x4ae24b[_0x422f92+_0x385cfb],_0x1ef0ac++),_0x1ef0ac&&(_0x4d98c5[_0x422f92]=_0x3281a5/_0x1ef0ac,_0x118f45[_0x422f92]=_0x4a034f/_0x1ef0ac,_0x2decbb[_0x422f92]=_0x15ce2c/_0x1ef0ac,_0x145c94[_0x422f92]=0x1,_0x340f9d++);}if(!_0x340f9d)break;_0x1761e2['set'](_0x4d98c5),_0x3e4e72['set'](_0x118f45),_0x4ae24b['set'](_0x2decbb),_0x4daa65['set'](_0x145c94),_0x2f3874+=_0x340f9d;}return{'GX':_0x385cfb,'GY':_0x15de87,'seeded':_0x188922,'filled':_0x2f3874,'passes':_0x1830e8,'cells':_0x385cfb*_0x15de87,'at'(_0x5ceba3,_0x14c342,_0x4b3397){const _0x2527ec=Math['min'](_0x385cfb-0x1,Math['max'](0x0,(_0x5ceba3-(_0x492ace['cx']-_0x492ace['rx']))/(0x2*_0x492ace['rx'])*_0x385cfb-0.5)),_0x58e3f6=Math['min'](_0x15de87-0x1,Math['max'](0x0,(_0x14c342-(_0x492ace['cy']-_0x492ace['ry']))/(0x2*_0x492ace['ry'])*_0x15de87-0.5)),_0x411b7d=_0x2527ec|0x0,_0x5330d7=_0x58e3f6|0x0,_0x1eaec5=Math['min'](_0x385cfb-0x1,_0x411b7d+0x1),_0x43075f=Math['min'](_0x15de87-0x1,_0x5330d7+0x1),_0x2e3d25=_0x2527ec-_0x411b7d,_0x49a2c4=_0x58e3f6-_0x5330d7,_0xf60d31=_0x5330d7*_0x385cfb+_0x411b7d,_0x313bab=_0x5330d7*_0x385cfb+_0x1eaec5,_0x57322b=_0x43075f*_0x385cfb+_0x411b7d,_0x4fbdd3=_0x43075f*_0x385cfb+_0x1eaec5,_0x4bbdc0=(_0x20611c,_0x3ffdd6,_0x37463c,_0xdd1fc7)=>(_0x20611c*(0x1-_0x2e3d25)+_0x3ffdd6*_0x2e3d25)*(0x1-_0x49a2c4)+(_0x37463c*(0x1-_0x2e3d25)+_0xdd1fc7*_0x2e3d25)*_0x49a2c4;return _0x4b3397[0x0]=_0x4bbdc0(_0x1761e2[_0xf60d31],_0x1761e2[_0x313bab],_0x1761e2[_0x57322b],_0x1761e2[_0x4fbdd3]),_0x4b3397[0x1]=_0x4bbdc0(_0x3e4e72[_0xf60d31],_0x3e4e72[_0x313bab],_0x3e4e72[_0x57322b],_0x3e4e72[_0x4fbdd3]),_0x4b3397[0x2]=_0x4bbdc0(_0x4ae24b[_0xf60d31],_0x4ae24b[_0x313bab],_0x4ae24b[_0x57322b],_0x4ae24b[_0x4fbdd3]),_0x4b3397;}};}function buildSkinGraft(_0x1de5d5,_0x499eb2,_0x26c9c2,_0x129bb2,_0xca5757,_0x1ae611,_0x5b35c3){const _0x3afdd4=pickSkinPatch(_0x1de5d5,_0x499eb2,_0x26c9c2,_0x129bb2,_0xca5757,_0x1ae611);if(!_0x3afdd4)return null;const _0x40d897=document['createElement']('canvas');_0x40d897['width']=_0x1ae611,_0x40d897['height']=_0x1ae611;const _0x39afcf=_0x40d897['getContext']('2d',{'willReadFrequently':!![]});_0x39afcf['drawImage'](_0x1de5d5['canvas'],_0x3afdd4['px'],_0x3afdd4['py'],_0x1ae611,_0x1ae611,0x0,0x0,_0x1ae611,_0x1ae611);const _0x237a58=_0x39afcf['getImageData'](0x0,0x0,_0x1ae611,_0x1ae611)['data'],_0x169b62=Math['max'](0x2,_0x1ae611>>0x3),_0x523578=document['createElement']('canvas');_0x523578['width']=_0x169b62,_0x523578['height']=_0x169b62;const _0x6194bd=_0x523578['getContext']('2d',{'willReadFrequently':!![]});_0x6194bd['imageSmoothingEnabled']=!![],_0x6194bd['drawImage'](_0x40d897,0x0,0x0,_0x169b62,_0x169b62),_0x39afcf['clearRect'](0x0,0x0,_0x1ae611,_0x1ae611),_0x39afcf['drawImage'](_0x523578,0x0,0x0,_0x1ae611,_0x1ae611);const _0x2ff7fb=_0x39afcf['getImageData'](0x0,0x0,_0x1ae611,_0x1ae611)['data'],_0x29695a=new Uint8ClampedArray(_0x1ae611*_0x1ae611*0x3),_0x5095a3=new Float32Array(_0x1ae611*_0x1ae611*0x3);let _0x5a238d=0x0;for(let _0x462a5e=0x0,_0x4900fd=0x0;_0x462a5e<_0x237a58['length'];_0x462a5e+=0x4,_0x4900fd+=0x3){_0x29695a[_0x4900fd]=_0x237a58[_0x462a5e],_0x5095a3[_0x4900fd]=_0x237a58[_0x462a5e]-_0x2ff7fb[_0x462a5e],_0x29695a[_0x4900fd+0x1]=_0x237a58[_0x462a5e+0x1],_0x5095a3[_0x4900fd+0x1]=_0x237a58[_0x462a5e+0x1]-_0x2ff7fb[_0x462a5e+0x1],_0x29695a[_0x4900fd+0x2]=_0x237a58[_0x462a5e+0x2],_0x5095a3[_0x4900fd+0x2]=_0x237a58[_0x462a5e+0x2]-_0x2ff7fb[_0x462a5e+0x2],_0x5a238d+=0.299*_0x237a58[_0x462a5e]+0.587*_0x237a58[_0x462a5e+0x1]+0.114*_0x237a58[_0x462a5e+0x2];}let _0x31a32a=0x0;for(let _0x58a7ca=0x0;_0x58a7ca<_0x5095a3['length'];_0x58a7ca++)_0x31a32a+=_0x5095a3[_0x58a7ca]*_0x5095a3[_0x58a7ca];const _0x5a70fd=Math['sqrt'](_0x31a32a/_0x5095a3['length']);let _0x26faf4=0x0,_0x129f47=0x0,_0x33aaa5=0x0;for(let _0x4ba2c1=0x0;_0x4ba2c1<_0x29695a['length'];_0x4ba2c1+=0x3){_0x26faf4+=_0x29695a[_0x4ba2c1],_0x129f47+=_0x29695a[_0x4ba2c1+0x1],_0x33aaa5+=_0x29695a[_0x4ba2c1+0x2];}const _0x3b8e7b=_0x1ae611*_0x1ae611;return{'rgb':_0x29695a,'hi':_0x5095a3,'size':_0x1ae611,'lum':_0x5a238d/_0x3b8e7b,'det':_0x5a70fd,'src':_0x5b35c3||'?','at':_0x3afdd4,'mean':[Math['round'](_0x26faf4/_0x3b8e7b),Math['round'](_0x129f47/_0x3b8e7b),Math['round'](_0x33aaa5/_0x3b8e7b)],'forehead':!!_0x3afdd4['forehead'],'dy':_0x3afdd4['dy']};}function fillHolesLowRes(_0x537311,_0x4fa80a,_0x5f3575,_0x17bbe5,_0x4cbde5){const _0x3bde04=document['createElement']('canvas');_0x3bde04['width']=_0x4fa80a,_0x3bde04['height']=_0x5f3575;const _0x8b2728=_0x3bde04['getContext']('2d',{'willReadFrequently':!![]});_0x8b2728['drawImage'](_0x537311,0x0,0x0,_0x4fa80a,_0x5f3575);const _0x590a74=_0x8b2728['getImageData'](0x0,0x0,_0x4fa80a,_0x5f3575),_0x52fa00=_0x590a74['data'],_0x4bdd58=0xc8,_0x405d43=(_0x8bafeb,_0x154047)=>{if(!_0x4cbde5)return![];const _0xce8023=(_0x8bafeb+0.5)/_0x4fa80a,_0x7f7ac7=(_0x154047+0.5)/_0x5f3575,_0x1b880b=(_0xce8023-_0x4cbde5['cx'])/_0x4cbde5['rx'],_0x328b37=(_0x7f7ac7-_0x4cbde5['cy'])/_0x4cbde5['ry'];return _0x1b880b*_0x1b880b+_0x328b37*_0x328b37<=0x1;},_0x4e62b3=Math['ceil'](Math['hypot'](_0x4fa80a,_0x5f3575));for(let _0x41ea1d=0x0;_0x41ea1d<_0x4e62b3;_0x41ea1d++){const _0x4af260=[];for(let _0x44f009=0x0;_0x44f009<_0x5f3575;_0x44f009++){for(let _0x14740d=0x0;_0x14740d<_0x4fa80a;_0x14740d++){const _0x1c4270=(_0x44f009*_0x4fa80a+_0x14740d)*0x4;if(_0x52fa00[_0x1c4270+0x3]>=_0x4bdd58)continue;const _0x1fb60f=_0x17bbe5&&_0x405d43(_0x14740d,_0x44f009);let _0x585365=0x0,_0x114f67=0x0,_0xaa7e46=0x0,_0x243a0f=0x0;for(let _0x38dedf=-0x1;_0x38dedf<=0x1;_0x38dedf++){const _0x23c041=_0x44f009+_0x38dedf;if(_0x23c041<0x0||_0x23c041>=_0x5f3575)continue;for(let _0x5cbb99=-0x1;_0x5cbb99<=0x1;_0x5cbb99++){const _0x26d47b=_0x14740d+_0x5cbb99;if(_0x26d47b<0x0||_0x26d47b>=_0x4fa80a||_0x5cbb99===0x0&&_0x38dedf===0x0)continue;const _0x2f780e=(_0x23c041*_0x4fa80a+_0x26d47b)*0x4;if(_0x52fa00[_0x2f780e+0x3]<_0x4bdd58)continue;let _0x77bb85=HOLE_FILL['dirW'][_0x38dedf+0x1];if(_0x1fb60f){const _0x131046=Math['abs'](_0x52fa00[_0x2f780e]-_0x17bbe5[0x0])+Math['abs'](_0x52fa00[_0x2f780e+0x1]-_0x17bbe5[0x1])+Math['abs'](_0x52fa00[_0x2f780e+0x2]-_0x17bbe5[0x2]);_0x77bb85*=0x1+HOLE_FILL['skinBoost']*Math['max'](0x0,0x1-_0x131046/HOLE_FILL['skinTol']);}_0x585365+=_0x52fa00[_0x2f780e]*_0x77bb85,_0x114f67+=_0x52fa00[_0x2f780e+0x1]*_0x77bb85,_0xaa7e46+=_0x52fa00[_0x2f780e+0x2]*_0x77bb85,_0x243a0f+=_0x77bb85;}}if(_0x243a0f)_0x4af260['push'](_0x1c4270,_0x585365/_0x243a0f,_0x114f67/_0x243a0f,_0xaa7e46/_0x243a0f);}}if(!_0x4af260['length'])break;for(let _0x31a2ab=0x0;_0x31a2ab<_0x4af260['length'];_0x31a2ab+=0x4){const _0x22a34b=_0x4af260[_0x31a2ab];_0x52fa00[_0x22a34b]=_0x4af260[_0x31a2ab+0x1],_0x52fa00[_0x22a34b+0x1]=_0x4af260[_0x31a2ab+0x2],_0x52fa00[_0x22a34b+0x2]=_0x4af260[_0x31a2ab+0x3],_0x52fa00[_0x22a34b+0x3]=0xff;}}return _0x8b2728['putImageData'](_0x590a74,0x0,0x0),_0x3bde04;}const RENDER_PLATE={'on':!![],'alphaHole':0xfa,'dilatePx':0x3,'featherPx':0x1,'power':0x2,'relax':0x8,'grain':0.55,'rim':{'on':!![],'tol':0x60,'minPx':0x4,'maxPx':0x12},'detail':0.75,'detailBlurPx':0x2};function dilateFlags(_0x435ac6,_0x411a77,_0x2b3fa5,_0x116a6a){if(!(_0x116a6a>0x0))return _0x435ac6;const _0x481166=new Uint8Array(_0x411a77*_0x2b3fa5);for(let _0x595b23=0x0;_0x595b23<_0x2b3fa5;_0x595b23++){const _0x38930b=_0x595b23*_0x411a77;let _0x5b09a8=0x0;for(let _0x20ead2=0x0;_0x20ead2<=Math['min'](_0x116a6a,_0x411a77-0x1);_0x20ead2++)_0x5b09a8+=_0x435ac6[_0x38930b+_0x20ead2];for(let _0x9682c=0x0;_0x9682c<_0x411a77;_0x9682c++){_0x481166[_0x38930b+_0x9682c]=_0x5b09a8>0x0?0x1:0x0;const _0x419a17=_0x9682c+_0x116a6a+0x1,_0x475e38=_0x9682c-_0x116a6a;if(_0x419a17<_0x411a77)_0x5b09a8+=_0x435ac6[_0x38930b+_0x419a17];if(_0x475e38>=0x0)_0x5b09a8-=_0x435ac6[_0x38930b+_0x475e38];}}for(let _0xfc136=0x0;_0xfc136<_0x411a77;_0xfc136++){let _0x4f616c=0x0;for(let _0x2c2015=0x0;_0x2c2015<=Math['min'](_0x116a6a,_0x2b3fa5-0x1);_0x2c2015++)_0x4f616c+=_0x481166[_0x2c2015*_0x411a77+_0xfc136];for(let _0x2114ff=0x0;_0x2114ff<_0x2b3fa5;_0x2114ff++){_0x435ac6[_0x2114ff*_0x411a77+_0xfc136]=_0x4f616c>0x0?0x1:0x0;const _0x43082e=_0x2114ff+_0x116a6a+0x1,_0x891e9d=_0x2114ff-_0x116a6a;if(_0x43082e<_0x2b3fa5)_0x4f616c+=_0x481166[_0x43082e*_0x411a77+_0xfc136];if(_0x891e9d>=0x0)_0x4f616c-=_0x481166[_0x891e9d*_0x411a77+_0xfc136];}}return _0x435ac6;}function growHairRim(_0xae79d9,_0x4f400c,_0x2fbb06,_0x3a2931,_0x203452,_0x3f969e,_0x2e5b94){let _0x5f0be2=0x0;for(let _0x144587=0x0;_0x144587<_0x2e5b94;_0x144587++){const _0x13e599=[];for(let _0x1d9c6b=0x0;_0x1d9c6b<_0x3a2931;_0x1d9c6b++){for(let _0x57d526=0x0;_0x57d526<_0x2fbb06;_0x57d526++){const _0x27682b=_0x1d9c6b*_0x2fbb06+_0x57d526;if(_0xae79d9[_0x27682b])continue;const _0x511dab=_0x57d526>0x0&&_0xae79d9[_0x27682b-0x1]||_0x57d526<_0x2fbb06-0x1&&_0xae79d9[_0x27682b+0x1]||_0x1d9c6b>0x0&&_0xae79d9[_0x27682b-_0x2fbb06]||_0x1d9c6b<_0x3a2931-0x1&&_0xae79d9[_0x27682b+_0x2fbb06];if(!_0x511dab)continue;const _0x30ec08=_0x27682b*0x4;if(_0x4f400c[_0x30ec08+0x3]<0xfa)continue;const _0xce7d55=Math['abs'](_0x4f400c[_0x30ec08]-_0x203452[0x0])+Math['abs'](_0x4f400c[_0x30ec08+0x1]-_0x203452[0x1])+Math['abs'](_0x4f400c[_0x30ec08+0x2]-_0x203452[0x2]);if(_0xce7d55<=_0x3f969e)_0x13e599['push'](_0x27682b);}}if(!_0x13e599['length'])break;for(let _0x4f03b7=0x0;_0x4f03b7<_0x13e599['length'];_0x4f03b7++)_0xae79d9[_0x13e599[_0x4f03b7]]=0x1;_0x5f0be2+=_0x13e599['length'];}return _0x5f0be2;}function downsampleFlagsMax(_0x1fefe4,_0x3a2f59,_0x5a4fd6,_0x2f3ac6,_0x29ff38){if(_0x3a2f59===_0x2f3ac6&&_0x5a4fd6===_0x29ff38)return _0x1fefe4['slice']();const _0x8a5457=new Uint8Array(_0x2f3ac6*_0x29ff38);for(let _0x4c1ac4=0x0;_0x4c1ac4<_0x29ff38;_0x4c1ac4++){const _0x54bcf5=Math['floor'](_0x4c1ac4*_0x5a4fd6/_0x29ff38),_0x28eb59=Math['max'](_0x54bcf5+0x1,Math['floor']((_0x4c1ac4+0x1)*_0x5a4fd6/_0x29ff38));for(let _0x4a570f=0x0;_0x4a570f<_0x2f3ac6;_0x4a570f++){const _0x10eb84=Math['floor'](_0x4a570f*_0x3a2f59/_0x2f3ac6),_0x4e45d7=Math['max'](_0x10eb84+0x1,Math['floor']((_0x4a570f+0x1)*_0x3a2f59/_0x2f3ac6));let _0x195ae5=0x0;for(let _0x113b51=_0x54bcf5;_0x113b51<_0x28eb59&&!_0x195ae5;_0x113b51++){for(let _0x5aa7f5=_0x10eb84;_0x5aa7f5<_0x4e45d7;_0x5aa7f5++){if(_0x1fefe4[_0x113b51*_0x3a2f59+_0x5aa7f5]){_0x195ae5=0x1;break;}}}_0x8a5457[_0x4c1ac4*_0x2f3ac6+_0x4a570f]=_0x195ae5;}}return _0x8a5457;}function buildHoleMask(_0x3defb5,_0x29724b){const _0x4cd400=_0x3defb5['width'],_0x5a9899=_0x3defb5['height'],_0xa12ae9=_0x3defb5['getContext']('2d')['getImageData'](0x0,0x0,_0x4cd400,_0x5a9899)['data'],_0x1e6649=new Uint8Array(_0x4cd400*_0x5a9899);let _0x37ae16=0x0;for(let _0x59973d=0x0,_0x451c73=0x3;_0x59973d<_0x1e6649['length'];_0x59973d++,_0x451c73+=0x4){_0xa12ae9[_0x451c73]<RENDER_PLATE['alphaHole']&&(_0x1e6649[_0x59973d]=0x1,_0x37ae16++);}const _0x499d4b=_0x1e6649['slice']();dilateFlags(_0x1e6649,_0x4cd400,_0x5a9899,Math['max'](0x1,Math['round'](RENDER_PLATE['dilatePx'])));let _0xf11eee=0x0,_0x4db5ae=0x0;const _0x11c3c2=RENDER_PLATE['rim'];let _0x417323=null;const _0x18361d=_0x29724b&&_0x29724b['avgColor']&&String(_0x29724b['avgColor'])['match'](/\d+/g);if(_0x18361d&&_0x18361d['length']>=0x3)_0x417323=[+_0x18361d[0x0],+_0x18361d[0x1],+_0x18361d[0x2]];_0x11c3c2['on']&&_0x417323&&_0x37ae16&&(_0x4db5ae=Math['max'](_0x11c3c2['minPx'],Math['min'](_0x11c3c2['maxPx'],Math['round'](_0x5a9899*0.035))),_0xf11eee=growHairRim(_0x1e6649,_0xa12ae9,_0x4cd400,_0x5a9899,_0x417323,_0x11c3c2['tol'],_0x4db5ae));let _0x54c960=0x0;const _0x28321e=featureGuardMask(_0x3defb5['_view'],_0x4cd400,_0x5a9899);if(_0x28321e){for(let _0x52f0b6=0x0;_0x52f0b6<_0x1e6649['length'];_0x52f0b6++){_0x28321e[_0x52f0b6]&&_0x1e6649[_0x52f0b6]&&!_0x499d4b[_0x52f0b6]&&(_0x1e6649[_0x52f0b6]=0x0,_0x54c960++);}console['log']('[렌더경계·눈보호]\x20'+_0x3defb5['_view']+':\x20'+_0x54c960+'px\x20되돌림');}return{'hole':_0x1e6649,'w':_0x4cd400,'h':_0x5a9899,'n0':_0x37ae16,'nRim':_0xf11eee,'rimIter':_0x4db5ae,'hair':_0x417323,'nGuard':_0x54c960};}function featureGuardMask(_0x591474,_0x13d415,_0x3edc95){const _0x268c2e=_0x591474&&typeof state!=='undefined'&&state['landmarks']&&state['landmarks'][_0x591474],_0x193c91=_0x268c2e&&_0x268c2e['features'];if(!_0x193c91)return null;const _0x5d2f93=new Uint8Array(_0x13d415*_0x3edc95);let _0x1112b4=0x0;for(const _0x5f17a0 of['leftEye','rightEye','leftBrow','rightBrow']){const _0x60355a=_0x193c91[_0x5f17a0];if(!_0x60355a)continue;const _0x1fecc3=_0x60355a['maxX']-_0x60355a['minX'],_0x152165=_0x60355a['maxY']-_0x60355a['minY'],_0x1a7a8a=(_0x60355a['minX']+_0x60355a['maxX'])/0x2*_0x13d415,_0x270af0=(_0x60355a['minY']+_0x60355a['maxY'])/0x2*_0x3edc95,_0x59db8c=Math['max'](0x1,(_0x1fecc3/0x2+_0x1fecc3*0.45+0.008)*_0x13d415),_0xcb00af=Math['max'](0x1,(_0x152165/0x2+_0x152165*0.6+0.008)*_0x3edc95),_0x4bc921=Math['max'](0x0,Math['floor'](_0x1a7a8a-_0x59db8c)),_0x53b0ad=Math['min'](_0x13d415,Math['ceil'](_0x1a7a8a+_0x59db8c)),_0x16b0e1=Math['max'](0x0,Math['floor'](_0x270af0-_0xcb00af)),_0x401a14=Math['min'](_0x3edc95,Math['ceil'](_0x270af0+_0xcb00af));for(let _0x28a716=_0x16b0e1;_0x28a716<_0x401a14;_0x28a716++){const _0x59f02a=(_0x28a716+0.5-_0x270af0)/_0xcb00af;for(let _0x1cd795=_0x4bc921;_0x1cd795<_0x53b0ad;_0x1cd795++){const _0xebf278=(_0x1cd795+0.5-_0x1a7a8a)/_0x59db8c;_0xebf278*_0xebf278+_0x59f02a*_0x59f02a<=0x1&&(_0x5d2f93[_0x28a716*_0x13d415+_0x1cd795]=0x1,_0x1112b4++);}}}return _0x1112b4?_0x5d2f93:null;}function getHoleMask(_0x39cb3d,_0x332d2a){if(!_0x39cb3d)return null;if(_0x39cb3d['_holeMask'])return _0x39cb3d['_holeMask'];let _0x272349=null;try{_0x272349=buildHoleMask(_0x39cb3d,_0x332d2a);}catch(_0x18323f){console['warn']('구멍\x20마스크\x20생성\x20실패:',_0x18323f);}return _0x39cb3d['_holeMask']=_0x272349,_0x272349;}function inpaintDirectional(_0x1dc01f,_0x218232,_0x13de1b,_0x3d9a80,_0x48fc23){const _0xf275b5=_0x13de1b*_0x3d9a80,_0x2aa1d7=new Float32Array(_0xf275b5*0x3),_0x43b94c=new Float32Array(_0xf275b5),_0x64bba1=_0x48fc23>0x0?_0x48fc23:0x2,_0x58bbbc=(_0x22cd1b,_0x4705f1,_0x3e14e5,_0x5757b5,_0x38e89f)=>{const _0x272a61=0x1/Math['pow'](_0x4705f1,_0x64bba1);_0x2aa1d7[_0x22cd1b*0x3]+=_0x3e14e5*_0x272a61,_0x2aa1d7[_0x22cd1b*0x3+0x1]+=_0x5757b5*_0x272a61,_0x2aa1d7[_0x22cd1b*0x3+0x2]+=_0x38e89f*_0x272a61,_0x43b94c[_0x22cd1b]+=_0x272a61;};for(let _0x549db0=0x0;_0x549db0<_0x3d9a80;_0x549db0++){let _0x570d40=-0x1,_0x7582ce=0x0,_0x5614ad=0x0,_0x328aa9=0x0;for(let _0x2d3065=0x0;_0x2d3065<_0x13de1b;_0x2d3065++){const _0x592ddc=_0x549db0*_0x13de1b+_0x2d3065;if(!_0x218232[_0x592ddc]){_0x570d40=_0x2d3065,_0x7582ce=_0x1dc01f[_0x592ddc*0x4],_0x5614ad=_0x1dc01f[_0x592ddc*0x4+0x1],_0x328aa9=_0x1dc01f[_0x592ddc*0x4+0x2];continue;}if(_0x570d40>=0x0)_0x58bbbc(_0x592ddc,_0x2d3065-_0x570d40,_0x7582ce,_0x5614ad,_0x328aa9);}}for(let _0x14184d=0x0;_0x14184d<_0x3d9a80;_0x14184d++){let _0x24dd2d=-0x1,_0x309c8b=0x0,_0x3de561=0x0,_0x23b581=0x0;for(let _0x1071d1=_0x13de1b-0x1;_0x1071d1>=0x0;_0x1071d1--){const _0x46dd1a=_0x14184d*_0x13de1b+_0x1071d1;if(!_0x218232[_0x46dd1a]){_0x24dd2d=_0x1071d1,_0x309c8b=_0x1dc01f[_0x46dd1a*0x4],_0x3de561=_0x1dc01f[_0x46dd1a*0x4+0x1],_0x23b581=_0x1dc01f[_0x46dd1a*0x4+0x2];continue;}if(_0x24dd2d>=0x0)_0x58bbbc(_0x46dd1a,_0x24dd2d-_0x1071d1,_0x309c8b,_0x3de561,_0x23b581);}}for(let _0x40e6d2=0x0;_0x40e6d2<_0x13de1b;_0x40e6d2++){let _0x3d7b7d=-0x1,_0x553ea2=0x0,_0x39ed0a=0x0,_0x50b883=0x0;for(let _0x2e3485=0x0;_0x2e3485<_0x3d9a80;_0x2e3485++){const _0x531e66=_0x2e3485*_0x13de1b+_0x40e6d2;if(!_0x218232[_0x531e66]){_0x3d7b7d=_0x2e3485,_0x553ea2=_0x1dc01f[_0x531e66*0x4],_0x39ed0a=_0x1dc01f[_0x531e66*0x4+0x1],_0x50b883=_0x1dc01f[_0x531e66*0x4+0x2];continue;}if(_0x3d7b7d>=0x0)_0x58bbbc(_0x531e66,_0x2e3485-_0x3d7b7d,_0x553ea2,_0x39ed0a,_0x50b883);}}for(let _0x5f1388=0x0;_0x5f1388<_0x13de1b;_0x5f1388++){let _0x3ca0db=-0x1,_0x2e13b6=0x0,_0x7b3803=0x0,_0x4c50e7=0x0;for(let _0x2bce50=_0x3d9a80-0x1;_0x2bce50>=0x0;_0x2bce50--){const _0x2b9eb9=_0x2bce50*_0x13de1b+_0x5f1388;if(!_0x218232[_0x2b9eb9]){_0x3ca0db=_0x2bce50,_0x2e13b6=_0x1dc01f[_0x2b9eb9*0x4],_0x7b3803=_0x1dc01f[_0x2b9eb9*0x4+0x1],_0x4c50e7=_0x1dc01f[_0x2b9eb9*0x4+0x2];continue;}if(_0x3ca0db>=0x0)_0x58bbbc(_0x2b9eb9,_0x3ca0db-_0x2bce50,_0x2e13b6,_0x7b3803,_0x4c50e7);}}let _0xd544f3=0x0,_0x97475=0x0;for(let _0x4e5009=0x0;_0x4e5009<_0xf275b5;_0x4e5009++){if(!_0x218232[_0x4e5009])continue;const _0x5a7a8b=_0x43b94c[_0x4e5009];if(_0x5a7a8b>0x0)_0x1dc01f[_0x4e5009*0x4]=_0x2aa1d7[_0x4e5009*0x3]/_0x5a7a8b,_0x1dc01f[_0x4e5009*0x4+0x1]=_0x2aa1d7[_0x4e5009*0x3+0x1]/_0x5a7a8b,_0x1dc01f[_0x4e5009*0x4+0x2]=_0x2aa1d7[_0x4e5009*0x3+0x2]/_0x5a7a8b,_0xd544f3++;else _0x97475++;_0x1dc01f[_0x4e5009*0x4+0x3]=0xff;}return{'filled':_0xd544f3,'unreached':_0x97475};}function relaxHoles(_0x2b4a62,_0x414b2b,_0x3c52f6,_0x490ad7,_0x442608){const _0x340b02=_0x3c52f6*_0x490ad7;if(!(_0x442608>0x0))return;const _0x4ff95d=new Float32Array(_0x340b02*0x3);for(let _0x471939=0x0;_0x471939<_0x442608;_0x471939++){for(let _0x1cb0db=0x0;_0x1cb0db<_0x340b02;_0x1cb0db++){_0x4ff95d[_0x1cb0db*0x3]=_0x2b4a62[_0x1cb0db*0x4],_0x4ff95d[_0x1cb0db*0x3+0x1]=_0x2b4a62[_0x1cb0db*0x4+0x1],_0x4ff95d[_0x1cb0db*0x3+0x2]=_0x2b4a62[_0x1cb0db*0x4+0x2];}for(let _0x5cd315=0x0;_0x5cd315<_0x490ad7;_0x5cd315++){for(let _0x4074ad=0x0;_0x4074ad<_0x3c52f6;_0x4074ad++){const _0xe96f48=_0x5cd315*_0x3c52f6+_0x4074ad;if(!_0x414b2b[_0xe96f48])continue;let _0x17854f=0x0,_0x4dea8a=0x0,_0x31df54=0x0,_0xb22561=0x0;for(let _0x5e22ce=-0x1;_0x5e22ce<=0x1;_0x5e22ce++){const _0x80e5ce=_0x5cd315+_0x5e22ce;if(_0x80e5ce<0x0||_0x80e5ce>=_0x490ad7)continue;for(let _0x39f965=-0x1;_0x39f965<=0x1;_0x39f965++){const _0x105caa=_0x4074ad+_0x39f965;if(_0x105caa<0x0||_0x105caa>=_0x3c52f6)continue;const _0x3845b7=(_0x80e5ce*_0x3c52f6+_0x105caa)*0x3;_0x17854f+=_0x4ff95d[_0x3845b7],_0x4dea8a+=_0x4ff95d[_0x3845b7+0x1],_0x31df54+=_0x4ff95d[_0x3845b7+0x2],_0xb22561++;}}if(!_0xb22561)continue;_0x2b4a62[_0xe96f48*0x4]=_0x17854f/_0xb22561,_0x2b4a62[_0xe96f48*0x4+0x1]=_0x4dea8a/_0xb22561,_0x2b4a62[_0xe96f48*0x4+0x2]=_0x31df54/_0xb22561;}}}}function mirrorDetail(_0x492f80,_0x3e7310,_0x513292,_0x3c0f9f,_0x36d840,_0x58884f){const _0x2cc273=_0x3c0f9f*_0x36d840,_0x11be8b=new Float32Array(_0x2cc273)['fill'](Infinity),_0x5758cc=new Int32Array(_0x2cc273)['fill'](-0x1),_0x5b9643=(_0x511479,_0x1c00df,_0x30d363)=>{_0x1c00df<_0x11be8b[_0x511479]&&(_0x11be8b[_0x511479]=_0x1c00df,_0x5758cc[_0x511479]=_0x30d363);};for(let _0x3e9d1a=0x0;_0x3e9d1a<_0x36d840;_0x3e9d1a++){let _0x27ba7b=-0x1;for(let _0x58d2e9=0x0;_0x58d2e9<_0x3c0f9f;_0x58d2e9++){const _0x59db50=_0x3e9d1a*_0x3c0f9f+_0x58d2e9;if(!_0x513292[_0x59db50]){_0x27ba7b=_0x58d2e9;continue;}if(_0x27ba7b<0x0)continue;const _0x34497c=_0x58d2e9-_0x27ba7b,_0x58b3e8=_0x27ba7b-_0x34497c;if(_0x58b3e8>=0x0)_0x5b9643(_0x59db50,_0x34497c,_0x3e9d1a*_0x3c0f9f+_0x58b3e8);}}for(let _0x27d55b=0x0;_0x27d55b<_0x36d840;_0x27d55b++){let _0x2b20d3=-0x1;for(let _0x3efb39=_0x3c0f9f-0x1;_0x3efb39>=0x0;_0x3efb39--){const _0x3fc99e=_0x27d55b*_0x3c0f9f+_0x3efb39;if(!_0x513292[_0x3fc99e]){_0x2b20d3=_0x3efb39;continue;}if(_0x2b20d3<0x0)continue;const _0x164d6b=_0x2b20d3-_0x3efb39,_0xd52d02=_0x2b20d3+_0x164d6b;if(_0xd52d02<_0x3c0f9f)_0x5b9643(_0x3fc99e,_0x164d6b,_0x27d55b*_0x3c0f9f+_0xd52d02);}}for(let _0x5bf28d=0x0;_0x5bf28d<_0x3c0f9f;_0x5bf28d++){let _0x3adb56=-0x1;for(let _0x41accc=0x0;_0x41accc<_0x36d840;_0x41accc++){const _0x50d027=_0x41accc*_0x3c0f9f+_0x5bf28d;if(!_0x513292[_0x50d027]){_0x3adb56=_0x41accc;continue;}if(_0x3adb56<0x0)continue;const _0x154265=_0x41accc-_0x3adb56,_0x2caaa1=_0x3adb56-_0x154265;if(_0x2caaa1>=0x0)_0x5b9643(_0x50d027,_0x154265,_0x2caaa1*_0x3c0f9f+_0x5bf28d);}}for(let _0x1e52d8=0x0;_0x1e52d8<_0x3c0f9f;_0x1e52d8++){let _0x20d399=-0x1;for(let _0x3e4715=_0x36d840-0x1;_0x3e4715>=0x0;_0x3e4715--){const _0x358dfd=_0x3e4715*_0x3c0f9f+_0x1e52d8;if(!_0x513292[_0x358dfd]){_0x20d399=_0x3e4715;continue;}if(_0x20d399<0x0)continue;const _0x3588d7=_0x20d399-_0x3e4715,_0x2e6c84=_0x20d399+_0x3588d7;if(_0x2e6c84<_0x36d840)_0x5b9643(_0x358dfd,_0x3588d7,_0x2e6c84*_0x3c0f9f+_0x1e52d8);}}let _0x553f27=0x0;for(let _0xf91c2c=0x0;_0xf91c2c<_0x2cc273;_0xf91c2c++){if(!_0x513292[_0xf91c2c])continue;const _0x5f594a=_0x5758cc[_0xf91c2c];if(_0x5f594a<0x0||_0x513292[_0x5f594a])continue;for(let _0x5d47ae=0x0;_0x5d47ae<0x3;_0x5d47ae++){const _0x3fdd0f=_0x492f80[_0x5f594a*0x4+_0x5d47ae]-_0x3e7310[_0x5f594a*0x4+_0x5d47ae];_0x492f80[_0xf91c2c*0x4+_0x5d47ae]=Math['max'](0x0,Math['min'](0xff,_0x492f80[_0xf91c2c*0x4+_0x5d47ae]+_0x3fdd0f*_0x58884f));}_0x553f27++;}return _0x553f27;}function addGrainToHoles(_0x3bb43a,_0x3e248b,_0x3dd3f9,_0xba99bb,_0x5cfa49){let _0x5cd570=0x0,_0x406916=0x0;for(let _0x98eea2=0x1;_0x98eea2<_0xba99bb-0x1;_0x98eea2+=0x3){for(let _0x481ef6=0x1;_0x481ef6<_0x3dd3f9-0x2;_0x481ef6+=0x3){const _0x303028=_0x98eea2*_0x3dd3f9+_0x481ef6;if(_0x3e248b[_0x303028]||_0x3e248b[_0x303028+0x1])continue;const _0x3c068a=0.299*_0x3bb43a[_0x303028*0x4]+0.587*_0x3bb43a[_0x303028*0x4+0x1]+0.114*_0x3bb43a[_0x303028*0x4+0x2],_0x17e6f7=0.299*_0x3bb43a[_0x303028*0x4+0x4]+0.587*_0x3bb43a[_0x303028*0x4+0x5]+0.114*_0x3bb43a[_0x303028*0x4+0x6];_0x5cd570+=Math['abs'](_0x3c068a-_0x17e6f7),_0x406916++;}}if(!_0x406916)return 0x0;const _0x2f6eaf=Math['min'](0x6,_0x5cd570/_0x406916*0.8)*_0x5cfa49;if(_0x2f6eaf<0.3)return 0x0;for(let _0x262084=0x0;_0x262084<_0x3dd3f9*_0xba99bb;_0x262084++){if(!_0x3e248b[_0x262084])continue;let _0x4960b6=Math['imul'](_0x262084,0x9e3779b1)>>>0x0;_0x4960b6^=_0x4960b6>>>0xf,_0x4960b6=Math['imul'](_0x4960b6,0x85ebca77)>>>0x0,_0x4960b6^=_0x4960b6>>>0xd;const _0x4e4e23=((_0x4960b6&0x3ff)/0x3ff-0.5)*0x2*_0x2f6eaf;_0x3bb43a[_0x262084*0x4]=Math['max'](0x0,Math['min'](0xff,_0x3bb43a[_0x262084*0x4]+_0x4e4e23)),_0x3bb43a[_0x262084*0x4+0x1]=Math['max'](0x0,Math['min'](0xff,_0x3bb43a[_0x262084*0x4+0x1]+_0x4e4e23)),_0x3bb43a[_0x262084*0x4+0x2]=Math['max'](0x0,Math['min'](0xff,_0x3bb43a[_0x262084*0x4+0x2]+_0x4e4e23));}return _0x2f6eaf;}function buildCleanBaseCanvas(_0x31f677,_0x585e13){const _0x4e7a5f=_0x31f677['width'],_0x45fa06=_0x31f677['height'];if(!_0x4e7a5f||!_0x45fa06)return _0x31f677;const _0x5610e6=getHoleMask(_0x31f677,_0x585e13);if(!_0x5610e6||!_0x5610e6['n0'])return _0x31f677;const _0x4139ad=_0x5610e6['hole'],_0x48037a=document['createElement']('canvas');_0x48037a['width']=_0x4e7a5f,_0x48037a['height']=_0x45fa06;const _0xd25c02=_0x48037a['getContext']('2d'),_0x417321=_0xd25c02['createImageData'](_0x4e7a5f,_0x45fa06);for(let _0x71627b=0x0;_0x71627b<_0x4139ad['length'];_0x71627b++){const _0x136234=_0x71627b*0x4;_0x417321['data'][_0x136234]=_0x417321['data'][_0x136234+0x1]=_0x417321['data'][_0x136234+0x2]=0xff,_0x417321['data'][_0x136234+0x3]=_0x4139ad[_0x71627b]?0x0:0xff;}_0xd25c02['putImageData'](_0x417321,0x0,0x0);const _0x2f6d00=document['createElement']('canvas');_0x2f6d00['width']=_0x4e7a5f,_0x2f6d00['height']=_0x45fa06;const _0x5c61d4=_0x2f6d00['getContext']('2d');_0x5c61d4['drawImage'](_0x31f677,0x0,0x0),_0x5c61d4['globalCompositeOperation']='destination-in';if(RENDER_PLATE['featherPx']>0x0)_0x5c61d4['filter']='blur('+RENDER_PLATE['featherPx']+'px)';return _0x5c61d4['drawImage'](_0x48037a,0x0,0x0),_0x5c61d4['filter']='none',_0x5c61d4['globalCompositeOperation']='source-over',_0x2f6d00['_holePx']=_0x5610e6['n0']+_0x5610e6['nRim'],_0x2f6d00;}function getCleanBaseCanvas(_0x321c46,_0x5be9e9){if(!_0x321c46)return _0x321c46;if(!RENDER_PLATE['on'])return _0x321c46;if(_0x321c46['_cleanBase'])return _0x321c46['_cleanBase'];let _0x406216=_0x321c46;try{_0x406216=buildCleanBaseCanvas(_0x321c46,_0x5be9e9)||_0x321c46;}catch(_0x57d3c7){console['warn']('베이스\x20테두리\x20정리\x20실패(원본\x20사용):',_0x57d3c7),_0x406216=_0x321c46;}return _0x321c46['_cleanBase']=_0x406216,_0x406216;}function buildHoleFillCanvas(_0xf85fe5,_0x210598,_0xa9fe01,_0x1f5b9b,_0x2c5e98){const _0x275fbd=_0xf85fe5['width'],_0x4e9271=_0xf85fe5['height'];if(!_0x275fbd||!_0x4e9271)return null;let _0x9d947a=null;if(_0x210598){const _0x9ab2b7=String(_0x210598)['match'](/\d+/g);if(_0x9ab2b7&&_0x9ab2b7['length']>=0x3)_0x9d947a=[+_0x9ab2b7[0x0],+_0x9ab2b7[0x1],+_0x9ab2b7[0x2]];}if(!_0x9d947a&&_skinGraft&&_skinGraft['mean'])_0x9d947a=_skinGraft['mean']['slice']();const _0x50172c=Math['max'](0x10,Math['min'](HOLE_FILL['lowW'],_0x275fbd)),_0x12d0fa=Math['max'](0x10,Math['round'](_0x4e9271*(_0x50172c/_0x275fbd))),_0x125801=fillHolesLowRes(_0xf85fe5,_0x50172c,_0x12d0fa,_0x9d947a,_0xa9fe01),_0x1a254c=Math['max'](0x20,Math['min'](HOLE_FILL['outW'],_0x275fbd)),_0x2eee83=Math['max'](0x20,Math['round'](_0x4e9271*(_0x1a254c/_0x275fbd))),_0xcc38c5=document['createElement']('canvas');_0xcc38c5['width']=_0x1a254c,_0xcc38c5['height']=_0x2eee83;const _0x53cd08=_0xcc38c5['getContext']('2d',{'willReadFrequently':!![]});_0x53cd08['imageSmoothingEnabled']=!![],_0x53cd08['fillStyle']=_0x9d947a?'rgb('+_0x9d947a[0x0]+','+_0x9d947a[0x1]+','+_0x9d947a[0x2]+')':'rgb(224,178,148)',_0x53cd08['fillRect'](0x0,0x0,_0x1a254c,_0x2eee83),_0x53cd08['drawImage'](_0x125801,0x0,0x0,_0x1a254c,_0x2eee83);const _0x2deec1=document['createElement']('canvas');_0x2deec1['width']=_0x1a254c,_0x2deec1['height']=_0x2eee83;const _0x44a3a4=_0x2deec1['getContext']('2d',{'willReadFrequently':!![]});_0x44a3a4['drawImage'](_0xf85fe5,0x0,0x0,_0x1a254c,_0x2eee83);const _0x32786f=_0x44a3a4['getImageData'](0x0,0x0,_0x1a254c,_0x2eee83)['data'],_0x533b92=Math['min'](Math['max'](0x18,Math['round'](HOLE_FILL['patch']*_0x1a254c/0x384)),_0x1a254c>>0x1,_0x2eee83>>0x1),_0x31cde1=buildSkinGraft(_0x44a3a4,_0x1a254c,_0x2eee83,_0xa9fe01,_0x9d947a,_0x533b92,_0x1f5b9b);if(_0x31cde1&&_0x31cde1['forehead']&&(!_skinGraft||_0x1f5b9b==='front'||_skinGraft['src']!=='front'))_skinGraft=_0x31cde1;const _0x29136f=0.85;let _0x402009=!!(_0x31cde1&&_0x31cde1['forehead']),_0x468d22=null;_0x402009&&_skinGraft&&_skinGraft['forehead']&&_skinGraft!==_0x31cde1&&_skinGraft['lum']>0x1&&_0x31cde1['lum']/_skinGraft['lum']<_0x29136f&&(_0x468d22=_0x31cde1,_0x402009=![]);let _0x4be0aa=null;if(_0x402009)_0x4be0aa=_0x31cde1;else{if(_skinGraft&&_skinGraft['forehead'])_0x4be0aa=_skinGraft;else _0x4be0aa=null;}const _0x3068ba=_0x31cde1&&!_0x31cde1['forehead']?_0x31cde1:_0x468d22,_0xcf50d2=HOLE_FILL['facelessFill'],_0x34d771=!(typeof state!=='undefined'&&state['landmarks']&&state['landmarks'][_0x1f5b9b]),_0x347aa5=!!(_0xcf50d2&&_0xcf50d2['on']&&_0xa9fe01&&_0x4be0aa&&_0x4be0aa['mean']&&_0x34d771);let _0x29fa43=null,_0x1fb64f=null,_0x2b059c=null,_0x184530=new Uint8Array(_0x1a254c*_0x2eee83);if(RENDER_PLATE['on']){_0x53cd08['drawImage'](_0xf85fe5,0x0,0x0,_0x1a254c,_0x2eee83);const _0x52bee1=getHoleMask(_0xf85fe5,_0x2c5e98);if(_0x52bee1)_0x184530=downsampleFlagsMax(_0x52bee1['hole'],_0x52bee1['w'],_0x52bee1['h'],_0x1a254c,_0x2eee83);else{for(let _0x111228=0x0,_0x11afff=0x3;_0x111228<_0x184530['length'];_0x111228++,_0x11afff+=0x4)_0x184530[_0x111228]=_0x32786f[_0x11afff]<RENDER_PLATE['alphaHole']?0x1:0x0;}if(_0x347aa5){const _0x5243b1=markEllipseHole(_0x184530,_0x1a254c,_0x2eee83,_0xa9fe01,_0xcf50d2['shrink']);let _0x136972=0x0;if(_0x52bee1){_0x136972=markEllipseHole(_0x52bee1['hole'],_0x52bee1['w'],_0x52bee1['h'],_0xa9fe01,_0xcf50d2['shrink']);if(_0x136972)try{_0xf85fe5['_cleanBase']=null;}catch(_0x407a1a){}}_0x2b059c={'nIn':_0x5243b1,'nBase':_0x136972,'hadHm':!!_0x52bee1};}else _0x1fb64f=markSkinResidue(_0x32786f,_0x1a254c,_0x2eee83,_0x184530,_0xa9fe01,_0x1f5b9b,_0x52bee1&&_0x52bee1['hair']);const _0x119ed5=_0x53cd08['getImageData'](0x0,0x0,_0x1a254c,_0x2eee83),_0x2a291f=_0x119ed5['data'],_0x3431c9=inpaintDirectional(_0x2a291f,_0x184530,_0x1a254c,_0x2eee83,RENDER_PLATE['power']);relaxHoles(_0x2a291f,_0x184530,_0x1a254c,_0x2eee83,RENDER_PLATE['relax']);let _0x1fcef8=0x0,_0xb737b3=0x0;if(RENDER_PLATE['detail']>0x0){const _0x27b433=document['createElement']('canvas');_0x27b433['width']=_0x1a254c,_0x27b433['height']=_0x2eee83;const _0xef8621=_0x27b433['getContext']('2d',{'willReadFrequently':!![]});_0x53cd08['putImageData'](_0x119ed5,0x0,0x0),_0xef8621['filter']='blur('+RENDER_PLATE['detailBlurPx']+'px)',_0xef8621['drawImage'](_0xcc38c5,0x0,0x0),_0xef8621['filter']='none';const _0xb95770=_0xef8621['getImageData'](0x0,0x0,_0x1a254c,_0x2eee83)['data'];_0x1fcef8=mirrorDetail(_0x2a291f,_0xb95770,_0x184530,_0x1a254c,_0x2eee83,RENDER_PLATE['detail']);}if(!_0x1fcef8)_0xb737b3=addGrainToHoles(_0x2a291f,_0x184530,_0x1a254c,_0x2eee83,RENDER_PLATE['grain']);_0x53cd08['putImageData'](_0x119ed5,0x0,0x0),_0x29fa43={'sigma':_0xb737b3,'detail':_0x1fcef8,'rim':_0x52bee1?_0x52bee1['nRim']:0x0,'rimIter':_0x52bee1?_0x52bee1['rimIter']:0x0,'hair':_0x52bee1?_0x52bee1['hair']:null,..._0x3431c9};}else{for(let _0x42d3d0=0x0,_0x4de265=0x3;_0x42d3d0<_0x184530['length'];_0x42d3d0++,_0x4de265+=0x4)_0x184530[_0x42d3d0]=_0x32786f[_0x4de265]<0xc8?0x1:0x0;if(_0x347aa5)_0x2b059c={'nIn':markEllipseHole(_0x184530,_0x1a254c,_0x2eee83,_0xa9fe01,_0xcf50d2['shrink']),'nBase':0x0,'hadHm':![]};else{const _0xfa3f1d=_0x2c5e98&&_0x2c5e98['avgColor']&&String(_0x2c5e98['avgColor'])['match'](/\d+/g);_0x1fb64f=markSkinResidue(_0x32786f,_0x1a254c,_0x2eee83,_0x184530,_0xa9fe01,_0x1f5b9b,_0xfa3f1d&&_0xfa3f1d['length']>=0x3?[+_0xfa3f1d[0x0],+_0xfa3f1d[0x1],+_0xfa3f1d[0x2]]:null);}}logRenderPlateOnce(_0x1f5b9b,_0x29fa43,_0x1a254c,_0x2eee83),logSkinResidueOnce(_0x1f5b9b,_0x1fb64f,_0x1a254c,_0x2eee83);if(!_0xa9fe01)logFacelessOnce(_0x1f5b9b,_0x2b059c,_0x4be0aa,_0x34d771,_0xa9fe01,_0x1a254c,_0x2eee83);const _0x5df22c=!_0xa9fe01?_0x53cd08['getImageData'](0x0,0x0,_0x1a254c,_0x2eee83):null;if(_0x5df22c){const _0x2a076a=_0x5df22c['data'],_0x291b35=buildOuterField(_0x2a076a,_0x1a254c,_0x2eee83,_0x184530,_0xa9fe01),_0x2a39a8=_0x291b35?paintOuterHoles(_0x2a076a,_0x1a254c,_0x2eee83,_0x184530,_0xa9fe01,_0x291b35):0x0;if(_0x291b35)_0x53cd08['putImageData'](_0x5df22c,0x0,0x0);return logOuterFieldOnce(_0x1f5b9b,_0x291b35,_0x2a39a8,_0x1a254c,_0x2eee83,'두상\x20타원\x20없음'),_0xcc38c5;}const _0x5d2132=HOLE_FILL['graft'],_0x1ed76a=(_0x3bc51b,_0x49b04c)=>{const _0x14701f=0x2*_0x49b04c-0x2;let _0x3f6b48=(_0x3bc51b%_0x14701f+_0x14701f)%_0x14701f;return _0x3f6b48<_0x49b04c?_0x3f6b48:_0x14701f-_0x3f6b48;},_0x1c82a5=_0x53cd08['getImageData'](0x0,0x0,_0x1a254c,_0x2eee83),_0x934118=_0x1c82a5['data'],_0x1f564b=HOLE_FILL['texture'],_0x47a33f=_0x4be0aa?_0x4be0aa['size']:0x0;let _0x3eee5e=0x0,_0x614066=0x0;const _0x2aa093=HOLE_FILL['skinField'],_0x42db75=_0x347aa5?null:buildSkinField(_0x934118,_0x1a254c,_0x2eee83,_0x184530,_0xa9fe01),_0x4a1730=!!((_0x42db75||_0x347aa5)&&_0x4be0aa&&_0x2aa093&&_0x2aa093['detail']>0x0&&(_0x4be0aa['det']==null||_0x4be0aa['det']<=_0x2aa093['flatTol'])),_0x1dab7d=[0x0,0x0,0x0],_0xe766b5=!!(_0x42db75&&_0x4be0aa&&!_0x4a1730);let _0x114de9=null;try{_0x114de9=buildSkullClipWeight(_0x1f5b9b,_0x1a254c,_0x2eee83,_0x275fbd,_0x4e9271);}catch(_0x349ef7){console['warn']('[메움·두상경계]\x20두개골\x20실루엣\x20실패(타원\x20그대로):',_0x349ef7&&_0x349ef7['message']);}const _0x4bf4d6=faceToneRefFor(_0x934118,_0x1a254c,_0x2eee83,_0x184530,_0xa9fe01,_0x1f5b9b),_0x517c52=HOLE_FILL['faceTone'],_0x4ae5db=buildOuterField(_0x934118,_0x1a254c,_0x2eee83,_0x184530,_0xa9fe01,_0x114de9),_0x2e827a=!!(_0x114de9&&_0x4ae5db),_0x5b094b=[0x0,0x0,0x0],_0x107975=Math['max'](0x0,Math['min'](0x1,HOLE_FILL['outerField']['detailMix'])),_0x5e7c11=(_0xf525cd,_0x242c92,_0x369774)=>{if(!_0x2e827a)return _0x5b094b[0x0]=_0x934118[_0xf525cd],_0x5b094b[0x1]=_0x934118[_0xf525cd+0x1],_0x5b094b[0x2]=_0x934118[_0xf525cd+0x2],_0x5b094b;_0x4ae5db['at'](_0x242c92,_0x369774,_0x5b094b);for(let _0x511d5b=0x0;_0x511d5b<0x3;_0x511d5b++)_0x5b094b[_0x511d5b]=Math['max'](0x0,Math['min'](0xff,_0x5b094b[_0x511d5b]+(_0x934118[_0xf525cd+_0x511d5b]-_0x5b094b[_0x511d5b])*_0x107975));return _0x5b094b;};let _0x38058a=0x0;const _0x3d6d1b=_0x347aa5?buildFacelessCover(_0x1a254c,_0x2eee83,_0xa9fe01,_0x184530):null;let _0x10fa9d=-0x1;_0x3d6d1b&&_0x4ae5db&&(_0x10fa9d=paintOuterHoles(_0x934118,_0x1a254c,_0x2eee83,_0x184530,_0xa9fe01,_0x4ae5db));if(_0x3d6d1b&&_0x2b059c)_0x2b059c['nNeck']=_0x3d6d1b['nNeck'];for(let _0x2d0a1b=0x0;_0x2d0a1b<_0x2eee83;_0x2d0a1b++){const _0x40496b=(_0x2d0a1b+0.5)/_0x2eee83,_0xfdfe3b=(_0x40496b-_0xa9fe01['cy'])/_0xa9fe01['ry'],_0x3028ee=_0xfdfe3b*_0xfdfe3b;if(_0x3028ee>0x1&&!_0x3d6d1b)continue;const _0x557300=_0x47a33f?_0x1ed76a(_0x2d0a1b,_0x47a33f):0x0;for(let _0x573b20=0x0;_0x573b20<_0x1a254c;_0x573b20++){const _0x1e4d29=(_0x2d0a1b*_0x1a254c+_0x573b20)*0x4;if(!_0x184530[_0x2d0a1b*_0x1a254c+_0x573b20])continue;const _0x5ec320=(_0x573b20+0.5)/_0x1a254c,_0x2efdcc=(_0x5ec320-_0xa9fe01['cx'])/_0xa9fe01['rx'],_0x1da402=_0x2efdcc*_0x2efdcc+_0x3028ee;if(_0x1da402>0x1&&!_0x3d6d1b)continue;let _0x1125e5=0x1;if(_0x5d2132['edgeFeather']>0x0){const _0x11c682=Math['sqrt'](_0x1da402);if(_0x11c682>0x1-_0x5d2132['edgeFeather'])_0x1125e5=Math['max'](0x0,(0x1-_0x11c682)/_0x5d2132['edgeFeather']);}if(_0x3d6d1b){_0x1125e5=_0x3d6d1b[_0x2d0a1b*_0x1a254c+_0x573b20];if(_0x1125e5<=0.002)continue;}const _0x42f3ff=_0x5e7c11(_0x1e4d29,_0x5ec320,_0x40496b);if(_0x114de9){_0x1125e5*=_0x114de9[_0x2d0a1b*_0x1a254c+_0x573b20];if(_0x1125e5<=0.002){_0x934118[_0x1e4d29]=_0x42f3ff[0x0],_0x934118[_0x1e4d29+0x1]=_0x42f3ff[0x1],_0x934118[_0x1e4d29+0x2]=_0x42f3ff[0x2],_0x934118[_0x1e4d29+0x3]=0xff,_0x38058a++;continue;}}if(_0x347aa5){const _0x3d76a8=0x1-_0xcf50d2['edgeShade']*Math['min'](0x1,_0x1da402),_0x2ab7e6=_0x4a1730?(_0x1ed76a(_0x573b20,_0x47a33f)*_0x47a33f+_0x557300)*0x3:0x0;for(let _0x478186=0x0;_0x478186<0x3;_0x478186++){const _0x2672d9=_0x4be0aa['mean'][_0x478186]*_0x3d76a8+(_0x4a1730?_0x4be0aa['hi'][_0x2ab7e6+_0x478186]*_0x1f564b*_0xcf50d2['detail']:0x0);_0x934118[_0x1e4d29+_0x478186]=Math['max'](0x0,Math['min'](0xff,_0x42f3ff[_0x478186]*(0x1-_0x1125e5)+_0x2672d9*_0x1125e5));}_0x934118[_0x1e4d29+0x3]=0xff,_0x3eee5e++;continue;}if(_0x42db75){_0x42db75['at'](_0x5ec320,_0x40496b,_0x1dab7d);if(_0x4bf4d6){const _0x48d32c=0.299*_0x1dab7d[0x0]+0.587*_0x1dab7d[0x1]+0.114*_0x1dab7d[0x2],_0x20e44b=0.299*_0x4bf4d6[0x0]+0.587*_0x4bf4d6[0x1]+0.114*_0x4bf4d6[0x2],_0x148364=_0x20e44b>0x1?Math['max'](_0x517c52['shadeMin'],Math['min'](_0x517c52['shadeMax'],_0x48d32c/_0x20e44b)):0x1;for(let _0x50c6d2=0x0;_0x50c6d2<0x3;_0x50c6d2++)_0x1dab7d[_0x50c6d2]=_0x1dab7d[_0x50c6d2]*(0x1-_0x517c52['mix'])+_0x4bf4d6[_0x50c6d2]*_0x148364*_0x517c52['mix'];}const _0x134679=_0x4a1730?(_0x1ed76a(_0x573b20,_0x47a33f)*_0x47a33f+_0x557300)*0x3:0x0;for(let _0x4ee496=0x0;_0x4ee496<0x3;_0x4ee496++){const _0x2d4f59=_0x1dab7d[_0x4ee496]+(_0x4a1730?_0x4be0aa['hi'][_0x134679+_0x4ee496]*_0x1f564b*_0x2aa093['detail']:0x0);_0x934118[_0x1e4d29+_0x4ee496]=Math['max'](0x0,Math['min'](0xff,_0x42f3ff[_0x4ee496]*(0x1-_0x1125e5)+_0x2d4f59*_0x1125e5));}_0x3eee5e++;continue;}if(!_0x4be0aa){const _0x30ad1a=_0x5d2132['flatMix']*_0x1125e5,_0x22fdd3=_0x4bf4d6||_0x9d947a||[0xe0,0xb2,0x94];_0x934118[_0x1e4d29]=_0x42f3ff[0x0]*(0x1-_0x30ad1a)+_0x22fdd3[0x0]*_0x30ad1a,_0x934118[_0x1e4d29+0x1]=_0x42f3ff[0x1]*(0x1-_0x30ad1a)+_0x22fdd3[0x1]*_0x30ad1a,_0x934118[_0x1e4d29+0x2]=_0x42f3ff[0x2]*(0x1-_0x30ad1a)+_0x22fdd3[0x2]*_0x30ad1a,_0x614066++;continue;}const _0x1a9fa1=(_0x1ed76a(_0x573b20,_0x47a33f)*_0x47a33f+_0x557300)*0x3;if(!_0x5d2132['on']){_0x934118[_0x1e4d29]=Math['max'](0x0,Math['min'](0xff,_0x934118[_0x1e4d29]+_0x4be0aa['hi'][_0x1a9fa1]*_0x1f564b)),_0x934118[_0x1e4d29+0x1]=Math['max'](0x0,Math['min'](0xff,_0x934118[_0x1e4d29+0x1]+_0x4be0aa['hi'][_0x1a9fa1+0x1]*_0x1f564b)),_0x934118[_0x1e4d29+0x2]=Math['max'](0x0,Math['min'](0xff,_0x934118[_0x1e4d29+0x2]+_0x4be0aa['hi'][_0x1a9fa1+0x2]*_0x1f564b));continue;}const _0x277e11=0.299*_0x934118[_0x1e4d29]+0.587*_0x934118[_0x1e4d29+0x1]+0.114*_0x934118[_0x1e4d29+0x2];let _0x3e3e40=_0x4be0aa['lum']>0x1?_0x277e11/_0x4be0aa['lum']:0x1;_0x3e3e40=Math['max'](_0x5d2132['shadeMin'],Math['min'](_0x5d2132['shadeMax'],_0x3e3e40));for(let _0x2ba2dc=0x0;_0x2ba2dc<0x3;_0x2ba2dc++){const _0x2f90eb=_0x4be0aa['rgb'][_0x1a9fa1+_0x2ba2dc]*_0x3e3e40;_0x934118[_0x1e4d29+_0x2ba2dc]=Math['max'](0x0,Math['min'](0xff,_0x42f3ff[_0x2ba2dc]*(0x1-_0x1125e5)+_0x2f90eb*_0x1125e5));}_0x3eee5e++;}}logSkullClipOnce(_0x1f5b9b,_0x114de9,_0x4bf4d6,_0x38058a,_0x1a254c,_0x2eee83),logFacelessOnce(_0x1f5b9b,_0x2b059c,_0x4be0aa,_0x34d771,_0xa9fe01,_0x1a254c,_0x2eee83);const _0x409822=_0x10fa9d>=0x0?_0x10fa9d:_0x4ae5db?paintOuterHoles(_0x934118,_0x1a254c,_0x2eee83,_0x184530,_0xa9fe01,_0x4ae5db):0x0;return _0x53cd08['putImageData'](_0x1c82a5,0x0,0x0),logOuterFieldOnce(_0x1f5b9b,_0x4ae5db,_0x409822,_0x1a254c,_0x2eee83,null),logSkinFieldOnce(_0x1f5b9b,_0x42db75,_0x4be0aa,_0x4a1730,_0x1a254c,_0x2eee83),logSkinGraftOnce(_0x1f5b9b,_0x4be0aa,_0x3eee5e,_0x614066,_0x1a254c,_0x2eee83,_0x3068ba),_0xcc38c5;}const _plateLogged={};function logRenderPlateOnce(_0x2f9010,_0x26a4e6,_0x3966de,_0x46f701){if(!_0x2f9010||_plateLogged[_0x2f9010])return;_plateLogged[_0x2f9010]=!![];if(!_0x26a4e6){console['log']('[렌더경계]\x20'+_0x2f9010+':\x20꺼짐(RENDER_PLATE.on=false)\x20—\x20예전\x20동작(160px\x20확산\x20+\x20테두리\x20잔상)');return;}const _0x3b1962=_0x3966de*_0x46f701,_0x3077fd=_0x26a4e6['filled']+_0x26a4e6['unreached'];console['log'](...gyeolBoldArgs(['[렌더경계]\x20'+_0x2f9010+':\x20구멍\x20'+_0x3077fd+'px\x20('+(_0x3077fd/_0x3b1962*0x64)['toFixed'](0x1)+'%\x20of\x20'+_0x3966de+'×'+_0x46f701+')'+('\x20·\x20<b>테두리\x20회수\x20'+_0x26a4e6['rim']+'px</b>(머리색\x20'+(_0x26a4e6['hair']?'rgb('+_0x26a4e6['hair']['join'](',')+')':'없음')+',\x20최대\x20'+_0x26a4e6['rimIter']+'겹)')+('\x20·\x20방향성\x20채움\x20'+_0x26a4e6['filled']+'px\x20·\x20미도달\x20'+_0x26a4e6['unreached']+'px')+('\x20·\x20거울\x20결\x20'+_0x26a4e6['detail']+'px')+(_0x26a4e6['detail']?'':'\x20(못\x20가져와\x20잡티\x20σ\x20'+_0x26a4e6['sigma']['toFixed'](0x2)+'로\x20대체)')+'\x20—\x20두상\x20밖(어깨·옷·배경)은\x20이\x20값이\x20최종입니다']));if(_0x26a4e6['rim']===0x0)console['warn']('[렌더경계]\x20'+_0x2f9010+':\x20테두리\x20회수가\x200입니다\x20—\x20마스크\x20밖에\x20남은\x20머리색\x20픽셀이\x20없다는\x20뜻이거나,'+'\x20머리색(avgColor)이\x20없어\x20색\x20판정을\x20못\x20한\x20것입니다.\x20겹친\x20마스크가\x20계속\x20보이면\x20RENDER_PLATE.rim.tol을\x20키우세요.');else _0x26a4e6['rim']>_0x3077fd*0.5&&console['warn']('[렌더경계]\x20'+_0x2f9010+':\x20테두리\x20회수가\x20구멍의\x20절반을\x20넘습니다('+_0x26a4e6['rim']+'/'+_0x3077fd+')'+'\x20—\x20머리색이\x20옷/배경과\x20가까워\x20색\x20판정이\x20번지고\x20있을\x20수\x20있습니다.\x20RENDER_PLATE.rim.tol을\x20줄이세요.');}function logSkinFieldOnce(_0x433c57,_0x550ebc,_0x18f2a8,_0x16f057,_0x2500f5,_0x26cce9){if(!_0x433c57||_fieldLogged[_0x433c57])return;_fieldLogged[_0x433c57]=!![];const _0x2c0bb9=HOLE_FILL['skinField'];if(!_0x2c0bb9||!_0x2c0bb9['on']){console['log']('[살색격자]\x20'+_0x433c57+':\x20꺼짐(HOLE_FILL.skinField.on=false)\x20—\x20패치\x20타일\x20방식');return;}if(!_0x550ebc){console['warn'](...gyeolBoldArgs(['[살색격자]\x20'+_0x433c57+':\x20<b>못\x20섰습니다</b>\x20—\x20두상\x20안\x20성한\x20픽셀이\x20모자랍니다'+'\x20·\x20패치\x20타일\x20방식으로\x20떨어집니다(그\x20패치에\x20눈이\x20있으면\x20화면에\x20반복됩니다)']));return;}console['log'](...gyeolBoldArgs(['[살색격자]\x20'+_0x433c57+':\x20'+_0x550ebc['GX']+'×'+_0x550ebc['GY']+'칸\x20·\x20살로\x20잡힌\x20씨앗\x20'+_0x550ebc['seeded']+'칸'+('\x20→\x20번지기\x20'+_0x550ebc['passes']+'회로\x20<b>'+_0x550ebc['filled']+'/'+_0x550ebc['cells']+'칸</b>')+'\x20·\x20색은\x20전부\x20<b>자리에서</b>\x20옵니다(타일\x20없음)'+'\x0a\x20\x20\x20\x20\x20\x20결:\x20'+(!_0x18f2a8?'표본\x20없음\x20—\x20색만(격자는\x20표본\x20없이도\x20섭니다)':_0x16f057?'패치\x20고주파\x20σ'+_0x18f2a8['det']['toFixed'](0x1)+'\x20≤\x20'+_0x2c0bb9['flatTol']+'\x20→\x20<b>얹습니다</b>(세기\x20'+_0x2c0bb9['detail']+')':'패치\x20고주파\x20σ'+_0x18f2a8['det']['toFixed'](0x1)+'\x20>\x20'+_0x2c0bb9['flatTol']+'\x20→\x20<b>버립니다</b>(눈·눈썹이\x20결로\x20샙니다)')]));}function logSkinGraftOnce(_0x54b855,_0x135106,_0x29317c,_0x592677,_0x358231,_0x1cdb26,_0x46d0d6){if(!_0x54b855||_graftLogged[_0x54b855])return;_graftLogged[_0x54b855]=!![];const _0x2ae76b=_0x358231*_0x1cdb26,_0x5d00a2=_0x4ee88f=>_0x4ee88f['dy']==null?'위치?':(_0x4ee88f['forehead']?'이마':'<b>이마\x20아님</b>')+'\x20dy'+(_0x4ee88f['dy']>0x0?'+':'')+_0x4ee88f['dy']['toFixed'](0x2);console['log']('[두피이식]\x20'+_0x54b855+':\x20'+(_0x135106?'표본\x20'+_0x135106['size']+'px\x20·\x20'+_0x5d00a2(_0x135106)+'\x20·\x20출처\x20'+_0x135106['src']+(_0x135106['src']!==_0x54b855?'(다른\x20뷰\x20재사용)':'')+('\x20·\x20평균밝기\x20'+_0x135106['lum']['toFixed'](0x0)):'표본\x20없음\x20→\x20두피색\x20단색\x20'+Math['round'](HOLE_FILL['graft']['flatMix']*0x64)+'%\x20혼합')+('\x20·\x20이식\x20'+_0x29317c+'px'+(_0x592677?'(단색\x20'+_0x592677+'px)':''))+('\x20=\x20두상\x20안\x20구멍\x20'+(0x64*(_0x29317c+_0x592677)/_0x2ae76b)['toFixed'](0x1)+'%\x20of\x20'+_0x358231+'×'+_0x1cdb26));if(_0x46d0d6)console['warn']('[두피이식]\x20'+_0x54b855+':\x20이\x20뷰에서\x20뜬\x20표본이\x20'+_0x5d00a2(_0x46d0d6)+(_0x46d0d6['forehead']?'\x20<b>인데\x20너무\x20어두워</b>':'라')+'\x20버렸습니다'+('\x20(평균밝기\x20'+(_0x46d0d6['lum']!=null?_0x46d0d6['lum']['toFixed'](0x0):'?')+').')+'\x0a\x20\x20\x20\x20앞머리가\x20이마를\x20덮으면\x20이마\x20후보\x206자리가\x20\x22불투명\x2098%\x22에서\x20전부\x20탈락하고\x20눈\x20언저리로\x20내려갑니다.'+('\x20그\x20패치를\x20'+(_0x135106?'다른\x20뷰\x20이마로\x20대체했습니다':'쓰지\x20않고\x20단색으로\x20갔습니다')+'.'));}const _holeFillWarned={};function warnHoleFillOnce(_0x547e8d){if(_holeFillWarned[_0x547e8d])return;_holeFillWarned[_0x547e8d]=!![];const _0x45c200=typeof headEllipseFor==='function'?headEllipseFor(_0x547e8d):null;console['warn']('[메움]\x20'+_0x547e8d+':\x20구멍\x20메움\x20배경이\x20없어\x20두피색\x20단색으로\x20대체했다'+('\x20(두상\x20타원\x20'+(_0x45c200?'있음':'없음')+').\x20세그멘테이션\x20안이\x20검게\x20비치는\x20증상의\x20원인\x20자리.'));}function getHoleFillCanvas(_0xf99702,_0x4a5478,_0x58e99a){if(!_0x4a5478)return null;if(!_0x4a5478['_view'])_0x4a5478['_view']=_0xf99702;const _0xfe88d4=state['baseFillCanvases']&&state['baseFillCanvases'][_0xf99702],_0x190c0b=skullClipSig(_0xf99702)+'|graft:'+(_skinGraft?_skinGraft['src']||'y':'none');if(_0xfe88d4&&_0xfe88d4['_src']===_0x4a5478&&_0xfe88d4['_skullSig']===_0x190c0b)return _0xfe88d4;if(_0xfe88d4&&_0xfe88d4['_src']===_0x4a5478&&_0xfe88d4['_skullSig']!==_0x190c0b){delete _skullClipLogged[_0xf99702],delete _facelessLogged[_0xf99702],delete _graftLogged[_0xf99702];try{_0x4a5478['_cleanBase']=null;}catch(_0x45f667){}}let _0x1e0417=null;try{_0x1e0417=buildHoleFillCanvas(_0x4a5478,_0x58e99a&&_0x58e99a['scalpColor'],headEllipseFor(_0xf99702),_0xf99702,_0x58e99a);}catch(_0x451dbe){console['warn']('구멍\x20메움\x20배경\x20생성\x20실패:',_0xf99702,_0x451dbe);}if(_0x1e0417){_0x1e0417['_src']=_0x4a5478,_0x1e0417['_skullSig']=skullClipSig(_0xf99702)+'|graft:'+(_skinGraft?_skinGraft['src']||'y':'none');if(state['baseFillCanvases'])state['baseFillCanvases'][_0xf99702]=_0x1e0417;}return _0x1e0417;}
+/* ══════════════════════════════════════════════════════════
+   07a-render-canvas.js — 각도 전환 · 캔버스 렌더 · 지워진 자리 메움 · 경계 배경
+   원본 index.html 10381~11385행. 클래식 스크립트이므로 로드 순서가 곧
+   실행 순서다 — index.html의 <script src> 순서를 바꾸지 말 것.
+   ══════════════════════════════════════════════════════════ */
+/* ════════════════════════════════════════
+   ANGLE SWITCH
+════════════════════════════════════════ */
+function renderAngleSwitch(targetId){
+  const el=document.getElementById(targetId); if(!el) return; el.innerHTML='';
+  ANGLES.forEach(a=>{
+    const btn=document.createElement('button');
+    btn.textContent=ANGLE_LABELS[a];
+    btn.className=state.currentViewAngle===a?'on':'';
+    btn.onclick=()=>{
+      state.currentViewAngle=a;
+      try{ trimDerivedCanvases(a, '뷰 전환'); }catch(e){}   // 안 보는 뷰의 파생 캔버스 반납
+      bindStylingToCurrentView();   // 스타일링 슬라이더는 뷰마다 따로다
+      renderAngleSwitches();
+      updateSegStatus();
+      syncSliderUI(); drawAdjustPreview(); drawResult();
+    };
+    el.appendChild(btn);
+  });
+}
+// 조정/결과 화면 두 각도 스위치를 함께 다시 그리는 헬퍼 — 이 둘을 나란히 호출하는
+// 코드가 여러 곳에 그대로 반복되던 것을 하나로 합침
+function renderAngleSwitches(){
+  renderAngleSwitch('angleSwitch');
+  renderAngleSwitch('angleSwitchResult');
+}
+
+/* ════════════════════════════════════════
+   RENDER / CANVAS
+   - 이미지 캐시로 매번 new Image() 방지
+   - hairCanvas 없으면 SVG 선 오버레이로 폴백
+════════════════════════════════════════ */
+const imgCache = {}; // angle → HTMLImageElement (loaded)
+
+function getCachedImg(angle, cb){
+  const url = state.shots[angle];
+  if(!url){ cb(null); return; }
+  if(imgCache[angle] && imgCache[angle].src.endsWith(url.slice(-20))){
+    cb(imgCache[angle]); return;
+  }
+  const img = new Image();
+  img.onload = ()=>{ imgCache[angle]=img; cb(img); };
+  img.onerror = ()=>cb(null);
+  img.src = url;
+}
+
+// fit 계산만 하고 실제로 그리지는 않음 (베이스를 원본 대신 baseC로 바로 그릴 때 사용)
+// 이건 <b>덮기</b>(cover) — 캔버스를 꽉 채우고 넘치는 쪽은 잘라낸다.
+function computeFit(imgW, imgH, w, h){
+  const ir=imgW/imgH, cr=w/h;
+  let dw,dh,dx,dy;
+  if(ir>cr){dh=h;dw=h*ir;dx=(w-dw)/2;dy=0;}
+  else{dw=w;dh=w/ir;dx=0;dy=(h-dh)/2;}
+  return {dw,dh,dx,dy};
+}
+/* <b>담기</b>(contain) — 사진 전체가 캔버스 안에 들어오게. 결과 화면 전용.
+   (2026-08-02) 실기기(가로가 긴 데스크톱 창)에서 발견: 세로 사진을 cover로 깔면
+   가로를 채우느라 세로가 캔버스보다 훨씬 커져서 <b>목·어깨가 프레임 아래로
+   잘려나간다</b> — 조정 화면은 어차피 머리만 보면 되니 문제가 안 됐지만, 결과
+   화면은 목 아래 의상이 주인공이라 그 구간이 안 보이면 아무것도 안 한 것처럼
+   보인다(실제 증상: "조정 화면과 똑같이 나온다"). 결과 화면만 담기로 바꾼다. */
+function computeFitContain(imgW, imgH, w, h){
+  const ir=imgW/imgH, cr=w/h;
+  let dw,dh,dx,dy;
+  if(ir>cr){dw=w;dh=w/ir;dx=0;dy=(h-dh)/2;}
+  else{dh=h;dw=h*ir;dx=(w-dw)/2;dy=0;}
+  return {dw,dh,dx,dy};
+}
+
+/* 투명 구멍을 주변 색으로 메운 사본을 만든다(작은 해상도).
+   알고리즘: 투명 픽셀 중 "불투명 이웃이 있는" 것부터 그 이웃들의 평균색으로
+   채우고, 채워진 픽셀은 다음 회차에서 이웃 역할을 한다 — 경계에서 안쪽으로
+   물이 스미듯 번진다. 구멍 반지름만큼 회차를 돌면 완전히 메워진다.
+   (거리변환·인페인팅의 아주 단순한 형태. 바탕으로만 쓰므로 이 정도면 충분하다.) */
+/* 이 뷰의 사진이 그 슬롯에 맞는지 <b>알리기만</b> 한다(배제하지 않음).
+   얼굴 실측 각도로만 판정 — 얼굴이 안 잡힌 뷰는 근거가 없으니 조용히 넘어간다
+   (후면은 원래 안 잡히는 게 정상이다). */
+const SLOT_YAW_MIN_BACK = 120;  // 후면인데 이보다 정면에 가까우면 뒷머리 사진이 아님
+const SLOT_YAW_MIN_SIDE = 15;   // 측면인데 이보다 정면에 가까우면 옆머리 정보가 없음
+function warnViewSlotMismatch(angle){
+  const lm = state.landmarks && state.landmarks[angle];
+  const yaw = (lm && typeof lm.poseYawDeg === 'number') ? lm.poseYawDeg : null;
+  if(yaw === null) return;                           // 실측 없음 — 판정 불가
+  const a = Math.abs(yaw);
+  let bad = null;
+  if(angle === 'back'){
+    if(a < SLOT_YAW_MIN_BACK) bad = `얼굴이 ${a.toFixed(0)}°로 잡힘 — 뒷머리 사진이 아님`;
+  } else if(angle === 'left' || angle === 'right'){
+    const want = LIVE_YAW_TARGET[angle];
+    if(want && a > SLOT_YAW_MIN_SIDE && (yaw >= 0) !== (want.max > 0)) bad = `반대쪽 옆얼굴(yaw ${yaw.toFixed(0)}°)`;
+    else if(a <= SLOT_YAW_MIN_SIDE) bad = `거의 정면(yaw ${yaw.toFixed(0)}°)`;
+  } else if(angle === 'front'){
+    if(a > 45) bad = `정면 슬롯인데 yaw ${yaw.toFixed(0)}°`;
+  }
+  if(bad){
+    console.warn(`[슬롯 불일치] ${angle} — ${bad}.`
+      + ` 이 뷰의 가닥이 반대편(예: 후면 라벨이 앞머리 자리)에 얹혀 3D에서 섞여 보일 수 있습니다.`
+      + ` 배제하지 않고 그대로 씁니다 — 다시 촬영하면 정상화됩니다.`);
+  }
+}
+
+/* ══════════════════════════════════════════════════════════════════
+   지워진 머리카락 자리 메우기 (2026-07-27 2차)
+   ─────────────────────────────────────────────────────────────────
+   baseC는 원본에서 머리카락을 destination-out으로 지운 그림이라, 조정으로
+   가닥이 비켜난 자리는 투명 구멍이 되고 페이지 배경(검정)이 비친다.
+   그 구멍을 메운 배경을 만들어 baseC 밑에 깐다.
+
+   ── 사용자 설계(2026-07-27) ──
+   "피부색 경계는 세그멘테이션이 아니라 두상으로 우리가 잡는 영역으로 잡아야겠네.
+     그 외는 목은 신체부위로 잡힐 테니까."
+   맞다. 채울 자리는 헤어 세그멘테이션 안이지만, <b>피부로 다뤄야 하는 범위</b>는
+   두상이다. 긴 머리가 어깨까지 내려오면 그 구멍은 옷·배경이지 피부가 아니다.
+     · 두상 안  → 피부: 주변색 + <b>실제 피부 결</b>, 피부톤 편향 ON
+     · 두상 밖  → 주변색만(결 없음), 편향 OFF
+   ※ 사람/배경 구분(personMask)은 <b>쓰지 않는다</b> — 둘 다 "주변색만"으로
+     처리가 같아서 넣어도 그림이 안 바뀐다. 목에도 결을 넣고 싶어지면
+     그때 personMask를 조건에 더하면 된다(자리는 아래 headAt 한 곳).
+
+   ── 왜 두 해상도인가 ──
+   색·명암(저주파)은 번지는 계산이라 회차가 구멍 반지름만큼 필요하다 → 160px에서
+   싸게 만든다. 반면 피부 결(고주파)은 확대하면 뭉개지므로 <b>원본 해상도</b>에서
+   한 번 더한다. 결을 이어붙이는 게 아니라 "색은 주변에서, 결만 실제 피부에서"
+   가져오는 방식이라 아무리 넓은 면을 채워도 이음매가 안 생긴다.
+══════════════════════════════════════════════════════════════════ */
+const HOLE_FILL = {
+  lowW: 160,      // 저주파(색·명암) 계산 해상도
+  outW: 1200,     // 최종 배경 해상도 상한(피부 결이 보이는 해상도)
+                  // (2026-08-10) 900→1200. 두상 <b>밖</b>(어깨·옷·배경)까지 여기서
+                  // 제대로 메우게 되면서, 확대해 깔 때 뭉개지면 그게 그대로 "유령"으로 보인다.
+  patch: 72,      // 피부 표본 한 변(출력 해상도 기준)
+  texture: 1.0,   // 결 세기(1=패치 그대로)
+  skinBoost: 3,   // 피부색 이웃 가중(두상 안에서만)
+  skinTol: 110,
+  /* ── 살 색 격자 (2026-09-12) — 패치 타일링을 대체한다 ──────────────────
+     사용자: "얼굴 전체를 갖다넣어서 눈이 나오게 하지 말고, 3D 결과보기
+     이마채우기처럼 주변부 픽셀을 가져와서 심어."
+     8/11에 "이마 표본만 쓴다"로 한 번 고쳤는데도 눈이 남은 이유는 <b>고른
+     자리</b>가 아니라 <b>쓰는 방식</b>에 있었다. 어느 자리에서 뜨든 결국
+     patch 한 장(72px)을 구멍 전체에 거울 타일로 까는 구조라, 그 한 장에 뭐가
+     섞이면 화면에 그게 수십 번 찍힌다. 이 손님은 앞머리가 이마를 통째로 덮어
+     이마 후보 여섯이 전부 탈락한다 — 구조가 그대로면 또 같은 일이 난다.
+     12a의 SCALP_SKIN이 이미 같은 문제를 자리별 색으로 풀었다(정점마다 제
+     자리의 살을 집고, 살이 아니면 가장 가까운 살로 번진 값을 집는다).
+     여기도 똑같이 한다: 두상 안 격자에 살 색을 모으고 → 빈 칸을 이웃으로
+     번지게 하고 → 구멍 픽셀마다 <b>제 자리</b> 색을 집는다. 타일이 없으니
+     반복될 무늬 자체가 없다.
+     되돌리기: HOLE_FILL.skinField.on = false (8/11 타일 방식으로 복귀) */
+  skinField: {
+    on: true,
+    gridX: 48, gridY: 64,   // 격자 해상도(두상 타원 위)
+    darkPct: 0.38,          // 이 백분위보다 어두우면 살이 아니다(눈·눈썹·입·머리경계)
+    fillPasses: 96,         // 빈 칸을 이웃 평균으로 번지게 = "가장 가까운 살"
+    minCells: 0.08,         // 살이 이보다 적게 잡히면 안 쓴다(폴백이 낫다)
+    detail: 0.55,           // 결(고주파)만 얹는 세기. 색은 전부 격자가 정한다
+    flatTol: 16,            // 표본 고주파 표준편차 상한 — 넘으면 눈·눈썹이라 결도 안 쓴다
+  },
+  /* ── 두상 <b>밖</b>도 주변색으로 (2026-09-14) ────────────────────────────
+     사용자(긴머리 여성 후면): "2D 조정화면 뒷머리 부분, 거기는 색메움이 반영이
+     안되었나봐. 머리를 줄이니까 많이 드러나는데, <b>눈모양이 가득해</b>."
+
+     ── 눈모양의 정체는 타일이 아니라 mirrorDetail이다 ────────────────────
+     8/11·9/12에 고친 것은 <b>패치 타일링</b>이었는데, 후면에 남은 것은 다른
+     함수다. mirrorDetail은 구멍 경계를 기준으로 <b>바깥 픽셀을 안으로 반사</b>해
+     고주파를 가져온다 — 눈 옆이 구멍이면 눈 윤곽이 구멍 안으로 접혀 들어가고,
+     4방향으로 도니까 여러 번 찍힌다. 색칠된 눈이 아니라 <b>윤곽선</b>이다.
+
+     ── 왜 후면에만 남았나 ────────────────────────────────────────────────
+     이식 루프가 `if(v2 > 1) continue; // 두상 밖`으로 <b>타원 안만</b> 돈다.
+     mirrorDetail은 그보다 앞 단계(RENDER_PLATE)에서 <b>타원과 무관하게</b>
+     전체에 돈다. 그래서 타원 안은 나중에 살 격자가 덮어써서 깨끗하고, 타원
+     <b>밖</b>은 mirrorDetail 결과가 그대로 최종이 된다.
+     긴 머리를 줄이면 드러나는 자리가 대부분 타원 밖이라 후면에서만 크게 보였고,
+     짧은 머리 남성은 거의 다 타원 안이라 안 보였다. 뷰의 문제가 아니라
+     <b>구멍이 타원 밖이냐</b>의 문제였다(후면에 랜드마크가 없는 것과는 별개다 —
+     headEllipseFor는 헤어 실루엣 밴드로 서므로 후면에도 타원은 있다).
+
+     ── 고침: 밖에는 <b>밖의</b> 주변색을 쓴다 ────────────────────────────
+     안쪽(살 격자)을 밖으로 넓히지 <b>않는다</b>. 드러난 자리는 두피가 아니라
+     목·어깨·옷·배경이라, 살색으로 메우면 어깨 옆 허공에 살색 덩어리가 생긴다
+     (예전 로그의 "유령 덩어리"가 그것이다).
+     대신 같은 3패스 구조를 <b>타원 밖 픽셀로 따로</b> 세운다 — 씨앗이 옷이면
+     옷색, 배경이면 배경색, 목이면 목 살색이 <b>가장 가까운 것</b>으로 번져 온다.
+     살 격자와 달리 darkPct(어두운 것 거르기)를 <b>안 쓴다</b>: 여기서 찾는 것은
+     살이 아니라 "이 자리에 원래 뭐가 있었나"라서, 검은 니트를 걸러내면 안 된다.
+     ⓘ 이 격자가 덮어쓰므로 타원 밖에서는 mirrorDetail 결과가 버려진다 —
+       눈 윤곽이 사라지는 자리가 바로 거기다. 대신 그 구역은 결 없이 평평해진다.
+       니트 짜임까지 살리려면 detailMix를 올린다(0이면 완전히 평평).
+     되돌리기: HOLE_FILL.outerField.on = false (예전처럼 mirrorDetail 결과가 남는다) */
+  outerField: {
+    on: true,
+    gridX: 64, gridY: 80,   // 격자 해상도(캔버스 전체 위 — 타원이 아니다)
+    fillPasses: 160,        // 밖은 구멍이 크다(어깨까지) — 안쪽보다 넉넉히
+    minCells: 0.04,         // 씨앗이 이보다 적으면 안 쓴다(폴백이 낫다)
+    detailMix: 0.35,        // 메운 자리에 남길 고주파 비율. 0 = 완전히 평평
+  },
+  dirW: [0.4, 1.0, 2.6], // 위/가운데/아래 이웃 가중 — 살색이 두피로 타고 올라오게
+  /* ── 두피 이식 (2026-08-03) ────────────────────────────────────────
+     사용자: "머리두피면을 보면 까맣게 보여. 저기 채워지지 않은 자리는 헤어
+     세그멘테이션 바깥쪽의 <b>이마 피부 픽셀</b>을 가져와서 옮겨심는 구조가
+     있을거야. 그걸 연결해줘."
+     맞다 — 구조는 이미 있었다(pickSkinPatch). 다만 <b>결(고주파)만</b> 얹고
+     있었다: 그 자리의 <b>색</b>은 여전히 이웃 전파(fillHolesLowRes)가 정했고,
+     정수리 근처는 이웃이 거의 전부 <b>배경(벽)</b>이라 흰 벽이, 뒤통수·목덜미
+     쪽은 지워진 머리 경계의 어두운 값이 번져 들어왔다. 결만 얹어봐야 그 위에
+     찍히는 미세 명암일 뿐이라 "두피면이 까맣다/허옇다"가 그대로 남는다.
+     고침: 두상 안 구멍은 <b>색까지 이마 표본에서 가져온다</b>. 번져 들어온
+     색은 색으로 안 쓰고 <b>밝기만</b>, 그것도 아래 범위로 <b>제한해서</b> 받는다
+     (그늘은 남기되 벽의 흰색·머리의 검정으로는 절대 못 가게).
+     ※ 소스와 대상이 같은 사람·같은 조명·같은 카메라라 색을 맞출 필요가 없다 —
+       이게 원래 구멍 메움이 통했던 이유고, 그대로 적용된다. */
+  graft: {
+    on: true,          // false면 예전 동작(결만 얹기) — A/B용
+    shadeMin: 0.72,    // 받아들일 밝기 배율 하한(제일 어두운 안쪽 겹)
+    shadeMax: 1.12,    // 〃 상한(정수리 하이라이트) — 벽의 흰색이 여기서 잘린다
+    edgeFeather: 0.14, // 두상 타원 가장자리 페더(반경 대비) — 이식이 뚝 끊기지 않게
+    flatMix: 0.85,     // 표본을 못 떴을 때 두피색 쪽으로 끌어당기는 비율
+  },
+  /* ── 두상 안 잔재 회수 (2026-09-14) ──────────────────────────────────
+     사용자: "adjust 후면사진 <b>타원 이내</b>인데 눈모양이 메워졌어. 다른
+     부위들에 이식한 피부이식픽셀로 메워줘."
+     원인 — 이식 루프의 첫 줄이 `if(!hole[...]) continue;`다. 즉 <b>헤어 마스크가
+     지운 자리만</b> 메운다. 후면 사진에서 세그멘테이션이 놓친 머리 뭉치는
+     지워지지 않아 <b>불투명</b>이고, 그래서 hole이 아니라 이식 대상에서 빠진다.
+     더 나쁜 건 그게 인페인팅의 "아는 픽셀"로 쓰인다는 점이다 — dirW가 아래쪽
+     이웃을 2.6배로 보므로 그 검정이 <b>아래로 길게 끌려</b> 내려간다. 화면에
+     보이는 눈동자 + 속눈썹처럼 번진 자국이 정확히 그 스윕 자국이다.
+     고침 — 두상 타원 <b>안</b>에서 "성한 살"보다 뚜렷하게 어두운 불투명 픽셀을
+     구멍으로 <b>승격</b>시킨다. 승격은 인페인팅 <b>전</b>에 해야 한다(씨앗에서
+     빼야 아래로 안 번진다). 그러면 그 자리는 다른 부위와 똑같은 경로 —
+     살 격자(색) + 이마 표본(결) — 로 메워진다.
+     ⚠ 정면·측면은 이목구비가 정당하게 타원 안에 있으므로 <b>얼굴 랜드마크가
+       잡힌 뷰에서는 절대 돌지 않는다</b>(아래 게이트). 후면은 로그가 늘
+       "landmarks none"이라 이 경로만 탄다. */
+  residue: {
+    on: true,
+    /* ── 후면: 밝기가 아니라 <b>머리색</b>으로 잡는다 (2026-09-14 2차) ──────────
+       사용자: "후면 타원 안에 아직 눈모양이 남아 있다. 전면·측면에 적용한
+       피부 픽셀 이식을 후면 타원 안에도 똑같이 적용해라."
+       1차(밝기 중앙값 × darkRatio)로는 후면에서 회수가 <b>취소</b>된다.
+       긴 머리 후면은 타원 안 \"성한 살\"이 애초에 거의 없고(대부분 지운 구멍),
+       세그가 놓친 머리 뭉치가 그 적은 표본의 절반 이상을 차지하기 때문에
+       maxFrac(25%) 안전장치에 걸려 통째로 손을 안 댄다 — 그래서 눈처럼 보이는
+       스윕 자국이 전면·측면과 달리 후면에만 남았다.
+       고침: 머리 평균색(maskInf.avgColor, 구멍 마스크가 이미 쓰는 그 값)과
+       가까운 불투명 픽셀은 <b>밝기와 무관하게</b> 잔재로 본다. 색으로 잡은 것은
+       근거가 분명하므로 maxFrac 취소 대상에서 뺀다(밝기로만 잡은 것은 그대로
+       maxFrac을 적용해 정면 얼굴 오작동을 막는다).
+       되돌리기: HOLE_FILL.residue.byHair = false */
+    byHair: true,
+    hairTol: 78,       // 머리 평균색과의 채널당 평균 거리 한계(0~255) — 넘으면 살로 본다
+    darkRatio: 0.80,   // 두상 안 살 밝기 중앙값 대비 이 배율보다 어두우면 <b>심지</b>
+    softRatio: 0.93,   // 심지에 <b>붙어 있을 때만</b> 같이 데려갈 반그늘 상한(이력)
+    growPx: 3,         // 어두운 심지만 지우면 둘레 흐린 띠가 남는다 — 부풀려 잡는다
+    minSample: 400,    // 살 표본이 이보다 적으면 중앙값을 못 믿는다 → 손 안 댐
+    maxFrac: 0.25,     // 성한 살 면적의 이 비율을 넘게 잡히면 판정 실패로 보고 취소
+  },
+  /* ── 얼굴 없는 뷰: 타원 안을 통째로 <b>이식</b>한다 (2026-09-14 3차) ──────────
+     사용자: "뒷면 두상 타원 내 메움도 정면·측면처럼 <b>피부픽셀 이식</b>으로
+     바꿔줘. 사람 눈 안 들어가게."
+
+     ── 왜 2차(잔재 회수)로 부족했나 — 두 군데가 어긋나 있었다 ─────────────
+     ① <b>승격이 화면에 반영되지 않았다.</b> markSkinResidue는 <b>축소한 사본</b>
+        (downsampleFlagsMax의 결과)에만 OR 했다. 화면은 [메움 배경] 위에
+        <b>baseC 정리본</b>을 얹어 만드는데, 그 정리본은 캐시된 <b>원본 해상도</b>
+        마스크(getHoleMask)로 오려낸다. 사본만 고쳤으니 정리본은 그 자리를 여전히
+        "성한 픽셀"로 보고 <b>원본 머리 잔재를 그대로 덮어 그렸다</b> — 아래에서
+        아무리 곱게 메워도 위에 눈자국이 다시 올라온 것이다.
+     ② <b>색·밝기를 그 사진에서 가져왔다.</b> 후면 타원 안은 성한 살이 거의 없어
+        살 격자(skinField)의 씨앗이 결국 <b>세그가 놓친 머리 뭉치</b>다. 이식
+        분기로 가도 밝기(sh)를 od에서 읽으니 스윕 자국이 <b>음영</b>으로 되살아난다.
+        어느 쪽이든 원본의 어두운 무늬가 형태로 남는다.
+
+     ── 고침: 얼굴 랜드마크가 없는 뷰는 타원 안을 <b>전부</b> 이식면으로 본다 ──
+     후면 두상 타원 안에는 지워야 할 것(머리)과 두피뿐이고, <b>있어야 하는</b>
+     어두운 자리(눈·눈썹·콧구멍)가 없다. 그러니 "어디가 잔재인지" 고를 이유가
+     없다 — 타원 안을 통째로 구멍으로 넘기고, 색·결을 <b>다른 뷰 이마 표본</b>에서
+     가져와 심는다. 그 위에 새 헤어가 그려지므로 두피가 통째로 새 것이어도 된다.
+     · 구멍 승격을 <b>원본 해상도 마스크에도</b> 반영하고 baseC 정리본 캐시를
+       무효화한다(위 ①). 이제 위에 얹히는 그림에서도 그 자리가 비워진다.
+     · 색은 od를 <b>한 방울도</b> 안 쓴다. 표본 평균색 + 완만한 구면 음영뿐이라
+       눈 모양이 들어올 경로 자체가 없다(위 ②).
+     · 결은 표본 고주파를 쓰되 <b>이마 표본이고 평평할 때만</b>이다
+       (skinField.flatTol) — 눈·눈썹은 고주파가 커서 여기서 걸린다.
+     ⚠ 정면·측면은 랜드마크가 잡히므로 이 경로가 <b>절대</b> 돌지 않는다.
+       거기는 이목구비가 정당하게 타원 안에 있다(지우면 얼굴이 사라진다).
+     되돌리기: HOLE_FILL.facelessFill.on = false (2차 잔재 회수 동작으로 복귀) */
+  /* ── 메움 색을 <b>얼굴 색</b>에 붙인다 (2026-09-16) ──────────────────────────
+     사용자: "얼굴 색이랑 좀 더 가깝게 칠하고."
+     녹화 프레임을 재 보니(HSV) 얼굴 볼 H23 S29 V85 · 이마 H26 S22 V86인데
+     메움은 정면 관자놀이 <b>V70</b>(15%p 어두움) · 측면 귀 뒤 <b>S41</b>(12%p 진함)이었다.
+     색조는 같고 밝기·채도만 갈렸다. 원인은 살 격자의 <b>씨앗 자리</b>다 — 타원 안에서
+     구멍이 아닌 살은 대개 머리카락 경계 바로 옆(그늘진 관자·턱선·귀 뒤)이라, 번져
+     나온 색이 얼굴 가운데보다 어둡고 진하다.
+     고침: 얼굴 가운데 띠(눈썹~턱, 살색으로 보이는 픽셀의 밝기 50~88백분위 평균)를
+     기준색으로 잡고, 격자 색을 그쪽으로 mix만큼 당긴다. 밝기 차는 shadeMin~Max
+     안에서만 살려 그늘 결은 남긴다.
+     되돌리기: HOLE_FILL.faceTone.on = false */
+  faceTone: { on: true, mix: 0.75, shadeMin: 0.90, shadeMax: 1.04,
+              loPct: 0.50, hiPct: 0.88, minSamples: 150 },
+  /* ── 살색은 <b>두개골 안</b>에만 (2026-09-16) ────────────────────────────────
+     사용자: "배경하고의 경계를 잘 잡으면, 두상밖으로 살색이 칠해지는 게 좀 덜 해질거 같아."
+     지금 살 구역은 headEllipseFor — <b>헤어 실루엣</b> 밴드로 선 타원이다(폭 ×0.92).
+     긴 머리 측면은 뒤로 흐른 머리까지 실루엣이라 타원이 뒤통수 뒤 허공까지 덮고,
+     그 안의 구멍이 전부 살색이 됐다(측면 귀 뒤 반투명 살색 원판).
+     고침: 3D 두개골(getDisplaySkullEllipsoid)을 <b>이 뷰의 viewCal로 되쏜 실루엣</b>을
+     살 구역으로 쓴다. 헤어를 그리는 바로 그 투영이라 새 가닥의 뿌리와 살 경계가
+     같은 자리에 선다. 타원 안이어도 두개골 밖인 구멍은 살이 아니라 <b>주변색 격자</b>
+     (배경·옷)로 메우고, 경계는 featherFrac만큼 부드럽게 넘긴다.
+     viewCal이 아직 없으면(모델 준비 전) 예전 타원 동작 그대로다 — 모델이 생기면
+     캐시 서명이 바뀌어 한 번 다시 굽는다.
+     되돌리기: HOLE_FILL.skullClip.on = false */
+  /* ── 얼굴 없는 뷰(후면)는 <b>자르지 않는다</b> (2026-09-16 2차) ────────────────
+     사용자: "후면 2D에서 두상타원 아랫부분이 투명하게 노출되는데 그냥 다 메움으로 되었으면 좋겠어."
+     후면에는 얼굴 랜드마크가 없어 viewCal이 <b>실루엣 앵커</b>로 선다(로그: 뷰정렬 폭 ×0.87,
+     실루엣맞춤 잔차 7.4% ⚠ 헐거움). 그 자로 되쏜 두개골은 사진의 두상보다 작고 위로 떠서,
+     타원 <b>아랫부분</b>(뒤통수 아래·목덜미 위)이 "두개골 밖"으로 판정돼 주변색 격자 = 벽색으로
+     칠해졌다(로그: 타원 안인데 두개골 밖이라 주변색으로 메운 픽셀 back 18934 · front 9049).
+     벽색이라 화면에선 <b>구멍이 뚫린 것</b>처럼 보인다.
+     skullClip이 막으려던 것은 긴 머리 <b>측면</b>에서 뒤로 흐른 머리까지 타원이 덮는 경우다.
+     후면 타원 안은 전부 두피·지울 머리라 살 구역을 줄일 이유가 없다 — 타원 그대로 메운다.
+     되돌리기: HOLE_FILL.skullClip.faceless = true (후면도 두개골 실루엣으로 자름) */
+  skullClip: { on: true, grow: 1.04, featherFrac: 0.010, nPhi: 28, nTheta: 56, faceless: true },   // (360shot 배포본) 후면(얼굴 없는 뷰)도 두개골 실루엣으로 자름
+  facelessFill: {
+    on: true,
+    shrink: 0.97,      // 타원을 이 비율까지만 칠한다(타원이 조금 어긋나도 밖으로 안 샘)
+    edgeShade: 0.12,   // 가장자리로 갈수록 살짝 어둡게 — 평평한 스티커처럼 안 보이게
+    detail: 0.55,      // 이마 표본 고주파 세기(평평한 표본일 때만)
+    /* ── 타원 아래가 <b>배경으로 비치던 것</b> (2026-09-16 3차) ─────────────────
+       사용자: "2D 결과보기 후면에 두상타원 아래쪽이 투명하게 노출되어 있어. 그거까지 메워졌으면."
+       2차(skullClip.faceless=false)로 두개골 자르기는 풀렸는데 녹화에서 그대로였다.
+       프레임을 재 보니 원인은 둘이었다.
+         ① <b>페더가 반경 비율</b>(graft.edgeFeather 0.14)이다 — r 0.86~1에서 이식이 인페인팅
+            배경(=벽색)으로 선형으로 넘어간다. 타원 아래는 경계가 비스듬히 지나가 그
+            띠가 세로로 길게 늘어져, 살이 <b>반투명</b>하게 벽에 녹는 것처럼 보였다
+            (녹화 실측: 같은 열에서 살 126,110,97 → 30px 사이에 벽 219,220,225).
+         ② 타원이 <b>뒤통수에서 끝난다</b>. 긴 머리를 지운 목덜미·목 자리는 타원 밖이라
+            주변색 격자(벽)로 메워졌다 — 머리 밑으로 배경이 뚫려 보인다.
+       고침: 얼굴 없는 뷰만 ① 페더를 <b>px 고정 폭</b>(featherFrac×출력폭)으로 얇게,
+       ② 타원 아래에 <b>목 기둥</b>을 붙여 합집합을 같은 이식면으로 칠한다. 목 기둥은
+       원래 머리였던 자리(hole)만 칠한다 — 사진에 보이던 옷·어깨는 안 건드린다.
+       되돌리기: HOLE_FILL.facelessFill.cover = false (2차 동작) */
+    cover: true,
+    featherFrac: 0.010,   // 가장자리 페더 폭 = 출력폭 × 이 값(px 고정 — 아래쪽만 길게 늘어지지 않게)
+    neck: { on: false,   // (360shot 배포본) 목 기둥 칠하기 끔
+            halfK: 0.60,  // 목 반폭 = 타원 rx × 이 값(rx는 헤어 실루엣×0.92라 두개골보다 넓다)
+            lenK: 0.90,   // 타원 바닥에서 목 길이 = ry × 이 값(≈ 목 8~10cm)
+            fadeK: 0.30,  // 그 아래 사라지는 구간 = ry × 이 값
+            flare: 0.18 },// 아래로 갈수록 이만큼 넓어짐(승모근 쪽)
+  },
+};
+
+/* 얼굴 없는 뷰의 이식 덮개 가중치(0~1, ow×oh) — 타원(px 페더) ∪ 목 기둥.
+   반환 null이면 예전 동작. nNeck = 타원 밖인데 목 기둥이라 칠할 자리 수(구멍만). */
+function buildFacelessCover(ow, oh, ell, hole){
+  const FF = HOLE_FILL.facelessFill;
+  if(!FF || !FF.cover || !ell) return null;
+  const Rx = ell.rx*ow, Ry = ell.ry*oh, cxP = ell.cx*ow, cyP = ell.cy*oh;
+  if(!(Rx > 2 && Ry > 2)) return null;
+  const fp = Math.max(1.5, ow * (FF.featherFrac || 0.01));
+  const N = FF.neck || {};
+  const neckOn = !!N.on;
+  const botP = cyP + Ry, lenP = (N.lenK||0)*Ry, fadeP = Math.max(1, (N.fadeK||0)*Ry);
+  const w = new Float32Array(ow*oh);
+  let nNeck = 0;
+  for(let y=0; y<oh; y++){
+    const dy = (y+0.5) - cyP;
+    // 목 기둥 세로 가중(타원 가운데 아래부터)
+    let wy = 0, half = 0;
+    if(neckOn && dy >= 0){
+      const below = (y+0.5) - botP;
+      wy = below <= lenP ? 1 : Math.max(0, 1 - (below - lenP)/fadeP);
+      const t = lenP > 0 ? Math.max(0, Math.min(1, below/lenP)) : 0;
+      half = (N.halfK||0) * Rx * (1 + (N.flare||0)*t);
+    }
+    for(let x=0; x<ow; x++){
+      const dx = (x+0.5) - cxP;
+      const r = Math.sqrt((dx/Rx)*(dx/Rx) + (dy/Ry)*(dy/Ry));
+      let we = 0;
+      if(r < 1){
+        const rp = Math.sqrt(dx*dx + dy*dy);
+        const dist = r > 1e-6 ? (1 - r) * rp / r : Infinity;   // 광선 따라 경계까지 px
+        we = Math.min(1, dist / fp);
+      }
+      let wn = 0;
+      if(wy > 0){
+        const ex = half - Math.abs(dx);
+        if(ex > 0) wn = Math.min(1, ex / fp) * wy;
+      }
+      const p = y*ow + x;
+      w[p] = we > wn ? we : wn;
+      if(r >= 1 && wn > 0.002 && hole && hole[p]) nNeck++;
+    }
+  }
+  w.nNeck = nNeck;
+  return w;
+}
+
+/* 이식용 피부 표본 — 뷰별로 뜨고, 못 뜨면 <b>다른 뷰에서 뜬 것</b>을 재사용한다.
+   후면처럼 얼굴이 아예 없는 뷰가 정확히 이 경우다(로그: "back 얼굴 감지 실패").
+   같은 사람·같은 조명·같은 카메라라 뷰가 달라도 색을 맞출 필요가 없다. */
+let _skinGraft = null;   // { rgb:Uint8ClampedArray(size*size*3), hi:Float32Array, size, lum, src }
+const _fieldLogged = {}, _graftLogged = {};   // 뷰당 1회 로그 표시(재촬영 때 resetSkinGraft가 푼다)
+function resetSkinGraft(){
+  _skinGraft = null;
+  /* (2026-09-12) 뷰당 1회 로그 표시도 같이 푼다 — 안 그러면 재촬영 뒤에
+     격자가 못 서도 경고가 안 뜬다(예전에 이런 자리를 여러 번 놓쳤다). */
+  for(const k in _fieldLogged) delete _fieldLogged[k];
+  for(const k in _graftLogged) delete _graftLogged[k];
+  for(const k in _residueLogged) delete _residueLogged[k];   // (2026-09-14) 잔재회수 진단도 같이
+  for(const k in _facelessLogged) delete _facelessLogged[k]; // (2026-09-14 3차) 전면이식 진단도 같이
+  for(const k in _skullClipLogged) delete _skullClipLogged[k]; // (2026-09-16) 두상경계 진단도 같이
+}
+
+// 뷰의 두상 영역(정규 좌표) — 정수리~턱을 감싸는 타원. 없으면 null.
+function headEllipseFor(angle){
+  const b = sectionBandsFor(angle);
+  if(!b) return null;
+  const top = b.headTopY;
+  const bot = (typeof b.chinLineY === 'number') ? b.chinLineY : b.napeTopY;
+  if(!(bot > top)) return null;
+  const cx = (b.nxMin + b.nxMax) / 2;
+  // 실루엣에는 머리숱이 포함돼 있어 두개골보다 넓다 — 조금 좁혀 잡는다.
+  let rx = Math.max(0.02, (b.nxMax - b.nxMin) / 2 * 0.92);
+  const ry = (bot - top) / 2;
+  /* (360shot 배포본) 얼굴이 안 잡힌 뷰(후면 등)는 실루엣에 어깨로 흐른 머리까지 들어가 타원이
+     옆으로 퍼진다 — 가로 반지름을 세로 반지름의 0.8배(사진 종횡비로 환산)까지만 */
+  const hasFace = !!(state.landmarks && state.landmarks[angle]);
+  const img = (typeof imgCache !== 'undefined') ? imgCache[angle] : null;
+  if(!hasFace && img && img.naturalWidth && img.naturalHeight){
+    const rxMax = ry * 0.8 * (img.naturalHeight / img.naturalWidth);
+    if(rx > rxMax) rx = rxMax;
+  }
+  return { cx, cy: (top + bot) / 2, rx, ry };
+}
+
+/* 얼굴에서 깨끗한 피부 표본을 찾는다(불투명 + 피부색에 가까운 정사각 영역).
+
+   ── 후보 자리 (2026-08-03 수정) ────────────────────────────────────
+   주석은 예전부터 "볼 → 턱 → <b>이마</b>"라고 적혀 있었는데 후보 좌표에는
+   <b>이마가 아예 없었다</b> — dy가 전부 0 이상(=두상 중심보다 아래)이라
+   제일 위가 dy 0.10, 눈 언저리였다. 이식 대상이 <b>두피</b>인데 표본을 볼·턱에서
+   뜨면 그림자·수염·턱선 명암이 같이 따라온다. 두피 바로 옆에 붙어 있고 결이
+   가장 비슷한 <b>이마</b>(dy 음수 = 중심보다 위)를 후보에 넣고 우대한다.
+   ※ 이마 밴드는 앞머리가 걸치기 쉬운 자리라 구멍(투명)이 섞이면 아래
+     "불투명 98%" 조건에서 자동으로 탈락한다 — 우대해도 안전하다. */
+const SKIN_PATCH_CANDS = [
+  // [dx, dy, 우대점수] — 두상 타원 중심 기준(dy<0 = 위쪽 = 이마)
+  [ 0.00, -0.28, 0.25], [-0.28, -0.24, 0.22], [ 0.28, -0.24, 0.22],
+  [ 0.00, -0.16, 0.20], [-0.40, -0.10, 0.15], [ 0.40, -0.10, 0.15],
+  [ 0.00,  0.15, 0.05], [-0.35,  0.10, 0.05], [ 0.35,  0.10, 0.05],
+  [-0.55,  0.35, 0.00], [ 0.55,  0.35, 0.00], [-0.50, 0.60, 0.00],
+  [ 0.50,  0.60, 0.00], [ 0.00,  0.70, 0.00],
+];
+function pickSkinPatch(ctx, W, H, ell, skinRGB, size){
+  if(!ell) return null;
+  const cands = [];
+  for(const [dx, dy, bonus] of SKIN_PATCH_CANDS){
+    const px = Math.round((ell.cx + ell.rx*dx) * W - size/2);
+    const py = Math.round((ell.cy + ell.ry*dy) * H - size/2);
+    if(px < 0 || py < 0 || px+size > W || py+size > H) continue;
+    const d = ctx.getImageData(px, py, size, size).data;
+    let opaque=0, near=0;
+    for(let i=0;i<d.length;i+=4){
+      if(d[i+3] < 200) continue;
+      opaque++;
+      const dist = Math.abs(d[i]-skinRGB[0]) + Math.abs(d[i+1]-skinRGB[1]) + Math.abs(d[i+2]-skinRGB[2]);
+      if(dist < HOLE_FILL.skinTol) near++;
+    }
+    const total = size*size;
+    if(opaque < total*0.98) continue;            // 구멍이 섞이면 못 씀
+    // score = 순수 "피부다움"(합격 판정용), rank = 거기에 이마 우대를 얹은 정렬 키.
+    // 우대점수로 <b>합격선을 넘기지는 않게</b> 둘을 분리한다(머리카락 패치 방지).
+    /* dy<0 = 이마. 어느 자리에서 떴는지를 <b>들고 나간다</b> (2026-08-11).
+       여태 이 정보를 버려서, 로그가 어느 후보가 뽑혔든 "이마 표본"이라고 찍었다.
+       그래서 눈 언저리에서 떠 와도 아무도 몰랐다. */
+    cands.push({ px, py, dx, dy, forehead: dy < 0, score: near/total, rank: near/total + bonus });
+  }
+  if(!cands.length) return null;
+  cands.sort((a,b)=> b.rank - a.rank);
+  const best = cands.find(c => c.score > 0.5);   // 절반도 피부색이 아니면 못 씀
+  return best || null;
+}
+
+/* ── 살 색 격자 (2026-09-12) ─────────────────────────────────────────
+   두상 타원 안에서 <b>구멍이 아니고 충분히 밝은</b> 픽셀만 모아 격자 평균을
+   내고, 빈 칸을 이웃으로 번지게 한다. 구멍 픽셀은 나중에 제 자리 색을 집는다.
+   눈·눈썹·입은 darkPct 아래로 떨어져 애초에 안 들어오고, 그 자리는 번지기가
+   주변 살로 메운다 — 12a SCALP_SKIN의 3패스와 같은 구조다.
+   od는 <b>고치기 전</b> 픽셀이어야 한다(이식 루프보다 먼저 부를 것). */
+/* 타원 밖 구멍에 주변색을 칠한다. 고주파는 detailMix만큼 남긴다 —
+   0이면 완전히 평평하고, 올리면 니트 짜임·배경 입자가 조금 돌아온다.
+   ⚠ mirrorDetail이 넣은 고주파에는 <b>눈 윤곽</b>이 섞여 있을 수 있다.
+     detailMix를 올린다는 것은 그것도 같이 돌아온다는 뜻이다(그래서 기본이 낮다). */
+/* 두개골 실루엣 가중치(0~1, ow×oh). viewCal이 없으면 null — 호출부는 예전 타원 동작. */
+function skullClipCal(angle){
+  const S = HOLE_FILL.skullClip;
+  if(!S || !S.on || typeof state === 'undefined') return null;
+  if(!S.faceless && !(state.landmarks && state.landmarks[angle])) return null;   // 얼굴 없는 뷰 = 타원 그대로(위 배너)
+  const m = state.hair3Dneutral;
+  const vc = m && m.viewCal;
+  if(!vc || !vc[angle]) return null;
+  const cal = (typeof calForDraw === 'function') ? calForDraw(m, angle) : vc[angle];   // 그리기와 같은 자
+  if(!cal || !isFinite(cal.s) || !isFinite(cal.sy) || !isFinite(cal.cx)) return null;
+  return { m, cal };
+}
+function skullClipSig(angle){
+  const k = skullClipCal(angle);
+  if(!k) return 'none';
+  const S = HOLE_FILL.skullClip;
+  return [k.cal.cx.toFixed(1), k.cal.s.toFixed(5), k.cal.sy.toFixed(5), (k.cal.yaw||0).toFixed(3),
+          S.grow, S.featherFrac].join('|');
+}
+function buildSkullClipWeight(angle, ow, oh, imgW, imgH){
+  const k = skullClipCal(angle);
+  if(!k || !(imgW > 0) || !(imgH > 0)) return null;
+  if(typeof getDisplaySkullEllipsoid !== 'function' || typeof project3DPointToView !== 'function') return null;
+  const S = HOLE_FILL.skullClip;
+  let sk; try{ sk = getDisplaySkullEllipsoid(); }catch(e){ return null; }
+  if(!sk || !(sk.a > 0) || !(sk.b > 0) || !(sk.c > 0)) return null;
+  const CY = (k.m.CY != null) ? k.m.CY : 0.15;
+  const a = sk.a*S.grow, b = sk.b*S.grow, c = sk.c*S.grow;
+  const pts = [];
+  for(let i=0; i<=S.nPhi; i++){
+    const phi = i / S.nPhi * Math.PI;
+    for(let j=0; j<S.nTheta; j++){
+      const th = j / S.nTheta * 2*Math.PI;
+      const w = { x: a*Math.sin(phi)*Math.sin(th), y: CY + b*Math.cos(phi), z: c*Math.sin(phi)*Math.cos(th) };
+      const pr = project3DPointToView(w, k.cal, k.m.yTop, CY);
+      if(!isFinite(pr.ix) || !isFinite(pr.iy)) continue;
+      pts.push([pr.ix / imgW * ow, pr.iy / imgH * oh]);
+    }
+  }
+  if(pts.length < 8) return null;
+  // 정사영 타원체의 실루엣은 볼록 — 볼록 껍질이면 충분하다
+  pts.sort((p,q)=> p[0]-q[0] || p[1]-q[1]);
+  const cross = (o,p,q)=> (p[0]-o[0])*(q[1]-o[1]) - (p[1]-o[1])*(q[0]-o[0]);
+  const lo = [], up = [];
+  for(const p of pts){ while(lo.length>=2 && cross(lo[lo.length-2], lo[lo.length-1], p) <= 0) lo.pop(); lo.push(p); }
+  for(let i=pts.length-1;i>=0;i--){ const p=pts[i]; while(up.length>=2 && cross(up[up.length-2], up[up.length-1], p) <= 0) up.pop(); up.push(p); }
+  const hull = lo.slice(0,-1).concat(up.slice(0,-1));
+  if(hull.length < 3) return null;
+  const mc = document.createElement('canvas'); mc.width = ow; mc.height = oh;
+  const mx = mc.getContext('2d', { willReadFrequently:true });
+  const fpx = Math.max(1, ow * S.featherFrac);
+  mx.filter = 'blur(' + fpx.toFixed(1) + 'px)';
+  mx.fillStyle = '#fff';
+  mx.beginPath(); mx.moveTo(hull[0][0], hull[0][1]);
+  for(let i=1;i<hull.length;i++) mx.lineTo(hull[i][0], hull[i][1]);
+  mx.closePath(); mx.fill();
+  mx.filter = 'none';
+  const d = mx.getImageData(0, 0, ow, oh).data;
+  const wgt = new Float32Array(ow*oh);
+  let nIn = 0;
+  for(let p=0, i=3; p<wgt.length; p++, i+=4){ wgt[p] = d[i]/255; if(d[i] > 127) nIn++; }
+  let minX=Infinity,maxX=-Infinity,minY=Infinity,maxY=-Infinity;
+  for(const q of hull){ if(q[0]<minX)minX=q[0]; if(q[0]>maxX)maxX=q[0]; if(q[1]<minY)minY=q[1]; if(q[1]>maxY)maxY=q[1]; }
+  wgt.nIn = nIn;
+  wgt.box = { x0:minX/ow, x1:maxX/ow, y0:minY/oh, y1:maxY/oh };
+  return wgt;
+}
+
+/* 얼굴 가운데 띠의 기준 살색 [r,g,b] 또는 null. 랜드마크가 없는 뷰는 null. */
+function faceToneRefFor(od, ow, oh, hole, ell, angle){
+  const T = HOLE_FILL.faceTone;
+  if(!T || !T.on || !ell || typeof state === 'undefined') return null;
+  const lm = state.landmarks && state.landmarks[angle];
+  if(!lm) return null;
+  const y0 = (typeof lm.browTopY === 'number') ? lm.browTopY : ell.cy - ell.ry*0.4;
+  const y1 = (typeof lm.chinY === 'number') ? lm.chinY : ell.cy + ell.ry*0.6;
+  if(!(y1 > y0)) return null;
+  const step = Math.max(1, Math.round(Math.min(ow, oh) / 200));
+  const L = [], R = [], Gc = [], B = [];
+  for(let y=Math.max(0,Math.floor(y0*oh)); y<Math.min(oh,Math.ceil(y1*oh)); y+=step){
+    const v = ((y+0.5)/oh - ell.cy)/ell.ry, v2 = v*v;
+    if(v2 > 1) continue;
+    for(let x=0; x<ow; x+=step){
+      const u = ((x+0.5)/ow - ell.cx)/ell.rx;
+      if(u*u + v2 > 0.81) continue;              // 가장자리(머리 경계 그늘)는 안 본다
+      if(hole[y*ow+x]) continue;
+      const i = (y*ow+x)*4;
+      if(od[i+3] < 200) continue;
+      const r = od[i], g = od[i+1], b = od[i+2];
+      if(!(r > g && g >= b*0.92 && r - b > 18)) continue;   // 살색처럼 보이는 것만(흰 벽·검은 눈썹 제외)
+      L.push(0.299*r + 0.587*g + 0.114*b); R.push(r); Gc.push(g); B.push(b);
+    }
+  }
+  if(L.length < T.minSamples) return null;
+  const idx = L.map((_,i)=>i).sort((p,q)=> L[p]-L[q]);
+  const iA = Math.floor(idx.length*T.loPct), iB = Math.max(iA+1, Math.floor(idx.length*T.hiPct));
+  let r=0,g=0,b=0,n=0;
+  for(let k=iA;k<iB;k++){ const i=idx[k]; r+=R[i]; g+=Gc[i]; b+=B[i]; n++; }
+  if(!n) return null;
+  const ref = [r/n, g/n, b/n];
+  ref.samples = L.length;
+  return ref;
+}
+const _skullClipLogged = {};
+function logSkullClipOnce(angle, skullW, tone, nBg, ow, oh){
+  if(_skullClipLogged[angle]) return;
+  _skullClipLogged[angle] = true;
+  const toneTxt = tone ? ('rgb(' + tone.map(v=>Math.round(v)).join(',') + ') · 표본 ' + tone.samples
+                          + ' · 당김 ' + Math.round(HOLE_FILL.faceTone.mix*100) + '%')
+                       : '<b>없음</b>(랜드마크 없음/표본 부족 — 격자 색 그대로)';
+  console.log(...gyeolBoldArgs(['[메움·두상경계] ' + angle
+    + ' · 살 구역 ' + (skullW ? '<b>두개골 되쏜 실루엣</b>(' + skullW.nIn + 'px, ×' + HOLE_FILL.skullClip.grow + ')'
+                              : (!HOLE_FILL.skullClip.faceless && !(state.landmarks && state.landmarks[angle])
+                                   ? '헤어 실루엣 타원(<b>얼굴 없는 뷰 — 두개골로 안 자르고 타원 안을 전부 메움</b>)'
+                                   : '헤어 실루엣 타원(viewCal 없음 — 예전 동작)'))
+    + ' · 타원 안인데 두개골 밖이라 주변색으로 메운 픽셀 ' + nBg
+    + '\n    얼굴 기준색 ' + toneTxt
+    + '\n    되돌리기: HOLE_FILL.skullClip.on=false · HOLE_FILL.faceTone.on=false']));
+}
+
+function paintOuterHoles(od, ow, oh, hole, ell, outer){
+  const mixK = Math.max(0, Math.min(1, HOLE_FILL.outerField.detailMix));
+  const c = [0,0,0];
+  let n = 0;
+  for(let y=0; y<oh; y++){
+    const ny = (y + 0.5)/oh;
+    const v = ell ? (ny - ell.cy)/ell.ry : 9;
+    const v2 = v*v;
+    for(let x=0; x<ow; x++){
+      const p = y*ow + x;
+      if(!hole[p]) continue;
+      const nx = (x + 0.5)/ow;
+      if(ell){
+        const u = (nx - ell.cx)/ell.rx;
+        if(u*u + v2 <= 1) continue;            // 두상 안 — 살 격자가 이미 칠했다
+      }
+      outer.at(nx, ny, c);
+      const i = p*4;
+      /* 고주파만 남긴다: (현재 − 그 자리 평균)이 결이고, 색은 격자가 정한다.
+         평균을 od에서 다시 구하지 않고 격자 값을 쓰는 이유는, od가 이미
+         mirrorDetail로 오염돼 있어 거기서 평균을 내면 오염이 색으로 승격된다. */
+      for(let ch=0; ch<3; ch++){
+        const detail = mixK > 0 ? (od[i+ch] - c[ch]) * mixK : 0;
+        od[i+ch] = Math.max(0, Math.min(255, c[ch] + detail));
+      }
+      od[i+3] = 255;
+      n++;
+    }
+  }
+  return n;
+}
+
+let _outerFieldLogged = {};
+function logOuterFieldOnce(angle, outer, nPix, ow, oh, why){
+  if(_outerFieldLogged[angle]) return;
+  _outerFieldLogged[angle] = true;
+  if(!outer){
+    console.log('[메움·두상밖] ' + angle + ' — 주변색 격자 <b>못 세움</b>'
+      + (why ? '(' + why + ')' : '(씨앗 부족)') + ' → 예전처럼 mirrorDetail 결과가 남습니다.');
+    return;
+  }
+  console.log(...gyeolBoldArgs(['[메움·두상밖] ' + angle + ' · 격자 ' + outer.GX + '×' + outer.GY
+    + ' · 씨앗 ' + outer.seeded + '칸 → 번져서 ' + outer.filled + '칸(' + outer.passes + '회)'
+    + ' · 칠한 픽셀 <b>' + nPix + '</b>/' + (ow*oh)
+    + (why ? ' · ' + why : '')
+    + '\n    두상 <b>밖</b>(목·어깨·옷·배경)은 살색이 아니라 <b>제 자리 주변색</b>으로 메웁니다.'
+    + ' 여기가 예전에 mirrorDetail의 거울 결이 그대로 남아 <b>눈 윤곽</b>이 반복되던 자리입니다.'
+    + '\n    칠한 픽셀이 0이면 구멍이 전부 두상 안이라는 뜻이고(짧은 머리), 크면 긴 머리를 줄인 것입니다.'
+    + '\n    되돌리기: HOLE_FILL.outerField.on=false']));
+}
+
+/* 타원 <b>밖</b> 주변색 격자 — 위 HOLE_FILL.outerField 배너 참고.
+   살 격자와 같은 3패스지만 두 가지가 다르다:
+     · 씨앗을 <b>타원 밖</b>에서만 모은다(안쪽 살이 어깨로 새어 나오면 안 된다)
+     · 어두운 것을 <b>안 거른다</b>(검은 니트도 정답이다 — 찾는 게 살이 아니다)
+   격자 좌표는 타원이 아니라 <b>캔버스 전체</b> 기준이라, ell이 null이어도 선다. */
+function buildOuterField(od, ow, oh, hole, ell, skullW){
+  const F = HOLE_FILL.outerField;
+  if(!F || !F.on) return null;
+  const GX = Math.max(4, F.gridX|0), GY = Math.max(4, F.gridY|0);
+  const step = Math.max(1, Math.round(Math.min(ow, oh) / 220));
+  const r = new Float32Array(GX*GY), g = new Float32Array(GX*GY), b = new Float32Array(GX*GY);
+  const n = new Float32Array(GX*GY);
+  const isOutside = (x, y)=>{
+    if(!ell) return true;
+    // (2026-09-16) 타원 안이어도 두개골 밖이면 배경·옷 씨앗이다
+    if(skullW && skullW[y*ow + x] < 0.2) return true;
+    const u = ((x+0.5)/ow - ell.cx)/ell.rx, v = ((y+0.5)/oh - ell.cy)/ell.ry;
+    return u*u + v*v > 1;
+  };
+  let seeded = 0;
+  for(let y=0; y<oh; y+=step) for(let x=0; x<ow; x+=step){
+    if(hole[y*ow + x]) continue;                 // 지운 자리는 씨앗이 아니다
+    if(!isOutside(x, y)) continue;               // 두상 안은 살 격자가 맡는다
+    const i = (y*ow+x)*4;
+    if(od[i+3] < 200) continue;
+    const k = Math.min(GY-1, Math.floor(y/oh*GY))*GX + Math.min(GX-1, Math.floor(x/ow*GX));
+    r[k]+=od[i]; g[k]+=od[i+1]; b[k]+=od[i+2]; n[k]++;
+  }
+  for(let i=0;i<GX*GY;i++){ if(n[i] > 0){ r[i]/=n[i]; g[i]/=n[i]; b[i]/=n[i]; n[i]=1; seeded++; } }
+  if(seeded < GX*GY*F.minCells) return null;
+  let filled = seeded, passes = 0;
+  for(; passes<F.fillPasses; passes++){
+    let changed = 0;
+    const nr=r.slice(), ng=g.slice(), nb=b.slice(), nn=n.slice();
+    for(let gy=0; gy<GY; gy++) for(let gx=0; gx<GX; gx++){
+      const i = gy*GX+gx;
+      if(n[i] > 0) continue;
+      let sr=0,sg=0,sb=0,k=0;
+      if(gx>0    && n[i-1] >0){ sr+=r[i-1];  sg+=g[i-1];  sb+=b[i-1];  k++; }
+      if(gx<GX-1 && n[i+1] >0){ sr+=r[i+1];  sg+=g[i+1];  sb+=b[i+1];  k++; }
+      if(gy>0    && n[i-GX]>0){ sr+=r[i-GX]; sg+=g[i-GX]; sb+=b[i-GX]; k++; }
+      if(gy<GY-1 && n[i+GX]>0){ sr+=r[i+GX]; sg+=g[i+GX]; sb+=b[i+GX]; k++; }
+      if(k){ nr[i]=sr/k; ng[i]=sg/k; nb[i]=sb/k; nn[i]=1; changed++; }
+    }
+    if(!changed) break;
+    r.set(nr); g.set(ng); b.set(nb); n.set(nn);
+    filled += changed;
+  }
+  return {
+    GX, GY, r, g, b, seeded, filled, passes,
+    at(nx, ny, out){
+      const fx = Math.min(this.GX-1, Math.max(0, nx*this.GX - 0.5));
+      const fy = Math.min(this.GY-1, Math.max(0, ny*this.GY - 0.5));
+      const x0 = Math.floor(fx), y0 = Math.floor(fy);
+      const x1 = Math.min(this.GX-1, x0+1), y1 = Math.min(this.GY-1, y0+1);
+      const tx = fx-x0, ty = fy-y0;
+      const I = (xx,yy)=> yy*this.GX + xx;
+      const mix = A => A[I(x0,y0)]*(1-tx)*(1-ty) + A[I(x1,y0)]*tx*(1-ty)
+                     + A[I(x0,y1)]*(1-tx)*ty     + A[I(x1,y1)]*tx*ty;
+      out[0]=mix(this.r); out[1]=mix(this.g); out[2]=mix(this.b);
+      return out;
+    },
+  };
+}
+
+/* 두상 타원 안을 통째로 구멍으로 넘긴다(얼굴 없는 뷰 전용).
+   해상도와 무관하게 <b>정규 좌표</b>로 계산하므로, 출력 해상도 사본과 원본
+   해상도 마스크 양쪽에 같은 모양으로 찍을 수 있다 — 둘이 어긋나면 위에 얹히는
+   baseC가 그 차이만큼 원본 머리 잔재를 다시 덮어 그린다(그게 2차의 실패였다). */
+function markEllipseHole(hole, w, h, ell, shrink){
+  if(!ell) return 0;
+  const k = (shrink > 0 ? shrink : 1);
+  const k2 = k*k;
+  let n = 0;
+  for(let y=0; y<h; y++){
+    const v = ((y+0.5)/h - ell.cy)/ell.ry, v2 = v*v;
+    if(v2 > k2) continue;
+    for(let x=0; x<w; x++){
+      const u = ((x+0.5)/w - ell.cx)/ell.rx;
+      if(u*u + v2 > k2) continue;
+      const p = y*w + x;
+      if(!hole[p]){ hole[p] = 1; n++; }
+    }
+  }
+  return n;
+}
+
+/* 두상 안에 남은 "살이 아닌 불투명 덩어리"를 구멍으로 승격시킨다.
+   holeA — 원본을 출력 해상도로 다시 그린 RGBA(구멍은 알파 0).
+   hole  — 승격 결과를 여기에 직접 OR 한다(이 함수가 유일한 부작용).
+   반환   { n, cut, med, cancelled } — 진단용. 안 돈 경우 null. */
+function markSkinResidue(holeA, ow, oh, hole, ell, angle, hairRGB){
+  const R = HOLE_FILL.residue;
+  if(!R || !R.on || !ell) return null;
+  const useHair = !!(R.byHair && hairRGB);
+  /* 게이트 — 얼굴이 잡힌 뷰는 눈·눈썹·콧구멍이 <b>있어야 하는</b> 어두운 자리다.
+     여기서 한 번이라도 헷갈리면 정면 얼굴을 살색으로 밀어버린다. */
+  if(typeof state !== 'undefined' && state.landmarks && state.landmarks[angle]){
+    return { n: 0, gated: true };
+  }
+  const step = Math.max(1, Math.round(Math.min(ow, oh) / 220));
+  const inEll = (x, y, v2)=>{ const u = ((x+0.5)/ow - ell.cx)/ell.rx; return u*u + v2 <= 1; };
+
+  // ① 두상 안 "성한 살"의 밝기 중앙값 — 구멍(지운 머리)은 살이 아니므로 뺀다
+  const lums = [];
+  for(let y=0; y<oh; y+=step){
+    const v = ((y+0.5)/oh - ell.cy)/ell.ry, v2 = v*v;
+    if(v2 > 1) continue;
+    for(let x=0; x<ow; x+=step){
+      if(!inEll(x, y, v2)) continue;
+      const p = y*ow + x;
+      if(hole[p]) continue;
+      const i = p*4;
+      if(holeA[i+3] < 200) continue;
+      lums.push(0.299*holeA[i] + 0.587*holeA[i+1] + 0.114*holeA[i+2]);
+    }
+  }
+  /* 표본이 얇아도 <b>머리색 경로는 돈다</b> — 긴 머리 후면은 타원 안이 거의 다
+     구멍이라 표본이 원래 얇다. 여기서 돌려보내면 후면만 영영 안 고쳐진다.
+     밝기 기준(med/cut)만 못 세우는 것이므로, 그건 끄고 색으로만 간다. */
+  const thin = lums.length < R.minSample;
+  if(thin && !useHair) return { n: 0, thin: lums.length };
+  lums.sort((a,b)=>a-b);
+  const med = thin ? 0 : lums[lums.length >> 1];
+  const cut = thin ? -1 : med * R.darkRatio;      // -1 = 밝기로는 아무것도 안 잡음
+  const soften = thin ? -1 : med * R.softRatio;
+
+  // ② 어두운 잔재 표시
+  const mark = new Uint8Array(ow*oh);   // 심지(확실히 어두움)
+  const soft = new Uint8Array(ow*oh);   // 반그늘(애매함 — 심지에 붙어 있을 때만 쓴다)
+  let n = 0, area = 0, nHair = 0, nDark = 0;
+  for(let y=0; y<oh; y++){
+    const v = ((y+0.5)/oh - ell.cy)/ell.ry, v2 = v*v;
+    if(v2 > 1) continue;
+    for(let x=0; x<ow; x++){
+      if(!inEll(x, y, v2)) continue;
+      const p = y*ow + x;
+      if(hole[p]) continue;
+      const i = p*4;
+      if(holeA[i+3] < 200) continue;
+      area++;                                   // 분모는 <b>성한 살</b>만(구멍은 뺀다)
+      const L = 0.299*holeA[i] + 0.587*holeA[i+1] + 0.114*holeA[i+2];
+      /* ⓐ 머리색이면 밝기와 무관하게 잔재다 — 이게 후면을 살리는 줄이다.
+         (같은 사진·같은 조명이라 avgColor와의 거리만으로 충분하다. 구멍
+          마스크의 테두리 회수가 이미 같은 판정을 쓰고 있다.) */
+      if(useHair){
+        const dH = (Math.abs(holeA[i]-hairRGB[0]) + Math.abs(holeA[i+1]-hairRGB[1])
+                  + Math.abs(holeA[i+2]-hairRGB[2])) / 3;
+        if(dH <= R.hairTol){ mark[p] = 1; n++; nHair++; continue; }
+      }
+      if(L < cut){ mark[p] = 1; n++; nDark++; }
+      else if(L < soften) soft[p] = 1;
+    }
+  }
+  if(!n) return { n: 0, med, cut, thin: thin ? lums.length : null };
+  /* ③ 안전장치 — 사진이 통째로 어둡거나 타원이 잘못 잡히면 여기서 절반이
+     걸린다. 그건 "잔재"가 아니라 판정 실패다 — 손대지 않는 편이 낫다.
+     단 <b>머리색으로 잡은 몫은 분자에서 뺀다</b>: 그건 "어두워서"가 아니라
+     "머리색이라서" 잡힌 것이고, 후면은 그 몫이 원래 절반을 넘는다(그래서
+     1차 때 통째로 취소돼 눈자국이 남았다). 밝기로만 잡은 몫에만 한계를 건다. */
+  if(area && nDark/area > R.maxFrac){
+    if(nHair){                                   // 색 근거는 살리고 밝기 몫만 버린다
+      // 밝기로만 잡은 픽셀을 되돌린다
+      for(let y=0; y<oh; y++){
+        const v = ((y+0.5)/oh - ell.cy)/ell.ry, v2 = v*v;
+        if(v2 > 1) continue;
+        for(let x=0; x<ow; x++){
+          const p = y*ow+x; if(!mark[p]) continue;
+          const i = p*4;
+          const dH = useHair ? (Math.abs(holeA[i]-hairRGB[0]) + Math.abs(holeA[i+1]-hairRGB[1])
+                              + Math.abs(holeA[i+2]-hairRGB[2]))/3 : 999;
+          if(dH > R.hairTol) mark[p] = 0;
+        }
+      }
+      n = nHair;
+    } else return { n: 0, med, cut, cancelled: n, frac: n/area };
+  }
+
+  /* ④ 번짐 — 눈자국은 심지(검정)보다 <b>흐린 띠</b>가 훨씬 넓다. 심지만 지우면
+     그 띠가 고스란히 남아 여전히 눈처럼 보인다. 그렇다고 임계를 올리면 정수리
+     그늘·목덜미 그늘까지 먹는다. 그래서 <b>이력(hysteresis)</b>으로 간다:
+     심지를 몇 px 부풀린 범위 <b>안에서만</b> 반그늘(soften 미만)을 같이 데려간다.
+     심지에서 떨어져 있는 그늘은 그냥 그늘이므로 건드리지 않는다. */
+  const grow = Math.max(1, Math.round(R.growPx * ow / 900));
+  const near = mark.slice();
+  dilateFlags(near, ow, oh, grow);
+  for(let p=0; p<mark.length; p++) if(near[p] && soft[p]) mark[p] = 1;
+  dilateFlags(mark, ow, oh, grow);   // 최종 경계 한 겹 — 이식이 뚝 끊기지 않게
+  let total = 0;
+  for(let y=0; y<oh; y++){
+    const v = ((y+0.5)/oh - ell.cy)/ell.ry, v2 = v*v;
+    if(v2 > 1) continue;
+    for(let x=0; x<ow; x++){
+      const p = y*ow + x;
+      if(!mark[p] || hole[p]) continue;
+      if(!inEll(x, y, v2)) continue;   // 부풀림이 타원 밖으로 새지 않게
+      hole[p] = 1; total++;
+    }
+  }
+  return { n: total, core: n, med, cut, area, nHair, nDark, thin: thin ? lums.length : null };
+}
+
+/* [진단] 얼굴 없는 뷰 전면 이식 — 뷰당 1회.
+   "후면에 아직 눈모양이 보인다"가 다시 오면 이 한 줄로 갈린다:
+     · 안 돎(표본 없음) → 정면을 다시 찍어 이마 표본을 확보해야 한다
+     · 돌았는데 baseC 0 → 원본 해상도 마스크 동기화가 깨진 것(위에 원본이 덮인다)
+     · 돌았고 둘 다 큼  → 이식은 먹었다. 남은 무늬는 타원 <b>밖</b>이다(outerField) */
+const _facelessLogged = {};
+function logFacelessOnce(angle, diag, graft, noFace, ell, ow, oh){
+  if(!angle || _facelessLogged[angle]) return;
+  _facelessLogged[angle] = true;
+  const FF = HOLE_FILL.facelessFill;
+  if(!FF || !FF.on) return;
+  if(!noFace) return;                       // 정면·측면 — 이 경로는 원래 안 돈다
+  if(!ell){ console.warn(`[전면이식] ${angle}: 두상 타원이 없어 못 돕니다(섹션 밴드 미확보)`); return; }
+  if(!diag){
+    console.warn(...gyeolBoldArgs([`[전면이식] ${angle}: <b>안 돌았습니다</b> — 이마 표본이 없습니다`
+      + `(이 뷰엔 얼굴이 없고, 다른 뷰에서 보관된 이마 표본도 없음)`
+      + `\n      정면을 다시 찍어 이마가 드러나면 그 표본이 후면으로 넘어옵니다.`]));
+    return;
+  }
+  console.log(...gyeolBoldArgs([`[전면이식] ${angle}: 얼굴 랜드마크 없음 → 두상 타원 안(${(FF.shrink*100)|0}%)을`
+    + ` <b>통째로 이식면</b>으로 넘겼습니다 · 메움판 ${diag.nIn}px 승격 / baseC ${diag.nBase}px 승격`
+    + ` · ${ow}×${oh}`
+    + (diag.nNeck != null ? `\n      덮개: 페더 px 고정(${((FF.featherFrac||0)*ow).toFixed(1)}px) · 타원 아래 <b>목 기둥 ${diag.nNeck}px</b> 추가 이식`
+                            + ` (되돌리기 HOLE_FILL.facelessFill.cover=false)` : '')
+    + `\n      색은 이마 표본 평균 rgb(${graft && graft.mean ? graft.mean.join(',') : '?'})`
+    + `(출처 ${graft ? graft.src : '?'}) + 구면 음영 ${(FF.edgeShade*100)|0}%,`
+    + ` 이 뷰 사진의 픽셀은 <b>색으로도 밝기로도 안 씁니다</b> — 눈모양이 들어올 경로가 없습니다.`
+    + `\n      되돌리기: HOLE_FILL.facelessFill.on=false`]));
+  if(diag.hadHm && !diag.nBase){
+    console.warn(`[전면이식] ${angle}: baseC 승격이 0입니다 — 위에 얹히는 그림이 그 자리를 안 비웁니다.`
+      + ` 원본 머리 잔재가 이식면을 덮어 눈자국이 남을 수 있습니다(구멍 마스크 동기화 확인).`);
+  }
+}
+
+/* [진단] 잔재 회수 — 뷰당 1회. */
+const _residueLogged = {};
+function logSkinResidueOnce(angle, diag, ow, oh){
+  if(!angle || _residueLogged[angle]) return;
+  _residueLogged[angle] = true;
+  if(!diag) return;                                   // 꺼짐/타원 없음
+  if(diag.gated){
+    console.log(`[잔재회수] ${angle}: 건너뜀 — 얼굴 랜드마크가 있는 뷰(이목구비를 지우면 안 된다)`);
+    return;
+  }
+  if(diag.thin != null && !diag.n){
+    console.log(`[잔재회수] ${angle}: 밝기 기준 없음 — 두상 안 살 표본 ${diag.thin}px < ${HOLE_FILL.residue.minSample}`
+      + ` · 머리색 경로도 못 잡음(머리 평균색이 없거나 hairTol ${HOLE_FILL.residue.hairTol} 밖)`);
+    return;
+  }
+  if(diag.cancelled){
+    console.log(...gyeolBoldArgs([`[잔재회수] ${angle}: <b>취소</b> — 성한 살의 ${(diag.frac*100).toFixed(1)}%가 어둡게 잡혔다`
+      + `(한계 ${(HOLE_FILL.residue.maxFrac*100)|0}%) · 잔재가 아니라 판정 실패로 봅니다(사진이 어둡거나 타원이 어긋남)`]));
+    return;
+  }
+  if(!diag.n){
+    console.log(`[잔재회수] ${angle}: 없음 — 두상 안이 전부 살 밝기(중앙값 ${diag.med != null ? diag.med.toFixed(0) : '?'} · 기준 ${diag.cut != null ? diag.cut.toFixed(0) : '?'})`);
+    return;
+  }
+  console.log(...gyeolBoldArgs([`[잔재회수] ${angle}: 살 중앙값 ${diag.med.toFixed(0)} · 기준 ${diag.cut.toFixed(0)}(×${HOLE_FILL.residue.darkRatio}) →`
+    + ` 심지 ${diag.core}px(머리색 ${diag.nHair||0} · 밝기 ${diag.nDark||0}) → 부풀려 <b>${diag.n}px 승격</b>`
+    + ` = 두상 안의 ${(100*diag.n/Math.max(1,diag.area)).toFixed(1)}% · ${ow}×${oh}`
+    + `\n      이 자리는 이제 다른 부위와 <b>같은 경로</b>로 메워집니다(살 격자 색 + 이마 표본 결).`]));
+}
+
+function buildSkinField(od, ow, oh, hole, ell){
+  const F = HOLE_FILL.skinField;
+  if(!F || !F.on || !ell) return null;
+  const GX = Math.max(4, F.gridX|0), GY = Math.max(4, F.gridY|0);
+  const step = Math.max(1, Math.round(Math.min(ow, oh) / 220));
+
+  // 1패스 — 두상 안 성한 픽셀의 밝기 분포에서 "살의 하한"을 정한다
+  const lums = [];
+  for(let y=0; y<oh; y+=step){
+    const v = ((y+0.5)/oh - ell.cy)/ell.ry, v2 = v*v;
+    if(v2 > 1) continue;
+    for(let x=0; x<ow; x+=step){
+      const u = ((x+0.5)/ow - ell.cx)/ell.rx;
+      if(u*u + v2 > 1) continue;
+      if(hole[y*ow + x]) continue;                 // 지운 머리 자리 — 살이 아니다
+      const i = (y*ow+x)*4;
+      if(od[i+3] < 200) continue;
+      lums.push(0.299*od[i] + 0.587*od[i+1] + 0.114*od[i+2]);
+    }
+  }
+  if(lums.length < 200) return null;
+  lums.sort((a,b)=>a-b);
+  const darkCut = lums[Math.floor(lums.length * F.darkPct)];
+
+  // 2패스 — 격자 칸마다 살 픽셀 평균
+  const r = new Float32Array(GX*GY), g = new Float32Array(GX*GY), b = new Float32Array(GX*GY);
+  const n = new Float32Array(GX*GY);
+  const gxOf = x => Math.min(GX-1, Math.max(0, Math.floor(((x+0.5)/ow - (ell.cx-ell.rx)) / (2*ell.rx) * GX)));
+  const gyOf = y => Math.min(GY-1, Math.max(0, Math.floor(((y+0.5)/oh - (ell.cy-ell.ry)) / (2*ell.ry) * GY)));
+  for(let y=0; y<oh; y+=step){
+    const v = ((y+0.5)/oh - ell.cy)/ell.ry, v2 = v*v;
+    if(v2 > 1) continue;
+    for(let x=0; x<ow; x+=step){
+      const u = ((x+0.5)/ow - ell.cx)/ell.rx;
+      if(u*u + v2 > 1) continue;
+      if(hole[y*ow + x]) continue;
+      const i = (y*ow+x)*4;
+      if(od[i+3] < 200) continue;
+      if(0.299*od[i] + 0.587*od[i+1] + 0.114*od[i+2] < darkCut) continue;   // 이목구비
+      const k = gyOf(y)*GX + gxOf(x);
+      r[k]+=od[i]; g[k]+=od[i+1]; b[k]+=od[i+2]; n[k]++;
+    }
+  }
+  let filled = 0;
+  for(let i=0;i<GX*GY;i++){ if(n[i] > 0){ r[i]/=n[i]; g[i]/=n[i]; b[i]/=n[i]; n[i]=1; filled++; } }
+  const seeded = filled;
+  if(filled < GX*GY*F.minCells) return null;
+
+  /* 3패스 — 번지기. 빈 칸을 채워진 이웃 평균으로 메우기를 반복하면 결과가
+     "가장 가까운 살"이 된다(거리변환을 따로 짜지 않아도 같은 순서로 퍼진다).
+     앞머리가 이마를 덮어 위쪽이 통째로 비어 있어도, 아래 살에서 위로 올라온다 —
+     사용자가 말한 "이마채우기"가 여기서 그대로 일어난다. */
+  let passes = 0;
+  for(; passes<F.fillPasses; passes++){
+    let changed = 0;
+    const nr=r.slice(), ng=g.slice(), nb=b.slice(), nn=n.slice();
+    for(let gy=0; gy<GY; gy++) for(let gx=0; gx<GX; gx++){
+      const i = gy*GX+gx;
+      if(n[i] > 0) continue;
+      let sr=0,sg=0,sb=0,k=0;
+      if(gx>0    && n[i-1] >0){ sr+=r[i-1];  sg+=g[i-1];  sb+=b[i-1];  k++; }
+      if(gx<GX-1 && n[i+1] >0){ sr+=r[i+1];  sg+=g[i+1];  sb+=b[i+1];  k++; }
+      if(gy>0    && n[i-GX]>0){ sr+=r[i-GX]; sg+=g[i-GX]; sb+=b[i-GX]; k++; }
+      if(gy<GY-1 && n[i+GX]>0){ sr+=r[i+GX]; sg+=g[i+GX]; sb+=b[i+GX]; k++; }
+      if(k){ nr[i]=sr/k; ng[i]=sg/k; nb[i]=sb/k; nn[i]=1; changed++; }
+    }
+    if(!changed) break;
+    r.set(nr); g.set(ng); b.set(nb); n.set(nn);
+    filled += changed;
+  }
+
+  return {
+    GX, GY, seeded, filled, passes, cells: GX*GY,
+    /* 격자 <b>밖</b>이면 안으로 물린다 — 정수리(타원 위끝 근처)는 그래서
+       두상에서 제일 위에 있는 살을 집는다. */
+    at(nx, ny, out){
+      const fx = Math.min(GX-1, Math.max(0, (nx - (ell.cx-ell.rx)) / (2*ell.rx) * GX - 0.5));
+      const fy = Math.min(GY-1, Math.max(0, (ny - (ell.cy-ell.ry)) / (2*ell.ry) * GY - 0.5));
+      const x0 = fx|0, y0 = fy|0;
+      const x1 = Math.min(GX-1, x0+1), y1 = Math.min(GY-1, y0+1);
+      const tx = fx-x0, ty = fy-y0;
+      const i00=y0*GX+x0, i10=y0*GX+x1, i01=y1*GX+x0, i11=y1*GX+x1;
+      const bl = (a0,a1,a2,a3)=> (a0*(1-tx)+a1*tx)*(1-ty) + (a2*(1-tx)+a3*tx)*ty;
+      out[0] = bl(r[i00],r[i10],r[i01],r[i11]);
+      out[1] = bl(g[i00],g[i10],g[i01],g[i11]);
+      out[2] = bl(b[i00],b[i10],b[i01],b[i11]);
+      return out;
+    }
+  };
+}
+
+/* 이마 표본을 떠서 "이식 재료"로 만든다.
+     rgb — 패치 원본 픽셀(색 + 결). 이식은 이걸 통째로 옮겨 심는다.
+     hi  — 패치 − 흐린 패치 = 결만(예전 동작 A/B용으로 남겨둔다).
+     lum — 패치 평균 밝기. 대상 자리의 밝기를 이 값 대비 배율로 환산할 때 기준. */
+function buildSkinGraft(hctx, ow, oh, ell, skinRGB, size, angle){
+  const patch = pickSkinPatch(hctx, ow, oh, ell, skinRGB, size);
+  if(!patch) return null;
+  const pc = document.createElement('canvas'); pc.width = size; pc.height = size;
+  const pctx = pc.getContext('2d', { willReadFrequently:true });
+  pctx.drawImage(hctx.canvas, patch.px, patch.py, size, size, 0, 0, size, size);
+  const sharp = pctx.getImageData(0, 0, size, size).data;
+  /* 흐린 판 — 색·밝기는 여기 다 들어있으므로 빼고 나면 결(모공·잔털·미세 명암)만 남는다. */
+  const bs = Math.max(2, size >> 3);
+  const bc = document.createElement('canvas'); bc.width = bs; bc.height = bs;
+  const bctx = bc.getContext('2d', { willReadFrequently:true });
+  bctx.imageSmoothingEnabled = true;
+  bctx.drawImage(pc, 0, 0, bs, bs);
+  pctx.clearRect(0, 0, size, size);
+  pctx.drawImage(bc, 0, 0, size, size);
+  const blur = pctx.getImageData(0, 0, size, size).data;
+
+  const rgb = new Uint8ClampedArray(size*size*3);
+  const hi  = new Float32Array(size*size*3);
+  let lumSum = 0;
+  for(let i=0, k=0; i<sharp.length; i+=4, k+=3){
+    rgb[k]   = sharp[i];   hi[k]   = sharp[i]   - blur[i];
+    rgb[k+1] = sharp[i+1]; hi[k+1] = sharp[i+1] - blur[i+1];
+    rgb[k+2] = sharp[i+2]; hi[k+2] = sharp[i+2] - blur[i+2];
+    lumSum += 0.299*sharp[i] + 0.587*sharp[i+1] + 0.114*sharp[i+2];
+  }
+  /* 고주파 표준편차 — 이마 살결은 작고, 눈·눈썹·속눈썹은 크다. 색을 격자가
+     맡게 된 뒤(2026-09-12) 패치에 남은 역할은 <b>결</b> 하나뿐이라, 결로도
+     이목구비가 새어나오지 않게 여기서 세기를 재 둔다(HOLE_FILL.skinField.flatTol). */
+  let d2 = 0;
+  for(let k=0; k<hi.length; k++) d2 += hi[k]*hi[k];
+  const det = Math.sqrt(d2 / hi.length);
+  /* 평균색 — 두피색(scalpColor)이 없는 뷰(후면)에서 그 대신 쓴다. */
+  let mr=0, mg=0, mb=0;
+  for(let k=0; k<rgb.length; k+=3){ mr+=rgb[k]; mg+=rgb[k+1]; mb+=rgb[k+2]; }
+  const np = size*size;
+  return { rgb, hi, size, lum: lumSum / np, det, src: angle || '?', at: patch,
+           mean: [Math.round(mr/np), Math.round(mg/np), Math.round(mb/np)],
+           forehead: !!patch.forehead, dy: patch.dy };
+}
+
+// 저해상도 이웃 전파 — 투명 픽셀을 주변 색으로 채운다(두상 안에서만 피부톤 편향).
+function fillHolesLowRes(srcCanvas, w, h, skinRGB, ell){
+  const c = document.createElement('canvas'); c.width = w; c.height = h;
+  const ctx = c.getContext('2d', { willReadFrequently:true });
+  ctx.drawImage(srcCanvas, 0, 0, w, h);
+  const img = ctx.getImageData(0, 0, w, h), d = img.data;
+  const OPAQUE = 200;
+  const inHead = (x, y)=>{
+    if(!ell) return false;
+    const nx = (x + 0.5)/w, ny = (y + 0.5)/h;
+    const u = (nx - ell.cx)/ell.rx, v = (ny - ell.cy)/ell.ry;
+    return u*u + v*v <= 1;
+  };
+  const MAX_PASS = Math.ceil(Math.hypot(w, h));
+  for(let pass=0; pass<MAX_PASS; pass++){
+    const fill = [];
+    for(let y=0; y<h; y++){
+      for(let x=0; x<w; x++){
+        const i = (y*w+x)*4;
+        if(d[i+3] >= OPAQUE) continue;
+        const head = skinRGB && inHead(x, y);
+        let r=0,g=0,b=0,n=0;
+        for(let dy=-1; dy<=1; dy++){
+          const yy = y+dy; if(yy<0||yy>=h) continue;
+          for(let dx=-1; dx<=1; dx++){
+            const xx = x+dx; if(xx<0||xx>=w||(dx===0&&dy===0)) continue;
+            const j = (yy*w+xx)*4;
+            if(d[j+3] < OPAQUE) continue;
+            let ww = HOLE_FILL.dirW[dy+1];
+            if(head){
+              const dist = Math.abs(d[j]-skinRGB[0]) + Math.abs(d[j+1]-skinRGB[1]) + Math.abs(d[j+2]-skinRGB[2]);
+              ww *= 1 + HOLE_FILL.skinBoost * Math.max(0, 1 - dist / HOLE_FILL.skinTol);
+            }
+            r+=d[j]*ww; g+=d[j+1]*ww; b+=d[j+2]*ww; n+=ww;
+          }
+        }
+        if(n) fill.push(i, r/n, g/n, b/n);
+      }
+    }
+    if(!fill.length) break;
+    for(let k=0; k<fill.length; k+=4){
+      const i = fill[k];
+      d[i]=fill[k+1]; d[i+1]=fill[k+2]; d[i+2]=fill[k+3]; d[i+3]=255;
+    }
+  }
+  ctx.putImageData(img, 0, 0);
+  return c;
+}
+
+/* ══════════════════════════════════════════════════════════════════
+   렌더링 경계 배경 (2026-08-10)
+   ─────────────────────────────────────────────────────────────────
+   증상(사용자): "렌더링 주변에 <b>다른 마스크들이 겹쳐</b> 있어."
+   결과 사진에서 새 헤어 바깥으로 <b>원래 머리 실루엣 모양</b>의 뿌연 회색·살구색
+   덩어리와, 그 덩어리를 따라 도는 <b>검은 톱니 테두리</b>가 같이 보인다.
+   원인은 둘이고, 둘 다 "지운 자리를 어떻게 메우느냐"에 있다.
+
+   [원인 1] 검은 톱니 테두리 = <b>반투명 머리카락 테두리 잔상</b>
+     baseC는 원본에서 머리 마스크를 destination-out으로 지운 그림이다. 마스크를
+     작은 세그멘테이션 해상도에서 원본 크기로 <b>확대</b>해 지우기 때문에 경계
+     픽셀의 알파가 0도 255도 아닌 중간값이 된다. 그 자리엔 <b>검은 머리색이
+     반쯤 남는다</b>. 구멍 메움은 알파 200 이상을 "원래 있던 픽셀"로 보고 안
+     건드렸으므로(옛 코드 holeA[i+3] >= 200), 그 반투명 머리 테두리는 끝까지
+     살아남아 메운 배경 <b>위에</b> 얹혔다 — 화면의 톱니 윤곽이 정확히 이것이다.
+     → 고침: 알파 250 미만을 전부 구멍으로 보고, 거기서 몇 px 더 <b>부풀려</b>
+       지운다. 테두리를 살릴 이유가 없다 — 어차피 새 헤어가 덮거나 배경이다.
+
+   [원인 2] 뿌연 덩어리 = <b>160px 확산 결과를 확대</b>한 것
+     메움은 160px로 줄여 이웃 평균을 반복 전파(fillHolesLowRes)한 뒤 900px로
+     늘려 썼다. 두상 <b>안</b>은 그 위에 이마 표본을 이식하니 티가 안 났지만,
+     두상 <b>밖</b>(어깨·옷·창밖 배경)은 "손대지 않음"이라 그 뭉갠 회색이
+     그대로 남는다. 긴 머리를 지운 자리가 통째로 그 상태다.
+     → 고침: 두상 밖도 <b>출력 해상도에서</b> 메운다. 방식은 확산 평균이 아니라
+       <b>방향성 인페인팅</b> — 구멍의 각 픽셀에서 상·하·좌·우로 나가 처음
+       만나는 "아는 픽셀"을 찾고, 거리의 역제곱으로 섞는다.
+       배경은 행 방향으로 대체로 균일하므로(창틀·니트 짜임·벽) 좌우에서 오는
+       색이 가깝고 강하게 잡혀, 스웨터 자리는 스웨터로 창 자리는 창으로 메워진다.
+       마지막에 주변에서 잰 만큼의 미세 잡티를 얹어 "너무 매끈해서 티 나는"
+       면을 없앤다.
+
+   ※ 새 라이브러리를 안 쓴 이유: 인페인팅 한 번이 아니라 <b>뷰마다 매번</b>
+     돌아야 하고(4뷰 × 조정할 때마다), 위 두 사정(행 균일 배경 + 이미 있는
+     두상 이식)이면 4방향 스윕으로 충분하다. 스윕은 픽셀당 상수시간이다.
+══════════════════════════════════════════════════════════════════ */
+const RENDER_PLATE = {
+  on: true,          // false면 예전 동작(테두리 잔상 + 160px 확산) — A/B용
+  alphaHole: 250,    // 이 알파 미만은 전부 구멍(=반투명 머리 테두리도 구멍)
+  dilatePx: 3,       // 구멍 부풀림(원본 해상도 px) — 마스크 확대로 생긴 반투명 띠 제거용
+  featherPx: 1.0,    // 깎은 자리와 원본 사이 경계 부드럽게(px)
+  power: 2.0,        // 방향성 인페인팅 가중 = 1/거리^power
+  relax: 8,          // 스윕 뒤 구멍만 3×3 평균 회차(빗살무늬 제거) — 0이면 끔
+  grain: 0.55,       // 거울 결을 못 가져왔을 때 얹는 잡티 세기(0=끔)
+  /* ── 남은 머리 테두리 걷어내기 (2026-08-10 2차) ────────────────────────
+     사용자: "블러 시도는 좋은데, 그 이전에 <b>겹친 마스크 자체가 제거되지</b>
+     않았어."
+     맞다. 1차에서는 알파가 애매한 <b>몇 px</b>만 구멍으로 넘겼는데, 실제로
+     남아 있던 건 그게 아니었다 — MediaPipe 헤어 마스크가 <b>진짜 머리보다 작게</b>
+     잡혀서, 지운 자리 둘레에 <b>원본 머리카락이 온전한 알파 255로</b> 10~20px씩
+     띠로 남아 있다. 그 띠는 "아는 픽셀"이라 지워지지도 않고, 더 나쁘게는
+     인페인팅이 <b>그 어두운 머리색을 정답으로 보고 안쪽으로 퍼뜨렸다</b>.
+     후면 목덜미의 검은 얼룩이 정확히 그것이다(메운 면이 회색 108, 니트는 170).
+     고침: 구멍 둘레에서 <b>머리색에 가까운 픽셀만</b> 골라 최대 maxPx까지
+     한 겹씩 구멍으로 넘긴다. 색으로 거르므로 니트·피부·배경은 안 먹는다.
+     ※ 반경을 상한으로 묶는 이유: 금발처럼 머리색이 배경색과 가까우면 색만으로는
+       못 멈춘다. 상한이 안전장치다. 로그의 "테두리 회수"가 크게 튀면 tol을 줄일 것. */
+  rim: { on: true, tol: 96, minPx: 4, maxPx: 18 },
+  /* 거울 결 — 메운 면이 <b>매끈해서</b> 티가 나는 문제. 색·명암은 인페인팅이 만든
+     것을 그대로 쓰고, <b>고주파(니트 짜임·배경 입자)만</b> 경계 건너편에서 거울로
+     비춰 가져온다. 두상 안에서 이미 쓰는 "색은 주변, 결은 실제 피부" 방식과 같다. */
+  detail: 0.75,      // 거울 결 세기(0=끔 — 매끈해도 좋으면 0)
+  detailBlurPx: 2,   // 이 반경보다 <b>고운 것만</b> 결로 본다. 키우면 선반 선 같은
+                     // 큰 구조까지 거울로 넘어와 겹쳐 보인다(오프라인 테스트로 확인).
+};
+
+/* 플래그 팽창 — 분리형 슬라이딩 최대값(가로 한 번, 세로 한 번). O(픽셀). */
+function dilateFlags(flags, w, h, r){
+  if(!(r > 0)) return flags;
+  const tmp = new Uint8Array(w*h);
+  for(let y=0; y<h; y++){
+    const row = y*w;
+    let cnt = 0;
+    for(let x=0; x<=Math.min(r, w-1); x++) cnt += flags[row+x];
+    for(let x=0; x<w; x++){
+      tmp[row+x] = cnt > 0 ? 1 : 0;
+      const add = x+r+1, sub = x-r;
+      if(add < w) cnt += flags[row+add];
+      if(sub >= 0) cnt -= flags[row+sub];
+    }
+  }
+  for(let x=0; x<w; x++){
+    let cnt = 0;
+    for(let y=0; y<=Math.min(r, h-1); y++) cnt += tmp[y*w+x];
+    for(let y=0; y<h; y++){
+      flags[y*w+x] = cnt > 0 ? 1 : 0;
+      const add = y+r+1, sub = y-r;
+      if(add < h) cnt += tmp[add*w+x];
+      if(sub >= 0) cnt -= tmp[sub*w+x];
+    }
+  }
+  return flags;
+}
+
+/* 구멍 둘레의 <b>남은 머리카락</b>을 색으로 골라 구멍에 편입한다.
+   한 겹씩(= 1px씩) 바깥으로 나가며, 구멍에 닿아 있고 색이 머리색에 가까운
+   픽셀만 넘긴다. 색 조건이 있어 니트·피부·배경에서는 저절로 멈춘다.
+   d: baseC의 RGBA (구멍은 알파 0, 남은 머리는 알파 255 + 원본 머리색). */
+function growHairRim(hole, d, w, h, hair, tol, maxIter){
+  let added = 0;
+  for(let it=0; it<maxIter; it++){
+    const add = [];
+    for(let y=0; y<h; y++){
+      for(let x=0; x<w; x++){
+        const p = y*w+x;
+        if(hole[p]) continue;
+        const adj = (x>0 && hole[p-1]) || (x<w-1 && hole[p+1])
+                 || (y>0 && hole[p-w]) || (y<h-1 && hole[p+w]);
+        if(!adj) continue;
+        const i = p*4;
+        if(d[i+3] < 250) continue;
+        const dist = Math.abs(d[i]-hair[0]) + Math.abs(d[i+1]-hair[1]) + Math.abs(d[i+2]-hair[2]);
+        if(dist <= tol) add.push(p);
+      }
+    }
+    if(!add.length) break;
+    for(let k=0; k<add.length; k++) hole[add[k]] = 1;
+    added += add.length;
+  }
+  return added;
+}
+
+/* 플래그 축소 — 한 칸이라도 구멍이면 구멍(최대값 풀링).
+   메움 배경은 원본보다 작은 해상도에서 만들 수 있는데, 평균으로 줄이면
+   가장자리 한 겹이 "구멍 아님"으로 살아나 그 자리에 다시 테두리가 생긴다. */
+function downsampleFlagsMax(src, sw, sh, dw, dh){
+  if(sw === dw && sh === dh) return src.slice();
+  const out = new Uint8Array(dw*dh);
+  for(let y=0; y<dh; y++){
+    const y0 = Math.floor(y*sh/dh), y1 = Math.max(y0+1, Math.floor((y+1)*sh/dh));
+    for(let x=0; x<dw; x++){
+      const x0 = Math.floor(x*sw/dw), x1 = Math.max(x0+1, Math.floor((x+1)*sw/dw));
+      let v = 0;
+      for(let yy=y0; yy<y1 && !v; yy++){
+        for(let xx=x0; xx<x1; xx++){ if(src[yy*sw+xx]){ v=1; break; } }
+      }
+      out[y*dw+x] = v;
+    }
+  }
+  return out;
+}
+
+/* 이 뷰에서 "메워야 할 자리"의 <b>단 하나의</b> 정의 — baseC에 붙여 캐시한다.
+   테두리 정리(baseC)와 메움 배경(fillC)이 <b>같은</b> 구멍을 봐야 한다.
+   서로 1px이라도 어긋나면 그 틈으로 원본 머리색이 실선처럼 남는다. */
+function buildHoleMask(baseC, maskInf){
+  const w = baseC.width, h = baseC.height;
+  const d = baseC.getContext('2d').getImageData(0, 0, w, h).data;
+  const hole = new Uint8Array(w*h);
+  let n0 = 0;
+  for(let p=0, i=3; p<hole.length; p++, i+=4){ if(d[i] < RENDER_PLATE.alphaHole){ hole[p]=1; n0++; } }
+  const orig = hole.slice();   // (360shot) 넓히기 전 구멍 — 눈 보호가 "넓혀서 생긴 자리"만 되돌리게
+  dilateFlags(hole, w, h, Math.max(1, Math.round(RENDER_PLATE.dilatePx)));
+  let nRim = 0, rimIter = 0;
+  const R = RENDER_PLATE.rim;
+  let hair = null;
+  const m = maskInf && maskInf.avgColor && String(maskInf.avgColor).match(/\d+/g);
+  if(m && m.length >= 3) hair = [+m[0], +m[1], +m[2]];
+  if(R.on && hair && n0){
+    rimIter = Math.max(R.minPx, Math.min(R.maxPx, Math.round(h*0.035)));
+    nRim = growHairRim(hole, d, w, h, hair, R.tol, rimIter);
+  }
+  /* (360shot 배포본) 눈 보호 — 구멍을 넓히거나(dilate) 머리 테두리를 키우다가(rim) 눈·눈썹까지 먹으면
+     메움 배경이 눈을 지운다. 눈·눈썹 둘레 타원(featureGuardMask) 안에서 넓혀서 생긴 구멍은 되돌림.
+     원래 구멍(투명)이던 자리는 그대로 둠. */
+  let nGuard = 0;
+  const guard = featureGuardMask(baseC._view, w, h);
+  if(guard){
+    for(let i=0; i<hole.length; i++){ if(guard[i] && hole[i] && !orig[i]){ hole[i] = 0; nGuard++; } }
+    console.log('[렌더경계·눈보호] ' + baseC._view + ': ' + nGuard + 'px 되돌림');
+  }
+  return { hole, w, h, n0, nRim, rimIter, hair, nGuard };
+}
+/* (360shot 배포본) 눈·눈썹 보호 마스크 — 얼굴 랜드마크의 눈·눈썹 상자를 가로 0.45배·세로 0.6배(+0.8%) 넓힌 타원.
+   view: 'front' 등(getHoleFillCanvas가 baseC._view에 넣어 줌) · 랜드마크가 없으면 null */
+function featureGuardMask(view, w, h){
+  const lm = view && typeof state !== 'undefined' && state.landmarks && state.landmarks[view];
+  const f = lm && lm.features;
+  if(!f) return null;
+  const g = new Uint8Array(w*h);
+  let n = 0;
+  for(const k of ['leftEye', 'rightEye', 'leftBrow', 'rightBrow']){
+    const b = f[k]; if(!b) continue;
+    const bw = b.maxX - b.minX, bh = b.maxY - b.minY;
+    const cx = (b.minX + b.maxX) / 2 * w, cy = (b.minY + b.maxY) / 2 * h;
+    const rx = Math.max(1, (bw/2 + bw*0.45 + 0.008) * w), ry = Math.max(1, (bh/2 + bh*0.6 + 0.008) * h);
+    const x0 = Math.max(0, Math.floor(cx - rx)), x1 = Math.min(w, Math.ceil(cx + rx));
+    const y0 = Math.max(0, Math.floor(cy - ry)), y1 = Math.min(h, Math.ceil(cy + ry));
+    for(let y=y0; y<y1; y++){
+      const dy = (y + 0.5 - cy) / ry;
+      for(let x=x0; x<x1; x++){
+        const dx = (x + 0.5 - cx) / rx;
+        if(dx*dx + dy*dy <= 1){ g[y*w + x] = 1; n++; }
+      }
+    }
+  }
+  return n ? g : null;
+}
+function getHoleMask(baseC, maskInf){
+  if(!baseC) return null;
+  if(baseC._holeMask) return baseC._holeMask;
+  let hm = null;
+  try{ hm = buildHoleMask(baseC, maskInf); }
+  catch(e){ console.warn('구멍 마스크 생성 실패:', e); }
+  baseC._holeMask = hm;
+  return hm;
+}
+
+/* 방향성 인페인팅 — 구멍 픽셀마다 ←→↑↓ 네 방향으로 처음 만나는 "아는 픽셀"을
+   거리 역제곱으로 섞는다. 스윕 4번, 픽셀당 상수시간.
+   d: RGBA Uint8ClampedArray(w*h*4) — 구멍 자리는 여기서 덮어쓴다.
+   hole: Uint8Array(w*h) 1=구멍. */
+function inpaintDirectional(d, hole, w, h, power){
+  const n = w*h;
+  const acc = new Float32Array(n*3), wsum = new Float32Array(n);
+  const P = (power > 0) ? power : 2;
+  const put = (p, dist, r, g, b)=>{
+    const ww = 1 / Math.pow(dist, P);
+    acc[p*3] += r*ww; acc[p*3+1] += g*ww; acc[p*3+2] += b*ww; wsum[p] += ww;
+  };
+  // ← 왼쪽에서 오른쪽
+  for(let y=0; y<h; y++){
+    let lx = -1, r=0, g=0, b=0;
+    for(let x=0; x<w; x++){
+      const p = y*w+x;
+      if(!hole[p]){ lx = x; r = d[p*4]; g = d[p*4+1]; b = d[p*4+2]; continue; }
+      if(lx >= 0) put(p, x-lx, r, g, b);
+    }
+  }
+  // → 오른쪽에서 왼쪽
+  for(let y=0; y<h; y++){
+    let lx = -1, r=0, g=0, b=0;
+    for(let x=w-1; x>=0; x--){
+      const p = y*w+x;
+      if(!hole[p]){ lx = x; r = d[p*4]; g = d[p*4+1]; b = d[p*4+2]; continue; }
+      if(lx >= 0) put(p, lx-x, r, g, b);
+    }
+  }
+  // ↓ 위에서 아래
+  for(let x=0; x<w; x++){
+    let ly = -1, r=0, g=0, b=0;
+    for(let y=0; y<h; y++){
+      const p = y*w+x;
+      if(!hole[p]){ ly = y; r = d[p*4]; g = d[p*4+1]; b = d[p*4+2]; continue; }
+      if(ly >= 0) put(p, y-ly, r, g, b);
+    }
+  }
+  // ↑ 아래에서 위
+  for(let x=0; x<w; x++){
+    let ly = -1, r=0, g=0, b=0;
+    for(let y=h-1; y>=0; y--){
+      const p = y*w+x;
+      if(!hole[p]){ ly = y; r = d[p*4]; g = d[p*4+1]; b = d[p*4+2]; continue; }
+      if(ly >= 0) put(p, ly-y, r, g, b);
+    }
+  }
+  let filled = 0, unreached = 0;
+  for(let p=0; p<n; p++){
+    if(!hole[p]) continue;
+    const s = wsum[p];
+    if(s > 0){
+      d[p*4]   = acc[p*3]  /s;
+      d[p*4+1] = acc[p*3+1]/s;
+      d[p*4+2] = acc[p*3+2]/s;
+      filled++;
+    } else unreached++;
+    d[p*4+3] = 255;   // 메운 배경은 언제나 불투명(검정 비침 방지)
+  }
+  return { filled, unreached };
+}
+
+/* 줄무늬 지우기 — 4방향 스윕만 쓰면 넓은 구멍 <b>안쪽</b>에서 가로/세로 어느
+   방향이 이기느냐가 픽셀마다 갈려 빗살무늬가 생긴다(테스트로 확인됨).
+   구멍 픽셀만 골라 3×3 평균을 몇 번 돌리면 그 무늬가 사라진다 — 경계에 붙은
+   구멍 픽셀은 매번 <b>아는 픽셀</b> 쪽으로 다시 당겨지므로, 가장자리 색은
+   그대로 두고 안쪽만 매끄럽게 이어진다(라플라스 메움과 같은 수렴).
+   스윕 결과가 이미 정답에 가까운 출발점이라 회차가 조금이면 된다. */
+function relaxHoles(d, hole, w, h, iters){
+  const n = w*h;
+  if(!(iters > 0)) return;
+  const buf = new Float32Array(n*3);
+  for(let it=0; it<iters; it++){
+    for(let p=0; p<n; p++){ buf[p*3]=d[p*4]; buf[p*3+1]=d[p*4+1]; buf[p*3+2]=d[p*4+2]; }
+    for(let y=0; y<h; y++){
+      for(let x=0; x<w; x++){
+        const p = y*w+x;
+        if(!hole[p]) continue;
+        let r=0,g=0,b=0,c=0;
+        for(let dy=-1; dy<=1; dy++){
+          const yy=y+dy; if(yy<0||yy>=h) continue;
+          for(let dx=-1; dx<=1; dx++){
+            const xx=x+dx; if(xx<0||xx>=w) continue;
+            const q=(yy*w+xx)*3;
+            r+=buf[q]; g+=buf[q+1]; b+=buf[q+2]; c++;
+          }
+        }
+        if(!c) continue;
+        d[p*4]=r/c; d[p*4+1]=g/c; d[p*4+2]=b/c;
+      }
+    }
+  }
+}
+
+/* 거울 결 — 메운 면에 <b>실제 사진의 결</b>을 얹는다.
+   인페인팅은 색·명암(저주파)은 잘 잇지만 결과가 유리처럼 매끈해서, 니트 짜임과
+   배경 입자가 살아 있는 주변과 붙여 놓으면 그 매끈함만으로 "여기 메웠다"가 보인다.
+   구멍 픽셀마다 <b>가장 가까운 경계</b>를 찾아 그 건너편(거울 대칭 위치)의
+   고주파(원본 − 흐린 원본)를 가져와 더한다. 저주파는 인페인팅 것을 그대로 쓰므로
+   큰 구조가 복제되지 않고 <b>결만</b> 옮겨온다.
+   blurD: 같은 그림을 detailBlurPx로 흐린 것. 둘의 차가 곧 결이다. */
+function mirrorDetail(d, blurD, hole, w, h, strength){
+  const n = w*h;
+  const bestD = new Float32Array(n).fill(Infinity);
+  const srcI  = new Int32Array(n).fill(-1);
+  const cand = (p, dist, q)=>{ if(dist < bestD[p]){ bestD[p]=dist; srcI[p]=q; } };
+  // ← : 왼쪽 경계 lx, 거울 위치 lx-(x-lx)
+  for(let y=0; y<h; y++){
+    let lx=-1;
+    for(let x=0; x<w; x++){
+      const p=y*w+x;
+      if(!hole[p]){ lx=x; continue; }
+      if(lx<0) continue;
+      const dist=x-lx, mx=lx-dist;
+      if(mx>=0) cand(p, dist, y*w+mx);
+    }
+  }
+  // →
+  for(let y=0; y<h; y++){
+    let lx=-1;
+    for(let x=w-1; x>=0; x--){
+      const p=y*w+x;
+      if(!hole[p]){ lx=x; continue; }
+      if(lx<0) continue;
+      const dist=lx-x, mx=lx+dist;
+      if(mx<w) cand(p, dist, y*w+mx);
+    }
+  }
+  // ↓
+  for(let x=0; x<w; x++){
+    let ly=-1;
+    for(let y=0; y<h; y++){
+      const p=y*w+x;
+      if(!hole[p]){ ly=y; continue; }
+      if(ly<0) continue;
+      const dist=y-ly, my=ly-dist;
+      if(my>=0) cand(p, dist, my*w+x);
+    }
+  }
+  // ↑
+  for(let x=0; x<w; x++){
+    let ly=-1;
+    for(let y=h-1; y>=0; y--){
+      const p=y*w+x;
+      if(!hole[p]){ ly=y; continue; }
+      if(ly<0) continue;
+      const dist=ly-y, my=ly+dist;
+      if(my<h) cand(p, dist, my*w+x);
+    }
+  }
+  let used = 0;
+  for(let p=0; p<n; p++){
+    if(!hole[p]) continue;
+    const q = srcI[p];
+    if(q < 0 || hole[q]) continue;       // 거울 자리가 또 구멍이면 결을 못 가져온다
+    for(let ch=0; ch<3; ch++){
+      const hf = d[q*4+ch] - blurD[q*4+ch];
+      d[p*4+ch] = Math.max(0, Math.min(255, d[p*4+ch] + hf*strength));
+    }
+    used++;
+  }
+  return used;
+}
+
+/* 메운 면에 잡티 얹기 — 인페인팅 결과는 완전히 매끈해서, 사진 잡티가 있는
+   주변과 붙여 놓으면 그 매끈함 자체가 "여기 메웠다"고 알려준다.
+   세기는 지어내지 않고 <b>주변 아는 픽셀의 가로 이웃 차이</b>에서 실측한다.
+   난수는 픽셀 좌표 해시(결정적) — 다시 그려도 무늬가 안 바뀌어 깜빡임이 없다. */
+function addGrainToHoles(d, hole, w, h, strength){
+  let sum = 0, n = 0;
+  for(let y=1; y<h-1; y+=3){
+    for(let x=1; x<w-2; x+=3){
+      const p = y*w+x;
+      if(hole[p] || hole[p+1]) continue;
+      const l1 = 0.299*d[p*4]   + 0.587*d[p*4+1]   + 0.114*d[p*4+2];
+      const l2 = 0.299*d[p*4+4] + 0.587*d[p*4+5]   + 0.114*d[p*4+6];
+      sum += Math.abs(l1-l2); n++;
+    }
+  }
+  if(!n) return 0;
+  const sigma = Math.min(6, (sum/n) * 0.8) * strength;
+  if(sigma < 0.3) return 0;
+  for(let p=0; p<w*h; p++){
+    if(!hole[p]) continue;
+    let s = (Math.imul(p, 2654435761)) >>> 0;
+    s ^= s >>> 15; s = Math.imul(s, 2246822519) >>> 0; s ^= s >>> 13;
+    const nz = ((s & 1023)/1023 - 0.5) * 2 * sigma;
+    d[p*4]   = Math.max(0, Math.min(255, d[p*4]   + nz));
+    d[p*4+1] = Math.max(0, Math.min(255, d[p*4+1] + nz));
+    d[p*4+2] = Math.max(0, Math.min(255, d[p*4+2] + nz));
+  }
+  return sigma;
+}
+
+/* baseC 테두리 정리 — 반투명 머리 잔상(검은 톱니 윤곽)을 <b>완전히</b> 떨군다.
+   알파 250 미만은 전부 버리고 몇 px 더 깎은 뒤, 그 경계만 살짝 페더링한다.
+   깎여 나간 자리는 아래 깔린 메움 배경이 이미 채우고 있으므로 구멍이 안 생긴다. */
+function buildCleanBaseCanvas(baseC, maskInf){
+  const w = baseC.width, h = baseC.height;
+  if(!w || !h) return baseC;
+  const hm = getHoleMask(baseC, maskInf);
+  if(!hm || !hm.n0) return baseC;
+  const hole = hm.hole;
+
+  const mc = document.createElement('canvas'); mc.width = w; mc.height = h;
+  const mx = mc.getContext('2d');
+  const md = mx.createImageData(w, h);
+  for(let p=0; p<hole.length; p++){
+    const i = p*4;
+    md.data[i] = md.data[i+1] = md.data[i+2] = 255;
+    md.data[i+3] = hole[p] ? 0 : 255;
+  }
+  mx.putImageData(md, 0, 0);
+
+  const out = document.createElement('canvas'); out.width = w; out.height = h;
+  const ox = out.getContext('2d');
+  ox.drawImage(baseC, 0, 0);
+  ox.globalCompositeOperation = 'destination-in';
+  if(RENDER_PLATE.featherPx > 0) ox.filter = `blur(${RENDER_PLATE.featherPx}px)`;
+  ox.drawImage(mc, 0, 0);
+  ox.filter = 'none';
+  ox.globalCompositeOperation = 'source-over';
+  out._holePx = hm.n0 + hm.nRim;
+  return out;
+}
+
+/* 테두리 정리한 baseC — baseC 객체에 붙여 캐시(baseC가 새로 만들어지면 자동 무효). */
+function getCleanBaseCanvas(baseC, maskInf){
+  if(!baseC) return baseC;
+  if(!RENDER_PLATE.on) return baseC;
+  if(baseC._cleanBase) return baseC._cleanBase;
+  let c = baseC;
+  try{ c = buildCleanBaseCanvas(baseC, maskInf) || baseC; }
+  catch(e){ console.warn('베이스 테두리 정리 실패(원본 사용):', e); c = baseC; }
+  baseC._cleanBase = c;
+  return c;
+}
+
+/* 최종 배경 생성. skinColor가 없으면 결 없이 색만 채운다(안전 폴백). */
+function buildHoleFillCanvas(srcCanvas, skinColor, ell, angle, holeMaskInfo){
+  const sw = srcCanvas.width, sh = srcCanvas.height;
+  if(!sw || !sh) return null;
+  let skinRGB = null;
+  if(skinColor){
+    const m = String(skinColor).match(/\d+/g);
+    if(m && m.length>=3) skinRGB = [+m[0], +m[1], +m[2]];
+  }
+  /* 두피색이 없는 뷰(후면: 얼굴 미검출)는 보관된 이마 표본의 평균색으로 대신한다.
+     같은 사람·같은 조명·같은 카메라라 뷰가 달라도 색을 맞출 필요가 없다.
+     아래 저주파 전파·바탕칠까지 이 값이 쓰이게 <b>여기서</b> 채운다. */
+  if(!skinRGB && _skinGraft && _skinGraft.mean) skinRGB = _skinGraft.mean.slice();
+  const lw = Math.max(16, Math.min(HOLE_FILL.lowW, sw));
+  const lh = Math.max(16, Math.round(sh * (lw / sw)));
+  const low = fillHolesLowRes(srcCanvas, lw, lh, skinRGB, ell);
+
+  const ow = Math.max(32, Math.min(HOLE_FILL.outW, sw));
+  const oh = Math.max(32, Math.round(sh * (ow / sw)));
+  const out = document.createElement('canvas'); out.width = ow; out.height = oh;
+  const octx = out.getContext('2d', { willReadFrequently:true });
+  octx.imageSmoothingEnabled = true;
+  /* ── 이 캔버스는 <b>반드시 불투명</b>해야 한다 (2026-08-02 12차) ────────────
+     사용자: "아직 베이스C 안 깔리는 거 같아. 까매."
+     11차에서 "메움 배경이 <b>없을 때</b>"의 검정은 막았는데, 메움 배경이
+     <b>있는데 그 안에 투명이 남은</b> 경우가 남아 있었다. low(저해상도 전파)는
+     이웃이 전부 투명한 구멍(예: 마스크가 프레임 가장자리에 닿아 씨앗이 없는
+     자리)을 못 채우고, 그 투명이 여기로 그대로 확대돼 넘어온다. 그 위에 얹히는
+     baseC도 같은 자리가 투명이니 결국 페이지 배경(검정)이 비친다.
+     그래서 <b>먼저 두피색으로 한 번 칠하고</b> 그 위에 low를 얹는다. low가
+     채운 자리는 그대로고, 못 채운 자리만 두피색이 된다 — 검정은 못 나온다. */
+  octx.fillStyle = skinRGB ? `rgb(${skinRGB[0]},${skinRGB[1]},${skinRGB[2]})` : 'rgb(224,178,148)';
+  octx.fillRect(0, 0, ow, oh);
+  octx.drawImage(low, 0, 0, ow, oh);           // 저주파(색·명암) — 아래 스윕이 못 닿는 자리의 안전망
+
+  // 어디가 구멍인지(=원본이 투명했던 자리) 출력 해상도로 다시 읽는다
+  const hc = document.createElement('canvas'); hc.width = ow; hc.height = oh;
+  const hctx = hc.getContext('2d', { willReadFrequently:true });
+  hctx.drawImage(srcCanvas, 0, 0, ow, oh);
+  const holeA = hctx.getImageData(0, 0, ow, oh).data;
+
+  /* ── 이마 표본을 <b>여기서</b> 먼저 뜬다 (2026-09-14 3차) ──────────────────
+     예전엔 인페인팅·잔재 회수를 다 끝낸 뒤에 떴다. 그런데 얼굴 없는 뷰는
+     "표본이 있느냐"로 <b>구멍을 어디까지 넓힐지</b>가 갈린다(facelessFill) —
+     표본이 없으면 타원을 비워봐야 메울 재료가 없어 단색 오벌이 된다.
+     그래서 판단에 필요한 순서대로 앞으로 옮긴다. 표본은 hctx(=원본을 출력
+     해상도로 다시 그린 것)에서 뜨므로, 아래 어떤 수정보다 앞에 와도 값이 같다. */
+  const size = Math.min(Math.max(24, Math.round(HOLE_FILL.patch * ow / 900)), ow>>1, oh>>1);
+  /* ── 이마 표본 확보 ─────────────────────────────────────────────
+     이 뷰에서 뜬다 → 못 뜨면 다른 뷰(대개 정면)에서 뜬 것을 쓴다.
+     정면 표본은 늘 최신으로 보관한다(얼굴이 가장 크게·정면으로 나오는 뷰). */
+  /* ── 이마가 아니면 <b>남의 이마</b>를 쓴다 (2026-08-11) ────────────────────
+     사용자: "이마에서 픽셀만 떼어와서 심으라고 했는데 눈까지 떼어왔어?"
+     맞다. SKIN_PATCH_CANDS는 14자리인데 이마(dy<0)는 위 6개뿐이고 나머지는
+     볼·턱·목이다. 이마는 <b>우대점수</b>일 뿐 필수가 아니었다. 그런데 우대는
+     합격선을 못 넘기게 일부러 분리해 놨으므로, 이마가 떨어지면 우대는 못 구한다.
+
+     그리고 이 손님처럼 <b>앞머리가 이마를 통째로 덮으면</b> 그 자리는 원본 머리를
+     지운 뒤라 투명이고, "불투명 98%" 조건에서 이마 후보 여섯이 <b>전부</b> 탈락한다.
+     남는 최상위가 dy +0.10~0.15 — 위 주석이 "눈 언저리"라고 적어둔 바로 그 줄이다.
+     떠온 24px 패치를 46px 주기 거울 타일로 만 픽셀에 깔므로, 그 안에 눈이 있으면
+     화면에 눈이 수십 번 찍힌다(사용자가 본 "실루엣 둘레의 눈동자").
+
+     고침 — 우선순위를 <b>위치</b>로 정한다:
+       ① 이 뷰의 이마 표본        ② 보관된 다른 뷰의 이마 표본
+       ③ 이 뷰의 비이마 표본      ④ 없음 → 단색 피부(아래 flatMix)
+     ③이 ②보다 뒤인 게 이번 변경의 핵심이다. 예전엔 자기 뷰 것이 있으면 그게
+     눈이어도 무조건 이겼다(`if(!graft) graft = _skinGraft` — null일 때만 빌림).
+     실제로 우측만 자기 것(눈)을 쓰고 좌·후면은 정면 이마를 빌려 썼다.
+     ④는 눈 무늬가 반복되느니 단색이 낫다는 판단이다 — 없는 정보를 지어내는 것보다
+     "여기는 모른다"가 화면에서도 덜 틀린다. */
+  const own = buildSkinGraft(hctx, ow, oh, ell, skinRGB, size, angle);
+  // 보관은 <b>이마 표본만</b> 한다. 눈 표본을 보관하면 다른 뷰까지 오염된다.
+  if(own && own.forehead && (!_skinGraft || angle === 'front' || _skinGraft.src !== 'front')) _skinGraft = own;
+  /* ── dy<0(이마)만으로는 모자란다 (2026-08-11 2차) ────────────────────────
+     실기기: 우측만 `이마 dy-0.10 · 평균밝기 102`, 나머지 뷰는 `dy-0.28 · 139`.
+     dy−0.10은 이마 후보 <b>여섯 중 제일 아래</b>(관자놀이 쪽)라 머리카락 경계·
+     그늘이 섞이기 쉽다. 통과는 했는데 27% 어두웠고, 화면에는 그 어두운 무늬가
+     타일로 반복됐다. 그래서 밝기로 한 번 더 거른다 — 보관된 이마 표본보다
+     <b>뚜렷하게 어두우면</b> 내 것을 버리고 보관본을 쓴다.
+     기준 0.85는 "조명 차이"와 "다른 것이 섞임"을 가르는 자리로 잡았다(실측
+     139 대 102 = 0.73이 걸리고, 뷰 간 정상 조명차 ±10%는 안 걸린다). */
+  const GRAFT_DARK_TOL = 0.85;
+  let ownUsable = !!(own && own.forehead), darkRejected = null;
+  if(ownUsable && _skinGraft && _skinGraft.forehead && _skinGraft !== own
+     && _skinGraft.lum > 1 && own.lum / _skinGraft.lum < GRAFT_DARK_TOL){
+    darkRejected = own; ownUsable = false;
+  }
+  let graft = null;
+  if(ownUsable) graft = own;                                  // ①
+  else if(_skinGraft && _skinGraft.forehead) graft = _skinGraft; // ②
+  else graft = null;                                          // ③은 안 쓴다 → ④ 단색
+  const graftRejected = (own && !own.forehead) ? own : darkRejected;
+
+  /* ── 렌더링 경계 배경 (2026-08-10) ────────────────────────────────
+     ① 원본 픽셀을 출력 해상도로 얹는다 — 인페인팅이 참조할 "아는 픽셀".
+        (예전엔 low를 확대한 뿌연 값이 유일한 참조였다.)
+     ② 알파 250 미만 + 몇 px 부풀림 = 구멍. 반투명 머리 테두리가 여기 포함되어
+        검은 톱니 윤곽이 사라진다.
+     ③ 4방향 스윕으로 메우고 주변에서 잰 만큼 잡티를 얹는다.
+     두상 안은 아래 이식 루프가 색까지 다시 덮으므로, 여기 결과는 두상 <b>밖</b>
+     (어깨·옷·배경)에서 그대로 최종이 된다 — 유령 덩어리가 없어지는 자리다. */
+  /* ── 얼굴 없는 뷰 판정 (2026-09-14 3차) ────────────────────────────────
+     랜드마크가 없다 = 이 뷰의 타원 안에 <b>있어야 하는</b> 이목구비가 없다
+     = 타원 안 전체가 두피이거나 지울 머리다. 후면이 늘 이 경우다.
+     표본(graft)이 없으면 메울 재료가 없으니 켜지 않는다 — 살색 단색 오벌이
+     원본보다 나을 게 없다. 그때는 예전 경로(잔재 회수)로 간다. */
+  const FF = HOLE_FILL.facelessFill;
+  const noFace = !(typeof state !== 'undefined' && state.landmarks && state.landmarks[angle]);
+  const faceless = !!(FF && FF.on && ell && graft && graft.mean && noFace);
+
+  let plateDiag = null, residueDiag = null, facelessDiag = null;
+  let hole = new Uint8Array(ow*oh);
+  if(RENDER_PLATE.on){
+    octx.drawImage(srcCanvas, 0, 0, ow, oh);   // ① 아는 픽셀(구멍은 투명이라 안 덮임)
+    /* 구멍 정의는 <b>테두리 정리와 같은 것</b>을 쓴다(getHoleMask). 원본 해상도에서
+       한 번 만들어(알파 + 부풀림 + 머리색 테두리 회수) 여기로 축소해 온다.
+       두 곳에서 따로 재면 1px 어긋난 자리에 원본 머리색이 실선으로 남는다. */
+    const hm = getHoleMask(srcCanvas, holeMaskInfo);
+    if(hm) hole = downsampleFlagsMax(hm.hole, hm.w, hm.h, ow, oh);
+    else { for(let p=0, i=3; p<hole.length; p++, i+=4) hole[p] = holeA[i] < RENDER_PLATE.alphaHole ? 1 : 0; }
+    if(faceless){
+      /* 타원 안을 통째로 구멍으로 넘긴다. 이게 "어디가 잔재인지 고르기"를
+         대신한다 — 고를 필요가 없으면 고르다 틀릴 일도 없다.
+         ⚠ 승격은 <b>두 군데</b>에 해야 한다:
+           ① 여기(출력 해상도 사본) — 아래 이식 루프가 칠할 자리
+           ② hm.hole(원본 해상도, 캐시) — 위에 얹히는 baseC 정리본이 오려낼 자리
+         ②를 빼먹은 것이 2차에서 눈자국이 그대로 남은 직접 원인이다. 정리본은
+         이미 만들어져 캐시돼 있을 수 있으므로 같이 무효화한다. */
+      const nIn = markEllipseHole(hole, ow, oh, ell, FF.shrink);
+      let nBase = 0;
+      if(hm){
+        nBase = markEllipseHole(hm.hole, hm.w, hm.h, ell, FF.shrink);
+        if(nBase) try{ srcCanvas._cleanBase = null; }catch(e){}
+      }
+      facelessDiag = { nIn, nBase, hadHm: !!hm };
+    } else {
+      /* 잔재 회수는 <b>반드시 인페인팅 앞</b>이다. 뒤로 가면 검정이 이미 아래로
+         끌려 내려간 뒤라, 승격해봐야 그 자국을 다시 참조해 메우게 된다. */
+      residueDiag = markSkinResidue(holeA, ow, oh, hole, ell, angle, hm && hm.hair);
+    }
+    const pimg = octx.getImageData(0, 0, ow, oh), pd = pimg.data;
+    const res = inpaintDirectional(pd, hole, ow, oh, RENDER_PLATE.power); // ②
+    relaxHoles(pd, hole, ow, oh, RENDER_PLATE.relax);                     // ③ 빗살무늬 제거
+    /* ④ 거울 결 — 흐린 판을 한 장 떠서 고주파를 경계 건너편에서 가져온다. */
+    let nDetail = 0, sigma = 0;
+    if(RENDER_PLATE.detail > 0){
+      const bc = document.createElement('canvas'); bc.width = ow; bc.height = oh;
+      const bx = bc.getContext('2d', { willReadFrequently:true });
+      octx.putImageData(pimg, 0, 0);
+      bx.filter = `blur(${RENDER_PLATE.detailBlurPx}px)`;
+      bx.drawImage(out, 0, 0);
+      bx.filter = 'none';
+      const blurD = bx.getImageData(0, 0, ow, oh).data;
+      nDetail = mirrorDetail(pd, blurD, hole, ow, oh, RENDER_PLATE.detail);
+    }
+    if(!nDetail) sigma = addGrainToHoles(pd, hole, ow, oh, RENDER_PLATE.grain);
+    octx.putImageData(pimg, 0, 0);
+    plateDiag = { sigma, detail: nDetail,
+                  rim: hm ? hm.nRim : 0, rimIter: hm ? hm.rimIter : 0,
+                  hair: hm ? hm.hair : null, ...res };
+  } else {
+    for(let p=0, i=3; p<hole.length; p++, i+=4) hole[p] = holeA[i] < 200 ? 1 : 0;
+    if(faceless){
+      facelessDiag = { nIn: markEllipseHole(hole, ow, oh, ell, FF.shrink), nBase: 0, hadHm: false };
+    } else {
+      const hairInf = holeMaskInfo && holeMaskInfo.avgColor && String(holeMaskInfo.avgColor).match(/\d+/g);
+      residueDiag = markSkinResidue(holeA, ow, oh, hole, ell, angle,
+        (hairInf && hairInf.length>=3) ? [+hairInf[0], +hairInf[1], +hairInf[2]] : null);
+    }
+  }
+  logRenderPlateOnce(angle, plateDiag, ow, oh);
+  logSkinResidueOnce(angle, residueDiag, ow, oh);
+  if(!ell) logFacelessOnce(angle, facelessDiag, graft, noFace, ell, ow, oh);   // 타원이 있으면 덮개 수를 알고 난 뒤(아래)에 찍는다
+
+  /* ⚠ 예전엔 여기서 <b>바로 돌아갔다</b>. 그러면 타원 밖(어깨·배경)은 물론이고
+     타원 자체가 없는 경우까지 mirrorDetail 결과가 그대로 최종이 된다 —
+     위 outerField 배너가 말한 눈 윤곽이 남는 자리다. 이제 밖은 밖대로 메우고
+     간다. 안쪽(살 격자·이식)만 skinRGB·ell이 있을 때 돈다. */
+  /* ── 두피색이 없다고 <b>타원 안까지</b> 포기하지 않는다 (2026-09-14 2차) ──────
+     후면은 얼굴이 안 잡혀 scalpColor가 비는 경우가 있다. 예전엔 그러면 여기서
+     바로 돌아가서 <b>타원 밖만</b> 메우고 끝났다 — 전면·측면에 적용한 살 격자
+     + 이마 표본 이식이 후면 타원 안에서만 통째로 건너뛰어졌고, 그 자리엔
+     mirrorDetail이 접어 넣은 눈 윤곽이 그대로 남았다(사용자가 본 그것).
+     살 격자는 skinRGB가 없어도 선다 — 색을 <b>자리</b>에서 가져오기 때문이다.
+     못 서는 경우를 위해 보관된 이마 표본의 평균색을 두피색 대신 쓴다.
+     이제 <b>타원이 없을 때만</b> 밖으로 빠진다. */
+  const _oimgEarly = (!ell) ? octx.getImageData(0, 0, ow, oh) : null;
+  if(_oimgEarly){
+    const od0 = _oimgEarly.data;
+    const outer0 = buildOuterField(od0, ow, oh, hole, ell);
+    const n0 = outer0 ? paintOuterHoles(od0, ow, oh, hole, ell, outer0) : 0;
+    if(outer0) octx.putImageData(_oimgEarly, 0, 0);
+    logOuterFieldOnce(angle, outer0, n0, ow, oh, '두상 타원 없음');
+    return out;
+  }
+
+
+  const G = HOLE_FILL.graft;
+  // 거울 반복(ping-pong)으로 타일링 — 같은 무늬가 줄줄이 반복되는 티가 안 난다
+  const mirror = (v, n)=>{ const p = 2*n - 2; let m = ((v % p) + p) % p; return m < n ? m : p - m; };
+  const oimg = octx.getImageData(0, 0, ow, oh), od = oimg.data;
+  const T = HOLE_FILL.texture;
+  const gs = graft ? graft.size : 0;
+  let nGraft = 0, nFlat = 0;
+  /* ── 색은 격자에서, 결만 패치에서 (2026-09-12) ──────────────────────
+     반드시 이식 루프 <b>전에</b> 만든다 — od를 고치기 시작하면 그 결과가
+     표본으로 되먹여져서 색이 스스로 끌려간다. */
+  const F = HOLE_FILL.skinField;
+  /* 얼굴 없는 뷰에서는 살 격자를 <b>아예 안 세운다</b> (2026-09-14 3차).
+     격자는 "이 사진의 이 자리에 있던 살"을 쓰는 방식인데, 후면 타원 안에는
+     그 살이 없다 — 씨앗으로 잡히는 것은 세그가 놓친 머리 뭉치뿐이라, 격자를
+     세우면 그 어두운 무늬가 <b>색</b>으로 승격돼 눈자국이 다시 그려진다.
+     타원을 통째로 구멍으로 넘긴 뒤라 어차피 씨앗이 없어 null이 나오지만,
+     테두리 한 겹으로 격자가 서는 일이 없도록 여기서 못을 박는다. */
+  const field = faceless ? null : buildSkinField(od, ow, oh, hole, ell);
+  /* 결은 패치가 평평할 때만 쓴다. 격자가 색을 맡으므로 결이 없어도 그림은
+     성립한다 — 눈 무늬가 반복되느니 매끈한 편이 낫다(8/11과 같은 판단).
+     얼굴 없는 뷰(이식 전면 적용)에서도 같은 잣대를 그대로 쓴다: 표본이 평평하지
+     않으면(=눈·눈썹이 섞였으면) 결을 통째로 버리고 색만 심는다. */
+  const useDetail = !!((field || faceless) && graft && F && F.detail > 0
+                       && (graft.det == null || graft.det <= F.flatTol));
+  const _fc = [0,0,0];
+  const fieldDrop = !!(field && graft && !useDetail);
+  /* 타원 <b>밖</b> 구멍 — 반드시 이식 루프 전에 만든다(od가 고쳐지기 전 픽셀이
+     씨앗이어야 한다). 실제 칠하기는 아래 루프가 끝난 뒤 한 번에 한다. */
+  /* (2026-09-16) 살 구역 = 두개골 되쏜 실루엣 · 살 색 = 얼굴 기준색 쪽으로 — 위 skullClip·faceTone 배너 */
+  let skullW = null;
+  try{ skullW = buildSkullClipWeight(angle, ow, oh, sw, sh); }
+  catch(e){ console.warn('[메움·두상경계] 두개골 실루엣 실패(타원 그대로):', e && e.message); }
+  const tone = faceToneRefFor(od, ow, oh, hole, ell, angle);
+  const FT = HOLE_FILL.faceTone;
+  const outer = buildOuterField(od, ow, oh, hole, ell, skullW);
+  const clipBg = !!(skullW && outer);
+  const _bg = [0,0,0];
+  const bgMixK = Math.max(0, Math.min(1, HOLE_FILL.outerField.detailMix));
+  /* 두개골 밖 자리의 바탕색 — clipBg면 주변색 격자(+약한 결), 아니면 예전처럼 od 그대로 */
+  const bgAt = (i, nx, ny)=>{
+    if(!clipBg){ _bg[0]=od[i]; _bg[1]=od[i+1]; _bg[2]=od[i+2]; return _bg; }
+    outer.at(nx, ny, _bg);
+    for(let ch=0; ch<3; ch++) _bg[ch] = Math.max(0, Math.min(255, _bg[ch] + (od[i+ch]-_bg[ch])*bgMixK));
+    return _bg;
+  };
+  let nBg = 0;
+  /* (2026-09-16 3차) 얼굴 없는 뷰 — 타원(px 페더) ∪ 목 기둥 덮개. 위 facelessFill.cover 배너.
+     밖 구멍(주변색)을 <b>먼저</b> 칠해 두고, 덮개가 그 위에 살을 얹는다(목 기둥은 타원 밖이라
+     나중에 칠하면 주변색이 살을 덮어쓴다). 비-얼굴 뷰는 안/밖이 겹치지 않아 순서 무관. */
+  const cover = faceless ? buildFacelessCover(ow, oh, ell, hole) : null;
+  let nOuterEarly = -1;
+  if(cover && outer){ nOuterEarly = paintOuterHoles(od, ow, oh, hole, ell, outer); }
+  if(cover && facelessDiag) facelessDiag.nNeck = cover.nNeck;
+  for(let y=0; y<oh; y++){
+    const ny = (y + 0.5)/oh, v = (ny - ell.cy)/ell.ry, v2 = v*v;
+    if(v2 > 1 && !cover) continue;             // 두상 밖 — 아래 paintOuterHoles가 맡는다(덮개가 있으면 목 기둥까지)
+    const py = gs ? mirror(y, gs) : 0;
+    for(let x=0; x<ow; x++){
+      const i = (y*ow+x)*4;
+      // 원래 있던 픽셀은 안 건드림. 기준을 holeA 알파에서 <b>부풀린 구멍 플래그</b>로
+      // 바꾼 이유: 반투명 머리 테두리(알파 200~250)가 예전엔 "있던 픽셀"로 통과해
+      // 두피 위에 검은 실선으로 남았다 — 그 자리도 이식 대상이어야 한다.
+      if(!hole[y*ow + x]) continue;
+      const nx = (x + 0.5)/ow, u = (nx - ell.cx)/ell.rx;
+      const r2 = u*u + v2;
+      if(r2 > 1 && !cover) continue;           // 두상 밖 — 아래 paintOuterHoles가 맡는다
+      /* 두상 경계 페더 — 이식이 타원 선에서 뚝 끊기면 그 자리에 테두리가 생긴다.
+         바깥 몇 %에서 원래(전파된) 색으로 서서히 넘긴다. */
+      let wgt = 1;
+      if(G.edgeFeather > 0){
+        const r = Math.sqrt(r2);
+        if(r > 1 - G.edgeFeather) wgt = Math.max(0, (1 - r) / G.edgeFeather);
+      }
+      if(cover){
+        wgt = cover[y*ow + x];                   // px 고정 페더 · 목 기둥 포함
+        if(wgt <= 0.002) continue;               // 덮개 밖 — 주변색(이미 칠함) 그대로
+      }
+      const bg = bgAt(i, nx, ny);
+      if(skullW){
+        wgt *= skullW[y*ow + x];
+        if(wgt <= 0.002){                        // 두개골 밖 — 살이 아니다
+          od[i] = bg[0]; od[i+1] = bg[1]; od[i+2] = bg[2]; od[i+3] = 255;
+          nBg++;
+          continue;
+        }
+      }
+      if(faceless){
+        /* ── 얼굴 없는 뷰: 순수 이식 (2026-09-14 3차) ─────────────────────
+           od를 <b>한 방울도</b> 쓰지 않는다. 색도 밝기도 안 쓴다 — 후면 타원
+           안의 od는 지운 머리 경계가 사방으로 끌려간 스윕 자국이라, 색으로
+           쓰면 얼룩이 되고 <b>밝기로만</b> 써도 그 얼룩이 음영으로 되살아난다
+           (그게 "눈모양"의 정체다. 형태가 남는 경로를 하나도 안 남긴다).
+           대신 심는 것은 셋뿐이다:
+             · 색   — 이마 표본의 평균색(같은 사람·같은 조명이라 그대로 맞는다)
+             · 음영 — 타원 중심에서 멀수록 살짝 어둡게(구면). 사진과 무관한
+                      기하학이라 무늬가 생길 수 없다.
+             · 결   — 이마 표본의 고주파. 평평한 표본일 때만(useDetail).
+           결과는 "이마 피부를 뒤통수에 통째로 옮겨 심은" 면이 된다. 그 위에
+           새 헤어가 그려지므로 두피가 균일해도 어색하지 않다. */
+        const shade = 1 - FF.edgeShade * Math.min(1, r2);   // 목 기둥(r2>1)은 가장자리 음영에서 멈춘다
+        const gk = useDetail ? (mirror(x, gs)*gs + py) * 3 : 0;
+        for(let ch = 0; ch < 3; ch++){
+          const skinPx = graft.mean[ch] * shade
+                       + (useDetail ? graft.hi[gk+ch] * T * FF.detail : 0);
+          od[i+ch] = Math.max(0, Math.min(255, bg[ch]*(1-wgt) + skinPx*wgt));
+        }
+        od[i+3] = 255;
+        nGraft++;
+        continue;
+      }
+      if(field){
+        /* ── 자리별 색 (2026-09-12) ──────────────────────────────────
+           타일이 없으므로 반복될 무늬 자체가 없다. 번져 들어온 od는 색으로도
+           <b>밝기로도</b> 안 쓴다 — 정수리는 벽, 목덜미는 지운 머리라 둘 다
+           살이 아니다(12a SCALP_SKIN이 unlit인 것과 같은 이유).
+           ⚠ 이 분기가 graft 유무보다 <b>앞</b>인 게 핵심이다. 앞머리가 이마를
+             통째로 덮은 손님은 이마 후보 여섯이 전부 탈락해 표본이 없고, 예전엔
+             그대로 단색(flatMix)으로 떨어졌다. 격자는 표본이 없어도 선다 —
+             색을 <b>표본</b>이 아니라 <b>자리</b>에서 가져오기 때문이다. */
+        field.at(nx, ny, _fc);
+        if(tone){
+          /* 얼굴 기준색 쪽으로 당긴다 — 밝기 차는 좁은 범위에서만 살린다 */
+          const Lf = 0.299*_fc[0] + 0.587*_fc[1] + 0.114*_fc[2];
+          const Lr = 0.299*tone[0] + 0.587*tone[1] + 0.114*tone[2];
+          const shT = Lr > 1 ? Math.max(FT.shadeMin, Math.min(FT.shadeMax, Lf / Lr)) : 1;
+          for(let ch=0; ch<3; ch++) _fc[ch] = _fc[ch]*(1-FT.mix) + tone[ch]*shT*FT.mix;
+        }
+        const gk = useDetail ? (mirror(x, gs)*gs + py) * 3 : 0;
+        for(let ch = 0; ch < 3; ch++){
+          const skinPx = _fc[ch] + (useDetail ? graft.hi[gk+ch] * T * F.detail : 0);
+          od[i+ch] = Math.max(0, Math.min(255, bg[ch]*(1-wgt) + skinPx*wgt));
+        }
+        nGraft++;
+        continue;
+      }
+      if(!graft){
+        /* 표본을 아예 못 떴을 때 — 최소한 <b>두피색 쪽으로</b> 끌어당긴다.
+           벽의 흰색·머리의 검정이 그대로 남는 것보다 낫다(검정은 답이 아니다). */
+        const m = G.flatMix * wgt;
+        const FB = tone || skinRGB || [224,178,148];   // 두피색도 표본도 없을 때(후면)의 최후 폴백
+        od[i]   = bg[0]*(1-m) + FB[0]*m;
+        od[i+1] = bg[1]*(1-m) + FB[1]*m;
+        od[i+2] = bg[2]*(1-m) + FB[2]*m;
+        nFlat++;
+        continue;
+      }
+      const k = (mirror(x, gs)*gs + py) * 3;
+      if(!G.on){
+        // 예전 동작(A/B) — 결만 얹는다. 색은 이웃 전파가 정한 그대로.
+        od[i]   = Math.max(0, Math.min(255, od[i]   + graft.hi[k]  *T));
+        od[i+1] = Math.max(0, Math.min(255, od[i+1] + graft.hi[k+1]*T));
+        od[i+2] = Math.max(0, Math.min(255, od[i+2] + graft.hi[k+2]*T));
+        continue;
+      }
+      /* ── 이식 ──
+         이 자리에 번져 들어온 색(od)은 <b>색으로 안 쓴다</b>. 정수리 근처면
+         벽(흰색), 뒤통수·목덜미면 지워진 머리 경계(검정)라 둘 다 두피가 아니다.
+         쓰는 건 <b>밝기 하나</b>고, 그마저 shadeMin~shadeMax로 잘라서 받는다 —
+         그늘·하이라이트는 남되 흰 벽/검정으로는 못 간다.
+         색과 결은 전부 이마 표본에서 온다. */
+      const lum = 0.299*od[i] + 0.587*od[i+1] + 0.114*od[i+2];
+      let sh = graft.lum > 1 ? lum / graft.lum : 1;
+      sh = Math.max(G.shadeMin, Math.min(G.shadeMax, sh));
+      for(let ch = 0; ch < 3; ch++){
+        const skinPx = graft.rgb[k+ch] * sh;
+        od[i+ch] = Math.max(0, Math.min(255, bg[ch]*(1-wgt) + skinPx*wgt));
+      }
+      nGraft++;
+    }
+  }
+  logSkullClipOnce(angle, skullW, tone, nBg, ow, oh);
+  logFacelessOnce(angle, facelessDiag, graft, noFace, ell, ow, oh);
+  const nOuter = (nOuterEarly >= 0) ? nOuterEarly : (outer ? paintOuterHoles(od, ow, oh, hole, ell, outer) : 0);
+  octx.putImageData(oimg, 0, 0);
+  logOuterFieldOnce(angle, outer, nOuter, ow, oh, null);
+  logSkinFieldOnce(angle, field, graft, useDetail, ow, oh);
+  logSkinGraftOnce(angle, graft, nGraft, nFlat, ow, oh, graftRejected);
+  return out;
+}
+
+/* [진단] 렌더링 경계 배경 — 뷰당 1회.
+   "주변에 마스크가 겹쳐 보인다"는 신고가 다시 오면 이 한 줄로 갈린다:
+     · 채움 0px      → RENDER_PLATE.on이 꺼졌거나 구멍 판정이 안 됨
+     · 미도달 큰 값  → 마스크가 프레임 가장자리에 닿아 사방이 전부 구멍(=촬영 문제)
+     · 잡티 0        → 주변이 이미 매끈(합성 배경) — 정상 */
+const _plateLogged = {};
+function logRenderPlateOnce(angle, diag, ow, oh){
+  if(!angle || _plateLogged[angle]) return;
+  _plateLogged[angle] = true;
+  if(!diag){ console.log(`[렌더경계] ${angle}: 꺼짐(RENDER_PLATE.on=false) — 예전 동작(160px 확산 + 테두리 잔상)`); return; }
+  const px = ow*oh;
+  const holePx = diag.filled + diag.unreached;
+  console.log(...gyeolBoldArgs([`[렌더경계] ${angle}: 구멍 ${holePx}px (${((holePx/px)*100).toFixed(1)}% of ${ow}×${oh})`
+    + ` · <b>테두리 회수 ${diag.rim}px</b>(머리색 ${diag.hair ? 'rgb('+diag.hair.join(',')+')' : '없음'}, 최대 ${diag.rimIter}겹)`
+    + ` · 방향성 채움 ${diag.filled}px · 미도달 ${diag.unreached}px`
+    + ` · 거울 결 ${diag.detail}px` + (diag.detail ? '' : ` (못 가져와 잡티 σ ${diag.sigma.toFixed(2)}로 대체)`)
+    + ` — 두상 밖(어깨·옷·배경)은 이 값이 최종입니다`]));
+  if(diag.rim === 0){
+    console.warn(`[렌더경계] ${angle}: 테두리 회수가 0입니다 — 마스크 밖에 남은 머리색 픽셀이 없다는 뜻이거나,`
+      + ` 머리색(avgColor)이 없어 색 판정을 못 한 것입니다. 겹친 마스크가 계속 보이면 RENDER_PLATE.rim.tol을 키우세요.`);
+  } else if(diag.rim > holePx * 0.5){
+    console.warn(`[렌더경계] ${angle}: 테두리 회수가 구멍의 절반을 넘습니다(${diag.rim}/${holePx})`
+      + ` — 머리색이 옷/배경과 가까워 색 판정이 번지고 있을 수 있습니다. RENDER_PLATE.rim.tol을 줄이세요.`);
+  }
+}
+
+/* [진단] 살 색 격자 — 뷰당 1회. "눈이 보인다"가 다시 오면 여기서 갈린다:
+     · 꺼짐/못 섬  → 타일 방식으로 떨어진 것(예전 동작) — 그러면 눈이 날 수 있다
+     · 섰는데 눈   → 결(고주파)로 샌 것 → flatTol을 낮춘다
+     · 씨앗 칸이 적음 → 두상 안이 거의 다 구멍(앞머리·롱헤어) — 번지기 의존도가 큼 */
+function logSkinFieldOnce(angle, field, graft, useDetail, ow, oh){
+  if(!angle || _fieldLogged[angle]) return;
+  _fieldLogged[angle] = true;
+  const F = HOLE_FILL.skinField;
+  if(!F || !F.on){ console.log(`[살색격자] ${angle}: 꺼짐(HOLE_FILL.skinField.on=false) — 패치 타일 방식`); return; }
+  if(!field){
+    console.warn(...gyeolBoldArgs([`[살색격자] ${angle}: <b>못 섰습니다</b> — 두상 안 성한 픽셀이 모자랍니다`
+      + ` · 패치 타일 방식으로 떨어집니다(그 패치에 눈이 있으면 화면에 반복됩니다)`]));
+    return;
+  }
+  console.log(...gyeolBoldArgs([`[살색격자] ${angle}: ${field.GX}×${field.GY}칸 · 살로 잡힌 씨앗 ${field.seeded}칸`
+    + ` → 번지기 ${field.passes}회로 <b>${field.filled}/${field.cells}칸</b>`
+    + ` · 색은 전부 <b>자리에서</b> 옵니다(타일 없음)`
+    + `\n      결: ` + (!graft ? '표본 없음 — 색만(격자는 표본 없이도 섭니다)'
+        : useDetail ? `패치 고주파 σ${graft.det.toFixed(1)} ≤ ${F.flatTol} → <b>얹습니다</b>(세기 ${F.detail})`
+        : `패치 고주파 σ${graft.det.toFixed(1)} > ${F.flatTol} → <b>버립니다</b>(눈·눈썹이 결로 샙니다)`)]));
+}
+
+/* [진단] 두피 이식이 실제로 먹었는지 — 뷰당 1회. 까맣게 보인다는 신고가 오면
+   여기 숫자 하나로 "안 심었다 / 심었는데 다른 이유"가 갈린다. */
+function logSkinGraftOnce(angle, graft, nGraft, nFlat, ow, oh, rejected){
+  if(!angle || _graftLogged[angle]) return;
+  _graftLogged[angle] = true;
+  const px = ow*oh;
+  /* 표본이 <b>어디서</b> 왔는지 적는다 (2026-08-11). 예전엔 어느 후보가 뽑혔든
+     "이마 표본"이라고 찍어서, 눈 언저리에서 떠 와도 로그로는 알 수 없었다. */
+  const where = g => (g.dy == null) ? '위치?' : (g.forehead ? '이마' : '<b>이마 아님</b>')
+                     + ' dy' + (g.dy > 0 ? '+' : '') + g.dy.toFixed(2);
+  console.log(`[두피이식] ${angle}: `
+    + (graft
+        ? `표본 ${graft.size}px · ${where(graft)} · 출처 ${graft.src}${graft.src!==angle?'(다른 뷰 재사용)':''}`
+          + ` · 평균밝기 ${graft.lum.toFixed(0)}`
+        : `표본 없음 → 두피색 단색 ${Math.round(HOLE_FILL.graft.flatMix*100)}% 혼합`)
+    + ` · 이식 ${nGraft}px${nFlat?`(단색 ${nFlat}px)`:''}`
+    + ` = 두상 안 구멍 ${(100*(nGraft+nFlat)/px).toFixed(1)}% of ${ow}×${oh}`);
+  if(rejected) console.warn(`[두피이식] ${angle}: 이 뷰에서 뜬 표본이 ${where(rejected)}`
+    + (rejected.forehead ? ` <b>인데 너무 어두워</b>` : `라`) + ` 버렸습니다`
+    + ` (평균밝기 ${rejected.lum != null ? rejected.lum.toFixed(0) : '?'}).`
+    + `\n    앞머리가 이마를 덮으면 이마 후보 6자리가 "불투명 98%"에서 전부 탈락하고 눈 언저리로 내려갑니다.`
+    + ` 그 패치를 ${graft ? '다른 뷰 이마로 대체했습니다' : '쓰지 않고 단색으로 갔습니다'}.`);
+}
+
+// 뷰별 1회 생성 후 캐시. 두상 판정에 sectionBandsFor가 필요해서 렌더 시점에 만든다.
+/* 메움 배경이 없어서 두피색 단색으로 때웠다는 것을 뷰당 한 번만 알린다.
+   (2026-08-02 10차) 이 경고가 뜨면 원인은 아래 셋 중 하나다:
+     ① headEllipseFor(angle)이 null — 섹션 밴드(정수리/턱선)가 아직 없음
+     ② pickSkinPatch 실패 — 얼굴에서 깨끗한 피부 정사각형을 못 찾음
+     ③ buildHoleFillCanvas 예외 */
+const _holeFillWarned = {};
+function warnHoleFillOnce(angle){
+  if(_holeFillWarned[angle]) return;
+  _holeFillWarned[angle] = true;
+  const ell = (typeof headEllipseFor === 'function') ? headEllipseFor(angle) : null;
+  console.warn(`[메움] ${angle}: 구멍 메움 배경이 없어 두피색 단색으로 대체했다`
+    + ` (두상 타원 ${ell ? '있음' : '없음'}). 세그멘테이션 안이 검게 비치는 증상의 원인 자리.`);
+}
+
+function getHoleFillCanvas(angle, baseC, maskInf){
+  if(!baseC) return null;
+  if(!baseC._view) baseC._view = angle;   // (360shot) buildHoleMask의 눈 보호(featureGuardMask)가 어느 뷰인지 알게
+  const cached = state.baseFillCanvases && state.baseFillCanvases[angle];
+  /* (2026-09-16) 서명에 두개골 실루엣(viewCal)을 넣는다 — 모델이 메움보다 늦게 서므로
+     안 넣으면 타원으로 구운 첫 메움이 끝까지 남는다 */
+  /* (2026-09-16) 이마 표본(_skinGraft)의 유무도 서명에 넣는다. 실기기(남성): 후면이
+     정면보다 <b>먼저</b> 구워져 "[전면이식] back: 이마 표본 없음 → 단색 85%"로 캐시됐고,
+     정면이 표본을 뜬 뒤에도 그 단색 메움이 끝까지 남았다. */
+  const sig = skullClipSig(angle) + '|graft:' + (_skinGraft ? (_skinGraft.src || 'y') : 'none');
+  if(cached && cached._src === baseC && cached._skullSig === sig) return cached;
+  if(cached && cached._src === baseC && cached._skullSig !== sig){
+    delete _skullClipLogged[angle];
+    delete _facelessLogged[angle]; delete _graftLogged[angle];
+    try{ baseC._cleanBase = null; }catch(e){}
+  }
+  let c = null;
+  try{
+    c = buildHoleFillCanvas(baseC, maskInf && maskInf.scalpColor, headEllipseFor(angle), angle, maskInf);
+  }catch(e){ console.warn('구멍 메움 배경 생성 실패:', angle, e); }
+  if(c){ c._src = baseC; c._skullSig = skullClipSig(angle) + '|graft:' + (_skinGraft ? (_skinGraft.src || 'y') : 'none');   // 굽는 중에 이 뷰가 표본을 세웠으면 그 뒤 서명으로(헛 재굽기 방지)
+      if(state.baseFillCanvases) state.baseFillCanvases[angle] = c; }
+  return c;
+}
+
+/* ── 조정 화면 머리 확대 (2026-07-26) ─────────────────────────────────
+   사용자 상황: "노트북으로 작업하고 있어서 어쩔 수 없어. 정수리까지 나오려면."
+   맞다 — 노트북 웹캠으로 정수리까지 담으려면 뒤로 물러날 수밖에 없고, 그러면
+   머리가 프레임의 20%밖에 안 된다. 진단 로그 기준 <b>머리 전체가 화면에서 142px</b>.
+   여기에 결을 그리는 건 우표 크기에 머리카락을 그리는 것과 같아서, 렌더를
+   아무리 손봐도 한계가 있다(다발 5개 × 0.7px + 틈 0.9px = 다발 하나가 화면
+   4.5px — 머리가 142px이면 다발 30개면 머리가 꽉 찬다).
+   촬영은 못 바꾸니 <b>보는 쪽</b>을 바꾼다: 조정 화면만 머리에 맞춰 확대한다.
+   가닥은 벡터로 다시 그려지니 확대해도 선명하고, 배경 사진만 부드러워진다
+   (baseC는 어차피 머리카락이 지워진 얼굴·배경이라 손해가 작다).
+   ※ fit이 "배율 + 평행이동"이라 확대는 dw/dh/dx/dy만 바꾸면 된다 —
+     makeImgToCanvas·가닥 투영·마스크 clip이 전부 fit을 통하므로 자동으로 따라온다.
+   ※ 재구성(3D)에는 전혀 관여하지 않는다. 순수하게 표시 배율만. */

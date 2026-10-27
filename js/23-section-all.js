@@ -1,1 +1,369 @@
-const GY_ALL_DEFAULT=!![];(function extendI18N_sectionAll(){if(typeof I18N==='undefined')return;Object['assign'](I18N,{'섹션\x20통합\x20조정':'All\x20sections','섹션별\x20조정':'Per\x20section','누르면\x20섹션별로\x20나눠서\x20조정해요':'Tap\x20to\x20adjust\x20each\x20section\x20separately','누르면\x20모든\x20섹션을\x20한꺼번에\x20조정해요':'Tap\x20to\x20adjust\x20all\x20sections\x20together','전체':'All','섹션\x20범위':'Section\x20range','섹션마다\x20다름':'Varies\x20by\x20section','모든\x20섹션\x20·\x20평균값\x20표시':'All\x20sections\x20·\x20shows\x20the\x20average','움직인\x20만큼\x20모든\x20섹션에\x20더해요\x20—\x20섹션\x20사이\x20차이는\x20그대로':'Adds\x20the\x20same\x20amount\x20to\x20every\x20section\x20—\x20differences\x20between\x20sections\x20are\x20kept','모든\x20섹션에\x20같은\x20각도만큼\x20더해요':'Same\x20degrees\x20added\x20to\x20every\x20section','오버디렉션·커팅라인은\x20섹션\x20전용\x20값이라\x20섹션별\x20조정에서\x20바꿔요':'Overdirection\x20and\x20cutting\x20line\x20are\x20per-section\x20—\x20change\x20them\x20in\x20Per\x20section','머리\x20전체를\x20한\x20색으로\x20(기본\x20염색)':'Whole\x20head\x20in\x20one\x20color\x20(base\x20dye)'});try{_i18nSubKeys=null;}catch(_0x34ef60){}}(),function injectCss(){const _0xc703a8='\x0a\x20\x20.gy-mode-btn{display:flex;align-items:center;justify-content:space-between;gap:10px;width:100%;\x0a\x20\x20\x20\x20margin-bottom:6px;padding:11px\x2014px;border-radius:10px;cursor:pointer;font-family:inherit;\x0a\x20\x20\x20\x20background:var(--surface-2);border:1px\x20solid\x20var(--line);color:var(--text);text-align:left;transition:.15s;}\x0a\x20\x20.gy-mode-btn.all{border-color:var(--accent);background:#2a2318;color:var(--accent-soft);}\x0a\x20\x20.gy-mode-btn\x20.gy-mode-title{font-size:13px;font-weight:600;}\x0a\x20\x20.gy-mode-btn\x20.gy-mode-hint{font-size:10px;color:var(--text-muted);text-align:right;}\x0a\x20\x20.gy-chip.gy-chip-off{opacity:.3;cursor:not-allowed;pointer-events:none;}\x0a\x20\x20.gy-chip.gy-chip-all{flex-basis:100%;}\x0a\x20\x20.gy-all-range{font-family:\x27JetBrains\x20Mono\x27,monospace;font-size:10px;color:var(--text-muted);margin-top:3px;}\x0a\x20\x20',_0x51dd2d=document['createElement']('style');_0x51dd2d['id']='gy-section-all-css',_0x51dd2d['textContent']=_0xc703a8,document['head']['appendChild'](_0x51dd2d);}());if(typeof state!=='undefined'&&typeof state['gyAllMode']!=='boolean')state['gyAllMode']=GY_ALL_DEFAULT;const GY_ALL_PARAMS={'cut':['length','elevation','texture','density'],'perm':['curl','wave','curlDir']};function gyAllParamDef(_0x314b22){for(const _0x2d7c43 of GYEOL_GROUPS){const _0x59ff0a=(_0x2d7c43['params']||[])['find'](_0x23425=>_0x23425['key']===_0x314b22);if(_0x59ff0a)return _0x59ff0a;}return{'key':_0x314b22,'label':_0x314b22,'hint':'','min':0x0,'max':0x64,'unit':''};}function gyAllValues(_0x390f62){return SECTION_ORDER['map'](_0x211c0d=>state['sections'][_0x211c0d]&&state['sections'][_0x211c0d][_0x390f62])['filter'](_0x566844=>typeof _0x566844==='number'&&isFinite(_0x566844));}function gyAllAvg(_0x3e9463){const _0x35a3de=gyAllValues(_0x3e9463);if(!_0x35a3de['length'])return 0x0;return _0x35a3de['reduce']((_0x95646d,_0x1915fa)=>_0x95646d+_0x1915fa,0x0)/_0x35a3de['length'];}function gyAllRangeText(_0x3effb5){const _0x4e4c56=gyAllValues(_0x3effb5);if(!_0x4e4c56['length'])return'—';const _0x532194=Math['round'](Math['min'](..._0x4e4c56)),_0x32264a=Math['round'](Math['max'](..._0x4e4c56));return _0x532194===_0x32264a?String(_0x532194):_0x532194+'–'+_0x32264a;}function gySyncGlobalCurl(){const _0x337bb0=gyAllValues('curl');if(_0x337bb0['length'])state['_globalCurl']=Math['round'](_0x337bb0['reduce']((_0x2a2808,_0x43659d)=>_0x2a2808+_0x43659d,0x0)/_0x337bb0['length']);}let _gyAllDrag=null;function gyAllBegin(_0x2b3695,_0x5e812e){const _0x4ab5bc={};for(const _0x2dc50a of SECTION_ORDER){const _0x546b7a=state['sections'][_0x2dc50a]&&state['sections'][_0x2dc50a][_0x2b3695];if(typeof _0x546b7a==='number')_0x4ab5bc[_0x2dc50a]=_0x546b7a;}_gyAllDrag={'key':_0x2b3695,'start':_0x5e812e,'base':_0x4ab5bc};}function onGyAllSlider(_0x5a8258,_0xea8502,_0x38b00e){const _0x33cfa9=parseInt(_0xea8502,0xa);if(!isFinite(_0x33cfa9))return;(!_gyAllDrag||_gyAllDrag['key']!==_0x5a8258)&&gyAllBegin(_0x5a8258,parseInt(_0x38b00e['dataset']['start'],0xa));const _0x3405ec=gyAllParamDef(_0x5a8258),_0x593f38=_0x33cfa9-_gyAllDrag['start'];for(const _0x443daa in _gyAllDrag['base']){const _0x15eb68=Math['max'](_0x3405ec['min'],Math['min'](_0x3405ec['max'],_gyAllDrag['base'][_0x443daa]+_0x593f38));state['sections'][_0x443daa][_0x5a8258]=Math['round'](_0x15eb68*0x3e8)/0x3e8;}if(_0x5a8258==='curl')gySyncGlobalCurl();const _0x28a7aa=document['getElementById']('gyallval-'+_0x5a8258);if(_0x28a7aa)_0x28a7aa['textContent']=_0x33cfa9+(_0x3405ec['unit']||'');const _0x14a623=document['getElementById']('gyallrng-'+_0x5a8258);if(_0x14a623)_0x14a623['textContent']=gyAllRangeText(_0x5a8258);try{drawAdjustPreview();}catch(_0x25ee4b){}}function onGyAllSliderEnd(_0x3c136b,_0x4ff072){_gyAllDrag=null;const _0x2e8302=Math['round'](gyAllAvg(_0x3c136b));_0x4ff072['dataset']['start']=String(_0x2e8302),_0x4ff072['value']=_0x2e8302;const _0x206089=gyAllParamDef(_0x3c136b),_0x2f5645=document['getElementById']('gyallval-'+_0x3c136b);if(_0x2f5645)_0x2f5645['textContent']=_0x2e8302+(_0x206089['unit']||'');SECTION_ORDER['forEach'](_0x1af014=>{try{updateSectionSummary(_0x1af014);}catch(_0x24ab6d){}});}function gyAllRangeCtrl(_0x51cf73,_0x27f2e4){const _0x12d7e8=gyAllParamDef(_0x51cf73),_0x5583b7=Math['round'](gyAllAvg(_0x51cf73)),_0x2cd276=document['createElement']('div');_0x2cd276['className']='gy-ctrl',_0x2cd276['innerHTML']='<div\x20class=\x22gy-ctrl-top\x22>'+'<span><span\x20class=\x22gy-ctrl-label\x22>'+_0x12d7e8['label']+'</span>'+'<span\x20class=\x22gy-ctrl-hint\x22>'+(_0x27f2e4||_0x12d7e8['hint']||'')+'</span></span>'+'<span\x20class=\x22gy-ctrl-val\x22\x20id=\x22gyallval-'+_0x51cf73+'\x22>'+_0x5583b7+(_0x12d7e8['unit']||'')+'</span>'+'</div>'+'<input\x20type=\x22range\x22\x20min=\x22'+_0x12d7e8['min']+'\x22\x20max=\x22'+_0x12d7e8['max']+'\x22\x20value=\x22'+_0x5583b7+'\x22\x20data-start=\x22'+_0x5583b7+'\x22>'+'<div\x20class=\x22gy-all-range\x22><span>섹션\x20범위</span>\x20<span\x20id=\x22gyallrng-'+_0x51cf73+'\x22>'+gyAllRangeText(_0x51cf73)+'</span></div>';const _0x55a374=_0x2cd276['querySelector']('input');return _0x55a374['addEventListener']('input',()=>onGyAllSlider(_0x51cf73,_0x55a374['value'],_0x55a374)),_0x55a374['addEventListener']('change',()=>onGyAllSliderEnd(_0x51cf73,_0x55a374)),_0x2cd276;}function gyAllTechniqueSelect(){const _0x4c2272=SECTION_ORDER['map'](_0x2f7780=>(state['sections'][_0x2f7780]||{})['technique']||'uniform'),_0x2cf1e4=_0x4c2272['every'](_0x2dbae6=>_0x2dbae6===_0x4c2272[0x0]),_0x8de3f1=document['createElement']('div');_0x8de3f1['className']='gy-ctrl';let _0x532c42=_0x2cf1e4?'':'<option\x20value=\x22\x22\x20selected\x20disabled>섹션마다\x20다름</option>';Object['keys'](TECHNIQUES)['forEach'](_0x226885=>{_0x532c42+='<option\x20value=\x22'+_0x226885+'\x22'+(_0x2cf1e4&&_0x4c2272[0x0]===_0x226885?'\x20selected':'')+'>'+TECHNIQUES[_0x226885]['label']+'</option>';});const _0x2a728d=_0x2cf1e4?TECHNIQUES[_0x4c2272[0x0]]['hint']:'';_0x8de3f1['innerHTML']='<div\x20class=\x22gy-ctrl-top\x22><span><span\x20class=\x22gy-ctrl-label\x22>커트\x20방식</span>'+'<span\x20class=\x22gy-ctrl-hint\x22>'+_0x2a728d+'</span></span></div>'+'<select\x20class=\x22gy-select\x22>'+_0x532c42+'</select>';const _0x5aa6e8=_0x8de3f1['querySelector']('select');return _0x5aa6e8['onchange']=()=>{if(!TECHNIQUES[_0x5aa6e8['value']])return;SECTION_ORDER['forEach'](_0x2ee9de=>{if(state['sections'][_0x2ee9de])state['sections'][_0x2ee9de]['technique']=_0x5aa6e8['value'];}),buildGyControls();try{drawAdjustPreview();}catch(_0x527d73){}},_0x8de3f1;}function gyAllGroup(_0x231623,_0x518a94){const _0x4f3bdf=!!state['panelCollapsed'][_0x231623['id']],_0x4058c4=document['createElement']('div');_0x4058c4['className']='gy-group'+(_0x231623['optional']?'\x20optional':'')+(_0x4f3bdf?'\x20collapsed':'');const _0x3ade9b=document['createElement']('div');_0x3ade9b['className']='gy-group-head',_0x3ade9b['innerHTML']='<span\x20class=\x22gy-dot\x22\x20style=\x22background:'+_0x231623['color']+'\x22></span>'+'<span\x20class=\x22gy-group-title\x22\x20style=\x22color:'+_0x231623['color']+'\x22>'+_0x231623['title']+'</span>'+'<span\x20class=\x22gy-group-sub\x22>'+_0x231623['sub']+'</span>'+'<span\x20class=\x22gy-chevron\x22>▼</span>',_0x3ade9b['onclick']=()=>toggleGyGroup(_0x231623['id']),_0x4058c4['appendChild'](_0x3ade9b);const _0x5c062a=document['createElement']('div');return _0x5c062a['className']='gy-group-body',_0x518a94(_0x5c062a),_0x4058c4['appendChild'](_0x5c062a),_0x4058c4;}function buildGyAllControls(_0x44d5e2){const _0x51cd29=_0x26931b=>GYEOL_GROUPS['find'](_0x590f17=>_0x590f17['id']===_0x26931b);_0x44d5e2['appendChild'](gyAllGroup(_0x51cd29('cut'),_0x29d106=>{_0x29d106['appendChild'](gyAllTechniqueSelect()),GY_ALL_PARAMS['cut']['forEach'](_0x212e3b=>_0x29d106['appendChild'](gyAllRangeCtrl(_0x212e3b,_0x212e3b==='elevation'?'모든\x20섹션에\x20같은\x20각도만큼\x20더해요':null)));if(typeof gyBuildFadeGroup==='function')_0x29d106['appendChild'](gyBuildFadeGroup());})),_0x44d5e2['appendChild'](gyAllGroup(_0x51cd29('perm'),_0x1034ca=>{GY_ALL_PARAMS['perm']['forEach'](_0x5f43b6=>_0x1034ca['appendChild'](gyAllRangeCtrl(_0x5f43b6)));})),_0x44d5e2['appendChild'](gyAllGroup(_0x51cd29('color'),_0x26380b=>{const _0x5f35f8=gyDyeAllColor(),_0x653a85=document['createElement']('div');_0x653a85['className']='gy-toggle-row',_0x653a85['innerHTML']='<div\x20class=\x22gy-toggle\x20'+(_0x5f35f8?'on':'')+'\x22></div>'+'<span\x20class=\x22gy-ctrl-hint\x22>머리\x20전체를\x20한\x20색으로\x20(기본\x20염색)</span>',_0x653a85['querySelector']('.gy-toggle')['onclick']=()=>_0x5f35f8?gyClearDye('all'):gyApplyDye('all',state['globalColor']||'#6B4A2E',![]),_0x26380b['appendChild'](_0x653a85);if(_0x5f35f8)_0x26380b['appendChild'](gyColorEditor('all',_0x5f35f8));}));const _0xf2bd5b=document['createElement']('div');_0xf2bd5b['className']='section-affects',_0xf2bd5b['style']['cssText']='padding-top:10px;line-height:1.6;',_0xf2bd5b['innerHTML']='<div>모든\x20섹션\x20·\x20평균값\x20표시</div>'+'<div>움직인\x20만큼\x20모든\x20섹션에\x20더해요\x20—\x20섹션\x20사이\x20차이는\x20그대로</div>'+'<div>오버디렉션·커팅라인은\x20섹션\x20전용\x20값이라\x20섹션별\x20조정에서\x20바꿔요</div>',_0x44d5e2['appendChild'](_0xf2bd5b);}function gyModeBtn(){let _0x1de579=document['getElementById']('gyModeBtn');if(_0x1de579)return _0x1de579;const _0x209554=document['getElementById']('gySectionBar');if(!_0x209554||!_0x209554['parentNode'])return null;return _0x1de579=document['createElement']('button'),_0x1de579['id']='gyModeBtn',_0x1de579['type']='button',_0x1de579['className']='gy-mode-btn',_0x1de579['addEventListener']('click',toggleGyAllMode),_0x209554['parentNode']['insertBefore'](_0x1de579,_0x209554),_0x1de579;}function syncGyModeBtn(){const _0x11a0eb=gyModeBtn();if(!_0x11a0eb)return;const _0xfd25c5=!!state['gyAllMode'];_0x11a0eb['classList']['toggle']('all',_0xfd25c5),_0x11a0eb['innerHTML']='<span\x20class=\x22gy-mode-title\x22>'+(_0xfd25c5?'섹션\x20통합\x20조정':'섹션별\x20조정')+'</span>'+'<span\x20class=\x22gy-mode-hint\x22>'+(_0xfd25c5?'누르면\x20섹션별로\x20나눠서\x20조정해요':'누르면\x20모든\x20섹션을\x20한꺼번에\x20조정해요')+'</span>';}function toggleGyAllMode(){state['gyAllMode']=!state['gyAllMode'],_gyAllDrag=null;state['activePanelSection']!=='styling'&&!SECTIONS[state['activePanelSection']]&&(state['activePanelSection']=state['currentSection']||'crown');buildGyPanel();try{drawAdjustPreview();}catch(_0x34d96b){}}function selectGyAll(){state['activePanelSection']=state['currentSection']||'crown',buildGyPanel();try{drawAdjustPreview();}catch(_0xea0cca){}}(function wrapPanels(){const _0x571824=window['buildGySectionBar'],_0x3148db=window['buildGyControls'],_0x311cd7=window['onGySlider'];if(typeof _0x571824!=='function'||typeof _0x3148db!=='function'){console['warn']('[섹션통합]\x20buildGySectionBar/buildGyControls가\x20없습니다\x20—\x2006-ui-panels.js보다\x20먼저\x20불렸습니까?');return;}window['buildGySectionBar']=function(){const _0x2e5915=_0x571824['apply'](this,arguments);try{syncGyModeBtn();const _0xf57bad=document['getElementById']('gySectionBar');if(_0xf57bad&&state['gyAllMode']){const _0x3a770c=state['activePanelSection']==='styling';_0xf57bad['querySelectorAll']('.gy-chip')['forEach'](_0x21c186=>{if(_0x21c186['classList']['contains']('styling'))return;_0x21c186['classList']['remove']('active'),_0x21c186['classList']['add']('gy-chip-off'),_0x21c186['disabled']=!![],_0x21c186['onclick']=null;});const _0x55c2e3=document['createElement']('button');_0x55c2e3['className']='gy-chip\x20gy-chip-all'+(_0x3a770c?'':'\x20active'),_0x55c2e3['innerHTML']='<span>전체</span><span\x20class=\x22en\x22>ALL</span>',_0x55c2e3['onclick']=selectGyAll,_0xf57bad['insertBefore'](_0x55c2e3,_0xf57bad['firstChild']);}}catch(_0x7d16b4){console['warn']('[섹션통합]\x20칩\x20줄\x20갱신\x20실패:',_0x7d16b4);}return _0x2e5915;},window['buildGyControls']=function(){if(state['gyAllMode']&&state['activePanelSection']!=='styling'){const _0x1416d0=document['getElementById']('gyControls');if(!_0x1416d0)return;_0x1416d0['innerHTML']='';try{buildGyAllControls(_0x1416d0);}catch(_0x56e2f0){return console['warn']('[섹션통합]\x20통합\x20패널을\x20못\x20그렸습니다\x20—\x20섹션별\x20패널로\x20대신합니다:',_0x56e2f0),_0x3148db['apply'](this,arguments);}return;}return _0x3148db['apply'](this,arguments);},typeof _0x311cd7==='function'&&(window['onGySlider']=function(_0x187269,_0x50bf72){const _0x1b1c89=_0x311cd7['apply'](this,arguments);if(_0x50bf72==='curl')gySyncGlobalCurl();return _0x1b1c89;});}(),function initSectionAll(){const _0x7bd52a=()=>{try{buildGyPanel();}catch(_0x4e16a9){}};if(document['readyState']==='loading')document['addEventListener']('DOMContentLoaded',_0x7bd52a);else _0x7bd52a();}());
+/* ==========================================================================
+   23-section-all.js — 섹션 통합 조정 (2026-09-21)
+
+   이 파일은 난독화하지 않는다. 앞의 파일들을 건드리지 않고 바깥에서만 덧댄다.
+   (22-ui-i18n-extra.js와 같은 방식 — 화면에는 한국어로 적고 I18N 표에서 영어로
+   바꾼다. 앱 기본 언어가 EN이라 처음엔 영어로 보인다.)
+
+   ① 모드 단추
+      섹션 칩 줄(#gySectionBar) 위에 긴 단추 하나를 둔다.
+        통합 모드  : "섹션 통합 조정" — 누르면 섹션별 조정으로 나뉜다.
+        섹션별 모드: "섹션별 조정"     — 누르면 다시 통합으로 합쳐진다.
+      통합 모드에서는 섹션 칩(크라운~네이프)이 비활성화되고, 맨 앞에 "전체" 칩이
+      생긴다. 스타일링 칩은 섹션이 아니라 머리 전체 연출이라 그대로 쓸 수 있다.
+
+   ② 상대값 조정
+      통합 슬라이더에 보이는 값 = 6개 섹션의 평균.
+      슬라이더를 움직이면, 드래그를 시작할 때의 섹션 값들을 기준으로
+      움직인 만큼(Δ)을 모든 섹션에 똑같이 더한다 → 섹션 사이 차이가 유지된다.
+      한 섹션이 범위 끝(0·100 등)에 먼저 닿아도, 기준값에서 다시 계산하므로
+      되돌리면 원래 차이가 그대로 돌아온다.
+      통합 대상: 커트 방식 · 길이 · 엘리베이션 · 텍스처라이징 · 숱 ·
+                 컬 세기 · 웨이브 폭 · 컬 방향 · 전체 염색 · 페이드
+      제외: 오버디렉션(템플 전용) · 커팅라인(프론트·네이프 전용) — 섹션별 모드에서.
+
+   ③ 글로벌 컬(state._globalCurl) 동기화
+      섹션 컬이 바뀌면(통합이든 섹션별이든) 글로벌 컬을 섹션 컬 평균으로 맞춘다.
+      2D 비교 화면과 스타일 등록 카드가 3D와 같은 컬 세기를 쓰게 된다.
+   ========================================================================== */
+
+/* 처음 모드. true = 통합 모드로 시작, false = 예전처럼 섹션별로 시작. */
+const GY_ALL_DEFAULT = true;
+
+/* ------------------------------------------------------------------ 말 */
+(function extendI18N_sectionAll() {
+  if (typeof I18N === 'undefined') return;
+  Object.assign(I18N, {
+    '섹션 통합 조정': 'All sections',
+    '섹션별 조정': 'Per section',
+    '누르면 섹션별로 나눠서 조정해요': 'Tap to adjust each section separately',
+    '누르면 모든 섹션을 한꺼번에 조정해요': 'Tap to adjust all sections together',
+    '전체': 'All',
+    '섹션 범위': 'Section range',
+    '섹션마다 다름': 'Varies by section',
+    '모든 섹션 · 평균값 표시': 'All sections · shows the average',
+    '움직인 만큼 모든 섹션에 더해요 — 섹션 사이 차이는 그대로':
+      'Adds the same amount to every section — differences between sections are kept',
+    '모든 섹션에 같은 각도만큼 더해요':
+      'Same degrees added to every section',
+    '오버디렉션·커팅라인은 섹션 전용 값이라 섹션별 조정에서 바꿔요':
+      'Overdirection and cutting line are per-section — change them in Per section',
+    '머리 전체를 한 색으로 (기본 염색)': 'Whole head in one color (base dye)'
+  });
+  try { _i18nSubKeys = null; } catch (e) {}
+})();
+
+/* ------------------------------------------------------------------ 스타일 */
+(function injectCss() {
+  const css = `
+  .gy-mode-btn{display:flex;align-items:center;justify-content:space-between;gap:10px;width:100%;
+    margin-bottom:6px;padding:11px 14px;border-radius:10px;cursor:pointer;font-family:inherit;
+    background:var(--surface-2);border:1px solid var(--line);color:var(--text);text-align:left;transition:.15s;}
+  .gy-mode-btn.all{border-color:var(--accent);background:#2a2318;color:var(--accent-soft);}
+  .gy-mode-btn .gy-mode-title{font-size:13px;font-weight:600;}
+  .gy-mode-btn .gy-mode-hint{font-size:10px;color:var(--text-muted);text-align:right;}
+  .gy-chip.gy-chip-off{opacity:.3;cursor:not-allowed;pointer-events:none;}
+  .gy-chip.gy-chip-all{flex-basis:100%;}
+  .gy-all-range{font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--text-muted);margin-top:3px;}
+  `;
+  const el = document.createElement('style');
+  el.id = 'gy-section-all-css';
+  el.textContent = css;
+  document.head.appendChild(el);
+})();
+
+/* ------------------------------------------------------------------ 상태·계산 */
+if (typeof state !== 'undefined' && typeof state.gyAllMode !== 'boolean') state.gyAllMode = GY_ALL_DEFAULT;
+
+/* 통합 슬라이더로 다룰 값. min·max는 GYEOL_GROUPS 정의에서 가져온다(없으면 기본). */
+const GY_ALL_PARAMS = {
+  cut:  ['length', 'elevation', 'texture', 'density'],
+  perm: ['curl', 'wave', 'curlDir']
+};
+
+function gyAllParamDef(key) {
+  for (const g of GYEOL_GROUPS) {
+    const p = (g.params || []).find(q => q.key === key);
+    if (p) return p;
+  }
+  return { key, label: key, hint: '', min: 0, max: 100, unit: '' };
+}
+
+function gyAllValues(key) {
+  return SECTION_ORDER
+    .map(sec => state.sections[sec] && state.sections[sec][key])
+    .filter(v => typeof v === 'number' && isFinite(v));
+}
+
+function gyAllAvg(key) {
+  const vs = gyAllValues(key);
+  if (!vs.length) return 0;
+  return vs.reduce((a, b) => a + b, 0) / vs.length;
+}
+
+function gyAllRangeText(key) {
+  const vs = gyAllValues(key);
+  if (!vs.length) return '—';
+  const lo = Math.round(Math.min(...vs)), hi = Math.round(Math.max(...vs));
+  return lo === hi ? String(lo) : lo + '–' + hi;
+}
+
+/* 글로벌 컬 = 섹션 컬 평균 */
+function gySyncGlobalCurl() {
+  const vs = gyAllValues('curl');
+  if (vs.length) state._globalCurl = Math.round(vs.reduce((a, b) => a + b, 0) / vs.length);
+}
+
+/* 드래그 한 번 동안의 기준값. { key, start, base:{sec:value} } */
+let _gyAllDrag = null;
+
+function gyAllBegin(key, startShown) {
+  const base = {};
+  for (const sec of SECTION_ORDER) {
+    const v = state.sections[sec] && state.sections[sec][key];
+    if (typeof v === 'number') base[sec] = v;
+  }
+  _gyAllDrag = { key, start: startShown, base };
+}
+
+function onGyAllSlider(key, raw, inputEl) {
+  const v = parseInt(raw, 10);
+  if (!isFinite(v)) return;
+  if (!_gyAllDrag || _gyAllDrag.key !== key) {
+    gyAllBegin(key, parseInt(inputEl.dataset.start, 10));
+  }
+  const p = gyAllParamDef(key);
+  const delta = v - _gyAllDrag.start;
+  for (const sec in _gyAllDrag.base) {
+    const nv = Math.max(p.min, Math.min(p.max, _gyAllDrag.base[sec] + delta));
+    state.sections[sec][key] = Math.round(nv * 1000) / 1000;
+  }
+  if (key === 'curl') gySyncGlobalCurl();
+
+  const valEl = document.getElementById('gyallval-' + key);
+  if (valEl) valEl.textContent = v + (p.unit || '');
+  const rngEl = document.getElementById('gyallrng-' + key);
+  if (rngEl) rngEl.textContent = gyAllRangeText(key);
+
+  try { drawAdjustPreview(); } catch (e) {}
+}
+
+function onGyAllSliderEnd(key, inputEl) {
+  _gyAllDrag = null;
+  /* 한 섹션이 범위 끝에 붙었으면 평균이 움직인 값과 달라질 수 있으니 다시 맞춘다 */
+  const shown = Math.round(gyAllAvg(key));
+  inputEl.dataset.start = String(shown);
+  inputEl.value = shown;
+  const p = gyAllParamDef(key);
+  const valEl = document.getElementById('gyallval-' + key);
+  if (valEl) valEl.textContent = shown + (p.unit || '');
+  SECTION_ORDER.forEach(sec => { try { updateSectionSummary(sec); } catch (e) {} });
+}
+
+/* ------------------------------------------------------------------ 통합 패널 */
+function gyAllRangeCtrl(key, hintOverride) {
+  const p = gyAllParamDef(key);
+  const shown = Math.round(gyAllAvg(key));
+  const d = document.createElement('div');
+  d.className = 'gy-ctrl';
+  d.innerHTML =
+    '<div class="gy-ctrl-top">' +
+      '<span><span class="gy-ctrl-label">' + p.label + '</span>' +
+      '<span class="gy-ctrl-hint">' + (hintOverride || p.hint || '') + '</span></span>' +
+      '<span class="gy-ctrl-val" id="gyallval-' + key + '">' + shown + (p.unit || '') + '</span>' +
+    '</div>' +
+    '<input type="range" min="' + p.min + '" max="' + p.max + '" value="' + shown + '" data-start="' + shown + '">' +
+    '<div class="gy-all-range"><span>섹션 범위</span> <span id="gyallrng-' + key + '">' + gyAllRangeText(key) + '</span></div>';
+  const inp = d.querySelector('input');
+  inp.addEventListener('input', () => onGyAllSlider(key, inp.value, inp));
+  inp.addEventListener('change', () => onGyAllSliderEnd(key, inp));
+  return d;
+}
+
+function gyAllTechniqueSelect() {
+  const vals = SECTION_ORDER.map(sec => (state.sections[sec] || {}).technique || 'uniform');
+  const same = vals.every(v => v === vals[0]);
+  const d = document.createElement('div');
+  d.className = 'gy-ctrl';
+  let opts = same ? '' : '<option value="" selected disabled>섹션마다 다름</option>';
+  Object.keys(TECHNIQUES).forEach(k => {
+    opts += '<option value="' + k + '"' + (same && vals[0] === k ? ' selected' : '') + '>' + TECHNIQUES[k].label + '</option>';
+  });
+  const hint = same ? TECHNIQUES[vals[0]].hint : '';
+  d.innerHTML =
+    '<div class="gy-ctrl-top"><span><span class="gy-ctrl-label">커트 방식</span>' +
+    '<span class="gy-ctrl-hint">' + hint + '</span></span></div>' +
+    '<select class="gy-select">' + opts + '</select>';
+  const sel = d.querySelector('select');
+  sel.onchange = () => {
+    if (!TECHNIQUES[sel.value]) return;
+    SECTION_ORDER.forEach(sec => { if (state.sections[sec]) state.sections[sec].technique = sel.value; });
+    buildGyControls();
+    try { drawAdjustPreview(); } catch (e) {}
+  };
+  return d;
+}
+
+function gyAllGroup(g, fillBody) {
+  const collapsed = !!state.panelCollapsed[g.id];
+  const wrap = document.createElement('div');
+  wrap.className = 'gy-group' + (g.optional ? ' optional' : '') + (collapsed ? ' collapsed' : '');
+  const head = document.createElement('div');
+  head.className = 'gy-group-head';
+  head.innerHTML =
+    '<span class="gy-dot" style="background:' + g.color + '"></span>' +
+    '<span class="gy-group-title" style="color:' + g.color + '">' + g.title + '</span>' +
+    '<span class="gy-group-sub">' + g.sub + '</span>' +
+    '<span class="gy-chevron">▼</span>';
+  head.onclick = () => toggleGyGroup(g.id);
+  wrap.appendChild(head);
+  const body = document.createElement('div');
+  body.className = 'gy-group-body';
+  fillBody(body);
+  wrap.appendChild(body);
+  return wrap;
+}
+
+function buildGyAllControls(root) {
+  const G = id => GYEOL_GROUPS.find(g => g.id === id);
+
+  root.appendChild(gyAllGroup(G('cut'), body => {
+    body.appendChild(gyAllTechniqueSelect());
+    GY_ALL_PARAMS.cut.forEach(k => body.appendChild(gyAllRangeCtrl(k,
+      k === 'elevation' ? '모든 섹션에 같은 각도만큼 더해요' : null)));
+    if (typeof gyBuildFadeGroup === 'function') body.appendChild(gyBuildFadeGroup());
+  }));
+
+  root.appendChild(gyAllGroup(G('perm'), body => {
+    GY_ALL_PARAMS.perm.forEach(k => body.appendChild(gyAllRangeCtrl(k)));
+  }));
+
+  root.appendChild(gyAllGroup(G('color'), body => {
+    const all = gyDyeAllColor();
+    const row = document.createElement('div');
+    row.className = 'gy-toggle-row';
+    row.innerHTML = '<div class="gy-toggle ' + (all ? 'on' : '') + '"></div>' +
+      '<span class="gy-ctrl-hint">머리 전체를 한 색으로 (기본 염색)</span>';
+    row.querySelector('.gy-toggle').onclick = () =>
+      all ? gyClearDye('all') : gyApplyDye('all', state.globalColor || '#6B4A2E', false);
+    body.appendChild(row);
+    if (all) body.appendChild(gyColorEditor('all', all));
+  }));
+
+  const note = document.createElement('div');
+  note.className = 'section-affects';
+  note.style.cssText = 'padding-top:10px;line-height:1.6;';
+  note.innerHTML = '<div>모든 섹션 · 평균값 표시</div>' +
+    '<div>움직인 만큼 모든 섹션에 더해요 — 섹션 사이 차이는 그대로</div>' +
+    '<div>오버디렉션·커팅라인은 섹션 전용 값이라 섹션별 조정에서 바꿔요</div>';
+  root.appendChild(note);
+}
+
+/* ------------------------------------------------------------------ 모드 단추 */
+function gyModeBtn() {
+  let b = document.getElementById('gyModeBtn');
+  if (b) return b;
+  const bar = document.getElementById('gySectionBar');
+  if (!bar || !bar.parentNode) return null;
+  b = document.createElement('button');
+  b.id = 'gyModeBtn';
+  b.type = 'button';
+  b.className = 'gy-mode-btn';
+  b.addEventListener('click', toggleGyAllMode);
+  bar.parentNode.insertBefore(b, bar);
+  return b;
+}
+
+function syncGyModeBtn() {
+  const b = gyModeBtn();
+  if (!b) return;
+  const all = !!state.gyAllMode;
+  b.classList.toggle('all', all);
+  b.innerHTML =
+    '<span class="gy-mode-title">' + (all ? '섹션 통합 조정' : '섹션별 조정') + '</span>' +
+    '<span class="gy-mode-hint">' + (all ? '누르면 섹션별로 나눠서 조정해요' : '누르면 모든 섹션을 한꺼번에 조정해요') + '</span>';
+}
+
+function toggleGyAllMode() {
+  state.gyAllMode = !state.gyAllMode;
+  _gyAllDrag = null;
+  /* 스타일링 탭을 보고 있었으면 그대로 두고, 아니면 조정 패널을 새 모드로 */
+  if (state.activePanelSection !== 'styling' && !SECTIONS[state.activePanelSection]) {
+    state.activePanelSection = state.currentSection || 'crown';
+  }
+  buildGyPanel();
+  try { drawAdjustPreview(); } catch (e) {}
+}
+
+/* 통합 모드에서 "전체" 칩: 스타일링 탭에서 통합 패널로 돌아오는 길 */
+function selectGyAll() {
+  state.activePanelSection = state.currentSection || 'crown';
+  buildGyPanel();
+  try { drawAdjustPreview(); } catch (e) {}
+}
+
+/* ------------------------------------------------------------------ 감싸기 */
+(function wrapPanels() {
+  const innerBar = window.buildGySectionBar;
+  const innerCtrls = window.buildGyControls;
+  const innerSlider = window.onGySlider;
+  if (typeof innerBar !== 'function' || typeof innerCtrls !== 'function') {
+    console.warn('[섹션통합] buildGySectionBar/buildGyControls가 없습니다 — 06-ui-panels.js보다 먼저 불렸습니까?');
+    return;
+  }
+
+  window.buildGySectionBar = function () {
+    const r = innerBar.apply(this, arguments);
+    try {
+      syncGyModeBtn();
+      const bar = document.getElementById('gySectionBar');
+      if (bar && state.gyAllMode) {
+        const onStyling = state.activePanelSection === 'styling';
+        bar.querySelectorAll('.gy-chip').forEach(ch => {
+          if (ch.classList.contains('styling')) return;
+          ch.classList.remove('active');
+          ch.classList.add('gy-chip-off');
+          ch.disabled = true;
+          ch.onclick = null;
+        });
+        const allChip = document.createElement('button');
+        allChip.className = 'gy-chip gy-chip-all' + (onStyling ? '' : ' active');
+        allChip.innerHTML = '<span>전체</span><span class="en">ALL</span>';
+        allChip.onclick = selectGyAll;
+        bar.insertBefore(allChip, bar.firstChild);
+      }
+    } catch (e) { console.warn('[섹션통합] 칩 줄 갱신 실패:', e); }
+    return r;
+  };
+
+  window.buildGyControls = function () {
+    if (state.gyAllMode && state.activePanelSection !== 'styling') {
+      const root = document.getElementById('gyControls');
+      if (!root) return;
+      root.innerHTML = '';
+      try { buildGyAllControls(root); }
+      catch (e) {
+        console.warn('[섹션통합] 통합 패널을 못 그렸습니다 — 섹션별 패널로 대신합니다:', e);
+        return innerCtrls.apply(this, arguments);
+      }
+      return;
+    }
+    return innerCtrls.apply(this, arguments);
+  };
+
+  /* 섹션별 모드에서 컬을 바꿔도 글로벌 컬을 따라가게 */
+  if (typeof innerSlider === 'function') {
+    window.onGySlider = function (sec, key) {
+      const r = innerSlider.apply(this, arguments);
+      if (key === 'curl') gySyncGlobalCurl();
+      return r;
+    };
+  }
+})();
+
+/* 이미 조정 화면이 그려져 있으면 새 모드로 다시 그린다 */
+(function initSectionAll() {
+  const go = () => { try { buildGyPanel(); } catch (e) {} };
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', go);
+  else go();
+})();

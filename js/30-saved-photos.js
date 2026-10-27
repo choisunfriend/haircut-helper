@@ -1,1 +1,157 @@
-(function(){'use strict';var _0x199e60=window,_0x229b04='gyeol-saved-photos',_0xe92f5a='shots',_0x20becf='last';function _0x103b82(){return new Promise(function(_0x59a9bc,_0x8b75ec){try{var _0x3a329c=indexedDB['open'](_0x229b04,0x1);_0x3a329c['onupgradeneeded']=function(){_0x3a329c['result']['createObjectStore'](_0xe92f5a);},_0x3a329c['onsuccess']=function(){_0x59a9bc(_0x3a329c['result']);},_0x3a329c['onerror']=function(){_0x8b75ec(_0x3a329c['error']);};}catch(_0xf47aa8){_0x8b75ec(_0xf47aa8);}});}function _0x42c593(_0x88ac89,_0x4b3510){return _0x103b82()['then'](function(_0x52266b){return new Promise(function(_0x4ca438,_0x49e422){var _0x387533=_0x52266b['transaction'](_0xe92f5a,_0x88ac89),_0x535453=_0x387533['objectStore'](_0xe92f5a),_0x2eb7ed=_0x4b3510(_0x535453);_0x387533['oncomplete']=function(){_0x4ca438(_0x2eb7ed&&_0x2eb7ed['result']!==undefined?_0x2eb7ed['result']:undefined),_0x52266b['close']();},_0x387533['onerror']=function(){_0x49e422(_0x387533['error']),_0x52266b['close']();};});});}var _0x19170b=function(){return _0x42c593('readonly',function(_0x5543e6){return _0x5543e6['get'](_0x20becf);})['catch'](function(){return null;});},_0x40c5f8=function(_0x496d51){return _0x42c593('readwrite',function(_0x309ce9){return _0x309ce9['put'](_0x496d51,_0x20becf);});},_0x23bb0e=function(){return _0x42c593('readwrite',function(_0x5499a7){return _0x5499a7['delete'](_0x20becf);})['catch'](function(){});};function _0x18e79c(){var _0x18edc6={},_0x2c4377=0x0;return(typeof ANGLES!=='undefined'?ANGLES:['front','left','right','back'])['forEach'](function(_0x3d8914){var _0x40c597=state['shots']&&state['shots'][_0x3d8914];_0x40c597&&(_0x18edc6[_0x3d8914]=_0x40c597,_0x2c4377++);}),_0x2c4377?_0x18edc6:null;}function _0x29e9bb(_0x1de6d7){if(!_0x1de6d7)return'';return Object['keys'](_0x1de6d7)['sort']()['map'](function(_0x56d8dc){var _0x15dd91=_0x1de6d7[_0x56d8dc];return _0x56d8dc+':'+_0x15dd91['length']+':'+_0x15dd91['slice'](-0x28);})['join']('|');}var _0x1e0425=null,_0x39e276=null;function _0x864b03(_0x459486,_0x4669f6,_0x230b24,_0x347ccf){return new Promise(function(_0x269ba0){var _0xa520ba=document['createElement']('div');_0xa520ba['style']['cssText']='position:fixed;inset:0;z-index:9999;display:flex;align-items:center;justify-content:center;'+'background:rgba(0,0,0,.55);padding:16px;',_0xa520ba['innerHTML']='<div\x20role=\x22dialog\x22\x20aria-modal=\x22true\x22\x20style=\x22max-width:340px;width:100%;background:#221c16;color:#f3eadf;border:1px\x20solid\x20#3a332b;'+'border-radius:14px;padding:18px\x2016px\x2014px;font:14px/1.45\x20system-ui,sans-serif;box-shadow:0\x2012px\x2040px\x20rgba(0,0,0,.4)\x22>'+'<div\x20style=\x22font-weight:700;font-size:16px;margin-bottom:6px\x22>'+_0x459486+'</div>'+'<div\x20style=\x22opacity:.85;margin-bottom:14px\x22>'+_0x4669f6+'</div>'+'<div\x20style=\x22display:flex;gap:8px\x22>'+'<button\x20type=\x22button\x22\x20data-v=\x220\x22\x20class=\x22btn\x20btn-ghost\x22\x20style=\x22flex:1;padding:10px\x22>'+_0x347ccf+'</button>'+'<button\x20type=\x22button\x22\x20data-v=\x221\x22\x20class=\x22btn\x20btn-primary\x22\x20style=\x22flex:1;padding:10px\x22>'+_0x230b24+'</button>'+'</div></div>',_0xa520ba['addEventListener']('click',function(_0x562d8d){var _0x4bcb42=_0x562d8d['target']&&_0x562d8d['target']['getAttribute']&&_0x562d8d['target']['getAttribute']('data-v');if(_0x4bcb42==null)return;document['body']['removeChild'](_0xa520ba),_0x269ba0(_0x4bcb42==='1');}),document['body']['appendChild'](_0xa520ba);});}function _0x4b1039(_0x291780){try{if(typeof showToast==='function')showToast(_0x291780);}catch(_0x43fdca){}}var _0x35d12a=_0x199e60['navTo'];typeof _0x35d12a==='function'&&(_0x199e60['navTo']=async function(_0x3c8ec8){var _0x40c150=arguments,_0x143c72=this;try{var _0x4a8db8=typeof currentScreen!=='undefined'?currentScreen:null;if(_0x3c8ec8==='style'&&_0x4a8db8==='capture'){var _0x3fb9d5=_0x18e79c(),_0x1589ca=_0x29e9bb(_0x3fb9d5);if(_0x3fb9d5&&_0x1589ca!==_0x1e0425&&_0x1589ca!==_0x39e276){_0x39e276=_0x1589ca;var _0x18886f=await _0x864b03('Save\x20photos\x20for\x20next\x20time?','Save\x20these\x20photos\x20on\x20this\x20device\x20so\x20you\x20can\x20reuse\x20them\x20next\x20time\x20without\x20taking\x20them\x20again.\x20'+'They\x20stay\x20on\x20this\x20phone\x20only\x20and\x20are\x20never\x20uploaded.','Yes,\x20save','No\x20thanks');if(_0x18886f)try{await _0x40c5f8({'shots':_0x3fb9d5,'at':Date['now']()}),_0x1e0425=_0x1589ca,_0x4b1039('Photos\x20saved\x20on\x20this\x20device'),_0x1f6867(!![]);}catch(_0x4fdc68){console['warn']('[Saved\x20photos]\x20save\x20failed',_0x4fdc68),_0x4b1039('Could\x20not\x20save\x20photos\x20(storage\x20full\x20or\x20blocked)');}}}}catch(_0x1b7781){console['warn']('[Saved\x20photos]',_0x1b7781);}return _0x35d12a['apply'](_0x143c72,_0x40c150);});function _0x98d819(){_0x19170b()['then'](function(_0x5bdd8f){if(!_0x5bdd8f||!_0x5bdd8f['shots']){_0x4b1039('No\x20saved\x20photos'),_0x1f6867(![]);return;}var _0x239f26=Object['keys'](_0x5bdd8f['shots']);_0x239f26['forEach'](function(_0x36a7b6){state['shots'][_0x36a7b6]=_0x5bdd8f['shots'][_0x36a7b6],['hairCanvases','hairMasks','baseCanvases']['forEach'](function(_0x2d4f23){if(state[_0x2d4f23])state[_0x2d4f23][_0x36a7b6]=null;}),['landmarks','captureLmStatus','capturePose','poseEars']['forEach'](function(_0x35746f){if(state[_0x35746f])state[_0x35746f][_0x36a7b6]=null;});});try{stylePrepDone=![];}catch(_0x1a373a){}try{state['currentCaptureIndex']=0x3;}catch(_0x4af67e){}try{updateAngleUI();}catch(_0x4e6720){}_0x239f26['forEach'](function(_0x448ded){try{checkCaptureLandmarks(_0x448ded);}catch(_0x5d8d1d){}}),_0x1e0425=_0x29e9bb(_0x18e79c());var _0x558d35=new Date(_0x5bdd8f['at']);_0x4b1039('Loaded\x20saved\x20photos\x20('+_0x558d35['toLocaleDateString']()+')');});}function _0x1f6867(_0x434c3a){var _0x4f13f3=document['querySelector']('#screen-capture\x20.cap-btns');if(!_0x4f13f3)return;var _0x83350d=document['getElementById']('savedPhotoRow');if(!_0x434c3a){if(_0x83350d)_0x83350d['remove']();return;}if(_0x83350d)return;_0x83350d=document['createElement']('div'),_0x83350d['id']='savedPhotoRow',_0x83350d['style']['cssText']='display:flex;gap:6px;margin-top:6px;',_0x83350d['innerHTML']='<button\x20type=\x22button\x22\x20class=\x22btn\x22\x20id=\x22useSavedBtn\x22\x20style=\x22flex:3;font-size:12px;padding:9px\x208px;font-weight:700;background:rgba(212,146,74,.14);color:#E8B77C;border:1.5px\x20solid\x20#D4924A;border-radius:10px;\x22>📁\x20Use\x20saved\x20photos</button>'+'<button\x20type=\x22button\x22\x20class=\x22btn\x22\x20id=\x22delSavedBtn\x22\x20style=\x22flex:1;font-size:11px;padding:9px\x206px;background:rgba(200,70,70,.10);color:#E08A8A;border:1px\x20solid\x20rgba(224,138,138,.55);border-radius:10px;\x22>Delete\x20saved</button>',_0x4f13f3['parentNode']['insertBefore'](_0x83350d,_0x4f13f3['nextSibling']),document['getElementById']('useSavedBtn')['onclick']=_0x98d819,document['getElementById']('delSavedBtn')['onclick']=function(){_0x864b03('Delete\x20saved\x20photos?','The\x20saved\x20photos\x20will\x20be\x20removed\x20from\x20this\x20device.','Delete','Cancel')['then'](function(_0x107266){if(!_0x107266)return;_0x23bb0e()['then'](function(){_0x1e0425=null,_0x1f6867(![]),_0x4b1039('Saved\x20photos\x20deleted');});});};}function _0xe0c14a(){if(typeof indexedDB==='undefined')return;_0x19170b()['then'](function(_0x31e739){_0x31e739&&_0x31e739['shots']&&(_0x1e0425=_0x29e9bb(_0x31e739['shots']),_0x1f6867(!![]));});}if(document['readyState']==='loading')document['addEventListener']('DOMContentLoaded',_0xe0c14a);else _0xe0c14a();}());
+/* ==========================================================================
+ * 30-saved-photos.js — Save the 4 capture photos on this device and reuse them next time
+ *
+ * · Leaving the capture screen (Next →) asks: "Save these photos on this device for next time?"
+ * · Yes → the 4 photos are stored in this browser's IndexedDB (on the phone only, never uploaded).
+ * · Next visit → a "Use saved photos" button appears on the capture screen; tapping it loads them
+ *   into the 4 slots exactly as if they had just been taken/uploaded (face check runs again).
+ * · "Delete saved" removes them from the device.
+ * ======================================================================== */
+(function () {
+  'use strict';
+  var G = window;
+  var DB = 'gyeol-saved-photos', STORE = 'shots', KEY = 'last';
+
+  /* ── IndexedDB (tiny wrapper; every call fails soft) ─────────────────── */
+  function openDB() {
+    return new Promise(function (res, rej) {
+      try {
+        var r = indexedDB.open(DB, 1);
+        r.onupgradeneeded = function () { r.result.createObjectStore(STORE); };
+        r.onsuccess = function () { res(r.result); };
+        r.onerror = function () { rej(r.error); };
+      } catch (e) { rej(e); }
+    });
+  }
+  function tx(mode, fn) {
+    return openDB().then(function (db) {
+      return new Promise(function (res, rej) {
+        var t = db.transaction(STORE, mode), st = t.objectStore(STORE), out = fn(st);
+        t.oncomplete = function () { res(out && out.result !== undefined ? out.result : undefined); db.close(); };
+        t.onerror = function () { rej(t.error); db.close(); };
+      });
+    });
+  }
+  var getSaved = function () { return tx('readonly', function (s) { return s.get(KEY); }).catch(function () { return null; }); };
+  var putSaved = function (v) { return tx('readwrite', function (s) { return s.put(v, KEY); }); };
+  var delSaved = function () { return tx('readwrite', function (s) { return s.delete(KEY); }).catch(function () {}); };
+
+  /* ── helpers ─────────────────────────────────────────────────────────── */
+  function currentShots() {
+    var out = {}, n = 0;
+    (typeof ANGLES !== 'undefined' ? ANGLES : ['front', 'left', 'right', 'back']).forEach(function (a) {
+      var s = state.shots && state.shots[a];
+      if (s) { out[a] = s; n++; }
+    });
+    return n ? out : null;
+  }
+  function sig(shots) {
+    if (!shots) return '';
+    return Object.keys(shots).sort().map(function (a) { var s = shots[a]; return a + ':' + s.length + ':' + s.slice(-40); }).join('|');
+  }
+  var savedSig = null, askedSig = null;
+
+  /* ── modal ───────────────────────────────────────────────────────────── */
+  function ask(title, body, yes, no) {
+    return new Promise(function (resolve) {
+      var wrap = document.createElement('div');
+      wrap.style.cssText = 'position:fixed;inset:0;z-index:9999;display:flex;align-items:center;justify-content:center;' +
+        'background:rgba(0,0,0,.55);padding:16px;';
+      wrap.innerHTML =
+        '<div role="dialog" aria-modal="true" style="max-width:340px;width:100%;background:#221c16;color:#f3eadf;border:1px solid #3a332b;' +
+        'border-radius:14px;padding:18px 16px 14px;font:14px/1.45 system-ui,sans-serif;box-shadow:0 12px 40px rgba(0,0,0,.4)">' +
+        '<div style="font-weight:700;font-size:16px;margin-bottom:6px">' + title + '</div>' +
+        '<div style="opacity:.85;margin-bottom:14px">' + body + '</div>' +
+        '<div style="display:flex;gap:8px">' +
+        '<button type="button" data-v="0" class="btn btn-ghost" style="flex:1;padding:10px">' + no + '</button>' +
+        '<button type="button" data-v="1" class="btn btn-primary" style="flex:1;padding:10px">' + yes + '</button>' +
+        '</div></div>';
+      wrap.addEventListener('click', function (e) {
+        var v = e.target && e.target.getAttribute && e.target.getAttribute('data-v');
+        if (v == null) return;
+        document.body.removeChild(wrap);
+        resolve(v === '1');
+      });
+      document.body.appendChild(wrap);
+    });
+  }
+  function toast(msg) { try { if (typeof showToast === 'function') showToast(msg); } catch (e) {} }
+
+  /* ── 1. Ask to save when leaving the capture screen ──────────────────── */
+  var nav = G.navTo;
+  if (typeof nav === 'function') {
+    G.navTo = async function (screen) {
+      var args = arguments, self = this;
+      try {
+        var from = (typeof currentScreen !== 'undefined') ? currentScreen : null;
+        if (screen === 'style' && from === 'capture') {
+          var shots = currentShots(), s = sig(shots);
+          if (shots && s !== savedSig && s !== askedSig) {
+            askedSig = s;
+            var yes = await ask('Save photos for next time?',
+              'Save these photos on this device so you can reuse them next time without taking them again. ' +
+              'They stay on this phone only and are never uploaded.',
+              'Yes, save', 'No thanks');
+            if (yes) {
+              try {
+                await putSaved({ shots: shots, at: Date.now() });
+                savedSig = s; toast('Photos saved on this device');
+                refreshButtons(true);
+              } catch (e) { console.warn('[Saved photos] save failed', e); toast('Could not save photos (storage full or blocked)'); }
+            }
+          }
+        }
+      } catch (e) { console.warn('[Saved photos]', e); }
+      return nav.apply(self, args);
+    };
+  }
+
+  /* ── 2. "Use saved photos" button on the capture screen ──────────────── */
+  function loadSaved() {
+    getSaved().then(function (rec) {
+      if (!rec || !rec.shots) { toast('No saved photos'); refreshButtons(false); return; }
+      var angles = Object.keys(rec.shots);
+      angles.forEach(function (a) {
+        state.shots[a] = rec.shots[a];
+        ['hairCanvases', 'hairMasks', 'baseCanvases'].forEach(function (k) { if (state[k]) state[k][a] = null; });
+        ['landmarks', 'captureLmStatus', 'capturePose', 'poseEars'].forEach(function (k) { if (state[k]) state[k][a] = null; });
+      });
+      try { stylePrepDone = false; } catch (e) {}
+      try { state.currentCaptureIndex = 3; } catch (e) {}
+      try { updateAngleUI(); } catch (e) {}
+      angles.forEach(function (a) { try { checkCaptureLandmarks(a); } catch (e) {} });
+      savedSig = sig(currentShots());
+      var d = new Date(rec.at);
+      toast('Loaded saved photos (' + d.toLocaleDateString() + ')');
+    });
+  }
+  function refreshButtons(has) {
+    var row = document.querySelector('#screen-capture .cap-btns');
+    if (!row) return;
+    var box = document.getElementById('savedPhotoRow');
+    if (!has) { if (box) box.remove(); return; }
+    if (box) return;
+    box = document.createElement('div');
+    box.id = 'savedPhotoRow';
+    box.style.cssText = 'display:flex;gap:6px;margin-top:6px;';
+    box.innerHTML =
+      '<button type="button" class="btn" id="useSavedBtn" style="flex:3;font-size:12px;padding:9px 8px;font-weight:700;background:rgba(212,146,74,.14);color:#E8B77C;border:1.5px solid #D4924A;border-radius:10px;">📁 Use saved photos</button>' +
+      '<button type="button" class="btn" id="delSavedBtn" style="flex:1;font-size:11px;padding:9px 6px;background:rgba(200,70,70,.10);color:#E08A8A;border:1px solid rgba(224,138,138,.55);border-radius:10px;">Delete saved</button>';
+    row.parentNode.insertBefore(box, row.nextSibling);
+    document.getElementById('useSavedBtn').onclick = loadSaved;
+    document.getElementById('delSavedBtn').onclick = function () {
+      ask('Delete saved photos?', 'The saved photos will be removed from this device.', 'Delete', 'Cancel').then(function (y) {
+        if (!y) return;
+        delSaved().then(function () { savedSig = null; refreshButtons(false); toast('Saved photos deleted'); });
+      });
+    };
+  }
+
+  function init() {
+    if (typeof indexedDB === 'undefined') return;
+    getSaved().then(function (rec) {
+      if (rec && rec.shots) { savedSig = sig(rec.shots); refreshButtons(true); }
+    });
+  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init); else init();
+})();
