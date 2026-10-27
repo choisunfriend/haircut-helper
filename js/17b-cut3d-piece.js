@@ -1464,7 +1464,7 @@ var REGROW = (function () {
     /* (2026-10-24h) 디버그 2201(단발 · l 버전): 당겨 붙이기만 하니 가닥이 겉면 안을 미끄러지며 머리 영역을 못 벗어나 걸음 수 상한까지 감
        (걸음 수 상한 43% · 길이 중앙 87cm · 당겨진 걸음 311,360). 읽은 겉면 밖으로 liftStopCm 넘게 나가면 = 사진에서 머리가 끝난 자리 → 거기서 끝냄. 그 안쪽 넘침만 당김(미끄러지기 없음).
        (24h) 두피 위 구간에도 같은 겉면 — 디버그 2205(폼파두르): 뒤통수 다시 기른 점 두피 위 2.0~2.2cm vs 옮긴 점 0.2~0.4cm(층 높이 = u × 칸 두께 4.6cm가 띄움) → 뒷머리 튀어나옴. */
-    liftStopCm: 99 /* (2026-10-27f) 1.0 → 99: 겉면 밖에서 끝내지 않음 — 웨이브 디버그 1207: 29,622가닥 중 19,157가닥이 여기서 끝나 어깨 앞·뒤 옆자락이 못 내려감 */, liftBelowHead: false /* (2026-10-27f) 두상 아래(y < CY − b)는 겉면으로 안 당김 — 머리 밑으로 늘어진 자락은 사진 결 + 중력 */, liftOnScalp: true,
+    liftStopCm: 1.0 /* (2026-10-27g) 99 → 1.0 되돌림 — 두상 아래는 liftBelowHead=false라 이 규칙이 안 걸리고, 두상 높이 안에서만 겉면 밖 1cm에서 끝냄 · (2026-10-27f) 기록: 겉면 밖에서 끝내지 않음 — 웨이브 디버그 1207: 29,622가닥 중 19,157가닥이 여기서 끝나 어깨 앞·뒤 옆자락이 못 내려감 */, liftBelowHead: false /* (2026-10-27f) 두상 아래(y < CY − b)는 겉면으로 안 당김 — 머리 밑으로 늘어진 자락은 사진 결 + 중력 */, liftOnScalp: true,
     /* (2026-10-27a) 옮긴 점 겉면을 매끈하게 읽기 — 디버그 1012(긴 웨이브): 겉면에서 끝낸 가닥 15,338 · 멈춘 자리 아래 뒤 사진 머리 5.5cm 더 있음.
        ① 두상 아래로 향한 칸은 옮긴 가닥이 중심에서 곧게 뻗어(반지름 방향 |cos| 0.86) 85백분위 = "겉면"이 아니라 "옮긴 길이의 85%"(R98−R85 2.3cm · 다른 칸 0.9cm)
           → 아래로 향한 칸(방향 y < liftDownY)은 liftPctDown 백분위.
@@ -1485,7 +1485,7 @@ var REGROW = (function () {
          한 장 = 그 사진 결 그대로 + 깊이는 직전 걸음 · 두 장 이상 = 평면 교선(깊이를 사진이 정함) · 반지름 방향 금지 없음.
          맞춰 보기도 같은 기준: 풀린 방향이 평면에서 agreeDeg° 넘게 벗어난 사진만 빼고 다시 풂.
        두피 위 구간(두피면 접선)은 그대로. 끄기 REGROW.lsFree=false · ?lsfree=0 */
-    lsFree: !/[?&]lsfree=0/.test(location.search), lsPrior: 0.02, lsDownK: 1.0 /* (2026-10-27f) 사진이 못 정하는 깊이 = 직전 방향 + 아래(중력)를 이 비율로 섞은 쪽 · 0 = 예전(직전 방향만 — 뒤로 쏠린 깊이가 계속 이어져 머리 전체가 뒤로 누움 · 어깨 앞 머리 못 감) · 끄기 ?lsdown=0 */,
+    lsFree: !/[?&]lsfree=0/.test(location.search), lsPrior: 0.02, lsViewK: 0.3 /* (2026-10-27g) 시선축으로 가는 성분 벌점(사진 평면 무게 대비) · 0 = 끔 · ?lsview=0 */, lsDownK: 1.0 /* (2026-10-27f) 사진이 못 정하는 깊이 = 직전 방향 + 아래(중력)를 이 비율로 섞은 쪽 · 0 = 예전(직전 방향만 — 뒤로 쏠린 깊이가 계속 이어져 머리 전체가 뒤로 누움 · 어깨 앞 머리 못 감) · 끄기 ?lsdown=0 */,
     /* (2026-10-24g) 얇은 자리 길이 — 사용자: "남자 머리는 짧아서 길이 문제 · 폼파두르의 페이드는 짧게 인식을 못한다"
        두피에 누운 머리 길이는 사진에 안 보임(기와처럼 겹쳐 끝없이 이어 보임) → 걷기가 머리 영역 끝까지 감. 디버그 2140(남자 실사):
        뿌리 두께 0~0.5cm(목덜미 57% · 옆 21%) 가닥 길이 중앙 3.4 / p90 17cm · 0.5~1cm 6.8 / 26cm.
@@ -1661,6 +1661,7 @@ var REGROW = (function () {
     if ((m24 = /[?&]layerinner=(ellipsoid|thick)/.exec(qs24))) G.layerInner = m24[1];
     if ((m24 = /[?&]layerouter=(lift|thick)/.exec(qs24))) G.layerOuter = m24[1];
     if ((m24 = /[?&]lsdown=([0-9.]+)/.exec(qs24))) G.lsDownK = +m24[1];   // (2026-10-27f)
+    if ((m24 = /[?&]lsview=([0-9.]+)/.exec(qs24))) G.lsViewK = +m24[1];   // (2026-10-27g)
     if ((m24 = /[?&]depthfix=([01])/.exec(qs24))) G.depthFix = m24[1] === '1';   // (2026-10-27a)
     if ((m24 = /[?&]thinlen=([01])/.exec(qs24))) G.thinLen = m24[1] === '1';
     if ((m24 = /[?&]kink=([01])/.exec(qs24))) G.kinkStop = m24[1] === '1';
@@ -2167,7 +2168,9 @@ var REGROW = (function () {
     function lsSolve(PL, ref) {
       var m00 = 0, m01 = 0, m02 = 0, m11 = 0, m12 = 0, m22 = 0, ws = 0, k;
       for (k = 0; k < PL.length; k += 5) { var w = PL[k + 3]; if (!(w > 0)) continue; var a = PL[k], b = PL[k + 1], c = PL[k + 2];
-        m00 += w * a * a; m01 += w * a * b; m02 += w * a * c; m11 += w * b * b; m12 += w * b * c; m22 += w * c * c; ws += w; }
+        m00 += w * a * a; m01 += w * a * b; m02 += w * a * c; m11 += w * b * b; m12 += w * b * c; m22 += w * c * c; ws += w;
+        var vk = +G.lsViewK || 0, cv = vk > 0 && cams[PL[k + 4]];               // (2026-10-27g) 사진이 깊이를 못 보는 쪽(시선축)으로는 가지 않게 — 결을 못 읽은 밑단에서 시선축(뒤 사진이면 뒤쪽)으로 끝없이 뻗던 가닥(디버그 1228·1231: z −4까지)
+        if (cv) { var va = cv.R[6], vb = cv.R[7], vc = cv.R[8], wv = w * vk; m00 += wv * va * va; m01 += wv * va * vb; m02 += wv * va * vc; m11 += wv * vb * vb; m12 += wv * vb * vc; m22 += wv * vc * vc; } }
       if (!(ws > 0)) return null;
       var rl = Math.hypot(ref.x, ref.y, ref.z) || 1, rx = ref.x / rl, ry = ref.y / rl, rz = ref.z / rl;
       var sx = rx, sy = ry, sz = rz;                                         // 부호는 직전 방향으로 · 깊이 기대(prior)는 직전 방향 + 중력(2026-10-27f)
