@@ -196,6 +196,9 @@ function perfPanelLines(){
       out.push('  얼굴 측면깊이 ' + fmt('left') + ' · ' + fmt('right')
         + (used ? '' : '  ← 각도가 얕아 <b>깊이 보정 안 씀</b>(정면 굴곡 유지)'));
     }
+    try{ const P3 = FACE_BUILD.prof360;   // (2026-10-27) 360 옆얼굴 윤곽
+      if(P3) out.push('  얼굴 360 옆윤곽 ' + (P3.used ? P3.used + ' · 정중선 ' + P3.n + '점 · 보정 중앙 ' + P3.medCm + 'cm / 최대 ' + P3.maxCm + 'cm · 코끝 ' + P3.noseCm + 'cm' : '안 씀 — ' + (P3.why || '')));
+    }catch(e){}
     if(FACE_BUILD.reliefGain != null){
       out.push('  얼굴 굴곡 코돌출 ' + (FACE_BUILD.reliefCm != null ? FACE_BUILD.reliefCm.toFixed(1) + 'cm' : '?')
         + ' · 배율 ×' + FACE_BUILD.reliefGain.toFixed(2)

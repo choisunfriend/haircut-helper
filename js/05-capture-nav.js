@@ -577,6 +577,7 @@ var SHOT360 = (function () {
   };
 
   /* ── 촬영 화면(전체 화면 덮개) ────────────────────────────────────────── */
+  var guideEl = null, guideKind = '';
   var ov = null, vid = null, stream = null, ring = null, info = null, btnStart = null, btnDone = null, btnManual = null, btnFlip = null, needle = null;
   var running = false, raf = null, sensorOk = false, lastEvt = null, h0 = null, cur = 0, lastDeg = null, lastT = 0, speed = 0;
   var T = [], got = {}, tries = {}, small = null, grab = null, signVote = 0, signN = 0, userFlip = false, lastFaceAt = 0, frontBest = null, lastSeekAt = 0, seekCv = null, seekN = 0;
@@ -589,7 +590,26 @@ var SHOT360 = (function () {
   }
   function onOri(e) { lastEvt = e; if (e && e.alpha != null) sensorOk = true; }
 
+  var G360_PATH = {
+    front: 'M50 7 C68 7 82 22 82 44 C82 62 77 76 67 86 C61 92 56 94 50 94 C44 94 39 92 33 86 C23 76 18 62 18 44 C18 22 32 7 50 7 Z',
+    frontExtra: 'M18.5 40 C12 38 11 56 19.5 60 M81.5 40 C88 38 89 56 80.5 60 M36 86 C37 98 37 108 35 116 C30 124 14 128 2 136 M64 86 C63 98 63 108 65 116 C70 124 86 128 98 136',
+    side: 'M46 7 C66 7 78 20 79 36 L80 44 C81 49 86 54 88 58 C88 60 84 62 81 63 L82 68 L79 71 L81 75 L79 78 C79 86 77 91 70 93 C63 95 57 92 54 88 C46 82 36 78 30 74 C20 68 12 58 12 42 C12 22 26 7 46 7 Z',
+    sideExtra: 'M44 42 C50 42 50 58 44 58 C40 58 39 42 44 42 M32 75 C35 92 33 106 28 116 C22 124 12 128 4 132 M57 91 C59 104 62 112 70 120 C78 126 88 130 98 134'
+  };
+  /* 머리·목 윤곽 — cur(도) 기준: |cur| 45° 안 = 정면, 135° 밖 = 뒤(정면과 같은 윤곽), 그 사이 = 옆모습.
+     옆모습 코 방향: 360 세트 실측(-91° 칸 = 코가 화면 오른쪽) → cur < 0 이면 오른쪽, [좌우 바꾸기]면 반대 */
+  function guideDraw() {
+    if (!guideEl) return;
+    var a = Math.abs(cur), side = a > 45 && a < 135, right = (cur < 0) !== userFlip, kind = side ? (right ? 'R' : 'L') : (a >= 135 ? 'B' : 'F');
+    if (kind === guideKind) return; guideKind = kind;
+    var d = side ? G360_PATH.side : G360_PATH.front, dx = side ? G360_PATH.sideExtra : G360_PATH.frontExtra, mir = side && !right ? ' transform="translate(100 0) scale(-1 1)"' : '';
+    var st = 'fill="none" stroke-linecap="round" stroke-linejoin="round" vector-effect="non-scaling-stroke"';
+    guideEl.querySelector('.g360-main').innerHTML = '<g' + mir + '><path d="' + d + '" ' + st + ' stroke="rgba(0,0,0,.35)" stroke-width="5"/><path d="' + d + '" ' + st + ' stroke="rgba(255,214,170,.95)" stroke-width="3"/>' +
+      '<path d="' + dx + '" ' + st + ' stroke="rgba(255,214,170,.8)" stroke-width="2.5"/></g>';
+    guideEl.querySelector('.g360-outer').innerHTML = '<g' + mir + '><path d="' + d + '" ' + st + ' stroke="rgba(255,214,170,.45)" stroke-width="2" stroke-dasharray="6 5"/></g>';
+  }
   function drawRing() {
+    try { guideDraw(); } catch (e) {}
     if (!ring) return;
     var s = '', R = 44, i, t, a0, a1, c, p0, p1;
     function pt(deg, r) { var k = (deg - 90) * Math.PI / 180; return [50 + r * Math.cos(k), 50 + r * Math.sin(k)]; }
@@ -858,7 +878,7 @@ var SHOT360 = (function () {
     if (camGuard) { clearInterval(camGuard); camGuard = null; }
     stopCam();
     if (ov && ov.parentNode) ov.parentNode.removeChild(ov);
-    ov = null; vid = null; btnCam = null; tapEl = null; Q.cam.ok = false;
+    ov = null; vid = null; guideEl = null; guideKind = ''; btnCam = null; tapEl = null; Q.cam.ok = false;
     // 후면 카메라가 놓일 틈을 주고 앱의 앞 카메라를 다시 켬(바로 켜면 실패하는 기기가 있음) — 실패하면 한 번 더
     var back = function (again) {
       try {
@@ -881,9 +901,14 @@ var SHOT360 = (function () {
     vid = el('video', 'position:absolute;inset:0;width:100%;height:100%;object-fit:cover;');
     vid.autoplay = true; vid.muted = true; vid.defaultMuted = true; vid.playsInline = true;
     vid.setAttribute('autoplay', ''); vid.setAttribute('muted', ''); vid.setAttribute('playsinline', ''); vid.setAttribute('webkit-playsinline', '');   // 아이폰은 속성으로 있어야 화면 안에서 재생
-    /* (2026-10-25f) 머리 타원 — 사용자: "중앙에 타원 하나 그려줘" · 예전 점선(폭 56%)은 머리보다 크고 잘 안 보였음 → 머리 크기(폭 40%)로 진하게 + 바깥에 연한 여유선(이 밖으로 나가면 잘림) */
-    var oval = el('div', 'position:absolute;left:50%;top:38%;width:40%;aspect-ratio:3/4;transform:translate(-50%,-50%);border:3px solid rgba(255,214,170,.95);border-radius:50%;box-shadow:0 0 0 2px rgba(0,0,0,.35);pointer-events:none;');
-    var ovalOuter = el('div', 'position:absolute;left:50%;top:38%;width:62%;aspect-ratio:3/4;transform:translate(-50%,-50%);border:2px dashed rgba(255,214,170,.45);border-radius:50%;pointer-events:none;');
+    /* (2026-10-25f) 머리 타원 → (2026-10-27) 머리·목 윤곽 — 사용자: "중앙에 타원으로 그려놓은 부분을 사람 머리와 목의 형태로 그려서 맞추기 용이하게"
+       타원은 머리 크기만 알려 주고 높이(턱·목이 어디 오는지)와 방향은 못 알려 줘서, 돌면서 머리가 위아래로 떠돌았음(배율·세로 자가 사진마다 달라짐).
+       머리(폭 40% · 예전 타원과 같은 크기·자리) + 귀 + 목 + 어깨 시작선. 도는 각도(cur)에 따라 정면·뒤(대칭) ↔ 옆모습(코가 도는 쪽)으로 바뀜.
+       바깥 점선 = 여유선(이 밖으로 나가면 잘림). 모양은 guideDraw(cur)가 drawRing마다 고침 · 옆모습 방향이 반대면 [좌우 바꾸기]가 같이 뒤집음 */
+    var guide = el('div', 'position:absolute;left:50%;top:38%;width:62%;aspect-ratio:100/160;transform:translate(-50%,-31.25%);pointer-events:none;');
+    guide.innerHTML = '<svg viewBox="0 0 100 160" width="100%" height="100%" style="overflow:visible"><g class="g360-outer" transform="translate(50 50) scale(1.3) translate(-50 -50)"></g><g class="g360-main"></g></svg>';
+    guideEl = guide.firstChild; guideKind = '';
+    var oval = guide, ovalOuter = el('div', 'display:none');
     var ringWrap = el('div', 'position:absolute;right:10px;top:10px;width:104px;height:104px;background:rgba(0,0,0,.45);border-radius:50%;pointer-events:none;');
     ringWrap.innerHTML = '<svg viewBox="0 0 100 100" width="104" height="104"></svg>'; ring = ringWrap.firstChild;
     info = el('div', 'position:absolute;left:10px;right:124px;top:10px;padding:8px 10px;border-radius:10px;background:rgba(0,0,0,.55);color:#f3eadf;font:600 13px/1.4 system-ui,sans-serif;',

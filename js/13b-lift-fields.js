@@ -1131,6 +1131,69 @@ var VIEWS360 = (function () {
       edgeL: MB ? MB.edgeL : 0, edgeR: MB ? MB.edgeR : 0, topCut: MB ? MB.topCut : false, blobs: MB ? MB.comps : 0 };
   }
   X._measure = measure;
+  /* (2026-10-27) 옆얼굴 윤곽 — 사용자: "안면을 그릴 때 90도 사진도 포함시켜서 좀 더 정밀한 안면이 나오도록"
+     옆모습(≈90°)에서는 얼굴 인식이 거의 안 잡히지만(디버그: vm91 얼굴 -17° · v89 -33°로 엉뚱하게 잡힘) 사람 윤곽의 앞쪽 선이
+     그대로 이마·코·입술·턱의 깊이(옆얼굴 선)입니다. 사람 윤곽(personMask)을 분석 직후 버리기 전에 줄마다 앞쪽 끝을 남깁니다.
+     센서 각도는 믿지 않습니다(이 세트: 88° 사진이 실제로는 3/4 정면 · 118° 사진이 진짜 옆모습) — 윤곽 모양으로 옆모습인지 봅니다:
+       얼굴 쪽 = 머리 높이에서 윤곽 끝이 머리카락이 아닌 쪽 · 코 = 얼굴 띠에서 앞쪽 끝이 가장 나온 줄 · 턱 = 코 아래에서 앞쪽 끝이 가장 가파르게 들어가는 줄
+       score = 코가 둘레(위아래 머리 높이의 ±25%)보다 나온 정도 ÷ 머리 앞뒤 길이 — 진짜 옆모습일수록 큼(3/4 각도는 뺨이 코를 덮어 작음)
+     12a buildRealFaceMesh가 VIEWS360.faceProfiles()로 읽어 정중선 깊이에 씁니다. 끄기 FACE_PROFILE360.on=false */
+  function profileOf(mi) {
+    var pm = mi && mi.personMask, hm = mi && mi.reasonMask;
+    if (!pm || !hm) return null;
+    var mw = mi.maskW || mi.w, mh = mi.maskH || mi.h;
+    if (!(mw > 16) || !(mh > 16)) return null;
+    var MB = null; try { MB = mainBlob(mi); } catch (e) { MB = null; }
+    var cx = mw >> 1, x, y, sx = 0, nx = 0;
+    if (MB) { for (x = 0; x < mw; x++) if (MB.cols[x]) { sx += x; nx++; } if (nx) cx = Math.round(sx / nx); }
+    var L = new Int32Array(mh).fill(-1), R = new Int32Array(mh).fill(-1), top = -1, maxReach = Math.round(mw * 0.25);
+    for (y = 0; y < mh; y++) {
+      var base = y * mw, c = cx;
+      if (!pm[base + c]) {
+        var f = -1, d;
+        for (d = 1; d <= maxReach; d++) { if (c - d >= 0 && pm[base + c - d]) { f = c - d; break; } if (c + d < mw && pm[base + c + d]) { f = c + d; break; } }
+        if (f < 0) continue; c = f;
+      }
+      var l = c, r = c; while (l > 0 && pm[base + l - 1]) l--; while (r < mw - 1 && pm[base + r + 1]) r++;
+      if (top < 0 && r - l < 3) continue;
+      L[y] = l; R[y] = r; if (top < 0) top = y;
+    }
+    if (top < 0) return null;
+    function wAt(yy) { return L[yy] >= 0 ? R[yy] - L[yy] + 1 : 0; }
+    var Hh = 0.25 * (mh - top), D = 0, it, yy;                       // 머리 앞뒤 길이 D · 정수리→턱 Hh ≈ 1.15 D
+    for (it = 0; it < 3; it++) { D = 0; for (yy = top; yy < Math.min(mh, top + 0.8 * Hh); yy++) D = Math.max(D, wAt(yy)); Hh = 1.15 * D; }
+    if (!(D > 8)) return null;
+    function hairNear(yy, xx, dir) { var k, q; for (k = 0; k <= 2; k++) { q = xx - dir * k; if (q >= 0 && q < mw && hm[yy * mw + q] === 1) return true; } return false; }
+    var hl = 0, hr = 0, nb = 0;
+    for (yy = Math.round(top + 0.35 * Hh); yy < Math.min(mh, top + 0.8 * Hh); yy++) { if (L[yy] < 0) continue; nb++; if (hairNear(yy, L[yy], -1)) hl++; if (hairNear(yy, R[yy], 1)) hr++; }
+    if (nb < 6) return null;
+    var side = hr <= hl ? 1 : -1;                                      // +1 = 얼굴이 사진 오른쪽
+    var F = new Float32Array(mh).fill(NaN), HF = new Uint8Array(mh);
+    for (yy = top; yy < mh; yy++) { if (L[yy] < 0) continue; F[yy] = side > 0 ? R[yy] : -L[yy]; HF[yy] = hairNear(yy, side > 0 ? R[yy] : L[yy], side) ? 1 : 0; }
+    var y0 = Math.round(top + 0.45 * Hh), y1 = Math.min(mh - 1, Math.round(top + 0.85 * Hh)), nose = -1, fb = -Infinity;
+    for (yy = y0; yy <= y1; yy++) if (F[yy] === F[yy] && !HF[yy] && F[yy] > fb) { fb = F[yy]; nose = yy; }
+    if (nose < 0) return null;
+    var k6 = Math.max(2, Math.round(0.06 * Hh)), c0 = nose + Math.round(0.1 * Hh), c1 = Math.min(mh - 1 - k6, Math.round(top + 1.45 * Hh)), chin = -1, drop = -Infinity;
+    for (yy = c0; yy <= c1; yy++) { if (!(F[yy] === F[yy]) || !(F[yy + k6] === F[yy + k6])) continue; var dd = F[yy] - F[yy + k6]; if (dd > drop) { drop = dd; chin = yy; } }
+    var around = [], h25 = Math.round(0.25 * Hh);
+    for (yy = Math.max(top, nose - h25); yy <= Math.min(mh - 1, nose + h25); yy++) if (F[yy] === F[yy]) around.push(F[yy]);
+    around.sort(function (a, b) { return a - b; });
+    var med = around.length ? around[around.length >> 1] : fb, skin = 0, sn = 0;
+    for (yy = Math.round(top + 0.35 * Hh); yy <= (chin > 0 ? chin : y1); yy++) if (F[yy] === F[yy]) { sn++; if (!HF[yy]) skin++; }
+    var score = Math.max(0, (fb - med) / D) * (sn ? skin / sn : 0);
+    return { side: side, top: top, nose: nose, chin: chin, D: D, Hh: Hh, score: score, chinDrop: drop / D, F: F, HF: HF, mw: mw, mh: mh, kx: mi.w / mw, ky: mi.h / mh };
+  }
+  X._profileOf = profileOf;
+  /* 옆얼굴 윤곽 후보(점수 높은 순) — 지금 세트로 분석한 추가 사진만. 각 { key, deg, ratio, prof } */
+  X.faceProfiles = function () {
+    var out = [];
+    try {
+      if (!(X.forSet === state.shots360 && X.fp === fpNow())) return out;
+      X.order.forEach(function (k) { var v = X.views[k]; if (v && v.prof && v.prof.score > 0 && v.prof.chin > 0) out.push({ key: k, deg: v.deg, ratio: v.ratio, prof: v.prof }); });
+    } catch (e) {}
+    out.sort(function (a, b) { return b.prof.score - a.prof.score; });
+    return out;
+  };
   /* 머리가 화면에 다 들어왔나. 문제 있으면 사유 문자열 */
   function frameProblem(m) {
     if (!m) return '머리 윗선을 못 잡음';
@@ -1286,12 +1349,13 @@ var VIEWS360 = (function () {
         var mi = state.hairMasks && state.hairMasks[it.key], m = null;
         if (ok && mi) { try { m = measure(mi); } catch (e) { m = null; } }
         if (m) {
+          var prof = null; try { prof = profileOf(mi); } catch (e) { prof = null; }   // (2026-10-27) 옆얼굴 윤곽 — 사람 윤곽을 버리기 전에
           // 가볍게: 형태 계산에 쓰는 것만 남김
           ['photoRGB', 'personMask', 'reasonCanvas', 'avgColorsBySection', 'colorPalette', 'faceBoxDiag'].forEach(function (n) { try { mi[n] = null; } catch (e) {} });
           mi._x360 = true;
           var fc = faceYaw && typeof faceYaw === 'object' ? faceYaw : null;
           X.views[it.key] = { key: it.key, deg: it.deg, m: m, cal: null, ratio: null, ratioSrc: '', ratioBad: '', why: '', kind: '',
-            face: fc, faceYaw: fc ? fc.yaw : faceYaw, ec: fc && fc.ecN > 0 ? fc.ecN * m.h : 0 };
+            face: fc, faceYaw: fc ? fc.yaw : faceYaw, ec: fc && fc.ecN > 0 ? fc.ecN * m.h : 0, prof: prof };
           X.order.push(it.key); okN++;
         } else {
           try { if (state.hairMasks) delete state.hairMasks[it.key]; } catch (e) {}
@@ -1708,6 +1772,11 @@ var VIEWS360 = (function () {
       (la && la.baseWarn && la.baseWarn.length ? ' · ⚠ 의심스러운 기준 사진 ' + la.baseWarn.join(',') + '(그대로 씀 — 다시 찍는 것이 좋음)' : '') + (X.gate ? '' : ' · 걸러내기 꺼짐') +
       (la ? '' : ' (3D를 아직 안 만듦)'));
     try { var pk = set._pick; if (pk && pk.front) L.push('  기준 4장 — ' + (pk.by === 'face' ? '정면은 얼굴로 고름(' + Math.round(pk.front.deg) + '° 칸 · 얼굴 yaw ' + pk.front._fy.yaw.toFixed(0) + '° · 진짜 0° = 센서 ' + Math.round(pk.zero) + '°)' : '얼굴을 한 장도 못 찾아 센서 0° 칸') + ' · 좌 ' + (pk.left ? Math.round(pk.left.deg) + '°' : '없음') + ' · 우 ' + (pk.right ? Math.round(pk.right.deg) + '°' : '없음') + ' · 뒤 ' + (pk.back ? Math.round(pk.back.deg) + '°' : '없음')); } catch (e) {}
+    try {
+      var fpL = X.faceProfiles();
+      L.push('  옆얼굴 윤곽(얼굴 메쉬 정중선 깊이 · 센서 각도 안 봄) — ' + (fpL.length ? fpL.slice(0, 4).map(function (q) { var p = q.prof; return q.key + ' 점수 ' + p.score.toFixed(3) + '(코 ' + Math.round((p.nose - p.top) / Math.max(1, p.Hh) * 100) + '% · 턱 ' + Math.round((p.chin - p.top) / Math.max(1, p.Hh) * 100) + '% · 얼굴 ' + (p.side > 0 ? '오른쪽' : '왼쪽') + ')'; }).join(' · ') + ' · 쓴 것은 [얼굴 360 옆윤곽] 줄' : '후보 없음'));
+      if (typeof FACE_BUILD !== 'undefined' && FACE_BUILD.prof360) { var P3 = FACE_BUILD.prof360; L.push('  [얼굴 360 옆윤곽] ' + (P3.used ? '씀 — ' + P3.used + ' · 정중선 ' + P3.n + '점 · 보정 중앙 ' + P3.medCm + 'cm / 최대 ' + P3.maxCm + 'cm · 코끝 ' + P3.noseCm + 'cm' : '안 씀 — ' + (P3.why || ''))); }
+    } catch (e) {}
     if (la && la.synthFront) L.push('  ⚠ 정면 보정이 없어 ' + la.synthFront + ' 사진에서 0° 기준을 세움 — 추가 사진 배율은 머리 폭 자로만');
     if (la && la.setBad) L.push('  ⚠ ' + la.setBad);
     try { var ad = X.advice(); if (ad) L.push('  촬영 안내(화면 카드) — ' + (ad.items.length ? ad.items.map(function (it) { return Math.round(it.deg) + '°' + (it.base ? '(기준)' : '') + ' ' + it.kind; }).join(' · ') : '문제 없음') + (X.advise ? '' : ' · 카드 꺼짐')); } catch (e) {}

@@ -1523,6 +1523,9 @@ function faceBoundEllipseNorm(lm){
 
 /* 얼굴 z 보정 스위치. 최상위에 둔다 — 안쪽 함수들이 클로저로 보고, 검사도 본다. */
 const FACE_Z_FIX = { matchBaseline: true, trustWeighted: true };
+/* (2026-10-27) 360 옆얼굴 윤곽으로 정중선 깊이 — buildRealFaceMeshBase의 prof360Map 주석 참고.
+   sigmaCm: 정중선 보정을 좌우로 퍼뜨리는 폭 · minScore: 옆모습 점수(13b profileOf) 하한 · pairFrac: 두 번째 사진도 쓸 점수 비 */
+var FACE_PROFILE360 = (typeof window !== 'undefined' && window.FACE_PROFILE360) || { on: true, sigmaCm: 1.8, minScore: 0.03, pairFrac: 0.7 };
 /* ── 측면 깊이 가중치 (2026-09-07) ────────────────────────────────────────
    사용자: "3D 결과보기에서 미간이 함몰돼 굴곡이 졌다."
    자리가 여기다. 예전 주석은 이렇게 적혀 있었다 —
@@ -2108,6 +2111,106 @@ async function buildRealFaceMeshBase(faceMetrics){
     }
   }
 
+  /* ── (2026-10-27) 360 옆얼굴 윤곽으로 정중선 깊이 ─────────────────────────
+     사용자: "안면을 그릴 때 90도 사진도 포함시켜서 좀 더 정밀한 안면이 나오도록."
+     좌·우 기준 사진은 ±34° 안팎이라 위 PROFILE_YAW_GATE(35~55°)에 걸려 측면 깊이를 못 씀 → 지금까지 얼굴 깊이는
+     정면 사진의 MediaPipe z(굴곡)뿐이었음. 360 세트에는 진짜 옆모습이 있는데, 옆모습에서는 얼굴 인식이 안 잡혀(랜드마크 없음)
+     위 측면 경로(sideMeasuredZ)로는 못 씀.
+     그래서 랜드마크 대신 <b>사람 윤곽의 앞쪽 선</b>(= 옆얼굴 선: 이마·미간·코·입술·턱)을 씀(13b VIEWS360.faceProfiles).
+       세로 맞추기 = 정수리(사람 윤곽 맨 위)와 턱(옆선이 목으로 가파르게 들어가는 줄)을 정면의 정수리·턱 랜드마크에 맞춤
+                    (턱을 못 믿으면 VIEWS360 배율) — 옆 사진 1px = 정면 k px
+       깊이     = 그 줄의 앞쪽 끝 × k → 정면 투영기와 같은 자(bX)로 메쉬 단위
+       기준     = 깊이의 원점은 모르므로 정중선 정점들에서 "지금 깊이 − 옆선 깊이"의 중앙값만큼 옮김(얼굴 전체 위치는 그대로,
+                  코 높이·입술·턱 끝의 <b>모양</b>만 옆선으로)
+       퍼뜨리기 = 정중선에서 잰 보정을 같은 높이의 정점에 좌우 가우시안(sigmaCm)으로 · 얼굴 경계에서는 0(두피와 이음매 유지)
+     앞쪽 끝이 머리카락인 줄(앞머리가 이마를 덮음)은 안 씀. 진단: [360 뷰] 콘솔 VIEWS360.lines() · FACE_BUILD.prof360
+     끄기 FACE_PROFILE360.on = false */
+  function zTermsNoP360(i){
+    const p = raw[i];
+    const localX = projector.toMeshX(p.x);
+    const yLocal = projector.toMeshY(p.y) - 0.15;
+    const reliefZLocal = Z_SIGN * p.z * projector.bX * Z_DEPTH_SCALE * reliefGain;
+    const blendWeight = Math.max(0, 1 - distSqFromBound(i));
+    let pc = 0;
+    if(fullProfileDepthMap && !Number.isNaN(fullProfileDepthMap[i])) pc = fullProfileDepthMap[i];
+    else for(let k=0;k<profileDepthCorrections.length;k++){
+      const c = profileDepthCorrections[k];
+      const ddx = localX - c.localX, ddy = yLocal - c.yLocal;
+      pc += Math.exp(-(ddx*ddx+ddy*ddy) / (2*PROFILE_DEPTH_FALLOFF_SIGMA*PROFILE_DEPTH_FALLOFF_SIGMA)) * c.deltaZ;
+    }
+    return { localX, yLocal, z: faceBaseZLocal(localX, yLocal) * FACE_Z_TO_SKULL + blendWeight * reliefZLocal + pc };
+  }
+  const prof360Map = (function(){
+    FACE_BUILD.prof360 = null;
+    const P = (typeof FACE_PROFILE360 !== 'undefined') ? FACE_PROFILE360 : null;
+    if(!P || !P.on){ FACE_BUILD.prof360 = { why: '꺼짐(FACE_PROFILE360.on=false)' }; return null; }
+    let list = null;
+    try{ list = (typeof VIEWS360 !== 'undefined' && VIEWS360.faceProfiles) ? VIEWS360.faceProfiles() : null; }catch(e){ list = null; }
+    if(!list || !list.length){ FACE_BUILD.prof360 = { why: '360 세트의 옆모습 사진 없음' }; return null; }
+    const fmk = state.hairMasks && state.hairMasks.front;
+    const ref = (typeof VIEWS360 !== 'undefined') ? VIEWS360.ref : null;
+    if(!fmk || !ref || !(ref.top >= 0) || typeof lm.chinY !== 'number'){ FACE_BUILD.prof360 = { why: '정면 정수리·턱을 못 잼' }; return null; }
+    const fw = fmk.w, fh = fmk.h, topF = ref.top, chinF = lm.chinY * fh;
+    if(!(chinF - topF > 8)){ FACE_BUILD.prof360 = { why: '정면 정수리→턱이 너무 짧음' }; return null; }
+    const best = list[0].prof.score;
+    const use = list.filter(q => q.prof.score >= (P.minScore || 0) && q.prof.score >= best * (P.pairFrac || 0.7)).slice(0, 2);
+    if(!use.length){ FACE_BUILD.prof360 = { why: '옆모습답지 않음(점수 ' + best.toFixed(3) + ' < ' + P.minScore + ')' }; return null; }
+    const MID = [10,151,9,8,168,6,197,195,5,4,1,19,94,2,164,0,11,12,13,14,15,16,17,18,200,199,175,152];
+    const cur = MID.map(zTermsNoP360);
+    const views = [];
+    use.forEach(q => {
+      const pr = q.prof;
+      let k = (chinF - topF) / Math.max(1e-6, (pr.chin - pr.top) * pr.ky), kSrc = '정수리·턱';
+      if(!(k > 0.5 && k < 2.5) && q.ratio > 0){ k = q.ratio; kSrc = '360 배율'; }
+      if(!(k > 0.5 && k < 2.5)) return;
+      const zs = MID.map(idx => {
+        const yImgP = pr.top * pr.ky + (raw[idx].y * fh - topF) / k;
+        const yr = yImgP / pr.ky, y0 = Math.floor(yr), fr = yr - y0;
+        if(y0 < 0 || y0 + 1 >= pr.mh) return NaN;
+        const a = pr.F[y0], b = pr.F[y0+1];
+        if(!(a === a) || !(b === b) || pr.HF[y0] || pr.HF[y0+1]) return NaN;
+        const fPx = (a * (1 - fr) + b * fr) * pr.kx;               // 옆 사진 px(앞쪽이 +)
+        return fPx * k / fw * projector.bX;                          // 정면 투영기 자로 메쉬 단위
+      });
+      const off = [];
+      zs.forEach((z, j) => { if(z === z) off.push(cur[j].z - z); });
+      if(off.length < 8) return;
+      off.sort((a, b) => a - b);
+      const o = off[off.length >> 1];
+      views.push({ key: q.key, kSrc, k, zs: zs.map(z => z === z ? z + o : NaN) });
+    });
+    if(!views.length){ FACE_BUILD.prof360 = { why: '옆 사진 줄을 정면에 못 맞춤(배율 범위 밖·앞머리)' }; return null; }
+    let cmU = 16.4; try{ const r = faceRulerCmPerUnit(faceMetrics); if(r && r.x > 1) cmU = r.x; }catch(e){}
+    const lim = 0.6 * ELL_C, samp = [];
+    MID.forEach((idx, j) => {
+      let s = 0, n = 0; views.forEach(v => { if(v.zs[j] === v.zs[j]){ s += v.zs[j]; n++; } });
+      if(!n) return;
+      samp.push({ y: cur[j].yLocal, x: cur[j].localX, d: clamp(s / n - cur[j].z, -lim, lim), idx });
+    });
+    if(samp.length < 6){ FACE_BUILD.prof360 = { why: '맞춘 정중선 점 ' + samp.length + '개(6 필요)' }; return null; }
+    samp.sort((a, b) => b.y - a.y);
+    function at(y){                                                   // 높이로 보간(위→아래)
+      if(y >= samp[0].y) return samp[0];
+      const L = samp[samp.length - 1]; if(y <= L.y) return L;
+      for(let t = 0; t + 1 < samp.length; t++){
+        const A = samp[t], B = samp[t+1];
+        if(y <= A.y && y >= B.y){ const u = (A.y - y) / Math.max(1e-9, A.y - B.y); return { x: A.x + (B.x - A.x) * u, d: A.d + (B.d - A.d) * u }; }
+      }
+      return L;
+    }
+    const sg = (P.sigmaCm || 1.8) / cmU, map = new Float32Array(vertCount);
+    for(let i = 0; i < vertCount; i++){
+      const bw = Math.max(0, 1 - distSqFromBound(i)); if(!(bw > 0)) continue;
+      const lx = projector.toMeshX(raw[i].x), yl = projector.toMeshY(raw[i].y) - 0.15, m = at(yl), dx = lx - m.x;
+      map[i] = m.d * bw * Math.exp(-dx * dx / (2 * sg * sg));
+    }
+    const ds = samp.map(q => Math.abs(q.d)).sort((a, b) => a - b), nz = samp.filter(q => q.idx === 1)[0];
+    FACE_BUILD.prof360 = { used: views.map(v => v.key + '(' + v.kSrc + ' ×' + v.k.toFixed(2) + ')').join(' + '), n: samp.length,
+      medCm: (ds[ds.length >> 1] * cmU).toFixed(2), maxCm: (ds[ds.length - 1] * cmU).toFixed(2), noseCm: nz ? (nz.d * cmU).toFixed(2) : '-' };
+    console.log('[얼굴 360 옆윤곽] ' + FACE_BUILD.prof360.used + ' · 정중선 ' + samp.length + '점 · 보정 중앙 ' + FACE_BUILD.prof360.medCm + 'cm · 최대 ' + FACE_BUILD.prof360.maxCm + 'cm · 코끝 ' + FACE_BUILD.prof360.noseCm + 'cm');
+    return map;
+  })();
+
   const positions = new Float32Array(vertCount*3);
   const uvs = new Float32Array(vertCount*2);
   for(let i=0;i<vertCount;i++){
@@ -2158,7 +2261,7 @@ async function buildRealFaceMeshBase(faceMetrics){
     const baseSurf = faceBaseZLocal(localX, yLocal);
     const baseTerm = baseSurf * FACE_Z_TO_SKULL;
     const reliefTerm = blendWeight * reliefZLocal;
-    const localZ = baseTerm + reliefTerm + profileCorrectionZ;
+    const localZ = baseTerm + reliefTerm + profileCorrectionZ + (prof360Map ? prof360Map[i] : 0);   // (2026-10-27) 360 옆얼굴 윤곽
     /* [진단] 세 항을 따로 남긴다 — "코가 나온 건가 이마가 들어간 건가"를
        눈이 아니라 숫자로 가른다. 타원면z와의 차가 곧 함몰/돌출 깊이다. */
     _faceBaseZ[i] = baseTerm;
