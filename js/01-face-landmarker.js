@@ -465,6 +465,7 @@ function getViewPoseSource(angle){
      순간 [포즈 보정·치수] 로그가 a(폭)·c(깊이)의 before/after를 같이 찍는다.
      그 숫자를 보고 판단할 것 — 눈으로 다시 켰다 껐다 하지 말 것.
    켜기: POSE_YAW_FIX.on = true  (모델을 다시 만들어야 반영된다 — 뷰 재진입) */
+const YAW_MIRROR = { on: true, used: {} };   // (2026-10-27a) 아래 _rawViewYawDeg
 const POSE_YAW_FIX = { on: false, from: 'nose' };   // 'nose'(랜드마크 실측) | 'gain'(상수배)
 function getViewYawDeg(angle){
   const raw = _rawViewYawDeg(angle);
@@ -488,6 +489,21 @@ function _rawViewYawDeg(angle){
   if(tier === 'approx') return lm.yaw * 90;
   if(tier === 'live') return cap.yawDeg;
   // 'poseEar'는 위치 실측일 뿐 각도 실측이 아니다 — 각도는 슬롯 기본값 유지(아래 폴백).
+  /* (2026-10-27a) 옆 사진 하나만 실측이 없으면 반대쪽 실측 각도를 거울로 씀(±90° 대신).
+     디버그 1012(긴 웨이브): 오른쪽 감지 실패 → −90° → 그 사진 윤곽이 엉뚱한 자리를 비춰 다시 기르기 가닥을 멈춤(카메라가 틀린 것이지 결 읽기 문제가 아님).
+     실제 촬영은 24~55° 경사라 반대쪽 실측이 ±90°보다 훨씬 가까움. 신뢰도 등급(tier)은 'none' 그대로 — 다른 곳의 판정은 안 바뀜.
+     끄기 YAW_MIRROR.on=false */
+  if (YAW_MIRROR.on && (angle === 'left' || angle === 'right')) {
+    const opp = angle === 'left' ? 'right' : 'left', os = getViewPoseSource(opp);
+    let oy = null;
+    if (os.tier === 'pnp') oy = os.lm.poseYawDeg; else if (os.tier === 'approx') oy = os.lm.yaw * 90; else if (os.tier === 'live') oy = os.cap.yawDeg;
+    if (typeof oy === 'number' && !Number.isNaN(oy) && Math.abs(oy) >= 10) {
+      if (YAW_MIRROR._k !== angle + '|' + oy) { YAW_MIRROR._k = angle + '|' + oy; try { console.log('[각도 거울] ' + angle + ' 실측 없음 → ' + opp + ' 실측 ' + oy.toFixed(1) + '°를 거울로 ' + (-oy).toFixed(1) + '° (예전 ' + ASSUMED_YAW_DEG[angle] + '° · 끄기 YAW_MIRROR.on=false)'); } catch (e) {} }
+      YAW_MIRROR.used[angle] = -oy;
+      return -oy;
+    }
+  }
+  if (YAW_MIRROR.used) delete YAW_MIRROR.used[angle];
   return ASSUMED_YAW_DEG[angle] ?? 0;
 }
 

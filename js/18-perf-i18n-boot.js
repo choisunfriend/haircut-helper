@@ -135,7 +135,8 @@ function posePanelLines(){
     out.push('  ' + a.padEnd(5) + ' ' + tier.padEnd(7)
       + ' yaw ' + (yaw == null ? '—' : yaw.toFixed(1) + '°')
       + (conf == null ? '' : ' · 신뢰도 ' + conf.toFixed(2))
-      + (tier === 'pnp' ? '' : '  ← 실측 아님'));
+      + (tier === 'pnp' ? '' : '  ← 실측 아님')
+      + ((typeof YAW_MIRROR !== 'undefined' && YAW_MIRROR.used && YAW_MIRROR.used[a] != null) ? ' · 반대쪽 실측을 거울로(폴백 · 끄기 YAW_MIRROR.on=false)' : ''));
   }
   return out;
 }
