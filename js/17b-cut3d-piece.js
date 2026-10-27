@@ -1544,12 +1544,6 @@ var REGROW = (function () {
        사진 결(앞뒤 없는 선)이 위·아래 성분을 gravPickFlat 이상 가지면 아래로 가는 쪽, 그보다 누우면(수평 결) 직전 걸음과 이어지는 쪽. 결의 모양(각)은 안 바꿈.
        되돌리기: REGROW.gravPick=false · REGROW.polDown=2.5 · REGROW.gravSign=1 */
     gravPick: true, gravPickFlat: 0.2,
-    /* (2026-10-27m) 두피 밖은 직전 걸음과 뚜렷이 이어지면(60° 안) 그쪽 — 사용자(3장 실사): "머리끝 삐침에서 꺾인 부분이 생겼는데 반대편인 얼굴 쪽으로 꺾인 듯"
-       삐침은 끝에서 위·바깥으로 올라가는 결. 중력으로 고르면 "아래로" 뒤집으면서 가로 성분까지 뒤집혀 바깥→안(얼굴 쪽)으로 꺾임.
-       중력은 갈피가 없을 때(직전 걸음과 60° 넘게 어긋남 — 첫 걸음·결이 크게 바뀐 자리)만. 두피 위(정수리를 넘어가던 원래 문제)는 그대로 중력.
-       끄기 REGROW.gravPickFreeRef=0 (모든 걸음 중력) */
-    gravPickFreeRef: 0 /* (2026-10-27p) 끔 — 웨이브(디버그 1909): 직전과 이어지는 쪽을 따르자 등까지 내려간 뒤통수·목덜미 가닥 7,105개가 옆으로 누운 결을 타고 다시 정수리까지 올라감(길이 p90 42 → 126cm · 부풀어 보임). 삐침은 다른 방법으로 · 켜기 0.5 */,
-    nearReadCm: 0 /* (2026-10-27p) 끔 — 3장 실사(디버그 1915): 11,229번 쓰이며 사진 윤곽 가장자리 결을 읽어 두피 위에서 맴돌고(같은 길 두 번 6,847 · 층 밖으로 밀림 39k→85k) 머리가 부풀었음 · 앞머리는 가르마 맨살 자리 뿌리를 길게 키움 */, rootSkinCm: 0.6,   // (2026-10-27p) 아래 grow() 머리말 · (2026-10-27o) 두피 위 뿌리가 사진에서 맨살이면 이 반경 안 가장 가까운 머리 자리의 결 — flow() 위 설명
     polDown: 0, gravSign: 0, gravBlendRead: false,   // 예전 polDown 2.5 · gravSign 1.0
     polDown_off_was: 0, // (2026-10-22) 끔 — 걷기 안 규칙도 끔(읽기·기르기 강화 단계 · 되돌리기 ?judge=1): 오르막 벌점 · 예전 2.5
     polDown_was: 2.5,   // (2026-10-10f) 두피 위에서 결(앞뒤 없는 선)의 앞뒤를 고를 때 비탈을 거꾸로 오르는 쪽에만 이만큼 벌점(비탈 기울기에 비례) — 한 번 위로 가면 계속 위로 가며 두상을 감던 것. 옆으로 흐르는 결(가마·가르마)은 안 건드림 · 0 = 예전(직전 방향만)
@@ -1650,7 +1644,7 @@ var REGROW = (function () {
          반대면 뒤, 둘 다 머리면 뿌리가 두상 앞 절반(z > 0)인 가닥은 앞·나머지는 뒤, 둘 다 아니면(몸에 닿을 만큼 안 내려오는 머리) 옮기지 않고 몸통 안에 들어갈 때만 지금 깊이 쪽 면으로.
          목 윗단~몸통 윗단 사이에서 고른 쪽 면으로 서서히 옮기고(bodySteer), 몸통 안에 들어간 점은 고른 쪽 면(또는 더 가까운 옆면)으로 밀어냄. 밀린 쪽으로 가던 성분은 지움.
        남은 어림: 몸통은 가로 34 · 깊이 22cm 타원 기둥(어깨 경사 없음) · 둘 다 머리일 때 뿌리 앞뒤로 나눔. 끄기 REGROW.bodyPush=false · ?bodypush=0 */
-    bodyPush: !/[?&]bodypush=0/.test(location.search), bodyLayer: /[?&]bodylayer=1/.test(location.search) /* (2026-10-27n) 겹 고르기·옮기기 끔 — 사용자: "골라서 옮기다 보니 간격이 벌어진 것 같다. 안 그려지는 것만 개선하고 비는 곳은 360 촬영으로 채우자" → 몸통 안으로 들어간 점만 가까운 면으로(사진이 깊이를 못 주는 자리는 지어내지 않음) · 켜기 ?bodylayer=1 */, bodyMarginCm: 0.6, bodyLookCm: 3, bodySteer: 0.3,   // hullDeepOut: 목 아래에서 가리지 않은 옆·뒤 사진이 여유(1.5cm) 넘게 밖이면 머리 아님 — 동점(뒤 사진 머리 · 옆 사진 밖)을 머리로 치던 것 · 끄기 REGROW.hullDeepOut=false   // (2026-10-27i) 머리 영역 판정의 가림을 목·몸통 기둥으로 — voteRaw 위 설명   // (2026-10-11b) 그 자리를 가장 정면으로 마주 보는 사진이 '밖'이라고 하면 밖(정면 1cm · 옆·뒤 1.5cm 여유) — 사용자: "정 안맞는 곳은 해당 면의 사진영역으로 결정" · 사진 맞춤은 65번   // (2026-10-11a) 껍질 = 사진들의 "교집합" — 이 사진들이 머리 영역 밖(여유 이 cm 넘게)이라고 하면 다른 사진이 머리라고 해도 머리 아님. 정면은 얼굴 랜드마크로 맞춘 사진이라 믿을 수 있음 · [] = 예전 다수결만
+    bodyPush: !/[?&]bodypush=0/.test(location.search), bodyMarginCm: 0.6, bodyLookCm: 3, bodySteer: 0.3,   // hullDeepOut: 목 아래에서 가리지 않은 옆·뒤 사진이 여유(1.5cm) 넘게 밖이면 머리 아님 — 동점(뒤 사진 머리 · 옆 사진 밖)을 머리로 치던 것 · 끄기 REGROW.hullDeepOut=false   // (2026-10-27i) 머리 영역 판정의 가림을 목·몸통 기둥으로 — voteRaw 위 설명   // (2026-10-11b) 그 자리를 가장 정면으로 마주 보는 사진이 '밖'이라고 하면 밖(정면 1cm · 옆·뒤 1.5cm 여유) — 사용자: "정 안맞는 곳은 해당 면의 사진영역으로 결정" · 사진 맞춤은 65번   // (2026-10-11a) 껍질 = 사진들의 "교집합" — 이 사진들이 머리 영역 밖(여유 이 cm 넘게)이라고 하면 다른 사진이 머리라고 해도 머리 아님. 정면은 얼굴 랜드마크로 맞춘 사진이라 믿을 수 있음 · [] = 예전 다수결만
     tri3D: false, /* (2026-10-11r) 원인 찾기 결과 — 끔. 다시 켜기 REGROW.tri3D=true */ tri3DMinDeg: 35, tri3DPrior: 0.15,   // (2026-10-11a) 두피 밖 결의 3D 방향 = 두 장 이상의 사진 결이 만드는 평면들의 교선(깊이를 직전 걸음에서 물려받지 않음) · 시선축이 이 각 이상 벌어진 사진들일 때만
     volume: true, volCellCm: 0.6, volTight: false /* (2026-10-22) 끔 — 머리 전체 컬 30 이상이면 만들던 좁은 덩어리(61번 전용) */, volTightMinCurl: 30,   // (2026-10-11d) 3D 머리 덩어리 — 사진 네 장(마주 보는 사진 규칙)으로 칸마다 머리/아님을 한 번 정해 두고, 걷기·61번(마네킹 위 컬의 축 길이)이 같은 덩어리를 씀
     polNbr: true,       // (2026-10-11d) 뿌리 결이 옆으로 흐릴 때 앞뒤 방향을 "가운데 선 바깥"이 아니라 이웃 뿌리들의 방향으로(남자분 가운데 가르마의 원인)
@@ -2119,24 +2113,23 @@ var REGROW = (function () {
     cams.forEach(function (c) { if (c.angle === 'front') camF = c; else if (c.angle === 'back') camB = c; });
     function torsoZ(x, V) { var t = 1 - x * x / (V.tw * V.tw); return t > 0 ? V.td * Math.sqrt(t) : 0; }
     function hairPix(cam, p) { if (!cam) return null; var o = proj(cam, p); if (o.ix < 0 || o.iy < 0 || o.ix >= cam.iw || o.iy >= cam.ih) return false; return hairAt(cam, o.ix, o.iy); }
-    function bodySidePick(Q, root, sec) {
+    function bodySidePick(Q, root) {
       var V = visBodyInit(); if (!V) return 0;
-      if (!G.bodyLayer) { bodyStat.none++; return Q.z >= 0 ? 2 : -2; }   // (27n) 고르지 않음 — 몸통 안에 들어갈 때만 가까운 면으로
       var yL = V.tTop - G.bodyLookCm / cmU, zf = torsoZ(Q.x, V); if (!(zf > 0)) return 0;
       var fH = hairPix(camF, { x: Q.x, y: yL, z: zf }), bH = hairPix(camB, { x: Q.x, y: yL, z: -zf });
       if (fH && !bH) { bodyStat.front++; return 1; }
       if (bH && !fH) { bodyStat.back++; return -1; }
-      if (fH && bH) { bodyStat.both++; return (root.z > 0 && sec !== 'crown' && sec !== 'occipital' && sec !== 'nape') ? 1 : -1; }   // (27m) 얼굴 둘레 섹션(앞·관자·옆)의 앞 절반만 앞 겹 — 정수리 앞쪽 뿌리까지 앞으로 보내 가슴 앞이 두꺼워지고 옆에서 S자로 꺾였음(디버그 1827)
+      if (fH && bH) { bodyStat.both++; return root.z > 0 ? 1 : -1; }
       bodyStat.none++; return Q.z >= 0 ? 2 : -2;   // 사진에 몸 위 머리가 없음 — 옮기지 않고, 몸통 안에 들어갈 때만 가까운 쪽으로
     }
-    function bodyApply(Q, d, side, y0) {                                       // → 옮긴 Q (d는 그 자리에서 고침) · 안 건드리면 null
-      var V = visBodyInit(); var yS = Math.min(y0 != null ? y0 : Infinity, CY - (G.bodySteerFromB || 0.5) * Es.b);   // 옮기기 시작 = 두피를 벗어난 높이와 볼 높이(CY − 0.5b) 중 낮은 쪽 — 얼굴 옆에서는 안 옮김 if (!V || !side || !(Q.y < yS)) return null;
+    function bodyApply(Q, d, side) {                                       // → 옮긴 Q (d는 그 자리에서 고침) · 안 건드리면 null
+      var V = visBodyInit(); if (!V || !side || !(Q.y < V.nTop)) return null;
       var m = G.bodyMarginCm / cmU, zf = torsoZ(Q.x, V); if (!(zf > 0)) return null;
       var steerOK = Math.abs(side) === 1; side = side > 0 ? 1 : -1;
       var zT = side * (zf + m), wrong = side > 0 ? Q.z < zT : Q.z > zT; if (!wrong) return null;
       if (Q.y >= V.tTop) {                                                 // 목~몸통 윗단: 서서히
         if (!steerOK) return null;
-        var w = Math.min(1, (yS - Q.y) / Math.max(1e-6, yS - V.tTop)); var kz = (G.bodySteer || 0.3) * w; if (!(kz > 0)) return null;
+        var w = Math.min(1, (V.nTop - Q.y) / Math.max(1e-6, V.nTop - V.tTop)); var kz = (G.bodySteer || 0.3) * w; if (!(kz > 0)) return null;
         bodyStat.steer++; return { x: Q.x, y: Q.y, z: Q.z + (zT - Q.z) * kz };
       }
       var ex = V.tw * Math.sqrt(Math.max(0, 1 - Q.z * Q.z / (V.td * V.td))), dxE = ex + m - Math.abs(Q.x), dzE = Math.abs(zT - Q.z);
@@ -2282,24 +2275,9 @@ var REGROW = (function () {
       }
       var kmin = A[0][0] <= A[1][1] ? (A[0][0] <= A[2][2] ? 0 : 2) : (A[1][1] <= A[2][2] ? 1 : 2);
       var vx = V[0][kmin], vy = V[1][kmin], vz = V[2][kmin], vl = Math.sqrt(vx * vx + vy * vy + vz * vz); if (!(vl > 1e-12)) return null; vx /= vl; vy /= vl; vz /= vl;
-      var cRef = vx * sx + vy * sy + vz * sz, refClear = (G.gravPickFreeRef > 0) && Math.abs(cRef) >= G.gravPickFreeRef;   // (27m) 평면 풀이는 두피 밖에서만 씀
-      var flip = (G.gravPick && Math.abs(vy) >= G.gravPickFlat && !refClear) ? vy > 0 : (cRef < 0);
+      var flip = (G.gravPick && Math.abs(vy) >= G.gravPickFlat) ? vy > 0 : (vx * sx + vy * sy + vz * sz < 0);
       if (flip) { vx = -vx; vy = -vy; vz = -vz; }
       return { x: vx, y: vy, z: vz };
-    }
-    /* (2026-10-27o) 가장 가까운 머리 자리 — 디버그 1327(웨이브 가운데 가르마): 앞 섹션 뿌리 1,482가닥이 정면 사진에서 이마 맨살 자리(가르마로 머리가 갈라져 비는 곳)라
-       정면 결을 못 읽고 왼쪽 사진 한 장의 결로 아래로 걸어 이마 옆으로 내려옴. 사진에 보이는 "갈라져 옆으로 넘어가는 결"은 바로 옆 머리 자리에 있음.
-       두피 위 구간에서만: 그 사진의 머리 영역까지 nearReadCm 안이면 가장 가까운 머리 자리의 결을 읽음(무게 = 1 − 거리/반경의 절반). 두피 밖은 예전대로(빈 자리 = 머리 없음).
-       끄기 REGROW.nearReadCm=0 */
-    var nearN = 0;
-    function nearHair(cam, x0, y0) {
-      var rPx = G.nearReadCm / Math.max(1e-6, cam.s * cmU), stp2 = Math.max(1, rPx / 10), r, a, na, x, y;
-      for (r = stp2; r <= rPx + 1e-6; r += stp2) {
-        na = Math.max(8, Math.round(2 * Math.PI * r / stp2));
-        for (a = 0; a < na; a++) { x = x0 + r * Math.cos(2 * Math.PI * a / na); y = y0 + r * Math.sin(2 * Math.PI * a / na);
-          if (x >= 0 && y >= 0 && x < cam.iw && y < cam.ih && cam.smp.at(x, y) > 0) return { x: x, y: y, k: 1 - 0.5 * r / rPx }; }
-      }
-      return null;
     }
     function flow(p, n, ref, flat) {
       flowNC = 0;
@@ -2316,12 +2294,7 @@ var REGROW = (function () {
         var lowF = ncz < G.minFacing && !visLow; if (lowF && !(flat && G.tri3D)) continue;
         o = proj(cam, p);
         if (o.ix < 0 || o.iy < 0 || o.ix >= cam.iw || o.iy >= cam.ih) continue;
-        var kNear = 1;
-        if (!(cam.smp.at(o.ix, o.iy) > 0)) {                                 // (2026-10-27o) 두피 위 뿌리가 이 사진에서 맨살이면 가장 가까운 머리 자리의 결로
-          if (flat || !(G.nearReadCm > 0)) continue;
-          var nr = nearHair(cam, o.ix, o.iy); if (!nr) continue;
-          o.ix = nr.x; o.iy = nr.y; kNear = nr.k; nearN++;
-        }
+        if (!(cam.smp.at(o.ix, o.iy) > 0)) continue;
         if (lowF && o.z < 0 && behindSkull(cam, p)) continue;
         sm = sampleOri(cam, o.ix, o.iy);
         if (!sm || !(sm.coherence >= G.minCoh)) continue;
@@ -2362,7 +2335,7 @@ var REGROW = (function () {
         mx /= l; my /= l; mz /= l;
         if (ref) {
           dot = mx * ref.x + my * ref.y + mz * ref.z;
-          if (G.gravPick && Math.abs(my) >= G.gravPickFlat && !(flat && G.gravPickFreeRef > 0 && Math.abs(dot) >= G.gravPickFreeRef)) dot = -my;     // (2026-10-26) 중력으로 앞뒤만 — 아래로 가는 쪽 · (27m) 두피 밖에서 직전과 뚜렷이 이어지면 그쪽
+          if (G.gravPick && Math.abs(my) >= G.gravPickFlat) dot = -my;     // (2026-10-26) 중력으로 앞뒤만 — 아래로 가는 쪽
           if (polW > 0) {                                                   // (2026-10-10f) 오르막에만 벌점 — 내리막 = 아래(0,-1,0)를 이 자리 두피면에 놓은 방향(정수리처럼 평평한 곳은 짧아져 저절로 약해짐)
             var kd = -n.y, ddx = -kd * n.x, ddy = -1 - kd * n.y, ddz = -kd * n.z, b = mx * ddx + my * ddy + mz * ddz;
             var ddl = Math.sqrt(ddx * ddx + ddy * ddy + ddz * ddz), sl = G.polSlopeHi > G.polSlopeLo ? Math.max(0, Math.min(1, (ddl - G.polSlopeLo) / Math.max(1e-6, G.polSlopeHi - G.polSlopeLo))) : 1;   // (2026-10-10i) 완만한 곳(정수리·가마)은 벌점을 풂
@@ -2374,7 +2347,7 @@ var REGROW = (function () {
         else if (wsum > 0) dot = mx * ax + my * ay + mz * az;
         else { pol = 0; try { pol = flowPolarityFor(sm.angle, sm); } catch (e) {} dot = pol < 0 ? -1 : 1; }
         if (dot < 0) { mx = -mx; my = -my; mz = -mz; }
-        w = Math.max(ncz * ncz, (flat && G.visRead) ? G.visFloorW : 0) * sm.coherence * kNear;   // (2026-10-26) 두피 밖은 보이는 사진에 바닥 무게 · (27o) 옆 머리 자리에서 읽은 결은 거리만큼 덜
+        w = Math.max(ncz * ncz, (flat && G.visRead) ? G.visFloorW : 0) * sm.coherence;   // (2026-10-26) 두피 밖은 보이는 사진에 바닥 무게
         if (visLow) visLowN++;
         flowNC++;
         VD.push(mx, my, mz, w, i, sm.coherence);
@@ -2723,20 +2696,6 @@ var REGROW = (function () {
       var F = { x: Es.a * Math.sin(ph) * Math.sin(th), y: CY + Es.b * Math.cos(ph), z: Es.c * Math.sin(ph) * Math.cos(th) };
       var n = normalAt(F), u = G.layerLo + (G.layerHi - G.layerLo) * rnd();
       var sec = null; try { sec = resolveSection3D(F, CY, Es.b); } catch (e) {} sec = sec || 'crown';
-      /* (2026-10-27p) 맨살 자리엔 뿌리를 안 심음 — 사용자: "앞머리는 뿌리가 거기 있는 게 아니라 길게 자란 것 같다"
-         가르마처럼 머리가 갈라져 두피가 보이는 자리: 그 자리를 가장 정면으로 마주 보는 사진(0.7 이상)이 사람 윤곽 안·머리 아님(살)이고
-         머리 영역에서 rootSkinCm 넘게 떨어져 있으면 그 뿌리는 없음. 뿌리밀도 격자(칸이 굵음)가 못 잡는 가는 맨살 줄을 사진이 직접 판정. 끄기 REGROW.rootSkinCm=0 */
-      if (G.rootSkinCm > 0) {
-        var nF = normalAt(F), bc = null, bfc = 0.7, ci2;
-        for (ci2 = 0; ci2 < cams.length; ci2++) { var cR = cams[ci2], fcR = cR.R[6] * nF.x + cR.R[7] * nF.y + cR.R[8] * nF.z; if (fcR > bfc && cR.hull && cR.pm) { bfc = fcR; bc = cR; } }
-        if (bc) {
-          var oR = proj(bc, F), pR = personAt(bc, oR.ix, oR.iy);
-          if (pR === true && !hairAt(bc, oR.ix, oR.iy)) {
-            var hR = bc.hull, gxR = Math.floor(oR.ix / hR.cp), gyR = Math.floor(oR.iy / hR.cp);
-            if (gxR >= 0 && gyR >= 0 && gxR < hR.gw && gyR < hR.gh && hR.D[gyR * hR.gw + gxR] * hR.cp * bc.s * cmU > G.rootSkinCm) { st.rootSkin = (st.rootSkin || 0) + 1; st.skipped++; (info.skipY[sec] || (info.skipY[sec] = [])).push(F.y); return null; }
-          }
-        }
-      }
       var Lcap = capFor(sec), ramp = Math.max(0.03, Math.min(0.12, 0.25 * Lcap));
       var stp = Math.max(G.step, Lcap / G.maxSteps);      // 긴 가닥은 걸음을 넓혀 걸음 수 상한에 안 걸리게
       var tRoot = thickAt(F), rootY = F.y;
@@ -2910,10 +2869,10 @@ var REGROW = (function () {
           var Qn = G.neckPush(Q); if (Qn !== Q) { Q = Qn; st.neckPush++; nNeck++; exB = exB | 2; }
           if (G.bodyPush) {                                                 // (27l) 몸통을 뚫지 않음 + 앞·뒤 겹
             var Vb = visBodyInit();
-            if (Vb && free) {
-              if (!bodySide && (G.bodyLayer || Q.y < Vb.tTop)) bodySide = bodySidePick(Q, root0, sec);   // (27n) 고르지 않을 때는 몸통 윗단에 닿는 순간의 깊이 쪽 = 가까운 면   // (27m) 두피를 벗어날 때 바로 고름 — 옮기기를 거기서부터 서서히(예전: 목 윗단부터 10cm 안에 몰아서 → 옆에서 S자·말안장)
+            if (Vb && Q.y < Vb.nTop) {
+              if (!bodySide) bodySide = bodySidePick(Q, root0);
               d = { x: d.x, y: d.y, z: d.z };                                 // 함께 쓰는 방향(down·prev)을 안 고치게 복사
-              var Qb = bodyApply(Q, d, bodySide, exitY);
+              var Qb = bodyApply(Q, d, bodySide);
               if (Qb) { Q = Qb; var dl5 = Math.hypot(d.x, d.y, d.z); if (dl5 > 1e-6) d = { x: d.x / dl5, y: d.y / dl5, z: d.z / dl5 }; else d = down; exB = exB | 4; }
             }
           }
@@ -3059,7 +3018,7 @@ var REGROW = (function () {
           estPct: st.steps ? st.est / st.steps * 100 : 0, stopLoop: st.stopLoop || 0, stopKink: st.stopKink || 0, layerIn: st.layerIn || 0, layerOut: st.layerOut || 0, layerInN: st.layerInN || 0, liftPull: st.liftPull || 0, faceSlide: st.faceSlide || 0, faceSlideN: st.faceSlideN || 0, liftStop: st.liftStop || 0, depthFix: st.depthFix || 0, depthFixCm: st.depthFix ? st.depthFixCm / st.depthFix : 0, depthFixN: st.depthFixN || 0, liftScalp: st.liftScalp || 0, liftN: st.liftN || 0, thinLenN: st.thinLenN || 0, thinRoots: st.thinRoots || 0, layerOutN: st.layerOutN || 0, stopMask: st.stopMask, stopCap: st.stopCap, stopMax: st.stopMax, free: st.free, flipped: st.flipped, soloSide: st.soloSide || 0, noClimb: st.noClimb || 0, noClimbN: st.noClimbN || 0, flipKept: st.flipKept || 0, flipSide: st.flipSide || 0, stubN: st.stub || 0, glossN: glossN, glossKeep: glossKeep, agreeN: agreeN, visBlk: visBlk, visLowN: visLowN, agreeDrop: agreeDrop, agreeSkip: agreeSkip, thinStop: st.thinStop || 0, sideEnd: st.sideEnd || 0,
           isLong: isLong, capTxt: Object.keys(cap).map(function (k) { return k + ' ' + n1(cap[k] * cm); }).join(' · '),
           tMed: q(tv, 0.5), tP90: q(tv, 0.9), tMeasured: tStat.measured, tFilled: tStat.filled, tZero: tStat.zero, cells: NC,
-          cams: cams.map(function (c) { return c.angle; }).join(','), hullN: hullN, triN: triN, lsN: lsN, nearN: nearN, vol: VOL ? { n: VOL.nx * VOL.ny * VOL.nz, inN: VOL.inN, tN: VOL.tightN, ms: VOL.ms, cm: G.volCellCm } : null, pol: polStat, lenThick: st.lenThick || 0, hullV: cams.filter(function (c) { return c.hull; }).map(function (c) { return c.angle; }).join(','), straight: straightOn ? straightNote.join(' · ') + ' · 편 가닥 ' + nStraight + '개 · 길이 남음(축/걸은 길) 중앙값 ' + (straightShrink.length ? q(straightShrink, 0.5).toFixed(2) : '-') : '',
+          cams: cams.map(function (c) { return c.angle; }).join(','), hullN: hullN, triN: triN, lsN: lsN, vol: VOL ? { n: VOL.nx * VOL.ny * VOL.nz, inN: VOL.inN, tN: VOL.tightN, ms: VOL.ms, cm: G.volCellCm } : null, pol: polStat, lenThick: st.lenThick || 0, hullV: cams.filter(function (c) { return c.hull; }).map(function (c) { return c.angle; }).join(','), straight: straightOn ? straightNote.join(' · ') + ' · 편 가닥 ' + nStraight + '개 · 길이 남음(축/걸은 길) 중앙값 ' + (straightShrink.length ? q(straightShrink, 0.5).toFixed(2) : '-') : '',
           neckPush: st.neckPush, backFoldAfter: !!G.backFoldAfter, foldN: st.foldN || 0, foldPts: st.foldPts || 0, backFix: !!G.backFix, backN: st.backN, backFwd: st.backFwd, backKeep: st.backKeep, backLenMed: q(st.backLen, 0.5) * cm,
           align: al ? { on: al.on, skipped: !!al.skipped, kMul: al.kMul, strands: al.strands, segs: al.segs, rotMed: q(al.rot, 0.5), rotP90: q(al.rot, 0.9), trimmed: al.trimmed, trimCm: al.trimmed ? al.trimLen / al.trimmed * cm : 0, cells: al.cells, ms: Math.round(al.ms) } : null,
           backTipN: backTips.length, backTipCm: backTipOK ? (yTop - q(backTips, 0.5)) * cm : NaN,
@@ -4113,7 +4072,6 @@ function helixMeasure(rgba,mask,W,H,angle,coh,opt){opt=opt||{};const n=opt.n||25
     L.push('  뿌리 결 앞뒤: ' + (s.pol ? '또렷한 칸 ' + s.pol.sure + ' · 이웃 칸 따라 정한 칸 ' + s.pol.nbr + ' · 둘 다 아니라 가운데 선 바깥쪽으로 정한 가닥 ' + s.pol.mid + ' (끄기 REGROW.polNbr=false)' : '예전 규칙'));
     L.push('  누운 머리 길이(짧은 머리 · 두께×' + G.liftK + '에서 끝): ' + (G.onScalpLen ? (s.isLong ? '긴 머리라 안 씀' : '끝낸 가닥 ' + (s.lenThick || 0) + '개 (끄기 REGROW.onScalpLen=false)') : '꺼짐'));
     L.push('  두피 밖 3D 방향(사진 두 장 이상의 결로 깊이까지): ' + (G.tri3D ? '켜짐 — 그렇게 정한 걸음 ' + (s.triN || 0) + '회 (끄기 REGROW.tri3D=false)' : '꺼짐'));
-    L.push('  두피 위 뿌리가 사진에서 맨살일 때 가까운 머리 자리 결(' + G.nearReadCm + 'cm 안): ' + (G.nearReadCm > 0 ? '켜짐 — 그렇게 읽은 사진 ' + (s.nearN || 0) + '회 (끄기 REGROW.nearReadCm=0)' : '꺼짐'));
     L.push('  두피 밖 결 = 사진 평면 풀이(한 장: 사진 결 + 깊이는 직전 방향·중력 ' + (+G.lsDownK || 0) + ' 섞음 · 두 장 이상: 평면 교선 · 반지름 방향 막지 않음): ' + (G.lsFree ? '켜짐 — 그렇게 정한 걸음 ' + (s.lsN || 0) + '회 (끄기 ?lsfree=0)' : '꺼짐(예전: 원통 접선으로 올림)'));
     L.push('  껍질(사진 교집합): ' + (s.hullV ? s.hullV + ' 중 그 자리를 마주 보는 사진이 머리 영역에서 ' + G.hullMarginCm + '(정면)·' + G.hullMarginSideCm + '(옆·뒤)cm 넘게 밖이라 덩어리 밖인 걸음(덩어리를 쓰면 다른 이유로 밖인 것도 포함) ' + (s.hullN || 0) + '회 — 다른 사진이 머리라고 해도 멈춤 (예전: 다수결 · 끄기 REGROW.hullViews=[])' : '안 씀(다수결)'));
     try { var bs = G.bodyStat; L.push('  몸통을 뚫지 않음 + 앞·뒤 겹(목·몸통 기둥): ' + (G.bodyPush ? (bs ? '켜짐 — 겹 고른 가닥: 앞(정면만 머리) ' + bs.front + ' · 뒤(뒷모습만 머리) ' + bs.back + ' · 둘 다 머리(뿌리 앞뒤로) ' + bs.both + ' · 둘 다 아님 ' + bs.none + ' · 서서히 옮긴 걸음 ' + bs.steer + ' · 밀어낸 걸음 ' + bs.push + ' (끄기 ?bodypush=0)' : '아직') : '꺼짐')); } catch (e) {}
