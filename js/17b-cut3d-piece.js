@@ -1635,7 +1635,16 @@ var REGROW = (function () {
        정면 사진의 "머리"는 그 시선 어딘가에 머리가 있다는 뜻일 뿐 깊이는 모름 — 깊이를 보는 사진이 확실히 밖이라 하면 밖. 여유(1.5cm) 안이면 안 걸림(앞머리 V자 틈 고침 그대로).
        끄기 REGROW.hullSeenOut=false */
     hullSeenOut: true, hullSeenOutFc: 0.5,
-    hullVis: !/[?&]hullvis=0/.test(location.search), hullDeepOut: true, hullPerson: true,   // hullDeepOut: 목 아래에서 가리지 않은 옆·뒤 사진이 여유(1.5cm) 넘게 밖이면 머리 아님 — 동점(뒤 사진 머리 · 옆 사진 밖)을 머리로 치던 것 · 끄기 REGROW.hullDeepOut=false   // (2026-10-27i) 머리 영역 판정의 가림을 목·몸통 기둥으로 — voteRaw 위 설명   // (2026-10-11b) 그 자리를 가장 정면으로 마주 보는 사진이 '밖'이라고 하면 밖(정면 1cm · 옆·뒤 1.5cm 여유) — 사용자: "정 안맞는 곳은 해당 면의 사진영역으로 결정" · 사진 맞춤은 65번   // (2026-10-11a) 껍질 = 사진들의 "교집합" — 이 사진들이 머리 영역 밖(여유 이 cm 넘게)이라고 하면 다른 사진이 머리라고 해도 머리 아님. 정면은 얼굴 랜드마크로 맞춘 사진이라 믿을 수 있음 · [] = 예전 다수결만
+    hullVis: !/[?&]hullvis=0/.test(location.search), hullDeepOut: true, hullPerson: true,
+    /* (2026-10-27l) 몸통을 뚫지 않음 + 앞·뒤 겹 — 디버그 1327(웨이브): 어깨 높이 가닥 점 10만 개가 정면 사진 머리 자리에 다 떨어지는데 깊이 중앙값 z −0.49(등 쪽) →
+       결과 화면에서 몸통에 가려 정면 어깨 앞이 "빔". 같은 높이에서 정면 사진 머리 픽셀 244개 중 235개가 뒷모습 사진에서도 머리 = 가슴 앞 한 겹 + 등 뒤 한 겹.
+       걷기는 몸이 없어 다 몸통 안을 지나 뒤 한 겹으로만 감.
+       지금: 목·몸통 기둥(가림 계산과 같은 치수 visNeckCm·visTorsoWCm·visTorsoDCm)을 가닥이 못 들어가는 몸으로 씀.
+         목 윗단 아래로 내려오는 가닥마다 한 번 "앞/뒤 겹"을 고름 — 그 높이 아래(몸통 윗단 − bodyLookCm)에서 정면 사진이 가슴 자리에 머리를 보고 뒷모습 사진이 등 자리에 머리를 안 보면 앞,
+         반대면 뒤, 둘 다 머리면 뿌리가 두상 앞 절반(z > 0)인 가닥은 앞·나머지는 뒤, 둘 다 아니면(몸에 닿을 만큼 안 내려오는 머리) 옮기지 않고 몸통 안에 들어갈 때만 지금 깊이 쪽 면으로.
+         목 윗단~몸통 윗단 사이에서 고른 쪽 면으로 서서히 옮기고(bodySteer), 몸통 안에 들어간 점은 고른 쪽 면(또는 더 가까운 옆면)으로 밀어냄. 밀린 쪽으로 가던 성분은 지움.
+       남은 어림: 몸통은 가로 34 · 깊이 22cm 타원 기둥(어깨 경사 없음) · 둘 다 머리일 때 뿌리 앞뒤로 나눔. 끄기 REGROW.bodyPush=false · ?bodypush=0 */
+    bodyPush: !/[?&]bodypush=0/.test(location.search), bodyMarginCm: 0.6, bodyLookCm: 3, bodySteer: 0.3,   // hullDeepOut: 목 아래에서 가리지 않은 옆·뒤 사진이 여유(1.5cm) 넘게 밖이면 머리 아님 — 동점(뒤 사진 머리 · 옆 사진 밖)을 머리로 치던 것 · 끄기 REGROW.hullDeepOut=false   // (2026-10-27i) 머리 영역 판정의 가림을 목·몸통 기둥으로 — voteRaw 위 설명   // (2026-10-11b) 그 자리를 가장 정면으로 마주 보는 사진이 '밖'이라고 하면 밖(정면 1cm · 옆·뒤 1.5cm 여유) — 사용자: "정 안맞는 곳은 해당 면의 사진영역으로 결정" · 사진 맞춤은 65번   // (2026-10-11a) 껍질 = 사진들의 "교집합" — 이 사진들이 머리 영역 밖(여유 이 cm 넘게)이라고 하면 다른 사진이 머리라고 해도 머리 아님. 정면은 얼굴 랜드마크로 맞춘 사진이라 믿을 수 있음 · [] = 예전 다수결만
     tri3D: false, /* (2026-10-11r) 원인 찾기 결과 — 끔. 다시 켜기 REGROW.tri3D=true */ tri3DMinDeg: 35, tri3DPrior: 0.15,   // (2026-10-11a) 두피 밖 결의 3D 방향 = 두 장 이상의 사진 결이 만드는 평면들의 교선(깊이를 직전 걸음에서 물려받지 않음) · 시선축이 이 각 이상 벌어진 사진들일 때만
     volume: true, volCellCm: 0.6, volTight: false /* (2026-10-22) 끔 — 머리 전체 컬 30 이상이면 만들던 좁은 덩어리(61번 전용) */, volTightMinCurl: 30,   // (2026-10-11d) 3D 머리 덩어리 — 사진 네 장(마주 보는 사진 규칙)으로 칸마다 머리/아님을 한 번 정해 두고, 걷기·61번(마네킹 위 컬의 축 길이)이 같은 덩어리를 씀
     polNbr: true,       // (2026-10-11d) 뿌리 결이 옆으로 흐릴 때 앞뒤 방향을 "가운데 선 바깥"이 아니라 이웃 뿌리들의 방향으로(남자분 가운데 가르마의 원인)
@@ -2099,6 +2108,38 @@ var REGROW = (function () {
       var gx = Math.floor(ix * cam.kx), gy = Math.floor(iy * cam.ky); if (gx < 0 || gy < 0 || gx >= cam.mw || gy >= cam.mh) return false;
       return cam.pm[gy * cam.mw + gx] > 0.5;
     }
+    /* (27l) 몸통 — 앞/뒤 겹 고르기·밀어내기 */
+    var camF = null, camB = null, bodyStat = { front: 0, back: 0, both: 0, none: 0, push: 0, steer: 0 };
+    cams.forEach(function (c) { if (c.angle === 'front') camF = c; else if (c.angle === 'back') camB = c; });
+    function torsoZ(x, V) { var t = 1 - x * x / (V.tw * V.tw); return t > 0 ? V.td * Math.sqrt(t) : 0; }
+    function hairPix(cam, p) { if (!cam) return null; var o = proj(cam, p); if (o.ix < 0 || o.iy < 0 || o.ix >= cam.iw || o.iy >= cam.ih) return false; return hairAt(cam, o.ix, o.iy); }
+    function bodySidePick(Q, root) {
+      var V = visBodyInit(); if (!V) return 0;
+      var yL = V.tTop - G.bodyLookCm / cmU, zf = torsoZ(Q.x, V); if (!(zf > 0)) return 0;
+      var fH = hairPix(camF, { x: Q.x, y: yL, z: zf }), bH = hairPix(camB, { x: Q.x, y: yL, z: -zf });
+      if (fH && !bH) { bodyStat.front++; return 1; }
+      if (bH && !fH) { bodyStat.back++; return -1; }
+      if (fH && bH) { bodyStat.both++; return root.z > 0 ? 1 : -1; }
+      bodyStat.none++; return Q.z >= 0 ? 2 : -2;   // 사진에 몸 위 머리가 없음 — 옮기지 않고, 몸통 안에 들어갈 때만 가까운 쪽으로
+    }
+    function bodyApply(Q, d, side) {                                       // → 옮긴 Q (d는 그 자리에서 고침) · 안 건드리면 null
+      var V = visBodyInit(); if (!V || !side || !(Q.y < V.nTop)) return null;
+      var m = G.bodyMarginCm / cmU, zf = torsoZ(Q.x, V); if (!(zf > 0)) return null;
+      var steerOK = Math.abs(side) === 1; side = side > 0 ? 1 : -1;
+      var zT = side * (zf + m), wrong = side > 0 ? Q.z < zT : Q.z > zT; if (!wrong) return null;
+      if (Q.y >= V.tTop) {                                                 // 목~몸통 윗단: 서서히
+        if (!steerOK) return null;
+        var w = Math.min(1, (V.nTop - Q.y) / Math.max(1e-6, V.nTop - V.tTop)); var kz = (G.bodySteer || 0.3) * w; if (!(kz > 0)) return null;
+        bodyStat.steer++; return { x: Q.x, y: Q.y, z: Q.z + (zT - Q.z) * kz };
+      }
+      var ex = V.tw * Math.sqrt(Math.max(0, 1 - Q.z * Q.z / (V.td * V.td))), dxE = ex + m - Math.abs(Q.x), dzE = Math.abs(zT - Q.z);
+      var inside = Q.x * Q.x / (V.tw * V.tw) + Q.z * Q.z / (V.td * V.td) < 1;
+      if (!inside) return null;                                           // 몸통 밖이면 그대로(몸을 뚫고 반대편으로 옮기지 않음)
+      bodyStat.push++;
+      if (inside && dxE < dzE) { var sx = Q.x >= 0 ? 1 : -1; if (d.x * sx < 0) { d.x = 0; } return { x: sx * (ex + m), y: Q.y, z: Q.z }; }
+      if (side > 0 ? d.z < 0 : d.z > 0) d.z = 0;
+      return { x: Q.x, y: Q.y, z: zT };
+    }
     function faceBlocks(cam, p) {                                        // 얼굴(두피 타원 앞에 붙인 타원)이 시선을 막는가
       var fa = Es.a * 0.78, fb = Es.b * 0.7, fc = Es.c * 0.75, cx0 = 0, cy0 = CY - 0.3 * Es.b, cz0 = Es.c * 0.45;
       var R = cam.R, dx = R[6], dy = R[7], dz = R[8], x = p.x - cx0, y = p.y - cy0, z = p.z - cz0;
@@ -2158,7 +2199,7 @@ var REGROW = (function () {
         }
         VOL = { A: A, nx: nx, ny: ny, nz: nz, x0: x0, y0: y0, z0: z0, h: h, inN: inN, ms: Math.round(now() - t0v),
           at: function (p) { var a = Math.floor((p.x - this.x0) / this.h), b = Math.floor((p.y - this.y0) / this.h), c = Math.floor((p.z - this.z0) / this.h); if (a < 0 || b < 0 || c < 0 || a >= this.nx || b >= this.ny || c >= this.nz) return -2; return this.A[(b * this.nz + c) * this.nx + a]; } };
-        G.vol = VOL; hullN = 0; G.hullVisStat = { on: hullVisOn(), blk: hvBlk, use: hvUse, pmViews: cams.filter(function (c) { return !!c.pm; }).length, bg: hpBg, body: hpBody, skip: hpSkip };
+        G.bodyStat = bodyStat; G.vol = VOL; hullN = 0; G.hullVisStat = { on: hullVisOn(), blk: hvBlk, use: hvUse, pmViews: cams.filter(function (c) { return !!c.pm; }).length, bg: hpBg, body: hpBody, skip: hpSkip };
         // (2026-10-11i) 좁은 덩어리(여유 둔 교집합) — 마네킹 위 컬이 바깥으로 부푼 점을 당겨 넣는 경계로만 씀(61번). 걷기는 위의 덩어리(다수결 + 정면)
         var needTight = true; try { var pcT = G.photoCurl(); needTight = !!(pcT && Math.max(pcT.value || 0, pcT.raw || 0) >= (G.volTightMinCurl || 0)); } catch (eT) { needTight = true; }   // (2026-10-12a) 좁은 덩어리는 마네킹 위 컬(61번)만 씀 — 컬이 없는 손님은 안 만듦(폰에서 덩어리 시간 절반)
         G.volT = null;
@@ -2660,7 +2701,7 @@ var REGROW = (function () {
       var tRoot = thickAt(F), rootY = F.y;
       var pts = [{ x: F.x, y: F.y, z: F.z }], P = F, s = 0, prev = null, miss = 0, k, d, dt, fl, estSteps = 0, steps = 0, free = false, stop = 'max';
       var bw = 0, myTip = null, exitI = -1, exitY = 0, exitZ = 0;           // backFix: 뒤쪽 정도(0~1) · 이 가닥이 내려갈 끝 높이 · 두피를 벗어난 자리(점 번호·높이·깊이)
-      var hangTip = null, hung = false, lowF = Infinity;   // lowF: (13k) 두피 밖에서 가장 낮게 내려간 높이                                     // (v6) 곧게 내릴 끝 높이 · 곧게 내린 적 있음
+      var hangTip = null, hung = false, lowF = Infinity, bodySide = 0, root0 = { x: F.x, y: F.y, z: F.z };   // lowF: (13k) 두피 밖에서 가장 낮게 내려간 높이                                     // (v6) 곧게 내릴 끝 높이 · 곧게 내린 적 있음
       var nFaceSlide = 0, nDepth = 0, nLift = 0, nLayerIn = 0, nLayerOut = 0, nClimb = 0, sOn = 0, sFree = 0, nBack = 0, nNeck = 0, nEst = 0, TS = G.trace ? [] : null;   // (2026-10-10a) 걸음 기록
       function rec(ph, est, ex2) {                                          // 걸음 하나: [단계 0두피위 1두피밖 2곧게내림, 결 못읽음, 쓴 사진 수, 주로 쓴 사진, 그 사진 결 또렷함, 사진끼리 벌어진 각, 따로 막은 것(1 앞쏠림 2 목), 머리 영역 표, x,y,z]
         if (!TS) return; var f2 = TRF || {}; TS.push(ph, est ? 1 : 0, f2.nc || 0, f2.best == null ? -1 : f2.best, Math.round((f2.coh || 0) * 100), Math.round(f2.spr || 0), ex2 || 0);
@@ -2826,6 +2867,15 @@ var REGROW = (function () {
             } catch (e) {}
           }
           var Qn = G.neckPush(Q); if (Qn !== Q) { Q = Qn; st.neckPush++; nNeck++; exB = exB | 2; }
+          if (G.bodyPush) {                                                 // (27l) 몸통을 뚫지 않음 + 앞·뒤 겹
+            var Vb = visBodyInit();
+            if (Vb && Q.y < Vb.nTop) {
+              if (!bodySide) bodySide = bodySidePick(Q, root0);
+              d = { x: d.x, y: d.y, z: d.z };                                 // 함께 쓰는 방향(down·prev)을 안 고치게 복사
+              var Qb = bodyApply(Q, d, bodySide);
+              if (Qb) { Q = Qb; var dl5 = Math.hypot(d.x, d.y, d.z); if (dl5 > 1e-6) d = { x: d.x / dl5, y: d.y / dl5, z: d.z / dl5 }; else d = down; exB = exB | 4; }
+            }
+          }
           if (hangNow) {                                                    // 끝 높이까지는 사진과 상관없이 이어 감
             if (Q.y <= hangTip) { miss = 0; stop = 'tip'; break; }
             miss = 0; if (TS) { rec(2, 0, exB); TS.push(1, Q.x, Q.y, Q.z); }
@@ -4024,6 +4074,7 @@ function helixMeasure(rgba,mask,W,H,angle,coh,opt){opt=opt||{};const n=opt.n||25
     L.push('  두피 밖 3D 방향(사진 두 장 이상의 결로 깊이까지): ' + (G.tri3D ? '켜짐 — 그렇게 정한 걸음 ' + (s.triN || 0) + '회 (끄기 REGROW.tri3D=false)' : '꺼짐'));
     L.push('  두피 밖 결 = 사진 평면 풀이(한 장: 사진 결 + 깊이는 직전 방향·중력 ' + (+G.lsDownK || 0) + ' 섞음 · 두 장 이상: 평면 교선 · 반지름 방향 막지 않음): ' + (G.lsFree ? '켜짐 — 그렇게 정한 걸음 ' + (s.lsN || 0) + '회 (끄기 ?lsfree=0)' : '꺼짐(예전: 원통 접선으로 올림)'));
     L.push('  껍질(사진 교집합): ' + (s.hullV ? s.hullV + ' 중 그 자리를 마주 보는 사진이 머리 영역에서 ' + G.hullMarginCm + '(정면)·' + G.hullMarginSideCm + '(옆·뒤)cm 넘게 밖이라 덩어리 밖인 걸음(덩어리를 쓰면 다른 이유로 밖인 것도 포함) ' + (s.hullN || 0) + '회 — 다른 사진이 머리라고 해도 멈춤 (예전: 다수결 · 끄기 REGROW.hullViews=[])' : '안 씀(다수결)'));
+    try { var bs = G.bodyStat; L.push('  몸통을 뚫지 않음 + 앞·뒤 겹(목·몸통 기둥): ' + (G.bodyPush ? (bs ? '켜짐 — 겹 고른 가닥: 앞(정면만 머리) ' + bs.front + ' · 뒤(뒷모습만 머리) ' + bs.back + ' · 둘 다 머리(뿌리 앞뒤로) ' + bs.both + ' · 둘 다 아님 ' + bs.none + ' · 서서히 옮긴 걸음 ' + bs.steer + ' · 밀어낸 걸음 ' + bs.push + ' (끄기 ?bodypush=0)' : '아직') : '꺼짐')); } catch (e) {}
     try { var hv = G.hullVisStat; L.push('  머리 영역 판정의 가림(목·몸통 기둥): ' + (hv && hv.on ? '켜짐 — 덩어리 칸 판정에서 기둥·두개골에 가려 뺀 사진 ' + hv.blk + ' · 목 아래 카메라 반대편인데 안 가려서 쓴 사진 ' + hv.use + '(예전엔 다 뺌) (끄기 ?hullvis=0)' + ' · 사람 윤곽 ' + (G.hullPerson === false ? '꺼짐' : hv.pmViews + '장 — 여유 밖 판정 중 배경 ' + hv.bg + ' · 몸·살(안 막힘) ' + hv.body + ' · 몸·살인데 막혀서 못 봄으로 뺀 ' + hv.skip + ' (끄기 REGROW.hullPerson=false)') : (G.hullVis === false ? '꺼짐(예전: 목 아래 반대편 사진은 다 뺌)' : '목 치수 없음 — 예전 규칙'))); } catch (e) {}
     L.push('  직모 뼈대(곱슬 사진 · 큰 흐름만 따라 기름 · 컬은 그 위에 얹음): ' + (s.straight ? '켜짐 — ' + s.straight + ' (끄기 REGROW.straightCurly=false)' : '안 씀'));
     if (s.wf) L.push('  읽은 굴곡 장(편 길에서 벗어난 만큼을 자리마다 모음): ' + s.wf.cellCm + 'cm 칸 ' + s.wf.n + '개 중 아는 칸 ' + s.wf.known + ' · 가닥 ' + s.wf.strands + '개(표본 ' + s.wf.samples + ') · 이웃과 같이 굽은 크기 중앙값 ' + (+s.wf.ampCm).toFixed(2) + 'cm / 위쪽 10% ' + (+s.wf.ampHiCm).toFixed(2) + 'cm · ' + s.wf.ms + 'ms (마네킹에 얹기 = 주소 끝에 ?rw=1 또는 PHOTO_CURL.readWave=true)');
