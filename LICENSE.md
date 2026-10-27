@@ -1,8 +1,8 @@
-# Today's StylePeek – Source Code License
+# Today's Hair peeking – Source Code License
 
 Copyright (c) 2026 YL Company. All rights reserved.
 
-This repository contains source code and related materials for **Today's StylePeek**, owned and operated by YL Company.
+This repository contains source code and related materials for **Today's Hair peeking**, owned and operated by YL Company.
 
 Contact: choisunfriend@gmail.com
 
@@ -36,7 +36,7 @@ The restriction on reverse engineering applies only to the extent permitted by a
 
 ## 3. Proprietary Technology
 
-The hair rendering, hair manipulation, hairstyle generation, face and hair alignment, hair segmentation, procedural hair generation, and other technologies implemented in **Today's StylePeek** are proprietary technology of YL Company.
+The hair rendering, hair manipulation, hairstyle generation, face and hair alignment, hair segmentation, procedural hair generation, and other technologies implemented in **Today's Hair peeking** are proprietary technology of YL Company.
 
 The public availability of the source code does not grant any ownership rights or intellectual property rights to these technologies.
 
@@ -58,7 +58,7 @@ This license does not apply to such third-party components. Your use of them is 
 
 ## 6. Trademarks
 
-"Today's StylePeek", "YL Company", and any associated names, logos, and product identifiers are trademarks or service marks of YL Company.
+"Today's Hair peeking", "YL Company", and any associated names, logos, and product identifiers are trademarks or service marks of YL Company.
 
 This license grants no right to use these marks, except for nominative references identifying the software in commentary, review, or educational contexts.
 
@@ -104,4 +104,4 @@ If any provision of this license is held invalid or unenforceable, that provisio
 
 ---
 
-**Copyright © 2026 YL Company. All rights reserved. "Today's StylePeek" is a product of YL Company.**
+**Copyright © 2026 YL Company. All rights reserved. "Today's Hair peeking" is a product of YL Company.**
