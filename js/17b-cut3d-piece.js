@@ -1464,7 +1464,7 @@ var REGROW = (function () {
     /* (2026-10-24h) 디버그 2201(단발 · l 버전): 당겨 붙이기만 하니 가닥이 겉면 안을 미끄러지며 머리 영역을 못 벗어나 걸음 수 상한까지 감
        (걸음 수 상한 43% · 길이 중앙 87cm · 당겨진 걸음 311,360). 읽은 겉면 밖으로 liftStopCm 넘게 나가면 = 사진에서 머리가 끝난 자리 → 거기서 끝냄. 그 안쪽 넘침만 당김(미끄러지기 없음).
        (24h) 두피 위 구간에도 같은 겉면 — 디버그 2205(폼파두르): 뒤통수 다시 기른 점 두피 위 2.0~2.2cm vs 옮긴 점 0.2~0.4cm(층 높이 = u × 칸 두께 4.6cm가 띄움) → 뒷머리 튀어나옴. */
-    liftStopCm: 1.0, liftOnScalp: true,
+    liftStopCm: 99 /* (2026-10-27f) 1.0 → 99: 겉면 밖에서 끝내지 않음 — 웨이브 디버그 1207: 29,622가닥 중 19,157가닥이 여기서 끝나 어깨 앞·뒤 옆자락이 못 내려감 */, liftBelowHead: false /* (2026-10-27f) 두상 아래(y < CY − b)는 겉면으로 안 당김 — 머리 밑으로 늘어진 자락은 사진 결 + 중력 */, liftOnScalp: true,
     /* (2026-10-27a) 옮긴 점 겉면을 매끈하게 읽기 — 디버그 1012(긴 웨이브): 겉면에서 끝낸 가닥 15,338 · 멈춘 자리 아래 뒤 사진 머리 5.5cm 더 있음.
        ① 두상 아래로 향한 칸은 옮긴 가닥이 중심에서 곧게 뻗어(반지름 방향 |cos| 0.86) 85백분위 = "겉면"이 아니라 "옮긴 길이의 85%"(R98−R85 2.3cm · 다른 칸 0.9cm)
           → 아래로 향한 칸(방향 y < liftDownY)은 liftPctDown 백분위.
@@ -1485,7 +1485,7 @@ var REGROW = (function () {
          한 장 = 그 사진 결 그대로 + 깊이는 직전 걸음 · 두 장 이상 = 평면 교선(깊이를 사진이 정함) · 반지름 방향 금지 없음.
          맞춰 보기도 같은 기준: 풀린 방향이 평면에서 agreeDeg° 넘게 벗어난 사진만 빼고 다시 풂.
        두피 위 구간(두피면 접선)은 그대로. 끄기 REGROW.lsFree=false · ?lsfree=0 */
-    lsFree: !/[?&]lsfree=0/.test(location.search), lsPrior: 0.02,
+    lsFree: !/[?&]lsfree=0/.test(location.search), lsPrior: 0.02, lsDownK: 1.0 /* (2026-10-27f) 사진이 못 정하는 깊이 = 직전 방향 + 아래(중력)를 이 비율로 섞은 쪽 · 0 = 예전(직전 방향만 — 뒤로 쏠린 깊이가 계속 이어져 머리 전체가 뒤로 누움 · 어깨 앞 머리 못 감) · 끄기 ?lsdown=0 */,
     /* (2026-10-24g) 얇은 자리 길이 — 사용자: "남자 머리는 짧아서 길이 문제 · 폼파두르의 페이드는 짧게 인식을 못한다"
        두피에 누운 머리 길이는 사진에 안 보임(기와처럼 겹쳐 끝없이 이어 보임) → 걷기가 머리 영역 끝까지 감. 디버그 2140(남자 실사):
        뿌리 두께 0~0.5cm(목덜미 57% · 옆 21%) 가닥 길이 중앙 3.4 / p90 17cm · 0.5~1cm 6.8 / 26cm.
@@ -1649,7 +1649,7 @@ var REGROW = (function () {
          (대신 빔 9.3/9.5/10.8 → 15.4/14.3/12.1% — 어깨 앞으로 떨어지는 머리를 걷기가 원래 못 채움. 얼굴 앞 가닥이 가려 주던 몫이 드러난 것)
          곱슬: 거의 그대로(넘침 1.7/6.8/4.9/2.0 → 0.8/2.6/3.6/0.4%).
        끄기 ?rgtrim=0 또는 REGROW.trimTail=false · 사진·투영은 07b PHOTO_CHECK와 같은 것 */
-    trimTail: true /* (2026-10-24b) 다시 켬 — 끝만 자름: 마지막으로 머리 영역(마주 보는 사진 + trimTolCm) 밖으로 나간 꼬리를 나간 자리에서 자름 · 가운데에서 나갔다 다시 들어오는 것은 안 자름(trimOutCm 99) · 끄기 ?rgtrim=0 */, trimTolCm: 0.4, trimOutCm: 99, trimTailCm: 0.2, trimKeepPts: 3
+    trimTail: false /* (2026-10-27f) 끔 — 사용자: "윤곽자르기는 꺼줘" · 켜기 ?rgtrim=1 · (2026-10-24b) 다시 켬 — 끝만 자름: 마지막으로 머리 영역(마주 보는 사진 + trimTolCm) 밖으로 나간 꼬리를 나간 자리에서 자름 · 가운데에서 나갔다 다시 들어오는 것은 안 자름(trimOutCm 99) · 끄기 ?rgtrim=0 */, trimTolCm: 0.4, trimOutCm: 99, trimTailCm: 0.2, trimKeepPts: 3
   }, W.REGROW || {});
   var S = G.stats = null;
   try { var rgtQ = /[?&]rgtrim=([01])/.exec(String(location.search || '')); if (rgtQ) G.trimTail = rgtQ[1] === '1'; } catch (e) {}
@@ -1660,6 +1660,7 @@ var REGROW = (function () {
     if ((m24 = /[?&]layershell=([01])/.exec(qs24))) G.layerShell = m24[1] === '1';
     if ((m24 = /[?&]layerinner=(ellipsoid|thick)/.exec(qs24))) G.layerInner = m24[1];
     if ((m24 = /[?&]layerouter=(lift|thick)/.exec(qs24))) G.layerOuter = m24[1];
+    if ((m24 = /[?&]lsdown=([0-9.]+)/.exec(qs24))) G.lsDownK = +m24[1];   // (2026-10-27f)
     if ((m24 = /[?&]depthfix=([01])/.exec(qs24))) G.depthFix = m24[1] === '1';   // (2026-10-27a)
     if ((m24 = /[?&]thinlen=([01])/.exec(qs24))) G.thinLen = m24[1] === '1';
     if ((m24 = /[?&]kink=([01])/.exec(qs24))) G.kinkStop = m24[1] === '1';
@@ -2168,7 +2169,10 @@ var REGROW = (function () {
       for (k = 0; k < PL.length; k += 5) { var w = PL[k + 3]; if (!(w > 0)) continue; var a = PL[k], b = PL[k + 1], c = PL[k + 2];
         m00 += w * a * a; m01 += w * a * b; m02 += w * a * c; m11 += w * b * b; m12 += w * b * c; m22 += w * c * c; ws += w; }
       if (!(ws > 0)) return null;
-      var rl = Math.hypot(ref.x, ref.y, ref.z) || 1, rx = ref.x / rl, ry = ref.y / rl, rz = ref.z / rl, lam = (G.lsPrior || 0.02) * ws, cc0 = m00 + m11 + m22 + lam;
+      var rl = Math.hypot(ref.x, ref.y, ref.z) || 1, rx = ref.x / rl, ry = ref.y / rl, rz = ref.z / rl;
+      var sx = rx, sy = ry, sz = rz;                                         // 부호는 직전 방향으로 · 깊이 기대(prior)는 직전 방향 + 중력(2026-10-27f)
+      var dk = +G.lsDownK || 0; if (dk > 0) { var px0 = rx, py0 = ry - dk, pz0 = rz, pl0 = Math.hypot(px0, py0, pz0); if (pl0 > 1e-6) { rx = px0 / pl0; ry = py0 / pl0; rz = pz0 / pl0; } }
+      var lam = (G.lsPrior || 0.02) * ws, cc0 = m00 + m11 + m22 + lam;
       // A = M − λ r rᵀ의 가장 작은 고유벡터(3×3 야코비 — 고유값 차가 작아도 정확)
       var A = [[m00 - lam * rx * rx, m01 - lam * rx * ry, m02 - lam * rx * rz], [0, m11 - lam * ry * ry, m12 - lam * ry * rz], [0, 0, m22 - lam * rz * rz]];
       A[1][0] = A[0][1]; A[2][0] = A[0][2]; A[2][1] = A[1][2];
@@ -2185,7 +2189,7 @@ var REGROW = (function () {
       }
       var kmin = A[0][0] <= A[1][1] ? (A[0][0] <= A[2][2] ? 0 : 2) : (A[1][1] <= A[2][2] ? 1 : 2);
       var vx = V[0][kmin], vy = V[1][kmin], vz = V[2][kmin], vl = Math.sqrt(vx * vx + vy * vy + vz * vz); if (!(vl > 1e-12)) return null; vx /= vl; vy /= vl; vz /= vl;
-      var flip = (G.gravPick && Math.abs(vy) >= G.gravPickFlat) ? vy > 0 : (vx * rx + vy * ry + vz * rz < 0);
+      var flip = (G.gravPick && Math.abs(vy) >= G.gravPickFlat) ? vy > 0 : (vx * sx + vy * sy + vz * sz < 0);
       if (flip) { vx = -vx; vy = -vy; vz = -vz; }
       return { x: vx, y: vy, z: vz };
     }
@@ -2746,7 +2750,7 @@ var REGROW = (function () {
           var Q = { x: P.x + d.x * stp, y: P.y + d.y * stp, z: P.z + d.z * stp };
           try { Q = ellipsoidPushOut(Q, Es.a * 1.02, Es.b * 1.02, Es.c * 1.02, CY); } catch (e) {}
           var liftOK = false;
-          if (LIFT && G.layerShell) {                                     // (2026-10-24g) 옮긴 점 겉면 밖으로 못 나감
+          if (LIFT && G.layerShell && (G.liftBelowHead !== false || Q.y > CY - Es.b)) {   // (2026-10-27f) 두상 아래는 안 당김 · (2026-10-24g) 옮긴 점 겉면 밖으로 못 나감
             var lL = liftLim(Q);
             if (lL > 0) {
               liftOK = true; lL += G.liftMarginCm / cmU;
@@ -3973,7 +3977,7 @@ function helixMeasure(rgba,mask,W,H,angle,coh,opt){opt=opt||{};const n=opt.n||25
     L.push('  뿌리 결 앞뒤: ' + (s.pol ? '또렷한 칸 ' + s.pol.sure + ' · 이웃 칸 따라 정한 칸 ' + s.pol.nbr + ' · 둘 다 아니라 가운데 선 바깥쪽으로 정한 가닥 ' + s.pol.mid + ' (끄기 REGROW.polNbr=false)' : '예전 규칙'));
     L.push('  누운 머리 길이(짧은 머리 · 두께×' + G.liftK + '에서 끝): ' + (G.onScalpLen ? (s.isLong ? '긴 머리라 안 씀' : '끝낸 가닥 ' + (s.lenThick || 0) + '개 (끄기 REGROW.onScalpLen=false)') : '꺼짐'));
     L.push('  두피 밖 3D 방향(사진 두 장 이상의 결로 깊이까지): ' + (G.tri3D ? '켜짐 — 그렇게 정한 걸음 ' + (s.triN || 0) + '회 (끄기 REGROW.tri3D=false)' : '꺼짐'));
-    L.push('  두피 밖 결 = 사진 평면 풀이(한 장: 사진 결 + 직전 깊이 · 두 장 이상: 평면 교선 · 반지름 방향 막지 않음): ' + (G.lsFree ? '켜짐 — 그렇게 정한 걸음 ' + (s.lsN || 0) + '회 (끄기 ?lsfree=0)' : '꺼짐(예전: 원통 접선으로 올림)'));
+    L.push('  두피 밖 결 = 사진 평면 풀이(한 장: 사진 결 + 깊이는 직전 방향·중력 ' + (+G.lsDownK || 0) + ' 섞음 · 두 장 이상: 평면 교선 · 반지름 방향 막지 않음): ' + (G.lsFree ? '켜짐 — 그렇게 정한 걸음 ' + (s.lsN || 0) + '회 (끄기 ?lsfree=0)' : '꺼짐(예전: 원통 접선으로 올림)'));
     L.push('  껍질(사진 교집합): ' + (s.hullV ? s.hullV + ' 중 그 자리를 마주 보는 사진이 머리 영역에서 ' + G.hullMarginCm + '(정면)·' + G.hullMarginSideCm + '(옆·뒤)cm 넘게 밖이라 덩어리 밖인 걸음(덩어리를 쓰면 다른 이유로 밖인 것도 포함) ' + (s.hullN || 0) + '회 — 다른 사진이 머리라고 해도 멈춤 (예전: 다수결 · 끄기 REGROW.hullViews=[])' : '안 씀(다수결)'));
     L.push('  직모 뼈대(곱슬 사진 · 큰 흐름만 따라 기름 · 컬은 그 위에 얹음): ' + (s.straight ? '켜짐 — ' + s.straight + ' (끄기 REGROW.straightCurly=false)' : '안 씀'));
     if (s.wf) L.push('  읽은 굴곡 장(편 길에서 벗어난 만큼을 자리마다 모음): ' + s.wf.cellCm + 'cm 칸 ' + s.wf.n + '개 중 아는 칸 ' + s.wf.known + ' · 가닥 ' + s.wf.strands + '개(표본 ' + s.wf.samples + ') · 이웃과 같이 굽은 크기 중앙값 ' + (+s.wf.ampCm).toFixed(2) + 'cm / 위쪽 10% ' + (+s.wf.ampHiCm).toFixed(2) + 'cm · ' + s.wf.ms + 'ms (마네킹에 얹기 = 주소 끝에 ?rw=1 또는 PHOTO_CURL.readWave=true)');
