@@ -1548,8 +1548,8 @@ var REGROW = (function () {
        삐침은 끝에서 위·바깥으로 올라가는 결. 중력으로 고르면 "아래로" 뒤집으면서 가로 성분까지 뒤집혀 바깥→안(얼굴 쪽)으로 꺾임.
        중력은 갈피가 없을 때(직전 걸음과 60° 넘게 어긋남 — 첫 걸음·결이 크게 바뀐 자리)만. 두피 위(정수리를 넘어가던 원래 문제)는 그대로 중력.
        끄기 REGROW.gravPickFreeRef=0 (모든 걸음 중력) */
-    gravPickFreeRef: 0.5,
-    nearReadCm: 1.5,   // (2026-10-27o) 두피 위 뿌리가 사진에서 맨살이면 이 반경 안 가장 가까운 머리 자리의 결 — flow() 위 설명
+    gravPickFreeRef: 0 /* (2026-10-27p) 끔 — 웨이브(디버그 1909): 직전과 이어지는 쪽을 따르자 등까지 내려간 뒤통수·목덜미 가닥 7,105개가 옆으로 누운 결을 타고 다시 정수리까지 올라감(길이 p90 42 → 126cm · 부풀어 보임). 삐침은 다른 방법으로 · 켜기 0.5 */,
+    nearReadCm: 0 /* (2026-10-27p) 끔 — 3장 실사(디버그 1915): 11,229번 쓰이며 사진 윤곽 가장자리 결을 읽어 두피 위에서 맴돌고(같은 길 두 번 6,847 · 층 밖으로 밀림 39k→85k) 머리가 부풀었음 · 앞머리는 가르마 맨살 자리 뿌리를 길게 키움 */, rootSkinCm: 0.6,   // (2026-10-27p) 아래 grow() 머리말 · (2026-10-27o) 두피 위 뿌리가 사진에서 맨살이면 이 반경 안 가장 가까운 머리 자리의 결 — flow() 위 설명
     polDown: 0, gravSign: 0, gravBlendRead: false,   // 예전 polDown 2.5 · gravSign 1.0
     polDown_off_was: 0, // (2026-10-22) 끔 — 걷기 안 규칙도 끔(읽기·기르기 강화 단계 · 되돌리기 ?judge=1): 오르막 벌점 · 예전 2.5
     polDown_was: 2.5,   // (2026-10-10f) 두피 위에서 결(앞뒤 없는 선)의 앞뒤를 고를 때 비탈을 거꾸로 오르는 쪽에만 이만큼 벌점(비탈 기울기에 비례) — 한 번 위로 가면 계속 위로 가며 두상을 감던 것. 옆으로 흐르는 결(가마·가르마)은 안 건드림 · 0 = 예전(직전 방향만)
@@ -2723,6 +2723,20 @@ var REGROW = (function () {
       var F = { x: Es.a * Math.sin(ph) * Math.sin(th), y: CY + Es.b * Math.cos(ph), z: Es.c * Math.sin(ph) * Math.cos(th) };
       var n = normalAt(F), u = G.layerLo + (G.layerHi - G.layerLo) * rnd();
       var sec = null; try { sec = resolveSection3D(F, CY, Es.b); } catch (e) {} sec = sec || 'crown';
+      /* (2026-10-27p) 맨살 자리엔 뿌리를 안 심음 — 사용자: "앞머리는 뿌리가 거기 있는 게 아니라 길게 자란 것 같다"
+         가르마처럼 머리가 갈라져 두피가 보이는 자리: 그 자리를 가장 정면으로 마주 보는 사진(0.7 이상)이 사람 윤곽 안·머리 아님(살)이고
+         머리 영역에서 rootSkinCm 넘게 떨어져 있으면 그 뿌리는 없음. 뿌리밀도 격자(칸이 굵음)가 못 잡는 가는 맨살 줄을 사진이 직접 판정. 끄기 REGROW.rootSkinCm=0 */
+      if (G.rootSkinCm > 0) {
+        var nF = normalAt(F), bc = null, bfc = 0.7, ci2;
+        for (ci2 = 0; ci2 < cams.length; ci2++) { var cR = cams[ci2], fcR = cR.R[6] * nF.x + cR.R[7] * nF.y + cR.R[8] * nF.z; if (fcR > bfc && cR.hull && cR.pm) { bfc = fcR; bc = cR; } }
+        if (bc) {
+          var oR = proj(bc, F), pR = personAt(bc, oR.ix, oR.iy);
+          if (pR === true && !hairAt(bc, oR.ix, oR.iy)) {
+            var hR = bc.hull, gxR = Math.floor(oR.ix / hR.cp), gyR = Math.floor(oR.iy / hR.cp);
+            if (gxR >= 0 && gyR >= 0 && gxR < hR.gw && gyR < hR.gh && hR.D[gyR * hR.gw + gxR] * hR.cp * bc.s * cmU > G.rootSkinCm) { st.rootSkin = (st.rootSkin || 0) + 1; st.skipped++; (info.skipY[sec] || (info.skipY[sec] = [])).push(F.y); return null; }
+          }
+        }
+      }
       var Lcap = capFor(sec), ramp = Math.max(0.03, Math.min(0.12, 0.25 * Lcap));
       var stp = Math.max(G.step, Lcap / G.maxSteps);      // 긴 가닥은 걸음을 넓혀 걸음 수 상한에 안 걸리게
       var tRoot = thickAt(F), rootY = F.y;
