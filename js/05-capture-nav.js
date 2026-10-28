@@ -441,20 +441,6 @@ var SHOT360 = (function () {
        [끝내기] 때: 그 장의 센서 각도 − 얼굴 yaw = 진짜 0° → 모든 장의 각도를 그 기준으로 다시 매기고, 그 장을 정면 칸(front:true)에 넣음.
        세트를 넣을 때(applySet) 12장 얼굴을 다시 재지 않음(정면이 표시돼 있으면). 끄기 SHOT360.frontSeek=false */
     frontSeek: true, frontSeekDeg: 35, frontSeekMs: 400, frontSeekPx: 640,
-    /* (2026-10-28) 다 찍은 뒤 각도를 다시 재서 30° 간격 12장을 고름 — 사용자: "센서지연때문에 밀리거나 당겨진 각도가 쓰여져서 사진이 버려지고 있어.
-       일단 프레임이 다 뽑힌 다음에 각도를 다시 측정해서 실제 30도 간격에 맞는 사진을 뽑아서 총 12장"
-       예전: 촬영 중에 센서 각도가 목표(±tolDeg) 안이면 그 칸에 바로 넣음 → 센서가 늦으면 실제로는 밀린/당겨진 각도의 사진이 칸에 들어가고,
-             [끝내기] 때 정면으로 0°를 다시 잡으면 칸이 어긋나 정면 칸 주변 장이 버려짐.
-       지금: ① 촬영 중에는 목표와 상관없이 poolDeg(4°)마다 한 장씩 후보로 모아 둠(센서 각도·찍은 시각과 함께) + 센서 각도 기록(시각별)
-             ② [끝내기] 뒤: 얼굴이 보이는 구간(정면 ± faceScanDeg)의 후보는 얼굴 yaw를 다시 잼 = 실제 각도
-             ③ 얼굴 yaw(촬영 중 정면 찾기 표본 + ②)와 센서 기록을 맞춰 센서 지연(lagMs)을 추정 → 얼굴이 안 보이는 장은 "찍은 시각 + 지연"의 센서 각도로 다시 매김
-             ④ 정면(얼굴 yaw 최소)을 0°로 · 0°·±30°·…·180° 12칸마다 실제 각도가 가장 가까운 장(pickTolDeg 안 · 거의 같으면 선명한 장)
-       끄기 SHOT360.reAngle=false (예전 칸 방식) */
-    /* (2026-10-28 b) 고침: 얼굴 yaw는 정면 근처(±faceTrustDeg 35)에서만 각도와 비례 — 그 밖은 작게 나옴(60° 장이 45°로 읽혀 30°·60° 칸에 엉뚱한 장).
-       그래서 얼굴 yaw는 <b>지연·0° 맞추기에만</b> 쓰고, 각 장의 실제 각도는 지연을 고친 센서 각도(정면 장만 얼굴). 지연을 못 맞췄을 때만 정면 근처 장은 얼굴 yaw.
-       칸이 ±pickTolDeg 안에 없으면 ±looseTolDeg(반 간격) 안 가장 가까운 장으로 채워 12장을 맞춤(그 칸은 loose 표시). */
-    reAngle: true, poolDeg: 4, poolMinMs: 120, faceScanDeg: 70, faceTrustDeg: 35, faceDegNoFit: 30, looseTolDeg: 15,
-    lagMinMs: -300, lagMaxMs: 900, lagStepMs: 20, lagMinSamples: 4, lagDefaultMs: 0, pickTolDeg: 8, pickTieDeg: 2,
     sign: 0               // +1/-1 = 좌우 고정 · 0 = 자동(얼굴 각도로 정함, 못 정하면 기본 -1)
   }, W.SHOT360 || {});
   if (!Q.on) return;
@@ -619,7 +605,6 @@ var SHOT360 = (function () {
   var guideEl = null, guideKind = '';
   var ov = null, vid = null, stream = null, ring = null, info = null, btnStart = null, btnDone = null, btnManual = null, btnFlip = null, needle = null;
   var running = false, raf = null, sensorOk = false, lastEvt = null, h0 = null, cur = 0, lastDeg = null, lastT = 0, speed = 0;
-  var pool = {}, hist = [], unAng = 0, prevCur = null, seekS = [];   // (2026-10-28 reAngle) 후보 장 · 센서 기록(시각별 · 펼친 각도) · 정면 찾기 표본
   var T = [], got = {}, tries = {}, small = null, grab = null, signVote = 0, signN = 0, userFlip = false, lastFaceAt = 0, frontBest = null, lastSeekAt = 0, seekCv = null, seekN = 0;
 
   function el(tag, css, text) { var e = document.createElement(tag); if (css) e.style.cssText = css; if (text != null) e.textContent = text; return e; }
@@ -699,30 +684,6 @@ var SHOT360 = (function () {
     tries[t] = (tries[t] || 0) + 1;
     return true;
   }
-  /* (2026-10-28 reAngle) 후보 모으기 — poolDeg 칸마다 한 장(같은 칸을 나중에 다시 지나면 위 laterRel 규칙으로 바꿈) */
-  /* (2026-10-28 c) 찍은 시각 = <b>화면을 집은 순간</b>. 예전엔 JPEG 인코딩(1280px · 수십~100ms) 뒤의 Date.now()라
-     후보 장의 시각이 실제보다 늦게 적혀, 지연을 고친 센서 각도가 그만큼(40°/s면 100ms = 4°) 또 밀렸다.
-     정면 찾기 표본(frontSeek)도 얼굴 인식 <b>뒤</b> 시각이었고 두 쪽의 늦음이 서로 달라 지연 추정(fitLag)이 후보 장에 안 맞았다. */
-  function poolStore(key, raw, sh, c) {
-    var tg = Date.now();
-    c = c || grabFrame(); if (!c) return false;
-    var url; try { url = c.toDataURL('image/jpeg', Q.jpeg); } catch (e) { return false; }
-    var pb = pool[key];
-    pool[key] = { raw: raw, time: tg, url: url, sharp: sh, tries: (pb ? pb.tries : 0) + 1, last: now() };
-    markGot(); return true;
-  }
-  function poolTake() {
-    var key = Math.round(cur / Q.poolDeg), pb = pool[key];
-    if (pb && (pb.tries >= Q.maxTries || now() - pb.last < Q.poolMinMs)) return;
-    var sh = sharpness();
-    if (pb) pb.last = now();
-    var later = pb && Q.laterRel > 0 && (Date.now() - pb.time) > Q.laterMs && sh >= pb.sharp * Q.laterRel;
-    if (!pb || sh > pb.sharp * 1.1 || later) poolStore(key, cur, sh);
-  }
-  function markGot() {               // 링 표시용 — 목표 칸 ± tolDeg 안에 후보가 있으면 채움(실제 고르기는 [끝내기] 뒤)
-    got = {};
-    Object.keys(pool).forEach(function (k) { var a = pool[k].raw; T.forEach(function (t) { if (Math.abs(wrap(a - t)) <= Q.tolDeg) got[t] = true; }); });
-  }
   function faceVote() {             // 얼굴이 보이는 구간에서 "센서 + 방향 = 손님의 왼쪽인가"를 맞춰 봄
     if (Q.sign || typeof detectPoseOnCanvas !== 'function') return;
     var a = Math.abs(cur); if (a < 10 || a > 55) return;
@@ -737,7 +698,6 @@ var SHOT360 = (function () {
     if (!Q.frontSeek || typeof detectPoseOnCanvas !== 'function') return;
     if (Math.abs(cur) > Q.frontSeekDeg) return;
     var t = now(); if (t - lastSeekAt < Q.frontSeekMs) return; lastSeekAt = t;
-    var tg = Date.now(), rawAt = cur;                                   // (2026-10-28 c) 집은 순간의 시각·센서 각도(얼굴 인식 뒤가 아니라)
     var c = grabFrame(); if (!c) return;
     try {
       var k = Math.min(1, Q.frontSeekPx / Math.max(c.width, c.height));
@@ -746,11 +706,10 @@ var SHOT360 = (function () {
       seekCv.getContext('2d').drawImage(c, 0, 0, seekCv.width, seekCv.height);
       var p = detectPoseOnCanvas(seekCv); seekN++;
       if (!p || !isFinite(p.yawDeg)) return;
-      seekS.push({ time: tg, raw: rawAt, yaw: p.yawDeg });          // (reAngle) 지연 추정 표본 — 같은 시각의 센서 각도와 얼굴 각도
       var score = Math.abs(p.yawDeg) + 0.5 * Math.abs(p.pitchDeg || 0);
       if (frontBest && score >= frontBest.score - 1) return;            // 1° 넘게 나아질 때만 바꿈
       var url = c.toDataURL('image/jpeg', Q.jpeg);
-      frontBest = { raw: rawAt, yaw: p.yawDeg, pitch: p.pitchDeg || 0, score: score, url: url, sharp: Math.round(sharpness()), time: tg };
+      frontBest = { raw: cur, yaw: p.yawDeg, pitch: p.pitchDeg || 0, score: score, url: url, sharp: Math.round(sharpness()), time: Date.now() };
     } catch (e) {}
   }
   function appSign() {
@@ -768,16 +727,12 @@ var SHOT360 = (function () {
       if (h != null) {
         if (h0 == null) h0 = h;
         cur = wrap(h - h0);
-        if (prevCur == null) unAng = cur; else unAng += wrap(cur - prevCur);
-        prevCur = cur; hist.push({ t: Date.now(), a: unAng });
-        if (hist.length > 30000) hist.splice(0, 5000);
         if (lastDeg != null && t > lastT) speed = speed * 0.7 + 0.3 * Math.abs(wrap(cur - lastDeg)) / ((t - lastT) / 1000);
         lastDeg = cur; lastT = t;
         // 가장 가까운 목표
         var best = null, bd = 1e9, i;
         for (i = 0; i < T.length; i++) { var d = Math.abs(wrap(cur - T[i])); if (d < bd) { bd = d; best = T[i]; } }
-        if (Q.reAngle) poolTake();
-        else if (best != null && bd <= Q.tolDeg && (tries[best] || 0) < Q.maxTries) {
+        if (best != null && bd <= Q.tolDeg && (tries[best] || 0) < Q.maxTries) {
           var sh = sharpness();
           var gb = got[best], later = gb && Q.laterRel > 0 && (Date.now() - gb.time) > Q.laterMs && sh >= gb.sharp * Q.laterRel;
           if (!gb || sh > gb.sharp * 1.1 || later) takeFor(best, sh);
@@ -792,7 +747,7 @@ var SHOT360 = (function () {
   }
   function start() {
     var go = function () {
-      T = targets(); got = {}; tries = {}; pool = {}; hist = []; unAng = 0; prevCur = null; seekS = []; h0 = null; cur = 0; lastDeg = null; speed = 0; signVote = 0; signN = 0; userFlip = false; frontBest = null; lastSeekAt = 0; seekN = 0;
+      T = targets(); got = {}; tries = {}; h0 = null; cur = 0; lastDeg = null; speed = 0; signVote = 0; signN = 0; userFlip = false; frontBest = null; lastSeekAt = 0; seekN = 0;
       running = true;
       btnStart.textContent = '끝내기';                                    // (2026-10-25) 사용자: "start누르면 그 자리가 finish로 바뀌면서 다시 누르면 정지 · restart는 Done자리에"
       if (btnDone) { btnDone.textContent = '다시 시작'; btnDone.style.display = ''; }
@@ -809,11 +764,10 @@ var SHOT360 = (function () {
   function manualShot() {           // 센서 없음: 정면(0°)부터 +방향으로 다음 빈 칸에
     if (!running) start();
     var order = T.slice().sort(function (a, b) { return ((a + 360) % 360) - ((b + 360) % 360); }), i;
-    for (i = 0; i < order.length; i++) if (!got[order[i]]) { cur = order[i]; if (Q.reAngle) poolStore(Math.round(cur / Q.poolDeg), cur, sharpness()); else takeFor(order[i], sharpness()); break; }
+    for (i = 0; i < order.length; i++) if (!got[order[i]]) { cur = order[i]; takeFor(order[i], sharpness()); break; }
     drawRing();
   }
   function finish() {
-    if (Q.reAngle) return finishReAngle();
     var keys = Object.keys(got);
     if (keys.length < 4) { toast('사진이 모자랍니다 — 정면·양옆·뒤가 다 찍혀야 해요'); return; }
     var s = appSign(), frames = keys.map(function (k) { var f = got[k]; return { deg: wrap(s * f.raw), url: f.url, sharp: Math.round(f.sharp), time: f.time }; });
@@ -833,111 +787,6 @@ var SHOT360 = (function () {
       ' · 각도 ' + frames.map(function (f) { return Math.round(f.deg); }).join(','));
     close();
     Q.applySet(set).then(function (ok) { if (ok) { Q.saveSet(set).then(refreshRow, refreshRow); try { if (W.PREP_EARLY) W.PREP_EARLY.start('360 촬영'); } catch (e) {} } });   // (2026-10-28) 바로 분석 시작
-  }
-  /* ── (2026-10-28 reAngle) [끝내기] 뒤 각도를 다시 재서 12장 고르기 — 위 Q.reAngle 배너 ─────────── */
-  function angAt(H, t) {             // 센서 기록에서 시각 t의 (펼친) 각도 — 선형 보간 · 양 끝은 끝값
-    if (!H.length) return null;
-    if (t <= H[0].t) return H[0].a;
-    if (t >= H[H.length - 1].t) return H[H.length - 1].a;
-    var lo = 0, hi = H.length - 1;
-    while (hi - lo > 1) { var m = (lo + hi) >> 1; if (H[m].t <= t) lo = m; else hi = m; }
-    var A = H[lo], B = H[hi], k = B.t > A.t ? (t - A.t) / (B.t - A.t) : 0;
-    return A.a + (B.a - A.a) * k;
-  }
-  function circMean(v) { var sx = 0, sy = 0; v.forEach(function (d) { sx += Math.cos(d * Math.PI / 180); sy += Math.sin(d * Math.PI / 180); }); return Math.atan2(sy, sx) * 180 / Math.PI; }
-  function fitLag(H, smp, s) {      // 얼굴 각도와 가장 잘 맞는 센서 지연 → { lag, zero, cost, n }
-    smp = smp.filter(function (p) { return Math.abs(p.yaw) <= Q.faceTrustDeg; });
-    if (!H.length || smp.length < Q.lagMinSamples) return { lag: Q.lagDefaultMs, zero: null, cost: null, n: smp.length };
-    var best = null, L;
-    for (L = Q.lagMinMs; L <= Q.lagMaxMs; L += Q.lagStepMs) {
-      var v = smp.map(function (p) { return wrap(s * angAt(H, p.time + L) - p.yaw); }), z = circMean(v), c = 0;
-      v.forEach(function (x) { c += Math.abs(wrap(x - z)); }); c /= v.length;
-      c += Math.abs(L) * 0.0005;                                       // 비슷하면 지연이 작은 쪽
-      if (!best || c < best.cost) best = { lag: L, zero: z, cost: c, n: smp.length };
-    }
-    return best;
-  }
-  function finishReAngle() {
-    var keys = Object.keys(pool);
-    if (keys.length < 4 && !frontBest) { toast('사진이 모자랍니다 — 정면·양옆·뒤가 다 찍혀야 해요'); return; }
-    var s = appSign(), H = hist.slice(), S = seekS.slice(), fb = frontBest, nSeek = seekN, sens = sensorOk;
-    var cands = keys.map(function (k) { var f = pool[k]; return { raw: f.raw, time: f.time, url: f.url, sharp: Math.round(f.sharp) }; });
-    if (fb) cands.push({ raw: fb.raw, time: fb.time, url: fb.url, sharp: fb.sharp, fy: { yaw: fb.yaw, pitch: fb.pitch }, seekFront: true });
-    pool = {};
-    close();
-    // ② 얼굴이 보이는 구간 후보의 얼굴 각도를 다시 잼
-    var c0 = fb ? fb.raw : 0;
-    var scan = cands.filter(function (c) { return !c.fy && Math.abs(wrap(c.raw - c0)) <= Q.faceScanDeg; }), i = 0;
-    function one() {
-      if (i >= scan.length || typeof quickFaceLandmarks !== 'function') return Promise.resolve();
-      var c = scan[i++];
-      try { if (typeof showAI === 'function') showAI('사진 각도 다시 재는 중… ' + i + '/' + scan.length, '얼굴 각도로 실제 30° 간격 맞추기'); } catch (e) {}
-      return quickFaceLandmarks(c.url, Q.frontSeekPx).then(function (r) { if (r && isFinite(r.yaw)) c.fy = { yaw: r.yaw, ecN: r.ecN || 0 }; }, function () {}).then(one);
-    }
-    one().then(function () {
-      try { if (typeof hideAI === 'function') hideAI(); } catch (e) {}
-      // ③ 센서 지연 추정 — 정면 찾기 표본 + 다시 잰 장
-      var smp = S.map(function (p) { return { time: p.time, yaw: p.yaw }; });
-      cands.forEach(function (c) { if (c.fy && !c.seekFront) smp.push({ time: c.time, yaw: c.fy.yaw }); });
-      var fit = fitLag(H, smp, s);
-      // 정면 = 얼굴 각도가 0°에 가장 가까운 장(비슷하면 얼굴이 큰 장 → 선명한 장)
-      var front = null;
-      cands.forEach(function (c) {
-        if (!c.fy) return;
-        if (!front) { front = c; return; }
-        var a = Math.abs(c.fy.yaw) + 0.5 * Math.abs(c.fy.pitch || 0), b = Math.abs(front.fy.yaw) + 0.5 * Math.abs(front.fy.pitch || 0);
-        if (a < b - 1) front = c; else if (a <= b + 1 && (c.sharp || 0) > (front.sharp || 0)) front = c;
-      });
-      function sensDeg(c) { var a = H.length ? angAt(H, c.time + fit.lag) : c.raw; return wrap(s * a); }
-      var zero = fit.zero != null ? fit.zero : front ? wrap(sensDeg(front) - front.fy.yaw) : 0;
-      cands.forEach(function (c) {
-        c.sensDeg = wrap(sensDeg(c) - zero);                         // 지연을 고친 센서 각도
-        // (b) 실제 각도 = 지연 고친 센서 각도. 지연을 못 맞춘 경우만 정면 근처는 얼굴 yaw(센서 지연이 그대로라 얼굴이 나음)
-        c.deg = (fit.cost == null && c.fy && Math.abs(c.fy.yaw) <= Q.faceDegNoFit) ? wrap(c.fy.yaw) : c.sensDeg;
-      });
-      if (front) front.deg = wrap(front.fy.yaw);                     // 정면 장은 얼굴 각도 그대로(pickFrames가 이걸로 0°를 잡음)
-      // ④ 30° 간격 12칸마다 실제 각도가 가장 가까운 장
-      var frames = [], used = [], miss = [], tg, d;
-      for (d = 0; d < 360; d += Q.stepDeg) {
-        tg = wrap(d);
-        var best = null, bd = 1e9;
-        if (tg === 0 && front) { best = front; bd = Math.abs(front.deg); }
-        else cands.forEach(function (c) {
-          if (used.indexOf(c) >= 0) return;
-          var e = Math.abs(wrap(c.deg - tg));
-          if (e > Q.pickTolDeg) return;
-          if (!best || e < bd - Q.pickTieDeg || (e <= bd + Q.pickTieDeg && (c.sharp || 0) > (best.sharp || 0))) { best = c; bd = e; }   // 거의 같은 각도면 선명한 장
-        });
-        var loose = false;
-        if (!best) {                                                    // (b) 좁은 범위에 없으면 반 간격 안 가장 가까운 장으로 채움 — 12장 맞추기
-          cands.forEach(function (c) {
-            if (used.indexOf(c) >= 0) return;
-            var e = Math.abs(wrap(c.deg - tg));
-            if (e <= Q.looseTolDeg && e < bd) { best = c; bd = e; }
-          });
-          loose = !!best;
-        }
-        if (!best) { miss.push(tg); continue; }
-        used.push(best);
-        var o = { deg: +best.deg.toFixed(1), url: best.url, sharp: best.sharp, time: best.time, slot: tg, sensorDeg: +best.sensDeg.toFixed(1) };
-        if (loose) o.loose = true;
-        if (best.fy) o.faceYaw = +best.fy.yaw.toFixed(1);
-        if (best === front) { o.front = true; if (isFinite(best.fy.pitch)) o.facePitch = +(+best.fy.pitch).toFixed(1); }
-        frames.push(o);
-      }
-      frames.sort(function (a, b) { return a.deg - b.deg; });
-      var fz = front ? { zero: zero, yaw: front.fy.yaw, seen: nSeek } : null;
-      var set = { version: 2, at: Date.now(), stepDeg: Q.stepDeg, sign: s, signAuto: !Q.sign && !userFlip && signN >= 2, sensor: sens, frames: frames, frontSeek: fz,
-        reAngle: { lagMs: fit.lag, lagSamples: fit.n, lagCost: fit.cost != null ? +fit.cost.toFixed(2) : null, cands: cands.length, faceMeasured: cands.filter(function (c) { return c.fy; }).length, missing: miss } };
-      console.log(TAG + ' 각도 다시 잼 — 후보 ' + cands.length + '장 · 얼굴로 잰 장 ' + set.reAngle.faceMeasured + ' · 센서 지연 ' + fit.lag + 'ms' +
-        (fit.cost != null ? '(표본 ' + fit.n + ' · 평균 어긋남 ' + fit.cost.toFixed(1) + '°)' : '(표본 부족 — 기본값)') +
-        ' · 정면 ' + (front ? '얼굴 yaw ' + front.fy.yaw.toFixed(0) + '°' : '못 찾음(센서 0°)') +
-        ' · 고른 ' + frames.length + '/' + Math.round(360 / Q.stepDeg) + '장 [' + frames.map(function (f) { return f.slot + '→' + Math.round(f.deg) + (f.loose ? '(넓게)' : ''); }).join(', ') + ']' +
-        (miss.length ? ' · 빈 칸 ' + miss.join(',') + '° (±' + Q.pickTolDeg + '° 안에 사진 없음)' : ''));
-      cands = null;
-      if (frames.length < 4) { toast('사진이 모자랍니다 — 정면·양옆·뒤가 다 찍혀야 해요'); return; }
-      Q.applySet(set).then(function (ok) { if (ok) { Q.saveSet(set).then(refreshRow, refreshRow); try { if (W.PREP_EARLY) W.PREP_EARLY.start('360 촬영'); } catch (e) {} } });
-    });
   }
   function stopCam() { try { if (stream) stream.getTracks().forEach(function (t) { t.onended = null; t.stop(); }); } catch (e) {} stream = null; }
 
@@ -1101,7 +950,7 @@ var SHOT360 = (function () {
     bar.appendChild(btn('닫기', false, close)); bar.appendChild(btnCam); bar.appendChild(btnStart); bar.appendChild(btnManual); bar.appendChild(btnFlip); bar.appendChild(btnDone);
     ov.appendChild(stage); ov.appendChild(bar);
     document.body.appendChild(ov);
-    T = targets(); got = {}; pool = {}; cur = 0; drawRing();
+    T = targets(); got = {}; cur = 0; drawRing();
     Q.cam.ok = false;
     camGuard = setInterval(function () { if (ov && releaseAppCam() && !Q.cam.ok) openCam(0); }, 400);   // 뒤늦게 켜진 앱 카메라를 끔
     setTimeout(function () { openCam(0); }, hadAppCam ? 250 : 0);                                          // 앞 카메라가 놓일 틈
