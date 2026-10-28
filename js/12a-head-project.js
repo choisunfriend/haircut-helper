@@ -1008,7 +1008,7 @@ let _scalpSkinCache = undefined;
 let _skinFieldCache = undefined;
 let _faceToneCache = undefined;   // (2026-10-26) 얼굴 기준색(밝은 살 구간) 캐시
 let _faceTone3DLogged = false;   // (2026-09-16) 얼굴톤 로그 1회 — faceToneRef3D
-function resetScalpSkinSample(){ _neckPhotoLogged = false; _scalpSkinCache = undefined; _faceToneCache = undefined; _skinFieldCache = undefined; _scalpCullLogged = false; _faceTone3DLogged = false; }
+function resetScalpSkinSample(){ _neckPhotoLogged = false; _scalpPhotoLogged = false; _scalpSkinCache = undefined; _faceToneCache = undefined; _skinFieldCache = undefined; _scalpCullLogged = false; _faceTone3DLogged = false; }
 
 /* 이 사진에서 <b>살로 볼 픽셀</b>인가 — 머리카락도 아니고 이목구비도 아닌 자리.
    어두운 쪽 꼬리를 자르는 것으로 눈·눈썹·콧구멍·입선이 한 번에 빠진다
@@ -1241,9 +1241,10 @@ function makeModelSkinSampler(){
          ③ 둘 다 안 되면 예전(살 격자 + 얼굴 기준색). 끄기 NECK_PHOTO.on=false */
 var NECK_PHOTO = Object.assign({ on: true, NX: 14, NY: 10, colorTol: 0.16, minFrac: 0.3, rearShade: 0.92, jawBand: 0.22 }, (typeof window !== 'undefined' && window.NECK_PHOTO) || {});
 var _neckPhotoLogged = false;
-function makeNeckPhotoSampler(){
+/* (2026-10-28) 사진 살 격자 도구 — 목(makeNeckPhotoSampler)과 두피면(makeScalpPhotoSampler)이 <b>같은 것</b>을 쓴다.
+   사람 윤곽 안 · 머리카락 아님 · 얼굴 살과 색조가 가까운 픽셀만 칸에 모으고, 빈 칸은 가장 가까운 칸 색으로 번짐. 평균으로 안 당김. */
+function _photoSkinKit(){
   try{
-    if(!NECK_PHOTO.on) return null;
     const inf = state.hairMasks && state.hairMasks.front, lm = state.landmarks && state.landmarks.front;
     if(!inf || !inf.photoRGB || !lm) return null;
     const fm = getFaceMetrics(), pr = fm && fm.projector;
@@ -1284,6 +1285,14 @@ function makeNeckPhotoSampler(){
           const m = function(A){ return A[c*NXl+a]*(1-tx)*(1-ty) + A[c*NXl+a1]*tx*(1-ty) + A[c1*NXl+a]*(1-tx)*ty + A[c1*NXl+a1]*tx*ty; };
           return [m(this.r), m(this.g), m(this.b)]; } };
     }
+    return { inf, lm, pr, W, H, chin, brow, xL, xR, grid };
+  }catch(e){ console.warn('[3D·살 격자] 준비 실패', e); return null; }
+}
+function makeNeckPhotoSampler(){
+  try{
+    if(!NECK_PHOTO.on) return null;
+    const K = _photoSkinKit(); if(!K) return null;
+    const { pr, chin, brow, xL, xR, grid } = K;
     const cx = (xL + xR) / 2, hw = Math.abs(xR - xL) * 0.42, faceH = Math.max(0.05, chin - brow);
     // ① 턱 아래 목 — 아래 끝은 살 칸이 끊기는 줄(옷깃)까지, 최대 얼굴 높이의 0.8배
     let src = 'neck', G = grid(Math.max(0, cx - hw), Math.min(1, cx + hw), chin + 0.01, Math.min(1, chin + faceH * 0.8), NECK_PHOTO.NX, NECK_PHOTO.NY);
@@ -1302,9 +1311,43 @@ function makeNeckPhotoSampler(){
   }catch(e){ console.warn('[3D·목 색] 사진에서 못 뗌 — 예전 방식', e); return null; }
 }
 
+/* (2026-10-28) 두피면 = 이마 살을 그대로 — 사용자: "목색을 변경했어. 사진에서 목색이 보이면 갖고 오고 있는데 색깔이 괜찮아.
+   그래서 이마부터 두상 턱밑으로 이어지는 두피면도 이런 식으로 바꿀 거야. 이마에 가까운 얼굴 피부 쪽에서 떼어와서 칠해줘. 평균값은 안 쓰는 거야."
+   예전: 두피면 정점 → 얼굴 살 격자(makeModelSkinSampler)를 안으로 물려 집고 → 얼굴 기준색(밝기 60~95백분위 평균) 쪽으로 75% 당김 = 사실상 평균색.
+   지금: 목과 <b>같은 도구</b>(_photoSkinKit)로
+         ① 눈썹 위 이마 띠(눈썹 ~ 얼굴 높이 bandH 위, 가로는 얼굴 폭 colW)의 실제 픽셀을 격자(NX×NY)로 떼어
+            두피면 정점을 정면 사진에 되쏜 자리의 색을 그대로 씀 — 띠 밖(정수리·옆·뒤·턱밑)은 띠 안으로 물려 <b>가로 자리가 같은 이마 살</b>.
+            평균으로 안 당김(faceTone 안 씀). 뒤통수 밝기 배율(backShade)은 그대로.
+         ② 이마가 앞머리에 덮여 안 보이면(살 칸 minFrac 미만) 눈썹 바로 아래 띠(cheekBand)의 맨 윗줄 = 이마에 가장 가까운 얼굴 살.
+         ③ 둘 다 안 되면 예전(살 격자 + 얼굴 기준색). 끄기 SCALP_PHOTO.on=false */
+var SCALP_PHOTO = Object.assign({ on: true, NX: 16, NY: 6, bandH: 0.30, cheekBand: 0.25, colW: 0.75, minFrac: 0.3 }, (typeof window !== 'undefined' && window.SCALP_PHOTO) || {});
+var _scalpPhotoLogged = false;
+function makeScalpPhotoSampler(){
+  try{
+    if(!SCALP_PHOTO.on) return null;
+    const K = _photoSkinKit(); if(!K) return null;
+    const { pr, chin, brow, xL, xR, grid } = K;
+    const cx = (xL + xR) / 2, hw = Math.abs(xR - xL) * 0.42 * SCALP_PHOTO.colW, faceH = Math.max(0.05, chin - brow);
+    const u0 = Math.max(0, cx - hw), u1 = Math.min(1, cx + hw);
+    // ① 이마 — 눈썹 바로 위부터 위로 bandH (그 위는 머리카락이면 칸이 비어 아래 살로 번짐)
+    let src = 'forehead', G = grid(u0, u1, Math.max(0, brow - faceH * SCALP_PHOTO.bandH), Math.max(0.001, brow - 0.005), SCALP_PHOTO.NX, SCALP_PHOTO.NY);
+    if(G.frac < SCALP_PHOTO.minFrac){                         // ② 앞머리로 이마가 안 보임 → 눈썹 바로 아래 얼굴 살
+      src = 'belowBrow'; G = grid(u0, u1, brow, Math.min(1, brow + faceH * SCALP_PHOTO.cheekBand), SCALP_PHOTO.NX, 4);
+      if(G.frac < SCALP_PHOTO.minFrac) return null;
+    }
+    if(!_scalpPhotoLogged){ _scalpPhotoLogged = true;
+      console.log('[3D·두피색] ' + (src === 'forehead' ? '이마(눈썹 위) 살' : '이마가 안 보여 눈썹 바로 아래 얼굴 살') + '을 ' + G.NX + '×' + G.NY + ' 칸으로 떼어 그대로 칠함 · 살로 잡힌 칸 ' + G.filled + '/' + (G.NX*G.NY) + ' · 평균으로 안 당김 · 끄기 SCALP_PHOTO.on=false'); }
+    SCALP_PHOTO.last = { src: src, filled: G.filled, cells: G.NX * G.NY };
+    return function(mx, my){
+      const c = G.at(pr.toImgX(mx), src === 'forehead' ? pr.toImgY(my) : G.v0);
+      return [Math.min(1, Math.max(0, c[0]/255)), Math.min(1, Math.max(0, c[1]/255)), Math.min(1, Math.max(0, c[2]/255))];
+    };
+  }catch(e){ console.warn('[3D·두피색] 이마 살을 못 뗌 — 예전 방식', e); return null; }
+}
+
 function paintScalpFromPhoto(geo, skull, kIn, mat){
   try{
-    const sample = makeModelSkinSampler();
+    const sample = makeScalpPhotoSampler() || makeModelSkinSampler();   // (2026-10-28) 이마 살 그대로(위 SCALP_PHOTO) → 못 하면 예전
     if(!sample) return false;                      // 폴백: 재질의 단색이 그대로 쓰인다
 
     const pos = geo.attributes && geo.attributes.position;
