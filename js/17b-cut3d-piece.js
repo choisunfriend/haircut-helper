@@ -1518,7 +1518,14 @@ var REGROW = (function () {
        자기 사진으로 기른 머리에 그 사진을 다시 대는 구조라, 처음 머리가 뒤로 밀려 있으면 그 모양에 맞추려고 카메라를 기울임(각도와 깊이가 맞바뀜 — 겹침 차이 작음) → 헐이 뒤로 기욺.
        지금: 같은 세트에서 랜드마크로 잰 사진들의 위아래 각도(중앙값)를 기준으로, 기준에서 1° 벗어날 때마다 겹침이 camFitPitchK만큼 더 좋아져야 그 각도를 씀(10° = +4%p). 0 = 예전 */
     camFitPitchK: 0.004,
-    camFit: !/[?&]camfit=0/.test(location.search), camFitPitch: 20, camFitDyCm: 2, camFitScale: 0.08, camFitCols: 96, camFitPts: 40000,   // (2026-10-25g) 기른 가닥으로 옆·뒤 카메라 맞추고 한 번 더 기르기 · 끄기 ?camfit=0
+    camFit: !/[?&]camfit=0/.test(location.search), camFitPitch: 20, camFitDyCm: 0, camFitScale: 0.08, camFitCols: 96, camFitPts: 40000,   // (2026-10-25g) 기른 가닥으로 옆·뒤 카메라 맞추고 한 번 더 기르기 · 끄기 ?camfit=0
+    /* (2026-10-28) 카메라 맞추기 정리 — 사용자: "가닥맞춤·카메라맞춤 단계의 중복과 시간 단축"
+       디버그 0832(곱슬 · 폰): 3만 가닥 다 기름 19.2초 → 카메라 맞추기(그중 점 4만 개만 씀) → 처음부터 다시 23.1초. 0836(웨이브): back 겹침 93→92%(나빠짐)인데 위아래 각도 점수로 바뀌어 다시 기름.
+       또 첫 기르기는 사진끼리 맞추기(cx·crownY)를 한 카메라로 기르고, 카메라 맞추기는 그 맞추기 전 카메라로 대 봄 → 높이를 서로 반대로 고침(0836 back: +2.0 · −0.8cm).
+       ① camFitLite — 카메라 맞추기용 첫 기르기는 이 비율 가닥만(사진끼리 맞추기 없이) · 그 뒤 전체 기르기 한 번. 0 = 예전(전부 기른 뒤 바뀌면 다시 다 기름)
+       ② camFitMinGain — 겹침(각도 점수 빼기 전)이 이만큼(0.02 = 2%p) 좋아진 사진만 카메라를 바꿈
+       ③ camFitDyCm 2 → 0 — 높이는 마지막 기르기의 사진끼리 맞추기 한 곳에서만(되돌리기 REGROW.camFitDyCm=2) */
+    camFitLite: 0.1, camFitMinGain: 0.02,
     kinkStop: false /* (2026-10-26) 끔 — 곱슬 1226→1232: 닫힌 고리 7→5,845가닥 · 길이 4.0→10.3cm · 웨이브 1214→1244 가로결 4.0→3.3% (빈약·고리 없음의 원인). 다시 켜기 ?kink=1 · 예전 (2026-10-25f) 켬 — 사용자: "쓰고 있는 거면 켜기만 하면 되잖아.. 결과를 보자" · 끄기 ?kink=0 */, kinkDeg: 45, kinkMinCm: 2,
     minCoh: 0.08,       // 결 또렷함 하한
     layerLo: 0.2, layerHi: 1.0,   // 가닥이 두께의 몇 %까지 뜨는가(가닥마다 무작위)
@@ -1798,7 +1805,8 @@ var REGROW = (function () {
   /* ────────────────────────────────────────────────────────────────────────
    * 만들기
    * ────────────────────────────────────────────────────────────────────── */
-  function makeBuilder(photo) {
+  function makeBuilder(photo, opt) {
+    opt = opt || {};   // (2026-10-28) opt.lite = 가닥 비율(카메라 맞추기용 가볍게 기르기 · 사진끼리 맞추기 없음)
     var probe = (photo.occ && photo.occ.probe) || (state.hairOcc3D && state.hairOcc3D.probe) || null;
     if (!probe || !probe.cams || !probe.cams.length) return { err: '점유 프로브 없음(HAIR_OCC3D가 꺼져 있거나 사진 정보가 없음)' };
     var roots = photo.roots, grid = photo.grid;
@@ -2001,6 +2009,7 @@ var REGROW = (function () {
     var paStat = { on: !!G.photoAlign, before: null, after: null, moved: [], ms: 0, why: '' };
     (function () {
       if (!G.photoAlign) { paStat.why = '꺼짐'; return; }
+      if (opt.lite) { paStat.why = '카메라 맞추기용 가볍게 기르기 — 건너뜀(마지막 기르기에서 함)'; return; }   // (2026-10-28)
       if (cams.length < 2) { paStat.why = '사진 ' + cams.length + '장'; return; }
       var t0p = now(), cmP = 18.6; try { cmP = modelCmPerUnit() || cmP; } catch (e) {}
       var N = Math.max(2000, G.photoAlignN | 0), PX = new Float64Array(N), PY = new Float64Array(N), PZ = new Float64Array(N), seed = 12345, i, k;
@@ -2577,6 +2586,7 @@ var REGROW = (function () {
     } catch (e) { kc = null; mShare = 1; }
     // (2026-10-04d) 가닥 수 = 48번(STRAND_BUDGET.total · 기본 30,000). 없으면 예전처럼 사진 가닥 수.
     var total = (W.STRAND_BUDGET && W.STRAND_BUDGET.on !== false && W.STRAND_BUDGET.total > 0) ? W.STRAND_BUDGET.total : photo.strands.length;
+    if (opt.lite > 0 && opt.lite < 1) total = Math.max(1500, Math.round(total * opt.lite));   // (2026-10-28) 카메라 맞추기용
 
     var st = { n: 0, stub: 0, skipped: 0, steps: 0, est: 0, stopMask: 0, stopCap: 0, stopMax: 0, free: 0, flipped: 0,
       backN: 0, backFwd: 0, backKeep: 0, backLen: [], neckPush: 0, hangN: 0, hangSteps: 0, stopTip: 0,
@@ -3042,7 +3052,7 @@ var REGROW = (function () {
       var sy = c0.sy / ds;
       return { R: dp ? rotX(c0.R, dp) : c0.R, s: c0.s / ds, sy: sy, cx: c0.cx, crownY: c0.crownY + (yTop - CY) * (1 / c0.sy - 1 / sy) + dyCm / (cm * sy) };
     }
-    var res = [];
+    var res = [], skipped = [];   // skipped: 좋아짐이 camFitMinGain 미만이라 안 바꾼 사진
     targets.forEach(function (c0) {
       var cols = G.camFitCols, cell = c0.iw / cols, gw = cols, gh = Math.max(1, Math.ceil(c0.ih / cell)), M = new Uint8Array(gw * gh), x, y, nM = 0;
       for (y = 0; y < gh; y++) for (x = 0; x < gw; x++) if (c0.smp.at((x + 0.5) * cell, (y + 0.5) * cell) > 0) { M[y * gw + x] = 1; nM++; }
@@ -3081,24 +3091,34 @@ var REGROW = (function () {
         return U ? I / U : 0;
       }
       var rad = Math.PI / 180, P = G.camFitPitch, D = G.camFitDyCm, Sc = G.camFitScale, b0r = score(c0), b0 = b0r - pitchCost(c0.R), best = { s: b0, raw: b0r, dp: 0, dy: 0, ds: 1 }, dp, dy, ds, sc, cvT;
-      for (dp = -P; dp <= P; dp += 3) for (dy = -D; dy <= D + 1e-6; dy += D / 4) for (ds = 1 - Sc; ds <= 1 + Sc + 1e-6; ds += Sc / 2) {
+      // (2026-10-28) 높이(D)를 0으로 두면 높이 칸은 0 하나만(예전 식은 D/4 걸음이라 0이면 끝나지 않음)
+      function steps(c, half, n) { var a = []; if (!(half > 0)) return [c]; for (var q = -n; q <= n; q++) a.push(c + half * q / n); return a; }
+      var dyA = steps(0, D, 4), dsA = steps(1, Sc, 2), ia2, ib2;
+      for (dp = -P; dp <= P; dp += 3) for (ia2 = 0; ia2 < dyA.length; ia2++) for (ib2 = 0; ib2 < dsA.length; ib2++) {
+        dy = dyA[ia2]; ds = dsA[ib2];
         cvT = variant(c0, dp * rad, dy, ds); var rw = score(cvT); sc = rw - pitchCost(cvT.R); if (sc > best.s) best = { s: sc, raw: rw, dp: dp, dy: dy, ds: ds };
       }
-      var b1 = best;
-      for (dp = b1.dp - 2; dp <= b1.dp + 2; dp += 1) for (dy = b1.dy - D / 8; dy <= b1.dy + D / 8 + 1e-6; dy += D / 8) for (ds = b1.ds - Sc / 4; ds <= b1.ds + Sc / 4 + 1e-6; ds += Sc / 4) {
-        if (Math.abs(dp) > P || Math.abs(ds - 1) > Sc + 1e-6) continue;
+      var b1 = best, dyB = steps(b1.dy, D / 8, 1), dsB = steps(b1.ds, Sc / 4, 1);
+      for (dp = b1.dp - 2; dp <= b1.dp + 2; dp += 1) for (ia2 = 0; ia2 < dyB.length; ia2++) for (ib2 = 0; ib2 < dsB.length; ib2++) {
+        dy = dyB[ia2]; ds = dsB[ib2];
+        if (Math.abs(dp) > P || Math.abs(ds - 1) > Sc + 1e-6 || Math.abs(dy) > D + 1e-6) continue;
         cvT = variant(c0, dp * rad, dy, ds); var rw2 = score(cvT); sc = rw2 - pitchCost(cvT.R); if (sc > best.s) best = { s: sc, raw: rw2, dp: dp, dy: dy, ds: ds };
       }
-      if (best.s > b0 + 0.01) { var cv = variant(c0, best.dp * rad, best.dy, best.ds); c0.R = cv.R; c0.s = cv.s; c0.sy = cv.sy; c0.crownY = cv.crownY; }
+      var gain = best.raw - b0r, minGain = +G.camFitMinGain || 0;   // (2026-10-28) 겹침이 실제로 좋아진 만큼(각도 점수 빼기 전)
+      if (best.s > b0 + 0.01 && gain < minGain) { skipped.push(c0.angle + ' ' + Math.round(b0r * 100) + '→' + Math.round(best.raw * 100) + '%'); best = { s: b0, raw: b0r, dp: 0, dy: 0, ds: 1 }; }
+      else if (best.s > b0 + 0.01) { var cv = variant(c0, best.dp * rad, best.dy, best.ds); c0.R = cv.R; c0.s = cv.s; c0.sy = cv.sy; c0.crownY = cv.crownY; }
       else best = { s: b0, raw: b0r, dp: 0, dy: 0, ds: 1 };
       res.push({ angle: c0.angle, before: b0r, after: best.raw, ref: refPitchDeg, pitch: best.dp, dyCm: best.dy, scale: best.ds, edge: Math.abs(best.dp) >= P });
     });
-    var out = { views: res, ms: Math.round(now() - t0), pts: N };
+    var out = { views: res, ms: Math.round(now() - t0), pts: N, skipped: skipped };
     G.camFitLast = out;
-    console.log(TAG + ' 카메라 맞추기(' + out.ms + 'ms · 점 ' + N + '): ' + res.map(function (r) { return r.angle + ' ' + Math.round(r.before * 100) + '→' + Math.round(r.after * 100) + '% (각도 ' + (r.pitch >= 0 ? '+' : '') + r.pitch + '°' + (r.edge ? '·범위끝' : '') + ' 높이 ' + r.dyCm.toFixed(1) + 'cm 배율 ' + r.scale.toFixed(2) + ')'; }).join(' · ') + (res.length && res[0].ref != null ? ' · 위아래 기준 ' + res[0].ref.toFixed(1) + '°(랜드마크 사진 중앙 · 1°당 ' + (G.camFitPitchK * 100).toFixed(1) + '%p 더 겹쳐야 · 끄기 REGROW.camFitPitchK=0)' : ''));
+    console.log(TAG + ' 카메라 맞추기(' + out.ms + 'ms · 점 ' + N + '): ' + res.map(function (r) { return r.angle + ' ' + Math.round(r.before * 100) + '→' + Math.round(r.after * 100) + '% (각도 ' + (r.pitch >= 0 ? '+' : '') + r.pitch + '°' + (r.edge ? '·범위끝' : '') + ' 높이 ' + r.dyCm.toFixed(1) + 'cm 배율 ' + r.scale.toFixed(2) + ')'; }).join(' · ') + (res.length && res[0].ref != null ? ' · 위아래 기준 ' + res[0].ref.toFixed(1) + '°(랜드마크 사진 중앙 · 1°당 ' + (G.camFitPitchK * 100).toFixed(1) + '%p 더 겹쳐야 · 끄기 REGROW.camFitPitchK=0)' : '')
+      + (skipped.length ? ' · 안 바꿈(겹침 ' + Math.round((+G.camFitMinGain || 0) * 100) + '%p 미만): ' + skipped.join(', ') : '')
+      + (G.camFitLiteStat ? ' · 가볍게 기른 가닥 ' + G.camFitLiteStat.n + '개 · ' + G.camFitLiteStat.ms + 'ms' : ''));
     return out;
   };
-  G.build = function (cb) {
+  G.build = function (cb, opt) {
+    opt = opt || {};
     // (옛 65) 기르기 직전 옆·뒤 사진을 정면 기준으로 맞춤(VIEW_ALIGN · 기본 꺼짐)
     if (typeof VIEW_ALIGN !== 'undefined') VIEW_ALIGN._beforeRegrowBuild();
     // (옛 68) 웨이브 사진은 직모 뼈대를 안 씀(READ_SHAPE)
@@ -3109,9 +3129,11 @@ var REGROW = (function () {
     if (G.building) return;
     var photo = state._hair3Dneutral;
     if (!photo || !photo.strands || !photo.strands.length) { if (cb) cb(false); return; }
-    try { if (typeof NEUTRAL_BUILD !== 'undefined' && NEUTRAL_BUILD.running) { setTimeout(function () { G.build(cb); }, 300); return; } } catch (e) {}
+    try { if (typeof NEUTRAL_BUILD !== 'undefined' && NEUTRAL_BUILD.running) { setTimeout(function () { G.build(cb, opt); }, 300); return; } } catch (e) {}
+    /* (2026-10-28) 카메라 맞추기 전이면 가볍게(가닥 camFitLite · 사진끼리 맞추기 없이) 기르고 → 카메라 맞추기 → 전체 기르기 한 번 */
+    var lite = !opt.full && G.camFit && photo._camFitDone !== photo && G.camFitLite > 0 && G.camFitLite < 1 ? G.camFitLite : 0;
     var B;
-    try { B = makeBuilder(photo); } catch (e) { B = { err: String(e && e.message || e) }; console.warn(TAG + ' 준비 실패', e); }
+    try { B = makeBuilder(photo, lite ? { lite: lite } : null); } catch (e) { B = { err: String(e && e.message || e) }; console.warn(TAG + ' 준비 실패', e); }
     if (!B || B.err) {
       G.lastErr = B ? B.err : '?'; G.failedFor = photo;
       console.warn(TAG + ' 못 기름 — ' + G.lastErr + ' · 사진 가닥을 그대로 씁니다');
@@ -3119,7 +3141,7 @@ var REGROW = (function () {
     }
     G.building = true; G.lastErr = null;
     var sub = null;
-    try { if (typeof showAI === 'function') { showAI('뿌리부터 다시 기르는 중…', '0%'); sub = document.getElementById('aiOverlaySub'); } } catch (e) {}
+    try { if (typeof showAI === 'function') { showAI(lite ? '사진 각도 맞추는 중…' : '뿌리부터 다시 기르는 중…', '0%'); sub = document.getElementById('aiOverlaySub'); } } catch (e) {}
     var workMs = 0, slices = 0;
     (function tick() {
       var f, tW = now();
@@ -3142,7 +3164,15 @@ var REGROW = (function () {
         if (!model || !model.strands.length) { G.failedFor = photo; G.lastErr = G.lastErr || '가닥 0개'; console.warn(TAG + ' 결과가 비었습니다 — 사진 가닥을 그대로 씁니다'); }
         if (cb) cb(false); return;
       }
-      if (G.camFit && photo._camFitDone !== photo) {           // (2026-10-25g) 카메라 맞추고 한 번 더 기르기
+      if (lite) {                                               // (2026-10-28) 가볍게 기른 가닥으로 카메라 맞추고 → 전체 기르기(한 번만)
+        photo._camFitDone = photo;
+        G.camFitLiteStat = { n: model.strands.length, ms: Math.round(workMs) };
+        var prbL = (photo.occ && photo.occ.probe) || (state.hairOcc3D && state.hairOcc3D.probe) || null;
+        try { G.camFitRun(model, prbL); } catch (e) { console.warn(TAG + ' 카메라 맞추기 실패 — 그대로 씀', e); }
+        G.camFitFirstMs = Math.round(workMs);
+        return G.build(cb, { full: true });
+      }
+      if (G.camFit && photo._camFitDone !== photo) {           // (2026-10-25g) 카메라 맞추고 한 번 더 기르기 — camFitLite=0일 때(예전)
         photo._camFitDone = photo;
         var fit = null, prb = (photo.occ && photo.occ.probe) || (state.hairOcc3D && state.hairOcc3D.probe) || null;
         try { fit = G.camFitRun(model, prb); } catch (e) { console.warn(TAG + ' 카메라 맞추기 실패 — 그대로 씀', e); }
