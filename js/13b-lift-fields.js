@@ -1185,13 +1185,22 @@ var VIEWS360 = (function () {
   }
   X._profileOf = profileOf;
   /* 옆얼굴 윤곽 후보(점수 높은 순) — 지금 세트로 분석한 추가 사진만. 각 { key, deg, ratio, prof } */
+  if (X.profMinFaceYaw == null) X.profMinFaceYaw = 60; if (X.profPerSide == null) X.profPerSide = true;   // (2026-10-28) 옆모습 고르기
+  if (X.readExtraFlow == null) X.readExtraFlow = false;   // (2026-10-28) 추가 사진은 결 읽기 생략(형태·옆얼굴은 영역·윤곽만 씀 · 사진당 2~6초) · 켜기 VIEWS360.readExtraFlow=true
   X.faceProfiles = function () {
     var out = [];
     try {
       if (!(X.forSet === state.shots360 && X.fp === fpNow())) return out;
-      X.order.forEach(function (k) { var v = X.views[k]; if (v && v.prof && v.prof.score > 0 && v.prof.chin > 0) out.push({ key: k, deg: v.deg, ratio: v.ratio, prof: v.prof }); });
+      X.order.forEach(function (k) { var v = X.views[k]; if (v && v.prof && v.prof.score > 0 && v.prof.chin > 0) out.push({ key: k, deg: v.deg, ratio: v.ratio, prof: v.prof, faceYaw: v.faceYaw }); });
     } catch (e) {}
     out.sort(function (a, b) { return b.prof.score - a.prof.score; });
+    /* (2026-10-28) 옆모습만 — 사용자: "안면개선을 위한 각도추가는 영 이상한데? 2장만 추가하라니까"
+       디버그 1002(남자 360): v89(얼굴 인식 -33° = 3/4 정면) · vm121(뒤쪽 3/4)이 윤곽 점수 1·2등으로 뽑혀 코끝을 -2.44cm 밀어 넣음.
+       ① 얼굴이 |yaw| < profMinFaceYaw(60°)로 잡힌 장은 옆모습 아님 → 뺌 ② 얼굴 쪽(좌·우)마다 점수 1등 한 장만 → 최대 2장. 되돌리기 VIEWS360.profMinFaceYaw=0 · .profPerSide=false */
+    var minY = +X.profMinFaceYaw || 0, dropped = [];
+    if (minY > 0) out = out.filter(function (q) { if (typeof q.faceYaw === 'number' && Math.abs(q.faceYaw) < minY) { dropped.push(q.key + '(얼굴 ' + Math.round(q.faceYaw) + '°)'); return false; } return true; });
+    if (X.profPerSide !== false) { var got = {}; out = out.filter(function (q) { var sd = q.prof.side > 0 ? 'R' : 'L'; if (got[sd]) return false; got[sd] = 1; return true; }); }
+    X.profDropped = dropped;
     return out;
   };
   /* 머리가 화면에 다 들어왔나. 문제 있으면 사유 문자열 */
@@ -1775,6 +1784,7 @@ var VIEWS360 = (function () {
     try {
       var fpL = X.faceProfiles();
       L.push('  옆얼굴 윤곽(얼굴 메쉬 정중선 깊이 · 센서 각도 안 봄) — ' + (fpL.length ? fpL.slice(0, 4).map(function (q) { var p = q.prof; return q.key + ' 점수 ' + p.score.toFixed(3) + '(코 ' + Math.round((p.nose - p.top) / Math.max(1, p.Hh) * 100) + '% · 턱 ' + Math.round((p.chin - p.top) / Math.max(1, p.Hh) * 100) + '% · 얼굴 ' + (p.side > 0 ? '오른쪽' : '왼쪽') + ')'; }).join(' · ') + ' · 쓴 것은 [얼굴 360 옆윤곽] 줄' : '후보 없음'));
+      if (X.profDropped && X.profDropped.length) L.push('  옆모습 아님(얼굴 |yaw| < ' + X.profMinFaceYaw + '°)으로 뺀 사진 — ' + X.profDropped.join(' · '));   // (2026-10-28)
       if (typeof FACE_BUILD !== 'undefined' && FACE_BUILD.prof360) { var P3 = FACE_BUILD.prof360; L.push('  [얼굴 360 옆윤곽] ' + (P3.used ? '씀 — ' + P3.used + ' · 정중선 ' + P3.n + '점 · 보정 중앙 ' + P3.medCm + 'cm / 최대 ' + P3.maxCm + 'cm · 코끝 ' + P3.noseCm + 'cm' : '안 씀 — ' + (P3.why || ''))); }
     } catch (e) {}
     if (la && la.synthFront) L.push('  ⚠ 정면 보정이 없어 ' + la.synthFront + ' 사진에서 0° 기준을 세움 — 추가 사진 배율은 머리 폭 자로만');

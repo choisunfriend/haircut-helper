@@ -552,8 +552,15 @@ ANALYSIS_TIME.mark = function(angle, key, ms){ try{ var v = this.byView[angle] |
 ANALYSIS_TIME.lines = function(){
   var ks = this.order.filter(function(a){ return ANALYSIS_TIME.byView[a]; }); if(!ks.length) return [];
   var NM = { zoom: '머리 키우기', face: '얼굴', seg: '세그멘테이션', orient: '결 읽기', ident: '색·컬·밀도', total: '합계' };
-  return ['  분석 시간(사진마다 ms) — ' + ks.map(function(a){ var v = ANALYSIS_TIME.byView[a]; return a + ' ' + ['zoom','face','seg','orient','ident','total'].filter(function(k){ return v[k] != null; }).map(function(k){ return NM[k] + ' ' + v[k]; }).join('·'); }).join(' | ')];
+  var out = ['  분석 시간(사진마다 ms) — ' + ks.map(function(a){ var v = ANALYSIS_TIME.byView[a]; return a + ' ' + ['zoom','face','seg','orient','ident','total'].filter(function(k){ return v[k] != null; }).map(function(k){ return NM[k] + ' ' + v[k]; }).join('·'); }).join(' | ')];
+  /* (2026-10-28) 결 읽기 안쪽 단계 — 사용자: "단발 결읽기는 왜 오래 걸리냐" · 원인을 기록으로 짚으려고 단계마다 잼(04·34가 ANALYSIS_TIME._cur 사진에 적음)
+     st 구조텐서(04) · gb 방향필터(04 GABOR) · mix 결 고르기(34) · shape 결 모양 재기(04·34) · steps 경계·끝·건너기·채우기(34) · heap 결 읽기 끝난 뒤 JS 힙 MB */
+  var SN = { o_st: '구조텐서', o_gb: '방향필터', o_mix: '결고르기', o_shape: '모양재기', o_steps: '경계·채우기', o_curl: '컬재기', o_heap: '힙MB' };
+  var sub = ks.filter(function(a){ return ANALYSIS_TIME.byView[a].o_st != null; });
+  if(sub.length) out.push('  결 읽기 안쪽(ms) — ' + sub.map(function(a){ var v = ANALYSIS_TIME.byView[a]; return a + ' ' + Object.keys(SN).filter(function(k){ return v[k] != null; }).map(function(k){ return SN[k] + ' ' + v[k]; }).join('·'); }).join(' | '));
+  return out;
 };
+ANALYSIS_TIME._cur = null;   // (2026-10-28) 지금 결을 읽는 사진(03b가 computeOrientation 앞뒤로 둠)
 
 function extractHairMask(angle){
   return BODY_SEG_WAIT._extract(angle, () =>
@@ -1057,7 +1064,11 @@ async function extractHairMaskCore(angle){
             orientationColSamples = null;
           }
         }
-        { const _tO = performance.now(); computeOrientation(); ANALYSIS_TIME.mark(angle, 'orient', performance.now() - _tO); }
+        /* (2026-10-28) 360 추가 사진은 결 읽기 생략 — 형태 계산·옆얼굴은 머리 영역·사람 윤곽만 씀(VIEWS360.readExtraFlow=false 기본 · 사진당 2~6초) */
+        const _skipOrient = (typeof ANGLES !== 'undefined' && ANGLES.indexOf(angle) < 0 && typeof VIEWS360 !== 'undefined' && VIEWS360.readExtraFlow === false);
+        if(_skipOrient){ ANALYSIS_TIME.mark(angle, 'orient', 0); }
+        else { const _tO = performance.now(); ANALYSIS_TIME._cur = angle; try{ computeOrientation(); } finally { ANALYSIS_TIME._cur = null; } ANALYSIS_TIME.mark(angle, 'orient', performance.now() - _tO);
+          try{ if(performance.memory) ANALYSIS_TIME.byView[angle].o_heap = Math.round(performance.memory.usedJSHeapSize / 1048576); }catch(e){} }
 
         // ── STEP 10: 두피(scalpY)·모발끝(hairEndY) 라인 추출 후 원본 해상도로 스케일업 ──
         const {scalpY, hairEndY} = extractScalpAndEndLines(hairMaskBuf, w, h, img.width, scale);

@@ -1634,7 +1634,10 @@ var REGROW = (function () {
     alignCurlOff: 40,   // (2026-10-06p) 사진에서 잰 컬이 이 값 이상이면 결 정렬을 안 함(0~이 값 사이는 세기를 비례해서 줄임) · 0 = 컬과 무관하게 정렬
     // (2026-10-04g) 목 — 늘어뜨린 가닥이 목(과 그 아래 몸통 기둥) 안으로 못 들어가게. 화면에 보이는 목과 같은 치수.
     neck: false, neckMargin: 1.1,
-    hullRule: 'front',  // (2026-10-11h) 사용자: "다수결방식에 정면을 참고하는 걸로" — 'front' = 다수결 + 정면이 1cm 넘게 밖이면 머리 아님 ·    // (2026-10-11g) 'tol' = 여유 둔 교집합: 그 자리를 보는 사진 중 하나라도 머리 영역에서 여유(정면 1 · 옆·뒤 1.5cm) 넘게 밖이면 머리 아님 — 예전 다수결은 2:2 동점도 머리로 쳐서 웨이브 손님 덩어리가 1.3배 컸음 · 'face' = 다수결 + 마주 보는 사진
+    /* (2026-10-28) 'facing' — 사용자: "세그멘테이션은 2d로 영역이 나오니까, 정면으로 보는 사진 한 장이 머리 안밖 판정하면 될 거 같아" · "반대편 사진도 보이는 부분은 깊이판정에 참가"
+       그 자리를 가장 정면으로 마주 보는 사진(가림 없이 보는 사진 중) 한 장이 안·밖을 정함(머리 영역 또는 여유 안 = 안) · 다른 사진(카메라 반대편이라도 두개골·목·몸통에 안 가리면)은
+       여유(1·1.5cm) 넘게 확실히 밖일 때만 거부 = 깊이를 깎음. 다수결 없음. 정면 사진이 얼굴 앞에서 "머리"라고 하면 그대로 머리(frontTrust). 되돌리기 REGROW.hullRule='front' */
+    hullRule: 'facing',  // (2026-10-11h) 사용자: "다수결방식에 정면을 참고하는 걸로" — 'front' = 다수결 + 정면이 1cm 넘게 밖이면 머리 아님 ·    // (2026-10-11g) 'tol' = 여유 둔 교집합: 그 자리를 보는 사진 중 하나라도 머리 영역에서 여유(정면 1 · 옆·뒤 1.5cm) 넘게 밖이면 머리 아님 — 예전 다수결은 2:2 동점도 머리로 쳐서 웨이브 손님 덩어리가 1.3배 컸음 · 'face' = 다수결 + 마주 보는 사진
     hullViews: ['front', 'left', 'right', 'back'], hullMarginCm: 1.0, hullMarginSideCm: 1.5, hullMissMax: 2 /* (2026-10-24b) 걷기 여유는 예전대로 — 0.3·0.4로 줄이면 사진끼리 조금 어긋난 자리에서 가닥이 끊김(디버그 파일: 일찍 멈출 가닥 중 다시 머리 영역으로 들어오던 가닥 직모 8~24% · 실제 58% · 곱슬 22%). 대신 다 걸은 뒤 머리 영역 밖으로 나간 끝만 자름(아래 trimTail) */, hullFacing: true, hullCellPx: 3,
     /* (2026-10-27h) 마주 보는 옆·뒤 사진이 "여유 밖"이면 머리 아님 — 사용자: "앞머리가 내려오는데, 안면제한하지 말고 원인 살펴봐줘"
        디버그 1246(웨이브): 앞 섹션 가닥이 이마 옆에서 곧게 내려와 볼 앞(z≈0.4)을 지남. 그 자리를 정면 사진은 "머리"(사진 면에서는 얼굴 옆 커튼 머리가 그 시선 위에 있음),
@@ -2112,12 +2115,13 @@ var REGROW = (function () {
       var fa = Es.a * 0.78, fb = Es.b * 0.7, fc = Es.c * 0.75, cx0 = 0, cy0 = CY - 0.3 * Es.b, cz0 = Es.c * 0.45;
       var R = cam.R, dx = R[6], dy = R[7], dz = R[8], x = p.x - cx0, y = p.y - cy0, z = p.z - cz0;
       var A = dx * dx / (fa * fa) + dy * dy / (fb * fb) + dz * dz / (fc * fc), B = 2 * (x * dx / (fa * fa) + y * dy / (fb * fb) + z * dz / (fc * fc)), C = x * x / (fa * fa) + y * y / (fb * fb) + z * z / (fc * fc) - 1;
-      if (C < 0) return true; var D = B * B - 4 * A * C; if (D <= 0) return false; return (-B + Math.sqrt(D)) / (2 * A) > 1e-4 && (-B - Math.sqrt(D)) / (2 * A) > -1e-4;
+      if (C < 0) return G.faceInsideBlocks === true;   // (2026-10-28) 얼굴 어림 타원 안 = 실제 얼굴 바로 앞일 수 있음(어림이 얼굴보다 1~2cm 큼) → 그 사진이 보는 걸로(예전: 막힘 — 정면이 "얼굴"이라고 해도 무시돼 이마 앞 가닥이 통과) · 되돌리기 REGROW.faceInsideBlocks=true
+      var D = B * B - 4 * A * C; if (D <= 0) return false; return (-B + Math.sqrt(D)) / (2 * A) > 1e-4 && (-B - Math.sqrt(D)) / (2 * A) > -1e-4;
     }
     function hullVisOn() { return G.hullVis !== false && !!visBodyInit(); }
     function voteRaw(p) {
       var hvOnC = hullVisOn();
-      var yes = 0, no = 0, i, cam, o, bf = -2, bOut = false, farNo = 0, frontOut = false, frontSays = -1, frontFc = -2, faceOut = false;
+      var yes = 0, no = 0, i, cam, o, bf = -2, bOut = false, farNo = 0, frontOut = false, frontSays = -1, frontFc = -2, faceOut = false, J = G.hullRule === 'facing' ? [] : null;
       var frx = p.x / Es.a, fry = (p.y - CY) / Es.b, frz = p.z / Es.c, frl = Math.sqrt(frx * frx + fry * fry + frz * frz) || 1;   // 이 자리의 바깥 방향(두피 타원 기준)
       for (i = 0; i < cams.length; i++) {
         cam = cams[i]; o = proj(cam, p);
@@ -2133,6 +2137,7 @@ var REGROW = (function () {
         if (cam.angle === 'front' && o.z >= 0) { frontSays = isHair ? 1 : 0; frontFc = (cam.R[6] * frx + cam.R[7] * fry + cam.R[8] * frz) / frl; }
         var pAt = isHair ? null : personAt(cam, o.ix, o.iy);
         if (pAt === true && (camBlocked(cam, p) || faceBlocks(cam, p))) { hpSkip++; continue; }   // (27k) 몸·살이 보이는데 그 시선이 막힘 = 못 봄
+        if (J) { J.push({ h: isHair, out: !isHair && !!cam.hull && hullOut(cam, o.ix, o.iy), fc: (cam.R[6] * frx + cam.R[7] * fry + cam.R[8] * frz) / frl }); }   // (2026-10-28) 'facing'
         if (isHair) yes++; else { no++; if (cam.hull && hullOut(cam, o.ix, o.iy)) { farNo++; if (cam.angle === 'front') frontOut = true;
           if (pAt === false) hpBg++; else if (pAt === true) hpBody++;
           if (cam.angle !== 'front' && p.y < yBody && hvOnC && G.hullDeepOut !== false && (pAt === false || o.z >= 0)) faceOut = true;   // (2026-10-27i) 목 아래 — 가리지 않은 사진이 여유 밖이면 머리 아님(깊이) · (27j) 카메라 쪽 절반만: 건너편(어깨 앞을 반대쪽 옆 사진이 보는 자리)은 턱·어깨에 가려도 모델에 없어서 맨살·옷으로 읽힘 — 디버그 1306 어깨 앞 빔 44.8%
@@ -2141,6 +2146,14 @@ var REGROW = (function () {
           if (G.hullFacing) { var fc = (cam.R[6] * frx + cam.R[7] * fry + cam.R[8] * frz) / frl; if (fc > bf) { bf = fc; bOut = !isHair && hullOut(cam, o.ix, o.iy); } }
           else if (!isHair && o.z >= 0 && hullOut(cam, o.ix, o.iy)) { hullN++; return 0; }
         }
+      }
+      if (J) {                                                              // (2026-10-28) 마주 보는 사진 한 장 + 확실히 밖이면 거부
+        if (!J.length) return -1;
+        if (G.frontTrust !== false && frontSays === 1 && frontFc >= (G.frontTrustFc || 0.5) && p.z > 0) return 1;
+        var bj = J[0], jj; for (jj = 1; jj < J.length; jj++) if (J[jj].fc > bj.fc) bj = J[jj];
+        if (bj.out) { hullN++; return 0; }                                  // 마주 보는 사진이 여유 넘게 밖
+        for (jj = 0; jj < J.length; jj++) if (J[jj].out) { hullN++; G._facingVeto = (G._facingVeto || 0) + 1; return 0; }   // 다른 사진이 확실히 밖 = 깊이 깎음
+        return 1;                                                           // 마주 보는 사진이 머리(또는 여유 안)
       }
       if (G.hullRule === 'front') { if (yes + no === 0) return -1; if (frontOut || faceOut) { hullN++; return 0; } return yes >= no ? 1 : 0; }   // (2026-10-11h) 다수결 + 정면 참고(정면이 1cm 넘게 밖이면 머리 아님)
       if (G.hullRule === 'tol') { if (yes + no === 0) return -1; if (farNo) { hullN++; return 0; } return yes > 0 ? 1 : 0; }   // (2026-10-11g) 여유 둔 교집합
@@ -2160,7 +2173,7 @@ var REGROW = (function () {
       try {
         var t0v = now(), cmV = (typeof modelCmPerUnit === 'function' && modelCmPerUnit()) || 16.4, h = G.volCellCm / cmV;
         var x0 = -2.4 * Es.a, x1 = 2.4 * Es.a, z0 = -2.4 * Es.c, z1 = 2.4 * Es.c, y1 = CY + 1.4 * Es.b, y0 = Math.min(CY - 1.2 * Es.b, yTop - 75 / cmV);
-        var nx = Math.ceil((x1 - x0) / h), ny = Math.ceil((y1 - y0) / h), nz = Math.ceil((z1 - z0) / h), A = new Int8Array(nx * ny * nz), i, j, k, idx = 0, inN = 0;
+        var nx = Math.ceil((x1 - x0) / h), ny = Math.ceil((y1 - y0) / h), nz = Math.ceil((z1 - z0) / h), A = new Int8Array(nx * ny * nz), i, j, k, idx = 0, inN = 0; G._facingVeto = 0;
         for (j = 0; j < ny; j++) for (k = 0; k < nz; k++) for (i = 0; i < nx; i++) {
           var v = voteRaw({ x: x0 + (i + 0.5) * h, y: y0 + (j + 0.5) * h, z: z0 + (k + 0.5) * h });
           A[(j * nz + k) * nx + i] = v; if (v === 1) inN++;
@@ -4053,6 +4066,7 @@ function helixMeasure(rgba,mask,W,H,angle,coh,opt){opt=opt||{};const n=opt.n||25
     L.push('  누운 머리 길이(짧은 머리 · 두께×' + G.liftK + '에서 끝): ' + (G.onScalpLen ? (s.isLong ? '긴 머리라 안 씀' : '끝낸 가닥 ' + (s.lenThick || 0) + '개 (끄기 REGROW.onScalpLen=false)') : '꺼짐'));
     L.push('  두피 밖 3D 방향(사진 두 장 이상의 결로 깊이까지): ' + (G.tri3D ? '켜짐 — 그렇게 정한 걸음 ' + (s.triN || 0) + '회 (끄기 REGROW.tri3D=false)' : '꺼짐'));
     L.push('  두피 밖 결 = 사진 평면 풀이(한 장: 사진 결 + 깊이는 직전 방향·중력 ' + (+G.lsDownK || 0) + ' 섞음 · 두 장 이상: 평면 교선 · 반지름 방향 막지 않음): ' + (G.lsFree ? '켜짐 — 그렇게 정한 걸음 ' + (s.lsN || 0) + '회 (끄기 ?lsfree=0)' : '꺼짐(예전: 원통 접선으로 올림)'));
+    L.push('  머리 영역 판정: ' + (G.hullRule === 'facing' ? '마주 보는 사진 한 장이 안·밖 + 다른 사진(가리지 않은 반대편 포함)은 여유 넘게 밖일 때만 거부 — 덩어리 칸 중 다른 사진이 거부한 칸 ' + (G._facingVeto || 0) + ' (되돌리기 REGROW.hullRule=\'front\')' : G.hullRule) + ' · 얼굴 어림 안쪽 점 ' + (G.faceInsideBlocks === true ? '가림으로 봄' : '보이는 걸로 봄'));   // (2026-10-28)
     L.push('  껍질(사진 교집합): ' + (s.hullV ? s.hullV + ' 중 그 자리를 마주 보는 사진이 머리 영역에서 ' + G.hullMarginCm + '(정면)·' + G.hullMarginSideCm + '(옆·뒤)cm 넘게 밖이라 덩어리 밖인 걸음(덩어리를 쓰면 다른 이유로 밖인 것도 포함) ' + (s.hullN || 0) + '회 — 다른 사진이 머리라고 해도 멈춤 (예전: 다수결 · 끄기 REGROW.hullViews=[])' : '안 씀(다수결)'));
     try { var hv = G.hullVisStat; L.push('  머리 영역 판정의 가림(목·몸통 기둥): ' + (hv && hv.on ? '켜짐 — 덩어리 칸 판정에서 기둥·두개골에 가려 뺀 사진 ' + hv.blk + ' · 목 아래 카메라 반대편인데 안 가려서 쓴 사진 ' + hv.use + '(예전엔 다 뺌) (끄기 ?hullvis=0)' + ' · 사람 윤곽 ' + (G.hullPerson === false ? '꺼짐' : hv.pmViews + '장 — 여유 밖 판정 중 배경 ' + hv.bg + ' · 몸·살(안 막힘) ' + hv.body + ' · 몸·살인데 막혀서 못 봄으로 뺀 ' + hv.skip + ' (끄기 REGROW.hullPerson=false)') : (G.hullVis === false ? '꺼짐(예전: 목 아래 반대편 사진은 다 뺌)' : '목 치수 없음 — 예전 규칙'))); } catch (e) {}
     L.push('  직모 뼈대(곱슬 사진 · 큰 흐름만 따라 기름 · 컬은 그 위에 얹음): ' + (s.straight ? '켜짐 — ' + s.straight + ' (끄기 REGROW.straightCurly=false)' : '안 씀'));

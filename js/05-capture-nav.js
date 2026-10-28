@@ -295,6 +295,7 @@ var PHOTO_CHANGE = (function () {
   /* navTo(05) 맨 앞에서 부름 — 사진이 바뀌었으면 비우고, 조정·3D로 바로 가면 다시 분석 */
   P._beforeNav = async function (screen) {
     var needPrep = false;
+    if (screen !== 'capture' && W.PREP_EARLY && W.PREP_EARLY.p) { try { await W.PREP_EARLY.p; } catch (e) {} }   // (2026-10-28) 미리 시작한 분석이 끝날 때까지
     try {
       if (P.on && screen !== 'capture') {
         var now = sigs(), ch = changed(now), any = angles().some(function (a) { return now[a]; });
@@ -324,6 +325,29 @@ var PHOTO_CHANGE = (function () {
   return P;
 })();
 
+/* (2026-10-28) PREP_EARLY — 360 촬영을 끝내자마자 사진 분석을 시작(다음 화면으로 넘어갈 때까지 기다리지 않음)
+   사용자: "사진 찍고 나서 하는 가닥맞춤·사진맞춤을 12장 다 골라낸 뒤에 뒤쪽에서 바로 시작할 수 있지 않나"
+   [끝내기] → 4장 슬롯에 넣음(SHOT360.applySet) → 바로 PHOTO_CHANGE 확인(사진 지문 기록) + runStyleAnalysisPipeline(4장 + 360 추가 사진)
+   스타일 화면으로 넘어갈 때는 진행 중인 분석을 기다렸다가 씀(두 번 돌지 않음). 끄기 PREP_EARLY.on=false */
+var PREP_EARLY = (function(){
+  var P = Object.assign({ on: true, p: null, n: 0, ms: 0 }, window.PREP_EARLY || {});
+  P.start = function(why){
+    if(!P.on || P.p) return P.p;
+    var t0 = performance.now();
+    P.p = (async function(){
+      try{
+        await PHOTO_CHANGE._beforeNav('style');          // 사진 지문을 지금 남김(넘어갈 때 다시 비우지 않게) · 'style'이라 여기서는 분석 안 돌림
+        if(!stylePrepDone) await runStyleAnalysisPipeline();
+        P.n++; P.ms = Math.round(performance.now() - t0);
+        console.log('[미리 분석] ' + (why || '') + ' 끝내자마자 사진 분석 — ' + P.ms + 'ms');
+      }catch(e){ console.warn('[미리 분석] 실패 — 넘어갈 때 다시 합니다', e); }
+    })();
+    var pp = P.p; pp.then(function(){ if(P.p === pp) P.p = null; });
+    return pp;
+  };
+  return P;
+})();
+
 async function navTo(name){
   ORIG_MQ._navBegin();   // (옛 58) 옮기기 시작할 때 원본을 보던 중이었는지(17b) — 끝나면 비움
   try{
@@ -333,6 +357,7 @@ async function navTo(name){
   if(name==='result') name = 'model3d';
   if(name==='style'){
     unlockTab('style');
+    if(!stylePrepDone && PREP_EARLY.p){ try{ await PREP_EARLY.p; }catch(e){} }   // (2026-10-28) 미리 시작한 분석
     if(!stylePrepDone){ await runStyleAnalysisPipeline(); }
   }
   if(name==='capture'){ stopVoice(); }
@@ -761,7 +786,7 @@ var SHOT360 = (function () {
     console.log(TAG + ' 완료 — ' + frames.length + '장 · 좌우 부호 ' + s + (set.signAuto ? '(얼굴 각도로 자동 · 표 ' + signN + '회 · 합 ' + Math.round(signVote) + ')' : userFlip ? '(직접 바꿈)' : '(기본값 — 얼굴 각도를 못 읽음)') +
       ' · 각도 ' + frames.map(function (f) { return Math.round(f.deg); }).join(','));
     close();
-    Q.applySet(set).then(function (ok) { if (ok) Q.saveSet(set).then(refreshRow, refreshRow); });
+    Q.applySet(set).then(function (ok) { if (ok) { Q.saveSet(set).then(refreshRow, refreshRow); try { if (W.PREP_EARLY) W.PREP_EARLY.start('360 촬영'); } catch (e) {} } });   // (2026-10-28) 바로 분석 시작
   }
   function stopCam() { try { if (stream) stream.getTracks().forEach(function (t) { t.onended = null; t.stop(); }); } catch (e) {} stream = null; }
 

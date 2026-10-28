@@ -251,37 +251,44 @@ var READ_STEPS = (function () {
   }
   S._tipFixField = tipFixField;   // 시험용(콘솔·하네스)
   /* 04 GABOR_ORIENT.refine 뒤에 끼움 */
+  function orientMark(key, ms) { try { if (W.ANALYSIS_TIME && W.ANALYSIS_TIME._cur) W.ANALYSIS_TIME.mark(W.ANALYSIS_TIME._cur, key, ms); } catch (e) {} }   // (2026-10-28) 03b 결 읽기 안쪽 단계
   function install04() {
     var GO = W.GABOR_ORIENT; if (!GO || GO._rsWrapped) return !!GO;
     var orig = GO.refine;
     GO.refine = function (f, px, mask, Wd, Hd) {
       var stA = null, stC = null, cmp = null;
       try { if (S.on && f && f.angle && mask) { stA = new Float32Array(f.angle); stC = new Float32Array(f.coherence); } } catch (e) {}   // 들어올 때 = 구조텐서
-      var r = orig.apply(this, arguments);
+      /* (2026-10-28) 결 고르기(mix) 결과로 모양을 잴 거면 04 방향필터 쪽 모양 재기는 건너뜀(어차피 덮임) · 실패하면 아래에서 다시 잼 */
+      GO.deferShape = !!(stA && S.orient === 'mix' && px && S.oneShape !== false); if (GO.deferShape) GO.last = null;
+      var r; try { r = orig.apply(this, arguments); } finally { var deferred = GO.deferShape; GO.deferShape = false; }
       if (stA) {
         try {
           var ok = GO.lastWH && GO.lastWH[0] === Wd && GO.lastWH[1] === Hd, gbA = ok ? GO.lastAng : null, gbC = ok ? GO.lastConf : null, shGB = GO.last && GO.last.shape;
           cmp = compareBoth(stA, stC, gbA, gbC, mask, Wd, Hd, shGB);
           if (S.orient === 'st') { f.angle.set(stA); GO.last = { w: Wd, h: Hd, shape: cmp._shST, by: 'structure-tensor' }; }   // 다시 기르기·컬 재기에는 구조텐서
           if (S.orient === 'mix' && px) {                                   // 자리마다 사진에 가장 맞는 결
-            var mx = mixField(px, mask, Wd, Hd, stA, gbA);
+            var _tMx = performance.now(), mx = mixField(px, mask, Wd, Hd, stA, gbA); orientMark('o_mix', performance.now() - _tMx);
             f.angle.set(mx.angle); cmp.mix = mx.stats;
+            var _tSh = performance.now();
             try { var shM = shapeOf(mx.angle, mask, Wd, Hd, 6); GO.last = { w: Wd, h: Hd, shape: shM, by: 'mix' }; cmp.shapeMix = shapeSum(shM); } catch (e) {}
+            orientMark('o_shape', performance.now() - _tSh);
           }
           if (S.keepSnap) { var w2 = Math.ceil(Wd / 2), h2 = Math.ceil(Hd / 2); cmp.snap = { w: w2, h: h2, angST: q8a(stA, 0, Wd, Hd, w2, h2), cohST: q8c(stC, Wd, Hd, w2, h2), angGB: gbA ? q8a(gbA, 0, Wd, Hd, w2, h2) : null, cohGB: gbC ? q8c(gbC, Wd, Hd, w2, h2) : null }; }
           delete cmp._shST;
         } catch (e) { cmp = { err: String(e && e.message || e) }; }
       }
+      if (deferred && !(GO.last && GO.last.shape)) { try { GO.last = { w: Wd, h: Hd, shape: shapeOf(f.angle, mask, Wd, Hd, 6), by: 'fallback' }; } catch (e) { GO.last = null; } }   // (2026-10-28) mix가 실패했으면 지금 결로
       if (!S.on || !f || !f.angle || !mask) return r;
       var view = S._view || ('?' + Wd + 'x' + Hd); S._view = null;
       try {
         var N = Wd * Hd, i, raw = null, rc = null;
         if (S.keepSnap) { raw = new Int8Array(N); rc = new Uint8Array(N); for (i = 0; i < N; i++) { raw[i] = Math.max(-127, Math.min(127, Math.round(f.angle[i] / (Math.PI / 2) * 127))); rc[i] = Math.max(0, Math.min(255, Math.round(f.coherence[i] * 255))); } }
+        var _tSt = performance.now();
         var eg = null; if (S.edgeFix) { try { eg = edgeClear(f.angle, f.coherence, mask, Wd, Hd); } catch (e2) { eg = { err: String(e2 && e2.message || e2) }; } }
         var tf = null, tfEst = new Uint8Array(N); if (S.tipFix) { try { tf = tipFixField(f.angle, f.coherence, mask, Wd, Hd, tfEst); } catch (e3) { tf = { err: String(e3 && e3.message || e3) }; } }
         var o = bridgeFill(f.angle, f.coherence, mask, Wd, Hd); o.stats.edge = eg; o.stats.tip = tf;
         if (tf && !tf.err) for (i = 0; i < N; i++) if (tfEst[i] && !o.est[i]) o.est[i] = 3;
-        f.est = o.est;
+        f.est = o.est; orientMark('o_steps', performance.now() - _tSt);
         S.byView[view] = { w: Wd, h: Hd, raw: raw, coh: rc, est: o.est, stats: o.stats, cmp: cmp, at: Date.now() };
         var s = o.stats;
         console.log(TAG + ' ' + view + ' ' + Wd + '×' + Hd + (s.edge && !s.edge.err ? ' · 경계 결 뺌 ' + s.edge.n + '/' + s.edge.near + '칸(경계 ' + s.edge.band + 'px 안)' : '') + ' · 건넘 ' + pct(s.bridged, s.hair) + ' · 채움 ' + pct(s.filled, s.hair) + (s.tip && !s.tip.err ? ' · 끝 경계 결 이어 감 ' + s.tip.n + '/' + s.tip.near + '칸(옆머리라 둠 ' + s.tip.side + ')' : '') + ' · 끊김 ' + s.breaks + '곳 중 이어져 건넌 ' + s.bridgedRuns + ' · 진짜 꺾임 ' + s.turns + ' · ' + s.ms + 'ms');
@@ -399,7 +406,7 @@ var READ_STEPS = (function () {
       var a = c.shapeST || {}, b = c.shapeGB || {};
       L.push('  ' + v + ' 구조텐서 vs 방향필터 — 결 방향 차이 중앙 ' + f1(c.dirDiffMed, 1) + '° / p90 ' + f1(c.dirDiffP90, 1) + '° · 15° 안 ' + f1(c.agree15 * 100, 0) + '%' +
         ' | 결 또렷함 평균 ' + f1(c.cohST) + ' vs ' + f1(c.cohGB) + ' (0.6↑ ' + f1(c.cohHiST * 100, 0) + '% vs ' + f1(c.cohHiGB * 100, 0) + '%)' +
-        ' | 곧은 선 ' + f1(a.straightFrac * 100, 0) + '% vs ' + f1(b.straightFrac * 100, 0) + '% · 고리 ' + f1(a.loop) + ' vs ' + f1(b.loop) + ' · 파장 ' + f1(a.lamPx, 1) + ' vs ' + f1(b.lamPx, 1) + 'px · 진폭 ' + f1(a.ampPx, 1) + ' vs ' + f1(b.ampPx, 1) + 'px · 컬 수치 ' + f1(a.curlDegPx) + ' vs ' + f1(b.curlDegPx) + '°/px');
+        (S.cmpShape ? '' : ' | 모양 비교 끔(켜기 READ_STEPS.cmpShape=true)') + ' | 곧은 선 ' + f1(a.straightFrac * 100, 0) + '% vs ' + f1(b.straightFrac * 100, 0) + '% · 고리 ' + f1(a.loop) + ' vs ' + f1(b.loop) + ' · 파장 ' + f1(a.lamPx, 1) + ' vs ' + f1(b.lamPx, 1) + 'px · 진폭 ' + f1(a.ampPx, 1) + ' vs ' + f1(b.ampPx, 1) + 'px · 컬 수치 ' + f1(a.curlDegPx) + ' vs ' + f1(b.curlDegPx) + '°/px');
     });
     if (!Object.keys(S.byView).length) L.push('  아직 읽은 사진 없음(사진을 분석하면 찍힘)');
     try { L.push('  판정 단계: ' + (S.judge ? '켜짐(?judge=1 — 예전처럼 머리 전체 판정으로 그림)' : '꺼짐 — 읽은 대로 그리고 사진과 대조만(원본=마네킹+숫자 ' + (W.ORIG_MQ && W.ORIG_MQ.on ? '켬' : '끔') + ' · 머리 전체 컬 ' + (W.REGROW && W.REGROW.curl ? '켬' : '끔') + ' · 이웃 정렬 ' + (W.REGROW && W.REGROW.align ? '켬' : '끔') + ' · 짧은 머리 길이 규칙 ' + (W.REGROW && W.REGROW.onScalpLen ? '켬' : '끔') + ' · 사진 컬 ' + (W.PHOTO_CURL && W.PHOTO_CURL.on ? '켬' : '끔') + ' · 걷기 규칙(오르막·광택·뒤집기·얇은 자리·뿌리 고르게) ' + (W.REGROW && (W.REGROW.polDown || W.REGROW.glossSkip || W.REGROW.flipRule) ? '켬' : '끔') + ' · 윤곽 끝 자르기 ' + (S.trim || (W.REGROW && W.REGROW.trimTail) ? '켬' : '끔') + ' · 되돌리기 ?judge=1)')); } catch (e) {}
@@ -428,7 +435,7 @@ var READ_STEPS = (function () {
   var GOx = W.GABOR_ORIENT || { shapeStep: 10, shapeMaxLen: 260, shapeMinLen: 40 };
   // ↓ 04-structure-tensor.js shapeOf 그대로 사본(GO → GOx)
   function shapeOf(ang, mask, Wd, Hd, rr) {
-    var st = GOx.shapeStep, lines = [], x0, y0;
+    var st = GOx.shapeStep, lines = [], x0, y0, GWs = Math.ceil(Wd / st), seen = GOx.shapeSkipSeen !== false ? new Uint8Array(GWs * Math.ceil(Hd / st)) : null, minKeep = Math.max(8, GOx.shapeMinKeep | 0 || 8);   // (2026-10-28) seen: 이미 선이 지나간 칸(시작점 간격 st 크기 칸)
     function trace(x, y, sgn) {
       var P = [], pdx = 0, pdy = 0, k;
       for (k = 0; k < GOx.shapeMaxLen; k++) {
@@ -437,22 +444,22 @@ var READ_STEPS = (function () {
         var t = ang[id], dx = Math.cos(t), dy = Math.sin(t);
         if (k === 0) { dx *= sgn; dy *= sgn; } else if (dx * pdx + dy * pdy < 0) { dx = -dx; dy = -dy; }
         if (k > 0 && dx * pdx + dy * pdy < 0.5) break;                     // 한 걸음에 60° 넘게 꺾이면(잡음) 멈춤
-        P.push(x, y); x += dx; y += dy; pdx = dx; pdy = dy;
+        P.push(x, y); if (seen) seen[((yi / st) | 0) * GWs + ((xi / st) | 0)] = 1; x += dx; y += dy; pdx = dx; pdy = dy;
       }
       return P;
     }
     for (y0 = st; y0 < Hd - st; y0 += st) for (x0 = st; x0 < Wd - st; x0 += st) {
-      if (!mask[y0 * Wd + x0]) continue;
+      if (!mask[y0 * Wd + x0] || (seen && seen[((y0 / st) | 0) * GWs + ((x0 / st) | 0)])) continue;   // (2026-10-28) 앞 선이 이미 지나간 자리에서는 새로 긋지 않음(직모는 선이 거의 다 겹침)
       var a = trace(x0 + 0.5, y0 + 0.5, 1), b = trace(x0 + 0.5, y0 + 0.5, -1), P = [], i;
       for (i = b.length - 2; i >= 2; i -= 2) P.push(b[i], b[i + 1]);
       for (i = 0; i < a.length; i += 2) P.push(a[i], a[i + 1]);
-      var n = P.length / 2; if (n < GOx.shapeMinLen) continue;
+      var n = P.length / 2; if (n < minKeep) continue;   // (2026-10-28) 짧은 선도 버리지 않음 — 예전 GOx.shapeMinLen(40) 미만 버림 · 되돌리기 GABOR_ORIENT.shapeMinKeep=40
       // 굽은 각(4px 간격 방향 차)
       var th = [], j; for (j = 4; j < n; j += 2) th.push(Math.atan2(P[j * 2 + 1] - P[(j - 4) * 2 + 1], P[j * 2] - P[(j - 4) * 2]));
       var kap = []; for (j = 1; j < th.length; j++) { var dd = th[j] - th[j - 1]; while (dd > Math.PI) dd -= 2 * Math.PI; while (dd < -Math.PI) dd += 2 * Math.PI; kap.push(dd); }
       var sm = []; for (j = 0; j < kap.length; j++) { var s2 = 0, c2 = 0, q; for (q = Math.max(0, j - 2); q <= Math.min(kap.length - 1, j + 2); q++) { s2 += kap[q]; c2++; } sm.push(s2 / c2); }
       var sAbs = 0, sSig = 0, flips = 0, last = 0; for (j = 0; j < sm.length; j++) { sAbs += Math.abs(sm[j]); sSig += sm[j]; if (Math.abs(sm[j]) > 0.02) { var sg = sm[j] > 0 ? 1 : -1; if (last && sg !== last) flips++; last = sg; } }
-      var straight = sAbs < 0.6;
+      var straight = (n >= GOx.shapeMinLen ? sAbs : sAbs * 17 / Math.max(1, sm.length)) < 0.6;   // (2026-10-28) 짧은 선은 40걸음 선 길이로 환산해 곧은지 봄(짧으면 굽은 합이 작아 다 곧게 나오던 것)
       var curlDp = sm.length ? sAbs * 57.2958 / (sm.length * 2) : NaN;   // (34 추가) 컬 수치: 이 선이 1px당 굽는 각(°/px) — 두 방식을 같은 선 긋기로 비교
       var lam = flips > 0 ? 2 * n / flips : NaN;
       // 진폭: 파장 폭 이동 평균선에서 벗어난 거리
@@ -628,8 +635,11 @@ var READ_STEPS = (function () {
       if (gbA) { var dd = Math.abs(stA[i] - gbA[i]) % Math.PI; if (dd > Math.PI / 2) dd = Math.PI - dd; dd *= 57.2958; if ((i & 7) === 0) d.push(dd); if (dd <= 15) agree15++; }
     }
     d.sort(function (a, b) { return a - b; });
-    var shST = null, shGB2 = null; try { shST = shapeOf(stA, mask, Wd, Hd, 6); } catch (e) {}
-    try { if (gbA) shGB2 = shapeOf(gbA, mask, Wd, Hd, 6); } catch (e) {}   // 같은 사본 계산으로(컬 수치까지) — 04가 잰 값과 같은 계산
+    /* (2026-10-28) 두 방식 모양 비교는 진단 줄에만 쓰임 → 기본 끔(사진마다 모양 재기 2번 · 직모 단발 결 읽기 시간의 큰 몫). 구조텐서로 그리는 경우(orient 'st')만 그 모양을 잼. 켜기 READ_STEPS.cmpShape=true */
+    var shST = null, shGB2 = null, _tC = performance.now();
+    if (S.cmpShape || S.orient === 'st') try { shST = shapeOf(stA, mask, Wd, Hd, 6); } catch (e) {}
+    if (S.cmpShape) try { if (gbA) shGB2 = shapeOf(gbA, mask, Wd, Hd, 6); } catch (e) {}
+    if (shST || shGB2) orientMark('o_shape', performance.now() - _tC);   // 같은 사본 계산으로(컬 수치까지) — 04가 잰 값과 같은 계산
     return { n: n, dirDiffMed: d.length ? d[d.length >> 1] : NaN, dirDiffP90: d.length ? d[Math.floor(d.length * 0.9)] : NaN, agree15: n ? agree15 / n : NaN,
       cohST: n ? cS / n : NaN, cohGB: gbC && n ? cG / n : NaN, cohHiST: n ? hiS / n : NaN, cohHiGB: gbC && n ? hiG / n : NaN,
       shapeST: shapeSum(shST), shapeGB: shapeSum(shGB2 || shGB), _shST: shST };

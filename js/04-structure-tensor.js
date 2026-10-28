@@ -219,7 +219,10 @@ function maskBoxCount(maskBuf, w, h, r){
       out[y*w+x] = I[(y1+1)*W1 + x1+1] - I[y0*W1 + x1+1] - I[(y1+1)*W1 + x0] + I[y0*W1 + x0]; } }
   return out;
 }
+/* (2026-10-28) 결 읽기 안쪽 단계 시간 — 03b ANALYSIS_TIME._cur 사진에 적음(진단 "결 읽기 안쪽" 줄) */
+function _orientMark(key, ms){ try{ if(typeof ANALYSIS_TIME !== 'undefined' && ANALYSIS_TIME._cur) ANALYSIS_TIME.mark(ANALYSIS_TIME._cur, key, ms); }catch(e){} }
 function computeHairOrientationField(pixels, maskBuf, w, h){
+  const _tST = performance.now();
   toGrayscale(pixels, w, h);   // (옛 64) 영역 다시 찾기가 원래 사진을 기억하게
   const gray = new Float32Array(w*h);
   for(let i=0;i<w*h;i++){ const pi=i*4; gray[i] = 0.299*pixels[pi] + 0.587*pixels[pi+1] + 0.114*pixels[pi+2]; }
@@ -283,9 +286,10 @@ function computeHairOrientationField(pixels, maskBuf, w, h){
 
   // (옛 66 2026-10-11b) 방향을 가는 선 필터(가버 묶음)로 다시 읽음 — 아래 GABOR_ORIENT
   const f = {angle, coherence};
+  _orientMark('o_st', performance.now() - _tST);
   GABOR_ORIENT.refine(f, pixels, maskBuf, w, h);
   // (옛 42) 컬 곡률·진폭·타래 조각·나선을 재 둠 — measureViewHairIdentity(03a)가 붙임
-  if(typeof REGROW !== 'undefined') REGROW._afterOrientField(f, pixels, maskBuf, w, h);
+  { const _tC = performance.now(); if(typeof REGROW !== 'undefined') REGROW._afterOrientField(f, pixels, maskBuf, w, h); _orientMark('o_curl', performance.now() - _tC); }
   return f;
 }
 /* GABOR_ORIENT (옛 66-gabor-orient.js) — 결 읽기를 방향 필터(가버 묶음)로 (2026-10-11b)
@@ -348,8 +352,10 @@ var GABOR_ORIENT = (function () {
    *  선마다: 굽는 방향이 번갈아 바뀌면 S자(웨이브), 한쪽으로만 계속 굽으면 고리(컬). 고리 정도 = |굽은 각의 합| ÷ 굽은 각 크기의 합(0 = S자 · 1 = 고리)
    *  파장 = 선 길이 × 2 ÷ 굽는 방향이 바뀐 횟수 · 진폭 = 선이 제 평균선(파장 폭)에서 벗어난 거리의 90% 값 ÷ 0.988   (사진 px) */
   GO.shapeStep = 10; GO.shapeMaxLen = 260; GO.shapeMinLen = 40;
+  /* (2026-10-28) 사용자: "짧은 선도 버리지 않도록" — 8걸음 이상이면 모양 통계에 넣음(40 미만은 곧은지 판정만 40걸음 기준으로 환산) · 이미 지나간 칸에서 새 선 안 그음(시간) */
+  if (GO.shapeMinKeep == null) GO.shapeMinKeep = 8; if (GO.shapeSkipSeen == null) GO.shapeSkipSeen = true;
   function shapeOf(ang, mask, Wd, Hd, rr) {
-    var st = GO.shapeStep, lines = [], x0, y0;
+    var st = GO.shapeStep, lines = [], x0, y0, GWs = Math.ceil(Wd / st), seen = GO.shapeSkipSeen !== false ? new Uint8Array(GWs * Math.ceil(Hd / st)) : null, minKeep = Math.max(8, GO.shapeMinKeep | 0 || 8);   // (2026-10-28) seen: 이미 선이 지나간 칸(시작점 간격 st 크기 칸)
     function trace(x, y, sgn) {
       var P = [], pdx = 0, pdy = 0, k;
       for (k = 0; k < GO.shapeMaxLen; k++) {
@@ -358,22 +364,22 @@ var GABOR_ORIENT = (function () {
         var t = ang[id], dx = Math.cos(t), dy = Math.sin(t);
         if (k === 0) { dx *= sgn; dy *= sgn; } else if (dx * pdx + dy * pdy < 0) { dx = -dx; dy = -dy; }
         if (k > 0 && dx * pdx + dy * pdy < 0.5) break;                     // 한 걸음에 60° 넘게 꺾이면(잡음) 멈춤
-        P.push(x, y); x += dx; y += dy; pdx = dx; pdy = dy;
+        P.push(x, y); if (seen) seen[((yi / st) | 0) * GWs + ((xi / st) | 0)] = 1; x += dx; y += dy; pdx = dx; pdy = dy;
       }
       return P;
     }
     for (y0 = st; y0 < Hd - st; y0 += st) for (x0 = st; x0 < Wd - st; x0 += st) {
-      if (!mask[y0 * Wd + x0]) continue;
+      if (!mask[y0 * Wd + x0] || (seen && seen[((y0 / st) | 0) * GWs + ((x0 / st) | 0)])) continue;   // (2026-10-28) 앞 선이 이미 지나간 자리에서는 새로 긋지 않음(직모는 선이 거의 다 겹침)
       var a = trace(x0 + 0.5, y0 + 0.5, 1), b = trace(x0 + 0.5, y0 + 0.5, -1), P = [], i;
       for (i = b.length - 2; i >= 2; i -= 2) P.push(b[i], b[i + 1]);
       for (i = 0; i < a.length; i += 2) P.push(a[i], a[i + 1]);
-      var n = P.length / 2; if (n < GO.shapeMinLen) continue;
+      var n = P.length / 2; if (n < minKeep) continue;   // (2026-10-28) 짧은 선도 버리지 않음 — 예전 GO.shapeMinLen(40) 미만 버림 · 되돌리기 GABOR_ORIENT.shapeMinKeep=40
       // 굽은 각(4px 간격 방향 차)
       var th = [], j; for (j = 4; j < n; j += 2) th.push(Math.atan2(P[j * 2 + 1] - P[(j - 4) * 2 + 1], P[j * 2] - P[(j - 4) * 2]));
       var kap = []; for (j = 1; j < th.length; j++) { var dd = th[j] - th[j - 1]; while (dd > Math.PI) dd -= 2 * Math.PI; while (dd < -Math.PI) dd += 2 * Math.PI; kap.push(dd); }
       var sm = []; for (j = 0; j < kap.length; j++) { var s2 = 0, c2 = 0, q; for (q = Math.max(0, j - 2); q <= Math.min(kap.length - 1, j + 2); q++) { s2 += kap[q]; c2++; } sm.push(s2 / c2); }
       var sAbs = 0, sSig = 0, flips = 0, last = 0; for (j = 0; j < sm.length; j++) { sAbs += Math.abs(sm[j]); sSig += sm[j]; if (Math.abs(sm[j]) > 0.02) { var sg = sm[j] > 0 ? 1 : -1; if (last && sg !== last) flips++; last = sg; } }
-      var straight = sAbs < 0.6;
+      var straight = (n >= GO.shapeMinLen ? sAbs : sAbs * 17 / Math.max(1, sm.length)) < 0.6;   // (2026-10-28) 짧은 선은 40걸음 선 길이로 환산해 곧은지 봄(짧으면 굽은 합이 작아 다 곧게 나오던 것)
       var lam = flips > 0 ? 2 * n / flips : NaN;
       // 진폭: 파장 폭 이동 평균선에서 벗어난 거리
       var amp = NaN; if (isFinite(lam) && lam > 6 && lam < n) { var hw = Math.max(2, Math.round(lam / 2)), devs = []; for (j = hw; j < n - hw; j += 2) { var mx = 0, my = 0, c3 = 0, q2; for (q2 = j - hw; q2 <= j + hw; q2++) { mx += P[q2 * 2]; my += P[q2 * 2 + 1]; c3++; } devs.push(Math.hypot(P[j * 2] - mx / c3, P[j * 2 + 1] - my / c3)); } devs.sort(function (u, v) { return u - v; }); if (devs.length) amp = devs[Math.min(devs.length - 1, Math.floor(devs.length * 0.9))] / 0.988; }   // 90%(사인의 꼭대기 근처) — 뿌리 쪽 곧은 구간에 끌려 작게 재지 않게
@@ -428,7 +434,10 @@ var GABOR_ORIENT = (function () {
         C2 = blur(C2, Wd, Hd, GO.lambda * 0.6); S2 = blur(S2, Wd, Hd, GO.lambda * 0.6);
         for (idx = 0; idx < N; idx++) if (mask[idx]) { if (sd > 1 && C2[idx] === 0 && S2[idx] === 0) { ang[idx] = f.angle[idx]; } else ang[idx] = 0.5 * Math.atan2(S2[idx], C2[idx]); }   // 둘레에 계산한 자리가 하나도 없으면(가장자리 한 줄) 예전 방식 값
       }
-      try { GO.last = { w: Wd, h: Hd, shape: shapeOf(ang, mask, Wd, Hd, r) }; } catch (e2) { GO.last = null; }
+      /* (2026-10-28) 34(결 읽기 단계)가 결 고르기 결과로 모양을 다시 재면 여기 값은 덮여 버림 → 그때는 안 잼(GO.deferShape · 34가 켬) */
+      var _tGB = performance.now() - t0;
+      if (!GO.deferShape) { var _tSh = performance.now(); try { GO.last = { w: Wd, h: Hd, shape: shapeOf(ang, mask, Wd, Hd, r) }; } catch (e2) { GO.last = null; } _orientMark('o_shape', performance.now() - _tSh); }
+      _orientMark('o_gb', _tGB);
       GO.lastAng = ang; GO.lastConf = conf; GO.lastWH = [Wd, Hd];   // (2026-10-21) 34 결 읽기 단계가 구조텐서와 나란히 기록하려고 꺼내 둠(방향필터 방향 · 필터 반응 대비 = 방향필터의 결 또렷함)
       var A = f.angle, diffs = [];
       for (idx = 0; idx < N; idx++) {

@@ -1526,6 +1526,7 @@ const FACE_Z_FIX = { matchBaseline: true, trustWeighted: true };
 /* (2026-10-27) 360 옆얼굴 윤곽으로 정중선 깊이 — buildRealFaceMeshBase의 prof360Map 주석 참고.
    sigmaCm: 정중선 보정을 좌우로 퍼뜨리는 폭 · minScore: 옆모습 점수(13b profileOf) 하한 · pairFrac: 두 번째 사진도 쓸 점수 비 */
 var FACE_PROFILE360 = (typeof window !== 'undefined' && window.FACE_PROFILE360) || { on: true, sigmaCm: 1.8, minScore: 0.03, pairFrac: 0.7 };
+if (FACE_PROFILE360.maxCm == null) FACE_PROFILE360.maxCm = 1.5;   // (2026-10-28) 한 점 보정 상한 — 넘으면 그 옆 사진 안 씀
 /* ── 측면 깊이 가중치 (2026-09-07) ────────────────────────────────────────
    사용자: "3D 결과보기에서 미간이 함몰돼 굴곡이 졌다."
    자리가 여기다. 예전 주석은 이렇게 적혀 있었다 —
@@ -2157,7 +2158,8 @@ async function buildRealFaceMeshBase(faceMetrics){
     if(!use.length){ FACE_BUILD.prof360 = { why: '옆모습답지 않음(점수 ' + best.toFixed(3) + ' < ' + P.minScore + ')' }; return null; }
     const MID = [10,151,9,8,168,6,197,195,5,4,1,19,94,2,164,0,11,12,13,14,15,16,17,18,200,199,175,152];
     const cur = MID.map(zTermsNoP360);
-    const views = [];
+    const views = [], capped = [];
+    let cmU0 = 16.4; try{ const r0 = faceRulerCmPerUnit(faceMetrics); if(r0 && r0.x > 1) cmU0 = r0.x; }catch(e){}
     use.forEach(q => {
       const pr = q.prof;
       let k = (chinF - topF) / Math.max(1e-6, (pr.chin - pr.top) * pr.ky), kSrc = '정수리·턱';
@@ -2177,10 +2179,13 @@ async function buildRealFaceMeshBase(faceMetrics){
       if(off.length < 8) return;
       off.sort((a, b) => a - b);
       const o = off[off.length >> 1];
+      /* (2026-10-28) 한 점 보정이 maxCm(1.5cm)를 넘으면 그 사진은 옆모습이 아님(3/4 각도 — 윤곽 앞선이 코가 아니라 뺨) → 안 씀.
+         디버그 1002: v89(얼굴 -33°)로 코끝 -2.44cm. 되돌리기 FACE_PROFILE360.maxCm=0 */
+      if(P.maxCm > 0){ let mx = 0; zs.forEach((z, j) => { if(z === z) mx = Math.max(mx, Math.abs(z + o - cur[j].z)); }); if(mx * cmU0 > P.maxCm){ capped.push(q.key + ' ' + (mx * cmU0).toFixed(1) + 'cm'); return; } }
       views.push({ key: q.key, kSrc, k, zs: zs.map(z => z === z ? z + o : NaN) });
     });
-    if(!views.length){ FACE_BUILD.prof360 = { why: '옆 사진 줄을 정면에 못 맞춤(배율 범위 밖·앞머리)' }; return null; }
-    let cmU = 16.4; try{ const r = faceRulerCmPerUnit(faceMetrics); if(r && r.x > 1) cmU = r.x; }catch(e){}
+    if(!views.length){ FACE_BUILD.prof360 = { why: capped.length ? '보정이 ' + P.maxCm + 'cm 넘어 안 씀(옆모습 아님) — ' + capped.join(' · ') : '옆 사진 줄을 정면에 못 맞춤(배율 범위 밖·앞머리)' }; return null; }
+    let cmU = cmU0;
     const lim = 0.6 * ELL_C, samp = [];
     MID.forEach((idx, j) => {
       let s = 0, n = 0; views.forEach(v => { if(v.zs[j] === v.zs[j]){ s += v.zs[j]; n++; } });
@@ -2205,7 +2210,7 @@ async function buildRealFaceMeshBase(faceMetrics){
       map[i] = m.d * bw * Math.exp(-dx * dx / (2 * sg * sg));
     }
     const ds = samp.map(q => Math.abs(q.d)).sort((a, b) => a - b), nz = samp.filter(q => q.idx === 1)[0];
-    FACE_BUILD.prof360 = { used: views.map(v => v.key + '(' + v.kSrc + ' ×' + v.k.toFixed(2) + ')').join(' + '), n: samp.length,
+    FACE_BUILD.prof360 = { used: views.map(v => v.key + '(' + v.kSrc + ' ×' + v.k.toFixed(2) + ')').join(' + ') + (capped.length ? ' (보정 ' + P.maxCm + 'cm 넘어 뺌: ' + capped.join(' · ') + ')' : ''), n: samp.length,
       medCm: (ds[ds.length >> 1] * cmU).toFixed(2), maxCm: (ds[ds.length - 1] * cmU).toFixed(2), noseCm: nz ? (nz.d * cmU).toFixed(2) : '-' };
     console.log('[얼굴 360 옆윤곽] ' + FACE_BUILD.prof360.used + ' · 정중선 ' + samp.length + '점 · 보정 중앙 ' + FACE_BUILD.prof360.medCm + 'cm · 최대 ' + FACE_BUILD.prof360.maxCm + 'cm · 코끝 ' + FACE_BUILD.prof360.noseCm + 'cm');
     return map;
