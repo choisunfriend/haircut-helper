@@ -450,8 +450,11 @@ var SHOT360 = (function () {
              ③ 얼굴 yaw(촬영 중 정면 찾기 표본 + ②)와 센서 기록을 맞춰 센서 지연(lagMs)을 추정 → 얼굴이 안 보이는 장은 "찍은 시각 + 지연"의 센서 각도로 다시 매김
              ④ 정면(얼굴 yaw 최소)을 0°로 · 0°·±30°·…·180° 12칸마다 실제 각도가 가장 가까운 장(pickTolDeg 안 · 거의 같으면 선명한 장)
        끄기 SHOT360.reAngle=false (예전 칸 방식) */
-    reAngle: true, poolDeg: 4, poolMinMs: 120, faceScanDeg: 70, faceTrustDeg: 60,
-    lagMinMs: -300, lagMaxMs: 900, lagStepMs: 20, lagMinSamples: 4, lagDefaultMs: 0, pickTolDeg: 15, pickTieDeg: 3,
+    /* (2026-10-28 b) 고침: 얼굴 yaw는 정면 근처(±faceTrustDeg 35)에서만 각도와 비례 — 그 밖은 작게 나옴(60° 장이 45°로 읽혀 30°·60° 칸에 엉뚱한 장).
+       그래서 얼굴 yaw는 <b>지연·0° 맞추기에만</b> 쓰고, 각 장의 실제 각도는 지연을 고친 센서 각도(정면 장만 얼굴). 지연을 못 맞췄을 때만 정면 근처 장은 얼굴 yaw.
+       칸이 ±pickTolDeg 안에 없으면 ±looseTolDeg(반 간격) 안 가장 가까운 장으로 채워 12장을 맞춤(그 칸은 loose 표시). */
+    reAngle: true, poolDeg: 4, poolMinMs: 120, faceScanDeg: 70, faceTrustDeg: 35, faceDegNoFit: 30, looseTolDeg: 15,
+    lagMinMs: -300, lagMaxMs: 900, lagStepMs: 20, lagMinSamples: 4, lagDefaultMs: 0, pickTolDeg: 8, pickTieDeg: 2,
     sign: 0               // +1/-1 = 좌우 고정 · 0 = 자동(얼굴 각도로 정함, 못 정하면 기본 -1)
   }, W.SHOT360 || {});
   if (!Q.on) return;
@@ -884,8 +887,10 @@ var SHOT360 = (function () {
       var zero = fit.zero != null ? fit.zero : front ? wrap(sensDeg(front) - front.fy.yaw) : 0;
       cands.forEach(function (c) {
         c.sensDeg = wrap(sensDeg(c) - zero);                         // 지연을 고친 센서 각도
-        c.deg = (c.fy && Math.abs(c.fy.yaw) <= Q.faceTrustDeg) ? wrap(c.fy.yaw) : c.sensDeg;   // 얼굴이 보이면 얼굴 각도가 실제 각도
+        // (b) 실제 각도 = 지연 고친 센서 각도. 지연을 못 맞춘 경우만 정면 근처는 얼굴 yaw(센서 지연이 그대로라 얼굴이 나음)
+        c.deg = (fit.cost == null && c.fy && Math.abs(c.fy.yaw) <= Q.faceDegNoFit) ? wrap(c.fy.yaw) : c.sensDeg;
       });
+      if (front) front.deg = wrap(front.fy.yaw);                     // 정면 장은 얼굴 각도 그대로(pickFrames가 이걸로 0°를 잡음)
       // ④ 30° 간격 12칸마다 실제 각도가 가장 가까운 장
       var frames = [], used = [], miss = [], tg, d;
       for (d = 0; d < 360; d += Q.stepDeg) {
@@ -898,9 +903,19 @@ var SHOT360 = (function () {
           if (e > Q.pickTolDeg) return;
           if (!best || e < bd - Q.pickTieDeg || (e <= bd + Q.pickTieDeg && (c.sharp || 0) > (best.sharp || 0))) { best = c; bd = e; }   // 거의 같은 각도면 선명한 장
         });
+        var loose = false;
+        if (!best) {                                                    // (b) 좁은 범위에 없으면 반 간격 안 가장 가까운 장으로 채움 — 12장 맞추기
+          cands.forEach(function (c) {
+            if (used.indexOf(c) >= 0) return;
+            var e = Math.abs(wrap(c.deg - tg));
+            if (e <= Q.looseTolDeg && e < bd) { best = c; bd = e; }
+          });
+          loose = !!best;
+        }
         if (!best) { miss.push(tg); continue; }
         used.push(best);
         var o = { deg: +best.deg.toFixed(1), url: best.url, sharp: best.sharp, time: best.time, slot: tg, sensorDeg: +best.sensDeg.toFixed(1) };
+        if (loose) o.loose = true;
         if (best.fy) o.faceYaw = +best.fy.yaw.toFixed(1);
         if (best === front) { o.front = true; if (isFinite(best.fy.pitch)) o.facePitch = +(+best.fy.pitch).toFixed(1); }
         frames.push(o);
@@ -912,7 +927,7 @@ var SHOT360 = (function () {
       console.log(TAG + ' 각도 다시 잼 — 후보 ' + cands.length + '장 · 얼굴로 잰 장 ' + set.reAngle.faceMeasured + ' · 센서 지연 ' + fit.lag + 'ms' +
         (fit.cost != null ? '(표본 ' + fit.n + ' · 평균 어긋남 ' + fit.cost.toFixed(1) + '°)' : '(표본 부족 — 기본값)') +
         ' · 정면 ' + (front ? '얼굴 yaw ' + front.fy.yaw.toFixed(0) + '°' : '못 찾음(센서 0°)') +
-        ' · 고른 ' + frames.length + '/' + Math.round(360 / Q.stepDeg) + '장 [' + frames.map(function (f) { return f.slot + '→' + Math.round(f.deg); }).join(', ') + ']' +
+        ' · 고른 ' + frames.length + '/' + Math.round(360 / Q.stepDeg) + '장 [' + frames.map(function (f) { return f.slot + '→' + Math.round(f.deg) + (f.loose ? '(넓게)' : ''); }).join(', ') + ']' +
         (miss.length ? ' · 빈 칸 ' + miss.join(',') + '° (±' + Q.pickTolDeg + '° 안에 사진 없음)' : ''));
       cands = null;
       if (frames.length < 4) { toast('사진이 모자랍니다 — 정면·양옆·뒤가 다 찍혀야 해요'); return; }
