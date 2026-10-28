@@ -700,11 +700,15 @@ var SHOT360 = (function () {
     return true;
   }
   /* (2026-10-28 reAngle) 후보 모으기 — poolDeg 칸마다 한 장(같은 칸을 나중에 다시 지나면 위 laterRel 규칙으로 바꿈) */
+  /* (2026-10-28 c) 찍은 시각 = <b>화면을 집은 순간</b>. 예전엔 JPEG 인코딩(1280px · 수십~100ms) 뒤의 Date.now()라
+     후보 장의 시각이 실제보다 늦게 적혀, 지연을 고친 센서 각도가 그만큼(40°/s면 100ms = 4°) 또 밀렸다.
+     정면 찾기 표본(frontSeek)도 얼굴 인식 <b>뒤</b> 시각이었고 두 쪽의 늦음이 서로 달라 지연 추정(fitLag)이 후보 장에 안 맞았다. */
   function poolStore(key, raw, sh, c) {
+    var tg = Date.now();
     c = c || grabFrame(); if (!c) return false;
     var url; try { url = c.toDataURL('image/jpeg', Q.jpeg); } catch (e) { return false; }
     var pb = pool[key];
-    pool[key] = { raw: raw, time: Date.now(), url: url, sharp: sh, tries: (pb ? pb.tries : 0) + 1, last: now() };
+    pool[key] = { raw: raw, time: tg, url: url, sharp: sh, tries: (pb ? pb.tries : 0) + 1, last: now() };
     markGot(); return true;
   }
   function poolTake() {
@@ -733,6 +737,7 @@ var SHOT360 = (function () {
     if (!Q.frontSeek || typeof detectPoseOnCanvas !== 'function') return;
     if (Math.abs(cur) > Q.frontSeekDeg) return;
     var t = now(); if (t - lastSeekAt < Q.frontSeekMs) return; lastSeekAt = t;
+    var tg = Date.now(), rawAt = cur;                                   // (2026-10-28 c) 집은 순간의 시각·센서 각도(얼굴 인식 뒤가 아니라)
     var c = grabFrame(); if (!c) return;
     try {
       var k = Math.min(1, Q.frontSeekPx / Math.max(c.width, c.height));
@@ -741,11 +746,11 @@ var SHOT360 = (function () {
       seekCv.getContext('2d').drawImage(c, 0, 0, seekCv.width, seekCv.height);
       var p = detectPoseOnCanvas(seekCv); seekN++;
       if (!p || !isFinite(p.yawDeg)) return;
-      seekS.push({ time: Date.now(), raw: cur, yaw: p.yawDeg });          // (reAngle) 지연 추정 표본 — 같은 시각의 센서 각도와 얼굴 각도
+      seekS.push({ time: tg, raw: rawAt, yaw: p.yawDeg });          // (reAngle) 지연 추정 표본 — 같은 시각의 센서 각도와 얼굴 각도
       var score = Math.abs(p.yawDeg) + 0.5 * Math.abs(p.pitchDeg || 0);
       if (frontBest && score >= frontBest.score - 1) return;            // 1° 넘게 나아질 때만 바꿈
       var url = c.toDataURL('image/jpeg', Q.jpeg);
-      frontBest = { raw: cur, yaw: p.yawDeg, pitch: p.pitchDeg || 0, score: score, url: url, sharp: Math.round(sharpness()), time: Date.now() };
+      frontBest = { raw: rawAt, yaw: p.yawDeg, pitch: p.pitchDeg || 0, score: score, url: url, sharp: Math.round(sharpness()), time: tg };
     } catch (e) {}
   }
   function appSign() {
