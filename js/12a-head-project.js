@@ -798,7 +798,8 @@ function buildRealNeckMesh(skinColor){
      제 자리 살을 집는다. 목은 턱 아래라 격자 <b>아래쪽 밖</b>으로 나가므로
      at()이 안으로 물려 <b>턱·목 언저리 살</b>을 집는다(사용자가 말한 "근처 얼굴색").
      되돌리기: NECK_SHAPE.fromField = false (평균색 한 개로 복귀) */
-  const sampleSkin = NECK_SHAPE.fromField ? makeModelSkinSampler() : null;
+  const neckPhoto = makeNeckPhotoSampler();   // (2026-10-28) 사진의 목을 그대로(위 NECK_PHOTO)
+  const sampleSkin = (!neckPhoto && NECK_SHAPE.fromField) ? makeModelSkinSampler() : null;
   const shRear = sampleSkin ? NECK_SHAPE.shadeRearField : NECK_SHAPE.shadeRear;
   const shTop  = sampleSkin ? NECK_SHAPE.shadeTopField  : NECK_SHAPE.shadeTop;
   for(let ri=0; ri<=RING_STEPS; ri++){
@@ -833,6 +834,7 @@ function buildRealNeckMesh(skinColor){
       const face = (ct + 1) / 2;                                   // 0=뒤, 1=앞
       const k = (shRear + (1-shRear)*face) * (shTop + (1-shTop)*t);
       /* 격자를 쓰면 <b>이 정점 자리</b>의 살이 기준이고, 아니면 예전처럼 평균색. */
+      if(neckPhoto){ const cp = neckPhoto(x, y, ct < 0); const kp = 0.97 + 0.03*face; colors.push(cp[0]*kp, cp[1]*kp, cp[2]*kp); continue; }   // 사진 그늘이 이미 있어 형태감만 아주 살짝
       const c = sampleSkin ? sampleSkin(x, y) : [cBase.r, cBase.g, cBase.b];
       colors.push(c[0]*k, c[1]*k, c[2]*k);
     }
@@ -847,8 +849,8 @@ function buildRealNeckMesh(skinColor){
   positions.push(0, neckBotY, 0);
   // 정점색 배열은 position과 <b>길이가 같아야</b> 한다 — 캡 중심도 한 벌 넣는다.
   {
-    const c = sampleSkin ? sampleSkin(0, neckBotY) : [cBase.r, cBase.g, cBase.b];
-    colors.push(c[0]*shRear, c[1]*shRear, c[2]*shRear);
+    const c = neckPhoto ? neckPhoto(0, neckBotY, true) : sampleSkin ? sampleSkin(0, neckBotY) : [cBase.r, cBase.g, cBase.b];
+    const kc = neckPhoto ? 1 : shRear; colors.push(c[0]*kc, c[1]*kc, c[2]*kc);
   }
   const bottomRingStart = RING_STEPS*(THETA_STEPS+1);
   for(let ti=0; ti<THETA_STEPS; ti++){
@@ -1006,7 +1008,7 @@ let _scalpSkinCache = undefined;
 let _skinFieldCache = undefined;
 let _faceToneCache = undefined;   // (2026-10-26) 얼굴 기준색(밝은 살 구간) 캐시
 let _faceTone3DLogged = false;   // (2026-09-16) 얼굴톤 로그 1회 — faceToneRef3D
-function resetScalpSkinSample(){ _scalpSkinCache = undefined; _faceToneCache = undefined; _skinFieldCache = undefined; _scalpCullLogged = false; _faceTone3DLogged = false; }
+function resetScalpSkinSample(){ _neckPhotoLogged = false; _scalpSkinCache = undefined; _faceToneCache = undefined; _skinFieldCache = undefined; _scalpCullLogged = false; _faceTone3DLogged = false; }
 
 /* 이 사진에서 <b>살로 볼 픽셀</b>인가 — 머리카락도 아니고 이목구비도 아닌 자리.
    어두운 쪽 꼬리를 자르는 것으로 눈·눈썹·콧구멍·입선이 한 번에 빠진다
@@ -1227,6 +1229,77 @@ function makeModelSkinSampler(){
       Math.min(1, Math.max(0, c[2]/255)),
     ];
   };
+}
+
+/* (2026-10-28) 목 = 사진의 목을 그대로 — 사용자: "평균값으로 목색을 넣으니까 맨날 얼굴색이랑 차이나.
+   사진의 목색을 면적 좀 넓게 떼어서 갖다 붙이던가, 얼굴 평균 말고 어느 정도 범위를 실제 갖다 붙여버려"
+   예전: 목 정점 → 얼굴 살 격자(턱 위까지만)를 안으로 물려 집고 → 얼굴 기준색(평균) 쪽으로 75% 당김 = 사실상 평균색 한 개.
+   지금: ① 정면 사진에서 턱 아래 목 자리(사람 윤곽 안 · 머리카락 아님 · 얼굴 살과 색이 가까운 픽셀)를 격자(가로 NX × 세로 NY)로 떼어
+           목 정점을 정면 사진에 되쏜 자리의 색을 그대로 씀(평균으로 안 당김 · 사진에 있던 그늘·밝기 그대로).
+           뒤쪽 정점은 같은 높이·같은 가로 자리의 앞 색(가려서 사진에 없음) × 뒤 그늘.
+         ② 목이 안 보이면(긴 머리가 덮음·옷깃이 높음 — 살 칸이 minFrac 미만) 턱 위 얼굴 아래쪽 띠(입~턱)의 실제 픽셀을 가로 자리별로.
+         ③ 둘 다 안 되면 예전(살 격자 + 얼굴 기준색). 끄기 NECK_PHOTO.on=false */
+var NECK_PHOTO = Object.assign({ on: true, NX: 14, NY: 10, colorTol: 0.16, minFrac: 0.3, rearShade: 0.92, jawBand: 0.22 }, (typeof window !== 'undefined' && window.NECK_PHOTO) || {});
+var _neckPhotoLogged = false;
+function makeNeckPhotoSampler(){
+  try{
+    if(!NECK_PHOTO.on) return null;
+    const inf = state.hairMasks && state.hairMasks.front, lm = state.landmarks && state.landmarks.front;
+    if(!inf || !inf.photoRGB || !lm) return null;
+    const fm = getFaceMetrics(), pr = fm && fm.projector;
+    if(!pr || typeof pr.toImgX !== 'function') return null;
+    const W = inf.w, H = inf.h, mw = inf.maskW || W, mh = inf.maskH || H, pm = inf.personMask;
+    const chin = (typeof lm.chinY === 'number') ? lm.chinY : 0.62, brow = (typeof lm.browTopY === 'number') ? lm.browTopY : 0.28;
+    const xL = (typeof lm.lEarX === 'number') ? lm.lEarX : 0.28, xR = (typeof lm.rEarX === 'number') ? lm.rEarX : 0.72;
+    const tone = faceToneRef3D() || (function(){ const m = String(sampleScalpSkinColor() || '').match(/\d+/g); return m && m.length >= 3 ? [+m[0], +m[1], +m[2]] : null; })();
+    if(!tone) return null;
+    const tL = tone[0] + tone[1] + tone[2];
+    function skinLike(c){                                   // 색 비율(밝기 뺀 색조)이 얼굴 살과 가까운가 — 옷·배경 거름
+      const L = c[0] + c[1] + c[2]; if(L < 60) return false;
+      const d = Math.abs(c[0]/L - tone[0]/tL) + Math.abs(c[1]/L - tone[1]/tL) + Math.abs(c[2]/L - tone[2]/tL);
+      return d < NECK_PHOTO.colorTol && L > tL * 0.45 && L < tL * 1.5;
+    }
+    function personAt(x, y){ if(!pm) return true; const xi = (x * mw / W) | 0, yi = (y * mh / H) | 0; return xi >= 0 && yi >= 0 && xi < mw && yi < mh && pm[yi * mw + xi] > 0; }
+    function grid(u0, u1, v0, v1, NX, NY){
+      const r = new Float32Array(NX*NY), g = new Float32Array(NX*NY), b = new Float32Array(NX*NY), n = new Float32Array(NX*NY);
+      const x0 = Math.round(u0*W), x1 = Math.round(u1*W), y0 = Math.round(v0*H), y1 = Math.round(v1*H), st = Math.max(1, Math.round((x1 - x0) / 120));
+      for(let y = y0; y <= y1; y += st) for(let x = x0; x <= x1; x += st){
+        if(isHairPixelAt(inf, x, y) || !personAt(x, y)) continue;
+        const c = photoRGBAt(inf, x, y); if(!c || !skinLike(c)) continue;
+        const gx = Math.min(NX-1, Math.max(0, Math.floor((x - x0) / (x1 - x0 + 1) * NX))), gy = Math.min(NY-1, Math.max(0, Math.floor((y - y0) / (y1 - y0 + 1) * NY))), i = gy*NX + gx;
+        r[i] += c[0]; g[i] += c[1]; b[i] += c[2]; n[i]++;
+      }
+      let filled = 0; for(let i = 0; i < NX*NY; i++) if(n[i] >= 2){ r[i] /= n[i]; g[i] /= n[i]; b[i] /= n[i]; n[i] = 1; filled++; } else n[i] = 0;
+      for(let pass = 0; pass < NX + NY; pass++){                // 빈 칸은 가장 가까운 칸 색으로 번짐
+        let ch = 0; const nr = r.slice(), ng = g.slice(), nb = b.slice(), nn = n.slice();
+        for(let gy = 0; gy < NY; gy++) for(let gx = 0; gx < NX; gx++){ const i = gy*NX + gx; if(n[i]) continue; let sr = 0, sg = 0, sb = 0, k = 0;
+          [[gx-1,gy],[gx+1,gy],[gx,gy-1],[gx,gy+1]].forEach(function(q){ if(q[0] < 0 || q[1] < 0 || q[0] >= NX || q[1] >= NY) return; const j = q[1]*NX + q[0]; if(n[j]){ sr += r[j]; sg += g[j]; sb += b[j]; k++; } });
+          if(k){ nr[i] = sr/k; ng[i] = sg/k; nb[i] = sb/k; nn[i] = 1; ch++; } }
+        if(!ch) break; r.set(nr); g.set(ng); b.set(nb); n.set(nn);
+      }
+      return { NX, NY, u0, u1, v0, v1, r, g, b, filled, frac: filled / (NX*NY),
+        at(u, v){ const cu = Math.min(this.u1, Math.max(this.u0, u)), cv = Math.min(this.v1, Math.max(this.v0, v));
+          const fx = (cu - this.u0) / (this.u1 - this.u0) * (this.NX - 1), fy = (cv - this.v0) / (this.v1 - this.v0) * (this.NY - 1);
+          const a = Math.floor(fx), c = Math.floor(fy), a1 = Math.min(this.NX-1, a+1), c1 = Math.min(this.NY-1, c+1), tx = fx - a, ty = fy - c, NXl = this.NX;
+          const m = function(A){ return A[c*NXl+a]*(1-tx)*(1-ty) + A[c*NXl+a1]*tx*(1-ty) + A[c1*NXl+a]*(1-tx)*ty + A[c1*NXl+a1]*tx*ty; };
+          return [m(this.r), m(this.g), m(this.b)]; } };
+    }
+    const cx = (xL + xR) / 2, hw = Math.abs(xR - xL) * 0.42, faceH = Math.max(0.05, chin - brow);
+    // ① 턱 아래 목 — 아래 끝은 살 칸이 끊기는 줄(옷깃)까지, 최대 얼굴 높이의 0.8배
+    let src = 'neck', G = grid(Math.max(0, cx - hw), Math.min(1, cx + hw), chin + 0.01, Math.min(1, chin + faceH * 0.8), NECK_PHOTO.NX, NECK_PHOTO.NY);
+    if(G.frac < NECK_PHOTO.minFrac){                          // ② 목이 안 보임 → 턱 위 얼굴 아래쪽 띠(입~턱)의 실제 픽셀
+      src = 'jaw'; G = grid(Math.max(0, cx - hw * 0.8), Math.min(1, cx + hw * 0.8), chin - faceH * NECK_PHOTO.jawBand, chin - 0.005, NECK_PHOTO.NX, 4);
+      if(G.frac < NECK_PHOTO.minFrac) return null;
+    }
+    if(!_neckPhotoLogged){ _neckPhotoLogged = true;
+      console.log('[3D·목 색] ' + (src === 'neck' ? '사진의 목(턱 아래)' : '목이 안 보여 턱 위 얼굴 아래쪽 띠') + '을 ' + G.NX + '×' + G.NY + ' 칸으로 떼어 그대로 붙임 · 살로 잡힌 칸 ' + G.filled + '/' + (G.NX*G.NY) + ' · 평균으로 안 당김 · 끄기 NECK_PHOTO.on=false'); }
+    NECK_PHOTO.last = { src: src, filled: G.filled, cells: G.NX * G.NY };
+    return function(mx, my, rear){
+      const c = G.at(pr.toImgX(mx), src === 'neck' ? pr.toImgY(my) : G.v1);
+      const k = rear ? NECK_PHOTO.rearShade : 1;
+      return [Math.min(1, Math.max(0, c[0]*k/255)), Math.min(1, Math.max(0, c[1]*k/255)), Math.min(1, Math.max(0, c[2]*k/255))];
+    };
+  }catch(e){ console.warn('[3D·목 색] 사진에서 못 뗌 — 예전 방식', e); return null; }
 }
 
 function paintScalpFromPhoto(geo, skull, kIn, mat){
