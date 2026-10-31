@@ -988,7 +988,7 @@ const SCALP_SKIN = {
      t ≤ 1 이면 100% · 1 → 1+fade 에 걸쳐 0까지, 얼굴 살 격자(얼굴 타원 안 · 머리카락·눈·눈썹·입·번들 뺀 실제 픽셀)를
      <b>타원 안쪽 inner 자리로 끌어들인 점</b>에서 집어 칠함 → 이마 옆은 이마 살, 뺨 옆은 뺨 살. 평균색 안 씀(칸 색 그대로 · 빈 칸만 좌우 반대쪽·이웃).
      턱 아래는 그 뒤 목 띠(neckBand)가 덮음. 되돌리기 SCALP_SKIN.faceRim.on = false */
-  faceRim: { on: true, pixel: true, pixT: 1.0, fullT: 1.22, fade: 0.45, inner: 0.9, NX: 16, NY: 14, frontFrom: 0.05, frontFull: 0.35 },    // (2026-10-31) 턱 아래 두피면 = 사진 목 색 · 그 위 0.28단위(≈5cm)에 걸쳐 섞음 — paintScalpFromPhoto   // 뒤통수(z=−1)에서의 밝기 배율. 앞(z=+1)은 1.0
+  faceRim: { on: true, pixel: true, pixT: 1.0, ringFrac: 0.08, pixHi: 1.15, fullT: 1.22, fade: 0.45, inner: 0.9, NX: 16, NY: 14, frontFrom: 0.05, frontFull: 0.35 },    // (2026-10-31) 턱 아래 두피면 = 사진 목 색 · 그 위 0.28단위(≈5cm)에 걸쳐 섞음 — paintScalpFromPhoto   // 뒤통수(z=−1)에서의 밝기 배율. 앞(z=+1)은 1.0
   /* ── 턱 언저리 두피면·목이 <b>얼굴보다 누렇고 어둡다</b> (2026-09-16) ──────────────
      사용자: "3D 결과보기 턱부분이 깔끔하게 정리됐는데, 컬러가 얼굴컬러랑 좀 차이가 있어서
      얼굴컬러를 참고했으면 좋겠어."
@@ -1415,20 +1415,28 @@ function makeFaceRimSampler(){
     const ft = lm.features || {}, boxes = [pad(ft.leftEye, 0.35), pad(ft.rightEye, 0.35), pad(ft.leftBrow, 0.2), pad(ft.rightBrow, 0.2), pad(ft.mouth, 0.2)].filter(Boolean);
     const inBox = (u, v) => { for(const q of boxes) if(u >= q.x0 && u <= q.x1 && v >= q.y0 && v <= q.y1) return true; return false; };
     const looseSkin = (x, y) => { if(isHairPixelAt(inf, x, y) || !personAt(x, y)) return null; if(inBox(x / W, y / H)) return null;
-      const c = photoRGBAt(inf, x, y); if(!c) return null; const L = c[0] + c[1] + c[2]; if(L < refL * 0.55 || L > refL * 1.3) return null;
+      const c = photoRGBAt(inf, x, y); if(!c) return null; const L = c[0] + c[1] + c[2]; if(L < refL * 0.55 || L > refL * (FR.pixHi || 1.15)) return null;
       return Math.abs(c[0] / L - refR) + Math.abs(c[1] / L - refG) <= 0.07 ? c : null; };
     const pixT = FR.pixT || 1.0, pixCache = new Map();
     let nPix = 0, nGrid = 0;
+    /* (2026-10-31d) 얼굴 가운데 쪽으로 걸어 들어가던 것 → <b>그 자리 둘레에서 가장 가까운</b> 살 픽셀 — 사용자: "뽀글펌 여자 이마쪽을 보면 미간사이에도 밝게 나와있어."
+       앞머리가 덮은 이마(얼굴 텍스처가 머리카락이라 비워진 자리)에서 가운데로 걸어 들어가면 콧등 번들(밝은 살)까지 가서 그 색을 집었음.
+       이제 정점 자리(테두리 밖이면 테두리 t=pixT 자리)를 중심으로 고리를 넓혀 가며 처음 나오는 살 픽셀 둘레 5×5 · 번들 빼려고 밝기 상한 1.15배. */
+    const ringMax = Math.max(4, Math.round(FR.ringFrac * 2 * fb.rx * W));
     function edgePixel(dx, dy, t){
-      const key = Math.round(Math.atan2(dy, dx) * 90) + '|' + Math.round(Math.min(t, pixT) * 50);
+      const k0 = t > pixT ? pixT / t : 1, cx0 = Math.round((fb.cx + dx * k0 * fb.rx) * W), cy0 = Math.round((fb.cy + dy * k0 * fb.ry) * H);
+      const key = (cx0 >> 1) + '|' + (cy0 >> 1);
       if(pixCache.has(key)) return pixCache.get(key);
       let out = null;
-      for(let tt = Math.min(t, pixT); tt >= 0.55 && !out; tt -= 0.015){
-        const k = t > 1e-6 ? tt / t : 0, x = Math.round((fb.cx + dx * k * fb.rx) * W), y = Math.round((fb.cy + dy * k * fb.ry) * H);
-        if(!looseSkin(x, y)) continue;
-        let r = 0, g = 0, b = 0, n = 0;
-        for(let oy = -2; oy <= 2; oy++) for(let ox = -2; ox <= 2; ox++){ const c = looseSkin(x + ox, y + oy); if(c){ r += c[0]; g += c[1]; b += c[2]; n++; } }
-        if(n >= 6) out = [r / n, g / n, b / n];
+      for(let rr = 0; rr <= ringMax && !out; rr += 2){
+        const nS = rr ? Math.max(8, Math.round(rr * 2 * Math.PI / 2)) : 1;
+        for(let j = 0; j < nS && !out; j++){
+          const an = j / nS * 2 * Math.PI, x = Math.round(cx0 + rr * Math.cos(an)), y = Math.round(cy0 + rr * Math.sin(an));
+          if(!looseSkin(x, y)) continue;
+          let r = 0, g = 0, b = 0, n = 0;
+          for(let oy = -2; oy <= 2; oy++) for(let ox = -2; ox <= 2; ox++){ const c = looseSkin(x + ox, y + oy); if(c){ r += c[0]; g += c[1]; b += c[2]; n++; } }
+          if(n >= 6) out = [r / n, g / n, b / n];
+        }
       }
       pixCache.set(key, out); return out;
     }
