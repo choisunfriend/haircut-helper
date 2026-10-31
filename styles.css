@@ -531,8 +531,10 @@ input[type=range]::-moz-range-thumb{width:20px;height:20px;border-radius:50%;bac
    모바일에서 버티는 선. 무겁다 싶으면 opacity부터 내릴 것. */
 .soft-stage .stage-bloom{
   position:absolute; inset:0; z-index:1; pointer-events:none;
-  -webkit-backdrop-filter:blur(7px) brightness(1.14) saturate(1.06);
-          backdrop-filter:blur(7px) brightness(1.14) saturate(1.06);
+  /* (2026-10-31) brightness(1.14)·saturate(1.06) 뺌 — 사용자: "사진이 렌더링 이미지보다 밝아 / 얼굴색이 변해"
+     무대 효과가 사진 얼굴(무조명 텍스처) 위에도 그대로 걸려 얼굴만 사진과 달라졌다. 흐림(뽀샤시)만 남김 */
+  -webkit-backdrop-filter:blur(7px);
+          backdrop-filter:blur(7px);
   opacity:var(--stage-bloom-a);
 }
 /* backdrop-filter가 없는 브라우저 — 흐림은 포기하고 옅은 빛만 얹는다 */
@@ -547,12 +549,13 @@ input[type=range]::-moz-range-thumb{width:20px;height:20px;border-radius:50%;bac
   position:absolute; inset:0; z-index:2; pointer-events:none;
   mix-blend-mode:soft-light;
   background:
-    radial-gradient(44% 30% at 50% 8%,  rgba(255,255,255,0.62) 0%, rgba(255,255,255,0) 70%),
+    /* (2026-10-31) 위에서 떨어지는 흰 키라이트(soft-light) 뺌 — 얼굴 윗부분만 밝아져 사진과 달라짐. 모서리 비네트만 남김 */
     radial-gradient(118% 96% at 50% 48%, rgba(0,0,0,0) 56%, var(--stage-ink) 100%);
 }
 
 /* 헤어·의상 자체는 살짝만 또렷하게. 색을 바꾸지 않는 선(채도 +6%)이다. */
-.soft-stage > canvas{ filter:contrast(1.04) saturate(1.06); }
+/* (2026-10-31) 캔버스 filter 끔 — 얼굴 사진 색이 그대로 나오게(위 stage-bloom 주석). 되돌리기: filter:contrast(1.04) saturate(1.06) */
+.soft-stage > canvas{ filter:none; }
 
 /* 함정 2 — 캔버스에 filter를 걸었으므로 오버레이 UI를 반드시 위로 올린다.
    이 줄을 지우면 태그·디버그 버튼·힌트가 캔버스 밑으로 숨는다. */
