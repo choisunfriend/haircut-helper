@@ -979,7 +979,8 @@ const SCALP_SKIN = {
      범위(이마 215 ~ 턱 152, 비 0.71)보다 얕게 잡아, 두피면 혼자 튀지도
      과하게 어둡지도 않게 한다.
      되돌리기: SCALP_SKIN.backShade.on = false */
-  backShade: { on: true, back: 0.78 },   // 뒤통수(z=−1)에서의 밝기 배율. 앞(z=+1)은 1.0
+  backShade: { on: true, back: 0.78 },
+  neckBand: { on: true, fade: 0.28 },    // (2026-10-31) 턱 아래 두피면 = 목 색 · 그 위 0.28단위(≈5cm)에 걸쳐 섞음 — paintScalpFromPhoto   // 뒤통수(z=−1)에서의 밝기 배율. 앞(z=+1)은 1.0
   /* ── 턱 언저리 두피면·목이 <b>얼굴보다 누렇고 어둡다</b> (2026-09-16) ──────────────
      사용자: "3D 결과보기 턱부분이 깔끔하게 정리됐는데, 컬러가 얼굴컬러랑 좀 차이가 있어서
      얼굴컬러를 참고했으면 좋겠어."
@@ -1237,11 +1238,35 @@ function paintScalpFromPhoto(geo, skull, kIn, mat){
     const pos = geo.attributes && geo.attributes.position;
     if(!pos) return false;
     const BS = SCALP_SKIN.backShade;
+    /* (2026-10-31) 두피 → 턱으로 이어지는 띠에 <b>목 색을 그대로</b> — 사용자: "목 색깔은 사진에서 떼와서
+       잘 적용됐어. 그런데 두피와 턱으로 이어지는 띠는 적용이 안됐어. 일단 목색깔을 그대로 적용해봐."
+       목(buildRealNeckMesh)과 똑같이 칠한다: 같은 샘플러를 <b>목 윗단 높이</b>에서 읽고, 같은 앞뒤 곱(shadeRearField).
+       턱+NECK_SHAPE.topAboveChin 아래는 목 색 100%, 그 위 SCALP_SKIN.neckBand.fade 단위에 걸쳐 원래 두피색으로 섞음.
+       되돌리기: SCALP_SKIN.neckBand.on = false */
+    const NB = SCALP_SKIN.neckBand;
+    let nbChin = null;
+    if(NB && NB.on){ try{ const fm = getFaceMetrics(); const ch = 0.15 - 0.70 * fm.heightFactor; if(isFinite(ch)) nbChin = ch; }catch(e){} }
+    const nbFull = nbChin != null ? nbChin + NECK_SHAPE.topAboveChin : 0;
+    const nbTop  = nbFull + (NB ? NB.fade : 0);
+    const nbReadY = nbChin != null ? nbChin + NECK_SHAPE.topAboveChin : 0;   // 목 윗링이 읽는 높이 그대로
+    let nbCount = 0;
     const col = new Float32Array(pos.count * 3);
     for(let i=0;i<pos.count;i++){
       const mx = pos.getX(i) * skull.a * kIn;
       const my = pos.getY(i) * skull.b * kIn + 0.15;   // headMesh.position.y
-      const c = sample(mx, my);
+      let c = sample(mx, my);
+      if(nbChin != null && my < nbTop){
+        const w = my <= nbFull ? 1 : 1 - (my - nbFull) / Math.max(1e-4, nbTop - nbFull);
+        const nz = Math.max(-1, Math.min(1, pos.getZ(i)));
+        const kN = NECK_SHAPE.shadeRearField + (1 - NECK_SHAPE.shadeRearField) * (nz + 1) / 2;
+        const cn = sample(mx, nbReadY);
+        /* 아래 backShade 곱이 또 걸리므로 그만큼 미리 나눠 둔다 — 결과가 목 정점과 같은 값이 되게 */
+        let shB = 1;
+        if(BS && BS.on) shB = BS.back + (1 - BS.back) * (0.5 + 0.5*nz);
+        const t = w * w * (3 - 2 * w);
+        c = [0,1,2].map(ch => c[ch] * (1 - t) + (cn[ch] * kN / shB) * t);
+        nbCount++;
+      }
       /* 앞→뒤 밝기 배율. 정점은 단위구 위라 z가 그대로 "얼마나 앞인가"다.
          색조는 안 건드린다 — 세 채널에 <b>같은 수</b>를 곱한다. */
       let sh = 1;
@@ -1252,6 +1277,7 @@ function paintScalpFromPhoto(geo, skull, kIn, mat){
       col[i*3] = c[0]*sh; col[i*3+1] = c[1]*sh; col[i*3+2] = c[2]*sh;
     }
     geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
+    if(nbCount) console.log('[3D·두피색] 턱 띠에 목 색 적용 — 정점 ' + nbCount + '개 (끄기 SCALP_SKIN.neckBand.on=false)');
     /* 정점색은 재질색과 <b>곱해진다</b> — 재질색을 흰색으로 두지 않으면 두 번 어두워진다. */
     mat.vertexColors = true;
     mat.color = new THREE.Color(0xffffff);
