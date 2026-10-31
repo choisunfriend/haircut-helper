@@ -2219,9 +2219,41 @@ var MOBILE_DIET = (function () {
 /* ════════════════════════════════════════
    HELPERS
 ════════════════════════════════════════ */
+/* (2026-10-31) 사용자: "사진 분석 중 한글이다. 영어로." — 숫자가 섞인 문구(… 3/12, 30° 사진)는
+   사전(정확히 같은 문자열)에 안 걸려 한글로 남았다. 오버레이 문구만 패턴으로 한 번 더 옮긴다. */
+const _AI_EN_PATTERNS = [
+  [/360° 사진 분석 중…/g, 'Analyzing 360° photos…'],
+  [/정면 사진 찾는 중…/g, 'Finding the front photo…'],
+  [/사진 얼굴 확인/g, 'photo · checking face'],
+  [/사진 각도 맞추는 중…/g, 'Aligning photo angles…'],
+  [/뿌리부터 다시 기르는 중…/g, 'Regrowing from the roots…'],
+  [/3D 헤어 만드는 중…/g, 'Building 3D hair…'],
+  [/3D 두상에 조정 결과를 얹는 중…/g, 'Applying adjustments to the 3D head…'],
+  [/조정 화면과 같은 모델을 만듭니다/g, 'Building the same model as the adjust screen'],
+  [/다시 만드는 중…/g, 'Rebuilding…'],
+  [/옮기기 실험 중…/g, 'Transfer test…'],
+  [/분석 모델을 다시 준비하고 있어요/g, 'Re-preparing the analysis model'],
+  [/Hair Segmentation 준비 중/g, 'Preparing hair segmentation'],
+  [/모델 로딩 중…/g, 'Loading model…'],
+  [/얼굴 분석 중…/g, 'Analyzing face…'],
+  [/머리카락 추출 중…/g, 'Extracting hair…'],
+  [/랜드마크 감지/g, 'landmark detection'],
+  [/처리 중/g, 'processing'],
+  [/분석 중/g, 'analyzing'],
+  [/(\d+)° 사진/g, '$1° photo'],
+  [/정면/g, 'Front'], [/좌측/g, 'Left'], [/우측/g, 'Right'], [/후면/g, 'Back']
+];
+function _aiEn(s){
+  if (s == null) return s;
+  s = String(s);
+  try { if (typeof uiLang === 'undefined' || uiLang !== 'en') return s; } catch (e) { return s; }
+  try { const d = (typeof i18nTranslate === 'function') ? i18nTranslate(s) : null; if (d != null) return d; } catch (e) {}
+  for (const [re, en] of _AI_EN_PATTERNS) s = s.replace(re, en);
+  return s;
+}
 function showAI(text,sub){
-  document.getElementById('aiOverlayText').textContent=text;
-  document.getElementById('aiOverlaySub').textContent=sub;
+  document.getElementById('aiOverlayText').textContent=_aiEn(text);
+  document.getElementById('aiOverlaySub').textContent=_aiEn(sub);
   document.getElementById('aiOverlay').classList.remove('hidden');
 }
 function hideAI(){ document.getElementById('aiOverlay').classList.add('hidden'); }
