@@ -8916,23 +8916,7 @@ var VIEW_FIX = (function () {
         rows.push(c.angle + ' 위아래 ' + (dp >= 0 ? '+' : '') + (dp * 180 / Math.PI).toFixed(0) + '° · 배율 ' + ds.toFixed(3));
       }
     });
-    /* (2026-10-31c) 각도·배율이 바뀌었으면 <b>그 카메라 기준으로</b> 사진끼리 맞추기를 다시 — 사용자: "각도가 바뀌어 버리면 어긋나서 모양이 틀어지지"
-       디버그 2042(직모): 사진끼리 맞추기(오른쪽 가로 −1.0cm)를 먼저 하고 나중에 오른쪽을 +11° 돌림 → 돌리기 전 기준 위치에 각도만 바뀜.
-       예전(h · 각도 먼저)엔 같은 사진이 +1.0cm. 그래서 옛 위치 이동을 빼고, 돌린 카메라로 새로 찾아 바꿔 넣음 */
-    if (changed && photo && typeof REGROW !== 'undefined' && REGROW.photoAlign && REGROW.alignOnly) {
-      try {
-        probe.cams.forEach(function (c) { var f = S.fix[c.angle]; if (f && f.mask === m[c.angle]) { c.cx -= f.dcx || 0; c.crownY -= f.dcy || 0; } });
-        var base = {}; probe.cams.forEach(function (c) { base[c.angle] = { cx: c.cx, crownY: c.crownY }; });
-        var pa = REGROW.alignOnly(photo), moved = [];
-        if (pa && pa.cams) pa.cams.forEach(function (c) {
-          var b0 = base[c.angle]; if (!b0 || !m[c.angle]) return;
-          var f = S.fix[c.angle] || (S.fix[c.angle] = { mask: m[c.angle], dp: 0, ds: 1, dcx: 0, dcy: 0, dcyFit: 0 });
-          f.dcx = c.cx - b0.cx; f.dcy = c.crownY - b0.crownY;
-          if (Math.abs(f.dcx) > 0.01 || Math.abs(f.dcy) > 0.01) moved.push(c.angle + ' 가로 ' + (f.dcx >= 0 ? '+' : '') + f.dcx.toFixed(1) + 'px · 세로 ' + (f.dcy >= 0 ? '+' : '') + f.dcy.toFixed(1) + 'px');
-        });
-        rows.push('돌린 카메라로 사진끼리 다시 맞춤: ' + (moved.length ? moved.join(' / ') : '옮길 것 없음') + (pa && pa.pa ? ' (겹침 ' + Math.round((pa.pa.before || 0) * 1000) / 10 + '% → ' + Math.round((pa.pa.after || 0) * 1000) / 10 + '%)' : ''));
-      } catch (e) { console.warn(TAG + ' 돌린 카메라로 사진끼리 다시 맞추기 실패 — 앞 값 그대로', e); }
-    }
+    /* (2026-11-01) 카메라 맞춘 뒤 사진끼리 다시 맞추기(2026-10-31c)는 뺌 — 사용자: "마지막에 사진맞추기 한번 더 하는 건 빼" (생성 사진의 결·사진 불일치 때문으로 봄) */
     probe.cams.forEach(function (c) { var o = orig[c.angle]; if (o) { c.R = o.R; c.s = o.s; c.sy = o.sy; c.cx = o.cx; c.crownY = o.crownY; } });
     S.fitLast = rows.length ? rows.join(' / ') : '바꿀 것 없음';
     console.log(TAG + ' 다시 기른 가닥으로 카메라 맞추기 — ' + S.fitLast);
