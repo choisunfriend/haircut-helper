@@ -1453,7 +1453,14 @@ function buildHairStrandsFromPaths(){
       + ' · sy ' + sy.toFixed(5) + ' · 크라운오프셋 ' + crownY.toFixed(0) + 'px'
       + ' (마스크 높이 ' + maskInf.h + 'px, 상단에서 ' + (100*crownY/maskInf.h).toFixed(1) + '%)'
       + ' · 유효컬럼 ' + validCols);
-    views[angle] = { rec, maskInf, cx:cxUse, crownY, s: sX, sy, pose, cos2, sin2 };
+    /* (2026-10-31) 사진 올린 단계에서 맞춘 카메라(17b VIEW_FIX — 사진 가닥으로 카메라 맞추기·사진끼리 맞추기)를 여기서 넣음
+       → 사진 가닥·뿌리 밀도·두께·viewCal·사진대조가 모두 같은 카메라. 다시 기르기는 카메라를 안 바꿈. 끄기 ?viewfix=0 */
+    let pose2 = pose, cos2b = cos2, sin2b = sin2;
+    try{ if(typeof VIEW_FIX !== 'undefined'){ const vf = { cx: cxUse, crownY, s: sX, sy, pose };
+      if(VIEW_FIX.applyTo(angle, vf)){ cxUse = vf.cx; crownY = vf.crownY; sX = vf.s; sy = vf.sy; pose2 = vf.pose;
+        cos2b = Math.cos(pose2.yaw)**2; sin2b = Math.sin(pose2.yaw)**2;
+        console.log('[사진 정렬·1단계] ' + angle + ' 적용 — 가운데 ' + cxUse.toFixed(1) + 'px · 정수리 ' + crownY.toFixed(1) + 'px · 자 ' + sy.toFixed(5) + ' · 위아래 ' + (pose2.pitch*180/Math.PI).toFixed(1) + '°'); } } }catch(e){ console.warn('[사진 정렬·1단계] 적용 실패 — 그대로', e); }
+    views[angle] = { rec, maskInf, cx:cxUse, crownY, s: sX, sy, pose: pose2, cos2: cos2b, sin2: sin2b };
   });
   const names = Object.keys(views);
   if(!names.length) return null;
