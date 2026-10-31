@@ -1419,6 +1419,8 @@ var REGROW = (function () {
     on: false, button: true,
     step: 0.022,        // 한 걸음(모델 단위 ≈ 0.4cm)
     maxSteps: 44,
+    /* (2026-10-31b) 앞 헤어라인·가르마 뿌리 = 정면 사진 결의 시작점 — 아래 hlSrc 배너. hairlineFill(이마 랜드마크 위를 통째로 채움)은 끔 */
+    hairlineFill: false, hairlineFlow: true, hairlineFlowMaxCm: 25, hairlineFlowMinN: 2, hairlineFreeCm: 3,
     minFacing: 0.22,    // 이 사진이 그 자리를 이만큼은 정면으로 봐야 결을 읽음
     /* (2026-10-20) 사진끼리 맞춰 보기 — 실제 사진 기준. 한 걸음에 두 장 이상이 결을 읽었는데 서로 agreeDeg°보다 벌어지면
        가장 믿을 만한 사진(정면도² × 결 또렷함이 큰 쪽)과 맞는 사진만 씀. 엇갈린 사진도 그만큼 믿을 만하면(무게가 agreeRatio배 안쪽)
@@ -2614,10 +2616,92 @@ var REGROW = (function () {
         }
       }
     } catch (e) { hlFill = null; }
+    /* (2026-10-31b) 앞 헤어라인·가르마 뿌리 = <b>정면 사진 결이 시작하는 자리</b> — 사용자: "앞가르마가 있는 사람들에게서 roots분포가 들쭉날쭉한데,
+       인위적으로 집어넣진 말고. 결에서 읽은 라인에 맞게 분포되게 해줘."
+       왜 들쭉날쭉했나: 가르마·헤어라인 칸은 뿌리 자리를 정면 사진이 '맨살'로 보면(세그가 가르마 둘레를 넓게 뺌) 첫 두 걸음에서 끊겨 버려짐(안 심은 뿌리) →
+         심긴 칸·버려진 칸이 세그 테두리 잡음대로 섞여 톱니가 됨. 예전 고침(hairlineFill)은 이마 랜드마크 위를 통째로 채워 결과 무관하게 넣었음(지금 꺼짐).
+       지금: 정면 사진에서 머리 픽셀(앞쪽 두피 칸을 되쏜 자리)마다 결을 <b>거슬러</b>(위·정수리 쪽으로) 따라가 머리 영역을 벗어나는 점 = 그 가닥이 시작한 자리.
+         가르마면 양쪽 결이 가르마 선에서, 헤어라인이면 머리선에서 끝남 → 그 점이 떨어진 두피 칸(사람 윤곽 안 · 배경 아님)만 '결 시작 칸'.
+         결 시작 칸의 뿌리는 ① 밀도가 0이면 둘레 머리 칸 밀도의 가운데값(둘레에 머리 칸이 없으면 안 채움) ② 첫 방향 = 거슬러 온 결의 반대(머리 쪽)
+         ③ 두피 위를 기다가 머리 영역에 처음 닿을 때까지(최대 hairlineFreeCm) 머리 영역 판정을 안 받음 — 닿은 뒤로는 예전 그대로.
+         결 시작 칸이 아닌 맨살 칸은 예전처럼 안 심음(채워 넣지 않음).
+       되돌리기 REGROW.hairlineFlow = false */
+    var hlSrc = null, hlDir = null, hlDen = null; G.hairlineFlowStat = null;
+    if (G.hairlineFlow !== false) try {
+      if (roots._hlSrc && roots._hlSrcSig === NC) { hlSrc = roots._hlSrc; hlDir = roots._hlDir; hlDen = roots._hlDen; G.hairlineFlowStat = roots._hlStat; }
+      else {
+        var cmUS = 18.6; try { cmUS = modelCmPerUnit() || cmUS; } catch (e2) {}
+        var camS = null; cams.forEach(function (c) { if (c.angle === 'front') camS = c; });
+        if (camS && camS.ori) {
+          var cmPxS = camS.s * cmUS, stepPx = Math.max(1, 0.15 / Math.max(1e-6, cmPxS)), maxStepS = Math.ceil((G.hairlineFlowMaxCm || 25) / (stepPx * cmPxS));
+          var binPx = Math.max(2, Math.round(0.35 / Math.max(1e-6, cmPxS))), bW = Math.ceil(camS.iw / binPx) + 1, bH = Math.ceil(camS.ih / binPx) + 1;
+          var binCell = new Int32Array(bW * bH).fill(-1), binZ = new Float32Array(bW * bH).fill(-1e9);
+          var crownP = proj(camS, { x: 0, y: CY + Es.b, z: 0 }), crX = crownP.ix, crY = crownP.iy;
+          var seeds = [], nonHair = new Uint8Array(NC), ci, sa, sb, oS;
+          for (ci = 0; ci < NC; ci++) {                                         // 앞쪽 두피 칸을 사진에 되쏨 — 칸 안 3×3 점
+            if (offScalp(ci)) continue;
+            var rS = ci / NT | 0, cS = ci % NT;
+            for (sa = 0; sa < 3; sa++) for (sb = 0; sb < 3; sb++) {
+              var phS = (rS + (sa + 0.5) / 3) / NP * Math.PI, thS = (cS + (sb + 0.5) / 3) / NT * 2 * Math.PI - Math.PI;
+              var FS = { x: Es.a * Math.sin(phS) * Math.sin(thS), y: CY + Es.b * Math.cos(phS), z: Es.c * Math.sin(phS) * Math.cos(thS) };
+              if (FS.z <= 0) continue;
+              oS = proj(camS, FS); if (!(oS.z > 0) || oS.ix < 0 || oS.iy < 0 || oS.ix >= camS.iw || oS.iy >= camS.ih) continue;
+              var bkS = Math.floor(oS.iy / binPx) * bW + Math.floor(oS.ix / binPx);
+              if (oS.z > binZ[bkS]) { binZ[bkS] = oS.z; binCell[bkS] = ci; }
+              if (!(camS.smp.at(oS.ix, oS.iy) > 0)) nonHair[ci] = 1;   // 칸 안에 맨살로 보이는 점이 있음 = 버려질 수 있는 뿌리 칸
+              else if (sa === 1 && sb === 1) seeds.push(oS.ix, oS.iy);
+            }
+          }
+          var personS = function (xS, yS) { if (!camS.pm) return true; var xi = Math.floor(xS * camS.kx), yi = Math.floor(yS * camS.ky); return xi >= 0 && yi >= 0 && xi < camS.mw && yi < camS.mh && camS.pm[yi * camS.mw + xi] > 0; };
+          var nTurn = 0, cnt = new Uint16Array(NC), acc = new Float32Array(NC * 3), traces = 0, exits = 0, toBg = 0, lost = 0, sd;
+          for (sd = 0; sd < seeds.length; sd += 2) {
+            var xS = seeds[sd], yS = seeds[sd + 1], uxS = 0, uyS = 0, k2, lowCS = 0, exS = -1, eyS = -1;
+            traces++;
+            for (k2 = 0; k2 < maxStepS; k2++) {
+              var soS = sampleOri(camS, xS, yS);
+              if (soS && soS.coherence >= G.minCoh) {
+                var oxS = Math.cos(soS.angle), oyS = Math.sin(soS.angle);           // 사진 좌표(아래가 +) — 결은 앞뒤가 없음
+                if (uxS || uyS) { if (oxS * uxS + oyS * uyS < 0) { oxS = -oxS; oyS = -oyS; } }
+                else { var txS = crX - xS, tyS = crY - yS, tlS = Math.hypot(txS, tyS) || 1, ddS = (oxS * txS + oyS * tyS) / tlS;   // 첫 걸음 = 정수리 쪽(거슬러)
+                  if (Math.abs(ddS) < 0.2) { if (oyS > 0) { oxS = -oxS; oyS = -oyS; } } else if (ddS < 0) { oxS = -oxS; oyS = -oyS; } }
+                if ((uxS || uyS) && oyS > (G.hairlineFlowTurn || 0.35)) { exS = xS; eyS = yS; nTurn++; break; }   // 거슬러 가다 아래로 꺾임 = 결이 갈라지는 선(가르마) — 머리에 덮여 맨살이 안 보여도 여기가 시작
+                uxS = oxS; uyS = oyS; lowCS = 0;
+              } else if (!(uxS || uyS) || ++lowCS > 6) { lost++; break; }            // 결을 못 읽으면 직전 방향으로 몇 걸음만
+              var nxS2 = xS + uxS * stepPx, nyS2 = yS + uyS * stepPx;
+              if (nxS2 < 0 || nyS2 < 0 || nxS2 >= camS.iw || nyS2 >= camS.ih) { toBg++; break; }
+              if (!(camS.smp.at(nxS2, nyS2) > 0)) { exS = nxS2 + uxS * stepPx; eyS = nyS2 + uyS * stepPx; break; }   // 머리 영역을 벗어남 = 결 시작
+              xS = nxS2; yS = nyS2;
+            }
+            if (exS < 0) continue;
+            if (!personS(exS, eyS)) { toBg++; continue; }                          // 바깥 윤곽(배경)으로 나감 — 두피 아님
+            var bkS2 = Math.floor(Math.min(camS.ih - 1, Math.max(0, eyS)) / binPx) * bW + Math.floor(Math.min(camS.iw - 1, Math.max(0, exS)) / binPx), cE = binCell[bkS2];
+            if (cE < 0) continue;
+            exits++; cnt[cE]++;
+            var vxS = -uxS * camS.s, vyS = uyS * camS.sy, Rs = camS.R;              // 내려가는 쪽(머리 쪽) = 거슬러 온 방향의 반대 · 사진 → 모델
+            acc[cE * 3] += Rs[0] * vxS + Rs[3] * vyS; acc[cE * 3 + 1] += Rs[1] * vxS + Rs[4] * vyS; acc[cE * 3 + 2] += Rs[2] * vxS + Rs[5] * vyS;
+          }
+          var minN = G.hairlineFlowMinN || 2, nSrc = 0, nDen = 0;
+          hlSrc = new Uint8Array(NC); hlDir = new Float32Array(NC * 3); hlDen = new Float32Array(NC);
+          for (ci = 0; ci < NC; ci++) {
+            if (cnt[ci] < minN || !(nonHair[ci] || !(roots.den[ci] > bald))) continue;   // 머리로만 보이는 칸은 예전 그대로(결이 이미 잘 읽힘)
+            var alS = Math.hypot(acc[ci * 3], acc[ci * 3 + 1], acc[ci * 3 + 2]); if (!(alS > 0)) continue;
+            hlSrc[ci] = 1; nSrc++;
+            hlDir[ci * 3] = acc[ci * 3] / alS; hlDir[ci * 3 + 1] = acc[ci * 3 + 1] / alS; hlDir[ci * 3 + 2] = acc[ci * 3 + 2] / alS;
+            if (roots.den[ci] > bald) continue;
+            var rN = ci / NT | 0, cN = ci % NT, nbS = [], dr4, dc4;                // 둘레 2칸 머리 칸 밀도의 가운데값
+            for (dr4 = -2; dr4 <= 2; dr4++) { if (rN + dr4 < 0 || rN + dr4 >= NP) continue; for (dc4 = -2; dc4 <= 2; dc4++) { var cj4 = (rN + dr4) * NT + ((cN + dc4) % NT + NT) % NT; if (!offScalp(cj4) && roots.den[cj4] > bald) nbS.push(roots.den[cj4]); } }
+            if (nbS.length >= 3) { nbS.sort(function (p1, p2) { return p1 - p2; }); hlDen[ci] = nbS[nbS.length >> 1]; nDen++; }
+          }
+          G.hairlineFlowStat = { seeds: seeds.length / 2, traces: traces, exits: exits, turn: nTurn, toBg: toBg, lost: lost, src: nSrc, den: nDen };
+          roots._hlSrc = hlSrc; roots._hlDir = hlDir; roots._hlDen = hlDen; roots._hlStat = G.hairlineFlowStat; roots._hlSrcSig = NC;
+        }
+      }
+    } catch (e) { hlSrc = null; hlDir = null; hlDen = null; G.hairlineFlowStat = { err: String(e && e.message || e) }; }
     var wgt = new Float64Array(NC), wTot = 0, i;
     for (i = 0; i < NC; i++) {
       if (offScalp(i)) continue;
-      var den = roots.den[i]; if (!(den > bald)) continue;
+      var den = roots.den[i]; if (!(den > bald) && hlDen && hlDen[i] > bald) den = hlDen[i];   // (2026-10-31b) 결 시작 칸 — 위 배너
+      if (!(den > bald)) continue;
       wgt[i] = den * (areas ? areas[i] : 1); wTot += wgt[i];
     }
     if (!(wTot > 0)) return { err: '뿌리밀도가 전부 0' };
@@ -2738,12 +2822,15 @@ var REGROW = (function () {
       else if (Math.abs(dt.z) > 0.3) sgn = dt.z < 0 ? 1 : -1;               // 수평이면 뒤쪽
       else if (polMap && polMap[cellIdx * 4 + 3] > 0) sgn = (dt.x * polMap[cellIdx * 4] + dt.y * polMap[cellIdx * 4 + 1] + dt.z * polMap[cellIdx * 4 + 2]) >= 0 ? 1 : -1;   // (2026-10-11d) 이웃 뿌리들의 방향
       else { sgn = dt.x * F.x >= 0 ? 1 : -1; polStat.mid++; }               // 이웃도 모름 — 예전처럼 가운데 선 바깥쪽
+      var hlHere = !!(hlSrc && hlSrc[cellIdx]), hlReach = false;             // (2026-10-31b) 결 시작 칸 — 첫 방향 = 거슬러 온 결의 반대(머리 쪽)
+      if (hlHere) { var dH = tangent({ x: hlDir[cellIdx * 3], y: hlDir[cellIdx * 3 + 1], z: hlDir[cellIdx * 3 + 2] }, n);
+        if (dH) { dt = dH; sgn = 1; } else hlHere = false; }
       var r1 = room(F, n, dt, sgn);
       var flip = 0, tCm0 = tRoot * cmU;
       var rootFront = F.z > 0 && Math.abs(Math.atan2(F.x, F.z)) < 0.87, rootSide = F.x >= 0 ? 1 : -1;   // (2026-10-25) 얼굴 앞 비켜 가기용
       var thinCap = (G.thinLen && tCm0 < G.thinLenRootCm && (!bareNear || bareNear[cellIdx])) ? Math.max(G.thinLenMinCm, G.thinLenK * tCm0) / cmU : 0;   // (2026-10-24g) 얇은 자리 길이
       var polK = G.polThickHi > G.polThickLo ? Math.max(0, Math.min(1, (G.polThickHi - tCm0) / (G.polThickHi - G.polThickLo))) : 1;   // (2026-10-10g) 두꺼운(세운) 자리는 오르막 허용
-      if (G.flipRule !== false && r1 < 2) {   // (2026-10-22) flipRule=false면 결이 가리킨 쪽 그대로
+      if (G.flipRule !== false && r1 < 2 && !hlHere) {   // (2026-10-31b) 결 시작 칸은 결이 정한 쪽 그대로   // (2026-10-22) flipRule=false면 결이 가리킨 쪽 그대로
         var r2 = room(F, n, dt, -sgn);
         if (r2 > r1) {
           var tCm = tRoot * cmU;
@@ -2815,7 +2902,8 @@ var REGROW = (function () {
               if (pr2 > lS) { var hk2 = Math.max(0, h2 - (pr2 - lS)); P2 = { x: F2.x + n2.x * hk2, y: F2.y + n2.y * hk2, z: F2.z + n2.z * hk2 }; st.liftScalp = (st.liftScalp || 0) + 1; } }
           }
           var v2 = vote(P2);
-          if (v2 === 0 && hlFill && hlFill[cellIdx] && s2 * cmU < (G.hairlineFreeCm || 6)) { v2 = 1; st.hlFree = (st.hlFree || 0) + 1; }   // (2026-10-31) 앞 헤어라인 채운 뿌리 — 위 배너
+          if (v2 === 0 && hlFill && hlFill[cellIdx] && s2 * cmU < (G.hairlineFreeCm || 6)) { v2 = 1; st.hlFree = (st.hlFree || 0) + 1; }   // (2026-10-31) 앞 헤어라인 채운 뿌리 — 위 배너(기본 꺼짐)
+          if (hlHere && !hlReach) { if (v2) hlReach = true; else if (s2 * cmU < (G.hairlineFreeCm || 3)) { v2 = 1; st.hlFree = (st.hlFree || 0) + 1; } }   // (2026-10-31b) 결 시작 칸 — 머리 영역에 처음 닿을 때까지만
           if (TS) { rec(0, !fl, 0); TS.push(v2 ? 1 : 0, P2.x, P2.y, P2.z); }
           // (2026-10-10j) 사진 윤곽으로 잰 머리 두께가 거의 없는 자리(페이드·짧게 민 옆·뒤)로는 위에서 내려온 긴 머리가 못 덮음 — 덮었다면 윤곽이 두꺼웠을 것
           if (G.thinStopCm > 0 && tCm0 >= G.thinStopRoot && s2 > G.thinStopAfter / cmU && thickAt(F2) * cmU < G.thinStopCm) { stop = 'mask'; st.thinStop = (st.thinStop || 0) + 1; break; }
@@ -4085,6 +4173,7 @@ function helixMeasure(rgba,mask,W,H,angle,coh,opt){opt=opt||{};const n=opt.n||25
     if (!s) return L;
     var tot = s.n || 1, secs = Object.keys(s.sec).map(function (k) { return k + ' ' + Math.round(s.sec[k] / tot * 100) + '%'; }).join(' · ');
     L.push('  앞 헤어라인 채우기(이마 랜드마크 위인데 사진이 맨살로 본 두피 칸): ' + (G.hairlineFill === false ? '꺼짐' : '밀도 채운 칸 ' + (G.hairlineFillN || 0) + ' · 두피 위에서 판정 건너뛴 걸음 ' + (s.hlFree || 0) + ' (끄기 REGROW.hairlineFill=false)'));
+    try { var hfs = G.hairlineFlowStat; L.push('  앞 헤어라인·가르마 = 정면 사진 결의 시작점: ' + (G.hairlineFlow === false ? '꺼짐' : !hfs ? '정면 사진 결 없음' : hfs.err ? '⚠ ' + hfs.err : '거슬러 따라간 결 ' + hfs.traces + '줄 → 두피 맨살에서 끝남 ' + hfs.exits + ' · 배경·사진 밖으로 ' + hfs.toBg + ' · 결 잃음 ' + hfs.lost + ' · 결 시작 칸 ' + hfs.src + '(그중 밀도 0이라 둘레 머리 칸 값으로 ' + hfs.den + ') · 두피 위에서 판정 건너뛴 걸음 ' + (s.hlFree || 0) + ' (끄기 REGROW.hairlineFlow=false)')); } catch (e) {}
     L.push('  가닥 ' + s.n + '개(사진에 머리가 없어 안 심은 뿌리 ' + s.skipped + ') · ' + s.ms + 'ms' + (s.workMs != null ? '(걷기에 일한 시간 ' + s.workMs + ' · 마무리 ' + s.finMs + ' · 사이사이 쉰 시간 ' + Math.max(0, s.ms - s.workMs - s.finMs) + ' — ' + s.slices + '번 나눠 함)' : '') + (s.mShare < 1 ? ' · 재는 용도라 ' + (G.measureFull || []).join('·') + ' 밖은 ' + Math.round(s.mShare * 100) + '%만 기름(전부 REGROW.measureShare=1)' : '') + ' · 사진 ' + s.cams);
     L.push('  뿌리 분포 — ' + secs);
     L.push('  길이 ' + n1(s.lenMed) + '/' + n1(s.lenP90) + 'cm(중앙값/p90) · 꺾임 ' + n1(s.kinkMed) + '°/' + n1(s.kinkP90) + '° · 결을 사진에서 못 읽고 이어 간 걸음 ' + n1(s.estPct) + '%');
