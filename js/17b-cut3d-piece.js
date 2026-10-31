@@ -3230,7 +3230,7 @@ var REGROW = (function () {
         try { fitR = G.camFitRun(model, prbL); } catch (e) { console.warn(TAG + ' 카메라 맞추기 실패 — 그대로 씀', e); }
         G.camFitFirstMs = Math.round(workMs);
         if (vfFit) {                                            // (2026-10-31b) 맞춘 카메라를 사진마다 저장하고 3D(사진 가닥·밀도·두께·사진대조)를 그 카메라로 다시 → 그다음 기르기는 그리기만
-          var vfChanged = false; try { vfChanged = VIEW_FIX.mergeFit(vfOrig, prbL, fitR); } catch (e) { console.warn(TAG + ' 카메라 맞춘 값 저장 실패', e); }
+          var vfChanged = false; try { vfChanged = VIEW_FIX.mergeFit(vfOrig, prbL, fitR, photo); } catch (e) { console.warn(TAG + ' 카메라 맞춘 값 저장 실패', e); }
           if (vfChanged && typeof buildNeutralHair3D === 'function') { console.log('[사진 정렬·1단계] 다시 기른 가닥으로 맞춘 카메라로 3D를 다시 만들고 그리기만 합니다'); buildNeutralHair3D(function () { G.build(cb, { full: true }); }); return; }
         }
         return G.build(cb, { full: true });
@@ -8798,7 +8798,7 @@ var VIEW_FIX = (function () {
     var f = S.fixFor(angle); if (!f) return false;
     if (f.dp) { var R = composeRotationZYX(v.pose.yaw, v.pose.pitch, v.pose.roll), p = decompose(rotX(R, f.dp), v.pose); v.pose = { yaw: p.yaw, pitch: p.pitch, roll: p.roll }; }
     if (f.ds && f.ds !== 1) { v.s /= f.ds; v.sy /= f.ds; }
-    v.cx += f.dcx || 0; v.crownY += f.dcy || 0;
+    v.cx += f.dcx || 0; v.crownY += (f.dcy || 0) + (f.dcyFit || 0);   // dcx·dcy = 사진끼리 맞추기 · dcyFit = 카메라 맞추기 배율에 딸린 높이
     return true;
   };
   /* 중립 3D가 만들어진 직후 — 맞춘 양을 재서 저장. 바뀐 게 있으면 true(한 번 더 만듦) */
@@ -8833,7 +8833,7 @@ var VIEW_FIX = (function () {
   S.fitDone = function () { if (!S.fitMasks) return false; var m = masksNow(), k; for (k in m) if (S.fitMasks[k] !== m[k]) return false; for (k in S.fitMasks) if (m[k] !== S.fitMasks[k]) return false; return true; };
   S.snap = function (probe) { var o = {}; if (probe && probe.cams) probe.cams.forEach(function (c) { o[c.angle] = { R: c.R.slice(), s: c.s, sy: c.sy, cx: c.cx, crownY: c.crownY }; }); return o; };
   /* 다시 기른 가닥으로 맞춘 카메라(REGROW.camFitRun이 프로브를 고친 것)를 사진마다 저장된 값에 더함 · 프로브는 원래대로. 바뀌었으면 true */
-  S.mergeFit = function (orig, probe, fit) {
+  S.mergeFit = function (orig, probe, fit, photo) {
     S.fitMasks = masksNow(); var changed = false, m = S.fitMasks, rows = [];
     if (!orig || !probe || !probe.cams) return false;
     probe.cams.forEach(function (c) {
@@ -8842,12 +8842,29 @@ var VIEW_FIX = (function () {
       var dp = (r && r.pitch) ? r.pitch * Math.PI / 180 : 0, ds = o.s / c.s, dcy = c.crownY - o.crownY;
       if (!(Math.abs(ds - 1) > 1e-6)) ds = 1;
       if (dp || ds !== 1 || Math.abs(dcy) > 0.01) {
-        var f = S.fixFor(c.angle) || { mask: m[c.angle], dp: 0, ds: 1, dcx: 0, dcy: 0 };
-        f.dp += dp; f.ds *= ds; f.dcy += dcy; S.fix[c.angle] = f; changed = true;
+        var f = S.fixFor(c.angle) || { mask: m[c.angle], dp: 0, ds: 1, dcx: 0, dcy: 0, dcyFit: 0 };
+        f.dp += dp; f.ds *= ds; f.dcyFit = (f.dcyFit || 0) + dcy; S.fix[c.angle] = f; changed = true;
         rows.push(c.angle + ' 위아래 ' + (dp >= 0 ? '+' : '') + (dp * 180 / Math.PI).toFixed(0) + '° · 배율 ' + ds.toFixed(3));
       }
-      c.R = o.R; c.s = o.s; c.sy = o.sy; c.cx = o.cx; c.crownY = o.crownY;
     });
+    /* (2026-10-31c) 각도·배율이 바뀌었으면 <b>그 카메라 기준으로</b> 사진끼리 맞추기를 다시 — 사용자: "각도가 바뀌어 버리면 어긋나서 모양이 틀어지지"
+       디버그 2042(직모): 사진끼리 맞추기(오른쪽 가로 −1.0cm)를 먼저 하고 나중에 오른쪽을 +11° 돌림 → 돌리기 전 기준 위치에 각도만 바뀜.
+       예전(h · 각도 먼저)엔 같은 사진이 +1.0cm. 그래서 옛 위치 이동을 빼고, 돌린 카메라로 새로 찾아 바꿔 넣음 */
+    if (changed && photo && typeof REGROW !== 'undefined' && REGROW.photoAlign && REGROW.alignOnly) {
+      try {
+        probe.cams.forEach(function (c) { var f = S.fix[c.angle]; if (f && f.mask === m[c.angle]) { c.cx -= f.dcx || 0; c.crownY -= f.dcy || 0; } });
+        var base = {}; probe.cams.forEach(function (c) { base[c.angle] = { cx: c.cx, crownY: c.crownY }; });
+        var pa = REGROW.alignOnly(photo), moved = [];
+        if (pa && pa.cams) pa.cams.forEach(function (c) {
+          var b0 = base[c.angle]; if (!b0 || !m[c.angle]) return;
+          var f = S.fix[c.angle] || (S.fix[c.angle] = { mask: m[c.angle], dp: 0, ds: 1, dcx: 0, dcy: 0, dcyFit: 0 });
+          f.dcx = c.cx - b0.cx; f.dcy = c.crownY - b0.crownY;
+          if (Math.abs(f.dcx) > 0.01 || Math.abs(f.dcy) > 0.01) moved.push(c.angle + ' 가로 ' + (f.dcx >= 0 ? '+' : '') + f.dcx.toFixed(1) + 'px · 세로 ' + (f.dcy >= 0 ? '+' : '') + f.dcy.toFixed(1) + 'px');
+        });
+        rows.push('돌린 카메라로 사진끼리 다시 맞춤: ' + (moved.length ? moved.join(' / ') : '옮길 것 없음') + (pa && pa.pa ? ' (겹침 ' + Math.round((pa.pa.before || 0) * 1000) / 10 + '% → ' + Math.round((pa.pa.after || 0) * 1000) / 10 + '%)' : ''));
+      } catch (e) { console.warn(TAG + ' 돌린 카메라로 사진끼리 다시 맞추기 실패 — 앞 값 그대로', e); }
+    }
+    probe.cams.forEach(function (c) { var o = orig[c.angle]; if (o) { c.R = o.R; c.s = o.s; c.sy = o.sy; c.cx = o.cx; c.crownY = o.crownY; } });
     S.fitLast = rows.length ? rows.join(' / ') : '바꿀 것 없음';
     console.log(TAG + ' 다시 기른 가닥으로 카메라 맞추기 — ' + S.fitLast);
     return changed;
