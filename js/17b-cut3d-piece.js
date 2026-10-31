@@ -1418,6 +1418,8 @@ var REGROW = (function () {
   var G = Object.assign({
     on: false, button: true,
     step: 0.022,        // 한 걸음(모델 단위 ≈ 0.4cm)
+    /* (2026-10-31) 정리된 사진 가닥 따라 걷기 — 아래 SF 배너. 끄기 ?sf=0 (예전: 걸음마다 사진 픽셀 결을 다시 읽음) */
+    strandField: !/[?&]sf=0\b/.test(location.search), sfCellCm: 0.8, sfRadius: 1, sfEndSteps: 3, sfMinCoh: 0.35,
     maxSteps: 44,
     minFacing: 0.22,    // 이 사진이 그 자리를 이만큼은 정면으로 봐야 결을 읽음
     /* (2026-10-20) 사진끼리 맞춰 보기 — 실제 사진 기준. 한 걸음에 두 장 이상이 결을 읽었는데 서로 agreeDeg°보다 벌어지면
@@ -2421,6 +2423,7 @@ var REGROW = (function () {
     }
     /* 0.4cm 걸음 = 처음 자리(flow) + 중간 두 번 · 끝 한 번(flowLite) — 1:2:2:1 */
     function flowStep(p, n, ref, flat, h) {
+      if (SF) { var dS = sfAt(p); if (dS) { SF.use++; if (TRF) { TRF.nc = 1; TRF.best = -2; TRF.coh = 100; TRF.spr = 0; } return dS; } SF.none++; }   // (2026-10-31) 정리된 사진 가닥 방향 그대로 — 위 SF 배너
       var k1 = flow(p, n, ref, flat);
       if (!k1 || !G.rk || !(h > 0) || !lastUse.length) return k1;
       rkN++;
@@ -2713,6 +2716,66 @@ var REGROW = (function () {
     } catch (e) { bareNear = null; }
     G.bareNearN = bareNearN;
 
+    /* ── (2026-10-31) SF: 정리된 사진 가닥 결 장 ─────────────────────────────────────────────
+       사용자: "사진끼리 맞춘 정보를 바탕으로 겹치는 부분의 가닥을 다 어느 가닥을 그릴지 정리해서 전체 가닥과 결방향을 잡아놓은 다음에 걸음을 걷게 하라고 했는데.
+               걸음이 가면서 일일이 매번 읽지 않게 — 이렇게 가다보면 정리가 안된 곳에서는 다른 가닥으로 타버릴 수도 있다고."
+       디버그 1711(가운데 가르마 직모): 걸음마다 사진 픽셀 결을 다시 읽으니 가르마 선(밝은 직선)을 결로 읽어 이마로 직진 → 4~6cm에서 끊김.
+         같은 자리를 지나는 사진 가닥(사진마다 필터가 읽은 결을 따라 그은 선을 3D로 올린 것) 81개는 대부분 옆으로 감.
+       지금: ① 사진 가닥(거울로 만든 것 빼고)을 sfCellCm 칸에 넣음 — 칸마다 사진별로 방향(뿌리→끝)·무게(그 사진이 그 자리를 마주 보는 정도)를 모음
+             ② 정리: 칸마다 <b>무게가 가장 큰 사진 한 장</b>의 가닥 방향만 남김(겹치는 자리에서 어느 사진 가닥을 그릴지 고름)
+             ③ 걸음: 그 자리(둘레 sfRadius칸)의 정리된 방향을 그대로 따름 — 사진 픽셀을 다시 읽지 않음. 정리된 가닥이 없는 자리에서만 예전처럼 픽셀 결
+             ④ 길이: 정리된 가닥 위를 걷다가 sfEndSteps 걸음 연속으로 가닥이 없으면 거기서 끝(사진 가닥이 끝난 자리)
+             머리 영역 밖 멈춤은 그대로(방향이 틀렸을 때 막는 안전장치) */
+    var SF = null, sfLast = false;
+    if (G.strandField) try {
+      var cmS = (typeof modelCmPerUnit === 'function' && modelCmPerUnit()) || 16.4, hS = G.sfCellCm / cmS;
+      var sx0 = -2.4 * Es.a, sz0 = -2.4 * Es.c, sy0 = Math.min(CY - 1.2 * Es.b, yTop - 75 / cmS);
+      var sNx = Math.ceil(4.8 * Es.a / hS), sNz = Math.ceil(4.8 * Es.c / hS), sNy = Math.ceil((CY + 1.4 * Es.b - sy0) / hS);
+      var camByAngle = {}; cams.forEach(function (c, ci) { camByAngle[c.angle] = ci; });
+      var acc = new Map(), nSeg = 0, nStr = 0, NV = cams.length;
+      var keyOf = function (x, y, z) { var a = Math.floor((x - sx0) / hS), b = Math.floor((y - sy0) / hS), c = Math.floor((z - sz0) / hS); if (a < 0 || b < 0 || c < 0 || a >= sNx || b >= sNy || c >= sNz) return -1; return (b * sNz + c) * sNx + a; };
+      photo.strands.forEach(function (st0) {
+        if (st0.mirrored) return;
+        var vi = camByAngle[st0.srcAngle]; if (vi == null) return;
+        var cam = cams[vi], R = cam.R, q = st0.pts, j; if (!q || q.length < 2) return; nStr++;
+        for (j = 1; j < q.length; j++) {
+          var ax = q[j].x - q[j - 1].x, ay = q[j].y - q[j - 1].y, az = q[j].z - q[j - 1].z, L = Math.hypot(ax, ay, az); if (!(L > 1e-9)) continue;
+          ax /= L; ay /= L; az /= L;
+          var ns = Math.max(1, Math.ceil(L / (hS * 0.5))), t;
+          for (t = 0; t < ns; t++) {
+            var f = (t + 0.5) / ns, px = q[j - 1].x + (q[j].x - q[j - 1].x) * f, py = q[j - 1].y + (q[j].y - q[j - 1].y) * f, pz = q[j - 1].z + (q[j].z - q[j - 1].z) * f;
+            var k = keyOf(px, py, pz); if (k < 0) continue;
+            var ox = px / a2, oy = (py - CY) / b2, oz = pz / c2, ol = Math.hypot(ox, oy, oz) || 1;
+            var w = Math.max(0.05, (R[6] * ox + R[7] * oy + R[8] * oz) / ol);       // 그 사진이 이 자리를 마주 보는 정도
+            var A = acc.get(k); if (!A) { A = new Float32Array(NV * 4); acc.set(k, A); }
+            A[vi * 4] += w * ax; A[vi * 4 + 1] += w * ay; A[vi * 4 + 2] += w * az; A[vi * 4 + 3] += w; nSeg++;
+          }
+        }
+      });
+      var dirs = new Map(), byView = new Array(NV).fill(0), lowCoh = 0;
+      acc.forEach(function (A, k) {
+        var bv = -1, bw = 0, v; for (v = 0; v < NV; v++) if (A[v * 4 + 3] > bw) { bw = A[v * 4 + 3]; bv = v; }
+        if (bv < 0) return;
+        var x = A[bv * 4], y = A[bv * 4 + 1], z = A[bv * 4 + 2], l = Math.hypot(x, y, z);
+        if (!(l > 1e-9) || l / bw < G.sfMinCoh) { lowCoh++; return; }                 // 한 칸 안에서 그 사진 가닥끼리 방향이 엇갈림 = 정리 못 함
+        dirs.set(k, [x / l, y / l, z / l, bw]); byView[bv]++;
+      });
+      SF = { dirs: dirs, h: hS, x0: sx0, y0: sy0, z0: sz0, nx: sNx, ny: sNy, nz: sNz, cells: dirs.size, lowCoh: lowCoh, strands: nStr, segs: nSeg,
+        byView: cams.map(function (c, i) { return c.angle + ' ' + byView[i]; }).join(' · '), use: 0, none: 0, end: 0, root: 0 };
+    } catch (e) { SF = null; console.warn(TAG + ' 사진 가닥 결 장 실패 — 예전처럼 픽셀 결', e); }
+    G.sfStat = SF;
+    function sfAt(p) {                                                     // 정리된 방향(뿌리→끝) · 없으면 null
+      sfLast = false; if (!SF) return null;
+      var a = Math.floor((p.x - SF.x0) / SF.h), b = Math.floor((p.y - SF.y0) / SF.h), c = Math.floor((p.z - SF.z0) / SF.h), r = G.sfRadius | 0, da, db, dc, x = 0, y = 0, z = 0, ws = 0;
+      for (db = -r; db <= r; db++) for (dc = -r; dc <= r; dc++) for (da = -r; da <= r; da++) {
+        var A = a + da, B = b + db, C = c + dc; if (A < 0 || B < 0 || C < 0 || A >= SF.nx || B >= SF.ny || C >= SF.nz) continue;
+        var D = SF.dirs.get((B * SF.nz + C) * SF.nx + A); if (!D) continue;
+        var w = D[3] / (1 + da * da + db * db + dc * dc); x += w * D[0]; y += w * D[1]; z += w * D[2]; ws += w;
+      }
+      var l = Math.hypot(x, y, z); if (!(ws > 0) || !(l > 1e-9)) return null;
+      sfLast = true; return { x: x / l, y: y / l, z: z / l };
+    }
+
     function grow(cellIdx) {
       var r = cellIdx / NT | 0, c = cellIdx % NT;
       var ph = (r + rnd()) / NP * Math.PI, th = (c + rnd()) / NT * 2 * Math.PI - Math.PI;
@@ -2724,6 +2787,7 @@ var REGROW = (function () {
       var tRoot = thickAt(F), rootY = F.y;
       var pts = [{ x: F.x, y: F.y, z: F.z }], P = F, s = 0, prev = null, miss = 0, k, d, dt, fl, estSteps = 0, steps = 0, free = false, stop = 'max';
       var bw = 0, myTip = null, exitI = -1, exitY = 0, exitZ = 0;           // backFix: 뒤쪽 정도(0~1) · 이 가닥이 내려갈 끝 높이 · 두피를 벗어난 자리(점 번호·높이·깊이)
+      var sfOnS = false, sfMissS = 0;                                        // (2026-10-31) 사진 가닥 위를 걷는 중 · 연속으로 가닥이 없던 걸음
       var hangTip = null, hung = false, lowF = Infinity;   // lowF: (13k) 두피 밖에서 가장 낮게 내려간 높이                                     // (v6) 곧게 내릴 끝 높이 · 곧게 내린 적 있음
       var nFaceSlide = 0, nDepth = 0, nLift = 0, nLayerIn = 0, nLayerOut = 0, nClimb = 0, sOn = 0, sFree = 0, nBack = 0, nNeck = 0, nEst = 0, TS = G.trace ? [] : null;   // (2026-10-10a) 걸음 기록
       function rec(ph, est, ex2) {                                          // 걸음 하나: [단계 0두피위 1두피밖 2곧게내림, 결 못읽음, 쓴 사진 수, 주로 쓴 사진, 그 사진 결 또렷함, 사진끼리 벌어진 각, 따로 막은 것(1 앞쏠림 2 목), 머리 영역 표, x,y,z]
@@ -2732,7 +2796,8 @@ var REGROW = (function () {
       if (TS) TRF = {};
 
       // 첫 방향과 앞뒤
-      fl = flow(F, n, null);
+      var sfRoot = SF ? sfAt(F) : null;                                      // (2026-10-31) 뿌리 자리 정리된 사진 가닥 방향(뿌리→끝 · 앞뒤가 정해져 있음)
+      fl = sfRoot || flow(F, n, null); if (sfRoot) SF.root++;
       d = fl || down; if (!fl) estSteps++;
       dt = tangent(d, n) || tangent({ x: 0.3, y: -1, z: 0.2 }, n) || { x: 1, y: 0, z: 0 };
       var sgn;
@@ -2740,12 +2805,13 @@ var REGROW = (function () {
       else if (Math.abs(dt.z) > 0.3) sgn = dt.z < 0 ? 1 : -1;               // 수평이면 뒤쪽
       else if (polMap && polMap[cellIdx * 4 + 3] > 0) sgn = (dt.x * polMap[cellIdx * 4] + dt.y * polMap[cellIdx * 4 + 1] + dt.z * polMap[cellIdx * 4 + 2]) >= 0 ? 1 : -1;   // (2026-10-11d) 이웃 뿌리들의 방향
       else { sgn = dt.x * F.x >= 0 ? 1 : -1; polStat.mid++; }               // 이웃도 모름 — 예전처럼 가운데 선 바깥쪽
+      if (sfRoot) sgn = 1;                                                   // 사진 가닥이 정한 앞뒤 그대로
       var r1 = room(F, n, dt, sgn);
       var flip = 0, tCm0 = tRoot * cmU;
       var rootFront = F.z > 0 && Math.abs(Math.atan2(F.x, F.z)) < 0.87, rootSide = F.x >= 0 ? 1 : -1;   // (2026-10-25) 얼굴 앞 비켜 가기용
       var thinCap = (G.thinLen && tCm0 < G.thinLenRootCm && (!bareNear || bareNear[cellIdx])) ? Math.max(G.thinLenMinCm, G.thinLenK * tCm0) / cmU : 0;   // (2026-10-24g) 얇은 자리 길이
       var polK = G.polThickHi > G.polThickLo ? Math.max(0, Math.min(1, (G.polThickHi - tCm0) / (G.polThickHi - G.polThickLo))) : 1;   // (2026-10-10g) 두꺼운(세운) 자리는 오르막 허용
-      if (G.flipRule !== false && r1 < 2) {   // (2026-10-22) flipRule=false면 결이 가리킨 쪽 그대로
+      if (G.flipRule !== false && r1 < 2 && !sfRoot) {   // (2026-10-22) flipRule=false면 결이 가리킨 쪽 그대로
         var r2 = room(F, n, dt, -sgn);
         if (r2 > r1) {
           var tCm = tRoot * cmU;
@@ -2794,6 +2860,7 @@ var REGROW = (function () {
         if (!free) {
           // 두피 위 구간: 발은 두피면을 따라, 몸은 그 위 두께만큼 떠서
           polW = (flip === 1) ? 0 : (G.polDown || 0) * polK; fl = flowStep(P, n, prev, false, stp); polW = 0; if (!fl) { estSteps++; nEst++; }
+          if (SF) { if (sfLast) { sfOnS = true; sfMissS = 0; } else if (sfOnS && ++sfMissS >= G.sfEndSteps) { stop = 'tip'; SF.end++; break; } }   // (2026-10-31) 따라가던 사진 가닥이 끝남
           if (fl) fl = mixDir(prev, fl);
           dt = tangent(fl || prev, n) || prev;
           var F2 = onSurf({ x: F.x + dt.x * stp, y: F.y + dt.y * stp, z: F.z + dt.z * stp });
@@ -2838,6 +2905,7 @@ var REGROW = (function () {
           } else {
             var rr = Math.hypot(P.x, P.z), nc = rr > 1e-6 ? { x: P.x / rr, y: 0, z: P.z / rr } : n;
             polW = G.gravSign || 0; fl = flowStep(P, nc, prev, true, stp); polW = 0;   // (2026-10-25f) 두피 밖도 중력으로 오름·내림만 고름
+            if (SF) { if (sfLast) { sfOnS = true; sfMissS = 0; } else if (sfOnS && ++sfMissS >= G.sfEndSteps) { stop = 'tip'; SF.end++; break; } }   // (2026-10-31) 따라가던 사진 가닥이 끝남
             // (13l) 두상 아래에서 사진 한 장만 옆으로 누운 결을 말하면 안 믿음 — 결을 못 읽은 걸음처럼 직전 방향 + 중력
             if (fl && G.soloSideBelow && flowNC === 1 && P.y < CY - Es.b && Math.abs(fl.y) < G.soloSideCos) { fl = null; st.soloSide = (st.soloSide || 0) + 1; }
             if (!fl) { estSteps++; nEst++; }
@@ -4105,6 +4173,7 @@ function helixMeasure(rgba,mask,W,H,angle,coh,opt){opt=opt||{};const n=opt.n||25
     L.push('  얼굴 앞에서 옆으로 비켜 감(앞 헤어라인 뿌리 · 사진이 얼굴이라 한 자리): ' + (G.faceSlide ? '켜짐 — 비켜 간 걸음 ' + (s.faceSlide || 0) + '(가닥 ' + (s.faceSlideN || 0) + ') (끄기 REGROW.faceSlide=false)' : '꺼짐'));
     L.push('  얇은 자리 길이(뿌리 두께 ' + G.thinLenRootCm + 'cm 미만 · 길이 ≤ max(' + G.thinLenMinCm + ', ' + G.thinLenK + '×두께)cm · ' + (G.thinLenBareCells > 0 ? '맨살(머리 없는 두피 칸) ' + G.thinLenBareCells + '칸 안 뿌리만 — 그런 뿌리 칸 ' + (G.bareNearN || 0) : '두께만') + '): ' + (G.thinLen ? '켜짐 — 해당 뿌리 ' + (s.thinRoots || 0) + ' · 그 길이에서 끝낸 가닥 ' + (s.thinLenN || 0) + ' (끄기 ?thinlen=0)' : '꺼짐(켜기 ?thinlen=1)'));
     try { if (typeof VIEW_FIX !== 'undefined') VIEW_FIX.lines().forEach(function (t) { L.push('  ' + t); }); } catch (e) {}   // (2026-10-31)
+    try { var sf = G.sfStat; L.push('  정리된 사진 가닥 따라 걷기: ' + (!G.strandField ? '꺼짐(켜기 ?sf=1)' : !sf ? '못 만듦(예전처럼 픽셀 결)' : '칸 ' + sf.cells + '(사진 가닥 ' + sf.strands + '개 · 칸 고른 사진 ' + sf.byView + ' · 한 사진 안에서 엇갈려 뺀 칸 ' + sf.lowCoh + ') · 그 방향을 쓴 걸음 ' + sf.use + ' · 가닥 없어 픽셀 결로 간 걸음 ' + sf.none + ' · 뿌리 방향을 정한 가닥 ' + sf.root + ' · 사진 가닥이 끝나 멈춘 가닥 ' + sf.end + ' (끄기 ?sf=0)')); } catch (e) {}
     try { var pa = s.pa; if (pa) L.push('  사진끼리 머리 영역 맞추기(각도는 그대로 · 가운데·정수리 높이만 ±' + G.photoAlignMaxCm + 'cm): ' + (!pa.on ? '꺼짐(켜기 ?photoalign=1)' : pa.why ? pa.why : '기준 ' + pa.ref + ' · 다른 사진들로 깎은 덩어리가 설명하는 비율(사진 평균) ' + (pa.before * 100).toFixed(1) + '% → ' + (pa.after * 100).toFixed(1) + '% · 옮긴 사진: ' + (pa.moved.length ? pa.moved.join(' / ') : '없음') + ' · ' + pa.ms + 'ms (끄기 ?photoalign=0)')); } catch (e) {}
     try { var rk = s.rk; if (rk) L.push('  걸음 안 세 번 더 보기(RK4 · 0.4cm 걸음): ' + (rk.on ? '켜짐 — 걸음 ' + rk.n + ' · 곧은 결이라 한 번으로 끝낸 걸음 ' + (rk.skip || 0) + ' · 다시 본 자리 ' + rk.sub + ' · 결이 없어 앞 값을 쓴 자리 ' + rk.miss + ' (끄기 ?rk=0)' : '꺼짐(켜기 ?rk=1)') + ' · 관성 ' + G.inertia + ' · 중력 ' + G.gravity); } catch (e) {}
     try { L.push('  깊이 맞추기(결을 한 장만 읽은 걸음 · 그 사진 시선축으로만 ' + G.depthFixCm + 'cm 안): ' + (G.depthFix ? '켜짐 — 멈출 뻔한 걸음을 옮김 ' + (s.depthFix || 0) + '(가닥 ' + (s.depthFixN || 0) + ' · 옮긴 깊이 평균 ' + (s.depthFixCm || 0).toFixed(1) + 'cm) (끄기 ?depthfix=0)' : '꺼짐(켜기 ?depthfix=1)')); } catch (e) {}
