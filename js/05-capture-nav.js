@@ -424,7 +424,11 @@ var SHOT360 = (function () {
   var Q = Object.assign({
     on: true,
     stepDeg: 30,          // 뽑는 간격
-    extra: [],            // 추가로 뽑는 각도 — (2026-10-25c) [45,-45] → 없음: 12장(30° 간격). 좌·우 기준은 정면 ±30°(얼굴 랜드마크가 확실히 잡힘) · 나머지는 보충
+    extra: [45, 135],     // 추가로 뽑는 각도(±) — (2026-11-01) 45: 좌·우 기준 사진(sideDeg) 칸 · [] → [135]: 8장 세트의 뒤쪽 중간(±135°) 후보. 촬영은 30° 칸 + ±135°(정면을 다시 잡아도 고를 후보가 있게) · 세트에 남기는 건 keep8   // (2026-10-25c) [45,-45] → 없음
+    /* (2026-11-01) 8장 세트 — 사용자: "360촬영한거 8장으로 줄일거야. 시간만 오래 걸리고, 실제 결과가 정밀하다는 느낌이 없어. 기존 4장에다가 90도하고 뒷편 중간중간 하나씩"
+       세트를 넣을 때(applySet) 기준 4장(정면·좌·우·뒤)을 고른 뒤, 추가 사진은 진짜 0° 기준 ±90° · ±135°에 가장 가까운 장(keepTol° 안)만 남김 → 4 + 4 = 8장.
+       예전(30° 간격 12장): 추가 8장 분석 17.3초(로그 0930). 끄기 SHOT360.keep8=false */
+    keep8: true, keepDeg: [90, -90, 135, -135], keepTol: 20,
     tolDeg: 7,            // 목표 각도 ± 이만큼 안에서 뽑음
     maxSide: 1280,        // 저장 해상도(긴 변)
     jpeg: 0.9,
@@ -508,7 +512,7 @@ var SHOT360 = (function () {
      ② 정면 = |얼굴 yaw| 최소(faceTieDeg 안이면 얼굴이 큰 장 → 선명한 장)
      ③ 진짜 0° = 그 장의 센서 각도 − 얼굴 yaw · 좌·우 = 0° ± sideDeg(30) · 뒤 = 0° + 180 에 가장 가까운 장
      얼굴이 한 장도 안 잡히면 예전 규칙(센서 0°·±45°·180°). 결과는 set._pick (13b VIEWS360이 같은 것을 씀) */
-  Q.sideDeg = Q.sideDeg || 30; Q.faceTieDeg = Q.faceTieDeg || 8;
+  Q.sideDeg = Q.sideDeg || 45;   // (2026-11-01) 30 → 45 — 사용자: "랜드마크가 확인되어야 하기 때문에 45~50도 되어야 돼" · 촬영 칸 ±45°(extra) Q.faceTieDeg = Q.faceTieDeg || 8;
   function scanFaces(set) {
     var fr = set.frames.filter(function (f) { return f && f.url && f._fy === undefined; }), i = 0;
     if (typeof quickFaceLandmarks !== 'function') return Promise.resolve();
@@ -552,6 +556,18 @@ var SHOT360 = (function () {
     try { Object.defineProperty(set, '_pick', { value: pick, writable: true, configurable: true, enumerable: false }); } catch (e) { set._pick = pick; }
     var miss = Object.keys(pick).filter(function (k) { return !pick[k]; });
     if (miss.length) { toast('360 세트에 ' + miss.join('·') + ' 각도 사진이 없습니다 — 다시 찍어 주세요'); return Promise.resolve(false); }
+    if (Q.keep8 !== false) try {                                       // (2026-11-01) 8장으로 — 기준 4장 + 진짜 0° 기준 ±90° · ±135°
+      var base4 = [pick.front, pick.left, pick.right, pick.back], keep = base4.slice(), n0 = set.frames.length, kept = [];
+      (Q.keepDeg || []).forEach(function (kd) {
+        var rest = set.frames.filter(function (f) { return keep.indexOf(f) < 0; }), f = nearest(rest, wrap(pick.zero + kd), Q.keepTol);
+        if (f) { keep.push(f); kept.push(kd + '°→' + Math.round(wrap(f.deg - pick.zero)) + '°'); } else kept.push(kd + '°→없음');
+      });
+      if (keep.length < n0) {
+        set.frames = set.frames.filter(function (f) { return keep.indexOf(f) >= 0; });
+        set.keep8 = { from: n0, kept: kept };
+      }
+      console.log(TAG + ' 8장 세트 — ' + n0 + '장 중 기준 4장 + 추가 ' + (keep.length - 4) + '장(' + kept.join(' · ') + ') 남김 (끄기 SHOT360.keep8=false)');
+    } catch (e) { console.warn(TAG + ' 8장 고르기 실패 — 세트 그대로', e); }
     var cap = (typeof capShotDataURL === 'function') ? capShotDataURL : function (u) { return Promise.resolve(u); };
     var angles = ['front', 'left', 'right', 'back'];
     return Promise.all(angles.map(function (a) { return cap(pick[a].url); })).then(function (urls) {
