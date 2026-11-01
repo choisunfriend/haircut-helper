@@ -132,9 +132,7 @@ function drawHairStrands(ctx, fit, scalpY, hairEndY, maskW, maskH, hairCanvas, o
   // 원본 결 보기 때와 스타일 적용 때의 base 구간 경로가 완전히 일치한다.
   // (기존엔 STEPS=14로 고정하고 stepLen=targetLen/14로 역산해서, delta가 커질수록 보폭 자체가
   //  커져 origLen 구간마저 원본과 다른 경로로 재계산되는 문제가 있었음)
-  // (2026-11-01) 중립 캡처(3D 리프트 소스)는 읽은 결 그대로 촘촘히 — 38-raw-trace.js 배너 · 화면용 2D 그리기는 예전 보폭
-  const RAW_READ = !!(opts && opts.rawRead && typeof RAW_TRACE !== 'undefined' && RAW_TRACE.on && typeof rawTraceStrandPath === 'function');
-  const STRAND_STEP_LEN = RAW_READ ? maskH * RAW_TRACE.stepFrac : maskH * 0.025;
+  const STRAND_STEP_LEN = maskH * 0.025;
 
   /* 이 두 장도 <b>호출마다</b> 새로 만들고 있었다(2026-08-22). 화면 크기 그대로라
      한 장에 10MB 안팎이고, 원본 결 보기/폴백 경로가 돌 때마다 20MB가 새로 잡혔다.
@@ -173,8 +171,7 @@ function drawHairStrands(ctx, fit, scalpY, hairEndY, maskW, maskH, hairCanvas, o
   const flowAcc = { n:0, byFlow:0 };
   const strandEnv = { hasOrientation, orientation, orientMaskW, ox, oy, STRAND_STEP_LEN, frontDirBiasFor, curlAmtFor, waveWidthFor, maskAt: isRealHairAt, flowAcc };
   function traceStrand(ix, sy_img, targetLen_img, jitterSeed, rootSec, stopAtExit){
-    return RAW_READ ? rawTraceStrandPath(ix, sy_img, targetLen_img, jitterSeed, strandEnv, rootSec, stopAtExit)   // (2026-11-01) 읽은 결 그대로
-      : traceStrandPath(ix, sy_img, targetLen_img, jitterSeed, strandEnv, rootSec, stopAtExit);
+    return traceStrandPath(ix, sy_img, targetLen_img, jitterSeed, strandEnv, rootSec, stopAtExit);
   }
 
   // 마스크 좌표(이미지 픽셀 기준) 점 배열 → 캔버스 좌표로 변환

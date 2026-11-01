@@ -1186,7 +1186,7 @@ var VIEWS360 = (function () {
   X._profileOf = profileOf;
   /* 옆얼굴 윤곽 후보(점수 높은 순) — 지금 세트로 분석한 추가 사진만. 각 { key, deg, ratio, prof } */
   if (X.profMinFaceYaw == null) X.profMinFaceYaw = 60; if (X.profPerSide == null) X.profPerSide = true;   // (2026-10-28) 옆모습 고르기
-  if (X.readExtraFlow == null) X.readExtraFlow = true;    // (2026-11-01) 다시 켬 — 한 바퀴 이음새(17b VIEW_SEAM)가 추가 사진의 결로 이웃 사진과 각도를 맞춤(사용자: "A로 해 · 시간도 보고 정확도도 보고") · 사진당 2~6초 · 끄기 VIEWS360.readExtraFlow=false (예전 2026-10-28: 생략)
+  if (X.readExtraFlow == null) X.readExtraFlow = false;   // (2026-10-28) 추가 사진은 결 읽기 생략(형태·옆얼굴은 영역·윤곽만 씀 · 사진당 2~6초) · 켜기 VIEWS360.readExtraFlow=true
   X.faceProfiles = function () {
     var out = [];
     try {
@@ -1530,8 +1530,6 @@ var VIEWS360 = (function () {
     var frontYaw = (f.pose.yaw || 0) * 180 / Math.PI, yawS = wrapDeg(v.deg - (X.degFront || 0)) + frontYaw;   // 센서 기준 yaw(도)
     v.yawSensor = yawS;
     var yawDeg = (typeof v.faceYaw === 'number') ? v.faceYaw : yawS;                          // 얼굴이 잡혔으면 얼굴 실측
-    // (2026-11-01) 얼굴이 없는 사진은 이음새(17b VIEW_SEAM 한 바퀴)로 이웃 사진과 맞춘 각도가 있으면 그것(센서 각도 대신)
-    try { if (typeof v.faceYaw !== 'number' && typeof VIEW_SEAM !== 'undefined' && VIEW_SEAM.yawFor) { var sdY = VIEW_SEAM.yawFor(v.key); if (typeof sdY === 'number' && isFinite(sdY)) { v.yawSeam = sdY; yawDeg = sdY; } } } catch (e) {}
     var cal = { pose: { yaw: yawDeg * Math.PI / 180, pitch: 0, roll: 0 }, cx: m.capCx, s: sy, sy: sy, crownY: m.crown, x360: true };
     out.cal = cal;
     var A = headHalfWidthAt(cal.pose.yaw); v.q = A > 0 ? m.hw * sy / A : null;
