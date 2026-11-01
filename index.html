@@ -93,6 +93,8 @@
         <div class="mode-bar">
           <button id="mannequinBtn" onclick="toggleMannequin()"
                   title="컬·스타일링을 지운 마네킹 상태에서 시술을 시작합니다">마네킹 초기화 OFF</button>
+          <button id="salonUploadBtn" onclick="uploadStyleToSalon()"
+                  title="지금 만든 머리를 내 미용실 스타일로 마켓플레이스에 올립니다 (미용실 관리자 로그인 필요)">미용실에 올리기</button>
         </div>
         <button class="debug-btn mask-debug-btn" id="maskDebugToggle" onclick="toggleMaskDebug()">가닥 보기</button>
         <button class="debug-btn raw-debug-btn" id="rawDebugToggle" onclick="toggleRawDebug()">원본 결 보기</button>
@@ -255,7 +257,7 @@
 <script src="js/30-saved-photos.js?v=20261013m"></script>
 <script src="js/31-i18n-en.js?v=20261017b"></script>
 <script src="js/34-read-steps.js?v=20261101a"></script>   <!-- 결 읽기 단계: 건너기·채우기·정렬 전후 스냅샷(끄기 READ_STEPS.on=false) -->
-<script src="js/35-salon-bridge.js?v=20261101s"></script>   <!-- 미용실 지도: 「미용실」 버튼 · 지도에서 고른 헤어스타일(gyeol-style)을 3D 머리에 입힘 (끄기 SALON_BRIDGE.on=false) -->
+<script src="js/35-salon-bridge.js?v=20261101u"></script>   <!-- 미용실 지도: 「미용실」 버튼 · 지도에서 고른 헤어스타일(gyeol-style)을 3D 머리에 입힘 (끄기 SALON_BRIDGE.on=false) -->
 
 <!-- Visitor stats (GoatCounter: free, no cookies, no personal data). Replace YOURCODE with your GoatCounter site code. -->
 <script data-goatcounter="https://choisunfriend.goatcounter.com/count" async src="//gc.zgo.at/count.js"></script>
