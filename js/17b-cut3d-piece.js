@@ -1650,7 +1650,7 @@ var REGROW = (function () {
     volume: true, volCellCm: 0.6, volTight: false /* (2026-10-22) 끔 — 머리 전체 컬 30 이상이면 만들던 좁은 덩어리(61번 전용) */, volTightMinCurl: 30,   // (2026-10-11d) 3D 머리 덩어리 — 사진 네 장(마주 보는 사진 규칙)으로 칸마다 머리/아님을 한 번 정해 두고, 걷기·61번(마네킹 위 컬의 축 길이)이 같은 덩어리를 씀
     polNbr: true,       // (2026-10-11d) 뿌리 결이 옆으로 흐릴 때 앞뒤 방향을 "가운데 선 바깥"이 아니라 이웃 뿌리들의 방향으로(남자분 가운데 가르마의 원인)
     straightCurly: false, straightMode: 'path', straightWinK: 1.0, straightCurlMin: 40, straightPitchK: 0.5, straightDHalfK: 4, straightRMinPx: 5, straightRMaxPx: 40,   // (2026-10-10s) 곱슬 사진은 큰 흐름만 따라 직모 뼈대로 기름(컬은 61·14c가 그 위에 얹음) — 반경 = 한 바퀴 간격 × K (못 쟀으면 dHalf × K) · 사진 px
-    sliceMs: 60,        // (2026-10-12e) 30 → 60: 화면에 양보하는 횟수를 반으로(폰에서 쉬는 시간이 얼마인지는 아래 진단 줄 '일한 시간/쉰 시간'으로 확인)
+    sliceMs: 120,       // (2026-11-01) 60 → 120: 로그 0850 다시 기르기 30.2초 중 쉰 시간 3.0초(343번 · 한 번에 ≈ 9ms) → 쉬는 횟수 반으로 · 진행률은 초당 약 8번 바뀜 · 되돌리기 REGROW.sliceMs=60   // (2026-10-12e) 30 → 60: 화면에 양보하는 횟수를 반으로(폰에서 쉬는 시간이 얼마인지는 아래 진단 줄 '일한 시간/쉰 시간'으로 확인)
     waveField: true, waveCellCm: 0.8, waveMinN: 3,   // (2026-10-12e) 읽은 굴곡 장 — 곱슬·웨이브 사진에서 '읽은 길 − 편 길'을 자리(칸)마다 모아 둠. 61번이 PHOTO_CURL.readWave일 때 마네킹 가닥에 그대로 얹음 · 안 만들기 waveField=false
     sGrid: true, sGridK: 4,   // (2026-10-12l) 고른 결 미리 계산(속도) · 끄기 sGrid=false
     axisGabor: false, axisK: 0.5, axisRMinPx: 4, axisRMaxPx: 60, axisWinK: 1.0,   // (2026-10-12j) 축 = 방향 필터 파장으로 고른 결을 따라 걸음(아래 설명) · 끄기 axisGabor=false
@@ -2179,9 +2179,25 @@ var REGROW = (function () {
     }
 
     /* (2026-10-11d) 3D 머리 덩어리 — vote()를 칸 중심마다 한 번 구해 둠 */
+    /* (2026-11-01) 준비물 재사용 — 사용자: "가볍게 기르기와 전체 기르기가 공통으로 쓰는 준비물은 카메라가 안 바뀌었으면 다시 써"
+       가볍게 기르기(카메라 맞추기용)가 만든 3D 머리 덩어리(VOL·volT) · 두께(T) · 옮긴 점 겉면(LIFT) · 뿌리 결 앞뒤(polMap) · 맨살 가까운 뿌리(bareNear)를
+       바로 다음 전체 기르기에서 그대로 씀 — 같은 사진·같은 프로브·카메라 값(R·cx·crownY·s·sy)과 관련 설정이 모두 같을 때만.
+       준비 단계에는 무작위(rnd)가 없어 새로 만든 것과 같은 값. 한 번 쓰면 버림(다음 기르기는 새로). 끄기 REGROW.setupReuse=false */
+    var SC = null, scKey = '', scOut = null;
+    G.setupReuseStat = { used: false, why: '' };
+    if (G.setupReuse !== false) try {
+      scKey = cams.map(function (c) { return c.angle + ':' + Array.prototype.join.call(c.R, ',') + ':' + c.cx + ':' + c.crownY + ':' + c.s + ':' + c.sy; }).join('|')
+        + '#' + [G.volume, G.volCellCm, G.hullRule, String(G.hullViews), G.hullVis, G.hullPerson, G.tStep, G.tMax, G.tFloor, G.layerShell, G.layerOuter, G.polNbr, G.thinLen, G.thinLenBareCells].join(',');
+      var sc0 = G._setupCache; G._setupCache = null;
+      if (!opt.lite && sc0) {
+        if (sc0.photo === photo && sc0.probe === probe && sc0.key === scKey) { SC = sc0; G.setupReuseStat = { used: true, why: '가볍게 기르기의 준비물을 그대로 씀' }; }
+        else G.setupReuseStat = { used: false, why: sc0.photo !== photo || sc0.probe !== probe ? '3D를 다시 만들어 새로' : '카메라가 바뀌어 새로' };
+      }
+    } catch (e) { SC = null; }
     var VOL = null;
     (function () {
       if (!G.volume) return;
+      if (SC && SC.VOL) { VOL = SC.VOL; G.vol = VOL; G.volT = SC.volT; G.hullVisStat = SC.hullVisStat; G._facingVeto = SC.fv[0]; G._faceNoMarginN = SC.fv[1]; G._sideFrontN = SC.fv[2]; return; }   // (2026-11-01) 재사용
       try {
         var t0v = now(), cmV = (typeof modelCmPerUnit === 'function' && modelCmPerUnit()) || 16.4, h = G.volCellCm / cmV;
         var x0 = -2.4 * Es.a, x1 = 2.4 * Es.a, z0 = -2.4 * Es.c, z1 = 2.4 * Es.c, y1 = CY + 1.4 * Es.b, y0 = Math.min(CY - 1.2 * Es.b, yTop - 75 / cmV);
@@ -2518,7 +2534,8 @@ var REGROW = (function () {
 
     /* (2026-10-24g) 옮긴 점 겉면 — 방향 칸마다 중심에서 거리의 백분위 */
     var LIFT = null;
-    if (G.layerShell && G.layerOuter === 'lift') try {
+    if (SC && SC.liftDone) LIFT = SC.LIFT;   // (2026-11-01) 재사용(사진 가닥에서만 정해짐)
+    else if (G.layerShell && G.layerOuter === 'lift') try {
       var lt0 = now(), LT = G.liftNT | 0, LP = G.liftNP | 0, LN = LT * LP, CAP = 48, buf = new Float32Array(LN * CAP), cnt = new Uint16Array(LN), seen = new Uint32Array(LN), nPts = 0, nStr = 0, lcg = 12345;   // 표본 고르기는 따로(걷기 rnd 순서를 안 바꿈)
       var liftBin = function (dx, dy, dz) { var r = Math.sqrt(dx * dx + dy * dy + dz * dz); if (!(r > 1e-6)) return -1; var th = Math.atan2(dx, dz), ph = Math.acos(Math.max(-1, Math.min(1, dy / r)));
         var c = Math.floor((th + Math.PI) / (2 * Math.PI) * LT), rr = Math.floor(ph / Math.PI * LP); c = ((c % LT) + LT) % LT; rr = rr < 0 ? 0 : rr >= LP ? LP - 1 : rr; return rr * LT + c; };
@@ -2662,7 +2679,8 @@ var REGROW = (function () {
 
     /* (2026-10-11d) 뿌리 칸마다 결의 앞뒤를 미리 정함 — 또렷한 칸(아래·뒤로 흐름)은 그대로, 옆으로 흐린 칸은 이웃 칸들 쪽으로(되풀이해서 퍼뜨림) */
     var polMap = null, polStat = { sure: 0, nbr: 0, mid: 0 };
-    if (G.polNbr) try {
+    if (SC && SC.polMap) { polMap = SC.polMap; polStat = { sure: SC.polStat.sure, nbr: SC.polStat.nbr, mid: SC.polStat.mid }; }   // (2026-11-01) 재사용
+    else if (G.polNbr) try {
       polMap = new Float32Array(NC * 4);                                    // x,y,z,상태(1 또렷 · 2 이웃으로 정함 · 0 모름)
       var rr, cc, ci2;
       for (rr = 0; rr < NP; rr++) for (cc = 0; cc < NT; cc++) {
@@ -2694,7 +2712,8 @@ var REGROW = (function () {
 
     /* (2026-10-25) 맨살 가까운 뿌리 칸 — 사진에 머리가 없어 안 심은 두피 칸에서 thinLenBareCells칸 안 */
     var bareNear = null, bareNearN = 0;
-    if (G.thinLen && G.thinLenBareCells > 0) try {
+    if (SC && SC.bareDone) { bareNear = SC.bareNear; bareNearN = SC.bareNearN; }   // (2026-11-01) 재사용
+    else if (G.thinLen && G.thinLenBareCells > 0) try {
       var BR = G.thinLenBareCells | 0, bare = new Uint8Array(NC), ib, rb, cb, dr3, dc3;
       for (ib = 0; ib < NC; ib++) {                                      // 머리 없음 = 밀도 0 이거나, 뿌리 자리를 사진들이 머리 아님이라 함(걷기에서 "사진에 머리가 없어 안 심은 뿌리"가 되는 자리)
         if (offScalp(ib)) continue;
@@ -2712,6 +2731,9 @@ var REGROW = (function () {
       }
     } catch (e) { bareNear = null; }
     G.bareNearN = bareNearN;
+    if (opt.lite && G.setupReuse !== false && scKey) scOut = G._setupCache = {   // (2026-11-01) 다음 전체 기르기에 넘김(두께는 step에서 채움)
+      photo: photo, probe: probe, key: scKey, VOL: VOL, volT: G.volT, hullVisStat: G.hullVisStat, fv: [G._facingVeto, G._faceNoMarginN, G._sideFrontN],
+      LIFT: LIFT, liftDone: true, polMap: polMap, polStat: { sure: polStat.sure, nbr: polStat.nbr, mid: polStat.mid }, bareNear: bareNear, bareNearN: bareNearN, bareDone: true, T: null };
 
     function grow(cellIdx) {
       var r = cellIdx / NT | 0, c = cellIdx % NT;
@@ -2992,7 +3014,11 @@ var REGROW = (function () {
       /* budget ms만큼 일하고 진행률(0~1) 반환. 1이면 끝 */
       step: function (budget) {
         var t = now();
-        if (!thickDone) { buildThickness(); thickDone = true; return 0.08; }
+        if (!thickDone) {
+          if (SC && SC.T) { T.set(SC.T); known.set(SC.known); tStat.measured = SC.tStat.measured; tStat.filled = SC.tStat.filled; tStat.zero = SC.tStat.zero; }   // (2026-11-01) 재사용
+          else { buildThickness(); if (scOut) { scOut.T = new Float32Array(T); scOut.known = new Uint8Array(known); scOut.tStat = { measured: tStat.measured, filled: tStat.filled, zero: tStat.zero }; } }
+          thickDone = true; return 0.08;
+        }
         while (cell < NC && now() - t < budget) {
           if (wgt[cell]) {
             carry += wgt[cell] / wTot * total * (kc ? kc[cell] : 1);
@@ -4096,6 +4122,7 @@ function helixMeasure(rgba,mask,W,H,angle,coh,opt){opt=opt||{};const n=opt.n||25
     var tot = s.n || 1, secs = Object.keys(s.sec).map(function (k) { return k + ' ' + Math.round(s.sec[k] / tot * 100) + '%'; }).join(' · ');
     L.push('  앞 헤어라인 채우기(이마 랜드마크 위인데 사진이 맨살로 본 두피 칸): ' + (G.hairlineFill === false ? '꺼짐' : '밀도 채운 칸 ' + (G.hairlineFillN || 0) + ' · 두피 위에서 판정 건너뛴 걸음 ' + (s.hlFree || 0) + ' (끄기 REGROW.hairlineFill=false)'));
     L.push('  가닥 ' + s.n + '개(사진에 머리가 없어 안 심은 뿌리 ' + s.skipped + ') · ' + s.ms + 'ms' + (s.workMs != null ? '(걷기에 일한 시간 ' + s.workMs + ' · 마무리 ' + s.finMs + ' · 사이사이 쉰 시간 ' + Math.max(0, s.ms - s.workMs - s.finMs) + ' — ' + s.slices + '번 나눠 함)' : '') + (s.mShare < 1 ? ' · 재는 용도라 ' + (G.measureFull || []).join('·') + ' 밖은 ' + Math.round(s.mShare * 100) + '%만 기름(전부 REGROW.measureShare=1)' : '') + ' · 사진 ' + s.cams);
+    try { var _sr = G.setupReuseStat; L.push('  준비물 재사용(가볍게 기르기 → 전체 기르기 · 덩어리·두께·겉면·뿌리 결): ' + (G.setupReuse === false ? '꺼짐' : !_sr ? '아직' : _sr.used ? '씀 — ' + _sr.why : '안 씀' + (_sr.why ? ' — ' + _sr.why : '')) + (G.camFitLiteStat ? ' · 가볍게 기르기 ' + G.camFitLiteStat.ms + 'ms(' + G.camFitLiteStat.n + '가닥)' : '') + ' (끄기 REGROW.setupReuse=false)'); } catch (e) {}   // (2026-11-01)
     L.push('  뿌리 분포 — ' + secs);
     L.push('  길이 ' + n1(s.lenMed) + '/' + n1(s.lenP90) + 'cm(중앙값/p90) · 꺾임 ' + n1(s.kinkMed) + '°/' + n1(s.kinkP90) + '° · 결을 사진에서 못 읽고 이어 간 걸음 ' + n1(s.estPct) + '%');
     L.push('  길이 상한(' + (s.isLong ? '긴 머리 — 넉넉히' : '짧은 머리 — 섹션 중앙값×' + G.lenMul) + ') cm: ' + s.capTxt);
@@ -8766,7 +8793,8 @@ var VIEW_SEAM = (function () {
 var VIEW_FIX = (function () {
   'use strict';
   var TAG = '[사진 정렬·1단계]';
-  var S = { on: !(typeof location !== 'undefined' && /[?&]viewfix=0\b/.test(location.search)), fix: {}, doneMasks: null, last: null };
+  var S = { on: !(typeof location !== 'undefined' && /[?&]viewfix=0\b/.test(location.search)), fix: {}, doneMasks: null, last: null,
+    align: (typeof location !== 'undefined' && /[?&]viewalign=1\b/.test(location.search)) };   // (2026-11-01) 사진끼리 맞추기 기본 끔 — compute 안 설명
   function rotX(R, t) { var c = Math.cos(t), s_ = Math.sin(t); return [R[0], R[1], R[2], c * R[3] - s_ * R[6], c * R[4] - s_ * R[7], c * R[5] - s_ * R[8], s_ * R[3] + c * R[6], s_ * R[4] + c * R[7], s_ * R[5] + c * R[8]]; }
   function wrapPi(a) { while (a > Math.PI) a -= 2 * Math.PI; while (a < -Math.PI) a += 2 * Math.PI; return a; }
   /* R = Rz(roll)·Ry(yaw)·Rx(pitch) (13a composeRotationZYX) → 원래 포즈에 가장 가까운 풀이 */
@@ -8810,7 +8838,10 @@ var VIEW_FIX = (function () {
     var fit = null, pa = null, out = { views: {}, ms: 0 };
     // (2026-10-31b) 카메라 맞추기(각도·배율)는 여기서 안 함 — 사진 가닥은 깊이를 추정해 다른 사진에 비추면 2~5cm 퍼짐. 다시 기른 가닥으로 한 번(REGROW.build → mergeFit)
     var afterFit = {}; probe.cams.forEach(function (c) { afterFit[c.angle] = { cx: c.cx, crownY: c.crownY }; });
-    try { if (G.photoAlign) pa = G.alignOnly(photo); } catch (e) { console.warn(TAG + ' 사진끼리 맞추기 실패 — 건너뜀', e); }
+    /* (2026-11-01) 사용자: "앞에 카메라를 영역으로 맞추는 부분은 중복이라서 빼도 될거 같아" — 사진 올린 단계의 사진끼리 맞추기(머리 영역 cx·crownY)를 뺌.
+       로그 0850: 겹침 46.3→47.5%(+1.2%p)를 위해 중립 3D를 한 번 더 만들었음(폰 3~6초). 카메라는 다시 기른 가닥으로 한 번만(mergeFit).
+       doneMasks는 그대로 남겨 다시 기르기 안에서도 사진끼리 맞추기를 안 함(isDone). 되돌리기 ?viewalign=1 */
+    if (S.align) { try { if (G.photoAlign) pa = G.alignOnly(photo); } catch (e) { console.warn(TAG + ' 사진끼리 맞추기 실패 — 건너뜀', e); } }
     var paBy = {}; if (pa && pa.cams) pa.cams.forEach(function (c) { var a0 = afterFit[c.angle]; if (a0) paBy[c.angle] = { dcx: c.cx - a0.cx, dcy: c.crownY - a0.crownY }; });
     var changed = false, m = masksNow();
     probe.cams.forEach(function (c) {
@@ -8858,6 +8889,7 @@ var VIEW_FIX = (function () {
     var L = [TAG + ' 사진끼리 맞추기(머리 영역끼리)는 사진 올린 단계에서 · 카메라 맞추기는 다시 기른 가닥으로 한 번 · 둘 다 저장해 3D를 그 카메라로 다시 만들고 다시 기르기는 그리기만 · ' + o.ms + 'ms · 다시 기르기는 카메라를 안 바꿈 (끄기 ?viewfix=0)'];
     Object.keys(o.views).forEach(function (a) { var v = o.views[a]; L.push('  ' + a + ': 위아래 ' + (v.dpDeg >= 0 ? '+' : '') + v.dpDeg.toFixed(0) + '° · 배율 ' + v.ds.toFixed(3) + ' · 가로 ' + (v.dcx >= 0 ? '+' : '') + v.dcx.toFixed(1) + 'px · 세로 ' + (v.dcy >= 0 ? '+' : '') + v.dcy.toFixed(1) + 'px'); });
     L.push('  카메라 맞추기(다시 기른 가닥으로 한 번): ' + (S.fitLast || '아직'));
+    if (!S.align) L.push('  사진끼리 맞추기(머리 영역): 꺼짐 — 중립 3D 다시 만들기 한 번을 줄임 (켜기 ?viewalign=1)');
     if (o.pa) L.push('  사진끼리 맞추기: 겹침 ' + Math.round((o.pa.before || 0) * 1000) / 10 + '% → ' + Math.round((o.pa.after || 0) * 1000) / 10 + '%' + (o.pa.moved && o.pa.moved.length ? ' · ' + o.pa.moved.join(' / ') : ''));
     return L;
   };

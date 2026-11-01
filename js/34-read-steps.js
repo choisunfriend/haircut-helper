@@ -523,14 +523,19 @@ var READ_STEPS = (function () {
   }
   /* (2026-10-25e) 머리 안 픽셀로만 — 04 HAIR_READ_MASK와 같은 방식. M = 머리 칸(1/0, Float32) */
   function maskF(mask, N) { var m = new Float32Array(N), i; for (i = 0; i < N; i++) m[i] = mask[i] ? 1 : 0; return m; }
-  function nblur(a, M, w, h, sig) {      // 머리 칸끼리만 흐림(머리 칸 수로 나눔)
+  /* (2026-11-01) 같은 계산 한 번만 — mixField 한 번 안에서 같은 (배열, σ) 흐림을 다시 쓰는 캐시. 결과는 예전과 같은 값(같은 계산을 재사용만).
+     중복이던 곳: 머리 칸 흐림의 분모 fblur(M·V, σ)를 구조텐서마다 3번씩(J11·J22·J12) · σ2·σ4·밴드패스의 V(3×3 머리 칸)가 같은 배열 · σ4 미리 흐림과 밴드패스 σ1 흐림이 같은 nblur(g, M, 1.0).
+     흐림 26번 → 17번. 끄기 READ_STEPS.mixCache=false */
+  function bcGet(C, a, sig, mk) { if (!C) return mk(); for (var k = 0; k < C.length; k++) if (C[k].a === a && C[k].s === sig) return C[k].v; var v = mk(); C.push({ a: a, s: sig, v: v }); return v; }
+  function nblur(a, M, w, h, sig, C) {      // 머리 칸끼리만 흐림(머리 칸 수로 나눔) · C = 캐시(있으면 분모 재사용)
     var N = w * h, t = new Float32Array(N), i; for (i = 0; i < N; i++) t[i] = a[i] * M[i];
-    var num = fblur(t, w, h, sig), den = fblur(M, w, h, sig);
+    var num = fblur(t, w, h, sig), den = bcGet(C, M, sig, function () { return fblur(M, w, h, sig); });
     for (i = 0; i < N; i++) num[i] = den[i] > 1e-4 ? num[i] / den[i] : 0;
     return num;
   }
-  function stAt(g, w, h, sig, pre, M) {     // 구조텐서(가우시안 창 sig, 미리 흐림 pre) → 결 방향(이미지 좌표, -π/2..π/2) · M이 있으면 머리 안 픽셀로만
-    var N = w * h, a = pre > 0 ? (M ? nblur(g, M, w, h, pre) : fblur(g, w, h, pre)) : g, gx = new Float32Array(N), gy = new Float32Array(N), V = M ? new Float32Array(N) : null, x, y, i;
+  function stAt(g, w, h, sig, pre, M, C) {     // 구조텐서(가우시안 창 sig, 미리 흐림 pre) → 결 방향(이미지 좌표, -π/2..π/2) · M이 있으면 머리 안 픽셀로만 · C = 흐림 캐시(2026-11-01)
+    var N = w * h, a = pre > 0 ? bcGet(C && C.pre, g, pre, function () { return M ? nblur(g, M, w, h, pre, C) : fblur(g, w, h, pre); }) : g, gx = new Float32Array(N), gy = new Float32Array(N), V = M ? ((C && C.V) || new Float32Array(N)) : null, x, y, i;
+    if (C && V) C.V = V;   // V는 M에서만 정해짐 → 후보끼리 같은 배열(같은 값을 다시 1로 씀) · 분모 캐시가 이 배열로 맞음
     for (y = 1; y < h - 1; y++) for (x = 1; x < w - 1; x++) {
       i = y * w + x;
       if (M && !(M[i - w - 1] && M[i - w] && M[i - w + 1] && M[i - 1] && M[i] && M[i + 1] && M[i + w - 1] && M[i + w] && M[i + w + 1])) continue;   // 3×3이 모두 머리 안일 때만
@@ -540,7 +545,7 @@ var READ_STEPS = (function () {
     }
     var J11 = new Float32Array(N), J22 = new Float32Array(N), J12 = new Float32Array(N);
     for (i = 0; i < N; i++) { J11[i] = gx[i] * gx[i]; J22[i] = gy[i] * gy[i]; J12[i] = gx[i] * gy[i]; }
-    if (V) { J11 = nblur(J11, V, w, h, sig); J22 = nblur(J22, V, w, h, sig); J12 = nblur(J12, V, w, h, sig); }
+    if (V) { J11 = nblur(J11, V, w, h, sig, C); J22 = nblur(J22, V, w, h, sig, C); J12 = nblur(J12, V, w, h, sig, C); }
     else { J11 = fblur(J11, w, h, sig); J22 = fblur(J22, w, h, sig); J12 = fblur(J12, w, h, sig); }
     var o = new Float32Array(N);
     for (i = 0; i < N; i++) { var t = 0.5 * Math.atan2(2 * J12[i], J11[i] - J22[i]) + Math.PI / 2; if (t > Math.PI / 2) t -= Math.PI; o[i] = t; }
@@ -566,14 +571,15 @@ var READ_STEPS = (function () {
   }
   function mixField(px, mask, Wd, Hd, stA, gbA) {
     var MK = !!(W.HAIR_READ_MASK && W.HAIR_READ_MASK.on), M = MK ? maskF(mask, Wd * Hd) : null, mk = MK ? mask : null;
-    var t0 = performance.now(), N = Wd * Hd, g = grayOf(px, N), c2 = stAt(g, Wd, Hd, 2, 0.7, M), t1 = performance.now(), c4 = stAt(g, Wd, Hd, 4, 1.0, M), t2 = performance.now(), cands = [stA, c2, c4], names = ['구조텐서7px', '구조텐서σ2', '구조텐서σ4'];
+    var BC = S.mixCache !== false ? [] : null; if (BC) BC.pre = [];   // (2026-11-01) 흐림 캐시 — 이 사진 한 장 안에서만
+    var t0 = performance.now(), N = Wd * Hd, g = grayOf(px, N), c2 = stAt(g, Wd, Hd, 2, 0.7, M, BC), t1 = performance.now(), c4 = stAt(g, Wd, Hd, 4, 1.0, M, BC), t2 = performance.now(), cands = [stA, c2, c4], names = ['구조텐서7px', '구조텐서σ2', '구조텐서σ4'];
     if (gbA) { cands.push(gbA); names.push('방향필터'); }
     /* (2026-10-25e) 밴드패스 후보 — 넓은 범위의 밝기 변화(광택 띠·그늘)를 빼고 머리카락 굵기 무늬만 남겨 읽음(σ1 흐림 − σ4 흐림 → 구조텐서 σ2).
        실측(직모 뒤 사진): 광택 띠 가장자리에서 30° 넘게 어긋난 결 18.2% → 12.0% · 조명이 고른 자리는 그대로. 자리마다 고르는 후보라 맞는 자리에서만 뽑힘.
        끄기 READ_STEPS.mixBandpass=false */
     if (S.mixBandpass !== false) {
-      try { var gb1 = M ? nblur(g, M, Wd, Hd, 1.0) : fblur(g, Wd, Hd, 1.0), gb4 = M ? nblur(g, M, Wd, Hd, 4.0) : fblur(g, Wd, Hd, 4.0), bp = new Float32Array(N), ib; for (ib = 0; ib < N; ib++) bp[ib] = gb1[ib] - gb4[ib];
-        cands.push(stAt(bp, Wd, Hd, 2, 0, M)); names.push('밴드패스'); } catch (eB) {}
+      try { var gb1 = bcGet(BC && BC.pre, g, 1.0, function () { return M ? nblur(g, M, Wd, Hd, 1.0, BC) : fblur(g, Wd, Hd, 1.0); }), gb4 = M ? nblur(g, M, Wd, Hd, 4.0, BC) : fblur(g, Wd, Hd, 4.0), bp = new Float32Array(N), ib; for (ib = 0; ib < N; ib++) bp[ib] = gb1[ib] - gb4[ib];   // gb1 = σ4 후보의 미리 흐림과 같은 값(캐시)
+        cands.push(stAt(bp, Wd, Hd, 2, 0, M, BC)); names.push('밴드패스'); } catch (eB) {}
     }
     var out = new Float32Array(stA), K = cands.length, cnt = new Array(K).fill(0), sum = new Array(K).fill(0), sumN = new Array(K).fill(0), sumBest = 0, n = 0, bad = 0, i, k, Lh = S.mixLh, B = Math.max(1, S.mixBlock | 0), bx, by, dx, dy, same = 0;
     var GX = Math.ceil(Wd / B), GY = Math.ceil(Hd / B), WG = S.mixBlend ? new Float32Array(GX * GY * K) : null, HAS = S.mixBlend ? new Uint8Array(GX * GY) : null, wsum = 0, wmax = 0;
