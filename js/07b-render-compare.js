@@ -942,6 +942,7 @@ function buildStrandOpts(maskInf, angle, rawMode){
        좌표계가 어긋나지 않는다(따로 넘기면 한쪽만 바뀌는 사고가 난다). */
     maskInf,
     capturePaths: true, // 완성된 가닥 경로를 저장 → 3D가 이 경로를 그대로 들어올림
+    rawRead: !!rawMode, // (2026-11-01) 중립 캡처면 결을 다듬지 않고 읽은 그대로 긋기(38-raw-trace.js)
   };
 }
 
