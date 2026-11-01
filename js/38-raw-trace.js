@@ -17,36 +17,66 @@
 //     · 뿌리 첫 방향 = 흐름(뿌리→끝) 극성이 있으면 그것, 없으면 읽은 결 중 아래쪽
 //     · 머리 영역을 벗어나는 자리 표시(maskExitIdx)는 예전 규칙 그대로(3걸음 연속 밖)
 // 끄기: RAW_TRACE.on = false (사진을 다시 분석하거나 3D를 다시 만들면 반영)
+// (2026-11-01b) 기본 끔 — 사용자: "결이 더 헝클어졌는데… 저게 원래 결이라고?"
+//   디버그 2237(직모)·2239(곱슬): 읽은 결을 그대로 따르니 결 읽기의 잘못 읽은 자리가 그대로 가닥이 됨 —
+//   직모인데 약 1cm마다 60° 넘게 꺾이는 자리 9%(결 또렷함 0.6 이상인 자리에서도 8%) · 곱슬은 결을 못 읽은 자리에서 직전 방향으로 곧게 뻗은 가닥이 머리 밖으로 튀어나감.
+//   예전 긋기의 다듬기(관성·큰 보폭)가 이 잡음을 가리면서 컬도 같이 지우고 있었던 것. 고칠 곳은 긋기가 아니라 결 읽기(잘못 읽은 자리를 줄이는 쪽)
+
+// (2026-11-01c) 다시 켬 — 사용자 결정(23:04): "사진가닥긋기에서 결읽기로 만들어낸 가닥을 변형시키는 것들만 빼면 되지 · 카메라에서 가닥맞추기한 길을 따라 그려지게 · 보폭이 가닥을 넘어가버리지는 않게"
+//   · 결 변형 없음: 관성·꺾임 깎기·중력 당김·흔들림·앞쪽 치우침 없음 — 그 자리 읽은 결 각도 그대로
+//   · 중력은 방향 고르기에만(결 각도는 안 바꿈): 결(앞뒤 없음)의 두 방향 중 —
+//       ① 뿌리→끝 흐름 극성을 잰 자리면 그 쪽 ② 아니면 결이 세로 성분 |sin| ≥ gravPick 이면 아래쪽 ③ 거의 가로면 직전 걸음과 이어지는 쪽
+//   · 보폭 = 결 읽기 사진에서 stepPx(2px) — 머리카락 굵기 무늬(파장 4px)를 건너뛰지 않음
+//   · 점 저장: 2px로 그은 길 위를 길이 기준 일정 간격(사진 높이 × stepFrac ≈ 0.5cm)으로 다시 찍음 — 점은 모두 그은 길 위(모양 그대로)
+//     · 간격이 일정해야 함: 10-hair-render-2d가 "점 번호 × STRAND_STEP_LEN = 길이"로 실측 길이·자를 자리를 셈
+//   · 결을 못 읽은 자리(또렷함 minCoh 미만 · 결 없음)에서 가닥 끝(직전 방향으로 곧게 뻗어 머리 밖으로 튀어나가던 것 없앰)
+//   끄기 RAW_TRACE.on=false(예전 2D 긋기)
 // ============================================================================
-var RAW_TRACE = { on: true, stepFrac: 0.01, minCoh: 0.05, stats: { strands: 0, steps: 0, read: 0, kept: 0 } };
+var RAW_TRACE = { on: true, stepPx: 2, stepFrac: 0.01, gravPick: 0.2, minCoh: 0.05, endOnNoRead: true, stats: { strands: 0, steps: 0, read: 0, byFlow: 0, byGrav: 0, byCont: 0, endNoRead: 0, pts: 0 } };
 
 function rawTraceStrandPath(ix, sy, targetLen, jitterSeed, env, rootSec, stopAtExit) {
-  var step = env.STRAND_STEP_LEN, PI = Math.PI;
-  var steps = Math.max(2, Math.round(targetLen / step));
-  var pts = [{ x: ix, y: sy }], n = 1, offRun = 0, exitIdx = -1, St = RAW_TRACE.stats;
+  var R = RAW_TRACE, PI = Math.PI, St = R.stats;
+  var oy = env.oy > 0 ? env.oy : 1;
+  var step = Math.max(1e-3, R.stepPx / oy);                                  // 결 읽기 사진 2px를 이 좌표로
+  var keepLen = env.STRAND_STEP_LEN > step ? env.STRAND_STEP_LEN : step;      // 저장 간격 상한(예전 보폭)
+    var steps = Math.max(2, Math.ceil(targetLen / step));
+  var offRun = 0, exitIdx = -1;
   var has = !!(env.hasOrientation && env.orientation && typeof sampleOrientation === 'function');
   function sample(x, y) { try { return has ? sampleOrientation(env.orientation, x * env.ox, env.orientMaskW, y * env.oy) : null; } catch (e) { return null; } }
-  var dir = PI / 2, s0 = sample(ix, sy);
   var minConf = (typeof HAIR_FLOW !== 'undefined' && HAIR_FLOW.minConf) || 0.2;
-  if (s0 && s0.fc >= minConf && (s0.fx || s0.fy)) dir = Math.atan2(s0.fy, s0.fx);        // 뿌리→끝 흐름이 있으면 그 방향
-  else if (s0 && s0.coherence > RAW_TRACE.minCoh) { dir = s0.angle; if (Math.sin(dir) < 0) dir += PI; }   // 없으면 결 중 아래쪽
-  St.strands++;
-  for (var s = 0; s < steps; s++) {
-    var c = pts[n - 1], sm = sample(c.x, c.y);
-    if (sm && sm.coherence > RAW_TRACE.minCoh && isFinite(sm.angle)) {
-      var a = sm.angle;
-      if (Math.cos(a - dir) < 0) a += PI;                                // 결(앞뒤 없음) 중 직전과 이어지는 쪽
-      dir = a; St.read++;
-    } else St.kept++;
-    St.steps++;
-    var nx = c.x + Math.cos(dir) * step, ny = c.y + Math.sin(dir) * step;
-    pts.push({ x: nx, y: ny }); n++;
-    if (env.maskAt && exitIdx < 0 && s >= 2) {
-      if (env.maskAt(nx, ny)) offRun = 0;
-      else if (++offRun >= 3) { exitIdx = n - 1 - offRun; if (stopAtExit) break; }
-    }
+  function pick(sm, prev) {                                                   // 결 각도는 그대로 · 두 방향 중 하나만 고름
+    var a = sm.angle;
+    if (sm.fc >= minConf && (sm.fx || sm.fy)) { if (Math.cos(a) * sm.fx + Math.sin(a) * sm.fy < 0) a += PI; St.byFlow++; return a; }
+    if (Math.abs(Math.sin(a)) >= R.gravPick) { if (Math.sin(a) < 0) a += PI; St.byGrav++; return a; }   // 이미지 y 아래 = +
+    if (prev != null && Math.cos(a - prev) < 0) a += PI;
+    St.byCont++; return a;
   }
-  pts.maskExitIdx = exitIdx >= 0 ? Math.max(1, exitIdx) : n - 1;
+  St.strands++;
+  var D = [{ x: ix, y: sy }], x = ix, y = sy, dir = null;                    // 2px 걸음 — 그은 길 그대로
+  for (var s = 0; s < steps; s++) {
+    var sm = sample(x, y);
+    if (!(sm && sm.coherence > R.minCoh && isFinite(sm.angle))) {
+      if (R.endOnNoRead) { St.endNoRead++; break; }
+      if (dir == null) dir = PI / 2;
+    } else { dir = pick(sm, dir); St.read++; }
+    St.steps++;
+    x += Math.cos(dir) * step; y += Math.sin(dir) * step; D.push({ x: x, y: y });
+  }
+  if (D.length < 2) D.push({ x: ix, y: sy + step });                          // 뿌리에서 바로 못 읽음 — 한 걸음(호출 쪽이 2점을 기대)
+  var pts = [D[0]], need = keepLen, j;                                        // 길이 기준 일정 간격으로 다시 찍기(점은 그은 길 위)
+  for (j = 1; j < D.length; j++) {
+    var ax = D[j - 1].x, ay = D[j - 1].y, sl = Math.hypot(D[j].x - ax, D[j].y - ay), u = 0;
+    while (sl - u >= need - 1e-9) { u += need; var t = u / sl; pts.push({ x: ax + (D[j].x - ax) * t, y: ay + (D[j].y - ay) * t }); need = keepLen; }
+    need -= (sl - u);
+  }
+  var last = D[D.length - 1], pl = pts[pts.length - 1];
+  if (Math.hypot(last.x - pl.x, last.y - pl.y) > keepLen * 0.5 || pts.length < 2) pts.push({ x: last.x, y: last.y });   // 끝 자리
+  if (env.maskAt) for (j = 3; j < pts.length; j++) {                          // 머리 영역 이탈(예전 규칙 그대로: 3점 연속 밖)
+    if (env.maskAt(pts[j].x, pts[j].y)) offRun = 0;
+    else if (++offRun >= 3) { exitIdx = j - offRun; if (stopAtExit) { pts.length = j + 1; } break; }
+  }
+  St.pts += pts.length;
+  pts.maskExitIdx = exitIdx >= 0 ? Math.max(1, exitIdx) : pts.length - 1;
   pts.flowEndIdx = null;
   return pts;
 }
