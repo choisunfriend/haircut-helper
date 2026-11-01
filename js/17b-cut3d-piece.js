@@ -8766,10 +8766,150 @@ var VIEW_SEAM = (function () {
       lum: (mi.photoRGB && typeof photoRGBAt === 'function') ? function (x, y) { var c = photoRGBAt(mi, x, y); return c ? 0.299 * c[0] + 0.587 * c[1] + 0.114 * c[2] : null; } : null
     };
   }
+  // 이음새 덮어쓰기 없이 원래 각도 — 01 _rawViewYawDeg 가 yawFor 를 먼저 보므로 잠깐 끄고 읽음
+  function VIEW_SEAM_RAW(angle) { var was = S._bypass; S._bypass = true; try { return _rawViewYawDeg(angle); } finally { S._bypass = was; } }
   function measuredYaw(angle) {
-    try { var src = getViewPoseSource(angle); if (src.tier === 'pnp' || src.tier === 'approx' || src.tier === 'live') return { deg: _rawViewYawDeg(angle), tier: src.tier }; } catch (e) {}
+    try {
+      var src = getViewPoseSource(angle);
+      // (2026-11-01) 360 세트의 'live'는 폰 센서 각도(05 SHOT360 · capturePose._x360) — 실측으로 치지 않고 이음새로 고칠 대상
+      if (src.tier === 'live' && src.cap && src.cap._x360) return null;
+      if (src.tier === 'pnp' || src.tier === 'approx' || src.tier === 'live') return { deg: VIEW_SEAM_RAW(angle), tier: src.tier };
+    } catch (e) {}
     return null;
   }
+
+  /* ── (2026-11-01) 한 바퀴 이음새 — 사용자: "옆 사진과 뒷 사진은 왜 안 봐? 8장인데 그걸 안 맞춰 보고 제대로 3D가 안 나오잖아.
+         그 틈새를 보정하려고 4장을 추가하는 건데" · "A로 해(결+밝기). 4장짜리도 그렇게. 시간도 보고, 정확도도 보고"
+       예전: 정면 ↔ 왼쪽 · 정면 ↔ 오른쪽 두 쌍만(옆 각도 15~80°). 그리고 적용한 각도를 읽는 곳(yawFor)이 없어 적용해도 안 바뀌었음.
+       지금: 사진을 각도 순서로 줄 세워 이웃끼리 이음새를 맞춤 — 정면(고정) → +45 → +90 → +135 → 뒤 / 정면 → −45 → −90 → −135 → 뒤
+         · 이웃 한 쌍: 앞 사진(이미 놓은 각도)의 겉면 결·밝기를 다음 사진에 비춰, 다음 사진 각도를 지금 값 ±searchDeg 안에서 찾음(가로 위치도 같이)
+         · 얼굴로 각도를 잰 사진(실측)은 고정점 — 그 자리에서 이음새 값과 실측의 차이를 "검증 오차"로 남기고 실측으로 다시 이어 감
+         · 뒤 사진은 양쪽에서 와서 만남 — 두 값의 차이를 반으로 나눠, 마지막 고정점 뒤의 사진들에 고르게 나눠 줌(한 바퀴 닫기)
+         · 적용: 검증 오차가 모두 tolDeg 안일 때(실측 사진이 하나도 없으면 applyUnchecked) — 생성 사진처럼 사진끼리 안 맞으면 여기서 걸러짐
+         · 적용된 각도는 기준 사진(01 _rawViewYawDeg) · 추가 사진(13b VIEWS360 calFor)이 읽음 → 3D 한 번 다시 만듦
+       진단: [이음새 각도] 쌍마다 각도·점수·겹침·걸린 시간 · 추가 사진 결 읽기 시간은 [분석 시간]
+       끄기: VIEW_SEAM.ring=false(예전 두 쌍) · ?seam=0(전부) */
+  S.ring = true; S.searchDeg = 30; S.backDeg = 165;
+  var _surfCache = null;
+  function surfaceCached(E, tU) {
+    var key = [E.a, E.b, E.c, tU].join(',');
+    if (!_surfCache || _surfCache.key !== key) _surfCache = { key: key, sf: surface(E, tU) };
+    return _surfCache.sf;
+  }
+  function wrap180(d) { d = ((d + 180) % 360 + 360) % 360 - 180; return d === -180 ? 180 : d; }
+  /* A(놓은 각도 RA)의 겉면 무늬로 B의 각도를 center ± searchDeg 에서 찾음 */
+  function estimateAbs(camA, RA, FA, camB, FB, center, E, tU, yTop, CY) {
+    var t0 = (typeof performance !== 'undefined' ? performance.now() : Date.now());
+    var Sf = surfaceCached(E, tU), cA = Object.assign({}, camA, { R: RA }), ref = liftRef(cA, FA, Sf, yTop, CY);
+    if (ref.length < 200) return { err: '앞 사진에서 올린 겉면 점이 적음(' + ref.length + ')' };
+    var y0 = yawOf(camB.R), dxR = Math.round(S.dxPx * camB.iw / 488), dxS = Math.max(1, Math.round(S.dxStep * camB.iw / 488));
+    var curve = [], best = null, deg, dx;
+    for (deg = center - S.searchDeg; deg <= center + S.searchDeg + 1e-6; deg += S.stepDeg) {
+      var R = rotYaw(camB.R, wrap180(deg - y0)), bd = null;
+      for (dx = -dxR; dx <= dxR; dx += dxS) { var r = scoreAt(camB, FB, R, ref, yTop, CY, dx); if (!bd || r.s > bd.s) { bd = r; bd.dx = dx; } }
+      bd.deg = deg; curve.push(bd); if (!best || bd.s > best.s) best = bd;
+    }
+    var bi = curve.indexOf(best), est = best.deg;
+    if (bi > 0 && bi < curve.length - 1) {
+      var a = curve[bi - 1].s, b = curve[bi].s, c = curve[bi + 1].s, den = a - 2 * b + c;
+      if (den < 0) est += S.stepDeg * 0.5 * (a - c) / den;
+    }
+    var ss = curve.map(function (r) { return r.s; }).sort(function (p, q) { return p - q; }), med = ss[ss.length >> 1];
+    return { est: wrap180(est), best: best, curDeg: y0, prom: best.s - med, edge: bi === 0 || bi === curve.length - 1, refN: ref.length,
+      ms: Math.round((typeof performance !== 'undefined' ? performance.now() : Date.now()) - t0) };
+  }
+  function measuredAny(angle) {
+    var m = measuredYaw(angle); if (m) return m;
+    try { var v = W.VIEWS360 && W.VIEWS360.views && W.VIEWS360.views[angle]; if (v && typeof v.faceYaw === 'number') return { deg: v.faceYaw, tier: 'face360' }; } catch (e) {}
+    return null;
+  }
+
+  S.checkRing = function (photo, probe) {
+    var masks = state.hairMasks || {}, cams = {};
+    probe.cams.forEach(function (c) { if (c.iw > 0 && masks[c.angle]) cams[c.angle] = c; });
+    var camA = cams[S.ref]; if (!camA) return false;
+    var others = Object.keys(cams).filter(function (a) { return a !== S.ref; }).map(function (a) { return cams[a]; });
+    if (!others.length) return false;
+    if (others.every(function (c) { return masks[c.angle]._seamDone; })) return false;     // 이 사진들로는 이미 함
+    others.forEach(function (c) { masks[c.angle]._seamDone = true; });
+    var t0 = (typeof performance !== 'undefined' ? performance.now() : Date.now());
+    var out = { ring: true, views: {}, pairs: [], applied: {}, note: '' };
+    var refTier = null; try { refTier = getViewPoseSource(S.ref).tier; } catch (e) {}
+    if (refTier !== 'pnp') { out.note = '기준(' + S.ref + ') 사진 각도가 실측이 아님 — 안 함'; S.last = out; console.log(TAG + ' ' + out.note); return false; }
+    var E = getHeadEllipsoid(), cmU = 19; try { cmU = modelCmPerUnit() || 19; } catch (e) {}
+    if (!E) return false;
+    var yTop = photo.yTop, CY = photo.CY, tU = S.thickCm / cmU;
+    var fields = {}, fMs = 0;
+    function F(c) {
+      if (fields[c.angle] !== undefined) return fields[c.angle];
+      var tf = (typeof performance !== 'undefined' ? performance.now() : Date.now()), src = srcOf(c);
+      fields[c.angle] = src ? makeField(src) : null;
+      fMs += (typeof performance !== 'undefined' ? performance.now() : Date.now()) - tf;
+      return fields[c.angle];
+    }
+    var cur = {}; others.forEach(function (c) { cur[c.angle] = yawOf(c.R); });
+    var back = others.filter(function (c) { return Math.abs(cur[c.angle]) >= S.backDeg; });
+    var pos = others.filter(function (c) { return cur[c.angle] > 0 && cur[c.angle] < S.backDeg; }).sort(function (p, q) { return cur[p.angle] - cur[q.angle]; });
+    var neg = others.filter(function (c) { return cur[c.angle] < 0 && cur[c.angle] > -S.backDeg; }).sort(function (p, q) { return cur[q.angle] - cur[p.angle]; });
+    var placed = {}, meas = {}, errs = [];
+    placed[S.ref] = yawOf(camA.R);
+    function Rof(c) { return rotYaw(c.R, wrap180(placed[c.angle] - yawOf(c.R))); }
+    // 한쪽 줄: 정면 → … → 뒤 · 마지막 고정점 뒤에 놓인 사진들(seg)을 돌려줌(한 바퀴 닫을 때 나눠 줄 대상)
+    function walk(chain, side) {
+      var prev = camA, seg = [], backEst = null;
+      chain.concat(back.length ? [back[0]] : []).forEach(function (c, idx, arr) {
+        var isBack = back.length && c === back[0] && idx === arr.length - 1;
+        var FA = F(prev), FB = F(c), r;
+        if (!FA || !FB) r = { err: '사진 재료(결·밝기) 없음' };
+        else { try { r = estimateAbs(prev, Rof(prev), FA, c, FB, isBack && placed[c.angle] != null ? placed[c.angle] : cur[c.angle], E, tU, yTop, CY); } catch (e) { r = { err: String(e && e.message || e) }; } }
+        r.from = prev.angle; r.to = c.angle; r.side = side; out.pairs.push(r);
+        var m = meas[c.angle] || (meas[c.angle] = measuredAny(c.angle));
+        if (isBack) { backEst = r.err ? null : r.est; return; }
+        if (m) {                                                   // 고정점 — 검증 오차만 남기고 실측으로 이어 감
+          if (!r.err) { r.errDeg = wrap180(r.est - m.deg); errs.push(r.errDeg); }
+          placed[c.angle] = m.deg; seg = [];
+        } else {
+          placed[c.angle] = (!r.err && !r.edge) ? r.est : cur[c.angle];
+          seg.push(c.angle);
+        }
+        prev = c;
+      });
+      return { seg: seg, backEst: backEst };
+    }
+    var wp = walk(pos, '+'), wn = walk(neg, '−');
+    // 뒤: 양쪽 값을 반씩 · 차이를 마지막 고정점 뒤 사진들에 고르게 나눠 줌
+    if (back.length) {
+      var b = back[0], mb = meas[b.angle] || (meas[b.angle] = measuredAny(b.angle));
+      var ep = wp.backEst, en = wn.backEst, gap = null, final = cur[b.angle];
+      if (ep != null && en != null) { gap = wrap180(ep - en); final = wrap180(en + gap / 2); }
+      else if (ep != null) final = ep; else if (en != null) final = en;
+      out.close = { pos: ep, neg: en, gap: gap };
+      if (gap != null) {
+        [[wp.seg, -gap / 2], [wn.seg, gap / 2]].forEach(function (it) {
+          var segs = it[0], tot = it[1], n = segs.length + 1;
+          segs.forEach(function (a, i) { placed[a] = wrap180(placed[a] + tot * (i + 1) / n); });
+        });
+      }
+      if (mb) { out.backMeas = mb; if (ep != null || en != null) errs.push(wrap180(final - mb.deg)); placed[b.angle] = mb.deg; }
+      else placed[b.angle] = final;
+      back.slice(1).forEach(function (c) { placed[c.angle] = cur[c.angle]; });
+    }
+    var checked = errs.length > 0, ok = checked ? errs.every(function (e) { return Math.abs(e) <= S.tolDeg; }) : S.applyUnchecked;
+    var changed = false;
+    others.forEach(function (c) {
+      var a = c.angle, m = meas[a];
+      out.views[a] = { cur: cur[a], placed: placed[a], meas: m || null };
+      if (m || placed[a] == null) return;
+      if (!S.apply || !ok) return;
+      if (Math.abs(wrap180(placed[a] - cur[a])) < S.minChangeDeg) return;
+      S.yaw[a] = { deg: placed[a], mask: masks[a] }; out.applied[a] = placed[a]; changed = true;
+    });
+    out.ok = ok; out.checked = checked; out.errs = errs; out.fieldMs = Math.round(fMs);
+    out.ms = Math.round((typeof performance !== 'undefined' ? performance.now() : Date.now()) - t0);
+    S.last = out;
+    console.log(S.lines().join('\n'));
+    return changed;
+  };
 
   /* 중립 3D를 한 번 만든 뒤 — 고칠 각도가 있으면 true(그러면 3D를 다시 만듦) */
   S.check = function () {
@@ -8777,6 +8917,7 @@ var VIEW_SEAM = (function () {
     var photo = state._hair3Dneutral; if (!photo) return false;
     var probe = (photo.occ && photo.occ.probe) || (state.hairOcc3D && state.hairOcc3D.probe) || null;
     if (!probe || !probe.cams) return false;
+    if (S.ring) return S.checkRing(photo, probe);              // (2026-11-01) 한 바퀴 이음새
     var masks = state.hairMasks || {}, sides = ['left', 'right'].filter(function (a) { return masks[a]; });
     if (!sides.length || !masks[S.ref]) return false;
     if (sides.every(function (a) { return masks[a]._seamDone; })) return false;      // 이 사진들로는 이미 함
@@ -8816,6 +8957,25 @@ var VIEW_SEAM = (function () {
   };
   S.lines = function () {
     var o = S.last; if (!o) return [TAG + ' 아직 안 함'];
+    if (o.ring) {
+      if (o.note) return [TAG + ' ' + o.note];
+      var f1 = function (v) { return v == null ? '-' : (v >= 0 ? '+' : '') + v.toFixed(1) + '°'; };
+      var L2 = [TAG + ' 한 바퀴 · ' + o.ms + 'ms(사진 재료 ' + o.fieldMs + 'ms) · 무게 결 ' + S.wOri + '/밝기 ' + S.wLum + ' · 찾는 범위 ±' + S.searchDeg + '° (예전 두 쌍 VIEW_SEAM.ring=false · 끄기 ?seam=0)'];
+      o.pairs.forEach(function (r) {
+        if (r.err) { L2.push('  ' + r.from + '→' + r.to + ': 못 잼 — ' + r.err); return; }
+        var b = r.best;
+        L2.push('  ' + r.from + '→' + r.to + ': ' + f1(r.est) + (r.edge ? '(범위 끝 — 안 믿음)' : '') + ' · 지금 ' + f1(r.curDeg)
+          + ' · 점수 ' + b.s.toFixed(3) + '(결 ' + b.ori.toFixed(3) + (b.lum != null ? ' · 밝기 ' + b.lum.toFixed(3) : ' · 밝기 없음') + ' · 겹침 ' + Math.round(b.cover * 100) + '%) · 두드러짐 ' + r.prom.toFixed(3)
+          + (r.errDeg != null ? ' · 실측과 차 ' + f1(r.errDeg) : '') + ' · ' + r.ms + 'ms');
+      });
+      if (o.close) L2.push('  뒤에서 만남: + 쪽 ' + f1(o.close.pos) + ' / − 쪽 ' + f1(o.close.neg) + (o.close.gap != null ? ' → 차이 ' + f1(o.close.gap) + ' 를 양쪽에 나눔' : ''));
+      Object.keys(o.views).forEach(function (a) {
+        var v = o.views[a];
+        L2.push('  ' + a + ': 지금 ' + f1(v.cur) + ' → ' + (v.meas ? '실측 ' + f1(v.meas.deg) + '(' + v.meas.tier + ')' : '이음새 ' + f1(v.placed)) + (o.applied[a] != null ? ' → <b>적용</b>' : ''));
+      });
+      L2.push('  검증: ' + (o.checked ? '실측 사진 ' + o.errs.length + '장 · 차 ' + o.errs.map(f1).join(' ') + ' → ' + (o.ok ? '통과(±' + S.tolDeg + '°)' : '실패 — 적용 안 함') : '실측 사진 없음 → ' + (o.ok ? '그대로 적용(applyUnchecked)' : '적용 안 함')));
+      return L2;
+    }
     if (o.note) return [TAG + ' ' + o.note];
     var L = [TAG + ' 기준 ' + S.ref + ' · ' + o.ms + 'ms · 겉면 두께 ' + S.thickCm + 'cm · 잔결 반경 ' + S.hpPx + 'px · 무게 결 ' + S.wOri + '/밝기 ' + S.wLum + ' (끄기 ?seam=0 · 재기만 VIEW_SEAM.apply=false)'];
     Object.keys(o.views).forEach(function (a) {
@@ -8833,6 +8993,7 @@ var VIEW_SEAM = (function () {
   };
   /* 01 _rawViewYawDeg가 부름 — 이 사진들에 대해 고친 각도가 있으면 */
   S.yawFor = function (angle) {
+    if (S._bypass) return null;
     var y = S.yaw[angle]; if (!y || !S.on) return null;
     if (!(state.hairMasks && state.hairMasks[angle] === y.mask)) { delete S.yaw[angle]; return null; }   // 사진이 바뀜
     return y.deg;

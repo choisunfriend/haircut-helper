@@ -484,6 +484,9 @@ function getViewYawDeg(angle){
   return fixed;
 }
 function _rawViewYawDeg(angle){
+  /* (2026-11-01) 이음새로 고친 각도(17b VIEW_SEAM 한 바퀴)가 있으면 그것 — 실측(얼굴) 없는 사진만 고쳐 둠.
+     예전엔 VIEW_SEAM이 고친 값을 아무도 안 읽어 적용해도 안 바뀌었음 */
+  if (typeof VIEW_SEAM !== 'undefined' && VIEW_SEAM.yawFor) { const sd = VIEW_SEAM.yawFor(angle); if (typeof sd === 'number' && !Number.isNaN(sd)) return sd; }
   const { tier, lm, cap } = getViewPoseSource(angle);
   if(tier === 'pnp') return lm.poseYawDeg;
   if(tier === 'approx') return lm.yaw * 90;
