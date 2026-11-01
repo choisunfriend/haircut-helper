@@ -82,30 +82,55 @@ function salonL(ko, en) { try { return typeof uiLang !== 'undefined' && uiLang =
       return reply(ev, { id: rawId, ok: false, error: salonL('이 버전의 GYEOL 은 스타일 입어 보기를 지원하지 않아요', 'This GYEOL version cannot try on styles') });
     }
     STYLE_SPECS[key] = spec;
+    if (SALON_BRIDGE.closeAfterApply) closeShopPanel();
 
-    // 같은 스타일을 다시 누르면 applyStyleSpecAndRender 가 "벗기기"로 동작 → 이미 입었으면 그대로 둠
-    if (state && state.specAppliedId === key) {
-      toast(spec.name + salonL(' — 이미 입고 있어요', ' — already on'));
-      if (SALON_BRIDGE.closeAfterApply) closeShopPanel();
-      return reply(ev, { id: rawId, ok: true });
-    }
-
-    let res = null;
-    try { res = applyStyleSpecAndRender(key); } catch (e) {
-      console.warn('[미용실] 스타일 적용 실패', e);
-      return reply(ev, { id: rawId, ok: false, error: salonL('스타일을 입히다 오류가 났어요', 'Something went wrong while applying the style') });
-    }
-    if (res) {
-      toast(salonL(spec.name + ' 입혔어요', 'Applied ' + spec.name));
-      reply(ev, { id: rawId, ok: true });
-      if (SALON_BRIDGE.closeAfterApply) closeShopPanel();
-    } else if (!state || !state.hair3Dneutral) {
-      // 3D 머리를 아직 만드는 중 — 다 되면 17a 가 같은 스펙을 이어서 입힘
-      toast(salonL('3D 머리를 준비하는 중… 끝나면 ' + spec.name + ' 을(를) 입혀요', 'Preparing the 3D head… ' + spec.name + ' will be applied when ready'));
-      reply(ev, { id: rawId, ok: true, pending: true });
-      if (SALON_BRIDGE.closeAfterApply) closeShopPanel();
-    } else {
-      reply(ev, { id: rawId, ok: false, error: salonL('먼저 사진을 찍거나 마네킹으로 3D 머리를 만들어 주세요', 'Take a photo or build the mannequin 3D head first') });
+    // 앱의 정석 순서를 그대로 타되, 중간 화면은 안 보이고 바로 3D 전신으로:
+    //   ① 미용실 스타일을 스타일 목록에 카드로 넣음(이번 실행 동안만 · 저장 안 함 · 「미용실에 올리기」 대상 아님)
+    //   ② selectStyle = 손님이 스타일 화면에서 카드를 누른 것과 같은 준비(섹션 초기화 · 마네킹 · 스펙 예약)
+    //   ③ 조정 화면 들어갈 때 하던 "예약 스펙 입히기"를 화면 이동 없이 실행
+    //   ④ 입혀지면 3D 화면(model3d)을 열어 전신을 새로 그림 → 조정 화면 · 3D 가 같은 머리
+    try {
+      const card = {
+        id: key, specId: key, spec: spec, name: styleName,
+        tags: salonName ? salonL('미용실 · ', 'Salon · ') + salonName : salonL('미용실 스타일', 'Salon style'),
+        isSalon: true,
+        colorHex: spec.color || '#6B4A2E',
+        length: 50, curl: spec.perm && typeof spec.perm.curl === 'number' ? spec.perm.curl : 0, volume: 50,
+      };
+      const at = STYLES.findIndex(x => x && x.id === key);
+      if (at >= 0) STYLES[at] = card; else STYLES.push(card);
+      if (typeof buildStyleGrid === 'function') buildStyleGrid();
+      selectStyle(key);            // 스타일 화면에서 카드를 누른 것과 같은 준비(화면은 안 바뀜) → pendingSpecId 예약
+      // 조정 화면에 들어갈 때 하던 "예약 스펙 입히기"를 화면 이동 없이 여기서 (05 navTo 와 같은 순서)
+      const pend = state.pendingSpecId || key;
+      state.pendingSpecId = null;
+      state.specAppliedId = null;  // 같은 id 면 적용 함수가 "벗기기"로 동작하므로 비움
+      let res = null;
+      try { res = applyStyleSpecAndRender(pend); } catch (e) { console.warn('[미용실] 스펙 적용 실패', e); }
+      // 바로 입혀졌거나(res), 3D 머리를 만드는 중이면(17a 가 다 만든 뒤 스스로 다시 입힘) 끝날 때까지 기다렸다가
+      // 3D 전신 화면을 새로 그림 — 중간 화면(스타일·조정)은 안 보임
+      const t0 = Date.now();
+      (function waitThen3D() {
+        if (state.specAppliedId === pend) {
+          try {
+            if (typeof currentScreen !== 'undefined' && currentScreen === 'model3d') setupModel3DScreen();
+            else navTo('model3d');
+          } catch (e) { console.warn('[미용실] 3D 화면 열기 실패', e); }
+          toast(salonL(spec.name + ' 입혔어요', 'Applied ' + spec.name));
+          return;
+        }
+        if (Date.now() - t0 < 20000) return setTimeout(waitThen3D, 150);
+        // 20초 안에 못 입혔으면(사진·3D 머리가 없는 경우 등) 원래 흐름으로 — 조정 화면에서 입힘
+        console.warn('[미용실] 바로 입히지 못해 조정 화면으로 넘깁니다');
+        state.pendingSpecId = pend;
+        try { navTo('adjust'); } catch (e) { /* 무시 */ }
+        toast(salonL('3D 머리를 먼저 준비해야 해요 — 조정 화면에서 입힐게요', 'The 3D head needs preparing first — applying in Adjust'));
+      })();
+      if (!res) toast(salonL(spec.name + ' 을(를) 입히는 중…', 'Applying ' + spec.name + '…'));
+      return reply(ev, { id: rawId, ok: true, pending: true });
+    } catch (e) {
+      console.warn('[미용실] 스타일 고르기 실패', e);
+      return reply(ev, { id: rawId, ok: false, error: salonL('스타일을 입히지 못했어요 — 먼저 사진을 찍거나 마네킹으로 시작해 주세요', 'Could not apply — take a photo or start with the mannequin first') });
     }
   });
 
