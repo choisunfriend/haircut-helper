@@ -46,12 +46,27 @@ function salonL(ko, en) { try { return typeof uiLang !== 'undefined' && uiLang =
     }
     throw new Error('not data');
   }
+  // spec.groom(빗질·지우기 명령, 37-groom-recipe.js)은 base64 덩어리라 일반 규칙(글자 120자) 대신 따로 검사
+  const B64 = /^[A-Za-z0-9+/]*={0,2}$/;
+  function cleanGroom(g) {
+    if (!g || typeof g !== 'object' || Array.isArray(g)) return undefined;
+    const out = { v: typeof g.v === 'number' ? g.v : 1 };
+    if (typeof g.comb === 'string' && g.comb.length <= 260000 && B64.test(g.comb)) out.comb = g.comb;
+    if (typeof g.erase === 'string' && g.erase.length <= 4000 && B64.test(g.erase)) out.erase = g.erase;
+    return out.comb || out.erase ? out : undefined;
+  }
   function cleanSpec(raw) {
+    let groom;
+    if (raw && typeof raw === 'object' && !Array.isArray(raw) && 'groom' in raw) {
+      groom = cleanGroom(raw.groom);
+      raw = Object.assign({}, raw); delete raw.groom;
+    }
     const spec = clean(raw, 0);
     if (!spec || typeof spec !== 'object' || Array.isArray(spec)) throw new Error('스펙이 객체가 아닙니다');
     if (!spec.cut || typeof spec.cut !== 'object') throw new Error('스펙에 cut 이 없습니다');
     if (spec.color !== undefined && !/^#[0-9A-Fa-f]{6}$/.test(String(spec.color))) delete spec.color;
     if (JSON.stringify(spec).length > SALON_BRIDGE.maxBytes) throw new Error('스펙이 너무 큽니다');
+    if (groom) spec.groom = groom;
     return spec;
   }
 
@@ -255,10 +270,13 @@ function uploadStyleToSalon() {
   spec.name = String(st.name || spec.name || '').slice(0, 80);
   if (!spec.color && typeof st.colorHex === 'string' && /^#[0-9A-Fa-f]{6}$/.test(st.colorHex)) spec.color = st.colorHex.toUpperCase();
   spec.gyeol = { app: 'gyeol', v: 1, at: new Date().toISOString() };
-  if (JSON.stringify(spec).length > SALON_BRIDGE.maxBytes) { _salonNotice(salonL('스타일 정보가 너무 커서 올릴 수 없어요', 'This style is too large to upload')); return false; }
+  const _noGroom = Object.assign({}, spec); delete _noGroom.groom;
+  if (JSON.stringify(_noGroom).length > SALON_BRIDGE.maxBytes) { _salonNotice(salonL('스타일 정보가 너무 커서 올릴 수 없어요', 'This style is too large to upload')); return false; }
   let origin = '';
   try { origin = new URL(BODY_SHOP.pageUrl, location.href).origin; } catch (e) { return false; }
-  const payload = _b64url(JSON.stringify({ spec: spec, thumb: _styleThumb(st) }));
+  // 썸네일: 등록할 때 찍어 둔 다듬은 3D 화면(37) → 없으면 지금 손질 화면
+  const thumb = typeof st.thumb === 'string' && /^data:image\/jpeg;base64,/.test(st.thumb) ? st.thumb : _styleThumb(st);
+  const payload = _b64url(JSON.stringify({ spec: spec, thumb: thumb }));
   const w = window.open(origin + SALON_UPLOAD.path + '#d=' + payload, '_blank');
   if (!w) { _salonNotice(salonL('팝업이 막혔어요 — 팝업을 허용하고 다시 눌러 주세요', 'Pop-up blocked — allow pop-ups and try again')); return false; }
   try { w.opener = null; } catch (e) { /* 무시 */ }

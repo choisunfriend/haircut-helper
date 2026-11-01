@@ -39,7 +39,7 @@ var ERASE_STRAND = (function () {
   function checkModel() {
     var m = null;
     try { m = state._hair3Dneutral || null; } catch (e) { m = null; }
-    if (m !== E.model) { E.model = m; E.keys.clear(); E.history.length = 0; sync(); }
+    if (m !== E.model) { E.model = m; E.keys.clear(); E.history.length = 0; E.pending = null; sync(); }
   }
 
   // ---- 계산 결과에서 지운 가닥 빼기 ---------------------------------------------------------
@@ -50,6 +50,7 @@ var ERASE_STRAND = (function () {
       try {
         if (!E.enabled || !Array.isArray(out)) return out;
         checkModel();
+        if (E.pending && E.pending.length && out.length) resolvePending(out);
         if (!E.keys.size) return out;
         return out.filter(function (s) { return !erased(s); });
       } catch (e) { return out; }
@@ -66,6 +67,39 @@ var ERASE_STRAND = (function () {
       return E.keys.size ? s + '|er' + E.ver : s;
     };
   }
+
+  // 스타일 레시피(37-groom-recipe.js)가 다른 머리에서 옮겨 온 "지운 자리" — 이 머리에서 뿌리가 가장 가까운 가닥을 지움
+  E.pending = null;
+  function resolvePending(out) {
+    var pts = E.pending; E.pending = null;
+    var used = new Set();
+    for (var i = 0; i < pts.length; i++) {
+      var q = pts[i], best = -1, bd = Infinity;
+      for (var j = 0; j < out.length; j++) {
+        if (used.has(j)) continue;
+        var r = out[j].pts && out[j].pts[0]; if (!r) continue;
+        var d = (r.x - q.x) * (r.x - q.x) + (r.y - q.y) * (r.y - q.y) + (r.z - q.z) * (r.z - q.z);
+        if (d < bd) { bd = d; best = j; }
+      }
+      if (best < 0) continue;
+      used.add(best);
+      var k = keysOf(out[best]); if (!k.length) continue;
+      k.forEach(function (x) { E.keys.add(x); });
+      var r0 = out[best].pts[0];
+      E.history.push({ k: k, p: { x: r0.x, y: r0.y, z: r0.z } });
+    }
+    E.ver++;
+    sync();
+  }
+  // 지금 지운 가닥들의 뿌리 위치(이 머리 좌표) — 스타일 저장 때 씀
+  E.exportRoots = function () { checkModel(); return E.history.map(function (h) { return h.p; }).filter(Boolean); };
+  // 다른 머리에서 온 뿌리 위치(이미 이 머리 좌표로 바꾼 것)를 다음 계산 때 지우기로 예약
+  E.importRoots = function (list) {
+    checkModel();
+    E.keys.clear(); E.history.length = 0;
+    E.pending = (list && list.length) ? list.slice(0, E.maxUndo) : null;
+    E.ver++; sync();
+  };
 
   function refresh() {
     E.ver++;
@@ -122,15 +156,16 @@ var ERASE_STRAND = (function () {
     if (!s) { toast(L('가닥을 못 찾았어요 — 가닥 위를 정확히 눌러 주세요', 'No strand there — tap right on the strand')); return; }
     var k = keysOf(s); if (!k.length) return;
     k.forEach(function (x) { E.keys.add(x); });
-    E.history.push(k);
+    var r0 = s.pts[0];
+    E.history.push({ k: k, p: { x: r0.x, y: r0.y, z: r0.z } });
     if (E.history.length > E.maxUndo) E.history.shift();
     sync(); refresh();
   }
 
   function undo() {
-    var k = E.history.pop();
-    if (!k) return;
-    k.forEach(function (x) { E.keys.delete(x); });
+    var h = E.history.pop();
+    if (!h) return;
+    h.k.forEach(function (x) { E.keys.delete(x); });
     sync(); refresh();
   }
   function clearAll() { E.keys.clear(); E.history.length = 0; sync(); refresh(); }
