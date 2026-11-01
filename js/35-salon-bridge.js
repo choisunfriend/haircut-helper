@@ -11,7 +11,7 @@
 // 21-body-base.js(BODY_SHOP·openShopPanel·closeShopPanel·buildBodyGarmentRack),
 // 16-style-spec-diag.js(STYLE_SPECS), 17a-mannequin.js(applyStyleSpecAndRender) 다음에 불러야 함.
 // ============================================================================
-const SALON_BRIDGE = { on: true, path: '/salons', closeAfterApply: true, maxBytes: 16 * 1024 };
+const SALON_BRIDGE = { on: true, path: '/salons', closeAfterApply: true, maxBytes: 512 * 1024 }; // (2026-11-01) 앱이 원본을 재서 만든 스타일은 수십 KB — 넉넉히
 // 앱 언어(uiLang)를 따름 — 영어: en · 한국어: ko
 function salonL(ko, en) { try { return typeof uiLang !== 'undefined' && uiLang === 'en' ? en : ko; } catch (e) { return ko; } }
 
@@ -31,11 +31,11 @@ function salonL(ko, en) { try { return typeof uiLang !== 'undefined' && uiLang =
   // ---- 스펙 정리: 마켓플레이스 src/lib/salons-db.ts cleanSpec 과 같은 규칙 --------------------
   const BAD = new Set(['__proto__', 'prototype', 'constructor']);
   function clean(v, depth) {
-    if (depth > 6) throw new Error('too deep');
+    if (depth > 10) throw new Error('too deep');
     if (v === null || typeof v === 'boolean') return v;
     if (typeof v === 'number') { if (!isFinite(v)) throw new Error('bad number'); return v; }
-    if (typeof v === 'string') { if (v.length > 120) throw new Error('long string'); return v; }
-    if (Array.isArray(v)) { if (v.length > 64) throw new Error('long array'); return v.map(x => clean(x, depth + 1)); }
+    if (typeof v === 'string') { if (v.length > 400) throw new Error('long string'); return v; }
+    if (Array.isArray(v)) { if (v.length > 20000) throw new Error('long array'); return v.map(x => clean(x, depth + 1)); }
     if (typeof v === 'object') {
       const out = {};
       for (const k of Object.keys(v)) {
