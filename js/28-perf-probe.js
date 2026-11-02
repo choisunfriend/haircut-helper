@@ -553,7 +553,7 @@
     try { return adjCacheSig(model, null, 1); } catch (e) { return null; }
   }
   function makeCtx(model) {
-    var probe = HAIR_OCC3D.clipAdjusted && !(MQ_TRUST.photoClip3D && model.mannequin && MQ_TRUST.on)
+    var probe = HAIR_OCC3D.clipAdjusted && (HAIR_OCC3D.strictAnd || !(MQ_TRUST.photoClip3D && model.mannequin && MQ_TRUST.on))
       ? (model.occ && model.occ.probe || state.hairOcc3D && state.hairOcc3D.probe || null) : null;
     var fringe = 0;
     if (model.mannequin && HAIR_OCC3D.fringeFrac > 0) { try { fringe = 2 * getHeadEllipsoid().b * HAIR_OCC3D.fringeFrac; } catch (e) { fringe = 0; } }

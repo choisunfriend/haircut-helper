@@ -8271,7 +8271,7 @@ function _adjGeometry(srcAngleFilter, stride){
   /* 마네킹이면 <b>손님의 옛 머리 실루엣</b>이 기준이 되는 이 재클립을 닫는다.
      머리를 묶고 온 손님이면 귀 앞·뺨에 머리카락이 없어 옆머리가 정의상
      전멸한다(MQ_TRUST 배너). 되돌리기: MQ_TRUST.photoClip3D = false */
-  const occ = (HAIR_OCC3D.clipAdjusted && !(MQ_TRUST.photoClip3D && model.mannequin && MQ_TRUST.on))
+  const occ = (HAIR_OCC3D.clipAdjusted && (HAIR_OCC3D.strictAnd || !(MQ_TRUST.photoClip3D && model.mannequin && MQ_TRUST.on)))
     ? ((model.occ && model.occ.probe) || (state.hairOcc3D && state.hairOcc3D.probe) || null)
     : null;
   const occAcc = occ ? { n:0, dropped:0, trimmed:0, removedPts:0, faceBlocked:0 } : null;

@@ -548,6 +548,11 @@ const HAIR_OCC3D = {
   on:       true,  // 끄면 예전 동작(세그멘테이션 미반영)으로 즉시 복귀 — A/B 확인용
   alphaThr: 40,    // 이 알파 이상이면 그 픽셀은 머리카락(2D isRealHairAt와 같은 기준)
   minFacing: 0.12, // 정면성이 이 미만인 뷰는 투표에서 뺀다(실루엣 스치기)
+  /* (2026-11-02) 전원 일치 — 보이는 사진 전부가 "머리 영역 안"일 때만 남긴다.
+     켜면: at()이 AND 판정 · 다듬기가 밖인 첫 점에서 바로 자름(offRun 무시) ·
+     시술 여유(growLen·moveGrow·마네킹 바닥값) 없음 · 마네킹에서도 조정 후 재클립을 건다.
+     앞머리(st.fringe)는 예전처럼 면제. 끄면 예전 동작 전부 그대로. */
+  strictAnd: true,
   occThr:   0.35,  // 점유도가 이 미만이면 "머리카락 없음"
   minSeen:  0.15,  // 투표 가중치 합이 이 미만이면 판단 보류(아무도 제대로 못 봄 → 통과)
   /* (2026-08-08) <b>제일 잘 본 뷰 하나</b>가 이 정면성을 넘어야 "머리 없음"으로 지울 수 있다.
@@ -905,6 +910,29 @@ function makeHairOccupancyProbe(views, names, yTop, CY, headR){
     at(px, py, pz){
       let wSum = 0, hSum = 0, wBest = 0;
       const wy = py - CY;
+      /* ── 전원 일치 (2026-11-02, 사용자 지시) ─────────────────────────────
+         사용자: "끝점이 보이는 사진만 투표에 참여해서(가림이든 아니든 보이냐
+         안보이냐만) 둘 다 영역 안일 때만 남기고, 하나라도 영역 밖이면 지워야."
+         · 투표권 = 그 카메라 쪽 반구(lz>0)면 있다. 비스듬해도 보이면 투표한다
+           (minFacing·confidentFacing·가중치 없음).
+         · 한 장이라도 마스크 밖이면 밖(occ 0). 전부 안이면 안(occ 1).
+         · 아무 사진도 못 보면 판단할 근거가 없으니 통과.
+         되돌리기: HAIR_OCC3D.strictAnd = false (예전 가중 투표) */
+      if(O.strictAnd){
+        let seen = 0;
+        for(let i=0;i<cams.length;i++){
+          const c = cams[i], R = c.R;
+          const lz = R[6]*px + R[7]*wy + R[8]*pz;
+          if(lz <= 0) continue;                    // 이 사진에선 안 보임 — 투표 안 함
+          const lx = R[0]*px + R[1]*wy + R[2]*pz;
+          const ly = R[3]*px + R[4]*wy + R[5]*pz;
+          const ix = lx / c.s + c.cx;
+          const iy = c.crownY + (yTop - (ly + CY)) / c.sy;
+          seen++;
+          if(!(c.smp.at(ix, iy) > 0)) return { occ: 0, seen, outBy: c.angle };
+        }
+        return seen ? { occ: 1, seen } : { occ: 1, seen: 0, abstain: 1 };
+      }
       for(let i=0;i<cams.length;i++){
         const p = projectToCam(cams[i], px, wy, pz);
         if(!p) continue;
@@ -1865,9 +1893,19 @@ function trimStrandToOccupancy3D(pts, probe, acc, opts){
     if(acc) acc.n++;
     if(r.occ >= O.occThr){ off = 0; continue; }
     off++;
-    if(off >= O.offRun){ cut = i - off + 1; break; }
+    if(off >= (O.strictAnd ? 1 : O.offRun)){ cut = i - off + 1; break; }
   }
   if(cut < 0) return pts;
+  if(O.strictAnd){
+    /* 여유 없음 — 밖으로 나간 첫 점 직전에서 끊는다. */
+    if(cut < O.minPts){
+      if(!neverDrop){ if(acc) acc.dropped++; return null; }
+      cut = Math.min(pts.length, O.minPts);
+      if(cut >= pts.length) return pts;
+    }
+    if(acc){ acc.trimmed++; acc.removedPts += (pts.length - cut); }
+    return pts.slice(0, cut);
+  }
   /* 늘린 만큼의 여유 — 경계에서 바로 자르지 않고 growLen 호길이만큼 더 간다.
      2D에서 클립 마스크를 growPx만큼 부풀리는 것과 같은 뜻이다(밖으로 나가는
      가닥에 대해서는 "마스크를 키운다" = "경계 통과 후 그만큼 더 그린다"). */
