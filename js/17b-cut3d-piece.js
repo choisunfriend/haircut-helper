@@ -1553,6 +1553,11 @@ var REGROW = (function () {
        사진 결(앞뒤 없는 선)이 위·아래 성분을 gravPickFlat 이상 가지면 아래로 가는 쪽, 그보다 누우면(수평 결) 직전 걸음과 이어지는 쪽. 결의 모양(각)은 안 바꿈.
        되돌리기: REGROW.gravPick=false · REGROW.polDown=2.5 · REGROW.gravSign=1 */
     gravPick: true, gravPickFlat: 0.2,
+    /* (2026-11-02) 두피 밖은 생긴 대로 — 사용자: "아래로 가는 경우는 중력으로 방향판정을 했을 때 아래로 향하는 경우만" · "있는 고리는 생긴대로 갈 수 있도록".
+       gravPick이 두피 밖에서도 매 걸음 "세로면 아래"로 골라, 고리의 올라가는 반 바퀴가 매번 뒤집혔다(디버그 1651 곱슬: 한 바퀴 돈 가닥 3%).
+       두피 위(정수리 넘어 기어오르던 10/25 문제 자리)와 첫 걸음은 예전대로 중력, 두피 밖에서 직전 걸음이 있으면 이어지는 쪽만.
+       되돌리기 REGROW.loopFree=false */
+    loopFree: true,
     polDown: 0, gravSign: 0, gravBlendRead: false,   // 예전 polDown 2.5 · gravSign 1.0
     polDown_off_was: 0, // (2026-10-22) 끔 — 걷기 안 규칙도 끔(읽기·기르기 강화 단계 · 되돌리기 ?judge=1): 오르막 벌점 · 예전 2.5
     polDown_was: 2.5,   // (2026-10-10f) 두피 위에서 결(앞뒤 없는 선)의 앞뒤를 고를 때 비탈을 거꾸로 오르는 쪽에만 이만큼 벌점(비탈 기울기에 비례) — 한 번 위로 가면 계속 위로 가며 두상을 감던 것. 옆으로 흐르는 결(가마·가르마)은 안 건드림 · 0 = 예전(직전 방향만)
@@ -2291,6 +2296,7 @@ var REGROW = (function () {
     }
     /* 평면들(PL: [법선 x,y,z, 무게, 번호]…)에 가장 가까운 단위 방향 d — dᵀMd − λ(d·ref)² 최소(M = Σ w·m·mᵀ, λ = lsPrior·Σw · 작게 — 직전 방향은 사진이 못 정하는 성분만 정함).
        한 장이면 그 평면 안에서 ref에 가장 가까운 방향(= 사진 결 그대로 + ref의 깊이), 두 장 이상이면 교선. 부호: 중력으로 고르는 결(gravPick)은 아래, 아니면 ref 쪽 */
+    var _freeRef = false;   // (2026-11-02) 지금 걸음이 두피 밖이고 직전 걸음이 있나 — lsSolve의 앞뒤 고르기용
     function lsSolve(PL, ref) {
       var m00 = 0, m01 = 0, m02 = 0, m11 = 0, m12 = 0, m22 = 0, ws = 0, k;
       for (k = 0; k < PL.length; k += 5) { var w = PL[k + 3]; if (!(w > 0)) continue; var a = PL[k], b = PL[k + 1], c = PL[k + 2];
@@ -2318,11 +2324,12 @@ var REGROW = (function () {
       }
       var kmin = A[0][0] <= A[1][1] ? (A[0][0] <= A[2][2] ? 0 : 2) : (A[1][1] <= A[2][2] ? 1 : 2);
       var vx = V[0][kmin], vy = V[1][kmin], vz = V[2][kmin], vl = Math.sqrt(vx * vx + vy * vy + vz * vz); if (!(vl > 1e-12)) return null; vx /= vl; vy /= vl; vz /= vl;
-      var flip = (G.gravPick && Math.abs(vy) >= G.gravPickFlat) ? vy > 0 : (vx * sx + vy * sy + vz * sz < 0);
+      var flip = (G.gravPick && !(G.loopFree && _freeRef) && Math.abs(vy) >= G.gravPickFlat) ? vy > 0 : (vx * sx + vy * sy + vz * sz < 0);
       if (flip) { vx = -vx; vy = -vy; vz = -vz; }
       return { x: vx, y: vy, z: vz };
     }
     function flow(p, n, ref, flat) {
+      _freeRef = !!(flat && ref);
       flowNC = 0;
       if (TRF) { TRF.nc = 0; TRF.best = -1; TRF.bw = 0; TRF.coh = 0; TRF.spr = 0; TRF.dirs = []; }
       var ax = 0, ay = 0, az = 0, wsum = 0, i, cam, o, R, ncx, ncy, ncz, sm, pol, dX, dY, dZ, mx, my, mz, l, w, dot;
@@ -2378,7 +2385,7 @@ var REGROW = (function () {
         mx /= l; my /= l; mz /= l;
         if (ref) {
           dot = mx * ref.x + my * ref.y + mz * ref.z;
-          if (G.gravPick && Math.abs(my) >= G.gravPickFlat) dot = -my;     // (2026-10-26) 중력으로 앞뒤만 — 아래로 가는 쪽
+          if (G.gravPick && !(G.loopFree && flat) && Math.abs(my) >= G.gravPickFlat) dot = -my;     // (2026-10-26) 중력으로 앞뒤만 — 아래로 가는 쪽 · (2026-11-02) 두피 밖은 이어지는 쪽(loopFree)
           if (polW > 0) {                                                   // (2026-10-10f) 오르막에만 벌점 — 내리막 = 아래(0,-1,0)를 이 자리 두피면에 놓은 방향(정수리처럼 평평한 곳은 짧아져 저절로 약해짐)
             var kd = -n.y, ddx = -kd * n.x, ddy = -1 - kd * n.y, ddz = -kd * n.z, b = mx * ddx + my * ddy + mz * ddz;
             var ddl = Math.sqrt(ddx * ddx + ddy * ddy + ddz * ddz), sl = G.polSlopeHi > G.polSlopeLo ? Math.max(0, Math.min(1, (ddl - G.polSlopeLo) / Math.max(1e-6, G.polSlopeHi - G.polSlopeLo))) : 1;   // (2026-10-10i) 완만한 곳(정수리·가마)은 벌점을 풂
@@ -2447,6 +2454,7 @@ var REGROW = (function () {
     }
     /* (2026-10-24) 걸음 안 다시 보기 — 처음 자리에서 쓴 사진들의 결만 그 점에서 다시 읽음(맞춰 보기·광택은 처음 자리에서 끝남) */
     function flowLite(p, n, ref, flat) {
+      _freeRef = !!(flat && ref);
       var ax = 0, ay = 0, az = 0, ws = 0, t, i, cam, R, ncz, o, sm, ncx, ncy, dX, dY, dZ, l, mx, my, mz, w;
       var PLl = (flat && G.lsFree && ref) ? [] : null;
       for (t = 0; t < lastUse.length; t++) {

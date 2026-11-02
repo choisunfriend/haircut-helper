@@ -32,7 +32,7 @@
 //   · 결을 못 읽은 자리(또렷함 minCoh 미만 · 결 없음)에서 가닥 끝(직전 방향으로 곧게 뻗어 머리 밖으로 튀어나가던 것 없앰)
 //   끄기 RAW_TRACE.on=false(예전 2D 긋기)
 // ============================================================================
-var RAW_TRACE = { on: true, stepPx: 2, stepFrac: 0.01, gravPick: 0.2, minCoh: 0.05, endOnNoRead: true, stats: { strands: 0, steps: 0, read: 0, byFlow: 0, byGrav: 0, byCont: 0, endNoRead: 0, pts: 0 } };
+var RAW_TRACE = { on: true, loopFollow: true, stepPx: 2, stepFrac: 0.01, gravPick: 0.2, minCoh: 0.05, endOnNoRead: true, stats: { strands: 0, steps: 0, read: 0, byFlow: 0, byGrav: 0, byCont: 0, endNoRead: 0, pts: 0 } };
 
 function rawTraceStrandPath(ix, sy, targetLen, jitterSeed, env, rootSec, stopAtExit) {
   var R = RAW_TRACE, PI = Math.PI, St = R.stats;
@@ -46,6 +46,17 @@ function rawTraceStrandPath(ix, sy, targetLen, jitterSeed, env, rootSec, stopAtE
   var minConf = (typeof HAIR_FLOW !== 'undefined' && HAIR_FLOW.minConf) || 0.2;
   function pick(sm, prev) {                                                   // 결 각도는 그대로 · 두 방향 중 하나만 고름
     var a = sm.angle;
+    /* (2026-11-02) 있는 고리는 생긴 대로 — 사용자: "아래로 가는 경우는 중력으로 방향판정을 했을 때
+       아래로 향하는 경우만 하라고 했는데" · "있는 고리는 생긴대로 갈 수 있도록".
+       예전엔 매 걸음 ①흐름 극성 ②세로면 무조건 아래 를 먼저 봐서, 고리의 위로 올라가는 반 바퀴가
+       매번 아래로 뒤집혔다(디버그 1651 곱슬: 사진 가닥 위로 가는 걸음 0% · 한 바퀴 돈 가닥 0%).
+       이제 ①②는 <b>첫 걸음(뿌리 방향)</b>에만 쓰고, 그다음은 직전 걸음과 이어지는 쪽만 고른다.
+       같은 결 데이터로 다시 그어 봄: 곱슬 위로 가는 걸음 0 → 29~35% · 반 바퀴 이상 1~3 → 26~33%,
+       직모는 그대로 아래로(세로 이동/길이 0.77~0.93). 되돌리기 RAW_TRACE.loopFollow = false */
+    if (R.loopFollow && prev != null) {
+      if (Math.cos(a - prev) < 0) a += PI;
+      St.byCont++; return a;
+    }
     if (sm.fc >= minConf && (sm.fx || sm.fy)) { if (Math.cos(a) * sm.fx + Math.sin(a) * sm.fy < 0) a += PI; St.byFlow++; return a; }
     if (Math.abs(Math.sin(a)) >= R.gravPick) { if (Math.sin(a) < 0) a += PI; St.byGrav++; return a; }   // 이미지 y 아래 = +
     if (prev != null && Math.cos(a - prev) < 0) a += PI;

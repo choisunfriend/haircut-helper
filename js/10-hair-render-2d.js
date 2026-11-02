@@ -171,6 +171,12 @@ function drawHairStrands(ctx, fit, scalpY, hairEndY, maskW, maskH, hairCanvas, o
   const flowAcc = { n:0, byFlow:0 };
   const strandEnv = { hasOrientation, orientation, orientMaskW, ox, oy, STRAND_STEP_LEN, frontDirBiasFor, curlAmtFor, waveWidthFor, maskAt: isRealHairAt, flowAcc };
   function traceStrand(ix, sy_img, targetLen_img, jitterSeed, rootSec, stopAtExit){
+    /* (2026-11-02) 중립 캡처(사진 가닥 = 3D·다시 기르기의 재료)는 읽은 결 그대로 긋는다(38-raw-trace.js).
+       11/01c에 켰다고 적혀 있었지만 index.html에 그 파일이 없고 여기서 부르지도 않아,
+       실제로는 예전 긋기(1.2cm 보폭·관성·극성 뒤집기)가 돌고 있었다 — 곱슬 사진 가닥 한 바퀴 0%.
+       화면용 2D 그리기는 그대로. 끄기 RAW_TRACE.on=false */
+    if(capturedStrands && typeof RAW_TRACE !== 'undefined' && RAW_TRACE.on && typeof rawTraceStrandPath === 'function')
+      return rawTraceStrandPath(ix, sy_img, targetLen_img, jitterSeed, strandEnv, rootSec, stopAtExit);
     return traceStrandPath(ix, sy_img, targetLen_img, jitterSeed, strandEnv, rootSec, stopAtExit);
   }
 
