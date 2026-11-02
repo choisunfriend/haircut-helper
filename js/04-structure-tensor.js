@@ -308,7 +308,9 @@ function computeHairOrientationField(pixels, maskBuf, w, h){
  */
 var GABOR_ORIENT = (function () {
   var W = window, TAG = '[결 방향 필터]';
-  var GO = Object.assign({ on: true, replace: true, stride: 1, prune: 0.02, interp: true, n: 12, lambda: 4, refine: true, stats: { calls: 0, ms: 0, px: 0, dMed: null } }, W.GABOR_ORIENT || {});
+  var GO = Object.assign({ on: true, replace: true, stride: 1, prune: 0.02, interp: true, n: 12, lambda: 4, refine: true, stats: { calls: 0, ms: 0, px: 0, dMed: null },
+    texRel: 1.0, refineSig: 6, refineSigL: 16, fillMin: 0.35,          // (2026-11-02) 실사 결 다듬기 — 아래 refine 블록 설명
+    pathSmooth: 6, straightSteep: 0.045 }, W.GABOR_ORIENT || {});      // (2026-11-02) 선 모양: 경로 평활(걸음) · 곧은 선 = 진폭÷파장 < straightSteep — shapeOf 설명
   var KC = {};
   function kernels(lam, n) {
     var key = lam + '|' + n; if (KC[key]) return KC[key];
@@ -348,6 +350,16 @@ var GABOR_ORIENT = (function () {
     for (y = 0; y < Hd; y++) for (x = 0; x < Wd; x++) { var v2 = 0; for (i = -r; i <= r; i++) { var yy = y + i; if (yy < 0) yy = 0; else if (yy >= Hd) yy = Hd - 1; v2 += k[i + r] * t[yy * Wd + x]; } o[y * Wd + x] = v2; }
     return o;
   }
+  /* (2026-11-02) 머리 영역 둘레 상자(bb = [x0,y0,x1,y1])만 흐림 — 사진 전체를 흐리면 A15 크기(720×1280)에서 넓은 반경이 1초 넘게 걸림. 상자 밖은 0 */
+  function blurBB(a, Wd, Hd, sig, bb) {
+    if (!bb) return blur(a, Wd, Hd, sig);
+    var m = Math.ceil(2.5 * sig) + 1, x0 = Math.max(0, bb[0] - m), y0 = Math.max(0, bb[1] - m), x1 = Math.min(Wd - 1, bb[2] + m), y1 = Math.min(Hd - 1, bb[3] + m);
+    var cw = x1 - x0 + 1, ch = y1 - y0 + 1, c = new Float32Array(cw * ch), x, y;
+    for (y = 0; y < ch; y++) for (x = 0; x < cw; x++) c[y * cw + x] = a[(y + y0) * Wd + x + x0];
+    var b = blur(c, cw, ch, sig), o = new Float32Array(Wd * Hd);
+    for (y = 0; y < ch; y++) for (x = 0; x < cw; x++) o[(y + y0) * Wd + x + x0] = b[y * cw + x];
+    return o;
+  }
   /* (2026-10-11b) 결을 따라 선을 그어 모양을 잼 — 사용자: "방향필터가 있는데 이거 구분해서 해야돼?"
    *  선마다: 굽는 방향이 번갈아 바뀌면 S자(웨이브), 한쪽으로만 계속 굽으면 고리(컬). 고리 정도 = |굽은 각의 합| ÷ 굽은 각 크기의 합(0 = S자 · 1 = 고리)
    *  파장 = 선 길이 × 2 ÷ 굽는 방향이 바뀐 횟수 · 진폭 = 선이 제 평균선(파장 폭)에서 벗어난 거리의 90% 값 ÷ 0.988   (사진 px) */
@@ -373,6 +385,8 @@ var GABOR_ORIENT = (function () {
       var a = trace(x0 + 0.5, y0 + 0.5, 1), b = trace(x0 + 0.5, y0 + 0.5, -1), P = [], i;
       for (i = b.length - 2; i >= 2; i -= 2) P.push(b[i], b[i + 1]);
       for (i = 0; i < a.length; i += 2) P.push(a[i], a[i + 1]);
+      /* (2026-11-02) 선을 ±pathSmooth걸음 이동평균으로 펴고 굽음을 잼 — 1px 걸음마다 생기는 잡음 꺾임이 쌓여 직모 선도 다 '굽은 선'(실사 7장 곧은 선 비율 0~0.03)이 되던 것. 끄기 GABOR_ORIENT.pathSmooth=0 */
+      if (GO.pathSmooth > 0) { var hs = GO.pathSmooth | 0, nn0 = P.length / 2, Q = new Array(P.length), z, zz; for (z = 0; z < nn0; z++) { var a0 = Math.max(0, z - hs), a1 = Math.min(nn0 - 1, z + hs), sxx = 0, syy = 0, ccn = 0; for (zz = a0; zz <= a1; zz++) { sxx += P[zz * 2]; syy += P[zz * 2 + 1]; ccn++; } Q[z * 2] = sxx / ccn; Q[z * 2 + 1] = syy / ccn; } P = Q; }
       var n = P.length / 2; if (n < minKeep) continue;   // (2026-10-28) 짧은 선도 버리지 않음 — 예전 GO.shapeMinLen(40) 미만 버림 · 되돌리기 GABOR_ORIENT.shapeMinKeep=40
       // 굽은 각(4px 간격 방향 차)
       var th = [], j; for (j = 4; j < n; j += 2) th.push(Math.atan2(P[j * 2 + 1] - P[(j - 4) * 2 + 1], P[j * 2] - P[(j - 4) * 2]));
@@ -383,6 +397,9 @@ var GABOR_ORIENT = (function () {
       var lam = flips > 0 ? 2 * n / flips : NaN;
       // 진폭: 파장 폭 이동 평균선에서 벗어난 거리
       var amp = NaN; if (isFinite(lam) && lam > 6 && lam < n) { var hw = Math.max(2, Math.round(lam / 2)), devs = []; for (j = hw; j < n - hw; j += 2) { var mx = 0, my = 0, c3 = 0, q2; for (q2 = j - hw; q2 <= j + hw; q2++) { mx += P[q2 * 2]; my += P[q2 * 2 + 1]; c3++; } devs.push(Math.hypot(P[j * 2] - mx / c3, P[j * 2 + 1] - my / c3)); } devs.sort(function (u, v) { return u - v; }); if (devs.length) amp = devs[Math.min(devs.length - 1, Math.floor(devs.length * 0.9))] / 0.988; }   // 90%(사인의 꼭대기 근처) — 뿌리 쪽 곧은 구간에 끌려 작게 재지 않게
+      /* (2026-11-02) 곧은 선 = 굴곡 가파름(진폭÷파장)이 straightSteep 미만 — 꺾인 각 합(<0.6)은 선 길이만큼 잡음이 쌓여 직모를 못 가림.
+       *  합성: 직모 0.008~0.036 · 웨이브 0.06~0.08. 예전 판정 GABOR_ORIENT.straightSteep=0 */
+      if (GO.straightSteep > 0) straight = !(isFinite(amp) && isFinite(lam) && amp / lam >= GO.straightSteep);
       var cyS = 0, cxS = 0; for (j = 0; j < n; j++) { cxS += P[j * 2]; cyS += P[j * 2 + 1]; }
       lines.push({ n: n, straight: straight, loop: sAbs > 1e-6 ? Math.abs(sSig) / sAbs : 0, lam: lam, amp: amp, cx: cxS / n, cy: cyS / n });
     }
@@ -401,7 +418,7 @@ var GABOR_ORIENT = (function () {
     if (!GO.on || !f || !f.angle || !px || px.length < Wd * Hd * 4 || !mask) return f;
     try {
       var t0 = performance.now(), N = Wd * Hd, g = gray(px, N), KK = kernels(GO.lambda, GO.n), r = KK.r, sz = KK.sz, n = GO.n;
-      var SP = sparse(KK, Wd), RV = new Float32Array(n), ang = new Float32Array(N), conf = new Float32Array(N), idx, x, y, k, i, j, cnt = 0;
+      var SP = sparse(KK, Wd), RV = new Float32Array(n), ang = new Float32Array(N), conf = new Float32Array(N), bestA = new Float32Array(N), idx, x, y, k, i, j, cnt = 0;
       /* (2026-10-25e) 머리 영역 안 픽셀로만 — 필터 창(반경 r)에 머리 밖 칸이 있는 자리는 그 칸을 빼고, 남은 칸의 밝기 평균을 빼서(밝기만 다른 자리에 반응 안 하게) 계산 · 남은 칸이 minFrac 미만이면 못 읽음 */
       var MK = (typeof HAIR_READ_MASK !== 'undefined' && HAIR_READ_MASK.on), full = (2 * r + 1) * (2 * r + 1), cnt9 = MK ? maskBoxCount(mask, Wd, Hd, r) : null, edgeN = 0, edgeSkip = 0;
       var sd = (GO.refine && GO.stride > 1) ? (GO.stride | 0) : 1;         // 다듬기를 끄면 메울 방법이 없으니 전부 계산
@@ -426,13 +443,34 @@ var GABOR_ORIENT = (function () {
         }
         var bo = 0;
         if (GO.interp) { var vL = RV[(bk + n - 1) % n], vR = RV[(bk + 1) % n], den = vL - 2 * best + vR; if (den < -1e-12) { bo = 0.5 * (vL - vR) / den; if (bo > 0.5) bo = 0.5; else if (bo < -0.5) bo = -0.5; } }   // 가장 센 방향과 양옆 반응으로 사이 각을 어림(방향 수를 줄여도 각이 계단지지 않게)
-        ang[idx] = (bk + bo) * Math.PI / n + Math.PI / 2; conf[idx] = best > 1e-9 ? (best - sumR / n) / best : 0; cnt++;
+        ang[idx] = (bk + bo) * Math.PI / n + Math.PI / 2; conf[idx] = best > 1e-9 ? (best - sumR / n) / best : 0; bestA[idx] = best; cnt++;
       }
       if (GO.refine) {                                                   // 믿을 만한 자리의 결로 둘레를 한 번 다듬음
-        var C2 = new Float32Array(N), S2 = new Float32Array(N);
-        for (idx = 0; idx < N; idx++) if (mask[idx]) { C2[idx] = Math.cos(2 * ang[idx]) * conf[idx]; S2[idx] = Math.sin(2 * ang[idx]) * conf[idx]; }
-        C2 = blur(C2, Wd, Hd, GO.lambda * 0.6); S2 = blur(S2, Wd, Hd, GO.lambda * 0.6);
-        for (idx = 0; idx < N; idx++) if (mask[idx]) { if (sd > 1 && C2[idx] === 0 && S2[idx] === 0) { ang[idx] = f.angle[idx]; } else ang[idx] = 0.5 * Math.atan2(S2[idx], C2[idx]); }   // 둘레에 계산한 자리가 하나도 없으면(가장자리 한 줄) 예전 방식 값
+        /* (2026-11-02) 실사 결 다듬기 — 사용자: "직모인데 마구 헝클어져서 나오고, 웨이브가 제대로 안잡히고"
+         *  실사(폰·영상 캡처) 7장: 이웃 결 어긋남 중앙 9~17° · 상위10% 47~69° · 7장 모두 '파장 ≈40px 웨이브'(사진마다 같음 = 머리가 아니라 잡음 크기).
+         *  원인: 4px 가는 선 필터는 한 올을 노리는데 실사 해상도(1px ≈ 0.5mm)엔 한 올이 없음 → 잡음·압축 블록(8×8)에 반응, 다듬기 σ 2.4px로는 못 걸러냄.
+         *  ① 질감 무게: 반응 세기가 머리 전체 중앙값(texRel배)보다 약한 자리(민무늬·압축 블록)는 무게를 그만큼 줄임 → 둘레의 또렷한 결로 메워짐
+         *  ② 다듬기 반경 refineSig(6px) · ③ 그 자리 결이 둘레에서 한 방향으로 모이지 않으면(합 벡터 길이 ÷ 무게 < fillMin) 넓은 반경 refineSigL(16px) 값
+         *  예전대로: GABOR_ORIENT.texRel=0; .refineSig=GABOR_ORIENT.lambda*0.6; .refineSigL=0 */
+        var TW = null;
+        if (GO.texRel > 0) {
+          var bs = []; for (idx = 0; idx < N; idx += 7) if (mask[idx] && bestA[idx] > 0) bs.push(bestA[idx]);
+          bs.sort(function (p, q) { return p - q; }); var bMed = bs.length ? bs[bs.length >> 1] : 0;
+          if (bMed > 0) { TW = new Float32Array(N); var bRef = bMed * GO.texRel; for (idx = 0; idx < N; idx++) if (mask[idx]) { var tw = bestA[idx] / bRef; TW[idx] = tw > 1 ? 1 : tw * tw; } }
+        }
+        var C2 = new Float32Array(N), S2 = new Float32Array(N), WW = new Float32Array(N);
+        for (idx = 0; idx < N; idx++) if (mask[idx]) { var wq = conf[idx] * (TW ? TW[idx] : 1); C2[idx] = Math.cos(2 * ang[idx]) * wq; S2[idx] = Math.sin(2 * ang[idx]) * wq; WW[idx] = wq; }
+        var bb = [Wd, Hd, -1, -1]; for (idx = 0; idx < N; idx++) if (mask[idx]) { var bx = idx % Wd, by = (idx / Wd) | 0; if (bx < bb[0]) bb[0] = bx; if (bx > bb[2]) bb[2] = bx; if (by < bb[1]) bb[1] = by; if (by > bb[3]) bb[3] = by; }
+        if (bb[2] < 0) bb = null;
+        var rs = GO.refineSig > 0 ? GO.refineSig : GO.lambda * 0.6;
+        var C2s = blurBB(C2, Wd, Hd, rs, bb), S2s = blurBB(S2, Wd, Hd, rs, bb), CL = null, SL = null, WS = null, WL = null, nFill = 0;
+        if (GO.refineSigL > rs) { CL = blurBB(C2, Wd, Hd, GO.refineSigL, bb); SL = blurBB(S2, Wd, Hd, GO.refineSigL, bb); WS = blurBB(WW, Wd, Hd, rs, bb); WL = blurBB(WW, Wd, Hd, GO.refineSigL, bb); }
+        for (idx = 0; idx < N; idx++) if (mask[idx]) {
+          var cc = C2s[idx], ss = S2s[idx];
+          if (CL && WS[idx] > 1e-9 && Math.hypot(cc, ss) / WS[idx] < GO.fillMin && WL[idx] > 1e-9) { cc = CL[idx]; ss = SL[idx]; nFill++; }
+          if (sd > 1 && cc === 0 && ss === 0) { ang[idx] = f.angle[idx]; } else ang[idx] = 0.5 * Math.atan2(ss, cc);   // 둘레에 계산한 자리가 하나도 없으면(가장자리 한 줄) 예전 방식 값
+        }
+        GO.stats.fill = nFill;
       }
       /* (2026-10-28) 34(결 읽기 단계)가 결 고르기 결과로 모양을 다시 재면 여기 값은 덮여 버림 → 그때는 안 잼(GO.deferShape · 34가 켬) */
       var _tGB = performance.now() - t0;

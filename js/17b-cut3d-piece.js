@@ -6648,9 +6648,10 @@ var PHOTO_CURL = (function () {
     var loops = [], lams = [], amps = [], views = [], byView = {}, nAll = 0, sfA = [];
     (typeof ANGLES !== 'undefined' ? ANGLES : ['front', 'left', 'right', 'back']).forEach(function (a) {
       try {
-        var id = state.hairMasks && state.hairMasks[a] && state.hairMasks[a].identity, ws = id && id.waveShape; if (!ws || !(ws.bent >= 20)) return;
-        var cpp = G && G.cmPerMaskPx ? G.cmPerMaskPx(a) : null; if (!(cpp > 0)) return;
-        if (isFinite(ws.straightFrac)) sfA.push(ws.straightFrac);   // (2026-10-20) 곧은 선 비율 — 직모를 웨이브로 잘못 보지 않게
+        var id = state.hairMasks && state.hairMasks[a] && state.hairMasks[a].identity, ws = id && id.waveShape;
+        if (ws && ws.lines >= 10 && isFinite(ws.straightFrac)) sfA.push(ws.straightFrac);   // (2026-11-02) 곧은 선 비율은 굽은 선이 적은 사진(=직모)에서도 셈 — 예전엔 bent<20이면 빠져서 직모 사진이 판정에 안 들어감
+        if (!ws || !(ws.bent >= 20)) return;
+        var cpp = G && G.cmPerMaskPx ? G.cmPerMaskPx(a) : null; if (!(cpp > 0)) return;   // (2026-10-20) 곧은 선 비율 — 직모를 웨이브로 잘못 보지 않게
         if (isFinite(ws.loop)) loops.push(ws.loop); if (isFinite(ws.lamPx)) lams.push(ws.lamPx * cpp); if (isFinite(ws.ampPx)) amps.push(ws.ampPx * cpp);
         if (ws.all && ws.all.length) { byView[a] = ws.all.map(function (l) { return [l[0], l[1], l[2] * cpp, l[3] * cpp, l[4], l[5]]; }); nAll += ws.all.length; }
         views.push(a + ' 고리 ' + (+ws.loop).toFixed(2) + ' · 파장 ' + (ws.lamPx * cpp).toFixed(1) + ' · 진폭 ' + (ws.ampPx * cpp).toFixed(2) + 'cm');
@@ -6661,6 +6662,9 @@ var PHOTO_CURL = (function () {
     v.isWave = isFinite(v.loop) && v.loop < PC.waveLoopMax && v.lamCm > 1 && v.ampCm > 0.05
       && v.ampCm / v.lamCm < (PC.waveSteepMax || 0.12)                    // (2026-10-18 배포본) 가파른 굴곡은 웨이브 아님
       && !(v.straightFrac >= (PC.waveStraightMax || 0.6));               // (2026-10-20) 곧은 선이 60% 이상이면 직모 — 웨이브 아님
+    /* (2026-11-02) 직모 사진이면 사진 선 굴곡을 아예 안 씀 — 예전엔 isWave에만 이 판정이 걸리고, 먼저 도는 blendShape(shapeMode)·gaborOK는
+     *  고리·진폭·파장 중앙값만 봐서 직모에도 굴곡을 얹었음(실사 7장 모두 '파장 ≈40px'). 끄기 PHOTO_CURL.straightGate=false */
+    v.straight = PC.straightGate !== false && v.straightFrac >= (PC.waveStraightMax || 0.6);
     wsMemo = { key: key, v: v };
     try { console.log(TAG + ' ② 사진 선 모양 — ' + (v.isWave ? '웨이브(S자)' : '컬(고리)') + ' · 고리 정도 ' + (+v.loop).toFixed(2) + '(웨이브 기준 ' + PC.waveLoopMax + ' 미만) · 파장 ' + (+v.lamCm).toFixed(1) + 'cm · 진폭 ' + (+v.ampCm).toFixed(2) + 'cm · ' + views.join(' | ')); } catch (e) {}
     return v;
@@ -6711,7 +6715,7 @@ var PHOTO_CURL = (function () {
     var s0 = (PC.rootStraightCm || 0) / cpu, rr = Math.max(1e-6, (PC.shapeRootCm || 0) / cpu), w = (s - s0) / rr;
     if (w <= 0) return 0; if (w >= 1) return 1; return w * w * (3 - 2 * w);
   }
-  function gaborOK() { if (!PC.gaborAsIs) return false; var ws = waveShape(); return !!(ws && isFinite(ws.loop) && ws.lamCm > 0 && ws.ampCm > 0); }
+  function gaborOK() { if (!PC.gaborAsIs) return false; var ws = waveShape(); return !!(ws && !ws.straight && isFinite(ws.loop) && ws.lamCm > 0 && ws.ampCm > 0); }
   PC.gaborOK = gaborOK;
   try { var rwQ = /[?&]rw=([0-9.]+)/.exec(String(location.search || '')); if (rwQ) PC.readWave = +rwQ[1] > 0; } catch (e) {}
   var rwMemo = { wf: null, gain: 1, lineU: 0 };
@@ -6730,7 +6734,7 @@ var PHOTO_CURL = (function () {
   var bsMemo = { key: '', v: null };
   function blendShape(pm) {
     pm = pm || {}; var key = ''; try { key = [pm.rCm, pm.pitchCm, wsMemo.key, PC.gaborAsIs ? 'g' : ''].join('|'); } catch (e) {}
-    var ws = waveShape();
+    var ws = waveShape(); if (ws && ws.straight) ws = null;   // (2026-11-02) 직모 사진 — 사진 선 굴곡 안 씀(나선 측정만 남음)
     if (bsMemo.key === key + '|' + (ws ? ws.loop : '') && bsMemo.v) return bsMemo.v;
     var rH = pm.rCm > 0 ? pm.rCm * PC.radiusK : null, pH = pm.pitchCm > 0 ? pm.pitchCm : (rH ? rH * 2 : null), w = 1, A, L, src;
     function cl(x) { return Math.max(0, Math.min(1, x)); }
