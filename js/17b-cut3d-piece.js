@@ -8323,7 +8323,7 @@ function _adjGeometry(srcAngleFilter, stride){
       const t = trimStrandToOccupancy3D(pts, occ, occAcc,
                   { growLen: Math.max(grow, mqGrow), growFrontOnly: (mqGrow > grow) && HAIR_OCC3D.fringeFrontOnly,
                     growAboveY: model.CY,          // 앞머리 여유는 <b>눈 위</b>(이마)까지만
-                    srcPts: st.pts, neverDrop: true, faceVeto: true });
+                    srcPts: st.pts, neverDrop: true, faceVeto: true, strict: true });
       if(t && t.length >= 2) pts = t;
     }
     /* ⑨ 빗질(시술모드) — 재클립 <b>뒤</b>다. 클립은 "사진에 머리가 없는 자리에는

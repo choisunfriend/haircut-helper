@@ -907,7 +907,7 @@ function makeHairOccupancyProbe(views, names, yTop, CY, headR){
        고침: 합이 아니라 <b>제일 잘 본 뷰 하나</b>가 기준을 넘어야 지울 수 있다.
        아무도 제대로 못 봤으면 판단 보류 — 이 함수가 원래 내세운 규칙
        ("모르는 것을 지우지는 않는다")을 스친 표에도 적용하는 것뿐이다. */
-    at(px, py, pz){
+    at(px, py, pz, strict){
       let wSum = 0, hSum = 0, wBest = 0;
       const wy = py - CY;
       /* ── 전원 일치 (2026-11-02, 사용자 지시) ─────────────────────────────
@@ -918,7 +918,7 @@ function makeHairOccupancyProbe(views, names, yTop, CY, headR){
          · 한 장이라도 마스크 밖이면 밖(occ 0). 전부 안이면 안(occ 1).
          · 아무 사진도 못 보면 판단할 근거가 없으니 통과.
          되돌리기: HAIR_OCC3D.strictAnd = false (예전 가중 투표) */
-      if(O.strictAnd){
+      if(strict){
         let seen = 0;
         for(let i=0;i<cams.length;i++){
           const c = cams[i], R = c.R;
@@ -1886,17 +1886,21 @@ function trimStrandToOccupancy3D(pts, probe, acc, opts){
         return Math.sqrt(best);
       }
     : null;
+  /* (2026-11-02 2차) 전원 일치는 <b>조정 후 재클립에만</b> 건다(opts.strict).
+     리프트 때 사진 가닥 다듬기(13c)·점유 격자까지 AND로 바뀌면 다시 기르기가 따라 걷는
+     사진 가닥이 짧아져 픽셀 결(잡음)로 걷는 몫이 는다 — 직모 뒷머리가 굽은 원인 후보. */
+  const strict = !!(O.strictAnd && opts && opts.strict);
   let off = 0, cut = -1;
   for(let i=Math.min(O.skipRoot, pts.length-1); i<pts.length; i++){
     const p = pts[i];
-    const r = probe.at(p.x, p.y, p.z);
+    const r = probe.at(p.x, p.y, p.z, strict);
     if(acc) acc.n++;
     if(r.occ >= O.occThr){ off = 0; continue; }
     off++;
-    if(off >= (O.strictAnd ? 1 : O.offRun)){ cut = i - off + 1; break; }
+    if(off >= (strict ? 1 : O.offRun)){ cut = i - off + 1; break; }
   }
   if(cut < 0) return pts;
-  if(O.strictAnd){
+  if(strict){
     /* 여유 없음 — 밖으로 나간 첫 점 직전에서 끊는다. */
     if(cut < O.minPts){
       if(!neverDrop){ if(acc) acc.dropped++; return null; }

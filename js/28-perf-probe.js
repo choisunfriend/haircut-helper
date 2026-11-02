@@ -569,7 +569,7 @@
       var grow = !HAIR_OCC3D.moveGrow && ratio > 1 ? (ratio - 1) * arcLength3D(s.pts) * HAIR_OCC3D.growPerRatio : 0;
       var t = trimStrandToOccupancy3D(g, c.probe, c.stats, {
         growLen: Math.max(grow, c.fringe), growFrontOnly: c.fringe > grow && HAIR_OCC3D.fringeFrontOnly,
-        growAboveY: c.model.CY, srcPts: s.pts, neverDrop: true, faceVeto: true });
+        growAboveY: c.model.CY, srcPts: s.pts, neverDrop: true, faceVeto: true, strict: true });
       if (t && t.length >= 2) g = t;
     }
     g = combStrand3D(g);
