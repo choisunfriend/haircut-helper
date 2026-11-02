@@ -666,6 +666,7 @@ async function extractHairMaskCore(angle){
           // (2026-11-02) 0.5 → 0.05 — 사용자: "확신도 0.05보다는 좁은 곳이 있잖아". 머리 끝·곱슬 테두리(0.05~0.5)가 처음부터 빠지던 것.
           //   되돌리기: 주소에 ?segthr=0.5 또는 콘솔 window.SEG_THRESH = 0.5 후 사진 다시 분석
           const HAIR_CONFIDENCE_THRESHOLD = (function(){ const m=/[?&]segthr=([0-9.]+)/.exec(location.search); const v=m?+m[1]:(typeof window.SEG_THRESH==='number'?window.SEG_THRESH:0.05); return (v>0&&v<1)?v:0.05; })();
+          window.__segThr = HAIR_CONFIDENCE_THRESHOLD;   // (2026-11-02) 04 다시 찾기가 참고
           const result = mpImageSegmenter.segment(srcC);
           const hairConf = result.confidenceMasks[1]; // 0=background, 1=hair
           const confArr = hairConf.getAsFloat32Array();

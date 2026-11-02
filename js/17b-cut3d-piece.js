@@ -2151,7 +2151,7 @@ var REGROW = (function () {
         var pAt = isHair ? null : personAt(cam, o.ix, o.iy);
         if (bgOnly && !isHair && pAt !== false) {
           var fcB = (cam.R[6] * frx + cam.R[7] * fry + cam.R[8] * frz) / frl;
-          if (!(cam.angle === 'front' && o.z >= 0 && p.z > 0 && G.faceNoMargin !== false && fcB >= (G.faceNoMarginFc || 0.5))) { hpSkip++; G._bgAbstain = (G._bgAbstain || 0) + 1; continue; }   // 몸·살 = 기권
+          if (!(o.z >= 0 && fcB >= (G.faceNoMarginFc || 0.5))) {   /* (2026-11-02b) 마주 보는 사진(카메라 쪽·fc≥0.5)의 몸·살은 거부 유지 — 13:42 펌: 옆 사진이 얼굴·뺨을 기권해 머리가 얼굴을 덮음(넘침 55%). 그 자리와 카메라 사이를 가릴 것이 없음 */ hpSkip++; G._bgAbstain = (G._bgAbstain || 0) + 1; continue; }   // 몸·살 = 기권
         }
         if (bgOnly && isHair && o.z < 0 && hvOnC && camBlocked(cam, p)) { hvBlk++; continue; }   // 가려진 자리의 머리 픽셀은 앞쪽 다른 머리 — 찬성표로 안 씀
         if (pAt === true && (camBlocked(cam, p) || faceBlocks(cam, p))) { hpSkip++; continue; }   // (27k) 몸·살이 보이는데 그 시선이 막힘 = 못 봄

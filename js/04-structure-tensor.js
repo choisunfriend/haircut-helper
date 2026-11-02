@@ -667,6 +667,9 @@ var SEG_ORIENT = (function () {
     var out = new Uint8Array(N); for (i = 0; i < N; i++) out[i] = M[i] > 0 ? 255 : 0;
     // 2) 경계 바깥 띠로 번져 나감(이어진 것만)
     var band = Math.max(3, Math.round(Wd * SO.segBand)), dil = typeof W.dilate === 'function' ? W.dilate(M, Wd, Hd, band) : null, added = 0;
+    /* (2026-11-02) 세그 기준을 0.5 미만(0.05)으로 내렸으면 띠 번지기는 안 함 — 13:27 디버그: 0.05 경계에 섞인 배경이 '머리색' 모형을 넓혀(±21→±53)
+       배경까지 band(10px) 고리로 붙음(확신도 0.05 미만인데 마스크 33,065px) → 흰 선이 머리 위·옆으로 넓게. 0.05가 이미 띠가 하던 일을 함. 켜기 SEG_ORIENT.bandLowThr=true */
+    if (dil && typeof W.__segThr === 'number' && W.__segThr < 0.5 && !SO.bandLowThr) dil = null;
     if (dil) {
       var q = new Int32Array(N), qh = 0, qt = 0, seen = new Uint8Array(N);
       for (y = 1; y < Hd - 1; y++) for (x = 1; x < Wd - 1; x++) { k = y * Wd + x; if (out[k] && (!out[k - 1] || !out[k + 1] || !out[k - Wd] || !out[k + Wd])) { q[qt++] = k; seen[k] = 1; } }
