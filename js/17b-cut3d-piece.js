@@ -2163,7 +2163,10 @@ var REGROW = (function () {
       }
       if (J) {                                                              // (2026-10-28) 마주 보는 사진 한 장 + 확실히 밖이면 거부
         if (!J.length) return -1;
-        if (G.frontTrust !== false && frontSays === 1 && frontFc >= (G.frontTrustFc || 0.5) && p.z > 0) return 1;
+        /* (2026-11-02) 'facing'에서는 정면 우선(frontTrust)을 안 씀 — 사용자: "모든 걸 마주보는 사진 기준으로 바꿨는데 적용이 안 됐네"
+           남아 있던 이 줄이 마주 보는 사진·다른 사진의 거부보다 먼저 return 1 → 얼굴 앞(z>0)은 정면 사진이 "머리"면 깊이와 무관하게 머리(덩어리 격자 끝 ±2.4c까지) = 앞으로 길게 뻗음.
+           정면 사진도 J 안에서 다른 사진과 같은 자격으로 판정. 되돌리기 REGROW.facingFrontTrust=true */
+        if (G.facingFrontTrust === true && G.frontTrust !== false && frontSays === 1 && frontFc >= (G.frontTrustFc || 0.5) && p.z > 0) return 1;
         var bj = J[0], jj; for (jj = 1; jj < J.length; jj++) if (J[jj].fc > bj.fc) bj = J[jj];
         if (bj.out) { hullN++; return 0; }                                  // 마주 보는 사진이 여유 넘게 밖
         for (jj = 0; jj < J.length; jj++) if (J[jj].out) { hullN++; G._facingVeto = (G._facingVeto || 0) + 1; return 0; }   // 다른 사진이 확실히 밖 = 깊이 깎음
