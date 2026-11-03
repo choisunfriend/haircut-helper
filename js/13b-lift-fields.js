@@ -759,7 +759,8 @@ function getViewMaskSampler(angle){
   const hairC = state.hairCanvases && state.hairCanvases[angle];
   if(!mi) return null;
   const cached = _viewMaskCache[angle];
-  if(cached && cached.mi === mi) return cached.s;
+  const spRec = (state.neutralStrandPaths && state.neutralStrandPaths[angle]) || (state.strandPaths && state.strandPaths[angle]) || null;   // (2026-11-03l) 아래 "가닥이 이어진 틈"
+  if(cached && cached.mi === mi && cached.sp === spRec) return cached.s;
   const iw = mi.w, ih = mi.h;
   let W, H, hit;
   if(mi.reasonMask && mi.maskW && mi.maskH){
@@ -778,8 +779,43 @@ function getViewMaskSampler(angle){
     }catch(e){ return null; }
     hit = (x, y)=> data[(y*W + x)*4 + 3] > HAIR_OCC3D.alphaThr ? 1 : 0;
   } else return null;
+  /* (2026-11-03l) 머리 영역 = 세그 ∪ <b>가닥이 이어진 틈</b> — 사용자: "옷이 보이는 틈이라도 … 가닥이 이어진 부분은 영역으로 설정되어야지."
+     긴 웨이브 정면: 가슴 앞 웨이브 다발 사이로 옷이 보이는 자리를 세그가 빼 영역이 격자처럼 조각남 → 그 위를 지나 이어진 사진 가닥이 거기서 "영역 밖"으로 잘림
+     (조정 단계 다듬기 13b 전원 일치 · 다시 기르기 머리 영역 17b · 사진 대조 07b가 모두 이 샘플러를 씀).
+     지금: 이 사진의 2D 가닥(neutralStrandPaths → strandPaths · 마스크 좌표)마다, 영역 안 점 → 밖 점들 → 다시 영역 안 점으로 <b>이어지는</b> 밖 구간을 영역에 더함
+     (점 사이는 선으로 메움 · 1칸 굵게). 영역 밖으로 빠져나가 끝나는 꼬리는 안 넣음(이어진 게 아님). 틈 길이 상한 gapMaxFrac × 마스크 높이. 끄기 HAIR_OCC3D.strandGap = false */
+  let gapCells = 0, gapRuns = 0;
+  const segHit = hit;
+  if(HAIR_OCC3D.strandGap !== false && spRec && spRec.strands && spRec.strands.length){
+    try{
+      const G = new Uint8Array(W*H), kx = W / (spRec.maskW || W), ky = H / (spRec.maskH || H);
+      const gapMax = (HAIR_OCC3D.strandGapMaxFrac || 0.12) * H;
+      const inSeg = (x, y)=>{ const xi = x|0, yi = y|0; return xi >= 0 && yi >= 0 && xi < W && yi < H && segHit(xi, yi) === 1; };
+      const mark = (x, y)=>{ for(let dy=-1; dy<=1; dy++) for(let dx=-1; dx<=1; dx++){ const xi = (x|0)+dx, yi = (y|0)+dy; if(xi >= 0 && yi >= 0 && xi < W && yi < H && !G[yi*W+xi] && segHit(xi, yi) !== 1){ G[yi*W+xi] = 1; gapCells++; } } };
+      for(const st of spRec.strands){
+        const q = st.fine && st.fine.length > (st.pts ? st.pts.length : 0) ? st.fine : st.pts; if(!q || q.length < 3) continue;
+        let lastIn = -1, k;
+        for(k = 0; k < q.length; k++){
+          const x = q[k].x * kx, y = q[k].y * ky;
+          if(!inSeg(x, y)) continue;
+          if(lastIn >= 0 && k - lastIn > 1){                                   // lastIn ~ k 사이가 밖 = 이어진 틈
+            let L = 0; for(let m = lastIn + 1; m <= k; m++) L += Math.hypot((q[m].x - q[m-1].x) * kx, (q[m].y - q[m-1].y) * ky);
+            if(L <= gapMax){
+              gapRuns++;
+              for(let m = lastIn + 1; m <= k; m++){
+                const x0 = q[m-1].x * kx, y0 = q[m-1].y * ky, x1 = q[m].x * kx, y1 = q[m].y * ky, n = Math.max(1, Math.ceil(Math.hypot(x1 - x0, y1 - y0)));
+                for(let t = 0; t <= n; t++) mark(x0 + (x1 - x0) * t / n, y0 + (y1 - y0) * t / n);
+              }
+            }
+          }
+          lastIn = k;
+        }
+      }
+      if(gapCells) hit = (x, y)=> (segHit(x, y) === 1 || G[y*W + x]) ? 1 : 0;
+    }catch(e){ gapCells = 0; }
+  }
   const s = {
-    W, H,
+    W, H, gapCells, gapRuns,
     // 마스크 원본(mi.w/h) 좌표 → 0(없음) / 1(머리카락)
     at(ix, iy){
       const x = (ix / iw * W) | 0, y = (iy / ih * H) | 0;
@@ -787,7 +823,8 @@ function getViewMaskSampler(angle){
       return hit(x, y);
     },
   };
-  _viewMaskCache[angle] = { mi, s };
+  _viewMaskCache[angle] = { mi, s, sp: spRec };
+  if(gapCells){ try{ console.log('[머리 영역] ' + angle + ' — 가닥이 이어진 틈 ' + gapRuns + '곳을 영역에 더함(칸 ' + gapCells + ' · 마스크 ' + W + '×' + H + ') · 끄기 HAIR_OCC3D.strandGap=false'); }catch(e){} }
   return s;
 }
 

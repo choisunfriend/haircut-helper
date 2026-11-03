@@ -3327,7 +3327,12 @@ var REGROW = (function () {
         if (ptsS !== pts && WFb) { try { WFb.add(pts, ptsS); } catch (e) {} }
         if (ptsS !== pts) { for (iS = 1; iS < ptsS.length; iS++) L1s += Math.hypot(ptsS[iS].x - ptsS[iS - 1].x, ptsS[iS].y - ptsS[iS - 1].y, ptsS[iS].z - ptsS[iS - 1].z); if (L0s > 0) straightShrink.push(L1s / L0s); pts = ptsS; nStraight++; }
       }
-      if (bw >= 0.5 || hung) { try { pts._rgKeep = true; } catch (e) {} }  // 조정 단계의 "사진 영역 밖 다듬기"가 이 가닥을 다시 자르지 않게
+      /* (2026-11-03k) 사진 가닥을 그대로 옮긴 가닥도 조정 단계 "사진 영역 밖 다듬기"(13b trimStrandToOccupancy3D — 예전 3D 점유 판정)에서 빼기 —
+       *  사용자: "안 그려진 부분이 다 세그가 파편난 부분들이네. 왜 그럴까?" · 디버그 1617(긴 웨이브): 다시 기른 모델엔 턱 아래·몸 앞(z>0.15) 점 23,451(전체의 8%)인데
+       *  그려진 가닥엔 6,549(3.4%) — 전체 점은 69% 남는데 몸 앞만 28% 남음. 세그가 파편난(가닥 사이로 옷이 보이는) 자리는 예전 점유 판정이 머리 아님으로 보고 잘라냄.
+       *  옮긴 가닥은 이미 자기 사진 머리 영역(가닥이 그어진 칸 포함)으로 검사함. 되돌리기 REGROW.copyKeepTrim=false */
+      if (bw >= 0.5 || hung) { try { pts._rgKeep = true; } catch (e) {} }
+      if (cpEarly && G.copyKeepTrim !== false) { try { pts._rgCopy = true; } catch (e) {} }  // 조정 단계의 "사진 영역 밖 다듬기"가 이 가닥을 다시 자르지 않게
       var Larc = 0, ii; for (ii = 1; ii < pts.length; ii++) Larc += Math.hypot(pts[ii].x - pts[ii - 1].x, pts[ii].y - pts[ii - 1].y, pts[ii].z - pts[ii - 1].z);
       var qi = Math.min(pts.length - 1, 6), ex = pts[qi].x - pts[0].x, ey = pts[qi].y - pts[0].y, ez = pts[qi].z - pts[0].z, el = Math.hypot(ex, ey, ez) || 1;
       var rg = { t: tRoot, free: free, L: Larc, tipY: pts[pts.length - 1].y, dx: ex / el, dy: ey / el, dz: ez / el,
@@ -3855,7 +3860,7 @@ var REGROW = (function () {
       }
       if (cut < n) { st.trimmed++; for (i = cut; i < n; i++) st.trimLen += U[i * 4 + 3]; }
       if (changed) st.strands++;
-      try { if (p._rgKeep) out._rgKeep = true; } catch (e) {}
+      try { if (p._rgKeep) out._rgKeep = true; if (p._rgCopy) out._rgCopy = true; } catch (e) {}
       s.pts = out;
       if (s.rg) { s.rg.L = L; s.rg.tipY = out[cut - 1].y; }
     }
@@ -4504,7 +4509,7 @@ function helixMeasure(rgba,mask,W,H,angle,coh,opt){opt=opt||{};const n=opt.n||25
   };
   /* (2026-10-04e) backFix로 뒤로 늘어뜨린 가닥은 조정 단계의 "사진 영역 밖 다듬기"를 건너뜀
      (그 다듬기는 앞·옆 사진까지 섞어 판정해서, 어깨 앞으로 머리를 넘긴 사진이면 목 뒤 가닥을 다시 잘라 냄) */
-  G._skipTrim = function (opts) { return !!((G.backFix || G.hangDown) && opts && opts.srcPts && opts.srcPts._rgKeep); };   // trimStrandToOccupancy3D(13b) 맨 앞
+  G._skipTrim = function (opts) { var sp = opts && opts.srcPts; if (sp && sp._rgCopy && G.copyKeepTrim !== false) { G._trimSkipCopy = (G._trimSkipCopy || 0) + 1; return true; } return !!((G.backFix || G.hangDown) && sp && sp._rgKeep); };   // (2026-11-03k) 옮긴 가닥은 다듬지 않음   // trimStrandToOccupancy3D(13b) 맨 앞
 
   G._panelLines = function () {   // perfPanelLines(18) 끝
     var L = [];
@@ -4741,7 +4746,7 @@ var NEIGHBOR_ALIGN = (function () {
       }
       for (i = 1; i < m; i++) L += Math.hypot(out[i].x - out[i - 1].x, out[i].y - out[i - 1].y, out[i].z - out[i - 1].z);
       st.strands++;
-      try { if (p._rgKeep) out._rgKeep = true; } catch (e) {}
+      try { if (p._rgKeep) out._rgKeep = true; if (p._rgCopy) out._rgCopy = true; } catch (e) {}
       s.pts = out;
       if (s.rg) { s.rg.L = L; s.rg.tipY = out[m - 1].y; }                      // v7과 같이 길이·끝 높이만 고침(뿌리 쪽 방향 값은 안 바뀜)
     }
@@ -4959,7 +4964,7 @@ var NEIGHBOR_ALIGN = (function () {
       }
       for (i = 1; i < m; i++) L += Math.hypot(out[i].x - out[i - 1].x, out[i].y - out[i - 1].y, out[i].z - out[i - 1].z);
       st.strands++;
-      try { if (p._rgKeep) out._rgKeep = true; } catch (e) {}
+      try { if (p._rgKeep) out._rgKeep = true; if (p._rgCopy) out._rgCopy = true; } catch (e) {}
       s.pts = out;
       if (s.rg) { s.rg.L = L; s.rg.tipY = out[m - 1].y; }
     }
