@@ -867,9 +867,10 @@ function getViewDensitySampler(angle){
    project3DPointToView와 <b>같은 식</b>을 쓰되 회전행렬을 뷰마다 한 번만 만든다
    (그 함수는 호출마다 composeRotationZYX를 새로 조립해서, 점 수십만 개에 쓰면
    그 조립이 비용의 대부분이 된다). */
-let _strictNear = 0;   // (2026-11-03n) 전원 일치에서 여유 안이라 살린 표
+let _strictNear = 0, _visRayN = 0;   // (2026-11-03n) 전원 일치에서 여유 안이라 살린 표
 let _grazingAbstain = 0;   // [진단] 스친 표만 있어 판단 보류한 횟수(정수리 진단용)
 function makeHairOccupancyProbe(views, names, yTop, CY, headR){
+  let _visE = undefined;   // (2026-11-03q) 두상 타원체(가림 판정용) — 처음 쓸 때 잡음
   // (옛 52) 360 세트의 추가 사진(카메라 맞춘 것)을 형태 계산에 더하고, 이상한 기준 사진은 뺌(아래 VIEWS360)
   { const v = VIEWS360._probeArgs(views, names, yTop, CY); if(v){ views = v[0]; names = v[1]; } }
   if(!HAIR_OCC3D.on) return null;
@@ -971,10 +972,23 @@ function makeHairOccupancyProbe(views, names, yTop, CY, headR){
          되돌리기: HAIR_OCC3D.strictAnd = false (예전 가중 투표) */
       if(strict){
         let seen = 0;
+        if(_visE === undefined){ _visE = null; try{ const E0 = (typeof getScalpEllipsoid === 'function' && getScalpEllipsoid()) || (typeof getHeadEllipsoid === 'function' && getHeadEllipsoid()); if(E0 && E0.a > 0 && E0.b > 0 && E0.c > 0) _visE = { a: E0.a, b: E0.b, c: E0.c }; }catch(e){ _visE = null; } }
         for(let i=0;i<cams.length;i++){
           const c = cams[i], R = c.R;
           const lz = R[6]*px + R[7]*wy + R[8]*pz;
-          if(lz <= 0) continue;                    // 이 사진에선 안 보임 — 투표 안 함
+          /* (2026-11-03q) 투표 자격 = <b>보이냐</b>(반구가 아니라 두상에 가리냐) — 사용자: "오른쪽 옆머리에 삐죽 나오는게 뭔지 모르겟네"
+             실사 1741: 정면에서 본 옆머리 위쪽에 두상 옆면 1.5cm 밖(z≈0, 귀 평면)에 뜬 점 — 왼쪽 사진은 머리(96%)인데 정면·뒤는 밖(87%).
+             반구(lz>0)만 보면 z<0인 절반은 정면이 투표 못 하고 뒤도 거의 못 해 왼쪽 혼자 "안" → 살아남음. 두상 실루엣 밖이라 정면에서 그대로 보이는 점인데.
+             지금: lz>0 이거나, 점에서 카메라 쪽(+시선축)으로 쏜 선이 두피 타원체에 안 막히면 투표. 되돌리기 HAIR_OCC3D.strictVisRay = false */
+          if(lz <= 0){
+            if(O.strictVisRay === false || !_visE) continue;
+            const ex = px / _visE.a, ey = wy / _visE.b, ez = pz / _visE.c, dx = R[6] / _visE.a, dy = R[7] / _visE.b, dz = R[8] / _visE.c;
+            const A2 = dx*dx + dy*dy + dz*dz, B2 = 2*(ex*dx + ey*dy + ez*dz), C2 = ex*ex + ey*ey + ez*ez - 1;
+            if(C2 <= 0) continue;                                   // 두피 안쪽 점 — 판정 안 함(예전대로)
+            const disc = B2*B2 - 4*A2*C2;
+            if(disc > 0 && (-B2 + Math.sqrt(disc)) > 0) continue;  // 카메라 쪽으로 가다 두상에 막힘 — 안 보임
+            _visRayN++;
+          }
           const lx = R[0]*px + R[1]*wy + R[2]*pz;
           const ly = R[3]*px + R[4]*wy + R[5]*pz;
           const ix = lx / c.s + c.cx;
