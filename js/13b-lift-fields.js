@@ -867,7 +867,8 @@ function getViewDensitySampler(angle){
    project3DPointToView와 <b>같은 식</b>을 쓰되 회전행렬을 뷰마다 한 번만 만든다
    (그 함수는 호출마다 composeRotationZYX를 새로 조립해서, 점 수십만 개에 쓰면
    그 조립이 비용의 대부분이 된다). */
-let _strictNear = 0, _visRayN = 0;   // (2026-11-03n) 전원 일치에서 여유 안이라 살린 표
+let _strictNear = 0, _visRayN = 0, _tailTrimN = 0, _tailTrimPts = 0;
+try{ if(typeof HAIR_OCC3D !== 'undefined') HAIR_OCC3D.tailStat = ()=>({ 여유로_산_표: _strictNear, 가림없이_보여_투표: _visRayN, 끝_자른_가닥: _tailTrimN, 끝_자른_점: _tailTrimPts }); }catch(e){}   // (2026-11-03n) 전원 일치에서 여유 안이라 살린 표
 let _grazingAbstain = 0;   // [진단] 스친 표만 있어 판단 보류한 횟수(정수리 진단용)
 function makeHairOccupancyProbe(views, names, yTop, CY, headR){
   let _visE = undefined;   // (2026-11-03q) 두상 타원체(가림 판정용) — 처음 쓸 때 잡음
@@ -971,7 +972,7 @@ function makeHairOccupancyProbe(views, names, yTop, CY, headR){
          · 아무 사진도 못 보면 판단할 근거가 없으니 통과.
          되돌리기: HAIR_OCC3D.strictAnd = false (예전 가중 투표) */
       if(strict){
-        let seen = 0;
+        let seen = 0, nearSaved = false;
         if(_visE === undefined){ _visE = null; try{ const E0 = (typeof getScalpEllipsoid === 'function' && getScalpEllipsoid()) || (typeof getHeadEllipsoid === 'function' && getHeadEllipsoid()); if(E0 && E0.a > 0 && E0.b > 0 && E0.c > 0) _visE = { a: E0.a, b: E0.b, c: E0.c }; }catch(e){ _visE = null; } }
         for(let i=0;i<cams.length;i++){
           const c = cams[i], R = c.R;
@@ -1006,10 +1007,10 @@ function makeHairOccupancyProbe(views, names, yTop, CY, headR){
               for(let rr = rPx / 2; rr <= rPx + 1e-6 && !near; rr += rPx / 2) for(let k8 = 0; k8 < 8 && !near; k8++){ const an = k8 * Math.PI / 4; if(c.smp.at(ix + rr * Math.cos(an), iy + rr * Math.sin(an)) > 0) near = true; }
             }
             if(!near) return { occ: 0, seen, outBy: c.angle };
-            _strictNear++;
+            _strictNear++; nearSaved = true;
           }
         }
-        return seen ? { occ: 1, seen } : { occ: 1, seen: 0, abstain: 1 };
+        return seen ? { occ: 1, seen, near: nearSaved } : { occ: 1, seen: 0, abstain: 1 };
       }
       for(let i=0;i<cams.length;i++){
         const p = projectToCam(cams[i], px, wy, pz);
@@ -1969,15 +1970,27 @@ function trimStrandToOccupancy3D(pts, probe, acc, opts){
      사진 가닥이 짧아져 픽셀 결(잡음)로 걷는 몫이 는다 — 직모 뒷머리가 굽은 원인 후보. */
   const strict = !!(O.strictAnd && opts && opts.strict);
   let off = 0, cut = -1;
+  const nearF = strict ? new Uint8Array(pts.length) : null;   // (2026-11-03r) 여유 덕에 산 점(영역 밖 · 여유 안)
   for(let i=Math.min(O.skipRoot, pts.length-1); i<pts.length; i++){
     const p = pts[i];
     const r = probe.at(p.x, p.y, p.z, strict);
+    if(nearF && r.near) nearF[i] = 1;
     if(acc) acc.n++;
     if(r.occ >= O.occThr){ off = 0; continue; }
     off++;
     if(off >= (strict ? 1 : O.offRun)){ cut = i - off + 1; break; }
   }
-  if(cut < 0) return pts;
+  /* (2026-11-03r) 여유로 살린 가닥의 <b>끝</b>이 여유 띠(사진 머리 영역 밖)에 있으면 끝에서부터 여유 띠에 있는 점을 다 자름(여유 없는 영역에서 끝나게 · 상한 tailTrimCm, 기본 없음) — 사용자: "여유를 인정해서 가닥은 살리고, 그렇게 살아난 가닥 1cm를 자르자."
+     실사 1753: 옆·뒤 사진 대조 넘침 점의 80~96%가 영역 밖 1~1.5cm(여유 안)에서 끝나는 가닥 끝. 가운데(밖→다시 안)는 그대로. 끄기 HAIR_OCC3D.tailTrimCm = 0 */
+  const tailTrim = (pp, end)=>{
+    const lim = (O.tailTrimCm != null ? O.tailTrimCm : Infinity); if(!nearF || !(lim > 0)) return end;   // (11-03r2) 기본 = 상한 없음 — 사용자: "여유가 없는 영역에서 끝나게 하는거지. 살리긴 살리되"
+    const cmU = (typeof modelCmPerUnit === 'function' && modelCmPerUnit()) || 16.4;
+    let k = end, arc = 0;
+    while(k > Math.max(O.minPts || 2, 2) && nearF[k-1]){ const a0 = pp[k-1], b0 = pp[k-2]; const d = Math.hypot(a0.x-b0.x, a0.y-b0.y, a0.z-b0.z) * cmU; if(arc + d > lim + 1e-6) break; arc += d; k--; }
+    if(k < end){ _tailTrimN++; _tailTrimPts += end - k; }
+    return k;
+  };
+  if(cut < 0){ const k = tailTrim(pts, pts.length); return k < pts.length ? pts.slice(0, k) : pts; }
   if(strict){
     /* 여유 없음 — 밖으로 나간 첫 점 직전에서 끊는다. */
     if(cut < O.minPts){
@@ -1985,6 +1998,7 @@ function trimStrandToOccupancy3D(pts, probe, acc, opts){
       cut = Math.min(pts.length, O.minPts);
       if(cut >= pts.length) return pts;
     }
+    cut = tailTrim(pts, cut);
     if(acc){ acc.trimmed++; acc.removedPts += (pts.length - cut); }
     return pts.slice(0, cut);
   }
