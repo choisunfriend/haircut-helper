@@ -1,3 +1,15 @@
+/* (2026-11-03) 읽은 가닥 모양 그대로 3D까지 — 사용자: "다 끈 상태로 만들어주고, 웨이브와 컬이 살아나는지 보고, 이상하면 하나씩 켜볼께"
+ *  웨이브·고리를 펴던 네 곳을 기본으로 끔. 예전대로 켜기(주소창):
+ *   ?r3div=N   예전 간격을 N등분해서 올림(기본 3 ≈ 0.4cm · 5 ≈ 0.25cm · 1 = 예전)
+ *   ?r3fine=0  2D 가닥을 예전 간격(머리 높이 2.5% ≈ 1.2cm)으로만 올림 — 지금은 5배 촘촘한 점(≈ 0.25cm)으로 올림
+ *   ?r3align=1 올릴 때 3D 결 칸 쪽으로 걸음마다 돌리기(alignStrandPtsToField3D)
+ *   ?r3axis=1  기르기에서 굽은 결을 한 주기 크기로 펴서 축만 남기기(straightOn · straightenPath)
+ *   ?r3smooth=1 기른 뒤 이웃 평균 2번(smoothPts) */
+var RAW3D = (function () { var q = (typeof location !== 'undefined' && location.search) || '';
+  function f(k, d) { var m = new RegExp('[?&]' + k + '=([01])').exec(q); return m ? m[1] === '1' : d; }
+  var dm = /[?&]r3div=(\d+)/.exec(q);
+  return { fine: f('r3fine', true), fineDiv: dm ? Math.max(1, +dm[1]) : 2,   // (2026-11-03c) 3 → 2(≈0.6cm) — 곱슬 디버그 1344: 0.4cm보다 결 어긋남 낮고 고리 비율 같음 · 점 1/3 줄어 빠름   // (2026-11-03b) 5 → 3(≈0.4cm) — 5는 2px 걸음의 결 떨림까지 담아 라면처럼 꼬불 · ?r3div=5 로 예전
+           fieldAlign: f('r3align', false), axisStraight: f('r3axis', false), smooth: f('r3smooth', false) }; })();
 /* ══════════════════════════════════════════════════════════
    10-hair-render-2d.js — 4레이어 가닥 렌더 · 레이어 클립 · 밀도 지도
    원본 index.html 13786~15027행. 클래식 스크립트이므로 로드 순서가 곧
@@ -132,7 +144,7 @@ function drawHairStrands(ctx, fit, scalpY, hairEndY, maskW, maskH, hairCanvas, o
   // 원본 결 보기 때와 스타일 적용 때의 base 구간 경로가 완전히 일치한다.
   // (기존엔 STEPS=14로 고정하고 stepLen=targetLen/14로 역산해서, delta가 커질수록 보폭 자체가
   //  커져 origLen 구간마저 원본과 다른 경로로 재계산되는 문제가 있었음)
-  const STRAND_STEP_LEN = maskH * 0.025;
+  const STRAND_STEP_LEN = maskH * 0.025;   // 길이 셈용 간격(그대로) · 3D로 올릴 땐 RAW3D.fine이면 그 5배 촘촘한 점(pts.fine)을 씀
 
   /* 이 두 장도 <b>호출마다</b> 새로 만들고 있었다(2026-08-22). 화면 크기 그대로라
      한 장에 10MB 안팎이고, 원본 결 보기/폴백 경로가 돌 때마다 20MB가 새로 잡혔다.
@@ -171,6 +183,12 @@ function drawHairStrands(ctx, fit, scalpY, hairEndY, maskW, maskH, hairCanvas, o
   const flowAcc = { n:0, byFlow:0 };
   const strandEnv = { hasOrientation, orientation, orientMaskW, ox, oy, STRAND_STEP_LEN, frontDirBiasFor, curlAmtFor, waveWidthFor, maskAt: isRealHairAt, flowAcc };
   function traceStrand(ix, sy_img, targetLen_img, jitterSeed, rootSec, stopAtExit){
+    /* (2026-11-02) 중립 캡처(사진 가닥 = 3D·다시 기르기의 재료)는 읽은 결 그대로 긋는다(38-raw-trace.js).
+       11/01c에 켰다고 적혀 있었지만 index.html에 그 파일이 없고 여기서 부르지도 않아,
+       실제로는 예전 긋기(1.2cm 보폭·관성·극성 뒤집기)가 돌고 있었다 — 곱슬 사진 가닥 한 바퀴 0%.
+       화면용 2D 그리기는 그대로. 끄기 RAW_TRACE.on=false */
+    if(capturedStrands && typeof RAW_TRACE !== 'undefined' && RAW_TRACE.on && typeof rawTraceStrandPath === 'function')
+      return rawTraceStrandPath(ix, sy_img, targetLen_img, jitterSeed, strandEnv, rootSec, stopAtExit);
     return traceStrandPath(ix, sy_img, targetLen_img, jitterSeed, strandEnv, rootSec, stopAtExit);
   }
 
@@ -261,12 +279,13 @@ function drawHairStrands(ctx, fit, scalpY, hairEndY, maskW, maskH, hairCanvas, o
       targetLen = Math.max(maskH * 0.02, Math.min(targetLen, maxStrandLen));
       const nPts = Math.max(2, Math.min(p.probe.length, Math.round(targetLen / STRAND_STEP_LEN) + 1));
       const pts = p.probe.slice(0, nPts);
+      const fineAll = p.probe.fine, fine = fineAll ? fineAll.slice(0, Math.min(fineAll.length, (nPts - 1) * (fineAll.div || 5) + 1)) : null;
       /* 이 가닥이 지나가는 자리의 <b>원본 픽셀색</b>을 뿌리→끝 순서로 읽어 둔다.
          실측이 하나도 없으면 null이라 아래 렌더가 예전처럼 단색으로 간다. */
       const pxColors = sampleStrandColors(opts.maskInf, pts, p.strokeStyleVal);
       // 완성 경로 캡처(3D 리프트 소스) — 색·뿌리 기반 섹션 포함, 2D와 정의상 일치.
       if(capturedStrands){
-        capturedStrands.push({ pts, color: p.strokeStyleVal, colors: pxColors, sec: p.rootSec });
+        capturedStrands.push({ pts, fine, color: p.strokeStyleVal, colors: pxColors, sec: p.rootSec });
       }
       // clip 분할: 실측 마스크 이탈점까지=base(마스크 clip), 그 너머(연장분)=ext(자유)
       const splitIdx = Math.min(p.exitIdx, pts.length - 1);
