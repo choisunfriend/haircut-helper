@@ -871,7 +871,6 @@ let _strictNear = 0, _visRayN = 0, _tailTrimN = 0, _tailTrimPts = 0;
 try{ if(typeof HAIR_OCC3D !== 'undefined') HAIR_OCC3D.tailStat = ()=>({ 여유로_산_표: _strictNear, 가림없이_보여_투표: _visRayN, 끝_자른_가닥: _tailTrimN, 끝_자른_점: _tailTrimPts }); }catch(e){}   // (2026-11-03n) 전원 일치에서 여유 안이라 살린 표
 let _grazingAbstain = 0;   // [진단] 스친 표만 있어 판단 보류한 횟수(정수리 진단용)
 function makeHairOccupancyProbe(views, names, yTop, CY, headR){
-  let _visE = undefined;   // (2026-11-03q) 두상 타원체(가림 판정용) — 처음 쓸 때 잡음
   // (옛 52) 360 세트의 추가 사진(카메라 맞춘 것)을 형태 계산에 더하고, 이상한 기준 사진은 뺌(아래 VIEWS360)
   { const v = VIEWS360._probeArgs(views, names, yTop, CY); if(v){ views = v[0]; names = v[1]; } }
   if(!HAIR_OCC3D.on) return null;
@@ -886,7 +885,9 @@ function makeHairOccupancyProbe(views, names, yTop, CY, headR){
                 cx:v.cx, s:v.s, sy:v.sy, crownY:v.crownY, smp,
                 dsmp: getViewDensitySampler(n),      // (2026-08-01) 뿌리 밀도용
                 fell: getViewFaceEllipse(n),         // (2026-08-01) 늘림 여유 거부 영역
-                iw: mi ? mi.w : 0, ih: mi ? mi.h : 0 });
+                iw: mi ? mi.w : 0, ih: mi ? mi.h : 0,
+                pm: (mi && mi.personMask && (mi.maskW || mi.w) && mi.personMask.length >= (mi.maskW || mi.w) * (mi.maskH || mi.h)) ? mi.personMask : null,   // (2026-11-03t) 사람 윤곽 — 반구 밖 점은 배경일 때만 밖
+                pmW: mi ? (mi.maskW || mi.w) : 0, pmH: mi ? (mi.maskH || mi.h) : 0 });
   });
   if(!cams.length) return null;
   const invR = 1 / Math.max(1e-6, headR);
@@ -973,27 +974,33 @@ function makeHairOccupancyProbe(views, names, yTop, CY, headR){
          되돌리기: HAIR_OCC3D.strictAnd = false (예전 가중 투표) */
       if(strict){
         let seen = 0, nearSaved = false;
-        if(_visE === undefined){ _visE = null; try{ const E0 = (typeof getScalpEllipsoid === 'function' && getScalpEllipsoid()) || (typeof getHeadEllipsoid === 'function' && getHeadEllipsoid()); if(E0 && E0.a > 0 && E0.b > 0 && E0.c > 0) _visE = { a: E0.a, b: E0.b, c: E0.c }; }catch(e){ _visE = null; } }
         for(let i=0;i<cams.length;i++){
           const c = cams[i], R = c.R;
           const lz = R[6]*px + R[7]*wy + R[8]*pz;
           /* (2026-11-03q) 투표 자격 = <b>보이냐</b>(반구가 아니라 두상에 가리냐) — 사용자: "오른쪽 옆머리에 삐죽 나오는게 뭔지 모르겟네"
              실사 1741: 정면에서 본 옆머리 위쪽에 두상 옆면 1.5cm 밖(z≈0, 귀 평면)에 뜬 점 — 왼쪽 사진은 머리(96%)인데 정면·뒤는 밖(87%).
              반구(lz>0)만 보면 z<0인 절반은 정면이 투표 못 하고 뒤도 거의 못 해 왼쪽 혼자 "안" → 살아남음. 두상 실루엣 밖이라 정면에서 그대로 보이는 점인데.
-             지금: lz>0 이거나, 점에서 카메라 쪽(+시선축)으로 쏜 선이 두피 타원체에 안 막히면 투표. 되돌리기 HAIR_OCC3D.strictVisRay = false */
+             (11-03t에서 바뀜 — 아래 배경 투표) */
+          /* (2026-11-03t) 카메라 쪽 반구 밖 점 = <b>사진이 말해 주는 것만</b> — 사용자: "두상. 몸통. 어깨 정확한 사이즈로 하는 것도 아니면서 자꾸 가림판정을 넣어?"
+             (11-03q·s의 두피 타원체 광선·턱 높이 어림은 뺌.) 그 자리 픽셀이 머리면 안 · <b>배경</b>(사람 윤곽 밖 — 그 시선 위에 아무것도 없음)이면 밖 투표 ·
+             몸·옷·살이면 그 뒤에 머리가 있는지 사진으로 알 수 없으니 기권. 실사 1741의 옆머리 삐죽이(두상 옆 실루엣 밖 · 정면 사진에선 배경)가 이걸로 걸림.
+             사람 윤곽이 없는 사진은 예전처럼 기권. 끄기 HAIR_OCC3D.strictBgVote = false */
+          let bgOnly = false;
           if(lz <= 0){
-            if(O.strictVisRay === false || !_visE) continue;
-            const ex = px / _visE.a, ey = wy / _visE.b, ez = pz / _visE.c, dx = R[6] / _visE.a, dy = R[7] / _visE.b, dz = R[8] / _visE.c;
-            const A2 = dx*dx + dy*dy + dz*dz, B2 = 2*(ex*dx + ey*dy + ez*dz), C2 = ex*ex + ey*ey + ez*ez - 1;
-            if(C2 <= 0) continue;                                   // 두피 안쪽 점 — 판정 안 함(예전대로)
-            const disc = B2*B2 - 4*A2*C2;
-            if(disc > 0 && (-B2 + Math.sqrt(disc)) > 0) continue;  // 카메라 쪽으로 가다 두상에 막힘 — 안 보임
-            _visRayN++;
+            if(O.strictBgVote === false || !c.pm) continue;
+            bgOnly = true;
           }
           const lx = R[0]*px + R[1]*wy + R[2]*pz;
           const ly = R[3]*px + R[4]*wy + R[5]*pz;
           const ix = lx / c.s + c.cx;
           const iy = c.crownY + (yTop - (ly + CY)) / c.sy;
+          if(bgOnly){
+            if(c.smp.at(ix, iy) > 0){ seen++; continue; }                    // 머리 — 안
+            const mx = (ix / c.iw * c.pmW) | 0, my = (iy / c.ih * c.pmH) | 0;
+            const bg = mx < 0 || my < 0 || mx >= c.pmW || my >= c.pmH || !(c.pm[my * c.pmW + mx] > 0);
+            if(!bg) continue;                                                   // 몸·옷·살 — 기권
+            _visRayN++;
+          }
           seen++;
           if(!(c.smp.at(ix, iy) > 0)){
             /* (2026-11-03n) 여유 — 다시 기르기 머리 영역 판정(17b hullOut)과 <b>같은 규칙</b>: 머리 영역에서 1cm(정면)·1.5cm(옆·뒤) 넘게 떨어져야 밖.
