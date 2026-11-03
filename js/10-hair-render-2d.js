@@ -1,12 +1,15 @@
 /* (2026-11-03) 읽은 가닥 모양 그대로 3D까지 — 사용자: "다 끈 상태로 만들어주고, 웨이브와 컬이 살아나는지 보고, 이상하면 하나씩 켜볼께"
  *  웨이브·고리를 펴던 네 곳을 기본으로 끔. 예전대로 켜기(주소창):
+ *   ?r3div=N   예전 간격을 N등분해서 올림(기본 3 ≈ 0.4cm · 5 ≈ 0.25cm · 1 = 예전)
  *   ?r3fine=0  2D 가닥을 예전 간격(머리 높이 2.5% ≈ 1.2cm)으로만 올림 — 지금은 5배 촘촘한 점(≈ 0.25cm)으로 올림
  *   ?r3align=1 올릴 때 3D 결 칸 쪽으로 걸음마다 돌리기(alignStrandPtsToField3D)
  *   ?r3axis=1  기르기에서 굽은 결을 한 주기 크기로 펴서 축만 남기기(straightOn · straightenPath)
  *   ?r3smooth=1 기른 뒤 이웃 평균 2번(smoothPts) */
 var RAW3D = (function () { var q = (typeof location !== 'undefined' && location.search) || '';
   function f(k, d) { var m = new RegExp('[?&]' + k + '=([01])').exec(q); return m ? m[1] === '1' : d; }
-  return { fine: f('r3fine', true), fineDiv: 5, fieldAlign: f('r3align', false), axisStraight: f('r3axis', false), smooth: f('r3smooth', false) }; })();
+  var dm = /[?&]r3div=(\d+)/.exec(q);
+  return { fine: f('r3fine', true), fineDiv: dm ? Math.max(1, +dm[1]) : 3,   // (2026-11-03b) 5 → 3(≈0.4cm) — 5는 2px 걸음의 결 떨림까지 담아 라면처럼 꼬불 · ?r3div=5 로 예전
+           fieldAlign: f('r3align', false), axisStraight: f('r3axis', false), smooth: f('r3smooth', false) }; })();
 /* ══════════════════════════════════════════════════════════
    10-hair-render-2d.js — 4레이어 가닥 렌더 · 레이어 클립 · 밀도 지도
    원본 index.html 13786~15027행. 클래식 스크립트이므로 로드 순서가 곧
