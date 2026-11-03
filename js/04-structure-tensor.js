@@ -129,7 +129,8 @@ const HAIR_FLOW = {
      3D 필드에 극성을 싣는 용도로만 쓰고, 2D 부호 규칙은 예전 그대로 둔다.
      (아래 코드는 남겨 둔다 — 2D가 틀어질 때 켜서 확인할 수 있게. 기본 꺼짐.) */
   applyTo2D: false,
-  chamferPasses: 2,    // 전/후방 체임퍼 반복 — 오목한 실루엣에서 거리가 돌아 들어가게
+  chamferPasses: 4,     // 전/후방 체임퍼 반복 — 오목한 실루엣에서 거리가 돌아 들어가게 · (2026-11-02) 2 → 4: 씨앗이 위 테두리로만 줄어 옆·아래로 돌아 들어가야 하는 자리가 늘어서
+  seedBand: 0.35,      // (2026-11-02) 흐름 씨앗 = 머리 맨 위 테두리 중 머리 높이 위쪽 이 비율 안만 — buildRootFlowField 설명
   smoothR: 2,          // 기울기 내기 전 거리장 평활 반경(체임퍼 계단 노이즈 제거)
   minConf: 0.30,       // 기울기 크기가 이 미만이면 극성 미확정 → 예전 규칙으로
   /* 흐름이 <b>결 축과 거의 수직</b>이면 내적이 0 근처라 부호가 노이즈로 정해진다.
@@ -157,11 +158,20 @@ function flowPolarityFor(angle, s){
 function buildRootFlowField(maskBuf, w, h){
   const N = w*h, INF = 1e9;
   const d = new Float32Array(N);
+  /* (2026-11-02) 씨앗 = 머리 맨 위 테두리(세로줄마다 가장 위 머리 픽셀) 중 머리 높이 위쪽 seedBand 안만.
+     예전: 위 칸이 머리 아닌 머리 픽셀 전부 → 아래로 넓어지는 머리 옆 가장자리·귀/얼굴 홈 아랫변도 씨앗이 되어
+     흐름이 위·안쪽을 가리킴(실사: 뿌리 자리 20~47%가 '위' · 확신도 1.0). 사진 가닥 첫 걸음이 이걸로 정해져 뒷머리가 위로 자람.
+     예전대로: HAIR_FLOW.seedBand=0 */
+  const band = HAIR_FLOW.seedBand > 0 ? HAIR_FLOW.seedBand : 0;
+  let yTopM = h, yBotM = -1;
+  if(band){ for(let i=0;i<N;i++) if(maskBuf[i] > 128){ const yy = (i / w) | 0; if(yy < yTopM) yTopM = yy; if(yy > yBotM) yBotM = yy; } }
+  const yLim = band ? yTopM + band * Math.max(1, yBotM - yTopM) : h;
   for(let y=0; y<h; y++) for(let x=0; x<w; x++){
     const i = y*w + x;
     if(maskBuf[i] <= 128){ d[i] = INF; continue; }
     d[i] = (y === 0 || maskBuf[i-w] <= 128) ? 0 : INF;   // 두피 쪽 경계 = 씨앗
   }
+  if(band) for(let x=0; x<w; x++){ let first = true; for(let y=0; y<h; y++){ const i = y*w + x; if(maskBuf[i] <= 128) continue; if(d[i] === 0 && !(first && y <= yLim)) d[i] = INF; first = false; } }
   const A = 1, B = Math.SQRT2;
   for(let pass=0; pass<HAIR_FLOW.chamferPasses; pass++){
     for(let y=1; y<h; y++) for(let x=1; x<w-1; x++){

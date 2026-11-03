@@ -32,7 +32,7 @@
 //   · 결을 못 읽은 자리(또렷함 minCoh 미만 · 결 없음)에서 가닥 끝(직전 방향으로 곧게 뻗어 머리 밖으로 튀어나가던 것 없앰)
 //   끄기 RAW_TRACE.on=false(예전 2D 긋기)
 // ============================================================================
-var RAW_TRACE = { on: true, loopFollow: true, stepPx: 2, stepFrac: 0.01, gravPick: 0.2, minCoh: 0.05, endOnNoRead: true, stats: { strands: 0, steps: 0, read: 0, byFlow: 0, byGrav: 0, byCont: 0, endNoRead: 0, pts: 0 } };
+var RAW_TRACE = { on: true, loopFollow: true, gravFirst: true, stepPx: 2, stepFrac: 0.01, gravPick: 0.2, minCoh: 0.05, endOnNoRead: true, stats: { strands: 0, steps: 0, read: 0, byFlow: 0, byGrav: 0, byCont: 0, endNoRead: 0, pts: 0 } };
 
 function rawTraceStrandPath(ix, sy, targetLen, jitterSeed, env, rootSec, stopAtExit) {
   var R = RAW_TRACE, PI = Math.PI, St = R.stats;
@@ -57,6 +57,9 @@ function rawTraceStrandPath(ix, sy, targetLen, jitterSeed, env, rootSec, stopAtE
       if (Math.cos(a - prev) < 0) a += PI;
       St.byCont++; return a;
     }
+    /* (2026-11-02) 뿌리 첫 걸음은 화면용 2D(traceStrandPath)처럼 세로 결이면 아래쪽부터 — 흐름 극성은 거의 가로인 자리만.
+       화면 2D(아래로 출발)는 실사 11장에서 끝이 뿌리보다 위 0.2% · 사진 가닥(흐름 극성 먼저)은 8.7%. 되돌리기 RAW_TRACE.gravFirst=false */
+    if (R.gravFirst && Math.abs(Math.sin(a)) >= R.gravPick) { if (Math.sin(a) < 0) a += PI; St.byGrav++; return a; }
     if (sm.fc >= minConf && (sm.fx || sm.fy)) { if (Math.cos(a) * sm.fx + Math.sin(a) * sm.fy < 0) a += PI; St.byFlow++; return a; }
     if (Math.abs(Math.sin(a)) >= R.gravPick) { if (Math.sin(a) < 0) a += PI; St.byGrav++; return a; }   // 이미지 y 아래 = +
     if (prev != null && Math.cos(a - prev) < 0) a += PI;
