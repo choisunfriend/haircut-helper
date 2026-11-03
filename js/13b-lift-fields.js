@@ -783,13 +783,13 @@ function getViewMaskSampler(angle){
      긴 웨이브 정면: 가슴 앞 웨이브 다발 사이로 옷이 보이는 자리를 세그가 빼 영역이 격자처럼 조각남 → 그 위를 지나 이어진 사진 가닥이 거기서 "영역 밖"으로 잘림
      (조정 단계 다듬기 13b 전원 일치 · 다시 기르기 머리 영역 17b · 사진 대조 07b가 모두 이 샘플러를 씀).
      지금: 이 사진의 2D 가닥(neutralStrandPaths → strandPaths · 마스크 좌표)마다, 영역 안 점 → 밖 점들 → 다시 영역 안 점으로 <b>이어지는</b> 밖 구간을 영역에 더함
-     (점 사이는 선으로 메움 · 1칸 굵게). 영역 밖으로 빠져나가 끝나는 꼬리는 안 넣음(이어진 게 아님). 틈 길이 상한 gapMaxFrac × 마스크 높이. 끄기 HAIR_OCC3D.strandGap = false */
+     (점 사이는 선으로 메움 · 1칸 굵게). 영역 밖으로 빠져나가 끝나는 꼬리는 안 넣음(이어진 게 아님). 틈 길이 상한 gapMaxFrac × 마스크 높이. (2026-11-03n) 기본 끔 — 세그는 이어져 있었고 조각난 건 3D였음(위 strictMarginCm). 켜기 HAIR_OCC3D.strandGap = true */
   let gapCells = 0, gapRuns = 0;
   const segHit = hit;
-  if(HAIR_OCC3D.strandGap !== false && spRec && spRec.strands && spRec.strands.length){
+  if(HAIR_OCC3D.strandGap === true && spRec && spRec.strands && spRec.strands.length){
     try{
       const G = new Uint8Array(W*H), kx = W / (spRec.maskW || W), ky = H / (spRec.maskH || H);
-      const gapMax = (HAIR_OCC3D.strandGapMaxFrac || 0.12) * H;
+      const gapMax = (HAIR_OCC3D.strandGapMaxFrac || 0.04) * H;
       const inSeg = (x, y)=>{ const xi = x|0, yi = y|0; return xi >= 0 && yi >= 0 && xi < W && yi < H && segHit(xi, yi) === 1; };
       const mark = (x, y)=>{ for(let dy=-1; dy<=1; dy++) for(let dx=-1; dx<=1; dx++){ const xi = (x|0)+dx, yi = (y|0)+dy; if(xi >= 0 && yi >= 0 && xi < W && yi < H && !G[yi*W+xi] && segHit(xi, yi) !== 1){ G[yi*W+xi] = 1; gapCells++; } } };
       for(const st of spRec.strands){
@@ -809,6 +809,18 @@ function getViewMaskSampler(angle){
             }
           }
           lastIn = k;
+        }
+        /* (2026-11-03m) 끝에서 결 방향으로 이어 보기 — 2D 추적은 영역 밖으로 나가면 바로 멈춰 위 "안→밖→안"이 거의 안 생김(16:44 대조: 격자 그대로).
+           가닥의 두 끝에서 마지막 결 방향(끝 4점)으로 영역 밖을 곧게 따라가 gapMax 안에서 다시 세그 머리에 닿으면 그 사이를 영역으로.
+           3D "끊긴 결 이어 붙이기"(17b copyChain)와 같은 기준 — 같은 쪽으로 이어지는 머리가 틈 건너에 있는가. */
+        for(let e = 0; e < 2; e++){
+          const n = q.length, i0 = e ? n - 1 : 0, i1 = e ? Math.max(0, n - 5) : Math.min(n - 1, 4);
+          const ex = q[i0].x * kx, ey = q[i0].y * ky;
+          if(!inSeg(ex, ey)) continue;                                        // 끝이 영역 안에서 멈춘 것만(영역 밖 꼬리는 안 늘림)
+          let dx = ex - q[i1].x * kx, dy = ey - q[i1].y * ky; const dl = Math.hypot(dx, dy); if(!(dl > 1e-6)) continue; dx /= dl; dy /= dl;
+          let t = 1, left = false, hitBack = -1;
+          for(; t <= gapMax; t++){ const x = ex + dx * t, y = ey + dy * t; if(x < 0 || y < 0 || x >= W || y >= H) break; const inn = inSeg(x, y); if(!inn) left = true; else if(left){ hitBack = t; break; } }
+          if(hitBack > 0){ gapRuns++; for(let u = 1; u < hitBack; u++) mark(ex + dx * u, ey + dy * u); }
         }
       }
       if(gapCells) hit = (x, y)=> (segHit(x, y) === 1 || G[y*W + x]) ? 1 : 0;
@@ -855,6 +867,7 @@ function getViewDensitySampler(angle){
    project3DPointToView와 <b>같은 식</b>을 쓰되 회전행렬을 뷰마다 한 번만 만든다
    (그 함수는 호출마다 composeRotationZYX를 새로 조립해서, 점 수십만 개에 쓰면
    그 조립이 비용의 대부분이 된다). */
+let _strictNear = 0;   // (2026-11-03n) 전원 일치에서 여유 안이라 살린 표
 let _grazingAbstain = 0;   // [진단] 스친 표만 있어 판단 보류한 횟수(정수리 진단용)
 function makeHairOccupancyProbe(views, names, yTop, CY, headR){
   // (옛 52) 360 세트의 추가 사진(카메라 맞춘 것)을 형태 계산에 더하고, 이상한 기준 사진은 뺌(아래 VIEWS360)
@@ -944,6 +957,7 @@ function makeHairOccupancyProbe(views, names, yTop, CY, headR){
        고침: 합이 아니라 <b>제일 잘 본 뷰 하나</b>가 기준을 넘어야 지울 수 있다.
        아무도 제대로 못 봤으면 판단 보류 — 이 함수가 원래 내세운 규칙
        ("모르는 것을 지우지는 않는다")을 스친 표에도 적용하는 것뿐이다. */
+    strictNear(){ return _strictNear; },
     at(px, py, pz, strict){
       let wSum = 0, hSum = 0, wBest = 0;
       const wy = py - CY;
@@ -966,7 +980,20 @@ function makeHairOccupancyProbe(views, names, yTop, CY, headR){
           const ix = lx / c.s + c.cx;
           const iy = c.crownY + (yTop - (ly + CY)) / c.sy;
           seen++;
-          if(!(c.smp.at(ix, iy) > 0)) return { occ: 0, seen, outBy: c.angle };
+          if(!(c.smp.at(ix, iy) > 0)){
+            /* (2026-11-03n) 여유 — 다시 기르기 머리 영역 판정(17b hullOut)과 <b>같은 규칙</b>: 머리 영역에서 1cm(정면)·1.5cm(옆·뒤) 넘게 떨어져야 밖.
+               사용자: "안 그려진 부분이 다 세그가 파편난 부분들" → 세그는 통째로 이어져 있었고(디버그 1644 정면 영역 한 덩어리), 조각난 건 3D(대조의 흰 선 = 3D 윤곽).
+               잰 값(1644 긴 웨이브): 가슴 앞 3D 점 중 영역 밖 정면 12% · 왼쪽 9% · 오른쪽 17% — 대부분 경계 한두 칸. 여유 0으로 첫 점에서 끝까지 자르니 가닥이 거의 다 어딘가에서 잘려 격자처럼.
+               둘레 8방향 · 반지름 여유(사진 px)에서 머리가 하나라도 있으면 안. 되돌리기 HAIR_OCC3D.strictMarginCm = 0 */
+            const mCm = (O.strictMarginCm != null) ? O.strictMarginCm : ((typeof REGROW !== 'undefined' && REGROW) ? (c.angle === 'front' ? REGROW.hullMarginCm : REGROW.hullMarginSideCm) : 0);
+            let near = false;
+            if(mCm > 0){
+              const cmPx = c.s * ((typeof modelCmPerUnit === 'function' && modelCmPerUnit()) || 16.4), rPx = mCm / Math.max(1e-6, cmPx);
+              for(let rr = rPx / 2; rr <= rPx + 1e-6 && !near; rr += rPx / 2) for(let k8 = 0; k8 < 8 && !near; k8++){ const an = k8 * Math.PI / 4; if(c.smp.at(ix + rr * Math.cos(an), iy + rr * Math.sin(an)) > 0) near = true; }
+            }
+            if(!near) return { occ: 0, seen, outBy: c.angle };
+            _strictNear++;
+          }
         }
         return seen ? { occ: 1, seen } : { occ: 1, seen: 0, abstain: 1 };
       }

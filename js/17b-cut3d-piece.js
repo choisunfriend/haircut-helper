@@ -3332,7 +3332,7 @@ var REGROW = (function () {
        *  그려진 가닥엔 6,549(3.4%) — 전체 점은 69% 남는데 몸 앞만 28% 남음. 세그가 파편난(가닥 사이로 옷이 보이는) 자리는 예전 점유 판정이 머리 아님으로 보고 잘라냄.
        *  옮긴 가닥은 이미 자기 사진 머리 영역(가닥이 그어진 칸 포함)으로 검사함. 되돌리기 REGROW.copyKeepTrim=false */
       if (bw >= 0.5 || hung) { try { pts._rgKeep = true; } catch (e) {} }
-      if (cpEarly && G.copyKeepTrim !== false) { try { pts._rgCopy = true; } catch (e) {} }  // 조정 단계의 "사진 영역 밖 다듬기"가 이 가닥을 다시 자르지 않게
+      if (cpEarly && G.copyKeepTrim === true) { try { pts._rgCopy = true; } catch (e) {} }   // (2026-11-03m) 기본 끔 — 다듬기가 유일한 다른 사진 대조라 빼면 사방으로 부풀음(16:42·16:47). 영역 쪽(13b strandGap)으로 풂  // 조정 단계의 "사진 영역 밖 다듬기"가 이 가닥을 다시 자르지 않게
       var Larc = 0, ii; for (ii = 1; ii < pts.length; ii++) Larc += Math.hypot(pts[ii].x - pts[ii - 1].x, pts[ii].y - pts[ii - 1].y, pts[ii].z - pts[ii - 1].z);
       var qi = Math.min(pts.length - 1, 6), ex = pts[qi].x - pts[0].x, ey = pts[qi].y - pts[0].y, ez = pts[qi].z - pts[0].z, el = Math.hypot(ex, ey, ez) || 1;
       var rg = { t: tRoot, free: free, L: Larc, tipY: pts[pts.length - 1].y, dx: ex / el, dy: ey / el, dz: ez / el,
@@ -4509,7 +4509,7 @@ function helixMeasure(rgba,mask,W,H,angle,coh,opt){opt=opt||{};const n=opt.n||25
   };
   /* (2026-10-04e) backFix로 뒤로 늘어뜨린 가닥은 조정 단계의 "사진 영역 밖 다듬기"를 건너뜀
      (그 다듬기는 앞·옆 사진까지 섞어 판정해서, 어깨 앞으로 머리를 넘긴 사진이면 목 뒤 가닥을 다시 잘라 냄) */
-  G._skipTrim = function (opts) { var sp = opts && opts.srcPts; if (sp && sp._rgCopy && G.copyKeepTrim !== false) { G._trimSkipCopy = (G._trimSkipCopy || 0) + 1; return true; } return !!((G.backFix || G.hangDown) && sp && sp._rgKeep); };   // (2026-11-03k) 옮긴 가닥은 다듬지 않음   // trimStrandToOccupancy3D(13b) 맨 앞
+  G._skipTrim = function (opts) { var sp = opts && opts.srcPts; if (sp && sp._rgCopy && G.copyKeepTrim === true) { G._trimSkipCopy = (G._trimSkipCopy || 0) + 1; return true; } return !!((G.backFix || G.hangDown) && sp && sp._rgKeep); };   // (2026-11-03k) 옮긴 가닥은 다듬지 않음   // trimStrandToOccupancy3D(13b) 맨 앞
 
   G._panelLines = function () {   // perfPanelLines(18) 끝
     var L = [];
