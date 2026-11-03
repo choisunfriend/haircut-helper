@@ -476,6 +476,8 @@ async function subjectZoom(angle){
     state.shots[angle] = url;
     if(!state._zoomedShot) state._zoomedShot = {};
     state._zoomedShot[angle] = url;
+    if(!state._zoomXform) state._zoomXform = {};
+    state._zoomXform[angle] = { url: url, src: srcUrl, ox: cxs, oy: cys, k: 1 / up };   // (2026-11-03) 분석 사진 → 원본 좌표(GRAIN_HIRES)
     st.done = true; st.out = Math.round(cws * up) + '×' + Math.round(chs * up); st.scale = +up.toFixed(2);
     st.headPxBefore = Math.round(hw * (Math.max(IW, IH) > M ? M / Math.max(IW, IH) : 1) * kx); st.headPxAfter = Math.round(hw * kx * up);
     // 사진이 바뀜 — 이 각도의 랜드마크·보관 캔버스 무효화 후 다시 잼
@@ -566,6 +568,20 @@ function extractHairMask(angle){
   return BODY_SEG_WAIT._extract(angle, () =>
     VIEWS360._extract(angle, () => extractHairMaskCore(angle)));
 }
+/* (2026-11-03) GRAIN_HIRES 준비 — 이 각도 분석 사진(state.shots)의 원본과 좌표 변환. 없으면 null(예전처럼 분석 크기로 읽음) */
+async function grainHiresSource(angle, shotW){
+  try{
+    if(typeof GRAIN_HIRES === 'undefined' || !GRAIN_HIRES.on) return null;
+    const shot = state.shots[angle], zx = state._zoomXform && state._zoomXform[angle], hi = state.shotsHi && state.shotsHi[angle];
+    let src = null, ox = 0, oy = 0, kShot = 0;
+    if(zx && zx.url === shot && zx.src && zx.src !== shot){ src = zx.src; ox = zx.ox; oy = zx.oy; kShot = zx.k; }
+    else if(hi && hi.lo === shot && hi.hi){ src = hi.hi; }
+    if(!src) return null;
+    const im = await _szLoad(src); if(!im) return null;
+    if(!kShot) kShot = (im.naturalWidth || im.width) / Math.max(1, shotW);
+    return { img: im, ox: ox, oy: oy, kShot: kShot };
+  }catch(e){ return null; }
+}
 async function extractHairMaskCore(angle){
   if(typeof REGROW !== 'undefined') REGROW._resetPend();   // (옛 42) 지난 사진의 컬 재기 값 버림
   const _tA = performance.now(); try{ ANALYSIS_TIME.byView[angle] = {}; }catch(e){}
@@ -614,6 +630,7 @@ async function extractHairMaskCore(angle){
         const srcCtx = srcC.getContext('2d');
         srcCtx.drawImage(img, 0, 0, w, h);
         const srcPixels = srcCtx.getImageData(0,0,w,h).data;
+        const _hiSrc = await grainHiresSource(angle, img.width);   // (2026-11-03) 결은 원본 해상도로(GRAIN_HIRES)
 
         // ── STEP 1.5: 목/어깨 실루엣용 사람 전체 마스크(2026-07-14 추가) ──
         // 헤어 마스크(아래 hairMaskBuf)와 완전히 별개의 목적 — "이 픽셀이
@@ -1047,7 +1064,32 @@ async function extractHairMaskCore(angle){
             const orientErodeR = Math.max(3, Math.round(w*0.004));
             const orientMaskBuf = erode(hairMaskBuf, w, h, orientErodeR);
             if(typeof READ_STEPS !== 'undefined') READ_STEPS._view = angle;   // (2026-10-21) 34 결 읽기 단계 — 어느 사진인지
-            const {angle: angleField, coherence: coherenceField} = computeHairOrientationField(srcPixels, orientMaskBuf, w, h);
+            let _F = null;
+            if(_hiSrc){ try{
+              const _tH = performance.now(), kOrig = _hiSrc.kShot * (img.width / w), G = GRAIN_HIRES;
+              let bx0 = w, by0 = h, bx1 = -1, by1 = -1;
+              for(let yy = 0; yy < h; yy++) for(let xx = 0; xx < w; xx++) if(orientMaskBuf[yy * w + xx]){ if(xx < bx0) bx0 = xx; if(xx > bx1) bx1 = xx; if(yy < by0) by0 = yy; if(yy > by1) by1 = yy; }
+              if(bx1 > bx0 && by1 > by0){
+                bx0 = Math.max(0, bx0 - G.pad); by0 = Math.max(0, by0 - G.pad); bx1 = Math.min(w - 1, bx1 + G.pad); by1 = Math.min(h - 1, by1 + G.pad);
+                const bw = bx1 - bx0 + 1, bh = by1 - by0 + 1, s = G.scaleFor(kOrig, bw, bh);
+                if(s){
+                  const cw = Math.round(bw * s), ch = Math.round(bh * s), cc = document.createElement('canvas'); cc.width = cw; cc.height = ch;
+                  const cx = cc.getContext('2d', { willReadFrequently: true }); cx.imageSmoothingEnabled = true; try{ cx.imageSmoothingQuality = 'high'; }catch(e){}
+                  cx.drawImage(_hiSrc.img, _hiSrc.ox + bx0 * kOrig, _hiSrc.oy + by0 * kOrig, bw * kOrig, bh * kOrig, 0, 0, cw, ch);
+                  const cp = cx.getImageData(0, 0, cw, ch).data, cm = new Uint8Array(cw * ch);
+                  for(let v = 0; v < ch; v++){ const yy = Math.min(h - 1, by0 + Math.floor(v / s)); for(let u = 0; u < cw; u++){ const xx = Math.min(w - 1, bx0 + Math.floor(u / s)); cm[v * cw + u] = orientMaskBuf[yy * w + xx]; } }
+                  _F = G.readCrop(cp, cm, cw, ch, s, bx0, by0, w, h, orientMaskBuf);
+                  cc.width = 0; cc.height = 0;
+                  G.stats[angle] = { s: +s.toFixed(2), crop: cw + '×' + ch, src: (_hiSrc.img.naturalWidth || _hiSrc.img.width) + '×' + (_hiSrc.img.naturalHeight || _hiSrc.img.height), ms: Math.round(performance.now() - _tH) };
+                  console.log('[결·원본 해상도] ' + angle + ' · 원본 ' + G.stats[angle].src + ' → 머리 둘레 ' + G.stats[angle].crop + '(분석 사진의 ×' + G.stats[angle].s + ') · ' + G.stats[angle].ms + 'ms');
+                  try{ ANALYSIS_TIME.mark(angle, 'o_hi', performance.now() - _tH); }catch(e){}
+                  if(typeof REGROW !== 'undefined') REGROW._afterOrientField(_F, srcPixels, orientMaskBuf, w, h);   // 컬 재기는 분석 크기로
+                } else GRAIN_HIRES.stats[angle] = { s: 1, why: '원본이 분석 사진보다 크게 낫지 않음(×' + kOrig.toFixed(2) + ')' };
+              }
+            }catch(e){ _F = null; GRAIN_HIRES.stats[angle] = { s: 1, why: '오류: ' + (e && e.message || e) }; console.warn('[결·원본 해상도] 실패 — 분석 크기로', e); } }
+            else if(typeof GRAIN_HIRES !== 'undefined') GRAIN_HIRES.stats[angle] = { s: 1, why: '원본 없음' };
+            if(!_F) _F = computeHairOrientationField(srcPixels, orientMaskBuf, w, h);
+            const {angle: angleField, coherence: coherenceField} = _F;
             /* ── 극성(뿌리→끝) — 측정한 각도는 그대로 두고 <b>부호만</b> 정한다 ──
                거리장은 침식 전 마스크(hairMaskBuf)로 잰다. 침식본은 결 계산의
                경계 오염을 막으려고 안쪽으로 깎은 것이라, 거기서 거리를 재면

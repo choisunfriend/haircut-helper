@@ -299,7 +299,8 @@ function computeHairOrientationField(pixels, maskBuf, w, h){
   _orientMark('o_st', performance.now() - _tST);
   GABOR_ORIENT.refine(f, pixels, maskBuf, w, h);
   // (옛 42) 컬 곡률·진폭·타래 조각·나선을 재 둠 — measureViewHairIdentity(03a)가 붙임
-  { const _tC = performance.now(); if(typeof REGROW !== 'undefined') REGROW._afterOrientField(f, pixels, maskBuf, w, h); _orientMark('o_curl', performance.now() - _tC); }
+  // (2026-11-03) 원본 해상도로 읽는 중(GRAIN_HIRES)이면 컬 재기는 분석 크기로 돌려놓은 뒤 03b가 부름
+  if(!(typeof GRAIN_HIRES !== 'undefined' && GRAIN_HIRES._inHi)){ const _tC = performance.now(); if(typeof REGROW !== 'undefined') REGROW._afterOrientField(f, pixels, maskBuf, w, h); _orientMark('o_curl', performance.now() - _tC); }
   return f;
 }
 /* GABOR_ORIENT (옛 66-gabor-orient.js) — 결 읽기를 방향 필터(가버 묶음)로 (2026-10-11b)
@@ -414,12 +415,22 @@ var GABOR_ORIENT = (function () {
       lines.push({ n: n, straight: straight, loop: sAbs > 1e-6 ? Math.abs(sSig) / sAbs : 0, lam: lam, amp: amp, cx: cxS / n, cy: cyS / n });
     }
     function med(a) { a = a.filter(function (v) { return isFinite(v); }).sort(function (u, v) { return u - v; }); return a.length ? a[a.length >> 1] : NaN; }
+    /* (2026-11-03) 결 장 휘어짐 — 결을 따라 curvLook px 갔을 때 결 방향이 도는 각(°/px)의 중앙값. 직모/곱슬을 가르는 값.
+     *  선 하나하나의 곧음(straightFrac)은 못 씀: 곱슬은 선이 크게 꺾이는 자리에서 끊겨 짧은 곧은 조각만 남고, 직모는 긴 선이 두상 곡선·끝 C컬로 굽어 보임
+     *  (곱슬 실사 2장 곧은 선 비율 0.82·0.61 > 직모 실사 0.52~). 실사 13장: 곱슬 0.99·1.05 · 직모 11장 0.32~0.76 (800px 분석 크기) */
+    var cvs = [], cl = GO.curvLook || 6, cx0, cy0;
+    for (cy0 = rr; cy0 < Hd - rr; cy0 += 3) for (cx0 = rr; cx0 < Wd - rr; cx0 += 3) {
+      var ci = cy0 * Wd + cx0; if (!mask[ci]) continue; var ca = ang[ci], cx2 = Math.round(cx0 + cl * Math.cos(ca)), cy2 = Math.round(cy0 + cl * Math.sin(ca));
+      if (cx2 < 0 || cy2 < 0 || cx2 >= Wd || cy2 >= Hd) continue; var cj = cy2 * Wd + cx2; if (!mask[cj]) continue;
+      var cd = Math.abs(ang[cj] - ca) % Math.PI; if (cd > Math.PI / 2) cd = Math.PI - cd; cvs.push(cd * 57.2958 / cl);
+    }
+    var fieldCurv = med(cvs);
     var bent = lines.filter(function (l) { return !l.straight; });
     // (2026-10-12i) 중앙값만이 아니라 선 하나하나를 넘김 — [머리 위→아래 자리 0~1, 가로 자리 0~1, 파장px, 진폭px, 고리 정도, 곧은 선이면 1]
     var yMn = Hd, yMx = 0, xMn = Wd, xMx = 0, q3; for (q3 = 0; q3 < Wd * Hd; q3 += 2) if (mask[q3]) { var yy3 = (q3 / Wd) | 0, xx3 = q3 - yy3 * Wd; if (yy3 < yMn) yMn = yy3; if (yy3 > yMx) yMx = yy3; if (xx3 < xMn) xMn = xx3; if (xx3 > xMx) xMx = xx3; }
     var dy3 = Math.max(1, yMx - yMn), dx3 = Math.max(1, xMx - xMn);
     var all = lines.map(function (l) { return [(l.cy - yMn) / dy3, (l.cx - xMn) / dx3, l.lam, l.amp, l.loop, l.straight ? 1 : 0]; });
-    return { all: all, hairTopPx: yMn, hairBotPx: yMx, lines: lines.length, bent: bent.length, straightFrac: lines.length ? 1 - bent.length / lines.length : 1,
+    return { fieldCurv: fieldCurv, all: all, hairTopPx: yMn, hairBotPx: yMx, lines: lines.length, bent: bent.length, straightFrac: lines.length ? 1 - bent.length / lines.length : 1,
       loop: med(bent.map(function (l) { return l.loop; })), lamPx: med(bent.map(function (l) { return l.lam; })), ampPx: med(bent.map(function (l) { return l.amp; })) };
   }
   // 사진마다 identity에 붙임(42번의 컬 재기와 같은 자리)
@@ -846,3 +857,49 @@ var SEG_ORIENT = (function () {
   console.log(TAG + ' 설치 — 사진 결을 ' + SO.orientStepPx + 'px마다 저장(예전: 세로줄마다 12곳) · 머리 영역을 이 손님 머리색·결 무늬로 다시 찾음. 새로 분석하는 사진부터 적용 · 끄기 SEG_ORIENT.dense=false / .regrow=false');
   return SO;
 })();
+
+/* ══════════════════════════════════════════════════════════════════
+   GRAIN_HIRES (2026-11-03) — 결은 원본 해상도로 읽고, 결과만 분석 크기로 모음
+   사용자: "계산할 때는 원본 해상도로 계산하고, 보여주기 위해 표시하는 사진만 해상도 줄여서" · "계산하기나 시간을 너무 잡아먹지 않는 선에서 최고해상도로"
+   예전: 분석 사진은 긴 변 800(SUBJECT_ZOOM 상자 = 머리 폭의 3.35배 높이) → 원본이 좋아도 머리 폭 ≈ 240px에서 멈춤.
+   지금(03b computeOrientation 직전): 원본에서 머리 둘레 상자만 잘라 배율 s(≤ 원본이 가진 만큼 · ≤ maxUp · 잘라낸 픽셀 ≤ maxPx)로 결을 읽음 →
+     분석 사진 한 칸 = s×s 칸의 이중각 평균으로 모음(뒤 단계는 지금과 같은 좌표·같은 자료).
+   px로 정한 다듬기·선 모양 값은 s배(같은 cm를 보게) · 가는 무늬 필터(파장 4px)만 그대로(더 가는 결을 봄).
+   선 모양 값(파장·진폭·휘어짐·머리 위아래)은 분석 px로 되돌려 둠 — 17b가 cm로 바꿀 때 같은 배율.
+   끄기 GRAIN_HIRES.on=false · 예산 GRAIN_HIRES.maxPx(잘라 읽는 픽셀 수) · 진단 GRAIN_HIRES.stats
+   ══════════════════════════════════════════════════════════════════ */
+var GRAIN_HIRES = Object.assign({ on: true, maxPx: 700000, maxUp: 3, minGain: 1.15, pad: 8, _inHi: false, stats: {} }, (typeof window !== 'undefined' && window.GRAIN_HIRES) || {});
+/* 배율 정하기 — kOrig: 분석 1px당 원본 px · bw,bh: 머리 상자(분석 px) */
+GRAIN_HIRES.scaleFor = function (kOrig, bw, bh) {
+  var G = GRAIN_HIRES, sB = Math.sqrt(G.maxPx / Math.max(1, bw * bh));
+  var s = Math.min(kOrig, sB, G.maxUp);
+  return s >= G.minGain ? s : 0;
+};
+/* 잘라 읽기 — cropPx/cropMask(cw×ch, 배율 s, 분석 좌표 (bx0,by0)에서 시작) → 분석 크기(w×h) 결 {angle, coherence} */
+GRAIN_HIRES.readCrop = function (cropPx, cropMask, cw, ch, s, bx0, by0, w, h, maskBuf) {
+  var G = GRAIN_HIRES, GO = (typeof GABOR_ORIENT !== 'undefined') ? GABOR_ORIENT : null, saved = {}, keys = ['refineSig', 'refineSigL', 'curvLook', 'pathSmooth', 'shapeStep', 'shapeMaxLen', 'shapeMinLen'];
+  if (GO) keys.forEach(function (k) { saved[k] = GO[k]; if (typeof GO[k] === 'number') GO[k] = GO[k] * s; });
+  if (GO && GO.shapeStep) GO.shapeStep = Math.round(GO.shapeStep);
+  G._inHi = true; var f;
+  try { f = computeHairOrientationField(cropPx, cropMask, cw, ch); }
+  finally { G._inHi = false; if (GO) keys.forEach(function (k) { GO[k] = saved[k]; }); }
+  var N = w * h, A = new Float32Array(N), C = new Float32Array(N), x, y;
+  for (y = 0; y < h; y++) for (x = 0; x < w; x++) {
+    var i = y * w + x; if (!maskBuf[i]) continue;
+    var u0 = Math.floor((x - bx0) * s), v0 = Math.floor((y - by0) * s), u1 = Math.max(u0 + 1, Math.floor((x + 1 - bx0) * s)), v1 = Math.max(v0 + 1, Math.floor((y + 1 - by0) * s));
+    var cs = 0, sn = 0, cc = 0, n = 0, u, v;
+    for (v = Math.max(0, v0); v < Math.min(ch, v1); v++) for (u = Math.max(0, u0); u < Math.min(cw, u1); u++) {
+      var j = v * cw + u; if (!cropMask[j]) continue; var a = f.angle[j], k = f.coherence[j] + 1e-3; cs += Math.cos(2 * a) * k; sn += Math.sin(2 * a) * k; cc += f.coherence[j]; n++;
+    }
+    if (n) { A[i] = 0.5 * Math.atan2(sn, cs); C[i] = cc / n; }
+  }
+  if (GO && GO.last && GO.last.shape) {                                   // 선 모양 값은 분석 px로
+    var sh = GO.last.shape;
+    if (isFinite(sh.fieldCurv)) sh.fieldCurv *= s;
+    ['lamPx', 'ampPx'].forEach(function (k) { if (isFinite(sh[k])) sh[k] /= s; });
+    if (isFinite(sh.hairTopPx)) sh.hairTopPx = sh.hairTopPx / s + by0; if (isFinite(sh.hairBotPx)) sh.hairBotPx = sh.hairBotPx / s + by0;
+    if (sh.all) sh.all.forEach(function (l) { l[2] /= s; l[3] /= s; });
+    GO.last.w = w; GO.last.h = h;
+  }
+  return { angle: A, coherence: C };
+};
