@@ -1618,7 +1618,7 @@ function paintScalpFromPhoto(geo, skull, kIn, mat){
     let aeCount = 0;
     const AE = SCALP_SKIN.aboveEar, AEon = !!(rimS && AE && AE.on && rimS.earMy != null);
     const aeW = new Float32Array(pos.count), rimW = new Float32Array(pos.count);
-    const bandAcc = [0,0,0,0,0,0], bandN = [0,0];
+    const band = [], bandN = [0,0];
     const col = new Float32Array(pos.count * 3);
     for(let i=0;i<pos.count;i++){
       const mx = pos.getX(i) * skull.a * kIn;
@@ -1643,7 +1643,7 @@ function paintScalpFromPhoto(geo, skull, kIn, mat){
       }
       if(rimS){ const fc = rimS(mx, my, uz); if(fc){ const w = fc[3]; r = r*(1-w) + fc[0]*w; g = g*(1-w) + fc[1]*w; b = b*(1-w) + fc[2]*w; rimCount++; rimW[i] = w;
         /* 턱–뺨 띠(턱 위 · 귀 아래 · 옆쪽 · 얼굴 살이 거의 다 덮은 정점)의 최종 색을 좌우 따로 모음 */
-        if(AEon && w > 0.6 && my < rimS.earMy && (nbChin == null || my > nbChin) && Math.abs(ux) > AE.sideFrom){ const k = ux >= 0 ? 0 : 3; bandAcc[k] += r; bandAcc[k+1] += g; bandAcc[k+2] += b; bandN[ux >= 0 ? 0 : 1]++; } } }
+        if(AEon && w > 0.6 && my < rimS.earMy && (nbChin == null || my > nbChin) && Math.abs(ux) > AE.sideFrom){ band.push(ux, uz, r, g, b); bandN[ux >= 0 ? 0 : 1]++; } } }
       if(neckS && my < nbTop){
         const w = my <= nbFull ? 1 : 1 - (my - nbFull) / Math.max(1e-4, nbTop - nbFull);
         const t = w * w * (3 - 2 * w);
@@ -1658,18 +1658,16 @@ function paintScalpFromPhoto(geo, skull, kIn, mat){
     if(rimCount){ const rs = SCALP_SKIN.faceRim.stat ? SCALP_SKIN.faceRim.stat() : null; console.log('[3D·두피색·얼굴 옆] 뺨·이마 옆 두피면 정점 ' + rimCount + '개에 그 자리 얼굴 살' + (rs ? ' — 테두리 안 실제 픽셀 ' + rs.pixel + ' · 못 찾아 떼어 온 살(격자) ' + rs.grid : '') + ' (끄기 SCALP_SKIN.faceRim.on=false · 픽셀 끄기 .pixel=false)'); }
     /* (2026-11-03b) 귀 위 옆머리 = 턱–뺨 띠와 <b>같은 색</b> — 사용자: "결과가 똑같아서 다시 온거야 … 턱에서 뺨사이 두피 색깔이랑 같아져야돼."
        예전(11-03)은 관자·눈가 옆 테두리 픽셀을 따로 집어(머리카락·눈가 그늘 가까이) 아래 띠와 다른 색이 나왔음.
-       이제 위 패스에서 턱–뺨 띠 정점에 최종으로 칠해진 색의 좌우 평균을 그대로 씀(한쪽이 비면 반대쪽) · 얼굴 살(faceRim)이 이미 덮은 만큼은 양보. */
+       이제 위 패스에서 턱–뺨 띠 정점에 최종으로 칠해진 색을 모아, 정점마다 가장 가까운 띠 정점 색 그대로(11-03c) · 얼굴 살(faceRim)이 이미 덮은 만큼은 양보. */
     let aeSrc = '';
     if(AEon){
-      let cL = bandN[0] ? [bandAcc[0]/bandN[0], bandAcc[1]/bandN[0], bandAcc[2]/bandN[0]] : null;
-      let cR = bandN[1] ? [bandAcc[3]/bandN[1], bandAcc[4]/bandN[1], bandAcc[5]/bandN[1]] : null;
-      if(!cL) cL = cR; if(!cR) cR = cL;
-      aeSrc = cL ? '턱–뺨 띠 색(정점 +x ' + bandN[0] + ' · −x ' + bandN[1] + ')' : '띠를 못 찾아 얼굴 테두리 살';
+      /* (2026-11-03c) 평균 안 씀 — 사용자: "평균값으로 넣지 말라 그랬는데". 귀 위 정점마다 <b>같은 쪽 · 앞뒤 자리(z)가 가장 가까운</b> 턱–뺨 띠 정점 하나의 최종 색을 그대로 */
+      const nearBand = (ux, uz) => { let bi = -1, bd = 1e9, bo = -1, bdo = 1e9; for(let j = 0; j < band.length; j += 5){ const d = Math.abs(band[j+1] - uz) + 0.25 * Math.abs(Math.abs(band[j]) - Math.abs(ux)); if((band[j] >= 0) === (ux >= 0)){ if(d < bd){ bd = d; bi = j; } } else if(d < bdo){ bdo = d; bo = j; } } const k = bi >= 0 ? bi : bo; return k >= 0 ? [band[k+2], band[k+3], band[k+4]] : null; };
+      aeSrc = band.length ? '턱–뺨 띠에서 같은 쪽·같은 앞뒤 자리 정점 색 그대로(띠 정점 +x ' + bandN[0] + ' · −x ' + bandN[1] + ' · 평균 안 씀)' : '띠를 못 찾아 얼굴 테두리 살';
       for(let i=0;i<pos.count;i++){
         let wa = aeW[i] * (1 - rimW[i]); if(!(wa > 0.001)) continue;
-        let sc = null;
-        if(cL){ sc = pos.getX(i) >= 0 ? cL : cR; }
-        else { const mx = pos.getX(i) * skull.a * kIn, my = pos.getY(i) * skull.b * kIn + 0.15; sc = rimS.side(mx, my); }
+        let sc = band.length ? nearBand(pos.getX(i), pos.getZ(i)) : null;
+        if(!sc){ const mx = pos.getX(i) * skull.a * kIn, my = pos.getY(i) * skull.b * kIn + 0.15; sc = rimS.side(mx, my); }
         col[i*3] = col[i*3]*(1-wa) + sc[0]*wa; col[i*3+1] = col[i*3+1]*(1-wa) + sc[1]*wa; col[i*3+2] = col[i*3+2]*(1-wa) + sc[2]*wa;
         aeCount++;
       }
