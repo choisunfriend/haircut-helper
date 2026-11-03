@@ -1750,6 +1750,7 @@ function buildHairStrandsFromPaths(){
     const c = new THREE.Color();
     for(let si=0; si<v.rec.strands.length; si+=STRAND_SAMPLE_3D){
       const st = v.rec.strands[si];
+      const stP = (typeof RAW3D !== 'undefined' && RAW3D.fine && st.fine && st.fine.length >= 2) ? st.fine : st.pts;   // (2026-11-03) 촘촘한 점으로 올림 — 고리가 점 사이에서 사라지지 않게
       c.set(st.color);
       /* 점마다 다른 실측색(HAIR_PIXEL_COLOR)이 있으면 3D 미리보기도 그걸 쓴다 —
          안 그러면 2D 화면만 결이 살고 3D는 예전 단색이라 둘이 달라 보인다. */
@@ -1780,10 +1781,10 @@ function buildHairStrandsFromPaths(){
          선분을 이미 구워버리면 정렬 결과가 3D 화면에는 반영되지 않고 canonical
          에만 들어가서 두 화면이 또 갈라진다(예전에 실제로 겪었던 그 구조). */
       const worldCols = [];
-      const nSeg = Math.max(1, st.pts.length - 1);
-      for(let i=0;i<st.pts.length;i++){
+      const nSeg = Math.max(1, stP.length - 1);
+      for(let i=0;i<stP.length;i++){
         t = hairLayerAt(tLayer, i, nSeg);   // 뿌리는 두피 근처 → 자기 층으로
-        const p = st.pts[i];
+        const p = stP[i];
         const mxRaw = (p.x - v.cx) * v.s;
         const mx = job.mirrored ? -mxRaw : mxRaw; // 거울 뷰는 x반전(그 방향에서 본 좌우가 맞도록)
         const my = mapY(v, p.y);
@@ -1858,14 +1859,14 @@ function buildHairStrandsFromPaths(){
         const rim = 0.05 * t + 0.11 * t * facing;
         let cc = c;
         if(stCols){   // 뿌리(i=0)~끝을 조각 색에 대응시킨다
-          cSeg.set(stCols[Math.min(stCols.length-1, Math.floor(i / st.pts.length * stCols.length))]);
+          cSeg.set(stCols[Math.min(stCols.length-1, Math.floor(i / stP.length * stCols.length))]);
           cc = cSeg;
         }
         worldCols.push(Math.min(1, cc.r * k + rim), Math.min(1, cc.g * k + rim), Math.min(1, cc.b * k + rim));
       }
       if(worldPts.length >= 2){
         // ── 결 정렬 — 실측 결 필드 쪽으로 진행 방향을 되돌린다 ──
-        let aligned = field3D
+        let aligned = (field3D && (typeof RAW3D === 'undefined' || RAW3D.fieldAlign))   // (2026-11-03) 기본 끔 — ?r3align=1
           ? alignStrandPtsToField3D(worldPts, field3D, a, fieldAcc)
           : worldPts;
         /* ── 세그멘테이션 다듬기 — 머리카락이 없는 자리로 들어가면 거기서 끝 ──

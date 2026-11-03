@@ -89,6 +89,17 @@ function rawTraceStrandPath(ix, sy, targetLen, jitterSeed, env, rootSec, stopAtE
     if (env.maskAt(pts[j].x, pts[j].y)) offRun = 0;
     else if (++offRun >= 3) { exitIdx = j - offRun; if (stopAtExit) { pts.length = j + 1; } break; }
   }
+  if (typeof RAW3D !== 'undefined' && RAW3D.fine) {                          // (2026-11-03) 3D로 올릴 촘촘한 점 — 같은 그은 길 위, 간격 keepLen/div
+    var dv = RAW3D.fineDiv || 5, fl = keepLen / dv, F = [D[0]], nd = fl;
+    for (j = 1; j < D.length; j++) {
+      var bx = D[j - 1].x, by = D[j - 1].y, sl2 = Math.hypot(D[j].x - bx, D[j].y - by), u2 = 0;
+      while (sl2 - u2 >= nd - 1e-9) { u2 += nd; var t2 = u2 / sl2; F.push({ x: bx + (D[j].x - bx) * t2, y: by + (D[j].y - by) * t2 }); nd = fl; }
+      nd -= (sl2 - u2);
+    }
+    var lf = F[F.length - 1]; if (Math.hypot(last.x - lf.x, last.y - lf.y) > fl * 0.5) F.push({ x: last.x, y: last.y });
+    if (F.length > (pts.length - 1) * dv + 1) F.length = (pts.length - 1) * dv + 1;
+    F.div = dv; pts.fine = F;
+  }
   St.pts += pts.length;
   pts.maskExitIdx = exitIdx >= 0 ? Math.max(1, exitIdx) : pts.length - 1;
   pts.flowEndIdx = null;

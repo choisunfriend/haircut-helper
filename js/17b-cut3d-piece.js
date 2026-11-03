@@ -1848,7 +1848,7 @@ var REGROW = (function () {
     // (2026-10-10s) 직모 뼈대 — 곱슬 사진이면 결을 한 바퀴보다 넓게 평균 내어 읽음(사진의 컬을 뼈대에 복사하지 않음 · 컬은 나중에 잰 값으로 얹음)
     var straightOn = false, straightNote = [], pitchCs = [], straightWinCm = 0;
     try {
-      var pcS = G.straightCurly ? G.photoCurl() : null;
+      var pcS = (G.straightCurly && (typeof RAW3D === 'undefined' || RAW3D.axisStraight)) ? G.photoCurl() : null;   // (2026-11-03) 기본 끔 — ?r3axis=1
       if (pcS && pcS.raw >= G.straightCurlMin) {
         straightOn = true;
         cams.forEach(function (cam) {
@@ -1872,7 +1872,7 @@ var REGROW = (function () {
      *  곱슬·웨이브 사진(방향 필터 선이 굽어 있음)은 결을 "그 사진에서 잰 파장 × axisK" 반경으로 고르게 한 뒤 걸음(직모 뼈대 field 방식) → 굴곡에서 벗어날 일이 없는 큰 흐름(퍼짐·어깨 앞 흐름은 남음).
      *  편 길 창 = 방향 필터 파장 중앙값(예전: 잰 한 바퀴 — 웨이브 손님 11.3cm로 퍼짐까지 지움). 굴곡은 61번이 사진 선 값 그대로 얹음(68번 옮겨심기 뒤). */
     try {
-      var WSg = (G.axisGabor && W.PHOTO_CURL && typeof W.PHOTO_CURL.waveShape === 'function') ? W.PHOTO_CURL.waveShape() : null;
+      var WSg = (G.axisGabor && (typeof RAW3D === 'undefined' || RAW3D.axisStraight) && W.PHOTO_CURL && typeof W.PHOTO_CURL.waveShape === 'function') ? W.PHOTO_CURL.waveShape() : null;
       if (WSg && WSg.nAll > 0 && isFinite(WSg.lamCm) && WSg.lamCm > 1) {
         straightOn = true; straightNote = ['방향 필터 축'];
         cams.forEach(function (cam) {
@@ -2500,7 +2500,7 @@ var REGROW = (function () {
     }
     function smoothPts(pts) {        // 양 끝 고정, 가운데만 이웃 평균 쪽으로
       var n = pts.length, it, i, out;
-      if (n < 4 || !(G.smooth > 0)) return pts;
+      if (n < 4 || !(G.smooth > 0) || (typeof RAW3D !== 'undefined' && !RAW3D.smooth)) return pts;   // (2026-11-03) 기본 끔 — ?r3smooth=1
       for (it = 0; it < G.smooth; it++) {
         out = new Array(n); out[0] = pts[0]; out[n - 1] = pts[n - 1];
         for (i = 1; i < n - 1; i++) out[i] = { x: pts[i].x * 0.5 + (pts[i - 1].x + pts[i + 1].x) * 0.25, y: pts[i].y * 0.5 + (pts[i - 1].y + pts[i + 1].y) * 0.25, z: pts[i].z * 0.5 + (pts[i - 1].z + pts[i + 1].z) * 0.25 };
