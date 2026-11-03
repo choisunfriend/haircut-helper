@@ -988,6 +988,11 @@ const SCALP_SKIN = {
      t ≤ 1 이면 100% · 1 → 1+fade 에 걸쳐 0까지, 얼굴 살 격자(얼굴 타원 안 · 머리카락·눈·눈썹·입·번들 뺀 실제 픽셀)를
      <b>타원 안쪽 inner 자리로 끌어들인 점</b>에서 집어 칠함 → 이마 옆은 이마 살, 뺨 옆은 뺨 살. 평균색 안 씀(칸 색 그대로 · 빈 칸만 좌우 반대쪽·이웃).
      턱 아래는 그 뒤 목 띠(neckBand)가 덮음. 되돌리기 SCALP_SKIN.faceRim.on = false */
+  /* (2026-11-03) 귀 위쪽 옆머리 두피면도 <b>얼굴 살</b>로 — 사용자: "귀 위쪽으로의 두피도 아래쪽처럼 얼굴피부를 그냥 씌워줘."
+     귀 아래(뺨·턱 옆)는 faceRim·neckBand가 얼굴/목 살을 쓰는데, 귀 위 옆머리는 이마 띠 색 + 뒤쪽 어둡게(backShade)라 회색·보랏빛으로 떠 보였다.
+     두상 옆(|단위구 x| sideFrom→sideFull)이고 귀 높이(lm.earY) − below 위인 정점은 그 쪽 얼굴 테두리 살(관자·눈가 옆 실제 픽셀 · 못 찾으면 격자)로 칠함 ·
+     backShade 안 곱함(얼굴과 같은 밝기). 정수리 가운데·뒤통수 가운데는 그대로. 끄기 SCALP_SKIN.aboveEar.on = false */
+  aboveEar: { on: true, sideFrom: 0.25, sideFull: 0.55, below: 0.06, blend: 0.08 },
   faceRim: { on: true, pixel: true, pixT: 1.0, ringFrac: 0.08, pixHi: 1.15, fullT: 1.22, fade: 0.45, inner: 0.9, NX: 16, NY: 14, frontFrom: 0.05, frontFull: 0.35 },    // (2026-10-31) 턱 아래 두피면 = 사진 목 색 · 그 위 0.28단위(≈5cm)에 걸쳐 섞음 — paintScalpFromPhoto   // 뒤통수(z=−1)에서의 밝기 배율. 앞(z=+1)은 1.0
   /* ── 턱 언저리 두피면·목이 <b>얼굴보다 누렇고 어둡다</b> (2026-09-16) ──────────────
      사용자: "3D 결과보기 턱부분이 깔끔하게 정리됐는데, 컬러가 얼굴컬러랑 좀 차이가 있어서
@@ -1441,8 +1446,19 @@ function makeFaceRimSampler(){
       pixCache.set(key, out); return out;
     }
     SCALP_SKIN.faceRim.stat = () => ({ pixel: nPix, grid: nGrid });
+    /* (2026-11-03) 귀 위 옆머리 두피면 = 그 쪽 얼굴 테두리 살(관자·눈가 옆) — SCALP_SKIN.aboveEar 배너 */
+    let nSide = 0;
+    const sideSkin = function(mx, my){
+      const u = pr.toImgX(mx), v = pr.toImgY(my), sx = u >= fb.cx ? 1 : -1;
+      const dy = Math.max(-0.8, Math.min(0.3, (v - fb.cy) / fb.ry)), dx = sx * Math.sqrt(Math.max(0.04, 1 - dy * dy));
+      let c = FR.pixel !== false ? edgePixel(dx, dy, 1) : null;
+      if(!c) c = G.at(fb.cx + dx * FR.inner * fb.rx, fb.cy + dy * FR.inner * fb.ry);
+      nSide++;
+      return [Math.min(1, Math.max(0, c[0]/255)), Math.min(1, Math.max(0, c[1]/255)), Math.min(1, Math.max(0, c[2]/255))];
+    };
+    let earMy = null; try{ if(typeof lm.earY === 'number' && typeof pr.toMeshY === 'function') earMy = pr.toMeshY(lm.earY); }catch(e){ earMy = null; }
     /* mx,my = 메쉬 좌표 · uz = 단위구 z(앞 +1). 돌려 줌: [r,g,b,w] (w=0이면 안 씀) */
-    return function(mx, my, uz){
+    const fn = function(mx, my, uz){
       if(!(uz > ffA)) return null;
       const u = pr.toImgX(mx), v = pr.toImgY(my);
       const dx = (u - fb.cx) / fb.rx, dy = (v - fb.cy) / fb.ry, t = Math.hypot(dx, dy);
@@ -1459,6 +1475,8 @@ function makeFaceRimSampler(){
       }
       return [Math.min(1, Math.max(0, c[0]/255)), Math.min(1, Math.max(0, c[1]/255)), Math.min(1, Math.max(0, c[2]/255)), w];
     };
+    fn.side = sideSkin; fn.earMy = earMy; fn.sideN = () => nSide;
+    return fn;
   }catch(e){ console.warn('[3D·두피색·얼굴 옆] 얼굴 살을 못 뗌 — 그대로 둠', e); return null; }
 }
 function makeScalpPhotoSampler(){
@@ -1597,6 +1615,7 @@ function paintScalpFromPhoto(geo, skull, kIn, mat){
     const nbFull = nbChin != null ? nbChin + NECK_SHAPE.topAboveChin : 0;
     const nbTop  = nbFull + (NB ? NB.fade : 0);
     let nbCount = 0;
+    let aeCount = 0;
     const col = new Float32Array(pos.count * 3);
     for(let i=0;i<pos.count;i++){
       const mx = pos.getX(i) * skull.a * kIn;
@@ -1612,6 +1631,13 @@ function paintScalpFromPhoto(geo, skull, kIn, mat){
         sh = photoSkin ? (nz < 0 ? 1 + (1 - BS.back) * nz : 1) : BS.back + (1 - BS.back) * (0.5 + 0.5*nz);
       }
       let r = c[0]*sh, g = c[1]*sh, b = c[2]*sh;
+      const AE = SCALP_SKIN.aboveEar;
+      if(rimS && rimS.side && AE && AE.on && rimS.earMy != null){
+        let ws = (Math.abs(ux) - AE.sideFrom) / Math.max(1e-3, AE.sideFull - AE.sideFrom); ws = Math.max(0, Math.min(1, ws));
+        let wy = (my - (rimS.earMy - AE.below - AE.blend)) / Math.max(1e-3, AE.blend); wy = Math.max(0, Math.min(1, wy));
+        let wa = ws * wy; wa = wa * wa * (3 - 2 * wa);
+        if(wa > 0.001){ const sc = rimS.side(mx, my); r = r*(1-wa) + sc[0]*wa; g = g*(1-wa) + sc[1]*wa; b = b*(1-wa) + sc[2]*wa; aeCount++; }
+      }
       if(rimS){ const fc = rimS(mx, my, uz); if(fc){ const w = fc[3]; r = r*(1-w) + fc[0]*w; g = g*(1-w) + fc[1]*w; b = b*(1-w) + fc[2]*w; rimCount++; } }
       if(neckS && my < nbTop){
         const w = my <= nbFull ? 1 : 1 - (my - nbFull) / Math.max(1e-4, nbTop - nbFull);
@@ -1625,6 +1651,7 @@ function paintScalpFromPhoto(geo, skull, kIn, mat){
       col[i*3] = r; col[i*3+1] = g; col[i*3+2] = b;
     }
     if(rimCount){ const rs = SCALP_SKIN.faceRim.stat ? SCALP_SKIN.faceRim.stat() : null; console.log('[3D·두피색·얼굴 옆] 뺨·이마 옆 두피면 정점 ' + rimCount + '개에 그 자리 얼굴 살' + (rs ? ' — 테두리 안 실제 픽셀 ' + rs.pixel + ' · 못 찾아 떼어 온 살(격자) ' + rs.grid : '') + ' (끄기 SCALP_SKIN.faceRim.on=false · 픽셀 끄기 .pixel=false)'); }
+    if(aeCount) console.log('[3D·두피색·귀 위] 귀 위 옆머리 두피면 정점 ' + aeCount + '개에 그 쪽 얼굴 테두리 살 (끄기 SCALP_SKIN.aboveEar.on=false)');
     if(nbCount) console.log('[3D·두피색] 턱 띠에 사진 목 색 적용 — 정점 ' + nbCount + '개 (끄기 SCALP_SKIN.neckBand.on=false)');
     geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
     /* 정점색은 재질색과 <b>곱해진다</b> — 재질색을 흰색으로 두지 않으면 두 번 어두워진다. */
