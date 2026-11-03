@@ -3038,7 +3038,14 @@ var REGROW = (function () {
       prev = { x: dt.x * sgn, y: dt.y * sgn, z: dt.z * sgn };
 
       var loopR2 = 0, loopBack = 0, kinkMin = 0, turnH = [], arcK = 0; try { var cmL = modelCmPerUnit() || 18.6; loopR2 = Math.pow(G.loopCm / cmL, 2); loopBack = G.loopBackCm / cmL; kinkMin = G.kinkMinCm / cmL; } catch (e) {}
+      /* (2026-11-03f) 중복 걷기 빼기 — 사용자: "확실하게 중복이나 쓸모없는 동작있는지 봐줘"
+       *  예전: 가닥마다 끝까지 걷고(걸음 56만 · 걸음마다 머리 영역 판정) 바깥(step)에서 copyFromStrands가 <b>뿌리 점 하나만</b> 남기고 통째로 바꿔 끼움 → 96% 가닥의 걷기가 버려짐.
+       *      게다가 색(bakeStrandColors3D)은 버려질 걸은 경로로 구워져 그려지는 옮긴 가닥과 점 번호가 안 맞았음.
+       *  지금: 뿌리에서 먼저 옮길 조각을 찾고, 있으면 "사진에 머리가 없는 뿌리" 판정(3점)까지만 걷고 멈춤 → 그 가닥으로 바꿈(뒤 정리·다듬기 없이 예전처럼 그대로) · 색도 그 가닥으로.
+       *  없으면 예전처럼 끝까지 걷기. 되돌리기 REGROW.copyEarly=false */
+      var cpEarly = (G.strandCopy && G.copyEarly !== false && SF && SF.strc) ? copyFromStrands(F) : null;
       for (k = 0; k < (G.lenCap ? G.maxSteps : G.maxSteps * 3); k++) {
+        if (cpEarly && pts.length >= 3 && miss === 0) { stop = 'copy'; break; }
         if (G.kinkStop && pts.length >= 3) {                                 // (2026-10-24) 결이 끊긴 곳에서 끝(시험)
           var ka = pts[pts.length - 3], kb = pts[pts.length - 2], kc = pts[pts.length - 1];
           var u1x = kb.x - ka.x, u1y = kb.y - ka.y, u1z = kb.z - ka.z, u2x = kc.x - kb.x, u2y = kc.y - kb.y, u2z = kc.z - kb.z;
@@ -3223,7 +3230,8 @@ var REGROW = (function () {
       }
       if (pts.length < 3) { st.skipped++; (info.skipY[sec] || (info.skipY[sec] = [])).push(rootY); return null; }   // 사진에 머리가 없는 자리 — 그루터기를 억지로 세우지 않음
       (info.plantY[sec] || (info.plantY[sec] = [])).push(rootY);
-      if (G.backFix && G.backFoldAfter && free && bw > 0 && exitI >= 0 && pts.length > exitI + 1) {   // (2026-10-12d) 다 읽은 뒤: 뒤쪽에서 나온 가닥을 어깨 아래에서 뒤로 넘김(위는 읽은 그대로)
+      if (cpEarly) pts = cpEarly;
+      if (!cpEarly && G.backFix && G.backFoldAfter && free && bw > 0 && exitI >= 0 && pts.length > exitI + 1) {   // (2026-10-12d) 다 읽은 뒤: 뒤쪽에서 나온 가닥을 어깨 아래에서 뒤로 넘김(위는 읽은 그대로)
         var fK = Math.max(0, Math.min(1, bw / Math.max(1e-6, G.backFoldBw))); fK = fK * fK * (3 - 2 * fK);
         var yF = Math.min(exitY, yBody - G.backFoldDropCm / cmU), rF = Math.max(1e-6, G.backFoldRampCm / cmU), movedF = 0, iF, pF, wF;
         var dzF = -1;                                                     // (2026-10-12q) 눌러 펴지 않고 통째로 뒤로 옮김 — 사용자: "어깨가 비고 · 뒷모습 아래쪽이 퍼지질 않고 일자"
@@ -3237,8 +3245,8 @@ var REGROW = (function () {
         }
         if (movedF) { st.foldN = (st.foldN || 0) + 1; st.foldPts = (st.foldPts || 0) + movedF; }
       }
-      pts = smoothPts(pts);
-      if (straightOn && straightWinCm > 0) {                              // (2026-10-10s) 곱슬 — 사진 컬을 뼈대에서 빼고 축만 남김
+      if (!cpEarly) pts = smoothPts(pts);
+      if (!cpEarly && straightOn && straightWinCm > 0) {                              // (2026-10-10s) 곱슬 — 사진 컬을 뼈대에서 빼고 축만 남김
         var L0s = 0, L1s = 0, iS; for (iS = 1; iS < pts.length; iS++) L0s += Math.hypot(pts[iS].x - pts[iS - 1].x, pts[iS].y - pts[iS - 1].y, pts[iS].z - pts[iS - 1].z);
         var ptsS = straightenPath(straightenPath(pts, straightWinCm / cmU), straightWinCm / cmU);
         if (ptsS !== pts && WFb) { try { WFb.add(pts, ptsS); } catch (e) {} }
@@ -3248,13 +3256,13 @@ var REGROW = (function () {
       var Larc = 0, ii; for (ii = 1; ii < pts.length; ii++) Larc += Math.hypot(pts[ii].x - pts[ii - 1].x, pts[ii].y - pts[ii - 1].y, pts[ii].z - pts[ii - 1].z);
       var qi = Math.min(pts.length - 1, 6), ex = pts[qi].x - pts[0].x, ey = pts[qi].y - pts[0].y, ez = pts[qi].z - pts[0].z, el = Math.hypot(ex, ey, ez) || 1;
       var rg = { t: tRoot, free: free, L: Larc, tipY: pts[pts.length - 1].y, dx: ex / el, dy: ey / el, dz: ez / el,
-        flip: flip, stop: stop, sOn: sOn, sFree: sFree, nEst: nEst, nBack: nBack, nNeck: nNeck, steps: steps, cap: Lcap, stp: stp, cell: cellIdx, den: roots.den[cellIdx], est0: roots.est ? roots.est[cellIdx] : 0 };
+        copy: cpEarly ? 1 : 0, flip: flip, stop: stop, sOn: sOn, sFree: sFree, nEst: nEst, nBack: nBack, nNeck: nNeck, steps: steps, cap: Lcap, stp: stp, cell: cellIdx, den: roots.den[cellIdx], est0: roots.est ? roots.est[cellIdx] : 0 };
       if (TS) { TRF = null; if ((!free && (stop === 'cap' || stop === 'max')) || (st.n % Math.max(1, G.traceEvery | 0) === 0)) rg.trace = new Float32Array(TS); }
       if (nClimb) st.noClimbN = (st.noClimbN || 0) + 1;
       if (nFaceSlide) st.faceSlideN = (st.faceSlideN || 0) + 1;
       if (nDepth) st.depthFixN = (st.depthFixN || 0) + 1; if (nLift) st.liftN = (st.liftN || 0) + 1; if (thinCap > 0) st.thinRoots = (st.thinRoots || 0) + 1;
       if (nLayerIn) st.layerInN = (st.layerInN || 0) + 1; if (nLayerOut) st.layerOutN = (st.layerOutN || 0) + 1;
-      if (stop === 'mask') st.stopMask++; else if (stop === 'cap') st.stopCap++; else if (stop === 'tip') st.stopTip++; else if (stop === 'len' || stop === 'side' || stop === 'loop' || stop === 'kink') { } else st.stopMax++;
+      if (stop === 'mask') st.stopMask++; else if (stop === 'cap') st.stopCap++; else if (stop === 'tip') st.stopTip++; else if (stop === 'len' || stop === 'side' || stop === 'loop' || stop === 'kink' || stop === 'copy') { } else st.stopMax++;
       if (bw >= 0.5) st.backLen.push(Larc);
       st.steps += steps; st.est += estSteps;
 
@@ -3283,7 +3291,7 @@ var REGROW = (function () {
             for (var j = 0; j < nRoots; j++) {
               var sdd = grow(cell);
               if (!sdd) continue;
-              if (G.strandCopy && SF && SF.strc && sdd.pts && sdd.pts.length) { var cp = copyFromStrands(sdd.pts[0]); if (cp) { sdd.pts = cp; if (sdd.rg) sdd.rg.copy = 1; } }   // (2026-11-03) 정리된 사진 가닥 그대로
+              if (G.strandCopy && G.copyEarly === false && SF && SF.strc && sdd.pts && sdd.pts.length) { var cp = copyFromStrands(sdd.pts[0]); if (cp) { sdd.pts = cp; if (sdd.rg) sdd.rg.copy = 1; } }   // (2026-11-03) 정리된 사진 가닥 그대로
               out.push(sdd); st.n++;
               st.sec[sdd.sec] = (st.sec[sdd.sec] || 0) + 1;
               if (st.n % 7 === 0) {            // 통계 표본
