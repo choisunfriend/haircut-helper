@@ -513,14 +513,34 @@ var SHOT360 = (function () {
      ③ 진짜 0° = 그 장의 센서 각도 − 얼굴 yaw · 좌·우 = 0° ± sideDeg(30) · 뒤 = 0° + 180 에 가장 가까운 장
      얼굴이 한 장도 안 잡히면 예전 규칙(센서 0°·±45°·180°). 결과는 set._pick (13b VIEWS360이 같은 것을 씀) */
   Q.sideDeg = Q.sideDeg || 45;   // (2026-11-01) 30 → 45 — 사용자: "랜드마크가 확인되어야 하기 때문에 45~50도 되어야 돼" · 촬영 칸 ±45°(extra) Q.faceTieDeg = Q.faceTieDeg || 8;
+  /* (2026-11-04 fready) 저장된 세트를 불러올 때 얼굴 모델(01 faceLandmarker)이 아직 로딩 중이면 quickFaceLandmarks가 바로 null을 줘서
+     8장 전부 "얼굴 못 찾음" → 센서 규칙으로 떨어졌음(실사 360 0838: 05는 0장, 바로 뒤 13b는 -17°·-33° 등 다 찾음).
+     고침: ① 모델이 준비될 때까지 기다린 뒤 잼(최대 Q.faceWaitMs, 로드 실패면 안 기다림) ② 모델이 안 준비된 채 받은 null은 저장하지 않음(다음에 다시 잼) */
+  Q.faceWaitMs = Q.faceWaitMs || 20000;
+  function faceReady() { return typeof faceLandmarkerReady !== 'undefined' && faceLandmarkerReady && typeof faceLandmarker !== 'undefined' && !!faceLandmarker; }
+  function waitFace() {
+    if (faceReady()) return Promise.resolve(true);
+    var t0 = Date.now();
+    try { if (typeof showAI === 'function') showAI('얼굴 모델 준비 중…', '저장된 사진의 정면을 찾기 전'); } catch (e) {}
+    return new Promise(function (res) {
+      (function poll() {
+        if (faceReady()) { res(true); return; }
+        if (window.__lmDiag || Date.now() - t0 > Q.faceWaitMs) { console.warn(TAG + ' 얼굴 모델이 준비되지 않아(' + (window.__lmDiag || ((Date.now() - t0) / 1000).toFixed(0) + '초') + ') 센서 각도로 고름'); res(false); return; }
+        setTimeout(poll, 200);
+      })();
+    });
+  }
   function scanFaces(set) {
-    var fr = set.frames.filter(function (f) { return f && f.url && f._fy === undefined; }), i = 0;
     if (typeof quickFaceLandmarks !== 'function') return Promise.resolve();
+    return waitFace().then(function (ready) { if (ready) return scanFacesNow(set); });
+  }
+  function scanFacesNow(set) {
+    var fr = set.frames.filter(function (f) { return f && f.url && f._fy === undefined; }), i = 0;
     function one() {
       if (i >= fr.length) return Promise.resolve();
       var f = fr[i++];
       try { if (typeof showAI === 'function') showAI('정면 사진 찾는 중… ' + i + '/' + fr.length, Math.round(f.deg) + '° 사진 얼굴 확인'); } catch (e) {}
-      return quickFaceLandmarks(f.url, 640).then(function (r) { try { Object.defineProperty(f, '_fy', { value: r, writable: true, configurable: true, enumerable: false }); } catch (e) { f._fy = r; } }, function () {}).then(one);
+      return quickFaceLandmarks(f.url, 640).then(function (r) { if (r == null && !faceReady()) return; try { Object.defineProperty(f, '_fy', { value: r, writable: true, configurable: true, enumerable: false }); } catch (e) { f._fy = r; } }, function () {}).then(one);
     }
     return one().then(function () { try { if (typeof hideAI === 'function') hideAI(); } catch (e) {} });
   }
