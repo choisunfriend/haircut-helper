@@ -2141,6 +2141,37 @@ var REGROW = (function () {
       var gx = Math.floor(ix * cam.kx), gy = Math.floor(iy * cam.ky); if (gx < 0 || gy < 0 || gx >= cam.mw || gy >= cam.mh) return false;
       return cam.pm[gy * cam.mw + gx] > 0.5;
     }
+    /* (2026-11-03u) 마지막 다듬기 — <b>모든 가닥</b>에 같은 규칙. 사용자: "다듬기는 모든 가닥에 적용되는 거 아냐 세그먼트 영역을 잡아놨는데, 그 밖으로 나가는 거면 살리는 여유는 둬서 살리되, 영역경계에서 잘라야지"
+     *  (조정 단계 13b 다듬기는 조정 화면 그리기에만 걸려 어느 가닥에 걸렸는지 불확실 — 펌·실사 삐죽이가 정면에서 3~4cm 밖인데 남음.)
+     *  사진마다: 그 사진을 마주 보는 쪽 점(시선축 z>0)은 머리가 아니면 밖 · 반대쪽 점은 그 자리가 <b>배경</b>(사람 윤곽 밖)일 때만 밖(몸·살이면 그 사진은 판단 안 함).
+     *  ① 뿌리부터 — 어느 사진에서든 머리 영역에서 여유(hullMarginCm·hullMarginSideCm) 넘게 밖인 첫 점에서 자름(여유 안이면 살림)
+     *  ② 살아남은 가닥 끝 — 끝에서부터 영역 밖(여유 안)인 점을 잘라 영역 경계 안에서 끝나게. 끄기 REGROW.finalClip=false */
+    var fcStat = { n: 0, cut: 0, cutPts: 0, tail: 0, tailPts: 0 }; G.fcStat = fcStat;
+    function fcPoint(p) {                                                // 0 안 · 1 여유 안(영역 밖) · 2 여유 밖
+      var worst = 0;
+      for (var v = 0; v < cams.length; v++) {
+        var cam = cams[v]; if (!cam.hull) continue;
+        var o = proj(cam, p), ix = o.ix, iy = o.iy, facing = o.z > 0;
+        if (ix < 0 || iy < 0 || ix >= cam.iw || iy >= cam.ih) continue;   // 사진 밖(잘린 사진) — 판단 안 함
+        if (hairAt(cam, ix, iy)) continue;
+        if (!facing) { var pa = personAt(cam, ix, iy); if (pa !== false) continue; }   // 반대쪽은 배경일 때만
+        if (hullOut(cam, ix, iy, null)) return 2;
+        worst = 1;
+      }
+      return worst;
+    }
+    function finalClip(sdd) {
+      var q = sdd.pts, n = q.length, i, k = n, f = new Uint8Array(n); fcStat.n++;
+      for (i = 2; i < n; i++) { f[i] = fcPoint(q[i]); if (f[i] === 2) { k = i; break; } }
+      if (k < n) { fcStat.cut++; fcStat.cutPts += n - k; }
+      var e = k; while (e > 3 && f[e - 1] === 1) e--;
+      if (e < k) { fcStat.tail++; fcStat.tailPts += k - e; }
+      if (e < n) {
+        sdd.pts = q.slice(0, e); try { if (q._rgKeep) sdd.pts._rgKeep = true; if (q._rgCopy) sdd.pts._rgCopy = true; } catch (eK) {}
+        if (sdd.colors && sdd.colors.length > e) sdd.colors = sdd.colors.slice(0, e);
+        if (sdd.rg) { var L = 0; for (i = 1; i < e; i++) L += Math.hypot(q[i].x - q[i - 1].x, q[i].y - q[i - 1].y, q[i].z - q[i - 1].z); sdd.rg.L = L; sdd.rg.tipY = q[e - 1].y; }
+      }
+    }
     function faceBlocks(cam, p) {                                        // 얼굴(두피 타원 앞에 붙인 타원)이 시선을 막는가
       var fa = Es.a * 0.78, fb = Es.b * 0.7, fc = Es.c * 0.75, cx0 = 0, cy0 = CY - 0.3 * Es.b, cz0 = Es.c * 0.45;
       var R = cam.R, dx = R[6], dy = R[7], dz = R[8], x = p.x - cx0, y = p.y - cy0, z = p.z - cz0;
@@ -3372,6 +3403,7 @@ var REGROW = (function () {
               var sdd = grow(cell);
               if (!sdd) continue;
               if (G.strandCopy && G.copyEarly === false && SF && SF.strc && sdd.pts && sdd.pts.length) { var cp = copyFromStrands(sdd.pts[0]); if (cp) { sdd.pts = cp; if (sdd.rg) sdd.rg.copy = 1; } }   // (2026-11-03) 정리된 사진 가닥 그대로
+              if (G.finalClip !== false && sdd.pts && sdd.pts.length >= 3) finalClip(sdd);   // (2026-11-03u) 모든 가닥 — 아래 finalClip
               out.push(sdd); st.n++;
               st.sec[sdd.sec] = (st.sec[sdd.sec] || 0) + 1;
               if (st.n % 7 === 0) {            // 통계 표본
@@ -4520,6 +4552,7 @@ function helixMeasure(rgba,mask,W,H,angle,coh,opt){opt=opt||{};const n=opt.n||25
     L.push('  두피 밖 3D 방향(사진 두 장 이상의 결로 깊이까지): ' + (G.tri3D ? '켜짐 — 그렇게 정한 걸음 ' + (s.triN || 0) + '회 (끄기 REGROW.tri3D=false)' : '꺼짐'));
     L.push('  두피 밖 결 = 사진 평면 풀이(한 장: 사진 결 + 깊이는 직전 방향·중력 ' + (+G.lsDownK || 0) + ' 섞음 · 두 장 이상: 평면 교선 · 반지름 방향 막지 않음): ' + (G.lsFree ? '켜짐 — 그렇게 정한 걸음 ' + (s.lsN || 0) + '회 (끄기 ?lsfree=0)' : '꺼짐(예전: 원통 접선으로 올림)'));
     L.push('  머리 영역 판정: ' + (G.hullRule === 'facing' ? '마주 보는 사진 한 장이 안·밖 + 다른 사진(가리지 않은 반대편 포함)은 여유 넘게 밖일 때만 거부 — 덩어리 칸 중 다른 사진이 거부한 칸 ' + (G._facingVeto || 0) + ' · 얼굴 위 여유 없이 밖으로 본 칸 ' + (G._faceNoMarginN || 0) + ' · 옆 사진 얼굴 쪽 여유 ' + (G.sideFrontMarginCm != null ? G.sideFrontMarginCm + 'cm로 밖으로 본 횟수 ' + (G._sideFrontN || 0) + ' (되돌리기 REGROW.sideFrontMarginCm=null)' : '꺼짐') + ' (되돌리기 REGROW.hullRule=\'front\' · REGROW.faceNoMargin=false)' : G.hullRule) + ' · 얼굴 어림 안쪽 점 ' + (G.faceInsideBlocks === true ? '가림으로 봄' : '보이는 걸로 봄'));   // (2026-10-28)
+    try { var fcS = G.fcStat; L.push('  마지막 다듬기(모든 가닥 · 마주 보는 사진은 머리 아니면 밖 · 반대쪽 사진은 배경일 때만 밖): ' + (G.finalClip === false ? '꺼짐' : fcS ? '가닥 ' + fcS.n + ' 중 여유 넘게 나가 자른 ' + fcS.cut + '(점 ' + fcS.cutPts + ') · 끝이 영역 밖이라 경계에서 끝낸 ' + fcS.tail + '(점 ' + fcS.tailPts + ')' : '아직') + ' (끄기 REGROW.finalClip=false)'); } catch (eF) {}
     L.push('  껍질(사진 교집합): ' + (s.hullV ? s.hullV + ' 중 그 자리를 마주 보는 사진이 머리 영역에서 ' + G.hullMarginCm + '(정면)·' + G.hullMarginSideCm + '(옆·뒤)cm 넘게 밖이라 덩어리 밖인 걸음(덩어리를 쓰면 다른 이유로 밖인 것도 포함) ' + (s.hullN || 0) + '회 — 다른 사진이 머리라고 해도 멈춤 (예전: 다수결 · 끄기 REGROW.hullViews=[])' + ' · 사진 가닥이 그어져 머리 영역에 더한 칸 ' + (G.hullStrands === false ? '꺼짐' : Object.keys(G._hsCells || {}).map(function (k) { return k + ' ' + G._hsCells[k]; }).join(' · ') + ' (끄기 ?hullst=0)') : '안 씀(다수결)'));
     try { var hv = G.hullVisStat; L.push('  머리 영역 판정의 가림(목·몸통 기둥): ' + (hv && hv.on ? '켜짐 — 덩어리 칸 판정에서 기둥·두개골에 가려 뺀 사진 ' + hv.blk + ' · 목 아래 카메라 반대편인데 안 가려서 쓴 사진 ' + hv.use + '(예전엔 다 뺌) (끄기 ?hullvis=0)' + ' · 사람 윤곽 ' + (G.hullPerson === false ? '꺼짐' : hv.pmViews + '장 — 여유 밖 판정 중 배경 ' + hv.bg + ' · 몸·살(안 막힘) ' + hv.body + ' · 몸·살인데 막혀서 못 봄으로 뺀 ' + hv.skip + ' (끄기 REGROW.hullPerson=false)' + ' · 보이는 사진만 투표: ' + (G.hullVisVote !== false ? '켜짐(사진 픽셀만) — 사람(살·옷)이라 기권 ' + (G._visAbstain || 0) + ' · 밖 표 ' + (G._visNo || 0) + '(그중 마주 보는 사진의 살 ' + (G._visSkinNo || 0) + ' · 끄기 ?vvskin=0)' + ' (끄기 ?hullvv=0)' : '꺼짐') + ' · 거부는 배경 픽셀만(몸·살 = 기권): ' + (G.hullVisVote !== false ? '안 씀' : G.hullBgOnly !== false ? '켜짐 — 기권 ' + (G._bgAbstain || 0) + '회 (끄기 ?hullbg=0)' : '꺼짐')) : (G.hullVis === false ? '꺼짐(예전: 목 아래 반대편 사진은 다 뺌)' : '목 치수 없음 — 예전 규칙'))); } catch (e) {}
     L.push('  직모 뼈대(곱슬 사진 · 큰 흐름만 따라 기름 · 컬은 그 위에 얹음): ' + (s.straight ? '켜짐 — ' + s.straight + ' (끄기 REGROW.straightCurly=false)' : '안 씀'));
