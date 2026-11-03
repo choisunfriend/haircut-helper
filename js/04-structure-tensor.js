@@ -319,7 +319,7 @@ function computeHairOrientationField(pixels, maskBuf, w, h){
  */
 var GABOR_ORIENT = (function () {
   var W = window, TAG = '[결 방향 필터]';
-  var GO = Object.assign({ on: true, replace: true, stride: 1, prune: 0.02, interp: true, n: 12, lambda: 4, refine: true, stats: { calls: 0, ms: 0, px: 0, dMed: null },
+  var GO = Object.assign({ on: true, replace: true, stride: 1, prune: 0.02, interp: true, n: 12, lambda: 4, refine: true, smooth: false, stats: { calls: 0, ms: 0, px: 0, dMed: null },
     texRel: 1.0, refineSig: 6, refineSigL: 16, fillMin: 0.35,          // (2026-11-02) 실사 결 다듬기 — 아래 refine 블록 설명
     pathSmooth: 6, straightSteep: 0.045 }, W.GABOR_ORIENT || {});      // (2026-11-02) 선 모양: 경로 평활(걸음) · 곧은 선 = 진폭÷파장 < straightSteep — shapeOf 설명
   var KC = {};
@@ -442,7 +442,7 @@ var GABOR_ORIENT = (function () {
       var SP = sparse(KK, Wd), RV = new Float32Array(n), ang = new Float32Array(N), conf = new Float32Array(N), bestA = new Float32Array(N), idx, x, y, k, i, j, cnt = 0;
       /* (2026-10-25e) 머리 영역 안 픽셀로만 — 필터 창(반경 r)에 머리 밖 칸이 있는 자리는 그 칸을 빼고, 남은 칸의 밝기 평균을 빼서(밝기만 다른 자리에 반응 안 하게) 계산 · 남은 칸이 minFrac 미만이면 못 읽음 */
       var MK = (typeof HAIR_READ_MASK !== 'undefined' && HAIR_READ_MASK.on), full = (2 * r + 1) * (2 * r + 1), cnt9 = MK ? maskBoxCount(mask, Wd, Hd, r) : null, edgeN = 0, edgeSkip = 0;
-      var sd = (GO.refine && GO.stride > 1) ? (GO.stride | 0) : 1;         // 다듬기를 끄면 메울 방법이 없으니 전부 계산
+      var sd = (GO.smooth && GO.stride > 1) ? (GO.stride | 0) : 1;         // 다듬기를 끄면 메울 방법이 없으니 전부 계산
       for (y = r; y < Hd - r; y += sd) for (x = r; x < Wd - r; x += sd) {
         idx = y * Wd + x; if (!mask[idx]) continue;
         var best = -1, bk = 0, sumR = 0;
@@ -466,7 +466,11 @@ var GABOR_ORIENT = (function () {
         if (GO.interp) { var vL = RV[(bk + n - 1) % n], vR = RV[(bk + 1) % n], den = vL - 2 * best + vR; if (den < -1e-12) { bo = 0.5 * (vL - vR) / den; if (bo > 0.5) bo = 0.5; else if (bo < -0.5) bo = -0.5; } }   // 가장 센 방향과 양옆 반응으로 사이 각을 어림(방향 수를 줄여도 각이 계단지지 않게)
         ang[idx] = (bk + bo) * Math.PI / n + Math.PI / 2; conf[idx] = best > 1e-9 ? (best - sumR / n) / best : 0; bestA[idx] = best; cnt++;
       }
-      if (GO.refine) {                                                   // 믿을 만한 자리의 결로 둘레를 한 번 다듬음
+      /* (2026-11-03) 다듬기 기본 끔 — 사용자: "다듬기 하지 말고 그냥 그려. 헤어는 규칙적이라고 볼 수가 없어서 다듬지 않고 일단 그냥 풀어내봐" · "요즘 폰 사진 그렇게 흐린 건 없잖아"
+       *  실사로 그어 봄: 다듬기(6~16px)를 끄면 곱슬이 꼬이고 둥글게 돎(3/4바퀴 넘게 도는 사진 가닥 0% → 12~23%), 좋은 사진의 직모는 그대로 깔끔,
+       *  흐린 사진(585a)만 잡음을 따라 꼬임. 예전엔 GO.refine 스위치가 같은 이름의 함수(GO.refine = function)에 덮여 꺼지지 않았음 → GO.smooth로 따로.
+       *  켜기 GABOR_ORIENT.smooth=true (아래 다듬기·약한 질감 메우기 그대로) */
+      if (GO.smooth) {                                                   // 믿을 만한 자리의 결로 둘레를 한 번 다듬음
         /* (2026-11-02) 실사 결 다듬기 — 사용자: "직모인데 마구 헝클어져서 나오고, 웨이브가 제대로 안잡히고"
          *  실사(폰·영상 캡처) 7장: 이웃 결 어긋남 중앙 9~17° · 상위10% 47~69° · 7장 모두 '파장 ≈40px 웨이브'(사진마다 같음 = 머리가 아니라 잡음 크기).
          *  원인: 4px 가는 선 필터는 한 올을 노리는데 실사 해상도(1px ≈ 0.5mm)엔 한 올이 없음 → 잡음·압축 블록(8×8)에 반응, 다듬기 σ 2.4px로는 못 걸러냄.
