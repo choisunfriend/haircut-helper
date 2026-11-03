@@ -1616,6 +1616,9 @@ function paintScalpFromPhoto(geo, skull, kIn, mat){
     const nbTop  = nbFull + (NB ? NB.fade : 0);
     let nbCount = 0;
     let aeCount = 0;
+    const AE = SCALP_SKIN.aboveEar, AEon = !!(rimS && AE && AE.on && rimS.earMy != null);
+    const aeW = new Float32Array(pos.count), rimW = new Float32Array(pos.count);
+    const bandAcc = [0,0,0,0,0,0], bandN = [0,0];
     const col = new Float32Array(pos.count * 3);
     for(let i=0;i<pos.count;i++){
       const mx = pos.getX(i) * skull.a * kIn;
@@ -1631,14 +1634,16 @@ function paintScalpFromPhoto(geo, skull, kIn, mat){
         sh = photoSkin ? (nz < 0 ? 1 + (1 - BS.back) * nz : 1) : BS.back + (1 - BS.back) * (0.5 + 0.5*nz);
       }
       let r = c[0]*sh, g = c[1]*sh, b = c[2]*sh;
-      const AE = SCALP_SKIN.aboveEar;
-      if(rimS && rimS.side && AE && AE.on && rimS.earMy != null){
+      /* (2026-11-03b) 귀 위는 여기서 칠하지 않고 무게만 적어 둠 — 아래 두 번째 패스에서 <b>턱–뺨 띠에 실제로 칠해진 색</b>으로 덮음 */
+      if(AEon){
         let ws = (Math.abs(ux) - AE.sideFrom) / Math.max(1e-3, AE.sideFull - AE.sideFrom); ws = Math.max(0, Math.min(1, ws));
         let wy = (my - (rimS.earMy - AE.below - AE.blend)) / Math.max(1e-3, AE.blend); wy = Math.max(0, Math.min(1, wy));
         let wa = ws * wy; wa = wa * wa * (3 - 2 * wa);
-        if(wa > 0.001){ const sc = rimS.side(mx, my); r = r*(1-wa) + sc[0]*wa; g = g*(1-wa) + sc[1]*wa; b = b*(1-wa) + sc[2]*wa; aeCount++; }
+        aeW[i] = wa;
       }
-      if(rimS){ const fc = rimS(mx, my, uz); if(fc){ const w = fc[3]; r = r*(1-w) + fc[0]*w; g = g*(1-w) + fc[1]*w; b = b*(1-w) + fc[2]*w; rimCount++; } }
+      if(rimS){ const fc = rimS(mx, my, uz); if(fc){ const w = fc[3]; r = r*(1-w) + fc[0]*w; g = g*(1-w) + fc[1]*w; b = b*(1-w) + fc[2]*w; rimCount++; rimW[i] = w;
+        /* 턱–뺨 띠(턱 위 · 귀 아래 · 옆쪽 · 얼굴 살이 거의 다 덮은 정점)의 최종 색을 좌우 따로 모음 */
+        if(AEon && w > 0.6 && my < rimS.earMy && (nbChin == null || my > nbChin) && Math.abs(ux) > AE.sideFrom){ const k = ux >= 0 ? 0 : 3; bandAcc[k] += r; bandAcc[k+1] += g; bandAcc[k+2] += b; bandN[ux >= 0 ? 0 : 1]++; } } }
       if(neckS && my < nbTop){
         const w = my <= nbFull ? 1 : 1 - (my - nbFull) / Math.max(1e-4, nbTop - nbFull);
         const t = w * w * (3 - 2 * w);
@@ -1651,7 +1656,25 @@ function paintScalpFromPhoto(geo, skull, kIn, mat){
       col[i*3] = r; col[i*3+1] = g; col[i*3+2] = b;
     }
     if(rimCount){ const rs = SCALP_SKIN.faceRim.stat ? SCALP_SKIN.faceRim.stat() : null; console.log('[3D·두피색·얼굴 옆] 뺨·이마 옆 두피면 정점 ' + rimCount + '개에 그 자리 얼굴 살' + (rs ? ' — 테두리 안 실제 픽셀 ' + rs.pixel + ' · 못 찾아 떼어 온 살(격자) ' + rs.grid : '') + ' (끄기 SCALP_SKIN.faceRim.on=false · 픽셀 끄기 .pixel=false)'); }
-    if(aeCount) console.log('[3D·두피색·귀 위] 귀 위 옆머리 두피면 정점 ' + aeCount + '개에 그 쪽 얼굴 테두리 살 (끄기 SCALP_SKIN.aboveEar.on=false)');
+    /* (2026-11-03b) 귀 위 옆머리 = 턱–뺨 띠와 <b>같은 색</b> — 사용자: "결과가 똑같아서 다시 온거야 … 턱에서 뺨사이 두피 색깔이랑 같아져야돼."
+       예전(11-03)은 관자·눈가 옆 테두리 픽셀을 따로 집어(머리카락·눈가 그늘 가까이) 아래 띠와 다른 색이 나왔음.
+       이제 위 패스에서 턱–뺨 띠 정점에 최종으로 칠해진 색의 좌우 평균을 그대로 씀(한쪽이 비면 반대쪽) · 얼굴 살(faceRim)이 이미 덮은 만큼은 양보. */
+    let aeSrc = '';
+    if(AEon){
+      let cL = bandN[0] ? [bandAcc[0]/bandN[0], bandAcc[1]/bandN[0], bandAcc[2]/bandN[0]] : null;
+      let cR = bandN[1] ? [bandAcc[3]/bandN[1], bandAcc[4]/bandN[1], bandAcc[5]/bandN[1]] : null;
+      if(!cL) cL = cR; if(!cR) cR = cL;
+      aeSrc = cL ? '턱–뺨 띠 색(정점 +x ' + bandN[0] + ' · −x ' + bandN[1] + ')' : '띠를 못 찾아 얼굴 테두리 살';
+      for(let i=0;i<pos.count;i++){
+        let wa = aeW[i] * (1 - rimW[i]); if(!(wa > 0.001)) continue;
+        let sc = null;
+        if(cL){ sc = pos.getX(i) >= 0 ? cL : cR; }
+        else { const mx = pos.getX(i) * skull.a * kIn, my = pos.getY(i) * skull.b * kIn + 0.15; sc = rimS.side(mx, my); }
+        col[i*3] = col[i*3]*(1-wa) + sc[0]*wa; col[i*3+1] = col[i*3+1]*(1-wa) + sc[1]*wa; col[i*3+2] = col[i*3+2]*(1-wa) + sc[2]*wa;
+        aeCount++;
+      }
+    }
+    if(aeCount) console.log('[3D·두피색·귀 위] 귀 위 옆머리 두피면 정점 ' + aeCount + '개에 ' + aeSrc + ' (끄기 SCALP_SKIN.aboveEar.on=false)');
     if(nbCount) console.log('[3D·두피색] 턱 띠에 사진 목 색 적용 — 정점 ' + nbCount + '개 (끄기 SCALP_SKIN.neckBand.on=false)');
     geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
     /* 정점색은 재질색과 <b>곱해진다</b> — 재질색을 흰색으로 두지 않으면 두 번 어두워진다. */
