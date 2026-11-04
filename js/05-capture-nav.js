@@ -559,50 +559,12 @@ var SHOT360 = (function () {
     if (best) { console.log(TAG + ' ' + target + '° 칸 — 후보 ' + cand.length + '장 중 얼굴 ' + best._fy.yaw.toFixed(0) + '°인 장(센서 ' + Math.round(wrap(best.deg - zero)) + '°)'); return best; }
     return nearest(frames, want, maxOff);
   }
-  /* (2026-11-04 farc) 뒤쪽 = 옆 두 장 사이의 <b>프레임 간격</b>으로 — 사용자: "±90도 옆 장 두 개에서 계산에서 중간에 있는 걸 180도로 고르고,
-     +90도와 180도 · -90도와 180도에서 계산상 딱 중간에 있는 걸로 135 · 225도 골라"
-     ① ±90° = 센서로 후보(±Q.arcTol) → 얼굴 각도가 ±90°에 가장 가까운 장(byFace · 얼굴이 없으면 센서)
-     ② 180° = +90° 장에서 뒤를 돌아 -90° 장까지의 센서 구간 한가운데에 가장 가까운 장
-     ③ +135° = +90° 장 ~ 180° 장 한가운데 · -135°(225°) = 180° 장 ~ -90° 장 한가운데
-     몸이 같이 돌아 센서가 늘어나거나 줄어도, 얼굴로 확인한 두 옆 장 사이를 같은 간격으로 나눔. 고른 장에는 yawEst(진짜 각도 0°=정면)를 남김 → 13b가 포즈로 씀.
-     ±90° 중 하나라도 없으면 예전 그대로(센서). 끄기 SHOT360.arcPick = false */
-  Q.arcTol = Q.arcTol || 30;
-  function setEst(f, yaw) { if (f) f.yawEst = Math.round(wrap(yaw) * 10) / 10; }
-  function arcPick(pk, rest) {
-    if (Q.arcPick === false) return pk;
-    try {
-      var used = [pk.front, pk.left, pk.right], pool = rest.filter(function (f) { return used.indexOf(f) < 0; });
-      var l90 = byFace(pool, pk.zero, 90, Q.arcTol); pool = pool.filter(function (f) { return f !== l90; });
-      var r90 = byFace(pool, pk.zero, -90, Q.arcTol); pool = pool.filter(function (f) { return f !== r90; });
-      if (!l90 || !r90) { console.warn(TAG + ' ±90° 옆 장을 못 찾아 뒤쪽은 센서로 고름'); return pk; }
-      var yl = (l90._fy && typeof l90._fy.yaw === 'number') ? l90._fy.yaw : wrap(l90.deg - pk.zero);
-      var yr = (r90._fy && typeof r90._fy.yaw === 'number') ? r90._fy.yaw : wrap(r90.deg - pk.zero);
-      function arc(a, b) { var d = b.deg - a.deg; while (d < 0) d += 360; while (d >= 360) d -= 360; return d; }   // a에서 + 방향(뒤로)으로 b까지
-      function midOf(a, b, cand) {
-        var mid = a.deg + arc(a, b) / 2, best = null, bd = 1e9;
-        cand.forEach(function (f) { var d = Math.abs(wrap(f.deg - mid)); if (d < bd) { bd = d; best = f; } });
-        return best && bd <= Q.arcTol ? best : null;
-      }
-      var back = midOf(l90, r90, pool); if (!back) { console.warn(TAG + ' 옆 두 장 사이에 뒤 장이 없어 센서로 고름'); return pk; }
-      pool = pool.filter(function (f) { return f !== back; });
-      var b135 = midOf(l90, back, pool); pool = pool.filter(function (f) { return f !== b135; });
-      var b225 = midOf(back, r90, pool);
-      setEst(pk.front, pk.front._fy && typeof pk.front._fy.yaw === 'number' ? pk.front._fy.yaw : 0);
-      [pk.left, pk.right].forEach(function (f) { if (f) setEst(f, f._fy && typeof f._fy.yaw === 'number' ? f._fy.yaw : wrap(f.deg - pk.zero)); });
-      setEst(l90, yl); setEst(r90, yr);
-      setEst(back, 180); if (b135) setEst(b135, (yl + 180) / 2); if (b225) setEst(b225, (yr - 180) / 2);
-      pk.back = back; pk.extra = [l90, r90, b135, b225].filter(Boolean);
-      console.log(TAG + ' 뒤쪽 프레임 간격으로 고름 — +90° 장 얼굴 ' + Math.round(yl) + '°(센서 ' + Math.round(wrap(l90.deg - pk.zero)) + '°) · -90° 장 얼굴 ' + Math.round(yr) + '°(센서 ' + Math.round(wrap(r90.deg - pk.zero)) + '°) → 180° = 센서 ' + Math.round(wrap(back.deg - pk.zero)) + '°' +
-        ' · 135° = ' + (b135 ? '센서 ' + Math.round(wrap(b135.deg - pk.zero)) + '°' : '없음') + ' · 225° = ' + (b225 ? '센서 ' + Math.round(wrap(b225.deg - pk.zero)) + '°' : '없음') + ' (끄기 SHOT360.arcPick=false)');
-    } catch (e) { console.warn(TAG + ' 뒤쪽 간격 고르기 실패 — 센서로', e); }
-    return pk;
-  }
   function pickFrames(set) {
     var fr0 = set.frames.filter(function (f) { return f && f.front; })[0];
     if (fr0) {                                                         // (2026-10-25f) 촬영 중 찾은 정면
       var yw = typeof fr0.faceYaw === 'number' ? fr0.faceYaw : 0, z0 = wrap(fr0.deg - yw), rest0 = set.frames.filter(function (f) { return f !== fr0; });
       try { if (!fr0._fy) Object.defineProperty(fr0, '_fy', { value: { yaw: yw, ecN: 0 }, writable: true, configurable: true, enumerable: false }); } catch (e) {}
-      return arcPick({ front: fr0, left: byFace(rest0, z0, Q.sideDeg, 20), right: byFace(rest0, z0, -Q.sideDeg, 20), back: byFace(rest0, z0, 180, 35), zero: z0, by: 'capture' }, rest0);
+      return { front: fr0, left: byFace(rest0, z0, Q.sideDeg, 20), right: byFace(rest0, z0, -Q.sideDeg, 20), back: byFace(rest0, z0, 180, 35), zero: z0, by: 'capture' };
     }
     var faces = set.frames.filter(function (f) { return f && f._fy && typeof f._fy.yaw === 'number'; }), front = null;
     faces.forEach(function (f) {
@@ -616,7 +578,7 @@ var SHOT360 = (function () {
       return old;
     }
     var zero = wrap(front.deg - front._fy.yaw), rest = set.frames.filter(function (f) { return f !== front; });
-    return arcPick({ front: front, left: byFace(rest, zero, Q.sideDeg, 20), right: byFace(rest, zero, -Q.sideDeg, 20), back: byFace(rest, zero, 180, 35), zero: zero, by: 'face' }, rest);
+    return { front: front, left: byFace(rest, zero, Q.sideDeg, 20), right: byFace(rest, zero, -Q.sideDeg, 20), back: byFace(rest, zero, 180, 35), zero: zero, by: 'face' };
   }
   Q._pickFrames = pickFrames;
   function applySetCore(set) {
@@ -627,12 +589,11 @@ var SHOT360 = (function () {
   function applySetPicked(set) {
     var pick = pickFrames(set);
     try { Object.defineProperty(set, '_pick', { value: pick, writable: true, configurable: true, enumerable: false }); } catch (e) { set._pick = pick; }
-    var miss = ['front', 'left', 'right', 'back'].filter(function (k) { return !pick[k]; });
+    var miss = Object.keys(pick).filter(function (k) { return !pick[k]; });
     if (miss.length) { toast('360 세트에 ' + miss.join('·') + ' 각도 사진이 없습니다 — 다시 찍어 주세요'); return Promise.resolve(false); }
     if (Q.keep8 !== false) try {                                       // (2026-11-01) 8장으로 — 기준 4장 + 진짜 0° 기준 ±90° · ±135°
       var base4 = [pick.front, pick.left, pick.right, pick.back], keep = base4.slice(), n0 = set.frames.length, kept = [];
-      if (pick.extra) pick.extra.forEach(function (f) { if (keep.indexOf(f) < 0) { keep.push(f); kept.push(Math.round(f.yawEst) + '°(센서 ' + Math.round(wrap(f.deg - pick.zero)) + '°)'); } });
-      else (Q.keepDeg || []).forEach(function (kd) {
+      (Q.keepDeg || []).forEach(function (kd) {
         var rest = set.frames.filter(function (f) { return keep.indexOf(f) < 0; }), f = nearest(rest, wrap(pick.zero + kd), Q.keepTol);
         if (f) { keep.push(f); kept.push(kd + '°→' + Math.round(wrap(f.deg - pick.zero)) + '°'); } else kept.push(kd + '°→없음');
       });
