@@ -548,6 +548,11 @@ const HAIR_OCC3D = {
   on:       true,  // 끄면 예전 동작(세그멘테이션 미반영)으로 즉시 복귀 — A/B 확인용
   alphaThr: 40,    // 이 알파 이상이면 그 픽셀은 머리카락(2D isRealHairAt와 같은 기준)
   minFacing: 0.12, // 정면성이 이 미만인 뷰는 투표에서 뺀다(실루엣 스치기)
+  /* (2026-11-02) 전원 일치 — 보이는 사진 전부가 "머리 영역 안"일 때만 남긴다.
+     켜면: at()이 AND 판정 · 다듬기가 밖인 첫 점에서 바로 자름(offRun 무시) ·
+     시술 여유(growLen·moveGrow·마네킹 바닥값) 없음 · 마네킹에서도 조정 후 재클립을 건다.
+     앞머리(st.fringe)는 예전처럼 면제. 끄면 예전 동작 전부 그대로. */
+  strictAnd: true,
   occThr:   0.35,  // 점유도가 이 미만이면 "머리카락 없음"
   minSeen:  0.15,  // 투표 가중치 합이 이 미만이면 판단 보류(아무도 제대로 못 봄 → 통과)
   /* (2026-08-08) <b>제일 잘 본 뷰 하나</b>가 이 정면성을 넘어야 "머리 없음"으로 지울 수 있다.
@@ -754,7 +759,8 @@ function getViewMaskSampler(angle){
   const hairC = state.hairCanvases && state.hairCanvases[angle];
   if(!mi) return null;
   const cached = _viewMaskCache[angle];
-  if(cached && cached.mi === mi) return cached.s;
+  const spRec = (state.neutralStrandPaths && state.neutralStrandPaths[angle]) || (state.strandPaths && state.strandPaths[angle]) || null;   // (2026-11-03l) 아래 "가닥이 이어진 틈"
+  if(cached && cached.mi === mi && cached.sp === spRec) return cached.s;
   const iw = mi.w, ih = mi.h;
   let W, H, hit;
   if(mi.reasonMask && mi.maskW && mi.maskH){
@@ -773,8 +779,55 @@ function getViewMaskSampler(angle){
     }catch(e){ return null; }
     hit = (x, y)=> data[(y*W + x)*4 + 3] > HAIR_OCC3D.alphaThr ? 1 : 0;
   } else return null;
+  /* (2026-11-03l) 머리 영역 = 세그 ∪ <b>가닥이 이어진 틈</b> — 사용자: "옷이 보이는 틈이라도 … 가닥이 이어진 부분은 영역으로 설정되어야지."
+     긴 웨이브 정면: 가슴 앞 웨이브 다발 사이로 옷이 보이는 자리를 세그가 빼 영역이 격자처럼 조각남 → 그 위를 지나 이어진 사진 가닥이 거기서 "영역 밖"으로 잘림
+     (조정 단계 다듬기 13b 전원 일치 · 다시 기르기 머리 영역 17b · 사진 대조 07b가 모두 이 샘플러를 씀).
+     지금: 이 사진의 2D 가닥(neutralStrandPaths → strandPaths · 마스크 좌표)마다, 영역 안 점 → 밖 점들 → 다시 영역 안 점으로 <b>이어지는</b> 밖 구간을 영역에 더함
+     (점 사이는 선으로 메움 · 1칸 굵게). 영역 밖으로 빠져나가 끝나는 꼬리는 안 넣음(이어진 게 아님). 틈 길이 상한 gapMaxFrac × 마스크 높이. (2026-11-03n) 기본 끔 — 세그는 이어져 있었고 조각난 건 3D였음(위 strictMarginCm). 켜기 HAIR_OCC3D.strandGap = true */
+  let gapCells = 0, gapRuns = 0;
+  const segHit = hit;
+  if(HAIR_OCC3D.strandGap === true && spRec && spRec.strands && spRec.strands.length){
+    try{
+      const G = new Uint8Array(W*H), kx = W / (spRec.maskW || W), ky = H / (spRec.maskH || H);
+      const gapMax = (HAIR_OCC3D.strandGapMaxFrac || 0.04) * H;
+      const inSeg = (x, y)=>{ const xi = x|0, yi = y|0; return xi >= 0 && yi >= 0 && xi < W && yi < H && segHit(xi, yi) === 1; };
+      const mark = (x, y)=>{ for(let dy=-1; dy<=1; dy++) for(let dx=-1; dx<=1; dx++){ const xi = (x|0)+dx, yi = (y|0)+dy; if(xi >= 0 && yi >= 0 && xi < W && yi < H && !G[yi*W+xi] && segHit(xi, yi) !== 1){ G[yi*W+xi] = 1; gapCells++; } } };
+      for(const st of spRec.strands){
+        const q = st.fine && st.fine.length > (st.pts ? st.pts.length : 0) ? st.fine : st.pts; if(!q || q.length < 3) continue;
+        let lastIn = -1, k;
+        for(k = 0; k < q.length; k++){
+          const x = q[k].x * kx, y = q[k].y * ky;
+          if(!inSeg(x, y)) continue;
+          if(lastIn >= 0 && k - lastIn > 1){                                   // lastIn ~ k 사이가 밖 = 이어진 틈
+            let L = 0; for(let m = lastIn + 1; m <= k; m++) L += Math.hypot((q[m].x - q[m-1].x) * kx, (q[m].y - q[m-1].y) * ky);
+            if(L <= gapMax){
+              gapRuns++;
+              for(let m = lastIn + 1; m <= k; m++){
+                const x0 = q[m-1].x * kx, y0 = q[m-1].y * ky, x1 = q[m].x * kx, y1 = q[m].y * ky, n = Math.max(1, Math.ceil(Math.hypot(x1 - x0, y1 - y0)));
+                for(let t = 0; t <= n; t++) mark(x0 + (x1 - x0) * t / n, y0 + (y1 - y0) * t / n);
+              }
+            }
+          }
+          lastIn = k;
+        }
+        /* (2026-11-03m) 끝에서 결 방향으로 이어 보기 — 2D 추적은 영역 밖으로 나가면 바로 멈춰 위 "안→밖→안"이 거의 안 생김(16:44 대조: 격자 그대로).
+           가닥의 두 끝에서 마지막 결 방향(끝 4점)으로 영역 밖을 곧게 따라가 gapMax 안에서 다시 세그 머리에 닿으면 그 사이를 영역으로.
+           3D "끊긴 결 이어 붙이기"(17b copyChain)와 같은 기준 — 같은 쪽으로 이어지는 머리가 틈 건너에 있는가. */
+        for(let e = 0; e < 2; e++){
+          const n = q.length, i0 = e ? n - 1 : 0, i1 = e ? Math.max(0, n - 5) : Math.min(n - 1, 4);
+          const ex = q[i0].x * kx, ey = q[i0].y * ky;
+          if(!inSeg(ex, ey)) continue;                                        // 끝이 영역 안에서 멈춘 것만(영역 밖 꼬리는 안 늘림)
+          let dx = ex - q[i1].x * kx, dy = ey - q[i1].y * ky; const dl = Math.hypot(dx, dy); if(!(dl > 1e-6)) continue; dx /= dl; dy /= dl;
+          let t = 1, left = false, hitBack = -1;
+          for(; t <= gapMax; t++){ const x = ex + dx * t, y = ey + dy * t; if(x < 0 || y < 0 || x >= W || y >= H) break; const inn = inSeg(x, y); if(!inn) left = true; else if(left){ hitBack = t; break; } }
+          if(hitBack > 0){ gapRuns++; for(let u = 1; u < hitBack; u++) mark(ex + dx * u, ey + dy * u); }
+        }
+      }
+      if(gapCells) hit = (x, y)=> (segHit(x, y) === 1 || G[y*W + x]) ? 1 : 0;
+    }catch(e){ gapCells = 0; }
+  }
   const s = {
-    W, H,
+    W, H, gapCells, gapRuns,
     // 마스크 원본(mi.w/h) 좌표 → 0(없음) / 1(머리카락)
     at(ix, iy){
       const x = (ix / iw * W) | 0, y = (iy / ih * H) | 0;
@@ -782,7 +835,8 @@ function getViewMaskSampler(angle){
       return hit(x, y);
     },
   };
-  _viewMaskCache[angle] = { mi, s };
+  _viewMaskCache[angle] = { mi, s, sp: spRec };
+  if(gapCells){ try{ console.log('[머리 영역] ' + angle + ' — 가닥이 이어진 틈 ' + gapRuns + '곳을 영역에 더함(칸 ' + gapCells + ' · 마스크 ' + W + '×' + H + ') · 끄기 HAIR_OCC3D.strandGap=false'); }catch(e){} }
   return s;
 }
 
@@ -813,6 +867,8 @@ function getViewDensitySampler(angle){
    project3DPointToView와 <b>같은 식</b>을 쓰되 회전행렬을 뷰마다 한 번만 만든다
    (그 함수는 호출마다 composeRotationZYX를 새로 조립해서, 점 수십만 개에 쓰면
    그 조립이 비용의 대부분이 된다). */
+let _strictNear = 0, _visRayN = 0, _tailTrimN = 0, _tailTrimPts = 0;
+try{ if(typeof HAIR_OCC3D !== 'undefined') HAIR_OCC3D.tailStat = ()=>({ 여유로_산_표: _strictNear, 가림없이_보여_투표: _visRayN, 끝_자른_가닥: _tailTrimN, 끝_자른_점: _tailTrimPts }); }catch(e){}   // (2026-11-03n) 전원 일치에서 여유 안이라 살린 표
 let _grazingAbstain = 0;   // [진단] 스친 표만 있어 판단 보류한 횟수(정수리 진단용)
 function makeHairOccupancyProbe(views, names, yTop, CY, headR){
   // (옛 52) 360 세트의 추가 사진(카메라 맞춘 것)을 형태 계산에 더하고, 이상한 기준 사진은 뺌(아래 VIEWS360)
@@ -829,7 +885,9 @@ function makeHairOccupancyProbe(views, names, yTop, CY, headR){
                 cx:v.cx, s:v.s, sy:v.sy, crownY:v.crownY, smp,
                 dsmp: getViewDensitySampler(n),      // (2026-08-01) 뿌리 밀도용
                 fell: getViewFaceEllipse(n),         // (2026-08-01) 늘림 여유 거부 영역
-                iw: mi ? mi.w : 0, ih: mi ? mi.h : 0 });
+                iw: mi ? mi.w : 0, ih: mi ? mi.h : 0,
+                pm: (mi && mi.personMask && (mi.maskW || mi.w) && mi.personMask.length >= (mi.maskW || mi.w) * (mi.maskH || mi.h)) ? mi.personMask : null,   // (2026-11-03t) 사람 윤곽 — 반구 밖 점은 배경일 때만 밖
+                pmW: mi ? (mi.maskW || mi.w) : 0, pmH: mi ? (mi.maskH || mi.h) : 0 });
   });
   if(!cams.length) return null;
   const invR = 1 / Math.max(1e-6, headR);
@@ -902,9 +960,65 @@ function makeHairOccupancyProbe(views, names, yTop, CY, headR){
        고침: 합이 아니라 <b>제일 잘 본 뷰 하나</b>가 기준을 넘어야 지울 수 있다.
        아무도 제대로 못 봤으면 판단 보류 — 이 함수가 원래 내세운 규칙
        ("모르는 것을 지우지는 않는다")을 스친 표에도 적용하는 것뿐이다. */
-    at(px, py, pz){
+    strictNear(){ return _strictNear; },
+    at(px, py, pz, strict){
       let wSum = 0, hSum = 0, wBest = 0;
       const wy = py - CY;
+      /* ── 전원 일치 (2026-11-02, 사용자 지시) ─────────────────────────────
+         사용자: "끝점이 보이는 사진만 투표에 참여해서(가림이든 아니든 보이냐
+         안보이냐만) 둘 다 영역 안일 때만 남기고, 하나라도 영역 밖이면 지워야."
+         · 투표권 = 그 카메라 쪽 반구(lz>0)면 있다. 비스듬해도 보이면 투표한다
+           (minFacing·confidentFacing·가중치 없음).
+         · 한 장이라도 마스크 밖이면 밖(occ 0). 전부 안이면 안(occ 1).
+         · 아무 사진도 못 보면 판단할 근거가 없으니 통과.
+         되돌리기: HAIR_OCC3D.strictAnd = false (예전 가중 투표) */
+      if(strict){
+        let seen = 0, nearSaved = false;
+        for(let i=0;i<cams.length;i++){
+          const c = cams[i], R = c.R;
+          const lz = R[6]*px + R[7]*wy + R[8]*pz;
+          /* (2026-11-03q) 투표 자격 = <b>보이냐</b>(반구가 아니라 두상에 가리냐) — 사용자: "오른쪽 옆머리에 삐죽 나오는게 뭔지 모르겟네"
+             실사 1741: 정면에서 본 옆머리 위쪽에 두상 옆면 1.5cm 밖(z≈0, 귀 평면)에 뜬 점 — 왼쪽 사진은 머리(96%)인데 정면·뒤는 밖(87%).
+             반구(lz>0)만 보면 z<0인 절반은 정면이 투표 못 하고 뒤도 거의 못 해 왼쪽 혼자 "안" → 살아남음. 두상 실루엣 밖이라 정면에서 그대로 보이는 점인데.
+             (11-03t에서 바뀜 — 아래 배경 투표) */
+          /* (2026-11-03t) 카메라 쪽 반구 밖 점 = <b>사진이 말해 주는 것만</b> — 사용자: "두상. 몸통. 어깨 정확한 사이즈로 하는 것도 아니면서 자꾸 가림판정을 넣어?"
+             (11-03q·s의 두피 타원체 광선·턱 높이 어림은 뺌.) 그 자리 픽셀이 머리면 안 · <b>배경</b>(사람 윤곽 밖 — 그 시선 위에 아무것도 없음)이면 밖 투표 ·
+             몸·옷·살이면 그 뒤에 머리가 있는지 사진으로 알 수 없으니 기권. 실사 1741의 옆머리 삐죽이(두상 옆 실루엣 밖 · 정면 사진에선 배경)가 이걸로 걸림.
+             사람 윤곽이 없는 사진은 예전처럼 기권. 끄기 HAIR_OCC3D.strictBgVote = false */
+          let bgOnly = false;
+          if(lz <= 0){
+            if(O.strictBgVote === false || !c.pm) continue;
+            bgOnly = true;
+          }
+          const lx = R[0]*px + R[1]*wy + R[2]*pz;
+          const ly = R[3]*px + R[4]*wy + R[5]*pz;
+          const ix = lx / c.s + c.cx;
+          const iy = c.crownY + (yTop - (ly + CY)) / c.sy;
+          if(bgOnly){
+            if(c.smp.at(ix, iy) > 0){ seen++; continue; }                    // 머리 — 안
+            const mx = (ix / c.iw * c.pmW) | 0, my = (iy / c.ih * c.pmH) | 0;
+            const bg = mx < 0 || my < 0 || mx >= c.pmW || my >= c.pmH || !(c.pm[my * c.pmW + mx] > 0);
+            if(!bg) continue;                                                   // 몸·옷·살 — 기권
+            _visRayN++;
+          }
+          seen++;
+          if(!(c.smp.at(ix, iy) > 0)){
+            /* (2026-11-03n) 여유 — 다시 기르기 머리 영역 판정(17b hullOut)과 <b>같은 규칙</b>: 머리 영역에서 1cm(정면)·1.5cm(옆·뒤) 넘게 떨어져야 밖.
+               사용자: "안 그려진 부분이 다 세그가 파편난 부분들" → 세그는 통째로 이어져 있었고(디버그 1644 정면 영역 한 덩어리), 조각난 건 3D(대조의 흰 선 = 3D 윤곽).
+               잰 값(1644 긴 웨이브): 가슴 앞 3D 점 중 영역 밖 정면 12% · 왼쪽 9% · 오른쪽 17% — 대부분 경계 한두 칸. 여유 0으로 첫 점에서 끝까지 자르니 가닥이 거의 다 어딘가에서 잘려 격자처럼.
+               둘레 8방향 · 반지름 여유(사진 px)에서 머리가 하나라도 있으면 안. 되돌리기 HAIR_OCC3D.strictMarginCm = 0 */
+            const mCm = (O.strictMarginCm != null) ? O.strictMarginCm : ((typeof REGROW !== 'undefined' && REGROW) ? (c.angle === 'front' ? REGROW.hullMarginCm : REGROW.hullMarginSideCm) : 0);
+            let near = false;
+            if(mCm > 0){
+              const cmPx = c.s * ((typeof modelCmPerUnit === 'function' && modelCmPerUnit()) || 16.4), rPx = mCm / Math.max(1e-6, cmPx);
+              for(let rr = rPx / 2; rr <= rPx + 1e-6 && !near; rr += rPx / 2) for(let k8 = 0; k8 < 8 && !near; k8++){ const an = k8 * Math.PI / 4; if(c.smp.at(ix + rr * Math.cos(an), iy + rr * Math.sin(an)) > 0) near = true; }
+            }
+            if(!near) return { occ: 0, seen, outBy: c.angle };
+            _strictNear++; nearSaved = true;
+          }
+        }
+        return seen ? { occ: 1, seen, near: nearSaved } : { occ: 1, seen: 0, abstain: 1 };
+      }
       for(let i=0;i<cams.length;i++){
         const p = projectToCam(cams[i], px, wy, pz);
         if(!p) continue;
@@ -1015,6 +1129,8 @@ var VIEWS360 = (function () {
     qLo: 0.75, qHi: 2.3,   // 머리 윗선 반폭 ÷ 그 각도의 두상 반폭
     agreeMin: 0.75, agreeFromDeg: 75,   // 두피 되쏘기(옆·뒤 사진만 — yaw가 agreeFromDeg 이상): 이 비율 이상이어야
     yawTol: 18,         // 센서 각도 ↔ 얼굴 실측 yaw 허용 차(도)
+    faceMaxDeg: 60,     // (2026-11-04 fsens) 얼굴 각도를 믿는 범위(센서 기준 |yaw| ≤) — 옆으로 돌면 얼굴 랜드마크가 각도를 작게 잼
+    hairLongK: 2.0,     // (fsens) 머리 마스크 세로 길이 ÷ 머리 폭이 이 배를 넘으면 몸·배경까지 흘러내린 마스크로 보고 뺌(실사 360 v119)
     pitchTol: 15,       // 얼굴 실측 pitch가 정면과 이만큼 넘게 다르면 뺌(올려다보거나 내려다본 사진)
     faceMustDeg: 55,    // 이 각도 안쪽이면 얼굴이 잡혀야 함
     setBadMin: 2, setBadFrac: 0.34,  // 얼굴로 확인한 사진 중 어긋난 것이 이만큼이면 세트의 센서 각도를 안 믿음
@@ -1034,7 +1150,10 @@ var VIEWS360 = (function () {
 
   var BASE = ['front', 'left', 'right', 'back'];
   function tail(u) { return typeof u === 'string' ? u.length + ':' + u.slice(-24) : ''; }
-  function fpNow() { try { return BASE.map(function (a) { return tail(state.shots && state.shots[a]); }).join('|'); } catch (e) { return ''; } }
+  /* (2026-10-25) 지문은 머리 키우기(03b SUBJECT_ZOOM) 전 사진으로 — 키운 사진으로 지문을 잡으면 세트를 넣은 직후와 달라져
+     "지금 4장이 그 세트의 것이 아님"이 되어 추가 사진을 전부 버렸음(사용자: "360에 저장된 거 누르고 next 눌렀는데 왜 4장만 분석하냐") */
+  function shotFp(a) { var u = state.shots && state.shots[a]; try { if (u && state._zoomedShot && state._zoomedShot[a] === u && state._zoomFrom && state._zoomFrom[a]) u = state._zoomFrom[a]; } catch (e) {} return tail(u); }
+  function fpNow() { try { return BASE.map(shotFp).join('|'); } catch (e) { return ''; } }
   function wrapDeg(d) { d = ((d + 180) % 360 + 360) % 360 - 180; return d === -180 ? 180 : d; }
   function keyOf(deg) { var d = Math.round(wrapDeg(deg)); return 'v' + (d < 0 ? 'm' + (-d) : d); }
   function nearest(frames, deg, maxOff) {
@@ -1043,7 +1162,8 @@ var VIEWS360 = (function () {
     return best && bd <= maxOff ? best : null;
   }
   /* 45번 applySet과 같은 규칙으로 4장을 고름 */
-  function picks(set) { return { front: nearest(set.frames, 0, 20), left: nearest(set.frames, 45, 25), right: nearest(set.frames, -45, 25), back: nearest(set.frames, 180, 35) }; }
+  /* (2026-10-25c) 05 SHOT360이 얼굴로 고른 4장(set._pick)이 있으면 그것 — 정면 = 랜드마크가 다 잡히고 얼굴 yaw가 0°에 가장 가까운 장 */
+  function picks(set) { if (set && set._pick && set._pick.front) return set._pick; return { front: nearest(set.frames, 0, 20), left: nearest(set.frames, 45, 25), right: nearest(set.frames, -45, 25), back: nearest(set.frames, 180, 35) }; }
   function isExtraKey(k) { return /^vm?\d+$/.test(k); }
 
   /* ────────────────────────────────────────────────────────────────────────
@@ -1084,10 +1204,36 @@ var VIEWS360 = (function () {
     return out;
   }
   /* 머리 윗선(scalpY)에서: 좌우 끝 · 맨 위 · 정수리 아래 얕은 깊이의 가로 중심 */
+  /* (2026-10-25f) 손님 머리 덩어리 — 사진에서 머리로 잡힌 덩어리 중 가장 큰 것만(배경에 지나가는 사람 머리 빼기).
+     실측(360 세트 13:47 뒤 사진): 왼쪽 위 배경 사람 두 명의 머리까지 머리 영역으로 잡혀 머리가 화면 왼쪽 끝(3px)까지 이어짐 → "머리가 화면 밖"으로 빠짐.
+     돌려줌: { cols(마스크 열마다 그 덩어리가 있나), top(열마다 맨 윗줄), h(덩어리 높이), edgeL/edgeR(좌·우 끝 열에 닿은 줄 비율), topCut(맨 윗줄이 사진 위 끝) } · 마스크마다 한 번 */
+  function mainBlob(mi) {
+    if (!mi || !mi.reasonMask) return null;
+    if (mi._mainBlob && mi._mainBlob.src === mi.reasonMask) return mi._mainBlob;
+    var mw = mi.maskW || mi.w, mh = mi.maskH || mi.h, mk = mi.reasonMask, N = mw * mh, lab = new Int32Array(N), st = new Int32Array(N), i, j, n, best = 0, bestA = 0, cur = 0;
+    for (i = 0; i < N; i++) {
+      if (mk[i] !== 1 || lab[i]) continue;
+      cur++; var sp = 0, a = 0; st[sp++] = i; lab[i] = cur;
+      while (sp) { j = st[--sp]; a++; var x = j % mw, y = (j / mw) | 0;
+        if (x > 0 && mk[j - 1] === 1 && !lab[j - 1]) { lab[j - 1] = cur; st[sp++] = j - 1; }
+        if (x < mw - 1 && mk[j + 1] === 1 && !lab[j + 1]) { lab[j + 1] = cur; st[sp++] = j + 1; }
+        if (y > 0 && mk[j - mw] === 1 && !lab[j - mw]) { lab[j - mw] = cur; st[sp++] = j - mw; }
+        if (y < mh - 1 && mk[j + mw] === 1 && !lab[j + mw]) { lab[j + mw] = cur; st[sp++] = j + mw; } }
+      if (a > bestA) { bestA = a; best = cur; }
+    }
+    if (!best) return (mi._mainBlob = null);
+    var cols = new Uint8Array(mw), top = new Int32Array(mw).fill(-1), yMin = mh, yMax = -1, eL = 0, eR = 0, rL = new Uint8Array(mh), rR = new Uint8Array(mh);
+    for (n = 0; n < N; n++) if (lab[n] === best) { var xx = n % mw, yy = (n / mw) | 0; cols[xx] = 1; if (top[xx] < 0 || yy < top[xx]) top[xx] = yy; if (yy < yMin) yMin = yy; if (yy > yMax) yMax = yy; if (xx <= 1 && !rL[yy]) { rL[yy] = 1; eL++; } if (xx >= mw - 2 && !rR[yy]) { rR[yy] = 1; eR++; } }
+    var hh = Math.max(1, yMax - yMin + 1);
+    return (mi._mainBlob = { src: mi.reasonMask, mw: mw, mh: mh, cols: cols, top: top, h: hh, edgeL: eL / hh, edgeR: eR / hh, topCut: yMin <= 1, area: bestA, comps: cur });
+  }
+  X._mainBlob = mainBlob;
   function measure(mi) {
     if (!mi || !mi.scalpY || !(mi.w > 8) || !(mi.h > 8)) return null;
-    var sY = mi.scalpY, w = mi.w, x, minX = Infinity, maxX = -Infinity, crown = Infinity, valid = 0;
-    for (x = 0; x < w; x++) { var v = sY[x]; if (v >= 0) { valid++; if (x < minX) minX = x; if (x > maxX) maxX = x; if (v < crown) crown = v; } }
+    var sY = mi.scalpY, w = mi.w, x, minX = Infinity, maxX = -Infinity, crown = Infinity, valid = 0, MB = null;
+    try { MB = X.mainOnly !== false ? mainBlob(mi) : null; } catch (e) { MB = null; }
+    var inMain = function (xx) { if (!MB) return true; var c = Math.min(MB.mw - 1, Math.floor(xx * MB.mw / w)); return !!MB.cols[c]; };
+    for (x = 0; x < w; x++) { var v = sY[x]; if (v >= 0 && inMain(x)) { valid++; if (x < minX) minX = x; if (x > maxX) maxX = x; if (v < crown) crown = v; } }
     if (!(maxX > minX) || !isFinite(crown)) return null;
     var mw = mi.maskW || w, mh = mi.maskH || mi.h, ky = mi.h / mh;
     var ps = personStats(mi.personMask, mw, mh);
@@ -1095,18 +1241,99 @@ var VIEWS360 = (function () {
     var H = (top >= 0 && sh > top) ? sh - top : 0, HB = (top >= 0 && nb > top) ? nb - top : 0;
     var depth = X.capDepth * (H > 0 ? H : HB > 0 ? HB : (maxX - minX));
     var cl = Infinity, cr = -Infinity;
-    for (x = 0; x < w; x++) if (sY[x] >= 0 && sY[x] <= crown + depth) { if (x < cl) cl = x; if (x > cr) cr = x; }
-    return { w: w, h: mi.h, minX: minX, maxX: maxX, hw: (maxX - minX) / 2, crown: crown, valid: valid, top: top, shoulder: sh, H: H, neckBase: nb, HB: HB,
-      capCx: cr >= cl ? (cl + cr) / 2 : (minX + maxX) / 2 };
+    for (x = 0; x < w; x++) if (sY[x] >= 0 && inMain(x) && sY[x] <= crown + depth) { if (x < cl) cl = x; if (x > cr) cr = x; }
+    var hairBot = -1; try { var rm = mi.reasonMask; if (rm && mw > 0 && mh > 0) { for (var yy = mh - 1; yy >= 0 && hairBot < 0; yy--) { var row = yy * mw; for (var xx = 0; xx < mw; xx++) if (rm[row + xx] === 1) { hairBot = yy * ky; break; } } } } catch (e) { hairBot = -1; }
+    return { w: w, h: mi.h, minX: minX, maxX: maxX, hw: (maxX - minX) / 2, crown: crown, valid: valid, top: top, shoulder: sh, H: H, neckBase: nb, HB: HB, hairBot: hairBot,
+      capCx: cr >= cl ? (cl + cr) / 2 : (minX + maxX) / 2,
+      edgeL: MB ? MB.edgeL : 0, edgeR: MB ? MB.edgeR : 0, topCut: MB ? MB.topCut : false, blobs: MB ? MB.comps : 0 };
   }
   X._measure = measure;
+  /* (2026-10-27) 옆얼굴 윤곽 — 사용자: "안면을 그릴 때 90도 사진도 포함시켜서 좀 더 정밀한 안면이 나오도록"
+     옆모습(≈90°)에서는 얼굴 인식이 거의 안 잡히지만(디버그: vm91 얼굴 -17° · v89 -33°로 엉뚱하게 잡힘) 사람 윤곽의 앞쪽 선이
+     그대로 이마·코·입술·턱의 깊이(옆얼굴 선)입니다. 사람 윤곽(personMask)을 분석 직후 버리기 전에 줄마다 앞쪽 끝을 남깁니다.
+     센서 각도는 믿지 않습니다(이 세트: 88° 사진이 실제로는 3/4 정면 · 118° 사진이 진짜 옆모습) — 윤곽 모양으로 옆모습인지 봅니다:
+       얼굴 쪽 = 머리 높이에서 윤곽 끝이 머리카락이 아닌 쪽 · 코 = 얼굴 띠에서 앞쪽 끝이 가장 나온 줄 · 턱 = 코 아래에서 앞쪽 끝이 가장 가파르게 들어가는 줄
+       score = 코가 둘레(위아래 머리 높이의 ±25%)보다 나온 정도 ÷ 머리 앞뒤 길이 — 진짜 옆모습일수록 큼(3/4 각도는 뺨이 코를 덮어 작음)
+     12a buildRealFaceMesh가 VIEWS360.faceProfiles()로 읽어 정중선 깊이에 씁니다. 끄기 FACE_PROFILE360.on=false */
+  function profileOf(mi) {
+    var pm = mi && mi.personMask, hm = mi && mi.reasonMask;
+    if (!pm || !hm) return null;
+    var mw = mi.maskW || mi.w, mh = mi.maskH || mi.h;
+    if (!(mw > 16) || !(mh > 16)) return null;
+    var MB = null; try { MB = mainBlob(mi); } catch (e) { MB = null; }
+    var cx = mw >> 1, x, y, sx = 0, nx = 0;
+    if (MB) { for (x = 0; x < mw; x++) if (MB.cols[x]) { sx += x; nx++; } if (nx) cx = Math.round(sx / nx); }
+    var L = new Int32Array(mh).fill(-1), R = new Int32Array(mh).fill(-1), top = -1, maxReach = Math.round(mw * 0.25);
+    for (y = 0; y < mh; y++) {
+      var base = y * mw, c = cx;
+      if (!pm[base + c]) {
+        var f = -1, d;
+        for (d = 1; d <= maxReach; d++) { if (c - d >= 0 && pm[base + c - d]) { f = c - d; break; } if (c + d < mw && pm[base + c + d]) { f = c + d; break; } }
+        if (f < 0) continue; c = f;
+      }
+      var l = c, r = c; while (l > 0 && pm[base + l - 1]) l--; while (r < mw - 1 && pm[base + r + 1]) r++;
+      if (top < 0 && r - l < 3) continue;
+      L[y] = l; R[y] = r; if (top < 0) top = y;
+    }
+    if (top < 0) return null;
+    function wAt(yy) { return L[yy] >= 0 ? R[yy] - L[yy] + 1 : 0; }
+    var Hh = 0.25 * (mh - top), D = 0, it, yy;                       // 머리 앞뒤 길이 D · 정수리→턱 Hh ≈ 1.15 D
+    for (it = 0; it < 3; it++) { D = 0; for (yy = top; yy < Math.min(mh, top + 0.8 * Hh); yy++) D = Math.max(D, wAt(yy)); Hh = 1.15 * D; }
+    if (!(D > 8)) return null;
+    function hairNear(yy, xx, dir) { var k, q; for (k = 0; k <= 2; k++) { q = xx - dir * k; if (q >= 0 && q < mw && hm[yy * mw + q] === 1) return true; } return false; }
+    var hl = 0, hr = 0, nb = 0;
+    for (yy = Math.round(top + 0.35 * Hh); yy < Math.min(mh, top + 0.8 * Hh); yy++) { if (L[yy] < 0) continue; nb++; if (hairNear(yy, L[yy], -1)) hl++; if (hairNear(yy, R[yy], 1)) hr++; }
+    if (nb < 6) return null;
+    var side = hr <= hl ? 1 : -1;                                      // +1 = 얼굴이 사진 오른쪽
+    var F = new Float32Array(mh).fill(NaN), HF = new Uint8Array(mh);
+    for (yy = top; yy < mh; yy++) { if (L[yy] < 0) continue; F[yy] = side > 0 ? R[yy] : -L[yy]; HF[yy] = hairNear(yy, side > 0 ? R[yy] : L[yy], side) ? 1 : 0; }
+    var y0 = Math.round(top + 0.45 * Hh), y1 = Math.min(mh - 1, Math.round(top + 0.85 * Hh)), nose = -1, fb = -Infinity;
+    for (yy = y0; yy <= y1; yy++) if (F[yy] === F[yy] && !HF[yy] && F[yy] > fb) { fb = F[yy]; nose = yy; }
+    if (nose < 0) return null;
+    var k6 = Math.max(2, Math.round(0.06 * Hh)), c0 = nose + Math.round(0.1 * Hh), c1 = Math.min(mh - 1 - k6, Math.round(top + 1.45 * Hh)), chin = -1, drop = -Infinity;
+    for (yy = c0; yy <= c1; yy++) { if (!(F[yy] === F[yy]) || !(F[yy + k6] === F[yy + k6])) continue; var dd = F[yy] - F[yy + k6]; if (dd > drop) { drop = dd; chin = yy; } }
+    var around = [], h25 = Math.round(0.25 * Hh);
+    for (yy = Math.max(top, nose - h25); yy <= Math.min(mh - 1, nose + h25); yy++) if (F[yy] === F[yy]) around.push(F[yy]);
+    around.sort(function (a, b) { return a - b; });
+    var med = around.length ? around[around.length >> 1] : fb, skin = 0, sn = 0;
+    for (yy = Math.round(top + 0.35 * Hh); yy <= (chin > 0 ? chin : y1); yy++) if (F[yy] === F[yy]) { sn++; if (!HF[yy]) skin++; }
+    var score = Math.max(0, (fb - med) / D) * (sn ? skin / sn : 0);
+    return { side: side, top: top, nose: nose, chin: chin, D: D, Hh: Hh, score: score, chinDrop: drop / D, F: F, HF: HF, mw: mw, mh: mh, kx: mi.w / mw, ky: mi.h / mh };
+  }
+  X._profileOf = profileOf;
+  /* 옆얼굴 윤곽 후보(점수 높은 순) — 지금 세트로 분석한 추가 사진만. 각 { key, deg, ratio, prof } */
+  if (X.profMinFaceYaw == null) X.profMinFaceYaw = 60; if (X.profPerSide == null) X.profPerSide = true;   // (2026-10-28) 옆모습 고르기
+  if (X.readExtraFlow == null) X.readExtraFlow = false;   // (2026-10-28) 추가 사진은 결 읽기 생략(형태·옆얼굴은 영역·윤곽만 씀 · 사진당 2~6초) · 켜기 VIEWS360.readExtraFlow=true
+  X.faceProfiles = function () {
+    var out = [];
+    try {
+      if (!(X.forSet === state.shots360 && X.fp === fpNow())) return out;
+      X.order.forEach(function (k) { var v = X.views[k]; if (v && v.prof && v.prof.score > 0 && v.prof.chin > 0) out.push({ key: k, deg: v.deg, ratio: v.ratio, prof: v.prof, faceYaw: v.faceYaw }); });
+    } catch (e) {}
+    out.sort(function (a, b) { return b.prof.score - a.prof.score; });
+    /* (2026-10-28) 옆모습만 — 사용자: "안면개선을 위한 각도추가는 영 이상한데? 2장만 추가하라니까"
+       디버그 1002(남자 360): v89(얼굴 인식 -33° = 3/4 정면) · vm121(뒤쪽 3/4)이 윤곽 점수 1·2등으로 뽑혀 코끝을 -2.44cm 밀어 넣음.
+       ① 얼굴이 |yaw| < profMinFaceYaw(60°)로 잡힌 장은 옆모습 아님 → 뺌 ② 얼굴 쪽(좌·우)마다 점수 1등 한 장만 → 최대 2장. 되돌리기 VIEWS360.profMinFaceYaw=0 · .profPerSide=false */
+    var minY = +X.profMinFaceYaw || 0, dropped = [];
+    if (minY > 0) out = out.filter(function (q) { if (typeof q.faceYaw === 'number' && Math.abs(q.faceYaw) < minY) { dropped.push(q.key + '(얼굴 ' + Math.round(q.faceYaw) + '°)'); return false; } return true; });
+    if (X.profPerSide !== false) { var got = {}; out = out.filter(function (q) { var sd = q.prof.side > 0 ? 'R' : 'L'; if (got[sd]) return false; got[sd] = 1; return true; }); }
+    X.profDropped = dropped;
+    return out;
+  };
   /* 머리가 화면에 다 들어왔나. 문제 있으면 사유 문자열 */
   function frameProblem(m) {
     if (!m) return '머리 윗선을 못 잡음';
     if (m.hw < 4 || m.valid < m.w * X.minCols) return '머리 윗선이 거의 안 잡힘';
     var e = Math.max(1, X.edgeFrac * m.w);
-    if (m.minX <= e || m.maxX >= m.w - 1 - e) return '머리가 화면 ' + (m.minX <= e ? '왼쪽' : '오른쪽') + ' 가장자리에 걸림';
     if (m.crown <= 1) return '머리 맨 위가 화면 밖';
+    if (m.minX <= e || m.maxX >= m.w - 1 - e) {
+      /* (2026-10-25f) 옆이 조금 잘린 사진은 빼지 않음 — 사용자: "장수가 많아졌으니 다른 사진으로 보충이 되잖아. 조금 잘린 사진도 넣자"
+         사진 밖은 원래 형태 계산에서 판정을 안 함(모름) → 잘린 쪽은 그 자리를 보는 다른 사진이 채움. 머리 덩어리 높이의 cutMax 넘게 닿았을 때만 뺌.
+         잘린 사진은 머리 폭으로 배율을 재면 틀리므로 얼굴·이웃 사진 배율을 씀(calFor). 끄기 VIEWS360.keepCut=false */
+      var cut = Math.max(m.minX <= e ? (m.edgeL || 1) : 0, m.maxX >= m.w - 1 - e ? (m.edgeR || 1) : 0);
+      if (X.keepCut !== false && cut <= (X.cutMax || 0.4)) { m.sideCut = cut; return ''; }
+      return '머리가 화면 ' + (m.minX <= e ? '왼쪽' : '오른쪽') + ' 가장자리에 걸림(머리 높이의 ' + Math.round(cut * 100) + '%)';
+    }
     return '';
   }
 
@@ -1217,7 +1444,7 @@ var VIEWS360 = (function () {
     set.frames.forEach(function (f) {
       if (!f || !f.url || used.indexOf(f) >= 0) return;
       var k = keyOf(f.deg); if (seen[k] || X.skip.indexOf(k) >= 0) return;
-      seen[k] = true; list.push({ key: k, deg: wrapDeg(f.deg), url: f.url });
+      seen[k] = true; list.push({ key: k, deg: wrapDeg(f.deg), url: f.url, yawEst: (typeof f.yawEst === 'number') ? f.yawEst : null });   // (farc) 05가 프레임 간격으로 정한 각도
     });
     list.sort(function (a, b) { return a.deg - b.deg; });
     X.degFront = p.front ? wrapDeg(p.front.deg) : 0;
@@ -1232,28 +1459,29 @@ var VIEWS360 = (function () {
       if (i >= list.length) return Promise.resolve();
       var it = list[i++], faceYaw;
       try { if (typeof showAI === 'function') showAI('360° 사진 분석 중… ' + i + '/' + list.length, Math.round(it.deg) + '° 사진'); } catch (e) {}
+      /* (2026-10-25f) 얼굴은 한 번만 — 예전: 키우기 전에 한 번 + 키운 뒤 또 한 번(키우기 자체도 한 번 더 잼). 지금: 추출(키우기 포함) 뒤
+         키우기가 잰 값이 있으면 그것, 없으면 그때 한 번. 뒤쪽(정면에서 120° 넘게 돈 사진)은 얼굴이 나올 수 없어 안 잼 */
+      var backish = Math.abs(wrapDeg(it.deg - (X.degFront || 0))) > 120;
       return cap(it.url).then(function (u) {
         state.shots[it.key] = u;
         try { if (typeof rememberShotHi === 'function') rememberShotHi(it.key, it.url, u); } catch (e) {}   // (2026-10-25) 원본(SUBJECT_ZOOM 재료)
-        return X.faceOne(it.key);
-      }).then(function (fy) {
-        faceYaw = fy;
         return X.extractOne(it.key);
       }).then(function (ok) {
-        // (2026-10-25) 머리 둘레로 잘라 키웠으면 얼굴 값(눈→턱 길이 등)을 새 사진에서 다시
-        var z = null; try { z = SUBJECT_ZOOM.stats[it.key]; } catch (e) {}
-        if (z && z.done && z.at > Date.now() - 60000) return X.faceOne(it.key).then(function (fy2) { if (fy2 !== undefined) faceYaw = fy2; return ok; }, function () { return ok; });
-        return ok;
+        var lm0 = null; try { lm0 = state.landmarks && state.landmarks[it.key]; } catch (e) {}
+        if (lm0) { faceYaw = faceOf(lm0); return ok; }
+        if (backish) { faceYaw = undefined; return ok; }
+        return X.faceOne(it.key).then(function (fy2) { faceYaw = fy2; return ok; }, function () { return ok; });
       }).then(function (ok) {
         var mi = state.hairMasks && state.hairMasks[it.key], m = null;
         if (ok && mi) { try { m = measure(mi); } catch (e) { m = null; } }
         if (m) {
+          var prof = null; try { prof = profileOf(mi); } catch (e) { prof = null; }   // (2026-10-27) 옆얼굴 윤곽 — 사람 윤곽을 버리기 전에
           // 가볍게: 형태 계산에 쓰는 것만 남김
           ['photoRGB', 'personMask', 'reasonCanvas', 'avgColorsBySection', 'colorPalette', 'faceBoxDiag'].forEach(function (n) { try { mi[n] = null; } catch (e) {} });
           mi._x360 = true;
           var fc = faceYaw && typeof faceYaw === 'object' ? faceYaw : null;
-          X.views[it.key] = { key: it.key, deg: it.deg, m: m, cal: null, ratio: null, ratioSrc: '', ratioBad: '', why: '', kind: '',
-            face: fc, faceYaw: fc ? fc.yaw : faceYaw, ec: fc && fc.ecN > 0 ? fc.ecN * m.h : 0 };
+          X.views[it.key] = { key: it.key, deg: it.deg, yawEst: it.yawEst, m: m, cal: null, ratio: null, ratioSrc: '', ratioBad: '', why: '', kind: '',
+            face: fc, faceYaw: fc ? fc.yaw : faceYaw, ec: fc && fc.ecN > 0 ? fc.ecN * m.h : 0, prof: prof };
           X.order.push(it.key); okN++;
         } else {
           try { if (state.hairMasks) delete state.hairMasks[it.key]; } catch (e) {}
@@ -1280,6 +1508,18 @@ var VIEWS360 = (function () {
     return X.busy;
   };
 
+  /* 정면 사진을 못 쓰면(보정이 없으면) 좌·우(얼굴 yaw 실측)·뒤 카메라에서 0° 기준을 거꾸로 세움 — 추가 사진은 머리 폭 자로만 배율을 잼 */
+  function synthFront(viewCal) {
+    var order = ['left', 'right', 'back'], i, a, c;
+    for (i = 0; i < order.length; i++) {
+      a = order[i]; c = viewCal && viewCal[a];
+      if (!c || !c.pose || !(c.sy > 0) || !X.baseDeg || X.baseDeg[a] == null) continue;
+      var fy = c.pose.yaw * 180 / Math.PI - wrapDeg(X.baseDeg[a] - (X.degFront || 0));
+      return { sy: c.sy, s: c.s, cx: c.cx, crownY: c.crownY, pose: { yaw: wrapDeg(fy) * Math.PI / 180, pitch: 0, roll: 0 }, _synth: a };
+    }
+    return null;
+  }
+
   /* 4장 추출이 끝난 직후(모델이 올라와 있는 동안) 이어서 — extractHairMask(03b) 바깥 단계. run = 안쪽 추출 */
   X._extract = function (angle, run) {
     var p = run();
@@ -1298,11 +1538,11 @@ var VIEWS360 = (function () {
     if (!ok) return ok;
     X.setFp = fpNow();
     try {
-      var p = picks(set), d0 = p.front ? wrapDeg(p.front.deg) : 0;
+      var p = picks(set), d0 = p.front ? wrapDeg(p.front.deg) : 0, fy0 = (p.front && p.front._fy && typeof p.front._fy.yaw === 'number') ? p.front._fy.yaw : 0;   // (2026-10-25c) 정면 장의 얼굴 yaw만큼 더함
       state.capturePose = state.capturePose || {};
       ['left', 'right', 'back'].forEach(function (a) {
         if (!p[a]) return;
-        state.capturePose[a] = { yawDeg: wrapDeg(p[a].deg - d0), pitchDeg: 0, rollDeg: 0, _x360: true };
+        state.capturePose[a] = { yawDeg: (typeof p[a].yawEst === 'number' && X.arcTrust !== false) ? p[a].yawEst : wrapDeg(p[a].deg - d0 + fy0), pitchDeg: 0, rollDeg: 0, _x360: true };   // (farc)
       });
     } catch (e) { console.warn(TAG + ' 센서 각도를 포즈로 넣기 실패', e); }
     return ok;
@@ -1360,9 +1600,13 @@ var VIEWS360 = (function () {
   function precheck(v, frontYawDeg) {
     var m = v.m, fp = frameProblem(m);
     if (fp) return { kind: 'frame', why: fp };
+    if (m && m.hairBot > 0 && m.hw > 0 && (m.hairBot - m.crown) / (2 * m.hw) > X.hairLongK) return { kind: 'frame', why: '머리 영역이 몸·배경까지 흘러내림(세로 ' + ((m.hairBot - m.crown) / (2 * m.hw)).toFixed(1) + '배 · 기준 ' + X.hairLongK + ')' };   // (fsens)
     if (v.ratioBad) return { kind: 'dist', why: v.ratioBad };
     var yawS = wrapDeg(v.deg - (X.degFront || 0)) + (frontYawDeg || 0);
-    if (typeof v.faceYaw === 'number' && Math.abs(wrapDeg(v.faceYaw - yawS)) > X.yawTol) return { kind: 'angle', why: '센서 각도와 얼굴 각도가 다름(센서 ' + yawS.toFixed(0) + '° · 얼굴 ' + v.faceYaw.toFixed(0) + '°)' };
+    if (typeof v.yawEst === 'number' && X.arcTrust !== false) yawS = v.yawEst;   // (farc)
+    /* (2026-11-04 fsens) 얼굴 각도는 정면 근처(|센서| ≤ faceMaxDeg)에서만 씀 — 실사 360 0928: 센서 ±90° 옆모습을 얼굴이 -17°·-33°로 잼(옆으로 돌수록 작게 잼).
+       그 값을 포즈로 썼더니 옆 마스크가 정면 근처에 씌워져 뿌리 13,096개를 안 심음. 옆·뒤는 센서가 맞음 → 센서 ≠ 얼굴로 빼는 것도 정면 근처에서만 */
+    if (Math.abs(yawS) <= X.faceMaxDeg && typeof v.faceYaw === 'number' && Math.abs(wrapDeg(v.faceYaw - yawS)) > X.yawTol) return { kind: 'angle', why: '센서 각도와 얼굴 각도가 다름(센서 ' + yawS.toFixed(0) + '° · 얼굴 ' + v.faceYaw.toFixed(0) + '°)' };
     if (v.face && v.face.pitch != null && X.refFace && X.refFace.pitch != null && Math.abs(v.face.pitch - X.refFace.pitch) > X.pitchTol) return { kind: 'height', why: '올려다보거나 내려다본 사진(고개 각도 ' + v.face.pitch.toFixed(0) + '° · 정면 ' + X.refFace.pitch.toFixed(0) + '°)' };
     if (v.faceYaw === null && Math.abs(yawS) <= X.faceMustDeg) return { kind: 'angle', why: '얼굴이 보여야 할 각도(' + yawS.toFixed(0) + '°)인데 얼굴을 못 찾음' };
     return { kind: '', why: '' };
@@ -1374,7 +1618,7 @@ var VIEWS360 = (function () {
     var qs = [];
     BASE.forEach(function (name) {
       try {
-        var mi = state.hairMasks && state.hairMasks[name], cal = viewCal && viewCal[name]; if (!mi || !cal || !(cal.sy > 0) || !cal.pose) return;
+        var mi = state.hairMasks && state.hairMasks[name], cal = viewCal && viewCal[name]; if (!mi || !cal || cal._synth || !(cal.sy > 0) || !cal.pose) return;
         var mm = measure(mi); if (!mm || frameProblem(mm) || !(mm.hw > 4)) return;
         var A = headHalfWidthAt(cal.pose.yaw || 0); if (A > 0) qs.push(mm.hw * cal.sy / A);
       } catch (e) {}
@@ -1387,11 +1631,12 @@ var VIEWS360 = (function () {
   /* 추가 사진 한 장: 카메라 + 뺄 이유(없으면 '') */
   function calFor(v, viewCal, yTop, CY, ctx) {
     var f = viewCal && viewCal.front, m = v.m, out = { cal: null, why: '', kind: '' };
-    v.q = null; v.agree = null; v.yawSensor = null;
+    v.q = null; v.agree = null; v.yawSensor = null; if (f && f._synth) v.headRuled = false;
     if (!f || !(f.sy > 0) || !f.pose) { out.why = '정면 보정 없음'; return out; }
     var basic = !m || m.hw < 4 || m.valid < m.w * X.minCols;
     if (basic) { out.why = frameProblem(m); out.kind = 'frame'; return out; }
-    if (X.headRuler && (!(v.ratio > 0) || v.ratioBad)) {                         // (2026-10-25) 머리 폭 자
+    var cutNow = false; try { frameProblem(m); cutNow = !!m.sideCut; } catch (e) {}
+    if (X.headRuler && !cutNow && (f._synth || !(v.ratio > 0) || v.ratioBad)) {   // (2026-10-25f) 옆이 잘린 사진은 머리 폭 자를 안 씀                         // (2026-10-25) 머리 폭 자
       var yawH = (typeof v.faceYaw === 'number') ? v.faceYaw : wrapDeg(v.deg - (X.degFront || 0)) + (f.pose.yaw || 0) * 180 / Math.PI;
       var Av = headHalfWidthAt(yawH * Math.PI / 180), q0 = headQ0(viewCal);
       if (q0 > 0 && Av > 0 && m.hw > 0) {
@@ -1399,12 +1644,13 @@ var VIEWS360 = (function () {
         v.ratioWas = v.ratioBad || v.ratioSrc; v.ratio = rH; v.ratioSrc = '머리 폭(정면 머리/두상 ' + q0.toFixed(2) + ')'; v.ratioBad = ''; v.headRuled = true;
       }
     }
+    if (f._synth && !v.headRuled) { out.why = '정면 사진을 못 써서 배율을 못 잼'; out.kind = 'dist'; return out; }
     if (!(v.ratio > 0)) { out.why = '배율 없음'; out.kind = 'dist'; return out; }
     var sy = f.sy * v.ratio;
     if (!isFinite(sy) || !(sy > 0)) { out.why = '배율 계산 실패'; out.kind = 'dist'; return out; }
     var frontYaw = (f.pose.yaw || 0) * 180 / Math.PI, yawS = wrapDeg(v.deg - (X.degFront || 0)) + frontYaw;   // 센서 기준 yaw(도)
     v.yawSensor = yawS;
-    var yawDeg = (typeof v.faceYaw === 'number') ? v.faceYaw : yawS;                          // 얼굴이 잡혔으면 얼굴 실측
+    var yawDeg = (typeof v.yawEst === 'number' && X.arcTrust !== false) ? v.yawEst : (typeof v.faceYaw === 'number' && Math.abs(yawS) <= X.faceMaxDeg) ? v.faceYaw : yawS;   // (fsens) 05 간격 각도 > 정면 근처면 얼굴 실측 > 센서
     var cal = { pose: { yaw: yawDeg * Math.PI / 180, pitch: 0, roll: 0 }, cx: m.capCx, s: sy, sy: sy, crownY: m.crown, x360: true };
     out.cal = cal;
     var A = headHalfWidthAt(cal.pose.yaw); v.q = A > 0 ? m.hw * sy / A : null;
@@ -1412,7 +1658,7 @@ var VIEWS360 = (function () {
     if (!X.gate) return out;
     var pre = precheck(v, frontYaw);
     if (pre.why) { out.why = pre.why; out.kind = pre.kind; }
-    else if (v.q != null && (v.q < X.qLo || v.q > X.qHi)) { out.kind = 'dist'; out.why = '머리 크기가 안 맞음(두상 폭의 ' + v.q.toFixed(2) + '배 — ' + (v.q > X.qHi ? '너무 가깝게 찍혔거나 배율이 틀림' : '너무 멀거나 머리가 잘림') + ')'; }
+    else if (!cutNow && v.q != null && (v.q < X.qLo || v.q > X.qHi)) { out.kind = 'dist'; out.why = '머리 크기가 안 맞음(두상 폭의 ' + v.q.toFixed(2) + '배 — ' + (v.q > X.qHi ? '너무 가깝게 찍혔거나 배율이 틀림' : '너무 멀거나 머리가 잘림') + ')'; }
     else if (Math.abs(wrapDeg(yawDeg)) >= X.agreeFromDeg && v.agree != null && v.agree < ctx.thr) { out.kind = 'angle'; out.why = '두피가 머리 영역 밖으로 나감(맞음 ' + Math.round(v.agree * 100) + '% < ' + Math.round(ctx.thr * 100) + '%)'; }
     return out;
   }
@@ -1436,8 +1682,10 @@ var VIEWS360 = (function () {
   X._probeArgs = function (viewCal, names, yTop, CY) {
     X.last = { used: [], dropped: [], base: (names || []).slice(), baseDropped: [], baseWarn: [], baseInfo: {}, setBad: '', thr: null, agreeFront: null };
     try {
-      if (active() && viewCal && viewCal.front) {
-        var L = X.last, vc = Object.assign({}, viewCal), nm = names.slice();
+      var frontCal = viewCal && (viewCal.front || synthFront(viewCal));   // (2026-10-25b) 정면을 못 쓰면 좌·우·뒤에서 세운 기준으로
+      if (active() && frontCal) {
+        var L = X.last, vc = Object.assign({}, viewCal), nm = names.slice(), vcE = viewCal.front ? viewCal : Object.assign({}, viewCal, { front: frontCal });
+        L.synthFront = frontCal._synth || '';
         var ctx = { thr: X.agreeMin };
         L.thr = ctx.thr;
         // 추가 사진 평가
@@ -1446,12 +1694,12 @@ var VIEWS360 = (function () {
           var v = X.views[k]; v.cal = null; v.why = '';
           if (X.skip.indexOf(k) >= 0) { v.why = '사용자가 뺌(skip)'; return; }
           if (!(state.hairMasks && state.hairMasks[k])) { v.why = '마스크 없음'; return; }
-          res[k] = calFor(v, viewCal, yTop, CY, ctx); v.why = res[k].why; v.kind = res[k].kind;
+          res[k] = calFor(v, vcE, yTop, CY, ctx); v.why = res[k].why; v.kind = res[k].kind;
         });
         // 세트 전체: 얼굴로 확인한 사진 중 센서 각도가 어긋난 것
         var checked = 0, bad = 0;
         X.order.forEach(function (k) {
-          var v = X.views[k]; if (v.yawSensor == null || v.faceYaw === undefined) return;
+          var v = X.views[k]; if (v.yawSensor == null || v.faceYaw === undefined || Math.abs(v.yawSensor) > X.faceMaxDeg) return;   // (fsens) 정면 근처만
           if (typeof v.faceYaw === 'number') { checked++; if (Math.abs(wrapDeg(v.faceYaw - v.yawSensor)) > X.yawTol) bad++; }
           else if (Math.abs(v.yawSensor) <= X.faceMustDeg) { checked++; bad++; }
         });
@@ -1459,14 +1707,15 @@ var VIEWS360 = (function () {
           try {
             var lm = state.landmarks && state.landmarks[a], sd = X.baseDeg && X.baseDeg[a];
             if (sd == null || !viewCal[a]) return;
-            var ys = wrapDeg(sd - (X.degFront || 0)) + (viewCal.front.pose.yaw || 0) * 180 / Math.PI;
+            var ys = wrapDeg(sd - (X.degFront || 0)) + (vcE.front.pose.yaw || 0) * 180 / Math.PI;
+            if (Math.abs(ys) > X.faceMaxDeg) return;                                   // (fsens) 정면 근처만 얼굴로 확인
             if (lm && typeof lm.poseYawDeg === 'number') { checked++; if (Math.abs(wrapDeg(lm.poseYawDeg - ys)) > X.yawTol) bad++; }
             else if (X.canFace() && Math.abs(ys) <= X.faceMustDeg) { checked++; bad++; }
           } catch (e) {}
         });
         if (X.gate && bad >= X.setBadMin && bad >= checked * X.setBadFrac) {
           L.setBad = '얼굴로 확인한 ' + checked + '장 중 ' + bad + '장의 센서 각도가 실제와 달라, 확인할 수 없는 옆·뒤 사진의 각도도 믿을 수 없음 — 추가 사진을 전부 안 씀';
-          X.order.forEach(function (k) { var v = X.views[k]; if (!v.why) { v.why = '세트의 센서 각도를 못 믿음'; v.kind = 'angle'; } });
+          X.order.forEach(function (k) { var v = X.views[k]; if (!v.why) { v.why = '세트의 센서 각도를 못 믿음'; v.kind = 'angle'; } });   // (fyaw) 얼굴 각도가 있는 장은 센서를 안 쓰니 남김
         }
         X.order.forEach(function (k) {
           var v = X.views[k], r = res[k];
@@ -1551,7 +1800,7 @@ var VIEWS360 = (function () {
       var couldFace = X.faceWasReady || X.canFace();
       if (a === 'front') { if (couldFace && !hasFace) add(f.deg, true, 'angle', '정면 사진에서 얼굴을 못 찾음'); return; }
       if (a === 'back') return;
-      if (hasFace && Math.abs(wrapDeg(lm.poseYawDeg - ys)) > X.yawTol) add(f.deg, true, 'angle', '센서 각도와 얼굴 각도가 다름(센서 ' + ys.toFixed(0) + '° · 얼굴 ' + lm.poseYawDeg.toFixed(0) + '°)');
+      if (hasFace && Math.abs(ys) <= X.faceMaxDeg && Math.abs(wrapDeg(lm.poseYawDeg - ys)) > X.yawTol) add(f.deg, true, 'angle', '센서 각도와 얼굴 각도가 다름(센서 ' + ys.toFixed(0) + '° · 얼굴 ' + lm.poseYawDeg.toFixed(0) + '°)');
       else if (couldFace && !hasFace && Math.abs(ys) <= X.faceMustDeg) add(f.deg, true, 'angle', '얼굴이 보여야 할 각도(' + ys.toFixed(0) + '°)인데 얼굴을 못 찾음');
       else if (hasFace && typeof lm.posePitchDeg === 'number' && X.refFace && X.refFace.pitch != null && Math.abs(lm.posePitchDeg - X.refFace.pitch) > X.pitchTol) add(f.deg, true, 'height', '올려다보거나 내려다본 사진');
     });
@@ -1653,6 +1902,14 @@ var VIEWS360 = (function () {
       (la && la.baseDropped.length ? ' · 뺀 기준 사진 ' + la.baseDropped.join(',') : '') +
       (la && la.baseWarn && la.baseWarn.length ? ' · ⚠ 의심스러운 기준 사진 ' + la.baseWarn.join(',') + '(그대로 씀 — 다시 찍는 것이 좋음)' : '') + (X.gate ? '' : ' · 걸러내기 꺼짐') +
       (la ? '' : ' (3D를 아직 안 만듦)'));
+    try { var pk = set._pick; if (pk && pk.front) L.push('  기준 4장 — ' + (pk.by === 'face' ? '정면은 얼굴로 고름(' + Math.round(pk.front.deg) + '° 칸 · 얼굴 yaw ' + pk.front._fy.yaw.toFixed(0) + '° · 진짜 0° = 센서 ' + Math.round(pk.zero) + '°)' : pk.by === 'capture' ? '정면은 촬영 중 찾음(' + Math.round(pk.front.deg) + '° 칸 · 진짜 0° = 센서 ' + Math.round(pk.zero) + '°)' : '얼굴을 한 장도 못 찾아 센서 0° 칸') + ' · 좌 ' + (pk.left ? Math.round(pk.left.deg) + '°' : '없음') + ' · 우 ' + (pk.right ? Math.round(pk.right.deg) + '°' : '없음') + ' · 뒤 ' + (pk.back ? Math.round(pk.back.deg) + '°' : '없음')); } catch (e) {}
+    try {
+      var fpL = X.faceProfiles();
+      L.push('  옆얼굴 윤곽(얼굴 메쉬 정중선 깊이 · 센서 각도 안 봄) — ' + (fpL.length ? fpL.slice(0, 4).map(function (q) { var p = q.prof; return q.key + ' 점수 ' + p.score.toFixed(3) + '(코 ' + Math.round((p.nose - p.top) / Math.max(1, p.Hh) * 100) + '% · 턱 ' + Math.round((p.chin - p.top) / Math.max(1, p.Hh) * 100) + '% · 얼굴 ' + (p.side > 0 ? '오른쪽' : '왼쪽') + ')'; }).join(' · ') + ' · 쓴 것은 [얼굴 360 옆윤곽] 줄' : '후보 없음'));
+      if (X.profDropped && X.profDropped.length) L.push('  옆모습 아님(얼굴 |yaw| < ' + X.profMinFaceYaw + '°)으로 뺀 사진 — ' + X.profDropped.join(' · '));   // (2026-10-28)
+      if (typeof FACE_BUILD !== 'undefined' && FACE_BUILD.prof360) { var P3 = FACE_BUILD.prof360; L.push('  [얼굴 360 옆윤곽] ' + (P3.used ? '씀 — ' + P3.used + ' · 정중선 ' + P3.n + '점 · 보정 중앙 ' + P3.medCm + 'cm / 최대 ' + P3.maxCm + 'cm · 코끝 ' + P3.noseCm + 'cm' : '안 씀 — ' + (P3.why || ''))); }
+    } catch (e) {}
+    if (la && la.synthFront) L.push('  ⚠ 정면 보정이 없어 ' + la.synthFront + ' 사진에서 0° 기준을 세움 — 추가 사진 배율은 머리 폭 자로만');
     if (la && la.setBad) L.push('  ⚠ ' + la.setBad);
     try { var ad = X.advice(); if (ad) L.push('  촬영 안내(화면 카드) — ' + (ad.items.length ? ad.items.map(function (it) { return Math.round(it.deg) + '°' + (it.base ? '(기준)' : '') + ' ' + it.kind; }).join(' · ') : '문제 없음') + (X.advise ? '' : ' · 카드 꺼짐')); } catch (e) {}
     if (X.bodyRuler) L.push('  배율 자 — 얼굴이 잡힌 사진은 눈→턱 · 없는 사진은 어깨선/목 밑동: ' + (X.bodyRuler.n ? '얼굴 자와 대조 ' + X.bodyRuler.n + '장 · 중앙 오차 ' + Math.round(X.bodyRuler.med * 100) + '% → ' + (X.bodyRuler.ok ? '믿음' : '⚠ 못 믿음(얼굴 없는 사진은 뺌)') : '대조할 얼굴 사진이 없어 그대로 씀'));
@@ -1723,16 +1980,43 @@ function trimStrandToOccupancy3D(pts, probe, acc, opts){
         return Math.sqrt(best);
       }
     : null;
+  /* (2026-11-02 2차) 전원 일치는 <b>조정 후 재클립에만</b> 건다(opts.strict).
+     리프트 때 사진 가닥 다듬기(13c)·점유 격자까지 AND로 바뀌면 다시 기르기가 따라 걷는
+     사진 가닥이 짧아져 픽셀 결(잡음)로 걷는 몫이 는다 — 직모 뒷머리가 굽은 원인 후보. */
+  const strict = !!(O.strictAnd && opts && opts.strict);
   let off = 0, cut = -1;
+  const nearF = strict ? new Uint8Array(pts.length) : null;   // (2026-11-03r) 여유 덕에 산 점(영역 밖 · 여유 안)
   for(let i=Math.min(O.skipRoot, pts.length-1); i<pts.length; i++){
     const p = pts[i];
-    const r = probe.at(p.x, p.y, p.z);
+    const r = probe.at(p.x, p.y, p.z, strict);
+    if(nearF && r.near) nearF[i] = 1;
     if(acc) acc.n++;
     if(r.occ >= O.occThr){ off = 0; continue; }
     off++;
-    if(off >= O.offRun){ cut = i - off + 1; break; }
+    if(off >= (strict ? 1 : O.offRun)){ cut = i - off + 1; break; }
   }
-  if(cut < 0) return pts;
+  /* (2026-11-03r) 여유로 살린 가닥의 <b>끝</b>이 여유 띠(사진 머리 영역 밖)에 있으면 끝에서부터 여유 띠에 있는 점을 다 자름(여유 없는 영역에서 끝나게 · 상한 tailTrimCm, 기본 없음) — 사용자: "여유를 인정해서 가닥은 살리고, 그렇게 살아난 가닥 1cm를 자르자."
+     실사 1753: 옆·뒤 사진 대조 넘침 점의 80~96%가 영역 밖 1~1.5cm(여유 안)에서 끝나는 가닥 끝. 가운데(밖→다시 안)는 그대로. 끄기 HAIR_OCC3D.tailTrimCm = 0 */
+  const tailTrim = (pp, end)=>{
+    const lim = (O.tailTrimCm != null ? O.tailTrimCm : Infinity); if(!nearF || !(lim > 0)) return end;   // (11-03r2) 기본 = 상한 없음 — 사용자: "여유가 없는 영역에서 끝나게 하는거지. 살리긴 살리되"
+    const cmU = (typeof modelCmPerUnit === 'function' && modelCmPerUnit()) || 16.4;
+    let k = end, arc = 0;
+    while(k > Math.max(O.minPts || 2, 2) && nearF[k-1]){ const a0 = pp[k-1], b0 = pp[k-2]; const d = Math.hypot(a0.x-b0.x, a0.y-b0.y, a0.z-b0.z) * cmU; if(arc + d > lim + 1e-6) break; arc += d; k--; }
+    if(k < end){ _tailTrimN++; _tailTrimPts += end - k; }
+    return k;
+  };
+  if(cut < 0){ const k = tailTrim(pts, pts.length); return k < pts.length ? pts.slice(0, k) : pts; }
+  if(strict){
+    /* 여유 없음 — 밖으로 나간 첫 점 직전에서 끊는다. */
+    if(cut < O.minPts){
+      if(!neverDrop){ if(acc) acc.dropped++; return null; }
+      cut = Math.min(pts.length, O.minPts);
+      if(cut >= pts.length) return pts;
+    }
+    cut = tailTrim(pts, cut);
+    if(acc){ acc.trimmed++; acc.removedPts += (pts.length - cut); }
+    return pts.slice(0, cut);
+  }
   /* 늘린 만큼의 여유 — 경계에서 바로 자르지 않고 growLen 호길이만큼 더 간다.
      2D에서 클립 마스크를 growPx만큼 부풀리는 것과 같은 뜻이다(밖으로 나가는
      가닥에 대해서는 "마스크를 키운다" = "경계 통과 후 그만큼 더 그린다"). */
