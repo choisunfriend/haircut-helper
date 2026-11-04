@@ -1129,6 +1129,8 @@ var VIEWS360 = (function () {
     qLo: 0.75, qHi: 2.3,   // 머리 윗선 반폭 ÷ 그 각도의 두상 반폭
     agreeMin: 0.75, agreeFromDeg: 75,   // 두피 되쏘기(옆·뒤 사진만 — yaw가 agreeFromDeg 이상): 이 비율 이상이어야
     yawTol: 18,         // 센서 각도 ↔ 얼굴 실측 yaw 허용 차(도)
+    faceMaxDeg: 60,     // (2026-11-04 fsens) 얼굴 각도를 믿는 범위(센서 기준 |yaw| ≤) — 옆으로 돌면 얼굴 랜드마크가 각도를 작게 잼
+    hairLongK: 2.0,     // (fsens) 머리 마스크 세로 길이 ÷ 머리 폭이 이 배를 넘으면 몸·배경까지 흘러내린 마스크로 보고 뺌(실사 360 v119)
     pitchTol: 15,       // 얼굴 실측 pitch가 정면과 이만큼 넘게 다르면 뺌(올려다보거나 내려다본 사진)
     faceMustDeg: 55,    // 이 각도 안쪽이면 얼굴이 잡혀야 함
     setBadMin: 2, setBadFrac: 0.34,  // 얼굴로 확인한 사진 중 어긋난 것이 이만큼이면 세트의 센서 각도를 안 믿음
@@ -1240,7 +1242,8 @@ var VIEWS360 = (function () {
     var depth = X.capDepth * (H > 0 ? H : HB > 0 ? HB : (maxX - minX));
     var cl = Infinity, cr = -Infinity;
     for (x = 0; x < w; x++) if (sY[x] >= 0 && inMain(x) && sY[x] <= crown + depth) { if (x < cl) cl = x; if (x > cr) cr = x; }
-    return { w: w, h: mi.h, minX: minX, maxX: maxX, hw: (maxX - minX) / 2, crown: crown, valid: valid, top: top, shoulder: sh, H: H, neckBase: nb, HB: HB,
+    var hairBot = -1; try { var rm = mi.reasonMask; if (rm && mw > 0 && mh > 0) { for (var yy = mh - 1; yy >= 0 && hairBot < 0; yy--) { var row = yy * mw; for (var xx = 0; xx < mw; xx++) if (rm[row + xx] === 1) { hairBot = yy * ky; break; } } } } catch (e) { hairBot = -1; }
+    return { w: w, h: mi.h, minX: minX, maxX: maxX, hw: (maxX - minX) / 2, crown: crown, valid: valid, top: top, shoulder: sh, H: H, neckBase: nb, HB: HB, hairBot: hairBot,
       capCx: cr >= cl ? (cl + cr) / 2 : (minX + maxX) / 2,
       edgeL: MB ? MB.edgeL : 0, edgeR: MB ? MB.edgeR : 0, topCut: MB ? MB.topCut : false, blobs: MB ? MB.comps : 0 };
   }
@@ -1597,11 +1600,13 @@ var VIEWS360 = (function () {
   function precheck(v, frontYawDeg) {
     var m = v.m, fp = frameProblem(m);
     if (fp) return { kind: 'frame', why: fp };
+    if (m && m.hairBot > 0 && m.hw > 0 && (m.hairBot - m.crown) / (2 * m.hw) > X.hairLongK) return { kind: 'frame', why: '머리 영역이 몸·배경까지 흘러내림(세로 ' + ((m.hairBot - m.crown) / (2 * m.hw)).toFixed(1) + '배 · 기준 ' + X.hairLongK + ')' };   // (fsens)
     if (v.ratioBad) return { kind: 'dist', why: v.ratioBad };
     var yawS = wrapDeg(v.deg - (X.degFront || 0)) + (frontYawDeg || 0);
     if (typeof v.yawEst === 'number' && X.arcTrust !== false) yawS = v.yawEst;   // (farc)
-    /* (2026-11-04 fyaw) 얼굴이 잡힌 사진은 얼굴 각도를 쓰므로(아래 pose) 센서와 달라도 안 뺌 — 사용자: 사진 고르기는 얼굴 각도로 재측정. 되돌리기 VIEWS360.faceTrust=false */
-    if (X.faceTrust === false && typeof v.faceYaw === 'number' && Math.abs(wrapDeg(v.faceYaw - yawS)) > X.yawTol) return { kind: 'angle', why: '센서 각도와 얼굴 각도가 다름(센서 ' + yawS.toFixed(0) + '° · 얼굴 ' + v.faceYaw.toFixed(0) + '°)' };
+    /* (2026-11-04 fsens) 얼굴 각도는 정면 근처(|센서| ≤ faceMaxDeg)에서만 씀 — 실사 360 0928: 센서 ±90° 옆모습을 얼굴이 -17°·-33°로 잼(옆으로 돌수록 작게 잼).
+       그 값을 포즈로 썼더니 옆 마스크가 정면 근처에 씌워져 뿌리 13,096개를 안 심음. 옆·뒤는 센서가 맞음 → 센서 ≠ 얼굴로 빼는 것도 정면 근처에서만 */
+    if (Math.abs(yawS) <= X.faceMaxDeg && typeof v.faceYaw === 'number' && Math.abs(wrapDeg(v.faceYaw - yawS)) > X.yawTol) return { kind: 'angle', why: '센서 각도와 얼굴 각도가 다름(센서 ' + yawS.toFixed(0) + '° · 얼굴 ' + v.faceYaw.toFixed(0) + '°)' };
     if (v.face && v.face.pitch != null && X.refFace && X.refFace.pitch != null && Math.abs(v.face.pitch - X.refFace.pitch) > X.pitchTol) return { kind: 'height', why: '올려다보거나 내려다본 사진(고개 각도 ' + v.face.pitch.toFixed(0) + '° · 정면 ' + X.refFace.pitch.toFixed(0) + '°)' };
     if (v.faceYaw === null && Math.abs(yawS) <= X.faceMustDeg) return { kind: 'angle', why: '얼굴이 보여야 할 각도(' + yawS.toFixed(0) + '°)인데 얼굴을 못 찾음' };
     return { kind: '', why: '' };
@@ -1645,7 +1650,7 @@ var VIEWS360 = (function () {
     if (!isFinite(sy) || !(sy > 0)) { out.why = '배율 계산 실패'; out.kind = 'dist'; return out; }
     var frontYaw = (f.pose.yaw || 0) * 180 / Math.PI, yawS = wrapDeg(v.deg - (X.degFront || 0)) + frontYaw;   // 센서 기준 yaw(도)
     v.yawSensor = yawS;
-    var yawDeg = (typeof v.faceYaw === 'number') ? v.faceYaw : (typeof v.yawEst === 'number' && X.arcTrust !== false) ? v.yawEst : yawS;   // 얼굴 실측 > (farc) 옆 두 장 사이 프레임 간격 > 센서
+    var yawDeg = (typeof v.yawEst === 'number' && X.arcTrust !== false) ? v.yawEst : (typeof v.faceYaw === 'number' && Math.abs(yawS) <= X.faceMaxDeg) ? v.faceYaw : yawS;   // (fsens) 05 간격 각도 > 정면 근처면 얼굴 실측 > 센서
     var cal = { pose: { yaw: yawDeg * Math.PI / 180, pitch: 0, roll: 0 }, cx: m.capCx, s: sy, sy: sy, crownY: m.crown, x360: true };
     out.cal = cal;
     var A = headHalfWidthAt(cal.pose.yaw); v.q = A > 0 ? m.hw * sy / A : null;
@@ -1694,7 +1699,7 @@ var VIEWS360 = (function () {
         // 세트 전체: 얼굴로 확인한 사진 중 센서 각도가 어긋난 것
         var checked = 0, bad = 0;
         X.order.forEach(function (k) {
-          var v = X.views[k]; if (v.yawSensor == null || v.faceYaw === undefined) return;
+          var v = X.views[k]; if (v.yawSensor == null || v.faceYaw === undefined || Math.abs(v.yawSensor) > X.faceMaxDeg) return;   // (fsens) 정면 근처만
           if (typeof v.faceYaw === 'number') { checked++; if (Math.abs(wrapDeg(v.faceYaw - v.yawSensor)) > X.yawTol) bad++; }
           else if (Math.abs(v.yawSensor) <= X.faceMustDeg) { checked++; bad++; }
         });
@@ -1703,13 +1708,14 @@ var VIEWS360 = (function () {
             var lm = state.landmarks && state.landmarks[a], sd = X.baseDeg && X.baseDeg[a];
             if (sd == null || !viewCal[a]) return;
             var ys = wrapDeg(sd - (X.degFront || 0)) + (vcE.front.pose.yaw || 0) * 180 / Math.PI;
+            if (Math.abs(ys) > X.faceMaxDeg) return;                                   // (fsens) 정면 근처만 얼굴로 확인
             if (lm && typeof lm.poseYawDeg === 'number') { checked++; if (Math.abs(wrapDeg(lm.poseYawDeg - ys)) > X.yawTol) bad++; }
             else if (X.canFace() && Math.abs(ys) <= X.faceMustDeg) { checked++; bad++; }
           } catch (e) {}
         });
         if (X.gate && bad >= X.setBadMin && bad >= checked * X.setBadFrac) {
           L.setBad = '얼굴로 확인한 ' + checked + '장 중 ' + bad + '장의 센서 각도가 실제와 달라, 확인할 수 없는 옆·뒤 사진의 각도도 믿을 수 없음 — 추가 사진을 전부 안 씀';
-          X.order.forEach(function (k) { var v = X.views[k]; if (!v.why && !(X.faceTrust !== false && typeof v.faceYaw === 'number') && !(X.arcTrust !== false && typeof v.yawEst === 'number')) { v.why = '세트의 센서 각도를 못 믿음'; v.kind = 'angle'; } });   // (fyaw) 얼굴 각도가 있는 장은 센서를 안 쓰니 남김
+          X.order.forEach(function (k) { var v = X.views[k]; if (!v.why) { v.why = '세트의 센서 각도를 못 믿음'; v.kind = 'angle'; } });   // (fyaw) 얼굴 각도가 있는 장은 센서를 안 쓰니 남김
         }
         X.order.forEach(function (k) {
           var v = X.views[k], r = res[k];
@@ -1794,7 +1800,7 @@ var VIEWS360 = (function () {
       var couldFace = X.faceWasReady || X.canFace();
       if (a === 'front') { if (couldFace && !hasFace) add(f.deg, true, 'angle', '정면 사진에서 얼굴을 못 찾음'); return; }
       if (a === 'back') return;
-      if (hasFace && Math.abs(wrapDeg(lm.poseYawDeg - ys)) > X.yawTol) add(f.deg, true, 'angle', '센서 각도와 얼굴 각도가 다름(센서 ' + ys.toFixed(0) + '° · 얼굴 ' + lm.poseYawDeg.toFixed(0) + '°)');
+      if (hasFace && Math.abs(ys) <= X.faceMaxDeg && Math.abs(wrapDeg(lm.poseYawDeg - ys)) > X.yawTol) add(f.deg, true, 'angle', '센서 각도와 얼굴 각도가 다름(센서 ' + ys.toFixed(0) + '° · 얼굴 ' + lm.poseYawDeg.toFixed(0) + '°)');
       else if (couldFace && !hasFace && Math.abs(ys) <= X.faceMustDeg) add(f.deg, true, 'angle', '얼굴이 보여야 할 각도(' + ys.toFixed(0) + '°)인데 얼굴을 못 찾음');
       else if (hasFace && typeof lm.posePitchDeg === 'number' && X.refFace && X.refFace.pitch != null && Math.abs(lm.posePitchDeg - X.refFace.pitch) > X.pitchTol) add(f.deg, true, 'height', '올려다보거나 내려다본 사진');
     });
