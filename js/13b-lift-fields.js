@@ -1599,7 +1599,8 @@ var VIEWS360 = (function () {
     if (fp) return { kind: 'frame', why: fp };
     if (v.ratioBad) return { kind: 'dist', why: v.ratioBad };
     var yawS = wrapDeg(v.deg - (X.degFront || 0)) + (frontYawDeg || 0);
-    if (typeof v.faceYaw === 'number' && Math.abs(wrapDeg(v.faceYaw - yawS)) > X.yawTol) return { kind: 'angle', why: '센서 각도와 얼굴 각도가 다름(센서 ' + yawS.toFixed(0) + '° · 얼굴 ' + v.faceYaw.toFixed(0) + '°)' };
+    /* (2026-11-04 fyaw) 얼굴이 잡힌 사진은 얼굴 각도를 쓰므로(아래 pose) 센서와 달라도 안 뺌 — 사용자: 사진 고르기는 얼굴 각도로 재측정. 되돌리기 VIEWS360.faceTrust=false */
+    if (X.faceTrust === false && typeof v.faceYaw === 'number' && Math.abs(wrapDeg(v.faceYaw - yawS)) > X.yawTol) return { kind: 'angle', why: '센서 각도와 얼굴 각도가 다름(센서 ' + yawS.toFixed(0) + '° · 얼굴 ' + v.faceYaw.toFixed(0) + '°)' };
     if (v.face && v.face.pitch != null && X.refFace && X.refFace.pitch != null && Math.abs(v.face.pitch - X.refFace.pitch) > X.pitchTol) return { kind: 'height', why: '올려다보거나 내려다본 사진(고개 각도 ' + v.face.pitch.toFixed(0) + '° · 정면 ' + X.refFace.pitch.toFixed(0) + '°)' };
     if (v.faceYaw === null && Math.abs(yawS) <= X.faceMustDeg) return { kind: 'angle', why: '얼굴이 보여야 할 각도(' + yawS.toFixed(0) + '°)인데 얼굴을 못 찾음' };
     return { kind: '', why: '' };
@@ -1707,7 +1708,7 @@ var VIEWS360 = (function () {
         });
         if (X.gate && bad >= X.setBadMin && bad >= checked * X.setBadFrac) {
           L.setBad = '얼굴로 확인한 ' + checked + '장 중 ' + bad + '장의 센서 각도가 실제와 달라, 확인할 수 없는 옆·뒤 사진의 각도도 믿을 수 없음 — 추가 사진을 전부 안 씀';
-          X.order.forEach(function (k) { var v = X.views[k]; if (!v.why) { v.why = '세트의 센서 각도를 못 믿음'; v.kind = 'angle'; } });
+          X.order.forEach(function (k) { var v = X.views[k]; if (!v.why && !(X.faceTrust !== false && typeof v.faceYaw === 'number')) { v.why = '세트의 센서 각도를 못 믿음'; v.kind = 'angle'; } });   // (fyaw) 얼굴 각도가 있는 장은 센서를 안 쓰니 남김
         }
         X.order.forEach(function (k) {
           var v = X.views[k], r = res[k];
@@ -1894,7 +1895,7 @@ var VIEWS360 = (function () {
       (la && la.baseDropped.length ? ' · 뺀 기준 사진 ' + la.baseDropped.join(',') : '') +
       (la && la.baseWarn && la.baseWarn.length ? ' · ⚠ 의심스러운 기준 사진 ' + la.baseWarn.join(',') + '(그대로 씀 — 다시 찍는 것이 좋음)' : '') + (X.gate ? '' : ' · 걸러내기 꺼짐') +
       (la ? '' : ' (3D를 아직 안 만듦)'));
-    try { var pk = set._pick; if (pk && pk.front) L.push('  기준 4장 — ' + (pk.by === 'face' ? '정면은 얼굴로 고름(' + Math.round(pk.front.deg) + '° 칸 · 얼굴 yaw ' + pk.front._fy.yaw.toFixed(0) + '° · 진짜 0° = 센서 ' + Math.round(pk.zero) + '°)' : '얼굴을 한 장도 못 찾아 센서 0° 칸') + ' · 좌 ' + (pk.left ? Math.round(pk.left.deg) + '°' : '없음') + ' · 우 ' + (pk.right ? Math.round(pk.right.deg) + '°' : '없음') + ' · 뒤 ' + (pk.back ? Math.round(pk.back.deg) + '°' : '없음')); } catch (e) {}
+    try { var pk = set._pick; if (pk && pk.front) L.push('  기준 4장 — ' + (pk.by === 'face' ? '정면은 얼굴로 고름(' + Math.round(pk.front.deg) + '° 칸 · 얼굴 yaw ' + pk.front._fy.yaw.toFixed(0) + '° · 진짜 0° = 센서 ' + Math.round(pk.zero) + '°)' : pk.by === 'capture' ? '정면은 촬영 중 찾음(' + Math.round(pk.front.deg) + '° 칸 · 진짜 0° = 센서 ' + Math.round(pk.zero) + '°)' : '얼굴을 한 장도 못 찾아 센서 0° 칸') + ' · 좌 ' + (pk.left ? Math.round(pk.left.deg) + '°' : '없음') + ' · 우 ' + (pk.right ? Math.round(pk.right.deg) + '°' : '없음') + ' · 뒤 ' + (pk.back ? Math.round(pk.back.deg) + '°' : '없음')); } catch (e) {}
     try {
       var fpL = X.faceProfiles();
       L.push('  옆얼굴 윤곽(얼굴 메쉬 정중선 깊이 · 센서 각도 안 봄) — ' + (fpL.length ? fpL.slice(0, 4).map(function (q) { var p = q.prof; return q.key + ' 점수 ' + p.score.toFixed(3) + '(코 ' + Math.round((p.nose - p.top) / Math.max(1, p.Hh) * 100) + '% · 턱 ' + Math.round((p.chin - p.top) / Math.max(1, p.Hh) * 100) + '% · 얼굴 ' + (p.side > 0 ? '오른쪽' : '왼쪽') + ')'; }).join(' · ') + ' · 쓴 것은 [얼굴 360 옆윤곽] 줄' : '후보 없음'));
