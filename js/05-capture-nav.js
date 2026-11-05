@@ -513,58 +513,23 @@ var SHOT360 = (function () {
      ③ 진짜 0° = 그 장의 센서 각도 − 얼굴 yaw · 좌·우 = 0° ± sideDeg(30) · 뒤 = 0° + 180 에 가장 가까운 장
      얼굴이 한 장도 안 잡히면 예전 규칙(센서 0°·±45°·180°). 결과는 set._pick (13b VIEWS360이 같은 것을 씀) */
   Q.sideDeg = Q.sideDeg || 45;   // (2026-11-01) 30 → 45 — 사용자: "랜드마크가 확인되어야 하기 때문에 45~50도 되어야 돼" · 촬영 칸 ±45°(extra) Q.faceTieDeg = Q.faceTieDeg || 8;
-  /* (2026-11-04 fready) 저장된 세트를 불러올 때 얼굴 모델(01 faceLandmarker)이 아직 로딩 중이면 quickFaceLandmarks가 바로 null을 줘서
-     8장 전부 "얼굴 못 찾음" → 센서 규칙으로 떨어졌음(실사 360 0838: 05는 0장, 바로 뒤 13b는 -17°·-33° 등 다 찾음).
-     고침: ① 모델이 준비될 때까지 기다린 뒤 잼(최대 Q.faceWaitMs, 로드 실패면 안 기다림) ② 모델이 안 준비된 채 받은 null은 저장하지 않음(다음에 다시 잼) */
-  Q.faceWaitMs = Q.faceWaitMs || 20000;
-  function faceReady() { return typeof faceLandmarkerReady !== 'undefined' && faceLandmarkerReady && typeof faceLandmarker !== 'undefined' && !!faceLandmarker; }
-  function waitFace() {
-    if (faceReady()) return Promise.resolve(true);
-    var t0 = Date.now();
-    try { if (typeof showAI === 'function') showAI('얼굴 모델 준비 중…', '저장된 사진의 정면을 찾기 전'); } catch (e) {}
-    return new Promise(function (res) {
-      (function poll() {
-        if (faceReady()) { res(true); return; }
-        if (window.__lmDiag || Date.now() - t0 > Q.faceWaitMs) { console.warn(TAG + ' 얼굴 모델이 준비되지 않아(' + (window.__lmDiag || ((Date.now() - t0) / 1000).toFixed(0) + '초') + ') 센서 각도로 고름'); res(false); return; }
-        setTimeout(poll, 200);
-      })();
-    });
-  }
   function scanFaces(set) {
-    if (typeof quickFaceLandmarks !== 'function') return Promise.resolve();
-    return waitFace().then(function (ready) { if (ready) return scanFacesNow(set); });
-  }
-  function scanFacesNow(set) {
     var fr = set.frames.filter(function (f) { return f && f.url && f._fy === undefined; }), i = 0;
+    if (typeof quickFaceLandmarks !== 'function') return Promise.resolve();
     function one() {
       if (i >= fr.length) return Promise.resolve();
       var f = fr[i++];
       try { if (typeof showAI === 'function') showAI('정면 사진 찾는 중… ' + i + '/' + fr.length, Math.round(f.deg) + '° 사진 얼굴 확인'); } catch (e) {}
-      return quickFaceLandmarks(f.url, 640).then(function (r) { if (r == null && !faceReady()) return; try { Object.defineProperty(f, '_fy', { value: r, writable: true, configurable: true, enumerable: false }); } catch (e) { f._fy = r; } }, function () {}).then(one);
+      return quickFaceLandmarks(f.url, 640).then(function (r) { try { Object.defineProperty(f, '_fy', { value: r, writable: true, configurable: true, enumerable: false }); } catch (e) { f._fy = r; } }, function () {}).then(one);
     }
     return one().then(function () { try { if (typeof hideAI === 'function') hideAI(); } catch (e) {} });
-  }
-  /* (2026-11-04 fpick) 좌·우·뒤 = 센서로 후보를 고른 뒤 <b>얼굴 각도</b>로 한 장 — 사용자: "±45°·180°에 가까운 프레임을 선택한 다음 그 중에서 얼굴각도로 가장 해당 각도에 맞는 장을 고르라고 했어"
-     ① 후보 = 진짜 0° 기준 센서 각도가 목표 ± maxOff 안인 장 ② 후보 중 얼굴 yaw가 잡힌 장이 있으면 |얼굴 yaw − 목표| 최소인 장
-     ③ 얼굴 잡힌 후보가 없으면(뒤 등) 센서로 가장 가까운 장(예전 그대로). 끄기 SHOT360.pickByFace = false */
-  function byFace(frames, zero, target, maxOff) {
-    var want = wrap(zero + target);
-    if (Q.pickByFace === false) return nearest(frames, want, maxOff);
-    var cand = frames.filter(function (f) { return f && Math.abs(wrap(f.deg - want)) <= maxOff; });
-    var best = null, bd = 1e9;
-    cand.forEach(function (f) {
-      if (!f._fy || typeof f._fy.yaw !== 'number') return;
-      var d = Math.abs(wrap(f._fy.yaw - target)); if (d < bd) { bd = d; best = f; }
-    });
-    if (best) { console.log(TAG + ' ' + target + '° 칸 — 후보 ' + cand.length + '장 중 얼굴 ' + best._fy.yaw.toFixed(0) + '°인 장(센서 ' + Math.round(wrap(best.deg - zero)) + '°)'); return best; }
-    return nearest(frames, want, maxOff);
   }
   function pickFrames(set) {
     var fr0 = set.frames.filter(function (f) { return f && f.front; })[0];
     if (fr0) {                                                         // (2026-10-25f) 촬영 중 찾은 정면
       var yw = typeof fr0.faceYaw === 'number' ? fr0.faceYaw : 0, z0 = wrap(fr0.deg - yw), rest0 = set.frames.filter(function (f) { return f !== fr0; });
       try { if (!fr0._fy) Object.defineProperty(fr0, '_fy', { value: { yaw: yw, ecN: 0 }, writable: true, configurable: true, enumerable: false }); } catch (e) {}
-      return { front: fr0, left: byFace(rest0, z0, Q.sideDeg, 20), right: byFace(rest0, z0, -Q.sideDeg, 20), back: byFace(rest0, z0, 180, 35), zero: z0, by: 'capture' };
+      return { front: fr0, left: nearest(rest0, wrap(z0 + Q.sideDeg), 20), right: nearest(rest0, wrap(z0 - Q.sideDeg), 20), back: nearest(rest0, wrap(z0 + 180), 35), zero: z0, by: 'capture' };
     }
     var faces = set.frames.filter(function (f) { return f && f._fy && typeof f._fy.yaw === 'number'; }), front = null;
     faces.forEach(function (f) {
@@ -578,12 +543,12 @@ var SHOT360 = (function () {
       return old;
     }
     var zero = wrap(front.deg - front._fy.yaw), rest = set.frames.filter(function (f) { return f !== front; });
-    return { front: front, left: byFace(rest, zero, Q.sideDeg, 20), right: byFace(rest, zero, -Q.sideDeg, 20), back: byFace(rest, zero, 180, 35), zero: zero, by: 'face' };
+    return { front: front, left: nearest(rest, wrap(zero + Q.sideDeg), 20), right: nearest(rest, wrap(zero - Q.sideDeg), 20), back: nearest(rest, wrap(zero + 180), 35), zero: zero, by: 'face' };
   }
   Q._pickFrames = pickFrames;
   function applySetCore(set) {
     if (!set || !set.frames || !set.frames.length) { toast('360 세트가 비어 있습니다'); return Promise.resolve(false); }
-    /* (2026-10-25f) 촬영 중 정면을 찾았어도 (11-04 fpick) 좌·우를 얼굴 각도로 고르려면 나머지 장 얼굴은 재야 함 — 정면 장은 _fy가 있어 다시 안 잼 */
+    if (set.frames.some(function (f) { return f && f.front; })) return applySetPicked(set);   // (2026-10-25f) 촬영 중 정면을 찾았으면 다시 안 잼
     return scanFaces(set).then(function () { return applySetPicked(set); });
   }
   function applySetPicked(set) {
