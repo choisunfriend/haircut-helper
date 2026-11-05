@@ -549,8 +549,7 @@ var SHOT360 = (function () {
      ③ 얼굴 잡힌 후보가 없으면(뒤 등) 센서로 가장 가까운 장(예전 그대로). 끄기 SHOT360.pickByFace = false */
   function byFace(frames, zero, target, maxOff) {
     var want = wrap(zero + target);
-    /* (2026-11-04 fsens) 얼굴 각도는 정면 근처만 믿음 — 실사 360 0928: 센서 ±90° 옆모습을 얼굴이 -17°·-33°로 잼. 옆·뒤는 센서(정면으로 0°를 맞춘 뒤)로 */
-    if (Q.pickByFace === false || Math.abs(target) > Q.faceMaxDeg) return nearest(frames, want, maxOff);
+    if (Q.pickByFace === false) return nearest(frames, want, maxOff);
     var cand = frames.filter(function (f) { return f && Math.abs(wrap(f.deg - want)) <= maxOff; });
     var best = null, bd = 1e9;
     cand.forEach(function (f) {
@@ -560,54 +559,12 @@ var SHOT360 = (function () {
     if (best) { console.log(TAG + ' ' + target + '° 칸 — 후보 ' + cand.length + '장 중 얼굴 ' + best._fy.yaw.toFixed(0) + '°인 장(센서 ' + Math.round(wrap(best.deg - zero)) + '°)'); return best; }
     return nearest(frames, want, maxOff);
   }
-  /* (ftime2) ②의 비율 = 시각 비율 × arcTimeW + 몇 번째 장인지(장수) 비율 × (1 − arcTimeW) · 기본 0.5 (SHOT360.arcTimeW = 1이면 시각만 · 0이면 장수만)
-     (2026-11-04 ftime) 나머지 각도 = ±45° 두 장 사이를 <b>계산</b>으로 — 사용자: "그냥 센서 하지말고, ±45도 찾은 다음에 나머지는 계산으로 찾아"
-     ① +45°·-45° = 얼굴 각도로 고른 장(byFace · 센서는 좌우가 뒤바뀐 장을 거르는 후보 창으로만) — 그 장의 각도 = 얼굴 실측
-     ② 두 장 사이(뒤로 도는 쪽, 270° 안팎)에 찍힌 장 = 찍힌 <b>시각</b> 비율로 각도를 나눔(같은 빠르기로 돌았다고 봄 · 센서 각도 안 씀)
-        각도 = 먼저 찍힌 쪽 얼굴 각도 + (나중 쪽 얼굴 각도 ∓ 360 − 먼저 쪽) × (그 장 시각 − 먼저 시각) ÷ (나중 시각 − 먼저 시각)
-     ③ 90° · 135° · 180° · 225° · 270°(-90°) = 계산한 각도가 가장 가까운 장(±Q.arcTol 안). 고른 장의 계산 각도는 yawEst → 13b가 포즈로 씀
-     시각이 없는 옛 세트·±45° 중 하나라도 못 찾으면 예전 그대로(센서). 끄기 SHOT360.arcPick = false */
-  Q.arcTol = Q.arcTol || 25;
-  Q.faceMaxDeg = Q.faceMaxDeg || 60;   // (fsens) 얼굴 각도로 고르는 범위
-  function setEst(f, yaw) { if (f) f.yawEst = Math.round(wrap(yaw) * 10) / 10; }
-  function faceYawOf(f, zero) { return (f && f._fy && typeof f._fy.yaw === 'number') ? f._fy.yaw : wrap(f.deg - zero); }
-  function arcPick(pk, rest) {
-    if (Q.arcPick === false) return pk;
-    try {
-      var L = pk.left, Rt = pk.right;
-      if (!L || !Rt || !(L.time > 0) || !(Rt.time > 0) || L.time === Rt.time) { console.warn(TAG + ' ±45° 장이나 찍힌 시각이 없어 뒤쪽은 센서로 고름'); return pk; }
-      var yl = faceYawOf(L, pk.zero), yr = faceYawOf(Rt, pk.zero);
-      var A = L.time < Rt.time ? L : Rt, B = A === L ? Rt : L, ya = A === L ? yl : yr, yb = A === L ? yr : yl;
-      var span = A === L ? (yb + 360 - ya) : (yb - 360 - ya);          // 왼쪽(+)에서 뒤로 → 오른쪽(-) 이면 각도가 늘어남, 반대면 줄어듦
-      var used = [pk.front, L, Rt], est = [];
-      rest.forEach(function (f) { if (f && used.indexOf(f) < 0 && f.time > A.time && f.time < B.time) est.push(f); });
-      est.sort(function (p, q) { return p.time - q.time; });
-      var nE = est.length, wT = (Q.arcTimeW == null) ? 0.5 : Q.arcTimeW;   // (ftime2) 시각 비율과 장수 비율을 섞음 — 사용자: "시간하고 프레임장수하고 같이 계산해서 해. 빠르기는 일정하지 않아"
-      est.forEach(function (f, i) {
-        var fT = (f.time - A.time) / (B.time - A.time), fN = (i + 1) / (nE + 1);
-        f._estTmp = wrap(ya + span * (wT * fT + (1 - wT) * fN));
-      });
-      setEst(pk.front, faceYawOf(pk.front, pk.zero)); setEst(L, yl); setEst(Rt, yr);
-      var picked = {}, out = [];
-      [180, 90, -90, 135, -135].forEach(function (t) {
-        var best = null, bd = 1e9;
-        est.forEach(function (f) { if (out.indexOf(f) >= 0) return; var d = Math.abs(wrap(f._estTmp - t)); if (d < bd) { bd = d; best = f; } });
-        if (best && bd <= Q.arcTol) { picked[t] = best; out.push(best); setEst(best, best._estTmp); }
-      });
-      est.forEach(function (f) { try { delete f._estTmp; } catch (e) {} });
-      if (!picked[180]) { console.warn(TAG + ' 계산으로 180° 장을 못 찾아 뒤쪽은 센서로 고름'); return pk; }
-      pk.back = picked[180]; pk.extra = [picked[90], picked[-90], picked[135], picked[-135]].filter(Boolean);
-      console.log(TAG + ' 나머지 각도를 ±45° 장 사이 시각·장수로 계산(센서 안 씀 · 시각 비중 ' + wT + ') — +45° 장 얼굴 ' + Math.round(yl) + '° · -45° 장 얼굴 ' + Math.round(yr) + '° · 사이 ' + est.length + '장 → ' +
-        [90, 135, 180, -135, -90].map(function (t) { var f = picked[t]; return t + '°=' + (f ? f.yawEst.toFixed(0) + '°(센서 ' + Math.round(wrap(f.deg - pk.zero)) + '°)' : '없음'); }).join(' · ') + ' (끄기 SHOT360.arcPick=false)');
-    } catch (e) { console.warn(TAG + ' 계산 고르기 실패 — 센서로', e); }
-    return pk;
-  }
   function pickFrames(set) {
     var fr0 = set.frames.filter(function (f) { return f && f.front; })[0];
     if (fr0) {                                                         // (2026-10-25f) 촬영 중 찾은 정면
       var yw = typeof fr0.faceYaw === 'number' ? fr0.faceYaw : 0, z0 = wrap(fr0.deg - yw), rest0 = set.frames.filter(function (f) { return f !== fr0; });
       try { if (!fr0._fy) Object.defineProperty(fr0, '_fy', { value: { yaw: yw, ecN: 0 }, writable: true, configurable: true, enumerable: false }); } catch (e) {}
-      return arcPick({ front: fr0, left: byFace(rest0, z0, Q.sideDeg, 20), right: byFace(rest0, z0, -Q.sideDeg, 20), back: byFace(rest0, z0, 180, 35), zero: z0, by: 'capture' }, rest0);
+      return { front: fr0, left: byFace(rest0, z0, Q.sideDeg, 20), right: byFace(rest0, z0, -Q.sideDeg, 20), back: byFace(rest0, z0, 180, 35), zero: z0, by: 'capture' };
     }
     var faces = set.frames.filter(function (f) { return f && f._fy && typeof f._fy.yaw === 'number'; }), front = null;
     faces.forEach(function (f) {
@@ -621,7 +578,7 @@ var SHOT360 = (function () {
       return old;
     }
     var zero = wrap(front.deg - front._fy.yaw), rest = set.frames.filter(function (f) { return f !== front; });
-    return arcPick({ front: front, left: byFace(rest, zero, Q.sideDeg, 20), right: byFace(rest, zero, -Q.sideDeg, 20), back: byFace(rest, zero, 180, 35), zero: zero, by: 'face' }, rest);
+    return { front: front, left: byFace(rest, zero, Q.sideDeg, 20), right: byFace(rest, zero, -Q.sideDeg, 20), back: byFace(rest, zero, 180, 35), zero: zero, by: 'face' };
   }
   Q._pickFrames = pickFrames;
   function applySetCore(set) {
@@ -632,12 +589,11 @@ var SHOT360 = (function () {
   function applySetPicked(set) {
     var pick = pickFrames(set);
     try { Object.defineProperty(set, '_pick', { value: pick, writable: true, configurable: true, enumerable: false }); } catch (e) { set._pick = pick; }
-    var miss = ['front', 'left', 'right', 'back'].filter(function (k) { return !pick[k]; });
+    var miss = Object.keys(pick).filter(function (k) { return !pick[k]; });
     if (miss.length) { toast('360 세트에 ' + miss.join('·') + ' 각도 사진이 없습니다 — 다시 찍어 주세요'); return Promise.resolve(false); }
     if (Q.keep8 !== false) try {                                       // (2026-11-01) 8장으로 — 기준 4장 + 진짜 0° 기준 ±90° · ±135°
       var base4 = [pick.front, pick.left, pick.right, pick.back], keep = base4.slice(), n0 = set.frames.length, kept = [];
-      if (pick.extra) pick.extra.forEach(function (f) { if (keep.indexOf(f) < 0) { keep.push(f); kept.push(Math.round(f.yawEst) + '°(센서 ' + Math.round(wrap(f.deg - pick.zero)) + '°)'); } });
-      else (Q.keepDeg || []).forEach(function (kd) {
+      (Q.keepDeg || []).forEach(function (kd) {
         var rest = set.frames.filter(function (f) { return keep.indexOf(f) < 0; }), f = nearest(rest, wrap(pick.zero + kd), Q.keepTol);
         if (f) { keep.push(f); kept.push(kd + '°→' + Math.round(wrap(f.deg - pick.zero)) + '°'); } else kept.push(kd + '°→없음');
       });
