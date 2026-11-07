@@ -1419,7 +1419,7 @@ var REGROW = (function () {
     on: false, button: true,
     step: 0.022,        // 한 걸음(모델 단위 ≈ 0.4cm)
     /* (2026-10-31) 정리된 사진 가닥 따라 걷기 — 아래 SF 배너. 끄기 ?sf=0 (예전: 걸음마다 사진 픽셀 결을 다시 읽음) */
-    strandField: !/[?&]sf=0\b/.test(location.search), sfCellCm: 0.8, sfRadius: 1, sfEndSteps: 3, sfMinCoh: 0.35, sfTanSolve: /[?&]sftan=1\b/.test(location.search), sfTanMinN: 0.3, sfPolDown: !/[?&]sfpol=0\b/.test(location.search), sfPolFlip: 0.3, strandCopy: !/[?&]scopy=0\b/.test(location.search), copyRadiusCm: 1.2, copyFarCm: 6, copyRiseCm: 1.5, copyTanCm: 3, copyMiss: 1, copyMinCm: 1, copyBins: 24, copyWhole: !/[?&]cwhole=0\b/.test(location.search), copyOwnHull: !/[?&]cownhull=0\b/.test(location.search), copyDepthFit: !/[?&]cdepth=0\b/.test(location.search), copyDepthMaxCm: 8, copyDepthStepCm: 0.6, copyIdxStep: 2, hullStrands: !/[?&]hullst=0\b/.test(location.search), copyChain: !/[?&]cchain=0\b/.test(location.search), copyChainCm: 4, copyChainCos: 0.5, copyChainUse: 4, copyChainMax: 3, copyChainFloatR: 1.3, copyChainBlendCm: 2.5, copyDepthSmooth: 4,   // (2026-11-03e) 다시 기르기 한 단계 가볍게 — 사용자: "다시기르기 시간 너무 오래걸려 … 한단계만 낮춰봐" · 뿌리→사진 가닥 시작점 찾기에 조각 점을 2개마다 하나만 색인(점 간격 ≈0.4cm → 0.8cm 안에서 시작 · 모양은 그 조각 그대로) · 되돌리기 REGROW.copyIdxStep=1 copyDepthOrtho: 0.95,   /* (2026-11-03v) 0.5 → 0.95 — ±30° 옆 사진도 깊이 기준으로. 웨이브 18:45: 정면 사진 가닥(가슴 앞)이 깊이를 몰라 왼쪽 사진에서 8% 점이 머리 영역 1.5cm 밖 → 마지막 다듬기가 가닥 28% 자름. 정면 시선축 1cm = 30° 사진에서 0.5cm 옆 — 옆 사진으로 깊이를 맞출 수 있음. 되돌리기 REGROW.copyDepthOrtho=0.5 */ sfDropCross: /[?&]sfcross=1\b/.test(location.search),   // (2026-11-03b) 판정 빼기 — 올린 가닥 통째로(조각 안 냄 · 되돌리기 ?cwhole=0) · 엇갈린 칸 안 버림(되돌리기 ?sfcross=1)
+    strandField: !/[?&]sf=0\b/.test(location.search), sfCellCm: 0.8, sfRadius: 1, sfEndSteps: 3, sfMinCoh: 0.35, sfTanSolve: /[?&]sftan=1\b/.test(location.search), sfTanMinN: 0.3, sfPolDown: !/[?&]sfpol=0\b/.test(location.search), sfPolFlip: 0.3, strandCopy: !/[?&]scopy=0\b/.test(location.search), copyRadiusCm: 1.2, copyFarCm: 3,   /* (2026-11-07b) 6 → 3 — 6cm 먼 조각은 앞머리선 뿌리를 이마 위로 끌고 내려옴(이마 띠 영역 밖 점 40% → 20%) · 가닥 모양도 남의 자리 것 */ copyRiseCm: 1.5, copyTanCm: 3, copyMiss: 1, copyMinCm: 1, copyBins: 24, copyWhole: !/[?&]cwhole=0\b/.test(location.search), copyOwnHull: !/[?&]cownhull=0\b/.test(location.search), copyDepthFit: !/[?&]cdepth=0\b/.test(location.search), copyDepthMaxCm: 8, copyDepthStepCm: 0.6, copyIdxStep: 2, hullStrands: !/[?&]hullst=0\b/.test(location.search), copyChain: !/[?&]cchain=0\b/.test(location.search), copyChainCm: 4, copyChainCos: 0.5, copyChainUse: 4, copyChainMax: 3, copyChainFloatR: 1.3, copyChainBlendCm: 2.5, copyDepthSmooth: 4,   // (2026-11-03e) 다시 기르기 한 단계 가볍게 — 사용자: "다시기르기 시간 너무 오래걸려 … 한단계만 낮춰봐" · 뿌리→사진 가닥 시작점 찾기에 조각 점을 2개마다 하나만 색인(점 간격 ≈0.4cm → 0.8cm 안에서 시작 · 모양은 그 조각 그대로) · 되돌리기 REGROW.copyIdxStep=1 copyDepthOrtho: 0.95,   /* (2026-11-03v) 0.5 → 0.95 — ±30° 옆 사진도 깊이 기준으로. 웨이브 18:45: 정면 사진 가닥(가슴 앞)이 깊이를 몰라 왼쪽 사진에서 8% 점이 머리 영역 1.5cm 밖 → 마지막 다듬기가 가닥 28% 자름. 정면 시선축 1cm = 30° 사진에서 0.5cm 옆 — 옆 사진으로 깊이를 맞출 수 있음. 되돌리기 REGROW.copyDepthOrtho=0.5 */ sfDropCross: /[?&]sfcross=1\b/.test(location.search),   // (2026-11-03b) 판정 빼기 — 올린 가닥 통째로(조각 안 냄 · 되돌리기 ?cwhole=0) · 엇갈린 칸 안 버림(되돌리기 ?sfcross=1)
       // (2026-11-03) 정리된 사진 가닥 그대로 그리기 — copyFromStrands   // (2026-11-02) 두피 위 여러 사진 평면 풀이 — sfTan 설명
     maxSteps: 44,
     minFacing: 0.22,    // 이 사진이 그 자리를 이만큼은 정면으로 봐야 결을 읽음
@@ -2935,14 +2935,12 @@ var REGROW = (function () {
         });
         pieces = pieces.filter(function (pc) { return pc.length >= 3; });
         var Qn = G.copyBins || 24, idx = new Map(), uOf = function (P0) { var ux = P0.x / Es.a, uy = (P0.y - CY) / Es.b, uz = P0.z / Es.c, ul = Math.hypot(ux, uy, uz) || 1; return [ux / ul, uy / ul, uz / ul]; };
-        /* (2026-11-07) 먼 조각 색인 — 가까운(copyRadiusCm) 조각이 없는 뿌리도 칸 걷기 대신 가까운 사진 가닥을 따라가게(아래 copyFromStrands) · 칸이 성긴(Qf) 색인 하나 더 */
-        var Qf = Math.max(4, Math.round(Qn / 4)), idxF = new Map();
-        var iStep = Math.max(1, G.copyIdxStep | 0); pieces.forEach(function (pc, pi) { pc.forEach(function (P0, j) { if (j % iStep) return; var u = uOf(P0), key = Math.floor((u[0] + 1) * Qf) + ',' + Math.floor((u[1] + 1) * Qf) + ',' + Math.floor((u[2] + 1) * Qf); var L0 = idxF.get(key); if (!L0) { L0 = []; idxF.set(key, L0); } L0.push(pi, j); }); });
+        var iStep = Math.max(1, G.copyIdxStep | 0);
         pieces.forEach(function (pc, pi) { pc.forEach(function (P0, j) { if (j % iStep) return; var u = uOf(P0), key = Math.floor((u[0] + 1) * Qn) + ',' + Math.floor((u[1] + 1) * Qn) + ',' + Math.floor((u[2] + 1) * Qn); var L0 = idx.get(key); if (!L0) { L0 = []; idx.set(key, L0); } L0.push(pi, j); }); });
         /* (2026-11-03h) 떠 있는 조각(두피에서 멀리 떨어져 시작하는 사진 가닥 — 얼굴·목 옆에서 결이 끊겨 가슴·어깨 앞에서 따로 잡힌 것)을 시작점으로 색인 — 아래 copyChain */
         var flo = [], fIdx = new Map(), fH = (G.copyChainCm || 4) / cmU, fKey = function (x, y, z) { return Math.floor(x / fH) + ',' + Math.floor(y / fH) + ',' + Math.floor(z / fH); };
         pieces.forEach(function (pc, pi) { var P0 = pc[0], ux = P0.x / Es.a, uy = (P0.y - CY) / Es.b, uz = P0.z / Es.c; if (Math.hypot(ux, uy, uz) < (G.copyChainFloatR || 1.3)) return; flo.push(pi); var k2 = fKey(P0.x, P0.y, P0.z), L2 = fIdx.get(k2); if (!L2) { L2 = []; fIdx.set(k2, L2); } L2.push(pi); });
-        SF.strc = { pieces: pieces, idx: idx, Qn: Qn, idxF: idxF, Qf: Qf, far: 0, uOf: uOf, kept: pKeep, all: pAll, used: 0, miss: 0, short: 0, cut: 0, flo: flo.length, fIdx: fIdx, fKey: fKey, fH: fH, fUse: new Uint16Array(pieces.length), chained: 0, chainPts: 0, chainedPieces: 0 };
+        SF.strc = { pieces: pieces, idx: idx, Qn: Qn, far: 0, uOf: uOf, kept: pKeep, all: pAll, used: 0, miss: 0, short: 0, cut: 0, flo: flo.length, fIdx: fIdx, fKey: fKey, fH: fH, fUse: new Uint16Array(pieces.length), chained: 0, chainPts: 0, chainedPieces: 0 };
       }
     } catch (e) { SF = null; console.warn(TAG + ' 사진 가닥 결 장 실패 — 예전처럼 픽셀 결', e); }
     /* (2026-11-03) 정리된 사진 가닥 조각을 그대로 옮겨 그리기 — 뿌리 r0에서 가장 가까운(두상 방향 각) 조각 점부터 끝까지.
@@ -2958,15 +2956,20 @@ var REGROW = (function () {
       }
       /* (2026-11-07) 가까운 조각이 없으면 칸 걷기(SF 칸 평균 방향) 대신 더 먼 사진 가닥을 따라감 — 사용자: "읽은 결 그대로 가닥마다 그리는 방식을 전체에"
        *  예전: copyRadiusCm(1.2cm) 안에 조각이 없으면 null → 그 뿌리는 0.8cm 칸 평균 방향을 따라 걸음(가닥 결이 사라지고 작은 컬이 묻힘)
-       *  지금: copyFarCm(기본 6cm)까지 성긴 색인으로 가장 가까운 조각 점을 찾아 그 모양을 그대로 옮김 · 옆 간격은 아래 tanL을 간격의 1.5배 이상으로 늘려 천천히 합류
+       *  지금: copyFarCm(기본 3cm)까지 성긴 색인으로 가장 가까운 조각 점을 찾아 그 모양을 그대로 옮김 · 옆 간격은 아래 tanL을 간격의 1.5배 이상으로 늘려 천천히 합류
        *  그래도 없을 때만 예전 걷기. 되돌리기 REGROW.copyFarCm=0 */
       var farHit = false;
-      if ((best < 0 || -bd < Math.cos(maxAng)) && G.copyFarCm > 0 && SC2.idxF) {
-        var Qf = SC2.Qf, fAng = G.copyFarCm / (Es.a * cmU), nb = Math.max(1, Math.ceil(Math.sin(Math.min(1.5, fAng)) * Qf)), fx0 = Math.floor((u[0] + 1) * Qf), fy0 = Math.floor((u[1] + 1) * Qf), fz0 = Math.floor((u[2] + 1) * Qf);
-        best = -1; bd = 1e9;
-        for (dx = -nb; dx <= nb; dx++) for (dy = -nb; dy <= nb; dy++) for (dz = -nb; dz <= nb; dz++) {
-          var LF0 = SC2.idxF.get((fx0 + dx) + ',' + (fy0 + dy) + ',' + (fz0 + dz)); if (!LF0) continue;
-          for (var tf = 0; tf < LF0.length; tf += 2) { var PF = SC2.pieces[LF0[tf]][LF0[tf + 1]], vf = SC2.uOf(PF), df = -(u[0] * vf[0] + u[1] * vf[1] + u[2] * vf[2]); if (df < bd) { bd = df; best = LF0[tf]; bj = LF0[tf + 1]; } }
+      /* (2026-11-07b) 먼 조각 찾기를 안쪽 칸부터 고리 모양으로 — 예전: 성긴 색인(12칸)으로 6cm 상자를 통째로 훑어 사실상 머리 전체 조각 점을 뿌리마다 봄(다시 기르기 10.7초 → 3cm 3.4초).
+       *  지금: 가까운 조각 색인(idx · 1/Qn 칸)을 r=2칸부터 바깥 껍질 하나씩 보고, 지금까지 찾은 가장 가까운 점까지의 거리가 r칸 안이면 멈춤(더 바깥 칸엔 더 가까운 점이 없음 = 결과는 예전과 같음) */
+      if ((best < 0 || -bd < Math.cos(maxAng)) && G.copyFarCm > 0) {
+        var fAng = G.copyFarCm / (Es.a * cmU), nbMax = Math.ceil(2 * Math.sin(Math.min(1.5, fAng) / 2) * Qn) + 1, rr, inv = 1 / Qn;
+        for (rr = 2; rr <= nbMax; rr++) {
+          for (dx = -rr; dx <= rr; dx++) for (dy = -rr; dy <= rr; dy++) for (dz = -rr; dz <= rr; dz++) {
+            if (Math.max(Math.abs(dx), Math.abs(dy), Math.abs(dz)) !== rr) continue;            // 껍질만
+            var LF0 = SC2.idx.get((bx + dx) + ',' + (by + dy) + ',' + (bz + dz)); if (!LF0) continue;
+            for (var tf = 0; tf < LF0.length; tf += 2) { var PF = SC2.pieces[LF0[tf]][LF0[tf + 1]], vf = SC2.uOf(PF), df = -(u[0] * vf[0] + u[1] * vf[1] + u[2] * vf[2]); if (df < bd) { bd = df; best = LF0[tf]; bj = LF0[tf + 1]; } }
+          }
+          if (best >= 0 && Math.sqrt(Math.max(0, 2 + 2 * bd)) <= rr * inv) break;            // 찾은 점이 이 껍질보다 가까움 — 더 볼 필요 없음
         }
         if (best >= 0 && -bd >= Math.cos(fAng)) { farHit = true; SC2.far++; }
       }
