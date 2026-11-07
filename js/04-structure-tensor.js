@@ -905,13 +905,14 @@ var SEG_ORIENT = (function () {
 var GRAIN_HIRES = Object.assign({ on: true, maxPx: 700000, maxUp: 3, minGain: 1.15, pad: 8, _inHi: false, stats: {} }, (typeof window !== 'undefined' && window.GRAIN_HIRES) || {});
 /* 배율 정하기 — kOrig: 분석 1px당 원본 px · bw,bh: 머리 상자(분석 px) */
 GRAIN_HIRES.scaleFor = function (kOrig, bw, bh) {
-  var G = GRAIN_HIRES, sB = Math.sqrt(G.maxPx / Math.max(1, bw * bh));
-  /* (2026-11-07 stair) 원본이 분석 사진보다 <b>작아</b> 키워 쓴 사진(생성사진 등) — 키울 때 생긴 계단(배율만큼의 px)이 가버 파장(4px)과 비슷해 결이 0°·90°로 튐.
-     → 원본 해상도로 <b>줄여서</b> 읽음(분석 1px = 원본 kOrig px · 결은 다시 분석 크기로 옮김). 가버 파장 4px가 원본 픽셀 기준이 되어 계단에 안 걸림.
-     사용자: "계단처리 일단 한번 해봐. 가정이 맞는지 확인해보게" · 끄기 GRAIN_HIRES.native=false */
-  if (G.native !== false && kOrig > 0 && kOrig < 1 / G.minGain) return Math.max(0.2, kOrig);
-  var s = Math.min(kOrig, sB, G.maxUp);
-  return s >= G.minGain ? s : 0;
+  /* (2026-11-07 native) 결은 항상 원본 픽셀에서 — 사용자: "3배한도만 걸고, 그보다 작을 때는 다 원본에서 읽자"
+     원본이 분석 사진보다 크면 원본 해상도(최대 maxUp=3배), 작으면(키워 쓴 생성사진 등) 원본 해상도로 줄여서(키울 때 생긴 계단을 안 읽음).
+     예전 픽셀 예산(maxPx 70만)과 '1.15배 미만이면 분석 사진 그대로' 문턱은 안 씀 · 끄기 GRAIN_HIRES.native=false(예전 규칙) */
+  var G = GRAIN_HIRES;
+  if (G.native === false) { var sB = Math.sqrt(G.maxPx / Math.max(1, bw * bh)), s0 = Math.min(kOrig, sB, G.maxUp); return s0 >= G.minGain ? s0 : 0; }
+  if (!(kOrig > 0)) return 0;
+  var s = Math.max(0.2, Math.min(kOrig, G.maxUp));
+  return Math.abs(s - 1) < 0.02 ? 0 : s;
 };
 /* 잘라 읽기 — cropPx/cropMask(cw×ch, 배율 s, 분석 좌표 (bx0,by0)에서 시작) → 분석 크기(w×h) 결 {angle, coherence} */
 GRAIN_HIRES.readCrop = function (cropPx, cropMask, cw, ch, s, bx0, by0, w, h, maskBuf) {
