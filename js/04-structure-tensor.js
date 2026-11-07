@@ -906,6 +906,10 @@ var GRAIN_HIRES = Object.assign({ on: true, maxPx: 700000, maxUp: 3, minGain: 1.
 /* 배율 정하기 — kOrig: 분석 1px당 원본 px · bw,bh: 머리 상자(분석 px) */
 GRAIN_HIRES.scaleFor = function (kOrig, bw, bh) {
   var G = GRAIN_HIRES, sB = Math.sqrt(G.maxPx / Math.max(1, bw * bh));
+  /* (2026-11-07 stair) 원본이 분석 사진보다 <b>작아</b> 키워 쓴 사진(생성사진 등) — 키울 때 생긴 계단(배율만큼의 px)이 가버 파장(4px)과 비슷해 결이 0°·90°로 튐.
+     → 원본 해상도로 <b>줄여서</b> 읽음(분석 1px = 원본 kOrig px · 결은 다시 분석 크기로 옮김). 가버 파장 4px가 원본 픽셀 기준이 되어 계단에 안 걸림.
+     사용자: "계단처리 일단 한번 해봐. 가정이 맞는지 확인해보게" · 끄기 GRAIN_HIRES.native=false */
+  if (G.native !== false && kOrig > 0 && kOrig < 1 / G.minGain) return Math.max(0.2, kOrig);
   var s = Math.min(kOrig, sB, G.maxUp);
   return s >= G.minGain ? s : 0;
 };
@@ -913,7 +917,7 @@ GRAIN_HIRES.scaleFor = function (kOrig, bw, bh) {
 GRAIN_HIRES.readCrop = function (cropPx, cropMask, cw, ch, s, bx0, by0, w, h, maskBuf) {
   var G = GRAIN_HIRES, GO = (typeof GABOR_ORIENT !== 'undefined') ? GABOR_ORIENT : null, saved = {}, keys = ['refineSig', 'refineSigL', 'curvLook', 'pathSmooth', 'shapeStep', 'shapeMaxLen', 'shapeMinLen'];
   if (GO) keys.forEach(function (k) { saved[k] = GO[k]; if (typeof GO[k] === 'number') GO[k] = GO[k] * s; });
-  if (GO && GO.shapeStep) GO.shapeStep = Math.round(GO.shapeStep);
+  if (GO && GO.shapeStep) GO.shapeStep = Math.max(1, Math.round(GO.shapeStep));
   G._inHi = true; var f;
   try { f = computeHairOrientationField(cropPx, cropMask, cw, ch); }
   finally { G._inHi = false; if (GO) keys.forEach(function (k) { GO[k] = saved[k]; }); }
