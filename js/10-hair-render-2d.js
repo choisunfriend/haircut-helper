@@ -8,7 +8,8 @@
 var RAW3D = (function () { var q = (typeof location !== 'undefined' && location.search) || '';
   function f(k, d) { var m = new RegExp('[?&]' + k + '=([01])').exec(q); return m ? m[1] === '1' : d; }
   var dm = /[?&]r3div=(\d+)/.exec(q);
-  return { fine: f('r3fine', true), fineDiv: dm ? Math.max(1, +dm[1]) : 3,   // (2026-11-03b) 5 → 3(≈0.4cm) — 5는 2px 걸음의 결 떨림까지 담아 라면처럼 꼬불 · ?r3div=5 로 예전
+  return { fine: f('r3fine', true), fineDiv: dm ? Math.max(1, +dm[1]) : 4,   // (2026-11-07 dnz) 3(≈0.4cm) → 4(≈0.3cm) — 결 읽기 전 잡음 제거(04 GRAIN_DENOISE)와 같이 · ?r3div=3 이 바로 전
+   // (2026-11-03b) 5 → 3(≈0.4cm) — 5는 2px 걸음의 결 떨림까지 담아 라면처럼 꼬불 · ?r3div=5 로 예전
            fieldAlign: f('r3align', false), axisStraight: f('r3axis', false), smooth: f('r3smooth', false) }; })();
 /* ══════════════════════════════════════════════════════════
    10-hair-render-2d.js — 4레이어 가닥 렌더 · 레이어 클립 · 밀도 지도

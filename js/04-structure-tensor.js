@@ -352,6 +352,31 @@ var GABOR_ORIENT = (function () {
     KK.taps = out[0].o.length;
     return (KK[key] = out);
   }
+  /* (2026-11-07 dnz) 결 읽기 전 잡음 제거(양방향 필터) — 사용자: "노이즈 제거를 통해서 잡음을 좀 없애고 간격을 줄이면 되지 않겠나"
+     결 방향을 다듬는 게 아니라 <b>사진 밝기</b>의 잔 잡음(센서 알갱이·JPEG 블록)만 지움: 가까운(공간 σs px) + 밝기가 비슷한(밝기 σr) 픽셀끼리만 섞음 →
+     머리카락과 틈 사이처럼 밝기 차가 큰 경계는 그대로. 반경은 가버 파장(4px)보다 작게. 머리 영역 상자(+필터 반경)만 계산.
+     끄기 GRAIN_DENOISE.on=false · 세기 GRAIN_DENOISE.sigS(px) · .sigR(밝기 0~1) · .rad(px) */
+  var DN = (W.GRAIN_DENOISE = Object.assign({ on: true, rad: 2, sigS: 1.2, sigR: 0.08, stats: { calls: 0, ms: 0, px: 0 } }, W.GRAIN_DENOISE || {}));
+  function denoise(g, mask, Wd, Hd, pad) {
+    if (!DN.on || !(DN.rad >= 1)) return g;
+    var t0 = performance.now(), x0 = Wd, y0 = Hd, x1 = -1, y1 = -1, x, y, i;
+    for (y = 0; y < Hd; y++) for (x = 0, i = y * Wd; x < Wd; x++, i++) if (mask[i]) { if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
+    if (x1 < 0) return g;
+    x0 = Math.max(0, x0 - pad); y0 = Math.max(0, y0 - pad); x1 = Math.min(Wd - 1, x1 + pad); y1 = Math.min(Hd - 1, y1 + pad);
+    var R = DN.rad | 0, ws = [], ox = [], oy = [], a, b, k, inv2r = 1 / (2 * DN.sigR * DN.sigR);
+    for (b = -R; b <= R; b++) for (a = -R; a <= R; a++) { var d2 = a * a + b * b; if (d2 > R * R + R) continue; ws.push(Math.exp(-d2 / (2 * DN.sigS * DN.sigS))); ox.push(a); oy.push(b); }
+    var out = new Float32Array(g), nk = ws.length, n = 0;
+    for (y = y0; y <= y1; y++) for (x = x0; x <= x1; x++) {
+      var c = g[y * Wd + x], sw = 0, sv = 0;
+      for (k = 0; k < nk; k++) {
+        var xx = x + ox[k], yy = y + oy[k]; if (xx < 0 || yy < 0 || xx >= Wd || yy >= Hd) continue;
+        var v = g[yy * Wd + xx], dv = v - c, w = ws[k] * Math.exp(-dv * dv * inv2r); sw += w; sv += w * v;
+      }
+      out[y * Wd + x] = sw > 0 ? sv / sw : c; n++;
+    }
+    DN.stats.calls++; DN.stats.ms = Math.round(performance.now() - t0); DN.stats.px = n;
+    return out;
+  }
   function gray(px, n) { var g = new Float32Array(n), i, j; for (i = 0, j = 0; i < n; i++, j += 4) g[i] = (0.299 * px[j] + 0.587 * px[j + 1] + 0.114 * px[j + 2]) / 255; return g; }
   function blur(a, Wd, Hd, sig) {                                          // 가우시안(분리) — 다듬기용
     var r = Math.max(1, Math.ceil(2.5 * sig)), k = new Float32Array(2 * r + 1), s = 0, i, x, y;
@@ -438,7 +463,7 @@ var GABOR_ORIENT = (function () {
   GO.refine = function (f, px, mask, Wd, Hd) {
     if (!GO.on || !f || !f.angle || !px || px.length < Wd * Hd * 4 || !mask) return f;
     try {
-      var t0 = performance.now(), N = Wd * Hd, g = gray(px, N), KK = kernels(GO.lambda, GO.n), r = KK.r, sz = KK.sz, n = GO.n;
+      var t0 = performance.now(), N = Wd * Hd, KK = kernels(GO.lambda, GO.n), r = KK.r, sz = KK.sz, n = GO.n, g = denoise(gray(px, N), mask, Wd, Hd, r + 2);   // (dnz) 잡음 제거 뒤 결 읽기
       var SP = sparse(KK, Wd), RV = new Float32Array(n), ang = new Float32Array(N), conf = new Float32Array(N), bestA = new Float32Array(N), idx, x, y, k, i, j, cnt = 0;
       /* (2026-10-25e) 머리 영역 안 픽셀로만 — 필터 창(반경 r)에 머리 밖 칸이 있는 자리는 그 칸을 빼고, 남은 칸의 밝기 평균을 빼서(밝기만 다른 자리에 반응 안 하게) 계산 · 남은 칸이 minFrac 미만이면 못 읽음 */
       var MK = (typeof HAIR_READ_MASK !== 'undefined' && HAIR_READ_MASK.on), full = (2 * r + 1) * (2 * r + 1), cnt9 = MK ? maskBoxCount(mask, Wd, Hd, r) : null, edgeN = 0, edgeSkip = 0;
@@ -511,7 +536,12 @@ var GABOR_ORIENT = (function () {
       }
       diffs.sort(function (p, q) { return p - q; });
       GO.stats.calls++; GO.stats.ms = Math.round(performance.now() - t0); GO.stats.px = cnt; GO.stats.dMed = diffs.length ? diffs[diffs.length >> 1] : null;
-      console.log(TAG + ' ' + Wd + '×' + Hd + ' · 머리 픽셀 ' + cnt + ' · ' + n + '방향 · ' + GO.stats.ms + 'ms · 예전 방식과 방향 차이 중앙 ' + (GO.stats.dMed != null ? GO.stats.dMed.toFixed(1) + '°' : '-'));
+      /* (dnz) 잡음 지표 — 결을 따라 4px 앞 자리와 결이 30° 넘게 어긋나는 비율(머리카락 한 올 굵기 안에서 꺾이는 건 잡음) */
+      var kN = 0, kB = 0; for (idx = 0; idx < N; idx += 13) { if (!mask[idx]) continue; var kx = idx % Wd, ky = (idx / Wd) | 0, ka = ang[idx], qx = Math.round(kx + 4 * Math.cos(ka)), qy = Math.round(ky + 4 * Math.sin(ka));
+        if (qx < 0 || qy < 0 || qx >= Wd || qy >= Hd || !mask[qy * Wd + qx]) continue; var kd = Math.abs(ang[qy * Wd + qx] - ka) % Math.PI; if (kd > Math.PI / 2) kd = Math.PI - kd; kN++; if (kd > Math.PI / 6) kB++; }
+      GO.stats.kink = kN ? kB / kN : null;
+      console.log(TAG + ' ' + Wd + '×' + Hd + ' · 머리 픽셀 ' + cnt + ' · ' + n + '방향 · ' + GO.stats.ms + 'ms · 예전 방식과 방향 차이 중앙 ' + (GO.stats.dMed != null ? GO.stats.dMed.toFixed(1) + '°' : '-') +
+        ' · 잡음 제거 ' + (DN.on ? DN.stats.ms + 'ms(' + DN.stats.px + 'px · σs ' + DN.sigS + ' · σr ' + DN.sigR + ')' : '꺼짐') + ' · 4px 앞과 30° 넘게 어긋남 ' + (GO.stats.kink != null ? (GO.stats.kink * 100).toFixed(1) + '%' : '-') + ' (끄기 GRAIN_DENOISE.on=false)');
     } catch (e) { console.warn(TAG + ' 실패 — 예전 방식 그대로', e); }
     return f;
   };
