@@ -763,6 +763,8 @@ var SEG_ORIENT = (function () {
     /* (2026-11-02) 세그 기준을 0.5 미만(0.05)으로 내렸으면 띠 번지기는 안 함 — 13:27 디버그: 0.05 경계에 섞인 배경이 '머리색' 모형을 넓혀(±21→±53)
        배경까지 band(10px) 고리로 붙음(확신도 0.05 미만인데 마스크 33,065px) → 흰 선이 머리 위·옆으로 넓게. 0.05가 이미 띠가 하던 일을 함. 켜기 SEG_ORIENT.bandLowThr=true */
     if (dil && typeof W.__segThr === 'number' && W.__segThr < 0.5 && !SO.bandLowThr) dil = null;
+    /* (2026-11-07 noband) 띠 번지기 기본 끔 — 사용자: "일단 꺼봐" · 세그멘터 확신도를 안 보고 색·결만으로 넣어, 앞머리 옆 이마처럼 세그멘터가 머리 아님으로 본 자리도 들어감. 켜기 SEG_ORIENT.band=true */
+    if (dil && SO.band !== true) dil = null;
     if (dil) {
       var q = new Int32Array(N), qh = 0, qt = 0, seen = new Uint8Array(N);
       for (y = 1; y < Hd - 1; y++) for (x = 1; x < Wd - 1; x++) { k = y * Wd + x; if (out[k] && (!out[k - 1] || !out[k + 1] || !out[k - Wd] || !out[k + Wd])) { q[qt++] = k; seen[k] = 1; } }
@@ -778,7 +780,7 @@ var SEG_ORIENT = (function () {
       }
     }
     // 3) 안쪽 구멍(바깥과 안 이어진 빈자리) — 작은 것만, 이 손님 머리색이면
-    var reach = new Uint8Array(N), st2 = [], filled = 0, holes = 0;
+    var reach = new Uint8Array(N), st2 = [], filled = 0, holes = 0, holeNoTex = 0;
     for (x = 0; x < Wd; x++) { st2.push(x, (Hd - 1) * Wd + x); } for (y = 0; y < Hd; y++) { st2.push(y * Wd, y * Wd + Wd - 1); }
     while (st2.length) { var e = st2.pop(); if (e < 0 || e >= N || reach[e] || out[e]) continue; reach[e] = 1; var ex = e % Wd; if (ex > 0) st2.push(e - 1); if (ex < Wd - 1) st2.push(e + 1); st2.push(e - Wd, e + Wd); }
     var mArea = 0; for (i = 0; i < N; i++) if (M[i] > 0) mArea++;
@@ -788,10 +790,12 @@ var SEG_ORIENT = (function () {
       holes++; var comp = [], st3 = [i]; lab[i] = holes;
       while (st3.length) { var h = st3.pop(); comp.push(h); var hx = h % Wd, nn = [hx > 0 ? h - 1 : -1, hx < Wd - 1 ? h + 1 : -1, h - Wd, h + Wd]; for (var j3 = 0; j3 < 4; j3++) { var c3 = nn[j3]; if (c3 < 0 || c3 >= N || out[c3] || reach[c3] || lab[c3]) continue; lab[c3] = holes; st3.push(c3); } }
       if (comp.length > cap) continue;
-      comp.forEach(function (h2) { if (hairLike(h2) || holeLike(h2)) { out[h2] = 255; filled++; } });
+      /* (2026-11-07 holetex) 구멍도 경계 띠(2단계)처럼 결 무늬가 있어야 채움 — 사용자: 앞머리 사이 이마가 머리로 채워짐(clotheschange는 비어 있음)
+         이마 살은 머리보다 밝아 '광택'(holeLike)으로 통과했음 · 광택 띠는 머리카락이라 결 무늬가 있고 맨살은 매끈함. 되돌리기 SEG_ORIENT.holeTex=false */
+      comp.forEach(function (h2) { if (hairLike(h2) || holeLike(h2)) { if (SO.holeTex !== false && !tex(h2)) { holeNoTex++; return; } out[h2] = 255; filled++; } });
     }
     var before = 0, after = 0; for (i = 0; i < N; i++) { if (M[i] > 0) before++; if (out[i]) after++; }
-    return { M: out, added: added, filled: filled, before: before, after: after, model: { L: Math.round(mB.m[0]), Ls: Math.round(mB.s[0]), gloss: mG ? Math.round(mG.m[0]) : null } };
+    return { M: out, added: added, filled: filled, holeNoTex: holeNoTex, before: before, after: after, model: { L: Math.round(mB.m[0]), Ls: Math.round(mB.s[0]), gloss: mG ? Math.round(mG.m[0]) : null } };
   }
   SO._regrowMask = function (R, Wd, Hd, frac) {   // keepLargestComponents(03b) 끝 — R = 큰 덩어리만 남긴 영역
     if (!SO.regrow || frac !== 0.03) return R;
@@ -799,9 +803,9 @@ var SEG_ORIENT = (function () {
     if (!im) { noImg++; if (noImg <= 4) console.log(TAG + ' 머리 영역 다시 찾기 — 이 사진의 픽셀을 못 찾아 건너뜀(' + Wd + '×' + Hd + ')'); return R; }
     try {
       var t0 = performance.now(), r = regrowMask(R, im);
-      var info = { ms: Math.round(performance.now() - t0), added: r.added || 0, filled: r.filled || 0, before: r.before || 0, after: r.after || 0, model: r.model || null, note: r.note || '', Wd: Wd, Hd: Hd, band: Math.max(3, Math.round(Wd * SO.segBand)) };
+      var info = { ms: Math.round(performance.now() - t0), added: r.added || 0, filled: r.filled || 0, holeNoTex: r.holeNoTex || 0, before: r.before || 0, after: r.after || 0, model: r.model || null, note: r.note || '', Wd: Wd, Hd: Hd, band: Math.max(3, Math.round(Wd * SO.segBand)) };
       S.views.push(info); if (S.views.length > 8) S.views.shift();
-      console.log(TAG + ' 머리 영역 다시 찾기 [사진 ' + Wd + '×' + Hd + 'px · 경계 띠 band ' + info.band + 'px = 폭×' + SO.segBand + '] — ' + (r.note || ('경계 밖에서 넣은 픽셀 ' + info.added + ' · 안쪽 구멍 채움 ' + info.filled + ' · 영역 ' + info.before + ' → ' + info.after + 'px(+' + ((info.after / Math.max(1, info.before) - 1) * 100).toFixed(1) + '%) · 이 손님 머리색 밝기 ' + (r.model ? r.model.L + '±' + r.model.Ls + (r.model.gloss != null ? ' · 광택 ' + r.model.gloss : '') : '-') + ' · ' + info.ms + 'ms')));
+      console.log(TAG + ' 머리 영역 다시 찾기 [사진 ' + Wd + '×' + Hd + 'px · 경계 띠 band ' + info.band + 'px = 폭×' + SO.segBand + '] — ' + (r.note || ('경계 밖에서 넣은 픽셀 ' + info.added + ' · 안쪽 구멍 채움 ' + info.filled + (info.holeNoTex ? '(결 무늬 없어 안 채움 ' + info.holeNoTex + ' — 끄기 SEG_ORIENT.holeTex=false)' : '') + ' · 영역 ' + info.before + ' → ' + info.after + 'px(+' + ((info.after / Math.max(1, info.before) - 1) * 100).toFixed(1) + '%) · 이 손님 머리색 밝기 ' + (r.model ? r.model.L + '±' + r.model.Ls + (r.model.gloss != null ? ' · 광택 ' + r.model.gloss : '') : '-') + ' · ' + info.ms + 'ms')));
       last = null; lastGID = null;
       if (r.M === R) return R;
       // 원래 배열 형식에 맞춰 돌려줌
@@ -923,6 +927,24 @@ GRAIN_HIRES.readCrop = function (cropPx, cropMask, cw, ch, s, bx0, by0, w, h, ma
   try { f = computeHairOrientationField(cropPx, cropMask, cw, ch); }
   finally { G._inHi = false; if (GO) keys.forEach(function (k) { GO[k] = saved[k]; }); }
   var N = w * h, A = new Float32Array(N), C = new Float32Array(N), x, y;
+  /* (2026-11-07 interp) 원본이 작아 줄여 읽은 경우(s < 1) — 분석 1px이 원본 1px보다 작아, 칸마다 원본 한 픽셀 값을 그대로 복사하면 결이 1/s px 블록(계단)이 됨.
+     → 원본 픽셀 중심 4개 사이를 위치 비율로 이음(쌍선형 · 결은 앞뒤 없는 선이라 각도 ×2 벡터로 섞음 · 원본 머리 영역 밖 칸은 뺌). 원본에서 잰 값만 씀.
+     사용자: 보간 — 원본 값 사이만 매끄럽게. 끄기 GRAIN_HIRES.interp=false */
+  if (s < 1 && G.interp !== false) {
+    for (y = 0; y < h; y++) for (x = 0; x < w; x++) {
+      var ii = y * w + x; if (!maskBuf[ii]) continue;
+      var fu = (x + 0.5 - bx0) * s - 0.5, fv = (y + 0.5 - by0) * s - 0.5, iu = Math.floor(fu), iv = Math.floor(fv), du = fu - iu, dv = fv - iv;
+      var cs2 = 0, sn2 = 0, cc2 = 0, ww = 0, a1, b1;
+      for (b1 = 0; b1 < 2; b1++) for (a1 = 0; a1 < 2; a1++) {
+        var uu = iu + a1, vv = iv + b1; if (uu < 0 || vv < 0 || uu >= cw || vv >= ch) continue;
+        var jj = vv * cw + uu; if (!cropMask[jj]) continue;
+        var wq = (a1 ? du : 1 - du) * (b1 ? dv : 1 - dv); if (wq <= 0) continue;
+        var aa = f.angle[jj], kk = (f.coherence[jj] + 1e-3) * wq; cs2 += Math.cos(2 * aa) * kk; sn2 += Math.sin(2 * aa) * kk; cc2 += f.coherence[jj] * wq; ww += wq;
+      }
+      if (ww > 0) { A[ii] = 0.5 * Math.atan2(sn2, cs2); C[ii] = cc2 / ww; }
+      else { var u5 = Math.min(cw - 1, Math.max(0, Math.round(fu))), v5 = Math.min(ch - 1, Math.max(0, Math.round(fv))), j5 = v5 * cw + u5; A[ii] = f.angle[j5]; C[ii] = f.coherence[j5]; }
+    }
+  } else
   for (y = 0; y < h; y++) for (x = 0; x < w; x++) {
     var i = y * w + x; if (!maskBuf[i]) continue;
     var u0 = Math.floor((x - bx0) * s), v0 = Math.floor((y - by0) * s), u1 = Math.max(u0 + 1, Math.floor((x + 1 - bx0) * s)), v1 = Math.max(v0 + 1, Math.floor((y + 1 - by0) * s));
