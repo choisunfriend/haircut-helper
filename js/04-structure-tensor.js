@@ -321,7 +321,8 @@ var GABOR_ORIENT = (function () {
   var W = window, TAG = '[결 방향 필터]';
   var GO = Object.assign({ on: true, replace: true, stride: 1, prune: 0.02, interp: true, n: 12, lambda: 4, refine: true, smooth: false, stats: { calls: 0, ms: 0, px: 0, dMed: null },
     texRel: 1.0, refineSig: 6, refineSigL: 16, fillMin: 0.35,          // (2026-11-02) 실사 결 다듬기 — 아래 refine 블록 설명
-    pathSmooth: 6, straightSteep: 0.045 }, W.GABOR_ORIENT || {});      // (2026-11-02) 선 모양: 경로 평활(걸음) · 곧은 선 = 진폭÷파장 < straightSteep — shapeOf 설명
+    pathSmooth: 6, straightSteep: 0.045,
+    curvFirst: !/[?&]cfirst=0\b/.test(location.search), cfLo: 24, cfHi: 30, cfArcPx: 24, cfSamples: 1500, cfSmooth: 0.5 }, W.GABOR_ORIENT || {});   // (2026-11-07) 곡률 먼저 재고 필터 고르기 — 아래 curvFirst 설명 · 끄기 ?cfirst=0      // (2026-11-02) 선 모양: 경로 평활(걸음) · 곧은 선 = 진폭÷파장 < straightSteep — shapeOf 설명
   var KC = {};
   function kernels(lam, n) {
     var key = lam + '|' + n; if (KC[key]) return KC[key];
@@ -522,6 +523,71 @@ var GABOR_ORIENT = (function () {
         }
         GO.stats.fill = nFill;
       }
+      /* (2026-11-07) 곡률 먼저 재고 필터 고르기 — 사용자: "처음에 어느 정도 크기를 먼저 측정을 딱 해. 그런담에 곡률 범위를 두고 사용할 필터를 정하는 거야.
+       *   곡률이 펌 수준이면 4만 쓰고, 어느 정도 이상 직모에 가까우면 8까지 쓰고."
+       *  왜: 4px 필터 하나로 읽은 결을 2px 걸음으로 그으면 직모에도 가짜 고리가 생김(앱 밖 시험 19장 · 고리 있는 사진 가닥: 긴 직모 54% · 짧은 직모 42% · 펌 55%).
+       *      4px은 실사 해상도(머리 폭 240px ≈ 0.6mm/px)에서 한 올이 아니라 잔결·머리끝 질감·압축 블록에 반응.
+       *  ① 미리 재기: 8px 결(사진을 반으로 줄여 같은 4px 필터로 읽음 = 8px와 같은 크기 · 계산은 4px의 1/4)을 다듬고, 머리 안 점 cfSamples(1500)개에서 결을 따라
+       *     cfArcPx(머리 폭 240px 기준 24px · 머리 폭에 비례)만큼 걸어 방향이 바뀐 각을 잼 → 그 길이만 한 칸마다 중앙값(빈 칸은 사진 중앙값) → 3×3 평균
+       *  ② 칸마다 8px 무게: 곡률 ≤ cfLo°이면 1(4·8 섞기) · ≥ cfHi°이면 0(4px만) · 사이는 서서히(경계에서 결이 튀지 않게)
+       *  ③ 4px·8px 결을 각자 다듬고(반경 = 필터 크기 × cfSmooth) 또렷함² × 무게로 2배각 평균
+       *  시험(펌·웨이브·실사 단발·짧은 직모·긴 직모 19장 · 기준 24~30°): 고리 있는 가닥 펌 55→42% · 웨이브 8→0 · 단발 29→5 · 짧은 직모 42→13 · 긴 직모 54→17
+       *     미리 잰 곡률: 펌 33~39° · 나머지 3~25°. ⚠ 가마(정수리 회오리)는 결이 실제로 돌아 펌 쪽으로 잡힐 수 있음.
+       *  끄기 GABOR_ORIENT.curvFirst=false · 기준 .cfLo/.cfHi · 다듬기 .cfSmooth=0이면 다듬지 않음 */
+      if (GO.curvFirst) try {
+        var tC0 = performance.now(), bbC = [Wd, Hd, -1, -1];
+        for (idx = 0; idx < N; idx++) if (mask[idx]) { var cx0 = idx % Wd, cy0 = (idx / Wd) | 0; if (cx0 < bbC[0]) bbC[0] = cx0; if (cx0 > bbC[2]) bbC[2] = cx0; if (cy0 < bbC[1]) bbC[1] = cy0; if (cy0 > bbC[3]) bbC[3] = cy0; }
+        if (bbC[2] >= 0) {
+          // 8px 결 — 반 크기 사진에서 같은 4px 필터
+          var W2 = Wd >> 1, H2 = Hd >> 1, N2 = W2 * H2, g2 = new Float32Array(N2), m2 = new Uint8Array(N2), a8 = new Float32Array(N2), c8 = new Float32Array(N2);
+          for (y = 0; y < H2; y++) for (x = 0; x < W2; x++) { var q0 = (2 * y) * Wd + 2 * x; g2[y * W2 + x] = (g[q0] + g[q0 + 1] + g[q0 + Wd] + g[q0 + Wd + 1]) * 0.25; m2[y * W2 + x] = (mask[q0] ? 1 : 0) + (mask[q0 + 1] ? 1 : 0) + (mask[q0 + Wd] ? 1 : 0) + (mask[q0 + Wd + 1] ? 1 : 0) >= 2 ? 1 : 0; }
+          var SP2 = sparse(KK, W2), yA = Math.max(r, (bbC[1] >> 1) - 1), yB = Math.min(H2 - r - 1, (bbC[3] >> 1) + 1), xA = Math.max(r, (bbC[0] >> 1) - 1), xB = Math.min(W2 - r - 1, (bbC[2] >> 1) + 1);
+          for (y = yA; y <= yB; y++) for (x = xA; x <= xB; x++) {
+            var i2 = y * W2 + x; if (!m2[i2]) continue;
+            var b2 = -1, k2 = 0, s2 = 0;
+            for (k = 0; k < n; k++) { var v2 = 0; if (SP2) { var so2 = SP2[k].o, sw2 = SP2[k].w, sn2 = so2.length; for (i = 0; i < sn2; i++) v2 += sw2[i] * g2[i2 + so2[i]]; } else { var K2 = KK.K[k], kk = 0; for (j = -r; j <= r; j++) { var row2 = (y + j) * W2 + x - r; for (i = 0; i < sz; i++) v2 += K2[kk++] * g2[row2 + i]; } } v2 = v2 < 0 ? -v2 : v2; RV[k] = v2; s2 += v2; if (v2 > b2) { b2 = v2; k2 = k; } }
+            var bo2 = 0; if (GO.interp) { var uL = RV[(k2 + n - 1) % n], uR = RV[(k2 + 1) % n], dn2 = uL - 2 * b2 + uR; if (dn2 < -1e-12) { bo2 = 0.5 * (uL - uR) / dn2; if (bo2 > 0.5) bo2 = 0.5; else if (bo2 < -0.5) bo2 = -0.5; } }
+            a8[i2] = (k2 + bo2) * Math.PI / n + Math.PI / 2; c8[i2] = b2 > 1e-9 ? (b2 - s2 / n) / b2 : 0;
+          }
+          // 각자 다듬기(2배각 · 또렷함 무게)
+          var smK = GO.cfSmooth > 0 ? GO.cfSmooth : 0, bb2 = [bbC[0] >> 1, bbC[1] >> 1, bbC[2] >> 1, bbC[3] >> 1];
+          var C4 = new Float32Array(N), S4 = new Float32Array(N), C8 = new Float32Array(N2), S8 = new Float32Array(N2);
+          for (idx = 0; idx < N; idx++) if (mask[idx]) { C4[idx] = Math.cos(2 * ang[idx]) * conf[idx]; S4[idx] = Math.sin(2 * ang[idx]) * conf[idx]; }
+          for (i = 0; i < N2; i++) if (m2[i]) { C8[i] = Math.cos(2 * a8[i]) * c8[i]; S8[i] = Math.sin(2 * a8[i]) * c8[i]; }
+          if (smK > 0) { C4 = blurBB(C4, Wd, Hd, GO.lambda * smK, bbC); S4 = blurBB(S4, Wd, Hd, GO.lambda * smK, bbC); C8 = blurBB(C8, W2, H2, GO.lambda * smK, bb2); S8 = blurBB(S8, W2, H2, GO.lambda * smK, bb2); }
+          var at8 = function (X, Y, A) { var fx = X * 0.5 - 0.25, fy = Y * 0.5 - 0.25, ix = Math.floor(fx), iy = Math.floor(fy), tx = fx - ix, ty = fy - iy; if (ix < 0) { ix = 0; tx = 0; } if (iy < 0) { iy = 0; ty = 0; } if (ix >= W2 - 1) { ix = W2 - 2; tx = 1; } if (iy >= H2 - 1) { iy = H2 - 2; ty = 1; }
+            var o0 = iy * W2 + ix; return (A[o0] * (1 - tx) + A[o0 + 1] * tx) * (1 - ty) + (A[o0 + W2] * (1 - tx) + A[o0 + W2 + 1] * tx) * ty; };
+          // ① 미리 재기 — 다듬은 8px 결을 따라 걷기 · 다듬기 반경은 머리 폭에 비례(머리 폭 240px에서 잰 기준이 사진 크기와 상관없이 같은 크기를 보게)
+          var hw = Math.max(1, bbC[2] - bbC[0]), sP = GO.lambda * (smK > 0 ? smK : 0.5) * Math.max(1, hw / 240), CP = blurBB(C8, W2, H2, sP, bb2), SPm = blurBB(S8, W2, H2, sP, bb2), arc = Math.max(12, Math.round((GO.cfArcPx || 24) * hw / 240)), tile = arc, TW2 = Math.ceil(Wd / tile), TH2 = Math.ceil(Hd / tile), TV = [], tl, nm = 0, bw = bbC[2] - bbC[0] + 1, bh = bbC[3] - bbC[1] + 1;
+          var nS = GO.cfSamples || 1500, tries = 0, seed = 12345, rnd = function () { seed = (seed * 1103515245 + 12345) & 0x7fffffff; return seed / 0x7fffffff; }, tv = new Array(TW2 * TH2), allT = [];
+          for (var si = 0; si < nS && tries < nS * 20; tries++) {
+            var px0 = bbC[0] + ((rnd() * bw) | 0), py0 = bbC[1] + ((rnd() * bh) | 0), X = px0, Y = py0; if (!mask[py0 * Wd + px0]) continue; si++;   // 머리 상자 안에서 뽑아 머리 칸만
+            var d0 = 0.5 * Math.atan2(at8(X, Y, SPm), at8(X, Y, CP)), dcur = d0, ok = true;
+            for (var st = 0; st < (arc >> 1); st++) {
+              var xi = Math.round(X), yi = Math.round(Y); if (xi < 0 || yi < 0 || xi >= Wd || yi >= Hd || !mask[yi * Wd + xi]) { ok = false; break; }
+              var da = 0.5 * Math.atan2(at8(X, Y, SPm), at8(X, Y, CP)); if (Math.cos(da - dcur) < 0) da += Math.PI; dcur = da; X += Math.cos(dcur) * 2; Y += Math.sin(dcur) * 2;
+            }
+            if (!ok) continue;
+            var tdeg = Math.abs(((dcur - d0) % Math.PI + Math.PI * 1.5) % Math.PI - Math.PI / 2) * 57.2958, ti = ((py0 / tile) | 0) * TW2 + ((px0 / tile) | 0);
+            (tv[ti] || (tv[ti] = [])).push(tdeg); allT.push(tdeg);
+          }
+          var medA = function (a) { a.sort(function (p, q) { return p - q; }); return a[a.length >> 1]; }, Tm = allT.length ? medA(allT.slice()) : 0, T0 = new Float32Array(TW2 * TH2), T1 = new Float32Array(TW2 * TH2), tx2, ty2;
+          for (i = 0; i < T0.length; i++) T0[i] = tv[i] && tv[i].length >= 3 ? medA(tv[i]) : Tm;
+          for (ty2 = 0; ty2 < TH2; ty2++) for (tx2 = 0; tx2 < TW2; tx2++) { var sT = 0, nT = 0, ax, ay; for (ay = -1; ay <= 1; ay++) for (ax = -1; ax <= 1; ax++) { var X2 = tx2 + ax, Y2 = ty2 + ay; if (X2 < 0 || Y2 < 0 || X2 >= TW2 || Y2 >= TH2) continue; sT += T0[Y2 * TW2 + X2]; nT++; } T1[ty2 * TW2 + tx2] = sT / nT; }
+          // ② 칸마다 8px 무게 · ③ 섞기
+          var lo = GO.cfLo, hi = GO.cfHi, w8sum = 0, w8n = 0;
+          for (idx = 0; idx < N; idx++) {
+            if (!mask[idx]) continue;
+            var ix3 = idx % Wd, iy3 = (idx / Wd) | 0, Tt = T1[((iy3 / tile) | 0) * TW2 + ((ix3 / tile) | 0)], w8 = hi > lo ? (hi - Tt) / (hi - lo) : (Tt <= lo ? 1 : 0); w8 = w8 < 0 ? 0 : w8 > 1 ? 1 : w8;
+            var cA = C4[idx], sA = S4[idx], qa = cA * cA + sA * sA, CC = cA * qa, SS = sA * qa;               // 다듬은 4px: 또렷함 = 벡터 길이 → 무게 = 또렷함²
+            if (w8 > 0) { var cB = at8(ix3, iy3, C8), sB = at8(ix3, iy3, S8), qb = (cB * cB + sB * sB) * w8; CC += cB * qb; SS += sB * qb; }
+            if (CC !== 0 || SS !== 0) ang[idx] = 0.5 * Math.atan2(SS, CC);
+            w8sum += w8; w8n++;
+          }
+          GO.cfStats = { arcPx: arc, curvMed: Tm, use8: w8n ? w8sum / w8n : 0, ms: Math.round(performance.now() - tC0), samples: allT.length };
+          console.log(TAG + '·곡률 먼저 ' + Wd + '×' + Hd + ' · 미리 잰 곡률(결 따라 ' + arc + 'px) 중앙 ' + Tm.toFixed(1) + '° · 8px까지 쓴 칸 ' + Math.round(GO.cfStats.use8 * 100) + '%(곡률 ' + lo + '° 이하 = 4·8 · ' + hi + '° 이상 = 4px만) · 잰 점 ' + allT.length + ' · ' + GO.cfStats.ms + 'ms (끄기 GABOR_ORIENT.curvFirst=false)');
+        }
+      } catch (eC) { console.warn(TAG + ' 곡률 먼저 실패 — 4px 결 그대로', eC); }
       /* (2026-10-28) 34(결 읽기 단계)가 결 고르기 결과로 모양을 다시 재면 여기 값은 덮여 버림 → 그때는 안 잼(GO.deferShape · 34가 켬) */
       var _tGB = performance.now() - t0;
       if (!GO.deferShape) { var _tSh = performance.now(); try { GO.last = { w: Wd, h: Hd, shape: shapeOf(ang, mask, Wd, Hd, r) }; } catch (e2) { GO.last = null; } _orientMark('o_shape', performance.now() - _tSh); }
