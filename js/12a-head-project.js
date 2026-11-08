@@ -2438,16 +2438,42 @@ async function buildRealFaceMeshBase(faceMetrics){
   // 좌/우 실측 Z의 신뢰도 가중 평균. 둘이 모순되거나 쓸 값이 없으면 null.
   // (좌/우가 서로 부호가 다르거나 크게 어긋나면 평균이 둘 다 못 믿는 값을 만든다 —
   //  "둘 다 안 믿는다"가 "잘못 합친 값을 믿는다"보다 안전)
+  /* (2026-11-08) 측면 사진에서 <b>안 보이는 쪽</b> 정점은 깊이로 안 씀 — 사용자: "직모남자와 웨이브 여자에서 얼굴 왼쪽(화면 오른쪽) 끝부분이 떨어져서 접혀 있어"
+     두 손님 다 측면 실측이 먹은 경우(직모 316정점 · 웨이브 104정점 — 웨이브는 오른쪽 감지 실패라 왼쪽 사진 한 장), 측면이 안 먹은 곱슬(0정점)은 멀쩡.
+     MediaPipe는 가려진 반대쪽 뺨 랜드마크도 지어내서 468개를 다 줌 → 그 점을 그 사진으로 되쏘면 엉뚱한 깊이 → 뺨 끝 정점만 앞뒤로 튀어 접힘.
+     지금: 정점의 (정면에서 어림한) 두상 위 방향이 그 사진 카메라를 얼마나 보는지(13b projectToCam과 같은 식: −sinθ·x/a + cosθ·z/c)로
+       minFacing 미만이면 그 사진은 빼고, fullFacing까지는 무게·보정량을 선형으로 줄임(이웃 정점끼리 단차 없게). 되돌리기 SIDE_FACING.on=false */
+  const SIDE_FACING = (typeof globalThis !== 'undefined' && globalThis.SIDE_FACING) || { on: true, minFacing: 0.15, fullFacing: 0.45, cut: 0 };
+  if(typeof globalThis !== 'undefined') globalThis.SIDE_FACING = SIDE_FACING;
+  SIDE_FACING.cut = 0;
+  let _sideVis = 1;                 // 마지막 sideMeasuredZ의 보이는 정도(0~1) — 보정량에 곱함
+  function sideFacing(angle, fe){
+    let yd = 0; try{ const lmS = state.landmarks && state.landmarks[angle]; yd = (lmS && typeof lmS.poseYawDeg === 'number') ? lmS.poseYawDeg : getViewYawDeg(angle); }catch(e){ return 1; }
+    const th = yd * Math.PI/180, nx = fe.localX / Math.max(1e-6, ELL_A), nz = Math.max(0, fe.frontZ) / Math.max(1e-6, ELL_C);
+    const nl = Math.hypot(nx, nz) || 1;
+    return (-Math.sin(th) * nx + Math.cos(th) * nz) / nl;
+  }
   function sideMeasuredZ(idx, sides){
     const perView = [];
+    _sideVis = 1;
+    const fe = SIDE_FACING.on && raw[idx] ? frontEstimatedZOf(raw[idx]) : null;
+    let visMax = 0;
     for(const s of sides){
       const sidePt = s.raw[idx];
       if(!sidePt) continue;
+      let vis = 1;
+      if(fe){
+        const f = sideFacing(s.angle, fe);
+        vis = clamp((f - SIDE_FACING.minFacing) / Math.max(1e-6, SIDE_FACING.fullFacing - SIDE_FACING.minFacing), 0, 1);
+        if(vis <= 0){ SIDE_FACING.cut++; continue; }   // 그 사진에선 가려진 자리 — 지어낸 랜드마크
+      }
       const world = projectImagePointToHead(s.angle, sidePt.x, sidePt.y, widthFactor, heightFactor);
       if(!world) continue;              // 타원 밖 → 이 뷰선 실측 불가
-      perView.push({ z: world.z, confidence: s.confidence, trust: s.trust, w: sideDepthWeight(s) });
+      perView.push({ z: world.z, confidence: s.confidence, trust: s.trust, w: sideDepthWeight(s) * vis });
+      if(vis > visMax) visMax = vis;
     }
     if(!perView.length) return null;
+    _sideVis = fe ? visMax : 1;
     if(perView.length === 2){
       const [a,b] = perView;
       const disagree = Math.abs(a.z - b.z) > 1.2*ELL_C || (a.z*b.z < 0 && Math.abs(a.z)>0.15*ELL_C && Math.abs(b.z)>0.15*ELL_C);
@@ -2467,7 +2493,7 @@ async function buildRealFaceMeshBase(faceMetrics){
       const realZ = sideMeasuredZ(i, sides);
       if(realZ === null) continue;         // 측면 실측 없음/모순 → front 유지(NaN)
       // (2026-08-31) 각도 신뢰도만큼만 반영 — 위 PROFILE_YAW_GATE 주석 참고.
-      map[i] = clamp((realZ - frontEstimatedZOf(raw[i]).frontZ) * _profileTrust,
+      map[i] = clamp((realZ - frontEstimatedZOf(raw[i]).frontZ) * _profileTrust * _sideVis,
                      -0.6*ELL_C, 0.6*ELL_C);
       _fullProfileHitCount++;
     }
@@ -2484,7 +2510,7 @@ async function buildRealFaceMeshBase(faceMetrics){
       out.push({ idx: anchor.idx, localX, yLocal,
                  // (2026-08-31) 전체맵과 <b>같은</b> 신뢰도 계수를 쓴다(두 경로가
                  // 갈리면 얼굴에 또 단차가 생긴다 — 아래 "세로 2줄" 항목 참고).
-                 deltaZ: clamp((realZ - frontZ) * _profileTrust, -0.6*ELL_C, 0.6*ELL_C) });
+                 deltaZ: clamp((realZ - frontZ) * _profileTrust * _sideVis, -0.6*ELL_C, 0.6*ELL_C) });
     });
     return out;
   }
@@ -3126,7 +3152,7 @@ async function buildRealFaceMeshBase(faceMetrics){
     }
   }
     console.log(`[얼굴 입체감] z범위=${(zMax-zMin).toFixed(3)} (min${zMin.toFixed(3)}~max${zMax.toFixed(3)}) | 코끝=${zAt(1)} 턱=${zAt(152)} 이마=${zAt(10)}`);
-    console.log(`[얼굴 측면보정] 전체정점 실측=${USE_FULL_PROFILE_DEPTH ? '켜짐' : '꺼짐(3앵커만)'} | 측면 실측 기여 정점=${_fullProfileHitCount||0}개`);
+    console.log(`[얼굴 측면보정] 전체정점 실측=${USE_FULL_PROFILE_DEPTH ? '켜짐' : '꺼짐(3앵커만)'} | 측면 실측 기여 정점=${_fullProfileHitCount||0}개 | 그 사진에서 가려진 쪽이라 뺀 표 ${SIDE_FACING.cut}개(SIDE_FACING.on=${SIDE_FACING.on})`);
     /* ── [얼굴 z·항별] 세 항을 따로 찍는다 (2026-08-18 k-4) ─────────────────
        사용자: "정면얼굴을 측면과 z값 대조해서 조금 더 낫게 만들어보자."
        그러려면 먼저 <b>어느 항이 얼마나 미는지</b>가 보여야 한다. 눈으로는

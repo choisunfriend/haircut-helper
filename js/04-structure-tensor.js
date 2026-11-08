@@ -319,7 +319,7 @@ function computeHairOrientationField(pixels, maskBuf, w, h){
  */
 var GABOR_ORIENT = (function () {
   var W = window, TAG = '[결 방향 필터]';
-  var GO = Object.assign({ on: true, replace: true, stride: 1, prune: 0.02, interp: true, n: 12, lambda: 4, refine: true, smooth: false, stats: { calls: 0, ms: 0, px: 0, dMed: null },
+  var GO = Object.assign({ on: true, replace: true, stride: 1, prune: 0.02, interp: true, n: 12, lambda: 4, refine: true, smooth: false, autoSmooth: true, autoCohMin: 0.8, autoR: 3, stats: { calls: 0, ms: 0, px: 0, dMed: null },
     texRel: 1.0, refineSig: 6, refineSigL: 16, fillMin: 0.35,          // (2026-11-02) 실사 결 다듬기 — 아래 refine 블록 설명
     pathSmooth: 6, straightSteep: 0.045 }, W.GABOR_ORIENT || {});      // (2026-11-02) 선 모양: 경로 평활(걸음) · 곧은 선 = 진폭÷파장 < straightSteep — shapeOf 설명
   var KC = {};
@@ -495,7 +495,28 @@ var GABOR_ORIENT = (function () {
        *  실사로 그어 봄: 다듬기(6~16px)를 끄면 곱슬이 꼬이고 둥글게 돎(3/4바퀴 넘게 도는 사진 가닥 0% → 12~23%), 좋은 사진의 직모는 그대로 깔끔,
        *  흐린 사진(585a)만 잡음을 따라 꼬임. 예전엔 GO.refine 스위치가 같은 이름의 함수(GO.refine = function)에 덮여 꺼지지 않았음 → GO.smooth로 따로.
        *  켜기 GABOR_ORIENT.smooth=true (아래 다듬기·약한 질감 메우기 그대로) */
-      if (GO.smooth) {                                                   // 믿을 만한 자리의 결로 둘레를 한 번 다듬음
+      /* (2026-11-08) 잡음 많은 사진만 자동 다듬기 — 사용자: "직모남자가 유일한 핸드폰 실사인데, 잡음이 많아서 고리가 생성되고 있어. 짧은 직모인데 … 잡음제거 좀 추가로 가동"
+       *  다듬기(GO.smooth)는 곱슬이 펴져서 꺼 둔 것 — 그래서 사진마다 <b>짧은 거리 결 일치도</b>로 갈라 잡음 사진에만 켬.
+       *  일치도 = 반경 autoR px 상자 안 결(각 두 배 벡터)의 합 길이 ÷ 개수, 머리 픽셀 중앙값. 잡음은 바로 옆 픽셀끼리도 방향이 흩어지고, 컬은 한 올 굵기 안에선 한 방향.
+       *  디버그 결 칸(약 3px 반경)으로 잰 값: 직모 남자(폰 실사 4장) 0.69~0.77 · 곱슬 0.87~0.91 · 긴 웨이브 0.91~0.96 · 한 장 펌 0.84 → 기준 autoCohMin 0.8.
+       *  ※ "4px 앞 30° 어긋남"(위 잡음 지표)은 직모 남자 35% · 곱슬 34~37%로 같아서 못 가름. 끄기 GABOR_ORIENT.autoSmooth=false · 늘 켜기 .smooth=true */
+      var autoOn = false;
+      if (!GO.smooth && GO.autoSmooth !== false) {
+        try {
+          var aR = GO.autoR || 3, cohs = [], ax, ay;
+          for (ay = r + aR; ay < Hd - r - aR; ay += 3) for (ax = r + aR; ax < Wd - r - aR; ax += 3) {
+            var ai = ay * Wd + ax; if (!mask[ai]) continue;
+            var sc = 0, ss2 = 0, nc = 0, u2, v2;
+            for (v2 = -aR; v2 <= aR; v2++) for (u2 = -aR; u2 <= aR; u2++) { var aj = ai + v2 * Wd + u2; if (!mask[aj]) continue; sc += Math.cos(2 * ang[aj]); ss2 += Math.sin(2 * ang[aj]); nc++; }
+            if (nc >= (2 * aR + 1) * (2 * aR + 1) * 0.6) cohs.push(Math.hypot(sc, ss2) / nc);
+          }
+          cohs.sort(function (p, q) { return p - q; });
+          GO.stats.localCoh = cohs.length ? cohs[cohs.length >> 1] : null;
+          autoOn = GO.stats.localCoh != null && GO.stats.localCoh < (GO.autoCohMin || 0.8);
+        } catch (eA) { autoOn = false; }
+      }
+      GO.stats.autoSmooth = autoOn;
+      if (GO.smooth || autoOn) {                                         // 믿을 만한 자리의 결로 둘레를 한 번 다듬음
         /* (2026-11-02) 실사 결 다듬기 — 사용자: "직모인데 마구 헝클어져서 나오고, 웨이브가 제대로 안잡히고"
          *  실사(폰·영상 캡처) 7장: 이웃 결 어긋남 중앙 9~17° · 상위10% 47~69° · 7장 모두 '파장 ≈40px 웨이브'(사진마다 같음 = 머리가 아니라 잡음 크기).
          *  원인: 4px 가는 선 필터는 한 올을 노리는데 실사 해상도(1px ≈ 0.5mm)엔 한 올이 없음 → 잡음·압축 블록(8×8)에 반응, 다듬기 σ 2.4px로는 못 걸러냄.
@@ -541,7 +562,8 @@ var GABOR_ORIENT = (function () {
         if (qx < 0 || qy < 0 || qx >= Wd || qy >= Hd || !mask[qy * Wd + qx]) continue; var kd = Math.abs(ang[qy * Wd + qx] - ka) % Math.PI; if (kd > Math.PI / 2) kd = Math.PI - kd; kN++; if (kd > Math.PI / 6) kB++; }
       GO.stats.kink = kN ? kB / kN : null;
       console.log(TAG + ' ' + Wd + '×' + Hd + ' · 머리 픽셀 ' + cnt + ' · ' + n + '방향 · ' + GO.stats.ms + 'ms · 예전 방식과 방향 차이 중앙 ' + (GO.stats.dMed != null ? GO.stats.dMed.toFixed(1) + '°' : '-') +
-        ' · 잡음 제거 ' + (DN.on ? DN.stats.ms + 'ms(' + DN.stats.px + 'px · σs ' + DN.sigS + ' · σr ' + DN.sigR + ')' : '꺼짐') + ' · 4px 앞과 30° 넘게 어긋남 ' + (GO.stats.kink != null ? (GO.stats.kink * 100).toFixed(1) + '%' : '-') + ' (끄기 GRAIN_DENOISE.on=false)');
+        ' · 잡음 제거 ' + (DN.on ? DN.stats.ms + 'ms(' + DN.stats.px + 'px · σs ' + DN.sigS + ' · σr ' + DN.sigR + ')' : '꺼짐') + ' · 4px 앞과 30° 넘게 어긋남 ' + (GO.stats.kink != null ? (GO.stats.kink * 100).toFixed(1) + '%' : '-') + ' (끄기 GRAIN_DENOISE.on=false)' +
+        ' · 짧은 거리 결 일치도 ' + (GO.stats.localCoh != null ? GO.stats.localCoh.toFixed(2) : '-') + (GO.smooth ? ' · 다듬기 늘 켬' : GO.stats.autoSmooth ? ' → <b>잡음 사진 — 다듬기 켬</b>(σ ' + GO.refineSig + '/' + GO.refineSigL + 'px · 기준 ' + (GO.autoCohMin || 0.8) + ' · 끄기 GABOR_ORIENT.autoSmooth=false)' : ' → 다듬기 안 함(기준 ' + (GO.autoCohMin || 0.8) + ')'));
     } catch (e) { console.warn(TAG + ' 실패 — 예전 방식 그대로', e); }
     return f;
   };
