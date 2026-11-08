@@ -1864,6 +1864,7 @@ var PHOTO_CHECK = (function () {
     try { H.comb = C3 ? { samples: C3.samples.length, sweeps: C3.sweeps ? C3.sweeps.length : 0, level: C3.sweepLevel } : null; } catch (e) {}
     try { H.cfg = FSx ? JSON.parse(JSON.stringify(FSx, function (k, v) { return (typeof v === 'function' || k === 'stats' || k === '_core' || k === 'nativeState' || k === '_st') ? undefined : v; })) : null; } catch (e) {}
     try { H.pc = { trim: P.trim, fixDir: P.fixDir }; } catch (e) {}
+    try { if (typeof DEVICE_AUDIT !== 'undefined') H.devices = DEVICE_AUDIT.list(); } catch (e) {}   // (2026-11-08f) 가림 장치 점검표
     // 다시 기른 가닥(점은 하나 걸러)
     try { if (G && G.model && G.model.strands && G.model.strands.length) { var rg = packStrands(G.model.strands, 2, secIdx); add('rg.cnt', rg.cnt); add('rg.sec', rg.sec); add('rg.pts', rg.D, { stride: 2 }); H.regrown = { n: G.model.strands.length, on: !!G.on, CY: G.model.CY }; } else H.notes.push('다시 기른 모델 없음'); } catch (e) { H.notes.push('rg: ' + e.message); }
     // (2026-10-24g) 사진 가닥을 헐로 옮긴 것(13c "헐 기반 옮기기" · 17b 옮긴 점 겉면의 재료) — 점은 하나 걸러 · lift.mir 1 = 거울 채움
