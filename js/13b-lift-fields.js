@@ -2208,7 +2208,7 @@ var ROOTS_FALLBACK = (function () {
   var F = Object.assign({
     on: true,
     skinFix: true,      // ① 살색 다시 재기
-    fill: true,         // ② 실측 0이면 균일 격자
+    fill: false,   // (2026-11-08d) 끔 — 가림 장치(결과를 사후에 고쳐 원인을 가림) — 뿌리 밀도 실측 0이면 균일 격자로 대체 ·         // ② 실측 0이면 균일 격자
     heal: true,         // ③ 이미 만들어진 모델에 격자 넣기
     den: 1,             // 대체 격자의 밀도(가닥 수는 STRAND_BUDGET이 정하므로 상대값일 뿐)
     halfW: 0.22,        // 코·볼 표본 반폭(귀 사이 폭 대비)

@@ -1494,7 +1494,8 @@ var REGROW = (function () {
        뿌리 두께 0~0.5cm(목덜미 57% · 옆 21%) 가닥 길이 중앙 3.4 / p90 17cm · 0.5~1cm 6.8 / 26cm.
        예전 onScalpLen은 머리 전체 '짧은 머리' 판정으로 걸었음(10/22 끔). 여기서는 판정 없이 그 뿌리 자리에서 잰 두께로만:
        뿌리 두께가 thinLenRootCm 미만이면 가닥 길이 상한 = max(thinLenMinCm, thinLenK × 뿌리 두께). 두꺼운 자리(윗머리)는 손 안 댐. 끄기 ?thinlen=0 · REGROW.thinLen=false */
-    thinLen: true, thinLenRootCm: 1.5, thinLenK: 2.2, thinLenMinCm: 0.6,
+    thinLen: false, hairlineFill: false,   // (2026-11-08d) 끔 — 가림 장치(결과를 사후에 고쳐 원인을 가림): thinLen = 얇은 뿌리 길이를 두께×2.2로 자름 · hairlineFill = 사진이 맨살로 본 이마 위 칸에 뿌리 밀도 채움
+    thinLenRootCm: 1.5, thinLenK: 2.2, thinLenMinCm: 0.6,
     /* (2026-10-25) 얇은 자리 길이는 "사진에 머리가 없는 자리(맨살) 가까이"에서만 — 디버그 0831(긴 직모 · m 버전): 두께 1.5cm 미만 뿌리가 앞 100% · 관자놀이 99% · 정수리 49%라
        얼굴 옆 긴 머리가 2.4~3.0cm로 잘림(누운 긴 머리도 얇게 잼). 두께만으로는 페이드와 누운 긴 머리를 못 가름.
        페이드 = 얇아지다가 맨살로 끝나는 자리 → 뿌리 칸에서 thinLenBareCells칸(≈1cm/칸) 안에 사진에 머리가 없던 두피 칸(안 심은 뿌리)이 있을 때만.
@@ -4793,7 +4794,7 @@ var NEIGHBOR_ALIGN = (function () {
   var G = REGROW;
 
   var NB = Object.assign({
-    on: true,
+    on: false,   // (2026-11-08d) 끔 — 가림 장치(결과를 사후에 고쳐 원인을 가림) — 다 기른 뒤 이웃 가닥 결로 맞춤
     cell: 0.07,          // 뿌리 이웃 칸(모델 단위 ≈ 1.2cm)
     bin: 0.03,           // 뿌리에서 잰 길이 칸(≈ 0.5cm)
     maxBins: 160,        // 길이 칸 상한(≈ 79cm) — 그보다 긴 구간은 마지막 칸으로

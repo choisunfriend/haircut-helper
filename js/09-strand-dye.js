@@ -923,7 +923,7 @@ function hairStrandRoles(fitDw, volume, thickness){
    2D 조정 화면과 3D 화면이 같은 소스(computeAdjustedHair3DStrands)를 쓰므로 둘 다 적용된다.
    끄기: GLOSS_WAVE.on=false  ·  세기: GLOSS_WAVE.set({ waveBoost:0.3, fineCm:0.8 })
    붙는 자리: computeAdjustedHair3DStrands(17b) 끝(glossWaveAll) · bakeStrandColors3D(아래) 끝(색 고르게). */
-var GLOSS_WAVE = { on: true };
+var GLOSS_WAVE = { on: false };   // (2026-11-08d) 끔 — 다 그린 가닥의 잔결을 지우고 웨이브를 30% 키워 모양을 가렸음(사진 그대로 그리기와 반대). 켜기 GLOSS_WAVE.on=true
 // 기본값 — 프로필의 gloss 객체가 덮어씀
 GLOSS_WAVE.defaults = {
   shape: true,      // false면 가닥 모양은 안 건드리고 코팅(색·광택)만

@@ -1091,7 +1091,7 @@ var SEG_ORIENT = (function () {
    *   이어진 덩어리로 묶어, 덩어리 넓이(실제 두피 넓이 — 정수리 꼭대기 칸은 작음)가 머리 넓이의 rootBaldArea 미만이면 보통의 rootFill배로 채움.
    *   그보다 큰 덩어리이면서 거의 비어 있으면(평균 rootBaldDen 미만) 진짜 빈 자리(대머리·M자)로 보고 그대로 둠.
    */
-  Object.assign(SO, Object.assign({ rootFix: true, rootLow: 0.6, rootFill: 0.95, rootBaldArea: 0.04, rootBaldDen: 0.12 }, W.SEG_ORIENT_ROOT || {}));
+  Object.assign(SO, Object.assign({ rootFix: false /* (2026-11-08d) 끔 — 가림 장치(결과를 사후에 고쳐 원인을 가림) — 뿌리 밀도 낮은 칸을 보통 밀도로 채움 */, rootLow: 0.6, rootFill: 0.95, rootBaldArea: 0.04, rootBaldDen: 0.12 }, W.SEG_ORIENT_ROOT || {}));
   S.roots = [];
   SO._fillRoots = function (ro, r) {   // fillUnseenRootCells(13c) 끝
     if (!SO.rootFix) return r;

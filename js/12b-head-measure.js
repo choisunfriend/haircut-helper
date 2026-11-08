@@ -562,7 +562,7 @@ function getDisplaySkullEllipsoid(){
    π/2는 지어낸 값이 아니라 <b>적도의 정의</b>다.
    되돌리기: HEAD_WIDTH_GUARD.applyMin = false */
 const HEAD_WIDTH_GUARD = {
-  on: true,
+  on: false,   // (2026-11-08d) 끔 — 가림 장치(결과를 사후에 고쳐 원인을 가림) — 실루엣으로 잰 두상 폭을 얼굴 폭 하한/상한으로 끌어올리거나 줄임
   applyMin: true,       // false면 예전 동작(하한 없음)
   /* 적도를 본 경우에도 하한을 적용할까. 안 하면 얼굴만 혼자 넓어져 두개골
      밖으로 나간다(2026-08-30 6차 배너 — 짧은 머리 남성에서 터진 자리). */
