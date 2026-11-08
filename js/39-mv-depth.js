@@ -37,6 +37,8 @@ var MV_DEPTH = (function () {
     smooth: 2,
     body: true,       // (2026-11-08b) 자기 사진에 보인 점은 몸에 안 가린 깊이 — 아래 bodyMin
     bodyGapCm: 0.6,   // 몸 겉면에서 이만큼 앞(머리카락 두께)
+    skull: true,      // (2026-11-09) 자기 사진에 보인 점은 두상(두피 타원) 속에도 못 감 — 아래 bodyMin · 끄기 MV_DEPTH.skull=false
+    skullIn: 0.98,    // 두피 타원을 이 배율로 줄인 것을 머리통으로 봄(두피에 누운 머리는 그대로)
     stat: null
   };
   var prevCopyDepthMid = null;
@@ -101,6 +103,15 @@ var MV_DEPTH = (function () {
         if (!(y + t2 * wy < cc.top)) continue;                  // 그 자리가 기둥 위 끝보다 위 = 기둥 없음
         if (t2 + gap > m) m = t2 + gap;
       }
+      /* (2026-11-09) 두상: 사용자 "3D에 올릴 때 머리 속에 좌표가 가면 안 되는 거잖아" — 자기 사진에 보인 점이 머리통(두피 타원 × skullIn) 속이거나
+         그 뒤(시선이 머리통을 지남)면 머리통에서 카메라 쪽으로 나온 자리보다 앞이어야 함. 몸 기둥과 같은 뜻 · 판정 아님(보인다는 사실) */
+      if (M.skull && env && env.a > 0) {
+        var sa = env.a * M.skullIn, sb = env.b * M.skullIn, sc = env.c * M.skullIn, yy = y - env.CY;
+        var A2 = wx * wx / (sa * sa) + wy * wy / (sb * sb) + wz * wz / (sc * sc);
+        var B2 = 2 * (x * wx / (sa * sa) + yy * wy / (sb * sb) + z * wz / (sc * sc));
+        var C2 = x * x / (sa * sa) + yy * yy / (sb * sb) + z * z / (sc * sc) - 1, D2 = B2 * B2 - 4 * A2 * C2;
+        if (A2 > 1e-12 && D2 > 0) { var te = (-B2 + Math.sqrt(D2)) / (2 * A2); if (te > 0 && te > m) { m = te; st.skullPts = (st.skullPts || 0) + 1; } }
+      }
       return m;
     }
 
@@ -113,7 +124,7 @@ var MV_DEPTH = (function () {
       var X = new Float64Array(n), Y = new Float64Array(n), Z = new Float64Array(n), t = new Float64Array(n);
       for (k = 0; k < n; k++) { X[k] = P[k].x; Y[k] = P[k].y; Z[k] = P[k].z; }
       var tMin = null, blkB = 0;                 // (2026-11-08b) 몸에 안 가리는 가장 뒤 깊이(점마다)
-      if (COLS.length) { tMin = new Float64Array(n); for (k = 0; k < n; k++) { tMin[k] = k === 0 ? -Infinity : bodyMin(wx, wy, wz, X[k], Y[k], Z[k]); if (tMin[k] > 0) blkB++; } }
+      if (COLS.length || M.skull) { tMin = new Float64Array(n); for (k = 0; k < n; k++) { tMin[k] = k === 0 ? -Infinity : bodyMin(wx, wy, wz, X[k], Y[k], Z[k]); if (tMin[k] > 0) blkB++; } }
       function tOK(k2, tv) { return !tMin || tv >= tMin[k2]; }
       // ① 결: 마디마다 깊이 변화 δ를 다른 사진 결에 맞춤(최소제곱)
       var dl = new Float64Array(n);
@@ -199,7 +210,7 @@ var MV_DEPTH = (function () {
       '  다른 사진 머리 영역 밖 점 ' + (100 * r.outB / Math.max(1, r.chk)).toFixed(1) + '% → ' + (100 * r.outA / Math.max(1, r.chk)).toFixed(1) + '% · 옮긴 가닥의 다른 사진 결 어긋남(sin² 평균) ' + (r.cmp ? (r.offB / r.cmp).toFixed(3) + ' → ' + (r.offA / r.cmp).toFixed(3) : '-') +
       ' · copyDepthMid ' + (W.REGROW && W.REGROW.copyDepthMid === false ? '끔(이 단계가 대신함)' : '그대로') + ' · 끄기 MV_DEPTH.on=false',
       '  몸에 안 가린 깊이: ' + (!M.body ? '꺼짐' : !r.bodyOn ? '목·몸통 치수 없음(REGROW.bodyDims) — 안 함' :
-        '자기 사진 시선이 목·몸통 기둥에 막히던 점 ' + r.bodyBlkB + ' → ' + r.bodyBlkA + ' · 몸 앞으로 옮긴 가닥 ' + r.bodyStrands + '(점 ' + r.bodyPts + ' · 가닥 최대 이동 평균 ' + (r.bodyStrands ? (r.bodySum / r.bodyStrands * cm).toFixed(1) : '0') + 'cm)') + ' (끄기 MV_DEPTH.body=false)'];
+        '자기 사진 시선이 목·몸통 기둥에 막히던 점 ' + r.bodyBlkB + ' → ' + r.bodyBlkA + ' · 몸 앞으로 옮긴 가닥 ' + r.bodyStrands + '(점 ' + r.bodyPts + ' · 가닥 최대 이동 평균 ' + (r.bodyStrands ? (r.bodySum / r.bodyStrands * cm).toFixed(1) : '0') + 'cm)') + ' (끄기 MV_DEPTH.body=false)' + ' · 머리통 속·뒤라 머리통 앞으로 낸 점 ' + (!M.skull ? '꺼짐' : (r.skullPts || 0)) + ' (끄기 MV_DEPTH.skull=false)'];
   };
   try { console.log(TAG + ' 설치 — 사진 가닥을 자기 시선축으로만 옮겨 다른 사진들의 결·머리 영역에 맞춤 · 끄기 MV_DEPTH.on=false'); } catch (e) {}
   return M;
