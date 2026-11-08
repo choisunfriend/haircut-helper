@@ -1941,7 +1941,7 @@ var VIEWS360 = (function () {
    뿌리부터 없으면 null을 돌려 <b>가닥을 통째로 버리게</b> 한다 — 거울 채움이
    민머리·가르마 자리에 가닥을 심는 것이 이 경로로 걸러진다. */
 function trimStrandToOccupancy3D(pts, probe, acc, opts){
-  if(REGROW._skipTrim(opts)) return pts;   // (옛 42) 뒤로 늘어뜨린 가닥(_rgKeep)은 다듬지 않음
+  if(REGROW._skipTrim(opts, pts)) return pts;   // (옛 42) 뒤로 늘어뜨린 가닥(_rgKeep)은 다듬지 않음
   const O = HAIR_OCC3D;
   if(!probe || !pts || pts.length < 3) return pts;
   const growLen  = (opts && opts.growLen > 0) ? opts.growLen : 0;   // 마스크 밖 허용 호길이(바닥값)
