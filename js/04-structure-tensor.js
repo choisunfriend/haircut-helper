@@ -319,7 +319,7 @@ function computeHairOrientationField(pixels, maskBuf, w, h){
  */
 var GABOR_ORIENT = (function () {
   var W = window, TAG = '[결 방향 필터]';
-  var GO = Object.assign({ on: true, replace: true, stride: 1, prune: 0.02, interp: true, n: 12, lambda: 4, refine: true, smooth: false, autoSmooth: true, autoCohMin: 0.8, autoR: 3, stats: { calls: 0, ms: 0, px: 0, dMed: null },
+  var GO = Object.assign({ on: true, replace: true, stride: 1, prune: 0.02, interp: true, n: 12, lambda: 4, refine: true, smooth: false, engine: 'steer', steerScales: [1.2, 2.4], steerInt: 2, steerPickK: 1.25, autoSmooth: true, autoCohMin: 0.8, autoR: 3, smoothCurvMax: 1.8, lamAuto: true, lamBig: 8, lamPatch: 24, lamPatches: 16, lamHeadCm: 18, lamLowResMm: 2.5, lamCohGain: 0.05, lamCurvKeep: 0.5, stats: { calls: 0, ms: 0, px: 0, dMed: null },
     texRel: 1.0, refineSig: 6, refineSigL: 16, fillMin: 0.35,          // (2026-11-02) 실사 결 다듬기 — 아래 refine 블록 설명
     pathSmooth: 6, straightSteep: 0.045 }, W.GABOR_ORIENT || {});      // (2026-11-02) 선 모양: 경로 평활(걸음) · 곧은 선 = 진폭÷파장 < straightSteep — shapeOf 설명
   var KC = {};
@@ -460,14 +460,125 @@ var GABOR_ORIENT = (function () {
   }
   // 사진마다 identity에 붙임(42번의 컬 재기와 같은 자리)
   /* computeHairOrientationField(04) 끝에서 부름 — 04가 구한 방향(f.angle)을 방향 필터 값으로 바꿈 */
+  /* (2026-11-08) 파장 고르기 — 사용자: "4px과 8px를 일정 크기를 잘라서 체크를 하는데, 굴곡과 해상도를 같이 재서 하면 될 거 같은데 … 잡음 곱슬은 8px로 돌리면 고리가 줄어들더라고"
+   *  왜: 가는 선 필터 파장이 px로 고정(4px)이라 해상도가 낮은 폰 사진(직모 남자: 1px ≈ 1mm)에선 4px가 압축 블록·잡음 크기 → 결이 흩어져 고리.
+   *      다듬기(넓게 평균)는 잡음 곱슬의 컬까지 펴서 못 씀. 파장을 키우면 한 올 단위 잡음은 지나치고 다발 단위 결을 읽음 — 컬 지름이 파장보다 크면 컬은 남음.
+   *  방법: 머리 안쪽에서 조각(lamPatch px 정사각 · 최대 lamPatches개)만 4px·8px로 읽어 비교(전체를 두 번 읽지 않음 — 조각 합이 머리 픽셀의 몇 %)
+   *    결 일치도(반경 3px 상자 · 이중각 합 길이 ÷ 개수, 조각 중앙값) · 굴곡(결 따라 5px 갔을 때 도는 각 °/px) · 해상도(4px가 몇 mm인가: 머리 영역 폭 ≈ lamHeadCm로 어림)
+   *    8px 고름: 일치도가 lamCohGain 넘게 오르고, (4px 일치도가 autoCohMin 미만 = 잡음 사진 · 또는 4px가 lamLowResMm 이상 = 낮은 해상도)
+   *      단 잡음이 없는(4px 일치도 기준 이상) 사진에서 8px 굴곡이 4px의 lamCurvKeep 미만으로 줄면 = 진짜 컬을 펴는 것 → 4px 유지
+   *  끄기 GABOR_ORIENT.lamAuto=false(늘 lambda) · 값 GABOR_ORIENT.lamStat */
+  function gaborAngleAt(g, Wd, idx, KK) {
+    var nK = KK.K.length, rK = KK.r, best = -1, bk = 0, k, j, i, RVp = pickLambda._rv || (pickLambda._rv = new Float32Array(64));
+    for (k = 0; k < nK; k++) { var K = KK.K[k], v = 0, ki = 0; for (j = -rK; j <= rK; j++) { var row = idx + j * Wd - rK; for (i = 0; i < KK.sz; i++) v += K[ki++] * g[row + i]; } v = v < 0 ? -v : v; RVp[k] = v; if (v > best) { best = v; bk = k; } }
+    var vL = RVp[(bk + nK - 1) % nK], vR = RVp[(bk + 1) % nK], den = vL - 2 * best + vR, bo = 0; if (den < -1e-12) { bo = 0.5 * (vL - vR) / den; bo = bo > 0.5 ? 0.5 : bo < -0.5 ? -0.5 : bo; }
+    return (bk + bo) * Math.PI / nK + Math.PI / 2;
+  }
+  function fieldStats(A, M, w, h, step) {            // A: 각(라디안) · M: 쓸 자리 · → { coh, curv }
+    var cohs = [], curvs = [], x, y, aR = 3, L = 5;
+    for (y = aR; y < h - aR; y += step) for (x = aR; x < w - aR; x += step) {
+      var i0 = y * w + x; if (!M[i0]) continue;
+      var sc = 0, ss = 0, nc = 0, u, v; for (v = -aR; v <= aR; v++) for (u = -aR; u <= aR; u++) { var j0 = i0 + v * w + u; if (!M[j0]) continue; sc += Math.cos(2 * A[j0]); ss += Math.sin(2 * A[j0]); nc++; }
+      if (nc >= 30) cohs.push(Math.hypot(sc, ss) / nc);
+      var a0 = A[i0], x2 = Math.round(x + L * Math.cos(a0)), y2 = Math.round(y + L * Math.sin(a0));
+      if (x2 >= 0 && y2 >= 0 && x2 < w && y2 < h && M[y2 * w + x2]) { var d = Math.abs(A[y2 * w + x2] - a0) % Math.PI; if (d > Math.PI / 2) d = Math.PI - d; curvs.push(d * 57.2958 / L); }
+    }
+    function md(a) { a.sort(function (p, q) { return p - q; }); return a.length ? a[a.length >> 1] : NaN; }
+    return { coh: md(cohs), curv: md(curvs) };
+  }
+  function pickLambda(g, mask, Wd, Hd) {
+    var l4 = GO.lambda, l8 = GO.lamBig || 8;
+    GO.lamStat = null;
+    if (GO.lamAuto === false || !(l8 > l4)) return l4;
+    try {
+      var t0 = performance.now(), K4 = kernels(l4, GO.n), K8 = kernels(l8, GO.n), rb = Math.max(K4.r, K8.r), P = GO.lamPatch || 24, hp = P >> 1;
+      var x0 = Wd, x1 = -1, y0 = Hd, y1 = -1, x, y, i;
+      for (y = 0; y < Hd; y += 2) for (x = 0; x < Wd; x += 2) if (mask[y * Wd + x]) { if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
+      if (x1 < 0) return l4;
+      var pxPerCm = (x1 - x0 + 1) / (GO.lamHeadCm || 18), mm4 = l4 / Math.max(1e-6, pxPerCm) * 10;
+      // 조각 자리: 머리 상자를 격자로 나눠, 조각 전체(+필터 반경)가 머리 안인 곳
+      var cands = [], gs = Math.max(P, Math.round(Math.sqrt((x1 - x0) * (y1 - y0) / ((GO.lamPatches || 16) * 2))));
+      for (y = y0 + hp + rb; y <= y1 - hp - rb; y += gs) for (x = x0 + hp + rb; x <= x1 - hp - rb; x += gs) {
+        var ok = 0, tot = 0, u, v; for (v = -hp - rb; v <= hp + rb; v += 4) for (u = -hp - rb; u <= hp + rb; u += 4) { tot++; if (mask[(y + v) * Wd + x + u]) ok++; }
+        if (ok >= tot * 0.95) cands.push([x, y]);
+      }
+      if (cands.length < 3) { GO.lamStat = { why: '머리 안 조각 ' + cands.length + '개 — 4px 그대로', pxPerCm: pxPerCm, mm4: mm4 }; return l4; }
+      var maxP = GO.lamPatches || 16; if (cands.length > maxP) { var st = cands.length / maxP, sel = []; for (i = 0; i < maxP; i++) sel.push(cands[Math.floor(i * st)]); cands = sel; }
+      var S = { 4: { coh: [], curv: [] }, 8: { coh: [], curv: [] } }, A = new Float32Array(P * P), M = new Uint8Array(P * P);
+      cands.forEach(function (c) {
+        [[4, K4], [8, K8]].forEach(function (pr) {
+          var yy, xx; for (yy = 0; yy < P; yy++) for (xx = 0; xx < P; xx++) { var gi = (c[1] - hp + yy) * Wd + c[0] - hp + xx; M[yy * P + xx] = mask[gi] ? 1 : 0; if (M[yy * P + xx]) A[yy * P + xx] = gaborAngleAt(g, Wd, gi, pr[1]); }
+          var fs = fieldStats(A, M, P, P, 2); if (isFinite(fs.coh)) S[pr[0]].coh.push(fs.coh); if (isFinite(fs.curv)) S[pr[0]].curv.push(fs.curv);
+        });
+      });
+      function md(a) { a = a.slice().sort(function (p, q) { return p - q; }); return a.length ? a[a.length >> 1] : NaN; }
+      var c4 = md(S[4].coh), c8 = md(S[8].coh), v4 = md(S[4].curv), v8 = md(S[8].curv);
+      var noisy = c4 < (GO.autoCohMin || 0.8), lowRes = mm4 >= (GO.lamLowResMm || 2.5), gain = c8 - c4;
+      var flatten = !noisy && isFinite(v4) && isFinite(v8) && v8 < v4 * (GO.lamCurvKeep || 0.5);
+      var use8 = gain >= (GO.lamCohGain || 0.05) && (noisy || lowRes) && !flatten;
+      GO.lamStat = { pick: use8 ? l8 : l4, coh4: c4, coh8: c8, curv4: v4, curv8: v8, pxPerCm: pxPerCm, mm4: mm4, patches: cands.length, noisy: noisy, lowRes: lowRes, flatten: flatten, ms: Math.round(performance.now() - t0),
+        why: use8 ? ('8px — ' + (noisy ? '잡음 사진' : '낮은 해상도') + ' · 일치도 +' + gain.toFixed(2)) : (flatten ? '4px — 8px가 굴곡을 ' + Math.round(100 * v8 / v4) + '%로 폄(진짜 컬)' : gain < (GO.lamCohGain || 0.05) ? '4px — 8px로 읽어도 일치도가 안 오름(+' + gain.toFixed(2) + ')' : '4px — 잡음 아님·해상도 충분') };
+      return use8 ? l8 : l4;
+    } catch (e) { GO.lamStat = { why: '고르기 실패 — 4px', err: String(e) }; return l4; }
+  }
+  /* (2026-11-08) 조종 필터(G2/H2 · Freeman–Adelson) 두 굵기 — 사용자: "멀티필터 … 정확도가 어느 정도 나온 상태에서 깎는 식으로 가야 하니까 정확도가 우선순위"
+   *  방향마다 필터를 따로 대지 않고 기본 필터 7개(가로·세로로 나뉘는 필터)만 돌린 뒤, 결 방향을 식으로 바로 구함(연속 각 · 12방향 계단 없음).
+   *  굵기 두 개(steerScales: 1.2 ≈ 지금 4px · 2.4 ≈ 8px)를 읽고 자리마다 결이 더 또렷한 쪽 — 큰 굵기는 작은 쪽보다 steerPickK배 또렷해야 고름(잔 컬 보존 쪽으로 기움).
+   *  읽은 에너지 계수를 둘레 steerInt px(가우시안)로 모은 뒤 각을 냄 = 한 올 단위 잡음이 상쇄. 넓은 다듬기(6/16px)와 달리 컬 반경보다 작음.
+   *  합성 결 무늬 45종(직모·웨이브·컬 반경 16/10/6px × 다발 굵기 3 × 잡음 3) 각 오차 중앙값 평균: 가버 12방향 4px 26.8° → 조종 두 굵기 13.5°
+   *    깨끗한 잔 컬(반경 6px) 30.8° → 14.1° · 잡음 직모·웨이브도 전부 가버보다 낮음 · 시간은 가버 4px 한 번보다 짧음(합성 200×200: 1.5초 → 1.1초, 순수 JS)
+   *  예전 가버: GABOR_ORIENT.engine='gabor' (그때는 위 파장 고르기·자동 다듬기 그대로) */
+  function steerRead(g, mask, Wd, Hd, ang, conf, bestA) {
+    var t0 = performance.now(), N = Wd * Hd, x0 = Wd, y0 = Hd, x1 = -1, y1 = -1, x, y, i;
+    for (y = 0; y < Hd; y++) for (x = 0, i = y * Wd; x < Wd; x++, i++) if (mask[i]) { if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
+    if (x1 < 0) return 0;
+    var SC = GO.steerScales && GO.steerScales.length ? GO.steerScales : [1.2, 2.4], sI = GO.steerInt > 0 ? GO.steerInt : 0;
+    var pad = Math.ceil(3 * Math.max.apply(null, SC)) + Math.ceil(2.5 * sI) + 2;
+    var bx0 = Math.max(0, x0 - pad), by0 = Math.max(0, y0 - pad), bx1 = Math.min(Wd - 1, x1 + pad), by1 = Math.min(Hd - 1, y1 + pad), cw = bx1 - bx0 + 1, ch = by1 - by0 + 1, CN = cw * ch;
+    var G = new Float32Array(CN), Mk = new Float32Array(CN);
+    for (y = 0; y < ch; y++) for (x = 0; x < cw; x++) { var si = (y + by0) * Wd + x + bx0; G[y * cw + x] = g[si]; Mk[y * cw + x] = mask[si] ? 1 : 0; }
+    function conv(src, k, r, horiz) { var o = new Float32Array(CN), xx, yy, q; for (yy = 0; yy < ch; yy++) for (xx = 0; xx < cw; xx++) { var v = 0; for (q = -r; q <= r; q++) { var a = horiz ? xx + q : xx, b = horiz ? yy : yy + q; if (a < 0) a = 0; else if (a >= cw) a = cw - 1; if (b < 0) b = 0; else if (b >= ch) b = ch - 1; v += k[q + r] * src[b * cw + a]; } o[yy * cw + xx] = v; } return o; }
+    function sep(kx, ky, r) { return conv(conv(G, kx, r, true), ky, r, false); }
+    function gb(a, sg) { if (!(sg > 0)) return a; var r = Math.ceil(2.5 * sg), k = new Float32Array(2 * r + 1), s = 0, q; for (q = -r; q <= r; q++) { k[q + r] = Math.exp(-q * q / (2 * sg * sg)); s += k[q + r]; } for (q = 0; q < k.length; q++) k[q] /= s; return conv(conv(a, k, r, true), k, r, false); }
+    var outs = [];
+    SC.forEach(function (sc) {
+      var r = Math.ceil(3 * sc), L = 2 * r + 1;
+      function kf(fn) { var k = new Float32Array(L), q; for (q = -r; q <= r; q++) { var u = q / sc; k[q + r] = fn(u) * Math.exp(-u * u); } return k; }
+      var e = kf(function () { return 1; }), g2 = kf(function (u) { return 2 * u * u - 1; }), u1 = kf(function (u) { return u; }), h3 = kf(function (u) { return -2.254 * u + u * u * u; }), h2 = kf(function (u) { return -0.7515 + u * u; });
+      var A = sep(g2, e, r), B = sep(u1, u1, r), C = sep(e, g2, r), Ha = sep(h3, e, r), Hb = sep(h2, u1, r), Hc = sep(u1, h2, r), Hd2 = sep(e, h3, r);
+      var C1 = new Float32Array(CN), C2 = new Float32Array(CN), C3 = new Float32Array(CN), q;
+      for (q = 0; q < CN; q++) {
+        if (!Mk[q]) continue;                                            // 머리 밖 에너지는 모으지 않음
+        var a = 0.9213 * A[q], b = 1.843 * B[q], c = 0.9213 * C[q], ha = 0.978 * Ha[q], hb = 0.978 * Hb[q], hc = 0.978 * Hc[q], hd = 0.978 * Hd2[q];
+        C1[q] = 0.5 * b * b + 0.25 * a * c + 0.375 * (a * a + c * c) + 0.3125 * (ha * ha + hd * hd) + 0.5625 * (hb * hb + hc * hc) + 0.375 * (ha * hc + hb * hd);
+        C2[q] = 0.5 * (a * a - c * c) + 0.46875 * (ha * ha - hd * hd) + 0.28125 * (hb * hb - hc * hc) + 0.1875 * (ha * hc - hb * hd);
+        C3[q] = -a * b - b * c - 0.9375 * (hc * hd + ha * hb) - 1.6875 * hb * hc - 0.1875 * ha * hd;
+      }
+      outs.push({ c1: gb(C1, sI), c2: gb(C2, sI), c3: gb(C3, sI) });
+    });
+    var K = GO.steerPickK || 1.25, n = 0, nBig = 0;
+    for (y = 0; y < ch; y++) for (x = 0; x < cw; x++) {
+      var q2 = y * cw + x; if (!Mk[q2]) continue;
+      var bi = -1, bs = -1, bm = 0, bc = 0, j;
+      for (j = 0; j < outs.length; j++) { var O = outs[j], m = Math.hypot(O.c2[q2], O.c3[q2]), st = O.c1[q2] > 1e-12 ? m / O.c1[q2] : 0; if (bi < 0 || st > bs * K) { bi = j; bs = st; bm = m; bc = O.c1[q2]; } }
+      var Ob = outs[bi], t = -0.5 * Math.atan2(Ob.c3[q2], Ob.c2[q2]) + Math.PI / 2;
+      while (t > Math.PI / 2) t -= Math.PI; while (t <= -Math.PI / 2) t += Math.PI;
+      var id = (y + by0) * Wd + x + bx0; ang[id] = t; conf[id] = bs; bestA[id] = bc + bm; n++; if (bi > 0) nBig++;
+    }
+    GO.stats.steerBig = n ? nBig / n : null; GO.stats.steerMs = Math.round(performance.now() - t0);
+    return n;
+  }
   GO.refine = function (f, px, mask, Wd, Hd) {
     if (!GO.on || !f || !f.angle || !px || px.length < Wd * Hd * 4 || !mask) return f;
     try {
-      var t0 = performance.now(), N = Wd * Hd, KK = kernels(GO.lambda, GO.n), r = KK.r, sz = KK.sz, n = GO.n, g = denoise(gray(px, N), mask, Wd, Hd, r + 2);   // (dnz) 잡음 제거 뒤 결 읽기
+      var t0 = performance.now(), N = Wd * Hd, n = GO.n, g = denoise(gray(px, N), mask, Wd, Hd, kernels(Math.max(GO.lambda, GO.lamBig || 8), n).r + 2);   // (dnz) 잡음 제거 뒤 결 읽기
+      var STEER = GO.engine === 'steer';   // (2026-11-08) 조종 필터(두 굵기 · 자리마다 고르기) — 아래 steerRead
+      var lamUse = STEER ? GO.lambda : pickLambda(g, mask, Wd, Hd), KK = kernels(lamUse, n), r = KK.r, sz = KK.sz;   // (2026-11-08) 4px · 8px 중 이 사진에 맞는 파장(가버일 때만)
       var SP = sparse(KK, Wd), RV = new Float32Array(n), ang = new Float32Array(N), conf = new Float32Array(N), bestA = new Float32Array(N), idx, x, y, k, i, j, cnt = 0;
       /* (2026-10-25e) 머리 영역 안 픽셀로만 — 필터 창(반경 r)에 머리 밖 칸이 있는 자리는 그 칸을 빼고, 남은 칸의 밝기 평균을 빼서(밝기만 다른 자리에 반응 안 하게) 계산 · 남은 칸이 minFrac 미만이면 못 읽음 */
       var MK = (typeof HAIR_READ_MASK !== 'undefined' && HAIR_READ_MASK.on), full = (2 * r + 1) * (2 * r + 1), cnt9 = MK ? maskBoxCount(mask, Wd, Hd, r) : null, edgeN = 0, edgeSkip = 0;
       var sd = (GO.smooth && GO.stride > 1) ? (GO.stride | 0) : 1;         // 다듬기를 끄면 메울 방법이 없으니 전부 계산
+      if (STEER) cnt = steerRead(g, mask, Wd, Hd, ang, conf, bestA); else
       for (y = r; y < Hd - r; y += sd) for (x = r; x < Wd - r; x += sd) {
         idx = y * Wd + x; if (!mask[idx]) continue;
         var best = -1, bk = 0, sumR = 0;
@@ -501,7 +612,7 @@ var GABOR_ORIENT = (function () {
        *  디버그 결 칸(약 3px 반경)으로 잰 값: 직모 남자(폰 실사 4장) 0.69~0.77 · 곱슬 0.87~0.91 · 긴 웨이브 0.91~0.96 · 한 장 펌 0.84 → 기준 autoCohMin 0.8.
        *  ※ "4px 앞 30° 어긋남"(위 잡음 지표)은 직모 남자 35% · 곱슬 34~37%로 같아서 못 가름. 끄기 GABOR_ORIENT.autoSmooth=false · 늘 켜기 .smooth=true */
       var autoOn = false;
-      if (!GO.smooth && GO.autoSmooth !== false) {
+      if (!GO.smooth && GO.autoSmooth !== false && !STEER) {   // 조종 필터는 자체로 둘레 2px를 모아 읽음 — 넓은 다듬기 안 얹음
         try {
           var aR = GO.autoR || 3, cohs = [], ax, ay;
           for (ay = r + aR; ay < Hd - r - aR; ay += 3) for (ax = r + aR; ax < Wd - r - aR; ax += 3) {
@@ -512,7 +623,11 @@ var GABOR_ORIENT = (function () {
           }
           cohs.sort(function (p, q) { return p - q; });
           GO.stats.localCoh = cohs.length ? cohs[cohs.length >> 1] : null;
-          autoOn = GO.stats.localCoh != null && GO.stats.localCoh < (GO.autoCohMin || 0.8);
+          /* (2026-11-08) 다듬기는 곧은 결일 때만 — 사용자: "실제 핸드폰에서 나올 잡음 곱슬은 다듬기가 곱슬을 펴게 될 수도". 파장을 고른 뒤에도 일치도가 낮고,
+           *  그 파장으로 읽은 굴곡(조각 중앙값 °/px)이 smoothCurvMax 미만일 때만 켬. 굴곡을 못 쟀으면 안 켬(곱슬 쪽으로 안전). */
+          var LS = GO.lamStat, cvF = LS ? (LS.pick === (GO.lamBig || 8) ? LS.curv8 : LS.curv4) : NaN;
+          GO.stats.smoothCurv = cvF;
+          autoOn = GO.stats.localCoh != null && GO.stats.localCoh < (GO.autoCohMin || 0.8) && isFinite(cvF) && cvF < (GO.smoothCurvMax || 1.8);
         } catch (eA) { autoOn = false; }
       }
       GO.stats.autoSmooth = autoOn;
@@ -563,7 +678,8 @@ var GABOR_ORIENT = (function () {
       GO.stats.kink = kN ? kB / kN : null;
       console.log(TAG + ' ' + Wd + '×' + Hd + ' · 머리 픽셀 ' + cnt + ' · ' + n + '방향 · ' + GO.stats.ms + 'ms · 예전 방식과 방향 차이 중앙 ' + (GO.stats.dMed != null ? GO.stats.dMed.toFixed(1) + '°' : '-') +
         ' · 잡음 제거 ' + (DN.on ? DN.stats.ms + 'ms(' + DN.stats.px + 'px · σs ' + DN.sigS + ' · σr ' + DN.sigR + ')' : '꺼짐') + ' · 4px 앞과 30° 넘게 어긋남 ' + (GO.stats.kink != null ? (GO.stats.kink * 100).toFixed(1) + '%' : '-') + ' (끄기 GRAIN_DENOISE.on=false)' +
-        ' · 짧은 거리 결 일치도 ' + (GO.stats.localCoh != null ? GO.stats.localCoh.toFixed(2) : '-') + (GO.smooth ? ' · 다듬기 늘 켬' : GO.stats.autoSmooth ? ' → <b>잡음 사진 — 다듬기 켬</b>(σ ' + GO.refineSig + '/' + GO.refineSigL + 'px · 기준 ' + (GO.autoCohMin || 0.8) + ' · 끄기 GABOR_ORIENT.autoSmooth=false)' : ' → 다듬기 안 함(기준 ' + (GO.autoCohMin || 0.8) + ')'));
+        (STEER ? ' · <b>조종 필터</b> 굵기 ' + GO.steerScales.join('|') + ' · 모음 σ' + GO.steerInt + 'px · 큰 굵기 고른 자리 ' + (GO.stats.steerBig != null ? Math.round(GO.stats.steerBig * 100) + '%' : '-') + ' · ' + GO.stats.steerMs + 'ms (예전 가버: GABOR_ORIENT.engine=\'gabor\')' : '') + (STEER ? '' : ' · 파장 ' + lamUse + 'px') + (!STEER && GO.lamStat ? '(' + GO.lamStat.why + (GO.lamStat.coh4 != null ? ' · 조각 ' + GO.lamStat.patches + '개 ' + GO.lamStat.ms + 'ms · 일치도 4px ' + (+GO.lamStat.coh4).toFixed(2) + ' / 8px ' + (+GO.lamStat.coh8).toFixed(2) + ' · 굴곡 ' + (+GO.lamStat.curv4).toFixed(2) + ' / ' + (+GO.lamStat.curv8).toFixed(2) + '°/px' : '') + (GO.lamStat.mm4 ? ' · 4px ≈ ' + GO.lamStat.mm4.toFixed(1) + 'mm' : '') + ' · 끄기 GABOR_ORIENT.lamAuto=false)' : '') +
+        ' · 짧은 거리 결 일치도 ' + (GO.stats.localCoh != null ? GO.stats.localCoh.toFixed(2) : '-') + (GO.smooth ? ' · 다듬기 늘 켬' : GO.stats.autoSmooth ? ' → <b>잡음 사진 — 다듬기 켬</b>(σ ' + GO.refineSig + '/' + GO.refineSigL + 'px · 기준 ' + (GO.autoCohMin || 0.8) + ' · 끄기 GABOR_ORIENT.autoSmooth=false)' : ' → 다듬기 안 함(일치도 기준 ' + (GO.autoCohMin || 0.8) + ' · 굴곡 ' + (isFinite(GO.stats.smoothCurv) ? GO.stats.smoothCurv.toFixed(2) : '-') + ' < ' + (GO.smoothCurvMax || 1.8) + '°/px일 때만)'));
     } catch (e) { console.warn(TAG + ' 실패 — 예전 방식 그대로', e); }
     return f;
   };
