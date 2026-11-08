@@ -105,8 +105,8 @@ var MV_DEPTH = (function () {
       }
       /* (2026-11-09) 두상: 사용자 "3D에 올릴 때 머리 속에 좌표가 가면 안 되는 거잖아" — 자기 사진에 보인 점이 머리통(두피 타원 × skullIn) 속이거나
          그 뒤(시선이 머리통을 지남)면 머리통에서 카메라 쪽으로 나온 자리보다 앞이어야 함. 몸 기둥과 같은 뜻 · 판정 아님(보인다는 사실) */
-      if (M.skull && env && env.a > 0) {
-        var sa = env.a * M.skullIn, sb = env.b * M.skullIn, sc = env.c * M.skullIn, yy = y - env.CY;
+      if (M.skull && env && env.a2 > 0) {                       // env는 a2·b2·c2(제곱)만 가짐 — PHOTO_CHECK mkEnv
+        var sa = Math.sqrt(env.a2) * M.skullIn, sb = Math.sqrt(env.b2) * M.skullIn, sc = Math.sqrt(env.c2) * M.skullIn, yy = y - env.CY;
         var A2 = wx * wx / (sa * sa) + wy * wy / (sb * sb) + wz * wz / (sc * sc);
         var B2 = 2 * (x * wx / (sa * sa) + yy * wy / (sb * sb) + z * wz / (sc * sc));
         var C2 = x * x / (sa * sa) + yy * yy / (sb * sb) + z * z / (sc * sc) - 1, D2 = B2 * B2 - 4 * A2 * C2;
