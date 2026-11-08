@@ -3748,6 +3748,8 @@ var REGROW = (function () {
     if (typeof READ_SHAPE !== 'undefined') READ_SHAPE._beforeRegrowBuild();
     // (옛 51) 격자가 없어 포기했던 사진이면 균일 격자를 넣고 다시 시도(13b ROOTS_FALLBACK)
     if (typeof ROOTS_FALLBACK !== 'undefined') ROOTS_FALLBACK._beforeRegrowBuild(G);
+    // (2026-11-08) 사진 가닥 깊이를 다른 사진들의 결·머리 영역으로 맞춤(39 MV_DEPTH)
+    if (typeof MV_DEPTH !== 'undefined') { try { MV_DEPTH._beforeRegrowBuild(state._hair3Dneutral); } catch (e) { console.warn('[여러 사진 깊이] 실패', e); } }
     if (typeof cb !== 'function') cb = null;
     if (G.building) return;
     var photo = state._hair3Dneutral;
