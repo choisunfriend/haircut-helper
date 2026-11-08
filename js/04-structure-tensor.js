@@ -319,7 +319,7 @@ function computeHairOrientationField(pixels, maskBuf, w, h){
  */
 var GABOR_ORIENT = (function () {
   var W = window, TAG = '[결 방향 필터]';
-  var GO = Object.assign({ on: true, replace: true, stride: 1, prune: 0.02, interp: true, n: 12, lambda: 4, refine: true, smooth: false, engine: 'steer', steerScales: [1.2, 2.4], steerInt: 2, steerPickK: 1.25, flowPre: false, flowSig: 6, flowLo: 0.4, flowHi: 0.7, flowLen: 6, autoSmooth: true, autoCohMin: 0.8, autoR: 3, smoothCurvMax: 1.8, lamAuto: true, lamBig: 8, lamPatch: 24, lamPatches: 16, lamHeadCm: 18, lamLowResMm: 2.5, lamCohGain: 0.05, lamCurvKeep: 0.5, stats: { calls: 0, ms: 0, px: 0, dMed: null },
+  var GO = Object.assign({ on: true, replace: true, stride: 1, prune: 0.02, interp: true, n: 12, lambda: 4, refine: true, smooth: false, engine: 'steer', steerScales: [1.2, 2.4, 3.6], steerMix: 'region', regSig: 12, steerInt: 2, steerPickK: 1.25, flowPre: false, flowSig: 6, flowLo: 0.4, flowHi: 0.7, flowLen: 6, autoSmooth: true, autoCohMin: 0.8, autoR: 3, smoothCurvMax: 1.8, lamAuto: true, lamBig: 8, lamPatch: 24, lamPatches: 16, lamHeadCm: 18, lamLowResMm: 2.5, lamCohGain: 0.05, lamCurvKeep: 0.5, stats: { calls: 0, ms: 0, px: 0, dMed: null },
     texRel: 1.0, refineSig: 6, refineSigL: 16, fillMin: 0.35,          // (2026-11-02) 실사 결 다듬기 — 아래 refine 블록 설명
     pathSmooth: 6, straightSteep: 0.045 }, W.GABOR_ORIENT || {});      // (2026-11-02) 선 모양: 경로 평활(걸음) · 곧은 선 = 진폭÷파장 < straightSteep — shapeOf 설명
   var KC = {};
@@ -532,7 +532,7 @@ var GABOR_ORIENT = (function () {
     var t0 = performance.now(), N = Wd * Hd, x0 = Wd, y0 = Hd, x1 = -1, y1 = -1, x, y, i;
     for (y = 0; y < Hd; y++) for (x = 0, i = y * Wd; x < Wd; x++, i++) if (mask[i]) { if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
     if (x1 < 0) return 0;
-    var SC = GO.steerScales && GO.steerScales.length ? GO.steerScales : [1.2, 2.4], sI = GO.steerInt > 0 ? GO.steerInt : 0;
+    var SC = GO.steerScales && GO.steerScales.length ? GO.steerScales : [1.2, 2.4, 3.6], sI = GO.steerInt > 0 ? GO.steerInt : 0;
     var pad = Math.ceil(3 * Math.max.apply(null, SC)) + Math.ceil(2.5 * sI) + 2;
     var bx0 = Math.max(0, x0 - pad), by0 = Math.max(0, y0 - pad), bx1 = Math.min(Wd - 1, x1 + pad), by1 = Math.min(Hd - 1, y1 + pad), cw = bx1 - bx0 + 1, ch = by1 - by0 + 1, CN = cw * ch;
     var G = new Float32Array(CN), Mk = new Float32Array(CN);
@@ -556,15 +556,62 @@ var GABOR_ORIENT = (function () {
       }
       outs.push({ c1: gb(C1, sI), c2: gb(C2, sI), c3: gb(C3, sI) });
     });
-    var K = GO.steerPickK || 1.25, n = 0, nBig = 0;
+    /* (2026-11-08c) 자리마다 굵기 섞기(region) — 사용자: "직모남자가 핸드폰 실사라 고리가 많아 … 8px 써야 할 거 같은데, 곱슬에 8px을 쓸 경우 곱슬이 펴질 수도"
+     *  예전(pick): 자리마다 큰 굵기가 steerPickK(1.25)배 또렷할 때만 고름 — 잡음 자리는 두 굵기 다 흐려서 잘 안 걸리고, 픽셀마다 바뀌어 경계가 꺾임.
+     *  지금: 두 값을 <b>넓게(σ regSig px) 편 값</b>으로 무게를 냄 — 픽셀 하나가 아니라 그 둘레 결의 성질
+     *    F = 4px 결의 넓은 범위 일치도(σ 6px로 모은 이중각 길이 → σ regSig로 폄) — 잡음 직모·웨이브 높음 / 컬 낮음(잡음에 안 흔들림)
+     *    G = 8px 또렷함 ÷ 4px 또렷함(각각 σ regSig로 편 뒤) — 잡음이면 8px가 더 또렷 / 깨끗한 결이면 같음
+     *    8px 무게 = ss(F, 0.45→0.65) × ss(G, 1.0→1.15) · 12px(굵기가 셋일 때) = 그 안에서 ss(F, 0.6→0.8) × ss(G, 1.1→1.25)
+     *    결은 무게대로 이중각 평균(문턱으로 자르지 않음).
+     *  실사 시험(원본 사진 · 같은 마스크 · 4px 앞 30° 어긋남 / 휘어짐 °/px / 결 따라 그은 선이 한 바퀴 넘게 도는 비율):
+     *    직모 남자 4장 4px 24.1% → 예전(pick) 22.2% → region 20.5%
+     *    곱슬 4장 휘어짐 3.92 → 3.89 · 고리 10.3% → 10.5% (8px만 쓰면 3.75 · 5.4% / 12px만 3.40 · 2.3% = 펴짐)
+     *    잡음 곱슬(같은 4장 + 센서 잡음 σ7 + JPEG 70) 3.86 · 10.0% → 3.86 · 10.0% (그대로)
+     *    긴 웨이브 4장 어긋남 3.0% → 2.8% (8px만 쓰면 4.2%)
+     *  예전 방식 GABOR_ORIENT.steerMix='pick' */
+    var K = GO.steerPickK || 1.25, n = 0, nBig = 0, nS = outs.length;
+    var TA = [], TS = [], TC = [], j, q3;
+    for (j = 0; j < nS; j++) { TA.push(new Float32Array(CN)); TS.push(new Float32Array(CN)); TC.push(new Float32Array(CN)); }
+    for (q3 = 0; q3 < CN; q3++) {
+      if (!Mk[q3]) continue;
+      for (j = 0; j < nS; j++) { var Oj = outs[j], mj = Math.hypot(Oj.c2[q3], Oj.c3[q3]); TS[j][q3] = Oj.c1[q3] > 1e-12 ? mj / Oj.c1[q3] : 0; TC[j][q3] = Oj.c1[q3] + mj;
+        var tj = -0.5 * Math.atan2(Oj.c3[q3], Oj.c2[q3]) + Math.PI / 2; while (tj > Math.PI / 2) tj -= Math.PI; while (tj <= -Math.PI / 2) tj += Math.PI; TA[j][q3] = tj; }
+    }
+    var REG = GO.steerMix !== 'pick' && nS >= 2, WB = null, WC = null, Fm = [], Gm = [];
+    if (REG) {
+      var rs = GO.regSig > 0 ? GO.regSig : 12, ssf = function (v, lo, hi) { var u = (v - lo) / (hi - lo); u = u < 0 ? 0 : u > 1 ? 1 : u; return u * u * (3 - 2 * u); };
+      var Cc = new Float32Array(CN), Ss = new Float32Array(CN);
+      for (q3 = 0; q3 < CN; q3++) if (Mk[q3]) { Cc[q3] = Math.cos(2 * TA[0][q3]); Ss[q3] = Math.sin(2 * TA[0][q3]); }
+      var Cb6 = gb(Cc, 6), Sb6 = gb(Ss, 6), Mb6 = gb(Mk, 6), F0 = new Float32Array(CN);
+      for (q3 = 0; q3 < CN; q3++) if (Mk[q3] && Mb6[q3] > 1e-6) F0[q3] = Math.hypot(Cb6[q3], Sb6[q3]) / Mb6[q3];
+      var Mbr = gb(Mk, rs), Fr = gb(F0, rs), S0r = gb(TS[0], rs), S1r = gb(TS[1], rs);
+      WB = new Float32Array(CN); WC = nS >= 3 ? new Float32Array(CN) : null;
+      for (q3 = 0; q3 < CN; q3++) {
+        if (!Mk[q3] || !(Mbr[q3] > 1e-6)) continue;
+        var Fv = Fr[q3] / Mbr[q3], Gv = S0r[q3] > 1e-9 ? S1r[q3] / S0r[q3] : 1;
+        WB[q3] = ssf(Fv, 0.45, 0.65) * ssf(Gv, 1.0, 1.15);
+        if (WC) WC[q3] = ssf(Fv, 0.6, 0.8) * ssf(Gv, 1.1, 1.25);
+        if ((q3 & 31) === 0) { Fm.push(Fv); Gm.push(Gv); }
+      }
+    }
     for (y = 0; y < ch; y++) for (x = 0; x < cw; x++) {
       var q2 = y * cw + x; if (!Mk[q2]) continue;
-      var bi = -1, bs = -1, bm = 0, bc = 0, j;
-      for (j = 0; j < outs.length; j++) { var O = outs[j], m = Math.hypot(O.c2[q2], O.c3[q2]), st = O.c1[q2] > 1e-12 ? m / O.c1[q2] : 0; if (bi < 0 || st > bs * K) { bi = j; bs = st; bm = m; bc = O.c1[q2]; } }
-      var Ob = outs[bi], t = -0.5 * Math.atan2(Ob.c3[q2], Ob.c2[q2]) + Math.PI / 2;
+      var id = (y + by0) * Wd + x + bx0, t, cf, ba;
+      if (REG) {
+        var wb = WB[q2], wc = WC ? WC[q2] : 0, w0 = 1 - wb, w1 = wb * (1 - wc), w2 = wb * wc;
+        var vx = w0 * Math.cos(2 * TA[0][q2]) + w1 * Math.cos(2 * TA[1][q2]), vy = w0 * Math.sin(2 * TA[0][q2]) + w1 * Math.sin(2 * TA[1][q2]);
+        if (WC) { vx += w2 * Math.cos(2 * TA[2][q2]); vy += w2 * Math.sin(2 * TA[2][q2]); }
+        t = 0.5 * Math.atan2(vy, vx); cf = w0 * TS[0][q2] + w1 * TS[1][q2] + (WC ? w2 * TS[2][q2] : 0); ba = w0 * TC[0][q2] + w1 * TC[1][q2] + (WC ? w2 * TC[2][q2] : 0);
+        if (wb > 0.5) nBig++;
+      } else {
+        var bi = 0; for (j = 1; j < nS; j++) if (TS[j][q2] > TS[bi][q2] * K) bi = j;
+        t = TA[bi][q2]; cf = TS[bi][q2]; ba = TC[bi][q2]; if (bi > 0) nBig++;
+      }
       while (t > Math.PI / 2) t -= Math.PI; while (t <= -Math.PI / 2) t += Math.PI;
-      var id = (y + by0) * Wd + x + bx0; ang[id] = t; conf[id] = bs; bestA[id] = bc + bm; n++; if (bi > 0) nBig++;
+      ang[id] = t; conf[id] = cf; bestA[id] = ba; n++;
     }
+    var md = function (a) { a.sort(function (p, q) { return p - q; }); return a.length ? a[a.length >> 1] : null; };
+    GO.stats.steerMix = REG ? { F: md(Fm), G: md(Gm) } : null;
     GO.stats.steerBig = n ? nBig / n : null; GO.stats.steerMs = Math.round(performance.now() - t0);
     return n;
   }
@@ -640,7 +687,7 @@ var GABOR_ORIENT = (function () {
     GO.stats.stSupp = { px: n, used: nUse, share: nUse ? sumWt / nUse : 0, moved15: n ? moved / n : 0, ms: Math.round(performance.now() - t0) };
     return GO.stats.stSupp;
   }
-  GO._test = { steerRead: steerRead, stSupplement: stSupplement };   // 합성 시험용
+  GO._test = { steerRead: steerRead, stSupplement: stSupplement, denoise: denoise, blurBB: blurBB };   // 합성 시험용
   GO.refine = function (f, px, mask, Wd, Hd) {
     if (!GO.on || !f || !f.angle || !px || px.length < Wd * Hd * 4 || !mask) return f;
     try {
@@ -762,7 +809,7 @@ var GABOR_ORIENT = (function () {
       } catch (eC) { f.viewClean = null; }
       console.log(TAG + ' ' + Wd + '×' + Hd + ' · 머리 픽셀 ' + cnt + ' · ' + n + '방향 · ' + GO.stats.ms + 'ms · 예전 방식과 방향 차이 중앙 ' + (GO.stats.dMed != null ? GO.stats.dMed.toFixed(1) + '°' : '-') +
         ' · 잡음 제거 ' + (DN.on ? DN.stats.ms + 'ms(' + DN.stats.px + 'px · σs ' + DN.sigS + ' · σr ' + DN.sigR + ')' : '꺼짐') + ' · 4px 앞과 30° 넘게 어긋남 ' + (GO.stats.kink != null ? (GO.stats.kink * 100).toFixed(1) + '%' : '-') + ' (끄기 GRAIN_DENOISE.on=false)' +
-        (STEER && GO.stats.stSupp && !GO.stats.stSupp.err ? ' · <b>구조텐서 보충</b> 무게 평균 ' + Math.round(GO.stats.stSupp.share * 100) + '% · 15° 넘게 바뀐 자리 ' + Math.round(GO.stats.stSupp.moved15 * 100) + '% · ' + GO.stats.stSupp.ms + 'ms (끄기 GABOR_ORIENT.stSupp=false)' : '') + (STEER ? ' · <b>조종 필터</b> 굵기 ' + GO.steerScales.join('|') + ' · 모음 σ' + GO.steerInt + 'px · 큰 굵기 고른 자리 ' + (GO.stats.steerBig != null ? Math.round(GO.stats.steerBig * 100) + '%' : '-') + ' · ' + GO.stats.steerMs + 'ms' + (GO.flowPre ? ' · 곧은 결 자리 결 따라 문지른 뒤 다시 읽음 ' + (GO.stats.flowOn != null ? Math.round(GO.stats.flowOn * 100) + '%(평균 ' + (+GO.stats.flowLenAvg).toFixed(1) + 'px · ' + GO.stats.flowMs + 'ms · 끄기 GABOR_ORIENT.flowPre=false)' : '-') : '') + ' (예전 가버: GABOR_ORIENT.engine=\'gabor\')' : '') + (STEER ? '' : ' · 파장 ' + lamUse + 'px') + (!STEER && GO.lamStat ? '(' + GO.lamStat.why + (GO.lamStat.coh4 != null ? ' · 조각 ' + GO.lamStat.patches + '개 ' + GO.lamStat.ms + 'ms · 일치도 4px ' + (+GO.lamStat.coh4).toFixed(2) + ' / 8px ' + (+GO.lamStat.coh8).toFixed(2) + ' · 굴곡 ' + (+GO.lamStat.curv4).toFixed(2) + ' / ' + (+GO.lamStat.curv8).toFixed(2) + '°/px' : '') + (GO.lamStat.mm4 ? ' · 4px ≈ ' + GO.lamStat.mm4.toFixed(1) + 'mm' : '') + ' · 끄기 GABOR_ORIENT.lamAuto=false)' : '') +
+        (STEER && GO.stats.stSupp && !GO.stats.stSupp.err ? ' · <b>구조텐서 보충</b> 무게 평균 ' + Math.round(GO.stats.stSupp.share * 100) + '% · 15° 넘게 바뀐 자리 ' + Math.round(GO.stats.stSupp.moved15 * 100) + '% · ' + GO.stats.stSupp.ms + 'ms (끄기 GABOR_ORIENT.stSupp=false)' : '') + (STEER ? ' · <b>조종 필터</b> 굵기 ' + GO.steerScales.join('|') + ' · 모음 σ' + GO.steerInt + 'px' + (GO.stats.steerMix ? ' · <b>굵기 섞기(region)</b> 넓은 일치도 ' + (GO.stats.steerMix.F != null ? GO.stats.steerMix.F.toFixed(2) : '-') + ' · 8px/4px 또렷함 ' + (GO.stats.steerMix.G != null ? GO.stats.steerMix.G.toFixed(2) : '-') + ' (예전 GABOR_ORIENT.steerMix=\'pick\')' : '') + ' · 8px 넘게 쓴 자리 ' + (GO.stats.steerBig != null ? Math.round(GO.stats.steerBig * 100) + '%' : '-') + ' · ' + GO.stats.steerMs + 'ms' + (GO.flowPre ? ' · 곧은 결 자리 결 따라 문지른 뒤 다시 읽음 ' + (GO.stats.flowOn != null ? Math.round(GO.stats.flowOn * 100) + '%(평균 ' + (+GO.stats.flowLenAvg).toFixed(1) + 'px · ' + GO.stats.flowMs + 'ms · 끄기 GABOR_ORIENT.flowPre=false)' : '-') : '') + ' (예전 가버: GABOR_ORIENT.engine=\'gabor\')' : '') + (STEER ? '' : ' · 파장 ' + lamUse + 'px') + (!STEER && GO.lamStat ? '(' + GO.lamStat.why + (GO.lamStat.coh4 != null ? ' · 조각 ' + GO.lamStat.patches + '개 ' + GO.lamStat.ms + 'ms · 일치도 4px ' + (+GO.lamStat.coh4).toFixed(2) + ' / 8px ' + (+GO.lamStat.coh8).toFixed(2) + ' · 굴곡 ' + (+GO.lamStat.curv4).toFixed(2) + ' / ' + (+GO.lamStat.curv8).toFixed(2) + '°/px' : '') + (GO.lamStat.mm4 ? ' · 4px ≈ ' + GO.lamStat.mm4.toFixed(1) + 'mm' : '') + ' · 끄기 GABOR_ORIENT.lamAuto=false)' : '') +
         ' · 사진 깨끗함 ' + (GO.stats.viewClean != null ? GO.stats.viewClean.toFixed(2) : '-') + (STEER ? '' : ' · 짧은 거리 결 일치도 ' + (GO.stats.localCoh != null ? GO.stats.localCoh.toFixed(2) : '-')) + (GO.smooth ? ' · 다듬기 늘 켬' : GO.stats.autoSmooth ? ' → <b>잡음 사진 — 다듬기 켬</b>(σ ' + GO.refineSig + '/' + GO.refineSigL + 'px · 기준 ' + (GO.autoCohMin || 0.8) + ' · 끄기 GABOR_ORIENT.autoSmooth=false)' : ' → 다듬기 안 함(일치도 기준 ' + (GO.autoCohMin || 0.8) + ' · 굴곡 ' + (isFinite(GO.stats.smoothCurv) ? GO.stats.smoothCurv.toFixed(2) : '-') + ' < ' + (GO.smoothCurvMax || 1.8) + '°/px일 때만)'));
     } catch (e) { console.warn(TAG + ' 실패 — 예전 방식 그대로', e); }
     return f;
