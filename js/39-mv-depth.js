@@ -35,6 +35,8 @@ var MV_DEPTH = (function () {
     iters: 3,
     rootGrip: 0.3,    // 뿌리 쪽 10% 마디는 이 비율만 옮김
     smooth: 2,
+    body: true,       // (2026-11-08b) 자기 사진에 보인 점은 몸에 안 가린 깊이 — 아래 bodyMin
+    bodyGapCm: 0.6,   // 몸 겉면에서 이만큼 앞(머리카락 두께)
     stat: null
   };
   var prevCopyDepthMid = null;
@@ -82,6 +84,26 @@ var MV_DEPTH = (function () {
       return { e: wsum > 0 ? e / wsum : 0, n: n };
     }
 
+    /* (2026-11-08b) 몸에 안 가린 깊이 — 사용자: 긴 웨이브 "정면 빔 34.8%" · 결과 화면에서 어깨 앞 머리가 전부 등 뒤로.
+       사진 가닥의 점은 <b>자기 사진에 보인 점</b>입니다. 그 점에서 자기 카메라 쪽으로 가는 시선이 목·몸통 기둥을 지나면 그 점은 몸에 가려
+       사진에 찍힐 수 없었습니다 → 깊이는 기둥에서 카메라 쪽으로 나온 자리보다 앞이어야 합니다(보인다는 사실 그대로 · 스타일 판정 아님).
+       예전: 가슴 앞·등 뒤가 둘 다 "다른 사진도 머리"라 처음 깊이(대개 뒤)가 남고, 찾는 범위(±11cm)로는 어깨 반대편까지 못 감.
+       기둥 = REGROW.bodyDims()(걷기 가림과 같은 목·몸통 타원 기둥). 몸통 위에 보인 머리가 없는 사진에서는 아무것도 안 바뀝니다. 끄기 MV_DEPTH.body=false */
+    var BD = null; if (M.body) { try { BD = W.REGROW && typeof W.REGROW.bodyDims === 'function' ? W.REGROW.bodyDims() : null; } catch (e) { BD = null; } }
+    var COLS = BD ? [{ top: BD.nTop, hw: BD.nw, hd: BD.nd }, { top: BD.tTop, hw: BD.tw, hd: BD.td }] : [], gap = M.bodyGapCm * unit;
+    st.bodyOn = !!BD; st.bodyStrands = 0; st.bodyPts = 0; st.bodySum = 0; st.bodyBlkB = 0; st.bodyBlkA = 0;
+    function bodyMin(wx, wy, wz, x, y, z) {    // 이 점을 시선축(+w = 카메라 쪽)으로 t만큼 옮길 때 안 가리려면 t ≥ 돌려준 값 · 상관없으면 -Infinity
+      var m = -Infinity;
+      for (var q = 0; q < COLS.length; q++) {
+        var cc = COLS[q], ia = 1 / (cc.hw * cc.hw), ic = 1 / (cc.hd * cc.hd), A = wx * wx * ia + wz * wz * ic; if (A < 1e-12) continue;
+        var B = 2 * (x * wx * ia + z * wz * ic), C = x * x * ia + z * z * ic - 1, D = B * B - 4 * A * C; if (D <= 0) continue;
+        var t2 = (-B + Math.sqrt(D)) / (2 * A);                // 시선이 기둥에서 카메라 쪽으로 나오는 자리
+        if (!(y + t2 * wy < cc.top)) continue;                  // 그 자리가 기둥 위 끝보다 위 = 기둥 없음
+        if (t2 + gap > m) m = t2 + gap;
+      }
+      return m;
+    }
+
     var S = photo.strands, si;
     for (si = 0; si < S.length; si++) {
       var s = S[si]; if (!s || s.mirrored || !s.pts || s.pts.length < 4) continue;
@@ -90,6 +112,9 @@ var MV_DEPTH = (function () {
       st.strands++;
       var X = new Float64Array(n), Y = new Float64Array(n), Z = new Float64Array(n), t = new Float64Array(n);
       for (k = 0; k < n; k++) { X[k] = P[k].x; Y[k] = P[k].y; Z[k] = P[k].z; }
+      var tMin = null, blkB = 0;                 // (2026-11-08b) 몸에 안 가리는 가장 뒤 깊이(점마다)
+      if (COLS.length) { tMin = new Float64Array(n); for (k = 0; k < n; k++) { tMin[k] = k === 0 ? -Infinity : bodyMin(wx, wy, wz, X[k], Y[k], Z[k]); if (tMin[k] > 0) blkB++; } }
+      function tOK(k2, tv) { return !tMin || tv >= tMin[k2]; }
       // ① 결: 마디마다 깊이 변화 δ를 다른 사진 결에 맞춤(최소제곱)
       var dl = new Float64Array(n);
       for (it = 0; it < M.iters; it++) {
@@ -117,27 +142,40 @@ var MV_DEPTH = (function () {
       }
       // ② 다른 사진들이 머리라고 본 깊이 구간 안에서 가장 가까운 자리
       for (k = 1; k < n; k++) {
+        if (tMin && t[k] < tMin[k]) t[k] = tMin[k];   // (2026-11-08b) 몸에 가린 깊이에서는 출발하지 않음
         if (okAll(own, X[k] + t[k] * wx, Y[k] + t[k] * wy, Z[k] + t[k] * wz)) continue;
-        var best = null;                         // 지금 깊이에서 가까운 쪽부터 바깥으로
-        for (var j = 1; best == null && j * step <= 2 * range; j++) {
+        var best = null, lo = tMin && tMin[k] > -range ? tMin[k] : -range, hi = Math.max(range, lo + range);   // 범위는 몸 앞 자리부터
+        for (var j = 1; best == null && j * step <= 2 * (hi - lo); j++) {
           var t1 = t[k] + j * step, t2 = t[k] - j * step;
-          if (Math.abs(t1) <= range && okAll(own, X[k] + t1 * wx, Y[k] + t1 * wy, Z[k] + t1 * wz)) best = t1;
-          else if (Math.abs(t2) <= range && okAll(own, X[k] + t2 * wx, Y[k] + t2 * wy, Z[k] + t2 * wz)) best = t2;
+          if (t1 <= hi && t1 >= lo && okAll(own, X[k] + t1 * wx, Y[k] + t1 * wy, Z[k] + t1 * wz)) best = t1;
+          else if (t2 >= lo && t2 <= hi && okAll(own, X[k] + t2 * wx, Y[k] + t2 * wy, Z[k] + t2 * wz)) best = t2;
         }
         if (best != null) t[k] = best;           // 구간이 아예 없으면 결로 정한 깊이 그대로
       }
       t[0] = 0;
       for (it = 0; it < M.smooth; it++) { var pr = t[0]; for (k = 1; k < n - 1; k++) { var cur = t[k]; t[k] = (pr + 2 * cur + t[k + 1]) / 4; pr = cur; } }
+      if (tMin) {                                // (2026-11-08b) 고르기 뒤에도 몸 앞 · 위쪽 마디는 기울기 한도(maxSlope)로 이어 줌(꺾이지 않게 · 뿌리 0은 그대로)
+        var bodyHit = false;
+        for (k = 1; k < n; k++) if (t[k] < tMin[k]) { t[k] = tMin[k]; bodyHit = true; }
+        if (bodyHit) for (k = n - 2; k >= 1; k--) {
+          var sg = Math.hypot(X[k + 1] - X[k], Y[k + 1] - Y[k], Z[k + 1] - Z[k]), need = t[k + 1] - M.maxSlope * sg;
+          if (t[k] < need) t[k] = need;
+        }
+      }
       // ③ 다른 사진들과 더 맞을 때만 바꿈(재기만 하는 판정 — 스타일 규칙 아님)
       var Q = new Array(n), mx2 = 0, outB = 0, outA = 0;
       for (k = 0; k < n; k++) { Q[k] = { x: X[k] + t[k] * wx, y: Y[k] + t[k] * wy, z: Z[k] + t[k] * wz }; if (Math.abs(t[k]) > mx2) mx2 = Math.abs(t[k]);
         if (!okAll(own, X[k], Y[k], Z[k])) outB++; if (!okAll(own, Q[k].x, Q[k].y, Q[k].z)) outA++; }
-      var gB = grainErr(own, P), gA = grainErr(own, Q);
-      st.outB += outB; st.chk += n;
-      if (gA.e * Math.max(1, gA.n) + outA <= gB.e * Math.max(1, gB.n) + outB) {
+      var gB = grainErr(own, P), gA = grainErr(own, Q), blkA = 0;
+      if (tMin) for (k = 1; k < n; k++) if (t[k] < tMin[k] - 1e-9) blkA++;
+      st.outB += outB; st.chk += n; st.bodyBlkB += blkB;
+      // 몸에 가린 점이 있던 가닥은 그대로 둘 수 없음(사진에 찍혔다는 사실과 어긋남) — 무조건 옮김
+      if ((blkB > blkA) || gA.e * Math.max(1, gA.n) + outA <= gB.e * Math.max(1, gB.n) + outB) {
+        if (blkB > 0) { st.bodyStrands++; st.bodyPts += blkB; st.bodySum += mx2; }
+        st.bodyBlkA += blkA;
         for (k = 0; k < n; k++) { P[k].x = Q[k].x; P[k].y = Q[k].y; P[k].z = Q[k].z; }
         st.moved++; st.pts += n; st.sumMove += mx2; st.outA += outA; st.offA += gA.e; st.offB += gB.e; st.cmp++;
-      } else st.outA += outB;
+      } else { st.outA += outB; st.bodyBlkA += blkB; }
     }
     st.ms = Math.round(now() - t0); st.cams = cams.map(function (c) { return c.angle; });
     return st;
@@ -159,7 +197,9 @@ var MV_DEPTH = (function () {
     var cm = (function () { try { return modelCmPerUnit(); } catch (e) { return 19; } })();
     return [TAG + ' 사진 ' + r.cams.join(',') + ' · 가닥 ' + r.strands + ' 중 옮김 ' + r.moved + ' · 자기 시선축으로 평균 ' + (r.moved ? (r.sumMove / r.moved * cm).toFixed(1) : '0') + 'cm · ' + r.ms + 'ms',
       '  다른 사진 머리 영역 밖 점 ' + (100 * r.outB / Math.max(1, r.chk)).toFixed(1) + '% → ' + (100 * r.outA / Math.max(1, r.chk)).toFixed(1) + '% · 옮긴 가닥의 다른 사진 결 어긋남(sin² 평균) ' + (r.cmp ? (r.offB / r.cmp).toFixed(3) + ' → ' + (r.offA / r.cmp).toFixed(3) : '-') +
-      ' · copyDepthMid ' + (W.REGROW && W.REGROW.copyDepthMid === false ? '끔(이 단계가 대신함)' : '그대로') + ' · 끄기 MV_DEPTH.on=false'];
+      ' · copyDepthMid ' + (W.REGROW && W.REGROW.copyDepthMid === false ? '끔(이 단계가 대신함)' : '그대로') + ' · 끄기 MV_DEPTH.on=false',
+      '  몸에 안 가린 깊이: ' + (!M.body ? '꺼짐' : !r.bodyOn ? '목·몸통 치수 없음(REGROW.bodyDims) — 안 함' :
+        '자기 사진 시선이 목·몸통 기둥에 막히던 점 ' + r.bodyBlkB + ' → ' + r.bodyBlkA + ' · 몸 앞으로 옮긴 가닥 ' + r.bodyStrands + '(점 ' + r.bodyPts + ' · 가닥 최대 이동 평균 ' + (r.bodyStrands ? (r.bodySum / r.bodyStrands * cm).toFixed(1) : '0') + 'cm)') + ' (끄기 MV_DEPTH.body=false)'];
   };
   try { console.log(TAG + ' 설치 — 사진 가닥을 자기 시선축으로만 옮겨 다른 사진들의 결·머리 영역에 맞춤 · 끄기 MV_DEPTH.on=false'); } catch (e) {}
   return M;

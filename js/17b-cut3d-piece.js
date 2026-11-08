@@ -1813,6 +1813,14 @@ var REGROW = (function () {
     var k = 1 / Math.sqrt(e);
     return { x: p.x * k, y: p.y, z: p.z * k };
   };
+  /* (2026-11-08) 목·몸통 기둥 치수를 밖으로 — 걷기의 가림(camBlocked · visBodyInit)과 같은 식. 39번(MV_DEPTH)이 씁니다.
+     G.neck(밀어내기) 켜짐·꺼짐과 상관없음 — 이건 밀어내기가 아니라 "몸에 가렸나" 재는 데만 씀. */
+  G.bodyDims = function () {
+    try {
+      var N = neckDims(), cmB = modelCmPerUnit() || 18.6; if (!N || !N.ok) return null;
+      return { nTop: N.top, nw: N.hw, nd: N.hd, tTop: N.top - G.visNeckCm / cmB, tw: G.visTorsoWCm / 2 / cmB, td: G.visTorsoDCm / 2 / cmB };
+    } catch (e) { return null; }
+  };
 
   /* ────────────────────────────────────────────────────────────────────────
    * 만들기
