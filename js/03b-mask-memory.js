@@ -422,6 +422,83 @@ if(cnt > 0){
    머리 둘레 상자가 커서(이미 크게 찍힘) 안 자르는 사진도, 사진 긴 변이 분석 상한(800)보다 작고 머리 폭이 minHeadPx보다 작으면 사진 전체를 상한까지 키움
    → 어떤 사진이든 필터가 비슷한 cm를 봄(머리 폭 ≈ 18cm · 340px ≈ 19px/cm — 800px 세트들과 같은 수준). 끄기 SUBJECT_ZOOM.cmScale=false */
 var SUBJECT_ZOOM = Object.assign({ on: true, cmScale: true, minHeadPx: 340, maxArea: 0.55, maxUp: 2.5, padTop: 0.35, downK: 3.0, sideK: 2.0, thr: 0.5, minFrac: 0.02, stats: {} }, window.SUBJECT_ZOOM || {});
+/* (2026-11-08b) ORIG_CLEAN — 원본 단계 블록 제거 + 안티앨리어싱 — 사용자: "안티앨리어싱과 블록제거를 원본단계에서 시행해줘"
+   자리: 원본 사진을 읽는 곳(_szLoadClean) — 머리 키우기(subjectZoom)·결 원본 해상도(grainHiresSource) 둘 다 여기서 읽음 → 자르기·키우기·결 읽기 전에 한 번.
+   ① 블록 제거: JPEG 8×8 경계의 밝기 차가 경계 아닌 자리보다 얼마나 큰지(블록 지수)를 사진에서 재고, 그만큼만 경계 양쪽 두 픽셀을 섞음(H.264 약한 필터 꼴).
+      경계 차가 크면(진짜 윤곽 · α) 안 건드림. α·β·세기는 이 사진의 경계 아닌 자리 밝기 차에서 나옴(고정 문턱 없음). 블록 지수가 1에 가까우면(PNG·리사이즈) 거의 안 바뀜.
+   ② 안티앨리어싱: 기울기가 센 자리(계단이 생기는 곳)만, 그 자리 윤곽선 방향(기울기에 수직 = 올 방향)으로 ±1px 평균을 섞음 — 올을 가로로 뭉개지 않고 계단만 펴짐.
+      섞는 비율 = 기울기 ÷ 이 사진 기울기 90백분위(최대 0.5).
+   끄기 ORIG_CLEAN.on=false · 따로 .deblock=false / .aa=false · 기록 ORIG_CLEAN.stats */
+var ORIG_CLEAN = Object.assign({ on: true, deblock: true, aa: true, aaMax: 0.5, minBlock: 1.03, aaMaxPx: 4e6, stats: {}, _cache: new Map() }, window.ORIG_CLEAN || {});
+function origCleanCanvas(img, key){
+  const OC = ORIG_CLEAN, t0 = performance.now();
+  const W = img.naturalWidth || img.width, H = img.naturalHeight || img.height;
+  const cv = document.createElement('canvas'); cv.width = W; cv.height = H;
+  const cx = cv.getContext('2d', { willReadFrequently: true }); cx.drawImage(img, 0, 0);
+  const id = cx.getImageData(0, 0, W, H), d = id.data, N = W * H, st = { w: W, h: H };
+  const L = new Float32Array(N); for(let i = 0, j = 0; i < N; i++, j += 4) L[i] = 0.299 * d[j] + 0.587 * d[j + 1] + 0.114 * d[j + 2];
+  if(OC.deblock){
+    // 블록 지수 — 가로·세로 따로
+    let bS = 0, bN = 0, iS = 0, iN = 0;
+    for(let y = 0; y < H; y += 2) for(let x = 1; x < W; x++){ const v = Math.abs(L[y * W + x] - L[y * W + x - 1]); if((x & 7) === 0){ bS += v; bN++; } else { iS += v; iN++; } }
+    for(let y = 1; y < H; y++) for(let x = 0; x < W; x += 2){ const v = Math.abs(L[y * W + x] - L[(y - 1) * W + x]); if((y & 7) === 0){ bS += v; bN++; } else { iS += v; iN++; } }
+    const bm = bN ? bS / bN : 0, im = iN ? iS / iN : 0, ratio = im > 1e-6 ? bm / im : 1;
+    st.blockRatio = +ratio.toFixed(3);
+    if(ratio > OC.minBlock){
+      const alpha = Math.max(6, 4 * im), beta = Math.max(3, 1.5 * im), tc = Math.max(1, Math.min(12, 2 * (bm - im) + 1));
+      let nF = 0;
+      const filt = function(ip1, ip0, iq0, iq1){
+        for(let ch = 0; ch < 3; ch++){
+          const p1 = d[ip1 + ch], p0 = d[ip0 + ch], q0 = d[iq0 + ch], q1 = d[iq1 + ch];
+          if(Math.abs(p0 - q0) >= alpha || Math.abs(p1 - p0) >= beta || Math.abs(q1 - q0) >= beta) continue;
+          let dl = ((q0 - p0) * 4 + (p1 - q1) + 4) / 8; dl = dl < -tc ? -tc : dl > tc ? tc : dl;
+          d[ip0 + ch] = p0 + dl; d[iq0 + ch] = q0 - dl; nF++;
+        }
+      };
+      for(let y = 0; y < H; y++) for(let x = 8; x < W - 1; x += 8){ const b = (y * W + x) * 4; filt(b - 8, b - 4, b, b + 4); }
+      for(let y = 8; y < H - 1; y += 8) for(let x = 0; x < W; x++){ const b = (y * W + x) * 4, r = W * 4; filt(b - 2 * r, b - r, b, b + r); }
+      st.deblock = { alpha: +alpha.toFixed(1), beta: +beta.toFixed(1), tc: +tc.toFixed(1), fixed: nF };
+      for(let i = 0, j = 0; i < N; i++, j += 4) L[i] = 0.299 * d[j] + 0.587 * d[j + 1] + 0.114 * d[j + 2];
+    } else st.deblock = { skip: '블록 지수 ' + ratio.toFixed(2) + ' — 블록 없음' };
+  }
+  if(OC.aa && N > OC.aaMaxPx) st.aa = null, st.aaSkip = '큰 사진(' + (N / 1e6).toFixed(1) + 'MP > ' + (OC.aaMaxPx / 1e6) + 'MP) — 계단 펴기 건너뜀(시간)';
+  else if(OC.aa){
+    const GX = new Float32Array(N), GY = new Float32Array(N), gs = [];
+    for(let y = 1; y < H - 1; y++) for(let x = 1; x < W - 1; x++){
+      const i = y * W + x;
+      const gx = (L[i - W + 1] + 2 * L[i + 1] + L[i + W + 1]) - (L[i - W - 1] + 2 * L[i - 1] + L[i + W - 1]);
+      const gy = (L[i + W - 1] + 2 * L[i + W] + L[i + W + 1]) - (L[i - W - 1] + 2 * L[i - W] + L[i - W + 1]);
+      GX[i] = gx; GY[i] = gy; if((i & 15) === 0) gs.push(Math.hypot(gx, gy));
+    }
+    gs.sort(function(a, b){ return a - b; }); const gRef = Math.max(1, gs.length ? gs[Math.floor(gs.length * 0.9)] : 1);
+    const src = new Uint8ClampedArray(d); let nA = 0;
+    const bil = function(fx, fy, ch){ const x0 = Math.floor(fx), y0 = Math.floor(fy), ax = fx - x0, ay = fy - y0, i00 = (y0 * W + x0) * 4 + ch;
+      return (1 - ay) * ((1 - ax) * src[i00] + ax * src[i00 + 4]) + ay * ((1 - ax) * src[i00 + W * 4] + ax * src[i00 + W * 4 + 4]); };
+    for(let y = 2; y < H - 2; y++) for(let x = 2; x < W - 2; x++){
+      const i = y * W + x, gm = Math.hypot(GX[i], GY[i]); if(!(gm > 1e-6)) continue;
+      const w = Math.min(OC.aaMax, OC.aaMax * gm / gRef); if(w < 0.05) continue;
+      const tx = -GY[i] / gm, ty = GX[i] / gm, b = i * 4;
+      for(let ch = 0; ch < 3; ch++){ const m = 0.5 * (bil(x + tx, y + ty, ch) + bil(x - tx, y - ty, ch)); d[b + ch] = (1 - w) * src[b + ch] + w * m; }
+      nA++;
+    }
+    st.aa = { gRef: Math.round(gRef), px: nA };
+  }
+  cx.putImageData(id, 0, 0);
+  cv.naturalWidth = W; cv.naturalHeight = H;
+  st.ms = Math.round(performance.now() - t0); OC.stats[key] = st;
+  console.log('[원본 다듬기] ' + W + '×' + H + ' · 블록 지수 ' + (st.blockRatio != null ? st.blockRatio : '-') + (st.deblock && st.deblock.fixed != null ? ' → 블록 경계 고침 ' + st.deblock.fixed + '(α' + st.deblock.alpha + ' β' + st.deblock.beta + ' tc' + st.deblock.tc + ')' : st.deblock && st.deblock.skip ? ' · ' + st.deblock.skip : '') +
+    (st.aa ? ' · 계단 펴기 ' + st.aa.px + 'px(기울기 기준 ' + st.aa.gRef + ')' : st.aaSkip ? ' · ' + st.aaSkip : '') + ' · ' + st.ms + 'ms (끄기 ORIG_CLEAN.on=false)');
+  return cv;
+}
+async function _szLoadClean(url){
+  const im = await _szLoad(url); if(!im || !ORIG_CLEAN.on) return im;
+  try{
+    const C = ORIG_CLEAN._cache; if(C.has(url)) return C.get(url);
+    const key = String(url).slice(-24), cv = origCleanCanvas(im, key);
+    C.set(url, cv); while(C.size > 8){ const k0 = C.keys().next().value; const c0 = C.get(k0); try{ c0.width = 0; c0.height = 0; }catch(e){} C.delete(k0); }
+    return cv;
+  }catch(e){ console.warn('[원본 다듬기] 실패 — 원본 그대로', e); return im; }
+}
 function _szLoad(url){ return new Promise(function(res){ var im = new Image(); im.onload = function(){ res(im); }; im.onerror = function(){ res(null); }; im.src = url; }); }
 async function subjectZoom(angle){
   const Z = SUBJECT_ZOOM, st = { at: Date.now(), done: false, why: '' };
@@ -433,7 +510,7 @@ async function subjectZoom(angle){
     if(state._zoomedShot && state._zoomedShot[angle] === lo){ st.why = '이미 키운 사진'; st.done = true; return false; }
     const hiRec = state.shotsHi && state.shotsHi[angle];
     const srcUrl = (hiRec && hiRec.lo === lo && hiRec.hi) ? hiRec.hi : lo;
-    const img = await _szLoad(srcUrl); if(!img){ st.why = '사진을 못 읽음'; return false; }
+    const img = await _szLoadClean(srcUrl); if(!img){ st.why = '사진을 못 읽음'; return false; }   // (2026-11-08b) 원본 단계 블록 제거·안티앨리어싱(ORIG_CLEAN)
     const IW = img.naturalWidth || img.width, IH = img.naturalHeight || img.height;
     const k = 256 / Math.max(IW, IH), sw = Math.max(8, Math.round(IW * k)), sh = Math.max(8, Math.round(IH * k));
     const sc = document.createElement('canvas'); sc.width = sw; sc.height = sh; sc.getContext('2d').drawImage(img, 0, 0, sw, sh);
@@ -470,7 +547,7 @@ async function subjectZoom(angle){
     const out = document.createElement('canvas'); out.width = Math.max(8, Math.round(cws * up)); out.height = Math.max(8, Math.round(chs * up));
     const ox = out.getContext('2d'); ox.imageSmoothingEnabled = true; try{ ox.imageSmoothingQuality = 'high'; }catch(e){}
     ox.drawImage(img, cxs, cys, cws, chs, 0, 0, out.width, out.height);
-    const url = out.toDataURL('image/jpeg', 0.94); out.width = 0; out.height = 0;
+    const url = out.toDataURL('image/jpeg', ORIG_CLEAN.on ? 0.98 : 0.94);   // (2026-11-08b) 다듬은 원본을 다시 거친 JPEG로 저장하면 블록이 돌아옴 out.width = 0; out.height = 0;
     if(!state._zoomFrom) state._zoomFrom = {};
     state._zoomFrom[angle] = lo;   // 키우기 전 사진 — 360 세트 지문(13b fpNow)이 이걸 봄(안 그러면 '지금 4장이 그 세트의 것이 아님'으로 추가 사진을 버림)
     state.shots[angle] = url;
@@ -577,7 +654,7 @@ async function grainHiresSource(angle, shotW){
     if(zx && zx.url === shot && zx.src && zx.src !== shot){ src = zx.src; ox = zx.ox; oy = zx.oy; kShot = zx.k; }
     else if(hi && hi.lo === shot && hi.hi){ src = hi.hi; }
     if(!src) return null;
-    const im = await _szLoad(src); if(!im) return null;
+    const im = await _szLoadClean(src); if(!im) return null;   // (2026-11-08b) ORIG_CLEAN
     if(!kShot) kShot = (im.naturalWidth || im.width) / Math.max(1, shotW);
     return { img: im, ox: ox, oy: oy, kShot: kShot };
   }catch(e){ return null; }
