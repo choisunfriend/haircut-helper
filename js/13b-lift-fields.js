@@ -216,6 +216,12 @@ function buildHairOrientationField3D(env){
   const perView = {};
   let totalObs = 0;
 
+  /* (2026-11-08) 깨끗한 사진에 무게 — 사용자: "사진 4장 맞춰 보기는 지금 하고 있고, 거기에 깨끗한 쪽에 무게를 두는 걸로"
+     04가 사진마다 잰 깨끗함(VIEW_CLEAN · 짧은 거리 결 일치도)을 가장 깨끗한 사진 대비 비율의 viewCleanPow 제곱으로 곱함(바닥 viewCleanFloor).
+     같은 자리를 두 사진이 볼 때 잡음 사진 결이 덜 섞임. 한 사진만 보는 자리는 비율이 같이 곱해져도 셀 방향은 그대로. 끄기 HAIR_FIELD3D.viewClean=false */
+  const VC = (typeof window !== 'undefined' && window.VIEW_CLEAN) || {};
+  let vcMax = 0; names.forEach(n=>{ const c = VC[n]; if(c > vcMax) vcMax = c; });
+  const vcW = {}; names.forEach(n=>{ const c = VC[n]; vcW[n] = (F.viewClean !== false && vcMax > 0 && c > 0) ? Math.max(F.viewCleanFloor ?? 0.2, Math.pow(c / vcMax, F.viewCleanPow ?? 2)) : 1; });
   names.forEach(n=>{
     const v = views[n];
     const mi = v.maskInf;
@@ -294,7 +300,7 @@ function buildHairOrientationField3D(env){
         const P = applyRotationTranspose3(rot, new THREE.Vector3(mx, my-CY, mz));
         const ci = fieldCellIndex(F, P.x, P.y+CY, P.z, CY, b);
         // 가중치 = 결의 또렷함 × 정면성(비스듬히 보이는 면일수록 각이 눌린다)
-        const w = o.coherence * nz;
+        const w = o.coherence * nz * vcW[n];   // (2026-11-08) × 사진 깨끗함 무게
         Txx[ci]+=w*T.x*T.x; Tyy[ci]+=w*T.y*T.y; Tzz[ci]+=w*T.z*T.z;
         Txy[ci]+=w*T.x*T.y; Txz[ci]+=w*T.x*T.z; Tyz[ci]+=w*T.y*T.z;
         // 극성 — 벡터 그대로(부호 살아 있음). 뷰마다 반대로 보면 서로 상쇄되어
@@ -373,6 +379,7 @@ function buildHairOrientationField3D(env){
   const field = { NT, NP, dir, coh, pol, CY, b, filled, obs:totalObs, perView,
                   meanCoh: cohN ? cohSum/cohN : 0,
                   meanPol: polN ? polSum/polN : 0, polCells: polN, ok:true };
+  console.log('[3D·결] 사진 깨끗함 무게 — ' + names.map(n=>n+' '+(VC[n]!=null?(+VC[n]).toFixed(2):'-')+'→×'+vcW[n].toFixed(2)).join(' · ') + ' (끄기 HAIR_FIELD3D.viewClean=false)');
   console.log('[3D·결] 결 필드 통합 — 관측 '+totalObs+'개('
     + names.map(n=>n+':'+(perView[n]||0)).join(' ') + ') → 셀 '+filled+'/'+NC
     + ' 채움, 평균 3D 또렷함 '+field.meanCoh.toFixed(3)

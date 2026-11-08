@@ -1089,6 +1089,7 @@ async function extractHairMaskCore(angle){
             }catch(e){ _F = null; GRAIN_HIRES.stats[angle] = { s: 1, why: '오류: ' + (e && e.message || e) }; console.warn('[결·원본 해상도] 실패 — 분석 크기로', e); } }
             else if(typeof GRAIN_HIRES !== 'undefined') GRAIN_HIRES.stats[angle] = { s: 1, why: '원본 없음' };
             if(!_F) _F = computeHairOrientationField(srcPixels, orientMaskBuf, w, h);
+            try{ (window.VIEW_CLEAN = window.VIEW_CLEAN || {})[angle] = (_F && _F.viewClean != null) ? _F.viewClean : null; }catch(e){}   // (2026-11-08) 사진 깨끗함 — 13b·17b 사진별 무게
             const {angle: angleField, coherence: coherenceField} = _F;
             /* ── 극성(뿌리→끝) — 측정한 각도는 그대로 두고 <b>부호만</b> 정한다 ──
                거리장은 침식 전 마스크(hairMaskBuf)로 잰다. 침식본은 결 계산의

@@ -319,7 +319,7 @@ function computeHairOrientationField(pixels, maskBuf, w, h){
  */
 var GABOR_ORIENT = (function () {
   var W = window, TAG = '[결 방향 필터]';
-  var GO = Object.assign({ on: true, replace: true, stride: 1, prune: 0.02, interp: true, n: 12, lambda: 4, refine: true, smooth: false, engine: 'steer', steerScales: [1.2, 2.4], steerInt: 2, steerPickK: 1.25, flowPre: true, flowSig: 6, flowLo: 0.4, flowHi: 0.7, flowLen: 6, autoSmooth: true, autoCohMin: 0.8, autoR: 3, smoothCurvMax: 1.8, lamAuto: true, lamBig: 8, lamPatch: 24, lamPatches: 16, lamHeadCm: 18, lamLowResMm: 2.5, lamCohGain: 0.05, lamCurvKeep: 0.5, stats: { calls: 0, ms: 0, px: 0, dMed: null },
+  var GO = Object.assign({ on: true, replace: true, stride: 1, prune: 0.02, interp: true, n: 12, lambda: 4, refine: true, smooth: false, engine: 'steer', steerScales: [1.2, 2.4], steerInt: 2, steerPickK: 1.25, flowPre: false, flowSig: 6, flowLo: 0.4, flowHi: 0.7, flowLen: 6, autoSmooth: true, autoCohMin: 0.8, autoR: 3, smoothCurvMax: 1.8, lamAuto: true, lamBig: 8, lamPatch: 24, lamPatches: 16, lamHeadCm: 18, lamLowResMm: 2.5, lamCohGain: 0.05, lamCurvKeep: 0.5, stats: { calls: 0, ms: 0, px: 0, dMed: null },
     texRel: 1.0, refineSig: 6, refineSigL: 16, fillMin: 0.35,          // (2026-11-02) 실사 결 다듬기 — 아래 refine 블록 설명
     pathSmooth: 6, straightSteep: 0.045 }, W.GABOR_ORIENT || {});      // (2026-11-02) 선 모양: 경로 평활(걸음) · 곧은 선 = 진폭÷파장 < straightSteep — shapeOf 설명
   var KC = {};
@@ -714,10 +714,20 @@ var GABOR_ORIENT = (function () {
       var kN = 0, kB = 0; for (idx = 0; idx < N; idx += 13) { if (!mask[idx]) continue; var kx = idx % Wd, ky = (idx / Wd) | 0, ka = ang[idx], qx = Math.round(kx + 4 * Math.cos(ka)), qy = Math.round(ky + 4 * Math.sin(ka));
         if (qx < 0 || qy < 0 || qx >= Wd || qy >= Hd || !mask[qy * Wd + qx]) continue; var kd = Math.abs(ang[qy * Wd + qx] - ka) % Math.PI; if (kd > Math.PI / 2) kd = Math.PI - kd; kN++; if (kd > Math.PI / 6) kB++; }
       GO.stats.kink = kN ? kB / kN : null;
+      /* (2026-11-08) 사진 깨끗함 — 사용자: "사진 4장 맞춰 보기는 지금 하고 있고, 거기에 깨끗한 쪽에 무게를 두는 걸로"
+       *  다 읽은 결로 짧은 거리 결 일치도(반경 3px 상자 · 이중각 합 길이 ÷ 개수, 머리 픽셀 중앙값)를 재서 f.viewClean에 둠 → 13b 결 3D 합치기 · 17b 사진 가닥 칸 맡기가 사진별 무게로 씀 */
+      try {
+        var cR = 3, cl2 = [], cx3, cy3; for (cy3 = cR; cy3 < Hd - cR; cy3 += 4) for (cx3 = cR; cx3 < Wd - cR; cx3 += 4) {
+          var c0 = cy3 * Wd + cx3; if (!mask[c0]) continue; var sc3 = 0, ss3 = 0, nc3 = 0, u3, v3;
+          for (v3 = -cR; v3 <= cR; v3++) for (u3 = -cR; u3 <= cR; u3++) { var c1 = c0 + v3 * Wd + u3; if (!mask[c1]) continue; sc3 += Math.cos(2 * ang[c1]); ss3 += Math.sin(2 * ang[c1]); nc3++; }
+          if (nc3 >= 30) cl2.push(Math.hypot(sc3, ss3) / nc3);
+        }
+        cl2.sort(function (p, q) { return p - q; }); f.viewClean = GO.stats.viewClean = cl2.length ? cl2[cl2.length >> 1] : null;
+      } catch (eC) { f.viewClean = null; }
       console.log(TAG + ' ' + Wd + '×' + Hd + ' · 머리 픽셀 ' + cnt + ' · ' + n + '방향 · ' + GO.stats.ms + 'ms · 예전 방식과 방향 차이 중앙 ' + (GO.stats.dMed != null ? GO.stats.dMed.toFixed(1) + '°' : '-') +
         ' · 잡음 제거 ' + (DN.on ? DN.stats.ms + 'ms(' + DN.stats.px + 'px · σs ' + DN.sigS + ' · σr ' + DN.sigR + ')' : '꺼짐') + ' · 4px 앞과 30° 넘게 어긋남 ' + (GO.stats.kink != null ? (GO.stats.kink * 100).toFixed(1) + '%' : '-') + ' (끄기 GRAIN_DENOISE.on=false)' +
         (STEER ? ' · <b>조종 필터</b> 굵기 ' + GO.steerScales.join('|') + ' · 모음 σ' + GO.steerInt + 'px · 큰 굵기 고른 자리 ' + (GO.stats.steerBig != null ? Math.round(GO.stats.steerBig * 100) + '%' : '-') + ' · ' + GO.stats.steerMs + 'ms' + (GO.flowPre ? ' · 곧은 결 자리 결 따라 문지른 뒤 다시 읽음 ' + (GO.stats.flowOn != null ? Math.round(GO.stats.flowOn * 100) + '%(평균 ' + (+GO.stats.flowLenAvg).toFixed(1) + 'px · ' + GO.stats.flowMs + 'ms · 끄기 GABOR_ORIENT.flowPre=false)' : '-') : '') + ' (예전 가버: GABOR_ORIENT.engine=\'gabor\')' : '') + (STEER ? '' : ' · 파장 ' + lamUse + 'px') + (!STEER && GO.lamStat ? '(' + GO.lamStat.why + (GO.lamStat.coh4 != null ? ' · 조각 ' + GO.lamStat.patches + '개 ' + GO.lamStat.ms + 'ms · 일치도 4px ' + (+GO.lamStat.coh4).toFixed(2) + ' / 8px ' + (+GO.lamStat.coh8).toFixed(2) + ' · 굴곡 ' + (+GO.lamStat.curv4).toFixed(2) + ' / ' + (+GO.lamStat.curv8).toFixed(2) + '°/px' : '') + (GO.lamStat.mm4 ? ' · 4px ≈ ' + GO.lamStat.mm4.toFixed(1) + 'mm' : '') + ' · 끄기 GABOR_ORIENT.lamAuto=false)' : '') +
-        ' · 짧은 거리 결 일치도 ' + (GO.stats.localCoh != null ? GO.stats.localCoh.toFixed(2) : '-') + (GO.smooth ? ' · 다듬기 늘 켬' : GO.stats.autoSmooth ? ' → <b>잡음 사진 — 다듬기 켬</b>(σ ' + GO.refineSig + '/' + GO.refineSigL + 'px · 기준 ' + (GO.autoCohMin || 0.8) + ' · 끄기 GABOR_ORIENT.autoSmooth=false)' : ' → 다듬기 안 함(일치도 기준 ' + (GO.autoCohMin || 0.8) + ' · 굴곡 ' + (isFinite(GO.stats.smoothCurv) ? GO.stats.smoothCurv.toFixed(2) : '-') + ' < ' + (GO.smoothCurvMax || 1.8) + '°/px일 때만)'));
+        ' · 사진 깨끗함 ' + (GO.stats.viewClean != null ? GO.stats.viewClean.toFixed(2) : '-') + (STEER ? '' : ' · 짧은 거리 결 일치도 ' + (GO.stats.localCoh != null ? GO.stats.localCoh.toFixed(2) : '-')) + (GO.smooth ? ' · 다듬기 늘 켬' : GO.stats.autoSmooth ? ' → <b>잡음 사진 — 다듬기 켬</b>(σ ' + GO.refineSig + '/' + GO.refineSigL + 'px · 기준 ' + (GO.autoCohMin || 0.8) + ' · 끄기 GABOR_ORIENT.autoSmooth=false)' : ' → 다듬기 안 함(일치도 기준 ' + (GO.autoCohMin || 0.8) + ' · 굴곡 ' + (isFinite(GO.stats.smoothCurv) ? GO.stats.smoothCurv.toFixed(2) : '-') + ' < ' + (GO.smoothCurvMax || 1.8) + '°/px일 때만)'));
     } catch (e) { console.warn(TAG + ' 실패 — 예전 방식 그대로', e); }
     return f;
   };
@@ -1138,5 +1148,5 @@ GRAIN_HIRES.readCrop = function (cropPx, cropMask, cw, ch, s, bx0, by0, w, h, ma
     if (sh.all) sh.all.forEach(function (l) { l[2] /= s; l[3] /= s; });
     GO.last.w = w; GO.last.h = h;
   }
-  return { angle: A, coherence: C };
+  return { angle: A, coherence: C, viewClean: f && f.viewClean != null ? f.viewClean : null };   // (2026-11-08) 사진 깨끗함(원본 해상도에서 잰 값) 그대로
 };

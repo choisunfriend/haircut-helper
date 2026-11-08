@@ -445,6 +445,12 @@ var SHOT360 = (function () {
        [끝내기] 때: 그 장의 센서 각도 − 얼굴 yaw = 진짜 0° → 모든 장의 각도를 그 기준으로 다시 매기고, 그 장을 정면 칸(front:true)에 넣음.
        세트를 넣을 때(applySet) 12장 얼굴을 다시 재지 않음(정면이 표시돼 있으면). 끄기 SHOT360.frontSeek=false */
     frontSeek: true, frontSeekDeg: 35, frontSeekMs: 400, frontSeekPx: 640,
+    /* (2026-11-08) 연속 프레임 평균 — 사용자: "연속 몇 장 평균 … 시간 오래 안 걸리면 360 촬영에 넣으면 되겠다"
+       칸 사진을 뽑을 때 바로 뒤 burstN−1프레임을 더 받아(영상 스트림 그대로 · 손님·촬영자 할 일 없음), 작은 흑백 사본(긴 변 burstSmall px) 가운데 부분으로
+       첫 장 대비 평행이동을 찾아(±burstShift px · 소수점까지) 원본 크기에서 맞춰 평균 → 센서 잡음 약 1/√N.
+       어긋남이 큰 프레임(맞춘 뒤 차이가 가장 작은 프레임의 burstRej배 초과)·흐린 프레임(선명도 첫 장의 burstSharp배 미만)은 뺌 · 2장 미만이면 첫 장 그대로.
+       평균은 setTimeout으로 뒤에서(링 화면 안 멈춤) · [끝내기] 때 남은 건 바로 마무리. 끄기 SHOT360.burst=false */
+    burst: true, burstN: 4, burstSmall: 200, burstShift: 8, burstRej: 1.6, burstSharp: 0.6,
     sign: 0               // +1/-1 = 좌우 고정 · 0 = 자동(얼굴 각도로 정함, 못 정하면 기본 -1)
   }, W.SHOT360 || {});
   if (!Q.on) return;
@@ -656,6 +662,7 @@ var SHOT360 = (function () {
   var guideEl = null, guideKind = '';
   var ov = null, vid = null, stream = null, ring = null, info = null, btnStart = null, btnDone = null, btnManual = null, btnFlip = null, needle = null;
   var running = false, raf = null, sensorOk = false, lastEvt = null, h0 = null, cur = 0, lastDeg = null, lastT = 0, speed = 0;
+  var bst = null, burstLog = [], burstPend = [];   // (2026-11-08) 연속 프레임 평균 진행 중인 칸
   var T = [], got = {}, tries = {}, small = null, grab = null, signVote = 0, signN = 0, userFlip = false, lastFaceAt = 0, frontBest = null, lastSeekAt = 0, seekCv = null, seekN = 0;
 
   function el(tag, css, text) { var e = document.createElement(tag); if (css) e.style.cssText = css; if (text != null) e.textContent = text; return e; }
@@ -733,7 +740,58 @@ var SHOT360 = (function () {
     var url; try { url = c.toDataURL('image/jpeg', Q.jpeg); } catch (e) { return false; }
     got[t] = { raw: t, at: cur, url: url, sharp: sh, time: Date.now() };
     tries[t] = (tries[t] || 0) + 1;
+    if (Q.burst && Q.burstN > 1 && !bst) bst = { t: t, entry: got[t], frames: [copyCanvas(c)], sharp: [sh] };   // (2026-11-08) 이어서 몇 프레임 더 받음(tick)
     return true;
+  }
+  function copyCanvas(c) { var d = document.createElement('canvas'); d.width = c.width; d.height = c.height; d.getContext('2d').drawImage(c, 0, 0); return d; }
+  function burstStep() {            // tick마다 한 프레임 — 다 모이면 뒤에서 평균
+    if (!bst) return;
+    if (bst.frames.length < Q.burstN) { var c = grabFrame(); if (c) { bst.frames.push(copyCanvas(c)); bst.sharp.push(sharpness()); } return; }
+    var b = bst; bst = null; burstPend.push(b); setTimeout(function () { var i = burstPend.indexOf(b); if (i >= 0) { burstPend.splice(i, 1); burstMerge(b); } }, 0);
+  }
+  function burstFlush() {
+    if (bst) { var b = bst; bst = null; if (b.frames.length >= 2) burstMerge(b); else b.frames.forEach(function (c) { c.width = 0; }); }
+    while (burstPend.length) burstMerge(burstPend.shift());
+    if (burstLog.length) { try { console.log(TAG + ' 연속 프레임 평균 — ' + burstLog.join(' · ') + ' (끄기 SHOT360.burst=false)'); } catch (e) {} burstLog = []; }
+  }
+  function smallGray(c, k) {
+    var w = Math.max(16, Math.round(c.width * k)), h = Math.max(16, Math.round(c.height * k)), cv = document.createElement('canvas'); cv.width = w; cv.height = h;
+    var x = cv.getContext('2d', { willReadFrequently: true }); x.drawImage(c, 0, 0, w, h); var d = x.getImageData(0, 0, w, h).data, g = new Float32Array(w * h), i;
+    for (i = 0; i < w * h; i++) g[i] = d[i * 4] * 0.3 + d[i * 4 + 1] * 0.59 + d[i * 4 + 2] * 0.11;
+    cv.width = 0; return { g: g, w: w, h: h };
+  }
+  function burstMerge(b) {
+    try {
+      var t0 = Date.now(), F = b.frames, n = F.length, W0 = F[0].width, H0 = F[0].height, k = Math.min(1, Q.burstSmall / Math.max(W0, H0));
+      var S = F.map(function (c) { return smallGray(c, k); }), R0 = S[0], m = Q.burstShift | 0;
+      var x0 = Math.round(R0.w * 0.2), x1 = Math.round(R0.w * 0.8), y0 = Math.round(R0.h * 0.15), y1 = Math.round(R0.h * 0.85);   // 가운데(머리 쪽)만 — 배경 정지 물체에 끌리지 않게
+      function sad(Si, dx, dy) { var s2 = 0, nn = 0, x, y; for (y = y0; y < y1; y += 2) { var yy = y + dy; if (yy < 0 || yy >= Si.h) continue; for (x = x0; x < x1; x += 2) { var xx = x + dx; if (xx < 0 || xx >= Si.w) continue; s2 += Math.abs(R0.g[y * R0.w + x] - Si.g[yy * Si.w + xx]); nn++; } } return nn ? s2 / nn : 1e9; }
+      var sh = [{ dx: 0, dy: 0, e: 0 }], i;
+      for (i = 1; i < n; i++) {
+        var bx = 0, by = 0, be = 1e9, dx, dy;
+        for (dy = -m; dy <= m; dy++) for (dx = -m; dx <= m; dx++) { var e = sad(S[i], dx, dy); if (e < be) { be = e; bx = dx; by = dy; } }
+        var ex0 = sad(S[i], bx - 1, by), ex1 = sad(S[i], bx + 1, by), ey0 = sad(S[i], bx, by - 1), ey1 = sad(S[i], bx, by + 1), fx = 0, fy = 0, dd;
+        dd = ex0 - 2 * be + ex1; if (dd > 1e-9) fx = Math.max(-0.5, Math.min(0.5, 0.5 * (ex0 - ex1) / dd));
+        dd = ey0 - 2 * be + ey1; if (dd > 1e-9) fy = Math.max(-0.5, Math.min(0.5, 0.5 * (ey0 - ey1) / dd));
+        sh.push({ dx: (bx + fx) / k, dy: (by + fy) / k, e: be, edge: Math.abs(bx) >= m || Math.abs(by) >= m });
+      }
+      var eMin = 1e9; for (i = 1; i < n; i++) if (sh[i].e < eMin) eMin = sh[i].e;
+      var use = [0]; for (i = 1; i < n; i++) if (!sh[i].edge && sh[i].e <= eMin * Q.burstRej && b.sharp[i] >= b.sharp[0] * Q.burstSharp) use.push(i);
+      if (use.length < 2) { burstLog.push(b.t + '° 1장(맞는 프레임 없음)'); return; }
+      var ctx0 = F[0].getContext('2d', { willReadFrequently: true }), out = ctx0.getImageData(0, 0, W0, H0), O = out.data, acc = new Float32Array(W0 * H0 * 3), cnt = new Uint8Array(W0 * H0);
+      use.forEach(function (fi) {
+        var D = F[fi].getContext('2d', { willReadFrequently: true }).getImageData(0, 0, W0, H0).data, sx = sh[fi].dx, sy = sh[fi].dy, ix = Math.floor(sx), iy = Math.floor(sy), ax = sx - ix, ay = sy - iy, x, y;
+        for (y = 0; y < H0; y++) { var yy = y + iy; if (yy < 0 || yy + 1 >= H0) continue; for (x = 0; x < W0; x++) { var xx = x + ix; if (xx < 0 || xx + 1 >= W0) continue;
+          var p00 = (yy * W0 + xx) * 4, p10 = p00 + 4, p01 = p00 + W0 * 4, p11 = p01 + 4, o = y * W0 + x, w00 = (1 - ax) * (1 - ay), w10 = ax * (1 - ay), w01 = (1 - ax) * ay, w11 = ax * ay;
+          acc[o * 3] += D[p00] * w00 + D[p10] * w10 + D[p01] * w01 + D[p11] * w11; acc[o * 3 + 1] += D[p00 + 1] * w00 + D[p10 + 1] * w10 + D[p01 + 1] * w01 + D[p11 + 1] * w11; acc[o * 3 + 2] += D[p00 + 2] * w00 + D[p10 + 2] * w10 + D[p01 + 2] * w01 + D[p11 + 2] * w11; cnt[o]++; } }
+      });
+      for (i = 0; i < W0 * H0; i++) if (cnt[i]) { O[i * 4] = acc[i * 3] / cnt[i]; O[i * 4 + 1] = acc[i * 3 + 1] / cnt[i]; O[i * 4 + 2] = acc[i * 3 + 2] / cnt[i]; }
+      ctx0.putImageData(out, 0, 0);
+      var url = F[0].toDataURL('image/jpeg', Q.jpeg);
+      if (got[b.t] === b.entry) { b.entry.url = url; b.entry.burst = use.length; }
+      burstLog.push(b.t + '° ' + use.length + '/' + n + '장(이동 ' + use.map(function (fi) { return Math.round(Math.hypot(sh[fi].dx, sh[fi].dy)); }).join('·') + 'px · ' + (Date.now() - t0) + 'ms)');
+    } catch (e) { burstLog.push(b.t + '° 실패 ' + (e && e.message)); }
+    finally { b.frames.forEach(function (c) { c.width = 0; c.height = 0; }); }
   }
   function faceVote() {             // 얼굴이 보이는 구간에서 "센서 + 방향 = 손님의 왼쪽인가"를 맞춰 봄
     if (Q.sign || typeof detectPoseOnCanvas !== 'function') return;
@@ -772,6 +830,7 @@ var SHOT360 = (function () {
   function tick() {
     raf = null; if (!running) return;
     if (!Q.cam.ok) { drawRing(); raf = requestAnimationFrame(tick); return; }      // 카메라가 아직 안 들어옴 — 안내는 카메라 쪽이 씀
+    burstStep();                                                                  // (2026-11-08) 연속 프레임 받기
     var t = now();
     if (sensorOk && lastEvt) {
       var h = headingOf(lastEvt);
@@ -783,7 +842,7 @@ var SHOT360 = (function () {
         // 가장 가까운 목표
         var best = null, bd = 1e9, i;
         for (i = 0; i < T.length; i++) { var d = Math.abs(wrap(cur - T[i])); if (d < bd) { bd = d; best = T[i]; } }
-        if (best != null && bd <= Q.tolDeg && (tries[best] || 0) < Q.maxTries) {
+        if (!bst && best != null && bd <= Q.tolDeg && (tries[best] || 0) < Q.maxTries) {
           var sh = sharpness();
           var gb = got[best], later = gb && Q.laterRel > 0 && (Date.now() - gb.time) > Q.laterMs && sh >= gb.sharp * Q.laterRel;
           if (!gb || sh > gb.sharp * 1.1 || later) takeFor(best, sh);
@@ -798,7 +857,7 @@ var SHOT360 = (function () {
   }
   function start() {
     var go = function () {
-      T = targets(); got = {}; tries = {}; h0 = null; cur = 0; lastDeg = null; speed = 0; signVote = 0; signN = 0; userFlip = false; frontBest = null; lastSeekAt = 0; seekN = 0;
+      T = targets(); got = {}; tries = {}; bst = null; burstPend = []; burstLog = []; h0 = null; cur = 0; lastDeg = null; speed = 0; signVote = 0; signN = 0; userFlip = false; frontBest = null; lastSeekAt = 0; seekN = 0;
       running = true;
       btnStart.textContent = '끝내기';                                    // (2026-10-25) 사용자: "start누르면 그 자리가 finish로 바뀌면서 다시 누르면 정지 · restart는 Done자리에"
       if (btnDone) { btnDone.textContent = '다시 시작'; btnDone.style.display = ''; }
@@ -819,6 +878,7 @@ var SHOT360 = (function () {
     drawRing();
   }
   function finish() {
+    burstFlush();                   // (2026-11-08) 뒤에서 평균 중인 칸 마무리
     var keys = Object.keys(got);
     if (keys.length < 4) { toast('사진이 모자랍니다 — 정면·양옆·뒤가 다 찍혀야 해요'); return; }
     var s = appSign(), frames = keys.map(function (k) { var f = got[k]; return { deg: wrap(s * f.raw), url: f.url, sharp: Math.round(f.sharp), time: f.time }; });
