@@ -1982,6 +1982,8 @@ if(typeof globalThis !== 'undefined') globalThis.__sideDepthWeight = sideDepthWe
 const FACE_BUILD = { path: '-', why: '', zRange: null, zMin: null, zMax: null,
                      sideHits: 0, ellA: null, ellC: null,
                      sideYaw: {}, reliefGain: null, reliefCm: null, cmPerUnit: null };
+/* (2026-11-08) 정면 얼굴 메쉬를 머리카락과 같은 두상 축으로(아래 buildRealFaceMeshBase 끝) — axes 'yaw' | 'all' · minDeg 이하면 안 돌림 */
+var FACE_FRONT_POSE = { on: true, axes: 'yaw', minDeg: 1, last: null };
 async function buildRealFaceMeshBase(faceMetrics){
   FACE_BUILD.sideYaw = {}; FACE_BUILD.reliefGain = null;
   FACE_BUILD.reliefCm = null; FACE_BUILD.cmPerUnit = null;
@@ -3153,6 +3155,38 @@ async function buildRealFaceMeshBase(faceMetrics){
         + ' 실루엣 가장자리가 코·이마가 아니라 뺨입니다(깊이를 재려면 80~90°가 필요).']));
     }
   }
+
+  /* (2026-11-08) 정면 얼굴도 머리카락과 <b>같은 두상 축</b>으로 — 사용자: "한장짜리 펌 앞머리 … 하트 모양 이마를 잡고는 있는데, 계속 이마 중간이 아니야. 헐각도가 좀 돌아간 거 아닌지"
+     잰 값(디버그 0915 · 정면 yaw 11°): 머리카락 쪽(13c 헐·13b 리프트·17b 다시 기르기 카메라)은 정면 사진도 실측 포즈 R(yaw 10.8°)로 두상 축에 되돌림 —
+       사진의 하트(이마 창)를 정면 카메라로 되쏘면 두상 x ≈ 0, 다시 기른 가닥의 앞머리 틈도 x ≈ −0.01(사진과 일치 · 되쏜 그림이 사진 구멍과 겹침).
+     그런데 이 얼굴 메쉬만 위 "front = 월드" 규약대로 회전을 안 걸어, 코가 사진 픽셀 그대로 x ≈ +0.065(≈1.2cm)에 앉음 →
+       3D에서 하트가 코보다 한쪽으로 밀려 보임(헐이 돈 게 아니라 얼굴과 머리카락이 서로 다른 축). 이마 높이 기준 어긋남 ≈ z·sin(yaw).
+     지금: 정면 얼굴 정점을 projectImagePointToHead(머리 뿌리 투영)와 <b>같은 식</b> R^T로 두상 축에 돌림 — 사진 위 하트↔코 관계가 3D에서도 그대로.
+     yaw가 작으면(|yaw| < minDeg) 안 돌림. pitch·roll까지 같이 돌리려면 FACE_FRONT_POSE.axes='all'. 되돌리기 FACE_FRONT_POSE.on=false */
+  try{
+    const FP = (typeof FACE_FRONT_POSE !== 'undefined') ? FACE_FRONT_POSE : null;
+    if(FP && FP.on && typeof composeRotationZYX === 'function' && typeof applyRotationTranspose3 === 'function'){
+      const yawD = getViewYawDeg('front') || 0;
+      const pitD = FP.axes === 'all' ? (getViewPitchDeg('front') || 0) : 0;
+      const rolD = FP.axes === 'all' ? (getViewRollDeg('front') || 0) : 0;
+      if(Math.abs(yawD) >= FP.minDeg || Math.abs(pitD) >= FP.minDeg || Math.abs(rolD) >= FP.minDeg){
+        const rot = composeRotationZYX(yawD*Math.PI/180, pitD*Math.PI/180, rolD*Math.PI/180);
+        const v = new THREE.Vector3();
+        const nx0 = positions[1*3];                                   // MediaPipe 1번 = 코끝
+        for(let i=0;i<vertCount;i++){
+          v.set(positions[i*3], positions[i*3+1] - 0.15, positions[i*3+2]);
+          const r = applyRotationTranspose3(rot, v);
+          positions[i*3] = r.x; positions[i*3+1] = r.y + 0.15; positions[i*3+2] = r.z;
+        }
+        const nx1 = positions[1*3];
+        FP.last = { yaw: yawD, pitch: pitD, roll: rolD, noseX0: nx0, noseX1: nx1 };
+        console.log('[얼굴·두상 축] 정면 얼굴을 머리카락과 같은 축으로 — yaw ' + yawD.toFixed(1) + '°'
+          + (FP.axes === 'all' ? ' · pitch ' + pitD.toFixed(1) + '° · roll ' + rolD.toFixed(1) + '°' : '')
+          + ' · 코끝 x ' + nx0.toFixed(3) + ' → ' + nx1.toFixed(3) + ' (0에 가까울수록 앞머리 하트가 이마 가운데)'
+          + ' · 되돌리기 FACE_FRONT_POSE.on=false');
+      }
+    }
+  }catch(e){ console.warn('[얼굴·두상 축] 실패 — 예전처럼 회전 없이', e); }
 
   const geo = new THREE.BufferGeometry();
   geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));

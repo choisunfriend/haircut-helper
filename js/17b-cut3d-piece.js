@@ -2958,26 +2958,69 @@ var REGROW = (function () {
        *  예전: copyRadiusCm(1.2cm) 안에 조각이 없으면 null → 그 뿌리는 0.8cm 칸 평균 방향을 따라 걸음(가닥 결이 사라지고 작은 컬이 묻힘)
        *  지금: copyFarCm(기본 3cm)까지 성긴 색인으로 가장 가까운 조각 점을 찾아 그 모양을 그대로 옮김 · 옆 간격은 아래 tanL을 간격의 1.5배 이상으로 늘려 천천히 합류
        *  그래도 없을 때만 예전 걷기. 되돌리기 REGROW.copyFarCm=0 */
-      var farHit = false;
-      /* (2026-11-07b) 먼 조각 찾기를 안쪽 칸부터 고리 모양으로 — 예전: 성긴 색인(12칸)으로 6cm 상자를 통째로 훑어 사실상 머리 전체 조각 점을 뿌리마다 봄(다시 기르기 10.7초 → 3cm 3.4초).
-       *  지금: 가까운 조각 색인(idx · 1/Qn 칸)을 r=2칸부터 바깥 껍질 하나씩 보고, 지금까지 찾은 가장 가까운 점까지의 거리가 r칸 안이면 멈춤(더 바깥 칸엔 더 가까운 점이 없음 = 결과는 예전과 같음) */
+      var farHit = false, farPc = null;
+      /* (2026-11-08) 먼 조각은 "비슷한 조각을 가져오기" — 사용자: "3cm 범위에서 탐색하고 고리를 복사하는 걸로 되어 있는데, 고리를 복사하는 게 아니라 비슷한 조각을 가져오게"
+       *  예전(11-07b): 3cm 안 가장 가까운 조각 점을 찾고, 뿌리 → 그 점 옆 간격(tanL)을 0으로 줄이며 따라감 → 뿌리가 남의 자리 조각 위로 끌려가 <b>그 고리를 한 번 더 그림</b>
+       *      (같은 고리에 여러 가닥이 겹쳐 한 다발로 튀어나옴 · 조각 중간에서 시작하면 고리 중간부터).
+       *  지금: 3cm 안 조각 점을 <b>닮음 점수</b>로 고름 — 거리 + 뿌리 자리 결(sfAt)과 그 점 결의 어긋남 + 두피에서 뜬 높이 차 + 조각 중간에서 시작하는 벌점 + 이미 가져다 쓴 횟수.
+       *      고른 조각은 두상 중심을 축으로 <b>뿌리 자리로 돌려 옮겨</b> 그 모양만 가져옴(원래 자리로 합류하지 않음 = 같은 고리 겹치기 없음).
+       *  되돌리기 REGROW.copyFarSimilar=false(예전 가장 가까운 점 + 합류) · 무게 REGROW.copyFarW = { dir, rise, mid, use } */
       if ((best < 0 || -bd < Math.cos(maxAng)) && G.copyFarCm > 0) {
         var fAng = G.copyFarCm / (Es.a * cmU), nbMax = Math.ceil(2 * Math.sin(Math.min(1.5, fAng) / 2) * Qn) + 1, rr, inv = 1 / Qn;
-        for (rr = 2; rr <= nbMax; rr++) {
-          for (dx = -rr; dx <= rr; dx++) for (dy = -rr; dy <= rr; dy++) for (dz = -rr; dz <= rr; dz++) {
-            if (Math.max(Math.abs(dx), Math.abs(dy), Math.abs(dz)) !== rr) continue;            // 껍질만
-            var LF0 = SC2.idx.get((bx + dx) + ',' + (by + dy) + ',' + (bz + dz)); if (!LF0) continue;
-            for (var tf = 0; tf < LF0.length; tf += 2) { var PF = SC2.pieces[LF0[tf]][LF0[tf + 1]], vf = SC2.uOf(PF), df = -(u[0] * vf[0] + u[1] * vf[1] + u[2] * vf[2]); if (df < bd) { bd = df; best = LF0[tf]; bj = LF0[tf + 1]; } }
+        if (G.copyFarSimilar !== false) {
+          var FW = G.copyFarW || {}, fChord = 2 * Math.sin(Math.min(1.5, fAng) / 2), cosF = Math.cos(fAng);
+          var kDir = (FW.dir != null ? FW.dir : 0.5) * fChord, kRise = (FW.rise != null ? FW.rise : 0.5) * fChord, kMid = (FW.mid != null ? FW.mid : 0.25) * fChord, kUse = (FW.use != null ? FW.use : 0.15) * fChord;
+          var ref = null, sfL0 = sfLast; try { ref = sfAt(r0); } catch (e) { ref = null; } sfLast = sfL0;   // 뿌리 자리 결(사진 가닥 칸 평균) — 걷기 상태(sfLast)는 그대로
+          var rR = Math.hypot(r0.x / Es.a, (r0.y - CY) / Es.b, r0.z / Es.c), riseU = 1 / (Es.a * cmU);       // 두피에서 뜬 높이(정규화 반지름) · 1cm ≈ riseU
+          if (!SC2.farUse) SC2.farUse = new Uint16Array(SC2.pieces.length);
+          var fb = -1, fj = 0, fs = 1e9;
+          for (rr = 0; rr <= nbMax; rr++) {
+            if (rr > 1 && (rr - 1) * inv > fs) break;                                          // 이 껍질부터는 거리만으로도 지금 최고 점수보다 나쁨
+            for (dx = -rr; dx <= rr; dx++) for (dy = -rr; dy <= rr; dy++) for (dz = -rr; dz <= rr; dz++) {
+              if (Math.max(Math.abs(dx), Math.abs(dy), Math.abs(dz)) !== rr) continue;
+              var LS = SC2.idx.get((bx + dx) + ',' + (by + dy) + ',' + (bz + dz)); if (!LS) continue;
+              for (var ts = 0; ts < LS.length; ts += 2) {
+                var pis = LS[ts], js = LS[ts + 1], pcs = SC2.pieces[pis]; if (js >= pcs.length - 2) continue;   // 끝자락은 옮길 모양이 없음
+                var PS = pcs[js], vs = SC2.uOf(PS), cs = u[0] * vs[0] + u[1] * vs[1] + u[2] * vs[2]; if (cs < cosF) continue;
+                var s = Math.sqrt(Math.max(0, 2 - 2 * cs));
+                if (ref) { var PN = pcs[Math.min(pcs.length - 1, js + 2)], ddx = PN.x - PS.x, ddy = PN.y - PS.y, ddz = PN.z - PS.z, ddl = Math.hypot(ddx, ddy, ddz) || 1; s += kDir * (1 - (ddx * ref.x + ddy * ref.y + ddz * ref.z) / ddl); }
+                var rS = Math.hypot(PS.x / Es.a, (PS.y - CY) / Es.b, PS.z / Es.c); s += kRise * Math.min(4, Math.abs(rS - rR) / riseU);   // cm 단위 높이 차(4cm에서 막음)
+                s += kMid * Math.min(1, js / Math.max(1, pcs.length - 1)) + kUse * SC2.farUse[pis];
+                if (s < fs) { fs = s; fb = pis; fj = js; }
+              }
+            }
           }
-          if (best >= 0 && Math.sqrt(Math.max(0, 2 + 2 * bd)) <= rr * inv) break;            // 찾은 점이 이 껍질보다 가까움 — 더 볼 필요 없음
+          if (fb >= 0) {
+            farHit = true; SC2.far++; SC2.farUse[fb]++; best = fb; bj = 0;
+            /* 두상 정규화 좌표에서 조각 점 → 뿌리 방향으로 돌림(로드리그) — 모양·두피에서 뜬 높이는 그대로 */
+            var srcPc = SC2.pieces[fb], P0f = srcPc[fj], v0 = SC2.uOf(P0f), axx = v0[1] * u[2] - v0[2] * u[1], axy = v0[2] * u[0] - v0[0] * u[2], axz = v0[0] * u[1] - v0[1] * u[0];
+            var sn = Math.hypot(axx, axy, axz), cn = v0[0] * u[0] + v0[1] * u[1] + v0[2] * u[2]; if (sn > 1e-9) { axx /= sn; axy /= sn; axz /= sn; }
+            farPc = []; farPc.vi = srcPc.vi;
+            for (var jf = fj; jf < srcPc.length; jf++) {
+              var Pf = srcPc[jf], nx = Pf.x / Es.a, ny = (Pf.y - CY) / Es.b, nz = Pf.z / Es.c;
+              if (sn > 1e-9) { var kd = axx * nx + axy * ny + axz * nz, cx = axy * nz - axz * ny, cy = axz * nx - axx * nz, cz = axx * ny - axy * nx;
+                var mx = nx * cn + cx * sn + axx * kd * (1 - cn), my = ny * cn + cy * sn + axy * kd * (1 - cn), mz = nz * cn + cz * sn + axz * kd * (1 - cn); nx = mx; ny = my; nz = mz; }
+              farPc.push({ x: nx * Es.a, y: ny * Es.b + CY, z: nz * Es.c });
+            }
+            if (farPc.length < 2) { farPc = null; farHit = false; }
+          }
+        } else {
+          for (rr = 2; rr <= nbMax; rr++) {
+            for (dx = -rr; dx <= rr; dx++) for (dy = -rr; dy <= rr; dy++) for (dz = -rr; dz <= rr; dz++) {
+              if (Math.max(Math.abs(dx), Math.abs(dy), Math.abs(dz)) !== rr) continue;            // 껍질만
+              var LF0 = SC2.idx.get((bx + dx) + ',' + (by + dy) + ',' + (bz + dz)); if (!LF0) continue;
+              for (var tf = 0; tf < LF0.length; tf += 2) { var PF = SC2.pieces[LF0[tf]][LF0[tf + 1]], vf = SC2.uOf(PF), df = -(u[0] * vf[0] + u[1] * vf[1] + u[2] * vf[2]); if (df < bd) { bd = df; best = LF0[tf]; bj = LF0[tf + 1]; } }
+            }
+            if (best >= 0 && Math.sqrt(Math.max(0, 2 + 2 * bd)) <= rr * inv) break;            // 찾은 점이 이 껍질보다 가까움 — 더 볼 필요 없음
+          }
+          if (best >= 0 && -bd >= Math.cos(fAng)) { farHit = true; SC2.far++; }
         }
-        if (best >= 0 && -bd >= Math.cos(fAng)) { farHit = true; SC2.far++; }
       }
       if (best < 0 || (!farHit && -bd < Math.cos(maxAng))) { SC2.miss++; return null; }   // (2026-11-03e) acos 대신 내적 비교(같은 결과)
-      var pc = SC2.pieces[best], S0 = pc[bj];
+      var pc = farPc || SC2.pieces[best], S0 = pc[bj];
       var rx = S0.x / Es.a, ry = (S0.y - CY) / Es.b, rz = S0.z / Es.c, rl = Math.hypot(rx, ry, rz) || 1; rx /= rl; ry /= rl; rz /= rl;   // 두상 바깥 방향(어림)
       var ox = r0.x - S0.x, oy = r0.y - S0.y, oz = r0.z - S0.z, orr = ox * rx + oy * ry + oz * rz, tx = ox - orr * rx, ty = oy - orr * ry, tz = oz - orr * rz;
-      var tanL = (G.copyTanCm || 0) / cmU; if (farHit) tanL = Math.max(tanL, 1.5 * Math.hypot(tx, ty, tz));   // (2026-11-07) 먼 조각은 옆 간격에 비례해 천천히 합류(꺾임 없게)
+      var tanL = (G.copyTanCm || 0) / cmU; if (farHit && !farPc) tanL = Math.max(tanL, 1.5 * Math.hypot(tx, ty, tz));   // (2026-11-07) 먼 조각은 옆 간격에 비례해 천천히 합류(꺾임 없게) · (11-08) 돌려 옮긴 조각은 옆 간격이 거의 0이라 그대로
       var rise = (G.copyRiseCm || 1.5) / cmU, out = [{ x: r0.x, y: r0.y, z: r0.z }], arc = 0, miss2 = 0;
       var dFit = !!(G.copyDepthFit && G.copyOwnHull && cams[pc.vi]); dOff = 0; dFitUsed = false; dMidK = 0; var cutHit = false, offV = [0], offI = [-1];
       for (var j = bj + 1; j < pc.length; j++) {
@@ -4605,7 +4648,7 @@ function helixMeasure(rgba,mask,W,H,angle,coh,opt){opt=opt||{};const n=opt.n||25
     L.push('  얼굴 앞에서 옆으로 비켜 감(앞 헤어라인 뿌리 · 사진이 얼굴이라 한 자리): ' + (G.faceSlide ? '켜짐 — 비켜 간 걸음 ' + (s.faceSlide || 0) + '(가닥 ' + (s.faceSlideN || 0) + ') (끄기 REGROW.faceSlide=false)' : '꺼짐'));
     L.push('  얇은 자리 길이(뿌리 두께 ' + G.thinLenRootCm + 'cm 미만 · 길이 ≤ max(' + G.thinLenMinCm + ', ' + G.thinLenK + '×두께)cm · ' + (G.thinLenBareCells > 0 ? '맨살(머리 없는 두피 칸) ' + G.thinLenBareCells + '칸 안 뿌리만 — 그런 뿌리 칸 ' + (G.bareNearN || 0) : '두께만') + '): ' + (G.thinLen ? '켜짐 — 해당 뿌리 ' + (s.thinRoots || 0) + ' · 그 길이에서 끝낸 가닥 ' + (s.thinLenN || 0) + ' (끄기 ?thinlen=0)' : '꺼짐(켜기 ?thinlen=1)'));
     try { if (typeof VIEW_FIX !== 'undefined') VIEW_FIX.lines().forEach(function (t) { L.push('  ' + t); }); } catch (e) {}   // (2026-10-31)
-    try { var sf = G.sfStat; L.push('  정리된 사진 가닥 따라 걷기: ' + (!G.strandField ? '꺼짐(켜기 ?sf=1)' : !sf ? '못 만듦(예전처럼 픽셀 결)' : '칸 ' + sf.cells + '(사진 가닥 ' + sf.strands + '개 · 칸 고른 사진 ' + sf.byView + ' · 한 사진 안에서 엇갈려 뺀 칸 ' + (G.sfDropCross ? sf.lowCoh : '안 뺌(켜기 ?sfcross=1)') + ') · 그 방향을 쓴 걸음 ' + sf.use + ' · 가닥 없어 픽셀 결로 간 걸음 ' + sf.none + ' · 뿌리 방향을 정한 가닥 ' + sf.root + ' · 사진 가닥이 끝나 멈춘 가닥 ' + sf.end + ' · 정리된 가닥 그대로 그리기 ' + (G.strandCopy ? (sf.strc ? (G.copyWhole ? '가닥 통째로 ' : '') + '조각 ' + sf.strc.pieces.length + '개(맡은 사진 점 ' + sf.strc.kept + '/' + sf.strc.all + ') · 그대로 그린 가닥 ' + sf.strc.used + ' · 1.2cm 안 조각 없어 먼 사진 가닥(copyFarCm ' + G.copyFarCm + 'cm 안) 따라간 ' + (sf.strc.far || 0) + ' · 그래도 없어 예전 칸 걷기 ' + sf.strc.miss + ' · 너무 짧아 예전 걷기 ' + sf.strc.short + (G.copyOwnHull ? ' · 자기 사진 머리 영역 밖이라 끝낸 ' + sf.strc.cut + '(되돌리기 ?cownhull=0)' + (G.copyDepthFit ? ' · 끊긴 결 이어 붙이기 ' + (G.copyChain ? '가닥 ' + (sf.strc.chained || 0) + '(떠 있는 조각 ' + (sf.strc.flo || 0) + '개 중 쓴 것 ' + (sf.strc.chainedPieces || 0) + ' · 이은 점 ' + (sf.strc.chainPts || 0) + ' · 끄기 ?cchain=0)' : '꺼짐') + (G.copyDepthMid !== false ? ' · 사진들이 같이 머리라는 깊이 구간 가운데로 옮긴 점 ' + (sf.strc.dMid || 0) + '(평균 ' + (sf.strc.dMid ? (sf.strc.dMidCm / sf.strc.dMid).toFixed(1) : '0') + 'cm · 끄기 REGROW.copyDepthMid=false)' : '') + ' · 옆 사진 머리 영역 안으로 자기 시선축만 옮긴 점 ' + (sf.strc.dFit || 0) + '(가닥 ' + (sf.strc.dFitStr || 0) + ' · 평균 ' + (sf.strc.dFit ? (sf.strc.dFitCm / sf.strc.dFit).toFixed(1) : '0') + 'cm · 못 맞춘 점 ' + (sf.strc.dFitNo || 0) + ' · 끄기 ?cdepth=0)' : ' · 깊이 맞추기 꺼짐(켜기: ?cdepth 빼기)') : ' · 머리 덩어리 밖이라 끝낸 ' + sf.strc.cut) + ' (끄기 ?scopy=0)' : '자료 없음') : '꺼짐(켜기 ?scopy=1)') + ' · 오르막이라 뒤집은 사진 가닥 ' + (G.sfPolDown ? (sf.flip || 0) + '개(끄기 ?sfpol=0)' : '꺼짐') + ' · 두피 위 여러 사진 평면 풀이 ' + (G.sfTanSolve ? (sf.tan || 0) + '걸음(SF가 두피에서 ' + G.sfTanMinN + ' 넘게 들린 자리)' : '꺼짐(켜기 ?sftan=1)') + ' (끄기 ?sf=0)')); } catch (e) {}
+    try { var sf = G.sfStat; L.push('  정리된 사진 가닥 따라 걷기: ' + (!G.strandField ? '꺼짐(켜기 ?sf=1)' : !sf ? '못 만듦(예전처럼 픽셀 결)' : '칸 ' + sf.cells + '(사진 가닥 ' + sf.strands + '개 · 칸 고른 사진 ' + sf.byView + ' · 한 사진 안에서 엇갈려 뺀 칸 ' + (G.sfDropCross ? sf.lowCoh : '안 뺌(켜기 ?sfcross=1)') + ') · 그 방향을 쓴 걸음 ' + sf.use + ' · 가닥 없어 픽셀 결로 간 걸음 ' + sf.none + ' · 뿌리 방향을 정한 가닥 ' + sf.root + ' · 사진 가닥이 끝나 멈춘 가닥 ' + sf.end + ' · 정리된 가닥 그대로 그리기 ' + (G.strandCopy ? (sf.strc ? (G.copyWhole ? '가닥 통째로 ' : '') + '조각 ' + sf.strc.pieces.length + '개(맡은 사진 점 ' + sf.strc.kept + '/' + sf.strc.all + ') · 그대로 그린 가닥 ' + sf.strc.used + ' · 1.2cm 안 조각 없어 먼 사진 가닥(copyFarCm ' + G.copyFarCm + 'cm 안' + (G.copyFarSimilar !== false ? ' · 닮은 조각을 뿌리 자리로 돌려 옮김 · 끄기 REGROW.copyFarSimilar=false' : ' · 가까운 조각에 합류') + ') 가져온 ' + (sf.strc.far || 0) + ' · 그래도 없어 예전 칸 걷기 ' + sf.strc.miss + ' · 너무 짧아 예전 걷기 ' + sf.strc.short + (G.copyOwnHull ? ' · 자기 사진 머리 영역 밖이라 끝낸 ' + sf.strc.cut + '(되돌리기 ?cownhull=0)' + (G.copyDepthFit ? ' · 끊긴 결 이어 붙이기 ' + (G.copyChain ? '가닥 ' + (sf.strc.chained || 0) + '(떠 있는 조각 ' + (sf.strc.flo || 0) + '개 중 쓴 것 ' + (sf.strc.chainedPieces || 0) + ' · 이은 점 ' + (sf.strc.chainPts || 0) + ' · 끄기 ?cchain=0)' : '꺼짐') + (G.copyDepthMid !== false ? ' · 사진들이 같이 머리라는 깊이 구간 가운데로 옮긴 점 ' + (sf.strc.dMid || 0) + '(평균 ' + (sf.strc.dMid ? (sf.strc.dMidCm / sf.strc.dMid).toFixed(1) : '0') + 'cm · 끄기 REGROW.copyDepthMid=false)' : '') + ' · 옆 사진 머리 영역 안으로 자기 시선축만 옮긴 점 ' + (sf.strc.dFit || 0) + '(가닥 ' + (sf.strc.dFitStr || 0) + ' · 평균 ' + (sf.strc.dFit ? (sf.strc.dFitCm / sf.strc.dFit).toFixed(1) : '0') + 'cm · 못 맞춘 점 ' + (sf.strc.dFitNo || 0) + ' · 끄기 ?cdepth=0)' : ' · 깊이 맞추기 꺼짐(켜기: ?cdepth 빼기)') : ' · 머리 덩어리 밖이라 끝낸 ' + sf.strc.cut) + ' (끄기 ?scopy=0)' : '자료 없음') : '꺼짐(켜기 ?scopy=1)') + ' · 오르막이라 뒤집은 사진 가닥 ' + (G.sfPolDown ? (sf.flip || 0) + '개(끄기 ?sfpol=0)' : '꺼짐') + ' · 두피 위 여러 사진 평면 풀이 ' + (G.sfTanSolve ? (sf.tan || 0) + '걸음(SF가 두피에서 ' + G.sfTanMinN + ' 넘게 들린 자리)' : '꺼짐(켜기 ?sftan=1)') + ' (끄기 ?sf=0)')); } catch (e) {}
     try { var pa = s.pa; if (pa) L.push('  사진끼리 머리 영역 맞추기(각도는 그대로 · 가운데·정수리 높이만 ±' + G.photoAlignMaxCm + 'cm): ' + (!pa.on ? '꺼짐(켜기 ?photoalign=1)' : pa.why ? pa.why : '기준 ' + pa.ref + ' · 다른 사진들로 깎은 덩어리가 설명하는 비율(사진 평균) ' + (pa.before * 100).toFixed(1) + '% → ' + (pa.after * 100).toFixed(1) + '% · 옮긴 사진: ' + (pa.moved.length ? pa.moved.join(' / ') : '없음') + ' · ' + pa.ms + 'ms (끄기 ?photoalign=0)')); } catch (e) {}
     try { var rk = s.rk; if (rk) L.push('  걸음 안 세 번 더 보기(RK4 · 0.4cm 걸음): ' + (rk.on ? '켜짐 — 걸음 ' + rk.n + ' · 곧은 결이라 한 번으로 끝낸 걸음 ' + (rk.skip || 0) + ' · 다시 본 자리 ' + rk.sub + ' · 결이 없어 앞 값을 쓴 자리 ' + rk.miss + ' (끄기 ?rk=0)' : '꺼짐(켜기 ?rk=1)') + ' · 관성 ' + G.inertia + ' · 중력 ' + G.gravity); } catch (e) {}
     try { L.push('  깊이 맞추기(결을 한 장만 읽은 걸음 · 그 사진 시선축으로만 ' + G.depthFixCm + 'cm 안): ' + (G.depthFix ? '켜짐 — 멈출 뻔한 걸음을 옮김 ' + (s.depthFix || 0) + '(가닥 ' + (s.depthFixN || 0) + ' · 옮긴 깊이 평균 ' + (s.depthFixCm || 0).toFixed(1) + 'cm) (끄기 ?depthfix=0)' : '꺼짐(켜기 ?depthfix=1)')); } catch (e) {}
