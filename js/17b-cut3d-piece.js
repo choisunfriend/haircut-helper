@@ -3744,7 +3744,7 @@ var REGROW = (function () {
          *    (14:10 웨이브: 뒤 사진 바깥 아래 조각 726개가 3D 바깥 |x| 0.66에 놓였는데 다시 기른 머리 아래 폭은 사진의 45%).
          *  지금: 다시 기르기가 끝나면, 한 번도 안 그린 조각(또는 안 그린 앞부분)을 <b>옮겨 놓은 자리 그대로</b> 가닥으로 넣음 — 뿌리를 지어내지 않음 · 이어 붙이지 않음 · 모양 그대로.
          *    마지막 다듬기(점마다 판정)는 다른 가닥과 같게. 끄기 REGROW.drawUnused=false */
-        if (G.drawUnused == null) G.drawUnused = true;   // (2026-11-09c) 기본 켬 — 사용자: "일단 기본값으로 넣어. 이상하면 내가 꺼볼께" (가슴·어깨 앞 떠 있는 조각 84% · 끄기 REGROW.drawUnused=false) · 예전 기본 끔 — 사용자: "점판정 통일만 살리고" · 점 판정 통일 결과를 본 뒤 필요하면 REGROW.drawUnused=true
+        if (G.drawUnused == null) G.drawUnused = false;   // 기본 끔 — 사용자: "점판정 통일만 살리고" · 점 판정 통일 결과를 본 뒤 필요하면 REGROW.drawUnused=true
         var duStat = { on: G.drawUnused !== false, pieces: 0, whole: 0, head: 0, pts: 0, clipped: 0 };
         try {
           var SCu = SF && SF.strc;

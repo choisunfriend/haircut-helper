@@ -213,12 +213,17 @@ var MV_DEPTH = (function () {
 
   M._beforeRegrowBuild = function (photo) {
     var G = W.REGROW;
-    if (!M.on) { if (G && prevCopyDepthMid != null) { G.copyDepthMid = prevCopyDepthMid; prevCopyDepthMid = null; } return; }
+    if (!M.on) { if (G && prevCopyDepthMid != null) { G.copyDepthMid = prevCopyDepthMid; prevCopyDepthMid = null; } if (G && G.copyDepthByMv !== 'off') G.copyDepthByMv = false; return; }
     if (!photo || !photo.strands || photo._mvDepthDone === photo) return;
     photo._mvDepthDone = photo;
     var r; try { r = run(photo); } catch (e) { r = { err: String(e && e.message || e) }; }
     M.stat = r;
     if (!r.err && r.moved > 0 && G && G.copyDepthMid !== false) { prevCopyDepthMid = G.copyDepthMid; G.copyDepthMid = false; }
+    /* (2026-11-09c) 깊이는 여기서 한 번만 — 사용자: "어깨앞머리는 3D생성과정에서 어깨앞과 뒤가 나눠지는데, 그 뒤과정에서 바뀐다"
+       copyDepthMid만 끄면 다시 기르기 옮겨 그리기가 예전 depthFit으로 떨어져 깊이를 다시 맞춤(옆 사진에서 머리 아닌 픽셀 = 옷·몸도 "밖" · 목·몸통 기둥 모름 · ±8cm)
+       → 여기서 몸 앞으로 낸 가슴·어깨 앞 가닥을 등 쪽으로 되돌림. 디버그 0918(긴 웨이브): 턱 3cm 아래 점 중 몸 앞(z>0) — 이 단계 뒤 22.0% → 다시 기른 뒤 1.7%.
+       지금: 이 단계가 가닥을 옮겼으면 옮겨 그리기는 깊이를 다시 안 맞춤(그대로 그림 · 머리통 속 금지 copySkull은 그대로). 되돌리기 REGROW.copyDepthByMv='off' 후 다시 기르기 */
+    if (G && G.copyDepthByMv !== 'off') G.copyDepthByMv = !r.err && r.moved > 0;
     console.log(M.lines().join('\n'));
   };
   M.lines = function () {
@@ -227,7 +232,7 @@ var MV_DEPTH = (function () {
     var cm = (function () { try { return modelCmPerUnit(); } catch (e) { return 19; } })();
     return [TAG + ' 사진 ' + r.cams.join(',') + ' · 가닥 ' + r.strands + ' 중 옮김 ' + r.moved + ' · 자기 시선축으로 평균 ' + (r.moved ? (r.sumMove / r.moved * cm).toFixed(1) : '0') + 'cm · ' + r.ms + 'ms',
       '  다른 사진 머리 영역 밖 점 ' + (100 * r.outB / Math.max(1, r.chk)).toFixed(1) + '% → ' + (100 * r.outA / Math.max(1, r.chk)).toFixed(1) + '% · 옮긴 가닥의 다른 사진 결 어긋남(sin² 평균) ' + (r.cmp ? (r.offB / r.cmp).toFixed(3) + ' → ' + (r.offA / r.cmp).toFixed(3) : '-') +
-      ' · copyDepthMid ' + (W.REGROW && W.REGROW.copyDepthMid === false ? '끔(이 단계가 대신함)' : '그대로') + ' · 끄기 MV_DEPTH.on=false',
+      ' · copyDepthMid ' + (W.REGROW && W.REGROW.copyDepthMid === false ? '끔(이 단계가 대신함)' : '그대로') + ' · 옮겨 그리기 깊이 다시 맞추기(depthFit) ' + (W.REGROW && W.REGROW.copyDepthByMv === true ? '안 함(이 단계 깊이 그대로 · 되돌리기 REGROW.copyDepthByMv=\'off\')' : '함') + ' · 끄기 MV_DEPTH.on=false',
       '  몸에 안 가린 깊이: ' + (!M.body ? '꺼짐' : !r.bodyOn ? '목·몸통 치수 없음(REGROW.bodyDims) — 안 함' :
         '자기 사진 시선이 목·몸통 기둥에 막히던 점 ' + r.bodyBlkB + ' → ' + r.bodyBlkA + ' · 몸 앞으로 옮긴 가닥 ' + r.bodyStrands + '(점 ' + r.bodyPts + ' · 가닥 최대 이동 평균 ' + (r.bodyStrands ? (r.bodySum / r.bodyStrands * cm).toFixed(1) : '0') + 'cm)') + ' (끄기 MV_DEPTH.body=false)' + ' · 몸 앞이 다른 사진들과 안 맞아 기둥을 안 따른 점 ' + (M.bodyVeto === false ? '꺼짐' : (r.bodyVeto || 0)) + ' (되돌리기 MV_DEPTH.bodyVeto=false)' + ' · 머리통 속·뒤라 머리통 앞으로 낸 점 ' + (!M.skull ? '꺼짐' : (r.skullPts || 0)) + ' (끄기 MV_DEPTH.skull=false)'];
   };
