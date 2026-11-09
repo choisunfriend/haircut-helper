@@ -1975,7 +1975,8 @@ var REGROW = (function () {
       var c = Math.floor((th + Math.PI) / (2 * Math.PI) * NT); c = ((c % NT) + NT) % NT;
       return r * NT + c;
     }
-    function offScalp(i) { return !!(roots.est && roots.est[i] === OFF); }
+    var hlOff = null;   // (2026-11-09f) 앞 두피 끝 = 이 사람 헤어라인 — 아래 [앞 두피 끝] 배너
+    function offScalp(i) { return !!(roots.est && roots.est[i] === OFF) || !!(hlOff && hlOff[i]); }
 
     var pj = { ix: 0, iy: 0, z: 0 };
     function proj(cam, p) {
@@ -2926,7 +2927,7 @@ var REGROW = (function () {
           if (_cross == null && _fhRow > 0 && _oy >= _fhRow) _cross = _ph;
         }
         /* (2026-11-09e) 앞 헤어라인 높이 = 눈 + 이 사람 사진의 헤어라인→눈 거리 — 아래 grow() 배너. 앞머리가 이마를 덮은 사진(헤어라인 행이 이마 랜드마크 맨 위보다 아래)은 안 씀 */
-        if (G.hairlineLine !== false && _fhRow > 0 && _lmD && isFinite(_lmD.foreheadY) && _fhRow < _lmD.foreheadY * _cF.ih) {
+        if ((G.hairlineLine === true || G.hairlineEdge !== false) && _fhRow > 0 && _lmD && isFinite(_lmD.foreheadY) && _fhRow < _lmD.foreheadY * _cF.ih) {
           try { var _fmH = getFaceMetrics(); if (_fmH && _fmH.projector) { hlY = _fmH.projector.toMeshY(_fhRow / _cF.ih); G.hlLineInfo = { row: _fhRow, y: hlY, eyeY: _fmH.projector.toMeshY(_lmD.eyeY) }; } } catch (e) { hlY = null; }
         } else G.hlLineInfo = { off: _fhRow > 0 ? '사진 헤어라인이 이마 랜드마크보다 아래(앞머리가 덮음)' : '사진 헤어라인 못 찾음' };
         var _eyeRow = (_lmD && isFinite(_lmD.eyeY)) ? Math.round(_lmD.eyeY * _cF.ih) : null, _fhLm = (_lmD && isFinite(_lmD.foreheadY)) ? Math.round(_lmD.foreheadY * _cF.ih) : null;
@@ -2956,6 +2957,25 @@ var REGROW = (function () {
         console.log('[다시 기르기]' + G.hlDiagTxt);
       }
     } catch (e) { G.hlDiagTxt = '  [앞 헤어라인 대조] 실패 ' + (e && e.message); }
+    /* (2026-11-09f) [앞 두피 끝] 앞쪽(얼굴 쪽 ±50°) 두피 끝 = 이 사람 정면 사진의 헤어라인 높이(위 [앞 헤어라인 대조]에서 잰 hlY) — 사용자: "두피 앞 끝을 그 사람의 헤어라인 높이로"
+     *  예전: 두피 끝이 모든 사람 phi 0.95(SCALP_ZONES 정면 상한). 디버그 1707·1710(웨이브·단발): 헤어라인은 높이로 phi ≈0.74 →
+     *  가닥이 0.74~0.95(사진으론 이마)를 두피 위로 기다 머리 영역 밖으로 끊김 → 그 칸 위 사진 가닥(옆·뒤 사진에서 온 100~1400점)은 있는데 기른 뿌리 0.
+     *  지금: 앞쪽 두피 칸 중 칸 가운데 높이가 헤어라인보다 낮으면 두피 밖 = 뿌리 안 심음 · 걷던 가닥은 거기서 두피를 떠나 공중 걸음(사진 판정은 그대로).
+     *  앞머리가 이마를 덮은 사진은 hlY 없음 = 예전 그대로. hairlineLine(헤어라인에서 멈춤 · 17:35 앞 0%)은 기본 끔. 되돌리기 REGROW.hairlineEdge=false */
+    G.hlEdge = null;
+    if (G.hairlineEdge !== false && hlY != null) try {
+      hlOff = new Uint8Array(NC); var _nOff = 0, _nFront = 0;
+      for (var _ce = 0; _ce < NC; _ce++) {
+        if (roots.est && roots.est[_ce] === OFF) continue;
+        var _phE = ((_ce / NT | 0) + 0.5) / NP * Math.PI, _thE = ((_ce % NT) + 0.5) / NT * 2 * Math.PI - Math.PI;
+        if (_phE > Math.PI / 2) continue;                                   // 눈높이 아래는 얼굴 — 예전 경계가 맡음
+        var _xE = Es.a * Math.sin(_phE) * Math.sin(_thE), _zE = Es.c * Math.sin(_phE) * Math.cos(_thE), _yE = CY + Es.b * Math.cos(_phE);
+        if (!(_zE > 0 && Math.abs(Math.atan2(_xE, _zE)) < 0.87)) continue;
+        _nFront++; if (_yE < hlY) { hlOff[_ce] = 1; _nOff++; }
+      }
+      G.hlEdge = { y: hlY, phi: Math.acos(Math.max(-1, Math.min(1, (hlY - CY) / Es.b))), nOff: _nOff, nFront: _nFront };
+    } catch (e) { hlOff = null; G.hlEdge = { off: '실패 ' + (e && e.message) }; }
+    else G.hlEdge = { off: G.hairlineEdge === false ? '꺼짐' : (G.hlLineInfo && G.hlLineInfo.off) || '헤어라인 못 잼(REGROW.hlDiag 꺼짐?)' };
     var hlFill = (G.hairlineFill !== false && roots._hlFill) ? roots._hlFill : null; G.hairlineFillN = hlFill ? roots._hlFillN : 0;   // 두 번째 기르기부터는 처음 채운 표를 그대로(밀도는 이미 채워져 있음)
     if (G.hairlineFill !== false && !hlFill) try {
       var lmF = state.landmarks && state.landmarks.front, camF = null;
@@ -3471,7 +3491,7 @@ var REGROW = (function () {
        *  그 아래 앞·관자놀이 뿌리 73%·42%가 '이마'로 빠짐. 높이로 보면 사진 헤어라인(눈 + 이 사람의 헤어라인→눈 거리)은 phi ≈0.9.
        *  지금: 앞쪽 두피 칸은 그 높이보다 위면 머리(심음·걸음 통과), 아래면 이마(안 심음·두피 위 걸음 멈춤). 옆·뒤와 두피 밖 걸음은 예전 판정 그대로.
        *  앞머리가 이마를 덮은 사진(헤어라인을 못 잼)은 예전대로. 되돌리기 REGROW.hairlineLine=false */
-      function hlFrontAt(Q) { return hlY != null && Q.z > 0 && Math.abs(Math.atan2(Q.x, Q.z)) < 0.87; }
+      function hlFrontAt(Q) { return G.hairlineLine === true && hlY != null && Q.z > 0 && Math.abs(Math.atan2(Q.x, Q.z)) < 0.87; }
       if (hlFrontAt(F) && F.y < hlY) { st.hlBelow = (st.hlBelow || 0) + 1; st.skipped++; (info.skipY[sec] || (info.skipY[sec] = [])).push(F.y); return null; }   // (2026-10-25) 얼굴 앞 비켜 가기용
       var thinCap = (G.thinLen && tCm0 < G.thinLenRootCm && (!bareNear || bareNear[cellIdx])) ? Math.max(G.thinLenMinCm, G.thinLenK * tCm0) / cmU : 0;   // (2026-10-24g) 얇은 자리 길이
       var polK = G.polThickHi > G.polThickLo ? Math.max(0, Math.min(1, (G.polThickHi - tCm0) / (G.polThickHi - G.polThickLo))) : 1;   // (2026-10-10g) 두꺼운(세운) 자리는 오르막 허용
@@ -4920,6 +4940,7 @@ function helixMeasure(rgba,mask,W,H,angle,coh,opt){opt=opt||{};const n=opt.n||25
     L.push('  가닥 ' + s.n + '개(사진에 머리가 없어 안 심은 뿌리 ' + s.skipped + ') · ' + s.ms + 'ms' + (s.workMs != null ? '(걷기에 일한 시간 ' + s.workMs + ' · 마무리 ' + s.finMs + ' · 사이사이 쉰 시간 ' + Math.max(0, s.ms - s.workMs - s.finMs) + ' — ' + s.slices + '번 나눠 함)' : '') + (s.mShare < 1 ? ' · 재는 용도라 ' + (G.measureFull || []).join('·') + ' 밖은 ' + Math.round(s.mShare * 100) + '%만 기름(전부 REGROW.measureShare=1)' : '') + ' · 사진 ' + s.cams);
     try { var _sr = G.setupReuseStat; L.push('  준비물 재사용(가볍게 기르기 → 전체 기르기 · 덩어리·두께·겉면·뿌리 결): ' + (G.setupReuse === false ? '꺼짐' : !_sr ? '아직' : _sr.used ? '씀 — ' + _sr.why : '안 씀' + (_sr.why ? ' — ' + _sr.why : '')) + (G.camFitLiteStat ? ' · 가볍게 기르기 ' + G.camFitLiteStat.ms + 'ms(' + G.camFitLiteStat.n + '가닥)' : '') + ' (끄기 REGROW.setupReuse=false)'); } catch (e) {}   // (2026-11-01)
     L.push('  뿌리 분포 — ' + secs);
+    try { var _he = G.hlEdge; L.push('  앞 두피 끝(얼굴 쪽 ±50° · 이 사람 헤어라인 높이): ' + (!_he ? '없음' : _he.off ? '안 씀 — ' + _he.off : '모델 y ' + _he.y.toFixed(3) + ' = 두피 phi ' + _he.phi.toFixed(2) + '(예전 고정 0.95) · 앞쪽 두피 칸 ' + _he.nFront + ' 중 두피 밖으로 바꾼 칸 ' + _he.nOff) + ' (되돌리기 REGROW.hairlineEdge=false)'); } catch (e) {}
     try { var _hi = G.hlLineInfo || {}, _hl = s.hlLine || {}; L.push('  앞 헤어라인 높이(눈 + 사진 헤어라인→눈 거리 · 앞쪽 ±50°만): ' + (G.hairlineLine === false ? '꺼짐' : _hi.off ? '안 씀 — ' + _hi.off : (_hi.y != null ? '사진 ' + _hi.row + '행 → 모델 y ' + _hi.y.toFixed(3) + '(눈 ' + _hi.eyeY.toFixed(3) + ') · 그 아래라 안 심은 뿌리 ' + (_hl.below || 0) + ' · 사진은 이마인데 높이로 머리라 통과한 걸음 ' + (_hl.up || 0) + ' · 사진은 머리인데 헤어라인 아래라 멈춘 걸음 ' + (_hl.down || 0) : '없음')) + ' (되돌리기 REGROW.hairlineLine=false)'); } catch (e) {}
     L.push('  길이 ' + n1(s.lenMed) + '/' + n1(s.lenP90) + 'cm(중앙값/p90) · 꺾임 ' + n1(s.kinkMed) + '°/' + n1(s.kinkP90) + '° · 결을 사진에서 못 읽고 이어 간 걸음 ' + n1(s.estPct) + '%');
     L.push('  길이 상한(' + (s.isLong ? '긴 머리 — 넉넉히' : '짧은 머리 — 섹션 중앙값×' + G.lenMul) + ') cm: ' + s.capTxt);
