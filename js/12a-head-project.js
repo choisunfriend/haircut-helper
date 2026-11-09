@@ -2467,7 +2467,13 @@ async function buildRealFaceMeshBase(faceMetrics){
         vis = clamp((f - SIDE_FACING.minFacing) / Math.max(1e-6, SIDE_FACING.fullFacing - SIDE_FACING.minFacing), 0, 1);
         if(vis <= 0){ SIDE_FACING.cut++; continue; }   // 그 사진에선 가려진 자리 — 지어낸 랜드마크
       }
-      const world = projectImagePointToHead(s.angle, sidePt.x, sidePt.y, widthFactor, heightFactor);
+      /* (2026-11-09) 얼굴 랜드마크는 <b>살</b> 위의 점이라 머리카락 헐이 아니라 <b>두개골 면</b>에서 깊이를 푼다 — 사용자: "다른 사람들은 얼굴 잘 붙어 있는데 왜 이 여자만"
+         디버그 1545·1615(긴 웨이브): 헐 0.593/0.746/0.593 = 얼굴 반폭(0.366)의 1.62배(옆으로 퍼진 머리). 측면 사진(왼쪽 53°)이 먹는 손님은 이 사람뿐(다른 손님 측면 기여 0정점)
+           → 랜드마크를 헐 크기 타원에 얹어 53° 돌려 깊이를 읽음 → 왼뺨 측면보정 −0.258(−4.2cm) · 뺨 z 0.005 = 얼굴 왼쪽 절반이 두상 안으로 꺼짐("반만 붙어 있음").
+         머리가 두상에 붙은 손님은 헐 ≈ 두개골+얇은 두께라 거의 그대로. 되돌리기 SIDE_SKULL_PLANE.on=false */
+      let _sideEll = null;
+      try{ const SSP = (globalThis.SIDE_SKULL_PLANE = globalThis.SIDE_SKULL_PLANE || { on: true }); if(SSP.on !== false && typeof getScalpEllipsoid === 'function'){ const se = getScalpEllipsoid(); if(se && se.a > 0 && se.src !== 'off') _sideEll = { a: se.a, b: se.b, c: se.c }; } }catch(e){ _sideEll = null; }
+      const world = projectImagePointToHead(s.angle, sidePt.x, sidePt.y, widthFactor, heightFactor, _sideEll ? { ell: _sideEll } : undefined);
       if(!world) continue;              // 타원 밖 → 이 뷰선 실측 불가
       perView.push({ z: world.z, confidence: s.confidence, trust: s.trust, w: sideDepthWeight(s) * vis });
       if(vis > visMax) visMax = vis;
