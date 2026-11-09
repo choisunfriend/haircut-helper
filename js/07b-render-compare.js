@@ -1391,7 +1391,8 @@ var PHOTO_CHECK = (function () {
     dirSegTol: 15,      // 도: 노랑 칸 안이라도 제 큰 방향이 사진 결에서 이 안쪽인 마디는 안 돌림
     dirGain: 1,         // 어긋난 각의 이 비율만큼 돌림
     dirGrip: 0.12,      // 가닥의 앞 12%(뿌리 쪽)는 덜 돎
-    lenSlack: 3         // 길이 슬라이더가 원본 기준보다 이 넘게 길어진 섹션이 있으면 잘라내기를 쉼
+    lenSlack: 3,        // 길이 슬라이더가 원본 기준보다 이 넘게 길어진 섹션이 있으면 잘라내기를 쉼
+    neckOcc: true, neckLenCm: 10, neckRadCm: 5.25   // (2026-11-09) 목 기둥 가림 — 길이(턱 아래 ~ 어깨)·반지름 cm (로그 [3D·목] 밑동 10.5cm · 목 길이 10.3cm)
   }, W.PHOTO_CHECK || {});
   var S = P.stats = { at: null, views: [], strands: 0, ms: 0, err: null, trimCut: 0, trimLen: 0, trimMs: 0, trimWhy: '', fixStr: 0, fixSeg: 0, fixMs: 0, fixWhy: '', fixPush: 0 };
   var ver = 0;
@@ -1423,7 +1424,14 @@ var PHOTO_CHECK = (function () {
     o[0] = (R[0] * x + R[1] * y + R[2] * z) / cam.s + cam.cx;
     o[1] = cam.crownY + (env.yTop - ((R[3] * x + R[4] * y + R[5] * z) + env.CY)) / cam.sy;
     if (R[6] * x + R[7] * y + R[8] * z < 0) {
-      if (py < env.yBody) return 0;
+      /* (2026-11-09) 목 높이(yBody 아래 ~ 어깨)는 반쪽 벽이 아니라 목 기둥으로 가림 — 예전엔 두상 가운데 면 뒤면 다 가렸다고 봐서
+         정면·옆 사진에서 목 옆·턱 밑으로 보이는 머리를 "빔(파랑)"으로 셌음(디버그 2226 단발 정면 빔 20% → 3%). 어깨 아래는 예전 그대로. 끄기 PHOTO_CHECK.neckOcc=false */
+      if (py < env.yBody) {
+        if (!(P.neckOcc && env.yNeck != null && py >= env.yNeck)) return 0;
+        var nx = R[6], nz = R[8], qa = nx * nx + nz * nz, qb = 2 * (x * nx + z * nz), qc = x * x + z * z - env.rNeck * env.rNeck, Dn = qb * qb - 4 * qa * qc;
+        if (qc > 0 && qa > 1e-9 && Dn > 0 && (-qb + Math.sqrt(Dn)) / (2 * qa) > 1e-4) return 0;
+        return 1;
+      }
       var dx = R[6], dy = R[7], dz = R[8];
       var A = dx * dx / env.a2 + dy * dy / env.b2 + dz * dz / env.c2, B = 2 * (x * dx / env.a2 + y * dy / env.b2 + z * dz / env.c2), C = x * x / env.a2 + y * y / env.b2 + z * z / env.c2 - 0.96;
       var D = B * B - 4 * A * C;
@@ -1432,7 +1440,8 @@ var PHOTO_CHECK = (function () {
     return 1;
   }
   function mkEnv(env) {
-    return { CY: env.CY, yTop: env.yTop, a2: env.a * env.a, b2: env.b * env.b, c2: env.c * env.c, yBody: env.CY - 0.7 * env.b, cm: env.cm > 0 ? env.cm : 19 };
+    return { CY: env.CY, yTop: env.yTop, a2: env.a * env.a, b2: env.b * env.b, c2: env.c * env.c, yBody: env.CY - 0.7 * env.b, cm: env.cm > 0 ? env.cm : 19,
+             yNeck: env.CY - 0.7 * env.b - P.neckLenCm / (env.cm > 0 ? env.cm : 19), rNeck: P.neckRadCm / (env.cm > 0 ? env.cm : 19) };
   }
   function extent(A, gw, gh, run) {         // 머리 칸이 run개 이상인 첫/마지막 줄·칸
     var rows = new Int32Array(gh), cols = new Int32Array(gw), x, y, e = { top: -1, bottom: -1, left: -1, right: -1 };
