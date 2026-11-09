@@ -3609,7 +3609,8 @@ var REGROW = (function () {
               st.backFwd++; nBack++; exB = 1;
             }
             if (!fl || G.gravBlendRead) {                                   // (2026-10-25f) 아래로 섞기는 결을 못 읽은 걸음만 — 읽은 결의 모양은 안 바꿈
-              var gx = d.x * (1 - G.gravity), gy = d.y * (1 - G.gravity) - G.gravity, gz = d.z * (1 - G.gravity), gl = Math.hypot(gx, gy, gz) || 1;
+              var gD = (W.HEAD_TILT && W.HEAD_TILT.on && W.HEAD_TILT.down) || { x: 0, y: -1, z: 0 };   // (2026-11-09) 중력 = 사진의 아래(두상 기울기만큼)
+              var gx = d.x * (1 - G.gravity) + gD.x * G.gravity, gy = d.y * (1 - G.gravity) + gD.y * G.gravity, gz = d.z * (1 - G.gravity) + gD.z * G.gravity, gl = Math.hypot(gx, gy, gz) || 1;
               d = { x: gx / gl, y: gy / gl, z: gz / gl };
             }
             if (G.noClimbCm > 0 && d.y > 0 && P.y + d.y * stp - lowF > G.noClimbCm / cmU) {   // (13k) 내려왔던 가닥이 다시 오름 — 위 성분 지움
