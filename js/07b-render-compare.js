@@ -1365,11 +1365,15 @@ var PHOTO_CHECK = (function () {
     on: true,
     exportCols: 480,    // (2026-10-10a) 내보내기에 싣는 사진 칸(머리 영역·결) — 경계를 보려고 비교 칸보다 촘촘히
     cols: 200,          // 비교 칸: 사진 가로를 이 수로 나눔(800px 사진이면 칸 4px)
-    tolCm: 0.6,         // 넘침·빔으로 치지 않는 여유(윤곽선 근처의 이 두께는 같다고 봄)
+    tolCm: 0,           // 넘침·빔으로 치지 않는 여유 — (2026-11-09) 0.6 → 0. 사용자: "대조화면도 그렇고 다 0으로" (원본 사진이라 여유가 필요 없음 · 문제는 생성 사진 쪽)
     extRun: 3,          // 윤곽 끝(위/아래/좌/우)을 잴 때 그 줄에 머리 칸이 이만큼은 있어야 끝으로 침(한두 가닥은 무시)
     skip: [],           // 대조·잘라내기에서 뺄 사진(angle 이름)
-    trim: false,        // 윤곽 밖 잘라내기
-    trimTolCm: 1.0,     // 잘라낼 때의 여유(대조보다 넉넉히)
+    trim: true,         // 윤곽 밖 잘라내기 — (2026-11-09) 기본 켬. 사용자: "영역밖으로 나가는 헤어들은 다 잘라줘"
+    trimAuto: true,     // (2026-11-09) 사진·모델이 바뀌어도 안 꺼짐(예전: 바뀌면 꺼짐) · 예전 동작 PHOTO_CHECK.trimAuto=false
+    trimMode: 'split',  // (2026-11-09) 'split' = 어느 사진에서든 영역 밖인 구간만 걷어 냄 — 뿌리부터 밖이면 뿌리째 · 나갔다 다시 들어오는 구간(가슴 앞 긴 웨이브)은 남은 조각으로 살림
+                        //   'tail' = 예전(첫 이탈에서 끝까지 · trimOut/trimTail 여유) · 되돌리기 PHOTO_CHECK.trimMode='tail'; PHOTO_CHECK.trimTolCm=1.0; PHOTO_CHECK.refresh()
+    trimMinPts: 4,      // split: 이보다 짧은 가운데 조각은 버림(뿌리 조각은 2점부터 남김)
+    trimTolCm: 0,       // 잘라낼 때의 여유 — (2026-11-09) 1.0 → 0: 대조(tolCm)와 같게 · 영역 경계에서 바로 자름
     trimOut: 0.08,      // 밖으로 이 길이(모델 단위 ≈ 1.5cm) 넘게 나가면 나간 자리에서 자름(나갔다 돌아오는 고리 포함)
     trimTail: 0.03,     // 밖에서 끝난 꼬리가 이 길이(≈ 0.6cm) 이상이면 자름
     keepPts: 3,
@@ -1405,7 +1409,7 @@ var PHOTO_CHECK = (function () {
   function prepCam(cam, env, cfg, tolCm) {
     var cols = Math.max(40, cfg.cols | 0), cell = cam.iw / cols, gw = cols, gh = Math.max(1, Math.ceil(cam.ih / cell)), N = gw * gh, M = new Uint8Array(N), x, y, n = 0;
     for (y = 0; y < gh; y++) for (x = 0; x < gw; x++) if (cam.smp.at((x + 0.5) * cell, (y + 0.5) * cell) > 0) { M[y * gw + x] = 1; n++; }
-    var cellCm = cell * cam.s * env.cm, tol = Math.max(1, Math.round(tolCm / Math.max(1e-6, cellCm)));
+    var cellCm = cell * cam.s * env.cm, tol = tolCm > 0 ? Math.max(1, Math.round(tolCm / Math.max(1e-6, cellCm))) : 0;   // (2026-11-09) 여유 0이면 팽창 없음(예전엔 최소 1칸)
     return { cam: cam, cell: cell, gw: gw, gh: gh, M: M, nPhoto: n, cellCm: cellCm, tol: tol, MD: dilate(M, gw, gh, tol) };
   }
   function dilate(A, gw, gh, r) {            // 네모 팽창(가로·세로 따로)
@@ -1734,7 +1738,7 @@ var PHOTO_CHECK = (function () {
     if (S.err) { L.push(TAG + ' ⚠ ' + S.err); return L; }
     L.push(TAG + ' ' + S.at + ' · 가닥 ' + S.strands + '개 · 사진 ' + S.views.length + '장 · ' + Math.round(S.ms) + 'ms · 여유 ' + P.tolCm + 'cm · 비율은 사진의 머리 넓이 대비' +
       (S.style ? ' · ⚠ 스타일이 걸려 있음(원본과 다른 것이 당연)' : '') +
-      ' · 윤곽 밖 잘라내기 ' + (P.trim ? (S.trimWhy ? '쉼(' + S.trimWhy + ')' : '켜짐 — 자른 가닥 ' + S.trimCut + '개 · 잘라 낸 길이 합 ' + Math.round(S.trimLen * (getEnv() ? getEnv().cm : 19)) + 'cm · ' + Math.round(S.trimMs) + 'ms') : '꺼짐') +
+      ' · 윤곽 밖 잘라내기 ' + (P.trim ? (S.trimWhy ? '쉼(' + S.trimWhy + ')' :  '켜짐(' + (P.trimMode === 'split' ? '밖 구간만 걷음 · 여유 ' + P.trimTolCm + 'cm · 통째로 없앤 ' + (S.trimDrop || 0) + ' · 다시 들어와 살린 조각 ' + (S.trimPiece || 0) : '끝 자르기') + ') — 손댄 가닥 ' + S.trimCut + '개 · 잘라 낸 길이 합 ' + Math.round(S.trimLen * (getEnv() ? getEnv().cm : 19)) + 'cm · ' + Math.round(S.trimMs) + 'ms') : '꺼짐') +
       ' · 결 맞추기 ' + (P.fixDir ? (S.fixWhy ? '쉼(' + S.fixWhy + ')' : '켜짐 — 돌린 가닥 ' + S.fixStr + '개(마디 ' + S.fixSeg + ' · 두상에 막혀 눕힌 마디 ' + S.fixPush + ') · ' + Math.round(S.fixMs) + 'ms · 기준 ' + P.dirWarn + '° · 사진 결 또렷함 ' + P.dirCoh + ' 이상') : '꺼짐'));
     S.views.forEach(function (v) { L.push('   ' + viewText(v)); });
     return L;
@@ -1745,12 +1749,64 @@ var PHOTO_CHECK = (function () {
     S.trimWhy = '';
     if (!P.on || !P.trim) return false;
     if (styleOn()) { S.trimWhy = '스타일이 걸려 있음'; return false; }
+    try { if (typeof MANNEQUIN !== 'undefined' && MANNEQUIN.on) { S.trimWhy = '마네킹'; return false; } } catch (e) {}   // (2026-11-09) 마네킹 가닥은 사진 머리가 아님
     if (lengthened()) { S.trimWhy = '길이를 원본보다 늘림'; return false; }
     return true;
   }
   var memo = new WeakMap(), trimModel = null;
+  /* (2026-11-09) split — 점마다 "보이는 사진 중 하나라도 머리 영역(여유 trimTolCm) 밖"이면 밖(대조와 같은 투영·같은 가림 규칙). 안인 구간만 [시작, 끝) 목록으로.
+     뿌리(0번 점)도 판정 — 사진이 머리 없다고 한 자리(귀 옆 살 등)에 심긴 뿌리 토막이 남자 머리 대조 넘침의 대부분이었음(디버그 0957: 앞 28% 중 대부분). */
+  function keepRuns(pts, pcs, env, o) {
+    var m = pts.length, k, ci, pc, gx, gy, p, out, runs = [], a = -1;
+    for (k = 0; k < m; k++) {
+      p = pts[k]; out = false;
+      for (ci = 0; ci < pcs.length; ci++) {
+        pc = pcs[ci];
+        if (!project(pc.cam, env, p.x, p.y, p.z, o)) continue;
+        gx = Math.floor(o[0] / pc.cell); gy = Math.floor(o[1] / pc.cell);
+        if (gx < 0 || gy < 0 || gx >= pc.gw || gy >= pc.gh) continue;
+        if (!pc.MD[gy * pc.gw + gx]) { out = true; break; }
+      }
+      if (!out) { if (a < 0) a = k; }
+      else if (a >= 0) { runs.push(a, k); a = -1; }
+    }
+    if (a >= 0) runs.push(a, m);
+    return runs;
+  }
+  function slicePiece(e, p, a, b, piece) {
+    var np = p.slice(a, b);
+    try { np._pre = (p._pre && p._pre.length === p.length) ? p._pre.slice(a, b) : np; } catch (e2) {}
+    var ne = Object.assign({}, e, { pts: np });
+    if (piece) ne.trimPiece = true;                      // 뿌리 없는 조각(0번 점이 두피가 아님)
+    try { if (e.colors && e.colors.length === p.length) ne.colors = e.colors.slice(a, b); if (e.srcColors && e.srcColors.length === p.length) ne.srcColors = e.srcColors.slice(a, b); } catch (e3) {}
+    return ne;
+  }
+  function trimSplit(list) {
+    var cams = getCams(), env0 = getEnv(); if (!cams.length || !env0 || !list || !list.length) return list;
+    var t0 = now(), env = mkEnv(env0), pcs = cams.map(function (c) { return prepCam(c, env, P, P.trimTolCm); }), o = [0, 0];
+    var n = list.length, out = [], i, e, p, r, j, a, b, k, nc = 0, nDrop = 0, nPiece = 0, len = 0, kept, inK, minP = Math.max(2, P.trimMinPts | 0);
+    for (i = 0; i < n; i++) {
+      e = list[i]; p = e && e.pts;
+      if (!p || p.length < 2) { out.push(e); continue; }
+      r = keepRuns(p, pcs, env, o);
+      if (r.length === 2 && r[0] === 0 && r[1] === p.length) { out.push(e); continue; }
+      nc++; kept = 0; inK = new Uint8Array(p.length);
+      for (j = 0; j < r.length; j += 2) {
+        a = r[j]; b = r[j + 1];
+        if (b - a < (a === 0 ? 2 : minP)) continue;
+        out.push(slicePiece(e, p, a, b, a > 0)); kept += b - a; if (a > 0) nPiece++;
+        for (k = a; k < b; k++) inK[k] = 1;
+      }
+      if (!kept) nDrop++;
+      for (k = 1; k < p.length; k++) if (!inK[k] || !inK[k - 1]) len += Math.hypot(p[k].x - p[k - 1].x, p[k].y - p[k - 1].y, p[k].z - p[k - 1].z);
+    }
+    S.trimCut = nc; S.trimLen = len; S.trimMs = now() - t0; S.trimDrop = nDrop; S.trimPiece = nPiece;
+    memo.set(list, { ver: ver, out: out });
+    return out;
+  }
   function trimList(list) {
     var hit = memo.get(list); if (hit && hit.ver === ver) return hit.out;
+    if (P.trimMode === 'split') return trimSplit(list);
     var cams = getCams(), env0 = getEnv(); if (!cams.length || !env0 || !list || !list.length) return list;
     var t0 = now(), env = mkEnv(env0), pcs = cams.map(function (c) { return prepCam(c, env, P, P.trimTolCm); }), o = [0, 0];
     var n = list.length, out = new Array(n), i, e, p, cut, k, nc = 0, len = 0;
@@ -1803,7 +1859,8 @@ var PHOTO_CHECK = (function () {
     try {
       if (P.trim || P.fixDir) {
         var m = photoModel();
-        if (trimModel && m !== trimModel) { P.trim = false; P.fixDir = false; trimModel = null; ver++; syncUi(); return list; }      // 사진·모델이 바뀜 → 끔
+        if (trimModel && m !== trimModel && P.trimAuto) { trimModel = m; ver++; }
+        else if (trimModel && m !== trimModel) { P.trim = false; P.fixDir = false; trimModel = null; ver++; syncUi(); return list; }      // 사진·모델이 바뀜 → 끔
         if (P.fixDir && fixActive()) list = fixList(list);                 // 결 맞추기 먼저, 그다음 잘라내기
         if (P.trim && trimActive()) list = trimList(list);
       }
@@ -2107,6 +2164,6 @@ var PHOTO_CHECK = (function () {
   P._syncUi = function () { try { syncUi(); } catch (e) {} };   // renderAdjustFrame(07b) 끝
   P._afterActivate = function (name) { try { if (name !== 'adjust') P.close(); syncUi(); } catch (e) {} };   // activateScreen(05) 끝
 
-  console.log(TAG + ' 설치 — 조정 화면의 [원본 대조]: 지금 머리를 사진의 머리 윤곽과 겹쳐 넘침(빨강)·빔(파랑)을 보여 줍니다. 결이 사진과 크게 다른 뭉치는 노랑. 콘솔에서 PHOTO_CHECK.run() · 결 맞추기 PHOTO_CHECK.setFixDir(true) · 윤곽 밖 잘라내기 PHOTO_CHECK.setTrim(true)');
+  console.log(TAG + ' 설치 · 윤곽 밖 잘라내기 기본 켬(영역 밖 구간만 걷음 · 여유 ' + P.trimTolCm + 'cm · 되돌리기 PHOTO_CHECK.setTrim(false)) — 조정 화면의 [원본 대조]: 지금 머리를 사진의 머리 윤곽과 겹쳐 넘침(빨강)·빔(파랑)을 보여 줍니다. 결이 사진과 크게 다른 뭉치는 노랑. 콘솔에서 PHOTO_CHECK.run() · 결 맞추기 PHOTO_CHECK.setFixDir(true) · 윤곽 밖 잘라내기 PHOTO_CHECK.setTrim(true)');
   return P;
 })();
