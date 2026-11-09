@@ -2175,7 +2175,16 @@ var REGROW = (function () {
        지금: ① 그 점을 가장 정면으로 마주 보는 사진(두피 타원 바깥 방향 · 카메라 쪽)이 맨살을 똑똑히 봤으면(skinSeen) 밖 — 앞머리 넘침 막은 것 그대로
              ② 아니면 카메라 쪽 사진 중 하나라도 머리면 살아 있음 ③ 아무도 머리라 안 하면 예전 판정(여유·배경)
        걷기(voteVis)·마지막 다듬기(fcPoint) 같은 판정. 되돌리기 REGROW.anyHairAlive=false */
-    if (G.anyHairAlive == null) G.anyHairAlive = true;
+    /* (2026-11-09) 되돌림 — 사용자: "보이는 사진 중 하나라도 머리면 살림 — 이렇게 말 안 했는데… 해당 점이 보이는 사진에서 모두 머리라고 하면 살림이었는데"
+       11-08f의 '하나라도 머리면 살림'은 뜻과 반대였음. 남자 실사(디버그 1111): 왼쪽 사진이 목·배경으로 본 귀 뒤 점을 뒤 사진 한 장(깊이 모름)이 "머리"라 해서 살림
+       (다른 사진이 밖이라 했지만 살린 판정 33,688) → 귀 뒤·목으로 내려간 꼬리가 옆 사진 넘침의 45~70%.
+       지금: 그 점이 <b>보이는</b> 사진이 모두 머리여야 살아 있음(아래 fcPoint) · 몸(얼굴·목·몸통·두개골)에 가려 못 보는 사진은 기권(아래 occAbstain).
+       되돌리기 REGROW.anyHairAlive=true */
+    if (G.anyHairAlive == null) G.anyHairAlive = false;
+    /* (2026-11-09) 되돌림 — 사용자: "잠깐 밖으로 나갔다가 다시 들어오면 살림 말고, 일부 사진에서 신체(얼굴과 몸통)에 가려져서 안 보이는 경우에는 살리는 게 결과가 낫더라고"
+       11-08 '점마다 판단(나갔다 돌아오면 살림)'을 끄고 strict(한 번 영역에 들어간 뒤 밖으로 나가는 첫 점에서 끝)로. 가림은 occAbstain이 맡음. 되돌리기 REGROW.clipPointwise=true */
+    if (G.clipPointwise == null) G.clipPointwise = false;
+    if (G.occAbstain == null) G.occAbstain = true;
     function bestFacingCam(p) {
       var vx = p.x / Es.a, vy = (p.y - CY) / Es.b, vz = p.z / Es.c, vl = Math.sqrt(vx * vx + vy * vy + vz * vz) || 1, best = null, bc = -2;
       for (var v = 0; v < cams.length; v++) { var c = cams[v], fc = (c.R[6] * vx + c.R[7] * vy + c.R[8] * vz) / vl; if (fc > bc) { bc = fc; best = c; } }
@@ -2199,7 +2208,11 @@ var REGROW = (function () {
         var o = proj(cam, p), ix = o.ix, iy = o.iy, facing = o.z > 0;
         if (ix < 0 || iy < 0 || ix >= cam.iw || iy >= cam.ih) continue;   // 사진 밖(잘린 사진) — 판단 안 함
         if (hairAt(cam, ix, iy)) continue;
-        if (!facing) { var pa = personAt(cam, ix, iy); if (pa !== false) continue; }   // 반대쪽은 배경일 때만
+        var pa = personAt(cam, ix, iy);
+        /* (2026-11-09) 몸에 가려 못 보는 사진은 기권 — 그 자리 픽셀이 몸·살(배경 아님)이고, 점 → 카메라 시선이 두개골·얼굴·목·몸통에 막힐 때(머리 영역 판정 27k와 같은 규칙).
+           배경이면 그 시선 위에 아무것도 없다는 뜻이라 가림과 상관없이 판정. 끄기 REGROW.occAbstain=false */
+        if (G.occAbstain !== false && pa === true && (camBlocked(cam, p) || faceBlocks(cam, p))) { fcStat.occ = (fcStat.occ || 0) + 1; continue; }
+        if (!facing) { if (pa !== false) continue; }   // 반대쪽은 배경일 때만
         if (hullOut(cam, ix, iy, null)) return 2;
         worst = 1;
       }
@@ -4779,7 +4792,7 @@ function helixMeasure(rgba,mask,W,H,angle,coh,opt){opt=opt||{};const n=opt.n||25
     L.push('  두피 밖 3D 방향(사진 두 장 이상의 결로 깊이까지): ' + (G.tri3D ? '켜짐 — 그렇게 정한 걸음 ' + (s.triN || 0) + '회 (끄기 REGROW.tri3D=false)' : '꺼짐'));
     L.push('  두피 밖 결 = 사진 평면 풀이(한 장: 사진 결 + 깊이는 직전 방향·중력 ' + (+G.lsDownK || 0) + ' 섞음 · 두 장 이상: 평면 교선 · 반지름 방향 막지 않음): ' + (G.lsFree ? '켜짐 — 그렇게 정한 걸음 ' + (s.lsN || 0) + '회 (끄기 ?lsfree=0)' : '꺼짐(예전: 원통 접선으로 올림)'));
     L.push('  머리 영역 판정: ' + (G.hullRule === 'facing' ? '마주 보는 사진 한 장이 안·밖 + 다른 사진(가리지 않은 반대편 포함)은 여유 넘게 밖일 때만 거부 — 덩어리 칸 중 다른 사진이 거부한 칸 ' + (G._facingVeto || 0) + ' · 얼굴 위 여유 없이 밖으로 본 칸 ' + (G._faceNoMarginN || 0) + ' · 옆 사진 얼굴 쪽 여유 ' + (G.sideFrontMarginCm != null ? G.sideFrontMarginCm + 'cm로 밖으로 본 횟수 ' + (G._sideFrontN || 0) + ' (되돌리기 REGROW.sideFrontMarginCm=null)' : '꺼짐') + ' (되돌리기 REGROW.hullRule=\'front\' · REGROW.faceNoMargin=false)' : G.hullRule) + ' · 얼굴 어림 안쪽 점 ' + (G.faceInsideBlocks === true ? '가림으로 봄' : '보이는 걸로 봄'));   // (2026-10-28)
-    try { var fcS = G.fcStat; L.push('  마지막 다듬기(모든 가닥 · 마주 보는 사진은 머리 아니면 밖 · 반대쪽 사진은 배경일 때만 밖): ' + (G.finalClip === false ? '꺼짐' : fcS ? '가닥 ' + fcS.n + ' 중 여유 넘게 나가 자른 ' + fcS.cut + '(점 ' + fcS.cutPts + ') · 끝이 영역 밖이라 경계에서 끝낸 ' + fcS.tail + '(점 ' + fcS.tailPts + ')' + (G.clipPointwise !== false ? ' · <b>점마다 판단</b>: 마지막으로 살아 있는 점까지 남김 — 중간에 밖으로 나갔다 돌아와 살린 가닥 ' + (fcS.keepMid || 0) + '(점 ' + (fcS.keepMidPts || 0) + ' · 되돌리기 REGROW.clipPointwise=false)' : '') + (G.clipStrict !== false && G.clipPointwise === false ? ' · 영역 안에 들어간 뒤 밖으로 나가 그 자리에서 자른 ' + (fcS.strict || 0) + '(점 ' + (fcS.strictPts || 0) + ' · 되돌리기 REGROW.clipStrict=false)' : '') : '아직') + ' (끄기 REGROW.finalClip=false)'); } catch (eF) {}
+    try { var fcS = G.fcStat; L.push('  마지막 다듬기(모든 가닥 · 마주 보는 사진은 머리 아니면 밖 · 반대쪽 사진은 배경일 때만 밖): ' + (G.finalClip === false ? '꺼짐' : fcS ? '가닥 ' + fcS.n + ' 중 여유 넘게 나가 자른 ' + fcS.cut + '(점 ' + fcS.cutPts + ') · 끝이 영역 밖이라 경계에서 끝낸 ' + fcS.tail + '(점 ' + fcS.tailPts + ')' + (G.clipPointwise !== false ? ' · <b>점마다 판단</b>: 마지막으로 살아 있는 점까지 남김 — 중간에 밖으로 나갔다 돌아와 살린 가닥 ' + (fcS.keepMid || 0) + '(점 ' + (fcS.keepMidPts || 0) + ' · 되돌리기 REGROW.clipPointwise=false)' : '') + (G.clipStrict !== false && G.clipPointwise === false ? ' · 영역 안에 들어간 뒤 밖으로 나가 그 자리에서 자른 ' + (fcS.strict || 0) + '(점 ' + (fcS.strictPts || 0) + ' · 되돌리기 REGROW.clipStrict=false)' : '') : '아직') + ' · 몸에 가려 기권한 사진 판정 ' + ((fcS && fcS.occ) || 0) + (G.occAbstain === false ? '(꺼짐)' : '(끄기 REGROW.occAbstain=false)') + ' (끄기 REGROW.finalClip=false)'); } catch (eF) {}
     try { var du = G.drawUnusedStat; L.push('  안 쓴 사진 조각 그대로 그리기: ' + (!du ? '-' : !du.on ? '꺼짐' : du.err ? '실패 ' + du.err : '조각 ' + du.pieces + ' 중 통째로 ' + du.whole + ' · 안 그린 앞부분 ' + du.head + ' · 점 ' + du.pts + ' · 다듬기에 잘린 ' + du.clipped) + ' (끄기 REGROW.drawUnused=false) · 점 판정: 보이는 사진 중 하나라도 머리면 살림 ' + (G.anyHairAlive === false ? '꺼짐' : '켜짐 — 다른 사진이 밖이라 했지만 살린 판정 ' + (G._aliveAny || 0) + ' · 가장 정면 사진이 맨살이라 밖 ' + (G._fcSkin || 0)) + ' (되돌리기 REGROW.anyHairAlive=false)'); } catch (eS) {}
     try { var fcK = G.fcStat; if (fcK) L.push('  보이는 맨살 위(마주 보는 사진 · 머리 영역에서 ' + G.skinTolCm + 'cm 넘게): 투표에서 밖 ' + (G._skinNoMarginN || 0) + ' · 뿌리 구간이 맨살 위라 안 그린 가닥 ' + (fcK.skinRoot || 0) + ' · 가운데 구간이 맨살 위로 나가 거기서 끝낸 가닥 ' + (fcK.skinMid || 0) + '(점 ' + (fcK.skinMidPts || 0) + ') (끄기 REGROW.skinNoMargin=false)'); } catch (eK) {}
     L.push('  껍질(사진 교집합): ' + (s.hullV ? s.hullV + ' 중 그 자리를 마주 보는 사진이 머리 영역에서 ' + G.hullMarginCm + '(정면)·' + G.hullMarginSideCm + '(옆·뒤)cm 넘게 밖이라 덩어리 밖인 걸음(덩어리를 쓰면 다른 이유로 밖인 것도 포함) ' + (s.hullN || 0) + '회 — 다른 사진이 머리라고 해도 멈춤 (예전: 다수결 · 끄기 REGROW.hullViews=[])' + ' · 사진 가닥이 그어져 머리 영역에 더한 칸 ' + (G.hullStrands === false ? '꺼짐' : Object.keys(G._hsCells || {}).map(function (k) { return k + ' ' + G._hsCells[k]; }).join(' · ') + ' (끄기 ?hullst=0)') : '안 씀(다수결)'));
