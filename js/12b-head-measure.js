@@ -92,6 +92,7 @@ const HEAD_CROWN_CAP = {
   on: true,                          // false면 예전 동작(납작한 원반) — A/B용
   phis: [0.10, 0.20, 0.30, 0.42],    // 0.01~0.55 빈 구간에 끼울 밴드
   anchorPhi: 0.55,                   // 이 밴드의 실측값에 맞춰 이어붙인다
+  skullFloor: true,                  // (2026-11-09) 헤어 폭 < 얼굴×skullPerFace면 두개골을 하한으로(폴백 안 탐) — applyCrownCap
   minFrac: 0.04,                     // 꼭짓점이 정확히 0이 되지 않게(u=mx/aH 나눗셈 보호)
   /* ── 2차 (2026-08-08): 기준을 <b>두개골</b>로 ──────────────────────────
      사용자: "일부러 부풀려도 두개골 형상은 어느 정도 알지 않아? 거의 타원이니까."
@@ -386,6 +387,7 @@ const HAIR_SCALP3D = {
        즉 모발 두께가 0이 되는 방향으로는 못 간다.
      되돌리기: skullPerFace = 1.00 (산술까지 예전과 동일) */
   skullPerFace: 1.07,
+  skullFloor: true,   // (2026-11-09) 헤어 폭 < 얼굴×skullPerFace면 두개골을 하한으로(minGap에 안 걸림) — getScalpEllipsoid
   /* (2026-08-17 c) 이름이 applyToMiniHead였을 땐 <b>미니뷰만</b> 두피 크기였고
      최종 3D 화면(buildProceduralHead)은 여전히 헐 크기 살구색 구를 그렸다.
      그래서 "3D 미리보기는 맞는데 마지막 3D 결과보기는 헤어가 안 얹힌다"가 됐다
@@ -453,8 +455,17 @@ function getScalpEllipsoid(){
        if(eyeToChin > 0){ b = eyeToChin; srcB = '눈→턱 자'; } }catch(err){}
   // 두께 상·하한 — 헐을 뚫거나(역전) 너무 얇아지지 않게
   const cl = (v, hull)=> clamp(v, hull*(1 - S.maxThick), hull - S.minGap);
-  a = cl(a, e.a); b = cl(b, e.b);
-  const c = cl(a * (e.c / Math.max(1e-6, e.a)), e.c);
+  /* (2026-11-09) 헤어 실루엣 폭이 얼굴 기반 두개골(얼굴 반폭 × skullPerFace)보다 좁으면 <b>두개골을 하한</b>으로 —
+     디버그 1515(짧은 직모 남): 헐 0.328 < 0.369×1.07=0.394 → 예전엔 minGap 상한(0.298)에 걸려 두개골 가로 11.5cm·깊이 13.8cm.
+     짧은 머리 실루엣은 두상을 못 담으니, 이 계산 안에서만 헐 폭을 두개골+minGap까지 올려 봄 → 두께 = minGap(≥0).
+     깊이도 같은 형상비로 올라감. getHeadEllipsoid(헐 자체 · 다른 호출부)는 안 건드림 — HEAD_WIDTH_GUARD(꺼둔 가림 장치)와 다름.
+     헤어가 더 넓은 손님은 예전과 같음. 되돌리기 HAIR_SCALP3D.skullFloor=false */
+  let eA = e.a, eC = e.c, _floored = false;
+  if(S.skullFloor !== false && _faceA > 0 && src !== '폴백' && e.a < a + S.minGap){
+    eA = a + S.minGap; eC = e.c * (eA / Math.max(1e-6, e.a)); _floored = true;
+  }
+  a = cl(a, eA); b = cl(b, e.b);
+  const c = cl(a * (e.c / Math.max(1e-6, e.a)), eC);
   if(!_scalpLogged){
     _scalpLogged = true;
     let cmX = NaN, cmY = NaN;
@@ -463,8 +474,9 @@ function getScalpEllipsoid(){
     }catch(err){}
     console.log(`[두피면] 가로 ${a.toFixed(3)}(${src}) 세로 ${b.toFixed(3)}(${srcB}) 깊이 ${c.toFixed(3)}(형상 승계)`
       + (isFinite(cmX) ? ` → 두개골 가로 ${(2*a*cmX).toFixed(1)}cm · 눈→정수리 ${(b*cmY).toFixed(1)}cm · 깊이 ${(2*c*cmX).toFixed(1)}cm` : '')
-      + ` | 모발 두께 옆 ${((e.a-a)*(isFinite(cmX)?cmX:0)).toFixed(1)}cm · 위 ${((e.b-b)*(isFinite(cmY)?cmY:0)).toFixed(1)}cm`
-      + ` (두상=헤어 ${e.a.toFixed(3)}/${e.b.toFixed(3)}/${e.c.toFixed(3)})`);
+      + ` | 모발 두께 옆 ${((eA-a)*(isFinite(cmX)?cmX:0)).toFixed(1)}cm · 위 ${((e.b-b)*(isFinite(cmY)?cmY:0)).toFixed(1)}cm`
+      + ` (두상=헤어 ${e.a.toFixed(3)}/${e.b.toFixed(3)}/${e.c.toFixed(3)})`
+      + (_floored ? ` · 헤어 폭이 두개골보다 좁아 두개골을 하한으로(헐 폭 ${e.a.toFixed(3)}→${eA.toFixed(3)} · 깊이 ${e.c.toFixed(3)}→${eC.toFixed(3)} · 되돌리기 HAIR_SCALP3D.skullFloor=false)` : ''));
     /* ── 잰 값을 <b>사람 치수와 대조</b>해서 한 줄로 판정한다 (2026-09-14) ────────
        위 skullPerFace 배너의 판정("얼굴이 나온 게 아니라 두상이 작다")을 다음
        세션이 눈으로 다시 하지 않게, 대조를 코드가 하게 둔다. 범위는 성인 여성
@@ -476,7 +488,7 @@ function getScalpEllipsoid(){
       const _v = (v, lo, hi)=> v < lo ? `<b>${v.toFixed(1)}cm ↓작음</b>(참고 ${lo}~${hi})`
                             : v > hi ? `<b>${v.toFixed(1)}cm ↑큼</b>(참고 ${lo}~${hi})`
                                      : `${v.toFixed(1)}cm ✓(참고 ${lo}~${hi})`;
-      const hitGap = (a >= e.a - S.minGap - 1e-6);
+      const hitGap = !_floored && (a >= e.a - S.minGap - 1e-6);
       console.log(...gyeolBoldArgs(['[두개골 자 대조] 가로 ' + _v(wCm, 15.0, 15.4)
         + ' · 깊이 ' + _v(dCm, 18.0, 18.5)
         + '\n      얼굴 반폭 ' + _faceA.toFixed(3) + ' × skullPerFace ' + _perFace.toFixed(2)
@@ -926,20 +938,34 @@ function applyCrownCap(bands){
      대신 그쪽이 쓰는 것과 <b>같은 출처</b>를 여기서 직접 읽는다 —
      가로는 얼굴 메쉬 반폭(머리카락 무관), 깊이는 형상 승계(같은 규칙). */
   let aSkull = null, cSkull = null;
+  /* (2026-11-09) 머리카락 실루엣이 <b>얼굴 기반 두개골보다 좁으면</b> 두개골을 하한으로 —
+     디버그 1515(짧은 직모 남): 헤어 aMax 0.328 < 얼굴 반폭 0.369 → 예전엔 fa < aMax 조건에 걸려
+     폴백(헤어 밴드를 두개골로)으로 빠지고 모발 두께 t=−0.29cm(음수). 짧은 머리 실루엣은 정수리 부근에서 끝나
+     두상을 못 담는다 — 얼굴 메쉬(머리카락 무관)가 더 믿을 만한 쪽.
+     이때 두개골 = 얼굴 반폭 × skullPerFace(getScalpEllipsoid와 같은 자) · 헤어 폭은 그 두개골까지 올려 봄 → t ≥ 0.
+     헤어가 더 넓은 손님(긴 머리 등)은 예전과 한 글자도 같음. 되돌리기 HEAD_CROWN_CAP.skullFloor=false */
+  let skullFloored = false;
   if(C.useSkull){
-    try{ const fa = getFaceHalfWidthMesh(); if(fa > 0 && fa < aMax) aSkull = fa; }catch(e){}
-    if(aSkull != null && cMax > 0) cSkull = aSkull * (cMax / aMax);
+    try{
+      const fa = getFaceHalfWidthMesh();
+      if(fa > 0 && fa < aMax) aSkull = fa;
+      else if(fa > 0 && C.skullFloor !== false){
+        const pf = (typeof HAIR_SCALP3D !== 'undefined' && HAIR_SCALP3D.skullPerFace > 0) ? HAIR_SCALP3D.skullPerFace : 1;
+        aSkull = fa * pf; skullFloored = true;
+      }
+    }catch(e){}
+    if(aSkull != null && cMax > 0) cSkull = aSkull * (cMax / aMax);   // 깊이 = 형상 승계(헤어 깊이/폭 비)
   }
 
   /* 모발 두께 t — 법선 방향 한 값. anchorPhi의 실측이 (a_두개골 + t)·sin(phi)를
      지나도록 역산한다. 이게 1차의 배율 1.12를 대체하는 <b>이름 붙은 양</b>이다. */
   let tW = 0, tD = 0, tWarn = false, tFloored = false, mode;
   if(aSkull != null){
-    mode = '두개골+두께';
+    mode = skullFloored ? '두개골+두께 — 헤어 폭 ' + aMax.toFixed(3) + '이 두개골(얼굴×' + (aSkull / Math.max(1e-6, getFaceHalfWidthMesh())).toFixed(2) + ') ' + aSkull.toFixed(3) + '보다 좁아 두개골을 하한으로(되돌리기 HEAD_CROWN_CAP.skullFloor=false)' : '두개골+두께';
     tW = anchor.halfWidth / Math.max(1e-6, sinA) - aSkull;
     /* 상한은 안 건다 — 자르면 이음매에 단이 생기고 뿌리가 거기서 튄다(위 주석).
        넘으면 알리기만 한다. 아래로만 막는다: 헐이 두개골 안으로 들어갈 순 없다. */
-    if(!(tW >= 0)){ tW = 0; tFloored = true; }
+    if(!(tW >= 0)){ tW = 0; tFloored = !skullFloored; }   // 하한을 쓴 경우엔 0이 예상된 값 — 경고 아님
     if(tW > aSkull * C.thickWarnFrac) tWarn = true;
     if(cSkull != null){
       tD = (anchor.halfDepth || 0) / Math.max(1e-6, sinA) - cSkull;
