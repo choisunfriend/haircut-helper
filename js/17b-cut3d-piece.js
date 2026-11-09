@@ -1647,7 +1647,7 @@ var REGROW = (function () {
        그 자리를 가장 정면으로 마주 보는 사진(가림 없이 보는 사진 중) 한 장이 안·밖을 정함(머리 영역 또는 여유 안 = 안) · 다른 사진(카메라 반대편이라도 두개골·목·몸통에 안 가리면)은
        여유(1·1.5cm) 넘게 확실히 밖일 때만 거부 = 깊이를 깎음. 다수결 없음. 정면 사진이 얼굴 앞에서 "머리"라고 하면 그대로 머리(frontTrust). 되돌리기 REGROW.hullRule='front' */
     hullRule: 'facing',  // (2026-10-11h) 사용자: "다수결방식에 정면을 참고하는 걸로" — 'front' = 다수결 + 정면이 1cm 넘게 밖이면 머리 아님 ·    // (2026-10-11g) 'tol' = 여유 둔 교집합: 그 자리를 보는 사진 중 하나라도 머리 영역에서 여유(정면 1 · 옆·뒤 1.5cm) 넘게 밖이면 머리 아님 — 예전 다수결은 2:2 동점도 머리로 쳐서 웨이브 손님 덩어리가 1.3배 컸음 · 'face' = 다수결 + 마주 보는 사진
-    hullViews: ['front', 'left', 'right', 'back'], hullMarginCm: 1.0, hullMarginSideCm: 1.5, sideFrontMarginCm: 0.7 /* (2026-10-31) 옆 사진 얼굴 쪽 여유 — hullOut 배너 */, hullMissMax: 2 /* (2026-10-24b) 걷기 여유는 예전대로 — 0.3·0.4로 줄이면 사진끼리 조금 어긋난 자리에서 가닥이 끊김(디버그 파일: 일찍 멈출 가닥 중 다시 머리 영역으로 들어오던 가닥 직모 8~24% · 실제 58% · 곱슬 22%). 대신 다 걸은 뒤 머리 영역 밖으로 나간 끝만 자름(아래 trimTail) */, hullFacing: true, hullCellPx: 3,
+    hullViews: ['front', 'left', 'right', 'back'], hullMarginCm: 1.0, hullMarginSideCm: 1.5, sideFrontMarginCm: 0.7 /* (2026-10-31) 옆 사진 얼굴 쪽 여유 — hullOut 배너 */, hullMissMax: 2, onScalpStepCm: 0.5 /* (2026-10-24b) 걷기 여유는 예전대로 — 0.3·0.4로 줄이면 사진끼리 조금 어긋난 자리에서 가닥이 끊김(디버그 파일: 일찍 멈출 가닥 중 다시 머리 영역으로 들어오던 가닥 직모 8~24% · 실제 58% · 곱슬 22%). 대신 다 걸은 뒤 머리 영역 밖으로 나간 끝만 자름(아래 trimTail) */, hullFacing: true, hullCellPx: 3,
     /* (2026-10-27h) 마주 보는 옆·뒤 사진이 "여유 밖"이면 머리 아님 — 사용자: "앞머리가 내려오는데, 안면제한하지 말고 원인 살펴봐줘"
        디버그 1246(웨이브): 앞 섹션 가닥이 이마 옆에서 곧게 내려와 볼 앞(z≈0.4)을 지남. 그 자리를 정면 사진은 "머리"(사진 면에서는 얼굴 옆 커튼 머리가 그 시선 위에 있음),
        그 자리를 마주 보는(0.5 이상) 왼쪽 사진은 73%가 "머리 영역에서 1.5cm 넘게 밖"(볼 맨살), 오른쪽·뒤 사진은 가려져 빠짐 → 1:1 동점을 'front' 규칙이 머리로 침.
@@ -3387,6 +3387,10 @@ var REGROW = (function () {
       var sec = null; try { sec = resolveSection3D(F, CY, Es.b); } catch (e) {} sec = sec || 'crown';
       var Lcap = capFor(sec), ramp = Math.max(0.03, Math.min(0.12, 0.25 * Lcap));
       var stp = Math.max(G.step, Lcap / G.maxSteps);      // 긴 가닥은 걸음을 넓혀 걸음 수 상한에 안 걸리게
+      /* (2026-11-09) 두피 위 걸음은 길이 상한과 무관하게 짧게 — 디버그 1545(긴 웨이브): lenCap 꺼짐인데 걸음 = 길이 상한/44 → 두피 위에서도 한 걸음 1.6~2.7cm.
+       *  앞 헤어라인(맨살까지 1~2cm)에서 첫 두 걸음이 이마 맨살에 떨어져 '머리 영역 밖 2번' → 점 3개 미만 → 안 심음 = 앞·정수리 앞이 통째로 대머리(뿌리 front 2%).
+       *  사진 가닥을 그대로 옮기는 가닥(cpEarly)도 이 첫 걸음 검사를 통과해야 해서 같이 빠졌음. 두피 밖 걸음은 그대로. 되돌리기 REGROW.onScalpStepCm=0 */
+      var stpS = (G.onScalpStepCm > 0) ? Math.min(stp, Math.max(G.step, G.onScalpStepCm / cmU)) : stp;
       var tRoot = thickAt(F), rootY = F.y;
       var pts = [{ x: F.x, y: F.y, z: F.z }], P = F, s = 0, prev = null, miss = 0, k, d, dt, fl, estSteps = 0, steps = 0, free = false, stop = 'max';
       var bw = 0, myTip = null, exitI = -1, exitY = 0, exitZ = 0;           // backFix: 뒤쪽 정도(0~1) · 이 가닥이 내려갈 끝 높이 · 두피를 벗어난 자리(점 번호·높이·깊이)
@@ -3469,12 +3473,12 @@ var REGROW = (function () {
         steps++;
         if (!free) {
           // 두피 위 구간: 발은 두피면을 따라, 몸은 그 위 두께만큼 떠서
-          polW = (flip === 1) ? 0 : (G.polDown || 0) * polK; fl = flowStep(P, n, prev, false, stp); polW = 0; if (!fl) { estSteps++; nEst++; }
+          polW = (flip === 1) ? 0 : (G.polDown || 0) * polK; fl = flowStep(P, n, prev, false, stpS); polW = 0; if (!fl) { estSteps++; nEst++; }
           if (SF) { if (sfLast) { sfOnS = true; sfMissS = 0; } else if (sfOnS && ++sfMissS >= G.sfEndSteps) { stop = 'tip'; SF.end++; break; } }   // (2026-10-31) 따라가던 사진 가닥이 끝남
           var sfRaw = (SF && sfLast && fl) ? fl : null;
           if (fl) fl = mixDir(prev, fl);
           dt = (sfRaw && G.sfTanSolve && sfTan(sfRaw, fl, n)) || tangent(fl || prev, n) || prev;
-          var F2 = onSurf({ x: F.x + dt.x * stp, y: F.y + dt.y * stp, z: F.z + dt.z * stp });
+          var F2 = onSurf({ x: F.x + dt.x * stpS, y: F.y + dt.y * stpS, z: F.z + dt.z * stpS });
           if (offScalp(cellOf(F2))) {
             if (flip === 3 && G.sideLayStay) { stop = 'side'; st.sideEnd = (st.sideEnd || 0) + 1; break; }   // (2026-10-11p) 옆으로 눕힌 가닥은 두피 밖으로 안 나감
             free = true; st.free++; prev = dt; k--; steps--; exitI = pts.length - 1; exitY = P.y; exitZ = P.z; lowF = P.y;
@@ -3487,7 +3491,7 @@ var REGROW = (function () {
             if (hangTips) hangTip = hangTips[Math.min(hangTips.length - 1, Math.floor(hangTips.length * (0.25 + 0.5 * rnd())))];
             continue;
           }
-          var n2 = normalAt(F2), s2 = s + stp, h2 = u * thickAt(F2) * Math.min(1, s2 / ramp);
+          var n2 = normalAt(F2), s2 = s + stpS, h2 = u * thickAt(F2) * Math.min(1, s2 / ramp);
           var P2 = { x: F2.x + n2.x * h2, y: F2.y + n2.y * h2, z: F2.z + n2.z * h2 };
           if (LIFT && G.layerShell && G.liftOnScalp && h2 > 0) {            // (24h) 두피 위 구간도 읽은 겉면 안으로(층 높이만 낮춤 · 두피 밑으로는 안 감)
             var lS = liftLim(P2);
@@ -3502,7 +3506,7 @@ var REGROW = (function () {
           if (v2 === 0) { if (++miss >= (G.hullMissMax || 2)) { stop = 'mask'; break; } } else miss = 0;
           if (G.onScalpLen && !isLong && s2 > Math.max(G.minLenCm / cmU, G.liftK * tRoot)) { stop = 'len'; st.lenThick = (st.lenThick || 0) + 1; pts.push(P2); break; }
           if (flip === 3 && G.sideLayStay && s2 >= Lcap) { stop = 'side'; st.sideEnd = (st.sideEnd || 0) + 1; pts.push(P2); break; }   // (2026-10-11p) 옆으로 눕힌 가닥의 길이 = 그 섹션 상한까지(10f 때와 같음)
-          pts.push(P2); F = F2; n = n2; P = P2; s = s2; sOn += stp; prev = tangent(dt, n2) || dt;
+          pts.push(P2); F = F2; n = n2; P = P2; s = s2; sOn += stpS; prev = tangent(dt, n2) || dt;
         } else {
           // 두피 밖 구간: 결 + 중력, 두상 안으로는 못 들어감
           var hangNow = hangTip != null && P.y < yBody;                     // (v6) 턱·목덜미 아래 — 사진 결을 안 읽고 곧게 아래로
