@@ -387,6 +387,7 @@ const HAIR_SCALP3D = {
        즉 모발 두께가 0이 되는 방향으로는 못 간다.
      되돌리기: skullPerFace = 1.00 (산술까지 예전과 동일) */
   skullPerFace: 1.07,
+  skullDepthPerWidth: 1.20,   // (2026-11-09) 두개골 깊이 = 가로 × 이 비(머리카락 무관) · null이면 예전(헤어 깊이/폭 승계) — getScalpEllipsoid
   skullFloor: true,   // (2026-11-09) 헤어 폭 < 얼굴×skullPerFace면 두개골을 하한으로(minGap에 안 걸림) — getScalpEllipsoid
   /* (2026-08-17 c) 이름이 applyToMiniHead였을 땐 <b>미니뷰만</b> 두피 크기였고
      최종 3D 화면(buildProceduralHead)은 여전히 헐 크기 살구색 구를 그렸다.
@@ -465,14 +466,22 @@ function getScalpEllipsoid(){
     eA = a + S.minGap; eC = e.c * (eA / Math.max(1e-6, e.a)); _floored = true;
   }
   a = cl(a, eA); b = cl(b, e.b);
-  const c = cl(a * (e.c / Math.max(1e-6, e.a)), eC);
+  /* (2026-11-09) 깊이 기준을 <b>머리카락에서 두개골로</b> — 사용자: "머리카락을 기준으로 삼으면 다 이렇게 두개골이 얕아질 수 있다는 거잖아. 기준을 바꿔야지"
+     예전: c = a × (헤어 덩어리 깊이/폭). 긴 웨이브(디버그 1512)는 옆으로 퍼진 머리가 폭만 부풀려 비 1.00 → 두개골 깊이 15.1cm(참고 18~18.5)
+       → 얼굴 z를 ×0.660으로 눌러(FACE_Z_TO_SKULL = 이 c ÷ 헐 c) 턱 −0.235 함몰·테두리 접선 연장 = "얼굴면이 두상에서 떨어짐".
+     지금: c = a × skullDepthPerWidth(1.20 — 사람 두개골 깊이/폭, 위 [두개골 자 대조]의 참고 18.25 ÷ 15.2). 가로 a가 이미 얼굴 실측 × 해부 비(skullPerFace)이므로 같은 종류의 자.
+       머리카락이 두상에 붙은 손님은 예전 비가 이미 ≈1.2라 거의 그대로(1515 남 1.20 · 9/14 여 16.8÷14.0=1.20).
+     되돌리기 HAIR_SCALP3D.skullDepthPerWidth=null (예전: 헤어 형상 승계) */
+  const _dpw = (typeof S.skullDepthPerWidth === 'number' && S.skullDepthPerWidth > 0 && src !== '폴백') ? S.skullDepthPerWidth : null;
+  const _cHair = a * (e.c / Math.max(1e-6, e.a));
+  const c = cl(_dpw ? a * _dpw : _cHair, Math.max(eC, _dpw ? a * _dpw + S.minGap : 0));
   if(!_scalpLogged){
     _scalpLogged = true;
     let cmX = NaN, cmY = NaN;
     try{ const fm = getFaceMetrics();
       const _r = faceRulerCmPerUnit(fm); cmY = _r.y; cmX = _r.x;   // 단일 출처(2026-08-11)
     }catch(err){}
-    console.log(`[두피면] 가로 ${a.toFixed(3)}(${src}) 세로 ${b.toFixed(3)}(${srcB}) 깊이 ${c.toFixed(3)}(형상 승계)`
+    console.log(`[두피면] 가로 ${a.toFixed(3)}(${src}) 세로 ${b.toFixed(3)}(${srcB}) 깊이 ${c.toFixed(3)}(${_dpw ? '두개골 깊이/폭 ×' + _dpw.toFixed(2) + ' · 헤어 형상 승계였다면 ' + _cHair.toFixed(3) + '(비 ' + (e.c / Math.max(1e-6, e.a)).toFixed(2) + ')' : '형상 승계'})`
       + (isFinite(cmX) ? ` → 두개골 가로 ${(2*a*cmX).toFixed(1)}cm · 눈→정수리 ${(b*cmY).toFixed(1)}cm · 깊이 ${(2*c*cmX).toFixed(1)}cm` : '')
       + ` | 모발 두께 옆 ${((eA-a)*(isFinite(cmX)?cmX:0)).toFixed(1)}cm · 위 ${((e.b-b)*(isFinite(cmY)?cmY:0)).toFixed(1)}cm`
       + ` (두상=헤어 ${e.a.toFixed(3)}/${e.b.toFixed(3)}/${e.c.toFixed(3)})`
@@ -954,7 +963,10 @@ function applyCrownCap(bands){
         aSkull = fa * pf; skullFloored = true;
       }
     }catch(e){}
-    if(aSkull != null && cMax > 0) cSkull = aSkull * (cMax / aMax);   // 깊이 = 형상 승계(헤어 깊이/폭 비)
+    if(aSkull != null && cMax > 0){   // 깊이 — 두피면과 같은 자(두개골 깊이/폭) · 없으면 예전(헤어 비)
+      const dpw = (typeof HAIR_SCALP3D !== 'undefined' && HAIR_SCALP3D.skullDepthPerWidth > 0) ? HAIR_SCALP3D.skullDepthPerWidth : null;
+      cSkull = aSkull * (dpw || (cMax / aMax));
+    }
   }
 
   /* 모발 두께 t — 법선 방향 한 값. anchorPhi의 실측이 (a_두개골 + t)·sin(phi)를
