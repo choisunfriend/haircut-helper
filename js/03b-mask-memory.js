@@ -443,10 +443,6 @@ function origCleanCanvas(img, key){
     for(let y = 0; y < H; y += 2) for(let x = 1; x < W; x++){ const v = Math.abs(L[y * W + x] - L[y * W + x - 1]); if((x & 7) === 0){ bS += v; bN++; } else { iS += v; iN++; } }
     for(let y = 1; y < H; y++) for(let x = 0; x < W; x += 2){ const v = Math.abs(L[y * W + x] - L[(y - 1) * W + x]); if((y & 7) === 0){ bS += v; bN++; } else { iS += v; iN++; } }
     const bm = bN ? bS / bN : 0, im = iN ? iS / iN : 0, ratio = im > 1e-6 ? bm / im : 1;
-    const blockIdx = function(){ let b1 = 0, n1 = 0, i1 = 0, m1 = 0;
-      for(let y = 0; y < H; y += 2) for(let x = 1; x < W; x++){ const v = Math.abs(L[y * W + x] - L[y * W + x - 1]); if((x & 7) === 0){ b1 += v; n1++; } else { i1 += v; m1++; } }
-      for(let y = 1; y < H; y++) for(let x = 0; x < W; x += 2){ const v = Math.abs(L[y * W + x] - L[(y - 1) * W + x]); if((y & 7) === 0){ b1 += v; n1++; } else { i1 += v; m1++; } }
-      const ii = m1 ? i1 / m1 : 0; return ii > 1e-6 ? (n1 ? b1 / n1 : 0) / ii : 1; };
     st.blockRatio = +ratio.toFixed(3);
     if(ratio > OC.minBlock){
       const alpha = Math.max(6, 4 * im), beta = Math.max(3, 1.5 * im), tc = Math.max(1, Math.min(12, 2 * (bm - im) + 1));
@@ -463,7 +459,6 @@ function origCleanCanvas(img, key){
       for(let y = 8; y < H - 1; y += 8) for(let x = 0; x < W; x++){ const b = (y * W + x) * 4, r = W * 4; filt(b - 2 * r, b - r, b, b + r); }
       st.deblock = { alpha: +alpha.toFixed(1), beta: +beta.toFixed(1), tc: +tc.toFixed(1), fixed: nF };
       for(let i = 0, j = 0; i < N; i++, j += 4) L[i] = 0.299 * d[j] + 0.587 * d[j + 1] + 0.114 * d[j + 2];
-      st.deblock.after = +blockIdx().toFixed(3);   // (2026-11-09) 고친 뒤 블록 지수 — 블록 제거가 실제로 얼마나 들었는지
     } else st.deblock = { skip: '블록 지수 ' + ratio.toFixed(2) + ' — 블록 없음' };
   }
   if(OC.aa && N > OC.aaMaxPx) st.aa = null, st.aaSkip = '큰 사진(' + (N / 1e6).toFixed(1) + 'MP > ' + (OC.aaMaxPx / 1e6) + 'MP) — 계단 펴기 건너뜀(시간)';
@@ -491,7 +486,7 @@ function origCleanCanvas(img, key){
   cx.putImageData(id, 0, 0);
   cv.naturalWidth = W; cv.naturalHeight = H;
   st.ms = Math.round(performance.now() - t0); OC.stats[key] = st;
-  console.log('[원본 다듬기] ' + W + '×' + H + ' · 블록 지수 ' + (st.blockRatio != null ? st.blockRatio : '-') + (st.deblock && st.deblock.fixed != null ? ' → 블록 경계 고침 ' + st.deblock.fixed + (st.deblock.after != null ? '(고친 뒤 블록 지수 ' + st.deblock.after + ')' : '') + '(α' + st.deblock.alpha + ' β' + st.deblock.beta + ' tc' + st.deblock.tc + ')' : st.deblock && st.deblock.skip ? ' · ' + st.deblock.skip : '') +
+  console.log('[원본 다듬기] ' + W + '×' + H + ' · 블록 지수 ' + (st.blockRatio != null ? st.blockRatio : '-') + (st.deblock && st.deblock.fixed != null ? ' → 블록 경계 고침 ' + st.deblock.fixed + '(α' + st.deblock.alpha + ' β' + st.deblock.beta + ' tc' + st.deblock.tc + ')' : st.deblock && st.deblock.skip ? ' · ' + st.deblock.skip : '') +
     (st.aa ? ' · 계단 펴기 ' + st.aa.px + 'px(기울기 기준 ' + st.aa.gRef + ')' : st.aaSkip ? ' · ' + st.aaSkip : '') + ' · ' + st.ms + 'ms (끄기 ORIG_CLEAN.on=false)');
   return cv;
 }
