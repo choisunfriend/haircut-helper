@@ -466,6 +466,98 @@ function getViewPoseSource(angle){
      그 숫자를 보고 판단할 것 — 눈으로 다시 켰다 껐다 하지 말 것.
    켜기: POSE_YAW_FIX.on = true  (모델을 다시 만들어야 반영된다 — 뷰 재진입) */
 const YAW_MIRROR = { on: true, used: {} };   // (2026-10-27a) 아래 _rawViewYawDeg
+/* ── (2026-11-09) 옆 사진 각도 — 얼굴 감지가 실패하면 거울 대신 <b>그 사진에서 잼</b>(PoseLandmarker 3D 코·귀) ─────────
+   사용자: "실제로 사진을 재측정해서 채우는 걸 넣는게 나은거 같아. 반대쪽을 갖다 붙이니까 각도가 안맞아."
+   디버그 1208(긴 웨이브): 오른쪽 얼굴 감지 실패 → 왼쪽 52.5°를 거울로 −52.5° → 사진 대조 오른쪽만 넘침 9.3% · R +5.3cm.
+   ⚠ 실루엣 맞춤(정면·뒤 머리 영역으로 만든 덩어리를 옆 사진에 비춰 겹침 최대)은 이 데이터에서 실패 — 정면·뒤만으로는 깊이가 안 정해져
+     두 손님 모두 어느 쪽이든 16°(범위 끝)를 고름. 그래서 사진 자체의 해부학 기준점을 씀.
+   잼: PoseLandmarker(뒤 사진 귀 앵커에 이미 쓰는 그 모델 — 얼굴이 아니라 '사람'을 찾으므로 많이 돈 옆모습에서도 나옴)의 worldLandmarks(m · 카메라 축)
+     ⓐ 코 − 두 귀 가운데 = 얼굴 앞 방향 → yaw = atan2(x, −z) · ⓑ 왼귀 − 오른귀 = 귀 축 → yaw = atan2(z, x). 둘이 25° 안이면 코 2 : 귀 1로 섞음, 아니면 코만.
+   검증: 얼굴이 감지된(pnp) 반대쪽 사진에도 같은 걸 돌려 <b>배율 k = 실측 ÷ 포즈</b>를 잼(포즈가 덜·더 돌려 읽는 버릇). k가 0.7~1.4 밖이거나
+     부호가 실측과 반대면 그 포즈 값을 안 믿고 예전(거울)로. 반대쪽 실측이 없으면 k=1 · 'unchecked' 표시.
+   tier는 'none' 그대로(신뢰도 판정은 안 바꿈) — 각도만 바뀜. 끄기 SIDE_POSE_YAW.on=false (예전 거울) */
+const SIDE_POSE_YAW = { on: true, minK: 0.7, maxK: 1.4, mixMaxDeg: 25, minDeg: 12, maxDeg: 88, byAngle: {}, used: {}, _k: null };
+SIDE_POSE_YAW.fromWorld = function(w, lm){
+  if(!w || w.length < 9) return null;
+  const vis = (i)=> (lm && lm[i] && typeof lm[i].visibility === 'number') ? lm[i].visibility : 1;
+  const N = w[0], L = w[7], R = w[8];
+  if(!N || !L || !R) return null;
+  if(vis(0) < 0.3) return null;
+  const mx = (L.x + R.x)/2, mz = (L.z + R.z)/2;
+  const fx = N.x - mx, fz = N.z - mz;
+  if(!(Math.hypot(fx, fz) > 1e-4)) return null;
+  const yNose = Math.atan2(fx, -fz) * 180 / Math.PI;
+  const ex = L.x - R.x, ez = L.z - R.z;
+  const yEar = Math.hypot(ex, ez) > 1e-4 ? Math.atan2(ez, ex) * 180 / Math.PI : null;
+  let deg = yNose, how = '코';
+  if(yEar != null && Math.abs(yEar - yNose) <= SIDE_POSE_YAW.mixMaxDeg){ deg = (2 * yNose + yEar) / 3; how = '코·귀'; }
+  return { deg, yNose, yEar, how, vis: Math.min(vis(0), Math.max(vis(7), vis(8))) };
+};
+/* 사진 한 장 — 결과는 사진(dataUrl)과 묶어 둠(재촬영·삭제되면 자동으로 무효) */
+SIDE_POSE_YAW.measure = async function(angle){
+  try{
+    if(!SIDE_POSE_YAW.on || (angle !== 'left' && angle !== 'right')) return null;
+    const shot = _sidePoseShot(angle); if(!shot) return null;   // 키우기 전 원본(포즈는 몸·어깨가 보여야 잘 나옴)
+    const have = SIDE_POSE_YAW.byAngle[angle]; if(have && have.shot === shot) return have;
+    if(typeof ensurePoseLandmarker !== 'function') return null;
+    await ensurePoseLandmarker();
+    if(typeof poseLandmarkerState === 'undefined' || poseLandmarkerState !== 'ready' || !posePoseLandmarker) return null;
+    const img = await new Promise(res=>{ const im = new Image(); im.onload = ()=>res(im); im.onerror = ()=>res(null); im.src = shot; });
+    if(!img || _sidePoseShot(angle) !== shot) return null;
+    let r = null; try{ r = posePoseLandmarker.detect(img); }catch(e){ r = null; }
+    const w = r && r.worldLandmarks && r.worldLandmarks[0], lm = r && r.landmarks && r.landmarks[0];
+    const m = SIDE_POSE_YAW.fromWorld(w, lm);
+    const rec = { shot, m, at: Date.now() };
+    SIDE_POSE_YAW.byAngle[angle] = rec;
+    console.log('[각도 포즈] ' + angle + (m ? ' 포즈 yaw ' + m.deg.toFixed(1) + '° (' + m.how + ' · 코 ' + m.yNose.toFixed(1) + '°' + (m.yEar != null ? ' · 귀 ' + m.yEar.toFixed(1) + '°' : '') + ' · 보임 ' + m.vis.toFixed(2) + ')' : ' 포즈 못 잼(사람·코·귀 없음)'));
+    return rec;
+  }catch(e){ console.warn('[각도 포즈] 실패', e); return null; }
+};
+/* 이 칸의 사진 원본 — 03b 머리 키우기가 state.shots를 잘라 키운 사본으로 바꾸므로 그때는 키우기 전 사진(_zoomFrom)이 원본 */
+function _sidePoseShot(angle){
+  const cur = state.shots && state.shots[angle]; if(!cur) return null;
+  try{ if(state._zoomedShot && state._zoomedShot[angle] === cur && state._zoomFrom && state._zoomFrom[angle]) return state._zoomFrom[angle]; }catch(e){}
+  return cur;
+}
+function _sidePoseRec(angle){
+  const r = SIDE_POSE_YAW.byAngle[angle];
+  return (r && r.m && r.shot === _sidePoseShot(angle)) ? r.m : null;
+}
+/* 얼굴 감지 뒤 부름(05 촬영·업로드 검사 끝 · 03b 분석 단계) — 옆 사진 하나라도 얼굴이 없으면 그 사진과 반대쪽(배율 검증용)을 잼.
+   둘 다 얼굴이 있으면 아무것도 안 함(포즈 모델을 안 띄움). 같은 사진은 한 번만 잼. */
+SIDE_POSE_YAW.afterFace = async function(angle){
+  try{
+    if(!SIDE_POSE_YAW.on || (angle !== 'left' && angle !== 'right')) return;
+    const opp = angle === 'left' ? 'right' : 'left';
+    const noFace = (a)=> !!(state.shots && state.shots[a]) && !(state.landmarks && state.landmarks[a]);
+    if(noFace(angle)){ await SIDE_POSE_YAW.measure(angle); if(state.shots && state.shots[opp]) await SIDE_POSE_YAW.measure(opp); }
+    else if(noFace(opp)){ await SIDE_POSE_YAW.measure(angle); await SIDE_POSE_YAW.measure(opp); }
+  }catch(e){}
+};
+/* _rawViewYawDeg 폴백 — 실측 없는 옆 사진의 각도(없으면 null) */
+SIDE_POSE_YAW.yawFor = function(angle, measuredYawOf){
+  if(!SIDE_POSE_YAW.on) return null;
+  const me = _sidePoseRec(angle); if(!me) return null;
+  const sign = angle === 'left' ? 1 : -1;
+  const opp = angle === 'left' ? 'right' : 'left', om = _sidePoseRec(opp), oy = measuredYawOf(opp);
+  let k = 1, note = '반대쪽 검증 없음(unchecked)';
+  if(om && typeof oy === 'number' && Math.abs(oy) >= 10){
+    if(Math.sign(om.deg) !== Math.sign(oy) || Math.abs(om.deg) < 5){ SIDE_POSE_YAW._note = opp + ' 포즈 ' + om.deg.toFixed(1) + '° vs 실측 ' + oy.toFixed(1) + '° 부호/크기 안 맞음 — 포즈 안 믿음'; return null; }
+    k = Math.abs(oy) / Math.abs(om.deg);
+    if(k < SIDE_POSE_YAW.minK || k > SIDE_POSE_YAW.maxK){ SIDE_POSE_YAW._note = opp + ' 배율 ×' + k.toFixed(2) + ' (허용 ' + SIDE_POSE_YAW.minK + '~' + SIDE_POSE_YAW.maxK + ') — 포즈 안 믿음'; return null; }
+    note = opp + ' 실측 ' + oy.toFixed(1) + '° ÷ 포즈 ' + om.deg.toFixed(1) + '° = ×' + k.toFixed(2);
+  }
+  if(Math.sign(me.deg) !== sign){ SIDE_POSE_YAW._note = angle + ' 포즈 ' + me.deg.toFixed(1) + '° — 슬롯 방향과 반대 · 안 믿음'; return null; }
+  const deg = sign * Math.max(SIDE_POSE_YAW.minDeg, Math.min(SIDE_POSE_YAW.maxDeg, Math.abs(me.deg) * k));
+  const key = angle + '|' + deg.toFixed(1);
+  if(SIDE_POSE_YAW._k !== key){
+    SIDE_POSE_YAW._k = key;
+    const mir = (typeof oy === 'number') ? (-oy).toFixed(1) + '°' : '없음';
+    try{ console.log('[각도 포즈] ' + angle + ' 얼굴 실측 없음 → 포즈 ' + me.deg.toFixed(1) + '° × ' + k.toFixed(2) + ' = <b>' + deg.toFixed(1) + '°</b> (' + note + ' · 거울이었다면 ' + mir + ' · 끄기 SIDE_POSE_YAW.on=false)'); }catch(e){}
+  }
+  SIDE_POSE_YAW.used[angle] = { deg, k, pose: me.deg, note };
+  return deg;
+};
 const POSE_YAW_FIX = { on: false, from: 'nose' };   // 'nose'(랜드마크 실측) | 'gain'(상수배)
 function getViewYawDeg(angle){
   const raw = _rawViewYawDeg(angle);
@@ -493,6 +585,15 @@ function _rawViewYawDeg(angle){
      디버그 1012(긴 웨이브): 오른쪽 감지 실패 → −90° → 그 사진 윤곽이 엉뚱한 자리를 비춰 다시 기르기 가닥을 멈춤(카메라가 틀린 것이지 결 읽기 문제가 아님).
      실제 촬영은 24~55° 경사라 반대쪽 실측이 ±90°보다 훨씬 가까움. 신뢰도 등급(tier)은 'none' 그대로 — 다른 곳의 판정은 안 바뀜.
      끄기 YAW_MIRROR.on=false */
+  /* (2026-11-09) 거울보다 먼저 — 이 사진에서 포즈로 잰 각도(위 SIDE_POSE_YAW) */
+  if (angle === 'left' || angle === 'right') {
+    try {
+      const measuredOf = (a) => { const s = getViewPoseSource(a); return s.tier === 'pnp' ? s.lm.poseYawDeg : s.tier === 'approx' ? s.lm.yaw * 90 : s.tier === 'live' ? s.cap.yawDeg : null; };
+      const py = SIDE_POSE_YAW.yawFor(angle, measuredOf);
+      if (typeof py === 'number' && isFinite(py)) { if (YAW_MIRROR.used) delete YAW_MIRROR.used[angle]; return py; }
+      if (SIDE_POSE_YAW.used) delete SIDE_POSE_YAW.used[angle];
+    } catch (e) {}
+  }
   if (YAW_MIRROR.on && (angle === 'left' || angle === 'right')) {
     const opp = angle === 'left' ? 'right' : 'left', os = getViewPoseSource(opp);
     let oy = null;

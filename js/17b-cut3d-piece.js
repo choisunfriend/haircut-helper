@@ -2169,6 +2169,106 @@ var REGROW = (function () {
      *  ① 뿌리부터 — 어느 사진에서든 머리 영역에서 여유(hullMarginCm·hullMarginSideCm) 넘게 밖인 첫 점에서 자름(여유 안이면 살림)
      *  ② 살아남은 가닥 끝 — 끝에서부터 영역 밖(여유 안)인 점을 잘라 영역 경계 안에서 끝나게. 끄기 REGROW.finalClip=false */
     var fcStat = { n: 0, cut: 0, cutPts: 0, tail: 0, tailPts: 0 }; G.fcStat = fcStat;
+    /* (2026-11-09) 잔결 걷어내기 — 사용자: "결읽기자체강화와 그대로 그리기" · 영상: 사진은 매끈한 웨이브(여)·짧은 직모(남)인데 3D가 자글자글한 크림프
+     *  디버그 1208(여)·1210(남) 실측: 그린 가닥을 사진에 비추면 결과의 각도 오차는 작음(3~5°) — 사진 결을 충실히 따라감. 그런데 비춘 가닥의 꺾임이
+     *    <b>스무딩 안 한 결 필드</b>와 같음(여 옆 2.5 vs 2.4°/px · 남 3.8 vs 3.7) = 머리카락 결이 아니라 칸 단위 잡음까지 그림.
+     *    같은 가닥을 0.3cm로 재면 34°/cm(여)·59°/cm(남), 2.4cm로 재면 10.7·17.4 — 진짜 굴곡이면 재는 간격에 따라 이렇게 안 줄어듦.
+     *  ① 접선 Taubin(λ0.5/μ−0.53 · 2번) — 점 2~3개 주기(지그재그)만 지움. 실측: 여 0.3cm 34.8→17.9 · 2.4cm 10.7→10.3 · 4.8cm 7.2→6.9(웨이브 남음)
+     *  ② 사진 결이 흐린 손님만(결 또렷함 중앙 dn.cohHi 0.70 아래) 가우스 — σ = sigMaxCm × (cohHi−coh)/(cohHi−cohLo). 남(0.51) σ≈0.95cm: 0.3cm 58.7→16.2 · 4.8cm 10.6→10.2
+     *     여(0.78)는 0 — 깨끗한 사진의 굴곡은 손대지 않음. 흐린 사진은 그 크기의 굴곡을 사진이 애초에 못 담음(남: 머리 폭 150px · JPEG 블록 1.46).
+     *  뿌리 마디 방향·마디 길이는 그대로(가닥 길이 불변) · 위치를 새 점으로 만듦(조각과 점을 같이 쓰는 경우가 있어 원본 점은 안 건드림) · 이 뒤에 마지막 다듬기가 그대로 걸림.
+     *  끄기 REGROW.dn.on=false 또는 ?dn=0 · 세기 REGROW.dn.passes / .sigMaxCm */
+    var DN = G.dn || (G.dn = { on: !(typeof location !== 'undefined' && /[?&]dn=0\b/.test(location.search)), passes: 2, lam: 0.5, mu: -0.53, cohHi: 0.70, cohLo: 0.50, sigMaxCm: 1.0, coarseCm: 2.4 });
+    var dnStat = { n: 0, fineB: 0, fineA: 0, coarseB: 0, coarseA: 0, smp: 0, coh: null, sigCm: 0, cpu: 0, cohBy: {} }; G.dnStat = dnStat;
+    var dnReady = false;
+    function dnSetup() {
+      if (dnReady) return; dnReady = true;
+      var all = [];
+      cams.forEach(function (cam) {
+        if (!cam.ori) return; var st = Math.max(2, cam.iw / 120), x, y, sm, one = [];
+        for (y = st / 2; y < cam.ih; y += st) for (x = st / 2; x < cam.iw; x += st) {
+          if (!(cam.smp.at(x, y) > 0)) continue;
+          try { sm = sampleOrientation(cam.ori, x * cam.kx, cam.mw, y * cam.ky); } catch (e) { sm = null; }
+          if (sm && isFinite(sm.coherence)) { all.push(sm.coherence); one.push(sm.coherence); }
+        }
+        if (one.length) { one.sort(function (a, b) { return a - b; }); dnStat.cohBy[cam.angle] = one[one.length >> 1]; }
+      });
+      all.sort(function (a, b) { return a - b; });
+      dnStat.coh = all.length ? all[all.length >> 1] : 1;
+      var cpu = 19; try { cpu = (typeof modelCmPerUnit === 'function' && modelCmPerUnit()) || 19; } catch (e) {}
+      dnStat.cpu = cpu;
+      dnStat.sigCm = DN.sigMaxCm * Math.max(0, Math.min(1, (DN.cohHi - dnStat.coh) / Math.max(1e-3, DN.cohHi - DN.cohLo)));
+    }
+    function dnTurn(P, coarseU) {          // [점 단위 꺾임 °/cm, coarseU 간격 꺾임 °/cm]
+      var n = P.length, i, f = 0, Lt = 0, ax, ay, az, bx, by, bz, al, bl, px = 0, py = 0, pz = 0, has = false;
+      for (i = 1; i < n; i++) {
+        ax = P[i].x - P[i - 1].x; ay = P[i].y - P[i - 1].y; az = P[i].z - P[i - 1].z; al = Math.hypot(ax, ay, az); if (!(al > 1e-12)) continue;
+        ax /= al; ay /= al; az /= al; Lt += al;
+        if (has) f += Math.acos(Math.max(-1, Math.min(1, ax * px + ay * py + az * pz)));
+        px = ax; py = ay; pz = az; has = true;
+      }
+      // 굵은 간격: 호길이 coarseU마다 점을 골라 그 사이 꺾임
+      var Q = [P[0]], acc = 0, c = 0, Lc = 0;
+      for (i = 1; i < n; i++) { acc += Math.hypot(P[i].x - P[i - 1].x, P[i].y - P[i - 1].y, P[i].z - P[i - 1].z); if (acc >= coarseU) { Q.push(P[i]); acc = 0; } }
+      for (i = 2; i < Q.length; i++) {
+        ax = Q[i - 1].x - Q[i - 2].x; ay = Q[i - 1].y - Q[i - 2].y; az = Q[i - 1].z - Q[i - 2].z; al = Math.hypot(ax, ay, az);
+        bx = Q[i].x - Q[i - 1].x; by = Q[i].y - Q[i - 1].y; bz = Q[i].z - Q[i - 1].z; bl = Math.hypot(bx, by, bz);
+        if (al > 1e-12 && bl > 1e-12) { c += Math.acos(Math.max(-1, Math.min(1, (ax * bx + ay * by + az * bz) / (al * bl)))); Lc += bl; }
+      }
+      return [Lt > 0 ? f / Lt : 0, Lc > 0 ? c / Lc : -1];
+    }
+    function denoiseStrand(sdd) {
+      if (!DN.on) return;
+      var p = sdd && sdd.pts, n = p ? p.length : 0; if (n < 5) return;
+      dnSetup();
+      var m = n - 1, U = new Float64Array(m * 3), Ln = new Float64Array(m), T = new Float64Array(m * 3), i, k, ax, ay, az, al, Ls = [];
+      for (i = 0; i < m; i++) {
+        ax = p[i + 1].x - p[i].x; ay = p[i + 1].y - p[i].y; az = p[i + 1].z - p[i].z; al = Math.hypot(ax, ay, az); Ln[i] = al;
+        if (al > 1e-12) { U[3 * i] = ax / al; U[3 * i + 1] = ay / al; U[3 * i + 2] = az / al; Ls.push(al); }
+        else if (i) { U[3 * i] = U[3 * i - 3]; U[3 * i + 1] = U[3 * i - 2]; U[3 * i + 2] = U[3 * i - 1]; }
+        else { U[1] = -1; }
+      }
+      if (!Ls.length) return;
+      function norm(A) { for (var j = 0; j < m; j++) { var l = Math.hypot(A[3 * j], A[3 * j + 1], A[3 * j + 2]); if (l > 1e-12) { A[3 * j] /= l; A[3 * j + 1] /= l; A[3 * j + 2] /= l; } } }
+      // ① Taubin — 뿌리 마디(0)는 고정 · 끝 마디는 한쪽 이웃만
+      var pass, fi, fs = [DN.lam, DN.mu], d;
+      for (pass = 0; pass < DN.passes; pass++) for (fi = 0; fi < 2; fi++) {
+        for (i = 1; i < m; i++) for (d = 0; d < 3; d++) {
+          var lap = i < m - 1 ? 0.5 * (U[3 * (i - 1) + d] + U[3 * (i + 1) + d]) - U[3 * i + d] : U[3 * (i - 1) + d] - U[3 * i + d];
+          T[3 * i + d] = U[3 * i + d] + fs[fi] * lap;
+        }
+        T[0] = U[0]; T[1] = U[1]; T[2] = U[2];
+        U.set(T); norm(U);
+      }
+      // ② 흐린 사진 — 가우스(마디 수로 바꾼 σ)
+      if (dnStat.sigCm > 0.05) {
+        Ls.sort(function (a, b) { return a - b; });
+        var sp = dnStat.sigCm / dnStat.cpu / Ls[Ls.length >> 1];
+        if (sp >= 0.5) {
+          var r = Math.min(m, Math.ceil(2.5 * sp)), w = [], j;
+          for (k = -r; k <= r; k++) w.push(Math.exp(-0.5 * (k / sp) * (k / sp)));
+          for (i = 1; i < m; i++) {
+            var sx = 0, sy = 0, sz = 0;
+            for (k = -r; k <= r; k++) { j = i + k; if (j < 0 || j >= m) continue; sx += w[k + r] * U[3 * j]; sy += w[k + r] * U[3 * j + 1]; sz += w[k + r] * U[3 * j + 2]; }
+            T[3 * i] = sx; T[3 * i + 1] = sy; T[3 * i + 2] = sz;
+          }
+          T[0] = U[0]; T[1] = U[1]; T[2] = U[2];
+          U.set(T); norm(U);
+        }
+      }
+      // 다시 잇기 — 뿌리 고정 · 마디 길이 그대로
+      var out = new Array(n), qx = p[0].x, qy = p[0].y, qz = p[0].z;
+      out[0] = { x: qx, y: qy, z: qz };
+      for (i = 0; i < m; i++) { qx += U[3 * i] * Ln[i]; qy += U[3 * i + 1] * Ln[i]; qz += U[3 * i + 2] * Ln[i]; out[i + 1] = { x: qx, y: qy, z: qz }; }
+      try { if (p._rgKeep) out._rgKeep = true; if (p._rgCopy) out._rgCopy = true; } catch (e) {}
+      dnStat.n++;
+      if (dnStat.n % 9 === 0) {
+        var cu = DN.coarseCm / dnStat.cpu, b = dnTurn(p, cu), a2 = dnTurn(out, cu), rad = 180 / Math.PI / dnStat.cpu;
+        dnStat.smp++; dnStat.fineB += b[0] * rad; dnStat.fineA += a2[0] * rad;
+        if (b[1] >= 0 && a2[1] >= 0) { dnStat.coarseN = (dnStat.coarseN || 0) + 1; dnStat.coarseB += b[1] * rad; dnStat.coarseA += a2[1] * rad; }
+      }
+      sdd.pts = out;
+    }
     /* (2026-11-08f) 살아 있는 점 = 보이는 사진 중 하나라도 머리 — 사용자: "점마다 판정해서 살아있는 점이면(가닥 중 일부 가려진 부분이 있더라도) 그 가닥을 살리라고 했는데"
        예전: 마주 보는(카메라 쪽) 사진이 <b>모두</b> 머리여야 살아 있음 → 한 장이 각도 어긋남·얼굴 뒤라 "머리 아님"이면 그 점이 죽음
          (13:53 웨이브: 정면 뿌리 가닥 921개 중 652개가 15cm 못 감 · 끝 1cm 앞을 왼쪽 사진 59%가 머리 아님, 정면 사진은 30%).
@@ -3595,6 +3695,7 @@ var REGROW = (function () {
               var sdd = grow(cell);
               if (!sdd) continue;
               if (G.strandCopy && G.copyEarly === false && SF && SF.strc && sdd.pts && sdd.pts.length) { var cp = copyFromStrands(sdd.pts[0]); if (cp) { sdd.pts = cp; if (sdd.rg) sdd.rg.copy = 1; } }   // (2026-11-03) 정리된 사진 가닥 그대로
+              try { denoiseStrand(sdd); } catch (eDn) { dnStat.err = String(eDn && eDn.message || eDn); }   // (2026-11-09) 잔결 걷어내기 — 위 DN
               if (G.finalClip !== false && sdd.pts && sdd.pts.length >= 3) finalClip(sdd);   // (2026-11-03u) 모든 가닥 — 아래 finalClip
               if (sdd._skinDrop) { st.skinDrop = (st.skinDrop || 0) + 1; continue; }   // (2026-11-08b) 뿌리 구간이 보이는 맨살 위 — 안 그림
               out.push(sdd); st.n++;
@@ -4779,6 +4880,13 @@ function helixMeasure(rgba,mask,W,H,angle,coh,opt){opt=opt||{};const n=opt.n||25
     L.push('  두피 밖 3D 방향(사진 두 장 이상의 결로 깊이까지): ' + (G.tri3D ? '켜짐 — 그렇게 정한 걸음 ' + (s.triN || 0) + '회 (끄기 REGROW.tri3D=false)' : '꺼짐'));
     L.push('  두피 밖 결 = 사진 평면 풀이(한 장: 사진 결 + 깊이는 직전 방향·중력 ' + (+G.lsDownK || 0) + ' 섞음 · 두 장 이상: 평면 교선 · 반지름 방향 막지 않음): ' + (G.lsFree ? '켜짐 — 그렇게 정한 걸음 ' + (s.lsN || 0) + '회 (끄기 ?lsfree=0)' : '꺼짐(예전: 원통 접선으로 올림)'));
     L.push('  머리 영역 판정: ' + (G.hullRule === 'facing' ? '마주 보는 사진 한 장이 안·밖 + 다른 사진(가리지 않은 반대편 포함)은 여유 넘게 밖일 때만 거부 — 덩어리 칸 중 다른 사진이 거부한 칸 ' + (G._facingVeto || 0) + ' · 얼굴 위 여유 없이 밖으로 본 칸 ' + (G._faceNoMarginN || 0) + ' · 옆 사진 얼굴 쪽 여유 ' + (G.sideFrontMarginCm != null ? G.sideFrontMarginCm + 'cm로 밖으로 본 횟수 ' + (G._sideFrontN || 0) + ' (되돌리기 REGROW.sideFrontMarginCm=null)' : '꺼짐') + ' (되돌리기 REGROW.hullRule=\'front\' · REGROW.faceNoMargin=false)' : G.hullRule) + ' · 얼굴 어림 안쪽 점 ' + (G.faceInsideBlocks === true ? '가림으로 봄' : '보이는 걸로 봄'));   // (2026-10-28)
+    try { var dS = G.dnStat, dC = G.dn; if (dS) { var byC = Object.keys(dS.cohBy || {}).map(function (a) { return a + ' ' + dS.cohBy[a].toFixed(2); }).join(' · ');
+      L.push('  잔결 걷어내기(가닥을 따라 · 뿌리·마디 길이 그대로): ' + (!dC || !dC.on ? '꺼짐(켜기 REGROW.dn.on=true)' : '가닥 ' + dS.n + ' · Taubin ' + dC.passes + '번(점 2~3개 주기 지그재그)'
+        + ' · 사진 결 또렷함 중앙 ' + (dS.coh != null ? dS.coh.toFixed(2) : '?') + (byC ? '(' + byC + ')' : '')
+        + ' → 가우스 ' + (dS.sigCm > 0.05 ? 'σ ' + dS.sigCm.toFixed(2) + 'cm(흐린 사진 — ' + dC.cohHi + ' 아래)' : '안 함(깨끗한 사진 — 굴곡 그대로)')
+        + (dS.smp ? ' · 꺾임 점 단위 ' + (dS.fineB / dS.smp).toFixed(1) + '→' + (dS.fineA / dS.smp).toFixed(1) + '°/cm' : '')
+        + (dS.coarseN ? ' · ' + dC.coarseCm + 'cm 간격(굴곡) ' + (dS.coarseB / dS.coarseN).toFixed(1) + '→' + (dS.coarseA / dS.coarseN).toFixed(1) + '°/cm — 이게 크게 줄면 굴곡을 편 것' : '')
+        + (dS.err ? ' · ⚠ ' + dS.err : '') + ' (끄기 ?dn=0 · REGROW.dn.passes/.sigMaxCm)')); } } catch (eD) {}
     try { var fcS = G.fcStat; L.push('  마지막 다듬기(모든 가닥 · 마주 보는 사진은 머리 아니면 밖 · 반대쪽 사진은 배경일 때만 밖): ' + (G.finalClip === false ? '꺼짐' : fcS ? '가닥 ' + fcS.n + ' 중 여유 넘게 나가 자른 ' + fcS.cut + '(점 ' + fcS.cutPts + ') · 끝이 영역 밖이라 경계에서 끝낸 ' + fcS.tail + '(점 ' + fcS.tailPts + ')' + (G.clipPointwise !== false ? ' · <b>점마다 판단</b>: 마지막으로 살아 있는 점까지 남김 — 중간에 밖으로 나갔다 돌아와 살린 가닥 ' + (fcS.keepMid || 0) + '(점 ' + (fcS.keepMidPts || 0) + ' · 되돌리기 REGROW.clipPointwise=false)' : '') + (G.clipStrict !== false && G.clipPointwise === false ? ' · 영역 안에 들어간 뒤 밖으로 나가 그 자리에서 자른 ' + (fcS.strict || 0) + '(점 ' + (fcS.strictPts || 0) + ' · 되돌리기 REGROW.clipStrict=false)' : '') : '아직') + ' (끄기 REGROW.finalClip=false)'); } catch (eF) {}
     try { var du = G.drawUnusedStat; L.push('  안 쓴 사진 조각 그대로 그리기: ' + (!du ? '-' : !du.on ? '꺼짐' : du.err ? '실패 ' + du.err : '조각 ' + du.pieces + ' 중 통째로 ' + du.whole + ' · 안 그린 앞부분 ' + du.head + ' · 점 ' + du.pts + ' · 다듬기에 잘린 ' + du.clipped) + ' (끄기 REGROW.drawUnused=false) · 점 판정: 보이는 사진 중 하나라도 머리면 살림 ' + (G.anyHairAlive === false ? '꺼짐' : '켜짐 — 다른 사진이 밖이라 했지만 살린 판정 ' + (G._aliveAny || 0) + ' · 가장 정면 사진이 맨살이라 밖 ' + (G._fcSkin || 0)) + ' (되돌리기 REGROW.anyHairAlive=false)'); } catch (eS) {}
     try { var fcK = G.fcStat; if (fcK) L.push('  보이는 맨살 위(마주 보는 사진 · 머리 영역에서 ' + G.skinTolCm + 'cm 넘게): 투표에서 밖 ' + (G._skinNoMarginN || 0) + ' · 뿌리 구간이 맨살 위라 안 그린 가닥 ' + (fcK.skinRoot || 0) + ' · 가운데 구간이 맨살 위로 나가 거기서 끝낸 가닥 ' + (fcK.skinMid || 0) + '(점 ' + (fcK.skinMidPts || 0) + ') (끄기 REGROW.skinNoMargin=false)'); } catch (eK) {}

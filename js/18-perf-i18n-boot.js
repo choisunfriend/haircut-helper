@@ -136,7 +136,8 @@ function posePanelLines(){
       + ' yaw ' + (yaw == null ? '—' : yaw.toFixed(1) + '°')
       + (conf == null ? '' : ' · 신뢰도 ' + conf.toFixed(2))
       + (tier === 'pnp' ? '' : '  ← 실측 아님')
-      + ((typeof YAW_MIRROR !== 'undefined' && YAW_MIRROR.used && YAW_MIRROR.used[a] != null) ? ' · 반대쪽 실측을 거울로(폴백 · 끄기 YAW_MIRROR.on=false)' : ''));
+      + ((typeof SIDE_POSE_YAW !== 'undefined' && SIDE_POSE_YAW.used && SIDE_POSE_YAW.used[a] != null) ? ' · 이 사진 포즈(코·귀)로 잼 ×' + SIDE_POSE_YAW.used[a].k.toFixed(2) + '(' + SIDE_POSE_YAW.used[a].note + ' · 끄기 SIDE_POSE_YAW.on=false)' : '')
+      + ((typeof YAW_MIRROR !== 'undefined' && YAW_MIRROR.used && YAW_MIRROR.used[a] != null) ? ' · 반대쪽 실측을 거울로(폴백 · 끄기 YAW_MIRROR.on=false)' + ((typeof SIDE_POSE_YAW !== 'undefined' && SIDE_POSE_YAW._note) ? ' — 포즈를 안 쓴 이유: ' + SIDE_POSE_YAW._note : '') : ''));
   }
   return out;
 }

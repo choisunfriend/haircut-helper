@@ -1412,6 +1412,8 @@ async function checkCaptureLandmarks(angle){
       ? `⚠ 후면 랜드마크 감지 실패 — 이 상태로도 진행은 되지만(추정치 폴백) 뒤통수를 살짝 돌려 귀·턱 라인이 걸리면 3D가 더 정확해져요`
       : `⚠ ${ANGLE_LABELS[angle]} 랜드마크 감지 실패 — 눈·코 라인이 살짝 보이는 각도로 다시 촬영하면 3D 정확도가 올라가요`);
   }
+  // (2026-11-09) 옆 사진 얼굴이 없으면 그 사진에서 포즈로 각도를 잼(01 SIDE_POSE_YAW — 거울 대신)
+  try{ if(typeof SIDE_POSE_YAW !== 'undefined' && state.shots[angle] === shotAtStart) await SIDE_POSE_YAW.afterFace(angle); }catch(e){}
   updateAngleUI();
 }
 

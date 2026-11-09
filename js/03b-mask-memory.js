@@ -675,6 +675,8 @@ async function extractHairMaskCore(angle){
       ANALYSIS_TIME.mark(angle, 'face', performance.now() - _tF);
     }
   }
+  // (2026-11-09) 옆 사진 얼굴이 없으면 포즈로 각도를 잼(01 SIDE_POSE_YAW) — 촬영 때 못 쟀거나 사진을 불러온 경우 · 같은 사진이면 다시 안 잼
+  try{ if(typeof SIDE_POSE_YAW !== 'undefined') await SIDE_POSE_YAW.afterFace(angle); }catch(e){}
   try{ if(typeof showAI === 'function' && typeof ANGLE_LABELS !== 'undefined') showAI('머리카락 추출 중…', (ANGLE_LABELS[angle] || angle) + ' 처리 중'); }catch(e){}   // (2026-10-25f) 안내를 실제 단계로
   const dataUrl = state.shots[angle];
   if(!dataUrl || !segmenter) return false;
