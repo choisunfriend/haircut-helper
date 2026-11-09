@@ -1365,7 +1365,7 @@ var PHOTO_CHECK = (function () {
     on: true,
     exportCols: 480,    // (2026-10-10a) 내보내기에 싣는 사진 칸(머리 영역·결) — 경계를 보려고 비교 칸보다 촘촘히
     cols: 200,          // 비교 칸: 사진 가로를 이 수로 나눔(800px 사진이면 칸 4px)
-    tolCm: 0,           // 넘침·빔으로 치지 않는 여유 — (2026-11-09) 0.6 → 0. 사용자: "대조화면도 그렇고 다 0으로" (원본 사진이라 여유가 필요 없음 · 문제는 생성 사진 쪽)
+    tolCm: 0.6,         // 넘침·빔으로 치지 않는 여유(윤곽선 근처의 이 두께는 같다고 봄)
     extRun: 3,          // 윤곽 끝(위/아래/좌/우)을 잴 때 그 줄에 머리 칸이 이만큼은 있어야 끝으로 침(한두 가닥은 무시)
     skip: [],           // 대조·잘라내기에서 뺄 사진(angle 이름)
     trim: true,         // 윤곽 밖 잘라내기 — (2026-11-09) 기본 켬. 사용자: "영역밖으로 나가는 헤어들은 다 잘라줘"
@@ -1373,7 +1373,7 @@ var PHOTO_CHECK = (function () {
     trimMode: 'split',  // (2026-11-09) 'split' = 어느 사진에서든 영역 밖인 구간만 걷어 냄 — 뿌리부터 밖이면 뿌리째 · 나갔다 다시 들어오는 구간(가슴 앞 긴 웨이브)은 남은 조각으로 살림
                         //   'tail' = 예전(첫 이탈에서 끝까지 · trimOut/trimTail 여유) · 되돌리기 PHOTO_CHECK.trimMode='tail'; PHOTO_CHECK.trimTolCm=1.0; PHOTO_CHECK.refresh()
     trimMinPts: 4,      // split: 이보다 짧은 가운데 조각은 버림(뿌리 조각은 2점부터 남김)
-    trimTolCm: 0,       // 잘라낼 때의 여유 — (2026-11-09) 1.0 → 0: 대조(tolCm)와 같게 · 영역 경계에서 바로 자름
+    trimTolCm: 0.6,     // 잘라낼 때의 여유 — (2026-11-09) 1.0 → 0.6: 대조(tolCm)와 같아야 대조의 빨강이 0이 됨
     trimOut: 0.08,      // 밖으로 이 길이(모델 단위 ≈ 1.5cm) 넘게 나가면 나간 자리에서 자름(나갔다 돌아오는 고리 포함)
     trimTail: 0.03,     // 밖에서 끝난 꼬리가 이 길이(≈ 0.6cm) 이상이면 자름
     keepPts: 3,
@@ -1409,7 +1409,7 @@ var PHOTO_CHECK = (function () {
   function prepCam(cam, env, cfg, tolCm) {
     var cols = Math.max(40, cfg.cols | 0), cell = cam.iw / cols, gw = cols, gh = Math.max(1, Math.ceil(cam.ih / cell)), N = gw * gh, M = new Uint8Array(N), x, y, n = 0;
     for (y = 0; y < gh; y++) for (x = 0; x < gw; x++) if (cam.smp.at((x + 0.5) * cell, (y + 0.5) * cell) > 0) { M[y * gw + x] = 1; n++; }
-    var cellCm = cell * cam.s * env.cm, tol = tolCm > 0 ? Math.max(1, Math.round(tolCm / Math.max(1e-6, cellCm))) : 0;   // (2026-11-09) 여유 0이면 팽창 없음(예전엔 최소 1칸)
+    var cellCm = cell * cam.s * env.cm, tol = Math.max(1, Math.round(tolCm / Math.max(1e-6, cellCm)));
     return { cam: cam, cell: cell, gw: gw, gh: gh, M: M, nPhoto: n, cellCm: cellCm, tol: tol, MD: dilate(M, gw, gh, tol) };
   }
   function dilate(A, gw, gh, r) {            // 네모 팽창(가로·세로 따로)
