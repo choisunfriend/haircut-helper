@@ -2084,7 +2084,11 @@ async function buildRealFaceMeshBase(faceMetrics){
      되돌리기: FACE_RULER_FIT.on = false (산술까지 예전과 동일) */
   const FACE_RULER_FIT = {
     on: true,          // false면 예전과 <b>산술까지 동일</b> — 이게 되돌리기다
-    browBlend: true,   // true=이마만 · false=얼굴 전체를 두개골 자로
+    /* (2026-11-09c) true → false — 얼굴 전체(관자놀이·뺨·턱까지)를 두개골 자로. 사용자: "다른 넓게 퍼진 머리를 가진 손님이 찍혔을 때 얼굴 떨어질까봐"
+       이마만 섞으면 눈썹 아래는 머리카락 헐 폭(ELL_A)을 기준면으로 씀 — 웨이브 헐 0.593 = 얼굴 반폭 0.366의 1.62배 → 관자놀이·뺨 기준면이 두개골보다 넓고 앞으로 펴져 판때기처럼 뜸.
+       11/7까지는 HEAD_WIDTH_GUARD(헐 폭을 얼굴×1.15로 자름 · 11/8 끈 가림 장치)가 이걸 가렸음. 얼굴은 머리카락이 아니니 헐을 안 씀.
+       머리가 두상에 붙은 손님은 헐≈두개골이라 거의 그대로. 되돌리기 FACE_RULER_FIT.browBlend=true */
+    browBlend: false,  // true=이마만 · false=얼굴 전체를 두개골 자로
     fullFrac: 0.15,    // 얼굴 y범위의 위 15%까지는 두개골 자 100% (SCALP_SEAM.bandFrac과 같은 자)
     zeroFrac: 0.45,    // 위에서 45% 아래부터는 옛 자 100% — 대략 눈썹~눈 사이
     edgeT:    0.94,    // 테두리 접선 연장 시작점 (t=√inside)

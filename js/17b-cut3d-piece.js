@@ -2902,6 +2902,56 @@ var REGROW = (function () {
        고침: 모델 앞쪽(z>0) 두피 칸 중 정면 사진에 되쏜 자리가 <b>이마 랜드마크 맨 위(foreheadY)보다 위</b>면 두피다 → (밀도 0이면 머리 칸 중앙값으로 채우고)
        그 뿌리는 두피 위를 기는 첫 hairlineFreeCm(6cm) 동안 머리 영역 판정을 안 받는다(정면 사진이 그 자리를 맨살로 보니 바로 끊기므로).
        되돌리기 REGROW.hairlineFill = false */
+    /* (2026-11-09c) [앞 헤어라인 대조] 재기만 함(모양 안 바꿈) — 웨이브·단발 앞머리·관자놀이 뿌리가 비는 원인 확인용.
+     *  디버그 1639·1642를 되쏴 보니 앞 두피 칸(phi 0.45~0.95)이 정면 사진에선 이마(머리 아님)에 찍혀, 마주 보는 사진 판정에서 뿌리째 빠짐(옆 사진은 머리).
+     *  두피면이 사진보다 아래(또는 헤어라인이 두피면에서 너무 높이)에 놓였다는 뜻인지, 줄로 확인: 사진 가운데 줄의 머리 위끝·이마 시작·눈 행 vs 두피면 phi별 행. 끄기 REGROW.hlDiag=false */
+    G.hlDiagTxt = null;
+    if (G.hlDiag !== false) try {
+      var _lmD = state.landmarks && state.landmarks.front, _cF = null;
+      cams.forEach(function (c) { if (c.angle === 'front') _cF = c; });
+      if (_cF) {
+        var _cxD = Math.round(proj(_cF, { x: 0, y: CY, z: Es.c }).ix);
+        var _rows = [], _dx, _top, _fh, _yy;
+        [-12, 0, 12].forEach(function (dx) {
+          _top = -1; _fh = -1;
+          for (_yy = 0; _yy < _cF.ih; _yy++) { var hh = hairAt(_cF, _cxD + dx, _yy); if (_top < 0) { if (hh) _top = _yy; } else if (!hh) { _fh = _yy; break; } }
+          _rows.push({ top: _top, fh: _fh });
+        });
+        var _fhRow = _rows.map(function (r) { return r.fh; }).filter(function (v) { return v > 0; }).sort(function (a, b) { return a - b; })[0];
+        var _topRow = _rows.map(function (r) { return r.top; }).filter(function (v) { return v >= 0; }).sort(function (a, b) { return a - b; })[0];
+        var _phRow = [], _cross = null, _prevY = null, _ph;
+        for (_ph = 0; _ph <= 1.6001; _ph += 0.05) {
+          var _oy = proj(_cF, { x: 0, y: CY + Es.b * Math.cos(_ph), z: Es.c * Math.sin(_ph) }).iy;
+          if (Math.abs(_ph * 10 - Math.round(_ph * 10)) < 1e-6 && Math.round(_ph * 10) % 3 === 0) _phRow.push('phi' + _ph.toFixed(1) + '→' + Math.round(_oy));
+          if (_cross == null && _fhRow > 0 && _oy >= _fhRow) _cross = _ph;
+        }
+        var _eyeRow = (_lmD && isFinite(_lmD.eyeY)) ? Math.round(_lmD.eyeY * _cF.ih) : null, _fhLm = (_lmD && isFinite(_lmD.foreheadY)) ? Math.round(_lmD.foreheadY * _cF.ih) : null;
+        var _cmU = 18.6; try { _cmU = modelCmPerUnit() || _cmU; } catch (e) {} var _cmRow = (_cF.sy || _cF.s) * _cmU;   // 사진 1행 = cm (정사영 자)
+        /* 앞·관자놀이 두피 칸 중 뿌리 자리(두께 절반 위)를 정면 사진이 머리 아님으로 보는 칸 */
+        var _nFT = 0, _offF = 0, _offSide = 0;
+        for (var _ci = 0; _ci < NC; _ci++) {
+          if (offScalp(_ci) || !(roots.den[_ci] > bald)) continue;
+          var _ph2 = ((_ci / NT | 0) + 0.5) / NP * Math.PI, _th2 = ((_ci % NT) + 0.5) / NT * 2 * Math.PI - Math.PI;
+          var _F = { x: Es.a * Math.sin(_ph2) * Math.sin(_th2), y: CY + Es.b * Math.cos(_ph2), z: Es.c * Math.sin(_ph2) * Math.cos(_th2) };
+          var _sc = null; try { _sc = resolveSection3D(_F, CY, Es.b); } catch (e) {}
+          if (_sc !== 'front' && _sc !== 'temple') continue;
+          _nFT++;
+          var _n = normalAt(_F), _h = 0.5 * thickAt(_F), _P = { x: _F.x + _n.x * _h, y: _F.y + _n.y * _h, z: _F.z + _n.z * _h };
+          var _o = { ix: 0, iy: 0 }; var _oo = proj(_cF, _P); _o.ix = _oo.ix; _o.iy = _oo.iy;
+          if (_o.ix >= 0 && _o.iy >= 0 && _o.ix < _cF.iw && _o.iy < _cF.ih && !hairAt(_cF, _o.ix, _o.iy)) _offF++;
+          var _sideOK = false; cams.forEach(function (c) { if (c.angle === 'left' || c.angle === 'right') { var o2 = proj(c, _P); if (o2.z >= 0 && o2.ix >= 0 && o2.iy >= 0 && o2.ix < c.iw && o2.iy < c.ih && hairAt(c, o2.ix, o2.iy)) _sideOK = true; } });
+          if (_sideOK && _o.ix >= 0 && _o.iy >= 0 && _o.ix < _cF.iw && _o.iy < _cF.ih && !hairAt(_cF, _o.ix, _o.iy)) _offSide++;
+        }
+        G.hlDiagTxt = '  [앞 헤어라인 대조] 정면 사진 가운데 줄(x ' + _cxD + '±12px): 머리 위끝 ' + _topRow + '행 · 이마 시작(헤어라인) ' + (_fhRow || '-') + '행'
+          + (_eyeRow != null ? ' · 눈 ' + _eyeRow + '행' : '') + (_fhLm != null ? ' · 이마 랜드마크 맨 위 ' + _fhLm + '행' : '')
+          + ' | 두피면(가운데 앞면) ' + _phRow.join(' ') + ' → 사진 헤어라인에 닿는 phi ' + (_cross != null ? _cross.toFixed(2) : '-') + '(사람이면 ≈0.9~1.1)'
+          + (_fhRow > 0 && _topRow >= 0 ? ' · 사진에서 머리 위끝→헤어라인 ' + ((_fhRow - _topRow) * _cmRow).toFixed(1) + 'cm' : '')
+          + (_fhRow > 0 && _eyeRow != null ? ' · 헤어라인→눈 ' + ((_eyeRow - _fhRow) * _cmRow).toFixed(1) + 'cm' : '')
+          + '\n    앞·관자놀이 두피 칸(밀도 있음) ' + _nFT + ' 중 뿌리 자리가 정면 사진에서 머리 아님 ' + _offF + '(' + Math.round(_offF / Math.max(1, _nFT) * 100) + '%) · 그중 옆 사진은 머리라고 함 ' + _offSide
+          + ' — 이 %가 크고 phi가 0.9보다 한참 작으면 두피면이 사진보다 아래에 놓인 것(끄기 REGROW.hlDiag=false)';
+        console.log('[다시 기르기]' + G.hlDiagTxt);
+      }
+    } catch (e) { G.hlDiagTxt = '  [앞 헤어라인 대조] 실패 ' + (e && e.message); }
     var hlFill = (G.hairlineFill !== false && roots._hlFill) ? roots._hlFill : null; G.hairlineFillN = hlFill ? roots._hlFillN : 0;   // 두 번째 기르기부터는 처음 채운 표를 그대로(밀도는 이미 채워져 있음)
     if (G.hairlineFill !== false && !hlFill) try {
       var lmF = state.landmarks && state.landmarks.front, camF = null;
@@ -4853,6 +4903,7 @@ function helixMeasure(rgba,mask,W,H,angle,coh,opt){opt=opt||{};const n=opt.n||25
     var s = G.stats, L = ['[다시 기르기] ' + (G.on ? '켜짐' : '꺼짐') + (G.building ? ' · 만드는 중' : '') + (G.model && G.src === state._hair3Dneutral ? ' · 모델 있음' : ' · 모델 없음') + (G.lastErr ? ' · ⚠ ' + G.lastErr : '')];
     if (!s) return L;
     var tot = s.n || 1, secs = Object.keys(s.sec).map(function (k) { return k + ' ' + Math.round(s.sec[k] / tot * 100) + '%'; }).join(' · ');
+    if (G.hlDiagTxt) L.push(G.hlDiagTxt);
     L.push('  앞 헤어라인 채우기(이마 랜드마크 위인데 사진이 맨살로 본 두피 칸): ' + (G.hairlineFill === false ? '꺼짐' : '밀도 채운 칸 ' + (G.hairlineFillN || 0) + ' · 두피 위에서 판정 건너뛴 걸음 ' + (s.hlFree || 0) + ' (끄기 REGROW.hairlineFill=false)'));
     L.push('  가닥 ' + s.n + '개(사진에 머리가 없어 안 심은 뿌리 ' + s.skipped + ') · ' + s.ms + 'ms' + (s.workMs != null ? '(걷기에 일한 시간 ' + s.workMs + ' · 마무리 ' + s.finMs + ' · 사이사이 쉰 시간 ' + Math.max(0, s.ms - s.workMs - s.finMs) + ' — ' + s.slices + '번 나눠 함)' : '') + (s.mShare < 1 ? ' · 재는 용도라 ' + (G.measureFull || []).join('·') + ' 밖은 ' + Math.round(s.mShare * 100) + '%만 기름(전부 REGROW.measureShare=1)' : '') + ' · 사진 ' + s.cams);
     try { var _sr = G.setupReuseStat; L.push('  준비물 재사용(가볍게 기르기 → 전체 기르기 · 덩어리·두께·겉면·뿌리 결): ' + (G.setupReuse === false ? '꺼짐' : !_sr ? '아직' : _sr.used ? '씀 — ' + _sr.why : '안 씀' + (_sr.why ? ' — ' + _sr.why : '')) + (G.camFitLiteStat ? ' · 가볍게 기르기 ' + G.camFitLiteStat.ms + 'ms(' + G.camFitLiteStat.n + '가닥)' : '') + ' (끄기 REGROW.setupReuse=false)'); } catch (e) {}   // (2026-11-01)
