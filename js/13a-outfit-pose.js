@@ -1083,7 +1083,7 @@ function projectImagePointToHead(angle, nx, ny, widthFactor, heightFactor, opts)
   // 이 면이 두상 돔(두피면)과 정의상 같은 면이 되도록 정렬. 뿌리의 높이는
   // 사진 픽셀(toMeshY)에서 오므로 이 변경으로 헤어 높이가 움직이진 않고,
   // 정수리 근처 뿌리가 두피 표면에 정확히 붙게 되는 것만 달라짐.
-  const { a, b, c } = (opts && opts.ell) ? opts.ell : getHeadEllipsoid(); // 두상 타원 반경(x,y,z) · (2026-11-09) opts.ell = 부르는 쪽이 고른 면(얼굴 랜드마크는 두개골 면)
+  const { a, b, c } = getHeadEllipsoid(); // 두상 타원 반경(x,y,z)
   const yLocal = localY - 0.15; // 타원 중심(0,0.15,0) 기준으로 이동
   const inside = (localX/a)*(localX/a) + (yLocal/b)*(yLocal/b);
   let localZ;
