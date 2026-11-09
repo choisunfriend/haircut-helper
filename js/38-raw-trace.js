@@ -32,7 +32,17 @@
 //   · 결을 못 읽은 자리(또렷함 minCoh 미만 · 결 없음)에서 가닥 끝(직전 방향으로 곧게 뻗어 머리 밖으로 튀어나가던 것 없앰)
 //   끄기 RAW_TRACE.on=false(예전 2D 긋기)
 // ============================================================================
-var RAW_TRACE = { on: true, loopFollow: true, gravFirst: true, stepPx: 2, stepFrac: 0.01, gravPick: 0.2, minCoh: 0.05, endOnNoRead: true, stats: { strands: 0, steps: 0, read: 0, byFlow: 0, byGrav: 0, byCont: 0, endNoRead: 0, pts: 0 } };
+var RAW_TRACE = { on: true, loopFollow: true, gravFirst: true, stepPx: 2, stepFrac: 0.01, gravPick: 0.2, minCoh: 0.05, endOnNoRead: true,
+  /* (2026-11-10) 가려졌다가 다시 드러나는 가닥 — 사용자: "보이는 가닥들은 다 영역 안에 있어야 되고, 가려져서 안 보이는 경우만 해당되게"
+   *   예: 옆 사진에서 어깨 앞으로 내려오는 머리가 턱·얼굴·목에 가려 끊겨 보임 → 예전엔 거기서 가닥이 끝나(결 못 읽음 · 3점 연속 밖)
+   *   아래 조각은 두피와 이어지지 않은 조각이 됨 → 옆 사진의 깊이 정보가 3D로 안 감(디버그 2241: 옆 사진에서 목 앞 어깨 높이 옮긴 점 왼 270 · 오른 831).
+   *   지금: 머리 영역을 벗어난 자리가 <b>사람 윤곽 안(살·옷 = 가린 것)</b>이면 직전 방향 그대로 곧게 건너 봄 —
+   *     · 건너는 중 배경(사람 윤곽 밖)에 닿으면 = 보이는데 영역 밖 → 틈 시작에서 끝(예전과 같음)
+   *     · hideGapFrac(마스크 높이 비율) 안에 다시 머리 영역에 닿고, 그 자리 결이 직전 방향과 이어지면(|cos| ≥ hideCos) 계속 그음
+   *     · 못 닿으면 틈 시작에서 끝
+   *   건넌 점은 pts.hidden(점 번호)에 남김 · 보이는 점은 전부 머리 영역 안. 사람 윤곽 없는 사진은 예전 그대로. 끄기 RAW_TRACE.hideBridge=false */
+  hideBridge: true, hideGapFrac: 0.08, hideCos: 0.7,
+  stats: { strands: 0, steps: 0, read: 0, byFlow: 0, byGrav: 0, byCont: 0, endNoRead: 0, pts: 0, hideTry: 0, hideOk: 0, hideBg: 0, hideLong: 0, hidePts: 0 } };
 
 function rawTraceStrandPath(ix, sy, targetLen, jitterSeed, env, rootSec, stopAtExit) {
   var R = RAW_TRACE, PI = Math.PI, St = R.stats;
@@ -67,26 +77,43 @@ function rawTraceStrandPath(ix, sy, targetLen, jitterSeed, env, rootSec, stopAtE
   }
   St.strands++;
   var D = [{ x: ix, y: sy }], x = ix, y = sy, dir = null;                    // 2px 걸음 — 그은 길 그대로
+  var HB = !!(R.hideBridge && env.personAt && env.maskAt), hidD = HB ? [0] : null, gapMaxN = HB ? Math.max(3, Math.ceil(R.hideGapFrac * (env.maskH || 800) / step)) : 0;
   for (var s = 0; s < steps; s++) {
+    if (HB && dir != null && !env.maskAt(x, y) && env.personAt(x, y)) {      // (2026-11-10) 가린 것(살·옷) 위 — 곧게 건너 봄
+      St.hideTry++;
+      var g0 = D.length, gx = x, gy = y, gk, back = false, why = 'long';
+      for (gk = 0; gk < gapMaxN && s < steps; gk++, s++) {
+        gx += Math.cos(dir) * step; gy += Math.sin(dir) * step;
+        if (env.maskAt(gx, gy)) {
+          var sm2 = sample(gx, gy);
+          if (sm2 && sm2.coherence > R.minCoh && isFinite(sm2.angle) && Math.abs(Math.cos(sm2.angle - dir)) >= R.hideCos) { back = true; break; }
+          why = 'turn'; break;                                               // 다시 머리인데 결이 안 이어짐 — 다른 가닥
+        }
+        if (!env.personAt(gx, gy)) { why = 'bg'; break; }                     // 보이는데 영역 밖 = 배경
+        D.push({ x: gx, y: gy }); hidD.push(1);
+      }
+      if (!back) { D.length = g0; hidD.length = g0; if (why === 'bg') St.hideBg++; else St.hideLong++; break; }
+      St.hideOk++; St.hidePts += D.length - g0; x = gx; y = gy; D.push({ x: x, y: y }); hidD.push(0); continue;
+    }
     var sm = sample(x, y);
     if (!(sm && sm.coherence > R.minCoh && isFinite(sm.angle))) {
       if (R.endOnNoRead) { St.endNoRead++; break; }
       if (dir == null) dir = PI / 2;
     } else { dir = pick(sm, dir); St.read++; }
     St.steps++;
-    x += Math.cos(dir) * step; y += Math.sin(dir) * step; D.push({ x: x, y: y });
+    x += Math.cos(dir) * step; y += Math.sin(dir) * step; D.push({ x: x, y: y }); if (HB) hidD.push(0);
   }
   if (D.length < 2) D.push({ x: ix, y: sy + step });                          // 뿌리에서 바로 못 읽음 — 한 걸음(호출 쪽이 2점을 기대)
-  var pts = [D[0]], need = keepLen, j;                                        // 길이 기준 일정 간격으로 다시 찍기(점은 그은 길 위)
+  var pts = [D[0]], need = keepLen, j, hidP = [];                            // 길이 기준 일정 간격으로 다시 찍기(점은 그은 길 위)
   for (j = 1; j < D.length; j++) {
     var ax = D[j - 1].x, ay = D[j - 1].y, sl = Math.hypot(D[j].x - ax, D[j].y - ay), u = 0;
-    while (sl - u >= need - 1e-9) { u += need; var t = u / sl; pts.push({ x: ax + (D[j].x - ax) * t, y: ay + (D[j].y - ay) * t }); need = keepLen; }
+    while (sl - u >= need - 1e-9) { u += need; var t = u / sl; pts.push({ x: ax + (D[j].x - ax) * t, y: ay + (D[j].y - ay) * t }); if (hidD && (hidD[j] || hidD[j - 1])) hidP.push(pts.length - 1); need = keepLen; }
     need -= (sl - u);
   }
   var last = D[D.length - 1], pl = pts[pts.length - 1];
   if (Math.hypot(last.x - pl.x, last.y - pl.y) > keepLen * 0.5 || pts.length < 2) pts.push({ x: last.x, y: last.y });   // 끝 자리
   if (env.maskAt) for (j = 3; j < pts.length; j++) {                          // 머리 영역 이탈(예전 규칙 그대로: 3점 연속 밖)
-    if (env.maskAt(pts[j].x, pts[j].y)) offRun = 0;
+    if (env.maskAt(pts[j].x, pts[j].y) || (hidP.length && hidP.indexOf(j) >= 0)) offRun = 0;   // 건넌(가려진) 점은 영역 밖으로 안 셈
     else if (++offRun >= 3) { exitIdx = j - offRun; if (stopAtExit) { pts.length = j + 1; } break; }
   }
   if (typeof RAW3D !== 'undefined' && RAW3D.fine) {                          // (2026-11-03) 3D로 올릴 촘촘한 점 — 같은 그은 길 위, 간격 keepLen/div
@@ -101,6 +128,7 @@ function rawTraceStrandPath(ix, sy, targetLen, jitterSeed, env, rootSec, stopAtE
     F.div = dv; pts.fine = F;
   }
   St.pts += pts.length;
+  if (hidP.length) { pts.hidden = hidP.filter(function (k) { return k < pts.length; }); }
   pts.maskExitIdx = exitIdx >= 0 ? Math.max(1, exitIdx) : pts.length - 1;
   pts.flowEndIdx = null;
   return pts;

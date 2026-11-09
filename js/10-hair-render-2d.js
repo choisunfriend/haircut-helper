@@ -182,7 +182,16 @@ function drawHairStrands(ctx, fit, scalpY, hairEndY, maskW, maskH, hairCanvas, o
   // flowAcc: [진단] 180° 모호성을 <b>측정된 극성</b>으로 푼 비율. 0%면 흐름장이
   // 없거나 전부 능선(애매)이라는 뜻 — 예전 동작과 같다는 신호다.
   const flowAcc = { n:0, byFlow:0 };
-  const strandEnv = { hasOrientation, orientation, orientMaskW, ox, oy, STRAND_STEP_LEN, frontDirBiasFor, curlAmtFor, waveWidthFor, maskAt: isRealHairAt, flowAcc };
+  /* (2026-11-10) 사람 윤곽(살·옷) — 가닥이 가린 것 뒤로 지나가 끊겨 보이는 자리를 건너기용(38-raw-trace RAW_TRACE.hideBridge) · 마스크 좌표 → 사람 윤곽 칸 */
+  let personAt = null;
+  try{
+    const miP = angle && state.hairMasks && state.hairMasks[angle], pm = miP && miP.personMask;
+    if(capturePaths && pm && pm.length){
+      const pw = (miP.maskW && miP.maskH && pm.length === miP.maskW * miP.maskH) ? miP.maskW : (pm.length === miP.w * miP.h ? miP.w : (miP.maskW || miP.w)), ph = Math.floor(pm.length / Math.max(1, pw));
+      if(pw > 0 && ph > 0) personAt = (x, y)=>{ const px = Math.floor(x / maskW * pw), py = Math.floor(y / maskH * ph); return px >= 0 && py >= 0 && px < pw && py < ph && pm[py * pw + px] === 1; };
+    }
+  }catch(e){ personAt = null; }
+  const strandEnv = { hasOrientation, orientation, orientMaskW, ox, oy, STRAND_STEP_LEN, frontDirBiasFor, curlAmtFor, waveWidthFor, maskAt: isRealHairAt, flowAcc, personAt, maskH };
   function traceStrand(ix, sy_img, targetLen_img, jitterSeed, rootSec, stopAtExit){
     /* (2026-11-02) 중립 캡처(사진 가닥 = 3D·다시 기르기의 재료)는 읽은 결 그대로 긋는다(38-raw-trace.js).
        11/01c에 켰다고 적혀 있었지만 index.html에 그 파일이 없고 여기서 부르지도 않아,
@@ -681,6 +690,8 @@ function drawHairStrands(ctx, fit, scalpY, hairEndY, maskW, maskH, hairCanvas, o
   if(capturedStrands && angle){
     state.strandPaths = state.strandPaths || {};
     state.strandPaths[angle] = { strands: capturedStrands, maskW, maskH };
+    try{ if(typeof RAW_TRACE !== 'undefined' && RAW_TRACE.hideBridge){ const S = RAW_TRACE.stats; let nh = 0; capturedStrands.forEach(c=>{ if(c.pts && c.pts.hidden && c.pts.hidden.length) nh++; });
+      console.log('[사진 가닥·가려진 틈] ' + angle + ' — ' + (personAt ? '건너 봄 ' + S.hideTry + ' · 다시 드러나 이어 그음 ' + S.hideOk + '(건넌 점 ' + S.hidePts + ') · 배경에 닿아 끝 ' + S.hideBg + ' · 너무 길거나 결이 안 이어져 끝 ' + S.hideLong + ' · 이은 가닥 ' + nh + '개 (누적 · 끄기 RAW_TRACE.hideBridge=false)' : '사람 윤곽 없음 — 예전 그대로')); } }catch(e){}
   }
 }
 /* ── [진단] 마스크 밖으로 새어나간 잉크 측정 (2026-08-01) ─────────────────
