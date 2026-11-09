@@ -35,9 +35,14 @@ var MV_DEPTH = (function () {
     iters: 3,
     rootGrip: 0.3,    // 뿌리 쪽 10% 마디는 이 비율만 옮김
     smooth: 2,
+    pathFit: true,    // (2026-11-09) ② 깊이 구간을 점마다 따로가 아니라 가닥 한 줄로 고름 — 아래 pathFit
+    pathEvery: 2,     // 경로는 점 이만큼마다 재고 사이는 이어 감(빠르게)
+    outCost: 1,       // 다른 사진 머리 영역 밖인 점 하나의 값
+    keepCost: 0.02,   // ①(결)로 정한 깊이에서 한 칸(stepCm) 멀어질 때마다 ×칸²
+    bendCost: 0.05,   // 이웃 점끼리 깊이가 한 칸 바뀔 때마다 ×칸²
     stat: null
   };
-  var prevCopyDepthMid = null;
+  var prevCopyDepthMid = null, prevCopyDepthFit = null;
 
   function now() { try { return performance.now(); } catch (e) { return Date.now(); } }
   function envNow(photo) {
@@ -56,7 +61,7 @@ var MV_DEPTH = (function () {
     if (cams.length < 2) return { err: '결 있는 사진 ' + cams.length + '장' };
     var byAng = {}; cams.forEach(function (c) { byAng[c.angle] = c; c._tolPx = Math.max(1, M.tolCm / (c.s * env.cm)); });
     var unit = 1 / env.cm, range = M.rangeCm * unit, step = M.stepCm * unit;
-    var o = [0, 0], st = { strands: 0, moved: 0, pts: 0, sumMove: 0, outB: 0, outA: 0, chk: 0, offB: 0, offA: 0, cmp: 0 };
+    var o = [0, 0], st = { strands: 0, moved: 0, pts: 0, sumMove: 0, outB: 0, outA: 0, chk: 0, offB: 0, offA: 0, cmp: 0, path: 0, jump: 0 };
 
     function inHair(c, x, y, z) {               // 1 머리 · 0 밖 · -1 그 사진은 판정 못 함(가림)
       if (!core.project(c, env, x, y, z, o)) return -1;
@@ -82,6 +87,40 @@ var MV_DEPTH = (function () {
       return { e: wsum > 0 ? e / wsum : 0, n: n };
     }
 
+    /* (2026-11-09) ② 깊이 구간을 가닥 한 줄로 고름 — 사용자: "건너뛰는 걸 왜 해?"
+     *  예전 ②: 다른 사진 머리 영역 밖인 점마다 따로, 지금 깊이에서 가장 가까운 "모두 머리" 깊이로 옮김.
+     *    다른 사진의 머리 영역이 깊이 방향으로 두 덩어리(귀·목·얼굴로 끊긴 옆 사진 · 어깨 앞/등 뒤)인 자리에서 이웃 점이 서로 다른 덩어리를 골라
+     *    한 마디(0.4cm)가 최대 11cm 직선이 됨 — 자기 사진에선 1px도 안 보이는 축이라 3D에서만 바늘로 뻗침.
+     *    잰 값(디버그 1021 긴 웨이브 · 1024 짧은 남자): 사진 가닥에서 한 마디 4cm 넘게 건너뛴 자리 2366 · 730 — 100% 자기 시선축 방향.
+     *  지금: 점마다 깊이 후보(±rangeCm, stepCm 간격)를 두고 가닥 전체에서 값이 가장 작은 한 줄을 고름(동적계획법).
+     *    값 = 다른 사진 머리 영역 밖인 점 수(outCost) + ①(결)로 정한 깊이에서 멀어짐(keepCost) + 이웃 점끼리 깊이 바뀜(bendCost).
+     *    이웃 점끼리 깊이 차이는 사진 평면 마디 길이 × maxSlope(최소 한 칸)까지만 — 건너뛸 길 자체가 없음. 뿌리(0번 점)는 제자리(예전과 같음).
+     *    두 덩어리 사이에서는 앞이든 뒤든 한쪽을 끝까지 따라가고, 갈아탈 땐 비탈로 넘어감.
+     *  끄기 MV_DEPTH.pathFit=false(예전 점마다) */
+    function pathFit(own, X, Y, Z, t, n, wx, wy, wz) {
+      var J = Math.max(1, Math.round(range / step)), NS = 2 * J + 1, sub = Math.max(1, M.pathEvery | 0), idx = [], k, i, sI, sP;
+      var anyOut = false; for (k = 1; k < n; k++) if (!okAll(own, X[k] + t[k] * wx, Y[k] + t[k] * wy, Z[k] + t[k] * wz)) { anyOut = true; break; }
+      if (!anyOut) return false;                                            // 다 안이면 ①의 깊이 그대로
+      for (k = 0; k < n; k += sub) idx.push(k); if (idx[idx.length - 1] !== n - 1) idx.push(n - 1);
+      var m = idx.length, INF = 1e30, C = new Float64Array(m * NS), B = new Int16Array(m * NS);
+      for (sI = 0; sI < NS; sI++) C[sI] = sI === J ? 0 : INF;              // 뿌리 = 깊이 0
+      for (i = 1; i < m; i++) {
+        var k0 = idx[i - 1], k1 = idx[i], dx = X[k1] - X[k0], dy = Y[k1] - Y[k0], dz = Z[k1] - Z[k0], dw = dx * wx + dy * wy + dz * wz;
+        var segp = Math.sqrt(Math.max(0, dx * dx + dy * dy + dz * dz - dw * dw)), reach = Math.max(1, Math.floor(M.maxSlope * segp / step + 1e-9));
+        for (sI = 0; sI < NS; sI++) {
+          var tv = (sI - J) * step, kd = (tv - t[k1]) / step, u = (okAll(own, X[k1] + tv * wx, Y[k1] + tv * wy, Z[k1] + tv * wz) ? 0 : M.outCost) + M.keepCost * kd * kd;
+          var best = INF, bs = -1, lo = Math.max(0, sI - reach), hi = Math.min(NS - 1, sI + reach);
+          for (sP = lo; sP <= hi; sP++) { var c = C[(i - 1) * NS + sP]; if (c >= INF) continue; c += M.bendCost * (sI - sP) * (sI - sP); if (c < best) { best = c; bs = sP; } }
+          C[i * NS + sI] = bs < 0 ? INF : best + u; B[i * NS + sI] = bs;
+        }
+      }
+      var end = -1, ec = INF; for (sI = 0; sI < NS; sI++) if (C[(m - 1) * NS + sI] < ec) { ec = C[(m - 1) * NS + sI]; end = sI; }
+      if (end < 0) return false;
+      var tS = new Float64Array(m); for (i = m - 1, sI = end; i >= 0; i--) { tS[i] = (sI - J) * step; sI = B[i * NS + sI]; if (sI < 0 && i > 0) return false; }
+      for (i = 1; i < m; i++) { var a = idx[i - 1], b = idx[i]; for (k = a; k <= b; k++) t[k] = tS[i - 1] + (tS[i] - tS[i - 1]) * (b > a ? (k - a) / (b - a) : 1); }
+      t[0] = 0; return true;
+    }
+    function bigJumps(P) { var c = 0; for (var k = 1; k < P.length; k++) if (Math.hypot(P[k].x - P[k - 1].x, P[k].y - P[k - 1].y, P[k].z - P[k - 1].z) * env.cm > 4) c++; return c; }
     var S = photo.strands, si;
     for (si = 0; si < S.length; si++) {
       var s = S[si]; if (!s || s.mirrored || !s.pts || s.pts.length < 4) continue;
@@ -115,8 +154,9 @@ var MV_DEPTH = (function () {
         }
         for (k = 1; k < n; k++) { cum += dl[k]; t[k] += cum; }   // 마디마다 잰 뒤 한꺼번에(같은 t로 잼)
       }
-      // ② 다른 사진들이 머리라고 본 깊이 구간 안에서 가장 가까운 자리
-      for (k = 1; k < n; k++) {
+      // ② 다른 사진들이 머리라고 본 깊이 구간 — pathFit: 가닥 한 줄로(아래) · 끄면 예전처럼 점마다 가장 가까운 자리
+      if (M.pathFit) { if (pathFit(own, X, Y, Z, t, n, wx, wy, wz)) st.path++; }
+      else for (k = 1; k < n; k++) {
         if (okAll(own, X[k] + t[k] * wx, Y[k] + t[k] * wy, Z[k] + t[k] * wz)) continue;
         var best = null;                         // 지금 깊이에서 가까운 쪽부터 바깥으로
         for (var j = 1; best == null && j * step <= 2 * range; j++) {
@@ -138,6 +178,7 @@ var MV_DEPTH = (function () {
         for (k = 0; k < n; k++) { P[k].x = Q[k].x; P[k].y = Q[k].y; P[k].z = Q[k].z; }
         st.moved++; st.pts += n; st.sumMove += mx2; st.outA += outA; st.offA += gA.e; st.offB += gB.e; st.cmp++;
       } else st.outA += outB;
+      st.jump += bigJumps(P);
     }
     st.ms = Math.round(now() - t0); st.cams = cams.map(function (c) { return c.angle; });
     return st;
@@ -145,12 +186,20 @@ var MV_DEPTH = (function () {
 
   M._beforeRegrowBuild = function (photo) {
     var G = W.REGROW;
-    if (!M.on) { if (G && prevCopyDepthMid != null) { G.copyDepthMid = prevCopyDepthMid; prevCopyDepthMid = null; } return; }
+    if (!M.on) {
+      if (G && prevCopyDepthMid != null) { G.copyDepthMid = prevCopyDepthMid; prevCopyDepthMid = null; }
+      if (G && prevCopyDepthFit != null) { G.copyDepthFit = prevCopyDepthFit; prevCopyDepthFit = null; }
+      return;
+    }
     if (!photo || !photo.strands || photo._mvDepthDone === photo) return;
     photo._mvDepthDone = photo;
     var r; try { r = run(photo); } catch (e) { r = { err: String(e && e.message || e) }; }
     M.stat = r;
     if (!r.err && r.moved > 0 && G && G.copyDepthMid !== false) { prevCopyDepthMid = G.copyDepthMid; G.copyDepthMid = false; }
+    /* (2026-11-09) 그대로 그리기의 깊이 맞추기(depthFit)도 끔 — 이 단계와 같은 축(자기 시선축)·같은 기준(다른 사진 머리 영역)으로 한 번 더 옮기던 것.
+     *  웨이브 1021: 이 단계 뒤에도 점 41,229개를 평균 2cm 더 옮김 · 점마다 따로 정해 뿌리 바로 다음에서 건너뜀(뿌리 → 첫 점 4cm 넘게 3,095개).
+     *  깊이는 여기 한 곳에서만 정함. 끄기 MV_DEPTH.ownDepth=false(depthFit 그대로 둠) */
+    if (!r.err && r.moved > 0 && G && M.ownDepth !== false && G.copyDepthFit !== false) { prevCopyDepthFit = G.copyDepthFit; G.copyDepthFit = false; }
     console.log(M.lines().join('\n'));
   };
   M.lines = function () {
@@ -159,7 +208,8 @@ var MV_DEPTH = (function () {
     var cm = (function () { try { return modelCmPerUnit(); } catch (e) { return 19; } })();
     return [TAG + ' 사진 ' + r.cams.join(',') + ' · 가닥 ' + r.strands + ' 중 옮김 ' + r.moved + ' · 자기 시선축으로 평균 ' + (r.moved ? (r.sumMove / r.moved * cm).toFixed(1) : '0') + 'cm · ' + r.ms + 'ms',
       '  다른 사진 머리 영역 밖 점 ' + (100 * r.outB / Math.max(1, r.chk)).toFixed(1) + '% → ' + (100 * r.outA / Math.max(1, r.chk)).toFixed(1) + '% · 옮긴 가닥의 다른 사진 결 어긋남(sin² 평균) ' + (r.cmp ? (r.offB / r.cmp).toFixed(3) + ' → ' + (r.offA / r.cmp).toFixed(3) : '-') +
-      ' · copyDepthMid ' + (W.REGROW && W.REGROW.copyDepthMid === false ? '끔(이 단계가 대신함)' : '그대로') + ' · 끄기 MV_DEPTH.on=false'];
+      ' · copyDepthMid ' + (W.REGROW && W.REGROW.copyDepthMid === false ? '끔(이 단계가 대신함)' : '그대로') + ' · copyDepthFit ' + (W.REGROW && W.REGROW.copyDepthFit === false ? '끔(이 단계가 대신함 · 되돌리기 MV_DEPTH.ownDepth=false)' : '그대로') + ' · 끄기 MV_DEPTH.on=false',
+      '  깊이 구간 고르기: ' + (M.pathFit ? '가닥 한 줄로(동적계획법) — 고른 가닥 ' + (r.path || 0) + ' (끄기 MV_DEPTH.pathFit=false)' : '점마다 따로(예전)') + ' · 끝난 뒤 한 마디 4cm 넘게 건너뛴 자리 ' + (r.jump || 0)];
   };
   try { console.log(TAG + ' 설치 — 사진 가닥을 자기 시선축으로만 옮겨 다른 사진들의 결·머리 영역에 맞춤 · 끄기 MV_DEPTH.on=false'); } catch (e) {}
   return M;
