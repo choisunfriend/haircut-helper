@@ -24,7 +24,10 @@
 (function () {
   var W = window;
   var T = W.HEAD_TILT = {
-    on: true, view: true,
+    /* (2026-11-10i) 화면은 세워서 — 사용자: "헤어헐을 두상축에 맞춘 다음에 기울기를 그대로 했는데, 두상축에 맞춘 다음에 상하좌우 다 수직으로 세워줘"
+       헐·두상을 한 축으로 맞추는 건(중력 = 사진의 아래) 그대로 · 화면에서 사진처럼 숙이고 갸웃하던 것(앞뒤·좌우)만 끔 = 두상 축이 화면 세로.
+       예전처럼 기울여 보기 HEAD_TILT.view=true */
+    on: true, view: false,
     lateral: true,       // (11-10) 좌우(갸웃) 기울기도 쓸지 — 기본 끔: 앞뒤(숙임)만. 켜기 HEAD_TILT.lateral=true
     maxDeg: 25,          // 이보다 크면 포즈 오측정으로 보고 안 기울임
     weights: { front: 1, left: 1, right: 1, back: 0 },   // 얼굴 실측 없는 뷰는 아래에서 0
@@ -92,5 +95,5 @@
 
   /* 다시 기르기 직전에 중력 축을 정해 둔다(17b가 HEAD_TILT.down을 읽음) · 화면 자세는 가볍게 따라감 */
   setInterval(function () { if (T.on) T.compute(); else { T.down = null; } T.apply(); }, 400);
-  console.log('[두상 기울기] 설치 — 헤어 헐(사진 세로)과 두상 축을 한 축으로: 중력은 사진의 아래로, 화면은 사진처럼 기울임 · 끄기 HEAD_TILT.on=false · 상태 HEAD_TILT.lines().join("\\n")');
+  console.log('[두상 기울기] 설치 — 헤어 헐(사진 세로)과 두상 축을 한 축으로: 중력은 사진의 아래로, 화면은 두상 축을 세로로 세움(기울여 보기 HEAD_TILT.view=true) · 끄기 HEAD_TILT.on=false · 상태 HEAD_TILT.lines().join("\\n")');
 })();
