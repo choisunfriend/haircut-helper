@@ -718,7 +718,7 @@ function drawHairStrands(ctx, fit, scalpY, hairEndY, maskW, maskH, hairCanvas, o
     state.strandPaths = state.strandPaths || {};
     state.strandPaths[angle] = { strands: capturedStrands, maskW, maskH };
     try{ if(typeof RAW_TRACE !== 'undefined' && RAW_TRACE.hideBridge){ const S = RAW_TRACE.stats; let nh = 0; capturedStrands.forEach(c=>{ if(c.pts && c.pts.hidden && c.pts.hidden.length) nh++; });
-      console.log('[사진 가닥·가려진 틈] ' + angle + ' — ' + (personAt ? '건너 봄 ' + S.hideTry + ' · 다시 드러나 이어 그음 ' + S.hideOk + '(건넌 점 ' + S.hidePts + ') · 배경에 닿아 끝 ' + S.hideBg + ' · 너무 길거나 결이 안 이어져 끝 ' + S.hideLong + ' · 이은 가닥 ' + nh + '개 (누적 · 끄기 RAW_TRACE.hideBridge=false)' : '사람 윤곽 없음 — 예전 그대로')); } }catch(e){}
+      console.log('[사진 가닥·가려진 틈] ' + angle + ' — ' + (personAt ? '건너 봄 ' + S.hideTry + ' · 다시 드러나 이어 그음 ' + S.hideOk + '(건넌 점 ' + S.hidePts + ') · 배경에 닿아 끝 ' + S.hideBg + ' · 너무 길거나 결이 안 이어져 끝 ' + S.hideLong + ' · 이은 가닥 ' + nh + '개 (누적 · 끄기 RAW_TRACE.hideBridge=false)' + (RAW_TRACE.foldEnd !== false ? ' · 되접혀 뿌리 쪽으로 다시 오르기 전에 끝낸 가닥 ' + (S.foldCut || 0) + '(버린 걸음 ' + (S.foldPts || 0) + ' · 끄기 RAW_TRACE.foldEnd=false)' : '') : '사람 윤곽 없음 — 예전 그대로')); } }catch(e){}
   }
 }
 /* ── [진단] 마스크 밖으로 새어나간 잉크 측정 (2026-08-01) ─────────────────

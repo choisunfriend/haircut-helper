@@ -42,7 +42,18 @@ var RAW_TRACE = { on: true, loopFollow: true, gravFirst: true, stepPx: 2, stepFr
    *     · 못 닿으면 틈 시작에서 끝
    *   건넌 점은 pts.hidden(점 번호)에 남김 · 보이는 점은 전부 머리 영역 안. 사람 윤곽 없는 사진은 예전 그대로. 끄기 RAW_TRACE.hideBridge=false */
   hideBridge: true, hideGapFrac: 0.08, hideCos: 0.7,
-  stats: { strands: 0, steps: 0, read: 0, byFlow: 0, byGrav: 0, byCont: 0, endNoRead: 0, pts: 0, hideTry: 0, hideOk: 0, hideBg: 0, hideLong: 0, hidePts: 0 } };
+  /* (2026-11-10d) 되접힘 끝 — 사용자: "왼쪽 어깨에 내려온 가닥이 어깨에 닿은 다음 솟구쳐 올라서 턱으로 갔어" · "웨이브 뒷머리끝도 그런 머리들" · "단발 뒷머리 중간에 위쪽으로 말린 머리"
+   *   셋 다 같은 원인: loopFollow(첫 걸음 뒤엔 직전 걸음과 이어지는 쪽만 고름)는 결(앞뒤 없는 선)을 따라 몇 걸음에 걸쳐 조금씩 돌면
+   *   180°까지 돌아갈 수 있음 — 머리끝(끝단 테두리 결이 가로)·어깨 윤곽·빛 띠처럼 결이 옆으로 눕는 자리에서 돌아서면, 그 위 곧은 결은
+   *   "이어지는 쪽 = 위"라 옆 가닥 결을 타고 뿌리 쪽으로 다시 올라감(거울처럼 내려간 만큼 올라감).
+   *   잰 값(디버그 1033 긴 웨이브 · 1036 단발 · 사진 가닥 lift): 맨 아래에서 다시 12cm 넘게 오르는 가닥 웨이브 13% · 단발 18% —
+   *     웨이브의 진짜 고리는 3cm 안(1~3cm 364개 · 3~12cm 152개 · 12cm↑ 1410개 = 둘로 갈림) · 다시 기른 가닥 37%가 이걸 그대로 옮김.
+   *   지금: 뿌리 거리장 흐름(fx,fy = 04 buildRootFlowField — 결과 따로 마스크에서만 잰 "뿌리에서 멀어지는 쪽")을 따라 걸음마다 나아간 양을 더함.
+   *     가닥이 지금까지 가장 멀리 간 자리보다 foldFrac(마스크 높이 비율 · 0.06 ≈ 3.8cm) 넘게 뿌리 쪽으로 되돌아오면 그 가장 먼 자리에서 끝.
+   *     고리(지름 3cm 안)는 그대로 · 방향 고르기는 그대로(뒤집지 않음 · 끝만 정함) · 흐름 확신도가 낮은 걸음은 안 셈.
+   *   같은 데이터로 사진 결 다시 긋기: 6cm 넘게 되돌아 오른 가닥 웨이브 뒤 27% · 옆 10% → 0 · 1~3cm 고리 그대로. 끄기 RAW_TRACE.foldEnd=false */
+  foldEnd: true, foldFrac: 0.06,
+  stats: { strands: 0, steps: 0, read: 0, byFlow: 0, byGrav: 0, byCont: 0, endNoRead: 0, pts: 0, hideTry: 0, hideOk: 0, hideBg: 0, hideLong: 0, hidePts: 0, foldCut: 0, foldPts: 0 } };
 
 function rawTraceStrandPath(ix, sy, targetLen, jitterSeed, env, rootSec, stopAtExit) {
   var R = RAW_TRACE, PI = Math.PI, St = R.stats;
@@ -78,6 +89,7 @@ function rawTraceStrandPath(ix, sy, targetLen, jitterSeed, env, rootSec, stopAtE
   St.strands++;
   var D = [{ x: ix, y: sy }], x = ix, y = sy, dir = null;                    // 2px 걸음 — 그은 길 그대로
   var HB = !!(R.hideBridge && env.personAt && env.maskAt), hidD = HB ? [0] : null, gapMaxN = HB ? Math.max(3, Math.ceil(R.hideGapFrac * (env.maskH || 800) / step)) : 0;
+  var FE = R.foldEnd !== false, foldTol = (R.foldFrac || 0.06) * (env.maskH || 800), prog = 0, progMax = 0, progMaxN = 1;   // (11-10d) 되접힘 끝
   for (var s = 0; s < steps; s++) {
     if (HB && dir != null && !env.maskAt(x, y) && env.personAt(x, y)) {      // (2026-11-10) 가린 것(살·옷) 위 — 곧게 건너 봄
       St.hideTry++;
@@ -101,6 +113,11 @@ function rawTraceStrandPath(ix, sy, targetLen, jitterSeed, env, rootSec, stopAtE
       if (dir == null) dir = PI / 2;
     } else { dir = pick(sm, dir); St.read++; }
     St.steps++;
+    if (FE && sm && sm.fc >= minConf && (sm.fx || sm.fy)) {                 // 뿌리에서 멀어진 양(흐름 방향 성분) — 결 각도·방향 고르기는 안 건드림
+      prog += step * (Math.cos(dir) * sm.fx + Math.sin(dir) * sm.fy);
+      if (prog > progMax) { progMax = prog; progMaxN = D.length; }
+      else if (progMax - prog > foldTol) { St.foldCut++; St.foldPts += D.length - progMaxN; D.length = progMaxN; if (hidD) hidD.length = progMaxN; break; }
+    }
     x += Math.cos(dir) * step; y += Math.sin(dir) * step; D.push({ x: x, y: y }); if (HB) hidD.push(0);
   }
   if (D.length < 2) D.push({ x: ix, y: sy + step });                          // 뿌리에서 바로 못 읽음 — 한 걸음(호출 쪽이 2점을 기대)
