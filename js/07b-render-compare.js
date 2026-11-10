@@ -1423,7 +1423,9 @@ var PHOTO_CHECK = (function () {
     var R = cam.R, x = px, y = py - env.CY, z = pz;
     o[0] = (R[0] * x + R[1] * y + R[2] * z) / cam.s + cam.cx;
     o[1] = cam.crownY + (env.yTop - ((R[3] * x + R[4] * y + R[5] * z) + env.CY)) / cam.sy;
-    if (R[6] * x + R[7] * y + R[8] * z < 0) {
+    /* (2026-11-10) 턱 아래는 카메라 숙임을 빼고 앞뒤를 가름(17b proj와 같음) — 숙여 찍은 정면이 가슴 앞 머리를 "가려서 못 봄"으로 빼던 것(디버그 0924: 32%). 되돌리기 PHOTO_CHECK.facingBodyFix=false */
+    var yF = (P.facingBodyFix !== false && env.yBody != null && py < env.yBody) ? env.yBody - env.CY : y;
+    if (R[6] * x + R[7] * yF + R[8] * z < 0) {
       /* (2026-11-09) 목 높이(yBody 아래 ~ 어깨)는 반쪽 벽이 아니라 목 기둥으로 가림 — 예전엔 두상 가운데 면 뒤면 다 가렸다고 봐서
          정면·옆 사진에서 목 옆·턱 밑으로 보이는 머리를 "빔(파랑)"으로 셌음(디버그 2226 단발 정면 빔 20% → 3%). 어깨 아래는 예전 그대로. 끄기 PHOTO_CHECK.neckOcc=false */
       if (py < env.yBody) {
