@@ -97,13 +97,17 @@ var MV_DEPTH = (function () {
      *    이웃 점끼리 깊이 차이는 사진 평면 마디 길이 × maxSlope(최소 한 칸)까지만 — 건너뛸 길 자체가 없음. 뿌리(0번 점)는 제자리(예전과 같음).
      *    두 덩어리 사이에서는 앞이든 뒤든 한쪽을 끝까지 따라가고, 갈아탈 땐 비탈로 넘어감.
      *  끄기 MV_DEPTH.pathFit=false(예전 점마다) */
-    function pathFit(own, X, Y, Z, t, n, wx, wy, wz) {
+    function pathFit(own, X, Y, Z, t, n, wx, wy, wz, freeRoot) {
       var J = Math.max(1, Math.round(range / step)), NS = 2 * J + 1, sub = Math.max(1, M.pathEvery | 0), idx = [], k, i, sI, sP;
-      var anyOut = false; for (k = 1; k < n; k++) if (!okAll(own, X[k] + t[k] * wx, Y[k] + t[k] * wy, Z[k] + t[k] * wz)) { anyOut = true; break; }
+      var anyOut = false; for (k = freeRoot ? 0 : 1; k < n; k++) if (!okAll(own, X[k] + t[k] * wx, Y[k] + t[k] * wy, Z[k] + t[k] * wz)) { anyOut = true; break; }
       if (!anyOut) return false;                                            // 다 안이면 ①의 깊이 그대로
       for (k = 0; k < n; k += sub) idx.push(k); if (idx[idx.length - 1] !== n - 1) idx.push(n - 1);
       var m = idx.length, INF = 1e30, C = new Float64Array(m * NS), B = new Int16Array(m * NS);
-      for (sI = 0; sI < NS; sI++) C[sI] = sI === J ? 0 : INF;              // 뿌리 = 깊이 0
+      if (!freeRoot) for (sI = 0; sI < NS; sI++) C[sI] = sI === J ? 0 : INF;              // 뿌리 = 깊이 0
+      else for (sI = 0; sI < NS; sI++) {                                     // (2026-11-10c) 떠 있는 조각 — 시작점 깊이도 고름(어림이라)
+        var tv0 = (sI - J) * step, kd0 = (tv0 - t[0]) / step;
+        C[sI] = (okAll(own, X[0] + tv0 * wx, Y[0] + tv0 * wy, Z[0] + tv0 * wz) ? 0 : M.outCost) + M.keepCost * kd0 * kd0;
+      }
       for (i = 1; i < m; i++) {
         var k0 = idx[i - 1], k1 = idx[i], dx = X[k1] - X[k0], dy = Y[k1] - Y[k0], dz = Z[k1] - Z[k0], dw = dx * wx + dy * wy + dz * wz;
         var segp = Math.sqrt(Math.max(0, dx * dx + dy * dy + dz * dz - dw * dw)), reach = Math.max(1, Math.floor(M.maxSlope * segp / step + 1e-9));
@@ -118,7 +122,7 @@ var MV_DEPTH = (function () {
       if (end < 0) return false;
       var tS = new Float64Array(m); for (i = m - 1, sI = end; i >= 0; i--) { tS[i] = (sI - J) * step; sI = B[i * NS + sI]; if (sI < 0 && i > 0) return false; }
       for (i = 1; i < m; i++) { var a = idx[i - 1], b = idx[i]; for (k = a; k <= b; k++) t[k] = tS[i - 1] + (tS[i] - tS[i - 1]) * (b > a ? (k - a) / (b - a) : 1); }
-      t[0] = 0; return true;
+      t[0] = freeRoot ? tS[0] : 0; return true;
     }
     function bigJumps(P) { var c = 0; for (var k = 1; k < P.length; k++) if (Math.hypot(P[k].x - P[k - 1].x, P[k].y - P[k - 1].y, P[k].z - P[k - 1].z) * env.cm > 4) c++; return c; }
     var S = photo.strands, si;
@@ -127,6 +131,13 @@ var MV_DEPTH = (function () {
       var own = byAng[s.srcAngle]; if (!own) continue;
       var P = s.pts, n = P.length, R0 = own.R, wx = R0[6], wy = R0[7], wz = R0[8], k, u, it;
       st.strands++;
+      /* (2026-11-10c) 떠 있는 조각(두피에서 멀리 시작 — 턱·목 옆에서 결이 끊겨 가슴·어깨 앞에서 따로 잡힌 사진 가닥)은 0번 점이 뿌리가 아님.
+       *  그 깊이는 2D→3D 옮기기의 어림(두상 아래 = 마지막 깊이 유지)인데 예전엔 뿌리처럼 깊이 0에 고정(+ 앞 10% rootGrip) →
+       *  잰 값(디버그 0836 긴 웨이브): 다시 기른 가닥이 못 덮은 몸 앞 점 중 옆 사진이 "머리 아님"인 점 1372 — 전부 그 옆 사진 쪽(가린 자리 아님),
+       *  77%는 정면 시선축으로 평균 6.5cm 뒤(몸 쪽)에 정면·왼·오른 사진이 모두 머리인 깊이가 있음 = 앞으로 떠 있었음.
+       *  지금: 떠 있는 조각은 시작점 깊이도 다른 사진들로 고르고 rootGrip을 안 씀. 끄기 MV_DEPTH.freeFloat=false */
+      var u0x = P[0].x / Math.sqrt(env.a2), u0y = (P[0].y - env.CY) / Math.sqrt(env.b2), u0z = P[0].z / Math.sqrt(env.c2), flt = M.freeFloat !== false && Math.sqrt(u0x * u0x + u0y * u0y + u0z * u0z) >= (M.floatR || 1.3);
+      if (flt) st.flt = (st.flt || 0) + 1;
       var X = new Float64Array(n), Y = new Float64Array(n), Z = new Float64Array(n), t = new Float64Array(n);
       for (k = 0; k < n; k++) { X[k] = P[k].x; Y[k] = P[k].y; Z[k] = P[k].z; }
       // ① 결: 마디마다 깊이 변화 δ를 다른 사진 결에 맞춤(최소제곱)
@@ -149,13 +160,13 @@ var MV_DEPTH = (function () {
           }
           var del = -num / (den + M.lam), lim = M.maxSlope * seg;
           if (del > lim) del = lim; else if (del < -lim) del = -lim;
-          if (k <= Math.max(1, Math.floor(n / 10))) del *= M.rootGrip;
+          if (!flt && k <= Math.max(1, Math.floor(n / 10))) del *= M.rootGrip;
           dl[k] = del;
         }
         for (k = 1; k < n; k++) { cum += dl[k]; t[k] += cum; }   // 마디마다 잰 뒤 한꺼번에(같은 t로 잼)
       }
       // ② 다른 사진들이 머리라고 본 깊이 구간 — pathFit: 가닥 한 줄로(아래) · 끄면 예전처럼 점마다 가장 가까운 자리
-      if (M.pathFit) { if (pathFit(own, X, Y, Z, t, n, wx, wy, wz)) st.path++; }
+      if (M.pathFit) { if (pathFit(own, X, Y, Z, t, n, wx, wy, wz, flt)) { st.path++; if (flt) st.fltPath = (st.fltPath || 0) + 1; } }
       else for (k = 1; k < n; k++) {
         if (okAll(own, X[k] + t[k] * wx, Y[k] + t[k] * wy, Z[k] + t[k] * wz)) continue;
         var best = null;                         // 지금 깊이에서 가까운 쪽부터 바깥으로
@@ -166,7 +177,7 @@ var MV_DEPTH = (function () {
         }
         if (best != null) t[k] = best;           // 구간이 아예 없으면 결로 정한 깊이 그대로
       }
-      t[0] = 0;
+      if (!flt) t[0] = 0;
       for (it = 0; it < M.smooth; it++) { var pr = t[0]; for (k = 1; k < n - 1; k++) { var cur = t[k]; t[k] = (pr + 2 * cur + t[k + 1]) / 4; pr = cur; } }
       // ③ 다른 사진들과 더 맞을 때만 바꿈(재기만 하는 판정 — 스타일 규칙 아님)
       var Q = new Array(n), mx2 = 0, outB = 0, outA = 0;
@@ -209,7 +220,7 @@ var MV_DEPTH = (function () {
     return [TAG + ' 사진 ' + r.cams.join(',') + ' · 가닥 ' + r.strands + ' 중 옮김 ' + r.moved + ' · 자기 시선축으로 평균 ' + (r.moved ? (r.sumMove / r.moved * cm).toFixed(1) : '0') + 'cm · ' + r.ms + 'ms',
       '  다른 사진 머리 영역 밖 점 ' + (100 * r.outB / Math.max(1, r.chk)).toFixed(1) + '% → ' + (100 * r.outA / Math.max(1, r.chk)).toFixed(1) + '% · 옮긴 가닥의 다른 사진 결 어긋남(sin² 평균) ' + (r.cmp ? (r.offB / r.cmp).toFixed(3) + ' → ' + (r.offA / r.cmp).toFixed(3) : '-') +
       ' · copyDepthMid ' + (W.REGROW && W.REGROW.copyDepthMid === false ? '끔(이 단계가 대신함)' : '그대로') + ' · copyDepthFit ' + (W.REGROW && W.REGROW.copyDepthFit === false ? '끔(이 단계가 대신함 · 되돌리기 MV_DEPTH.ownDepth=false)' : '그대로') + ' · 끄기 MV_DEPTH.on=false',
-      '  깊이 구간 고르기: ' + (M.pathFit ? '가닥 한 줄로(동적계획법) — 고른 가닥 ' + (r.path || 0) + ' (끄기 MV_DEPTH.pathFit=false)' : '점마다 따로(예전)') + ' · 끝난 뒤 한 마디 4cm 넘게 건너뛴 자리 ' + (r.jump || 0)];
+      '  깊이 구간 고르기: ' + (M.pathFit ? '가닥 한 줄로(동적계획법) — 고른 가닥 ' + (r.path || 0) + ' (끄기 MV_DEPTH.pathFit=false)' : '점마다 따로(예전)') + ' · 끝난 뒤 한 마디 4cm 넘게 건너뛴 자리 ' + (r.jump || 0) + ' · 떠 있는 조각(시작점 깊이도 고름) ' + (r.flt || 0) + '(그중 깊이 다시 고른 ' + (r.fltPath || 0) + ' · 끄기 MV_DEPTH.freeFloat=false)'];
   };
   try { console.log(TAG + ' 설치 — 사진 가닥을 자기 시선축으로만 옮겨 다른 사진들의 결·머리 영역에 맞춤 · 끄기 MV_DEPTH.on=false'); } catch (e) {}
   return M;

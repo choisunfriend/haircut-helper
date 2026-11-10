@@ -2147,14 +2147,7 @@ var REGROW = (function () {
       var h = cam.hull, gx = Math.floor(o.ix / h.cp), gy = Math.floor(o.iy / h.cp); if (gx < 0 || gy < 0 || gx >= h.gw || gy >= h.gh) return false;
       return h.D[gy * h.gw + gx] * (h.cmCell || 1) > G.skinTolCm;
     }
-    /* (2026-11-10b) "가장 정면으로 보는 사진"은 두피 타원 바깥 방향으로 고르는데, 턱 아래(yBody 아래 · 어깨·가슴 앞)에선 그 방향이 거의 아래라
-       고개 숙인 각도가 섞인 옆 사진이 뽑힘 → 옆 사진에선 그 자리(건너편 어깨 앞)가 턱·목·옷에 가려 "사람·머리 아님" → 맨살로 보고 밖.
-       잰 값(디버그 0836 긴 웨이브): 다시 기르기 전 사진 가닥의 몸 앞 점 중 다시 기른 가닥이 못 덮은 점 — 고른 사진: 옆 4846 · 정면 234,
-       그중 27%가 이 판정으로 죽음(덮인 점은 1%) · 죽은 점의 92%는 정면 사진이 머리라고 봄 · 전부 두피 타원 반지름 1.58배 밖.
-       지금: 턱 아래 점은 이 "맨살 확실" 판정을 안 하고 다음 판정(보이는 사진 중 하나라도 머리면 살림)으로. 앞머리·이마 넘침은 턱 위라 그대로.
-       되돌리기 REGROW.skinBelowChin=true */
-    function skinVetoHere(p) { return G.skinBelowChin === true || !(p.y < yBody); }
-    function skinSeenAny(p) { if (G.anyHairAlive !== false) { if (!skinVetoHere(p)) return false; var bc = bestFacingCam(p); return !!(bc && bc.hull && skinSeen(bc, p, proj(bc, p))); }   // (2026-11-08f) 가장 정면으로 보는 사진만
+    function skinSeenAny(p) { if (G.anyHairAlive !== false) { var bc = bestFacingCam(p); return !!(bc && bc.hull && skinSeen(bc, p, proj(bc, p))); }   // (2026-11-08f) 가장 정면으로 보는 사진만
       for (var v = 0; v < cams.length; v++) { var c = cams[v]; if (c.hull && skinSeen(c, p, proj(c, p))) return true; } return false; }
     /* (2026-10-27i) 머리 영역 판정의 가림 = 결 읽기와 같은 목·몸통 기둥(camBlocked)
        예전: 목 높이(yBody) 아래에서 카메라 반대편이면 그 사진을 무조건 뺌 → 목 아래 뒤쪽은 뒷모습 사진 혼자 판정 → 깊이가 안 잡혀 뒷머리가 얼마나 뒤로 가든 "머리".
@@ -2296,7 +2289,7 @@ var REGROW = (function () {
     }
     function aliveJudge(p) {                                             // 1 살아 있음 · 0 밖(맨살 확실) · null 예전 판정으로
       if (G.anyHairAlive === false) return null;
-      if (skinVetoHere(p)) { var bc = bestFacingCam(p); if (bc && bc.hull && skinSeen(bc, p, proj(bc, p))) return 0; }
+      var bc = bestFacingCam(p); if (bc && bc.hull && skinSeen(bc, p, proj(bc, p))) return 0;
       return anyHairSeen(p) ? 1 : null;
     }
     function fcPoint(p) {                                                // 0 안 · 1 여유 안(영역 밖) · 2 여유 밖
