@@ -2305,10 +2305,32 @@ var REGROW = (function () {
         if (o.ix < 0 || o.iy < 0 || o.ix >= c.iw || o.iy >= c.ih) continue; if (hairAt(c, o.ix, o.iy)) return true; }
       return false;
     }
+    /* (2026-11-10c) 배경 거부가 '하나라도 머리면 살림'보다 먼저 — 1736 진단: 살린 판정 52,975 · 사진 대조 넘침 정면 45.6% · 왼 47.6% · 오른 43.0% (뒤만 12.1%).
+       원인: anyHairSeen은 카메라 방향을 안 봄 → 귀 옆·얼굴 옆에 뜬 점이 뒤 사진에선 뒷머리 덩어리 위로 비침 → '머리'로 살아남음 = 사진 교집합이 아니라 합집합.
+       배경 픽셀은 가림이 없는 증거(그 시선 위엔 아무것도 없음) → 어느 사진이든 그 점이 배경 위·여유 밖이면 다른 사진이 머리라 해도 밖. 살·옷은 가림일 수 있어 예전대로 살림.
+       끄기 REGROW.aliveBgVeto=false */
+    if (G.aliveBgVeto == null) G.aliveBgVeto = true;
+    function bgVetoSeen(p) {
+      for (var v = 0; v < cams.length; v++) { var c = cams[v]; if (!c.hull || !c.pm) continue; var o = proj(c, p); if (!(o.z > 0)) continue;
+        if (o.ix < 0 || o.iy < 0 || o.ix >= c.iw || o.iy >= c.ih) continue;
+        if (hairAt(c, o.ix, o.iy)) continue; if (personAt(c, o.ix, o.iy) !== false) continue;
+        if (hullOut(c, o.ix, o.iy, p)) return true; }
+      return false;
+    }
+    /* (2026-11-10c) 살려 주는 사진은 그 점과 같은 쪽 반구만 — 뒤 사진이 얼굴 옆 점을 살리지 않게. 문턱 REGROW.aliveFc(기본 -0.15 · 끄기 -2) */
+    function anyHairSeenFacing(p) {
+      var fcMin = G.aliveFc != null ? G.aliveFc : -0.15, vx = p.x / Es.a, vy = (p.y - CY) / Es.b, vz = p.z / Es.c, vl = Math.sqrt(vx * vx + vy * vy + vz * vz) || 1;
+      for (var v = 0; v < cams.length; v++) { var c = cams[v]; if (!c.hull) continue;
+        if ((c.R[6] * vx + c.R[7] * vy + c.R[8] * vz) / vl < fcMin) continue;
+        var o = proj(c, p); if (!(o.z > 0)) continue;
+        if (o.ix < 0 || o.iy < 0 || o.ix >= c.iw || o.iy >= c.ih) continue; if (hairAt(c, o.ix, o.iy)) return true; }
+      return false;
+    }
     function aliveJudge(p) {                                             // 1 살아 있음 · 0 밖(맨살 확실) · null 예전 판정으로
       if (G.anyHairAlive === false) return null;
       if (skinVetoHere(p)) { var bc = bestFacingCam(p); if (bc && bc.hull && skinSeen(bc, p, proj(bc, p))) return 0; }
-      return anyHairSeen(p) ? 1 : null;
+      if (G.aliveBgVeto !== false && bgVetoSeen(p)) { G._aliveBgVeto = (G._aliveBgVeto || 0) + 1; return 0; }
+      return (G.aliveFc === -2 ? anyHairSeen(p) : anyHairSeenFacing(p)) ? 1 : null;
     }
     function fcPoint(p) {                                                // 0 안 · 1 여유 안(영역 밖) · 2 여유 밖
       var aj = aliveJudge(p); if (aj === 1) return 0; if (aj === 0) { G._fcSkin = (G._fcSkin || 0) + 1; return 2; }
@@ -2494,7 +2516,7 @@ var REGROW = (function () {
     G.setupReuseStat = { used: false, why: '' };
     if (G.setupReuse !== false) try {
       scKey = cams.map(function (c) { return c.angle + ':' + Array.prototype.join.call(c.R, ',') + ':' + c.cx + ':' + c.crownY + ':' + c.s + ':' + c.sy; }).join('|')
-        + '#' + [G.volume, G.volCellCm, G.hullRule, String(G.hullViews), G.hullExtra, G.hullExtraMinIou, G.xfitLast ? G.xfitLast.rows.map(function (r) { return r.angle + (r.i1 || 0).toFixed(2); }).join('') : '', G.hullVis, G.hullPerson, G.hullBgOnly, G.hullVisVote, G.skinNoMargin, G.skinTolCm, 'px', G.tStep, G.tMax, G.tFloor, G.layerShell, G.layerOuter, G.polNbr, G.thinLen, G.thinLenBareCells].join(',');
+        + '#' + [G.volume, G.volCellCm, G.hullRule, String(G.hullViews), G.hullExtra, G.hullExtraMinIou, G.aliveBgVeto, G.aliveFc, G.xfitLast ? G.xfitLast.rows.map(function (r) { return r.angle + (r.i1 || 0).toFixed(2); }).join('') : '', G.hullVis, G.hullPerson, G.hullBgOnly, G.hullVisVote, G.skinNoMargin, G.skinTolCm, 'px', G.tStep, G.tMax, G.tFloor, G.layerShell, G.layerOuter, G.polNbr, G.thinLen, G.thinLenBareCells].join(',');
       var sc0 = G._setupCache; G._setupCache = null;
       if (!opt.lite && sc0) {
         if (sc0.photo === photo && sc0.probe === probe && sc0.key === scKey) { SC = sc0; G.setupReuseStat = { used: true, why: '가볍게 기르기의 준비물을 그대로 씀' }; }
@@ -4298,7 +4320,7 @@ var REGROW = (function () {
     // (옛 51) 격자가 없어 포기했던 사진이면 균일 격자를 넣고 다시 시도(13b ROOTS_FALLBACK)
     if (typeof ROOTS_FALLBACK !== 'undefined') ROOTS_FALLBACK._beforeRegrowBuild(G);
     // (2026-11-08) 사진 가닥 깊이를 다른 사진들의 결·머리 영역으로 맞춤(39 MV_DEPTH)
-    G._aliveAny = 0; G._fcSkin = 0;   // (2026-11-08f) 점 판정 세기
+    G._aliveAny = 0; G._fcSkin = 0; G._aliveBgVeto = 0;   // (2026-11-08f) 점 판정 세기
     if (typeof MV_DEPTH !== 'undefined') { try { MV_DEPTH._beforeRegrowBuild(state._hair3Dneutral); } catch (e) { console.warn('[여러 사진 깊이] 실패', e); } }
     if (typeof cb !== 'function') cb = null;
     if (G.building) return;
@@ -5260,7 +5282,7 @@ function helixMeasure(rgba,mask,W,H,angle,coh,opt){opt=opt||{};const n=opt.n||25
         + (dS.coarseN ? ' · ' + dC.coarseCm + 'cm 간격(굴곡) ' + (dS.coarseB / dS.coarseN).toFixed(1) + '→' + (dS.coarseA / dS.coarseN).toFixed(1) + '°/cm — 이게 크게 줄면 굴곡을 편 것' : '')
         + (dS.err ? ' · ⚠ ' + dS.err : '') + ' (끄기 ?dn=0 · REGROW.dn.passes/.sigMaxCm)')); } } catch (eD) {}
     try { var fcS = G.fcStat; L.push('  마지막 다듬기(모든 가닥 · 마주 보는 사진은 머리 아니면 밖 · 반대쪽 사진은 배경일 때만 밖): ' + (G.finalClip === false ? '꺼짐' : fcS ? '가닥 ' + fcS.n + ' 중 여유 넘게 나가 자른 ' + fcS.cut + '(점 ' + fcS.cutPts + ') · 끝이 영역 밖이라 경계에서 끝낸 ' + fcS.tail + '(점 ' + fcS.tailPts + ')' + (G.clipPointwise !== false ? ' · <b>점마다 판단</b>: 마지막으로 살아 있는 점까지 남김 — 중간에 밖으로 나갔다 돌아와 살린 가닥 ' + (fcS.keepMid || 0) + '(점 ' + (fcS.keepMidPts || 0) + ' · 되돌리기 REGROW.clipPointwise=false)' : '') + (G.clipStrict !== false && G.clipPointwise === false ? ' · 영역 안에 들어간 뒤 밖으로 나가 그 자리에서 자른 ' + (fcS.strict || 0) + '(점 ' + (fcS.strictPts || 0) + ' · 되돌리기 REGROW.clipStrict=false)' : '') : '아직') + ' (끄기 REGROW.finalClip=false)'); } catch (eF) {}
-    try { var du = G.drawUnusedStat; L.push('  안 쓴 사진 조각 그대로 그리기: ' + (!du ? '-' : !du.on ? '꺼짐' : du.err ? '실패 ' + du.err : '조각 ' + du.pieces + ' 중 통째로 ' + du.whole + ' · 안 그린 앞부분 ' + du.head + ' · 점 ' + du.pts + ' · 다듬기에 잘린 ' + du.clipped) + ' (끄기 REGROW.drawUnused=false) · 점 판정: 보이는 사진 중 하나라도 머리면 살림 ' + (G.anyHairAlive === false ? '꺼짐' : '켜짐 — 다른 사진이 밖이라 했지만 살린 판정 ' + (G._aliveAny || 0) + ' · 가장 정면 사진이 맨살이라 밖 ' + (G._fcSkin || 0)) + ' (되돌리기 REGROW.anyHairAlive=false)'); } catch (eS) {}
+    try { var du = G.drawUnusedStat; L.push('  안 쓴 사진 조각 그대로 그리기: ' + (!du ? '-' : !du.on ? '꺼짐' : du.err ? '실패 ' + du.err : '조각 ' + du.pieces + ' 중 통째로 ' + du.whole + ' · 안 그린 앞부분 ' + du.head + ' · 점 ' + du.pts + ' · 다듬기에 잘린 ' + du.clipped) + ' (끄기 REGROW.drawUnused=false) · 점 판정: 보이는 사진 중 하나라도 머리면 살림 ' + (G.anyHairAlive === false ? '꺼짐' : '켜짐 — 다른 사진이 밖이라 했지만 살린 판정 ' + (G._aliveAny || 0) + ' · 가장 정면 사진이 맨살이라 밖 ' + (G._fcSkin || 0) + ' · 배경 위라 살리지 않음 ' + (G.aliveBgVeto === false ? '꺼짐' : (G._aliveBgVeto || 0)) + '(끄기 REGROW.aliveBgVeto=false) · 살리는 사진 반구 fc≥' + (G.aliveFc != null ? G.aliveFc : -0.15)) + ' (되돌리기 REGROW.anyHairAlive=false)'); } catch (eS) {}
     try { var fcK = G.fcStat; if (fcK) L.push('  보이는 맨살 위(마주 보는 사진 · 머리 영역에서 ' + G.skinTolCm + 'cm 넘게): 투표에서 밖 ' + (G._skinNoMarginN || 0) + ' · 뿌리 구간이 맨살 위라 안 그린 가닥 ' + (fcK.skinRoot || 0) + ' · 가운데 구간이 맨살 위로 나가 거기서 끝낸 가닥 ' + (fcK.skinMid || 0) + '(점 ' + (fcK.skinMidPts || 0) + ') (끄기 REGROW.skinNoMargin=false)'); } catch (eK) {}
     L.push('  껍질(사진 교집합): ' + (s.hullV ? s.hullV + ' 중 그 자리를 마주 보는 사진이 머리 영역에서 ' + G.hullMarginCm + '(정면)·' + G.hullMarginSideCm + '(옆·뒤)cm 넘게 밖이라 덩어리 밖인 걸음(덩어리를 쓰면 다른 이유로 밖인 것도 포함) ' + (s.hullN || 0) + '회 — 다른 사진이 머리라고 해도 멈춤 (예전: 다수결 · 끄기 REGROW.hullViews=[])' + ' · 사진 가닥이 그어져 머리 영역에 더한 칸 ' + (G.hullStrands === false ? '꺼짐' : Object.keys(G._hsCells || {}).map(function (k) { return k + ' ' + G._hsCells[k]; }).join(' · ') + ' (끄기 ?hullst=0)') : '안 씀(다수결)'));
     try { var hv = G.hullVisStat; L.push('  머리 영역 판정의 가림(목·몸통 기둥): ' + (hv && hv.on ? '켜짐 — 덩어리 칸 판정에서 기둥·두개골에 가려 뺀 사진 ' + hv.blk + ' · 목 아래 카메라 반대편인데 안 가려서 쓴 사진 ' + hv.use + '(예전엔 다 뺌) (끄기 ?hullvis=0)' + ' · 사람 윤곽 ' + (G.hullPerson === false ? '꺼짐' : hv.pmViews + '장 — 여유 밖 판정 중 배경 ' + hv.bg + ' · 몸·살(안 막힘) ' + hv.body + ' · 몸·살인데 막혀서 못 봄으로 뺀 ' + hv.skip + ' (끄기 REGROW.hullPerson=false)' + ' · 보이는 사진만 투표: ' + (G.hullVisVote !== false ? '켜짐(사진 픽셀만) — 사람(살·옷)이라 기권 ' + (G._visAbstain || 0) + ' · 밖 표 ' + (G._visNo || 0) + '(그중 마주 보는 사진의 살 ' + (G._visSkinNo || 0) + ' · 끄기 ?vvskin=0)' + ' (끄기 ?hullvv=0)' : '꺼짐') + ' · 거부는 배경 픽셀만(몸·살 = 기권): ' + (G.hullVisVote !== false ? '안 씀' : G.hullBgOnly !== false ? '켜짐 — 기권 ' + (G._bgAbstain || 0) + '회 (끄기 ?hullbg=0)' : '꺼짐')) : (G.hullVis === false ? '꺼짐(예전: 목 아래 반대편 사진은 다 뺌)' : '목 치수 없음 — 예전 규칙'))); } catch (e) {}
