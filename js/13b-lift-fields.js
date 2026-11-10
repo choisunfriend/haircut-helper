@@ -1328,7 +1328,8 @@ var VIEWS360 = (function () {
   X._profileOf = profileOf;
   /* 옆얼굴 윤곽 후보(점수 높은 순) — 지금 세트로 분석한 추가 사진만. 각 { key, deg, ratio, prof } */
   if (X.profMinFaceYaw == null) X.profMinFaceYaw = 60; if (X.profPerSide == null) X.profPerSide = true;   // (2026-10-28) 옆모습 고르기
-  if (X.readExtraFlow == null) X.readExtraFlow = false;   // (2026-10-28) 추가 사진은 결 읽기 생략(형태·옆얼굴은 영역·윤곽만 씀 · 사진당 2~6초) · 켜기 VIEWS360.readExtraFlow=true
+  if (X.readExtraFlow == null) X.readExtraFlow = true;   // (2026-11-10) 다시 켬 — 사용자: "360 기본 4장 말고 나머지도 결 읽어야지" · 다시 기르기 걷기(17b cams.ori)·원본 대조·실루엣 길이가 추가 사진 결도 씀 · 끄기 VIEWS360.readExtraFlow=false
+  // (2026-10-28 원래 줄) if (X.readExtraFlow == null) X.readExtraFlow = false;   // (2026-10-28) 추가 사진은 결 읽기 생략(형태·옆얼굴은 영역·윤곽만 씀 · 사진당 2~6초) · 켜기 VIEWS360.readExtraFlow=true
   X.faceProfiles = function () {
     var out = [];
     try {

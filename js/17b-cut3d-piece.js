@@ -2941,7 +2941,7 @@ var REGROW = (function () {
          *  지금: 이마 랜드마크 맨 위 행에서 위로 · 맨살에서 시작해 머리가 3px 이어지는 첫 행. 시작이 머리인 줄은 앞머리가 덮은 줄(안 셈).
          *  위끝까지 머리를 못 만난 줄(가르마 위)도 안 셈. 3줄 미만이면 예전 값. 되돌리기 REGROW.hlScanUp=false */
         G.hlUpInfo = null;
-        if (G.hlScanUp !== false && _lmD && isFinite(_lmD.foreheadY)) try {
+        if (G.hlScanUp === true && _lmD && isFinite(_lmD.foreheadY)) try {
           var _r0 = Math.round(_lmD.foreheadY * _cF.ih) - 1, _hw = Math.abs(proj(_cF, { x: Es.a * 0.4, y: CY, z: Es.c * 0.9 }).ix - _cxD) || 30;
           var _ups = [], _cov = 0, _miss = 0;
           [-1, -2 / 3, -1 / 3, 0, 1 / 3, 2 / 3, 1].forEach(function (f) {
@@ -3007,13 +3007,14 @@ var REGROW = (function () {
         if (_phE > Math.PI / 2) continue;                                   // 눈높이 아래는 얼굴 — 예전 경계가 맡음
         var _xE = Es.a * Math.sin(_phE) * Math.sin(_thE), _zE = Es.c * Math.sin(_phE) * Math.cos(_thE), _yE = CY + Es.b * Math.cos(_phE);
         if (!(_zE > 0 && Math.abs(Math.atan2(_xE, _zE)) < 0.87)) continue;
+        // (2026-11-10n) 사용자: "어제 마지막 커밋(ec95b09)과 똑같이" → 아래 두 값 기본 0 = 어제처럼 수평 한 높이(_yE < hlY와 같음) · hlScanUp도 기본 끔(켜기 REGROW.hlScanUp=true)
         // (2026-11-10b) 위로 파임 고침: ① 헤어라인 phi 바닥 hlEdgeMinPhi(앞머리 있는 사진은 '헤어라인'이 앞머리 윗선이라 phi 0.5~0.7로 잡힘 — 사람 ≈0.9~1.1)
         //   ② 수평 한 높이로 자르면 가운데가 깊게 파임 → 관자놀이 쪽으로 갈수록 헤어라인을 아래로(hlEdgeSidePhi) · 되돌리기 REGROW.hlEdgeMinPhi=0, .hlEdgeSidePhi=0
         var _phHL = Math.acos(Math.max(-1, Math.min(1, (hlY - CY) / Es.b))), _ang = Math.abs(Math.atan2(_xE, _zE)) / 0.87;
-        _phHL = Math.max(_phHL, G.hlEdgeMinPhi != null ? G.hlEdgeMinPhi : 0.9) + (G.hlEdgeSidePhi != null ? G.hlEdgeSidePhi : 0.12) * _ang * _ang;
+        _phHL = Math.max(_phHL, G.hlEdgeMinPhi != null ? G.hlEdgeMinPhi : 0) + (G.hlEdgeSidePhi != null ? G.hlEdgeSidePhi : 0) * _ang * _ang;
         _nFront++; if (_phE > _phHL) { hlOff[_ce] = 1; _nOff++; }
       }
-      G.hlEdge = { y: hlY, phi: Math.max(Math.acos(Math.max(-1, Math.min(1, (hlY - CY) / Es.b))), G.hlEdgeMinPhi != null ? G.hlEdgeMinPhi : 0.9), nOff: _nOff, nFront: _nFront };
+      G.hlEdge = { y: hlY, phi: Math.max(Math.acos(Math.max(-1, Math.min(1, (hlY - CY) / Es.b))), G.hlEdgeMinPhi != null ? G.hlEdgeMinPhi : 0), nOff: _nOff, nFront: _nFront };
     } catch (e) { hlOff = null; G.hlEdge = { off: '실패 ' + (e && e.message) }; }
     else G.hlEdge = { off: G.hairlineEdge === false ? '꺼짐' : (G.hlLineInfo && G.hlLineInfo.off) || '헤어라인 못 잼(REGROW.hlDiag 꺼짐?)' };
     var hlFill = (G.hairlineFill !== false && roots._hlFill) ? roots._hlFill : null; G.hairlineFillN = hlFill ? roots._hlFillN : 0;   // 두 번째 기르기부터는 처음 채운 표를 그대로(밀도는 이미 채워져 있음)
