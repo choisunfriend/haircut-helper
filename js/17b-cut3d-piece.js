@@ -4127,6 +4127,7 @@ var REGROW = (function () {
         if (fit && fit.views.some(function (r) { return r.pitch || r.dyCm || r.scale !== 1; })) { G.camFitFirstMs = Math.round(workMs); return G.build(cb); }
       }
       G.model = model; G.src = photo;
+      try { if (typeof SIL_LEN !== 'undefined') SIL_LEN.apply(model, photo, !!(G.stats && G.stats.isLong)); } catch (eSL) { console.warn('[실루엣 길이] 실패 — 그대로 둠', eSL); }   // (2026-11-10) 짧은 머리 끝 = 실루엣에서 잰 길이(42)
       console.log(G.lines().join('\n'));
       try { if (G.applyBaseline) G.applyBaseline(); } catch (e) { console.warn(TAG + ' 기준 값 넣기 실패', e); }
       redraw();
