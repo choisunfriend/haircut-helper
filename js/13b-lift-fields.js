@@ -1375,7 +1375,7 @@ var VIEWS360 = (function () {
   function clearViews() {
     try { Object.keys(state.hairMasks || {}).forEach(function (k) { if (isExtraKey(k)) delete state.hairMasks[k]; }); } catch (e) {}
     Object.keys(X.views).forEach(dropKey);
-    X.views = {}; X.order = []; X.ref = null; X.fp = null; X.forSet = null;
+    X.views = {}; X.order = []; X.ref = null; X.fp = null; X.forSet = null; X.fit = {};   // (2026-11-10) 추가 사진 카메라 맞춘 양도 세트와 함께 지움
   }
   X.clear = clearViews;
   /* 지금 4장이 360 세트에서 온 그대로인가 */
@@ -1684,7 +1684,10 @@ var VIEWS360 = (function () {
     var faceOk = typeof v.faceYaw === 'number' && !(fMax > 0 && Math.abs(yawS) > fMax) && (!(fTol > 0) || Math.abs(wrapDeg(v.faceYaw - yawS)) <= fTol);
     if (typeof v.faceYaw === 'number' && !faceOk) { v.faceRejected = v.faceYaw; X._faceRej = (X._faceRej || 0) + 1; }
     var yawDeg = faceOk ? v.faceYaw : yawS;                                                    // 얼굴이 잡혔고 센서와 맞으면 얼굴 실측
-    var cal = { pose: { yaw: yawDeg * Math.PI / 180, pitch: 0, roll: 0 }, cx: m.capCx, s: sy, sy: sy, crownY: m.crown, x360: true };
+    /* (2026-11-10) 다시 기르기의 [추가 사진 카메라 맞추기](17b REGROW.extraFit)가 사진 결·머리 영역으로 다듬은 양 — 3D를 다시 만들어도 유지 · 세트가 바뀌면 지움. 끄기 VIEWS360.useFit=false */
+    var _xf = (X.useFit !== false && X.fit && X.fit[v.key]) || null, _crown = m.crown;
+    if (_xf) { yawDeg += _xf.dyaw || 0; var _sy0 = sy; sy = sy / (_xf.ds || 1); _crown = m.crown + (yTop - CY) * (1 / _sy0 - 1 / sy); }
+    var cal = { pose: { yaw: yawDeg * Math.PI / 180, pitch: 0, roll: 0 }, cx: m.capCx + (_xf ? _xf.dcx || 0 : 0), s: sy, sy: sy, crownY: _crown, x360: true, fit: _xf };
     out.cal = cal;
     var A = headHalfWidthAt(cal.pose.yaw); v.q = A > 0 ? m.hw * sy / A : null;
     try { v.agree = scalpAgree(cal, state.hairMasks[v.key], yTop, CY); } catch (e) { v.agree = null; }
