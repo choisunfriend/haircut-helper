@@ -17,6 +17,7 @@
  *      돌리기(rotation.y)는 그대로 — 기울기는 그 안쪽(로컬)에 들어감(Euler YXZ).
  *   사진 대조·카메라 값은 안 바꿈(모델 좌표 그대로 · 보이는 자세만 기울임).
  *
+ * (2026-11-10) 좌우 성분은 기본으로 지움 — 앞뒤로만 기울임(HEAD_TILT.lateral=true로 되살림)
  * 끄기 HEAD_TILT.on=false 후 다시 기르기 · 화면만 끄기 HEAD_TILT.view=false
  * 상태 HEAD_TILT.lines().join("\n")
  * ────────────────────────────────────────────────────────────────────────── */
@@ -24,6 +25,7 @@
   var W = window;
   var T = W.HEAD_TILT = {
     on: true, view: true,
+    lateral: false,      // (11-10) 좌우(갸웃) 기울기도 쓸지 — 기본 끔: 앞뒤(숙임)만. 켜기 HEAD_TILT.lateral=true
     maxDeg: 25,          // 이보다 크면 포즈 오측정으로 보고 안 기울임
     weights: { front: 1, left: 1, right: 1, back: 0 },   // 얼굴 실측 없는 뷰는 아래에서 0
     up: null, down: null, deg: 0, from: '', _key: ''
@@ -47,17 +49,19 @@
       sx += w * c.R[3]; sy += w * c.R[4]; sz += w * c.R[5]; wsum += w;   // R 둘째 줄 = 모델에서 본 사진의 위
       used.push(c.angle);
     });
-    var key = used.join(',') + ':' + sx.toFixed(4) + sy.toFixed(4) + sz.toFixed(4);
+    var key = (T.lateral ? 'L' : 'F') + used.join(',') + ':' + sx.toFixed(4) + sy.toFixed(4) + sz.toFixed(4);
     if (key === T._key) return T.up;
     T._key = key;
     if (!(wsum > 0)) { T.up = T.down = null; T.deg = 0; T.from = '얼굴 실측 사진 없음'; return null; }
+    var rawSide = Math.atan2(sx, sy) * 180 / Math.PI;
+    if (!T.lateral) sx = 0;   // 좌우 성분 지움 → 축은 y–z 평면(앞뒤)에만 남음
     var l = Math.hypot(sx, sy, sz) || 1, u = { x: sx / l, y: sy / l, z: sz / l };
     var deg = Math.acos(Math.max(-1, Math.min(1, u.y))) * 180 / Math.PI;
     T.from = used.join('·');
     if (deg > T.maxDeg) { T.up = T.down = null; T.deg = deg; T.from += ' (' + deg.toFixed(1) + '° > ' + T.maxDeg + '° — 오측정으로 보고 안 씀)'; console.warn('[두상 기울기] ' + T.from); return null; }
     T.up = u; T.down = { x: -u.x, y: -u.y, z: -u.z }; T.deg = deg;
     console.log('[두상 기울기] 사진의 위(모델 좌표) (' + u.x.toFixed(3) + ', ' + u.y.toFixed(3) + ', ' + u.z.toFixed(3) + ') · ' + deg.toFixed(1) + '°'
-      + ' (앞뒤 ' + (Math.atan2(-u.z, u.y) * 180 / Math.PI).toFixed(1) + '° · 좌우 ' + (Math.atan2(u.x, u.y) * 180 / Math.PI).toFixed(1) + '°) · 출처 ' + T.from
+      + ' (앞뒤 ' + (Math.atan2(-u.z, u.y) * 180 / Math.PI).toFixed(1) + '° · 좌우 ' + (Math.atan2(u.x, u.y) * 180 / Math.PI).toFixed(1) + '°' + (T.lateral ? '' : ' (실측 ' + rawSide.toFixed(1) + '° 안 씀)') + ') · 출처 ' + T.from
       + ' — 다시 기르기 중력·화면 자세를 이 축으로 (끄기 HEAD_TILT.on=false)');
     return u;
   };

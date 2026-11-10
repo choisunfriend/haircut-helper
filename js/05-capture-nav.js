@@ -1121,7 +1121,11 @@ function updateAngleUI(){
     // 바로 ✓/…/⚠로 보여줘서 그 자리에서 재촬영하도록 유도.
     // (수정) 후면도 사용자 지시로 동일하게 검사·표시: "폴백 쓰면 3D이미지
     // 찌그러져" — 후면 ⚠는 "진행 불가"가 아니라 "폴백으로 동작 중" 표시.
-    const lmStatus = (state.captureLmStatus || {})[a];
+    // (2026-11-10) 후면은 얼굴 랜드마크가 원리적으로 안 잡힌다 — 'fail'은 정상이므로
+    // ⚠ 대신 ✓(사용자 지시: "뒷모습은 항상 못 찾으니 Back만 안 뜨게"). 'wrongslot'
+    // (후면 슬롯에 얼굴)은 진짜 잘못 찍은 것이라 그대로 ⚠.
+    const lmStatusRaw = (state.captureLmStatus || {})[a];
+    const lmStatus = (a === 'back' && lmStatusRaw === 'fail') ? 'ok' : lmStatusRaw;
     if(!hasShot){ chk.textContent=''; }
     else if(!lmStatus || lmStatus === 'na'){ chk.textContent='✓'; chk.style.color='var(--ok)'; }
     else if(lmStatus === 'checking'){ chk.textContent='…'; chk.style.color='var(--text-muted)'; }
