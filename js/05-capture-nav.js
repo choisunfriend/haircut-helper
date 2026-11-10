@@ -555,19 +555,31 @@ var SHOT360 = (function () {
      ③ 얼굴 잡힌 후보가 없으면(뒤 등) 센서로 가장 가까운 장(예전 그대로). 끄기 SHOT360.pickByFace = false */
   function byFace(frames, zero, target, maxOff) {
     var want = wrap(zero + target);
-    if (Q.pickByFace === false) return nearest(frames, want, maxOff);
+    if (Q.pickByFace === false) return nearest(frames, want, maxOff);   // (11-10) 같은 카메라 상태 거르기는 아래 후보에서
     var cand = frames.filter(function (f) { return f && Math.abs(wrap(f.deg - want)) <= maxOff; });
+    /* (2026-11-10) 정면과 <b>같은 카메라 상태</b>(프레임 크기·배율)인 장만 — 사용자: "왜 그렇게 다른 사진이 나오지?" · 실사 1707: 왼쪽만 450×800(9:16 · 머리 1cm에 9.2px)
+     *  나머지 600×800(3:4 · 12.5~14.6px) — 거리로는 가로세로 비가 안 바뀜 = 그 순간 카메라가 다른 모드(렌즈·배율·다시 열림). 결 필터(파장 4px)가 머리카락 무늬를 덜 읽어 옆머리 결이 엉킴.
+     *  같은 상태 후보가 하나라도 있으면 그중에서만 고름(없으면 예전처럼 전부). 크기를 모르는 옛 세트는 그대로. 끄기 SHOT360.sameCam=false */
+    var ref = Q._refCam;
+    if (Q.sameCam !== false && ref && ref.w) {
+      var same = cand.filter(function (f) { return f.w === ref.w && f.h === ref.h && (f.zoom == null || ref.zoom == null || Math.abs(f.zoom - ref.zoom) < 1e-3); });
+      if (same.length && same.length < cand.length) console.log(TAG + ' ' + target + '° 칸 — 정면과 카메라 상태(' + ref.w + '×' + ref.h + (ref.zoom != null ? ' · 배율 ' + ref.zoom : '') + ')가 다른 후보 ' + (cand.length - same.length) + '장 뺌');
+      if (same.length) cand = same;
+    }
     var best = null, bd = 1e9;
     cand.forEach(function (f) {
       if (!f._fy || typeof f._fy.yaw !== 'number') return;
       var d = Math.abs(wrap(f._fy.yaw - target)); if (d < bd) { bd = d; best = f; }
     });
+    if (!best && cand.length) { cand.forEach(function (f) { var d = Math.abs(wrap(f.deg - want)); if (d < bd) { bd = d; best = f; } }); if (best) return best; }   // (11-10) 얼굴 없는 칸도 같은 카메라 상태 후보 중 센서로 가장 가까운 장
     if (best) { console.log(TAG + ' ' + target + '° 칸 — 후보 ' + cand.length + '장 중 얼굴 ' + best._fy.yaw.toFixed(0) + '°인 장(센서 ' + Math.round(wrap(best.deg - zero)) + '°)'); return best; }
     return nearest(frames, want, maxOff);
   }
   function pickFrames(set) {
+    Q._refCam = null;
     var fr0 = set.frames.filter(function (f) { return f && f.front; })[0];
     if (fr0) {                                                         // (2026-10-25f) 촬영 중 찾은 정면
+      Q._refCam = fr0.w ? { w: fr0.w, h: fr0.h, zoom: fr0.zoom } : null;
       var yw = typeof fr0.faceYaw === 'number' ? fr0.faceYaw : 0, z0 = wrap(fr0.deg - yw), rest0 = set.frames.filter(function (f) { return f !== fr0; });
       try { if (!fr0._fy) Object.defineProperty(fr0, '_fy', { value: { yaw: yw, ecN: 0 }, writable: true, configurable: true, enumerable: false }); } catch (e) {}
       return { front: fr0, left: byFace(rest0, z0, Q.sideDeg, 20), right: byFace(rest0, z0, -Q.sideDeg, 20), back: byFace(rest0, z0, 180, 35), zero: z0, by: 'capture' };
@@ -583,6 +595,7 @@ var SHOT360 = (function () {
       var old = { front: nearest(set.frames, 0, 20), left: nearest(set.frames, 45, 25), right: nearest(set.frames, -45, 25), back: nearest(set.frames, 180, 35), zero: 0, by: 'sensor' };
       return old;
     }
+    Q._refCam = front.w ? { w: front.w, h: front.h, zoom: front.zoom } : null;
     var zero = wrap(front.deg - front._fy.yaw), rest = set.frames.filter(function (f) { return f !== front; });
     return { front: front, left: byFace(rest, zero, Q.sideDeg, 20), right: byFace(rest, zero, -Q.sideDeg, 20), back: byFace(rest, zero, 180, 35), zero: zero, by: 'face' };
   }
@@ -785,7 +798,7 @@ var SHOT360 = (function () {
   function takeFor(t, sh) {
     var c = grabFrame(); if (!c) return false;
     var url; try { url = c.toDataURL('image/jpeg', Q.jpeg); } catch (e) { return false; }
-    got[t] = { raw: t, at: cur, url: url, sharp: sh, time: Date.now() };
+    got[t] = { raw: t, at: cur, url: url, sharp: sh, time: Date.now(), w: c.width, h: c.height, zoom: Q.cam.zoom };   // (11-10) 프레임 크기·배율 — 기준 4장을 같은 카메라 상태에서 고르려고
     tries[t] = (tries[t] || 0) + 1;
     if (Q.burst && Q.burstN > 1 && !bst) bst = { t: t, entry: got[t], frames: [copyCanvas(c)], sharp: [sh] };   // (2026-11-08) 이어서 몇 프레임 더 받음(tick)
     return true;
@@ -865,7 +878,7 @@ var SHOT360 = (function () {
       var score = Math.abs(p.yawDeg) + 0.5 * Math.abs(p.pitchDeg || 0);
       if (frontBest && score >= frontBest.score - 1) return;            // 1° 넘게 나아질 때만 바꿈
       var url = c.toDataURL('image/jpeg', Q.jpeg);
-      frontBest = { raw: cur, yaw: p.yawDeg, pitch: p.pitchDeg || 0, score: score, url: url, sharp: Math.round(sharpness()), time: Date.now() };
+      frontBest = { raw: cur, yaw: p.yawDeg, pitch: p.pitchDeg || 0, score: score, url: url, sharp: Math.round(sharpness()), time: Date.now(), w: c.width, h: c.height, zoom: Q.cam.zoom };
     } catch (e) {}
   }
   function appSign() {
@@ -928,14 +941,14 @@ var SHOT360 = (function () {
     burstFlush();                   // (2026-11-08) 뒤에서 평균 중인 칸 마무리
     var keys = Object.keys(got);
     if (keys.length < 4) { toast('사진이 모자랍니다 — 정면·양옆·뒤가 다 찍혀야 해요'); return; }
-    var s = appSign(), frames = keys.map(function (k) { var f = got[k]; return { deg: wrap(s * f.raw), url: f.url, sharp: Math.round(f.sharp), time: f.time }; });
+    var s = appSign(), frames = keys.map(function (k) { var f = got[k]; return { deg: wrap(s * f.raw), url: f.url, sharp: Math.round(f.sharp), time: f.time, w: f.w, h: f.h, zoom: f.zoom }; });
     var fz = null;
     if (frontBest) {                                                  // (2026-10-25f) 촬영 중 찾은 정면으로 0°를 다시 잡음
       var zero = wrap(s * frontBest.raw - frontBest.yaw);
       frames.forEach(function (f) { f.deg = wrap(f.deg - zero); });
       var fd = wrap(s * frontBest.raw - zero);                       // = 얼굴 yaw
       frames = frames.filter(function (f) { return Math.abs(wrap(f.deg - fd)) >= Q.stepDeg / 2; });   // 정면 칸에 있던 장은 뺌(정면 장으로 바꿈)
-      frames.push({ deg: fd, url: frontBest.url, sharp: frontBest.sharp, time: frontBest.time, front: true, faceYaw: +frontBest.yaw.toFixed(1), facePitch: +frontBest.pitch.toFixed(1) });
+      frames.push({ deg: fd, url: frontBest.url, sharp: frontBest.sharp, time: frontBest.time, w: frontBest.w, h: frontBest.h, zoom: frontBest.zoom, front: true, faceYaw: +frontBest.yaw.toFixed(1), facePitch: +frontBest.pitch.toFixed(1) });
       fz = { zero: zero, yaw: frontBest.yaw, seen: seekN };
     }
     frames.sort(function (a, b) { return a.deg - b.deg; });

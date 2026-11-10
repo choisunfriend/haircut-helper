@@ -3182,6 +3182,10 @@ var REGROW = (function () {
       /* (2026-11-08) 칸을 맡을 사진 고를 때 깨끗한 사진에 무게(13b 결 3D 합치기와 같은 값 VIEW_CLEAN) — 같은 자리를 두 사진이 보면 잡음 적은 사진의 가닥을 옮겨 그림. 끄기 REGROW.sfViewClean=false */
       var vcM = (typeof window !== 'undefined' && window.VIEW_CLEAN) || {}, vcMx = 0; cams.forEach(function (c) { var q = vcM[c.angle]; if (q > vcMx) vcMx = q; });
       var vcWv = cams.map(function (c) { var q = vcM[c.angle]; return (G.sfViewClean !== false && vcMx > 0 && q > 0) ? Math.max(0.2, Math.pow(q / vcMx, 2)) : 1; });
+      /* (2026-11-10) 사진 해상도(머리 1cm에 몇 px = 1/cam.s) — 같은 자리를 더 선명하게 본 사진이 칸을 맡게. 실사 1707: 왼쪽만 9.2px/cm(나머지 12.5~14.6) → 옆머리 결이 엉킴.
+       *  무게 × (이 사진 해상도 ÷ 가장 높은 해상도) — 해상도가 비슷한 보통 세트는 거의 그대로. 끄기 REGROW.sfRes=false */
+      var resMx = 0; cams.forEach(function (c) { if (c.s > 0 && 1 / c.s > resMx) resMx = 1 / c.s; });
+      if (G.sfRes !== false && resMx > 0) vcWv = vcWv.map(function (w0, i) { return cams[i].s > 0 ? w0 * Math.min(1, (1 / cams[i].s) / resMx) : w0; });
       var keyOf = function (x, y, z) { var a = Math.floor((x - sx0) / hS), b = Math.floor((y - sy0) / hS), c = Math.floor((z - sz0) / hS); if (a < 0 || b < 0 || c < 0 || a >= sNx || b >= sNy || c >= sNz) return -1; return (b * sNz + c) * sNx + a; };
       /* (2026-11-10) [추가 사진 가닥] 360 추가 사진도 사진 가닥을 그어 이 결 장·그대로 그리기에 넣음
        *  사용자: "결 방향 필터와 구조텐서로 기본 결을 잡는 거 아니었어? … 해야지. 그래야 써먹지"
