@@ -23,6 +23,7 @@ var RAW3D = (function () { var q = (typeof location !== 'undefined' && location.
    마스크 안(base)과 연장분(ext)을 따로 그린 뒤 마지막에 합성한다.
    조정 경로가 3D로 통일된 뒤로는 (1)중립 캡처 (2)원본 결 보기 (3)폴백 용도.
    ════════════════════════════════════════════════════════════════ */
+var SLICE_HEM = (typeof SLICE_HEM !== 'undefined') ? SLICE_HEM : { captureOwn: true, stat: null };
 function drawHairStrands(ctx, fit, scalpY, hairEndY, maskW, maskH, hairCanvas, opts){
   // 머리색 오버라이드 — 전역 FORCED_HAIR_COLOR(파일 상단, STYLES 위 선언)로
   // 통일됨(기존 지역 스위치 FORCE_BLACK_HAIR를 승격). 실측 색(평균색/섹션색/
@@ -254,6 +255,12 @@ function drawHairStrands(ctx, fit, scalpY, hairEndY, maskW, maskH, hairCanvas, o
   function finalizeStrandsWithSlices(){
     const SLICE_W = Math.max(4, maskW * 0.03);      // 가로 슬라이스 폭(마스크 폭의 3%)
     const sliceMap = {};
+    /* (2026-11-10c) 캡처(3D·다시 기르기 재료)는 슬라이스 합의 없이 가닥마다 실측 끝 그대로 — 사용자: "결읽기 그대로 그리기"
+       중앙값은 화면 끝선 정돈용이라 층 낸 커트(한 슬라이스에 짧은 층·긴 층)나 일부만 가려진 자리에서 실측과 다른 끝을 만듦.
+       캡처일 때는 가닥별 랜덤 배율·헴 스태거·질감 트림도 안 씀(슬라이더 길이 배율·레이어만). 화면용 그리기는 예전 그대로.
+       되돌리기 SLICE_HEM.captureOwn=false */
+    const capOwn = !!(capturedStrands && !(typeof SLICE_HEM !== 'undefined' && SLICE_HEM.captureOwn === false));
+    if(typeof SLICE_HEM !== 'undefined'){ SLICE_HEM.stat = { capOwn, n: pendingStrands.length, diff: 0, shorter: 0, longer: 0 }; }
     pendingStrands.forEach(p=>{
       // 슬라이스 = 섹션 × 가로 폭 × 뿌리 깊이 밴드(10%) — 같은 패널에서 난 가닥들
       const key = p.rootSec + '|' + Math.floor(p.rootX / SLICE_W) + '|' + Math.floor(p.rootNy * 10);
@@ -266,7 +273,7 @@ function drawHairStrands(ctx, fit, scalpY, hairEndY, maskW, maskH, hairCanvas, o
       const hemMed = hems[Math.floor(hems.length / 2)];
       /* (2026-11-10b) 가려진 틈을 건너 이은 가닥은 슬라이스 합의로 줄이지 않음 — 이웃 가닥은 대개 가린 것(턱·목·얼굴)에서 끝나
          중앙값이 틈 앞이 되므로, 건너 이은 아래 조각이 여기서 도로 잘려 나가던 것(로그: 다시 드러나 이어 그음 255 · 이은 가닥 0개). */
-      members.forEach(m=>{ m.sliceHemIdx = (m.probe && m.probe.hidden && m.probe.hidden.length) ? Math.max(hemMed, m.hemIdx) : hemMed; });
+      members.forEach(m=>{ m._hemMed = hemMed; m.sliceHemIdx = capOwn ? m.hemIdx : (m.probe && m.probe.hidden && m.probe.hidden.length) ? Math.max(hemMed, m.hemIdx) : hemMed; });
     });
     pendingStrands.forEach(p=>{
       const hemLen = Math.max(maskH * 0.03, p.sliceHemIdx * STRAND_STEP_LEN);
@@ -275,7 +282,12 @@ function drawHairStrands(ctx, fit, scalpY, hairEndY, maskW, maskH, hairCanvas, o
       // 헴 주변 ±8% 스태거(결정적 의사난수 — 프레임 간 흔들림 방지)
       const sliceJit = 0.92 + hashFract(p.rootX * 17.23 + p.rootNy * 91.7) * 0.16;
       let targetLen;
-      if(p.ratio >= 1){
+      if(capOwn){
+        targetLen = (p.ratio >= 1 ? hemLen + hemLen * (p.ratio - 1) * 1.6 : hemLen * p.ratio) + p.layerDelta;
+        try{ // [진단] 예전 합의(중앙값)였으면 끝이 얼마나 달랐나
+          if(typeof SLICE_HEM !== 'undefined' && SLICE_HEM.stat && p._hemMed != null && p._hemMed !== p.hemIdx){ SLICE_HEM.stat.diff++; if(p._hemMed < p.hemIdx) SLICE_HEM.stat.shorter++; else SLICE_HEM.stat.longer++; }
+        }catch(e){}
+      } else if(p.ratio >= 1){
         // 연장: 패널 균일 성장 — 슬라이스 전체가 같은 양(hemLen×(ratio-1))만큼 자람.
         // 예전(개별 배율×ratio 곱)은 배율 큰 소수 가닥만 유독 길어져 "낙수 가닥"이 됐음.
         // (9차) 연장 이득 1.6배 — 늘리는 쪽 변화가 약하다는 실기기 피드백. 균일
@@ -284,7 +296,7 @@ function drawHairStrands(ctx, fit, scalpY, hairEndY, maskW, maskH, hairCanvas, o
       } else {
         targetLen = hemLen * multEff * sliceJit * p.ratio + p.layerDelta;
       }
-      const texAmt = textureFor(p.ix, p.rootSec);
+      const texAmt = capOwn ? 0 : textureFor(p.ix, p.rootSec);
       if(texAmt > 0){
         targetLen *= (1 - Math.random() * (texAmt / 100) * 0.35); // 끝단 무작위 트림
       }
@@ -702,6 +714,7 @@ function drawHairStrands(ctx, fit, scalpY, hairEndY, maskW, maskH, hairCanvas, o
   // (옮기기 1단계) 이 각도의 최신 완성 경로를 저장 — 슬라이더 조정 등으로
   // 다시 그릴 때마다 덮어써서 항상 "지금 화면에 보이는 그 가닥들"이 유지됨.
   if(capturedStrands && angle){
+    try{ const SS = SLICE_HEM.stat; if(SS) console.log('[사진 가닥·끝] ' + angle + ' — ' + (SS.capOwn ? '가닥마다 실측 끝 그대로(슬라이스 합의 안 씀) · 가닥 ' + SS.n + ' 중 예전 합의였으면 끝이 달랐을 가닥 ' + SS.diff + '(더 짧게 ' + SS.shorter + ' · 더 길게 ' + SS.longer + ') · 되돌리기 SLICE_HEM.captureOwn=false' : '슬라이스 합의(중앙값)')); }catch(e){}
     state.strandPaths = state.strandPaths || {};
     state.strandPaths[angle] = { strands: capturedStrands, maskW, maskH };
     try{ if(typeof RAW_TRACE !== 'undefined' && RAW_TRACE.hideBridge){ const S = RAW_TRACE.stats; let nh = 0; capturedStrands.forEach(c=>{ if(c.pts && c.pts.hidden && c.pts.hidden.length) nh++; });
