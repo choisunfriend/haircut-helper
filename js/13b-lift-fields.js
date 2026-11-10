@@ -833,8 +833,29 @@ function getViewMaskSampler(angle){
       if(gapCells) hit = (x, y)=> (segHit(x, y) === 1 || G[y*W + x]) ? 1 : 0;
     }catch(e){ gapCells = 0; }
   }
+  /* (2026-11-10b) 가려진 틈(38-raw-trace RAW_TRACE.hideBridge · pts.hidden) = 이 사진에서 머리가 가린 것(살·옷) 뒤로 지나간 자리 —
+     strandGap(기본 끔)과 따로, 2D에서 "다시 드러나 이어 그은" 구간만 영역에 더함. 이게 없으면 3D 옮기기(trimStrandToOccupancy3D)·
+     다시 기르기 자기 사진 영역(copyOut)·마지막 다듬기가 틈에서 가닥을 끊어 아래 조각이 다시 두피와 떨어진 조각이 됨. 끄기 HAIR_OCC3D.hiddenGap=false */
+  let hidCells = 0;
+  if(HAIR_OCC3D.hiddenGap !== false && spRec && spRec.strands && spRec.strands.length){
+    try{
+      const GH = new Uint8Array(W*H), kx = W / (spRec.maskW || W), ky = H / (spRec.maskH || H), segH = hit;
+      const markH = (x, y)=>{ for(let dy=-1; dy<=1; dy++) for(let dx=-1; dx<=1; dx++){ const xi = (x|0)+dx, yi = (y|0)+dy; if(xi >= 0 && yi >= 0 && xi < W && yi < H && !GH[yi*W+xi] && segH(xi, yi) !== 1){ GH[yi*W+xi] = 1; hidCells++; } } };
+      for(const st of spRec.strands){
+        const q = st.pts, hd = q && q.hidden; if(!hd || !hd.length) continue;
+        for(const k of hd){
+          for(const m of [k, k + 1]){                                       // k-1→k, k→k+1 선분(틈 양 끝까지)
+            if(m < 1 || m >= q.length) continue;
+            const x0 = q[m-1].x * kx, y0 = q[m-1].y * ky, x1 = q[m].x * kx, y1 = q[m].y * ky, n = Math.max(1, Math.ceil(Math.hypot(x1 - x0, y1 - y0)));
+            for(let t = 0; t <= n; t++) markH(x0 + (x1 - x0) * t / n, y0 + (y1 - y0) * t / n);
+          }
+        }
+      }
+      if(hidCells){ const prevHit = hit; hit = (x, y)=> (prevHit(x, y) === 1 || GH[y*W + x]) ? 1 : 0; }
+    }catch(e){ hidCells = 0; }
+  }
   const s = {
-    W, H, gapCells, gapRuns,
+    W, H, gapCells, gapRuns, hidCells,
     // 마스크 원본(mi.w/h) 좌표 → 0(없음) / 1(머리카락)
     at(ix, iy){
       const x = (ix / iw * W) | 0, y = (iy / ih * H) | 0;

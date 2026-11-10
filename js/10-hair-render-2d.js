@@ -264,7 +264,9 @@ function drawHairStrands(ctx, fit, scalpY, hairEndY, maskW, maskH, hairCanvas, o
       // 슬라이스 전체를 흔들지 않고, 진짜 겹 끝이면 다수가 동의해 헴이 됨.
       const hems = members.map(m=>m.hemIdx).sort((a,b)=>a-b);
       const hemMed = hems[Math.floor(hems.length / 2)];
-      members.forEach(m=>{ m.sliceHemIdx = hemMed; });
+      /* (2026-11-10b) 가려진 틈을 건너 이은 가닥은 슬라이스 합의로 줄이지 않음 — 이웃 가닥은 대개 가린 것(턱·목·얼굴)에서 끝나
+         중앙값이 틈 앞이 되므로, 건너 이은 아래 조각이 여기서 도로 잘려 나가던 것(로그: 다시 드러나 이어 그음 255 · 이은 가닥 0개). */
+      members.forEach(m=>{ m.sliceHemIdx = (m.probe && m.probe.hidden && m.probe.hidden.length) ? Math.max(hemMed, m.hemIdx) : hemMed; });
     });
     pendingStrands.forEach(p=>{
       const hemLen = Math.max(maskH * 0.03, p.sliceHemIdx * STRAND_STEP_LEN);
@@ -286,10 +288,22 @@ function drawHairStrands(ctx, fit, scalpY, hairEndY, maskW, maskH, hairCanvas, o
       if(texAmt > 0){
         targetLen *= (1 - Math.random() * (texAmt / 100) * 0.35); // 끝단 무작위 트림
       }
+      const hidAll = p.probe.hidden;                                   // (2026-11-10b) 건넌(가려진) 점 번호
+      if(hidAll && hidAll.length && p.ratio >= 1) targetLen = Math.max(targetLen, hemLen);   // 건너 이은 가닥은 무작위 배율로 틈 앞에서 끊기지 않게
       targetLen = Math.max(maskH * 0.02, Math.min(targetLen, maxStrandLen));
       const nPts = Math.max(2, Math.min(p.probe.length, Math.round(targetLen / STRAND_STEP_LEN) + 1));
       const pts = p.probe.slice(0, nPts);
-      const fineAll = p.probe.fine, fine = fineAll ? fineAll.slice(0, Math.min(fineAll.length, (nPts - 1) * (fineAll.div || 5) + 1)) : null;
+      /* (2026-11-10b) slice()가 pts.hidden을 버려 3D·영역 판정이 건넌 점을 몰랐음(로그 "이은 가닥 0개"의 직접 원인).
+         잘린 끝이 틈 한가운데면(틈 뒤 보이는 점이 없음) 틈 시작에서 끝냄 — 보이는 점은 전부 머리 영역 안. */
+      if(hidAll && hidAll.length){
+        let hid = hidAll.filter(k=> k < pts.length);
+        if(hid.length){
+          let e = pts.length - 1; while(e > 0 && hid.indexOf(e) >= 0) e--;
+          if(e < pts.length - 1){ pts.length = Math.max(2, e + 1); hid = hid.filter(k=> k < pts.length); }
+          if(hid.length) pts.hidden = hid;
+        }
+      }
+      const fineAll = p.probe.fine, fine = fineAll ? fineAll.slice(0, Math.min(fineAll.length, (pts.length - 1) * (fineAll.div || 5) + 1)) : null;
       /* 이 가닥이 지나가는 자리의 <b>원본 픽셀색</b>을 뿌리→끝 순서로 읽어 둔다.
          실측이 하나도 없으면 null이라 아래 렌더가 예전처럼 단색으로 간다. */
       const pxColors = sampleStrandColors(opts.maskInf, pts, p.strokeStyleVal);
