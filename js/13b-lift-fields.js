@@ -1503,7 +1503,9 @@ var VIEWS360 = (function () {
         if (m) {
           var prof = null; try { prof = profileOf(mi); } catch (e) { prof = null; }   // (2026-10-27) 옆얼굴 윤곽 — 사람 윤곽을 버리기 전에
           // 가볍게: 형태 계산에 쓰는 것만 남김
-          ['photoRGB', 'personMask', 'reasonCanvas', 'avgColorsBySection', 'colorPalette', 'faceBoxDiag'].forEach(function (n) { try { mi[n] = null; } catch (e) {} });
+          /* (2026-11-10) personMask(사람 윤곽)는 남김 — 다시 기르기의 '보이는 맨살' 판정(17b skinSeen)이 이 사진으로도 "여기는 살(귀·옆얼굴·목)"이라고 말할 수 있게.
+           *  90° 사진은 귀 옆·구레나룻 자리를 정면으로 봄(정면·좌우 사진의 귀 옆·뺨 넘침). 사진당 마스크 크기 1바이트/칸(≈0.3MB). 예전처럼 버리기 VIEWS360.keepPerson=false */
+          ['photoRGB', 'reasonCanvas', 'avgColorsBySection', 'colorPalette', 'faceBoxDiag'].concat(X.keepPerson === false ? ['personMask'] : []).forEach(function (n) { try { mi[n] = null; } catch (e) {} });
           mi._x360 = true;
           var fc = faceYaw && typeof faceYaw === 'object' ? faceYaw : null;
           X.views[it.key] = { key: it.key, deg: it.deg, m: m, cal: null, ratio: null, ratioSrc: '', ratioBad: '', why: '', kind: '',

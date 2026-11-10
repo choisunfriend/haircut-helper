@@ -2104,7 +2104,13 @@ var REGROW = (function () {
     /* (2026-10-11a) 믿을 수 있는 사진의 "머리 영역에서 떨어진 거리"(사진 px) — 거리 지도(체스판 거리 · 3px 칸) */
     var hullN = 0, triN = 0, lsN = 0;
     cams.forEach(function (cam) {
-      if (!(G.hullViews && G.hullViews.indexOf(cam.angle) >= 0)) return;
+      /* (2026-11-10) 360 추가 사진도 껍질(영역 깎기)에 — 사용자: "뒷머리는 한 장으로 거의 커버했기 때문에 그걸로 영역 측정을 고도화하면 튀어나오는 가닥도 줄어들 줄 알았는데"
+       *  예전: 껍질은 hullViews(기준 4장)만 → 추가 사진은 결·형태 투표에만 들어가고 깎기는 안 함(1707 진단 '껍질: front,left,right,back 중').
+       *  지금: 추가 사진 카메라 맞추기가 범위 끝(각 ±15°·배율 ±8%)에 안 걸린 사진만 넣음(11-10b · 예전 겹침 80% 기준은 hullExtraByIou) — 카메라가 덜 맞은 사진이 머리를 깎으면 두께가 0으로 무너짐(10/05 실측).
+       *  여유는 옆·뒤와 같은 1.5cm. 끄기 REGROW.hullExtra=false · 문턱 REGROW.hullExtraMinIou */
+      var hullX = false;
+      if (cam.extra && G.hullExtra !== false && G.xfitLast && G.xfitLast.rows) G.xfitLast.rows.forEach(function (r) { if (r.angle === cam.angle && !r.skip && (G.hullExtraByIou ? (r.kept ? r.i0 : r.i1) >= (G.hullExtraMinIou || 0.8) : (!r.edge && Math.abs(r.ds - 1) < (G.xfitScale || 0.08) - 1e-6))) hullX = true; });   // (11-10b) 기본: 카메라 맞추기가 범위 끝에 안 걸린 사진 — 겹침(IoU)은 가닥이 튀어나온 모델과 비교라 튀어나온 자리를 잘 보는 사진(90°)일수록 낮게 나와 빠짐(순환) · 예전 REGROW.hullExtraByIou=true
+      if (!(G.hullViews && G.hullViews.indexOf(cam.angle) >= 0) && !hullX) return;
       try {
         var cp = Math.max(1, G.hullCellPx * cam.iw / 800), gw = Math.ceil(cam.iw / cp), gh = Math.ceil(cam.ih / cp), D = new Float32Array(gw * gh), x, y, i;
         for (y = 0; y < gh; y++) for (x = 0; x < gw; x++) D[y * gw + x] = cam.smp.at((x + 0.5) * cp, (y + 0.5) * cp) > 0 ? 0 : 1e9;
@@ -2488,7 +2494,7 @@ var REGROW = (function () {
     G.setupReuseStat = { used: false, why: '' };
     if (G.setupReuse !== false) try {
       scKey = cams.map(function (c) { return c.angle + ':' + Array.prototype.join.call(c.R, ',') + ':' + c.cx + ':' + c.crownY + ':' + c.s + ':' + c.sy; }).join('|')
-        + '#' + [G.volume, G.volCellCm, G.hullRule, String(G.hullViews), G.hullVis, G.hullPerson, G.hullBgOnly, G.hullVisVote, G.skinNoMargin, G.skinTolCm, 'px', G.tStep, G.tMax, G.tFloor, G.layerShell, G.layerOuter, G.polNbr, G.thinLen, G.thinLenBareCells].join(',');
+        + '#' + [G.volume, G.volCellCm, G.hullRule, String(G.hullViews), G.hullExtra, G.hullExtraMinIou, G.xfitLast ? G.xfitLast.rows.map(function (r) { return r.angle + (r.i1 || 0).toFixed(2); }).join('') : '', G.hullVis, G.hullPerson, G.hullBgOnly, G.hullVisVote, G.skinNoMargin, G.skinTolCm, 'px', G.tStep, G.tMax, G.tFloor, G.layerShell, G.layerOuter, G.polNbr, G.thinLen, G.thinLenBareCells].join(',');
       var sc0 = G._setupCache; G._setupCache = null;
       if (!opt.lite && sc0) {
         if (sc0.photo === photo && sc0.probe === probe && sc0.key === scKey) { SC = sc0; G.setupReuseStat = { used: true, why: '가볍게 기르기의 준비물을 그대로 씀' }; }
