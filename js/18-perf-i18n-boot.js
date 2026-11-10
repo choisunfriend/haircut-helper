@@ -2176,6 +2176,40 @@ var MOBILE_DIET = (function () {
     };
   }
 
+  /* (2026-11-10m) 3D 결과 화면에 실제로 그려지는 완성본 헤어 — 사용자: "사진대조 비교대상을 최종결과물로 바꿔"
+   *  07b PHOTO_CHECK가 부름. 완성본(뒤에서 만든 것 · 3D 화면 것)이 있으면 그것, 없으면 지금 한 번 만들어 bg에 넣어 둠(3D 진입 때 그대로 받아 씀).
+   *  돌려주는 값 { obj, how } 또는 null(못 만들면 부르는 쪽이 예전 방식) */
+  D.finalHairObject = function () {
+    var model = neutral(); if (!model || !D.on || !D.pre3D || !canStream()) return null;
+    var sig; try { sig = withFull(function () { return fullSig(model); }); } catch (e) { return null; }
+    if (pre.ready && pre.sig === sig && pre.lite === false && pre.obj) return { obj: pre.obj, how: '3D 결과 화면 완성본' };
+    if (bg.sig !== sig) { dropBg(); bg.sig = sig; }
+    if (bg.ready && bg.obj) return { obj: bg.obj, how: '뒤에서 만든 완성본' };
+    if (bgTimer) { clearTimeout(bgTimer); bgTimer = null; }
+    var job = bg.job, how = job ? '만들던 완성본 마저' : '완성본 지금 만듦'; bg.job = null;
+    try { withFull(function () { if (!job) job = new Job(sig, model); job.step(Infinity); }); } catch (e) { dropBg(); return null; }
+    if (!job || !job.obj) { dropBg(); return null; }
+    bg.obj = job.obj; bg.ready = true; S.bgBuilt = (S.bgBuilt || 0) + 1;
+    return { obj: job.obj, how: how };
+  };
+  /* 완성본 선분(LineSegments)을 가닥으로 다시 묶음 — 앞 선분 끝 = 이 선분 시작이면 같은 가닥(addAttrs와 같은 규칙) */
+  D.finalStrands = function () {
+    var r = D.finalHairObject(); if (!r) return null;
+    var list = [];
+    r.obj.traverse(function (o) {
+      var g = o.geometry, P = g && g.attributes && g.attributes.position; if (!P || !o.isLineSegments) return;
+      var a = P.array, n = P.count, cur = null, s;
+      for (s = 0; s + 1 < n; s += 2) {
+        var i0 = s * 3, i1 = i0 + 3;
+        if (cur) { var q = cur[cur.length - 1]; if (Math.abs(q.x - a[i0]) + Math.abs(q.y - a[i0 + 1]) + Math.abs(q.z - a[i0 + 2]) > 1e-6) { list.push({ pts: cur }); cur = null; } }
+        if (!cur) cur = [{ x: a[i0], y: a[i0 + 1], z: a[i0 + 2] }];
+        cur.push({ x: a[i1], y: a[i1 + 1], z: a[i1 + 2] });
+      }
+      if (cur) list.push({ pts: cur });
+    });
+    return list.length ? { list: list, how: r.how } : null;
+  };
+
   /* (2026-10-04) 장면에서 뗀 헤어 객체의 버퍼를 돌려받음 — 43번이 값이 바뀔 때마다 헤어를 갈아 끼우면서 부름 */
   D.recycleObject = function (o) {
     try {

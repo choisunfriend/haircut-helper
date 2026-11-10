@@ -1723,10 +1723,19 @@ var PHOTO_CHECK = (function () {
       /* (2026-11-10k) 대조 대상 = 3D 결과보기 완성본(전체 가닥) — 사용자: "화면대조 비교대상을 3D결과보기 최종판으로"
        *  예전: 조정 화면에 그려진 가닥(저사양 1만 · 고사양 2만으로 고른 것)과 대조 → 실제 결과보다 비어 보였음.
        *  지금: STRAND_BUDGET.forceFull로 가닥 줄이기를 끄고 계산(모양은 두 화면 같음 · 3D 결과 화면과 같은 가닥). 예전 = PHOTO_CHECK.fromAdjust=true */
-      var SBc = W.STRAND_BUDGET, wasF = SBc ? SBc.forceFull : false, list;
-      if (SBc && !P.fromAdjust) SBc.forceFull = true;
-      try { list = computeAdjustedHair3DStrands(); } finally { if (SBc) SBc.forceFull = wasF; }
-      S.src = (SBc && !P.fromAdjust) ? '3D 결과(전체 가닥)' : '조정 화면 가닥';
+      /* (2026-11-10m) 대조 대상 = 3D 결과 화면에 <b>실제로 그려지는</b> 완성본 선분(MOBILE_DIET 완성본: 다듬기·다발 모으기까지 끝난 것) — 사용자: "최종버전을 보고 말한 거야 · 비교대상을 최종결과물로"
+       *  예전(11-10k): 전체 가닥이지만 computeAdjustedHair3DStrands 결과 = 완성본 만들기(다듬기·다발) 전 단계.
+       *  완성본을 못 얻으면 예전 방식. 예전 = PHOTO_CHECK.fromFinal=false */
+      var SBc = W.STRAND_BUDGET, wasF = SBc ? SBc.forceFull : false, list = null, fin = null;
+      if (!P.fromAdjust && P.fromFinal !== false && W.MOBILE_DIET && typeof W.MOBILE_DIET.finalStrands === 'function') {
+        try { fin = W.MOBILE_DIET.finalStrands(); } catch (eF) { fin = null; console.warn(TAG + ' 완성본 못 얻음 — 전체 가닥으로', eF); }
+        if (fin) list = fin.list;
+      }
+      if (!list) {
+        if (SBc && !P.fromAdjust) SBc.forceFull = true;
+        try { list = computeAdjustedHair3DStrands(); } finally { if (SBc) SBc.forceFull = wasF; }
+      }
+      S.src = fin ? '3D 결과 화면 최종(' + fin.how + ')' : (SBc && !P.fromAdjust) ? '3D 결과(전체 가닥 · 완성본 아님)' : '조정 화면 가닥';
       if (!list || !list.length) { S.err = '가닥이 없음'; S.views = []; return null; }
       var t0 = now(), res = sortViews(compare(list, cams, env, P));
       if (P.dir) { try { dirPrep(list, cams, env, P).forEach(function (d) { var v = res.filter(function (x) { return x.angle === d.angle; })[0]; if (v) v.dir = { MIS: d.MIS, compared: d.compared, off: d.off, medDeg: d.medDeg, cohMed: d.cohMed, cohSeen: d.cohSeen }; }); } catch (eD) { S.err = '결 대조 실패: ' + (eD && eD.message || eD); } }

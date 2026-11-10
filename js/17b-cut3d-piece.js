@@ -2935,6 +2935,26 @@ var REGROW = (function () {
         });
         var _fhRow = _rows.map(function (r) { return r.fh; }).filter(function (v) { return v > 0; }).sort(function (a, b) { return a - b; })[0];
         var _topRow = _rows.map(function (r) { return r.top; }).filter(function (v) { return v >= 0; }).sort(function (a, b) { return a - b; })[0];
+        /* (2026-11-10m) 헤어라인 행 = 이마에서 <b>위로</b> 올라가며 처음 만나는 머리(이마 폭 7줄의 중앙값) — 사용자: "단발 앞머리 헤어라인이 위로 파여있어"
+         *  예전: 가운데 줄을 머리 위끝에서 <b>아래로</b> 내려가며 처음 머리가 끊기는 행 = 가르마. 디버그 1406(단발 · 가운데 가르마):
+         *  끊긴 행 201(이마 랜드마크 맨 위 233 · 눈 291) → phi 0.50 · 앞 두피 칸 54개를 '이마'로 바꿔 앞머리선이 위로 파임.
+         *  지금: 이마 랜드마크 맨 위 행에서 위로 · 맨살에서 시작해 머리가 3px 이어지는 첫 행. 시작이 머리인 줄은 앞머리가 덮은 줄(안 셈).
+         *  위끝까지 머리를 못 만난 줄(가르마 위)도 안 셈. 3줄 미만이면 예전 값. 되돌리기 REGROW.hlScanUp=false */
+        G.hlUpInfo = null;
+        if (G.hlScanUp !== false && _lmD && isFinite(_lmD.foreheadY)) try {
+          var _r0 = Math.round(_lmD.foreheadY * _cF.ih) - 1, _hw = Math.abs(proj(_cF, { x: Es.a * 0.4, y: CY, z: Es.c * 0.9 }).ix - _cxD) || 30;
+          var _ups = [], _cov = 0, _miss = 0;
+          [-1, -2 / 3, -1 / 3, 0, 1 / 3, 2 / 3, 1].forEach(function (f) {
+            var x = Math.round(_cxD + f * _hw);
+            if (_r0 < 3 || x < 0 || x >= _cF.iw) return;
+            if (hairAt(_cF, x, _r0)) { _cov++; return; }
+            for (var y = _r0 - 1; y >= 2; y--) if (hairAt(_cF, x, y) && hairAt(_cF, x, y - 1) && hairAt(_cF, x, y - 2)) { _ups.push(y + 1); return; }
+            _miss++;
+          });
+          _ups.sort(function (a, b) { return a - b; });
+          G.hlUpInfo = { n: _ups.length, cov: _cov, miss: _miss, old: _fhRow, row: (_ups.length >= 3 && _cov < 3) ? _ups[_ups.length >> 1] : null };   // 앞머리가 3줄 이상 덮으면 예전 그대로(웨이브 등)
+          if (G.hlUpInfo.row != null) _fhRow = G.hlUpInfo.row;
+        } catch (e) { G.hlUpInfo = { err: e && e.message }; }
         var _phRow = [], _cross = null, _prevY = null, _ph;
         for (_ph = 0; _ph <= 1.6001; _ph += 0.05) {
           var _oy = proj(_cF, { x: 0, y: CY + Es.b * Math.cos(_ph), z: Es.c * Math.sin(_ph) }).iy;
@@ -2967,6 +2987,7 @@ var REGROW = (function () {
           + ' | 두피면(가운데 앞면) ' + _phRow.join(' ') + ' → 사진 헤어라인에 닿는 phi ' + (_cross != null ? _cross.toFixed(2) : '-') + '(사람이면 ≈0.9~1.1)'
           + (_fhRow > 0 && _topRow >= 0 ? ' · 사진에서 머리 위끝→헤어라인 ' + ((_fhRow - _topRow) * _cmRow).toFixed(1) + 'cm' : '')
           + (_fhRow > 0 && _eyeRow != null ? ' · 헤어라인→눈 ' + ((_eyeRow - _fhRow) * _cmRow).toFixed(1) + 'cm' : '')
+          + (G.hlUpInfo ? ' · 이마에서 위로 잰 줄 ' + (G.hlUpInfo.n || 0) + '(앞머리가 덮은 줄 ' + (G.hlUpInfo.cov || 0) + ' · 머리 못 만난 줄 ' + (G.hlUpInfo.miss || 0) + ')' + (G.hlUpInfo.row != null ? ' → ' + G.hlUpInfo.row + '행 씀(위에서 내려와 끊긴 행 ' + G.hlUpInfo.old + ' — 가르마일 수 있음)' : ' → 예전 값') + ' (되돌리기 REGROW.hlScanUp=false)' : '')
           + '\n    앞·관자놀이 두피 칸(밀도 있음) ' + _nFT + ' 중 뿌리 자리가 정면 사진에서 머리 아님 ' + _offF + '(' + Math.round(_offF / Math.max(1, _nFT) * 100) + '%) · 그중 옆 사진은 머리라고 함 ' + _offSide
           + ' — 이 %가 크고 phi가 0.9보다 한참 작으면 두피면이 사진보다 아래에 놓인 것(끄기 REGROW.hlDiag=false)';
         console.log('[다시 기르기]' + G.hlDiagTxt);
