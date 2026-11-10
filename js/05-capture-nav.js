@@ -593,11 +593,58 @@ var SHOT360 = (function () {
     return scanFaces(set).then(function () { return applySetPicked(set); });
   }
   function applySetPicked(set) {
+    Q._time6Done = false;
     var pick = pickFrames(set);
     try { Object.defineProperty(set, '_pick', { value: pick, writable: true, configurable: true, enumerable: false }); } catch (e) { set._pick = pick; }
     var miss = Object.keys(pick).filter(function (k) { return !pick[k]; });
     if (miss.length) { toast('360 세트에 ' + miss.join('·') + ' 각도 사진이 없습니다 — 다시 찍어 주세요'); return Promise.resolve(false); }
-    if (Q.keep8 !== false) try {                                       // (2026-11-01) 8장으로 — 기준 4장 + 진짜 0° 기준 ±90° · ±135°
+    /* (2026-11-10g) 뒤쪽 5장 = ±45°(얼굴로 잰 좌·우) 사이를 <b>시간</b>으로 6등분 — 사용자: "180도도 앞에서 센서가 틀려버리면 같이 틀리는 거야.
+     *   ±45도에서 나머지 구간의 프레임을 시간을 넣어서 6등분하면 점 5개가 나오잖아 … 그렇게 나머지 5개를 찾으라고" · "시간과 프레임간격 동시에 반영해서"
+     *   ① 끝점 = 얼굴로 고른 좌·우 장(각도 = 그 장의 얼굴 yaw) ② 두 장 사이(정면을 안 지나는 쪽) 촬영 시각을 6등분한 5 시각에 가장 가까운 장(겹치지 않게)
+     *   ③ 각 장 각도 = 왼쪽 끝에서 센서가 돈 양(속도 반영) − 끝점에서 드러난 센서 표류를 시각 비례로 나눈 몫 — 센서의 절대값(0° 기준)은 안 씀
+     *   ④ 가운데(3번째) 장 = 후면 슬롯 · 나머지 4장 = 추가 사진(keep8 대신) · 진단 set.time6 · 끄기 SHOT360.time6=false */
+    if (Q.time6 !== false) try {
+      var T6 = (function () {
+        var L = pick.left, R = pick.right, F = pick.front;
+        if (!L || !R || !(L.time > 0) || !(R.time > 0) || L === R) return { why: '좌·우 시각 없음' };
+        var aL = (L._fy && typeof L._fy.yaw === 'number') ? L._fy.yaw : Q.sideDeg, aR = (R._fy && typeof R._fy.yaw === 'number') ? R._fy.yaw : -Q.sideDeg;
+        var t0 = Math.min(L.time, R.time), t1 = Math.max(L.time, R.time), a0 = L.time <= R.time ? aL : aR, a1 = L.time <= R.time ? aR : aL;
+        if (F && F.time > t0 && F.time < t1) return { why: '좌·우 사이에 정면이 있음(촬영 시작이 뒤쪽) — 시간으로 못 나눔' };
+        var arc = set.frames.filter(function (f) { return f && f.time > t0 && f.time < t1 && f !== F; }).sort(function (p, q) { return p.time - q.time; });
+        if (arc.length < 5) return { why: '좌·우 사이 사진 ' + arc.length + '장(5장 필요)' };
+        /* 끝점 각도: a0 → a1을 뒤로 돌아가는 쪽으로(크기 360 − |a0−a1| 근처) */
+        var span = 360 - Math.abs(a0 - a1), dirS = a0 > a1 ? 1 : -1;                 // a0(+45)에서 +쪽으로 돌아 a1(−45+360)
+        var startS = (function (f0) { var p = L.time <= R.time ? L : R; return p.degRaw != null ? p.degRaw : p.deg; })(), endF = L.time <= R.time ? R : L;
+        function unw(d) { var x = (d - startS) * dirS; while (x < 0) x += 360; while (x >= 360) x -= 360; return x; }
+        var sEnd = unw(endF.degRaw != null ? endF.degRaw : endF.deg);
+        var used = [], out = [];
+        for (var k = 1; k <= 5; k++) {
+          var tk = t0 + (t1 - t0) * k / 6, best = null, bd = 1e18;
+          arc.forEach(function (f) { if (used.indexOf(f) >= 0) return; var d = Math.abs(f.time - tk); if (d < bd) { bd = d; best = f; } });
+          if (!best) return { why: k + '번째 시각에 맞는 장 없음' };
+          used.push(best);
+          /* (11-10g2) 사용자: "시간만 쓰면 안 돼. 속도가 다 다른데 … 속도 측정은 안 돼?" — 속도는 센서(자이로)가 재는 것 = 센서가 돈 양.
+           *   센서가 틀리는 건 대개 <b>시간에 따라 쌓이는 표류</b>(자이로 드리프트) → 센서가 돈 양을 그대로 쓰고, 끝점(얼굴로 잰 좌·우)에서 드러난 어긋남만
+           *   시각 비례로 나눠 뺌. 빨리 돈 구간은 센서가 그만큼 크게 돈 것으로 이미 들어감(시간 등분이 아님). */
+          var pt = (best.time - t0) / (t1 - t0), sNow = unw(best.degRaw != null ? best.degRaw : best.deg);
+          var drift = sEnd - span;                                                   // 끝점에서 센서가 더/덜 돈 양(도)
+          var psi = a0 + dirS * (sNow - drift * pt);                                 // 센서 진행 − 시각만큼 쌓인 표류
+          if (best.degRaw == null) best.degRaw = best.deg;
+          best.deg = wrap(pick.zero + psi);
+          out.push({ f: best, k: k, t: +(best.time - t0) / 1000, psiT: Math.round(wrap(a0 + dirS * span * pt)), psiS: Math.round(wrap(a0 + dirS * sNow)), psi: Math.round(wrap(psi)), sensor: Math.round(wrap(best.degRaw - pick.zero)), drift: Math.round(drift * pt) });
+        }
+        return { list: out, a0: a0, a1: a1, spanS: Math.round(sEnd), dt: (t1 - t0) / 1000 };
+      })();
+      set.time6 = T6.list ? { a0: T6.a0, a1: T6.a1, spanSensor: T6.spanS, sec: +T6.dt.toFixed(1), drift: Math.round(T6.spanS - (360 - Math.abs(T6.a0 - T6.a1))), pts: T6.list.map(function (o) { return { k: o.k, t: +o.t.toFixed(1), byTime: o.psiT, bySensor: o.psiS, drift: o.drift, used: o.psi, sensorRaw: o.sensor }; }) } : { why: T6.why };
+      if (T6.list) {
+        pick.back = T6.list[2].f;
+        var keep6 = [pick.front, pick.left, pick.right].concat(T6.list.map(function (o) { return o.f; })), n06 = set.frames.length;
+        set.frames = set.frames.filter(function (f) { return keep6.indexOf(f) >= 0; });
+        Q._time6Done = true;
+        console.log(TAG + ' 뒤쪽 5장(좌·우 사이 시간 6등분 · ' + T6.dt.toFixed(1) + '초 · 끝점 얼굴 ' + Math.round(T6.a0) + '°/' + Math.round(T6.a1) + '°) — ' + T6.list.map(function (o) { return o.k + ': 센서 진행 ' + o.psiS + '° − 표류 ' + o.drift + '° → ' + o.psi + '°(시간 등분이었다면 ' + o.psiT + '° · 센서 0° 기준 그대로였다면 ' + o.sensor + '°)'; }).join(' | ') + ' · 3번째를 후면 슬롯 · ' + n06 + '장 중 8장 남김 (끄기 SHOT360.time6=false)');
+      } else console.log(TAG + ' 뒤쪽 5장 시간 나누기 안 함 — ' + T6.why + ' · 예전처럼 센서로 고름');
+    } catch (e) { console.warn(TAG + ' 뒤쪽 5장 시간 나누기 실패 — 예전처럼', e); }
+    if (!Q._time6Done && Q.keep8 !== false) try {                                       // (2026-11-01) 8장으로 — 기준 4장 + 진짜 0° 기준 ±90° · ±135°
       var base4 = [pick.front, pick.left, pick.right, pick.back], keep = base4.slice(), n0 = set.frames.length, kept = [];
       (Q.keepDeg || []).forEach(function (kd) {
         var rest = set.frames.filter(function (f) { return keep.indexOf(f) < 0; }), f = nearest(rest, wrap(pick.zero + kd), Q.keepTol);

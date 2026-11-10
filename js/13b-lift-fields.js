@@ -1653,13 +1653,15 @@ var VIEWS360 = (function () {
   /* 추가 사진 한 장: 카메라 + 뺄 이유(없으면 '') */
   function calFor(v, viewCal, yTop, CY, ctx) {
     var f = viewCal && viewCal.front, m = v.m, out = { cal: null, why: '', kind: '' };
-    v.q = null; v.agree = null; v.yawSensor = null; if (f && f._synth) v.headRuled = false;
+    v.q = null; v.agree = null; v.yawSensor = null; v.faceRejected = null; if (f && f._synth) v.headRuled = false;
     if (!f || !(f.sy > 0) || !f.pose) { out.why = '정면 보정 없음'; return out; }
     var basic = !m || m.hw < 4 || m.valid < m.w * X.minCols;
     if (basic) { out.why = frameProblem(m); out.kind = 'frame'; return out; }
     var cutNow = false; try { frameProblem(m); cutNow = !!m.sideCut; } catch (e) {}
     if (X.headRuler && !cutNow && (f._synth || !(v.ratio > 0) || v.ratioBad)) {   // (2026-10-25f) 옆이 잘린 사진은 머리 폭 자를 안 씀                         // (2026-10-25) 머리 폭 자
-      var yawH = (typeof v.faceYaw === 'number') ? v.faceYaw : wrapDeg(v.deg - (X.degFront || 0)) + (f.pose.yaw || 0) * 180 / Math.PI;
+      var yawHs = wrapDeg(v.deg - (X.degFront || 0)) + (f.pose.yaw || 0) * 180 / Math.PI, fTolH = X.faceSensorTol != null ? X.faceSensorTol : 25;   // (11-10f) 센서와 안 맞는 얼굴 각도는 안 씀(아래와 같은 기준)
+      var fMaxH = X.faceMaxDeg != null ? X.faceMaxDeg : 50;
+      var yawH = (typeof v.faceYaw === 'number' && !(fMaxH > 0 && Math.abs(yawHs) > fMaxH) && (!(fTolH > 0) || Math.abs(wrapDeg(v.faceYaw - yawHs)) <= fTolH)) ? v.faceYaw : yawHs;
       var Av = headHalfWidthAt(yawH * Math.PI / 180), q0 = headQ0(viewCal);
       if (q0 > 0 && Av > 0 && m.hw > 0) {
         var rH = q0 * Av / (m.hw * f.sy);
@@ -1672,7 +1674,15 @@ var VIEWS360 = (function () {
     if (!isFinite(sy) || !(sy > 0)) { out.why = '배율 계산 실패'; out.kind = 'dist'; return out; }
     var frontYaw = (f.pose.yaw || 0) * 180 / Math.PI, yawS = wrapDeg(v.deg - (X.degFront || 0)) + frontYaw;   // 센서 기준 yaw(도)
     v.yawSensor = yawS;
-    var yawDeg = (typeof v.faceYaw === 'number') ? v.faceYaw : yawS;                          // 얼굴이 잡혔으면 얼굴 실측
+    /* (2026-11-10f) 얼굴 각도는 센서와 맞을 때만 — 실사 360(1225): vm91은 센서 −91°인데 얼굴 −15°로 재서 −15°로 넣음.
+     *   사진을 보면 센서가 맞음(완전 옆모습) — 얼굴 랜드마크 포즈는 옆모습(|yaw| 60° 넘게)에서 작은 값으로 눌려 나옴.
+     *   지금: 얼굴 각도가 센서 각도와 faceSensorTol(25°) 안이면 얼굴 실측 · 아니면 센서. 끄기 VIEWS360.faceSensorTol=0(예전: 늘 얼굴) */
+    var fTol = X.faceSensorTol != null ? X.faceSensorTol : 25;
+    /* (11-10f) 사용자: "랜드마크 없으면 못 잰다고 해서 중간 사진(약 45도)까지만 얼굴 재라고 했는데" — 센서로 faceMaxDeg(50°) 넘게 돈 사진은 얼굴 각도를 아예 안 씀 */
+    var fMax = X.faceMaxDeg != null ? X.faceMaxDeg : 50;
+    var faceOk = typeof v.faceYaw === 'number' && !(fMax > 0 && Math.abs(yawS) > fMax) && (!(fTol > 0) || Math.abs(wrapDeg(v.faceYaw - yawS)) <= fTol);
+    if (typeof v.faceYaw === 'number' && !faceOk) { v.faceRejected = v.faceYaw; X._faceRej = (X._faceRej || 0) + 1; }
+    var yawDeg = faceOk ? v.faceYaw : yawS;                                                    // 얼굴이 잡혔고 센서와 맞으면 얼굴 실측
     var cal = { pose: { yaw: yawDeg * Math.PI / 180, pitch: 0, roll: 0 }, cx: m.capCx, s: sy, sy: sy, crownY: m.crown, x360: true };
     out.cal = cal;
     var A = headHalfWidthAt(cal.pose.yaw); v.q = A > 0 ? m.hw * sy / A : null;
@@ -1938,7 +1948,7 @@ var VIEWS360 = (function () {
     L.push('  뷰: 센서각 → 쓴 yaw(얼굴 실측이 있으면 그 값) · 배율(정면 대비 · 출처) · 머리크기(두상 폭 대비) · 두피 맞음(옆·뒤 ' + X.agreeFromDeg + '° 이상만 봄 · 문턱 ' + Math.round(X.agreeMin * 100) + '%) → 넣음/뺌');
     X.order.forEach(function (k) {
       var v = X.views[k];
-      L.push('   ' + k + ' ' + Math.round(v.deg) + '°' + (v.yawSensor != null ? ' → ' + (typeof v.faceYaw === 'number' ? '얼굴 ' + v.faceYaw.toFixed(0) + '°(센서 ' + v.yawSensor.toFixed(0) + '°)' : v.yawSensor.toFixed(0) + '°' + (v.faceYaw === null ? '(얼굴 못 찾음)' : '')) : '') +
+      L.push('   ' + k + ' ' + Math.round(v.deg) + '°' + (v.yawSensor != null ? ' → ' + (typeof v.faceRejected === 'number' ? v.yawSensor.toFixed(0) + '°(센서 · 얼굴 ' + v.faceRejected.toFixed(0) + '°는 안 씀 — 센서 ' + (X.faceMaxDeg != null ? X.faceMaxDeg : 50) + '° 넘게 돈 사진이거나 센서와 ' + (X.faceSensorTol != null ? X.faceSensorTol : 25) + '° 넘게 다름 · 끄기 VIEWS360.faceMaxDeg=0 · .faceSensorTol=0)' : typeof v.faceYaw === 'number' ? '얼굴 ' + v.faceYaw.toFixed(0) + '°(센서 ' + v.yawSensor.toFixed(0) + '°)' : v.yawSensor.toFixed(0) + '°' + (v.faceYaw === null ? '(얼굴 못 찾음)' : '')) : '') +
         ' · ×' + (v.ratio != null ? v.ratio.toFixed(3) : '?') + ' ' + v.ratioSrc +
         (v.q != null ? ' · 크기 ' + v.q.toFixed(2) : '') + (v.agree != null ? ' · 맞음 ' + Math.round(v.agree * 100) + '%' : '') +
         ' · cx ' + Math.round(v.m.capCx) + '/' + v.m.w + ' · 위 ' + Math.round(v.m.crown) + 'px' +
