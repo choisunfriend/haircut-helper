@@ -25,7 +25,7 @@
   var W = window;
   var T = W.HEAD_TILT = {
     on: true, view: true,
-    lateral: false,      // (11-10) 좌우(갸웃) 기울기도 쓸지 — 기본 끔: 앞뒤(숙임)만. 켜기 HEAD_TILT.lateral=true
+    lateral: true,      // (11-10) 좌우(갸웃) 기울기도 쓸지 — 기본 끔: 앞뒤(숙임)만. 켜기 HEAD_TILT.lateral=true
     maxDeg: 25,          // 이보다 크면 포즈 오측정으로 보고 안 기울임
     weights: { front: 1, left: 1, right: 1, back: 0 },   // 얼굴 실측 없는 뷰는 아래에서 0
     up: null, down: null, deg: 0, from: '', _key: ''
