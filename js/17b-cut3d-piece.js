@@ -3191,7 +3191,7 @@ var REGROW = (function () {
        *  칸을 맡을 사진은 아래 그대로(마주 보는 정도가 큰 사진) — 135°·215° 자리는 그 사진이 맡음. 끄기 REGROW.xlift=false */
       var xlStr = [];
       if (G.xlift !== false) try {
-        var tX0 = now(), EhX = getHeadEllipsoid(), xlStat = { views: [], ms: 0 };
+        var tX0 = now(), EhX = getHeadEllipsoid(), xlStat = { views: [], ms: 0 }, xlVolN = 0, xlEllN = 0;
         var hA = 1 / (EhX.a * EhX.a), hB = 1 / (EhX.b * EhX.b), hC = 1 / (EhX.c * EhX.c);
         cams.forEach(function (cam) {
           if (!cam.extra || !cam.ori || !cam.smp) return;
@@ -3204,6 +3204,13 @@ var REGROW = (function () {
             var A = dx * dx * hA + dy * dy * hB + dz * dz * hC, B = 2 * (ox * dx * hA + oy * dy * hB + oz * dz * hC), C = ox * ox * hA + oy * oy * hB + oz * oz * hC - 1, D = B * B - 4 * A * C;
             if (!(D >= 0)) return null;
             var t = (-B + Math.sqrt(D)) / (2 * A), px = ox + t * dx, py = oy + t * dy, pz = oz + t * dz;
+            /* (11-10c) 깊이 = 사진들이 깎아 만든 3D 머리 덩어리(VOL)의 카메라 쪽 겉면 — 시선을 바깥(헐 앞 2cm)에서 안으로 반 칸씩 걸어 처음 '머리' 칸.
+             *  못 찾으면(덩어리 없음·얇음) 위 헐 타원 교점. 끄기 REGROW.xlVolDepth=false */
+            if (VOL && G.xlVolDepth !== false) {
+              var hv = VOL.h * 0.5, tq = t + 2 / ((typeof modelCmPerUnit === 'function' && modelCmPerUnit()) || 19), tEnd = (-B - Math.sqrt(D)) / (2 * A), hitT = null;
+              for (; tq > tEnd; tq -= hv) { if (VOL.at({ x: ox + tq * dx, y: oy + tq * dy + CY, z: oz + tq * dz }) === 1) { hitT = tq; break; } }
+              if (hitT != null) { px = ox + hitT * dx; py = oy + hitT * dy; pz = oz + hitT * dz; xlVolN++; } else xlEllN++;
+            }
             var nx = px * hA, ny = py * hB, nz = pz * hC, nl = Math.hypot(nx, ny, nz) || 1;
             if ((nx * dx + ny * dy + nz * dz) / nl < (G.xlMinFacing != null ? G.xlMinFacing : 0.3)) return null;
             return { x: px, y: py + CY, z: pz };
@@ -3215,7 +3222,7 @@ var REGROW = (function () {
               cx = Math.cos(a); cy = Math.sin(a); if (cx * dirx + cy * diry < 0) { cx = -cx; cy = -cy; }
               dirx = cx; diry = cy; x += cx * step; y += cy * step;
               if (x < 0 || y < 0 || x >= iw || y >= ih || !(cam.smp.at(x, y) > 0)) break;
-              var gi = Math.floor(y / sp) * gw + Math.floor(x / sp); if (gi >= 0 && gi < used.length) used[gi] = 1;
+              if (G.xlMarkPath !== false) { var gi = Math.floor(y / sp) * gw + Math.floor(x / sp); if (gi >= 0 && gi < used.length) used[gi] = 1; }   // 지나간 칸은 새 씨앗 안 둠(겹치지 않는 가닥 한 벌 · 사용자: "가닥이 제대로 겹쳤다는 얘기")
               acc += step; if (acc >= gap) { acc = 0; out.push([x, y]); }
             }
             return out;
@@ -3237,7 +3244,7 @@ var REGROW = (function () {
           }
           xlStat.views.push(cam.angle + ' ' + nS + '가닥(점 ' + nP + ')');
         });
-        xlStat.ms = Math.round(now() - tX0); xlStat.n = xlStr.length; G.xliftStat = xlStat;
+        xlStat.ms = Math.round(now() - tX0); xlStat.n = xlStr.length; xlStat.vol = xlVolN; xlStat.ell = xlEllN; G.xliftStat = xlStat;
       } catch (eX) { xlStr = []; G.xliftStat = { err: String(eX && eX.message || eX) }; console.warn(TAG + ' 추가 사진 가닥 실패 — 기준 4장만', eX); }
       photo.strands.concat(xlStr).forEach(function (st0) {
         if (st0.mirrored) return;
@@ -3277,7 +3284,11 @@ var REGROW = (function () {
       });
       var dirs = new Map(), byView = new Array(NV).fill(0), lowCoh = 0;
       acc.forEach(function (A, k) {
-        var bv = -1, bw = 0, v; for (v = 0; v < NV; v++) if (A[v * 5 + 3] > bw) { bw = A[v * 5 + 3]; bv = v; }
+        var bv = -1, bw = 0, v, sOwn = 0;
+        /* (11-10c) 360 추가 사진이 있을 때: 칸 주인 = 그 칸을 <b>가장 마주 보는</b> 사진(점 하나당 무게 평균) — 예전 합(마주 봄 × 점 수)은 가닥을 촘촘히 겹쳐 그은 사진이 이김
+         *  (1651: 추가 사진 가닥은 겹치지 않게 한 벌이라 사진당 ~100가닥 · 칸 64~218). 점 xlOwnMin개 이상인 사진만. 4장 세트는 예전 그대로. 끄기 REGROW.sfOwnMean=false */
+        if (G.sfOwnMean !== false && cams._hasExtra) { for (v = 0; v < NV; v++) if (A[v * 5 + 4] >= (G.xlOwnMin || 2)) { var mw0 = A[v * 5 + 3] / A[v * 5 + 4]; if (mw0 > sOwn) { sOwn = mw0; bv = v; } } if (bv >= 0) bw = A[bv * 5 + 3]; }
+        else for (v = 0; v < NV; v++) if (A[v * 5 + 3] > bw) { bw = A[v * 5 + 3]; bv = v; }
         if (bv < 0) return;
         var x = A[bv * 5], y = A[bv * 5 + 1], z = A[bv * 5 + 2], l = Math.hypot(x, y, z);
         if (!(l > 1e-9) || (G.sfDropCross && l / bw < G.sfMinCoh)) { lowCoh++; return; }                 // 한 칸 안에서 그 사진 가닥끼리 방향이 엇갈림 = 정리 못 함
@@ -3292,7 +3303,7 @@ var REGROW = (function () {
        *  정리: 칸마다 맡은 사진(위 SF와 같은 기준 = 무게 가장 큰 사진)의 가닥 부분만 남겨 조각으로(겹치는 자리는 한 사진 가닥만) · 오르막 뒤집기 그대로
        *  그리기: 뿌리마다 가장 가까운(두상 위 방향으로) 조각 점에서부터 그 조각 모양을 그대로 옮겨 그림 — 아래 copyFromStrands */
       if (G.strandCopy) {
-        var own = new Map(); dirs.forEach(function (D, k) { var A2 = D[4], bv2 = -1, bw2 = 0, v2; for (v2 = 0; v2 < NV; v2++) if (A2[v2 * 5 + 3] > bw2) { bw2 = A2[v2 * 5 + 3]; bv2 = v2; } own.set(k, bv2); });
+        var own = new Map(); dirs.forEach(function (D, k) { var A2 = D[4], bv2 = -1, bw2 = 0, v2; if (G.sfOwnMean !== false && cams._hasExtra) { for (v2 = 0; v2 < NV; v2++) if (A2[v2 * 5 + 4] >= (G.xlOwnMin || 2)) { var m2 = A2[v2 * 5 + 3] / A2[v2 * 5 + 4]; if (m2 > bw2) { bw2 = m2; bv2 = v2; } } } else for (v2 = 0; v2 < NV; v2++) if (A2[v2 * 5 + 3] > bw2) { bw2 = A2[v2 * 5 + 3]; bv2 = v2; } own.set(k, bv2); });   // (11-10c) 위 칸 주인과 같은 규칙
         var pieces = [], cur = null, pAll = 0, pKeep = 0;
         sfSrc.forEach(function (rec) {
           var q = rec.q, n0 = q.length, ii; cur = null;
@@ -5218,7 +5229,7 @@ function helixMeasure(rgba,mask,W,H,angle,coh,opt){opt=opt||{};const n=opt.n||25
     try { var pa = s.pa; if (pa) L.push('  사진끼리 머리 영역 맞추기(각도는 그대로 · 가운데·정수리 높이만 ±' + G.photoAlignMaxCm + 'cm): ' + (!pa.on ? '꺼짐(켜기 ?photoalign=1)' : pa.why ? pa.why : '기준 ' + pa.ref + ' · 다른 사진들로 깎은 덩어리가 설명하는 비율(사진 평균) ' + (pa.before * 100).toFixed(1) + '% → ' + (pa.after * 100).toFixed(1) + '% · 옮긴 사진: ' + (pa.moved.length ? pa.moved.join(' / ') : '없음') + ' · ' + pa.ms + 'ms (끄기 ?photoalign=0)')); } catch (e) {}
     try { var rk = s.rk; if (rk) L.push('  걸음 안 세 번 더 보기(RK4 · 0.4cm 걸음): ' + (rk.on ? '켜짐 — 걸음 ' + rk.n + ' · 곧은 결이라 한 번으로 끝낸 걸음 ' + (rk.skip || 0) + ' · 다시 본 자리 ' + rk.sub + ' · 결이 없어 앞 값을 쓴 자리 ' + rk.miss + ' (끄기 ?rk=0)' : '꺼짐(켜기 ?rk=1)') + ' · 관성 ' + G.inertia + ' · 중력 ' + G.gravity); } catch (e) {}
     try { L.push('  깊이 맞추기(결을 한 장만 읽은 걸음 · 그 사진 시선축으로만 ' + G.depthFixCm + 'cm 안): ' + (G.depthFix ? '켜짐 — 멈출 뻔한 걸음을 옮김 ' + (s.depthFix || 0) + '(가닥 ' + (s.depthFixN || 0) + ' · 옮긴 깊이 평균 ' + (s.depthFixCm || 0).toFixed(1) + 'cm) (끄기 ?depthfix=0)' : '꺼짐(켜기 ?depthfix=1)')); } catch (e) {}
-    try { var _xl = G.xliftStat; L.push('  추가 사진 가닥(360 추가 사진 결로 그어 맞춘 카메라로 머리 겉면에 올림 · 위 결 장·그대로 그리기에 들어감): ' + (G.xlift === false ? '꺼짐' : !_xl ? '없음(추가 사진 없음)' : _xl.err ? '실패 ' + _xl.err : (_xl.views.join(' · ') || '추가 사진 결 없음') + ' · ' + _xl.ms + 'ms') + ' (끄기 REGROW.xlift=false)'); } catch (e) {}
+    try { var _xl = G.xliftStat; L.push('  추가 사진 가닥(360 추가 사진 결로 그어 맞춘 카메라로 머리 겉면에 올림 · 위 결 장·그대로 그리기에 들어감): ' + (G.xlift === false ? '꺼짐' : !_xl ? '없음(추가 사진 없음)' : _xl.err ? '실패 ' + _xl.err : (_xl.views.join(' · ') || '추가 사진 결 없음') + ' · 깊이: 머리 덩어리 겉면 ' + (_xl.vol || 0) + '점 / 타원 ' + (_xl.ell || 0) + '점 · ' + _xl.ms + 'ms') + ' (끄기 REGROW.xlift=false)'); } catch (e) {}
     try { L.push(G.xfitLine()); L.push('  각도 구역(360 추가 사진이 있을 때 · 둘레 각이 가장 가까운 사진이 맡고 경계 ±' + (G.secFeatherDeg || 20) + '°만 섞음): ' + (G.sectors === false ? '꺼짐' : '켜짐') + ' (끄기 REGROW.sectors=false)'); } catch (e) {}
     L.push('  사진끼리 맞춰 보기: ' + (G.agree ? '켜짐(' + G.agreeDeg + '° · ' + G.agreeRatio + '배 · 갈피 없으면 ' + (G.agreeAmbig === 'skip' ? '관성' : '가장 믿을 만한 사진') + ') — 두 장 이상 읽은 걸음 ' + (s.agreeN || 0) + ' · 엇갈려 뺀 사진 ' + (s.agreeDrop || 0) + ' · 갈피를 못 잡아 관성으로 넘긴 걸음 ' + (s.agreeSkip || 0) + ' · 두피 밖에서 가려서 뺀 사진 ' + (s.visBlk || 0) + ' · 비스듬해도 보여서 쓴 사진 ' + (s.visLowN || 0) + (G.visRead ? '' : '(꺼짐)') + (W.SYNTH_PHOTO && W.SYNTH_PHOTO.on ? ' · 생성 사진 보정 걸림(33번)' : '') : '꺼짐(끄기 REGROW.agree=false)'));
     if (s.backFix) L.push('  뒷머리 앞쏠림 막기 — ' + (s.backFoldAfter ? '읽을 때는 안 막음 · 다 읽은 뒤 어깨 아래에서 뒤로 넘긴 가닥 ' + (s.foldN || 0) + '개(옮긴 점 ' + (s.foldPts || 0) + ' · 끄기 REGROW.backFoldAfter=false) · ' : '') + '뒤쪽에서 두피를 벗어난 가닥 ' + s.backN + '개(길이 중앙값 ' + n1(s.backLenMed) + 'cm) · 앞으로 가려던 걸음 ' + s.backFwd + '회 막음 · 뒤 사진 끝 높이까지 이어 간 걸음 ' + s.backKeep +
