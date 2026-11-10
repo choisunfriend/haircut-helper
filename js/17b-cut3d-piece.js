@@ -3007,9 +3007,13 @@ var REGROW = (function () {
         if (_phE > Math.PI / 2) continue;                                   // 눈높이 아래는 얼굴 — 예전 경계가 맡음
         var _xE = Es.a * Math.sin(_phE) * Math.sin(_thE), _zE = Es.c * Math.sin(_phE) * Math.cos(_thE), _yE = CY + Es.b * Math.cos(_phE);
         if (!(_zE > 0 && Math.abs(Math.atan2(_xE, _zE)) < 0.87)) continue;
-        _nFront++; if (_yE < hlY) { hlOff[_ce] = 1; _nOff++; }
+        // (2026-11-10b) 위로 파임 고침: ① 헤어라인 phi 바닥 hlEdgeMinPhi(앞머리 있는 사진은 '헤어라인'이 앞머리 윗선이라 phi 0.5~0.7로 잡힘 — 사람 ≈0.9~1.1)
+        //   ② 수평 한 높이로 자르면 가운데가 깊게 파임 → 관자놀이 쪽으로 갈수록 헤어라인을 아래로(hlEdgeSidePhi) · 되돌리기 REGROW.hlEdgeMinPhi=0, .hlEdgeSidePhi=0
+        var _phHL = Math.acos(Math.max(-1, Math.min(1, (hlY - CY) / Es.b))), _ang = Math.abs(Math.atan2(_xE, _zE)) / 0.87;
+        _phHL = Math.max(_phHL, G.hlEdgeMinPhi != null ? G.hlEdgeMinPhi : 0.9) + (G.hlEdgeSidePhi != null ? G.hlEdgeSidePhi : 0.12) * _ang * _ang;
+        _nFront++; if (_phE > _phHL) { hlOff[_ce] = 1; _nOff++; }
       }
-      G.hlEdge = { y: hlY, phi: Math.acos(Math.max(-1, Math.min(1, (hlY - CY) / Es.b))), nOff: _nOff, nFront: _nFront };
+      G.hlEdge = { y: hlY, phi: Math.max(Math.acos(Math.max(-1, Math.min(1, (hlY - CY) / Es.b))), G.hlEdgeMinPhi != null ? G.hlEdgeMinPhi : 0.9), nOff: _nOff, nFront: _nFront };
     } catch (e) { hlOff = null; G.hlEdge = { off: '실패 ' + (e && e.message) }; }
     else G.hlEdge = { off: G.hairlineEdge === false ? '꺼짐' : (G.hlLineInfo && G.hlLineInfo.off) || '헤어라인 못 잼(REGROW.hlDiag 꺼짐?)' };
     var hlFill = (G.hairlineFill !== false && roots._hlFill) ? roots._hlFill : null; G.hairlineFillN = hlFill ? roots._hlFillN : 0;   // 두 번째 기르기부터는 처음 채운 표를 그대로(밀도는 이미 채워져 있음)

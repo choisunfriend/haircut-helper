@@ -346,6 +346,12 @@ const HAIR_SCALP3D = {
   minGap: 0.03,    // 두피면은 헐보다 최소 이만큼 안쪽(축 붕괴·역전 방어)
   maxThick: 0.45,  // 모발 두께 상한(헐 반경 대비) — 얼굴 실측이 오염돼도 안 무너지게
   fallbackK: 0.78, // 얼굴 실측을 못 얻었을 때만 쓰는 가로 배율
+  /* (2026-11-10) 원근 보정 — 두개골 a·b는 <b>얼굴 자</b>(얼굴 반폭·눈→턱)에서 나오는데, 얼굴은 카메라에 가깝고 머리 윤곽(정수리·옆 실루엣)은
+     귀 평면 쯤(얼굴보다 perspDepthCm 뒤)에 있다. 폰으로 가까이 찍으면 얼굴만 커 보여 두개골이 사진 머리 윤곽보다 커짐.
+     디버그 1513(360 · 폰): 뒤 사진에서 두피 꼭대기가 머리 윤곽보다 0.4cm 위 · 두께 중앙 0.3cm · 두께 0 칸 490 → 실루엣 길이 1~2cm("반 대머리").
+     보정: 두개골 a·b(·c)에 D/(D+perspDepthCm) — D = 정면 사진 얼굴까지 거리(MediaPipe 포즈 행렬 이동값). 거리를 못 얻으면 1(예전 그대로).
+     되돌리기 HAIR_SCALP3D.persp=false */
+  persp: true, perspDepthCm: 8, perspMinK: 0.8,
   /* ══════════════════════════════════════════════════════════════════
      두개골 반폭을 <b>얼굴 반폭과 같게</b> 놓고 있었다 (2026-09-14)
      ─────────────────────────────────────────────────────────────────
@@ -441,6 +447,7 @@ let _scalpLogged = false;
               깊이만 따로 잴 실측이 없어서 형상을 승계한다.
    실기기 값 검증: 두개골 가로 14.0cm · 눈→정수리 11.5cm · 깊이 16.8cm,
    모발 두께 밴드별 1.9~3.3cm(두께 0인 밴드 0개). 균등 배율은 축 붕괴 4개였다. */
+function EYE_Y_SCALP_FIX(b, k){ return b * k; }   // 눈 높이(CY) 기준 세로 — 꼭대기 = CY + b
 function getScalpEllipsoid(){
   const e = getHeadEllipsoid();
   if(!HAIR_SCALP3D.on) return { a:e.a, b:e.b, c:e.c, src:'off' };
@@ -461,6 +468,12 @@ function getScalpEllipsoid(){
      짧은 머리 실루엣은 두상을 못 담으니, 이 계산 안에서만 헐 폭을 두개골+minGap까지 올려 봄 → 두께 = minGap(≥0).
      깊이도 같은 형상비로 올라감. getHeadEllipsoid(헐 자체 · 다른 호출부)는 안 건드림 — HEAD_WIDTH_GUARD(꺼둔 가림 장치)와 다름.
      헤어가 더 넓은 손님은 예전과 같음. 되돌리기 HAIR_SCALP3D.skullFloor=false */
+  let _pk = 1, _pD = NaN;
+  if(S.persp !== false && src !== '폴백'){ try{
+    const _lmF = state.landmarks && state.landmarks.front; _pD = _lmF && _lmF.poseTzCm;
+    if(_pD > 5 && _pD < 500) _pk = Math.max(S.perspMinK || 0.8, _pD / (_pD + (S.perspDepthCm || 8)));
+  }catch(err){} }
+  if(_pk < 1){ a *= _pk; b = EYE_Y_SCALP_FIX(b, _pk); }
   let eA = e.a, eC = e.c, _floored = false;
   if(S.skullFloor !== false && _faceA > 0 && src !== '폴백' && e.a < a + S.minGap){
     eA = a + S.minGap; eC = e.c * (eA / Math.max(1e-6, e.a)); _floored = true;
@@ -483,6 +496,7 @@ function getScalpEllipsoid(){
     }catch(err){}
     console.log(`[두피면] 가로 ${a.toFixed(3)}(${src}) 세로 ${b.toFixed(3)}(${srcB}) 깊이 ${c.toFixed(3)}(${_dpw ? '두개골 깊이/폭 ×' + _dpw.toFixed(2) + ' · 헤어 형상 승계였다면 ' + _cHair.toFixed(3) + '(비 ' + (e.c / Math.max(1e-6, e.a)).toFixed(2) + ')' : '형상 승계'})`
       + (isFinite(cmX) ? ` → 두개골 가로 ${(2*a*cmX).toFixed(1)}cm · 눈→정수리 ${(b*cmY).toFixed(1)}cm · 깊이 ${(2*c*cmX).toFixed(1)}cm` : '')
+      + (_pk < 1 ? ` · 원근 보정 ×${_pk.toFixed(3)}(얼굴까지 ${_pD.toFixed(0)}cm · 얼굴→윤곽 ${S.perspDepthCm}cm)` : ` · 원근 보정 없음(거리 ${isFinite(_pD) ? _pD.toFixed(0) + 'cm' : '모름'})`)
       + ` | 모발 두께 옆 ${((eA-a)*(isFinite(cmX)?cmX:0)).toFixed(1)}cm · 위 ${((e.b-b)*(isFinite(cmY)?cmY:0)).toFixed(1)}cm`
       + ` (두상=헤어 ${e.a.toFixed(3)}/${e.b.toFixed(3)}/${e.c.toFixed(3)})`
       + (_floored ? ` · 헤어 폭이 두개골보다 좁아 두개골을 하한으로(헐 폭 ${e.a.toFixed(3)}→${eA.toFixed(3)} · 깊이 ${e.c.toFixed(3)}→${eC.toFixed(3)} · 되돌리기 HAIR_SCALP3D.skullFloor=false)` : ''));

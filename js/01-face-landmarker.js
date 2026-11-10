@@ -244,17 +244,18 @@ async function detectFaceLandmarks(angle){
         // 뽑아 yaw/pitch/roll을 "도" 단위로 계산. earSpan 비율로 어림하던
         // 기존 yaw(-1~1)보다 훨씬 정확하고, 4장 사진을 하나의 공통 각도
         // 좌표계(0도=정면 기준) 위에 놓을 수 있게 해준다.
-        let poseYawDeg = null, posePitchDeg = null, poseRollDeg = null;
+        let poseYawDeg = null, posePitchDeg = null, poseRollDeg = null, poseTzCm = null;
         if(result.facialTransformationMatrixes && result.facialTransformationMatrixes.length){
           try{
             const pose = decomposePoseMatrix(result.facialTransformationMatrixes[0].data);
             poseYawDeg   = pose.yawRad   * 180/Math.PI;
             posePitchDeg = pose.pitchRad * 180/Math.PI;
             poseRollDeg  = pose.rollRad  * 180/Math.PI;
+            try{ const _md = result.facialTransformationMatrixes[0].data; if(isFinite(_md[14])) poseTzCm = -_md[14]; }catch(e){}   // (2026-11-10) 얼굴까지 거리(cm · MediaPipe 캐노니컬 카메라) — 두피 원근 보정(12b)
           }catch(e){ console.warn('포즈 행렬 분해 실패:', e); }
         }
         const info = { yaw, foreheadY:forehead.y, eyeY, earY, chinY:chin.y, browTopY, features,
-                       lEarX:lEar.x, rEarX:rEar.x, poseYawDeg, posePitchDeg, poseRollDeg,
+                       lEarX:lEar.x, rEarX:rEar.x, poseYawDeg, posePitchDeg, poseRollDeg, poseTzCm,
                        detectVia: via,   // 어느 재시도 단계에서 잡혔는지(진단용)
                        // 468개 랜드마크 원본(x,y,z) 전부 저장 — 지금까지는 이 중 10여 개
                        // 이름 붙은 점만 뽑아 쓰고 나머지(코 돌출·광대·턱선 등 실제 입체
