@@ -1720,7 +1720,13 @@ var PHOTO_CHECK = (function () {
     try {
       var cams = getCams(), env = getEnv();
       if (!cams.length || !env) { S.err = '사진 카메라가 없음(사진 분석 전이거나 점유 프로브가 꺼져 있음)'; S.views = []; return null; }
-      var list = computeAdjustedHair3DStrands();
+      /* (2026-11-10k) 대조 대상 = 3D 결과보기 완성본(전체 가닥) — 사용자: "화면대조 비교대상을 3D결과보기 최종판으로"
+       *  예전: 조정 화면에 그려진 가닥(저사양 1만 · 고사양 2만으로 고른 것)과 대조 → 실제 결과보다 비어 보였음.
+       *  지금: STRAND_BUDGET.forceFull로 가닥 줄이기를 끄고 계산(모양은 두 화면 같음 · 3D 결과 화면과 같은 가닥). 예전 = PHOTO_CHECK.fromAdjust=true */
+      var SBc = W.STRAND_BUDGET, wasF = SBc ? SBc.forceFull : false, list;
+      if (SBc && !P.fromAdjust) SBc.forceFull = true;
+      try { list = computeAdjustedHair3DStrands(); } finally { if (SBc) SBc.forceFull = wasF; }
+      S.src = (SBc && !P.fromAdjust) ? '3D 결과(전체 가닥)' : '조정 화면 가닥';
       if (!list || !list.length) { S.err = '가닥이 없음'; S.views = []; return null; }
       var t0 = now(), res = sortViews(compare(list, cams, env, P));
       if (P.dir) { try { dirPrep(list, cams, env, P).forEach(function (d) { var v = res.filter(function (x) { return x.angle === d.angle; })[0]; if (v) v.dir = { MIS: d.MIS, compared: d.compared, off: d.off, medDeg: d.medDeg, cohMed: d.cohMed, cohSeen: d.cohSeen }; }); } catch (eD) { S.err = '결 대조 실패: ' + (eD && eD.message || eD); } }
@@ -1743,7 +1749,7 @@ var PHOTO_CHECK = (function () {
     var L = [];
     if (!S.at && !S.err) { L.push(TAG + ' 아직 안 함 — 조정 화면의 [원본 대조] 버튼 · 윤곽 밖 잘라내기 ' + (P.trim ? '켜짐' : '꺼짐')); return L; }
     if (S.err) { L.push(TAG + ' ⚠ ' + S.err); return L; }
-    L.push(TAG + ' ' + S.at + ' · 가닥 ' + S.strands + '개 · 사진 ' + S.views.length + '장 · ' + Math.round(S.ms) + 'ms · 여유 ' + P.tolCm + 'cm · 비율은 사진의 머리 넓이 대비' +
+    L.push(TAG + ' ' + S.at + ' · ' + (S.src || '') + ' 가닥 ' + S.strands + '개 · 사진 ' + S.views.length + '장 · ' + Math.round(S.ms) + 'ms · 여유 ' + P.tolCm + 'cm · 비율은 사진의 머리 넓이 대비' +
       (S.style ? ' · ⚠ 스타일이 걸려 있음(원본과 다른 것이 당연)' : '') +
       ' · 윤곽 밖 잘라내기 ' + (P.trim ? (S.trimWhy ? '쉼(' + S.trimWhy + ')' : '켜짐 — 자른 가닥 ' + S.trimCut + '개 · 잘라 낸 길이 합 ' + Math.round(S.trimLen * (getEnv() ? getEnv().cm : 19)) + 'cm · ' + Math.round(S.trimMs) + 'ms') : '꺼짐') +
       ' · 결 맞추기 ' + (P.fixDir ? (S.fixWhy ? '쉼(' + S.fixWhy + ')' : '켜짐 — 돌린 가닥 ' + S.fixStr + '개(마디 ' + S.fixSeg + ' · 두상에 막혀 눕힌 마디 ' + S.fixPush + ') · ' + Math.round(S.fixMs) + 'ms · 기준 ' + P.dirWarn + '° · 사진 결 또렷함 ' + P.dirCoh + ' 이상') : '꺼짐'));

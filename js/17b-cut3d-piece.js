@@ -2918,7 +2918,9 @@ var REGROW = (function () {
     /* (2026-11-10i) 앞쪽 두피 = 사진에서 잰 헤어라인 높이로 머리/이마 — 사용자: "헤어라인까지 앞머리를 심는 라인으로 맞췄으니까 거기에 맞춰.. 어차피 두상이 내려가 있어서 다 이마야"
      *   예전: 아래 hlFrontAt가 G.hairlineLine === true일 때만 켜지는데 기본값이 비어 있어 꺼져 있었음(진단 줄은 켜진 것처럼 찍힘 · "통과한 걸음 0").
      *   → 앞쪽 뿌리 칸이 정면 사진 픽셀로 '이마'가 돼 안 심김(웨이브 73% · 단발 43% — 그 칸 전부 옆 사진은 머리). 지금 기본 켬. 되돌리기 REGROW.hairlineLine=false */
-    if (G.hairlineLine == null) G.hairlineLine = true;
+    /* (2026-11-10k) 다시 끔 — 사용자: "높이 판정을 그냥 꺼놔". 켜 두면 사진은 머리인데 헤어라인 아래라 멈춘 걸음(웨이브 397 · 남자 850)이 앞머리선을 위로 파냄.
+     *  어제(1f12e60)와 같은 상태. 켜기 REGROW.hairlineLine=true */
+    if (G.hairlineLine == null) G.hairlineLine = false;
     G.hlDiagTxt = null; var hlY = null; G.hlLineInfo = null;
     if (G.hlDiag !== false) try {
       var _lmD = state.landmarks && state.landmarks.front, _cF = null;
@@ -3643,7 +3645,7 @@ var REGROW = (function () {
               if (pr2 > lS) { var hk2 = Math.max(0, h2 - (pr2 - lS)); P2 = { x: F2.x + n2.x * hk2, y: F2.y + n2.y * hk2, z: F2.z + n2.z * hk2 }; st.liftScalp = (st.liftScalp || 0) + 1; } }
           }
           var v2 = vote(P2);
-          if (hlFrontAt(F2)) { var v2h = F2.y >= hlY ? 1 : 0; if (v2h !== v2) { if (v2h) st.hlUp = (st.hlUp || 0) + 1; else st.hlDown = (st.hlDown || 0) + 1; } v2 = v2h; }   // (2026-11-09e) 앞쪽은 높이로 — 위 배너
+          if (hlFrontAt(F2)) { var v2h = F2.y >= hlY ? 1 : 0; if (v2h !== v2) { if (v2h) st.hlUp = (st.hlUp || 0) + 1; else st.hlDown = (st.hlDown || 0) + 1; } v2 = v2h; }   // (2026-11-09e) 앞쪽은 높이로 — 위 배너 · (11-10k) 기본 꺼짐
           if (v2 === 0 && hlFill && hlFill[cellIdx] && s2 * cmU < (G.hairlineFreeCm || 6)) { v2 = 1; st.hlFree = (st.hlFree || 0) + 1; }   // (2026-10-31) 앞 헤어라인 채운 뿌리 — 위 배너
           if (TS) { rec(0, !fl, 0); TS.push(v2 ? 1 : 0, P2.x, P2.y, P2.z); }
           // (2026-10-10j) 사진 윤곽으로 잰 머리 두께가 거의 없는 자리(페이드·짧게 민 옆·뒤)로는 위에서 내려온 긴 머리가 못 덮음 — 덮었다면 윤곽이 두꺼웠을 것
@@ -4854,9 +4856,14 @@ function helixMeasure(rgba,mask,W,H,angle,coh,opt){opt=opt||{};const n=opt.n||25
       if (info.isLong) {
         if (hr) tipAt[sec] = +((hr.yTop - q(a.map(function (s) { return s.rg.tipY; }), 0.5)) / hr.H).toFixed(3);
       } else {
+        /* (2026-11-10j) 짧은 머리 길이 = 그려지는 가닥의 실제 길이(실루엣 길이(42)로 끝을 정한 뒤) — 사용자: "실제보다 짧아 · 반 대머리"
+         *  예전: 두피 위 가닥은 두께×2.2로 줄인 어림 → 윤곽 두께가 얇게 잰 사람(중앙 0.2cm)은 crown 1.4 · nape 0.9cm가 되고,
+         *  조정 화면 Cut 엔진이 이 값(길이 50)으로 가닥을 한 번 더 잘라 두피가 들여다보였음(그린 가닥 nape 2.5 → 1.2cm · 1cm 미만 41%).
+         *  되돌리기 REGROW.lenFromStrands=false */
         lenCm[sec] = +q(a.map(function (s) {
+          if (G.lenFromStrands !== false && s.pts && s.pts.length > 1) { var Ls = 0; for (var k2 = 1; k2 < s.pts.length; k2++) Ls += Math.hypot(s.pts[k2].x - s.pts[k2 - 1].x, s.pts[k2].y - s.pts[k2 - 1].y, s.pts[k2].z - s.pts[k2 - 1].z); return Ls * cm; }
           return (s.rg.free ? s.rg.L : Math.min(s.rg.L, Math.max(G.minLenCm / cm, G.liftK * s.rg.t))) * cm;
-        }), 0.5).toFixed(1);
+        }), G.lenFromStrands !== false ? 0.9 : 0.5).toFixed(1);
       }
     });
     // 뿌리 볼륨 · 넘김 · 가르마 — 윗머리에서
@@ -4923,7 +4930,7 @@ function helixMeasure(rgba,mask,W,H,angle,coh,opt){opt=opt||{};const n=opt.n||25
     if (r.isLong) {
       L.push('  끝 높이(정수리에서 두상 높이의 몇 배 아래 · 1.00 ≈ 턱): ' + r.order.filter(function (k) { return sp.tipAt[k] != null; }).map(function (k) { return k + ' ' + sp.tipAt[k].toFixed(2); }).join(' · '));
     } else {
-      L.push('  길이 cm(어림 — 두께×' + G.liftK + ' 또는 기른 길이 중 짧은 쪽): ' + r.order.filter(function (k) { return sp.lenCm[k] != null; }).map(function (k) { return k + ' ' + sp.lenCm[k]; }).join(' · '));
+      L.push('  길이 cm(' + (G.lenFromStrands !== false ? '그린 가닥의 실제 길이 90% 값 — 조정 화면에서 다시 자르지 않게' : '어림 — 두께×' + G.liftK + ' 또는 기른 길이 중 짧은 쪽') + '): ' + r.order.filter(function (k) { return sp.lenCm[k] != null; }).map(function (k) { return k + ' ' + sp.lenCm[k]; }).join(' · '));
     }
     L.push('  참고 — 섹션별 [기른 길이 cm / 뿌리 자리 두께 cm / 두피 밖으로 늘어진 가닥 %]: ' + r.order.filter(function (k) { return r.raw[k]; }).map(function (k) {
       return k + ' ' + n1(r.raw[k].growCm) + '/' + n1(r.raw[k].thickCm) + '/' + r.raw[k].freePct + '%'; }).join(' · '));
