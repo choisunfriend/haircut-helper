@@ -2148,15 +2148,30 @@ var REGROW = (function () {
        머리 영역에서 skinTolCm(사진끼리 어긋남 몫) 넘게 떨어져 있으면 = 사진이 직접 "여기엔 머리 없음"을 보여 준 것.
        배경·사진 틀 밖·반대쪽 사진은 예전 그대로(여유·기권). 끄기 REGROW.skinNoMargin=false · 여유 REGROW.skinTolCm */
     if (G.skinNoMargin == null) G.skinNoMargin = true; if (G.skinTolCm == null) G.skinTolCm = 0.3;
-    function skinSeen(cam, p, o) {
+    /* (2026-11-10d) 맨살 판정의 '보임'을 각도 문턱(fc≥0.5) 대신 실제 가림으로 — 1754 진단(짧은 남자 · 옆 사진 ±30°): 넘침 정면 38% · 왼 49% · 오른 43%, 넘친 자리는 거의 뺨·귀 앞 살.
+       원인: 옆 사진이 ±30°라 귀 앞·관자놀이 아래 점의 두피 타원 바깥 방향과 이루는 cos가 0.5 아래 → 어느 사진도 '마주 봄'이 아님 → 맨살 판정이 안 걸리고
+       뒤/추가 사진(fc≥-0.15)이 뒷머리 덩어리 위로 비춰 '머리'로 살림. vm98(진짜 옆)이 빠진 쪽이 특히 심함.
+       지금: 카메라 쪽(fc ≥ skinVisFc 0.1)이고 두개골·목/몸통(camBlocked)·얼굴 어림(faceBlocks)에 안 가리면 그 사진의 살 픽셀 = 그 자리에 머리 없음.
+       되돌리기 REGROW.skinVis=false (예전 fc≥faceNoMarginFc) */
+    if (G.skinVis == null) G.skinVis = true; if (G.skinVisFc == null) G.skinVisFc = 0.1; if (G.skinTolOtherCm == null) G.skinTolOtherCm = 1.0;
+    function skinSeen(cam, p, o, tolCm) {
       if (G.skinNoMargin === false || !cam.hull || !(o.z >= 0)) return false;
       if (o.ix < 0 || o.iy < 0 || o.ix >= cam.iw || o.iy >= cam.ih) return false;
       if (hairAt(cam, o.ix, o.iy)) return false;
       if (personAt(cam, o.ix, o.iy) !== true) return false;
-      var vx = p.x / Es.a, vy = (p.y - CY) / Es.b, vz = p.z / Es.c, vl = Math.sqrt(vx * vx + vy * vy + vz * vz) || 1;
-      if ((cam.R[6] * vx + cam.R[7] * vy + cam.R[8] * vz) / vl < (G.faceNoMarginFc || 0.5)) return false;
+      var vx = p.x / Es.a, vy = (p.y - CY) / Es.b, vz = p.z / Es.c, vl = Math.sqrt(vx * vx + vy * vy + vz * vz) || 1, fcS = (cam.R[6] * vx + cam.R[7] * vy + cam.R[8] * vz) / vl;
+      if (G.skinVis !== false) { if (fcS < G.skinVisFc) return false; if (camBlocked(cam, p) || faceBlocks(cam, p)) return false; }
+      else if (fcS < (G.faceNoMarginFc || 0.5)) return false;
       var h = cam.hull, gx = Math.floor(o.ix / h.cp), gy = Math.floor(o.iy / h.cp); if (gx < 0 || gy < 0 || gx >= h.gw || gy >= h.gh) return false;
-      return h.D[gy * h.gw + gx] * (h.cmCell || 1) > G.skinTolCm;
+      return h.D[gy * h.gw + gx] * (h.cmCell || 1) > (tolCm != null ? tolCm : G.skinTolCm);
+    }
+    /* (2026-11-10d) 가장 정면 사진만이 아니라 그 점을 가림 없이 보는 사진 전부 — 가장 정면 사진은 skinTolCm(0.3), 나머지는 skinTolOtherCm(1.0 · 사진끼리 어긋남 몫).
+       되돌리기 REGROW.skinAllCams=false */
+    function skinSeenVisible(p) {
+      var bc = bestFacingCam(p); if (bc && bc.hull && skinSeen(bc, p, proj(bc, p))) return true;
+      if (G.skinAllCams === false || G.skinVis === false) return false;
+      for (var v = 0; v < cams.length; v++) { var c = cams[v]; if (c === bc || !c.hull) continue; if (skinSeen(c, p, proj(c, p), G.skinTolOtherCm)) { G._skinOtherCam = (G._skinOtherCam || 0) + 1; return true; } }
+      return false;
     }
     /* (2026-11-10b) "가장 정면으로 보는 사진"은 두피 타원 바깥 방향으로 고르는데, 턱 아래(yBody 아래 · 어깨·가슴 앞)에선 그 방향이 거의 아래라
        고개 숙인 각도가 섞인 옆 사진이 뽑힘 → 옆 사진에선 그 자리(건너편 어깨 앞)가 턱·목·옷에 가려 "사람·머리 아님" → 맨살로 보고 밖.
@@ -2165,7 +2180,7 @@ var REGROW = (function () {
        지금: 턱 아래 점은 이 "맨살 확실" 판정을 안 하고 다음 판정(보이는 사진 중 하나라도 머리면 살림)으로. 앞머리·이마 넘침은 턱 위라 그대로.
        되돌리기 REGROW.skinBelowChin=true */
     function skinVetoHere(p) { return G.skinBelowChin === true || !(p.y < yBody); }
-    function skinSeenAny(p) { if (G.anyHairAlive !== false) { if (!skinVetoHere(p)) return false; var bc = bestFacingCam(p); return !!(bc && bc.hull && skinSeen(bc, p, proj(bc, p))); }   // (2026-11-08f) 가장 정면으로 보는 사진만
+    function skinSeenAny(p) { if (G.anyHairAlive !== false) { if (!skinVetoHere(p)) return false; return skinSeenVisible(p); }   // (2026-11-08f) 가장 정면으로 보는 사진만
       for (var v = 0; v < cams.length; v++) { var c = cams[v]; if (c.hull && skinSeen(c, p, proj(c, p))) return true; } return false; }
     /* (2026-10-27i) 머리 영역 판정의 가림 = 결 읽기와 같은 목·몸통 기둥(camBlocked)
        예전: 목 높이(yBody) 아래에서 카메라 반대편이면 그 사진을 무조건 뺌 → 목 아래 뒤쪽은 뒷모습 사진 혼자 판정 → 깊이가 안 잡혀 뒷머리가 얼마나 뒤로 가든 "머리".
@@ -2328,9 +2343,28 @@ var REGROW = (function () {
     }
     function aliveJudge(p) {                                             // 1 살아 있음 · 0 밖(맨살 확실) · null 예전 판정으로
       if (G.anyHairAlive === false) return null;
-      if (skinVetoHere(p)) { var bc = bestFacingCam(p); if (bc && bc.hull && skinSeen(bc, p, proj(bc, p))) return 0; }
+      if (skinVetoHere(p) && skinSeenVisible(p)) return 0;
       if (G.aliveBgVeto !== false && bgVetoSeen(p)) { G._aliveBgVeto = (G._aliveBgVeto || 0) + 1; return 0; }
+      if (G.aliveIsect !== false) return allHairSeenVisible(p);
       return (G.aliveFc === -2 ? anyHairSeen(p) : anyHairSeenFacing(p)) ? 1 : null;
+    }
+    /* (2026-11-10e) 교집합 — 사용자: "교집합으로 바꿔라. 다 머리라고 해야 머리지."
+       그 점을 가림 없이 보는 사진(카메라 쪽 fc ≥ skinVisFc · 두개골·목/몸통·얼굴에 안 가림 · 사진 틀 안) 전부가 머리여야 살아 있음(1).
+       한 장이라도 머리 아님(배경·살·옷 무엇이든)이고 머리 영역에서 isectTolCm(사진끼리 어긋남 몫) 넘게 떨어져 있으면 밖(0).
+       보는 사진이 없으면 null(예전 판정). 되돌리기 REGROW.aliveIsect=false(합집합 · 하나라도 머리면 살림) · 여유 REGROW.isectTolCm */
+    if (G.aliveIsect == null) G.aliveIsect = true; if (G.isectTolCm == null) G.isectTolCm = 0.3;
+    function allHairSeenVisible(p) {
+      var vx = p.x / Es.a, vy = (p.y - CY) / Es.b, vz = p.z / Es.c, vl = Math.sqrt(vx * vx + vy * vy + vz * vz) || 1, yes = 0, fcMin = G.skinVisFc != null ? G.skinVisFc : 0.1;
+      for (var v = 0; v < cams.length; v++) { var c = cams[v]; if (!c.hull) continue;
+        if ((c.R[6] * vx + c.R[7] * vy + c.R[8] * vz) / vl < fcMin) continue;
+        var o = proj(c, p); if (!(o.z > 0)) continue;
+        if (o.ix < 0 || o.iy < 0 || o.ix >= c.iw || o.iy >= c.ih) continue;
+        if (camBlocked(c, p) || faceBlocks(c, p)) continue;
+        if (hairAt(c, o.ix, o.iy)) { yes++; continue; }
+        var h = c.hull, gx = Math.floor(o.ix / h.cp), gy = Math.floor(o.iy / h.cp);
+        if (gx < 0 || gy < 0 || gx >= h.gw || gy >= h.gh || h.D[gy * h.gw + gx] * (h.cmCell || 1) > G.isectTolCm) { G._isectNo = (G._isectNo || 0) + 1; return 0; }
+      }
+      return yes ? 1 : null;
     }
     function fcPoint(p) {                                                // 0 안 · 1 여유 안(영역 밖) · 2 여유 밖
       var aj = aliveJudge(p); if (aj === 1) return 0; if (aj === 0) { G._fcSkin = (G._fcSkin || 0) + 1; return 2; }
@@ -2516,7 +2550,7 @@ var REGROW = (function () {
     G.setupReuseStat = { used: false, why: '' };
     if (G.setupReuse !== false) try {
       scKey = cams.map(function (c) { return c.angle + ':' + Array.prototype.join.call(c.R, ',') + ':' + c.cx + ':' + c.crownY + ':' + c.s + ':' + c.sy; }).join('|')
-        + '#' + [G.volume, G.volCellCm, G.hullRule, String(G.hullViews), G.hullExtra, G.hullExtraMinIou, G.aliveBgVeto, G.aliveFc, G.xfitLast ? G.xfitLast.rows.map(function (r) { return r.angle + (r.i1 || 0).toFixed(2); }).join('') : '', G.hullVis, G.hullPerson, G.hullBgOnly, G.hullVisVote, G.skinNoMargin, G.skinTolCm, 'px', G.tStep, G.tMax, G.tFloor, G.layerShell, G.layerOuter, G.polNbr, G.thinLen, G.thinLenBareCells].join(',');
+        + '#' + [G.volume, G.volCellCm, G.hullRule, String(G.hullViews), G.hullExtra, G.hullExtraMinIou, G.aliveBgVeto, G.aliveFc, G.xfitLast ? G.xfitLast.rows.map(function (r) { return r.angle + (r.i1 || 0).toFixed(2); }).join('') : '', G.hullVis, G.hullPerson, G.hullBgOnly, G.hullVisVote, G.skinNoMargin, G.skinTolCm, G.skinVis, G.skinVisFc, G.skinAllCams, G.skinTolOtherCm, G.aliveIsect, G.isectTolCm, 'px', G.tStep, G.tMax, G.tFloor, G.layerShell, G.layerOuter, G.polNbr, G.thinLen, G.thinLenBareCells].join(',');
       var sc0 = G._setupCache; G._setupCache = null;
       if (!opt.lite && sc0) {
         if (sc0.photo === photo && sc0.probe === probe && sc0.key === scKey) { SC = sc0; G.setupReuseStat = { used: true, why: '가볍게 기르기의 준비물을 그대로 씀' }; }
@@ -4320,7 +4354,7 @@ var REGROW = (function () {
     // (옛 51) 격자가 없어 포기했던 사진이면 균일 격자를 넣고 다시 시도(13b ROOTS_FALLBACK)
     if (typeof ROOTS_FALLBACK !== 'undefined') ROOTS_FALLBACK._beforeRegrowBuild(G);
     // (2026-11-08) 사진 가닥 깊이를 다른 사진들의 결·머리 영역으로 맞춤(39 MV_DEPTH)
-    G._aliveAny = 0; G._fcSkin = 0; G._aliveBgVeto = 0;   // (2026-11-08f) 점 판정 세기
+    G._aliveAny = 0; G._fcSkin = 0; G._aliveBgVeto = 0; G._skinOtherCam = 0; G._isectNo = 0;   // (2026-11-08f) 점 판정 세기
     if (typeof MV_DEPTH !== 'undefined') { try { MV_DEPTH._beforeRegrowBuild(state._hair3Dneutral); } catch (e) { console.warn('[여러 사진 깊이] 실패', e); } }
     if (typeof cb !== 'function') cb = null;
     if (G.building) return;
@@ -5282,8 +5316,8 @@ function helixMeasure(rgba,mask,W,H,angle,coh,opt){opt=opt||{};const n=opt.n||25
         + (dS.coarseN ? ' · ' + dC.coarseCm + 'cm 간격(굴곡) ' + (dS.coarseB / dS.coarseN).toFixed(1) + '→' + (dS.coarseA / dS.coarseN).toFixed(1) + '°/cm — 이게 크게 줄면 굴곡을 편 것' : '')
         + (dS.err ? ' · ⚠ ' + dS.err : '') + ' (끄기 ?dn=0 · REGROW.dn.passes/.sigMaxCm)')); } } catch (eD) {}
     try { var fcS = G.fcStat; L.push('  마지막 다듬기(모든 가닥 · 마주 보는 사진은 머리 아니면 밖 · 반대쪽 사진은 배경일 때만 밖): ' + (G.finalClip === false ? '꺼짐' : fcS ? '가닥 ' + fcS.n + ' 중 여유 넘게 나가 자른 ' + fcS.cut + '(점 ' + fcS.cutPts + ') · 끝이 영역 밖이라 경계에서 끝낸 ' + fcS.tail + '(점 ' + fcS.tailPts + ')' + (G.clipPointwise !== false ? ' · <b>점마다 판단</b>: 마지막으로 살아 있는 점까지 남김 — 중간에 밖으로 나갔다 돌아와 살린 가닥 ' + (fcS.keepMid || 0) + '(점 ' + (fcS.keepMidPts || 0) + ' · 되돌리기 REGROW.clipPointwise=false)' : '') + (G.clipStrict !== false && G.clipPointwise === false ? ' · 영역 안에 들어간 뒤 밖으로 나가 그 자리에서 자른 ' + (fcS.strict || 0) + '(점 ' + (fcS.strictPts || 0) + ' · 되돌리기 REGROW.clipStrict=false)' : '') : '아직') + ' (끄기 REGROW.finalClip=false)'); } catch (eF) {}
-    try { var du = G.drawUnusedStat; L.push('  안 쓴 사진 조각 그대로 그리기: ' + (!du ? '-' : !du.on ? '꺼짐' : du.err ? '실패 ' + du.err : '조각 ' + du.pieces + ' 중 통째로 ' + du.whole + ' · 안 그린 앞부분 ' + du.head + ' · 점 ' + du.pts + ' · 다듬기에 잘린 ' + du.clipped) + ' (끄기 REGROW.drawUnused=false) · 점 판정: 보이는 사진 중 하나라도 머리면 살림 ' + (G.anyHairAlive === false ? '꺼짐' : '켜짐 — 다른 사진이 밖이라 했지만 살린 판정 ' + (G._aliveAny || 0) + ' · 가장 정면 사진이 맨살이라 밖 ' + (G._fcSkin || 0) + ' · 배경 위라 살리지 않음 ' + (G.aliveBgVeto === false ? '꺼짐' : (G._aliveBgVeto || 0)) + '(끄기 REGROW.aliveBgVeto=false) · 살리는 사진 반구 fc≥' + (G.aliveFc != null ? G.aliveFc : -0.15)) + ' (되돌리기 REGROW.anyHairAlive=false)'); } catch (eS) {}
-    try { var fcK = G.fcStat; if (fcK) L.push('  보이는 맨살 위(마주 보는 사진 · 머리 영역에서 ' + G.skinTolCm + 'cm 넘게): 투표에서 밖 ' + (G._skinNoMarginN || 0) + ' · 뿌리 구간이 맨살 위라 안 그린 가닥 ' + (fcK.skinRoot || 0) + ' · 가운데 구간이 맨살 위로 나가 거기서 끝낸 가닥 ' + (fcK.skinMid || 0) + '(점 ' + (fcK.skinMidPts || 0) + ') (끄기 REGROW.skinNoMargin=false)'); } catch (eK) {}
+    try { var du = G.drawUnusedStat; L.push('  안 쓴 사진 조각 그대로 그리기: ' + (!du ? '-' : !du.on ? '꺼짐' : du.err ? '실패 ' + du.err : '조각 ' + du.pieces + ' 중 통째로 ' + du.whole + ' · 안 그린 앞부분 ' + du.head + ' · 점 ' + du.pts + ' · 다듬기에 잘린 ' + du.clipped) + ' (끄기 REGROW.drawUnused=false) · 점 판정: ' + (G.aliveIsect !== false ? '<b>교집합</b> — 가림 없이 보는 사진이 모두 머리여야 살림 · 한 장이라도 아니라서 밖 ' + (G._isectNo || 0) + '(여유 ' + G.isectTolCm + 'cm · 되돌리기 REGROW.aliveIsect=false) · ' : '') + '(합집합일 때) 보이는 사진 중 하나라도 머리면 살림 ' + (G.anyHairAlive === false ? '꺼짐' : '켜짐 — 다른 사진이 밖이라 했지만 살린 판정 ' + (G._aliveAny || 0) + ' · 가장 정면 사진이 맨살이라 밖 ' + (G._fcSkin || 0) + ' · 배경 위라 살리지 않음 ' + (G.aliveBgVeto === false ? '꺼짐' : (G._aliveBgVeto || 0)) + '(끄기 REGROW.aliveBgVeto=false) · 살리는 사진 반구 fc≥' + (G.aliveFc != null ? G.aliveFc : -0.15)) + ' (되돌리기 REGROW.anyHairAlive=false)'); } catch (eS) {}
+    try { var fcK = G.fcStat; if (fcK) L.push('  보이는 맨살 위(마주 보는 사진 · 머리 영역에서 ' + G.skinTolCm + 'cm 넘게): 투표에서 밖 ' + (G._skinNoMarginN || 0) + ' · 뿌리 구간이 맨살 위라 안 그린 가닥 ' + (fcK.skinRoot || 0) + ' · 가운데 구간이 맨살 위로 나가 거기서 끝낸 가닥 ' + (fcK.skinMid || 0) + '(점 ' + (fcK.skinMidPts || 0) + ') · 보임 판정 ' + (G.skinVis === false ? '각도(fc≥' + (G.faceNoMarginFc || 0.5) + ')' : '가림(fc≥' + G.skinVisFc + ' · 두개골·몸·얼굴) — 가장 정면 아닌 사진이 맨살로 본 판정 ' + (G._skinOtherCam || 0) + '(여유 ' + G.skinTolOtherCm + 'cm · 끄기 REGROW.skinAllCams=false)') + ' (되돌리기 REGROW.skinVis=false · 끄기 REGROW.skinNoMargin=false)'); } catch (eK) {}
     L.push('  껍질(사진 교집합): ' + (s.hullV ? s.hullV + ' 중 그 자리를 마주 보는 사진이 머리 영역에서 ' + G.hullMarginCm + '(정면)·' + G.hullMarginSideCm + '(옆·뒤)cm 넘게 밖이라 덩어리 밖인 걸음(덩어리를 쓰면 다른 이유로 밖인 것도 포함) ' + (s.hullN || 0) + '회 — 다른 사진이 머리라고 해도 멈춤 (예전: 다수결 · 끄기 REGROW.hullViews=[])' + ' · 사진 가닥이 그어져 머리 영역에 더한 칸 ' + (G.hullStrands === false ? '꺼짐' : Object.keys(G._hsCells || {}).map(function (k) { return k + ' ' + G._hsCells[k]; }).join(' · ') + ' (끄기 ?hullst=0)') : '안 씀(다수결)'));
     try { var hv = G.hullVisStat; L.push('  머리 영역 판정의 가림(목·몸통 기둥): ' + (hv && hv.on ? '켜짐 — 덩어리 칸 판정에서 기둥·두개골에 가려 뺀 사진 ' + hv.blk + ' · 목 아래 카메라 반대편인데 안 가려서 쓴 사진 ' + hv.use + '(예전엔 다 뺌) (끄기 ?hullvis=0)' + ' · 사람 윤곽 ' + (G.hullPerson === false ? '꺼짐' : hv.pmViews + '장 — 여유 밖 판정 중 배경 ' + hv.bg + ' · 몸·살(안 막힘) ' + hv.body + ' · 몸·살인데 막혀서 못 봄으로 뺀 ' + hv.skip + ' (끄기 REGROW.hullPerson=false)' + ' · 보이는 사진만 투표: ' + (G.hullVisVote !== false ? '켜짐(사진 픽셀만) — 사람(살·옷)이라 기권 ' + (G._visAbstain || 0) + ' · 밖 표 ' + (G._visNo || 0) + '(그중 마주 보는 사진의 살 ' + (G._visSkinNo || 0) + ' · 끄기 ?vvskin=0)' + ' (끄기 ?hullvv=0)' : '꺼짐') + ' · 거부는 배경 픽셀만(몸·살 = 기권): ' + (G.hullVisVote !== false ? '안 씀' : G.hullBgOnly !== false ? '켜짐 — 기권 ' + (G._bgAbstain || 0) + '회 (끄기 ?hullbg=0)' : '꺼짐')) : (G.hullVis === false ? '꺼짐(예전: 목 아래 반대편 사진은 다 뺌)' : '목 치수 없음 — 예전 규칙'))); } catch (e) {}
     L.push('  직모 뼈대(곱슬 사진 · 큰 흐름만 따라 기름 · 컬은 그 위에 얹음): ' + (s.straight ? '켜짐 — ' + s.straight + ' (끄기 REGROW.straightCurly=false)' : '안 씀'));
