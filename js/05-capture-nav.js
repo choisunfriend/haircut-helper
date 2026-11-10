@@ -1127,6 +1127,9 @@ function updateAngleUI(){
     const lmStatusRaw = (state.captureLmStatus || {})[a];
     const lmStatus = (a === 'back' && lmStatusRaw === 'fail') ? 'ok' : lmStatusRaw;
     if(!hasShot){ chk.textContent=''; }
+    // (2026-11-10b) 후면은 ✓도 안 띄움 — 사용자: "Back의 경우도 아래쪽에 초록색 체크 뜨는데 그거 지워줘".
+    // 랜드마크 검사 자체가 후면엔 의미 없음. 진짜 잘못 찍은 'wrongslot'(후면 슬롯에 얼굴)만 ⚠.
+    else if(a === 'back' && lmStatusRaw !== 'wrongslot'){ chk.textContent=''; }
     else if(!lmStatus || lmStatus === 'na'){ chk.textContent='✓'; chk.style.color='var(--ok)'; }
     else if(lmStatus === 'checking'){ chk.textContent='…'; chk.style.color='var(--text-muted)'; }
     else if(lmStatus === 'fail'){ chk.textContent='⚠'; chk.style.color='var(--warn)'; }
@@ -1387,7 +1390,7 @@ async function checkCaptureLandmarks(angle){
       showToast('⚠ ' + mismatch + ' 다시 촬영을 권해요');
     } else {
       state.captureLmStatus[angle]='ok';
-      showToast(`${ANGLE_LABELS[angle]} 얼굴 랜드마크 감지 ✓${yawTxt}`);
+      if(angle !== 'back') showToast(`${ANGLE_LABELS[angle]} 얼굴 랜드마크 감지 ✓${yawTxt}`);   // (2026-11-10b) 후면은 표시 안 함
     }
   } else {
     state.captureLmStatus[angle]='fail';
@@ -1405,16 +1408,15 @@ async function checkCaptureLandmarks(angle){
                        : `[${angle}] 포즈 귀 앵커도 실패 — 실루엣 최대폭 추정으로 폴백`);
     }
     const cap = getCapturePose(angle);
-    if(cap){
+    if(cap && angle !== 'back'){
       // 각도는 살렸지만 랜드마크(귀·눈·턱 좌표)가 없으면 그 뷰의 2D→3D 매핑이
       // 추정치로 떨어져 3D가 망가진다 — 각도 보존과 별개로 재촬영을 권한다.
       showToast(`⚠ ${ANGLE_LABELS[angle]} 랜드마크 감지 실패 — 각도(yaw ${cap.yawDeg.toFixed(0)}°)는 살렸지만 3D 정확도가 떨어져요. 조금 덜 돌린 각도로 다시 찍는 걸 권해요`);
     } else
     // 후면은 원래 얼굴이 안 잡히는 경우가 많아 안내 문구를 다르게 —
     // "실패했으니 무조건 다시"가 아니라 "가능하면 귀·턱 라인이 걸리게".
-    showToast(angle === 'back'
-      ? `⚠ 후면 랜드마크 감지 실패 — 이 상태로도 진행은 되지만(추정치 폴백) 뒤통수를 살짝 돌려 귀·턱 라인이 걸리면 3D가 더 정확해져요`
-      : `⚠ ${ANGLE_LABELS[angle]} 랜드마크 감지 실패 — 눈·코 라인이 살짝 보이는 각도로 다시 촬영하면 3D 정확도가 올라가요`);
+    // (2026-11-10b) 후면은 원래 얼굴이 안 잡힘 — 경고 토스트 안 띄움(사용자 지시)
+    if(angle !== 'back') showToast(`⚠ ${ANGLE_LABELS[angle]} 랜드마크 감지 실패 — 눈·코 라인이 살짝 보이는 각도로 다시 촬영하면 3D 정확도가 올라가요`);
   }
   // (2026-11-09) 옆 사진 얼굴이 없으면 그 사진에서 포즈로 각도를 잼(01 SIDE_POSE_YAW — 거울 대신)
   try{ if(typeof SIDE_POSE_YAW !== 'undefined' && state.shots[angle] === shotAtStart) await SIDE_POSE_YAW.afterFace(angle); }catch(e){}

@@ -8971,6 +8971,70 @@ var STRAND_BUDGET = (function () {
   return B;
 })();
 
+/* ══ BODY_OUT (2026-11-10c) — 몸통 안에 든 머리 점을 가장 가까운 면(가슴 앞 / 등) 밖으로 ══
+ * 사용자: "웨이브 긴머리 가슴 앞으로 나온 머리 거의 그려지는 거 같은데, 앞으로 안 나와. 가슴넘침이 있는 거 보니 혹시 몸통 안에 있는 거 아닌가"
+ * 잰 값(디버그 1008 긴 웨이브 · 3D 결과의 차콜 슈트 메쉬를 같은 배율·자리로 놓고 잼):
+ *   가슴 높이 아래(목 밑동 −0.1 ~ −0.95단위 · |x|<0.75) 그려진 점 중 몸 앞쪽 반(z>0)의 94%가 몸통 안 · 가슴 앞면보다 앞 0.3%.
+ *   사진에서 읽은 가닥(lift)부터 66%가 몸통 안 — 정면 사진은 깊이를 모르고 옆 사진(±45°)은 몸을 모름 → 3D에서 옷에 가려 "앞으로 안 나옴",
+ *   조정 화면에선 몸이 없으니 정면 대조에서 가슴 위 넘침(빨강)으로 보임.
+ * 지금: 그 점이 서 있는 높이의 몸통 단면(앞면·등면 · 슈트 메쉬에서 잰 표 · 몸 길이 자로 배율) 안이면 z만 가까운 면 + 여유로 옮김.
+ *   x·y는 그대로 = 정면·뒷모습 사진과의 대조는 안 바뀜. 몸통 밖 점·목 위 점은 안 건드림. 앞/뒤는 그 점이 몸 가운데보다 앞이냐 뒤냐(가닥 단위 판정 없음 —
+ *   예전 SHOULDER가 가닥마다 "들어가기 직전 점"으로 정해 앞머리를 등으로 보내던 것과 다름).
+ * 끄기 BODY_OUT.on=false; BODY_OUT.refresh() · 배율 BODY_OUT.k(1 = 몸 길이 자 그대로) · 여유 BODY_OUT.marginCm */
+var BODY_OUT = (function () {
+  'use strict';
+  var W = window, TAG = '[몸통 밖으로]';
+  var B = Object.assign({ on: true, k: 1, marginCm: 0.5, rampCm: 2.5 }, W.BODY_OUT || {});
+  /* 슈트 메쉬(Male_Suit · 몸 길이 7.2단위 · 목 밑동 기준)에서 잰 단면: 목 밑동에서 아래로 dy일 때 앞면 z · 등면 z · 반폭 */
+  var DY = [0.05, 0.15, 0.30, 0.50, 0.70, 0.90, 1.60], ZF = [0.25, 0.31, 0.44, 0.52, 0.53, 0.52, 0.50], ZB = [-0.35, -0.40, -0.44, -0.45, -0.46, -0.45, -0.42], HW = [0.65, 0.85, 0.85, 0.85, 0.80, 0.75, 0.75], REF_LEN = 7.2;
+  var S = B.stats = { strands: 0, touched: 0, pts: 0, front: 0, back: 0, ms: 0, scale: 0, neck: 0, err: null };
+  var memo = new WeakMap(), ver = 1, logged = false;
+  function lerpT(T, d) { if (d <= DY[0]) return T[0]; for (var i = 1; i < DY.length; i++) if (d <= DY[i]) { var t = (d - DY[i - 1]) / (DY[i] - DY[i - 1]); return T[i - 1] + (T[i] - T[i - 1]) * t; } return T[T.length - 1]; }
+  function geom() {
+    var neck, len = null, cm = 0;
+    try { neck = getNeckBottomY(); } catch (e) { return null; }
+    if (!isFinite(neck)) return null;
+    try { len = personBodyLenMesh(isFinite(state._model3DCrownY) ? state._model3DCrownY : undefined); } catch (e) { len = null; }
+    try { cm = modelCmPerUnit() || 0; } catch (e) { cm = 0; }
+    if (!(len > 0.5)) len = cm > 0 ? (REF_LEN * 16.36) / cm : REF_LEN;      // 자가 없으면 cm 환산(잰 세션 16.36cm/단위)
+    var s = len / REF_LEN * (B.k || 1);
+    return { neck: neck, s: s, m: (B.marginCm || 0) / (cm > 0 ? cm : 18.6), ramp: (B.rampCm || 0) / (cm > 0 ? cm : 18.6), key: neck.toFixed(4) + ':' + s.toFixed(4) };
+  }
+  function pass(list) {
+    if (!B.on || !list || !list.length) return list;
+    try { if (SHOULDER.on && !(SHOULDER.resultOnly && currentScreen === 'adjust')) return list; } catch (e) {}   // 어깨 장치가 켜져 있으면 그쪽이 함
+    var G = geom(); if (!G) return list;
+    var hit = memo.get(list); if (hit && hit.ver === ver && hit.key === G.key) return hit.out;
+    var t0 = performance.now(), n = list.length, out = new Array(n), i, k, e, p, np, q, d, ax, hw, zf, zb, zm, sx, rampW, top = G.neck, bot = G.neck - DY[DY.length - 1] * G.s;
+    S.strands = n; S.touched = S.pts = S.front = S.back = 0; S.scale = G.s;
+    for (i = 0; i < n; i++) {
+      e = list[i]; p = e && e.pts; np = null;
+      if (p && p.length > 1) for (k = 1; k < p.length; k++) {
+        q = p[k]; if (!(q.y < top) || !(q.y > bot)) continue;
+        d = (top - q.y) / G.s;                                         // 목 밑동에서 아래로(슈트 자)
+        hw = lerpT(HW, d) * G.s; ax = q.x < 0 ? -q.x : q.x; if (ax >= hw) continue;
+        sx = Math.pow(Math.max(0, 1 - Math.pow(ax / hw, 4)), 0.25);    // 단면은 네모에 가까운 타원(초타원 4)
+        rampW = G.ramp > 0 ? Math.min(1, (top - q.y) / G.ramp) : 1;    // 목 밑동 바로 아래는 서서히(가로줄 안 생기게)
+        zf = lerpT(ZF, d) * G.s * sx * rampW; zb = lerpT(ZB, d) * G.s * sx * rampW; zm = (zf + zb) / 2;
+        if (!(q.z < zf + G.m && q.z > zb - G.m)) continue;              // 몸통 밖
+        if (!np) { np = p.slice(); try { np._pre = p._pre || p; } catch (e3) {} S.touched++; }
+        if (q.z >= zm) { np[k] = Object.assign({}, q, { z: zf + G.m }); S.front++; } else { np[k] = Object.assign({}, q, { z: zb - G.m }); S.back++; }
+        S.pts++;
+      }
+      out[i] = np ? Object.assign({}, e, { pts: np }) : e;
+    }
+    S.ms = performance.now() - t0;
+    memo.set(list, { ver: ver, key: G.key, out: out });
+    if (!logged && S.touched) { logged = true; console.log(TAG + ' 몸통 안 점 ' + S.pts + '개(가닥 ' + S.touched + '/' + n + ') → 앞면 ' + S.front + ' · 등면 ' + S.back + ' · 몸 배율 ' + G.s.toFixed(2) + ' · ' + Math.round(S.ms) + 'ms (끄기 BODY_OUT.on=false; BODY_OUT.refresh())'); }
+    return out;
+  }
+  B._apply = function (list) { try { return pass(list); } catch (e) { S.err = String(e && e.message || e); return list; } };
+  B.refresh = function () { ver++; memo = new WeakMap(); logged = false; try { if (typeof ADJ_CACHE !== 'undefined' && ADJ_CACHE.bump) ADJ_CACHE.bump(); } catch (e) {} try { if (currentScreen === 'adjust' && typeof renderAdjustFrame === 'function') renderAdjustFrame(); } catch (e) {} return B.on; };
+  B.lines = function () { return [TAG + ' ' + (B.on ? '켜짐' : '꺼짐') + ' — 직전: 가닥 ' + S.strands + ' 중 몸통에 든 가닥 ' + S.touched + ' · 점 ' + S.pts + '(앞면 ' + S.front + ' · 등면 ' + S.back + ') · 몸 배율 ' + (S.scale || 0).toFixed(2) + ' · ' + Math.round(S.ms) + 'ms' + (S.err ? ' ⚠ ' + S.err : '')]; };
+  console.log(TAG + ' 설치 — 몸통(가슴~배) 안에 든 머리 점만 가까운 면(가슴 앞/등) 밖으로, z만 옮김. 끄기 BODY_OUT.on=false; BODY_OUT.refresh() · 상태 BODY_OUT.lines()');
+  return B;
+})();
+
 /* ══ 조정 결과 가닥 — 바깥 단계 ══
    예전 기능 파일(48~)이 이 함수를 감싸던 순서 그대로 단계로 둔다(위가 바깥). 기본 계산은 아래 _adjComputeCore. */
 function computeAdjustedHair3DStrands(srcAngleFilter, stride){
@@ -8980,6 +9044,7 @@ function computeAdjustedHair3DStrands(srcAngleFilter, stride){
   // (옛 50 어깨) 몸통 안으로 들어간 점을 어깨·등 면에 얹음 — 13a SHOULDER
   out = riseFixAll(out);   // (2026-10-13i) 하늘로 솟은 뒷머리를 늘어뜨림(17a RISE_FIX) — 어깨 처리 전에
   out = SHOULDER._apply(out);
+  out = BODY_OUT._apply(out);   // (2026-11-10c) 몸통 안에 든 점만 가까운 면(가슴 앞/등) 밖으로 — z만 옮김
   out = (typeof tipFlareAll === 'function' ? tipFlareAll(out) : out);   // (2026-10-18 배포본) 17a 끝 벌어짐
   // (2026-10-13) 원본 머리에서 얼굴 앞을 가로지르는 가닥을 옆으로 비킴(17a FACE_CLEAR)
   out = faceClearAll(out);
