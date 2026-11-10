@@ -1392,7 +1392,18 @@ var PHOTO_CHECK = (function () {
     dirGain: 1,         // 어긋난 각의 이 비율만큼 돌림
     dirGrip: 0.12,      // 가닥의 앞 12%(뿌리 쪽)는 덜 돎
     lenSlack: 3,        // 길이 슬라이더가 원본 기준보다 이 넘게 길어진 섹션이 있으면 잘라내기를 쉼
-    neckOcc: true, neckLenCm: 10, neckRadCm: 5.25   // (2026-11-09) 목 기둥 가림 — 길이(턱 아래 ~ 어깨)·반지름 cm (로그 [3D·목] 밑동 10.5cm · 목 길이 10.3cm)
+    neckOcc: true, neckLenCm: 10, neckRadCm: 5.25,  // (2026-11-09) 목 기둥 가림 — 길이(턱 아래 ~ 어깨)·반지름 cm (로그 [3D·목] 밑동 10.5cm · 목 길이 10.3cm)
+    /* (2026-11-10x) 반대편 가림을 다시 기르기(17b)와 같은 기준으로 — 디버그 1820(짧은 남자 · 옆 ±33°) 실측:
+       대조 '넘침' 점의 95~100%가 카메라 반대편(뒤통수·목덜미, 반대쪽 x)인데 두피 타원(0.96)만으로 가림을 봐서
+       광선이 타원 아래(귀·턱·목 윗부분)로 빠져나가 '보임'으로 셈 → 사진에선 귀·뺨 살 위에 비쳐 빨강.
+       같은 점을 17b 판정(카메라 쪽 · 바깥 방향 cos)으로만 세면 넘침(1cm 밖 점) 정면 0.1% · 왼 0.8% · 오른 1.1%.
+       즉 옆 사진 넘침 40%의 대부분은 대조 도구의 가림 모형 탓 — 이 수치를 보고 규칙을 넣으면 다른 머리에서 거꾸로 나빠짐.
+       지금: 턱~두상 가운데 높이의 턱·귀 기둥(두상 반폭 × farJawK) + 목 기둥(턱 위까지 연장)으로도 가림을 보고,
+       두피 타원 바깥 방향과 시선의 cos가 farFcMin 미만인 반대편 점(턱 위)은 안 보임으로 침.
+       같은 디버그로 돌린 결과(넘침 정면/왼/오른/뒤): 예전 14.4/36.8/31.2/5.1% → 지금 4.4/20.9/18.2/1.7% (빔 0.0/0.0/0.4/1.0 → 2.2/0.0/4.6/1.0)
+       farFcMin 0.1(17b 맨살·교집합 문턱과 같음)이면 4.4/13.0/11.2/1.7 — 대신 옆 윤곽 끝 머리가 빠져 오른쪽 빔이 8.8%.
+       되돌리기 PHOTO_CHECK.farOcc=false */
+    farOcc: true, farJawK: 0.85, farFcMin: 0
   }, W.PHOTO_CHECK || {});
   var S = P.stats = { at: null, views: [], strands: 0, ms: 0, err: null, trimCut: 0, trimLen: 0, trimMs: 0, trimWhy: '', fixStr: 0, fixSeg: 0, fixMs: 0, fixWhy: '', fixPush: 0 };
   var ver = 0;
@@ -1438,8 +1449,23 @@ var PHOTO_CHECK = (function () {
       var A = dx * dx / env.a2 + dy * dy / env.b2 + dz * dz / env.c2, B = 2 * (x * dx / env.a2 + y * dy / env.b2 + z * dz / env.c2), C = x * x / env.a2 + y * y / env.b2 + z * z / env.c2 - 0.96;
       var D = B * B - 4 * A * C;
       if (D > 0 && (-B + Math.sqrt(D)) / (2 * A) > 1e-4) return 0;
+      if (P.farOcc !== false && farHidden(env, x, y, z, dx, dy, dz)) return 0;   // (2026-11-10x)
     }
     return 1;
+  }
+  /* (2026-11-10x) 반대편 점(두상 가운데 높이 아래 포함)의 가림 — 위 farOcc 설명 */
+  function farHidden(env, x, y, z, dx, dy, dz) {
+    var a = Math.sqrt(env.a2), b = Math.sqrt(env.b2), c = Math.sqrt(env.c2);
+    var vx = x / a, vy = y / b, vz = z / c, vl = Math.sqrt(vx * vx + vy * vy + vz * vz) || 1;
+    if ((vx * dx + vy * dy + vz * dz) / vl < P.farFcMin) return true;
+    // 시선을 따라 걸으며 턱·귀 기둥(yBody~CY)과 목 기둥(yNeck~CY)에 걸리는가 — 상대 좌표(y는 CY 기준)
+    var K = P.farJawK, ja = a * K, jc = c * K, yB = env.yBody - env.CY, yN = (env.yNeck != null ? env.yNeck : env.yBody) - env.CY, rN = env.rNeck || 0, t, qx, qy, qz;
+    for (var i = 1; i <= 40; i++) {
+      t = i * 0.02; qx = x + dx * t; qy = y + dy * t; qz = z + dz * t;
+      if (qy < 0 && qy >= yB && qx * qx / (ja * ja) + qz * qz / (jc * jc) < 1) return true;
+      if (qy < 0 && qy >= yN && rN > 0 && qx * qx + qz * qz < rN * rN) return true;
+    }
+    return false;
   }
   function mkEnv(env) {
     return { CY: env.CY, yTop: env.yTop, a2: env.a * env.a, b2: env.b * env.b, c2: env.c * env.c, yBody: env.CY - 0.7 * env.b, cm: env.cm > 0 ? env.cm : 19,

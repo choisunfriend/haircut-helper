@@ -1656,7 +1656,7 @@ var VIEWS360 = (function () {
   /* 추가 사진 한 장: 카메라 + 뺄 이유(없으면 '') */
   function calFor(v, viewCal, yTop, CY, ctx) {
     var f = viewCal && viewCal.front, m = v.m, out = { cal: null, why: '', kind: '' };
-    v.q = null; v.agree = null; v.yawSensor = null; v.faceRejected = null; if (f && f._synth) v.headRuled = false;
+    v.q = null; v.agree = null; v.yawSensor = null; v.faceRejected = null; v.yawSearch = null; if (f && f._synth) v.headRuled = false;
     if (!f || !(f.sy > 0) || !f.pose) { out.why = '정면 보정 없음'; return out; }
     var basic = !m || m.hw < 4 || m.valid < m.w * X.minCols;
     if (basic) { out.why = frameProblem(m); out.kind = 'frame'; return out; }
@@ -1693,6 +1693,24 @@ var VIEWS360 = (function () {
     out.cal = cal;
     var A = headHalfWidthAt(cal.pose.yaw); v.q = A > 0 ? m.hw * sy / A : null;
     try { v.agree = scalpAgree(cal, state.hairMasks[v.key], yTop, CY); } catch (e) { v.agree = null; }
+    /* (2026-11-10y) 각도가 어긋나서 빠질 사진은 버리기 전에 yaw를 둘러봄 — 디버그 1820: vm98(진짜 오른쪽 옆모습 · 캡처 점검 '각도 어긋남 right 98°')이
+     *   맞음 59%로 빠짐 → 오른쪽(+x) 옆·뒤는 ±33° 사진 하나만 남아 깊이·맨살 판정이 안 걸림(같은 세트 왼쪽은 v90이 있어 넘침이 훨씬 적음).
+     *   지금: 옆·뒤 사진의 맞음이 문턱 아래면 센서 yaw ± yawSearchDeg(30°)를 yawSearchStep(5°)으로 돌려 보고, 가장 잘 맞는 각이
+     *   문턱을 넘고 yawSearchGain(0.08) 넘게 나아지면 그 각을 씀(배율·cx는 그대로 — 그 뒤 17b 추가 사진 카메라 맞추기 ±15°가 다듬음).
+     *   끄기 VIEWS360.yawSearch=false */
+    if (X.yawSearch !== false && X.gate && v.agree != null && v.agree < ctx.thr && Math.abs(wrapDeg(yawDeg)) >= X.agreeFromDeg) {
+      var ysR = X.yawSearchDeg || 30, ysS = X.yawSearchStep || 5, ysBest = v.agree, ysYaw = yawDeg, ysTry;
+      for (var dy = -ysR; dy <= ysR; dy += ysS) {
+        if (!dy) continue;
+        try { ysTry = scalpAgree({ pose: { yaw: (yawDeg + dy) * Math.PI / 180, pitch: 0, roll: 0 }, cx: cal.cx, s: cal.s, sy: cal.sy, crownY: cal.crownY }, state.hairMasks[v.key], yTop, CY); } catch (e) { ysTry = null; }
+        if (ysTry != null && ysTry > ysBest + 1e-6) { ysBest = ysTry; ysYaw = yawDeg + dy; }
+      }
+      v.yawSearch = { from: yawDeg, to: ysYaw, agree0: v.agree, agree1: ysBest, used: false };
+      if (ysBest >= ctx.thr && ysBest - v.agree > (X.yawSearchGain != null ? X.yawSearchGain : 0.08)) {
+        yawDeg = ysYaw; cal.pose.yaw = yawDeg * Math.PI / 180; v.agree = ysBest; v.yawSearch.used = true;
+        var A2 = headHalfWidthAt(cal.pose.yaw); v.q = A2 > 0 ? m.hw * sy / A2 : null;
+      }
+    }
     if (!X.gate) return out;
     var pre = precheck(v, frontYaw);
     if (pre.why) { out.why = pre.why; out.kind = pre.kind; }
@@ -1957,6 +1975,7 @@ var VIEWS360 = (function () {
       L.push('   ' + k + ' ' + Math.round(v.deg) + '°' + (v.yawSensor != null ? ' → ' + (typeof v.faceRejected === 'number' ? v.yawSensor.toFixed(0) + '°(센서 · 얼굴 ' + v.faceRejected.toFixed(0) + '°는 안 씀 — 센서 ' + (X.faceMaxDeg != null ? X.faceMaxDeg : 50) + '° 넘게 돈 사진이거나 센서와 ' + (X.faceSensorTol != null ? X.faceSensorTol : 25) + '° 넘게 다름 · 끄기 VIEWS360.faceMaxDeg=0 · .faceSensorTol=0)' : typeof v.faceYaw === 'number' ? '얼굴 ' + v.faceYaw.toFixed(0) + '°(센서 ' + v.yawSensor.toFixed(0) + '°)' : v.yawSensor.toFixed(0) + '°' + (v.faceYaw === null ? '(얼굴 못 찾음)' : '')) : '') +
         ' · ×' + (v.ratio != null ? v.ratio.toFixed(3) : '?') + ' ' + v.ratioSrc +
         (v.q != null ? ' · 크기 ' + v.q.toFixed(2) : '') + (v.agree != null ? ' · 맞음 ' + Math.round(v.agree * 100) + '%' : '') +
+        (v.yawSearch ? ' · yaw 둘러보기 ' + Math.round(v.yawSearch.from) + '°→' + Math.round(v.yawSearch.to) + '°(맞음 ' + Math.round(v.yawSearch.agree0 * 100) + '→' + Math.round(v.yawSearch.agree1 * 100) + '% · ' + (v.yawSearch.used ? '바꿈' : '안 바꿈') + ')' : '') +
         ' · cx ' + Math.round(v.m.capCx) + '/' + v.m.w + ' · 위 ' + Math.round(v.m.crown) + 'px' +
         (v.cal ? ' → 넣음' : ' → 뺌: ' + (v.why || '아직 평가 전')));
     });
