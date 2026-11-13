@@ -34,7 +34,7 @@ function salonL(ko, en) { try { return typeof uiLang !== 'undefined' && uiLang =
     if (depth > 10) throw new Error('too deep');
     if (v === null || typeof v === 'boolean') return v;
     if (typeof v === 'number') { if (!isFinite(v)) throw new Error('bad number'); return v; }
-    if (typeof v === 'string') { if (v.length > 400) throw new Error('long string'); return v; }
+    if (typeof v === 'string') { if (v.length > 500000) throw new Error('long string'); return v; }
     if (Array.isArray(v)) { if (v.length > 20000) throw new Error('long array'); return v.map(x => clean(x, depth + 1)); }
     if (typeof v === 'object') {
       const out = {};
