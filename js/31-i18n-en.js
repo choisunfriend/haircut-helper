@@ -1,1 +1,103 @@
-(function(){if(typeof I18N==='undefined')return;Object['assign'](I18N,{'남자':'Male','여자':'Female','\x20몸으로\x20바꿉니다':'\x20body','누르면\x20':'Switch\x20to\x20','외투\x20':'Outer\x20','고른\x20옷\x20벗기':'Remove\x20picked\x20item','고른\x20옷(외투)을\x20입었다\x20벗깁니다\x20—\x20벗어도\x20고른\x20옷은\x20기억해\x20둡니다':'Put\x20the\x20picked\x20outerwear\x20on\x20or\x20off\x20—\x20it\x20stays\x20remembered','쇼핑몰에서\x20고른\x20옷을\x20벗고\x20추천\x20의상으로\x20돌아갑니다':'Remove\x20the\x20item\x20picked\x20from\x20the\x20shop\x20and\x20go\x20back\x20to\x20the\x20recommended\x20outfit','슈트·재킷을\x20입었다\x20벗깁니다\x20(무슨\x20옷인지는\x20추천이\x20정합니다)':'Put\x20the\x20suit/jacket\x20on\x20or\x20off\x20(the\x20recommendation\x20decides\x20which\x20one)','옷\x20고르기':'Browse\x20clothes','옷\x20닫기':'Close\x20clothes','의상\x20고르기':'Choose\x20an\x20outfit','이\x20옷\x20보기':'View\x20this\x20item','닫기':'Close','새\x20탭에서\x20열기':'Open\x20in\x20new\x20tab','쇼핑몰을\x20여는\x20중…':'Opening\x20the\x20shop…','쇼핑몰이\x20느리게\x20열리고\x20있습니다.\x20계속\x20비어\x20있으면\x20→':'The\x20shop\x20is\x20loading\x20slowly.\x20If\x20it\x20stays\x20blank\x20→','빗질\x20ON':'Comb\x20ON','빗질\x20OFF':'Comb\x20OFF','넘기기\x20ON':'Sweep\x20ON','넘기기\x20OFF':'Sweep\x20OFF','세기\x20':'Strength\x20','넘기기\x20세기\x20—\x20한\x20번\x20쓸\x20때\x20얼마나\x20넘어가나(여러\x20번\x20쓸면\x20쌓임)':'Sweep\x20strength\x20—\x20how\x20far\x20one\x20stroke\x20turns\x20the\x20hair\x20(repeat\x20strokes\x20add\x20up)','켜면\x20한\x20손가락\x20드래그가\x20빗어\x20넘기기가\x20됩니다\x20—\x20원\x20안의\x20머리가\x20뭉치째\x20쓴\x20방향으로\x20넘어갑니다':'When\x20on,\x20a\x20one-finger\x20drag\x20sweeps\x20—\x20the\x20hair\x20inside\x20the\x20circle\x20moves\x20in\x20the\x20stroke\x20direction','켜면\x20한\x20손가락\x20드래그가\x20빗질이\x20됩니다\x20—\x20잔머리를\x20결\x20방향으로\x20쓰다듬어\x20눕힙니다':'When\x20on,\x20a\x20one-finger\x20drag\x20combs\x20—\x20flyaways\x20are\x20smoothed\x20along\x20the\x20hair\x20flow','마지막\x20빗질\x20한\x20획\x20되돌리기':'Undo\x20the\x20last\x20comb\x20stroke','빗질이\x20너무\x20많아요\x20—\x20↶로\x20되돌리거나\x20지워\x20주세요':'Too\x20many\x20comb\x20strokes\x20—\x20undo\x20with\x20↶\x20or\x20clear\x20them','넘기고\x20싶은\x20머리에\x20빗(원)을\x20올리고\x20보낼\x20방향으로\x20쓸어\x20주세요\x20—\x20원\x20안의\x20머리가\x20뭉치째\x20그\x20방향으로\x20넘어갑니다\x20·\x20이어서\x20쓸면\x20더\x20넘어가요\x20·\x20↶\x20되돌리기':'Place\x20the\x20comb\x20(circle)\x20on\x20the\x20hair\x20and\x20stroke\x20toward\x20where\x20it\x20should\x20go\x20—\x20the\x20hair\x20inside\x20moves\x20that\x20way\x20·\x20stroke\x20again\x20to\x20move\x20it\x20further\x20·\x20↶\x20undo','뜬\x20머리에\x20빗(원)을\x20올리고\x20결대로\x20쓸어\x20주세요\x20—\x20주변\x20머리의\x20결에\x20맞춰\x20눕습니다\x20·\x20빗은\x20손가락\x20조금\x20위에\x20있어요\x20·\x20두\x20손가락:\x20이동·확대':'Place\x20the\x20comb\x20(circle)\x20on\x20loose\x20hair\x20and\x20stroke\x20along\x20the\x20flow\x20—\x20it\x20settles\x20with\x20the\x20surrounding\x20hair\x20·\x20the\x20comb\x20sits\x20just\x20above\x20your\x20finger\x20·\x20two\x20fingers:\x20pan/zoom','원본\x20머리\x20(마네킹\x20+\x20잰\x20값)':'Original\x20hair\x20(mannequin\x20+\x20measured\x20values)','OFF:\x20원본\x20머리(마네킹에\x20사진에서\x20잰\x20값을\x20올린\x20것)\x20·\x20ON:\x20맨\x20마네킹으로\x20초기화':'OFF:\x20original\x20hair\x20(mannequin\x20with\x20values\x20measured\x20from\x20the\x20photos)\x20·\x20ON:\x20reset\x20to\x20a\x20plain\x20mannequin','원본\x203D\x20그대로\x20':'Original\x203D\x20as\x20is\x20','사진에서\x20뜬\x20가닥을\x20조정\x20없이\x20그대로\x203D로\x20봅니다\x20(마네킹은\x20꺼집니다)':'Show\x20the\x20strands\x20read\x20from\x20the\x20photos\x20in\x203D\x20without\x20adjustment\x20(mannequin\x20off)','옮기기\x20실험':'Transfer\x20test','옮기기\x20실험\x20중…':'Running\x20transfer\x20test…','스타일\x20길이\x20든\x20스타일\x20—\x20마네킹\x20뿌리\x20자리만\x20쓰고\x20모양은\x20등록한\x20그대로':'Style\x20with\x20saved\x20strand\x20paths\x20—\x20uses\x20mannequin\x20roots,\x20keeps\x20the\x20registered\x20shape','원본':'Original','취소':'Cancel','확인':'OK','디스커넥션':'Disconnection','0=안\x20씀\x20·\x20윗머리와\x20끊기는\x20라인(두상높이)':'0\x20=\x20off\x20·\x20line\x20where\x20the\x20top\x20section\x20disconnects\x20(head\x20height)','디스커넥션이\x20켜져\x20있어\x20안\x20쓰임':'Not\x20used\x20while\x20disconnection\x20is\x20on','0=스퀘어(일자)\x20·\x2050=라운드\x20·\x20100=테이퍼(V)':'0\x20=\x20square\x20·\x2050\x20=\x20round\x20·\x20100\x20=\x20tapered\x20(V)','색\x20넘버\x20복사됨\x20·\x20':'Color\x20number\x20copied\x20·\x20','색\x20넘버\x20·\x20':'Color\x20number\x20·\x20','\x20값으로\x20맞췄어요':'\x20—\x20values\x20applied','\x20(길이는\x203D\x20모델\x20준비\x20후)':'\x20(length\x20after\x20the\x203D\x20model\x20is\x20ready)','이\x20섹션만\x20이\x20값으로\x20맞추기':'Apply\x20these\x20values\x20to\x20this\x20section\x20only','스타일링만\x20이\x20값으로\x20맞추기':'Apply\x20these\x20values\x20to\x20styling\x20only','\x20스타일링\x20값으로\x20맞췄어요':'\x20—\x20styling\x20values\x20applied','스펙\x20수치':'Spec\x20values','이\x20섹션을\x20손으로\x20맞출\x20때의\x20목표값':'Target\x20values\x20for\x20adjusting\x20this\x20section\x20by\x20hand','스타일링\x20목표값\x20—\x20그대로\x20슬라이더\x20숫자':'Styling\x20targets\x20—\x20use\x20these\x20slider\x20numbers\x20directly','길이는\x20<b>손님\x20원래\x20길이의\x20비율</b>이라\x20스펙의\x20cm·끝높이를\x20이\x20손님에게\x20풀어서\x20낸\x20값입니다\x20—\x20':'Length\x20is\x20a\x20<b>ratio\x20of\x20this\x20client\x27s\x20natural\x20length</b>,\x20so\x20these\x20are\x20the\x20spec\x27s\x20cm\x20/\x20tip\x20heights\x20solved\x20for\x20this\x20client\x20—\x20','다른\x20손님에게\x20그대로\x20옮겨\x20적지\x20마세요.\x20넘김·볼륨·가르마\x20등\x20<b>머리\x20전체\x20연출</b>은\x20스타일링\x20탭에\x20있습니다.':'don\x27t\x20copy\x20them\x20to\x20another\x20client\x20as\x20is.\x20Sweep,\x20volume,\x20parting\x20and\x20other\x20<b>overall\x20styling</b>\x20are\x20in\x20the\x20Styling\x20tab.','(중립)':'(neutral)','\x22\x20등록\x20—\x203D\x20준비\x20전이라\x20길이를\x20cm로\x20못\x20재서,\x20다른\x20손님에겐\x20길이가\x20달라질\x20수\x20있어요':'\x22\x20saved\x20—\x20the\x203D\x20model\x20wasn\x27t\x20ready,\x20so\x20length\x20couldn\x27t\x20be\x20measured\x20in\x20cm\x20and\x20may\x20differ\x20on\x20other\x20clients','사람\x20윤곽\x20모델\x20준비\x20중…':'Preparing\x20body\x20outline\x20model…','뒤\x20사진을\x20맞추는\x20데\x20필요합니다':'Needed\x20to\x20align\x20the\x20back\x20photo','사람\x20윤곽을\x20읽지\x20못했어요\x20—\x20뒷머리가\x20짧게\x20나올\x20수\x20있습니다.\x20새로고침\x20후\x20다시\x20해\x20주세요.':'Couldn\x27t\x20read\x20the\x20body\x20outline\x20—\x20the\x20back\x20hair\x20may\x20come\x20out\x20short.\x20Please\x20reload\x20and\x20try\x20again.','사진이\x20바뀌어\x20새로\x20분석합니다':'Photos\x20changed\x20—\x20analyzing\x20again','분석\x20모델을\x20다시\x20준비하고\x20있어요':'Reloading\x20the\x20analysis\x20model','3D\x20헤어\x20만드는\x20중…':'Building\x203D\x20hair…','의상·얼굴\x20붙이는\x20중…':'Attaching\x20outfit\x20and\x20face…','촬영\x20안내':'Photo\x20tips','장에서\x20문제가\x20보였어요.':'\x20photo(s)\x20have\x20issues.',')에\x20문제가\x20있어\x20결과가\x20부정확할\x20수\x20있어요.':')\x20has\x20issues,\x20so\x20the\x20result\x20may\x20be\x20inaccurate.','기준\x20사진(':'Base\x20photo\x20(','문제가\x20있는\x20추가\x20사진\x20':'Extra\x20photos\x20with\x20issues:\x20','장은\x20빼고\x20계산합니다.':'\x20excluded\x20from\x20the\x20calculation.','°\x20사진':'°\x20photo','머리\x20윗선을\x20못\x20잡음':'Top\x20of\x20head\x20not\x20found','머리\x20윗선이\x20거의\x20안\x20잡힘':'Top\x20of\x20head\x20barely\x20visible','머리\x20맨\x20위가\x20화면\x20밖':'Top\x20of\x20head\x20is\x20outside\x20the\x20frame','너무\x20가깝게\x20찍혔거나\x20배율이\x20틀림':'Too\x20close,\x20or\x20wrong\x20scale','너무\x20멀거나\x20머리가\x20잘림':'Too\x20far,\x20or\x20head\x20cut\x20off','정면\x20사진\x20없음':'No\x20front\x20photo','사진\x20로드\x20실패':'Photo\x20failed\x20to\x20load','코끝':'Nose\x20tip','턱끝':'Chin','이마':'Forehead','원래\x20크기':'Original\x20size','2배확대':'2×\x20zoom','중앙크롭확대':'Center\x20crop\x20zoom','한국어':'한국어'});try{_i18nSubKeys=null;}catch(_0x1bddf8){}try{if(typeof applyUiLang==='function')applyUiLang();}catch(_0x4f1454){}}());
+/* 31-i18n-en.js — English for UI text that the earlier tables missed.
+   Loads last, so I18N (18-perf-i18n-boot.js) already exists.
+   Also re-registers the comb/sweep table from 17a, which ran before I18N was defined. */
+(function () {
+  if (typeof I18N === 'undefined') return;
+  Object.assign(I18N, {
+    // clothes rack / shop panel (21-body-base)
+    '남자': 'Male',
+    '여자': 'Female',
+    ' 몸으로 바꿉니다': ' body',
+    '누르면 ': 'Switch to ',
+    '외투 ': 'Outer ',
+    '고른 옷 벗기': 'Remove picked item',
+    '고른 옷(외투)을 입었다 벗깁니다 — 벗어도 고른 옷은 기억해 둡니다': 'Put the picked outerwear on or off — it stays remembered',
+    '쇼핑몰에서 고른 옷을 벗고 추천 의상으로 돌아갑니다': 'Remove the item picked from the shop and go back to the recommended outfit',
+    '슈트·재킷을 입었다 벗깁니다 (무슨 옷인지는 추천이 정합니다)': 'Put the suit/jacket on or off (the recommendation decides which one)',
+    '옷 고르기': 'Browse clothes',
+    '옷 닫기': 'Close clothes',
+    '의상 고르기': 'Choose an outfit',
+    '이 옷 보기': 'View this item',
+    '닫기': 'Close',
+    '새 탭에서 열기': 'Open in new tab',
+    '쇼핑몰을 여는 중…': 'Opening the shop…',
+    '쇼핑몰이 느리게 열리고 있습니다. 계속 비어 있으면 →': 'The shop is loading slowly. If it stays blank →',
+    // comb / sweep (17a — never registered because it loaded before I18N)
+    '빗질 ON': 'Comb ON',
+    '빗질 OFF': 'Comb OFF',
+    '넘기기 ON': 'Sweep ON',
+    '넘기기 OFF': 'Sweep OFF',
+    '세기 ': 'Strength ',
+    '넘기기 세기 — 한 번 쓸 때 얼마나 넘어가나(여러 번 쓸면 쌓임)': 'Sweep strength — how far one stroke turns the hair (repeat strokes add up)',
+    '켜면 한 손가락 드래그가 빗어 넘기기가 됩니다 — 원 안의 머리가 뭉치째 쓴 방향으로 넘어갑니다': 'When on, a one-finger drag sweeps — the hair inside the circle moves in the stroke direction',
+    '켜면 한 손가락 드래그가 빗질이 됩니다 — 잔머리를 결 방향으로 쓰다듬어 눕힙니다': 'When on, a one-finger drag combs — flyaways are smoothed along the hair flow',
+    '마지막 빗질 한 획 되돌리기': 'Undo the last comb stroke',
+    '빗질이 너무 많아요 — ↶로 되돌리거나 지워 주세요': 'Too many comb strokes — undo with ↶ or clear them',
+    '넘기고 싶은 머리에 빗(원)을 올리고 보낼 방향으로 쓸어 주세요 — 원 안의 머리가 뭉치째 그 방향으로 넘어갑니다 · 이어서 쓸면 더 넘어가요 · ↶ 되돌리기': 'Place the comb (circle) on the hair and stroke toward where it should go — the hair inside moves that way · stroke again to move it further · ↶ undo',
+    '뜬 머리에 빗(원)을 올리고 결대로 쓸어 주세요 — 주변 머리의 결에 맞춰 눕습니다 · 빗은 손가락 조금 위에 있어요 · 두 손가락: 이동·확대': 'Place the comb (circle) on loose hair and stroke along the flow — it settles with the surrounding hair · the comb sits just above your finger · two fingers: pan/zoom',
+
+    // original-head mode (17b)
+    '원본 머리 (마네킹 + 잰 값)': 'Original hair (mannequin + measured values)',
+    'OFF: 원본 머리(마네킹에 사진에서 잰 값을 올린 것) · ON: 맨 마네킹으로 초기화': 'OFF: original hair (mannequin with values measured from the photos) · ON: reset to a plain mannequin',
+    '원본 3D 그대로 ': 'Original 3D as is ',
+    '사진에서 뜬 가닥을 조정 없이 그대로 3D로 봅니다 (마네킹은 꺼집니다)': 'Show the strands read from the photos in 3D without adjustment (mannequin off)',
+    '옮기기 실험': 'Transfer test',
+    '옮기기 실험 중…': 'Running transfer test…',
+    '스타일 길이 든 스타일 — 마네킹 뿌리 자리만 쓰고 모양은 등록한 그대로': 'Style with saved strand paths — uses mannequin roots, keeps the registered shape',
+    '원본': 'Original',
+
+    // dialogs / panels (06)
+    '취소': 'Cancel',
+    '확인': 'OK',
+    '디스커넥션': 'Disconnection',
+    '0=안 씀 · 윗머리와 끊기는 라인(두상높이)': '0 = off · line where the top section disconnects (head height)',
+    '디스커넥션이 켜져 있어 안 쓰임': 'Not used while disconnection is on',
+    '0=스퀘어(일자) · 50=라운드 · 100=테이퍼(V)': '0 = square · 50 = round · 100 = tapered (V)',
+    '색 넘버 복사됨 · ': 'Color number copied · ',
+    '색 넘버 · ': 'Color number · ',
+    ' 값으로 맞췄어요': ' — values applied',
+    ' (길이는 3D 모델 준비 후)': ' (length after the 3D model is ready)',
+    '이 섹션만 이 값으로 맞추기': 'Apply these values to this section only',
+    '스타일링만 이 값으로 맞추기': 'Apply these values to styling only',
+    ' 스타일링 값으로 맞췄어요': ' — styling values applied',
+    '스펙 수치': 'Spec values',
+    '이 섹션을 손으로 맞출 때의 목표값': 'Target values for adjusting this section by hand',
+    '스타일링 목표값 — 그대로 슬라이더 숫자': 'Styling targets — use these slider numbers directly',
+    '길이는 <b>손님 원래 길이의 비율</b>이라 스펙의 cm·끝높이를 이 손님에게 풀어서 낸 값입니다 — ': 'Length is a <b>ratio of this client\'s natural length</b>, so these are the spec\'s cm / tip heights solved for this client — ',
+    '다른 손님에게 그대로 옮겨 적지 마세요. 넘김·볼륨·가르마 등 <b>머리 전체 연출</b>은 스타일링 탭에 있습니다.': 'don\'t copy them to another client as is. Sweep, volume, parting and other <b>overall styling</b> are in the Styling tab.',
+    '(중립)': '(neutral)',
+    '" 등록 — 3D 준비 전이라 길이를 cm로 못 재서, 다른 손님에겐 길이가 달라질 수 있어요': '" saved — the 3D model wasn\'t ready, so length couldn\'t be measured in cm and may differ on other clients',
+
+    // capture / analysis messages
+    '사람 윤곽 모델 준비 중…': 'Preparing body outline model…',
+    '뒤 사진을 맞추는 데 필요합니다': 'Needed to align the back photo',
+    '사람 윤곽을 읽지 못했어요 — 뒷머리가 짧게 나올 수 있습니다. 새로고침 후 다시 해 주세요.': 'Couldn\'t read the body outline — the back hair may come out short. Please reload and try again.',
+    '사진이 바뀌어 새로 분석합니다': 'Photos changed — analyzing again',
+    '분석 모델을 다시 준비하고 있어요': 'Reloading the analysis model',
+    '3D 헤어 만드는 중…': 'Building 3D hair…',
+    '의상·얼굴 붙이는 중…': 'Attaching outfit and face…',
+    '촬영 안내': 'Photo tips',
+    '장에서 문제가 보였어요.': ' photo(s) have issues.',
+    ')에 문제가 있어 결과가 부정확할 수 있어요.': ') has issues, so the result may be inaccurate.',
+    '기준 사진(': 'Base photo (',
+    '문제가 있는 추가 사진 ': 'Extra photos with issues: ',
+    '장은 빼고 계산합니다.': ' excluded from the calculation.',
+    '° 사진': '° photo',
+    '머리 윗선을 못 잡음': 'Top of head not found',
+    '머리 윗선이 거의 안 잡힘': 'Top of head barely visible',
+    '머리 맨 위가 화면 밖': 'Top of head is outside the frame',
+    '너무 가깝게 찍혔거나 배율이 틀림': 'Too close, or wrong scale',
+    '너무 멀거나 머리가 잘림': 'Too far, or head cut off',
+    '정면 사진 없음': 'No front photo',
+    '사진 로드 실패': 'Photo failed to load',
+    '코끝': 'Nose tip',
+    '턱끝': 'Chin',
+    '이마': 'Forehead',
+    '원래 크기': 'Original size',
+    '2배확대': '2× zoom',
+    '중앙크롭확대': 'Center crop zoom',
+    '한국어': '한국어'
+  });
+  try { _i18nSubKeys = null; } catch (e) {}
+  try { if (typeof applyUiLang === 'function') applyUiLang(); } catch (e) {}
+})();
