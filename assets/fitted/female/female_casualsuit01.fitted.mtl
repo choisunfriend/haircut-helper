@@ -1,0 +1,7 @@
+newmtl female_casualsuit01
+Kd 1.000000 1.000000 1.000000
+Ks 0.027450 0.027450 0.027450
+Ns 25
+d 1.000000
+illum 2
+map_Kd ../../proxy/textures/female_casualsuit01_diffuse.png
