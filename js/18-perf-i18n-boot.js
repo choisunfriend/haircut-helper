@@ -2743,7 +2743,24 @@ function i18nTranslate(ko){
   return changed ? out : null;                        // 못 찾으면 한국어 그대로 둔다
 }
 
-let uiLang = 'en';        // ← 기본값. 'ko'로 바꾸면 한국어로 시작한다.
+/* (2026-11-14) 시작 언어를 지역(브라우저 언어)에 맞춘다.
+   ① 손님이 전에 고른 값(localStorage 'gyeol.lang')이 있으면 그걸 먼저 쓴다.
+   ② 없으면 브라우저/기기 언어가 한국어면 'ko', 아니면 'en'.
+   한국어 기기에서 'ko'로 시작하면 원본이 한국어라 번역 빈틈으로 섞이는 일이 없다.
+   지원 언어는 ko·en 둘뿐 — 그 밖의 언어는 영어로 시작한다. */
+function _detectUiLang() {
+  try {
+    const saved = localStorage.getItem('gyeol.lang');
+    if (saved === 'ko' || saved === 'en') return saved;
+  } catch (e) {}
+  try {
+    const list = (navigator.languages && navigator.languages.length)
+      ? navigator.languages : [navigator.language || navigator.userLanguage || ''];
+    for (const l of list) if (/^ko\b/i.test(String(l))) return 'ko';
+  } catch (e) {}
+  return 'en';
+}
+let uiLang = _detectUiLang();        // ← 기본값은 지역 언어. 손님이 버튼으로 바꾸면 기억한다.
 /* DOM 텍스트 노드가 <b>아닌</b> 문구용 — window.prompt()와 AI 프롬프트가 그것이다.
    옵저버는 화면에 그려진 텍스트 노드만 보므로 이 둘은 원리적으로 안 잡힌다.
    호출부를 다 고치지 않기 위해 만든 게 옵저버였고, 이건 옵저버가 못 닿는
@@ -2817,6 +2834,7 @@ function applyUiLang(){
 }
 function setUiLang(lang){
   uiLang = (lang === 'ko') ? 'ko' : 'en';
+  try { localStorage.setItem('gyeol.lang', uiLang); } catch (e) {}   // 다음에 열 때도 이 언어로
   applyUiLang();
 }
 function toggleUiLang(){ setUiLang(uiLang === 'en' ? 'ko' : 'en'); }

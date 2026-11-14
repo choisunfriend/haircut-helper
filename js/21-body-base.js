@@ -78,7 +78,11 @@ let _pickedShopId = null;     // 마지막으로 고른 옷 id — "고른 옷�
 let _pickedShopItem = null;
 /* (11-14) 자리별로 고른 옷 { lower?, upper?, full?, outer? } — 값은 앱 꼴 항목 */
 let _picks = {};
-const SLOT_LABEL = { 'lower': '하의', 'upper': '상의', 'full': '전신', 'outer': '외투' };
+/* (11-14) 옷 기능 문구는 앱 언어(uiLang)를 그대로 따른다 — 사전에 기대지 않아 안 섞인다 */
+function L(ko, en) { try { return (typeof uiLang !== 'undefined' && uiLang === 'en') ? en : ko; } catch (e) { return ko; } }
+const SLOT_LABEL_KO = { 'lower': '하의', 'upper': '상의', 'full': '전신', 'outer': '외투' };
+const SLOT_LABEL_EN = { 'lower': 'bottoms', 'upper': 'top', 'full': 'one-piece', 'outer': 'jacket' };
+function slotLabel(s) { return L(SLOT_LABEL_KO[s] || s, SLOT_LABEL_EN[s] || s); }
 function _slotOf(bodyPart, layer) {
   const b = String(bodyPart || '').toLowerCase();
   if (b === 'outer') return 'outer';
@@ -251,9 +255,10 @@ function shopPiece(it, gender, loose) {
            'fromShop': true };
 }
 
+function figLabel(g) { const f = BODY_FIGURES[g]; return f ? L(f.label, f.labelEn || f.label) : g; }
 const BODY_FIGURES = {
-  'male':   { 'label': '남자', 'objUrl': './assets/body_male.obj',   'neckCutFrac': 0.9474 },
-  'female': { 'label': '여자', 'objUrl': './assets/body_female.obj', 'neckCutFrac': 0.9427 }
+  'male':   { 'label': '남자', 'labelEn': 'Man',   'objUrl': './assets/body_male.obj',   'neckCutFrac': 0.9474 },
+  'female': { 'label': '여자', 'labelEn': 'Woman', 'objUrl': './assets/body_female.obj', 'neckCutFrac': 0.9427 }
 };
 
 /* ------------------------------------------------------------------ 옷장 */
@@ -262,31 +267,32 @@ const BODY_FIGURES = {
 const BODY_WARDROBE = {
   'male': {
     'outer': [
-      { 'id': 'm-suit',   'name': '슈트', 'formal': 0.95, 'coversAll': true, 'url': './assets/fitted/male/suit3.fitted.obj' },
-      { 'id': 'm-jacket', 'name': '재킷', 'formal': 0.45, 'coversAll': true, 'url': './assets/fitted/male/suit_dinner_jacket.fitted.obj' }
+      { 'id': 'm-suit',   'name': '슈트', 'nameEn': 'Suit', 'formal': 0.95, 'coversAll': true, 'url': './assets/fitted/male/suit3.fitted.obj' },
+      { 'id': 'm-jacket', 'name': '재킷', 'nameEn': 'Jacket', 'formal': 0.45, 'coversAll': true, 'url': './assets/fitted/male/suit_dinner_jacket.fitted.obj' }
     ],
     'inner': [
-      { 'id': 'm-jeans', 'name': '청바지', 'slot': 'lower', 'under': true, 'colorHex': '#3E4E6B',
+      { 'id': 'm-jeans', 'name': '청바지', 'nameEn': 'Jeans', 'slot': 'lower', 'under': true, 'colorHex': '#3E4E6B',
         'url': './assets/fitted/male/mens_elv_jeans2slf.fitted.obj' },
-      { 'id': 'm-top',   'name': '상의', 'slot': 'upper', 'url': './assets/fitted/male/mycenaean_tunic.fitted.obj' }
+      { 'id': 'm-top',   'name': '상의', 'nameEn': 'Top', 'slot': 'upper', 'url': './assets/fitted/male/mycenaean_tunic.fitted.obj' }
     ]
   },
   'female': {
     'outer': [
-      { 'id': 'f-suit',  'name': '슈트', 'formal': 0.95, 'coversAll': true, 'url': './assets/fitted/female/fem_suit2.fitted.obj' },
-      { 'id': 'f-dress', 'name': '원피스 슈트', 'formal': 0.55, 'coversAll': true,
+      { 'id': 'f-suit',  'name': '슈트', 'nameEn': 'Suit', 'formal': 0.95, 'coversAll': true, 'url': './assets/fitted/female/fem_suit2.fitted.obj' },
+      { 'id': 'f-dress', 'name': '원피스 슈트', 'nameEn': 'Dress suit', 'formal': 0.55, 'coversAll': true,
         'url': './assets/fitted/female/female_elegantsuit01.fitted.obj' }
     ],
     /* 여자 안쪽 한 벌은 상·하의가 한 메쉬다(MakeHuman female_casualsuit01).
        예전에는 남성용 튜닉 + 청바지를 빌려 썼는데, 가슴이 옷을 뚫고 나와 여유를 계속
        올리다 보니 어깨가 부풀었다. 이 옷은 처음부터 여자 체형에 물려 있어 그 문제가 없다. */
     'inner': [
-      { 'id': 'f-casual', 'name': '캐주얼', 'slot': 'full', 'url': './assets/fitted/female/female_casualsuit01.fitted.obj' }
+      { 'id': 'f-casual', 'name': '캐주얼', 'nameEn': 'Casual', 'slot': 'full', 'url': './assets/fitted/female/female_casualsuit01.fitted.obj' }
     ]
   }
 };
 
 /* 추천 항목의 격식 — 카테고리와 실루엣 점수에서 읽는다(20-outfit-match.js의 축). */
+function partName(p) { return p ? L(p.name, p.nameEn || p.name) : ''; }
 function outfitFormality(item) {
   if (!item) return 0.5;
   if (item.category === '포멀') return 1;
@@ -314,9 +320,10 @@ async function piecesForOutfit(item) {
     const raw = _picks[slot];
     const hit = raw && shopPiece(raw, gender, !BODY_SHOP.pickGenderLock);
     if (hit) { picked[slot] = Object.assign({}, hit, { 'slot': slot }); continue; }
-    console.warn('[3D·쇼핑몰] 고른 ' + SLOT_LABEL[slot] + '(' + (raw && raw.id) + ')에 ' +
+    console.warn('[3D·쇼핑몰] 고른 ' + (SLOT_LABEL_KO[slot]||slot) + '(' + (raw && raw.id) + ')에 ' +
       BODY_FIGURES[gender].label + ' 몸용 메쉬가 없어 이 몸에서는 빼고 입힙니다');
-    bodyToast('고른 ' + SLOT_LABEL[slot] + '는 ' + BODY_FIGURES[gender].label + ' 몸용이 아니라 빼고 입힙니다');
+    bodyToast(L('고른 ' + slotLabel(slot) + '는 ' + figLabel(gender) + ' 몸용이 아니라 빼고 입힙니다',
+                'This ' + slotLabel(slot) + " isn't made for the " + figLabel(gender) + ' body, so it was left off'));
   }
   const anyPick = Object.keys(picked).length > 0;
 
@@ -351,10 +358,10 @@ async function piecesForOutfit(item) {
   const parts = outer && outer.coversAll
     ? [outer]
     : [inner.lower, inner.full, inner.upper, outer].filter(Boolean);
-  const names = parts.map(p => p.name);
+  const names = parts.map(partName);
   const wornShop = (outer && outer.fromShop && outer.shop) ||
     ((picked.upper || picked.full || picked.lower || {}).shop) || (parts[0] && parts[0].shop) || null;
-  return { 'label': parts.length ? names.join(' + ') + (anyPick ? ' · 고름' : '') : '맨몸',
+  return { 'label': parts.length ? names.join(' + ') + (anyPick ? L(' · 고름', ' · picked') : '') : L('맨몸', 'No clothes'),
            'shop': wornShop, 'parts': parts, 'hasOuterPick': !!picked.outer, 'anyPick': anyPick };
 }
 
@@ -970,7 +977,7 @@ function _updateModel3DTag() {
   const tag = document.getElementById('model3dTag');
   if (!tag) return;
   const base = tag.textContent.replace(/\s*·\s*(몸|Body)\s*:.*$/, '');   // 영어 UI(Body:)도 지운다
-  tag.textContent = base + ' · 몸: ' + BODY_FIGURES[BODY_BASE.gender].label +
+  tag.textContent = base + L(' · 몸: ', ' · Body: ') + figLabel(BODY_BASE.gender) +
     ' · ' + _bodyWornLabel;
 }
 
@@ -998,7 +1005,8 @@ async function toggleBodyOuter() {
      고른 옷을 아주 벗는 길은 「고른 옷 벗기」 버튼 하나로 둔다. */
   BODY_BASE.outer = !BODY_BASE.outer;
   if (BODY_BASE.outer && Object.keys(_picks).length && !_picks.outer) {
-    bodyToast('고른 외투가 없어요 — 쇼핑몰에서 외투를 고르면 지금 옷 위에 입혀집니다');
+    bodyToast(L('고른 외투가 없어요 — 쇼핑몰에서 외투를 고르면 지금 옷 위에 입혀집니다',
+                'No jacket picked — choose one in the shop and it goes on over what you have on'));
   }
   if (!_bodyRig) return false;
   await _mountGarment(_liveRig(), _lastBuild && _lastBuild.item);
@@ -1039,18 +1047,20 @@ function buildBodyGarmentRack() {
   const other = BODY_BASE.gender === 'male' ? 'female' : 'male';
   const bGender = document.createElement('button');
   bGender.type = 'button';
-  bGender.textContent = BODY_FIGURES[BODY_BASE.gender].label;
-  bGender.title = '누르면 ' + BODY_FIGURES[other].label + ' 몸으로 바꿉니다';
+  bGender.textContent = figLabel(BODY_BASE.gender);
+  bGender.title = L('누르면 ' + figLabel(other) + ' 몸으로 바꿉니다', 'Switch to the ' + figLabel(other) + ' body');
   bGender.addEventListener('click', () => setBodyGender(other));
   rack.appendChild(bGender);
 
   const bOuter = document.createElement('button');
   bOuter.type = 'button';
-  bOuter.textContent = '외투 ' + (BODY_BASE.outer ? 'ON' : 'OFF');
+  bOuter.textContent = L('외투 ', 'Jacket ') + (BODY_BASE.outer ? 'ON' : 'OFF');
   if (BODY_BASE.outer) bOuter.classList.add('on');
   bOuter.title = _pickedShopId
-    ? '외투만 입었다 벗깁니다 — 안쪽 상의·하의는 그대로, 벗어도 고른 외투는 기억해 둡니다'
-    : '슈트·재킷을 입었다 벗깁니다 (무슨 옷인지는 추천이 정합니다)';
+    ? L('외투만 입었다 벗깁니다 — 안쪽 상의·하의는 그대로, 벗어도 고른 외투는 기억해 둡니다',
+        'Takes the jacket on and off — your top and bottoms stay on, and the picked jacket is remembered')
+    : L('슈트·재킷을 입었다 벗깁니다 (무슨 옷인지는 추천이 정합니다)',
+        'Puts a suit/jacket on and off (the recommendation decides which)');
   bOuter.addEventListener('click', () => toggleBodyOuter());
   rack.appendChild(bOuter);
 
@@ -1058,8 +1068,8 @@ function buildBodyGarmentRack() {
   if (_pickedShopId) {
     const bClear = document.createElement('button');
     bClear.type = 'button';
-    bClear.textContent = '고른 옷 벗기';
-    bClear.title = '쇼핑몰에서 고른 옷을 벗고 추천 의상으로 돌아갑니다';
+    bClear.textContent = L('고른 옷 벗기', 'Clear picks');
+    bClear.title = L('쇼핑몰에서 고른 옷을 벗고 추천 의상으로 돌아갑니다', 'Remove shop picks and go back to the recommended outfit');
     bClear.addEventListener('click', () => clearShopPick());
     rack.appendChild(bClear);
   }
@@ -1071,7 +1081,7 @@ function buildBodyGarmentRack() {
     const bShop = document.createElement('button');
     bShop.type = 'button';
     const open = !!document.getElementById('bbShopPanel');
-    bShop.textContent = open ? '옷 닫기' : '옷 고르기';
+    bShop.textContent = open ? L('옷 닫기', 'Close clothes') : L('옷 고르기', 'Pick clothes');
     if (open) bShop.classList.add('on');
     bShop.addEventListener('click', () => open ? closeShopPanel() : openShopPanel());
     rack.appendChild(bShop);
@@ -1085,7 +1095,7 @@ function buildBodyGarmentRack() {
     buy.href = _bodyWornShop.link;
     buy.target = '_blank';
     buy.rel = 'noopener';
-    buy.textContent = (_bodyWornShop.title || '이 옷 보기') +
+    buy.textContent = (_bodyWornShop.title || L('이 옷 보기', 'View this item')) +
       (_bodyWornShop.price ? ' · ' + _bodyWornShop.price : '');
     rack.appendChild(buy);
   }
@@ -1110,21 +1120,21 @@ function openShopPanel() {
   const bar = document.createElement('div');
   bar.className = 'bb-shop-bar';
   const ttl = document.createElement('span');
-  ttl.textContent = '의상 고르기';
+  ttl.textContent = L('의상 고르기', 'Pick an outfit');
   bar.appendChild(ttl);
   const close = document.createElement('button');
-  close.type = 'button'; close.textContent = '✕'; close.title = '닫기';
+  close.type = 'button'; close.textContent = '✕'; close.title = L('닫기', 'Close');
   close.addEventListener('click', closeShopPanel);
   bar.appendChild(close);
 
   /* 안 뜰 때 손님이 빈 화면만 보고 있지 않도록, 상태를 글로 말해 준다. */
   const note = document.createElement('div');
   note.className = 'bb-shop-note';
-  note.textContent = '쇼핑몰을 여는 중…';
+  note.textContent = L('쇼핑몰을 여는 중…', 'Opening the shop…');
 
   const frame = document.createElement('iframe');
   frame.id = 'bbShopFrame';
-  frame.title = '의상 고르기';
+  frame.title = L('의상 고르기', 'Pick an outfit');
   frame.setAttribute('loading', 'eager');
   frame.setAttribute('referrerpolicy', 'no-referrer');
   frame.setAttribute('allow', 'geolocation');      // (11월) 미용실 지도가 위치를 쓴다
@@ -1148,11 +1158,11 @@ function openShopPanel() {
       'color:#eee;display:flex;gap:10px;align-items:center;flex-wrap:wrap;justify-content:center;z-index:5;' +
       'font-size:12px;pointer-events:auto;';
     const p = document.createElement('p');
-    p.textContent = '쇼핑몰이 느리게 열리고 있습니다. 계속 비어 있으면 →';
+    p.textContent = L('쇼핑몰이 느리게 열리고 있습니다. 계속 비어 있으면 →', 'The shop is slow to load. If it stays blank →');
     p.style.margin = '0';
     const a = document.createElement('a');
     a.href = BODY_SHOP.pageUrl; a.target = '_blank'; a.rel = 'noopener';
-    a.textContent = '새 탭에서 열기';
+    a.textContent = L('새 탭에서 열기', 'Open in a new tab');
     const q = document.createElement('small');
     q.textContent = BODY_SHOP.pageUrl;
     note.appendChild(p); note.appendChild(a); note.appendChild(q);
@@ -1201,7 +1211,7 @@ async function applyShopPick(id, rawItem, origin) {
   const it = inline || list.find(x => x && x.id === pid);
   if (!it) {
     console.warn('[3D·쇼핑몰] 고른 옷(' + pid + ')을 목록에서 못 찾았습니다');
-    bodyToast('고른 옷 정보를 받지 못했습니다 (' + pid + ')');
+    bodyToast(L('고른 옷 정보를 받지 못했습니다 (' + pid + ')', "Couldn't get the picked item's info (" + pid + ')'));
     return false;
   }
   _pickedShopId = pid;
@@ -1216,7 +1226,7 @@ async function applyShopPick(id, rawItem, origin) {
   /* 외투를 골랐는데 스위치가 꺼져 있으면 아무것도 안 바뀐 것처럼 보인다 → 켠다 */
   if (slot === 'outer' && !BODY_BASE.outer) {
     BODY_BASE.outer = true;
-    bodyToast('외투를 골라서 외투 스위치를 켰어요');
+    bodyToast(L('외투를 골라서 외투 스위치를 켰어요', 'Turned the jacket switch on for your picked jacket'));
   }
 
   if (!_bodyRig) { console.warn('[3D·쇼핑몰] 아직 몸이 안 세워져 고른 옷만 기억해 둡니다'); return true; }
@@ -1225,11 +1235,11 @@ async function applyShopPick(id, rawItem, origin) {
     await _mountGarment(_liveRig(), _lastBuild && _lastBuild.item);
   } catch (e) {
     console.warn('[3D·쇼핑몰] 갈아입히기 실패:', e);
-    bodyToast('옷을 불러오지 못했습니다');
+    bodyToast(L('옷을 불러오지 못했습니다', "Couldn't load the clothes"));
     return false;
   }
   buildBodyGarmentRack(); _updateModel3DTag();
-  console.log('[3D·쇼핑몰] 손님이 고른 ' + SLOT_LABEL[slot] + '로 갈아입힘 — ' + pid +
+  console.log('[3D·쇼핑몰] 손님이 고른 ' + (SLOT_LABEL_KO[slot]||slot) + '로 갈아입힘 — ' + pid +
     ' · 외투 스위치는 ' + (BODY_BASE.outer ? 'ON' : 'OFF') + ' 그대로');
   return true;
 }
