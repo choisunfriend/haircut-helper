@@ -30,6 +30,11 @@
    2026-11-14  옷 색: 추천 항목 색 한 가지로 모든 옷을 칠하던 것을 없앰.
                OBJ의 mtllib(MTL: Kd 색·map_Kd 텍스처)와 버텍스 컬러를 그대로 쓴다.
                색 정보가 아무것도 없는 옷만 그 옷 자신의 colorHex → 회색 순으로 칠한다.
+   2026-11-14  옷 자리(slot) 나눔 — 고른 옷을 한 벌만 기억하던 것을 자리별로 기억한다.
+               자리: lower(하의) · upper(상의) · full(전신·원피스) · outer(외투).
+               상의를 고르면 상의 자리만 바뀌고 하의는 그대로, 외투는 안쪽 옷 위에 덧입는다.
+               외투 스위치는 외투 자리만 켜고 끈다(안쪽 옷은 언제나 입고 있다).
+               견본 슈트처럼 아래위가 한 벌인 외투(coversAll)만 안쪽 옷을 가린다.
    ========================================================================== */
 
 const BODY_BASE = {
@@ -69,8 +74,19 @@ const BODY_SHOP = {
    null이면 추천이 고른 대로 입는다.
    _pickedShopItem은 쇼핑몰이 목록(catalog.json) 없이 옷 정보를 통째로 보냈을 때 쓴다 —
    목록을 못 받는 상황에서도 "고른 옷"이 입혀져야 한다. */
-let _pickedShopId = null;
+let _pickedShopId = null;     // 마지막으로 고른 옷 id — "고른 옷이 있다" 표시로도 쓴다
 let _pickedShopItem = null;
+/* (11-14) 자리별로 고른 옷 { lower?, upper?, full?, outer? } — 값은 앱 꼴 항목 */
+let _picks = {};
+const SLOT_LABEL = { 'lower': '하의', 'upper': '상의', 'full': '전신', 'outer': '외투' };
+function _slotOf(bodyPart, layer) {
+  const b = String(bodyPart || '').toLowerCase();
+  if (b === 'outer') return 'outer';
+  if (b === 'upper_body' || b === 'upper' || b === 'top') return 'upper';
+  if (b === 'lower_body' || b === 'lower' || b === 'bottom') return 'lower';
+  if (b === 'full_body' || b === 'full' || b === 'dress') return 'full';
+  return (layer || 'outer') === 'outer' ? 'outer' : 'upper';
+}
 let _shopItems = null;     // null=아직 안 읽음, []=읽었는데 없음
 let _shopLoading = null;   // 진행 중인 fetch 약속 — 같은 목록을 두 번 읽지 않는다
 let _shopFailed = false;   // 한 번 실패했다 → 다음에 다시 시도한다
@@ -137,6 +153,7 @@ function _fromMarketplace(row) {
     'layer': layer,
     'under': bodyPart === 'lower_body',      // 하의는 몸에 더 붙여 입힌다(underOffset)
     'bodyPart': bodyPart || null,
+    'slot': _slotOf(bodyPart, layer),
     'manifest': m ? new URL('/api/assets/products/' + m[1] + '/fitted.json', BODY_SHOP.assetBase).href : null,
     'fitted': avatar.fitted === true || /\.fitted\.obj(\?|#|$)/i.test(modelPath),
     'colorHex': row.colorHex || null,
@@ -228,6 +245,7 @@ function shopPiece(it, gender, loose) {
            'fitFor': fitFor, 'shop': it.shop || null,
            'fitted': !!it.fitted,              // 이미 몸에 맞춰 구운 메쉬인가
            'bodyPart': it.bodyPart || null,
+           'slot': it.slot || _slotOf(it.bodyPart, it.layer),
            'manifest': it.manifest || null,    // 몸별 구운 메쉬 목록(fitted.json) 주소
            'under': !!it.under,
            'fromShop': true };
@@ -244,26 +262,26 @@ const BODY_FIGURES = {
 const BODY_WARDROBE = {
   'male': {
     'outer': [
-      { 'id': 'm-suit',   'name': '슈트', 'formal': 0.95, 'url': './assets/fitted/male/suit3.fitted.obj' },
-      { 'id': 'm-jacket', 'name': '재킷', 'formal': 0.45, 'url': './assets/fitted/male/suit_dinner_jacket.fitted.obj' }
+      { 'id': 'm-suit',   'name': '슈트', 'formal': 0.95, 'coversAll': true, 'url': './assets/fitted/male/suit3.fitted.obj' },
+      { 'id': 'm-jacket', 'name': '재킷', 'formal': 0.45, 'coversAll': true, 'url': './assets/fitted/male/suit_dinner_jacket.fitted.obj' }
     ],
     'inner': [
-      { 'id': 'm-jeans', 'name': '청바지', 'under': true, 'colorHex': '#3E4E6B',
+      { 'id': 'm-jeans', 'name': '청바지', 'slot': 'lower', 'under': true, 'colorHex': '#3E4E6B',
         'url': './assets/fitted/male/mens_elv_jeans2slf.fitted.obj' },
-      { 'id': 'm-top',   'name': '상의', 'url': './assets/fitted/male/mycenaean_tunic.fitted.obj' }
+      { 'id': 'm-top',   'name': '상의', 'slot': 'upper', 'url': './assets/fitted/male/mycenaean_tunic.fitted.obj' }
     ]
   },
   'female': {
     'outer': [
-      { 'id': 'f-suit',  'name': '슈트', 'formal': 0.95, 'url': './assets/fitted/female/fem_suit2.fitted.obj' },
-      { 'id': 'f-dress', 'name': '원피스 슈트', 'formal': 0.55,
+      { 'id': 'f-suit',  'name': '슈트', 'formal': 0.95, 'coversAll': true, 'url': './assets/fitted/female/fem_suit2.fitted.obj' },
+      { 'id': 'f-dress', 'name': '원피스 슈트', 'formal': 0.55, 'coversAll': true,
         'url': './assets/fitted/female/female_elegantsuit01.fitted.obj' }
     ],
     /* 여자 안쪽 한 벌은 상·하의가 한 메쉬다(MakeHuman female_casualsuit01).
        예전에는 남성용 튜닉 + 청바지를 빌려 썼는데, 가슴이 옷을 뚫고 나와 여유를 계속
        올리다 보니 어깨가 부풀었다. 이 옷은 처음부터 여자 체형에 물려 있어 그 문제가 없다. */
     'inner': [
-      { 'id': 'f-casual', 'name': '캐주얼', 'url': './assets/fitted/female/female_casualsuit01.fitted.obj' }
+      { 'id': 'f-casual', 'name': '캐주얼', 'slot': 'full', 'url': './assets/fitted/female/female_casualsuit01.fitted.obj' }
     ]
   }
 };
@@ -290,59 +308,54 @@ async function piecesForOutfit(item) {
   const shopFor = layer => (BODY_SHOP.recommend ? shop : []).map(it => shopPiece(it, gender))
                                .filter(p => p && (p.layer || 'outer') === layer);
 
-  /* 쇼핑몰에서 직접 고른 옷 — 격식을 따지지 않고 그대로 입는다. */
-  if (_pickedShopId) {
-    const raw = _shopItemById(_pickedShopId, shop);
-    /* 고른 옷도 성별을 지킨다 — 지금 몸에 물려 구운 메쉬가 없으면 입히지 않고
-       추천으로 돌아간다. 몸을 바꿔 주면 그 옷이 다시 보인다. */
+  /* (11-14) 쇼핑몰에서 고른 옷 — 자리별로. 이 몸에 입힐 메쉬가 없는 옷은 그 자리만 비운다. */
+  const picked = {};
+  for (const slot of Object.keys(_picks)) {
+    const raw = _picks[slot];
     const hit = raw && shopPiece(raw, gender, !BODY_SHOP.pickGenderLock);
-    /* 고른 옷도 제 layer를 지킨다 — 외투를 벗어 둔 손님에게 고른 재킷을 다시 입히면
-       스위치가 거짓말이 된다. 벗어 둔 동안에도 고른 기억(_pickedShopId)은 지우지 않는다.
-       다시 켜면 같은 옷이 돌아온다. */
-    if (hit && ((hit.layer || 'outer') !== 'outer' || BODY_BASE.outer)) {
-      const parts = [Object.assign({}, hit)];
-      let extra = '';
-      /* (10월) 고른 옷이 안쪽 옷(상의·하의)이고 외투 ON이면, 격식이 맞는 견본 외투를
-         같이 입힌다 — 고른 셔츠 위에 재킷이 올라가는 그림. */
-      if ((hit.layer || 'outer') !== 'outer' && BODY_BASE.outer) {
-        const outers = w.outer || [];
-        if (outers.length) {
-          const f = outfitFormality(item);
-          let best = outers[0], bd = Infinity;
-          for (const o of outers) { const d = Math.abs(o.formal - f); if (d < bd) { bd = d; best = o; } }
-          parts.push(Object.assign({}, best));
-          extra = ' + ' + best.name;
-        }
+    if (hit) { picked[slot] = Object.assign({}, hit, { 'slot': slot }); continue; }
+    console.warn('[3D·쇼핑몰] 고른 ' + SLOT_LABEL[slot] + '(' + (raw && raw.id) + ')에 ' +
+      BODY_FIGURES[gender].label + ' 몸용 메쉬가 없어 이 몸에서는 빼고 입힙니다');
+    bodyToast('고른 ' + SLOT_LABEL[slot] + '는 ' + BODY_FIGURES[gender].label + ' 몸용이 아니라 빼고 입힙니다');
+  }
+  const anyPick = Object.keys(picked).length > 0;
+
+  /* 안쪽 옷 — 견본 한 벌을 바탕에 깔고, 고른 자리만 바꾼다.
+     상의를 고르면 상의만, 하의를 고르면 하의만. 전신(원피스)은 상·하의 둘 다를 대신한다. */
+  const inner = {};
+  const baseInner = shopFor('inner').length ? shopFor('inner') : (w.inner || []);
+  for (const p of baseInner) inner[p.slot || _slotOf(p.bodyPart, p.layer)] = Object.assign({}, p);
+  if (picked.full) { delete inner.upper; delete inner.lower; inner.full = picked.full; }
+  if (picked.upper) inner.upper = picked.upper;   // 바탕이 전신(여자 캐주얼)이면 그 위에 덧입는다
+  if (picked.lower) inner.lower = picked.lower;
+  /* 바탕이 전신 한 벌인데 상의·하의를 둘 다 골랐으면 바탕 전신은 벗긴다 */
+  if (inner.full && !picked.full && picked.upper && picked.lower) delete inner.full;
+
+  /* 외투 — 스위치가 켜졌을 때만. 고른 외투가 있으면 그것, 아무것도 안 골랐으면 추천 견본.
+     안쪽 옷만 고른 손님에게 추천 슈트를 덮어 씌우면 고른 옷이 가려지므로 씌우지 않는다. */
+  let outer = null;
+  if (BODY_BASE.outer) {
+    if (picked.outer) outer = picked.outer;
+    else if (!anyPick) {
+      const cands = (w.outer || []).concat(shopFor('outer'));
+      if (cands.length) {
+        const f = outfitFormality(item);
+        let best = cands[0], bd = Infinity;
+        for (const o of cands) { const d = Math.abs(o.formal - f); if (d < bd) { bd = d; best = o; } }
+        outer = Object.assign({}, best);
       }
-      return { 'label': hit.name + ' · 고름' + extra, 'shop': hit.shop || null, 'parts': parts };
     }
-    if (!hit) {
-      /* 정말 입힐 메쉬가 없다 — 그때만 추천으로 돌아가고, 조용히 넘어가지 않는다. */
-      console.warn('[3D·쇼핑몰] 고른 옷(' + _pickedShopId + ')에 ' +
-        BODY_FIGURES[gender].label + ' 몸용 메쉬가 없어 추천으로 돌아갑니다');
-      bodyToast(BODY_FIGURES[gender].label + ' 몸에 맞는 옷이 아니라 추천 의상으로 돌아갑니다');
-      _pickedShopId = null; _pickedShopItem = null;
-    }
-    /* 외투 OFF + 고른 옷이 외투 → 아래 안쪽 한 벌로 내려간다. */
   }
 
-  if (BODY_BASE.outer) {
-    const cands = (w.outer || []).concat(shopFor('outer'));
-    if (cands.length) {
-      const f = outfitFormality(item);
-      let best = cands[0], bd = Infinity;
-      for (const o of cands) { const d = Math.abs(o.formal - f); if (d < bd) { bd = d; best = o; } }
-      return { 'label': best.name + (best.fromShop ? ' · 쇼핑몰' : ''),
-               'shop': best.shop || null,
-               'parts': [Object.assign({}, best)] };
-    }
-  }
-  const shopInner = shopFor('inner');
-  const parts = (shopInner.length ? shopInner : (w.inner || []))
-    .map(p => Object.assign({}, p));
-  return { 'label': parts.length ? (parts[0].fromShop ? parts[0].name + ' · 쇼핑몰' : '상의 + 하의') : '맨몸',
-           'shop': (parts[0] && parts[0].shop) || null,
-           'parts': parts };
+  /* 안에서 밖으로: 하의 → 전신 → 상의 → 외투. 아래위 한 벌 외투(견본 슈트)는 안쪽을 다 가린다. */
+  const parts = outer && outer.coversAll
+    ? [outer]
+    : [inner.lower, inner.full, inner.upper, outer].filter(Boolean);
+  const names = parts.map(p => p.name);
+  const wornShop = (outer && outer.fromShop && outer.shop) ||
+    ((picked.upper || picked.full || picked.lower || {}).shop) || (parts[0] && parts[0].shop) || null;
+  return { 'label': parts.length ? names.join(' + ') + (anyPick ? ' · 고름' : '') : '맨몸',
+           'shop': wornShop, 'parts': parts, 'hasOuterPick': !!picked.outer, 'anyPick': anyPick };
 }
 
 /* ------------------------------------------------------------ 불러오기 */
@@ -984,6 +997,9 @@ async function toggleBodyOuter() {
      고른 옷이 사라져, 손님 눈에는 스위치가 저 혼자 ON으로 돌아간 것처럼 보였다).
      고른 옷을 아주 벗는 길은 「고른 옷 벗기」 버튼 하나로 둔다. */
   BODY_BASE.outer = !BODY_BASE.outer;
+  if (BODY_BASE.outer && Object.keys(_picks).length && !_picks.outer) {
+    bodyToast('고른 외투가 없어요 — 쇼핑몰에서 외투를 고르면 지금 옷 위에 입혀집니다');
+  }
   if (!_bodyRig) return false;
   await _mountGarment(_liveRig(), _lastBuild && _lastBuild.item);
   buildBodyGarmentRack(); _updateModel3DTag();
@@ -1033,7 +1049,7 @@ function buildBodyGarmentRack() {
   bOuter.textContent = '외투 ' + (BODY_BASE.outer ? 'ON' : 'OFF');
   if (BODY_BASE.outer) bOuter.classList.add('on');
   bOuter.title = _pickedShopId
-    ? '고른 옷(외투)을 입었다 벗깁니다 — 벗어도 고른 옷은 기억해 둡니다'
+    ? '외투만 입었다 벗깁니다 — 안쪽 상의·하의는 그대로, 벗어도 고른 외투는 기억해 둡니다'
     : '슈트·재킷을 입었다 벗깁니다 (무슨 옷인지는 추천이 정합니다)';
   bOuter.addEventListener('click', () => toggleBodyOuter());
   rack.appendChild(bOuter);
@@ -1192,6 +1208,17 @@ async function applyShopPick(id, rawItem, origin) {
   _pickedShopItem = it;
   _shopItems = (_shopItems || []).filter(x => x.id !== pid).concat([it]);
 
+  /* (11-14) 고른 옷은 제 자리만 바꾼다 — 상의를 고르면 하의·외투는 그대로 */
+  const slot = it.slot || _slotOf(it.bodyPart, it.layer);
+  if (slot === 'full') { delete _picks.upper; delete _picks.lower; }
+  if (slot === 'upper' || slot === 'lower') delete _picks.full;
+  _picks[slot] = it;
+  /* 외투를 골랐는데 스위치가 꺼져 있으면 아무것도 안 바뀐 것처럼 보인다 → 켠다 */
+  if (slot === 'outer' && !BODY_BASE.outer) {
+    BODY_BASE.outer = true;
+    bodyToast('외투를 골라서 외투 스위치를 켰어요');
+  }
+
   if (!_bodyRig) { console.warn('[3D·쇼핑몰] 아직 몸이 안 세워져 고른 옷만 기억해 둡니다'); return true; }
 
   try {
@@ -1202,15 +1229,15 @@ async function applyShopPick(id, rawItem, origin) {
     return false;
   }
   buildBodyGarmentRack(); _updateModel3DTag();
-  console.log('[3D·쇼핑몰] 손님이 고른 옷으로 갈아입힘 — ' + pid +
+  console.log('[3D·쇼핑몰] 손님이 고른 ' + SLOT_LABEL[slot] + '로 갈아입힘 — ' + pid +
     ' · 외투 스위치는 ' + (BODY_BASE.outer ? 'ON' : 'OFF') + ' 그대로');
   return true;
 }
 
 /* 고른 옷을 벗고 추천으로 돌아간다. */
 async function clearShopPick() {
-  if (!_pickedShopId) return false;
-  _pickedShopId = null; _pickedShopItem = null;
+  if (!_pickedShopId && !Object.keys(_picks).length) return false;
+  _pickedShopId = null; _pickedShopItem = null; _picks = {};
   if (!_bodyRig) return false;
   await _mountGarment(_liveRig(), _lastBuild && _lastBuild.item);
   buildBodyGarmentRack(); _updateModel3DTag();
@@ -1262,7 +1289,7 @@ if (typeof window !== 'undefined') {
 /* 손님이 바뀌면 리그 참조를 놓는다(에셋 캐시는 남긴다 — 다시 읽을 필요가 없다). */
 function resetBodyBase() {
   _bodyRig = null; _lastBuild = null; _bodyWornLabel = ''; _bodyWornShop = null;
-  _pickedShopId = null; _pickedShopItem = null; closeShopPanel();
+  _pickedShopId = null; _pickedShopItem = null; _picks = {}; closeShopPanel();
   const rack = document.getElementById('bodyGarmentRack');
   if (rack) rack.remove();
 }
