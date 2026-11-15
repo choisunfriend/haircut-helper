@@ -184,6 +184,9 @@ var EYE_GUARD = {
   zBackFrac: 0.22
 };
 var STYLE_TUNES = {
+  reggae_twist: {
+    fringeTrim: false   // (2026-11-15) 레게펌은 눈을 덮어도 된다
+  },
   layered_bob_hush: {
     tipAt: {
       front: 0.45
@@ -819,8 +822,17 @@ function buildFaceProfile() {
    되돌리기: MQ_FRINGE.lineHalfX = 0 */
 /* (2026-11-15) 얼굴 가운데 띠에서 두상 표면에 붙어(또는 그보다 앞에) 있는가 — MQ_FRINGE.centerOnScalp 배너.
    두상 타원 중심은 (0, CY, 0) — 마네킹이 뿌리를 심는 자와 같다(y = CY + b·cosφ). */
+/* (2026-11-15) 눈썹선 추가 자르기는 기본 등록 스타일(스펙)에만 건다.
+   사진에서 읽은 결(__original__)이나 스펙 미적용 상태는 건드리지 않는다.
+   스타일별로 빼려면 STYLE_TUNES[id].fringeTrim = false. */
+function mqPresetFringeOn() {
+  const id = (typeof EYE_GUARD !== "undefined" && EYE_GUARD._applying) || (typeof state !== "undefined" && state && state.specAppliedId) || null;
+  if (!id || id === "__original__") return false;
+  const t = typeof STYLE_TUNES !== "undefined" ? STYLE_TUNES[id] : null;
+  return !(t && t.fringeTrim === false);
+}
 function _mqCoversFaceCenter(p, E, halfX, tipY) {
-  if (!MQ_FRINGE.centerOnScalp || !E || !(E.a > 0) || !(E.b > 0) || !(E.c > 0) || !(halfX > 0)) return false;
+  if (!MQ_FRINGE.centerOnScalp || !mqPresetFringeOn() || !E || !(E.a > 0) || !(E.b > 0) || !(E.c > 0) || !(halfX > 0)) return false;
   if (!(p.z > 0) || Math.abs(p.x) > halfX * MQ_FRINGE.centerHalfFrac) return false;
   const m = typeof state !== "undefined" && state ? state.hair3Dneutral : null,
     CY = m && m.CY != null ? m.CY : SCALP_CENTER_Y;

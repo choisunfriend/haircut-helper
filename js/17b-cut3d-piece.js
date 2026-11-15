@@ -892,12 +892,33 @@ function adjustStrandGeomBase(st, lenOverride, uni){
    위 adjustStrandGeomBase가 커트·컬·스타일링 기본 순서다. 예전엔 기능 파일(33~69)이 adjustStrandGeom을 겹겹이 감쌌는데,
    그 감싼 순서(안쪽 → 바깥) 그대로 여기서 단계로 붙인다. 바깥 단계일수록 아래쪽(나중에 붙은 기능).
    ⚠ 24-style-base·28-perf-probe도 이 이름을 감싼다(현재 섹션 기억·시간 재기) — 동작과 무관. */
+/* (2026-11-15) 앞머리·크라운 선 — 기본 경로(adjustStrandGeomBase ①-b) <b>밖에서</b> 가닥을 만드는 경로에도 건다.
+   결 표(FLOW_SPEC)·스타일 길(STYLE_PATHS)·읽은 모양(READ_SHAPE)은 가닥을 통째로 만들어 돌려주고 끝나서,
+   기본 경로의 앞머리 선 자르기를 한 번도 안 거쳤다. 그래서 같은 보브라도 결 표가 걸린 웨이비 보브만
+   크라운·앞머리가 입까지 내려와 얼굴을 덮었다(실기기 진단: [얼굴 가림] front 224/321 · "결 표 경로").
+   선·판정은 기본 경로와 <b>같은 함수</b>(fringeLineY · mqTrimAtFringeLine)라 두 벌이 되지 않는다.
+   되돌리기: FRINGE_ALL_PATHS.on = false */
+var FRINGE_ALL_PATHS = { on: true, cut: 0 };
+function _fringeTrimOut(st, pts){
+  if(!FRINGE_ALL_PATHS.on || (typeof mqPresetFringeOn==='function' && !mqPresetFringeOn()) || !pts || pts.length < 2 || !st || !st.mannequin) return pts;
+  if(st.sec !== 'front' && st.sec !== 'crown') return pts;
+  try{
+    const yLine = fringeLineY(st.sec);
+    if(yLine == null) return pts;
+    let E = null; try{ E = getHeadEllipsoid(); }catch(e){}
+    const all = (st.sec === 'crown') && MQ_FRINGE.crownLine && MQ_FRINGE.crownAllAround;
+    if(!E && !all) return pts;
+    const out = mqTrimAtFringeLine(pts, yLine, E, all);
+    if(out !== pts) FRINGE_ALL_PATHS.cut++;
+    return out;
+  }catch(e){ return pts; }
+}
 function adjustStrandGeom(st, lenOverride, uni){
   /* ── (옛 69) 등록한 스타일 길이 실린 스타일 — 마네킹 뿌리에 그 길을 그대로(STYLE_PATHS) ── */
-  let out = STYLE_PATHS._adjust(st, lenOverride, uni);
+  let out = _fringeTrimOut(st, STYLE_PATHS._adjust(st, lenOverride, uni));
   if(!out){
     /* ── (옛 68) 원본 머리 — 방향 필터로 읽은 가닥 모양을 마네킹 뿌리에 옮겨심음, 아니면 안쪽 단계 뒤 스타일 굴곡(READ_SHAPE) ── */
-    out = READ_SHAPE._adjust(st, lenOverride, uni);
+    out = _fringeTrimOut(st, READ_SHAPE._adjust(st, lenOverride, uni));
     if(!out) out = READ_SHAPE._afterStages(st, adjustStrandGeomStages(st, lenOverride, uni));
     STYLE_PATHS._record(st, out);   // (옛 69) 원본 머리를 볼 때 보이는 가닥 길 기록
   }
@@ -909,7 +930,7 @@ function adjustStrandGeomStages(st, lenOverride, uni){
   /* ── (옛 61) 곱슬 다시 기른 머리 — 타래 뼈대로 모은 가닥으로 아래 단계 전체를 한 번 더(PHOTO_CURL) ── */
   { const lp = PHOTO_CURL._lockFor(st); if(lp){ const self = this, args = arguments; return PHOTO_CURL._withLock(st, lp, () => adjustStrandGeomStages.apply(self, args)); } }
   /* ── (옛 59) 결 표가 든 스타일 — 마네킹 가닥(또는 제 머리 바탕의 다시 기른 가닥)을 표대로(FLOW_SPEC) ── */
-  { const f = FLOW_SPEC._adjust(st, lenOverride, uni); if(f) return f; }
+  { const f = FLOW_SPEC._adjust(st, lenOverride, uni); if(f) return _fringeTrimOut(st, f); }   // (2026-11-15) 결 표에도 앞머리·크라운 선
   /* ── (옛 47) 이 가닥이 다시 기른 가닥인지 적어 둠 — 안쪽 lengthStrand3D가 늘릴 때 NATURAL_GROW(14)를 쓸지 ── */
   const _ngSave = NATURAL_GROW._cur;
   NATURAL_GROW._cur = !!(st && st.regrown && !st.mannequin);
