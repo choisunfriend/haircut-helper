@@ -358,12 +358,14 @@ async function piecesForOutfit(item) {
   /* 바탕이 전신 한 벌인데 상의·하의를 둘 다 골랐으면 바탕 전신은 벗긴다 */
   if (inner.full && !picked.full && picked.upper && picked.lower) delete inner.full;
 
-  /* 외투 — 스위치가 켜졌을 때만. 고른 외투가 있으면 그것, 아무것도 안 골랐으면 추천 견본.
-     안쪽 옷만 고른 손님에게 추천 슈트를 덮어 씌우면 고른 옷이 가려지므로 씌우지 않는다. */
+  /* 외투 — 스위치가 켜졌을 때만. 고른 외투가 있으면 그것, 없으면 추천 견본.
+     (2026-11-15) 안쪽 옷(상의·하의·전신)만 골랐어도 외투 ON이면 추천 외투를 <b>그 위에</b> 입힌다.
+     예전엔 안쪽 옷을 고르면 외투를 아예 안 씌워서, 외투 ON인데 외투가 벗겨지고 OFF로 바꿔도
+     그림이 그대로였다(사용자 신고). 고른 옷은 외투 아래에 깔리고, 외투를 끄면 드러난다. */
   let outer = null;
   if (BODY_BASE.outer) {
     if (picked.outer) outer = picked.outer;
-    else if (!anyPick) {
+    else {
       const cands = (w.outer || []).concat(shopFor('outer'));
       if (cands.length) {
         const f = outfitFormality(item);
@@ -374,8 +376,9 @@ async function piecesForOutfit(item) {
     }
   }
 
-  /* 안에서 밖으로: 하의 → 전신 → 상의 → 외투. 아래위 한 벌 외투(견본 슈트)는 안쪽을 다 가린다. */
-  const parts = outer && outer.coversAll
+  /* 안에서 밖으로: 하의 → 전신 → 상의 → 외투. 아래위 한 벌 외투(견본 슈트)는 안쪽을 다 가린다.
+     (2026-11-15) 단, 손님이 안쪽 옷을 골랐으면 그 옷은 빼지 않고 외투 아래에 같이 입힌다. */
+  const parts = outer && outer.coversAll && !anyPick
     ? [outer]
     : [inner.lower, inner.full, inner.upper, outer].filter(Boolean);
   const names = parts.map(partName);
@@ -1025,10 +1028,7 @@ async function toggleBodyOuter() {
      고른 옷이 사라져, 손님 눈에는 스위치가 저 혼자 ON으로 돌아간 것처럼 보였다).
      고른 옷을 아주 벗는 길은 「고른 옷 벗기」 버튼 하나로 둔다. */
   BODY_BASE.outer = !BODY_BASE.outer;
-  if (BODY_BASE.outer && Object.keys(_picks).length && !_picks.outer) {
-    bodyToast(L('고른 외투가 없어요 — 쇼핑몰에서 외투를 고르면 지금 옷 위에 입혀집니다',
-                'No jacket picked — choose one in the shop and it goes on over what you have on'));
-  }
+  /* (2026-11-15) 외투를 안 골랐으면 추천 외투가 고른 옷 위에 입혀진다(piecesForOutfit) — 따로 알릴 것 없음 */
   if (!_bodyRig) return false;
   await _mountGarment(_liveRig(), _lastBuild && _lastBuild.item);
   buildBodyGarmentRack(); _updateModel3DTag();
