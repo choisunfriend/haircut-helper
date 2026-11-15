@@ -83,6 +83,14 @@ function L(ko, en) { try { return (typeof uiLang !== 'undefined' && uiLang === '
 const SLOT_LABEL_KO = { 'lower': '하의', 'upper': '상의', 'full': '전신', 'outer': '외투' };
 const SLOT_LABEL_EN = { 'lower': 'bottoms', 'upper': 'top', 'full': 'one-piece', 'outer': 'jacket' };
 function slotLabel(s) { return L(SLOT_LABEL_KO[s] || s, SLOT_LABEL_EN[s] || s); }
+/* (11-14) 쇼핑몰·미용실 지도 주소에 앱 언어를 붙인다 — 마켓이 같은 언어로 화면을 그린다(?lang=ko|en) */
+function shopUrlWithLang(url) {
+  try {
+    const u = new URL(url, location.href);
+    u.searchParams.set('lang', (typeof uiLang !== 'undefined' && uiLang === 'ko') ? 'ko' : 'en');
+    return u.href;
+  } catch (e) { return url; }
+}
 function _slotOf(bodyPart, layer) {
   const b = String(bodyPart || '').toLowerCase();
   if (b === 'outer') return 'outer';
@@ -1146,7 +1154,7 @@ function openShopPanel() {
         { 'type': 'gyeol-hello', 'gender': BODY_BASE.gender }, '*');
     } catch (e) {}
   });
-  frame.src = BODY_SHOP.pageUrl;
+  frame.src = shopUrlWithLang(BODY_SHOP.pageUrl);
 
   /* 6초 안에 load가 안 오면 주소·CORS·X-Frame-Options 문제다 → 새 탭 길을 열어 준다. */
   const timer = setTimeout(() => {
@@ -1161,7 +1169,7 @@ function openShopPanel() {
     p.textContent = L('쇼핑몰이 느리게 열리고 있습니다. 계속 비어 있으면 →', 'The shop is slow to load. If it stays blank →');
     p.style.margin = '0';
     const a = document.createElement('a');
-    a.href = BODY_SHOP.pageUrl; a.target = '_blank'; a.rel = 'noopener';
+    a.href = shopUrlWithLang(BODY_SHOP.pageUrl); a.target = '_blank'; a.rel = 'noopener';
     a.textContent = L('새 탭에서 열기', 'Open in a new tab');
     const q = document.createElement('small');
     q.textContent = BODY_SHOP.pageUrl;
@@ -1175,6 +1183,20 @@ function openShopPanel() {
   buildBodyGarmentRack();
   return true;
 }
+/* (11-14) 앱 언어를 바꾸면 — 열린 쇼핑몰·지도 패널을 그 언어로 다시 열고, 옷장 버튼·라벨 글자도 다시 그린다.
+   18-perf-i18n-boot.js 의 setUiLang 이 부른다. */
+function refreshBodyLang() {
+  const fr = document.getElementById('bbShopFrame');
+  if (fr) { try { fr.src = shopUrlWithLang(fr.src || BODY_SHOP.pageUrl); } catch (e) {} }
+  try {
+    if (!_bodyRig) return;
+    buildBodyGarmentRack();
+    piecesForOutfit(_lastBuild && _lastBuild.item)
+      .then(p => { _bodyWornLabel = p.label; _updateModel3DTag(); })
+      .catch(() => {});
+  } catch (e) {}
+}
+
 function closeShopPanel() {
   const p = document.getElementById('bbShopPanel');
   if (p) p.remove();

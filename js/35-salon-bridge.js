@@ -277,7 +277,8 @@ function uploadStyleToSalon() {
   // 썸네일: 등록할 때 찍어 둔 다듬은 3D 화면(37) → 없으면 지금 손질 화면
   const thumb = typeof st.thumb === 'string' && /^data:image\/jpeg;base64,/.test(st.thumb) ? st.thumb : _styleThumb(st);
   const payload = _b64url(JSON.stringify({ spec: spec, thumb: thumb }));
-  const w = window.open(origin + SALON_UPLOAD.path + '#d=' + payload, '_blank');
+  const lang = (typeof uiLang !== 'undefined' && uiLang === 'ko') ? 'ko' : 'en';   // (11-14) 마켓 관리자 화면도 앱 언어로
+  const w = window.open(origin + SALON_UPLOAD.path + '?lang=' + lang + '#d=' + payload, '_blank');
   if (!w) { _salonNotice(salonL('팝업이 막혔어요 — 팝업을 허용하고 다시 눌러 주세요', 'Pop-up blocked — allow pop-ups and try again')); return false; }
   try { w.opener = null; } catch (e) { /* 무시 */ }
   return true;

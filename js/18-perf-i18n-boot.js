@@ -2836,6 +2836,8 @@ function setUiLang(lang){
   uiLang = (lang === 'ko') ? 'ko' : 'en';
   try { localStorage.setItem('gyeol.lang', uiLang); } catch (e) {}   // 다음에 열 때도 이 언어로
   applyUiLang();
+  // (11-14) 열려 있는 쇼핑몰·미용실 지도(마켓)도 같은 언어로 다시 연다 — 21-body-base.js
+  try { if (typeof refreshBodyLang === 'function') refreshBodyLang(); } catch (e) {}
 }
 function toggleUiLang(){ setUiLang(uiLang === 'en' ? 'ko' : 'en'); }
 
