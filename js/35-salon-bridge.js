@@ -79,6 +79,9 @@ function salonL(ko, en) { try { return typeof uiLang !== 'undefined' && uiLang =
   // ---- 메시지 받기 ----------------------------------------------------------------------------
   window.addEventListener('message', ev => {
     if (!SALON_BRIDGE.on || ev.origin !== shopOrigin) return;
+    // (보안) 지금 열린 지도 iframe 이 보낸 것만 — 같은 주소의 다른 창(새 탭 등)이 보낸 건 무시
+    const fr = document.getElementById('bbShopFrame');
+    if (!fr || ev.source !== fr.contentWindow) return;
     let d = ev.data;
     if (typeof d === 'string') { try { d = JSON.parse(d); } catch (e) { return; } }
     if (!d || d.type !== 'gyeol-style') return;

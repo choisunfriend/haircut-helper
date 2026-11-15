@@ -195,11 +195,23 @@ function _normalizeShopItem(it, baseUrl) {
   if (!it || !it.id) return null;
   const out = Object.assign({}, it, { 'fromShop': true });
   out.mesh = {};
+  /* (보안) 3D 파일은 우리 쇼핑몰 파일 서버(assetBase·catalogUrl 주소)에서만 받는다.
+     쇼핑몰 화면이 뚫려 엉뚱한 주소를 보내도 앱이 남의 서버에서 큰 파일·이상한 메쉬를 받지 않게. */
+  const okOrigins = [];
+  for (const b of [BODY_SHOP.assetBase, BODY_SHOP.catalogUrl, BODY_SHOP.pageUrl]) {
+    try { okOrigins.push(new URL(b).origin); } catch (e) {}
+  }
   for (const g of ['male', 'female']) {
     const u = it.mesh && it.mesh[g];
     if (!u) continue;
-    try { out.mesh[g] = new URL(u, baseUrl || BODY_SHOP.catalogUrl).href; }
-    catch (e) { out.mesh[g] = u; }
+    try {
+      const abs = new URL(u, baseUrl || BODY_SHOP.catalogUrl);
+      if (abs.protocol === 'https:' && okOrigins.includes(abs.origin)) out.mesh[g] = abs.href;
+      else console.warn('[3D·쇼핑몰] 허용되지 않은 3D 주소를 무시합니다: ' + abs.origin);
+    } catch (e) { /* 잘못된 주소는 버림 */ }
+  }
+  if (out.manifest) {
+    try { if (!okOrigins.includes(new URL(out.manifest).origin)) out.manifest = null; } catch (e) { out.manifest = null; }
   }
   return (out.mesh.male || out.mesh.female) ? out : null;
 }
@@ -1150,8 +1162,10 @@ function openShopPanel() {
     note.remove();
     /* 쇼핑몰에 "나 여기 있다"고 알린다 — 지금 성별도 같이 보낸다. */
     try {
+      /* (보안) '*' 대신 쇼핑몰 주소로만 — iframe 이 다른 사이트로 넘어가 있으면 보내지 않는다 */
+      const to = new URL(BODY_SHOP.pageUrl, location.href).origin;
       frame.contentWindow.postMessage(
-        { 'type': 'gyeol-hello', 'gender': BODY_BASE.gender }, '*');
+        { 'type': 'gyeol-hello', 'gender': BODY_BASE.gender }, to);
     } catch (e) {}
   });
   frame.src = shopUrlWithLang(BODY_SHOP.pageUrl);
@@ -1302,8 +1316,9 @@ function installShopBridge() {
   let shopOrigin = '';
   try { shopOrigin = new URL(BODY_SHOP.pageUrl, location.href).origin; } catch (e) {}
   window.addEventListener('message', async ev => {
-    /* (2026-11-15 보안) 쇼핑몰 주소를 못 읽었으면 아무 메시지도 받지 않는다(예전엔 전부 받았음). */
-    if (!shopOrigin || (ev.origin !== shopOrigin && ev.origin !== location.origin)) return;
+    /* (보안) 쇼핑몰 iframe 이 보낸 것만. 예전엔 같은 github.io 주소(다른 레포 페이지 포함)도 통과했다 */
+    if (!shopOrigin || ev.origin !== shopOrigin) return;
+    if (_shopFrame && ev.source !== _shopFrame.contentWindow) return;
     /* 쇼핑몰이 JSON 문자열로 보낼 수도 있다. */
     let d = ev.data;
     if (typeof d === 'string') { try { d = JSON.parse(d); } catch (e) { return; } }
