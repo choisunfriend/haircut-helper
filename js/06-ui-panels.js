@@ -1,3 +1,7 @@
+/* (2026-11-15 보안) 스타일 카드 이름·태그는 미용실(입점사)이 쓴 글이 들어올 수 있어 HTML 로 해석하지 않게 바꿔 넣는다. */
+function _escCardText(v){
+  return String(v == null ? '' : v).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
 /* ══════════════════════════════════════════════════════════
    06-ui-panels.js — 스타일 선택 · 섹션 UI · 조정 패널 · 염색 손잡이 · 레시피
    원본 index.html 9177~10380행. 클래식 스크립트이므로 로드 순서가 곧
@@ -31,8 +35,8 @@ function buildStyleGrid(){
     card.onclick=()=>selectStyle(st.id);
     card.innerHTML=`
       <div class="style-icon-box">${styleIconSVG(st)}</div>
-      <div class="name">${st.name}</div>
-      <div class="tags">${st.tags}</div>`;
+      <div class="name">${_escCardText(st.name)}</div>
+      <div class="tags">${_escCardText(st.tags)}</div>`;
     grid.appendChild(card);
   });
   syncStyleDeleteBtn();

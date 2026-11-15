@@ -1302,7 +1302,8 @@ function installShopBridge() {
   let shopOrigin = '';
   try { shopOrigin = new URL(BODY_SHOP.pageUrl, location.href).origin; } catch (e) {}
   window.addEventListener('message', async ev => {
-    if (shopOrigin && ev.origin !== shopOrigin && ev.origin !== location.origin) return;
+    /* (2026-11-15 보안) 쇼핑몰 주소를 못 읽었으면 아무 메시지도 받지 않는다(예전엔 전부 받았음). */
+    if (!shopOrigin || (ev.origin !== shopOrigin && ev.origin !== location.origin)) return;
     /* 쇼핑몰이 JSON 문자열로 보낼 수도 있다. */
     let d = ev.data;
     if (typeof d === 'string') { try { d = JSON.parse(d); } catch (e) { return; } }
