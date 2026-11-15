@@ -985,6 +985,7 @@ async function buildBody3DForOutfit(item, widthFactor, bodyLenMesh) {
       else console.log('[3D·목] 몸의 목둘레가 옷깃 실측 범위 밖 — 예전(두개골 클램프) 경로로 세웁니다');
     } catch (e) { console.warn('[3D·목] 목둘레 실측 예외:', e); }
     try { installShopBridge(); buildBodyGarmentRack(); } catch (e) { console.warn('[3D·옷] 버튼 UI 실패:', e); }
+    scheduleShopPreload();   // (11-15) 3D 를 다 그린 뒤 쇼핑몰을 미리 불러 둔다
     return rig;
   } catch (e) {
     console.warn('[3D·몸] 표준 인체 실패 — 예전 의상-바디 에셋으로 폴백:', e);
@@ -1100,7 +1101,7 @@ function buildBodyGarmentRack() {
   if (BODY_SHOP.on && BODY_SHOP.pageUrl) {
     const bShop = document.createElement('button');
     bShop.type = 'button';
-    const open = !!document.getElementById('bbShopPanel');
+    const open = _shopPanelOpen();
     bShop.textContent = open ? L('옷 닫기', 'Close clothes') : L('옷 고르기', 'Pick clothes');
     if (open) bShop.classList.add('on');
     bShop.addEventListener('click', () => open ? closeShopPanel() : openShopPanel());
@@ -1126,16 +1127,47 @@ function buildBodyGarmentRack() {
    사라진다(사진부터 다시 찍어야 한다). 그래서 밖으로 내보내지 않고
    3D 화면 <b>위에</b> 얹는다 — 옷을 눌러도 뒤의 아바타는 그대로 서 있다. */
 let _shopFrame = null;
-function openShopPanel() {
+/* (2026-11-15) 쇼핑몰 미리 열기 — 3D 결과가 다 그려진 뒤 쇼핑몰을 안 보이게 미리 불러 두고,
+   「옷 고르기」를 누르면 그 패널을 보여 주기만 한다(다시 불러오지 않음).
+   닫을 때도 쇼핑몰이면 지우지 않고 숨긴다. 손님이 바뀌거나 미용실 지도로 바꾸면 지운다.
+   끄기: BODY_SHOP_PRELOAD.on = false */
+var BODY_SHOP_PRELOAD = { on: true, delayMs: 2500 };
+function _shopPanelOpen() {
+  const p = document.getElementById('bbShopPanel');
+  return !!p && p.dataset.hidden !== '1';
+}
+function _sendShopHello(frame) {
+  try {
+    /* (보안) '*' 대신 쇼핑몰 주소로만 — iframe 이 다른 사이트로 넘어가 있으면 보내지 않는다 */
+    const to = new URL(BODY_SHOP.pageUrl, location.href).origin;
+    frame.contentWindow.postMessage({ 'type': 'gyeol-hello', 'gender': BODY_BASE.gender }, to);
+  } catch (e) {}
+}
+function openShopPanel(opts) {
+  const preload = !!(opts && opts.preload);
   const host = document.getElementById('model3dViewport');
-  if (!host) { console.warn('[3D·쇼핑몰] 3D 화면(model3dViewport)이 없어 옷장을 못 엽니다'); return false; }
-  if (document.getElementById('bbShopPanel')) return true;
+  if (!host) { if (!preload) console.warn('[3D·쇼핑몰] 3D 화면(model3dViewport)이 없어 옷장을 못 엽니다'); return false; }
+  const old = document.getElementById('bbShopPanel');
+  if (old) {
+    if (old.dataset.hidden !== '1') return true;                 // 이미 열려 있음
+    const want = shopUrlWithLang(BODY_SHOP.pageUrl);
+    if (old.dataset.src === want) {
+      if (preload) return true;                                   // 이미 미리 불러 둠
+      old.style.display = ''; delete old.dataset.hidden;          // 숨겨 둔 쇼핑몰을 보여 주기만
+      _shopFrame = old.querySelector('iframe');
+      if (_shopFrame && old.dataset.loaded === '1') _sendShopHello(_shopFrame);  // 성별이 바뀌었을 수 있음
+      buildBodyGarmentRack();
+      return true;
+    }
+    old.remove();                                                 // 다른 주소(미용실 지도 등)로 바뀜
+  }
   installShopBridge();                 // 패널을 열기 전에 귀부터 연다
   loadShopCatalog(true);               // 지난번에 실패했으면 여기서 다시 읽는다
 
   const panel = document.createElement('div');
   panel.id = 'bbShopPanel';
   panel.className = 'bb-shop';
+  if (preload) { panel.style.display = 'none'; panel.dataset.hidden = '1'; }
 
   const bar = document.createElement('div');
   bar.className = 'bb-shop-bar';
@@ -1160,15 +1192,12 @@ function openShopPanel() {
   frame.setAttribute('allow', 'geolocation');      // (11월) 미용실 지도가 위치를 쓴다
   frame.addEventListener('load', () => {
     note.remove();
+    panel.dataset.loaded = '1';
     /* 쇼핑몰에 "나 여기 있다"고 알린다 — 지금 성별도 같이 보낸다. */
-    try {
-      /* (보안) '*' 대신 쇼핑몰 주소로만 — iframe 이 다른 사이트로 넘어가 있으면 보내지 않는다 */
-      const to = new URL(BODY_SHOP.pageUrl, location.href).origin;
-      frame.contentWindow.postMessage(
-        { 'type': 'gyeol-hello', 'gender': BODY_BASE.gender }, to);
-    } catch (e) {}
+    _sendShopHello(frame);
   });
   frame.src = shopUrlWithLang(BODY_SHOP.pageUrl);
+  panel.dataset.src = frame.src;
 
   /* 6초 안에 load가 안 오면 주소·CORS·X-Frame-Options 문제다 → 새 탭 길을 열어 준다. */
   const timer = setTimeout(() => {
@@ -1194,14 +1223,36 @@ function openShopPanel() {
   panel.appendChild(bar); panel.appendChild(note); panel.appendChild(frame);
   host.appendChild(panel);
   _shopFrame = frame;
-  buildBodyGarmentRack();
+  if (!preload) buildBodyGarmentRack();
   return true;
+}
+
+/* 3D 결과가 다 그려진 뒤(조금 기다렸다가, 브라우저가 한가할 때) 쇼핑몰을 미리 연다. */
+let _shopPreloadTimer = null;
+function scheduleShopPreload() {
+  if (!BODY_SHOP_PRELOAD.on || !BODY_SHOP.on || !BODY_SHOP.pageUrl) return;
+  if (document.getElementById('bbShopPanel')) return;
+  clearTimeout(_shopPreloadTimer);
+  _shopPreloadTimer = setTimeout(() => {
+    const go = () => {
+      if (document.getElementById('bbShopPanel')) return;
+      try { installShopBridge(); openShopPanel({ preload: true }); } catch (e) {}
+    };
+    if (typeof requestIdleCallback === 'function') requestIdleCallback(go, { timeout: 5000 });
+    else go();
+  }, BODY_SHOP_PRELOAD.delayMs);
 }
 /* (11-14) 앱 언어를 바꾸면 — 열린 쇼핑몰·지도 패널을 그 언어로 다시 열고, 옷장 버튼·라벨 글자도 다시 그린다.
    18-perf-i18n-boot.js 의 setUiLang 이 부른다. */
 function refreshBodyLang() {
   const fr = document.getElementById('bbShopFrame');
-  if (fr) { try { fr.src = shopUrlWithLang(fr.src || BODY_SHOP.pageUrl); } catch (e) {} }
+  if (fr) {
+    try {
+      fr.src = shopUrlWithLang(fr.src || BODY_SHOP.pageUrl);
+      const p = document.getElementById('bbShopPanel');
+      if (p) { p.dataset.src = fr.src; delete p.dataset.loaded; }
+    } catch (e) {}
+  }
   try {
     if (!_bodyRig) return;
     buildBodyGarmentRack();
@@ -1211,9 +1262,17 @@ function refreshBodyLang() {
   } catch (e) {}
 }
 
-function closeShopPanel() {
+function closeShopPanel(opts) {
   const p = document.getElementById('bbShopPanel');
-  if (p) p.remove();
+  if (p) {
+    const keep = BODY_SHOP_PRELOAD.on && !(opts && opts.destroy) &&
+      p.dataset.src === shopUrlWithLang(BODY_SHOP.pageUrl);       // 쇼핑몰이면 숨겨서 다음에 바로 열리게
+    if (keep) { p.style.display = 'none'; p.dataset.hidden = '1'; }
+    else {
+      p.remove();
+      if (!(opts && opts.destroy) && _bodyRig) scheduleShopPreload();  // 미용실 지도를 닫았으면 쇼핑몰을 다시 미리 불러 둠
+    }
+  }
   _shopFrame = null;
   buildBodyGarmentRack();
 }
@@ -1337,7 +1396,7 @@ if (typeof window !== 'undefined') {
 /* 손님이 바뀌면 리그 참조를 놓는다(에셋 캐시는 남긴다 — 다시 읽을 필요가 없다). */
 function resetBodyBase() {
   _bodyRig = null; _lastBuild = null; _bodyWornLabel = ''; _bodyWornShop = null;
-  _pickedShopId = null; _pickedShopItem = null; _picks = {}; closeShopPanel();
+  _pickedShopId = null; _pickedShopItem = null; _picks = {}; clearTimeout(_shopPreloadTimer); closeShopPanel({ destroy: true });
   const rack = document.getElementById('bodyGarmentRack');
   if (rack) rack.remove();
 }
