@@ -185,7 +185,11 @@ var EYE_GUARD = {
 };
 var STYLE_TUNES = {
   reggae_twist: {
-    fringeTrim: false   // (2026-11-15) 레게펌은 눈을 덮어도 된다
+    fringeTrim: false   // (2026-11-15) 레게펌은 눈을 덮어도 된다 — 기본 경로의 앞머리·크라운 선(눈썹 바닥)도 안 건다
+  },
+  /* (2026-11-15b) browCut — 다 만든 가닥(컬·처짐·넘김까지 끝난 뒤)을 <b>눈썹 선</b>에서 한 번 더 자른다(BROW_CUT 배너) */
+  hippie_curl_men: {
+    browCut: true
   },
   layered_bob_hush: {
     tipAt: {
@@ -193,6 +197,7 @@ var STYLE_TUNES = {
     }
   },
   wavy_bob_seethrough: {
+    browCut: true,
     tipAt: {
       fringeTrim: true
     }
@@ -297,6 +302,16 @@ function eyeGuardCoversFace(v37, v38) {
   return false;
 }
 function eyeGuardApplyCommonDefaults(v42) {
+  /* (2026-11-15b) 앞머리 선을 안 쓰는 스타일(레게펌)로 바뀌거나 그 반대면 마네킹을 다시 심는다 —
+     심을 때 앞머리를 눈썹·눈높이까지만 내려 심기 때문(buildMannequinHair3D needFringe). */
+  try {
+    const tn = typeof STYLE_TUNES !== "undefined" ? STYLE_TUNES[v42] : null,
+      off = !!(tn && tn.fringeTrim === false);
+    if (off !== !!EYE_GUARD._lineOff) {
+      EYE_GUARD._lineOff = off;
+      if (typeof state !== "undefined" && state) state.hair3Dmannequin = null;
+    }
+  } catch (e) {}
   const v43 = STYLE_COMMON_DEFAULTS;
   if (!v43.on) return;
   const v44 = window.STYLE_BASE,
@@ -831,6 +846,74 @@ function mqPresetFringeOn() {
   const t = typeof STYLE_TUNES !== "undefined" ? STYLE_TUNES[id] : null;
   return !(t && t.fringeTrim === false);
 }
+/* (2026-11-15b) 이 스타일이 앞머리·크라운 선을 <b>아예</b> 안 쓰는가 (STYLE_TUNES[id].fringeTrim === false).
+   mqPresetFringeOn 은 "추가 판정"만 껐고, 기본 경로(17b adjustStrandGeomBase ①-b)의 선 자르기는
+   그대로라 레게펌이 크라운 바닥(눈썹)에서 잘렸다. 이 함수가 true 면 ①-b 도 건너뛴다. */
+function mqFringeLineOff() {
+  const id = (typeof EYE_GUARD !== "undefined" && EYE_GUARD._applying) || (typeof state !== "undefined" && state && state.specAppliedId) || null;
+  const t = id && typeof STYLE_TUNES !== "undefined" ? STYLE_TUNES[id] : null;
+  return !!(t && t.fringeTrim === false);
+}
+/* ── (2026-11-15b) BROW_CUT — 눈썹컷 ────────────────────────────────────────
+   증상: 히피펌·웨이비 보브의 앞머리가 눈을 덮었다. 앞머리 선(①-b)은 <b>곧은 가닥</b>에서 자르고,
+   그 뒤에 컬(②)·처짐(③)·넘김·끝 벌어짐이 가닥을 다시 아래·앞으로 끌어내려 눈썹 밑으로 내려왔다.
+   그래서 <b>모든 모양이 끝난 가닥</b>에 한 번 더: 얼굴 가운데(눈이 있는 띠) 앞을 눈썹 아래로 지나가면
+   그 자리(눈썹 선)에서 자른다. 섹션을 가리지 않는다 — 크라운·템플 컬도 눈 앞으로 돌아 들어온다.
+   얼굴 옆으로 떨어지는 옆머리는 z(얼굴 앞면) 판정으로 안 잘린다.
+   켜는 법: STYLE_TUNES[id].browCut = true · 끄기: BROW_CUT.on = false */
+var BROW_CUT = {
+  on: true,
+  halfXFrac: 0.8,    // 얼굴 반폭의 이 비율 안(눈 띠)만
+  zBackFrac: 0.25,   // 얼굴 앞면(가운데 옆모습)에서 이만큼(두상 깊이 비율) 뒤까지는 "얼굴 앞"
+  botFaceFrac: 1.0,  // 눈~턱 이 비율 아래(턱)까지만 본다
+  liftFaceFrac: 0.0, // 눈썹 선을 더 올리려면 + (눈~턱 비율)
+  cut: 0
+};
+function browCutOn() {
+  if (!BROW_CUT.on) return false;
+  const id = (typeof state !== "undefined" && state && state.specAppliedId) || null;
+  const t = id && typeof STYLE_TUNES !== "undefined" ? STYLE_TUNES[id] : null;
+  return !!(t && t.browCut);
+}
+function browCutAll(list) {
+  if (!browCutOn() || !Array.isArray(list) || !list.length) return list;
+  const m = typeof state !== "undefined" && state ? state.hair3Dneutral : null;
+  if (!m || !m.mannequin) return list;
+  let E = null, prof = null;
+  try { E = getHeadEllipsoid(); } catch (e) {}
+  try { prof = typeof getFaceProfile === "function" ? getFaceProfile() : null; } catch (e) {}
+  if (!E || !(E.a > 0 && E.b > 0 && E.c > 0)) return list;
+  const CY = m.CY != null ? m.CY : SCALP_CENTER_Y,
+    fh = _mqFaceH(CY, E),
+    brow0 = mqBrowY(CY, E);
+  if (brow0 == null || !(fh > 0)) return list;
+  const browY = brow0 + BROW_CUT.liftFaceFrac * fh,
+    botY = CY - BROW_CUT.botFaceFrac * fh,
+    halfX = (prof && prof.halfX > 0 ? prof.halfX : E.a * 0.95) * BROW_CUT.halfXFrac,
+    zBack = BROW_CUT.zBackFrac * E.c;
+  const onFace = p => p.y < browY && p.y > botY && Math.abs(p.x) < halfX && p.z > (prof ? prof.zAt(p.y) : E.c * 0.9) - zBack;
+  let n = 0;
+  const out = list.map(it => {
+    const pts = it && it.pts;
+    if (!pts || pts.length < 2) return it;
+    for (let i = 1; i < pts.length; i++) {
+      if (!onFace(pts[i])) continue;
+      const a = pts[i - 1], b = pts[i];
+      const keep = pts.slice(0, i);
+      // 위에서 눈썹 선을 넘어 들어왔으면 선 위 점을 하나 더(일자 끝)
+      if (a.y >= browY && b.y < browY) {
+        const t = (a.y - browY) / Math.max(1e-9, a.y - b.y);
+        keep.push({ x: a.x + (b.x - a.x) * t, y: browY, z: a.z + (b.z - a.z) * t });
+      }
+      if (keep.length < 2) return it; // 뿌리부터 얼굴 앞 — 지어내지 않고 그대로
+      n++;
+      return Object.assign({}, it, { pts: keep });
+    }
+    return it;
+  });
+  BROW_CUT.cut = n;
+  return out;
+}
 function _mqCoversFaceCenter(p, E, halfX, tipY) {
   if (!MQ_FRINGE.centerOnScalp || !mqPresetFringeOn() || !E || !(E.a > 0) || !(E.b > 0) || !(E.c > 0) || !(halfX > 0)) return false;
   if (!(p.z > 0) || Math.abs(p.x) > halfX * MQ_FRINGE.centerHalfFrac) return false;
@@ -1172,7 +1255,8 @@ function buildMannequinHair3D() {
     const v202 = mqCrownTipY(CY, E);
     if (v202 != null) crownTipY = v202;
   }
-  const needFringe = hasFringe === false && fringeTipY != null;
+  // (2026-11-15b) 레게펌처럼 앞머리 선을 안 쓰는 스타일은 앞머리를 눈썹까지만 내려 심지 않는다 — 제 길이대로 떨어지게
+  const needFringe = hasFringe === false && fringeTipY != null && !mqFringeLineOff();
   let fringeN = 0;
   /* 크라운은 <b>눈썹</b>까지만 내려 심는다 (2026-09-05). 심을 때 길게
              내려놓고 자를 때만 올리면, 커트 전(중립) 그림에서 크라운이 여전히

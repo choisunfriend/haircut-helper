@@ -841,7 +841,8 @@ function adjustStrandGeomBase(st, lenOverride, uni){
          (사용자: "템플은 눈썹 아래로는 안 내려오고"). */
     /* (2026-09-05) 선은 이제 <b>섹션당 하나</b>다 — 크라운은 눈썹, 프론트는
        눈높이(MQ_FRINGE.crownLine 배너). 인자를 안 넘기면 예전처럼 한 선이다. */
-    if(st.mannequin && (st.sec === 'front' || st.sec === 'crown')){
+    // (2026-11-15b) fringeTrim:false 스타일(레게펌)은 선을 아예 안 긋는다 — 17a mqFringeLineOff
+    if(st.mannequin && (st.sec === 'front' || st.sec === 'crown') && !(typeof mqFringeLineOff === 'function' && mqFringeLineOff())){
       const yLine = fringeLineY(st.sec);
       if(yLine != null){
         let E = null; try{ E = getHeadEllipsoid(); }catch(e){}
@@ -9368,6 +9369,8 @@ function computeAdjustedHair3DStrands(srcAngleFilter, stride){
   out = (typeof tipFlareAll === 'function' ? tipFlareAll(out) : out);   // (2026-10-18 배포본) 17a 끝 벌어짐
   // (2026-10-13) 원본 머리에서 얼굴 앞을 가로지르는 가닥을 옆으로 비킴(17a FACE_CLEAR)
   out = faceClearAll(out);
+  // (2026-11-15b) 눈썹컷 — 모양이 다 끝난 가닥을 눈썹 선에서(browCut 스타일만 · 17a BROW_CUT)
+  out = (typeof browCutAll === 'function' ? browCutAll(out) : out);
   // (옛 53) 빗질이 있는데 머리 모양이 바뀌었으면 결을 다시 읽어 둠 · 통계(17a COMB3D)
   COMB3D._afterCompute(out, srcAngleFilter, stride, _cbT0);
   // (옛 55 잔머리 정리) 곱슬이면 몸통에서 벗어난 잔머리 꼬리를 자름(17a FLY_TRIM)
