@@ -99,7 +99,21 @@ const MQ_FRINGE = {
   bulge: 0.35,
   converge: 1,
   haveFringeFrac: 0.3,
-  minLen: 0.05
+  minLen: 0.05,
+  /* (2026-11-15) 얼굴 가운데 띠는 <b>두상 표면에 붙어 내려와도</b> 자른다 — mqTrimAtFringeLine 배너.
+     얼굴 메쉬가 두상 타원보다 앞으로 나와 있어(실기기 진단: 얼굴 z범위 = 두상깊이의 115%),
+     이마를 타고 내려오는 프론트·크라운 가닥이 "얼굴 면보다 뒤"로 판정돼 한 가닥도 안 잘렸다.
+     그 결과 크라운이 스펙 길이(웨이비 보브 = 입 위)대로 내려와 눈·코를 덮었다.
+     · centerHalfFrac — 얼굴 반폭의 이 비율 안(눈이 있는 가운데)만 새 판정을 쓴다.
+       바깥(얼굴 옆선)은 예전 그대로라 커튼뱅·옆으로 내리는 가닥은 안 잘린다.
+     · centerScalpTol — 두상 표면 z의 이 비율만큼 안쪽까지는 "표면에 닿아 있다"로 본다.
+     · 자르는 선이 <b>눈높이 이상</b>일 때만 쓴다(크라운 = 눈썹 선, 보브·히피펌 앞머리 = 눈선).
+       선이 눈 아래인 스타일(롱 레이어스 커튼뱅 = 눈~턱 40%)은 예전 판정 그대로 — 거기서
+       이마를 타고 내려오는 앞머리는 얼굴을 덮으라고 둔 길이다.
+     되돌리기: centerOnScalp = false */
+  centerOnScalp: true,
+  centerHalfFrac: 0.8,
+  centerScalpTol: 0.15
 };
 /* 이 손님에게 <b>이미 앞머리가 있는가</b>. 점유 프로브에 묻는다(새 자 없음).
    프로브가 없으면 null — 모르면 안 심는다(모르는 것을 지어내지 않는다). */
@@ -803,6 +817,22 @@ function buildFaceProfile() {
    ⚠ 길이를 <b>만들지 않는다</b>. 자르기만 한다(MANNEQUIN.lenPct 주석과 같은 규칙).
    ⚠ 옆·뒤로 흐르는 머리는 안 건드린다 — z>0(앞쪽)이면서 두상 너비 안일 때만.
    되돌리기: MQ_FRINGE.lineHalfX = 0 */
+/* (2026-11-15) 얼굴 가운데 띠에서 두상 표면에 붙어(또는 그보다 앞에) 있는가 — MQ_FRINGE.centerOnScalp 배너.
+   두상 타원 중심은 (0, CY, 0) — 마네킹이 뿌리를 심는 자와 같다(y = CY + b·cosφ). */
+function _mqCoversFaceCenter(p, E, halfX, tipY) {
+  if (!MQ_FRINGE.centerOnScalp || !E || !(E.a > 0) || !(E.b > 0) || !(E.c > 0) || !(halfX > 0)) return false;
+  if (!(p.z > 0) || Math.abs(p.x) > halfX * MQ_FRINGE.centerHalfFrac) return false;
+  const m = typeof state !== "undefined" && state ? state.hair3Dneutral : null,
+    CY = m && m.CY != null ? m.CY : SCALP_CENTER_Y;
+  // 선이 눈(CY)보다 아래면 이 판정을 안 쓴다 — 배너 참고
+  if (!(tipY >= CY - 0.02 * E.b)) return false;
+  const u = p.x / E.a,
+    w = (p.y - CY) / E.b,
+    t = 1 - u * u - w * w;
+  // 두상 타원 바깥(얼굴 아래·턱 밑)에 있으면 표면 기준이 없다 — 앞쪽 반구면 덮는 것으로 본다
+  if (!(t > 0)) return true;
+  return p.z >= E.c * Math.sqrt(t) * (1 - MQ_FRINGE.centerScalpTol);
+}
 function mqTrimAtFringeLine(pts, tipY, E, allAround) {
   if (!(tipY != null) || !pts || pts.length < 2) return pts;
   const prof = getFaceProfile(),
@@ -818,8 +848,9 @@ function mqTrimAtFringeLine(pts, tipY, E, allAround) {
     if (!allAround) {
       // 얼굴 <b>앞면</b>보다 앞인가. 예전엔 두상 중심(0)이라 앞쪽 반구 전체가 걸렸다.
       const v171 = prof ? prof.zAt(v168.y) : 0;
-      // 얼굴 앞이 아니면 통과
-      if (!(v168.z > v171) || Math.abs(v168.x) > halfX) continue;
+      // 얼굴 앞이 아니면 통과 — 단 가운데 띠는 두상 표면에 붙어 있어도 얼굴을 덮는 가닥이다(MQ_FRINGE.centerOnScalp)
+      const inFront = v168.z > v171 && Math.abs(v168.x) <= halfX;
+      if (!inFront && !_mqCoversFaceCenter(v168, E, halfX, tipY)) continue;
     }
     const v169 = (v167.y - tipY) / Math.max(1e-9, v167.y - v168.y),
       v170 = pts.slice(0, v166);
