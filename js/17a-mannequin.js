@@ -189,12 +189,12 @@ var STYLE_TUNES = {
   },
   layered_bob_hush: {
     tipAt: {
-      front: 0.45
+      fringeTrim: true
     }
   },
   wavy_bob_seethrough: {
     tipAt: {
-      front: 0.44
+      fringeTrim: true
     }
   },
   side_part_perm: {
