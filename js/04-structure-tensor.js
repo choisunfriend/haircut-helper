@@ -740,8 +740,8 @@ var GABOR_ORIENT = (function () {
     var B = blurBB(F, Wd, Hd, 3, bb);
     for (y = 1; y < Hd - 1; y++) for (x = 1; x < Wd - 1; x++) {
       i = y * Wd + x; if (!mask[i]) continue;
+      if (!H.zone || !H.zone[i]) continue;                                 // (11-16d) 반사 띠 둘레만 — 가는 윤기 줄·흰머리는 날아갔어도(≥245) 결로 씀
       if (H.clip[i]) { conf[i] = 0; if (coh) coh[i] = 0; nC++; continue; }
-      if (!H.zone[i]) continue;
       var gx = 0.5 * (B[i + 1] - B[i - 1]), gy = 0.5 * (B[i + Wd] - B[i - Wd]), gm = Math.hypot(gx, gy); if (gm < 0.03) continue;   // 띠 가장자리 아님(띠 한가운데·바깥)
       var edge = Math.atan2(gy, gx) + Math.PI / 2, d = Math.abs(ang[i] - edge) % Math.PI; if (d > Math.PI / 2) d = Math.PI - d;
       if (d < par) { conf[i] = 0; if (coh) coh[i] = 0; nP++; }
