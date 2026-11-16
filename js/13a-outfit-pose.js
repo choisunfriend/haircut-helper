@@ -1218,3 +1218,450 @@ function captureStrandPathsFor(angle, rawMode){
   });
 }
 
+
+/* ==========================================================================
+ * BODY_DRAPE v2 — 3D 결과 화면에서 머리를 몸·옷 겉면 위로 "닿은 듯 살짝 띄워" 늘어뜨림
+ * (읽을 수 있는 코드로 13a 끝에 덧붙임)
+ *
+ * 순서
+ *  1) 몸 겉면 → 거리장(SDF)
+ *     장면의 bodyBaseRig(맨몸+옷) 삼각형을 머리 좌표계로 옮겨, x·y 칸마다 앞(ZF)·뒤(ZB)
+ *     z를 기록 → 그 사이를 "몸 안"으로 채운 3D 칸(복셀)을 만들고, 칸마다 겉면까지의
+ *     거리(밖 +, 안 −)를 잽니다. 그 다음 흐리게 해서 라펠·주머니·깃 같은 잔굴곡을
+ *     지우고 몸의 큰 모양만 남깁니다. 기울기 = 겉면이 향한 방향(어깨는 위, 옆구리는 옆).
+ *  2) 가닥 다시 잇기
+ *     선분 쌍에서 끝=시작이면 같은 가닥. 결과 화면 선분 거르기로 중간이 빠져 끊긴
+ *     조각도, 바로 앞 조각 끝에서 가깝고 아래로 이어지면 같은 가닥으로 봅니다.
+ *  3) 선으로 밀기(점마다 붙이지 않음)
+ *     ① 점마다 "겉면에서 margin 만큼 밖"까지 필요한 이동량만 계산(방향 = 거리장 기울기,
+ *        몸 깊숙이 든 점은 가닥이 처음 몸에 들어간 자리의 방향을 그대로 씀 → 앞뒤가 섞이지 않음)
+ *     ② 이동량을 가닥을 따라 부드럽게 퍼뜨림 → 원래 가닥에 더함(웨이브·컬 굴곡이 그대로 남음)
+ *     ③ 뿌리부터 마디 길이를 원래대로 → 밀려난 만큼 늘어나지 않고 아래로 흘러내림
+ *     ①~③을 몇 번 반복, 마지막에 남은 침범만 작게 한 번 더 밀어 마무리.
+ *  4) 결과 화면에서는 BODY_OUT(고정 단면으로 z만 미는 옛 처리)을 쓰지 않습니다
+ *     — 두 처리가 서로 다른 몸 모양·앞뒤 판단으로 두 번 밀던 것을 하나로.
+ *
+ * 원본 좌표를 보관해 몸·옷·머리가 바뀔 때마다 원본에서 다시 계산(누적 없음).
+ * 끄기: BODY_DRAPE.on=false; BODY_DRAPE.refresh()   상태: BODY_DRAPE.lines()
+ * ========================================================================== */
+// 17a의 잔머리 정리(FLY_TRIM)를 끔 — 17a보다 먼저 로드되므로 기본값을 미리 넣어 둠.
+// (결과 화면 '선분 거르기'가 렌더 때마다 머리 버퍼를 그 자리에서 고쳐 BODY_DRAPE와 엇갈리던 것)
+// 다시 켜기: 콘솔에서 FLY_TRIM.on=true; FLY_TRIM.refresh()
+window.FLY_TRIM = Object.assign({ on: false }, window.FLY_TRIM || {});
+var BODY_DRAPE = (function () {
+  'use strict';
+  var TAG = '[몸 위로 늘어뜨리기]';
+  var C = Object.assign({
+    on: true,
+    vox: 0.05,          // 복셀 크기(모델 단위 ≈ 0.95cm)
+    xMax: 2.2,          // 좌우 반폭(팔까지)
+    zMax: 1.3,          // 앞뒤 반깊이
+    depth: 4.6,         // 목 밑동 아래로 볼 깊이
+    above: 0.0,         // 목 밑동 위로는 안 봄(머리·목은 다른 처리 몫)
+    blur: 2,            // 거리장 흐리기 횟수(클수록 잔굴곡이 사라짐)
+    margin: 0.03,       // 겉면에서 띄울 거리 ≈ 0.6cm — "닿은 듯"
+    iters: 4,           // ①~③ 반복
+    smoothPts: 3,       // 이동량 퍼뜨리기 반폭(점 수)
+    deepAt: -0.06,      // 이보다 깊이 든 점은 처음 들어간 자리의 방향으로 밂
+    joinGap: 0.12,
+    sideDamp: 0.35,     // 옆(x)으로 미는 몫 줄임 — 어깨에서 팔 쪽으로 미끄러지지 않고 앞/뒤로
+    sideBias: 0.8,      // 어깨 윗면에서 정해진 쪽(앞/뒤)으로 기울이는 세기
+    centerBand: 0.3,
+    frontMin: 0.0,      // 원래 늘어지던 자리(목 아래 평균)가 몸통 가운데보다 이만큼 앞이면 앞으로    // |x|가 이보다 크면 옆머리 — 사진에서 앞으로 넘긴 쪽이면 앞      // 끊긴 조각 다시 잇기 거리
+    replaceBodyOut: true,
+    pollMs: 300,
+    budgetMs: 12,       // 한 번에 쓰는 시간(ms) — 넘으면 다음 틈에 이어서
+    log: true
+  }, window.BODY_DRAPE || {});
+  var S = C.stats = { newSrc: 0, reused: 0, strands: 0, joined: 0, touched: 0, pts: 0, left: 0, vox: 0, ms: 0, sdfMs: 0, err: null };
+  var F = null, fieldSig = '', pendSig = '', applied = new WeakMap(), ver = 1, busy = false;
+
+  function screen() { try { return currentScreen; } catch (e) { return ''; } }
+  function headGroup() { try { return model3D && model3D.headGroup; } catch (e) { return null; } }
+
+  /* ---------------- 장면 ---------------- */
+  function findHairs(hg) {
+    var out = [];
+    hg.traverse(function (o) {
+      if (o.visible === false) return;
+      if ((o.name === 'adjustedHair' || o.name === 'hairStrands') && (o.isLineSegments || o.isLine) &&
+          o.geometry && o.geometry.attributes && o.geometry.attributes.position) out.push(o);
+    });
+    return out;
+  }
+  function bodyMeshes(rig) {
+    var out = [];
+    rig.traverse(function (o) {
+      if (!o.isMesh || !o.geometry || !o.geometry.attributes || !o.geometry.attributes.position) return;
+      for (var p = o; p && p !== rig; p = p.parent) if (p.visible === false) return;
+      var mats = Array.isArray(o.material) ? o.material : [o.material];
+      for (var i = 0; i < mats.length; i++) if (mats[i] && (mats[i].name || '').toLowerCase() === 'hair') return;
+      out.push(o);
+    });
+    return out;
+  }
+
+  /* ---------------- 1) 거리장 ---------------- */
+  // 삼각형을 x·y 칸 기둥으로 찍어 앞/뒤 z 범위를 얻음
+  // obj → hg 상대 행렬을 각 노드의 '로컬' 행렬만으로 곱해 만듦.
+  // matrixWorld는 마지막 렌더 때 값이라, 옷을 막 바꾼 뒤(새 몸/옷이 아직 한 번도 안 그려짐)에는
+  // 머리는 지금 돌려 본 각도, 몸은 회전 없는 자리로 서로 어긋나 거리장이 보는 각도마다 달라졌음.
+  function relTo(obj, hg) {
+    var M = new THREE.Matrix4(), T = new THREE.Matrix4();
+    for (var o = obj; o && o !== hg; o = o.parent) {
+      if (o.matrixAutoUpdate) o.updateMatrix();
+      T.copy(o.matrix); M.premultiply(T);
+    }
+    return M;
+  }
+  function columnSpans(meshes, toLocal, g, hg) {
+    var NX = g.NX, NY = g.NY, v = g.vox;
+    var ZF = new Float32Array(NX * NY).fill(-Infinity), ZB = new Float32Array(NX * NY).fill(Infinity);
+    var M = new THREE.Matrix4(), q = [0, 0, 0, 0, 0, 0, 0, 0, 0];
+    function put(x, y, z) {
+      var ix = ((x - g.x0) / v) | 0, iy = ((y - g.y0) / v) | 0;
+      if (ix < 0 || iy < 0 || ix >= NX || iy >= NY || x < g.x0 || y < g.y0) return;
+      var k = iy * NX + ix; if (z > ZF[k]) ZF[k] = z; if (z < ZB[k]) ZB[k] = z;
+    }
+    meshes.forEach(function (mesh) {
+      M.multiplyMatrices(toLocal, relTo(mesh, hg));
+      var e = M.elements, G = mesh.geometry, P = G.attributes.position, I = G.index, n = I ? I.count : P.count;
+      for (var t = 0; t + 2 < n; t += 3) {
+        for (var j = 0; j < 3; j++) {
+          var vi = I ? I.getX(t + j) : t + j, x = P.getX(vi), y = P.getY(vi), z = P.getZ(vi);
+          q[j * 3] = e[0] * x + e[4] * y + e[8] * z + e[12];
+          q[j * 3 + 1] = e[1] * x + e[5] * y + e[9] * z + e[13];
+          q[j * 3 + 2] = e[2] * x + e[6] * y + e[10] * z + e[14];
+        }
+        if (Math.max(q[1], q[4], q[7]) < g.y0 || Math.min(q[1], q[4], q[7]) > g.y1) continue;
+        var L = Math.max(Math.hypot(q[3] - q[0], q[4] - q[1], q[5] - q[2]), Math.hypot(q[6] - q[0], q[7] - q[1], q[8] - q[2]), Math.hypot(q[6] - q[3], q[7] - q[4], q[8] - q[5]));
+        var N = Math.max(1, Math.min(48, Math.ceil(L / (v * 0.5))));
+        for (var a = 0; a <= N; a++) for (var b = 0; b <= N - a; b++) {
+          var u = a / N, w = b / N, r = 1 - u - w;
+          put(q[0] * r + q[3] * u + q[6] * w, q[1] * r + q[4] * u + q[7] * w, q[2] * r + q[5] * u + q[8] * w);
+        }
+      }
+    });
+    return { ZF: ZF, ZB: ZB };
+  }
+  // 앞/뒤 범위 → 몸 안 복셀 → 부호 있는 거리(밖 +) → 흐리기
+  function buildField(spans, g) {
+    var NX = g.NX, NY = g.NY, NZ = g.NZ, v = g.vox, N = NX * NY * NZ;
+    var inside = new Uint8Array(N);
+    for (var iy = 0; iy < NY; iy++) for (var ix = 0; ix < NX; ix++) {
+      var k = iy * NX + ix, zf = spans.ZF[k], zb = spans.ZB[k];
+      if (zf === -Infinity) continue;
+      var a = Math.max(0, Math.floor((zb - g.z0) / v)), b = Math.min(NZ - 1, Math.floor((zf - g.z0) / v));
+      for (var iz = a; iz <= b; iz++) inside[(iz * NY + iy) * NX + ix] = 1;
+    }
+    // 빈 기둥 메우기(칸 사이 틈) — 좌우·위아래 이웃 두 곳 이상이 안이면 안
+    var fill = inside.slice();
+    for (var iz2 = 0; iz2 < NZ; iz2++) for (iy = 1; iy < NY - 1; iy++) for (ix = 1; ix < NX - 1; ix++) {
+      var id = (iz2 * NY + iy) * NX + ix; if (inside[id]) continue;
+      if (inside[id - 1] + inside[id + 1] + inside[id - NX] + inside[id + NX] >= 3) fill[id] = 1;
+    }
+    inside = fill;
+    var mid = new Float32Array(NX * NY).fill(NaN);
+    for (var km = 0; km < NX * NY; km++) if (spans.ZF[km] > -Infinity) mid[km] = (spans.ZF[km] + spans.ZB[km]) / 2;
+    var dOut = chamfer(inside, 1, g), dIn = chamfer(inside, 0, g), sdf = new Float32Array(N), cnt = 0;
+    for (var i = 0; i < N; i++) { sdf[i] = (inside[i] ? -(dIn[i] - 0.5) : (dOut[i] - 0.5)) * v; if (inside[i]) cnt++; }
+    var raw = sdf;
+    for (var bI = 0; bI < C.blur; bI++) sdf = boxBlur(sdf, g);
+    return { g: g, sdf: sdf, raw: raw, inside: cnt, mid: mid };
+  }
+  // 3D 챔퍼 거리(3-4-5 근사, 칸 단위). target=1이면 "안 칸까지 거리", 0이면 "밖 칸까지 거리"
+  function chamfer(inside, target, g) {
+    var NX = g.NX, NY = g.NY, NZ = g.NZ, N = NX * NY * NZ, BIG = 1e6, d = new Float32Array(N);
+    for (var i = 0; i < N; i++) d[i] = inside[i] === target ? 0 : BIG;
+    var offs = [];
+    for (var dz = -1; dz <= 1; dz++) for (var dy = -1; dy <= 1; dy++) for (var dx = -1; dx <= 1; dx++) {
+      var s = Math.abs(dx) + Math.abs(dy) + Math.abs(dz); if (!s) continue;
+      offs.push([dx, dy, dz, s === 1 ? 1 : s === 2 ? 1.4142 : 1.7321]);
+    }
+    var fwd = offs.filter(function (o) { return o[2] < 0 || (o[2] === 0 && (o[1] < 0 || (o[1] === 0 && o[0] < 0))); });
+    var bwd = offs.filter(function (o) { return fwd.indexOf(o) < 0; });
+    function pass(list, z0, z1, st) {
+      for (var z = z0; z !== z1; z += st) for (var y = st > 0 ? 0 : NY - 1; y >= 0 && y < NY; y += st) for (var x = st > 0 ? 0 : NX - 1; x >= 0 && x < NX; x += st) {
+        var id = (z * NY + y) * NX + x, best = d[id]; if (!best) continue;
+        for (var k = 0; k < list.length; k++) {
+          var o = list[k], xx = x + o[0], yy = y + o[1], zz = z + o[2];
+          if (xx < 0 || yy < 0 || zz < 0 || xx >= NX || yy >= NY || zz >= NZ) continue;
+          var c = d[(zz * NY + yy) * NX + xx] + o[3]; if (c < best) best = c;
+        }
+        d[id] = best;
+      }
+    }
+    pass(fwd, 0, NZ, 1); pass(bwd, NZ - 1, -1, -1);
+    return d;
+  }
+  function boxBlur(a, g) {
+    var NX = g.NX, NY = g.NY, NZ = g.NZ, b = new Float32Array(a.length), c = new Float32Array(a.length);
+    var axes = [[1, NX], [NX, NY], [NX * NY, NZ]], src = a, dst = b;
+    for (var ax = 0; ax < 3; ax++) {
+      var st = axes[ax][0], n = axes[ax][1];
+      for (var i = 0; i < src.length; i++) {
+        var pos = ((i / st) | 0) % n, s = src[i], w = 1;
+        if (pos > 0) { s += src[i - st]; w++; } if (pos < n - 1) { s += src[i + st]; w++; }
+        dst[i] = s / w;
+      }
+      src = dst; dst = ax === 0 ? c : (ax === 1 ? b : c);
+    }
+    return src;
+  }
+  // 거리·기울기(삼선형 보간). 범위 밖이면 null
+  var _gr = [0, 0, 0], _useRaw = false;
+  function sample(x, y, z) {
+    var g = F.g, v = g.vox;
+    var fx = (x - g.x0) / v - 0.5, fy = (y - g.y0) / v - 0.5, fz = (z - g.z0) / v - 0.5;
+    if (fx < 0 || fy < 0 || fz < 0 || fx >= g.NX - 1 || fy >= g.NY - 1 || fz >= g.NZ - 1) return null;
+    var ix = fx | 0, iy = fy | 0, iz = fz | 0, tx = fx - ix, ty = fy - iy, tz = fz - iz;
+    var NX = g.NX, NXY = NX * g.NY, s = _useRaw ? F.raw : F.sdf, i0 = (iz * g.NY + iy) * NX + ix;
+    var c000 = s[i0], c100 = s[i0 + 1], c010 = s[i0 + NX], c110 = s[i0 + NX + 1];
+    var c001 = s[i0 + NXY], c101 = s[i0 + NXY + 1], c011 = s[i0 + NXY + NX], c111 = s[i0 + NXY + NX + 1];
+    var x00 = c000 + (c100 - c000) * tx, x10 = c010 + (c110 - c010) * tx, x01 = c001 + (c101 - c001) * tx, x11 = c011 + (c111 - c011) * tx;
+    var y0 = x00 + (x10 - x00) * ty, y1 = x01 + (x11 - x01) * ty, d = y0 + (y1 - y0) * tz;
+    var gx = ((c100 - c000) * (1 - ty) + (c110 - c010) * ty) * (1 - tz) + ((c101 - c001) * (1 - ty) + (c111 - c011) * ty) * tz;
+    var gy = (x10 - x00) * (1 - tz) + (x11 - x01) * tz, gz = y1 - y0, L = Math.hypot(gx, gy, gz);
+    if (L < 1e-9) { _gr[0] = 0; _gr[1] = 0; _gr[2] = 0; } else { _gr[0] = gx / L; _gr[1] = gy / L; _gr[2] = gz / L; }
+    return d;
+  }
+
+  /* ---------------- 3) 선으로 밀기 ---------------- */
+  var _L0 = new Float32Array(1024), _dx = new Float32Array(1024), _dy = new Float32Array(1024), _dz = new Float32Array(1024);
+  var _px = new Float32Array(1024), _py = new Float32Array(1024), _pz = new Float32Array(1024);
+  function drapeStrand(px, py, pz, n) {
+    var g = F.g, m = C.margin, yTop = g.y1, any = false, i, it;
+    for (i = 0; i < n; i++) if (py[i] < yTop) { any = true; break; }
+    if (!any) return false;
+    if (_L0.length < n) { _L0 = new Float32Array(n * 2); _dx = new Float32Array(n * 2); _dy = new Float32Array(n * 2); _dz = new Float32Array(n * 2); }
+    var L0 = _L0;
+    for (i = 1; i < n; i++) L0[i] = Math.hypot(px[i] - px[i - 1], py[i] - py[i - 1], pz[i] - pz[i - 1]);
+    var dx = _dx, dy = _dy, dz = _dz, hit = false;
+    var entry = null;                                         // 처음 몸에 들어간 자리의 바깥 방향
+    var side = strandSide(px, py, pz, n);                     // +1 앞 · −1 뒤
+    for (it = 0; it <= C.iters + 1; it++) {              // 마지막 두 회 = 마무리
+      var last = it >= C.iters, need = 0;
+      _useRaw = last;                                     // 마무리는 흐리지 않은 실제 겉면 기준 — 볼록한 어깨·라펠에서 묻히지 않게
+      // ① 점마다 필요한 이동량
+      for (i = 1; i < n; i++) {
+        dx[i] = dy[i] = dz[i] = 0;
+        if (py[i] >= yTop) continue;
+        var d = sample(px[i], py[i], pz[i]); if (d === null || d >= m) continue;
+        var nx = _gr[0], ny = _gr[1], nz = _gr[2];
+        if (!entry && d > C.deepAt && (nx || ny || nz)) entry = [nx, ny, nz];
+        if ((d < C.deepAt || !(nx || ny || nz)) && entry) { nx = entry[0]; ny = entry[1]; nz = entry[2]; }
+        if (!(nx || ny || nz)) continue;
+        if (!last) {                                          // 마무리 회는 겉면 방향 그대로(남은 침범을 확실히 빼냄)
+          nx *= C.sideDamp;
+          if (ny > 0) nz += side * C.sideBias * ny;             // 어깨 윗면: 정한 쪽으로 넘어가게
+        }
+        var nl = Math.hypot(nx, ny, nz) || 1; nx /= nl; ny /= nl; nz /= nl;
+        var k = m - d; dx[i] = nx * k; dy[i] = ny * k; dz[i] = nz * k; need++;
+        if (it === 0) S.pts++;
+      }
+      if (!need) break;
+      hit = true;
+      // ② 가닥을 따라 퍼뜨림(마지막 회는 남은 것만 그대로)
+      if (!last && C.smoothPts > 0) { spread(dx, n); spread(dy, n); spread(dz, n); }
+      for (i = 1; i < n; i++) { px[i] += dx[i]; py[i] += dy[i]; pz[i] += dz[i]; }
+      // ③ 뿌리부터 마디 길이 되돌림 — 밀린 만큼 아래로 흘러내림
+      if (!last) for (i = 1; i < n; i++) {
+        var ex = px[i] - px[i - 1], ey = py[i] - py[i - 1], ez = pz[i] - pz[i - 1], l = Math.hypot(ex, ey, ez);
+        if (l < 1e-9 || !L0[i]) continue;
+        var f = L0[i] / l; px[i] = px[i - 1] + ex * f; py[i] = py[i - 1] + ey * f; pz[i] = pz[i - 1] + ez * f;
+      }
+    }
+    _useRaw = true;
+    if (hit) for (i = 1; i < n; i++) if (py[i] < yTop) { var dd = sample(px[i], py[i], pz[i]); if (dd !== null && dd < 0) S.left++; }
+    _useRaw = false;
+    return hit;
+  }
+  // 가닥이 앞/뒤 어느 쪽으로 갈지: 목 밑동 높이에서의 z가 그 자리 몸통 가운데보다 앞이면 앞.
+  // 옆머리(|x|>centerBand)는 사진에서 그쪽을 앞으로 넘겼으면 앞.
+  var drapeInfo = null;
+  function strandSide(px, py, pz, n) {
+    var g = F.g, i, x = px[0], z = pz[0], y = g.y1;
+    for (i = 1; i < n; i++) if (py[i] < g.y1) { x = px[i]; z = pz[i]; y = py[i]; break; }
+    var own = true;                                           // 사진 인지는 손님 자기 머리일 때만 의미 있음
+    try { var sid = state.specAppliedId; own = !sid || sid === '__original__'; } catch (e) {}
+    if (own && Math.abs(x) > C.centerBand) {
+      try {
+        if (!drapeInfo) drapeInfo = SHOULDER.recognize();
+        var f = drapeInfo && drapeInfo.front;
+        if (f) { var right = (x >= 0) === (drapeInfo.signX > 0), sd = right ? f.R : f.L; if (sd && sd.draped) return 1; }
+      } catch (e) {}
+    }
+    // 가닥이 원래 '어디로 늘어지려 했는지'로 정함: 목 밑동 아래 부분의 평균 z를 그 자리 몸통 가운데와 비교.
+    // 한 다발은 끝이 같은 쪽으로 모이므로 다발째 같은 쪽으로 감(말안장·앞머리 벌어짐 방지).
+    var sz = 0, sm = 0, cnt = 0;
+    for (i = 1; i < n; i++) {
+      if (py[i] >= g.y1) continue;
+      var jx = Math.max(0, Math.min(g.NX - 1, ((px[i] - g.x0) / g.vox) | 0)), jy = ((py[i] - g.y0) / g.vox) | 0;
+      if (jy < 0 || jy >= g.NY) continue;
+      var mm = F.mid[jy * g.NX + jx]; if (mm !== mm) continue;
+      sz += pz[i]; sm += mm; cnt++;
+    }
+    if (!cnt) return z >= 0 ? 1 : -1;
+    return (sz - sm) / cnt >= C.frontMin ? 1 : -1;
+  }
+  // 이동량을 이웃 점에 퍼뜨리되 큰 값은 지킴(줄어들면 다시 파고드니까) — 움직이는 구간만
+  var _tmp = new Float32Array(4096);
+  function spread(a, n) {
+    var lo = -1, hi = -1, i, j, w = C.smoothPts;
+    for (i = 1; i < n; i++) if (a[i] !== 0) { if (lo < 0) lo = i; hi = i; }
+    if (lo < 0) return;
+    lo = Math.max(1, lo - w); hi = Math.min(n - 1, hi + w);
+    if (_tmp.length < n) _tmp = new Float32Array(n * 2);
+    for (i = lo; i <= hi; i++) {
+      var s = 0, ws = 0;
+      for (j = -w; j <= w; j++) { var k = i + j; if (k < 1 || k >= n) continue; var wt = w + 1 - (j < 0 ? -j : j); s += a[k] * wt; ws += wt; }
+      var avg = s / ws, ai = a[i];
+      _tmp[i] = (ai < 0 ? -ai : ai) > (avg < 0 ? -avg : avg) ? ai : avg;
+    }
+    for (i = lo; i <= hi; i++) a[i] = _tmp[i];
+  }
+
+  /* ---------------- 2) 가닥 다시 잇기 + 적용 ---------------- */
+  // 한 머리 객체를 작은 조각 시간(budgetMs)씩 나눠 처리 → 화면이 멈추지 않음. 끝나면 한 번에 반영.
+  function startJob(obj, done) {
+    var geo = obj.geometry, P = geo.attributes.position;
+    // 원본 찾기. 결과 화면의 '선분 거르기'(17a FLY_TRIM)가 내가 써 넣은 버퍼를 렌더 때마다 그 자리에서
+    // 다시 고치므로 내용 비교로는 원본을 못 알아봄 → 머리 객체에 원본을 묶어 둠.
+    // ① 같은 머리 객체 + 같은 길이 → 보관한 원본  ② 내 결과를 복사해 만든 새 객체 → 지문으로 찾음  ③ 그 밖 = 새 머리
+    var cur = P.array, rec = objOrig.get(obj), orig = null;
+    if (rec && rec.orig.length === cur.length) orig = rec.orig;
+    if (!orig) { var o2 = outToOrig.get(checksum(cur)); if (o2 && o2.length === cur.length) orig = o2; }
+    if (!orig) { orig = cur.slice(); S.newSrc++; } else S.reused++;
+    objOrig.set(obj, { orig: orig });
+    var a = orig.slice();                                    // 원본에서 새로 계산
+    var nSeg = (a.length / 6) | 0, g2 = C.joinGap * C.joinGap, s0 = 0, s = 1, myVer = ver;
+    function flush(s1) {
+      var n = s1 - s0 + 1; if (n < 3) return;
+      if (_px.length < n) { _px = new Float32Array(n * 2); _py = new Float32Array(n * 2); _pz = new Float32Array(n * 2); }
+      var px = _px, py = _py, pz = _pz, k;
+      px[0] = a[s0 * 6]; py[0] = a[s0 * 6 + 1]; pz[0] = a[s0 * 6 + 2];
+      for (k = s0; k < s1; k++) { var q = k - s0 + 1; px[q] = a[k * 6 + 3]; py[q] = a[k * 6 + 4]; pz[q] = a[k * 6 + 5]; }
+      S.strands++;
+      if (!drapeStrand(px, py, pz, n)) return;
+      S.touched++;
+      for (k = s0; k < s1; k++) {
+        var i0 = k - s0, o = k * 6;
+        a[o] = px[i0]; a[o + 1] = py[i0]; a[o + 2] = pz[i0];
+        a[o + 3] = px[i0 + 1]; a[o + 4] = py[i0 + 1]; a[o + 5] = pz[i0 + 1];
+      }
+    }
+    function step() {
+      if (myVer !== ver || !F) { done(false); return; }       // 그 사이 몸·설정이 바뀜 → 버림
+      var t0 = performance.now();
+      while (s <= nSeg) {
+        if (s === nSeg) { flush(s); s++; break; }
+        var o = s * 6, ddx = a[o] - a[o - 3], ddy = a[o + 1] - a[o - 2], ddz = a[o + 2] - a[o - 1];
+        if (!(ddx === 0 && ddy === 0 && ddz === 0)) {
+          if (ddx * ddx + ddy * ddy + ddz * ddz < g2 && ddy <= 0.02) S.joined++;   // 빠진 선분 건너 이어짐
+          else { flush(s); s0 = s; }
+        }
+        s++;
+        if ((s & 255) === 0 && performance.now() - t0 > C.budgetMs) { setTimeout(step, 0); return; }
+      }
+      P.array.set(a); P.needsUpdate = true;
+      outToOrig.set(checksum(a), orig);                      // 이 결과 → 이 원본
+      if (outToOrig.size > 6) outToOrig.delete(outToOrig.keys().next().value);
+      var T = geo.attributes.tng;                               // 머리 빛(HAIR_LOOK)의 결 방향
+      if (T && T.itemSize === 3 && T.count === P.count) {
+        var ta = T.array;
+        for (var v = 0; v + 1 < P.count; v += 2) {
+          var ex = a[(v + 1) * 3] - a[v * 3], ey = a[(v + 1) * 3 + 1] - a[v * 3 + 1], ez = a[(v + 1) * 3 + 2] - a[v * 3 + 2], L = Math.hypot(ex, ey, ez) || 1e-9;
+          ta[v * 3] = ta[(v + 1) * 3] = ex / L; ta[v * 3 + 1] = ta[(v + 1) * 3 + 1] = ey / L; ta[v * 3 + 2] = ta[(v + 1) * 3 + 2] = ez / L;
+        }
+        T.needsUpdate = true;
+      }
+      try { geo.computeBoundingSphere(); } catch (e) {}
+      done(true);
+    }
+    step();
+  }
+  // 버퍼 내용 지문(길이 + 고르게 뽑은 값들의 합). 같은 내용이면 같은 값.
+  var outToOrig = new Map(), objOrig = new WeakMap();
+  function checksum(arr) {
+    var n = arr.length, st = Math.max(1, (n / 4096) | 0), h1 = n, h2 = 0;
+    for (var i = 0; i < n; i += st) { var v = arr[i]; h1 = (h1 * 31 + Math.round(v * 1e4)) | 0; h2 += v; }
+    return n + ':' + h1 + ':' + h2.toFixed(3);
+  }
+  function restoreHair(obj) {
+    var geo = obj.geometry, rec = objOrig.get(obj), orig = rec ? rec.orig : outToOrig.get(checksum(geo.attributes.position.array));
+    if (orig && orig.length === geo.attributes.position.array.length) { geo.attributes.position.array.set(orig); geo.attributes.position.needsUpdate = true; }
+  }
+
+  /* ---------------- 감시 ---------------- */
+  function gridFor(yTop) {
+    var v = C.vox, g = { vox: v, x0: -C.xMax, y0: yTop - C.depth, z0: -C.zMax, y1: yTop };
+    g.NX = Math.ceil(2 * C.xMax / v); g.NY = Math.ceil(C.depth / v); g.NZ = Math.ceil(2 * C.zMax / v);
+    return g;
+  }
+  function tick() {
+    try {
+      if (busy || screen() !== 'model3d') return;
+      var hg = headGroup(); if (!hg) return;
+      var hairs = findHairs(hg); if (!hairs.length) return;
+      if (!C.on) { hairs.forEach(function (h) { if (applied.has(h)) { restoreHair(h); applied.delete(h); wake(); } }); return; }
+      var rig = hg.getObjectByName('bodyBaseRig'); if (!rig) return;
+      var meshes = bodyMeshes(rig); if (!meshes.length) return;
+      // 몸·옷 자리(위치·배율)까지 지문에 넣고, 두 번 연속 같을 때만(=옷 조각 불러오기가 끝나 멈췄을 때) 계산
+      var rm = relTo(rig, hg).elements, rs = '';
+      for (var ri = 0; ri < 16; ri++) rs += Math.round(rm[ri] * 1e4) + ',';
+      var sig = rig.uuid + '@' + rs + meshes.map(function (m) { return m.uuid + ':' + m.geometry.attributes.position.count; }).join('|') + '#' + ver;
+      if (sig !== fieldSig) { if (sig !== pendSig) { pendSig = sig; return; } }
+      var todo = hairs.filter(function (h) { return applied.get(h) !== sig + ':' + h.geometry.attributes.position.array.length; });
+      if (!todo.length && sig === fieldSig) return;
+      var yTop; try { yTop = getNeckBottomY() + 0.02; } catch (e) { return; }
+      if (!isFinite(yTop)) return;
+      var t0 = performance.now();
+      if (sig !== fieldSig || !F) {
+        var toLocal = relTo(hairs[0], hg).invert(), g = gridFor(yTop);
+        F = buildField(columnSpans(meshes, toLocal, g, hg), g); fieldSig = sig; todo = hairs; drapeInfo = null;
+        S.sdfMs = performance.now() - t0; S.vox = F.inside;
+        if (F.inside < 200) { S.err = '몸 겉면을 못 읽음(안 칸 ' + F.inside + ')'; F = null; fieldSig = ''; return; }
+      }
+      S.strands = S.joined = S.touched = S.pts = S.left = 0;
+      busy = true;
+      (function next(i) {
+        if (i >= todo.length) {
+          busy = false; S.ms = performance.now() - t0; S.err = null;
+          if (C.log) console.log(C.lines()[0]);
+          wake(); return;
+        }
+        var h = todo[i];
+        startJob(h, function (ok) {
+          if (!ok) { busy = false; return; }
+          applied.set(h, sig + ':' + h.geometry.attributes.position.array.length); next(i + 1);
+        });
+      })(0);
+    } catch (e) { S.err = String(e && e.message || e); console.warn(TAG, e); }
+  }
+  function wake() { try { if (typeof GPU_DIET !== 'undefined' && GPU_DIET.markDirty) GPU_DIET.markDirty(); } catch (e) {} }
+
+  /* ---------------- 4) BODY_OUT 대신 ---------------- */
+  function takeOverBodyOut() {
+    try {
+      if (typeof BODY_OUT === 'undefined' || BODY_OUT.__drapeWrapped) return;
+      var orig = BODY_OUT._apply;
+      BODY_OUT._apply = function (s) { return C.on && C.replaceBodyOut ? s : orig.apply(this, arguments); };
+      BODY_OUT.__drapeWrapped = true;
+      try { BODY_OUT.refresh(); } catch (e) {}
+    } catch (e) {}
+  }
+  if (typeof window !== 'undefined' && window.addEventListener) {
+    if (document.readyState === 'complete') takeOverBodyOut(); else window.addEventListener('load', takeOverBodyOut);
+  }
+
+  C.refresh = function () { ver++; busy = false; fieldSig = ''; pendSig = ''; F = null; try { BODY_OUT.refresh(); } catch (e) {} tick(); return C.on; };
+  C.lines = function () {
+    return [TAG + ' ' + (C.on ? '켜짐' : '꺼짐') + ' — 거리장 몸 안 칸 ' + S.vox + '(' + Math.round(S.sdfMs) + 'ms · 흐리기 ' + C.blur + ') · 가닥 ' + S.strands +
+      '(끊긴 데 이음 ' + S.joined + ') 중 몸에 닿은 ' + S.touched + ' · 밀어낸 점 ' + S.pts + ' · 끝내 몸 안에 남은 점 ' + S.left +
+      ' · 원본 새로 ' + S.newSrc + '/다시 씀 ' + S.reused + ' · 띄움 ' + (C.margin * 19.3).toFixed(1) + 'cm · ' + Math.round(S.ms) + 'ms' + (C.replaceBodyOut ? ' · BODY_OUT 대신 씀' : '') + (S.err ? ' ⚠ ' + S.err : '')];
+  };
+  C._test = { startJob: startJob, gridFor: gridFor, buildField: buildField, drapeStrand: drapeStrand, set: function (f) { F = f; }, sample: sample };
+  if (typeof setInterval === 'function') setInterval(tick, C.pollMs);
+  console.log(TAG + ' 설치 — 결과 화면에서 몸+옷 거리장으로 머리를 겉면 위로 살짝 띄워 늘어뜨림(BODY_OUT 대신). 끄기 BODY_DRAPE.on=false; BODY_DRAPE.refresh() · 상태 BODY_DRAPE.lines()');
+  return C;
+})();
