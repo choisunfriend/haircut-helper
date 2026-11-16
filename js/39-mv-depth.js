@@ -174,7 +174,12 @@ var MV_DEPTH = (function () {
         if (!okAll(own, X[k], Y[k], Z[k])) outB++; if (!okAll(own, Q[k].x, Q[k].y, Q[k].z)) outA++; }
       var gB = grainErr(own, P), gA = grainErr(own, Q);
       st.outB += outB; st.chk += n;
-      if (gA.e * Math.max(1, gA.n) + outA <= gB.e * Math.max(1, gB.n) + outB) {
+      /* (2026-11-16 avg) 예전: 결 비용 = 어긋남 × 비교 횟수(합) + 밖 점 수. 결은 다른 사진의 머리 영역 안에서만 비교되므로
+       *  모든 사진의 머리 밖으로 뻗친 점은 결 비용 0 → 맞는 깊이로 옮기면 비교가 생겨 비용이 늘어 '나빠짐'으로 거절됨
+       *  (디버그 1000: 정면·왼쪽 사진 가닥 중 다른 사진 밖인 점의 99%가 ±11cm 안에 모두 머리인 깊이가 있는데 그대로 남음).
+       *  지금: 결 = 비교한 것의 평균 어긋남 · 밖 = 밖인 점의 비율 — 둘 다 평균. 되돌리기 MV_DEPTH.avgCost=false */
+      var costA = M.avgCost === false ? gA.e * Math.max(1, gA.n) + outA : gA.e + outA / n, costB = M.avgCost === false ? gB.e * Math.max(1, gB.n) + outB : gB.e + outB / n;
+      if (costA <= costB) {
         for (k = 0; k < n; k++) { P[k].x = Q[k].x; P[k].y = Q[k].y; P[k].z = Q[k].z; }
         st.moved++; st.pts += n; st.sumMove += mx2; st.outA += outA; st.offA += gA.e; st.offB += gB.e; st.cmp++;
       } else st.outA += outB;
