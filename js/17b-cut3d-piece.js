@@ -2462,8 +2462,13 @@ var REGROW = (function () {
       if (!(th * cmL >= (G.foldLowerMinCm != null ? G.foldLowerMinCm : 0.5))) { fcStat.lowerSkip = (fcStat.lowerSkip || 0) + 1; return np; }   // 두께를 못 쟀거나 0으로 잰 칸(목덜미 등)은 안 낮춤 — 빔이 생기지 않게
       var lim = rs * 1.02 + Math.max(0, th) * (G.foldThickK != null ? G.foldThickK : 1);
       if (rr <= lim) return np;
-      var k = lim / rr; fcStat.lowered = (fcStat.lowered || 0) + 1; fcStat.lowerCm = (fcStat.lowerCm || 0) + (rr - lim);
-      return { x: dx * k, y: CY + dy * k, z: dz * k };
+      var k = lim / rr, lp = { x: dx * k, y: CY + dy * k, z: dz * k };
+      if (G.foldLowerOnlyOut !== false) {                                   // 사진 안에 있는 점은 그대로 — 넘친 점만, 낮춰서 나아질 때만
+        var f0 = fcPoint(np); if (f0 === 0) { fcStat.lowerKeepIn = (fcStat.lowerKeepIn || 0) + 1; return np; }
+        if (!(fcPoint(lp) < f0)) { fcStat.lowerNoGain = (fcStat.lowerNoGain || 0) + 1; return np; }
+      }
+      fcStat.lowered = (fcStat.lowered || 0) + 1; fcStat.lowerCm = (fcStat.lowerCm || 0) + (rr - lim);
+      return lp;
     }
     function extendTip(sdd) {
       var q = sdd.pts, n = q.length; if (!Es0 || n < 3) return;
@@ -4320,15 +4325,16 @@ var REGROW = (function () {
       }
       if (nM < 30) { rows.push({ angle: c0.angle, skip: '머리 영역 작음' }); return; }
       var Z = new Float32Array(NC), SD = new Float32Array(NC), OC = new Uint8Array(NC);
-      function camOf(dyaw, ds, dcx, dp, dyCm) {   // (11-16) 위아래(dp°)·높이(dyCm)도 — R = Rx(dp)·R0·Ry(dyaw)
+      function camOf(dyaw, ds, dcx, dp, dyCm, dr) {   // dr = 기울기(roll°) — R = Rz(dr)·…, 3D 만들기의 roll과 같은 자리   // (11-16) 위아래(dp°)·높이(dyCm)도 — R = Rx(dp)·R0·Ry(dyaw)
         var cy = Math.cos(dyaw * RAD), sy_ = Math.sin(dyaw * RAD), R0 = c0.R;
         var R = [R0[0] * cy - R0[2] * sy_, R0[1], R0[0] * sy_ + R0[2] * cy, R0[3] * cy - R0[5] * sy_, R0[4], R0[3] * sy_ + R0[5] * cy, R0[6] * cy - R0[8] * sy_, R0[7], R0[6] * sy_ + R0[8] * cy];
         if (dp) { var cp = Math.cos(dp * RAD), sp = Math.sin(dp * RAD); R = [R[0], R[1], R[2], cp * R[3] - sp * R[6], cp * R[4] - sp * R[7], cp * R[5] - sp * R[8], sp * R[3] + cp * R[6], sp * R[4] + cp * R[7], sp * R[5] + cp * R[8]]; }
+        if (dr) { var cr = Math.cos(dr * RAD), sr = Math.sin(dr * RAD); R = [cr * R[0] - sr * R[3], cr * R[1] - sr * R[4], cr * R[2] - sr * R[5], sr * R[0] + cr * R[3], sr * R[1] + cr * R[4], sr * R[2] + cr * R[5], R[6], R[7], R[8]]; }
         var sy = c0.sy / ds;
         return { R: R, s: c0.s / ds, sy: sy, crownY: c0.crownY + (yTop - CY) * (1 / c0.sy - 1 / sy) + (dyCm || 0) / (cmX * sy), cx: c0.cx + dcx };
       }
-      function cost(dyaw, ds, dcx, dp, dyCm) {
-        var K = camOf(dyaw, ds, dcx, dp, dyCm), R = K.R, s = K.s, sy = K.sy, crownY = K.crownY, cx = K.cx, i, j;
+      function cost(dyaw, ds, dcx, dp, dyCm, dr) {
+        var K = camOf(dyaw, ds, dcx, dp, dyCm, dr), R = K.R, s = K.s, sy = K.sy, crownY = K.crownY, cx = K.cx, i, j;
         Z.fill(-1e9); OC.fill(0);
         for (i = 0; i < NS; i++) {
           j = i * 6; var px = segs[j], py = segs[j + 1], pz = segs[j + 2];
@@ -4345,7 +4351,7 @@ var REGROW = (function () {
           if (OC[i] && MK[i] && isFinite(PA[i]) && isFinite(SD[i])) { var dd = PA[i] - SD[i]; dd = Math.abs(((dd % Math.PI) + 1.5 * Math.PI) % Math.PI - Math.PI / 2); gs += Math.min(dd, Math.PI / 4); gn++; }
         }
         var g = gn ? gs / gn / RAD : 45, iou = U ? I / U : 0;
-        return { c: g / 45 + (1 - iou) + (G.xfitYawK != null ? G.xfitYawK : 0.004) * (Math.abs(dyaw) + Math.abs(dp || 0)), g: g, iou: iou, n: gn };
+        return { c: g / 45 + (1 - iou) + (G.xfitYawK != null ? G.xfitYawK : 0.004) * (Math.abs(dyaw) + Math.abs(dp || 0) + Math.abs(dr || 0)), g: g, iou: iou, n: gn };
       }
       var weak = false; try { weak = !!(V3 && V3.views && V3.views[c0.angle] && V3.views[c0.angle].weak); } catch (e) {}
       var Y = weak ? (G.xfitYawWeak || 40) : (G.xfitYawDeg || 15), SC = G.xfitScale || 0.08, CXW = (G.xfitCx || 0.05) * c0.iw, PP = G.xfitPitch != null ? G.xfitPitch : 8, DYC = G.xfitDyCm != null ? G.xfitDyCm : 1.5;
@@ -4357,19 +4363,24 @@ var REGROW = (function () {
       if (PP > 0 || DYC > 0) for (pq = -PP; pq <= PP; pq += Math.max(1, PP / 4)) for (dq = -2; dq <= 2; dq++) {
         r = cost(best.dyaw, best.ds, best.dcx, pq, DYC * dq / 2); if (r.c < best.r.c) best = { r: r, dyaw: best.dyaw, ds: best.ds, dcx: best.dcx, dp: pq, dy: DYC * dq / 2 };
       }
+      /* (11-16) 기울기(roll) — 나머지를 고정하고 ±RL° 찾은 뒤 다듬기에도 같이 */
+      var RL = G.xfitRoll != null ? G.xfitRoll : 8, rq; best.dr = 0;
+      if (RL > 0) for (rq = -RL; rq <= RL; rq += 2) { if (!rq) continue; r = cost(best.dyaw, best.ds, best.dcx, best.dp, best.dy, rq); if (r.c < best.r.c) best = { r: r, dyaw: best.dyaw, ds: best.ds, dcx: best.dcx, dp: best.dp, dy: best.dy, dr: rq }; }
       var b1 = best;
+      if (RL > 0) for (rq = -1; rq <= 1; rq += 2) { var dr2 = b1.dr + rq; if (Math.abs(dr2) > RL) continue; r = cost(b1.dyaw, b1.ds, b1.dcx, b1.dp, b1.dy, dr2); if (r.c < best.r.c) best = { r: r, dyaw: b1.dyaw, ds: b1.ds, dcx: b1.dcx, dp: b1.dp, dy: b1.dy, dr: dr2 }; }
+      b1 = best;
       for (a = b1.dyaw - 2; a <= b1.dyaw + 2; a++) for (b = -1; b <= 1; b++) for (cc = -1; cc <= 1; cc++) for (pq = -1; pq <= 1; pq++) {
         if (Math.abs(a) > Y) continue; var ds2 = b1.ds + SC * b / 4, cx2 = b1.dcx + CXW * cc / 4, dp2 = b1.dp + pq; if (Math.abs(ds2 - 1) > SC + 1e-6 || Math.abs(dp2) > PP) continue;
-        r = cost(a, ds2, cx2, dp2, b1.dy); if (r.c < best.r.c) best = { r: r, dyaw: a, ds: ds2, dcx: cx2, dp: dp2, dy: b1.dy };
+        r = cost(a, ds2, cx2, dp2, b1.dy, b1.dr); if (r.c < best.r.c) best = { r: r, dyaw: a, ds: ds2, dcx: cx2, dp: dp2, dy: b1.dy, dr: b1.dr };
       }
-      var row = { angle: c0.angle, g0: b0.g, i0: b0.iou, g1: best.r.g, i1: best.r.iou, dyaw: best.dyaw, ds: best.ds, dcx: best.dcx, dp: best.dp, dy: best.dy, weak: weak, edge: Math.abs(best.dyaw) >= Y };
+      var row = { angle: c0.angle, g0: b0.g, i0: b0.iou, g1: best.r.g, i1: best.r.iou, dyaw: best.dyaw, ds: best.ds, dcx: best.dcx, dp: best.dp, dy: best.dy, dr: best.dr || 0, weak: weak, edge: Math.abs(best.dyaw) >= Y };
       /* 맞춘 뒤에도 겹침이 xfitBadIou(60%) 미만이면 '안 맞음' — 영역 깎기에서만 뺌(결·확인에는 남음) */
       row.bad = best.r.iou < (G.xfitBadIou != null ? G.xfitBadIou : 0.6);
       if (!(b0.c - best.r.c >= (G.xfitMinGain != null ? G.xfitMinGain : 0.02))) { row.kept = true; row.bad = b0.iou < (G.xfitBadIou != null ? G.xfitBadIou : 0.6); if (V3) { V3.fit = V3.fit || {}; var fk = V3.fit[c0.angle] || { dyaw: 0, ds: 1, dcx: 0, dp: 0, dyCm: 0 }; fk.bad = row.bad; V3.fit[c0.angle] = fk; } rows.push(row); return; }
       // 프로브 카메라를 바로 고침(지금 다시 기르기용) + VIEWS360.fit에 더해 둠(3D를 다시 만들 때 calFor가 씀)
-      var K2 = camOf(best.dyaw, best.ds, best.dcx, best.dp, best.dy);
+      var K2 = camOf(best.dyaw, best.ds, best.dcx, best.dp, best.dy, best.dr);
       c0.R = K2.R; c0.crownY = K2.crownY; c0.s = K2.s; c0.sy = K2.sy; c0.cx = K2.cx;
-      if (V3) { V3.fit = V3.fit || {}; var f = V3.fit[c0.angle] || { dyaw: 0, ds: 1, dcx: 0, dp: 0, dyCm: 0 }; f.dyaw += best.dyaw; f.ds *= best.ds; f.dcx += best.dcx; f.dp = (f.dp || 0) + best.dp; f.dyCm = (f.dyCm || 0) + best.dy; f.bad = row.bad; V3.fit[c0.angle] = f; }
+      if (V3) { V3.fit = V3.fit || {}; var f = V3.fit[c0.angle] || { dyaw: 0, ds: 1, dcx: 0, dp: 0, dyCm: 0 }; f.dyaw += best.dyaw; f.ds *= best.ds; f.dcx += best.dcx; f.dp = (f.dp || 0) + best.dp; f.dyCm = (f.dyCm || 0) + best.dy; f.dr = (f.dr || 0) + (best.dr || 0); f.bad = row.bad; V3.fit[c0.angle] = f; }
       rows.push(row);
     });
     var out = { rows: rows, ms: Math.round(now() - t0), segs: NS };
@@ -4475,9 +4486,9 @@ var REGROW = (function () {
   };
   G.xfitLine = function () {
     var o = G.xfitLast; if (!o) return '  추가 사진 카메라 맞추기: 아직 안 함' + (G.extraFit === false ? '(꺼짐)' : '');
-    return '  추가 사진 카메라 맞추기(기준 사진 결로만 기른 가닥 · 결 차이+겹침 · ±' + (G.xfitYawDeg || 15) + '°): ' + o.rows.map(function (r) {
+    return '  추가 사진 카메라 맞추기(기준 사진 결로만 기른 가닥 · 결 차이+겹침 · ±' + (G.xfitYawDeg || 15) + '° · 기울기 ±' + (G.xfitRoll != null ? G.xfitRoll : 8) + '° · 끄기 REGROW.xfitRoll=0): ' + o.rows.map(function (r) {
       if (r.skip) return r.angle + ' 안 함(' + r.skip + ')';
-      return r.angle + ' 결 ' + r.g0.toFixed(1) + '→' + r.g1.toFixed(1) + '° · 겹침 ' + Math.round(r.i0 * 100) + '→' + Math.round(r.i1 * 100) + '% · 각 ' + (r.dyaw >= 0 ? '+' : '') + r.dyaw + '°' + (r.edge ? '(범위 끝)' : '') + ' · 배율 ' + r.ds.toFixed(3) + ' · 가로 ' + (r.dcx >= 0 ? '+' : '') + r.dcx.toFixed(0) + 'px' + (r.dp ? ' · 위아래 ' + (r.dp >= 0 ? '+' : '') + r.dp + '°' : '') + (r.dy ? ' · 높이 ' + (r.dy >= 0 ? '+' : '') + r.dy.toFixed(1) + 'cm' : '') + (r.weak ? ' · [약함→맞춤 ±' + (G.xfitYawWeak || 40) + '°]' : '') + (r.bad ? ' · 모델과 겹침 낮음(모델이 틀린 자리일 수 있음 — 넣고 뺌은 사진끼리 맞추기가 정함)' : '') + (r.kept ? ' → 안 바꿈(좋아짐 작음)' : ' → 바꿈');
+      return r.angle + ' 결 ' + r.g0.toFixed(1) + '→' + r.g1.toFixed(1) + '° · 겹침 ' + Math.round(r.i0 * 100) + '→' + Math.round(r.i1 * 100) + '% · 각 ' + (r.dyaw >= 0 ? '+' : '') + r.dyaw + '°' + (r.edge ? '(범위 끝)' : '') + ' · 배율 ' + r.ds.toFixed(3) + ' · 가로 ' + (r.dcx >= 0 ? '+' : '') + r.dcx.toFixed(0) + 'px' + (r.dp ? ' · 위아래 ' + (r.dp >= 0 ? '+' : '') + r.dp + '°' : '') + (r.dy ? ' · 높이 ' + (r.dy >= 0 ? '+' : '') + r.dy.toFixed(1) + 'cm' : '') + (r.dr ? ' · 기울기 ' + (r.dr >= 0 ? '+' : '') + r.dr + '°' : '') + (r.weak ? ' · [약함→맞춤 ±' + (G.xfitYawWeak || 40) + '°]' : '') + (r.bad ? ' · 모델과 겹침 낮음(모델이 틀린 자리일 수 있음 — 넣고 뺌은 사진끼리 맞추기가 정함)' : '') + (r.kept ? ' → 안 바꿈(좋아짐 작음)' : ' → 바꿈');
     }).join(' | ') + ' · ' + o.ms + 'ms (끄기 REGROW.xfitOn=false)';
   };
   G.camFitRun = function (model, probe) {
@@ -5580,7 +5591,7 @@ function helixMeasure(rgba,mask,W,H,angle,coh,opt){opt=opt||{};const n=opt.n||25
         + (dS.smp ? ' · 꺾임 점 단위 ' + (dS.fineB / dS.smp).toFixed(1) + '→' + (dS.fineA / dS.smp).toFixed(1) + '°/cm' : '')
         + (dS.coarseN ? ' · ' + dC.coarseCm + 'cm 간격(굴곡) ' + (dS.coarseB / dS.coarseN).toFixed(1) + '→' + (dS.coarseA / dS.coarseN).toFixed(1) + '°/cm — 이게 크게 줄면 굴곡을 편 것' : '')
         + (dS.err ? ' · ⚠ ' + dS.err : '') + ' (끄기 ?dn=0 · REGROW.dn.passes/.sigMaxCm)')); } } catch (eD) {}
-    try { var fcS = G.fcStat; L.push('  마지막 다듬기(모든 가닥 · 마주 보는 사진은 머리 아니면 밖 · 반대쪽 사진은 배경일 때만 밖): ' + (G.finalClip === false ? '꺼짐' : fcS ? (G.fold !== false ? '<b>자르기 전 눕히기</b>(주변 결 · 두피 바깥 성분 지움) — 눕혀서 더 살린 가닥 ' + (fcS.fold || 0) + '(살린 점 ' + (fcS.foldPts || 0) + ') · 눕혀도 안 나아져 예전대로 ' + (fcS.foldNo || 0) + ' · 머리 겉면 높이로 낮춘 점 ' + (fcS.lowered || 0) + '(평균 ' + (fcS.lowered ? ((fcS.lowerCm / fcS.lowered) * (function () { try { return modelCmPerUnit() || 19; } catch (e) { return 19; } })()).toFixed(1) : '0') + 'cm · 두께 0.5cm 미만이라 안 낮춘 점 ' + (fcS.lowerSkip || 0) + ' · 끄기 REGROW.foldLower=false)' + (fcS.foldErr ? ' ⚠ ' + fcS.foldErr : '') + ' (끄기 REGROW.fold=false) · ' : '') + (G.extendTip !== false ? '<b>빔 채우기</b>(제 끝에서 멈춘 가닥을 모든 사진이 머리인 동안 두피 따라 이어 기름 · 최대 ' + (G.extendMaxCm || 3) + 'cm) — 이은 가닥 ' + (fcS.ext || 0) + '(점 ' + (fcS.extPts || 0) + ' · 평균 ' + (fcS.ext ? (fcS.extCm / fcS.ext).toFixed(1) : '0') + 'cm) · 앞이 바로 밖이라 못 이음 ' + (fcS.extNo || 0) + (fcS.extErr ? ' ⚠ ' + fcS.extErr : '') + ' (끄기 REGROW.extendTip=false) · ' : '') + '가닥 ' + fcS.n + ' 중 여유 넘게 나가 자른 ' + fcS.cut + '(점 ' + fcS.cutPts + ') · 끝이 영역 밖이라 경계에서 끝낸 ' + fcS.tail + '(점 ' + fcS.tailPts + ')' + (G.clipPointwise !== false ? ' · <b>점마다 판단</b>: 마지막으로 살아 있는 점까지 남김 — 중간에 밖으로 나갔다 돌아와 살린 가닥 ' + (fcS.keepMid || 0) + '(점 ' + (fcS.keepMidPts || 0) + ' · 되돌리기 REGROW.clipPointwise=false)' : '') + (G.clipStrict !== false && G.clipPointwise === false ? ' · 영역 안에 들어간 뒤 밖으로 나가 그 자리에서 자른 ' + (fcS.strict || 0) + '(점 ' + (fcS.strictPts || 0) + ' · 되돌리기 REGROW.clipStrict=false)' : '') : '아직') + ' (끄기 REGROW.finalClip=false)'); } catch (eF) {}
+    try { var fcS = G.fcStat; L.push('  마지막 다듬기(모든 가닥 · 마주 보는 사진은 머리 아니면 밖 · 반대쪽 사진은 배경일 때만 밖): ' + (G.finalClip === false ? '꺼짐' : fcS ? (G.fold !== false ? '<b>자르기 전 눕히기</b>(주변 결 · 두피 바깥 성분 지움) — 눕혀서 더 살린 가닥 ' + (fcS.fold || 0) + '(살린 점 ' + (fcS.foldPts || 0) + ') · 눕혀도 안 나아져 예전대로 ' + (fcS.foldNo || 0) + ' · 머리 겉면 높이로 낮춘 점 ' + (fcS.lowered || 0) + '(평균 ' + (fcS.lowered ? ((fcS.lowerCm / fcS.lowered) * (function () { try { return modelCmPerUnit() || 19; } catch (e) { return 19; } })()).toFixed(1) : '0') + 'cm · 두께 0.5cm 미만이라 안 낮춘 점 ' + (fcS.lowerSkip || 0) + ' · 사진 안이라 그대로 둔 점 ' + (fcS.lowerKeepIn || 0) + ' · 낮춰도 안 나아져 그대로 ' + (fcS.lowerNoGain || 0) + ' · 되돌리기 REGROW.foldLowerOnlyOut=false' + ' · 끄기 REGROW.foldLower=false)' + (fcS.foldErr ? ' ⚠ ' + fcS.foldErr : '') + ' (끄기 REGROW.fold=false) · ' : '') + (G.extendTip !== false ? '<b>빔 채우기</b>(제 끝에서 멈춘 가닥을 모든 사진이 머리인 동안 두피 따라 이어 기름 · 최대 ' + (G.extendMaxCm || 3) + 'cm) — 이은 가닥 ' + (fcS.ext || 0) + '(점 ' + (fcS.extPts || 0) + ' · 평균 ' + (fcS.ext ? (fcS.extCm / fcS.ext).toFixed(1) : '0') + 'cm) · 앞이 바로 밖이라 못 이음 ' + (fcS.extNo || 0) + (fcS.extErr ? ' ⚠ ' + fcS.extErr : '') + ' (끄기 REGROW.extendTip=false) · ' : '') + '가닥 ' + fcS.n + ' 중 여유 넘게 나가 자른 ' + fcS.cut + '(점 ' + fcS.cutPts + ') · 끝이 영역 밖이라 경계에서 끝낸 ' + fcS.tail + '(점 ' + fcS.tailPts + ')' + (G.clipPointwise !== false ? ' · <b>점마다 판단</b>: 마지막으로 살아 있는 점까지 남김 — 중간에 밖으로 나갔다 돌아와 살린 가닥 ' + (fcS.keepMid || 0) + '(점 ' + (fcS.keepMidPts || 0) + ' · 되돌리기 REGROW.clipPointwise=false)' : '') + (G.clipStrict !== false && G.clipPointwise === false ? ' · 영역 안에 들어간 뒤 밖으로 나가 그 자리에서 자른 ' + (fcS.strict || 0) + '(점 ' + (fcS.strictPts || 0) + ' · 되돌리기 REGROW.clipStrict=false)' : '') : '아직') + ' (끄기 REGROW.finalClip=false)'); } catch (eF) {}
     try { var du = G.drawUnusedStat; L.push('  안 쓴 사진 조각 그대로 그리기: ' + (!du ? '-' : !du.on ? '꺼짐' : du.err ? '실패 ' + du.err : '조각 ' + du.pieces + ' 중 통째로 ' + du.whole + ' · 안 그린 앞부분 ' + du.head + ' · 점 ' + du.pts + ' · 다듬기에 잘린 ' + du.clipped) + ' (끄기 REGROW.drawUnused=false) · 점 판정: ' + (G.aliveIsect !== false ? (G.aliveVote === 'vote' ? '<b>무게 투표</b>(머리 표 = 마주 보는 정도² · 밖 표 = 보이기만 하면 윤곽으로 1 · 안 맞은 카메라 ×0.3 · 밖 표는 여유 ' + G.isectTolCm + 'cm부터 그 3배까지 커짐 · 기권은 가릴 때만) — 밖 ' + (G._isectNo || 0) + '(그중 머리 표도 있었는데 짐 ' + (G._voteSplit || 0) + ') · 밖 표가 있었지만 살림 ' + (G._voteSaved || 0) + ' · 스치듯 보는 사진의 밖 표 ' + (G._voteGraze || 0) + ' · 예전 판정에서 가려서 기권 ' + (G._fcAbst || 0) + ' (되돌리기 REGROW.aliveVote=\'isect\') · ' : '<b>교집합</b> — 가림 없이 보는 사진이 모두 머리여야 살림(기권은 가릴 때만' + (G.isectFacing === true ? ' + 등진 사진' : '') + ') · 한 장이라도 아니라서 밖 ' + (G._isectNo || 0) + ' · 예전 판정에서 가려서 기권 ' + (G._fcAbst || 0) + '(여유 ' + G.isectTolCm + 'cm · 되돌리기 REGROW.aliveIsect=false · 무게 투표 REGROW.aliveVote=\'vote\') · ') : '') + '(합집합일 때) 보이는 사진 중 하나라도 머리면 살림 ' + (G.anyHairAlive === false ? '꺼짐' : '켜짐 — 다른 사진이 밖이라 했지만 살린 판정 ' + (G._aliveAny || 0) + ' · 가장 정면 사진이 맨살이라 밖 ' + (G._fcSkin || 0) + ' · 배경 위라 살리지 않음 ' + (G.aliveBgVeto === false ? '꺼짐' : (G._aliveBgVeto || 0)) + '(끄기 REGROW.aliveBgVeto=false) · 살리는 사진 반구 fc≥' + (G.aliveFc != null ? G.aliveFc : -0.15)) + ' (되돌리기 REGROW.anyHairAlive=false)'); } catch (eS) {}
     try { var fcK = G.fcStat; if (fcK) L.push('  보이는 맨살 위(마주 보는 사진 · 머리 영역에서 ' + G.skinTolCm + 'cm 넘게): 투표에서 밖 ' + (G._skinNoMarginN || 0) + ' · 뿌리 구간이 맨살 위라 안 그린 가닥 ' + (fcK.skinRoot || 0) + ' · 가운데 구간이 맨살 위로 나가 거기서 끝낸 가닥 ' + (fcK.skinMid || 0) + '(점 ' + (fcK.skinMidPts || 0) + ') · 보임 판정 ' + (G.skinVis === false ? '각도(fc≥' + (G.faceNoMarginFc || 0.5) + ')' : '가림(fc≥' + G.skinVisFc + ' · 두개골·몸·얼굴) — 가장 정면 아닌 사진이 맨살로 본 판정 ' + (G._skinOtherCam || 0) + '(여유 ' + G.skinTolOtherCm + 'cm · 끄기 REGROW.skinAllCams=false)') + ' (되돌리기 REGROW.skinVis=false · 끄기 REGROW.skinNoMargin=false)'); } catch (eK) {}
     L.push('  껍질(사진 교집합): ' + (s.hullV ? s.hullV + ' 중 그 자리를 마주 보는 사진이 머리 영역에서 ' + G.hullMarginCm + '(정면)·' + G.hullMarginSideCm + '(옆·뒤)cm 넘게 밖이라 덩어리 밖인 걸음(덩어리를 쓰면 다른 이유로 밖인 것도 포함) ' + (s.hullN || 0) + '회 — 다른 사진이 머리라고 해도 멈춤 (예전: 다수결 · 끄기 REGROW.hullViews=[])' + ' · 사진 가닥이 그어져 머리 영역에 더한 칸 ' + (G.hullStrands === false ? '꺼짐' : Object.keys(G._hsCells || {}).map(function (k) { return k + ' ' + G._hsCells[k]; }).join(' · ') + ' (끄기 ?hullst=0)') : '안 씀(다수결)'));

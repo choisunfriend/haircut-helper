@@ -1690,7 +1690,7 @@ var VIEWS360 = (function () {
     var _xf = (X.useFit !== false && X.fit && X.fit[v.key]) || null, _crown = m.crown;
     v.weak = false;
     if (_xf) { yawDeg += _xf.dyaw || 0; var _sy0 = sy; sy = sy / (_xf.ds || 1); _crown = m.crown + (yTop - CY) * (1 / _sy0 - 1 / sy) + (_xf.dyCm ? _xf.dyCm / ((typeof modelCmPerUnit === 'function' && modelCmPerUnit()) || 19) / sy : 0); }   // (11-16) 높이도
-    var cal = { pose: { yaw: yawDeg * Math.PI / 180, pitch: _xf && _xf.dp ? _xf.dp * Math.PI / 180 : 0, roll: 0 }, cx: m.capCx + (_xf ? _xf.dcx || 0 : 0), s: sy, sy: sy, crownY: _crown, x360: true, fit: _xf };
+    var cal = { pose: { yaw: yawDeg * Math.PI / 180, pitch: _xf && _xf.dp ? _xf.dp * Math.PI / 180 : 0, roll: _xf && _xf.dr ? _xf.dr * Math.PI / 180 : 0 }, cx: m.capCx + (_xf ? _xf.dcx || 0 : 0), s: sy, sy: sy, crownY: _crown, x360: true, fit: _xf };
     out.cal = cal;
     var A = headHalfWidthAt(cal.pose.yaw); v.q = A > 0 ? m.hw * sy / A : null;
     try { v.agree = scalpAgree(cal, state.hairMasks[v.key], yTop, CY); } catch (e) { v.agree = null; }
