@@ -528,7 +528,7 @@ var GABOR_ORIENT = (function () {
    *  합성 결 무늬 45종(직모·웨이브·컬 반경 16/10/6px × 다발 굵기 3 × 잡음 3) 각 오차 중앙값 평균: 가버 12방향 4px 26.8° → 조종 두 굵기 13.5°
    *    깨끗한 잔 컬(반경 6px) 30.8° → 14.1° · 잡음 직모·웨이브도 전부 가버보다 낮음 · 시간은 가버 4px 한 번보다 짧음(합성 200×200: 1.5초 → 1.1초, 순수 JS)
    *  예전 가버: GABOR_ORIENT.engine='gabor' (그때는 위 파장 고르기·자동 다듬기 그대로) */
-  function steerRead(g, mask, Wd, Hd, ang, conf, bestA) {
+  function steerRead(g, mask, Wd, Hd, ang, conf, bestA, hlz) {
     var t0 = performance.now(), N = Wd * Hd, x0 = Wd, y0 = Hd, x1 = -1, y1 = -1, x, y, i;
     for (y = 0; y < Hd; y++) for (x = 0, i = y * Wd; x < Wd; x++, i++) if (mask[i]) { if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
     if (x1 < 0) return 0;
@@ -607,6 +607,7 @@ var GABOR_ORIENT = (function () {
         var bi = 0; for (j = 1; j < nS; j++) if (TS[j][q2] > TS[bi][q2] * K) bi = j;
         t = TA[bi][q2]; cf = TS[bi][q2]; ba = TC[bi][q2]; if (bi > 0) nBig++;
       }
+      if (hlz && hlz[id]) { t = TA[0][q2]; cf = TS[0][q2]; ba = TC[0][q2]; HLS.small++; }   // (11-16 반사) 빛 자리는 가는 굵기만 — 큰 굵기는 반사 띠 가장자리를 결로 읽음
       while (t > Math.PI / 2) t -= Math.PI; while (t <= -Math.PI / 2) t += Math.PI;
       ang[id] = t; conf[id] = cf; bestA[id] = ba; n++;
     }
@@ -621,8 +622,8 @@ var GABOR_ORIENT = (function () {
    *  컬 자리는 길이 0이라 사진이 안 바뀜 = 잔 컬 그대로. ※ 짧은 거리 굴곡으로 가르면 잡음 때문에 직모도 굽은 것으로 나와 거의 안 켜졌음.
    *  합성 20종 각 오차 중앙값: 잡음 직모 7.3° → 4.3° · 굵은 다발 잡음 직모 19.3° → 16.4° · 잡음 웨이브 9.0° → 5.9° · 컬(반경 6~16px) ±0.3° 안 · 평균 14.1° → 13.5°
    *    (길이 고정으로 다 문지르면 잡음 직모는 같이 좋아지지만 잔 컬 14.1° → 19.2°로 나빠짐 — 그래서 일치도로 가름). 끄기 GABOR_ORIENT.flowPre=false */
-  function steerTwoPass(g, mask, Wd, Hd, ang, conf, bestA) {
-    var n1 = steerRead(g, mask, Wd, Hd, ang, conf, bestA);
+  function steerTwoPass(g, mask, Wd, Hd, ang, conf, bestA, hlz) {
+    var n1 = steerRead(g, mask, Wd, Hd, ang, conf, bestA, hlz);
     if (!GO.flowPre || !n1) { GO.stats.flowOn = null; return n1; }
     var t0 = performance.now(), N = Wd * Hd, x0 = Wd, y0 = Hd, x1 = -1, y1 = -1, x, y, i, sg = GO.flowSig || 6, Lm = GO.flowLen || 6, lo = GO.flowLo, hi = GO.flowHi;
     for (y = 0; y < Hd; y++) for (x = 0, i = y * Wd; x < Wd; x++, i++) if (mask[i]) { if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
@@ -650,7 +651,7 @@ var GABOR_ORIENT = (function () {
     }
     GO.stats.flowOn = nM ? nOn / nM : 0; GO.stats.flowLenAvg = nOn ? sumL / nOn : 0; GO.stats.flowMs = Math.round(performance.now() - t0);
     if (!nOn) return n1;
-    var ms1 = GO.stats.steerMs, n2 = steerRead(g2, mask, Wd, Hd, ang, conf, bestA); GO.stats.steerMs += ms1;
+    var ms1 = GO.stats.steerMs, n2 = steerRead(g2, mask, Wd, Hd, ang, conf, bestA, hlz); GO.stats.steerMs += ms1;
     return n2;
   }
   /* (2026-11-08b) 조종 필터 + 구조텐서 보충 — 사용자: "조종필터로 결흐름 읽은 거에 구조텐서로 보충보정"
@@ -660,7 +661,7 @@ var GABOR_ORIENT = (function () {
    *  구조텐서는 머리 영역 안 기울기만 모음(정규화 가우시안 σ stSig px) — 머리↔배경 경계를 결로 읽지 않게.
    *  끄기 GABOR_ORIENT.stSupp=false · 세기 .stK · 모음 .stSig */
   if (GO.stSupp == null) GO.stSupp = true; if (GO.stK == null) GO.stK = 1; if (GO.stSig == null) GO.stSig = 3;   // 합성 시험: σ1.5는 잡음 자리에서 조종 필터보다 나빠짐 · σ3은 끊긴 결 p90 26°→21°
-  function stSupplement(g, mask, Wd, Hd, ang, conf) {
+  function stSupplement(g, mask, Wd, Hd, ang, conf, hlz) {
     var t0 = performance.now(), N = Wd * Hd, x0 = Wd, y0 = Hd, x1 = -1, y1 = -1, x, y, i;
     for (y = 0; y < Hd; y++) for (x = 0, i = y * Wd; x < Wd; x++, i++) if (mask[i]) { if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
     if (x1 < 0) return null;
@@ -678,7 +679,8 @@ var GABOR_ORIENT = (function () {
       var coh = Math.sqrt((a - c) * (a - c) + 4 * b * b) / tr;               // 0 = 방향 없음 · 1 = 한 방향
       var tt = 0.5 * Math.atan2(2 * b, a - c) + Math.PI / 2;                 // 기울기 방향 + 90° = 결
       var cs = conf[i] > 0 ? (conf[i] > 1 ? 1 : conf[i]) : 0, ws = cs, wt = K * coh * (1 - cs);
-      n++; if (!(wt > 1e-4)) continue;
+      n++; if (hlz && hlz[i]) { HLS.stSkip++; continue; }                     // (11-16 반사) 밝기 기울기는 빛 자리에서 반사 띠 가장자리를 읽음 — 보충 안 함
+      if (!(wt > 1e-4)) continue;
       var vx = ws * Math.cos(2 * ang[i]) + wt * Math.cos(2 * tt), vy = ws * Math.sin(2 * ang[i]) + wt * Math.sin(2 * tt);
       var t = 0.5 * Math.atan2(vy, vx); while (t > Math.PI / 2) t -= Math.PI; while (t <= -Math.PI / 2) t += Math.PI;
       var d = Math.abs(t - ang[i]) % Math.PI; if (d > Math.PI / 2) d = Math.PI - d; if (d > 0.26) moved++;
@@ -687,11 +689,60 @@ var GABOR_ORIENT = (function () {
     GO.stats.stSupp = { px: n, used: nUse, share: nUse ? sumWt / nUse : 0, moved15: n ? moved / n : 0, ms: Math.round(performance.now() - t0) };
     return GO.stats.stSupp;
   }
+  /* (2026-11-16) 빛 반사 — 사용자: "반사나 빛에 의해서 결읽기에서 문제가 되는 경우 … 명암을 좀 차이를 둔다거나, 빛이 확인된 자리는 별도의 필터로 검사"
+   *  ① 명암 고르기(lumNorm): 밝기 ÷ 둘레(σ lumSig px · 머리 영역 안) 평균 → 넓게 번진 빛·그림자를 지우고 올 대비만 남김. 필터 반응이 밝은 경계에 쏠리지 않게.
+   *  ② 빛 자리(hl): 머리 영역 안에서 밝기 ≥ max(hlVmin, 머리 밝기 중앙값×hlK) · 채도 ≤ hlSmax. 둘레 hlGrow px까지 —
+   *     조종 필터는 가는 굵기만(큰 굵기는 반사 띠 가장자리를 결로 읽음) · 구조텐서 보충 안 함.
+   *  ③ 띠 가장자리 검사: 빛 자리 지도를 σ3으로 편 기울기 = 띠 가장자리에 수직. 읽은 결이 가장자리와 hlParDeg 안으로 나란하면 틀린 결 → 또렷함 0(다른 사진·이웃이 메움).
+   *  ④ 날아간 자리(세 채널 ≥ hlClip): 읽을 정보 없음 → 또렷함 0(결·머리 판단은 주변 사진).
+   *  끄기 GABOR_ORIENT.hl=false · 명암만 끄기 .lumNorm=false */
+  var HLS = { small: 0, stSkip: 0 };
+  if (GO.hl == null) GO.hl = true; if (GO.lumNorm == null) GO.lumNorm = true;
+  function hlMap(px, mask, Wd, Hd) {
+    var N = Wd * Hd, i, j, vs = [], V = new Float32Array(N), S = new Float32Array(N), clip = new Uint8Array(N), hl = new Uint8Array(N), nC = 0, nH = 0, nM = 0, cl = GO.hlClip || 245;
+    for (i = 0, j = 0; i < N; i++, j += 4) { if (!mask[i]) continue; var r = px[j], g = px[j + 1], b = px[j + 2], mx = r > g ? (r > b ? r : b) : (g > b ? g : b), mn = r < g ? (r < b ? r : b) : (g < b ? g : b);
+      V[i] = mx / 255; S[i] = mx > 0 ? (mx - mn) / mx : 0; nM++; if ((i & 7) === 0) vs.push(V[i]); if (r >= cl && g >= cl && b >= cl) { clip[i] = 1; nC++; } }
+    vs.sort(function (p, q) { return p - q; }); var med = vs.length ? vs[vs.length >> 1] : 0.3, thr = Math.max(GO.hlVmin || 0.55, med * (GO.hlK || 1.8)), sm = GO.hlSmax != null ? GO.hlSmax : 0.3;
+    for (i = 0; i < N; i++) if (mask[i] && V[i] >= thr && S[i] <= sm) { hl[i] = 1; nH++; }
+    var gr = GO.hlGrow != null ? GO.hlGrow : 3, zone = new Uint8Array(N), x, y, dx, dy;
+    if (nH) for (y = 0; y < Hd; y++) for (x = 0; x < Wd; x++) { if (!hl[y * Wd + x]) continue; for (dy = -gr; dy <= gr; dy++) for (dx = -gr; dx <= gr; dx++) { var xx = x + dx, yy = y + dy; if (xx >= 0 && yy >= 0 && xx < Wd && yy < Hd && mask[yy * Wd + xx]) zone[yy * Wd + xx] = 1; } }
+    var nZ = 0; for (i = 0; i < N; i++) if (zone[i]) nZ++;
+    return { hl: hl, zone: nH ? zone : null, clip: clip, nH: nH, nZ: nZ, nC: nC, nM: nM, med: med, thr: thr };
+  }
+  function lumNormalize(g, mask, Wd, Hd) {
+    var N = Wd * Hd, x0 = Wd, y0 = Hd, x1 = -1, y1 = -1, x, y, i, sg = GO.lumSig || 8;
+    for (y = 0; y < Hd; y++) for (x = 0, i = y * Wd; x < Wd; x++, i++) if (mask[i]) { if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
+    if (x1 < 0) return g;
+    var bb = [Math.max(0, x0 - 2), Math.max(0, y0 - 2), Math.min(Wd - 1, x1 + 2), Math.min(Hd - 1, y1 + 2)], GM = new Float32Array(N), MM = new Float32Array(N);
+    for (i = 0; i < N; i++) if (mask[i]) { GM[i] = g[i]; MM[i] = 1; }
+    var Bg = blurBB(GM, Wd, Hd, sg, bb), Bm = blurBB(MM, Wd, Hd, sg, bb), out = new Float32Array(g), sum = 0, n = 0;
+    for (i = 0; i < N; i++) if (mask[i] && Bm[i] > 1e-6) { var mu = Bg[i] / Bm[i]; out[i] = g[i] / (mu + 0.03); sum += out[i]; n++; }
+    var k = n ? 0.5 / (sum / n) : 1; for (i = 0; i < N; i++) if (mask[i]) out[i] *= k;   // 평균 0.5로(잡음 제거·필터 문턱이 밝기 크기를 가정한 자리 대비)
+    return out;
+  }
+  function hlEdgeCheck(H, ang, conf, coh, mask, Wd, Hd) {
+    var N = Wd * Hd, i, x, y, F = new Float32Array(N), bb = [0, 0, Wd - 1, Hd - 1], par = (GO.hlParDeg || 25) * Math.PI / 180, nP = 0, nC = 0;
+    for (i = 0; i < N; i++) if (H.hl[i]) F[i] = 1;
+    var B = blurBB(F, Wd, Hd, 3, bb);
+    for (y = 1; y < Hd - 1; y++) for (x = 1; x < Wd - 1; x++) {
+      i = y * Wd + x; if (!mask[i]) continue;
+      if (H.clip[i]) { conf[i] = 0; if (coh) coh[i] = 0; nC++; continue; }
+      if (!H.zone[i]) continue;
+      var gx = 0.5 * (B[i + 1] - B[i - 1]), gy = 0.5 * (B[i + Wd] - B[i - Wd]), gm = Math.hypot(gx, gy); if (gm < 0.03) continue;   // 띠 가장자리 아님(띠 한가운데·바깥)
+      var edge = Math.atan2(gy, gx) + Math.PI / 2, d = Math.abs(ang[i] - edge) % Math.PI; if (d > Math.PI / 2) d = Math.PI - d;
+      if (d < par) { conf[i] = 0; if (coh) coh[i] = 0; nP++; }
+    }
+    return { par: nP, clip: nC };
+  }
   GO._test = { steerRead: steerRead, stSupplement: stSupplement, denoise: denoise, blurBB: blurBB };   // 합성 시험용
   GO.refine = function (f, px, mask, Wd, Hd) {
     if (!GO.on || !f || !f.angle || !px || px.length < Wd * Hd * 4 || !mask) return f;
     try {
       var t0 = performance.now(), N = Wd * Hd, n = GO.n, g = denoise(gray(px, N), mask, Wd, Hd, kernels(Math.max(GO.lambda, GO.lamBig || 8), n).r + 2);   // (dnz) 잡음 제거 뒤 결 읽기
+      var HLM = null; HLS.small = 0; HLS.stSkip = 0; GO.stats.hl = null;
+      if (GO.hl !== false) { try { HLM = hlMap(px, mask, Wd, Hd); } catch (eH) { HLM = null; } }
+      if (GO.lumNorm !== false) { try { g = lumNormalize(g, mask, Wd, Hd); } catch (eL) {} }
+      var HZ = HLM && HLM.zone;
       var STEER = GO.engine === 'steer';   // (2026-11-08) 조종 필터(두 굵기 · 자리마다 고르기) — 아래 steerRead
       var lamUse = STEER ? GO.lambda : pickLambda(g, mask, Wd, Hd), KK = kernels(lamUse, n), r = KK.r, sz = KK.sz;   // (2026-11-08) 4px · 8px 중 이 사진에 맞는 파장(가버일 때만)
       var SP = sparse(KK, Wd), RV = new Float32Array(n), ang = new Float32Array(N), conf = new Float32Array(N), bestA = new Float32Array(N), idx, x, y, k, i, j, cnt = 0;
@@ -699,7 +750,7 @@ var GABOR_ORIENT = (function () {
       var MK = (typeof HAIR_READ_MASK !== 'undefined' && HAIR_READ_MASK.on), full = (2 * r + 1) * (2 * r + 1), cnt9 = MK ? maskBoxCount(mask, Wd, Hd, r) : null, edgeN = 0, edgeSkip = 0;
       var sd = (GO.smooth && GO.stride > 1) ? (GO.stride | 0) : 1;         // 다듬기를 끄면 메울 방법이 없으니 전부 계산
       GO.stats.stSupp = null;
-      if (STEER) { cnt = steerTwoPass(g, mask, Wd, Hd, ang, conf, bestA); if (cnt && GO.stSupp !== false) { try { stSupplement(g, mask, Wd, Hd, ang, conf); } catch (eS) { GO.stats.stSupp = { err: String(eS) }; } } } else
+      if (STEER) { cnt = steerTwoPass(g, mask, Wd, Hd, ang, conf, bestA, HZ); if (cnt && GO.stSupp !== false) { try { stSupplement(g, mask, Wd, Hd, ang, conf, HZ); } catch (eS) { GO.stats.stSupp = { err: String(eS) }; } } } else
       for (y = r; y < Hd - r; y += sd) for (x = r; x < Wd - r; x += sd) {
         idx = y * Wd + x; if (!mask[idx]) continue;
         var best = -1, bk = 0, sumR = 0;
@@ -791,6 +842,9 @@ var GABOR_ORIENT = (function () {
         if ((idx & 63) === 0) { var dd = Math.abs(a - A[idx]); if (dd > Math.PI / 2) dd = Math.PI - dd; diffs.push(dd * 57.3); }
         if (GO.replace !== false) A[idx] = a;                               // 방향만 바꿈(coherence는 04번 값) · (2026-10-11c) replace=false면 결 읽기는 예전 방식 그대로(모양 재기만)
       }
+      if (HLM) { var EC = { par: 0, clip: 0 }; if (HZ || HLM.nC) { try { EC = hlEdgeCheck(HLM, ang, conf, GO.replace !== false ? f.coherence : null, mask, Wd, Hd); } catch (eE) {} }
+        GO.stats.hl = { px: HLM.nM, hl: HLM.nH, zone: HLM.nZ, clip: EC.clip, par: EC.par, small: HLS.small, stSkip: HLS.stSkip, med: HLM.med, thr: HLM.thr };
+        (GO.hlLog = GO.hlLog || []).push(GO.stats.hl); if (GO.hlLog.length > 16) GO.hlLog.shift(); }
       diffs.sort(function (p, q) { return p - q; });
       GO.stats.calls++; GO.stats.ms = Math.round(performance.now() - t0); GO.stats.px = cnt; GO.stats.dMed = diffs.length ? diffs[diffs.length >> 1] : null;
       /* (dnz) 잡음 지표 — 결을 따라 4px 앞 자리와 결이 30° 넘게 어긋나는 비율(머리카락 한 올 굵기 안에서 꺾이는 건 잡음) */
@@ -810,6 +864,7 @@ var GABOR_ORIENT = (function () {
       console.log(TAG + ' ' + Wd + '×' + Hd + ' · 머리 픽셀 ' + cnt + ' · ' + n + '방향 · ' + GO.stats.ms + 'ms · 예전 방식과 방향 차이 중앙 ' + (GO.stats.dMed != null ? GO.stats.dMed.toFixed(1) + '°' : '-') +
         ' · 잡음 제거 ' + (DN.on ? DN.stats.ms + 'ms(' + DN.stats.px + 'px · σs ' + DN.sigS + ' · σr ' + DN.sigR + ')' : '꺼짐') + ' · 4px 앞과 30° 넘게 어긋남 ' + (GO.stats.kink != null ? (GO.stats.kink * 100).toFixed(1) + '%' : '-') + ' (끄기 GRAIN_DENOISE.on=false)' +
         (STEER && GO.stats.stSupp && !GO.stats.stSupp.err ? ' · <b>구조텐서 보충</b> 무게 평균 ' + Math.round(GO.stats.stSupp.share * 100) + '% · 15° 넘게 바뀐 자리 ' + Math.round(GO.stats.stSupp.moved15 * 100) + '% · ' + GO.stats.stSupp.ms + 'ms (끄기 GABOR_ORIENT.stSupp=false)' : '') + (STEER ? ' · <b>조종 필터</b> 굵기 ' + GO.steerScales.join('|') + ' · 모음 σ' + GO.steerInt + 'px' + (GO.stats.steerMix ? ' · <b>굵기 섞기(region)</b> 넓은 일치도 ' + (GO.stats.steerMix.F != null ? GO.stats.steerMix.F.toFixed(2) : '-') + ' · 8px/4px 또렷함 ' + (GO.stats.steerMix.G != null ? GO.stats.steerMix.G.toFixed(2) : '-') + ' (예전 GABOR_ORIENT.steerMix=\'pick\')' : '') + ' · 8px 넘게 쓴 자리 ' + (GO.stats.steerBig != null ? Math.round(GO.stats.steerBig * 100) + '%' : '-') + ' · ' + GO.stats.steerMs + 'ms' + (GO.flowPre ? ' · 곧은 결 자리 결 따라 문지른 뒤 다시 읽음 ' + (GO.stats.flowOn != null ? Math.round(GO.stats.flowOn * 100) + '%(평균 ' + (+GO.stats.flowLenAvg).toFixed(1) + 'px · ' + GO.stats.flowMs + 'ms · 끄기 GABOR_ORIENT.flowPre=false)' : '-') : '') + ' (예전 가버: GABOR_ORIENT.engine=\'gabor\')' : '') + (STEER ? '' : ' · 파장 ' + lamUse + 'px') + (!STEER && GO.lamStat ? '(' + GO.lamStat.why + (GO.lamStat.coh4 != null ? ' · 조각 ' + GO.lamStat.patches + '개 ' + GO.lamStat.ms + 'ms · 일치도 4px ' + (+GO.lamStat.coh4).toFixed(2) + ' / 8px ' + (+GO.lamStat.coh8).toFixed(2) + ' · 굴곡 ' + (+GO.lamStat.curv4).toFixed(2) + ' / ' + (+GO.lamStat.curv8).toFixed(2) + '°/px' : '') + (GO.lamStat.mm4 ? ' · 4px ≈ ' + GO.lamStat.mm4.toFixed(1) + 'mm' : '') + ' · 끄기 GABOR_ORIENT.lamAuto=false)' : '') +
+        (GO.stats.hl ? ' · <b>빛 반사</b> 빛 자리 ' + GO.stats.hl.hl + 'px(둘레 포함 ' + GO.stats.hl.zone + ' · 머리 ' + GO.stats.hl.px + ' · 밝기 문턱 ' + GO.stats.hl.thr.toFixed(2) + ') · 가는 굵기로 읽은 ' + GO.stats.hl.small + ' · 구조텐서 보충 뺀 ' + GO.stats.hl.stSkip + ' · 띠 가장자리와 나란해 버린 결 ' + GO.stats.hl.par + ' · 날아가 못 읽은 ' + GO.stats.hl.clip + ' · 명암 고르기 ' + (GO.lumNorm !== false ? '켜짐' : '꺼짐') + ' (끄기 GABOR_ORIENT.hl=false · .lumNorm=false)' : '') +
         ' · 사진 깨끗함 ' + (GO.stats.viewClean != null ? GO.stats.viewClean.toFixed(2) : '-') + (STEER ? '' : ' · 짧은 거리 결 일치도 ' + (GO.stats.localCoh != null ? GO.stats.localCoh.toFixed(2) : '-')) + (GO.smooth ? ' · 다듬기 늘 켬' : GO.stats.autoSmooth ? ' → <b>잡음 사진 — 다듬기 켬</b>(σ ' + GO.refineSig + '/' + GO.refineSigL + 'px · 기준 ' + (GO.autoCohMin || 0.8) + ' · 끄기 GABOR_ORIENT.autoSmooth=false)' : ' → 다듬기 안 함(일치도 기준 ' + (GO.autoCohMin || 0.8) + ' · 굴곡 ' + (isFinite(GO.stats.smoothCurv) ? GO.stats.smoothCurv.toFixed(2) : '-') + ' < ' + (GO.smoothCurvMax || 1.8) + '°/px일 때만)'));
     } catch (e) { console.warn(TAG + ' 실패 — 예전 방식 그대로', e); }
     return f;
