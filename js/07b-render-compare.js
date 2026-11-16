@@ -1888,6 +1888,7 @@ var PHOTO_CHECK = (function () {
    *   (사용자: "뜬 머리가 아직 있고, 할 때마다 바뀌어"). 지금 이 손님의 머리 데이터를 파일 하나로 저장해 보내면, 같은 데이터를 그대로 돌려서 원인을 찾을 수 있습니다.
    *   담는 것: 두상 치수 · 다시 기른 가닥(점은 하나 걸러) · 마네킹 뿌리 · 지금 걸린 결 표 · 지금 화면에 그려진 가닥 · 사진별 카메라 값과 머리 영역·결(칸 단위) · 섹션/스타일링 값 · 빗질 획 수.
    *   안 담는 것: 사진 원본 · 얼굴(머리 영역의 윤곽과 결 방향만 칸 단위로 들어갑니다).
+   *   (2026-11-16 photo) 분석 사진을 머리 영역 둘레만 남겨 같이 담음(camN.jpg) — 눈·코·입은 지움. 아래 exportPhotos 설명 · 안 넣기 PHOTO_CHECK.exportPhoto=false
    *   형식: 'GYDBG1\n' + 머리말 길이(uint32 LE) + 머리말(JSON) + 묶음들(머리말의 parts에 자리·형식). 브라우저가 되면 gzip.
    * ────────────────────────────────────────────────────────────────────── */
   var QS = 8192;                               // 좌표 → int16 배율(±4 모델 단위)
@@ -1980,6 +1981,7 @@ var PHOTO_CHECK = (function () {
         }
         H.cams.push({ angle: c.angle, R: Array.prototype.slice.call(c.R), cx: c.cx, s: c.s, sy: c.sy, crownY: c.crownY, iw: c.iw, ih: c.ih, gw: gw, gh: gh, cell: cell, hasDir: typeof c.dirAt === 'function' });
         add('cam' + ci + '.mask', M); add('cam' + ci + '.ang', A, { scale: 'x/127*90deg' }); add('cam' + ci + '.coh', K, { scale: 'x/255' });
+        try { var ph = P._expPhotos && P._expPhotos[c.angle]; if (ph) add('cam' + ci + '.jpg', ph.bytes, { w: ph.w, h: ph.h, mode: ph.mode, enc: 'jpeg' }); } catch (ePh) { H.notes.push('photo cam' + ci + ': ' + ePh.message); }   // (2026-11-16 photo) 분석 사진
         // (2026-10-25e) 세그멘테이션 확신도(03b SEG_CONF) — 칸 단위 ×255 · 없으면 안 넣음
         try { var SC = W.SEG_CONF && W.SEG_CONF.byView && W.SEG_CONF.byView[c.angle];
           if (SC && SC.map) { var CF = new Uint8Array(gw * gh), kxc = SC.w / c.iw, kyc = SC.h / c.ih;
@@ -2023,7 +2025,48 @@ var PHOTO_CHECK = (function () {
     return { bytes: out, header: H };
   };
   /* 파일로 저장(되면 gzip) — 돌려주는 값: Promise<{name, size, gz}> */
+  /* (2026-11-16 photo) 분석 사진도 같이 담음 — 사용자와 정함("넣어"): 결·머리 영역만으로는 '사진이 실제로 어땠는지'(빛 받은 자리가 영역에서 빠졌는지 등)를 못 가림.
+     기본('hair'): 머리 영역에서 exportPhotoPadPx(사진 폭 600 기준 48px ≈ 2~3cm) 넘게 떨어진 자리는 회색으로 지움 → 눈·코·입은 안 들어감(이마 위쪽·귀 일부는 들어감).
+     사진 전체: PHOTO_CHECK.exportPhoto='full' · 안 넣기: PHOTO_CHECK.exportPhoto=false. 묶음 이름 camN.jpg(JPEG 바이트 · 머리말 parts에 w·h·mode) */
+  if (P.exportPhoto == null) P.exportPhoto = 'hair'; if (P.exportPhotoPadPx == null) P.exportPhotoPadPx = 48; if (P.exportPhotoJpeg == null) P.exportPhotoJpeg = 0.9;
+  function exportPhotos() {
+    var out = {}, cams = [];
+    try { if (P.exportPhoto) cams = getCams(); } catch (e) { cams = []; }
+    function one(c) {
+      return new Promise(function (res) {
+        try {
+          var url = state.shots && state.shots[c.angle]; if (!url) { res(); return; }
+          var im = new Image();
+          im.onerror = function () { res(); };
+          im.onload = function () {
+            try {
+              var w = c.iw | 0, h = c.ih | 0, cv = document.createElement('canvas'); cv.width = w; cv.height = h;
+              var cx = cv.getContext('2d'); cx.drawImage(im, 0, 0, w, h);
+              if (P.exportPhoto !== 'full') {
+                var cell = 4, gw = Math.ceil(w / cell), gh = Math.ceil(h / cell), D = new Float32Array(gw * gh), x, y, i, pad = P.exportPhotoPadPx * w / 600 / cell;
+                for (y = 0; y < gh; y++) for (x = 0; x < gw; x++) D[y * gw + x] = c.smp.at((x + 0.5) * cell, (y + 0.5) * cell) > 0 ? 0 : 1e9;
+                for (y = 0; y < gh; y++) for (x = 0; x < gw; x++) { i = y * gw + x; if (x) D[i] = Math.min(D[i], D[i - 1] + 1); if (y) { D[i] = Math.min(D[i], D[i - gw] + 1); if (x) D[i] = Math.min(D[i], D[i - gw - 1] + 1.414); if (x < gw - 1) D[i] = Math.min(D[i], D[i - gw + 1] + 1.414); } }
+                for (y = gh - 1; y >= 0; y--) for (x = gw - 1; x >= 0; x--) { i = y * gw + x; if (x < gw - 1) D[i] = Math.min(D[i], D[i + 1] + 1); if (y < gh - 1) { D[i] = Math.min(D[i], D[i + gw] + 1); if (x < gw - 1) D[i] = Math.min(D[i], D[i + gw + 1] + 1.414); if (x) D[i] = Math.min(D[i], D[i + gw - 1] + 1.414); } }
+                cx.fillStyle = '#808080';
+                for (y = 0; y < gh; y++) { var x0 = -1; for (x = 0; x <= gw; x++) { var off2 = x < gw && D[y * gw + x] > pad; if (off2 && x0 < 0) x0 = x; else if (!off2 && x0 >= 0) { cx.fillRect(x0 * cell, y * cell, (x - x0) * cell, cell); x0 = -1; } } }
+              }
+              var du = cv.toDataURL('image/jpeg', P.exportPhotoJpeg), bin = atob(du.slice(du.indexOf(',') + 1)), u = new Uint8Array(bin.length);
+              for (var k = 0; k < bin.length; k++) u[k] = bin.charCodeAt(k);
+              out[c.angle] = { bytes: u, w: w, h: h, mode: P.exportPhoto === 'full' ? 'full' : 'hair+' + P.exportPhotoPadPx + 'px' };
+              cv.width = 0; cv.height = 0;
+            } catch (e) {}
+            res();
+          };
+          im.src = url;
+        } catch (e) { res(); }
+      });
+    }
+    return cams.reduce(function (pr, c) { return pr.then(function () { return one(c); }); }, Promise.resolve()).then(function () { return out; }, function () { return out; });
+  }
   P.exportData = function () {
+    return exportPhotos().then(function (ph) { P._expPhotos = ph; try { return P._exportDataNow(); } finally { P._expPhotos = null; } });
+  };
+  P._exportDataNow = function () {
     var ex = P.buildExport(), d = new Date(), pad2 = function (v) { return (v < 10 ? '0' : '') + v; };
     var base = 'gyeol-debug-' + d.getFullYear() + pad2(d.getMonth() + 1) + pad2(d.getDate()) + '-' + pad2(d.getHours()) + pad2(d.getMinutes());
     function save(blob, name, gz) {
