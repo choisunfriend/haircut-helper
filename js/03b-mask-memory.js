@@ -518,6 +518,23 @@ async function _hdLoad(url){
   _hdImgCache.set(url, im); while(_hdImgCache.size > 3) _hdImgCache.delete(_hdImgCache.keys().next().value);
   return im;
 }
+/* 진단 패널(18) 줄 */
+HEAD_HD.lines = function(){
+  const out = [];
+  try{
+    const set = state.shots360, fr = (set && set.frames) || [], hd = fr.filter(function(f){ return f && f.hd; });
+    let s = '[머리 조각] ' + (HEAD_HD.on ? '켜짐' : '꺼짐') + ' · 세트 ' + fr.length + '장 중 조각 ' + hd.length + '장';
+    if(hd.length){ const h0 = hd[0].hd; s += '(여러 장 쌓음 ' + hd.filter(function(f){ return f.hd.n > 1; }).length + ') · 영상 ' + h0.vw + '×' + h0.vh + ' · 조각 ' + h0.pw + '×' + h0.ph + '(영상의 ×' + h0.k + ')'; }
+    else s += ' — 조각 없는 세트(예전 촬영·업로드)는 예전 그대로 읽음';
+    if(set && set.cam) s += ' · 카메라 배율 ' + (set.cam.zoom != null ? set.cam.zoom : '-') + (set.cam.widest ? '(가장 넓게)' : '');
+    out.push(s + ' (끄기 HEAD_HD.on=false · 촬영 쪽 SHOT360.hd=false)');
+    const ks = Object.keys(HEAD_HD.stats);
+    if(ks.length) out.push('  쓴 곳 — ' + ks.map(function(a){ const v = HEAD_HD.stats[a]; return a + (v.zoom ? ' 키우기 덮음 ' + Math.round(v.zoom.cover * 100) + '%' : '') + (v.grain ? ' · 결 덮음 ' + Math.round(v.grain.cover * 100) + '%(분석의 ×' + v.grain.k + ' · ' + v.grain.n + '장)' : ''); }).join(' | '));
+    const zs = (typeof SUBJECT_ZOOM !== 'undefined' && SUBJECT_ZOOM.stats) || {}, hp = Object.keys(zs).filter(function(a){ return zs[a] && zs[a].headPxEff > 0; });
+    if(hp.length) out.push('  원본에서 머리 폭(px · 조각이 있으면 조각 기준) — ' + hp.map(function(a){ return a + ' ' + zs[a].headPxEff; }).join(' · ') + ' — 18cm 어림으로 1cm에 ' + (Math.min.apply(null, hp.map(function(a){ return zs[a].headPxEff; })) / 18).toFixed(0) + '~' + (Math.max.apply(null, hp.map(function(a){ return zs[a].headPxEff; })) / 18).toFixed(0) + 'px');
+  }catch(e){}
+  return out;
+};
 function _hdRecFor(url){ try{ if(!HEAD_HD.on || typeof SHOT360 === 'undefined' || !SHOT360 || !SHOT360._hdFor) return null; return SHOT360._hdFor(url) || null; }catch(e){ return null; } }
 /* 원본 좌표 → 조각 좌표 변환 { ax, bx, ay, by } : 조각 x = ax·X + bx (IW·IH = 지금 읽은 원본 크기 — 칸 사진이 다시 저장돼 크기가 달라도 전체 사진이면 맞음) */
 function _hdMap(hd, IW, IH){ const rx = hd.vw / Math.max(1, IW), ry = hd.vh / Math.max(1, IH); return { ax: rx * hd.k, bx: -hd.x * hd.k, ay: ry * hd.k, by: -hd.y * hd.k }; }
@@ -532,7 +549,8 @@ function _hdOverlay(ctx, hdImg, M, sx, sy, sw, sh, dw, dh){
   return ((cx1 - cx0) * (cy1 - cy0)) / Math.max(1, (hx1 - hx0) * (hy1 - hy0));
 }
 async function subjectZoom(angle){
-  const Z = SUBJECT_ZOOM, st = { at: Date.now(), done: false, why: '' };
+  const Z = SUBJECT_ZOOM, st = { at: Date.now(), done: false, why: '' }, _prevSt = Z.stats[angle];
+  if(_prevSt && _prevSt.headPxEff > 0){ st.headPxSrc = _prevSt.headPxSrc; st.headPxEff = _prevSt.headPxEff; }   // (2026-11-16 wide) 다시 불려도(이미 키운 사진) 잰 머리 폭은 남김
   Z.stats[angle] = st;
   try{
     if(!Z.on){ st.why = '꺼짐'; return false; }
@@ -567,6 +585,7 @@ async function subjectZoom(angle){
     const area = (bw * bh) / (sw * sh);
     st.box = { x: +(x0 / sw).toFixed(3), y: +(y0 / sh).toFixed(3), w: +(bw / sw).toFixed(3), h: +(bh / sh).toFixed(3) }; st.area = +area.toFixed(2); st.src = IW + '×' + IH + (srcUrl !== lo ? '(원본)' : '');
     const kx = IW / sw, ky = IH / sh;
+    try{ const _hq = _hdRecFor(srcUrl); st.headPxSrc = Math.round(hw * kx); st.headPxEff = Math.round(hw * kx * (_hq ? (_hq.vw / IW) * _hq.k : 1)); }catch(e){}   // (2026-11-16 wide) 원본에서 머리 폭(px) · 머리 조각이 있으면 조각 기준 — 13b 촬영 안내 '머리가 작게 찍힘'
     const M = (typeof INPUT_RES !== 'undefined' && INPUT_RES.photoMax > 0) ? INPUT_RES.photoMax : 800;
     let cxs = x0 * kx, cys = y0 * ky, cws = bw * kx, chs = bh * ky;
     if(area > Z.maxArea){

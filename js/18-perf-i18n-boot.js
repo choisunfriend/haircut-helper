@@ -229,6 +229,8 @@ function perfPanelLines(){
   out.push(...SHOULDER._panelLines());  // 어깨(13a)
   try{ out.push(...ROOTS_FALLBACK.lines()); }catch(e){}   // 뿌리 대체(13b)
   try{ out.push(...VIEWS360.lines()); }catch(e){}         // 360 뷰(13b)
+  try{ out.push(...HEAD_HD.lines()); }catch(e){}          // (2026-11-16) 머리 조각(03b · 05)
+  try{ out.push(...SIL_LEN.lines()); }catch(e){}          // (2026-11-16) 실루엣 길이(42) — 콘솔에만 찍히던 줄
   try{ out.push(...READ_STEPS.lines()); }catch(e){}       // 결 읽기 단계(34) — 건너기·채우기·정렬 전후
   out.push(...COMB3D._panelLines());    // 빗질 3D(17a)
   out.push(...BODY_SEG_WAIT._panelLines()); // 사람 윤곽(03b)

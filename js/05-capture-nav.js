@@ -1034,6 +1034,12 @@ var SHOT360 = (function () {
   }
 
   /* ── (2026-11-16 hd) 머리 조각 — 화면 쪽(영상에서 자르기 · 저장 · 끊어 돌리기) ───────────────────── */
+  /* (2026-11-16 hd2) 저사양 폰(03b isLowMemDevice — 진단 "저사양판정")은 한도를 낮춤: 조각 hdLowMaxPx · 쌓은 결과 hdLowSrMaxPx · 밀린 일 1개.
+     실기기에서 아직 못 돌려 봐서 미리 걸어 둠(쌓는 동안 조각 4장 + 격자 2벌이 메모리에 같이 있음). 직접 정하려면 SHOT360.hdLowMem=false 후 hdMaxPx 등 */
+  function hdLim() {
+    var low = false; try { low = Q.hdLowMem !== false && typeof isLowMemDevice === 'function' && isLowMemDevice(); } catch (e) {}
+    return low ? { low: true, maxPx: Math.min(Q.hdMaxPx, Q.hdLowMaxPx || 1000000), srMaxPx: Math.min(Q.hdSrMaxPx, Q.hdLowSrMaxPx || 2000000), queue: 1 } : { low: false, maxPx: Q.hdMaxPx, srMaxPx: Q.hdSrMaxPx, queue: Q.hdQueue };
+  }
   function hdRect() {               // 안내 윤곽 둘레 상자 → 영상 픽셀 좌표(영상은 화면을 꽉 채우게 잘려 보임 = object-fit:cover)
     var vw = vid.videoWidth, vh = vid.videoHeight, SW = vid.clientWidth, SH = vid.clientHeight; if (!vw || !vh) return null;
     var x0 = 0, y0 = 0, x1 = vw, y1 = vh;
@@ -1044,7 +1050,7 @@ var SHOT360 = (function () {
     }
     x0 = Math.max(0, Math.floor(x0)); y0 = Math.max(0, Math.floor(y0)); x1 = Math.min(vw, Math.ceil(x1)); y1 = Math.min(vh, Math.ceil(y1));
     var w = x1 - x0, h = y1 - y0; if (w < 64 || h < 64) return null;
-    return { x: x0, y: y0, w: w, h: h, vw: vw, vh: vh, kd: Math.min(1, Math.sqrt(Q.hdMaxPx / (w * h))) };
+    return { x: x0, y: y0, w: w, h: h, vw: vw, vh: vh, kd: Math.min(1, Math.sqrt(hdLim().maxPx / (w * h))) };
   }
   function grabHd(r) {
     var c = document.createElement('canvas'); c.width = Math.max(8, Math.round(r.w * r.kd)); c.height = Math.max(8, Math.round(r.h * r.kd));
@@ -1062,12 +1068,12 @@ var SHOT360 = (function () {
   function hdStart(b) {
     try {
       if (!b.hdF || !b.hdF[0]) { hdFree(b); return; }
-      var cw = b.hdF[0].width, ch = b.hdF[0].height, sr = Math.min(Q.hdSr || 1, Math.sqrt(Q.hdSrMaxPx / (cw * ch)));
+      var cw = b.hdF[0].width, ch = b.hdF[0].height, LM = hdLim(), sr = Math.min(Q.hdSr || 1, Math.sqrt(LM.srMaxPx / (cw * ch)));
       if (!(sr >= Q.hdSrMin)) { hdSingle(b, '조각이 이미 큼 ×' + sr.toFixed(2)); return; }
       var F = [b.hdF[0]], i; for (i = 1; i < b.hdF.length; i++) { var c = b.hdF[i]; if (c && c.width === cw && c.height === ch && b.sharp[i] >= b.sharp[0] * Q.burstSharp) F.push(c); else if (c) { c.width = 0; c.height = 0; } }
       b.hdF = F;
       if (F.length < 2) { hdSingle(b, '맞는 프레임 없음'); return; }
-      if (hdJobs.length >= Q.hdQueue) { hdSingle(b, '밀림'); return; }
+      if (hdJobs.length >= LM.queue) { hdSingle(b, '밀림'); return; }
       hdJobs.push(hdJob(b, F, sr)); hdKick();
     } catch (e) { hdSingle(b, '오류'); }
   }
@@ -1293,9 +1299,9 @@ var SHOT360 = (function () {
     try {                                                                      // (2026-11-16 hd) 머리 조각을 프레임에 붙임(같은 칸 사진 url)
       var hm = []; [got, sides, fronts].forEach(function (o) { Object.keys(o).forEach(function (k2) { var e2 = o[k2]; if (e2 && e2.hd && e2.url) hm.push(e2); }); });
       frames.forEach(function (f) { for (var hi = 0; hi < hm.length; hi++) if (hm[hi].url === f.url) { f.hd = hm[hi].hd; hdN++; if (f.hd.n > 1) hdSr++; break; } });
-      if (Q.hd !== false) console.log(TAG + ' 머리 조각 ' + hdN + '/' + frames.length + '장(여러 장 쌓음 ' + hdSr + ') · 영상 ' + (vid ? vid.videoWidth + '×' + vid.videoHeight : '-') + (hm[0] ? ' · 조각 ' + hm[0].hd.pw + '×' + hm[0].hd.ph + '(영상의 ×' + hm[0].hd.k + ')' : ''));
+      if (Q.hd !== false) console.log(TAG + ' 머리 조각 ' + hdN + '/' + frames.length + '장(여러 장 쌓음 ' + hdSr + ') · 영상 ' + (vid ? vid.videoWidth + '×' + vid.videoHeight : '-') + (hm[0] ? ' · 조각 ' + hm[0].hd.pw + '×' + hm[0].hd.ph + '(영상의 ×' + hm[0].hd.k + ')' : '') + ' · 카메라 배율 ' + (Q.cam.zoom || '-') + (hdLim().low ? ' · 저사양 한도' : ''));
     } catch (e) {}
-    var set = { version: 1, at: Date.now(), stepDeg: Q.stepDeg, sign: s, signAuto: !Q.sign && !userFlip && signN >= 2, sensor: sensorOk, frames: frames, frontSeek: fz, loop: loop };
+    var set = { version: 1, at: Date.now(), cam: { vw: vid ? vid.videoWidth : 0, vh: vid ? vid.videoHeight : 0, zoom: Q.cam.zoom || null, widest: Q.widest === true, hd: hdN, hdStacked: hdSr }, stepDeg: Q.stepDeg, sign: s, signAuto: !Q.sign && !userFlip && signN >= 2, sensor: sensorOk, frames: frames, frontSeek: fz, loop: loop };
     if (loop) console.log(TAG + ' 0°↔360° 맞춤(' + (loop.src === 'gyro' ? '자이로 회전량' : '방위 누적') + ') — 출발 정면 yaw ' + loop.yaw0 + '° · 돌아온 정면 yaw ' + loop.yaw1 + '° · 센서 ' + loop.sensorDeg + '° / 진짜 ' + loop.trueDeg + '° → 표류 ' + loop.drift + '°를 돈 양 비례로 나눔(×' + loop.scale + ') · ' + loop.sec + '초' +
       (loop.speed ? ' · 속도 °/s p10 ' + loop.speed.p10 + ' / 중앙 ' + loop.speed.mid + ' / p90 ' + loop.speed.p90 : '') + ' · 기준점 ' + loop.anchors.join(' → ') + (loop.sideCheck.length ? ' · ±45° 센서 체크: ' + loop.sideCheck.join(' | ') : ' · ±45° 얼굴 못 잼(두 정면만)') + ' · 띠 ' + loop.strip + '장' + (loop.headingVsGyro ? ' · 자이로/방위 ' + loop.headingVsGyro : '') + ' (끄기 SHOT360.loop=false)');
     else if (Q.loop && !(fronts[1] || fronts[-1])) console.log(TAG + ' 0°↔360° 맞추기 안 함 — 한 바퀴 돌아온 정면을 못 찾음(정면까지 돌아와서 [끝내기]) · 예전 방식');
@@ -1379,9 +1385,12 @@ var SHOT360 = (function () {
       stream = s;
       /* (2026-10-25f) 가장 넓게 — 기기가 1배보다 작은 배율(광각)을 주면 그 최솟값으로. 머리가 잘리는 것보다 작게 찍히는 쪽이 살리기 쉬움(작으면 03b 머리 키우기)
          끄기 SHOT360.widest=false */
-      try { if (Q.widest !== false) s.getVideoTracks().forEach(function (tr) { var cp = tr.getCapabilities ? tr.getCapabilities() : null, st = tr.getSettings ? tr.getSettings() : {};
+      /* (2026-11-16 wide) 기본 끔 — 사용자와 정함: 초광각으로 잡히면 머리가 작게 찍히고(10-26 세트: 720px 사진에 머리 폭 약 135px = 1cm에 7~8px) 가까운 쪽이 크게 찍히는 왜곡이 커서
+         사진끼리 윤곽이 안 맞음(앱 카메라는 원근을 안 따짐). 머리 조각(hd)이 생겨 넓게 찍을 이유도 줄었음. 이제 기기 기본 배율(보통 1배 = 기본 렌즈) 그대로. 예전대로 SHOT360.widest=true */
+      try { if (Q.widest === true) s.getVideoTracks().forEach(function (tr) { var cp = tr.getCapabilities ? tr.getCapabilities() : null, st = tr.getSettings ? tr.getSettings() : {};
         if (cp && cp.zoom && typeof cp.zoom.min === 'number' && cp.zoom.min < (st.zoom || 1) - 1e-3) { tr.applyConstraints({ advanced: [{ zoom: cp.zoom.min }] }).then(function () { Q.cam.zoom = cp.zoom.min; console.log(TAG + ' 카메라 배율 ' + cp.zoom.min + '배(가장 넓게)'); }, function () {}); }
-        else Q.cam.zoom = st.zoom || 1; }); } catch (e) {}
+        else Q.cam.zoom = st.zoom || 1; });
+        else s.getVideoTracks().forEach(function (tr) { var st2 = tr.getSettings ? tr.getSettings() : {}; Q.cam.zoom = st2.zoom || 1; }); } catch (e) {}
       try { s.getVideoTracks().forEach(function (t) { t.onended = function () { if (ov && stream === s) camFail('카메라가 끊겼습니다 — [카메라 다시 열기]를 눌러 주세요'); }; }); } catch (e) {}
       try { vid.srcObject = s; } catch (e) { try { vid.src = URL.createObjectURL(s); } catch (x) {} }
       vid.onloadedmetadata = function () { playVid(); camReady(); };

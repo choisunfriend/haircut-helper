@@ -1873,12 +1873,16 @@ var VIEWS360 = (function () {
   /* ────────────────────────────────────────────────────────────────────────
    * 촬영 안내 — 어떤 사진에 무슨 문제가 있었나(분석 직후 · 보정 전에 알 수 있는 것)
    * ────────────────────────────────────────────────────────────────────── */
-  var KINDS = ['frame', 'blur', 'angle', 'dist', 'height'];
+  /* (2026-11-16 wide) 'small' — 머리가 작게 찍힘: 원본(머리 조각이 있으면 조각)에서 머리 폭이 smallHeadPx 미만. 10-26 세트(초광각 · 멀리서)는 약 135px(1cm에 7~8px)라 결 필터(파장 4px)가 다발도 겨우 읽음.
+     빼지는 않고 안내만(흔들림과 같음). 끄기 VIEWS360.smallHeadPx=0 */
+  if (X.smallHeadPx == null) X.smallHeadPx = 220;
+  var KINDS = ['frame', 'small', 'blur', 'angle', 'dist', 'height'];
   var TXT = {
     ko: {
       title: '촬영 안내',
       intro: function (n, t) { return t + '장 중 ' + n + '장에서 문제가 보였어요.'; },
       frame: ['머리가 화면 밖으로 나감', '머리 전체가 타원 안에 들어오게 해 주세요.'],
+      small: ['머리가 작게 찍힘', '조금 더 가까이서, 머리가 안내 윤곽에 차게 찍어 주세요.'],
       blur: ['흔들림', '조금 더 천천히 돌아 주세요.'],
       angle: ['각도가 어긋남', '손님은 가만히 있고, 폰이 머리 둘레를 돌아야 해요.'],
       dist: ['거리가 달라짐', '처음과 같은 거리를 유지해 주세요(어깨까지 보이게).'],
@@ -1894,6 +1898,7 @@ var VIEWS360 = (function () {
       title: 'Capture check',
       intro: function (n, t) { return n + ' of ' + t + ' photos had a problem.'; },
       frame: ['Head went out of the frame', 'Keep the whole head inside the oval.'],
+      small: ['Head is too small in the photo', 'Move a little closer so the head fills the guide outline.'],
       blur: ['Motion blur', 'Walk around a little more slowly.'],
       angle: ['Angle drifted', 'The client stays still; the phone circles the head.'],
       dist: ['Distance changed', 'Keep the same distance as at the start (shoulders in view).'],
@@ -1919,6 +1924,14 @@ var VIEWS360 = (function () {
     var med = sh.length ? sh[sh.length >> 1] : 0;
     var baseFrames = [p.front, p.left, p.right, p.back];
     if (med > 0) set.frames.forEach(function (f) { if (f.sharp > 0 && f.sharp < med * X.blurFrac) add(f.deg, baseFrames.indexOf(f) >= 0, 'blur', '선명도 ' + f.sharp + ' (세트 중앙값 ' + med + ')'); });
+    // 머리가 작게 찍힘(기준·추가 사진 모두 · 머리 키우기가 잰 원본 머리 폭)
+    try {
+      var ZS = (typeof SUBJECT_ZOOM !== 'undefined' && SUBJECT_ZOOM.stats) || {};
+      if (X.smallHeadPx > 0) BASE.concat(X.order || []).forEach(function (a) {
+        var z = ZS[a], f = p[a] || null, deg = f ? f.deg : (X.views[a] ? X.views[a].deg : null);
+        if (z && z.headPxEff > 0 && z.headPxEff < X.smallHeadPx && deg != null) add(deg, BASE.indexOf(a) >= 0, 'small', '머리 폭 ' + z.headPxEff + 'px(기준 ' + X.smallHeadPx + ')');
+      });
+    } catch (e) {}
     // 기준 4장
     BASE.forEach(function (a) {
       var f = p[a]; if (!f) return;
@@ -1940,7 +1953,7 @@ var VIEWS360 = (function () {
       var v = X.views[k], pre = v.why ? { kind: v.kind, why: v.why } : precheck(v, frontYaw);
       if (pre.why && pre.kind) { add(v.deg, false, pre.kind, pre.why); extraBad++; }
     });
-    var baseBad = []; items.forEach(function (it) { if (it.base && it.kind !== 'blur' && baseBad.indexOf(it.deg) < 0) baseBad.push(it.deg); });
+    var baseBad = []; items.forEach(function (it) { if (it.base && it.kind !== 'blur' && it.kind !== 'small' && baseBad.indexOf(it.deg) < 0) baseBad.push(it.deg); });
     var bad = {}; items.forEach(function (it) { bad[Math.round(it.deg)] = 1; });
     return { total: set.frames.length, bad: Object.keys(bad).length, items: items, baseBad: baseBad, extraBad: extraBad, setBad: !!(X.last && X.last.setBad) };
   };
