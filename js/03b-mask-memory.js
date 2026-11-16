@@ -1184,6 +1184,12 @@ async function extractHairMaskCore(angle){
               }catch(e){ console.warn('뿌리 흐름장 실패(예전 규칙으로):', e); flow = null; }
             }
             orientationColSamples = buildColumnOrientationSamples(angleField, coherenceField, orientMaskBuf, w, h, 12, flow);
+            /* (11-16c) 날아간 자리 지도 — 사용자: "날아가 버린 자리가 규정이 되면 못 보는 걸로 해서 기권". 세 채널 ≥ 245 · 둘레 2px · 머리 영역 밖까지(날아간 머리는 영역에서 빠지니까).
+               17b washAt이 이 사진의 "머리 아님" 표를 기권으로 바꿈(배경 위 제외). 끄기 window.WASHOUT_OFF=true */
+            try{ if(orientationColSamples && !window.WASHOUT_OFF){ const N=w*h, WO=new Uint8Array(N), WO2=new Uint8Array(N), g=2; let n=0;
+              for(let i=0;i<N;i++){ const j=i*4; if(srcPixels[j]>=245&&srcPixels[j+1]>=245&&srcPixels[j+2]>=245) WO[i]=1; }
+              for(let y=0;y<h;y++) for(let x=0;x<w;x++){ if(!WO[y*w+x]) continue; for(let dy=-g;dy<=g;dy++) for(let dx=-g;dx<=g;dx++){ const X=x+dx,Y=y+dy; if(X>=0&&Y>=0&&X<w&&Y<h&&!WO2[Y*w+X]){ WO2[Y*w+X]=1; n++; } } }
+              orientationColSamples.washout=WO2; orientationColSamples.washoutW=w; orientationColSamples.washoutH=h; orientationColSamples.washoutN=n; } }catch(eWo){}
           }catch(e){
             console.warn('결방향 인식 실패, 기본 직선 모드로 폴백:', e);
             orientationColSamples = null;

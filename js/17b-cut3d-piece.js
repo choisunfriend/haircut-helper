@@ -2014,6 +2014,17 @@ var REGROW = (function () {
       pj.z = R[6] * x + R[7] * ((G.facingBodyFix !== false && y < yBody - CY) ? yBody - CY : y) + R[8] * z;
       return pj;
     }
+    /* (11-16c) 날아간 자리 = 그 사진은 기권 — 04 GABOR_ORIENT가 남긴 f.washout(사진 픽셀 세 채널 ≥245 · 둘레 2px). 배경(사람 윤곽 밖) 위는 기권 아님(흰 벽·조명).
+       교집합·마지막 다듬기·껍질 판정에서 이 사진의 "머리 아님" 표를 빼고, 다른 사진이 판단. 끄기 REGROW.woAbstain=false */
+    var woStat = { n: 0 }; G.woStat = woStat;
+    function washAt(cam, ix, iy) {
+      if (G.woAbstain === false) return false;
+      if (cam._wo === undefined) { cam._wo = null; try { var mi = state.hairMasks && state.hairMasks[cam.angle], o = mi && mi.orientation; if (o && o.washout && o.washoutW > 0) cam._wo = { a: o.washout, w: o.washoutW, h: o.washoutH, k: o.washoutW / (mi.w || cam.iw) }; } catch (e) {} }
+      var W = cam._wo; if (!W) return false;
+      var gx = Math.floor(ix * W.k), gy = Math.floor(iy * W.k); if (gx < 0 || gy < 0 || gx >= W.w || gy >= W.h || !W.a[gy * W.w + gx]) return false;
+      if (personAt(cam, ix, iy) === false) return false;
+      woStat.n++; woStat[cam.angle] = (woStat[cam.angle] || 0) + 1; return true;
+    }
     function hairAt(cam, ix, iy) {
       var t = cam.tap, s = cam.smp;
       if (s.at(ix, iy) > 0 || s.at(ix - t, iy) > 0 || s.at(ix + t, iy) > 0 || s.at(ix, iy - t) > 0 || s.at(ix, iy + t) > 0) return true;
@@ -2162,7 +2173,7 @@ var REGROW = (function () {
        디버그 1501·1505·1510: 옆 사진에서 밖으로 나간 앞쪽 옆머리 점이 중앙 1.2~1.3cm · p90 1.5~2.0cm = 옆 여유(1.5cm)를 그대로 다 씀.
        그 점들은 정면 사진에선 머리 커튼 안이라 아무도 못 막음 → 옆에서 보면 얼굴 앞으로 튀어나옴. 뒤 절반은 예전 1.5cm 그대로(사진끼리 어긋남 흡수).
        되돌리기 REGROW.sideFrontMarginCm = null */
-    function hullOut(cam, ix, iy, p) { var h = cam.hull; if (!h) return false; var gx = Math.floor(ix / h.cp), gy = Math.floor(iy / h.cp); if (gx < 0 || gy < 0 || gx >= h.gw || gy >= h.gh) return true; var d = h.D[gy * h.gw + gx]; if (h.limF != null && p && p.z > 0 && d > h.limF && d <= h.lim) { G._sideFrontN = (G._sideFrontN || 0) + 1; return true; } return d > h.lim; }
+    function hullOut(cam, ix, iy, p) { var h = cam.hull; if (!h) return false; if (washAt(cam, ix, iy)) return false; var gx = Math.floor(ix / h.cp), gy = Math.floor(iy / h.cp); if (gx < 0 || gy < 0 || gx >= h.gw || gy >= h.gh) return true; var d = h.D[gy * h.gw + gx]; if (h.limF != null && p && p.z > 0 && d > h.limF && d <= h.lim) { G._sideFrontN = (G._sideFrontN || 0) + 1; return true; } return d > h.lim; }
     /* (2026-11-08b) 보이는 맨살 = 그 자리에 머리 없음(여유 없이) — 사용자: "지금 다들 앞머리 넘침이 발생하고 있어 … 영역자르기 문제인 거 같은데"
        디버그 5세트 정면 넘침(사진 머리 영역에서 0.6cm 넘게 밖) 중 머리 윤곽 안쪽 구멍(이마·눈썹) 몫: 짧은 남자 33% · 긴 웨이브 85% · 짧은 펌 8%.
        원인 셋: ① 보이는 사진 투표(voteVis)가 마주 보는 살을 배경처럼 다뤄 1cm 여유를 줌(예전 voteRaw의 '얼굴 위 여유 없음'이 이 경로엔 빠짐)
@@ -2415,6 +2426,7 @@ var REGROW = (function () {
         if (o.ix < 0 || o.iy < 0 || o.ix >= c.iw || o.iy >= c.ih) continue;
         if (camBlocked(c, p) || faceBlocks(c, p)) continue;
         if (hairAt(c, o.ix, o.iy)) { yes++; continue; }
+        if (washAt(c, o.ix, o.iy)) continue;                               // (11-16c) 날아간 자리 = 기권
         var h = c.hull, gx = Math.floor(o.ix / h.cp), gy = Math.floor(o.iy / h.cp);
         if (gx < 0 || gy < 0 || gx >= h.gw || gy >= h.gh || h.D[gy * h.gw + gx] * (h.cmCell || 1) > G.isectTolCm) { G._isectNo = (G._isectNo || 0) + 1; return 0; }
       }
@@ -2429,6 +2441,7 @@ var REGROW = (function () {
         if (ix < 0 || iy < 0 || ix >= cam.iw || iy >= cam.ih) continue;   // 사진 밖(잘린 사진) — 판단 안 함
         if (G.fcAbstain !== false && (camBlocked(cam, p) || faceBlocks(cam, p))) { G._fcAbst = (G._fcAbst || 0) + 1; continue; }   // (11-16) 가린 사진은 기권 · 끄기 REGROW.fcAbstain=false
         if (hairAt(cam, ix, iy)) continue;
+        if (washAt(cam, ix, iy)) continue;                                 // (11-16c) 날아간 자리 = 기권
         if (!facing) { var pa = personAt(cam, ix, iy); if (pa !== false) continue; }   // 반대쪽은 배경일 때만
         if (hullOut(cam, ix, iy, null)) return 2;
         worst = 1;
@@ -5636,7 +5649,7 @@ function helixMeasure(rgba,mask,W,H,angle,coh,opt){opt=opt||{};const n=opt.n||25
     L.push('  두피 밖 결 = 사진 평면 풀이(한 장: 사진 결 + 깊이는 직전 방향·중력 ' + (+G.lsDownK || 0) + ' 섞음 · 두 장 이상: 평면 교선 · 반지름 방향 막지 않음): ' + (G.lsFree ? '켜짐 — 그렇게 정한 걸음 ' + (s.lsN || 0) + '회 (끄기 ?lsfree=0)' : '꺼짐(예전: 원통 접선으로 올림)'));
     L.push('  머리 영역 판정: ' + (G.hullRule === 'facing' ? '마주 보는 사진 한 장이 안·밖 + 다른 사진(가리지 않은 반대편 포함)은 여유 넘게 밖일 때만 거부 — 덩어리 칸 중 다른 사진이 거부한 칸 ' + (G._facingVeto || 0) + ' · 얼굴 위 여유 없이 밖으로 본 칸 ' + (G._faceNoMarginN || 0) + ' · 옆 사진 얼굴 쪽 여유 ' + (G.sideFrontMarginCm != null ? G.sideFrontMarginCm + 'cm로 밖으로 본 횟수 ' + (G._sideFrontN || 0) + ' (되돌리기 REGROW.sideFrontMarginCm=null)' : '꺼짐') + ' (되돌리기 REGROW.hullRule=\'front\' · REGROW.faceNoMargin=false)' : G.hullRule) + ' · 얼굴 어림 안쪽 점 ' + (G.faceInsideBlocks === true ? '가림으로 봄' : '보이는 걸로 봄'));   // (2026-10-28)
     try { var dS = G.dnStat, dC = G.dn; if (dS) { var byC = Object.keys(dS.cohBy || {}).map(function (a) { return a + ' ' + dS.cohBy[a].toFixed(2); }).join(' · ');
-      try { var GOh = typeof GABOR_ORIENT !== 'undefined' ? GABOR_ORIENT : null; if (GOh && GOh.hl !== false && GOh.hlLog && GOh.hlLog.length) L.push('  빛 반사(결 읽기 · 읽은 순서대로 최근 ' + GOh.hlLog.length + '번 · 명암 고르기 ' + (GOh.lumNorm !== false ? '켜짐' : '꺼짐') + '): ' + GOh.hlLog.map(function (h, k) { return (k + 1) + ') 가는 밝은 줄(흰머리·윤기 — 결로 씀) ' + (h.thin || 0) + 'px · 반사 띠 ' + h.hl + 'px · 둘레 ' + h.zone + ' · 가는 굵기 ' + h.small + ' · 띠 가장자리와 나란해 버림 ' + h.par + ' · 날아감 ' + h.clip; }).join(' | ') + ' (끄기 GABOR_ORIENT.hl=false · .lumNorm=false)'); } catch (eHl) {}
+      try { var GOh = typeof GABOR_ORIENT !== 'undefined' ? GABOR_ORIENT : null; if (GOh && GOh.hl !== false && GOh.hlLog && GOh.hlLog.length) L.push('  빛 반사(결 읽기 · 읽은 순서대로 최근 ' + GOh.hlLog.length + '번 · 명암 고르기 ' + (GOh.lumNorm !== false ? '켜짐' : '꺼짐') + '): ' + GOh.hlLog.map(function (h, k) { return (k + 1) + ') 가는 밝은 줄(흰머리·윤기 — 결로 씀) ' + (h.thin || 0) + 'px · 반사 띠 ' + h.hl + 'px · 둘레 ' + h.zone + ' · 가는 굵기 ' + h.small + ' · 띠 가장자리와 나란해 버림 ' + h.par + ' · 날아감 ' + h.clip; }).join(' | ') + ' (끄기 GABOR_ORIENT.hl=false · .lumNorm=false)' + (G.woStat ? ' · <b>날아간 자리 기권</b>(사진 픽셀 하얗게 날아감 · 배경 위 제외) ' + Object.keys(G.woStat).filter(function (k) { return k !== 'n'; }).map(function (k) { return k + ' ' + G.woStat[k]; }).join(' · ') + ' (합 ' + (G.woStat.n || 0) + '번 · 끄기 REGROW.woAbstain=false)' : '')); } catch (eHl) {}
     L.push('  잔결 걷어내기(가닥을 따라 · 뿌리·마디 길이 그대로): ' + (!dC || !dC.on ? '꺼짐(켜기 REGROW.dn.on=true)' : '가닥 ' + dS.n + ' · Taubin ' + dC.passes + '번(점 2~3개 주기 지그재그)'
         + ' · 사진 결 또렷함 중앙 ' + (dS.coh != null ? dS.coh.toFixed(2) : '?') + (byC ? '(' + byC + ')' : '')
         + ' → 가우스 ' + (dS.sigCm > 0.05 ? 'σ ' + dS.sigCm.toFixed(2) + 'cm(흐린 사진 — ' + dC.cohHi + ' 아래)' : '안 함(깨끗한 사진 — 굴곡 그대로)')
