@@ -451,7 +451,21 @@ var SHOT360 = (function () {
        어긋남이 큰 프레임(맞춘 뒤 차이가 가장 작은 프레임의 burstRej배 초과)·흐린 프레임(선명도 첫 장의 burstSharp배 미만)은 뺌 · 2장 미만이면 첫 장 그대로.
        평균은 setTimeout으로 뒤에서(링 화면 안 멈춤) · [끝내기] 때 남은 건 바로 마무리. 끄기 SHOT360.burst=false */
     burst: true, burstN: 4, burstSmall: 200, burstShift: 8, burstRej: 1.6, burstSharp: 0.6,
-    sign: 0               // +1/-1 = 좌우 고정 · 0 = 자동(얼굴 각도로 정함, 못 정하면 기본 -1)
+    sign: 0,              // +1/-1 = 좌우 고정 · 0 = 자동(얼굴 각도로 정함, 못 정하면 기본 -1)
+    /* (2026-11-16 loop) 0°↔360° 맞추기 + 회전량 기준 — 사용자: "시간만 따지면 빠르게 돈 부분과 느리게 돈 부분은 차이가 생기기 때문에 가속도 적용하기로 한건데"
+       ① 회전량 R: 자이로(devicemotion.rotationRate)를 중력 방향(세로축)으로 투영해 적분 — 방위(나침반) 접힘·튐 없이 실제로 돈 양.
+          자이로가 없거나 방위와 안 맞으면 접지 않은 방위 누적으로 대신. 자이로 배율·부호는 방위 누적에 한 번 맞춤(전체 기울기만 · 구간 모양은 자이로).
+       ② 띠 프레임: 칸(30°)과 별도로 R이 stripDeg 돌 때마다 한 장 — 시간이 아니라 돈 양마다라 빨리 돈 구간도 촘촘함.
+       ③ 정면을 바퀴마다 따로 잼(출발 때 · 한 바퀴 돌아왔을 때). 두 정면의 얼굴 yaw로 진짜 회전량(360 + yaw 차)을 알고,
+          센서 회전량과의 차(표류)를 <b>회전량 비례</b>로 나눠 모든 장의 각도를 고침: 각도 = yaw0 + (R − R0) × (진짜/센서).
+       ④ 고친 각도로 정면·±45°·뒤·±90°·±135°를 고름(time6 대신 keep8). 돌아온 정면이 없으면 예전(time6) 그대로.
+       끄기 SHOT360.loop=false · 자이로 끄기 SHOT360.gyro=false · 진단 state.shots360.loop */
+    loop: true, gyro: true, stripDeg: 10, loopScaleMin: 0.8, loopScaleMax: 1.25,
+    /* (11-16 loop2) ±45°도 얼굴로 잼 — 사용자: "+-45도는 얼굴로 재야지. 1차 센서각도 체크도 될거고"
+       촬영 중 센서 |각도| sideSeekLo~Hi를 지나는 동안 얼굴 yaw가 ±45°에 가장 가까운 장을 바퀴·방향마다 둠.
+       [끝내기] 때 0°(출발)·±45°·360°(돌아옴) 얼굴 각도를 기준점으로 회전량→각도를 <b>구간마다</b> 맞춤(구간 안은 돈 양 비례).
+       기준점마다 센서 각도(두 정면으로 맞춘 직선)와 얼굴 각도 차를 잼 = 1차 센서 체크 · anchorTol°를 넘으면 그 기준점은 안 씀(얼굴 오인식). */
+    sideSeekLo: 25, sideSeekHi: 70, anchorTol: 20
   }, W.SHOT360 || {});
   if (!Q.on) return;
 
@@ -603,6 +617,18 @@ var SHOT360 = (function () {
   function applySetCore(set) {
     if (!set || !set.frames || !set.frames.length) { toast('360 세트가 비어 있습니다'); return Promise.resolve(false); }
     /* (2026-10-25f) 촬영 중 정면을 찾았어도 (11-04 fpick) 좌·우를 얼굴 각도로 고르려면 나머지 장 얼굴은 재야 함 — 정면 장은 _fy가 있어 다시 안 잼 */
+    /* (11-16 loop) 띠 프레임까지 들어간 세트는 장이 많음 — 얼굴 재기 전에 쓸 각도(0·±45·±90·±135·180) 근처 가까운 3장씩만 남김 */
+    set.frames.forEach(function (f) { if (f && typeof f.faceYaw === 'number' && !f._fy) try { Object.defineProperty(f, '_fy', { value: { yaw: f.faceYaw, ecN: 0 }, writable: true, configurable: true, enumerable: false }); } catch (e) {} });
+    if (set.loop) try {
+      var keepL = [], n0 = set.frames.length;
+      [0, Q.sideDeg, -Q.sideDeg, 90, -90, 135, -135, 180].forEach(function (td) {
+        set.frames.filter(function (f) { return f && (f.front || Math.abs(wrap(f.deg - td)) <= 25); })
+          .sort(function (a, b) { return (b.front ? 1 : 0) - (a.front ? 1 : 0) || Math.abs(wrap(a.deg - td)) - Math.abs(wrap(b.deg - td)); })
+          .slice(0, 3).forEach(function (f) { if (keepL.indexOf(f) < 0) keepL.push(f); });
+      });
+      set.frames = set.frames.filter(function (f) { return keepL.indexOf(f) >= 0; });
+      console.log(TAG + ' 0°↔360° 세트 — ' + n0 + '장 중 쓸 각도 근처 ' + set.frames.length + '장만 얼굴 확인');
+    } catch (e) {}
     return scanFaces(set).then(function () { return applySetPicked(set); });
   }
   function applySetPicked(set) {
@@ -616,7 +642,7 @@ var SHOT360 = (function () {
      *   ① 끝점 = 얼굴로 고른 좌·우 장(각도 = 그 장의 얼굴 yaw) ② 두 장 사이(정면을 안 지나는 쪽) 촬영 시각을 6등분한 5 시각에 가장 가까운 장(겹치지 않게)
      *   ③ 각 장 각도 = 왼쪽 끝에서 센서가 돈 양(속도 반영) − 끝점에서 드러난 센서 표류를 시각 비례로 나눈 몫 — 센서의 절대값(0° 기준)은 안 씀
      *   ④ 가운데(3번째) 장 = 후면 슬롯 · 나머지 4장 = 추가 사진(keep8 대신) · 진단 set.time6 · 끄기 SHOT360.time6=false */
-    if (Q.time6 !== false) try {
+    if (Q.time6 !== false && !set.loop) try {                            // (11-16 loop) 0°↔360°로 이미 고친 세트는 시간 나누기 안 함 → keep8(±90°·±135°)
       var T6 = (function () {
         var L = pick.left, R = pick.right, F = pick.front;
         if (!L || !R || !(L.time > 0) || !(R.time > 0) || L === R) return { why: '좌·우 시각 없음' };
@@ -724,6 +750,45 @@ var SHOT360 = (function () {
   var running = false, raf = null, sensorOk = false, lastEvt = null, h0 = null, cur = 0, lastDeg = null, lastT = 0, speed = 0;
   var bst = null, burstLog = [], burstPend = [];   // (2026-11-08) 연속 프레임 평균 진행 중인 칸
   var T = [], got = {}, tries = {}, small = null, grab = null, signVote = 0, signN = 0, userFlip = false, lastFaceAt = 0, frontBest = null, lastSeekAt = 0, seekCv = null, seekN = 0;
+  /* (2026-11-16 loop) 회전량 — hAcc: 접지 않은 방위 누적 · gAcc: 자이로 세로축 적분(부호·배율 모름) · log: 맞춤용 표본 · strip: 띠 프레임 · fronts: 바퀴별 정면 */
+  var hAcc = 0, hPrev = null, gAcc = 0, gT = null, gN = 0, rLog = [], strip = [], stripLastH = null, fronts = {}, sides = {}, lastSideAt = 0;
+  function sideSeek() {             // (11-16 loop2) ±45° 근처를 지나는 동안 얼굴 yaw가 ±sideDeg에 가장 가까운 장
+    if (!Q.loop || typeof detectPoseOnCanvas !== 'function') return;
+    var a = Math.abs(cur); if (a < Q.sideSeekLo || a > Q.sideSeekHi) return;
+    var t = now(); if (t - lastSideAt < Q.frontSeekMs) return; lastSideAt = t;
+    var c = grabFrame(); if (!c) return;
+    try {
+      var k = Math.min(1, Q.frontSeekPx / Math.max(c.width, c.height));
+      if (!seekCv) seekCv = document.createElement('canvas');
+      seekCv.width = Math.max(8, Math.round(c.width * k)); seekCv.height = Math.max(8, Math.round(c.height * k));
+      seekCv.getContext('2d').drawImage(c, 0, 0, seekCv.width, seekCv.height);
+      var p = detectPoseOnCanvas(seekCv); if (!p || !isFinite(p.yawDeg) || Math.abs(p.yawDeg) < 20) return;
+      var key = Math.round(hAcc / 360) + (cur > 0 ? '+' : '-'), score = Math.abs(Math.abs(p.yawDeg) - Q.sideDeg) + 0.5 * Math.abs(p.pitchDeg || 0), sb = sides[key];
+      if (sb && score >= sb.score - 1) return;
+      sides[key] = { key: key, raw: cur, yaw: p.yawDeg, pitch: p.pitchDeg || 0, score: score, url: c.toDataURL('image/jpeg', Q.jpeg), sharp: Math.round(sharpness()), time: Date.now(), w: c.width, h: c.height, zoom: Q.cam.zoom, hA: hAcc, gA: gAcc };
+    } catch (e) {}
+  }
+  function onMot(e) {
+    try {
+      var rr = e && e.rotationRate, ag = e && e.accelerationIncludingGravity; if (!rr || rr.alpha == null) return;
+      var t = e.timeStamp || now(), dt = gT == null ? 0 : (t - gT) / 1000; gT = t;
+      if (!(dt > 0 && dt < 0.25)) return;                                  // 첫 표본·멈췄다 온 표본은 건너뜀
+      var ux = 0, uy = 1, uz = 0;                                          // 세로축(기기 좌표) — 폰을 세운 상태 기본값
+      if (ag && ag.x != null) { var L = Math.hypot(ag.x, ag.y, ag.z); if (L > 3) { ux = ag.x / L; uy = ag.y / L; uz = ag.z / L; } }
+      gAcc += ((rr.beta || 0) * ux + (rr.gamma || 0) * uy + (rr.alpha || 0) * uz) * dt;   // beta=x축 · gamma=y축 · alpha=z축 회전
+      gN++;
+    } catch (x) {}
+  }
+  /* 지금까지의 방위 누적(h)·자이로(g) 표본으로 g → 도 배율(부호 포함). 안 맞으면 0(= 방위 누적 사용) */
+  function gyroGain() {
+    if (!Q.gyro || gN < 30 || rLog.length < 20) return 0;
+    var sgh = 0, sgg = 0, i, a, b, dh, dg;
+    for (i = 1; i < rLog.length; i++) { a = rLog[i - 1]; b = rLog[i]; dh = b.h - a.h; dg = b.g - a.g; sgh += dg * dh; sgg += dg * dg; }
+    if (!(sgg > 0)) return 0;
+    var k = sgh / sgg, hT = rLog[rLog.length - 1].h - rLog[0].h, gT2 = (rLog[rLog.length - 1].g - rLog[0].g) * k;
+    if (Math.abs(hT) < 60 || !(Math.abs(gT2 / hT) > 0.8 && Math.abs(gT2 / hT) < 1.25)) return 0;   // 전체 회전량이 방위와 20% 넘게 다르면 안 믿음
+    return k;
+  }
 
   function el(tag, css, text) { var e = document.createElement(tag); if (css) e.style.cssText = css; if (text != null) e.textContent = text; return e; }
   function btn(label, primary, fn) {
@@ -798,7 +863,7 @@ var SHOT360 = (function () {
   function takeFor(t, sh) {
     var c = grabFrame(); if (!c) return false;
     var url; try { url = c.toDataURL('image/jpeg', Q.jpeg); } catch (e) { return false; }
-    got[t] = { raw: t, at: cur, url: url, sharp: sh, time: Date.now(), w: c.width, h: c.height, zoom: Q.cam.zoom };   // (11-10) 프레임 크기·배율 — 기준 4장을 같은 카메라 상태에서 고르려고
+    got[t] = { raw: t, at: cur, url: url, sharp: sh, time: Date.now(), w: c.width, h: c.height, zoom: Q.cam.zoom, hA: hAcc, gA: gAcc };   // (11-10) 프레임 크기·배율 — 기준 4장을 같은 카메라 상태에서 고르려고
     tries[t] = (tries[t] || 0) + 1;
     if (Q.burst && Q.burstN > 1 && !bst) bst = { t: t, entry: got[t], frames: [copyCanvas(c)], sharp: [sh] };   // (2026-11-08) 이어서 몇 프레임 더 받음(tick)
     return true;
@@ -876,9 +941,11 @@ var SHOT360 = (function () {
       var p = detectPoseOnCanvas(seekCv); seekN++;
       if (!p || !isFinite(p.yawDeg)) return;
       var score = Math.abs(p.yawDeg) + 0.5 * Math.abs(p.pitchDeg || 0);
-      if (frontBest && score >= frontBest.score - 1) return;            // 1° 넘게 나아질 때만 바꿈
+      var lap = Math.round(hAcc / 360), fb = fronts[lap];                  // (11-16 loop) 바퀴마다 따로(0 = 출발 · ±1 = 한 바퀴 돌아옴)
+      if (fb && score >= fb.score - 1) return;                          // 1° 넘게 나아질 때만 바꿈
       var url = c.toDataURL('image/jpeg', Q.jpeg);
-      frontBest = { raw: cur, yaw: p.yawDeg, pitch: p.pitchDeg || 0, score: score, url: url, sharp: Math.round(sharpness()), time: Date.now(), w: c.width, h: c.height, zoom: Q.cam.zoom };
+      fronts[lap] = { lap: lap, raw: cur, yaw: p.yawDeg, pitch: p.pitchDeg || 0, score: score, url: url, sharp: Math.round(sharpness()), time: Date.now(), w: c.width, h: c.height, zoom: Q.cam.zoom, hA: hAcc, gA: gAcc };
+      if (!frontBest || score < frontBest.score) frontBest = fronts[lap];
     } catch (e) {}
   }
   function appSign() {
@@ -897,6 +964,12 @@ var SHOT360 = (function () {
       if (h != null) {
         if (h0 == null) h0 = h;
         cur = wrap(h - h0);
+        if (hPrev != null) hAcc += wrap(h - hPrev); hPrev = h;            // (11-16 loop) 접지 않은 방위 누적
+        if (!rLog.length || t - rLog[rLog.length - 1].t > 50) rLog.push({ t: t, h: hAcc, g: gAcc });
+        if (Q.loop && Q.stripDeg > 0 && !bst && (stripLastH == null || Math.abs(hAcc - stripLastH) >= Q.stripDeg)) {   // 띠 프레임 — 돈 양마다
+          var cS = grabFrame();
+          if (cS) try { strip.push({ raw: cur, url: cS.toDataURL('image/jpeg', Q.jpeg), sharp: sharpness(), time: Date.now(), w: cS.width, h: cS.height, zoom: Q.cam.zoom, hA: hAcc, gA: gAcc, strip: true }); stripLastH = hAcc; } catch (e) {}
+        }
         if (lastDeg != null && t > lastT) speed = speed * 0.7 + 0.3 * Math.abs(wrap(cur - lastDeg)) / ((t - lastT) / 1000);
         lastDeg = cur; lastT = t;
         // 가장 가까운 목표
@@ -909,6 +982,7 @@ var SHOT360 = (function () {
         }
         faceVote();
         frontSeek();
+        sideSeek();
         setInfo(speed > Q.slowDegPerSec ? '너무 빨라요 — 천천히 도세요' : (Object.keys(got).length >= T.length ? '다 찍었어요 — [끝내기]를 누르세요' : '머리를 타원 안에 두고 천천히 한 바퀴 도세요'));
       } else setInfo('폰을 세워서 손님 머리를 향해 주세요');
     } else setInfo('각도 센서가 없습니다 — [수동 찍기]로 한 장씩 찍으세요(정면부터 한 방향으로)');
@@ -917,17 +991,21 @@ var SHOT360 = (function () {
   }
   function start() {
     var go = function () {
+      hAcc = 0; hPrev = null; gAcc = 0; gT = null; gN = 0; rLog = []; strip = []; stripLastH = null; fronts = {}; sides = {}; lastSideAt = 0;
       T = targets(); got = {}; tries = {}; bst = null; burstPend = []; burstLog = []; h0 = null; cur = 0; lastDeg = null; speed = 0; signVote = 0; signN = 0; userFlip = false; frontBest = null; lastSeekAt = 0; seekN = 0;
       running = true;
       btnStart.textContent = '끝내기';                                    // (2026-10-25) 사용자: "start누르면 그 자리가 finish로 바뀌면서 다시 누르면 정지 · restart는 Done자리에"
       if (btnDone) { btnDone.textContent = '다시 시작'; btnDone.style.display = ''; }
       W.addEventListener('deviceorientation', onOri, true);
+      if (Q.gyro) W.addEventListener('devicemotion', onMot, true);
       setTimeout(function () { if (btnManual) btnManual.style.display = sensorOk ? 'none' : ''; }, 1500);
       if (!raf) raf = requestAnimationFrame(tick);
     };
     try {
       if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
-        DeviceOrientationEvent.requestPermission().then(go, go);      // 아이폰은 허락을 물어봄
+        DeviceOrientationEvent.requestPermission().then(function () {   // 아이폰은 허락을 물어봄(자이로도 따로)
+          if (Q.gyro && typeof DeviceMotionEvent !== 'undefined' && typeof DeviceMotionEvent.requestPermission === 'function') DeviceMotionEvent.requestPermission().then(go, go); else go();
+        }, go);
       } else go();
     } catch (e) { go(); }
   }
@@ -941,9 +1019,55 @@ var SHOT360 = (function () {
     burstFlush();                   // (2026-11-08) 뒤에서 평균 중인 칸 마무리
     var keys = Object.keys(got);
     if (keys.length < 4) { toast('사진이 모자랍니다 — 정면·양옆·뒤가 다 찍혀야 해요'); return; }
-    var s = appSign(), frames = keys.map(function (k) { var f = got[k]; return { deg: wrap(s * f.raw), url: f.url, sharp: Math.round(f.sharp), time: f.time, w: f.w, h: f.h, zoom: f.zoom }; });
-    var fz = null;
-    if (frontBest) {                                                  // (2026-10-25f) 촬영 중 찾은 정면으로 0°를 다시 잡음
+    var s = appSign(), frames = keys.map(function (k) { var f = got[k]; return { deg: wrap(s * f.raw), url: f.url, sharp: Math.round(f.sharp), time: f.time, w: f.w, h: f.h, zoom: f.zoom, _hA: f.hA, _gA: f.gA }; });
+    var fz = null, loop = null;
+    /* (2026-11-16 loop) 출발 정면 + 한 바퀴 돌아온 정면 → 회전량 비례로 각도 고침 */
+    try {
+      var F0 = fronts[0], F1 = fronts[1] || fronts[-1];
+      if (Q.loop && F0 && F1) {
+        var kG = gyroGain(), R = function (o) { return kG ? o.gA * kG : o.hA; };
+        strip.forEach(function (f) { frames.push({ deg: wrap(s * f.raw), url: f.url, sharp: Math.round(f.sharp), time: f.time, w: f.w, h: f.h, zoom: f.zoom, _hA: f.hA, _gA: f.gA, strip: true }); });
+        var P1 = s * (R(F1) - R(F0)), dir = P1 >= 0 ? 1 : -1, A0 = F0.yaw, A1 = F1.yaw + 360 * dir, scale = (A1 - A0) / P1;
+        if (Math.abs(P1) > 200 && scale >= Q.loopScaleMin && scale <= Q.loopScaleMax) {
+          /* (11-16 loop2) 기준점 = 출발 정면 · 얼굴로 잰 ±45° 장들 · 돌아온 정면. x = 센서 진행(s·(R−R0)) · y = 얼굴 각도(풀어 쓴 값) */
+          var lin = function (x) { return A0 + scale * x; }, X = function (o) { return s * (R(o) - R(F0)); };
+          var anc = [{ x: 0, y: A0, n: '출발 정면' }], chk = [], sideFrames = [];
+          Object.keys(sides).forEach(function (kk) {
+            var o = sides[kk], x = X(o), pred = lin(x), y = o.yaw + 360 * Math.round((pred - o.yaw) / 360), err = y - pred;
+            if (x * dir <= 0 || x * dir >= Math.abs(P1)) return;                         // 두 정면 사이만
+            var ok = Math.abs(err) <= Q.anchorTol;
+            chk.push(kk + ' 얼굴 ' + Math.round(o.yaw) + '° vs 센서 ' + Math.round(wrap(pred)) + '° (차 ' + Math.round(err) + '°' + (ok ? '' : ' ⚠ 안 씀') + ')');
+            if (ok) { anc.push({ x: x, y: y, n: kk }); sideFrames.push(o); }
+          });
+          anc.push({ x: P1, y: A1, n: '돌아온 정면' });
+          anc.sort(function (a, b) { return (a.x - b.x) * dir; });
+          for (var ai = 1; ai < anc.length; ai++) if ((anc[ai].y - anc[ai - 1].y) * dir <= 0) { anc.splice(ai, 1); ai--; }   // 거꾸로 가는 기준점 뺌
+          var mapX = function (x) {                                                     // 구간마다 선형(돈 양 비례) · 바깥은 끝 구간 연장
+            var i = 1; while (i < anc.length - 1 && (x - anc[i].x) * dir > 0) i++;
+            var a = anc[i - 1], b = anc[i], d = b.x - a.x; return d ? a.y + (b.y - a.y) * (x - a.x) / d : a.y;
+          };
+          sideFrames.forEach(function (o) { frames.push({ deg: 0, url: o.url, sharp: o.sharp, time: o.time, w: o.w, h: o.h, zoom: o.zoom, _hA: o.hA, _gA: o.gA, faceYaw: +o.yaw.toFixed(1), sideAnchor: o.key }); });
+          frames.forEach(function (f) { f.deg = wrap(mapX(X({ hA: f._hA, gA: f._gA }))); });
+          var FB = F0.score <= F1.score ? F0 : F1, fdeg = wrap(mapX(X(FB)));            // = 그 정면의 얼굴 yaw
+          frames = frames.filter(function (f) { return Math.abs(wrap(f.deg - fdeg)) >= Q.stepDeg / 2; });
+          frames.push({ deg: fdeg, url: FB.url, sharp: FB.sharp, time: FB.time, w: FB.w, h: FB.h, zoom: FB.zoom, front: true, faceYaw: +FB.yaw.toFixed(1), facePitch: +FB.pitch.toFixed(1) });
+          /* 속도 진단: 띠 구간별 °/s */
+          var sp = []; strip.forEach(function (f, i) { if (i) { var dt = (f.time - strip[i - 1].time) / 1000; if (dt > 0) sp.push(Math.abs(R(f) - R(strip[i - 1])) / dt); } });
+          sp.sort(function (a, b) { return a - b; });
+          loop = { src: kG ? 'gyro' : 'heading', sensorDeg: Math.round(Math.abs(P1)), trueDeg: Math.round(Math.abs(A1 - A0)), drift: Math.round(Math.abs(P1) - Math.abs(A1 - A0)), scale: +scale.toFixed(3),
+            yaw0: +F0.yaw.toFixed(1), yaw1: +F1.yaw.toFixed(1), sec: +((F1.time - F0.time) / 1000).toFixed(1), strip: strip.length,
+            speed: sp.length ? { p10: Math.round(sp[Math.floor(sp.length * 0.1)]), mid: Math.round(sp[sp.length >> 1]), p90: Math.round(sp[Math.floor(sp.length * 0.9)]) } : null,
+            anchors: anc.map(function (a) { return a.n + '@' + Math.round(a.y); }), sideCheck: chk,
+            headingVsGyro: kG ? +((rLog[rLog.length - 1].g - rLog[0].g) * kG / (rLog[rLog.length - 1].h - rLog[0].h)).toFixed(3) : null };
+          fz = { zero: 0, yaw: FB.yaw, seen: seekN, loop: true };
+        } else {
+          console.warn(TAG + ' 0°↔360° 맞추기 안 함 — 센서 ' + Math.round(P1) + '° vs 진짜 ' + Math.round(A1 - A0) + '°(배율 ' + scale.toFixed(2) + ' 허용 ' + Q.loopScaleMin + '~' + Q.loopScaleMax + ') · 예전 방식');
+          frames = frames.filter(function (f) { return !f.strip; });
+        }
+      }
+    } catch (e) { console.warn(TAG + ' 0°↔360° 맞추기 실패 — 예전 방식', e); loop = null; frames = frames.filter(function (f) { return !f.strip; }); }
+    frames.forEach(function (f) { delete f._hA; delete f._gA; });
+    if (!loop && frontBest) {                                                  // (2026-10-25f) 촬영 중 찾은 정면으로 0°를 다시 잡음
       var zero = wrap(s * frontBest.raw - frontBest.yaw);
       frames.forEach(function (f) { f.deg = wrap(f.deg - zero); });
       var fd = wrap(s * frontBest.raw - zero);                       // = 얼굴 yaw
@@ -952,7 +1076,10 @@ var SHOT360 = (function () {
       fz = { zero: zero, yaw: frontBest.yaw, seen: seekN };
     }
     frames.sort(function (a, b) { return a.deg - b.deg; });
-    var set = { version: 1, at: Date.now(), stepDeg: Q.stepDeg, sign: s, signAuto: !Q.sign && !userFlip && signN >= 2, sensor: sensorOk, frames: frames, frontSeek: fz };
+    var set = { version: 1, at: Date.now(), stepDeg: Q.stepDeg, sign: s, signAuto: !Q.sign && !userFlip && signN >= 2, sensor: sensorOk, frames: frames, frontSeek: fz, loop: loop };
+    if (loop) console.log(TAG + ' 0°↔360° 맞춤(' + (loop.src === 'gyro' ? '자이로 회전량' : '방위 누적') + ') — 출발 정면 yaw ' + loop.yaw0 + '° · 돌아온 정면 yaw ' + loop.yaw1 + '° · 센서 ' + loop.sensorDeg + '° / 진짜 ' + loop.trueDeg + '° → 표류 ' + loop.drift + '°를 돈 양 비례로 나눔(×' + loop.scale + ') · ' + loop.sec + '초' +
+      (loop.speed ? ' · 속도 °/s p10 ' + loop.speed.p10 + ' / 중앙 ' + loop.speed.mid + ' / p90 ' + loop.speed.p90 : '') + ' · 기준점 ' + loop.anchors.join(' → ') + (loop.sideCheck.length ? ' · ±45° 센서 체크: ' + loop.sideCheck.join(' | ') : ' · ±45° 얼굴 못 잼(두 정면만)') + ' · 띠 ' + loop.strip + '장' + (loop.headingVsGyro ? ' · 자이로/방위 ' + loop.headingVsGyro : '') + ' (끄기 SHOT360.loop=false)');
+    else if (Q.loop && !(fronts[1] || fronts[-1])) console.log(TAG + ' 0°↔360° 맞추기 안 함 — 한 바퀴 돌아온 정면을 못 찾음(정면까지 돌아와서 [끝내기]) · 예전 방식');
     console.log(TAG + ' 정면 ' + (fz ? '촬영 중 찾음(얼굴 ' + fz.yaw.toFixed(0) + '° · 0°를 센서 ' + fz.zero.toFixed(0) + '°로 다시 잡음 · 잰 장 ' + fz.seen + ')' : '못 찾음(얼굴이 안 잡힘 — 세트를 넣을 때 다시 찾음)'));
     console.log(TAG + ' 완료 — ' + frames.length + '장 · 좌우 부호 ' + s + (set.signAuto ? '(얼굴 각도로 자동 · 표 ' + signN + '회 · 합 ' + Math.round(signVote) + ')' : userFlip ? '(직접 바꿈)' : '(기본값 — 얼굴 각도를 못 읽음)') +
       ' · 각도 ' + frames.map(function (f) { return Math.round(f.deg); }).join(','));
@@ -1070,6 +1197,7 @@ var SHOT360 = (function () {
   function close() {
     running = false; if (raf) { cancelAnimationFrame(raf); raf = null; }
     W.removeEventListener('deviceorientation', onOri, true);
+    W.removeEventListener('devicemotion', onMot, true);
     camSeq++; if (camWatch) { clearTimeout(camWatch); camWatch = null; }
     if (camGuard) { clearInterval(camGuard); camGuard = null; }
     stopCam();
