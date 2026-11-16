@@ -734,19 +734,36 @@ var GABOR_ORIENT = (function () {
     var k = n ? 0.5 / (sum / n) : 1; for (i = 0; i < N; i++) if (mask[i]) out[i] *= k;   // 평균 0.5로(잡음 제거·필터 문턱이 밝기 크기를 가정한 자리 대비)
     return out;
   }
-  function hlEdgeCheck(H, ang, conf, coh, mask, Wd, Hd) {
-    var N = Wd * Hd, i, x, y, F = new Float32Array(N), bb = [0, 0, Wd - 1, Hd - 1], par = (GO.hlParDeg || 25) * Math.PI / 180, nP = 0, nC = 0;
+  /* (2026-11-16e) 줄무늬 확인 — 사용자: "빛반사는 안되나? 뒷사진에서 보면 그래도 완전 흐리지는 않은데"
+   *  디버그 2332(짧은 남자 · 뒤 사진): 햇빛 받은 옆머리는 밝은 덩어리(반사 띠)로 잡히는데, 그 안에 가닥이 밝은 줄·어두운 틈으로 또렷이 보임.
+   *    밝은 다발은 가닥을 따라 길쭉해서 '띠 가장자리와 나란한 결'이 곧 맞는 결 → 예전 ③이 맞게 읽은 칸을 버림(같은 사진 재현: 버린 칸 중 다수가 줄을 그대로 따라감).
+   *  지금: 읽은 결에 수직으로 ±hlProf px 밝기를 봄(명암 고른 사진 · 머리 영역 안만)
+   *    · 밝다↔어둡다가 hlStripeMin(2)번 넘게 바뀜 = 줄무늬(가닥) → 띠 가장자리와 나란해도, 날아간 칸이어도 그대로 씀
+   *    · 한 번만 바뀜 = 계단 하나(띠 가장자리) → 예전처럼 버림 · 거의 안 변함(표준편차 hlFlatSd 미만) = 읽을 무늬 없음 → 날아간 칸이면 버림
+   *  밝기 등급이 아니라 그 자리 무늬로 가름(머리 종류·사진 전체 판정 없음). 예전대로 GABOR_ORIENT.hlStripe=false */
+  function hlStripes(g, mask, Wd, Hd, x, y, a) {                          // 0 = 무늬 없음 · 1 = 계단 하나 · 2+ = 줄무늬
+    var L = GO.hlProf || 6, nx = -Math.sin(a), ny = Math.cos(a), v = [], t, s = 0, s2 = 0;
+    for (t = -L; t <= L; t++) { var xx = Math.round(x + nx * t), yy = Math.round(y + ny * t); if (xx < 0 || yy < 0 || xx >= Wd || yy >= Hd) continue; var q = yy * Wd + xx; if (!mask[q]) continue; v.push(g[q]); s += g[q]; s2 += g[q] * g[q]; }
+    if (v.length < L + 3) return 1;                                        // 표본 부족(머리 테두리) — 예전 규칙대로
+    var m = s / v.length, sd = Math.sqrt(Math.max(0, s2 / v.length - m * m)); if (sd < (GO.hlFlatSd || 0.03)) return 0;
+    var hi = m + 0.35 * sd, lo = m - 0.35 * sd, st = 0, ch = 0;
+    for (t = 0; t < v.length; t++) { var c = v[t] > hi ? 1 : v[t] < lo ? -1 : 0; if (!c) continue; if (st && c !== st) ch++; st = c; }
+    return ch >= (GO.hlStripeMin || 2) ? 2 : 1;
+  }
+  function hlEdgeCheck(H, ang, conf, coh, mask, Wd, Hd, g) {
+    var N = Wd * Hd, i, x, y, F = new Float32Array(N), bb = [0, 0, Wd - 1, Hd - 1], par = (GO.hlParDeg || 25) * Math.PI / 180, nP = 0, nC = 0, nKeep = 0, nKeepC = 0, useS = GO.hlStripe !== false && !!g;
     for (i = 0; i < N; i++) if (H.hl[i]) F[i] = 1;
     var B = blurBB(F, Wd, Hd, 3, bb);
     for (y = 1; y < Hd - 1; y++) for (x = 1; x < Wd - 1; x++) {
       i = y * Wd + x; if (!mask[i]) continue;
       if (!H.zone || !H.zone[i]) continue;                                 // (11-16d) 반사 띠 둘레만 — 가는 윤기 줄·흰머리는 날아갔어도(≥245) 결로 씀
-      if (H.clip[i]) { conf[i] = 0; if (coh) coh[i] = 0; nC++; continue; }
+      var sp = -1;
+      if (H.clip[i]) { if (useS && (sp = hlStripes(g, mask, Wd, Hd, x, y, ang[i])) >= 2) nKeepC++; else { conf[i] = 0; if (coh) coh[i] = 0; nC++; continue; } }
       var gx = 0.5 * (B[i + 1] - B[i - 1]), gy = 0.5 * (B[i + Wd] - B[i - Wd]), gm = Math.hypot(gx, gy); if (gm < 0.03) continue;   // 띠 가장자리 아님(띠 한가운데·바깥)
       var edge = Math.atan2(gy, gx) + Math.PI / 2, d = Math.abs(ang[i] - edge) % Math.PI; if (d > Math.PI / 2) d = Math.PI - d;
-      if (d < par) { conf[i] = 0; if (coh) coh[i] = 0; nP++; }
+      if (d < par) { if (useS && (sp < 0 ? hlStripes(g, mask, Wd, Hd, x, y, ang[i]) : sp) >= 2) { nKeep++; continue; } conf[i] = 0; if (coh) coh[i] = 0; nP++; }
     }
-    return { par: nP, clip: nC };
+    return { par: nP, clip: nC, keep: nKeep, keepClip: nKeepC };
   }
   GO._test = { steerRead: steerRead, stSupplement: stSupplement, denoise: denoise, blurBB: blurBB };   // 합성 시험용
   GO.refine = function (f, px, mask, Wd, Hd) {
@@ -856,8 +873,8 @@ var GABOR_ORIENT = (function () {
         if ((idx & 63) === 0) { var dd = Math.abs(a - A[idx]); if (dd > Math.PI / 2) dd = Math.PI - dd; diffs.push(dd * 57.3); }
         if (GO.replace !== false) A[idx] = a;                               // 방향만 바꿈(coherence는 04번 값) · (2026-10-11c) replace=false면 결 읽기는 예전 방식 그대로(모양 재기만)
       }
-      if (HLM) { var EC = { par: 0, clip: 0 }; if (HZ || HLM.nC) { try { EC = hlEdgeCheck(HLM, ang, conf, GO.replace !== false ? f.coherence : null, mask, Wd, Hd); } catch (eE) {} }
-        GO.stats.hl = { px: HLM.nM, thin: HLM.nThin, hl: HLM.nH, zone: HLM.nZ, clip: EC.clip, par: EC.par, small: HLS.small, stSkip: HLS.stSkip, med: HLM.med, thr: HLM.thr };
+      if (HLM) { var EC = { par: 0, clip: 0 }; if (HZ || HLM.nC) { try { EC = hlEdgeCheck(HLM, ang, conf, GO.replace !== false ? f.coherence : null, mask, Wd, Hd, g); } catch (eE) {} }
+        GO.stats.hl = { px: HLM.nM, thin: HLM.nThin, hl: HLM.nH, zone: HLM.nZ, clip: EC.clip, par: EC.par, keep: EC.keep || 0, keepClip: EC.keepClip || 0, small: HLS.small, stSkip: HLS.stSkip, med: HLM.med, thr: HLM.thr };
         (GO.hlLog = GO.hlLog || []).push(GO.stats.hl); if (GO.hlLog.length > 16) GO.hlLog.shift(); }
       diffs.sort(function (p, q) { return p - q; });
       GO.stats.calls++; GO.stats.ms = Math.round(performance.now() - t0); GO.stats.px = cnt; GO.stats.dMed = diffs.length ? diffs[diffs.length >> 1] : null;
