@@ -2132,7 +2132,7 @@ var REGROW = (function () {
        *  지금: 추가 사진 카메라 맞추기가 범위 끝(각 ±15°·배율 ±8%)에 안 걸린 사진만 넣음(11-10b · 예전 겹침 80% 기준은 hullExtraByIou) — 카메라가 덜 맞은 사진이 머리를 깎으면 두께가 0으로 무너짐(10/05 실측).
        *  여유는 옆·뒤와 같은 1.5cm. 끄기 REGROW.hullExtra=false · 문턱 REGROW.hullExtraMinIou */
       var hullX = false;
-      if (cam.extra && G.hullExtra !== false && G.xfitLast && G.xfitLast.rows) G.xfitLast.rows.forEach(function (r) { if (r.angle === cam.angle && !r.skip && !r.bad && (G.hullExtraByIou ? (r.kept ? r.i0 : r.i1) >= (G.hullExtraMinIou || 0.8) : (!r.edge && Math.abs(r.ds - 1) < (G.xfitScale || 0.08) - 1e-6))) hullX = true; });   // (11-10b) 기본: 카메라 맞추기가 범위 끝에 안 걸린 사진 — 겹침(IoU)은 가닥이 튀어나온 모델과 비교라 튀어나온 자리를 잘 보는 사진(90°)일수록 낮게 나와 빠짐(순환) · 예전 REGROW.hullExtraByIou=true
+      if (cam.extra && G.hullExtra !== false && G.xfitLast && G.xfitLast.rows) G.xfitLast.rows.forEach(function (r) { if (r.angle === cam.angle && !r.skip && !(r.bad && G.xfitDropBad === true) && (G.hullExtraByIou ? (r.kept ? r.i0 : r.i1) >= (G.hullExtraMinIou || 0.8) : (!r.edge && Math.abs(r.ds - 1) < (G.xfitScale || 0.08) - 1e-6))) hullX = true; });   // (11-10b) 기본: 카메라 맞추기가 범위 끝에 안 걸린 사진 — 겹침(IoU)은 가닥이 튀어나온 모델과 비교라 튀어나온 자리를 잘 보는 사진(90°)일수록 낮게 나와 빠짐(순환) · 예전 REGROW.hullExtraByIou=true
       if (!(G.hullViews && G.hullViews.indexOf(cam.angle) >= 0) && !hullX) return;
       try {
         var cp = Math.max(1, G.hullCellPx * cam.iw / 800), gw = Math.ceil(cam.iw / cp), gh = Math.ceil(cam.ih / cp), D = new Float32Array(gw * gh), x, y, i;
