@@ -4312,6 +4312,31 @@ var REGROW = (function () {
     var every = Math.max(1, Math.ceil(all / (G.xfitSegs || 15000))), k = 0;
     model.strands.forEach(function (st) { var q = st.pts, i; for (i = 1; i + 1 < q.length; i++) if ((k++ % every) === 0) segs.push(q[i].x, q[i].y - CY, q[i].z, q[i + 1].x - q[i - 1].x, q[i + 1].y - q[i - 1].y, q[i + 1].z - q[i - 1].z); });
     var NS = segs.length / 6, rows = [], RAD = Math.PI / 180;
+    /* (11-16) 카메라 판정용 사진 껍질 — 기준 4장 머리 영역만으로 깎은 칸(모델 안 씀). 그 사진이 못 보는 뒤쪽 반(카메라 반대편)·사진 밖은 기권.
+       추가 사진 카메라 두 개(원래 · 맞춘 것)를 이 껍질과 그 사진 머리 영역의 겹침(IoU)으로 비교해 높은 쪽을 씀. 끄기 REGROW.xfitJudge=false */
+    var HV = null;
+    if (G.xfitJudge !== false) try {
+      var bs = probe.cams.filter(function (c) { return c && c.smp && c.iw > 0 && typeof ANGLES !== 'undefined' && ANGLES.indexOf(c.angle) >= 0; });
+      if (bs.length >= 2) {
+        var mn = [1e9, 1e9, 1e9], mx = [-1e9, -1e9, -1e9], ii;
+        for (ii = 0; ii < NS; ii++) { var a0 = segs[ii * 6], a1 = segs[ii * 6 + 1], a2 = segs[ii * 6 + 2]; if (a0 < mn[0]) mn[0] = a0; if (a1 < mn[1]) mn[1] = a1; if (a2 < mn[2]) mn[2] = a2; if (a0 > mx[0]) mx[0] = a0; if (a1 > mx[1]) mx[1] = a1; if (a2 > mx[2]) mx[2] = a2; }
+        var stp = G.xfitJudgeStep || 0.03, pad = 0.15, hv = [], vx, vy, vz;
+        for (vx = mn[0] - pad; vx <= mx[0] + pad; vx += stp) for (vy = mn[1] - pad; vy <= mx[1] + pad; vy += stp) for (vz = mn[2] - pad; vz <= mx[2] + pad; vz += stp) {
+          var ok = true, seen = 0;
+          for (ii = 0; ii < bs.length && ok; ii++) {
+            var B = bs[ii], R = B.R, zz = R[6] * vx + R[7] * vy + R[8] * vz;
+            var uu = (R[0] * vx + R[1] * vy + R[2] * vz) / B.s + B.cx, vv = B.crownY + (yTop - ((R[3] * vx + R[4] * vy + R[5] * vz) + CY)) / B.sy;
+            if (uu < 0 || vv < 0 || uu >= B.iw || vv >= B.ih) continue;          // 사진 밖 = 기권
+            var hair = B.smp.at(uu, vv) > 0;
+            if (hair) { seen++; continue; }
+            if (zz < 0) continue;                                               // 카메라 반대편 반 = 가려서 못 봄 → 기권
+            ok = false;
+          }
+          if (ok && seen > 0) hv.push(vx, vy, vz);
+        }
+        HV = new Float32Array(hv);
+      }
+    } catch (eHV) { HV = null; }
     xs.forEach(function (c0) {
       var mi = state.hairMasks && state.hairMasks[c0.angle], ori = mi && mi.orientation;
       if (!ori || typeof sampleOrientation !== 'function') { rows.push({ angle: c0.angle, skip: '결 없음' }); return; }
@@ -4379,8 +4404,24 @@ var REGROW = (function () {
       row.bad = best.r.iou < (G.xfitBadIou != null ? G.xfitBadIou : 0.6);
       /* (11-16) 사진끼리 맞추기(13b p2p)를 xfitLockP2p(95%) 넘게 통과한 사진은 카메라를 안 옮김 — 모델 기준으로 옮기면 사진끼리 맞던 자리가 틀어짐(vm98).
          찾은 값은 결 비교 진단으로만 남김. 되돌리기 REGROW.xfitLockP2p=0 */
-      var p2pM = p2pMean(c0.angle);
-      if (p2pM != null && p2pM >= (G.xfitLockP2p != null ? G.xfitLockP2p : 0.95) && (G.xfitLockP2p == null || G.xfitLockP2p > 0)) {
+      if (HV && HV.length) {
+        var judge = function (K) {
+          var occ = new Uint8Array(NC), q, I = 0, U = 0;
+          for (q = 0; q < HV.length; q += 3) { var X = HV[q], Yv = HV[q + 1], Zv = HV[q + 2], R = K.R;
+            var u = (R[0] * X + R[1] * Yv + R[2] * Zv) / K.s + K.cx, v = K.crownY + (yTop - ((R[3] * X + R[4] * Yv + R[5] * Zv) + CY)) / K.sy;
+            var gx = Math.floor(u / cell), gq = Math.floor(v / cell); if (gx >= 0 && gq >= 0 && gx < gw && gq < gh) occ[gq * gw + gx] = 1; }
+          for (q = 0; q < NC; q++) { if (occ[q] && MK[q]) I++; if (occ[q] || MK[q]) U++; }
+          return U ? I / U : 0;
+        };
+        row.j0 = judge(camOf(0, 1, 0, 0, 0, 0)); row.j1 = judge(camOf(best.dyaw, best.ds, best.dcx, best.dp, best.dy, best.dr));
+        if (!(row.j1 > row.j0 + (G.xfitJudgeGain != null ? G.xfitJudgeGain : 0.01))) {
+          row.kept = true; row.judgeKeep = true;
+          if (V3) { V3.fit = V3.fit || {}; V3.fit[c0.angle] = { dyaw: 0, ds: 1, dcx: 0, dp: 0, dyCm: 0, dr: 0, bad: row.bad }; }
+          rows.push(row); return;
+        }
+      }
+      var p2pM = G.xfitLockP2p > 0 ? p2pMean(c0.angle) : null;   // (11-16) 예전 고정 규칙 — 기본 끔(사진끼리 97%여도 12° 어긋난 카메라가 통과함)
+      if (p2pM != null && p2pM >= G.xfitLockP2p) {
         row.kept = true; row.lock = p2pM;
         if (V3) { V3.fit = V3.fit || {}; V3.fit[c0.angle] = { dyaw: 0, ds: 1, dcx: 0, dp: 0, dyCm: 0, dr: 0, bad: row.bad, lock: true }; }
         rows.push(row); return;
@@ -4498,7 +4539,7 @@ var REGROW = (function () {
     var o = G.xfitLast; if (!o) return '  추가 사진 카메라 맞추기: 아직 안 함' + (G.extraFit === false ? '(꺼짐)' : '');
     return '  추가 사진 카메라 맞추기(기준 사진 결로만 기른 가닥 · 결 차이+겹침 · ±' + (G.xfitYawDeg || 15) + '° · 기울기 ±' + (G.xfitRoll != null ? G.xfitRoll : 8) + '° · 끄기 REGROW.xfitRoll=0): ' + o.rows.map(function (r) {
       if (r.skip) return r.angle + ' 안 함(' + r.skip + ')';
-      return r.angle + ' 결 ' + r.g0.toFixed(1) + '→' + r.g1.toFixed(1) + '° · 겹침 ' + Math.round(r.i0 * 100) + '→' + Math.round(r.i1 * 100) + '% · 각 ' + (r.dyaw >= 0 ? '+' : '') + r.dyaw + '°' + (r.edge ? '(범위 끝)' : '') + ' · 배율 ' + r.ds.toFixed(3) + ' · 가로 ' + (r.dcx >= 0 ? '+' : '') + r.dcx.toFixed(0) + 'px' + (r.dp ? ' · 위아래 ' + (r.dp >= 0 ? '+' : '') + r.dp + '°' : '') + (r.dy ? ' · 높이 ' + (r.dy >= 0 ? '+' : '') + r.dy.toFixed(1) + 'cm' : '') + (r.dr ? ' · 기울기 ' + (r.dr >= 0 ? '+' : '') + r.dr + '°' : '') + (r.weak ? ' · [약함→맞춤 ±' + (G.xfitYawWeak || 40) + '°]' : '') + (r.bad ? ' · 모델과 겹침 낮음(모델이 틀린 자리일 수 있음 — 넣고 뺌은 사진끼리 맞추기가 정함)' : '') + (r.lock ? ' → 안 옮김(사진끼리 맞추기 ' + Math.round(r.lock * 100) + '% 통과 — 위 값은 진단만)' : r.kept ? ' → 안 바꿈(좋아짐 작음)' : ' → 바꿈');
+      return r.angle + ' 결 ' + r.g0.toFixed(1) + '→' + r.g1.toFixed(1) + '° · 겹침 ' + Math.round(r.i0 * 100) + '→' + Math.round(r.i1 * 100) + '% · 각 ' + (r.dyaw >= 0 ? '+' : '') + r.dyaw + '°' + (r.edge ? '(범위 끝)' : '') + ' · 배율 ' + r.ds.toFixed(3) + ' · 가로 ' + (r.dcx >= 0 ? '+' : '') + r.dcx.toFixed(0) + 'px' + (r.dp ? ' · 위아래 ' + (r.dp >= 0 ? '+' : '') + r.dp + '°' : '') + (r.dy ? ' · 높이 ' + (r.dy >= 0 ? '+' : '') + r.dy.toFixed(1) + 'cm' : '') + (r.dr ? ' · 기울기 ' + (r.dr >= 0 ? '+' : '') + r.dr + '°' : '') + (r.weak ? ' · [약함→맞춤 ±' + (G.xfitYawWeak || 40) + '°]' : '') + (r.bad ? ' · 모델과 겹침 낮음(모델이 틀린 자리일 수 있음 — 넣고 뺌은 사진끼리 맞추기가 정함)' : '') + (r.j0 != null ? ' · 사진 껍질 겹침 원래 ' + Math.round(r.j0 * 100) + '% / 맞춘 것 ' + Math.round(r.j1 * 100) + '%' : '') + (r.judgeKeep ? ' → 원래 카메라(사진 껍질과 더 잘 맞음)' : r.lock ? ' → 안 옮김(사진끼리 맞추기 ' + Math.round(r.lock * 100) + '% 통과 — 위 값은 진단만)' : r.kept ? ' → 안 바꿈(좋아짐 작음)' : ' → 바꿈');
     }).join(' | ') + ' · ' + o.ms + 'ms (끄기 REGROW.xfitOn=false)';
   };
   G.camFitRun = function (model, probe) {
