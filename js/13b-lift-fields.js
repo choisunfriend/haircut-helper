@@ -1721,7 +1721,7 @@ var VIEWS360 = (function () {
     var pre = precheck(v, frontYaw);
     if (pre.why) { out.why = pre.why; out.kind = pre.kind; }
     else if (!cutNow && v.q != null && (v.q < X.qLo || v.q > X.qHi)) { out.kind = 'dist'; out.why = '머리 크기가 안 맞음(두상 폭의 ' + v.q.toFixed(2) + '배 — ' + (v.q > X.qHi ? '너무 가깝게 찍혔거나 배율이 틀림' : '너무 멀거나 머리가 잘림') + ')'; }
-    else if (Math.abs(wrapDeg(yawDeg)) >= X.agreeFromDeg && v.agree != null && v.agree < ctx.thr && !v.weak) { out.kind = 'angle'; out.why = '두피가 머리 영역 밖으로 나감(맞음 ' + Math.round(v.agree * 100) + '% < ' + Math.round(ctx.thr * 100) + '%)'; }
+    else if (Math.abs(wrapDeg(yawDeg)) >= X.agreeFromDeg && v.agree != null && v.agree < ctx.thr && !v.weak) { out.kind = 'angle'; out.why = '두피가 머리 영역 밖으로 나감(맞음 ' + Math.round(v.agree * 100) + '% < ' + Math.round(ctx.thr * 100) + '%)' + (v.weak ? ' · 넓게 맞춰 봤지만 안 맞음(겹침 낮음) → 판단에서 뺌' : ''); }
     return out;
   }
   /* 기준 좌·우·후면(360 세트에서 온 것): 프로브에서 뺄 이유 */
@@ -1741,6 +1741,62 @@ var VIEWS360 = (function () {
   }
 
   /* makeHairOccupancyProbe(13b) 맨 앞 — 추가 사진을 넣거나 기준 사진을 뺀 [views, names]를 돌려줌(바꿀 것 없으면 null) */
+  /* ────────────────────────────────────────────────────────────────────────
+   * (2026-11-16 p2p) 사진끼리 맞추기 — 가닥 모델 없이 사진의 머리 영역끼리만으로 추가 사진을 넣을지 정함
+   *  사용자: "모델이 틀린 자리에서 빠진다는 건 사진끼리 맞추는게 아니라 모델과 맞춘다는 거야?" · "사진끼리 맞추는게 맞지"
+   *  ① 기준 사진들의 머리 영역으로 3D 칸을 깎음(가린 자리 · 사진 틀 밖 = 기권 · 여유 p2pTolCm) → 실제 머리를 반드시 담는 덩어리
+   *  ② 추가 사진 하나를 더해 다시 깎고, 모든 사진(기준 + 그 사진)의 머리 영역이 덩어리로 얼마나 설명되는지(덩어리를 비춘 자리 안 비율)
+   *     카메라가 어긋난 사진은 다른 사진에 필요한 자리까지 깎아 그 사진들의 설명 비율이 떨어짐 · 페이드처럼 실제로 짧은 자리는 떨어뜨리지 않음
+   *  ③ 평균이 p2pMin(90%) 이상이면 넣음(두피 맞음 문턱에 걸렸어도) · 아래면 '사진끼리 안 맞음'으로 뺌
+   *  오프라인(디버그 1213): 추가 4장 94.6~97.3% · 오른쪽 기준 사진이 vm98·v119와 충돌(86~90%). 끄기 VIEWS360.p2p=false
+   * ────────────────────────────────────────────────────────────────────── */
+  X.p2pMin = X.p2pMin || 0.9; X.p2pTolCm = X.p2pTolCm || 0.6; X.p2pStep = X.p2pStep || 0.03;
+  function p2pCheck(base, extras, yTop, CY) {
+    var t0 = Date.now(), Eh = null, cm = 19; try { Eh = getHeadEllipsoid(); } catch (e) {} try { cm = modelCmPerUnit() || 19; } catch (e) {}
+    if (!Eh) return null;
+    function camOf(name, cal) {
+      var mi = state.hairMasks && state.hairMasks[name], smp = getViewMaskSampler(name); if (!mi || !smp || !cal || !cal.pose) return null;
+      return { name: name, R: composeRotationZYX(cal.pose.yaw, cal.pose.pitch || 0, cal.pose.roll || 0), cx: cal.cx, s: cal.s, sy: cal.sy, crownY: cal.crownY, smp: smp, iw: mi.w, ih: mi.h, tol: Math.max(1, X.p2pTolCm / (cal.s * cm)) };
+    }
+    function hitE(f, x, y, z, ex, ey, ez, ra, rb, rc) {
+      var ox = (x - ex) / ra, oy = (y - ey) / rb, oz = (z - ez) / rc, dX = f[0] / ra, dY = f[1] / rb, dZ = f[2] / rc, A2 = dX * dX + dY * dY + dZ * dZ, B2 = 2 * (ox * dX + oy * dY + oz * dZ), C2 = ox * ox + oy * oy + oz * oz - 1, D = B2 * B2 - 4 * A2 * C2;
+      if (!(D > 0) || !((-B2 + Math.sqrt(D)) / (2 * A2) > 0.01)) return false;
+      return !(C2 <= 0 && f[0] * (x - ex) + f[1] * (y - ey) + f[2] * (z - ez) >= 0);
+    }
+    function hidden(c, x, y, z) { var f = [c.R[6], c.R[7], c.R[8]]; return hitE(f, x, y, z, 0, 0, 0, Eh.a * 0.85, Eh.b * 0.85, Eh.c * 0.85) || hitE(f, x, y, z, 0, -0.32, 0.05, Eh.a * 0.8, 0.32, Eh.c * 0.85); }
+    function uv(c, x, y, z, o) { o[0] = (c.R[0] * x + c.R[1] * y + c.R[2] * z) / c.s + c.cx; o[1] = c.crownY + (yTop - ((c.R[3] * x + c.R[4] * y + c.R[5] * z) + CY)) / c.sy; }
+    var o = [0, 0];
+    function ok(c, x, y, z) {                                   // 머리 · 기권이면 true
+      uv(c, x, y, z, o); var ix = o[0], iy = o[1];
+      if (ix < 0 || iy < 0 || ix >= c.iw || iy >= c.ih) return true;
+      if (hidden(c, x, y, z)) return true;
+      var r = c.tol; return c.smp.at(ix, iy) > 0 || c.smp.at(ix + r, iy) > 0 || c.smp.at(ix - r, iy) > 0 || c.smp.at(ix, iy + r) > 0 || c.smp.at(ix, iy - r) > 0;
+    }
+    function cover(c, P) {                                      // 그 사진 머리 영역 중 덩어리를 비춘 자리 안 비율
+      var cols = 80, cell = c.iw / cols, gw = cols, gh = Math.ceil(c.ih / cell), Hm = new Uint8Array(gw * gh), rad = Math.max(1, Math.ceil(X.p2pStep / (c.s * cell))), i, x, y, nM = 0, miss = 0;
+      for (i = 0; i < P.length; i += 3) { uv(c, P[i], P[i + 1], P[i + 2], o); var gx = Math.floor(o[0] / cell), gy = Math.floor(o[1] / cell);
+        for (var dy = -rad; dy <= rad; dy++) for (var dx = -rad; dx <= rad; dx++) { var X2 = gx + dx, Y2 = gy + dy; if (X2 >= 0 && Y2 >= 0 && X2 < gw && Y2 < gh) Hm[Y2 * gw + X2] = 1; } }
+      for (y = 0; y < gh; y++) for (x = 0; x < gw; x++) if (c.smp.at((x + 0.5) * cell, (y + 0.5) * cell) > 0) { nM++; if (!Hm[y * gw + x]) miss++; }
+      return nM ? 1 - miss / nM : 1;
+    }
+    var B = base.map(function (b) { return camOf(b.name, b.cal); }).filter(Boolean); if (B.length < 2) return null;
+    var st = X.p2pStep, H = [], x, y, z, k;
+    for (x = -0.8; x <= 0.8; x += st) for (y = -0.6; y <= yTop - CY + 0.05; y += st) for (z = -0.95; z <= 0.75; z += st) {
+      for (k = 0; k < B.length; k++) if (!ok(B[k], x, y, z)) break;
+      if (k === B.length) H.push(x, y, z);
+    }
+    var out = { base: {}, extra: {}, voxels: H.length / 3, ms: 0 };
+    B.forEach(function (c) { out.base[c.name] = { alone: cover(c, H), min: 1, by: '' }; });
+    extras.forEach(function (e) {
+      var c = camOf(e.name, e.cal); if (!c) return;
+      var H2 = []; for (var i = 0; i < H.length; i += 3) if (ok(c, H[i], H[i + 1], H[i + 2])) H2.push(H[i], H[i + 1], H[i + 2]);
+      var covs = {}, sum = 0, n = 0;
+      B.concat([c]).forEach(function (b) { var v = cover(b, H2); covs[b.name] = v; sum += v; n++; if (b !== c && v < out.base[b.name].min) { out.base[b.name].min = v; out.base[b.name].by = c.name; } });
+      out.extra[e.name] = { mean: sum / n, covs: covs };
+    });
+    out.ms = Date.now() - t0; return out;
+  }
+  X._p2pCheck = p2pCheck;
   X._probeArgs = function (viewCal, names, yTop, CY) {
     X.last = { used: [], dropped: [], base: (names || []).slice(), baseDropped: [], baseWarn: [], baseInfo: {}, setBad: '', thr: null, agreeFront: null };
     try {
@@ -1778,6 +1834,17 @@ var VIEWS360 = (function () {
           L.setBad = '얼굴로 확인한 ' + checked + '장 중 ' + bad + '장의 센서 각도가 실제와 달라, 확인할 수 없는 옆·뒤 사진의 각도도 믿을 수 없음 — 추가 사진을 전부 안 씀';
           X.order.forEach(function (k) { var v = X.views[k]; if (!v.why && !(X.faceTrust !== false && typeof v.faceYaw === 'number')) { v.why = '세트의 센서 각도를 못 믿음'; v.kind = 'angle'; } });   // (fyaw) 얼굴 각도가 있는 장은 센서를 안 쓰니 남김
         }
+        /* (11-16 p2p) 사진끼리 맞추기로 넣을지 정함 — 각도(두피 맞음) 탓으로 빠질 사진도 사진끼리 맞으면 넣고, 다른 이유가 없어도 안 맞으면 뺌 */
+        if (X.p2p !== false) try {
+          var bl = BASE.filter(function (a) { return nm.indexOf(a) >= 0 && vcE[a]; }).map(function (a) { return { name: a, cal: vcE[a] }; });
+          var ex = X.order.filter(function (k) { var v = X.views[k]; return res[k] && res[k].cal && (!v.why || v.kind === 'angle') && !L.setBad; }).map(function (k) { return { name: k, cal: res[k].cal }; });
+          var P2 = ex.length ? p2pCheck(bl, ex, yTop, CY) : null; L.p2p = P2;
+          if (P2) ex.forEach(function (e) {
+            var v = X.views[e.name], q = P2.extra[e.name]; if (!q) return; v.p2p = q;
+            if (q.mean >= X.p2pMin) { if (v.why && v.kind === 'angle') { v.p2pRescued = v.why; v.why = ''; v.kind = ''; } }
+            else { v.why = '사진끼리 안 맞음(기준 사진 설명 ' + Math.round(q.mean * 100) + '% < ' + Math.round(X.p2pMin * 100) + '%)'; v.kind = 'angle'; }
+          });
+        } catch (eP) { console.warn(TAG + ' 사진끼리 맞추기 실패 — 예전 판정', eP); }
         X.order.forEach(function (k) {
           var v = X.views[k], r = res[k];
           if (v.why || !r || !r.cal) { L.dropped.push(k); return; }
@@ -1794,7 +1861,9 @@ var VIEWS360 = (function () {
           (L.dropped.length ? ' · 뺀 추가 사진 ' + L.dropped.map(function (k) { return k + '[' + X.views[k].why + ']'; }).join(' ') : '') +
           (L.baseDropped.length ? ' · 뺀 기준 사진 ' + L.baseDropped.map(function (a) { return a + '[' + L.baseInfo[a].why + ']'; }).join(' ') : '') +
           (L.baseWarn.length ? ' · ⚠ 의심스러운 기준 사진(그대로 씀) ' + L.baseWarn.map(function (a) { return a + '[' + L.baseInfo[a].why + ']'; }).join(' ') : '') +
-          (L.setBad ? ' · ⚠ ' + L.setBad : ''));
+          (L.setBad ? ' · ⚠ ' + L.setBad : '') +
+          (L.p2p ? ' · 사진끼리 맞추기(' + L.p2p.ms + 'ms · 칸 ' + L.p2p.voxels + '): ' + Object.keys(L.p2p.extra).map(function (k) { var q = L.p2p.extra[k]; return k + ' ' + Math.round(q.mean * 100) + '%' + (X.views[k].p2pRescued ? '(두피 맞음으론 빠질 사진 → 넣음)' : ''); }).join(' · ') +
+            ' | 기준 사진이 추가 사진과 충돌(설명 비율 최저): ' + Object.keys(L.p2p.base).map(function (a) { var b = L.p2p.base[a]; return a + ' ' + Math.round(b.min * 100) + '%' + (b.min < 0.95 && b.by ? '(' + b.by + ')' : ''); }).join(' · ') : ''));
         if (L.used.length || L.baseDropped.length) return [vc, nm];
       }
     } catch (e) { console.warn(TAG + ' 추가 사진 넣기 실패 — 4장으로만 계산', e); if (X.last) { X.last.used = []; X.last.baseDropped = []; } }
@@ -1991,6 +2060,12 @@ var VIEWS360 = (function () {
         return a + (bi.agree != null ? ' 맞음 ' + Math.round(bi.agree * 100) + '%' : '') + (bi.why ? (out ? ' → 형태 계산에서 뺌: ' : ' → ⚠ 의심(그대로 씀): ') + bi.why : ' → 괜찮음');
       });
       if (bl.length) L.push('  기준 사진 — ' + bl.join(' · '));
+    }
+    if (la && la.p2p) {                                                    // (11-16 p2p)
+      var P2 = la.p2p;
+      L.push('  사진끼리 맞추기(모델 없이 사진 머리 영역끼리 · ' + P2.ms + 'ms · 칸 ' + P2.voxels + ' · 넣는 기준 ' + Math.round(X.p2pMin * 100) + '% · 끄기 VIEWS360.p2p=false) — 추가 사진: ' +
+        Object.keys(P2.extra).map(function (k) { var q = P2.extra[k], v = X.views[k]; return k + ' ' + Math.round(q.mean * 100) + '%[' + Object.keys(q.covs).map(function (a) { return a + ' ' + Math.round(q.covs[a] * 100); }).join(' ') + ']' + (v && v.p2pRescued ? ' (두피 맞음으론 빠질 사진 → 넣음)' : ''); }).join(' · '));
+      L.push('    기준 사진이 추가 사진과 충돌(그 사진 머리 영역 설명 비율 최저 · 95% 아래면 그 사진 카메라를 의심): ' + Object.keys(P2.base).map(function (a) { var b = P2.base[a]; return a + ' ' + Math.round(b.min * 100) + '%' + (b.min < 0.95 && b.by ? '(' + b.by + ' 넣을 때 ⚠)' : ''); }).join(' · '));
     }
     return L;
   };

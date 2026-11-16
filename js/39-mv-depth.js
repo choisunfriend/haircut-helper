@@ -57,7 +57,13 @@ var MV_DEPTH = (function () {
     var t0 = now(), PC = W.PHOTO_CHECK, core = PC && PC._core;
     if (!core || typeof PC._cams !== 'function') return { err: 'PHOTO_CHECK 없음' };
     var env = envNow(photo); if (!env) return { err: '두상·환경 없음' };
-    var cams = PC._cams().filter(function (c) { return typeof c.dirAt === 'function'; });
+    var F360 = null; try { F360 = W.VIEWS360 && W.VIEWS360.fit; } catch (e) {}
+    var dropped = [];
+    var cams = PC._cams().filter(function (c) {
+      if (typeof c.dirAt !== 'function') return false;
+      if (M.dropBad === true && F360 && F360[c.angle] && F360[c.angle].bad) { dropped.push(c.angle); return false; }   // (11-16) 맞춘 뒤에도 안 맞은 추가 사진은 깊이 판단에서 뺌 · 되돌리기 MV_DEPTH.dropBad=false
+      return true;
+    });
     if (cams.length < 2) return { err: '결 있는 사진 ' + cams.length + '장' };
     var byAng = {}; cams.forEach(function (c) { byAng[c.angle] = c; c._tolPx = Math.max(1, M.tolCm / (c.s * env.cm)); });
     var unit = 1 / env.cm, range = M.rangeCm * unit, step = M.stepCm * unit;
@@ -185,7 +191,7 @@ var MV_DEPTH = (function () {
       } else st.outA += outB;
       st.jump += bigJumps(P);
     }
-    st.ms = Math.round(now() - t0); st.cams = cams.map(function (c) { return c.angle; });
+    st.ms = Math.round(now() - t0); st.cams = cams.map(function (c) { return c.angle; }); st.dropped = dropped;
     return st;
   }
 
@@ -211,7 +217,7 @@ var MV_DEPTH = (function () {
     var r = M.stat; if (!r) return [TAG + ' 아직 안 함'];
     if (r.err) return [TAG + ' 건너뜀 — ' + r.err];
     var cm = (function () { try { return modelCmPerUnit(); } catch (e) { return 19; } })();
-    return [TAG + ' 사진 ' + r.cams.join(',') + ' · 가닥 ' + r.strands + ' 중 옮김 ' + r.moved + ' · 자기 시선축으로 평균 ' + (r.moved ? (r.sumMove / r.moved * cm).toFixed(1) : '0') + 'cm · ' + r.ms + 'ms',
+    return [TAG + ' 사진 ' + r.cams.join(',') + (r.dropped && r.dropped.length ? '(못 맞춘 사진 ' + r.dropped.join(',') + ' 뺌)' : '') + ' · 가닥 ' + r.strands + ' 중 옮김 ' + r.moved + ' · 자기 시선축으로 평균 ' + (r.moved ? (r.sumMove / r.moved * cm).toFixed(1) : '0') + 'cm · ' + r.ms + 'ms',
       '  다른 사진 머리 영역 밖 점 ' + (100 * r.outB / Math.max(1, r.chk)).toFixed(1) + '% → ' + (100 * r.outA / Math.max(1, r.chk)).toFixed(1) + '% · 옮긴 가닥의 다른 사진 결 어긋남(sin² 평균) ' + (r.cmp ? (r.offB / r.cmp).toFixed(3) + ' → ' + (r.offA / r.cmp).toFixed(3) : '-') +
       ' · copyDepthMid ' + (W.REGROW && W.REGROW.copyDepthMid === false ? '끔(이 단계가 대신함)' : '그대로') + ' · copyDepthFit ' + (W.REGROW && W.REGROW.copyDepthFit === false ? '끔(이 단계가 대신함 · 되돌리기 MV_DEPTH.ownDepth=false)' : '그대로') + ' · 끄기 MV_DEPTH.on=false',
       '  깊이 구간 고르기: ' + (M.pathFit ? '가닥 한 줄로(동적계획법) — 고른 가닥 ' + (r.path || 0) + ' (끄기 MV_DEPTH.pathFit=false)' : '점마다 따로(예전)') + ' · 끝난 뒤 한 마디 4cm 넘게 건너뛴 자리 ' + (r.jump || 0)];
