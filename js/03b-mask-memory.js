@@ -500,6 +500,37 @@ async function _szLoadClean(url){
   }catch(e){ console.warn('[원본 다듬기] 실패 — 원본 그대로', e); return im; }
 }
 function _szLoad(url){ return new Promise(function(res){ var im = new Image(); im.onload = function(){ res(im); }; im.onerror = function(){ res(null); }; im.src = url; }); }
+/* ══════════════════════════════════════════════════════════
+   (2026-11-16 hd) HEAD_HD — 360 촬영이 따로 둔 머리 조각(영상 원래 해상도 · 연속 프레임을 쌓은 것)을 원본 대신 씀
+   사용자: "머리 영역만 원본 해상도로 저장" · "연속 프레임을 평균 대신 해상도로"
+   조각 = 05 SHOT360 frame.hd { url, x, y, w, h(영상 좌표 상자), vw, vh, fw, fh(칸 사진 크기), k(조각 px ÷ 영상 px) }
+   칸 사진(원본) 좌표 X → 조각 좌표 = (X × vw/fw − x) × k.
+   쓰는 곳: ① 머리 키우기(subjectZoom) — 원본에서 잘라 그린 위에 조각이 덮는 자리만 조각으로 덧그림(분석 사진 자체가 진짜 픽셀)
+           ② 결 원본 해상도(grainHiresSource) — 원본 대신 조각을 재료로(배율이 커짐 · 3배 한도는 GRAIN_HIRES.maxUp 그대로) · 조각이 안 덮는 자리는 예전 원본
+   조각이 없는 사진(업로드·옛 세트·끔)은 전부 예전 그대로. 끄기 HEAD_HD.on=false · 진단 HEAD_HD.stats
+   ══════════════════════════════════════════════════════════ */
+var HEAD_HD = Object.assign({ on: true, zoom: true, grain: true, stats: {} }, window.HEAD_HD || {});
+/* 조각 읽기 — 원본 다듬기(ORIG_CLEAN)는 안 거침: 조각은 JPEG 0.95 · 영상 픽셀 그대로라 블록이 약하고, 3백만 화소를 다듬으면 폰에서 오래 걸림. 최근 3장만 들고 있음 */
+var _hdImgCache = new Map();
+async function _hdLoad(url){
+  if(_hdImgCache.has(url)) return _hdImgCache.get(url);
+  const im = await _szLoad(url); if(!im) return null;
+  _hdImgCache.set(url, im); while(_hdImgCache.size > 3) _hdImgCache.delete(_hdImgCache.keys().next().value);
+  return im;
+}
+function _hdRecFor(url){ try{ if(!HEAD_HD.on || typeof SHOT360 === 'undefined' || !SHOT360 || !SHOT360._hdFor) return null; return SHOT360._hdFor(url) || null; }catch(e){ return null; } }
+/* 원본 좌표 → 조각 좌표 변환 { ax, bx, ay, by } : 조각 x = ax·X + bx (IW·IH = 지금 읽은 원본 크기 — 칸 사진이 다시 저장돼 크기가 달라도 전체 사진이면 맞음) */
+function _hdMap(hd, IW, IH){ const rx = hd.vw / Math.max(1, IW), ry = hd.vh / Math.max(1, IH); return { ax: rx * hd.k, bx: -hd.x * hd.k, ay: ry * hd.k, by: -hd.y * hd.k }; }
+/* 원본 상자 (sx,sy,sw,sh) → 캔버스 (0,0,dw,dh)에 그리는 자리에, 조각이 덮는 부분만 조각으로 덧그림. 덮은 넓이 비율을 돌려줌(0 = 안 그림) */
+function _hdOverlay(ctx, hdImg, M, sx, sy, sw, sh, dw, dh){
+  const HW = hdImg.naturalWidth || hdImg.width, HH = hdImg.naturalHeight || hdImg.height;
+  let hx0 = M.ax * sx + M.bx, hy0 = M.ay * sy + M.by, hx1 = M.ax * (sx + sw) + M.bx, hy1 = M.ay * (sy + sh) + M.by;
+  const cx0 = Math.max(0, hx0), cy0 = Math.max(0, hy0), cx1 = Math.min(HW, hx1), cy1 = Math.min(HH, hy1);
+  if(!(cx1 - cx0 > 2 && cy1 - cy0 > 2)) return 0;
+  const kx = dw / (hx1 - hx0), ky = dh / (hy1 - hy0);
+  ctx.drawImage(hdImg, cx0, cy0, cx1 - cx0, cy1 - cy0, (cx0 - hx0) * kx, (cy0 - hy0) * ky, (cx1 - cx0) * kx, (cy1 - cy0) * ky);
+  return ((cx1 - cx0) * (cy1 - cy0)) / Math.max(1, (hx1 - hx0) * (hy1 - hy0));
+}
 async function subjectZoom(angle){
   const Z = SUBJECT_ZOOM, st = { at: Date.now(), done: false, why: '' };
   Z.stats[angle] = st;
@@ -547,6 +578,11 @@ async function subjectZoom(angle){
     const out = document.createElement('canvas'); out.width = Math.max(8, Math.round(cws * up)); out.height = Math.max(8, Math.round(chs * up));
     const ox = out.getContext('2d'); ox.imageSmoothingEnabled = true; try{ ox.imageSmoothingQuality = 'high'; }catch(e){}
     ox.drawImage(img, cxs, cys, cws, chs, 0, 0, out.width, out.height);
+    try{                                                                     // (2026-11-16 hd) 머리 조각이 덮는 자리는 조각 픽셀로
+      const hdR = HEAD_HD.zoom ? _hdRecFor(srcUrl) : null;
+      if(hdR){ const hdIm = await _hdLoad(hdR.url); if(hdIm){ const cov = _hdOverlay(ox, hdIm, _hdMap(hdR, IW, IH), cxs, cys, cws, chs, out.width, out.height);
+        st.hd = { cover: +cov.toFixed(2), piece: (hdIm.naturalWidth || hdIm.width) + '×' + (hdIm.naturalHeight || hdIm.height), n: hdR.n, sr: hdR.sr }; HEAD_HD.stats[angle] = Object.assign(HEAD_HD.stats[angle] || {}, { zoom: st.hd }); } }
+    }catch(e){ st.hdErr = String(e && e.message || e); }
     const url = out.toDataURL('image/jpeg', ORIG_CLEAN.on ? 0.98 : 0.94);   // (2026-11-08b) 다듬은 원본을 다시 거친 JPEG로 저장하면 블록이 돌아옴 out.width = 0; out.height = 0;
     if(!state._zoomFrom) state._zoomFrom = {};
     state._zoomFrom[angle] = lo;   // 키우기 전 사진 — 360 세트 지문(13b fpNow)이 이걸 봄(안 그러면 '지금 4장이 그 세트의 것이 아님'으로 추가 사진을 버림)
@@ -653,10 +689,18 @@ async function grainHiresSource(angle, shotW){
     let src = null, ox = 0, oy = 0, kShot = 0;
     if(zx && zx.url === shot && zx.src && zx.src !== shot){ src = zx.src; ox = zx.ox; oy = zx.oy; kShot = zx.k; }
     else if(hi && hi.lo === shot && hi.hi){ src = hi.hi; }
-    if(!src) return null;
+    /* (2026-11-16 hd) 머리 조각 — 원본(칸 사진)에 딸린 조각이 있으면 그걸 재료로. 분석 사진이 곧 칸 사진인 경우(키우지도 줄이지도 않음)도 조각이 있으면 읽음 */
+    const hdR = HEAD_HD.grain ? _hdRecFor(src || shot) : null;
+    if(!src){ if(!hdR) return null; src = shot; }
     const im = await _szLoadClean(src); if(!im) return null;   // (2026-11-08b) ORIG_CLEAN
     if(!kShot) kShot = (im.naturalWidth || im.width) / Math.max(1, shotW);
-    return { img: im, ox: ox, oy: oy, kShot: kShot };
+    const base = { img: im, ox: ox, oy: oy, kShot: kShot };
+    if(hdR){ try{
+      const hdIm = await _hdLoad(hdR.url);
+      if(hdIm){ const M = _hdMap(hdR, im.naturalWidth || im.width, im.naturalHeight || im.height);
+        return { img: hdIm, ox: M.ax * ox + M.bx, oy: M.ay * oy + M.by, kShot: kShot * M.ax, kY: M.ay / M.ax, base: base, hd: hdR }; }
+    }catch(e){} }
+    return base;
   }catch(e){ return null; }
 }
 async function extractHairMaskCore(angle){
@@ -1154,12 +1198,21 @@ async function extractHairMaskCore(angle){
                 if(s){
                   const cw = Math.round(bw * s), ch = Math.round(bh * s), cc = document.createElement('canvas'); cc.width = cw; cc.height = ch;
                   const cx = cc.getContext('2d', { willReadFrequently: true }); cx.imageSmoothingEnabled = true; try{ cx.imageSmoothingQuality = 'high'; }catch(e){}
+                  if(_hiSrc.base){                                             // (2026-11-16 hd) 예전 원본을 먼저 깔고, 머리 조각이 덮는 자리만 조각으로
+                    const _B = _hiSrc.base, kB = _B.kShot * (img.width / w), kYo = kOrig * (_hiSrc.kY || 1);
+                    cx.drawImage(_B.img, _B.ox + bx0 * kB, _B.oy + by0 * kB, bw * kB, bh * kB, 0, 0, cw, ch);
+                    const _hx0 = _hiSrc.ox + bx0 * kOrig, _hy0 = _hiSrc.oy + by0 * kYo, _hw = bw * kOrig, _hh = bh * kYo, _HW = _hiSrc.img.naturalWidth || _hiSrc.img.width, _HH = _hiSrc.img.naturalHeight || _hiSrc.img.height;
+                    const _c0 = Math.max(0, _hx0), _d0 = Math.max(0, _hy0), _c1 = Math.min(_HW, _hx0 + _hw), _d1 = Math.min(_HH, _hy0 + _hh);
+                    let _cov = 0;
+                    if(_c1 - _c0 > 2 && _d1 - _d0 > 2){ cx.drawImage(_hiSrc.img, _c0, _d0, _c1 - _c0, _d1 - _d0, (_c0 - _hx0) * cw / _hw, (_d0 - _hy0) * ch / _hh, (_c1 - _c0) * cw / _hw, (_d1 - _d0) * ch / _hh); _cov = ((_c1 - _c0) * (_d1 - _d0)) / (_hw * _hh); }
+                    try{ HEAD_HD.stats[angle] = Object.assign(HEAD_HD.stats[angle] || {}, { grain: { cover: +_cov.toFixed(2), n: _hiSrc.hd.n, sr: _hiSrc.hd.sr, k: +kOrig.toFixed(2) } }); }catch(e){}
+                  } else
                   cx.drawImage(_hiSrc.img, _hiSrc.ox + bx0 * kOrig, _hiSrc.oy + by0 * kOrig, bw * kOrig, bh * kOrig, 0, 0, cw, ch);
                   const cp = cx.getImageData(0, 0, cw, ch).data, cm = new Uint8Array(cw * ch);
                   for(let v = 0; v < ch; v++){ const yy = Math.min(h - 1, by0 + Math.floor(v / s)); for(let u = 0; u < cw; u++){ const xx = Math.min(w - 1, bx0 + Math.floor(u / s)); cm[v * cw + u] = orientMaskBuf[yy * w + xx]; } }
                   _F = G.readCrop(cp, cm, cw, ch, s, bx0, by0, w, h, orientMaskBuf);
                   cc.width = 0; cc.height = 0;
-                  G.stats[angle] = { s: +s.toFixed(2), crop: cw + '×' + ch, src: (_hiSrc.img.naturalWidth || _hiSrc.img.width) + '×' + (_hiSrc.img.naturalHeight || _hiSrc.img.height), ms: Math.round(performance.now() - _tH) };
+                  G.stats[angle] = { s: +s.toFixed(2), crop: cw + '×' + ch, src: (_hiSrc.img.naturalWidth || _hiSrc.img.width) + '×' + (_hiSrc.img.naturalHeight || _hiSrc.img.height) + (_hiSrc.hd ? '(머리 조각 ' + _hiSrc.hd.n + '장)' : ''), ms: Math.round(performance.now() - _tH) };
                   console.log('[결·원본 해상도] ' + angle + ' · 원본 ' + G.stats[angle].src + ' → 머리 둘레 ' + G.stats[angle].crop + '(분석 사진의 ×' + G.stats[angle].s + ') · ' + G.stats[angle].ms + 'ms');
                   try{ ANALYSIS_TIME.mark(angle, 'o_hi', performance.now() - _tH); }catch(e){}
                   if(typeof REGROW !== 'undefined') REGROW._afterOrientField(_F, srcPixels, orientMaskBuf, w, h);   // 컬 재기는 분석 크기로

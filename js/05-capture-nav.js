@@ -465,7 +465,20 @@ var SHOT360 = (function () {
        촬영 중 센서 |각도| sideSeekLo~Hi를 지나는 동안 얼굴 yaw가 ±45°에 가장 가까운 장을 바퀴·방향마다 둠.
        [끝내기] 때 0°(출발)·±45°·360°(돌아옴) 얼굴 각도를 기준점으로 회전량→각도를 <b>구간마다</b> 맞춤(구간 안은 돈 양 비례).
        기준점마다 센서 각도(두 정면으로 맞춘 직선)와 얼굴 각도 차를 잼 = 1차 센서 체크 · anchorTol°를 넘으면 그 기준점은 안 씀(얼굴 오인식). */
-    sideSeekLo: 25, sideSeekHi: 70, anchorTol: 20
+    sideSeekLo: 25, sideSeekHi: 70, anchorTol: 20,
+    /* (2026-11-16 hd) 머리 조각을 영상 원래 해상도로 따로 보관 + 연속 프레임을 구역마다 맞춰 촘촘한 격자에 쌓기
+       사용자: "머리 영역만 원본 해상도로 저장 — 배경문제가 사라지니까 더 유용" · "연속 프레임을 평균 대신 해상도로" · "다 적용해두고, 나중에 안되는 부분을 수정"
+       ① 영상 요청을 videoW×videoH(기기가 주는 가장 가까운 크기)로 — 프레임을 꺼내는 방식은 그대로(스틸 촬영 아님). 끄기 SHOT360.hiVideo=false(예전 1920×1080)
+       ② 칸 사진(긴 변 maxSide로 줄인 전체 사진)은 예전 그대로 두고, 안내 윤곽 둘레(가로 화면 가운데 ±hdSide · 위 hdUp ~ 아래 hdDown, 윤곽 폭 대비)를
+          영상 픽셀 그대로 잘라 frame.hd = { url, x, y, w, h(영상 좌표 상자), vw, vh(영상 크기), fw, fh(칸 사진 크기), k(조각 px ÷ 영상 px), n(쌓은 장 수), sr } 로 같이 둠.
+          조각이 hdMaxPx를 넘으면 그만큼만 줄임. 분석(03b)은 머리 키우기·결 원본 해상도 읽기에서 이 조각이 덮는 자리는 조각 픽셀을 씀(안 덮는 자리는 예전 원본).
+       ③ 연속 프레임(burstN장)의 조각을 구역(hdBlock px)마다 따로 맞춘 뒤(폰이 돌아서 머리 앞·가장자리가 다르게 움직임) hdSr배(결과가 hdSrMaxPx 이하가 되게) 격자에 쌓음.
+          배율이 hdSrMin 미만이면(조각이 이미 큼) 쌓지 않고 가장 선명한 한 장 그대로 — 합성 시험: 1배에 쌓으면 한 장보다 가는 무늬가 줄고(대비 0.97 → 0.84), 1.3배부터 한 장을 키운 것보다 나음(2배: 0.45 → 0.71).
+          쌓기는 hdSliceMs씩 끊어 뒤에서(링 화면 안 멈춤) · 밀린 일이 hdQueue개면 그 칸은 한 장 그대로 · [끝내기] 때 남은 건 바로 마무리.
+       끄기 SHOT360.hd=false(조각 없음 = 예전 그대로) · 쌓기만 끄기 SHOT360.hdSr=1 · 진단 콘솔 "[360 촬영] 머리 조각" 줄 · state.shots360.frames[i].hd */
+    hiVideo: true, videoW: 3840, videoH: 2160,
+    hd: true, hdSide: 0.46, hdUp: 0.25, hdDown: 2.1, hdMaxPx: 1500000, hdJpeg: 0.95,
+    hdSr: 2, hdSrMin: 1.25, hdSrMaxPx: 3000000, hdBlock: 48, hdR1: 3, hdFlat: 1.5, hdRej: 1.6, hdLam: 0.08, hdQueue: 2, hdSliceMs: 10
   }, W.SHOT360 || {});
   if (!Q.on) return;
 
@@ -749,6 +762,7 @@ var SHOT360 = (function () {
   var ov = null, vid = null, stream = null, ring = null, info = null, btnStart = null, btnDone = null, btnManual = null, btnFlip = null, needle = null;
   var running = false, raf = null, sensorOk = false, lastEvt = null, h0 = null, cur = 0, lastDeg = null, lastT = 0, speed = 0;
   var bst = null, burstLog = [], burstPend = [];   // (2026-11-08) 연속 프레임 평균 진행 중인 칸
+  var hdJobs = [], hdTimer = null, hdLog = [];       // (2026-11-16 hd) 머리 조각 쌓기 — 밀린 일 · 끊어 돌리는 타이머 · 진단
   var T = [], got = {}, tries = {}, small = null, grab = null, signVote = 0, signN = 0, userFlip = false, lastFaceAt = 0, frontBest = null, lastSeekAt = 0, seekCv = null, seekN = 0;
   /* (2026-11-16 loop) 회전량 — hAcc: 접지 않은 방위 누적 · gAcc: 자이로 세로축 적분(부호·배율 모름) · log: 맞춤용 표본 · strip: 띠 프레임 · fronts: 바퀴별 정면 */
   var hAcc = 0, hPrev = null, gAcc = 0, gT = null, gN = 0, rLog = [], strip = [], stripLastH = null, fronts = {}, sides = {}, lastSideAt = 0;
@@ -757,6 +771,7 @@ var SHOT360 = (function () {
     var a = Math.abs(cur); if (a < Q.sideSeekLo || a > Q.sideSeekHi) return;
     var t = now(); if (t - lastSideAt < Q.frontSeekMs) return; lastSideAt = t;
     var c = grabFrame(); if (!c) return;
+    var hr = null, hc = null; try { if (Q.hd !== false) { hr = hdRect(); if (hr) hc = grabHd(hr); } } catch (e) { hc = null; }   // (2026-11-16 hd) 얼굴 재는 동안 영상이 넘어가므로 지금 받아 둠
     try {
       var k = Math.min(1, Q.frontSeekPx / Math.max(c.width, c.height));
       if (!seekCv) seekCv = document.createElement('canvas');
@@ -766,7 +781,9 @@ var SHOT360 = (function () {
       var key = Math.round(hAcc / 360) + (cur > 0 ? '+' : '-'), score = Math.abs(Math.abs(p.yawDeg) - Q.sideDeg) + 0.5 * Math.abs(p.pitchDeg || 0), sb = sides[key];
       if (sb && score >= sb.score - 1) return;
       sides[key] = { key: key, raw: cur, yaw: p.yawDeg, pitch: p.pitchDeg || 0, score: score, url: c.toDataURL('image/jpeg', Q.jpeg), sharp: Math.round(sharpness()), time: Date.now(), w: c.width, h: c.height, zoom: Q.cam.zoom, hA: hAcc, gA: gAcc };
+      if (hc) sides[key].hd = hdEncode(hc, hr, sides[key], 1, 1);
     } catch (e) {}
+    finally { if (hc) { hc.width = 0; hc.height = 0; } }
   }
   function onMot(e) {
     try {
@@ -865,18 +882,21 @@ var SHOT360 = (function () {
     var url; try { url = c.toDataURL('image/jpeg', Q.jpeg); } catch (e) { return false; }
     got[t] = { raw: t, at: cur, url: url, sharp: sh, time: Date.now(), w: c.width, h: c.height, zoom: Q.cam.zoom, hA: hAcc, gA: gAcc };   // (11-10) 프레임 크기·배율 — 기준 4장을 같은 카메라 상태에서 고르려고
     tries[t] = (tries[t] || 0) + 1;
-    if (Q.burst && Q.burstN > 1 && !bst) bst = { t: t, entry: got[t], frames: [copyCanvas(c)], sharp: [sh] };   // (2026-11-08) 이어서 몇 프레임 더 받음(tick)
+    var hr = null, hc = null; try { if (Q.hd !== false) { hr = hdRect(); if (hr) hc = grabHd(hr); } } catch (e) { hc = null; }   // (2026-11-16 hd) 같은 순간의 머리 조각(영상 해상도)
+    if (Q.burst && Q.burstN > 1 && !bst) bst = { t: t, entry: got[t], frames: [copyCanvas(c)], sharp: [sh], hdF: hc ? [hc] : null, hdRect: hr };   // (2026-11-08) 이어서 몇 프레임 더 받음(tick)
+    else if (hc) { try { got[t].hd = hdEncode(hc, hr, got[t], 1, 1); } catch (e) {} hc.width = 0; hc.height = 0; }
     return true;
   }
   function copyCanvas(c) { var d = document.createElement('canvas'); d.width = c.width; d.height = c.height; d.getContext('2d').drawImage(c, 0, 0); return d; }
   function burstStep() {            // tick마다 한 프레임 — 다 모이면 뒤에서 평균
     if (!bst) return;
-    if (bst.frames.length < Q.burstN) { var c = grabFrame(); if (c) { bst.frames.push(copyCanvas(c)); bst.sharp.push(sharpness()); } return; }
-    var b = bst; bst = null; burstPend.push(b); setTimeout(function () { var i = burstPend.indexOf(b); if (i >= 0) { burstPend.splice(i, 1); burstMerge(b); } }, 0);
+    if (bst.frames.length < Q.burstN) { var c = grabFrame(); if (c) { bst.frames.push(copyCanvas(c)); bst.sharp.push(sharpness()); if (bst.hdF) { var hc = null; try { hc = grabHd(bst.hdRect); } catch (e) {} bst.hdF.push(hc); } } return; }
+    var b = bst; bst = null; burstPend.push(b); setTimeout(function () { var i = burstPend.indexOf(b); if (i >= 0) { burstPend.splice(i, 1); burstMerge(b); hdStart(b); } }, 0);
   }
   function burstFlush() {
-    if (bst) { var b = bst; bst = null; if (b.frames.length >= 2) burstMerge(b); else b.frames.forEach(function (c) { c.width = 0; }); }
-    while (burstPend.length) burstMerge(burstPend.shift());
+    if (bst) { var b = bst; bst = null; if (b.frames.length >= 2) { burstMerge(b); hdStart(b); } else { b.frames.forEach(function (c) { c.width = 0; }); hdSingle(b, '끝내기'); } }
+    while (burstPend.length) { var b2 = burstPend.shift(); burstMerge(b2); hdStart(b2); }
+    hdDrain();                      // (2026-11-16 hd) 머리 조각 쌓기 남은 것 마무리
     if (burstLog.length) { try { console.log(TAG + ' 연속 프레임 평균 — ' + burstLog.join(' · ') + ' (끄기 SHOT360.burst=false)'); } catch (e) {} burstLog = []; }
   }
   function smallGray(c, k) {
@@ -918,6 +938,196 @@ var SHOT360 = (function () {
     } catch (e) { burstLog.push(b.t + '° 실패 ' + (e && e.message)); }
     finally { b.frames.forEach(function (c) { c.width = 0; c.height = 0; }); }
   }
+  /* ── (2026-11-16 hd) 머리 조각 맞추기·쌓기 — 화면(DOM) 없이 도는 계산만 ───────────────────────────
+   *  hdAlign : 기준 프레임 R ↔ 다음 프레임 S 를 구역(hdBlock px)마다 따로 맞춤. R(x,y) ↔ S(x+dx, y+dy)
+   *            ① 줄인 사본(긴 변 ≈200px)으로 전체 이동 ② 절반 크기에서 구역마다 ±r1 ③ 원래 크기에서 ±2 + 소수점(포물선)
+   *            무늬가 없는 구역은 전체 이동 그대로 · 맞춘 뒤 차이가 큰 구역(중앙값의 rej배 초과)·찾는 범위 끝에 걸린 구역은 그 프레임에서 뺌
+   *  hdSplat : 프레임 픽셀을 맞춘 자리로 옮겨 sx·sy배 촘촘한 격자에 나눠 더함(밝기만 · 네 칸에 거리 비례)
+   *  hdCompose : 쌓은 밝기 ÷ 더한 무게 → 기준 프레임을 키운 그림의 밝기를 그 값으로 바꿈(색은 키운 그림 그대로) */
+  function hdLuma(d, N) { var y = new Uint8Array(N), i, j; for (i = 0, j = 0; i < N; i++, j += 4) y[i] = (d[j] * 77 + d[j + 1] * 150 + d[j + 2] * 29) >> 8; return y; }
+  function hdDown(Y, w, h, q) {
+    var W2 = Math.floor(w / q), H2 = Math.floor(h / q), o = new Float32Array(W2 * H2), x, y, i, j, s, p, inv = 1 / (q * q);
+    for (y = 0; y < H2; y++) for (x = 0; x < W2; x++) { s = 0; for (j = 0; j < q; j++) { p = (y * q + j) * w + x * q; for (i = 0; i < q; i++) s += Y[p + i]; } o[y * W2 + x] = s * inv; }
+    return { g: o, w: W2, h: H2 };
+  }
+  function hdSad(A, B, w, h, x0, y0, x1, y1, dx, dy, st) {
+    var s = 0, n = 0, x, y, yy, xx, ra, rb, d;
+    for (y = y0; y < y1; y += st) { yy = y + dy; if (yy < 0 || yy >= h) continue; ra = y * w; rb = yy * w;
+      for (x = x0; x < x1; x += st) { xx = x + dx; if (xx < 0 || xx >= w) continue; d = A[ra + x] - B[rb + xx]; s += d < 0 ? -d : d; n++; } }
+    return n >= 16 ? s / n : 1e9;
+  }
+  function hdSub(em, e0, ep) { var dd = em - 2 * e0 + ep, f; if (!(dd > 1e-9) || em > 1e8 || ep > 1e8) return 0; f = 0.5 * (em - ep) / dd; return f < -0.5 ? -0.5 : f > 0.5 ? 0.5 : f; }
+  function hdMed(a) { if (!a.length) return 0; a.sort(function (p, q) { return p - q; }); return a[a.length >> 1]; }
+  function hdAlign(R, S, w, h, P, C) {
+    var q = Math.max(1, Math.round(Math.max(w, h) / 200));
+    if (!C.s) { C.s = hdDown(R, w, h, q); C.h2 = hdDown(R, w, h, 2); }
+    var Rs = C.s, Ss = hdDown(S, w, h, q), m = Math.max(2, P.shift | 0), x0 = Math.round(Rs.w * 0.15), x1 = Math.round(Rs.w * 0.85), y0 = Math.round(Rs.h * 0.1), y1 = Math.round(Rs.h * 0.9);
+    var bx = 0, by = 0, be = 1e9, dx, dy, e, x, y, i, j, k;
+    for (dy = -m; dy <= m; dy++) for (dx = -m; dx <= m; dx++) { e = hdSad(Rs.g, Ss.g, Rs.w, Rs.h, x0, y0, x1, y1, dx, dy, 2); if (e < be) { be = e; bx = dx; by = dy; } }
+    if (Math.abs(bx) >= m || Math.abs(by) >= m || be > 1e8) return null;                 // 찾는 범위 끝 = 너무 많이 움직임
+    var gdx = (bx + hdSub(hdSad(Rs.g, Ss.g, Rs.w, Rs.h, x0, y0, x1, y1, bx - 1, by, 2), be, hdSad(Rs.g, Ss.g, Rs.w, Rs.h, x0, y0, x1, y1, bx + 1, by, 2))) * q;
+    var gdy = (by + hdSub(hdSad(Rs.g, Ss.g, Rs.w, Rs.h, x0, y0, x1, y1, bx, by - 1, 2), be, hdSad(Rs.g, Ss.g, Rs.w, Rs.h, x0, y0, x1, y1, bx, by + 1, 2))) * q;
+    var R2 = C.h2, S2 = hdDown(S, w, h, 2), B = Math.max(16, P.block | 0) & ~1, B2 = B >> 1, gx = Math.max(1, Math.floor(w / B)), gy = Math.max(1, Math.floor(h / B)), nb = gx * gy;
+    var DX = new Float32Array(nb), DY = new Float32Array(nb), OK = new Uint8Array(nb), E = new Float32Array(nb), TX = new Uint8Array(nb), es = [];
+    var g2x = Math.round(gdx / 2), g2y = Math.round(gdy / 2), r1 = Math.max(1, P.r1 | 0), e25 = new Float32Array(25), nTex = 0, nOk = 0;
+    for (j = 0; j < gy; j++) for (i = 0; i < gx; i++) {
+      k = j * gx + i; DX[k] = gdx; DY[k] = gdy;
+      var a0 = i * B2, b0 = j * B2, a1 = a0 + B2, b1 = b0 + B2, s = 0, s2 = 0, nn = 0, v;
+      for (y = b0; y < b1; y += 2) for (x = a0; x < a1; x += 2) { v = R2.g[y * R2.w + x]; s += v; s2 += v * v; nn++; }
+      if (Math.sqrt(Math.max(0, s2 / nn - (s / nn) * (s / nn))) < P.flat) { OK[k] = 1; continue; }   // 무늬 없음 — 전체 이동 그대로(평균만)
+      TX[k] = 1; nTex++;
+      var b1x = 0, b1y = 0, b1e = 1e9;
+      for (dy = -r1; dy <= r1; dy++) for (dx = -r1; dx <= r1; dx++) { e = hdSad(R2.g, S2.g, R2.w, R2.h, a0, b0, a1, b1, g2x + dx, g2y + dy, 2); if (e < b1e) { b1e = e; b1x = dx; b1y = dy; } }
+      if (b1e > 1e8) continue;
+      var cx = 2 * (g2x + b1x), cy = 2 * (g2y + b1y), X0 = i * B, Y0 = j * B, ux = 0, uy = 0, ue = 1e9;
+      for (dy = -2; dy <= 2; dy++) for (dx = -2; dx <= 2; dx++) { e = hdSad(R, S, w, h, X0, Y0, X0 + B, Y0 + B, cx + dx, cy + dy, 2); e25[(dy + 2) * 5 + dx + 2] = e; if (e < ue) { ue = e; ux = dx; uy = dy; } }
+      if (ue > 1e8 || Math.abs(ux) === 2 || Math.abs(uy) === 2) continue;                 // 범위 끝 — 못 믿음
+      var c = (uy + 2) * 5 + ux + 2;
+      DX[k] = cx + ux + hdSub(e25[c - 1], ue, e25[c + 1]); DY[k] = cy + uy + hdSub(e25[c - 5], ue, e25[c + 5]);
+      E[k] = ue; OK[k] = 1; es.push(ue);
+    }
+    var thr = Math.max(P.rej * hdMed(es.slice()), 2);
+    for (k = 0; k < nb; k++) if (TX[k] && OK[k]) { if (E[k] > thr) OK[k] = 0; else nOk++; }
+    if (nTex >= 8 && nOk < 0.3 * nTex) return null;                                       // 맞는 구역이 너무 적음 — 이 프레임은 안 씀
+    /* 이웃(3×3) 중앙값 — 혼자 튄 구역은 이웃 값으로 · 무늬 없는/뺀 구역은 이웃 값을 받아 둠(사이 값 낼 때 쓰임) */
+    var DX2 = new Float32Array(DX), DY2 = new Float32Array(DY), ax = [], ay = [], ii, jj, kk;
+    for (j = 0; j < gy; j++) for (i = 0; i < gx; i++) {
+      k = j * gx + i; ax.length = 0; ay.length = 0;
+      for (jj = Math.max(0, j - 1); jj <= Math.min(gy - 1, j + 1); jj++) for (ii = Math.max(0, i - 1); ii <= Math.min(gx - 1, i + 1); ii++) { kk = jj * gx + ii; if (TX[kk] && OK[kk]) { ax.push(DX[kk]); ay.push(DY[kk]); } }
+      if (!ax.length) continue;
+      var mx = hdMed(ax), my = hdMed(ay);
+      if (!(TX[k] && OK[k]) || Math.abs(DX[k] - mx) > 1.5 || Math.abs(DY[k] - my) > 1.5) { DX2[k] = mx; DY2[k] = my; }
+    }
+    return { gx: gx, gy: gy, B: B, DX: DX2, DY: DY2, OK: OK, gdx: gdx, gdy: gdy, tex: nTex, ok: nOk };
+  }
+  function hdSplat(Yf, w, h, F, acc, wt, OW, OH, sx, sy, v0, v1) {
+    var u, v, dx = 0, dy = 0, hx, hy, ix, iy, ax, ay, o, yv, w00, w10, w01, w11, B, gx, gy, DX, DY, OK;
+    if (F) {
+      B = F.B; gx = F.gx; gy = F.gy; DX = F.DX; DY = F.DY; OK = F.OK;
+      if (!F.ci) { F.ci = new Int32Array(w); F.ct = new Float32Array(w); F.cn = new Int32Array(w); for (u = 0; u < w; u++) { var fx = (u - B / 2) / B; if (fx < 0) fx = 0; if (fx > gx - 1) fx = gx - 1; F.ci[u] = Math.min(gx - 1, Math.floor(fx)); F.ct[u] = fx - F.ci[u]; F.cn[u] = Math.min(gx - 1, Math.floor(u / B)); } }
+    }
+    for (v = v0; v < v1; v++) {
+      var j0 = 0, j1 = 0, ty = 0, jn = 0;
+      if (F) { var fy = (v - B / 2) / B; if (fy < 0) fy = 0; if (fy > gy - 1) fy = gy - 1; j0 = Math.min(gy - 1, Math.floor(fy)); ty = fy - j0; j1 = Math.min(gy - 1, j0 + 1); jn = Math.min(gy - 1, Math.floor(v / B)); }
+      for (u = 0; u < w; u++) {
+        if (F) {
+          if (!OK[jn * gx + F.cn[u]]) continue;
+          var i0 = F.ci[u], i1 = i0 + 1 < gx ? i0 + 1 : i0, tx = F.ct[u], p00 = j0 * gx + i0, p10 = j0 * gx + i1, p01 = j1 * gx + i0, p11 = j1 * gx + i1;
+          dx = (DX[p00] * (1 - tx) + DX[p10] * tx) * (1 - ty) + (DX[p01] * (1 - tx) + DX[p11] * tx) * ty;
+          dy = (DY[p00] * (1 - tx) + DY[p10] * tx) * (1 - ty) + (DY[p01] * (1 - tx) + DY[p11] * tx) * ty;
+        }
+        hx = (u - dx + 0.5) * sx - 0.5; hy = (v - dy + 0.5) * sy - 0.5; ix = Math.floor(hx); iy = Math.floor(hy);
+        if (ix < 0 || iy < 0 || ix + 1 >= OW || iy + 1 >= OH) continue;
+        ax = hx - ix; ay = hy - iy; yv = Yf[v * w + u]; o = iy * OW + ix;
+        w00 = (1 - ax) * (1 - ay); w10 = ax * (1 - ay); w01 = (1 - ax) * ay; w11 = ax * ay;
+        acc[o] += yv * w00; wt[o] += w00; acc[o + 1] += yv * w10; wt[o + 1] += w10; acc[o + OW] += yv * w01; wt[o + OW] += w01; acc[o + OW + 1] += yv * w11; wt[o + OW + 1] += w11;
+      }
+    }
+  }
+  function hdCompose(D, acc, wt, n, lam) {
+    var i, j, yu, d, r, g, b;
+    for (i = 0, j = 0; i < n; i++, j += 4) {
+      yu = (D[j] * 77 + D[j + 1] * 150 + D[j + 2] * 29) / 256; d = (acc[i] + lam * yu) / (wt[i] + lam) - yu;
+      r = D[j] + d; g = D[j + 1] + d; b = D[j + 2] + d;
+      D[j] = r < 0 ? 0 : r > 255 ? 255 : r; D[j + 1] = g < 0 ? 0 : g > 255 ? 255 : g; D[j + 2] = b < 0 ? 0 : b > 255 ? 255 : b;
+    }
+  }
+
+  /* ── (2026-11-16 hd) 머리 조각 — 화면 쪽(영상에서 자르기 · 저장 · 끊어 돌리기) ───────────────────── */
+  function hdRect() {               // 안내 윤곽 둘레 상자 → 영상 픽셀 좌표(영상은 화면을 꽉 채우게 잘려 보임 = object-fit:cover)
+    var vw = vid.videoWidth, vh = vid.videoHeight, SW = vid.clientWidth, SH = vid.clientHeight; if (!vw || !vh) return null;
+    var x0 = 0, y0 = 0, x1 = vw, y1 = vh;
+    if (SW > 8 && SH > 8) {
+      var sc = Math.max(SW / vw, SH / vh), gw = 0.62 * SW, gTop = 0.38 * SH - 0.3125 * 1.6 * gw;      // 윤곽 상자: 폭 62% · 세로 1.6배 · 머리 가운데가 화면 38% 높이(Q.open과 같은 값)
+      x0 = (SW * (0.5 - Q.hdSide) - SW / 2) / sc + vw / 2; x1 = (SW * (0.5 + Q.hdSide) - SW / 2) / sc + vw / 2;
+      y0 = (gTop - Q.hdUp * gw - SH / 2) / sc + vh / 2; y1 = (gTop + Q.hdDown * gw - SH / 2) / sc + vh / 2;
+    }
+    x0 = Math.max(0, Math.floor(x0)); y0 = Math.max(0, Math.floor(y0)); x1 = Math.min(vw, Math.ceil(x1)); y1 = Math.min(vh, Math.ceil(y1));
+    var w = x1 - x0, h = y1 - y0; if (w < 64 || h < 64) return null;
+    return { x: x0, y: y0, w: w, h: h, vw: vw, vh: vh, kd: Math.min(1, Math.sqrt(Q.hdMaxPx / (w * h))) };
+  }
+  function grabHd(r) {
+    var c = document.createElement('canvas'); c.width = Math.max(8, Math.round(r.w * r.kd)); c.height = Math.max(8, Math.round(r.h * r.kd));
+    c.getContext('2d', { willReadFrequently: true }).drawImage(vid, r.x, r.y, r.w, r.h, 0, 0, c.width, c.height);
+    return c;
+  }
+  function hdEncode(cv, r, entry, n, sr) {
+    return { url: cv.toDataURL('image/jpeg', Q.hdJpeg), x: r.x, y: r.y, w: r.w, h: r.h, vw: r.vw, vh: r.vh, fw: entry && entry.w, fh: entry && entry.h, k: +(cv.width / r.w).toFixed(5), pw: cv.width, ph: cv.height, n: n || 1, sr: +(sr || 1).toFixed(3) };
+  }
+  function hdFree(b) { try { (b.hdF || []).forEach(function (c) { if (c) { c.width = 0; c.height = 0; } }); } catch (e) {} b.hdF = null; }
+  function hdSingle(b, why) {       // 쌓지 않고 첫 장 그대로 — 첫 장 = 칸 사진(분석 마스크)과 같은 순간이라 자리가 맞음
+    try { if (b.hdF && b.hdF[0] && b.entry) { b.entry.hd = hdEncode(b.hdF[0], b.hdRect, b.entry, 1, 1); hdLog.push(b.t + '° 한 장' + (why ? '(' + why + ')' : '')); } } catch (e) {}
+    hdFree(b);
+  }
+  function hdStart(b) {
+    try {
+      if (!b.hdF || !b.hdF[0]) { hdFree(b); return; }
+      var cw = b.hdF[0].width, ch = b.hdF[0].height, sr = Math.min(Q.hdSr || 1, Math.sqrt(Q.hdSrMaxPx / (cw * ch)));
+      if (!(sr >= Q.hdSrMin)) { hdSingle(b, '조각이 이미 큼 ×' + sr.toFixed(2)); return; }
+      var F = [b.hdF[0]], i; for (i = 1; i < b.hdF.length; i++) { var c = b.hdF[i]; if (c && c.width === cw && c.height === ch && b.sharp[i] >= b.sharp[0] * Q.burstSharp) F.push(c); else if (c) { c.width = 0; c.height = 0; } }
+      b.hdF = F;
+      if (F.length < 2) { hdSingle(b, '맞는 프레임 없음'); return; }
+      if (hdJobs.length >= Q.hdQueue) { hdSingle(b, '밀림'); return; }
+      hdJobs.push(hdJob(b, F, sr)); hdKick();
+    } catch (e) { hdSingle(b, '오류'); }
+  }
+  function hdKick() {
+    if (hdTimer || !hdJobs.length) return;
+    hdTimer = setTimeout(function () { hdTimer = null; var t0 = now(); while (hdJobs.length && now() - t0 < Q.hdSliceMs) { if (hdJobs[0]()) hdJobs.shift(); } hdKick(); }, 0);
+  }
+  function hdDrain() {
+    if (hdTimer) { clearTimeout(hdTimer); hdTimer = null; }
+    while (hdJobs.length) { if (hdJobs[0]()) hdJobs.shift(); }
+    if (hdLog.length) { try { console.log(TAG + ' 머리 조각 — ' + hdLog.join(' · ') + ' (끄기 SHOT360.hd=false · 쌓기만 끄기 SHOT360.hdSr=1)'); } catch (e) {} hdLog = []; }
+  }
+  /* 한 칸의 쌓기 — 부를 때마다 한 토막씩 하고, 다 끝나면 true */
+  function hdJob(b, F, sr) {
+    var t0 = Date.now(), n = F.length, cw = F[0].width, ch = F[0].height, N = cw * ch, OW = Math.round(cw * sr), OH = Math.round(ch * sr), sx = OW / cw, sy = OH / ch;
+    var Y = [], fld = [null], C = {}, stage = 0, fi = 0, row = 0, acc = null, wt = null, used = 1, okB = 0, texB = 0, rows = Math.max(16, Math.round(120000 / cw));
+    var P = { shift: Q.burstShift, block: Q.hdBlock, r1: Q.hdR1, flat: Q.hdFlat, rej: Q.hdRej };
+    return function () {
+      try {
+        if (stage === 0) {                                                  // 프레임마다 밝기만 꺼냄(첫 장 캔버스만 남김 — 색·실패 때 한 장)
+          Y[fi] = hdLuma(F[fi].getContext('2d', { willReadFrequently: true }).getImageData(0, 0, cw, ch).data, N);
+          if (fi > 0) { F[fi].width = 0; F[fi].height = 0; }
+          if (++fi >= n) { stage = 1; fi = 1; }
+          return false;
+        }
+        if (stage === 1) {                                                  // 프레임마다 구역 맞추기
+          var f = hdAlign(Y[0], Y[fi], cw, ch, P, C); fld[fi] = f; if (f) { used++; okB += f.ok; texB += f.tex; } else Y[fi] = null;
+          if (++fi >= n) { if (used < 2) throw new Error('맞는 프레임 없음'); C = null; acc = new Float32Array(OW * OH); wt = new Float32Array(OW * OH); stage = 2; fi = 0; row = 0; }
+          return false;
+        }
+        if (stage === 2) {                                                  // 줄 묶음씩 촘촘한 격자에 더함
+          if (fi > 0 && !fld[fi]) { fi++; row = 0; }
+          else { var r1 = Math.min(ch, row + rows); hdSplat(Y[fi], cw, ch, fi ? fld[fi] : null, acc, wt, OW, OH, sx, sy, row, r1); row = r1; if (row >= ch) { Y[fi] = null; fld[fi] = fi ? null : fld[fi]; fi++; row = 0; } }
+          if (fi >= n) stage = 3;
+          return false;
+        }
+        var out = document.createElement('canvas'); out.width = OW; out.height = OH;
+        var ox = out.getContext('2d', { willReadFrequently: true }); ox.imageSmoothingEnabled = true; try { ox.imageSmoothingQuality = 'high'; } catch (e) {}
+        ox.drawImage(F[0], 0, 0, OW, OH);
+        var id = ox.getImageData(0, 0, OW, OH); hdCompose(id.data, acc, wt, OW * OH, Q.hdLam); ox.putImageData(id, 0, 0);
+        b.entry.hd = hdEncode(out, b.hdRect, b.entry, used, sr); b.entry.hd.blocks = texB ? +(okB / texB).toFixed(2) : null;
+        out.width = 0; out.height = 0;
+        hdLog.push(b.t + '° ' + used + '/' + n + '장 ×' + sr.toFixed(2) + ' → ' + OW + '×' + OH + '(맞은 구역 ' + (texB ? Math.round(100 * okB / texB) + '%' : '-') + ' · ' + (Date.now() - t0) + 'ms)');
+        acc = wt = null; F[0].width = 0; F[0].height = 0; b.hdF = null;
+        return true;
+      } catch (e) {
+        try { if (F[0] && F[0].width) { b.hdF = [F[0]]; hdSingle(b, '쌓기 실패: ' + (e && e.message || e)); } } catch (e2) {}
+        acc = wt = null; Y = []; return true;
+      }
+    };
+  }
+  /* 세트에서 그 사진(칸 사진 url)의 머리 조각 — 03b(머리 키우기 · 결 원본 해상도)가 부름. 없으면 null */
+  Q._hdFor = function (url) {
+    try {
+      if (Q.hd === false || !url) return null;
+      var set = typeof state !== 'undefined' && state.shots360, fr = set && set.frames, i;
+      if (fr) for (i = 0; i < fr.length; i++) if (fr[i] && fr[i].hd && fr[i].hd.url && fr[i].url === url) return fr[i].hd;
+    } catch (e) {}
+    return null;
+  };
   function faceVote() {             // 얼굴이 보이는 구간에서 "센서 + 방향 = 손님의 왼쪽인가"를 맞춰 봄
     if (Q.sign || typeof detectPoseOnCanvas !== 'function') return;
     var a = Math.abs(cur); if (a < 10 || a > 55) return;
@@ -933,6 +1143,7 @@ var SHOT360 = (function () {
     if (Math.abs(cur) > Q.frontSeekDeg) return;
     var t = now(); if (t - lastSeekAt < Q.frontSeekMs) return; lastSeekAt = t;
     var c = grabFrame(); if (!c) return;
+    var hr = null, hc = null; try { if (Q.hd !== false) { hr = hdRect(); if (hr) hc = grabHd(hr); } } catch (e) { hc = null; }   // (2026-11-16 hd) 얼굴 재는 동안 영상이 넘어가므로 지금 받아 둠
     try {
       var k = Math.min(1, Q.frontSeekPx / Math.max(c.width, c.height));
       if (!seekCv) seekCv = document.createElement('canvas');
@@ -945,8 +1156,10 @@ var SHOT360 = (function () {
       if (fb && score >= fb.score - 1) return;                          // 1° 넘게 나아질 때만 바꿈
       var url = c.toDataURL('image/jpeg', Q.jpeg);
       fronts[lap] = { lap: lap, raw: cur, yaw: p.yawDeg, pitch: p.pitchDeg || 0, score: score, url: url, sharp: Math.round(sharpness()), time: Date.now(), w: c.width, h: c.height, zoom: Q.cam.zoom, hA: hAcc, gA: gAcc };
+      if (hc) fronts[lap].hd = hdEncode(hc, hr, fronts[lap], 1, 1);
       if (!frontBest || score < frontBest.score) frontBest = fronts[lap];
     } catch (e) {}
+    finally { if (hc) { hc.width = 0; hc.height = 0; } }
   }
   function appSign() {
     var s = Q.sign ? (Q.sign > 0 ? 1 : -1) : (signN >= 2 && Math.abs(signVote) > 15 ? (signVote > 0 ? 1 : -1) : -1);
@@ -992,7 +1205,7 @@ var SHOT360 = (function () {
   function start() {
     var go = function () {
       hAcc = 0; hPrev = null; gAcc = 0; gT = null; gN = 0; rLog = []; strip = []; stripLastH = null; fronts = {}; sides = {}; lastSideAt = 0;
-      T = targets(); got = {}; tries = {}; bst = null; burstPend = []; burstLog = []; h0 = null; cur = 0; lastDeg = null; speed = 0; signVote = 0; signN = 0; userFlip = false; frontBest = null; lastSeekAt = 0; seekN = 0;
+      T = targets(); got = {}; tries = {}; bst = null; burstPend = []; burstLog = []; if (hdTimer) { clearTimeout(hdTimer); hdTimer = null; } hdJobs = []; hdLog = []; h0 = null; cur = 0; lastDeg = null; speed = 0; signVote = 0; signN = 0; userFlip = false; frontBest = null; lastSeekAt = 0; seekN = 0;
       running = true;
       btnStart.textContent = '끝내기';                                    // (2026-10-25) 사용자: "start누르면 그 자리가 finish로 바뀌면서 다시 누르면 정지 · restart는 Done자리에"
       if (btnDone) { btnDone.textContent = '다시 시작'; btnDone.style.display = ''; }
@@ -1076,6 +1289,12 @@ var SHOT360 = (function () {
       fz = { zero: zero, yaw: frontBest.yaw, seen: seekN };
     }
     frames.sort(function (a, b) { return a.deg - b.deg; });
+    var hdN = 0, hdSr = 0;
+    try {                                                                      // (2026-11-16 hd) 머리 조각을 프레임에 붙임(같은 칸 사진 url)
+      var hm = []; [got, sides, fronts].forEach(function (o) { Object.keys(o).forEach(function (k2) { var e2 = o[k2]; if (e2 && e2.hd && e2.url) hm.push(e2); }); });
+      frames.forEach(function (f) { for (var hi = 0; hi < hm.length; hi++) if (hm[hi].url === f.url) { f.hd = hm[hi].hd; hdN++; if (f.hd.n > 1) hdSr++; break; } });
+      if (Q.hd !== false) console.log(TAG + ' 머리 조각 ' + hdN + '/' + frames.length + '장(여러 장 쌓음 ' + hdSr + ') · 영상 ' + (vid ? vid.videoWidth + '×' + vid.videoHeight : '-') + (hm[0] ? ' · 조각 ' + hm[0].hd.pw + '×' + hm[0].hd.ph + '(영상의 ×' + hm[0].hd.k + ')' : ''));
+    } catch (e) {}
     var set = { version: 1, at: Date.now(), stepDeg: Q.stepDeg, sign: s, signAuto: !Q.sign && !userFlip && signN >= 2, sensor: sensorOk, frames: frames, frontSeek: fz, loop: loop };
     if (loop) console.log(TAG + ' 0°↔360° 맞춤(' + (loop.src === 'gyro' ? '자이로 회전량' : '방위 누적') + ') — 출발 정면 yaw ' + loop.yaw0 + '° · 돌아온 정면 yaw ' + loop.yaw1 + '° · 센서 ' + loop.sensorDeg + '° / 진짜 ' + loop.trueDeg + '° → 표류 ' + loop.drift + '°를 돈 양 비례로 나눔(×' + loop.scale + ') · ' + loop.sec + '초' +
       (loop.speed ? ' · 속도 °/s p10 ' + loop.speed.p10 + ' / 중앙 ' + loop.speed.mid + ' / p90 ' + loop.speed.p90 : '') + ' · 기준점 ' + loop.anchors.join(' → ') + (loop.sideCheck.length ? ' · ±45° 센서 체크: ' + loop.sideCheck.join(' | ') : ' · ±45° 얼굴 못 잼(두 정면만)') + ' · 띠 ' + loop.strip + '장' + (loop.headingVsGyro ? ' · 자이로/방위 ' + loop.headingVsGyro : '') + ' (끄기 SHOT360.loop=false)');
@@ -1102,6 +1321,8 @@ var SHOT360 = (function () {
     { video: { facingMode: { ideal: 'environment' } }, audio: false },
     { video: true, audio: false }
   ];
+  /* (2026-11-16 hd) 더 큰 영상부터 요청 — 기기가 못 주면 가장 가까운 크기를 줌 · 그래도 안 열리면 아래 순서(예전 그대로)로 내려감. 끄기 SHOT360.hiVideo=false */
+  if (Q.hiVideo !== false && Q.videoW > 1920) CAM_TRIES.unshift({ video: { facingMode: { ideal: 'environment' }, width: { ideal: Q.videoW }, height: { ideal: Q.videoH } }, audio: false });
   var camSeq = 0, camWatch = null, camGuard = null, btnCam = null, tapEl = null;
   Q.cam = { opens: 0, retries: 0, lastErr: null, ok: false };
   function showRetry(on) { if (btnCam) btnCam.style.display = on ? '' : 'none'; }
