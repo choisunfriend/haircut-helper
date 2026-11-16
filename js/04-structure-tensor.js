@@ -704,10 +704,24 @@ var GABOR_ORIENT = (function () {
       V[i] = mx / 255; S[i] = mx > 0 ? (mx - mn) / mx : 0; nM++; if ((i & 7) === 0) vs.push(V[i]); if (r >= cl && g >= cl && b >= cl) { clip[i] = 1; nC++; } }
     vs.sort(function (p, q) { return p - q; }); var med = vs.length ? vs[vs.length >> 1] : 0.3, thr = Math.max(GO.hlVmin || 0.55, med * (GO.hlK || 1.8)), sm = GO.hlSmax != null ? GO.hlSmax : 0.3;
     for (i = 0; i < N; i++) if (mask[i] && V[i] >= thr && S[i] <= sm) { hl[i] = 1; nH++; }
+    /* (11-16b) 가는 밝은 줄(흰머리·가닥 따라 난 윤기 줄)은 반사 띠가 아님 — 결 그 자체라 오히려 좋은 재료.
+       디버그 사진(뒤·vm155): 정수리 흰머리 + 햇빛 윤기가 가닥을 따라 줄로 남 → 예전 판정은 이걸 띠로 보고 "가장자리와 나란한 결"을 버림(1,100~1,200개).
+       너비 hlBandPx(기본 2 → 5px) 넘게 꽉 찬 덩어리만 띠(속살 = 반경 hlBandPx 상자가 전부 밝음 → 다시 반경만큼 넓힘). 예전대로 GABOR_ORIENT.hlBandPx=0 */
+    var bp = GO.hlBandPx != null ? GO.hlBandPx : 2, nThin = 0;
+    if (bp > 0 && nH) {
+      var W1 = Wd + 1, I = new Int32Array((Wd + 1) * (Hd + 1)), xx0, yy0;                // 밝은 칸 개수 누적표(상자 안이 전부 밝은지 바로 셈)
+      for (yy0 = 0; yy0 < Hd; yy0++) { var rs = 0; for (xx0 = 0; xx0 < Wd; xx0++) { rs += hl[yy0 * Wd + xx0]; I[(yy0 + 1) * W1 + xx0 + 1] = I[yy0 * W1 + xx0 + 1] + rs; } }
+      var core = new Uint8Array(N), full = (2 * bp + 1) * (2 * bp + 1), nCore = 0;
+      for (yy0 = bp; yy0 < Hd - bp; yy0++) for (xx0 = bp; xx0 < Wd - bp; xx0++) { var ci = yy0 * Wd + xx0; if (!hl[ci]) continue;
+        var s4 = I[(yy0 + bp + 1) * W1 + xx0 + bp + 1] - I[(yy0 - bp) * W1 + xx0 + bp + 1] - I[(yy0 + bp + 1) * W1 + xx0 - bp] + I[(yy0 - bp) * W1 + xx0 - bp]; if (s4 >= full) { core[ci] = 1; nCore++; } }
+      var band = new Uint8Array(N), nB = 0;
+      if (nCore) for (yy0 = 0; yy0 < Hd; yy0++) for (xx0 = 0; xx0 < Wd; xx0++) { if (!core[yy0 * Wd + xx0]) continue; for (var dy0 = -bp; dy0 <= bp; dy0++) for (var dx0 = -bp; dx0 <= bp; dx0++) { var q0 = (yy0 + dy0) * Wd + xx0 + dx0; if (hl[q0] && !band[q0]) { band[q0] = 1; nB++; } } }
+      nThin = nH - nB; hl = band; nH = nB;
+    }
     var gr = GO.hlGrow != null ? GO.hlGrow : 3, zone = new Uint8Array(N), x, y, dx, dy;
     if (nH) for (y = 0; y < Hd; y++) for (x = 0; x < Wd; x++) { if (!hl[y * Wd + x]) continue; for (dy = -gr; dy <= gr; dy++) for (dx = -gr; dx <= gr; dx++) { var xx = x + dx, yy = y + dy; if (xx >= 0 && yy >= 0 && xx < Wd && yy < Hd && mask[yy * Wd + xx]) zone[yy * Wd + xx] = 1; } }
     var nZ = 0; for (i = 0; i < N; i++) if (zone[i]) nZ++;
-    return { hl: hl, zone: nH ? zone : null, clip: clip, nH: nH, nZ: nZ, nC: nC, nM: nM, med: med, thr: thr };
+    return { hl: hl, zone: nH ? zone : null, clip: clip, nThin: nThin, nH: nH, nZ: nZ, nC: nC, nM: nM, med: med, thr: thr };
   }
   function lumNormalize(g, mask, Wd, Hd) {
     var N = Wd * Hd, x0 = Wd, y0 = Hd, x1 = -1, y1 = -1, x, y, i, sg = GO.lumSig || 8;
@@ -843,7 +857,7 @@ var GABOR_ORIENT = (function () {
         if (GO.replace !== false) A[idx] = a;                               // 방향만 바꿈(coherence는 04번 값) · (2026-10-11c) replace=false면 결 읽기는 예전 방식 그대로(모양 재기만)
       }
       if (HLM) { var EC = { par: 0, clip: 0 }; if (HZ || HLM.nC) { try { EC = hlEdgeCheck(HLM, ang, conf, GO.replace !== false ? f.coherence : null, mask, Wd, Hd); } catch (eE) {} }
-        GO.stats.hl = { px: HLM.nM, hl: HLM.nH, zone: HLM.nZ, clip: EC.clip, par: EC.par, small: HLS.small, stSkip: HLS.stSkip, med: HLM.med, thr: HLM.thr };
+        GO.stats.hl = { px: HLM.nM, thin: HLM.nThin, hl: HLM.nH, zone: HLM.nZ, clip: EC.clip, par: EC.par, small: HLS.small, stSkip: HLS.stSkip, med: HLM.med, thr: HLM.thr };
         (GO.hlLog = GO.hlLog || []).push(GO.stats.hl); if (GO.hlLog.length > 16) GO.hlLog.shift(); }
       diffs.sort(function (p, q) { return p - q; });
       GO.stats.calls++; GO.stats.ms = Math.round(performance.now() - t0); GO.stats.px = cnt; GO.stats.dMed = diffs.length ? diffs[diffs.length >> 1] : null;
