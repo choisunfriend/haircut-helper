@@ -2131,7 +2131,7 @@ var REGROW = (function () {
        *  지금: 추가 사진 카메라 맞추기가 범위 끝(각 ±15°·배율 ±8%)에 안 걸린 사진만 넣음(11-10b · 예전 겹침 80% 기준은 hullExtraByIou) — 카메라가 덜 맞은 사진이 머리를 깎으면 두께가 0으로 무너짐(10/05 실측).
        *  여유는 옆·뒤와 같은 1.5cm. 끄기 REGROW.hullExtra=false · 문턱 REGROW.hullExtraMinIou */
       var hullX = false;
-      if (cam.extra && G.hullExtra !== false && G.xfitLast && G.xfitLast.rows) G.xfitLast.rows.forEach(function (r) { if (r.angle === cam.angle && !r.skip && (G.hullExtraByIou ? (r.kept ? r.i0 : r.i1) >= (G.hullExtraMinIou || 0.8) : (!r.edge && Math.abs(r.ds - 1) < (G.xfitScale || 0.08) - 1e-6))) hullX = true; });   // (11-10b) 기본: 카메라 맞추기가 범위 끝에 안 걸린 사진 — 겹침(IoU)은 가닥이 튀어나온 모델과 비교라 튀어나온 자리를 잘 보는 사진(90°)일수록 낮게 나와 빠짐(순환) · 예전 REGROW.hullExtraByIou=true
+      if (cam.extra && G.hullExtra !== false && G.xfitLast && G.xfitLast.rows) G.xfitLast.rows.forEach(function (r) { if (r.angle === cam.angle && !r.skip && !r.bad && (G.hullExtraByIou ? (r.kept ? r.i0 : r.i1) >= (G.hullExtraMinIou || 0.8) : (!r.edge && Math.abs(r.ds - 1) < (G.xfitScale || 0.08) - 1e-6))) hullX = true; });   // (11-10b) 기본: 카메라 맞추기가 범위 끝에 안 걸린 사진 — 겹침(IoU)은 가닥이 튀어나온 모델과 비교라 튀어나온 자리를 잘 보는 사진(90°)일수록 낮게 나와 빠짐(순환) · 예전 REGROW.hullExtraByIou=true
       if (!(G.hullViews && G.hullViews.indexOf(cam.angle) >= 0) && !hullX) return;
       try {
         var cp = Math.max(1, G.hullCellPx * cam.iw / 800), gw = Math.ceil(cam.iw / cp), gh = Math.ceil(cam.ih / cp), D = new Float32Array(gw * gh), x, y, i;
@@ -4169,7 +4169,7 @@ var REGROW = (function () {
     var V3 = (typeof VIEWS360 !== 'undefined') ? VIEWS360 : null;
     var xs = probe.cams.filter(function (c) { return c && c.smp && c.iw > 0 && typeof ANGLES !== 'undefined' && ANGLES.indexOf(c.angle) < 0; });
     if (!xs.length) return null;
-    var t0 = now(), CY = model.CY, yTop = model.yTop;
+    var t0 = now(), CY = model.CY, yTop = model.yTop, cmX = 19; try { cmX = modelCmPerUnit() || 19; } catch (e) {}
     // 가닥 마디(가운데 점 + 앞뒤 점 차) — 최대 xfitSegs개
     var segs = [], all = 0; model.strands.forEach(function (st) { all += Math.max(0, st.pts.length - 2); });
     var every = Math.max(1, Math.ceil(all / (G.xfitSegs || 15000))), k = 0;
@@ -4189,11 +4189,15 @@ var REGROW = (function () {
       }
       if (nM < 30) { rows.push({ angle: c0.angle, skip: '머리 영역 작음' }); return; }
       var Z = new Float32Array(NC), SD = new Float32Array(NC), OC = new Uint8Array(NC);
-      function cost(dyaw, ds, dcx) {
+      function camOf(dyaw, ds, dcx, dp, dyCm) {   // (11-16) 위아래(dp°)·높이(dyCm)도 — R = Rx(dp)·R0·Ry(dyaw)
         var cy = Math.cos(dyaw * RAD), sy_ = Math.sin(dyaw * RAD), R0 = c0.R;
-        // R = R0 · Ry(dyaw)   (Ry = [c,0,s; 0,1,0; −s,0,c] — 13a composeRotationZYX와 같은 꼴)
         var R = [R0[0] * cy - R0[2] * sy_, R0[1], R0[0] * sy_ + R0[2] * cy, R0[3] * cy - R0[5] * sy_, R0[4], R0[3] * sy_ + R0[5] * cy, R0[6] * cy - R0[8] * sy_, R0[7], R0[6] * sy_ + R0[8] * cy];
-        var s = c0.s / ds, sy = c0.sy / ds, crownY = c0.crownY + (yTop - CY) * (1 / c0.sy - 1 / sy), cx = c0.cx + dcx, i, j;
+        if (dp) { var cp = Math.cos(dp * RAD), sp = Math.sin(dp * RAD); R = [R[0], R[1], R[2], cp * R[3] - sp * R[6], cp * R[4] - sp * R[7], cp * R[5] - sp * R[8], sp * R[3] + cp * R[6], sp * R[4] + cp * R[7], sp * R[5] + cp * R[8]]; }
+        var sy = c0.sy / ds;
+        return { R: R, s: c0.s / ds, sy: sy, crownY: c0.crownY + (yTop - CY) * (1 / c0.sy - 1 / sy) + (dyCm || 0) / (cmX * sy), cx: c0.cx + dcx };
+      }
+      function cost(dyaw, ds, dcx, dp, dyCm) {
+        var K = camOf(dyaw, ds, dcx, dp, dyCm), R = K.R, s = K.s, sy = K.sy, crownY = K.crownY, cx = K.cx, i, j;
         Z.fill(-1e9); OC.fill(0);
         for (i = 0; i < NS; i++) {
           j = i * 6; var px = segs[j], py = segs[j + 1], pz = segs[j + 2];
@@ -4210,23 +4214,31 @@ var REGROW = (function () {
           if (OC[i] && MK[i] && isFinite(PA[i]) && isFinite(SD[i])) { var dd = PA[i] - SD[i]; dd = Math.abs(((dd % Math.PI) + 1.5 * Math.PI) % Math.PI - Math.PI / 2); gs += Math.min(dd, Math.PI / 4); gn++; }
         }
         var g = gn ? gs / gn / RAD : 45, iou = U ? I / U : 0;
-        return { c: g / 45 + (1 - iou) + (G.xfitYawK != null ? G.xfitYawK : 0.004) * Math.abs(dyaw), g: g, iou: iou, n: gn };
+        return { c: g / 45 + (1 - iou) + (G.xfitYawK != null ? G.xfitYawK : 0.004) * (Math.abs(dyaw) + Math.abs(dp || 0)), g: g, iou: iou, n: gn };
       }
-      var Y = G.xfitYawDeg || 15, SC = G.xfitScale || 0.08, CXW = (G.xfitCx || 0.05) * c0.iw;
+      var weak = false; try { weak = !!(V3 && V3.views && V3.views[c0.angle] && V3.views[c0.angle].weak); } catch (e) {}
+      var Y = weak ? (G.xfitYawWeak || 25) : (G.xfitYawDeg || 15), SC = G.xfitScale || 0.08, CXW = (G.xfitCx || 0.05) * c0.iw, PP = G.xfitPitch != null ? G.xfitPitch : 8, DYC = G.xfitDyCm != null ? G.xfitDyCm : 1.5;
       var b0 = cost(0, 1, 0), best = { r: b0, dyaw: 0, ds: 1, dcx: 0 }, a, b, cc, r;
       for (a = -Y; a <= Y; a += 3) for (b = -2; b <= 2; b++) for (cc = -2; cc <= 2; cc++) { r = cost(a, 1 + SC * b / 2, CXW * cc / 2); if (r.c < best.r.c) best = { r: r, dyaw: a, ds: 1 + SC * b / 2, dcx: CXW * cc / 2 }; }
-      var b1 = best;
-      for (a = b1.dyaw - 2; a <= b1.dyaw + 2; a++) for (b = -1; b <= 1; b++) for (cc = -1; cc <= 1; cc++) {
-        if (Math.abs(a) > Y) continue; var ds2 = b1.ds + SC * b / 4, cx2 = b1.dcx + CXW * cc / 4; if (Math.abs(ds2 - 1) > SC + 1e-6) continue;
-        r = cost(a, ds2, cx2); if (r.c < best.r.c) best = { r: r, dyaw: a, ds: ds2, dcx: cx2 };
+      best.dp = 0; best.dy = 0;
+      /* (11-16) 위아래·높이 — 좌우 각·배율·가로를 고정하고 따로 찾은 뒤 함께 다듬음(전부 한꺼번에 찾으면 폰에서 느림) */
+      var pq, dq;
+      if (PP > 0 || DYC > 0) for (pq = -PP; pq <= PP; pq += Math.max(1, PP / 4)) for (dq = -2; dq <= 2; dq++) {
+        r = cost(best.dyaw, best.ds, best.dcx, pq, DYC * dq / 2); if (r.c < best.r.c) best = { r: r, dyaw: best.dyaw, ds: best.ds, dcx: best.dcx, dp: pq, dy: DYC * dq / 2 };
       }
-      var row = { angle: c0.angle, g0: b0.g, i0: b0.iou, g1: best.r.g, i1: best.r.iou, dyaw: best.dyaw, ds: best.ds, dcx: best.dcx, edge: Math.abs(best.dyaw) >= Y };
-      if (!(b0.c - best.r.c >= (G.xfitMinGain != null ? G.xfitMinGain : 0.02))) { row.kept = true; rows.push(row); return; }
+      var b1 = best;
+      for (a = b1.dyaw - 2; a <= b1.dyaw + 2; a++) for (b = -1; b <= 1; b++) for (cc = -1; cc <= 1; cc++) for (pq = -1; pq <= 1; pq++) {
+        if (Math.abs(a) > Y) continue; var ds2 = b1.ds + SC * b / 4, cx2 = b1.dcx + CXW * cc / 4, dp2 = b1.dp + pq; if (Math.abs(ds2 - 1) > SC + 1e-6 || Math.abs(dp2) > PP) continue;
+        r = cost(a, ds2, cx2, dp2, b1.dy); if (r.c < best.r.c) best = { r: r, dyaw: a, ds: ds2, dcx: cx2, dp: dp2, dy: b1.dy };
+      }
+      var row = { angle: c0.angle, g0: b0.g, i0: b0.iou, g1: best.r.g, i1: best.r.iou, dyaw: best.dyaw, ds: best.ds, dcx: best.dcx, dp: best.dp, dy: best.dy, weak: weak, edge: Math.abs(best.dyaw) >= Y };
+      /* 맞춘 뒤에도 겹침이 xfitBadIou(60%) 미만이면 '안 맞음' — 영역 깎기에서만 뺌(결·확인에는 남음) */
+      row.bad = best.r.iou < (G.xfitBadIou != null ? G.xfitBadIou : 0.6);
+      if (!(b0.c - best.r.c >= (G.xfitMinGain != null ? G.xfitMinGain : 0.02))) { row.kept = true; row.bad = b0.iou < (G.xfitBadIou != null ? G.xfitBadIou : 0.6); if (V3) { V3.fit = V3.fit || {}; var fk = V3.fit[c0.angle] || { dyaw: 0, ds: 1, dcx: 0, dp: 0, dyCm: 0 }; fk.bad = row.bad; V3.fit[c0.angle] = fk; } rows.push(row); return; }
       // 프로브 카메라를 바로 고침(지금 다시 기르기용) + VIEWS360.fit에 더해 둠(3D를 다시 만들 때 calFor가 씀)
-      var cy = Math.cos(best.dyaw * RAD), sy_ = Math.sin(best.dyaw * RAD), R0 = c0.R, sy2 = c0.sy / best.ds;
-      c0.R = [R0[0] * cy - R0[2] * sy_, R0[1], R0[0] * sy_ + R0[2] * cy, R0[3] * cy - R0[5] * sy_, R0[4], R0[3] * sy_ + R0[5] * cy, R0[6] * cy - R0[8] * sy_, R0[7], R0[6] * sy_ + R0[8] * cy];
-      c0.crownY = c0.crownY + (yTop - CY) * (1 / c0.sy - 1 / sy2); c0.s = c0.s / best.ds; c0.sy = sy2; c0.cx += best.dcx;
-      if (V3) { V3.fit = V3.fit || {}; var f = V3.fit[c0.angle] || { dyaw: 0, ds: 1, dcx: 0 }; f.dyaw += best.dyaw; f.ds *= best.ds; f.dcx += best.dcx; V3.fit[c0.angle] = f; }
+      var K2 = camOf(best.dyaw, best.ds, best.dcx, best.dp, best.dy);
+      c0.R = K2.R; c0.crownY = K2.crownY; c0.s = K2.s; c0.sy = K2.sy; c0.cx = K2.cx;
+      if (V3) { V3.fit = V3.fit || {}; var f = V3.fit[c0.angle] || { dyaw: 0, ds: 1, dcx: 0, dp: 0, dyCm: 0 }; f.dyaw += best.dyaw; f.ds *= best.ds; f.dcx += best.dcx; f.dp = (f.dp || 0) + best.dp; f.dyCm = (f.dyCm || 0) + best.dy; f.bad = row.bad; V3.fit[c0.angle] = f; }
       rows.push(row);
     });
     var out = { rows: rows, ms: Math.round(now() - t0), segs: NS };
@@ -4234,11 +4246,88 @@ var REGROW = (function () {
     console.log(G.xfitLine());
     return out;
   };
+  /* ==========================================================================
+   * (2026-11-16 vchk) 사진마다 확인 — 다 기른 머리를 사진마다 비춰 넘침·빔·결·깊이(윤곽 좌우 끝) 차이를 잼(고치지 않음 · 진단만)
+   *  사용자: "기본 사진 4장에다가 추가사진으로 확인, 수정하는 작업이 360도의 취지" · "깊이를 확인해야지"
+   *  · 넘침/빔: 머리 영역 칸 대비(칸 = 사진 폭/64) · 머리 윤곽은 가림과 상관없이 모든 점(실루엣)
+   *  · 결: 그 칸에서 카메라에 가장 가까운 마디 방향 vs 사진 결(또렷함 0.3 이상) · 각도 차 중앙값
+   *  · 깊이: 줄마다 윤곽 왼끝·오른끝(모델 − 사진, + = 모델이 밖으로 나감)을 cm로. 옆·뒤 사진의 가로는 머리의 앞뒤 = 깊이.
+   *    얼굴 쪽(+z)·뒤통수 쪽(−z)으로 이름을 붙임(정면·뒤 사진은 좌·우)
+   *  끄기 REGROW.viewCheck=false · 결과 REGROW.vchkLast
+   * ========================================================================== */
+  G.viewCheck = function (model, probe) {
+    if (G.viewCheck === false || G.vchkOn === false || !model || !model.strands || !probe || !probe.cams) return null;
+    var t0 = now(), CY = model.CY, yTop = model.yTop, cm = 19; try { cm = modelCmPerUnit() || 19; } catch (e) {}
+    var P = [], D = [], all = 0;
+    model.strands.forEach(function (st) { all += st.pts.length; });
+    var every = Math.max(1, Math.ceil(all / 60000)), k = 0;
+    model.strands.forEach(function (st) { var q = st.pts, i; for (i = 1; i < q.length; i++) if ((k++ % every) === 0) { P.push(q[i].x, q[i].y - CY, q[i].z); D.push(q[i].x - q[i - 1].x, q[i].y - q[i - 1].y, q[i].z - q[i - 1].z); } });
+    var N = P.length / 3, rows = [], V3 = (typeof VIEWS360 !== 'undefined') ? VIEWS360 : null;
+    function med(a) { if (!a.length) return NaN; a.sort(function (x, y) { return x - y; }); return a[a.length >> 1]; }
+    function pct(a, q) { if (!a.length) return NaN; a.sort(function (x, y) { return x - y; }); return a[Math.min(a.length - 1, Math.floor(a.length * q))]; }
+    probe.cams.forEach(function (c) {
+      if (!c || !c.smp || !(c.iw > 0)) return;
+      var cols = 64, cell = c.iw / cols, gw = cols, gh = Math.max(1, Math.ceil(c.ih / cell)), NC = gw * gh, x, y, i;
+      var MK = new Uint8Array(NC), OC = new Uint8Array(NC), T = new Uint8Array(NC), Z = new Float32Array(NC).fill(-1e9), SD = new Float32Array(NC).fill(NaN), PA = new Float32Array(NC).fill(NaN), nM = 0;
+      var mi = state.hairMasks && state.hairMasks[c.angle], ori = mi && mi.orientation, mw = mi ? (mi.maskW || mi.w) : 0, kx = mi ? mw / mi.w : 1, ky = mi ? (mi.maskH || mi.h) / mi.h : 1;
+      for (y = 0; y < gh; y++) for (x = 0; x < gw; x++) {
+        var ix = (x + 0.5) * cell, iy = (y + 0.5) * cell; if (!(c.smp.at(ix, iy) > 0)) continue;
+        MK[y * gw + x] = 1; nM++;
+        if (ori && typeof sampleOrientation === 'function') { var sm = null; try { sm = sampleOrientation(ori, ix * kx, mw, iy * ky); } catch (e) {} if (sm && isFinite(sm.angle) && sm.coherence >= 0.3) PA[y * gw + x] = -sm.angle; }
+      }
+      if (nM < 30) { rows.push({ angle: c.angle, skip: '머리 영역 작음' }); return; }
+      var R = c.R;
+      for (i = 0; i < N; i++) {
+        var px = P[i * 3], py = P[i * 3 + 1], pz = P[i * 3 + 2];
+        var u = (R[0] * px + R[1] * py + R[2] * pz) / c.s + c.cx, v = c.crownY + (yTop - ((R[3] * px + R[4] * py + R[5] * pz) + CY)) / c.sy;
+        var gx = Math.floor(u / cell), gq = Math.floor(v / cell); if (gx < 0 || gq < 0 || gx >= gw || gq >= gh) continue;
+        var id = gq * gw + gx, z = R[6] * px + R[7] * py + R[8] * pz; OC[id] = 1;
+        if (z <= Z[id]) continue; Z[id] = z;
+        var dx = R[0] * D[i * 3] + R[1] * D[i * 3 + 1] + R[2] * D[i * 3 + 2], dy = R[3] * D[i * 3] + R[4] * D[i * 3 + 1] + R[5] * D[i * 3 + 2];
+        SD[id] = (dx * dx + dy * dy) > 1e-12 ? Math.atan2(dy / c.sy, dx / c.s) : NaN;
+      }
+      // 가닥 사이 틈 메우기(닫기 1)
+      for (y = 0; y < gh; y++) for (x = 0; x < gw; x++) { var v1 = 0; for (var a = -1; a <= 1 && !v1; a++) for (var b = -1; b <= 1; b++) { var X2 = x + b, Y2 = y + a; if (X2 >= 0 && Y2 >= 0 && X2 < gw && Y2 < gh && OC[Y2 * gw + X2]) { v1 = 1; break; } } T[y * gw + x] = v1; }
+      for (y = 0; y < gh; y++) for (x = 0; x < gw; x++) { var v2 = 1; for (var a2 = -1; a2 <= 1 && v2; a2++) for (var b2 = -1; b2 <= 1; b2++) { var X3 = x + b2, Y3 = y + a2; if (!(X3 >= 0 && Y3 >= 0 && X3 < gw && Y3 < gh && T[Y3 * gw + X3])) { v2 = 0; break; } } OC[y * gw + x] = v2 || OC[y * gw + x]; }
+      var over = 0, empty = 0, gd = [];
+      for (i = 0; i < NC; i++) {
+        if (OC[i] && !MK[i]) over++; if (MK[i] && !OC[i]) empty++;
+        if (OC[i] && MK[i] && isFinite(PA[i]) && isFinite(SD[i])) { var dd = PA[i] - SD[i]; dd = Math.abs(((dd % Math.PI) + 1.5 * Math.PI) % Math.PI - Math.PI / 2); gd.push(dd * 180 / Math.PI); }
+      }
+      // 깊이(윤곽 좌우 끝) — 줄마다 모델 끝 − 사진 끝(바깥 +) · cm
+      var cmPerCell = cell * c.s * cm, eL = [], eR = [];
+      for (y = 0; y < gh; y++) {
+        var mL = -1, mR = -1, oL = -1, oR = -1;
+        for (x = 0; x < gw; x++) { var id2 = y * gw + x; if (MK[id2]) { if (mL < 0) mL = x; mR = x; } if (OC[id2]) { if (oL < 0) oL = x; oR = x; } }
+        if (mL < 0 || oL < 0) continue;
+        eL.push((mL - oL) * cmPerCell); eR.push((oR - mR) * cmPerCell);
+      }
+      // 사진 오른쪽(+u)이 머리의 어느 쪽인가: 사진 가로축의 z 성분(R[2]) — 0.4 넘으면 얼굴 쪽(+z) · −0.4 아래면 뒤통수 쪽
+      var zR = R[2], nameR = zR > 0.4 ? '얼굴쪽' : zR < -0.4 ? '뒤통수쪽' : '사진 오른쪽', nameL = zR > 0.4 ? '뒤통수쪽' : zR < -0.4 ? '얼굴쪽' : '사진 왼쪽';
+      var vw = V3 && V3.views && V3.views[c.angle], fit = V3 && V3.fit && V3.fit[c.angle];
+      rows.push({ angle: c.angle, extra: !!c.extra, weak: !!(vw && vw.weak), bad: !!(fit && fit.bad), over: over / nM, empty: empty / nM, g: med(gd), g90: pct(gd.slice(), 0.9), gn: gd.length,
+        L: { name: nameL, med: med(eL.slice()), p90: pct(eL.slice(), 0.9) }, R: { name: nameR, med: med(eR.slice()), p90: pct(eR.slice(), 0.9) }, rowsN: eL.length });
+    });
+    G.vchkLast = { rows: rows, ms: Math.round(now() - t0), pts: N };
+    try { console.log(G.viewCheckLines().join('\n')); } catch (e) {}
+    return G.vchkLast;
+  };
+  G.viewCheckLines = function () {
+    var o = G.vchkLast; if (!o) return ['  사진마다 확인(넘침·빔·결·깊이): 아직 안 함' + (G.viewCheck === false || G.vchkOn === false ? '(꺼짐)' : '')];
+    var f1 = function (v) { return isFinite(v) ? (v >= 0 ? '+' : '') + v.toFixed(1) : '-'; };
+    var L = ['  사진마다 확인(다 기른 머리를 사진에 비춤 · 고치지 않음 · ' + o.ms + 'ms · 점 ' + o.pts + ') — 넘침/빔 = 머리 영역 대비 · 결 = 각도 차 중앙/p90 · 깊이 = 윤곽 끝 모델−사진 cm(+ 밖으로 나감) 중앙/p90 (끄기 REGROW.vchkOn=false)'];
+    o.rows.forEach(function (r) {
+      if (r.skip) { L.push('   ' + r.angle + ' 안 함(' + r.skip + ')'); return; }
+      L.push('   ' + r.angle + (r.extra ? '(추가)' : '(기준)') + (r.weak ? '[약함]' : '') + (r.bad ? '[⚠ 카메라 안 맞음]' : '') + ' 넘침 ' + Math.round(r.over * 100) + '% · 빔 ' + Math.round(r.empty * 100) + '% · 결 ' + (isFinite(r.g) ? r.g.toFixed(0) + '/' + r.g90.toFixed(0) + '°(' + r.gn + '칸)' : '-') +
+        ' · 깊이 ' + r.L.name + ' ' + f1(r.L.med) + '/' + f1(r.L.p90) + ' · ' + r.R.name + ' ' + f1(r.R.med) + '/' + f1(r.R.p90) + 'cm(' + r.rowsN + '줄)');
+    });
+    return L;
+  };
   G.xfitLine = function () {
     var o = G.xfitLast; if (!o) return '  추가 사진 카메라 맞추기: 아직 안 함' + (G.extraFit === false ? '(꺼짐)' : '');
     return '  추가 사진 카메라 맞추기(기준 사진 결로만 기른 가닥 · 결 차이+겹침 · ±' + (G.xfitYawDeg || 15) + '°): ' + o.rows.map(function (r) {
       if (r.skip) return r.angle + ' 안 함(' + r.skip + ')';
-      return r.angle + ' 결 ' + r.g0.toFixed(1) + '→' + r.g1.toFixed(1) + '° · 겹침 ' + Math.round(r.i0 * 100) + '→' + Math.round(r.i1 * 100) + '% · 각 ' + (r.dyaw >= 0 ? '+' : '') + r.dyaw + '°' + (r.edge ? '(범위 끝)' : '') + ' · 배율 ' + r.ds.toFixed(3) + ' · 가로 ' + (r.dcx >= 0 ? '+' : '') + r.dcx.toFixed(0) + 'px' + (r.kept ? ' → 안 바꿈(좋아짐 작음)' : ' → 바꿈');
+      return r.angle + ' 결 ' + r.g0.toFixed(1) + '→' + r.g1.toFixed(1) + '° · 겹침 ' + Math.round(r.i0 * 100) + '→' + Math.round(r.i1 * 100) + '% · 각 ' + (r.dyaw >= 0 ? '+' : '') + r.dyaw + '°' + (r.edge ? '(범위 끝)' : '') + ' · 배율 ' + r.ds.toFixed(3) + ' · 가로 ' + (r.dcx >= 0 ? '+' : '') + r.dcx.toFixed(0) + 'px' + (r.dp ? ' · 위아래 ' + (r.dp >= 0 ? '+' : '') + r.dp + '°' : '') + (r.dy ? ' · 높이 ' + (r.dy >= 0 ? '+' : '') + r.dy.toFixed(1) + 'cm' : '') + (r.weak ? ' · [약함→맞춤 ±' + (G.xfitYawWeak || 25) + '°]' : '') + (r.bad ? ' · ⚠ 맞춘 뒤에도 겹침 낮음 → 영역 깎기에서만 뺌' : '') + (r.kept ? ' → 안 바꿈(좋아짐 작음)' : ' → 바꿈');
     }).join(' | ') + ' · ' + o.ms + 'ms (끄기 REGROW.xfitOn=false)';
   };
   G.camFitRun = function (model, probe) {
@@ -4440,6 +4529,7 @@ var REGROW = (function () {
         if (fit && fit.views.some(function (r) { return r.pitch || r.dyCm || r.scale !== 1; })) { G.camFitFirstMs = Math.round(workMs); return G.build(cb); }
       }
       G.model = model; G.src = photo;
+      try { G.viewCheck(model, (photo.occ && photo.occ.probe) || (state.hairOcc3D && state.hairOcc3D.probe) || null); } catch (eVC) { console.warn(TAG + ' 사진마다 확인 실패', eVC); }   // (2026-11-16 vchk)
       try { if (typeof SIL_LEN !== 'undefined') SIL_LEN.apply(model, photo, !!(G.stats && G.stats.isLong)); } catch (eSL) { console.warn('[실루엣 길이] 실패 — 그대로 둠', eSL); }   // (2026-11-10) 짧은 머리 끝 = 실루엣에서 잰 길이(42)
       console.log(G.lines().join('\n'));
       try { if (G.applyBaseline) G.applyBaseline(); } catch (e) { console.warn(TAG + ' 기준 값 넣기 실패', e); }
@@ -5318,7 +5408,9 @@ function helixMeasure(rgba,mask,W,H,angle,coh,opt){opt=opt||{};const n=opt.n||25
     try { var rk = s.rk; if (rk) L.push('  걸음 안 세 번 더 보기(RK4 · 0.4cm 걸음): ' + (rk.on ? '켜짐 — 걸음 ' + rk.n + ' · 곧은 결이라 한 번으로 끝낸 걸음 ' + (rk.skip || 0) + ' · 다시 본 자리 ' + rk.sub + ' · 결이 없어 앞 값을 쓴 자리 ' + rk.miss + ' (끄기 ?rk=0)' : '꺼짐(켜기 ?rk=1)') + ' · 관성 ' + G.inertia + ' · 중력 ' + G.gravity); } catch (e) {}
     try { L.push('  깊이 맞추기(결을 한 장만 읽은 걸음 · 그 사진 시선축으로만 ' + G.depthFixCm + 'cm 안): ' + (G.depthFix ? '켜짐 — 멈출 뻔한 걸음을 옮김 ' + (s.depthFix || 0) + '(가닥 ' + (s.depthFixN || 0) + ' · 옮긴 깊이 평균 ' + (s.depthFixCm || 0).toFixed(1) + 'cm) (끄기 ?depthfix=0)' : '꺼짐(켜기 ?depthfix=1)')); } catch (e) {}
     try { var _xl = G.xliftStat; L.push('  추가 사진 가닥(360 추가 사진 결로 그어 맞춘 카메라로 머리 겉면에 올림 · 위 결 장·그대로 그리기에 들어감): ' + (G.xlift === false ? '꺼짐' : !_xl ? '없음(추가 사진 없음)' : _xl.err ? '실패 ' + _xl.err : (_xl.views.join(' · ') || '추가 사진 결 없음') + ' · 깊이: 머리 덩어리 겉면 ' + (_xl.vol || 0) + '점 / 타원 ' + (_xl.ell || 0) + '점 · ' + _xl.ms + 'ms') + ' (끄기 REGROW.xlift=false)'); } catch (e) {}
-    try { L.push(G.xfitLine()); L.push('  각도 구역(360 추가 사진이 있을 때 · 둘레 각이 가장 가까운 사진이 맡고 경계 ±' + (G.secFeatherDeg || 20) + '°만 섞음): ' + (G.sectors === false ? '꺼짐' : '켜짐') + ' (끄기 REGROW.sectors=false)'); } catch (e) {}
+    try { L.push(G.xfitLine()); } catch (e) {}
+    try { G.viewCheckLines().forEach(function (x) { L.push(x); }); } catch (e) {}
+    try { L.push('  각도 구역(360 추가 사진이 있을 때 · 둘레 각이 가장 가까운 사진이 맡고 경계 ±' + (G.secFeatherDeg || 20) + '°만 섞음): ' + (G.sectors === false ? '꺼짐' : '켜짐') + ' (끄기 REGROW.sectors=false)'); } catch (e) {}
     L.push('  사진끼리 맞춰 보기: ' + (G.agree ? '켜짐(' + G.agreeDeg + '° · ' + G.agreeRatio + '배 · 갈피 없으면 ' + (G.agreeAmbig === 'skip' ? '관성' : '가장 믿을 만한 사진') + ') — 두 장 이상 읽은 걸음 ' + (s.agreeN || 0) + ' · 엇갈려 뺀 사진 ' + (s.agreeDrop || 0) + ' · 갈피를 못 잡아 관성으로 넘긴 걸음 ' + (s.agreeSkip || 0) + ' · 두피 밖에서 가려서 뺀 사진 ' + (s.visBlk || 0) + ' · 비스듬해도 보여서 쓴 사진 ' + (s.visLowN || 0) + (G.visRead ? '' : '(꺼짐)') + (W.SYNTH_PHOTO && W.SYNTH_PHOTO.on ? ' · 생성 사진 보정 걸림(33번)' : '') : '꺼짐(끄기 REGROW.agree=false)'));
     if (s.backFix) L.push('  뒷머리 앞쏠림 막기 — ' + (s.backFoldAfter ? '읽을 때는 안 막음 · 다 읽은 뒤 어깨 아래에서 뒤로 넘긴 가닥 ' + (s.foldN || 0) + '개(옮긴 점 ' + (s.foldPts || 0) + ' · 끄기 REGROW.backFoldAfter=false) · ' : '') + '뒤쪽에서 두피를 벗어난 가닥 ' + s.backN + '개(길이 중앙값 ' + n1(s.backLenMed) + 'cm) · 앞으로 가려던 걸음 ' + s.backFwd + '회 막음 · 뒤 사진 끝 높이까지 이어 간 걸음 ' + s.backKeep +
       (s.backTipN >= 20 ? ' · 뒤 사진 머리 끝 = 정수리에서 ' + n1(s.backTipCm) + 'cm 아래(가닥 ' + s.backTipN + '개 기준)' : ' · 뒤 사진 가닥이 적어(' + s.backTipN + ') 끝 높이 기준은 안 씀'));

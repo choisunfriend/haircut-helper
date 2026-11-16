@@ -1688,8 +1688,9 @@ var VIEWS360 = (function () {
     var yawDeg = faceOk ? v.faceYaw : yawS;                                                    // 얼굴이 잡혔고 센서와 맞으면 얼굴 실측
     /* (2026-11-10) 다시 기르기의 [추가 사진 카메라 맞추기](17b REGROW.extraFit)가 사진 결·머리 영역으로 다듬은 양 — 3D를 다시 만들어도 유지 · 세트가 바뀌면 지움. 끄기 VIEWS360.useFit=false */
     var _xf = (X.useFit !== false && X.fit && X.fit[v.key]) || null, _crown = m.crown;
-    if (_xf) { yawDeg += _xf.dyaw || 0; var _sy0 = sy; sy = sy / (_xf.ds || 1); _crown = m.crown + (yTop - CY) * (1 / _sy0 - 1 / sy); }
-    var cal = { pose: { yaw: yawDeg * Math.PI / 180, pitch: 0, roll: 0 }, cx: m.capCx + (_xf ? _xf.dcx || 0 : 0), s: sy, sy: sy, crownY: _crown, x360: true, fit: _xf };
+    v.weak = false;
+    if (_xf) { yawDeg += _xf.dyaw || 0; var _sy0 = sy; sy = sy / (_xf.ds || 1); _crown = m.crown + (yTop - CY) * (1 / _sy0 - 1 / sy) + (_xf.dyCm ? _xf.dyCm / ((typeof modelCmPerUnit === 'function' && modelCmPerUnit()) || 19) / sy : 0); }   // (11-16) 높이도
+    var cal = { pose: { yaw: yawDeg * Math.PI / 180, pitch: _xf && _xf.dp ? _xf.dp * Math.PI / 180 : 0, roll: 0 }, cx: m.capCx + (_xf ? _xf.dcx || 0 : 0), s: sy, sy: sy, crownY: _crown, x360: true, fit: _xf };
     out.cal = cal;
     var A = headHalfWidthAt(cal.pose.yaw); v.q = A > 0 ? m.hw * sy / A : null;
     try { v.agree = scalpAgree(cal, state.hairMasks[v.key], yTop, CY); } catch (e) { v.agree = null; }
@@ -1706,7 +1707,12 @@ var VIEWS360 = (function () {
         if (ysTry != null && ysTry > ysBest + 1e-6) { ysBest = ysTry; ysYaw = yawDeg + dy; }
       }
       v.yawSearch = { from: yawDeg, to: ysYaw, agree0: v.agree, agree1: ysBest, used: false };
-      if (ysBest >= ctx.thr && ysBest - v.agree > (X.yawSearchGain != null ? X.yawSearchGain : 0.08)) {
+      /* (2026-11-16 keep) 사용자: "한 사람에게서 나온건데 서로 엇갈리는 사진은 잘 맞춰야지 빼면 안되지 않나?"
+       *   문턱(75%)을 못 넘어도 둘러본 각이 나아졌고 keepFloor(55%) 이상이면 그 각으로 <b>넣고</b> v.weak — 17b 추가 사진 카메라 맞추기가 넓은 범위(±25°·위아래·높이)로 맞춤.
+       *   맞춘 뒤에도 안 맞으면 거기서 영역 깎기에서만 빠짐(결·확인에는 남음). 되돌리기 VIEWS360.keepWeak=false */
+      var _kf = X.keepFloor != null ? X.keepFloor : 0.55;
+      if (X.keepWeak !== false && ysBest < ctx.thr && ysBest >= _kf) { yawDeg = ysYaw; cal.pose.yaw = yawDeg * Math.PI / 180; v.agree = ysBest; v.weak = true; v.yawSearch.used = ysYaw !== v.yawSearch.from; var A3 = headHalfWidthAt(cal.pose.yaw); v.q = A3 > 0 ? m.hw * sy / A3 : null; }
+      else if (ysBest >= ctx.thr && ysBest - v.agree > (X.yawSearchGain != null ? X.yawSearchGain : 0.08)) {
         yawDeg = ysYaw; cal.pose.yaw = yawDeg * Math.PI / 180; v.agree = ysBest; v.yawSearch.used = true;
         var A2 = headHalfWidthAt(cal.pose.yaw); v.q = A2 > 0 ? m.hw * sy / A2 : null;
       }
@@ -1715,7 +1721,7 @@ var VIEWS360 = (function () {
     var pre = precheck(v, frontYaw);
     if (pre.why) { out.why = pre.why; out.kind = pre.kind; }
     else if (!cutNow && v.q != null && (v.q < X.qLo || v.q > X.qHi)) { out.kind = 'dist'; out.why = '머리 크기가 안 맞음(두상 폭의 ' + v.q.toFixed(2) + '배 — ' + (v.q > X.qHi ? '너무 가깝게 찍혔거나 배율이 틀림' : '너무 멀거나 머리가 잘림') + ')'; }
-    else if (Math.abs(wrapDeg(yawDeg)) >= X.agreeFromDeg && v.agree != null && v.agree < ctx.thr) { out.kind = 'angle'; out.why = '두피가 머리 영역 밖으로 나감(맞음 ' + Math.round(v.agree * 100) + '% < ' + Math.round(ctx.thr * 100) + '%)'; }
+    else if (Math.abs(wrapDeg(yawDeg)) >= X.agreeFromDeg && v.agree != null && v.agree < ctx.thr && !v.weak) { out.kind = 'angle'; out.why = '두피가 머리 영역 밖으로 나감(맞음 ' + Math.round(v.agree * 100) + '% < ' + Math.round(ctx.thr * 100) + '%)'; }
     return out;
   }
   /* 기준 좌·우·후면(360 세트에서 온 것): 프로브에서 뺄 이유 */
