@@ -921,6 +921,10 @@ function adjustStrandGeom(st, lenOverride, uni){
     /* ── (옛 68) 원본 머리 — 방향 필터로 읽은 가닥 모양을 마네킹 뿌리에 옮겨심음, 아니면 안쪽 단계 뒤 스타일 굴곡(READ_SHAPE) ── */
     out = _fringeTrimOut(st, READ_SHAPE._adjust(st, lenOverride, uni));
     if(!out) out = READ_SHAPE._afterStages(st, adjustStrandGeomStages(st, lenOverride, uni));
+    /* (2026-11-17) 사진 실측 보정(43-photo-amp-gain) — 읽은 길은 그대로 두고, 그 출렁임만
+       사진에서 잰 웨이브 진폭·컬 지름 비율로 키움(판정 없음 · 못 재면 그대로). STYLE_PATHS
+       경로(위 if 앞)는 저장된 스펙이라 다시 보정하지 않음 — READ_SHAPE 경로에만 건다. */
+    out = (typeof PHOTO_AMP_GAIN !== 'undefined') ? PHOTO_AMP_GAIN.applyToStrand(out, st.sec) : out;
     STYLE_PATHS._record(st, out);   // (옛 69) 원본 머리를 볼 때 보이는 가닥 길 기록
   }
   /* ── (옛 64) 페이드가 다시 기른 머리·결 표 머리에도 먹게 — 모양이 다 만들어진 뒤 길이를 한 번 더 누름(04 SEG_ORIENT) ── */
