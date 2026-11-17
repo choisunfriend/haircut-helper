@@ -1261,6 +1261,24 @@ async function extractHairMaskCore(angle){
             try{ if(orientationColSamples && !window.WASHOUT_OFF){ const N=w*h, WO=new Uint8Array(N), WO2=new Uint8Array(N), g=2; let n=0;
               for(let i=0;i<N;i++){ const j=i*4; if(srcPixels[j]>=245&&srcPixels[j+1]>=245&&srcPixels[j+2]>=245) WO[i]=1; }
               for(let y=0;y<h;y++) for(let x=0;x<w;x++){ if(!WO[y*w+x]) continue; for(let dy=-g;dy<=g;dy++) for(let dx=-g;dx<=g;dx++){ const X=x+dx,Y=y+dy; if(X>=0&&Y>=0&&X<w&&Y<h&&!WO2[Y*w+X]){ WO2[Y*w+X]=1; n++; } } }
+              /* (2026-11-17 glare) 빛 받은 자리도 기권 — 사용자: "빛 반사도 확인이 안되는 경우로 쳐서 기권시켜야지" · "뒷사진 한장만 있을 때보다 가닥이 없어"
+                 햇빛 받은 머리는 세그멘테이션이 머리 영역에서 빼는데(디버그 1116 뒤 사진: 왼쪽 옆·정수리 흰머리 뭉치), 그 사진이 "머리 아님"이라고 해서 다른 사진이 읽은 가닥까지 깎였음.
+                 날아가지(≥245) 않았어도 밝고(머리 밝기 중앙×1.8 · 최소 0.55 — 04 hlMap과 같은 기준) 무채색(채도 ≤ GLARE_SAT 0.2 — 햇빛 받은 살은 색이 남음)이며
+                 머리 영역에서 머리 폭의 GLARE_NEAR(0.15) 안인 픽셀 = 2로 표시. 17b washAt이 1(날아감)·2(빛 받음) 모두 기권으로(배경 위 제외 · 그 사진만 표를 안 냄, 다른 사진이 판단).
+                 끄기 window.GLARE_OFF=true */
+              try{ if(!window.GLARE_OFF){
+                const hv=[]; for(let i=0;i<N;i+=7){ if(hairMaskBuf[i]>128){ const j=i*4; hv.push(Math.max(srcPixels[j],srcPixels[j+1],srcPixels[j+2])/255); } }
+                if(hv.length>50){ hv.sort(function(a,b){return a-b;}); const thr=Math.max(0.55, hv[hv.length>>1]*1.8), satMax=window.GLARE_SAT||0.2;
+                  let xa=w, xb=-1; for(let y=0;y<h;y+=4) for(let x=0;x<w;x++){ if(hairMaskBuf[y*w+x]>128){ if(x<xa) xa=x; if(x>xb) xb=x; } }
+                  const R=Math.max(6, Math.round((window.GLARE_NEAR||0.15)*Math.max(1, xb-xa))), D=new Float32Array(N);
+                  for(let i=0;i<N;i++) D[i]=hairMaskBuf[i]>128?0:1e9;
+                  for(let y=0;y<h;y++) for(let x=0;x<w;x++){ const i=y*w+x; if(x && D[i-1]+1<D[i]) D[i]=D[i-1]+1; if(y && D[i-w]+1<D[i]) D[i]=D[i-w]+1; }
+                  for(let y=h-1;y>=0;y--) for(let x=w-1;x>=0;x--){ const i=y*w+x; if(x<w-1 && D[i+1]+1<D[i]) D[i]=D[i+1]+1; if(y<h-1 && D[i+w]+1<D[i]) D[i]=D[i+w]+1; }
+                  let ng=0;
+                  for(let i=0;i<N;i++){ if(WO2[i] || D[i]>R) continue; const j=i*4, r=srcPixels[j], gg=srcPixels[j+1], b=srcPixels[j+2], mx=Math.max(r,gg,b), mn=Math.min(r,gg,b);
+                    if(mx/255>=thr && (mx-mn)<=satMax*mx){ WO2[i]=2; ng++; } }
+                  orientationColSamples.glareN=ng; orientationColSamples.glareThr=+thr.toFixed(2);
+                } } }catch(eGl){}
               orientationColSamples.washout=WO2; orientationColSamples.washoutW=w; orientationColSamples.washoutH=h; orientationColSamples.washoutN=n; } }catch(eWo){}
           }catch(e){
             console.warn('결방향 인식 실패, 기본 직선 모드로 폴백:', e);
