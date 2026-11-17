@@ -2054,7 +2054,7 @@ var VIEWS360 = (function () {
     } catch (e) {}
     if (la && la.synthFront) L.push('  ⚠ 정면 보정이 없어 ' + la.synthFront + ' 사진에서 0° 기준을 세움 — 추가 사진 배율은 머리 폭 자로만');
     if (la && la.setBad) L.push('  ⚠ ' + la.setBad);
-    try { var ad = X.advice(); if (ad) L.push('  촬영 안내(화면 카드) — ' + (ad.items.length ? ad.items.map(function (it) { return Math.round(it.deg) + '°' + (it.base ? '(기준)' : '') + ' ' + it.kind; }).join(' · ') : '문제 없음') + (X.advise ? '' : ' · 카드 꺼짐')); } catch (e) {}
+    try { var ad = X.advice(); if (ad) L.push('  촬영 안내(화면 카드) — ' + (ad.items.length ? ad.items.map(function (it) { return Math.round(it.deg) + '°' + (it.base ? '(기준)' : '') + ' ' + ({ frame: '화면 밖', small: '머리가 작게 찍힘', blur: '흔들림', angle: '각도 어긋남', dist: '거리 달라짐', height: '높이 달라짐' }[it.kind] || it.kind); }).join(' · ') : '문제 없음') + (X.advise ? '' : ' · 카드 꺼짐')); } catch (e) {}
     if (X.bodyRuler) L.push('  배율 자 — 얼굴이 잡힌 사진은 눈→턱 · 없는 사진은 어깨선/목 밑동: ' + (X.bodyRuler.n ? '얼굴 자와 대조 ' + X.bodyRuler.n + '장 · 중앙 오차 ' + Math.round(X.bodyRuler.med * 100) + '% → ' + (X.bodyRuler.ok ? '믿음' : '⚠ 못 믿음(얼굴 없는 사진은 뺌)') : '대조할 얼굴 사진이 없어 그대로 씀'));
     if (!X.order.length) return L;
     L.push('  뷰: 센서각 → 쓴 yaw(얼굴 실측이 있으면 그 값) · 배율(정면 대비 · 출처) · 머리크기(두상 폭 대비) · 두피 맞음(옆·뒤 ' + X.agreeFromDeg + '° 이상만 봄 · 문턱 ' + Math.round(X.agreeMin * 100) + '%) → 넣음/뺌');

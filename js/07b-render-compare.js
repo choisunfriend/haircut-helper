@@ -1980,6 +1980,11 @@ var PHOTO_CHECK = (function () {
         }
         H.cams.push({ angle: c.angle, R: Array.prototype.slice.call(c.R), cx: c.cx, s: c.s, sy: c.sy, crownY: c.crownY, iw: c.iw, ih: c.ih, gw: gw, gh: gh, cell: cell, hasDir: typeof c.dirAt === 'function' });
         add('cam' + ci + '.mask', M); add('cam' + ci + '.ang', A, { scale: 'x/127*90deg' }); add('cam' + ci + '.coh', K, { scale: 'x/255' });
+        /* (2026-11-17 photo2) 분석 사진(머리 영역 둘레만 남긴 것) — 03b GLARE_ADD.photo가 분석할 때 만들어 둔 JPEG 문자열을 그대로 바이트로 옮겨 담음(여기서 사진을 다시 풀거나 그리지 않음).
+           11-16의 첫 시도(저장할 때 사진을 다시 풀어 그림 · 저장 함수를 비동기로 감쌈)는 되돌렸음 — 이번엔 저장 흐름은 그대로. 안 넣기 GLARE_ADD.photoMode=false */
+        try { var gph = (typeof GLARE_ADD !== 'undefined' && GLARE_ADD.photo) ? GLARE_ADD.photo[c.angle] : null;
+          if (gph && gph.url) { var b64 = gph.url.slice(gph.url.indexOf(',') + 1), bin = atob(b64), ub = new Uint8Array(bin.length); for (var bi = 0; bi < bin.length; bi++) ub[bi] = bin.charCodeAt(bi);
+            add('cam' + ci + '.jpg', ub, { w: gph.w, h: gph.h, mode: gph.mode, enc: 'jpeg' }); } } catch (ePh) { H.notes.push('photo cam' + ci + ': ' + ePh.message); }
         // (2026-10-25e) 세그멘테이션 확신도(03b SEG_CONF) — 칸 단위 ×255 · 없으면 안 넣음
         try { var SC = W.SEG_CONF && W.SEG_CONF.byView && W.SEG_CONF.byView[c.angle];
           if (SC && SC.map) { var CF = new Uint8Array(gw * gh), kxc = SC.w / c.iw, kyc = SC.h / c.ih;

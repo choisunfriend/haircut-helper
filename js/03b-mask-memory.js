@@ -501,6 +501,97 @@ async function _szLoadClean(url){
 }
 function _szLoad(url){ return new Promise(function(res){ var im = new Image(); im.onload = function(){ res(im); }; im.onerror = function(){ res(null); }; im.src = url; }); }
 /* ══════════════════════════════════════════════════════════
+   (2026-11-17 glareadd) GLARE_ADD — 빛 받은 머리를 머리 영역에 다시 넣음 + 진단용 사진 보관
+   사용자: "영역추가하는거 넣어서 다시줘" · "필요한 사진 진단결과에 넣어"
+   세그멘테이션은 햇빛 받은 머리를 영역에서 뺌(디버그 1117 뒤 사진: 최종 영역 = 확신도 0.5 이상과 거의 같고, 테두리 밖에 확신도 0.1~0.5 띠 2,902칸).
+   영역 밖은 결을 아예 안 읽으므로, 아래를 모두 만족하는 픽셀만 영역에 넣음(기존 머리에서 이어진 것만):
+     ① 빛 받은 구역 — 밝고(머리 밝기 중앙×1.8 · 최소 0.55) 무채색(채도 ≤ GLARE_SAT)인 픽셀이 둘레 4px에 zoneMin(25%) 이상(밝은 줄 사이 어두운 틈도 같이 들어가게)
+     ② 머리 영역에서 머리 폭의 near(0.08) 안
+     ③ 세그멘테이션 확신도 ≥ confMin(0.1) — 세그멘터가 "머리일 수도"라고 본 자리만(11-07에 끈 띠 번지기는 확신도를 안 봐서 이마가 들어갔음)
+     ④ 줄무늬 — 그 자리 결에 수직으로 ±prof(3)px 밝기가 밝다↔어둡다 2번 넘게 바뀜(04 hlStripes와 같은 생각 · 매끈한 살·옷은 탈락)
+   ※ 메모(2026-11-17 · 사용자와 정함 — "문제생기면 바꾸도록"): ④의 stripeMin 2는 밝은 살 위에 가닥 한 올만 지나가도(밝음→어두움→밝음) 통과함.
+     이마·귀 옆으로 영역이 번지면 GLARE_ADD.stripeMin = 3(가닥 두 올 이상)으로 올릴 것. 지금은 ①(무채색)·③(확신도)이 살을 막고 있음.
+     번지는 방식은 11-07에 끈 띠 번지기와 같음(넣은 픽셀이 다시 이웃을 봄) — 한 번 잘못 들어가면 이어서 들어가므로, 번짐이 보이면 stripeMin부터 올리고 그다음 confMin을 올림.
+   넣는 양은 머리 넓이의 maxFrac(8%)까지. 확신도 지도가 없으면 안 넣음. 넣지 못한 빛 받은 자리는 예전대로 기권(아래 washout 2·3).
+   끄기 GLARE_ADD.on=false · 진단 GLARE_ADD.stats[angle] = { zone, cand, add }
+   진단용 사진: 분석이 끝난 사진을 머리 영역 둘레(photoPadPx · 폭 600 기준)만 남기고 회색으로 지워 JPEG 문자열로 보관(GLARE_ADD.photo[angle]) → 07b 진단 저장이 camN.jpg로 담음.
+     분석할 때 이미 손에 든 픽셀로 만들어 두므로 저장 버튼을 누를 때 사진을 다시 풀지 않음. 사진 전체 GLARE_ADD.photoMode='full' · 안 남기기 GLARE_ADD.photoMode=false
+   ══════════════════════════════════════════════════════════ */
+/* (2026-11-17 범위 축소) 사용자: "일단 다음번에 범위를 줄여서 시작하고, 모자라면 조금씩 늘리자" — 줄무늬를 보는 범위 prof ±6 → ±3px · 머리에서의 거리 near 0.15 → 0.08(머리 폭 대비) · 넓이 한도 maxFrac 15 → 8%.
+   모자라면 prof 4 → 5, near 0.10 → 0.12 순으로. (기권 지도의 거리 GLARE_NEAR 0.15는 그대로 — 넣는 것만 좁힘) */
+var GLARE_ADD = Object.assign({ on: true, confMin: 0.1, zoneMin: 0.25, maxFrac: 0.08, near: 0.08, prof: 3, flatSd: 6, stripeMin: 2, photoMode: 'hair', photoPadPx: 48, photoJpeg: 0.85, stats: {}, photo: {} }, window.GLARE_ADD || {});
+function _maskDist(mask, w, h){            // 머리 영역까지 거리(px · 가로세로 걸음)
+  const N = w * h, D = new Float32Array(N);
+  for(let i = 0; i < N; i++) D[i] = mask[i] > 128 ? 0 : 1e9;
+  for(let y = 0; y < h; y++) for(let x = 0; x < w; x++){ const i = y * w + x; if(x && D[i-1] + 1 < D[i]) D[i] = D[i-1] + 1; if(y && D[i-w] + 1 < D[i]) D[i] = D[i-w] + 1; }
+  for(let y = h - 1; y >= 0; y--) for(let x = w - 1; x >= 0; x--){ const i = y * w + x; if(x < w - 1 && D[i+1] + 1 < D[i]) D[i] = D[i+1] + 1; if(y < h - 1 && D[i+w] + 1 < D[i]) D[i] = D[i+w] + 1; }
+  return D;
+}
+function _glareThr(mask, px, w, h){        // 밝기 문턱(머리 밝기 중앙×1.8 · 최소 0.55) · 머리 폭
+  const hv = []; let xa = w, xb = -1;
+  for(let y = 0; y < h; y += 2) for(let x = 0; x < w; x += 2){ const i = y * w + x; if(mask[i] > 128){ const j = i * 4; hv.push(Math.max(px[j], px[j+1], px[j+2]) / 255); if(x < xa) xa = x; if(x > xb) xb = x; } }
+  if(hv.length < 50) return null;
+  hv.sort(function(a, b){ return a - b; });
+  return { thr: Math.max(0.55, hv[hv.length >> 1] * 1.8), headW: Math.max(1, xb - xa), n: hv.length };
+}
+function _glareStripes(g, w, h, x, y, G){  // 0 무늬 없음 · 1 계단 하나 · 2 줄무늬 — 방향은 그 자리 5×5 구조텐서
+  if(x < 3 || y < 3 || x >= w - 3 || y >= h - 3) return 0;
+  let jxx = 0, jyy = 0, jxy = 0;
+  for(let yy = y - 2; yy <= y + 2; yy++) for(let xx = x - 2; xx <= x + 2; xx++){ const k = yy * w + xx, gx = (g[k+1] - g[k-1]) * 0.5, gy = (g[k+w] - g[k-w]) * 0.5; jxx += gx * gx; jyy += gy * gy; jxy += gx * gy; }
+  if(jxx + jyy < 1e-6) return 0;
+  const th = 0.5 * Math.atan2(2 * jxy, jxx - jyy), nx = Math.cos(th), ny = Math.sin(th), L = G.prof;   // th = 밝기가 가장 크게 변하는 방향(결에 수직)
+  const v = []; let s = 0, s2 = 0;
+  for(let t = -L; t <= L; t++){ const X = Math.round(x + nx * t), Y = Math.round(y + ny * t); if(X < 0 || Y < 0 || X >= w || Y >= h) continue; const q = g[Y * w + X]; v.push(q); s += q; s2 += q * q; }
+  if(v.length < L + 3) return 0;
+  const m = s / v.length, sd = Math.sqrt(Math.max(0, s2 / v.length - m * m)); if(sd < G.flatSd) return 0;
+  const hi = m + 0.35 * sd, lo = m - 0.35 * sd; let st = 0, ch = 0;
+  for(let t = 0; t < v.length; t++){ const c = v[t] > hi ? 1 : v[t] < lo ? -1 : 0; if(!c) continue; if(st && c !== st) ch++; st = c; }
+  return ch >= G.stripeMin ? 2 : 1;
+}
+/* 머리 영역(mask 0/255)에 빛 받은 머리를 더해 돌려줌. conf = { map(0~255), w, h } 또는 null */
+function glareRegionAdd(mask, px, w, h, conf, G){
+  const st = { zone: 0, cand: 0, add: 0 };
+  if(!G.on || !conf || !conf.map) { st.skip = !conf || !conf.map ? '확신도 지도 없음' : '꺼짐'; return { mask: mask, st: st }; }
+  const T = _glareThr(mask, px, w, h); if(!T){ st.skip = '머리 적음'; return { mask: mask, st: st }; }
+  const N = w * h, satMax = window.GLARE_SAT || 0.2, R = Math.max(4, Math.round((G.near || 0.08) * T.headW)), D = _maskDist(mask, w, h);
+  const B = new Float32Array(N), g = new Float32Array(N);
+  for(let i = 0; i < N; i++){ const j = i * 4, r = px[j], gg = px[j+1], b = px[j+2], mx = Math.max(r, gg, b), mn = Math.min(r, gg, b); g[i] = 0.299 * r + 0.587 * gg + 0.114 * b; if(D[i] <= R + 4 && mx / 255 >= T.thr && (mx - mn) <= satMax * mx) B[i] = 1; }
+  /* 둘레 4px 상자 평균(가로 → 세로) */
+  const rad = 4, tmp = new Float32Array(N), Z = new Float32Array(N), inv = 1 / (2 * rad + 1);
+  for(let y = 0; y < h; y++){ let s = 0; for(let x = -rad; x <= rad; x++) s += B[y * w + Math.min(w - 1, Math.max(0, x))]; for(let x = 0; x < w; x++){ tmp[y * w + x] = s * inv; s += B[y * w + Math.min(w - 1, x + rad + 1)] - B[y * w + Math.max(0, x - rad)]; } }
+  for(let x = 0; x < w; x++){ let s = 0; for(let y = -rad; y <= rad; y++) s += tmp[Math.min(h - 1, Math.max(0, y)) * w + x]; for(let y = 0; y < h; y++){ Z[y * w + x] = s * inv; s += tmp[Math.min(h - 1, y + rad + 1) * w + x] - tmp[Math.max(0, y - rad) * w + x]; } }
+  const kx = conf.w / w, ky = conf.h / h, cmin = G.confMin * 255;
+  let area = 0; for(let i = 0; i < N; i++) if(mask[i] > 128) area++;
+  const cap = Math.round(G.maxFrac * area), out = new Uint8Array(mask), seen = new Uint8Array(N), q = new Int32Array(N); let qh = 0, qt = 0;
+  for(let y = 1; y < h - 1; y++) for(let x = 1; x < w - 1; x++){ const k = y * w + x; if(out[k] > 128 && !(out[k-1] > 128 && out[k+1] > 128 && out[k-w] > 128 && out[k+w] > 128)){ q[qt++] = k; seen[k] = 1; } }
+  while(qh < qt && st.add < cap){
+    const p = q[qh++], x0 = p % w, y0 = (p / w) | 0, nb = [x0 > 0 ? p - 1 : -1, x0 < w - 1 ? p + 1 : -1, y0 > 0 ? p - w : -1, y0 < h - 1 ? p + w : -1];
+    for(let j = 0; j < 4; j++){ const c = nb[j]; if(c < 0 || seen[c]) continue; seen[c] = 1;
+      if(out[c] > 128 || D[c] > R || Z[c] < G.zoneMin) continue;
+      st.zone++;
+      const cx = c % w, cy = (c / w) | 0;
+      if(conf.map[Math.min(conf.h - 1, Math.floor(cy * ky)) * conf.w + Math.min(conf.w - 1, Math.floor(cx * kx))] < cmin) continue;
+      st.cand++;
+      if(_glareStripes(g, w, h, cx, cy, G) < 2) continue;
+      out[c] = 255; st.add++; q[qt++] = c;
+    }
+  }
+  st.thr = +T.thr.toFixed(2); st.R = R; st.cap = cap;
+  return { mask: st.add ? out : mask, st: st };
+}
+/* 진단용 사진 — 머리 영역 둘레만 남긴 JPEG 문자열 */
+function glareNotePhoto(angle, px, mask, w, h){
+  try{
+    const G = GLARE_ADD; if(!G.photoMode){ delete G.photo[angle]; return; }
+    const cv = document.createElement('canvas'); cv.width = w; cv.height = h;
+    const cx = cv.getContext('2d'), id = cx.createImageData(w, h), d = id.data; d.set(px);
+    if(G.photoMode !== 'full'){ const D = _maskDist(mask, w, h), pad = G.photoPadPx * w / 600; for(let i = 0; i < w * h; i++) if(D[i] > pad){ const j = i * 4; d[j] = d[j+1] = d[j+2] = 128; } }
+    cx.putImageData(id, 0, 0);
+    G.photo[angle] = { url: cv.toDataURL('image/jpeg', G.photoJpeg), w: w, h: h, mode: G.photoMode === 'full' ? 'full' : 'hair+' + G.photoPadPx + 'px' };
+    cv.width = 0; cv.height = 0;
+  }catch(e){}
+}
+/* ══════════════════════════════════════════════════════════
    (2026-11-16 hd) HEAD_HD — 360 촬영이 따로 둔 머리 조각(영상 원래 해상도 · 연속 프레임을 쌓은 것)을 원본 대신 씀
    사용자: "머리 영역만 원본 해상도로 저장" · "연속 프레임을 평균 대신 해상도로"
    조각 = 05 SHOT360 frame.hd { url, x, y, w, h(영상 좌표 상자), vw, vh, fw, fh(칸 사진 크기), k(조각 px ÷ 영상 px) }
@@ -528,6 +619,7 @@ HEAD_HD.lines = function(){
     else s += ' — 조각 없는 세트(예전 촬영·업로드)는 예전 그대로 읽음';
     if(set && set.cam) s += ' · 카메라 배율 ' + (set.cam.zoom != null ? set.cam.zoom : '-') + (set.cam.widest ? '(가장 넓게)' : '');
     out.push(s + ' (끄기 HEAD_HD.on=false · 촬영 쪽 SHOT360.hd=false)');
+    try{ const gk = Object.keys(GLARE_ADD.stats); if(gk.length) out.push('[빛 받은 머리 영역에 넣기] ' + (GLARE_ADD.on ? '켜짐' : '꺼짐') + ' — 사진별 넣은 px(빛 받은 구역에서 본 px → 확신도 ' + GLARE_ADD.confMin + ' 이상 → 줄무늬라 넣음): ' + gk.map(function(a){ const v = GLARE_ADD.stats[a]; return a + ' ' + (v.err ? '오류 ' + v.err : v.skip ? '건너뜀(' + v.skip + ')' : v.zone + '→' + v.cand + '→' + v.add); }).join(' · ') + ' · 진단 사진 ' + Object.keys(GLARE_ADD.photo).length + '장 보관 (끄기 GLARE_ADD.on=false)'); }catch(e){}
     const ks = Object.keys(HEAD_HD.stats);
     if(ks.length) out.push('  쓴 곳 — ' + ks.map(function(a){ const v = HEAD_HD.stats[a]; return a + (v.zoom ? ' 키우기 덮음 ' + Math.round(v.zoom.cover * 100) + '%' : '') + (v.grain ? ' · 결 덮음 ' + Math.round(v.grain.cover * 100) + '%(분석의 ×' + v.grain.k + ' · ' + v.grain.n + '장)' : ''); }).join(' | '));
     const zs = (typeof SUBJECT_ZOOM !== 'undefined' && SUBJECT_ZOOM.stats) || {}, hp = Object.keys(zs).filter(function(a){ return zs[a] && zs[a].headPxEff > 0; });
@@ -1172,6 +1264,13 @@ async function extractHairMaskCore(angle){
           hairMaskBuf = keepLargestComponents(hairMaskBuf, w, h, 0.03);
         }
         cleanupMask();
+        /* (2026-11-17 glareadd) 빛 받은 머리를 영역에 다시 넣음 → 그 자리도 결을 읽음. 설명은 위 GLARE_ADD */
+        try{
+          const _sc = (typeof SEG_CONF !== 'undefined' && SEG_CONF.byView) ? SEG_CONF.byView[angle] : null;
+          const _ga = glareRegionAdd(hairMaskBuf, srcPixels, w, h, _sc, GLARE_ADD);
+          GLARE_ADD.stats[angle] = _ga.st; if(_ga.st.add) hairMaskBuf = _ga.mask;
+        }catch(eGa){ try{ GLARE_ADD.stats[angle] = { err: String(eGa && eGa.message || eGa) }; }catch(e2){} }
+        glareNotePhoto(angle, srcPixels, hairMaskBuf, w, h);
 
         // ── STEP 8: 진단 로그 문자열 조립 ──
         function buildDiagLog(){
@@ -1275,7 +1374,8 @@ async function extractHairMaskCore(angle){
                   for(let y=0;y<h;y++) for(let x=0;x<w;x++){ const i=y*w+x; if(x && D[i-1]+1<D[i]) D[i]=D[i-1]+1; if(y && D[i-w]+1<D[i]) D[i]=D[i-w]+1; }
                   for(let y=h-1;y>=0;y--) for(let x=w-1;x>=0;x--){ const i=y*w+x; if(x<w-1 && D[i+1]+1<D[i]) D[i]=D[i+1]+1; if(y<h-1 && D[i+w]+1<D[i]) D[i]=D[i+w]+1; }
                   let ng=0;
-                  for(let i=0;i<N;i++){ if(WO2[i] || D[i]>R) continue; const j=i*4, r=srcPixels[j], gg=srcPixels[j+1], b=srcPixels[j+2], mx=Math.max(r,gg,b), mn=Math.min(r,gg,b);
+                  for(let i=0;i<N;i++){ if(D[i]>R) continue; if(WO2[i]){ WO2[i]=3; continue; }   // 3 = 날아간 자리 중 머리 영역 둘레(39 깊이 맞추기가 2·3을 기권으로 봄 — 배경의 흰 벽·창은 1로 남음)
+                    const j=i*4, r=srcPixels[j], gg=srcPixels[j+1], b=srcPixels[j+2], mx=Math.max(r,gg,b), mn=Math.min(r,gg,b);
                     if(mx/255>=thr && (mx-mn)<=satMax*mx){ WO2[i]=2; ng++; } }
                   orientationColSamples.glareN=ng; orientationColSamples.glareThr=+thr.toFixed(2);
                 } } }catch(eGl){}

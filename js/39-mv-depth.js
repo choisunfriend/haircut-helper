@@ -28,7 +28,7 @@ var MV_DEPTH = (function () {
     on: true,
     rangeCm: 11,      // 자기 시선축으로 앞뒤 이만큼까지 찾아봄
     stepCm: 0.9,      // 깊이 구간을 찾는 간격
-    tolCm: 0.6,       // 다른 사진 머리 영역 경계 여유(PHOTO_CHECK.tolCm과 같음)
+    tolCm: 0,         // (2026-11-17 nomargin) 0.6 → 0 — 사용자: "일단은 여유없이 가고". 다른 사진 머리 영역 경계 여유(최소 1px은 남음 — 아래 _tolPx). 되돌리기 MV_DEPTH.tolCm=0.6
     minCoh: 0.2,      // 이보다 흐린 결은 안 씀
     lam: 0.3,         // 옮기지 않으려는 힘(클수록 덜 옮김)
     maxSlope: 1.5,    // 한 마디에서 깊이 변화 ≤ 마디 길이 × 이 값
@@ -69,10 +69,21 @@ var MV_DEPTH = (function () {
     var unit = 1 / env.cm, range = M.rangeCm * unit, step = M.stepCm * unit;
     var o = [0, 0], st = { strands: 0, moved: 0, pts: 0, sumMove: 0, outB: 0, outA: 0, chk: 0, offB: 0, offA: 0, cmp: 0, path: 0, jump: 0 };
 
-    function inHair(c, x, y, z) {               // 1 머리 · 0 밖 · -1 그 사진은 판정 못 함(가림)
+    /* (2026-11-17 glare) 빛 받은 자리 = 그 사진은 판정 못 함 — 사용자: "기권한 사진 말고 다른 사진으로는 깊이 확인하고 있지?"
+     *  17b(영역·자르기 판정)는 03b가 표시한 빛 받은 자리(2)·머리 둘레의 날아간 자리(3)에서 그 사진만 기권시키는데, 여기 깊이 맞추기는 같은 자리를 '밖'으로 세고 있었음
+     *  → 햇빛 받은 쪽 가닥이 그 사진을 피해 다른 깊이로 밀림. 이제 같은 지도를 보고 그 사진만 빼고(-1) 나머지 사진으로 깊이를 정함. 되돌리기 MV_DEPTH.glareAbstain=false */
+    function glareAt(c, ix, iy) {
+      if (M.glareAbstain === false) return false;
+      if (c._wo39 === undefined) { c._wo39 = null; try { var mi = state.hairMasks && state.hairMasks[c.angle], oo = mi && mi.orientation; if (oo && oo.washout && oo.washoutW > 0) c._wo39 = { a: oo.washout, w: oo.washoutW, h: oo.washoutH, k: oo.washoutW / (mi.w || c.iw) }; } catch (e) {} }
+      var Wm = c._wo39; if (!Wm) return false;
+      var gx = Math.floor(ix * Wm.k), gy = Math.floor(iy * Wm.k); if (gx < 0 || gy < 0 || gx >= Wm.w || gy >= Wm.h) return false;
+      return Wm.a[gy * Wm.w + gx] >= 2;
+    }
+    function inHair(c, x, y, z) {               // 1 머리 · 0 밖 · -1 그 사진은 판정 못 함(가림 · 빛 받은 자리)
       if (!core.project(c, env, x, y, z, o)) return -1;
       var r = c._tolPx, ix = o[0], iy = o[1];
       if (c.smp.at(ix, iy) > 0 || c.smp.at(ix + r, iy) > 0 || c.smp.at(ix - r, iy) > 0 || c.smp.at(ix, iy + r) > 0 || c.smp.at(ix, iy - r) > 0) return 1;
+      if (glareAt(c, ix, iy)) { st.glare = (st.glare || 0) + 1; return -1; }
       return 0;
     }
     function okAll(own, x, y, z) {
@@ -218,6 +229,7 @@ var MV_DEPTH = (function () {
     if (r.err) return [TAG + ' 건너뜀 — ' + r.err];
     var cm = (function () { try { return modelCmPerUnit(); } catch (e) { return 19; } })();
     return [TAG + ' 사진 ' + r.cams.join(',') + (r.dropped && r.dropped.length ? '(못 맞춘 사진 ' + r.dropped.join(',') + ' 뺌)' : '') + ' · 가닥 ' + r.strands + ' 중 옮김 ' + r.moved + ' · 자기 시선축으로 평균 ' + (r.moved ? (r.sumMove / r.moved * cm).toFixed(1) : '0') + 'cm · ' + r.ms + 'ms',
+      (r.glare ? '  빛 받은 자리라 그 사진은 빼고 본 판정 ' + r.glare + '번(끄기 MV_DEPTH.glareAbstain=false)\n' : '') +
       '  다른 사진 머리 영역 밖 점 ' + (100 * r.outB / Math.max(1, r.chk)).toFixed(1) + '% → ' + (100 * r.outA / Math.max(1, r.chk)).toFixed(1) + '% · 옮긴 가닥의 다른 사진 결 어긋남(sin² 평균) ' + (r.cmp ? (r.offB / r.cmp).toFixed(3) + ' → ' + (r.offA / r.cmp).toFixed(3) : '-') +
       ' · copyDepthMid ' + (W.REGROW && W.REGROW.copyDepthMid === false ? '끔(이 단계가 대신함)' : '그대로') + ' · copyDepthFit ' + (W.REGROW && W.REGROW.copyDepthFit === false ? '끔(이 단계가 대신함 · 되돌리기 MV_DEPTH.ownDepth=false)' : '그대로') + ' · 끄기 MV_DEPTH.on=false',
       '  깊이 구간 고르기: ' + (M.pathFit ? '가닥 한 줄로(동적계획법) — 고른 가닥 ' + (r.path || 0) + ' (끄기 MV_DEPTH.pathFit=false)' : '점마다 따로(예전)') + ' · 끝난 뒤 한 마디 4cm 넘게 건너뛴 자리 ' + (r.jump || 0)];

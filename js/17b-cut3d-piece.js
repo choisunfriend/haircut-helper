@@ -1669,7 +1669,15 @@ var REGROW = (function () {
        그 자리를 가장 정면으로 마주 보는 사진(가림 없이 보는 사진 중) 한 장이 안·밖을 정함(머리 영역 또는 여유 안 = 안) · 다른 사진(카메라 반대편이라도 두개골·목·몸통에 안 가리면)은
        여유(1·1.5cm) 넘게 확실히 밖일 때만 거부 = 깊이를 깎음. 다수결 없음. 정면 사진이 얼굴 앞에서 "머리"라고 하면 그대로 머리(frontTrust). 되돌리기 REGROW.hullRule='front' */
     hullRule: 'facing',  // (2026-10-11h) 사용자: "다수결방식에 정면을 참고하는 걸로" — 'front' = 다수결 + 정면이 1cm 넘게 밖이면 머리 아님 ·    // (2026-10-11g) 'tol' = 여유 둔 교집합: 그 자리를 보는 사진 중 하나라도 머리 영역에서 여유(정면 1 · 옆·뒤 1.5cm) 넘게 밖이면 머리 아님 — 예전 다수결은 2:2 동점도 머리로 쳐서 웨이브 손님 덩어리가 1.3배 컸음 · 'face' = 다수결 + 마주 보는 사진
-    hullViews: ['front', 'left', 'right', 'back'], hullMarginCm: 1.0, hullMarginSideCm: 1.5, sideFrontMarginCm: 0.7 /* (2026-10-31) 옆 사진 얼굴 쪽 여유 — hullOut 배너 */, hullMissMax: 2 /* (2026-10-24b) 걷기 여유는 예전대로 — 0.3·0.4로 줄이면 사진끼리 조금 어긋난 자리에서 가닥이 끊김(디버그 파일: 일찍 멈출 가닥 중 다시 머리 영역으로 들어오던 가닥 직모 8~24% · 실제 58% · 곱슬 22%). 대신 다 걸은 뒤 머리 영역 밖으로 나간 끝만 자름(아래 trimTail) */, hullFacing: true, hullCellPx: 3,
+    /* ══ (2026-11-17 nomargin) 영역 판정 여유 전부 0 — 사용자: "정면, 옆뒤 여유는 가닥이 영역밖으로 나갈일이 없기 때문에 여유두지 말라 그랬는데" ·
+       "이 정도(0.4~0.65cm)도 약점으로 보는데 1cm가 왠말이야. 일단은 여유없이 가고, 영역을 가능한 정확하게 잡은 다음 필요한 경우만 넣자고"
+       디버그 1117(짧은 남자 · 그린 가닥 1만): 머리 영역 밖 점의 41%가 0.5cm 넘게 밖 · 0.5cm 넘게 삐친 가닥 13.6% · 1.5cm 넘게 5.3% — 여유(1·1.5cm) 안이라 안 잘린 것.
+       한번 여유 안으로 나간 가닥은 빔 채우기·이어 기르기로 더 자람.
+       바꾼 값(예전 → 지금): hullMarginCm 1.0 → 0 · hullMarginSideCm 1.5 → 0 · sideFrontMarginCm 0.7 → 0 · isectTolCm 0.3 → 0 · skinTolCm 0.3 → 0 · skinTolOtherCm 1.0 → 0 · hullMissMax 2 → 1(첫 밖 걸음에서 멈춤)
+       같이: 39 MV_DEPTH.tolCm 0.6 → 0(다른 사진 영역 경계 여유 · 최소 1px은 남음)
+       영역이 실제 머리보다 좁게 잡힌 사진이 있으면 그만큼 깎임(빔) — 그때는 여유를 되살리지 말고 영역을 고칠 것(빛 받은 머리 = 03b GLARE_ADD · 기권 = washAt).
+       되돌리기: REGROW.hullMarginCm=1 · .hullMarginSideCm=1.5 · .sideFrontMarginCm=0.7 · .isectTolCm=0.3 · .skinTolCm=0.3 · .skinTolOtherCm=1 · .hullMissMax=2 · MV_DEPTH.tolCm=0.6 ══ */
+    hullViews: ['front', 'left', 'right', 'back'], hullMarginCm: 0, hullMarginSideCm: 0, sideFrontMarginCm: 0 /* (2026-10-31) 옆 사진 얼굴 쪽 여유 — hullOut 배너 */, hullMissMax: 1 /* (2026-11-17 nomargin: 2 → 1) (2026-10-24b) 걷기 여유는 예전대로 — 0.3·0.4로 줄이면 사진끼리 조금 어긋난 자리에서 가닥이 끊김(디버그 파일: 일찍 멈출 가닥 중 다시 머리 영역으로 들어오던 가닥 직모 8~24% · 실제 58% · 곱슬 22%). 대신 다 걸은 뒤 머리 영역 밖으로 나간 끝만 자름(아래 trimTail) */, hullFacing: true, hullCellPx: 3,
     /* (2026-10-27h) 마주 보는 옆·뒤 사진이 "여유 밖"이면 머리 아님 — 사용자: "앞머리가 내려오는데, 안면제한하지 말고 원인 살펴봐줘"
        디버그 1246(웨이브): 앞 섹션 가닥이 이마 옆에서 곧게 내려와 볼 앞(z≈0.4)을 지남. 그 자리를 정면 사진은 "머리"(사진 면에서는 얼굴 옆 커튼 머리가 그 시선 위에 있음),
        그 자리를 마주 보는(0.5 이상) 왼쪽 사진은 73%가 "머리 영역에서 1.5cm 넘게 밖"(볼 맨살), 오른쪽·뒤 사진은 가려져 빠짐 → 1:1 동점을 'front' 규칙이 머리로 침.
@@ -2022,7 +2030,7 @@ var REGROW = (function () {
       if (cam._wo === undefined) { cam._wo = null; try { var mi = state.hairMasks && state.hairMasks[cam.angle], o = mi && mi.orientation; if (o && o.washout && o.washoutW > 0) cam._wo = { a: o.washout, w: o.washoutW, h: o.washoutH, k: o.washoutW / (mi.w || cam.iw) }; } catch (e) {} }
       var W = cam._wo; if (!W) return false;
       var gx = Math.floor(ix * W.k), gy = Math.floor(iy * W.k); if (gx < 0 || gy < 0 || gx >= W.w || gy >= W.h) return false;
-      var wv = W.a[gy * W.w + gx]; if (!wv) return false;                  // 1 날아감 · 2 빛 받은 자리(2026-11-17 glare — 03b: 밝고 무채색 · 머리 영역 둘레)
+      var wv = W.a[gy * W.w + gx]; if (!wv) return false;                  // 1·3 날아감(3 = 머리 영역 둘레) · 2 빛 받은 자리(2026-11-17 glare — 03b: 밝고 무채색 · 머리 영역 둘레)
       if (personAt(cam, ix, iy) === false) return false;
       if (wv === 2) woStat.glare = (woStat.glare || 0) + 1;
       woStat.n++; woStat[cam.angle] = (woStat[cam.angle] || 0) + 1; return true;
@@ -2184,13 +2192,13 @@ var REGROW = (function () {
        판정은 하나: 그 점을 <b>마주 보는</b> 사진(카메라 쪽 · 바깥 방향 cos ≥ faceNoMarginFc)이 그 자리를 <b>사람 윤곽 안 맨살/옷</b>으로 찍었고
        머리 영역에서 skinTolCm(사진끼리 어긋남 몫) 넘게 떨어져 있으면 = 사진이 직접 "여기엔 머리 없음"을 보여 준 것.
        배경·사진 틀 밖·반대쪽 사진은 예전 그대로(여유·기권). 끄기 REGROW.skinNoMargin=false · 여유 REGROW.skinTolCm */
-    if (G.skinNoMargin == null) G.skinNoMargin = true; if (G.skinTolCm == null) G.skinTolCm = 0.3;
+    if (G.skinNoMargin == null) G.skinNoMargin = true; if (G.skinTolCm == null) G.skinTolCm = 0;   // (2026-11-17 nomargin) 0.3 → 0
     /* (2026-11-10d) 맨살 판정의 '보임'을 각도 문턱(fc≥0.5) 대신 실제 가림으로 — 1754 진단(짧은 남자 · 옆 사진 ±30°): 넘침 정면 38% · 왼 49% · 오른 43%, 넘친 자리는 거의 뺨·귀 앞 살.
        원인: 옆 사진이 ±30°라 귀 앞·관자놀이 아래 점의 두피 타원 바깥 방향과 이루는 cos가 0.5 아래 → 어느 사진도 '마주 봄'이 아님 → 맨살 판정이 안 걸리고
        뒤/추가 사진(fc≥-0.15)이 뒷머리 덩어리 위로 비춰 '머리'로 살림. vm98(진짜 옆)이 빠진 쪽이 특히 심함.
        지금: 카메라 쪽(fc ≥ skinVisFc 0.1)이고 두개골·목/몸통(camBlocked)·얼굴 어림(faceBlocks)에 안 가리면 그 사진의 살 픽셀 = 그 자리에 머리 없음.
        되돌리기 REGROW.skinVis=false (예전 fc≥faceNoMarginFc) */
-    if (G.skinVis == null) G.skinVis = true; if (G.skinVisFc == null) G.skinVisFc = 0.1; if (G.skinTolOtherCm == null) G.skinTolOtherCm = 1.0;
+    if (G.skinVis == null) G.skinVis = true; if (G.skinVisFc == null) G.skinVisFc = 0.1; if (G.skinTolOtherCm == null) G.skinTolOtherCm = 0;   // (2026-11-17 nomargin) 1.0 → 0
     function skinSeen(cam, p, o, tolCm) {
       if (G.skinNoMargin === false || !cam.hull || !(o.z >= 0)) return false;
       if (o.ix < 0 || o.iy < 0 || o.ix >= cam.iw || o.iy >= cam.ih) return false;
@@ -2389,7 +2397,7 @@ var REGROW = (function () {
        그 점을 가림 없이 보는 사진(카메라 쪽 fc ≥ skinVisFc · 두개골·목/몸통·얼굴에 안 가림 · 사진 틀 안) 전부가 머리여야 살아 있음(1).
        한 장이라도 머리 아님(배경·살·옷 무엇이든)이고 머리 영역에서 isectTolCm(사진끼리 어긋남 몫) 넘게 떨어져 있으면 밖(0).
        보는 사진이 없으면 null(예전 판정). 되돌리기 REGROW.aliveIsect=false(합집합 · 하나라도 머리면 살림) · 여유 REGROW.isectTolCm */
-    if (G.aliveIsect == null) G.aliveIsect = true; if (G.isectTolCm == null) G.isectTolCm = 0.3;
+    if (G.aliveIsect == null) G.aliveIsect = true; if (G.isectTolCm == null) G.isectTolCm = 0;   // (2026-11-17 nomargin) 0.3 → 0
     /* (2026-11-16 vote) 한 장이 '밖'이라 해도 바로 밖이 아니라, 그 점을 보는 사진들의 무게(마주 보는 정도² · 카메라 안 맞은 사진 ×0.3)로 투표.
      *   밖 표 무게는 머리 영역에서 떨어진 거리만큼(여유 isectTolCm에서 0 → 그 3배에서 1). 밖 무게 > 머리 무게면 밖.
      *   사용자 11-16: "엇갈리는 사진은 잘 맞춰야지 빼면 안되지" — 11-10e '교집합(다 머리라고 해야 머리)'과 다름. 되돌리기 REGROW.aliveVote='isect' */
@@ -2410,7 +2418,7 @@ var REGROW = (function () {
         var h = c.hull, gx = Math.floor(o.ix / h.cp), gy = Math.floor(o.iy / h.cp);
         var dcm = (gx < 0 || gy < 0 || gx >= h.gw || gy >= h.gh) ? 1e9 : h.D[gy * h.gw + gx] * (h.cmCell || 1);
         if (dcm <= tol) continue;
-        noW += tr * Math.min(1, (dcm - tol) / (2 * tol));
+        noW += tr * (tol > 0 ? Math.min(1, (dcm - tol) / (2 * tol)) : 1);   // (2026-11-17 nomargin) 여유 0이면 밖 표는 온전히 1
         if (fc < fcMin) G._voteGraze = (G._voteGraze || 0) + 1;
       }
       if (noW > yesW) { G._isectNo = (G._isectNo || 0) + 1; if (yesW > 0) G._voteSplit = (G._voteSplit || 0) + 1; return 0; }
@@ -4001,7 +4009,7 @@ var REGROW = (function () {
           if (TS) { rec(0, !fl, 0); TS.push(v2 ? 1 : 0, P2.x, P2.y, P2.z); }
           // (2026-10-10j) 사진 윤곽으로 잰 머리 두께가 거의 없는 자리(페이드·짧게 민 옆·뒤)로는 위에서 내려온 긴 머리가 못 덮음 — 덮었다면 윤곽이 두꺼웠을 것
           if (G.thinStopCm > 0 && tCm0 >= G.thinStopRoot && s2 > G.thinStopAfter / cmU && thickAt(F2) * cmU < G.thinStopCm) { stop = 'mask'; st.thinStop = (st.thinStop || 0) + 1; break; }
-          if (v2 === 0) { if (++miss >= (G.hullMissMax || 2)) { stop = 'mask'; break; } } else miss = 0;
+          if (v2 === 0) { if (++miss >= (G.hullMissMax || 1)) { stop = 'mask'; break; } } else miss = 0;
           if (G.onScalpLen && !isLong && s2 > Math.max(G.minLenCm / cmU, G.liftK * tRoot)) { stop = 'len'; st.lenThick = (st.lenThick || 0) + 1; pts.push(P2); break; }
           if (flip === 3 && G.sideLayStay && s2 >= Lcap) { stop = 'side'; st.sideEnd = (st.sideEnd || 0) + 1; pts.push(P2); break; }   // (2026-10-11p) 옆으로 눕힌 가닥의 길이 = 그 섹션 상한까지(10f 때와 같음)
           pts.push(P2); F = F2; n = n2; P = P2; s = s2; sOn += stp; prev = tangent(dt, n2) || dt;
@@ -4112,7 +4120,7 @@ var REGROW = (function () {
             if (fx * fx + fz2 * fz2 <= 1) { vq = 1; st.backKeep++; }
           }
           if (TS) { rec(1, !fl, exB); TS.push(vq ? 1 : 0, Q.x, Q.y, Q.z); }
-          if (vq === 0) { if (++miss >= (G.hullMissMax || 2)) { stop = 'mask'; break; } } else miss = 0;
+          if (vq === 0) { if (++miss >= (G.hullMissMax || 1)) { stop = 'mask'; break; } } else miss = 0;
           pts.push({ x: Q.x, y: Q.y, z: Q.z }); P = Q; s += stp; sFree += stp; prev = d; if (Q.y < lowF) lowF = Q.y;
         }
         if (G.lenCap && s >= Lcap) { stop = 'cap'; break; }
