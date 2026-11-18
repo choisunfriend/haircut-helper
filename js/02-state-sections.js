@@ -553,10 +553,7 @@ const state = {
   // 픽셀 이식은 원본 사진의 헤어 띠를 잘라 붙이는 <b>다른 그림 규칙</b>이라
   // 정의상 가닥 렌더와 같아질 수 없다. 통일이 목적이면 이 경로를 꺼야 한다.
   // 코드는 그대로 남겨 뒀으므로 콘솔에서 state.hairQuilt = true 로 되살릴 수 있다.
-  // (2026-11-18) 다시 true — 사용자: "원본 사진에서 잘라낸 헤어 픽셀로 길러줘. 해보고 이상하면 가닥 방식(1번)으로". 이식 경로(07b projectHairQuiltToView)는
-  // 2D 뷰 그림에서만 탄다(조정 3D 화면 ADJUST3D 가 켜져 있으면 3D 가닥이 그려져 영향 없음 → 2D로 보려면 ADJUST3D.on=false; ADJUST3D.refresh()).
-  // 실패(캘리브레이션·결필드·원본 헤어 이미지 없음)면 가닥 렌더로 자동 폴백 · 사유는 quiltFail 콘솔 줄. 되돌리기: state.hairQuilt=false
-  hairQuilt: true,
+  hairQuilt: false,
   debugShowField: false, // true면 strand 시뮬레이션(뿌리/중력/clamp) 전부 건너뛰고 orientation 컬럼 샘플을 가공 없이 그대로 표시(진단용)
   // ── 3D 미리보기 패널 표시 여부 (이름은 옛 플래그명 유지) ──
   // (2026-07-26) 예전엔 이 값이 조정 경로를 갈랐다(true=3D, false=2D 직접 렌더).

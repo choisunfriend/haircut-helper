@@ -5395,11 +5395,7 @@ function helixMeasure(rgba,mask,W,H,angle,coh,opt){opt=opt||{};const n=opt.n||25
     return { n: kept, cand: cand.length, areaPx: areaPx, tau: tau, mincov: mincov };
   }
   G.ringMeasureFn = ringMeasure;
-  /* (2026-11-18d) minDens 2.0 확정 — 100cm²당 닫힌 고리 중심 수의 판정선. 근거(같은 ringMeasure 코드로 잰 값):
-     곱슬 사진 4장 3.3~5.3 · 웨이브 0.8 · 직모 0.4 · 루즈펌 0.0 · 이번 손님(긴 웨이브 · 진단파일 4뷰 노드 재측정) 0 / 0.16 / 0.19 / 0.94 → 중앙 0.18.
-     웨이브 쪽 최댓값(0.94)과 곱슬 쪽 최솟값(3.3) 사이 중간쯤 = 2.0 (웨이브의 2배 위 · 곱슬의 0.6배). 웨이브 사진이 아직 적어 사진이 쌓이면 다시 볼 것.
-     되돌리기(예전처럼 컬 엔진 안 켬): REGROW.ringGate.minDens=null; REGROW.ringGate.refresh() */
-  var RG = G.ringGate = G.ringGate || { on: true, auto: true, minDens: 2.0, tau: 2.0, gthr: 0.20, mincov: 7, result: null };
+  var RG = G.ringGate = G.ringGate || { on: true, auto: true, minDens: null, tau: 2.0, gthr: 0.20, mincov: 7, result: null };
   /* 뷰별 밀도(100cm²당) · 기존 '고리 정도'(waveShape.loop: 0=S자 · 1=고리, 기준 PHOTO_CURL.waveLoopMax)와 같이 보여 줌 */
   RG.refresh = function () {
     var views = [], dens = [];
@@ -5422,10 +5418,8 @@ function helixMeasure(rgba,mask,W,H,angle,coh,opt){opt=opt||{};const n=opt.n||25
       + ' | ' + r.views.map(function (v) { return v.a + ' ' + v.d.toFixed(1) + '(중심 ' + v.n + (v.loop != null ? ' · 기존 고리정도 ' + v.loop.toFixed(2) : '') + ')'; }).join(' · ') + ' · 끄기 REGROW.ringGate.on=false'];
   };
   /* 컬·컬 엔진이 지금 켜져 있는가 — 수동 스위치(curl · curlEngine)이거나, 자동(ringGate.auto)이고 닫힌 고리 판정을 통과했을 때 */
-  /* 분석 때는 카메라가 없어 밀도를 못 재 result.med가 NaN → 통과 못함으로 굳는다 — 판정이 필요한 때 NaN이면 한 번 다시 잼(싼 계산) */
-  function ringPass() { if (!RG.auto) return false; try { if (!RG.result || !isFinite(RG.result.med)) RG.refresh(); } catch (e) {} return !!(RG.result && RG.result.pass); }
-  G.curlOn = function () { return !!(G.curl || ringPass()); };
-  G.engineOn = function () { return !!(G.curlEngine || ringPass()); };
+  G.curlOn = function () { return !!(G.curl || (RG.auto && RG.result && RG.result.pass)); };
+  G.engineOn = function () { return !!(G.curlEngine || (RG.auto && RG.result && RG.result.pass)); };
 
   /* (2026-10-10m) 타래 조각 찾기 — 곱슬 사진에서 타래는 밝은 겉면과 그 사이 어두운 틈으로 갈림.
      머리 영역 안에서 둘레(17px)보다 밝은 부분을 이어진 조각으로 묶음 → 조각 하나 = 앞으로 드러난 타래의 반 바퀴(C·S자).
@@ -9836,25 +9830,7 @@ var BODY_OUT = (function () {
  * 끄기: STUB_GUARD.on=false · 상태: STUB_GUARD.lines().join("\n")
  * ══════════════════════════════════════════════════════════════════════════ */
 var STUB_GUARD = (function(){
-  var G = { on: true, mode: 'spike', ratio: 0.5, minSrcCm: 6, restored: 0, last: null, _logSig: '',
-            /* (2026-11-18c) 'spike' = 잘린 가닥 중 <b>가시 모양</b>만 뺌(기본) · 'drop' = 잘린 가닥 전부 뺌(너무 많이 빠져 웨이브가 이마를 못 감쌌음) · 'restore' = 원본 길이로 되돌림.
-               가시 모양 = 토막이 ① 두피 바깥 방향으로 곧게(뿌리 법선과의 내적 ≥ spikeOut) ② 거의 직선(현÷호 ≥ spikeStraight) ③ 짧음(≤ spikeMaxCm) ④ 끝이 두피면에서 spikeLiftCm 이상 뜸.
-               두피를 따라 눕거나 꺾이는 토막(이마를 감는 웨이브)은 넷 중 하나라도 어긋나 그대로 남는다. */
-            spikeOut: 0.6, spikeStraight: 0.92, spikeMaxCm: 6, spikeLiftCm: 1.5 };
-  function ell(){ try{ var e = getScalpEllipsoid(), cy = (typeof SCALP_CENTER_Y !== 'undefined' && isFinite(SCALP_CENTER_Y)) ? SCALP_CENTER_Y : ((typeof model !== 'undefined' && model && model.CY) || 0); if(e && e.a > 0 && e.b > 0 && e.c > 0) return { a: e.a, b: e.b, c: e.c, cy: cy }; }catch(x){} return null; }
-  function isSpike(p, E, cm){   // 토막 p가 두피에서 바깥으로 곧게 뻗은 가시인가
-    var n = p.length, r = p[0], t = p[n - 1], L = arc(p);
-    if(!(L > 0) || L * cm > G.spikeMaxCm) return false;
-    var chord = Math.hypot(t.x - r.x, t.y - r.y, t.z - r.z);
-    if(chord / L < G.spikeStraight) return false;
-    var nx = r.x / (E.a * E.a), ny = (r.y - E.cy) / (E.b * E.b), nz = r.z / (E.c * E.c), nl = Math.hypot(nx, ny, nz);
-    if(!(nl > 0) || !(chord > 0)) return false;
-    var dot = ((t.x - r.x) * nx + (t.y - r.y) * ny + (t.z - r.z) * nz) / (chord * nl);
-    if(dot < G.spikeOut) return false;
-    var q = function(P){ var u = P.x / E.a, v = (P.y - E.cy) / E.b, w = P.z / E.c; return Math.hypot(u, v, w); };   // 1.0 = 두피면
-    var lift = (q(t) - 1) * Math.min(E.a, E.b, E.c) * cm;
-    return lift >= G.spikeLiftCm;
-  }
+  var G = { on: true, mode: 'drop', ratio: 0.5, minSrcCm: 6, restored: 0, last: null, _logSig: '' };
   function arc(p){ var s = 0, i; for(i = 1; i < p.length; i++) s += Math.hypot(p[i].x - p[i-1].x, p[i].y - p[i-1].y, p[i].z - p[i-1].z); return s; }
   function cmU(){ try{ return modelCmPerUnit() || 19; }catch(e){ return 19; } }
   function lenMoved(sec){   // 이 섹션 길이 슬라이더를 원본 기준에서 움직였나(= 커트가 의도된 것)
@@ -9872,8 +9848,7 @@ var STUB_GUARD = (function(){
   }
   G._apply = function(list){
     if(!G.on || !list || !list.length || off()) return list;
-    var cm = cmU(), minU = G.minSrcCm / cm, out = list, i, e, sp, p, as, n = 0, kept = 0, by = {}, mv = {}, E = (G.mode === 'spike') ? ell() : null;
-    if(G.mode === 'spike' && !E) return list;   // 두피 모양을 못 읽으면 아무것도 안 뺌(웨이브를 잃느니 가시를 둠)
+    var cm = cmU(), minU = G.minSrcCm / cm, out = list, i, e, sp, p, as, n = 0, by = {}, mv = {};
     for(i = 0; i < list.length; i++){
       e = list[i]; sp = e && e.sp; p = e && e.pts;
       if(!sp || !p || sp === p || p.length >= sp.length || sp.length < 4) continue;
@@ -9882,23 +9857,22 @@ var STUB_GUARD = (function(){
       if(!(arc(p) < G.ratio * as)) continue;
       if(!(e.sec in mv)) mv[e.sec] = lenMoved(e.sec);
       if(mv[e.sec]) continue;
-      if(G.mode === 'spike' && !isSpike(p, E, cm)){ kept++; continue; }   // 잘렸어도 가시 모양이 아니면(웨이브·눕는 가닥) 그대로 둠
       if(out === list) out = list.slice();
       if(G.mode === 'restore'){
         var ne = Object.assign({}, e, { pts: sp });
         if(e.colors && e.colors.length !== sp.length) ne.colors = null;
         out[i] = ne;
-      } else out[i] = null;   // 'spike'·'drop': 뺌 — 원본 길이로 되살리면 사진 밖으로 뻗은 긴 가닥이 엉킨다
+      } else out[i] = null;   // (2026-11-18b) 기본: 토막 가닥은 통째로 뺌 — 원본 길이로 되살리면 사진 밖으로 뻗은 긴 가닥이 엉킨다
       n++; by[e.sec] = (by[e.sec] || 0) + 1;
     }
     if(out !== list && G.mode !== 'restore') out = out.filter(function(x){ return x; });
-    G.last = { n: n, of: list.length, by: by, kept: kept };
+    G.last = { n: n, of: list.length, by: by };
     if(n){
       G.restored += n;
       var sig = n + '|' + list.length;
       if(sig !== G._logSig){
         G._logSig = sig;
-        try{ console.log('[가시 방지] 길이를 안 건드렸는데 원본의 절반 아래로 잘린 가닥 중 ' + (G.mode === 'spike' ? '가시 모양 ' : '') + n + '개(' + list.length + '개 중)를 ' + (G.mode === 'restore' ? '원본 길이로 되돌림' : '뺌') + (G.mode === 'spike' ? ' · 가시 모양이 아니라 남긴 잘린 가닥 ' + kept : '') + ' · 섹션별 '
+        try{ console.log('[가시 방지] 길이를 안 건드렸는데 원본의 절반 아래로 잘려 꼬리만 남은 가닥 ' + n + '개(' + list.length + '개 중)를 ' + (G.mode === 'restore' ? '원본 길이로 되돌림' : '뺌') + ' · 섹션별 '
           + Object.keys(by).map(function(k){ return k + ' ' + by[k]; }).join(' · ') + ' · 끄기 STUB_GUARD.on=false'); }catch(e2){}
       }
     }
@@ -9906,7 +9880,7 @@ var STUB_GUARD = (function(){
   };
   G.lines = function(){
     var l = G.last;
-    return ['[가시 방지] ' + (G.on ? '켜짐' : '꺼짐') + ' · 직전 ' + (l ? (l.n + '/' + l.of + ' 처리 ' + JSON.stringify(l.by) + (l.kept != null ? ' · 남긴 잘린 가닥 ' + l.kept : '')) : '아직') + ' · 누적 ' + G.restored];
+    return ['[가시 방지] ' + (G.on ? '켜짐' : '꺼짐') + ' · 직전 ' + (l ? (l.n + '/' + l.of + ' 처리 ' + JSON.stringify(l.by)) : '아직') + ' · 누적 ' + G.restored];
   };
   return G;
 })();
