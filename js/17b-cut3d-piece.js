@@ -9830,7 +9830,7 @@ var BODY_OUT = (function () {
  * 끄기: STUB_GUARD.on=false · 상태: STUB_GUARD.lines().join("\n")
  * ══════════════════════════════════════════════════════════════════════════ */
 var STUB_GUARD = (function(){
-  var G = { on: true, ratio: 0.5, minSrcCm: 6, restored: 0, last: null, _logSig: '' };
+  var G = { on: true, mode: 'drop', ratio: 0.5, minSrcCm: 6, restored: 0, last: null, _logSig: '' };
   function arc(p){ var s = 0, i; for(i = 1; i < p.length; i++) s += Math.hypot(p[i].x - p[i-1].x, p[i].y - p[i-1].y, p[i].z - p[i-1].z); return s; }
   function cmU(){ try{ return modelCmPerUnit() || 19; }catch(e){ return 19; } }
   function lenMoved(sec){   // 이 섹션 길이 슬라이더를 원본 기준에서 움직였나(= 커트가 의도된 것)
@@ -9858,17 +9858,21 @@ var STUB_GUARD = (function(){
       if(!(e.sec in mv)) mv[e.sec] = lenMoved(e.sec);
       if(mv[e.sec]) continue;
       if(out === list) out = list.slice();
-      var ne = Object.assign({}, e, { pts: sp });
-      if(e.colors && e.colors.length !== sp.length) ne.colors = null;
-      out[i] = ne; n++; by[e.sec] = (by[e.sec] || 0) + 1;
+      if(G.mode === 'restore'){
+        var ne = Object.assign({}, e, { pts: sp });
+        if(e.colors && e.colors.length !== sp.length) ne.colors = null;
+        out[i] = ne;
+      } else out[i] = null;   // (2026-11-18b) 기본: 토막 가닥은 통째로 뺌 — 원본 길이로 되살리면 사진 밖으로 뻗은 긴 가닥이 엉킨다
+      n++; by[e.sec] = (by[e.sec] || 0) + 1;
     }
+    if(out !== list && G.mode !== 'restore') out = out.filter(function(x){ return x; });
     G.last = { n: n, of: list.length, by: by };
     if(n){
       G.restored += n;
       var sig = n + '|' + list.length;
       if(sig !== G._logSig){
         G._logSig = sig;
-        try{ console.log('[가시 방지] 길이를 안 건드렸는데 원본의 절반 아래로 잘려 꼬리만 남은 가닥 ' + n + '개(' + list.length + '개 중)를 원본 길이로 되돌림 · 섹션별 '
+        try{ console.log('[가시 방지] 길이를 안 건드렸는데 원본의 절반 아래로 잘려 꼬리만 남은 가닥 ' + n + '개(' + list.length + '개 중)를 ' + (G.mode === 'restore' ? '원본 길이로 되돌림' : '뺌') + ' · 섹션별 '
           + Object.keys(by).map(function(k){ return k + ' ' + by[k]; }).join(' · ') + ' · 끄기 STUB_GUARD.on=false'); }catch(e2){}
       }
     }
@@ -9876,7 +9880,7 @@ var STUB_GUARD = (function(){
   };
   G.lines = function(){
     var l = G.last;
-    return ['[가시 방지] ' + (G.on ? '켜짐' : '꺼짐') + ' · 직전 ' + (l ? (l.n + '/' + l.of + ' 복원 ' + JSON.stringify(l.by)) : '아직') + ' · 누적 ' + G.restored];
+    return ['[가시 방지] ' + (G.on ? '켜짐' : '꺼짐') + ' · 직전 ' + (l ? (l.n + '/' + l.of + ' 처리 ' + JSON.stringify(l.by)) : '아직') + ' · 누적 ' + G.restored];
   };
   return G;
 })();
@@ -9997,7 +10001,10 @@ function _adjGeometry(srcAngleFilter, stride){
        그걸 사진 점유에 대면 <b>정의상 전부 잘린다</b> — 이마에는 머리가 없으니까.
        faceVeto도 같이 빠진다: 뱅은 얼굴을 덮는 게 맞는 시술이다.
        면제는 st.fringe가 붙은 가닥에만 걸리므로 나머지는 비트 단위로 그대로다. */
-    if(occ && !st.fringe){
+    /* (2026-11-18) 안 움직인 다시 기른 가닥은 재클립하지 않는다 — 가닥이 원본 그대로(pts === st.pts)면 시술 변위가 0이라 "움직여서 마스크 밖으로 나간" 게 없다.
+       다시 기르기가 이미 사진 영역 안에서 길렀는데, 여기서 4장 전원 일치(strict)로 다시 재면 가닥의 절반 가까이(진단: 20000개 중 12,606개 · 평균 38점)가
+       첫 밖 점에서 잘려 3점짜리 토막 = 앞머리·정수리 가시가 된다. 끄기 HAIR_OCC3D.skipUnmoved=true (기본 꺼짐 — 켜면 긴 가닥이 되살아남) */
+    if(occ && !st.fringe && !(HAIR_OCC3D.skipUnmoved === true && st.regrown && !st.mannequin && pts === st.pts)){
       /* 여유(2026-08-18 i) — 시술이 <b>실제로 움직인 거리</b>가 여유다(srcPts).
          길이만 보던 growPerRatio는 moveGrow=false일 때의 폴백으로만 남는다:
          변위 여유가 그 값을 이미 포함하므로 켜져 있을 때 같이 주면 이중이다.
