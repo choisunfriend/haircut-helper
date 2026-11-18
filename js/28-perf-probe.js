@@ -575,8 +575,10 @@
     g = combStrand3D(g);
     if (s._ch === undefined) s._ch = _cutHash01(s);
     return ADJ_CACHE.split
-      ? { pts: g, sec: s.sec, srcAngle: s.srcAngle, h: s._ch, srcColor: s.color, srcColors: s.colors || null }
-      : { pts: g, color: sec.color || s.color, sec: s.sec, srcAngle: s.srcAngle, colors: sec.color ? null : s.colors || null };
+      ? { pts: g, sec: s.sec, srcAngle: s.srcAngle, h: s._ch, srcColor: s.color, srcColors: s.colors || null,
+          sp: (s.regrown && !s.mannequin) ? s.pts : null }   // (2026-11-18) 가시 방지(17b STUB_GUARD) — 원본 가닥 참조만
+      : { pts: g, color: sec.color || s.color, sec: s.sec, srcAngle: s.srcAngle, colors: sec.color ? null : s.colors || null,
+          sp: (s.regrown && !s.mannequin) ? s.pts : null };
   }
 
   var origGeo = G._adjGeometry;

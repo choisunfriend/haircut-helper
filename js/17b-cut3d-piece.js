@@ -9609,7 +9609,8 @@ function _adjApplyFilter(geo){
     }
     out.push({ pts: g.pts, color: _dye || g.srcColor, sec: g.sec,
                srcAngle: g.srcAngle, dye: _dye,
-               colors: (_dye && !HAIR_DYE.on) ? null : _cols });
+               colors: (_dye && !HAIR_DYE.on) ? null : _cols,
+               sp: g.sp || null });
   }
   if(fsig){ geo._fsig = fsig; geo._fout = out; }
   return out;
@@ -9819,6 +9820,66 @@ var BODY_OUT = (function () {
 
 /* ══ 조정 결과 가닥 — 바깥 단계 ══
    예전 기능 파일(48~)이 이 함수를 감싸던 순서 그대로 단계로 둔다(위가 바깥). 기본 계산은 아래 _adjComputeCore. */
+/* ══ STUB_GUARD (2026-11-18) — 앞머리·정수리 "가시" 방지 ══════════════════════
+ * 증상(사용자 영상 + 진단 파일 2개): 조정 화면 가닥 중 일부(긴 웨이브 머리 28% · 짧은 곱슬 14%)가 다시 기른 원본 가닥보다
+ *   <b>꼬리만 남은 토막</b>(점 3개 · 2~4cm)으로 그려진다. 앞 점들은 원본과 <b>글자 그대로 같고</b> 뒤만 잘려 있어(토막 중 67%가 같은 점)
+ *   두피에서 바깥으로 곧게 뻗은 짧은 선 = 가시가 된다. 원본(다시 기른) 가닥 자체는 정상(긴 가닥이 두상을 따라 감).
+ * 길이 슬라이더를 안 건드렸는데(원본 길이 그대로) 가닥이 원본의 절반 아래로 줄어든 건 의도된 커트가 아니다 → 그 가닥만 원본 길이로 되돌린다.
+ *   · 길이를 줄인 섹션(커트) · 페이드 · 원본 대조 잘라내기가 켜져 있으면 건드리지 않는다.
+ *   · 다시 기른 머리(마네킹 OFF)의 사진 가닥에만 건다(마네킹은 sp가 없다).
+ * 끄기: STUB_GUARD.on=false · 상태: STUB_GUARD.lines().join("\n")
+ * ══════════════════════════════════════════════════════════════════════════ */
+var STUB_GUARD = (function(){
+  var G = { on: true, ratio: 0.5, minSrcCm: 6, restored: 0, last: null, _logSig: '' };
+  function arc(p){ var s = 0, i; for(i = 1; i < p.length; i++) s += Math.hypot(p[i].x - p[i-1].x, p[i].y - p[i-1].y, p[i].z - p[i-1].z); return s; }
+  function cmU(){ try{ return modelCmPerUnit() || 19; }catch(e){ return 19; } }
+  function lenMoved(sec){   // 이 섹션 길이 슬라이더를 원본 기준에서 움직였나(= 커트가 의도된 것)
+    try{
+      var b = (typeof REGROW !== 'undefined' && REGROW.base && REGROW.base.sections) ? REGROW.base.sections[sec] : null;
+      var cur = state.sections && state.sections[sec];
+      if(!b || !cur || !isFinite(b.length) || !isFinite(cur.length)) return false;
+      return Math.abs(+cur.length - +b.length) > 0.5;
+    }catch(e){ return false; }
+  }
+  function off(){   // 일부러 자르는 기능이 켜져 있으면 쉼
+    try{ if(state.fade && state.fade.enabled) return true; }catch(e){}
+    try{ if(typeof PHOTO_CHECK !== 'undefined' && PHOTO_CHECK.trim) return true; }catch(e){}
+    return false;
+  }
+  G._apply = function(list){
+    if(!G.on || !list || !list.length || off()) return list;
+    var cm = cmU(), minU = G.minSrcCm / cm, out = list, i, e, sp, p, as, n = 0, by = {}, mv = {};
+    for(i = 0; i < list.length; i++){
+      e = list[i]; sp = e && e.sp; p = e && e.pts;
+      if(!sp || !p || sp === p || p.length >= sp.length || sp.length < 4) continue;
+      as = sp._arcU; if(as === undefined){ as = arc(sp); try{ sp._arcU = as; }catch(e1){} }
+      if(!(as >= minU)) continue;
+      if(!(arc(p) < G.ratio * as)) continue;
+      if(!(e.sec in mv)) mv[e.sec] = lenMoved(e.sec);
+      if(mv[e.sec]) continue;
+      if(out === list) out = list.slice();
+      var ne = Object.assign({}, e, { pts: sp });
+      if(e.colors && e.colors.length !== sp.length) ne.colors = null;
+      out[i] = ne; n++; by[e.sec] = (by[e.sec] || 0) + 1;
+    }
+    G.last = { n: n, of: list.length, by: by };
+    if(n){
+      G.restored += n;
+      var sig = n + '|' + list.length;
+      if(sig !== G._logSig){
+        G._logSig = sig;
+        try{ console.log('[가시 방지] 길이를 안 건드렸는데 원본의 절반 아래로 잘려 꼬리만 남은 가닥 ' + n + '개(' + list.length + '개 중)를 원본 길이로 되돌림 · 섹션별 '
+          + Object.keys(by).map(function(k){ return k + ' ' + by[k]; }).join(' · ') + ' · 끄기 STUB_GUARD.on=false'); }catch(e2){}
+      }
+    }
+    return out;
+  };
+  G.lines = function(){
+    var l = G.last;
+    return ['[가시 방지] ' + (G.on ? '켜짐' : '꺼짐') + ' · 직전 ' + (l ? (l.n + '/' + l.of + ' 복원 ' + JSON.stringify(l.by)) : '아직') + ' · 누적 ' + G.restored];
+  };
+  return G;
+})();
 function computeAdjustedHair3DStrands(srcAngleFilter, stride){
   const _cbT0 = COMB3D._beforeCompute();   // (옛 53) 빗질 통계 비움·모델 바뀌면 빗질 지움
   // (옛 48 가닥 수) 조정 화면 전체 요청이면 정해 둔 수만큼만 — 위 STRAND_BUDGET
@@ -9838,6 +9899,7 @@ function computeAdjustedHair3DStrands(srcAngleFilter, stride){
   out = FLY_TRIM._apply(out);
   FLOW_SPEC._afterCompute();   // (옛 59) 걸고 난 뒤 처음 다 만든 자리에서 한 줄
   out = PHOTO_CHECK._apply(out); // (옛 60) 원본 대조 — 결 맞추기·윤곽 밖 잘라내기(07b)
+  out = STUB_GUARD._apply(out);  // (2026-11-18) 앞머리·정수리 가시 — 길이를 안 건드렸는데 꼬리만 남은 토막을 원본 길이로
   return out;
 }
 /* 기본 계산: 기하(캐시) → 필터 → 기능 마감 단계들 */
@@ -9972,9 +10034,11 @@ function _adjGeometry(srcAngleFilter, stride){
     if(st._ch === undefined) st._ch = _cutHash01(st);
     out.push(ADJ_CACHE.split
       ? { pts, sec: st.sec, srcAngle: st.srcAngle, h: st._ch,
-          srcColor: st.color, srcColors: st.colors || null }
+          srcColor: st.color, srcColors: st.colors || null,
+          sp: (st.regrown && !st.mannequin) ? st.pts : null }      // (2026-11-18) 가시 방지(STUB_GUARD) — 원본 가닥 참조만(복사 없음)
       : { pts, color: sec.color || st.color, sec: st.sec, srcAngle: st.srcAngle,
-          colors: sec.color ? null : (st.colors || null) });
+          colors: sec.color ? null : (st.colors || null),
+          sp: (st.regrown && !st.mannequin) ? st.pts : null });
   }
   /* ⚠ 2단 분리 뒤로 out.length는 <b>밀도컷 전</b>의 수다(예전엔 컷 후였다).
      재클립이 얼마나 잘랐는지를 보는 진단이라 분모는 컷 전이 오히려 맞지만,
