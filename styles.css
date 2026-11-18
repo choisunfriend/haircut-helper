@@ -617,3 +617,19 @@ input[type=range]::-moz-range-thumb{width:20px;height:20px;border-radius:50%;bac
   text-decoration:none;font-weight:700;}
 .bb-shop-note small{opacity:0.6;word-break:break-all;max-width:90%;}
 
+
+
+/* (2026-11-19) 오프라인 배지 — 촬영 화면 맨 위.
+   글자는 한국어로 두고 I18N 표(44-i18n-offline.js)가 영어로 바꾼다. */
+.offline-note{
+  display:flex; align-items:center; justify-content:center; gap:6px;
+  margin:0 0 8px; padding:5px 10px;
+  font-size:11px; letter-spacing:.2px; line-height:1.3;
+  color:var(--text-muted);
+  background:var(--surface-2); border:1px solid var(--line); border-radius:999px;
+  align-self:center; width:fit-content; max-width:100%;
+}
+.offline-note::before{
+  content:""; width:6px; height:6px; border-radius:50%;
+  background:var(--ok); flex:0 0 auto;
+}
