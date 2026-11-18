@@ -5417,14 +5417,24 @@ function helixMeasure(rgba,mask,W,H,angle,coh,opt){opt=opt||{};const n=opt.n||25
      모든 뷰가 건너뛰어지고 중앙값이 비는데, 예전엔 그걸 그냥 "통과 못함(예전 동작)"으로 찍었다. 실제 판정은 나중에
      photoCurl()이 다시 부를 때(3D·카메라가 선 뒤) 나므로, 그 줄만 보고 판정을 읽으면 거꾸로 읽게 된다(디버그 1521 펌이 그 경우).
      noScale = 고리 수는 쟀는데 자가 없어 밀도를 못 낸 뷰 수. */
+  /* (2026-11-18 자) 자는 맞아 있다 — 확인하고 치수만 찍는다.
+     한때 "고리는 분석 크기(결 방향 필터 해상도)에서 세는데 cmPerMaskPx는 마스크 자라 섞였다"고 봤는데, 이름이 거꾸로 붙어 있어 잘못 읽은 것이다.
+     07b getCam1(1704행)이 kx = mi.maskW / mi.w 로 ix·iy를 곱해 결 방향 필드를 찍는다 → <b>mi.maskW가 분석 해상도(253) · mi.w가 마스크 해상도(429)</b>다.
+     그래서 cmPerMaskPx의 `cam.s × cmPerUnit ÷ kx`는 (cm/마스크px) ÷ 0.59 = <b>cm per 분석px</b>이고, ringAreaPx(분석px)와 자가 같다.
+     다만 그 사실이 코드 어디에도 안 적혀 있어 매번 다시 의심하게 되므로, 뷰마다 <b>분석 1px의 cm과 머리 면적(cm²)</b>을 로그에 찍는다.
+     사람 머리 한 면은 대략 300~500cm²다 — 이 숫자가 거기서 크게 벗어나면 그때는 자가 정말 틀린 것이고, 기준 2.0을 의심하기 전에 그쪽을 본다. */
   RG.refresh = function () {
     var views = [], dens = [], noScale = 0;
     (typeof ANGLES !== 'undefined' ? ANGLES : ['front', 'left', 'right', 'back']).forEach(function (a) {
       try {
         var mi = state.hairMasks && state.hairMasks[a], id = mi && mi.identity; if (!id || id.ringN == null) return;
-        var cpp = cmPerMaskPx(a); if (!(cpp > 0)) { noScale++; return; }
-        var d = id.ringN / (id.ringAreaPx * cpp * cpp) * 100; dens.push(d);
-        views.push({ a: a, n: id.ringN, d: d, loop: id.waveShape && isFinite(id.waveShape.loop) ? id.waveShape.loop : null });
+        var cpp = cmPerMaskPx(a); if (!(cpp > 0)) { noScale++; return; }     // 분석 1px의 cm(위 주석)
+        var areaCm2 = id.ringAreaPx * cpp * cpp;
+        if (!(areaCm2 > 0)) { noScale++; return; }
+        var d = id.ringN / areaCm2 * 100; dens.push(d);
+        views.push({ a: a, n: id.ringN, d: d, areaCm2: areaCm2, cpp: cpp, px: id.ringAreaPx,
+          wh: (id.ringW && id.ringH) ? (id.ringW + '×' + id.ringH) : null,
+          loop: id.waveShape && isFinite(id.waveShape.loop) ? id.waveShape.loop : null });
       } catch (e) {}
     });
     var med = NaN; if (dens.length) { dens.sort(function (p, q) { return p - q; }); med = dens.length % 2 ? dens[(dens.length - 1) / 2] : (dens[dens.length / 2 - 1] + dens[dens.length / 2]) / 2; }
@@ -5438,7 +5448,13 @@ function helixMeasure(rgba,mask,W,H,angle,coh,opt){opt=opt||{};const n=opt.n||25
       + (r.pass ? '통과(컬 엔진 켬)'
         : (!isFinite(r.med) && r.noScale ? '<b>아직 판정 안 함</b> — 고리는 ' + r.noScale + '개 뷰에서 쟀지만 카메라 자가 아직 없어 밀도를 못 냅니다(판정은 3D가 선 뒤 다시 합니다)'
           : '통과 못함(예전 동작)'))
-      + ' | ' + r.views.map(function (v) { return v.a + ' ' + v.d.toFixed(1) + '(중심 ' + v.n + (v.loop != null ? ' · 기존 고리정도 ' + v.loop.toFixed(2) : '') + ')'; }).join(' · ') + ' · 끄기 REGROW.ringGate.on=false'];
+      + ' | ' + r.views.map(function (v) {
+        return v.a + ' <b>' + v.d.toFixed(1) + '</b>(고리 중심 ' + v.n + '개 · 머리 <b>' + Math.round(v.areaCm2) + 'cm²</b>'
+          + ' = ' + v.px + 'px' + (v.wh ? '(분석 ' + v.wh + ')' : '') + ' × 1px ' + v.cpp.toFixed(3) + 'cm'
+          + (v.loop != null ? ' · 기존 고리정도 ' + v.loop.toFixed(2) : '') + ')';
+      }).join(' · ')
+      + '\n    자 점검 — 머리 면적이 사람 한 면(대략 300~500cm²)에서 크게 벗어나면 밀도가 아니라 자를 먼저 볼 것.'
+      + ' 기준은 REGROW.ringGate.minDens(지금 ' + RG.minDens + ') · 끄기 REGROW.ringGate.on=false'];
   };
   /* 컬·컬 엔진이 지금 켜져 있는가 — 수동 스위치(curl · curlEngine)이거나, 자동(ringGate.auto)이고 닫힌 고리 판정을 통과했을 때 */
   G.curlOn = function () { return !!(G.curl || (RG.auto && RG.result && RG.result.pass)); };
@@ -5501,7 +5517,8 @@ function helixMeasure(rgba,mask,W,H,angle,coh,opt){opt=opt||{};const n=opt.n||25
     G._afterIdentity = function (id, a) {
       try {
         if (id && pend && a && pend.w === a.w && pend.h === a.h) { id.curlDHalf = pend.cs.dHalf; id.curlFlat = pend.cs.flat; id.curlC1 = pend.cs.c1; id.curlRn = pend.cs.n; if (pend.helix) { id.curlHelix = pend.helix; }
-        if (pend.ring) { id.ringN = pend.ring.n; id.ringAreaPx = pend.ring.areaPx; try { var rgl = RG.lines(); console.log(rgl[0]); } catch (e7) {} }
+        if (pend.ring) { id.ringN = pend.ring.n; id.ringAreaPx = pend.ring.areaPx; id.ringW = pend.w; id.ringH = pend.h;   // (11-18) 잰 해상도를 같이 남김 — 밀도의 자를 맞추는 데 씀(RG.refresh)
+          try { var rgl = RG.lines(); console.log(rgl[0]); } catch (e7) {} }
         if (pend.clumps) { CLUMPS.set(id, pend.clumps); id.curlClumpN = pend.clumps.n; id.curlClumpW = pend.clumps.wMed; try { console.log(TAG + ' 타래 조각 — ' + pend.clumps.n + '개 · 폭 중앙값 ' + pend.clumps.wMed.toFixed(1) + 'px(' + pend.clumps.W + '×' + pend.clumps.H + ')'); } catch (e5) {} }
         if (pend.amp) { id.curlAmpPx = pend.amp.ampPx; id.curlLamPx = pend.amp.lamPx; id.curlWavy = pend.amp.wavy; id.curlAmpN = pend.amp.n; } }
       } catch (e) {}
@@ -5715,8 +5732,13 @@ function helixMeasure(rgba,mask,W,H,angle,coh,opt){opt=opt||{};const n=opt.n||25
       ' · 환산 ' + G.curlLo + '~' + G.curlHi + '°/px → 0~' + G.curlMax + ' (어림값 — 직모 사진에서 컬이 잡히면 curlLo를 올릴 것)'
       + (pc.value > 0 ? ' · <b>켜짐</b>(' + (G.curl ? 'REGROW.curl' : '고리 판정 통과') + ')' : ' · 꺼짐(REGROW.curl=false · 고리 판정도 통과 못함) — 켜면 ' + pc.raw)) +
       (pc.value > 0 ? ' · 편 길이 = 보이는 길이 × ' + (1 / curlRemain(pc.value)).toFixed(2) : '') + (pc.waveHelix ? ' · 굵은 웨이브로 봄(나선 측정 ' + pc.waveHelix.views + '장 · 한 바퀴 ' + pc.waveHelix.pitchCm.toFixed(1) + 'cm · 반경 ' + pc.waveHelix.rCm.toFixed(1) + 'cm · 예전 컬 ' + pc.waveHelix.was + ')' : ''));
-    if (pc.rViews && (pc.rViews.length || pc.rNote)) L.push('  컬 굵기 ' + (pc.rCm > 0 ? '반경 ' + pc.rCm.toFixed(1) + 'cm(뷰 중앙값) → ' + (G.curlRadius ? '웨이브 ' + pc.wave +
-      (pc.rodScale > 1 ? ' + 로드 ×' + pc.rodScale.toFixed(2) + '(다시 기른 가닥에만)' : '') + (pc.rodCm ? ' · 로드 반경 ' + pc.rodCm.toFixed(1) + 'cm' : '') : '꺼짐(REGROW.curlRadius=false) — 웨이브 50') : (pc.rNote || '못 잼')) +
+    /* (2026-11-18) 실제로 걸린 웨이브를 적는다 — 예전엔 REGROW.curlRadius가 꺼져 있으면 <b>"웨이브 50"을 글자 그대로</b> 찍었다.
+       그래서 PHOTO_CURL이 사진 반경으로 웨이브를 올려놔도(11-18 radiusOnEngine) 로그는 늘 50이라, 적용됐는지 알 수가 없었다.
+       웨이브를 실제로 쓰는 자리는 5106행의 cur.wave이고, 그 값은 5705행 spec.perm.wave ← pc.wave로 들어온다 — 그 pc.wave를 적는다. */
+    if (pc.rViews && (pc.rViews.length || pc.rNote)) L.push('  컬 굵기 ' + (pc.rCm > 0 ? '반경 ' + pc.rCm.toFixed(1) + 'cm(뷰 중앙값) → <b>웨이브 ' + (pc.wave != null ? pc.wave : 50) + '</b>'
+      + (pc.wave != null ? '(사진 반경에서' + (pc.photoCurlWave ? ' · 예전 ' + pc.photoCurlWave.was : '') + ')' : '(기본값 — 사진 반경이 안 걸렸습니다. 까닭은 PHOTO_CURL.lines() 의 「컬 굵기」줄)')
+      + (G.curlRadius ? '' : ' · 42번 굵기 적용은 꺼짐(REGROW.curlRadius=false)') +
+      (pc.rodScale > 1 ? ' + 로드 ×' + pc.rodScale.toFixed(2) + '(다시 기른 가닥에만)' : '') + (pc.rodCm ? ' · 로드 반경 ' + pc.rodCm.toFixed(1) + 'cm' : '') : (pc.rNote || '못 잼')) +
       (pc.rViews.length ? ' · ' + pc.rViews.map(function (v) { return v.a + ' ' + (v.flat ? '직선' : v.noScale ? 'dHalf ' + v.dHalf.toFixed(1) + 'px(배율 없음)' : v.cm.toFixed(1) + 'cm(' + (v.how === 'helix' ? '나선 측정 · 한 바퀴 간격 ' + v.pitchCm.toFixed(1) + 'cm · 가닥 기울기 ' + Math.round(v.beta) + '° · 반복 세기 ' + v.hxPeak.toFixed(2) + ' · ' : '') + (v.how === 'amp' ? '결 선 흔들림 폭으로 잼 · 흔들리는 선 ' + Math.round((v.wavy || 0) * 100) + '%' + (v.lamCm ? ' · 한 바퀴 길이 ' + v.lamCm.toFixed(1) + 'cm' : '') + ' · ' : '') + 'dHalf ' + v.dHalf.toFixed(1) + 'px' + (v.floor ? ' — 하한, 이보다 잔 컬일 수 있음' : '') + ')'); }).join(' · ') : '') +
       ' · 식: 반경px = ' + G.curlRk + '×(dHalf−' + G.curlR0 + ') (어림)');
     return L;
