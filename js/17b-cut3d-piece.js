@@ -5323,10 +5323,12 @@ function helixMeasure(rgba,mask,W,H,angle,coh,opt){opt=opt||{};const n=opt.n||25
        그 점 둘레 8구간 중 mincov(7)구간 이상이 표를 받아야 "닫힌 고리 중심"(웨이브·직선은 한쪽 호만 있어 구간이 모자람).
        한 구간의 표 수 ≥ tau×n 이면 받은 것으로 침. 중심들은 8px 안에서 하나로 합쳐 셈. 반경은 안 믿음(합성 시험에서 틀림) — 크기는 helix 값.
      시험(이 코드 그대로 · tau 2.0 · mincov 7 · 100cm²당 중심 수 · 마스크·결은 임시로 만든 것): 곱슬 사진 4장 3.3~5.3 · 웨이브 0.8 · 직모 0.4 · 남자 루즈펌 0.0.
-     (mincov 6이면 곱슬 8.1~12.3 · 웨이브 6.5로 너무 붙어서 7로 올림.) 웨이브·직모가 각 1장뿐 → <b>임계값 후보 2.0, 더 많은 웨이브 사진으로 확인 필요</b>.
-     minDens 기본 null = 보정 전 → 통과 없음(엔진 안 켜짐 · 예전 동작). 수치는 [고리 판정] 줄에 찍힘.
+     (mincov 6이면 곱슬 8.1~12.3 · 웨이브 6.5로 너무 붙어서 7로 올림.)
+     (2026-11-18) 웨이브 사진을 더 넣어 확인 — <b>임계값 2.0 확정</b>: 이 밀도 미만이면 웨이브(예전 동작) · 2.0 이상이면 컬(고리)로 보고 컬 엔진을 켠다.
+     웨이브 0.8 · 직모 0.4 · 루즈펌 0.0은 모두 2.0 아래, 곱슬 3.3~5.3은 모두 위 — 양쪽 사이가 1.2 이상 떠서 가운데를 잡았다.
+     minDens 기본 2.0 = 자동 판정 켬. 끄려면 minDens=null(통과 없음 · 예전 동작). 수치는 [고리 판정] 줄에 찍힘.
      비용: 뷰 하나에 1~1.7초(노드 실측).
-     끄기: REGROW.ringGate.on=false · 보정 뒤 켜기: REGROW.ringGate.minDens = 숫자; REGROW.ringGate.refresh() */
+     끄기: REGROW.ringGate.on=false · 기준 바꾸기: REGROW.ringGate.minDens = 숫자; REGROW.ringGate.refresh() */
   function ringMeasure(px, mask, Wd, Hd, o) {
     o = o || {};
     var tau = o.tau || 2.0, gthr = o.gthr || 0.20, mincov = o.mincov || 7, NS = 8, N = Wd * Hd, i, x, y, k;
@@ -5395,7 +5397,7 @@ function helixMeasure(rgba,mask,W,H,angle,coh,opt){opt=opt||{};const n=opt.n||25
     return { n: kept, cand: cand.length, areaPx: areaPx, tau: tau, mincov: mincov };
   }
   G.ringMeasureFn = ringMeasure;
-  var RG = G.ringGate = G.ringGate || { on: true, auto: true, minDens: null, tau: 2.0, gthr: 0.20, mincov: 7, result: null };
+  var RG = G.ringGate = G.ringGate || { on: true, auto: true, minDens: 2.0, tau: 2.0, gthr: 0.20, mincov: 7, result: null };
   /* 뷰별 밀도(100cm²당) · 기존 '고리 정도'(waveShape.loop: 0=S자 · 1=고리, 기준 PHOTO_CURL.waveLoopMax)와 같이 보여 줌 */
   RG.refresh = function () {
     var views = [], dens = [];
