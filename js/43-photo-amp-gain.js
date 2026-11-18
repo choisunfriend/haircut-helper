@@ -76,7 +76,22 @@ var PHOTO_AMP_GAIN = (function () {
     // rootMinPts개는 무조건 배수 1) ③ 그래도 생기는 비정상적 한 걸음을 입력 걸음 길이의
     // capK배로 눌러 자른다(안전망 — 다른 원인으로 또 튀어도 막아 줌).
     rootMinPts: 3,
-    capK: 2.2,
+    capK: 1.3,
+
+    // (2026-11-18 spike) 짧은 가닥(앞머리·관자)이 가시처럼 늘어나던 문제 — 실측 재현:
+    // 흐름(flow) 평균창 σ=6cm가 가닥 길이(앞머리 ≈9cm)보다 넓으면 flow가 "저주파 베이스라인"이 아니라
+    // 가닥 무게중심 한 점이 되어, wave = 가닥 모양 전체가 되고 배수(최대 6)가 그걸 통째로 키운다
+    // (가닥 길이 ×1.6~2.1). 그래서 ① 평균창을 가닥 호 길이에 비례해 줄이고(flowFrac·fineFrac)
+    // ② 너무 짧은 가닥은 아예 건너뛰고(minLenCm) ③ 점마다 키운 변위를 상한(maxDispCm)으로 자르고
+    // ④ 결과 길이가 입력의 maxLenK배를 넘으면 걸음을 같은 비율로 줄인다(길이 보존 안전망).
+    // 끄기: PHOTO_AMP_GAIN.lenGuard=false (옛 동작 · 가시 재발)
+    lenGuard: true,
+    minLenCm: 4,         // 이보다 짧은 가닥은 보정 없음(뿌리 램프만으로 이미 거의 안 바뀜)
+    flowFrac: 0.30,      // flow 평균창 σ ≤ 가닥 호 길이 × 이 값
+    fineFrac: 0.10,      // fine 평균창 σ ≤ 가닥 호 길이 × 이 값 (flow보다 작게 유지)
+    maxDispCm: 2.5,      // 키운 wave 성분이 flow에서 벗어날 수 있는 최대 거리(cm)
+    maxLenK: 1.20,       // 보정 뒤 호 길이 ≤ 입력 호 길이 × 이 값
+    maxLenKCurl: 1.7,    // 컬(고리) 보정이 걸린 가닥은 감긴 만큼 길이가 늘어나므로 상한을 더 넉넉히(고리 한 바퀴 둘레 ≈ 한 바퀴 간격보다 길다)
 
     // 섹션 → 그 섹션이 주로 보이는 뷰(가중 평균용)
     sectionViews: {
@@ -151,6 +166,39 @@ var PHOTO_AMP_GAIN = (function () {
   };
 
   /* ── B. 컬 지름 배수: helix(신뢰 통과) 우선, 아니면 clump 폭 ───────────── */
+  /* (2026-11-18 ring) 잰 고리를 어림값이 지우지 않게 — 사용자: "왜 나머지는 어림하지? 어림한 값 때문에 잰 고리를 없애는 거잖아?"
+     예전: 뷰마다 따로 — 나선 측정(helix)이 신뢰 기준을 통과한 뷰만 잰 값을 쓰고, 나머지 뷰는 타래 조각 폭(반 바퀴 폭 ≈ 8~9px)을
+     결 어림 지름(curlDHalf×2)으로 나눠 1 미만 → 1배(무보정)로 눌렸다. 이 사진은 4장 중 1장(왼쪽)만 통과 → 정면·뒤 섹션은 컬 보정 0.
+     지금: 고리 지름은 같은 사람 머리의 성질이라, 통과한 뷰의 지름을 cm로 바꿔 중앙값을 만들고(helixRefCm) 통과 못 한 뷰는 그 cm를
+     자기 뷰 px로 되돌려 쓴다(살색 빌림과 같은 생각 · 'borrow'). 통과한 뷰가 하나도 없을 때만 타래 폭(clump) 어림. 끄기 PG.borrowHelix=false */
+  PG.borrowHelix = true;
+  function helixTrusted(id) { var hx = id && id.curlHelix; return !!(hx && hx.peak >= PG.helixPeak && hx.beta >= PG.helixBetaLo && hx.beta <= PG.helixBetaHi && hx.P >= 6 && hx.D > 2); }
+  /* 통과한 뷰들의 고리 지름(cm) 목록 → 중앙값에서 outlierK배 넘게 벗어난 뷰는 뺀 중앙값.
+     (2026-11-18 실측: 이 사진 4장에 helixMeasure를 그대로 돌리면 peak 0.27~0.37로 전부 문턱 0.3 언저리 · 통과한 3장의 지름이
+      1.86 · 3.36 · 0.46cm로 서로 어긋남 — 눈으로 잰 고리는 바깥 지름 2~3cm. peak만으로는 틀린 값(0.46cm)도 통과하므로
+      "같은 머리의 고리는 뷰마다 비슷하다"는 뷰 사이 일치로 한 번 더 거른다.) */
+  PG.outlierK = 2;
+  function trustedDiaCms() {
+    var o = {};
+    ['front', 'left', 'right', 'back'].forEach(function (a) {
+      try {
+        var m = state.hairMasks && state.hairMasks[a], id = m && m.identity;
+        var cpp = (typeof cmPerMaskPx === 'function') ? cmPerMaskPx(a) : null;
+        if (helixTrusted(id) && cpp > 0) o[a] = id.curlHelix.D * cpp;
+      } catch (e) {}
+    });
+    return o;
+  }
+  PG.helixRefCm = function () {
+    var o = trustedDiaCms(), v = Object.keys(o).map(function (k) { return o[k]; });
+    if (!v.length) return null;
+    var m1 = med(v), kept = v.filter(function (x) { return x <= m1 * PG.outlierK && x >= m1 / PG.outlierK; });
+    return kept.length ? med(kept) : m1;
+  };
+  PG.helixAgrees = function (angle) {           // 이 뷰의 잰 지름이 기준(중앙값)과 outlierK배 안인가
+    var o = trustedDiaCms(), ref = PG.helixRefCm();
+    return o[angle] != null && ref > 0 && o[angle] <= ref * PG.outlierK && o[angle] >= ref / PG.outlierK;
+  };
   PG.curlDiaGainForView = function (angle) {
     try {
       var m = state.hairMasks && state.hairMasks[angle], id = m && m.identity;
@@ -158,17 +206,31 @@ var PHOTO_AMP_GAIN = (function () {
       var cpp = (typeof cmPerMaskPx === 'function') ? cmPerMaskPx(angle) : null;  // cm/px (17b) — 없어도 px끼리 비율은 구할 수 있음
       var grainDiaPx = isFinite(id.curlDHalf) ? id.curlDHalf * 2 : (id.curlAmpPx > 0 ? id.curlAmpPx * 2 : null);
       if (!(grainDiaPx > 0)) return null;
-      var hx = id.curlHelix, measuredDiaPx = null, how = null;
-      if (hx && hx.peak >= PG.helixPeak && hx.beta >= PG.helixBetaLo && hx.beta <= PG.helixBetaHi && hx.P >= 6 && hx.D > 2) {
-        measuredDiaPx = hx.D; how = 'helix';
-      } else if (id.curlClumpW > 0) {
-        measuredDiaPx = id.curlClumpW * PG.clumpDiaK; how = 'clump';
+      var measuredDiaPx = null, how = null;
+      if (helixTrusted(id) && (!PG.borrowHelix || PG.helixAgrees(angle))) { measuredDiaPx = id.curlHelix.D; how = 'helix'; }
+      else {
+        var ref = PG.borrowHelix ? PG.helixRefCm() : null;
+        if (ref > 0 && cpp > 0) { measuredDiaPx = ref / cpp; how = 'borrow'; }
+        else if (id.curlClumpW > 0) { measuredDiaPx = id.curlClumpW * PG.clumpDiaK; how = 'clump'; }
       }
       if (!(measuredDiaPx > 0)) return null;
       var g = clamp(measuredDiaPx / grainDiaPx, PG.curlGainMin, PG.curlGainMax);
-      PG.stats.curl[angle] = { how: how, measuredDiaPx: measuredDiaPx, grainDiaPx: grainDiaPx, gain: g, cmPerPx: cpp };
+      PG.stats.curl[angle] = { how: how, measuredDiaPx: measuredDiaPx, grainDiaPx: grainDiaPx, gain: g, cmPerPx: cpp, raw: measuredDiaPx / grainDiaPx };
       return g;
     } catch (e) { return null; }
+  };
+  /* 콘솔: PHOTO_AMP_GAIN.lines().join("\n") — 뷰별 나선 측정값(통과 여부)·컬 배수·웨이브 배수 */
+  PG.lines = function () {
+    var L = [TAG + ' 뷰별 — 나선 측정(peak ≥ ' + PG.helixPeak + ' · β ' + PG.helixBetaLo + '~' + PG.helixBetaHi + '° · P ≥ 6px) · 고리 기준 지름 ' + (PG.helixRefCm() != null ? PG.helixRefCm().toFixed(2) + 'cm' : '없음')];
+    ['front', 'left', 'right', 'back'].forEach(function (a) {
+      try {
+        var m = state.hairMasks && state.hairMasks[a], id = m && m.identity, hx = id && id.curlHelix, g = PG.curlDiaGainForView(a), c = PG.stats.curl[a], w = PG.stats.wave[a];
+        L.push('  ' + a + ': ' + (hx ? '나선 peak ' + hx.peak.toFixed(2) + ' · β ' + hx.beta.toFixed(0) + '° · P ' + hx.P.toFixed(0) + 'px · D ' + hx.D.toFixed(1) + 'px → ' + (helixTrusted(id) ? (PG.helixAgrees(a) ? '통과' : '통과했지만 다른 뷰와 어긋나 제외') : '탈락') : '나선 못 잼')
+          + ' | 결 어림 지름 ' + (id && isFinite(id.curlDHalf) ? (id.curlDHalf * 2).toFixed(1) + 'px' : '-') + ' | 컬 배수 ' + (g != null ? g.toFixed(2) + '(' + (c && c.how) + ' · 눌리기 전 ' + (c && c.raw != null ? c.raw.toFixed(2) : '-') + ')' : '없음')
+          + ' | 웨이브 배수 ' + (w && w.gain != null ? w.gain.toFixed(2) : (w ? '못 잼' : '-')));
+      } catch (e) { L.push('  ' + a + ': (읽기 실패)'); }
+    });
+    return L;
   };
   PG.curlDiaGainForSection = function (sec) {
     var views = PG.sectionViews[sec] || { front: 0.34, left: 0.22, right: 0.22, back: 0.22 };
@@ -225,17 +287,48 @@ var PHOTO_AMP_GAIN = (function () {
     opt = opt || {};
     var cpu = cmPerUnitSafe();
     var cum = arcLen(pts);
-    var out = pts;
+    var out = pts, curlApplied = false;
+    var inLen = cum[cum.length - 1];                         // 입력 가닥 호 길이(모델 단위)
+    if (PG.lenGuard && inLen * cpu < PG.minLenCm) return pts;  // 너무 짧은 가닥은 건드리지 않음
+    /* 평균창은 가닥 길이를 못 넘게 — 창이 가닥보다 넓으면 flow가 한 점으로 뭉개져 가닥 전체가 "wave"가 된다 */
+    var fit = function (sig, frac) { return PG.lenGuard ? Math.min(sig, inLen * frac) : sig; };
     if (PG.wave && opt.band !== 'curl') {
       var gw = PG.waveGainForSection(sec);
-      if (gw != null && Math.abs(gw - 1) > 0.02) out = blend(out, cum, PG.waveSigFineCm / cpu, PG.waveSigFlowCm / cpu, gw, cpu, PG.waveRootCm);
+      if (gw != null && Math.abs(gw - 1) > 0.02) {
+        var sfl = fit(PG.waveSigFlowCm / cpu, PG.flowFrac), sfi = fit(PG.waveSigFineCm / cpu, PG.fineFrac);
+        out = blend(out, cum, Math.min(sfi, sfl), sfl, gw, cpu, PG.waveRootCm);
+      }
     }
-    if (PG.curl && opt.band !== 'wave') {
+    var engineOn = false; try { engineOn = !!(W.REGROW && typeof W.REGROW.engineOn === 'function' && W.REGROW.engineOn()); } catch (e) {}   // 컬 엔진이 고리를 감는 중이면 여기서 컬 출렁임을 또 키우지 않음(이중 보정 방지)
+    if (PG.curl && opt.band !== 'wave' && !engineOn) {
       var cum2 = arcLen(out);
       var gc = PG.curlDiaGainForSection(sec);
-      if (gc != null && Math.abs(gc - 1) > 0.02) out = blend(out, cum2, PG.curlSigFineCm / cpu, PG.curlSigFlowCm / cpu, gc, cpu, PG.curlRootCm);
+      if (gc != null && Math.abs(gc - 1) > 0.02) {
+        var cfl = fit(PG.curlSigFlowCm / cpu, PG.flowFrac), cfi = fit(PG.curlSigFineCm / cpu, PG.fineFrac);
+        curlApplied = true;
+        out = blend(out, cum2, Math.min(cfi, cfl), cfl, gc, cpu, PG.curlRootCm);
+      }
     }
+    if (PG.lenGuard && out !== pts) out = limitLength(pts, out, inLen * (curlApplied ? PG.maxLenKCurl : PG.maxLenK));
     return out;
+
+    /* 길이 보존 안전망: 결과 호 길이가 limit을 넘으면 뿌리부터 걸음을 같은 비율로 줄인다
+       (걸음 방향은 그대로라 모양은 유지, 늘어난 만큼만 줄어듦 — 가시·지그재그 방지) */
+    function limitLength(P, R, limit) {
+      var len = 0, i;
+      for (i = 1; i < R.length; i++) len += Math.hypot(R[i].x - R[i - 1].x, R[i].y - R[i - 1].y, (R[i].z || 0) - (R[i - 1].z || 0));
+      if (!(len > limit) || !(len > 1e-9)) return R;
+      var k = limit / len, o = new Array(R.length);
+      o[0] = R[0];
+      for (i = 1; i < R.length; i++) {
+        o[i] = {
+          x: o[i - 1].x + (R[i].x - R[i - 1].x) * k,
+          y: o[i - 1].y + (R[i].y - R[i - 1].y) * k,
+          z: (o[i - 1].z || 0) + ((R[i].z || 0) - (R[i - 1].z || 0)) * k
+        };
+      }
+      return o;
+    }
 
     /* P: 입력 가닥(점 배열, 뿌리=0) · C: P의 호 길이 누적
        sigFine/sigFlow: 평균창(모델 단위) · gain: 적용할 배수 · cpuV: cm/unit
@@ -262,10 +355,15 @@ var PHOTO_AMP_GAIN = (function () {
         var arcRamp = Math.max(0, Math.min(1, C[i] / rootUnits));
         var ramp = (i < PG.rootMinPts) ? 0 : arcRamp;
         var g = 1 + (gain - 1) * ramp;
+        var ax = wx * g, ay = wy * g, az = wz * g;
+        if (PG.lenGuard) {   // 키운 wave 변위가 flow에서 maxDispCm를 넘지 못하게(방향 유지, 크기만 자름)
+          var dm = Math.hypot(ax, ay, az), dmax = Math.max(PG.maxDispCm / cpuV, Math.hypot(wx, wy, wz));  // 원래 wave보다 작아지진 않게
+          if (dm > dmax && dm > 1e-12) { var kd = dmax / dm; ax *= kd; ay *= kd; az *= kd; }
+        }
         res[i] = {
-          x: flow[i].x + wx * g + fx,
-          y: flow[i].y + wy * g + fy,
-          z: flow[i].z + wz * g + fz
+          x: flow[i].x + ax + fx,
+          y: flow[i].y + ay + fy,
+          z: flow[i].z + az + fz
         };
       }
       return clampSteps(P, res, cpuV);

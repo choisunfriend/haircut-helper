@@ -53,8 +53,20 @@ var RAW_TRACE = { on: true, loopFollow: true, gravFirst: true, stepPx: 2, stepFr
    *     고리(지름 3cm 안)는 그대로 · 방향 고르기는 그대로(뒤집지 않음 · 끝만 정함) · 흐름 확신도가 낮은 걸음은 안 셈.
    *   같은 데이터로 사진 결 다시 긋기: 6cm 넘게 되돌아 오른 가닥 웨이브 뒤 27% · 옆 10% → 0 · 1~3cm 고리 그대로. 끄기 RAW_TRACE.foldEnd=false */
   foldEnd: true, foldFrac: 0.06,
+  /* (2026-11-18 curlup) 되접힘 끝은 "곧게 되돌아 오르는" 가닥(머리끝·어깨 윤곽·빛 띠에서 돌아서 옆 가닥 결을 타고 올라가는 거울상)만 자른다.
+   *   사용자: "끝머리를 감아 올려서 끝내는 경우도 있는데 그럴 때 가닥을 자르잖아" — 컬·플립으로 끝이 말려 올라간 가닥도 3.8cm 넘게 되돌아오면 끝이 잘렸다.
+   *   구별: 되돌아온 구간의 마지막 foldTol 만큼(호 길이)의 현÷호 — 곧게 오르면 1에 가깝고(거울상 ≥ 0.85) 말려 오르면 작다(반경 1.2cm 원호 ≈ 0.63).
+   *   말려 오르는 중이면 자르지 않고, 그 자리를 새 기준(가장 먼 자리)으로 삼아 다음 되접힘을 다시 잰다. 끄기 RAW_TRACE.foldCurlKeep=false · 기준 RAW_TRACE.foldStraight */
+  foldCurlKeep: true, foldStraight: 0.85,
   stats: { strands: 0, steps: 0, read: 0, byFlow: 0, byGrav: 0, byCont: 0, endNoRead: 0, pts: 0, hideTry: 0, hideOk: 0, hideBg: 0, hideLong: 0, hidePts: 0, foldCut: 0, foldPts: 0 } };
 
+/* 걸어온 길 D의 끝에서 거꾸로 호 길이 win만큼 잡은 꼬리의 현÷호(1 = 곧음 · 작을수록 말려 있음). 꼬리가 win보다 짧으면 있는 만큼. 점이 3개 미만이면 1 */
+function rawTailStraightness(D, win) {
+  var n = D.length; if (n < 3) return 1;
+  var arc = 0, i = n - 1;
+  while (i > 0 && arc < win) { arc += Math.hypot(D[i].x - D[i - 1].x, D[i].y - D[i - 1].y); i--; }
+  return arc > 1e-9 ? Math.min(1, Math.hypot(D[n - 1].x - D[i].x, D[n - 1].y - D[i].y) / arc) : 1;
+}
 function rawTraceStrandPath(ix, sy, targetLen, jitterSeed, env, rootSec, stopAtExit) {
   var R = RAW_TRACE, PI = Math.PI, St = R.stats;
   var oy = env.oy > 0 ? env.oy : 1;
@@ -116,6 +128,7 @@ function rawTraceStrandPath(ix, sy, targetLen, jitterSeed, env, rootSec, stopAtE
     if (FE && sm && sm.fc >= minConf && (sm.fx || sm.fy)) {                 // 뿌리에서 멀어진 양(흐름 방향 성분) — 결 각도·방향 고르기는 안 건드림
       prog += step * (Math.cos(dir) * sm.fx + Math.sin(dir) * sm.fy);
       if (prog > progMax) { progMax = prog; progMaxN = D.length; }
+      else if (progMax - prog > foldTol && R.foldCurlKeep !== false && rawTailStraightness(D, foldTol) < (R.foldStraight || 0.85)) { St.foldKeep = (St.foldKeep || 0) + 1; progMax = prog; progMaxN = D.length; }   // 말려 오르는 끝 — 안 자르고 여기를 새 기준으로
       else if (progMax - prog > foldTol) { St.foldCut++; St.foldPts += D.length - progMaxN; D.length = progMaxN; if (hidD) hidD.length = progMaxN; break; }
     }
     x += Math.cos(dir) * step; y += Math.sin(dir) * step; D.push({ x: x, y: y }); if (HB) hidD.push(0);

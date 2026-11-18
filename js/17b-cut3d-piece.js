@@ -2281,6 +2281,21 @@ var REGROW = (function () {
       var cpu = 19; try { cpu = (typeof modelCmPerUnit === 'function' && modelCmPerUnit()) || 19; } catch (e) {}
       dnStat.cpu = cpu;
       dnStat.sigCm = DN.sigMaxCm * Math.max(0, Math.min(1, (DN.cohHi - dnStat.coh) / Math.max(1e-3, DN.cohHi - DN.cohLo)));
+      /* (2026-11-18 ring) 결 일치도가 낮다 = 흐린 사진이라는 가정이 고리 컬 사진에서 틀린다 — 고리가 있으면 결이 원래 사방으로 감겨 일치도가 낮다
+       *  (실측 로그: 사진 깨끗함 0.87인데 일치도 0.50 → σ 1.0cm 가우스가 반경 1.1cm 고리를 펴 버림 · Taubin ①은 점 2~3개 주기만 지워 고리는 남음).
+       *  그래서 04가 따로 잰 "사진 깨끗함"(window.VIEW_CLEAN · 짧은 거리 결 일치도 · 0.8 이상 = 깨끗함)이 높으면 가우스 ②를 줄이고 cleanHi 이상이면 건너뜀.
+       *  깨끗함이 없으면(null) 예전 동작 그대로. 끄기: REGROW.dn.cleanGuard=false */
+      dnStat.clean = null; dnStat.sigCm0 = dnStat.sigCm;
+      if (DN.cleanGuard !== false) {
+        var vc = (typeof window !== 'undefined' && window.VIEW_CLEAN) || {}, cv = [];
+        cams.forEach(function (cam) { var q = vc[cam.angle]; if (typeof q === 'number' && isFinite(q)) cv.push(q); });
+        if (cv.length) {
+          cv.sort(function (a, b) { return a - b; });
+          dnStat.clean = cv[cv.length >> 1];
+          var cHi = DN.cleanHi != null ? DN.cleanHi : 0.80, cLo = DN.cleanLo != null ? DN.cleanLo : 0.60;
+          dnStat.sigCm *= Math.max(0, Math.min(1, (cHi - dnStat.clean) / Math.max(1e-3, cHi - cLo)));   // 깨끗할수록 0
+        }
+      }
     }
     function dnTurn(P, coarseU) {          // [점 단위 꺾임 °/cm, coarseU 간격 꺾임 °/cm]
       var n = P.length, i, f = 0, Lt = 0, ax, ay, az, bx, by, bz, al, bl, px = 0, py = 0, pz = 0, has = false;
@@ -5050,7 +5065,7 @@ var REGROW = (function () {
     var sty = (styOverride !== undefined ? styOverride : uniformStyling()) || stylingForRoot(s.pts[0]) || {};
     if (typeof lenOverride === 'number') cur = Object.assign({}, cur, { length: lenOverride });
     var bs = b.sections[s.sec] || {}, g = s.pts, C0 = bs.curl || 0;
-    if (!G.curlEngine) { C0 = 0; if (cur.curl) cur = Object.assign({}, cur, { curl: 0 }); }   // (2026-10-26) 원본 머리 — 컬 엔진 안 씀(새어 들어온 컬 값도 무시)
+    if (!G.engineOn()) { C0 = 0; if (cur.curl) cur = Object.assign({}, cur, { curl: 0 }); }   // (2026-10-26) 원본 머리 — 컬 엔진 안 씀(새어 들어온 컬 값도 무시)
     if (atBase(s.sec, cur, sty) && !(C0 > 0)) return s.pts;            // 직모 기준 — 손대지 않음
     var r = sectionLengthRatio(s.sec, cur.length) / (sectionLengthRatio(s.sec, bs.length) || 1);
     // 가닥(s.pts)은 컬을 편 뼈대 — 컬은 지금 슬라이더 값을 그대로 겁니다(기준이 직모면 예전의 "더한 만큼"과 같음)
@@ -5069,7 +5084,7 @@ var REGROW = (function () {
     if (keep && total > cover * 1.0005) g = padArc(g, total / cover);    // 호길이만 편 길이에 맞춤(덧댄 구간은 나선이 쓰지 않음)
     var ks = (C0 > 0 && b.rodScale > 1 && curl > 0) ? b.rodScale : 1;   // 로드 최대보다 굵은 컬 — 가닥을 줄여서 걸고 다시 키움
     if (ks > 1) g = scalePts(g, 1 / ks);
-    if (G.curlEngine) g = curlStrand3D(g, curl, (typeof cur.wave === 'number' ? cur.wave : 50) / 100, typeof cur.curlDir === 'number' ? cur.curlDir : 0);
+    if (G.engineOn()) g = curlStrand3D(g, curl, (typeof cur.wave === 'number' ? cur.wave : 50) / 100, typeof cur.curlDir === 'number' ? cur.curlDir : 0);
     if (ks > 1) g = scalePts(g, ks);
     if (keep) { if (curl > C0) g = gravityDroop3D(g, curl - C0); }     // 잰 컬까지는 사진에 이미 처져 있음 — 더한 만큼만
     else if (curl > 0) g = gravityDroop3D(g, curl);
@@ -5297,6 +5312,110 @@ function helixMeasure(rgba,mask,W,H,angle,coh,opt){opt=opt||{};const n=opt.n||25
 
   G.helixMeasureFn = helixMeasure;
 
+  /* (2026-11-18 ringgate) 닫힌 고리 판정 — 사용자: "고리와 웨이브 구분은 되니 그것만 받아오고, 값은 helix 측정으로 맡기자"
+     눈으로 보는 단서 = 가운데가 어둡고 가닥이 한 바퀴 에워싼 <b>닫힌 고리</b>. 방사 대칭 투표로 옮김:
+       결(밝기 변화) 세기 상위 gthr 픽셀이 변화 방향의 직선을 따라 반경 n 떨어진 점에 표를 던지고(양쪽),
+       그 점 둘레 8구간 중 mincov(7)구간 이상이 표를 받아야 "닫힌 고리 중심"(웨이브·직선은 한쪽 호만 있어 구간이 모자람).
+       한 구간의 표 수 ≥ tau×n 이면 받은 것으로 침. 중심들은 8px 안에서 하나로 합쳐 셈. 반경은 안 믿음(합성 시험에서 틀림) — 크기는 helix 값.
+     시험(이 코드 그대로 · tau 2.0 · mincov 7 · 100cm²당 중심 수 · 마스크·결은 임시로 만든 것): 곱슬 사진 4장 3.3~5.3 · 웨이브 0.8 · 직모 0.4 · 남자 루즈펌 0.0.
+     (mincov 6이면 곱슬 8.1~12.3 · 웨이브 6.5로 너무 붙어서 7로 올림.) 웨이브·직모가 각 1장뿐 → <b>임계값 후보 2.0, 더 많은 웨이브 사진으로 확인 필요</b>.
+     minDens 기본 null = 보정 전 → 통과 없음(엔진 안 켜짐 · 예전 동작). 수치는 [고리 판정] 줄에 찍힘.
+     비용: 뷰 하나에 1~1.7초(노드 실측).
+     끄기: REGROW.ringGate.on=false · 보정 뒤 켜기: REGROW.ringGate.minDens = 숫자; REGROW.ringGate.refresh() */
+  function ringMeasure(px, mask, Wd, Hd, o) {
+    o = o || {};
+    var tau = o.tau || 2.0, gthr = o.gthr || 0.20, mincov = o.mincov || 7, NS = 8, N = Wd * Hd, i, x, y, k;
+    var maskIdx = [];
+    for (i = 0; i < N; i++) if (mask[i]) maskIdx.push(i);
+    var areaPx = maskIdx.length; if (areaPx < 3000) return null;
+    var L = new Float32Array(N);
+    for (i = 0; i < N; i++) L[i] = 0.299 * px[4 * i] + 0.587 * px[4 * i + 1] + 0.114 * px[4 * i + 2];
+    // 가우스 σ1.5 (분리형, 반경 4)
+    var ker = [], ks = 0; for (k = -4; k <= 4; k++) { var wv = Math.exp(-0.5 * (k / 1.5) * (k / 1.5)); ker.push(wv); ks += wv; } for (k = 0; k < 9; k++) ker[k] /= ks;
+    var T = new Float32Array(N), B = new Float32Array(N);
+    for (y = 0; y < Hd; y++) for (x = 0; x < Wd; x++) { var a1 = 0; for (k = -4; k <= 4; k++) { var xx = Math.min(Wd - 1, Math.max(0, x + k)); a1 += L[y * Wd + xx] * ker[k + 4]; } T[y * Wd + x] = a1; }
+    for (y = 0; y < Hd; y++) for (x = 0; x < Wd; x++) { var a2 = 0; for (k = -4; k <= 4; k++) { var yy = Math.min(Hd - 1, Math.max(0, y + k)); a2 += T[yy * Wd + x] * ker[k + 4]; } B[y * Wd + x] = a2; }
+    // 기울기 · 상위 gthr
+    var gx = new Float32Array(N), gy = new Float32Array(N), mg = new Float32Array(N), samp = [];
+    for (y = 1; y < Hd - 1; y++) for (x = 1; x < Wd - 1; x++) { i = y * Wd + x; var dx = (B[i + 1] - B[i - 1]) * 0.5, dy = (B[i + Wd] - B[i - Wd]) * 0.5; gx[i] = dx; gy[i] = dy; mg[i] = Math.sqrt(dx * dx + dy * dy); if (mask[i] && (i % 2 === 0)) samp.push(mg[i]); }
+    if (samp.length < 500) return null;
+    samp.sort(function (p, q) { return p - q; });
+    var thr = samp[Math.min(samp.length - 1, Math.floor(samp.length * (1 - gthr)))];
+    var sx = [], sy = [], ux = [], uy = [], sc = [];
+    for (k = 0; k < maskIdx.length; k++) {
+      i = maskIdx[k]; if (!(mg[i] >= thr) || !(mg[i] > 1e-6)) continue;
+      x = i % Wd; y = (i / Wd) | 0; var nx = gx[i] / mg[i], ny = gy[i] / mg[i];
+      sx.push(x); sy.push(y); ux.push(nx); uy.push(ny);
+      sc.push(((Math.floor((Math.atan2(-ny, -nx) + Math.PI) / (2 * Math.PI) * NS) % NS) + NS) % NS);   // sgn=+1 쪽 구간 · sgn=-1 은 +4
+    }
+    var nSel = sx.length; if (nSel < 300) return null;
+    var S = new Int32Array(NS * N), sat = new Int32Array((Wd + 1) * (Hd + 1)), best = new Uint8Array(N), cov = new Uint8Array(N), W1 = Wd + 1;
+    for (var n = 6; n <= 42; n += 3) {
+      S.fill(0); cov.fill(0);
+      for (var j = 0; j < nSel; j++) {
+        for (var sg = 1; sg >= -1; sg -= 2) {
+          var qx = Math.round(sx[j] + sg * ux[j] * n), qy = Math.round(sy[j] + sg * uy[j] * n);
+          if (qx < 0 || qx >= Wd || qy < 0 || qy >= Hd) continue;
+          S[(sg > 0 ? sc[j] : (sc[j] + 4) & 7) * N + qy * Wd + qx]++;
+        }
+      }
+      var sigW = 0.3 * n + 1, h = Math.max(1, Math.round(1.25 * sigW)), need = tau * n;
+      for (var s2 = 0; s2 < NS; s2++) {
+        var off = s2 * N;
+        for (y = 0; y < Hd; y++) { var row = 0; for (x = 0; x < Wd; x++) { row += S[off + y * Wd + x]; sat[(y + 1) * W1 + x + 1] = sat[y * W1 + x + 1] + row; } }
+        for (k = 0; k < maskIdx.length; k++) {
+          i = maskIdx[k]; x = i % Wd; y = (i / Wd) | 0;
+          var x0 = x - h < 0 ? 0 : x - h, x1 = x + h + 1 > Wd ? Wd : x + h + 1, y0 = y - h < 0 ? 0 : y - h, y1 = y + h + 1 > Hd ? Hd : y + h + 1;
+          if (sat[y1 * W1 + x1] - sat[y0 * W1 + x1] - sat[y1 * W1 + x0] + sat[y0 * W1 + x0] >= need) cov[i]++;
+        }
+      }
+      for (k = 0; k < maskIdx.length; k++) { i = maskIdx[k]; if (cov[i] > best[i]) best[i] = cov[i]; }
+    }
+    // 후보(best ≥ mincov) → 5×5 평균 점수 순으로 8px 안 하나만(그리디)
+    var cand = [];
+    for (k = 0; k < maskIdx.length; k++) {
+      i = maskIdx[k]; if (best[i] < mincov) continue;
+      x = i % Wd; y = (i / Wd) | 0; var sm = 0, c5 = 0;
+      for (var ey = -2; ey <= 2; ey++) for (var ex = -2; ex <= 2; ex++) { var px2 = x + ex, py2 = y + ey; if (px2 < 0 || px2 >= Wd || py2 < 0 || py2 >= Hd) continue; sm += best[py2 * Wd + px2]; c5++; }
+      cand.push({ x: x, y: y, s: sm / c5 });
+    }
+    cand.sort(function (p, q) { return q.s - p.s; });
+    var cell = 8, grid = {}, kept = 0;
+    for (k = 0; k < cand.length; k++) {
+      var cx = cand[k].x, cy = cand[k].y, gxk = (cx / cell) | 0, gyk = (cy / cell) | 0, near = false;
+      for (var a = -1; a <= 1 && !near; a++) for (var b = -1; b <= 1 && !near; b++) { var lst = grid[(gxk + a) + ',' + (gyk + b)]; if (!lst) continue; for (var m = 0; m < lst.length; m++) if ((lst[m][0] - cx) * (lst[m][0] - cx) + (lst[m][1] - cy) * (lst[m][1] - cy) <= cell * cell) { near = true; break; } }
+      if (near) continue;
+      var key = gxk + ',' + gyk; (grid[key] || (grid[key] = [])).push([cx, cy]); kept++;
+    }
+    return { n: kept, cand: cand.length, areaPx: areaPx, tau: tau, mincov: mincov };
+  }
+  G.ringMeasureFn = ringMeasure;
+  var RG = G.ringGate = G.ringGate || { on: true, auto: true, minDens: null, tau: 2.0, gthr: 0.20, mincov: 7, result: null };
+  /* 뷰별 밀도(100cm²당) · 기존 '고리 정도'(waveShape.loop: 0=S자 · 1=고리, 기준 PHOTO_CURL.waveLoopMax)와 같이 보여 줌 */
+  RG.refresh = function () {
+    var views = [], dens = [];
+    (typeof ANGLES !== 'undefined' ? ANGLES : ['front', 'left', 'right', 'back']).forEach(function (a) {
+      try {
+        var mi = state.hairMasks && state.hairMasks[a], id = mi && mi.identity; if (!id || id.ringN == null) return;
+        var cpp = cmPerMaskPx(a); if (!(cpp > 0)) return;
+        var d = id.ringN / (id.ringAreaPx * cpp * cpp) * 100; dens.push(d);
+        views.push({ a: a, n: id.ringN, d: d, loop: id.waveShape && isFinite(id.waveShape.loop) ? id.waveShape.loop : null });
+      } catch (e) {}
+    });
+    var med = NaN; if (dens.length) { dens.sort(function (p, q) { return p - q; }); med = dens.length % 2 ? dens[(dens.length - 1) / 2] : (dens[dens.length / 2 - 1] + dens[dens.length / 2]) / 2; }
+    var pass = !!(RG.on && RG.minDens != null && isFinite(med) && med >= RG.minDens);
+    RG.result = { pass: pass, med: med, views: views, minDens: RG.minDens };
+    return RG.result;
+  };
+  RG.lines = function () {
+    var r = RG.refresh();
+    return ['[고리 판정] 닫힌 고리 중심 밀도(100cm²당) 중앙 ' + (isFinite(r.med) ? r.med.toFixed(1) : '-') + ' · 기준 ' + (RG.minDens == null ? '없음(보정 전 — 통과 없음)' : RG.minDens) + ' → ' + (r.pass ? '통과(컬 엔진 켬)' : '통과 못함(예전 동작)')
+      + ' | ' + r.views.map(function (v) { return v.a + ' ' + v.d.toFixed(1) + '(중심 ' + v.n + (v.loop != null ? ' · 기존 고리정도 ' + v.loop.toFixed(2) : '') + ')'; }).join(' · ') + ' · 끄기 REGROW.ringGate.on=false'];
+  };
+  /* 컬·컬 엔진이 지금 켜져 있는가 — 수동 스위치(curl · curlEngine)이거나, 자동(ringGate.auto)이고 닫힌 고리 판정을 통과했을 때 */
+  G.curlOn = function () { return !!(G.curl || (RG.auto && RG.result && RG.result.pass)); };
+  G.engineOn = function () { return !!(G.curlEngine || (RG.auto && RG.result && RG.result.pass)); };
+
   /* (2026-10-10m) 타래 조각 찾기 — 곱슬 사진에서 타래는 밝은 겉면과 그 사이 어두운 틈으로 갈림.
      머리 영역 안에서 둘레(17px)보다 밝은 부분을 이어진 조각으로 묶음 → 조각 하나 = 앞으로 드러난 타래의 반 바퀴(C·S자).
      실측(곱슬 여자분 사진 4장): 조각 57~95개 · 폭 중앙값 7~9px(≈1cm). 61번이 이 조각으로 3D 가닥을 한 타래로 묶음. */
@@ -5347,12 +5466,14 @@ function helixMeasure(rgba,mask,W,H,angle,coh,opt){opt=opt||{};const n=opt.n||25
       pend = null;
       try { if (f && f.angle && f.coherence) { var cs = curvStats(f.angle, f.coherence, mask, Wd, Hd); if (cs) { pend = { w: Wd, h: Hd, cs: cs }; if (G.curlAmp) { try { pend.amp = curlAmp(f.angle, f.coherence, mask, Wd, Hd); } catch (e2) {} }
             if (G.clumps && px && px.length === Wd * Hd * 4) { try { pend.clumps = clumpFind(px, mask, Wd, Hd); } catch (e4) {} }
+            if (RG.on && px && px.length === Wd * Hd * 4) { try { pend.ring = ringMeasure(px, mask, Wd, Hd, RG); } catch (e6) {} }   // (2026-11-18) 닫힌 고리 판정
             if (G.curlHelix && px && px.length === Wd * Hd * 4) { try { pend.helix = helixMeasure(px, mask, Wd, Hd, f.angle, f.coherence, { n: Math.min(Wd, Hd) >= 300 ? 256 : 128 }); } catch (e3) {} } } } } catch (e) { pend = null; }
       return f;
     };
     G._afterIdentity = function (id, a) {
       try {
         if (id && pend && a && pend.w === a.w && pend.h === a.h) { id.curlDHalf = pend.cs.dHalf; id.curlFlat = pend.cs.flat; id.curlC1 = pend.cs.c1; id.curlRn = pend.cs.n; if (pend.helix) { id.curlHelix = pend.helix; }
+        if (pend.ring) { id.ringN = pend.ring.n; id.ringAreaPx = pend.ring.areaPx; try { var rgl = RG.lines(); console.log(rgl[0]); } catch (e7) {} }
         if (pend.clumps) { CLUMPS.set(id, pend.clumps); id.curlClumpN = pend.clumps.n; id.curlClumpW = pend.clumps.wMed; try { console.log(TAG + ' 타래 조각 — ' + pend.clumps.n + '개 · 폭 중앙값 ' + pend.clumps.wMed.toFixed(1) + 'px(' + pend.clumps.W + '×' + pend.clumps.H + ')'); } catch (e5) {} }
         if (pend.amp) { id.curlAmpPx = pend.amp.ampPx; id.curlLamPx = pend.amp.lamPx; id.curlWavy = pend.amp.wavy; id.curlAmpN = pend.amp.n; } }
       } catch (e) {}
@@ -5391,7 +5512,8 @@ function helixMeasure(rgba,mask,W,H,angle,coh,opt){opt=opt||{};const n=opt.n||25
     var deg = vals.length % 2 ? vals[(vals.length - 1) / 2] : (vals[vals.length / 2 - 1] + vals[vals.length / 2]) / 2;
     var v = Math.round(G.curlMax * clampN((deg - G.curlLo) / Math.max(1e-6, G.curlHi - G.curlLo), 0, 1));
     if (v < G.curlMin) v = 0;
-    var out = { value: G.curl ? v : 0, raw: v, deg: deg, views: views, wave: 50, rodScale: 1, rCm: null, rViews: [], rNote: '' };
+    try { RG.refresh(); } catch (eR) {}
+    var out = { value: G.curlOn() ? v : 0, raw: v, deg: deg, views: views, wave: 50, rodScale: 1, rCm: null, rViews: [], rNote: '' };
     // (v5) 컬 굵기
     try {
       var rs = [], flat = 0, seen = 0;
@@ -5424,7 +5546,7 @@ function helixMeasure(rgba,mask,W,H,angle,coh,opt){opt=opt||{};const n=opt.n||25
           var pm = ps[ps.length >> 1], rm = rr[rr.length >> 1];
           out.waveHelix = { pitchCm: pm, rCm: rm, views: hv.length, was: out.value };
           out.raw = Math.round(Math.max(G.waveCurlLo, Math.min(G.waveCurlHi, G.waveCurlLo + (G.waveCurlHi - G.waveCurlLo) * Math.min(1, rm / Math.max(0.5, pm) * 2))));
-          out.value = G.curl ? out.raw : 0;                              // (2026-10-26) 잰 값은 raw(진단)에만 — 꺼져 있으면 스펙·섹션 컬로 안 샘
+          out.value = G.curlOn() ? out.raw : 0;                              // (2026-10-26) 잰 값은 raw(진단)에만 — 꺼져 있으면 스펙·섹션 컬로 안 샘
           out.rCm = rm; out.pitchCm = pm;
         }
       } catch (e) {}
@@ -8785,7 +8907,7 @@ var READ_SHAPE = (function () {
     var vol = Math.max(0, Math.min(100, 50 + ((typeof sty.volume === 'number' ? sty.volume : 50) - (typeof base.volume === 'number' ? base.volume : 50))));
     var samePart = (sty.part || 0) === (base.part || 0) && (sty.partAmt || 0) === (base.partAmt || 0);
     var part = samePart ? 0 : (sty.part || 0), partAmt = samePart ? 0 : sty.partAmt;
-    if (dC > 1 && (!W.REGROW || W.REGROW.curlEngine)) { g = curlStrand3D(g, dC, (typeof cur.wave === 'number' ? cur.wave : 50) / 100, typeof cur.curlDir === 'number' ? cur.curlDir : 0); g = gravityDroop3D(g, dC); ST.curlAdd++; }
+    if (dC > 1 && (!W.REGROW || (W.REGROW.engineOn ? W.REGROW.engineOn() : W.REGROW.curlEngine))) { g = curlStrand3D(g, dC, (typeof cur.wave === 'number' ? cur.wave : 50) / 100, typeof cur.curlDir === 'number' ? cur.curlDir : 0); g = gravityDroop3D(g, dC); ST.curlAdd++; }
     g = partStrand3D(g, part, curl, partAmt);
     g = sweepStrand3D(g, sweep, curl, part, partAmt);
     g = volumeStrand3D(g, vol, s.sec);
@@ -9043,7 +9165,7 @@ var STYLE_PATHS = (function () {
     var samePart = (sty.part || 0) === (base.part || 0) && (sty.partAmt || 0) === (base.partAmt || 0);
     var part = samePart ? 0 : (sty.part || 0), partAmt = samePart ? 0 : sty.partAmt;
     try {
-      if (dC > 1 && (!W.REGROW || W.REGROW.curlEngine) && W.PHOTO_CURL && typeof W.PHOTO_CURL.activeRS === 'function' && !W.PHOTO_CURL.activeRS()) { g = curlStrand3D(g, dC, (typeof cur.wave === 'number' ? cur.wave : 50) / 100, typeof cur.curlDir === 'number' ? cur.curlDir : 0); g = gravityDroop3D(g, dC); }
+      if (dC > 1 && (!W.REGROW || (W.REGROW.engineOn ? W.REGROW.engineOn() : W.REGROW.curlEngine)) && W.PHOTO_CURL && typeof W.PHOTO_CURL.activeRS === 'function' && !W.PHOTO_CURL.activeRS()) { g = curlStrand3D(g, dC, (typeof cur.wave === 'number' ? cur.wave : 50) / 100, typeof cur.curlDir === 'number' ? cur.curlDir : 0); g = gravityDroop3D(g, dC); }
       if (part || sweep) { g = partStrand3D(g, part, curl, partAmt); g = sweepStrand3D(g, sweep, curl, part, partAmt); }
       if (vol !== 50) g = volumeStrand3D(g, vol, s.sec);
       var fl = (sty.flow || 0) - (base.flow || 0); if (fl) g = flowCurlStrand3D(g, fl);
