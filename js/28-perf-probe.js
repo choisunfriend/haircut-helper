@@ -565,7 +565,7 @@
     var sec = state.sections && state.sections[s.sec] || {};
     var ratio = sectionLengthRatio(s.sec, sec.length);
     var g = adjustStrandGeom(s, null, c.sty);
-    if (c.probe && !s.fringe && !(HAIR_OCC3D.skipUnmoved === true && s.regrown && !s.mannequin && g === s.pts)) {   // (2026-11-18) 안 움직인 다시 기른 가닥은 재클립 안 함(17b 같은 자리 주석)
+    if (c.probe && !s.fringe) {
       var grow = !HAIR_OCC3D.moveGrow && ratio > 1 ? (ratio - 1) * arcLength3D(s.pts) * HAIR_OCC3D.growPerRatio : 0;
       var t = trimStrandToOccupancy3D(g, c.probe, c.stats, {
         growLen: Math.max(grow, c.fringe), growFrontOnly: c.fringe > grow && HAIR_OCC3D.fringeFrontOnly,
@@ -575,10 +575,8 @@
     g = combStrand3D(g);
     if (s._ch === undefined) s._ch = _cutHash01(s);
     return ADJ_CACHE.split
-      ? { pts: g, sec: s.sec, srcAngle: s.srcAngle, h: s._ch, srcColor: s.color, srcColors: s.colors || null,
-          sp: (s.regrown && !s.mannequin) ? s.pts : null }   // (2026-11-18) 가시 방지(17b STUB_GUARD) — 원본 가닥 참조만
-      : { pts: g, color: sec.color || s.color, sec: s.sec, srcAngle: s.srcAngle, colors: sec.color ? null : s.colors || null,
-          sp: (s.regrown && !s.mannequin) ? s.pts : null };
+      ? { pts: g, sec: s.sec, srcAngle: s.srcAngle, h: s._ch, srcColor: s.color, srcColors: s.colors || null }
+      : { pts: g, color: sec.color || s.color, sec: s.sec, srcAngle: s.srcAngle, colors: sec.color ? null : s.colors || null };
   }
 
   var origGeo = G._adjGeometry;
