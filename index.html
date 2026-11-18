@@ -5,7 +5,8 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>결 GYEOL — 스타일 프리뷰</title>
-<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<!-- (2026-11-19) 구글 폰트 제거 — 오프라인 앱. styles.css의 폰트 폴백(시스템 글꼴)을 씁니다.
+     되살리려면 이 줄을 원래 <link>로 바꾸거나, woff2를 vendor/fonts/에 넣고 @font-face를 styles.css에 추가하십시오. -->
 <link rel="stylesheet" href="styles.css?v=20261031b">
 </head>
 <body>
@@ -208,21 +209,24 @@
   <div class="ai-overlay-text" id="aiOverlayText">분석 중…</div>
   <div class="ai-overlay-sub" id="aiOverlaySub">잠시만 기다려주세요</div>
 </div>
-<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-core@4.17.0/dist/tf-core.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-backend-webgl@4.17.0/dist/tf-backend-webgl.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-converter@4.17.0/dist/tf-converter.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/body-segmentation@1.0.1/dist/body-segmentation.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/MTLLoader.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/OBJLoader.js"></script>
-<script>let __visionModulePromise=null;function loadVisionModule(){return!__visionModulePromise&&(__visionModulePromise=import('https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.9')),__visionModulePromise;}</script>
-<script src="js/01-face-landmarker.js?v=20261110tz"></script>
+<script src="vendor/tfjs/tf-core.min.js"></script>
+<script src="vendor/tfjs/tf-backend-webgl.min.js"></script>
+<script src="vendor/tfjs/tf-converter.min.js"></script>
+<script src="vendor/tfjs/body-segmentation.min.js"></script>
+<!-- (2026-11-19) 로컬 셀피 세그멘테이션 솔루션 — 네트워크 없이 목 실측을 하기 위한 것.
+     js/03a-hair-mask.js의 OFFLINE_SEG가 이 전역(SelfieSegmentation)을 보고 로컬 경로를 쓴다. -->
+<script src="mediapipe/selfie_segmentation/selfie_segmentation.js"></script>
+<script src="vendor/three/three.min.js"></script>
+<script src="vendor/three/loaders/MTLLoader.js"></script>
+<script src="vendor/three/loaders/OBJLoader.js"></script>
+<script>let __visionModulePromise=null;function loadVisionModule(){return!__visionModulePromise&&(__visionModulePromise=import('./vendor/mediapipe/vision_bundle.mjs')),__visionModulePromise;}</script>
+<script src="js/01-face-landmarker.js?v=20261119offline"></script>
 <script src="js/02-state-sections.js?v=20261110neck"></script>
 <script src="js/21-body-base.js?v=20261119fit"></script>
-<script src="js/03a-hair-mask.js?v=20261013m"></script>
+<script src="js/03a-hair-mask.js?v=20261119offline"></script>
 <script src="js/03b-mask-memory.js?v=20261117nm"></script>
 <script src="js/04-structure-tensor.js?v=20261116stripe"></script>
-<script src="js/05-capture-nav.js?v=20261116hd2"></script>
+<script src="js/05-capture-nav.js?v=20261119offline"></script>
 <script src="js/06-ui-panels.js?v=20261115sec"></script>
 <script src="js/07a-render-canvas.js?v=20261013m"></script>
 <script src="js/07b-render-compare.js?v=20261117photo2"></script>
@@ -264,6 +268,5 @@
 <script src="js/40-device-audit.js?v=20261108f"></script>
 <script src="js/41-head-tilt.js?v=20261118stand"></script>
 <script src="js/43-photo-amp-gain.js?v=20261118ring4"></script>
-<script data-goatcounter="https://choisunfriend.goatcounter.com/count" async src="//gc.zgo.at/count.js"></script>
 </body>
 </html>
