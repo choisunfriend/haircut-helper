@@ -3441,7 +3441,7 @@ var REGROW = (function () {
       var sx0 = -2.4 * Es.a, sz0 = -2.4 * Es.c, sy0 = Math.min(CY - 1.2 * Es.b, yTop - 75 / cmS);
       var sNx = Math.ceil(4.8 * Es.a / hS), sNz = Math.ceil(4.8 * Es.c / hS), sNy = Math.ceil((CY + 1.4 * Es.b - sy0) / hS);
       var camByAngle = {}; cams.forEach(function (c, ci) { camByAngle[c.angle] = ci; });
-      var acc = new Map(), nSeg = 0, nStr = 0, NV = cams.length, sfFlipN = 0, sfSrc = [];
+      var acc = new Map(), nSeg = 0, nStr = 0, NV = cams.length, sfFlipN = 0, sfJumpSeg = 0, sfSrc = [];
       /* (2026-11-08) 칸을 맡을 사진 고를 때 깨끗한 사진에 무게(13b 결 3D 합치기와 같은 값 VIEW_CLEAN) — 같은 자리를 두 사진이 보면 잡음 적은 사진의 가닥을 옮겨 그림. 끄기 REGROW.sfViewClean=false */
       var vcM = (typeof window !== 'undefined' && window.VIEW_CLEAN) || {}, vcMx = 0; cams.forEach(function (c) { var q = vcM[c.angle]; if (q > vcMx) vcMx = q; });
       var vcWv = cams.map(function (c) { var q = vcM[c.angle]; return (G.sfViewClean !== false && vcMx > 0 && q > 0) ? Math.max(0.2, Math.pow(q / vcMx, 2)) : 1; });
@@ -3537,6 +3537,7 @@ var REGROW = (function () {
         if (G.strandCopy) sfSrc.push({ vi: vi, q: q, sgn: sgn });            // (2026-11-03) 가닥 정리용(아래 STRC)
         for (j = 1; j < q.length; j++) {
           var ax = q[j].x - q[j - 1].x, ay = q[j].y - q[j - 1].y, az = q[j].z - q[j - 1].z, L = Math.hypot(ax, ay, az); if (!(L > 1e-9)) continue;
+          if (G.liftJumpCut !== false && L > (G.liftJumpCm || 4) / cmU && Math.abs(ax * R[6] + ay * R[7] + az * R[8]) > (G.liftJumpAxis || 0.8) * L) { sfJumpSeg++; continue; }   // (2026-11-18) 깊이로만 튄 걸음은 결 방향에 안 넣음
           ax *= sgn / L; ay *= sgn / L; az *= sgn / L;
           var ns = Math.max(1, Math.ceil(L / (hS * 0.5))), t;
           for (t = 0; t < ns; t++) {
@@ -3571,11 +3572,15 @@ var REGROW = (function () {
        *  그리기: 뿌리마다 가장 가까운(두상 위 방향으로) 조각 점에서부터 그 조각 모양을 그대로 옮겨 그림 — 아래 copyFromStrands */
       if (G.strandCopy) {
         var own = new Map(); dirs.forEach(function (D, k) { var A2 = D[4], bv2 = -1, bw2 = 0, v2; if (G.sfOwnMean !== false && cams._hasExtra) { for (v2 = 0; v2 < NV; v2++) if (A2[v2 * 5 + 4] >= (G.xlOwnMin || 2)) { var m2 = A2[v2 * 5 + 3] / A2[v2 * 5 + 4]; if (m2 > bw2) { bw2 = m2; bv2 = v2; } } } else for (v2 = 0; v2 < NV; v2++) if (A2[v2 * 5 + 3] > bw2) { bw2 = A2[v2 * 5 + 3]; bv2 = v2; } own.set(k, bv2); });   // (11-10c) 위 칸 주인과 같은 규칙
-        var pieces = [], cur = null, pAll = 0, pKeep = 0;
+        var pieces = [], cur = null, pAll = 0, pKeep = 0, pJump = 0;
         sfSrc.forEach(function (rec) {
           var q = rec.q, n0 = q.length, ii; cur = null;
           for (var t2 = 0; t2 < n0; t2++) {
             ii = rec.sgn > 0 ? t2 : n0 - 1 - t2; var P0 = q[ii]; pAll++;
+            /* (2026-11-18) 가시(삐죽 가닥) 원인 — 사진 가닥을 3D로 올릴 때 깊이만 한 걸음에 튀는 점이 있음(디버그 1028·1031: 6cm 넘는 걸음 전부 2D 이동은 3D 걸음의 3~7% = 시선 방향으로만 튐).
+             *  그 조각을 옮겨 그리면 뒤통수·정수리에서 곧게 뻗은 가닥이 됨. 그런 걸음에서 조각을 끊음(짧은 조각은 아래 3점 미만 거름). 끄기 REGROW.liftJumpCut=false */
+            if (cur && G.liftJumpCut !== false && cur.length) { var Pp = cur[cur.length - 1], jx = P0.x - Pp.x, jy = P0.y - Pp.y, jz = P0.z - Pp.z, jl = Math.hypot(jx, jy, jz), RJ = cams[rec.vi] && cams[rec.vi].R;
+              if (RJ && jl > (G.liftJumpCm || 4) / cmU && Math.abs(jx * RJ[6] + jy * RJ[7] + jz * RJ[8]) > (G.liftJumpAxis || 0.8) * jl) { cur = null; pJump++; } }
             var kk = G.copyWhole ? 0 : keyOf(P0.x, P0.y, P0.z), ok = G.copyWhole || (kk >= 0 && own.get(kk) === rec.vi);   // copyWhole: 맡은 사진 나누기 없이 가닥 통째로
             if (ok) { if (!cur) { cur = []; cur.vi = rec.vi; pieces.push(cur); } cur.push(P0); pKeep++; } else cur = null;
           }
@@ -3587,7 +3592,7 @@ var REGROW = (function () {
         /* (2026-11-03h) 떠 있는 조각(두피에서 멀리 떨어져 시작하는 사진 가닥 — 얼굴·목 옆에서 결이 끊겨 가슴·어깨 앞에서 따로 잡힌 것)을 시작점으로 색인 — 아래 copyChain */
         var flo = [], fIdx = new Map(), fH = (G.copyChainCm || 4) / cmU, fKey = function (x, y, z) { return Math.floor(x / fH) + ',' + Math.floor(y / fH) + ',' + Math.floor(z / fH); };
         pieces.forEach(function (pc, pi) { var P0 = pc[0], ux = P0.x / Es.a, uy = (P0.y - CY) / Es.b, uz = P0.z / Es.c; if (Math.hypot(ux, uy, uz) < (G.copyChainFloatR || 1.3)) return; flo.push(pi); var k2 = fKey(P0.x, P0.y, P0.z), L2 = fIdx.get(k2); if (!L2) { L2 = []; fIdx.set(k2, L2); } L2.push(pi); });
-        SF.strc = { pieces: pieces, idx: idx, Qn: Qn, far: 0, uOf: uOf, kept: pKeep, all: pAll, used: 0, miss: 0, short: 0, cut: 0, flo: flo.length, fIdx: fIdx, fKey: fKey, fH: fH, fUse: new Uint16Array(pieces.length), pFrom: new Int32Array(pieces.length).fill(1 << 30), chained: 0, chainPts: 0, chainedPieces: 0 };
+        SF.jumpSeg = sfJumpSeg; SF.strc = { jump: pJump, pieces: pieces, idx: idx, Qn: Qn, far: 0, uOf: uOf, kept: pKeep, all: pAll, used: 0, miss: 0, short: 0, cut: 0, flo: flo.length, fIdx: fIdx, fKey: fKey, fH: fH, fUse: new Uint16Array(pieces.length), pFrom: new Int32Array(pieces.length).fill(1 << 30), chained: 0, chainPts: 0, chainedPieces: 0 };
       }
     } catch (e) { SF = null; console.warn(TAG + ' 사진 가닥 결 장 실패 — 예전처럼 픽셀 결', e); }
     /* (2026-11-03) 정리된 사진 가닥 조각을 그대로 옮겨 그리기 — 뿌리 r0에서 가장 가까운(두상 방향 각) 조각 점부터 끝까지.
@@ -5764,6 +5769,7 @@ function helixMeasure(rgba,mask,W,H,angle,coh,opt){opt=opt||{};const n=opt.n||25
     L.push('  얼굴 앞에서 옆으로 비켜 감(앞 헤어라인 뿌리 · 사진이 얼굴이라 한 자리): ' + (G.faceSlide ? '켜짐 — 비켜 간 걸음 ' + (s.faceSlide || 0) + '(가닥 ' + (s.faceSlideN || 0) + ') (끄기 REGROW.faceSlide=false)' : '꺼짐'));
     L.push('  얇은 자리 길이(뿌리 두께 ' + G.thinLenRootCm + 'cm 미만 · 길이 ≤ max(' + G.thinLenMinCm + ', ' + G.thinLenK + '×두께)cm · ' + (G.thinLenBareCells > 0 ? '맨살(머리 없는 두피 칸) ' + G.thinLenBareCells + '칸 안 뿌리만 — 그런 뿌리 칸 ' + (G.bareNearN || 0) : '두께만') + '): ' + (G.thinLen ? '켜짐 — 해당 뿌리 ' + (s.thinRoots || 0) + ' · 그 길이에서 끝낸 가닥 ' + (s.thinLenN || 0) + ' (끄기 ?thinlen=0)' : '꺼짐(켜기 ?thinlen=1)'));
     try { if (typeof VIEW_FIX !== 'undefined') VIEW_FIX.lines().forEach(function (t) { L.push('  ' + t); }); } catch (e) {}   // (2026-10-31)
+    try { var sfj = G.sfStat; if (sfj) L.push('  깊이로만 튄 걸음 끊기: 조각 ' + ((sfj.strc && sfj.strc.jump) || 0) + '곳 · 결 방향 제외 ' + (sfj.jumpSeg || 0) + '걸음 (끄기 REGROW.liftJumpCut=false)'); } catch (eJ) {}
     try { var sf = G.sfStat; L.push('  정리된 사진 가닥 따라 걷기: ' + (!G.strandField ? '꺼짐(켜기 ?sf=1)' : !sf ? '못 만듦(예전처럼 픽셀 결)' : '칸 ' + sf.cells + '(사진 가닥 ' + sf.strands + '개 · 칸 고른 사진 ' + sf.byView + ' · 한 사진 안에서 엇갈려 뺀 칸 ' + (G.sfDropCross ? sf.lowCoh : '안 뺌(켜기 ?sfcross=1)') + ') · 그 방향을 쓴 걸음 ' + sf.use + ' · 가닥 없어 픽셀 결로 간 걸음 ' + sf.none + ' · 뿌리 방향을 정한 가닥 ' + sf.root + ' · 사진 가닥이 끝나 멈춘 가닥 ' + sf.end + ' · 정리된 가닥 그대로 그리기 ' + (G.strandCopy ? (sf.strc ? (G.copyWhole ? '가닥 통째로 ' : '') + '조각 ' + sf.strc.pieces.length + '개(맡은 사진 점 ' + sf.strc.kept + '/' + sf.strc.all + ') · 그대로 그린 가닥 ' + sf.strc.used + ' · 1.2cm 안 조각 없어 먼 사진 가닥(copyFarCm ' + G.copyFarCm + 'cm 안' + (G.copyFarSimilar !== false ? ' · 닮은 조각을 뿌리 자리로 돌려 옮김 · 끄기 REGROW.copyFarSimilar=false' : ' · 가까운 조각에 합류') + ') 가져온 ' + (sf.strc.far || 0) + ' · 그래도 없어 예전 칸 걷기 ' + sf.strc.miss + ' · 너무 짧아 예전 걷기 ' + sf.strc.short + (G.copyOwnHull ? ' · 자기 사진 머리 영역 밖이라 끝낸 ' + sf.strc.cut + '(되돌리기 ?cownhull=0)' + (G.copyDepthFit ? ' · 끊긴 결 이어 붙이기 ' + (G.copyChain ? '가닥 ' + (sf.strc.chained || 0) + '(떠 있는 조각 ' + (sf.strc.flo || 0) + '개 중 쓴 것 ' + (sf.strc.chainedPieces || 0) + ' · 이은 점 ' + (sf.strc.chainPts || 0) + ' · 가려진 틈 건너 이음 ' + (sf.strc.hideLinks || 0) + '(메운 점 ' + (sf.strc.hidePts || 0) + ' · 끄기 REGROW.copyChainHideCm=0)' + ' · 끄기 ?cchain=0)' : '꺼짐') + (G.copyDepthMid !== false ? ' · 사진들이 같이 머리라는 깊이 구간 가운데로 옮긴 점 ' + (sf.strc.dMid || 0) + '(평균 ' + (sf.strc.dMid ? (sf.strc.dMidCm / sf.strc.dMid).toFixed(1) : '0') + 'cm · 끄기 REGROW.copyDepthMid=false)' : '') + ' · 옆 사진 머리 영역 안으로 자기 시선축만 옮긴 점 ' + (sf.strc.dFit || 0) + '(가닥 ' + (sf.strc.dFitStr || 0) + ' · 평균 ' + (sf.strc.dFit ? (sf.strc.dFitCm / sf.strc.dFit).toFixed(1) : '0') + 'cm · 못 맞춘 점 ' + (sf.strc.dFitNo || 0) + ' · 끄기 ?cdepth=0)' : ' · 깊이 맞추기 꺼짐(켜기: ?cdepth 빼기) · 끊긴 결 이어 붙이기 ' + (G.copyChain ? '가닥 ' + (sf.strc.chained || 0) + '(떠 있는 조각 ' + (sf.strc.flo || 0) + '개 중 쓴 것 ' + (sf.strc.chainedPieces || 0) + ' · 이은 점 ' + (sf.strc.chainPts || 0) + ' · 가려진 틈 건너 이음 ' + (sf.strc.hideLinks || 0) + '(메운 점 ' + (sf.strc.hidePts || 0) + ' · 끄기 REGROW.copyChainHideCm=0)' + ' · 끄기 ?cchain=0)' : '꺼짐')) : ' · 머리 덩어리 밖이라 끝낸 ' + sf.strc.cut) + ' (끄기 ?scopy=0)' : '자료 없음') : '꺼짐(켜기 ?scopy=1)') + ' · 오르막이라 뒤집은 사진 가닥 ' + (G.sfPolDown ? (sf.flip || 0) + '개(끄기 ?sfpol=0)' : '꺼짐') + ' · 붙는 자리가 오르막이라 반대쪽으로 따라간 뿌리 ' + ((sf.strc && sf.strc.revLocal) || 0) + '(끄기 REGROW.copyLocalPol=false)' + ' · 두피 위 여러 사진 평면 풀이 ' + (G.sfTanSolve ? (sf.tan || 0) + '걸음(SF가 두피에서 ' + G.sfTanMinN + ' 넘게 들린 자리)' : '꺼짐(켜기 ?sftan=1)') + ' (끄기 ?sf=0)')); } catch (e) {}
     try { var pa = s.pa; if (pa) L.push('  사진끼리 머리 영역 맞추기(각도는 그대로 · 가운데·정수리 높이만 ±' + G.photoAlignMaxCm + 'cm): ' + (!pa.on ? '꺼짐(켜기 ?photoalign=1)' : pa.why ? pa.why : '기준 ' + pa.ref + ' · 다른 사진들로 깎은 덩어리가 설명하는 비율(사진 평균) ' + (pa.before * 100).toFixed(1) + '% → ' + (pa.after * 100).toFixed(1) + '% · 옮긴 사진: ' + (pa.moved.length ? pa.moved.join(' / ') : '없음') + ' · ' + pa.ms + 'ms (끄기 ?photoalign=0)')); } catch (e) {}
     try { var rk = s.rk; if (rk) L.push('  걸음 안 세 번 더 보기(RK4 · 0.4cm 걸음): ' + (rk.on ? '켜짐 — 걸음 ' + rk.n + ' · 곧은 결이라 한 번으로 끝낸 걸음 ' + (rk.skip || 0) + ' · 다시 본 자리 ' + rk.sub + ' · 결이 없어 앞 값을 쓴 자리 ' + rk.miss + ' (끄기 ?rk=0)' : '꺼짐(켜기 ?rk=1)') + ' · 관성 ' + G.inertia + ' · 중력 ' + G.gravity); } catch (e) {}
