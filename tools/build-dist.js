@@ -49,8 +49,10 @@ const OPTS = {
 /* 통째로 복사할 것 — 코드가 아닌 자산 */
 // vendor/ = 오프라인용 three·TFJS·tasks-vision(wasm). 네트워크 없이 돌리려면 반드시 복사된다.
 const COPY_DIRS = ['assets', 'asset', 'mediapipe', 'glue', 'vendor'];
-// 아무 파일도 참조하지 않는 죽은 자산(5.8MB). 되살리려면 이 줄을 비우면 된다.
-const SKIP_PATHS = ['mediapipe/selfie_segmentation'];
+// 죽은 자산이 아니다: index.html이 mediapipe/selfie_segmentation/selfie_segmentation.js를
+// <script>로 직접 불러오고, 03a-hair-mask.js의 OFFLINE_SEG.solutionPath도 이 폴더를 가리킨다.
+// 건너뛰면 dist에서 404가 나고 MediaPipe 실패 시의 TF.js 폴백이 통째로 죽는다.
+const SKIP_PATHS = [];
 const COPY_FILES = ['index.html', 'styles.css', 'LICENSE.md', 'bodylab.html', 'helpers04.js'];
 
 function rmrf(p) { if (fs.existsSync(p)) fs.rmSync(p, { recursive: true, force: true }); }

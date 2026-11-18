@@ -815,16 +815,16 @@ const STYLES = [
 const OUTFIT_CATALOG = [
   {id:'ot-charcoal-suit',   name:'차콜 슈트',        category:'포멀',   colorHex:'#2A262A', tags:['클래식','단정','오피스'],
     neckline:0.30, shoulder:0.88, busy:0.80,   // 타이로 목은 닫힘 · 재킷 각진 어깨 · 라펠 V + 밝은 셔츠판
-    asset:{ objUrl:'./assets/Male_Suit.obj',       mtlUrl:'./assets/Male_Suit.mtl',       neckCutFrac:0.8369 }, affiliateUrl:null},
+    asset:{ objUrl:'./assets/Male_Suit_cloth.obj',       mtlUrl:'./assets/Male_Suit_cloth.mtl',       neckCutFrac:0.8369 }, affiliateUrl:null},
   {id:'ot-slate-casual',    name:'슬레이트 캐주얼 셔츠', category:'캐주얼', colorHex:'#657277', tags:['편안함','데일리','뉴트럴'],
     neckline:0.78, shoulder:0.30, busy:0.12,   // V넥 반팔 · 맨목·맨팔 · 단일 재질
-    asset:{ objUrl:'./assets/Male_Casual.obj',     mtlUrl:'./assets/Male_Casual.mtl',     neckCutFrac:0.8382 }, affiliateUrl:null},
+    asset:{ objUrl:'./assets/Male_Casual_cloth.obj',     mtlUrl:'./assets/Male_Casual_cloth.mtl',     neckCutFrac:0.8382 }, affiliateUrl:null},
   {id:'ot-olive-longsleeve',name:'올리브 롱슬리브',   category:'캐주얼', colorHex:'#606B55', tags:['캐주얼','차분함','데일리'],
     neckline:0.12, shoulder:0.26, busy:0.10,   // 턱밑까지 올라오는 높은 크루넥 · 니트라 어깨가 흐른다 · 단일 재질
-    asset:{ objUrl:'./assets/Male_LongSleeve.obj', mtlUrl:'./assets/Male_LongSleeve.mtl', neckCutFrac:0.8448 }, affiliateUrl:null},
+    asset:{ objUrl:'./assets/Male_LongSleeve_cloth.obj', mtlUrl:'./assets/Male_LongSleeve_cloth.mtl', neckCutFrac:0.8448 }, affiliateUrl:null},
   {id:'ot-burgundy-shirt',  name:'버건디 셔츠',       category:'포인트', colorHex:'#5C1F34', tags:['포인트컬러','개성','데일리'],
     neckline:0.55, shoulder:0.45, busy:0.55,   // 얕은 V · 래글런처럼 어깨에서 갈리는 절개 · 2색 블록
-    asset:{ objUrl:'./assets/Male_Shirt.obj',      mtlUrl:'./assets/Male_Shirt.mtl',      neckCutFrac:0.8258 }, affiliateUrl:null},
+    asset:{ objUrl:'./assets/Male_Shirt_cloth.obj',      mtlUrl:'./assets/Male_Shirt_cloth.mtl',      neckCutFrac:0.8258 }, affiliateUrl:null},
 ];
 
 // 전역 수동 보정 전용(에셋별 세팅은 이제 OUTFIT_CATALOG[i].asset에 있음).
