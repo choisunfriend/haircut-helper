@@ -2597,30 +2597,6 @@ var REGROW = (function () {
               } else fcStat.foldNo = (fcStat.foldNo || 0) + 1;
             }
           } catch (eFold) { fcStat.foldErr = String(eFold && eFold.message || eFold); }
-          /* (2026-11-19) 중간에 나갔다 돌아온 구간도 눕힌다 — 사용자: "뻗치는 가닥들을 눕히든지 옆 가닥들과 결을 같이 하도록"
-             디버그 0010·0014·0017 영상: 세 손님 다 표면이 잔가시다. 펌은 그 가시가 고리를 덮어 뭉텅이 대신 철수세미로 보인다.
-             숫자가 가리키는 자리가 여기다 — 펌 <b>중간에 밖으로 나갔다 돌아와 살린 7,019가닥 · 210,711점</b>(직모 4,525/64,597).
-             이 점들은 사진 머리 영역 <b>밖</b>인데, 뒤에서 다시 안으로 들어온다는 이유로 clipPointwise가 통째로 살려 둔다.
-             그런데 위의 눕히기(fold)는 <b>끝까지 안 돌아오는</b> 가닥만 다시 긋고(last < n0-1), 돌아오는 가닥은 last가 이미 멀어
-             다시 그어도 last2 > last를 못 이겨 번번이 물러난다(펌 눕혀도 안 나아져 2,143). 그래서 이 210,711점은
-             눕히기를 <b>한 번도 안 거치고</b> 밖에 뜬 채로 남는다 — 화면의 가시가 이것이다.
-             지금: 그 점들을 lowerTo로 머리 겉면 높이까지 내린다. lowerTo는 사진 안의 점은 손대지 않고, 내려서 <b>나아질 때만</b>
-             내리며(foldLowerOnlyOut), 얇은 자리는 두께 바닥까지만 내린다(11-18) — 자르는 게 아니라 눕히는 것이라 빔이 생기지 않는다.
-             되돌리기 REGROW.foldMid=false */
-          if (G.foldMid !== false && G.foldLower !== false) {
-            for (i0 = 2; i0 < last; i0++) {
-              if (!f0[i0]) continue;                                  // 사진 안의 점은 그대로
-              var pm0 = q0[i0], pm1 = null;
-              try { pm1 = lowerTo(pm0); } catch (eM) { pm1 = null; }
-              if (!pm1 || pm1 === pm0) continue;
-              var fm = fcPoint(pm1);
-              if (fm <= f0[i0]) {                                     // 나빠지지 않을 때만 — 0(안)이 제일 좋음
-                q0[i0] = pm1; f0[i0] = fm;
-                fcStat.midLow = (fcStat.midLow || 0) + 1;
-                if (fm === 0) fcStat.midIn = (fcStat.midIn || 0) + 1;  // 눕혀서 사진 안으로 들어온 점
-              }
-            }
-          }
           for (i0 = 2; i0 < last; i0++) if (f0[i0]) mid++;
           if (mid) { fcStat.keepMid = (fcStat.keepMid || 0) + 1; fcStat.keepMidPts = (fcStat.keepMidPts || 0) + mid; }
           var e0 = last + 1;
@@ -5441,24 +5417,14 @@ function helixMeasure(rgba,mask,W,H,angle,coh,opt){opt=opt||{};const n=opt.n||25
      모든 뷰가 건너뛰어지고 중앙값이 비는데, 예전엔 그걸 그냥 "통과 못함(예전 동작)"으로 찍었다. 실제 판정은 나중에
      photoCurl()이 다시 부를 때(3D·카메라가 선 뒤) 나므로, 그 줄만 보고 판정을 읽으면 거꾸로 읽게 된다(디버그 1521 펌이 그 경우).
      noScale = 고리 수는 쟀는데 자가 없어 밀도를 못 낸 뷰 수. */
-  /* (2026-11-18 자) 자는 맞아 있다 — 확인하고 치수만 찍는다.
-     한때 "고리는 분석 크기(결 방향 필터 해상도)에서 세는데 cmPerMaskPx는 마스크 자라 섞였다"고 봤는데, 이름이 거꾸로 붙어 있어 잘못 읽은 것이다.
-     07b getCam1(1704행)이 kx = mi.maskW / mi.w 로 ix·iy를 곱해 결 방향 필드를 찍는다 → <b>mi.maskW가 분석 해상도(253) · mi.w가 마스크 해상도(429)</b>다.
-     그래서 cmPerMaskPx의 `cam.s × cmPerUnit ÷ kx`는 (cm/마스크px) ÷ 0.59 = <b>cm per 분석px</b>이고, ringAreaPx(분석px)와 자가 같다.
-     다만 그 사실이 코드 어디에도 안 적혀 있어 매번 다시 의심하게 되므로, 뷰마다 <b>분석 1px의 cm과 머리 면적(cm²)</b>을 로그에 찍는다.
-     사람 머리 한 면은 대략 300~500cm²다 — 이 숫자가 거기서 크게 벗어나면 그때는 자가 정말 틀린 것이고, 기준 2.0을 의심하기 전에 그쪽을 본다. */
   RG.refresh = function () {
     var views = [], dens = [], noScale = 0;
     (typeof ANGLES !== 'undefined' ? ANGLES : ['front', 'left', 'right', 'back']).forEach(function (a) {
       try {
         var mi = state.hairMasks && state.hairMasks[a], id = mi && mi.identity; if (!id || id.ringN == null) return;
-        var cpp = cmPerMaskPx(a); if (!(cpp > 0)) { noScale++; return; }     // 분석 1px의 cm(위 주석)
-        var areaCm2 = id.ringAreaPx * cpp * cpp;
-        if (!(areaCm2 > 0)) { noScale++; return; }
-        var d = id.ringN / areaCm2 * 100; dens.push(d);
-        views.push({ a: a, n: id.ringN, d: d, areaCm2: areaCm2, cpp: cpp, px: id.ringAreaPx,
-          wh: (id.ringW && id.ringH) ? (id.ringW + '×' + id.ringH) : null,
-          loop: id.waveShape && isFinite(id.waveShape.loop) ? id.waveShape.loop : null });
+        var cpp = cmPerMaskPx(a); if (!(cpp > 0)) { noScale++; return; }
+        var d = id.ringN / (id.ringAreaPx * cpp * cpp) * 100; dens.push(d);
+        views.push({ a: a, n: id.ringN, d: d, loop: id.waveShape && isFinite(id.waveShape.loop) ? id.waveShape.loop : null });
       } catch (e) {}
     });
     var med = NaN; if (dens.length) { dens.sort(function (p, q) { return p - q; }); med = dens.length % 2 ? dens[(dens.length - 1) / 2] : (dens[dens.length / 2 - 1] + dens[dens.length / 2]) / 2; }
@@ -5472,13 +5438,7 @@ function helixMeasure(rgba,mask,W,H,angle,coh,opt){opt=opt||{};const n=opt.n||25
       + (r.pass ? '통과(컬 엔진 켬)'
         : (!isFinite(r.med) && r.noScale ? '<b>아직 판정 안 함</b> — 고리는 ' + r.noScale + '개 뷰에서 쟀지만 카메라 자가 아직 없어 밀도를 못 냅니다(판정은 3D가 선 뒤 다시 합니다)'
           : '통과 못함(예전 동작)'))
-      + ' | ' + r.views.map(function (v) {
-        return v.a + ' <b>' + v.d.toFixed(1) + '</b>(고리 중심 ' + v.n + '개 · 머리 <b>' + Math.round(v.areaCm2) + 'cm²</b>'
-          + ' = ' + v.px + 'px' + (v.wh ? '(분석 ' + v.wh + ')' : '') + ' × 1px ' + v.cpp.toFixed(3) + 'cm'
-          + (v.loop != null ? ' · 기존 고리정도 ' + v.loop.toFixed(2) : '') + ')';
-      }).join(' · ')
-      + '\n    자 점검 — 머리 면적이 사람 한 면(대략 300~500cm²)에서 크게 벗어나면 밀도가 아니라 자를 먼저 볼 것.'
-      + ' 기준은 REGROW.ringGate.minDens(지금 ' + RG.minDens + ') · 끄기 REGROW.ringGate.on=false'];
+      + ' | ' + r.views.map(function (v) { return v.a + ' ' + v.d.toFixed(1) + '(중심 ' + v.n + (v.loop != null ? ' · 기존 고리정도 ' + v.loop.toFixed(2) : '') + ')'; }).join(' · ') + ' · 끄기 REGROW.ringGate.on=false'];
   };
   /* 컬·컬 엔진이 지금 켜져 있는가 — 수동 스위치(curl · curlEngine)이거나, 자동(ringGate.auto)이고 닫힌 고리 판정을 통과했을 때 */
   G.curlOn = function () { return !!(G.curl || (RG.auto && RG.result && RG.result.pass)); };
@@ -5541,8 +5501,7 @@ function helixMeasure(rgba,mask,W,H,angle,coh,opt){opt=opt||{};const n=opt.n||25
     G._afterIdentity = function (id, a) {
       try {
         if (id && pend && a && pend.w === a.w && pend.h === a.h) { id.curlDHalf = pend.cs.dHalf; id.curlFlat = pend.cs.flat; id.curlC1 = pend.cs.c1; id.curlRn = pend.cs.n; if (pend.helix) { id.curlHelix = pend.helix; }
-        if (pend.ring) { id.ringN = pend.ring.n; id.ringAreaPx = pend.ring.areaPx; id.ringW = pend.w; id.ringH = pend.h;   // (11-18) 잰 해상도를 같이 남김 — 밀도의 자를 맞추는 데 씀(RG.refresh)
-          try { var rgl = RG.lines(); console.log(rgl[0]); } catch (e7) {} }
+        if (pend.ring) { id.ringN = pend.ring.n; id.ringAreaPx = pend.ring.areaPx; try { var rgl = RG.lines(); console.log(rgl[0]); } catch (e7) {} }
         if (pend.clumps) { CLUMPS.set(id, pend.clumps); id.curlClumpN = pend.clumps.n; id.curlClumpW = pend.clumps.wMed; try { console.log(TAG + ' 타래 조각 — ' + pend.clumps.n + '개 · 폭 중앙값 ' + pend.clumps.wMed.toFixed(1) + 'px(' + pend.clumps.W + '×' + pend.clumps.H + ')'); } catch (e5) {} }
         if (pend.amp) { id.curlAmpPx = pend.amp.ampPx; id.curlLamPx = pend.amp.lamPx; id.curlWavy = pend.amp.wavy; id.curlAmpN = pend.amp.n; } }
       } catch (e) {}
@@ -5756,16 +5715,8 @@ function helixMeasure(rgba,mask,W,H,angle,coh,opt){opt=opt||{};const n=opt.n||25
       ' · 환산 ' + G.curlLo + '~' + G.curlHi + '°/px → 0~' + G.curlMax + ' (어림값 — 직모 사진에서 컬이 잡히면 curlLo를 올릴 것)'
       + (pc.value > 0 ? ' · <b>켜짐</b>(' + (G.curl ? 'REGROW.curl' : '고리 판정 통과') + ')' : ' · 꺼짐(REGROW.curl=false · 고리 판정도 통과 못함) — 켜면 ' + pc.raw)) +
       (pc.value > 0 ? ' · 편 길이 = 보이는 길이 × ' + (1 / curlRemain(pc.value)).toFixed(2) : '') + (pc.waveHelix ? ' · 굵은 웨이브로 봄(나선 측정 ' + pc.waveHelix.views + '장 · 한 바퀴 ' + pc.waveHelix.pitchCm.toFixed(1) + 'cm · 반경 ' + pc.waveHelix.rCm.toFixed(1) + 'cm · 예전 컬 ' + pc.waveHelix.was + ')' : ''));
-    /* (2026-11-18) 실제로 걸린 웨이브를 적는다 — 예전엔 REGROW.curlRadius가 꺼져 있으면 <b>"웨이브 50"을 글자 그대로</b> 찍었다.
-       그래서 PHOTO_CURL이 사진 반경으로 웨이브를 올려놔도(11-18 radiusOnEngine) 로그는 늘 50이라, 적용됐는지 알 수가 없었다.
-       웨이브를 실제로 쓰는 자리는 5106행의 cur.wave이고, 그 값은 5705행 spec.perm.wave ← pc.wave로 들어온다 — 그 pc.wave를 적는다. */
-    if (pc.rViews && (pc.rViews.length || pc.rNote)) L.push('  컬 굵기 ' + (pc.rCm > 0 ? '반경 ' + pc.rCm.toFixed(1) + 'cm(뷰 중앙값) → <b>웨이브 ' + (pc.wave != null ? pc.wave : 50) + '</b>'
-      /* (2026-11-19) 걸렸는지는 pc.photoCurlWave로 본다 — pc.wave는 5561행에서 <b>처음부터 50</b>으로 채워져 있어
-         "null이면 기본값"으로 가리면 안 걸린 손님에게도 "사진 반경에서"라고 찍힌다(11-18 첫 판이 그랬다).
-         photoCurlWave는 8005행, 즉 사진 반경을 실제로 웨이브로 바꾼 그 자리에서만 달린다. */
-      + (pc.photoCurlWave ? '(사진 반경에서 · 예전 ' + pc.photoCurlWave.was + ')' : '(기본값 — 사진 반경이 안 걸렸습니다. 까닭은 PHOTO_CURL.lines() 의 「컬 굵기」줄)')
-      + (G.curlRadius ? '' : ' · 42번 굵기 적용은 꺼짐(REGROW.curlRadius=false)') +
-      (pc.rodScale > 1 ? ' + 로드 ×' + pc.rodScale.toFixed(2) + '(다시 기른 가닥에만)' : '') + (pc.rodCm ? ' · 로드 반경 ' + pc.rodCm.toFixed(1) + 'cm' : '') : (pc.rNote || '못 잼')) +
+    if (pc.rViews && (pc.rViews.length || pc.rNote)) L.push('  컬 굵기 ' + (pc.rCm > 0 ? '반경 ' + pc.rCm.toFixed(1) + 'cm(뷰 중앙값) → ' + (G.curlRadius ? '웨이브 ' + pc.wave +
+      (pc.rodScale > 1 ? ' + 로드 ×' + pc.rodScale.toFixed(2) + '(다시 기른 가닥에만)' : '') + (pc.rodCm ? ' · 로드 반경 ' + pc.rodCm.toFixed(1) + 'cm' : '') : '꺼짐(REGROW.curlRadius=false) — 웨이브 50') : (pc.rNote || '못 잼')) +
       (pc.rViews.length ? ' · ' + pc.rViews.map(function (v) { return v.a + ' ' + (v.flat ? '직선' : v.noScale ? 'dHalf ' + v.dHalf.toFixed(1) + 'px(배율 없음)' : v.cm.toFixed(1) + 'cm(' + (v.how === 'helix' ? '나선 측정 · 한 바퀴 간격 ' + v.pitchCm.toFixed(1) + 'cm · 가닥 기울기 ' + Math.round(v.beta) + '° · 반복 세기 ' + v.hxPeak.toFixed(2) + ' · ' : '') + (v.how === 'amp' ? '결 선 흔들림 폭으로 잼 · 흔들리는 선 ' + Math.round((v.wavy || 0) * 100) + '%' + (v.lamCm ? ' · 한 바퀴 길이 ' + v.lamCm.toFixed(1) + 'cm' : '') + ' · ' : '') + 'dHalf ' + v.dHalf.toFixed(1) + 'px' + (v.floor ? ' — 하한, 이보다 잔 컬일 수 있음' : '') + ')'); }).join(' · ') : '') +
       ' · 식: 반경px = ' + G.curlRk + '×(dHalf−' + G.curlR0 + ') (어림)');
     return L;
@@ -5873,8 +5824,7 @@ function helixMeasure(rgba,mask,W,H,angle,coh,opt){opt=opt||{};const n=opt.n||25
         + (dS.smp ? ' · 꺾임 점 단위 ' + (dS.fineB / dS.smp).toFixed(1) + '→' + (dS.fineA / dS.smp).toFixed(1) + '°/cm' : '')
         + (dS.coarseN ? ' · ' + dC.coarseCm + 'cm 간격(굴곡) ' + (dS.coarseB / dS.coarseN).toFixed(1) + '→' + (dS.coarseA / dS.coarseN).toFixed(1) + '°/cm — 이게 크게 줄면 굴곡을 편 것' : '')
         + (dS.err ? ' · ⚠ ' + dS.err : '') + ' (끄기 ?dn=0 · REGROW.dn.passes/.sigMaxCm)')); } } catch (eD) {}
-    try { var fcS = G.fcStat; L.push('  마지막 다듬기(모든 가닥 · 마주 보는 사진은 머리 아니면 밖 · 반대쪽 사진은 배경일 때만 밖): ' + (G.finalClip === false ? '꺼짐' : fcS ? (G.fold !== false ? '<b>자르기 전 눕히기</b>(주변 결 · 두피 바깥 성분 지움) — 눕혀서 더 살린 가닥 ' + (fcS.fold || 0) + '(살린 점 ' + (fcS.foldPts || 0) + ') · 눕혀도 안 나아져 예전대로 ' + (fcS.foldNo || 0) + ' · 머리 겉면 높이로 낮춘 점 ' + (fcS.lowered || 0) + '(평균 ' + (fcS.lowered ? ((fcS.lowerCm / fcS.lowered) * (function () { try { return modelCmPerUnit() || 19; } catch (e) { return 19; } })()).toFixed(1) : '0') + 'cm · 얇은 자리라 두께 바닥(' + (G.foldLowerThinCm != null ? G.foldLowerThinCm : 0.5) + 'cm)으로 낮춘 점 ' + (fcS.lowerThin || 0) + ' · 두께 문턱에 걸려 안 낮춘 점 ' + (fcS.lowerSkip || 0) + ' · 사진 안이라 그대로 둔 점 ' + (fcS.lowerKeepIn || 0) + ' · 낮춰도 안 나아져 그대로 ' + (fcS.lowerNoGain || 0) + ' · 되돌리기 REGROW.foldLowerOnlyOut=false' + ' · 끄기 REGROW.foldLower=false)' + (fcS.foldErr ? ' ⚠ ' + fcS.foldErr : '') + ' (끄기 REGROW.fold=false) · ' : '') + (G.extendTip !== false ? '<b>빔 채우기</b>(제 끝에서 멈춘 가닥을 모든 사진이 머리인 동안 두피 따라 이어 기름 · 최대 ' + (G.extendMaxCm || 3) + 'cm) — 이은 가닥 ' + (fcS.ext || 0) + '(점 ' + (fcS.extPts || 0) + ' · 평균 ' + (fcS.ext ? (fcS.extCm / fcS.ext).toFixed(1) : '0') + 'cm) · 앞이 바로 밖이라 못 이음 ' + (fcS.extNo || 0) + (fcS.extErr ? ' ⚠ ' + fcS.extErr : '') + ' (끄기 REGROW.extendTip=false) · ' : '') + '가닥 ' + fcS.n + ' 중 여유 넘게 나가 자른 ' + fcS.cut + '(점 ' + fcS.cutPts + ') · 끝이 영역 밖이라 경계에서 끝낸 ' + fcS.tail + '(점 ' + fcS.tailPts + ')' + (G.clipPointwise !== false ? ' · <b>점마다 판단</b>: 마지막으로 살아 있는 점까지 남김 — 중간에 밖으로 나갔다 돌아와 살린 가닥 ' + (fcS.keepMid || 0) + '(점 ' + (fcS.keepMidPts || 0) + ' · 되돌리기 REGROW.clipPointwise=false)'
-      + (G.foldMid !== false ? ' · <b>그 구간도 눕힘</b> 점 ' + (fcS.midLow || 0) + '(그중 눕혀서 사진 안으로 들어온 점 ' + (fcS.midIn || 0) + ' · 끄기 REGROW.foldMid=false)' : '') : '') + (G.clipStrict !== false && G.clipPointwise === false ? ' · 영역 안에 들어간 뒤 밖으로 나가 그 자리에서 자른 ' + (fcS.strict || 0) + '(점 ' + (fcS.strictPts || 0) + ' · 되돌리기 REGROW.clipStrict=false)' : '') : '아직') + ' (끄기 REGROW.finalClip=false)'); } catch (eF) {}
+    try { var fcS = G.fcStat; L.push('  마지막 다듬기(모든 가닥 · 마주 보는 사진은 머리 아니면 밖 · 반대쪽 사진은 배경일 때만 밖): ' + (G.finalClip === false ? '꺼짐' : fcS ? (G.fold !== false ? '<b>자르기 전 눕히기</b>(주변 결 · 두피 바깥 성분 지움) — 눕혀서 더 살린 가닥 ' + (fcS.fold || 0) + '(살린 점 ' + (fcS.foldPts || 0) + ') · 눕혀도 안 나아져 예전대로 ' + (fcS.foldNo || 0) + ' · 머리 겉면 높이로 낮춘 점 ' + (fcS.lowered || 0) + '(평균 ' + (fcS.lowered ? ((fcS.lowerCm / fcS.lowered) * (function () { try { return modelCmPerUnit() || 19; } catch (e) { return 19; } })()).toFixed(1) : '0') + 'cm · 얇은 자리라 두께 바닥(' + (G.foldLowerThinCm != null ? G.foldLowerThinCm : 0.5) + 'cm)으로 낮춘 점 ' + (fcS.lowerThin || 0) + ' · 두께 문턱에 걸려 안 낮춘 점 ' + (fcS.lowerSkip || 0) + ' · 사진 안이라 그대로 둔 점 ' + (fcS.lowerKeepIn || 0) + ' · 낮춰도 안 나아져 그대로 ' + (fcS.lowerNoGain || 0) + ' · 되돌리기 REGROW.foldLowerOnlyOut=false' + ' · 끄기 REGROW.foldLower=false)' + (fcS.foldErr ? ' ⚠ ' + fcS.foldErr : '') + ' (끄기 REGROW.fold=false) · ' : '') + (G.extendTip !== false ? '<b>빔 채우기</b>(제 끝에서 멈춘 가닥을 모든 사진이 머리인 동안 두피 따라 이어 기름 · 최대 ' + (G.extendMaxCm || 3) + 'cm) — 이은 가닥 ' + (fcS.ext || 0) + '(점 ' + (fcS.extPts || 0) + ' · 평균 ' + (fcS.ext ? (fcS.extCm / fcS.ext).toFixed(1) : '0') + 'cm) · 앞이 바로 밖이라 못 이음 ' + (fcS.extNo || 0) + (fcS.extErr ? ' ⚠ ' + fcS.extErr : '') + ' (끄기 REGROW.extendTip=false) · ' : '') + '가닥 ' + fcS.n + ' 중 여유 넘게 나가 자른 ' + fcS.cut + '(점 ' + fcS.cutPts + ') · 끝이 영역 밖이라 경계에서 끝낸 ' + fcS.tail + '(점 ' + fcS.tailPts + ')' + (G.clipPointwise !== false ? ' · <b>점마다 판단</b>: 마지막으로 살아 있는 점까지 남김 — 중간에 밖으로 나갔다 돌아와 살린 가닥 ' + (fcS.keepMid || 0) + '(점 ' + (fcS.keepMidPts || 0) + ' · 되돌리기 REGROW.clipPointwise=false)' : '') + (G.clipStrict !== false && G.clipPointwise === false ? ' · 영역 안에 들어간 뒤 밖으로 나가 그 자리에서 자른 ' + (fcS.strict || 0) + '(점 ' + (fcS.strictPts || 0) + ' · 되돌리기 REGROW.clipStrict=false)' : '') : '아직') + ' (끄기 REGROW.finalClip=false)'); } catch (eF) {}
     try { var du = G.drawUnusedStat; L.push('  안 쓴 사진 조각 그대로 그리기: ' + (!du ? '-' : !du.on ? '꺼짐' : du.err ? '실패 ' + du.err : '조각 ' + du.pieces + ' 중 통째로 ' + du.whole + ' · 안 그린 앞부분 ' + du.head + ' · 점 ' + du.pts + ' · 다듬기에 잘린 ' + du.clipped) + ' (끄기 REGROW.drawUnused=false) · 점 판정: ' + (G.aliveIsect !== false ? (G.aliveVote === 'vote' ? '<b>무게 투표</b>(머리 표 = 마주 보는 정도² · 밖 표 = 보이기만 하면 윤곽으로 1 · 안 맞은 카메라 ×0.3 · 밖 표는 여유 ' + G.isectTolCm + 'cm부터 그 3배까지 커짐 · 기권은 가릴 때만) — 밖 ' + (G._isectNo || 0) + '(그중 머리 표도 있었는데 짐 ' + (G._voteSplit || 0) + ') · 밖 표가 있었지만 살림 ' + (G._voteSaved || 0) + ' · 스치듯 보는 사진의 밖 표 ' + (G._voteGraze || 0) + ' · 예전 판정에서 가려서 기권 ' + (G._fcAbst || 0) + ' (되돌리기 REGROW.aliveVote=\'isect\') · ' : '<b>교집합</b> — 가림 없이 보는 사진이 모두 머리여야 살림(기권은 가릴 때만' + (G.isectFacing === true ? ' + 등진 사진' : '') + ') · 한 장이라도 아니라서 밖 ' + (G._isectNo || 0) + ' · 예전 판정에서 가려서 기권 ' + (G._fcAbst || 0) + '(여유 ' + G.isectTolCm + 'cm · 되돌리기 REGROW.aliveIsect=false · 무게 투표 REGROW.aliveVote=\'vote\') · ') : '') + '(합집합일 때) 보이는 사진 중 하나라도 머리면 살림 ' + (G.anyHairAlive === false ? '꺼짐' : '켜짐 — 다른 사진이 밖이라 했지만 살린 판정 ' + (G._aliveAny || 0) + ' · 가장 정면 사진이 맨살이라 밖 ' + (G._fcSkin || 0) + ' · 배경 위라 살리지 않음 ' + (G.aliveBgVeto === false ? '꺼짐' : (G._aliveBgVeto || 0)) + '(끄기 REGROW.aliveBgVeto=false) · 살리는 사진 반구 fc≥' + (G.aliveFc != null ? G.aliveFc : -0.15)) + ' (되돌리기 REGROW.anyHairAlive=false)'); } catch (eS) {}
     try { var fcK = G.fcStat; if (fcK) L.push('  보이는 맨살 위(마주 보는 사진 · 머리 영역에서 ' + G.skinTolCm + 'cm 넘게): 투표에서 밖 ' + (G._skinNoMarginN || 0) + ' · 뿌리 구간이 맨살 위라 안 그린 가닥 ' + (fcK.skinRoot || 0) + ' · 가운데 구간이 맨살 위로 나가 거기서 끝낸 가닥 ' + (fcK.skinMid || 0) + '(점 ' + (fcK.skinMidPts || 0) + ') · 보임 판정 ' + (G.skinVis === false ? '각도(fc≥' + (G.faceNoMarginFc || 0.5) + ')' : '가림(fc≥' + G.skinVisFc + ' · 두개골·몸·얼굴) — 가장 정면 아닌 사진이 맨살로 본 판정 ' + (G._skinOtherCam || 0) + '(여유 ' + G.skinTolOtherCm + 'cm · 끄기 REGROW.skinAllCams=false)') + ' (되돌리기 REGROW.skinVis=false · 끄기 REGROW.skinNoMargin=false)'); } catch (eK) {}
     L.push('  껍질(사진 교집합): ' + (s.hullV ? s.hullV + ' 중 그 자리를 마주 보는 사진이 머리 영역에서 ' + G.hullMarginCm + '(정면)·' + G.hullMarginSideCm + '(옆·뒤)cm 넘게 밖이라 덩어리 밖인 걸음(덩어리를 쓰면 다른 이유로 밖인 것도 포함) ' + (s.hullN || 0) + '회 — 다른 사진이 머리라고 해도 멈춤 (예전: 다수결 · 끄기 REGROW.hullViews=[])' + ' · 사진 가닥이 그어져 머리 영역에 더한 칸 ' + (G.hullStrands === false ? '꺼짐' : Object.keys(G._hsCells || {}).map(function (k) { return k + ' ' + G._hsCells[k]; }).join(' · ') + ' (끄기 ?hullst=0)') : '안 씀(다수결)'));
