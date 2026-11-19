@@ -1709,7 +1709,21 @@ var REGROW = (function () {
          (대신 빔 9.3/9.5/10.8 → 15.4/14.3/12.1% — 어깨 앞으로 떨어지는 머리를 걷기가 원래 못 채움. 얼굴 앞 가닥이 가려 주던 몫이 드러난 것)
          곱슬: 거의 그대로(넘침 1.7/6.8/4.9/2.0 → 0.8/2.6/3.6/0.4%).
        끄기 ?rgtrim=0 또는 REGROW.trimTail=false · 사진·투영은 07b PHOTO_CHECK와 같은 것 */
-    trimTail: false /* (2026-10-27f) 끔 — 사용자: "윤곽자르기는 꺼줘" · 켜기 ?rgtrim=1 · (2026-10-24b) 다시 켬 — 끝만 자름: 마지막으로 머리 영역(마주 보는 사진 + trimTolCm) 밖으로 나간 꼬리를 나간 자리에서 자름 · 가운데에서 나갔다 다시 들어오는 것은 안 자름(trimOutCm 99) · 끄기 ?rgtrim=0 */, trimTolCm: 0.4, trimOutCm: 99, trimTailCm: 0.2, trimKeepPts: 3
+    trimTail: false /* (2026-10-27f) 끔 — 사용자: "윤곽자르기는 꺼줘" · 켜기 ?rgtrim=1 · (2026-10-24b) 다시 켬 — 끝만 자름: 마지막으로 머리 영역(마주 보는 사진 + trimTolCm) 밖으로 나간 꼬리를 나간 자리에서 자름 · 가운데에서 나갔다 다시 들어오는 것은 안 자름(trimOutCm 99) · 끄기 ?rgtrim=0 */, trimTolCm: 0.4, trimOutCm: 99, trimTailCm: 0.2, trimKeepPts: 3 ,
+    /* ====== (2026-11-19) 11-16 하루치 되돌림 — 얼굴 가림이 늘어 기본값만 11-16 09:19(f997a7b) 상태로 ======
+     *  코드는 그대로 두고 기본값만 껐습니다. 하나씩 다시 켜면서 범인을 찾으려면 아래 줄의 값을 바꾸면 됩니다
+     *  (true/삭제 = 11-16 기능 켜짐 · false = 11-16 이전). 폰에서 콘솔을 못 쓸 때를 위해 플래그가 아니라 기본값으로 둡니다.
+     *  켤 때 효과가 큰 순서: extendTip → fold → fcAbstain → agreeSoft → woAbstain → xfitJudge */
+    fold: false,            // (11-16) 자르기 전 눕히기 — 주변 결로 눕혀 살림. 11-16 이전엔 그냥 자름
+    extendTip: false,       // (11-16) 빔 채우기 — 끝에서 멈춘 가닥을 두피 따라 최대 3cm 이어 기름. 얼굴 쪽으로 이어지면 그게 가림
+    agreeSoft: false,       // (11-16) 엇갈린 사진을 빼지 않고 무게로 낮춤. 11-16 이전엔 빼 버림
+    fcAbstain: false,       // (11-16) 교집합에서 가린 사진은 기권. 11-16 이전엔 기권 없음
+    isectFacing: true,      // (11-16) 등진 사진을 교집합에서 빼기 시작 → true = 11-16 이전(등진 사진도 셈)
+    woAbstain: false,       // (11-16) 하얗게 날아간 자리는 결 읽기 기권
+    xfitJudge: false,       // (11-16) 카메라 맞추기 판정(배율·pitch·roll)
+    vchkOn: false,          // (11-16) 사진마다 확인 — 진단만 하지만 느려서 같이 끔
+    aliveVote: 'isect',     // (11-16) 무게 투표 → 이미 교집합으로 되돌려 둔 값. 'vote' = 11-16 무게 투표
+    /* ====== 되돌림 끝 ====== */
   }, W.REGROW || {});
   var S = G.stats = null;
   try { var rgtQ = /[?&]rgtrim=([01])/.exec(String(location.search || '')); if (rgtQ) G.trimTail = rgtQ[1] === '1'; } catch (e) {}
