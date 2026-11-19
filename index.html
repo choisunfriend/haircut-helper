@@ -5,20 +5,8 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>결 GYEOL — 스타일 프리뷰</title>
-<!-- (2026-11-19) 구글 폰트 제거 — 오프라인 앱. styles.css의 폰트 폴백(시스템 글꼴)을 씁니다.
-     되살리려면 이 줄을 원래 <link>로 바꾸거나, woff2를 vendor/fonts/에 넣고 @font-face를 styles.css에 추가하십시오. -->
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="styles.css?v=20261031b">
-
-<!-- PWA (설치형 웹앱) — 아이폰은 사파리에서 "홈 화면에 추가"하면 전체화면으로 뜹니다. -->
-<link rel="manifest" href="manifest.json">
-<meta name="theme-color" content="#1B1816">
-<meta name="color-scheme" content="dark">
-<link rel="icon" href="icons/favicon-32.png" sizes="32x32" type="image/png">
-<link rel="apple-touch-icon" href="icons/apple-touch-icon-180.png">
-<meta name="mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="Today's style peek">
 </head>
 <body>
 <div id="app">
@@ -29,7 +17,6 @@
   </header>
   <main>
     <section class="screen active" id="screen-capture">
-      <div class="offline-note">오프라인에서도 가동됩니다</div>
       <div class="capture-video-wrap">
         <div class="cam-off-msg" id="camOffMsg">카메라를 불러오는 중…<br><span style="font-size:11px;">아래 업로드 버튼도 이용 가능해요</span></div>
         <video id="video" autoplay playsinline muted></video>
@@ -221,25 +208,21 @@
   <div class="ai-overlay-text" id="aiOverlayText">분석 중…</div>
   <div class="ai-overlay-sub" id="aiOverlaySub">잠시만 기다려주세요</div>
 </div>
-<script src="vendor/tfjs/tf-core.min.js"></script>
-<script src="vendor/tfjs/tf-backend-webgl.min.js"></script>
-<script src="vendor/tfjs/tf-converter.min.js"></script>
-<script src="vendor/tfjs/body-segmentation.min.js"></script>
-<!-- (2026-11-19) 로컬 셀피 세그멘테이션 솔루션 — 네트워크 없이 목 실측을 하기 위한 것.
-     js/03a-hair-mask.js의 OFFLINE_SEG가 이 전역(SelfieSegmentation)을 보고 로컬 경로를 쓴다. -->
-<script src="mediapipe/selfie_segmentation/selfie_segmentation.js"></script>
-<script src="vendor/three/three.min.js"></script>
-<script src="vendor/three/loaders/MTLLoader.js"></script>
-<script src="vendor/three/loaders/OBJLoader.js"></script>
-<script src="vendor/three/loaders/GLTFLoader.js"></script>
-<script>let __visionModulePromise=null;function loadVisionModule(){return!__visionModulePromise&&(__visionModulePromise=import('./vendor/mediapipe/vision_bundle.mjs')),__visionModulePromise;}</script>
-<script src="js/01-face-landmarker.js?v=20261119offline"></script>
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-core@4.17.0/dist/tf-core.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-backend-webgl@4.17.0/dist/tf-backend-webgl.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-converter@4.17.0/dist/tf-converter.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/body-segmentation@1.0.1/dist/body-segmentation.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/MTLLoader.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/OBJLoader.js"></script>
+<script>let __visionModulePromise=null;function loadVisionModule(){return!__visionModulePromise&&(__visionModulePromise=import('https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.9')),__visionModulePromise;}</script>
+<script src="js/01-face-landmarker.js?v=20261110tz"></script>
 <script src="js/02-state-sections.js?v=20261110neck"></script>
-<script src="js/21-body-base.js?v=20261119fit"></script>
-<script src="js/03a-hair-mask.js?v=20261119offline"></script>
+<script src="js/21-body-base.js?v=20261115outer"></script>
+<script src="js/03a-hair-mask.js?v=20261013m"></script>
 <script src="js/03b-mask-memory.js?v=20261117nm"></script>
 <script src="js/04-structure-tensor.js?v=20261116stripe"></script>
-<script src="js/05-capture-nav.js?v=20261119offline"></script>
+<script src="js/05-capture-nav.js?v=20261116hd2"></script>
 <script src="js/06-ui-panels.js?v=20261115sec"></script>
 <script src="js/07a-render-canvas.js?v=20261013m"></script>
 <script src="js/07b-render-compare.js?v=20261117photo2"></script>
@@ -258,7 +241,7 @@
 <script src="js/21-braid.js?v=20261013m"></script>
 <script src="js/16-style-spec-diag.js?v=20261013m"></script>
 <script src="js/17a-mannequin.js?v=20261115brow"></script>
-<script src="js/17b-cut3d-piece.js?v=20261119mid"></script>
+<script src="js/17b-cut3d-piece.js?v=20261118fold"></script>
 <script src="js/14c-curl-bundle.js?v=20261118ring"></script>
 <script src="js/18-perf-i18n-boot.js?v=20261116hd"></script>
 <script src="js/19-stage-backdrop.js?v=20261013m"></script>
@@ -281,21 +264,6 @@
 <script src="js/40-device-audit.js?v=20261108f"></script>
 <script src="js/41-head-tilt.js?v=20261118stand"></script>
 <script src="js/43-photo-amp-gain.js?v=20261118ring4"></script>
-<script src="js/44-i18n-offline.js?v=20261119offline2"></script>
-
-<!-- 서비스워커 등록: https에서만, 그리고 Capacitor 네이티브 껍질 안에서는 건너뜁니다
-     (capacitor:// 스킴에서는 서비스워커가 동작하지 않고, 네이티브는 자산을 이미 들고 있습니다). -->
-<script>
-(function () {
-  var native = !!(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform());
-  if (native || !('serviceWorker' in navigator)) return;
-  if (location.protocol !== 'https:' && location.hostname !== 'localhost') return;
-  window.addEventListener('load', function () {
-    navigator.serviceWorker.register('sw.js').catch(function (e) {
-      console.warn('[PWA] 서비스워커 등록 실패 — 온라인으로는 그대로 동작합니다', e);
-    });
-  });
-}());
-</script>
+<script data-goatcounter="https://choisunfriend.goatcounter.com/count" async src="//gc.zgo.at/count.js"></script>
 </body>
 </html>
