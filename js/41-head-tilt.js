@@ -50,7 +50,16 @@
        참 헐 = R_u·(그린 헐)이므로, 헤어 몸체에 R_u(ŷ→사진의 위)를 두상 중심에서 한 번 걸어 축을 맞춘다.
        그러면 헐 축 = 두상 축 = 한 몸 → 두상을 세우면 헐도 같이 선다(화면 회전·돌리기는 headGroup이 그대로 담당).
        끄기 HEAD_TILT.hull=false · 근본 고침(헐 적합에 버킷별 z 중심 hullCz를 넣어 13c에서 되돌리기)은 별 항목. */
-    hull: true,
+    /* (2026-11-21c) 기본 끔 — 사용자: "헤어헐을 두상축과 맞췄는데, 헤어헐만 기울어져 있어 …
+       헐은 두상축이랑 일치시키니까 카메라맞춤에서, 그 이후에는 계속 같이 움직이도록 해야지"
+       헐과 두상 축을 맞추는 일은 <b>카메라맞춤 단계</b>(VIEW_FIX로 맞춘 카메라 → 13c가 그 카메라로 헐을 적합)에서 한 번 끝난다.
+       그 뒤에 여기서 매 프레임 헤어 몸체(adjustedHair/hairStrands)에만 rotation·position을 더 걸면,
+       두상(skullEllipsoid·얼굴 메쉬)은 headGroup 그대로인데 <b>머리카락만</b> 그 각만큼 돌아간다 —
+       화면에서 "헤어헐만 기울어져" 보이던 것이 이 한 겹이었다. 두상과 머리는 같은 headGroup의 자식이므로,
+       여기서 아무것도 안 걸면 둘은 정의상 한 몸으로 같이 움직인다(돌리기·기울이기는 headGroup 하나만 담당).
+       축이 실제로 어긋나 보이면 그건 헐 적합(13c) 쪽에서 고칠 일이지, 그린 뒤에 돌려서 덮을 일이 아니다.
+       예전처럼 몸체만 돌려 보기 HEAD_TILT.hull=true */
+    hull: false,
     lateral: true,       // (11-10) 좌우(갸웃) 기울기도 쓸지 — 기본 끔: 앞뒤(숙임)만. 켜기 HEAD_TILT.lateral=true
     maxDeg: 25,          // 이보다 크면 포즈 오측정으로 보고 안 기울임
     weights: { front: 1, left: 1, right: 1, back: 0 },   // 얼굴 실측 없는 뷰는 아래에서 0
@@ -112,6 +121,7 @@
   T.applyHull = function () {
     try {
       var h = hairBody(); if (!h) return;
+      /* hull=false(기본)면 여기서 건 것을 모두 지우고 손을 뗀다 — 헤어 몸체는 headGroup(두상)과 한 몸 */
       var ax = { x: 0, z: 0 };
       if (T.on && T.hull) { T.compute(); if (T.up) { var a0 = anglesFor(T.up); ax = { x: -a0.x, z: -a0.z }; } }
       if (h.rotation.order !== 'ZXY') { h.rotation.order = 'ZXY'; }
@@ -148,5 +158,5 @@
 
   /* 다시 기르기 직전에 중력 축을 정해 둔다(17b가 HEAD_TILT.down을 읽음) · 화면 자세는 가볍게 따라감 */
   setInterval(function () { if (T.on) T.compute(); else { T.down = T.downRaw = null; } if (!T.grav) T.down = null; T.apply(); }, 400);
-  console.log('[두상 기울기] 설치 — 헐·두상·중력·화면을 모두 <b>한 축(모델 y)</b>으로: 헐 단면은 정의상 모델 축 중심이고 두상도 모델 y라, 중력만 사진의 아래면 가닥만 기울어 보였음(2026-11-21 grav=false) · 사진처럼 기울이기 HEAD_TILT.grav=true·view=true · 끄기 HEAD_TILT.on=false · 상태 HEAD_TILT.lines().join("\\n")');
+  console.log('[두상 기울기] 설치 — 헐·두상·중력·화면을 모두 <b>한 축(모델 y)</b>으로 · 헤어 몸체는 두상과 한 몸(headGroup)으로 둠(2026-11-21c hull=false): 헐 단면은 정의상 모델 축 중심이고 두상도 모델 y라, 중력만 사진의 아래면 가닥만 기울어 보였음(2026-11-21 grav=false) · 사진처럼 기울이기 HEAD_TILT.grav=true·view=true · 끄기 HEAD_TILT.on=false · 상태 HEAD_TILT.lines().join("\\n")');
 })();
