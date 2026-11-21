@@ -1168,6 +1168,99 @@ const VIEWCAL_ANCHOR = {
      "덜 돌리는 방향으로는 안 고친다"는 뜻이다. */
   sideYawNoseMinOnly: true,
 };
+/* ══════════════════════════════════════════════════════════════════
+   [얼굴 안쪽 앵커] (2026-11-21) 옆 사진 가로 중심을 <b>가려지지 않는 얼굴 안쪽 점</b>으로
+   ─────────────────────────────────────────────────────────────────
+   사용자: "옆머리에 귀가 없잖아.. 그래서 귀 앵커가 제 위치를 못잡아서 그렇게 된거 같은데?"
+   예전 "귀 앵커"는 귀가 아니라 얼굴 메쉬 234·454 = <b>볼 가장자리</b>다(01:209).
+     · 두상 중심보다 앞에 있고, 먼 쪽 점은 안 보여 메쉬가 얼굴 쪽으로 당겨 채운다.
+     · 그 앞쪽 치우침을 earDepth 0.10×cD(≈0.7cm)로만 되돌려, 34° 옆 사진 cx가 얼굴 쪽으로
+       약 50px 밀렸다(디버그 1517: 축 기준 E가 실루엣 반폭보다 +18~33% → 헐 깊이 D가 상한 1.5W에 붙음).
+   지금: 이 손님 <b>정면 얼굴(468점 3D)</b>을 틀로, 옆 사진의 눈·코·입·턱 13점에 정사영 맞춤(아래 faceInnerAnchorPx)
+     → 틀에서 눈꼬리 평균 뒤 eyeDepthCm 자리(두상 중심)를 옆 사진에 투영한 x가 cx. 볼·귀가 가려져도 안 쓰는 점이라 무관.
+   eyeDepthCm 8.0 = 눈꼬리 평균면 → 두상 앞뒤 가운데(머리 길이 ≈19cm의 절반 9.5 − 미간~눈꼬리 ≈1.5).
+     ⚠ 해부 평균에서 잡은 값이다. [얼굴 안쪽 앵커] 로그의 "코끝 깊이 좌/우"가 서로 크게 다르거나
+       얼굴 모형 코끝과 크게 다르면 이 값을 의심할 것.
+   얼굴이 없는 사진(뒤 · 실루엣 앵커)은 예전 그대로. 되돌리기 FACE_ANCHOR.on=false
+   ══════════════════════════════════════════════════════════════════ */
+const FACE_ANCHOR = {
+  on: true,
+  inner: [33, 133, 362, 263],   // 눈꼬리 바깥·안쪽 × 좌우
+  eyeDepthCm: 8.0,
+  /* 뺨 보임 판정 — 볼 가장자리 점에서 얼굴 바깥쪽으로 같은 줄을 훑어 처음 만나는 것:
+       배경(사람 윤곽 밖)  → 'measured'  진짜 얼굴 끝(실측)
+       머리카락            → 'hairEdge'  머리가 얼굴 끝을 덮음(하한으로만)
+       점 자체가 머리 안   → 'hidden'    가려짐(메쉬 추정 = 표준 얼굴 모양)
+       사람 윤곽이 없거나 못 찾음 → 'unknown'
+     색은 안 본다(피부톤·그늘에 흔들림) — 머리 마스크·사람 윤곽만. */
+  cheekPts: [234, 454],
+  scanFrac: 0.15,      // 사진 폭의 이 비율까지만 훑음
+  maxGapFrac: 0.06,    // 점에서 경계까지 이보다 멀면 점 자체를 못 믿음(unknown)
+  last: {},
+};
+function _faceMaskAt(mi, ix, iy){
+  /* 0 배경 · 1 사람(머리 아님) · 2 머리 · -1 모름 */
+  const w = mi.maskW, h = mi.maskH;
+  if(!(ix >= 0 && iy >= 0 && ix < w && iy < h)) return -1;
+  const k = (iy|0) * w + (ix|0);
+  if(mi.reasonMask && mi.reasonMask[k] === 1) return 2;
+  if(!mi.personMask) return -1;
+  return mi.personMask[k] ? 1 : 0;
+}
+/* 볼 점 하나의 상태 + 경계까지 간 정규화 x(못 찾으면 null) */
+function faceCheekState(angle, idx){
+  try{
+    const lm = state.landmarks && state.landmarks[angle], mi = state.hairMasks && state.hairMasks[angle];
+    if(!lm || lm._silhouette || !lm.rawLandmarks || !mi || !mi.maskW) return { st: 'unknown', why: '자료 없음' };
+    const p = lm.rawLandmarks[idx]; if(!p) return { st: 'unknown', why: '점 없음' };
+    const w = mi.maskW, h = mi.maskH, x0 = p.x * w, y0 = p.y * h;
+    const c0 = _faceMaskAt(mi, x0, y0);
+    if(c0 === 2) return { st: 'hidden', why: '점이 머리 안' };
+    if(c0 !== 1) return { st: 'unknown', why: c0 === 0 ? '점이 배경 위' : '사람 윤곽 없음' };
+    let cx = 0; FACE_ANCHOR.inner.forEach(i=>{ cx += lm.rawLandmarks[i].x; }); cx = cx / FACE_ANCHOR.inner.length * w;
+    const dir = x0 >= cx ? 1 : -1, maxN = Math.round(w * FACE_ANCHOR.scanFrac);
+    for(let n = 1; n <= maxN; n++){
+      const c = _faceMaskAt(mi, x0 + dir*n, y0);
+      if(c === 1) continue;
+      if(n > w * FACE_ANCHOR.maxGapFrac) return { st: 'unknown', why: '경계가 ' + n + 'px 밖(점 못 믿음)' };
+      const xN = (x0 + dir*(n - 0.5)) / w;
+      if(c === 0) return { st: 'measured', edgeX: xN, gap: n };
+      if(c === 2) return { st: 'hairEdge', edgeX: xN, gap: n };
+      return { st: 'unknown', why: '사진 밖' };
+    }
+    return { st: 'unknown', why: '경계 못 찾음' };
+  }catch(e){ return { st: 'unknown', why: '오류' }; }
+}
+/* ── 두상 중심 투영 — 맞춤은 01(faceFitToFront)이 하고 여기선 그 결과만 씀 ─────────
+   두상 중심 = 정면 틀에서 눈꼬리 평균 뒤 eyeDepthCm(정면 사진 자로 px 환산) → 그 사진의 맞춤 식으로 투영.
+   못 쓰면(맞춤 없음 · 잔차 큼) null → 예전 귀 앵커. */
+FACE_ANCHOR.maxRmsFrac = 0.02;   // 잔차 RMS가 사진 폭의 이 비율을 넘으면 맞춤을 안 믿음
+function faceInnerAnchorPx(angle, maskW, maskH, yaw, sX){
+  if(!FACE_ANCHOR.on) return null;
+  try{
+    const lm = state.landmarks && state.landmarks[angle], fr = state.landmarks && state.landmarks.front;
+    const miF = state.hairMasks && state.hairMasks.front;
+    if(!lm || lm._silhouette || !fr || !miF) return null;
+    let F = lm.faceFit;
+    if(!F && typeof faceFitToFront === 'function') F = faceFitToFront(angle);   // 정면이 나중에 잡혔으면 지금 맞춤
+    if(!F) return null;
+    let cm = null; try{ cm = modelCmPerUnit(); }catch(e){}
+    const sF = FACE_ANCHOR._sFront;
+    if(!(cm > 0) || !(sF > 0) || !(sX > 0)) return null;
+    /* 정면 마스크 px 자(sF) → 정면 사진 px: 깊이 px × (사진 폭 ÷ 마스크 폭) */
+    const E = [33,133,362,263].map(i=>fr.rawLandmarks[i]);
+    const ex = E.reduce((s,q)=>s+q.x,0)/4*F.WF, ey = E.reduce((s,q)=>s+q.y,0)/4*F.HF, ez = E.reduce((s,q)=>s+q.z,0)/4*F.WF;
+    const depthPx = FACE_ANCHOR.eyeDepthCm / cm / sF * (F.WF / miF.w);
+    const C = [ex, ey, ez + depthPx, 1];                    // MediaPipe +z = 카메라에서 멀어짐 = 뒤
+    const cxImg = F.au[0]*C[0]+F.au[1]*C[1]+F.au[2]*C[2]+F.au[3];
+    const k = maskW / F.W;                                  // 이 사진 px → 마스크 px
+    const ok = F.rms * k <= maskW * FACE_ANCHOR.maxRmsFrac;
+    let rx = 0; [33,133,362,263].forEach(i=>{ rx += lm.rawLandmarks[i].x; }); rx = rx/4*maskW;
+    return { ok, cx: cxImg * k, rms: F.rms * k, scaleK: Math.hypot(F.au[0], F.au[1], F.au[2]) * k * (F.WF / miF.w),
+             scaleExp: sF / sX, refPx: rx, cxEyeOnly: rx - Math.sin(yaw)*(FACE_ANCHOR.eyeDepthCm/cm)/sX,
+             cm, nosePx: lm.rawLandmarks[1].x * maskW, n: F.n };
+  }catch(e){ return null; }
+}
 /* 근사yaw(코 오프셋 ÷ 귀 반간격) → 도. 구 두상에서 그 비율이 tan(yaw)다.
    부호는 그대로 따라간다(우측 뷰 음수 · 좌측 뷰 양수 — PnP와 같은 규약). */
 function noseRatioYawDeg(angle){
@@ -1417,6 +1510,23 @@ function buildHairStrandsFromPaths(){
       const zEar = -VIEWCAL_ANCHOR.earDepth * cD;              // 귀 깊이(뒤 = 음수)
       cxUse = earMidPx - Math.sin(pose.yaw) * zEar / sX;
       anchorSrc = lmV._silhouette ? '실루엣 앵커(귀)' : '얼굴 랜드마크(귀)';
+      /* (2026-11-21) 얼굴이 실측된 사진은 눈꼬리 기준으로 — 위 FACE_ANCHOR 배너 */
+      if(angle === 'front') FACE_ANCHOR._sFront = sX;      // 정면 틀의 px 자(옆 사진 맞춤이 씀 · 정면이 먼저 돈다)
+      const FA = faceInnerAnchorPx(angle, maskInf.w, maskInf.h, pose.yaw, sX);
+      if(FA && !FA.ok) console.warn('[얼굴 안쪽 앵커] ' + angle + ': 맞춤 잔차 ' + FA.rms.toFixed(1) + 'px > 사진 폭×' + FACE_ANCHOR.maxRmsFrac + ' — 안 믿고 예전 귀 앵커');
+      if(FA && FA.ok){
+        const cxEar = cxUse, silMid = (xMin + xMax) / 2;
+        cxUse = FA.cx; anchorSrc = '얼굴 맞춤(눈·코·입·턱 ' + FA.n + '점)';
+        const zNoseCm = Math.abs(Math.sin(pose.yaw)) > 0.2 ? (FA.nosePx - cxUse) * sX / Math.sin(pose.yaw) * FA.cm : null;
+        const ck = FACE_ANCHOR.cheekPts.map(i=>faceCheekState(angle, i));
+        FACE_ANCHOR.last[angle] = { cx: cxUse, cxEar, silMid, refPx: FA.refPx, zNoseCm, cheeks: ck, yawDeg: pose.yaw*180/Math.PI };
+        console.log('[얼굴 안쪽 앵커] ' + angle + ': 중심 x ' + cxUse.toFixed(0) + 'px (정면 얼굴 틀 ' + FA.n + '점 정사영 맞춤 · 잔차 ' + FA.rms.toFixed(1)
+          + 'px · 배율 ' + FA.scaleK.toFixed(3) + ' / 자로 본 기대 ' + FA.scaleExp.toFixed(3) + ' · 눈꼬리+yaw만이었다면 ' + FA.cxEyeOnly.toFixed(0) + 'px) · 예전 귀 앵커 ' + cxEar.toFixed(0)
+          + 'px · 헤어 실루엣 가운데 ' + silMid.toFixed(0) + 'px'
+          + (zNoseCm != null ? ' · 이 중심으로 본 코끝 깊이 ' + zNoseCm.toFixed(1) + 'cm' : '')
+          + ' · 볼 234/454 ' + ck.map(c=>c.st + (c.why ? '(' + c.why + ')' : '')).join(' / ')
+          + ' (되돌리기 FACE_ANCHOR.on=false)');
+      }
       const cxOld = (xMin+xMax)/2, sOld = aH_head/halfPx;
       console.log('[뷰캘리·앵커] ' + angle + ': 중심 x ' + cxOld.toFixed(0) + '→' + cxUse.toFixed(0) + 'px'
         + ' (' + (cxUse-cxOld >= 0 ? '+' : '') + (cxUse-cxOld).toFixed(0) + 'px, ' + anchorSrc + ')'
@@ -1464,6 +1574,21 @@ function buildHairStrandsFromPaths(){
   });
   const names = Object.keys(views);
   if(!names.length) return null;
+  /* [얼굴 안쪽 앵커·좌우 대조] 코끝은 한 점이라, 왼·오른 사진이 각자의 중심으로 잰 코끝 깊이가 같아야 한다.
+     둘이 벌어지면 한쪽 사진의 중심(또는 yaw)이 틀린 것 · 둘 다 같이 틀리면 eyeDepthCm 쪽. */
+  try{
+    const L = FACE_ANCHOR.last.left, Rr = FACE_ANCHOR.last.right;
+    if(FACE_ANCHOR.on && L && Rr && L.zNoseCm != null && Rr.zNoseCm != null){
+      const cmU = modelCmPerUnit();
+      let fz = null; try{ const fp = getFaceProfile && getFaceProfile(); if(fp && cmU) fz = fp.zAt(0.15 - 0.28) * cmU; }catch(e){}
+      console.log('[얼굴 안쪽 앵커·좌우 대조] 코끝 깊이(두상 중심 앞) 왼 ' + L.zNoseCm.toFixed(1) + 'cm · 오른 ' + Rr.zNoseCm.toFixed(1)
+        + 'cm · 차 ' + Math.abs(L.zNoseCm - Rr.zNoseCm).toFixed(1) + 'cm'
+        + (fz != null ? ' · 얼굴 모형 코끝 ' + fz.toFixed(1) + 'cm' : '')
+        + ' | 중심 이동(예전 귀 → 지금) 왼 ' + (L.cx - L.cxEar).toFixed(0) + 'px · 오른 ' + (Rr.cx - Rr.cxEar).toFixed(0) + 'px'
+        + ' | 헤어 실루엣 가운데와의 차 왼 ' + (L.cx - L.silMid).toFixed(0) + 'px · 오른 ' + (Rr.cx - Rr.silMid).toFixed(0) + 'px'
+        + '\n    읽는 법 — 좌우 코끝 차가 1cm 넘으면 한쪽 사진의 중심·각도가 틀린 것. 둘 다 얼굴 모형과 같이 벌어지면 FACE_ANCHOR.eyeDepthCm.');
+    }
+  }catch(e){}
 
   // ── 1단계: 헤어 외곽 헐 실측 ──
   const NY = 64;                 // 높이 버킷 수

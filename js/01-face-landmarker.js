@@ -152,6 +152,46 @@ async function detectBackEarsByPose(angle){
   }catch(e){ console.warn('후면 귀 앵커 실패:', e); return null; }
 }
 
+/* ══════════════════════════════════════════════════════════════════
+   [얼굴 정사영 맞춤] (2026-11-21) 이 손님의 정면 얼굴을 틀로, 각 사진의 얼굴 안쪽 점에 맞춤
+   ─────────────────────────────────────────────────────────────────
+   사용자: "눈꼬리만으로 못 맞추잖아.. 코하고 입도 있어야지"
+   틀 = 정면 사진 rawLandmarks(x·y·z — MediaPipe z는 x와 같은 눈금) · 정면 사진 px.
+   점 13개: 눈꼬리 4(33·133·362·263) · 미간 168 · 콧등 6 · 코끝 1 · 코밑 2 · 입꼬리 61·291 · 윗입술 0 · 아랫입술 17 · 턱끝 152
+     — 볼(234·454)·귀는 안 씀: 머리에 가려도 무관. 깊이가 다른 점(눈·코끝·입·턱)이 섞여야 회전이 풀린다.
+   식: [X Y Z 1](정면 px) → (u, v)(이 사진 px) 아핀 2×4를 최소제곱으로 = 회전·크기·이동(약원근).
+   저장: state.landmarks[angle].faceFit = { au, av, rms, n } — 13c가 두상 중심을 이 식으로 투영해 cx로 씀.
+   ══════════════════════════════════════════════════════════════════ */
+const FACE_FIT = { on: true, pts: [33, 133, 362, 263, 168, 6, 1, 2, 61, 291, 0, 17, 152] };
+function _ffSolve4(M, r){   // 4×4 가우스 소거(부분 피벗)
+  const A = M.map((row, i)=>row.concat([r[i]]));
+  for(let c=0;c<4;c++){
+    let p=c; for(let i=c+1;i<4;i++) if(Math.abs(A[i][c])>Math.abs(A[p][c])) p=i;
+    if(Math.abs(A[p][c])<1e-12) return null; const t=A[c]; A[c]=A[p]; A[p]=t;
+    for(let i=0;i<4;i++){ if(i===c) continue; const f=A[i][c]/A[c][c]; for(let k=c;k<5;k++) A[i][k]-=f*A[c][k]; }
+  }
+  return A.map((row,i)=>row[4]/row[i]);
+}
+function faceFitToFront(angle){
+  const lm = state.landmarks && state.landmarks[angle], fr = state.landmarks && state.landmarks.front;
+  if(!lm) return null;
+  lm.faceFit = null;
+  if(!FACE_FIT.on || lm._silhouette || !lm.rawLandmarks || lm.rawLandmarks.length < 468 || !lm.imgW) return null;
+  if(!fr || fr._silhouette || !fr.rawLandmarks || fr.rawLandmarks.length < 468 || !fr.imgW) return null;
+  const WF = fr.imgW, HF = fr.imgH, W = lm.imgW, H = lm.imgH, P = FACE_FIT.pts;
+  const T = P.map(i=>{ const q = fr.rawLandmarks[i]; return [q.x*WF, q.y*HF, q.z*WF, 1]; });
+  const U = P.map(i=>{ const q = lm.rawLandmarks[i]; return [q.x*W, q.y*H]; });
+  const M = [0,1,2,3].map(r=>[0,1,2,3].map(c=>T.reduce((s,t)=>s+t[r]*t[c],0)));
+  const au = _ffSolve4(M, [0,1,2,3].map(r=>T.reduce((s,t,k)=>s+t[r]*U[k][0],0)));
+  const av = _ffSolve4(M, [0,1,2,3].map(r=>T.reduce((s,t,k)=>s+t[r]*U[k][1],0)));
+  if(!au || !av) return null;
+  let se = 0; T.forEach((t,k)=>{ const du = au[0]*t[0]+au[1]*t[1]+au[2]*t[2]+au[3]-U[k][0], dv = av[0]*t[0]+av[1]*t[1]+av[2]*t[2]+av[3]-U[k][1]; se += du*du+dv*dv; });
+  const rms = Math.sqrt(se / T.length);
+  lm.faceFit = { au, av, rms, n: P.length, W, H, WF, HF };
+  console.log('[얼굴 정사영 맞춤] ' + angle + ' ← 정면 틀 ' + P.length + '점 · 잔차 ' + rms.toFixed(1) + 'px(사진 ' + W + '×' + H + ') · 배율 ' + Math.hypot(au[0], au[1], au[2]).toFixed(3) + ' (끄기 FACE_FIT.on=false)');
+  return lm.faceFit;
+}
+
 async function detectFaceLandmarks(angle){
   if(!faceLandmarkerReady || !faceLandmarker) return null;
   const dataUrl = state.shots[angle]; if(!dataUrl) return null;
@@ -262,8 +302,14 @@ async function detectFaceLandmarks(angle){
                        // 정보)는 버리고 있었음. buildRealFaceMesh()가 이걸로 진짜 3D
                        // 얼굴 메쉬(FACE_MESH_TRI_V/VT/UV, MediaPipe 공식 토폴로지)를 만듦.
                        rawLandmarks: lm.map(p=>({x:p.x, y:p.y, z:p.z})) };
+        info.imgW = IW; info.imgH = IH;   // (2026-11-21) 정사영 맞춤이 px로 쓰는 사진 크기
         state.landmarks = state.landmarks || {};
         state.landmarks[angle] = info;
+        /* (2026-11-21) 정면 얼굴 틀에 정사영 맞춤 — 정면이 새로 잡히면 이미 있는 다른 사진도 다시 맞춤 */
+        try{
+          if(angle === 'front') Object.keys(state.landmarks).forEach(a=>faceFitToFront(a));
+          else faceFitToFront(angle);
+        }catch(e){}
         resolve(info);
       } catch(e){
         window.__lmDiag = `[${angle}] detect() 예외: ` + (e && e.message ? e.message : e);
