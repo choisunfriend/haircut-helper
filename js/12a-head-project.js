@@ -1984,18 +1984,6 @@ const FACE_BUILD = { path: '-', why: '', zRange: null, zMin: null, zMax: null,
                      sideYaw: {}, reliefGain: null, reliefCm: null, cmPerUnit: null };
 /* (2026-11-08) 정면 얼굴 메쉬를 머리카락과 같은 두상 축으로(아래 buildRealFaceMeshBase 끝) — axes 'yaw' | 'all' · minDeg 이하면 안 돌림 */
 var FACE_FRONT_POSE = { on: true, axes: 'yaw', minDeg: 1, last: null };
-/* (2026-11-22) 얼굴 기준면용 두개골 — 원근 보정(HAIR_SCALP3D.persp)을 <b>되돌린</b> 크기
-   원근 보정 ×k(≈0.84)는 얼굴보다 8cm 뒤에 있는 머리 윤곽(정수리·뒤)에 맞춘 것인데, 얼굴 메쉬는 얼굴 평면 자 그대로라
-   얼굴을 그 줄어든 타원에 감으면 얼굴이 기준면보다 커진다(디버그 1212 t=1.625 · 1214 t=1.531 — 세로 0.595 vs 0.498).
-   얼굴과 이마는 얼굴 평면에 있으니 얼굴 기준면만 a·b·c를 ÷k. 두피·가닥·그리는 두개골은 그대로(보정 유지).
-   되돌리기 FACE_RULER_FIT_UNPERSP.on=false */
-var FACE_RULER_FIT_UNPERSP = { on: true };
-function faceRulerSkullEllipsoid(){
-  const s = getDisplaySkullEllipsoid();
-  if(!s || !FACE_RULER_FIT_UNPERSP.on || !(s.perspK > 0 && s.perspK < 1)) return s;
-  const k = s.perspK;
-  return Object.assign({}, s, { a: s.a / k, b: s.b / k, c: s.c / k, unpersp: k });
-}
 async function buildRealFaceMeshBase(faceMetrics){
   FACE_BUILD.sideYaw = {}; FACE_BUILD.reliefGain = null;
   FACE_BUILD.reliefCm = null; FACE_BUILD.cmPerUnit = null;
@@ -2178,7 +2166,7 @@ async function buildRealFaceMeshBase(faceMetrics){
      applyToHead=false면 k=1 — 예전과 <b>산술까지 동일</b>하다. */
   let FACE_Z_TO_SKULL = 1;
   try{
-    const _sk = faceRulerSkullEllipsoid();
+    const _sk = getDisplaySkullEllipsoid();
     if(_sk && ELL_C > 1e-6 && _sk.c > 0) FACE_Z_TO_SKULL = _sk.c / ELL_C;
   }catch(e){}
 
@@ -2273,7 +2261,7 @@ async function buildRealFaceMeshBase(faceMetrics){
     }
     _faceYTop = _yT; _faceYBot = _yB;
     try{
-      const _s0 = faceRulerSkullEllipsoid();
+      const _s0 = getDisplaySkullEllipsoid();
       _rulerSk = (_s0 && _s0.a > 1e-6 && _s0.b > 1e-6 && _s0.c > 1e-6) ? _s0 : null;
     }catch(e){ _rulerSk = null; }
     /* ── 얼굴이 두상보다 <b>넓은 타원</b>에 감긴다 (2026-08-31 12차) ───────────
@@ -2307,7 +2295,6 @@ async function buildRealFaceMeshBase(faceMetrics){
         + ellAForFace.toFixed(3) + '→' + _rulerSk.a.toFixed(3)
         + ' · 세로 ' + ELL_B.toFixed(3) + '→' + _rulerSk.b.toFixed(3)
         + ' (깊이는 이미 ×' + (ELL_C>1e-6 ? (_rulerSk.c/ELL_C).toFixed(3) : '—') + ')'
-        + (_rulerSk.unpersp ? ' · 원근 보정 ×' + _rulerSk.unpersp.toFixed(3) + ' 되돌림(얼굴 평면 자 · 끄기 FACE_RULER_FIT_UNPERSP.on=false)' : '')
         + (FACE_RULER_FIT.browBlend
             ? '\n      섞는 범위: 얼굴 y범위 위 ' + (FACE_RULER_FIT.fullFrac*100).toFixed(0)
               + '%까지 100% → ' + (FACE_RULER_FIT.zeroFrac*100).toFixed(0) + '%에서 0%'

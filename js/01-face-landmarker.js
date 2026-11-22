@@ -152,6 +152,34 @@ async function detectBackEarsByPose(angle){
   }catch(e){ console.warn('후면 귀 앵커 실패:', e); return null; }
 }
 
+/* ══════════════════════════════════════════════════════════════════
+   [얼굴 2D 기준] (2026-11-21) z 없이 — 좌우 대칭 쌍(눈꼬리 · 입꼬리)만으로
+   ─────────────────────────────────────────────────────────────────
+   사용자: "사진4장으로는 z값 제대로 안나와." · "눈꼬리랑 입꼬리는 넣어야 되지 않아?"
+   대칭 쌍 두 점은 깊이가 같다 → 정사영에서
+     · 쌍의 가운데 = 정중면(x=0) 위의 점 (돌려도 그대로)
+     · 쌍을 이은 선의 기울기 = 그 사진의 롤 (yaw로는 짧아질 뿐 안 기운다)
+     · 쌍의 폭 ÷ 세로 자(눈→턱) = cos(yaw) × 정면 값
+   쓰는 점: 눈꼬리 바깥 33·263 · 안쪽 133·362 · 입꼬리 61·291 · 턱끝 152. MediaPipe z는 안 씀.
+   저장: state.landmarks[angle].face2D (그 사진 px) — 13c가 yaw·롤·중심에 씀. 끄기 FACE_2D.on=false
+   ══════════════════════════════════════════════════════════════════ */
+const FACE_2D = { on: true };
+function face2DOf(angle){
+  const lm = state.landmarks && state.landmarks[angle];
+  if(!lm) return null;
+  lm.face2D = null;
+  if(!FACE_2D.on || lm._silhouette || !lm.rawLandmarks || lm.rawLandmarks.length < 468 || !lm.imgW) return null;
+  const W = lm.imgW, H = lm.imgH, P = i => ({ x: lm.rawLandmarks[i].x * W, y: lm.rawLandmarks[i].y * H });
+  const pair = (i, j)=>{ let a = P(i), b = P(j); if(a.x > b.x){ const t = a; a = b; b = t; }
+    return { mid: { x: (a.x+b.x)/2, y: (a.y+b.y)/2 }, w: Math.hypot(b.x-a.x, b.y-a.y), ang: Math.atan2(b.y-a.y, b.x-a.x) }; };
+  const eo = pair(33, 263), ei = pair(133, 362), mo = pair(61, 291);
+  const eyeMid = { x: (eo.mid.x + ei.mid.x)/2, y: (eo.mid.y + ei.mid.y)/2 };
+  const chin = P(152), eyeChin = chin.y - eyeMid.y;
+  if(!(eyeChin > 4)) return null;
+  lm.face2D = { W, H, eyeMid, eyeW: eo.w, eyeAng: (eo.ang + ei.ang)/2, mouthMid: mo.mid, mouthW: mo.w, mouthAng: mo.ang, eyeChin };
+  return lm.face2D;
+}
+
 async function detectFaceLandmarks(angle){
   if(!faceLandmarkerReady || !faceLandmarker) return null;
   const dataUrl = state.shots[angle]; if(!dataUrl) return null;
@@ -262,8 +290,11 @@ async function detectFaceLandmarks(angle){
                        // 정보)는 버리고 있었음. buildRealFaceMesh()가 이걸로 진짜 3D
                        // 얼굴 메쉬(FACE_MESH_TRI_V/VT/UV, MediaPipe 공식 토폴로지)를 만듦.
                        rawLandmarks: lm.map(p=>({x:p.x, y:p.y, z:p.z})) };
+        info.imgW = IW; info.imgH = IH;   // (2026-11-21) 2D 기준(face2D)이 px로 쓰는 사진 크기
         state.landmarks = state.landmarks || {};
         state.landmarks[angle] = info;
+        /* (2026-11-21) 대칭 쌍 2D 기준(눈꼬리·입꼬리) — 위 FACE_2D */
+        try{ face2DOf(angle); }catch(e){}
         resolve(info);
       } catch(e){
         window.__lmDiag = `[${angle}] detect() 예외: ` + (e && e.message ? e.message : e);

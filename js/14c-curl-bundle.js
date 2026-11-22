@@ -42,7 +42,6 @@
     cmPerUnit: 19.33,      // 자를 못 찾을 때 쓰는 기본값(모델 1단위 ≈ 19.33cm, 성인 두상 근사)
     relax: 1.45,           // 코일 반경 = 로드 반지름 × relax — 로드에서 풀고 나면 컬이 조금 벌어진다
     clumpPull: 0.3,        // 번들 중심 쪽으로 모으는 세기(0 = 안 모음)
-    phaseFromPos: true,    // (2026-11-18) 가닥 위상 = 번들 중심에서 본 제 자리의 각(로드 둘레) — false면 예전(칸 하나에 위상 하나 = 뭉텅이). windStrand 주석 참고
     clumpRampCm: 3,        // 감기 시작점에서 이 길이(cm)에 걸쳐 모으기가 0→1
     strength: 1,           // 코일 반경 전체 배율
     pitchThin: 1,          // 가는 로드의 피치 = 로드 지름 × 이 값
@@ -295,28 +294,6 @@
     var phMul = (hr - 0.5) * 2 * c.microPhase;
     var keys = extraKeys(root);
 
-    /* (2026-11-18) 위상을 <b>가닥이 로드 둘레의 어디에 있는가</b>로 — 사용자: "원본 사진처럼 고리가 생긴 게 아니라 뭉텅이처럼 됐다"
-       예전: 위상은 번들(칸) 하나에 <b>하나</b>였다(위 bundleFrame). 칸 크기 = 로드 지름 × rodK(1.5) ≈ 2.6cm이고 가닥이 3만 개라
-         칸 하나에 수백 가닥이 들어가는데, 그 수백이 <b>같은 위상·같은 감는 면</b>으로 감겼다(가닥끼리 다른 건 반경 ±microAmp 7% ·
-         위상 ±microPhase 0.12rad뿐). 거기에 clumpPull이 가닥을 칸 중심으로 당기니 속이 꽉 찬 덩어리가 된다.
-       사진의 고리는 가닥이 <b>로드 둘레로 흩어져 감겨 가운데가 비어서</b> 고리로 보인다. 위상을 공유하면 그 반대가 된다.
-       지금: 뿌리가 번들 중심에서 어느 쪽으로 얼마나 떨어져 있는지를 감는 면(u,v)에 투영해 그 <b>각</b>을 가닥의 위상으로 쓴다.
-         → 한 번들의 가닥들이 같은 축을 공유하되 둘레에 고르게 퍼져 관(= 고리)을 이룬다. 반경·피치·축은 그대로.
-       clumpPull은 그대로 둔다 — 위상이 퍼진 지금은 당김이 "축을 하나로 모으는" 일만 하므로 오히려 고리를 또렷하게 한다.
-       되돌리기 CURL_BUNDLE.phaseFromPos=false(예전 = 칸 하나에 위상 하나) */
-    var phPos = 0;
-    if (CB.phaseFromPos !== false && fr.ref && typeof SCALP_CENTER_Y !== 'undefined') {
-      var cyP = +SCALP_CENTER_Y;
-      if (isFinite(cyP)) {
-        var rrP = Math.hypot(root.x, root.y - cyP, root.z);
-        if (rrP > 1e-9) {
-          var ox = root.x - fr.ref.x * rrP, oy = root.y - (fr.ref.y * rrP + cyP), oz = root.z - fr.ref.z * rrP;
-          var du = ox * fr.u.x + oy * fr.u.y + oz * fr.u.z, dv = ox * fr.v.x + oy * fr.v.y + oz * fr.v.z;
-          if (Math.hypot(du, dv) > 1e-9) phPos = Math.atan2(dv, du);
-        }
-      }
-    }
-
     // 감기 전 구간은 그대로 복사
     var out = [];
     for (var i = 0; i < pts.length && S[i] < sWind; i++) out.push(pts[i]);
@@ -337,7 +314,7 @@
     for (var q = 0; q <= N; q++) {
       var a = axial * (q / N);
       var p = pointAt(pts, S, sWind + a, keys);
-      var ang = fr.phase + phPos + phMul + (a - axial) / c.pitch;   // 끝에서 위상이 번들 공통값 + 제 둘레 자리에 맞도록
+      var ang = fr.phase + phMul + (a - axial) / c.pitch;   // 끝에서 위상이 번들 공통값에 맞도록
       var rad = c.R * ampMul * Math.min(1, a / ramp);        // 시작부는 반경 0→R
       var cu = Math.cos(ang) * rad, sv = Math.sin(ang) * rad;
       if (pull) {
