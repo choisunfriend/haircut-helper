@@ -414,10 +414,7 @@ function modelCmPerUnit(){
    (yTop = CY + E.b, H = 2*E.b) 디스커넥션이 같은 좌표를 쓰게 되면서 두 벌이
    된다 — 이 파일이 반복해서 당한 자리라 먼저 뽑아 둔다.
 ══════════════════════════════════════════════════════════════════ */
-/* (2026-11-22c) 스타일(원본 머리 보기 제외)이 걸렸거나 거는 중인 마네킹이면 true — 손님 사진 실루엣으로 재클립 안 함.
-   11/16 레포엔 strictAnd가 없어 마네킹은 원래 안 잘렸다 → 스타일이 어깨까지. 이 브랜치는 strictAnd가 그 예외를 덮어써서
-   짧은 머리 손님 윤곽에서 스타일 가닥이 잘림(턱 위에서 뻗친 단발). 거는 중(_mqStyleApplying)도 포함 — specAppliedId는
-   applyStyleSpec가 끝난 뒤에야 붙어서 그 전에 지은 기하가 잘린 채 남았다. 되돌리기 MQ_TRUST.styleNoClip=false */
+/* (11-22) 스타일이 걸린(거는 중 포함) 마네킹 — 손님 사진 윤곽으로 안 자름 · 사진 웨이브 보정 안 함. 끄기 MQ_TRUST.styleNoClip=false */
 function mqStyleNoClip(model){
   try{
     if(typeof MQ_TRUST !== 'undefined' && MQ_TRUST.styleNoClip === false) return false;
@@ -937,11 +934,7 @@ function adjustStrandGeom(st, lenOverride, uni){
     /* (2026-11-17) 사진 실측 보정(43-photo-amp-gain) — 읽은 길은 그대로 두고, 그 출렁임만
        사진에서 잰 웨이브 진폭·컬 지름 비율로 키움(판정 없음 · 못 재면 그대로). STYLE_PATHS
        경로(위 if 앞)는 저장된 스펙이라 다시 보정하지 않음 — READ_SHAPE 경로에만 건다. */
-    /* (2026-11-22c) 스타일이 걸린 마네킹 가닥엔 안 건다 — 이 보정은 원본 머리(손님 사진 결읽기)의 진폭 한계를 메우는 것인데
-       위 if 밖이라 마네킹 스타일 가닥에도 손님 사진 웨이브 ×(1~6)·컬 ×(1~4)가 곱해졌다 → 펑퍼짐 + 앞·정수리 가닥이 얼굴 앞으로 출렁임.
-       clotheschange(11/16)엔 이 단계가 없다. 되돌리기 PHOTO_AMP_GAIN.styleMq=true */
-    const _ampSkip = !!(st.mannequin && typeof mqStyleNoClip === 'function' && mqStyleNoClip(st) && !(typeof PHOTO_AMP_GAIN !== 'undefined' && PHOTO_AMP_GAIN.styleMq));
-    out = (typeof PHOTO_AMP_GAIN !== 'undefined' && !_ampSkip) ? PHOTO_AMP_GAIN.applyToStrand(out, st.sec) : out;
+    out = (typeof PHOTO_AMP_GAIN !== 'undefined' && !mqStyleNoClip(st)) ? PHOTO_AMP_GAIN.applyToStrand(out, st.sec) : out;   // (11-22) 스타일 마네킹엔 안 씀
     STYLE_PATHS._record(st, out);   // (옛 69) 원본 머리를 볼 때 보이는 가닥 길 기록
   }
   /* ── (옛 64) 페이드가 다시 기른 머리·결 표 머리에도 먹게 — 모양이 다 만들어진 뒤 길이를 한 번 더 누름(04 SEG_ORIENT) ── */

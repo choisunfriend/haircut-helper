@@ -44,10 +44,7 @@ const MANNEQUIN = {
      스타일이 걸린 동안(·거는 중)엔 섹션 길이를 아래 cm로 — 실습용 긴 머리 마네킹. 손님 머리가 더 길면 손님 길이.
      해제하면 다시 손님 길이. 끄기 MANNEQUIN.styleLen=false · 길이 MANNEQUIN.styleLenCm.crown=… 후 스타일 다시 걸기 */
   styleLen: true,
-  /* (2026-11-22c) clotheschange(11/16) 레포 실측 마네킹 길이(같은 손님·layered_bob_hush) — 섹션 중앙값 cm.
-     그 레포는 사진 가닥 최장이 19~42cm라 마네킹이 15~18cm로 고르게 섰다. 이 브랜치는 38번 긋기 꼬리로 최장 44~104cm → 마네킹 26~53cm.
-     예전 값(30~35cm)은 두 배 길어 펑퍼짐 + 앞머리가 눈썹 아래까지 내려왔다. */
-  styleLenCm: { crown: 18, front: 15.3, temple: 15.5, side: 17.7, occipital: 17.8, nape: 17 }
+  styleLenCm: { crown: 18, front: 15.3, temple: 15.5, side: 17.7, occipital: 17.8, nape: 17 }   // (11-22) 실측 기준 마네킹 길이(cm)
   /* (2026-10-27) 10-22에 넣었던 "다시 기른 가닥에서 칸마다 길이"(lenFromRegrow·lenNbr)는
      10-27 업로드에서 빠졌다 — 길이는 다시 섹션·사진별 lenPct(lenFor)로 정한다. */
 };
@@ -203,13 +200,13 @@ var STYLE_TUNES = {
   },
   layered_bob_hush: {
     tipAt: {
-      front: 0.45   // (2026-11-22c) 11/15 웹 편집에서 front:0.45가 fringeTrim:true로 덮였던 것 복구(clotheschange 값)
+      front: 0.45   // (11-22) 11/15 편집에서 fringeTrim:true로 덮였던 값 복구
     }
   },
   wavy_bob_seethrough: {
     browCut: true,
     tipAt: {
-      front: 0.44   // (2026-11-22c) 복구 — 위와 같음
+      front: 0.44   // (11-22) 복구
     }
   },
   side_part_perm: {
@@ -1164,21 +1161,6 @@ function mqStyleLenSync() {
     if (_mqBuiltStyleMode !== null && _mqBuiltStyleMode !== mqStyleLenOn() && typeof state !== "undefined" && state) state.hair3Dmannequin = null;
   } catch (e) {}
 }
-/* (2026-11-22c) 스타일 마네킹이 흘러내리는 바깥 껍질 — 손님 실루엣(getHeadEllipsoid) 대신 두피 + 일정 두께.
-   가닥은 두피(S)에서 나와 껍질(E)에 닿으면 spread만큼 옆으로 벌어진다(growMannequinStrand). 이 브랜치는 실루엣 처리가 달라
-   E가 넓게 잡혀 턱 아래 반폭 11.3cm(clotheschange 7.5cm). 두피를 좁혀도(12b MQ_STYLE_SKULL) 그대로였던 이유.
-   스타일이 걸린 마네킹에서만 E.a·E.c를 두피×hullK로 묶는다(넓히지는 않음 · b는 그대로). hullK 조절: MQ_STYLE_SKULL.hullK · 끄기 .hull=false */
-function mqStyleHull(E, S) {
-  try {
-    if (!E || !S || typeof MQ_STYLE_SKULL === "undefined" || MQ_STYLE_SKULL.hull === false || typeof mqStyleSkullOn !== "function" || !mqStyleSkullOn()) return E;
-    const k = MQ_STYLE_SKULL.hullK || 1.08,
-      a = Math.min(E.a, S.a * k), c = Math.min(E.c, S.c * k);
-    if (a === E.a && c === E.c) return E;
-    const cm = typeof modelCmPerUnit === "function" ? modelCmPerUnit() || 16.4 : 16.4;
-    console.log("[마네킹·스타일 껍질] 손님 실루엣 껍질 a " + (E.a * cm).toFixed(1) + " c " + (E.c * cm).toFixed(1) + "cm → 두피×" + k + " a " + (a * cm).toFixed(1) + " c " + (c * cm).toFixed(1) + "cm (두피 a " + (S.a * cm).toFixed(1) + " · 조절 MQ_STYLE_SKULL.hullK · 끄기 .hull=false)");
-    return Object.assign({}, E, { a, c });
-  } catch (e) { return E; }
-}
 function buildMannequinHair3D() {
   _mqBuiltStyleMode = mqStyleLenOn();
   /** (9/23 원본 주석 — 코드가 바뀌어 제자리를 못 찾음)
@@ -1209,7 +1191,7 @@ function buildMannequinHair3D() {
     CY = src.CY,
     b = rf.b,
     S = getScalpEllipsoid(),
-    E = mqStyleHull(getHeadEllipsoid(), getScalpEllipsoid()),
+    E = getHeadEllipsoid(),
     yStep = (G.yTopH - G.yBot) / (G.NY - 1),
     bucketOfY = y => Math.min(G.NY - 1, Math.max(0, Math.round((G.yTopH - y) / yStep))),
     areas = headSurfaceCellAreas(G.hullW, G.hullD, bucketOfY, CY, b, NT, NP),
@@ -1265,12 +1247,9 @@ function buildMannequinHair3D() {
   let cmU = 16.4;
   try { cmU = typeof modelCmPerUnit === "function" ? modelCmPerUnit() || 16.4 : 16.4; } catch (e) {}
   const lenFor = styleMode
-    ? (sec, view) => ((MANNEQUIN.styleLenCm && MANNEQUIN.styleLenCm[sec]) || 30) / cmU   // (2026-11-22c) 손님 길이와 안 섞음
+    ? (sec, view) => ((MANNEQUIN.styleLenCm && MANNEQUIN.styleLenCm[sec]) || 30) / cmU   // (11-22) 손님 길이와 안 섞음(사진 가닥 꼬리 최장 44~104cm)
     : lenOwn;
-  /* (2026-11-22c) 스타일 마네킹은 섹션마다 표준 길이 한 값 — 손님 사진 가닥(38번 긋기 뒤 50cm 넘는 꼬리 섞임)과 max로 섞으면
-     끝 높이 풀이(extendPinned·measureSectionTipY)가 그 꼬리를 목표에 맞춰 짧은 슬라이더를 풀고 몸통은 턱 위에서 끝난다.
-     고르게 심으면 11/16 레포처럼 몸통이 목표 높이까지 내려온다. */
-  if (styleMode) console.log("[마네킹·스타일 길이] 표준 긴 머리로 심음(cm) — " + Object.keys(MANNEQUIN.styleLenCm || {}).map(k => k + " " + MANNEQUIN.styleLenCm[k]).join(" · ") + " · 손님 길이와 안 섞음 (끄기 MANNEQUIN.styleLen=false)");
+  if (styleMode) console.log("[마네킹·스타일 길이] 표준 긴 머리로 심음(cm) — " + Object.keys(MANNEQUIN.styleLenCm || {}).map(k => k + " " + MANNEQUIN.styleLenCm[k]).join(" · ") + " · 손님 머리가 더 긴 섹션은 손님 길이 (끄기 MANNEQUIN.styleLen=false)");
   const nCell = NT * NP,
     w = new Float64Array(nCell);
   let wSum = 0,
@@ -4621,73 +4600,9 @@ function applyStyleSpecAndRender(id, _retried) {
   }
   return rep;
 }
-/* (2026-11-22c) 화면 기준 길이 맞춤 — 사용자: "스타일을 바뀐 거에 대비해서 새로 바꿔야 돼"
-   역산(16 measureSectionTipY)은 <b>자르기·재클립 전</b> 가닥으로 끝 높이를 잰다. 11/08 이후 이 브랜치는 두상(HEAD_WIDTH_GUARD off ·
-   HAIR_SCALP3D skullFloor)·숱(HAIR_OVERLAP off)·재클립(strictAnd)이 clotheschange와 달라서, 역산이 맞춘 슬라이더로 <b>화면</b>을 그리면
-   끝이 스펙보다 위에서 끝났다(실기기: 보브가 턱 위). 그래서 스타일을 건 뒤 <b>화면에 그려질 가닥(_adjGeometry)</b>의 섹션별 끝 높이
-   중앙값을 재서 스펙 tipAt에 닿도록 슬라이더를 섹션마다 이분탐색으로 다시 맞춘다(모든 섹션 동시 · 한 번에 기하 1회).
-   마네킹 + 스타일(원본 머리 보기 제외)에서만 · tipAt 섹션만(lenCm·클리퍼는 그대로) · 가장 가까웠던 값을 남긴다(못 닿아도 나빠지지 않게).
-   끄기 MQ_DISPLAY_FIT.on=false · 반복 .iters · 표본 간격 .stride */
-var MQ_DISPLAY_FIT = { on: false,   // 기본 꺼짐(stylelen6 기준으로 길이 맞음 확인) · 켜기 MQ_DISPLAY_FIT.on=true
-  iters: 9, stride: 3, tol: 0.015, last: null };
-function mqDisplayFit(id, rep) {
-  const F = MQ_DISPLAY_FIT;
-  if (!F.on || !id || id === "__original__" || !MANNEQUIN.on) return null;
-  if (typeof _adjGeometry !== "function" || typeof headHeightRef !== "function") return null;
-  const sp = getStyleSpec(id), R = headHeightRef();
-  if (!sp || !sp.tipAt || !R) return null;
-  const secs = Object.keys(sp.tipAt).filter(k => typeof sp.tipAt[k] === "number" && state.sections[k] &&
-    !(sp.lenCm && sp.lenCm[k] != null) && !(rep && rep.unit && rep.unit[k] === "clipper"));
-  if (!secs.length) return null;
-  const bump = () => { try { if (typeof ADJ_CACHE !== "undefined" && ADJ_CACHE.bump) ADJ_CACHE.bump(); } catch (e) {} };
-  const measure = () => {
-    bump();
-    const g = _adjGeometry(null, F.stride) || [], by = {};
-    for (const st of g) {
-      if (!st || !st.pts || st.pts.length < 2 || secs.indexOf(st.sec) < 0) continue;
-      (by[st.sec] || (by[st.sec] = [])).push(st.pts[st.pts.length - 1].y);
-    }
-    const out = {};
-    for (const k of secs) {
-      const a = by[k];
-      if (!a || a.length < 4) { out[k] = null; continue; }
-      a.sort((x, y) => x - y);
-      out[k] = (R.yTop - a[(a.length * 0.5) | 0]) / R.H;   // 0 = 정수리 · 1 ≈ 턱
-    }
-    return out;
-  };
-  const t0 = Date.now(), start = {}, lo = {}, hi = {}, best = {};
-  for (const k of secs) { start[k] = state.sections[k].length; lo[k] = 0; hi[k] = 100; }
-  const m0 = measure();
-  for (const k of secs) best[k] = { v: start[k], e: m0[k] == null ? Infinity : Math.abs(m0[k] - sp.tipAt[k]), got: m0[k], got0: m0[k] };
-  const live = secs.filter(k => m0[k] != null && best[k].e > F.tol);
-  for (let it = 0; it < F.iters && live.length; it++) {
-    for (const k of live) state.sections[k].length = Math.round((lo[k] + hi[k]) / 2);
-    const m = measure();
-    for (let i = live.length - 1; i >= 0; i--) {
-      const k = live[i], got = m[k], v = state.sections[k].length;
-      if (got == null) { live.splice(i, 1); continue; }
-      const e = Math.abs(got - sp.tipAt[k]);
-      if (e < best[k].e) best[k] = { v, e, got, got0: best[k].got0 };
-      if (got < sp.tipAt[k]) lo[k] = v; else hi[k] = v;   // 끝이 목표보다 위 = 짧다 → 늘림
-      if (e <= F.tol || hi[k] - lo[k] <= 1) live.splice(i, 1);
-    }
-  }
-  for (const k of secs) {
-    state.sections[k].length = best[k].v;
-    if (rep && rep.solved) rep.solved[k] = best[k].v;
-  }
-  bump();
-  F.last = { id, ms: Date.now() - t0, secs: secs.map(k => ({ sec: k, target: sp.tipAt[k], before: best[k].got0, after: best[k].got, from: start[k], to: best[k].v })) };
-  console.log("[스타일·화면맞춤] " + id + " (" + F.last.ms + "ms) — " + F.last.secs.map(o =>
-    o.sec + " 목표 " + o.target.toFixed(2) + " · 화면 " + (o.before == null ? "-" : o.before.toFixed(2)) + "→" + (o.after == null ? "-" : o.after.toFixed(2)) +
-    " (슬라이더 " + o.from + "→" + o.to + ")").join(" | ") + "  (0=정수리 1≈턱 · 끄기 MQ_DISPLAY_FIT.on=false)");
-  return F.last;
-}
 function _applyStyleSpecBody(id, undo) {
   const rep = applyStyleSpec(id);
   if (!rep) return null;
-  try { mqDisplayFit(id, rep); } catch (e) { console.warn("[스타일·화면맞춤] 실패 — 역산 값 그대로", e); }
   state._specUndo = undo, state.specAppliedId = id;
   if (typeof buildGyPanel === "function") buildGyPanel();else {
     if (typeof buildGyControls === "function") buildGyControls();
