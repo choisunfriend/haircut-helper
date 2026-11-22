@@ -275,11 +275,20 @@ function getFaceHalfWidthMesh(){
     const parts = FACE_ANCHOR.cheekPts.map(i=>{
       const c = faceCheekState('front', i), mesh = Math.abs(proj.toMeshX(lm.rawLandmarks[i].x));
       const edge = (c.edgeX != null) ? Math.abs(proj.toMeshX(c.edgeX)) : null;
-      const v = c.st === 'measured' ? edge : c.st === 'hairEdge' ? Math.max(mesh, edge) : mesh;
-      return { st: c.st, mesh, edge, v };
+      let st = c.st;
+      /* (2026-11-22) 귀 거름 — 볼 234/454는 귀구슬 높이라 같은 줄을 바깥으로 훑으면 <b>귀</b>(사람·머리 아님)를 지나
+         배경에서 멈춘다 → 'measured'가 귀 바깥 끝. 디버그 1214(짧은 직모): 메쉬 0.362 → 경계 0.404 / 0.431(귀 폭 +12~19%)
+         → 두개골 하한 0.461(17.8cm) · 헐 0.363을 넘어 모발 두께 옆 −0.02(두개골이 머리를 뚫음).
+         관골궁 폭은 메쉬 가장자리와 몇 % 안에서만 다르다 — cheekMaxRatio 넘게 바깥이면 귀/머리 덩어리로 보고 메쉬를 씀. */
+      const rMax = FACE_ANCHOR.cheekMaxRatio || 1.06;
+      if(edge != null && (st === 'measured' || st === 'hairEdge') && edge > mesh * rMax) st = st === 'measured' ? 'ear' : 'hairFar';
+      const v = st === 'measured' ? edge : st === 'hairEdge' ? Math.max(mesh, edge) : mesh;
+      return { st, mesh, edge, v };
     });
     if(!parts.some(p=>p.st === 'measured' || p.st === 'hairEdge')){ _faceWLog(m, m, parts); return m; }
-    const out = Math.max.apply(null, parts.map(p=>p.v));
+    /* 양쪽이 다 쓸 만하면 평균(얼굴은 좌우 대칭 — 한쪽 튐을 최댓값이 키우지 않게) · 한쪽만이면 그쪽과 메쉬 중 큰 값 */
+    const ok = parts.filter(p=>p.st === 'measured' || p.st === 'hairEdge');
+    const out = ok.length === parts.length ? ok.reduce((s,p)=>s + p.v, 0) / ok.length : Math.max(m, ok[0].v);
     _faceWLog(m, out, parts);
     return out;
   }catch(e){ return 0; }
@@ -289,7 +298,7 @@ function _faceWLog(m, out, parts){
   if(_faceWLog._k === key) return; _faceWLog._k = key;
   console.log('[얼굴 폭·볼 판정] 정면 반폭 ' + out.toFixed(3) + (Math.abs(out - m) > 1e-4 ? ' (메쉬 ' + m.toFixed(3) + ' → 바꿈)' : ' (메쉬 그대로)')
     + ' · 볼 234/454 ' + parts.map(p=>p.st + ' 메쉬 ' + p.mesh.toFixed(3) + (p.edge != null ? ' 경계 ' + p.edge.toFixed(3) : '')).join(' / ')
-    + ' — measured = 볼→배경(실측) · hairEdge = 볼→머리(하한) · hidden = 머리가 덮음(메쉬 추정)');
+    + ' — measured = 볼→배경(실측) · hairEdge = 볼→머리(하한) · hidden = 머리가 덮음(메쉬 추정) · ear/hairFar = 메쉬×' + (FACE_ANCHOR.cheekMaxRatio || 1.06) + ' 넘게 바깥(귀·머리 덩어리 — 메쉬 씀)');
 }
 /* ══════════════════════════════════════════════════════════════════
    헤어라인 대조 — 두상 폭을 <b>순환 없이</b> 검증한다 (2026-08-19)
@@ -373,7 +382,10 @@ const HAIR_SCALP3D = {
      디버그 1513(360 · 폰): 뒤 사진에서 두피 꼭대기가 머리 윤곽보다 0.4cm 위 · 두께 중앙 0.3cm · 두께 0 칸 490 → 실루엣 길이 1~2cm("반 대머리").
      보정: 두개골 a·b(·c)에 D/(D+perspDepthCm) — D = 정면 사진 얼굴까지 거리(MediaPipe 포즈 행렬 이동값). 거리를 못 얻으면 1(예전 그대로).
      되돌리기 HAIR_SCALP3D.persp=false */
-  persp: true, perspDepthCm: 8, perspMinK: 0.8,
+  /* (2026-11-22) 기본 끔 — 디버그 1456~1509 단계별 끄기: 끄자 얼굴 넘침이 없어짐(사용자 확인).
+     얼굴 메쉬는 얼굴 평면 자 그대로인데 두개골만 ×0.84로 줄여 얼굴이 두개골보다 커졌고(기준면 t 1.53~1.63),
+     깊이 c = a×1.20도 따라 줄어 두개골 앞뒤가 사람 범위 밖(13~15cm)이 됐다. 다시 켜기 HAIR_SCALP3D.persp=true */
+  persp: false, perspDepthCm: 8, perspMinK: 0.8,
   /* ══════════════════════════════════════════════════════════════════
      두개골 반폭을 <b>얼굴 반폭과 같게</b> 놓고 있었다 (2026-09-14)
      ─────────────────────────────────────────────────────────────────

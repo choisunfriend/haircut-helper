@@ -1197,7 +1197,8 @@ const FACE_ANCHOR = {
      색은 안 본다(피부톤·그늘에 흔들림) — 머리 마스크·사람 윤곽만. */
   cheekPts: [234, 454],
   scanFrac: 0.15,      // 사진 폭의 이 비율까지만 훑음
-  maxGapFrac: 0.06,    // 점에서 경계까지 이보다 멀면 점 자체를 못 믿음(unknown)
+  maxGapFrac: 0.06,
+  cheekMaxRatio: 1.06, // (2026-11-22) 경계가 메쉬 볼 점보다 이 배 넘게 바깥이면 귀 — 12b getFaceHalfWidthMesh에서 메쉬로 되돌림 · 끄기 = 9    // 점에서 경계까지 이보다 멀면 점 자체를 못 믿음(unknown)
   last: {},
 };
 function _faceMaskAt(mi, ix, iy){
