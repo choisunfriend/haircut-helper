@@ -6847,6 +6847,12 @@ var FLOW_SPEC = (function () {
     lenStep: 0.25,       // 이웃 칸과 길이를 섞는 한도 — 이보다 크게 다르면(앞머리 ↔ 긴 머리) 안 섞음
     smoothPasses: 2, smoothDot: 0.8,   // 이웃 칸과 고르는 횟수 · 같은 쪽으로 가는 무리로 보는 기준(cos)
     // ── 마네킹 없이(제 머리 바탕)
+    /* (2026-11-22) 스타일 걸기는 마네킹+표로 — 사용자: "스타일을 원래 스타일 자체가 적용되었을 때의 모습을 보기 위한 거기 때문에"
+       제 머리 바탕(native)은 길이를 손님 칸 길이 × natLenMax(4)까지만 허용 → 42번 실루엣 길이(11/10)가 짧은 머리 손님의 다시 기른 가닥을
+       2~3cm로 자른 뒤부터는 스타일이 손님 머리 길이에 묶여 짧게 나옴(같은 스타일이 11/16 레포에선 원래 길이).
+       false = 스타일은 마네킹을 켜고 결 표대로 만든 가닥으로(다른 손님 두상에도 같은 모양) · 손님 원본(컬 손님) 보기는 아래 native 그대로.
+       예전(제 머리 바탕으로 걸기) FLOW_SPEC.nativeStyle=true */
+    nativeStyle: false,
     native: true,        // 마네킹 없이 만든 스타일은 마네킹을 안 켜고 손님의 다시 기른 머리 위에 얹음 · 컬이 nativeCurl 이상인 손님의 원본은 다시 기른 머리로 보여 줌
     nativeCurl: 0,       // (2026-10-10t) 0 — 컬 손님 원본도 마네킹 + 잰 값(61번 ④가 잰 반경·간격으로 감음). 예전 값 40      // 잰 컬이 이 값 이상이면 원본 = 다시 기른 머리(42번이 결 정렬을 끄는 기준과 같은 값) · 0 = 컬과 무관하게 마네킹+표
     natResMax: 75,       // 도: 가닥이 제 결에서 벗어나 있던 각을 이만큼까지만 인정(거꾸로 간 가닥은 이 각으로 눌림)
@@ -7616,7 +7622,7 @@ var FLOW_SPEC = (function () {
   FS._asr = function (id) {
     if (asrPlain) return { handled: false };
     var sp = null; try { sp = getStyleSpec(id); } catch (e) {}
-    if (!(FS.on && FS.native && sp && sp.flow && sp.base === 'regrown')) { nat.id = null; nat.pending = null; try { clearTimeout(nat.timer); } catch (e) {} return { handled: false }; }
+    if (!(FS.on && FS.native && FS.nativeStyle !== false && sp && sp.flow && sp.base === 'regrown')) { nat.id = null; nat.pending = null; try { clearTimeout(nat.timer); } catch (e) {} return { handled: false }; }
     if (nat.id === id && natSpec()) { unapplyNative(); return { handled: true, value: null }; }       // 같은 스타일을 다시 누름 = 해제
     return { handled: true, value: startNative(id) };
   };
