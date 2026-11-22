@@ -24,10 +24,7 @@ var DEVICE_AUDIT = (function () {
     ['ROOTS_FALLBACK.fill', '뿌리 밀도 0이면 균일 격자', function () { return v('ROOTS_FALLBACK', 'fill'); }],
     ['REGROW.hairlineFill', '맨살로 본 이마 위 칸에 뿌리 채움', function () { var x = v('REGROW', 'hairlineFill'); return x === undefined ? true : x; }],
     ['REGROW.thinLen', '얇은 뿌리 길이를 두께×2.2로 자름', function () { return v('REGROW', 'thinLen'); }],
-    ['HEAD_WIDTH_GUARD.on', '두상 폭을 얼굴 폭 기준으로 늘림·줄임', function () { return v('HEAD_WIDTH_GUARD', 'on'); }],
-    /* (2026-11-21c) 대조의 가림 모형·헤어 몸체 회전 — 둘 다 "결과를 사후에 손보는" 쪽이라 여기서 같이 찍는다 */
-    ['PHOTO_CHECK.occ', '대조에서 가린다고 본 점을 넘침에서 뺌(두피 타원·턱/귀·목 기둥)', function () { return v('PHOTO_CHECK', 'occ'); }],
-    ['HEAD_TILT.hull', '그린 뒤 헤어 몸체만 돌려 헐 축을 맞춤(두상과 따로 움직임)', function () { return v('HEAD_TILT', 'hull'); }]
+    ['HEAD_WIDTH_GUARD.on', '두상 폭을 얼굴 폭 기준으로 늘림·줄임', function () { return v('HEAD_WIDTH_GUARD', 'on'); }]
   ];
   var KEEP = [
     ['정수리 보강', '어느 사진도 정면으로 못 보는 정수리 밀도를 제대로 본 칸의 실측 중앙값으로 — 데이터 없는 자리의 추정'],
