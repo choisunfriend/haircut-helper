@@ -4606,9 +4606,73 @@ function applyStyleSpecAndRender(id, _retried) {
   }
   return rep;
 }
+/* (2026-11-22c) 화면 기준 길이 맞춤 — 사용자: "스타일을 바뀐 거에 대비해서 새로 바꿔야 돼"
+   역산(16 measureSectionTipY)은 <b>자르기·재클립 전</b> 가닥으로 끝 높이를 잰다. 11/08 이후 이 브랜치는 두상(HEAD_WIDTH_GUARD off ·
+   HAIR_SCALP3D skullFloor)·숱(HAIR_OVERLAP off)·재클립(strictAnd)이 clotheschange와 달라서, 역산이 맞춘 슬라이더로 <b>화면</b>을 그리면
+   끝이 스펙보다 위에서 끝났다(실기기: 보브가 턱 위). 그래서 스타일을 건 뒤 <b>화면에 그려질 가닥(_adjGeometry)</b>의 섹션별 끝 높이
+   중앙값을 재서 스펙 tipAt에 닿도록 슬라이더를 섹션마다 이분탐색으로 다시 맞춘다(모든 섹션 동시 · 한 번에 기하 1회).
+   마네킹 + 스타일(원본 머리 보기 제외)에서만 · tipAt 섹션만(lenCm·클리퍼는 그대로) · 가장 가까웠던 값을 남긴다(못 닿아도 나빠지지 않게).
+   끄기 MQ_DISPLAY_FIT.on=false · 반복 .iters · 표본 간격 .stride */
+var MQ_DISPLAY_FIT = { on: false,   // 기본 꺼짐(stylelen6 기준으로 길이 맞음 확인) · 켜기 MQ_DISPLAY_FIT.on=true
+  iters: 9, stride: 3, tol: 0.015, last: null };
+function mqDisplayFit(id, rep) {
+  const F = MQ_DISPLAY_FIT;
+  if (!F.on || !id || id === "__original__" || !MANNEQUIN.on) return null;
+  if (typeof _adjGeometry !== "function" || typeof headHeightRef !== "function") return null;
+  const sp = getStyleSpec(id), R = headHeightRef();
+  if (!sp || !sp.tipAt || !R) return null;
+  const secs = Object.keys(sp.tipAt).filter(k => typeof sp.tipAt[k] === "number" && state.sections[k] &&
+    !(sp.lenCm && sp.lenCm[k] != null) && !(rep && rep.unit && rep.unit[k] === "clipper"));
+  if (!secs.length) return null;
+  const bump = () => { try { if (typeof ADJ_CACHE !== "undefined" && ADJ_CACHE.bump) ADJ_CACHE.bump(); } catch (e) {} };
+  const measure = () => {
+    bump();
+    const g = _adjGeometry(null, F.stride) || [], by = {};
+    for (const st of g) {
+      if (!st || !st.pts || st.pts.length < 2 || secs.indexOf(st.sec) < 0) continue;
+      (by[st.sec] || (by[st.sec] = [])).push(st.pts[st.pts.length - 1].y);
+    }
+    const out = {};
+    for (const k of secs) {
+      const a = by[k];
+      if (!a || a.length < 4) { out[k] = null; continue; }
+      a.sort((x, y) => x - y);
+      out[k] = (R.yTop - a[(a.length * 0.5) | 0]) / R.H;   // 0 = 정수리 · 1 ≈ 턱
+    }
+    return out;
+  };
+  const t0 = Date.now(), start = {}, lo = {}, hi = {}, best = {};
+  for (const k of secs) { start[k] = state.sections[k].length; lo[k] = 0; hi[k] = 100; }
+  const m0 = measure();
+  for (const k of secs) best[k] = { v: start[k], e: m0[k] == null ? Infinity : Math.abs(m0[k] - sp.tipAt[k]), got: m0[k], got0: m0[k] };
+  const live = secs.filter(k => m0[k] != null && best[k].e > F.tol);
+  for (let it = 0; it < F.iters && live.length; it++) {
+    for (const k of live) state.sections[k].length = Math.round((lo[k] + hi[k]) / 2);
+    const m = measure();
+    for (let i = live.length - 1; i >= 0; i--) {
+      const k = live[i], got = m[k], v = state.sections[k].length;
+      if (got == null) { live.splice(i, 1); continue; }
+      const e = Math.abs(got - sp.tipAt[k]);
+      if (e < best[k].e) best[k] = { v, e, got, got0: best[k].got0 };
+      if (got < sp.tipAt[k]) lo[k] = v; else hi[k] = v;   // 끝이 목표보다 위 = 짧다 → 늘림
+      if (e <= F.tol || hi[k] - lo[k] <= 1) live.splice(i, 1);
+    }
+  }
+  for (const k of secs) {
+    state.sections[k].length = best[k].v;
+    if (rep && rep.solved) rep.solved[k] = best[k].v;
+  }
+  bump();
+  F.last = { id, ms: Date.now() - t0, secs: secs.map(k => ({ sec: k, target: sp.tipAt[k], before: best[k].got0, after: best[k].got, from: start[k], to: best[k].v })) };
+  console.log("[스타일·화면맞춤] " + id + " (" + F.last.ms + "ms) — " + F.last.secs.map(o =>
+    o.sec + " 목표 " + o.target.toFixed(2) + " · 화면 " + (o.before == null ? "-" : o.before.toFixed(2)) + "→" + (o.after == null ? "-" : o.after.toFixed(2)) +
+    " (슬라이더 " + o.from + "→" + o.to + ")").join(" | ") + "  (0=정수리 1≈턱 · 끄기 MQ_DISPLAY_FIT.on=false)");
+  return F.last;
+}
 function _applyStyleSpecBody(id, undo) {
   const rep = applyStyleSpec(id);
   if (!rep) return null;
+  try { mqDisplayFit(id, rep); } catch (e) { console.warn("[스타일·화면맞춤] 실패 — 역산 값 그대로", e); }
   state._specUndo = undo, state.specAppliedId = id;
   if (typeof buildGyPanel === "function") buildGyPanel();else {
     if (typeof buildGyControls === "function") buildGyControls();
