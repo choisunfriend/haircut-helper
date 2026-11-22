@@ -5487,6 +5487,7 @@ function helixMeasure(rgba,mask,W,H,angle,coh,opt){opt=opt||{};const n=opt.n||25
   }
   G.clumpFindFn = clumpFind;
   var CLUMPS = new WeakMap();                                               // 사진 분석값(identity) → 조각 지도(저장소에 안 들어가게 따로 둠)
+  G.clumpsSet = function (id, c) { try { if (id && c) CLUMPS.set(id, c); } catch (e) {} };   // (2026-11-22) 45 MASK_CACHE가 보관된 분석을 되돌릴 때
   G.clumpsFor = function (angle) { try { var mi = state.hairMasks && state.hairMasks[angle], id = mi && mi.identity; return id ? (CLUMPS.get(id) || null) : null; } catch (e) { return null; } };
 
   /* 컬·타래 재기 — computeHairOrientationField(04) 끝에서 재 두고, measureViewHairIdentity(03a) 끝에서 그 뷰 값에 붙임 */

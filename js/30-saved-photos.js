@@ -41,6 +41,8 @@
     var out = {}, n = 0;
     (typeof ANGLES !== 'undefined' ? ANGLES : ['front', 'left', 'right', 'back']).forEach(function (a) {
       var s = state.shots && state.shots[a];
+      // (2026-11-22) 머리 키우기(03b)로 바뀐 사진이면 키우기 전 원본을 저장 — 45 MASK_CACHE 지문도 원본 기준
+      try { if (s && state._zoomedShot && state._zoomedShot[a] === s && state._zoomFrom && state._zoomFrom[a]) s = state._zoomFrom[a]; } catch (e) {}
       if (s) { out[a] = s; n++; }
     });
     return n ? out : null;
@@ -75,6 +77,9 @@
       document.body.appendChild(wrap);
     });
   }
+  /* (2026-11-22) 45 MASK_CACHE — 저장된 사진의 머리 추출 결과도 기기에 보관(다음엔 추출 없이 바로 스타일로) */
+  function keepAnalysis(shots) { try { if (G.MASK_CACHE) G.MASK_CACHE.keep(shots || {}); } catch (e) {} }
+  function dropAnalysis() { try { if (G.MASK_CACHE) G.MASK_CACHE.clear(); } catch (e) {} }
   function toast(msg) { try { if (typeof showToast === 'function') showToast(msg); } catch (e) {} }
 
   /* ── 1. Ask to save when leaving the capture screen ──────────────────── */
@@ -96,6 +101,7 @@
               try {
                 await putSaved({ shots: shots, at: Date.now() });
                 savedSig = s; toast('Photos saved on this device');
+                keepAnalysis(shots);
                 refreshButtons(true);
               } catch (e) { console.warn('[Saved photos] save failed', e); toast('Could not save photos (storage full or blocked)'); }
             }
@@ -142,7 +148,7 @@
     document.getElementById('delSavedBtn').onclick = function () {
       ask('Delete saved photos?', 'The saved photos will be removed from this device.', 'Delete', 'Cancel').then(function (y) {
         if (!y) return;
-        delSaved().then(function () { savedSig = null; refreshButtons(false); toast('Saved photos deleted'); });
+        delSaved().then(function () { savedSig = null; dropAnalysis(); refreshButtons(false); toast('Saved photos deleted'); });
       });
     };
   }
@@ -150,7 +156,7 @@
   function init() {
     if (typeof indexedDB === 'undefined') return;
     getSaved().then(function (rec) {
-      if (rec && rec.shots) { savedSig = sig(rec.shots); refreshButtons(true); }
+      if (rec && rec.shots) { savedSig = sig(rec.shots); refreshButtons(true); keepAnalysis(rec.shots); }
     });
   }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init); else init();
