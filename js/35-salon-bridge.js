@@ -160,7 +160,7 @@ function salonL(ko, en) { try { return typeof uiLang !== 'undefined' && uiLang =
     salonOpen = true;
     const ok = openShopPanel();
     const fr = document.getElementById('bbShopFrame');
-    if (fr) fr.title = salonL('미용실 지도', 'Salon map');
+    if (fr) fr.title = salonL('매장 지도', 'Shop map');
     const bar = document.querySelector('#bbShopPanel .bb-shop-bar span');
     if (bar) bar.textContent = salonL('미용실 지도', 'Salon map');
     if (typeof buildBodyGarmentRack === 'function') buildBodyGarmentRack();
@@ -187,8 +187,8 @@ function salonL(ko, en) { try { return typeof uiLang !== 'undefined' && uiLang =
           const b = document.createElement('button');
           b.type = 'button';
           b.className = 'bb-salon-btn' + (salonOpen ? ' on' : '');
-          b.textContent = salonOpen ? salonL('미용실 닫기', 'Close salons') : salonL('미용실', 'Salons');
-          b.title = salonL('근처 미용실 지도에서 헤어스타일을 골라 입어 봅니다', 'Find salons nearby and try their hairstyles');
+          b.textContent = salonOpen ? salonL('맵 닫기', 'Close map') : salonL('맵에서 고르기', 'Pick on map');
+          b.title = salonL('근처 미용실·옷가게를 지도에서 골라 입어 봅니다', 'Pick salons and clothing shops nearby on the map and try them on');
           b.addEventListener('click', () => (salonOpen ? closeShopPanel() : openSalonMap()));
           rack.appendChild(b);
           // 지도가 열려 있을 땐 「옷 닫기」 대신 「옷 고르기」로 보이게
