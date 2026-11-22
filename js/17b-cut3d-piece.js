@@ -414,6 +414,19 @@ function modelCmPerUnit(){
    (yTop = CY + E.b, H = 2*E.b) 디스커넥션이 같은 좌표를 쓰게 되면서 두 벌이
    된다 — 이 파일이 반복해서 당한 자리라 먼저 뽑아 둔다.
 ══════════════════════════════════════════════════════════════════ */
+/* (2026-11-22c) 스타일(원본 머리 보기 제외)이 걸렸거나 거는 중인 마네킹이면 true — 손님 사진 실루엣으로 재클립 안 함.
+   11/16 레포엔 strictAnd가 없어 마네킹은 원래 안 잘렸다 → 스타일이 어깨까지. 이 브랜치는 strictAnd가 그 예외를 덮어써서
+   짧은 머리 손님 윤곽에서 스타일 가닥이 잘림(턱 위에서 뻗친 단발). 거는 중(_mqStyleApplying)도 포함 — specAppliedId는
+   applyStyleSpec가 끝난 뒤에야 붙어서 그 전에 지은 기하가 잘린 채 남았다. 되돌리기 MQ_TRUST.styleNoClip=false */
+function mqStyleNoClip(model){
+  try{
+    if(typeof MQ_TRUST !== 'undefined' && MQ_TRUST.styleNoClip === false) return false;
+    if(!model || !model.mannequin) return false;
+    if(typeof _mqStyleApplying !== 'undefined' && _mqStyleApplying) return true;
+    const sid = state.specAppliedId;
+    return !!(sid && sid !== '__original__');
+  }catch(e){ return false; }
+}
 function headHeightRef(){
   const m = state.hair3Dneutral;
   let E = null;
@@ -9523,7 +9536,7 @@ function adjCacheSig(model, srcAngleFilter, stp){
              maxDisp도 같이 본다(같은 획 수에서 세기만 달라지는 경우). */
           (typeof COMB !== 'undefined' && COMB.grid)
             ? (COMB.strokes.length + ':' + (COMB.maxDisp||0).toFixed(4)) : 0,
-          HAIR_OCC3D.clipAdjusted ? 1 : 0, HAIR_OCC3D.moveGrow ? 1 : 0,
+          HAIR_OCC3D.clipAdjusted ? 1 : 0, mqStyleNoClip(model) ? 1 : 0, HAIR_OCC3D.moveGrow ? 1 : 0,
           CUT3D.on ? 1 : 0,
           /* 조각(2026-08-29) — adjustStrandGeom이 <b>새로 읽는 값</b>이라 반드시
              여기 들어와야 한다. 조각은 길이를 바꾸므로 <b>기하</b> 쪽이다
@@ -9916,7 +9929,7 @@ function _adjGeometry(srcAngleFilter, stride){
   /* 마네킹이면 <b>손님의 옛 머리 실루엣</b>이 기준이 되는 이 재클립을 닫는다.
      머리를 묶고 온 손님이면 귀 앞·뺨에 머리카락이 없어 옆머리가 정의상
      전멸한다(MQ_TRUST 배너). 되돌리기: MQ_TRUST.photoClip3D = false */
-  const occ = (HAIR_OCC3D.clipAdjusted && (HAIR_OCC3D.strictAnd || !(MQ_TRUST.photoClip3D && model.mannequin && MQ_TRUST.on)))
+  const occ = (HAIR_OCC3D.clipAdjusted && !mqStyleNoClip(model) && (HAIR_OCC3D.strictAnd || !(MQ_TRUST.photoClip3D && model.mannequin && MQ_TRUST.on)))
     ? ((model.occ && model.occ.probe) || (state.hairOcc3D && state.hairOcc3D.probe) || null)
     : null;
   const occAcc = occ ? { n:0, dropped:0, trimmed:0, removedPts:0, faceBlocked:0 } : null;
