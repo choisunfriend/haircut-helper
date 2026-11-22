@@ -414,14 +414,6 @@ function modelCmPerUnit(){
    (yTop = CY + E.b, H = 2*E.b) 디스커넥션이 같은 좌표를 쓰게 되면서 두 벌이
    된다 — 이 파일이 반복해서 당한 자리라 먼저 뽑아 둔다.
 ══════════════════════════════════════════════════════════════════ */
-/* (2026-11-22) 스타일(원본 머리 보기 제외)이 걸린 마네킹이면 true — 조정 후 재클립을 안 함(아래 occ · 28번 makeCtx 공용) */
-function mqStyleNoClip(model){
-  try{
-    if(typeof MQ_TRUST !== 'undefined' && MQ_TRUST.styleNoClip === false) return false;
-    const sid = state.specAppliedId;
-    return !!(model && model.mannequin && sid && sid !== '__original__');
-  }catch(e){ return false; }
-}
 function headHeightRef(){
   const m = state.hair3Dneutral;
   let E = null;
@@ -9924,11 +9916,7 @@ function _adjGeometry(srcAngleFilter, stride){
   /* 마네킹이면 <b>손님의 옛 머리 실루엣</b>이 기준이 되는 이 재클립을 닫는다.
      머리를 묶고 온 손님이면 귀 앞·뺨에 머리카락이 없어 옆머리가 정의상
      전멸한다(MQ_TRUST 배너). 되돌리기: MQ_TRUST.photoClip3D = false */
-  /* (2026-11-22) 스타일이 걸린 마네킹은 손님 사진 실루엣으로 안 자름 — 사용자: "스타일 자체가 적용되었을 때의 모습을 보기 위한 거"
-     11-02 strictAnd(전원 일치)가 위 마네킹 예외를 덮어써서 스타일 가닥이 손님 머리 윤곽에서 잘렸다(11/16 레포엔 strictAnd 없음 → 어깨까지).
-     같은 슬라이더에서 끝 높이 풀이는 턱 아래까지 내려가는데 화면은 턱 위(측정: side 풀이 끝 −0.61 · 화면 가닥 중앙 4.8cm).
-     원본 머리 보기(__original__)·맨 마네킹은 예전 그대로. 되돌리기 MQ_TRUST.styleNoClip=false */
-  const occ = (HAIR_OCC3D.clipAdjusted && !mqStyleNoClip(model) && (HAIR_OCC3D.strictAnd || !(MQ_TRUST.photoClip3D && model.mannequin && MQ_TRUST.on)))
+  const occ = (HAIR_OCC3D.clipAdjusted && (HAIR_OCC3D.strictAnd || !(MQ_TRUST.photoClip3D && model.mannequin && MQ_TRUST.on)))
     ? ((model.occ && model.occ.probe) || (state.hairOcc3D && state.hairOcc3D.probe) || null)
     : null;
   const occAcc = occ ? { n:0, dropped:0, trimmed:0, removedPts:0, faceBlocked:0 } : null;

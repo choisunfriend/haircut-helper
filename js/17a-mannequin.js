@@ -1247,15 +1247,9 @@ function buildMannequinHair3D() {
   let cmU = 16.4;
   try { cmU = typeof modelCmPerUnit === "function" ? modelCmPerUnit() || 16.4 : 16.4; } catch (e) {}
   const lenFor = styleMode
-    ? (sec, view) => ((MANNEQUIN.styleLenCm && MANNEQUIN.styleLenCm[sec]) || 30) / cmU   // 손님 길이와 안 섞음(아래 주석)
+    ? (sec, view) => Math.max(lenOwn(sec, view), ((MANNEQUIN.styleLenCm && MANNEQUIN.styleLenCm[sec]) || 30) / cmU)
     : lenOwn;
-  /* (2026-11-22b) 손님 길이(섹션 최대)와 섞지 않음 — 디버그(같은 손님·layered_bob_hush):
-       11/16 레포  사진 가닥 side 11.4/17.5cm(중앙/90%) → 끝 높이 풀이 side 50 · occ 57 → 화면 16.3 · 18.5cm(어깨)
-       이 브랜치   사진 가닥 side 9.8/25.9 · crown 13.7/52.0 → 풀이 side 26 · occ 27 → 화면 4.8 · 9.9cm(턱 위)
-     끝 높이 풀이(24 extendPinned·measureSectionTipY)는 섹션에서 <b>가장 멀리 내려간 끝</b>을 목표에 맞춤 — 38번 긋기 뒤로 사진 가닥에
-     50cm 넘는 꼬리가 섞여(90% 값) 그 꼬리가 목표에 닿는 짧은 슬라이더가 풀리고, 나머지 대부분은 턱 위에서 끝났다.
-     표준 길이를 고르게(섹션마다 한 값) 심으면 몸통과 끝이 같이 움직여 11/16처럼 몸통이 목표 높이까지 내려온다. */
-  if (styleMode) console.log("[마네킹·스타일 길이] 표준 긴 머리로 고르게 심음(cm) — " + Object.keys(MANNEQUIN.styleLenCm || {}).map(k => k + " " + MANNEQUIN.styleLenCm[k]).join(" · ") + " (끄기 MANNEQUIN.styleLen=false)");
+  if (styleMode) console.log("[마네킹·스타일 길이] 표준 긴 머리로 심음(cm) — " + Object.keys(MANNEQUIN.styleLenCm || {}).map(k => k + " " + MANNEQUIN.styleLenCm[k]).join(" · ") + " · 손님 머리가 더 긴 섹션은 손님 길이 (끄기 MANNEQUIN.styleLen=false)");
   const nCell = NT * NP,
     w = new Float64Array(nCell);
   let wSum = 0,
