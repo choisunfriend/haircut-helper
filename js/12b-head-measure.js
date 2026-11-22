@@ -266,30 +266,8 @@ function getFaceHalfWidthMesh(){
     const proj = makeFaceProjector(lm, fm.widthFactor, fm.heightFactor);
     let m = 0;
     for(const p of lm.rawLandmarks){ const x = Math.abs(proj.toMeshX(p.x)); if(x > m) m = x; }
-    /* (2026-11-21) 볼이 보이면 실측 · 머리가 덮으면 메쉬(표준 얼굴 모양) — 13c FACE_ANCHOR 배너
-       사용자: "뺨, 귀가 보이는 경우는 그 점을 체크해서 면적을 산출해 줘야하겟지"
-         measured(볼 → 배경): 그 경계가 얼굴 끝 · hairEdge(볼 → 머리): 경계는 하한(메쉬와 큰 쪽)
-         hidden/unknown: 메쉬 값(MediaPipe가 보이는 얼굴로 채운 추정)
-       양쪽 다 hidden/unknown이면 예전과 똑같이 m. 끄기 FACE_ANCHOR.on=false */
-    if(typeof FACE_ANCHOR === 'undefined' || !FACE_ANCHOR.on || typeof faceCheekState !== 'function') return m;
-    const parts = FACE_ANCHOR.cheekPts.map(i=>{
-      const c = faceCheekState('front', i), mesh = Math.abs(proj.toMeshX(lm.rawLandmarks[i].x));
-      const edge = (c.edgeX != null) ? Math.abs(proj.toMeshX(c.edgeX)) : null;
-      const v = c.st === 'measured' ? edge : c.st === 'hairEdge' ? Math.max(mesh, edge) : mesh;
-      return { st: c.st, mesh, edge, v };
-    });
-    if(!parts.some(p=>p.st === 'measured' || p.st === 'hairEdge')){ _faceWLog(m, m, parts); return m; }
-    const out = Math.max.apply(null, parts.map(p=>p.v));
-    _faceWLog(m, out, parts);
-    return out;
+    return m;
   }catch(e){ return 0; }
-}
-function _faceWLog(m, out, parts){
-  const key = m.toFixed(4) + out.toFixed(4) + parts.map(p=>p.st).join();
-  if(_faceWLog._k === key) return; _faceWLog._k = key;
-  console.log('[얼굴 폭·볼 판정] 정면 반폭 ' + out.toFixed(3) + (Math.abs(out - m) > 1e-4 ? ' (메쉬 ' + m.toFixed(3) + ' → 바꿈)' : ' (메쉬 그대로)')
-    + ' · 볼 234/454 ' + parts.map(p=>p.st + ' 메쉬 ' + p.mesh.toFixed(3) + (p.edge != null ? ' 경계 ' + p.edge.toFixed(3) : '')).join(' / ')
-    + ' — measured = 볼→배경(실측) · hairEdge = 볼→머리(하한) · hidden = 머리가 덮음(메쉬 추정)');
 }
 /* ══════════════════════════════════════════════════════════════════
    헤어라인 대조 — 두상 폭을 <b>순환 없이</b> 검증한다 (2026-08-19)

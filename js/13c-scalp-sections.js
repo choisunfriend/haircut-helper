@@ -1168,118 +1168,6 @@ const VIEWCAL_ANCHOR = {
      "덜 돌리는 방향으로는 안 고친다"는 뜻이다. */
   sideYawNoseMinOnly: true,
 };
-/* ══════════════════════════════════════════════════════════════════
-   [얼굴 안쪽 앵커] (2026-11-21) 옆 사진 가로 중심을 <b>가려지지 않는 얼굴 안쪽 점</b>으로
-   ─────────────────────────────────────────────────────────────────
-   사용자: "옆머리에 귀가 없잖아.. 그래서 귀 앵커가 제 위치를 못잡아서 그렇게 된거 같은데?"
-   예전 "귀 앵커"는 귀가 아니라 얼굴 메쉬 234·454 = <b>볼 가장자리</b>다(01:209).
-     · 두상 중심보다 앞에 있고, 먼 쪽 점은 안 보여 메쉬가 얼굴 쪽으로 당겨 채운다.
-     · 그 앞쪽 치우침을 earDepth 0.10×cD(≈0.7cm)로만 되돌려, 34° 옆 사진 cx가 얼굴 쪽으로
-       약 50px 밀렸다(디버그 1517: 축 기준 E가 실루엣 반폭보다 +18~33% → 헐 깊이 D가 상한 1.5W에 붙음).
-   지금: <b>z를 안 쓰고</b> 대칭 쌍(눈꼬리·입꼬리)만으로 — 사용자: "사진4장으로는 z값 제대로 안나와."
-     눈꼬리 가운데 = 정중면 위 점 · 폭 비 = cos(yaw) · 선 기울기 = 롤 (01 face2DOf · 아래 faceInnerAnchorPx)
-     → 눈꼬리 가운데에서 eyeDepthCm 뒤 자리(두상 중심)를 그 yaw·롤로 투영한 x가 cx. 헐은 높이마다 축(cx + R[1]·Δy/s).
-     (11-21 1차의 MediaPipe z 정사영 맞춤은 코끝 깊이 15.6/17.6cm로 중심이 6~8cm 뒤로 밀려 버림)
-   eyeDepthCm 8.0 = 눈꼬리 평균면 → 두상 앞뒤 가운데(머리 길이 ≈19cm의 절반 9.5 − 미간~눈꼬리 ≈1.5).
-     ⚠ 해부 평균에서 잡은 값이다. [얼굴 안쪽 앵커] 로그의 "코끝 깊이 좌/우"가 서로 크게 다르거나
-       얼굴 모형 코끝과 크게 다르면 이 값을 의심할 것.
-   얼굴이 없는 사진(뒤 · 실루엣 앵커)은 예전 그대로. 되돌리기 FACE_ANCHOR.on=false
-   ══════════════════════════════════════════════════════════════════ */
-const FACE_ANCHOR = {
-  on: true,
-  inner: [33, 133, 362, 263],   // 눈꼬리 바깥·안쪽 × 좌우
-  eyeDepthCm: 8.0,
-  /* 뺨 보임 판정 — 볼 가장자리 점에서 얼굴 바깥쪽으로 같은 줄을 훑어 처음 만나는 것:
-       배경(사람 윤곽 밖)  → 'measured'  진짜 얼굴 끝(실측)
-       머리카락            → 'hairEdge'  머리가 얼굴 끝을 덮음(하한으로만)
-       점 자체가 머리 안   → 'hidden'    가려짐(메쉬 추정 = 표준 얼굴 모양)
-       사람 윤곽이 없거나 못 찾음 → 'unknown'
-     색은 안 본다(피부톤·그늘에 흔들림) — 머리 마스크·사람 윤곽만. */
-  cheekPts: [234, 454],
-  scanFrac: 0.15,      // 사진 폭의 이 비율까지만 훑음
-  maxGapFrac: 0.06,    // 점에서 경계까지 이보다 멀면 점 자체를 못 믿음(unknown)
-  last: {},
-};
-function _faceMaskAt(mi, ix, iy){
-  /* 0 배경 · 1 사람(머리 아님) · 2 머리 · -1 모름 */
-  const w = mi.maskW, h = mi.maskH;
-  if(!(ix >= 0 && iy >= 0 && ix < w && iy < h)) return -1;
-  const k = (iy|0) * w + (ix|0);
-  if(mi.reasonMask && mi.reasonMask[k] === 1) return 2;
-  if(!mi.personMask) return -1;
-  return mi.personMask[k] ? 1 : 0;
-}
-/* 볼 점 하나의 상태 + 경계까지 간 정규화 x(못 찾으면 null) */
-function faceCheekState(angle, idx){
-  try{
-    const lm = state.landmarks && state.landmarks[angle], mi = state.hairMasks && state.hairMasks[angle];
-    if(!lm || lm._silhouette || !lm.rawLandmarks || !mi || !mi.maskW) return { st: 'unknown', why: '자료 없음' };
-    const p = lm.rawLandmarks[idx]; if(!p) return { st: 'unknown', why: '점 없음' };
-    const w = mi.maskW, h = mi.maskH, x0 = p.x * w, y0 = p.y * h;
-    const c0 = _faceMaskAt(mi, x0, y0);
-    if(c0 === 2) return { st: 'hidden', why: '점이 머리 안' };
-    if(c0 !== 1) return { st: 'unknown', why: c0 === 0 ? '점이 배경 위' : '사람 윤곽 없음' };
-    let cx = 0; FACE_ANCHOR.inner.forEach(i=>{ cx += lm.rawLandmarks[i].x; }); cx = cx / FACE_ANCHOR.inner.length * w;
-    const dir = x0 >= cx ? 1 : -1, maxN = Math.round(w * FACE_ANCHOR.scanFrac);
-    for(let n = 1; n <= maxN; n++){
-      const c = _faceMaskAt(mi, x0 + dir*n, y0);
-      if(c === 1) continue;
-      if(n > w * FACE_ANCHOR.maxGapFrac) return { st: 'unknown', why: '경계가 ' + n + 'px 밖(점 못 믿음)' };
-      const xN = (x0 + dir*(n - 0.5)) / w;
-      if(c === 0) return { st: 'measured', edgeX: xN, gap: n };
-      if(c === 2) return { st: 'hairEdge', edgeX: xN, gap: n };
-      return { st: 'unknown', why: '사진 밖' };
-    }
-    return { st: 'unknown', why: '경계 못 찾음' };
-  }catch(e){ return { st: 'unknown', why: '오류' }; }
-}
-/* ── 2D 대칭 쌍으로 yaw·롤·중심 (z 안 씀) ─────────────────────────────────────
-   01 face2DOf가 잰 사진 px 값(눈꼬리·입꼬리 가운데·폭·선 기울기 · 눈→턱)을 받아:
-     yaw  = acos( (폭 ÷ 눈→턱)_이 사진 / (폭 ÷ 눈→턱)_정면 ) — 눈·입 따로 구해 평균, 부호는 PnP yaw를 따름
-     롤   = 눈꼬리 선·입꼬리 선 기울기의 평균 → 같은 회전 합성(composeRotationZYX)에서
-            모델 위(+y)가 사진에 찍히는 기울기 R[1]/R[4]가 그 선의 tan이 되게 푼 값(부호 관례를 짐작하지 않음)
-     중심 = 눈꼬리 가운데(정중면·눈 높이) − R[2]·(eyeDepthCm/cm자)/s  — R[2] = 깊이가 사진 가로로 찍히는 비
-   눈·입이 서로 yawTol°/rollTol° 넘게 다르면 그 사진은 못 믿음(표정·가림) → 예전 앵커. */
-FACE_ANCHOR.yawTol = 5;
-FACE_ANCHOR.rollTol = 3;
-FACE_ANCHOR.minYawDeg = 10;     // 이보다 덜 돈 사진(정면)은 yaw를 안 바꿈 — 폭 비율이 cos 꼭대기라 둔감
-FACE_ANCHOR.usePose2D = true;   // 2D yaw·롤을 그 사진의 포즈로 씀(헐·가닥·되쏘기 공통 viewCal) · 끄면 중심만
-function _rollForTilt(yaw, pitch, tanT){
-  if(typeof composeRotationZYX !== 'function') return null;
-  const f = r=>{ const R = composeRotationZYX(yaw, pitch, r); return R[1] / R[4] - tanT; };
-  let lo = -0.6, hi = 0.6, flo = f(lo), fhi = f(hi);
-  if(!(flo * fhi <= 0)) return null;
-  for(let i=0;i<50;i++){ const m = (lo+hi)/2, fm = f(m); if(flo * fm <= 0){ hi = m; } else { lo = m; flo = fm; } }
-  return (lo+hi)/2;
-}
-function faceInnerAnchorPx(angle, maskW, pose, sX){
-  if(!FACE_ANCHOR.on) return null;
-  try{
-    const lm = state.landmarks && state.landmarks[angle], fr = state.landmarks && state.landmarks.front;
-    if(!lm || lm._silhouette || !fr) return null;
-    const F = lm.face2D || (typeof face2DOf === 'function' ? face2DOf(angle) : null);
-    const Ff = fr.face2D || (typeof face2DOf === 'function' ? face2DOf('front') : null);
-    if(!F || !Ff) return null;
-    let cm = null; try{ cm = modelCmPerUnit(); }catch(e){}
-    if(!(cm > 0) || !(sX > 0)) return null;
-    const D = r=>r * 180/Math.PI, sgn = pose.yaw < 0 ? -1 : 1;
-    const ce = (F.eyeW / F.eyeChin) / (Ff.eyeW / Ff.eyeChin), cmo = (F.mouthW / F.eyeChin) / (Ff.mouthW / Ff.eyeChin);
-    const yawE = Math.acos(Math.min(1, ce)), yawM = Math.acos(Math.min(1, cmo));
-    const side = Math.abs(D(pose.yaw)) >= FACE_ANCHOR.minYawDeg;
-    let yaw = side ? sgn * (yawE + yawM) / 2 : pose.yaw;
-    const tE = F.eyeAng, tM = F.mouthAng, tilt = (tE + tM) / 2;
-    const why = [];
-    if(side && Math.abs(D(yawE - yawM)) > FACE_ANCHOR.yawTol) why.push('yaw 눈 ' + D(yawE).toFixed(1) + '° vs 입 ' + D(yawM).toFixed(1) + '°');
-    if(Math.abs(D(tE - tM)) > FACE_ANCHOR.rollTol) why.push('기울기 눈 ' + D(tE).toFixed(1) + '° vs 입 ' + D(tM).toFixed(1) + '°');
-    let roll = _rollForTilt(yaw, pose.pitch || 0, Math.tan(tilt));
-    if(roll == null){ why.push('롤 못 풂'); roll = pose.roll || 0; }
-    const R = composeRotationZYX(yaw, pose.pitch || 0, roll);
-    const k = maskW / F.W, zE = FACE_ANCHOR.eyeDepthCm / cm;
-    const cx = F.eyeMid.x * k - R[2] * zE / sX;
-    return { ok: !why.length, why: why.join(' · '), cx, yaw, roll, yawE, yawM, tE, tM, side,
-             eyeMidPx: F.eyeMid.x * k, eyeYPx: F.eyeMid.y * (maskW / F.W), R };
-  }catch(e){ return null; }
-}
 /* 근사yaw(코 오프셋 ÷ 귀 반간격) → 도. 구 두상에서 그 비율이 tan(yaw)다.
    부호는 그대로 따라간다(우측 뷰 음수 · 좌측 뷰 양수 — PnP와 같은 규약). */
 function noseRatioYawDeg(angle){
@@ -1464,7 +1352,6 @@ function buildHairStrandsFromPaths(){
       return;
     }
     const pose = poseOf(angle);
-    let poseFace2D = null;   // (2026-11-21) 얼굴 2D 기준이 잰 yaw·롤 — 아래 views[angle].pose로
     const cos2 = Math.cos(pose.yaw)**2, sin2 = Math.sin(pose.yaw)**2;
     // 이 뷰 카메라에서 본 두상 투영 반폭: 타원(a,cD)을 방위각 θ에서 보면
     // E = sqrt(a²cos²θ + cD²sin²θ) — 예전 SIDE?cD:a 이분법의 연속 일반화
@@ -1530,23 +1417,6 @@ function buildHairStrandsFromPaths(){
       const zEar = -VIEWCAL_ANCHOR.earDepth * cD;              // 귀 깊이(뒤 = 음수)
       cxUse = earMidPx - Math.sin(pose.yaw) * zEar / sX;
       anchorSrc = lmV._silhouette ? '실루엣 앵커(귀)' : '얼굴 랜드마크(귀)';
-      /* (2026-11-21) 얼굴이 실측된 사진은 눈꼬리 기준으로 — 위 FACE_ANCHOR 배너 */
-      const FA = faceInnerAnchorPx(angle, maskInf.w, pose, sX);
-      if(FA && !FA.ok) console.warn('[얼굴 2D 기준] ' + angle + ': 눈·입이 서로 안 맞음(' + FA.why + ') — 안 믿고 예전 귀 앵커');
-      if(FA && FA.ok){
-        const cxEar = cxUse, silMid = (xMin + xMax) / 2, D = r=>(r*180/Math.PI).toFixed(1);
-        cxUse = FA.cx; anchorSrc = '얼굴 2D(눈꼬리·입꼬리)';
-        if(FACE_ANCHOR.usePose2D) poseFace2D = { yaw: FA.yaw, pitch: pose.pitch || 0, roll: FA.roll };
-        const ck = FACE_ANCHOR.cheekPts.map(i=>faceCheekState(angle, i));
-        FACE_ANCHOR.last[angle] = { cx: cxUse, cxEar, silMid, cheeks: ck, yaw: FA.yaw, roll: FA.roll, poseYaw: pose.yaw, poseRoll: pose.roll || 0 };
-        console.log('[얼굴 2D 기준] ' + angle + ': 중심 x ' + cxUse.toFixed(0) + 'px (눈꼬리 가운데 ' + FA.eyeMidPx.toFixed(0) + 'px − 깊이 ' + FACE_ANCHOR.eyeDepthCm + 'cm 투영)'
-          + ' · yaw ' + (FA.side ? '<b>' + D(FA.yaw) + '°</b>(눈 ' + D(FA.yawE) + ' · 입 ' + D(FA.yawM) + ')' : D(FA.yaw) + '°(정면 — 안 바꿈)') + ' vs PnP ' + D(pose.yaw) + '°'
-          + ' · 롤 <b>' + D(FA.roll) + '°</b>(눈선 ' + D(FA.tE) + '° · 입선 ' + D(FA.tM) + '°) vs PnP ' + D(pose.roll || 0) + '°'
-          + ' · 예전 귀 앵커 ' + cxEar.toFixed(0) + 'px · 헤어 실루엣 가운데 ' + silMid.toFixed(0) + 'px'
-          + ' · 볼 234/454 ' + ck.map(c=>c.st + (c.why ? '(' + c.why + ')' : '')).join(' / ')
-          + (FACE_ANCHOR.usePose2D ? ' · 이 yaw·롤을 포즈로 씀(끄기 FACE_ANCHOR.usePose2D=false)' : '')
-          + ' (되돌리기 FACE_ANCHOR.on=false)');
-      }
       const cxOld = (xMin+xMax)/2, sOld = aH_head/halfPx;
       console.log('[뷰캘리·앵커] ' + angle + ': 중심 x ' + cxOld.toFixed(0) + '→' + cxUse.toFixed(0) + 'px'
         + ' (' + (cxUse-cxOld >= 0 ? '+' : '') + (cxUse-cxOld).toFixed(0) + 'px, ' + anchorSrc + ')'
@@ -1585,25 +1455,15 @@ function buildHairStrandsFromPaths(){
       + ' · 유효컬럼 ' + validCols);
     /* (2026-10-31) 사진 올린 단계에서 맞춘 카메라(17b VIEW_FIX — 사진 가닥으로 카메라 맞추기·사진끼리 맞추기)를 여기서 넣음
        → 사진 가닥·뿌리 밀도·두께·viewCal·사진대조가 모두 같은 카메라. 다시 기르기는 카메라를 안 바꿈. 끄기 ?viewfix=0 */
-    let pose2 = poseFace2D || pose, cos2b = Math.cos(pose2.yaw)**2, sin2b = Math.sin(pose2.yaw)**2;
+    let pose2 = pose, cos2b = cos2, sin2b = sin2;
     try{ if(typeof VIEW_FIX !== 'undefined'){ const vf = { cx: cxUse, crownY, s: sX, sy, pose };
       if(VIEW_FIX.applyTo(angle, vf)){ cxUse = vf.cx; crownY = vf.crownY; sX = vf.s; sy = vf.sy; pose2 = vf.pose;
         cos2b = Math.cos(pose2.yaw)**2; sin2b = Math.sin(pose2.yaw)**2;
         console.log('[사진 정렬·1단계] ' + angle + ' 적용 — 가운데 ' + cxUse.toFixed(1) + 'px · 정수리 ' + crownY.toFixed(1) + 'px · 자 ' + sy.toFixed(5) + ' · 위아래 ' + (pose2.pitch*180/Math.PI).toFixed(1) + '°'); } } }catch(e){ console.warn('[사진 정렬·1단계] 적용 실패 — 그대로', e); }
-    views[angle] = { rec, maskInf, cx:cxUse, crownY, s: sX, sy, pose: pose2, cos2: cos2b, sin2: sin2b,
-                     Rb: (typeof composeRotationZYX === 'function') ? composeRotationZYX(pose2.yaw, pose2.pitch || 0, pose2.roll || 0) : null };
+    views[angle] = { rec, maskInf, cx:cxUse, crownY, s: sX, sy, pose: pose2, cos2: cos2b, sin2: sin2b };
   });
   const names = Object.keys(views);
   if(!names.length) return null;
-  /* [얼굴 2D 기준·좌우 대조] 왼·오른 사진의 yaw·롤(2D)과 PnP를 나란히 — z는 안 씀 */
-  try{
-    const L = FACE_ANCHOR.last.left, Rr = FACE_ANCHOR.last.right, D = r=>(r*180/Math.PI).toFixed(1);
-    if(FACE_ANCHOR.on && L && Rr)
-      console.log('[얼굴 2D 기준·좌우 대조] yaw 왼 ' + D(L.yaw) + '°(PnP ' + D(L.poseYaw) + ') · 오른 ' + D(Rr.yaw) + '°(PnP ' + D(Rr.poseYaw) + ')'
-        + ' · 롤 왼 ' + D(L.roll) + '°(PnP ' + D(L.poseRoll) + ') · 오른 ' + D(Rr.roll) + '°(PnP ' + D(Rr.poseRoll) + ')'
-        + ' | 중심 이동(예전 귀 → 지금) 왼 ' + (L.cx - L.cxEar).toFixed(0) + 'px · 오른 ' + (Rr.cx - Rr.cxEar).toFixed(0) + 'px'
-        + ' | 헤어 실루엣 가운데와의 차 왼 ' + (L.cx - L.silMid).toFixed(0) + 'px · 오른 ' + (Rr.cx - Rr.silMid).toFixed(0) + 'px');
-  }catch(e){}
 
   // ── 1단계: 헤어 외곽 헐 실측 ──
   const NY = 64;                 // 높이 버킷 수
@@ -1680,11 +1540,8 @@ function buildHairStrandsFromPaths(){
          타원 안에 들어온다. 반스팬은 축 이탈량만큼 반경을 과소평가하고, 모자란
          만큼 아래 리프트가 u>1 분기(둘레로 감기)로 떨어져 <b>x가 안쪽으로 접힌다</b>.
          실루엣이 축에 대칭이면 두 값이 같으므로 대칭 케이스는 그대로 재현된다. */
-      /* (2026-11-21) 축은 높이마다 — 모델 축(0, y, 0)이 이 사진에 찍히는 가로 = cx + R[1]·(y − CY)/s
-         (롤이 있으면 사진 속 축이 비스듬함 · 가닥 옮기기·되쏘기는 이미 R로 이걸 함 · 헐만 점 하나 cx를 썼음) */
-      const cxB = v.cx + (v.Rb ? v.Rb[1] * ((yTopH - bi*yStep) - CY) / v.s : 0);
       const halfPx = (HAIR_HULL_FIT.on && HAIR_HULL_FIT.axisE)
-        ? Math.max(maxX[bi] - cxB, cxB - minX[bi])       // 축에서 제일 먼 쪽
+        ? Math.max(maxX[bi] - v.cx, v.cx - minX[bi])       // 축에서 제일 먼 쪽
         : (maxX[bi] - minX[bi]) / 2;                       // 예전(반스팬)
       obs[bi].push({ E: Math.max(0, halfPx) * v.s, cos2: v.cos2, sin2: v.sin2,
                      span: (maxX[bi] - minX[bi]) / 2 * v.s, angle: n });

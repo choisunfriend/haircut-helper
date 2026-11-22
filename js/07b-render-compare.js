@@ -1411,13 +1411,7 @@ var PHOTO_CHECK = (function () {
        지금: occ=false면 가림을 <b>아예 안 본다</b> — 모든 점을 그 사진에 그대로 비춘다. 넘침은 늘지만 그 숫자가
        <b>진짜 3D 머리의 위치</b>만으로 나온 값이라, 가림 모형이 숨기던 자리가 그대로 드러난다.
        예전 동작(가림 모형 켜기) PHOTO_CHECK.occ=true */
-    occ: false,
-    /* (2026-11-21) 카메라 보기 — 사용자: "다음번에 사진대조 넘침은 카메라 보기로 해줘"
-       가림 모형(두피 타원·기둥) 대신, 점이 그 카메라를 <b>향한 쪽</b>에 있을 때만 셈:
-       두상 축에서 점으로 나가는 수평 방향(x, z)과 카메라 쪽 방향(R 셋째 줄)의 cos ≥ facingMin.
-       17b 다시 기르기의 "살리는 사진 반구 fc≥−0.15"와 같은 기준 · 뒤통수·목덜미 머리가 얼굴 위로 비치지 않음.
-       예전(모든 점) PHOTO_CHECK.facing=false · 가림 모형 PHOTO_CHECK.occ=true */
-    facing: true, facingMin: -0.15
+    occ: false
   }, W.PHOTO_CHECK || {});
   var S = P.stats = { at: null, views: [], strands: 0, ms: 0, err: null, trimCut: 0, trimLen: 0, trimMs: 0, trimWhy: '', fixStr: 0, fixSeg: 0, fixMs: 0, fixWhy: '', fixPush: 0 };
   var ver = 0;
@@ -1448,12 +1442,7 @@ var PHOTO_CHECK = (function () {
     var R = cam.R, x = px, y = py - env.CY, z = pz;
     o[0] = (R[0] * x + R[1] * y + R[2] * z) / cam.s + cam.cx;
     o[1] = cam.crownY + (env.yTop - ((R[3] * x + R[4] * y + R[5] * z) + env.CY)) / cam.sy;
-    if (!P.occ) {                                           // (2026-11-21c) 가림 모형 안 씀
-      if (!P.facing) return 1;                              //   모든 점을 그대로 비춤(예전)
-      var hl = Math.hypot(x, z), cl = Math.hypot(R[6], R[8]);
-      if (hl < 1e-6 || cl < 1e-6) return 1;                 //   축 위 점 · 위에서 내려다본 카메라 — 셈
-      return ((x * R[6] + z * R[8]) / (hl * cl) >= P.facingMin) ? 1 : 0;   // (2026-11-21) 카메라 보기
-    }
+    if (!P.occ) return 1;                                   // (2026-11-21c) 가림 모형 안 씀 — 모든 점을 그대로 비춤
     /* (2026-11-10) 턱 아래는 카메라 숙임을 빼고 앞뒤를 가름(17b proj와 같음) — 숙여 찍은 정면이 가슴 앞 머리를 "가려서 못 봄"으로 빼던 것(디버그 0924: 32%). 되돌리기 PHOTO_CHECK.facingBodyFix=false */
     var yF = (P.facingBodyFix !== false && env.yBody != null && py < env.yBody) ? env.yBody - env.CY : y;
     if (R[6] * x + R[7] * yF + R[8] * z < 0) {
@@ -1805,7 +1794,7 @@ var PHOTO_CHECK = (function () {
     if (!S.at && !S.err) { L.push(TAG + ' 아직 안 함 — 조정 화면의 [원본 대조] 버튼 · 윤곽 밖 잘라내기 ' + (P.trim ? '켜짐' : '꺼짐')); return L; }
     if (S.err) { L.push(TAG + ' ⚠ ' + S.err); return L; }
     L.push(TAG + ' ' + S.at + ' · ' + (S.src || '') + ' 가닥 ' + S.strands + '개 · 사진 ' + S.views.length + '장 · ' + Math.round(S.ms) + 'ms · 여유 ' + P.tolCm + 'cm · 비율은 사진의 머리 넓이 대비' +
-      ' · 가림 ' + (P.occ ? '모형 씀(두피 타원·턱/귀·목 기둥)' : P.facing ? '<b>카메라 보기</b> — 카메라를 향한 쪽 점만(cos ≥ ' + P.facingMin + ' · 예전 모든 점 PHOTO_CHECK.facing=false)' : '안 씀 — 모든 점을 그대로 비춤(넘침에 뒤쪽 머리도 들어감 · 예전 PHOTO_CHECK.occ=true)') +
+      ' · 가림 ' + (P.occ ? '모형 씀(두피 타원·턱/귀·목 기둥)' : '안 씀 — 모든 점을 그대로 비춤(넘침에 뒤쪽 머리도 들어감 · 예전 PHOTO_CHECK.occ=true)') +
       (S.style ? ' · ⚠ 스타일이 걸려 있음(원본과 다른 것이 당연)' : '') +
       ' · 윤곽 밖 잘라내기 ' + (P.trim ? (S.trimWhy ? '쉼(' + S.trimWhy + ')' : '켜짐 — 자른 가닥 ' + S.trimCut + '개 · 잘라 낸 길이 합 ' + Math.round(S.trimLen * (getEnv() ? getEnv().cm : 19)) + 'cm · ' + Math.round(S.trimMs) + 'ms') : '꺼짐') +
       ' · 결 맞추기 ' + (P.fixDir ? (S.fixWhy ? '쉼(' + S.fixWhy + ')' : '켜짐 — 돌린 가닥 ' + S.fixStr + '개(마디 ' + S.fixSeg + ' · 두상에 막혀 눕힌 마디 ' + S.fixPush + ') · ' + Math.round(S.fixMs) + 'ms · 기준 ' + P.dirWarn + '° · 사진 결 또렷함 ' + P.dirCoh + ' 이상') : '꺼짐'));
