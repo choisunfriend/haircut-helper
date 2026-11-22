@@ -258,6 +258,21 @@ const HEAD_WIDTH_MAX_PHI = 1.62;  // 이보다 아래(목·어깨)는 두상 폭
 // 정면 랜드마크가 말하는 얼굴 최대 반폭(메쉬 좌표). 두상 폭이 얼굴을 감싸는지
 // 검사하는 기준값 — 추정치(0.78×widthFactor)가 아니라 실측이라야 오경보가 없다.
 // 진단 로그용으로 1회만 쓰이므로 캐시 없이 그때 계산한다.
+/* (2026-11-22c) 스타일 마네킹 두개골 = clotheschange(11/16) 방식 — 사용자: "스타일 자체가 적용되었을 때의 모습"
+   같은 손님·layered_bob_hush 화면 실측: 턱 아래 머리 반폭 clotheschange 7.5cm vs 이 브랜치 11.3cm(×1.5) · 곱슬 1.08 vs 1.20.
+   그리는 단계 장치는 하나씩 꺼도 0.1cm도 안 변함 → 원인은 가닥이 심기는 두피. 두피 가로 = 얼굴 반폭 × 1.07인데
+   이 브랜치에만 있는 FACE_ANCHOR(볼 끝 실측 · 귀까지 얼굴로 잡힘) · skullFloor(두상을 두피+minGap까지 넓힘) ·
+   persp · skullDepthPerWidth가 두개골을 키웠다(얼굴 자 로그 폭 0.665 vs 0.423 = ×1.57). 스타일이 걸린 마네킹일 때만
+   네 장치를 건너뛴다 — 원본 머리 보기·맨 마네킹·손님 재현은 그대로. 끄기 MQ_STYLE_SKULL.on=false */
+var MQ_STYLE_SKULL = { on: true };
+function mqStyleSkullOn(){
+  try{
+    if(!MQ_STYLE_SKULL.on || typeof MANNEQUIN === 'undefined' || !MANNEQUIN.on) return false;
+    if(typeof _mqStyleApplying !== 'undefined' && _mqStyleApplying) return true;
+    const sid = state && state.specAppliedId;
+    return !!(sid && sid !== '__original__');
+  }catch(e){ return false; }
+}
 function getFaceHalfWidthMesh(){
   try{
     const lm = state.landmarks && state.landmarks.front;
@@ -271,7 +286,7 @@ function getFaceHalfWidthMesh(){
          measured(볼 → 배경): 그 경계가 얼굴 끝 · hairEdge(볼 → 머리): 경계는 하한(메쉬와 큰 쪽)
          hidden/unknown: 메쉬 값(MediaPipe가 보이는 얼굴로 채운 추정)
        양쪽 다 hidden/unknown이면 예전과 똑같이 m. 끄기 FACE_ANCHOR.on=false */
-    if(typeof FACE_ANCHOR === 'undefined' || !FACE_ANCHOR.on || typeof faceCheekState !== 'function') return m;
+    if(typeof FACE_ANCHOR === 'undefined' || !FACE_ANCHOR.on || typeof faceCheekState !== 'function' || mqStyleSkullOn()) return m;
     const parts = FACE_ANCHOR.cheekPts.map(i=>{
       const c = faceCheekState('front', i), mesh = Math.abs(proj.toMeshX(lm.rawLandmarks[i].x));
       const edge = (c.edgeX != null) ? Math.abs(proj.toMeshX(c.edgeX)) : null;
@@ -503,13 +518,14 @@ function getScalpEllipsoid(){
      깊이도 같은 형상비로 올라감. getHeadEllipsoid(헐 자체 · 다른 호출부)는 안 건드림 — HEAD_WIDTH_GUARD(꺼둔 가림 장치)와 다름.
      헤어가 더 넓은 손님은 예전과 같음. 되돌리기 HAIR_SCALP3D.skullFloor=false */
   let _pk = 1, _pD = NaN;
-  if(S.persp !== false && src !== '폴백'){ try{
+  const _mqSk = mqStyleSkullOn();   // (2026-11-22c) 스타일 마네킹이면 persp·skullFloor·skullDepthPerWidth 건너뜀(위 MQ_STYLE_SKULL)
+  if(!_mqSk && S.persp !== false && src !== '폴백'){ try{
     const _lmF = state.landmarks && state.landmarks.front; _pD = _lmF && _lmF.poseTzCm;
     if(_pD > 5 && _pD < 500) _pk = Math.max(S.perspMinK || 0.8, _pD / (_pD + (S.perspDepthCm || 8)));
   }catch(err){} }
   if(_pk < 1){ a *= _pk; b = EYE_Y_SCALP_FIX(b, _pk); }
   let eA = e.a, eC = e.c, _floored = false;
-  if(S.skullFloor !== false && _faceA > 0 && src !== '폴백' && e.a < a + S.minGap){
+  if(!_mqSk && S.skullFloor !== false && _faceA > 0 && src !== '폴백' && e.a < a + S.minGap){
     eA = a + S.minGap; eC = e.c * (eA / Math.max(1e-6, e.a)); _floored = true;
   }
   a = cl(a, eA); b = cl(b, e.b);
@@ -519,7 +535,7 @@ function getScalpEllipsoid(){
      지금: c = a × skullDepthPerWidth(1.20 — 사람 두개골 깊이/폭, 위 [두개골 자 대조]의 참고 18.25 ÷ 15.2). 가로 a가 이미 얼굴 실측 × 해부 비(skullPerFace)이므로 같은 종류의 자.
        머리카락이 두상에 붙은 손님은 예전 비가 이미 ≈1.2라 거의 그대로(1515 남 1.20 · 9/14 여 16.8÷14.0=1.20).
      되돌리기 HAIR_SCALP3D.skullDepthPerWidth=null (예전: 헤어 형상 승계) */
-  const _dpw = (typeof S.skullDepthPerWidth === 'number' && S.skullDepthPerWidth > 0 && src !== '폴백') ? S.skullDepthPerWidth : null;
+  const _dpw = (!_mqSk && typeof S.skullDepthPerWidth === 'number' && S.skullDepthPerWidth > 0 && src !== '폴백') ? S.skullDepthPerWidth : null;
   const _cHair = a * (e.c / Math.max(1e-6, e.a));
   const c = cl(_dpw ? a * _dpw : _cHair, Math.max(eC, _dpw ? a * _dpw + S.minGap : 0));
   if(!_scalpLogged){
