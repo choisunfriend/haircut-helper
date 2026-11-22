@@ -1164,6 +1164,21 @@ function mqStyleLenSync() {
     if (_mqBuiltStyleMode !== null && _mqBuiltStyleMode !== mqStyleLenOn() && typeof state !== "undefined" && state) state.hair3Dmannequin = null;
   } catch (e) {}
 }
+/* (2026-11-22c) 스타일 마네킹이 흘러내리는 바깥 껍질 — 손님 실루엣(getHeadEllipsoid) 대신 두피 + 일정 두께.
+   가닥은 두피(S)에서 나와 껍질(E)에 닿으면 spread만큼 옆으로 벌어진다(growMannequinStrand). 이 브랜치는 실루엣 처리가 달라
+   E가 넓게 잡혀 턱 아래 반폭 11.3cm(clotheschange 7.5cm). 두피를 좁혀도(12b MQ_STYLE_SKULL) 그대로였던 이유.
+   스타일이 걸린 마네킹에서만 E.a·E.c를 두피×hullK로 묶는다(넓히지는 않음 · b는 그대로). hullK 조절: MQ_STYLE_SKULL.hullK · 끄기 .hull=false */
+function mqStyleHull(E, S) {
+  try {
+    if (!E || !S || typeof MQ_STYLE_SKULL === "undefined" || MQ_STYLE_SKULL.hull === false || typeof mqStyleSkullOn !== "function" || !mqStyleSkullOn()) return E;
+    const k = MQ_STYLE_SKULL.hullK || 1.08,
+      a = Math.min(E.a, S.a * k), c = Math.min(E.c, S.c * k);
+    if (a === E.a && c === E.c) return E;
+    const cm = typeof modelCmPerUnit === "function" ? modelCmPerUnit() || 16.4 : 16.4;
+    console.log("[마네킹·스타일 껍질] 손님 실루엣 껍질 a " + (E.a * cm).toFixed(1) + " c " + (E.c * cm).toFixed(1) + "cm → 두피×" + k + " a " + (a * cm).toFixed(1) + " c " + (c * cm).toFixed(1) + "cm (두피 a " + (S.a * cm).toFixed(1) + " · 조절 MQ_STYLE_SKULL.hullK · 끄기 .hull=false)");
+    return Object.assign({}, E, { a, c });
+  } catch (e) { return E; }
+}
 function buildMannequinHair3D() {
   _mqBuiltStyleMode = mqStyleLenOn();
   /** (9/23 원본 주석 — 코드가 바뀌어 제자리를 못 찾음)
@@ -1194,7 +1209,7 @@ function buildMannequinHair3D() {
     CY = src.CY,
     b = rf.b,
     S = getScalpEllipsoid(),
-    E = getHeadEllipsoid(),
+    E = mqStyleHull(getHeadEllipsoid(), getScalpEllipsoid()),
     yStep = (G.yTopH - G.yBot) / (G.NY - 1),
     bucketOfY = y => Math.min(G.NY - 1, Math.max(0, Math.round((G.yTopH - y) / yStep))),
     areas = headSurfaceCellAreas(G.hullW, G.hullD, bucketOfY, CY, b, NT, NP),

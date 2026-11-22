@@ -264,7 +264,7 @@ const HEAD_WIDTH_MAX_PHI = 1.62;  // 이보다 아래(목·어깨)는 두상 폭
    이 브랜치에만 있는 FACE_ANCHOR(볼 끝 실측 · 귀까지 얼굴로 잡힘) · skullFloor(두상을 두피+minGap까지 넓힘) ·
    persp · skullDepthPerWidth가 두개골을 키웠다(얼굴 자 로그 폭 0.665 vs 0.423 = ×1.57). 스타일이 걸린 마네킹일 때만
    네 장치를 건너뛴다 — 원본 머리 보기·맨 마네킹·손님 재현은 그대로. 끄기 MQ_STYLE_SKULL.on=false */
-var MQ_STYLE_SKULL = { on: true };
+var MQ_STYLE_SKULL = { on: true, hull: true, hullK: 1.08 };
 function mqStyleSkullOn(){
   try{
     if(!MQ_STYLE_SKULL.on || typeof MANNEQUIN === 'undefined' || !MANNEQUIN.on) return false;
