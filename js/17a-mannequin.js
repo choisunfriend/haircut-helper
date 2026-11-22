@@ -203,13 +203,13 @@ var STYLE_TUNES = {
   },
   layered_bob_hush: {
     tipAt: {
-      fringeTrim: true
+      front: 0.45   // (2026-11-22c) 11/15 웹 편집에서 front:0.45가 fringeTrim:true로 덮였던 것 복구(clotheschange 값)
     }
   },
   wavy_bob_seethrough: {
     browCut: true,
     tipAt: {
-      fringeTrim: true
+      front: 0.44   // (2026-11-22c) 복구 — 위와 같음
     }
   },
   side_part_perm: {
