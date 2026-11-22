@@ -37,7 +37,14 @@ const MANNEQUIN = {
   baldDen: 0.08,
   layerLo: 0.15,
   layerHi: 1,
-  spread: 0.7
+  spread: 0.7,
+  /* (2026-11-22) 스타일을 걸 때만 표준 긴 머리 마네킹 — 사용자: "스타일을 원래 스타일 자체가 적용되었을 때의 모습을 보기 위한 거"
+     마네킹 길이는 손님 사진 가닥(섹션 최대)이라 짧은 머리 손님에겐 스타일이 그 길이에서 잘려 나왔다.
+     (11/16 레포는 사진 가닥이 실제보다 길게 그어져(38번 이전) 우연히 원래 모양처럼 보였음)
+     스타일이 걸린 동안(·거는 중)엔 섹션 길이를 아래 cm로 — 실습용 긴 머리 마네킹. 손님 머리가 더 길면 손님 길이.
+     해제하면 다시 손님 길이. 끄기 MANNEQUIN.styleLen=false · 길이 MANNEQUIN.styleLenCm.crown=… 후 스타일 다시 걸기 */
+  styleLen: true,
+  styleLenCm: { crown: 35, front: 30, temple: 28, side: 30, occipital: 35, nape: 25 }
   /* (2026-10-27) 10-22에 넣었던 "다시 기른 가닥에서 칸마다 길이"(lenFromRegrow·lenNbr)는
      10-27 업로드에서 빠졌다 — 길이는 다시 섹션·사진별 lenPct(lenFor)로 정한다. */
 };
@@ -1139,7 +1146,23 @@ function growMannequinStrand(ci, NT, NP, S, E, CY, L, colors) {
     mannequin: true
   };
 }
+/* (2026-11-22) 스타일 길이 모드 — 스타일이 걸려 있거나 거는 중이면 true */
+let _mqStyleApplying = false, _mqBuiltStyleMode = null;
+function mqStyleLenOn() {
+  try {
+    // 원본 머리 보기(ORIG_MQ '__original__')는 손님 길이 그대로
+    const sid = typeof state !== "undefined" && state ? state.specAppliedId : null;
+    return !!(MANNEQUIN.styleLen && (_mqStyleApplying || (sid && sid !== "__original__")));
+  } catch (e) { return false; }
+}
+/* 지금 모드와 다르게 지어진 마네킹이면 버림(다음 접근 때 다시 지음) */
+function mqStyleLenSync() {
+  try {
+    if (_mqBuiltStyleMode !== null && _mqBuiltStyleMode !== mqStyleLenOn() && typeof state !== "undefined" && state) state.hair3Dmannequin = null;
+  } catch (e) {}
+}
 function buildMannequinHair3D() {
+  _mqBuiltStyleMode = mqStyleLenOn();
   /** (9/23 원본 주석 — 코드가 바뀌어 제자리를 못 찾음)
      · 섹션은 뿌리를 심어 봐야 안다 — 임시로 길이를 모르는 채 뿌리만 먼저 잡는다
      · 앞머리 — "심을 게 없으면 프론트·크라운에서 내린다"(위 MQ_FRINGE 배너).
@@ -1219,7 +1242,14 @@ function buildMannequinHair3D() {
   }
   if (clampedTxt.length) console.log("[마네킹·뷰별길이 가둠] 섹션 중앙값 ±33% 밖 " + clampedTxt.length + "칸 — " + clampedTxt.join(" · ") + "\n    ↑ 많이 뜨면 그 섹션은 뷰마다 다르게 잘리고 있다는 뜻(세그멘테이션·마스크 경계 확인). MANNEQUIN 뷰별길이 자체를 끄려면 MIN_VIEW_N을 크게.");
   const fbLen = pick(allLen, MANNEQUIN.lenPct),
-    lenFor = (sec, view) => viewLen[sec + "|" + view] || secLen[sec] || fbLen;
+    lenOwn = (sec, view) => viewLen[sec + "|" + view] || secLen[sec] || fbLen;
+  const styleMode = mqStyleLenOn();
+  let cmU = 16.4;
+  try { cmU = typeof modelCmPerUnit === "function" ? modelCmPerUnit() || 16.4 : 16.4; } catch (e) {}
+  const lenFor = styleMode
+    ? (sec, view) => Math.max(lenOwn(sec, view), ((MANNEQUIN.styleLenCm && MANNEQUIN.styleLenCm[sec]) || 30) / cmU)
+    : lenOwn;
+  if (styleMode) console.log("[마네킹·스타일 길이] 표준 긴 머리로 심음(cm) — " + Object.keys(MANNEQUIN.styleLenCm || {}).map(k => k + " " + MANNEQUIN.styleLenCm[k]).join(" · ") + " · 손님 머리가 더 긴 섹션은 손님 길이 (끄기 MANNEQUIN.styleLen=false)");
   const nCell = NT * NP,
     w = new Float64Array(nCell);
   let wSum = 0,
@@ -4520,6 +4550,7 @@ function snapshotForSpec() {
 function clearStyleSpec() {
   const s = state._specUndo;
   state._specUndo = null, state.specAppliedId = null;
+  mqStyleLenSync();   // (2026-11-22) 스타일 해제 — 손님 길이 마네킹으로
   if (typeof BRAID !== "undefined") BRAID.on = false;
   if (s) {
     state.sections = s.sections, state.stylingByView = s.stylingByView;
@@ -4540,6 +4571,8 @@ function applyStyleSpecAndRender(id, _retried) {
     if (v1480.handled) return v1480.value;
   }
   if (state.specAppliedId === id) return clearStyleSpec();
+  _mqStyleApplying = id !== "__original__";   // (2026-11-22) 스타일 길이 마네킹 — 거는 동안 지어지는 마네킹도 표준 길이
+  mqStyleLenSync();
   if (!MANNEQUIN.on) mannequinReset();
   /* 스타일 적용은 여러 단계가 순차로 돈다 — 단계마다 다시 그리지 않게 <b>문</b>으로 묶는다
        (10-hair-render-2d.js의 RENDER_GATE 배너). 끝에 한 번만 그린다. */
@@ -4551,13 +4584,20 @@ function applyStyleSpecAndRender(id, _retried) {
     if (_retried || typeof buildNeutralHair3D !== "function") return console.warn("[스타일스펙] 3D 모델을 못 만들었다 — 촬영/세그멘테이션부터 확인할 것"), null;
     const v1481 = document.getElementById("adjustStyleTag");
     if (v1481) v1481.textContent = "3D 준비 중…";
+    _mqStyleApplying = false;
     return buildNeutralHair3D(() => {
       applyStyleSpecAndRender(id, true);
     }), null;
   }
   // 걸기 <b>직전</b> 상태 — 해제하면 여기로 돌아온다
-  const undo = snapshotForSpec(),
+  let rep = null;
+  try {
+    const undo = snapshotForSpec();
     rep = typeof withRenderGate === "function" ? withRenderGate(() => _applyStyleSpecBody(id, undo), "스타일 적용") : _applyStyleSpecBody(id, undo);
+  } finally {
+    _mqStyleApplying = false;
+    mqStyleLenSync();   // 실패했으면(specAppliedId 없음) 손님 길이 마네킹으로 되돌림
+  }
   return rep;
 }
 function _applyStyleSpecBody(id, undo) {
