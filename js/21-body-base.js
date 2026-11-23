@@ -929,7 +929,13 @@ const GARMENT_LAYER = {
   'normalDot': 0.3,  // 짝지은 두 면의 법선 내적이 이보다 작으면 다른 면으로 보고 무시
   'smooth': 8,       // 옮긴 양을 이웃 점과 나누는 횟수(가시 방지)
   'tuck': true,
-  'passes': 3       // 밀기·집어넣기를 이만큼 되풀이(한 번에 다 못 옮긴 깊은 자리)
+  'passes': 3,      // 밀기·집어넣기를 이만큼 되풀이(한 번에 다 못 옮긴 깊은 자리)
+  /* (11-23 3차) 가리기 — 밀고 넣어도 남는 깊은 자리(쇼핑몰 티셔츠 가슴에 셔츠 무늬가 비침, 녹화 17:57).
+     위 옷이 바로 위(reach 안, 같은 쪽을 보는 면)에 있는 아래 옷 삼각형은 어차피 안 보이므로 지운다.
+     소매처럼 위 옷 밖으로 나온 부분은 짝이 없어서 남는다. 끄기 GARMENT_LAYER.cull=false */
+  'cull': true,
+  'cullSide': 0.06,  // 위 옷 점이 옆으로 이만큼(≈7mm, 정점 간격 절반쯤) 안에 있어야 '바로 위'
+  'cullReach': 0.3   // 위 옷 겉면에서 이 거리(≈3.5cm) 안의 아래 옷만 지운다 — 밀기 한도보다 깊이 튀어나온 자리까지
 };
 function _garmentRank(part) {
   const slot = part.slot || _slotOf(part.bodyPart, part.layer);
@@ -941,8 +947,8 @@ function _garmentRank(part) {
   return 1;
 }
 /* 옷 점들을 격자(칸 = reach)에 넣는다. 법선은 smoothInflateGeometry가 만든 것. */
-function _garmentHash(geoms) {
-  const C = GARMENT_LAYER.reach, cells = new Map(), P = [], N = [];
+function _garmentHash(geoms, cell) {
+  const C = cell || GARMENT_LAYER.reach, cells = new Map(), P = [], N = [];
   for (const g of geoms) {
     const p = g.attributes.position, n = g.attributes.normal;
     if (!n) continue;
@@ -971,7 +977,7 @@ function _nearSurface(H, x, y, z, nx, ny, nz) {
   }
   if (best < 0) return null;
   const mx = H.N[best * 3], my = H.N[best * 3 + 1], mz = H.N[best * 3 + 2];
-  return [(x - H.P[best * 3]) * mx + (y - H.P[best * 3 + 1]) * my + (z - H.P[best * 3 + 2]) * mz, mx, my, mz];
+  return [(x - H.P[best * 3]) * mx + (y - H.P[best * 3 + 1]) * my + (z - H.P[best * 3 + 2]) * mz, mx, my, mz, bd];
 }
 /* 위 옷 점: 아래 옷 겉면 + gap 보다 안쪽이면 바깥으로 */
 function _pushOut(H, x, y, z, nx, ny, nz) {
@@ -1036,6 +1042,42 @@ function _displaceGeometry(g, fn) {
   p.needsUpdate = true; smoothInflateGeometry(g, 0);
   return moved;
 }
+/* 위 옷 바로 밑에 깔린 아래 옷 삼각형을 지운다(세 꼭짓점 모두 위 옷 겉면과 짝이 있을 때만). 지운 수를 돌려준다. */
+function _cullCovered(g, H) {
+  const p = g.attributes.position, n = g.attributes.normal;
+  if (!n || p.count < 3 || g.index) return 0;
+  const R = H.C, T = p.count / 3, keep = new Uint8Array(T);
+  let removed = 0;
+  for (let t = 0; t < T; t++) {
+    let covered = true;
+    for (let k = 0; k < 3 && covered; k++) {
+      const i = t * 3 + k;
+      const sN = _nearSurface(H, p.getX(i), p.getY(i), p.getZ(i), n.getX(i), n.getY(i), n.getZ(i));
+      /* 바로 위에 있어야 덮인 것 — 옆으로 비껴 있으면(앞이 트인 재킷 가장자리·소매 끝) 남긴다 */
+      if (!sN || Math.abs(sN[0]) > R || sN[4] - sN[0] * sN[0] > GARMENT_LAYER.cullSide * GARMENT_LAYER.cullSide) covered = false;
+    }
+    keep[t] = covered ? 0 : 1; if (covered) removed++;
+  }
+  if (!removed || removed === T) return 0;          // 다 지워질 상황이면 손대지 않는다
+  const newIdx = new Int32Array(T); let c = 0;
+  for (let t = 0; t < T; t++) newIdx[t] = keep[t] ? c++ : -1;
+  for (const name of Object.keys(g.attributes)) {
+    const a = g.attributes[name], sz = a.itemSize, src = a.array;
+    const dst = new src.constructor(c * 3 * sz);
+    for (let t = 0, o = 0; t < T; t++) if (keep[t]) { dst.set(src.subarray(t * 3 * sz, (t + 1) * 3 * sz), o); o += 3 * sz; }
+    g.setAttribute(name, new THREE.BufferAttribute(dst, sz, a.normalized));
+  }
+  if (g.groups && g.groups.length) {
+    const groups = g.groups.map(gr => {
+      let s0 = -1, cnt = 0;
+      for (let t = gr.start / 3; t < (gr.start + gr.count) / 3; t++) if (keep[t]) { if (s0 < 0) s0 = newIdx[t]; cnt++; }
+      return { start: (s0 < 0 ? 0 : s0) * 3, count: cnt * 3, materialIndex: gr.materialIndex };
+    });
+    g.clearGroups(); groups.forEach(gr => { if (gr.count) g.addGroup(gr.start, gr.count, gr.materialIndex); });
+  }
+  g.computeBoundingBox(); g.computeBoundingSphere();
+  return removed;
+}
 async function _layerGarments(loaded) {
   if (!GARMENT_LAYER.on || loaded.length < 2) return;
   const ranks = loaded.map(G => _garmentRank(G.part));
@@ -1057,6 +1099,17 @@ async function _layerGarments(loaded) {
         for (const g of loaded[j].geoms) tucked += _displaceGeometry(g, (x, y, z, nx, ny, nz) => _tuckIn(T, x, y, z, nx, ny, nz));
     }
     if (pass === 0 || pushed || tucked) console.log('[3D·옷·겹침] ' + (pass + 1) + '회 · ' + name + ' — 아래 옷 위로 밀어낸 점 ' + pushed + ' · 위 옷 안으로 넣은 아래 옷 점 ' + tucked);
+  }
+  /* 마지막에 한 번: 위 옷에 덮인 아래 옷 삼각형 지우기 */
+  if (GARMENT_LAYER.cull) {
+    for (const k of order) {
+      const underIdx = order.filter(j => ranks[j] < ranks[k]);
+      if (!underIdx.length) continue;
+      const T = _garmentHash(loaded[k].geoms, GARMENT_LAYER.cullReach);
+      let culled = 0;
+      for (const j of underIdx) for (const g of loaded[j].geoms) culled += _cullCovered(g, T);
+      console.log('[3D·옷·겹침] 가리기 · ' + (loaded[k].part.name || loaded[k].part.url) + ' 밑에 덮인 아래 옷 삼각형 ' + culled + '개 지움');
+    }
   }
 }
 
