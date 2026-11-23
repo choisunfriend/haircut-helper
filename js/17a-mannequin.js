@@ -239,7 +239,9 @@ var STYLE_TUNES = {
        → 이 스타일만 폭 상한을 켜서 main(1302) 폭으로: 기준 반폭 = 두피 a × 1.6(≈0.63, main 0.65) · 두피중심+0.4b부터 누름 ·
          귀 아래(-1.0b)부터 끝으로 갈수록 기준 폭 60%까지 모음(main: y -1.2에서 0.41). 파이썬으로 1341 점에 돌려 본 반폭 0.58~0.63.
        되돌리기: widthCap 키 지우기 */
-    widthCap: { on: true, refScalp: 1.6, soft: 0.25, fromB: 0.4, rampB: 0.3, taper: 0.4, taperFromB: -1.0, taperB: 1.3 }
+    /* (11-23 12차 · 3) 뒷머리 불룩 — 디버그 1347: 뒤 끝(z p2) y -0.4에서 -0.83 · -0.8에서 -0.86 (main 1302: -0.65 · -0.62).
+       이 브랜치 두피가 더 깊어(c 0.471 vs 0.393) 같은 비율로는 못 맞춤 → 두피 c × 1.45(≈0.68 = 두피 + main의 머리 두께 0.23)로 뒤만 누름 */
+    widthCap: { on: true, refScalpZ: 1.45, refScalp: 1.6, soft: 0.25, fromB: 0.4, rampB: 0.3, taper: 0.4, taperFromB: -1.0, taperB: 1.3 }
   },
   wavy_bob_seethrough: {
     browCut: true,
@@ -1311,7 +1313,8 @@ function mqStyleWidthCapAll(list) {
     if (!p) continue;
     for (let k = 0; k < p.length; k++) { const y = p[k].y; if (y >= CY && y <= CY + 0.5 * E.b) xs.push(Math.abs(p[k].x)); }
   }
-  let R;
+  let R, Rz = 0;
+  try { if (typeof C.refScalpZ === "number") { const S = getScalpEllipsoid(); Rz = Math.max(S.c, 0) * C.refScalpZ; } } catch (e) { Rz = 0; }   // (11-23 12차 · 3) 뒤(z<0) 상한 = 두피 깊이 c × refScalpZ
   if (typeof C.refScalp === "number") {   // (11-23 12차) 기준 폭 = 두피 반폭 × refScalp (가닥에서 재지 않음 — 윗머리부터 넓으면 기준도 넓어지므로)
     let Sa = 0; try { const S = getScalpEllipsoid(); Sa = Math.max(S.a, 0); } catch (e) {}
     if (!(Sa > 1e-6)) return list;
@@ -1334,13 +1337,17 @@ function mqStyleWidthCapAll(list) {
       let tk = 1;
       if (C.taper > 0) { const Yt = CY + (C.taperFromB || 0) * E.b; if (q.y < Yt) tk = 1 - C.taper * Math.min(1, (Yt - q.y) / Math.max(1e-6, (C.taperB || 1) * E.b)); }
       const kk = k0 * tk, sp = span * tk;
-      if (q.y >= Y0 || ax <= kk) continue;
-      const capped = kk + sp * Math.tanh((ax - kk) / sp);
+      if (q.y >= Y0) continue;
       const f = Math.min(1, (Y0 - q.y) / rampH), w = f * f * (3 - 2 * f);
-      const nx = ax + (capped - ax) * w;
-      if (nx >= ax - 1e-9) continue;
+      let nx = ax, nz = q.z;
+      if (ax > kk) nx = ax + (kk + sp * Math.tanh((ax - kk) / sp) - ax) * w;
+      if (Rz > 0 && q.z < 0) {   // 뒷머리 불룩 — 뒤쪽만 같은 방식으로 누름(앞은 그대로)
+        const bz = -q.z, kz = Rz * (1 - C.soft) * tk, sz = Rz * C.soft * tk;
+        if (bz > kz) nz = -(bz + (kz + sz * Math.tanh((bz - kz) / sz) - bz) * w);
+      }
+      if (nx >= ax - 1e-9 && nz >= q.z - 1e-9 && nz <= q.z + 1e-9) continue;
       if (!np) np = p.slice();
-      np[k] = Object.assign({}, q, { x: Math.sign(q.x) * nx });
+      np[k] = Object.assign({}, q, { x: Math.sign(q.x) * nx, z: nz });
       moved++; if (ax - nx > maxIn) maxIn = ax - nx;
     }
     return np ? Object.assign({}, st, { pts: np }) : st;
