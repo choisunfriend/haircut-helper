@@ -203,10 +203,10 @@ var EYE_GUARD = {
 var STYLE_TUNES = {
   reggae_twist: {
     /* (11-23 7차) 굵은 밧줄이라 헐 폭이 제일 눈에 띔(clotheschange 대비 돔이 크고 귀~턱이 둥글게 벌어짐) —
-       헐을 두피에 더 붙이고(+3%) · 폭 상한을 두상 중심보다 위(0.2b)부터 · 윗머리 폭보다 6% 안쪽까지 */
+       헐을 두피에 더 붙이고(+3%) · 폭 상한을 두상 중심보다 위(0.2b)부터 · 윗머리 폭보다 12% 안쪽까지(사용자 확인 −0.12) */
     hullPad: 0.03,
     layerHi: 0.6,
-    widthCap: { grow: -0.06, fromB: 0.2, rampB: 0.35 },
+    widthCap: { grow: -0.12, fromB: 0.2, rampB: 0.35, topCm: 1.5 },   // topCm: 정수리 쪽 밧줄이 두피에서 1.5cm 넘게 못 뜨게(8차)
     fringeTrim: false   // (2026-11-15) 레게펌은 눈을 덮어도 된다 — 기본 경로의 앞머리·크라운 선(눈썹 바닥)도 안 건다
   },
   /* (2026-11-15b) browCut — 다 만든 가닥(컬·처짐·넘김까지 끝난 뒤)을 <b>눈썹 선</b>에서 한 번 더 자른다(BROW_CUT 배너) */
@@ -1290,7 +1290,7 @@ function mqStyleWidthCapAll(list) {
   if (!(R > 1e-6)) return list;
   const k0 = R * (1 - C.soft), span = R - k0, rampH = Math.max(1e-6, C.rampB * E.b), Y0 = CY + (C.fromB || 0) * E.b;   // Y0 = 누르기 시작 높이(fromB>0 = 두상 중심보다 위)
   let moved = 0, maxIn = 0;
-  const out = list.map(st => {
+  let out = list.map(st => {
     const p = st && st.pts;
     if (!p || p.length < 2) return st;
     let np = null;
@@ -1308,7 +1308,37 @@ function mqStyleWidthCapAll(list) {
     return np ? Object.assign({}, st, { pts: np }) : st;
   });
   let cm = 16.4; try { cm = modelCmPerUnit() || 16.4; } catch (e) {}
-  C.stats = { refHalfCm: +(R * cm).toFixed(1), moved: moved, maxInCm: +(maxIn * cm).toFixed(1) };
+  /* (11-23 8차) 정수리 높이 상한 topCm — 윗머리 점이 두피에서 topCm 넘게 뜨면 두상 중심 쪽으로 부드럽게 눌러 넣음.
+     레게펌: 굵은 밧줄이 정수리에서 솟았다 아치로 넘어감(clotheschange는 사진 머리 영역으로 잘려 낮았음). null이면 안 함 */
+  let topN = 0;
+  if (C.topCm > 0) {
+    let S = null; try { S = getScalpEllipsoid(); } catch (e) {}
+    if (S && S.a > 0 && S.b > 0 && S.c > 0) {
+      const m = C.topCm / cm, m0 = m * 0.5, sp = m - m0, rampT = Math.max(1e-6, 0.25 * E.b);
+      for (let i = 0; i < out.length; i++) {
+        const st = out[i], p = st && st.pts;
+        if (!p || p.length < 2) continue;
+        let np = null;
+        for (let k = 1; k < p.length; k++) {
+          const q = p[k], dy = q.y - CY;
+          if (dy <= 0) continue;
+          const r = Math.hypot(q.x / S.a, dy / S.b, q.z / S.c);
+          if (!(r > 1)) continue;
+          const L = Math.hypot(q.x, dy, q.z), d = (r - 1) * L / r;
+          if (d <= m0) continue;
+          const d2 = m0 + sp * Math.tanh((d - m0) / sp);
+          const f = Math.min(1, dy / rampT), w = f * f * (3 - 2 * f);
+          const k2 = 1 - (1 - (L - (d - d2)) / L) * w;
+          if (!(k2 < 1)) continue;
+          if (!np) np = p.slice();
+          np[k] = Object.assign({}, q, { x: q.x * k2, y: CY + dy * k2, z: q.z * k2 });
+          topN++;
+        }
+        if (np) out[i] = Object.assign({}, st, { pts: np });
+      }
+    }
+  }
+  MQ_WIDTH_CAP.stats = C.stats = { topMoved: topN, refHalfCm: +(R * cm).toFixed(1), moved: moved, maxInCm: +(maxIn * cm).toFixed(1) };
   return out;
 }
 /* 지금 모드와 다르게 지어진 마네킹이면 버림(다음 접근 때 다시 지음) */
