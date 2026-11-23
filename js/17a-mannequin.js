@@ -201,6 +201,7 @@ var STYLE_TUNES = {
   },
   /* (2026-11-15b) browCut — 다 만든 가닥(컬·처짐·넘김까지 끝난 뒤)을 <b>눈썹 선</b>에서 한 번 더 자른다(BROW_CUT 배너) */
   hippie_curl_men: {
+    layerHi: 0.15,   // (11-23) 부풀기 — 기본 1.05의 반대(0.6−0.45). 사용자: 웨이비 보브·히피펌은 반대치수로
     browCut: true
   },
   layered_bob_hush: {
@@ -215,6 +216,7 @@ var STYLE_TUNES = {
     styleLenCm: { front: 25, temple: 30, crown: 40, side: 42, occipital: 45, nape: 45 }
   },
   wavy_bob_seethrough: {
+    layerHi: 0.15,   // (11-23) 부풀기 — 기본 1.05의 반대(0.6−0.45)
     browCut: true,
     tipAt: {
       front: 0.44   // (11-22) 복구
