@@ -905,30 +905,18 @@ function _detach(parent, obj) {
   });
 }
 
-/* ── 옷 겹침 (2026-11-23 2차) ─────────────────────────────────────────────
-   서로 다른 곳에서 만든 옷끼리는 서로를 모른다. 하의 허리가 상의 배를 뚫고 나오는 식.
-   1차(밀기)는 한 점을 4mm 넘게 밀어야 하면 "잘못 짝지은 것"으로 보고 안 밀었다 — 그래서
-   깊이 뚫린 허리는 그대로 남았다(사용자 신고: 쇼핑몰 상의 배쪽으로 바지가 뚫고 나옴).
-   2차:
-     ① 밀기 — 위 옷 점이 아래 옷 겉면보다 안쪽이면 바깥으로 민다. 잘못 짝짓기는 거리 대신
-        <b>법선이 같은 쪽을 보는지</b>로 거른다(앞판 점이 뒷판 점과 짝지어지는 일을 막음).
-        그래서 한도를 1.4cm 남짓(0.12)까지 늘릴 수 있다.
-     ② 집어넣기 — 그래도 위 옷 겉면 밖에 남은 아래 옷 점은 위 옷 안쪽으로 당겨 넣는다
-        (셔츠 자락을 바지 안에 넣듯이가 아니라, 바지 허리를 상의 안에 감추듯이).
-        위 옷은 모양을 지키고, 가려지는 아래 옷이 양보한다.
-   (1차 기록: 처음엔 몸 중심축 반지름 격자였는데, 외투 아래 티셔츠 소매·청바지 두 다리가 섞이면
-    그 높이 전체가 소매 끝까지 부풀어 외투가 원반·가시로 터졌다 — 11-23 녹화. 지금은 점마다
-    가장 가까운 '같은 쪽을 보는' 면만 짝짓는다.)
-   끄기 GARMENT_LAYER.on=false · 집어넣기만 끄기 GARMENT_LAYER.tuck=false */
+/* ── 옷끼리 겹치기 (2026-11-23) ───────────────────────────────────────────
+   상의·하의를 각각 다른 곳에서 만들어서, 청바지 허리밴드처럼 몸에서 떠 있는 자리가
+   티셔츠를 뚫고 나왔다. 위 옷의 점마다 가장 가까운 아래 옷 점을 찾아 그 법선 방향으로
+   안쪽이면 gap만큼 바깥으로 밀고, 밀어낸 양은 이웃 점과 나눠 매끈하게 한다.
+   (1차는 몸 중심축 반지름 격자였는데, 외투 아래 티셔츠 소매·청바지 두 다리가 섞이면
+    그 높이 전체가 소매 끝까지 부풀어 외투가 원반·가시로 터졌다 — 11-23 녹화) */
 const GARMENT_LAYER = {
   'on': true,
-  'gap': 0.007,      // 위 옷이 아래 옷 겉면 위로 떠 있는 최소 틈(모델 단위 ≈ 0.8mm)
-  'reach': 0.12,     // 이 거리 안의 상대 옷 면만 본다(격자 칸 크기)
-  'maxPush': 0.12,   // 한 점을 이보다 많이 옮겨야 하면 안 옮긴다(폭발 방지)
-  'normalDot': 0.3,  // 짝지은 두 면의 법선 내적이 이보다 작으면 다른 면으로 보고 무시
-  'smooth': 8,       // 옮긴 양을 이웃 점과 나누는 횟수(가시 방지)
-  'tuck': true,
-  'passes': 3       // 밀기·집어넣기를 이만큼 되풀이(한 번에 다 못 옮긴 깊은 자리)
+  'gap': 0.007,      // 위 옷이 아래 옷 겉면 위로 떠 있는 최소 틈(모델 단위)
+  'reach': 0.035,    // 이 거리 안의 아래 옷 면만 본다 — 멀리 있는 소매·다리는 무시
+  'maxPush': 0.035,  // 한 점을 이보다 많이 밀어야 하면 안 민다(잘못 짝지은 것 — 폭발 방지)
+  'smooth': 6        // 밀어낸 양을 이웃 점과 나누는 횟수(가시 방지)
 };
 function _garmentRank(part) {
   const slot = part.slot || _slotOf(part.bodyPart, part.layer);
@@ -936,7 +924,7 @@ function _garmentRank(part) {
   if (slot === 'outer' || part.layer === 'outer') return 2;
   return 1;
 }
-/* 옷 점들을 격자(칸 = reach)에 넣는다. 법선은 smoothInflateGeometry가 만든 것. */
+/* 아래 옷 점들을 격자(칸 = reach)에 넣는다. 법선은 smoothInflateGeometry가 만든 것. */
 function _garmentHash(geoms) {
   const C = GARMENT_LAYER.reach, cells = new Map(), P = [], N = [];
   for (const g of geoms) {
@@ -951,108 +939,84 @@ function _garmentHash(geoms) {
   }
   return { 'C': C, 'cells': cells, 'P': P, 'N': N };
 }
-/* 상대 옷 겉면에서 가장 가까운 점을 찾아 [그 점까지의 법선 방향 높이, 법선 x,y,z]. 법선이 어긋나면 null. */
-function _nearSurface(H, x, y, z, nx, ny, nz) {
+/* 점 하나가 아래 옷 겉면보다 안쪽이면 바깥으로 얼마나 밀어야 하는지(벡터). 아니면 null.
+   가장 가까운 아래 옷 점의 법선 방향 높이로 판단한다. */
+function _pushOut(H, x, y, z) {
   const C = H.C, cx = Math.floor(x / C), cy = Math.floor(y / C), cz = Math.floor(z / C);
   let best = -1, bd = C * C;
   for (let a = -1; a <= 1; a++) for (let b = -1; b <= 1; b++) for (let c = -1; c <= 1; c++) {
     const L = H.cells.get((cx + a) + ',' + (cy + b) + ',' + (cz + c)); if (!L) continue;
     for (const k of L) {
-      const nd = nx * H.N[k * 3] + ny * H.N[k * 3 + 1] + nz * H.N[k * 3 + 2];
-      if (nd < GARMENT_LAYER.normalDot) continue;          // 반대쪽 면(앞판↔뒷판)은 짝이 아니다
       const dx = x - H.P[k * 3], dy = y - H.P[k * 3 + 1], dz = z - H.P[k * 3 + 2];
       const d = dx * dx + dy * dy + dz * dz;
       if (d < bd) { bd = d; best = k; }
     }
   }
   if (best < 0) return null;
-  const mx = H.N[best * 3], my = H.N[best * 3 + 1], mz = H.N[best * 3 + 2];
-  return [(x - H.P[best * 3]) * mx + (y - H.P[best * 3 + 1]) * my + (z - H.P[best * 3 + 2]) * mz, mx, my, mz];
-}
-/* 위 옷 점: 아래 옷 겉면 + gap 보다 안쪽이면 바깥으로 */
-function _pushOut(H, x, y, z, nx, ny, nz) {
-  const s = _nearSurface(H, x, y, z, nx, ny, nz); if (!s) return null;
-  const need = GARMENT_LAYER.gap - s[0];
+  const nx = H.N[best * 3], ny = H.N[best * 3 + 1], nz = H.N[best * 3 + 2];
+  const h = (x - H.P[best * 3]) * nx + (y - H.P[best * 3 + 1]) * ny + (z - H.P[best * 3 + 2]) * nz;
+  const need = GARMENT_LAYER.gap - h;
   if (need <= 0 || need > GARMENT_LAYER.maxPush) return null;
-  return [s[1] * need, s[2] * need, s[3] * need];
-}
-/* 아래 옷 점: 위 옷 겉면 − gap 보다 바깥이면 안쪽으로 */
-function _tuckIn(H, x, y, z, nx, ny, nz) {
-  const s = _nearSurface(H, x, y, z, nx, ny, nz); if (!s) return null;
-  const need = s[0] + GARMENT_LAYER.gap;
-  if (need <= 0 || need > GARMENT_LAYER.maxPush) return null;
-  return [-s[1] * need, -s[2] * need, -s[3] * need];
-}
-/* 지오메트리 점마다 fn이 준 만큼 옮기고, 그 양을 이웃과 고르게 나눈다.
-   옮겨야 하는 점은 자기 몫 아래로는 안 내려간다(다시 뚫리지 않게). 옮긴 점 수를 돌려준다. */
-function _displaceGeometry(g, fn) {
-  const p = g.attributes.position, n = g.attributes.normal;
-  if (!n) return 0;
-  /* 같은 자리 점(삼각형마다 따로 들어 있음)을 하나로 묶는다 — 안 묶으면 틈이 벌어진다 */
-  const keyOf = i => Math.round(p.getX(i) * 1e4) + ',' + Math.round(p.getY(i) * 1e4) + ',' + Math.round(p.getZ(i) * 1e4);
-  const idOf = new Map(), vid = new Int32Array(p.count), rep = [];
-  for (let i = 0; i < p.count; i++) {
-    const kk = keyOf(i); let v = idOf.get(kk);
-    if (v === undefined) { v = rep.length; idOf.set(kk, v); rep.push(i); }
-    vid[i] = v;
-  }
-  const V = rep.length, D = new Float32Array(V * 3), must = new Uint8Array(V);
-  let moved = 0;
-  for (let v = 0; v < V; v++) {
-    const i = rep[v];
-    const d = fn(p.getX(i), p.getY(i), p.getZ(i), n.getX(i), n.getY(i), n.getZ(i));
-    if (d) { D[v * 3] = d[0]; D[v * 3 + 1] = d[1]; D[v * 3 + 2] = d[2]; must[v] = 1; moved++; }
-  }
-  if (!moved) return 0;
-  const nb = Array.from({ length: V }, () => []);
-  for (let t = 0; t + 2 < p.count; t += 3) {
-    const a = vid[t], b = vid[t + 1], c = vid[t + 2];
-    nb[a].push(b, c); nb[b].push(a, c); nb[c].push(a, b);
-  }
-  const base = Float32Array.from(D);
-  for (let s = 0; s < GARMENT_LAYER.smooth; s++) {
-    const nD = new Float32Array(V * 3);
-    for (let v = 0; v < V; v++) {
-      let x = D[v * 3], y = D[v * 3 + 1], z = D[v * 3 + 2], k = 1;
-      for (const u of nb[v]) { x += D[u * 3]; y += D[u * 3 + 1]; z += D[u * 3 + 2]; k++; }
-      x /= k; y /= k; z /= k;
-      if (must[v]) {
-        const bx = base[v * 3], by = base[v * 3 + 1], bz = base[v * 3 + 2];
-        const bl = Math.hypot(bx, by, bz), along = (x * bx + y * by + z * bz) / (bl || 1);
-        if (along < bl) { const f = (bl - along) / (bl || 1); x += bx * f; y += by * f; z += bz * f; }
-      }
-      nD[v * 3] = x; nD[v * 3 + 1] = y; nD[v * 3 + 2] = z;
-    }
-    D.set(nD);
-  }
-  for (let i = 0; i < p.count; i++) {
-    const v = vid[i];
-    p.setXYZ(i, p.getX(i) + D[v * 3], p.getY(i) + D[v * 3 + 1], p.getZ(i) + D[v * 3 + 2]);
-  }
-  p.needsUpdate = true; smoothInflateGeometry(g, 0);
-  return moved;
+  return [nx * need, ny * need, nz * need];
 }
 async function _layerGarments(loaded) {
   if (!GARMENT_LAYER.on || loaded.length < 2) return;
   const ranks = loaded.map(G => _garmentRank(G.part));
   const order = loaded.map((_, i) => i).sort((a, b) => ranks[a] - ranks[b]);
-  for (let pass = 0; pass < (GARMENT_LAYER.passes || 1); pass++)
   for (const k of order) {
-    const underIdx = order.filter(j => ranks[j] < ranks[k]);
-    if (!underIdx.length) continue;
-    const name = loaded[k].part.name || loaded[k].part.url;
-    /* ① 위 옷을 아래 옷들 바깥으로 */
-    const H = _garmentHash([].concat(...underIdx.map(j => loaded[j].geoms)));
-    let pushed = 0;
-    for (const g of loaded[k].geoms) pushed += _displaceGeometry(g, (x, y, z, nx, ny, nz) => _pushOut(H, x, y, z, nx, ny, nz));
-    /* ② 그래도 위 옷 밖에 남은 아래 옷 점은 위 옷 안으로 */
-    let tucked = 0;
-    if (GARMENT_LAYER.tuck) {
-      const T = _garmentHash(loaded[k].geoms);
-      for (const j of underIdx)
-        for (const g of loaded[j].geoms) tucked += _displaceGeometry(g, (x, y, z, nx, ny, nz) => _tuckIn(T, x, y, z, nx, ny, nz));
+    const under = [];
+    loaded.forEach((G, j) => { if (ranks[j] < ranks[k]) under.push(...G.geoms); });
+    if (!under.length) continue;
+    const H = _garmentHash(under);
+    let pushed = 0, total = 0;
+    for (const g of loaded[k].geoms) {
+      const p = g.attributes.position;
+      /* 같은 자리 점(삼각형마다 따로 들어 있음)을 하나로 묶는다 — 안 묶으면 틈이 벌어진다 */
+      const keyOf = i => Math.round(p.getX(i) * 1e4) + ',' + Math.round(p.getY(i) * 1e4) + ',' + Math.round(p.getZ(i) * 1e4);
+      const idOf = new Map(), vid = new Int32Array(p.count), rep = [];
+      for (let i = 0; i < p.count; i++) {
+        const kk = keyOf(i); let v = idOf.get(kk);
+        if (v === undefined) { v = rep.length; idOf.set(kk, v); rep.push(i); }
+        vid[i] = v;
+      }
+      const V = rep.length, D = new Float32Array(V * 3), must = new Uint8Array(V);
+      for (let v = 0; v < V; v++) {
+        const i = rep[v]; total++;
+        const d = _pushOut(H, p.getX(i), p.getY(i), p.getZ(i));
+        if (d) { D[v * 3] = d[0]; D[v * 3 + 1] = d[1]; D[v * 3 + 2] = d[2]; must[v] = 1; pushed++; }
+      }
+      if (!pushed) continue;
+      /* 이웃(삼각형 변) 목록 */
+      const nb = Array.from({ length: V }, () => []);
+      for (let t = 0; t + 2 < p.count; t += 3) {
+        const a = vid[t], b = vid[t + 1], c = vid[t + 2];
+        nb[a].push(b, c); nb[b].push(a, c); nb[c].push(a, b);
+      }
+      /* 밀어낸 양을 퍼뜨린다 — 밀어야 하는 점은 자기 몫 아래로는 안 내려간다(다시 뚫리지 않게) */
+      const base = Float32Array.from(D);
+      for (let s = 0; s < GARMENT_LAYER.smooth; s++) {
+        const nD = new Float32Array(V * 3);
+        for (let v = 0; v < V; v++) {
+          let x = D[v * 3], y = D[v * 3 + 1], z = D[v * 3 + 2], n = 1;
+          for (const u of nb[v]) { x += D[u * 3]; y += D[u * 3 + 1]; z += D[u * 3 + 2]; n++; }
+          x /= n; y /= n; z /= n;
+          if (must[v]) {
+            const bx = base[v * 3], by = base[v * 3 + 1], bz = base[v * 3 + 2];
+            const bl = Math.hypot(bx, by, bz), along = (x * bx + y * by + z * bz) / (bl || 1);
+            if (along < bl) { const f = (bl - along) / (bl || 1); x += bx * f; y += by * f; z += bz * f; }
+          }
+          nD[v * 3] = x; nD[v * 3 + 1] = y; nD[v * 3 + 2] = z;
+        }
+        D.set(nD);
+      }
+      for (let i = 0; i < p.count; i++) {
+        const v = vid[i];
+        p.setXYZ(i, p.getX(i) + D[v * 3], p.getY(i) + D[v * 3 + 1], p.getZ(i) + D[v * 3 + 2]);
+      }
+      p.needsUpdate = true; smoothInflateGeometry(g, 0);
     }
-    if (pass === 0 || pushed || tucked) console.log('[3D·옷·겹침] ' + (pass + 1) + '회 · ' + name + ' — 아래 옷 위로 밀어낸 점 ' + pushed + ' · 위 옷 안으로 넣은 아래 옷 점 ' + tucked);
+    console.log('[3D·옷·겹침] ' + (loaded[k].part.name || loaded[k].part.url) +
+      ' — 아래 옷 위로 밀어낸 점 ' + pushed + '/' + total);
   }
 }
 
