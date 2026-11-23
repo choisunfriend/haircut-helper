@@ -825,6 +825,78 @@ function _pruneGarmentCache(keepGender) {
    → 쇼핑몰 티셔츠 가슴에 안쪽 셔츠가 조각조각 비침(녹화 17:57·18:22, 견본 옷은 깨끗).
    이웃 삼각형끼리 공유 변을 반대 방향으로 지나도록 감김을 퍼뜨려 맞추고,
    조각(연결 성분)마다 몸 중심축 바깥을 향하는 쪽이 다수가 되게 뒤집는다. 뒤집은 삼각형 수를 돌려준다. */
+/* (11-23 5차) 작은 구멍 메우기 — 쇼핑몰 티셔츠는 밑에 무엇을 입든(청바지든 셔츠든) 같은 자리로
+   그 옷이 비쳤다(사용자: "지난번 청바지와 겹쳤을 때도 청바지가 튀어나왔어"). 겹침이 아니라 옷 메쉬의
+   구멍(빠진 삼각형)이라는 뜻이다. 경계 변을 이어 닫힌 고리를 찾고, 둘레가 짧은 고리만 메운다 —
+   목·소매·밑단 같은 원래 트인 곳은 둘레가 길어서 남는다. 메운 구멍 수를 돌려준다. */
+function fillSmallHoles(geom, maxFrac) {
+  const pos = geom.attributes && geom.attributes.position;
+  if (!pos || geom.index || pos.count < 3) return 0;
+  geom.computeBoundingBox();
+  const bb = geom.boundingBox, size = Math.max(bb.max.x - bb.min.x, bb.max.y - bb.min.y, bb.max.z - bb.min.z);
+  const maxPerim = size * (maxFrac || 0.1);   // 옷 크기의 10% ≈ 15cm — 손목(약 17cm 이상)·목·밑단은 안 메움
+  const key = i => Math.round(pos.getX(i) * 1e4) + ',' + Math.round(pos.getY(i) * 1e4) + ',' + Math.round(pos.getZ(i) * 1e4);
+  const ids = new Map(), rep = [], vid = new Int32Array(pos.count);
+  for (let i = 0; i < pos.count; i++) { const k = key(i); let v = ids.get(k); if (v === undefined) { v = rep.length; ids.set(k, v); rep.push(i); } vid[i] = v; }
+  const T = pos.count / 3, cnt = new Map();
+  for (let t = 0; t < T; t++) for (let k = 0; k < 3; k++) {
+    const a = vid[t * 3 + k], b = vid[t * 3 + (k + 1) % 3];
+    const e = a < b ? a + ',' + b : b + ',' + a; cnt.set(e, (cnt.get(e) || 0) + 1);
+  }
+  /* 경계 변(한 삼각형에만 쓰인 변)을 그 삼각형의 감김 방향대로 a→b 로 모은다 */
+  const next = new Map();
+  for (let t = 0; t < T; t++) for (let k = 0; k < 3; k++) {
+    const a = vid[t * 3 + k], b = vid[t * 3 + (k + 1) % 3];
+    const e = a < b ? a + ',' + b : b + ',' + a;
+    if (cnt.get(e) === 1 && !next.has(a)) next.set(a, b);
+  }
+  const P = v => [pos.getX(rep[v]), pos.getY(rep[v]), pos.getZ(rep[v])];
+  const seen = new Set(), add = [];
+  let filled = 0;
+  for (const start of next.keys()) {
+    if (seen.has(start)) continue;
+    const loop = []; let v = start, ok = false;
+    for (let guard = 0; guard < 2000; guard++) {
+      if (seen.has(v)) { ok = v === start; break; }
+      seen.add(v); loop.push(v); v = next.get(v); if (v === undefined) break;
+    }
+    if (!ok || loop.length < 3) continue;
+    let per = 0; const pts = loop.map(P);
+    for (let i = 0; i < pts.length; i++) { const a = pts[i], b = pts[(i + 1) % pts.length]; per += Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]); }
+    if (per > maxPerim) continue;                       // 목·소매·밑단 — 원래 트인 곳
+    const c = [0, 0, 0]; pts.forEach(p => { c[0] += p[0]; c[1] += p[1]; c[2] += p[2]; }); c[0] /= pts.length; c[1] /= pts.length; c[2] /= pts.length;
+    /* 경계 변은 이웃 삼각형과 반대 방향으로 지나야 하므로 b→a 순서로 부채꼴을 만든다 */
+    for (let i = 0; i < loop.length; i++) add.push(loop[(i + 1) % loop.length], loop[i], -1, c);
+    filled++;
+  }
+  if (!filled) return 0;
+  const nNew = add.length / 4;
+  for (const name of Object.keys(geom.attributes)) {
+    const a = geom.attributes[name], sz = a.itemSize, src = a.array;
+    const dst = new src.constructor(src.length + nNew * 3 * sz); dst.set(src);
+    let o = src.length;
+    for (let t = 0; t < nNew; t++) {
+      const v0 = add[t * 4], v1 = add[t * 4 + 1], c = add[t * 4 + 3];
+      for (const v of [v0, v1, -1]) {
+        if (name === 'position') {
+          const pp = v < 0 ? c : P(v); dst[o] = pp[0]; dst[o + 1] = pp[1]; dst[o + 2] = pp[2];
+        } else {
+          const from = v < 0 ? rep[v0] : rep[v];        // 중심점의 uv·색은 고리 첫 점 것을 빌린다
+          for (let k = 0; k < sz; k++) dst[o + k] = src[from * sz + k];
+        }
+        o += sz;
+      }
+    }
+    geom.setAttribute(name, new THREE.BufferAttribute(dst, sz, a.normalized));
+  }
+  if (geom.groups && geom.groups.length) {
+    const last = geom.groups[geom.groups.length - 1];
+    last.count += nNew * 3;                              // 메운 삼각형은 마지막 재질로
+  }
+  geom.computeBoundingBox(); geom.computeBoundingSphere();
+  return filled;
+}
+
 function orientGarmentWinding(geom) {
   const pos = geom.attributes && geom.attributes.position;
   if (!pos || geom.index || pos.count < 3) return 0;
@@ -897,6 +969,8 @@ async function loadGarmentGeometries(part) {
     if (!geoms.length) throw new Error('옷 메쉬가 비어 있습니다: ' + part.url);
     if (part.fromShop && !part.fitted) await _autoPlaceShopGeoms(geoms, part);
     geoms.forEach(g => {
+      const nh = fillSmallHoles(g);
+      if (nh) console.log('[3D·옷] 작은 구멍 ' + nh + '개 메움: ' + part.url);
       const nf = orientGarmentWinding(g);
       if (nf) console.log('[3D·옷] 뒤집힌 삼각형 ' + nf + '개 바로잡음: ' + part.url);
       smoothInflateGeometry(g, offset);
