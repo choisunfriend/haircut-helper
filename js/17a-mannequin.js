@@ -204,7 +204,7 @@ var STYLE_TUNES = {
   reggae_twist: {
     /* (11-23 7차) 굵은 밧줄이라 헐 폭이 제일 눈에 띔(clotheschange 대비 돔이 크고 귀~턱이 둥글게 벌어짐) —
        헐을 두피에 더 붙이고(+3%) · 폭 상한을 두상 중심보다 위(0.2b)부터 · 윗머리 폭보다 6% 안쪽까지 */
-    hullPad: 0.03,
+    hullPad: 0,      // (11-23 8차) 0.03→0: 헐 = 두피 그대로. 크라운이 옆으로 뻗어 widthCap 기준 폭(윗머리 |x|)까지 넓게 잡혔음(디버그 크라운 반경 0.92 vs clotheschange 0.55)
     layerHi: 0.6,
     widthCap: { grow: -0.06, fromB: 0.2, rampB: 0.35 },
     fringeTrim: false   // (2026-11-15) 레게펌은 눈을 덮어도 된다 — 기본 경로의 앞머리·크라운 선(눈썹 바닥)도 안 건다
