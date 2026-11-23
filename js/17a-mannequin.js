@@ -1253,6 +1253,53 @@ function mqStyleFlowK() {
     };
   }
 })();
+/* (2026-11-23 6차) 스타일 모드 폭 상한 — 사용자 영상: 위머리는 좁아졌는데 귀 아래부터 A자로 벌어짐(clotheschange는 위 폭 그대로 내려옴).
+   볼륨·삐침·결 흐름을 줄여도 남아서(가닥이 두상 옆을 미끄러져 바깥 비스듬히 떨어짐 + 컬·처짐), 다 만든 가닥에 마지막으로 폭을 막는다.
+   ① 기준 폭 = 그 결과 가닥들의 <b>윗머리</b>(두상 중심 CY ~ CY+0.5b) 점 |x|의 pct 백분위 — "위머리 폭"을 가닥에서 직접 잼
+   ② CY 아래로 내려갈수록(rampB × b에 걸쳐) 기준 폭 × (1+grow)를 넘는 x를 부드럽게 눌러 넣음(soft: 상한 근처부터 서서히 · 좁히기만)
+   x(좌우)만 · 앞뒤(z)는 그대로. 어깨·몸통 처리(SHOULDER·BODY_OUT) 전에 걸어서 몸 밖으로 미는 건 그대로.
+   스타일이 걸렸고 hullPad가 숫자인 스타일만(레이어드 보브 제외). 끄기 MQ_WIDTH_CAP.on=false · 여유 MQ_WIDTH_CAP.grow */
+var MQ_WIDTH_CAP = { on: true, pct: 0.95, grow: 0.06, rampB: 0.45, soft: 0.25, stats: null };
+function mqStyleWidthCapAll(list) {
+  const C = MQ_WIDTH_CAP;
+  if (!C.on || !list || !list.length || !mqStyleFallOn()) return list;
+  let E = null, CY = 0.15;
+  try { E = getHeadEllipsoid(); } catch (e) { return list; }
+  try { const m = state.hair3Dmannequin || state.hair3Dneutral; if (m && isFinite(m.CY)) CY = m.CY; else if (typeof SCALP_CENTER_Y !== "undefined") CY = SCALP_CENTER_Y; } catch (e) {}
+  if (!E || !(E.b > 1e-6)) return list;
+  const xs = [];
+  for (let i = 0; i < list.length; i++) {
+    const p = list[i] && list[i].pts;
+    if (!p) continue;
+    for (let k = 0; k < p.length; k++) { const y = p[k].y; if (y >= CY && y <= CY + 0.5 * E.b) xs.push(Math.abs(p[k].x)); }
+  }
+  if (xs.length < 50) return list;
+  xs.sort((a, b) => a - b);
+  const R = xs[Math.min(xs.length - 1, Math.floor(xs.length * C.pct))] * (1 + C.grow);
+  if (!(R > 1e-6)) return list;
+  const k0 = R * (1 - C.soft), span = R - k0, rampH = Math.max(1e-6, C.rampB * E.b);
+  let moved = 0, maxIn = 0;
+  const out = list.map(st => {
+    const p = st && st.pts;
+    if (!p || p.length < 2) return st;
+    let np = null;
+    for (let k = 1; k < p.length; k++) {
+      const q = p[k], ax = Math.abs(q.x);
+      if (q.y >= CY || ax <= k0) continue;
+      const capped = k0 + span * Math.tanh((ax - k0) / span);
+      const f = Math.min(1, (CY - q.y) / rampH), w = f * f * (3 - 2 * f);
+      const nx = ax + (capped - ax) * w;
+      if (nx >= ax - 1e-9) continue;
+      if (!np) np = p.slice();
+      np[k] = Object.assign({}, q, { x: Math.sign(q.x) * nx });
+      moved++; if (ax - nx > maxIn) maxIn = ax - nx;
+    }
+    return np ? Object.assign({}, st, { pts: np }) : st;
+  });
+  let cm = 16.4; try { cm = modelCmPerUnit() || 16.4; } catch (e) {}
+  C.stats = { refHalfCm: +(R * cm).toFixed(1), moved: moved, maxInCm: +(maxIn * cm).toFixed(1) };
+  return out;
+}
 /* 지금 모드와 다르게 지어진 마네킹이면 버림(다음 접근 때 다시 지음) */
 function mqStyleLenSync() {
   try {

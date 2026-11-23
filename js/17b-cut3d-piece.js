@@ -9857,6 +9857,7 @@ function computeAdjustedHair3DStrands(srcAngleFilter, stride){
   // (옛 48 가닥 수) 조정 화면 전체 요청이면 정해 둔 수만큼만 — 위 STRAND_BUDGET
   let out = (!srcAngleFilter && stride == null) ? STRAND_BUDGET._compute(srcAngleFilter, stride) : _adjComputeCore(srcAngleFilter, stride);
   // (옛 50 어깨) 몸통 안으로 들어간 점을 어깨·등 면에 얹음 — 13a SHOULDER
+  out = (typeof mqStyleWidthCapAll === 'function' ? mqStyleWidthCapAll(out) : out);   // (2026-11-23) 스타일 마네킹 폭 상한 — 윗머리 폭 그대로 내려오게(17a MQ_WIDTH_CAP)
   out = riseFixAll(out);   // (2026-10-13i) 하늘로 솟은 뒷머리를 늘어뜨림(17a RISE_FIX) — 어깨 처리 전에
   out = SHOULDER._apply(out);
   out = BODY_OUT._apply(out);   // (2026-11-10c) 몸통 안에 든 점만 가까운 면(가슴 앞/등) 밖으로 — z만 옮김
