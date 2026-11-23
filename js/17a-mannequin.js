@@ -49,7 +49,7 @@ const MANNEQUIN = {
      이번 세트의 헐(폭 0.665 · 두피 0.393)은 예전 세트(0.423)보다 넓어서, 예전 헐에 맞춰 만든 스타일들이 전부 옆으로 넓게 나왔다.
      하네스(디버그 뿌리 + 실제 js 파이프라인)로 레이어드 보브를 사진(얼굴 높이 반폭 ≈0.65)에 맞춘 값: 1 → 0.74 · 0.6 → 0.64 · 0.45 → 0.61.
      길이(tipAt)는 그대로(이분탐색이 다시 맞춤). 원본 머리 보기(스타일 모드 아님)는 layerHi 그대로. 끄기 MANNEQUIN.styleLayerHi=null */
-  styleLayerHi: 0.6
+  styleLayerHi: 0.15   // (11-23 2차) 기본 = clotheschange 헐(두피+7%)과 같은 두께(0.15 → 두피+10%) — 사용자: "다른 스타일은 clotheschange가 좋아". 레이어드 보브만 STYLE_TUNES.layerHi 0.6
   /* (2026-10-27) 10-22에 넣었던 "다시 기른 가닥에서 칸마다 길이"(lenFromRegrow·lenNbr)는
      10-27 업로드에서 빠졌다 — 길이는 다시 섹션·사진별 lenPct(lenFor)로 정한다. */
 };
@@ -204,6 +204,7 @@ var STYLE_TUNES = {
     browCut: true
   },
   layered_bob_hush: {
+    layerHi: 0.6,    // (11-23) 부풀기 — 이 스타일만 clotheschange보다 넓게(사진 보브 폭 · 얼굴 높이 반폭 ≈0.65)
     browCut: true,   // (11-23) 크라운 가닥이 컬·처짐 뒤 얼굴 앞으로 내려와 눈·코를 덮던 것(이번 세트 디버그: 얼굴 앞 크라운 255가닥) — 마지막에 눈썹 선에서
     tipAt: {
       front: 0.45   // (11-22) 11/15 편집에서 fringeTrim:true로 덮였던 값 복구
@@ -1098,7 +1099,7 @@ function growMannequinStrand(ci, NT, NP, S, E, CY, L, colors) {
       y: (p.y - CY) / (bR * bR),
       z: p.z / (cR * cR)
     }),
-    layerHi = (_mqBuiltStyleMode && typeof M.styleLayerHi === "number") ? M.styleLayerHi : M.layerHi,   // (11-23) 스타일 모드 부풀기
+    layerHi = _mqBuiltStyleMode ? mqStyleLayerHi() : M.layerHi,   // (11-23) 스타일 모드 부풀기
     layer = M.layerLo + (layerHi - M.layerLo) * _mqRand(),
     kx = (1 + layer * (E.a / Math.max(0.000001, S.a) - 1)) * K,
     ky = (1 + layer * (E.b / Math.max(0.000001, S.b) - 1)) * K,
@@ -1175,10 +1176,18 @@ function mqStyleLenTable() {
   const t = id && typeof STYLE_TUNES !== "undefined" ? STYLE_TUNES[id] : null;
   return Object.assign({}, MANNEQUIN.styleLenCm || {}, (t && t.styleLenCm) || {});
 }
+/* (11-23) 스타일별 부풀기 — STYLE_TUNES[id].layerHi, 없으면 MANNEQUIN.styleLayerHi, 그것도 없으면 layerHi */
+function mqStyleLayerHi() {
+  let id = _mqApplyingId;
+  try { if (!id) id = (typeof EYE_GUARD !== "undefined" && EYE_GUARD._applying) || (typeof state !== "undefined" && state && state.specAppliedId) || null; } catch (e) {}
+  const t = id && typeof STYLE_TUNES !== "undefined" ? STYLE_TUNES[id] : null;
+  const v = t && typeof t.layerHi === "number" ? t.layerHi : MANNEQUIN.styleLayerHi;
+  return typeof v === "number" ? Math.max(MANNEQUIN.layerLo, v) : MANNEQUIN.layerHi;
+}
 /* 지금 모드와 다르게 지어진 마네킹이면 버림(다음 접근 때 다시 지음) */
 function mqStyleLenSync() {
   try {
-    const on = mqStyleLenOn(), key = on ? JSON.stringify(mqStyleLenTable()) : null;
+    const on = mqStyleLenOn(), key = on ? JSON.stringify(mqStyleLenTable()) + "|" + mqStyleLayerHi() : null;
     if (_mqBuiltStyleMode !== null && (_mqBuiltStyleMode !== on || (on && _mqBuiltLenKey !== key)) && typeof state !== "undefined" && state) state.hair3Dmannequin = null;
   } catch (e) {}
 }
@@ -1268,7 +1277,7 @@ function buildMannequinHair3D() {
   let cmU = 16.4;
   try { cmU = typeof modelCmPerUnit === "function" ? modelCmPerUnit() || 16.4 : 16.4; } catch (e) {}
   const lenTab = styleMode ? mqStyleLenTable() : null;
-  _mqBuiltLenKey = styleMode ? JSON.stringify(lenTab) : null;
+  _mqBuiltLenKey = styleMode ? JSON.stringify(lenTab) + "|" + mqStyleLayerHi() : null;
   const lenFor = styleMode
     ? (sec, view) => (lenTab[sec] || 30) / cmU   // (11-22) 손님 길이와 안 섞음(사진 가닥 꼬리 최장 44~104cm)
     : lenOwn;
