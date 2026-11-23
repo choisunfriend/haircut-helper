@@ -1,1 +1,1527 @@
-const BODY_BASE={'on':!![],'gender':'male','outer':!![],'skinHex':'#C2A489','clothOffset':0.004,'underOffset':0.002,'neckBandUnits':0.25,'rack':!![]},BODY_SHOP={'on':!![],'catalogUrl':'https://tryon-marketplace.choisunfriend.workers.dev/api/products','pageUrl':'https://tryon-marketplace-web.choisunfriend.workers.dev/shop','assetBase':'https://tryon-marketplace-web.choisunfriend.workers.dev/','timeoutMs':0x3a98,'pickGenderLock':!![],'recommend':![]};let _pickedShopId=null,_pickedShopItem=null,_picks={};function L(_0x34a2aa,_0x48c90e){try{return typeof uiLang!=='undefined'&&uiLang==='en'?_0x48c90e:_0x34a2aa;}catch(_0x1910cf){return _0x34a2aa;}}const SLOT_LABEL_KO={'lower':'하의','upper':'상의','full':'전신','outer':'외투'},SLOT_LABEL_EN={'lower':'bottoms','upper':'top','full':'one-piece','outer':'jacket'};function slotLabel(_0x546ce6){return L(SLOT_LABEL_KO[_0x546ce6]||_0x546ce6,SLOT_LABEL_EN[_0x546ce6]||_0x546ce6);}function shopUrlWithLang(_0x54e59a){try{const _0x561754=new URL(_0x54e59a,location['href']);return _0x561754['searchParams']['set']('lang',typeof uiLang!=='undefined'&&uiLang==='ko'?'ko':'en'),_0x561754['href'];}catch(_0x3d33cc){return _0x54e59a;}}function _slotOf(_0x2ee326,_0x55f873){const _0x56b99d=String(_0x2ee326||'')['toLowerCase']();if(_0x56b99d==='outer')return'outer';if(_0x56b99d==='upper_body'||_0x56b99d==='upper'||_0x56b99d==='top')return'upper';if(_0x56b99d==='lower_body'||_0x56b99d==='lower'||_0x56b99d==='bottom')return'lower';if(_0x56b99d==='full_body'||_0x56b99d==='full'||_0x56b99d==='dress')return'full';return(_0x55f873||'outer')==='outer'?'outer':'upper';}let _shopItems=null,_shopLoading=null,_shopFailed=![];function _mpParse(_0x36e359){if(_0x36e359&&typeof _0x36e359==='object')return _0x36e359;if(typeof _0x36e359==='string')try{return JSON['parse'](_0x36e359);}catch(_0x295be9){}return null;}function _mpSlug(_0x27c5d4){return String(_0x27c5d4||'')['toLowerCase']()['trim']()['replace'](/[^\w\s-]/g,'')['replace'](/\s+/g,'-')['replace'](/-+/g,'-');}function _fromMarketplace(_0x11c962){if(!_0x11c962||!_0x11c962['id'])return null;if(_0x11c962['mesh'])return _0x11c962;if(_0x11c962['status']&&_0x11c962['status']!=='active')return null;const _0x37c511=_mpParse(_0x11c962['media'])||{},_0x1b3d52=_mpParse(_0x11c962['avatar'])||{},_0x12ba7a=String(_0x37c511['model_file']||_0x11c962['model_path']||'')['trim']();if(!_0x12ba7a)return null;if(!/\.obj(\?|#|$)/i['test'](_0x12ba7a))return console['warn']('[3D·쇼핑몰]\x20'+_0x11c962['id']+'\x20의\x203D\x20파일이\x20.obj\x20가\x20아니라\x20건너뜁니다(앱은\x20OBJ만\x20입힘):\x20'+_0x12ba7a),null;let _0x8bc166=_0x12ba7a;try{const _0x32fb21=new URL(BODY_SHOP['assetBase']),_0x42b354=new URL(_0x12ba7a,_0x32fb21);_0x42b354['origin']===_0x32fb21['origin']&&!/^\/api\/assets\//i['test'](_0x42b354['pathname'])&&(_0x42b354['pathname']='/api/assets/'+_0x42b354['pathname']['replace'](/^\/+/,'')),_0x8bc166=_0x42b354['href'];}catch(_0x529401){}const _0x189930=String(_0x1b3d52['gender']||_0x11c962['gender']||'')['toLowerCase'](),_0x3b0573=/^(female|woman|women)$/['test'](_0x189930)?'female':/^(male|man|men)$/['test'](_0x189930)?'male':'both',_0x223d0e=String(_0x1b3d52['body_part']||'')['toLowerCase'](),_0xdf6fe4=_0x223d0e==='outer'?'outer':_0x223d0e?'inner':'outer',_0x59cc39={};if(_0x3b0573==='both')_0x59cc39['male']=_0x8bc166,_0x59cc39['female']=_0x8bc166;else _0x59cc39[_0x3b0573]=_0x8bc166;const _0x35a4f6=_0x11c962['currency']||'KRW',_0x10126c=typeof _0x11c962['price']==='number'?_0x11c962['price']:null,_0x4c29ae=String(_0x12ba7a)['match'](/products\/([A-Za-z0-9_-]+)\//);return{'id':String(_0x11c962['id']),'name':_0x11c962['name']||String(_0x11c962['id']),'gender':_0x3b0573,'layer':_0xdf6fe4,'under':_0x223d0e==='lower_body','bodyPart':_0x223d0e||null,'slot':_slotOf(_0x223d0e,_0xdf6fe4),'manifest':_0x4c29ae?new URL('/api/assets/products/'+_0x4c29ae[0x1]+'/fitted.json',BODY_SHOP['assetBase'])['href']:null,'fitted':_0x1b3d52['fitted']===!![]||/\.fitted\.obj(\?|#|$)/i['test'](_0x12ba7a),'colorHex':_0x11c962['colorHex']||null,'mesh':_0x59cc39,'shop':{'link':new URL(_mpSlug(_0x11c962['name']),BODY_SHOP['assetBase'])['href'],'title':_0x11c962['name']||'이\x20옷\x20보기','price':_0x10126c!=null?_0x10126c['toLocaleString']('ko-KR')+'\x20'+_0x35a4f6:null}};}function _normalizeShopItem(_0x56c7a8,_0x2043b3){_0x56c7a8=_fromMarketplace(_0x56c7a8),_0x2043b3=BODY_SHOP['assetBase']||_0x2043b3;if(!_0x56c7a8||!_0x56c7a8['id'])return null;const _0x53705d=Object['assign']({},_0x56c7a8,{'fromShop':!![]});_0x53705d['mesh']={};const _0x4bf4e6=[];for(const _0x544121 of[BODY_SHOP['assetBase'],BODY_SHOP['catalogUrl'],BODY_SHOP['pageUrl']]){try{_0x4bf4e6['push'](new URL(_0x544121)['origin']);}catch(_0x22a09f){}}for(const _0x48ab31 of['male','female']){const _0x476976=_0x56c7a8['mesh']&&_0x56c7a8['mesh'][_0x48ab31];if(!_0x476976)continue;try{const _0x154ed1=new URL(_0x476976,_0x2043b3||BODY_SHOP['catalogUrl']);if(_0x154ed1['protocol']==='https:'&&_0x4bf4e6['includes'](_0x154ed1['origin']))_0x53705d['mesh'][_0x48ab31]=_0x154ed1['href'];else console['warn']('[3D·쇼핑몰]\x20허용되지\x20않은\x203D\x20주소를\x20무시합니다:\x20'+_0x154ed1['origin']);}catch(_0x2ac200){}}if(_0x53705d['manifest'])try{if(!_0x4bf4e6['includes'](new URL(_0x53705d['manifest'])['origin']))_0x53705d['manifest']=null;}catch(_0x2d6672){_0x53705d['manifest']=null;}return _0x53705d['mesh']['male']||_0x53705d['mesh']['female']?_0x53705d:null;}function loadShopCatalog(_0x3667af){if(!BODY_SHOP['on'])return Promise['resolve']([]);if(_shopLoading)return _shopLoading;if(_shopItems&&!(_0x3667af&&_shopFailed))return Promise['resolve'](_shopItems);return _shopLoading=((async()=>{try{const _0x40f18e=typeof AbortController==='function'?new AbortController():null,_0x3c6773=_0x40f18e&&setTimeout(()=>_0x40f18e['abort'](),BODY_SHOP['timeoutMs']),_0x54ed2d=await fetch(BODY_SHOP['catalogUrl'],_0x40f18e?{'signal':_0x40f18e['signal']}:void 0x0);if(_0x3c6773)clearTimeout(_0x3c6773);if(!_0x54ed2d['ok'])throw new Error('HTTP\x20'+_0x54ed2d['status']);const _0x5b5697=await _0x54ed2d['json'](),_0x38c5ee=_0x5b5697&&(_0x5b5697['items']||_0x5b5697['products'])||[];_shopItems=_0x38c5ee['map'](_0x2de6c1=>_normalizeShopItem(_0x2de6c1,BODY_SHOP['catalogUrl']))['filter'](Boolean),_shopFailed=![],console['log']('[3D·쇼핑몰]\x20옷\x20목록\x20'+_shopItems['length']+'벌\x20받음\x20—\x20'+BODY_SHOP['catalogUrl']);}catch(_0x53972f){_shopItems=_shopItems||[],_shopFailed=!![],console['log']('[3D·쇼핑몰]\x20목록을\x20못\x20받아\x20견본\x20옷장만\x20씁니다:',_0x53972f&&_0x53972f['message']||_0x53972f);}return _shopLoading=null,_shopItems;})()),_shopLoading;}function shopPiece(_0x51d048,_0x1e06bd,_0x55fabf){if(!_0x51d048||!_0x51d048['mesh'])return null;if(!_0x55fabf&&_0x51d048['gender']&&_0x51d048['gender']!=='both'&&_0x51d048['gender']!==_0x1e06bd)return null;const _0x4f1c9e=_0x51d048['mesh'][_0x1e06bd];if(!_0x4f1c9e)return null;const _0x1ef20a=_0x51d048['fitFor']||_0x1e06bd;if(_0x1ef20a!==_0x1e06bd)return console['warn']('[3D·쇼핑몰]\x20'+_0x51d048['id']+'\x20의\x20mesh.'+_0x1e06bd+'\x20가\x20fitFor='+_0x1ef20a+'\x20로\x20적혀\x20있습니다\x20—\x20교차\x20피팅은\x20하지\x20않으므로\x20건너뜁니다'),null;return{'id':_0x51d048['id'],'name':_0x51d048['name'],'formal':typeof _0x51d048['formal']==='number'?_0x51d048['formal']:0.5,'url':_0x4f1c9e,'colorHex':_0x51d048['colorHex']||null,'layer':_0x51d048['layer']||'outer','fitFor':_0x1ef20a,'shop':_0x51d048['shop']||null,'fitted':!!_0x51d048['fitted'],'bodyPart':_0x51d048['bodyPart']||null,'slot':_0x51d048['slot']||_slotOf(_0x51d048['bodyPart'],_0x51d048['layer']),'manifest':_0x51d048['manifest']||null,'under':!!_0x51d048['under'],'fromShop':!![]};}function figLabel(_0x28e596){const _0x348472=BODY_FIGURES[_0x28e596];return _0x348472?L(_0x348472['label'],_0x348472['labelEn']||_0x348472['label']):_0x28e596;}const BODY_FIGURES={'male':{'label':'남자','labelEn':'Man','objUrl':'./assets/body_male.obj','neckCutFrac':0.9474},'female':{'label':'여자','labelEn':'Woman','objUrl':'./assets/body_female.obj','neckCutFrac':0.9427}},BODY_WARDROBE={'male':{'outer':[{'id':'m-suit','name':'슈트','nameEn':'Suit','formal':0.95,'coversAll':!![],'url':'./assets/fitted/male/suit3.fitted.obj'},{'id':'m-jacket','name':'재킷','nameEn':'Jacket','formal':0.45,'coversAll':!![],'url':'./assets/fitted/male/suit_dinner_jacket.fitted.obj'}],'inner':[{'id':'m-jeans','name':'청바지','nameEn':'Jeans','slot':'lower','under':!![],'colorHex':'#3E4E6B','url':'./assets/fitted/male/mens_elv_jeans2slf.fitted.obj'},{'id':'m-top','name':'상의','nameEn':'Top','slot':'upper','url':'./assets/fitted/male/mycenaean_tunic.fitted.obj'}]},'female':{'outer':[{'id':'f-suit','name':'슈트','nameEn':'Suit','formal':0.95,'coversAll':!![],'url':'./assets/fitted/female/fem_suit2.fitted.obj'},{'id':'f-dress','name':'원피스\x20슈트','nameEn':'Dress\x20suit','formal':0.55,'coversAll':!![],'url':'./assets/fitted/female/female_elegantsuit01.fitted.obj'}],'inner':[{'id':'f-casual','name':'캐주얼','nameEn':'Casual','slot':'full','url':'./assets/fitted/female/female_casualsuit01.fitted.obj'}]}};function partName(_0x4725e9){return _0x4725e9?L(_0x4725e9['name'],_0x4725e9['nameEn']||_0x4725e9['name']):'';}function outfitFormality(_0x28ed76){if(!_0x28ed76)return 0.5;if(_0x28ed76['category']==='포멀')return 0x1;const _0x30b9a8=typeof _0x28ed76['shoulder']==='number'?_0x28ed76['shoulder']:0.5,_0x1337ab=typeof _0x28ed76['busy']==='number'?_0x28ed76['busy']:0.5;return Math['max'](0x0,Math['min'](0x1,_0x30b9a8*0.6+_0x1337ab*0.4));}async function piecesForOutfit(_0x1fce43){const _0x355ad5=BODY_BASE['gender'],_0x44bc93=BODY_WARDROBE[_0x355ad5]||BODY_WARDROBE['male'],_0x19f802=await loadShopCatalog(),_0x522a33=_0x4b8935=>(BODY_SHOP['recommend']?_0x19f802:[])['map'](_0x214f22=>shopPiece(_0x214f22,_0x355ad5))['filter'](_0x30cf24=>_0x30cf24&&(_0x30cf24['layer']||'outer')===_0x4b8935),_0x204627={};for(const _0x7728a7 of Object['keys'](_picks)){const _0x24dc83=_picks[_0x7728a7],_0x3d7e90=_0x24dc83&&shopPiece(_0x24dc83,_0x355ad5,!BODY_SHOP['pickGenderLock']);if(_0x3d7e90){_0x204627[_0x7728a7]=Object['assign']({},_0x3d7e90,{'slot':_0x7728a7});continue;}console['warn']('[3D·쇼핑몰]\x20고른\x20'+(SLOT_LABEL_KO[_0x7728a7]||_0x7728a7)+'('+(_0x24dc83&&_0x24dc83['id'])+')에\x20'+BODY_FIGURES[_0x355ad5]['label']+'\x20몸용\x20메쉬가\x20없어\x20이\x20몸에서는\x20빼고\x20입힙니다'),bodyToast(L('고른\x20'+slotLabel(_0x7728a7)+'는\x20'+figLabel(_0x355ad5)+'\x20몸용이\x20아니라\x20빼고\x20입힙니다','This\x20'+slotLabel(_0x7728a7)+'\x20isn\x27t\x20made\x20for\x20the\x20'+figLabel(_0x355ad5)+'\x20body,\x20so\x20it\x20was\x20left\x20off'));}const _0x17347d=Object['keys'](_0x204627)['length']>0x0,_0x40fe15={},_0x40fceb=_0x522a33('inner')['length']?_0x522a33('inner'):_0x44bc93['inner']||[];for(const _0x374390 of _0x40fceb)_0x40fe15[_0x374390['slot']||_slotOf(_0x374390['bodyPart'],_0x374390['layer'])]=Object['assign']({},_0x374390);_0x204627['full']&&(delete _0x40fe15['upper'],delete _0x40fe15['lower'],_0x40fe15['full']=_0x204627['full']);if(_0x204627['upper'])_0x40fe15['upper']=_0x204627['upper'];if(_0x204627['lower'])_0x40fe15['lower']=_0x204627['lower'];if(_0x40fe15['full']&&!_0x204627['full']&&_0x204627['upper']&&_0x204627['lower'])delete _0x40fe15['full'];let _0x31a162=null;if(BODY_BASE['outer']){if(_0x204627['outer'])_0x31a162=_0x204627['outer'];else{const _0x945f00=(_0x44bc93['outer']||[])['concat'](_0x522a33('outer'));if(_0x945f00['length']){const _0x5dc6de=outfitFormality(_0x1fce43);let _0x2e350e=_0x945f00[0x0],_0x33dab3=Infinity;for(const _0x4d79b0 of _0x945f00){const _0x594ad2=Math['abs'](_0x4d79b0['formal']-_0x5dc6de);_0x594ad2<_0x33dab3&&(_0x33dab3=_0x594ad2,_0x2e350e=_0x4d79b0);}_0x31a162=Object['assign']({},_0x2e350e);}}}const _0x4a6a75=_0x31a162&&_0x31a162['coversAll']&&!_0x17347d?[_0x31a162]:[_0x40fe15['lower'],_0x40fe15['full'],_0x40fe15['upper'],_0x31a162]['filter'](Boolean),_0x477b68=_0x4a6a75['map'](partName),_0x432dae=_0x31a162&&_0x31a162['fromShop']&&_0x31a162['shop']||(_0x204627['upper']||_0x204627['full']||_0x204627['lower']||{})['shop']||_0x4a6a75[0x0]&&_0x4a6a75[0x0]['shop']||null;return{'label':_0x4a6a75['length']?_0x477b68['join']('\x20+\x20')+(_0x17347d?L('\x20·\x20고름','\x20·\x20picked'):''):L('맨몸','No\x20clothes'),'shop':_0x432dae,'parts':_0x4a6a75,'hasOuterPick':!!_0x204627['outer'],'anyPick':_0x17347d};}const _figureCache=new Map(),_garmentCache=new Map();let _bodyRig=null,_bodyWornLabel='',_bodyWornShop=null,_lastBuild=null;function _loadOBJGroup(_0x10487e,_0x3b56e9){return new Promise((_0x5d3baf,_0x447045)=>{if(typeof THREE==='undefined'||typeof THREE['OBJLoader']!=='function'){_0x447045(new Error('OBJLoader가\x20없습니다'));return;}if(!_0x3b56e9||typeof THREE['MTLLoader']!=='function'){new THREE['OBJLoader']()['load'](encodeURI(_0x10487e),_0x5d3baf,undefined,_0x447045);return;}const _0x32e0cb=new URL(encodeURI(_0x10487e),location['href'])['href'],_0x1cf221=_0x32e0cb['slice'](0x0,_0x32e0cb['lastIndexOf']('/')+0x1);fetch(_0x32e0cb)['then'](_0x34c590=>{if(!_0x34c590['ok'])throw new Error('HTTP\x20'+_0x34c590['status']+'\x20'+_0x10487e);return _0x34c590['text']();})['then'](_0x22b8fc=>{const _0x3a644c=_0x22b8fc['match'](/^mtllib[ \t]+(.+?)[ \t]*$/m),_0xcb6ba4=_0x4814ab=>{const _0x2d3fe9=new THREE['OBJLoader']();if(_0x4814ab)_0x2d3fe9['setMaterials'](_0x4814ab);const _0x4ca02e=_0x2d3fe9['parse'](_0x22b8fc);_0x4ca02e['userData']['hasMtl']=!!_0x4814ab,_0x5d3baf(_0x4ca02e);};if(!_0x3a644c)return _0xcb6ba4(null);const _0x20029a=new THREE['MTLLoader']();_0x20029a['setResourcePath'](_0x1cf221),_0x20029a['setPath'](_0x1cf221),_0x20029a['load'](_0x3a644c[0x1],_0x579bb=>{try{_0x579bb['preload']();}catch(_0x21b497){}_0xcb6ba4(_0x579bb);},undefined,_0x1f0f7e=>{console['warn']('[3D·옷]\x20재질(mtl)\x20불러오기\x20실패\x20—\x20재질\x20없이\x20씁니다:\x20'+_0x3a644c[0x1],_0x1f0f7e),_0xcb6ba4(null);});})['catch'](_0x447045);});}function smoothInflateGeometry(_0x31a469,_0x5c2477){const _0xd3f991=_0x31a469['attributes']&&_0x31a469['attributes']['position'];if(!_0xd3f991)return _0x31a469;const _0x36b3cc=_0xd3f991['count'],_0x25bb00=new Map(),_0x3a3937=_0x2fb6bc=>Math['round'](_0xd3f991['getX'](_0x2fb6bc)*0x2710)/0x2710+','+Math['round'](_0xd3f991['getY'](_0x2fb6bc)*0x2710)/0x2710+','+Math['round'](_0xd3f991['getZ'](_0x2fb6bc)*0x2710)/0x2710,_0x2edf0e=new THREE['Vector3'](),_0x22dd1d=new THREE['Vector3'](),_0x2cc71a=new THREE['Vector3'](),_0xe0d68=new THREE['Vector3'](),_0x14f01b=new THREE['Vector3'](),_0xcc5a7b=new THREE['Vector3']();for(let _0x2e5d60=0x0;_0x2e5d60+0x2<_0x36b3cc;_0x2e5d60+=0x3){_0x2edf0e['fromBufferAttribute'](_0xd3f991,_0x2e5d60),_0x22dd1d['fromBufferAttribute'](_0xd3f991,_0x2e5d60+0x1),_0x2cc71a['fromBufferAttribute'](_0xd3f991,_0x2e5d60+0x2),_0xcc5a7b['crossVectors'](_0xe0d68['subVectors'](_0x22dd1d,_0x2edf0e),_0x14f01b['subVectors'](_0x2cc71a,_0x2edf0e));for(let _0x4ea842=0x0;_0x4ea842<0x3;_0x4ea842++){const _0x457869=_0x3a3937(_0x2e5d60+_0x4ea842),_0x572d5e=_0x25bb00['get'](_0x457869);if(_0x572d5e)_0x572d5e[0x0]+=_0xcc5a7b['x'],_0x572d5e[0x1]+=_0xcc5a7b['y'],_0x572d5e[0x2]+=_0xcc5a7b['z'];else _0x25bb00['set'](_0x457869,[_0xcc5a7b['x'],_0xcc5a7b['y'],_0xcc5a7b['z']]);}}const _0x18ec56=new Float32Array(_0x36b3cc*0x3);for(let _0x547fd9=0x0;_0x547fd9<_0x36b3cc;_0x547fd9++){const _0xfb4bc3=_0x25bb00['get'](_0x3a3937(_0x547fd9))||[0x0,0x1,0x0],_0x3c5649=Math['hypot'](_0xfb4bc3[0x0],_0xfb4bc3[0x1],_0xfb4bc3[0x2])||0x1,_0x2c2ac7=_0xfb4bc3[0x0]/_0x3c5649,_0x58c182=_0xfb4bc3[0x1]/_0x3c5649,_0x6b3b69=_0xfb4bc3[0x2]/_0x3c5649;_0x18ec56[_0x547fd9*0x3]=_0x2c2ac7,_0x18ec56[_0x547fd9*0x3+0x1]=_0x58c182,_0x18ec56[_0x547fd9*0x3+0x2]=_0x6b3b69;if(_0x5c2477)_0xd3f991['setXYZ'](_0x547fd9,_0xd3f991['getX'](_0x547fd9)+_0x2c2ac7*_0x5c2477,_0xd3f991['getY'](_0x547fd9)+_0x58c182*_0x5c2477,_0xd3f991['getZ'](_0x547fd9)+_0x6b3b69*_0x5c2477);}return _0x31a469['setAttribute']('normal',new THREE['BufferAttribute'](_0x18ec56,0x3)),_0xd3f991['needsUpdate']=!![],_0x31a469['computeBoundingBox'](),_0x31a469['computeBoundingSphere'](),_0x31a469;}function _collectGeometries(_0x2beed6){const _0x135b51=[];return _0x2beed6['traverse'](_0x2d0e48=>{if(!_0x2d0e48['isMesh']||!_0x2d0e48['geometry'])return;(_0x2beed6['userData']&&_0x2beed6['userData']['hasMtl']||_0x2d0e48['geometry']['attributes']['color'])&&(_0x2d0e48['geometry']['userData']['srcMaterial']=_0x2d0e48['material']),_0x135b51['push'](_0x2d0e48['geometry']);}),_0x135b51;}function _cloned(_0x12b3d9){return _0x12b3d9['map'](_0x2bbdf5=>_0x2bbdf5['clone']());}async function loadBodyFigure(_0x1beb03){if(_figureCache['has'](_0x1beb03))return _figureCache['get'](_0x1beb03);const _0x732839=BODY_FIGURES[_0x1beb03]||BODY_FIGURES['male'],_0x978bb=await _loadOBJGroup(_0x732839['objUrl']),_0x612303=_collectGeometries(_0x978bb);if(!_0x612303['length'])throw new Error('몸\x20메쉬가\x20비어\x20있습니다:\x20'+_0x732839['objUrl']);_0x612303['forEach'](_0x5558d2=>{if(!_0x5558d2['attributes']['normal'])smoothInflateGeometry(_0x5558d2,0x0);});const _0x3d27eb=new THREE['Box3']()['setFromObject'](_0x978bb),_0x3534c4=_0x3d27eb['min']['y']+_0x732839['neckCutFrac']*(_0x3d27eb['max']['y']-_0x3d27eb['min']['y']);let _0x4be921=0x0,_0x213ce9=0x0,_0x1333b4=0x0;for(const _0x3a96d3 of _0x612303){const _0x1f20e2=_0x3a96d3['attributes']['position'];for(let _0x5dcf4b=0x0;_0x5dcf4b<_0x1f20e2['count'];_0x5dcf4b++){const _0x4a2baa=_0x1f20e2['getY'](_0x5dcf4b);if(_0x4a2baa<_0x3534c4||_0x4a2baa>_0x3534c4+BODY_BASE['neckBandUnits'])continue;_0x4be921+=_0x1f20e2['getX'](_0x5dcf4b),_0x213ce9+=_0x1f20e2['getZ'](_0x5dcf4b),_0x1333b4++;}}const _0x202e31={'geoms':_0x612303,'box':_0x3d27eb,'cutY':_0x3534c4,'neckCx':_0x1333b4?_0x4be921/_0x1333b4:0x0,'neckCz':_0x1333b4?_0x213ce9/_0x1333b4:0x0};return _figureCache['set'](_0x1beb03,_0x202e31),console['log']('[3D·몸]\x20표준\x20인체('+_0x732839['label']+')\x20로드\x20—\x20파일\x20높이\x20'+(_0x3d27eb['max']['y']-_0x3d27eb['min']['y'])['toFixed'](0x2)+'단위\x20·\x20목\x20절단선\x20'+_0x3534c4['toFixed'](0x2)+'\x20·\x20목\x20중심\x20z\x20'+_0x202e31['neckCz']['toFixed'](0x2)),_0x202e31;}const FIT_WARP={'on':!![],'crossGender':![],'NY':0x30,'NTH':0x20,'ease':0.01,'keepOther':![]},_radialCache=new Map();async function bodyRadialMap(_0x58124b){if(_radialCache['has'](_0x58124b))return _radialCache['get'](_0x58124b);const _0x2b33b0=await loadBodyFigure(_0x58124b),_0x5dff9b=_0x2b33b0['box']['min']['y'],_0xcfaddb=_0x2b33b0['cutY'],_0x3ad0d3=FIT_WARP['NY'],_0x4ee675=FIT_WARP['NTH'],_0x2fecac=new Float32Array(_0x3ad0d3*_0x4ee675);for(const _0x530796 of _0x2b33b0['geoms']){const _0x3c14f3=_0x530796['attributes']['position'];for(let _0x56826a=0x0;_0x56826a<_0x3c14f3['count'];_0x56826a++){const _0x497a14=_0x3c14f3['getY'](_0x56826a);if(_0x497a14<_0x5dff9b||_0x497a14>_0xcfaddb)continue;const _0x4aee82=_0x3c14f3['getX'](_0x56826a)-_0x2b33b0['neckCx'],_0x4d6157=_0x3c14f3['getZ'](_0x56826a)-_0x2b33b0['neckCz'],_0x6d211f=Math['hypot'](_0x4aee82,_0x4d6157);if(!_0x6d211f)continue;const _0x467d3f=Math['min'](_0x3ad0d3-0x1,Math['floor']((_0x497a14-_0x5dff9b)/(_0xcfaddb-_0x5dff9b)*_0x3ad0d3)),_0x3952ea=(Math['floor']((Math['atan2'](_0x4d6157,_0x4aee82)+Math['PI'])/(0x2*Math['PI'])*_0x4ee675)%_0x4ee675+_0x4ee675)%_0x4ee675;if(_0x6d211f>_0x2fecac[_0x467d3f*_0x4ee675+_0x3952ea])_0x2fecac[_0x467d3f*_0x4ee675+_0x3952ea]=_0x6d211f;}}let _0x4642d8=0x0;for(let _0xe8d5a4=0x0;_0xe8d5a4<_0x3ad0d3;_0xe8d5a4++)for(let _0x1bfc5c=0x0;_0x1bfc5c<_0x4ee675;_0x1bfc5c++){if(_0x2fecac[_0xe8d5a4*_0x4ee675+_0x1bfc5c]>0x0)continue;_0x4642d8++;for(let _0x3c5aa0=0x1;_0x3c5aa0<_0x4ee675;_0x3c5aa0++){const _0x180c16=_0x2fecac[_0xe8d5a4*_0x4ee675+(_0x1bfc5c+_0x3c5aa0)%_0x4ee675],_0x573a98=_0x2fecac[_0xe8d5a4*_0x4ee675+((_0x1bfc5c-_0x3c5aa0)%_0x4ee675+_0x4ee675)%_0x4ee675];if(_0x180c16||_0x573a98){_0x2fecac[_0xe8d5a4*_0x4ee675+_0x1bfc5c]=Math['max'](_0x180c16,_0x573a98);break;}}}const _0x40027d={'R':_0x2fecac,'y0':_0x5dff9b,'y1':_0xcfaddb,'NY':_0x3ad0d3,'NTH':_0x4ee675,'cx':_0x2b33b0['neckCx'],'cz':_0x2b33b0['neckCz']};return _radialCache['set'](_0x58124b,_0x40027d),console['log']('[3D·옷·자]\x20'+BODY_FIGURES[_0x58124b]['label']+'\x20몸\x20반지름\x20격자\x20'+_0x3ad0d3+'×'+_0x4ee675+'\x20·\x20빈\x20칸\x20'+_0x4642d8+'개는\x20이웃에서\x20빌림'),_0x40027d;}function _sampleBodyR(_0x1f1856,_0x3ff8fa,_0xb98f39){const _0x19c76e=Math['max'](0x0,Math['min'](_0x1f1856['NY']-0.001,_0x3ff8fa*_0x1f1856['NY']-0.5)),_0x38fe10=(_0xb98f39+Math['PI'])/(0x2*Math['PI'])*_0x1f1856['NTH']-0.5,_0x476b97=Math['floor'](_0x19c76e),_0x7a292f=Math['floor'](_0x38fe10),_0x4dde55=_0x19c76e-_0x476b97,_0x3ca3e2=_0x38fe10-_0x7a292f,_0x2b5c94=(_0x267370,_0x3bb381)=>_0x1f1856['R'][Math['max'](0x0,Math['min'](_0x1f1856['NY']-0x1,_0x267370))*_0x1f1856['NTH']+(_0x3bb381%_0x1f1856['NTH']+_0x1f1856['NTH'])%_0x1f1856['NTH']];return(_0x2b5c94(_0x476b97,_0x7a292f)*(0x1-_0x3ca3e2)+_0x2b5c94(_0x476b97,_0x7a292f+0x1)*_0x3ca3e2)*(0x1-_0x4dde55)+(_0x2b5c94(_0x476b97+0x1,_0x7a292f)*(0x1-_0x3ca3e2)+_0x2b5c94(_0x476b97+0x1,_0x7a292f+0x1)*_0x3ca3e2)*_0x4dde55;}async function fitGarmentToBody(_0x9654a,_0x468f48,_0x24624c){if(!FIT_WARP['on']||!_0x468f48||_0x468f48===_0x24624c)return _0x9654a;const _0x57d3c7=await bodyRadialMap(_0x468f48),_0x5357f3=await bodyRadialMap(_0x24624c),_0x20c17b=(_0x5357f3['y1']-_0x5357f3['y0'])/(_0x57d3c7['y1']-_0x57d3c7['y0']);let _0x1fbd76=0x0,_0x5bf034=0x0;const _0x28c58a=_0x9654a['map'](_0x146d10=>{const _0x5ce8ca=_0x146d10['clone'](),_0x35832e=_0x5ce8ca['attributes']['position'];for(let _0x1006c8=0x0;_0x1006c8<_0x35832e['count'];_0x1006c8++){const _0x121b38=(_0x35832e['getY'](_0x1006c8)-_0x57d3c7['y0'])/(_0x57d3c7['y1']-_0x57d3c7['y0']),_0x1bc04c=_0x35832e['getX'](_0x1006c8)-_0x57d3c7['cx'],_0x561308=_0x35832e['getZ'](_0x1006c8)-_0x57d3c7['cz'],_0x8fc30=Math['atan2'](_0x561308,_0x1bc04c);let _0x40f529=Math['hypot'](_0x1bc04c,_0x561308);const _0x4fd597=_sampleBodyR(_0x57d3c7,_0x121b38,_0x8fc30),_0x30fdb8=_sampleBodyR(_0x5357f3,_0x121b38,_0x8fc30),_0x29daf9=Math['max'](0x0,_0x40f529-_0x4fd597)*_0x20c17b;_0x40f529=_0x4fd597>0x0&&_0x30fdb8>0x0?_0x30fdb8+_0x29daf9:_0x40f529*_0x20c17b;const _0x349230=_0x30fdb8+FIT_WARP['ease'];_0x40f529<_0x349230&&(_0x40f529=_0x349230,_0x1fbd76++),_0x5bf034++,_0x35832e['setXYZ'](_0x1006c8,_0x5357f3['cx']+Math['cos'](_0x8fc30)*_0x40f529,_0x5357f3['y0']+_0x121b38*(_0x5357f3['y1']-_0x5357f3['y0']),_0x5357f3['cz']+Math['sin'](_0x8fc30)*_0x40f529);}return _0x35832e['needsUpdate']=!![],smoothInflateGeometry(_0x5ce8ca,0x0),_0x5ce8ca;});return console['log']('[3D·옷·굽기]\x20'+BODY_FIGURES[_0x468f48]['label']+'용\x20옷\x20→\x20'+BODY_FIGURES[_0x24624c]['label']+'\x20몸\x20·\x20세로\x20×'+_0x20c17b['toFixed'](0x3)+'\x20·\x20밀어낸\x20점\x20'+_0x1fbd76+'/'+_0x5bf034+'\x20(밀어낸\x20점이\x20태반이면\x20그\x20옷은\x20이\x20몸에\x20너무\x20작은\x20것입니다\x20—\x20근사로는\x20여기까지)'),_0x28c58a;}function _bandWidth(_0x29a209,_0x4c828b,_0x34eec7,_0x12d0df){const _0x2c5819=[],_0x911eed=[];for(const _0xace1c1 of _0x29a209){const _0x42676b=_0xace1c1['attributes']['position'];for(let _0x225705=0x0;_0x225705<_0x42676b['count'];_0x225705++){const _0x2617b3=_0x42676b['getY'](_0x225705);if(_0x2617b3<_0x4c828b||_0x2617b3>_0x34eec7)continue;_0x2c5819['push'](_0x42676b['getX'](_0x225705)),_0x911eed['push'](_0x42676b['getZ'](_0x225705));}}if(!_0x2c5819['length'])return null;let _0x2d6c00=Infinity,_0x288250=-Infinity;for(const _0x3efcda of _0x2c5819){if(_0x3efcda<_0x2d6c00)_0x2d6c00=_0x3efcda;if(_0x3efcda>_0x288250)_0x288250=_0x3efcda;}const _0x1a694a=Math['max'](0x6,Math['min'](0x50,Math['floor'](_0x2c5819['length']/0x6))),_0x5ec8d1=(_0x288250-_0x2d6c00)/_0x1a694a||0x1,_0x23af4c=new Uint8Array(_0x1a694a);for(const _0x4deba2 of _0x2c5819)_0x23af4c[Math['min'](_0x1a694a-0x1,Math['floor']((_0x4deba2-_0x2d6c00)/_0x5ec8d1))]=0x1;const _0x542c3c=typeof _0x12d0df==='number'?_0x12d0df:(_0x2d6c00+_0x288250)/0x2;let _0x2fdba2=Math['max'](0x0,Math['min'](_0x1a694a-0x1,Math['floor']((_0x542c3c-_0x2d6c00)/_0x5ec8d1)));if(!_0x23af4c[_0x2fdba2]){let _0x3e7d2e=0x1;while(_0x3e7d2e<_0x1a694a&&!(_0x23af4c[_0x2fdba2+_0x3e7d2e]||_0x23af4c[_0x2fdba2-_0x3e7d2e]))_0x3e7d2e++;_0x2fdba2=_0x23af4c[_0x2fdba2+_0x3e7d2e]?_0x2fdba2+_0x3e7d2e:_0x2fdba2-_0x3e7d2e;}let _0x41c9ee=_0x2fdba2,_0x51bf57=_0x2fdba2;while(_0x41c9ee>0x0&&(_0x23af4c[_0x41c9ee-0x1]||_0x41c9ee>0x1&&_0x23af4c[_0x41c9ee-0x2]))_0x41c9ee--;while(_0x51bf57<_0x1a694a-0x1&&(_0x23af4c[_0x51bf57+0x1]||_0x51bf57<_0x1a694a-0x2&&_0x23af4c[_0x51bf57+0x2]))_0x51bf57++;const _0x137015=_0x2d6c00+_0x41c9ee*_0x5ec8d1,_0x47834c=_0x2d6c00+(_0x51bf57+0x1)*_0x5ec8d1;let _0x579483=0x0,_0x2b6706=0x0;for(let _0x51662e=0x0;_0x51662e<_0x2c5819['length'];_0x51662e++)_0x2c5819[_0x51662e]>=_0x137015&&_0x2c5819[_0x51662e]<=_0x47834c&&(_0x579483+=_0x911eed[_0x51662e],_0x2b6706++);return{'w':_0x47834c-_0x137015,'cx':(_0x137015+_0x47834c)/0x2,'cz':_0x2b6706?_0x579483/_0x2b6706:0x0,'n':_0x2b6706};}function _geomsBox(_0x22b48e){const _0x4af432={'minX':Infinity,'minY':Infinity,'minZ':Infinity,'maxX':-Infinity,'maxY':-Infinity,'maxZ':-Infinity};for(const _0x54ac06 of _0x22b48e){const _0x164168=_0x54ac06['attributes']['position'];for(let _0x1e3b19=0x0;_0x1e3b19<_0x164168['count'];_0x1e3b19++){const _0x31f0bc=_0x164168['getX'](_0x1e3b19),_0x1040f9=_0x164168['getY'](_0x1e3b19),_0x554532=_0x164168['getZ'](_0x1e3b19);if(_0x31f0bc<_0x4af432['minX'])_0x4af432['minX']=_0x31f0bc;if(_0x31f0bc>_0x4af432['maxX'])_0x4af432['maxX']=_0x31f0bc;if(_0x1040f9<_0x4af432['minY'])_0x4af432['minY']=_0x1040f9;if(_0x1040f9>_0x4af432['maxY'])_0x4af432['maxY']=_0x1040f9;if(_0x554532<_0x4af432['minZ'])_0x4af432['minZ']=_0x554532;if(_0x554532>_0x4af432['maxZ'])_0x4af432['maxZ']=_0x554532;}}return _0x4af432;}function _placeShopGeoms(_0x29a64c,_0x426b07,_0x178d2d,_0x31d9b8){let _0x191ae3=_geomsBox(_0x29a64c);if(!isFinite(_0x191ae3['minY']))return _0x29a64c;const _0x337727=_0x178d2d['_bb']||(_0x178d2d['_bb']=_geomsBox(_0x178d2d['geoms'])),_0xf67680=_0x337727['maxY']-_0x337727['minY'],_0x468541=_0x337727['maxX']-_0x337727['minX'],_0x3e1261=_0x191ae3['maxX']-_0x191ae3['minX'],_0x46971e=_0x426b07['bodyPart']==='lower_body'||_0x426b07['under'];if(_0x191ae3['minY']>=_0x337727['minY']-0.05*_0xf67680&&_0x191ae3['maxY']<=_0x337727['maxY']+0.05*_0xf67680&&_0x191ae3['minX']>=_0x337727['minX']-0.1*_0x468541&&_0x191ae3['maxX']<=_0x337727['maxX']+0.1*_0x468541&&_0x191ae3['maxY']-_0x191ae3['minY']>=0.15*_0xf67680&&_0x3e1261>=0.25*_0x468541&&(_0x46971e||_0x191ae3['maxY']>=_0x178d2d['cutY']-0.25*_0xf67680)&&Math['abs']((_0x191ae3['minX']+_0x191ae3['maxX'])/0x2-(_0x337727['minX']+_0x337727['maxX'])/0x2)<0.05*_0x468541)return _0x29a64c;if(_0x191ae3['maxZ']-_0x191ae3['minZ']>1.5*(_0x191ae3['maxY']-_0x191ae3['minY'])){for(const _0x40a8ad of _0x29a64c){const _0x459b46=_0x40a8ad['attributes']['position'];for(let _0x1cbe18=0x0;_0x1cbe18<_0x459b46['count'];_0x1cbe18++)_0x459b46['setXYZ'](_0x1cbe18,_0x459b46['getX'](_0x1cbe18),_0x459b46['getZ'](_0x1cbe18),-_0x459b46['getY'](_0x1cbe18));}_0x191ae3=_geomsBox(_0x29a64c);}const _0x1a5f74=_0x191ae3['maxY']-_0x191ae3['minY'],_0x23c0ad=_0x178d2d['cutY']-_0x178d2d['box']['min']['y'],_0xf00125=_0x426b07['bodyPart']==='lower_body'||_0x426b07['under'],_0x59badd=_0xf00125?_0x178d2d['box']['min']['y']+0.77*_0x23c0ad:_0x178d2d['cutY']+0.02*_0x23c0ad,_0x257e89=_0xf00125?_bandWidth(_0x178d2d['geoms'],_0x59badd-0.05*_0x23c0ad,_0x59badd,_0x178d2d['neckCx']):_bandWidth(_0x178d2d['geoms'],_0x178d2d['cutY']-0.13*_0x23c0ad,_0x178d2d['cutY']-0.06*_0x23c0ad,_0x178d2d['neckCx']),_0x4ee560=((()=>{for(const _0x262882 of[0x1,0x2,0x3]){const _0x47c4b1=_bandWidth(_0x29a64c,_0x191ae3['maxY']-(_0xf00125?0.06:0.14)*_0x262882*_0x1a5f74,_0x191ae3['maxY']-(_0xf00125?0x0:0.06)*_0x1a5f74);if(_0x47c4b1&&_0x47c4b1['n']>=0xc)return _0x47c4b1;}return _bandWidth(_0x29a64c,_0x191ae3['maxY']-0.4*_0x1a5f74,_0x191ae3['maxY']);})());let _0x25052f=_0x257e89&&_0x4ee560&&_0x4ee560['w']>0x0?_0x257e89['w']/_0x4ee560['w']*(_0xf00125?1.04:1.02):_0x23c0ad*0.42/_0x1a5f74;const _0x171623=_0x25052f*_0x1a5f74/_0x23c0ad;let _0x2ed3a0=![];if(!(_0x171623>0.15&&_0x171623<1.3)){const _0x3a65c9=_0x59badd-_0x178d2d['box']['min']['y'],_0x5ee0eb=_0xf00125?[['하의',0.5*_0x23c0ad]]:[['상의',0.4*_0x23c0ad],['전신',0.97*_0x3a65c9]];let _0x1e6007=_0x5ee0eb[0x0];for(const _0x3cc807 of _0x5ee0eb){if(Math['abs'](Math['log'](_0x3cc807[0x1]/(_0x171623*_0x23c0ad)))<Math['abs'](Math['log'](_0x1e6007[0x1]/(_0x171623*_0x23c0ad))))_0x1e6007=_0x3cc807;}_0x2ed3a0=_0x1e6007[0x0]==='전신',console['warn']('[3D·쇼핑몰·맞춤]\x20'+_0x426b07['id']+'\x20폭\x20기준\x20배율이\x20이상해(키\x20대비\x20'+_0x171623['toFixed'](0x2)+')\x20→\x20가장\x20가까운\x20「'+_0x1e6007[0x0]+'」\x20길이로\x20맞춥니다'),_0x25052f=_0x1e6007[0x1]/_0x1a5f74;}const _0x40b464=!_0xf00125&&(_0x2ed3a0||_0x1a5f74/Math['max'](0.000001,_0x191ae3['maxX']-_0x191ae3['minX'])>2.2);if(_0x40b464)_0x25052f=(_0x59badd-_0x178d2d['box']['min']['y'])*0.97/_0x1a5f74;const _0x42c46b=(_0x59badd-_0x178d2d['box']['min']['y'])*0.99/_0x1a5f74;if(_0x25052f>_0x42c46b)_0x25052f=_0x42c46b;const _0x9ae5e6=_0x4ee560?_0x4ee560['cx']:(_0x191ae3['minX']+_0x191ae3['maxX'])/0x2,_0x155ba7=_0x4ee560?_0x4ee560['cz']:(_0x191ae3['minZ']+_0x191ae3['maxZ'])/0x2,_0x265835=_0x178d2d['neckCx'],_0x28a3c1=_0x257e89?_0x257e89['cz']:_0x178d2d['neckCz'];for(const _0xad457 of _0x29a64c){const _0x460e79=_0xad457['attributes']['position'];for(let _0x57c391=0x0;_0x57c391<_0x460e79['count'];_0x57c391++){const _0x1e4fbe=(_0x460e79['getX'](_0x57c391)-_0x9ae5e6)*_0x25052f+_0x265835,_0x4f951a=(_0x460e79['getY'](_0x57c391)-_0x191ae3['maxY'])*_0x25052f+_0x59badd,_0xc2e5d7=(_0x460e79['getZ'](_0x57c391)-_0x155ba7)*_0x25052f+_0x28a3c1;let _0x6af5ef=_0x1e4fbe,_0x40988d=_0xc2e5d7;if(_0x31d9b8&&_0x4f951a>=_0x31d9b8['y0']&&_0x4f951a<=_0x31d9b8['y1']){const _0x5630a8=_0x1e4fbe-_0x31d9b8['cx'],_0x4d0662=_0xc2e5d7-_0x31d9b8['cz'],_0x2c63ba=Math['hypot'](_0x5630a8,_0x4d0662),_0x2d7726=Math['atan2'](_0x4d0662,_0x5630a8),_0xfc2d30=_sampleBodyR(_0x31d9b8,(_0x4f951a-_0x31d9b8['y0'])/(_0x31d9b8['y1']-_0x31d9b8['y0']),_0x2d7726),_0x5c07a3=_0xfc2d30+FIT_WARP['ease'];_0x2c63ba>0.000001&&_0x2c63ba<_0x5c07a3&&_0x5c07a3-_0x2c63ba<0.3*_0xfc2d30&&(_0x6af5ef=_0x31d9b8['cx']+_0x5630a8/_0x2c63ba*_0x5c07a3,_0x40988d=_0x31d9b8['cz']+_0x4d0662/_0x2c63ba*_0x5c07a3);}_0x460e79['setXYZ'](_0x57c391,_0x6af5ef,_0x4f951a,_0x40988d);}_0x460e79['needsUpdate']=!![];if(_0xad457['computeBoundingBox'])_0xad457['computeBoundingBox']();if(_0xad457['computeBoundingSphere'])_0xad457['computeBoundingSphere']();}return _0x29a64c;}async function _autoPlaceShopGeoms(_0x4fba82,_0x524821){const _0x14173d=BODY_BASE['gender'],_0x4bee8d=await loadBodyFigure(_0x14173d);let _0x5ce510=null;try{_0x5ce510=await bodyRadialMap(_0x14173d);}catch(_0x1bc1b1){}return _placeShopGeoms(_0x4fba82,_0x524821,_0x4bee8d,_0x5ce510);}const _shopFittedCache=new Map();function _shopFitted(_0x447c6d,_0x5362f1){return!_shopFittedCache['has'](_0x447c6d)&&_shopFittedCache['set'](_0x447c6d,fetch(_0x447c6d,{'cache':'no-cache'})['then'](_0x1687f5=>_0x1687f5['ok']?_0x1687f5['json']():null)['catch'](()=>null)),_shopFittedCache['get'](_0x447c6d)['then'](_0x4761dc=>{const _0x10a590=_0x4761dc&&_0x4761dc[_0x5362f1];if(!_0x10a590)return null;return new URL('/api/assets/'+String(_0x10a590)['split']('/')['map'](encodeURIComponent)['join']('/'),BODY_SHOP['assetBase'])['href'];});}function _pruneGarmentCache(_0xde24a3){if(FIT_WARP['keepOther'])return;const _0x53e091=_0xde24a3==='male'?'female':'male';for(const _0x4afafd of Array['from'](_garmentCache['keys']())){if(_0x4afafd['endsWith']('|'+_0x53e091))_garmentCache['delete'](_0x4afafd);}}async function loadGarmentGeometries(_0xb82eac){if(_0xb82eac&&_0xb82eac['fromShop']&&!_0xb82eac['fitted']&&_0xb82eac['manifest']){const _0x591795=await _shopFitted(_0xb82eac['manifest'],BODY_BASE['gender']);if(_0x591795)_0xb82eac=Object['assign']({},_0xb82eac,{'url':_0x591795,'fitted':!![]});}const _0x5183cf=_0xb82eac['under']?BODY_BASE['underOffset']:BODY_BASE['clothOffset'],_0x213e6c=_0xb82eac['url']+'|'+_0x5183cf+(_0xb82eac['fromShop']&&!_0xb82eac['fitted']?'|place|'+BODY_BASE['gender']:'');if(!_garmentCache['has'](_0x213e6c)){const _0x156e5b=await _loadOBJGroup(_0xb82eac['url'],!![]),_0x395af1=_collectGeometries(_0x156e5b);if(!_0x395af1['length'])throw new Error('옷\x20메쉬가\x20비어\x20있습니다:\x20'+_0xb82eac['url']);if(_0xb82eac['fromShop']&&!_0xb82eac['fitted'])await _autoPlaceShopGeoms(_0x395af1,_0xb82eac);_0x395af1['forEach'](_0x87beda=>smoothInflateGeometry(_0x87beda,_0x5183cf)),_garmentCache['set'](_0x213e6c,_0x395af1);}const _0x4f2c2e=_0xb82eac['fitFor']||BODY_BASE['gender'];if(_0x4f2c2e===BODY_BASE['gender'])return _garmentCache['get'](_0x213e6c);if(!FIT_WARP['on']||!FIT_WARP['crossGender'])throw new Error(BODY_FIGURES[_0x4f2c2e]['label']+'용\x20옷은\x20'+BODY_FIGURES[BODY_BASE['gender']]['label']+'\x20몸에\x20입히지\x20않습니다');const _0x423363=_0x213e6c+'|'+BODY_BASE['gender'];return!_garmentCache['has'](_0x423363)&&_garmentCache['set'](_0x423363,await fitGarmentToBody(_garmentCache['get'](_0x213e6c),_0x4f2c2e,BODY_BASE['gender'])),_garmentCache['get'](_0x423363);}function _skinMaterial(_0xddd6d){const _0x21c07d=new THREE['MeshStandardMaterial']({'color':new THREE['Color'](BODY_BASE['skinHex']),'roughness':0.88,'metalness':0x0});return _0xddd6d&&(_0x21c07d['clippingPlanes']=[_0xddd6d],_0x21c07d['clipShadows']=!![]),_0x21c07d;}function _clothMaterial(_0x275cbc,_0x1a7649){const _0xbf2173=new THREE['MeshStandardMaterial']({'color':new THREE['Color'](_0x275cbc||'#7A7F88'),'roughness':0.82,'metalness':0x0,'side':THREE['DoubleSide']});return _0x1a7649&&(_0xbf2173['clippingPlanes']=[_0x1a7649],_0xbf2173['clipShadows']=!![]),_0xbf2173;}function _garmentMaterialFrom(_0x371e8e,_0x459943,_0x2fd236){const _0x2d0a7e=_0x22be36=>{const _0x45035f=new THREE['MeshStandardMaterial']({'color':_0x22be36&&_0x22be36['color']?_0x22be36['color']['clone']():new THREE['Color'](0xffffff),'map':_0x22be36&&_0x22be36['map']||null,'vertexColors':!!(_0x22be36&&_0x22be36['vertexColors']),'transparent':!!(_0x22be36&&_0x22be36['transparent']&&_0x22be36['opacity']<0x1),'opacity':_0x22be36&&typeof _0x22be36['opacity']==='number'?_0x22be36['opacity']:0x1,'roughness':0.82,'metalness':0x0,'side':THREE['DoubleSide']});_0x45035f['map']&&THREE['sRGBEncoding']!==undefined&&(_0x45035f['map']['encoding']=THREE['sRGBEncoding'],_0x45035f['map']['needsUpdate']=!![]);if(_0x22be36&&_0x22be36['name'])_0x45035f['name']=_0x22be36['name'];return _0x2fd236&&(_0x45035f['clippingPlanes']=[_0x2fd236],_0x45035f['clipShadows']=!![]),_0x45035f;};if(!_0x371e8e)return _clothMaterial(_0x459943,_0x2fd236);return Array['isArray'](_0x371e8e)?_0x371e8e['map'](_0x2d0a7e):_0x2d0a7e(_0x371e8e);}function _detach(_0x4f1c54,_0x56bfee){if(!_0x56bfee)return;_0x4f1c54['remove'](_0x56bfee),_0x56bfee['traverse'](_0x395fbd=>{if(!_0x395fbd['isMesh'])return;const _0x32f071=Array['isArray'](_0x395fbd['material'])?_0x395fbd['material']:[_0x395fbd['material']];_0x32f071['forEach'](_0x59b1d7=>_0x59b1d7&&_0x59b1d7['dispose']&&_0x59b1d7['dispose']());});}const GARMENT_LAYER={'on':!![],'gap':0.007,'reach':0.035,'maxPush':0.035,'smooth':0x6};function _garmentRank(_0x418297){const _0x31fc5c=_0x418297['slot']||_slotOf(_0x418297['bodyPart'],_0x418297['layer']);if(_0x31fc5c==='lower'||_0x418297['under'])return 0x0;if(_0x31fc5c==='outer'||_0x418297['layer']==='outer')return 0x2;return 0x1;}function _garmentHash(_0x3042dd){const _0x3223f4=GARMENT_LAYER['reach'],_0x4f613b=new Map(),_0x4c0fc8=[],_0xcd4dd8=[];for(const _0x447856 of _0x3042dd){const _0x2c0900=_0x447856['attributes']['position'],_0x27fe7b=_0x447856['attributes']['normal'];if(!_0x27fe7b)continue;for(let _0x553450=0x0;_0x553450<_0x2c0900['count'];_0x553450++){const _0x4c666e=_0x4c0fc8['length']/0x3;_0x4c0fc8['push'](_0x2c0900['getX'](_0x553450),_0x2c0900['getY'](_0x553450),_0x2c0900['getZ'](_0x553450)),_0xcd4dd8['push'](_0x27fe7b['getX'](_0x553450),_0x27fe7b['getY'](_0x553450),_0x27fe7b['getZ'](_0x553450));const _0x279774=Math['floor'](_0x2c0900['getX'](_0x553450)/_0x3223f4)+','+Math['floor'](_0x2c0900['getY'](_0x553450)/_0x3223f4)+','+Math['floor'](_0x2c0900['getZ'](_0x553450)/_0x3223f4);let _0x45e4af=_0x4f613b['get'](_0x279774);if(!_0x45e4af)_0x4f613b['set'](_0x279774,_0x45e4af=[]);_0x45e4af['push'](_0x4c666e);}}return{'C':_0x3223f4,'cells':_0x4f613b,'P':_0x4c0fc8,'N':_0xcd4dd8};}function _pushOut(_0x4937ba,_0x502de7,_0x55479d,_0xdf4fc4){const _0x2bce98=_0x4937ba['C'],_0x1f3a26=Math['floor'](_0x502de7/_0x2bce98),_0x318ff6=Math['floor'](_0x55479d/_0x2bce98),_0x576712=Math['floor'](_0xdf4fc4/_0x2bce98);let _0x1bcce7=-0x1,_0x440ec5=_0x2bce98*_0x2bce98;for(let _0x137266=-0x1;_0x137266<=0x1;_0x137266++)for(let _0x10c1a8=-0x1;_0x10c1a8<=0x1;_0x10c1a8++)for(let _0x1c0704=-0x1;_0x1c0704<=0x1;_0x1c0704++){const _0xee2773=_0x4937ba['cells']['get'](_0x1f3a26+_0x137266+','+(_0x318ff6+_0x10c1a8)+','+(_0x576712+_0x1c0704));if(!_0xee2773)continue;for(const _0x15f09d of _0xee2773){const _0x203636=_0x502de7-_0x4937ba['P'][_0x15f09d*0x3],_0x4f4011=_0x55479d-_0x4937ba['P'][_0x15f09d*0x3+0x1],_0x4c5ff8=_0xdf4fc4-_0x4937ba['P'][_0x15f09d*0x3+0x2],_0x19c1da=_0x203636*_0x203636+_0x4f4011*_0x4f4011+_0x4c5ff8*_0x4c5ff8;_0x19c1da<_0x440ec5&&(_0x440ec5=_0x19c1da,_0x1bcce7=_0x15f09d);}}if(_0x1bcce7<0x0)return null;const _0x59f56e=_0x4937ba['N'][_0x1bcce7*0x3],_0x583528=_0x4937ba['N'][_0x1bcce7*0x3+0x1],_0x111fd9=_0x4937ba['N'][_0x1bcce7*0x3+0x2],_0x4ebdf8=(_0x502de7-_0x4937ba['P'][_0x1bcce7*0x3])*_0x59f56e+(_0x55479d-_0x4937ba['P'][_0x1bcce7*0x3+0x1])*_0x583528+(_0xdf4fc4-_0x4937ba['P'][_0x1bcce7*0x3+0x2])*_0x111fd9,_0x4d1133=GARMENT_LAYER['gap']-_0x4ebdf8;if(_0x4d1133<=0x0||_0x4d1133>GARMENT_LAYER['maxPush'])return null;return[_0x59f56e*_0x4d1133,_0x583528*_0x4d1133,_0x111fd9*_0x4d1133];}async function _layerGarments(_0x142a07){if(!GARMENT_LAYER['on']||_0x142a07['length']<0x2)return;const _0x2551c7=_0x142a07['map'](_0xe0b7f4=>_garmentRank(_0xe0b7f4['part'])),_0x10f117=_0x142a07['map']((_0x353cb3,_0x20327b)=>_0x20327b)['sort']((_0x1cb13f,_0x3ddc4d)=>_0x2551c7[_0x1cb13f]-_0x2551c7[_0x3ddc4d]);for(const _0x1e2479 of _0x10f117){const _0x3f6e2c=[];_0x142a07['forEach']((_0xf4216a,_0x4c23bf)=>{if(_0x2551c7[_0x4c23bf]<_0x2551c7[_0x1e2479])_0x3f6e2c['push'](..._0xf4216a['geoms']);});if(!_0x3f6e2c['length'])continue;const _0x4c31ec=_garmentHash(_0x3f6e2c);let _0x305c9e=0x0,_0x25f614=0x0;for(const _0x3f68c1 of _0x142a07[_0x1e2479]['geoms']){const _0x139197=_0x3f68c1['attributes']['position'],_0x587c31=_0x1ab5be=>Math['round'](_0x139197['getX'](_0x1ab5be)*0x2710)+','+Math['round'](_0x139197['getY'](_0x1ab5be)*0x2710)+','+Math['round'](_0x139197['getZ'](_0x1ab5be)*0x2710),_0x3d3cf4=new Map(),_0xb9cbdb=new Int32Array(_0x139197['count']),_0x36ec4e=[];for(let _0x39cfe8=0x0;_0x39cfe8<_0x139197['count'];_0x39cfe8++){const _0x394765=_0x587c31(_0x39cfe8);let _0x2bbb63=_0x3d3cf4['get'](_0x394765);_0x2bbb63===undefined&&(_0x2bbb63=_0x36ec4e['length'],_0x3d3cf4['set'](_0x394765,_0x2bbb63),_0x36ec4e['push'](_0x39cfe8)),_0xb9cbdb[_0x39cfe8]=_0x2bbb63;}const _0x167220=_0x36ec4e['length'],_0x3125b2=new Float32Array(_0x167220*0x3),_0x3ab399=new Uint8Array(_0x167220);for(let _0x4da32b=0x0;_0x4da32b<_0x167220;_0x4da32b++){const _0x39f50c=_0x36ec4e[_0x4da32b];_0x25f614++;const _0x4b3676=_pushOut(_0x4c31ec,_0x139197['getX'](_0x39f50c),_0x139197['getY'](_0x39f50c),_0x139197['getZ'](_0x39f50c));_0x4b3676&&(_0x3125b2[_0x4da32b*0x3]=_0x4b3676[0x0],_0x3125b2[_0x4da32b*0x3+0x1]=_0x4b3676[0x1],_0x3125b2[_0x4da32b*0x3+0x2]=_0x4b3676[0x2],_0x3ab399[_0x4da32b]=0x1,_0x305c9e++);}if(!_0x305c9e)continue;const _0xa7de31=Array['from']({'length':_0x167220},()=>[]);for(let _0x1d3fed=0x0;_0x1d3fed+0x2<_0x139197['count'];_0x1d3fed+=0x3){const _0x271790=_0xb9cbdb[_0x1d3fed],_0x208a5b=_0xb9cbdb[_0x1d3fed+0x1],_0x4770d5=_0xb9cbdb[_0x1d3fed+0x2];_0xa7de31[_0x271790]['push'](_0x208a5b,_0x4770d5),_0xa7de31[_0x208a5b]['push'](_0x271790,_0x4770d5),_0xa7de31[_0x4770d5]['push'](_0x271790,_0x208a5b);}const _0x316e66=Float32Array['from'](_0x3125b2);for(let _0x4c05fe=0x0;_0x4c05fe<GARMENT_LAYER['smooth'];_0x4c05fe++){const _0x3ff9cb=new Float32Array(_0x167220*0x3);for(let _0x30620f=0x0;_0x30620f<_0x167220;_0x30620f++){let _0x32bdac=_0x3125b2[_0x30620f*0x3],_0x36c34e=_0x3125b2[_0x30620f*0x3+0x1],_0x5e71f5=_0x3125b2[_0x30620f*0x3+0x2],_0x52c702=0x1;for(const _0x4f0bdd of _0xa7de31[_0x30620f]){_0x32bdac+=_0x3125b2[_0x4f0bdd*0x3],_0x36c34e+=_0x3125b2[_0x4f0bdd*0x3+0x1],_0x5e71f5+=_0x3125b2[_0x4f0bdd*0x3+0x2],_0x52c702++;}_0x32bdac/=_0x52c702,_0x36c34e/=_0x52c702,_0x5e71f5/=_0x52c702;if(_0x3ab399[_0x30620f]){const _0x3f6dc0=_0x316e66[_0x30620f*0x3],_0x525899=_0x316e66[_0x30620f*0x3+0x1],_0x8f5c06=_0x316e66[_0x30620f*0x3+0x2],_0x4c23fc=Math['hypot'](_0x3f6dc0,_0x525899,_0x8f5c06),_0x2a1b7d=(_0x32bdac*_0x3f6dc0+_0x36c34e*_0x525899+_0x5e71f5*_0x8f5c06)/(_0x4c23fc||0x1);if(_0x2a1b7d<_0x4c23fc){const _0x124d66=(_0x4c23fc-_0x2a1b7d)/(_0x4c23fc||0x1);_0x32bdac+=_0x3f6dc0*_0x124d66,_0x36c34e+=_0x525899*_0x124d66,_0x5e71f5+=_0x8f5c06*_0x124d66;}}_0x3ff9cb[_0x30620f*0x3]=_0x32bdac,_0x3ff9cb[_0x30620f*0x3+0x1]=_0x36c34e,_0x3ff9cb[_0x30620f*0x3+0x2]=_0x5e71f5;}_0x3125b2['set'](_0x3ff9cb);}for(let _0x5866d3=0x0;_0x5866d3<_0x139197['count'];_0x5866d3++){const _0x3884d5=_0xb9cbdb[_0x5866d3];_0x139197['setXYZ'](_0x5866d3,_0x139197['getX'](_0x5866d3)+_0x3125b2[_0x3884d5*0x3],_0x139197['getY'](_0x5866d3)+_0x3125b2[_0x3884d5*0x3+0x1],_0x139197['getZ'](_0x5866d3)+_0x3125b2[_0x3884d5*0x3+0x2]);}_0x139197['needsUpdate']=!![],smoothInflateGeometry(_0x3f68c1,0x0);}console['log']('[3D·옷·겹침]\x20'+(_0x142a07[_0x1e2479]['part']['name']||_0x142a07[_0x1e2479]['part']['url'])+'\x20—\x20아래\x20옷\x20위로\x20밀어낸\x20점\x20'+_0x305c9e+'/'+_0x25f614);}}async function _mountGarment(_0x4a15b1,_0x5e40bc){_pruneGarmentCache(BODY_BASE['gender']);const _0x3495aa=_0x4a15b1['userData']['_mountSeq']=(_0x4a15b1['userData']['_mountSeq']||0x0)+0x1,_0x33faea=()=>_0x4a15b1['userData']['_mountSeq']!==_0x3495aa,_0x3ef4d4=_0x4a15b1['userData']['clipPlane'];for(let _0x5f597b;_0x5f597b=_0x4a15b1['getObjectByName']('bodyGarment');)_detach(_0x4a15b1,_0x5f597b);const _0x436d6e=new THREE['Group']();_0x436d6e['name']='bodyGarment',_0x4a15b1['add'](_0x436d6e);const _0x3eccd3=await piecesForOutfit(_0x5e40bc);if(_0x33faea())return _detach(_0x4a15b1,_0x436d6e),_0x436d6e;const _0x37fbdd=[];for(const _0x58d9cd of _0x3eccd3['parts']){let _0x168712;try{_0x168712=await loadGarmentGeometries(_0x58d9cd);}catch(_0x2034d0){console['warn']('[3D·옷]\x20불러오기\x20실패\x20—\x20건너뜁니다:\x20'+_0x58d9cd['url'],_0x2034d0);continue;}if(_0x33faea())return _detach(_0x4a15b1,_0x436d6e),_0x436d6e;_0x37fbdd['push']({'part':_0x58d9cd,'src':_0x168712,'geoms':_cloned(_0x168712)});}try{await _layerGarments(_0x37fbdd);}catch(_0x275a28){console['warn']('[3D·옷·겹침]\x20실패\x20—\x20겹침\x20보정\x20없이\x20입힙니다:',_0x275a28);}if(_0x33faea())return _detach(_0x4a15b1,_0x436d6e),_0x436d6e;for(const _0x4c9c59 of _0x37fbdd){_0x4c9c59['geoms']['forEach']((_0x529088,_0x50766e)=>{const _0x260f8c=_0x529088['userData']&&_0x529088['userData']['srcMaterial']||_0x4c9c59['src'][_0x50766e]&&_0x4c9c59['src'][_0x50766e]['userData']&&_0x4c9c59['src'][_0x50766e]['userData']['srcMaterial'];_0x436d6e['add'](new THREE['Mesh'](_0x529088,_garmentMaterialFrom(_0x260f8c,_0x4c9c59['part']['colorHex'],_0x3ef4d4)));});}return _bodyWornLabel=_0x3eccd3['label'],_bodyWornShop=_0x3eccd3['shop']||null,_0x436d6e;}async function buildBodyBaseRig(_0xaf0220,_0x4e3e38,_0x2dbe9d){const _0x203985=await loadBodyFigure(BODY_BASE['gender']),_0x15d7aa=typeof getNeckBottomY==='function'?getNeckBottomY():-1.15,_0x10ad9c=new THREE['Plane'](new THREE['Vector3'](0x0,-0x1,0x0),_0x15d7aa),_0x24e657=new THREE['Group']();_0x24e657['name']='bodyBaseRig',_0x24e657['userData']['clipPlane']=_0x10ad9c;const _0x22a98b=_skinMaterial(_0x10ad9c),_0x3530e4=new THREE['Group']();_0x3530e4['name']='bodyBaseSkin',_cloned(_0x203985['geoms'])['forEach'](_0xce2a7f=>_0x3530e4['add'](new THREE['Mesh'](_0xce2a7f,_0x22a98b))),_0x24e657['add'](_0x3530e4);const _0x4324d2=_0x203985['cutY']-_0x203985['box']['min']['y'];let _0x5cce1a=_0x2dbe9d;if(!(isFinite(_0x5cce1a)&&_0x5cce1a>0.5))_0x5cce1a=typeof personBodyLenMesh==='function'?personBodyLenMesh():null;!(isFinite(_0x5cce1a)&&_0x5cce1a>0.5)&&(_0x5cce1a=0x4,console['warn']('[3D·비율]\x20두상\x20자가\x20없어\x20폴백\x204.0단위로\x20세웁니다\x20—\x20이\x20경우에만\x20두신이\x20상수에서\x20벗어납니다.'));const _0x1c0937=isFinite(_0x4e3e38)&&_0x4e3e38>0x0?_0x4e3e38:0x1,_0x4ad271=typeof OUTFIT_MESH_SOURCE!=='undefined'&&(OUTFIT_MESH_SOURCE['widthMode']||(OUTFIT_MESH_SOURCE['widthUniform']?'uniform':'off'))||'off',_0x5afbde=_0x5cce1a/(_0x4324d2||0x1)*(_0x4ad271==='uniform'?_0x1c0937:0x1),_0x14af86=_0x4ad271==='xz'?_0x1c0937:0x1;return _0x24e657['scale']['set'](_0x5afbde*_0x14af86,_0x5afbde,_0x5afbde*_0x14af86),_0x24e657['position']['set'](-_0x203985['neckCx']*_0x5afbde*_0x14af86,_0x15d7aa-_0x203985['cutY']*_0x5afbde,-_0x203985['neckCz']*_0x5afbde*_0x14af86),await _mountGarment(_0x24e657,_0xaf0220),_0x24e657['updateMatrixWorld'](!![]),_bodyRig=_0x24e657,console['log']('[3D·몸]\x20'+BODY_FIGURES[BODY_BASE['gender']]['label']+'\x20×'+_0x5afbde['toFixed'](0x3)+'\x20·\x20발바닥\x20y\x20'+(_0x15d7aa-_0x4324d2*_0x5afbde)['toFixed'](0x2)+'\x20·\x20목\x20절단\x20y\x20'+_0x15d7aa['toFixed'](0x2)+'\x20·\x20옷\x20'+_bodyWornLabel+(BODY_BASE['outer']?'(외투\x20ON)':'(외투\x20OFF)')+'\x20·\x20추천\x20'+(_0xaf0220?_0xaf0220['name']:'없음')),_0x24e657;}async function buildBody3DForOutfit(_0x383f10,_0x636f0b,_0x4b5252){if(BODY_BASE['on'])try{if(typeof _rigSeq!=='undefined')_rigSeq++;_lastBuild={'item':_0x383f10,'wf':_0x636f0b,'len':_0x4b5252};const _0x4d8e62=await buildBodyBaseRig(_0x383f10,_0x636f0b,_0x4b5252);try{const _0x51f890=typeof measureGarmentNeckOpening==='function'?measureGarmentNeckOpening(_0x4d8e62):null;if(_0x51f890)_garmentNeckOpening=_0x51f890;else console['log']('[3D·목]\x20몸의\x20목둘레가\x20옷깃\x20실측\x20범위\x20밖\x20—\x20예전(두개골\x20클램프)\x20경로로\x20세웁니다');}catch(_0x5dbbb2){console['warn']('[3D·목]\x20목둘레\x20실측\x20예외:',_0x5dbbb2);}try{installShopBridge(),buildBodyGarmentRack();}catch(_0x435796){console['warn']('[3D·옷]\x20버튼\x20UI\x20실패:',_0x435796);}return scheduleShopPreload(),_0x4d8e62;}catch(_0x2a6ae4){console['warn']('[3D·몸]\x20표준\x20인체\x20실패\x20—\x20예전\x20의상-바디\x20에셋으로\x20폴백:',_0x2a6ae4);}return loadOutfitMeshMeasured(_0x383f10,_0x636f0b,_0x4b5252);}function _updateModel3DTag(){const _0x2968c0=document['getElementById']('model3dTag');if(!_0x2968c0)return;const _0x37e233=_0x2968c0['textContent']['replace'](/\s*·\s*(몸|Body)\s*:.*$/,'');_0x2968c0['textContent']=_0x37e233+L('\x20·\x20몸:\x20','\x20·\x20Body:\x20')+figLabel(BODY_BASE['gender'])+'\x20·\x20'+_bodyWornLabel;}function _liveRig(){try{const _0x5d7186=typeof model3D!=='undefined'&&model3D&&model3D['headGroup'],_0x1923f9=_0x5d7186&&_0x5d7186['getObjectByName']('bodyBaseRig');if(_0x1923f9)return _bodyRig=_0x1923f9,_0x1923f9;}catch(_0x457608){}return _bodyRig;}async function setBodyGender(_0x513607){if(!BODY_FIGURES[_0x513607]||_0x513607===BODY_BASE['gender'])return![];return BODY_BASE['gender']=_0x513607,rebuildBodyRig();}async function toggleBodyOuter(){BODY_BASE['outer']=!BODY_BASE['outer'];if(!_bodyRig)return![];return await _mountGarment(_liveRig(),_lastBuild&&_lastBuild['item']),buildBodyGarmentRack(),_updateModel3DTag(),!![];}let _rigSeq=0x0;async function rebuildBodyRig(){if(!_lastBuild||typeof model3D==='undefined'||!model3D||!model3D['headGroup'])return![];const _0x5245a8=++_rigSeq,_0x4ce678=model3D['headGroup'];let _0x2e8973;try{_0x2e8973=await buildBodyBaseRig(_lastBuild['item'],_lastBuild['wf'],_lastBuild['len']);}catch(_0x1bfaed){return console['warn']('[3D·몸]\x20다시\x20세우기\x20실패\x20—\x20그대로\x20둡니다:',_0x1bfaed),![];}if(_0x5245a8!==_rigSeq)return _detach(_0x4ce678,_0x2e8973),_liveRig(),![];for(let _0x1b4f3f;_0x1b4f3f=_0x4ce678['getObjectByName']('bodyBaseRig');)_detach(_0x4ce678,_0x1b4f3f);return _bodyRig=_0x2e8973,_0x4ce678['add'](_0x2e8973),buildBodyGarmentRack(),_updateModel3DTag(),!![];}function buildBodyGarmentRack(){if(!BODY_BASE['rack'])return;const _0xa2ac70=document['getElementById']('model3dViewport');if(!_0xa2ac70)return;let _0x55629e=document['getElementById']('bodyGarmentRack');!_0x55629e&&(_0x55629e=document['createElement']('div'),_0x55629e['id']='bodyGarmentRack',_0x55629e['className']='bb-rack',_0xa2ac70['appendChild'](_0x55629e));_0x55629e['innerHTML']='';const _0x391d10=BODY_BASE['gender']==='male'?'female':'male',_0x250ee7=document['createElement']('button');_0x250ee7['type']='button',_0x250ee7['textContent']=figLabel(BODY_BASE['gender']),_0x250ee7['title']=L('누르면\x20'+figLabel(_0x391d10)+'\x20몸으로\x20바꿉니다','Switch\x20to\x20the\x20'+figLabel(_0x391d10)+'\x20body'),_0x250ee7['addEventListener']('click',()=>setBodyGender(_0x391d10)),_0x55629e['appendChild'](_0x250ee7);const _0x3b21fd=document['createElement']('button');_0x3b21fd['type']='button',_0x3b21fd['textContent']=L('외투\x20','Jacket\x20')+(BODY_BASE['outer']?'ON':'OFF');if(BODY_BASE['outer'])_0x3b21fd['classList']['add']('on');_0x3b21fd['title']=_pickedShopId?L('외투만\x20입었다\x20벗깁니다\x20—\x20안쪽\x20상의·하의는\x20그대로,\x20벗어도\x20고른\x20외투는\x20기억해\x20둡니다','Takes\x20the\x20jacket\x20on\x20and\x20off\x20—\x20your\x20top\x20and\x20bottoms\x20stay\x20on,\x20and\x20the\x20picked\x20jacket\x20is\x20remembered'):L('슈트·재킷을\x20입었다\x20벗깁니다\x20(무슨\x20옷인지는\x20추천이\x20정합니다)','Puts\x20a\x20suit/jacket\x20on\x20and\x20off\x20(the\x20recommendation\x20decides\x20which)'),_0x3b21fd['addEventListener']('click',()=>toggleBodyOuter()),_0x55629e['appendChild'](_0x3b21fd);if(_pickedShopId){const _0x958edb=document['createElement']('button');_0x958edb['type']='button',_0x958edb['textContent']=L('고른\x20옷\x20벗기','Clear\x20picks'),_0x958edb['title']=L('쇼핑몰에서\x20고른\x20옷을\x20벗고\x20추천\x20의상으로\x20돌아갑니다','Remove\x20shop\x20picks\x20and\x20go\x20back\x20to\x20the\x20recommended\x20outfit'),_0x958edb['addEventListener']('click',()=>clearShopPick()),_0x55629e['appendChild'](_0x958edb);}if(BODY_SHOP['on']&&BODY_SHOP['pageUrl']){const _0x1cf3ce=document['createElement']('button');_0x1cf3ce['type']='button';const _0x9fc223=_shopPanelOpen();_0x1cf3ce['textContent']=_0x9fc223?L('옷\x20닫기','Close\x20clothes'):L('옷\x20고르기','Pick\x20clothes');if(_0x9fc223)_0x1cf3ce['classList']['add']('on');_0x1cf3ce['addEventListener']('click',()=>_0x9fc223?closeShopPanel():openShopPanel()),_0x55629e['appendChild'](_0x1cf3ce);}if(_bodyWornShop&&_bodyWornShop['link']){const _0x3b91a1=document['createElement']('a');_0x3b91a1['className']='bb-buy',_0x3b91a1['href']=_bodyWornShop['link'],_0x3b91a1['target']='_blank',_0x3b91a1['rel']='noopener',_0x3b91a1['textContent']=(_bodyWornShop['title']||L('이\x20옷\x20보기','View\x20this\x20item'))+(_bodyWornShop['price']?'\x20·\x20'+_bodyWornShop['price']:''),_0x55629e['appendChild'](_0x3b91a1);}}let _shopFrame=null;var BODY_SHOP_PRELOAD={'on':!![],'delayMs':0x9c4};function _shopPanelOpen(){const _0x36faed=document['getElementById']('bbShopPanel');return!!_0x36faed&&_0x36faed['dataset']['hidden']!=='1';}function _sendShopHello(_0x5a0b59){try{const _0x31d497=new URL(BODY_SHOP['pageUrl'],location['href'])['origin'];_0x5a0b59['contentWindow']['postMessage']({'type':'gyeol-hello','gender':BODY_BASE['gender']},_0x31d497);}catch(_0x10637b){}}function openShopPanel(_0x5ae471){const _0x56cad6=!!(_0x5ae471&&_0x5ae471['preload']),_0x40cf9c=document['getElementById']('model3dViewport');if(!_0x40cf9c){if(!_0x56cad6)console['warn']('[3D·쇼핑몰]\x203D\x20화면(model3dViewport)이\x20없어\x20옷장을\x20못\x20엽니다');return![];}const _0x578720=document['getElementById']('bbShopPanel');if(_0x578720){if(_0x578720['dataset']['hidden']!=='1')return!![];const _0xaea870=shopUrlWithLang(BODY_SHOP['pageUrl']);if(_0x578720['dataset']['src']===_0xaea870){if(_0x56cad6)return!![];_0x578720['style']['display']='',delete _0x578720['dataset']['hidden'],_shopFrame=_0x578720['querySelector']('iframe');if(_shopFrame&&_0x578720['dataset']['loaded']==='1')_sendShopHello(_shopFrame);return buildBodyGarmentRack(),!![];}_0x578720['remove']();}installShopBridge(),loadShopCatalog(!![]);const _0x56089f=document['createElement']('div');_0x56089f['id']='bbShopPanel',_0x56089f['className']='bb-shop';_0x56cad6&&(_0x56089f['style']['display']='none',_0x56089f['dataset']['hidden']='1');const _0x3119ad=document['createElement']('div');_0x3119ad['className']='bb-shop-bar';const _0x3ca96a=document['createElement']('span');_0x3ca96a['textContent']=L('의상\x20고르기','Pick\x20an\x20outfit'),_0x3119ad['appendChild'](_0x3ca96a);const _0xf423b=document['createElement']('button');_0xf423b['type']='button',_0xf423b['textContent']='✕',_0xf423b['title']=L('닫기','Close'),_0xf423b['addEventListener']('click',closeShopPanel),_0x3119ad['appendChild'](_0xf423b);const _0x159df7=document['createElement']('div');_0x159df7['className']='bb-shop-note',_0x159df7['textContent']=L('쇼핑몰을\x20여는\x20중…','Opening\x20the\x20shop…');const _0x58e9ad=document['createElement']('iframe');_0x58e9ad['id']='bbShopFrame',_0x58e9ad['title']=L('의상\x20고르기','Pick\x20an\x20outfit'),_0x58e9ad['setAttribute']('loading','eager'),_0x58e9ad['setAttribute']('referrerpolicy','no-referrer'),_0x58e9ad['setAttribute']('allow','geolocation'),_0x58e9ad['addEventListener']('load',()=>{_0x159df7['remove'](),_0x56089f['dataset']['loaded']='1',_sendShopHello(_0x58e9ad);}),_0x58e9ad['src']=shopUrlWithLang(BODY_SHOP['pageUrl']),_0x56089f['dataset']['src']=_0x58e9ad['src'];const _0x2eab2a=setTimeout(()=>{if(!_0x159df7['isConnected'])return;_0x159df7['innerHTML']='',_0x159df7['style']['cssText']='position:absolute;left:50%;bottom:12px;top:auto;right:auto;transform:translateX(-50%);'+'width:auto;height:auto;max-width:92%;padding:8px\x2012px;border-radius:10px;background:rgba(20,18,16,.88);'+'color:#eee;display:flex;gap:10px;align-items:center;flex-wrap:wrap;justify-content:center;z-index:5;'+'font-size:12px;pointer-events:auto;';const _0x4ba059=document['createElement']('p');_0x4ba059['textContent']=L('쇼핑몰이\x20느리게\x20열리고\x20있습니다.\x20계속\x20비어\x20있으면\x20→','The\x20shop\x20is\x20slow\x20to\x20load.\x20If\x20it\x20stays\x20blank\x20→'),_0x4ba059['style']['margin']='0';const _0x388838=document['createElement']('a');_0x388838['href']=shopUrlWithLang(BODY_SHOP['pageUrl']),_0x388838['target']='_blank',_0x388838['rel']='noopener',_0x388838['textContent']=L('새\x20탭에서\x20열기','Open\x20in\x20a\x20new\x20tab');const _0x19eaea=document['createElement']('small');_0x19eaea['textContent']=BODY_SHOP['pageUrl'],_0x159df7['appendChild'](_0x4ba059),_0x159df7['appendChild'](_0x388838),_0x159df7['appendChild'](_0x19eaea);},BODY_SHOP['timeoutMs']);_0x58e9ad['addEventListener']('load',()=>clearTimeout(_0x2eab2a)),_0x56089f['appendChild'](_0x3119ad),_0x56089f['appendChild'](_0x159df7),_0x56089f['appendChild'](_0x58e9ad),_0x40cf9c['appendChild'](_0x56089f),_shopFrame=_0x58e9ad;if(!_0x56cad6)buildBodyGarmentRack();return!![];}let _shopPreloadTimer=null;function scheduleShopPreload(){if(!BODY_SHOP_PRELOAD['on']||!BODY_SHOP['on']||!BODY_SHOP['pageUrl'])return;if(document['getElementById']('bbShopPanel'))return;clearTimeout(_shopPreloadTimer),_shopPreloadTimer=setTimeout(()=>{const _0x2090de=()=>{if(document['getElementById']('bbShopPanel'))return;try{installShopBridge(),openShopPanel({'preload':!![]});}catch(_0x40225b){}};if(typeof requestIdleCallback==='function')requestIdleCallback(_0x2090de,{'timeout':0x1388});else _0x2090de();},BODY_SHOP_PRELOAD['delayMs']);}function refreshBodyLang(){const _0x4d8819=document['getElementById']('bbShopFrame');if(_0x4d8819)try{_0x4d8819['src']=shopUrlWithLang(_0x4d8819['src']||BODY_SHOP['pageUrl']);const _0x5baea1=document['getElementById']('bbShopPanel');_0x5baea1&&(_0x5baea1['dataset']['src']=_0x4d8819['src'],delete _0x5baea1['dataset']['loaded']);}catch(_0x4a57c3){}try{if(!_bodyRig)return;buildBodyGarmentRack(),piecesForOutfit(_lastBuild&&_lastBuild['item'])['then'](_0x5a735c=>{_bodyWornLabel=_0x5a735c['label'],_updateModel3DTag();})['catch'](()=>{});}catch(_0x227441){}}function closeShopPanel(_0xa9b86a){const _0x21348f=document['getElementById']('bbShopPanel');if(_0x21348f){const _0x519b43=BODY_SHOP_PRELOAD['on']&&!(_0xa9b86a&&_0xa9b86a['destroy'])&&_0x21348f['dataset']['src']===shopUrlWithLang(BODY_SHOP['pageUrl']);if(_0x519b43)_0x21348f['style']['display']='none',_0x21348f['dataset']['hidden']='1';else{_0x21348f['remove']();if(!(_0xa9b86a&&_0xa9b86a['destroy'])&&_bodyRig)scheduleShopPreload();}}_shopFrame=null,buildBodyGarmentRack();}function _shopItemById(_0x1feaf1,_0x527609){if(_pickedShopItem&&_pickedShopItem['id']===_0x1feaf1)return _pickedShopItem;return(_0x527609||_shopItems||[])['find'](_0x14e059=>_0x14e059&&_0x14e059['id']===_0x1feaf1)||null;}async function applyShopPick(_0x40dc2e,_0x259201,_0x4dd475){if(!_0x40dc2e)return![];const _0x5bb3ec=String(_0x40dc2e);let _0x2771ae=null;_0x259201&&(_0x2771ae=_normalizeShopItem(Object['assign']({'id':_0x5bb3ec},_0x259201),_0x4dd475&&_0x4dd475!=='null'?_0x4dd475+'/':BODY_SHOP['catalogUrl']));let _0x58488c=_shopItems||[];if(!_0x2771ae)try{_0x58488c=await loadShopCatalog();}catch(_0x3f6e0f){_0x58488c=_shopItems||[];}const _0x5b44a9=_0x2771ae||_0x58488c['find'](_0x4b6236=>_0x4b6236&&_0x4b6236['id']===_0x5bb3ec);if(!_0x5b44a9)return console['warn']('[3D·쇼핑몰]\x20고른\x20옷('+_0x5bb3ec+')을\x20목록에서\x20못\x20찾았습니다'),bodyToast(L('고른\x20옷\x20정보를\x20받지\x20못했습니다\x20('+_0x5bb3ec+')','Couldn\x27t\x20get\x20the\x20picked\x20item\x27s\x20info\x20('+_0x5bb3ec+')')),![];_pickedShopId=_0x5bb3ec,_pickedShopItem=_0x5b44a9,_shopItems=(_shopItems||[])['filter'](_0x40d52c=>_0x40d52c['id']!==_0x5bb3ec)['concat']([_0x5b44a9]);const _0x3022fa=_0x5b44a9['slot']||_slotOf(_0x5b44a9['bodyPart'],_0x5b44a9['layer']);_0x3022fa==='full'&&(delete _picks['upper'],delete _picks['lower']);if(_0x3022fa==='upper'||_0x3022fa==='lower')delete _picks['full'];_picks[_0x3022fa]=_0x5b44a9;_0x3022fa==='outer'&&!BODY_BASE['outer']&&(BODY_BASE['outer']=!![],bodyToast(L('외투를\x20골라서\x20외투\x20스위치를\x20켰어요','Turned\x20the\x20jacket\x20switch\x20on\x20for\x20your\x20picked\x20jacket')));if(!_bodyRig)return console['warn']('[3D·쇼핑몰]\x20아직\x20몸이\x20안\x20세워져\x20고른\x20옷만\x20기억해\x20둡니다'),!![];try{await _mountGarment(_liveRig(),_lastBuild&&_lastBuild['item']);}catch(_0x3aaca7){return console['warn']('[3D·쇼핑몰]\x20갈아입히기\x20실패:',_0x3aaca7),bodyToast(L('옷을\x20불러오지\x20못했습니다','Couldn\x27t\x20load\x20the\x20clothes')),![];}return buildBodyGarmentRack(),_updateModel3DTag(),console['log']('[3D·쇼핑몰]\x20손님이\x20고른\x20'+(SLOT_LABEL_KO[_0x3022fa]||_0x3022fa)+'로\x20갈아입힘\x20—\x20'+_0x5bb3ec+'\x20·\x20외투\x20스위치는\x20'+(BODY_BASE['outer']?'ON':'OFF')+'\x20그대로'),!![];}async function clearShopPick(){if(!_pickedShopId&&!Object['keys'](_picks)['length'])return![];_pickedShopId=null,_pickedShopItem=null,_picks={};if(!_bodyRig)return![];return await _mountGarment(_liveRig(),_lastBuild&&_lastBuild['item']),buildBodyGarmentRack(),_updateModel3DTag(),!![];}let _toastTimer=null;function bodyToast(_0x16f13d){const _0x3c6e09=document['getElementById']('model3dViewport');if(!_0x3c6e09||!_0x16f13d)return;let _0x4c734a=document['getElementById']('bbToast');!_0x4c734a&&(_0x4c734a=document['createElement']('div'),_0x4c734a['id']='bbToast',_0x4c734a['className']='bb-toast',_0x3c6e09['appendChild'](_0x4c734a));_0x4c734a['textContent']=_0x16f13d;if(_toastTimer)clearTimeout(_toastTimer);_toastTimer=setTimeout(()=>{const _0x27c8ac=document['getElementById']('bbToast');if(_0x27c8ac)_0x27c8ac['remove']();},0x1068);}let _shopBridgeOn=![];function installShopBridge(){if(_shopBridgeOn||typeof window==='undefined')return;_shopBridgeOn=!![];let _0x58af2e='';try{_0x58af2e=new URL(BODY_SHOP['pageUrl'],location['href'])['origin'];}catch(_0x5b2d39){}window['addEventListener']('message',async _0x5b7dd7=>{if(!_0x58af2e||_0x5b7dd7['origin']!==_0x58af2e)return;if(_shopFrame&&_0x5b7dd7['source']!==_shopFrame['contentWindow'])return;let _0xe50b8a=_0x5b7dd7['data'];if(typeof _0xe50b8a==='string')try{_0xe50b8a=JSON['parse'](_0xe50b8a);}catch(_0x35de07){return;}if(!_0xe50b8a||_0xe50b8a['type']!=='gyeol-wear'||!_0xe50b8a['id'])return;const _0x5c16e7=await applyShopPick(_0xe50b8a['id'],_0xe50b8a['item'],_0x5b7dd7['origin']);if(_0x5c16e7&&_0xe50b8a['close']!==![])closeShopPanel();}),console['log']('[3D·쇼핑몰]\x20다리\x20놓음\x20—\x20'+(_0x58af2e||'(주소\x20없음)')+'\x20의\x20gyeol-wear\x20메시지를\x20듣습니다');}if(typeof window!=='undefined')try{installShopBridge();}catch(a0_0x348eda){}function resetBodyBase(){_bodyRig=null,_lastBuild=null,_bodyWornLabel='',_bodyWornShop=null,_pickedShopId=null,_pickedShopItem=null,_picks={},clearTimeout(_shopPreloadTimer),closeShopPanel({'destroy':!![]});const _0x3a44b0=document['getElementById']('bodyGarmentRack');if(_0x3a44b0)_0x3a44b0['remove']();}
+/* ==========================================================================
+   21-body-base.js — 3D 결과보기의 "몸"
+   ------------------------------------------------------------------------
+   예전: 의상 에셋(Male_Suit.obj 등)이 몸과 옷을 통째로 들고 있었다.
+         옷을 바꾸려면 몸까지 갈아끼워야 했다.
+   지금: 몸은 MakeHuman 표준 인체 두 벌(남/여)로 고정하고, 그 위에 의상만 얹는다.
+
+   몸  — assets/body_male.obj · body_female.obj
+         MakeHuman hm08 base + macrodetails {male|female}-young 타깃(CC0).
+         목 위는 잘라 뒀고, 절단선 비율이 아래 BODY_FIGURES의 neckCutFrac이다.
+   옷  — assets/fitted/{male|female}/*.fitted.obj
+         기증받은 MakeClothes 에셋은 만든 사람의 체형에 물려 굳어 있어서 그대로 쓰면
+         팔·배가 옷을 뚫고 나온다. tools/conform.py가 반입 단계에서 몸별로 맞춰 굽는다.
+         업체 옷이 들어와도 같은 길(같은 스크립트)로 통과시키면 된다.
+
+   무엇을 입을지는 사람이 고르지 않는다 — 20-outfit-match.js가 헤어에 맞춰 고른
+   OUTFIT_CATALOG 항목을 받아서, 그 항목의 격식·색을 이 옷장에 옮긴다.
+   화면 버튼은 둘뿐이다: 남/여 · 외투 On/Off.
+
+   앱 좌표로 세우는 규칙은 기존 loadOutfitMeshFromOBJ와 같다 —
+   목 절단선이 getNeckBottomY()에 오고, 발바닥까지가 personBodyLenMesh()다.
+
+   ── 변경 이력 ─────────────────────────────────────────────────────────────
+   2026-09-21  마지막 원본(가독판) — 이후 10/17~11/02 커밋은 난독화본으로만 올라왔다.
+               이 파일은 09-21 원본에 그 사이 바뀐 동작을 옮겨 적고 주석을 다시 단 것이다.
+   2026-10-xx  쇼핑몰을 마켓플레이스(workers.dev)로 옮김 — _fromMarketplace로 항목 변환,
+               fitted.json(manifest)이 있으면 몸별로 구운 메쉬를 쓰고, 없으면
+               _placeShopGeoms가 몸에 맞춰 자동 배치. 추천에는 쇼핑몰 옷을 섞지 않음(recommend).
+               리그를 동시에 두 번 세울 때 꼬이던 문제 → _rigSeq / _mountSeq / _liveRig.
+   2026-11-14  옷 색: 추천 항목 색 한 가지로 모든 옷을 칠하던 것을 없앰.
+               OBJ의 mtllib(MTL: Kd 색·map_Kd 텍스처)와 버텍스 컬러를 그대로 쓴다.
+               색 정보가 아무것도 없는 옷만 그 옷 자신의 colorHex → 회색 순으로 칠한다.
+   2026-11-14  옷 자리(slot) 나눔 — 고른 옷을 한 벌만 기억하던 것을 자리별로 기억한다.
+               자리: lower(하의) · upper(상의) · full(전신·원피스) · outer(외투).
+               상의를 고르면 상의 자리만 바뀌고 하의는 그대로, 외투는 안쪽 옷 위에 덧입는다.
+               외투 스위치는 외투 자리만 켜고 끈다(안쪽 옷은 언제나 입고 있다).
+               견본 슈트처럼 아래위가 한 벌인 외투(coversAll)만 안쪽 옷을 가린다.
+   ========================================================================== */
+
+const BODY_BASE = {
+  'on': true,                 // false면 예전 의상-바디 경로로 돌아간다
+  'gender': 'male',           // 시작 성별 — 버튼으로 바뀐다
+  'outer': true,              // 외투(슈트·재킷) 입은 상태로 시작
+  'skinHex': '#C2A489',
+  'clothOffset': 0.004,       // z-파이팅만 막는 값. 실제 여유는 conform이 이미 넣었다
+  'underOffset': 0.002,
+  'neckBandUnits': 0.25,      // 목 중심(x·z)을 잴 띠 — 0.3을 넘기면 턱이 딸려와 몸이 뒤로 밀린다
+  'rack': true
+};
+
+/* ── 쇼핑몰에서 받아오는 옷 (2026-09-20) ──────────────────────────────────
+   아래 BODY_WARDROBE는 앱에 딸려 오는 <b>견본</b>이다. 실제 팔 옷은 쇼핑몰이
+   가지고 있고, 앱은 catalogUrl에서 목록을 받아 같은 옷장에 섞어 넣는다.
+   목록을 못 받아도(오프라인·주소 오류·CORS) 견본만으로 그대로 돌아간다 —
+   3D 화면이 쇼핑몰 때문에 비는 일은 없어야 한다. */
+const BODY_SHOP = {
+  'on': true,
+  /* (2026-10) R2 정적 catalog.json → 마켓플레이스 API로 옮김 */
+  'catalogUrl': 'https://tryon-marketplace.choisunfriend.workers.dev/api/products',
+  'pageUrl':    'https://tryon-marketplace-web.choisunfriend.workers.dev/shop',
+  'assetBase':  'https://tryon-marketplace-web.choisunfriend.workers.dev/',   // 상대경로 메쉬·fitted.json을 푸는 기준
+  'timeoutMs': 15000,                  // API가 깨어나는 데 R2보다 오래 걸린다
+  /* 성별 구분은 <b>추천이든 손님이 고른 것이든</b> 똑같이 지킨다 —
+     남자 몸에는 남성복만, 여자 몸에는 여성복만 얹는다.
+     반대 성별 메쉬를 억지로 구워 맞추면(교차 피팅) 어깨가 부풀거나 가슴이 옷을
+     뚫는 자리가 남아서, 근사로 덮기보다 아예 안 입히는 쪽을 택한다.
+     (false로 두면 고른 옷은 성별을 안 따진다 — 예전 동작) */
+  'pickGenderLock': true,
+  /* 추천(자동으로 고르는 옷)에 쇼핑몰 옷을 섞을지. false면 추천은 견본 옷장만 쓰고,
+     쇼핑몰 옷은 손님이 직접 골랐을 때만 입힌다. */
+  'recommend': false
+};
+/* 손님이 쇼핑몰에서 직접 고른 옷. 추천보다 우선한다(고른 사람이 이긴다).
+   null이면 추천이 고른 대로 입는다.
+   _pickedShopItem은 쇼핑몰이 목록(catalog.json) 없이 옷 정보를 통째로 보냈을 때 쓴다 —
+   목록을 못 받는 상황에서도 "고른 옷"이 입혀져야 한다. */
+let _pickedShopId = null;     // 마지막으로 고른 옷 id — "고른 옷이 있다" 표시로도 쓴다
+let _pickedShopItem = null;
+/* (11-14) 자리별로 고른 옷 { lower?, upper?, full?, outer? } — 값은 앱 꼴 항목 */
+let _picks = {};
+/* (11-14) 옷 기능 문구는 앱 언어(uiLang)를 그대로 따른다 — 사전에 기대지 않아 안 섞인다 */
+function L(ko, en) { try { return (typeof uiLang !== 'undefined' && uiLang === 'en') ? en : ko; } catch (e) { return ko; } }
+const SLOT_LABEL_KO = { 'lower': '하의', 'upper': '상의', 'full': '전신', 'outer': '외투' };
+const SLOT_LABEL_EN = { 'lower': 'bottoms', 'upper': 'top', 'full': 'one-piece', 'outer': 'jacket' };
+function slotLabel(s) { return L(SLOT_LABEL_KO[s] || s, SLOT_LABEL_EN[s] || s); }
+/* (11-14) 쇼핑몰·미용실 지도 주소에 앱 언어를 붙인다 — 마켓이 같은 언어로 화면을 그린다(?lang=ko|en) */
+function shopUrlWithLang(url) {
+  try {
+    const u = new URL(url, location.href);
+    u.searchParams.set('lang', (typeof uiLang !== 'undefined' && uiLang === 'ko') ? 'ko' : 'en');
+    return u.href;
+  } catch (e) { return url; }
+}
+function _slotOf(bodyPart, layer) {
+  const b = String(bodyPart || '').toLowerCase();
+  if (b === 'outer') return 'outer';
+  if (b === 'upper_body' || b === 'upper' || b === 'top') return 'upper';
+  if (b === 'lower_body' || b === 'lower' || b === 'bottom') return 'lower';
+  if (b === 'full_body' || b === 'full' || b === 'dress') return 'full';
+  return (layer || 'outer') === 'outer' ? 'outer' : 'upper';
+}
+let _shopItems = null;     // null=아직 안 읽음, []=읽었는데 없음
+let _shopLoading = null;   // 진행 중인 fetch 약속 — 같은 목록을 두 번 읽지 않는다
+let _shopFailed = false;   // 한 번 실패했다 → 다음에 다시 시도한다
+
+/* ── 마켓플레이스 항목 → 앱 항목 (2026-10) ───────────────────────────────
+   마켓플레이스 API는 아래 catalog.json 꼴이 아니라 DB 행을 그대로 준다:
+     { id, name, status, price, currency, gender, model_path,
+       media:  '{"model_file":"products/<id>/x.obj", ...}'   ← JSON 문자열일 수 있다
+       avatar: '{"gender":"female","body_part":"upper_body","fitted":true}' }
+   그걸 앱이 쓰는 {mesh:{male,female}, layer, under, manifest, shop…} 꼴로 바꾼다. */
+
+/* 문자열이면 JSON으로 풀고, 이미 객체면 그대로. 못 풀면 null. */
+function _mpParse(v) {
+  if (v && typeof v === 'object') return v;
+  if (typeof v === 'string') { try { return JSON.parse(v); } catch (e) {} }
+  return null;
+}
+
+/* 상품 이름 → 쇼핑몰 상품 페이지 주소 조각 ("Navy Jacket" → "navy-jacket") */
+function _mpSlug(name) {
+  return String(name || '').toLowerCase().trim()
+    .replace(/[^\w\s-]/g, '').replace(/\s+/g, '-').replace(/-+/g, '-');
+}
+
+function _fromMarketplace(row) {
+  if (!row || !row.id) return null;
+  if (row.mesh) return row;                                   // 이미 앱 꼴(예전 catalog.json·인라인 메시지)
+  if (row.status && row.status !== 'active') return null;     // 내린 상품은 안 입힌다
+  const media = _mpParse(row.media) || {};
+  const avatar = _mpParse(row.avatar) || {};
+  const modelPath = String(media.model_file || row.model_path || '').trim();
+  if (!modelPath) return null;
+  if (!/\.obj(\?|#|$)/i.test(modelPath)) {
+    console.warn('[3D·쇼핑몰] ' + row.id + ' 의 3D 파일이 .obj 가 아니라 건너뜁니다(앱은 OBJ만 입힘): ' + modelPath);
+    return null;
+  }
+  /* 같은 사이트의 파일은 /api/assets/ 아래로 서빙된다 — 경로에 없으면 붙여 준다. */
+  let url = modelPath;
+  try {
+    const base = new URL(BODY_SHOP.assetBase);
+    const u = new URL(modelPath, base);
+    if (u.origin === base.origin && !/^\/api\/assets\//i.test(u.pathname)) {
+      u.pathname = '/api/assets/' + u.pathname.replace(/^\/+/, '');
+    }
+    url = u.href;
+  } catch (e) {}
+
+  const g = String(avatar.gender || row.gender || '').toLowerCase();
+  const gender = /^(female|woman|women)$/.test(g) ? 'female' : /^(male|man|men)$/.test(g) ? 'male' : 'both';
+  const bodyPart = String(avatar.body_part || '').toLowerCase();   // outer | upper_body | lower_body | …
+  const layer = bodyPart === 'outer' ? 'outer' : (bodyPart ? 'inner' : 'outer');
+  const mesh = {};
+  if (gender === 'both') { mesh.male = url; mesh.female = url; }
+  else mesh[gender] = url;
+
+  const currency = row.currency || 'KRW';
+  const price = typeof row.price === 'number' ? row.price : null;
+  /* products/<id>/ 아래에 몸별로 구운 메쉬 목록(fitted.json)이 있을 수 있다 → _shopFitted */
+  const m = String(modelPath).match(/products\/([A-Za-z0-9_-]+)\//);
+  return {
+    'id': String(row.id),
+    'name': row.name || String(row.id),
+    'gender': gender,
+    'layer': layer,
+    'under': bodyPart === 'lower_body',      // 하의는 몸에 더 붙여 입힌다(underOffset)
+    'bodyPart': bodyPart || null,
+    'slot': _slotOf(bodyPart, layer),
+    'manifest': m ? new URL('/api/assets/products/' + m[1] + '/fitted.json', BODY_SHOP.assetBase).href : null,
+    'fitted': avatar.fitted === true || /\.fitted\.obj(\?|#|$)/i.test(modelPath),
+    'colorHex': row.colorHex || null,
+    'mesh': mesh,
+    'shop': {
+      'link': new URL(_mpSlug(row.name), BODY_SHOP.assetBase).href,
+      'title': row.name || '이 옷 보기',
+      'price': price != null ? price.toLocaleString('ko-KR') + ' ' + currency : null
+    }
+  };
+}
+
+/* 목록 형식 (catalog.json)
+   { "version":1,
+     "items":[ { "id":"shop-navy-jacket", "name":"네이비 재킷",
+                 "gender":"male",          // male | female | both
+                 "layer":"outer",          // outer | inner
+                 "formal":0.5,             // 0=캐주얼 1=포멀 — 추천의 격식과 맞춰 고른다
+                 "colorHex":"#2E3A4E",     // (11-14) OBJ/MTL에 색이 없을 때만 쓴다
+                 "mesh":{ "male":"clothes/x_male.obj", "female":"clothes/x_female.obj" },
+                 "shop":{ "title":"...", "price":"...", "link":"https://..." } } ] }
+   mesh 주소가 상대경로면 catalogUrl 기준으로 푼다. */
+/* 목록 항목 하나를 앱이 쓰는 꼴로 다듬는다(상대경로 → 절대경로). */
+function _normalizeShopItem(it, baseUrl) {
+  it = _fromMarketplace(it);                       // (10월) 마켓플레이스 행이면 먼저 앱 꼴로
+  baseUrl = BODY_SHOP.assetBase || baseUrl;
+  if (!it || !it.id) return null;
+  const out = Object.assign({}, it, { 'fromShop': true });
+  out.mesh = {};
+  /* (보안) 3D 파일은 우리 쇼핑몰 파일 서버(assetBase·catalogUrl 주소)에서만 받는다.
+     쇼핑몰 화면이 뚫려 엉뚱한 주소를 보내도 앱이 남의 서버에서 큰 파일·이상한 메쉬를 받지 않게. */
+  const okOrigins = [];
+  for (const b of [BODY_SHOP.assetBase, BODY_SHOP.catalogUrl, BODY_SHOP.pageUrl]) {
+    try { okOrigins.push(new URL(b).origin); } catch (e) {}
+  }
+  for (const g of ['male', 'female']) {
+    const u = it.mesh && it.mesh[g];
+    if (!u) continue;
+    try {
+      const abs = new URL(u, baseUrl || BODY_SHOP.catalogUrl);
+      if (abs.protocol === 'https:' && okOrigins.includes(abs.origin)) out.mesh[g] = abs.href;
+      else console.warn('[3D·쇼핑몰] 허용되지 않은 3D 주소를 무시합니다: ' + abs.origin);
+    } catch (e) { /* 잘못된 주소는 버림 */ }
+  }
+  if (out.manifest) {
+    try { if (!okOrigins.includes(new URL(out.manifest).origin)) out.manifest = null; } catch (e) { out.manifest = null; }
+  }
+  return (out.mesh.male || out.mesh.female) ? out : null;
+}
+
+/* 같은 목록을 두 번 읽지 않고(_shopLoading), 실패한 목록은 다음 기회에 다시 읽는다.
+   예전 판은 fetch를 시작하기 전에 _shopItems=[]로 두어서, 동시에 부른 쪽은 빈 목록을
+   받았고 한 번 실패하면 영영 다시 읽지 않았다. */
+function loadShopCatalog(force) {
+  if (!BODY_SHOP.on) return Promise.resolve([]);
+  if (_shopLoading) return _shopLoading;
+  if (_shopItems && !(force && _shopFailed)) return Promise.resolve(_shopItems);
+
+  _shopLoading = (async () => {
+    try {
+      const ctl = typeof AbortController === 'function' ? new AbortController() : null;
+      const t = ctl && setTimeout(() => ctl.abort(), BODY_SHOP.timeoutMs);
+      const res = await fetch(BODY_SHOP.catalogUrl, ctl ? { 'signal': ctl.signal } : void 0);
+      if (t) clearTimeout(t);
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      const data = await res.json();
+      const list = (data && (data.items || data.products)) || [];   // API는 products로 준다
+      _shopItems = list.map(it => _normalizeShopItem(it, BODY_SHOP.catalogUrl)).filter(Boolean);
+      _shopFailed = false;
+      console.log('[3D·쇼핑몰] 옷 목록 ' + _shopItems.length + '벌 받음 — ' + BODY_SHOP.catalogUrl);
+    } catch (e) {
+      _shopItems = _shopItems || [];
+      _shopFailed = true;
+      console.log('[3D·쇼핑몰] 목록을 못 받아 견본 옷장만 씁니다:', e && e.message || e);
+    }
+    _shopLoading = null;
+    return _shopItems;
+  })();
+  return _shopLoading;
+}
+
+/* 쇼핑몰 항목을 이 성별에서 입을 수 있는 조각으로 바꾼다(없으면 null).
+   loose=true면 성별 표시(it.gender)까지는 눈감아 주지만, <b>메쉬는 여전히
+   이 몸용으로 구운 것만</b> 쓴다 — 반대 성별 메쉬를 빌려다 굽는 길은 없앴다. */
+function shopPiece(it, gender, loose) {
+  if (!it || !it.mesh) return null;
+  if (!loose && it.gender && it.gender !== 'both' && it.gender !== gender) return null;
+  /* 이 몸에 물려 구운 메쉬가 없으면 이 옷은 이 몸에 없는 옷이다. */
+  const url = it.mesh[gender];
+  if (!url) return null;
+  /* fitFor — 이 메쉬가 <b>어느 몸에 물려 구운</b> 것이냐. 목록이 직접 적어 두면 그것을
+     믿는다. 위에서 mesh[gender]만 골랐으므로 정상 항목이면 언제나 지금 몸과 같다. */
+  const fitFor = it.fitFor || gender;
+  if (fitFor !== gender) {
+    console.warn('[3D·쇼핑몰] ' + it.id + ' 의 mesh.' + gender +
+      ' 가 fitFor=' + fitFor + ' 로 적혀 있습니다 — 교차 피팅은 하지 않으므로 건너뜁니다');
+    return null;
+  }
+  return { 'id': it.id, 'name': it.name, 'formal': typeof it.formal === 'number' ? it.formal : 0.5,
+           'url': url, 'colorHex': it.colorHex || null, 'layer': it.layer || 'outer',
+           'fitFor': fitFor, 'shop': it.shop || null,
+           'fitted': !!it.fitted,              // 이미 몸에 맞춰 구운 메쉬인가
+           'bodyPart': it.bodyPart || null,
+           'slot': it.slot || _slotOf(it.bodyPart, it.layer),
+           'manifest': it.manifest || null,    // 몸별 구운 메쉬 목록(fitted.json) 주소
+           'under': !!it.under,
+           'fromShop': true };
+}
+
+function figLabel(g) { const f = BODY_FIGURES[g]; return f ? L(f.label, f.labelEn || f.label) : g; }
+const BODY_FIGURES = {
+  'male':   { 'label': '남자', 'labelEn': 'Man',   'objUrl': './assets/body_male.obj',   'neckCutFrac': 0.9474 },
+  'female': { 'label': '여자', 'labelEn': 'Woman', 'objUrl': './assets/body_female.obj', 'neckCutFrac': 0.9427 }
+};
+
+/* ------------------------------------------------------------------ 옷장 */
+/* outer: 격식(formal)이 가까운 것을 고른다. 벌이 늘면 여기에 줄만 더한다.
+   inner: 외투를 벗었을 때 입는 안쪽 한 벌(아래→위 순서). */
+const BODY_WARDROBE = {
+  'male': {
+    'outer': [
+      { 'id': 'm-suit',   'name': '슈트', 'nameEn': 'Suit', 'formal': 0.95, 'coversAll': true, 'url': './assets/fitted/male/suit3.fitted.obj' },
+      { 'id': 'm-jacket', 'name': '재킷', 'nameEn': 'Jacket', 'formal': 0.45, 'coversAll': true, 'url': './assets/fitted/male/suit_dinner_jacket.fitted.obj' }
+    ],
+    'inner': [
+      { 'id': 'm-jeans', 'name': '청바지', 'nameEn': 'Jeans', 'slot': 'lower', 'under': true, 'colorHex': '#3E4E6B',
+        'url': './assets/fitted/male/mens_elv_jeans2slf.fitted.obj' },
+      { 'id': 'm-top',   'name': '상의', 'nameEn': 'Top', 'slot': 'upper', 'url': './assets/fitted/male/mycenaean_tunic.fitted.obj' }
+    ]
+  },
+  'female': {
+    'outer': [
+      { 'id': 'f-suit',  'name': '슈트', 'nameEn': 'Suit', 'formal': 0.95, 'coversAll': true, 'url': './assets/fitted/female/fem_suit2.fitted.obj' },
+      { 'id': 'f-dress', 'name': '원피스 슈트', 'nameEn': 'Dress suit', 'formal': 0.55, 'coversAll': true,
+        'url': './assets/fitted/female/female_elegantsuit01.fitted.obj' }
+    ],
+    /* 여자 안쪽 한 벌은 상·하의가 한 메쉬다(MakeHuman female_casualsuit01).
+       예전에는 남성용 튜닉 + 청바지를 빌려 썼는데, 가슴이 옷을 뚫고 나와 여유를 계속
+       올리다 보니 어깨가 부풀었다. 이 옷은 처음부터 여자 체형에 물려 있어 그 문제가 없다. */
+    'inner': [
+      { 'id': 'f-casual', 'name': '캐주얼', 'nameEn': 'Casual', 'slot': 'full', 'url': './assets/fitted/female/female_casualsuit01.fitted.obj' }
+    ]
+  }
+};
+
+/* 추천 항목의 격식 — 카테고리와 실루엣 점수에서 읽는다(20-outfit-match.js의 축). */
+function partName(p) { return p ? L(p.name, p.nameEn || p.name) : ''; }
+function outfitFormality(item) {
+  if (!item) return 0.5;
+  if (item.category === '포멀') return 1;
+  const shoulder = typeof item.shoulder === 'number' ? item.shoulder : 0.5;
+  const busy = typeof item.busy === 'number' ? item.busy : 0.5;
+  return Math.max(0, Math.min(1, shoulder * 0.6 + busy * 0.4));
+}
+
+/* 지금 성별·외투 상태에서 입을 조각들.
+   견본 옷장 + 쇼핑몰 목록을 한 자리에 놓고, 추천의 격식에 제일 가까운 것을 고른다.
+   (11-14) 색은 여기서 정하지 않는다. 예전엔 추천 항목의 colorHex(tint)를 모든 옷에
+   덮어써서 무엇을 입혀도 같은 색이었다. 이제 각 옷은 자기 colorHex만 들고 가고,
+   실제 색은 _mountGarment가 OBJ/MTL에서 읽는다. */
+async function piecesForOutfit(item) {
+  const gender = BODY_BASE.gender;
+  const w = BODY_WARDROBE[gender] || BODY_WARDROBE.male;
+  const shop = await loadShopCatalog();
+  /* 추천에 쇼핑몰 옷을 섞는 건 BODY_SHOP.recommend가 켜졌을 때만 */
+  const shopFor = layer => (BODY_SHOP.recommend ? shop : []).map(it => shopPiece(it, gender))
+                               .filter(p => p && (p.layer || 'outer') === layer);
+
+  /* (11-14) 쇼핑몰에서 고른 옷 — 자리별로. 이 몸에 입힐 메쉬가 없는 옷은 그 자리만 비운다. */
+  const picked = {};
+  for (const slot of Object.keys(_picks)) {
+    const raw = _picks[slot];
+    const hit = raw && shopPiece(raw, gender, !BODY_SHOP.pickGenderLock);
+    if (hit) { picked[slot] = Object.assign({}, hit, { 'slot': slot }); continue; }
+    console.warn('[3D·쇼핑몰] 고른 ' + (SLOT_LABEL_KO[slot]||slot) + '(' + (raw && raw.id) + ')에 ' +
+      BODY_FIGURES[gender].label + ' 몸용 메쉬가 없어 이 몸에서는 빼고 입힙니다');
+    bodyToast(L('고른 ' + slotLabel(slot) + '는 ' + figLabel(gender) + ' 몸용이 아니라 빼고 입힙니다',
+                'This ' + slotLabel(slot) + " isn't made for the " + figLabel(gender) + ' body, so it was left off'));
+  }
+  const anyPick = Object.keys(picked).length > 0;
+
+  /* 안쪽 옷 — 견본 한 벌을 바탕에 깔고, 고른 자리만 바꾼다.
+     상의를 고르면 상의만, 하의를 고르면 하의만. 전신(원피스)은 상·하의 둘 다를 대신한다. */
+  const inner = {};
+  const baseInner = shopFor('inner').length ? shopFor('inner') : (w.inner || []);
+  for (const p of baseInner) inner[p.slot || _slotOf(p.bodyPart, p.layer)] = Object.assign({}, p);
+  if (picked.full) { delete inner.upper; delete inner.lower; inner.full = picked.full; }
+  if (picked.upper) inner.upper = picked.upper;   // 바탕이 전신(여자 캐주얼)이면 그 위에 덧입는다
+  if (picked.lower) inner.lower = picked.lower;
+  /* 바탕이 전신 한 벌인데 상의·하의를 둘 다 골랐으면 바탕 전신은 벗긴다 */
+  if (inner.full && !picked.full && picked.upper && picked.lower) delete inner.full;
+
+  /* 외투 — 스위치가 켜졌을 때만. 고른 외투가 있으면 그것, 없으면 추천 견본.
+     (2026-11-15) 안쪽 옷(상의·하의·전신)만 골랐어도 외투 ON이면 추천 외투를 <b>그 위에</b> 입힌다.
+     예전엔 안쪽 옷을 고르면 외투를 아예 안 씌워서, 외투 ON인데 외투가 벗겨지고 OFF로 바꿔도
+     그림이 그대로였다(사용자 신고). 고른 옷은 외투 아래에 깔리고, 외투를 끄면 드러난다. */
+  let outer = null;
+  if (BODY_BASE.outer) {
+    if (picked.outer) outer = picked.outer;
+    else {
+      const cands = (w.outer || []).concat(shopFor('outer'));
+      if (cands.length) {
+        const f = outfitFormality(item);
+        let best = cands[0], bd = Infinity;
+        for (const o of cands) { const d = Math.abs(o.formal - f); if (d < bd) { bd = d; best = o; } }
+        outer = Object.assign({}, best);
+      }
+    }
+  }
+
+  /* 안에서 밖으로: 하의 → 전신 → 상의 → 외투. 아래위 한 벌 외투(견본 슈트)는 안쪽을 다 가린다.
+     (2026-11-15) 단, 손님이 안쪽 옷을 골랐으면 그 옷은 빼지 않고 외투 아래에 같이 입힌다. */
+  const parts = outer && outer.coversAll && !anyPick
+    ? [outer]
+    : [inner.lower, inner.full, inner.upper, outer].filter(Boolean);
+  const names = parts.map(partName);
+  const wornShop = (outer && outer.fromShop && outer.shop) ||
+    ((picked.upper || picked.full || picked.lower || {}).shop) || (parts[0] && parts[0].shop) || null;
+  return { 'label': parts.length ? names.join(' + ') + (anyPick ? L(' · 고름', ' · picked') : '') : L('맨몸', 'No clothes'),
+           'shop': wornShop, 'parts': parts, 'hasOuterPick': !!picked.outer, 'anyPick': anyPick };
+}
+
+/* ------------------------------------------------------------ 불러오기 */
+const _figureCache = new Map();   // gender → {geoms, box, cutY, neckCx, neckCz}
+const _garmentCache = new Map();  // url|offset(|gender) → [BufferGeometry]
+let _bodyRig = null, _bodyWornLabel = '', _bodyWornShop = null, _lastBuild = null;
+
+/* OBJ를 읽는다. withMtl=true면 (11-14) 파일 안의 `mtllib`를 찾아 MTLLoader로
+   재질(Kd 색, map_Kd 텍스처)까지 읽어서 붙인다 — 옷이 원래 색으로 나오는 길.
+   MTL 경로는 OBJ 파일과 같은 폴더 기준. MTL을 못 읽어도 실패하지 않고 재질 없이 간다.
+   몸(body_*.obj)은 피부색을 따로 칠하므로 withMtl 없이 부른다. */
+function _loadOBJGroup(objUrl, withMtl) {
+  return new Promise((resolve, reject) => {
+    if (typeof THREE === 'undefined' || typeof THREE.OBJLoader !== 'function') {
+      reject(new Error('OBJLoader가 없습니다')); return;
+    }
+    if (!withMtl || typeof THREE.MTLLoader !== 'function') {
+      new THREE.OBJLoader().load(encodeURI(objUrl), resolve, undefined, reject);
+      return;
+    }
+    const href = new URL(encodeURI(objUrl), location.href).href;
+    const base = href.slice(0, href.lastIndexOf('/') + 1);
+    fetch(href)
+      .then(r => { if (!r.ok) throw new Error('HTTP ' + r.status + ' ' + objUrl); return r.text(); })
+      .then(text => {
+        const m = text.match(/^mtllib[ \t]+(.+?)[ \t]*$/m);
+        const parse = mats => {
+          const loader = new THREE.OBJLoader();
+          if (mats) loader.setMaterials(mats);
+          const group = loader.parse(text);
+          group.userData.hasMtl = !!mats;      // _collectGeometries가 재질을 챙길지 판단
+          resolve(group);
+        };
+        if (!m) return parse(null);
+        const ml = new THREE.MTLLoader();
+        ml.setResourcePath(base); ml.setPath(base);
+        ml.load(m[1], mats => {
+          try { mats.preload(); } catch (e) {}
+          parse(mats);
+        }, undefined, err => {
+          console.warn('[3D·옷] 재질(mtl) 불러오기 실패 — 재질 없이 씁니다: ' + m[1], err);
+          parse(null);
+        });
+      })
+      .catch(reject);
+  });
+}
+
+/* 위치가 같은 정점끼리 법선을 모아 부드럽게 만들고, 원하면 그만큼 부풀린다.
+   MakeClothes 에셋에는 법선이 없어서 그냥 쓰면 각져 보인다. */
+function smoothInflateGeometry(geom, inflate) {
+  const pos = geom.attributes && geom.attributes.position;
+  if (!pos) return geom;
+  const n = pos.count, acc = new Map();
+  const key = i => (Math.round(pos.getX(i) * 1e4) / 1e4) + ',' +
+                   (Math.round(pos.getY(i) * 1e4) / 1e4) + ',' +
+                   (Math.round(pos.getZ(i) * 1e4) / 1e4);
+  const a = new THREE.Vector3(), b = new THREE.Vector3(), c = new THREE.Vector3(),
+        ab = new THREE.Vector3(), ac = new THREE.Vector3(), fn = new THREE.Vector3();
+  for (let t = 0; t + 2 < n; t += 3) {
+    a.fromBufferAttribute(pos, t); b.fromBufferAttribute(pos, t + 1); c.fromBufferAttribute(pos, t + 2);
+    fn.crossVectors(ab.subVectors(b, a), ac.subVectors(c, a));
+    for (let k = 0; k < 3; k++) {
+      const kk = key(t + k), v = acc.get(kk);
+      if (v) { v[0] += fn.x; v[1] += fn.y; v[2] += fn.z; } else acc.set(kk, [fn.x, fn.y, fn.z]);
+    }
+  }
+  const out = new Float32Array(n * 3);
+  for (let i = 0; i < n; i++) {
+    const v = acc.get(key(i)) || [0, 1, 0];
+    const L = Math.hypot(v[0], v[1], v[2]) || 1;
+    const nx = v[0] / L, ny = v[1] / L, nz = v[2] / L;
+    out[i * 3] = nx; out[i * 3 + 1] = ny; out[i * 3 + 2] = nz;
+    if (inflate) pos.setXYZ(i, pos.getX(i) + nx * inflate, pos.getY(i) + ny * inflate, pos.getZ(i) + nz * inflate);
+  }
+  geom.setAttribute('normal', new THREE.BufferAttribute(out, 3));
+  pos.needsUpdate = true;
+  geom.computeBoundingBox(); geom.computeBoundingSphere();
+  return geom;
+}
+
+/* (11-14) 옷의 원래 재질을 geometry.userData.srcMaterial에 붙여 둔다.
+   MTL을 읽었거나 버텍스 컬러가 있을 때만 — 아무 정보 없는 OBJLoader 기본 재질(흰색)은
+   "원래 색"이 아니므로 붙이지 않는다. geometry.clone()은 userData를 같이 복사하므로
+   캐시·복제·굽기(fitGarmentToBody)를 거쳐도 따라온다. */
+function _collectGeometries(group) {
+  const geoms = [];
+  group.traverse(o => {
+    if (!o.isMesh || !o.geometry) return;
+    if ((group.userData && group.userData.hasMtl) || o.geometry.attributes.color) {
+      o.geometry.userData.srcMaterial = o.material;
+    }
+    geoms.push(o.geometry);
+  });
+  return geoms;
+}
+
+/* 캐시한 원본은 씬에 넣지 않는다 — 3D 화면을 나갈 때 앱이 disposeObject3D로
+   씬의 지오메트리를 버리기 때문에, 넣을 때마다 복제해서 넣는다. */
+function _cloned(geoms) { return geoms.map(g => g.clone()); }
+
+async function loadBodyFigure(gender) {
+  if (_figureCache.has(gender)) return _figureCache.get(gender);
+  const fig = BODY_FIGURES[gender] || BODY_FIGURES.male;
+  const group = await _loadOBJGroup(fig.objUrl);
+  const geoms = _collectGeometries(group);
+  if (!geoms.length) throw new Error('몸 메쉬가 비어 있습니다: ' + fig.objUrl);
+  geoms.forEach(g => { if (!g.attributes.normal) smoothInflateGeometry(g, 0); });
+
+  const box = new THREE.Box3().setFromObject(group);
+  const cutY = box.min.y + fig.neckCutFrac * (box.max.y - box.min.y);
+  let sx = 0, sz = 0, cnt = 0;
+  for (const g of geoms) {
+    const p = g.attributes.position;
+    for (let i = 0; i < p.count; i++) {
+      const y = p.getY(i);
+      if (y < cutY || y > cutY + BODY_BASE.neckBandUnits) continue;
+      sx += p.getX(i); sz += p.getZ(i); cnt++;
+    }
+  }
+  const rec = { 'geoms': geoms, 'box': box, 'cutY': cutY,
+                'neckCx': cnt ? sx / cnt : 0, 'neckCz': cnt ? sz / cnt : 0 };
+  _figureCache.set(gender, rec);
+  console.log('[3D·몸] 표준 인체(' + fig.label + ') 로드 — 파일 높이 ' +
+    (box.max.y - box.min.y).toFixed(2) + '단위 · 목 절단선 ' + cutY.toFixed(2) +
+    ' · 목 중심 z ' + rec.neckCz.toFixed(2));
+  return rec;
+}
+
+/* ------------------------------------------------- 다른 몸에 옮겨 굽기 (기본 꺼짐)
+   반입 단계의 tools/conform.py가 옷을 <b>한</b> 몸(fitFor)에 물려 굽는다. 남자 옷은
+   남자 몸에 물려 구운 그대로 쓰고, 여자 옷은 여자 몸에 물려 구운 그대로 쓴다 —
+   지금은 성별이 안 맞으면 굽지 않고 아예 안 입힌다(BODY_SHOP.pickGenderLock=true,
+   FIT_WARP.crossGender=false). 아래 길은 그 규칙을 일부러 풀었을 때만 돈다.
+
+   두 몸은 정점 번호가 안 맞으므로(남 9529 / 여 9450) conform.py처럼 같은 번호로 옮길 수
+   없다. 대신 몸을 <b>높이 × 방위</b> 칸으로 재서 칸마다 겉 반지름을 하나 두고, 옷의 점을
+   같은 칸의 반지름 비율만큼 옮긴다. 가슴은 앞쪽 방위에서만 커지므로 그 자리만 부풀고
+   허리는 그대로 들어간다. 옷이 몸에서 떠 있던 여유(gap)는 그대로 지킨다.
+
+   ※ 이건 <b>근사</b>다 — 어깨가 부풀거나 가슴이 옷을 뚫는 자리가 남는다. 그래서 기본을
+     끔으로 두었다. 다시 켜려면 FIT_WARP.crossGender = true. */
+const FIT_WARP = {
+  'on': true,
+  'crossGender': false, // true라야 반대 성별로 구운 옷을 굽는다 — 기본은 아예 안 입힌다
+  'NY': 48,          // 세로 칸 (발바닥 ~ 목 절단선)
+  'NTH': 32,         // 방위 칸 — 소매가 어색하면 48~64로 올린다
+  'ease': 0.010,     // 살이 옷을 뚫지 못하게 두는 최소 틈(모델 단위)
+  'keepOther': false // true면 반대 성별로 구운 벌도 캐시에 남긴다
+};
+const _radialCache = new Map();   // gender → 반지름 격자
+
+async function bodyRadialMap(gender) {
+  if (_radialCache.has(gender)) return _radialCache.get(gender);
+  const b = await loadBodyFigure(gender);
+  const y0 = b.box.min.y, y1 = b.cutY, NY = FIT_WARP.NY, NTH = FIT_WARP.NTH;
+  const R = new Float32Array(NY * NTH);
+  for (const g of b.geoms) {
+    const p = g.attributes.position;
+    for (let i = 0; i < p.count; i++) {
+      const y = p.getY(i); if (y < y0 || y > y1) continue;
+      const x = p.getX(i) - b.neckCx, z = p.getZ(i) - b.neckCz;
+      const r = Math.hypot(x, z); if (!r) continue;
+      const iy = Math.min(NY - 1, Math.floor((y - y0) / (y1 - y0) * NY));
+      const it = ((Math.floor((Math.atan2(z, x) + Math.PI) / (2 * Math.PI) * NTH)) % NTH + NTH) % NTH;
+      if (r > R[iy * NTH + it]) R[iy * NTH + it] = r;
+    }
+  }
+  /* 빈 칸(다리 사이·팔 사이)은 같은 높이의 가까운 방위에서 빌린다. */
+  let holes = 0;
+  for (let iy = 0; iy < NY; iy++) for (let it = 0; it < NTH; it++) {
+    if (R[iy * NTH + it] > 0) continue;
+    holes++;
+    for (let d = 1; d < NTH; d++) {
+      const a = R[iy * NTH + (it + d) % NTH], c = R[iy * NTH + ((it - d) % NTH + NTH) % NTH];
+      if (a || c) { R[iy * NTH + it] = Math.max(a, c); break; }
+    }
+  }
+  const rec = { 'R': R, 'y0': y0, 'y1': y1, 'NY': NY, 'NTH': NTH,
+                'cx': b.neckCx, 'cz': b.neckCz };
+  _radialCache.set(gender, rec);
+  console.log('[3D·옷·자] ' + BODY_FIGURES[gender].label + ' 몸 반지름 격자 ' +
+    NY + '×' + NTH + ' · 빈 칸 ' + holes + '개는 이웃에서 빌림');
+  return rec;
+}
+
+/* 격자 한 점 읽기 — 높이는 0(발바닥)~1(목 절단선), 방위는 감아 돈다. */
+function _sampleBodyR(m, yn, th) {
+  const fy = Math.max(0, Math.min(m.NY - 1e-3, yn * m.NY - 0.5));
+  const ft = (th + Math.PI) / (2 * Math.PI) * m.NTH - 0.5;
+  const iy = Math.floor(fy), it = Math.floor(ft), wy = fy - iy, wt = ft - it;
+  const at = (a, b) => m.R[Math.max(0, Math.min(m.NY - 1, a)) * m.NTH +
+                           ((b % m.NTH) + m.NTH) % m.NTH];
+  return (at(iy, it) * (1 - wt) + at(iy, it + 1) * wt) * (1 - wy) +
+         (at(iy + 1, it) * (1 - wt) + at(iy + 1, it + 1) * wt) * wy;
+}
+
+async function fitGarmentToBody(geoms, fitFor, gender) {
+  if (!FIT_WARP.on || !fitFor || fitFor === gender) return geoms;
+  const src = await bodyRadialMap(fitFor), dst = await bodyRadialMap(gender);
+  const s = (dst.y1 - dst.y0) / (src.y1 - src.y0);
+  let pushed = 0, total = 0;
+  const out = geoms.map(g0 => {
+    const g = g0.clone(), p = g.attributes.position;
+    for (let i = 0; i < p.count; i++) {
+      const yn = (p.getY(i) - src.y0) / (src.y1 - src.y0);
+      const x = p.getX(i) - src.cx, z = p.getZ(i) - src.cz;
+      const th = Math.atan2(z, x);
+      let r = Math.hypot(x, z);
+      const rs = _sampleBodyR(src, yn, th), rd = _sampleBodyR(dst, yn, th);
+      const gap = Math.max(0, r - rs) * s;     // 떠 있던 여유는 지킨다
+      r = (rs > 0 && rd > 0) ? rd + gap : r * s;
+      const floor = rd + FIT_WARP.ease;
+      if (r < floor) { r = floor; pushed++; }  // 살이 뚫고 나오던 자리
+      total++;
+      p.setXYZ(i, dst.cx + Math.cos(th) * r,
+                  dst.y0 + yn * (dst.y1 - dst.y0),
+                  dst.cz + Math.sin(th) * r);
+    }
+    p.needsUpdate = true;
+    smoothInflateGeometry(g, 0);               // 법선 다시 (안 하면 각져 보인다)
+    return g;
+  });
+  console.log('[3D·옷·굽기] ' + BODY_FIGURES[fitFor].label + '용 옷 → ' +
+    BODY_FIGURES[gender].label + ' 몸 · 세로 ×' + s.toFixed(3) +
+    ' · 밀어낸 점 ' + pushed + '/' + total +
+    ' (밀어낸 점이 태반이면 그 옷은 이 몸에 너무 작은 것입니다 — 근사로는 여기까지)');
+  return out;
+}
+
+/* ── 쇼핑몰 옷 자동 배치 (2026-10) ────────────────────────────────────────
+   업체가 올린 OBJ는 크기·원점·축이 제각각이다(cm 단위, Z-up, 원점이 발밑…).
+   몸에 맞춰 구운(fitted) 메쉬가 없을 때, 어깨폭(하의는 허리폭)을 맞춰 크기를 정하고
+   목 절단선(하의는 허리선)에 위쪽 끝을 붙인 뒤, 살을 뚫는 점만 바깥으로 민다.
+   근사일 뿐이다 — 제대로 하려면 tools/로 fitted 메쉬를 구워 올려야 한다. */
+
+/* 높이 y0~y1 띠 안 정점들의 가로폭. 소매·팔처럼 떨어진 덩어리는 빼고
+   중심(centerX)에서 이어진 몸통 덩어리만 잰다(히스토그램 칸이 1칸 이상 비면 끊김). */
+function _bandWidth(geoms, y0, y1, centerX) {
+  const xs = [], zs = [];
+  for (const g of geoms) {
+    const p = g.attributes.position;
+    for (let i = 0; i < p.count; i++) {
+      const y = p.getY(i);
+      if (y < y0 || y > y1) continue;
+      xs.push(p.getX(i)); zs.push(p.getZ(i));
+    }
+  }
+  if (!xs.length) return null;
+  let lo = Infinity, hi = -Infinity;
+  for (const x of xs) { if (x < lo) lo = x; if (x > hi) hi = x; }
+  const bins = Math.max(6, Math.min(80, Math.floor(xs.length / 6)));
+  const step = (hi - lo) / bins || 1;
+  const filled = new Uint8Array(bins);
+  for (const x of xs) filled[Math.min(bins - 1, Math.floor((x - lo) / step))] = 1;
+  /* 중심 칸에서 시작 — 비어 있으면 가장 가까운 찬 칸으로 */
+  const cx0 = typeof centerX === 'number' ? centerX : (lo + hi) / 2;
+  let c = Math.max(0, Math.min(bins - 1, Math.floor((cx0 - lo) / step)));
+  if (!filled[c]) {
+    let d = 1;
+    while (d < bins && !(filled[c + d] || filled[c - d])) d++;
+    c = filled[c + d] ? c + d : c - d;
+  }
+  /* 좌우로 넓힌다 — 빈 칸 하나까지는 이어진 것으로 본다 */
+  let a = c, b = c;
+  while (a > 0 && (filled[a - 1] || (a > 1 && filled[a - 2]))) a--;
+  while (b < bins - 1 && (filled[b + 1] || (b < bins - 2 && filled[b + 2]))) b++;
+  const x0 = lo + a * step, x1 = lo + (b + 1) * step;
+  let zSum = 0, n = 0;
+  for (let i = 0; i < xs.length; i++) if (xs[i] >= x0 && xs[i] <= x1) { zSum += zs[i]; n++; }
+  return { 'w': x1 - x0, 'cx': (x0 + x1) / 2, 'cz': n ? zSum / n : 0, 'n': n };
+}
+
+/* 여러 지오메트리를 합친 경계 상자 */
+function _geomsBox(geoms) {
+  const b = { 'minX': Infinity, 'minY': Infinity, 'minZ': Infinity,
+              'maxX': -Infinity, 'maxY': -Infinity, 'maxZ': -Infinity };
+  for (const g of geoms) {
+    const p = g.attributes.position;
+    for (let i = 0; i < p.count; i++) {
+      const x = p.getX(i), y = p.getY(i), z = p.getZ(i);
+      if (x < b.minX) b.minX = x; if (x > b.maxX) b.maxX = x;
+      if (y < b.minY) b.minY = y; if (y > b.maxY) b.maxY = y;
+      if (z < b.minZ) b.minZ = z; if (z > b.maxZ) b.maxZ = z;
+    }
+  }
+  return b;
+}
+
+/* geoms(쇼핑몰 옷)를 fig(표준 몸) 좌표에 맞춰 제자리에서 옮긴다. radial = bodyRadialMap 결과(없어도 됨) */
+function _placeShopGeoms(geoms, part, fig, radial) {
+  let gb = _geomsBox(geoms);
+  if (!isFinite(gb.minY)) return geoms;
+  const bb = fig._bb || (fig._bb = _geomsBox(fig.geoms));
+  const bodyH = bb.maxY - bb.minY, bodyW = bb.maxX - bb.minX, gW = gb.maxX - gb.minX;
+  const isLower0 = part.bodyPart === 'lower_body' || part.under;
+
+  /* 이미 몸 좌표에 놓인 옷(몸 상자 안 · 적당한 크기 · 가운데 정렬)이면 손대지 않는다. */
+  if (gb.minY >= bb.minY - 0.05 * bodyH && gb.maxY <= bb.maxY + 0.05 * bodyH &&
+      gb.minX >= bb.minX - 0.1 * bodyW && gb.maxX <= bb.maxX + 0.1 * bodyW &&
+      gb.maxY - gb.minY >= 0.15 * bodyH && gW >= 0.25 * bodyW &&
+      (isLower0 || gb.maxY >= fig.cutY - 0.25 * bodyH) &&
+      Math.abs((gb.minX + gb.maxX) / 2 - (bb.minX + bb.maxX) / 2) < 0.05 * bodyW) {
+    return geoms;
+  }
+
+  /* 앞뒤(z)가 키(y)보다 한참 길면 Z-up으로 저장된 파일이다 → y↔z 돌려 세운다. */
+  if (gb.maxZ - gb.minZ > 1.5 * (gb.maxY - gb.minY)) {
+    for (const g of geoms) {
+      const p = g.attributes.position;
+      for (let i = 0; i < p.count; i++) p.setXYZ(i, p.getX(i), p.getZ(i), -p.getY(i));
+    }
+    gb = _geomsBox(geoms);
+  }
+
+  const gH = gb.maxY - gb.minY;
+  const torso = fig.cutY - fig.box.min.y;          // 목 절단선 ~ 발바닥
+  const isLower = part.bodyPart === 'lower_body' || part.under;
+  /* 옷 위쪽 끝을 붙일 높이: 하의 = 허리(발바닥에서 77%), 상의 = 목 절단선 살짝 위 */
+  const topY = isLower ? fig.box.min.y + 0.77 * torso : fig.cutY + 0.02 * torso;
+  /* 몸 쪽 기준 폭: 하의 = 허리 띠, 상의 = 어깨 띠 */
+  const bodyBand = isLower
+    ? _bandWidth(fig.geoms, topY - 0.05 * torso, topY, fig.neckCx)
+    : _bandWidth(fig.geoms, fig.cutY - 0.13 * torso, fig.cutY - 0.06 * torso, fig.neckCx);
+  /* 옷 쪽 기준 폭: 위에서부터 띠를 넓혀 가며 점이 충분히(12개+) 잡힐 때까지 */
+  const garBand = (() => {
+    for (const k of [1, 2, 3]) {
+      const b = _bandWidth(geoms, gb.maxY - (isLower ? 0.06 : 0.14) * k * gH,
+                                  gb.maxY - (isLower ? 0 : 0.06) * gH);
+      if (b && b.n >= 12) return b;
+    }
+    return _bandWidth(geoms, gb.maxY - 0.4 * gH, gb.maxY);
+  })();
+
+  /* 배율 = 몸 폭 / 옷 폭 (+여유 2~4%). 폭을 못 재면 상의 길이(몸통 42%)로 */
+  let s = (bodyBand && garBand && garBand.w > 0)
+    ? bodyBand.w / garBand.w * (isLower ? 1.04 : 1.02)
+    : torso * 0.42 / gH;
+
+  /* 그 배율로 옷 길이가 말이 안 되면(몸통의 15% 미만 / 130% 초과) 폭 측정이 틀린 것 →
+     하의·상의·전신 중 길이가 가장 가까운 것으로 보고 길이로 맞춘다. */
+  const lenRatio = s * gH / torso;
+  let fullBody = false;
+  if (!(lenRatio > 0.15 && lenRatio < 1.3)) {
+    const reach = topY - fig.box.min.y;
+    const kinds = isLower ? [['하의', 0.5 * torso]]
+                          : [['상의', 0.4 * torso], ['전신', 0.97 * reach]];
+    let best = kinds[0];
+    for (const k of kinds) {
+      if (Math.abs(Math.log(k[1] / (lenRatio * torso))) < Math.abs(Math.log(best[1] / (lenRatio * torso)))) best = k;
+    }
+    fullBody = best[0] === '전신';
+    console.warn('[3D·쇼핑몰·맞춤] ' + part.id + ' 폭 기준 배율이 이상해(키 대비 ' + lenRatio.toFixed(2) +
+      ') → 가장 가까운 「' + best[0] + '」 길이로 맞춥니다');
+    s = best[1] / gH;
+  }
+  /* 세로로 길쭉한 상의(원피스·코트)는 길이를 발목까지로 맞춘다 */
+  const tall = !isLower && (fullBody || gH / Math.max(1e-6, gb.maxX - gb.minX) > 2.2);
+  if (tall) s = (topY - fig.box.min.y) * 0.97 / gH;
+  /* 어떤 경우에도 발바닥 아래로는 안 내려가게 */
+  const sMax = (topY - fig.box.min.y) * 0.99 / gH;
+  if (s > sMax) s = sMax;
+
+  /* 옮기기: 옷 띠의 중심 → 몸의 목 중심(x)·띠 중심(z), 위쪽 끝 → topY */
+  const gcx = garBand ? garBand.cx : (gb.minX + gb.maxX) / 2;
+  const gcz = garBand ? garBand.cz : (gb.minZ + gb.maxZ) / 2;
+  const bcx = fig.neckCx;
+  const bcz = bodyBand ? bodyBand.cz : fig.neckCz;
+  for (const g of geoms) {
+    const p = g.attributes.position;
+    for (let i = 0; i < p.count; i++) {
+      const x = (p.getX(i) - gcx) * s + bcx;
+      const y = (p.getY(i) - gb.maxY) * s + topY;
+      const z = (p.getZ(i) - gcz) * s + bcz;
+      let nx = x, nz = z;
+      /* 살 안쪽으로 들어간 점만 몸 반지름 + 여유(FIT_WARP.ease)까지 바깥으로 민다.
+         너무 깊이(반지름 30% 이상) 박힌 점은 팔·다리 사이일 수 있어 건드리지 않는다. */
+      if (radial && y >= radial.y0 && y <= radial.y1) {
+        const dx = x - radial.cx, dz = z - radial.cz;
+        const r = Math.hypot(dx, dz), th = Math.atan2(dz, dx);
+        const rb = _sampleBodyR(radial, (y - radial.y0) / (radial.y1 - radial.y0), th);
+        const floor = rb + FIT_WARP.ease;
+        if (r > 1e-6 && r < floor && floor - r < 0.3 * rb) {
+          nx = radial.cx + dx / r * floor;
+          nz = radial.cz + dz / r * floor;
+        }
+      }
+      p.setXYZ(i, nx, y, nz);
+    }
+    p.needsUpdate = true;
+    if (g.computeBoundingBox) g.computeBoundingBox();
+    if (g.computeBoundingSphere) g.computeBoundingSphere();
+  }
+  return geoms;
+}
+
+async function _autoPlaceShopGeoms(geoms, part) {
+  const gender = BODY_BASE.gender;
+  const fig = await loadBodyFigure(gender);
+  let radial = null;
+  try { radial = await bodyRadialMap(gender); } catch (e) {}
+  return _placeShopGeoms(geoms, part, fig, radial);
+}
+
+/* 상품 폴더의 fitted.json — { "male": "products/<id>/male.fitted.obj", "female": "…", "bakedAt": … }
+   있으면 그 몸에 맞춰 미리 구운 메쉬 주소를 돌려준다(없으면 null → 자동 배치로). */
+const _shopFittedCache = new Map();
+function _shopFitted(manifestUrl, gender) {
+  if (!_shopFittedCache.has(manifestUrl)) {
+    _shopFittedCache.set(manifestUrl,
+      fetch(manifestUrl, { 'cache': 'no-cache' })
+        .then(r => r.ok ? r.json() : null)
+        .catch(() => null));
+  }
+  return _shopFittedCache.get(manifestUrl).then(j => {
+    const path = j && j[gender];
+    if (!path) return null;
+    return new URL('/api/assets/' + String(path).split('/').map(encodeURIComponent).join('/'),
+                   BODY_SHOP.assetBase).href;
+  });
+}
+
+/* 성별이 바뀌면 반대쪽으로 구운 벌은 버린다(원본은 남긴다 — 다시 읽을 필요가 없다). */
+function _pruneGarmentCache(keepGender) {
+  if (FIT_WARP.keepOther) return;
+  const other = keepGender === 'male' ? 'female' : 'male';
+  for (const k of Array.from(_garmentCache.keys())) {
+    if (k.endsWith('|' + other)) _garmentCache.delete(k);
+  }
+}
+
+async function loadGarmentGeometries(part) {
+  /* (10월) 쇼핑몰 옷: fitted.json에 이 몸용 구운 메쉬가 있으면 그걸로 바꿔 입는다. */
+  if (part && part.fromShop && !part.fitted && part.manifest) {
+    const fittedUrl = await _shopFitted(part.manifest, BODY_BASE.gender);
+    if (fittedUrl) part = Object.assign({}, part, { 'url': fittedUrl, 'fitted': true });
+  }
+  const offset = part.under ? BODY_BASE.underOffset : BODY_BASE.clothOffset;
+  /* 자동 배치한 옷은 몸마다 결과가 달라서 캐시 키에 성별을 붙인다 */
+  const raw = part.url + '|' + offset +
+    (part.fromShop && !part.fitted ? '|place|' + BODY_BASE.gender : '');
+  if (!_garmentCache.has(raw)) {
+    const group = await _loadOBJGroup(part.url, true);     // (11-14) MTL까지 — 원래 색
+    const geoms = _collectGeometries(group);
+    if (!geoms.length) throw new Error('옷 메쉬가 비어 있습니다: ' + part.url);
+    if (part.fromShop && !part.fitted) await _autoPlaceShopGeoms(geoms, part);
+    geoms.forEach(g => smoothInflateGeometry(g, offset));
+    _garmentCache.set(raw, geoms);
+  }
+  /* 견본 옷장 옷에는 fitFor가 없다 — 성별 폴더에서 온 것이라 지금 몸용이 맞다. */
+  const fitFor = part.fitFor || BODY_BASE.gender;
+  if (fitFor === BODY_BASE.gender) return _garmentCache.get(raw);
+  /* 여기부터는 반대 성별로 구운 옷이다. 기본값(crossGender=false)에서는 굽지 않고
+     건너뛴다 — 남자 옷은 남자 몸에서만 comfort(conform)로 맞춘 그대로 쓴다. */
+  if (!FIT_WARP.on || !FIT_WARP.crossGender) {
+    throw new Error(BODY_FIGURES[fitFor].label + '용 옷은 ' +
+      BODY_FIGURES[BODY_BASE.gender].label + ' 몸에 입히지 않습니다');
+  }
+  const key = raw + '|' + BODY_BASE.gender;
+  if (!_garmentCache.has(key)) {
+    _garmentCache.set(key,
+      await fitGarmentToBody(_garmentCache.get(raw), fitFor, BODY_BASE.gender));
+  }
+  return _garmentCache.get(key);
+}
+
+/* ------------------------------------------------------------ 리그 조립 */
+function _skinMaterial(clip) {
+  const m = new THREE.MeshStandardMaterial({
+    'color': new THREE.Color(BODY_BASE.skinHex), 'roughness': 0.88, 'metalness': 0 });
+  if (clip) { m.clippingPlanes = [clip]; m.clipShadows = true; }
+  return m;
+}
+/* 색 정보가 전혀 없는 옷에만 쓰는 단색 재질 (colorHex 없으면 회색) */
+function _clothMaterial(colorHex, clip) {
+  const m = new THREE.MeshStandardMaterial({
+    'color': new THREE.Color(colorHex || '#7A7F88'), 'roughness': 0.82, 'metalness': 0,
+    'side': THREE.DoubleSide });
+  if (clip) { m.clippingPlanes = [clip]; m.clipShadows = true; }
+  return m;
+}
+
+/* (11-14) 옷의 원래 재질(MTL에서 온 MeshPhongMaterial 등)을 몸·피부와 같은
+   MeshStandardMaterial로 옮긴다 — 색(Kd)·텍스처(map_Kd)·버텍스 컬러·투명도는 그대로,
+   양면·목 절단 클립만 덧붙인다. 원래 재질이 없으면(src=null) 단색 재질로.
+   재질이 여러 개인 메쉬(셔츠+바지 등)는 배열로 받아 배열로 돌려준다(geometry groups). */
+function _garmentMaterialFrom(src, colorHex, clip) {
+  const one = m => {
+    const mat = new THREE.MeshStandardMaterial({
+      'color': (m && m.color) ? m.color.clone() : new THREE.Color(0xffffff),
+      'map': (m && m.map) || null,
+      'vertexColors': !!(m && m.vertexColors),
+      'transparent': !!(m && m.transparent && m.opacity < 1),
+      'opacity': (m && typeof m.opacity === 'number') ? m.opacity : 1,
+      'roughness': 0.82, 'metalness': 0,
+      'side': THREE.DoubleSide
+    });
+    /* 텍스처는 sRGB — 안 맞추면 색이 바래 보인다 */
+    if (mat.map && THREE.sRGBEncoding !== undefined) { mat.map.encoding = THREE.sRGBEncoding; mat.map.needsUpdate = true; }
+    if (m && m.name) mat.name = m.name;
+    if (clip) { mat.clippingPlanes = [clip]; mat.clipShadows = true; }
+    return mat;
+  };
+  if (!src) return _clothMaterial(colorHex, clip);
+  return Array.isArray(src) ? src.map(one) : one(src);
+}
+
+/* 캐시한 지오메트리는 그대로 두고 재질만 버린다. */
+function _detach(parent, obj) {
+  if (!obj) return;
+  parent.remove(obj);
+  obj.traverse(o => {
+    if (!o.isMesh) return;
+    const mats = Array.isArray(o.material) ? o.material : [o.material];
+    mats.forEach(m => m && m.dispose && m.dispose());
+  });
+}
+
+/* ── 옷끼리 겹치기 (2026-11-23) ───────────────────────────────────────────
+   상의·하의를 각각 다른 곳에서 만들어서, 청바지 허리밴드처럼 몸에서 떠 있는 자리가
+   티셔츠를 뚫고 나왔다. 위 옷의 점마다 가장 가까운 아래 옷 점을 찾아 그 법선 방향으로
+   안쪽이면 gap만큼 바깥으로 밀고, 밀어낸 양은 이웃 점과 나눠 매끈하게 한다.
+   (1차는 몸 중심축 반지름 격자였는데, 외투 아래 티셔츠 소매·청바지 두 다리가 섞이면
+    그 높이 전체가 소매 끝까지 부풀어 외투가 원반·가시로 터졌다 — 11-23 녹화) */
+const GARMENT_LAYER = {
+  'on': true,
+  'gap': 0.007,      // 위 옷이 아래 옷 겉면 위로 떠 있는 최소 틈(모델 단위)
+  'reach': 0.035,    // 이 거리 안의 아래 옷 면만 본다 — 멀리 있는 소매·다리는 무시
+  'maxPush': 0.035,  // 한 점을 이보다 많이 밀어야 하면 안 민다(잘못 짝지은 것 — 폭발 방지)
+  'smooth': 6        // 밀어낸 양을 이웃 점과 나누는 횟수(가시 방지)
+};
+function _garmentRank(part) {
+  const slot = part.slot || _slotOf(part.bodyPart, part.layer);
+  if (slot === 'lower' || part.under) return 0;
+  if (slot === 'outer' || part.layer === 'outer') return 2;
+  return 1;
+}
+/* 아래 옷 점들을 격자(칸 = reach)에 넣는다. 법선은 smoothInflateGeometry가 만든 것. */
+function _garmentHash(geoms) {
+  const C = GARMENT_LAYER.reach, cells = new Map(), P = [], N = [];
+  for (const g of geoms) {
+    const p = g.attributes.position, n = g.attributes.normal;
+    if (!n) continue;
+    for (let i = 0; i < p.count; i++) {
+      const k = P.length / 3;
+      P.push(p.getX(i), p.getY(i), p.getZ(i)); N.push(n.getX(i), n.getY(i), n.getZ(i));
+      const key = Math.floor(p.getX(i) / C) + ',' + Math.floor(p.getY(i) / C) + ',' + Math.floor(p.getZ(i) / C);
+      let a = cells.get(key); if (!a) cells.set(key, a = []); a.push(k);
+    }
+  }
+  return { 'C': C, 'cells': cells, 'P': P, 'N': N };
+}
+/* 점 하나가 아래 옷 겉면보다 안쪽이면 바깥으로 얼마나 밀어야 하는지(벡터). 아니면 null.
+   가장 가까운 아래 옷 점의 법선 방향 높이로 판단한다. */
+function _pushOut(H, x, y, z) {
+  const C = H.C, cx = Math.floor(x / C), cy = Math.floor(y / C), cz = Math.floor(z / C);
+  let best = -1, bd = C * C;
+  for (let a = -1; a <= 1; a++) for (let b = -1; b <= 1; b++) for (let c = -1; c <= 1; c++) {
+    const L = H.cells.get((cx + a) + ',' + (cy + b) + ',' + (cz + c)); if (!L) continue;
+    for (const k of L) {
+      const dx = x - H.P[k * 3], dy = y - H.P[k * 3 + 1], dz = z - H.P[k * 3 + 2];
+      const d = dx * dx + dy * dy + dz * dz;
+      if (d < bd) { bd = d; best = k; }
+    }
+  }
+  if (best < 0) return null;
+  const nx = H.N[best * 3], ny = H.N[best * 3 + 1], nz = H.N[best * 3 + 2];
+  const h = (x - H.P[best * 3]) * nx + (y - H.P[best * 3 + 1]) * ny + (z - H.P[best * 3 + 2]) * nz;
+  const need = GARMENT_LAYER.gap - h;
+  if (need <= 0 || need > GARMENT_LAYER.maxPush) return null;
+  return [nx * need, ny * need, nz * need];
+}
+async function _layerGarments(loaded) {
+  if (!GARMENT_LAYER.on || loaded.length < 2) return;
+  const ranks = loaded.map(G => _garmentRank(G.part));
+  const order = loaded.map((_, i) => i).sort((a, b) => ranks[a] - ranks[b]);
+  for (const k of order) {
+    const under = [];
+    loaded.forEach((G, j) => { if (ranks[j] < ranks[k]) under.push(...G.geoms); });
+    if (!under.length) continue;
+    const H = _garmentHash(under);
+    let pushed = 0, total = 0;
+    for (const g of loaded[k].geoms) {
+      const p = g.attributes.position;
+      /* 같은 자리 점(삼각형마다 따로 들어 있음)을 하나로 묶는다 — 안 묶으면 틈이 벌어진다 */
+      const keyOf = i => Math.round(p.getX(i) * 1e4) + ',' + Math.round(p.getY(i) * 1e4) + ',' + Math.round(p.getZ(i) * 1e4);
+      const idOf = new Map(), vid = new Int32Array(p.count), rep = [];
+      for (let i = 0; i < p.count; i++) {
+        const kk = keyOf(i); let v = idOf.get(kk);
+        if (v === undefined) { v = rep.length; idOf.set(kk, v); rep.push(i); }
+        vid[i] = v;
+      }
+      const V = rep.length, D = new Float32Array(V * 3), must = new Uint8Array(V);
+      for (let v = 0; v < V; v++) {
+        const i = rep[v]; total++;
+        const d = _pushOut(H, p.getX(i), p.getY(i), p.getZ(i));
+        if (d) { D[v * 3] = d[0]; D[v * 3 + 1] = d[1]; D[v * 3 + 2] = d[2]; must[v] = 1; pushed++; }
+      }
+      if (!pushed) continue;
+      /* 이웃(삼각형 변) 목록 */
+      const nb = Array.from({ length: V }, () => []);
+      for (let t = 0; t + 2 < p.count; t += 3) {
+        const a = vid[t], b = vid[t + 1], c = vid[t + 2];
+        nb[a].push(b, c); nb[b].push(a, c); nb[c].push(a, b);
+      }
+      /* 밀어낸 양을 퍼뜨린다 — 밀어야 하는 점은 자기 몫 아래로는 안 내려간다(다시 뚫리지 않게) */
+      const base = Float32Array.from(D);
+      for (let s = 0; s < GARMENT_LAYER.smooth; s++) {
+        const nD = new Float32Array(V * 3);
+        for (let v = 0; v < V; v++) {
+          let x = D[v * 3], y = D[v * 3 + 1], z = D[v * 3 + 2], n = 1;
+          for (const u of nb[v]) { x += D[u * 3]; y += D[u * 3 + 1]; z += D[u * 3 + 2]; n++; }
+          x /= n; y /= n; z /= n;
+          if (must[v]) {
+            const bx = base[v * 3], by = base[v * 3 + 1], bz = base[v * 3 + 2];
+            const bl = Math.hypot(bx, by, bz), along = (x * bx + y * by + z * bz) / (bl || 1);
+            if (along < bl) { const f = (bl - along) / (bl || 1); x += bx * f; y += by * f; z += bz * f; }
+          }
+          nD[v * 3] = x; nD[v * 3 + 1] = y; nD[v * 3 + 2] = z;
+        }
+        D.set(nD);
+      }
+      for (let i = 0; i < p.count; i++) {
+        const v = vid[i];
+        p.setXYZ(i, p.getX(i) + D[v * 3], p.getY(i) + D[v * 3 + 1], p.getZ(i) + D[v * 3 + 2]);
+      }
+      p.needsUpdate = true; smoothInflateGeometry(g, 0);
+    }
+    console.log('[3D·옷·겹침] ' + (loaded[k].part.name || loaded[k].part.url) +
+      ' — 아래 옷 위로 밀어낸 점 ' + pushed + '/' + total);
+  }
+}
+
+async function _mountGarment(rig, item) {
+  _pruneGarmentCache(BODY_BASE.gender);
+  /* (10월) 옷 갈아입히기가 겹쳐 불리면(빠르게 두 번 누름) 늦게 끝난 앞 호출이
+     뒤 호출의 옷을 덮거나 옷이 두 벌 겹쳤다. 호출마다 번호를 매기고, 기다리는 사이
+     더 새 호출이 왔으면(stale) 자기가 만든 걸 치우고 빠진다. */
+  const seq = rig.userData._mountSeq = (rig.userData._mountSeq || 0) + 1;
+  const stale = () => rig.userData._mountSeq !== seq;
+  const clip = rig.userData.clipPlane;
+  for (let old; (old = rig.getObjectByName('bodyGarment'));) _detach(rig, old);   // 남은 것 전부
+  const holder = new THREE.Group();
+  holder.name = 'bodyGarment';
+  rig.add(holder);
+  const pick = await piecesForOutfit(item);
+  if (stale()) { _detach(rig, holder); return holder; }
+  /* (11-23) 먼저 다 불러 두고, 레이어 순서(하의 → 상의 → 외투)대로 겹친다 —
+     다른 곳에서 따로 만든 옷끼리는 서로를 모르므로, 아래 옷 바깥면보다 안쪽에 있는
+     위 옷의 점을 바깥으로 밀어 위 옷이 덮게 한다. */
+  const loaded = [];
+  for (const part of pick.parts) {
+    let geoms;
+    try { geoms = await loadGarmentGeometries(part); }
+    catch (e) { console.warn('[3D·옷] 불러오기 실패 — 건너뜁니다: ' + part.url, e); continue; }
+    if (stale()) { _detach(rig, holder); return holder; }
+    loaded.push({ 'part': part, 'src': geoms, 'geoms': _cloned(geoms) });
+  }
+  try { await _layerGarments(loaded); }
+  catch (e) { console.warn('[3D·옷·겹침] 실패 — 겹침 보정 없이 입힙니다:', e); }
+  if (stale()) { _detach(rig, holder); return holder; }
+  for (const G of loaded) {
+    /* (11-14) 옷마다 원래 재질로 — 예전엔 모든 옷을 _clothMaterial(한 색)로 칠했다 */
+    G.geoms.forEach((g, i) => {
+      const src = (g.userData && g.userData.srcMaterial) ||
+                  (G.src[i] && G.src[i].userData && G.src[i].userData.srcMaterial);
+      holder.add(new THREE.Mesh(g, _garmentMaterialFrom(src, G.part.colorHex, clip)));
+    });
+  }
+  _bodyWornLabel = pick.label;
+  _bodyWornShop = pick.shop || null;
+  return holder;
+}
+
+async function buildBodyBaseRig(item, widthFactor, bodyLenMesh) {
+  const base = await loadBodyFigure(BODY_BASE.gender);
+  const neckY = typeof getNeckBottomY === 'function' ? getNeckBottomY() : -1.15;
+  const clip = new THREE.Plane(new THREE.Vector3(0, -1, 0), neckY);
+
+  const rig = new THREE.Group();
+  rig.name = 'bodyBaseRig';
+  rig.userData.clipPlane = clip;
+
+  const skin = _skinMaterial(clip);
+  const holder = new THREE.Group();
+  holder.name = 'bodyBaseSkin';
+  _cloned(base.geoms).forEach(g => holder.add(new THREE.Mesh(g, skin)));
+  rig.add(holder);
+
+  const bodyLenFile = base.cutY - base.box.min.y;
+  let target = bodyLenMesh;
+  if (!(isFinite(target) && target > 0.5)) target = typeof personBodyLenMesh === 'function' ? personBodyLenMesh() : null;
+  if (!(isFinite(target) && target > 0.5)) {
+    target = 4;
+    console.warn('[3D·비율] 두상 자가 없어 폴백 4.0단위로 세웁니다 — 이 경우에만 두신이 상수에서 벗어납니다.');
+  }
+  const wf = isFinite(widthFactor) && widthFactor > 0 ? widthFactor : 1;
+  const widthMode = (typeof OUTFIT_MESH_SOURCE !== 'undefined' &&
+    (OUTFIT_MESH_SOURCE.widthMode || (OUTFIT_MESH_SOURCE.widthUniform ? 'uniform' : 'off'))) || 'off';
+  const s = target / (bodyLenFile || 1) * (widthMode === 'uniform' ? wf : 1);
+  const sx = widthMode === 'xz' ? wf : 1;
+
+  rig.scale.set(s * sx, s, s * sx);
+  rig.position.set(-base.neckCx * s * sx, neckY - base.cutY * s, -base.neckCz * s * sx);
+
+  await _mountGarment(rig, item);
+  rig.updateMatrixWorld(true);
+  _bodyRig = rig;
+  console.log('[3D·몸] ' + BODY_FIGURES[BODY_BASE.gender].label + ' ×' + s.toFixed(3) +
+    ' · 발바닥 y ' + (neckY - bodyLenFile * s).toFixed(2) + ' · 목 절단 y ' + neckY.toFixed(2) +
+    ' · 옷 ' + _bodyWornLabel + (BODY_BASE.outer ? '(외투 ON)' : '(외투 OFF)') +
+    ' · 추천 ' + (item ? item.name : '없음'));
+  return rig;
+}
+
+/* 18-perf-i18n-boot.js가 부르는 자리 — 실패하면 예전 의상-바디 경로로 돌아간다. */
+async function buildBody3DForOutfit(item, widthFactor, bodyLenMesh) {
+  if (BODY_BASE.on) try {
+    if (typeof _rigSeq !== 'undefined') _rigSeq++;    // 진행 중인 rebuildBodyRig는 무효
+    _lastBuild = { 'item': item, 'wf': widthFactor, 'len': bodyLenMesh };
+    const rig = await buildBodyBaseRig(item, widthFactor, bodyLenMesh);
+    try {
+      const open = typeof measureGarmentNeckOpening === 'function' ? measureGarmentNeckOpening(rig) : null;
+      if (open) _garmentNeckOpening = open;
+      else console.log('[3D·목] 몸의 목둘레가 옷깃 실측 범위 밖 — 예전(두개골 클램프) 경로로 세웁니다');
+    } catch (e) { console.warn('[3D·목] 목둘레 실측 예외:', e); }
+    try { installShopBridge(); buildBodyGarmentRack(); } catch (e) { console.warn('[3D·옷] 버튼 UI 실패:', e); }
+    scheduleShopPreload();   // (11-15) 3D 를 다 그린 뒤 쇼핑몰을 미리 불러 둔다
+    return rig;
+  } catch (e) {
+    console.warn('[3D·몸] 표준 인체 실패 — 예전 의상-바디 에셋으로 폴백:', e);
+  }
+  return loadOutfitMeshMeasured(item, widthFactor, bodyLenMesh);
+}
+
+/* ------------------------------------------------------------ 버튼 둘 */
+function _updateModel3DTag() {
+  const tag = document.getElementById('model3dTag');
+  if (!tag) return;
+  const base = tag.textContent.replace(/\s*·\s*(몸|Body)\s*:.*$/, '');   // 영어 UI(Body:)도 지운다
+  tag.textContent = base + L(' · 몸: ', ' · Body: ') + figLabel(BODY_BASE.gender) +
+    ' · ' + _bodyWornLabel;
+}
+
+/* (10월) _bodyRig 변수가 씬에 실제로 붙은 리그와 어긋나는 일이 있었다
+   (다시 세우는 도중 화면이 바뀜 등). 씬에서 직접 찾아 그쪽을 믿는다. */
+function _liveRig() {
+  try {
+    const host = typeof model3D !== 'undefined' && model3D && model3D.headGroup;
+    const rig = host && host.getObjectByName('bodyBaseRig');
+    if (rig) { _bodyRig = rig; return rig; }
+  } catch (e) {}
+  return _bodyRig;
+}
+
+async function setBodyGender(gender) {
+  if (!BODY_FIGURES[gender] || gender === BODY_BASE.gender) return false;
+  BODY_BASE.gender = gender;
+  return rebuildBodyRig();
+}
+
+async function toggleBodyOuter() {
+  /* 스위치의 뜻은 하나다 — <b>외투를 입는다/벗는다</b>.
+     고른 옷은 "어떤 외투냐"만 정하므로 여기서 놓지 않는다(놓으면 껐다 켠 사이에
+     고른 옷이 사라져, 손님 눈에는 스위치가 저 혼자 ON으로 돌아간 것처럼 보였다).
+     고른 옷을 아주 벗는 길은 「고른 옷 벗기」 버튼 하나로 둔다. */
+  BODY_BASE.outer = !BODY_BASE.outer;
+  /* (2026-11-15) 외투를 안 골랐으면 추천 외투가 고른 옷 위에 입혀진다(piecesForOutfit) — 따로 알릴 것 없음 */
+  if (!_bodyRig) return false;
+  await _mountGarment(_liveRig(), _lastBuild && _lastBuild.item);
+  buildBodyGarmentRack(); _updateModel3DTag();
+  return true;
+}
+
+/* 성별이 바뀌면 몸 자체가 바뀌므로 리그를 다시 세운다.
+   (10월) 남/여를 빠르게 연달아 누르면 리그가 두 개 붙었다 → 번호(_rigSeq)로
+   가장 마지막 호출만 붙이고, 붙일 때 남아 있는 bodyBaseRig는 전부 뗀다. */
+let _rigSeq = 0;
+async function rebuildBodyRig() {
+  if (!_lastBuild || typeof model3D === 'undefined' || !model3D || !model3D.headGroup) return false;
+  const seq = ++_rigSeq;
+  const host = model3D.headGroup;
+  let rig;
+  try { rig = await buildBodyBaseRig(_lastBuild.item, _lastBuild.wf, _lastBuild.len); }
+  catch (e) { console.warn('[3D·몸] 다시 세우기 실패 — 그대로 둡니다:', e); return false; }
+  if (seq !== _rigSeq) { _detach(host, rig); _liveRig(); return false; }   // 더 새 호출이 있다
+  for (let old; (old = host.getObjectByName('bodyBaseRig'));) _detach(host, old);
+  _bodyRig = rig;
+  host.add(rig);
+  buildBodyGarmentRack(); _updateModel3DTag();
+  return true;
+}
+
+function buildBodyGarmentRack() {
+  if (!BODY_BASE.rack) return;
+  const host = document.getElementById('model3dViewport');
+  if (!host) return;
+  let rack = document.getElementById('bodyGarmentRack');
+  if (!rack) {
+    rack = document.createElement('div');
+    rack.id = 'bodyGarmentRack'; rack.className = 'bb-rack';
+    host.appendChild(rack);
+  }
+  rack.innerHTML = '';
+  const other = BODY_BASE.gender === 'male' ? 'female' : 'male';
+  const bGender = document.createElement('button');
+  bGender.type = 'button';
+  bGender.textContent = figLabel(BODY_BASE.gender);
+  bGender.title = L('누르면 ' + figLabel(other) + ' 몸으로 바꿉니다', 'Switch to the ' + figLabel(other) + ' body');
+  bGender.addEventListener('click', () => setBodyGender(other));
+  rack.appendChild(bGender);
+
+  const bOuter = document.createElement('button');
+  bOuter.type = 'button';
+  bOuter.textContent = L('외투 ', 'Jacket ') + (BODY_BASE.outer ? 'ON' : 'OFF');
+  if (BODY_BASE.outer) bOuter.classList.add('on');
+  bOuter.title = _pickedShopId
+    ? L('외투만 입었다 벗깁니다 — 안쪽 상의·하의는 그대로, 벗어도 고른 외투는 기억해 둡니다',
+        'Takes the jacket on and off — your top and bottoms stay on, and the picked jacket is remembered')
+    : L('슈트·재킷을 입었다 벗깁니다 (무슨 옷인지는 추천이 정합니다)',
+        'Puts a suit/jacket on and off (the recommendation decides which)');
+  bOuter.addEventListener('click', () => toggleBodyOuter());
+  rack.appendChild(bOuter);
+
+  /* 고른 옷을 입고 있는 동안은 벗을 길을 열어 둔다. */
+  if (_pickedShopId) {
+    const bClear = document.createElement('button');
+    bClear.type = 'button';
+    bClear.textContent = L('고른 옷 벗기', 'Clear picks');
+    bClear.title = L('쇼핑몰에서 고른 옷을 벗고 추천 의상으로 돌아갑니다', 'Remove shop picks and go back to the recommended outfit');
+    bClear.addEventListener('click', () => clearShopPick());
+    rack.appendChild(bClear);
+  }
+
+  /* 쇼핑몰 주소가 있으면 옷장 문을 연다 — 3D 화면 위에 덮어 띄운다.
+     목록(catalog.json)을 못 받았다고 버튼을 지우면 안 된다. 손님이 고르는 곳은
+     목록이 아니라 쇼핑몰 페이지이고, 고른 옷은 메시지로 직접 들어온다. */
+  if (BODY_SHOP.on && BODY_SHOP.pageUrl) {
+    const bShop = document.createElement('button');
+    bShop.type = 'button';
+    const open = _shopPanelOpen();
+    bShop.textContent = open ? L('옷 닫기', 'Close clothes') : L('옷 고르기', 'Pick clothes');
+    if (open) bShop.classList.add('on');
+    bShop.addEventListener('click', () => open ? closeShopPanel() : openShopPanel());
+    rack.appendChild(bShop);
+  }
+
+  /* 쇼핑몰에서 온 옷이면 구매 칸을 하나 더 띄운다 — 상담이 거래로 이어지는 자리다.
+     견본 옷에는 안 뜬다(shop 정보가 없다). */
+  if (_bodyWornShop && _bodyWornShop.link) {
+    const buy = document.createElement('a');
+    buy.className = 'bb-buy';
+    buy.href = _bodyWornShop.link;
+    buy.target = '_blank';
+    buy.rel = 'noopener';
+    buy.textContent = (_bodyWornShop.title || L('이 옷 보기', 'View this item')) +
+      (_bodyWornShop.price ? ' · ' + _bodyWornShop.price : '');
+    rack.appendChild(buy);
+  }
+}
+
+/* ─────────────────────────────────────────────────────── 쇼핑몰 패널
+   쇼핑몰을 새 탭으로 열면 앱이 내려가고, 앱이 내려가면 이 손님의 3D 모델이
+   사라진다(사진부터 다시 찍어야 한다). 그래서 밖으로 내보내지 않고
+   3D 화면 <b>위에</b> 얹는다 — 옷을 눌러도 뒤의 아바타는 그대로 서 있다. */
+let _shopFrame = null;
+/* (2026-11-15) 쇼핑몰 미리 열기 — 3D 결과가 다 그려진 뒤 쇼핑몰을 안 보이게 미리 불러 두고,
+   「옷 고르기」를 누르면 그 패널을 보여 주기만 한다(다시 불러오지 않음).
+   닫을 때도 쇼핑몰이면 지우지 않고 숨긴다. 손님이 바뀌거나 미용실 지도로 바꾸면 지운다.
+   끄기: BODY_SHOP_PRELOAD.on = false */
+var BODY_SHOP_PRELOAD = { on: true, delayMs: 2500 };
+function _shopPanelOpen() {
+  const p = document.getElementById('bbShopPanel');
+  return !!p && p.dataset.hidden !== '1';
+}
+function _sendShopHello(frame) {
+  try {
+    /* (보안) '*' 대신 쇼핑몰 주소로만 — iframe 이 다른 사이트로 넘어가 있으면 보내지 않는다 */
+    const to = new URL(BODY_SHOP.pageUrl, location.href).origin;
+    frame.contentWindow.postMessage({ 'type': 'gyeol-hello', 'gender': BODY_BASE.gender }, to);
+  } catch (e) {}
+}
+function openShopPanel(opts) {
+  const preload = !!(opts && opts.preload);
+  const host = document.getElementById('model3dViewport');
+  if (!host) { if (!preload) console.warn('[3D·쇼핑몰] 3D 화면(model3dViewport)이 없어 옷장을 못 엽니다'); return false; }
+  const old = document.getElementById('bbShopPanel');
+  if (old) {
+    if (old.dataset.hidden !== '1') return true;                 // 이미 열려 있음
+    const want = shopUrlWithLang(BODY_SHOP.pageUrl);
+    if (old.dataset.src === want) {
+      if (preload) return true;                                   // 이미 미리 불러 둠
+      old.style.display = ''; delete old.dataset.hidden;          // 숨겨 둔 쇼핑몰을 보여 주기만
+      _shopFrame = old.querySelector('iframe');
+      if (_shopFrame && old.dataset.loaded === '1') _sendShopHello(_shopFrame);  // 성별이 바뀌었을 수 있음
+      buildBodyGarmentRack();
+      return true;
+    }
+    old.remove();                                                 // 다른 주소(미용실 지도 등)로 바뀜
+  }
+  installShopBridge();                 // 패널을 열기 전에 귀부터 연다
+  loadShopCatalog(true);               // 지난번에 실패했으면 여기서 다시 읽는다
+
+  const panel = document.createElement('div');
+  panel.id = 'bbShopPanel';
+  panel.className = 'bb-shop';
+  if (preload) { panel.style.display = 'none'; panel.dataset.hidden = '1'; }
+
+  const bar = document.createElement('div');
+  bar.className = 'bb-shop-bar';
+  const ttl = document.createElement('span');
+  ttl.textContent = L('의상 고르기', 'Pick an outfit');
+  bar.appendChild(ttl);
+  const close = document.createElement('button');
+  close.type = 'button'; close.textContent = '✕'; close.title = L('닫기', 'Close');
+  close.addEventListener('click', closeShopPanel);
+  bar.appendChild(close);
+
+  /* 안 뜰 때 손님이 빈 화면만 보고 있지 않도록, 상태를 글로 말해 준다. */
+  const note = document.createElement('div');
+  note.className = 'bb-shop-note';
+  note.textContent = L('쇼핑몰을 여는 중…', 'Opening the shop…');
+
+  const frame = document.createElement('iframe');
+  frame.id = 'bbShopFrame';
+  frame.title = L('의상 고르기', 'Pick an outfit');
+  frame.setAttribute('loading', 'eager');
+  frame.setAttribute('referrerpolicy', 'no-referrer');
+  frame.setAttribute('allow', 'geolocation');      // (11월) 미용실 지도가 위치를 쓴다
+  frame.addEventListener('load', () => {
+    note.remove();
+    panel.dataset.loaded = '1';
+    /* 쇼핑몰에 "나 여기 있다"고 알린다 — 지금 성별도 같이 보낸다. */
+    _sendShopHello(frame);
+  });
+  frame.src = shopUrlWithLang(BODY_SHOP.pageUrl);
+  panel.dataset.src = frame.src;
+
+  /* 6초 안에 load가 안 오면 주소·CORS·X-Frame-Options 문제다 → 새 탭 길을 열어 준다. */
+  const timer = setTimeout(() => {
+    if (!note.isConnected) return;
+    note.innerHTML = '';
+    /* (10월) 패널 전체를 가리던 안내를 아래쪽 작은 띠로 — 늦게라도 뜨면 그대로 보이게 */
+    note.style.cssText = 'position:absolute;left:50%;bottom:12px;top:auto;right:auto;transform:translateX(-50%);' +
+      'width:auto;height:auto;max-width:92%;padding:8px 12px;border-radius:10px;background:rgba(20,18,16,.88);' +
+      'color:#eee;display:flex;gap:10px;align-items:center;flex-wrap:wrap;justify-content:center;z-index:5;' +
+      'font-size:12px;pointer-events:auto;';
+    const p = document.createElement('p');
+    p.textContent = L('쇼핑몰이 느리게 열리고 있습니다. 계속 비어 있으면 →', 'The shop is slow to load. If it stays blank →');
+    p.style.margin = '0';
+    const a = document.createElement('a');
+    a.href = shopUrlWithLang(BODY_SHOP.pageUrl); a.target = '_blank'; a.rel = 'noopener';
+    a.textContent = L('새 탭에서 열기', 'Open in a new tab');
+    const q = document.createElement('small');
+    q.textContent = BODY_SHOP.pageUrl;
+    note.appendChild(p); note.appendChild(a); note.appendChild(q);
+  }, BODY_SHOP.timeoutMs);
+  frame.addEventListener('load', () => clearTimeout(timer));
+
+  panel.appendChild(bar); panel.appendChild(note); panel.appendChild(frame);
+  host.appendChild(panel);
+  _shopFrame = frame;
+  if (!preload) buildBodyGarmentRack();
+  return true;
+}
+
+/* 3D 결과가 다 그려진 뒤(조금 기다렸다가, 브라우저가 한가할 때) 쇼핑몰을 미리 연다. */
+let _shopPreloadTimer = null;
+function scheduleShopPreload() {
+  if (!BODY_SHOP_PRELOAD.on || !BODY_SHOP.on || !BODY_SHOP.pageUrl) return;
+  if (document.getElementById('bbShopPanel')) return;
+  clearTimeout(_shopPreloadTimer);
+  _shopPreloadTimer = setTimeout(() => {
+    const go = () => {
+      if (document.getElementById('bbShopPanel')) return;
+      try { installShopBridge(); openShopPanel({ preload: true }); } catch (e) {}
+    };
+    if (typeof requestIdleCallback === 'function') requestIdleCallback(go, { timeout: 5000 });
+    else go();
+  }, BODY_SHOP_PRELOAD.delayMs);
+}
+/* (11-14) 앱 언어를 바꾸면 — 열린 쇼핑몰·지도 패널을 그 언어로 다시 열고, 옷장 버튼·라벨 글자도 다시 그린다.
+   18-perf-i18n-boot.js 의 setUiLang 이 부른다. */
+function refreshBodyLang() {
+  const fr = document.getElementById('bbShopFrame');
+  if (fr) {
+    try {
+      fr.src = shopUrlWithLang(fr.src || BODY_SHOP.pageUrl);
+      const p = document.getElementById('bbShopPanel');
+      if (p) { p.dataset.src = fr.src; delete p.dataset.loaded; }
+    } catch (e) {}
+  }
+  try {
+    if (!_bodyRig) return;
+    buildBodyGarmentRack();
+    piecesForOutfit(_lastBuild && _lastBuild.item)
+      .then(p => { _bodyWornLabel = p.label; _updateModel3DTag(); })
+      .catch(() => {});
+  } catch (e) {}
+}
+
+function closeShopPanel(opts) {
+  const p = document.getElementById('bbShopPanel');
+  if (p) {
+    const keep = BODY_SHOP_PRELOAD.on && !(opts && opts.destroy) &&
+      p.dataset.src === shopUrlWithLang(BODY_SHOP.pageUrl);       // 쇼핑몰이면 숨겨서 다음에 바로 열리게
+    if (keep) { p.style.display = 'none'; p.dataset.hidden = '1'; }
+    else {
+      p.remove();
+      if (!(opts && opts.destroy) && _bodyRig) scheduleShopPreload();  // 미용실 지도를 닫았으면 쇼핑몰을 다시 미리 불러 둠
+    }
+  }
+  _shopFrame = null;
+  buildBodyGarmentRack();
+}
+
+/* ───────────────────────────────────────────────── 고른 옷 입히기
+   예전 판이 여기서 두 가지를 잘못했다.
+   ① 고른 옷이 지금 몸의 성별용이 아니면 말없이 버리고 추천으로 돌아갔다.
+      쇼핑몰에 남성 옷만 있고 손님 몸이 여자면 "눌러도 아무 일도 안 일어난다".
+      성별 구분은 추천이 자동으로 고를 때 쓰는 규칙일 뿐, 손님이 직접 고른 옷에는
+      적용하지 않는다 — 남성 재킷이 마음에 든 여자 손님은 그냥 입어 보면 된다.
+   ② 손님이 꺼 둔 외투 스위치를 제 마음대로 다시 켰다. 고른 옷은 외투 스위치와
+      상관없이 입혀지므로(piecesForOutfit이 먼저 돌려준다) 켤 이유가 없었다. */
+function _shopItemById(id, list) {
+  if (_pickedShopItem && _pickedShopItem.id === id) return _pickedShopItem;
+  return ((list || _shopItems || []).find(it => it && it.id === id)) || null;
+}
+
+async function applyShopPick(id, rawItem, origin) {
+  if (!id) return false;
+  const pid = String(id);
+
+  /* 메시지에 옷 정보가 실려 왔으면 목록보다 그것을 믿는다(목록이 늦거나 없을 수 있다). */
+  let inline = null;
+  if (rawItem) {
+    inline = _normalizeShopItem(Object.assign({ 'id': pid }, rawItem),
+      (origin && origin !== 'null' ? origin + '/' : BODY_SHOP.catalogUrl));
+  }
+  let list = _shopItems || [];
+  if (!inline) { try { list = await loadShopCatalog(); } catch (e) { list = _shopItems || []; } }
+
+  const it = inline || list.find(x => x && x.id === pid);
+  if (!it) {
+    console.warn('[3D·쇼핑몰] 고른 옷(' + pid + ')을 목록에서 못 찾았습니다');
+    bodyToast(L('고른 옷 정보를 받지 못했습니다 (' + pid + ')', "Couldn't get the picked item's info (" + pid + ')'));
+    return false;
+  }
+  _pickedShopId = pid;
+  _pickedShopItem = it;
+  _shopItems = (_shopItems || []).filter(x => x.id !== pid).concat([it]);
+
+  /* (11-14) 고른 옷은 제 자리만 바꾼다 — 상의를 고르면 하의·외투는 그대로 */
+  const slot = it.slot || _slotOf(it.bodyPart, it.layer);
+  if (slot === 'full') { delete _picks.upper; delete _picks.lower; }
+  if (slot === 'upper' || slot === 'lower') delete _picks.full;
+  _picks[slot] = it;
+  /* 외투를 골랐는데 스위치가 꺼져 있으면 아무것도 안 바뀐 것처럼 보인다 → 켠다 */
+  if (slot === 'outer' && !BODY_BASE.outer) {
+    BODY_BASE.outer = true;
+    bodyToast(L('외투를 골라서 외투 스위치를 켰어요', 'Turned the jacket switch on for your picked jacket'));
+  }
+
+  if (!_bodyRig) { console.warn('[3D·쇼핑몰] 아직 몸이 안 세워져 고른 옷만 기억해 둡니다'); return true; }
+
+  try {
+    await _mountGarment(_liveRig(), _lastBuild && _lastBuild.item);
+  } catch (e) {
+    console.warn('[3D·쇼핑몰] 갈아입히기 실패:', e);
+    bodyToast(L('옷을 불러오지 못했습니다', "Couldn't load the clothes"));
+    return false;
+  }
+  buildBodyGarmentRack(); _updateModel3DTag();
+  console.log('[3D·쇼핑몰] 손님이 고른 ' + (SLOT_LABEL_KO[slot]||slot) + '로 갈아입힘 — ' + pid +
+    ' · 외투 스위치는 ' + (BODY_BASE.outer ? 'ON' : 'OFF') + ' 그대로');
+  return true;
+}
+
+/* 고른 옷을 벗고 추천으로 돌아간다. */
+async function clearShopPick() {
+  if (!_pickedShopId && !Object.keys(_picks).length) return false;
+  _pickedShopId = null; _pickedShopItem = null; _picks = {};
+  if (!_bodyRig) return false;
+  await _mountGarment(_liveRig(), _lastBuild && _lastBuild.item);
+  buildBodyGarmentRack(); _updateModel3DTag();
+  return true;
+}
+
+/* 3D 화면 위에 잠깐 뜨는 알림 — 콘솔만 보고 있을 수는 없다. */
+let _toastTimer = null;
+function bodyToast(msg) {
+  const host = document.getElementById('model3dViewport');
+  if (!host || !msg) return;
+  let t = document.getElementById('bbToast');
+  if (!t) {
+    t = document.createElement('div');
+    t.id = 'bbToast'; t.className = 'bb-toast';
+    host.appendChild(t);
+  }
+  t.textContent = msg;
+  if (_toastTimer) clearTimeout(_toastTimer);
+  _toastTimer = setTimeout(() => { const n = document.getElementById('bbToast'); if (n) n.remove(); }, 4200);
+}
+
+/* 쇼핑몰 페이지가 보내는 "이 옷 입혀줘" 신호.
+   주소가 우리 쇼핑몰이 아닌 메시지는 무시한다 — 아무 페이지나 아바타를
+   갈아입힐 수 있으면 안 된다. */
+let _shopBridgeOn = false;
+function installShopBridge() {
+  if (_shopBridgeOn || typeof window === 'undefined') return;
+  _shopBridgeOn = true;
+  let shopOrigin = '';
+  try { shopOrigin = new URL(BODY_SHOP.pageUrl, location.href).origin; } catch (e) {}
+  window.addEventListener('message', async ev => {
+    /* (보안) 쇼핑몰 iframe 이 보낸 것만. 예전엔 같은 github.io 주소(다른 레포 페이지 포함)도 통과했다 */
+    if (!shopOrigin || ev.origin !== shopOrigin) return;
+    if (_shopFrame && ev.source !== _shopFrame.contentWindow) return;
+    /* 쇼핑몰이 JSON 문자열로 보낼 수도 있다. */
+    let d = ev.data;
+    if (typeof d === 'string') { try { d = JSON.parse(d); } catch (e) { return; } }
+    if (!d || d.type !== 'gyeol-wear' || !d.id) return;
+
+    const ok = await applyShopPick(d.id, d.item, ev.origin);
+    if (ok && d.close !== false) closeShopPanel();  // 입었으면 옷장 문은 닫는다
+  });
+  console.log('[3D·쇼핑몰] 다리 놓음 — ' + (shopOrigin || '(주소 없음)') + ' 의 gyeol-wear 메시지를 듣습니다');
+}
+/* 3D 화면이 세워지기 전에 메시지가 와도 놓치지 않도록, 파일을 읽는 즉시 귀를 연다. */
+if (typeof window !== 'undefined') {
+  try { installShopBridge(); } catch (e) {}
+}
+
+/* 손님이 바뀌면 리그 참조를 놓는다(에셋 캐시는 남긴다 — 다시 읽을 필요가 없다). */
+function resetBodyBase() {
+  _bodyRig = null; _lastBuild = null; _bodyWornLabel = ''; _bodyWornShop = null;
+  _pickedShopId = null; _pickedShopItem = null; _picks = {}; clearTimeout(_shopPreloadTimer); closeShopPanel({ destroy: true });
+  const rack = document.getElementById('bodyGarmentRack');
+  if (rack) rack.remove();
+}
