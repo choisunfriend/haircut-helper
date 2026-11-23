@@ -775,7 +775,7 @@ const STYLES = [
   // (2026-10 추가 · 옛 35-long-layered-curtain.js) 롱 레이어드 + 커튼뱅(16 STYLE_SPECS·24 프로필)
   { id:'long_layered_curtain', specId:'long_layered_curtain',
     name:'Long Layers + Curtain Bangs', tags:'Center part · Cheekbone curtain bangs · Sleek coated straight',
-    length:95, curl:0, volume:40, colorHex:'#5A4030' },
+    length:95, curl:32, volume:58, colorHex:'#5A4030' },
 ];
 
 /* ── 의상 카탈로그(OUTFIT_CATALOG) ──

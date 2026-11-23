@@ -312,7 +312,7 @@ const STYLE_SPECS = {
      Blowout Waves와의 차이: 커튼뱅이 있음(MQ_FRINGE on), 얼굴 라인 레이어가 더 짧고, 뒷기장은 조금 더 김.
      렌더 프로필은 24 SB.profiles.long_layered_curtain. */
   long_layered_curtain: {
-    name: 'Long layers · Curtain bangs · Sleek straight',
+    name: 'Long layers · Curtain bangs · Soft face-framing waves',
     tipAt: {
       front: 0.72,     // 커튼뱅 끝: 광대~윗입술
       temple: 0.95,    // 얼굴 감싸는 레이어: 턱선
@@ -321,28 +321,25 @@ const STYLE_SPECS = {
       occipital: 1.6,
       nape: 1.65       // 가장 긴 곳(가슴 위)
     },
-    /* (11-23 스펙 변경) 목표 = 가슴 기장 생머리가 어깨 쪽으로 곧게 떨어짐(폭은 얼굴 바깥 정도). 예전 값은 부푼 웨이브(볼륨 위치 70=밑단 퍼짐 ·
-       처짐 30 · 정리감 55=부스스 · flow 35 바깥말음)라 옆머리가 광대 높이에서 옆으로 뻗고 밑단이 둥글게 퍼졌다.
-       → 컬 0 · 정리감 90 · 부피감↓ · 볼륨 위치 뿌리(20) · 처짐 80 · flow 0 · sleek 55. 되돌리기: git 이력의 바로 앞 값. */
     cut: {
-      crown:     { base: 25, define: 90, volShare: 35, volPoint: 15, weight: 75, curlLen: 14, technique: 'uniform', elevation: 75, texture: 40, curlDir: 0 },
-      front:     { base: 25, define: 90, volShare: 25, volPoint: 15, weight: 70, curlLen: 14, technique: 'uniform', elevation: 30, texture: 55, line: 30, overdirection: 25, curlDir: 0 },
-      temple:    { base: 25, define: 90, volShare: 20, volPoint: 15, weight: 85, curlLen: 14, technique: 'uniform', elevation: 60, texture: 50, overdirection: 30, curlDir: 0 },
-      side:      { base: 25, define: 90, volShare: 20, volPoint: 15, weight: 85, curlLen: 14, technique: 'uniform', elevation: 45, texture: 45, curlDir: 0 },
-      occipital: { base: 25, define: 90, volShare: 30, volPoint: 15, weight: 80, curlLen: 14, technique: 'uniform', elevation: 45, texture: 40, curlDir: 0 },
-      nape:      { base: 25, define: 90, volShare: 25, volPoint: 15, weight: 85, curlLen: 14, technique: 'uniform', elevation: 25, texture: 35, line: 40, curlDir: 0 }
+      crown:     { base: 25, define: 55, volShare: 55, volPoint: 70, weight: 30, curlLen: 14, technique: 'uniform', elevation: 75, texture: 40, curlDir: 15 },
+      front:     { base: 25, define: 55, volShare: 35, volPoint: 70, weight: 30, curlLen: 14, technique: 'uniform', elevation: 30, texture: 55, line: 30, overdirection: 25, curlDir: 35 },
+      temple:    { base: 25, define: 55, volShare: 55, volPoint: 70, weight: 30, curlLen: 14, technique: 'uniform', elevation: 60, texture: 50, overdirection: 30, curlDir: 25 },
+      side:      { base: 25, define: 55, volShare: 65, volPoint: 70, weight: 30, curlLen: 14, technique: 'uniform', elevation: 45, texture: 45, curlDir: 25 },
+      occipital: { base: 25, define: 55, volShare: 60, volPoint: 70, weight: 30, curlLen: 14, technique: 'uniform', elevation: 45, texture: 40, curlDir: 20 },
+      nape:      { base: 25, define: 55, volShare: 55, volPoint: 70, weight: 30, curlLen: 14, technique: 'uniform', elevation: 25, texture: 35, line: 40, curlDir: 20 }
     },
-    perm: { curl: 0, wave: 92 },           // (11-23) 32→0 — 생머리(태그 'Sleek coated straight'와 맞춤). 프로필 after의 섹션 curl 0과도 일치
+    perm: { curl: 32, wave: 92 },          // 굵은 컬 · 넓은 웨이브 (원래 값)
     styling: {
       sweep: 18,      // 앞머리를 뒤·옆으로 넘겨 얼굴을 열어 둠
-      volume: 40,     // (11-23) 58→40 — 정수리만 살짝, 옆으로 뜨지 않게
-      flow: 0,        // (11-23) 35→0 — 끝을 바깥으로 말지 않고 곧게 떨어뜨림
+      volume: 58,     // 뿌리 볼륨(벨크로 롤) — (11-23 10차) 42→58 원복: 옆으로 뻗던 원인은 헐(손님 사진 실루엣)이었음
+      flow: 35,       // 끝은 바깥으로 — (11-23 10차) 25→35 원복
       part: 0,        // 가운데 가르마
-      partAmt: 88,    // 가르마 또렷 → 커튼뱅이 양옆으로 갈라짐
-      finish: 70,     // (11-23) 55→70 — 코팅 광택
-      sleek: 55       // (11-23) 15→55 — 길이 부분을 두상·어깨 쪽으로 눕혀 옆으로 뻗는 덩어리 정리
+      partAmt: 88,    // 가르마를 또렷하게 → 커튼뱅이 양옆으로 갈라짐 — (11-23 10차) 55→88 원복
+      finish: 55,
+      sleek: 15
     },
-    globalCurl: 0,
+    globalCurl: 32,
     color: '#5A4030'
   },
 };
