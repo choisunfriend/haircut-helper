@@ -929,9 +929,15 @@ function _garmentHash(geoms) {
   for (const g of geoms) {
     const p = g.attributes.position, n = g.attributes.normal;
     if (!n) continue;
+    /* (11-23) 다른 쇼핑몰 OBJ는 면 방향(→법선)이 뒤집혀 있기도 하다. 뒤집힌 법선이면
+       위 옷을 안쪽으로 끌어 아래 옷 밑으로 넣어 버리므로, 몸 중심축에서 바깥을 향하게 맞춘다. */
+    if (!g.boundingBox) g.computeBoundingBox();
+    const cz = (g.boundingBox.min.z + g.boundingBox.max.z) / 2;
     for (let i = 0; i < p.count; i++) {
       const k = P.length / 3;
-      P.push(p.getX(i), p.getY(i), p.getZ(i)); N.push(n.getX(i), n.getY(i), n.getZ(i));
+      let nx = n.getX(i), ny = n.getY(i), nz = n.getZ(i);
+      if (nx * p.getX(i) + nz * (p.getZ(i) - cz) < 0) { nx = -nx; ny = -ny; nz = -nz; }
+      P.push(p.getX(i), p.getY(i), p.getZ(i)); N.push(nx, ny, nz);
       const key = Math.floor(p.getX(i) / C) + ',' + Math.floor(p.getY(i) / C) + ',' + Math.floor(p.getZ(i) / C);
       let a = cells.get(key); if (!a) cells.set(key, a = []); a.push(k);
     }
@@ -959,52 +965,50 @@ function _pushOut(H, x, y, z) {
   return [nx * need, ny * need, nz * need];
 }
 /* (11-23 2차) 위 옷을 밖으로만 밀면 청바지 허리처럼 maxPush보다 멀리 튀어나온 곳은
-   손을 못 대서 그대로 뚫렸다(녹화: 티셔츠 배 쪽에 청바지 조각). 그래서 반대로 아래 옷 중
-   위 옷에 덮이는 부분을 위 옷 안쪽(gap만큼)으로 끌어들인다 — 덮여서 안 보이는 자리라
-   몸 쪽으로 좀 들어가도 티가 안 난다. 위 옷 가장자리(밑단·소매끝) 점과 짝지어지면
-   덮인 게 아니라 옷 밖이므로 손대지 않는다. */
-const GARMENT_TUCK = { 'reach': 0.09, 'maxPull': 0.12 };
-function _upperHash(geoms) {
-  const C = GARMENT_TUCK.reach, cells = new Map(), P = [], N = [], edge = [];
+   손을 못 대서 그대로 뚫렸다(녹화: 티셔츠 배 쪽에 청바지 조각). 그래서 아래 옷 중
+   위 옷에 덮이는 부분을 위 옷 안쪽(gap만큼)으로 넣는다 — 덮여서 안 보이는 자리다.
+   (3차) 법선으로 안팎을 재면, 다른 쇼핑몰 OBJ는 면 방향이 뒤집혀 있어 오히려 바깥으로
+   밀었다. 그래서 법선 대신 몸 중심축에서의 거리(높이·각도 칸마다)로 잰다:
+   칸마다 위 옷의 가장 안쪽 반지름을 기억하고, 아래 옷 점이 그보다 바깥이면 안으로 당긴다.
+   위 옷이 없는 칸(밑단 아래 다리 등)은 손대지 않는다. */
+const GARMENT_TUCK = { 'cellY': 0.012, 'nAng': 72, 'maxPull': 0.06 };
+function _tuckMap(geoms) {
+  const T = GARMENT_TUCK, rows = new Map();   // iy → { zs:[], rmin: Float32Array }
+  const pts = [];
   for (const g of geoms) {
-    const p = g.attributes.position, n = g.attributes.normal;
-    if (!n) continue;
-    const keyOf = i => Math.round(p.getX(i) * 1e4) + ',' + Math.round(p.getY(i) * 1e4) + ',' + Math.round(p.getZ(i) * 1e4);
-    /* 변이 삼각형 하나에만 쓰이면 가장자리 */
-    const eCnt = new Map(), vk = [];
-    for (let i = 0; i < p.count; i++) vk.push(keyOf(i));
-    for (let t = 0; t + 2 < p.count; t += 3) for (const [a, b] of [[t, t + 1], [t + 1, t + 2], [t + 2, t]]) {
-      const e = vk[a] < vk[b] ? vk[a] + '|' + vk[b] : vk[b] + '|' + vk[a];
-      eCnt.set(e, (eCnt.get(e) || 0) + 1);
-    }
-    const border = new Set();
-    for (const [e, c] of eCnt) if (c === 1) { const [a, b] = e.split('|'); border.add(a); border.add(b); }
-    for (let i = 0; i < p.count; i++) {
-      const k = P.length / 3;
-      P.push(p.getX(i), p.getY(i), p.getZ(i)); N.push(n.getX(i), n.getY(i), n.getZ(i)); edge.push(border.has(vk[i]) ? 1 : 0);
-      const key = Math.floor(p.getX(i) / C) + ',' + Math.floor(p.getY(i) / C) + ',' + Math.floor(p.getZ(i) / C);
-      let a = cells.get(key); if (!a) cells.set(key, a = []); a.push(k);
-    }
+    const p = g.attributes.position;
+    for (let i = 0; i < p.count; i++) pts.push(p.getX(i), p.getY(i), p.getZ(i));
   }
-  return { 'C': C, 'cells': cells, 'P': P, 'N': N, 'edge': edge };
+  /* 높이 칸마다 중심(z) — 몸은 x=0 좌우대칭, 앞뒤 중심은 그 높이 위 옷의 가운데 */
+  for (let k = 0; k < pts.length; k += 3) {
+    const iy = Math.floor(pts[k + 1] / T.cellY);
+    let r = rows.get(iy); if (!r) rows.set(iy, r = { 'z0': Infinity, 'z1': -Infinity, 'rmin': new Float32Array(T.nAng).fill(Infinity) });
+    if (Math.abs(pts[k]) < 0.15) { r.z0 = Math.min(r.z0, pts[k + 2]); r.z1 = Math.max(r.z1, pts[k + 2]); }
+  }
+  for (const r of rows.values()) r.cz = isFinite(r.z0) ? (r.z0 + r.z1) / 2 : 0;
+  for (let k = 0; k < pts.length; k += 3) {
+    const r = rows.get(Math.floor(pts[k + 1] / T.cellY));
+    const dx = pts[k], dz = pts[k + 2] - r.cz;
+    const ia = Math.floor((Math.atan2(dz, dx) + Math.PI) / (2 * Math.PI) * T.nAng) % T.nAng;
+    const rr = Math.hypot(dx, dz);
+    if (rr < r.rmin[ia]) r.rmin[ia] = rr;
+  }
+  return rows;
 }
-function _pullIn(H, x, y, z) {
-  const C = H.C, cx = Math.floor(x / C), cy = Math.floor(y / C), cz = Math.floor(z / C);
-  let best = -1, bd = C * C;
-  for (let a = -1; a <= 1; a++) for (let b = -1; b <= 1; b++) for (let c = -1; c <= 1; c++) {
-    const L = H.cells.get((cx + a) + ',' + (cy + b) + ',' + (cz + c)); if (!L) continue;
-    for (const k of L) {
-      const dx = x - H.P[k * 3], dy = y - H.P[k * 3 + 1], dz = z - H.P[k * 3 + 2];
-      const d = dx * dx + dy * dy + dz * dz;
-      if (d < bd) { bd = d; best = k; }
-    }
-  }
-  if (best < 0 || H.edge[best]) return null;
-  const nx = H.N[best * 3], ny = H.N[best * 3 + 1], nz = H.N[best * 3 + 2];
-  const h = (x - H.P[best * 3]) * nx + (y - H.P[best * 3 + 1]) * ny + (z - H.P[best * 3 + 2]) * nz;
-  const need = h + GARMENT_LAYER.gap;              // 위 옷 안쪽 gap 자리까지
-  if (need <= 0 || need > GARMENT_TUCK.maxPull) return null;
-  return [-nx * need, -ny * need, -nz * need];
+function _tuckIn(M, x, y, z) {
+  const T = GARMENT_TUCK, r = M.get(Math.floor(y / T.cellY));
+  if (!r) return null;
+  const dx = x, dz = z - r.cz, rr = Math.hypot(dx, dz);
+  if (rr < 1e-4) return null;
+  const ia = Math.floor((Math.atan2(dz, dx) + Math.PI) / (2 * Math.PI) * T.nAng) % T.nAng;
+  /* 옆 칸까지 봐서 가장 안쪽 — 칸 사이로 새지 않게 */
+  let lim = Infinity;
+  for (let d = -1; d <= 1; d++) lim = Math.min(lim, r.rmin[(ia + d + T.nAng) % T.nAng]);
+  if (!isFinite(lim)) return null;
+  const need = rr - (lim - GARMENT_LAYER.gap);
+  if (need <= 0 || need > T.maxPull) return null;   // 너무 많이 당겨야 하면 짝이 틀린 것(소매 등)
+  const f = need / rr;
+  return [-dx * f, 0, -dz * f];
 }
 /* 점마다 옮길 양(fn)을 구해, 이웃과 나눠 매끈하게 한 뒤 적용. 옮긴 점 수를 돌려준다. */
 function _displaceGarment(g, fn) {
@@ -1064,9 +1068,9 @@ async function _layerGarments(loaded) {
     const over = [];
     loaded.forEach((G, j) => { if (ranks[j] > ranks[k]) over.push(...G.geoms); });
     if (!over.length) continue;
-    const H = _upperHash(over);
+    const M = _tuckMap(over);
     let moved = 0, total = 0;
-    for (const g of loaded[k].geoms) { const r = _displaceGarment(g, (x, y, z) => _pullIn(H, x, y, z)); moved += r.moved; total += r.total; }
+    for (const g of loaded[k].geoms) { const r = _displaceGarment(g, (x, y, z) => _tuckIn(M, x, y, z)); moved += r.moved; total += r.total; }
     console.log('[3D·옷·겹침] ' + (loaded[k].part.name || loaded[k].part.url) +
       ' — 위 옷 안으로 넣은 점 ' + moved + '/' + total);
   }
@@ -1117,13 +1121,7 @@ async function _mountGarment(rig, item) {
     G.geoms.forEach((g, i) => {
       const src = (g.userData && g.userData.srcMaterial) ||
                   (G.src[i] && G.src[i].userData && G.src[i].userData.srcMaterial);
-      const mat = _garmentMaterialFrom(src, G.part.colorHex, clip);
-      /* (11-23) 안쪽 옷일수록 깊이를 살짝 뒤로 — 거의 붙은 자리에서 위 옷이 이기게 */
-      const back = 2 - (G.rank == null ? _garmentRank(G.part) : G.rank);
-      if (back > 0 && mat) (Array.isArray(mat) ? mat : [mat]).forEach(m => { m.polygonOffset = true; m.polygonOffsetFactor = back; m.polygonOffsetUnits = back * 4; });
-      const mesh = new THREE.Mesh(g, mat);
-      mesh.renderOrder = 2 - back;
-      holder.add(mesh);
+      holder.add(new THREE.Mesh(g, _garmentMaterialFrom(src, G.part.colorHex, clip)));
     });
   }
   _bodyWornLabel = pick.label;
