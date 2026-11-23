@@ -206,7 +206,8 @@ var STYLE_TUNES = {
        헐을 두피에 더 붙이고(+3%) · 폭 상한을 두상 중심보다 위(0.2b)부터 · 윗머리 폭보다 6% 안쪽까지 */
     hullPad: 0.03,
     layerHi: 0.6,
-    widthCap: { grow: -0.06, fromB: 0.2, rampB: 0.35 },
+    widthCap: { grow: -0.12, fromB: 0.2, rampB: 0.35, topCm: 1.2 },   // grow −0.12 사용자 확인 · topCm: 정수리 밧줄이 두피에서 1.2cm 넘게 못 뜨게(8차)
+    drapeCm: 0.8,   // (11-23 9차) 땋기 디렉션(21 BRAID_DRAPE 3.2cm)이 폭 상한 <b>뒤에</b> 돌아 끝을 다시 바깥으로 뻗게 함 — 레게펌만 0.8cm로
     fringeTrim: false   // (2026-11-15) 레게펌은 눈을 덮어도 된다 — 기본 경로의 앞머리·크라운 선(눈썹 바닥)도 안 건다
   },
   /* (2026-11-15b) browCut — 다 만든 가닥(컬·처짐·넘김까지 끝난 뒤)을 <b>눈썹 선</b>에서 한 번 더 자른다(BROW_CUT 배너) */
@@ -1290,7 +1291,7 @@ function mqStyleWidthCapAll(list) {
   if (!(R > 1e-6)) return list;
   const k0 = R * (1 - C.soft), span = R - k0, rampH = Math.max(1e-6, C.rampB * E.b), Y0 = CY + (C.fromB || 0) * E.b;   // Y0 = 누르기 시작 높이(fromB>0 = 두상 중심보다 위)
   let moved = 0, maxIn = 0;
-  const out = list.map(st => {
+  let out = list.map(st => {
     const p = st && st.pts;
     if (!p || p.length < 2) return st;
     let np = null;
@@ -1308,8 +1309,47 @@ function mqStyleWidthCapAll(list) {
     return np ? Object.assign({}, st, { pts: np }) : st;
   });
   let cm = 16.4; try { cm = modelCmPerUnit() || 16.4; } catch (e) {}
-  C.stats = { refHalfCm: +(R * cm).toFixed(1), moved: moved, maxInCm: +(maxIn * cm).toFixed(1) };
+  /* (11-23 8차) 정수리 높이 상한 topCm — 두상 중심보다 위 점이 두피에서 topCm 넘게 뜨면 두상 중심 쪽으로 부드럽게 눌러 넣음. 없으면 안 함 */
+  let topN = 0;
+  if (C.topCm > 0) {
+    let S = null; try { S = getScalpEllipsoid(); } catch (e) {}
+    if (S && S.a > 0 && S.b > 0 && S.c > 0) {
+      const m = C.topCm / cm, m0 = m * 0.5, sp = m - m0, rampT = Math.max(1e-6, 0.25 * E.b);
+      for (let i = 0; i < out.length; i++) {
+        const st = out[i], p = st && st.pts;
+        if (!p || p.length < 2) continue;
+        let np = null;
+        for (let k = 1; k < p.length; k++) {
+          const q = p[k], dy = q.y - CY;
+          if (dy <= 0) continue;
+          const r = Math.hypot(q.x / S.a, dy / S.b, q.z / S.c);
+          if (!(r > 1)) continue;
+          const L = Math.hypot(q.x, dy, q.z), d = (r - 1) * L / r;
+          if (d <= m0) continue;
+          const d2 = m0 + sp * Math.tanh((d - m0) / sp);
+          const f = Math.min(1, dy / rampT), w = f * f * (3 - 2 * f);
+          const k2 = 1 - ((d - d2) / L) * w;
+          if (!(k2 < 1)) continue;
+          if (!np) np = p.slice();
+          np[k] = Object.assign({}, q, { x: q.x * k2, y: CY + dy * k2, z: q.z * k2 });
+          topN++;
+        }
+        if (np) out[i] = Object.assign({}, st, { pts: np });
+      }
+    }
+  }
+  MQ_WIDTH_CAP.stats = C.stats = { topMoved: topN, refHalfCm: +(R * cm).toFixed(1), moved: moved, maxInCm: +(maxIn * cm).toFixed(1) };
   return out;
+}
+/* (11-23 9차) 스타일별 땋기 디렉션 상한(cm) — STYLE_TUNES[id].drapeCm. 없거나 스타일 모드가 아니면 null(21 값 그대로) */
+function mqStyleDrapeCm() {
+  try {
+    if (!mqStyleFallOn()) return null;
+    let id = _mqApplyingId;
+    if (!id) id = (typeof EYE_GUARD !== "undefined" && EYE_GUARD._applying) || (state && state.specAppliedId) || null;
+    const t = id && typeof STYLE_TUNES !== "undefined" ? STYLE_TUNES[id] : null;
+    return t && typeof t.drapeCm === "number" ? Math.max(0, t.drapeCm) : null;
+  } catch (e) { return null; }
 }
 /* 지금 모드와 다르게 지어진 마네킹이면 버림(다음 접근 때 다시 지음) */
 function mqStyleLenSync() {
