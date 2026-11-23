@@ -819,6 +819,68 @@ function _pruneGarmentCache(keepGender) {
   }
 }
 
+/* (11-23 4차) 삼각형 감김 방향 맞추기 — 판매자 OBJ에 뒤집힌 삼각형이 섞여 있으면
+   그 자리 법선이 몸 안쪽을 향한다. 그러면 ① 여유(inflate)가 옷을 안쪽으로 밀어 넣고
+   ② 겹침 보정이 "같은 쪽을 보는 면"으로 짝을 못 지어 밀기·가리기가 다 빠진다
+   → 쇼핑몰 티셔츠 가슴에 안쪽 셔츠가 조각조각 비침(녹화 17:57·18:22, 견본 옷은 깨끗).
+   이웃 삼각형끼리 공유 변을 반대 방향으로 지나도록 감김을 퍼뜨려 맞추고,
+   조각(연결 성분)마다 몸 중심축 바깥을 향하는 쪽이 다수가 되게 뒤집는다. 뒤집은 삼각형 수를 돌려준다. */
+function orientGarmentWinding(geom) {
+  const pos = geom.attributes && geom.attributes.position;
+  if (!pos || geom.index || pos.count < 3) return 0;
+  const T = pos.count / 3;
+  const key = i => Math.round(pos.getX(i) * 1e4) + ',' + Math.round(pos.getY(i) * 1e4) + ',' + Math.round(pos.getZ(i) * 1e4);
+  const ids = new Map(), vid = new Int32Array(pos.count);
+  for (let i = 0; i < pos.count; i++) { const k = key(i); let v = ids.get(k); if (v === undefined) { v = ids.size; ids.set(k, v); } vid[i] = v; }
+  const edges = new Map();   // "a,b"(a<b) → [[tri, dir], …]  dir=1 이면 a→b 방향
+  for (let t = 0; t < T; t++) for (let k = 0; k < 3; k++) {
+    const a = vid[t * 3 + k], b = vid[t * 3 + (k + 1) % 3]; if (a === b) continue;
+    const ek = a < b ? a + ',' + b : b + ',' + a;
+    let L = edges.get(ek); if (!L) edges.set(ek, L = []); L.push([t, a < b ? 1 : 0]);
+  }
+  const triEdges = Array.from({ length: T }, () => []);
+  for (const L of edges.values()) if (L.length === 2) { triEdges[L[0][0]].push([L[1][0], L[0][1], L[1][1]]); triEdges[L[1][0]].push([L[0][0], L[1][1], L[0][1]]); }
+  const flip = new Int8Array(T).fill(-1), comp = new Int32Array(T).fill(-1);
+  let nc = 0;
+  for (let s = 0; s < T; s++) {
+    if (flip[s] >= 0) continue;
+    flip[s] = 0; comp[s] = nc; const q = [s];
+    while (q.length) {
+      const t = q.pop();
+      for (const [u, dt, du] of triEdges[t]) {
+        if (flip[u] >= 0) continue;
+        /* 맞게 감기면 공유 변을 반대 방향으로 지난다: (dt^flip[t]) !== (du^flip[u]) */
+        flip[u] = ((dt ^ flip[t]) !== du) ? 0 : 1; comp[u] = nc; q.push(u);
+      }
+    }
+    nc++;
+  }
+  /* 몸 중심축(x·z 평균) */
+  let cx = 0, cz = 0; for (let i = 0; i < pos.count; i++) { cx += pos.getX(i); cz += pos.getZ(i); }
+  cx /= pos.count; cz /= pos.count;
+  const vote = new Float64Array(nc);
+  const A = new THREE.Vector3(), B = new THREE.Vector3(), C = new THREE.Vector3(), N = new THREE.Vector3(), E1 = new THREE.Vector3(), E2 = new THREE.Vector3();
+  for (let t = 0; t < T; t++) {
+    A.fromBufferAttribute(pos, t * 3); B.fromBufferAttribute(pos, t * 3 + 1); C.fromBufferAttribute(pos, t * 3 + 2);
+    N.crossVectors(E1.subVectors(B, A), E2.subVectors(C, A)); if (flip[t]) N.negate();
+    const mx = (A.x + B.x + C.x) / 3 - cx, mz = (A.z + B.z + C.z) / 3 - cz;
+    vote[comp[t]] += N.x * mx + N.z * mz;            // 넓이 가중 — 바깥을 향하면 +
+  }
+  let flipped = 0;
+  const attrs = Object.keys(geom.attributes).map(n => geom.attributes[n]);
+  for (let t = 0; t < T; t++) {
+    const f = flip[t] ^ (vote[comp[t]] < 0 ? 1 : 0);
+    if (!f) continue;
+    flipped++;
+    for (const a of attrs) {                          // 꼭짓점 1과 2를 맞바꿔 감김을 뒤집는다
+      const sz = a.itemSize, arr = a.array, i1 = (t * 3 + 1) * sz, i2 = (t * 3 + 2) * sz;
+      for (let c = 0; c < sz; c++) { const tmp = arr[i1 + c]; arr[i1 + c] = arr[i2 + c]; arr[i2 + c] = tmp; }
+      a.needsUpdate = true;
+    }
+  }
+  return flipped;
+}
+
 async function loadGarmentGeometries(part) {
   /* (10월) 쇼핑몰 옷: fitted.json에 이 몸용 구운 메쉬가 있으면 그걸로 바꿔 입는다. */
   if (part && part.fromShop && !part.fitted && part.manifest) {
@@ -834,7 +896,11 @@ async function loadGarmentGeometries(part) {
     const geoms = _collectGeometries(group);
     if (!geoms.length) throw new Error('옷 메쉬가 비어 있습니다: ' + part.url);
     if (part.fromShop && !part.fitted) await _autoPlaceShopGeoms(geoms, part);
-    geoms.forEach(g => smoothInflateGeometry(g, offset));
+    geoms.forEach(g => {
+      const nf = orientGarmentWinding(g);
+      if (nf) console.log('[3D·옷] 뒤집힌 삼각형 ' + nf + '개 바로잡음: ' + part.url);
+      smoothInflateGeometry(g, offset);
+    });
     _garmentCache.set(raw, geoms);
   }
   /* 견본 옷장 옷에는 fitFor가 없다 — 성별 폴더에서 온 것이라 지금 몸용이 맞다. */
