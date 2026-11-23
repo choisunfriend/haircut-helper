@@ -1204,6 +1204,55 @@ function mqStyleHullPad() {
   const v = t && "hullPad" in t ? t.hullPad : MANNEQUIN.styleHullPad;
   return typeof v === "number" ? Math.max(0, v) : null;
 }
+/* (2026-11-23 5차) 스타일 모드 "위에서 그대로 따라 내려오기" — 사용자: "위머리 좁아진 느낌에서 그냥 따라서 내려오면 되는데 중간부터 부풀었어"
+   헐만 좁혀선 모자랐던 세 군데(마네킹 다음 단계 · 17b가 가닥마다 부름):
+   ① 볼륨(14 volumeStrand3D) — 가장 많이 뜨는 자리 RAMP 0.30(긴 마네킹 40cm면 귀 아래) · 끝까지 80% 유지 → 중간부터 한 칸 바깥으로 나가 내려옴.
+      → 뿌리 가까이(volRamp)에서 다 뜨고 그다음은 그대로 내려오게.
+   ② 삐침(flyFrac·flyAmp) — 끝으로 갈수록 (i/n)²로 더 들림 → 아래가 바깥으로 벌어짐. 줄임.
+   ③ 결 흐름(flowCurlStrand3D) — 세기가 헐 폭(이번 세트 0.665)에 비례 → clotheschange 헐(두피+7%) 폭 기준으로.
+   스타일이 걸렸고(거는 중 포함) hullPad가 숫자인 스타일만(레이어드 보브는 그대로). 끄기 MQ_STYLE_FALL.on=false */
+var MQ_STYLE_FALL = { on: true, volRamp: 0.1, flyFrac: 0.08, flyAmp: 0.3, flowHull: true };
+function mqStyleFallOn() {
+  try { return !!(MQ_STYLE_FALL.on && mqStyleLenOn() && mqStyleHullPad() != null); } catch (e) { return false; }
+}
+let _mqFlowK = { t: 0, k: 1 };
+function mqStyleFlowK() {
+  const t = Date.now();
+  if (t - _mqFlowK.t < 1000) return _mqFlowK.k;
+  let k = 1;
+  try {
+    const E = getHeadEllipsoid(), S = getScalpEllipsoid(), pad = mqStyleHullPad();
+    const wE = Math.max(E.a, E.c), wC = Math.max(Math.min(E.a, S.a * (1 + pad)), Math.min(E.c, S.c * (1 + pad)));
+    if (wE > 1e-6 && wC > 0) k = Math.min(1, wC / wE);
+  } catch (e) { k = 1; }
+  _mqFlowK = { t: t, k: k };
+  return k;
+}
+(function () {
+  const W = typeof window !== "undefined" ? window : null;
+  if (!W || W._mqStyleFallWrapped) return;
+  W._mqStyleFallWrapped = true;
+  if (typeof volumeStrand3D === "function") {
+    const vol0 = volumeStrand3D;
+    W.volumeStrand3D = function (pts, v, sec) {
+      if (!mqStyleFallOn() || typeof VOLUME3D === "undefined") return vol0.apply(this, arguments);
+      const sv = { RAMP: VOLUME3D.RAMP, flyFrac: VOLUME3D.flyFrac, flyAmp: VOLUME3D.flyAmp };
+      VOLUME3D.RAMP = Math.min(sv.RAMP, MQ_STYLE_FALL.volRamp);
+      VOLUME3D.flyFrac = Math.min(sv.flyFrac || 0, MQ_STYLE_FALL.flyFrac);
+      VOLUME3D.flyAmp = Math.min(sv.flyAmp || 0, MQ_STYLE_FALL.flyAmp);
+      try { return vol0.apply(this, arguments); } finally { Object.assign(VOLUME3D, sv); }
+    };
+  }
+  if (typeof flowCurlStrand3D === "function") {
+    const flow0 = flowCurlStrand3D;
+    W.flowCurlStrand3D = function (pts, f) {
+      if (!f || !MQ_STYLE_FALL.flowHull || !mqStyleFallOn() || typeof FLOW3D === "undefined") return flow0.apply(this, arguments);
+      const a0 = FLOW3D.AMP;
+      FLOW3D.AMP = a0 * mqStyleFlowK();
+      try { return flow0.apply(this, arguments); } finally { FLOW3D.AMP = a0; }
+    };
+  }
+})();
 /* 지금 모드와 다르게 지어진 마네킹이면 버림(다음 접근 때 다시 지음) */
 function mqStyleLenSync() {
   try {
