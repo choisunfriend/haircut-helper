@@ -1,0 +1,6 @@
+newmtl suit_dinner_jacket
+Kd 0.16 0.20 0.30
+Ks 0.03 0.03 0.03
+Ns 20
+d 1.0
+illum 2

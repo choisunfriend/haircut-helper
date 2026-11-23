@@ -1,5 +1,7 @@
 # suit3 — 표준 인체(body_male)에 맞춰 conform (tools/conform.py · 여유 7mm)
 # 원본: assets/suit3.obj (CC0 · MakeClothes) · 법선은 앱이 로드할 때 만듭니다
+mtllib suit3.fitted.mtl
+usemtl suit3
 o suit3
 v 5.1315 2.7280 1.6984
 v 5.0791 2.8084 1.6582

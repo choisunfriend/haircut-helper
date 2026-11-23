@@ -1,0 +1,6 @@
+newmtl suit3
+Kd 0.20 0.21 0.23
+Ks 0.03 0.03 0.03
+Ns 20
+d 1.0
+illum 2

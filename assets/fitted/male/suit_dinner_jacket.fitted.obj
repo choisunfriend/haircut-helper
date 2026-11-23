@@ -1,5 +1,7 @@
 # suit_dinner_jacket — 표준 인체(body_male)에 맞춰 conform (tools/conform.py · 여유 7mm)
 # 원본: assets/suit_dinner_jacket.obj (CC0 · MakeClothes) · 법선은 앱이 로드할 때 만듭니다
+mtllib suit_dinner_jacket.fitted.mtl
+usemtl suit_dinner_jacket
 o suit_dinner_jacket
 v 5.0276 2.6706 1.6498
 v 5.0323 2.6875 1.6556

@@ -291,9 +291,9 @@ const BODY_WARDROBE = {
       { 'id': 'm-jacket', 'name': '재킷', 'nameEn': 'Jacket', 'formal': 0.45, 'coversAll': true, 'url': './assets/fitted/male/suit_dinner_jacket.fitted.obj' }
     ],
     'inner': [
-      { 'id': 'm-jeans', 'name': '청바지', 'nameEn': 'Jeans', 'slot': 'lower', 'under': true, 'colorHex': '#3E4E6B',
-        'url': './assets/fitted/male/mens_elv_jeans2slf.fitted.obj' },
-      { 'id': 'm-top',   'name': '상의', 'nameEn': 'Top', 'slot': 'upper', 'url': './assets/fitted/male/mycenaean_tunic.fitted.obj' }
+      /* (2026-11-23) 튜닉(원본 헤더 AGPL3)·청바지(CC-BY) 대신 MakeHuman 시스템 의상(CC0) 한 벌.
+         상·하의가 한 메쉬(셔츠+청바지) — 여자 f-casual과 같은 방식(tools/mhproxy.py 프록시 피팅). */
+      { 'id': 'm-casual', 'name': '캐주얼', 'nameEn': 'Casual', 'slot': 'full', 'url': './assets/fitted/male/male_casualsuit01.fitted.obj' }
     ]
   },
   'female': {
@@ -929,15 +929,9 @@ function _garmentHash(geoms) {
   for (const g of geoms) {
     const p = g.attributes.position, n = g.attributes.normal;
     if (!n) continue;
-    /* (11-23) 다른 쇼핑몰 OBJ는 면 방향(→법선)이 뒤집혀 있기도 하다. 뒤집힌 법선이면
-       위 옷을 안쪽으로 끌어 아래 옷 밑으로 넣어 버리므로, 몸 중심축에서 바깥을 향하게 맞춘다. */
-    if (!g.boundingBox) g.computeBoundingBox();
-    const cz = (g.boundingBox.min.z + g.boundingBox.max.z) / 2;
     for (let i = 0; i < p.count; i++) {
       const k = P.length / 3;
-      let nx = n.getX(i), ny = n.getY(i), nz = n.getZ(i);
-      if (nx * p.getX(i) + nz * (p.getZ(i) - cz) < 0) { nx = -nx; ny = -ny; nz = -nz; }
-      P.push(p.getX(i), p.getY(i), p.getZ(i)); N.push(nx, ny, nz);
+      P.push(p.getX(i), p.getY(i), p.getZ(i)); N.push(n.getX(i), n.getY(i), n.getZ(i));
       const key = Math.floor(p.getX(i) / C) + ',' + Math.floor(p.getY(i) / C) + ',' + Math.floor(p.getZ(i) / C);
       let a = cells.get(key); if (!a) cells.set(key, a = []); a.push(k);
     }
@@ -964,127 +958,64 @@ function _pushOut(H, x, y, z) {
   if (need <= 0 || need > GARMENT_LAYER.maxPush) return null;
   return [nx * need, ny * need, nz * need];
 }
-/* (11-23 2차) 위 옷을 밖으로만 밀면 청바지 허리처럼 maxPush보다 멀리 튀어나온 곳은
-   손을 못 대서 그대로 뚫렸다(녹화: 티셔츠 배 쪽에 청바지 조각). 그래서 아래 옷 중
-   위 옷에 덮이는 부분을 위 옷 안쪽(gap만큼)으로 넣는다 — 덮여서 안 보이는 자리다.
-   (3차) 법선으로 안팎을 재면, 다른 쇼핑몰 OBJ는 면 방향이 뒤집혀 있어 오히려 바깥으로
-   밀었다. 그래서 법선 대신 몸 중심축에서의 거리(높이·각도 칸마다)로 잰다:
-   칸마다 위 옷의 가장 안쪽 반지름을 기억하고, 아래 옷 점이 그보다 바깥이면 안으로 당긴다.
-   위 옷이 없는 칸(밑단 아래 다리 등)은 손대지 않는다. */
-const GARMENT_TUCK = { 'cellY': 0.012, 'nAng': 72, 'maxPull': 0.06 };
-function _tuckMap(geoms) {
-  const T = GARMENT_TUCK, rows = new Map();   // iy → { zs:[], rmin: Float32Array }
-  const pts = [];
-  for (const g of geoms) {
-    const p = g.attributes.position;
-    for (let i = 0; i < p.count; i++) pts.push(p.getX(i), p.getY(i), p.getZ(i));
-  }
-  /* 높이 칸마다 중심(z) — 몸은 x=0 좌우대칭, 앞뒤 중심은 그 높이 위 옷의 가운데 */
-  for (let k = 0; k < pts.length; k += 3) {
-    const iy = Math.floor(pts[k + 1] / T.cellY);
-    let r = rows.get(iy); if (!r) rows.set(iy, r = { 'z0': Infinity, 'z1': -Infinity, 'rmin': new Float32Array(T.nAng).fill(Infinity) });
-    if (Math.abs(pts[k]) < 0.15) { r.z0 = Math.min(r.z0, pts[k + 2]); r.z1 = Math.max(r.z1, pts[k + 2]); }
-  }
-  for (const r of rows.values()) r.cz = isFinite(r.z0) ? (r.z0 + r.z1) / 2 : 0;
-  for (let k = 0; k < pts.length; k += 3) {
-    const r = rows.get(Math.floor(pts[k + 1] / T.cellY));
-    const dx = pts[k], dz = pts[k + 2] - r.cz;
-    const ia = Math.floor((Math.atan2(dz, dx) + Math.PI) / (2 * Math.PI) * T.nAng) % T.nAng;
-    const rr = Math.hypot(dx, dz);
-    if (rr < r.rmin[ia]) r.rmin[ia] = rr;
-  }
-  return rows;
-}
-function _tuckIn(M, x, y, z) {
-  const T = GARMENT_TUCK, r = M.get(Math.floor(y / T.cellY));
-  if (!r) return null;
-  const dx = x, dz = z - r.cz, rr = Math.hypot(dx, dz);
-  if (rr < 1e-4) return null;
-  const ia = Math.floor((Math.atan2(dz, dx) + Math.PI) / (2 * Math.PI) * T.nAng) % T.nAng;
-  /* 옆 칸까지 봐서 가장 안쪽 — 칸 사이로 새지 않게 */
-  let lim = Infinity;
-  for (let d = -1; d <= 1; d++) lim = Math.min(lim, r.rmin[(ia + d + T.nAng) % T.nAng]);
-  if (!isFinite(lim)) return null;
-  const need = rr - (lim - GARMENT_LAYER.gap);
-  if (need <= 0 || need > T.maxPull) return null;   // 너무 많이 당겨야 하면 짝이 틀린 것(소매 등)
-  const f = need / rr;
-  return [-dx * f, 0, -dz * f];
-}
-/* 점마다 옮길 양(fn)을 구해, 이웃과 나눠 매끈하게 한 뒤 적용. 옮긴 점 수를 돌려준다. */
-function _displaceGarment(g, fn) {
-  const p = g.attributes.position;
-  /* 같은 자리 점(삼각형마다 따로 들어 있음)을 하나로 묶는다 — 안 묶으면 틈이 벌어진다 */
-  const keyOf = i => Math.round(p.getX(i) * 1e4) + ',' + Math.round(p.getY(i) * 1e4) + ',' + Math.round(p.getZ(i) * 1e4);
-  const idOf = new Map(), vid = new Int32Array(p.count), rep = [];
-  for (let i = 0; i < p.count; i++) {
-    const kk = keyOf(i); let v = idOf.get(kk);
-    if (v === undefined) { v = rep.length; idOf.set(kk, v); rep.push(i); }
-    vid[i] = v;
-  }
-  const V = rep.length, D = new Float32Array(V * 3), must = new Uint8Array(V);
-  let moved = 0;
-  for (let v = 0; v < V; v++) {
-    const i = rep[v];
-    const d = fn(p.getX(i), p.getY(i), p.getZ(i));
-    if (d) { D[v * 3] = d[0]; D[v * 3 + 1] = d[1]; D[v * 3 + 2] = d[2]; must[v] = 1; moved++; }
-  }
-  if (!moved) return { 'moved': 0, 'total': V };
-  const nb = Array.from({ length: V }, () => []);
-  for (let t = 0; t + 2 < p.count; t += 3) {
-    const a = vid[t], b = vid[t + 1], c = vid[t + 2];
-    nb[a].push(b, c); nb[b].push(a, c); nb[c].push(a, b);
-  }
-  /* 옮긴 양을 퍼뜨린다 — 꼭 옮겨야 하는 점은 자기 몫 아래로는 안 줄어든다(다시 뚫리지 않게) */
-  const base = Float32Array.from(D);
-  for (let s = 0; s < GARMENT_LAYER.smooth; s++) {
-    const nD = new Float32Array(V * 3);
-    for (let v = 0; v < V; v++) {
-      let x = D[v * 3], y = D[v * 3 + 1], z = D[v * 3 + 2], n = 1;
-      for (const u of nb[v]) { x += D[u * 3]; y += D[u * 3 + 1]; z += D[u * 3 + 2]; n++; }
-      x /= n; y /= n; z /= n;
-      if (must[v]) {
-        const bx = base[v * 3], by = base[v * 3 + 1], bz = base[v * 3 + 2];
-        const bl = Math.hypot(bx, by, bz), along = (x * bx + y * by + z * bz) / (bl || 1);
-        if (along < bl) { const f = (bl - along) / (bl || 1); x += bx * f; y += by * f; z += bz * f; }
-      }
-      nD[v * 3] = x; nD[v * 3 + 1] = y; nD[v * 3 + 2] = z;
-    }
-    D.set(nD);
-  }
-  for (let i = 0; i < p.count; i++) {
-    const v = vid[i];
-    p.setXYZ(i, p.getX(i) + D[v * 3], p.getY(i) + D[v * 3 + 1], p.getZ(i) + D[v * 3 + 2]);
-  }
-  p.needsUpdate = true; smoothInflateGeometry(g, 0);
-  return { 'moved': moved, 'total': V };
-}
 async function _layerGarments(loaded) {
   if (!GARMENT_LAYER.on || loaded.length < 2) return;
   const ranks = loaded.map(G => _garmentRank(G.part));
-  loaded.forEach((G, i) => { G.rank = ranks[i]; });
-  /* 1) 아래 옷을 위 옷 안으로 끌어들인다 — 바깥 옷부터 거꾸로(외투 → 상의 → 하의) */
-  const desc = loaded.map((_, i) => i).sort((a, b) => ranks[b] - ranks[a]);
-  for (const k of desc) {
-    const over = [];
-    loaded.forEach((G, j) => { if (ranks[j] > ranks[k]) over.push(...G.geoms); });
-    if (!over.length) continue;
-    const M = _tuckMap(over);
-    let moved = 0, total = 0;
-    for (const g of loaded[k].geoms) { const r = _displaceGarment(g, (x, y, z) => _tuckIn(M, x, y, z)); moved += r.moved; total += r.total; }
-    console.log('[3D·옷·겹침] ' + (loaded[k].part.name || loaded[k].part.url) +
-      ' — 위 옷 안으로 넣은 점 ' + moved + '/' + total);
-  }
-  /* 2) 남은 작은 겹침은 위 옷을 바깥으로 살짝 민다 — 하의 → 상의 → 외투 */
-  const asc = desc.slice().reverse();
-  for (const k of asc) {
+  const order = loaded.map((_, i) => i).sort((a, b) => ranks[a] - ranks[b]);
+  for (const k of order) {
     const under = [];
     loaded.forEach((G, j) => { if (ranks[j] < ranks[k]) under.push(...G.geoms); });
     if (!under.length) continue;
     const H = _garmentHash(under);
-    let moved = 0, total = 0;
-    for (const g of loaded[k].geoms) { const r = _displaceGarment(g, (x, y, z) => _pushOut(H, x, y, z)); moved += r.moved; total += r.total; }
+    let pushed = 0, total = 0;
+    for (const g of loaded[k].geoms) {
+      const p = g.attributes.position;
+      /* 같은 자리 점(삼각형마다 따로 들어 있음)을 하나로 묶는다 — 안 묶으면 틈이 벌어진다 */
+      const keyOf = i => Math.round(p.getX(i) * 1e4) + ',' + Math.round(p.getY(i) * 1e4) + ',' + Math.round(p.getZ(i) * 1e4);
+      const idOf = new Map(), vid = new Int32Array(p.count), rep = [];
+      for (let i = 0; i < p.count; i++) {
+        const kk = keyOf(i); let v = idOf.get(kk);
+        if (v === undefined) { v = rep.length; idOf.set(kk, v); rep.push(i); }
+        vid[i] = v;
+      }
+      const V = rep.length, D = new Float32Array(V * 3), must = new Uint8Array(V);
+      for (let v = 0; v < V; v++) {
+        const i = rep[v]; total++;
+        const d = _pushOut(H, p.getX(i), p.getY(i), p.getZ(i));
+        if (d) { D[v * 3] = d[0]; D[v * 3 + 1] = d[1]; D[v * 3 + 2] = d[2]; must[v] = 1; pushed++; }
+      }
+      if (!pushed) continue;
+      /* 이웃(삼각형 변) 목록 */
+      const nb = Array.from({ length: V }, () => []);
+      for (let t = 0; t + 2 < p.count; t += 3) {
+        const a = vid[t], b = vid[t + 1], c = vid[t + 2];
+        nb[a].push(b, c); nb[b].push(a, c); nb[c].push(a, b);
+      }
+      /* 밀어낸 양을 퍼뜨린다 — 밀어야 하는 점은 자기 몫 아래로는 안 내려간다(다시 뚫리지 않게) */
+      const base = Float32Array.from(D);
+      for (let s = 0; s < GARMENT_LAYER.smooth; s++) {
+        const nD = new Float32Array(V * 3);
+        for (let v = 0; v < V; v++) {
+          let x = D[v * 3], y = D[v * 3 + 1], z = D[v * 3 + 2], n = 1;
+          for (const u of nb[v]) { x += D[u * 3]; y += D[u * 3 + 1]; z += D[u * 3 + 2]; n++; }
+          x /= n; y /= n; z /= n;
+          if (must[v]) {
+            const bx = base[v * 3], by = base[v * 3 + 1], bz = base[v * 3 + 2];
+            const bl = Math.hypot(bx, by, bz), along = (x * bx + y * by + z * bz) / (bl || 1);
+            if (along < bl) { const f = (bl - along) / (bl || 1); x += bx * f; y += by * f; z += bz * f; }
+          }
+          nD[v * 3] = x; nD[v * 3 + 1] = y; nD[v * 3 + 2] = z;
+        }
+        D.set(nD);
+      }
+      for (let i = 0; i < p.count; i++) {
+        const v = vid[i];
+        p.setXYZ(i, p.getX(i) + D[v * 3], p.getY(i) + D[v * 3 + 1], p.getZ(i) + D[v * 3 + 2]);
+      }
+      p.needsUpdate = true; smoothInflateGeometry(g, 0);
+    }
     console.log('[3D·옷·겹침] ' + (loaded[k].part.name || loaded[k].part.url) +
-      ' — 아래 옷 위로 밀어낸 점 ' + moved + '/' + total);
+      ' — 아래 옷 위로 밀어낸 점 ' + pushed + '/' + total);
   }
 }
 

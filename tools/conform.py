@@ -54,8 +54,7 @@ if __name__=='__main__':
     BV,BF = objlib.load_obj('repo/assets/body_makehuman.obj')
     BP,BN = surface_samples(BV,BF)
     import sys
-    for name,cl in [('suit3',0.06),('suit_dinner_jacket',0.06),('fem_suit2',0.06),
-                    ('mycenaean_tunic',0.06),('mens_elv_jeans2slf',0.025)]:
+    for name,cl in [('suit3',0.06),('suit_dinner_jacket',0.06),('fem_suit2',0.06)]:
         G,GF,sg = conform('repo/assets/%s.obj'%name, BP, BN, clearance=cl)
         print('%-20s 뚫린 정점 %5d → %5d (최악 %.3f → %.3f)'%(
             name, 0,(sg<0).sum(), 0, sg.min()))

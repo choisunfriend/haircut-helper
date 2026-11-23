@@ -1,5 +1,7 @@
 # fem_suit2 — 표준 인체(body_female)에 맞춰 conform (tools/conform.py · 여유 7mm)
 # 원본: assets/fem_suit2.obj (CC0 · MakeClothes) · 법선은 앱이 로드할 때 만듭니다
+mtllib fem_suit2.fitted.mtl
+usemtl fem_suit2
 o fem_suit2
 v 4.4818 1.7228 1.3390
 v 4.4454 1.7805 1.3107

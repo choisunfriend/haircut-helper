@@ -1,0 +1,6 @@
+newmtl fem_suit2
+Kd 0.18 0.18 0.20
+Ks 0.03 0.03 0.03
+Ns 20
+d 1.0
+illum 2
