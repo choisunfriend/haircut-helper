@@ -209,6 +209,10 @@ var STYLE_TUNES = {
       front: 0.45   // (11-22) 11/15 편집에서 fringeTrim:true로 덮였던 값 복구
     }
   },
+  long_layered_curtain: {
+    // (11-23) 가슴 기장 — 표준 마네킹(≈18cm)으로는 길이 슬라이더를 끝까지 밀어도 tipAt(크라운 1.2 · 옆 1.5)에 못 닿았다(디버그: 0.96 · 1.39)
+    styleLenCm: { front: 25, temple: 30, crown: 40, side: 42, occipital: 45, nape: 45 }
+  },
   wavy_bob_seethrough: {
     browCut: true,
     tipAt: {
@@ -1162,10 +1166,20 @@ function mqStyleLenOn() {
     return !!(MANNEQUIN.styleLen && (_mqStyleApplying || (sid && sid !== "__original__")));
   } catch (e) { return false; }
 }
+/* (2026-11-23) 스타일별 마네킹 길이 — STYLE_TUNES[id].styleLenCm(섹션별 cm, 없는 섹션은 MANNEQUIN.styleLenCm).
+   롱 기장 스타일(롱 레이어드)은 표준 마네킹(≈18cm)으로는 슬라이더를 끝까지 밀어도 목표 끝높이에 못 닿았다. */
+let _mqBuiltLenKey = null, _mqApplyingId = null;
+function mqStyleLenTable() {
+  let id = _mqApplyingId;
+  try { if (!id) id = (typeof EYE_GUARD !== "undefined" && EYE_GUARD._applying) || (typeof state !== "undefined" && state && state.specAppliedId) || null; } catch (e) {}
+  const t = id && typeof STYLE_TUNES !== "undefined" ? STYLE_TUNES[id] : null;
+  return Object.assign({}, MANNEQUIN.styleLenCm || {}, (t && t.styleLenCm) || {});
+}
 /* 지금 모드와 다르게 지어진 마네킹이면 버림(다음 접근 때 다시 지음) */
 function mqStyleLenSync() {
   try {
-    if (_mqBuiltStyleMode !== null && _mqBuiltStyleMode !== mqStyleLenOn() && typeof state !== "undefined" && state) state.hair3Dmannequin = null;
+    const on = mqStyleLenOn(), key = on ? JSON.stringify(mqStyleLenTable()) : null;
+    if (_mqBuiltStyleMode !== null && (_mqBuiltStyleMode !== on || (on && _mqBuiltLenKey !== key)) && typeof state !== "undefined" && state) state.hair3Dmannequin = null;
   } catch (e) {}
 }
 function buildMannequinHair3D() {
@@ -1253,10 +1267,12 @@ function buildMannequinHair3D() {
   const styleMode = mqStyleLenOn();
   let cmU = 16.4;
   try { cmU = typeof modelCmPerUnit === "function" ? modelCmPerUnit() || 16.4 : 16.4; } catch (e) {}
+  const lenTab = styleMode ? mqStyleLenTable() : null;
+  _mqBuiltLenKey = styleMode ? JSON.stringify(lenTab) : null;
   const lenFor = styleMode
-    ? (sec, view) => ((MANNEQUIN.styleLenCm && MANNEQUIN.styleLenCm[sec]) || 30) / cmU   // (11-22) 손님 길이와 안 섞음(사진 가닥 꼬리 최장 44~104cm)
+    ? (sec, view) => (lenTab[sec] || 30) / cmU   // (11-22) 손님 길이와 안 섞음(사진 가닥 꼬리 최장 44~104cm)
     : lenOwn;
-  if (styleMode) console.log("[마네킹·스타일 길이] 표준 긴 머리로 심음(cm) — " + Object.keys(MANNEQUIN.styleLenCm || {}).map(k => k + " " + MANNEQUIN.styleLenCm[k]).join(" · ") + " · 손님 머리가 더 긴 섹션은 손님 길이 (끄기 MANNEQUIN.styleLen=false)");
+  if (styleMode) console.log("[마네킹·스타일 길이] 표준 긴 머리로 심음(cm) — " + Object.keys(lenTab).map(k => k + " " + lenTab[k]).join(" · ") + " · 손님 머리가 더 긴 섹션은 손님 길이 (끄기 MANNEQUIN.styleLen=false)");
   const nCell = NT * NP,
     w = new Float64Array(nCell);
   let wSum = 0,
@@ -4578,6 +4594,7 @@ function applyStyleSpecAndRender(id, _retried) {
     if (v1480.handled) return v1480.value;
   }
   if (state.specAppliedId === id) return clearStyleSpec();
+  _mqApplyingId = id !== "__original__" ? id : null;   // (2026-11-23) 거는 스타일의 마네킹 길이표(mqStyleLenTable)
   _mqStyleApplying = id !== "__original__";   // (2026-11-22) 스타일 길이 마네킹 — 거는 동안 지어지는 마네킹도 표준 길이
   mqStyleLenSync();
   if (!MANNEQUIN.on) mannequinReset();
@@ -4591,7 +4608,7 @@ function applyStyleSpecAndRender(id, _retried) {
     if (_retried || typeof buildNeutralHair3D !== "function") return console.warn("[스타일스펙] 3D 모델을 못 만들었다 — 촬영/세그멘테이션부터 확인할 것"), null;
     const v1481 = document.getElementById("adjustStyleTag");
     if (v1481) v1481.textContent = "3D 준비 중…";
-    _mqStyleApplying = false;
+    _mqStyleApplying = false; _mqApplyingId = null;
     return buildNeutralHair3D(() => {
       applyStyleSpecAndRender(id, true);
     }), null;
@@ -4602,7 +4619,7 @@ function applyStyleSpecAndRender(id, _retried) {
     const undo = snapshotForSpec();
     rep = typeof withRenderGate === "function" ? withRenderGate(() => _applyStyleSpecBody(id, undo), "스타일 적용") : _applyStyleSpecBody(id, undo);
   } finally {
-    _mqStyleApplying = false;
+    _mqStyleApplying = false; _mqApplyingId = null;
     mqStyleLenSync();   // 실패했으면(specAppliedId 없음) 손님 길이 마네킹으로 되돌림
   }
   return rep;
