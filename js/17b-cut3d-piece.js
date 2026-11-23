@@ -9882,13 +9882,7 @@ function _adjComputeCore(srcAngleFilter, stride){
   // (2026-10-01 · 옛 31) 스타일 적용 후 첫 최종 결과에서 한 번 — 얼굴을 덮는 섹션을 센다(자르지 않음 · 17a faceCoverCheck)
   faceCoverCheck(out);
   // (옛 32) 땋기(BRAID.on)일 때 가닥 끝을 가르마 바깥으로 늘어뜨림 — 새 배열(캐시 공유 안전 · 21 braidDrapeAll)
-  if(typeof braidDrapeAll === 'function'){
-    // (2026-11-23 9차) 스타일별 디렉션 상한(17a mqStyleDrapeCm · 레게펌 0.8cm) — 폭 상한 뒤에 돌아 끝을 다시 뻗게 하던 것
-    const _dc = (typeof mqStyleDrapeCm === 'function') ? mqStyleDrapeCm() : null;
-    const _sv = (typeof BRAID_DRAPE !== 'undefined') ? BRAID_DRAPE.spreadCm : null;
-    if(_dc != null && _sv != null) BRAID_DRAPE.spreadCm = Math.min(_sv, _dc);
-    try { out = braidDrapeAll(out); } finally { if(_sv != null) BRAID_DRAPE.spreadCm = _sv; }
-  }
+  if(typeof braidDrapeAll === 'function') out = braidDrapeAll(out);
   // (옛 36) 광택·웨이브 마감 — gloss 있는 스타일만(09 glossWaveAll). 37 폰 다이어트가 가닥 단위로 직접 다듬을 땐 건너뜀(_defer)
   out = glossWaveAll(out);
   return out;
