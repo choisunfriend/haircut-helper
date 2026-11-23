@@ -212,7 +212,10 @@ var STYLE_TUNES = {
     browCut: true
   },
   layered_bob_hush: {
-    hullPad: null,   // (11-23 4차) 이 스타일만 이번 세트의 넓은 헐 그대로(다른 스타일은 clotheschange 헐 두피+7%)
+    /* (11-23 11차) null(손님 헐 그대로) → 0.4 — 사용자: "기본 스타일 걸면 펌 손님만 펑퍼짐하게 넓어짐 · 사람마다 똑같이 두피 기준으로"
+       손님 헐 = 사진 실루엣(펌·볼륨 포함)이라 사람마다 폭이 달랐다. 보통 직모 손님 헐 ≈ 두피×1.4(14번 실측 0.704/0.503)라
+       두피×1.4로 고정 → 예전 보통 손님 폭은 그대로, 펌 손님도 같은 폭. 되돌리기 STYLE_TUNES.layered_bob_hush.hullPad=null */
+    hullPad: 0.4,
     layerHi: 0.6,    // (11-23) 부풀기 — 이 스타일만 clotheschange보다 넓게(사진 보브 폭 · 얼굴 높이 반폭 ≈0.65)
     browCut: true,   // (11-23) 크라운 가닥이 컬·처짐 뒤 얼굴 앞으로 내려와 눈·코를 덮던 것(이번 세트 디버그: 얼굴 앞 크라운 255가닥) — 마지막에 눈썹 선에서
     tipAt: {
@@ -1109,11 +1112,11 @@ function growMannequinStrand(ci, NT, NP, S, E, CY, L, colors) {
       z: p.z / (cR * cR)
     }),
     layerHi = _mqBuiltStyleMode ? mqStyleLayerHi() : M.layerHi,
-    _hp = _mqBuiltStyleMode ? mqStyleHullPad() : null,   // (11-23 4차) 스타일 모드 헐 = 두피×(1+pad) (더 좁을 때만)
+    _hp = _mqBuiltStyleMode ? mqStyleHullPad() : null,   // (11-23 11차) 스타일 모드 헐 = 두피×(1+pad) <b>그대로</b> — 손님 헐(min)과 안 섞음: 펌 손님이든 직모 손님이든 같은 폭
     _eW = _hp == null ? E : (E = {
-      a: Math.min(E.a, S.a * (1 + _hp)),
-      b: Math.min(E.b, S.b * (1 + _hp)),
-      c: Math.min(E.c, S.c * (1 + _hp))
+      a: S.a * (1 + _hp),
+      b: S.b * (1 + _hp),
+      c: S.c * (1 + _hp)
     }),   // (11-23) 스타일 모드 부풀기
     layer = M.layerLo + (layerHi - M.layerLo) * _mqRand(),
     kx = (1 + layer * (E.a / Math.max(0.000001, S.a) - 1)) * K,
@@ -1227,7 +1230,7 @@ function mqStyleFlowK() {
   let k = 1;
   try {
     const E = getHeadEllipsoid(), S = getScalpEllipsoid(), pad = mqStyleHullPad();
-    const wE = Math.max(E.a, E.c), wC = Math.max(Math.min(E.a, S.a * (1 + pad)), Math.min(E.c, S.c * (1 + pad)));
+    const wE = Math.max(E.a, E.c), wC = Math.max(S.a, S.c) * (1 + pad);   // (11-23 11차) 두피 기준 폭(손님 헐과 안 섞음)
     if (wE > 1e-6 && wC > 0) k = Math.min(1, wC / wE);
   } catch (e) { k = 1; }
   _mqFlowK = { t: t, k: k };
