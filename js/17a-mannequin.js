@@ -232,7 +232,14 @@ var STYLE_TUNES = {
          ② MQ_STYLE_FALL 원복(volRamp 1 · flyFrac 1 · flyAmp 99) → 볼륨 최대점이 길이 30%(긴 마네킹이면 귀 아래)·끝 삐침 (i/n)²가 그대로 → 옆으로 뻗친 덩어리
        전역 값은 그대로 두고 이 스타일만 main 값으로. 되돌리기: 아래 두 키(hullPad · fall) 지우기 */
     hullPad: 0.07,
-    fall: { volRamp: 0.1, flyFrac: 0.08, flyAmp: 0.3 }
+    fall: { volRamp: 0.1, flyFrac: 0.08, flyAmp: 0.3 },
+    /* (11-23 12차 · 2) 위 둘로는 안 좁아졌다(디버그 1341: 반폭 y=0 0.86 · 크라운 1.02 그대로).
+       진짜 원인: 이 브랜치는 스타일 마네킹을 손님 사진 윤곽으로 안 자른다(17b mqStyleNoClip) — main은 그 윤곽이 가닥을 안쪽으로 눌러
+       좁게 떨어지고 끝이 모였다. 크라운 가닥이 뿌리에서 바깥 비스듬히 곧게 뻗어 어깨까지 벌어짐(1341 크라운 가닥 x -0.27 → -0.96).
+       → 이 스타일만 폭 상한을 켜서 main(1302) 폭으로: 기준 반폭 = 두피 a × 1.6(≈0.63, main 0.65) · 두피중심+0.4b부터 누름 ·
+         귀 아래(-1.0b)부터 끝으로 갈수록 기준 폭 60%까지 모음(main: y -1.2에서 0.41). 파이썬으로 1341 점에 돌려 본 반폭 0.58~0.63.
+       되돌리기: widthCap 키 지우기 */
+    widthCap: { on: true, refScalp: 1.6, soft: 0.25, fromB: 0.4, rampB: 0.3, taper: 0.4, taperFromB: -1.0, taperB: 1.3 }
   },
   wavy_bob_seethrough: {
     browCut: true,
@@ -1291,7 +1298,7 @@ function mqStyleWidthCapAll(list) {
     let id = _mqApplyingId;
     if (!id) id = (typeof EYE_GUARD !== "undefined" && EYE_GUARD._applying) || (state && state.specAppliedId) || null;
     const t = id && typeof STYLE_TUNES !== "undefined" ? STYLE_TUNES[id] : null;
-    if (t && t.widthCap) C = Object.assign({}, MQ_WIDTH_CAP, t.widthCap, { on: MQ_WIDTH_CAP.on });
+    if (t && t.widthCap) C = Object.assign({}, MQ_WIDTH_CAP, t.widthCap, { on: t.widthCap.on === true ? true : MQ_WIDTH_CAP.on });   // (11-23 12차) 스타일이 on:true를 적으면 그 스타일만 켬
   } catch (e) {}
   if (!C.on || !list || !list.length || !mqStyleFallOn()) return list;
   let E = null, CY = 0.15;
@@ -1304,9 +1311,16 @@ function mqStyleWidthCapAll(list) {
     if (!p) continue;
     for (let k = 0; k < p.length; k++) { const y = p[k].y; if (y >= CY && y <= CY + 0.5 * E.b) xs.push(Math.abs(p[k].x)); }
   }
-  if (xs.length < 50) return list;
-  xs.sort((a, b) => a - b);
-  const R = xs[Math.min(xs.length - 1, Math.floor(xs.length * C.pct))] * (1 + C.grow);
+  let R;
+  if (typeof C.refScalp === "number") {   // (11-23 12차) 기준 폭 = 두피 반폭 × refScalp (가닥에서 재지 않음 — 윗머리부터 넓으면 기준도 넓어지므로)
+    let Sa = 0; try { const S = getScalpEllipsoid(); Sa = Math.max(S.a, 0); } catch (e) {}
+    if (!(Sa > 1e-6)) return list;
+    R = Sa * C.refScalp;
+  } else {
+    if (xs.length < 50) return list;
+    xs.sort((a, b) => a - b);
+    R = xs[Math.min(xs.length - 1, Math.floor(xs.length * C.pct))] * (1 + C.grow);
+  }
   if (!(R > 1e-6)) return list;
   const k0 = R * (1 - C.soft), span = R - k0, rampH = Math.max(1e-6, C.rampB * E.b), Y0 = CY + (C.fromB || 0) * E.b;   // Y0 = 누르기 시작 높이(fromB>0 = 두상 중심보다 위)
   let moved = 0, maxIn = 0;
@@ -1316,8 +1330,12 @@ function mqStyleWidthCapAll(list) {
     let np = null;
     for (let k = 1; k < p.length; k++) {
       const q = p[k], ax = Math.abs(q.x);
-      if (q.y >= Y0 || ax <= k0) continue;
-      const capped = k0 + span * Math.tanh((ax - k0) / span);
+      // (11-23 12차) taper — taperFromB 아래로 taperB×b에 걸쳐 기준 폭을 (1-taper)까지 줄임(끝이 안쪽으로 모임)
+      let tk = 1;
+      if (C.taper > 0) { const Yt = CY + (C.taperFromB || 0) * E.b; if (q.y < Yt) tk = 1 - C.taper * Math.min(1, (Yt - q.y) / Math.max(1e-6, (C.taperB || 1) * E.b)); }
+      const kk = k0 * tk, sp = span * tk;
+      if (q.y >= Y0 || ax <= kk) continue;
+      const capped = kk + sp * Math.tanh((ax - kk) / sp);
       const f = Math.min(1, (Y0 - q.y) / rampH), w = f * f * (3 - 2 * f);
       const nx = ax + (capped - ax) * w;
       if (nx >= ax - 1e-9) continue;
