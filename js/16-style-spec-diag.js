@@ -315,31 +315,31 @@ const STYLE_SPECS = {
     name: 'Long layers · Curtain bangs · Soft face-framing waves',
     tipAt: {
       front: 0.72,     // 커튼뱅 끝: 광대~윗입술
-      temple: 0.95,    // 얼굴 감싸는 레이어: 턱선
-      crown: 1.2,      // 크라운 레이어: 턱 아래
+      temple: 1.25,    // 얼굴 감싸는 레이어 — (11-23 목표 사진) 턱선 → 턱 아래: 짧은 옆 가닥이 관자에서 옆으로 뻗던 것
+      crown: 1.35,      // 크라운 레이어: 턱 아래
       side: 1.5,       // 쇄골
       occipital: 1.6,
       nape: 1.65       // 가장 긴 곳(가슴 위)
     },
     cut: {
-      crown:     { base: 25, define: 55, volShare: 55, volPoint: 70, weight: 30, curlLen: 14, technique: 'uniform', elevation: 75, texture: 40, curlDir: 15 },
-      front:     { base: 25, define: 55, volShare: 35, volPoint: 70, weight: 30, curlLen: 14, technique: 'uniform', elevation: 30, texture: 55, line: 30, overdirection: 25, curlDir: 35 },
-      temple:    { base: 25, define: 55, volShare: 55, volPoint: 70, weight: 30, curlLen: 14, technique: 'uniform', elevation: 60, texture: 50, overdirection: 30, curlDir: 25 },
-      side:      { base: 25, define: 55, volShare: 65, volPoint: 70, weight: 30, curlLen: 14, technique: 'uniform', elevation: 45, texture: 45, curlDir: 25 },
-      occipital: { base: 25, define: 55, volShare: 60, volPoint: 70, weight: 30, curlLen: 14, technique: 'uniform', elevation: 45, texture: 40, curlDir: 20 },
-      nape:      { base: 25, define: 55, volShare: 55, volPoint: 70, weight: 30, curlLen: 14, technique: 'uniform', elevation: 25, texture: 35, line: 40, curlDir: 20 }
+      crown:     { base: 25, define: 55, volShare: 30, volPoint: 70, weight: 60, curlLen: 14, technique: 'uniform', elevation: 30, texture: 40, curlDir: 15 },
+      front:     { base: 25, define: 55, volShare: 25, volPoint: 70, weight: 60, curlLen: 14, technique: 'uniform', elevation: 15, texture: 55, line: 30, overdirection: 25, curlDir: 35 },
+      temple:    { base: 25, define: 55, volShare: 25, volPoint: 70, weight: 60, curlLen: 14, technique: 'uniform', elevation: 15, texture: 50, overdirection: 30, curlDir: 25 },
+      side:      { base: 25, define: 55, volShare: 30, volPoint: 70, weight: 60, curlLen: 14, technique: 'uniform', elevation: 15, texture: 45, curlDir: 25 },
+      occipital: { base: 25, define: 55, volShare: 30, volPoint: 70, weight: 60, curlLen: 14, technique: 'uniform', elevation: 20, texture: 40, curlDir: 20 },
+      nape:      { base: 25, define: 55, volShare: 30, volPoint: 70, weight: 60, curlLen: 14, technique: 'uniform', elevation: 10, texture: 35, line: 40, curlDir: 20 }
     },
-    perm: { curl: 32, wave: 92 },          // 굵은 컬 · 넓은 웨이브 (원래 값)
+    perm: { curl: 8, wave: 92 },   // (11-23 목표 사진) 32 → 8: 거의 곧은 롱 — 결만 살짝          // 굵은 컬 · 넓은 웨이브 (원래 값)
     styling: {
       sweep: 18,      // 앞머리를 뒤·옆으로 넘겨 얼굴을 열어 둠
-      volume: 58,     // 뿌리 볼륨(벨크로 롤) — (11-23 10차) 42→58 원복: 옆으로 뻗던 원인은 헐(손님 사진 실루엣)이었음
-      flow: 35,       // 끝은 바깥으로 — (11-23 10차) 25→35 원복
+      volume: 45,     // (11-23 목표 사진) 58 → 45: 정수리부터 두상에 붙어 내려옴     // 뿌리 볼륨(벨크로 롤) — (11-23 10차) 42→58 원복: 옆으로 뻗던 원인은 헐(손님 사진 실루엣)이었음
+      flow: 5,        // (11-23) 35 → 5: 끝이 바깥으로 안 뻗고 곧게       // 끝은 바깥으로 — (11-23 10차) 25→35 원복
       part: 0,        // 가운데 가르마
       partAmt: 88,    // 가르마를 또렷하게 → 커튼뱅이 양옆으로 갈라짐 — (11-23 10차) 55→88 원복
       finish: 55,
-      sleek: 15
+      sleek: 55       // (11-23) 15 → 55: 매끈하게 눕힘
     },
-    globalCurl: 32,
+    globalCurl: 8,
     color: '#5A4030'
   },
 };
