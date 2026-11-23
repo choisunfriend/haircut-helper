@@ -1046,13 +1046,56 @@ function braidDrapeStrand(pts, E, CY, cmu, P) {
   return out;
 }
 
+/* ══ 두피 붙이기 (2026-11-23) ══════════════════════════════════════════════
+   증상: 땋으면 머리가 부풂(펌·볼륨 손님일수록 심함).
+   원인: 칸·벌어짐은 두피(getScalpEllipsoid)로 바꿨지만, 밧줄 <b>중심선</b>은 여전히
+         마네킹 가닥 = 리프트로 <b>헐(머리카락 겉면 실루엣)</b> 높이에 떠 있는 선을 그대로 탔다.
+         땋은 머리는 두피에 바짝 붙어 묶이므로 헐 높이만큼 떠 있으면 그게 곧 부풂이다.
+   고침: 땋기일 때 가닥의 각 점을 두상 중심(0,CY,0)에서 방사 방향으로 <b>두피 + 밧줄 반굵기(+liftCm)</b>
+         높이까지 끌어내린다. 두상 위(ny ≥ fullNy)는 완전히, 아래로 fadeNy까지 서서히 풀어서
+         늘어진 끝은 원래 자리(어깨·몸 피하기 결과)를 지킨다. 두피 안쪽 점은 안 건드린다.
+         2D·3D가 같은 함수를 쓰므로 둘 다 같이 바뀐다. 끄기: BRAID_HUG.on = false */
+var BRAID_HUG = {
+  on: true,
+  liftCm: 0.15,    // 밧줄 반굵기 위에 더 띄우는 여유(cm) — 두피를 안 뚫게
+  fullNy: 0.0,     // 이 높이(타원 정규화 y) 위는 완전히 두피로
+  fadeNy: -0.7,    // 이 아래는 원래 가닥 그대로
+  stats: { n: 0, moved: 0, maxCm: 0 }
+};
+function braidHugStrand(pts, E, CY, cmu, P) {
+  if (!pts || pts.length < 2) return pts;
+  var halfW = (typeof BRAID !== 'undefined' && BRAID.widthCm > 0) ? BRAID.widthCm / 2 : 0.45;
+  var liftU = (halfW + P.liftCm) / cmu;
+  var out = new Array(pts.length), span = (P.fullNy - P.fadeNy) || 1;
+  for (var i = 0; i < pts.length; i++) {
+    var p = pts[i];
+    if (!p || !isFinite(p.x) || !isFinite(p.y) || !isFinite(p.z)) { out[i] = p; continue; }
+    var dx = p.x, dy = p.y - CY, dz = p.z;
+    var n = Math.hypot(dx / E.a, dy / E.b, dz / E.c);
+    var d = Math.hypot(dx, dy, dz);
+    if (!(n > 1e-6) || !(d > 1e-9)) { out[i] = p; continue; }
+    var w = Math.max(0, Math.min(1, ((dy / d) * (d / n) / E.b - P.fadeNy) / span));   // ny = dy/(n·b)
+    var R = d / n;                          // 이 방향의 두피 반지름
+    var tgt = (R + liftU) / R;              // 목표 정규화 반지름
+    if (w <= 0 || n <= tgt) { out[i] = p; continue; }
+    var nn = n - (n - tgt) * w, k = nn / n;
+    out[i] = Object.assign({}, p, { x: dx * k, y: CY + dy * k, z: dz * k });
+    P.stats.moved++;
+    var cm = (n - nn) * R * cmu; if (cm > P.stats.maxCm) P.stats.maxCm = cm;
+  }
+  return out;
+}
+
 var _braidDrapeMemo = new WeakMap();
 function braidDrapeSig() {
-  return [BRAID_DRAPE.spreadCm, BRAID_DRAPE.rampCm, BRAID_DRAPE.sideMix, BRAID_DRAPE.topMin].join(',');
+  return [BRAID_DRAPE.on ? 1 : 0, BRAID_DRAPE.spreadCm, BRAID_DRAPE.rampCm, BRAID_DRAPE.sideMix, BRAID_DRAPE.topMin,
+          BRAID_HUG.on ? 1 : 0, BRAID_HUG.liftCm, BRAID_HUG.fullNy, BRAID_HUG.fadeNy,
+          (typeof BRAID !== 'undefined' ? BRAID.widthCm : '')].join(',');
 }
 
 function braidDrapeAll(list) {
-  if (!braidDrapeOn() || !Array.isArray(list) || !list.length) return list;
+  var braidOn = typeof BRAID !== 'undefined' && BRAID.on;
+  if (!braidOn || !(BRAID_DRAPE.on || BRAID_HUG.on) || !Array.isArray(list) || !list.length) return list;
   var E = null;
   try { E = braidEllipsoid(); } catch (e) {}   // (2026-11-23) 헐 → 두피 — 정수리 뿌리 ny가 헐 높이로 눌려 벌어짐이 손님마다 달랐음
   var h = state && state.hair3Dneutral;
@@ -1063,10 +1106,16 @@ function braidDrapeAll(list) {
   var m = _braidDrapeMemo.get(list);
   if (m && m.sig === sig) return m.out;
   var out = new Array(list.length);
+  BRAID_HUG.stats.moved = 0; BRAID_HUG.stats.maxCm = 0;
   for (var i = 0; i < list.length; i++) {
     var it = list[i];
-    out[i] = it && it.pts ? Object.assign({}, it, { pts: braidDrapeStrand(it.pts, E, CY, cmu, BRAID_DRAPE) }) : it;
+    if (!it || !it.pts) { out[i] = it; continue; }
+    var pts = it.pts;
+    if (BRAID_HUG.on) pts = braidHugStrand(pts, E, CY, cmu, BRAID_HUG);       // 헐 높이 → 두피 높이 먼저
+    if (BRAID_DRAPE.on) pts = braidDrapeStrand(pts, E, CY, cmu, BRAID_DRAPE); // 그다음 바깥으로 벌림
+    out[i] = Object.assign({}, it, { pts: pts });
   }
+  BRAID_HUG.stats.n = out.length;
   _braidDrapeMemo.set(list, { sig: sig, out: out });
   BRAID_DRAPE.stats.n = out.length;
   return out;
