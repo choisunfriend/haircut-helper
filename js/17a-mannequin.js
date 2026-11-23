@@ -53,7 +53,9 @@ const MANNEQUIN = {
      가닥은 두피 법선으로 thick(두피→헐 거리, 최대 0.25L)만큼 뻗은 뒤 떨어지는데, 이번 세트 헐이 두피+69%라
      clotheschange(두피+7%)보다 훨씬 바깥에서 떨어지며 옆으로 퍼졌다. 스타일 모드에선 헐을 두피×(1+styleHullPad)로 줄인다.
      스타일별로 STYLE_TUNES[id].hullPad(null = 이번 세트 헐 그대로). 끄기 MANNEQUIN.styleHullPad=null */
-  styleHullPad: 0.07,
+  /* (2026-11-23 10차) 0.07→0 — 사용자: "손님 바깥머리가 부풀어 있는데 그 헐 폭으로 새 스타일이 잡히면 말이 안 됨. 얹힐 때는 간격이 없어야지."
+     헐(getHeadEllipsoid)은 손님 사진의 머리 실루엣(곱슬·볼륨 포함)이라 새 스타일의 기준이 될 수 없다 → 스타일 모드 헐 = 두피 그대로. */
+  styleHullPad: 0,
   styleLayerHi: 1,     // (11-23 4차) clotheschange와 같은 1 — 헐을 줄였으니 상한도 원래대로 · (11-23 3차) 0.6→0.15로 내렸더니 가닥이 두상에 붙어 미끄러지며 아래가 A자로 더 벌어짐 — 사용자: "반대로" → 0.6+0.45. 아래 2차 설명은 틀렸던 판단 · (11-23 2차) 기본 = clotheschange 헐(두피+7%)과 같은 두께(0.15 → 두피+10%) — 사용자: "다른 스타일은 clotheschange가 좋아". 레이어드 보브만 STYLE_TUNES.layerHi 0.6
   /* (2026-10-27) 10-22에 넣었던 "다시 기른 가닥에서 칸마다 길이"(lenFromRegrow·lenNbr)는
      10-27 업로드에서 빠졌다 — 길이는 다시 섹션·사진별 lenPct(lenFor)로 정한다. */
@@ -202,11 +204,7 @@ var EYE_GUARD = {
 };
 var STYLE_TUNES = {
   reggae_twist: {
-    /* (11-23 7차) 굵은 밧줄이라 헐 폭이 제일 눈에 띔(clotheschange 대비 돔이 크고 귀~턱이 둥글게 벌어짐) —
-       헐을 두피에 더 붙이고(+3%) · 폭 상한을 두상 중심보다 위(0.2b)부터 · 윗머리 폭보다 6% 안쪽까지 */
-    hullPad: 0,      // (11-23 8차) 0.03→0: 헐 = 두피 그대로. 크라운이 옆으로 뻗어 widthCap 기준 폭(윗머리 |x|)까지 넓게 잡혔음(디버그 크라운 반경 0.92 vs clotheschange 0.55)
-    layerHi: 0.6,
-    widthCap: { grow: -0.06, fromB: 0.2, rampB: 0.35 },
+    /* (11-23 10차) 헐 보정(hullPad·layerHi·widthCap) 뺌 — 스타일 모드 헐이 두피 그대로(styleHullPad 0)가 되어 필요 없음 */
     fringeTrim: false   // (2026-11-15) 레게펌은 눈을 덮어도 된다 — 기본 경로의 앞머리·크라운 선(눈썹 바닥)도 안 건다
   },
   /* (2026-11-15b) browCut — 다 만든 가닥(컬·처짐·넘김까지 끝난 뒤)을 <b>눈썹 선</b>에서 한 번 더 자른다(BROW_CUT 배너) */
@@ -1216,7 +1214,9 @@ function mqStyleHullPad() {
    ② 삐침(flyFrac·flyAmp) — 끝으로 갈수록 (i/n)²로 더 들림 → 아래가 바깥으로 벌어짐. 줄임.
    ③ 결 흐름(flowCurlStrand3D) — 세기가 헐 폭(이번 세트 0.665)에 비례 → clotheschange 헐(두피+7%) 폭 기준으로.
    스타일이 걸렸고(거는 중 포함) hullPad가 숫자인 스타일만(레이어드 보브는 그대로). 끄기 MQ_STYLE_FALL.on=false */
-var MQ_STYLE_FALL = { on: true, volRamp: 0.1, flyFrac: 0.08, flyAmp: 0.3, flowHull: true };
+// (11-23 10차) ①볼륨·②삐침 보정은 원복(값을 크게 = 원래 VOLUME3D 그대로) — 손님 사진 실루엣 헐(두피+69%) 때문에 넣은 것.
+//   ③결 흐름(flowHull)만 유지 — 흐름 세기가 사진 헐 폭에 비례하므로 스타일 모드에선 두피 기준 폭으로 줄이는 게 맞다. 옛 값 volRamp 0.1 · flyFrac 0.08 · flyAmp 0.3
+var MQ_STYLE_FALL = { on: true, volRamp: 1, flyFrac: 1, flyAmp: 99, flowHull: true };
 function mqStyleFallOn() {
   try { return !!(MQ_STYLE_FALL.on && mqStyleLenOn() && mqStyleHullPad() != null); } catch (e) { return false; }
 }
@@ -1264,7 +1264,8 @@ function mqStyleFlowK() {
    ② CY 아래로 내려갈수록(rampB × b에 걸쳐) 기준 폭 × (1+grow)를 넘는 x를 부드럽게 눌러 넣음(soft: 상한 근처부터 서서히 · 좁히기만)
    x(좌우)만 · 앞뒤(z)는 그대로. 어깨·몸통 처리(SHOULDER·BODY_OUT) 전에 걸어서 몸 밖으로 미는 건 그대로.
    스타일이 걸렸고 hullPad가 숫자인 스타일만(레이어드 보브 제외). 끄기 MQ_WIDTH_CAP.on=false · 여유 MQ_WIDTH_CAP.grow */
-var MQ_WIDTH_CAP = { on: true, pct: 0.95, grow: 0.06, rampB: 0.45, soft: 0.25, stats: null };
+// (11-23 10차) 꺼 둠 — MQ_STYLE_FALL과 같은 이유로 원복
+var MQ_WIDTH_CAP = { on: false, pct: 0.95, grow: 0.06, rampB: 0.45, soft: 0.25, stats: null };
 function mqStyleWidthCapAll(list) {
   let C = MQ_WIDTH_CAP;
   try {   // (11-23 7차) 스타일별 덮어쓰기 STYLE_TUNES[id].widthCap = { grow, fromB, rampB, pct, soft }
