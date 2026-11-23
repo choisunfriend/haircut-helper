@@ -513,6 +513,11 @@ function _braidRingLen(ra, rc){                     // 타원 둘레(라마누�
   const h = Math.pow(ra - rc, 2) / Math.pow(ra + rc || 1e-9, 2);
   return Math.PI * (ra + rc) * (1 + 3*h / (10 + Math.sqrt(4 - 3*h)));
 }
+var BRAID_SCALP = { on: true };
+function braidEllipsoid(){
+  if(BRAID_SCALP.on && typeof getScalpEllipsoid === 'function'){ try{ const S = getScalpEllipsoid(); if(S && S.a > 0 && S.b > 0 && S.c > 0) return S; }catch(e){} }
+  return (typeof getHeadEllipsoid === 'function') ? getHeadEllipsoid() : null;
+}
 function braidGridInfo(partOverride){
   const m = state && state.hair3Dneutral;
   if(!m) return null;
@@ -521,7 +526,11 @@ function braidGridInfo(partOverride){
   const cache = m._braidGrids || (m._braidGrids = {});
   if(cache[part]) return cache[part];
   let E = null;
-  try{ E = (typeof getHeadEllipsoid === 'function') ? getHeadEllipsoid() : null; }catch(e){}
+  /* (2026-11-23) 헐(getHeadEllipsoid = 손님 사진 머리 실루엣) → <b>두피</b>(getScalpEllipsoid).
+     사용자: "레게펌은 다른 계산이 들어간다 · 사람마다 똑같이 두피 기준으로"
+     칸(가르마 줄·둘레)을 헐에서 재면 펌·볼륨 손님은 헐이 커서 둘레가 길어짐 → 밧줄 수가 늘고 칸 위치도 달라져 덩어리가 부풂.
+     뿌리는 두피 위에 있으니 칸도 두피에서 잼 → 손님 머리 모양과 상관없이 같은 칸. 되돌리기 BRAID_SCALP.on=false */
+  try{ E = braidEllipsoid(); }catch(e){}
   const cmu = braidCmPerUnit3D();
   if(!E || !(E.a > 0) || !(E.b > 0) || !(E.c > 0) || !(cmu > 0) || !(part > 0)) return null;
   // 자오선 호길이 표 s(φ) (cm) — φ 0~π를 N칸
@@ -1045,7 +1054,7 @@ function braidDrapeSig() {
 function braidDrapeAll(list) {
   if (!braidDrapeOn() || !Array.isArray(list) || !list.length) return list;
   var E = null;
-  try { E = getHeadEllipsoid(); } catch (e) {}
+  try { E = braidEllipsoid(); } catch (e) {}   // (2026-11-23) 헐 → 두피 — 정수리 뿌리 ny가 헐 높이로 눌려 벌어짐이 손님마다 달랐음
   var h = state && state.hair3Dneutral;
   var cmu = braidDrapeCmPerUnit();
   if (!E || !(E.a > 0 && E.b > 0 && E.c > 0) || !h || !(cmu > 0)) return list;
