@@ -202,6 +202,11 @@ var EYE_GUARD = {
 };
 var STYLE_TUNES = {
   reggae_twist: {
+    /* (11-23 7차) 굵은 밧줄이라 헐 폭이 제일 눈에 띔(clotheschange 대비 돔이 크고 귀~턱이 둥글게 벌어짐) —
+       헐을 두피에 더 붙이고(+3%) · 폭 상한을 두상 중심보다 위(0.2b)부터 · 윗머리 폭보다 6% 안쪽까지 */
+    hullPad: 0.03,
+    layerHi: 0.6,
+    widthCap: { grow: -0.06, fromB: 0.2, rampB: 0.35 },
     fringeTrim: false   // (2026-11-15) 레게펌은 눈을 덮어도 된다 — 기본 경로의 앞머리·크라운 선(눈썹 바닥)도 안 건다
   },
   /* (2026-11-15b) browCut — 다 만든 가닥(컬·처짐·넘김까지 끝난 뒤)을 <b>눈썹 선</b>에서 한 번 더 자른다(BROW_CUT 배너) */
@@ -1261,7 +1266,13 @@ function mqStyleFlowK() {
    스타일이 걸렸고 hullPad가 숫자인 스타일만(레이어드 보브 제외). 끄기 MQ_WIDTH_CAP.on=false · 여유 MQ_WIDTH_CAP.grow */
 var MQ_WIDTH_CAP = { on: true, pct: 0.95, grow: 0.06, rampB: 0.45, soft: 0.25, stats: null };
 function mqStyleWidthCapAll(list) {
-  const C = MQ_WIDTH_CAP;
+  let C = MQ_WIDTH_CAP;
+  try {   // (11-23 7차) 스타일별 덮어쓰기 STYLE_TUNES[id].widthCap = { grow, fromB, rampB, pct, soft }
+    let id = _mqApplyingId;
+    if (!id) id = (typeof EYE_GUARD !== "undefined" && EYE_GUARD._applying) || (state && state.specAppliedId) || null;
+    const t = id && typeof STYLE_TUNES !== "undefined" ? STYLE_TUNES[id] : null;
+    if (t && t.widthCap) C = Object.assign({}, MQ_WIDTH_CAP, t.widthCap, { on: MQ_WIDTH_CAP.on });
+  } catch (e) {}
   if (!C.on || !list || !list.length || !mqStyleFallOn()) return list;
   let E = null, CY = 0.15;
   try { E = getHeadEllipsoid(); } catch (e) { return list; }
@@ -1277,7 +1288,7 @@ function mqStyleWidthCapAll(list) {
   xs.sort((a, b) => a - b);
   const R = xs[Math.min(xs.length - 1, Math.floor(xs.length * C.pct))] * (1 + C.grow);
   if (!(R > 1e-6)) return list;
-  const k0 = R * (1 - C.soft), span = R - k0, rampH = Math.max(1e-6, C.rampB * E.b);
+  const k0 = R * (1 - C.soft), span = R - k0, rampH = Math.max(1e-6, C.rampB * E.b), Y0 = CY + (C.fromB || 0) * E.b;   // Y0 = 누르기 시작 높이(fromB>0 = 두상 중심보다 위)
   let moved = 0, maxIn = 0;
   const out = list.map(st => {
     const p = st && st.pts;
@@ -1285,9 +1296,9 @@ function mqStyleWidthCapAll(list) {
     let np = null;
     for (let k = 1; k < p.length; k++) {
       const q = p[k], ax = Math.abs(q.x);
-      if (q.y >= CY || ax <= k0) continue;
+      if (q.y >= Y0 || ax <= k0) continue;
       const capped = k0 + span * Math.tanh((ax - k0) / span);
-      const f = Math.min(1, (CY - q.y) / rampH), w = f * f * (3 - 2 * f);
+      const f = Math.min(1, (Y0 - q.y) / rampH), w = f * f * (3 - 2 * f);
       const nx = ax + (capped - ax) * w;
       if (nx >= ax - 1e-9) continue;
       if (!np) np = p.slice();
