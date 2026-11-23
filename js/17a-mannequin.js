@@ -49,7 +49,12 @@ const MANNEQUIN = {
      이번 세트의 헐(폭 0.665 · 두피 0.393)은 예전 세트(0.423)보다 넓어서, 예전 헐에 맞춰 만든 스타일들이 전부 옆으로 넓게 나왔다.
      하네스(디버그 뿌리 + 실제 js 파이프라인)로 레이어드 보브를 사진(얼굴 높이 반폭 ≈0.65)에 맞춘 값: 1 → 0.74 · 0.6 → 0.64 · 0.45 → 0.61.
      길이(tipAt)는 그대로(이분탐색이 다시 맞춤). 원본 머리 보기(스타일 모드 아님)는 layerHi 그대로. 끄기 MANNEQUIN.styleLayerHi=null */
-  styleLayerHi: 0.6
+  /* (2026-11-23 4차) 스타일 모드 헐 두께 — 넓어진 원인은 layerHi가 아니라 헐 자체였다.
+     가닥은 두피 법선으로 thick(두피→헐 거리, 최대 0.25L)만큼 뻗은 뒤 떨어지는데, 이번 세트 헐이 두피+69%라
+     clotheschange(두피+7%)보다 훨씬 바깥에서 떨어지며 옆으로 퍼졌다. 스타일 모드에선 헐을 두피×(1+styleHullPad)로 줄인다.
+     스타일별로 STYLE_TUNES[id].hullPad(null = 이번 세트 헐 그대로). 끄기 MANNEQUIN.styleHullPad=null */
+  styleHullPad: 0.07,
+  styleLayerHi: 1,     // (11-23 4차) clotheschange와 같은 1 — 헐을 줄였으니 상한도 원래대로 · (11-23 3차) 0.6→0.15로 내렸더니 가닥이 두상에 붙어 미끄러지며 아래가 A자로 더 벌어짐 — 사용자: "반대로" → 0.6+0.45. 아래 2차 설명은 틀렸던 판단 · (11-23 2차) 기본 = clotheschange 헐(두피+7%)과 같은 두께(0.15 → 두피+10%) — 사용자: "다른 스타일은 clotheschange가 좋아". 레이어드 보브만 STYLE_TUNES.layerHi 0.6
   /* (2026-10-27) 10-22에 넣었던 "다시 기른 가닥에서 칸마다 길이"(lenFromRegrow·lenNbr)는
      10-27 업로드에서 빠졌다 — 길이는 다시 섹션·사진별 lenPct(lenFor)로 정한다. */
 };
@@ -204,10 +209,16 @@ var STYLE_TUNES = {
     browCut: true
   },
   layered_bob_hush: {
+    hullPad: null,   // (11-23 4차) 이 스타일만 이번 세트의 넓은 헐 그대로(다른 스타일은 clotheschange 헐 두피+7%)
+    layerHi: 0.6,    // (11-23) 부풀기 — 이 스타일만 clotheschange보다 넓게(사진 보브 폭 · 얼굴 높이 반폭 ≈0.65)
     browCut: true,   // (11-23) 크라운 가닥이 컬·처짐 뒤 얼굴 앞으로 내려와 눈·코를 덮던 것(이번 세트 디버그: 얼굴 앞 크라운 255가닥) — 마지막에 눈썹 선에서
     tipAt: {
       front: 0.45   // (11-22) 11/15 편집에서 fringeTrim:true로 덮였던 값 복구
     }
+  },
+  long_layered_curtain: {
+    // (11-23) 가슴 기장 — 표준 마네킹(≈18cm)으로는 길이 슬라이더를 끝까지 밀어도 tipAt(크라운 1.2 · 옆 1.5)에 못 닿았다(디버그: 0.96 · 1.39)
+    styleLenCm: { front: 25, temple: 30, crown: 40, side: 42, occipital: 45, nape: 45 }
   },
   wavy_bob_seethrough: {
     browCut: true,
@@ -1094,7 +1105,13 @@ function growMannequinStrand(ci, NT, NP, S, E, CY, L, colors) {
       y: (p.y - CY) / (bR * bR),
       z: p.z / (cR * cR)
     }),
-    layerHi = (_mqBuiltStyleMode && typeof M.styleLayerHi === "number") ? M.styleLayerHi : M.layerHi,   // (11-23) 스타일 모드 부풀기
+    layerHi = _mqBuiltStyleMode ? mqStyleLayerHi() : M.layerHi,
+    _hp = _mqBuiltStyleMode ? mqStyleHullPad() : null,   // (11-23 4차) 스타일 모드 헐 = 두피×(1+pad) (더 좁을 때만)
+    _eW = _hp == null ? E : (E = {
+      a: Math.min(E.a, S.a * (1 + _hp)),
+      b: Math.min(E.b, S.b * (1 + _hp)),
+      c: Math.min(E.c, S.c * (1 + _hp))
+    }),   // (11-23) 스타일 모드 부풀기
     layer = M.layerLo + (layerHi - M.layerLo) * _mqRand(),
     kx = (1 + layer * (E.a / Math.max(0.000001, S.a) - 1)) * K,
     ky = (1 + layer * (E.b / Math.max(0.000001, S.b) - 1)) * K,
@@ -1162,10 +1179,85 @@ function mqStyleLenOn() {
     return !!(MANNEQUIN.styleLen && (_mqStyleApplying || (sid && sid !== "__original__")));
   } catch (e) { return false; }
 }
+/* (2026-11-23) 스타일별 마네킹 길이 — STYLE_TUNES[id].styleLenCm(섹션별 cm, 없는 섹션은 MANNEQUIN.styleLenCm).
+   롱 기장 스타일(롱 레이어드)은 표준 마네킹(≈18cm)으로는 슬라이더를 끝까지 밀어도 목표 끝높이에 못 닿았다. */
+let _mqBuiltLenKey = null, _mqApplyingId = null;
+function mqStyleLenTable() {
+  let id = _mqApplyingId;
+  try { if (!id) id = (typeof EYE_GUARD !== "undefined" && EYE_GUARD._applying) || (typeof state !== "undefined" && state && state.specAppliedId) || null; } catch (e) {}
+  const t = id && typeof STYLE_TUNES !== "undefined" ? STYLE_TUNES[id] : null;
+  return Object.assign({}, MANNEQUIN.styleLenCm || {}, (t && t.styleLenCm) || {});
+}
+/* (11-23) 스타일별 부풀기 — STYLE_TUNES[id].layerHi, 없으면 MANNEQUIN.styleLayerHi, 그것도 없으면 layerHi */
+function mqStyleLayerHi() {
+  let id = _mqApplyingId;
+  try { if (!id) id = (typeof EYE_GUARD !== "undefined" && EYE_GUARD._applying) || (typeof state !== "undefined" && state && state.specAppliedId) || null; } catch (e) {}
+  const t = id && typeof STYLE_TUNES !== "undefined" ? STYLE_TUNES[id] : null;
+  const v = t && typeof t.layerHi === "number" ? t.layerHi : MANNEQUIN.styleLayerHi;
+  return typeof v === "number" ? Math.max(MANNEQUIN.layerLo, v) : MANNEQUIN.layerHi;
+}
+/* (11-23 4차) 스타일별 헐 두께 — STYLE_TUNES[id].hullPad(null이면 헐 그대로), 키가 없으면 MANNEQUIN.styleHullPad */
+function mqStyleHullPad() {
+  let id = _mqApplyingId;
+  try { if (!id) id = (typeof EYE_GUARD !== "undefined" && EYE_GUARD._applying) || (typeof state !== "undefined" && state && state.specAppliedId) || null; } catch (e) {}
+  const t = id && typeof STYLE_TUNES !== "undefined" ? STYLE_TUNES[id] : null;
+  const v = t && "hullPad" in t ? t.hullPad : MANNEQUIN.styleHullPad;
+  return typeof v === "number" ? Math.max(0, v) : null;
+}
+/* (2026-11-23 5차) 스타일 모드 "위에서 그대로 따라 내려오기" — 사용자: "위머리 좁아진 느낌에서 그냥 따라서 내려오면 되는데 중간부터 부풀었어"
+   헐만 좁혀선 모자랐던 세 군데(마네킹 다음 단계 · 17b가 가닥마다 부름):
+   ① 볼륨(14 volumeStrand3D) — 가장 많이 뜨는 자리 RAMP 0.30(긴 마네킹 40cm면 귀 아래) · 끝까지 80% 유지 → 중간부터 한 칸 바깥으로 나가 내려옴.
+      → 뿌리 가까이(volRamp)에서 다 뜨고 그다음은 그대로 내려오게.
+   ② 삐침(flyFrac·flyAmp) — 끝으로 갈수록 (i/n)²로 더 들림 → 아래가 바깥으로 벌어짐. 줄임.
+   ③ 결 흐름(flowCurlStrand3D) — 세기가 헐 폭(이번 세트 0.665)에 비례 → clotheschange 헐(두피+7%) 폭 기준으로.
+   스타일이 걸렸고(거는 중 포함) hullPad가 숫자인 스타일만(레이어드 보브는 그대로). 끄기 MQ_STYLE_FALL.on=false */
+var MQ_STYLE_FALL = { on: true, volRamp: 0.1, flyFrac: 0.08, flyAmp: 0.3, flowHull: true };
+function mqStyleFallOn() {
+  try { return !!(MQ_STYLE_FALL.on && mqStyleLenOn() && mqStyleHullPad() != null); } catch (e) { return false; }
+}
+let _mqFlowK = { t: 0, k: 1 };
+function mqStyleFlowK() {
+  const t = Date.now();
+  if (t - _mqFlowK.t < 1000) return _mqFlowK.k;
+  let k = 1;
+  try {
+    const E = getHeadEllipsoid(), S = getScalpEllipsoid(), pad = mqStyleHullPad();
+    const wE = Math.max(E.a, E.c), wC = Math.max(Math.min(E.a, S.a * (1 + pad)), Math.min(E.c, S.c * (1 + pad)));
+    if (wE > 1e-6 && wC > 0) k = Math.min(1, wC / wE);
+  } catch (e) { k = 1; }
+  _mqFlowK = { t: t, k: k };
+  return k;
+}
+(function () {
+  const W = typeof window !== "undefined" ? window : null;
+  if (!W || W._mqStyleFallWrapped) return;
+  W._mqStyleFallWrapped = true;
+  if (typeof volumeStrand3D === "function") {
+    const vol0 = volumeStrand3D;
+    W.volumeStrand3D = function (pts, v, sec) {
+      if (!mqStyleFallOn() || typeof VOLUME3D === "undefined") return vol0.apply(this, arguments);
+      const sv = { RAMP: VOLUME3D.RAMP, flyFrac: VOLUME3D.flyFrac, flyAmp: VOLUME3D.flyAmp };
+      VOLUME3D.RAMP = Math.min(sv.RAMP, MQ_STYLE_FALL.volRamp);
+      VOLUME3D.flyFrac = Math.min(sv.flyFrac || 0, MQ_STYLE_FALL.flyFrac);
+      VOLUME3D.flyAmp = Math.min(sv.flyAmp || 0, MQ_STYLE_FALL.flyAmp);
+      try { return vol0.apply(this, arguments); } finally { Object.assign(VOLUME3D, sv); }
+    };
+  }
+  if (typeof flowCurlStrand3D === "function") {
+    const flow0 = flowCurlStrand3D;
+    W.flowCurlStrand3D = function (pts, f) {
+      if (!f || !MQ_STYLE_FALL.flowHull || !mqStyleFallOn() || typeof FLOW3D === "undefined") return flow0.apply(this, arguments);
+      const a0 = FLOW3D.AMP;
+      FLOW3D.AMP = a0 * mqStyleFlowK();
+      try { return flow0.apply(this, arguments); } finally { FLOW3D.AMP = a0; }
+    };
+  }
+})();
 /* 지금 모드와 다르게 지어진 마네킹이면 버림(다음 접근 때 다시 지음) */
 function mqStyleLenSync() {
   try {
-    if (_mqBuiltStyleMode !== null && _mqBuiltStyleMode !== mqStyleLenOn() && typeof state !== "undefined" && state) state.hair3Dmannequin = null;
+    const on = mqStyleLenOn(), key = on ? JSON.stringify(mqStyleLenTable()) + "|" + mqStyleLayerHi() + "|" + mqStyleHullPad() : null;
+    if (_mqBuiltStyleMode !== null && (_mqBuiltStyleMode !== on || (on && _mqBuiltLenKey !== key)) && typeof state !== "undefined" && state) state.hair3Dmannequin = null;
   } catch (e) {}
 }
 function buildMannequinHair3D() {
@@ -1253,10 +1345,12 @@ function buildMannequinHair3D() {
   const styleMode = mqStyleLenOn();
   let cmU = 16.4;
   try { cmU = typeof modelCmPerUnit === "function" ? modelCmPerUnit() || 16.4 : 16.4; } catch (e) {}
+  const lenTab = styleMode ? mqStyleLenTable() : null;
+  _mqBuiltLenKey = styleMode ? JSON.stringify(lenTab) + "|" + mqStyleLayerHi() + "|" + mqStyleHullPad() : null;
   const lenFor = styleMode
-    ? (sec, view) => ((MANNEQUIN.styleLenCm && MANNEQUIN.styleLenCm[sec]) || 30) / cmU   // (11-22) 손님 길이와 안 섞음(사진 가닥 꼬리 최장 44~104cm)
+    ? (sec, view) => (lenTab[sec] || 30) / cmU   // (11-22) 손님 길이와 안 섞음(사진 가닥 꼬리 최장 44~104cm)
     : lenOwn;
-  if (styleMode) console.log("[마네킹·스타일 길이] 표준 긴 머리로 심음(cm) — " + Object.keys(MANNEQUIN.styleLenCm || {}).map(k => k + " " + MANNEQUIN.styleLenCm[k]).join(" · ") + " · 손님 머리가 더 긴 섹션은 손님 길이 (끄기 MANNEQUIN.styleLen=false)");
+  if (styleMode) console.log("[마네킹·스타일 길이] 표준 긴 머리로 심음(cm) — " + Object.keys(lenTab).map(k => k + " " + lenTab[k]).join(" · ") + " · 손님 머리가 더 긴 섹션은 손님 길이 (끄기 MANNEQUIN.styleLen=false)");
   const nCell = NT * NP,
     w = new Float64Array(nCell);
   let wSum = 0,
@@ -4578,6 +4672,7 @@ function applyStyleSpecAndRender(id, _retried) {
     if (v1480.handled) return v1480.value;
   }
   if (state.specAppliedId === id) return clearStyleSpec();
+  _mqApplyingId = id !== "__original__" ? id : null;   // (2026-11-23) 거는 스타일의 마네킹 길이표(mqStyleLenTable)
   _mqStyleApplying = id !== "__original__";   // (2026-11-22) 스타일 길이 마네킹 — 거는 동안 지어지는 마네킹도 표준 길이
   mqStyleLenSync();
   if (!MANNEQUIN.on) mannequinReset();
@@ -4591,7 +4686,7 @@ function applyStyleSpecAndRender(id, _retried) {
     if (_retried || typeof buildNeutralHair3D !== "function") return console.warn("[스타일스펙] 3D 모델을 못 만들었다 — 촬영/세그멘테이션부터 확인할 것"), null;
     const v1481 = document.getElementById("adjustStyleTag");
     if (v1481) v1481.textContent = "3D 준비 중…";
-    _mqStyleApplying = false;
+    _mqStyleApplying = false; _mqApplyingId = null;
     return buildNeutralHair3D(() => {
       applyStyleSpecAndRender(id, true);
     }), null;
@@ -4602,7 +4697,7 @@ function applyStyleSpecAndRender(id, _retried) {
     const undo = snapshotForSpec();
     rep = typeof withRenderGate === "function" ? withRenderGate(() => _applyStyleSpecBody(id, undo), "스타일 적용") : _applyStyleSpecBody(id, undo);
   } finally {
-    _mqStyleApplying = false;
+    _mqStyleApplying = false; _mqApplyingId = null;
     mqStyleLenSync();   // 실패했으면(specAppliedId 없음) 손님 길이 마네킹으로 되돌림
   }
   return rep;
