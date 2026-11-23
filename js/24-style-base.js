@@ -54,7 +54,7 @@
           pitchThick: 1.4      // 굵은 로드에서 파장이 너무 길어지지 않게 (한 바퀴 ≈ 6cm)
         },
         CURL3D_FIX: { ampGamma: 0.7 },   // 컬 50 → 진폭 0.62
-        VOLUME3D: { AMP: 0.18 },
+        VOLUME3D: { AMP: 0.085 }, // (2026-11-23) 두피 기준 — 마네킹이 두피에서 자라게 바뀐 뒤 옛 값(헐 위에서 맞춘 것)이면 두피 반경의 40%까지 떠서 부풂. 두피 평균 반경(≈0.48)만큼 줄임
         // HAIR_FIELD3D.maxAlign 은 뺐습니다 — 중립 3D 빌드 때만 쓰이는 값이라 스타일마다 바꾸면
         // 스타일을 고를 때마다 3D 전체를 다시 만들어야 해서 (폰에서 수십 초) 원래 방식으로 되돌렸습니다.
         MANNEQUIN: { lenPct: 0.9 },      // 어깨 따라간 이상치 가닥 제외
@@ -96,7 +96,7 @@
       config: {
         CURL_BUNDLE: { rodThickCm: 4.5, pitchThick: 2.4, relax: 1.3, microAmp: 0.03, microPhase: 0.18 },
         CURL3D_FIX: { ampGamma: 0.8 },
-        VOLUME3D: { AMP: 0.17 },
+        VOLUME3D: { AMP: 0.08 }, // (2026-11-23) 두피 기준 — 마네킹이 두피에서 자라게 바뀐 뒤 옛 값(헐 위에서 맞춘 것)이면 두피 반경의 40%까지 떠서 부풂. 두피 평균 반경(≈0.48)만큼 줄임
         MANNEQUIN: { lenPct: 0.9 },   // 섹션 최장(=어깨·옷 따라간 이상치) 대신 90백분위
         MQ_FRINGE: { tipFaceFrac: -0.16, crownAllAround: false }
       },
@@ -109,7 +109,7 @@
       config: {
         CURL_BUNDLE: { rodThickCm: 5, pitchThick: 1.9, relax: 1.2, microAmp: 0.015, microPhase: 0.15 },
         CURL3D_FIX: { ampGamma: 0.72 },
-        VOLUME3D: { AMP: 0.17 },
+        VOLUME3D: { AMP: 0.08 }, // (2026-11-23) 두피 기준 — 마네킹이 두피에서 자라게 바뀐 뒤 옛 값(헐 위에서 맞춘 것)이면 두피 반경의 40%까지 떠서 부풂. 두피 평균 반경(≈0.48)만큼 줄임
         MQ_FRINGE: { on: true, tipFaceFrac: 0.4, lineHalfX: 1.1, lineGain: 1, crownAllAround: false },
         HAIR_DYE: { sMax: 1.25, highlightK: 1.0, glossDesat: 0.5 }
       },
