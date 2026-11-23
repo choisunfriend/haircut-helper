@@ -44,7 +44,12 @@ const MANNEQUIN = {
      스타일이 걸린 동안(·거는 중)엔 섹션 길이를 아래 cm로 — 실습용 긴 머리 마네킹. 손님 머리가 더 길면 손님 길이.
      해제하면 다시 손님 길이. 끄기 MANNEQUIN.styleLen=false · 길이 MANNEQUIN.styleLenCm.crown=… 후 스타일 다시 걸기 */
   styleLen: true,
-  styleLenCm: { crown: 18, front: 15.3, temple: 15.5, side: 17.7, occipital: 17.8, nape: 17 }   // (11-22) 실측 기준 마네킹 길이(cm)
+  styleLenCm: { crown: 18, front: 15.3, temple: 15.5, side: 17.7, occipital: 17.8, nape: 17 },   // (11-22) 실측 기준 마네킹 길이(cm)
+  /* (2026-11-23) 스타일 모드 부풀기 — 가닥이 두피에서 헤어 헐(getHeadEllipsoid)까지 얼마나 부푼 뒤 떨어지는가의 상한(layerHi 대신).
+     이번 세트의 헐(폭 0.665 · 두피 0.393)은 예전 세트(0.423)보다 넓어서, 예전 헐에 맞춰 만든 스타일들이 전부 옆으로 넓게 나왔다.
+     하네스(디버그 뿌리 + 실제 js 파이프라인)로 레이어드 보브를 사진(얼굴 높이 반폭 ≈0.65)에 맞춘 값: 1 → 0.74 · 0.6 → 0.64 · 0.45 → 0.61.
+     길이(tipAt)는 그대로(이분탐색이 다시 맞춤). 원본 머리 보기(스타일 모드 아님)는 layerHi 그대로. 끄기 MANNEQUIN.styleLayerHi=null */
+  styleLayerHi: 0.6
   /* (2026-10-27) 10-22에 넣었던 "다시 기른 가닥에서 칸마다 길이"(lenFromRegrow·lenNbr)는
      10-27 업로드에서 빠졌다 — 길이는 다시 섹션·사진별 lenPct(lenFor)로 정한다. */
 };
@@ -199,6 +204,7 @@ var STYLE_TUNES = {
     browCut: true
   },
   layered_bob_hush: {
+    browCut: true,   // (11-23) 크라운 가닥이 컬·처짐 뒤 얼굴 앞으로 내려와 눈·코를 덮던 것(이번 세트 디버그: 얼굴 앞 크라운 255가닥) — 마지막에 눈썹 선에서
     tipAt: {
       front: 0.45   // (11-22) 11/15 편집에서 fringeTrim:true로 덮였던 값 복구
     }
@@ -1088,7 +1094,8 @@ function growMannequinStrand(ci, NT, NP, S, E, CY, L, colors) {
       y: (p.y - CY) / (bR * bR),
       z: p.z / (cR * cR)
     }),
-    layer = M.layerLo + (M.layerHi - M.layerLo) * _mqRand(),
+    layerHi = (_mqBuiltStyleMode && typeof M.styleLayerHi === "number") ? M.styleLayerHi : M.layerHi,   // (11-23) 스타일 모드 부풀기
+    layer = M.layerLo + (layerHi - M.layerLo) * _mqRand(),
     kx = (1 + layer * (E.a / Math.max(0.000001, S.a) - 1)) * K,
     ky = (1 + layer * (E.b / Math.max(0.000001, S.b) - 1)) * K,
     kz = (1 + layer * (E.c / Math.max(0.000001, S.c) - 1)) * K,
