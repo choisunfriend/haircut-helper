@@ -224,7 +224,15 @@ var STYLE_TUNES = {
   },
   long_layered_curtain: {
     // (11-23) 가슴 기장 — 표준 마네킹(≈18cm)으로는 길이 슬라이더를 끝까지 밀어도 tipAt(크라운 1.2 · 옆 1.5)에 못 닿았다(디버그: 0.96 · 1.39)
-    styleLenCm: { front: 25, temple: 30, crown: 40, side: 42, occipital: 45, nape: 45 }
+    styleLenCm: { front: 25, temple: 30, crown: 40, side: 42, occipital: 45, nape: 45 },
+    /* (11-23 12차) 이 스타일만 main(10시 29분) 모양으로 — 사용자: 디버그 1302(main · 좁게 곧게 떨어짐)처럼, 1301(이 브랜치 · 귀 아래부터 옆으로 뻗친 덩어리)은 아님.
+       두 디버그 비교(같은 스펙 · 길이 끝높이는 같음): 반폭 p98 y=0에서 0.65 → 0.81 · 크라운 0.67 → 1.02 · 어깨 높이(-0.8) 0.58 → 0.85.
+       원인은 10차 원복 두 가지가 이 스타일(40~45cm 긴 마네킹)에 크게 걸린 것:
+         ① 헐 = 두피 그대로(pad 0) → main은 두피×1.07
+         ② MQ_STYLE_FALL 원복(volRamp 1 · flyFrac 1 · flyAmp 99) → 볼륨 최대점이 길이 30%(긴 마네킹이면 귀 아래)·끝 삐침 (i/n)²가 그대로 → 옆으로 뻗친 덩어리
+       전역 값은 그대로 두고 이 스타일만 main 값으로. 되돌리기: 아래 두 키(hullPad · fall) 지우기 */
+    hullPad: 0.07,
+    fall: { volRamp: 0.1, flyFrac: 0.08, flyAmp: 0.3 }
   },
   wavy_bob_seethrough: {
     browCut: true,
@@ -1220,6 +1228,13 @@ function mqStyleHullPad() {
 // (11-23 10차) ①볼륨·②삐침 보정은 원복(값을 크게 = 원래 VOLUME3D 그대로) — 손님 사진 실루엣 헐(두피+69%) 때문에 넣은 것.
 //   ③결 흐름(flowHull)만 유지 — 흐름 세기가 사진 헐 폭에 비례하므로 스타일 모드에선 두피 기준 폭으로 줄이는 게 맞다. 옛 값 volRamp 0.1 · flyFrac 0.08 · flyAmp 0.3
 var MQ_STYLE_FALL = { on: true, volRamp: 1, flyFrac: 1, flyAmp: 99, flowHull: true };
+/* (11-23 12차) 스타일별 볼륨·삐침 — STYLE_TUNES[id].fall = { volRamp, flyFrac, flyAmp } (없는 키는 MQ_STYLE_FALL) */
+function mqStyleFallTune() {
+  let id = _mqApplyingId;
+  try { if (!id) id = (typeof EYE_GUARD !== "undefined" && EYE_GUARD._applying) || (typeof state !== "undefined" && state && state.specAppliedId) || null; } catch (e) {}
+  const t = id && typeof STYLE_TUNES !== "undefined" ? STYLE_TUNES[id] : null;
+  return Object.assign({}, MQ_STYLE_FALL, (t && t.fall) || {});
+}
 function mqStyleFallOn() {
   try { return !!(MQ_STYLE_FALL.on && mqStyleLenOn() && mqStyleHullPad() != null); } catch (e) { return false; }
 }
@@ -1245,9 +1260,10 @@ function mqStyleFlowK() {
     W.volumeStrand3D = function (pts, v, sec) {
       if (!mqStyleFallOn() || typeof VOLUME3D === "undefined") return vol0.apply(this, arguments);
       const sv = { RAMP: VOLUME3D.RAMP, flyFrac: VOLUME3D.flyFrac, flyAmp: VOLUME3D.flyAmp };
-      VOLUME3D.RAMP = Math.min(sv.RAMP, MQ_STYLE_FALL.volRamp);
-      VOLUME3D.flyFrac = Math.min(sv.flyFrac || 0, MQ_STYLE_FALL.flyFrac);
-      VOLUME3D.flyAmp = Math.min(sv.flyAmp || 0, MQ_STYLE_FALL.flyAmp);
+      const F = mqStyleFallTune();   // (11-23 12차) STYLE_TUNES[id].fall이 있으면 그 스타일만 그 값
+      VOLUME3D.RAMP = Math.min(sv.RAMP, F.volRamp);
+      VOLUME3D.flyFrac = Math.min(sv.flyFrac || 0, F.flyFrac);
+      VOLUME3D.flyAmp = Math.min(sv.flyAmp || 0, F.flyAmp);
       try { return vol0.apply(this, arguments); } finally { Object.assign(VOLUME3D, sv); }
     };
   }
