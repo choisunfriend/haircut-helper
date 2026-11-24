@@ -51,6 +51,15 @@ var ONBOARD = (function () {
       + '<circle cx="0" cy="-17" r="2.4" fill="' + ACC + '"/></g>';
   }
   function svg(inner) { return '<svg viewBox="0 0 320 200" width="100%" style="max-height:200px;display:block;margin:0 auto;" xmlns="http://www.w3.org/2000/svg">' + inner + '</svg>'; }
+  // 실제 앱 화면(예시) — 사진 속 인물은 AI로 만든 가상 인물. 캡션에 늘 적음
+  var SHOT_DIR = 'assets/onboard/';
+  function cap() { return '<div style="font-size:11px;opacity:.6;text-align:center;margin-top:6px;">' + esc(L('예시 화면 · 사진 속 인물은 AI로 만든 가상 인물이에요', 'Example screens · the person shown is AI-generated')) + '</div>'; }
+  function shots(names, h) {
+    return '<div style="display:flex;gap:10px;justify-content:center;">' + names.map(function (n) {
+      return '<img src="' + SHOT_DIR + n + '.jpg" alt="" style="max-height:' + (h || 230) + 'px;max-width:' + (names.length > 1 ? '48%' : '78%') + ';border-radius:12px;border:1px solid rgba(243,233,218,.2);object-fit:cover;object-position:top;">';
+    }).join('') + '</div>' + cap();
+  }
+  O.shots = shots;
   var ART = {
     intro: function () {
       return svg(
@@ -116,13 +125,13 @@ var ONBOARD = (function () {
     return [
       { art: 'intro', t: L('내 머리에 스타일을 입혀 보세요', 'Try hairstyles on your own head'),
         b: L('사진 몇 장으로 내 두상을 3D로 만들고, 헤어스타일을 입혀서 돌려 보며 확인해요.', 'A few photos turn into a 3D model of your head. Put on hairstyles and turn it around to see every side.') },
-      { art: 'four', t: L('기본 촬영 — 4장', 'Basic photos — 4 shots'),
+      { art: 'four', shot: ['capture'], t: L('기본 촬영 — 4장', 'Basic photos — 4 shots'),
         b: L('정면 · 왼쪽 · 오른쪽 · 뒤를 한 장씩 찍어요.<br>· 밝은 곳에서, 머리 전체가 화면에 들어오게<br>· 머리를 묶거나 모자를 쓰지 않은 상태로<br>· 뒷모습은 누가 찍어 주거나 사진을 올려도 돼요',
              'Take one photo each from the front, left, right and back.<br>· In good light, with your whole head in frame<br>· Hair down, no hat<br>· Someone can take the back photo, or you can upload one') },
       { art: 'orbit', t: L('더 정밀하게 — 360° 촬영', 'More accurate — 360° capture'),
         b: L('도와줄 사람이 폰을 들고 내 주위를 한 바퀴 돌면, 각도마다 가장 선명한 사진을 자동으로 골라요.<br>· 찍는 사람: 내 정면에서 [시작] → 머리를 화면 타원 안에 두고 15~20초 동안 천천히 한 바퀴 → 출발점에서 [끝내기]<br>· 찍히는 사람: 고개와 머리카락을 움직이지 마세요<br>촬영 화면의 「🔄 360° 촬영」 버튼으로 시작해요.',
              'A helper holds the phone and walks once around you; the sharpest photo at each angle is picked automatically.<br>· Helper: start in front of you with [Start] → keep your head inside the oval → one slow circle in 15–20 s → [Finish] back at the start<br>· You: keep your head and hair still<br>Start with the “🔄 360° Capture” button on the photo screen.') },
-      { art: 'style', t: L('스타일 고르고 3D로 보기', 'Pick a style, see it in 3D'),
+      { art: 'style', shot: ['model3d', 'map'], t: L('스타일 고르고 3D로 보기', 'Pick a style, see it in 3D'),
         b: L('스타일을 고르면 3D 두상에 입혀서 보여 줘요. 손가락으로 돌려 보고, 왼쪽 아래 「헤어 컬러」로 색을 바꾸고, 「맵에서 고르기」로 그 스타일을 하는 미용실을 찾아요.<br>· 「스타일 미적용」은 지금 내 머리를 그대로 3D로 보여 줘요. 머리결을 하나하나 분석해서 시간이 오래 걸려요.',
              'Pick a style and it goes onto your 3D head. Turn it with your finger, change the color with “Hair color” at the bottom left, and find salons with “Pick on map”.<br>· “No style applied” shows your current hair as it is in 3D. It analyzes every strand, so it takes a while.') },
       { art: 'privacy', t: L('사진은 이 기기 안에서만', 'Your photos stay on this device'),
@@ -162,7 +171,7 @@ var ONBOARD = (function () {
   function draw() {
     var S = slides(), s = S[idx], last = idx === S.length - 1;
     ov.innerHTML = '<div class="ob-top"><button class="ob-skip" type="button">' + esc(last ? '' : L('건너뛰기', 'Skip')) + '</button></div>'
-      + '<div class="ob-body">' + ART[s.art]() + '<h2>' + esc(s.t) + '</h2><div class="ob-text">' + s.b + '</div></div>'
+      + '<div class="ob-body">' + (s.shot ? shots(s.shot, s.shot.length > 1 ? 250 : 260) : ART[s.art]()) + '<h2>' + esc(s.t) + '</h2><div class="ob-text">' + s.b + '</div></div>'
       + '<div class="ob-dots">' + S.map(function (_, i) { return '<i class="' + (i === idx ? 'on' : '') + '"></i>'; }).join('') + '</div>'
       + '<div class="ob-nav">' + (idx > 0 ? '<button class="ob-prev" type="button">' + esc(L('이전', 'Back')) + '</button>' : '')
       + '<button class="ob-next" type="button">' + esc(last ? L('시작하기', 'Get started') : L('다음', 'Next')) + '</button></div>';
@@ -198,10 +207,14 @@ var ONBOARD = (function () {
   }
 
   // ---- 도움말 ------------------------------------------------------------------------------------
+  function helpShots(names) {
+    return '<div style="background:#1B1816;border-radius:12px;padding:10px;margin:8px 0 4px;color:#F3E9DA;">' + shots(names, 200) + '</div>';
+  }
   function helpHTML() {
     var scr = 'capture'; try { scr = currentScreen || 'capture'; } catch (e) {}
     var h = '<h3>' + esc(L('도움말', 'Help')) + '</h3>';
     if (scr === 'capture') {
+      h += helpShots(['capture']);
       h += '<h4>' + esc(L('기본 촬영 (4장)', 'Basic photos (4)')) + '</h4><ul>'
         + '<li>' + L('정면 → 왼쪽 → 오른쪽 → 뒤 순서로 촬영 버튼을 눌러요.', 'Press the shutter for front → left → right → back.') + '</li>'
         + '<li>' + L('머리 전체가 화면에 들어오게, 밝은 곳에서 찍어요.', 'Keep your whole head in frame, in good light.') + '</li>'
@@ -222,6 +235,7 @@ var ONBOARD = (function () {
         + '<li>' + L('「스타일 미적용」은 지금 내 머리를 그대로 표현해요. 사진 속 머리결을 분석하느라 시간이 오래 걸려요(기기에 따라 1분 이상).', '“No style applied” shows your hair as it is now. Analyzing your photos takes a while (a minute or more on some devices).') + '</li>'
         + '<li>' + L('사진을 다시 찍으려면 「← 촬영」.', 'To retake photos, tap “← Capture”.') + '</li></ul>';
     } else {
+      h += helpShots(['model3d', 'map']);
       h += '<h4>' + esc(L('3D 보기', '3D view')) + '</h4><ul>'
         + '<li>' + L('한 손가락으로 끌면 돌아가요. 두 손가락으로 벌리면 확대, 두 손가락으로 끌면 이동.', 'Drag with one finger to turn. Pinch to zoom, drag with two fingers to move.') + '</li>'
         + '<li>' + L('오른쪽 아래 ↺로 처음 보기로 돌아가요.', '↺ at the bottom right resets the view.') + '</li></ul>'
