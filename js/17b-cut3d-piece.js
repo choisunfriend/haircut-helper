@@ -5007,6 +5007,14 @@ var REGROW = (function () {
       var P = sd && sd.pts; if (!P || P.length < 3) return; S.n++;
       var hT0 = hOf(P[P.length - 1]).h; S.h0.push(hT0);
       var ci = -1; if (TDc && sf.cellOf) { try { ci = sf.cellOf(P[0]); } catch (e) { ci = -1; } if (ci >= 0 && ci < NCc) { TDc.strands[ci]++; if (isSpike(P)) TDc.spike0[ci]++; } else ci = -1; }
+      // (2026-11-24 laycurl) 곧은 가닥만 눕힘 — 펌·컬 가닥(직선거리/실제 길이 < layStraight)은 부피가 컬에서 나오므로
+      //   두께 안으로 누르면 뺨 옆 퍼짐이 사라짐. 끄기 REGROW.layStraight=0
+      var LS = G.layStraight != null ? G.layStraight : 0.75;
+      if (LS > 0) {
+        var arc = 0, kk; for (kk = 1; kk < P.length; kk++) arc += Math.hypot(P[kk].x - P[kk - 1].x, P[kk].y - P[kk - 1].y, P[kk].z - P[kk - 1].z);
+        var e = P[P.length - 1], chord = Math.hypot(e.x - P[0].x, e.y - P[0].y, e.z - P[0].z);
+        if (arc > 1e-9 && chord / arc < LS) { S.curly = (S.curly || 0) + 1; S.h1.push(hT0); return; }
+      }
       var prev = { x: P[0].x, y: P[0].y, z: P[0].z }, out = [prev], lastT = null, changed = 0, k;
       for (k = 1; k < P.length; k++) {
         var vx = P[k].x - P[k - 1].x, vy = P[k].y - P[k - 1].y, vz = P[k].z - P[k - 1].z, l = Math.hypot(vx, vy, vz);
@@ -5042,7 +5050,7 @@ var REGROW = (function () {
     function q(a, f) { if (!a.length) return NaN; var b = a.slice().sort(function (x, y) { return x - y; }); return b[Math.min(b.length - 1, Math.floor(b.length * f))] * cmU; }
     S.p90 = [q(S.h0, 0.9), q(S.h1, 0.9)]; S.p99 = [q(S.h0, 0.99), q(S.h1, 0.99)]; S.ms = Math.round(now() - t0); S.h0 = S.h1 = null;
     try { if (TDc) console.log(G.thickDiag().join('\n')); } catch (eTd) {}
-    console.log('[두께 안으로 눕히기] 가닥 ' + S.n + ' 중 눕힌 ' + S.laid + '(마디 ' + S.segs + ') · 끝 높이(두피에서) p90 ' + S.p90[0].toFixed(1) + '→' + S.p90[1].toFixed(1) + 'cm · p99 ' + S.p99[0].toFixed(1) + '→' + S.p99[1].toFixed(1) + 'cm · 여유 = 두께×' + K + ' + ' + (mU * cmU).toFixed(1) + 'cm(최소 0.6) · 늘어진 마디라 안 눕힘 ' + (S.hang || 0) + '(끄기 REGROW.layHang=false) · ' + S.ms + 'ms (끄기 REGROW.lay=false · 세기 REGROW.layK)');
+    console.log('[두께 안으로 눕히기] 가닥 ' + S.n + ' 중 눕힌 ' + S.laid + '(마디 ' + S.segs + ') · 끝 높이(두피에서) p90 ' + S.p90[0].toFixed(1) + '→' + S.p90[1].toFixed(1) + 'cm · p99 ' + S.p99[0].toFixed(1) + '→' + S.p99[1].toFixed(1) + 'cm · 여유 = 두께×' + K + ' + ' + (mU * cmU).toFixed(1) + 'cm(최소 0.6) · 휘어진(컬) 가닥이라 안 눕힘 ' + (S.curly || 0) + '(곧음 기준 ' + (G.layStraight != null ? G.layStraight : 0.75) + ' · 끄기 REGROW.layStraight=0) · 늘어진 마디라 안 눕힘 ' + (S.hang || 0) + '(끄기 REGROW.layHang=false) · ' + S.ms + 'ms (끄기 REGROW.lay=false · 세기 REGROW.layK)');
   };
   /* (2026-11-24 tdiag) 두께 칸 진단 — 윤곽 두께(raw)를 두 번째 측정(lift)·이웃과 대조. 바꾸는 것 없음(보기만) */
   G.thickDiag = function () {
