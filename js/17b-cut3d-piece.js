@@ -4330,7 +4330,8 @@ var REGROW = (function () {
         };
         var WFf = null; try { if (WFb) { var tWf = now(); WFf = WFb.finish(); S.wf = { known: WFf.known, n: WFf.nx * WFf.ny * WFf.nz, ampCm: WFf.ampU * cm, ampHiCm: WFf.ampHi * cm, strands: WFf.strands, samples: WFf.samples, ms: Math.round(now() - tWf), cellCm: G.waveCellCm }; } } catch (e) { WFf = null; console.warn(TAG + ' 굴곡 장 만들기 실패(없이 진행)', e); }
         return { strands: out, viewCal: photo.viewCal, yTop: photo.yTop, CY: photo.CY, field: photo.field || null, occ: photo.occ || null,
-          grid: photo.grid, roots: photo.roots, mannequin: false, regrown: true, rgInfo: info, waveField: WFf };
+          grid: photo.grid, roots: photo.roots, mannequin: false, regrown: true, rgInfo: info, waveField: WFf,
+          surf: { onSurf: onSurf, normalAt: normalAt, thickAt: thickAt } };   // (2026-11-24 lay) 기른 뒤 눕히기(G.layDown)가 같은 두피면·두께를 씀
       }
     };
   }
@@ -4814,6 +4815,7 @@ var REGROW = (function () {
       G.model = model; G.src = photo;
       try { G.viewCheck(model, (photo.occ && photo.occ.probe) || (state.hairOcc3D && state.hairOcc3D.probe) || null); } catch (eVC) { console.warn(TAG + ' 사진마다 확인 실패', eVC); }   // (2026-11-16 vchk)
       try { if (typeof SIL_LEN !== 'undefined') SIL_LEN.apply(model, photo, !!(G.stats && G.stats.isLong)); } catch (eSL) { console.warn('[실루엣 길이] 실패 — 그대로 둠', eSL); }   // (2026-11-10) 짧은 머리 끝 = 실루엣에서 잰 길이(42)
+      try { G.layDown(model); } catch (eLD) { console.warn('[두께 안으로 눕히기] 실패 — 그대로 둠', eLD); }   // (2026-11-24 lay) 자른 뒤 남은 솟는 뿌리 구간 → 두께 안으로
       console.log(G.lines().join('\n'));
       try { if (G.applyBaseline) G.applyBaseline(); } catch (e) { console.warn(TAG + ' 기준 값 넣기 실패', e); }
       redraw();
@@ -4906,6 +4908,60 @@ var REGROW = (function () {
       !(sty.part) && !(sty.flow) && !(sty.sleek);
   }
   /* ── (2026-10-21i) 사진 윤곽 끝 자르기 — 가닥 배열을 그 자리에서 고침(정렬 바로 뒤) ── */
+  /* ── (2026-11-24 lay) 두께 안으로 눕히기 — 짧게 자른 가닥이 뻗치는 것 ──────────────────────────────
+   *  사용자: "저 사람 저렇게 머리가 뻗치는 가닥들 어떻게 하면 좋을까" (짧은 직모 남 · 사진은 매끈하게 누운 머리)
+   *  디버그 1732 실측(그린 가닥 20000): 바깥으로 뻗친 가닥(끝 방향·두피 법선 > 0.7) 24% · 그중 대부분이 1~3cm 짧은 가닥
+   *    (1~2cm 가닥의 60% · 뿌리 0.5cm 방향·법선 중앙 0.73 ≈ 47° 솟음) · 끝 높이 p90 1.9cm / p99 3.5cm vs 이 사람 두께 중앙 0.9cm.
+   *  원인: 다시 기르기는 뿌리에서 솟았다가 꺾여 눕는데, 그 뒤 SIL_LEN(42)·마지막 다듬기가 <b>끝에서부터</b> 잘라
+   *    꺾이기 전 솟는 구간만 남음 = 곧은 막대가 바깥을 봄.
+   *  고침: 뿌리부터 따라가며, 남은 높이 여유(그 자리 두께 thickAt × layK + layMarginCm − 지금 높이)보다 빨리 솟는 마디는
+   *    솟는 성분을 여유의 layRate배로 줄이고 나머지를 결(눕는) 방향으로 돌림. 마디 길이·점 수·뿌리 자리 그대로(= 가닥 길이 불변).
+   *    거의 수직(눕는 성분 < 20%)이면 앞 마디의 눕는 방향, 그것도 없으면 중력을 두피에 눕힌 방향.
+   *    두께를 크게 잰 자리(세운 윗머리·두꺼운 뒤통수)는 여유가 커서 안 바뀜.
+   *  시뮬레이션(같은 디버그 · 두께 1.2cm 일정): 끝 높이 p90 1.93 → 1.11cm · p99 3.54 → 1.22cm.
+   *  끄기 REGROW.lay=false · 세기 REGROW.layK(두께 배수) · .layMarginCm · .layRate */
+  G.layDown = function (model) {
+    var S = G.layStat = { on: G.lay !== false, n: 0, laid: 0, segs: 0, h0: [], h1: [], why: '' };
+    if (G.lay === false) { S.why = '꺼짐'; return; }
+    var sf = model && model.surf; if (!sf || !sf.thickAt) { S.why = '두피면 없음(모델에 surf 없음)'; return; }
+    var cmU = 19; try { cmU = modelCmPerUnit() || 19; } catch (e) {}
+    var K = G.layK != null ? G.layK : 1.0, mU = (G.layMarginCm != null ? G.layMarginCm : 0.3) / cmU, rate = G.layRate != null ? G.layRate : 0.5, minH = 0.6 / cmU;
+    var t0 = now(), grav = { x: 0, y: -1, z: 0 };
+    function hOf(p) { var F = sf.onSurf(p), n = sf.normalAt(F); return { h: (p.x - F.x) * n.x + (p.y - F.y) * n.y + (p.z - F.z) * n.z, n: n, F: F }; }
+    (model.strands || []).forEach(function (sd) {
+      var P = sd && sd.pts; if (!P || P.length < 3) return; S.n++;
+      var hT0 = hOf(P[P.length - 1]).h; S.h0.push(hT0);
+      var prev = { x: P[0].x, y: P[0].y, z: P[0].z }, out = [prev], lastT = null, changed = 0, k;
+      for (k = 1; k < P.length; k++) {
+        var vx = P[k].x - P[k - 1].x, vy = P[k].y - P[k - 1].y, vz = P[k].z - P[k - 1].z, l = Math.hypot(vx, vy, vz);
+        if (!(l > 1e-9)) { out.push({ x: prev.x, y: prev.y, z: prev.z }); continue; }
+        var H = hOf(prev), n = H.n, th = 0; try { th = sf.thickAt(H.F); } catch (e) { th = 0; }
+        var hmax = Math.max(minH, th * K + mU), room = Math.max(0, hmax - H.h);
+        var vn = vx * n.x + vy * n.y + vz * n.z, tx = vx - vn * n.x, ty = vy - vn * n.y, tz = vz - vn * n.z, tl = Math.hypot(tx, ty, tz);
+        if (vn > 0 && vn > room * rate) {
+          var vn2 = Math.min(vn, room * rate);
+          if (tl < 0.2 * l) {                                   // 거의 수직 — 앞 마디의 눕는 방향 → 중력을 두피에 눕힌 방향
+            var d = lastT;
+            if (!d) { var gn = grav.x * n.x + grav.y * n.y + grav.z * n.z; d = { x: grav.x - gn * n.x, y: grav.y - gn * n.y, z: grav.z - gn * n.z }; }
+            var dl = Math.hypot(d.x, d.y, d.z); if (!(dl > 1e-9)) d = { x: 1, y: 0, z: 0 }, dl = 1;
+            tx = d.x / dl; ty = d.y / dl; tz = d.z / dl; tl = 1;
+          }
+          var tlen = Math.sqrt(Math.max(l * l - vn2 * vn2, 1e-12)) / tl;
+          vx = tx * tlen + vn2 * n.x; vy = ty * tlen + vn2 * n.y; vz = tz * tlen + vn2 * n.z; changed++;
+        }
+        var nt = Math.hypot(tx, ty, tz); if (nt > 1e-9) lastT = { x: tx / nt, y: ty / nt, z: tz / nt };
+        prev = { x: prev.x + vx, y: prev.y + vy, z: prev.z + vz }; out.push(prev);
+      }
+      if (changed) {                                              // 원래 점 객체에 다른 값이 붙어 있을 수 있어 좌표만 바꿈
+        for (k = 1; k < P.length; k++) { P[k].x = out[k].x; P[k].y = out[k].y; P[k].z = out[k].z; }
+        S.laid++; S.segs += changed;
+      }
+      S.h1.push(hOf(P[P.length - 1]).h);
+    });
+    function q(a, f) { if (!a.length) return NaN; var b = a.slice().sort(function (x, y) { return x - y; }); return b[Math.min(b.length - 1, Math.floor(b.length * f))] * cmU; }
+    S.p90 = [q(S.h0, 0.9), q(S.h1, 0.9)]; S.p99 = [q(S.h0, 0.99), q(S.h1, 0.99)]; S.ms = Math.round(now() - t0); S.h0 = S.h1 = null;
+    console.log('[두께 안으로 눕히기] 가닥 ' + S.n + ' 중 눕힌 ' + S.laid + '(마디 ' + S.segs + ') · 끝 높이(두피에서) p90 ' + S.p90[0].toFixed(1) + '→' + S.p90[1].toFixed(1) + 'cm · p99 ' + S.p99[0].toFixed(1) + '→' + S.p99[1].toFixed(1) + 'cm · 여유 = 두께×' + K + ' + ' + (mU * cmU).toFixed(1) + 'cm(최소 0.6) · ' + S.ms + 'ms (끄기 REGROW.lay=false · 세기 REGROW.layK)');
+  };
   G.trimTails = function (strands) {
     var st = { at: Date.now(), on: !!G.trimTail, strands: strands ? strands.length : 0, cut: 0, cutMid: 0, cutTail: 0, lenMed: 0, lenP90: 0, views: 0, ms: 0, why: '' };
     if (!G.trimTail || !strands || !strands.length) { st.why = G.trimTail ? '가닥 없음' : '꺼짐'; return st; }
