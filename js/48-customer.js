@@ -11,36 +11,92 @@
 var CUSTOMER_UI = (function () {
   'use strict';
   var W = window, TAG = '[고객용]';
-  var C = Object.assign({ on: true, waitMs: 30000, settleMs: 400 }, W.CUSTOMER_UI || {});
+  var C = Object.assign({ on: true, waitMs: 180000, minWaitMs: 800, stableMs: 1500 }, W.CUSTOMER_UI || {});
   if (!C.on) return C;
   function L(ko, en) { try { return typeof uiLang !== 'undefined' && uiLang === 'en' ? en : ko; } catch (e) { return ko; } }
   function sleep(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
 
   // ---- 단계: 조정을 숨기고 3D로 ------------------------------------------------------------------
+  // 조정 화면에 들어가야 도는 계산이 있음 — 고른 스타일 걸기(setupAdjustScreen) · 스타일 없음이면 "다시 기르기"(REGROW)·기준 재기.
+  // 다시 기르기는 조정 화면에 있을 때만 시작되고(17b _afterSetupAdjust · setTimeout 0) 폰에서 수십 초 걸림.
+  // 그래서 조정 화면을 덮개 아래 그대로 열어 두고, ① 할 일이 끝났고 ② 상태가 1.5초 동안 그대로일 때 3D로 넘김.
   var origNav = W.navTo, busy = false;
-  function ready(pend) {
+  function sig() {
+    var R = W.REGROW, a = [];
+    try { a.push(!!state.hair3Dneutral, state.specAppliedId || '', typeof MANNEQUIN !== 'undefined' && MANNEQUIN.on ? 1 : 0); } catch (e) {}
+    try { a.push(R ? [R.on ? 1 : 0, R.building ? 1 : 0, R.model ? (R.model.strands || []).length : 0, R.base ? 1 : 0].join('.') : '-'); } catch (e) {}
+    try { a.push(typeof ADJ_CACHE !== 'undefined' ? ADJ_CACHE.misses : 0); } catch (e) {}
+    try { var N = FLOW_SPEC.nativeState; a.push((N.id || '') + '/' + (N.pending || '')); } catch (e) {}
+    return a.join('|');
+  }
+  function aiBusy() { try { var a = document.getElementById('aiOverlay'); return !!(a && !a.classList.contains('hidden')); } catch (e) { return false; } }
+  function aiText() { try { if (!aiBusy()) return ''; var t = document.getElementById('aiOverlayText'), u = document.getElementById('aiOverlaySub'); return ((t && t.textContent) || '') + (u && u.textContent ? ' · ' + u.textContent : ''); } catch (e) { return ''; } }
+  function done(pend) {
     try {
       if (!state.hair3Dneutral) return false;
-      if (typeof REGROW !== 'undefined' && REGROW.building) return false;
-      if (pend && state.specAppliedId !== pend) return false;
-      return true;
+      if (aiBusy()) return false;                                  // 앱 자체 진행 덮개(다시 기르기 % 등)가 떠 있으면 아직
+      var R = W.REGROW;
+      if (R && R.building) return false;
+      if (pend) {
+        if (state.specAppliedId === pend) return true;
+        // 제 머리 바탕 스타일(spec.base='regrown') — 마네킹을 안 켜서 specAppliedId 대신 FLOW_SPEC.nativeState에 적힘
+        var N = (typeof FLOW_SPEC !== 'undefined' && FLOW_SPEC.nativeState) || null;
+        if (N && N.id === pend && !N.pending) return true;
+        if (N && N.pending !== pend && N.fellBack && state.specAppliedId) return true;   // 마네킹 방식으로 떨어져 걸림
+        return false;
+      }
+      // 스타일 없음 = 다시 기른 내 머리 + 기준까지 들어가야 끝(못 길렀으면 failedFor로 끝)
+      if (R && R.on) return !!(R.model && R.src === state._hair3Dneutral && R.base) || R.failedFor === state._hair3Dneutral;
+      return false;
     } catch (e) { return true; }
   }
-  W.navTo = async function (name) {
-    if (name !== 'adjust') return origNav.apply(this, arguments);
+  var cov = null;
+  function cover(show, noStyle) {
+    if (!cov) {
+      cov = document.createElement('div'); cov.id = 'customerPrepCover';
+      cov.style.cssText = 'position:fixed;inset:0;z-index:9300;background:rgba(27,24,22,0.96);color:#F3E9DA;display:none;flex-direction:column;align-items:center;justify-content:center;padding:24px;text-align:center;';
+      document.body.appendChild(cov);
+      if (!document.getElementById('custSpinCss')) { var st = document.createElement('style'); st.id = 'custSpinCss'; st.textContent = '@keyframes custSpin{to{transform:rotate(360deg)}}'; document.head.appendChild(st); }
+    }
+    if (!show) { cov.style.display = 'none'; return; }
+    cov.innerHTML = '<div style="width:44px;height:44px;border-radius:50%;border:4px solid rgba(243,233,218,.2);border-top-color:#E0A05A;animation:custSpin 1s linear infinite;"></div>'
+      + '<div style="font-size:17px;font-weight:800;margin-top:18px;">' + (noStyle ? L('지금 내 머리를 3D로 만드는 중…', 'Building your current hair in 3D…') : L('스타일을 입히는 중…', 'Applying the style…')) + '</div>'
+      + '<div style="font-size:13.5px;line-height:1.6;opacity:.8;margin-top:10px;max-width:340px;">'
+      + (noStyle ? L('「스타일 미적용」은 지금 내 머리를 그대로 표현해요. 사진 속 머리결을 하나하나 분석하느라 시간이 오래 걸려요(기기에 따라 1분 이상). 잠시만 기다려 주세요.',
+                     '“No style applied” shows your hair as it is now. Analyzing every strand in your photos takes a while (a minute or more on some devices). Please wait.')
+                 : L('잠시만 기다려 주세요.', 'One moment.'))
+      + '</div><div data-el style="font-size:12.5px;opacity:.7;margin-top:14px;"></div>';
+    cov.style.display = 'flex';
+  }
+  function noStyleNow(pend) { try { return !pend && !state.specAppliedId; } catch (e) { return !pend; } }
+  async function prepThen3D(self) {
     if (busy) return;
     busy = true;
     var pend = null; try { pend = state.pendingSpecId || null; } catch (e) {}
+    var noStyle = noStyleNow(pend);
+    cover(true, noStyle);
     try {
-      if (typeof showAI === 'function') showAI(L('스타일을 입히는 중…', 'Applying the style…'), L('잠시만 기다려 주세요', 'One moment'));
-      await origNav.call(this, 'adjust');
-      var t0 = Date.now();
-      while (Date.now() - t0 < C.waitMs && !ready(pend)) await sleep(150);
-      if (!ready(pend)) console.warn(TAG + ' 스타일 적용 대기 시간 초과 — 그대로 3D로 갑니다');
-      await sleep(C.settleMs);
+      await origNav.call(self, 'adjust');
+      var t0 = Date.now(), last = '', since = Date.now(), elT = cov.querySelector('[data-el]');
+      await sleep(C.minWaitMs);                                   // 다시 기르기가 시작될 틈(setTimeout 0 + 첫 조각)
+      while (Date.now() - t0 < C.waitMs) {
+        var g = sig();
+        if (g !== last) { last = g; since = Date.now(); }
+        if (done(pend) && Date.now() - since >= C.stableMs) break;
+        if (elT) { var at = aiText(); elT.textContent = (at ? at + ' · ' : '') + Math.round((Date.now() - t0) / 1000) + L('초', 's'); }
+        await sleep(200);
+      }
+      if (!done(pend)) console.warn(TAG + ' 준비 대기 시간 초과(' + Math.round((Date.now() - t0) / 1000) + '초) — 그대로 3D로 갑니다 · ' + sig());
+      else console.log(TAG + ' 준비 끝 ' + Math.round((Date.now() - t0) / 1000) + '초 — ' + (pend ? '스타일 ' + pend : '스타일 없음(다시 기른 내 머리)') + ' · ' + sig());
     } catch (e) { console.warn(TAG + ' 조정 단계 실패 — 3D로 갑니다', e); }
-    finally { busy = false; try { if (typeof hideAI === 'function') hideAI(); } catch (e) {} }
-    return origNav.call(this, 'model3d');
+    try { return await origNav.call(self, 'model3d'); }
+    finally { busy = false; cover(false); }
+  }
+  W.navTo = async function (name) {
+    var from = ''; try { from = currentScreen; } catch (e) {}
+    // 스타일 화면의 [3D로 보기](= navTo('adjust')) · 아래 3D 탭을 스타일/촬영 화면에서 누른 경우 → 조정 단계를 거쳐 3D로
+    if (name === 'adjust' || (name === 'model3d' && (from === 'style' || from === 'capture'))) return prepThen3D(this);
+    return origNav.apply(this, arguments);
   };
 
   // ---- 헤어 컬러 카드 (접힘 = 색 하나 · 펼침 = 조정) ----------------------------------------------
@@ -93,10 +149,19 @@ var CUSTOMER_UI = (function () {
   };
   C.resetColor = function () { setAll(null); syncUi(); scheduleRebuild(0); };
 
-  function rackW() {
-    try { var b = document.querySelector('#bodyGarmentRack button, #bodyGarmentRack .bb-btn, #bodyGarmentRack > *'); if (b && b.offsetWidth > 40) return b.offsetWidth; } catch (e) {}
-    return 96;
-  }
+  var RACK_W = 112;   // 왼쪽 옷장 버튼 줄 폭(아래 CSS로 고정) — 접힌 컬러 카드도 같은 폭
+  function rackW() { return RACK_W; }
+  /* 옷장 버튼 줄(21 bb-rack) 폭 고정 — 원래는 가장 긴 글자에 맞춰 늘어나서, 쇼핑몰에서 옷을 고르고 나오면
+     "test1(for Woman) · 0 USD" 같은 긴 줄 때문에 버튼이 전부 넓어졌음. 긴 글자는 … 으로 자름.
+     켜진 버튼(.on)이 밝은 무대에서 배경이 어둡게 덮여 글자가 안 보이던 것도 여기서 바로잡음. */
+  (function () {
+    if (document.getElementById('custRackCss')) return;
+    var st = document.createElement('style'); st.id = 'custRackCss';
+    st.textContent = '.bb-rack{width:' + RACK_W + 'px;max-width:' + RACK_W + 'px;}'
+      + '.bb-rack button,.bb-rack .bb-buy{width:100%;box-sizing:border-box;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}'
+      + '.soft-stage .bb-rack button.on,.bb-rack button.on{background:var(--accent);color:#1B1816;}';
+    document.head.appendChild(st);
+  })();
   function panel() {
     var p = document.getElementById('customerColorCard');
     if (p) return p;
@@ -106,7 +171,7 @@ var CUSTOMER_UI = (function () {
     return p;
   }
   function baseCss() {
-    return 'position:absolute;left:10px;bottom:12px;z-index:30;background:rgba(30,26,22,0.86);color:#f3e9da;border-radius:12px;'
+    return 'position:absolute;left:10px;bottom:12px;z-index:15;background:rgba(30,26,22,0.86);color:#f3e9da;border-radius:12px;'
       + 'font-size:12px;line-height:1.4;box-shadow:0 4px 18px rgba(0,0,0,0.25);backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px);';
   }
   function render() {
@@ -173,6 +238,16 @@ var CUSTOMER_UI = (function () {
   if (typeof W.applyStyleSpecAndRender === 'function') {
     var ap = W.applyStyleSpecAndRender;
     W.applyStyleSpecAndRender = function () { var r = ap.apply(this, arguments); later(); return r; };
+  }
+
+  // 「스타일 미적용」을 고르면 오래 걸린다고 먼저 알림
+  if (typeof W.selectNoStyle === 'function') {
+    var sns = W.selectNoStyle;
+    W.selectNoStyle = function () {
+      var r = sns.apply(this, arguments);
+      try { if (typeof showToast === 'function') showToast(L('지금 내 머리를 그대로 표현해요 — 분석 때문에 3D까지 시간이 오래 걸려요', 'Shows your hair as it is now — analysis makes 3D take a while')); } catch (e) {}
+      return r;
+    };
   }
 
   // ---- 디자이너 기능 숨김 ------------------------------------------------------------------------
