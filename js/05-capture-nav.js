@@ -905,6 +905,56 @@ var SHOT360 = (function () {
     for (i = 0; i < w * h; i++) g[i] = d[i * 4] * 0.3 + d[i * 4 + 1] * 0.59 + d[i * 4 + 2] * 0.11;
     cv.width = 0; return { g: g, w: w, h: h };
   }
+  /* ── (2026-11-24 noise) 잡음 지도 — 연속 프레임을 맞춘 뒤 같은 픽셀의 밝기가 프레임마다 얼마나 흔들리는가
+   *  사용자: "덜 흔들린 사진을 고르는데, 거기서 값도 측정해둘 수 있나?" — 결읽기 없이 픽셀 비교만으로 잼.
+   *  프레임 간 흔들림 = 센서 잡음 + 덜 맞은 움직임(걸으며 찍어 머리 앞뒤가 다르게 움직임 · 머리카락 흔들림).
+   *  둘을 가르는 법: 덜 맞은 움직임은 밝기 기울기가 큰 자리에서만 커짐(어긋난 px × 기울기).
+   *   ① 밝기 구간(noiseBins개)마다 <b>기울기가 낮은 30%</b> 픽셀의 흔들림 중앙값 = 그 밝기의 순수 잡음 σ(L) (잡음은 밝기에 따라 다름 — 어두운 데가 큼)
+   *   ② 칸(noiseCell px)마다: 잡음 = σ(칸 평균 밝기) · 움직임 = √max(0, 칸 흔들림² − 잡음²)
+   *  저장: entry.noise = { G, gw, gh, W, H, n, curve, sig(한 장 σ 중앙), sigMean(평균 사진 σ = sig/√n), noise[], motion[], motionPct }
+   *   · 쓰는 쪽: 결읽기에서 방향 오차 ≈ 잡음 ÷ 기울기 크기. <b>평균 사진을 쓰므로 sigMean 쪽 배율(÷√n)</b>을 곱해 쓸 것(noise[]는 한 장 기준).
+   *   · motion이 큰 칸 = 평균이 흐려졌을 수 있는 자리(평균 대신 첫 장을 쓰는 것은 다음 단계).
+   *  ⚠ 첫 장 말고는 소수점 이동(이중선형)이라 흔들림이 약간 작게 잡힘(최대 ~25%) — 잡음을 낮게 볼 수는 있어도 높게 보지는 않음.
+   *  끄기 SHOT360.noise=false · 진단 state.shots360.frames[i].noise · SHOT360._noiseFor(url) */
+  function burstNoise(sY, sY2, cnt, n, W, H) {
+    if (n < 3) return null;                                    // 두 장으로는 흔들림을 믿을 수 없음
+    var NB = Q.noiseBins || 8, G = Q.noiseCell || 16, N = W * H, i, x, y;
+    var M = new Float32Array(N), V = new Float32Array(N);
+    for (i = 0; i < N; i++) { if (cnt[i] === n) { var m = sY[i] / n; M[i] = m; V[i] = Math.max(0, (sY2[i] - sY[i] * m) / (n - 1)); } else M[i] = -1; }
+    var bins = []; for (i = 0; i < NB; i++) bins.push([]);
+    for (y = 1; y < H - 1; y += 2) for (x = 1; x < W - 1; x += 2) {
+      i = y * W + x; if (M[i] < 0 || M[i - 1] < 0 || M[i + 1] < 0 || M[i - W] < 0 || M[i + W] < 0) continue;
+      var gx = M[i + 1] - M[i - 1], gy = M[i + W] - M[i - W];
+      bins[Math.min(NB - 1, (M[i] * NB / 256) | 0)].push([gx * gx + gy * gy, V[i]]);
+    }
+    var curve = new Array(NB), have = [];
+    for (i = 0; i < NB; i++) {
+      var B = bins[i]; if (B.length < 200) { curve[i] = null; continue; }
+      B.sort(function (p, q) { return p[0] - q[0]; });
+      var low = B.slice(0, Math.max(50, Math.round(B.length * 0.3))).map(function (p) { return p[1]; }).sort(function (p, q) { return p - q; });
+      curve[i] = Math.sqrt(low[low.length >> 1]); have.push(i);
+    }
+    bins = null;
+    if (!have.length) return null;
+    for (i = 0; i < NB; i++) if (curve[i] == null) {          // 빈 밝기 구간은 가까운 구간 값
+      var bj = have[0]; have.forEach(function (j) { if (Math.abs(j - i) < Math.abs(bj - i)) bj = j; }); curve[i] = curve[bj];
+    }
+    var gw = Math.ceil(W / G), gh = Math.ceil(H / G), NZ = new Array(gw * gh), MO = new Array(gw * gh), sigs = [], mov = 0, val = 0;
+    for (var cy = 0; cy < gh; cy++) for (var cx = 0; cx < gw; cx++) {
+      var sm = 0, sv = 0, k = 0;
+      for (y = cy * G; y < Math.min(H, cy * G + G); y += 2) for (x = cx * G; x < Math.min(W, cx * G + G); x += 2) { i = y * W + x; if (M[i] >= 0) { sm += M[i]; sv += V[i]; k++; } }
+      var c = cy * gw + cx;
+      if (k < 8) { NZ[c] = null; MO[c] = null; continue; }
+      var lb = (sm / k) * NB / 256, b0 = Math.max(0, Math.min(NB - 1, Math.floor(lb - 0.5))), b1 = Math.min(NB - 1, b0 + 1), t = Math.max(0, Math.min(1, lb - 0.5 - b0));
+      var s = curve[b0] * (1 - t) + curve[b1] * t, mo = Math.sqrt(Math.max(0, sv / k - s * s));
+      NZ[c] = +s.toFixed(2); MO[c] = +mo.toFixed(1); sigs.push(s); val++;
+      if (mo > Math.max(3 * s, 4)) mov++;                      // 잡음보다 확실히 큰 흔들림 = 움직임
+    }
+    sigs.sort(function (p, q) { return p - q; });
+    var sig = sigs.length ? sigs[sigs.length >> 1] : 0;
+    return { v: 1, G: G, gw: gw, gh: gh, W: W, H: H, n: n, curve: curve.map(function (v) { return +v.toFixed(2); }),
+      sig: +sig.toFixed(2), sigMean: +(sig / Math.sqrt(n)).toFixed(2), noise: NZ, motion: MO, motionPct: val ? Math.round(100 * mov / val) : 0 };
+  }
   function burstMerge(b) {
     try {
       var t0 = Date.now(), F = b.frames, n = F.length, W0 = F[0].width, H0 = F[0].height, k = Math.min(1, Q.burstSmall / Math.max(W0, H0));
@@ -924,17 +974,22 @@ var SHOT360 = (function () {
       var use = [0]; for (i = 1; i < n; i++) if (!sh[i].edge && sh[i].e <= eMin * Q.burstRej && b.sharp[i] >= b.sharp[0] * Q.burstSharp) use.push(i);
       if (use.length < 2) { burstLog.push(b.t + '° 1장(맞는 프레임 없음)'); return; }
       var ctx0 = F[0].getContext('2d', { willReadFrequently: true }), out = ctx0.getImageData(0, 0, W0, H0), O = out.data, acc = new Float32Array(W0 * H0 * 3), cnt = new Uint8Array(W0 * H0);
+      var doNz = Q.noise !== false, sY = doNz ? new Float32Array(W0 * H0) : null, sY2 = doNz ? new Float32Array(W0 * H0) : null;   // (2026-11-24 noise) 밝기 합·제곱합 — 프레임 간 흔들림
       use.forEach(function (fi) {
         var D = F[fi].getContext('2d', { willReadFrequently: true }).getImageData(0, 0, W0, H0).data, sx = sh[fi].dx, sy = sh[fi].dy, ix = Math.floor(sx), iy = Math.floor(sy), ax = sx - ix, ay = sy - iy, x, y;
         for (y = 0; y < H0; y++) { var yy = y + iy; if (yy < 0 || yy + 1 >= H0) continue; for (x = 0; x < W0; x++) { var xx = x + ix; if (xx < 0 || xx + 1 >= W0) continue;
           var p00 = (yy * W0 + xx) * 4, p10 = p00 + 4, p01 = p00 + W0 * 4, p11 = p01 + 4, o = y * W0 + x, w00 = (1 - ax) * (1 - ay), w10 = ax * (1 - ay), w01 = (1 - ax) * ay, w11 = ax * ay;
-          acc[o * 3] += D[p00] * w00 + D[p10] * w10 + D[p01] * w01 + D[p11] * w11; acc[o * 3 + 1] += D[p00 + 1] * w00 + D[p10 + 1] * w10 + D[p01 + 1] * w01 + D[p11 + 1] * w11; acc[o * 3 + 2] += D[p00 + 2] * w00 + D[p10 + 2] * w10 + D[p01 + 2] * w01 + D[p11 + 2] * w11; cnt[o]++; } }
+          var vr = D[p00] * w00 + D[p10] * w10 + D[p01] * w01 + D[p11] * w11, vg = D[p00 + 1] * w00 + D[p10 + 1] * w10 + D[p01 + 1] * w01 + D[p11 + 1] * w11, vb = D[p00 + 2] * w00 + D[p10 + 2] * w10 + D[p01 + 2] * w01 + D[p11 + 2] * w11;
+          acc[o * 3] += vr; acc[o * 3 + 1] += vg; acc[o * 3 + 2] += vb; cnt[o]++;
+          if (sY) { var lv = vr * 0.299 + vg * 0.587 + vb * 0.114; sY[o] += lv; sY2[o] += lv * lv; } } }
       });
+      var nz = null; if (sY) { try { nz = burstNoise(sY, sY2, cnt, use.length, W0, H0); } catch (e) { nz = null; } sY = sY2 = null; }
       for (i = 0; i < W0 * H0; i++) if (cnt[i]) { O[i * 4] = acc[i * 3] / cnt[i]; O[i * 4 + 1] = acc[i * 3 + 1] / cnt[i]; O[i * 4 + 2] = acc[i * 3 + 2] / cnt[i]; }
       ctx0.putImageData(out, 0, 0);
       var url = F[0].toDataURL('image/jpeg', Q.jpeg);
-      if (got[b.t] === b.entry) { b.entry.url = url; b.entry.burst = use.length; }
-      burstLog.push(b.t + '° ' + use.length + '/' + n + '장(이동 ' + use.map(function (fi) { return Math.round(Math.hypot(sh[fi].dx, sh[fi].dy)); }).join('·') + 'px · ' + (Date.now() - t0) + 'ms)');
+      if (got[b.t] === b.entry) { b.entry.url = url; b.entry.burst = use.length; if (nz) b.entry.noise = nz; }
+      burstLog.push(b.t + '° ' + use.length + '/' + n + '장(이동 ' + use.map(function (fi) { return Math.round(Math.hypot(sh[fi].dx, sh[fi].dy)); }).join('·') + 'px · ' + (Date.now() - t0) + 'ms' +
+        (nz ? ' · 잡음 한 장 σ ' + nz.sig + ' → 평균 ' + nz.sigMean + ' · 움직임 칸 ' + nz.motionPct + '%' : '') + ')');
     } catch (e) { burstLog.push(b.t + '° 실패 ' + (e && e.message)); }
     finally { b.frames.forEach(function (c) { c.width = 0; c.height = 0; }); }
   }
@@ -1134,6 +1189,14 @@ var SHOT360 = (function () {
     } catch (e) {}
     return null;
   };
+  /* (2026-11-24 noise) 세트에서 그 사진(칸 사진 url)의 잡음 지도 — 결읽기(04)·가닥 다듬기(17b)가 부를 자리. 없으면 null */
+  Q._noiseFor = function (url) {
+    try {
+      var set = typeof state !== 'undefined' && state.shots360, fr = set && set.frames, i;
+      if (fr && url) for (i = 0; i < fr.length; i++) if (fr[i] && fr[i].noise && fr[i].url === url) return fr[i].noise;
+    } catch (e) {}
+    return null;
+  };
   function faceVote() {             // 얼굴이 보이는 구간에서 "센서 + 방향 = 손님의 왼쪽인가"를 맞춰 봄
     if (Q.sign || typeof detectPoseOnCanvas !== 'function') return;
     var a = Math.abs(cur); if (a < 10 || a > 55) return;
@@ -1238,7 +1301,7 @@ var SHOT360 = (function () {
     burstFlush();                   // (2026-11-08) 뒤에서 평균 중인 칸 마무리
     var keys = Object.keys(got);
     if (keys.length < 4) { toast('사진이 모자랍니다 — 정면·양옆·뒤가 다 찍혀야 해요'); return; }
-    var s = appSign(), frames = keys.map(function (k) { var f = got[k]; return { deg: wrap(s * f.raw), url: f.url, sharp: Math.round(f.sharp), time: f.time, w: f.w, h: f.h, zoom: f.zoom, _hA: f.hA, _gA: f.gA }; });
+    var s = appSign(), frames = keys.map(function (k) { var f = got[k], o = { deg: wrap(s * f.raw), url: f.url, sharp: Math.round(f.sharp), time: f.time, w: f.w, h: f.h, zoom: f.zoom, _hA: f.hA, _gA: f.gA }; if (f.noise) o.noise = f.noise; if (f.burst) o.burst = f.burst; return o; });   // (2026-11-24 noise) 잡음 지도도 세트에
     var fz = null, loop = null;
     /* (2026-11-16 loop) 출발 정면 + 한 바퀴 돌아온 정면 → 회전량 비례로 각도 고침 */
     try {
@@ -1300,6 +1363,12 @@ var SHOT360 = (function () {
       var hm = []; [got, sides, fronts].forEach(function (o) { Object.keys(o).forEach(function (k2) { var e2 = o[k2]; if (e2 && e2.hd && e2.url) hm.push(e2); }); });
       frames.forEach(function (f) { for (var hi = 0; hi < hm.length; hi++) if (hm[hi].url === f.url) { f.hd = hm[hi].hd; hdN++; if (f.hd.n > 1) hdSr++; break; } });
       if (Q.hd !== false) console.log(TAG + ' 머리 조각 ' + hdN + '/' + frames.length + '장(여러 장 쌓음 ' + hdSr + ') · 영상 ' + (vid ? vid.videoWidth + '×' + vid.videoHeight : '-') + (hm[0] ? ' · 조각 ' + hm[0].hd.pw + '×' + hm[0].hd.ph + '(영상의 ×' + hm[0].hd.k + ')' : '') + ' · 카메라 배율 ' + (Q.cam.zoom || '-') + (hdLim().low ? ' · 저사양 한도' : ''));
+    } catch (e) {}
+    try {                                                                      // (2026-11-24 noise) 잡음 지도 진단
+      var nzF = frames.filter(function (f) { return f.noise; }), nzS = nzF.map(function (f) { return f.noise.sig; }).sort(function (a, b) { return a - b; });
+      var noNz = frames.filter(function (f) { return !f.noise && (f.front || f.sideAnchor); }).map(function (f) { return f.front ? '정면' : '±45°(' + f.sideAnchor + ')'; });
+      if (Q.noise !== false) console.log(TAG + ' 잡음 지도 ' + nzF.length + '/' + frames.length + '장' + (nzS.length ? ' · 한 장 σ 중앙 ' + nzS[nzS.length >> 1] + '(범위 ' + nzS[0] + '~' + nzS[nzS.length - 1] + ')' : '') +
+        (noNz.length ? ' · ⚠ 얼굴로 고른 ' + noNz.join('·') + ' 장은 연속 프레임이 없어 평균·잡음 지도 없음' : '') + ' (끄기 SHOT360.noise=false)');
     } catch (e) {}
     var set = { version: 1, at: Date.now(), cam: { vw: vid ? vid.videoWidth : 0, vh: vid ? vid.videoHeight : 0, zoom: Q.cam.zoom || null, widest: Q.widest === true, hd: hdN, hdStacked: hdSr }, stepDeg: Q.stepDeg, sign: s, signAuto: !Q.sign && !userFlip && signN >= 2, sensor: sensorOk, frames: frames, frontSeek: fz, loop: loop };
     if (loop) console.log(TAG + ' 0°↔360° 맞춤(' + (loop.src === 'gyro' ? '자이로 회전량' : '방위 누적') + ') — 출발 정면 yaw ' + loop.yaw0 + '° · 돌아온 정면 yaw ' + loop.yaw1 + '° · 센서 ' + loop.sensorDeg + '° / 진짜 ' + loop.trueDeg + '° → 표류 ' + loop.drift + '°를 돈 양 비례로 나눔(×' + loop.scale + ') · ' + loop.sec + '초' +
