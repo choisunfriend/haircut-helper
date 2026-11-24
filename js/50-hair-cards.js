@@ -1,5 +1,5 @@
 // ============================================================================
-// 50-hair-cards.js (2026-11-24 v2) — 할 일 3: 사진 픽셀 띠를 3D 가닥 리본(헤어 카드)에 입힘
+// 50-hair-cards.js (2026-11-24 v4) — 할 일 3: 사진 픽셀 띠를 3D 가닥 리본(헤어 카드)에 입힘
 // ============================================================================
 // ⚠ 출원 후보(「GYEOL 헤어 3D 다음 할 일」 6장) — 출원 전에는 공개 레포에 커밋하지 말 것.
 //
@@ -46,6 +46,8 @@ var HAIR_CARDS = (function () {
     dMin: 0.78, dMax: 1.12,
     rootFade: 0.12, tipFade: 0.10,
     edgeDark: 0.15,      // 리본 폭 방향 가장자리 살짝 어둡게(원통 느낌)
+    bandMul: 0,          // (v4) 리본 위 인공 빛 띠 세기(46 값 × 이것). 기본 0 = 사진 픽셀 명암만. v2(=1)에서 곱슬 가닥이 군데군데 하얗게 뜸
+    bandTint: 0.55,      // (v3) 1차 띠를 머리색 쪽으로 섞는 비율(0 = 순백)
     stripPx: 8, CELL_W: 16, CELL_H: 256,
     hiPass: 14,          // 고역 통과 이동평균 반경(행)
     minRowCover: 0.7,    // 이 비율보다 불투명 픽셀이 적은 행은 버림
@@ -217,7 +219,7 @@ var HAIR_CARDS = (function () {
     '}'].join('\n');
   var FS = [
     'uniform sampler2D uAtlas; uniform float uDetail; uniform float uDMin; uniform float uDMax; uniform float uRootFade; uniform float uTipFade; uniform float uEdge;',
-    'uniform float uBands; uniform vec3 uHL; uniform vec3 uHB1; uniform vec3 uHB2; uniform float uHKd;',
+    'uniform float uBands; uniform float uBandMul; uniform float uBandTint; uniform vec3 uHL; uniform vec3 uHB1; uniform vec3 uHB2; uniform float uHKd;',
     'varying vec2 vSt; varying vec4 vRect; varying vec3 vColor; varying float vAlong; varying float vOcc; varying vec3 vT; varying vec3 vV;',
     'float hairBand(float d, vec3 b){ float x = clamp(d + b.x, -1.0, 1.0); return pow(sqrt(max(0.0, 1.0 - x*x)), b.y) * b.z; }',
     'void main(){',
@@ -230,7 +232,8 @@ var HAIR_CARDS = (function () {
     '  if (uBands > 0.5) {',
     '    vec3 hT = normalize(vT); vec3 hV = normalize(vV); vec3 hH = normalize(uHL + hV);',
     '    float hD = dot(hT, hH); float hDl = dot(hT, uHL);',
-    '    col = col * mix(1.0, sqrt(max(0.0, 1.0 - hDl*hDl)), uHKd) + vOcc * vOcc * d * (vec3(hairBand(hD, uHB1)) + hairBand(hD, uHB2) * vColor * 1.6);',
+    '    vec3 w1 = mix(vec3(1.0), clamp(vColor * 2.2, 0.0, 1.0), uBandTint);',
+    '    col = col * mix(1.0, sqrt(max(0.0, 1.0 - hDl*hDl)), uHKd) + uBandMul * (1.0 - ex * ex) * vOcc * vOcc * d * (w1 * hairBand(hD, uHB1) + hairBand(hD, uHB2) * vColor * 1.6);',
     '  }',
     '  gl_FragColor = vec4(col, 1.0);',
     '}'].join('\n');
@@ -239,7 +242,7 @@ var HAIR_CARDS = (function () {
     var P = W.HAIR_SHADE_PRO, B = P && P.on && P.bands && P.bands.on ? P.bands : null;
     var L = B ? B.light : [0, 1, 0], ll = Math.hypot(L[0], L[1], L[2]) || 1;
     return {
-      uBands: { value: B ? 1 : 0 },
+      uBands: { value: B ? 1 : 0 }, uBandMul: { value: HC.bandMul }, uBandTint: { value: HC.bandTint },
       uHL: { value: new THREE.Vector3(L[0] / ll, L[1] / ll, L[2] / ll) },
       uHB1: { value: new THREE.Vector3(B ? B.shift1 : 0, B ? B.pow1 : 1, B ? B.k1 : 0) },
       uHB2: { value: new THREE.Vector3(B ? B.shift2 : 0, B ? B.pow2 : 1, B ? B.k2 : 0) },
@@ -320,7 +323,7 @@ var HAIR_CARDS = (function () {
   function apply() {
     var o = hairObj();
     if (!HC.on || !o) { if (mine) { remove(); dirty(); } lastSig = ''; return; }
-    var sg = sigOf(o) + '|' + [HC.widthCm, HC.maxCards, HC.detail, HC.dMin, HC.dMax, HC.minPx].join(',');
+    var sg = sigOf(o) + '|' + [HC.widthCm, HC.maxCards, HC.detail, HC.dMin, HC.dMax, HC.minPx, HC.bandMul, HC.bandTint].join(',');
     if (sg === lastSig && mine && mine.parent) {
       mine.visible = o.visible;
       mine.position.copy(o.position); mine.quaternion.copy(o.quaternion); mine.scale.copy(o.scale);
