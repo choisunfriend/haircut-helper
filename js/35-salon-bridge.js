@@ -100,6 +100,17 @@ function salonL(ko, en) { try { return typeof uiLang !== 'undefined' && uiLang =
       return reply(ev, { id: rawId, ok: false, error: salonL('이 버전의 GYEOL 은 스타일 입어 보기를 지원하지 않아요', 'This GYEOL version cannot try on styles') });
     }
     STYLE_SPECS[key] = spec;
+    /* (2026-11-24) spec.base = 앱 기본 스타일 id(예: 'layered_bob_hush') → 그 스타일의 렌더 보정(17a STYLE_TUNES:
+       browCut·hullPad·layerHi·tipAt …)을 미용실 스타일에도 그대로 건다. STYLE_TUNES는 스타일 id로 찾는데
+       미용실 스타일은 'salon_<id>'라 보정이 하나도 안 걸려 앞머리가 눈을 덮었다.
+       같은 객체를 가리키므로 레포에서 보정값을 고치면 지도 스타일에도 따라 들어간다. */
+    try {
+      const base = typeof spec.base === 'string' ? spec.base : '';
+      if (typeof STYLE_TUNES !== 'undefined') {
+        if (base && Object.prototype.hasOwnProperty.call(STYLE_TUNES, base)) STYLE_TUNES[key] = STYLE_TUNES[base];
+        else delete STYLE_TUNES[key];
+      }
+    } catch (e) {}
     if (SALON_BRIDGE.closeAfterApply) closeShopPanel();
 
     // 앱의 정석 순서를 그대로 타되, 중간 화면은 안 보이고 바로 3D 전신으로:
