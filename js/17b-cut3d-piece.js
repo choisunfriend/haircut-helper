@@ -3079,7 +3079,7 @@ var REGROW = (function () {
     }
 
     /* ③ 두께 지도 */
-    var T = new Float32Array(NC), known = new Uint8Array(NC), tStat = { measured: 0, filled: 0, zero: 0 };
+    var T = new Float32Array(NC), known = new Uint8Array(NC), tStat = { measured: 0, filled: 0, zero: 0 }, thickRaw = null, thickSrc = null;
     function buildThickness() {
       var r, c, i, ph, th, sp, n, h, miss, last, v, got;
       for (r = 0; r < NP; r++) for (c = 0; c < NT; c++) {
@@ -3096,6 +3096,7 @@ var REGROW = (function () {
         if (got) { T[i] = last; known[i] = 1; tStat.measured++; if (last <= 0) tStat.zero++; }
         else known[i] = 0;                                   // 끝까지 안 벗어남 = 이 방향은 사진이 두께를 못 잼
       }
+      try { thickRaw = new Float32Array(T); thickSrc = new Uint8Array(known); } catch (eTR) {}   // (2026-11-24 tdiag) 메우기·고르기 전 윤곽 실측 그대로(진단용)
       // 못 잰 칸은 잰 이웃으로 메움
       var it, any, tmp = new Float32Array(NC), k2 = new Uint8Array(NC), dr, dc, rr, cc, j, sum, cnt;
       for (it = 0; it < 64; it++) {
@@ -3170,6 +3171,22 @@ var REGROW = (function () {
     } catch (e) { LIFT = null; }
     G.liftStat = LIFT ? { ok: LIFT.ok, n: LIFT.n, pts: LIFT.pts, strands: LIFT.strands, fill: LIFT.fill || 0, ms: LIFT.ms } : { why: G.layerOuter !== 'lift' ? '꺼짐' : '옮긴 점 없음' };
     function liftLim(p) { if (!LIFT) return 0; var bi = LIFT.bin(p.x, p.y - CY, p.z); return bi < 0 ? 0 : LIFT.R[bi]; }
+    /* (2026-11-24 tdiag) 두께 칸 진단 — 사용자: "두께를 잘못잰 칸은 어떻게 알아?" · 바로잡기 전에 숫자로 보려고 칸마다 남김(바꾸는 것 없음).
+     *  칸마다: raw = 윤곽선으로 잰 두께(메우기·고르기 전 · src 1 잰 칸 / 0 못 잼 / 2 두피 밖) · used = 실제 쓰는 두께(메움·고름 뒤)
+     *          lift = 사진 가닥 점이 그 방향에서 실제로 놓인 높이(LIFT 겉면 − 두피 · 없으면 NaN) — 윤곽과 독립된 두 번째 측정
+     *  보는 법·내보내기: REGROW.thickDiag() · REGROW.thickExport() (가닥 쪽 뻗침 수는 G.layDown이 칸마다 채움) */
+    function makeThickDiag() { try {
+      var tdCm = 19; try { tdCm = modelCmPerUnit() || 19; } catch (e) {}
+      var TD = { NT: NT, NP: NP, cm: tdCm, raw: new Float32Array(NC), src: new Uint8Array(NC), used: new Float32Array(NC), lift: new Float32Array(NC), at: Date.now() };
+      for (var tdi = 0; tdi < NC; tdi++) {
+        var tdr = Math.floor(tdi / NT), tdc = tdi % NT, tph = (tdr + 0.5) / NP * Math.PI, tth = (tdc + 0.5) / NT * 2 * Math.PI - Math.PI;
+        var tsp = { x: Es.a * Math.sin(tph) * Math.sin(tth), y: CY + Es.b * Math.cos(tph), z: Es.c * Math.sin(tph) * Math.cos(tth) };
+        TD.raw[tdi] = thickRaw ? thickRaw[tdi] * tdCm : NaN; TD.src[tdi] = thickSrc ? thickSrc[tdi] : 255; TD.used[tdi] = T[tdi] * tdCm;
+        var tl = liftLim(tsp), trs = Math.hypot(tsp.x, tsp.y - CY, tsp.z);
+        TD.lift[tdi] = tl > 0 ? (tl - trs) * tdCm : NaN;
+      }
+      G.thickCells = TD;
+    } catch (eTD) { G.thickCells = { err: String(eTD && eTD.message || eTD) }; } }
 
     var info;
     /* 길이 상한·색 팔레트 — 원본 사진 가닥에서 */
@@ -4242,8 +4259,9 @@ var REGROW = (function () {
       step: function (budget) {
         var t = now();
         if (!thickDone) {
-          if (SC && SC.T) { T.set(SC.T); known.set(SC.known); tStat.measured = SC.tStat.measured; tStat.filled = SC.tStat.filled; tStat.zero = SC.tStat.zero; }   // (2026-11-01) 재사용
-          else { buildThickness(); if (scOut) { scOut.T = new Float32Array(T); scOut.known = new Uint8Array(known); scOut.tStat = { measured: tStat.measured, filled: tStat.filled, zero: tStat.zero }; } }
+          if (SC && SC.T) { T.set(SC.T); known.set(SC.known); tStat.measured = SC.tStat.measured; tStat.filled = SC.tStat.filled; tStat.zero = SC.tStat.zero; thickRaw = SC.tRaw || null; thickSrc = SC.tSrc || null; }   // (2026-11-01) 재사용
+          else { buildThickness(); if (scOut) { scOut.T = new Float32Array(T); scOut.known = new Uint8Array(known); scOut.tStat = { measured: tStat.measured, filled: tStat.filled, zero: tStat.zero }; scOut.tRaw = thickRaw; scOut.tSrc = thickSrc; } }
+          makeThickDiag();                                       // (2026-11-24 tdiag) 두께 칸 진단(바꾸는 것 없음)
           thickDone = true; return 0.08;
         }
         while (cell < NC && now() - t < budget) {
@@ -4331,7 +4349,7 @@ var REGROW = (function () {
         var WFf = null; try { if (WFb) { var tWf = now(); WFf = WFb.finish(); S.wf = { known: WFf.known, n: WFf.nx * WFf.ny * WFf.nz, ampCm: WFf.ampU * cm, ampHiCm: WFf.ampHi * cm, strands: WFf.strands, samples: WFf.samples, ms: Math.round(now() - tWf), cellCm: G.waveCellCm }; } } catch (e) { WFf = null; console.warn(TAG + ' 굴곡 장 만들기 실패(없이 진행)', e); }
         return { strands: out, viewCal: photo.viewCal, yTop: photo.yTop, CY: photo.CY, field: photo.field || null, occ: photo.occ || null,
           grid: photo.grid, roots: photo.roots, mannequin: false, regrown: true, rgInfo: info, waveField: WFf,
-          surf: { onSurf: onSurf, normalAt: normalAt, thickAt: thickAt } };   // (2026-11-24 lay) 기른 뒤 눕히기(G.layDown)가 같은 두피면·두께를 씀
+          surf: { onSurf: onSurf, normalAt: normalAt, thickAt: thickAt, cellOf: cellOf } };   // (2026-11-24 lay) 기른 뒤 눕히기(G.layDown)가 같은 두피면·두께를 씀
       }
     };
   }
@@ -4927,10 +4945,17 @@ var REGROW = (function () {
     var cmU = 19; try { cmU = modelCmPerUnit() || 19; } catch (e) {}
     var K = G.layK != null ? G.layK : 1.0, mU = (G.layMarginCm != null ? G.layMarginCm : 0.3) / cmU, rate = G.layRate != null ? G.layRate : 0.5, minH = 0.6 / cmU;
     var t0 = now(), grav = { x: 0, y: -1, z: 0 };
+    var TDc = G.thickCells && G.thickCells.raw ? G.thickCells : null, NCc = TDc ? TDc.NT * TDc.NP : 0;   // (2026-11-24 tdiag) 칸마다 뻗친 가닥 수(눕히기 전/후)
+    if (TDc) { TDc.spike0 = new Uint16Array(NCc); TDc.spike1 = new Uint16Array(NCc); TDc.strands = new Uint16Array(NCc); }
+    function isSpike(P) {                                          // 끝 방향이 두피 바깥(법선·방향 > 0.7) + 끝이 두피에서 1.2cm 넘게 뜸
+      var m = P.length, a = P[m - 1], b = P[Math.max(0, m - 4)], H = hOf(a), dx = a.x - b.x, dy = a.y - b.y, dz = a.z - b.z, l = Math.hypot(dx, dy, dz);
+      return l > 1e-9 && (dx * H.n.x + dy * H.n.y + dz * H.n.z) / l > 0.7 && H.h * cmU > 1.2;
+    }
     function hOf(p) { var F = sf.onSurf(p), n = sf.normalAt(F); return { h: (p.x - F.x) * n.x + (p.y - F.y) * n.y + (p.z - F.z) * n.z, n: n, F: F }; }
     (model.strands || []).forEach(function (sd) {
       var P = sd && sd.pts; if (!P || P.length < 3) return; S.n++;
       var hT0 = hOf(P[P.length - 1]).h; S.h0.push(hT0);
+      var ci = -1; if (TDc && sf.cellOf) { try { ci = sf.cellOf(P[0]); } catch (e) { ci = -1; } if (ci >= 0 && ci < NCc) { TDc.strands[ci]++; if (isSpike(P)) TDc.spike0[ci]++; } else ci = -1; }
       var prev = { x: P[0].x, y: P[0].y, z: P[0].z }, out = [prev], lastT = null, changed = 0, k;
       for (k = 1; k < P.length; k++) {
         var vx = P[k].x - P[k - 1].x, vy = P[k].y - P[k - 1].y, vz = P[k].z - P[k - 1].z, l = Math.hypot(vx, vy, vz);
@@ -4957,10 +4982,52 @@ var REGROW = (function () {
         S.laid++; S.segs += changed;
       }
       S.h1.push(hOf(P[P.length - 1]).h);
+      if (ci >= 0 && isSpike(P)) TDc.spike1[ci]++;
     });
     function q(a, f) { if (!a.length) return NaN; var b = a.slice().sort(function (x, y) { return x - y; }); return b[Math.min(b.length - 1, Math.floor(b.length * f))] * cmU; }
     S.p90 = [q(S.h0, 0.9), q(S.h1, 0.9)]; S.p99 = [q(S.h0, 0.99), q(S.h1, 0.99)]; S.ms = Math.round(now() - t0); S.h0 = S.h1 = null;
+    try { if (TDc) console.log(G.thickDiag().join('\n')); } catch (eTd) {}
     console.log('[두께 안으로 눕히기] 가닥 ' + S.n + ' 중 눕힌 ' + S.laid + '(마디 ' + S.segs + ') · 끝 높이(두피에서) p90 ' + S.p90[0].toFixed(1) + '→' + S.p90[1].toFixed(1) + 'cm · p99 ' + S.p99[0].toFixed(1) + '→' + S.p99[1].toFixed(1) + 'cm · 여유 = 두께×' + K + ' + ' + (mU * cmU).toFixed(1) + 'cm(최소 0.6) · ' + S.ms + 'ms (끄기 REGROW.lay=false · 세기 REGROW.layK)');
+  };
+  /* (2026-11-24 tdiag) 두께 칸 진단 — 윤곽 두께(raw)를 두 번째 측정(lift)·이웃과 대조. 바꾸는 것 없음(보기만) */
+  G.thickDiag = function () {
+    var D = G.thickCells, L = [];
+    if (!D || !D.raw) return ['[두께 진단] 없음' + (D && D.err ? ' ⚠ ' + D.err : ' — 다시 기르기 뒤에 부르세요')];
+    var NT = D.NT, NP = D.NP, NC = NT * NP, i, r, c, dr, dc, j, v, nb, med = function (a) { if (!a.length) return NaN; a.sort(function (x, y) { return x - y; }); return a[a.length >> 1]; };
+    var cnt = { meas: 0, miss: 0, off: 0, both: 0, liftBig: 0, rawBig: 0, nbOut: 0 }, flagA = new Uint8Array(NC), flagB = new Uint8Array(NC), ratios = [];
+    for (i = 0; i < NC; i++) {
+      if (D.src[i] === 2) { cnt.off++; continue; } if (D.src[i] !== 1) { cnt.miss++; continue; } cnt.meas++;
+      var rw = D.raw[i], lf = D.lift[i];
+      if (lf === lf) { cnt.both++; ratios.push((rw + 0.1) / (Math.max(0, lf) + 0.1));
+        if (rw > 2 * Math.max(0, lf) + 0.5) { flagA[i] = 1; cnt.rawBig++; }            // ① 윤곽만 두꺼움(가닥은 두피 가까이)
+        if (lf > 2 * rw + 0.5) cnt.liftBig++; }                                        //    (반대: 가닥이 윤곽보다 높음 — 참고)
+      r = Math.floor(i / NT); c = i % NT; nb = [];
+      for (dr = -1; dr <= 1; dr++) for (dc = -1; dc <= 1; dc++) { if (!dr && !dc) continue; var rr = r + dr; if (rr < 0 || rr >= NP) continue; j = rr * NT + ((c + dc + NT) % NT); if (D.src[j] === 1) nb.push(D.raw[j]); }
+      if (nb.length >= 3) { v = med(nb); if (rw > 2 * v + 0.5) { flagB[i] = 1; cnt.nbOut++; } }   // ③ 이웃보다 혼자 튐
+    }
+    ratios.sort(function (x, y) { return x - y; });
+    var q = function (f) { return ratios.length ? ratios[Math.min(ratios.length - 1, Math.floor(ratios.length * f))].toFixed(2) : '-'; };
+    L.push('[두께 진단] 칸 ' + NC + ' · 윤곽으로 잰 칸 ' + cnt.meas + ' · 못 잼 ' + cnt.miss + ' · 두피 밖 ' + cnt.off + ' · 가닥 높이(lift)도 있는 칸 ' + cnt.both);
+    L.push('  윤곽÷가닥 높이 비 p25/p50/p90 ' + q(0.25) + '/' + q(0.5) + '/' + q(0.9) + ' (1에 가까우면 두 측정이 맞음)');
+    L.push('  ① 윤곽만 두꺼움(윤곽 > 2×가닥 높이 + 0.5cm) ' + cnt.rawBig + '칸 · 반대(가닥이 더 높음) ' + cnt.liftBig + '칸 | ③ 이웃 중앙값보다 혼자 2배+0.5cm 넘음 ' + cnt.nbOut + '칸');
+    if (D.spike0) {
+      var s0 = 0, s1 = 0, inA = 0, inB = 0, inAny = 0, sum = function (a) { var t = 0; for (var k = 0; k < a.length; k++) t += a[k]; return t; };
+      for (i = 0; i < NC; i++) { var sp = D.spike1[i]; if (!sp) continue; if (flagA[i]) inA += sp; if (flagB[i]) inB += sp; if (flagA[i] || flagB[i]) inAny += sp; }
+      s0 = sum(D.spike0); s1 = sum(D.spike1);
+      L.push('  뻗친 가닥(끝 바깥·두피 위 1.2cm+) 눕히기 전 ' + s0 + ' → 뒤 ' + s1 + ' · 남은 것의 뿌리 칸이 ①에 ' + inA + ' · ③에 ' + inB + ' · 둘 중 하나 ' + inAny + (s1 ? '(' + Math.round(100 * inAny / s1) + '%)' : ''));
+      var top = []; for (i = 0; i < NC; i++) if (D.spike1[i]) top.push(i); top.sort(function (a, b) { return D.spike1[b] - D.spike1[a]; });
+      L.push('  남은 뻗침 많은 칸 — ' + top.slice(0, 8).map(function (k) { return '[행' + Math.floor(k / NT) + ' 열' + (k % NT) + '] ' + D.spike1[k] + '가닥 · 윤곽 ' + (D.raw[k] === D.raw[k] ? D.raw[k].toFixed(1) : '-') + ' · 가닥높이 ' + (D.lift[k] === D.lift[k] ? D.lift[k].toFixed(1) : '-') + ' · 씀 ' + D.used[k].toFixed(1) + 'cm' + (flagA[k] ? ' ①' : '') + (flagB[k] ? ' ③' : ''); }).join(' | '));
+    }
+    L.push('  (행 0 = 정수리 · 행 ' + (NP - 1) + ' = 아래 · 열 ' + (NT >> 1) + ' 근처 = 정면 · 내보내기 REGROW.thickExport())');
+    return L;
+  };
+  G.thickExport = function () {
+    var D = G.thickCells; if (!D || !D.raw) { console.warn('[두께 진단] 내보낼 것 없음'); return null; }
+    var o = { v: 1, at: new Date(D.at).toISOString(), NT: D.NT, NP: D.NP, cm: D.cm, note: 'raw=윤곽 두께(메우기 전) · src 1잼/0못잼/2두피밖 · used=쓰는 두께 · lift=사진 가닥 높이 · spike0/1=그 칸 뿌리 가닥 중 뻗친 수(눕히기 전/후) · 단위 cm · 칸 i=행*NT+열',
+      raw: Array.from(D.raw, function (v) { return v === v ? +v.toFixed(2) : null; }), src: Array.from(D.src), used: Array.from(D.used, function (v) { return +v.toFixed(2); }),
+      lift: Array.from(D.lift, function (v) { return v === v ? +v.toFixed(2) : null; }), strands: D.strands ? Array.from(D.strands) : null, spike0: D.spike0 ? Array.from(D.spike0) : null, spike1: D.spike1 ? Array.from(D.spike1) : null };
+    try { var a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([JSON.stringify(o)], { type: 'application/json' })); a.download = 'gyeol-thick-' + o.at.replace(/[:.]/g, '-').slice(0, 19) + '.json'; document.body.appendChild(a); a.click(); setTimeout(function () { try { document.body.removeChild(a); URL.revokeObjectURL(a.href); } catch (e) {} }, 2000); } catch (e) { console.warn('[두께 진단] 내보내기 실패', e); }
+    return o;
   };
   G.trimTails = function (strands) {
     var st = { at: Date.now(), on: !!G.trimTail, strands: strands ? strands.length : 0, cut: 0, cutMid: 0, cutTail: 0, lenMed: 0, lenP90: 0, views: 0, ms: 0, why: '' };
