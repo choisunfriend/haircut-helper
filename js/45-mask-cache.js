@@ -173,7 +173,8 @@ var MASK_CACHE = (function () {
       hairCanvas: state.hairCanvases[angle],
       baseCanvas: pick(state.baseCanvases, angle),
       hairMask: mi,
-      zoomStat: zs, sidePose: sp, clumps: clumps
+      zoomStat: zs, sidePose: sp, clumps: clumps,
+      viewClean: (function () { try { var v = (W.VIEW_CLEAN || {})[angle]; return typeof v === 'number' && isFinite(v) ? v : null; } catch (e) { return null; } })()   // (2026-11-24) 사진 깨끗함 — 예전엔 안 담아 보관본에서 늘 비었음
     });
   }
   function restore(angle, rec) {
@@ -193,6 +194,7 @@ var MASK_CACHE = (function () {
       if (state.baseFillCanvases) state.baseFillCanvases[angle] = null;
       if (r.hairMask) r.hairMask.reasonCanvas = null;
       state.hairMasks[angle] = r.hairMask;
+      try { (W.VIEW_CLEAN = W.VIEW_CLEAN || {})[angle] = (typeof r.viewClean === 'number' && isFinite(r.viewClean)) ? r.viewClean : null; } catch (e) {}   // (2026-11-24) 깨끗함 되살림(예전 보관본은 null — 17b 잔결은 컬 세기로 대신)
       try { if (r.zoomStat) SUBJECT_ZOOM.stats[angle] = r.zoomStat; } catch (e) {}
       try { if (r.sidePose) { r.sidePose.shot = orig || r.sidePose.shot; SIDE_POSE_YAW.byAngle[angle] = r.sidePose; } } catch (e) {}
       try { if (r.clumps && r.hairMask && r.hairMask.identity && REGROW.clumpsSet) REGROW.clumpsSet(r.hairMask.identity, r.clumps); } catch (e) {}
