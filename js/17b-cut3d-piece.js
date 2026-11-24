@@ -6672,7 +6672,8 @@ var SPEC_PASS = (function () {
     if (!SP.on || !r || !r.spec) { SP.last = info; return r; }
     var sp = r.spec, curl = (sp.perm && sp.perm.curl > 0) ? sp.perm.curl : 0;
     // ① 컬 길이
-    if (SP.curlLen && curl > 0 && !r.isLong && sp.lenCm && typeof G.curlRemain === 'function') {
+    // (2026-11-25) lenFromStrands(11-10j)가 켜져 있으면 42번 cm는 이미 '컬 건 가닥의 호길이'(= 편 길이) — 또 곱하면 이중(28~34cm로 부풂)
+    if (SP.curlLen && curl > 0 && !r.isLong && sp.lenCm && typeof G.curlRemain === 'function' && G.lenFromStrands === false) {
       var rem = G.curlRemain(curl);
       if (rem > 0.05 && rem < 0.999) {
         info.curlLenK = 1 / rem; info.lenBefore = Object.assign({}, sp.lenCm);
