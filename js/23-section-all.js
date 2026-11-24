@@ -227,17 +227,7 @@ function gyAllGroup(g, fillBody) {
 function buildGyAllControls(root) {
   const G = id => GYEOL_GROUPS.find(g => g.id === id);
 
-  root.appendChild(gyAllGroup(G('cut'), body => {
-    body.appendChild(gyAllTechniqueSelect());
-    GY_ALL_PARAMS.cut.forEach(k => body.appendChild(gyAllRangeCtrl(k,
-      k === 'elevation' ? '모든 섹션에 같은 각도만큼 더해요' : null)));
-    if (typeof gyBuildFadeGroup === 'function') body.appendChild(gyBuildFadeGroup());
-  }));
-
-  root.appendChild(gyAllGroup(G('perm'), body => {
-    GY_ALL_PARAMS.perm.forEach(k => body.appendChild(gyAllRangeCtrl(k)));
-  }));
-
+  /* (2026-11-24) 염색을 맨 위에 — 사용자가 바로 보도록. 염색 → 커트(길이) → 펌 순 */
   root.appendChild(gyAllGroup(G('color'), body => {
     const all = gyDyeAllColor();
     const row = document.createElement('div');
@@ -249,6 +239,18 @@ function buildGyAllControls(root) {
     body.appendChild(row);
     if (all) body.appendChild(gyColorEditor('all', all));
   }));
+
+  root.appendChild(gyAllGroup(G('cut'), body => {
+    body.appendChild(gyAllTechniqueSelect());
+    GY_ALL_PARAMS.cut.forEach(k => body.appendChild(gyAllRangeCtrl(k,
+      k === 'elevation' ? '모든 섹션에 같은 각도만큼 더해요' : null)));
+    if (typeof gyBuildFadeGroup === 'function') body.appendChild(gyBuildFadeGroup());
+  }));
+
+  root.appendChild(gyAllGroup(G('perm'), body => {
+    GY_ALL_PARAMS.perm.forEach(k => body.appendChild(gyAllRangeCtrl(k)));
+  }));
+
 
   const note = document.createElement('div');
   note.className = 'section-affects';

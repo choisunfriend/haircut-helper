@@ -2832,7 +2832,7 @@ function applyUiLang(){
   if(btn) btn.textContent = (uiLang === 'en') ? 'EN' : '한국어';
   document.documentElement.lang = uiLang;
   // (옛 46) 브라우저 탭 제목은 <head>에 있어 화면 번역이 닿지 않음 — 언어에 맞춰 바꿈
-  try{ document.title = (uiLang === 'ko') ? '결 GYEOL — 스타일 프리뷰' : 'GYEOL — Style Preview'; }catch(e){}
+  try{ document.title = "Today's Stylepeek"; /* (2026-11-24) 서비스명 단일화 — 언어와 무관 */ }catch(e){}
 }
 function setUiLang(lang){
   uiLang = (lang === 'ko') ? 'ko' : 'en';

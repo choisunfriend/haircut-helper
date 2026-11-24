@@ -24,7 +24,8 @@
     up: 0.38,         // 귀 위 높이 (옆 방향 대비 위쪽 성분)
     fwd: 0.15,        // 약간 앞쪽
     tilt: 0.35,       // 핀 기울기(앞쪽이 올라가게)
-    lift: 0.02        // 머리 표면에서 띄우는 비율(파묻힘 방지)
+    lift: 0.02,       // 머리 표면에서 띄우는 비율(파묻힘 방지)
+    size: 1.6         // (2026-11-24) 크기 배율 — 실측 cm 그대로는 화면에서 너무 작아 보여 키움. 되돌리기 HAIRPIN.size=1
   };
 
   var texCache = {};
@@ -91,7 +92,7 @@
       var t0 = v3(0, HP.tilt, 1);
       var t = t0.sub(d.clone().multiplyScalar(t0.dot(d))).normalize();
       var bAx = new THREE.Vector3().crossVectors(d, t).normalize();
-      var len = item.lengthCm / cmPer;
+      var len = item.lengthCm * (HP.size || 1) / cmPer;
       var aspect = tex.image && tex.image.width ? tex.image.width / tex.image.height : 3;
       var wid = len / aspect;
 

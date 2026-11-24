@@ -1191,7 +1191,9 @@ function buildGyControls(){
 
   /* 페이드는 gyBuildProcessGroup(커트)이 <b>본문 안에서</b> 붙인다(2026-09-01) —
      여기서 형제로 또 붙이면 두 벌이 생긴다. */
-  GYEOL_GROUPS.forEach(grp => wrap.appendChild(gyBuildProcessGroup(grp, secId, sec)));
+  /* (2026-11-24) 염색(color) 그룹을 맨 위에 그린다 — 배열 순서는 그대로 두고(24가 id로 끼워 넣음) 그리는 순서만 바꾼다. */
+  GYEOL_GROUPS.filter(g => g.id === 'color').concat(GYEOL_GROUPS.filter(g => g.id !== 'color'))
+    .forEach(grp => wrap.appendChild(gyBuildProcessGroup(grp, secId, sec)));
   wrap.appendChild(gyBuildRecipeNote(secId));
   wrap.appendChild(gyBuildAffectsNote(secId));
 }
