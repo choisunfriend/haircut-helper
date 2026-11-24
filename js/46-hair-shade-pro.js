@@ -31,18 +31,25 @@ var HAIR_SHADE_PRO = (function () {
   var H = {
     on: true,
     density: {
-      on: true,
+      /* (11-24) 기본 끔 — 사용자: "칸 때문에 이전부터 문제가 많았는데, 칸을 쓰지 않고 결을 읽게 해두지 않았어?"
+         가닥은 38(RAW_TRACE)이 사진 결을 칸·평균 없이 그대로 읽어 만든다. 이 밀도 격자는 거기에 새로 칸을 들인 것이라
+         직모 정수리에 네모 얼룩을 냈다. 안쪽 어둡게는 13b 깊이층 음영(두피 0 → 헐 1)이 이미 가닥마다 하고 있다.
+         다시 켜기 HAIR_SHADE_PRO.density.on=true (흐림·삼선형 보간은 남겨 둠) */
+      on: false,
       grid: 40,        // 긴 축 칸 수(나머지 축은 비율대로)
       k: 0.22,         // 정규화 밀도 1칸당 흡수
       min: 0.5,        // 가장 깊은 곳 밝기 하한
       startCells: 1.5, // 자기 칸은 건너뛰고 이만큼 밖에서부터 셈
+      blur: 1,         // (11-24) 투과율 격자 3×3×3 흐림 횟수 — 칸 경계가 네모 얼룩으로 보이던 것
       light: [0.25, 0.9, 0.35]   // 머리 좌표계 빛 방향(위·앞) — 밀도 음영용
     },
     bands: {
       on: true,
       light: [0.35, 0.75, 0.55], // 시점 좌표계 빛(카메라 기준 오른쪽 위 앞)
-      shift1: 0.10, pow1: 90, k1: 0.30,   // 1차: 흰빛, 좁음
-      shift2: -0.14, pow2: 22, k2: 0.40,  // 2차: 머리색, 넓음
+      // (11-24) 띠 넓힘 — pow1 90·k1 0.30은 곱슬에서 점점이 흰 조각, 직모에서도 가는 흰 선. 넓고 약하게
+      shift1: 0.10, pow1: 28, k1: 0.14,   // 1차: 흰빛
+      shift2: -0.14, pow2: 12, k2: 0.30,  // 2차: 머리색, 넓음
+      smoothSeg: 5,     // (11-24) 빛 띠용 결 방향을 가닥 따라 ±5마디 평균 — 곱슬 마디마다 띠가 켜졌다 꺼지는 것 막음(모양은 그대로)
       kd: 0.35          // 결 방향 확산(가닥이 빛과 나란하면 살짝 어둡게) 섞는 정도
     },
     _last: null
@@ -98,8 +105,39 @@ var HAIR_SHADE_PRO = (function () {
       }
       trans[ci] = Math.exp(-D.k * sum);
     }
+    /* (11-24) 네모 얼룩 고침: ① 투과율 격자를 흐리고 ② 정점에서 <b>삼선형 보간</b>으로 읽는다.
+       예전엔 정점이 든 칸 값을 그대로 써서(최근접) 칸 경계(≈머리 폭/40)마다 밝기가 계단으로 끊겨
+       직모 정수리에 회색 네모가 보였다. */
+    for (var b = 0; b < (D.blur | 0); b++) {
+      var t2 = new Float32Array(trans.length);
+      for (iz = 0; iz < nz; iz++) for (iy = 0; iy < ny; iy++) for (ix = 0; ix < nx; ix++) {
+        var sm = 0, cn = 0;
+        for (var dz = -1; dz <= 1; dz++) for (var dy = -1; dy <= 1; dy++) for (var dx = -1; dx <= 1; dx++) {
+          var qx = ix + dx, qy = iy + dy, qz = iz + dz;
+          if (qx < 0 || qy < 0 || qz < 0 || qx >= nx || qy >= ny || qz >= nz) continue;
+          var qi = (qz * ny + qy) * nx + qx;
+          if (cells[qi] <= 0) continue;   // 빈 칸(투과 1)은 섞지 않음 — 가장자리가 하얗게 뜨지 않게
+          sm += trans[qi]; cn++;
+        }
+        var ci2 = (iz * ny + iy) * nx + ix;
+        t2[ci2] = cn ? sm / cn : trans[ci2];
+      }
+      trans = t2;
+    }
+    function tri(x, y, z) {
+      var fx = Math.min(nx - 1.001, Math.max(0, (x - mn[0]) / cs - 0.5)), fy = Math.min(ny - 1.001, Math.max(0, (y - mn[1]) / cs - 0.5)), fz = Math.min(nz - 1.001, Math.max(0, (z - mn[2]) / cs - 0.5));
+      var x0 = fx | 0, y0 = fy | 0, z0 = fz | 0, ax = fx - x0, ay = fy - y0, az = fz - z0, v = 0, w = 0;
+      for (var k = 0; k < 8; k++) {
+        var X = x0 + (k & 1), Y = y0 + ((k >> 1) & 1), Z = z0 + ((k >> 2) & 1);
+        var ww = ((k & 1) ? ax : 1 - ax) * (((k >> 1) & 1) ? ay : 1 - ay) * (((k >> 2) & 1) ? az : 1 - az);
+        var ii = (Z * ny + Y) * nx + X;
+        if (cells[ii] <= 0) continue;
+        v += trans[ii] * ww; w += ww;
+      }
+      return w > 1e-6 ? v / w : trans[idx(x, y, z)];
+    }
     var occ = new Float32Array(n);
-    for (i = 0; i < n; i++) occ[i] = D.min + (1 - D.min) * trans[idx(P.getX(i), P.getY(i), P.getZ(i))];
+    for (i = 0; i < n; i++) occ[i] = D.min + (1 - D.min) * tri(P.getX(i), P.getY(i), P.getZ(i));
     return { occ: occ, grid: [nx, ny, nz] };
   }
 
@@ -111,6 +149,24 @@ var HAIR_SHADE_PRO = (function () {
       var l = Math.hypot(tx, ty, tz) || 1;
       tx /= l; ty /= l; tz /= l;
       t[s * 3] = t[s * 3 + 3] = tx; t[s * 3 + 1] = t[s * 3 + 4] = ty; t[s * 3 + 2] = t[s * 3 + 5] = tz;
+    }
+    /* (11-24) 가닥 따라 ±smoothSeg 마디 평균 — 선분 끝점이 다음 선분 시작점과 같으면 같은 가닥 */
+    var R = H.bands.smoothSeg | 0, nSeg = n >> 1;
+    if (R > 0 && nSeg > 1) {
+      var o = new Float32Array(t.length), st = 0;
+      for (var g = 1; g <= nSeg; g++) {
+        var brk = g === nSeg || P.getX(2 * g) !== P.getX(2 * g - 1) || P.getY(2 * g) !== P.getY(2 * g - 1) || P.getZ(2 * g) !== P.getZ(2 * g - 1);
+        if (!brk) continue;
+        for (var a = st; a < g; a++) {
+          var sx = 0, sy = 0, sz = 0;
+          for (var q = Math.max(st, a - R); q <= Math.min(g - 1, a + R); q++) { sx += t[q * 6]; sy += t[q * 6 + 1]; sz += t[q * 6 + 2]; }
+          var sl = Math.hypot(sx, sy, sz);
+          if (sl < 1e-6) { sx = t[a * 6]; sy = t[a * 6 + 1]; sz = t[a * 6 + 2]; sl = 1; }
+          o[a * 6] = o[a * 6 + 3] = sx / sl; o[a * 6 + 1] = o[a * 6 + 4] = sy / sl; o[a * 6 + 2] = o[a * 6 + 5] = sz / sl;
+        }
+        st = g;
+      }
+      t = o;
     }
     return t;
   }
