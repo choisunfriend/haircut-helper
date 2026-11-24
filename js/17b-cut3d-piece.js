@@ -7053,6 +7053,7 @@ var FLOW_SPEC = (function () {
     native: true,        // 마네킹 없이 만든 스타일은 마네킹을 안 켜고 손님의 다시 기른 머리 위에 얹음 · 컬이 nativeCurl 이상인 손님의 원본은 다시 기른 머리로 보여 줌
     nativeCurl: 0,       // (2026-10-10t) 0 — 컬 손님 원본도 마네킹 + 잰 값(61번 ④가 잰 반경·간격으로 감음). 예전 값 40      // 잰 컬이 이 값 이상이면 원본 = 다시 기른 머리(42번이 결 정렬을 끄는 기준과 같은 값) · 0 = 컬과 무관하게 마네킹+표
     natResMax: 75,       // 도: 가닥이 제 결에서 벗어나 있던 각을 이만큼까지만 인정(거꾸로 간 가닥은 이 각으로 눌림)
+    natAbsLen: true, natAbsVar: 0.15,   // (2026-11-25) 제 머리 바탕 스타일 길이 = 스타일 칸 길이 그대로(손님 머리 길이 무관) · 가닥별 차이 ±15%만 · false = 아래 배수 한도(예전)
     natLenMin: 0.25, natLenMax: 4,   // 길이 배수(스타일 길이 ÷ 제 칸 길이)의 한도
     smallFrac: 0.25,     // (i) 몸통 가닥 수가 보통 칸(중앙값)의 이 비율 미만인 무리는 같은 쪽으로 가는 큰 이웃의 방향을 따름 · 0 = 끔
     saveComb: true,      // (h) 스타일 등록 때 빗질·넘기기(53번)를 건 가닥으로 표를 뽑음 — 넘긴 모양이 스타일에 들어감 · false = 빗기 전 모양으로(예전)
@@ -7557,6 +7558,17 @@ var FLOW_SPEC = (function () {
     var ratio = (own && own.L > 1e-3 && sty.L > 1e-3) ? sty.L / own.L : 1;
     if (ratio < cfg.natLenMin) ratio = cfg.natLenMin; if (ratio > cfg.natLenMax) ratio = cfg.natLenMax;
     var T = A * ratio;
+    /* (2026-11-25) 손님 머리 길이와 무관하게 — 사용자: "짧은 머리는 안될 거 같아. 머리 길이에 무관하게 적용되도록"
+       예전: T = 제 가닥 길이 × (스타일 칸 길이 ÷ 제 칸 길이)를 natLenMax(4)·natTail로 눌러서, 짧은 머리 손님은 스타일이 손님 길이에 묶여 짧게 나왔음.
+       이제: T = 스타일 칸 길이 그대로(가닥마다 제 칸 안에서 길고 짧던 만큼만 ±natAbsVar로 남김). 모자란 길이는 아래 "스타일이 더 긺"에서 스타일 결을 따라 이어 기름.
+       예전 = FLOW_SPEC.natAbsLen=false */
+    var absLen = cfg.natAbsLen !== false && sty.L > 1e-3;
+    if (absLen) {
+      var fv = (own && own.L > 1e-3) ? A / own.L : 1, vr = typeof cfg.natAbsVar === 'number' ? cfg.natAbsVar : 0.15;
+      if (fv < 1 - vr) fv = 1 - vr; if (fv > 1 + vr) fv = 1 + vr;
+      T = sty.L * fv; ratio = 1;                                             // ratio 1 → 아래 혼자 긴 가닥 누르기 안 탐(이미 스타일 길이)
+      if (cfg._st) cfg._st.absLen = (cfg._st.absLen || 0) + 1;
+    }
     // (2026-10-07g) 혼자 긴 가닥 누르기 — 제 칸보다 몇 배 긴 가닥(잔머리·지나쳐 기른 가닥)에 길이 배수를 그대로 곱하면 스타일보다 훨씬 긴 꼬리가 됨
     //   (실제: 짧은 머리 남자에 긴 펌 스타일 → 가슴 아래까지 늘어진 곧은 가닥 몇 줄). 늘리는 경우에만, 스타일 칸 길이 × natTail까지만.
     //   배수가 1(같은 길이의 스타일)이면 손님 가닥 그대로이고, 배수 natTailFull 이상에서 온전히 누름(사이는 서서히 — 뚝 끊기지 않게).
