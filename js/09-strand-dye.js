@@ -201,7 +201,7 @@ function traceStrandPath(ix, sy_img, targetLen_img, jitterSeed, env, rootSec, st
       // 기존과 거의 동일하게 촘촘히 유지하고, 끝으로 갈수록 좌우로 더 크게 흔들리게 해서
       // 인접 가닥끼리 자연스럽게 겹치도록(overlap) 만들어 그 틈을 시각적으로 메운다.
       const wiggleGrowth = 1 + (s/steps) * 1.8;
-      const wiggle = (Math.sin((s+jitterSeed)*0.9) * 0.12 + (Math.random()-0.5)*0.10) * wiggleGrowth;
+      const wiggle = (Math.sin((s+jitterSeed)*0.9) * 0.12 + ((typeof HAIR_SEED !== 'undefined' && HAIR_SEED.on === false ? Math.random() : hashFract(jitterSeed * 12.9898 + s * 78.233 + ix * 0.0137 + sy_img * 0.0071)) - 0.5)*0.10) * wiggleGrowth;   // (11-24) 고정 난수 — 같은 가닥은 매번 같은 흔들림
       // curl: 기존엔 가닥 전체에 걸쳐 한 번만 크게 휘는 반원(sin 반 주기) 형태라, 결방향(orientation)과
       // 충돌하면 갑자기 옆으로 삐져나가는 모양이 생겼음. 파마머리/라면 면발처럼 일정한 파장으로
       // 완만하게 반복되는 웨이브로 변경 — curl 슬라이더는 진폭(구불거림 정도)만 조절.

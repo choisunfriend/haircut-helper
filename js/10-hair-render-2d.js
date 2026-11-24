@@ -367,7 +367,25 @@ function drawHairStrands(ctx, fit, scalpY, hairEndY, maskW, maskH, hairCanvas, o
   // ── 레이어 공통값(2026-07-26 중복 통합) ──
   // 4개 레이어가 글자 그대로 같은 lenScale/pickCol을 각자 적어두고 있었다.
   // 값이 같으므로 한 곳에서 정의하고 참조만 한다(동작 동일).
-  const PICK_RANDOM_COL = ()=> validCols[Math.floor(Math.random()*validCols.length)];
+  /* (2026-11-24) 가닥 배치 난수를 <b>고정 난수</b>로 — 사용자: "왜 매번 랜덤으로 해? 이거는 다 머리에 영향을 주는 거잖아. 끝단 다듬기 정도 빼고"
+     예전: 뿌리 흩뿌림(startXJitter·startYJitter)·뿌리 깊이(rootDepthFrac)·길이 배율(lenMult)·뽑는 컬럼·밝기/팔레트가 Math.random()이라
+     같은 사진도 3D를 다시 만들 때마다 머리 모양이 달라졌다.
+     지금: 이 뷰(angle)·마스크 크기로 씨앗을 정한 mulberry32 — 같은 입력이면 매번 같은 순서의 수가 나온다(가닥마다 고르게 퍼지는 성질은 그대로).
+     끝단 무작위 트림(질감 슬라이더)만 예전대로 Math.random. 되돌리기 HAIR_SEED.on=false */
+  const _seedOn = !(typeof HAIR_SEED !== 'undefined' && HAIR_SEED.on === false);
+  const _rnd = (function(){
+    let a = 0x9E3779B9 ^ (Math.round(maskW) * 73856093) ^ (Math.round(maskH) * 19349663);
+    const s = String(angle || '');
+    for(let k = 0; k < s.length; k++) a = Math.imul(a ^ s.charCodeAt(k), 2654435761);
+    return function(){
+      if(!_seedOn) return Math.random();
+      a |= 0; a = a + 0x6D2B79F5 | 0;
+      let t = Math.imul(a ^ a >>> 15, 1 | a);
+      t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+      return ((t ^ t >>> 14) >>> 0) / 4294967296;
+    };
+  })();
+  const PICK_RANDOM_COL = ()=> validCols[Math.floor(_rnd()*validCols.length)];
   /* (2026-08-23 정리) layerWidth — 굵기 식을 한 곳으로 모으려고 만들었다는 주석이
      달려 있었는데(2026-07-26), 정작 네 레이어는 각자 cfg.lineWidth를 받아 쓰고
      이 헬퍼를 <b>한 번도 안 불렀다</b>. 통합하려던 대상은 이미 cfg로 통합돼
@@ -422,10 +440,10 @@ function drawHairStrands(ctx, fit, scalpY, hairEndY, maskW, maskH, hairCanvas, o
       // #141414에 얹히면 델타 0.4×1.8 가산으로 가닥이 회백색이 돼버림
       // (실기기 스크린샷: "머리가 검정색 안나왔어" — 검정 사이 흰 가닥 다수).
       // 1.06이면 미세한 윤기만 남고 검정 유지. 어두운 쪽(tMin~1)은 그대로.
-      const brightRaw = usePalette ? (0.94 + Math.random()*0.12) : (tMin + Math.random()*tRange);
+      const brightRaw = usePalette ? (0.94 + _rnd()*0.12) : (tMin + _rnd()*tRange);
       const bright = FORCED_HAIR_COLOR ? Math.min(1.06, brightRaw) : brightRaw;
       const strokeCol = usePalette
-        ? tintColor(colorPalette[Math.floor(Math.random()*colorPalette.length)], bright)
+        ? tintColor(colorPalette[Math.floor(_rnd()*colorPalette.length)], bright)
         : tintColor(colorForSection(ix, rootSec), bright);
       drawStrand(startX, startY, ix, rootSec, rootNy, depthScale, strandMult, jitterSeed, strokeCol);
     }
@@ -464,9 +482,9 @@ function drawHairStrands(ctx, fit, scalpY, hairEndY, maskW, maskH, hairCanvas, o
     // 빠지는 형태(Math.pow(Math.random(),2))라, 실제 헤어라인 밀도는 유지하면서
     // 중간·아래쪽까지 여전히 뿌리가 퍼짐. 균등분포일 때 두피선 근처 밀도가 과소해져
     // "정수리가 빈다"는 오버코렉션이 발생했던 것에 대한 수정.
-    rootDepthFrac: ()=> Math.pow(Math.random(), 1.1) * 0.8, // (4차) 제곱편향→준균등: 겹 스택에선 아래 겹(사이드/네이프)도 자기 뿌리로 커버해야 함
-    lenMult: ()=> 0.6+Math.random()*0.4, // 랜덤 배율 분리(중립 길이 계산과 공유 — 동작 동일)
-    startXJitter: ()=> (Math.random()-0.5)*maskW*0.01,
+    rootDepthFrac: ()=> Math.pow(_rnd(), 1.1) * 0.8, // (4차) 제곱편향→준균등: 겹 스택에선 아래 겹(사이드/네이프)도 자기 뿌리로 커버해야 함
+    lenMult: ()=> 0.6+_rnd()*0.4, // 랜덤 배율 분리(중립 길이 계산과 공유 — 동작 동일)
+    startXJitter: ()=> (_rnd()-0.5)*maskW*0.01,
     jitterSeedFn: (i)=> i*0.271,
     tintRange: L_ROOT.tint,
   });
@@ -484,8 +502,8 @@ function drawHairStrands(ctx, fit, scalpY, hairEndY, maskW, maskH, hairCanvas, o
     endYFallbackRatio: 0.40,
     // 한 줄(scalpY) 제한 해제: 다른 레이어처럼 두피선~모발끝 사이에 깊이를 분산시켜서,
     // 이 레이어 전체가 정수리 한 줄에 몰려 밀도가 뭉치는 걸 방지.
-    rootDepthFrac: ()=> Math.pow(Math.random(), 1.1) * 0.6, // (4차) 제곱편향→준균등(겹 스택 커버리지)
-    startXJitter: ()=> (Math.random()-0.5)*(maskW/numSections)*1.5,
+    rootDepthFrac: ()=> Math.pow(_rnd(), 1.1) * 0.6, // (4차) 제곱편향→준균등(겹 스택 커버리지)
+    startXJitter: ()=> (_rnd()-0.5)*(maskW/numSections)*1.5,
     jitterSeedFn: (i)=> i,
     tintRange: L_SECTION.tint,
   });
@@ -500,9 +518,9 @@ function drawHairStrands(ctx, fit, scalpY, hairEndY, maskW, maskH, hairCanvas, o
     lineWidth: L_MID.w, // 2026-07-14 굵기 하향 → 2026-07-16 전역 STRAND_THIN 추가 하향
     pickCol: PICK_RANDOM_COL,
     endYFallbackRatio: 0.38,
-    rootDepthFrac: ()=> Math.pow(Math.random(), 1.1) * 0.7, // 한 줄 제한 해제, (4차) 준균등 — 겹 스택 커버리지
-    lenMult: ()=> 0.85+Math.random()*0.3, // 랜덤 배율 분리(중립 길이 계산과 공유 — 동작 동일)
-    startXJitter: ()=> (Math.random()-0.5)*maskW*0.008,
+    rootDepthFrac: ()=> Math.pow(_rnd(), 1.1) * 0.7, // 한 줄 제한 해제, (4차) 준균등 — 겹 스택 커버리지
+    lenMult: ()=> 0.85+_rnd()*0.3, // 랜덤 배율 분리(중립 길이 계산과 공유 — 동작 동일)
+    startXJitter: ()=> (_rnd()-0.5)*maskW*0.008,
     jitterSeedFn: (i)=> i*0.618,
     tintRange: L_MID.tint,
   });
@@ -522,10 +540,10 @@ function drawHairStrands(ctx, fit, scalpY, hairEndY, maskW, maskH, hairCanvas, o
     lineWidth: L_FINE.w, // 2026-07-14 굵기 하향 → 2026-07-16 전역 STRAND_THIN 추가 하향
     pickCol: PICK_RANDOM_COL,
     endYFallbackRatio: 0.35,
-    rootDepthFrac: ()=> Math.pow(Math.random(), 1.1) * 0.85, // 한 줄 제한 해제 — 잔가닥은 가장 넓게 분산, (4차) 준균등
-    lenMult: ()=> 0.7+Math.random()*0.5, // 랜덤 배율 분리(중립 길이 계산과 공유 — 동작 동일)
-    startXJitter: ()=> (Math.random()-0.5)*maskW*0.012,
-    startYJitter: ()=> (Math.random()-0.5)*maskH*0.01,
+    rootDepthFrac: ()=> Math.pow(_rnd(), 1.1) * 0.85, // 한 줄 제한 해제 — 잔가닥은 가장 넓게 분산, (4차) 준균등
+    lenMult: ()=> 0.7+_rnd()*0.5, // 랜덤 배율 분리(중립 길이 계산과 공유 — 동작 동일)
+    startXJitter: ()=> (_rnd()-0.5)*maskW*0.012,
+    startYJitter: ()=> (_rnd()-0.5)*maskH*0.01,
     jitterSeedFn: (i)=> i*0.382,
     tintRange: L_FINE.tint,
   });
