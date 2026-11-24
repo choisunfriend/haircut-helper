@@ -1,9 +1,10 @@
 // ============================================================================
 // 49-onboarding.js (2026-11-24) — 고객용 배포본 전용: 첫 실행 안내 + 도움말(?)
 // ============================================================================
-// · 첫 실행: 넘겨 보는 5장(소개 · 기본 촬영 · 360° 촬영 · 스타일→3D · 사진과 개인정보) → [시작하기]에서 카메라를 켬
+// · 표지(앱을 열 때마다 — [건너뛰기]·[다음부터 보지 않기] 전까지): 넘겨 보는 5장(소개 · 기본 촬영 · 360° 촬영 · 스타일→3D · 사진과 개인정보) → [시작하기]에서 카메라를 켬
 //   (index.html 맨 앞 인라인 스크립트가 window.__deferCam을 세우면 05의 시작 때 initCamera()를 건너뜀)
-//   한 번 끝내면(건너뛰기 포함) localStorage 'gyeol.onboard' = '1' — 다음부터 안 띄움
+//   [건너뛰기]·[다음부터 보지 않기]를 누르면 localStorage 'gyeol.onboard' = '1' — 다음부터 안 띄움([시작하기]는 기억 안 함)
+// · 사용 설명서: 도움말 [사용 설명서] — 단계별 실제 화면(AI 생성 인물) + 설명. 촬영·360·스타일·3D·컬러·옷(쇼핑몰)·미용실 맵·개인정보
 // · 도움말: 헤더 언어 버튼 옆 [?] — 지금 화면(촬영·스타일·3D)에 맞는 설명 + "처음 안내 다시 보기"
 // · 언어: 앱 언어(uiLang — 기기 지역 언어로 시작, 버튼으로 바꾸면 기억)를 따름. 바꾸면 열린 창도 다시 그림
 // · 그림: 실루엣 SVG(코드 안) — 사진 없음
@@ -146,8 +147,9 @@ var ONBOARD = (function () {
     var st = document.createElement('style'); st.id = 'onboardStyle';
     st.textContent = '#onboardOv{position:fixed;inset:0;z-index:9500;background:#1B1816;color:#F3E9DA;display:flex;flex-direction:column;'
       + 'padding:max(14px,env(safe-area-inset-top,0px)) 18px max(16px,env(safe-area-inset-bottom,0px));font-family:inherit;}'
-      + '#onboardOv .ob-top{display:flex;justify-content:flex-end;min-height:32px;}'
-      + '#onboardOv .ob-skip{background:none;border:none;color:rgba(243,233,218,.7);font-size:14px;padding:6px 4px;cursor:pointer;}'
+      + '#onboardOv .ob-top{display:flex;justify-content:space-between;min-height:32px;}'
+      + '#onboardOv .ob-skip,#onboardOv .ob-never{background:none;border:none;color:rgba(243,233,218,.7);font-size:14px;padding:6px 4px;cursor:pointer;}'
+      + '#onboardOv .ob-never{font-size:12.5px;text-decoration:underline;color:rgba(243,233,218,.55);}'
       + '#onboardOv .ob-body{flex:1;display:flex;flex-direction:column;justify-content:center;max-width:460px;width:100%;margin:0 auto;overflow-y:auto;}'
       + '#onboardOv h2{font-size:21px;font-weight:800;margin:18px 0 10px;line-height:1.35;}'
       + '#onboardOv .ob-text{font-size:14.5px;line-height:1.65;color:rgba(243,233,218,.88);}'
@@ -170,14 +172,16 @@ var ONBOARD = (function () {
   }
   function draw() {
     var S = slides(), s = S[idx], last = idx === S.length - 1;
-    ov.innerHTML = '<div class="ob-top"><button class="ob-skip" type="button">' + esc(last ? '' : L('건너뛰기', 'Skip')) + '</button></div>'
+    ov.innerHTML = '<div class="ob-top"><button class="ob-never" type="button">' + esc(L('다음부터 보지 않기', 'Don’t show again')) + '</button>'
+      + '<button class="ob-skip" type="button">' + esc(last ? '' : L('건너뛰기', 'Skip')) + '</button></div>'
       + '<div class="ob-body">' + (s.shot ? shots(s.shot, s.shot.length > 1 ? 250 : 260) : ART[s.art]()) + '<h2>' + esc(s.t) + '</h2><div class="ob-text">' + s.b + '</div></div>'
       + '<div class="ob-dots">' + S.map(function (_, i) { return '<i class="' + (i === idx ? 'on' : '') + '"></i>'; }).join('') + '</div>'
       + '<div class="ob-nav">' + (idx > 0 ? '<button class="ob-prev" type="button">' + esc(L('이전', 'Back')) + '</button>' : '')
       + '<button class="ob-next" type="button">' + esc(last ? L('시작하기', 'Get started') : L('다음', 'Next')) + '</button></div>';
-    ov.querySelector('.ob-skip').onclick = function () { if (!last) finish(); };
+    ov.querySelector('.ob-skip').onclick = function () { if (!last) finish(true); };
+    ov.querySelector('.ob-never').onclick = function () { finish(true); };
     var pv = ov.querySelector('.ob-prev'); if (pv) pv.onclick = function () { idx--; draw(); };
-    ov.querySelector('.ob-next').onclick = function () { if (last) finish(); else { idx++; draw(); } };
+    ov.querySelector('.ob-next').onclick = function () { if (last) finish(false); else { idx++; draw(); } };
   }
   // 옆으로 밀어 넘기기
   function swipe(el) {
@@ -199,8 +203,10 @@ var ONBOARD = (function () {
     if (camStarted) return; camStarted = true;
     try { if (W.__deferCam && typeof initCamera === 'function') initCamera(); } catch (e) { console.warn(TAG + ' 카메라 시작 실패', e); }
   }
-  function finish() {
-    markSeen();
+  /* 표지는 [건너뛰기]·[다음부터 보지 않기]를 누를 때까지 앱을 열 때마다 나옴(사용자 지정 11-24).
+     [시작하기]로 끝까지 본 것만으로는 기억하지 않음. */
+  function finish(remember) {
+    if (remember) markSeen();
     if (ov) ov.style.display = 'none';
     try { closeHelp(); } catch (e) {}
     startCam();
@@ -246,16 +252,74 @@ var ONBOARD = (function () {
         + '<li>' + L('「옷 고르기」로 옷을 바꿔 입혀 봐요. 위쪽 Hair pin으로 머리핀도.', 'Change outfits with “Pick clothes”; try hair pins at the top.') + '</li>'
         + '<li>' + L('「맵에서 고르기」로 근처 미용실과 그 미용실 스타일을 찾아요.', 'Use “Pick on map” to find nearby salons and their styles.') + '</li></ul>';
     }
+    h += '<div class="hp-row" style="margin-top:12px;"><button type="button" class="hp-manual" style="background:#1B1816;color:#F3E9DA;border:none;">📖 ' + esc(L('사용 설명서 (전체 화면 보기)', 'Full user guide')) + '</button></div>';
     h += '<div class="hp-row"><button type="button" class="hp-again">' + esc(L('처음 안내 다시 보기', 'Show intro again')) + '</button>'
       + '<button type="button" class="hp-close">' + esc(L('닫기', 'Close')) + '</button></div>';
     return h;
   }
+
+  // ---- 사용 설명서(단계별 실제 화면 + 설명) ---------------------------------------------------------
+  function img(n) { return '<img src="' + SHOT_DIR + n + '.jpg" alt="" style="width:100%;border-radius:10px;border:1px solid #E2D6C8;display:block;">'; }
+  function row(names) {
+    return '<div style="display:grid;grid-template-columns:repeat(' + names.length + ',1fr);gap:8px;margin:8px auto 4px;' + (names.length === 1 ? 'max-width:62%;' : '') + '">'
+      + names.map(function (n) { return '<div>' + img(n.f) + (n.c ? '<div style="font-size:11.5px;color:#6E6258;text-align:center;margin-top:4px;">' + esc(n.c) + '</div>' : '') + '</div>'; }).join('') + '</div>';
+  }
+  function aiNote() { return '<div style="font-size:11px;color:#9A8E84;margin:2px 0 6px;">' + esc(L('예시 화면 · 사진 속 인물은 AI로 만든 가상 인물이에요', 'Example screens · the person shown is AI-generated')) + '</div>'; }
+  function sec(n, title, body) {
+    return '<section style="margin:18px 0 8px;"><h4 style="margin:0 0 6px;font-size:15px;color:#8C5A2B;">' + n + '. ' + esc(title) + '</h4>' + body + '</section>';
+  }
+  function ul(items) { return '<ul style="margin:4px 0;padding-left:18px;">' + items.map(function (t) { return '<li>' + t + '</li>'; }).join('') + '</ul>'; }
+  function manualHTML() {
+    var h = '<h3 style="margin:0 0 4px;font-size:19px;">' + esc(L('사용 설명서', 'User guide')) + '</h3>'
+      + '<div style="font-size:12.5px;color:#7A6F66;">' + esc(L('촬영 → 스타일 → 3D 순서로 진행해요.', 'Go from photos → style → 3D.')) + '</div>';
+    h += sec(1, L('기본 촬영 (4장)', 'Basic photos (4)'),
+      row([{ f: 'capture', c: L('촬영 화면', 'Photo screen') }]) + aiNote()
+      + ul([L('정면 → 왼쪽 → 오른쪽 → 뒤 순서로 가운데 촬영 버튼을 눌러요. 위의 작은 사진 4칸에 체크가 생겨요.', 'Press the shutter for front → left → right → back. The 4 thumbnails get a check.'),
+            L('화면의 점선 타원 안에 머리 전체가 들어오게, 밝은 곳에서 찍어요. 머리는 풀고 모자는 벗어요.', 'Keep your whole head inside the dotted oval, in good light, hair down, no hat.'),
+            L('잘못 찍었으면 「재촬영」, 갤러리 사진은 「업로드」. 뒷모습은 누가 찍어 주면 더 좋아요.', 'Use “Retake” to redo, “Upload” for gallery photos. Someone can take the back photo for you.'),
+            L('4장을 다 찍으면 「다음→」.', 'After 4 photos, tap “Next →”.')]));
+    h += sec(2, L('더 정밀하게: 360° 촬영', 'More accurate: 360° capture'),
+      '<div style="background:#1B1816;border-radius:10px;padding:6px;margin:8px 0;">' + ART.orbit() + '</div>'
+      + ul([L('도와줄 사람이 필요해요. 촬영 화면 아래 「🔄 360° 촬영」을 누르면 뒤 카메라가 열려요.', 'You need a helper. “🔄 360° Capture” under the photo screen opens the back camera.'),
+            L('찍는 사람은 내 정면에 서서 [시작] → 머리를 화면 타원 안에 두고 15~20초 동안 천천히 한 바퀴 → 출발점에서 [끝내기].', 'The helper stands in front of you, taps [Start], keeps your head in the oval, walks one slow circle in 15–20 s, and taps [Finish] back at the start.'),
+            L('찍히는 사람은 고개와 머리카락을 움직이지 않아요. 각도마다 가장 선명한 사진을 앱이 골라요.', 'Keep your head and hair still. The app picks the sharpest photo at each angle.'),
+            L('왼쪽·오른쪽이 바뀌어 보이면 「좌우 바꾸기」.', 'If left and right look swapped, tap “Swap left/right”.')]));
+    h += sec(3, L('스타일 고르기', 'Pick a style'),
+      ul([L('카드를 눌러 스타일을 고르고 「3D로 보기 →」를 눌러요. 3D로 입히는 동안 잠시 기다려 주세요.', 'Tap a style card, then “View in 3D →”. Wait a moment while it is applied.'),
+          L('「스타일 미적용」은 지금 내 머리를 그대로 3D로 보여 줘요. 사진 속 머리결을 하나하나 분석해서 시간이 오래 걸려요(기기에 따라 1분 이상).', '“No style applied” shows your hair as it is now in 3D. It analyzes every strand, so it takes a while (a minute or more on some devices).')]));
+    h += sec(4, L('3D로 보기', 'View in 3D'),
+      row([{ f: 'model3d', c: L('3D 결과', '3D result') }, { f: 'maptry', c: L('다른 스타일 입힌 모습', 'Another style') }]) + aiNote()
+      + ul([L('한 손가락으로 끌면 돌아가요. 두 손가락으로 벌리면 확대, 두 손가락으로 끌면 이동. 오른쪽 아래 ↺로 처음 보기.', 'Drag to turn, pinch to zoom, two-finger drag to move. ↺ at the bottom right resets the view.'),
+          L('위쪽 「Hair pin」으로 머리핀을 꽂아 봐요.', 'Try hair pins with “Hair pin” at the top.'),
+          L('왼쪽 「남자/여자」로 몸을 바꾸고, 「외투」로 겉옷을 입고 벗어요.', 'Switch the body with “Man/Woman” and put the jacket on or off with “Jacket”.')]));
+    h += sec(5, L('헤어 컬러', 'Hair color'),
+      ul([L('3D 화면 왼쪽 아래 「헤어 컬러」를 누르면 펼쳐져요.', 'Tap “Hair color” at the bottom left of the 3D screen.'),
+          L('색 견본을 누르거나 밝기·채도·색상을 움직이면 3D 머리 색이 바뀌어요. 색 번호도 함께 보여요.', 'Pick a swatch or move lightness, vividness and hue; the 3D hair changes and the color number is shown.'),
+          L('「원래 색으로」는 염색 전 머리색이에요. 화면 색은 참고용이고, 실제 발색은 모발 상태에 따라 달라요.', '“Reset” returns to your natural color. Screen color is a guide; real results depend on your hair.')]));
+    h += sec(6, L('옷 고르기 (쇼핑몰)', 'Pick clothes (shop)'),
+      row([{ f: 'shoplist', c: L('① 상품 고르기', '① Pick an item') }, { f: 'shopdetail', c: L('② 「입어 보기」', '② “Try on”') }, { f: 'shopresult', c: L('③ 입힌 모습', '③ Wearing it') }]) + aiNote()
+      + ul([L('「옷 고르기」를 누르면 쇼핑몰이 열려요. 상품을 누르고 「입어 보기」를 누르면 3D 몸에 입혀져요.', 'Tap “Pick clothes” to open the shop. Open an item and tap “Try on” to put it on the 3D body.'),
+          L('입은 옷은 왼쪽 줄에 이름이 생기고, 「고른 옷 벗기」로 벗어요. 쇼핑몰은 위 ✕로 닫아요.', 'The item appears in the left column; “Clear picks” removes it. Close the shop with ✕.')]));
+    h += sec(7, L('맵에서 고르기 (미용실)', 'Pick on map (salons)'),
+      row([{ f: 'mapview', c: L('① 지도에서 미용실', '① Salons on the map') }, { f: 'map', c: L('② 스타일 「입어 보기」', '② “Try on” a style') }, { f: 'maptry', c: L('③ 내 두상에 입힌 모습', '③ On your head') }]) + aiNote()
+      + ul([L('「맵에서 고르기」를 누르면 미용실 지도가 열려요. 주소나 동네로 검색하고, 「미용실」만 골라 볼 수 있어요.', 'Tap “Pick on map” to open the salon map. Search by address or area, or filter to “Salons”.'),
+          L('미용실을 누르면 그 미용실 헤어스타일과 가격·시간이 나와요. 「입어 보기」를 누르면 내 3D 두상에 그 스타일이 입혀져요.', 'Tap a salon to see its styles with price and time. “Try on” puts that style on your 3D head.')]));
+    h += sec(8, L('사진과 개인정보', 'Photos and privacy'),
+      ul([L('찍은 사진은 이 기기 안에서만 분석하고 서버로 보내지 않아요.', 'Photos are analyzed only on this device and never uploaded.'),
+          L('「새로 시작」을 누르면 처음부터 다시 찍을 수 있어요.', 'Tap “Start over” to take new photos.')]));
+    h += '<div class="hp-row"><button type="button" class="hp-again">' + esc(L('표지 다시 보기', 'Show intro')) + '</button>'
+      + '<button type="button" class="hp-close">' + esc(L('닫기', 'Close')) + '</button></div>';
+    return h;
+  }
+  var mode = 'help';
+  O.manual = function () { mode = 'manual'; O.help(); };
   var hov = null;
-  function closeHelp() { if (hov) hov.style.display = 'none'; }
+  function closeHelp() { if (hov) hov.style.display = 'none'; mode = 'help'; }
   O.help = function () {
     css();
     if (!hov) { hov = document.createElement('div'); hov.id = 'helpOv'; hov.addEventListener('click', function (e) { if (e.target === hov) closeHelp(); }); document.body.appendChild(hov); }
-    hov.innerHTML = '<div class="hp-sheet">' + helpHTML() + '</div>';
+    hov.innerHTML = '<div class="hp-sheet">' + (mode === 'manual' ? manualHTML() : helpHTML()) + '</div>';
+    var mb = hov.querySelector('.hp-manual'); if (mb) mb.onclick = function () { O.manual(); hov.querySelector('.hp-sheet').scrollTop = 0; };
     hov.querySelector('.hp-close').onclick = closeHelp;
     hov.querySelector('.hp-again').onclick = function () { closeHelp(); O.show(0); };
     hov.style.display = 'flex';

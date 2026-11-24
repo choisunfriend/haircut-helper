@@ -83,7 +83,7 @@ var CUSTOMER_UI = (function () {
         var g = sig();
         if (g !== last) { last = g; since = Date.now(); }
         if (done(pend) && Date.now() - since >= C.stableMs) break;
-        if (elT) { var at = aiText(); elT.textContent = (at ? at + ' · ' : '') + Math.round((Date.now() - t0) / 1000) + L('초', 's'); }
+        if (elT) elT.textContent = aiText();   // 진행 단계만(걸린 초는 안 보임 — 저사양에서 더 길게 느껴짐)
         await sleep(200);
       }
       if (!done(pend)) console.warn(TAG + ' 준비 대기 시간 초과(' + Math.round((Date.now() - t0) / 1000) + '초) — 그대로 3D로 갑니다 · ' + sig());
