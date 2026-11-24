@@ -2320,14 +2320,6 @@ var REGROW = (function () {
           dnStat.sigCm *= Math.max(0, Math.min(1, (cHi - dnStat.clean) / Math.max(1e-3, cHi - cLo)));   // 깨끗할수록 0
         }
       }
-      /* (2026-11-24 dncurl) 깨끗함이 없거나(보관된 분석 등) 있어도, 사진 컬 세기(고리 판정 통과 = 1)만큼 가우스 ②를 줄임.
-       *  실측: VIEW_CLEAN 비어 σ 0.98cm 전부 걸림 → 반경 1.1cm 고리 꺾임 58.9→22.7°/cm로 펴짐 → 곧아 보여 눕히기에 걸림.
-       *  Taubin ①(점 2~3개 지그재그)은 그대로. 끄기 REGROW.dn.curlGuard=false */
-      dnStat.curlK = 0;
-      if (DN.curlGuard !== false && dnStat.sigCm > 0) {
-        try { dnStat.curlK = G.layCurlK ? G.layCurlK() : 0; } catch (e) { dnStat.curlK = 0; }
-        dnStat.sigCm *= (1 - dnStat.curlK);
-      }
     }
     function dnTurn(P, coarseU) {          // [점 단위 꺾임 °/cm, coarseU 간격 꺾임 °/cm]
       var n = P.length, i, f = 0, Lt = 0, ax, ay, az, bx, by, bz, al, bl, px = 0, py = 0, pz = 0, has = false;
@@ -2579,8 +2571,6 @@ var REGROW = (function () {
      *  파이썬 재현(디버그 파일): 끝 방향 법선 cos 중앙값 0.91 → 0.20 · 옆 가시 사라짐. 끄기 REGROW.spikeLay=false */
     function spikeLay(sdd) {
       var q = sdd.pts, n = q && q.length; if (!Es0 || !n || n < 2 || sdd._skinDrop) return;
-      if (fcStat.curlK == null) { try { fcStat.curlK = G.layCurlK(); } catch (e) { fcStat.curlK = 0; } }   // (laycurlK) 곱슬은 바깥으로 선 짧은 가닥이 곧 부피
-      if (fcStat.curlK >= 1) return;
       var cmU = 19; try { cmU = modelCmPerUnit() || 19; } catch (e) {}
       var r0 = q[0], tp = q[n - 1], dx = tp.x - r0.x, dy = tp.y - r0.y, dz = tp.z - r0.z, L = Math.hypot(dx, dy, dz);
       if (!(L * cmU >= (G.spikeMinCm != null ? G.spikeMinCm : 1.5))) return;
@@ -2589,7 +2579,7 @@ var REGROW = (function () {
       if (L / (arc || 1) < (G.spikeStraight != null ? G.spikeStraight : 0.85)) return;   // 곧은 것만
       var nx = r0.x / (Es0.a * Es0.a), ny = (r0.y - CY) / (Es0.b * Es0.b), nz = r0.z / (Es0.c * Es0.c), nl = Math.hypot(nx, ny, nz) || 1; nx /= nl; ny /= nl; nz /= nl;
       dx /= L; dy /= L; dz /= L;
-      var cs = dx * nx + dy * ny + dz * nz; var spC = G.spikeCos != null ? G.spikeCos : 0.7; spC += (0.97 - spC) * (fcStat.curlK || 0); if (!(cs > spC)) return;
+      var cs = dx * nx + dy * ny + dz * nz; if (!(cs > (G.spikeCos != null ? G.spikeCos : 0.7))) return;
       fcStat.spike = (fcStat.spike || 0) + 1;
       // 목표 방향: 주변 결(접선) — 부호는 지금 가닥의 접선 성분 쪽, 그게 없으면 아래쪽
       var tx = dx - cs * nx, ty = dy - cs * ny, tz = dz - cs * nz, fx, fy, fz, sf = null;
@@ -4999,27 +4989,12 @@ var REGROW = (function () {
    *    두께를 크게 잰 자리(세운 윗머리·두꺼운 뒤통수)는 여유가 커서 안 바뀜.
    *  시뮬레이션(같은 디버그 · 두께 1.2cm 일정): 끝 높이 p90 1.93 → 1.11cm · p99 3.54 → 1.22cm.
    *  끄기 REGROW.lay=false · 세기 REGROW.layK(두께 배수) · .layMarginCm · .layRate */
-  /* (2026-11-24 laycurlK) 사진 컬 판정(photoCurl raw · 컬 슬라이더 꺼져 있어도 잰 값)을 0~1 연속 세기로.
-   *  가닥 하나의 곧음(chord/arc)은 잔결 걷어내기(가우스 σ≈1cm) 뒤라 곱슬도 곧게 보여 눕혀졌다(실측: 컬 52 손님 눕힌 6172 + 가시 2082 → 아랫부분 퍼짐 사라짐).
-   *  그래서 머리 전체 컬 실측으로 눕히기 자체를 약하게 — 판정(이분기)이 아니라 연속 배수, 직모(raw ≤ layCurlLo)는 예전과 똑같음.
-   *  raw ≤ layCurlLo → 0 · ≥ layCurlHi → 1(안 눕힘). 끄기 REGROW.layCurlAware=false */
-  G.layCurlK = function () {
-    if (G.layCurlAware === false) return 0;
-    try { var pc = G.photoCurl(); if (RG.result && RG.result.pass) return 1;   // 닫힌 고리(곱슬) 판정 통과 = 컬 엔진이 도는 머리
-      var r = pc ? Math.max(pc.value || 0, pc.raw || 0) : 0;
-      var lo = G.layCurlLo != null ? G.layCurlLo : 20, hi = G.layCurlHi != null ? G.layCurlHi : 45;
-      var k = clampN((r - lo) / Math.max(1e-6, hi - lo), 0, 1);
-      return (pc && pc.waveHelix) ? Math.min(k, G.layWaveMaxK != null ? G.layWaveMaxK : 0.6) : k;   // 굵은 웨이브(나선 분기)는 반만
-    } catch (e) { return 0; }
-  };
   G.layDown = function (model) {
     var S = G.layStat = { on: G.lay !== false, n: 0, laid: 0, segs: 0, h0: [], h1: [], why: '' };
     if (G.lay === false) { S.why = '꺼짐'; return; }
-    var cK = S.curlK = G.layCurlK();
-    if (cK >= 1) { S.why = '곱슬(사진 컬 실측) — 안 눕힘'; console.log('[두께 안으로 눕히기] 안 함 — 사진 컬 실측이 곱슬(세기 1 · 부피가 컬에서 나옴 · 기준 REGROW.layCurlLo/Hi · 끄기 REGROW.layCurlAware=false)'); return; }
     var sf = model && model.surf; if (!sf || !sf.thickAt) { S.why = '두피면 없음(모델에 surf 없음)'; return; }
     var cmU = 19; try { cmU = modelCmPerUnit() || 19; } catch (e) {}
-    var K = (G.layK != null ? G.layK : 1.0) * (1 + 2 * cK), mU = (G.layMarginCm != null ? G.layMarginCm : 0.3) / cmU, rate = G.layRate != null ? G.layRate : 0.5, minH = 0.6 / cmU;
+    var K = G.layK != null ? G.layK : 1.0, mU = (G.layMarginCm != null ? G.layMarginCm : 0.3) / cmU, rate = G.layRate != null ? G.layRate : 0.5, minH = 0.6 / cmU;
     var t0 = now(), grav = { x: 0, y: -1, z: 0 };
     var TDc = G.thickCells && G.thickCells.raw ? G.thickCells : null, NCc = TDc ? TDc.NT * TDc.NP : 0;   // (2026-11-24 tdiag) 칸마다 뻗친 가닥 수(눕히기 전/후)
     if (TDc) { TDc.spike0 = new Uint16Array(NCc); TDc.spike1 = new Uint16Array(NCc); TDc.strands = new Uint16Array(NCc); }
@@ -5035,7 +5010,6 @@ var REGROW = (function () {
       // (2026-11-24 laycurl) 곧은 가닥만 눕힘 — 펌·컬 가닥(직선거리/실제 길이 < layStraight)은 부피가 컬에서 나오므로
       //   두께 안으로 누르면 뺨 옆 퍼짐이 사라짐. 끄기 REGROW.layStraight=0
       var LS = G.layStraight != null ? G.layStraight : 0.75;
-      if (LS > 0) LS = LS + (0.97 - LS) * cK;   // (laycurlK) 컬 손님일수록 거의 곧은 가닥만 눕힘
       if (LS > 0) {
         var arc = 0, kk; for (kk = 1; kk < P.length; kk++) arc += Math.hypot(P[kk].x - P[kk - 1].x, P[kk].y - P[kk - 1].y, P[kk].z - P[kk - 1].z);
         var e = P[P.length - 1], chord = Math.hypot(e.x - P[0].x, e.y - P[0].y, e.z - P[0].z);
@@ -5076,7 +5050,7 @@ var REGROW = (function () {
     function q(a, f) { if (!a.length) return NaN; var b = a.slice().sort(function (x, y) { return x - y; }); return b[Math.min(b.length - 1, Math.floor(b.length * f))] * cmU; }
     S.p90 = [q(S.h0, 0.9), q(S.h1, 0.9)]; S.p99 = [q(S.h0, 0.99), q(S.h1, 0.99)]; S.ms = Math.round(now() - t0); S.h0 = S.h1 = null;
     try { if (TDc) console.log(G.thickDiag().join('\n')); } catch (eTd) {}
-    console.log('[두께 안으로 눕히기] 가닥 ' + S.n + ' 중 눕힌 ' + S.laid + '(마디 ' + S.segs + ') · 끝 높이(두피에서) p90 ' + S.p90[0].toFixed(1) + '→' + S.p90[1].toFixed(1) + 'cm · p99 ' + S.p99[0].toFixed(1) + '→' + S.p99[1].toFixed(1) + 'cm · 여유 = 두께×' + K + ' + ' + (mU * cmU).toFixed(1) + 'cm(최소 0.6) · 휘어진(컬) 가닥이라 안 눕힘 ' + (S.curly || 0) + '(곧음 기준 ' + (G.layStraight != null ? G.layStraight : 0.75) + ' · 끄기 REGROW.layStraight=0) · 늘어진 마디라 안 눕힘 ' + (S.hang || 0) + '(끄기 REGROW.layHang=false) · 사진 컬 세기 ' + cK.toFixed(2) + '(두께 배수 ×' + (1 + 2 * cK).toFixed(2) + ' · 끄기 REGROW.layCurlAware=false) · ' + S.ms + 'ms (끄기 REGROW.lay=false · 세기 REGROW.layK)');
+    console.log('[두께 안으로 눕히기] 가닥 ' + S.n + ' 중 눕힌 ' + S.laid + '(마디 ' + S.segs + ') · 끝 높이(두피에서) p90 ' + S.p90[0].toFixed(1) + '→' + S.p90[1].toFixed(1) + 'cm · p99 ' + S.p99[0].toFixed(1) + '→' + S.p99[1].toFixed(1) + 'cm · 여유 = 두께×' + K + ' + ' + (mU * cmU).toFixed(1) + 'cm(최소 0.6) · 휘어진(컬) 가닥이라 안 눕힘 ' + (S.curly || 0) + '(곧음 기준 ' + (G.layStraight != null ? G.layStraight : 0.75) + ' · 끄기 REGROW.layStraight=0) · 늘어진 마디라 안 눕힘 ' + (S.hang || 0) + '(끄기 REGROW.layHang=false) · ' + S.ms + 'ms (끄기 REGROW.lay=false · 세기 REGROW.layK)');
   };
   /* (2026-11-24 tdiag) 두께 칸 진단 — 윤곽 두께(raw)를 두 번째 측정(lift)·이웃과 대조. 바꾸는 것 없음(보기만) */
   G.thickDiag = function () {
@@ -5640,22 +5614,14 @@ function helixMeasure(rgba,mask,W,H,angle,coh,opt){opt=opt||{};const n=opt.n||25
     (typeof ANGLES !== 'undefined' ? ANGLES : ['front', 'left', 'right', 'back']).forEach(function (a) {
       try {
         var mi = state.hairMasks && state.hairMasks[a], id = mi && mi.identity; if (!id || id.ringN == null) return;
-        var cpp = cmPerMaskPx(a), d;
-        if (cpp > 0) { d = id.ringN / (id.ringAreaPx * cpp * cpp) * 100; id.ringDens = d; }   // (2026-11-24 ringstick) 잰 밀도는 사진 분석값에 붙여 둠
-        else if (isFinite(id.ringDens)) d = id.ringDens;                                       // 3D를 다시 만드는 중이라 자를 못 구해도 지난번 값
-        else return;
-        dens.push(d);
+        var cpp = cmPerMaskPx(a); if (!(cpp > 0)) return;
+        var d = id.ringN / (id.ringAreaPx * cpp * cpp) * 100; dens.push(d);
         views.push({ a: a, n: id.ringN, d: d, loop: id.waveShape && isFinite(id.waveShape.loop) ? id.waveShape.loop : null });
       } catch (e) {}
     });
     var med = NaN; if (dens.length) { dens.sort(function (p, q) { return p - q; }); med = dens.length % 2 ? dens[(dens.length - 1) / 2] : (dens[dens.length / 2 - 1] + dens[dens.length / 2]) / 2; }
-    /* (2026-11-24 ringstick) 못 잰 때(중립 3D를 다시 만드는 사이 hairOcc3D가 비어 자가 없음)는 지난 판정을 그대로 둠.
-     *  예전: 이 사이에 photoCurl이 불리면 pass=false로 덮여 → 섹션 컬은 52로 들어갔는데 컬 엔진(engineOn)은 꺼진 채로 그림. */
-    if (!isFinite(med) && RG.result && isFinite(RG.result.med) && RG.on) { RG.result.stale = (RG.result.stale || 0) + 1; return RG.result; }
     var pass = !!(RG.on && RG.minDens != null && isFinite(med) && med >= RG.minDens);
-    var was = RG.result && RG.result.pass;
     RG.result = { pass: pass, med: med, views: views, minDens: RG.minDens };
-    if (was !== pass) { try { console.log('[컬 엔진] ' + (pass ? '켜짐' : '꺼짐') + ' — 닫힌 고리 밀도 중앙 ' + (isFinite(med) ? med.toFixed(1) : '-') + ' / 기준 ' + RG.minDens + (G.curlEngine ? ' (수동 켬 REGROW.curlEngine=true)' : '') + ' · ' + views.map(function (v) { return v.a + ' ' + v.d.toFixed(1); }).join(' · ')); } catch (e) {} }
     return RG.result;
   };
   RG.lines = function () {
@@ -5934,7 +5900,7 @@ function helixMeasure(rgba,mask,W,H,angle,coh,opt){opt=opt||{};const n=opt.n||25
     var pc = r.curl || { value: 0, deg: null, views: [] };
     L.push('  컬 ' + pc.value + (pc.deg == null ? ' — 결 꺾임을 잰 뷰가 없어 0' :
       ' ← 결 꺾임 ' + pc.deg.toFixed(2) + '°/px(뷰 중앙값) · ' + pc.views.map(function (v) { return v.a + ' ' + v.v.toFixed(2) + (v.ok ? '' : '(표본 ' + v.n + ' — 안 씀)'); }).join(' · ') +
-      ' · 환산 ' + G.curlLo + '~' + G.curlHi + '°/px → 0~' + G.curlMax + ' (어림값 — 직모 사진에서 컬이 잡히면 curlLo를 올릴 것)' + (G.curlOn() ? ' · 켜짐(' + (G.curl ? '수동' : '고리 판정 통과') + ' · 컬 엔진 ' + (G.engineOn() ? '돎' : '안 돎') + ')' : ' · 꺼짐(고리 판정 ' + (RG.result && isFinite(RG.result.med) ? RG.result.med.toFixed(1) + ' < ' + RG.minDens : '못 잼') + ' · 수동 REGROW.curl=false) — 켜면 ' + pc.raw)) +
+      ' · 환산 ' + G.curlLo + '~' + G.curlHi + '°/px → 0~' + G.curlMax + ' (어림값 — 직모 사진에서 컬이 잡히면 curlLo를 올릴 것)' + (G.curl ? '' : ' · 꺼짐(REGROW.curl=false) — 켜면 ' + pc.raw)) +
       (pc.value > 0 ? ' · 편 길이 = 보이는 길이 × ' + (1 / curlRemain(pc.value)).toFixed(2) : '') + (pc.waveHelix ? ' · 굵은 웨이브로 봄(나선 측정 ' + pc.waveHelix.views + '장 · 한 바퀴 ' + pc.waveHelix.pitchCm.toFixed(1) + 'cm · 반경 ' + pc.waveHelix.rCm.toFixed(1) + 'cm · 예전 컬 ' + pc.waveHelix.was + ')' : ''));
     if (pc.rViews && (pc.rViews.length || pc.rNote)) L.push('  컬 굵기 ' + (pc.rCm > 0 ? '반경 ' + pc.rCm.toFixed(1) + 'cm(뷰 중앙값) → ' + (G.curlRadius ? '웨이브 ' + pc.wave +
       (pc.rodScale > 1 ? ' + 로드 ×' + pc.rodScale.toFixed(2) + '(다시 기른 가닥에만)' : '') + (pc.rodCm ? ' · 로드 반경 ' + pc.rodCm.toFixed(1) + 'cm' : '') : '꺼짐(REGROW.curlRadius=false) — 웨이브 50') : (pc.rNote || '못 잼')) +
@@ -6041,7 +6007,7 @@ function helixMeasure(rgba,mask,W,H,angle,coh,opt){opt=opt||{};const n=opt.n||25
       try { var GOh = typeof GABOR_ORIENT !== 'undefined' ? GABOR_ORIENT : null; if (GOh && GOh.hl !== false && GOh.hlLog && GOh.hlLog.length) L.push('  빛 반사(결 읽기 · 읽은 순서대로 최근 ' + GOh.hlLog.length + '번 · 명암 고르기 ' + (GOh.lumNorm !== false ? '켜짐' : '꺼짐') + '): ' + GOh.hlLog.map(function (h, k) { return (k + 1) + ') 가는 밝은 줄(흰머리·윤기 — 결로 씀) ' + (h.thin || 0) + 'px · 반사 띠 ' + h.hl + 'px · 둘레 ' + h.zone + ' · 가는 굵기 ' + h.small + ' · 띠 가장자리와 나란해 버림 ' + h.par + ' · 날아감 ' + h.clip + (h.keep != null ? ' · 줄무늬라 살림 ' + (h.keep + (h.keepClip || 0)) : ''); }).join(' | ') + ' (끄기 GABOR_ORIENT.hl=false · .lumNorm=false · 줄무늬 확인 끄기 .hlStripe=false)' + (G.woStat ? ' · <b>날아간 자리 기권</b>(사진 픽셀 하얗게 날아감 · 배경 위 제외) ' + Object.keys(G.woStat).filter(function (k) { return k !== 'n' && k !== 'glare'; }).map(function (k) { return k + ' ' + G.woStat[k]; }).join(' · ') + ' (합 ' + (G.woStat.n || 0) + '번 · 그중 빛 받은 자리(밝고 무채색 · 날아가진 않음) ' + (G.woStat.glare || 0) + '번 — 끄기 window.GLARE_OFF=true · 전체 끄기 REGROW.woAbstain=false)' : '')); } catch (eHl) {}
     L.push('  잔결 걷어내기(가닥을 따라 · 뿌리·마디 길이 그대로): ' + (!dC || !dC.on ? '꺼짐(켜기 REGROW.dn.on=true)' : '가닥 ' + dS.n + ' · Taubin ' + dC.passes + '번(점 2~3개 주기 지그재그)'
         + ' · 사진 결 또렷함 중앙 ' + (dS.coh != null ? dS.coh.toFixed(2) : '?') + (byC ? '(' + byC + ')' : '')
-        + ' → 가우스 ' + (dS.sigCm > 0.05 ? 'σ ' + dS.sigCm.toFixed(2) + 'cm(흐린 사진 — ' + dC.cohHi + ' 아래)' : '안 함(깨끗한 사진 — 굴곡 그대로)') + ' · 사진 깨끗함 ' + (dS.clean != null ? dS.clean.toFixed(2) : '없음') + ' · 컬 세기 ' + ((dS.curlK || 0).toFixed(2)) + '(σ ×' + (1 - (dS.curlK || 0)).toFixed(2) + ' · 끄기 REGROW.dn.curlGuard=false)'
+        + ' → 가우스 ' + (dS.sigCm > 0.05 ? 'σ ' + dS.sigCm.toFixed(2) + 'cm(흐린 사진 — ' + dC.cohHi + ' 아래)' : '안 함(깨끗한 사진 — 굴곡 그대로)')
         + (dS.smp ? ' · 꺾임 점 단위 ' + (dS.fineB / dS.smp).toFixed(1) + '→' + (dS.fineA / dS.smp).toFixed(1) + '°/cm' : '')
         + (dS.coarseN ? ' · ' + dC.coarseCm + 'cm 간격(굴곡) ' + (dS.coarseB / dS.coarseN).toFixed(1) + '→' + (dS.coarseA / dS.coarseN).toFixed(1) + '°/cm — 이게 크게 줄면 굴곡을 편 것' : '')
         + (dS.err ? ' · ⚠ ' + dS.err : '') + ' (끄기 ?dn=0 · REGROW.dn.passes/.sigMaxCm)')); } } catch (eD) {}
@@ -6672,8 +6638,7 @@ var SPEC_PASS = (function () {
     if (!SP.on || !r || !r.spec) { SP.last = info; return r; }
     var sp = r.spec, curl = (sp.perm && sp.perm.curl > 0) ? sp.perm.curl : 0;
     // ① 컬 길이
-    // (2026-11-25) lenFromStrands(11-10j)가 켜져 있으면 42번 cm는 이미 '컬 건 가닥의 호길이'(= 편 길이) — 또 곱하면 이중(28~34cm로 부풂)
-    if (SP.curlLen && curl > 0 && !r.isLong && sp.lenCm && typeof G.curlRemain === 'function' && G.lenFromStrands === false) {
+    if (SP.curlLen && curl > 0 && !r.isLong && sp.lenCm && typeof G.curlRemain === 'function') {
       var rem = G.curlRemain(curl);
       if (rem > 0.05 && rem < 0.999) {
         info.curlLenK = 1 / rem; info.lenBefore = Object.assign({}, sp.lenCm);
@@ -7854,7 +7819,11 @@ var FLOW_SPEC = (function () {
   FS._asr = function (id) {
     if (asrPlain) return { handled: false };
     var sp = null; try { sp = getStyleSpec(id); } catch (e) {}
-    if (!(FS.on && FS.native && FS.nativeStyle !== false && sp && sp.flow && sp.base === 'regrown')) { nat.id = null; nat.pending = null; try { clearTimeout(nat.timer); } catch (e) {} return { handled: false }; }
+    /* (2026-11-25) 마네킹 OFF로 등록한 스타일(base 'regrown')은 걸 때도 마네킹을 켜지 않음 — 사용자: "등록할 때 마네킨이 꺼져 있었으면 적용할 때도 꺼져 있어야"
+       11-22 nativeStyle=false가 이 스타일들까지 마네킹 길(17a applyStyleSpecAndRender → mannequinReset)로 보내서 항상 켜졌음.
+       마네킹 ON으로 등록한 스타일은 그대로 마네킹 + 결 표. 예전(전부 마네킹) = FLOW_SPEC.regrownKeepsMqOff=false */
+    var natOk = FS.nativeStyle !== false || (FS.regrownKeepsMqOff !== false);
+    if (!(FS.on && FS.native && natOk && sp && sp.flow && sp.base === 'regrown')) { nat.id = null; nat.pending = null; try { clearTimeout(nat.timer); } catch (e) {} return { handled: false }; }
     if (nat.id === id && natSpec()) { unapplyNative(); return { handled: true, value: null }; }       // 같은 스타일을 다시 누름 = 해제
     return { handled: true, value: startNative(id) };
   };
