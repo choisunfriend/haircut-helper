@@ -5014,7 +5014,11 @@ var REGROW = (function () {
         var H = hOf(prev), n = H.n, th = 0; try { th = sf.thickAt(H.F); } catch (e) { th = 0; }
         var hmax = Math.max(minH, th * K + mU), room = Math.max(0, hmax - H.h);
         var vn = vx * n.x + vy * n.y + vz * n.z, tx = vx - vn * n.x, ty = vy - vn * n.y, tz = vz - vn * n.z, tl = Math.hypot(tx, ty, tz);
-        if (vn > 0 && vn > room * rate) {
+        // (2026-11-24 layhang) 아래로 늘어진 마디(중력 쪽 cos > layHangCos)는 안 눕힘 — 긴 머리에서 턱 아래 가닥이
+        //   두피면(목 쪽으로 말려 들어감) 기준 '솟음'으로 잡혀 안쪽으로 접혀 묶이던 것. 끄기 REGROW.layHang=false
+        var hang = G.layHang !== false && (-vy) > l * (G.layHangCos != null ? G.layHangCos : 0.5);
+        if (hang) S.hang = (S.hang || 0) + 1;
+        if (!hang && vn > 0 && vn > room * rate) {
           var vn2 = Math.min(vn, room * rate);
           if (tl < 0.2 * l) {                                   // 거의 수직 — 앞 마디의 눕는 방향 → 중력을 두피에 눕힌 방향
             var d = lastT;
@@ -5038,7 +5042,7 @@ var REGROW = (function () {
     function q(a, f) { if (!a.length) return NaN; var b = a.slice().sort(function (x, y) { return x - y; }); return b[Math.min(b.length - 1, Math.floor(b.length * f))] * cmU; }
     S.p90 = [q(S.h0, 0.9), q(S.h1, 0.9)]; S.p99 = [q(S.h0, 0.99), q(S.h1, 0.99)]; S.ms = Math.round(now() - t0); S.h0 = S.h1 = null;
     try { if (TDc) console.log(G.thickDiag().join('\n')); } catch (eTd) {}
-    console.log('[두께 안으로 눕히기] 가닥 ' + S.n + ' 중 눕힌 ' + S.laid + '(마디 ' + S.segs + ') · 끝 높이(두피에서) p90 ' + S.p90[0].toFixed(1) + '→' + S.p90[1].toFixed(1) + 'cm · p99 ' + S.p99[0].toFixed(1) + '→' + S.p99[1].toFixed(1) + 'cm · 여유 = 두께×' + K + ' + ' + (mU * cmU).toFixed(1) + 'cm(최소 0.6) · ' + S.ms + 'ms (끄기 REGROW.lay=false · 세기 REGROW.layK)');
+    console.log('[두께 안으로 눕히기] 가닥 ' + S.n + ' 중 눕힌 ' + S.laid + '(마디 ' + S.segs + ') · 끝 높이(두피에서) p90 ' + S.p90[0].toFixed(1) + '→' + S.p90[1].toFixed(1) + 'cm · p99 ' + S.p99[0].toFixed(1) + '→' + S.p99[1].toFixed(1) + 'cm · 여유 = 두께×' + K + ' + ' + (mU * cmU).toFixed(1) + 'cm(최소 0.6) · 늘어진 마디라 안 눕힘 ' + (S.hang || 0) + '(끄기 REGROW.layHang=false) · ' + S.ms + 'ms (끄기 REGROW.lay=false · 세기 REGROW.layK)');
   };
   /* (2026-11-24 tdiag) 두께 칸 진단 — 윤곽 두께(raw)를 두 번째 측정(lift)·이웃과 대조. 바꾸는 것 없음(보기만) */
   G.thickDiag = function () {
