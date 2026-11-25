@@ -5806,26 +5806,7 @@ function helixMeasure(rgba,mask,W,H,angle,coh,opt){opt=opt||{};const n=opt.n||25
     var hr = null; try { hr = headHeightRef(); } catch (e) {}
     var order = (typeof SECTION_ORDER !== 'undefined') ? SECTION_ORDER : ['crown', 'front', 'temple', 'side', 'occipital', 'nape'];
     var by = {}; m.strands.forEach(function (s) { if (s.rg) (by[s.sec] || (by[s.sec] = [])).push(s); });
-    var lenCm = {}, tipAt = {}, raw = {}, lenFallback = {}, cut = {}, rawArc = {};
-    /* (2026-11-25) 길이 = 뼈대 길이 — 사용자: "스타일저장할 때와 적용할 때 머리가 조금 달라져 · obj로 외부에서 수정해와서 점 수가 더 늘었어"
-     *  점이 촘촘한(OBJ로 고친) 가닥은 꼬불꼬불한 컬이 점에 이미 들어가 있어, 점을 그대로 이은 호길이가 뼈대보다 훨씬 길게 잡혔음
-     *  (같은 머리 crown 7.9 → 25.1cm). 원본 화면은 그 뼈대 위에 컬을 다시 감아 짧게 보이고, 마네킹은 그 cm(×컬 길이 배수)를
-     *  컬 건 호길이로 맞춰 길게 나왔음. → 호길이 ±lenSmoothCm 이동평균으로 잔굴곡을 편 뒤 잼(양 끝은 창을 줄여 고정 · 점 간격과 무관).
-     *  되돌리기 REGROW.lenSmoothCm=0 */
-    function arcLen(P) { var L = 0; for (var k = 1; k < P.length; k++) L += Math.hypot(P[k].x - P[k - 1].x, P[k].y - P[k - 1].y, P[k].z - P[k - 1].z); return L; }
-    function skelLenCm(P, cmU) {
-      var w = (G.lenSmoothCm != null ? +G.lenSmoothCm : 1.2) / cmU, n = P.length;
-      if (!(w > 0) || n < 3) return arcLen(P) * cmU;
-      var d = new Float64Array(n), k, j; for (k = 1; k < n; k++) d[k] = d[k - 1] + Math.hypot(P[k].x - P[k - 1].x, P[k].y - P[k - 1].y, P[k].z - P[k - 1].z);
-      var Q = new Array(n), lo = 0, hi = 0;
-      for (k = 0; k < n; k++) {
-        var h = Math.min(w, d[k], d[n - 1] - d[k]);                 // 끝에선 창을 줄여 끝점 고정
-        while (d[lo] < d[k] - h) lo++; if (hi < k) hi = k; while (hi + 1 < n && d[hi + 1] <= d[k] + h) hi++;
-        var sx = 0, sy = 0, sz = 0, c = 0; for (j = lo; j <= hi; j++) { if (Math.abs(d[j] - d[k]) <= h + 1e-12) { sx += P[j].x; sy += P[j].y; sz += P[j].z; c++; } }
-        Q[k] = c ? { x: sx / c, y: sy / c, z: sz / c } : P[k];
-      }
-      return arcLen(Q) * cmU;
-    }
+    var lenCm = {}, tipAt = {}, raw = {}, lenFallback = {}, cut = {};
     order.forEach(function (sec) {
       lenFallback[sec] = 50;
       try {
@@ -5855,7 +5836,7 @@ function helixMeasure(rgba,mask,W,H,angle,coh,opt){opt=opt||{};const n=opt.n||25
          *  조정 화면 Cut 엔진이 이 값(길이 50)으로 가닥을 한 번 더 잘라 두피가 들여다보였음(그린 가닥 nape 2.5 → 1.2cm · 1cm 미만 41%).
          *  되돌리기 REGROW.lenFromStrands=false */
         lenCm[sec] = +q(a.map(function (s) {
-          if (G.lenFromStrands !== false && s.pts && s.pts.length > 1) { rawArc[sec] = rawArc[sec] || []; rawArc[sec].push(arcLen(s.pts) * cm); return skelLenCm(s.pts, cm); }
+          if (G.lenFromStrands !== false && s.pts && s.pts.length > 1) { var Ls = 0; for (var k2 = 1; k2 < s.pts.length; k2++) Ls += Math.hypot(s.pts[k2].x - s.pts[k2 - 1].x, s.pts[k2].y - s.pts[k2 - 1].y, s.pts[k2].z - s.pts[k2 - 1].z); return Ls * cm; }
           return (s.rg.free ? s.rg.L : Math.min(s.rg.L, Math.max(G.minLenCm / cm, G.liftK * s.rg.t))) * cm;
         }), G.lenFromStrands !== false ? 0.9 : 0.5).toFixed(1);
       }
@@ -5915,8 +5896,7 @@ function helixMeasure(rgba,mask,W,H,angle,coh,opt){opt=opt||{};const n=opt.n||25
     var pc = { value: 0, deg: null, views: [] }; try { pc = G.photoCurl(); } catch (e) {}
     var spec = { name: '', cut: cut, perm: { curl: pc.value, wave: pc.wave != null ? pc.wave : 50, rCm: pc.rCm > 0 ? +pc.rCm : null, pitchCm: (function () { try { var ps = (pc.rViews || []).filter(function (v) { return v.pitchCm > 0; }).map(function (v) { return v.pitchCm; }).sort(function (x, y) { return x - y; }); return ps.length ? (ps.length % 2 ? ps[ps.length >> 1] : (ps[ps.length / 2 - 1] + ps[ps.length / 2]) / 2) : (pc.pitchCm > 0 ? pc.pitchCm : null); } catch (e) { return null; } })() }, styling: styling, globalCurl: pc.value, fade: fade, lenFallback: lenFallback, version: 1, source: 'regrow' };
     if (info.isLong) spec.tipAt = tipAt; else spec.lenCm = lenCm;
-    var arcCm = {}; Object.keys(rawArc).forEach(function (k) { arcCm[k] = +q(rawArc[k], 0.9).toFixed(1); });
-    return { spec: spec, isLong: info.isLong, raw: raw, volRaw: volRaw, tTopCm: tTop, part: part, bareShare: bareShare, order: order, curl: pc, arcCm: arcCm };
+    return { spec: spec, isLong: info.isLong, raw: raw, volRaw: volRaw, tTopCm: tTop, part: part, bareShare: bareShare, order: order, curl: pc };
   };
   G.measureLines = function (r) {
     r = r || G.measure();
@@ -5926,7 +5906,6 @@ function helixMeasure(rgba,mask,W,H,angle,coh,opt){opt=opt||{};const n=opt.n||25
       L.push('  끝 높이(정수리에서 두상 높이의 몇 배 아래 · 1.00 ≈ 턱): ' + r.order.filter(function (k) { return sp.tipAt[k] != null; }).map(function (k) { return k + ' ' + sp.tipAt[k].toFixed(2); }).join(' · '));
     } else {
       L.push('  길이 cm(' + (G.lenFromStrands !== false ? '그린 가닥의 실제 길이 90% 값 — 조정 화면에서 다시 자르지 않게' : '어림 — 두께×' + G.liftK + ' 또는 기른 길이 중 짧은 쪽') + '): ' + r.order.filter(function (k) { return sp.lenCm[k] != null; }).map(function (k) { return k + ' ' + sp.lenCm[k]; }).join(' · '));
-      if (r.arcCm && Object.keys(r.arcCm).length) L.push('  (참고) 점을 그대로 이은 호길이 cm — 잔굴곡 포함, 예전 저장값: ' + r.order.filter(function (k) { return r.arcCm[k] != null; }).map(function (k) { return k + ' ' + r.arcCm[k]; }).join(' · ') + ' · 펴는 창 ±' + (G.lenSmoothCm != null ? G.lenSmoothCm : 1.2) + 'cm (되돌리기 REGROW.lenSmoothCm=0)');
     }
     L.push('  참고 — 섹션별 [기른 길이 cm / 뿌리 자리 두께 cm / 두피 밖으로 늘어진 가닥 %]: ' + r.order.filter(function (k) { return r.raw[k]; }).map(function (k) {
       return k + ' ' + n1(r.raw[k].growCm) + '/' + n1(r.raw[k].thickCm) + '/' + r.raw[k].freePct + '%'; }).join(' · '));
@@ -5940,7 +5919,7 @@ function helixMeasure(rgba,mask,W,H,angle,coh,opt){opt=opt||{};const n=opt.n||25
     var pc = r.curl || { value: 0, deg: null, views: [] };
     L.push('  컬 ' + pc.value + (pc.deg == null ? ' — 결 꺾임을 잰 뷰가 없어 0' :
       ' ← 결 꺾임 ' + pc.deg.toFixed(2) + '°/px(뷰 중앙값) · ' + pc.views.map(function (v) { return v.a + ' ' + v.v.toFixed(2) + (v.ok ? '' : '(표본 ' + v.n + ' — 안 씀)'); }).join(' · ') +
-      ' · 환산 ' + G.curlLo + '~' + G.curlHi + '°/px → 0~' + G.curlMax + ' (어림값 — 직모 사진에서 컬이 잡히면 curlLo를 올릴 것)' + (G.curl ? '' : ' · 꺼짐(REGROW.curl=false) — 켜면 ' + pc.raw)) +
+      ' · 환산 ' + G.curlLo + '~' + G.curlHi + '°/px → 0~' + G.curlMax + ' (어림값 — 직모 사진에서 컬이 잡히면 curlLo를 올릴 것)' + (G.curl ? '' : (pc.value > 0 ? ' · 자동 켜짐(REGROW.curl=false지만 고리 판정 ringGate 통과)' : ' · 꺼짐(REGROW.curl=false) — 켜면 ' + pc.raw))) +
       (pc.value > 0 ? ' · 편 길이 = 보이는 길이 × ' + (1 / curlRemain(pc.value)).toFixed(2) : '') + (pc.waveHelix ? ' · 굵은 웨이브로 봄(나선 측정 ' + pc.waveHelix.views + '장 · 한 바퀴 ' + pc.waveHelix.pitchCm.toFixed(1) + 'cm · 반경 ' + pc.waveHelix.rCm.toFixed(1) + 'cm · 예전 컬 ' + pc.waveHelix.was + ')' : ''));
     if (pc.rViews && (pc.rViews.length || pc.rNote)) L.push('  컬 굵기 ' + (pc.rCm > 0 ? '반경 ' + pc.rCm.toFixed(1) + 'cm(뷰 중앙값) → ' + (G.curlRadius ? '웨이브 ' + pc.wave +
       (pc.rodScale > 1 ? ' + 로드 ×' + pc.rodScale.toFixed(2) + '(다시 기른 가닥에만)' : '') + (pc.rodCm ? ' · 로드 반경 ' + pc.rodCm.toFixed(1) + 'cm' : '') : '꺼짐(REGROW.curlRadius=false) — 웨이브 50') : (pc.rNote || '못 잼')) +
@@ -6678,7 +6657,11 @@ var SPEC_PASS = (function () {
     if (!SP.on || !r || !r.spec) { SP.last = info; return r; }
     var sp = r.spec, curl = (sp.perm && sp.perm.curl > 0) ? sp.perm.curl : 0;
     // ① 컬 길이
-    if (SP.curlLen && curl > 0 && !r.isLong && sp.lenCm && typeof G.curlRemain === 'function') {
+    // (2026-11-25) 다시 기른 가닥에서 잰 cm(lenFromStrands)는 "그린 가닥의 실제 길이" = 이미 편 길이 → 또 늘리면 두 번 늘어남(로그: 19.2→21.6).
+    //   1/curlRemain은 "보이는 길이(뼈대)"로 잰 옛 방식(lenFromStrands=false)일 때만. 되돌리기 SPEC_PASS.curlLenOnDrawn=true
+    var drawnLen = G.lenFromStrands !== false && !SP.curlLenOnDrawn;
+    if (drawnLen) info.skipWhy = '다시 기른 가닥의 실제 길이로 잼 — 이미 편 길이';
+    if (SP.curlLen && !drawnLen && curl > 0 && !r.isLong && sp.lenCm && typeof G.curlRemain === 'function') {
       var rem = G.curlRemain(curl);
       if (rem > 0.05 && rem < 0.999) {
         info.curlLenK = 1 / rem; info.lenBefore = Object.assign({}, sp.lenCm);
@@ -6700,7 +6683,7 @@ var SPEC_PASS = (function () {
   SP.lines = function () {
     var i = SP.last; if (!i) return [TAG + ' ' + (SP.on ? '대기 — 원본 머리를 스타일로 등록하면 찍힙니다' : '꺼짐')];
     var L = [TAG + ' 직전 등록에서 스펙에 넘긴 값'];
-    L.push('  컬 길이: ' + (i.lenBefore ? 'cm × ' + i.curlLenK.toFixed(2) + ' (보이는 길이 → 편 길이) · 고치기 전 ' + Object.keys(i.lenBefore).map(function (k) { return k + ' ' + i.lenBefore[k]; }).join(' · ') : '안 고침(직모 · 긴 머리 · 꺼짐)'));
+    L.push('  컬 길이: ' + (i.lenBefore ? 'cm × ' + i.curlLenK.toFixed(2) + ' (보이는 길이 → 편 길이) · 고치기 전 ' + Object.keys(i.lenBefore).map(function (k) { return k + ' ' + i.lenBefore[k]; }).join(' · ') : '안 고침(' + (i.skipWhy || '직모 · 긴 머리 · 꺼짐') + ')'));
     L.push('  로드 배수: ' + (i.rodScale > 1 ? '×' + i.rodScale.toFixed(2) + ' (마네킹 가닥에도 걸림)' : '없음(웨이브 100 이내)'));
     L.push('  가르마: ' + (!i.part ? '꺼짐' : i.part.ok ? '위치 ' + (i.part.x > 0 ? '+' : '') + i.part.x.toFixed(1) + ' → 슬라이더 ' + i.part.part + ' · 세기 ' + i.part.amt +
       ' (가운데를 넘어가는 가닥 ' + Math.round(i.part.cross * 100) + '% · ' + i.part.n + '가닥 — 세기는 어림)' : '안 넣음 — ' + i.part.why));
