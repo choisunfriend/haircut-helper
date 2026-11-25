@@ -4996,6 +4996,15 @@ var REGROW = (function () {
     var cmU = 19; try { cmU = modelCmPerUnit() || 19; } catch (e) {}
     var K = G.layK != null ? G.layK : 1.0, mU = (G.layMarginCm != null ? G.layMarginCm : 0.3) / cmU, rate = G.layRate != null ? G.layRate : 0.5, minH = 0.6 / cmU;
     var t0 = now(), grav = { x: 0, y: -1, z: 0 };
+    var win = (G.layCurlWinCm != null ? G.layCurlWinCm : 2.5) / cmU;   // (laycurl2) 컬 재는 구간 길이
+    var curlyHead = true;                                              // (laycurl2) 사진에서 잰 컬(섹션 컬/전체 컬)이 0이면 직모 → 컬 검사 안 함
+    try {
+      var cmax = 0, gc = (typeof state !== 'undefined' && state) ? state._globalCurl : 0; if (gc > cmax) cmax = gc;
+      if (G.base && G.base.sections) Object.keys(G.base.sections).forEach(function (k2) { var c2 = G.base.sections[k2].curl || 0; if (c2 > cmax) cmax = c2; });
+      if (typeof state !== 'undefined' && state && state.sections) Object.keys(state.sections).forEach(function (k2) { var c2 = (state.sections[k2] || {}).curl || 0; if (c2 > cmax) cmax = c2; });
+      curlyHead = G.layCurlAlways === true || cmax > 0;
+    } catch (eC) { curlyHead = true; }
+    S.curlyHead = curlyHead;
     var TDc = G.thickCells && G.thickCells.raw ? G.thickCells : null, NCc = TDc ? TDc.NT * TDc.NP : 0;   // (2026-11-24 tdiag) 칸마다 뻗친 가닥 수(눕히기 전/후)
     if (TDc) { TDc.spike0 = new Uint16Array(NCc); TDc.spike1 = new Uint16Array(NCc); TDc.strands = new Uint16Array(NCc); }
     function isSpike(P) {                                          // 끝 방향이 두피 바깥(법선·방향 > 0.7) + 끝이 두피에서 1.2cm 넘게 뜸
@@ -5009,11 +5018,21 @@ var REGROW = (function () {
       var ci = -1; if (TDc && sf.cellOf) { try { ci = sf.cellOf(P[0]); } catch (e) { ci = -1; } if (ci >= 0 && ci < NCc) { TDc.strands[ci]++; if (isSpike(P)) TDc.spike0[ci]++; } else ci = -1; }
       // (2026-11-24 laycurl) 곧은 가닥만 눕힘 — 펌·컬 가닥(직선거리/실제 길이 < layStraight)은 부피가 컬에서 나오므로
       //   두께 안으로 누르면 뺨 옆 퍼짐이 사라짐. 끄기 REGROW.layStraight=0
+      // (2026-11-25 laycurl2) 21번은 가닥 '전체' 직선거리/길이로 재서, 두상을 감싸며 굽거나 뿌리에서 솟았다 꺾인 직모 가닥까지
+      //   컬로 잡혀 눕히기가 거의 안 됐음. 이제 ① 사진에서 잰 컬이 0(직모)이면 검사 안 함 → 전부 눕힘(20번과 같음)
+      //   ② 컬 머리는 짧은 구간(layCurlWinCm ≈ 2.5cm)마다 직선거리/길이를 재서 그 중앙값 < layStraight면 컬 가닥(안 눕힘).
+      //   큰 굽음(두상 감싸기)은 2.5cm 안에서는 거의 곧아서 안 걸리고, 컬 나선만 걸림.
       var LS = G.layStraight != null ? G.layStraight : 0.75;
-      if (LS > 0) {
-        var arc = 0, kk; for (kk = 1; kk < P.length; kk++) arc += Math.hypot(P[kk].x - P[kk - 1].x, P[kk].y - P[kk - 1].y, P[kk].z - P[kk - 1].z);
-        var e = P[P.length - 1], chord = Math.hypot(e.x - P[0].x, e.y - P[0].y, e.z - P[0].z);
-        if (arc > 1e-9 && chord / arc < LS) { S.curly = (S.curly || 0) + 1; S.h1.push(hT0); return; }
+      if (LS > 0 && curlyHead) {
+        var cum = [0], kk; for (kk = 1; kk < P.length; kk++) cum.push(cum[kk - 1] + Math.hypot(P[kk].x - P[kk - 1].x, P[kk].y - P[kk - 1].y, P[kk].z - P[kk - 1].z));
+        var rs = [], j0 = 0;
+        for (kk = 1; kk < P.length; kk++) {
+          if (cum[kk] - cum[j0] >= win) {
+            var ch = Math.hypot(P[kk].x - P[j0].x, P[kk].y - P[j0].y, P[kk].z - P[j0].z); rs.push(ch / (cum[kk] - cum[j0]));
+            j0 = kk;
+          }
+        }
+        if (rs.length) { rs.sort(function (a, b) { return a - b; }); if (rs[rs.length >> 1] < LS) { S.curly = (S.curly || 0) + 1; S.h1.push(hT0); return; } }
       }
       var prev = { x: P[0].x, y: P[0].y, z: P[0].z }, out = [prev], lastT = null, changed = 0, k;
       for (k = 1; k < P.length; k++) {
@@ -5050,7 +5069,7 @@ var REGROW = (function () {
     function q(a, f) { if (!a.length) return NaN; var b = a.slice().sort(function (x, y) { return x - y; }); return b[Math.min(b.length - 1, Math.floor(b.length * f))] * cmU; }
     S.p90 = [q(S.h0, 0.9), q(S.h1, 0.9)]; S.p99 = [q(S.h0, 0.99), q(S.h1, 0.99)]; S.ms = Math.round(now() - t0); S.h0 = S.h1 = null;
     try { if (TDc) console.log(G.thickDiag().join('\n')); } catch (eTd) {}
-    console.log('[두께 안으로 눕히기] 가닥 ' + S.n + ' 중 눕힌 ' + S.laid + '(마디 ' + S.segs + ') · 끝 높이(두피에서) p90 ' + S.p90[0].toFixed(1) + '→' + S.p90[1].toFixed(1) + 'cm · p99 ' + S.p99[0].toFixed(1) + '→' + S.p99[1].toFixed(1) + 'cm · 여유 = 두께×' + K + ' + ' + (mU * cmU).toFixed(1) + 'cm(최소 0.6) · 휘어진(컬) 가닥이라 안 눕힘 ' + (S.curly || 0) + '(곧음 기준 ' + (G.layStraight != null ? G.layStraight : 0.75) + ' · 끄기 REGROW.layStraight=0) · 늘어진 마디라 안 눕힘 ' + (S.hang || 0) + '(끄기 REGROW.layHang=false) · ' + S.ms + 'ms (끄기 REGROW.lay=false · 세기 REGROW.layK)');
+    console.log('[두께 안으로 눕히기] 가닥 ' + S.n + ' 중 눕힌 ' + S.laid + '(마디 ' + S.segs + ') · 끝 높이(두피에서) p90 ' + S.p90[0].toFixed(1) + '→' + S.p90[1].toFixed(1) + 'cm · p99 ' + S.p99[0].toFixed(1) + '→' + S.p99[1].toFixed(1) + 'cm · 여유 = 두께×' + K + ' + ' + (mU * cmU).toFixed(1) + 'cm(최소 0.6) · 휘어진(컬) 가닥이라 안 눕힘 ' + (S.curly || 0) + '(' + (curlyHead ? '컬 머리 · ' + (win * cmU).toFixed(1) + 'cm 구간 곧음 기준 ' + (G.layStraight != null ? G.layStraight : 0.75) : '직모 머리라 컬 검사 안 함') + ' · 끄기 REGROW.layStraight=0) · 늘어진 마디라 안 눕힘 ' + (S.hang || 0) + '(끄기 REGROW.layHang=false) · ' + S.ms + 'ms (끄기 REGROW.lay=false · 세기 REGROW.layK)');
   };
   /* (2026-11-24 tdiag) 두께 칸 진단 — 윤곽 두께(raw)를 두 번째 측정(lift)·이웃과 대조. 바꾸는 것 없음(보기만) */
   G.thickDiag = function () {
