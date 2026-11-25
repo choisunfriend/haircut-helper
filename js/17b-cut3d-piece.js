@@ -5007,14 +5007,6 @@ var REGROW = (function () {
       var P = sd && sd.pts; if (!P || P.length < 3) return; S.n++;
       var hT0 = hOf(P[P.length - 1]).h; S.h0.push(hT0);
       var ci = -1; if (TDc && sf.cellOf) { try { ci = sf.cellOf(P[0]); } catch (e) { ci = -1; } if (ci >= 0 && ci < NCc) { TDc.strands[ci]++; if (isSpike(P)) TDc.spike0[ci]++; } else ci = -1; }
-      // (2026-11-24 laycurl) 곧은 가닥만 눕힘 — 펌·컬 가닥(직선거리/실제 길이 < layStraight)은 부피가 컬에서 나오므로
-      //   두께 안으로 누르면 뺨 옆 퍼짐이 사라짐. 끄기 REGROW.layStraight=0
-      var LS = G.layStraight != null ? G.layStraight : 0.75;
-      if (LS > 0) {
-        var arc = 0, kk; for (kk = 1; kk < P.length; kk++) arc += Math.hypot(P[kk].x - P[kk - 1].x, P[kk].y - P[kk - 1].y, P[kk].z - P[kk - 1].z);
-        var e = P[P.length - 1], chord = Math.hypot(e.x - P[0].x, e.y - P[0].y, e.z - P[0].z);
-        if (arc > 1e-9 && chord / arc < LS) { S.curly = (S.curly || 0) + 1; S.h1.push(hT0); return; }
-      }
       var prev = { x: P[0].x, y: P[0].y, z: P[0].z }, out = [prev], lastT = null, changed = 0, k;
       for (k = 1; k < P.length; k++) {
         var vx = P[k].x - P[k - 1].x, vy = P[k].y - P[k - 1].y, vz = P[k].z - P[k - 1].z, l = Math.hypot(vx, vy, vz);
@@ -5050,7 +5042,7 @@ var REGROW = (function () {
     function q(a, f) { if (!a.length) return NaN; var b = a.slice().sort(function (x, y) { return x - y; }); return b[Math.min(b.length - 1, Math.floor(b.length * f))] * cmU; }
     S.p90 = [q(S.h0, 0.9), q(S.h1, 0.9)]; S.p99 = [q(S.h0, 0.99), q(S.h1, 0.99)]; S.ms = Math.round(now() - t0); S.h0 = S.h1 = null;
     try { if (TDc) console.log(G.thickDiag().join('\n')); } catch (eTd) {}
-    console.log('[두께 안으로 눕히기] 가닥 ' + S.n + ' 중 눕힌 ' + S.laid + '(마디 ' + S.segs + ') · 끝 높이(두피에서) p90 ' + S.p90[0].toFixed(1) + '→' + S.p90[1].toFixed(1) + 'cm · p99 ' + S.p99[0].toFixed(1) + '→' + S.p99[1].toFixed(1) + 'cm · 여유 = 두께×' + K + ' + ' + (mU * cmU).toFixed(1) + 'cm(최소 0.6) · 휘어진(컬) 가닥이라 안 눕힘 ' + (S.curly || 0) + '(곧음 기준 ' + (G.layStraight != null ? G.layStraight : 0.75) + ' · 끄기 REGROW.layStraight=0) · 늘어진 마디라 안 눕힘 ' + (S.hang || 0) + '(끄기 REGROW.layHang=false) · ' + S.ms + 'ms (끄기 REGROW.lay=false · 세기 REGROW.layK)');
+    console.log('[두께 안으로 눕히기] 가닥 ' + S.n + ' 중 눕힌 ' + S.laid + '(마디 ' + S.segs + ') · 끝 높이(두피에서) p90 ' + S.p90[0].toFixed(1) + '→' + S.p90[1].toFixed(1) + 'cm · p99 ' + S.p99[0].toFixed(1) + '→' + S.p99[1].toFixed(1) + 'cm · 여유 = 두께×' + K + ' + ' + (mU * cmU).toFixed(1) + 'cm(최소 0.6) · 늘어진 마디라 안 눕힘 ' + (S.hang || 0) + '(끄기 REGROW.layHang=false) · ' + S.ms + 'ms (끄기 REGROW.lay=false · 세기 REGROW.layK)');
   };
   /* (2026-11-24 tdiag) 두께 칸 진단 — 윤곽 두께(raw)를 두 번째 측정(lift)·이웃과 대조. 바꾸는 것 없음(보기만) */
   G.thickDiag = function () {
@@ -7053,7 +7045,6 @@ var FLOW_SPEC = (function () {
     native: true,        // 마네킹 없이 만든 스타일은 마네킹을 안 켜고 손님의 다시 기른 머리 위에 얹음 · 컬이 nativeCurl 이상인 손님의 원본은 다시 기른 머리로 보여 줌
     nativeCurl: 0,       // (2026-10-10t) 0 — 컬 손님 원본도 마네킹 + 잰 값(61번 ④가 잰 반경·간격으로 감음). 예전 값 40      // 잰 컬이 이 값 이상이면 원본 = 다시 기른 머리(42번이 결 정렬을 끄는 기준과 같은 값) · 0 = 컬과 무관하게 마네킹+표
     natResMax: 75,       // 도: 가닥이 제 결에서 벗어나 있던 각을 이만큼까지만 인정(거꾸로 간 가닥은 이 각으로 눌림)
-    natAbsLen: true, natAbsVar: 0.15,   // (2026-11-25) 제 머리 바탕 스타일 길이 = 스타일 칸 길이 그대로(손님 머리 길이 무관) · 가닥별 차이 ±15%만 · false = 아래 배수 한도(예전)
     natLenMin: 0.25, natLenMax: 4,   // 길이 배수(스타일 길이 ÷ 제 칸 길이)의 한도
     smallFrac: 0.25,     // (i) 몸통 가닥 수가 보통 칸(중앙값)의 이 비율 미만인 무리는 같은 쪽으로 가는 큰 이웃의 방향을 따름 · 0 = 끔
     saveComb: true,      // (h) 스타일 등록 때 빗질·넘기기(53번)를 건 가닥으로 표를 뽑음 — 넘긴 모양이 스타일에 들어감 · false = 빗기 전 모양으로(예전)
@@ -7558,17 +7549,6 @@ var FLOW_SPEC = (function () {
     var ratio = (own && own.L > 1e-3 && sty.L > 1e-3) ? sty.L / own.L : 1;
     if (ratio < cfg.natLenMin) ratio = cfg.natLenMin; if (ratio > cfg.natLenMax) ratio = cfg.natLenMax;
     var T = A * ratio;
-    /* (2026-11-25) 손님 머리 길이와 무관하게 — 사용자: "짧은 머리는 안될 거 같아. 머리 길이에 무관하게 적용되도록"
-       예전: T = 제 가닥 길이 × (스타일 칸 길이 ÷ 제 칸 길이)를 natLenMax(4)·natTail로 눌러서, 짧은 머리 손님은 스타일이 손님 길이에 묶여 짧게 나왔음.
-       이제: T = 스타일 칸 길이 그대로(가닥마다 제 칸 안에서 길고 짧던 만큼만 ±natAbsVar로 남김). 모자란 길이는 아래 "스타일이 더 긺"에서 스타일 결을 따라 이어 기름.
-       예전 = FLOW_SPEC.natAbsLen=false */
-    var absLen = cfg.natAbsLen !== false && sty.L > 1e-3;
-    if (absLen) {
-      var fv = (own && own.L > 1e-3) ? A / own.L : 1, vr = typeof cfg.natAbsVar === 'number' ? cfg.natAbsVar : 0.15;
-      if (fv < 1 - vr) fv = 1 - vr; if (fv > 1 + vr) fv = 1 + vr;
-      T = sty.L * fv; ratio = 1;                                             // ratio 1 → 아래 혼자 긴 가닥 누르기 안 탐(이미 스타일 길이)
-      if (cfg._st) cfg._st.absLen = (cfg._st.absLen || 0) + 1;
-    }
     // (2026-10-07g) 혼자 긴 가닥 누르기 — 제 칸보다 몇 배 긴 가닥(잔머리·지나쳐 기른 가닥)에 길이 배수를 그대로 곱하면 스타일보다 훨씬 긴 꼬리가 됨
     //   (실제: 짧은 머리 남자에 긴 펌 스타일 → 가슴 아래까지 늘어진 곧은 가닥 몇 줄). 늘리는 경우에만, 스타일 칸 길이 × natTail까지만.
     //   배수가 1(같은 길이의 스타일)이면 손님 가닥 그대로이고, 배수 natTailFull 이상에서 온전히 누름(사이는 서서히 — 뚝 끊기지 않게).
@@ -7831,11 +7811,7 @@ var FLOW_SPEC = (function () {
   FS._asr = function (id) {
     if (asrPlain) return { handled: false };
     var sp = null; try { sp = getStyleSpec(id); } catch (e) {}
-    /* (2026-11-25) 마네킹 OFF로 등록한 스타일(base 'regrown')은 걸 때도 마네킹을 켜지 않음 — 사용자: "등록할 때 마네킨이 꺼져 있었으면 적용할 때도 꺼져 있어야"
-       11-22 nativeStyle=false가 이 스타일들까지 마네킹 길(17a applyStyleSpecAndRender → mannequinReset)로 보내서 항상 켜졌음.
-       마네킹 ON으로 등록한 스타일은 그대로 마네킹 + 결 표. 예전(전부 마네킹) = FLOW_SPEC.regrownKeepsMqOff=false */
-    var natOk = FS.nativeStyle !== false || (FS.regrownKeepsMqOff !== false);
-    if (!(FS.on && FS.native && natOk && sp && sp.flow && sp.base === 'regrown')) { nat.id = null; nat.pending = null; try { clearTimeout(nat.timer); } catch (e) {} return { handled: false }; }
+    if (!(FS.on && FS.native && FS.nativeStyle !== false && sp && sp.flow && sp.base === 'regrown')) { nat.id = null; nat.pending = null; try { clearTimeout(nat.timer); } catch (e) {} return { handled: false }; }
     if (nat.id === id && natSpec()) { unapplyNative(); return { handled: true, value: null }; }       // 같은 스타일을 다시 누름 = 해제
     return { handled: true, value: startNative(id) };
   };
