@@ -27,7 +27,7 @@
 var STYLE_IO = (function () {
   'use strict';
   var W = window, TAG = '[스타일 입출력]';
-  var IO = Object.assign({ on: true, maxObjBytes: 200 * 1024 * 1024, maxJsonBytes: 2 * 1024 * 1024, minPts: 3, objOwnMeasure: true, curlFullPitchCm: 2.0, curlMinRCm: 0.25, curlWinCm: 3.5 }, W.STYLE_IO || {});
+  var IO = Object.assign({ on: true, maxObjBytes: 200 * 1024 * 1024, maxJsonBytes: 2 * 1024 * 1024, minPts: 3 }, W.STYLE_IO || {});
   if (!IO.on) return IO;
 
   function L(ko, en) { try { return typeof uiLang !== 'undefined' && uiLang === 'en' ? en : ko; } catch (e) { return ko; } }
@@ -204,119 +204,7 @@ var STYLE_IO = (function () {
     var x = p[0] / H.a, y = (p[1] - H.cy) / H.b, z = p[2] / H.c;
     return Math.abs(Math.sqrt(x * x + y * y + z * z) - 1);
   }
-
-  /* ---- OBJ 가닥에서 스타일 숫자의 재료(rg)를 다시 잼 (2026-11-25) ------------------------------
-   *  사용자: "obj파일 올릴 때 원래 헤어의 정보가 남아있어서 스타일 저장할 때 제대로 안되는 거 같아"
-   *  REGROW.measure가 읽는 것: s.sec · s.pts · s.rg.{L, t, free, tipY, dx, dz} · model.rgInfo.{isLong, skipY, plantY} · photoCurl()(사진)
-   *  예전엔 pts만 OBJ였고 나머지는 전부 사진 머리 것이라 길이만 바뀌고 볼륨·넘김·가르마·컬·긴머리 판정은 사진 그대로 저장됐음.
-   *  여기서 같은 뜻으로 다시 잼:
-   *    L   = 가닥 호길이 · tipY = 끝 높이 · dx/dy/dz = 뿌리에서 6번째 점까지 방향(그 값 그대로 — 17b 4287행과 같은 식)
-   *    t   = 뿌리 칸(두피 각도 32×16)의 머리 두께 = 그 칸 위를 지나는 가닥 점(몸 높이 위)이 두피에서 뜬 높이의 90% 값 = 두피→머리 겉면
-   *    free = 두피에서 1.5cm 넘게 떨어진 채 끝남 · isLong = 끝이 몸 높이(CY − 0.7b) 아래인 가닥 비율 > REGROW.longShare(17b 3254행과 같음)
-   *    컬  = 가닥 중심선(호길이 ±3.5cm 이동평균 ≈ 곱슬 한 바퀴 호길이 · IO.curlWinCm)에서 벗어난 반경 + 한 바퀴 간격 → photoCurl과 같은 반경→웨이브 식 ⚠ 컬 값(0~90) 환산은 초안:
-   *          한 바퀴 IO.curlFullPitchCm(2cm) 이하 = curlMax, 길수록 비례로 줄임 · 반경 IO.curlMinRCm(0.25cm) 미만 = 직모 */
-  function measureImported(out, H, R, setRg) {
-    var cm = cmPerUnit() || 19.3, res = { isLong: false, lowShare: 0, tMedCm: 0, cells: 0, curl: { value: 0, n: 0 } };
-    if (!H) return res;
-    var yBody = H.cy - 0.7 * H.b, NT = 32, NP = 16, cellMax = {}, low = 0;
-    function nr(p) { var x = p.x / H.a, y = (p.y - H.cy) / H.b, z = p.z / H.c; return Math.sqrt(x * x + y * y + z * z); }
-    function hgt(p) { var r = nr(p); if (!(r > 1)) return 0; return Math.hypot(p.x, p.y - H.cy, p.z) * (1 - 1 / r); }
-    function cellOf(p) {
-      var th = Math.atan2(p.x, p.z), ph = Math.acos(Math.max(-1, Math.min(1, (p.y - H.cy) / H.b)));
-      return Math.min(NT - 1, Math.floor((th + Math.PI) / (2 * Math.PI) * NT)) * NP + Math.min(NP - 1, Math.floor(ph / Math.PI * NP));
-    }
-    var per = out.map(function (s) {
-      var P = s.pts, L = 0, i;
-      for (i = 1; i < P.length; i++) L += Math.hypot(P[i].x - P[i - 1].x, P[i].y - P[i - 1].y, P[i].z - P[i - 1].z);
-      for (i = 0; i < P.length; i += 2) if (P[i].y > yBody) { var h = hgt(P[i]), cp = cellOf(P[i]); (cellMax[cp] || (cellMax[cp] = [])).push(h); }   // 그 칸 위를 지나는 모든 가닥 점의 높이
-      var c = cellOf(P[0]);
-      if (P[P.length - 1].y < yBody) low++;
-      return { L: L, c: c, tipH: hgt(P[P.length - 1]) };
-    });
-    var tCell = {}, ts = [];
-    Object.keys(cellMax).forEach(function (c) { var a = cellMax[c].sort(function (x, y) { return x - y; }); tCell[c] = a[Math.min(a.length - 1, Math.floor(a.length * 0.9))]; ts.push(tCell[c]); });
-    ts.sort(function (x, y) { return x - y; });
-    res.cells = ts.length; res.tMedCm = ts.length ? ts[ts.length >> 1] * cm : 0;
-    res.lowShare = low / Math.max(1, out.length);
-    var ls = (R && typeof R.longShare === 'number') ? R.longShare : 0.1;
-    res.isLong = res.lowShare > ls;
-    if (setRg) out.forEach(function (s, k) {
-      var P = s.pts, qi = Math.min(P.length - 1, 6), ex = P[qi].x - P[0].x, ey = P[qi].y - P[0].y, ez = P[qi].z - P[0].z, el = Math.hypot(ex, ey, ez) || 1, m = per[k];
-      s.rg = { t: tCell[m.c] || 0, free: m.tipH * cm > 1.5, L: m.L, tipY: P[P.length - 1].y, dx: ex / el, dy: ey / el, dz: ez / el, imported: 1 };
-    });
-    // 컬 — 표본 가닥(최대 600)의 중심선 벗어남
-    try {
-      var win = IO.curlWinCm / cm, rs = [], pitches = [], step = Math.max(1, Math.floor(out.length / 600));
-      for (var k = 0; k < out.length; k += step) {
-        var P = out[k].pts; if (P.length < 12 || per[k].L * cm < 4) continue;
-        var arc = [0], i, j; for (i = 1; i < P.length; i++) arc.push(arc[i - 1] + Math.hypot(P[i].x - P[i - 1].x, P[i].y - P[i - 1].y, P[i].z - P[i - 1].z));
-        var Cc = [], a0 = 0, a1 = 0;
-        for (i = 0; i < P.length; i++) {
-          while (arc[i] - arc[a0] > win) a0++;
-          while (a1 + 1 < P.length && arc[a1 + 1] - arc[i] <= win) a1++;
-          var sx = 0, sy = 0, sz = 0, n = 0; for (j = a0; j <= a1; j++) { sx += P[j].x; sy += P[j].y; sz += P[j].z; n++; }
-          Cc.push({ x: sx / n, y: sy / n, z: sz / n });
-        }
-        var i0 = 0, i1 = P.length - 1; while (i0 < P.length && arc[i0] < win) i0++; while (i1 > 0 && arc[P.length - 1] - arc[i1] < win) i1--;   // 양 끝 창 반 폭은 뺌
-        if (i1 - i0 < 6) continue;
-        var dsum = 0, sgn = 0, flips = 0, cl = 0;
-        for (i = i0; i <= i1; i++) {
-          var tx = Cc[Math.min(i1, i + 1)].x - Cc[Math.max(i0, i - 1)].x, ty = Cc[Math.min(i1, i + 1)].y - Cc[Math.max(i0, i - 1)].y, tz = Cc[Math.min(i1, i + 1)].z - Cc[Math.max(i0, i - 1)].z;
-          var dx = P[i].x - Cc[i].x, dy = P[i].y - Cc[i].y, dz = P[i].z - Cc[i].z;
-          dsum += Math.hypot(dx, dy, dz);
-          var tl = Math.hypot(tx, ty, tz) || 1, up = Math.abs(ty / tl) < 0.8;                         // 중심선에 수직인 고정 축(세로 가닥이면 x축 기준)으로 투영 → 부호 바뀜 = 반 바퀴
-          var ax = up ? -tz : 0, ay = up ? 0 : tz, az = up ? tx : -ty, pr = dx * ax + dy * ay + dz * az;
-          var sg = pr > 0 ? 1 : pr < 0 ? -1 : 0; if (sg && sgn && sg !== sgn) flips++; if (sg) sgn = sg;
-          if (i > i0) cl += Math.hypot(Cc[i].x - Cc[i - 1].x, Cc[i].y - Cc[i - 1].y, Cc[i].z - Cc[i - 1].z);
-        }
-        rs.push(dsum / (i1 - i0 + 1) * cm);
-        if (flips >= 2) pitches.push(cl * cm / (flips / 2));
-      }
-      var med = function (a) { a.sort(function (x, y) { return x - y; }); return a.length ? a[a.length >> 1] : 0; };
-      var rCm = med(rs), pCm = med(pitches), cmax = (R && R.curlMax) || 90, v = 0;
-      if (rCm >= IO.curlMinRCm && pCm > 0) v = Math.round(cmax * Math.min(1, IO.curlFullPitchCm / pCm));
-      var cu = { value: v, raw: v, deg: null, views: [], wave: 50, rodScale: 1, rCm: rCm || null, pitchCm: pCm || null, rViews: [], rNote: 'OBJ 가닥에서 잼', n: rs.length, fromObj: true };
-      if (v > 0 && rCm > 0) {   // photoCurlCore의 반경 → 웨이브 식 그대로
-        var FX = (typeof CURL3D_FIX !== 'undefined') ? CURL3D_FIX : { ampGamma: 1, radiusGamma: 0.5 };
-        var amp = Math.pow(v / 100, FX.ampGamma || 1), need = (rCm / cm) / Math.pow(amp, FX.radiusGamma || 1);
-        var rMin = (typeof CURL3D_R_MIN !== 'undefined') ? CURL3D_R_MIN : 0.02, rMax = (typeof CURL3D_R_MAX !== 'undefined') ? CURL3D_R_MAX : 0.07;
-        cu.wave = Math.round(Math.max(0, Math.min(1, (need - rMin) / (rMax - rMin))) * 100);
-        cu.rodScale = need > rMax ? Math.min((R && R.curlRodScaleMax) || 2, need / rMax) : 1;
-        cu.rodCm = need * cm;
-      }
-      res.curl = cu;
-    } catch (e) { console.warn(TAG + ' OBJ 컬 재기 실패 — 직모로', e); }
-    return res;
-  }
-  /* 불러온 가닥이 걸려 있는 동안: 컬은 사진 대신 OBJ에서 잰 값 · 원본=마네킹+스펙(ORIG_MQ)으로 바꿔 그리지 않고 불러온 가닥 그대로 보여 줌 */
-  function importedNow() { try { var m = W.REGROW && REGROW.model; return m && m.imported && !m.imported.keepPhoto ? m.imported : null; } catch (e) { return null; } }
-  function hookRegrow() {
-    var G = W.REGROW;
-    if (G && typeof G.photoCurl === 'function' && !G.photoCurl._io) {
-      var pc0 = G.photoCurl, pc = function () { var im = importedNow(); return im && im.curl ? Object.assign({}, im.curl) : pc0.apply(this, arguments); };
-      pc._io = true; G.photoCurl = pc;
-    }
-    var OM = W.ORIG_MQ;
-    if (OM && typeof OM._baseline === 'function' && !OM._baseline._io) {
-      var b0 = OM._baseline, b = function () { return importedNow() ? undefined : b0.apply(this, arguments); };
-      b._io = true; OM._baseline = b;
-    }
-    /* SPEC_PASS ① 컬 길이 — 다시 기른 가닥은 컬을 편 뼈대라 "보이는 길이 ÷ 남는 비율"로 편 길이를 만들지만,
-     *  OBJ 가닥은 점이 이미 컬을 따라 감긴 진짜 가닥이라 호길이가 곧 편 길이 → 또 나누면 길이를 두 번 늘림. 불러온 동안만 끔(로드 배수·가르마는 그대로) */
-    var SPp = W.SPEC_PASS;
-    if (SPp && typeof SPp.enrich === 'function' && !SPp.enrich._io) {
-      var e0 = SPp.enrich, e = function () {
-        if (!importedNow()) return e0.apply(this, arguments);
-        var save = SPp.curlLen; SPp.curlLen = false;
-        try { return e0.apply(this, arguments); } finally { SPp.curlLen = save; }
-      };
-      e._io = true; SPp.enrich = e;
-    }
-  }
-  hookRegrow(); setTimeout(hookRegrow, 1500);
-
   IO.importObjText = function (txt) {
-    hookRegrow();
     var R = W.REGROW, G = R && R.model;
     if (!R || !G || !G.strands || !G.strands.length) {
       toast(L('먼저 손님 사진을 열고 조정 화면에서 원본 머리(마네킹 OFF)를 한 번 띄워 주세요', 'Open the client photos and show the original hair (mannequin OFF) first'));
@@ -355,30 +243,19 @@ var STYLE_IO = (function () {
         return { x: m[0], y: m[1], z: m[2] };
       });
       var ti = nearest(o[0].x, o[0].y, o[0].z), tpl = ti >= 0 ? src[ti] : null, s = {};
-      /* (2026-11-25) 원래 가닥에서 물려받는 것은 <b>자리·색</b>뿐 — rg(잰 값: 두께·기른 길이·결 방향·끝 높이)는 물려받지 않음.
-       *  예전: rg를 통째로(같은 객체) 물려받아 「스타일로 등록」의 [스타일 숫자]가 볼륨·넘김·가르마·두피 밖 %를 사진 머리 값으로 냈음
-       *  (실기기 로그: OBJ 뒤에도 crown 21.6/2.7/28% · 뿌리 볼륨 63 · 넘김 -8 그대로 · 길이만 바뀜). rg는 아래 measureImported가 이 가닥에서 다시 잼 */
-      if (tpl) Object.keys(tpl).forEach(function (k) { if (k !== 'pts' && ((k !== 'rg' && k !== 'trace') || IO.objOwnMeasure === false) && k.charAt(0) !== '_') s[k] = tpl[k]; });
+      if (tpl) Object.keys(tpl).forEach(function (k) { if (k !== 'pts' && k.charAt(0) !== '_') s[k] = tpl[k]; });
       s.pts = o; s.regrown = true; s.imported = true;
       out.push(s);
     });
     if (!out.length) { toast(L('불러올 가닥이 없어요', 'No strands to import')); return false; }
-    var meas = measureImported(out, Hn, R, IO.objOwnMeasure !== false);
-    if (IO.objOwnMeasure === false) meas.keepPhoto = true;
     var nm = Object.assign(Object.create(Object.getPrototypeOf(G)), G);
-    nm.strands = out; nm.imported = { at: new Date().toISOString(), n: out.length, from: G.strands.length, curl: meas.curl, isLong: meas.isLong };
-    /* 긴 머리/짧은 머리 판정·페이드 근거(rgInfo)도 사진 것을 버리고 이 가닥으로 — 페이드는 OBJ에서 못 재므로 끔(skipY 비움) */
-    if (!meas.keepPhoto) nm.rgInfo = { isLong: meas.isLong, skipY: {}, plantY: {}, fromObj: true };
-    else nm.imported.keepPhoto = true;
+    nm.strands = out; nm.imported = { at: new Date().toISOString(), n: out.length, from: G.strands.length };
     R.model = nm;
     R.base = null;
     try { if (typeof MANNEQUIN !== 'undefined' && MANNEQUIN.on && typeof toggleMannequin === 'function') toggleMannequin(); } catch (e) {}
     try { if (typeof ADJ_CACHE !== 'undefined' && ADJ_CACHE.bump) ADJ_CACHE.bump(); } catch (e) {}
     try { if (typeof R.refresh === 'function') R.refresh(); } catch (e) { console.warn(TAG + ' 다시 그리기 실패', e); }
-    console.log(TAG + ' OBJ 불러오기 — 가닥 ' + out.length + '개로 바꿔 끼움(원래 ' + G.strands.length + ' · 뒤집은 가닥 ' + flipped + ' · 두상 ' + (P.head ? (Hn ? '비율로 옮김' : '파일 값') : '머리글 없음 — 그대로') + ')'
-      + '\n    OBJ에서 다시 잼 — ' + (meas.isLong ? '긴 머리' : '짧은 머리') + '(끝이 몸 높이 아래 ' + Math.round(meas.lowShare * 100) + '%) · 두께 중앙 ' + meas.tMedCm.toFixed(1) + 'cm(칸 ' + meas.cells + ')'
-      + ' · 컬 ' + meas.curl.value + (meas.curl.rCm ? '(반경 ' + meas.curl.rCm.toFixed(2) + 'cm · 한 바퀴 ' + (meas.curl.pitchCm ? meas.curl.pitchCm.toFixed(1) : '-') + 'cm · 가닥 ' + meas.curl.n + ')' : '(직모)')
-      + ' · 페이드 끔(OBJ로는 못 잼) · 사진 값 안 씀(되돌리기 STYLE_IO.objOwnMeasure=false)');
+    console.log(TAG + ' OBJ 불러오기 — 가닥 ' + out.length + '개로 바꿔 끼움(원래 ' + G.strands.length + ' · 뒤집은 가닥 ' + flipped + ' · 두상 ' + (P.head ? (Hn ? '비율로 옮김' : '파일 값') : '머리글 없음 — 그대로') + ')');
     toast(L('가닥 ' + out.length + '개를 불러왔어요 — 확인 후 「스타일로 등록」 하세요', 'Imported ' + out.length + ' strands — check, then save as style'));
     return true;
   };
