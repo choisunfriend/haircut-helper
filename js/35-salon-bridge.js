@@ -250,7 +250,7 @@ function syncSalonUploadBtn() {
 }
 
 // 손질 화면 캔버스를 작은 JPEG 로 — 지금 그 스타일이 걸려 있을 때만 (아니면 null → 머리색 견본으로 표시)
-function _styleThumb(st) {
+function _styleThumbScreen_unused(st) {
   try {
     if (!st || !state.specAppliedId || state.specAppliedId !== st.specId) return null;
     const src = document.getElementById('adjustCanvas');
@@ -289,7 +289,7 @@ function uploadStyleToSalon() {
   let origin = '';
   try { origin = new URL(BODY_SHOP.pageUrl, location.href).origin; } catch (e) { return false; }
   // 썸네일: 등록할 때 찍어 둔 다듬은 3D 화면(37) → 없으면 지금 손질 화면
-  const thumb = typeof st.thumb === 'string' && /^data:image\/jpeg;base64,/.test(st.thumb) ? st.thumb : _styleThumb(st);
+  const thumb = typeof st.thumb === 'string' && /^data:image\/jpeg;base64,/.test(st.thumb) ?_styleThumb(st):_styleThumb(st);
   const payload = _b64url(JSON.stringify({ spec: spec, thumb: thumb }));
   const lang = (typeof uiLang !== 'undefined' && uiLang === 'ko') ? 'ko' : 'en';   // (11-14) 마켓 관리자 화면도 앱 언어로
   const w = window.open(origin + SALON_UPLOAD.path + '?lang=' + lang + '#d=' + payload, '_blank');
@@ -325,3 +325,59 @@ window.uploadStyleToSalon = uploadStyleToSalon;
   }, true);
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', syncSalonUploadBtn); else syncSalonUploadBtn();
 })();
+
+/* (2026-11-26) 썸네일 = 얼굴 없는 표준 두상 그림 — 사진·사진으로 만든 3D 화면은 기기 밖으로 내보내지 않음.
+   스펙의 머리색(spec.color)·섹션 길이(spec.lenCm cm)·컬(spec.perm.curl)로 옆모습 실루엣만 그림. */
+function _styleThumb(st) {
+  try {
+    var sp = (st && st.spec) || {}, px = SALON_UPLOAD.thumbPx;
+    var c = document.createElement('canvas'); c.width = c.height = px;
+    var g = c.getContext('2d'), u = px / 320;
+    var col = (typeof sp.color === 'string' && /^#[0-9A-Fa-f]{6}$/.test(sp.color)) ? sp.color
+      : (st && typeof st.colorHex === 'string' && /^#[0-9A-Fa-f]{6}$/.test(st.colorHex)) ? st.colorHex : '#3B2A1E';
+    var L = sp.lenCm || {};
+    function cm(k, d) { var v = +L[k]; return isFinite(v) && v > 0 ? Math.min(v, 60) : d; }
+    var top = cm('crown', 8), front = cm('front', 8), side = cm('side', 8), back = Math.max(cm('occipital', 8), cm('nape', 6));
+    var curl = sp.perm && +sp.perm.curl > 0 ? Math.min(100, +sp.perm.curl) : 0;
+    var k = 2.2 * u;                                   // cm → px
+    g.fillStyle = '#EDE6DC'; g.fillRect(0, 0, px, px);
+    var cx = 160 * u, cy = 150 * u, rx = 62 * u, ry = 78 * u;
+    // 어깨·목
+    g.fillStyle = '#C9C2B8';
+    g.beginPath(); g.moveTo(40 * u, px); g.quadraticCurveTo(60 * u, 262 * u, 132 * u, 250 * u); g.lineTo(188 * u, 250 * u);
+    g.quadraticCurveTo(260 * u, 262 * u, 280 * u, px); g.closePath(); g.fill();
+    g.fillRect(138 * u, 205 * u, 44 * u, 55 * u);
+    // 머리카락(뒤·옆으로 늘어진 부분)
+    g.fillStyle = col;
+    var hang = Math.min(150 * u, Math.max(0, Math.max(side, back) - 8) * k * 1.6);  // 귀 아래로 내려오는 길이
+    g.beginPath();
+    g.moveTo(cx - rx - side * 0.35 * k, cy);
+    g.quadraticCurveTo(cx - rx - side * 0.4 * k, cy + 40 * u + hang * 0.6, cx - rx * 0.6, cy + 30 * u + hang);
+    g.lineTo(cx + rx * 0.6, cy + 30 * u + hang);
+    g.quadraticCurveTo(cx + rx + side * 0.4 * k, cy + 40 * u + hang * 0.6, cx + rx + side * 0.35 * k, cy);
+    g.closePath(); g.fill();
+    // 두상(얼굴 없음)
+    g.fillStyle = '#D8D1C7';
+    g.beginPath(); g.ellipse(cx, cy + 6 * u, rx, ry, 0, 0, Math.PI * 2); g.fill();
+    // 윗머리 덮개
+    g.fillStyle = col;
+    var vol = Math.min(top, 12) * 1.2 * u, fr = Math.min(front, 14);
+    g.beginPath();
+    g.ellipse(cx, cy - 4 * u, rx + 6 * u + vol * 0.3, ry * 0.78 + vol, 0, Math.PI, 0);
+    g.lineTo(cx + rx + 4 * u, cy + 4 * u);
+    g.quadraticCurveTo(cx + rx * 0.3, cy - ry * 0.35 + fr * 2.4 * u, cx - rx * 0.2, cy - ry * 0.45 + fr * 2.6 * u);
+    g.quadraticCurveTo(cx - rx * 0.8, cy - ry * 0.2 + fr * 1.6 * u, cx - rx - 4 * u, cy + 4 * u);
+    g.closePath(); g.fill();
+    // 컬 표시(물결)
+    if (curl > 20) {
+      g.strokeStyle = 'rgba(255,255,255,0.22)'; g.lineWidth = 2 * u;
+      for (var i = 0; i < 3; i++) {
+        var y = cy - ry * 0.75 + i * 16 * u; g.beginPath();
+        for (var x = cx - rx; x <= cx + rx; x += 4 * u) g.lineTo(x, y + Math.sin((x - cx) / (8 * u)) * (2 + curl / 25) * u);
+        g.stroke();
+      }
+    }
+    var url = c.toDataURL('image/jpeg', SALON_UPLOAD.thumbQuality);
+    return url.length < 120000 ? url : null;
+  } catch (e) { return null; }
+}
