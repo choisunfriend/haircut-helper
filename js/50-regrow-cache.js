@@ -179,7 +179,7 @@ var REGROW_CACHE = (function () {
     try { if (typeof combRefresh === 'function') combRefresh(); else if (typeof renderAdjustFrame === 'function') renderAdjustFrame(); } catch (e) {}
     C.stats.hit++; C.stats.lastMs = Date.now() - active.t0;
     console.log(TAG + ' 보관한 가닥 ' + strands.length + '개를 씀 — 카메라 맞춤·다시 기르기 건너뜀 · 풀기 ' + (Date.now() - t0) + 'ms · 사진→3D ' + C.stats.lastMs + 'ms');
-    active = null;
+    // active는 남겨 둠 — 사진 3D가 다시 걸려(같은 사진 세트) 모델이 비워져도 다시 보관본을 씀. 새 중립 3D(prime)에서 다시 정함
     if (cb) setTimeout(function () { cb(true); }, 0);
     return true;
   }
@@ -196,7 +196,10 @@ var REGROW_CACHE = (function () {
     }
     var gb = G.build;
     G.build = function (cb, opt) {
-      if (active && !G.building && useCached(G, typeof cb === 'function' ? cb : null)) return;
+      var fn = typeof cb === 'function' ? cb : null;
+      // 이미 보관본을 걸어 둔 같은 사진이면 다시 기르지 않음(조정 화면 진입·refresh 등이 한 번 더 부름)
+      try { if (G.model && G.model.fromCache && G.src === state._hair3Dneutral) { if (fn) setTimeout(function () { fn(true); }, 0); return; } } catch (e) {}
+      if (active && !G.building && useCached(G, fn)) return;
       return gb.apply(this, arguments);
     };
     if (typeof G.applyBaseline === 'function') {
