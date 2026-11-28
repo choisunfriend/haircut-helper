@@ -1477,6 +1477,18 @@ function buildBodyGarmentRack() {
     buy.rel = 'noopener';
     buy.textContent = (_bodyWornShop.title || L('이 옷 보기', 'View this item')) +
       (_bodyWornShop.price ? ' · ' + _bodyWornShop.price : '');
+    /* (2026-11-28) 새 창(사파리)으로 나가면 3D 모델이 사라짐 → 쇼핑몰 패널 안에서 그 상품 페이지를 연다.
+       쇼핑몰이 아닌 바깥 주소면 원래대로 새 창. */
+    buy.addEventListener('click', (ev) => {
+      try {
+        const u = new URL(_bodyWornShop.link, location.href), s = new URL(BODY_SHOP.pageUrl, location.href);
+        if (u.origin !== s.origin) return;
+        ev.preventDefault();
+        openShopPanel();
+        const p = document.getElementById('bbShopPanel'), f = p && p.querySelector('iframe');
+        if (f) f.src = shopUrlWithLang(u.href);
+      } catch (e) {}
+    });
     rack.appendChild(buy);
   }
 }
