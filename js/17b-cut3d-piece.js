@@ -10265,6 +10265,9 @@ function _adjGeometry(srcAngleFilter, stride){
      · 자름이 과하게 큼 → occThr/offRun이 빡빡하거나 포즈·마스크가 어긋남 */
 let _adjClipSig = '', _adjClipAt = 0;
 function logAdjustedClip(acc, kept, preDensity){
+  /* (2026-11-28) 마지막 재클립 숫자를 51 STAGE_DIAG 표에 싣는다(찍기 억제와 무관하게 항상 갱신) */
+  if(typeof STAGE_DIAG !== 'undefined') STAGE_DIAG.lastClip = { kept, preDensity: !!preDensity, trimmed: acc.trimmed, removedPts: acc.removedPts,
+    faceBlocked: acc.faceBlocked || 0, growN: acc.growN || 0, n: acc.n, on: !!HAIR_OCC3D.clipAdjusted, at: Date.now() };
   const sig = acc.trimmed + '/' + kept + '/' + (acc.faceBlocked||0);
   const now = Date.now();
   if(sig === _adjClipSig || now - _adjClipAt < 1000) return;

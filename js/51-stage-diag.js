@@ -6,6 +6,7 @@
  *
  * 무엇: 같은 손님의 가닥을 단계마다 꺼내 <b>사진마다 그 카메라로 되쏘아</b> 사진과 비교합니다.
  *   단계  lift   — 중립 모델(state.hair3Dneutral) = 사진 가닥을 3D로 올린 직후(결 정렬·다듬기·겹침 정리 포함)
+ *         geom-noclip — 시술 기하 직후, 조정 후 재클립(사진 머리 영역 밖 자르기) 전
  *         geom   — 시술 기하(adjustStrandGeom: 펴기·길이·컬·볼륨…) 직후
  *         core   — 마감 일부(땋기·광택) 직후
  *         final  — 화면에 그리는 최종(어깨·몸통·얼굴 비키기·빗질·원본 대조 모두 지난 뒤)
@@ -125,6 +126,12 @@ var STAGE_DIAG = (function () {
     if (STAGE_TAG.lifted && STAGE_TAG.lifted.length) S.push(['lift0', STAGE_TAG.lifted, false]);   // 올린 직후(다시 기르기 전)
     S.push(['lift', model.strands, false]);
     var g = function (name, fn, draw) { try { var r = fn(); if (r && r.length) S.push([name, r, draw]); } catch (e) { console.warn(TAG + ' ' + name + ' 단계 실패', e); } };
+    /* (2026-11-28) 재클립 전 — 조정 후 재클립(17b HAIR_OCC3D.clipAdjusted)만 잠깐 끄고 같은 계산. 캐시는 잠깐 끔(재클립 여부가 서명에 없음) */
+    if (typeof _adjGeometry === 'function' && typeof HAIR_OCC3D !== 'undefined' && HAIR_OCC3D.clipAdjusted) {
+      var oc = HAIR_OCC3D.clipAdjusted, ca = (typeof ADJ_CACHE !== 'undefined') ? ADJ_CACHE.on : null, keepClip = D.lastClip;
+      try { HAIR_OCC3D.clipAdjusted = false; if (ca !== null) ADJ_CACHE.on = false; g('geom-noclip', function () { return _adjGeometry(null, 1); }); }
+      finally { HAIR_OCC3D.clipAdjusted = oc; if (ca !== null) ADJ_CACHE.on = ca; D.lastClip = keepClip; }
+    }
     if (typeof _adjGeometry === 'function') g('geom', function () { return _adjGeometry(null, 1); });
     if (typeof _adjComputeCore === 'function') g('core', function () { return _adjComputeCore(null, 1); });
     if (typeof computeAdjustedHair3DStrands === 'function') {
@@ -198,6 +205,12 @@ var STAGE_DIAG = (function () {
           + '  | ' + f(r.other.outPct, 1) + '%  ' + f(r.other.dMed, 1) + '/' + f(r.other.d90, 1) + 'px  ' + f(r.other.dirMed, 0) + '°  (' + r.other.n + '점)');
       });
     });
+    var c = D.lastClip;
+    lines.push(c ? ('  [3D·클립] 조정 후 재클립 — 가닥 ' + c.kept + (c.preDensity ? '개(숱치기 전)' : '개') + ' 중 자름 ' + c.trimmed + '개(평균 '
+        + (c.trimmed ? (c.removedPts / c.trimmed).toFixed(1) : '0') + '점 제거) · 얼굴침범 차단 ' + c.faceBlocked + '개 · '
+        + (c.growN ? '여유 받은 가닥 ' + c.growN + '개' : '여유 0(시술 변위 없음)') + ' · 판정 ' + c.n + '회' + (c.on ? '' : ' · OFF')
+        + ' — geom-noclip ↔ geom 차이가 이 단계 몫')
+      : '  [3D·클립] 조정 후 재클립 기록 없음(아직 계산 전이거나 꺼짐)');
     lines.push('  꼬리표 남은% 이 어느 단계에서 뚝 떨어지면 그 단계가 점을 새로 만들며 꼬리표를 버린 것 — 그 단계를 고칠 차례');
     lines.push('  제자리 거리 = 그 점이 원래 사진에서 있던 자리와의 차이(lift0 은 0 이어야 함 · 0 이 아니면 진단 자체를 의심)');
     lines.push('  읽는 법: 자기 사진 숫자가 lift 에서 작고 뒤에서 커지면 그 사이 단계가 원인 · final@draw 만 커지면 그리는 카메라 보정 탓 · 다른 사진이 lift 부터 크면 깊이 탓');
