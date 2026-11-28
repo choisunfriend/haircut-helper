@@ -1997,7 +1997,11 @@ function buildHairStrandsFromPaths(){
         if(i === 0) rootFacing = facing;   // 겹침 정리에서 "누구 말을 믿을지" 고를 때 쓴다
         const w3 = applyRotationTranspose3(rot, new THREE.Vector3(px, my - CY, mz));
         w3.y += CY;
-        worldPts.push({ x:w3.x, y:w3.y, z:w3.z }); // (10차) 정규 모델 채집
+        /* (2026-11-28) 꼬리표 t — 이 점이 <b>어느 사진 · 몇 번째 가닥 · 몇 번째 점</b>에서 왔는지(51 STAGE_TAG).
+           뒤 단계가 점을 옮기거나 새로 찍을 때 이 값을 넘겨받으면, 최종 점마다 원래 사진 자리를 알 수 있다.
+           거울 뷰(사진 없음)는 꼬리표 없음. 끄기 STAGE_TAG.on=false */
+        const _tg = (typeof STAGE_TAG !== 'undefined' && STAGE_TAG.on && !job.mirrored) ? STAGE_TAG.make(job.angle, si, i, !!(stP === st.fine)) : undefined;
+        worldPts.push(_tg === undefined ? { x:w3.x, y:w3.y, z:w3.z } : { x:w3.x, y:w3.y, z:w3.z, t:_tg }); // (10차) 정규 모델 채집
         // 4단계 음영: 곱(층 깊이) + 가산(바깥층·정면 곡면 하이라이트, 검은 머리 대응)
         const k = 0.55 + 0.45 * t;
         const rim = 0.05 * t + 0.11 * t * facing;
@@ -2233,6 +2237,8 @@ function buildHairStrandsFromPaths(){
   }
   // (10차) 정규 3D 모델 stash — 조정 화면 되쏘기(projectHair3DToView)의 소스.
   // (2026-08-01) field를 함께 stash — 되쏘기·이식 쪽에서 결을 다시 참조할 수 있게.
+  /* (2026-11-28) 올린 직후 가닥을 따로 남김 — 다시 기르기·가닥 수 맞추기가 모델을 바꾸기 <b>전</b> 상태(51 STAGE_DIAG 'lift0') */
+  if(typeof STAGE_TAG !== 'undefined' && STAGE_TAG.on) STAGE_TAG.lifted = canonicalStrands.slice();
   state.hair3D = { strands: canonicalStrands, viewCal, yTop, CY, field: field3D || null,
                    occ: (state.hairOcc3D && state.hairOcc3D.probe) ? state.hairOcc3D : null,
                    /* (2026-08-08) 마네킹 모델이 <b>같은 격자</b>에 심으려면 이 표들이 필요하다.

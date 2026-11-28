@@ -449,7 +449,7 @@ function sampleHairField3D(field, p){
 function alignStrandPtsToField3D(pts, field, headA, acc){
   if(!field || !field.ok || !pts || pts.length < 3) return pts;
   const F = HAIR_FIELD3D;
-  const out = [ { x:pts[0].x, y:pts[0].y, z:pts[0].z } ];
+  const out = [ { x:pts[0].x, y:pts[0].y, z:pts[0].z, t:pts[0].t } ];   // (2026-11-28) 꼬리표 t 넘김(51 STAGE_TAG)
   const nSeg = pts.length - 1;
   let arc = 0;                                   // 지금까지 간 호길이 — 허용치의 기준
   for(let i=1;i<pts.length;i++){
@@ -515,7 +515,7 @@ function alignStrandPtsToField3D(pts, field, headA, acc){
       }
     }
     arc += seg;
-    out.push({ x: prev.x + dx*seg, y: prev.y + dy*seg, z: prev.z + dz*seg });
+    out.push({ x: prev.x + dx*seg, y: prev.y + dy*seg, z: prev.z + dz*seg, t: pts[i].t });
   }
   return out;
 }
