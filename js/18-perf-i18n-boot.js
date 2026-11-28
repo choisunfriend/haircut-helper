@@ -143,6 +143,7 @@ function posePanelLines(){
 }
 function perfPanelLines(){
   const out = [];
+  try{ if(typeof STAGE_DIAG !== 'undefined' && STAGE_DIAG.panelLines) STAGE_DIAG.panelLines().forEach(l => out.push(l)); }catch(e){}   // (2026-11-28) 꼬리표 표 — [복사]로 나감
   const heap = perfHeapMB();
   let dom = 0;
   try{ dom = document.getElementsByTagName('canvas').length; }catch(e){}

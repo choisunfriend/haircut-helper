@@ -214,9 +214,28 @@ var STAGE_DIAG = (function () {
     lines.push('  꼬리표 남은% 이 어느 단계에서 뚝 떨어지면 그 단계가 점을 새로 만들며 꼬리표를 버린 것 — 그 단계를 고칠 차례');
     lines.push('  제자리 거리 = 그 점이 원래 사진에서 있던 자리와의 차이(lift0 은 0 이어야 함 · 0 이 아니면 진단 자체를 의심)');
     lines.push('  읽는 법: 자기 사진 숫자가 lift 에서 작고 뒤에서 커지면 그 사이 단계가 원인 · final@draw 만 커지면 그리는 카메라 보정 탓 · 다른 사진이 lift 부터 크면 깊이 탓');
-    console.log(lines.join('\n'));
+    if (!opts.quiet) console.log(lines.join('\n'));
     D.last = { stages: res, lines: lines, every: every };
     return D.last;
+  };
+
+  /* (2026-11-28) 진단정보 패널(18 perfPanelLines 맨 위)에 꼬리표 표를 늘 싣는다 — 콘솔 입력 없이 [복사]로 나가게.
+     같은 모델이면 다시 계산하지 않음(수 초 걸림). 줄: 단계 · 꼬리표 남은% · 제자리 거리(자기 사진 px) 중앙/90% */
+  var _pk = null, _pl = null;
+  D.panelLines = function () {
+    var m = state.hair3Dneutral; if (!m || !m.strands) return ['[꼬리표] 3D 모델 전 — 3D 화면까지 가면 찍힘'];
+    var key = m.strands.length + '/' + (STAGE_TAG.lifted ? STAGE_TAG.lifted.length : 0) + '/' + (state.styleId || '') + '/' + (D.lastClip ? D.lastClip.at : 0);
+    if (key === _pk && _pl) return _pl;
+    var r = null; try { r = D.run({ quiet: true }); } catch (e) { return ['[꼬리표] 계산 실패 ' + (e && e.message)]; }
+    if (!r) return ['[꼬리표] 계산 못 함(사진 가닥·머리 영역 없음)'];
+    var f = function (v, k) { return isFinite(v) ? v.toFixed(k) : '-'; }, L = ['[꼬리표] 단계별 — 꼬리표 남은% · 자기 원래 사진 점과의 거리 px(중앙/90%) · 사진별 front/left/right/back'];
+    Object.keys(r.stages).forEach(function (st) {
+      var row = r.stages[st], parts = [];
+      Object.keys(row).forEach(function (a) { var t = row[a] && row[a].tag; if (t) parts.push(a + ' ' + f(t.keepPct, 0) + '% ' + f(t.dMed, 1) + '/' + f(t.d90, 1)); });
+      L.push('  ' + st + ': ' + parts.join(' · '));
+    });
+    if (D.lastClip) L.push('  재클립 자름 ' + D.lastClip.trimmed + '/' + D.lastClip.kept);
+    _pk = key; _pl = L; return L;
   };
 
   D.csv = function () {
