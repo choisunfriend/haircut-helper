@@ -55,6 +55,60 @@ var STAGE_TAG = (function () {
     var P = d.fine ? st.fine : st.pts, p = P && P[d.i];
     return p ? { angle: d.angle, x: p.x, y: p.y } : null;
   };
+
+  /* (2026-11-28b) 꼬리표 이어 주기 — 디버그 2248: lift 100% → 다시 기른 가닥(rg) 0.006% · 화면(draw) 0.005%.
+   *   다시 기르기의 옮겨 그리기(copyFromStrands)는 t 를 넘겼지만, 그 뒤 가닥마다 거는 잔결 걷어내기(denoiseStrand)·
+   *   마지막 다듬기(finalClip: 눕히기·낮추기·가시 눕히기)·깊이 고르게가 점을 <b>새로 만들며</b> t 를 버렸다.
+   *   조정 단계(adjustStrandGeom·어깨·몸통·얼굴 비키기…)도 같다. 단계마다 고치는 대신 단계 <b>경계</b>에서 이어 준다.
+   *   규칙: 점 수가 같으면 같은 번호 · 다르면 뿌리에서 잰 호길이가 같은 자리(앞 가닥 길이를 넘은 점 = 새로 기른 점 = 꼬리표 없음).
+   *   이미 t 가 있는 점은 안 건드림 · 원래 점 객체는 안 바꿈(조각·캐시를 같이 쓰는 점이 있어 새 객체로 바꿔 끼움).
+   *   끄기 STAGE_TAG.carryOn=false */
+  T.carryOn = true;
+  function arcs(P) { var a = new Float64Array(P.length), i; for (i = 1; i < P.length; i++) a[i] = a[i - 1] + Math.hypot(P[i].x - P[i - 1].x, P[i].y - P[i - 1].y, P[i].z - P[i - 1].z); return a; }
+  T.carry = function (src, dst, mode) {
+    if (!T.on || !T.carryOn || !src || !dst || src === dst || !src.length || !dst.length) return dst;
+    var anySrc = false, i; for (i = 0; i < src.length; i++) if (src[i] && src[i].t !== undefined) { anySrc = true; break; }
+    if (!anySrc) return dst;
+    var out = null, byIdx = mode === 'index' || (mode !== 'arc' && src.length === dst.length), aS = null, aD = null, j = 0, tol = 0;
+    if (!byIdx) { aS = arcs(src); aD = arcs(dst); tol = src.length > 1 ? 0.75 * aS[aS.length - 1] / (src.length - 1) : 0; }
+    for (i = 0; i < dst.length; i++) {
+      var q = dst[i]; if (!q || q.t !== undefined) continue;
+      var s = null;
+      if (byIdx) { if (i < src.length) s = src[i]; }
+      else {
+        var sd = aD[i]; if (sd > aS[aS.length - 1] + tol) continue;         // 앞 가닥보다 길어진 자리 — 사진에 없던 점
+        while (j < aS.length - 1 && Math.abs(aS[j + 1] - sd) <= Math.abs(aS[j] - sd)) j++;
+        s = src[j];
+      }
+      if (!s || s.t === undefined) continue;
+      if (!out) { out = dst.slice(); for (var k in dst) if (!/^\d+$/.test(k)) out[k] = dst[k]; }   // _rgKeep 같은 꼬리 속성도
+      out[i] = Object.assign({}, q, { t: s.t });
+    }
+    return out || dst;
+  };
+  /* 가닥 목록 → 가닥 목록 단계(같은 순서·같은 수일 때만) */
+  T.carryList = function (prev, next) {
+    if (!T.on || !T.carryOn || !prev || !next || prev === next || prev.length !== next.length) return next;
+    for (var i = 0; i < next.length; i++) {
+      var a = prev[i], b = next[i]; if (!a || !b || !a.pts || !b.pts || a.pts === b.pts) continue;
+      var np = T.carry(a.pts, b.pts); if (np !== b.pts) { if (b === a) b = next[i] = Object.assign({}, b); b.pts = np; }
+    }
+    return next;
+  };
+  /* 단계별 꼬리표 남은% 기록 — 어느 단계에서 떨어지는지(진단 패널 · 콘솔 STAGE_TAG.trailLines()) */
+  T.trail = {};
+  T.audit = function (name, list) {
+    if (!T.on || !list) return list;
+    var n = 0, h = 0, i, k, P;
+    for (i = 0; i < list.length; i += 3) { P = list[i] && (list[i].pts || list[i]); if (!P || !P.length) continue; for (k = 0; k < P.length; k++) { n++; if (P[k] && P[k].t !== undefined) h++; } }
+    T.trail[name] = { n: n, pct: n ? 100 * h / n : NaN, strands: list.length };
+    return list;
+  };
+  T.trailLines = function () {
+    var L = ['[꼬리표·단계] 남은% (가닥 셋에 하나 표본)'];
+    Object.keys(T.trail).forEach(function (k) { var r = T.trail[k]; L.push('  ' + k + ': ' + (isFinite(r.pct) ? r.pct.toFixed(1) : '-') + '% · 가닥 ' + r.strands + ' · 점 ' + r.n); });
+    return L;
+  };
   return T;
 })();
 
@@ -235,6 +289,7 @@ var STAGE_DIAG = (function () {
       L.push('  ' + st + ': ' + parts.join(' · '));
     });
     if (D.lastClip) L.push('  재클립 자름 ' + D.lastClip.trimmed + '/' + D.lastClip.kept);
+    try { STAGE_TAG.trailLines().forEach(function (l) { L.push(l); }); } catch (eTr) {}
     _pk = key; _pl = L; return L;
   };
 

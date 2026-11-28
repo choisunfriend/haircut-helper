@@ -3879,7 +3879,7 @@ var REGROW = (function () {
         if (anyOff) {
           var sm = new Float64Array(offV.length);
           for (iO = 0; iO < offV.length; iO++) { if (offI[iO] < 0) continue; var sumO = 0, nO = 0; for (var kO = -KS; kO <= KS; kO++) { var jO = iO + kO; if (jO < 0 || jO >= offV.length || offI[jO] !== offI[iO]) continue; sumO += offV[jO]; nO++; } sm[iO] = sumO / nO; }
-          for (iO = 0; iO < offV.length; iO++) { if (offI[iO] < 0) continue; var dO = sm[iO] - offV[iO]; if (!dO) continue; var AR = cams[offI[iO]].R; out[iO] = { x: out[iO].x + AR[6] * dO, y: out[iO].y + AR[7] * dO, z: out[iO].z + AR[8] * dO }; }
+          for (iO = 0; iO < offV.length; iO++) { if (offI[iO] < 0) continue; var dO = sm[iO] - offV[iO]; if (!dO) continue; var AR = cams[offI[iO]].R, tO = out[iO].t; out[iO] = { x: out[iO].x + AR[6] * dO, y: out[iO].y + AR[7] * dO, z: out[iO].z + AR[8] * dO }; if (tO !== undefined) out[iO].t = tO; }   // (2026-11-28b) 꼬리표 그대로
         }
       }
       if (out.length < 3 || arc * cmU < (G.copyMinCm || 1)) { SC2.short++; return null; }
@@ -4325,8 +4325,10 @@ var REGROW = (function () {
               var sdd = grow(cell);
               if (!sdd) continue;
               if (G.strandCopy && G.copyEarly === false && SF && SF.strc && sdd.pts && sdd.pts.length) { var cp = copyFromStrands(sdd.pts[0]); if (cp) { sdd.pts = cp; if (sdd.rg) sdd.rg.copy = 1; } }   // (2026-11-03) 정리된 사진 가닥 그대로
+              var _tgSrc = sdd.pts;   // (2026-11-28b) 꼬리표 — 아래 잔결 걷어내기·마지막 다듬기가 점을 새로 만들며 t 를 버리던 것(디버그 2248: rg 0.006%) · 번호로 다시 붙임
               try { denoiseStrand(sdd); } catch (eDn) { dnStat.err = String(eDn && eDn.message || eDn); }   // (2026-11-09) 잔결 걷어내기 — 위 DN
               if (G.finalClip !== false && sdd.pts && sdd.pts.length >= 3) finalClip(sdd); else if (G.finalClip !== false && G.spikeLay !== false && sdd.pts && sdd.pts.length === 2) { try { spikeLay(sdd); } catch (eSL2) {} }   // (11-24 spike) 점 2개 가닥도 가시면 눕힘   // (2026-11-03u) 모든 가닥 — 아래 finalClip
+              if (typeof STAGE_TAG !== 'undefined' && STAGE_TAG.carry && sdd.pts && sdd.pts !== _tgSrc) { try { sdd.pts = STAGE_TAG.carry(_tgSrc, sdd.pts, 'index'); } catch (eTg) {} }   // 점 번호 그대로(눕히기·낮추기·가시 눕히기 = 같은 번호 · 자르기 = 앞부분 · 빔 채우기 = 뒤에 붙은 새 점은 꼬리표 없음)
               if (sdd._skinDrop) { st.skinDrop = (st.skinDrop || 0) + 1; continue; }   // (2026-11-08b) 뿌리 구간이 보이는 맨살 위 — 안 그림
               out.push(sdd); st.n++;
               st.sec[sdd.sec] = (st.sec[sdd.sec] || 0) + 1;
@@ -4884,6 +4886,7 @@ var REGROW = (function () {
         if (fit && fit.views.some(function (r) { return r.pitch || r.dyCm || r.scale !== 1; })) { G.camFitFirstMs = Math.round(workMs); return G.build(cb); }
       }
       G.model = model; G.src = photo;
+      try { if (typeof STAGE_TAG !== 'undefined' && STAGE_TAG.audit) { STAGE_TAG.audit('lift', photo && photo.strands); STAGE_TAG.audit('regrow', model && model.strands); } } catch (eTg) {}   // (2026-11-28b) 꼬리표 남은%
       try { G.viewCheck(model, (photo.occ && photo.occ.probe) || (state.hairOcc3D && state.hairOcc3D.probe) || null); } catch (eVC) { console.warn(TAG + ' 사진마다 확인 실패', eVC); }   // (2026-11-16 vchk)
       try { if (typeof SIL_LEN !== 'undefined') SIL_LEN.apply(model, photo, !!(G.stats && G.stats.isLong)); } catch (eSL) { console.warn('[실루엣 길이] 실패 — 그대로 둠', eSL); }   // (2026-11-10) 짧은 머리 끝 = 실루엣에서 잰 길이(42)
       try { G.layDown(model); } catch (eLD) { console.warn('[두께 안으로 눕히기] 실패 — 그대로 둠', eLD); }   // (2026-11-24 lay) 자른 뒤 남은 솟는 뿌리 구간 → 두께 안으로
@@ -10077,24 +10080,28 @@ var BODY_OUT = (function () {
    예전 기능 파일(48~)이 이 함수를 감싸던 순서 그대로 단계로 둔다(위가 바깥). 기본 계산은 아래 _adjComputeCore. */
 function computeAdjustedHair3DStrands(srcAngleFilter, stride){
   const _cbT0 = COMB3D._beforeCompute();   // (옛 53) 빗질 통계 비움·모델 바뀌면 빗질 지움
+  /* (2026-11-28b) 꼬리표 — 마감 단계마다 앞 목록에서 t 를 이어 받고(같은 수·같은 순서일 때) 남은%를 적음(51 STAGE_TAG.trail) */
+  const _tgOn = typeof STAGE_TAG !== 'undefined' && STAGE_TAG.carryList, _tgRec = _tgOn && !srcAngleFilter && (stride == null || stride === 1);
+  const _tgStage = (name, prev, next) => { if(!_tgOn) return next; try{ next = STAGE_TAG.carryList(prev, next); if(_tgRec) STAGE_TAG.audit(name, next); }catch(e){} return next; };
   // (옛 48 가닥 수) 조정 화면 전체 요청이면 정해 둔 수만큼만 — 위 STRAND_BUDGET
   let out = (!srcAngleFilter && stride == null) ? STRAND_BUDGET._compute(srcAngleFilter, stride) : _adjComputeCore(srcAngleFilter, stride);
   // (옛 50 어깨) 몸통 안으로 들어간 점을 어깨·등 면에 얹음 — 13a SHOULDER
-  out = (typeof mqStyleWidthCapAll === 'function' ? mqStyleWidthCapAll(out) : out);   // (2026-11-23) 스타일 마네킹 폭 상한 — 윗머리 폭 그대로 내려오게(17a MQ_WIDTH_CAP)
-  out = riseFixAll(out);   // (2026-10-13i) 하늘로 솟은 뒷머리를 늘어뜨림(17a RISE_FIX) — 어깨 처리 전에
-  out = SHOULDER._apply(out);
-  out = BODY_OUT._apply(out);   // (2026-11-10c) 몸통 안에 든 점만 가까운 면(가슴 앞/등) 밖으로 — z만 옮김
-  out = (typeof tipFlareAll === 'function' ? tipFlareAll(out) : out);   // (2026-10-18 배포본) 17a 끝 벌어짐
+  out = _tgStage('mqStyleWidthCapAll', out, (typeof mqStyleWidthCapAll === 'function' ? mqStyleWidthCapAll(out) : out));   // (2026-11-23) 스타일 마네킹 폭 상한 — 윗머리 폭 그대로 내려오게(17a MQ_WIDTH_CAP)
+  out = _tgStage('riseFixAll', out, riseFixAll(out));   // (2026-10-13i) 하늘로 솟은 뒷머리를 늘어뜨림(17a RISE_FIX) — 어깨 처리 전에
+  out = _tgStage('SHOULDER._apply', out, SHOULDER._apply(out));
+  out = _tgStage('BODY_OUT._apply', out, BODY_OUT._apply(out));   // (2026-11-10c) 몸통 안에 든 점만 가까운 면(가슴 앞/등) 밖으로 — z만 옮김
+  out = _tgStage('tipFlareAll', out, (typeof tipFlareAll === 'function' ? tipFlareAll(out) : out));   // (2026-10-18 배포본) 17a 끝 벌어짐
   // (2026-10-13) 원본 머리에서 얼굴 앞을 가로지르는 가닥을 옆으로 비킴(17a FACE_CLEAR)
-  out = faceClearAll(out);
+  out = _tgStage('faceClearAll', out, faceClearAll(out));
   // (2026-11-15b) 눈썹컷 — 모양이 다 끝난 가닥을 눈썹 선에서(browCut 스타일만 · 17a BROW_CUT)
-  out = (typeof browCutAll === 'function' ? browCutAll(out) : out);
+  out = _tgStage('browCutAll', out, (typeof browCutAll === 'function' ? browCutAll(out) : out));
   // (옛 53) 빗질이 있는데 머리 모양이 바뀌었으면 결을 다시 읽어 둠 · 통계(17a COMB3D)
   COMB3D._afterCompute(out, srcAngleFilter, stride, _cbT0);
   // (옛 55 잔머리 정리) 곱슬이면 몸통에서 벗어난 잔머리 꼬리를 자름(17a FLY_TRIM)
-  out = FLY_TRIM._apply(out);
+  out = _tgStage('FLY_TRIM._apply', out, FLY_TRIM._apply(out));
   FLOW_SPEC._afterCompute();   // (옛 59) 걸고 난 뒤 처음 다 만든 자리에서 한 줄
-  out = PHOTO_CHECK._apply(out); // (옛 60) 원본 대조 — 결 맞추기·윤곽 밖 잘라내기(07b)
+  out = _tgStage('PHOTO_CHECK._apply', out, PHOTO_CHECK._apply(out)); // (옛 60) 원본 대조 — 결 맞추기·윤곽 밖 잘라내기(07b)
+  try{ if(typeof STAGE_TAG !== 'undefined' && STAGE_TAG.audit && !srcAngleFilter && (stride == null || stride === 1)) STAGE_TAG.audit('final', out); }catch(eTg){}
   return out;
 }
 /* 기본 계산: 기하(캐시) → 필터 → 기능 마감 단계들 */
@@ -10185,6 +10192,7 @@ function _adjGeometry(srcAngleFilter, stride){
        && _cutHash01(st) > Math.max(0, sec.density) / 100) continue;
     const ratio = sectionLengthRatio(st.sec, sec.length);
     let pts = adjustStrandGeom(st, null, uni);                     // ①~⑦ (아래 함수)
+    if(typeof STAGE_TAG !== 'undefined' && STAGE_TAG.carry) pts = STAGE_TAG.carry(st.pts, pts);   // (2026-11-28b) 꼬리표 — 시술 연산자들이 점을 새로 만듦 · 같은 수면 번호, 다르면 뿌리에서 잰 호길이
     /* ⑧ 세그멘테이션 재클립 — "세그멘테이션 밖에는 안 그린다"를 3D에도.
        늘린 만큼(ratio>1)은 나가는 게 맞으므로 그 호길이만큼 여유를 준다. */
     /* ── 문턱 ① — 앞머리는 <b>사진 점유로 판정하지 않는다</b> (2026-09-02 3차) ──
@@ -10226,6 +10234,7 @@ function _adjGeometry(srcAngleFilter, stride){
        한 번</b> 재고 모델에 붙여 둔다 — 모델이 다시 만들어지면 같이 사라진다.
        ⚠ 되돌리기(split=false)에서는 색을 여기서 정해야 예전과 같은 배열이 된다.
          그래서 두 필드를 <b>같이</b> 싣는다(필터가 그냥 통과시키므로 무해하다). */
+    if(typeof STAGE_TAG !== 'undefined' && STAGE_TAG.carry) pts = STAGE_TAG.carry(st.pts, pts, 'arc');   // (2026-11-28b) 재클립·빗질이 새로 만든 점(끝 보간 등)도 호길이로
     if(st._ch === undefined) st._ch = _cutHash01(st);
     out.push(ADJ_CACHE.split
       ? { pts, sec: st.sec, srcAngle: st.srcAngle, h: st._ch,

@@ -2239,6 +2239,7 @@ function buildHairStrandsFromPaths(){
   // (2026-08-01) field를 함께 stash — 되쏘기·이식 쪽에서 결을 다시 참조할 수 있게.
   /* (2026-11-28) 올린 직후 가닥을 따로 남김 — 다시 기르기·가닥 수 맞추기가 모델을 바꾸기 <b>전</b> 상태(51 STAGE_DIAG 'lift0') */
   if(typeof STAGE_TAG !== 'undefined' && STAGE_TAG.on) STAGE_TAG.lifted = canonicalStrands.slice();
+  try{ if(typeof STAGE_TAG !== 'undefined' && STAGE_TAG.audit) STAGE_TAG.audit('lift0', canonicalStrands); }catch(eTg){}
   state.hair3D = { strands: canonicalStrands, viewCal, yTop, CY, field: field3D || null,
                    occ: (state.hairOcc3D && state.hairOcc3D.probe) ? state.hairOcc3D : null,
                    /* (2026-08-08) 마네킹 모델이 <b>같은 격자</b>에 심으려면 이 표들이 필요하다.
