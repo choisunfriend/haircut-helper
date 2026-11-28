@@ -147,7 +147,7 @@ var STYLE_IO = (function () {
     var data = null;
     try { data = clean(JSON.parse(txt), 0); } catch (e) { toast(L('스타일 파일을 읽지 못했어요', 'Could not read the style file')); return false; }
     var st = data && data.gyeol === 'style' ? data.style : (data && data.isCustom ? data : null);
-    if (!st || typeof st !== 'object' || !st.name) { toast(L('GYEOL 스타일 파일이 아니에요', 'Not a GYEOL style file')); return false; }
+    if (!st || typeof st !== 'object' || !st.name) { toast(L("Today's Stylepeek 스타일 파일이 아니에요", "Not a Today's Stylepeek style file")); return false; }
     var oldId = st.id, id = 'custom-' + Date.now();
     st.id = id; st.isCustom = true;
     if (st.spec) st.specId = id; else delete st.specId;
