@@ -3793,6 +3793,7 @@ var REGROW = (function () {
         var w = Math.max(0, 1 - arc / rise), wt = tanL > 0 ? Math.max(0, 1 - arc / tanL) : 1, Q = { x: pc[j].x + tx * wt + orr * w * rx, y: pc[j].y + ty * wt + orr * w * ry, z: pc[j].z + tz * wt + orr * w * rz };
         if (dFit) Q = (G.copyDepthMid !== false ? depthFitMid : depthFit)(Q, pc.vi);
         if (G.copyOwnHull ? copyOut(Q, pc.vi) : vote(Q) === 0) { if (++miss2 >= (G.copyMiss || 1)) { SC2.cut++; cutHit = true; break; } } else miss2 = 0;
+        if (pc[j].t !== undefined) Q.t = pc[j].t;   // (2026-11-28) 꼬리표 넘김(51 STAGE_TAG) — 옮겨 그린 점이 어느 사진 점이었는지
         out.push(Q); offV.push(dFit ? dOff : 0); offI.push(dFit ? pc.vi : -1);
       }
       /* (2026-11-03h) 끊긴 사진 결 이어 붙이기 — 사용자: "웨이브는 뒷머리 끝이 일자로 원래 끝나는데 중간만 끝까지 뻗어있어."
@@ -3862,6 +3863,7 @@ var REGROW = (function () {
             var wb = Math.max(0, 1 - arcN / blendL); wb = wb * wb * (3 - 2 * wb);
             var Qn2 = { x: pcN[jn].x + gX * wb, y: pcN[jn].y + gY * wb, z: pcN[jn].z + gZ * wb }; if (dFitN) Qn2 = (G.copyDepthMid !== false ? depthFitMid : depthFit)(Qn2, pcN.vi);
             if (G.copyOwnHull ? copyOut(Qn2, pcN.vi) : vote(Qn2) === 0) { if (++miss3 >= (G.copyMiss || 1)) { SC2.cut++; cutN = true; break; } } else miss3 = 0;
+            if (pcN[jn].t !== undefined) Qn2.t = pcN[jn].t;   // (2026-11-28) 꼬리표 넘김
             var Lp = out[out.length - 1]; arc += Math.hypot(Qn2.x - Lp.x, Qn2.y - Lp.y, Qn2.z - Lp.z); out.push(Qn2); offV.push(dFitN ? dOff : 0); offI.push(dFitN ? pcN.vi : -1); nAdd++;
           }
           dOff = saveOff; SC2.chainPts += nAdd; links++; chainedNow = true;

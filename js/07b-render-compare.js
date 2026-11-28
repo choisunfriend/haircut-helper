@@ -1913,6 +1913,17 @@ var PHOTO_CHECK = (function () {
    * ────────────────────────────────────────────────────────────────────── */
   var QS = 8192;                               // 좌표 → int16 배율(±4 모델 단위)
   function q16(v) { v = Math.round(v * QS); return v < -32767 ? -32767 : v > 32767 ? 32767 : v; }
+  /* (2026-11-28) 점 꼬리표(51 STAGE_TAG) — packStrands와 같은 점을 같은 순서로 · 꼬리표 없는 점은 -1 · 'tagViews' 머리에 뷰 이름 */
+  function packTags(list, stride) {
+    var out = [], i, k, p, m, w, keep;
+    for (i = 0; i < list.length; i++) {
+      p = list[i] && list[i].pts; m = p ? p.length : 0; if (!m) continue;
+      keep = stride > 1 ? Math.floor((m - 1) / stride) + 1 + ((m - 1) % stride ? 1 : 0) : m; if (keep > 65535) keep = 65535; w = 0;
+      for (k = 0; k < m && w < keep; k += stride) { out.push(p[k].t === undefined ? -1 : p[k].t); w++; }
+      if (w < keep) { out.push(p[m - 1].t === undefined ? -1 : p[m - 1].t); w++; }
+    }
+    return new Float64Array(out);
+  }
   function packStrands(list, stride, secIdx) {
     var n = list.length, cnt = new Uint16Array(n), sec = new Uint8Array(n), fl = new Uint8Array(n), tot = 0, i, k, p, m, keep;
     for (i = 0; i < n; i++) { p = list[i] && list[i].pts; m = p ? p.length : 0; keep = m ? (stride > 1 ? Math.floor((m - 1) / stride) + 1 + ((m - 1) % stride ? 1 : 0) : m) : 0; if (keep > 65535) keep = 65535; cnt[i] = keep; tot += keep; }
@@ -1931,6 +1942,7 @@ var PHOTO_CHECK = (function () {
     var order = []; try { order = SECTION_ORDER.slice(); } catch (e) {}
     function secIdx(s) { var i = order.indexOf(s); return i < 0 ? 255 : i; }
     var H = { magic: 'GYDBG', v: 1, at: new Date().toISOString(), ua: (typeof navigator !== 'undefined' ? navigator.userAgent : ''), qs: QS, env: env, sections: null, styling: null, order: order, notes: [] };
+    try { if (typeof STAGE_TAG !== 'undefined') H.tagViews = STAGE_TAG.views.slice(); } catch (eT) {}   // (2026-11-28) 꼬리표 뷰 번호 → 이름
     try { H.sections = JSON.parse(JSON.stringify(state.sections)); H.styling = JSON.parse(JSON.stringify(state.stylingByView || state.styling || null)); H.fade = state.fade || null; H.view = state.currentViewAngle; } catch (e) {}
     try { H.mq = !!MANNEQUIN.on; H.specApplied = state.specAppliedId || null; H.curl = state._globalCurl; } catch (e) {}
     try { H.native = FSx && FSx.nativeState ? { id: FSx.nativeState.id, shaped: FSx.nativeState.shaped } : null; } catch (e) {}
@@ -1939,11 +1951,11 @@ var PHOTO_CHECK = (function () {
     try { H.pc = { trim: P.trim, fixDir: P.fixDir }; } catch (e) {}
     try { if (typeof DEVICE_AUDIT !== 'undefined') H.devices = DEVICE_AUDIT.list(); } catch (e) {}   // (2026-11-08f) 가림 장치 점검표
     // 다시 기른 가닥(점은 하나 걸러)
-    try { if (G && G.model && G.model.strands && G.model.strands.length) { var rg = packStrands(G.model.strands, 2, secIdx); add('rg.cnt', rg.cnt); add('rg.sec', rg.sec); add('rg.pts', rg.D, { stride: 2 }); H.regrown = { n: G.model.strands.length, on: !!G.on, CY: G.model.CY }; } else H.notes.push('다시 기른 모델 없음'); } catch (e) { H.notes.push('rg: ' + e.message); }
+    try { if (G && G.model && G.model.strands && G.model.strands.length) { var rg = packStrands(G.model.strands, 2, secIdx); add('rg.cnt', rg.cnt); add('rg.sec', rg.sec); add('rg.pts', rg.D, { stride: 2 }); try { add('rg.tag', packTags(G.model.strands, 2), { stride: 2 }); } catch (eT) {} H.regrown = { n: G.model.strands.length, on: !!G.on, CY: G.model.CY }; } else H.notes.push('다시 기른 모델 없음'); } catch (e) { H.notes.push('rg: ' + e.message); }
     // (2026-10-24g) 사진 가닥을 헐로 옮긴 것(13c "헐 기반 옮기기" · 17b 옮긴 점 겉면의 재료) — 점은 하나 걸러 · lift.mir 1 = 거울 채움
     try { var LS = G && G.src && G.src.strands; if (LS && LS.length) { var lp = packStrands(LS, 2, secIdx), lm = new Uint8Array(LS.length), lv = new Uint8Array(LS.length), AN = ['front', 'left', 'right', 'back'];
         for (var li = 0; li < LS.length; li++) { lm[li] = LS[li] && LS[li].mirrored ? 1 : 0; var ai = LS[li] ? AN.indexOf(LS[li].srcAngle) : -1; lv[li] = ai < 0 ? 255 : ai; }
-        add('lift.cnt', lp.cnt); add('lift.sec', lp.sec); add('lift.mir', lm); add('lift.view', lv); add('lift.pts', lp.D, { stride: 2 }); H.lift = { n: LS.length, view: 'lift.view 0 front 1 left 2 right 3 back 255 기타', stat: G.liftStat || null }; } } catch (e) { H.notes.push('lift: ' + e.message); }
+        add('lift.cnt', lp.cnt); add('lift.sec', lp.sec); add('lift.mir', lm); add('lift.view', lv); add('lift.pts', lp.D, { stride: 2 }); try { add('lift.tag', packTags(LS, 2), { stride: 2 }); } catch (eT) {} H.lift = { n: LS.length, view: 'lift.view 0 front 1 left 2 right 3 back 255 기타', stat: G.liftStat || null }; } } catch (e) { H.notes.push('lift: ' + e.message); }
     // (2026-10-10a) 다시 기른 가닥마다 멈춘 이유·두피 위/밖 길이 등(42번 rg) + 걸음 기록(REGROW.trace를 켜고 기른 경우) + 사진에서 잰 뿌리 밀도
     try {
       if (G && G.model && G.model.strands && G.model.strands.length) {
@@ -1989,7 +2001,7 @@ var PHOTO_CHECK = (function () {
     try { var fo = FSx && FSx.fromRegrown ? FSx.fromRegrown() : null; if (fo && fo.d && !(H.flow && fl && fo.d === fl.d)) { H.flowOwn = { v: fo.v, cs: fo.cs, bin: fo.bin, lmax: fo.lmax, n: fo.n }; add('flowOwn.d', new TextEncoder().encode(fo.d), { enc: 'base64-text' }); } else if (fo && fo.d) H.flowOwn = 'same'; } catch (e) { H.notes.push('flowOwn: ' + e.message); }
     try { var sp = (typeof getStyleSpec === 'function' && state.specAppliedId) ? getStyleSpec(state.specAppliedId) : null; if (sp) H.spec = { base: sp.base || null, flowBase: sp.flowBase || null, flowLen: sp.flowLen || null, tipAt: sp.tipAt || null, lenCm: sp.lenCm || null, styling: sp.styling || null, perm: sp.perm || null }; } catch (e) {}
     // 지금 화면에 그려진 가닥(빗질·맞추기·자르기까지 한 것)
-    try { var list = computeAdjustedHair3DStrands(); if (list && list.length) { var dr = packStrands(list, 1, secIdx); add('draw.cnt', dr.cnt); add('draw.sec', dr.sec); add('draw.fl', dr.fl); add('draw.pts', dr.D); H.drawn = { n: list.length }; } } catch (e) { H.notes.push('draw: ' + e.message); }
+    try { var list = computeAdjustedHair3DStrands(); if (list && list.length) { var dr = packStrands(list, 1, secIdx); add('draw.cnt', dr.cnt); add('draw.sec', dr.sec); add('draw.fl', dr.fl); add('draw.pts', dr.D); try { add('draw.tag', packTags(list, 1)); } catch (eT) {} H.drawn = { n: list.length }; } } catch (e) { H.notes.push('draw: ' + e.message); }
     // 사진별 카메라 · 머리 영역 · 결(칸 단위)
     try {
       H.cams = [];
