@@ -61,7 +61,7 @@ var STAGE_TAG = (function () {
    *   마지막 다듬기(finalClip: 눕히기·낮추기·가시 눕히기)·깊이 고르게가 점을 <b>새로 만들며</b> t 를 버렸다.
    *   조정 단계(adjustStrandGeom·어깨·몸통·얼굴 비키기…)도 같다. 단계마다 고치는 대신 단계 <b>경계</b>에서 이어 준다.
    *   규칙: 점 수가 같으면 같은 번호 · 다르면 뿌리에서 잰 호길이가 같은 자리(앞 가닥 길이를 넘은 점 = 새로 기른 점 = 꼬리표 없음).
-   *   이미 t 가 있는 점은 안 건드림 · 원래 점 객체는 안 바꿈(조각·캐시를 같이 쓰는 점이 있어 새 객체로 바꿔 끼움).
+   *   이미 t 가 있는 점은 안 건드림 · t 없는 점에만 그 자리에서 붙임(복사 안 함).
    *   끄기 STAGE_TAG.carryOn=false */
   T.carryOn = true;
   function arcs(P) { var a = new Float64Array(P.length), i; for (i = 1; i < P.length; i++) a[i] = a[i - 1] + Math.hypot(P[i].x - P[i - 1].x, P[i].y - P[i - 1].y, P[i].z - P[i - 1].z); return a; }
@@ -81,8 +81,7 @@ var STAGE_TAG = (function () {
         s = src[j];
       }
       if (!s || s.t === undefined) continue;
-      if (!out) { out = dst.slice(); for (var k in dst) if (!/^\d+$/.test(k)) out[k] = dst[k]; }   // _rgKeep 같은 꼬리 속성도
-      out[i] = Object.assign({}, q, { t: s.t });
+      q.t = s.t; out = dst;   // (11-28c) 복사 없이 그 점에 — 새로 만든 점(꼬리표 없음)에만 붙으니 원래 점은 안 바뀜 · 예전 복사는 30만 가닥×단계마다 메모리를 두 배로 썼음
     }
     return out || dst;
   };
@@ -197,12 +196,13 @@ var STAGE_DIAG = (function () {
   }
 
   /* 한 단계 × 한 사진. rows 가 있으면 CSV 줄을 쌓음 */
-  function measure(stageName, strands, angle, model, g, useDraw, rows, every) {
+  function measure(stageName, strands, angle, model, g, useDraw, rows, every, skip) {
+    skip = skip || 1;
     var cal = useDraw && typeof calForDraw === 'function' ? calForDraw(model, angle) : (model.viewCal && model.viewCal[angle]);
     if (!cal) return null;
     var R = composeRotationZYX(cal.yaw, cal.pitch || 0, cal.roll || 0), CY = model.CY;
     var acc = { own: { n: 0, out: 0, d: [], dir: [] }, other: { n: 0, out: 0, d: [], dir: [] } }, tg = { n: 0, has: 0, d: [] };
-    for (var si = 0; si < strands.length; si++) {
+    for (var si = 0; si < strands.length; si += skip) {
       var st = strands[si], P = st.pts; if (!P || P.length < 2) continue;
       var own = st.srcAngle === angle && !st.mirrored, A = own ? acc.own : acc.other;
       var keep = rows && si % every === 0;
@@ -239,13 +239,15 @@ var STAGE_DIAG = (function () {
     var model = state.hair3Dneutral;
     if (!model || !model.strands || !model.viewCal) { console.warn(TAG + ' 3D 결과가 아직 없습니다 — 사진을 찍고 3D 화면까지 간 뒤 다시'); return null; }
     var vs = views(); if (!vs.length) { console.warn(TAG + ' 사진 가닥·머리 영역이 없습니다'); return null; }
-    var t0 = performance.now(), S = stages(model), grids = {}, res = {}, rows = opts.rows || null;
+    var keepClip0 = D.lastClip, t0 = performance.now(), S;
+    try { S = stages(model); } finally { if (opts.quiet) D.lastClip = keepClip0; }
+    var _u, grids = {}, res = {}, rows = opts.rows || null;
     vs.forEach(function (a) { grids[a] = photoGrid(a); });
     var totalPts = 0; S.forEach(function (s) { s[1].forEach(function (st) { totalPts += st.pts ? st.pts.length : 0; }); });
-    var every = rows ? Math.max(1, Math.ceil(totalPts * vs.length / D.maxRows)) : 1;
+    var every = rows ? Math.max(1, Math.ceil(totalPts * vs.length / D.maxRows)) : 1, skip = Math.max(1, opts.every | 0);
     S.forEach(function (s) {
       res[s[0]] = {};
-      vs.forEach(function (a) { res[s[0]][a] = measure(s[0], s[1], a, model, grids[a], s[2], rows, every); });
+      vs.forEach(function (a) { res[s[0]][a] = measure(s[0], s[1], a, model, grids[a], s[2], rows, every, skip); });
     });
     var f = function (v, k) { return isFinite(v) ? v.toFixed(k) : '-'; };
     var lines = [TAG + ' ' + (W.state && state.styleId ? '스타일 ' + state.styleId : '') + ' · ' + Math.round(performance.now() - t0) + 'ms',
@@ -275,22 +277,35 @@ var STAGE_DIAG = (function () {
 
   /* (2026-11-28) 진단정보 패널(18 perfPanelLines 맨 위)에 꼬리표 표를 늘 싣는다 — 콘솔 입력 없이 [복사]로 나가게.
      같은 모델이면 다시 계산하지 않음(수 초 걸림). 줄: 단계 · 꼬리표 남은% · 제자리 거리(자기 사진 px) 중앙/90% */
-  var _pk = null, _pl = null;
-  D.panelLines = function () {
-    var m = state.hair3Dneutral; if (!m || !m.strands) return ['[꼬리표] 3D 모델 전 — 3D 화면까지 가면 찍힘'];
-    var key = m.strands.length + '/' + (STAGE_TAG.lifted ? STAGE_TAG.lifted.length : 0) + '/' + (state.styleId || '') + '/' + (D.lastClip ? D.lastClip.at : 0);
-    if (key === _pk && _pl) return _pl;
-    var r = null; try { r = D.run({ quiet: true }); } catch (e) { return ['[꼬리표] 계산 실패 ' + (e && e.message)]; }
-    if (!r) return ['[꼬리표] 계산 못 함(사진 가닥·머리 영역 없음)'];
-    var f = function (v, k) { return isFinite(v) ? v.toFixed(k) : '-'; }, L = ['[꼬리표] 단계별 — 꼬리표 남은% · 자기 원래 사진 점과의 거리 px(중앙/90%) · 사진별 front/left/right/back'];
+  /* (2026-11-28c) 3D 결과보기에서 화면이 멈추던 것 — 예전 패널 줄은 열 때마다 <b>그 자리에서</b> D.run(시술 계산 5벌 + 점 100만 개 × 사진 4장)을 돌렸고,
+   *   그 계산이 재클립 기록(lastClip.at)을 새로 써서 캐시 열쇠가 매번 달라졌다 → 패널을 새로 그릴 때마다 다시 계산(멈춤·메모리 넘침).
+   *   지금: 열쇠에서 lastClip 뺌 · 패널은 <b>지난 결과만 읽음</b> · 계산은 모델마다 한 번, 뒤에서(setTimeout) · 3D 결과 화면에선 안 돎 · 가닥 panelEvery개에 하나만 잼.
+   *   전체 표는 콘솔 STAGE_DIAG.run() · 자동 계산 끄기 STAGE_DIAG.panelAuto=false */
+  D.panelAuto = true; D.panelEvery = 4;
+  var _pk = null, _pl = null, _busy = false, _timer = 0;
+  function panelKey(m) { return m.strands.length + '/' + (STAGE_TAG.lifted ? STAGE_TAG.lifted.length : 0) + '/' + (state.styleId || ''); }
+  function buildPanel(key) {
+    var r = null;
+    try { _busy = true; r = D.run({ quiet: true, every: D.panelEvery }); } catch (e) { _pl = ['[꼬리표] 계산 실패 ' + (e && e.message)]; _pk = key; return; } finally { _busy = false; }
+    if (!r) { _pl = ['[꼬리표] 계산 못 함(사진 가닥·머리 영역 없음)']; _pk = key; return; }
+    var f = function (v, k) { return isFinite(v) ? v.toFixed(k) : '-'; }, L = ['[꼬리표] 단계별 — 꼬리표 남은% · 자기 원래 사진 점과의 거리 px(중앙/90%) · 사진별 (가닥 ' + D.panelEvery + '개에 하나)'];
     Object.keys(r.stages).forEach(function (st) {
       var row = r.stages[st], parts = [];
       Object.keys(row).forEach(function (a) { var t = row[a] && row[a].tag; if (t) parts.push(a + ' ' + f(t.keepPct, 0) + '% ' + f(t.dMed, 1) + '/' + f(t.d90, 1)); });
       L.push('  ' + st + ': ' + parts.join(' · '));
     });
     if (D.lastClip) L.push('  재클립 자름 ' + D.lastClip.trimmed + '/' + D.lastClip.kept);
+    _pk = key; _pl = L;
+  }
+  D.panelLines = function () {
+    var m = state.hair3Dneutral; if (!m || !m.strands) return ['[꼬리표] 3D 모델 전 — 3D 화면까지 가면 찍힘'];
+    var key = panelKey(m), L = (key === _pk && _pl) ? _pl.slice() : ['[꼬리표] ' + (D.panelAuto ? '계산 대기 — 조정 화면에서 잠시 뒤 찍힘' : '자동 계산 꺼짐') + ' · 콘솔 STAGE_DIAG.run()'];
+    var scr = (typeof currentScreen !== 'undefined') ? currentScreen : '';
+    if (D.panelAuto && key !== _pk && !_busy && !_timer && scr !== 'model3d') {
+      _timer = setTimeout(function () { _timer = 0; var m2 = state.hair3Dneutral; if (!m2 || !m2.strands || _busy) return; var s2 = (typeof currentScreen !== 'undefined') ? currentScreen : ''; if (s2 === 'model3d') return; buildPanel(panelKey(m2)); }, 1500);
+    }
     try { STAGE_TAG.trailLines().forEach(function (l) { L.push(l); }); } catch (eTr) {}
-    _pk = key; _pl = L; return L;
+    return L;
   };
 
   D.csv = function () {
